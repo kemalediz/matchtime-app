@@ -255,6 +255,9 @@ test("flag ON: sign up, set up the club and its weekly game, connect, and the ca
   await db.run(`UPDATE "Organisation" SET "approvalStatus" = 'approved', "approvedAt" = now() WHERE id = $1`, [org!.id]);
   await page.reload();
   await expect(card).toHaveAttribute("data-state", "approved");
+  // The heading says MatchTime is connected, not "connect MatchTime".
+  await expect(card.getByRole("heading", { level: 2 })).toHaveText("MatchTime WhatsApp'a bağlı");
+  await expect(card).not.toContainText("MatchTime'ı WhatsApp'a bağlayın");
   await expect(card).toContainText(`Yayındasınız. MatchTime "Riverside Salı 7'ler" grubunda.`);
   await shot(page, "07-admin-approved");
 

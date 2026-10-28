@@ -2377,6 +2377,8 @@ export const en = {
   sj_connect_prefill: (p: { club: string; code: string }): string => `Connect ${p.club}, code ${p.code}`,
 
   sj_card_title: "Connect MatchTime to WhatsApp",
+  /** The approved card's heading: a statement, not a call to connect. */
+  sj_card_connected_title: "MatchTime is connected",
   sj_button: "Add MatchTime to WhatsApp",
   sj_button_again: "Open WhatsApp again",
   sj_card_draft: "Tap the button below. WhatsApp opens with a short message ready to send to MatchTime.",

@@ -564,6 +564,7 @@ const SAMPLES: SampleArgs = {
   sj_err_generic: null,
   sj_connect_prefill: { club: "Riverside FC", code: "7KQ2" },
   sj_card_title: null,
+  sj_card_connected_title: null,
   sj_button: null,
   sj_button_again: null,
   sj_card_draft: null,

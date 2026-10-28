@@ -278,6 +278,8 @@ test("once the club is approved, everything shows as it always did", async ({ pa
   // The card is back to being one card among the rest, with no step.
   await expect(page.getByTestId("club-connect-card")).toHaveAttribute("data-state", "approved");
   await expect(page.getByTestId("club-connect-step")).toHaveCount(0);
+  // Its heading says MatchTime is connected, not "Connect MatchTime to WhatsApp".
+  await expect(page.getByTestId("club-connect-card").getByRole("heading", { level: 2 })).toHaveText("MatchTime is connected");
 
   // The other pages open, and the home page is the dashboard again.
   await page.goto("/admin/players");

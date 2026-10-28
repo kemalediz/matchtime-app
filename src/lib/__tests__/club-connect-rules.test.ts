@@ -14,6 +14,7 @@ import {
   MAX_NEW_CLUBS_PER_DAY,
   APPROVED_CARD_DAYS,
   PLAYERS_PER_SIDE_OPTIONS,
+  connectCardTitle,
   connectPrefill,
   deriveConnectCard,
   formatPhoneForDisplay,
@@ -25,6 +26,7 @@ import {
   waMeLink,
   type ConnectRow,
 } from "../club-connect-rules";
+import { t } from "../i18n/t";
 
 const NOW = new Date("2026-09-29T12:00:00Z");
 const MIN = 60_000;
@@ -282,5 +284,35 @@ describe("deriveConnectCard", () => {
     expect(deriveConnectCard({ org: { approvalStatus: "suspended", approvedAt: NOW }, latest: null, now: NOW })).toEqual({
       kind: "hidden",
     });
+  });
+});
+
+describe("connectCardTitle: the card's heading", () => {
+  // 2026-10-28: an owner read "Connect MatchTime to WhatsApp" above
+  // "You're live" as an instruction and thought something was wrong.
+  it("an approved club's card says MatchTime is connected, in both languages", () => {
+    const card = { kind: "approved", group: "MT Test" } as const;
+    expect(connectCardTitle(card, "en")).toBe("MatchTime is connected");
+    expect(connectCardTitle(card, "tr")).toBe("MatchTime WhatsApp'a bağlı");
+  });
+
+  it("every state before approval keeps the call to connect", () => {
+    const states = [
+      { kind: "draft" },
+      { kind: "issued", code: "7KQ2", mismatchFrom: null, siteCap: false },
+      { kind: "expired" },
+      { kind: "dm_verified" },
+      { kind: "pending", group: null, addedByOther: false },
+      { kind: "rejected" },
+    ] as const;
+    for (const card of states) {
+      expect(connectCardTitle(card, "en")).toBe("Connect MatchTime to WhatsApp");
+      expect(connectCardTitle(card, "tr")).toBe("MatchTime'ı WhatsApp'a bağlayın");
+    }
+  });
+
+  it("setting up keeps its own headings", () => {
+    expect(connectCardTitle({ kind: "setting_up", group: null, removed: false }, "en")).toBe(t("en").sj_live_title);
+    expect(connectCardTitle({ kind: "setting_up", group: null, removed: true }, "en")).toBe(t("en").sj_card_removed_title);
   });
 });

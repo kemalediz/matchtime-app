@@ -164,6 +164,19 @@ export type ConnectCard =
   | { kind: "setting_up"; group: string | null; removed: boolean }
   | { kind: "rejected" };
 
+/**
+ * The card's heading. Approved says MatchTime is connected (a heading
+ * that read "Connect MatchTime to WhatsApp" above "You're live" looked
+ * like an instruction); setting up has its own two; every other state
+ * asks the organiser to connect.
+ */
+export function connectCardTitle(card: ConnectCard, lang: Lang | string | null | undefined): string {
+  const s = t(lang);
+  if (card.kind === "approved") return s.sj_card_connected_title;
+  if (card.kind === "setting_up") return card.removed ? s.sj_card_removed_title : s.sj_live_title;
+  return s.sj_card_title;
+}
+
 /** The organiser matched the adder by phone or WhatsApp id (plan 2.3). */
 const VERIFIED_ADDER = new Set(["phone", "lid"]);
 

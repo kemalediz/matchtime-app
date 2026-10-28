@@ -1864,6 +1864,7 @@ export const tr: Strings = {
   sj_connect_prefill: (p) => `${p.club} kulübünü bağla, kod ${p.code}`,
 
   sj_card_title: "MatchTime'ı WhatsApp'a bağlayın",
+  sj_card_connected_title: "MatchTime WhatsApp'a bağlı",
   sj_button: "MatchTime'ı WhatsApp'a ekle",
   sj_button_again: "WhatsApp'ı tekrar aç",
   sj_card_draft: "Aşağıdaki düğmeye dokunun. WhatsApp, MatchTime'a gönderilmeye hazır kısa bir mesajla açılır.",

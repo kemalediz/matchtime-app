@@ -1340,7 +1340,7 @@ function cases(lang: Lang): Case[] {
   add("R182 card / WhatsApp offers Invite to group", sj.sj_card_invite_tip);
   add("R182 card / pending approval", sj.sj_card_pending);
   add("R182 card / pending, added by someone else", sj.sj_card_pending_other({ group: "Riverside Tuesday 5s" }));
-  add("R182 card / approved", sj.sj_card_approved({ group: "Riverside Tuesday 5s" }));
+  add("R182 card / approved", `${sj.sj_card_connected_title}\n${sj.sj_card_approved({ group: "Riverside Tuesday 5s" })}`);
   add("R182 card / rejected", sj.sj_card_rejected);
   add("R182 card / expired", `${sj.sj_card_expired}\n[${sj.sj_button}]`);
   add("R182 card / three codes today", sj.sj_card_code_cap);

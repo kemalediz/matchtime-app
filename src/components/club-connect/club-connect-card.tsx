@@ -26,7 +26,7 @@ import { t } from "@/lib/i18n/t";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 import { loadLatestConnect, matchtimeWaNumber } from "@/lib/club-connect";
-import { connectPrefill, deriveConnectCard, formatPhoneForDisplay, waMeLink } from "@/lib/club-connect-rules";
+import { connectCardTitle, connectPrefill, deriveConnectCard, formatPhoneForDisplay, waMeLink } from "@/lib/club-connect-rules";
 import { SETUP_STAGE_SELECT, isClubSettingUp } from "@/lib/club-setup-rules";
 import { CONNECT_FOCUS_STEPS, connectFocusStep } from "@/lib/connect-focus";
 import { loadClubSetupView } from "@/lib/club-setup";
@@ -132,7 +132,7 @@ export async function ClubConnectCard({
         </div>
       )}
       <div className="flex items-center gap-1">
-        <h2 className="font-semibold text-slate-800">{card.kind === "setting_up" ? (card.removed ? s.sj_card_removed_title : s.sj_live_title) : s.sj_card_title}</h2>
+        <h2 className="font-semibold text-slate-800">{connectCardTitle(card, org.language)}</h2>
         {card.kind !== "setting_up" && <SectionInfo k="dash_connect" lang={org.language} />}
       </div>
 
