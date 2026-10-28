@@ -974,7 +974,7 @@ describe("the stats blast is reported, never fired here", () => {
 describe("cancelling a match from the players' group (2026-10-23)", () => {
   const CANCEL = "@Match Time cancel the match";
   const CANCEL_FACTS = { ...BLAST_FACTS, action: "cancel_match", lookbackMatches: 0, matchDay: "" };
-  type CancelCall = { orgId: string; lang: string | null; mode: string; dayPhrase: string | null; organiser: boolean; now: Date };
+  type CancelCall = { orgId: string; lang: string | null; mode: string; dayPhrase: string | null; pastGame?: boolean; organiser: boolean; now: Date };
 
   function cancelRecorder(answer = { outcome: "match_cancelled", replyText: null as string | null, react: "✅" as string | null }) {
     const calls: CancelCall[] = [];
@@ -992,7 +992,7 @@ describe("cancelling a match from the players' group (2026-10-23)", () => {
     const c = cancelRecorder();
     const r = recorder(model, paidWorld(), { cancelOrRestore: c.dep });
     const res = await run({ messages: [msg({ body: CANCEL, senderUserId: "u-kemal" })], deps: r.deps });
-    expect(c.calls).toEqual([{ orgId: "org-1", lang: "en", mode: "cancel", dayPhrase: null, organiser: true, now: NOW }]);
+    expect(c.calls).toEqual([{ orgId: "org-1", lang: "en", mode: "cancel", dayPhrase: null, pastGame: false, organiser: true, now: NOW }]);
     const out = res.outcomes.get(`wa-${CANCEL.slice(0, 14)}`)!;
     expect(res.ownedIds.has(out.waMessageId)).toBe(true);
     expect(out.reply).toBeNull();
@@ -1002,6 +1002,18 @@ describe("cancelling a match from the players' group (2026-10-23)", () => {
     expect(r.marked).toEqual([]);
     expect(r.credits).toEqual([]);
     expect(r.dms).toEqual([]);
+  });
+
+  it("a game that did not happen (2026-10-28): pastGame reaches the one core, and its reply and tick go out", async () => {
+    const GONE = "@Match Time Tuesday's game didn't happen";
+    const { model } = stubModel({ [GONE]: { ...CANCEL_FACTS, action: "cancel_match", matchDay: "Tuesday", pastGame: true } });
+    const c = cancelRecorder({ outcome: "match_not_played", replyText: "Done. Tuesday 5-a-side on 27 Oct is marked as not played: no score, ratings or Man of the Match for it.", react: "✅" });
+    const r = recorder(model, paidWorld(), { cancelOrRestore: c.dep });
+    const res = await run({ messages: [msg({ body: GONE, senderUserId: "u-kemal" })], deps: r.deps });
+    expect(c.calls[0]).toMatchObject({ mode: "cancel", dayPhrase: "Tuesday", pastGame: true, organiser: true });
+    const out = [...res.outcomes.values()][0];
+    expect(out.react).toBe("✅");
+    expect(out.reply).toContain("marked as not played");
   });
 
   it("an owner's undo is a restore, with the day as the extractor wrote it", async () => {

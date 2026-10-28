@@ -186,29 +186,76 @@ export async function switchMatchFormat(matchId: string, newActivityId: string) 
  * Cancel a match entirely. Sets status=CANCELLED; scheduler gates every
  * subsequent trigger on that, so no more reminders/polls fire. Queues a
  * group-message announcing the cancellation.
+ *
+ * A match that has KICKED OFF (2026-10-28, "This game didn't happen" on the
+ * match page): inside the 7-day window and with no score, the same core
+ * marks it as not played (no announcement, nothing after the game) and the
+ * returned `message` is the organiser's reply, shown on the page.
  */
-export async function cancelMatch(matchId: string) {
+export async function cancelMatch(matchId: string): Promise<{ message: string | null }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
 
   const match = await db.match.findUnique({
     where: { id: matchId },
-    select: { status: true, activity: { select: { orgId: true } } },
+    select: { status: true, activity: { select: { orgId: true, org: { select: { language: true } } } } },
   });
   if (!match) throw new Error("Match not found");
-  if (match.status === "CANCELLED") return; // idempotent
-  if (match.status === "COMPLETED") throw new Error("Match is already completed");
+  if (match.status === "CANCELLED") return { message: null }; // idempotent
 
   await requireOrgAdmin(session.user.id, match.activity.orgId);
 
   // The status, a monthly club's credits and the players' group
   // announcement: the ONE path HQ's cancel uses too (lib/match-cancel.ts).
-  const { cancelMatchById } = await import("@/lib/match-cancel");
-  await cancelMatchById(matchId);
+  const { cancelMatchById, notPlayedGameLabel, notPlayedReply } = await import("@/lib/match-cancel");
+  const { PAST_CANCEL_WINDOW_DAYS } = await import("@/lib/match-cancel-rules");
+  const lang = normaliseLang(match.activity.org?.language);
+  const s = t(lang);
+  const r = await cancelMatchById(matchId);
+  if (r.kind === "completed") throw new Error("Match is already completed");
+  if (r.kind === "too-old") throw new Error(s.not_played_too_old({ days: PAST_CANCEL_WINDOW_DAYS }));
+  if (r.kind === "scored") throw new Error(s.not_played_scored({ game: notPlayedGameLabel(lang, r.activityName, r.date) }));
+  let message: string | null = null;
+  if (r.kind === "not-played") {
+    const { buildCancelCreditLine } = await import("@/lib/month-close-copy");
+    message = notPlayedReply(lang, r, r.creditedGames > 0 ? buildCancelCreditLine({ count: 1, lang }) : null);
+  }
 
   revalidatePath(`/matches/${matchId}`);
   revalidatePath(`/admin/matches/${matchId}/teams`);
   revalidatePath("/matches");
+  return { message };
+}
+
+/**
+ * "It did happen" on the match page (2026-10-28): a game marked as not
+ * played, inside the 7-day window, back on the record as played. The core
+ * HQ uses (`restoreMatchById`): COMPLETED, nothing posted.
+ */
+export async function restorePlayedMatch(matchId: string): Promise<{ message: string }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({
+    where: { id: matchId },
+    select: { date: true, activity: { select: { orgId: true, org: { select: { language: true } } } } },
+  });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+  const { restoreMatchById, notPlayedGameLabel } = await import("@/lib/match-cancel");
+  const { PAST_CANCEL_WINDOW_DAYS, isPastGame } = await import("@/lib/match-cancel-rules");
+  const lang = normaliseLang(match.activity.org?.language);
+  const s = t(lang);
+  const now = new Date();
+  // This button is for a game that kicked off; one still to come is put
+  // back on from the matches list, which tells the players' group.
+  if (!isPastGame(match.date, now)) throw new Error(s.not_played_restore_none({ days: PAST_CANCEL_WINDOW_DAYS }));
+  const r = await restoreMatchById(matchId, now);
+  if (r.kind !== "restored") {
+    throw new Error(r.kind === "past" ? s.not_played_too_old({ days: PAST_CANCEL_WINDOW_DAYS }) : s.not_played_restore_none({ days: PAST_CANCEL_WINDOW_DAYS }));
+  }
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath("/matches");
+  return { message: s.not_played_restored({ game: notPlayedGameLabel(lang, r.activityName, r.date) }) };
 }
 
 export async function updateMatchScore(matchId: string, formData: { redScore: number; yellowScore: number }) {

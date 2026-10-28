@@ -325,6 +325,7 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     lang: string | null;
     mode: "cancel" | "restore";
     dayPhrase: string | null;
+    pastGame?: boolean;
     organiser: boolean;
     now: Date;
   }) => Promise<{ outcome: string; replyText: string | null; react: string | null }>;
@@ -490,7 +491,7 @@ export async function runAdminOpsBatch(args: {
   /** Tagged `other`: answered in one line, outside the engine. */
   const unhandled = new Set<string>();
   /** Tagged cancel / back on: done outside the engine, after this loop. */
-  const cancelAsks = new Map<string, { mode: "cancel" | "restore"; dayPhrase: string | null }>();
+  const cancelAsks = new Map<string, { mode: "cancel" | "restore"; dayPhrase: string | null; pastGame: boolean }>();
   for (const m of candidates) {
     const facts = factsById.get(m.waMessageId);
     if (!facts) continue; // extraction failed; already reported above.
@@ -518,7 +519,11 @@ export async function runAdminOpsBatch(args: {
     // Untagged, it is the players talking: nothing done, nothing said.
     if (facts.action === "cancel_match" || facts.action === "restore_match") {
       if (m.tagged && (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body }))) {
-        cancelAsks.set(m.waMessageId, { mode: facts.action === "cancel_match" ? "cancel" : "restore", dayPhrase: facts.matchDay?.trim() || null });
+        cancelAsks.set(m.waMessageId, {
+          mode: facts.action === "cancel_match" ? "cancel" : "restore",
+          dayPhrase: facts.matchDay?.trim() || null,
+          pastGame: facts.pastGame === true,
+        });
       } else {
         hand(`${facts.action} without an explicit MatchTime tag`);
       }
@@ -630,7 +635,7 @@ export async function runAdminOpsBatch(args: {
     };
     const action = ask.mode === "cancel" ? "cancel_match" : "restore_match";
     try {
-      const r = await doCancel({ orgId, lang: state.features.language, mode: ask.mode, dayPhrase: ask.dayPhrase, organiser, now });
+      const r = await doCancel({ orgId, lang: state.features.language, mode: ask.mode, dayPhrase: ask.dayPhrase, pastGame: ask.pastGame, organiser, now });
       const done = r.react !== null && r.replyText === null;
       cancelOutcomes.push({
         ...base,

@@ -35,6 +35,7 @@ import {
   momWinners,
 } from "./badge-rules";
 import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./pipeline/stats-answer";
+import { NOT_CANCELLED } from "@/lib/played-match";
 
 export {
   MR_RELIABLE_MAX_SPREAD,
@@ -945,7 +946,7 @@ export async function loadClubRating(orgId: string, userId: string): Promise<Clu
     // letting a dead club's rows evict his own club's before the code
     // ever saw them.
     db.rating.findMany({
-      where: { playerId: userId, match: { activity: { orgId } } },
+      where: { playerId: userId, match: { activity: { orgId }, ...NOT_CANCELLED } },
       orderBy: { createdAt: "desc" },
       take: CLUB_RATING_WINDOW,
       select: { score: true },
@@ -960,7 +961,7 @@ export async function loadClubRating(orgId: string, userId: string): Promise<Clu
     }),
     db.rating.aggregate({
       _avg: { score: true },
-      where: { match: { activity: { orgId } } },
+      where: { match: { activity: { orgId }, ...NOT_CANCELLED } },
     }),
   ]);
 
@@ -1002,7 +1003,7 @@ export async function loadClubDisplayRatings(
 ): Promise<Record<string, { rating: number | null; ratedGames: number }>> {
   if (userIds.length === 0) return {};
   const rows = await db.rating.findMany({
-    where: { playerId: { in: [...userIds] }, match: { activity: { orgId } } },
+    where: { playerId: { in: [...userIds] }, match: { activity: { orgId }, ...NOT_CANCELLED } },
     orderBy: { createdAt: "desc" },
     select: { playerId: true, matchId: true, score: true },
   });
@@ -1119,7 +1120,7 @@ export async function loadAllClubsOverview(args: {
         }),
     // NO membership join and NO org filter. This is the overall.
     db.rating.findMany({
-      where: { playerId: userId },
+      where: { playerId: userId, match: NOT_CANCELLED },
       select: { score: true, match: { select: { activity: { select: { orgId: true } } } } },
     }),
     // MoM is WINS, not votes received: fetch each match's full vote set,

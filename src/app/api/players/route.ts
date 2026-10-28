@@ -7,6 +7,7 @@ import { findDuplicateSuggestions } from "@/lib/placeholder-link-rules";
 import { NextResponse } from "next/server";
 import { type GuestMarks, guestSourceOf, isGuestMembership, partnerHomeClubOf } from "@/lib/guest-membership";
 import { t } from "@/lib/i18n/t";
+import { NOT_CANCELLED } from "@/lib/played-match";
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
         include: {
           _count: {
             select: {
-              attendances: { where: { status: "CONFIRMED" } },
+              attendances: { where: { status: "CONFIRMED", match: NOT_CANCELLED } },
               // Every club's, for the duplicate suggestions below: a
               // placeholder that also belongs to another club is never
               // offered for a merge.

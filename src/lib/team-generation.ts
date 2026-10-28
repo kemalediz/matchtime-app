@@ -75,6 +75,7 @@ import {
   teamGenReasonNotFound,
   teamGenReasonStatus,
 } from "./group-copy";
+import { NOT_CANCELLED } from "@/lib/played-match";
 export { formatTeamsPost };
 
 export interface GenerateTeamsOptions {
@@ -139,7 +140,7 @@ export async function generateTeamsForMatch(
   // answer. Null when the club has never rated anybody.
   const clubMean = await db.rating.aggregate({
     _avg: { score: true },
-    where: { match: { activity: { orgId } } },
+    where: { match: { activity: { orgId }, ...NOT_CANCELLED } },
   });
   const clubMeanRating = clubMean._avg.score ?? null;
 
@@ -163,7 +164,7 @@ export async function generateTeamsForMatch(
       // global window truncated at 60 was letting a dead club's rows
       // EVICT his own club's before the code ever saw them.
       const ratings = await db.rating.findMany({
-        where: { playerId: a.userId, match: { activity: { orgId } } },
+        where: { playerId: a.userId, match: { activity: { orgId }, ...NOT_CANCELLED } },
         orderBy: { createdAt: "desc" },
         take: 60,
       });

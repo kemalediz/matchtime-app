@@ -306,6 +306,16 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
  * MatchTime, and telling the others about it is none. Both definitions were
  * rewritten where they stand, and the organisers' examples regrouped by
  * what they teach. 15,202 to 15,989 characters.
+ *
+ * ── 2026-10-28: A GAME THAT NEVER TOOK PLACE ─────────────────────────
+ *
+ * Sutton FC's Tuesday never happened and MatchTime asked for its score and
+ * ratings. "@Match Time Tuesday's game didn't happen" routed question in 2
+ * of 3 live tries: it is about a past match, and the ruling on past matches
+ * named only asking and reporting a result. That ruling now names the third
+ * thing, telling the bot it never took place (admin_ops), and admin_ops says
+ * it calls such a game off. Rewritten where they stand; nothing added at
+ * the end. Sizes in the PR.
  */
 export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, results, payments, reminders and the players' stats. For EVERY message id you are given, return exactly one route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot.
 
@@ -335,7 +345,7 @@ unsure      about a place, but you cannot tell who or what it does. A bare "conf
 question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), how the club is run (who the organisers are, who collects the money, the fee, when the teams come out), and how MatchTime works here (the bench, signing in, how the teams are picked). Asking how the bench or the list works asks for no place.
 balancer    asks to SEE or MAKE the TWO team line-ups (red and yellow): show, generate, shuffle or rename them.
 score       reports the final result of this group's own match (our team names, our colours or a bare scoreline), or answers who was its Man of the Match while MatchTime is WAITING for that (praise alone answers nothing). A professional scoreline somebody is watching is none.
-admin_ops   tells the bot to do something now: credit a payment, set a reminder, send a link, change a setting, call a match off or put it back on. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
+admin_ops   tells the bot to do something now: credit a payment, set a reminder, send a link, change a setting, call a match off (one still to come, or one that never took place) or put it back on. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
 none        everything else, as in question 3. A member asking another member something that settles nothing is none ("are you injured?", "which two of you can play tomorrow?"); as soon as a message STATES that somebody plays or does not, it is attendance.
 approve, poster, team_sheet, help and ask_group exist ONLY in the organisers' group; see that section.
 
@@ -344,7 +354,7 @@ RULINGS. Each one settles a confusion that has really happened in a group.
 - Asking the group for a player is attendance, not question, question mark or not: "anyone able to replace me?", "anyone else want to join us?", "can we have more INs please?". It is other_att when a named or implied person is leaving, otherwise offer. The ask is often buried in praise, worry or a pitch, and that changes nothing.
 - ASKING is question; INSTRUCTING is admin_ops. "Amir paid for 4 players" and "remind me on Monday" tell the bot to do something: admin_ops. "Who hasn't paid?" asks for what the bot knows: question.
 - Asking to SEE the squad ("who's in?", "list the players") is question. Asking to SEE or MAKE the teams ("teams?", "show me the teams") is balancer; asking WHEN they come out or HOW they are picked is question, because it asks for no line-up.
-- A question about a match already played ("did we win on tuesday?") is question; reporting a result ("we won 5-3") is score. A question mark alone does not make a question.
+- A match already played: asking about it ("did we win on tuesday?") is question; reporting its result ("we won 5-3") is score; telling the bot it never took place ("@Match Time Tuesday's game didn't happen", "@Match Time dünkü maç oynanmadı") is admin_ops, because it calls that game off. A question mark alone does not make a question.
 
 IN THE ORGANISERS' GROUP. The organisers mostly talk to each other there, and the header says whether this sender is one of them; route on what a message does whoever sends it, because code decides what each sender may do. Question 1 still comes first and is never none: a message saying a player is in, out, can or cannot play ("Tom out", "put Bilal in", "Shehryar can't make it tonight") changes the squad, other_att, however chatty. Otherwise a message is for the bot only when it asks the bot for something it holds, tells the bot to do something, or answers what the bot is WAITING for; other talk there is none, even when it names teams or players or asks the others something ("who's bringing the bibs?"), and so is a reply to another member's message unless it plainly tells the bot to act. Moving or swapping players between the two teams is balancer there, not attendance, because nobody joins or leaves: "swap Ali and Can", "move Tom to the other team", "put Sam in yellow".
 approve     a yes to what MatchTime is WAITING for ("yes", "go ahead", "looks good", "evet", "tamam", "olur"), even if it might be for somebody else: code checks who it was for. With nothing waiting, it is none.

@@ -917,6 +917,7 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
             lang,
             mode: facts.action === "cancel_match" ? "cancel" : "restore",
             dayPhrase: facts.matchDay ?? null,
+            pastGame: facts.pastGame === true,
             addressed,
             now,
           });

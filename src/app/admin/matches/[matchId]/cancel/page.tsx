@@ -35,8 +35,10 @@ export default function CancelMatchPage() {
   async function handleConfirm() {
     setSubmitting(true);
     try {
-      await cancelMatch(matchId);
-      toast.success("Match cancelled. Bot will announce in the group.");
+      const r = await cancelMatch(matchId);
+      // A game that already kicked off is marked as not played instead: no
+      // announcement, and the reply says so (2026-10-28).
+      toast.success(r?.message ?? "Match cancelled. Bot will announce in the group.");
       router.push(`/matches`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to cancel");

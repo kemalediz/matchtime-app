@@ -448,7 +448,7 @@ describe("parseFacts (other routes)", () => {
     for (const action of ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "other"]) {
       expect(p.split(`\n  "${action}" `).length, action).toBe(2);
     }
-    for (const field of ["payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef"]) {
+    for (const field of ["payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef"]) {
       expect(p.split(`\n  ${field} `).length, field).toBe(2);
     }
     expect(p).not.toMatch(/WHO DOES THE WORK/);
@@ -550,6 +550,19 @@ describe("parseFacts (other routes)", () => {
     expect(parseFacts("admin", `{"action":"recruit",${base},"toMatchTime":true}`, "wa-1").facts).toMatchObject({ toMatchTime: true });
     expect("toMatchTime" in parseFacts("admin", `{"action":"recruit",${base},"toMatchTime":false}`, "wa-1").facts).toBe(false);
     expect("toMatchTime" in parseFacts("admin", `{"action":"recruit",${base}}`, "wa-1").facts).toBe(false);
+  });
+
+  it("admin · a game whose time has gone (2026-10-28): pastGame required, carried only on a cancel or restore, and only when true", () => {
+    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, unknown> };
+    expect(schema.required).toContain("pastGame");
+    expect(schema.properties.pastGame).toEqual({ type: "boolean" });
+    const base = '"payerRef":"","count":0,"coveredRefs":[],"undo":false,"phrase":"","note":"","lookbackMatches":0,"playersFrom":"","clubRef":"","toMatchTime":true';
+    expect(parseFacts("admin", `{"action":"cancel_match",${base},"matchDay":"Tuesday","pastGame":true}`, "wa-1").facts).toMatchObject({ action: "cancel_match", matchDay: "Tuesday", pastGame: true });
+    expect(parseFacts("admin", `{"action":"restore_match",${base},"matchDay":"","pastGame":true}`, "wa-1").facts).toMatchObject({ pastGame: true });
+    expect("pastGame" in parseFacts("admin", `{"action":"cancel_match",${base},"matchDay":"","pastGame":false}`, "wa-1").facts).toBe(false);
+    expect("pastGame" in parseFacts("admin", `{"action":"recruit",${base},"matchDay":"","pastGame":true}`, "wa-1").facts).toBe(false);
+    // The cancel examples, English and Turkish side by side, say which are past.
+    expect(EXTRACTOR_PROMPTS.admin).toMatch(/"salı maçı yapılmadı"[^\n]*pastGame true/);
   });
 
   it("admin · the schema requires where the players come from, and the club named", () => {

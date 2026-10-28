@@ -107,6 +107,8 @@ describe("the dashboard tile reads THIS club's ratings", () => {
     };
     expect(call.where.playerId).toBe(ME);
     expect(call.where.match.activity.orgId).toBe(ORG);
+    // A game marked as not played gives no rating (2026-10-28, played-match.ts).
+    expect((call.where.match as unknown as { status: unknown }).status).toEqual({ not: "CANCELLED" });
     expect(call.orderBy.createdAt).toBe("desc");
     expect(call.take).toBe(60);
   });

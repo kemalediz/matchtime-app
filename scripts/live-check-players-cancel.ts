@@ -46,6 +46,7 @@ interface Case {
   text: string;
   want: Want;
   day?: string;
+  past?: boolean;
   why: string;
 }
 
@@ -58,6 +59,12 @@ const CASES: Case[] = [
   { text: "@Match Time I can't make it, cancel me", want: "not-cancel", why: "a player's own OUT" },
   { text: "@Match Time is the match cancelled?", want: "not-cancel", why: "a question" },
   { text: "if it rains like this they'll cancel the match lol", want: "not-cancel", why: "banter" },
+  // A game that did not happen (2026-10-28, Kemal: Sutton FC's Tuesday).
+  { text: "@Match Time cancel last Tuesday's match", want: "cancel", day: "tuesday", past: true, why: "a past game, named" },
+  { text: "@Match Time Tuesday's game didn't happen", want: "cancel", day: "tuesday", past: true, why: "a past game, it didn't happen" },
+  { text: "@Match Time salı maçı olmadı, iptal et", want: "cancel", day: "salı", past: true, why: "a past game, TR" },
+  { text: "@Match Time we never played last night, cancel it", want: "cancel", past: true, why: "last night" },
+  { text: "Tuesday's game didn't happen lol, the pitch was locked", want: "not-cancel", why: "untagged chat about it" },
 ];
 
 async function main() {
@@ -72,14 +79,15 @@ async function main() {
     if (route === "admin_ops") {
       const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Kemal", tagged: messageMentionsBotExplicitly({ body: c.text }), history: [], lastBotPost: null });
       const f = ex.facts.kind === "admin" ? ex.facts : null;
-      detail = ` -> ${f?.action ?? ex.facts.kind}${f?.matchDay ? ` "${f.matchDay}"` : ""}`;
+      detail = ` -> ${f?.action ?? ex.facts.kind}${f?.matchDay ? ` "${f.matchDay}"` : ""}${f?.pastGame ? " past" : ""}`;
       if (f?.action === "cancel_match") got = "cancel";
       if (f?.action === "restore_match") got = "restore";
       if (c.day && got === c.want && !(f?.matchDay ?? "").toLowerCase().includes(c.day)) got = "not-cancel";
+      if ((got === "cancel" || got === "restore") && (f?.pastGame === true) !== (c.past === true)) got = "not-cancel";
     }
     const ok = got === c.want;
     ok ? pass++ : fail++;
-    console.log(`${ok ? "PASS" : "FAIL"}  ${JSON.stringify(c.text)}  routed ${route}${detail}   (${c.why}; want ${c.want}${c.day ? ` on ${c.day}` : ""})`);
+    console.log(`${ok ? "PASS" : "FAIL"}  ${JSON.stringify(c.text)}  routed ${route}${detail}   (${c.why}; want ${c.want}${c.day ? ` on ${c.day}` : ""}${c.past ? " past" : ""})`);
   }
   console.log(`\n${pass} passed, ${fail} failed. Model calls: ${calls}. Cost: $${usd.toFixed(4)} (dev key).`);
   process.exit(fail > 0 ? 1 : 0);

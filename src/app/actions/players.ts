@@ -1152,7 +1152,8 @@ export async function addPlayerToMatch(
   // player is confirmed + has a phone + hasn't already been sent one.
   let ratingDmSent = false;
   const endedAt = new Date(match.date.getTime() + match.activity.matchDurationMins * 60 * 1000);
-  const hasHappened = match.status === "COMPLETED" || new Date() >= endedAt;
+  // A cancelled match never happened (2026-10-28): nothing to rate.
+  const hasHappened = match.status !== "CANCELLED" && (match.status === "COMPLETED" || new Date() >= endedAt);
   if (status === "CONFIRMED" && hasHappened) {
     const { getOrgFeatures } = await import("@/lib/org-features");
     const features = await getOrgFeatures(orgId);
