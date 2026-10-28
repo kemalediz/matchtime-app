@@ -17,6 +17,7 @@
  *
  *   MatchTime has not posted this in the players' group: ...
  */
+import { VENUE_WORDS_OUTCOMES } from "./venue-from-words-rules";
 import { buildSquadRosterBlock } from "./scheduler-copy";
 import { ORGANISERS_SPACE_INTENT, displaysSquadState, stripSquadPostMarker, wantsSquadPost } from "./group-copy";
 import { t } from "./i18n/t";
@@ -145,11 +146,13 @@ export function organisersGroupReply(reply: string | null, lang: Lang | string |
  *                             whose "Squad & availability" heading reads
  *                             like a squad post (2026-10-15);
  *   `ORGANISERS_SPACE_INTENT` "is there still space?": the open places and
- *                             how to ask for one, no names (2026-10-20).
+ *                             how to ask for one, no names (2026-10-20);
+ *   the pitch set by words    its numbered list of places is not a squad
+ *                             (`VENUE_WORDS_OUTCOMES`, 2026-10-28).
  *
  * Everything else, the list answers included, still goes through
  * `organisersGroupReply`.
  */
 export function passesOrganisersNet(intent: string | null | undefined): boolean {
-  return intent === "help" || intent === ORGANISERS_SPACE_INTENT;
+  return intent === "help" || intent === ORGANISERS_SPACE_INTENT || (VENUE_WORDS_OUTCOMES as readonly string[]).includes(intent ?? "");
 }

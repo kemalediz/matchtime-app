@@ -23,6 +23,7 @@ import type { ModelRequest, ModelResponse, PipelineModel } from "../pipeline/llm
 import type { EngineResult, Route, SquadState } from "../pipeline/types";
 import { NOW, fullName, world, type WorldOpts } from "../pipeline/__tests__/helpers";
 import type { PaidState } from "../admin-ops-engine";
+import type { StoredAsk } from "../refused-ask-retry";
 import {
   runAdminOpsBatch,
   describeAdminOpsBatch,
@@ -1145,5 +1146,104 @@ describe("cancelling a match from the players' group (2026-10-23)", () => {
     }
     const batch = readFileSync("src/lib/admin-ops-engine-batch.ts", "utf8");
     expect(batch).not.toMatch(/cancelMatchById|restoreMatchById/);
+  });
+});
+
+// ── 2026-10-28 (Kemal): "try again" after a refusal, and "set the pitch",
+// by an owner or admin tagging MatchTime in the players' group of a club
+// with no admin group. MT Test 15:40 UTC: "@Match Time added the venue
+// location" was read `other` and got "I can't change that by message".
+
+describe("try again after a refusal", () => {
+  const RETRY = "@Match Time added the venue location";
+  const RETRY_FACTS = { ...BLAST_FACTS, action: "retry_ask", lookbackMatches: 0, playersFrom: [], clubRef: "", toMatchTime: true };
+  const ASKED: StoredAsk = { facts: { kind: "admin", action: "recruit", partnerClubs: true, pool: true, toMatchTime: true }, at: new Date(NOW.getTime() - 2 * 60_000) };
+
+  const outcomeOf = async (over: Partial<AdminOpsBatchDeps>, m: Partial<AdminOpsBatchMessage> = {}) => {
+    const { model } = stubModel({ [RETRY]: RETRY_FACTS });
+    const r = recorder(model, paidWorld());
+    const seen: string[] = [];
+    const res = await run({
+      messages: [msg({ body: RETRY, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true, ...m })],
+      deps: { ...r.deps, onlyOrganisersLine: async () => "Only Kemal can change that.", ...over, latestAskForRetry: async (a) => (seen.push(a.where), over.latestAskForRetry ? over.latestAskForRetry(a) : null) },
+    });
+    return { out: res.outcomes.get(`wa-${RETRY.slice(0, 14)}`), dms: r.dms, seen, res };
+  };
+
+  it("repeats the organisers' stored ask: the partner clubs and the pool, for the batch-final pass", async () => {
+    const { out, dms, seen } = await outcomeOf({ latestAskForRetry: async () => ASKED });
+    expect(seen).toEqual(["group"]);
+    expect(out?.partnerAskRequest).toEqual({ clubRef: null, matchId: expect.any(String) });
+    expect(out?.poolAskRequest).toEqual({ matchId: expect.any(String) });
+    expect(out?.recruitRequest).toBe(false);
+    expect(out?.reasoning).toMatch(/retry_ask/);
+    expect(dms).toEqual([]);
+  });
+
+  it("nothing stored to repeat: one short line, never the generic \"can't change that\"", async () => {
+    const { out } = await outcomeOf({ latestAskForRetry: async () => null });
+    expect(out?.reply).toBe("👍 Thanks. There's nothing of mine waiting to try again.");
+    expect(out?.partnerAskRequest).toBeNull();
+    expect(out?.poolAskRequest).toBeNull();
+    expect(out?.reply).not.toMatch(/can't change that/);
+  });
+
+  it("a player who is not an organiser: the one line naming who can, nothing repeated", async () => {
+    const { out, seen } = await outcomeOf({ latestAskForRetry: async () => ASKED }, { senderUserId: "u-zair", senderName: fullName("zair") });
+    expect(out?.reply).toBe("Only Kemal can change that.");
+    expect(out?.intent).toBe("organisers_only");
+    expect(out?.poolAskRequest).toBeNull();
+    expect(seen).toEqual([]);
+  });
+
+  it("untagged: the players' chat, nothing said and nothing repeated", async () => {
+    const { out, seen } = await outcomeOf({ latestAskForRetry: async () => ASKED }, { tagged: false, taggedExplicitly: false });
+    expect(out?.reply ?? null).toBeNull();
+    expect(out?.poolAskRequest ?? null).toBeNull();
+    expect(seen).toEqual([]);
+  });
+});
+
+describe("set the pitch by WhatsApp", () => {
+  const PITCH = "@Match Time our pitch is Goals Sutton";
+  const PITCH_FACTS = { ...BLAST_FACTS, action: "set_venue", lookbackMatches: 0, playersFrom: [], clubRef: "", venueName: "Goals Sutton", venueChoice: 0, toMatchTime: true };
+
+  const outcomeOf = async (m: Partial<AdminOpsBatchMessage> = {}, facts: Record<string, unknown> = PITCH_FACTS) => {
+    const { model } = stubModel({ [PITCH]: facts });
+    const r = recorder(model, paidWorld());
+    const calls: Array<{ words: string | null; choice: number | null; userId: string }> = [];
+    const res = await run({
+      messages: [msg({ body: PITCH, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true, ...m })],
+      deps: {
+        ...r.deps,
+        onlyOrganisersLine: async () => "Only Kemal can change that.",
+        setVenueFromWords: async (a) => (calls.push({ words: a.words, choice: a.choice, userId: a.userId }), { outcome: "venue-set", replyText: "📍 Done, your pitch is *Goals Sutton*, Oxford Rd.", set: true }),
+      },
+    });
+    return { out: res.outcomes.get(`wa-${PITCH.slice(0, 14)}`), calls };
+  };
+
+  it("an organiser: looked up and set, and the reply names it", async () => {
+    const { out, calls } = await outcomeOf();
+    expect(calls).toEqual([{ words: "Goals Sutton", choice: null, userId: "u-kemal" }]);
+    expect(out?.reply).toContain("*Goals Sutton*");
+    expect(out?.intent).toBe("venue-set");
+  });
+
+  it("a number picked from MatchTime's list is passed on", async () => {
+    const { calls } = await outcomeOf({}, { ...PITCH_FACTS, venueChoice: 2 });
+    expect(calls[0].choice).toBe(2);
+  });
+
+  it("a player who is not an organiser: the one line naming who can, nothing looked up", async () => {
+    const { out, calls } = await outcomeOf({ senderUserId: "u-zair", senderName: fullName("zair") });
+    expect(out?.reply).toBe("Only Kemal can change that.");
+    expect(calls).toEqual([]);
+  });
+
+  it("untagged: nothing looked up, nothing said", async () => {
+    const { out, calls } = await outcomeOf({ tagged: false, taggedExplicitly: false });
+    expect(out?.reply ?? null).toBeNull();
+    expect(calls).toEqual([]);
   });
 });

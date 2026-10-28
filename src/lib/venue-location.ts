@@ -662,3 +662,86 @@ export async function setClubHomeVenueToPick(
   await venueSet(orgId);
   return { status: "found", venueId: got.venueId };
 }
+
+// ── The pitch, set by an organiser in WhatsApp (2026-10-28) ─────────────
+
+/**
+ * "@Match Time our pitch is Goals Sutton": the place Google named for the
+ * words (`venue-from-words.ts` chose it), set where the web's venue boxes
+ * set it. Both, in one go:
+ *
+ *   the club's home venue   exactly as `setClubHomeVenueToPick` (P1);
+ *   the upcoming game       the activity of the club's next match (or its
+ *                           one active weekly game when no match is
+ *                           coming), as the web's weekly game edit with a
+ *                           pick: the venue words become the place's name,
+ *                           the place is linked, high confidence, source
+ *                           "pick". CONFIRMED only when the organiser
+ *                           picked it from MatchTime's numbered list
+ *                           (`confirmed`), as a pick from the web's list
+ *                           is; a single clear match is left for the "Yes"
+ *                           on /admin/activities, and the reply shows its
+ *                           address so the organiser can check it.
+ *
+ * Like every venue write here it ends with `venueSet`: a pool ask refused
+ * for want of a venue is asked again (#445, `retryAsksAwaitingVenue`).
+ *
+ * Google is asked once (Place Details, charged to the club's daily
+ * lookups, as every pick is). "capped" and "unresolved" set nothing.
+ * Who may call it is proven by the caller (an owner or admin).
+ */
+export async function setClubVenueToPlace(
+  orgId: string,
+  userId: string,
+  pick: VenuePick,
+  opts: VenueLookupOptions & { confirmed: boolean },
+): Promise<{ status: "found"; name: string; address: string; activityId: string | null } | { status: "capped" | "unresolved" }> {
+  const now = opts.now ?? new Date();
+  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { id: true, language: true } });
+  if (!org) return { status: "unresolved" };
+  const next = await db.match.findFirst({
+    where: { activity: { orgId, isActive: true }, isHistorical: false, date: { gte: now }, status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] } },
+    orderBy: { date: "asc" },
+    select: { activityId: true },
+  });
+  const activityId =
+    next?.activityId ??
+    (await (async () => {
+      const games = await db.activity.findMany({ where: { orgId, isActive: true }, select: { id: true }, take: 2 });
+      return games.length === 1 ? games[0].id : null;
+    })());
+
+  const got = await lookupPick(
+    { orgId, activityId, language: org.language, fallbackName: "Venue", logRef: `org=${orgId} pitch-by-words` },
+    pick,
+    now,
+    opts.fetchImpl,
+  );
+  if (got.status !== "found") return { status: got.status };
+  const venue = await db.venue.findUnique({ where: { id: got.venueId }, select: { name: true, formattedAddress: true } });
+  const name = venue?.name ?? "";
+
+  await db.organisation.updateMany({ where: { id: orgId }, data: { homeVenueId: got.venueId } });
+  if (activityId) {
+    const before = await db.activity.findUnique({ where: { id: activityId }, select: { venueId: true } });
+    await db.activity.update({
+      where: { id: activityId },
+      data: {
+        ...(name ? { venue: name } : {}),
+        venueId: got.venueId,
+        venueConfidence: "high" satisfies VenueConfidence,
+        venueMatchSource: "pick" satisfies VenueMatchSource,
+        venueLookupStatus: "found" satisfies VenueLookupStatus,
+        venueResolvedAt: now,
+        venueConfirmedAt: opts.confirmed ? now : null,
+        venueConfirmedById: opts.confirmed ? userId : null,
+      },
+    });
+    if (before?.venueId && before.venueId !== got.venueId) await dropOrphanPin(before.venueId);
+  }
+  console.log(`[geocode] org=${orgId} pitch set from words by ${userId} (activity=${activityId ?? "none"}, confirmed=${opts.confirmed})`);
+  // As every other venue write: a pool ask refused for want of a venue is
+  // asked again now, once (`pool-ask-retry.ts`, #445).
+  await venueSet(orgId);
+  return { status: "found", name, address: venue?.formattedAddress ?? "", activityId };
+}

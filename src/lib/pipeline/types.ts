@@ -705,7 +705,26 @@ export interface AdminFacts {
    * no admin group, the players' group (`admin-ops-engine-batch.ts`,
    * 2026-10-23); both through `match-cancel.ts`.
    */
-  action: "bulk_payment" | "fee_waiver" | "reminder" | "recruit" | "stats_blast" | "cancel_match" | "restore_match" | "other";
+  /**
+   * `set_venue` and `retry_ask` (2026-10-28, Kemal: every admin feature by
+   * WhatsApp too). `set_venue`: an organiser names the club's pitch ("our
+   * pitch is Goals Sutton"), or picks one from MatchTime's numbered list;
+   * `venue-from-words.ts` looks it up and sets it as the web's venue box
+   * does. `retry_ask`: an organiser says what stopped MatchTime's last
+   * request is fixed, or to try again ("added the venue location", MT Test
+   * 15:40 UTC); code repeats the stored ask (`refused-ask-retry.ts`).
+   */
+  action:
+    | "bulk_payment"
+    | "fee_waiver"
+    | "reminder"
+    | "recruit"
+    | "stats_blast"
+    | "cancel_match"
+    | "restore_match"
+    | "set_venue"
+    | "retry_ask"
+    | "other";
   /** bulk_payment */
   payerRef?: string;
   count?: number;
@@ -771,6 +790,12 @@ export interface AdminFacts {
    * was. Absent: the words named a place.
    */
   sourceUnsaid?: true;
+  /** set_venue: the pitch or venue as the message names it, trimmed
+   *  ("Goals Sutton"). Looked up by code, never trusted as a place. */
+  venueName?: string;
+  /** set_venue: the number picked from MatchTime's numbered list of places
+   *  (1 is the first). Absent when the message names a place itself. */
+  venueChoice?: number;
   /**
    * The message is spoken to MatchTime itself, not to a person or the
    * others in the chat (2026-10-22, FNF HQ: "@Kemal can we ask Sutton

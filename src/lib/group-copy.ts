@@ -25,6 +25,7 @@ import { t } from "./i18n/t";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { GUARD_VOCAB, type ClaimedStatus, type GuardVocab } from "./i18n/guard-vocab";
 import type { SwapRefusal } from "./team-slot-swap";
+import { VENUE_WORDS_OUTCOMES } from "./venue-from-words-rules";
 
 /**
  * Deterministic, server-composed squad+bench status post. Used for EVERY
@@ -347,14 +348,17 @@ export const ORGANISERS_SPACE_INTENT = "organisers_space";
  *  now reaches through the pipeline; its "Squad & availability" heading
  *  would otherwise be read as a squad post and replaced by the roster.
  *  `ORGANISERS_SPACE_INTENT` (2026-10-20): the organisers-mode space
- *  answer, which must not become the roster it exists instead of. */
+ *  answer, which must not become the roster it exists instead of.
+ *  The pitch set by words (2026-10-28, `VENUE_WORDS_OUTCOMES`): its
+ *  numbered list of places is not a squad list. */
 export function skipsSquadComposition(intent: string | null | undefined): boolean {
   if (!intent) return false;
   return (
     TEAM_POST_INTENTS.has(intent) ||
     STATS_ANSWER_INTENTS.has(intent) ||
     intent === "help" ||
-    intent === ORGANISERS_SPACE_INTENT
+    intent === ORGANISERS_SPACE_INTENT ||
+    (VENUE_WORDS_OUTCOMES as readonly string[]).includes(intent)
   );
 }
 
