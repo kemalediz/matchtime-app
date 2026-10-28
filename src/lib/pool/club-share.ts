@@ -53,9 +53,9 @@ export interface ClubShareCard {
 }
 
 /** Null: no card for this club (the pool is off for it). */
-export async function loadClubShare(orgId: string): Promise<ClubShareCard | null> {
+export async function loadClubShare(orgId: string, env: Record<string, string | undefined>): Promise<ClubShareCard | null> {
   const org = await db.organisation.findUnique({ where: { id: orgId }, select: ORG_SELECT });
-  if (!org || !clubShareShown(org)) return null;
+  if (!org || !clubShareShown(org, env)) return null;
   const claim = await db.sentNotification.findUnique({ where: { key: clubShareKey(orgId) }, select: { createdAt: true } });
   const view = clubShareView({ shown: true, hasGroup: hasGroup(org), sentAt: claim?.createdAt ?? null });
   if (view.kind === "hidden") return null;
@@ -75,9 +75,9 @@ export type SendClubShareResult =
   | { ok: true; sendAfter: Date | null }
   | { ok: false; reason: "not-shown" | "no-group" | "already-sent" | "no-code" };
 
-export async function sendClubShare(orgId: string, now: Date = new Date()): Promise<SendClubShareResult> {
+export async function sendClubShare(orgId: string, now: Date, env: Record<string, string | undefined>): Promise<SendClubShareResult> {
   const org = await db.organisation.findUnique({ where: { id: orgId }, select: ORG_SELECT });
-  if (!org || !clubShareShown(org)) return { ok: false, reason: "not-shown" };
+  if (!org || !clubShareShown(org, env)) return { ok: false, reason: "not-shown" };
   if (!hasGroup(org)) return { ok: false, reason: "no-group" };
   const key = clubShareKey(orgId);
   if (await db.sentNotification.findUnique({ where: { key }, select: { createdAt: true } })) return { ok: false, reason: "already-sent" };

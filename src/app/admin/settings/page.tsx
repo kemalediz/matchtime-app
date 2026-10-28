@@ -30,6 +30,7 @@ import { PlayStyleSection } from "@/components/settings/play-style-section";
 import { PoolAutoAskSection } from "@/components/settings/pool-auto-ask-section";
 import { PoolClubShareSection } from "@/components/settings/pool-club-share-section";
 import { GroupInviteLinkSection } from "@/components/settings/group-invite-link-section";
+import { PlayerPoolSection } from "@/components/settings/player-pool-section";
 
 type FeatureKey = ToggleableKey;
 
@@ -97,6 +98,9 @@ export default function SettingsPage() {
   // language from the next visit.
   const [pageLang, setPageLang] = useState<string | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
+  // Bumped when the club switches its player pool on or off, so the pool
+  // cards under it load again (they show only while it is on).
+  const [poolKey, setPoolKey] = useState(0);
   const settingSaved = () => setPreviewKey((k) => k + 1);
   /** Read the settings again. False when that failed (it may also reject). */
   async function reloadSettings(): Promise<boolean> {
@@ -806,13 +810,17 @@ export default function SettingsPage() {
           since partner discovery (P1, 2026-10-22): the discovery switches
           and the club venue are every club's. */}
       <PartnerClubsSection orgId={org.id} language={org.language} />
+      {/* The club's own player pool switch (2026-10-28): only while the
+          platform owner has the pool on. The cards below it show only while
+          it is on too (`poolOffersOpenForClub`), and load again on a flip. */}
+      <PlayerPoolSection orgId={org.id} language={org.language} onChange={() => setPoolKey((k) => k + 1)} />
       {/* Style of play (pool L5b): only while the club may ask the player pool. */}
-      <PlayStyleSection orgId={org.id} language={org.language} />
-      <PoolAutoAskSection orgId={org.id} language={org.language} />
+      <PlayStyleSection key={`ps-${poolKey}`} orgId={org.id} language={org.language} />
+      <PoolAutoAskSection key={`pa-${poolKey}`} orgId={org.id} language={org.language} />
       {/* The club's one share post (pool G3): only while the club has the player pool. */}
-      <PoolClubShareSection orgId={org.id} language={org.language} />
+      <PoolClubShareSection key={`pcs-${poolKey}`} orgId={org.id} language={org.language} />
       {/* Group invite link (pool L8): only while the club has the player pool. */}
-      <GroupInviteLinkSection orgId={org.id} language={org.language} />
+      <GroupInviteLinkSection key={`gil-${poolKey}`} orgId={org.id} language={org.language} />
 
       {!goLiveSetup && <PostersCard club={org.name} language={org.language} />}
 

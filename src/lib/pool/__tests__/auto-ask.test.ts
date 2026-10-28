@@ -20,7 +20,7 @@ vi.mock("../../admin-channel", () => noticeMock);
 
 import { autoAskPool, poolAutoAskClub } from "../auto-ask";
 
-const OPEN = { POOL_OFFERS_ENABLED: "1" };
+const OPEN = { MT_POOL_OPEN: "1" };
 const NOW = new Date("2026-10-30T12:05:00Z");
 const KICKOFF = new Date("2026-10-30T20:00:00Z");
 const base = {

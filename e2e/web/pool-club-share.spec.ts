@@ -8,8 +8,12 @@
  * e2e/sim/pool/club-share.spec.ts.
  */
 import { test, expect, signInAs, U } from "../fixtures";
+import { setPoolPlatform } from "../helpers/pool-platform";
 import { ORG_ID } from "../helpers/constants";
 import { E2E } from "../helpers/env";
+
+// The pool cards and Invite to club show only while the platform switch is on.
+test.beforeEach(async ({ db }) => setPoolPlatform(db, true));
 
 test.describe.configure({ mode: "serial" });
 

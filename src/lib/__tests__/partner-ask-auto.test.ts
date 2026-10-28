@@ -135,7 +135,7 @@ describe("sweepAutoPartnerAsks: the pool joins (slice L9)", () => {
 
   it("the partners asked in one pass share a round, as an organiser's tap does, and the pool is offered that round", async () => {
     poolAutoMock.poolAutoAskClub.mockResolvedValue(POOL_ON);
-    const env = { POOL_OFFERS_ENABLED: "1" };
+    const env = { MT_POOL_OPEN: "1" };
     expect(await sweepAutoPartnerAsks("fnf", AT_1601, { poolEnv: env })).toEqual({ asked: 1 });
     const roundId = dbMock.partnerAsk.create.mock.calls[0][0].data.roundId;
     expect(typeof roundId).toBe("string");

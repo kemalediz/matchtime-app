@@ -28,9 +28,13 @@
  * router's context, a prompt change this slice may not make.
  *
  * Only a club with the pool switched on (`featurePlayerPool`) is asked
- * after a game (decision log #2: shipping this changes no live club). The
- * Invite to club tap works for any club that has had a guest, because an
- * organiser pressed it.
+ * after a game (decision log #2: shipping this changes no live club).
+ *
+ * THE PLATFORM SWITCH (2026-10-28, review of #430; decision log P.4): while
+ * the owner has the pool OFF (or the switch is not resolved for the call),
+ * no new invitation is made (Invite to club, HQ YES, the after-game
+ * question) and no link DM goes. Nothing is closed: an accepted invitation
+ * waits, and the sweep sends its link once the pool is on again.
  */
 import { db } from "../db";
 import { appUrl } from "../app-url";
@@ -59,6 +63,7 @@ import {
 import { INVITE_LINK_SETTINGS_PATH, groupInviteLinkFromCode, inviteLinkSource, isGroupInviteCodeJobsOn, type InviteLinkSource } from "./invite-link";
 import { buildPoolInvitationsLink } from "./links";
 import { poolSendAt } from "./waves";
+import { isPoolOffersEnabled, poolOffersOpenForClub } from "./flags";
 
 type Env = Record<string, string | undefined>;
 
@@ -196,18 +201,21 @@ export async function answerAsPlayer(args: { invitationId: string; userId: strin
   const done = await step(inv, args.answer === "join" ? { kind: "player-yes", at: now } : { kind: "player-no", at: now }, now, env);
   if (!done.ok) return "closed";
   if (args.answer === "no") return "declined";
-  return done.effects.includes("send-link") ? "link-sent" : "waiting-club";
+  // With the platform switch off the link is held (`deliverInviteLink`): he
+  // is still waiting, and the sweep sends it once the pool is on again.
+  return done.effects.includes("send-link") && isPoolOffersEnabled(env) ? "link-sent" : "waiting-club";
 }
 
 // ── The organisers' tap (the guest card) ───────────────────────────────
 
 /** The actor is an owner or admin of `orgId` (the action checked). */
-export async function answerAsClub(args: { orgId: string; userId: string; actorId: string; answer: "yes" | "no"; now?: Date; env?: Env }): Promise<InviteToClubResult> {
+export async function answerAsClub(args: { orgId: string; userId: string; actorId: string; answer: "yes" | "no"; now?: Date; env: Env }): Promise<InviteToClubResult> {
   const now = args.now ?? new Date();
-  const env = args.env ?? process.env;
-  // Live clubs unchanged (review M4): only a club with the pool on.
+  const env = args.env;
+  // Live clubs unchanged (review M4), and nothing while the platform switch
+  // is off (review of #430): the pool's one rule. Nothing is written.
   const pool = await db.organisation.findUnique({ where: { id: args.orgId }, select: { featurePlayerPool: true } });
-  if (!pool?.featurePlayerPool) return { ok: false, reason: "not-allowed" };
+  if (!poolOffersOpenForClub(pool, env)) return { ok: false, reason: "not-allowed" };
   const state = await guestInviteState(args.orgId, args.userId, now);
   const open = (await db.clubInvitation.findFirst({ where: { orgId: args.orgId, userId: args.userId, status: "open" }, select: INVITATION_SELECT })) as InvitationRow | null;
 
@@ -321,9 +329,11 @@ export async function deliverInviteLink(
   /** preferPasted: a link an organiser has just pasted goes first.
    *  skipBot: the Pi's last try failed lately; do not ask it again yet. */
   opts: { preferPasted?: boolean; skipBot?: boolean } = {},
-): Promise<"queued" | "asked-pi" | "no-link" | "nothing"> {
+): Promise<"queued" | "asked-pi" | "no-link" | "nothing" | "held"> {
   const inv = await db.clubInvitation.findUnique({ where: { id: invitationId }, select: { id: true, orgId: true, userId: true, status: true, linkSentAt: true } });
   if (!inv || inv.status !== "accepted" || inv.linkSentAt) return "nothing";
+  // The platform switch off: held, untouched; the sweep sends it once on.
+  if (!isPoolOffersEnabled(env)) return "held";
   if (await consentWithdrawn(inv.userId)) return "nothing";
   const source = await loadLinkSource(inv.orgId, env);
   // A link an organiser has just pasted is what he expects to go out now.
@@ -343,9 +353,12 @@ export async function deliverInviteLink(
 }
 
 /** The route's hook for an "invite-code" job's report (pool L8). */
-export async function onInviteCodeReported(jobId: string, result: PlatformJobOutcome, now: Date = new Date()): Promise<void> {
+export async function onInviteCodeReported(jobId: string, result: PlatformJobOutcome, now: Date, env: Env): Promise<void> {
   const job = await db.platformJob.findUnique({ where: { id: jobId }, select: { kind: true, refId: true } });
   if (!job || job.kind !== "invite-code" || !job.refId) return;
+  // The platform switch went off meanwhile: no link goes; the invitation
+  // waits and the sweep asks again once the pool is on.
+  if (!isPoolOffersEnabled(env)) return;
   const link = result.outcome === "sent" ? groupInviteLinkFromCode(result.inviteCode) : null;
   if (link && (await queueLinkDm(job.refId, link, now))) return;
   if (link) return; // sent already, or no longer accepted
@@ -517,10 +530,12 @@ export interface ClubInviteSweep {
 }
 
 /** Every platform poll. Never throws past one step: each part is its own try. */
-export async function sweepClubInvitations(now: Date = new Date(), env: Env = process.env): Promise<ClubInviteSweep> {
+export async function sweepClubInvitations(now: Date, env: Env): Promise<ClubInviteSweep> {
   const out: ClubInviteSweep = { asked: 0, expired: 0, codesTimedOut: 0 };
+  // The platform switch off: no new question, no link (held, not closed).
+  const poolOn = isPoolOffersEnabled(env);
   try {
-    out.asked = await askAfterGames(now);
+    if (poolOn) out.asked = await askAfterGames(now);
   } catch (err) {
     console.error("[club-invite] after-game questions failed; the next poll tries again:", err instanceof Error ? err.message : "failed");
   }
@@ -535,7 +550,7 @@ export async function sweepClubInvitations(now: Date = new Date(), env: Env = pr
     console.error("[club-invite] expiring unanswered invitations failed:", err instanceof Error ? err.message : "failed");
   }
   try {
-    await retryWaitingLinks(now, env);
+    if (poolOn) await retryWaitingLinks(now, env);
   } catch (err) {
     console.error("[club-invite] retrying approved invitations failed:", err instanceof Error ? err.message : "failed");
   }

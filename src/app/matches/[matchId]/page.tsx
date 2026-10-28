@@ -28,6 +28,7 @@ import { PartnerAskPanel } from "@/components/match/partner-ask-panel";
 import { PartnerGuestsPanel } from "@/components/match/partner-guests-panel";
 import { loadPartnerAskPanel } from "@/lib/partner-ask";
 import { poolEnvForRequest } from "@/lib/pool/switch-env";
+import { poolOffersOpenForClub } from "@/lib/pool/flags";
 import { organisersPickMom } from "@/lib/mom-chooser";
 import { loadMatchGuestCards } from "@/lib/pool/guest-report-loader";
 import { loadGuestResultsPanel, markByLabel } from "@/lib/pool/no-shows";
@@ -160,9 +161,12 @@ export default async function MatchDetailPage({
     : [];
   // Ask a partner club (cross-club ask, slice S2): admins of a club with an
   // active partner and asking switched on, for a match still to play.
+  // The pool switch for this request (the platform row, or the e2e seam),
+  // read once: the pool tick, the guest results and Invite to club follow it.
+  const poolEnv = await poolEnvForRequest();
   const partnerAskPanel =
     isAdmin && ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"].includes(match.status)
-      ? await loadPartnerAskPanel(matchId, match.activity.orgId, { poolEnv: await poolEnvForRequest() }).catch(() => null)
+      ? await loadPartnerAskPanel(matchId, match.activity.orgId, { poolEnv }).catch(() => null)
       : null;
   // Guests on this match (S4; the player pool, L5a): name and where he came
   // from (a partner club's name, or "MatchTime player pool"), never a phone,
@@ -208,12 +212,14 @@ export default async function MatchDetailPage({
   }).catch(() => ({}));
   // Did the guests turn up? (pool slice L7): organisers, from kickoff, in a
   // club that may ask the pool (every other club's page is as before).
+  // Recording whether pool guests turned up stays with the club's own flag
+  // (a record of a game already played; decision log P.4).
   const poolClub = match.activity.org.featurePlayerPool === true;
   const guestResults = isAdmin && poolClub ? await loadGuestResultsPanel(match.activity.orgId, matchId).catch(() => null) : null;
   // Invite to club on the card (pool L8): organisers only, and only when a
   // guest card is shown at all.
   const guestInvite =
-    isAdmin && CLUB_INVITE_LIVE && match.activity.org.featurePlayerPool && Object.values(guestTags).some(Boolean)
+    isAdmin && CLUB_INVITE_LIVE && poolOffersOpenForClub(match.activity.org, poolEnv) && Object.values(guestTags).some(Boolean)
       ? { inviteAction: inviteToClub, linkReady: (await loadLinkSource(match.activity.orgId).catch(() => ({ kind: "none" as const }))).kind !== "none" }
       : {};
   const isPastDeadline = new Date() > match.attendanceDeadline;

@@ -183,7 +183,7 @@ export interface UnderstandInput {
   sentAt: Date | null;
   now: Date;
   /** The pool switch as the request read it (`pool/switch-env.ts`):
-   *  POOL_OFFERS_ENABLED, or the e2e seam under MT_TEST_MODE=1. */
+   *  the platform switch row, or the e2e seam under MT_TEST_MODE=1. */
   poolEnv?: Record<string, string | undefined>;
   /** Injected in tests only. */
   deps?: { routerModel?: PipelineModel; extractorModel?: PipelineModel };

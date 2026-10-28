@@ -41,7 +41,7 @@ export async function POST(request: Request) {
   const result = await handleAdminGroupMessage({
     groupId,
     ...(now ? { now } : {}),
-    poolEnv: poolEnvForApiRequest(request),
+    poolEnv: await poolEnvForApiRequest(request),
     messageId: str(body.messageId),
     text: body.text,
     senderPhone: str(body.senderPhone),

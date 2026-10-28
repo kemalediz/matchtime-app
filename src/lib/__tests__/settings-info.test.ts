@@ -377,4 +377,9 @@ describe("settings explanations: the facts match the code", () => {
     expect(pickFallbackAt(opened, new Date(opened.getTime() + 3 * H)).getTime() - opened.getTime()).toBe(1 * H);
     expect(joined(settingInfo("en", "benchPickFallback"))).toMatch(/within a day[\s\S]*4 hours before kickoff[\s\S]*at least an hour/);
   });
+
+  it("Ask the player pool automatically: the organisers are told when it asks, and no offer goes late at night (auto-ask.ts notice_auto, waves.ts poolSendAt)", () => {
+    expect(joined(settingInfo("en", "poolAutoAsk"))).toMatch(/your organisers are told[\s\S]*no offer is sent late at night/);
+    expect(joined(settingInfo("tr", "poolAutoAsk"))).toMatch(/organizatörlerinize haber verilir[\s\S]*gece geç saatte teklif gönderilmez/);
+  });
 });

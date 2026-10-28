@@ -4,8 +4,10 @@
  * from now) and saving a pasted link. The caller proved the actor is an
  * owner or admin of the club.
  *
- * Shown only to a club with the player pool on (review of #406, M4:
- * live clubs unchanged), like the Invite to club button.
+ * Shown only to a club with the player pool open (the platform switch and
+ * the club's own, `poolOffersOpenForClub`; review of #406, M4: live clubs
+ * unchanged), like the Invite to club button. `env` is the request's
+ * resolved pool switch (`switch-env.ts`).
  *
  * REPLACING OR REMOVING the link (review M2): every link DM not handed to
  * the Pi yet is cancelled and its invitation goes back to waiting, so the
@@ -17,6 +19,7 @@
 import { db } from "../db";
 import { readPostState } from "../group-postability-store";
 import { deliverWaitingLinks, retractUnsentLinks } from "./club-invitation";
+import { poolOffersOpenForClub } from "./flags";
 import { inviteLinkSource, isGroupInviteCodeJobsOn, parseGroupInviteLink } from "./invite-link";
 
 type Env = Record<string, string | undefined>;
@@ -29,9 +32,9 @@ export interface InviteLinkSettings {
   botIsAdmin: boolean;
 }
 
-export async function loadInviteLinkSettings(orgId: string, env: Env = process.env): Promise<InviteLinkSettings | null> {
+export async function loadInviteLinkSettings(orgId: string, env: Env): Promise<InviteLinkSettings | null> {
   const org = await db.organisation.findUnique({ where: { id: orgId }, select: { whatsappGroupId: true, groupInviteLink: true, featurePlayerPool: true } });
-  if (!org?.featurePlayerPool) return null;
+  if (!org || !poolOffersOpenForClub(org, env)) return null;
   const state = org.whatsappGroupId ? await readPostState(org.whatsappGroupId) : null;
   const botIsAdmin = state?.botIsAdmin === true;
   const source = inviteLinkSource({ groupId: org.whatsappGroupId, botIsAdmin, codeJobsOn: isGroupInviteCodeJobsOn(env), pastedLink: org.groupInviteLink });
@@ -40,9 +43,9 @@ export async function loadInviteLinkSettings(orgId: string, env: Env = process.e
 
 export type SaveInviteLinkResult = { ok: true; link: string | null; sent: number } | { ok: false; reason: "invalid" | "hidden" };
 
-export async function saveInviteLink(args: { orgId: string; input: unknown; byUserId: string; now?: Date; env?: Env }): Promise<SaveInviteLinkResult> {
+export async function saveInviteLink(args: { orgId: string; input: unknown; byUserId: string; now?: Date; env: Env }): Promise<SaveInviteLinkResult> {
   const org = await db.organisation.findUnique({ where: { id: args.orgId }, select: { featurePlayerPool: true, groupInviteLink: true } });
-  if (!org?.featurePlayerPool) return { ok: false, reason: "hidden" };
+  if (!org || !poolOffersOpenForClub(org, args.env)) return { ok: false, reason: "hidden" };
   const parsed = parseGroupInviteLink(args.input, { allowEmpty: true });
   if (!parsed.ok) return { ok: false, reason: "invalid" };
   const now = args.now ?? new Date();

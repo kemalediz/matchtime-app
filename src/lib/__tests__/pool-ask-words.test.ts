@@ -27,7 +27,7 @@ import { joinRequestRef, latestPoolNoticeAsks, poolAskRef } from "../admin-group
 
 const NOW = new Date("2026-10-27T12:00:00Z");
 const KICKOFF = new Date("2026-10-27T20:00:00Z");
-const ENV = { POOL_OFFERS_ENABLED: "1" };
+const ENV = { MT_POOL_OPEN: "1" };
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -27,8 +27,8 @@ import { DecideButtons, GoLiveNowButton, LeaveButton, TurnOffButton } from "./cl
 import { loadSetupStatuses, type SetupMessageState } from "@/lib/club-setup";
 import { PlanControl, StartFreeMonthButton } from "./billing-controls";
 import { TemplateSharingControl } from "./graphics-template-controls";
-import { ClubPoolSwitch } from "./pool-controls";
-import { isPoolOffersEnabled } from "@/lib/pool/flags";
+import { PoolPlatformSwitch } from "./pool-controls";
+import { loadPoolPlatformSwitch } from "@/lib/pool/platform-switch";
 import Link from "next/link";
 import { loadClubBillingSnapshot } from "@/lib/club-billing";
 import { billingTotals, isBillingEnabled, planPricePence } from "@/lib/club-billing-rules";
@@ -51,8 +51,9 @@ import { loadCurrentMonth, loadPastMonths, loadUnpaidSummary } from "@/lib/club-
  * through self-join are listed there (`approvedAt` set by an approval, or
  * not approved at all), so no decision button can reach a club that
  * predates self-join; `decideClub` refuses it again behind the button.
- * Poster designs and Player pool (2026-10-27) list every club: neither
- * changes a club's approval, and the pool is switched on club by club.
+ * Poster designs list every club: it changes no club's approval. Player
+ * pool (2026-10-28) is ONE switch for the whole platform; each club's own
+ * switch is on its settings page.
  */
 export const dynamic = "force-dynamic";
 
@@ -413,14 +414,14 @@ export default async function ClubsPage() {
       return [];
     });
 
-  // Player pool (2026-10-27): every approved club, the ones that predate
-  // self-join included, with the owner's per-club switch.
-  const poolClubs = await db.organisation.findMany({
-    where: APPROVED_CLUB_WHERE,
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, featurePlayerPool: true, poolAutoAsk: true },
+  // Player pool (2026-10-28): ONE switch for every club (the kill switch),
+  // and how many clubs have switched their own on. No per-club list: each
+  // club switches it on or off in its own settings.
+  const poolSwitch = await loadPoolPlatformSwitch().catch((err: unknown) => {
+    console.error(`[pool] /admin/clubs could not read the platform switch: ${err instanceof Error ? err.message.slice(0, 120) : "unknown"}`);
+    return null;
   });
-  const poolOffersOn = isPoolOffersEnabled();
+  const poolClubsOn = await db.organisation.count({ where: { featurePlayerPool: true } });
 
   const leaveJobs = unsolicited.length
     ? await db.platformJob.findMany({
@@ -437,7 +438,7 @@ export default async function ClubsPage() {
         <p className="text-sm text-slate-500 mt-1">
           Clubs that joined MatchTime themselves. Approve or reject the ones waiting, turn a new club off, or leave a
           group nobody asked MatchTime into. The same as replying APPROVE or REJECT with the ref on WhatsApp. Clubs
-          that were here before self-join appear only under Poster designs and Player pool.
+          that were here before self-join appear only under Poster designs.
         </p>
         {!selfJoinOn && (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -714,40 +715,35 @@ export default async function ClubsPage() {
         )}
       </Section>
 
-      <Section
-        id="player-pool"
-        title="Player pool"
-        lead="Switch the MatchTime player pool on or off for one club."
-      >
-        {!poolOffersOn && (
-          <p data-testid="pool-master-off" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            The pool&apos;s master switch (POOL_OFFERS_ENABLED) is off, so no club&apos;s matches are offered to the pool yet. A club
-            switched on here still shows its pool settings.
+      <Section id="player-pool" title="Player pool" lead="Switch the MatchTime player pool on or off for every club.">
+        {poolSwitch === null ? (
+          <p data-testid="pool-switch-unreadable" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+            The switch could not be read, so the pool is closed for every club until it can be. Check that the
+            PlatformSetting table exists.
           </p>
-        )}
-        {poolClubs.length === 0 ? (
-          <Empty>No approved club yet.</Empty>
         ) : (
-          <ul className="space-y-2">
-            {poolClubs.map((o) => (
-              <li key={o.id} data-testid="club-pool-row" className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="font-medium text-slate-800">{o.name}</span>
-                  <ClubPoolSwitch orgId={o.id} club={o.name} on={o.featurePlayerPool} />
-                </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  On: the club&apos;s admins see Style of play, Ask the player pool automatically and the MatchTime player pool
-                  tick on the match page, and organisers can ask the pool from HQ. Automatic asking stays off until the
-                  club&apos;s admin turns it on.
-                </p>
-                {o.featurePlayerPool && (
-                  <p data-testid="club-pool-auto" className="mt-1 text-xs text-slate-600">
-                    Automatic asking: {o.poolAutoAsk ? "on (the club's admin turned it on)" : "off"}.
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm" data-testid="pool-platform">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="font-medium text-slate-800">Player pool for every club</span>
+              <PoolPlatformSwitch on={poolSwitch.on} />
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              On: each club&apos;s owners and admins see a Player pool card in their settings and switch it on for their
+              own club. Off: the pool is closed for every club. Every open pool ask is closed at once, no offer is sent, no
+              new invitation to join a club is made and no invite link is sent (links already approved wait until it is on
+              again), and the pool cards are hidden. Each club&apos;s own choice is kept. Clubs can still block or report a
+              pool guest who already played, and record whether guests turned up.
+            </p>
+            <p data-testid="pool-clubs-on" className="mt-1 text-xs text-slate-600">
+              Clubs that have switched it on: {poolClubsOn}.
+            </p>
+            {poolSwitch.forcedOff && (
+              <p data-testid="pool-forced-off" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                POOL_OFFERS_ENABLED forces the pool off in this deployment, whatever this switch says. Remove it, or set it
+                to 1, and redeploy.
+              </p>
+            )}
+          </div>
         )}
       </Section>
 

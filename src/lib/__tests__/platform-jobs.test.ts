@@ -30,6 +30,11 @@ const dbMock = vi.hoisted(() => ({
   organisation: { findMany: vi.fn(), findFirst: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
+// The pool switch as a request resolves it (review of #430, item 1).
+const switchEnv = vi.hoisted(() => ({ poolEnvForApiRequest: vi.fn() }));
+vi.mock("@/lib/pool/switch-env", () => switchEnv);
+const poolDispatch = vi.hoisted(() => ({ admitPoolOfferJobs: vi.fn() }));
+vi.mock("../pool/dispatch", async (orig) => ({ ...(await orig<typeof import("../pool/dispatch")>()), ...poolDispatch }));
 
 import {
   BRIDGE_DMS_PER_POLL,
@@ -429,6 +434,16 @@ describe("the due-posts bridge for a Pi built before slice 3", () => {
     dbMock.platformJob.findMany.mockResolvedValue([job({ id: "a" })]);
     expect(await bridgePlatformDmsForLegacyPi(req({ [PLATFORM_JOBS_CAPABLE_HEADER]: "1" }), NOW)).toEqual([]);
     expect(dbMock.platformJob.findMany).not.toHaveBeenCalled();
+  });
+
+  it("hands the pool's dispatch the switch resolved for THIS request, never an unresolved env (review of #430)", async () => {
+    switchEnv.poolEnvForApiRequest.mockResolvedValue({ MT_POOL_OPEN: "1" });
+    poolDispatch.admitPoolOfferJobs.mockResolvedValue({ skip: new Set(), claimed: new Set() });
+    dbMock.platformJob.findMany.mockResolvedValue([job({ id: "po", purpose: "pool-offer", text: "offer" })]);
+    const r = req();
+    await bridgePlatformDmsForLegacyPi(r, NOW);
+    expect(switchEnv.poolEnvForApiRequest).toHaveBeenCalledWith(r);
+    expect(poolDispatch.admitPoolOfferJobs).toHaveBeenCalledWith(["po"], expect.objectContaining({ env: { MT_POOL_OPEN: "1" } }));
   });
 
   it("fails open: a broken bridge never breaks a club's due-posts", async () => {

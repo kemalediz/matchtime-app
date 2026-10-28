@@ -19,9 +19,9 @@ const db = vi.hoisted(() => ({
   poolProfile: { findUnique: vi.fn() },
   membership: { findUnique: vi.fn() },
   guestPlace: { findFirst: vi.fn() },
-  platformJob: { findFirst: vi.fn(), findMany: vi.fn() },
+  platformJob: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
   sentNotification: { create: vi.fn() },
-  match: { findUnique: vi.fn() },
+  match: { findUnique: vi.fn(), findMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 vi.mock("../../db", () => ({ db }));
@@ -41,10 +41,13 @@ vi.mock("../guest-report", async (orig) => ({
   buildGuestPlayers: vi.fn(() => ({ cards: { u1: { invite: facts.state } } })),
 }));
 
-import { answerAsClub, answerAsPlayer, deliverInviteLink } from "../club-invitation";
+import { answerAsClub, answerAsPlayer, deliverInviteLink, onInviteCodeReported, sweepClubInvitations } from "../club-invitation";
 
 const NOW = new Date("2026-10-27T12:00:00Z");
-const ENV = { GROUP_INVITE_CODE_JOBS: "1" };
+/** The platform switch on, as a request resolves it (2026-10-28). */
+const ENV = { GROUP_INVITE_CODE_JOBS: "1", MT_POOL_OPEN: "1" };
+/** The platform switch OFF (or never resolved): invitations HOLD. */
+const OFF = { GROUP_INVITE_CODE_JOBS: "1", MT_POOL_OPEN: "0" };
 const OPEN = { id: "inv1", orgId: "o1", userId: "u1", matchId: null, status: "open", origin: "after-game", clubYesAt: null, playerYesAt: null, declinedBy: null, closedAt: null, linkSentAt: null, createdAt: NOW };
 
 beforeEach(() => {
@@ -141,5 +144,42 @@ describe("L10: his yes, told to the organisers in HQ, is a question a YES answer
     await answerAsPlayer({ invitationId: "inv1", userId: "u1", answer: "join", now: NOW, env: ENV });
     expect(notice.sendAdminNotice.mock.calls[0][0].text("https://mt.test/r/x", "dm")).toMatch(/To send them the group's invite link, tap Send the invite link on their card: https:\/\/mt\.test\/r\/x$/);
     expect(hqLog.recordMatchTimeQuestion).not.toHaveBeenCalled();
+  });
+});
+
+describe("the platform switch OFF stops new invitations and link DMs, and only holds them (review of #430)", () => {
+  it("Invite to club (and HQ YES, the same door) is refused with nothing written, even with the club's flag on", async () => {
+    for (const env of [OFF, { GROUP_INVITE_CODE_JOBS: "1" }]) {
+      expect(await answerAsClub({ orgId: "o1", userId: "u1", actorId: "org1", answer: "yes", now: NOW, env })).toEqual({ ok: false, reason: "not-allowed" });
+    }
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(jobs.queuePlatformDm).not.toHaveBeenCalled();
+  });
+
+  it("an accepted invitation's link is held: no DM, no Pi job, no notice, and it stays waiting", async () => {
+    db.organisation.findUnique.mockResolvedValue({ name: "FNF", language: "en", whatsappGroupId: null, groupInviteLink: "https://chat.whatsapp.com/AbCdEfGhIjKl", featurePlayerPool: true });
+    db.clubInvitation.findUnique.mockResolvedValue({ ...OPEN, status: "accepted", playerYesAt: NOW });
+    expect(await deliverInviteLink("inv1", NOW, OFF)).toBe("held");
+    expect(jobs.queuePlatformDm).not.toHaveBeenCalled();
+    expect(jobs.queuePlatformInviteCode).not.toHaveBeenCalled();
+    expect(notice.sendAdminNotice).not.toHaveBeenCalled();
+    expect(db.clubInvitation.updateMany).not.toHaveBeenCalled();
+    // Back on: the same invitation gets its link.
+    expect(await deliverInviteLink("inv1", NOW, ENV)).toBe("queued");
+  });
+
+  it("the Pi's invite code arriving while OFF: the link is not sent (the sweep retries once it is on)", async () => {
+    db.platformJob.findUnique.mockResolvedValue({ kind: "invite-code", refId: "inv1" });
+    await onInviteCodeReported("job1", { outcome: "sent", inviteCode: "AbCdEfGhIjKl" } as never, NOW, OFF);
+    expect(jobs.queuePlatformDm).not.toHaveBeenCalled();
+    expect(db.clubInvitation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("the sweep asks no guest after a game and retries no link while OFF", async () => {
+    db.clubInvitation.findMany.mockResolvedValue([]);
+    db.platformJob.findMany.mockResolvedValue([]);
+    await sweepClubInvitations(NOW, OFF);
+    expect(db.match.findMany).not.toHaveBeenCalled();
+    for (const [arg] of db.clubInvitation.findMany.mock.calls) expect(arg.where.status).not.toBe("accepted");
   });
 });

@@ -4,6 +4,7 @@
  * the scheduler poll are e2e/sim/pool/club-share.spec.ts.
  */
 import { describe, expect, it } from "vitest";
+import { poolSwitchEnv } from "../flags";
 import {
   CLUB_SHARE_KIND,
   clubShareCampaignCode,
@@ -58,10 +59,11 @@ describe("once per club, ever", () => {
 });
 
 describe("who sees the card", () => {
-  it("only a club with the player pool on", () => {
-    expect(clubShareShown({ featurePlayerPool: true })).toBe(true);
-    expect(clubShareShown({ featurePlayerPool: false })).toBe(false);
-    expect(clubShareShown(null)).toBe(false);
+  it("only a club with the player pool on, while the platform switch is on", () => {
+    expect(clubShareShown({ featurePlayerPool: true }, poolSwitchEnv(true))).toBe(true);
+    expect(clubShareShown({ featurePlayerPool: true }, poolSwitchEnv(false))).toBe(false);
+    expect(clubShareShown({ featurePlayerPool: false }, poolSwitchEnv(true))).toBe(false);
+    expect(clubShareShown(null, poolSwitchEnv(true))).toBe(false);
   });
 });
 

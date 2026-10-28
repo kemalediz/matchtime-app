@@ -47,7 +47,7 @@ describe("the owner lifts a pause at night", () => {
   it("the 'offers on again' DM waits for the pool's morning", async () => {
     dbMock.poolProfile.findUnique.mockResolvedValue({ id: "p", status: "paused", pausedReason: "no-shows", language: "en", user: { phoneNumber: "+447700900111" } });
     const night = new Date("2026-11-03T23:30:00Z");
-    expect(await liftPoolPause("u", "owner", night, { POOL_OFFERS_ENABLED: "1" })).toBe(true);
+    expect(await liftPoolPause("u", "owner", night, { MT_POOL_OPEN: "1" })).toBe(true);
     const sendAfter = (jobs.queuePlatformDm.mock.calls[0] as unknown as [{ sendAfter: Date | null }])[0].sendAfter;
     expect(sendAfter).not.toBeNull();
     expect(sendAfter!.getTime()).toBeGreaterThan(night.getTime());

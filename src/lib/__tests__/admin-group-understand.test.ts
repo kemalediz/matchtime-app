@@ -1538,7 +1538,7 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
     adminFacts({ action: "recruit", undo: false, matchDay: "", playersFrom: "pool", clubRef: "", toMatchTime: true, ...f });
   const POOL_NOTICE = "📋 Fri 16 Oct, 20:00: 6 of 7.\n\n🔎 Or I can ask nearby players from the MatchTime pool (a few near you): reply YES here, or open the match page: https://matchtime.ai/matches/m1";
   const poolWaiting = { ref: "pool-ask:m1", kind: "pool-ask" as const, day: "Fri 16 Oct", askedAt: ASKED };
-  const ENV = { POOL_OFFERS_ENABLED: "1" };
+  const ENV = { MT_POOL_OPEN: "1" };
 
   it("ask_group, tagged, the extractor reads the pool: the pool is asked in words for the next match, nothing posted", async () => {
     const deps = { routerModel: routeTo("ask_group"), extractorModel: fromPool() };
@@ -1672,7 +1672,7 @@ describe("L10 follow-up: YES to a guest who wants to join (L8's notice)", () => 
   });
 
   it("YES right after the notice: the card's own Send the invite link, by the organiser", async () => {
-    const env = { POOL_OFFERS_ENABLED: "1" };
+    const env = { MT_POOL_OPEN: "1" };
     const r = await ask("yes", "approve", { poolEnv: env });
     expect(hqPool.answerJoinRequestInHq).toHaveBeenCalledWith({ orgId: "org-fnf", invitationId: "inv1", actorId: "u-admin", lang: "en", now: NOW, env });
     expect(r).toEqual({ route: "approve", outcome: "hq-join-link-sent", replyText: "✅ Sending Sam K the players' group's invite link." });

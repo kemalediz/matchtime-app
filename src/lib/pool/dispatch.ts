@@ -26,7 +26,7 @@ import { ledgerEntryOf } from "./candidate-rows";
 import { POOL_CAPS } from "./rules";
 import { DM_SUB_FIELDS, type DmSubField } from "../dm-subscriptions";
 import { optedOutOfDms, planPoolAdmission, poolOfferCancelFailReason, type PoolJobView } from "./dispatch-rules";
-import { poolOffersOpenForClub } from "./flags";
+import { poolOffersOpenForClub, poolSwitchUnread } from "./flags";
 import { OPEN_MATCH_STATUSES } from "./matching-rules";
 import { offerExpiresAt } from "./waves";
 
@@ -55,6 +55,12 @@ export async function admitPoolOfferJobs(jobIds: readonly string[], opts: { now:
   const claimed = new Set<string>();
   if (jobIds.length === 0) return { skip, claimed };
   const { now, limit, env } = opts;
+  // The platform switch could not be read this poll: hold every offer
+  // (left queued, sent nothing), never cancel it as if switched off.
+  if (poolSwitchUnread(env)) {
+    for (const id of jobIds) skip.add(id);
+    return { skip, claimed };
+  }
   try {
     await db.$transaction(
       async (tx) => {

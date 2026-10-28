@@ -5,17 +5,14 @@
  * (cookie or header, honoured only under MT_TEST_MODE=1), so no page tells
  * a visitor about the early list unless that is what will happen.
  */
-import { cookies, headers } from "next/headers";
-import { signupGoesOnEarlyListFrom } from "./flags";
-import { POOL_OPEN_TEST_COOKIE, POOL_OPEN_TEST_HEADER } from "./flags-request";
+import { signupGoesOnEarlyList } from "./flags";
+import { poolEnvForRequest } from "./switch-env";
 
 /**
- * Reads the request every time, so a page that asks is rendered per
- * request and follows the switch at run time (never frozen into a static
- * build). The override itself counts only under MT_TEST_MODE=1.
+ * Reads the request (and the platform switch) every time, so a page that
+ * asks is rendered per request and follows the switch at run time (never
+ * frozen into a static build).
  */
 export async function signupGoesOnEarlyListForPage(env: Record<string, string | undefined> = process.env): Promise<boolean> {
-  const [h, c] = await Promise.all([headers(), cookies()]);
-  const override = env.MT_TEST_MODE === "1" ? (h.get(POOL_OPEN_TEST_HEADER) ?? c.get(POOL_OPEN_TEST_COOKIE)?.value) : undefined;
-  return signupGoesOnEarlyListFrom(override ?? undefined, env);
+  return signupGoesOnEarlyList(await poolEnvForRequest(env));
 }

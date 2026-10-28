@@ -44,7 +44,7 @@ import { pausesForIgnored } from "./caps";
 import { ledgerEntryOf } from "./candidate-rows";
 import { findPoolCandidates } from "./candidates";
 import { POOL_OFFER_PURPOSE, stampUnreportedDeliveries } from "./dispatch";
-import { isPoolOffersEnabled, poolOffersOpenForClub } from "./flags";
+import { isPoolOffersEnabled, poolOffersOpenForClub, poolSwitchUnread } from "./flags";
 import { buildPoolManageLink } from "./links";
 import { OPEN_MATCH_STATUSES } from "./matching-rules";
 import { loadMatchOfferFacts } from "./offer-facts";
@@ -350,7 +350,9 @@ export async function sweepPool(now: Date = new Date(), env?: Env): Promise<{ cl
         // The switches FIRST (review of #400, minor 5): with the pool off
         // nothing more happens for this ask, not even a pause message.
         if (!poolOffersOpenForClub(ask.org, env)) {
-          if (await closePoolAsk(ask.id, "switched-off", now)) closed++;
+          // A switch that could not be read this poll is not the owner
+          // switching it off: nothing is sent, nothing is closed.
+          if (!poolSwitchUnread(env) && (await closePoolAsk(ask.id, "switched-off", now))) closed++;
           continue;
         }
         const cutoff = await cutoffOf(ask.orgId, ask.match.date);

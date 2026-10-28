@@ -1453,7 +1453,7 @@ export async function POST(request: Request) {
       phone,
       senderAltPhone,
       waMessageId,
-      env: poolEnvForApiRequest(request),
+      env: await poolEnvForApiRequest(request),
     });
     if (poolReply) return NextResponse.json({ ok: true, handled: poolReply });
 

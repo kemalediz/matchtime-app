@@ -85,6 +85,29 @@ export interface AdminNoticeRequest extends AdminNotice {
    * partner-club pairing notice (`pairing-reply.ts`). Absent: unchanged.
    */
   aboutKey?: string | null;
+  /**
+   * The admin-group post carries its DM wording (`text(link, "dm")`), so a
+   * fallback to the owner by DM at dispatch (`adminGroupJobInstruction`)
+   * reads as a DM, not a group post (2026-10-28). For notices whose words
+   * differ by audience and point at no page. Absent: unchanged.
+   */
+  dmWording?: boolean;
+  /** Queue the jobs through this client (a caller's transaction), so a
+   *  once-ever claim and the notice commit together. Absent: `db`. */
+  client?: AdminNoticeClient;
+}
+
+/** What `sendAdminNotice` writes through: `db`, or a transaction. */
+export interface AdminNoticeClient {
+  botJob: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> };
+}
+
+/** An admin-group job's DM wording rides in `pollOptions`, which nothing
+ *  reads on that kind but the graphic tag (`graphic-job.ts`). */
+const DM_WORDING_TAG = "admin-dm-text:v1";
+
+function dmWordingOf(options: readonly string[] | null | undefined): string | null {
+  return Array.isArray(options) && options[0] === DM_WORDING_TAG && typeof options[1] === "string" && options[1] ? options[1] : null;
 }
 
 /** A club's channel, loaded once per notice (or once per scheduler poll). */
@@ -198,6 +221,7 @@ export async function sendAdminNotice(
 ): Promise<{ channel: "dm" | "admin-group" | "none"; queued: number; groupText?: string }> {
   const { orgId } = req;
   const now = req.now ?? new Date();
+  const client: AdminNoticeClient = req.client ?? (db as unknown as AdminNoticeClient);
   const ch = await loadAdminChannel(orgId);
   if (!ch) return { channel: "none", queued: 0 };
   // Held until the club's quiet hours end (none held with them off).
@@ -205,8 +229,9 @@ export async function sendAdminNotice(
 
   if (ch.cfg.mode === "admin-group" && ch.cfg.adminGroupId && ch.adminGroupPostable !== false) {
     const text = groupText(req);
-    await db.botJob.create({
-      data: { orgId, kind: "admin-group", text, ...(sendAfter ? { sendAfter } : {}) },
+    const dmFallback = req.dmWording && !req.nextPath ? render(req, "", "dm") : null;
+    await client.botJob.create({
+      data: { orgId, kind: "admin-group", text, ...(sendAfter ? { sendAfter } : {}), ...(dmFallback ? { pollOptions: [DM_WORDING_TAG, dmFallback] } : {}) },
     });
     // The exact words posted, so a caller can log them as MatchTime's
     // question in the group and a reply quoting them is found by them.
@@ -221,7 +246,7 @@ export async function sendAdminNotice(
   let queued = 0;
   for (const user of target.users) {
     if (req.excludeUserId && user.id === req.excludeUserId) continue;
-    await db.botJob.create({
+    await client.botJob.create({
       data: {
         orgId,
         kind: "dm",
@@ -343,7 +368,7 @@ export function adminGroupJobInstruction(
   // One job, one key: one recipient. The owner when they are among them.
   const user = target.users.find((u) => ch.admins.some((a) => a.id === u.id && a.role === "OWNER")) ?? target.users[0];
   if (!user) return null;
-  return { kind: "dm", key, phone: bare(user.phoneNumber), text: job.text, targetUser: user.id };
+  return { kind: "dm", key, phone: bare(user.phoneNumber), text: dmWordingOf(job.pollOptions) ?? job.text, targetUser: user.id };
 }
 
 /**

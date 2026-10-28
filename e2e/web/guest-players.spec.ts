@@ -15,7 +15,11 @@
 import type { Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
+import { setPoolPlatform } from "../helpers/pool-platform";
 import { ACTIVITY_ID, MATCH, ORG_ID } from "../helpers/constants";
+
+// The pool cards and Invite to club show only while the platform switch is on.
+test.beforeEach(async ({ db }) => setPoolPlatform(db, true));
 
 test.describe.configure({ mode: "serial" });
 
