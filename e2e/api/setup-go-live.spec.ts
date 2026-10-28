@@ -22,6 +22,7 @@ import { test, expect, resetDb } from "../fixtures";
 import { ORG_ID, PHONE } from "../helpers/constants";
 import { E2E, REPO_ROOT } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
+import { clearPipelineStubs, helpOn } from "../helpers/stub";
 
 const execFileAsync = promisify(execFile);
 
@@ -194,7 +195,9 @@ test.describe("GO", () => {
   });
 
   test("somebody in a live club AND an admin of the setting-up one: an ordinary DM still goes to the LIVE club", async ({ request, db }) => {
+    helpOn({ help: {} }); // the question extractor reads it as help (stubbed)
     const res = await dm(request, BO.phone, "help");
+    clearPipelineStubs();
     expect(res).toMatchObject({ handled: "dm-help", orgId: ORG_ID, audience: "player" });
     expect(await botJobs(db, HARBOUR.id)).toEqual([]);
     expect(await replies(db, BO.phone)).toEqual([]);
@@ -255,9 +258,11 @@ test.describe("GO", () => {
     expect(await botJobs(db, HARBOUR.id)).toEqual([]);
   });
 
-  test("help reaches the organiser: the same deterministic help, on the platform channel", async ({ request, db }) => {
+  test("help reaches the organiser: the same help, on the platform channel", async ({ request, db }) => {
     const before = (await replies(db, HANA)).length;
+    helpOn({ help: {} }); // the question extractor reads it as help (stubbed)
     const res = await dm(request, HANA, "help");
+    clearPipelineStubs();
     expect(res).toMatchObject({ handled: "dm-help", orgId: HARBOUR.id, audience: "admin" });
     const sent = await replies(db, HANA);
     expect(sent).toHaveLength(before + 1);
@@ -396,7 +401,9 @@ test.describe("GO", () => {
   });
 
   test("once live, the organiser's DMs are no longer stopped by the setting-up rail", async ({ request }) => {
+    helpOn({ help: {} }); // the question extractor reads it as help (stubbed)
     const res = await dm(request, HANA, "help");
+    clearPipelineStubs();
     expect(res).toMatchObject({ handled: "dm-help", orgId: HARBOUR.id, audience: "admin" });
   });
 });
@@ -642,6 +649,7 @@ test.describe("the reply cap (review fix 1a)", () => {
     await user(db, CHATTY.ownerId, "Cat Chatty", CHATTY.ownerPhone);
     await heldClub(db, CHATTY);
     const out: Array<{ handled?: string; ignored?: string }> = [];
+    helpOn({ help: {} }); // the question extractor reads "help" as help (stubbed)
     for (let i = 0; i < 9; i++) out.push(await dm(request, CHATTY.ownerPhone, i === 3 ? "help" : `are you there ${i}?`));
     expect(out.slice(0, 5).map((o) => o.handled)).toEqual([
       "setup-not-recognised",
@@ -655,6 +663,7 @@ test.describe("the reply cap (review fix 1a)", () => {
     // Help is capped too.
     expect((await dm(request, CHATTY.ownerPhone, "help")).ignored).toBe("setup-reply-capped");
     expect(await replies(db, CHATTY.ownerPhone)).toHaveLength(5);
+    clearPipelineStubs();
     // No signed-in link was minted for any of it (review fix 1b).
     const texts = (await replies(db, CHATTY.ownerPhone)).filter((r) => r.text.includes("didn't recognise")).map((r) => r.text);
     expect(texts).toHaveLength(4);

@@ -1246,6 +1246,7 @@ function cases(lang: Lang): Case[] {
   //    (https://matchtime.ai); signed-in links are fixed strings.
   const SIGNED = {
     settings: "https://mt.example/r/settings",
+    topic: "https://mt.example/r/topic",
     activities: "https://mt.example/r/activities",
     blockBookings: "https://mt.example/r/blocks",
     bulk: "https://mt.example/r/bulk",
@@ -1276,6 +1277,27 @@ function cases(lang: Lang): Case[] {
   for (const name of ["On the board", "Regular", "Iron Man", "Man of the Match", "MoM Machine", "Masterclass", "Mr Reliable", "Above the Curve"]) {
     add(`R152 buildHelpReply / badges / ${name}`, buildHelpReply("badges", ALL_ON, lang, { audience: "group", badgeQuery: name }));
   }
+  // ── 1.4d help on partner clubs, the pool and settings (2026-10-28) ──
+  //    NEW cases: each topic for each audience, in each state that
+  //    changes its words (help-club-facts.ts).
+  const POOL_CLOSED = { open: false, platformOpen: false, clubFlag: false };
+  const POOL_OFF = { open: false, platformOpen: true, clubFlag: false };
+  const POOL_ON = { open: true, platformOpen: true, clubFlag: true };
+  const NO_PARTNERS = { active: 0, askWhen: "off" as const };
+  const PARTNERS_NOT_ASKED = { active: 2, askWhen: "off" as const };
+  const PARTNERS_AUTO = { active: 1, askWhen: "auto" as const };
+  for (const audience of ["group", "admin", "player"] as const) {
+    const ctx = { audience, links: audience === "admin" ? SIGNED : undefined };
+    for (const [state, pool] of [["closed", POOL_CLOSED], ["off", POOL_OFF], ["on", POOL_ON]] as const) {
+      add(`R153 buildHelpReply / pool ${state} / ${audience}`, buildHelpReply("pool", { ...ALL_ON, pool }, lang, ctx));
+    }
+    for (const [state, partners] of [["none", NO_PARTNERS], ["not asked", PARTNERS_NOT_ASKED], ["auto", PARTNERS_AUTO]] as const) {
+      add(`R153 buildHelpReply / partners ${state} / ${audience}`, buildHelpReply("partners", { ...ALL_ON, partners }, lang, ctx));
+    }
+    add(`R153 buildHelpReply / settings / ${audience}`, buildHelpReply("settings", ALL_ON, lang, ctx));
+  }
+  add("R153 buildHelpReply / bare, pool and partners on / group", buildHelpReply(null, { ...ALL_ON, pool: POOL_ON, partners: PARTNERS_AUTO }, lang));
+  add("R153 buildHelpReply / bare, pool open, partners off / admin", buildHelpReply(null, { ...ALL_ON, pool: POOL_OFF, partners: NO_PARTNERS }, lang, { audience: "admin", links: SIGNED }));
   // ── 1.5 the web surfaces (slice 6, 2026-09-19) ──────────────────────
   //    NEW copy, not a move, so these cases are additive to both
   //    snapshots and the only other line in the English diff is the

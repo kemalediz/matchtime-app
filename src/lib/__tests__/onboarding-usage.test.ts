@@ -7,7 +7,9 @@
  *     opt-out, and surface the help commands.
  *   - buildHowToUseMe(): the feature-aware "how to use me" block posted
  *     when setup completes. Only mentions enabled capabilities.
- *   - parseHelpTopic() + buildHelpReply(): the topic-aware help router.
+ *   - buildHelpReply(): the help for a topic. Which topic was asked about
+ *     is the question extractor's (`how_it_works`, its `feature`) since
+ *     2026-10-28; the regex reader `parseHelpTopic` is gone.
  * No DB, no network.
  */
 import { describe, it, expect } from "vitest";
@@ -15,7 +17,6 @@ import {
   BOT_ADDED_INTRO,
   buildBotAddedIntro,
   buildHowToUseMe,
-  parseHelpTopic,
   buildHelpReply,
   buildAdminMagicLinkDm,
   helpPagesNeeded,
@@ -168,48 +169,6 @@ describe("buildHowToUseMe — feature awareness", () => {
   });
 });
 
-describe("parseHelpTopic", () => {
-  const cases: Array<[string, HelpTopic | null]> = [
-    ["@Match Time help ratings", "ratings"],
-    ["matchtime help teams", "teams"],
-    ["help mom", "mom"],
-    ["@Match Time help availability", "availability"],
-    ["help reminders", "reminders"],
-    ["@MT help payments", "payments"],
-    ["@Match Time help", null], // bare help → no topic
-    ["help", null],
-    ["help unicorns", null], // unknown topic word
-    ["", null],
-  ];
-  for (const [raw, expected] of cases) {
-    it(`"${raw}" → ${expected}`, () => {
-      expect(parseHelpTopic(raw)).toBe(expected);
-    });
-  }
-
-  it("recognises a few aliases (man of the match, player ratings)", () => {
-    expect(parseHelpTopic("@Match Time help man of the match")).toBe("mom");
-    expect(parseHelpTopic("help player ratings")).toBe("ratings");
-  });
-
-  it("all-caps English still parses (the Turkish lower-casing would dot the I)", () => {
-    expect(parseHelpTopic("@MATCH TIME HELP RATINGS")).toBe("ratings");
-    expect(parseHelpTopic("HELP AVAILABILITY")).toBe("availability");
-    expect(parseHelpTopic("@MATCH TIME YARDIM PUANLAMA")).toBe("ratings");
-  });
-
-  it("reads the Turkish keyword and topic words (2026-09-17)", () => {
-    expect(parseHelpTopic("@Match Time yardım takımlar")).toBe("teams");
-    expect(parseHelpTopic("@Match Time yardim takim")).toBe("teams");
-    expect(parseHelpTopic("@Match Time yardım kadro")).toBe("availability");
-    expect(parseHelpTopic("@Match Time YARDIM maçın adamı")).toBe("mom");
-    expect(parseHelpTopic("@Match Time yardım puanlama")).toBe("ratings");
-    expect(parseHelpTopic("@Match Time yardım hatırlatma")).toBe("reminders");
-    expect(parseHelpTopic("@Match Time yardım ödeme")).toBe("payments");
-    expect(parseHelpTopic("@Match Time yardım")).toBeNull();
-  });
-});
-
 describe("buildHelpReply in Turkish lists the Turkish topic words", () => {
   it("bare help names each enabled topic by the word a player types", () => {
     const r = buildHelpReply(null, { ...ALL_ON, paymentTracking: false }, "tr");
@@ -265,13 +224,13 @@ describe("buildHelpReply — a topic that is OFF explains itself and how to swit
   const LINK = "https://matchtime.ai/r/abc123";
 
   it("payments off, in the group: how fee collection works + the admin page steps", () => {
-    const r = buildHelpReply("payments", OFF, "en", { audience: "group", links: { settings: URL } });
+    const r = buildHelpReply("payments", OFF, "en", { audience: "group", links: { topic: URL } });
     expect(r).toMatch(/isn't switched on for this group yet/);
     expect(r).toMatch(/link to pay their share, by card or bank/);
     expect(r).toMatch(/daily reminder/);
     expect(r).toMatch(/money collector to confirm/);
     expect(r).toContain(URL);
-    expect(r).toMatch(/turns on \*Collect match fees\* under Bot features/);
+    expect(r).toMatch(/an admin turns on \*Collect match fees\* on the settings page, picks the money collector/);
     expect(r).not.toMatch(/Payment tracking/);
     expect(r).toMatch(/Stripe once/);
     expect(r).toMatch(/DM me \*help payments\*/);
@@ -279,15 +238,15 @@ describe("buildHelpReply — a topic that is OFF explains itself and how to swit
   });
 
   it("payments off, DM from an admin: the steps with a signed-in link", () => {
-    const r = buildHelpReply("payments", OFF, "en", { audience: "admin", links: { settings: LINK } });
+    const r = buildHelpReply("payments", OFF, "en", { audience: "admin", links: { topic: LINK } });
     expect(r).toMatch(/link to pay their share/);
-    expect(r).toMatch(/open \*Settings\* on your admin page/);
+    expect(r).toMatch(/turn on \*Collect match fees\*, pick the money collector/);
     expect(r).toContain(LINK);
     expect(r).not.toMatch(/DM me/);
   });
 
   it("payments off, DM from a player: how it works, ask the organiser, no admin link", () => {
-    const r = buildHelpReply("payments", OFF, "en", { audience: "player", links: { settings: LINK } });
+    const r = buildHelpReply("payments", OFF, "en", { audience: "player", links: { topic: LINK } });
     expect(r).toMatch(/link to pay their share/);
     expect(r).toMatch(/Your organiser switches this on/);
     expect(r).not.toContain(LINK);
@@ -295,10 +254,10 @@ describe("buildHelpReply — a topic that is OFF explains itself and how to swit
   });
 
   it("mom off: the MoM explainer, framed as off, with the setting's name", () => {
-    const r = buildHelpReply("mom", { ...ALL_ON, momVoting: false }, "en", { audience: "group", links: { settings: URL } });
+    const r = buildHelpReply("mom", { ...ALL_ON, momVoting: false }, "en", { audience: "group", links: { topic: URL } });
     expect(r).toMatch(/isn't switched on for this group yet/);
     expect(r).toMatch(/tally the votes/i);
-    expect(r).toMatch(/turns on \*Man of the Match\* under Bot features/);
+    expect(r).toMatch(/an admin turns on \*Man of the Match\* on the settings page/);
   });
 
   it("every topic, off, every audience, both languages: no dash, never the old decline", () => {
@@ -307,7 +266,7 @@ describe("buildHelpReply — a topic that is OFF explains itself and how to swit
     for (const lang of ["en", "tr"] as const) {
       for (const audience of ["group", "admin", "player"] as const) {
         for (const tp of topics) {
-          const r = buildHelpReply(tp, NONE, lang, { audience, links: { settings: LINK } });
+          const r = buildHelpReply(tp, NONE, lang, { audience, links: { topic: LINK } });
           expect(r, `${lang}/${audience}/${tp}`).not.toMatch(/[—–]/);
           expect(r).not.toMatch(/isn't switched on for this group\. Type/);
         }
@@ -316,7 +275,7 @@ describe("buildHelpReply — a topic that is OFF explains itself and how to swit
   });
 
   it("Turkish: payments off in the group explains and gives the steps", () => {
-    const r = buildHelpReply("payments", OFF, "tr", { audience: "group", links: { settings: URL } });
+    const r = buildHelpReply("payments", OFF, "tr", { audience: "group", links: { topic: URL } });
     expect(r).toContain("henüz açık değil");
     expect(r).toContain("Stripe ile bir kez");
     expect(r).toContain(URL);
@@ -326,15 +285,15 @@ describe("buildHelpReply — a topic that is OFF explains itself and how to swit
 
 describe("buildHelpReply — a topic that is ON, by audience", () => {
   const LINK = "https://matchtime.ai/r/abc123";
-  it("group and player: the explainer, byte for byte as before", () => {
+  it("group and player: the explainer, then that it is on (2026-10-28), no link", () => {
     const before = buildHelpReply("payments", FEES_ON);
-    expect(buildHelpReply("payments", FEES_ON, "en", { audience: "player", links: { settings: LINK } })).toBe(before);
+    expect(before.endsWith("\n\n✅ It's on for this club.")).toBe(true);
+    expect(buildHelpReply("payments", FEES_ON, "en", { audience: "player", links: { topic: LINK } })).toBe(before);
     expect(before).not.toContain(LINK);
   });
-  it("admin DM: the explainer plus where its settings live", () => {
-    const r = buildHelpReply("payments", FEES_ON, "en", { audience: "admin", links: { settings: LINK } });
-    expect(r.startsWith(buildHelpReply("payments", FEES_ON))).toBe(true);
-    expect(r).toContain(`⚙️ Its settings are on your admin page:\n${LINK}`);
+  it("admin: the explainer, that it is on, and where to switch it off", () => {
+    const r = buildHelpReply("payments", FEES_ON, "en", { audience: "admin", links: { topic: LINK } });
+    expect(r).toContain(`✅ It's on for your club. To switch it off or change how it works:\n${LINK}`);
   });
   it("bare help, admin DM: the menu plus the settings link", () => {
     const r = buildHelpReply(null, ALL_ON, "en", { audience: "admin", links: { settings: LINK } });
@@ -342,7 +301,7 @@ describe("buildHelpReply — a topic that is ON, by audience", () => {
     expect(r).toContain(LINK);
   });
   it("bare help, player DM: identical to the group's", () => {
-    expect(buildHelpReply(null, ALL_ON, "en", { audience: "player", links: { settings: LINK } })).toBe(buildHelpReply(null, ALL_ON));
+    expect(buildHelpReply(null, ALL_ON, "en", { audience: "player", links: { topic: LINK } })).toBe(buildHelpReply(null, ALL_ON));
   });
 });
 
@@ -421,30 +380,6 @@ describe("buildAdminMagicLinkDm: the organiser's setup DM (2026-09-30)", () => {
 describe("help schedule (2026-09-30)", () => {
   // Kemal: schedule changes are made in the admin screens, not by WhatsApp
   // command (no extra model cost). "help schedule" is the clear guide.
-  it.each([
-    ["@Match Time help schedule", "schedule"],
-    ["@Match Time help block booking", "schedule"],
-    ["@Match Time help block bookings", "schedule"],
-    ["@Match Time help cancel", "schedule"],
-    ["@Match Time help reschedule", "schedule"],
-    ["@Match Time help kick-off time", "schedule"],
-    ["@Match Time help kickoff", "schedule"],
-    ["@Match Time help format", "schedule"],
-    ["@Match Time yardım program", "schedule"],
-    ["@Match Time yardım blok rezervasyon", "schedule"],
-    ["@Match Time yardım iptal", "schedule"],
-    ["@Match Time yardım saat", "schedule"],
-    ["@Match Time yardım format", "schedule"],
-  ])("%j → %s", (raw, topic) => {
-    expect(parseHelpTopic(raw)).toBe(topic);
-  });
-
-  it("the existing topics still win their own words", () => {
-    expect(parseHelpTopic("@Match Time help teams")).toBe("teams");
-    expect(parseHelpTopic("@Match Time help payments")).toBe("payments");
-    expect(parseHelpTopic("@Match Time help reminders")).toBe("reminders");
-  });
-
   const LINKS = {
     activities: "https://mt.example/r/act",
     blockBookings: "https://mt.example/r/blocks",
@@ -497,9 +432,10 @@ describe("help schedule (2026-09-30)", () => {
     expect(buildHelpReply(null, NONE, "tr")).toMatch(/• \*@Match Time yardım program\*/);
   });
 
-  it("helpPagesNeeded: schedule needs its four pages, everything else the settings page", () => {
+  it("helpPagesNeeded: schedule needs its four pages, a topic its own card, bare help the settings page", () => {
     expect(helpPagesNeeded("schedule", "admin").sort()).toEqual(["activities", "blockBookings", "bulk", "matches"]);
-    expect(helpPagesNeeded("payments", "admin")).toEqual(["settings"]);
+    expect(helpPagesNeeded("payments", "admin")).toEqual(["topic"]);
+    expect(helpPagesNeeded("pool", "admin")).toEqual(["topic"]);
     expect(helpPagesNeeded(null, "admin")).toEqual(["settings"]);
     expect(helpPagesNeeded("schedule", "player")).toEqual([]);
   });

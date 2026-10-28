@@ -23,7 +23,8 @@
 import type { Page } from "@playwright/test";
 import { signInAs } from "../../fixtures";
 import { poolPageCopy } from "@/lib/pool/page-copy";
-import { scenario, scenarios, expect } from "./fixtures";
+import { LIVE, scenario, scenarios, expect } from "./fixtures";
+import { clearPipelineStubs, helpOn } from "../../helpers/stub";
 import type { PoolClub, PoolWorld } from "./world";
 
 const EN = poolPageCopy("en");
@@ -73,7 +74,9 @@ scenarios("a club member opts in from his profile", () => {
     expect(await pool.db.count(`SELECT count(*) FROM "Membership" WHERE "userId" = $1 AND "leftAt" IS NULL`, [user!.id])).toBe(before);
 
     pool.note("his club DMs are unchanged: help is answered privately, as before");
+    if (!LIVE) helpOn({ help: {} });
     const help = await pete.dm("help");
+    if (!LIVE) clearPipelineStubs();
     pool.expectSent(help.sent, [{ to: "fnf.pete", channel: "dm", text: /help/i }]);
 
     pool.note("he stops game messages on the manage page the card links to");

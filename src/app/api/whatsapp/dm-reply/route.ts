@@ -31,11 +31,7 @@
  *      asked on: "2", "Wasim", "NONE", "YES"; deterministic, no model; a DM
  *      that is not a pick reply falls through untouched. See
  *      lib/organiser-pick.ts, handleOrganiserPickDm)
- *   1. bench-slot offer reply           (an open BenchSlotOffer; skips a
- *      help request, which is never a YES/NO)
- *   1b. help                            (2026-09-30: "help", "help payments",
- *      "yardım ödeme"; deterministic, the group's own builder, for the
- *      sender's club; see lib/dm-help.ts)
+ *   1. bench-slot offer reply           (an open BenchSlotOffer)
  *   2. DM subscription command          ("stop messaging me about ratings")
  *   3. player payment claim             (2026-09-23: "Paid" from a player
  *      who owes a released fee; the pay page's settle-directly, see
@@ -52,7 +48,10 @@
  *   8b. a reply in words to a pool offer (local player pool L5a, L6: only
  *      for a sender with a delivered offer; the L6 reader, then the tap
  *      link's own writers; see lib/pool/reply.ts)
- *   9. scoped Q&A, else ignore
+ *   9. help, read by the shared question extractor (2026-10-28: "help",
+ *      "how do I turn on the player pool?", "havuz nasıl açılır"; the
+ *      group's own builder, for the sender's club; see lib/dm-help.ts),
+ *      then scoped Q&A, else ignore
  *
  * Adding a handler means slotting it by SPECIFICITY, never in front of a
  * prompt that knows which question is being answered.
@@ -73,7 +72,7 @@
  * If no active survey applies, the DM is silently ignored.
  */
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
-import { withOrgAiBudget } from "@/lib/ai-budget";
+import { onboardingUserKey, withOrgAiBudget } from "@/lib/ai-budget";
 import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
 import { IN_LIVE_STAGE_CLUB_WHERE, settingUpClubsReason } from "@/lib/club-setup";
 import { scheduleSetupAfterApproval } from "@/lib/club-setup-schedule";
@@ -126,7 +125,6 @@ import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance"
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
 import { LANGS } from "@/lib/i18n/lang";
 import { readBenchDmReply, readTentativeFastPath } from "@/lib/dm-reply-words";
-import { readHelpRequest } from "@/lib/onboarding-conversation";
 import {
   buildAdminRecruitDmReply,
   buildBenchDmAck,
@@ -282,11 +280,6 @@ export async function POST(request: Request) {
     if (paid) return NextResponse.json({ ok: true, ...paid });
   }
 
-  // A help request ("help", "help payments", "yardım ödeme") is answered
-  // further down, deterministically (handleDmHelp). Read once here so the
-  // bench-offer reply below does not swallow it as an unclear YES/NO.
-  const isHelpRequest = readHelpRequest(text, { dm: true }) !== null;
-
   // ── Bench-confirmation DM reply ──────────────────────────────────
   //   Added 2026-05-18 (Kemal): when a slot opens we now DM the
   //   bencher as well as tagging them in the group, because benchers
@@ -305,7 +298,7 @@ export async function POST(request: Request) {
       where: { resolvedAt: null, ...billingQuietMatchWhere() },
       select: { matchId: true },
     });
-    if (openOffers.length > 0 && !isHelpRequest && !codedAsk) {
+    if (openOffers.length > 0 && !codedAsk) {
       const matchIds = [...new Set(openOffers.map((o) => o.matchId))];
       const benchAtt = await db.attendance.findMany({
         where: { matchId: { in: matchIds }, status: "BENCH" },
@@ -557,31 +550,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: "club-billing-paused" });
   }
 
-  // ── Help by DM (2026-09-30) ──────────────────────────────────────────
-  //   "help", "help payments", "@Match Time help teams", "yardım ödeme":
-  //   the SAME deterministic help the group gets (one builder,
-  //   buildHelpReply), for the sender's club, worded for an organiser or a
-  //   player. No model call. See lib/dm-help.ts for which club and why.
-  //
-  //   PLACEMENT. After the silence rails (an organiser of a club waiting
-  //   for approval still gets nothing) and ahead of every handler that
-  //   answers what it cannot read with a re-ask (tentative follow-up,
-  //   roster survey) or asks a model (payment claim, admin commands, Q&A).
-  //   It cannot take anything from them: `readHelpRequest` with dm: true
-  //   accepts only the keyword alone or with a KNOWN topic in at most four
-  //   words, so "Paid", "IN", "£8" and "help me, I can't make it" all fall
-  //   through untouched. The self-join commands above never reach here
-  //   when they are commands, and the bench-offer reply skips a help
-  //   request (see `isHelpRequest` above).
-  //
-  //   A sender the setting-up rail stops (below) is answered there instead:
-  //   the same help, on the platform channel.
+  // ── Help by DM: see step 9 (2026-10-28) ──────────────────────────────
+  //   Help was read here by a regex, ahead of the handlers below. It is now
+  //   read by the shared question extractor, so it sits where a DM that no
+  //   handler knows reaches the scoped Q&A (below), never in front of a
+  //   handler that knows which question is being answered.
   const allClubsSettingUp = (await settingUpClubsReason(user.id)) === "club-setting-up";
-  if (isHelpRequest && !allClubsSettingUp) {
-    const { handleDmHelp } = await import("@/lib/dm-help");
-    const help = await handleDmHelp({ userId: user.id, text, envelopePhone: phone });
-    if (help) return NextResponse.json({ ok: true, ...help });
-  }
 
   // ── Approved but setting up (go-live slices S1 and S4, 2026-10-12) ─────
   //   A sender whose every served club is approved but still SETTING UP
@@ -618,7 +592,14 @@ export async function POST(request: Request) {
       senderAltPhone,
       senderLid,
       waMessageId,
-      isHelpRequest,
+      // An organiser asking for help is answered with it. Read by the
+      // shared question extractor, under the pre-club allowance (the
+      // club's own is $0 while it sets up).
+      readHelp: async () => {
+        const { readDmHelp } = await import("@/lib/dm-help");
+        return withOrgAiBudget(onboardingUserKey(user.id), () => readDmHelp({ text, authorName: user.name, now: new Date() }));
+      },
+      poolEnv: () => poolEnvForApiRequest(request),
     });
     if ("ignored" in out) {
       console.log(`[dm-reply] sender ${user.id} belongs only to clubs that are still setting up; ignoring`);
@@ -1456,6 +1437,26 @@ export async function POST(request: Request) {
       env: await poolEnvForApiRequest(request),
     });
     if (poolReply) return NextResponse.json({ ok: true, handled: poolReply });
+
+    // ── Help (2026-10-28) ────────────────────────────────────────────
+    //   "help", "how do I turn on the player pool?", "havuz nasıl açılır":
+    //   the shared question extractor says whether this DM asks how
+    //   MatchTime works and about what (the reader the players' group and
+    //   the admin group use), and the group's own builder answers it for
+    //   the sender's club, worded for an organiser or a player. One call,
+    //   under that club's daily AI cap. Anything else carries on to the
+    //   scoped Q&A, unchanged.
+    {
+      const { handleDmHelp, pickDmHelpClub, readDmHelp } = await import("@/lib/dm-help");
+      const club = await pickDmHelpClub(user.id);
+      const req = club
+        ? await withOrgAiBudget(club.membership.orgId, () => readDmHelp({ text, authorName: user.name, now: new Date() }))
+        : null;
+      if (req) {
+        const help = await handleDmHelp({ userId: user.id, req, envelopePhone: phone, poolEnv: () => poolEnvForApiRequest(request) });
+        if (help) return NextResponse.json({ ok: true, ...help });
+      }
+    }
 
     // ── Scoped Q&A (2026-06-01) ──────────────────────────────────────
     //   No open survey to answer → if this resolved member is asking a

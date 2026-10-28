@@ -13,13 +13,15 @@
  *      stays in, so the help request never reached the squad path;
  *   4. back on the defaults, the group's bare help is what it always was.
  *
- * No model is called: help is deterministic, and the one stub set is there
- * to prove the squad path is not reached.
+ * No model is called. Since 2026-10-28 the help topic is the question
+ * extractor's (`how_it_works`), so the router and the extractor are
+ * stubbed with what the model would say; the HQ stub is there to prove the
+ * squad path is not reached.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, NAME, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { engineOn, clearPipelineStubs, otherFacts } from "../helpers/stub";
+import { engineOn, clearPipelineStubs, helpOn, otherFacts } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -33,13 +35,23 @@ const PLAYER = PHONE.player.replace(/^\+/, "");
 let n = 0;
 const msgId = () => `e2e-help-oa-${Date.now()}-${++n}`;
 
+/** What the model reads from each help message (stubbed). */
+const HELP_READ = {
+  "@Match Time help teams": { feature: "teams" },
+  "@Match Time help": {},
+  "@Match Time help availability": { feature: "availability" },
+  "@Match Time yardım kadro": { feature: "availability" },
+  help: {},
+};
+
 async function groupHelp(request: APIRequestContext, body: string): Promise<string> {
+  helpOn(HELP_READ);
   const id = msgId();
   const res = await postAnalyze(request, [
     { waMessageId: id, body, authorPhone: PHONE.player, authorName: NAME.player, botMentioned: true },
   ]);
   const r = (res.results as Array<{ waMessageId: string; reply?: string; handledBy?: string }>).find((x) => x.waMessageId === id)!;
-  expect(r.handledBy).toBe("fast-path");
+  expect(r.handledBy).toBe("llm");
   return r.reply ?? "";
 }
 
@@ -109,6 +121,7 @@ test("players' group, Turkish: 'yardım kadro' gets the explainer, not 'Listeyi 
 });
 
 test("an organiser's DM bare help points at 'help' in the admin group, and keeps the settings link", async ({ request, db }) => {
+  helpOn(HELP_READ);
   const res = await request.post("/api/whatsapp/dm-reply", {
     headers: KEY,
     data: { phone: PHONE.admin, body: "help", waMessageId: msgId(), authorName: null },

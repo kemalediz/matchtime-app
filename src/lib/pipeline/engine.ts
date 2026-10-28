@@ -2185,7 +2185,10 @@ export function decide(input: EngineInput): EngineResult {
           // "@Match Time help <topic>" already sends, for this club's
           // settings, and `answer-batch.ts` attaches them because only it
           // holds the club's features. No write, no speech here.
-          out.helpRequested = { topic: facts.feature ?? null };
+          out.helpRequested = {
+            topic: facts.feature ?? null,
+            ...(facts.feature === "badges" && facts.badge ? { badge: facts.badge } : {}),
+          };
           out.reasons.push(`how-it-works question: the help explainer for ${facts.feature ?? "MatchTime as a whole"}`);
           break;
         case "club":

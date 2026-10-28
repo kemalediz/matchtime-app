@@ -21,7 +21,7 @@
  */
 import { test, expect, resetDb } from "../fixtures";
 import { E2E } from "../helpers/env";
-import { clearPipelineStubs, selfIn, setExtractorStub, setRouterStub } from "../helpers/stub";
+import { clearPipelineStubs, helpOn, selfIn, setExtractorStub, setRouterStub } from "../helpers/stub";
 import type { APIRequestContext } from "@playwright/test";
 import type { TestDb } from "../helpers/test-db";
 
@@ -320,7 +320,10 @@ test("TR 6: the first real 'varım' registers via the router floor, no route han
 });
 
 test("TR 7: '@Match Time yardım' answers in Turkish once the org is live", async ({ request }) => {
+  // The question extractor reads it as help (stubbed: what it would say).
+  helpOn({ "@Match Time yardım": {} });
   const r = await say(request, TR_GROUP, "@Match Time yardım", ILKAY, { tag: true });
+  clearPipelineStubs();
   expect(r.json.results?.[0]?.intent).toBe("help");
   expect(r.reply).toContain("MatchTime yardım");
   expect(r.reply).toContain("@Match Time yardım takımlar");

@@ -202,7 +202,7 @@ import type {
   EngineMessage,
   EngineResult,
   Facts,
-  HelpFeature,
+  HelpRequest,
   PaymentSnapshot,
   ProposedWrite,
   QuestionTopic,
@@ -699,10 +699,12 @@ export interface AnswerBatchDeps {
    *  throw-safety without a fabricated engine rule in the real engine. */
   decide?: (input: EngineInput) => EngineResult;
   /** The help explainer for a how-it-works question (2026-10-16), for
-   *  this club's settings. Defaults to `buildHelpReply`, the copy "@Match
-   *  Time help <topic>" sends; imported lazily because that module reads
-   *  the database for other things. */
-  helpReply?: (topic: HelpFeature | null, features: OrgFeatures) => Promise<string> | string;
+   *  this club's settings. Defaults to `buildHelpReply` for the club, with
+   *  its pool and partner clubs read (`help-club-facts.ts`); imported
+   *  lazily because that module reads the database for other things.
+   *  `asker.admin`: the sender is one of the club's organisers, who is
+   *  told how to switch each thing (2026-10-28). */
+  helpReply?: (req: HelpRequest, features: OrgFeatures, asker: { admin: boolean }) => Promise<string> | string;
   /** The FIFTH targeted read (2026-10-16): the club's setup, only when a
    *  `club` question survived ownership. `matchId` is the upcoming match
    *  the fee is read from, or null. */
@@ -745,12 +747,14 @@ function isRatingProgress(f: Facts | undefined): boolean {
   return f?.kind === "question" && f.topic === "rating_progress";
 }
 
-/** The help explainer "@Match Time help <topic>" sends, for this club's
- *  settings. Lazy: `onboarding-conversation.ts` reads the database for
- *  other things, and this path only needs its copy. */
-async function defaultHelpReply(topic: HelpFeature | null, features: OrgFeatures): Promise<string> {
-  const m = await import("../onboarding-conversation");
-  return m.buildHelpReply(topic, m.helpFeaturesFrom(features), features.language, { audience: "group" });
+/** The help reply for this club, in a group: public links only. An
+ *  organiser is told how to switch each thing; anybody else gets the
+ *  players' group's answer (help-answer.ts). */
+function defaultHelpReply(orgId: string, poolEnv: () => Promise<Record<string, string | undefined>>) {
+  return async (req: HelpRequest, features: OrgFeatures, asker: { admin: boolean }): Promise<string> => {
+    const { clubHelpReply } = await import("../help-answer");
+    return clubHelpReply({ orgId, req, features, audience: asker.admin ? "admin" : "group", poolEnv });
+  };
 }
 
 function empty(degradations: string[] = []): AnswerBatchResult {
@@ -804,6 +808,10 @@ export async function runAnswerBatch(args: {
    * route passes none for a club whose organisers announce the list.
    */
   alsoAsks?: ReadonlySet<string>;
+  /** Resolves the pool switch as the request does (`pool/switch-env.ts`),
+   *  for the help's pool answer; called only when a help question is
+   *  answered. Absent: the pool reads as closed. */
+  poolEnv?: () => Promise<Record<string, string | undefined>>;
 }): Promise<AnswerBatchResult> {
   const { orgId, now, history, expectedMatchId, enabled, deps } = args;
   const alsoAsks: ReadonlySet<string> = args.alsoAsks ?? new Set<string>();
@@ -1660,7 +1668,9 @@ export async function runAnswerBatch(args: {
   for (const o of result.outcomes) {
     if (!o.helpRequested || !ownedIds.has(o.messageId)) continue;
     try {
-      const text = await (deps.helpReply ?? defaultHelpReply)(o.helpRequested.topic, features);
+      const sender = messages.find((x) => x.waMessageId === o.messageId)?.senderUserId ?? null;
+      const admin = organisers || (!!sender && state.roster.some((r) => r.userId === sender && r.isAdmin));
+      const text = await (deps.helpReply ?? defaultHelpReply(orgId, args.poolEnv ?? (async () => ({}))))(o.helpRequested, features, { admin });
       utteranceByMessageId.set(o.messageId, [...(utteranceByMessageId.get(o.messageId) ?? []), text]);
       helpIds.add(o.messageId);
     } catch (err) {

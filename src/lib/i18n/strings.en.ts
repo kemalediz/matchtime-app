@@ -1166,11 +1166,11 @@ export const en = {
     `   • *@Match Time help ${p.word}*: ${p.label}`,
 
   /** The word a player types after "help" for each topic, in this language. */
-  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" }): string =>
+  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
     p.topic,
 
   /** Human label for each topic, used in the bare-help topic menu. */
-  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" }): string =>
+  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
     ({
       schedule: "schedule & bookings",
       badges: "badges and how to earn them",
@@ -1180,6 +1180,9 @@ export const en = {
       ratings: "player ratings",
       reminders: "reminders",
       payments: "match fees",
+      partners: "partner clubs",
+      pool: "the player pool",
+      settings: "where your settings are",
     })[p.topic],
 
   /** "help <topic>" for a topic whose feature is off. Unused since
@@ -1225,18 +1228,6 @@ export const en = {
 
   onbHelpOffLead: (): string => `ℹ️ This isn't switched on for this group yet, but here's how it works.`,
 
-  /** The setting's name on the admin Settings page (an English-only page,
-   *  so both languages quote these words as they appear there). */
-  onbHelpSettingLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
-    ({
-      availability: "Attendance tracking",
-      teams: "Team generation",
-      mom: "Man of the Match",
-      ratings: "Player ratings",
-      reminders: "Personal reminders",
-      payments: "Collect match fees",
-    })[p.topic],
-
   /** How fee collection works, for "help payments" while it is off. The
    *  on-state explainer (onbHelpExplainer) is about tracking; this is the
    *  thing an organiser has not got yet. */
@@ -1246,9 +1237,11 @@ export const en = {
     `I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.\n` +
     `Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.`,
 
-  /** How to switch an off topic on, worded for who asked. `url` is the
-   *  public settings URL (group) or the admin's signed-in link (admin).
-   *  `word` is the topic word in this language. */
+  /** How to switch an off topic on, worded for who asked (rewritten
+   *  2026-10-28). `url` goes straight to the setting's card
+   *  (help-links.ts): the public URL in a group, the admin's signed-in link
+   *  by DM. `label` is the card's own title (settings-info.ts), so the
+   *  words match the page in either language. `word` is the topic word. */
   onbHelpSwitchOn: (p: {
     topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments";
     audience: "group" | "admin" | "player";
@@ -1261,28 +1254,120 @@ export const en = {
         ? `🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.`
         : `🔧 Your organiser can switch this on from the admin page. Ask them if you'd like it.`;
     }
+    const fees = p.topic === "payments";
     if (p.audience === "admin") {
-      const what =
-        p.topic === "payments"
-          ? `turn on *Collect match fees* under Bot features, pick the money collector, then connect their bank with Stripe once (about 2 minutes)`
-          : `turn on *${p.label}* under Bot features`;
-      return `🔧 To switch it on, open *Settings* on your admin page and ${what}:\n${p.url}`;
+      return fees
+        ? `🔧 To switch it on, turn on *${p.label}*, pick the money collector, then connect their bank with Stripe once (about 2 minutes):\n${p.url}`
+        : `🔧 To switch it on, turn on *${p.label}* here:\n${p.url}`;
     }
-    const what =
-      p.topic === "payments"
-        ? `turns on *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes)`
-        : `turns on *${p.label}* under Bot features`;
     return (
-      `🔧 To switch it on, an admin opens *Settings* on the admin page (${p.url}) and ${what}.\n` +
+      (fees
+        ? `🔧 To switch it on, an admin turns on *${p.label}* on the settings page, picks the money collector, then connects their bank with Stripe once (about 2 minutes):\n${p.url}\n`
+        : `🔧 To switch it on, an admin turns on *${p.label}* on the settings page:\n${p.url}\n`) +
       `Admins: DM me *help ${p.word}* and I'll send you a link that signs you straight in.`
     );
+  },
+
+  /** "help <topic>" for a topic that is ON (2026-10-28): that it is on
+   *  and, for an organiser, where to switch it off or change it. */
+  onbHelpOnStatus: (p: { audience: "group" | "admin" | "player"; url: string }): string =>
+    p.audience === "admin" ? `✅ It's on for your club. To switch it off or change how it works:\n${p.url}` : `✅ It's on for this club.`,
+
+  /** Bare help for an organiser (2026-10-28): the topics switched off. */
+  onbHelpOffTopics: (p: { labels: string[] }): string =>
+    `🔧 Switched off for your club: ${p.labels.join(", ")}. Ask me about one and I'll show you how to switch it on.`,
+
+  /** "help partners" (2026-10-28). `active`: the club's active
+   *  partnerships it asks; `askWhen`: `partnerAskWhen`; `askLabel`: that
+   *  card's title. The status line says which of the two is missing. */
+  onbHelpPartners: (p: {
+    audience: "group" | "admin" | "player";
+    active: number;
+    askWhen: "off" | "on-request" | "auto";
+    url: string;
+    askLabel: string;
+  }): string => {
+    const head = `🤝 *Partner clubs: how it works*`;
+    const n = p.active === 1 ? `1 partner club` : `${p.active} partner clubs`;
+    if (p.audience === "admin") {
+      const body = `Partner clubs lend each other players. When your squad is still short, MatchTime asks your partner clubs, and their players who answer go on your bench as guests. Your players can answer their asks too.`;
+      const status =
+        p.active === 0
+          ? `❌ Your club has no partner clubs yet. Find clubs near you and send a request on your settings page:\n${p.url}`
+          : p.askWhen === "off"
+            ? `⏸️ Your club has ${n}, but MatchTime doesn't ask them for players. To switch it on, choose when under *${p.askLabel}*:\n${p.url}`
+            : `✅ It's on: your club has ${n}, and MatchTime asks them ${p.askWhen === "auto" ? "by itself on match day, or when you ask it to" : "when you ask it to"}. To change it or switch it off:\n${p.url}`;
+      return `${head}\n${body}\n\n${status}`;
+    }
+    const body = `Your club can team up with nearby clubs to lend each other players. When a partner club is a player short, its ask may be posted here: tap the link if you fancy a game. When we're short, their players may join our bench as guests.`;
+    const status =
+      p.active === 0
+        ? `❌ This club has no partner clubs yet.` + (p.audience === "group" ? ` An admin can find clubs nearby on the settings page:\n${p.url}` : ``)
+        : `✅ This club has ${n}.`;
+    return `${head}\n${body}\n\n${status}`;
+  },
+
+  /** "help pool" (2026-10-28). The pool is open for the club when the
+   *  platform switch AND the club's flag are on (`poolOpenForClub`). A
+   *  player is told how to join (the profile's "Play elsewhere too", the
+   *  heading `pool-play` pins); an organiser how to switch it. */
+  onbHelpPool: (p: {
+    audience: "group" | "admin" | "player";
+    platformOpen: boolean;
+    clubFlag: boolean;
+    /** THE ONE RULE's answer: the platform switch and the club's flag. */
+    open: boolean;
+    url: string;
+    poolLabel: string;
+    autoLabel: string;
+  }): string => {
+    const head = `🌍 *The MatchTime player pool: how it works*`;
+    const on = p.open;
+    if (p.audience === "admin") {
+      const body = `Players near you sign up to the pool to get more games. When your squad is short, MatchTime can ask them; they decide each time and play as guests.`;
+      const status = !p.platformOpen
+        ? `⏳ The pool isn't open yet. Once it opens, you can switch it on for your club in your settings.`
+        : !p.clubFlag
+          ? `❌ It's off for your club. To switch it on, turn on *${p.poolLabel}* here:\n${p.url}`
+          : `✅ It's on for your club. Ask me in your club's WhatsApp group (for example *@Match Time ask the player pool for 2 players*), or turn on *${p.autoLabel}*. To switch it off, turn off *${p.poolLabel}*:\n${p.url}`;
+      return `${head}\n${body}\n\n${status}`;
+    }
+    const body = `Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.`;
+    const status = on
+      ? `✅ This club also asks the pool when it's short.`
+      : !p.platformOpen
+        ? `⏳ The pool isn't open yet: sign up now and you're on the early list.`
+        : `This club doesn't ask the pool for players.` +
+          (p.audience === "group" ? ` An admin can switch it on with *${p.poolLabel}* on the settings page:\n${p.url}` : ``);
+    return `${head}\n${body}\n\n${status}`;
+  },
+
+  /** "help settings" (2026-10-28): where things are. The page is in tabs
+   *  with a "Find a setting" search at the top (the settings redesign). */
+  onbHelpSettings: (p: { audience: "group" | "admin" | "player"; url: string }): string => {
+    if (p.audience === "admin") {
+      return (
+        `⚙️ *Your settings*\n` +
+        `Every switch for your club is on one settings page, grouped in tabs. Not sure where something is? Type its name in *Find a setting* at the top and it takes you straight there:\n${p.url}\n` +
+        `Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch.`
+      );
+    }
+    if (p.audience === "group") {
+      return (
+        `⚙️ *Settings*\n` +
+        `The club's settings are on the admin page, grouped in tabs, and only admins can change them. Admins: type a setting's name in *Find a setting* at the top to jump to it:\n${p.url}`
+      );
+    }
+    return `⚙️ *Settings*\nThe club's settings are changed by its organisers. Ask them if you'd like something changed. Your own details are on your MatchTime profile.`;
   },
 
   /** An admin's DM help: where a topic's settings live (topic ON). */
   onbHelpAdminSettings: (p: { url: string }): string => `⚙️ Its settings are on your admin page:\n${p.url}`,
 
-  /** An admin's DM help: bare help's closing link. */
-  onbHelpAdminPage: (p: { url: string }): string => `⚙️ Your club's settings, signed in:\n${p.url}`,
+  /** An organiser's bare help: its closing link. `signedIn`: his own DM's
+   *  sign-in link; in a group it is the public address (2026-10-28). */
+  onbHelpAdminPage: (p: { url: string; signedIn?: boolean }): string =>
+    p.signedIn === false ? `⚙️ Your club's settings:\n${p.url}` : `⚙️ Your club's settings, signed in:\n${p.url}`,
 
   /** DM help for somebody in more than one club: which club it answers for. */
   onbHelpForClub: (p: { club: string }): string => `🏟️ For *${p.club}*:`,
@@ -1384,7 +1469,7 @@ export const en = {
    *  squad changes, the teams). `graphics`: a live club. `picks`:
    *  organiser pick. `paid`: a monthly club's collector. `free`: a club
    *  that takes match fees (free places, 2026-10-16). */
-  hq_help: (p: { squad: boolean; graphics: boolean; picks: boolean; paid: boolean; free?: boolean }): string => {
+  hq_help: (p: { squad: boolean; graphics: boolean; picks: boolean; paid: boolean; free?: boolean; pool?: boolean }): string => {
     const lines = [
       `🛠️ *MatchTime in your admin group*`,
       p.squad
@@ -1399,13 +1484,15 @@ export const en = {
       lines.push(`🔁 *"swap Sam and Alex"*, *"move Sam to the other team"*: changes to the teams.`);
       lines.push(`✅ *YES* (or reply YES to my message): make the proposed teams final.`);
       lines.push(`📣 *"ask the group if anyone can play"*: when a place is open, I ask in the main chat.`);
+      if (p.pool) lines.push(`🌍 *"ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
       lines.push(`❌ *"@Match Time cancel Friday"*, *"@Match Time it's back on"*: call the next match off or back on, and I tell the players' group.`);
     }
     if (p.graphics) lines.push(`🖼️ *"send the poster"*, *"team sheet please"*: the list or the teams as a graphic, ready to forward.`);
     if (p.picks) lines.push(`🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`);
     if (p.paid) lines.push(`💷 *PAID ALL*, *PAID 1 3* or *PAID NONE*: the money collector's answer to my list of payment claims.`);
     if (p.free) lines.push(`🎁 *"Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`);
-    lines.push(``, `Ask *what can you do?* here any time to see this again.`);
+    lines.push(``, `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *how do partner clubs work?* or *where are the settings?*`);
+    lines.push(`Ask *what can you do?* here any time to see this again.`);
     return lines.join("\n");
   },
 

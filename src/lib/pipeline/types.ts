@@ -427,11 +427,46 @@ export type QuestionTopic =
   | "club"
   | "other";
 
-/** The help topics a `how_it_works` question can name: the ones the
- *  players' help menu explains (`HelpTopic` in onboarding-conversation.ts,
- *  less `schedule` and `badges`, which are not asked this way). */
-export const HELP_FEATURES = ["availability", "teams", "mom", "ratings", "reminders", "payments"] as const;
+/** The help topics a `how_it_works` question can name: every topic the
+ *  help explains (`buildHelpReply`, onboarding-conversation.ts). Since
+ *  2026-10-28 this is the ONLY way a help topic is read, in the players'
+ *  group, the admin group and by DM: the model names it, code maps it to
+ *  the explainer. The regex topic reader is gone. */
+export const HELP_FEATURES = [
+  "availability",
+  "teams",
+  "mom",
+  "ratings",
+  "reminders",
+  "payments",
+  "schedule",
+  "badges",
+  "partners",
+  "pool",
+  "settings",
+] as const;
 export type HelpFeature = (typeof HELP_FEATURES)[number];
+
+/** The badges a `how_it_works` question about badges can name, as their
+ *  keys (`BadgeKey`, badge-rules.ts; a test pins the two lists equal). */
+export const HELP_BADGES = [
+  "first-game",
+  "ten-games",
+  "ironman",
+  "first-mom",
+  "mom-machine",
+  "masterclass",
+  "reliable",
+  "above-field",
+] as const;
+export type HelpBadge = (typeof HELP_BADGES)[number];
+
+/** What a help question asks for: the topic (null: the menu) and, for
+ *  badges, the one badge it names (null: all of them). */
+export interface HelpRequest {
+  topic: HelpFeature | null;
+  badge?: HelpBadge | null;
+}
 
 /**
  * WHICH STATS TABLE a `stats` question is about (2026-09-23).
@@ -522,6 +557,9 @@ export interface QuestionFacts {
   /** For `topic: "how_it_works"` only (2026-10-16): the help topic it
    *  asks about, or null for MatchTime as a whole (the help menu). */
   feature?: HelpFeature | null;
+  /** For `feature: "badges"` only (2026-10-28): the one badge the
+   *  question names, or null for all of them. */
+  badge?: HelpBadge | null;
 }
 
 export interface TeamFacts {
@@ -1761,7 +1799,7 @@ export interface MessageOutcome {
    * settings. Decided here; the words are `buildHelpReply`'s, attached by
    * `answer-batch.ts`, which can load the club's features. Absent means no.
    */
-  helpRequested?: { topic: HelpFeature | null };
+  helpRequested?: HelpRequest;
   /**
    * The engine asked the poster who they meant instead of answering
    * (`ask_stats_person`). The route records the message with the

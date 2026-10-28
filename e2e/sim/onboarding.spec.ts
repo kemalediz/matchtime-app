@@ -15,6 +15,7 @@
 import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { createGroup, createOnboardingGroup } from "./group";
+import { helpFacts } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
 
@@ -217,8 +218,9 @@ test("6 a side sets up a FOOTBALL club, never volleyball (club setup follows LIV
 
 test('"@Match Time help" reprints the feature-aware usage summary', async ({ request, db }) => {
   const g = await createGroup(request, db, {}); // default features: all on except payments
-  const r = await g.post("pete", "@Match Time help", { tag: true });
-  expect(r.handledBy).toBe("fast-path");
+  // The question extractor reads it as help (stubbed: what it would say).
+  const r = await g.post("pete", "@Match Time help", { tag: true, route: "question", facts: helpFacts() });
+  expect(r.handledBy).toBe("llm");
   expect(r.intent).toBe("help");
   expect(r.reply).toMatch(/in.*out/i);
   expect(r.reply?.toLowerCase()).toContain("tag");

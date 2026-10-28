@@ -234,6 +234,7 @@ Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
    • *@Match Time yardım rozetler*, rozetler ve nasıl kazanılır
    • *@Match Time yardım hatırlatma*, hatırlatmalar
    • *@Match Time yardım program*, program ve rezervasyonlar
+   • *@Match Time yardım ayarlar*, ayarların yeri
 
 ✅ Kendi durumunuz için *"varım"* veya *"yokum"* yazın, beni etiketlemenize gerek yok.
 🤔 Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce size özelden sorarım.
@@ -254,6 +255,7 @@ Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
    • *@Match Time yardım kadro*, kadro ve katılım
    • *@Match Time yardım rozetler*, rozetler ve nasıl kazanılır
    • *@Match Time yardım program*, program ve rezervasyonlar
+   • *@Match Time yardım ayarlar*, ayarların yeri
 
 ✅ Kendi durumunuz için *"varım"* veya *"yokum"* yazın, beni etiketlemenize gerek yok.
 🤔 Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce size özelden sorarım.
@@ -269,11 +271,15 @@ Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiket
 Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar sırayla *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.
 Biri çıkarsa yedekleri dürterim, böylece hiç eksik kalmayız. İstediğiniz zaman *yokum* yazın, gerisini ben hallederim.
 
+✅ Bu kulüpte açık.
+
 ### help / teams
 🟥🟦 *Dengeli takımlar nasıl çalışır*
 Kadro netleşince herhangi bir yönetici beni etiketleyip takımları ister (örneğin *@Match Time takımları kur*), ben de form puanlarına göre herkesi iki dengeli takıma bölerim.
 Kadroları doğrudan gruba yazarım. Bir eşleşmeyi beğenmediniz mi? Beni etiketleyip neyin değişeceğini kendi cümlelerinizle yazın (örn. _"@Match Time Ali ile Can'ı değiştir"_). Takımları yeniden göstermemi (örn. *"@Match Time takımları göster"*) ya da takımlar aynı kalıp renkleri değiştirmemi (örn. *@Match Time renkleri değiştir*) istediğiniz zaman isteyebilirsiniz.
 Hazır olunca beni etiketleyip istemeniz yeter.
+
+✅ Bu kulüpte açık.
 
 ### help / mom
 🏆 *Maçın adamı nasıl çalışır*
@@ -281,16 +287,22 @@ Maç bitince gruba kısa bir *maçın adamı* oylaması açarım. Herkes öne ç
 Oyları sayar, kazananı duyururum, sonuç herkesin sezon istatistiklerine işlenir.
 Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. Maçın adamı sayınızı istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time istatistiklerim*).
 
+✅ Bu kulüpte açık.
+
 ### help / ratings
 ⭐ *Oyuncu puanları nasıl çalışır*
 Her maçtan sonra oynayan herkese özelden bir bağlantı gönderirim. Diğer oyunculara 10 üzerinden puan verirsiniz (kendinize veremezsiniz, puanlarınız gizli kalır).
 Herkesin puanlarını birleştirip bu kulüpteki her oyuncu için maçtan maça güncellenen bir form puanı çıkarırım, *dengeli takımları* bununla kurarım. Puanlar kulübün içinde kalır: başka bir grupta da oynuyorsanız oradaki puanlarınız buraya karışmaz. Ne kadar çok kişi puan verirse takımlar o kadar adil olur.
 Bağlantı maçın ertesi günü gelir. Puanlarınızı istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time istatistiklerim*).
 
+✅ Bu kulüpte açık.
+
 ### help / reminders
 ⏰ *Hatırlatmalar nasıl çalışır*
 Henüz *varım* veya *yokum* demeyenleri nazikçe dürterim, sonra maçtan önce bütün kadroya hatırlatırım ki kimse unutmasın.
 Hepsi otomatik olur, kimseyi tek tek aramanıza gerek kalmaz.
+
+✅ Bu kulüpte açık.
 
 ### help / payments
 ℹ️ Bu özellik bu grupta henüz açık değil, ama nasıl çalıştığı şöyle.
@@ -300,7 +312,8 @@ Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra 
 Ödemeyenlere her gün bir hatırlatma gönderirim, kimse arkadaşının peşinden para için koşmak zorunda kalmaz.
 Nakit ya da havaleyle mi ödendi? Oyuncu bana *"ödedim"* yazar, ben de parayı toplayan kişiden paranın geldiğini onaylamasını isterim.
 
-🔧 Açmak için bir yönetici, yönetici sayfasında (https://matchtime.ai/admin/settings) *Settings* bölümüne girer, *Bot features* altında *Collect match fees* ayarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika).
+🔧 Açmak için bir yönetici ayarlar sayfasında *Maç ücreti toplama* ayarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika):
+https://matchtime.ai/admin/settings#payments
 Yöneticiler: bana özelden *yardım ödeme* yazın, sizi doğrudan giriş yapmış olarak açan bir bağlantı göndereyim.
 
 ### help / topic switched off
@@ -311,5 +324,6 @@ Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra 
 Ödemeyenlere her gün bir hatırlatma gönderirim, kimse arkadaşının peşinden para için koşmak zorunda kalmaz.
 Nakit ya da havaleyle mi ödendi? Oyuncu bana *"ödedim"* yazar, ben de parayı toplayan kişiden paranın geldiğini onaylamasını isterim.
 
-🔧 Açmak için bir yönetici, yönetici sayfasında (https://matchtime.ai/admin/settings) *Settings* bölümüne girer, *Bot features* altında *Collect match fees* ayarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika).
+🔧 Açmak için bir yönetici ayarlar sayfasında *Maç ücreti toplama* ayarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika):
+https://matchtime.ai/admin/settings#payments
 Yöneticiler: bana özelden *yardım ödeme* yazın, sizi doğrudan giriş yapmış olarak açan bir bağlantı göndereyim.

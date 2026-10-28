@@ -26,7 +26,7 @@ import { test, expect, resetDb } from "../fixtures";
 import { ORG_ID, PHONE } from "../helpers/constants";
 import { assertSafeTestDbUrl, E2E, E2E_DB_URL, REPO_ROOT } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
-import { clearDmIntentStub, setDmIntentStub } from "../helpers/stub";
+import { clearDmIntentStub, clearPipelineStubs, helpOn, setDmIntentStub } from "../helpers/stub";
 
 const execFileAsync = promisify(execFile);
 
@@ -485,8 +485,11 @@ test.describe("direct messages", () => {
     expect(await heldJobs(db)).toBe(before);
   });
 
-  test("deterministic help is answered first, for the organiser of the setting-up club", async ({ request, db }) => {
+  test("help is answered first, for the organiser of the setting-up club", async ({ request, db }) => {
+    // The question extractor reads it as help (stubbed: what it would say).
+    helpOn({ help: {} });
     const res = await dm(request, ORGANISER_PHONE, "help");
+    clearPipelineStubs();
     expect(res).toMatchObject({ handled: "dm-help", orgId: HELD_ORG, audience: "admin" });
     // Slice S4 closed the gap pinned here before: the answer used to be
     // queued as the club's own DM job, which due-posts never dispatches
@@ -553,7 +556,9 @@ test.describe("review fix 2: in a live club AND a setting-up one, the setting-up
 
   test("help is answered for the live club too", async ({ request, db }) => {
     const before = await heldJobs(db);
+    helpOn({ help: {} });
     const res = await dm(request, BOTH_PHONE, "help");
+    clearPipelineStubs();
     expect(res).toMatchObject({ handled: "dm-help", orgId: ORG_ID, audience: "player" });
     expect(await heldJobs(db)).toBe(before);
   });

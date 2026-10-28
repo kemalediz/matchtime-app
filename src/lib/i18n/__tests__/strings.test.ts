@@ -326,17 +326,21 @@ const SAMPLES: SampleArgs = {
   onbHelpNotOn: null,
   onbHelpSchedule: { audience: "group", activities: "https://mt.example/a", blockBookings: "https://mt.example/b", bulk: "https://mt.example/c", matches: "https://mt.example/d" },
   onbHelpOffLead: null,
-  onbHelpSettingLabel: { topic: "ratings" },
   onbHelpPaymentsOff: null,
   onbHelpSwitchOn: { topic: "mom", audience: "group", url: "https://mt.example/admin/settings", word: "motmword", label: "Motm Label" },
   onbHelpAdminSettings: { url: "https://mt.example/s/settings" },
+  onbHelpOnStatus: { audience: "admin", url: "https://mt.example/s/on" },
+  onbHelpOffTopics: { labels: ["LABEL_A", "LABEL_B"] },
+  onbHelpPartners: { audience: "admin", active: 2, askWhen: "off", url: "https://mt.example/s/partners", askLabel: "ASK_LABEL" },
+  onbHelpPool: { audience: "admin", platformOpen: true, clubFlag: true, open: true, url: "https://mt.example/s/pool", poolLabel: "POOL_LABEL", autoLabel: "AUTO_LABEL" },
+  onbHelpSettings: { audience: "admin", url: "https://mt.example/s/settings" },
   onbHelpAdminPage: { url: "https://mt.example/s/page" },
   onbHelpForClub: { club: "Riverside FC" },
   onbHelpExplainer: { topic: "teams" },
   onbHelpOrganisersExplainer: { topic: "availability", organiserPicks: true },
   onbHelpAvailabilityOrganiserPicks: null,
   onbHelpAdminOrganisers: null,
-  hq_help: { squad: true, graphics: true, picks: true, paid: true },
+  hq_help: { squad: true, graphics: true, picks: true, paid: true, pool: true },
   hq_confirm_teams: { day: "Fri 16 Oct" },
   hq_confirm_list: null,
   hq_confirm_which: { items: ["ITEM_A", "ITEM_B"] },
@@ -2212,7 +2216,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "reminder", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode", "outcome", "band"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "reminder", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode", "outcome", "band", "askWhen"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,

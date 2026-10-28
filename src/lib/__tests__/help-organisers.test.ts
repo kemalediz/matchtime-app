@@ -74,7 +74,7 @@ const FEATURE_SETS: Record<string, HelpFeatures> = {
     paymentCollection: false,
   },
 };
-const LINKS = { settings: "https://x/s", activities: "https://x/a", blockBookings: "https://x/b", bulk: "https://x/u", matches: "https://x/m" };
+const LINKS = { settings: "https://x/s", topic: "https://x/t", activities: "https://x/a", blockBookings: "https://x/b", bulk: "https://x/u", matches: "https://x/m" };
 const TOPICS: (HelpTopic | null)[] = [null, "availability", "teams", "mom", "ratings", "reminders", "payments", "schedule", "badges"];
 
 const FNF: HelpFeatures = { ...ALL_ON, organisersAnnounce: true, organiserPicks: true };
@@ -201,6 +201,7 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
         `   • *@Match Time help reminders*: reminders`,
         `   • *@Match Time help payments*: match fees`,
         `   • *@Match Time help schedule*: schedule & bookings`,
+        `   • *@Match Time help settings*: where your settings are`,
         ``,
         `✅ Say *"In"* or *"Out"* to mark your own availability, no need to tag me.`,
         `🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.`,
@@ -246,7 +247,7 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
     // Team generation off makes no difference: it is still the organisers' job, not a feature to switch on.
     expect(buildHelpReply("teams", { ...FNF, teamBalancing: false }, "en", { audience: "group" })).toBe(en);
     // An organiser by DM also gets where the settings are.
-    expect(buildHelpReply("teams", FNF, "en", { audience: "admin", links: LINKS })).toBe(`${en}\n\n⚙️ Its settings are on your admin page:\nhttps://x/s`);
+    expect(buildHelpReply("teams", FNF, "en", { audience: "admin", links: LINKS })).toBe(`${en}\n\n⚙️ Its settings are on your admin page:\nhttps://x/t`);
   });
 
   it("help availability, organisers pick: English and Turkish", () => {
@@ -254,13 +255,13 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
       `⚽ *Squad & availability: how it works*\n` +
         `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
         `I keep track of who's in for the organisers, and they share the list with the group. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
-        `When the squad is full, say *In* to go on the bench. When a place opens, the organisers pick who plays. Say *Out* any time if you can't make it.`,
+        `When the squad is full, say *In* to go on the bench. When a place opens, the organisers pick who plays. Say *Out* any time if you can't make it.\n\n✅ It's on for this club.`,
     );
     expect(buildHelpReply("availability", FNF, "tr", { audience: "group" })).toBe(
       `⚽ *Kadro ve katılım nasıl çalışır*\n` +
         `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
         `Kimin geldiğini organizatörler için ben takip ederim, listeyi grupla onlar paylaşır. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
-        `Kadro doluysa yedeğe girmek için *varım* yazın. Bir yer açılınca kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
+        `Kadro doluysa yedeğe girmek için *varım* yazın. Bir yer açılınca kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.\n\n✅ Bu kulüpte açık.`,
     );
   });
 
@@ -278,12 +279,12 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
     expect(buildHelpReply("reminders", FNF, "en", { audience: "group" })).toBe(
       `⏰ *Reminders: how it works*\n` +
         `Want a personal nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.\n` +
-        `Squad updates before the game go to the organisers, and they share the list with the group.`,
+        `Squad updates before the game go to the organisers, and they share the list with the group.\n\n✅ It's on for this club.`,
     );
     expect(buildHelpReply("reminders", FNF, "tr", { audience: "group" })).toBe(
       `⏰ *Hatırlatmalar nasıl çalışır*\n` +
         `Kişisel bir hatırlatma mı istiyorsunuz? Beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.\n` +
-        `Maçtan önceki kadro bilgileri organizatörlere gider, listeyi grupla onlar paylaşır.`,
+        `Maçtan önceki kadro bilgileri organizatörlere gider, listeyi grupla onlar paylaşır.\n\n✅ Bu kulüpte açık.`,
     );
   });
 
@@ -310,13 +311,13 @@ describe("organiser pick in a club MatchTime still announces for", () => {
       `⚽ *Squad & availability: how it works*\n` +
         `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
         `I keep a live, numbered squad list. When it's full, extra players go on the *bench*. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
-        `When a place opens, the organisers pick who plays from the bench. Say *Out* any time if you can't make it.`,
+        `When a place opens, the organisers pick who plays from the bench. Say *Out* any time if you can't make it.\n\n✅ It's on for this club.`,
     );
     expect(buildHelpReply("availability", f, "tr", { audience: "group" })).toBe(
       `⚽ *Kadro ve katılım nasıl çalışır*\n` +
         `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
         `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
-        `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
+        `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.\n\n✅ Bu kulüpte açık.`,
     );
   });
   it("every other topic is as before", () => {

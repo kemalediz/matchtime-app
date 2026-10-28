@@ -4,17 +4,21 @@
  * of the pool (2026-10-24, slice L1): L3 (members opt in), L5 (organisers
  * approve a pool round), L8 (invitations) start from these.
  *
- * Model-free: help is deterministic (src/lib/dm-help.ts), and an untagged
- * HQ message with no route from the stub never reaches a writer. $0.
+ * Model-free: help's topic is the question extractor's, stubbed here
+ * (src/lib/dm-help.ts), and an untagged HQ message with no route from the
+ * stub never reaches a writer. $0.
  */
-import { scenario, scenarios, stubbedOnly, expect } from "./fixtures";
+import { LIVE, scenario, scenarios, stubbedOnly, expect } from "./fixtures";
+import { clearPipelineStubs, helpOn } from "../../helpers/stub";
 
 scenarios("a member and an organiser (today)", () => {
   scenario("a member's 'help' DM is answered privately, to him only", async ({ pool }) => {
     const fnf = await pool.club("fnf", { name: "Friday Night Football", hq: true });
     const pete = fnf.member("pete");
+    if (!LIVE) helpOn({ help: {} });
 
     const ex = await pete.dm("help");
+    if (!LIVE) clearPipelineStubs();
 
     pool.expectSent(ex.sent, [{ to: "fnf.pete", channel: "dm", text: /help/i }]);
     const others = pool.peopleOf("fnf").filter((p) => p.key !== pete.key);

@@ -444,7 +444,6 @@ describe("handleSettingUpDm: the sender the setting-up rail stopped", () => {
     text: "when do we start?",
     phone: "447700900971",
     waMessageId: "wa-2",
-    isHelpRequest: false,
     now: NOW,
     ...over,
   });
@@ -460,7 +459,7 @@ describe("handleSettingUpDm: the sender the setting-up rail stopped", () => {
   it("a plain member gets silence: only current owners and admins of a setting-up club are answered", async () => {
     dbMock.membership.findMany.mockResolvedValue([]);
     expect(await handleSettingUpDm(args())).toEqual({ ignored: "club-setting-up" });
-    expect(await handleSettingUpDm(args({ isHelpRequest: true, text: "help" }))).toEqual({ ignored: "club-setting-up" });
+    expect(await handleSettingUpDm(args({ readHelp: async () => ({ topic: null }), text: "help" }))).toEqual({ ignored: "club-setting-up" });
     const where = dbMock.membership.findMany.mock.calls[0][0].where;
     expect(where).toMatchObject({ userId: "u-hana", leftAt: null, role: { in: ["OWNER", "ADMIN"] } });
     expect(where.org).toEqual({ approvalStatus: "approved", setupStage: "setting-up" });
@@ -504,7 +503,7 @@ describe("handleSettingUpDm: the sender the setting-up rail stopped", () => {
   it("the cap covers help too: over it, no help is built or queued", async () => {
     dbMock.membership.findMany.mockResolvedValue([runs("o1", "Harbour FC")]);
     repliesSoFar(15, 0);
-    expect(await handleSettingUpDm(args({ isHelpRequest: true, text: "help" }))).toEqual({ ignored: "setup-reply-capped" });
+    expect(await handleSettingUpDm(args({ readHelp: async () => ({ topic: null }), text: "help" }))).toEqual({ ignored: "setup-reply-capped" });
     expect(handleDmHelp).not.toHaveBeenCalled();
     expect(queuePlatformDm).not.toHaveBeenCalled();
   });
@@ -524,14 +523,25 @@ describe("handleSettingUpDm: the sender the setting-up rail stopped", () => {
   it("a help request is answered with the help, delivered on the platform channel, not with 'not recognised'", async () => {
     dbMock.membership.findMany.mockResolvedValue([runs("o1", "Harbour FC")]);
     handleDmHelp.mockResolvedValue({ handled: "dm-help", topic: null, orgId: "o1", audience: "admin" });
-    expect(await handleSettingUpDm(args({ isHelpRequest: true, text: "help" }))).toEqual({
+    expect(await handleSettingUpDm(args({ readHelp: async () => ({ topic: null }), text: "help" }))).toEqual({
       handled: "dm-help",
       topic: null,
       orgId: "o1",
       audience: "admin",
     });
-    expect(handleDmHelp).toHaveBeenCalledWith({ userId: "u-hana", text: "help", envelopePhone: "447700900971", deliver: "platform" });
+    expect(handleDmHelp).toHaveBeenCalledWith({ userId: "u-hana", req: { topic: null }, envelopePhone: "447700900971", deliver: "platform" });
     expect(queuePlatformDm).not.toHaveBeenCalled();
+  });
+
+  it("the help read (the shared question extractor) is asked only for an owner or admin, and 'not help' is 'not recognised' (2026-10-28)", async () => {
+    const readHelp = vi.fn(async () => null);
+    dbMock.membership.findMany.mockResolvedValue([]);
+    await handleSettingUpDm(args({ readHelp }));
+    expect(readHelp).not.toHaveBeenCalled();
+    dbMock.membership.findMany.mockResolvedValue([runs("o1", "Harbour FC")]);
+    expect(await handleSettingUpDm(args({ readHelp, waMessageId: "wa-3" }))).toEqual({ handled: "setup-not-recognised", orgIds: ["o1"] });
+    expect(readHelp).toHaveBeenCalledTimes(1);
+    expect(handleDmHelp).not.toHaveBeenCalled();
   });
 
   it("review fix 5: the claim is released when the reply cannot be queued, so the Pi's retry is answered", async () => {
@@ -546,7 +556,7 @@ describe("handleSettingUpDm: the sender the setting-up rail stopped", () => {
   it("review fix 5: so is it when the help throws", async () => {
     dbMock.membership.findMany.mockResolvedValue([runs("o1", "Harbour FC")]);
     handleDmHelp.mockRejectedValue(new Error("database down"));
-    await expect(handleSettingUpDm(args({ isHelpRequest: true, text: "help" }))).rejects.toThrow("database down");
+    await expect(handleSettingUpDm(args({ readHelp: async () => ({ topic: null }), text: "help" }))).rejects.toThrow("database down");
     expect(dbMock.sentNotification.deleteMany).toHaveBeenCalledWith({ where: { key: "setup-dm-msg:wa-2" } });
   });
 

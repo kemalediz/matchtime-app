@@ -1,6 +1,8 @@
 /**
- * Help, in the group and by DM, END TO END (2026-09-30). No model: every
- * reply here is deterministic, and no pipeline stub is set.
+ * Help, in the group and by DM, END TO END (2026-09-30). Since 2026-10-28
+ * the topic is read by the shared question extractor in both places
+ * (`how_it_works`), so the router and the extractor are STUBBED here ($0):
+ * what the model would say. Every reply after that is the shipped code.
  *
  * Kemal, after the first real self-setup ("MT Test"): payments are off by
  * default, "@Match Time help payments" declined, and DMing "help payments"
@@ -14,12 +16,29 @@
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { U, ORG_ID, PHONE, NAME } from "../helpers/constants";
 import { E2E, E2E_BASE_URL } from "../helpers/env";
+import { clearPipelineStubs, helpOn } from "../helpers/stub";
 import type { APIRequestContext } from "@playwright/test";
 import type { TestDb } from "../helpers/test-db";
 
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
+  resetDb();
+  // What the model reads from each message (the extractor's topic).
+  helpOn({
+    "@Match Time help payments": { feature: "payments" },
+    "help payments": { feature: "payments" },
+    "yardım ödeme": { feature: "payments" },
+    "help schedule": { feature: "schedule" },
+    "@Match Time help badges Mr Reliable": { feature: "badges", badge: "reliable" },
+    "@Match Time help badges": { feature: "badges" },
+    "help badges iron man": { feature: "badges", badge: "ironman" },
+    "help badges golden boot": { feature: "badges" },
+  });
+});
+
+test.afterAll(() => {
+  clearPipelineStubs();
   resetDb();
 });
 
@@ -68,10 +87,10 @@ test("group: '@Match Time help payments' with payments OFF explains it and how t
   const r = (res.results as Array<{ waMessageId: string; reply?: string; handledBy?: string }>).find(
     (x) => x.waMessageId === id,
   )!;
-  expect(r.handledBy).toBe("fast-path");
+  expect(r.handledBy).toBe("llm");
   expect(r.reply).toMatch(/isn't switched on for this group yet/);
   expect(r.reply).toMatch(/link to pay their share, by card or bank/);
-  expect(r.reply).toContain(`${E2E_BASE_URL}/admin/settings`);
+  expect(r.reply).toContain(`${E2E_BASE_URL}/admin/settings#payments`);
   expect(r.reply).toMatch(/\*Collect match fees\*/);
   expect(r.reply).toMatch(/DM me \*help payments\*/);
   expect(r.reply).not.toContain("/r/");
@@ -88,11 +107,11 @@ test("DM 'help payments' from the ADMIN: the steps with a signed-in link to Sett
   const dm = await lastDmTo(db, PHONE.admin);
   expect(dm?.orgId).toBe(ORG_ID);
   expect(dm?.text).toMatch(/link to pay their share/);
-  expect(dm?.text).toMatch(/open \*Settings\* on your admin page/);
+  expect(dm?.text).toMatch(/turn on \*Collect match fees\*, pick the money collector/);
   const link = dm!.text.match(/https?:\/\/\S+\/r\/\S+/)?.[0];
   expect(link, dm?.text).toBeTruthy();
   const p = await payloadOf(db, link!);
-  expect(p).toMatchObject({ userId: U.admin, purpose: "sign-in", nextPath: "/admin/settings", orgId: ORG_ID });
+  expect(p).toMatchObject({ userId: U.admin, purpose: "sign-in", nextPath: "/admin/settings#payments", orgId: ORG_ID });
 });
 
 test("DM 'help payments' from a PLAYER: the player text, no link", async ({ request, db }) => {
@@ -138,12 +157,12 @@ test("group: '@Match Time help badges Mr Reliable' gives that badge's rules; bar
   ]);
   const results = res.results as Array<{ waMessageId: string; reply?: string; handledBy?: string }>;
   const one = results.find((x) => x.waMessageId === id)!;
-  expect(one.handledBy).toBe("fast-path");
+  expect(one.handledBy).toBe("llm");
   expect(one.reply?.startsWith("🧱 *Mr Reliable*")).toBe(true);
   expect(one.reply).toContain("1. Rated in at least 4 games.");
   expect(one.reply).toContain("the spread (standard deviation) is under 1 point");
   const all = results.find((x) => x.waMessageId === id2)!;
-  expect(all.handledBy).toBe("fast-path");
+  expect(all.handledBy).toBe("llm");
   for (const name of ["On the board", "Regular", "Iron Man", "Man of the Match", "MoM Machine", "Masterclass", "Mr Reliable", "Above the Curve"]) {
     expect(all.reply).toContain(`*${name}*: `);
   }
@@ -151,7 +170,7 @@ test("group: '@Match Time help badges Mr Reliable' gives that badge's rules; bar
   expect(all.reply).not.toMatch(/[—–]/);
 });
 
-test("DM 'help badges iron man' answers with that badge; an unknown name gets the list", async ({ request, db }) => {
+test("DM 'help badges iron man' answers with that badge; a name the extractor does not know gets the list", async ({ request, db }) => {
   const json = await postDm(request, PHONE.rater, "help badges iron man");
   expect(json).toMatchObject({ handled: "dm-help", topic: "badges", audience: "player" });
   const text = (await lastDmTo(db, PHONE.rater))!.text;
@@ -159,6 +178,6 @@ test("DM 'help badges iron man' answers with that badge; an unknown name gets th
   expect(text).toContain("At least 3 matches");
   await postDm(request, PHONE.rater, "help badges golden boot");
   const unknown = (await lastDmTo(db, PHONE.rater))!.text;
-  expect(unknown).toContain(`I don't know a badge called "golden boot"`);
   expect(unknown).toContain("*help badges Mr Reliable*");
+  for (const name of ["On the board", "Iron Man", "Above the Curve"]) expect(unknown).toContain(`*${name}*: `);
 });

@@ -30,12 +30,22 @@
  *   "Bilal is free this week"    router admin_ops, the admin extractor's
  *                                fee_waiver, then fee-waiver.ts
  *                                answerFeeFreeInHq (a club taking fees)
+ *   "ask the player pool for 2"  router ask_group, the admin extractor's
+ *                                `playersFrom` "pool", then
+ *                                admin-group-pool.ts (decision log L10.1).
+ *                                Listed only while the pool is open for the
+ *                                club (2026-10-28, Kemal; the log's L3.6
+ *                                "no help-menu line" is superseded, row H.1)
+ *   how any part works           router help or question, the question
+ *                                extractor's how_it_works with its topic,
+ *                                then buildHelpReply for the organisers
  *
  * Which lines a club gets follows the same gates admin-group.ts applies:
  * the squad and team lines for a live weekly club, the graphics for a live
  * club, the pick line for organiser pick, PAID for a monthly club.
  */
 import { t } from "./i18n/t";
+import { poolOffersOpenForClub } from "./pool/flags";
 import { organisersAnnounce } from "./list-announcer";
 import { effectiveTeamsReadyTime } from "./team-proposal-rules";
 
@@ -52,8 +62,10 @@ export function buildHqHelp(p: {
   paid: boolean;
   /** A club that takes match fees: giving a free place (fee-waiver.ts). */
   free?: boolean;
+  /** A weekly club the player pool is open for: asking it in words. */
+  pool?: boolean;
 }): string {
-  return t(p.lang).hq_help({ squad: p.squad, graphics: p.graphics, picks: p.picks, paid: p.paid, free: p.free === true });
+  return t(p.lang).hq_help({ squad: p.squad, graphics: p.graphics, picks: p.picks, paid: p.paid, free: p.free === true, pool: p.pool === true });
 }
 
 /**
@@ -63,17 +75,24 @@ export function buildHqHelp(p: {
  * commands for a weekly club, the graphics for any club, the pick line for
  * organiser pick, PAID for a monthly club.
  */
-export function hqHelpGates(org: {
-  squadMode?: string | null;
-  benchPickMode?: string | null;
-  paymentCollectionEnabled?: boolean | null;
-  paymentTrackingEnabled?: boolean | null;
-}): {
+export function hqHelpGates(
+  org: {
+    squadMode?: string | null;
+    benchPickMode?: string | null;
+    paymentCollectionEnabled?: boolean | null;
+    paymentTrackingEnabled?: boolean | null;
+    featurePlayerPool?: boolean | null;
+  },
+  /** The pool switch as the request resolved it (`pool/switch-env.ts`).
+   *  Absent (the introduction): the pool line is left out. */
+  poolEnv?: Record<string, string | undefined>,
+): {
   squad: boolean;
   graphics: boolean;
   picks: boolean;
   paid: boolean;
   free: boolean;
+  pool: boolean;
 } {
   const monthly = org.squadMode === "monthly";
   return {
@@ -83,6 +102,9 @@ export function hqHelpGates(org: {
     paid: monthly,
     // Free places (2026-10-16): only where the club takes match fees.
     free: org.paymentCollectionEnabled === true || org.paymentTrackingEnabled === true,
+    // The pool (2026-10-28): asked in words from HQ by a weekly club only
+    // (admin-group-pool.ts), and only while it is open for the club.
+    pool: !monthly && !!poolEnv && poolOffersOpenForClub({ featurePlayerPool: org.featurePlayerPool === true }, poolEnv),
   };
 }
 

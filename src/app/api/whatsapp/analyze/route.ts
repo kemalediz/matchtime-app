@@ -300,9 +300,6 @@ const AI_CAP_HANDLED_BY = "ai-daily-cap";
 //     FeatureKey, normaliseName     used only by `executeVerdict`.
 import {
   handleOnboardingTurn,
-  buildHelpReply,
-  helpFeaturesFrom,
-  readHelpRequest,
   legacySetupLang,
 } from "@/lib/onboarding-conversation";
 import {
@@ -1218,56 +1215,16 @@ async function handleAnalyzeRequest(request: Request) {
   //   ask now gets the same silence every other unowned message gets,
   //   plus one line on the operator note.
 
-  // ── Fast-path: "@Match Time help [topic]" → usage / topic explainer ─
-  //   Tag-gated (honours the interaction contract — only when the bot is
-  //   addressed). Feature-aware via the org's live flags. Deterministic;
-  //   peeled off the LLM batch so the model never sees it. An OPTIONAL
-  //   trailing topic word ("help teams", "help ratings", …) routes into
-  //   buildHelpReply for a detailed explainer; bare "help" prints the
-  //   topic menu + the how-to block. The regex still REQUIRES the help
-  //   keyword and stays single-token-anchored (no mid-sentence "help"
-  //   triggers), allowing only an optional topic token after it.
-  //
-  //   ── NOT CLAUSE-PEELED, AND THAT IS ARGUED, NOT DEFERRED ──────────
-  //   `HELP_RE` is anchored `^…$` over the WHOLE body and allows only a
-  //   single optional topic token after the keyword. A message it
-  //   matches is STRUCTURALLY incapable of carrying a second clause:
-  //   there is no compound "@Match Time help, and I'm out" that this
-  //   regex accepts, because the comma alone fails the anchor. So this
-  //   peel legitimately owns the whole message and `peelClause` would
-  //   return `{consumed: body, residual: ""}` on every input it sees —
-  //   the same behaviour with an extra call. The one below it, the
-  //   bench-prompt answer, is left terminal for the same kind of reason
-  //   (a whole-message allowlist); see its own header.
-  //   "yardım" (2026-09-17): the same keyword in Turkish, with the same
-  //   shape. `\b` is ASCII-only so the topic tail allows any letter. The
-  //   body is tested under BOTH lower-casings: the Turkish one turns
-  //   "TIME" into "tıme" (dotless), so an all-caps English "@MATCH TIME
-  //   HELP" only matches under the plain one, and "YARDIM" only under the
-  //   Turkish one.
-  //   The pattern itself lives in onboarding-conversation.ts
-  //   (`HELP_REQUEST_RE`, 2026-09-30) so the DM route reads help the
-  //   same way; byte for byte the regex that stood here.
-  for (const m of fresh) {
-    if (fastPathHandledIds.has(m.waMessageId)) continue;
-    const helpReq = readHelpRequest(m.body, { dm: false });
-    if (!helpReq) continue;
-    if (!messageTagsBot(m)) continue;
-    fastPathHandledIds.add(m.waMessageId); // peel off the LLM batch
-    const feats = await getOrgFeatures(org.id);
-    const topic = helpReq.topic;
-    // The group reply is public: plain URLs, never a signed-in link. The
-    // DM route calls the same builder (lib/dm-help.ts).
-    const reply = buildHelpReply(topic, helpFeaturesFrom(feats), feats.language, { audience: "group", badgeQuery: helpReq.badgeQuery });
-    const sender = senderById.get(m.waMessageId)!;
-    await recordAnalysis({
-      orgId: org.id, groupId: body.groupId, msg: m,
-      handledBy: "fast-path", intent: "help", action: "help",
-      confidence: 1, reasoning: "usage help requested",
-      authorUserId: sender.userId, authorName: m.authorName ?? null,
-    });
-    results.push({ waMessageId: m.waMessageId, handledBy: "fast-path", intent: "help", react: "👋", reply });
-  }
+  // ── "@Match Time help [topic]": NO FAST PATH (2026-10-28) ────────────
+  //   Help used to be peeled off here by a regex (`readHelpRequest`) before
+  //   the model saw it, with the topic read from a list of keywords. It is
+  //   now read like every other question: the router sends it to
+  //   `question`, the question extractor's `how_it_works` names the topic
+  //   ("how do I turn on the player pool?" has no keyword), and
+  //   answer-batch.ts attaches `buildHelpReply`'s words for this club. One
+  //   path for the players' group, the admin group and DMs (Kemal's rules:
+  //   no string parsing, one architecture for every group). Still tagged:
+  //   the `question` route needs a tag, as the fast path did.
 
   // Pre-load the ACTIVE registration match. Every attendance WRITE in
   // this request lands on it, every reply is proximity-checked against
@@ -2607,6 +2564,9 @@ async function handleAnalyzeRequest(request: Request) {
           deps: {},
           clarifications: statsClarifications,
           ...(alsoAsksIds.size > 0 ? { alsoAsks: alsoAsksIds } : {}),
+          // The help's pool answer reads the switch as this request does,
+          // only when a help question is answered.
+          poolEnv: () => poolEnvForApiRequest(request),
         })
       : null;
 

@@ -175,6 +175,8 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
       paymentHolderId: true,
       // Who chooses Man of the Match (mom-chooser.ts): asked with the score.
       momChosenBy: true,
+      // The HQ help's pool line (admin-group-help.ts `hqHelpGates`).
+      featurePlayerPool: true,
     },
   });
   if (!org) return { handled: false, ignored: "not-an-admin-group", replyText: null };

@@ -32,6 +32,7 @@ describe("buildHqHelp, English", () => {
         `🖼️ *"send the poster"*, *"team sheet please"*: the list or the teams as a graphic, ready to forward.`,
         `🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`,
         ``,
+        `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *how do partner clubs work?* or *where are the settings?*`,
         `Ask *what can you do?* here any time to see this again.`,
       ].join("\n"),
     );
@@ -70,9 +71,23 @@ describe("buildHqHelp, Turkish", () => {
         `🙋 Kimin oynayacağını seçmenizi istediğimde listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın.`,
         `💷 *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`,
         ``,
+        `ℹ️ Herhangi bir bölümün nasıl çalıştığını, nasıl açılıp kapatıldığını kendi cümlelerinizle sorun: örneğin *partner kulüpler nasıl çalışır?* ya da *ayarlar nerede?*`,
         `Bunu tekrar görmek için burada istediğiniz zaman *neler yapabilirsin?* diye sorun.`,
       ].join("\n"),
     );
+  });
+});
+
+describe("the player pool line (2026-10-28, decision log H.1)", () => {
+  it("listed only when the pool is open for a weekly club; EN and TR, no dash", () => {
+    const en = buildHqHelp({ lang: "en", squad: true, graphics: true, picks: false, paid: false, pool: true });
+    expect(en).toContain(`🌍 *"ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
+    const tr = buildHqHelp({ lang: "tr", squad: true, graphics: true, picks: false, paid: false, pool: true });
+    expect(tr).toContain(`🌍 *"havuzdan 2 oyuncu iste"*: boş yer varsa MatchTime oyuncu havuzundaki yakın oyunculara sorarım.`);
+    for (const out of [en, tr]) expect(out).not.toMatch(/[—–]/);
+    expect(buildHqHelp({ lang: "en", squad: true, graphics: true, picks: false, paid: false })).not.toContain("player pool");
+    // A monthly club has no weekly ask, so no line even when asked for.
+    expect(buildHqHelp({ lang: "en", squad: false, graphics: true, picks: false, paid: true, pool: true })).not.toContain("player pool");
   });
 });
 

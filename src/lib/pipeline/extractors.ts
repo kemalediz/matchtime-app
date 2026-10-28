@@ -37,7 +37,7 @@ import {
 } from "./llm";
 import { isAiBudgetExceeded } from "../ai-budget-context";
 import { parsePeriodFields } from "./stats-period";
-import { HELP_FEATURES } from "./types";
+import { HELP_BADGES, HELP_FEATURES } from "./types";
 import type {
   AdminFacts,
   AttendanceFacts,
@@ -174,6 +174,18 @@ export function extractorFor(route: Route): ExtractorKind {
 }
 
 // ── Prompts ────────────────────────────────────────────────────────────
+//
+// QUESTION, 2026-10-28: HELP IS READ HERE, IN EVERY PLACE. The regex help
+// reader (`readHelpRequest`, "help" plus a known topic word) is deleted, so
+// this prompt is how "@Match Time help", "how do I turn on the player
+// pool?" and "havuz nasıl açılır" reach the help, in the players' group,
+// HQ and DMs. The how-it-works part was rewritten as one section, not
+// appended to: `how_it_works` now names help itself (what it can do, a
+// bare "help", whether a part is on and how to switch it, where a setting
+// is, what a badge means), `feature` gains schedule, badges, partners,
+// pool and settings, a new `badge` field names one badge, and the examples
+// are one "Help with MatchTime" group. 11,122 to 13,106 characters. Live
+// results in the PR (scripts/live-check-question-extractor.ts).
 
 export const EXTRACTOR_PROMPTS: Record<Exclude<ExtractorKind, "none">, string> = {
   attendance: `You read ONE message from a football club's WhatsApp group and report what it says about who is playing in the club's match. You report facts about the words. You never decide what happens next: code does that, from the club's records.
@@ -301,7 +313,7 @@ What the asker wants back. Exactly one. A message that asks two things gets the 
   my_stats         the asker's OWN stats, ratings, form or season summary, asked to see (they are sent privately)
   stats            numbers about players across matches (ratings, appearances, Man of the Match, Elo and the rest): a table, a ranking, another player's numbers, or the asker's own pairings
   options          what to do about being short of players: a smaller format, alternatives
-  how_it_works     how MatchTime itself works here: what the bench is or whether there is one, signing in and out, HOW the teams are picked or balanced, HOW to pay
+  how_it_works     help with MatchTime itself: what it can do, a bare "help", how one part of it works, whether a part is on here and how to switch it on or off, where a setting is, what a badge means. Asks HOW something works, never for today's names or numbers.
   club             how the club itself is run: who the admins or organisers are, who collects the money, what the fee is, WHEN (what time or day) the teams are made or come out
   other            anything else
 
@@ -312,14 +324,22 @@ statedCount
 A number the message ASSERTS about the squad, for checking: "we're 9/14 right?" is 9. -1 otherwise.
 
 feature
-For how_it_works only, the part of MatchTime it asks about:
+For how_it_works only, the part of MatchTime it asks about. Every other topic is none.
   availability     signing in and out, the squad list, the bench, saying maybe
   teams            how the two teams are made
   mom              Man of the Match
   ratings          player ratings
   reminders        reminders
-  payments         the match fee and paying it
-  none             MatchTime as a whole or none of these, and every other topic
+  payments         the match fee: how to pay it, how it is collected, switching fee collection on
+  schedule         changing the schedule: match days, kick-off times, block bookings, cancelling a week, a match's format
+  badges           the badges on the stats page and how to earn them
+  partners         partner clubs, which lend each other players when one is short
+  pool             the MatchTime player pool: players nearby who are asked when the club is short, and playing for other clubs too
+  settings         the settings page itself: where a setting is, or the settings in general
+  none             MatchTime as a whole ("help", "what can you do?"), or a part not listed
+
+badge
+For feature badges only, the one badge the message names: first-game (On the board), ten-games (Regular), ironman (Iron Man), first-mom (Man of the Match), mom-machine (MoM Machine), masterclass (Masterclass), reliable (Mr Reliable), above-field (Above the Curve). none when it names no badge.
 
 The remaining fields describe a LIST. table and listEnd belong to stats only; listSize and period belong to stats and score. Every other topic leaves them empty: table "none", listSize -1, listEnd "top", period "none", periodCount -1, periodUnit "none".
 
@@ -367,10 +387,21 @@ The upcoming match:
   "@Match Time where are we playing?" | "@Match Time maç nerede?" -> fixture
   "@Match Time we're short, what are our options?" | "@Match Time eksiğiz, ne yapabiliriz?" -> options
 
-How MatchTime works and how the club is run:
-  "Bench? We do bench now?" | "yedek ne demek?" -> how_it_works, feature availability
-  "@Match Time how are the teams picked?" | "@Match Time takımları nasıl kuruyorsun?" -> how_it_works, feature teams
+Help with MatchTime:
+  "@Match Time help" | "@Match Time yardım" -> how_it_works
   "@Match Time what can you do?" | "@Match Time neler yapabiliyorsun?" -> how_it_works
+  "Bench? We do bench now?" | "yedek ne demek?" -> how_it_works, feature availability
+  "@Match Time how are the teams picked?" | "@Match Time yardım takımlar" -> how_it_works, feature teams
+  "@Match Time how do we pay?" | "@Match Time ödemeyi nasıl yapıyoruz?" -> how_it_works, feature payments
+  "@Match Time how do I turn off Man of the Match?" | "@Match Time maçın adamı oylamasını nasıl kapatırım?" -> how_it_works, feature mom
+  "@Match Time how do I move the kick-off time?" | "@Match Time maç saatini nasıl değiştiririm?" -> how_it_works, feature schedule
+  "@Match Time how do I turn on the player pool?" | "@Match Time havuz nasıl açılır?" -> how_it_works, feature pool
+  "@Match Time how do partner clubs work?" | "@Match Time partner kulüp nedir?" -> how_it_works, feature partners
+  "@Match Time where are the settings?" | "@Match Time ayarlar nerede?" -> how_it_works, feature settings
+  "@Match Time help badges" | "@Match Time rozetler nasıl kazanılır?" -> how_it_works, feature badges
+  "@Match Time how do I get Mr Reliable?" | "@Match Time yardım rozet demir adam" -> how_it_works, feature badges, badge reliable | ironman
+
+How the club is run:
   "@Match Time who runs this group?" | "@Match Time grubun yöneticisi kim?" -> club
   "@Match Time who do we pay?" | "@Match Time ücreti kime ödüyoruz?" -> club
   "@Match Time how much do we pay each?" | "@Match Time kişi başı ne kadar?" -> club
@@ -681,8 +712,10 @@ const QUESTION_SCHEMA = {
     periodUnit: { type: "string", enum: ["none", "day", "week", "month", "year"] },
     // 2026-10-16: for `how_it_works` only, the help topic it asks about.
     feature: { type: "string", enum: [...HELP_FEATURES, "none"] },
+    // 2026-10-28: for `feature: "badges"` only, the one badge it names.
+    badge: { type: "string", enum: [...HELP_BADGES, "none"] },
   },
-  required: ["topic", "personRef", "statedCount", "table", "listSize", "listEnd", "period", "periodCount", "periodUnit", "feature"],
+  required: ["topic", "personRef", "statedCount", "table", "listSize", "listEnd", "period", "periodCount", "periodUnit", "feature", "badge"],
   additionalProperties: false,
 } as const;
 
@@ -1012,6 +1045,12 @@ export function parseFacts(
         const feature = HELP_FEATURES.find((f) => f === featureRaw) ?? null;
         if (!feature && featureRaw && featureRaw !== "none") bad(`unknown feature "${str(raw.feature)}"; answered with the help menu`);
         facts.feature = feature;
+        if (feature === "badges") {
+          const badgeRaw = str(raw.badge).toLowerCase();
+          const badge = HELP_BADGES.find((b) => b === badgeRaw) ?? null;
+          if (!badge && badgeRaw && badgeRaw !== "none") bad(`unknown badge "${str(raw.badge)}"; answered with every badge`);
+          facts.badge = badge;
+        }
       }
       return { facts, degradations };
     }

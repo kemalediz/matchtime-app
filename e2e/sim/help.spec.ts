@@ -1,5 +1,5 @@
 /**
- * Group-simulator scenario — the "@Match Time help [topic]" fast-path.
+ * Group-simulator scenario: "@Match Time help [topic]".
  *
  * Exercises the real analyze pipeline against a CONFIGURED org whose
  * payment tracking is OFF (everything else on), proving:
@@ -9,13 +9,19 @@
  *   - tagged bare "@Match Time help" → the topic menu (omits payments)
  *   - UNtagged "help" → ignored (interaction contract; no help reply)
  *
- * Deterministic: help is a regex fast-path peeled off before the LLM, so
- * no stub verdict is needed.
+ * Since 2026-10-28 help is read like any other question: the router sends
+ * it to `question` and the question extractor names the topic. Both are
+ * stubbed here with what the model would say ($0); everything after is
+ * the shipped code. The regex fast path is gone.
  */
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { createGroup, SimGroup } from "./group";
+import { helpFacts } from "../helpers/stub";
+
+/** What the router and the question extractor say for a help question. */
+const asHelp = (feature?: string) => ({ route: "question", facts: helpFacts(feature) });
 
 test.describe.configure({ mode: "serial" });
 
@@ -42,7 +48,7 @@ const group = async (request: APIRequestContext, db: TestDb) =>
 
 test('tagged "help ratings" → the ratings explainer', async ({ request, db }) => {
   const sim = await group(request, db);
-  const r = await sim.post("pete", "@Match Time help ratings", { tag: true });
+  const r = await sim.post("pete", "@Match Time help ratings", { tag: true, ...asHelp("ratings") });
   expect(r.intent).toBe("help");
   expect(r.reply).toMatch(/rate the other players out of 10/i);
 });
@@ -52,7 +58,7 @@ test('tagged "help payments" (payments OFF) → how fee collection works and how
   db,
 }) => {
   const sim = await group(request, db);
-  const r = await sim.post("pete", "@Match Time help payments", { tag: true });
+  const r = await sim.post("pete", "@Match Time help payments", { tag: true, ...asHelp("payments") });
   expect(r.intent).toBe("help");
   // It used to decline; an organiser learned nothing about a feature
   // that is off by default. Now it explains and says how to turn it on.
@@ -67,7 +73,7 @@ test('tagged bare "help" → topic menu, omits the disabled payments topic', asy
   db,
 }) => {
   const sim = await group(request, db);
-  const r = await sim.post("pete", "@Match Time help", { tag: true });
+  const r = await sim.post("pete", "@Match Time help", { tag: true, ...asHelp() });
   expect(r.intent).toBe("help");
   expect(r.reply).toMatch(/MatchTime help/);
   expect(r.reply).toMatch(/help ratings/); // an enabled topic
@@ -81,9 +87,9 @@ test('UNtagged "help" → ignored (no help reply produced)', async ({
   db,
 }) => {
   const sim = await group(request, db);
-  const r = await sim.post("pete", "help", { tag: false });
-  // The interaction contract drops untagged commands: no help fast-path,
-  // so this never becomes a "help" result.
+  const r = await sim.post("pete", "help", { tag: false, ...asHelp() });
+  // The interaction contract drops untagged commands: the `question` route
+  // needs a tag, so even read as help it never becomes a "help" result.
   expect(r.intent).not.toBe("help");
   expect(r.reply ?? "").not.toMatch(/MatchTime help/);
 });
