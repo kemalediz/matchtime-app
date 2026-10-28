@@ -54,7 +54,7 @@ const WENT_LIVE = {
   freePeriodStarted: false,
   freePeriodNote: null as string | null,
 };
-const NOTE = "Your first two months are free.\n\n💷 *Club fee tip:* after that MatchTime only charges for the games you play.";
+const NOTE = "Your first three months are free.\n\n💷 *Club fee tip:* after that MatchTime only charges for the games you play.";
 
 beforeEach(() => {
   vi.clearAllMocks();

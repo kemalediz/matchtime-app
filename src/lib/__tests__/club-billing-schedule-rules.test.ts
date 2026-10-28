@@ -23,8 +23,13 @@ const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
 const london = (d: Date) => formatLondon(d, "yyyy-MM-dd HH:mm");
 
+// The schedule is worked from the STORED end, whatever length made it. These
+// cases are pinned on a two month free period (the length from 2026-10-12 to
+// 2026-10-28) so their worked dates stay readable; the current length has
+// its own cases in club-billing-free-period.test.ts.
+const TWO_MONTHS = 2;
 function trialClub(approvedAt: Date, over: Partial<ScheduleClub> = {}): ScheduleClub {
-  return { status: "trial", trialEndsAt: trialWindow(approvedAt).trialEndsAt, graceEndsAt: null, pausedAt: null, pausedReason: null, ...over };
+  return { status: "trial", trialEndsAt: freePeriodEnd(approvedAt, TWO_MONTHS), graceEndsAt: null, pausedAt: null, pausedReason: null, ...over };
 }
 
 describe("quiet hours: billing DMs only 09:00 to 23:00 London", () => {
@@ -90,7 +95,7 @@ describe("day boundaries: the reminders fall at 09:00 London on the right calend
   }
 
   it("the worked example: approved Mon 31 Aug 10:00 London, first reminder Thu 22 Oct 09:00 BST, second Thu 29 Oct 09:00 GMT, ends Sat 31 Oct 10:00", () => {
-    const { trialEndsAt } = trialWindow(new Date("2026-08-31T09:00:00Z"));
+    const trialEndsAt = freePeriodEnd(new Date("2026-08-31T09:00:00Z"), TWO_MONTHS);
     expect(london(trialEndsAt)).toBe("2026-10-31 10:00");
     expect(reminderAt(trialEndsAt, 9).toISOString()).toBe("2026-10-22T08:00:00.000Z");
     expect(reminderAt(trialEndsAt, 2).toISOString()).toBe("2026-10-29T09:00:00.000Z");

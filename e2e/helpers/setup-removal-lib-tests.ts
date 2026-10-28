@@ -210,7 +210,7 @@ async function main() {
       assert.equal(live.outcome, "went-live");
       if (live.outcome !== "went-live") throw new Error("unreachable");
       assert.equal(live.freePeriodStarted, true);
-      assert.match(live.freePeriodNote ?? "", /^Your first two months are free\.\n\n💷 \*Club fee tip:\* /);
+      assert.match(live.freePeriodNote ?? "", /^Your first three months are free\.\n\n💷 \*Club fee tip:\* /);
       const billing = await db.clubBilling.findUnique({ where: { orgId: c.orgId }, select: { trialStartedAt: true } });
       assert.equal(billing?.trialStartedAt.getTime(), goAt.getTime());
       assert.equal((await row(c)).billingStatus, "trial");

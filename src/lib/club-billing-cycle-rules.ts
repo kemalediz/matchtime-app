@@ -215,7 +215,7 @@ export function notChargedSpansFrom(events: Array<{ type: string; at: Date }>): 
  *   - never held (every club that exists before the hold): no span.
  *
  * Belt and braces. The first billing month starts where the free period
- * ends, two months AFTER go-live, so no month reaches back that far in the
+ * ends, FREE_PERIOD_MONTHS AFTER go-live, so no month reaches back that far in the
  * first place; this holds even if a billing month ever did.
  */
 export function beforeGoLiveSpan(org: SetupStageColumns & { liveAt?: Date | null | undefined }): PauseSpan | null {

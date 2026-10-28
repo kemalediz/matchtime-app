@@ -17,7 +17,7 @@
  *   1. The free month ends: the cron opens month 1 (at night too).
  *   2. Every run during the month and the night after it: nothing closes.
  *   3. 09:00 London on 1 Jan: the month closes, 4 of 5 counted, ONE fake
- *      invoice of 799p (the card needs a bank check, so it stays open).
+ *      invoice of 399p (the card needs a bank check, so it stays open).
  *   4. Stripe's invoice.paid (signed fixture): the month is paid and the
  *      collector gets ONE receipt; re-deliveries and later runs add nothing.
  *   5. January has no games: nothing charged, ONE "nothing to pay" DM;
@@ -142,15 +142,15 @@ test("2. during the month and the night after it ends: nothing closes, nothing i
   expect(clubInvoices()).toEqual([]);
 });
 
-test("3. 09:00 London on 1 Jan: the month closes ONCE (two runs at once), 4 of 5 played, one invoice of 799p", async ({ request }) => {
+test("3. 09:00 London on 1 Jan: the month closes ONCE (two runs at once), 4 of 5 played, one invoice of 399p", async ({ request }) => {
   const [a, b] = await Promise.all([cron(request, "2027-01-01T09:00:00Z"), cron(request, "2027-01-01T09:00:00Z")]);
   expect([a?.closed, b?.closed].filter((c) => c === "1:invoiced")).toHaveLength(1);
   const [m1, m2] = await months();
-  expect(m1).toMatchObject({ index: 1, status: "invoiced", scheduled: 5, played: 4, amountPence: 799 });
+  expect(m1).toMatchObject({ index: 1, status: "invoiced", scheduled: 5, played: 4, amountPence: 399 });
   expect(m2).toMatchObject({ index: 2, status: "open" });
   const invs = clubInvoices();
   expect(invs).toHaveLength(1);
-  expect(invs[0]).toMatchObject({ id: m1.stripeInvoiceId, status: "open", totalPence: 799 });
+  expect(invs[0]).toMatchObject({ id: m1.stripeInvoiceId, status: "open", totalPence: 399 });
   // Nothing taken yet: no receipt.
   expect((await billingDms()).filter((d) => d.refId.includes(":month-charged:"))).toEqual([]);
 });
@@ -174,7 +174,7 @@ test("4. invoice.paid: the month is paid and the collector gets ONE receipt, wha
   expect(receipts).toHaveLength(1);
   expect(receipts[0].phone).toBe(COLIN.phone.replace(/^\+/, ""));
   expect(receipts[0].text).toContain(
-    "Hi Colin Months, Month Rovers played 4 of 5 games between 1 Dec and 31 Dec, so £7.99 was charged to your card ending 4242 (VAT included; a full month is £9.99).",
+    "Hi Colin Months, Month Rovers played 4 of 5 games between 1 Dec and 31 Dec, so £3.99 was charged to your card ending 4242 (VAT included; a full month is £4.99).",
   );
   expect(receipts[0].text).toMatch(/Details: \S+\/r\/[A-Za-z0-9_-]+/);
   expect(receipts[0].text).not.toMatch(DASH);

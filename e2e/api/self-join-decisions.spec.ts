@@ -214,7 +214,7 @@ test("the whole flow: connect DM, add, pending, APPROVE by DM, hello first, orga
   // on real Postgres with its CHECK constraints) and the DM follows the
   // free-month sentence with the club fee tip. With the flag off the DM
   // ends on that sentence (unit-pinned in club-decisions.test.ts).
-  expect(live).toMatch(/Your first two months are free\.\n\n💷 \*Club fee tip:\* after that MatchTime only charges for the games you play, up to £9\.99 a month for the group/);
+  expect(live).toMatch(/Your first three months are free\.\n\n💷 \*Club fee tip:\* after that MatchTime only charges for the games you play, up to £4\.99 a month for the group/);
   expect(live).not.toMatch(/[—–]/);
   expect(await db.one(`SELECT "billingStatus","billingPlan" FROM "Organisation" WHERE id = $1`, [EN_ORG])).toEqual({
     billingStatus: "trial",
@@ -228,12 +228,12 @@ test("the whole flow: connect DM, add, pending, APPROVE by DM, hello first, orga
        FROM "ClubBilling" cb JOIN "Organisation" o ON o.id = cb."orgId" WHERE cb."orgId" = $1`,
     [EN_ORG],
   );
-  // The free period starts at the approval and runs two London calendar months.
+  // The free period starts at the approval and runs three London calendar months.
   expect(trial!.start).toEqual(trial!.approved);
   expect(trial!.ends).toEqual(freePeriodEnd(trial!.approved));
   const freeDays = (trial!.ends.getTime() - trial!.start.getTime()) / (24 * 60 * 60 * 1000);
-  expect(freeDays).toBeGreaterThan(58.9);
-  expect(freeDays).toBeLessThan(62.1);
+  expect(freeDays).toBeGreaterThan(88.9);
+  expect(freeDays).toBeLessThan(92.1);
   // Three distinct links, none of them a bare admin path.
   const urls = live.match(/^http\S+$/gm) ?? [];
   expect(new Set(urls).size).toBe(3);

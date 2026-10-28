@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MessageCircle, Shield, ArrowRight, Check, Sparkles, ShieldCheck } from "lucide-react";
 import { StatsShowcase, WrappedCard } from "./stats-showcase";
 import { firstMonthsFree } from "@/lib/i18n/free-period";
+import { STANDARD_PRICE_LABEL } from "@/lib/club-price-words";
 import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-public-copy";
 import {
   ASK_CHAT,
@@ -404,7 +405,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
             <br /> match-day morning?
           </h2>
           <p className="mt-5 text-lg text-slate-200 leading-relaxed">
-            {firstMonthsFree("en")}, then it&apos;s up to £9.99 a month for
+            {firstMonthsFree("en")}, then it&apos;s up to {STANDARD_PRICE_LABEL}{" "}a month for
             the whole group, and you only pay for the weeks you play. Add it,
             and if you don&apos;t like it, remove it. Card and bank payments
             are there if you want them.

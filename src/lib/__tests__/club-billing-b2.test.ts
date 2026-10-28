@@ -427,8 +427,8 @@ describe("startTrial: Start free month (8.3, decision 2)", () => {
   it("an exempt self-join club with no free month yet starts one from now", async () => {
     setClub({ billingStatus: "exempt", billing: null });
     const r = await startTrial("org1", NOW);
-    // Sat 10 Oct 13:00 London (BST) to Thu 10 Dec 13:00 London (GMT): two calendar months.
-    expect(r).toEqual({ ok: true, trialEndsAt: new Date("2026-12-10T13:00:00Z") });
+    // Sat 10 Oct 13:00 London (BST) to Sun 10 Jan 2027 13:00 London (GMT): three calendar months.
+    expect(r).toEqual({ ok: true, trialEndsAt: new Date("2027-01-10T13:00:00Z") });
     expect(h.state.club?.billingStatus).toBe("trial");
     expect(m.clubBilling.create).toHaveBeenCalledWith({ data: expect.objectContaining({ orgId: "org1", trialStartedAt: NOW }) });
   });
@@ -579,7 +579,7 @@ describe("loadClubFeeTip", () => {
         { dayOfWeek: 2, time: "20:00", feePerPlayer: null, feeSplitTotal: false, sport: { playersPerTeam: 7 }, matches: [{ feePerPlayer: 7 }] },
       ],
     });
-    expect(await loadClubFeeTip("org1")).toMatchObject({ players: 14, sharePence: 20, feePence: 700, feeSource: "latest-match" });
+    expect(await loadClubFeeTip("org1")).toMatchObject({ players: 14, sharePence: 10, feePence: 700, feeSource: "latest-match" });
     const arg = m.organisation.findUnique.mock.calls[0][0];
     expect(arg.select.activities.where).toEqual({ isActive: true });
   });

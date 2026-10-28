@@ -128,7 +128,7 @@ describe("the replies to GO, word for word", () => {
   });
 
   it("went live AND its free period started: 'Done' is followed, in the same message, by the free period and the club fee tip", () => {
-    const note = "Your first two months are free.\n\nAfter that MatchTime costs up to £9.99 a month.";
+    const note = "Your first three months are free.\n\nAfter that MatchTime costs up to £9.99 a month.";
     expect(goReplyText({ ...LIVE, freePeriodStarted: true, freePeriodNote: note })).toBe(`Done: I'm introducing myself in "Harbour Tuesday 6s" now. It can take a few minutes to appear.\n\n${note}`);
     // No free period started (billing off, plan Free, one already running): just "Done".
     expect(goReplyText({ ...LIVE, freePeriodStarted: false, freePeriodNote: null })).toBe(`Done: I'm introducing myself in "Harbour Tuesday 6s" now. It can take a few minutes to appear.`);

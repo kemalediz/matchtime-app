@@ -24,10 +24,10 @@
  * on WOULD-BE months on the day its months would run from: the London day of
  * `trialEndsAt` (or of the free period's end counted from the club's first day,
  * `freePeriodStart`: the day a held club went live, else its approval;
- * `freePeriodEnd`: two calendar months), or the 1st (plain calendar months)
+ * `freePeriodEnd`: FREE_PERIOD_MONTHS calendar months), or the 1st (plain calendar months)
  * for a club that predates self-join, such as Sutton FC, which is exempt and
- * never billed. Prices: the club's plan (Standard GBP 9.99 or its Custom
- * maximum); a Free or exempt club is shown at GBP 9.99, labelled.
+ * never billed. Prices: the club's plan (Standard GBP 4.99 or its Custom
+ * maximum); a Free or exempt club is shown at GBP 4.99, labelled.
  *
  * Pause spans come from the `mt.paused` / `mt.resumed` BillingEvent rows,
  * which exist only from P1 on (no club has ever been paused for billing:

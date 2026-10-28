@@ -128,7 +128,7 @@ test("day 21 at 09:00 London: one DM to the collector (EN) and one to the owner 
   expect(en[0].refId).toBe(`${EN_ORG}:trial-21:2026-10-31T09:00:00.000Z`);
   expect(en[0].sendAfter).toBeNull();
   expect(en[0].text).toContain("Hi Cole Collector, Cron Rovers's free period on MatchTime ends on Sat 31 Oct.");
-  expect(en[0].text).toContain("*25p a player per game*");
+  expect(en[0].text).toContain("*15p a player per game*");
   expect(en[0].text).toMatch(/\/r\/[A-Za-z0-9_-]+/);
   expect(en[0].text).not.toContain("make them the money collector");
 
@@ -199,7 +199,7 @@ function londonAt(at: Date, days: number, time: string): Date {
   return londonDateTimeToUtc(new Date(Date.UTC(y, m - 1, d + days, 12)).toISOString().slice(0, 10), time);
 }
 
-test("a club approved through the real path is free for TWO months: nothing at one month, reminders 9 and 2 days before the end, grace at the end", async ({ request }) => {
+test("a club approved through the real path is free for THREE months: nothing at one or two months, reminders 9 and 2 days before the end, grace at the end", async ({ request }) => {
   const db = testDb();
   // A draft club whose organiser has sent the connect DM (as self-join leaves it).
   await db.run(
@@ -244,8 +244,8 @@ test("a club approved through the real path is free for TWO months: nothing at o
   expect(approve.status(), await approve.text()).toBe(200);
   expect(await approve.json()).toMatchObject({ handled: "approver-dm", result: "approved" });
 
-  // The one writer started the free period at the approval, two London
-  // calendar months long. (AT TIME ZONE 'UTC': the columns hold UTC with no
+  // The one writer started the free period at the approval, three London
+  // calendar months long (three since 2026-10-28). (AT TIME ZONE 'UTC': the columns hold UTC with no
   // zone, and `pg` would otherwise read them as this machine's local time.)
   expect(await status(TWO_ORG)).toBe("trial");
   const row = await db.one<{ approved: Date; starts: Date; ends: Date }>(
@@ -256,13 +256,13 @@ test("a club approved through the real path is free for TWO months: nothing at o
   const { approved, starts, ends } = row!;
   expect(starts).toEqual(approved);
   expect(ends).toEqual(freePeriodEnd(approved));
-  // Not 30 days: two calendar months on, at the same London time of day.
-  expect((ends.getTime() - approved.getTime()) / DAY).toBeGreaterThan(58.9);
-  expect((ends.getTime() - approved.getTime()) / DAY).toBeLessThan(62.1);
+  // Not 30 days: three calendar months on, at the same London time of day.
+  expect((ends.getTime() - approved.getTime()) / DAY).toBeGreaterThan(88.9);
+  expect((ends.getTime() - approved.getTime()) / DAY).toBeLessThan(92.1);
   expect(formatLondon(ends, "HH:mm:ss")).toBe(formatLondon(approved, "HH:mm:ss"));
   const [ay, am] = formatLondon(approved, "yyyy-MM").split("-").map(Number);
   const [ey, em] = formatLondon(ends, "yyyy-MM").split("-").map(Number);
-  expect(ey * 12 + em - (ay * 12 + am)).toBe(2);
+  expect(ey * 12 + em - (ay * 12 + am)).toBe(3);
 
   const ownerDms = () => billingDms(TWO_OWNER.phone);
   const endKey = ends.toISOString();
@@ -271,6 +271,12 @@ test("a club approved through the real path is free for TWO months: nothing at o
   // One month and a day in, at midday (where a 30 day free period would
   // already be over and in its grace week): still free, nothing said.
   await cron(request, londonAt(approved, 31, "12:00").toISOString());
+  expect(await status(TWO_ORG)).toBe("trial");
+  expect(await ownerDms()).toEqual([]);
+
+  // Two months and a day in (where the two month free period, 2026-10-12 to
+  // 2026-10-28, would have ended): still free, nothing said.
+  await cron(request, londonAt(approved, 62, "12:00").toISOString());
   expect(await status(TWO_ORG)).toBe("trial");
   expect(await ownerDms()).toEqual([]);
 
@@ -307,7 +313,7 @@ test("a club approved through the real path is free for TWO months: nothing at o
   expect(await status(TWO_ORG)).toBe("grace");
   const grace = await db.one<{ g: Date }>(`SELECT "graceEndsAt" AT TIME ZONE 'UTC' AS g FROM "ClubBilling" WHERE "orgId" = $1`, [TWO_ORG]);
   expect(grace!.g).toEqual(new Date(ends.getTime() + 7 * DAY));
-  // No billing month before the end: the two months were free.
+  // No billing month before the end: the three months were free.
   expect(
     await db.count(`SELECT COUNT(*) FROM "ClubBillingMonth" WHERE "orgId" = $1 AND "startsAt" < ($2::timestamptz AT TIME ZONE 'UTC')`, [TWO_ORG, endKey]),
   ).toBe(0);

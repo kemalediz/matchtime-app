@@ -5,7 +5,7 @@
  *   2. The group hello is the full feature intro, modelled on onbIntro,
  *      minus the consent question and the setup questions.
  *   3. The "you're live" DM is a short organiser checklist with a link per
- *      item, the help-by-DM line and "Your first two months are free."
+ *      item, the help-by-DM line and "Your first three months are free."
  * Pure strings, EN and TR. No DB, no model.
  */
 import { describe, expect, it } from "vitest";
@@ -101,8 +101,8 @@ describe("sj_group_hello: the full intro for an approved group", () => {
 
 describe("sj_dm_approved: the organiser's checklist", () => {
   for (const [lang, s, free, helpWords] of [
-    ["en", en, "Your first two months are free.", ["*help payments*", "*help badges*"]],
-    ["tr", tr, "İlk iki ayınız ücretsiz.", ["*yardım ödeme*", "*yardım rozetler*"]],
+    ["en", en, "Your first three months are free.", ["*help payments*", "*help badges*"]],
+    ["tr", tr, "İlk üç ayınız ücretsiz.", ["*yardım ödeme*", "*yardım rozetler*"]],
   ] as const) {
     const dm = s.sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", ...LINKS });
 
@@ -144,8 +144,8 @@ describe("sj_dm_approved for a BILLED club (club fee billing, slice B2, plan 7.2
     activities: [{ dayOfWeek: 2, time: "20:00", playersPerTeam: 5, feePerPlayer: null, feeSplitTotal: false, latestMatchFee: null }],
   })!;
   for (const [lang, s, free] of [
-    ["en", en, "Your first two months are free."],
-    ["tr", tr, "İlk iki ayınız ücretsiz."],
+    ["en", en, "Your first three months are free."],
+    ["tr", tr, "İlk üç ayınız ücretsiz."],
   ] as const) {
     const tipText = approvedTipText(lang, tip);
     const dm = s.sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", ...LINKS, tip: tipText });
@@ -158,7 +158,7 @@ describe("sj_dm_approved for a BILLED club (club fee billing, slice B2, plan 7.2
       const after = dm.slice(dm.indexOf(free) + free.length);
       // Slice P3 (games played): the monthly maximum, the per game maximum,
       // the share and the worked example.
-      expect(after.match(/£\d+(?:\.\d\d)?|\d+p/g)).toEqual(["£9.99", "£2.50", "25p", "£8", "£8.25"]);
+      expect(after.match(/£\d+(?:\.\d\d)?|\d+p/g)).toEqual(["£4.99", "£1.25", "15p", "£8", "£8.15"]);
       // Nothing before the free sentence gained an amount.
       expect(dm.slice(0, dm.indexOf(free))).not.toMatch(/£|\d+[.,]\d\d/);
       expect(dm).not.toMatch(/[—–]/);

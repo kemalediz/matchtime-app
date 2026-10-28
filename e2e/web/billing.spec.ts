@@ -103,7 +103,7 @@ test.beforeAll(async () => {
     await db.run(`INSERT INTO "Membership" (id,"userId","orgId",role) VALUES ($1,$2,$3,$4)`, [`${userId}-m`, userId, ORG, role]);
   }
   await db.run(`INSERT INTO "Membership" (id,"userId","orgId",role) VALUES ($1,$2,$3,'OWNER')`, [`${P}-late-m`, USER.outsider, LATE]);
-  // A weekly 7-a-side at GBP 7: the tip is 20p and GBP 7.20 (plan 7.2, 10.2).
+  // A weekly 7-a-side at GBP 7: the tip is 10p and GBP 7.10 (GBP 4.99, 2026-10-28) (plan 7.2, 10.2).
   await db.run(
     `INSERT INTO "Sport" (id,"orgId",name,preset,"playersPerTeam",positions,"teamLabels","updatedAt")
      VALUES ($1,$2,'Football 7-a-side','football-7aside',7,'{GK,DEF,MID,FWD}','{Red,Yellow}',now())`,
@@ -138,16 +138,16 @@ test.describe("/billing/[orgId] per role", () => {
     await expect(billing).toHaveAttribute("data-role", "contact", { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: "Club fee" })).toBeVisible();
     await expect(page.getByTestId("billing-state")).toHaveText(
-      "Free until Thu 31 Jan. After that you only pay for the games you play, up to £9.99 a month for the whole group.",
+      "Free until Thu 31 Jan. After that you only pay for the games you play, up to £4.99 a month for the whole group.",
     );
     const add = page.getByTestId("billing-btn-add-card");
     await expect(add).toBeVisible();
     await expect(add).toBeEnabled();
     await expect(page.getByText("Card payments open here soon.")).toHaveCount(0);
     const tip = page.getByTestId("billing-tip");
-    await expect(tip).toContainText("MatchTime only charges for the games you play, up to £9.99 a month. Each game played costs the club at most £2.50");
-    await expect(tip).toContainText("20p a player per game");
-    await expect(tip).toContainText("Your game is £7 each, so charging £7.20 covers it.");
+    await expect(tip).toContainText("MatchTime only charges for the games you play, up to £4.99 a month. Each game played costs the club at most £1.25");
+    await expect(tip).toContainText("10p a player per game");
+    await expect(tip).toContainText("Your game is £7 each, so charging £7.10 covers it.");
     expect(await billing.innerText()).not.toMatch(DASH);
 
     // The same signed-in player cannot reach the admin pages.
@@ -175,7 +175,7 @@ test.describe("/billing/[orgId] per role", () => {
     await expect(page.getByTestId("billing-page")).toHaveAttribute("data-role", "viewer", { timeout: 30_000 });
     await expect(page.getByTestId("billing-who")).toHaveText("Colin Sevens looks after the card.");
     await expect(page.locator("[data-testid^=billing-btn-]")).toHaveCount(0);
-    await expect(page.getByTestId("billing-tip")).toContainText("20p a player per game");
+    await expect(page.getByTestId("billing-tip")).toContainText("10p a player per game");
   });
 
   test("no collector: the owner is the contact", async ({ page }) => {
@@ -246,12 +246,12 @@ test.describe("/admin/settings billing card and the banner", () => {
     const card = page.getByTestId("settings-billing-card");
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("settings-card-toggle-billing")).toHaveAttribute("aria-expanded", "true");
-    await expect(card).toContainText("Free until Thu 31 Jan. After that you only pay for the games you play, up to £9.99 a month for the whole group.");
+    await expect(card).toContainText("Free until Thu 31 Jan. After that you only pay for the games you play, up to £4.99 a month for the whole group.");
     // No month has opened yet (the free month runs): no month box.
     await expect(card.getByTestId("settings-billing-month")).toHaveCount(0);
     await expect(card).toContainText("Colin Sevens looks after the card.");
     await expect(card).toContainText("Card on file: no.");
-    await expect(card).toContainText("20p a player per game");
+    await expect(card).toContainText("10p a player per game");
     await expect(card.getByRole("link", { name: "Open billing" })).toHaveAttribute("href", `/billing/${ORG}`);
     await expect(card.getByText("Choose a money collector")).toHaveCount(0);
     expect(await card.innerText()).not.toMatch(DASH);
@@ -346,13 +346,13 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
     await signInAs(page, USER.owner, "/admin/clubs");
     const row = page.getByTestId("live-club").filter({ hasText: "Billing Sevens" });
     await expect(row.getByTestId("club-billing-summary")).toContainText(
-      "Standard, up to £9.99. Free period. Free period ends Thu 31 Jan, 12:00. Card on file: no.",
+      "Standard, up to £4.99. Free period. Free period ends Thu 31 Jan, 12:00. Card on file: no.",
       { timeout: 30_000 },
     );
     await expect(row).toContainText("Colin Sevens (money collector)");
     await expect(row.getByTestId("club-ai-30d")).toHaveText("$1.25");
     const late = page.getByTestId("live-club").filter({ hasText: "Late Starters" });
-    await expect(late.getByTestId("club-billing-summary")).toContainText("Standard, up to £9.99. Exempt (never billed).");
+    await expect(late.getByTestId("club-billing-summary")).toContainText("Standard, up to £4.99. Exempt (never billed).");
     await expect(row.getByTestId("club-billing-this-month")).toHaveText("no month open");
     await expect(row.getByTestId("club-billing-last-month")).toHaveText("none yet");
     await expect(page.getByTestId("billing-totals")).toContainText(
@@ -363,24 +363,24 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
     expect(await page.getByTestId("clubs-page").innerText()).not.toMatch(DASH);
   });
 
-  test("Plan: Custom GBP 5, then Free (exempt first, in one go), then Standard", async ({ page, db }) => {
+  test("Plan: Custom GBP 3, then Free (exempt first, in one go), then Standard", async ({ page, db }) => {
     await signInAs(page, USER.owner, "/admin/clubs");
     const row = page.getByTestId("live-club").filter({ hasText: "Billing Sevens" });
     await row.getByLabel("Plan", { exact: true }).selectOption("custom");
-    await row.getByLabel("Custom monthly maximum in pounds").fill("5");
+    await row.getByLabel("Custom monthly maximum in pounds").fill("3");
     await row.getByRole("button", { name: "Save plan" }).click();
-    await expect(page.getByText("Plan saved: Custom, up to £5 a month.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Plan saved: Custom, up to £3 a month.")).toBeVisible({ timeout: 30_000 });
     expect(await db.one(`SELECT "billingPlan","billingPricePence","billingStatus" FROM "Organisation" WHERE id=$1`, [ORG])).toEqual({
       billingPlan: "custom",
-      billingPricePence: 500,
+      billingPricePence: 300,
       billingStatus: "trial",
     });
 
-    // Out of range: refused, nothing written.
-    await row.getByLabel("Custom monthly maximum in pounds").fill("12");
+    // Out of range (above the Standard price, 2026-10-28): refused, nothing written.
+    await row.getByLabel("Custom monthly maximum in pounds").fill("5");
     await row.getByRole("button", { name: "Save plan" }).click();
-    await expect(page.getByText("A custom price must be between £1.00 and £9.99.")).toBeVisible({ timeout: 30_000 });
-    expect((await db.one<{ p: number }>(`SELECT "billingPricePence" AS p FROM "Organisation" WHERE id=$1`, [ORG]))?.p).toBe(500);
+    await expect(page.getByText("A custom price must be between £1.00 and £4.99.")).toBeVisible({ timeout: 30_000 });
+    expect((await db.one<{ p: number }>(`SELECT "billingPricePence" AS p FROM "Organisation" WHERE id=$1`, [ORG]))?.p).toBe(300);
 
     page.once("dialog", (d) => d.accept());
     await row.getByLabel("Plan", { exact: true }).selectOption("free");
@@ -397,7 +397,7 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
     // Slice B3: leaving Free while the club's one free month is still
     // running puts it back in that month (its end kept); no second free
     // month is ever started.
-    await expect(page.getByText("Plan saved: Standard, up to £9.99 a month. The club is back in its free period.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Plan saved: Standard, up to £4.99 a month. The club is back in its free period.")).toBeVisible({ timeout: 30_000 });
     expect(await db.one(`SELECT "billingPlan","billingStatus" FROM "Organisation" WHERE id=$1`, [ORG])).toEqual({
       billingPlan: "standard",
       billingStatus: "trial",
@@ -419,10 +419,10 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
       return d.accept();
     });
     await late.getByRole("button", { name: "Start free period" }).click();
-    expect(asked).toBe("Start Late Starters's free period now? It runs two months from now, and a club gets only one.");
+    expect(asked).toBe("Start Late Starters's free period now? It runs three months from now, and a club gets only one.");
     await expect(page.getByText(/^Free period started\. It ends on /)).toBeVisible({ timeout: 30_000 });
     expect(await db.one(`SELECT "billingStatus" FROM "Organisation" WHERE id=$1`, [LATE])).toEqual({ billingStatus: "trial" });
-    // It runs two London calendar months from now, and the page says so first.
+    // It runs three London calendar months from now, and the page says so first.
     // (AT TIME ZONE 'UTC': the columns hold UTC with no zone, and `pg` would
     // otherwise read them as this machine's local time.)
     const window = await db.one<{ trialStartedAt: Date; trialEndsAt: Date }>(
@@ -432,8 +432,8 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
     );
     expect(window!.trialEndsAt).toEqual(freePeriodEnd(window!.trialStartedAt));
     const days = (window!.trialEndsAt.getTime() - window!.trialStartedAt.getTime()) / (24 * 60 * 60 * 1000);
-    expect(days).toBeGreaterThan(58.9);
-    expect(days).toBeLessThan(62.1);
+    expect(days).toBeGreaterThan(88.9);
+    expect(days).toBeLessThan(92.1);
     await expect(late.getByRole("button", { name: "Start free period" })).toHaveCount(0);
     // Nobody was messaged.
     expect(await db.count(`SELECT COUNT(*) FROM "PlatformJob"`)).toBe(jobsBefore);

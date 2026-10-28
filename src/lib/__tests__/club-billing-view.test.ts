@@ -54,29 +54,29 @@ describe("money labels", () => {
 describe("clubFeeTipText (7.2)", () => {
   it("en, 5-a-side with no fee of its own: the plan's worked example, word for word", () => {
     expect(clubFeeTipText("en", tipFor())).toBe(
-      "💷 *Club fee tip:* MatchTime only charges for the games you play, up to £9.99 a month. Each game played costs the club at most £2.50, " +
-        "which is about *25p a player per game* for your 10 players. If your game costs £8 each, charge *£8.25* and the club fee is covered. " +
+      "💷 *Club fee tip:* MatchTime only charges for the games you play, up to £4.99 a month. Each game played costs the club at most £1.25, " +
+        "which is about *15p a player per game* for your 10 players. If your game costs £8 each, charge *£8.15* and the club fee is covered. " +
         "Weeks you don't play cost nothing.",
     );
   });
 
-  it("en, 7-a-side with its own GBP 7 fee: 20p and GBP 7.20", () => {
+  it("en, 7-a-side with its own GBP 7 fee: 10p and GBP 7.10", () => {
     expect(clubFeeTipText("en", tipFor({ playersPerTeam: 7, feePerPlayer: 7 }))).toBe(
-      "💷 *Club fee tip:* MatchTime only charges for the games you play, up to £9.99 a month. Each game played costs the club at most £2.50, " +
-        "which is about *20p a player per game* for your 14 players. Your game is £7 each, so charging *£7.20* covers it. " +
+      "💷 *Club fee tip:* MatchTime only charges for the games you play, up to £4.99 a month. Each game played costs the club at most £1.25, " +
+        "which is about *10p a player per game* for your 14 players. Your game is £7 each, so charging *£7.10* covers it. " +
         "Weeks you don't play cost nothing.",
     );
   });
 
   it("en, the latest match fee counts as the club's own", () => {
     expect(clubFeeTipText("en", tipFor({ playersPerTeam: 9, latestMatchFee: 6 }))).toContain(
-      "Your game is £6 each, so charging *£6.15* covers it.",
+      "Your game is £6 each, so charging *£6.10* covers it.",
     );
   });
 
   it("en, a club that splits the pitch cost", () => {
     expect(clubFeeTipText("en", tipFor({ feeSplitTotal: true }))).toContain(
-      "When you split the pitch cost, add about 25p to each player's share.",
+      "When you split the pitch cost, add about 15p to each player's share.",
     );
   });
 
@@ -88,16 +88,16 @@ describe("clubFeeTipText (7.2)", () => {
 
   it("tr: the plan's Turkish (slice P3: games played)", () => {
     expect(clubFeeTipText("tr", tipFor())).toBe(
-      "💷 *Kulüp ücreti ipucu:* MatchTime yalnızca oynadığınız maçlar için ücret alır, ayda en fazla £9.99. " +
-        "Oynanan her maç kulübe en fazla £2.50 tutar; bu da 10 oyuncunuz için *oyuncu başına maç başına yaklaşık 25p* eder. " +
-        "Maç ücreti kişi başı £8 ise *£8.25* alın, kulüp ücreti karşılanmış olur. Oynamadığınız haftalar için hiçbir şey ödemezsiniz.",
+      "💷 *Kulüp ücreti ipucu:* MatchTime yalnızca oynadığınız maçlar için ücret alır, ayda en fazla £4.99. " +
+        "Oynanan her maç kulübe en fazla £1.25 tutar; bu da 10 oyuncunuz için *oyuncu başına maç başına yaklaşık 15p* eder. " +
+        "Maç ücreti kişi başı £8 ise *£8.15* alın, kulüp ücreti karşılanmış olur. Oynamadığınız haftalar için hiçbir şey ödemezsiniz.",
     );
     expect(clubFeeTipText("tr", tipFor({ playersPerTeam: 7, feePerPlayer: 7 }))).toContain("14 oyuncunuz için");
     expect(clubFeeTipText("tr", tipFor({ playersPerTeam: 7, feePerPlayer: 7 }))).toContain(
-      "Maç ücretiniz kişi başı £7, *£7.20* alırsanız karşılanır.",
+      "Maç ücretiniz kişi başı £7, *£7.10* alırsanız karşılanır.",
     );
     expect(clubFeeTipText("tr", tipFor({ feeSplitTotal: true }))).toContain(
-      "Saha ücretini bölüştürürken her oyuncunun payına yaklaşık 25p ekleyin.",
+      "Saha ücretini bölüştürürken her oyuncunun payına yaklaşık 15p ekleyin.",
     );
   });
 
@@ -119,11 +119,11 @@ describe("sj_dm_approved with the tip (billed clubs only)", () => {
   it("en: the tip FOLLOWS the free-month sentence, with the club's own numbers", () => {
     const tip = approvedTipText("en", tipFor());
     expect(tip).toBe(
-      "💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to £9.99 a month for the group, paid by card by whoever collects the match fees. " +
-        "Each game played costs at most £2.50, about *25p a player per game* with 10 players, so a £8 game could be charged at *£8.25*.",
+      "💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to £4.99 a month for the group, paid by card by whoever collects the match fees. " +
+        "Each game played costs at most £1.25, about *15p a player per game* with 10 players, so a £8 game could be charged at *£8.15*.",
     );
     const dm = t("en").sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", ...LINKS, tip });
-    expect(dm.endsWith(`Your first two months are free.\n\n${tip}`)).toBe(true);
+    expect(dm.endsWith(`Your first three months are free.\n\n${tip}`)).toBe(true);
     expect(dm).not.toMatch(DASH);
     expect(dm).not.toMatch(COLLECTS);
   });
@@ -131,17 +131,17 @@ describe("sj_dm_approved with the tip (billed clubs only)", () => {
   it("tr: the same, in Turkish", () => {
     const tip = approvedTipText("tr", tipFor());
     expect(tip).toBe(
-      "💷 *Kulüp ücreti ipucu:* sonrasında MatchTime yalnızca oynadığınız maçlar için ücret alır, grup için ayda en fazla £9.99; ücreti maç ücretlerini toplayan kişi kartla öder. " +
-        "Oynanan her maç en fazla £2.50 tutar, 10 oyuncuyla *oyuncu başına maç başına yaklaşık 25p* eder; £8 olan bir maç için *£8.25* alabilirsiniz.",
+      "💷 *Kulüp ücreti ipucu:* sonrasında MatchTime yalnızca oynadığınız maçlar için ücret alır, grup için ayda en fazla £4.99; ücreti maç ücretlerini toplayan kişi kartla öder. " +
+        "Oynanan her maç en fazla £1.25 tutar, 10 oyuncuyla *oyuncu başına maç başına yaklaşık 15p* eder; £8 olan bir maç için *£8.15* alabilirsiniz.",
     );
     const dm = t("tr").sj_dm_approved({ club: "Kartallar", group: null, ...LINKS, tip });
-    expect(dm.endsWith(`İlk iki ayınız ücretsiz.\n\n${tip}`)).toBe(true);
+    expect(dm.endsWith(`İlk üç ayınız ücretsiz.\n\n${tip}`)).toBe(true);
     expect(dm).not.toMatch(DASH);
   });
 
   it("the split wording", () => {
     expect(approvedTipText("en", tipFor({ feeSplitTotal: true }))).toContain(
-      "*25p a player per game* with 10 players, to add to each player's share of the pitch cost.",
+      "*15p a player per game* with 10 players, to add to each player's share of the pitch cost.",
     );
     expect(approvedTipText("tr", tipFor({ feeSplitTotal: true }))).toContain(
       "saha ücretini bölüştürürken her oyuncunun payına ekleyebilirsiniz.",
@@ -149,7 +149,7 @@ describe("sj_dm_approved with the tip (billed clubs only)", () => {
   });
 
   it("no tip (billing off, Free, exempt): exactly today's DM, ending on the free sentence, no amount", () => {
-    for (const [lang, free] of [["en", "Your first two months are free."], ["tr", "İlk iki ayınız ücretsiz."]] as const) {
+    for (const [lang, free] of [["en", "Your first three months are free."], ["tr", "İlk üç ayınız ücretsiz."]] as const) {
       const today = t(lang).sj_dm_approved({ club: "Riverside FC", group: "G", ...LINKS });
       for (const tip of [null, undefined, ""]) {
         expect(t(lang).sj_dm_approved({ club: "Riverside FC", group: "G", ...LINKS, tip })).toBe(today);
@@ -185,8 +185,8 @@ function state(over: Partial<BillingStateInput> = {}): BillingStateInput {
 
 describe("billingStateLines (8.1)", () => {
   it("trial", () => {
-    expect(billingStateLines("en", state())).toEqual(["Free until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."]);
-    expect(billingStateLines("tr", state())).toEqual(["31 Ekim Cumartesi tarihine kadar ücretsiz. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla £9.99."]);
+    expect(billingStateLines("en", state())).toEqual(["Free until Sat 31 Oct. After that you only pay for the games you play, up to £4.99 a month for the whole group."]);
+    expect(billingStateLines("tr", state())).toEqual(["31 Ekim Cumartesi tarihine kadar ücretsiz. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla £4.99."]);
     expect(billingStateLines("en", state({ plan: "custom", pricePence: 500 }))[0]).toContain("up to £5 a month");
   });
 
@@ -214,12 +214,12 @@ describe("billingStateLines (8.1)", () => {
       cardHolderName: "Colin",
     });
     expect(billingStateLines("en", own)).toEqual([
-      "Only the games played are charged, up to £9.99 a month. Next charge Tue 1 Dec.",
+      "Only the games played are charged, up to £4.99 a month. Next charge Tue 1 Dec.",
       "Card Visa ending 4242.",
     ]);
     // An admin who reads only never sees the brand and last four.
     expect(billingStateLines("en", { ...own, role: "viewer", viewerUserId: "admin" })).toEqual([
-      "Only the games played are charged, up to £9.99 a month. Next charge Tue 1 Dec.",
+      "Only the games played are charged, up to £4.99 a month. Next charge Tue 1 Dec.",
     ]);
   });
 
@@ -230,7 +230,7 @@ describe("billingStateLines (8.1)", () => {
         state({ status: "subscribed", currentPeriodEnd: PERIOD_END, cardHolderUserId: "old", cardHolderName: "Elvin" }),
       ),
     ).toEqual([
-      "Paid with Elvin's card until you put yours on. Only the games played are charged, up to £9.99 a month. Next charge Tue 1 Dec.",
+      "Paid with Elvin's card until you put yours on. Only the games played are charged, up to £4.99 a month. Next charge Tue 1 Dec.",
     ]);
   });
 
@@ -489,11 +489,11 @@ describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
   it("the contact: the state, the tip and Add a card (live since B3, no 'soon' line)", () => {
     const v = billingPageView("en", club(), "contact", "colin", tip);
     expect(v.exempt).toBeNull();
-    expect(v.lines).toEqual(["Free until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."]);
+    expect(v.lines).toEqual(["Free until Sat 31 Oct. After that you only pay for the games you play, up to £4.99 a month for the whole group."]);
     expect(v.buttons).toEqual([{ key: "add-card", label: "Add a card" }]);
     expect(v).not.toHaveProperty("soon");
-    expect(v.tip).toContain("*20p a player per game*");
-    expect(v.tip).toContain("*£7.20*");
+    expect(v.tip).toContain("*10p a player per game*");
+    expect(v.tip).toContain("*£7.10*");
     expect(v.who).toBeNull();
   });
 
@@ -533,9 +533,9 @@ describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
       expect(noTip.endsWith(goLiveFreePeriodNote(lang, null))).toBe(true);
       expect(goLiveFreePeriodNote(lang, tip)).not.toMatch(/[\u2013\u2014]/);
     }
-    expect(goLiveFreePeriodNote("en", null)).toBe("Your first two months are free.");
-    expect(goLiveFreePeriodNote("tr", null)).toBe("İlk iki ayınız ücretsiz.");
-    expect(goLiveFreePeriodNote("en", tip)).toBe(`Your first two months are free.\n\n${approvedTipText("en", tip)}`);
+    expect(goLiveFreePeriodNote("en", null)).toBe("Your first three months are free.");
+    expect(goLiveFreePeriodNote("tr", null)).toBe("İlk üç ayınız ücretsiz.");
+    expect(goLiveFreePeriodNote("en", tip)).toBe(`Your first three months are free.\n\n${approvedTipText("en", tip)}`);
   });
 
   it("the owner of a club that is still SETTING UP: the free period has not started, and when it will (not 'no club fee')", () => {
@@ -543,10 +543,10 @@ describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
     const v = billingPageView("en", held, "exempt-owner", "hana", null);
     expect(v).toMatchObject({ lines: [], buttons: [], tip: null, who: null });
     expect(v.exempt).toBe(
-      "Harbour FC is still setting up, so its free period has not started yet. Your first two months are free, counted from the day MatchTime goes live in your group. Nothing is charged before then.",
+      "Harbour FC is still setting up, so its free period has not started yet. Your first three months are free, counted from the day MatchTime goes live in your group. Nothing is charged before then.",
     );
     expect(billingPageView("tr", held, "exempt-owner", "hana", null).exempt).toBe(
-      "Harbour FC kulübünün kurulumu sürüyor, bu yüzden ücretsiz dönemi henüz başlamadı. İlk iki ayınız ücretsiz ve süre, MatchTime grubunuzda yayına geçtiği gün başlar. O güne kadar hiçbir ücret alınmaz.",
+      "Harbour FC kulübünün kurulumu sürüyor, bu yüzden ücretsiz dönemi henüz başlamadı. İlk üç ayınız ücretsiz ve süre, MatchTime grubunuzda yayına geçtiği gün başlar. O güne kadar hiçbir ücret alınmaz.",
     );
     // No date is promised: there is none until the club goes live.
     expect(v.exempt).not.toMatch(/\d{4}|until/);
@@ -574,13 +574,13 @@ describe("billingCardView: the /admin/settings card (8.1)", () => {
     const v = billingCardView("en", club(), tipFor())!;
     expect(v).toMatchObject({
       title: "Club fee",
-      lines: ["Free until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."],
+      lines: ["Free until Sat 31 Oct. After that you only pay for the games you play, up to £4.99 a month for the whole group."],
       who: "Colin looks after the card.",
       cardOnFile: "Card on file: no.",
       openLabel: "Open billing",
       chooseCollectorLabel: null,
     });
-    expect(v.tip).toContain("25p");
+    expect(v.tip).toContain("15p");
   });
 
   it("no collector: the owner fallback line and 'Choose a money collector'", () => {

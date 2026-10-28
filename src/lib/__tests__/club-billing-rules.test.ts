@@ -32,10 +32,10 @@ import {
 const DAY = 24 * 60 * 60 * 1000;
 const ON = { BILLING_ENABLED: "1" };
 const OFF = {};
-// Thu 1 Oct 2026, 10:00 London (BST). Two London calendar months on:
-// Tue 1 Dec, 10:00 London (GMT), 61 days and an hour later.
+// Thu 1 Oct 2026, 10:00 London (BST). Three London calendar months on:
+// Fri 1 Jan 2027, 10:00 London (GMT), 92 days and an hour later.
 const APPROVED_AT = new Date("2026-10-01T09:00:00Z");
-const TRIAL_ENDS = new Date("2026-12-01T10:00:00Z");
+const TRIAL_ENDS = new Date("2027-01-01T10:00:00Z");
 const GRACE_ENDS = new Date(TRIAL_ENDS.getTime() + 7 * DAY);
 
 const club = (over: Partial<BillingClub> = {}): BillingClub => ({
@@ -54,8 +54,8 @@ describe("constants match the plan", () => {
     expect([...BILLING_PLANS]).toEqual(["standard", "free", "custom"]);
     expect([...PAUSED_REASONS]).toEqual(["no-card", "payment-failed", "cancelled", "removed"]);
   });
-  it("two month free period, 7 day grace, 9 day billing link", () => {
-    expect(FREE_PERIOD_MONTHS).toBe(2);
+  it("three month free period, 7 day grace, 9 day billing link", () => {
+    expect(FREE_PERIOD_MONTHS).toBe(3);
     expect(GRACE_DAYS).toBe(7);
     expect(BILLING_LINK_TTL).toBe(9 * 24 * 60 * 60);
   });
@@ -198,7 +198,7 @@ describe("4.1 and 4.2: the calendar", () => {
 });
 
 describe("4.2: cards and payments", () => {
-  const NOW = new Date("2026-12-15T12:00:00Z");
+  const NOW = new Date("2027-01-15T12:00:00Z");
   it("card added: trial, grace and paused to subscribed; only paused resumes", () => {
     expect(nextBillingState(club(), { type: "card-added" }, NOW, ON)).toMatchObject({ to: "subscribed", resumes: false });
     expect(nextBillingState(club({ billingStatus: "grace" }), { type: "card-added" }, NOW, ON)).toMatchObject({ to: "subscribed", resumes: false });

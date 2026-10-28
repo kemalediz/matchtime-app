@@ -222,10 +222,10 @@ for (const [name, size, file] of [
     const lead = page.locator("section#pricing").getByTestId("price-lead");
     const amount = page.locator("section#pricing").getByTestId("price-amount");
     await expect(lead).toHaveText(/^First \w+ months? free$/);
-    await expect(amount).toContainText("up to £9.99 a month");
+    await expect(amount).toContainText("up to £4.99 a month");
     const px = (l: typeof lead) => l.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     expect(await px(lead)).toBeGreaterThan((await px(amount)) * 1.5);
-    await expect(page.getByText(/about 50p a player/)).toBeVisible();
+    await expect(page.getByText(/about 25p a player/)).toBeVisible();
     await expect(page.getByText("No contract. Stop any time")).toBeVisible();
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     await lead.scrollIntoViewIfNeeded();

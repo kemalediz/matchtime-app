@@ -34,6 +34,7 @@ import {
   billingAccessRole,
   billingContact,
   clubFeeTip,
+  extendedFreePeriodEnd,
   freePeriodStart,
   isBillingEnabled,
   isBillingPaused,
@@ -648,6 +649,72 @@ export async function startTrial(orgId: string, now: Date = new Date()): Promise
   if (!r.ok) return { ok: false, reason: r.reason === "not-found" ? "not-found" : "raced" };
   return { ok: true, trialEndsAt: trialWindow(now).trialEndsAt };
 }
+
+/** One club's free period, as `extendFreePeriods` found and left it. */
+export interface FreePeriodExtension {
+  orgId: string;
+  name: string;
+  status: string;
+  trialStartedAt: Date;
+  from: Date;
+  to: Date;
+  /** Written (apply) or would be written (dry run). False when a race or
+   *  a billing month got there between the read and the write. */
+  written: boolean;
+}
+
+/**
+ * The free period grew (Kemal, 2026-10-28: two months to three): move the
+ * stored `trialEndsAt` of every club still inside its free period and
+ * never billed to the current length from its same start
+ * (`extendedFreePeriodEnd`). DRY RUN unless `apply`: it then only reports.
+ *
+ * Each write is a compare-and-set on the old end, in a transaction that
+ * re-checks no billing month exists, and leaves an `mt.free-period-extended`
+ * audit row. Run by scripts/extend-free-periods.ts. Nothing is messaged:
+ * the reminders count back from the stored end, so they simply come later
+ * (their cycle key is the end, so none already sent repeats early).
+ */
+export async function extendFreePeriods(opts: { apply: boolean; now?: Date }): Promise<FreePeriodExtension[]> {
+  const now = opts.now ?? new Date();
+  const rows = await db.clubBilling.findMany({
+    where: { trialEndsAt: { gt: now } },
+    select: {
+      orgId: true,
+      trialStartedAt: true,
+      trialEndsAt: true,
+      org: { select: { name: true, billingStatus: true, _count: { select: { billingMonths: true } } } },
+    },
+    orderBy: { trialEndsAt: "asc" },
+  });
+  const out: FreePeriodExtension[] = [];
+  for (const r of rows) {
+    const to = extendedFreePeriodEnd(
+      { trialStartedAt: r.trialStartedAt, trialEndsAt: r.trialEndsAt, billingMonths: r.org._count.billingMonths },
+      now,
+    );
+    if (!to) continue;
+    const base = { orgId: r.orgId, name: r.org.name, status: r.org.billingStatus, trialStartedAt: r.trialStartedAt, from: r.trialEndsAt, to };
+    if (!opts.apply) {
+      out.push({ ...base, written: false });
+      continue;
+    }
+    const written = await db.$transaction(async (tx) => {
+      if ((await tx.clubBillingMonth.count({ where: { orgId: r.orgId } })) > 0) return false;
+      const u = await tx.clubBilling.updateMany({ where: { orgId: r.orgId, trialEndsAt: r.trialEndsAt }, data: { trialEndsAt: to } });
+      if (u.count !== 1) return false;
+      await tx.billingEvent.create({
+        data: { id: `mt_free_period_extended_${r.orgId}_${to.getTime()}`, type: FREE_PERIOD_EXTENDED_EVENT_TYPE, orgId: r.orgId, receivedAt: now, processedAt: now },
+      });
+      return true;
+    });
+    out.push({ ...base, written });
+  }
+  return out;
+}
+
+/** The audit row of a free period moved to the current length. */
+export const FREE_PERIOD_EXTENDED_EVENT_TYPE = "mt.free-period-extended";
 
 // ── Slice B2: the club fee tip, from the club's own games ───────────────
 
