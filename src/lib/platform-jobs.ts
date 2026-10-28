@@ -86,6 +86,7 @@ import { e164Digits } from "./phone";
 // owner-dm, which imports this file, and a cycle there would be silent.
 import { APPROVED_CLUB_WHERE } from "./club-approval-state";
 import { POOL_OFFER_PURPOSE, admitPoolOfferJobs, onPoolOfferJobFailed, onPoolOfferJobSent } from "./pool/dispatch";
+import { poolEnvForApiRequest } from "./pool/switch-env";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────
 
@@ -222,7 +223,10 @@ export async function bridgePlatformDmsForLegacyPi(
 ): Promise<Array<{ kind: "dm"; key: string; phone: string; text: string }>> {
   if (request.headers.get(PLATFORM_JOBS_CAPABLE_HEADER) === "1") return [];
   try {
-    const jobs = await claimDuePlatformJobs({ now, kinds: ["dm"], limit: BRIDGE_DMS_PER_POLL });
+    // The pool switch for THIS request (review of #430): pool offers it
+    // admits are judged on the real switch, never on an unresolved env.
+    const env = await poolEnvForApiRequest(request);
+    const jobs = await claimDuePlatformJobs({ now, kinds: ["dm"], limit: BRIDGE_DMS_PER_POLL, env });
     const out: Array<{ kind: "dm"; key: string; phone: string; text: string }> = [];
     for (const j of jobs) {
       if (j.kind === "dm") out.push({ kind: "dm", key: platformJobKey(j.id), phone: j.phone, text: j.text });

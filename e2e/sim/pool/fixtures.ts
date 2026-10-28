@@ -21,6 +21,7 @@
  *               refuses too, `e2e/run.ts`). Paid: the slice that adds one
  *               reports its calls and cost, and asks Kemal above $2.
  */
+import { setPoolPlatform } from "../../helpers/pool-platform";
 import { test as base, expect, resetDb } from "../../fixtures";
 import { requireDevApiKey } from "../../helpers/dev-api-key";
 import { clearGeocodeStub, setGeocodeStub } from "../../helpers/geocode-stub";
@@ -47,6 +48,9 @@ export const scenario = base.extend<{ pool: PoolWorld }>({
   pool: async ({ request, db }, provide, testInfo) => {
     const world = new PoolWorld(request, db, LIVE);
     await world.start();
+    // The platform switch ON, as in production (the owner's row, 2026-10-28).
+    // A scenario that wants it off says so (the `x-mt-test-pool-open` seam).
+    await setPoolPlatform(db, true);
     // A postcode district is placed by Google (stubbed): every address gets
     // a point in the UK, so a /play sign-up near "SM1" has its centre.
     setGeocodeStub({ geocode: { "*": { body: UK_POINT } } });

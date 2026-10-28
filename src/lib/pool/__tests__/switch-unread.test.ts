@@ -31,6 +31,15 @@ beforeEach(() => {
 });
 
 describe("dispatch", () => {
+  it("an env that never resolved the switch (no MT_POOL_OPEN key) holds every offer, never cancels", async () => {
+    for (const env of [undefined, {}, { POOL_OFFERS_ENABLED: "1" }]) {
+      const r = await admitPoolOfferJobs(["j1"], { now: NOW, limit: 5, env });
+      expect([...r.skip]).toEqual(["j1"]);
+      expect(r.claimed.size).toBe(0);
+    }
+    expect(dbMock.$transaction).not.toHaveBeenCalled();
+  });
+
   it("unread: every queued offer is held (skipped, not claimed, not cancelled)", async () => {
     const r = await admitPoolOfferJobs(["j1", "j2"], { now: NOW, limit: 5, env: UNREAD });
     expect([...r.skip]).toEqual(["j1", "j2"]);
@@ -42,6 +51,12 @@ describe("dispatch", () => {
 describe("the sweep", () => {
   it("unread: the open ask is left open", async () => {
     expect(await round.sweepPool(NOW, UNREAD)).toMatchObject({ closed: 0 });
+    expect(dbMock.poolAsk.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("an env that never resolved the switch: the open ask is left open", async () => {
+    expect(await round.sweepPool(NOW)).toMatchObject({ closed: 0 });
+    expect(await round.sweepPool(NOW, {})).toMatchObject({ closed: 0 });
     expect(dbMock.poolAsk.updateMany).not.toHaveBeenCalled();
   });
 

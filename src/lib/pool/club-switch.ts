@@ -10,8 +10,8 @@
  * and the pool tick on the match page; organisers can ask the pool from HQ
  * (`flags.ts` `poolOpenForClub`: the platform switch AND this flag). Nothing
  * is offered by switching on. The FIRST time a club's pool goes from off
- * to on, its admin team is told once, ever (`club-switch-rules.ts`): one
- * message in HQ, or a DM to each owner and admin when it has none.
+ * to on, its admin team is told once, ever (`club-switch-rules.ts`),
+ * through the club's own admin channel (`sendAdminNotice`).
  *
  * OFF: the flag is written first, so no new ask can open, then every open
  * pool ask of the club is closed at once through the pool's own close path
@@ -24,11 +24,10 @@
  * club's own choice is still there if the pool is switched on again.
  */
 import { db } from "../db";
-import { loadAdminChannel } from "../admin-channel";
-import { adminNoticeSendAfter } from "../rolling-squad-rules";
+import { sendAdminNotice, type AdminNoticeClient } from "../admin-channel";
 import { poolClubSwitchCopy } from "../i18n/pool-club-switch";
 import { closePoolAsk } from "./round";
-import { POOL_ON_NOTICE_KIND, poolOnNoticeKey, poolOnNoticeTarget } from "./club-switch-rules";
+import { POOL_ON_NOTICE_KIND, poolOnNoticeKey } from "./club-switch-rules";
 
 export type ClubPoolSwitchResult = { ok: true; on: boolean; closedAsks: number; autoAsk: boolean; told: boolean } | { ok: false; reason: "not-found" };
 
@@ -58,34 +57,46 @@ export async function setClubPlayerPool(orgId: string, on: boolean, now: Date = 
   return { ok: true, on, closedAsks, autoAsk, told: false };
 }
 
+/** Rolls the claim back when the club's channel queued nothing. */
+class NobodyToTell extends Error {}
+
 /**
- * The once-ever message to the club's admin team that the pool is on.
- * True when it was queued now. Inside the club's quiet hours it waits
- * until they end (the admin channel's own rule).
+ * The once-ever message to the club's admin team that the pool is on,
+ * through the club's admin channel (`sendAdminNotice`: its admin group, the
+ * one person it chose, or each admin, as the club set it), never the
+ * players' group. The claim and the jobs are ONE transaction; nobody to
+ * tell rolls the claim back so a later switch-on can still tell them.
+ * Held through the club's quiet hours (the admin channel's own rule). An
+ * admin-group post that falls back to a DM at dispatch uses the DM wording.
+ * True when it was queued now.
  */
 export async function tellAdminTeamPoolOn(orgId: string, now: Date): Promise<boolean> {
   const key = poolOnNoticeKey(orgId);
   if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) return false;
-  const ch = await loadAdminChannel(orgId);
-  if (!ch) return false;
-  const target = poolOnNoticeTarget({ mode: ch.cfg.mode, adminGroupId: ch.cfg.adminGroupId, adminGroupPostable: ch.adminGroupPostable }, ch.admins);
-  if (target.to === "none") {
-    console.warn(`[pool] club ${orgId}: no admin to tell that the pool is on`);
-    return false;
-  }
-  const copy = poolClubSwitchCopy(ch.language);
-  const sendAfter = adminNoticeSendAfter(now, ch.quietHours);
-  const queued = await db.$transaction(async (tx) => {
-    const { count } = await tx.sentNotification.createMany({ data: [{ key, kind: POOL_ON_NOTICE_KIND }], skipDuplicates: true });
-    if (count !== 1) return false;
-    if (target.to === "group") {
-      await tx.botJob.create({ data: { orgId, kind: "admin-group", text: copy.notice(ch.orgName, "group"), ...(sendAfter ? { sendAfter } : {}) } });
-    } else {
-      const text = copy.notice(ch.orgName, "dm");
-      for (const u of target.users) await tx.botJob.create({ data: { orgId, kind: "dm", phone: u.phone, text, ...(sendAfter ? { sendAfter } : {}) } });
+  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { name: true, language: true } });
+  if (!org) return false;
+  const copy = poolClubSwitchCopy(org.language);
+  try {
+    const queued = await db.$transaction(async (tx) => {
+      const { count } = await tx.sentNotification.createMany({ data: [{ key, kind: POOL_ON_NOTICE_KIND }], skipDuplicates: true });
+      if (count !== 1) return false;
+      const r = await sendAdminNotice({
+        orgId,
+        now,
+        text: (_link, audience) => copy.notice(org.name, audience === "group" ? "group" : "dm"),
+        dmWording: true,
+        client: tx as unknown as AdminNoticeClient,
+      });
+      if (r.queued === 0) throw new NobodyToTell();
+      console.log(`[pool] club ${orgId}: told its admin team the pool is on (${r.channel}, ${r.queued} job(s))`);
+      return true;
+    });
+    return queued;
+  } catch (err) {
+    if (err instanceof NobodyToTell) {
+      console.warn(`[pool] club ${orgId}: no admin to tell that the pool is on`);
+      return false;
     }
-    return true;
-  });
-  if (queued) console.log(`[pool] club ${orgId}: told its admin team the pool is on (${target.to}) sendAfter=${sendAfter?.toISOString() ?? "now"}`);
-  return queued;
+    throw err;
+  }
 }

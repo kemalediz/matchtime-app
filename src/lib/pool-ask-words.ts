@@ -159,7 +159,7 @@ export async function answerJoinRequestInHq(args: {
   const [inv] = await invitationsAwaitingClub(args.orgId, [args.invitationId]);
   if (!inv) return null;
   const c = inviteCopy(args.lang);
-  const r = await answerAsClub({ orgId: args.orgId, userId: inv.userId, actorId: args.actorId, answer: "yes", now: args.now, env: args.env });
+  const r = await answerAsClub({ orgId: args.orgId, userId: inv.userId, actorId: args.actorId, answer: "yes", now: args.now, env: args.env ?? {} });
   console.log(`[pool-ask-words] ${args.orgId}: HQ yes to invitation ${inv.id}: ${r.ok ? r.state : r.reason}`);
   if (r.ok) {
     return r.state === "link-sent"

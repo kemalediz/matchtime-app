@@ -9,6 +9,7 @@ import { poolClubSwitchCopy, type PoolClubSwitchCopy } from "@/lib/i18n/pool-clu
 import { poolClubShareCopy } from "@/lib/i18n/pool-club-share";
 import { poolCopy } from "@/lib/i18n/pool-offer";
 import { t } from "@/lib/i18n/t";
+import { settingInfo } from "@/lib/settings-info";
 
 const lines = (c: PoolClubSwitchCopy): string[] => [
   c.notice("FNF", "group"),
@@ -45,10 +46,10 @@ describe("the message to the admin team", () => {
     expect(poolClubSwitchCopy("en").notice("FNF", "group")).toBe(
       [
         "⚽ *The MatchTime player pool is now on for FNF*",
-        "When you're short of players, MatchTime can ask nearby players who have joined the pool. Your partner clubs are always asked first.",
+        "When you're short of players, MatchTime can ask nearby players who have joined the pool. When MatchTime asks by itself, your partner clubs are asked first.",
         "Nothing is sent by itself. You can:",
         "• tick *MatchTime player pool* on a match to ask for players",
-        '• ask me here, for example "@Match Time we need 2 players for Thursday"',
+        '• ask me here, for example "@Match Time ask the player pool for 2 players for Thursday"',
         "• turn on *Ask the player pool automatically* in Admin, then Settings",
         "Want your players to know? Use *Tell your players about the player pool* in Settings.",
       ].join("\n"),
@@ -59,10 +60,10 @@ describe("the message to the admin team", () => {
     expect(poolClubSwitchCopy("tr").notice("FNF", "group")).toBe(
       [
         "⚽ *MatchTime oyuncu havuzu FNF için açıldı*",
-        "Oyuncu eksik olduğunda MatchTime, havuza katılmış yakındaki oyunculara sorabilir. Önce her zaman partner kulüplerinize sorulur.",
+        "Oyuncu eksik olduğunda MatchTime, havuza katılmış yakındaki oyunculara sorabilir. MatchTime kendiliğinden sorduğunda önce partner kulüplerinize sorulur.",
         "Hiçbir şey kendiliğinden gönderilmez. Şunları yapabilirsiniz:",
         "• bir maçta *MatchTime oyuncu havuzu* kutusunu işaretleyip oyuncu isteyin",
-        '• buradan bana yazın, örneğin "@Match Time perşembe için 2 oyuncu lazım"',
+        '• buradan bana yazın, örneğin "@Match Time perşembe için havuzdan 2 oyuncu bul"',
         "• Yönetim, sonra Ayarlar'da *Oyuncu havuzuna kendiliğinden sor* seçeneğini açın",
         "Oyuncularınız da bilsin mi? Ayarlar'daki *Oyuncularınıza oyuncu havuzunu anlatın* kartını kullanın.",
       ].join("\n"),
@@ -77,6 +78,22 @@ describe("the message to the admin team", () => {
       const diff = dm.filter((l, i) => l !== group[i]);
       expect(diff).toHaveLength(1);
       expect(diff[0]).toMatch(lang === "en" ? /your club's WhatsApp group/ : /kulübünüzün WhatsApp grubunda/);
+    }
+  });
+
+  it("the DM version gives the same example, in the club's WhatsApp group", () => {
+    expect(poolClubSwitchCopy("en").notice("FNF", "dm")).toContain('• ask me in your club\'s WhatsApp group, for example "@Match Time ask the player pool for 2 players for Thursday"');
+    expect(poolClubSwitchCopy("tr").notice("FNF", "dm")).toContain('• kulübünüzün WhatsApp grubunda bana yazın, örneğin "@Match Time perşembe için havuzdan 2 oyuncu bul"');
+  });
+
+  it("never claims partners are ALWAYS asked first (false when an organiser asks by hand): the card and the info say when", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const c = poolClubSwitchCopy(lang);
+      for (const l of [c.notice("FNF", "group"), c.notice("FNF", "dm"), c.lead]) {
+        expect(l).not.toMatch(/always asked first|Önce her zaman/);
+        expect(l).toContain(lang === "en" ? "When MatchTime asks by itself, your partner clubs are asked first." : "MatchTime kendiliğinden sorduğunda önce partner kulüplerinize sorulur.");
+      }
+      expect(settingInfo(lang, "playerPool").what.join(" ")).not.toMatch(/always asked first|Önce her zaman/);
     }
   });
 

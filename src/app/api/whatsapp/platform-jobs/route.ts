@@ -100,7 +100,7 @@ export async function GET(request: Request) {
     console.error("[platform-jobs] pool sweep failed; the next poll tries again:", err);
   }
   try {
-    await sweepClubInvitations(now);
+    await sweepClubInvitations(now, poolEnv);
   } catch (err) {
     console.error("[platform-jobs] club invitations sweep failed; the next poll tries again:", err);
   }
@@ -153,7 +153,7 @@ export async function POST(request: Request) {
   // the fallback runs. Only for a report that moved the job (never twice).
   if (updated && outcome.outcome !== "release") {
     try {
-      await onInviteCodeReported(id, outcome, at);
+      await onInviteCodeReported(id, outcome, at, await poolEnvForApiRequest(request));
     } catch (err) {
       console.error(`[platform-jobs] invite code report for ${id} could not be handled:`, err);
     }

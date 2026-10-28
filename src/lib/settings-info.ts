@@ -1451,7 +1451,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     en: {
       title: "Player pool",
       what: [
-        "Whether your club can use the MatchTime player pool: nearby players who have joined it to find games. When you are short of players, MatchTime can ask them for you. Your partner clubs are always asked first.",
+        "Whether your club can use the MatchTime player pool: nearby players who have joined it to find games. When you are short of players, MatchTime can ask them for you. When MatchTime asks by itself, your partner clubs are asked first.",
         "Nothing is sent by switching it on. The pool is asked only when an admin asks for players, on the match page or by tagging MatchTime in WhatsApp, or when Ask the player pool automatically is on.",
       ],
       choices: [
@@ -1467,7 +1467,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     tr: {
       title: "Oyuncu havuzu",
       what: [
-        "Kulübünüzün MatchTime oyuncu havuzunu kullanıp kullanamayacağı: havuz, maç bulmak için katılmış yakındaki oyunculardan oluşur. Oyuncu eksik olduğunda MatchTime onlara sizin için sorabilir. Önce her zaman partner kulüplerinize sorulur.",
+        "Kulübünüzün MatchTime oyuncu havuzunu kullanıp kullanamayacağı: havuz, maç bulmak için katılmış yakındaki oyunculardan oluşur. Oyuncu eksik olduğunda MatchTime onlara sizin için sorabilir. MatchTime kendiliğinden sorduğunda önce partner kulüplerinize sorulur.",
         "Açmakla hiçbir şey gönderilmez. Havuza yalnızca bir yönetici maç sayfasından ya da WhatsApp'ta MatchTime'ı etiketleyerek oyuncu istediğinde ya da Oyuncu havuzuna kendiliğinden sor açıkken sorulur.",
       ],
       choices: [
@@ -1525,7 +1525,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       choices: [
         {
           name: ON.en,
-          text: "On match day, if the game is still short, MatchTime asks the pool by itself. It does this only when it is the club's next match, a place is still open, your bench is empty, and nobody has asked the pool for this match yet. It asks from your ask time (4pm unless you change it) until your cut-off, and at most once per match.",
+          text: "On match day, if the game is still short, MatchTime asks the pool by itself. It does this only when it is the club's next match, a place is still open, your bench is empty, and nobody has asked the pool for this match yet. It asks from your ask time (4pm unless you change it) until your cut-off, and at most once per match. When it asks, your organisers are told, and no offer is sent late at night.",
         },
         { name: OFF.en, text: "MatchTime asks the player pool only when an admin tells it to, by tagging MatchTime in WhatsApp or ticking the box on the match page." },
       ],
@@ -1540,7 +1540,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       choices: [
         {
           name: ON.tr,
-          text: "Maç günü hâlâ oyuncu eksikse MatchTime havuza kendisi sorar. Bunu yalnızca kulübün sıradaki maçıysa, hâlâ boş yer varsa, yedek listeniz boşsa ve bu maç için havuza henüz kimse sormadıysa yapar. Sorma saatinizden (değiştirmezseniz 16:00) son saate kadar sorar, her maç için en fazla bir kez.",
+          text: "Maç günü hâlâ oyuncu eksikse MatchTime havuza kendisi sorar. Bunu yalnızca kulübün sıradaki maçıysa, hâlâ boş yer varsa, yedek listeniz boşsa ve bu maç için havuza henüz kimse sormadıysa yapar. Sorma saatinizden (değiştirmezseniz 16:00) son saate kadar sorar, her maç için en fazla bir kez. Sorduğunda organizatörlerinize haber verilir ve gece geç saatte teklif gönderilmez.",
         },
         { name: OFF.tr, text: "MatchTime oyuncu havuzuna yalnızca bir yönetici isterse sorar, WhatsApp'ta MatchTime'ı etiketleyerek ya da maç sayfasındaki kutuyu işaretleyerek." },
       ],

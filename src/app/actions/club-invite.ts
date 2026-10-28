@@ -29,7 +29,7 @@ export async function inviteToClub(input: InviteToClubInput): Promise<InviteToCl
   const actorId = await sessionUserId();
   if (!actorId || typeof input?.orgId !== "string" || typeof input?.userId !== "string") return { ok: false, reason: "not-allowed" };
   if (!(await isOrgAdmin(actorId, input.orgId))) return { ok: false, reason: "not-allowed" };
-  const r = await answerAsClub({ orgId: input.orgId, userId: input.userId, actorId, answer: input.answer === "no" ? "no" : "yes" });
+  const r = await answerAsClub({ orgId: input.orgId, userId: input.userId, actorId, answer: input.answer === "no" ? "no" : "yes", env: await poolEnvForRequest() });
   if (r.ok) revalidatePath("/admin/guests");
   return r;
 }
@@ -56,5 +56,5 @@ export async function answerMyInvitation(invitationId: string, answer: "join" | 
   if (!userId || typeof invitationId !== "string") return "not-yours";
   // No revalidate: the card shows his answer in place; a reload lists only
   // what is still open.
-  return answerAsPlayer({ invitationId, userId, answer: answer === "join" ? "join" : "no" });
+  return answerAsPlayer({ invitationId, userId, answer: answer === "join" ? "join" : "no", env: await poolEnvForRequest() });
 }

@@ -2794,21 +2794,6 @@ model UnsolicitedGroup {
 ///
 /// Writers: `src/lib/platform-jobs.ts` and `src/lib/owner-dm.ts` only
 /// (`__tests__/platform-jobs-source-guard.test.ts`).
-/// A platform-wide switch the platform owner flips on /admin/clubs, read on
-/// every request and poll (never cached), so it takes effect with no
-/// redeploy (2026-10-28). One row per switch, keyed by name:
-///   "pool-offers"   the MatchTime player pool for every club (the kill
-///                   switch; src/lib/pool/platform-switch.ts). No row: OFF.
-/// Migration 20261028120000_platform_setting creates it with "pool-offers"
-/// ON, matching production at the time.
-model PlatformSetting {
-  key         String   @id
-  on          Boolean  @default(false)
-  /// The superadmin who last changed it; null for the migration's row.
-  updatedById String?
-  updatedAt   DateTime @updatedAt
-}
-
 model PlatformJob {
   id          String    @id @default(cuid())
   /// "dm" | "leave-group"
@@ -2837,6 +2822,21 @@ model PlatformJob {
   @@index([status, sendAfter])
   @@index([purpose, refId])
   @@index([kind, groupId])
+}
+
+/// A platform-wide switch the platform owner flips on /admin/clubs, read on
+/// every request and poll (never cached), so it takes effect with no
+/// redeploy (2026-10-28). One row per switch, keyed by name:
+///   "pool-offers"   the MatchTime player pool for every club (the kill
+///                   switch; src/lib/pool/platform-switch.ts). No row: OFF.
+/// Migration 20261028120000_platform_setting creates it with "pool-offers"
+/// ON, matching production at the time.
+model PlatformSetting {
+  key         String   @id
+  on          Boolean  @default(false)
+  /// The superadmin who last changed it; null for the migration's row.
+  updatedById String?
+  updatedAt   DateTime @updatedAt
 }
 
 /// F3, LEARNED SETUP (2026-10-05). Once per club, right after a self-join

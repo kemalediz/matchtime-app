@@ -266,7 +266,7 @@ describe("POST: the group invite code (pool L8)", () => {
     const res = await post({ id: "pj9", outcome: "sent", inviteCode: "Fh3kQ9zLmP2xW7vB1nR4tY" });
     expect(res.status).toBe(200);
     expect(libMock.recordPlatformJobOutcome).toHaveBeenCalledWith("pj9", { outcome: "sent", inviteCode: "Fh3kQ9zLmP2xW7vB1nR4tY" }, expect.any(Date));
-    expect(inviteMock.onInviteCodeReported).toHaveBeenCalledWith("pj9", { outcome: "sent", inviteCode: "Fh3kQ9zLmP2xW7vB1nR4tY" }, expect.any(Date));
+    expect(inviteMock.onInviteCodeReported).toHaveBeenCalledWith("pj9", { outcome: "sent", inviteCode: "Fh3kQ9zLmP2xW7vB1nR4tY" }, expect.any(Date), expect.objectContaining({ MT_POOL_OPEN: expect.any(String) }));
   });
 
   it("a replayed report (nothing moved) and a release are not handed on", async () => {

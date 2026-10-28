@@ -69,9 +69,15 @@ export function isPoolOffersEnabled(env: Env = process.env): boolean {
   return env[POOL_OPEN_KEY] === "1";
 }
 
-/** Was the switch unreadable for this call (`POOL_SWITCH_UNREAD_KEY`)? */
+/**
+ * Is the switch UNREAD for this call: it could not be read (a database
+ * error, `POOL_SWITCH_UNREAD_KEY`), or the call never resolved it at all
+ * (no `POOL_OPEN_KEY`, e.g. plain `process.env`)? Unread reads CLOSED for
+ * sending, but every path that would close an ask or cancel an offer on the
+ * switch HOLDS instead (review of #430): only a resolved OFF destroys.
+ */
 export function poolSwitchUnread(env: Env = process.env): boolean {
-  return env[POOL_SWITCH_UNREAD_KEY] === "1";
+  return env[POOL_SWITCH_UNREAD_KEY] === "1" || (env[POOL_OPEN_KEY] !== "1" && env[POOL_OPEN_KEY] !== "0");
 }
 
 /** An env carrying the resolved platform switch. */

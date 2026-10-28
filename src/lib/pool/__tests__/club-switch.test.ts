@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Job = Record<string, unknown>;
-const state = vi.hoisted(() => ({ claims: new Set<string>(), jobs: [] as Job[], flag: false }));
+const state = vi.hoisted(() => ({ claims: new Set<string>(), jobs: [] as Job[], flag: false, tx: null as unknown }));
 const dbMock = vi.hoisted(() => ({
   organisation: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   poolAsk: { findMany: vi.fn() },
@@ -19,37 +19,19 @@ const dbMock = vi.hoisted(() => ({
 vi.mock("../../db", () => ({ db: dbMock }));
 const roundMock = vi.hoisted(() => ({ closePoolAsk: vi.fn() }));
 vi.mock("../round", () => roundMock);
-const channel = vi.hoisted(() => ({ loadAdminChannel: vi.fn() }));
+const channel = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));
 vi.mock("../../admin-channel", () => channel);
 
 import { setClubPlayerPool } from "../club-switch";
 import { poolClubSwitchCopy } from "../../i18n/pool-club-switch";
 
 const NOON = new Date("2026-10-27T12:00:00Z");
-const NIGHT = new Date("2026-10-27T23:30:00Z");
-const ADMINS = [
-  { id: "own", name: "Erdal", role: "OWNER", phoneNumber: "+447700900001" },
-  { id: "adm", name: "Ali", role: "ADMIN", phoneNumber: "447700900002" },
-  { id: "nop", name: "No phone", role: "ADMIN", phoneNumber: null },
-];
-const QUIET = { enabled: true, from: "23:00", to: "09:00" };
-const hq = (over: Record<string, unknown> = {}) => ({
-  orgId: "fnf",
-  orgName: "FNF",
-  language: "tr",
-  cfg: { mode: "admin-group", channelUserId: null, adminGroupId: "hq@g.us" },
-  admins: ADMINS,
-  adminGroupPostable: true,
-  quietHours: QUIET,
-  ...over,
-});
-
 beforeEach(() => {
   vi.clearAllMocks();
   state.claims = new Set();
   state.jobs = [];
   state.flag = false;
-  dbMock.organisation.findUnique.mockResolvedValue({ id: "fnf", poolAutoAsk: false });
+  dbMock.organisation.findUnique.mockImplementation(async ({ select }) => (select?.language ? { name: "FNF", language: "tr" } : { id: "fnf", poolAutoAsk: false }));
   dbMock.organisation.update.mockImplementation(async ({ data }) => {
     state.flag = data.featurePlayerPool;
     return {};
@@ -61,20 +43,30 @@ beforeEach(() => {
   });
   dbMock.poolAsk.findMany.mockResolvedValue([]);
   dbMock.sentNotification.findUnique.mockImplementation(async ({ where }) => (state.claims.has(where.key) ? { id: "x" } : null));
-  dbMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
-    fn({
+  // An interactive transaction: a throw inside rolls the claim back.
+  dbMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+    const added: string[] = [];
+    const tx = {
       sentNotification: {
         createMany: async ({ data }: { data: { key: string }[] }) => {
           if (state.claims.has(data[0].key)) return { count: 0 };
           state.claims.add(data[0].key);
+          added.push(data[0].key);
           return { count: 1 };
         },
       },
       botJob: { create: async ({ data }: { data: Job }) => void state.jobs.push(data) },
-    }),
-  );
+    };
+    state.tx = tx;
+    try {
+      return await fn(tx);
+    } catch (err) {
+      for (const k of added) state.claims.delete(k);
+      throw err;
+    }
+  });
   roundMock.closePoolAsk.mockResolvedValue(true);
-  channel.loadAdminChannel.mockResolvedValue(hq());
+  channel.sendAdminNotice.mockResolvedValue({ channel: "admin-group", queued: 1 });
 });
 
 describe("setClubPlayerPool", () => {
@@ -109,64 +101,47 @@ describe("setClubPlayerPool", () => {
   });
 });
 
-describe("telling the admin team, once per club, ever", () => {
-  it("a club with HQ: ONE admin-group post, in the club's language, never the players' group", async () => {
+describe("telling the admin team, once per club, ever, through the club's admin channel", () => {
+  it("goes through sendAdminNotice in the claim's transaction, held through quiet hours, with its DM wording", async () => {
     await setClubPlayerPool("fnf", true, NOON);
-    expect(state.jobs).toEqual([{ orgId: "fnf", kind: "admin-group", text: poolClubSwitchCopy("tr").notice("FNF", "group") }]);
+    expect(channel.sendAdminNotice).toHaveBeenCalledTimes(1);
+    const req = channel.sendAdminNotice.mock.calls[0][0];
+    expect(req).toMatchObject({ orgId: "fnf", now: NOON, dmWording: true });
+    expect(req.holdOvernight).not.toBe(false);
+    expect(req.nextPath ?? null).toBeNull();
+    expect(req.client).toBe(state.tx);
+    expect(req.text("", "group")).toBe(poolClubSwitchCopy("tr").notice("FNF", "group"));
+    expect(req.text("", "dm")).toBe(poolClubSwitchCopy("tr").notice("FNF", "dm"));
     expect([...state.claims]).toEqual(["org-fnf:pool-club-on"]);
-  });
-
-  it("no HQ: a DM to each owner and admin with a phone, the DM wording", async () => {
-    channel.loadAdminChannel.mockResolvedValue(hq({ language: "en", cfg: { mode: "each-admin", channelUserId: null, adminGroupId: null } }));
-    await setClubPlayerPool("fnf", true, NOON);
-    const text = poolClubSwitchCopy("en").notice("FNF", "dm");
-    expect(state.jobs).toEqual([
-      { orgId: "fnf", kind: "dm", phone: "447700900001", text },
-      { orgId: "fnf", kind: "dm", phone: "447700900002", text },
-    ]);
-  });
-
-  it("an HQ MatchTime cannot post in counts as none", async () => {
-    channel.loadAdminChannel.mockResolvedValue(hq({ adminGroupPostable: false }));
-    await setClubPlayerPool("fnf", true, NOON);
-    expect(state.jobs.map((j) => j.kind)).toEqual(["dm", "dm"]);
-  });
-
-  it("inside the club's quiet hours it waits until they end", async () => {
-    await setClubPlayerPool("fnf", true, NIGHT);
-    expect(state.jobs).toHaveLength(1);
-    expect(state.jobs[0].sendAfter).toEqual(new Date("2026-10-28T09:00:00Z"));
   });
 
   it("off and on again never repeats it", async () => {
     await setClubPlayerPool("fnf", true, NOON);
     await setClubPlayerPool("fnf", false, NOON);
     expect(await setClubPlayerPool("fnf", true, NOON)).toMatchObject({ told: false });
-    expect(state.jobs).toHaveLength(1);
+    expect(channel.sendAdminNotice).toHaveBeenCalledTimes(1);
   });
 
   it("on while already on (a second tab) tells nobody", async () => {
     state.flag = true;
     expect(await setClubPlayerPool("fnf", true, NOON)).toMatchObject({ told: false });
-    expect(state.jobs).toEqual([]);
-    expect(channel.loadAdminChannel).not.toHaveBeenCalled();
+    expect(channel.sendAdminNotice).not.toHaveBeenCalled();
   });
 
   it("two switch-ons racing past the read: the claim lets only one through", async () => {
-    // Both see no claim, both reach the transaction.
     dbMock.organisation.updateMany.mockResolvedValue({ count: 1 });
     await Promise.all([setClubPlayerPool("fnf", true, NOON), setClubPlayerPool("fnf", true, NOON)]);
-    expect(state.jobs).toHaveLength(1);
+    expect(channel.sendAdminNotice).toHaveBeenCalledTimes(1);
   });
 
-  it("nobody to tell: nothing claimed, so a later switch-on can still tell them", async () => {
-    channel.loadAdminChannel.mockResolvedValue(hq({ cfg: { mode: "each-admin", channelUserId: null, adminGroupId: null }, admins: [ADMINS[2]] }));
+  it("nobody to tell (the channel queued nothing): the claim is rolled back, so a later switch-on can still tell them", async () => {
+    channel.sendAdminNotice.mockResolvedValue({ channel: "none", queued: 0 });
     expect(await setClubPlayerPool("fnf", true, NOON)).toMatchObject({ told: false });
     expect(state.claims.size).toBe(0);
   });
 
   it("a failure queuing the message never fails the switch", async () => {
-    channel.loadAdminChannel.mockRejectedValue(new Error("db down"));
+    channel.sendAdminNotice.mockRejectedValue(new Error("db down"));
     expect(await setClubPlayerPool("fnf", true, NOON)).toMatchObject({ ok: true, on: true, told: false });
   });
 });

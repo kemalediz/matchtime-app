@@ -33,8 +33,7 @@
  *     (organiser-pick-rules.ts, bot-scheduler.ts, recruit-chase.ts);
  *   - the seed nudge (seed-nudge-rules.ts);
  *   - a club's one player pool share post, sent from club settings
- *     (pool/club-share.ts), and the one message telling its admin team the
- *     player pool is on for it (pool/club-switch.ts);
+ *     (pool/club-share.ts);
  *   - the weekly per-match payment DMs (2026-10-21): the pay links
  *     (payment-flow.ts, whose ack to the collector goes at once and says
  *     when they go out), the collector's fee question and the daily pay

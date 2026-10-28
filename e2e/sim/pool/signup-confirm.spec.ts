@@ -11,9 +11,12 @@
  */
 import { PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
 import { scenario, scenarios, expect } from "./fixtures";
+import { setPoolPlatform } from "../../helpers/pool-platform";
 
 scenarios("signing up on /play and confirming on WhatsApp", () => {
   scenario("happy path, English, pool not open yet: early sign-up list, consent recorded, ONE welcome to him only", async ({ pool }) => {
+    // "Not open yet": the owner's platform switch off (the fixture turns it on).
+    await setPoolPlatform(pool.db, false);
     const fnf = await pool.club("fnf", { name: "Friday Night Football", hq: true });
     const ali = await pool.stranger("ali", { name: "Ali Kaya" });
 

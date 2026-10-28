@@ -49,9 +49,13 @@ describe("the platform switch", () => {
     expect(poolSwitchEnv(true, { A: "b" })).toEqual({ A: "b", MT_POOL_OPEN: "1" });
   });
 
-  it("marks a switch that could not be read", () => {
-    expect(poolSwitchUnread({})).toBe(false);
+  it("a switch that could not be read, or was never resolved, is UNREAD (hold, never close)", () => {
     expect(poolSwitchUnread({ [POOL_SWITCH_UNREAD_KEY]: "1" })).toBe(true);
+    expect(poolSwitchUnread(undefined)).toBe(true);
+    expect(poolSwitchUnread({})).toBe(true);
+    expect(poolSwitchUnread({ POOL_OFFERS_ENABLED: "1" })).toBe(true);
+    expect(poolSwitchUnread(poolSwitchEnv(false))).toBe(false);
+    expect(poolSwitchUnread(poolSwitchEnv(true))).toBe(false);
   });
 });
 

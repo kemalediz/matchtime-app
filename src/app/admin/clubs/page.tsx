@@ -729,8 +729,10 @@ export default async function ClubsPage() {
             </div>
             <p className="mt-1 text-xs text-slate-500">
               On: each club&apos;s owners and admins see a Player pool card in their settings and switch it on for their
-              own club. Off: the pool is closed for every club, every open pool ask is closed at once, no pool message is
-              sent, and the pool cards are hidden. Each club&apos;s own choice is kept for when it is on again.
+              own club. Off: the pool is closed for every club. Every open pool ask is closed at once, no offer is sent, no
+              new invitation to join a club is made and no invite link is sent (links already approved wait until it is on
+              again), and the pool cards are hidden. Each club&apos;s own choice is kept. Clubs can still block or report a
+              pool guest who already played, and record whether guests turned up.
             </p>
             <p data-testid="pool-clubs-on" className="mt-1 text-xs text-slate-600">
               Clubs that have switched it on: {poolClubsOn}.

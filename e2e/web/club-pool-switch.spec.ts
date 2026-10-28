@@ -194,6 +194,6 @@ test("the club's card in Turkish", async ({ page, db }) => {
   await openSettings(page, U.admin);
   const card = page.getByTestId("player-pool");
   await expect(card.getByRole("heading", { name: "Oyuncu havuzu" })).toBeVisible({ timeout: 30_000 });
-  await expect(card).toContainText("Önce her zaman partner kulüplerinize sorulur.");
+  await expect(card).toContainText("MatchTime kendiliğinden sorduğunda önce partner kulüplerinize sorulur.");
   await expect(page.getByRole("switch", { name: "Oyuncu havuzu", exact: true })).toHaveAttribute("aria-checked", "false");
 });
