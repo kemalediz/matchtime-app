@@ -8,8 +8,9 @@
  *     admins, shown only while the platform switch is on; Style of play and
  *     "Ask the player pool automatically" appear under it once it is on;
  *     off asks first, closes the club's open asks and keeps poolAutoAsk;
- *   - the first switch-on tells the admin team once (each admin by DM here,
- *     the seeded club has no admin group); off and on again never repeats;
+ *   - the first switch-on tells the club once: the seeded club has no admin
+ *     group, so ONE post in its players' group, worded for everyone, and no
+ *     admin DM (Kemal, 2026-10-28); off and on again never repeats;
  *   - a player who is not an admin never gets the card.
  *
  * Screenshots go to MT_SHOTS_DIR, else .e2e/test-results. No model calls.
@@ -146,13 +147,13 @@ test("the club's own card: on shows the pool cards and tells the admin team once
   mkdirSync(SHOTS, { recursive: true });
   await card.screenshot({ path: path.join(SHOTS, "settings-player-pool-on.png") });
 
-  // The admin team is told once: no admin group here, so each admin with a phone by DM, never the players' group.
+  // The club is told once: no admin group here, so ONE post in its players' group, and no admin DM.
   await expect.poll(async () => (await noticeJobs(db)).length, { timeout: 15_000 }).toBe(1);
   const [job] = await noticeJobs(db);
-  expect(job.kind).toBe("dm");
+  expect(job.kind).toBe("group");
   expect(job.text).toContain("⚽ *The MatchTime player pool is now on for E2E Test FC*");
-  expect(job.text).toContain("ask me in your club's WhatsApp group");
-  expect(await db.count(`SELECT count(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group' AND text LIKE '%player pool is now on%'`, [ORG_ID])).toBe(0);
+  expect(job.text).toContain("*How to ask* (organisers only)");
+  expect(await db.count(`SELECT count(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND text LIKE '%player pool is now on%'`, [ORG_ID])).toBe(0);
 
   // The club turns automatic asking on, then the pool off: asked to confirm, auto kept.
   await db.run(`UPDATE "Organisation" SET "poolAutoAsk" = true WHERE id = $1`, [ORG_ID]);
