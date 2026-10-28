@@ -713,6 +713,15 @@ export interface AdminFacts {
    */
   pool?: true;
   /**
+   * recruit, 2026-10-28 (Kemal: "stricter"): the message asks for players
+   * but does not say where from ("we need 2 players for Thursday", "bize
+   * oyuncu bul"). Never with `pool`, `partnerClubs` or `clubRef`. In HQ,
+   * a club with partner clubs or the pool is asked which it means
+   * (`ask-source-rules.ts`); everywhere else it is the club's own players,
+   * as an unnamed source always was. Absent: the words named a source.
+   */
+  sourceUnsaid?: true;
+  /**
    * The message is spoken to MatchTime itself, not to a person or the
    * others in the chat (2026-10-22, FNF HQ: "@Kemal can we ask Sutton
    * group?" was posted in the players' group). Absent means no. From HQ an

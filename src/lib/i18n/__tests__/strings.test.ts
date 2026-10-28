@@ -351,6 +351,7 @@ const SAMPLES: SampleArgs = {
   hq_confirm_pool_ask: { day: "Fri 16 Oct" },
   hq_nothing_waiting: null,
   hq_not_here: null,
+  hq_ask_source: { options: ["club", "partners", "pool"] },
   hq_match_cancelled: { activityName: "Friday Night Football", when: "Fri 23 Oct at 20:30" },
   hq_match_restored: { activityName: "Friday Night Football", when: "Fri 23 Oct at 20:30" },
   hq_cancel_no_match: null,
