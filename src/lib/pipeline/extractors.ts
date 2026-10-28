@@ -115,6 +115,18 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * then one pass of ask-source, hq-pool, partner-ask-words, admin-group,
  * players-cancel, hq-outward, hq-cancel, free-places and the recruit and
  * ask-source live sims.
+ *
+ * And again the same day (Kemal: every admin feature also works by
+ * WhatsApp; MT Test 15:40 UTC, "@Match Time added the venue location" was
+ * read "other" and got "I can't change that by message"): two actions,
+ * `set_venue` (the pitch named, or picked from MatchTime's list, with
+ * `venueName` and `venueChoice`) and `retry_ask` (try the last request
+ * again, or what stopped it is fixed), each defined once beside the others,
+ * their fields once, and their examples grouped as the pitch, the answer to
+ * MatchTime's list, and trying again, EN and TR. The intro now says the
+ * context also tells what a short answer answers. 11,257 to 13,391
+ * characters. Paid check: scripts/live-check-admin-retry-venue.ts, then
+ * one pass of every suite above.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: HAIKU_CALL,
@@ -543,7 +555,7 @@ The latest game or an earlier one:
 
   admin: `You read ONE message from a club's organisers' chat and report two things: what it asks MatchTime, the club's bot, to do, and whether it is spoken to MatchTime at all. You report the words; code decides what happens. Messages may be in English or Turkish.
 
-THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "he" or "them" is and who is being spoken to; the action and every field come from THE MESSAGE.
+THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "he" or "them" is, who is being spoken to, and what a short answer answers; the action and every field come from THE MESSAGE.
 
 THE ACTION, exactly one: what the message asks to be done. A question, an opinion or a discussion about whether to do it ("should we cancel?", "should Bilal play free?", "shall we try the pool?") is "other".
   "bulk_payment" someone paid for several players.
@@ -553,6 +565,8 @@ THE ACTION, exactly one: what the message asks to be done. A question, an opinio
   "reminder" the sender wants MatchTime to remind them, at a time.
   "recruit" find players who are not in the squad yet; playersFrom says where from. Asking to show, list or count the squad is "other", and so is talking or asking about another club or the player pool.
   "stats_blast" MatchTime itself is to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open the link they already have) is "other".
+  "set_venue" the sender tells MatchTime where the club plays: names its pitch or venue, or picks one of the places MatchTime listed. Asking where the game is, or talking about a pitch, is "other".
+  "retry_ask" the sender tells MatchTime to try its last request again, or says that what stopped it is now done or fixed, without naming anything new to do ("done, try again", "added the venue location"). A message that names the place itself is "set_venue"; one that asks for something again in full ("now ask the pool") is that action.
   "other" anything else.
 
 THE FIELDS. toMatchTime is always filled; fill the others for the action, and every other field is "", 0, false or [].
@@ -573,6 +587,8 @@ THE FIELDS. toMatchTime is always filled; fill the others for the action, and ev
     A message answering MatchTime's own question about where to look (MATCHTIME'S LAST POST, or the message it replies to, asks it) is recruit from the places it picks, however short. "both" is the two places the question offers (of three, the partner clubs and the pool), "all" is every place it offers, and a yes to a question offering one place is that place.
   lookbackMatches recruit from the club: how many of the club's recent matches to draw its own players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
   clubRef recruit from partners: the other club's name as written, without a Turkish case ending ("Sutton'a" -> "Sutton"); "" when the message names no club ("the partner clubs", "the other groups", "another club").
+  venueName set_venue: the pitch or venue as the message names it, without a Turkish case ending ("Powerleague Shoreditch'te" -> "Powerleague Shoreditch"). For a pick from MatchTime's numbered list of places, the name that list was for, as MATCHTIME'S LAST POST (or the message replied to) shows it.
+  venueChoice set_venue: the number of the place picked from MatchTime's numbered list ("2", "the second one", "ikincisi" -> 2); 0 when the message names the place itself.
 
 EXAMPLES, English and Turkish side by side, grouped by what they teach. toMatchTime is true in each unless shown.
 Who it is spoken to:
@@ -600,10 +616,6 @@ Players asked for, from nowhere said:
   "we need 2 players for Thursday" / "perşembeye 2 kişi lazım" -> recruit, playersFrom []
   "@Match Time find us a player for Friday" / "@Match Time cumaya bir oyuncu bul" -> recruit, playersFrom []
   "we need more players, can you round some up" / "bize oyuncu bulur musun" -> recruit, playersFrom []
-Talk about a club or the pool, not a request:
-  "Sutton were great last week" / "Sutton geçen hafta çok iyi oynadı" -> other, toMatchTime false
-  "did Sutton ever get back to us?" -> other, toMatchTime false: a question
-  "the pool lad last week was good" / "geçen haftaki havuz oyuncusu iyiydi" -> other, toMatchTime false
 Answering MatchTime's "Who shall I ask for players: your players' group, your partner clubs, or the MatchTime player pool?":
   "the pool" / "havuza" -> recruit, playersFrom ["pool"]
   "partners please" / "partner kulüplere" -> recruit, playersFrom ["partners"], clubRef ""
@@ -611,6 +623,23 @@ Answering MatchTime's "Who shall I ask for players: your players' group, your pa
   "ask Sutton" / "Sutton'a sor" -> recruit, playersFrom ["partners"], clubRef "Sutton"
   "both" / "ikisine de" -> recruit, playersFrom ["partners","pool"]
   "all of them" / "hepsine" -> recruit, playersFrom ["club","partners","pool"]
+Talk about a club or the pool, not a request:
+  "Sutton were great last week" / "Sutton geçen hafta çok iyi oynadı" -> other, toMatchTime false
+  "did Sutton ever get back to us?" -> other, toMatchTime false: a question
+  "the pool lad last week was good" / "geçen haftaki havuz oyuncusu iyiydi" -> other, toMatchTime false
+The club's pitch:
+  "@Match Time our pitch is Goals Sutton" / "@Match Time sahamız Goals Sutton" -> set_venue, venueName "Goals Sutton", venueChoice 0
+  "we play at Powerleague Shoreditch now" / "artık Powerleague Shoreditch'te oynuyoruz" -> set_venue, venueName "Powerleague Shoreditch"
+  "@Match Time where is the game?" / "@Match Time maç nerede?" -> other: a question
+  "the pitch at Goals was flooded" / "Goals'un sahası su basmıştı" -> other, toMatchTime false
+Answering MatchTime's "I found more than one place for *Goals Sutton*. Which one is it?" and its numbered list:
+  "2" / "ikincisi" -> set_venue, venueName "Goals Sutton", venueChoice 2
+  "the first one" / "birincisi" -> set_venue, venueName "Goals Sutton", venueChoice 1
+Trying again after MatchTime said it could not do something:
+  "@Match Time added the venue location" / "@Match Time tamam ekledim" -> retry_ask
+  "done, try again" / "şimdi dene" -> retry_ask
+  "@Match Time I've switched the pool on, go ahead" / "@Match Time havuzu açtım, devam et" -> retry_ask
+  "@Match Time thanks" / "@Match Time teşekkürler" -> other
 Payments and free places:
   "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
   "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
@@ -816,7 +845,7 @@ const ADMIN_SCHEMA = {
   properties: {
     action: {
       type: "string",
-      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "other"],
+      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "other"],
     },
     payerRef: { type: "string" },
     count: { type: "number" },
@@ -837,11 +866,15 @@ const ADMIN_SCHEMA = {
     // none. The other club's name as written for "partners" (slice S6).
     playersFrom: { type: "array", items: { type: "string", enum: ["club", "partners", "pool"] } },
     clubRef: { type: "string" },
+    // set_venue (2026-10-28): the place as named, and the number picked from
+    // MatchTime's list of places (0 is the stand-in for "none picked").
+    venueName: { type: "string" },
+    venueChoice: { type: "number" },
     // Who the message is spoken to (2026-10-22): MatchTime, or a person or
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1147,7 +1180,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "other"].includes(action)) {
+      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1191,6 +1224,12 @@ export function parseFacts(
         // 2026-10-28 (Kemal, "stricter"): the words asked for players and
         // named no place. Never with a club named (that is another club).
         ...(action === "recruit" && from.size === 0 && !clubRef ? { sourceUnsaid: true } : {}),
+        // 2026-10-28: the pitch named, and a pick from MatchTime's list
+        // (a whole number from 1). Carried on set_venue only.
+        ...(action === "set_venue" && typeof raw.venueName === "string" && raw.venueName.trim() ? { venueName: raw.venueName.trim() } : {}),
+        ...(action === "set_venue" && typeof raw.venueChoice === "number" && Number.isInteger(raw.venueChoice) && raw.venueChoice > 0
+          ? { venueChoice: raw.venueChoice }
+          : {}),
         // Only a clear true: a missing or false value keeps HQ's outward
         // actions closed (`admin-group-understand.ts`).
         ...(raw.toMatchTime === true ? { toMatchTime: true } : {}),

@@ -721,6 +721,75 @@ describe("parseFacts (other routes)", () => {
     expect(facts.kind).toBe("none");
     expect(degradations).toHaveLength(1);
   });
+
+  // ── 2026-10-28 (Kemal): two admin actions by WhatsApp. "Set the pitch"
+  // ("@Match Time our pitch is Goals Sutton") and "try again" after a
+  // refusal ("@Match Time added the venue location", MT Test 15:40 UTC,
+  // which was read `other` and got the generic "I can't change that").
+  const adminOf = (fields: Record<string, unknown>) =>
+    parseFacts(
+      "admin",
+      JSON.stringify({
+        action: "other",
+        payerRef: "",
+        count: 0,
+        coveredRefs: [],
+        undo: false,
+        matchDay: "",
+        pastGame: false,
+        phrase: "",
+        note: "",
+        lookbackMatches: 0,
+        playersFrom: [],
+        clubRef: "",
+        venueName: "",
+        venueChoice: 0,
+        toMatchTime: true,
+        ...fields,
+      }),
+      "wa-1",
+    ).facts;
+
+  it("admin · set_venue carries the place as written, trimmed, and the list number only when one was picked", () => {
+    expect(adminOf({ action: "set_venue", venueName: "  Goals Sutton " })).toMatchObject({ kind: "admin", action: "set_venue", venueName: "Goals Sutton" });
+    expect("venueChoice" in adminOf({ action: "set_venue", venueName: "Goals Sutton" })).toBe(false);
+    expect(adminOf({ action: "set_venue", venueName: "Goals Sutton", venueChoice: 2 })).toMatchObject({ venueChoice: 2 });
+    // Not a whole positive number: no pick.
+    for (const bad of [-1, 0, 1.5, Number.NaN]) expect("venueChoice" in adminOf({ action: "set_venue", venueName: "X", venueChoice: bad }), String(bad)).toBe(false);
+  });
+
+  it("admin · the venue fields are dropped on every other action", () => {
+    for (const action of ["recruit", "other", "retry_ask"]) {
+      const f = adminOf({ action, venueName: "Goals Sutton", venueChoice: 2 });
+      expect("venueName" in f, action).toBe(false);
+      expect("venueChoice" in f, action).toBe(false);
+    }
+  });
+
+  it("admin · retry_ask is its own action, with nothing else carried", () => {
+    const f = adminOf({ action: "retry_ask", playersFrom: ["pool"] });
+    expect(f).toMatchObject({ kind: "admin", action: "retry_ask", toMatchTime: true });
+    for (const k of ["pool", "partnerClubs", "sourceUnsaid", "ownClub"]) expect(k in f, k).toBe(false);
+  });
+
+  it("admin · the schema requires both venue fields", () => {
+    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    expect(schema.required).toEqual(expect.arrayContaining(["venueName", "venueChoice"]));
+    expect(schema.properties.action.enum).toEqual(expect.arrayContaining(["set_venue", "retry_ask"]));
+  });
+
+  it("admin · the 2026-10-28 rewrite: every action and field once, the pitch and try-again examples EN and TR", () => {
+    const p = EXTRACTOR_PROMPTS.admin;
+    for (const action of ["bulk_payment", "fee_waiver", "cancel_match", "restore_match", "reminder", "recruit", "stats_blast", "set_venue", "retry_ask", "other"]) {
+      expect(p.split(`\n  "${action}" `).length, action).toBe(2);
+    }
+    for (const field of ["toMatchTime", "venueName", "venueChoice"]) expect(p.split(`\n  ${field} `).length, field).toBe(2);
+    expect(p).toMatch(/"@Match Time our pitch is Goals Sutton" \/ "@Match Time sahamız Goals Sutton" -> set_venue, venueName "Goals Sutton"/);
+    expect(p).toMatch(/"@Match Time added the venue location" \/ "@Match Time tamam ekledim" -> retry_ask/);
+    expect(p).toMatch(/"done, try again" \/ "şimdi dene" -> retry_ask/);
+    expect(p).toMatch(/"2" \/ "ikincisi" -> set_venue, venueName "Goals Sutton", venueChoice 2/);
+    expect(p).not.toMatch(/[–—]/);
+  });
 });
 
 // ── The call ───────────────────────────────────────────────────────────

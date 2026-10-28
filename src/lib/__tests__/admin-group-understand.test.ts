@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelRequest, PipelineModel } from "../pipeline/llm";
 import type { HqLogRow } from "../admin-group-log";
+import type { StoredAsk } from "../refused-ask-retry";
 import { asShortIds } from "../pipeline/__tests__/router-ids";
 
 const dbMock = vi.hoisted(() => ({
@@ -1710,5 +1711,100 @@ describe("L10 follow-up: YES to a guest who wants to join (L8's notice)", () => 
     hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1")]);
     dbMock.adminTeamProposal.findFirst.mockResolvedValue({ matchId: "m1", askedAt: ASKED, state: "proposed" });
     expect((await ask("looks good, go", "approve"))?.outcome).toBe("teams-final");
+  });
+});
+
+// 2026-10-28 (Kemal): "try again" after a refusal, and "set the pitch", in
+// HQ, by an organiser asking MatchTime. Through the same doors as the
+// players' group: the stored ask (refused-ask-retry.ts), the venue lookup
+// (venue-from-words.ts). Nothing parsed from the words by code.
+describe("try again, and set the pitch, from HQ", () => {
+  const STORED: StoredAsk = { facts: { kind: "admin", action: "recruit", partnerClubs: true, pool: true, toMatchTime: true }, at: new Date(NOW.getTime() - 120_000) };
+  const hqDeps = (facts: Record<string, unknown>, over: Record<string, unknown> = {}) => ({
+    routerModel: routeTo("admin_ops"),
+    extractorModel: adminFacts(facts),
+    latestAskForRetry: vi.fn(async (): Promise<StoredAsk | null> => STORED),
+    setVenueFromWords: vi.fn(async () => ({ outcome: "venue-set" as const, replyText: "📍 Done, your pitch is *Goals Sutton*.", set: true })),
+    afterVenueSet: vi.fn(async () => undefined),
+    ...over,
+  });
+  beforeEach(() => {
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    hqLog.hqLogSince.mockResolvedValue([]);
+    partnerWords.activePartnerChoices.mockResolvedValue([{ partnershipId: "p1", partnerOrgId: "o2", name: "Sutton" }]);
+    partnerWords.askPartnersFromWords.mockResolvedValue({ outcome: "xask-words-asked", replyText: "Asked Sutton.", asked: 1 });
+    hqPool.askPoolFromWords.mockResolvedValue({ outcome: "hq-pool-asked", replyText: "Asked the pool." });
+  });
+
+  it("an organiser's tagged try again: the stored ask is made again, partners then the pool", async () => {
+    const deps = hqDeps({ action: "retry_ask", toMatchTime: true });
+    const r = await ask("@Match Time added the venue location", "admin_ops", { deps });
+    expect(deps.latestAskForRetry).toHaveBeenCalledWith({ orgId: "org-fnf", where: "hq", now: NOW });
+    expect(partnerWords.askPartnersFromWords).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", via: "hq", clubRef: null }));
+    expect(hqPool.askPoolFromWords).toHaveBeenCalled();
+    expect(r?.replyText).toContain("Asked Sutton.");
+    expect(r?.replyText).toContain("Asked the pool.");
+  });
+
+  it("nothing stored to repeat: one short line, nobody asked", async () => {
+    const deps = hqDeps({ action: "retry_ask", toMatchTime: true }, { latestAskForRetry: vi.fn(async (): Promise<StoredAsk | null> => null) });
+    const r = await ask("@Match Time done, try again", "admin_ops", { deps });
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-retry-nothing", replyText: "👍 Thanks. There's nothing of mine waiting to try again." });
+    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
+  });
+
+  it("an organiser names the pitch: set, the reply names it, what waited for a venue is tried again", async () => {
+    const deps = hqDeps({ action: "set_venue", venueName: "Goals Sutton", toMatchTime: true });
+    const r = await ask("@Match Time our pitch is Goals Sutton", "admin_ops", { deps });
+    expect(deps.setVenueFromWords).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", userId: "u-admin", words: "Goals Sutton", choice: null, lang: "en" }));
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-venue-set", replyText: "📍 Done, your pitch is *Goals Sutton*." });
+    expect(deps.afterVenueSet).toHaveBeenCalledWith("org-fnf");
+  });
+
+  it("a member of HQ who is not an organiser, tagged: the one line naming who can, nothing done", async () => {
+    const deps = hqDeps({ action: "set_venue", venueName: "Goals Sutton", toMatchTime: true });
+    const r = await ask("@Match Time our pitch is Goals Sutton", "admin_ops", { deps, organiser: false, senderUserId: "u-2" });
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(deps.setVenueFromWords).not.toHaveBeenCalled();
+  });
+
+  it("routed ask_group (as the router did for the live case): the stored ask, never a post in the players' group", async () => {
+    const deps = { ...hqDeps({ action: "retry_ask", toMatchTime: true }), routerModel: routeTo("ask_group") };
+    const r = await ask("@Match Time added the venue location", "ask_group", { deps });
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).toHaveBeenCalled();
+    expect(r?.replyText).toContain("Asked the pool.");
+  });
+
+  it("an untagged \"2\" right after MatchTime's list of places: that place of the list's own words, whatever the route", async () => {
+    hqLog.hqLogSince.mockResolvedValue([
+      { waMessageId: "mt:venue-pick:1", fromMatchTime: true, senderUserId: null, text: "I found more than one place for *Goals Sutton*. Which one is it?", askRef: "venue-pick:Goals Sutton", createdAt: new Date(NOW.getTime() - 60_000) },
+    ]);
+    const deps = { ...hqDeps({ action: "set_venue", venueName: "", venueChoice: 2, toMatchTime: true }), routerModel: routeTo("none") };
+    const r = await ask("2", "none", { deps });
+    expect(deps.setVenueFromWords).toHaveBeenCalledWith(expect.objectContaining({ words: "Goals Sutton", choice: 2 }));
+    expect(r?.outcome).toBe("hq-venue-set");
+  });
+
+  it("routed none, tagged, minutes after the organisers' ask: still the stored ask again", async () => {
+    const deps = { ...hqDeps({ action: "retry_ask", toMatchTime: true }), routerModel: routeTo("none") };
+    const r = await ask("@Match Time added the venue location", "none", { deps });
+    expect(hqPool.askPoolFromWords).toHaveBeenCalled();
+    expect(r?.replyText).toContain("Asked the pool.");
+  });
+
+  it("routed none with no recent ask: no extra read, the organisers' own conversation as before", async () => {
+    const deps = { ...hqDeps({ action: "retry_ask", toMatchTime: true }, { latestAskForRetry: vi.fn(async (): Promise<StoredAsk | null> => null) }), routerModel: routeTo("none") };
+    const r = await ask("@Match Time added the venue location", "none", { deps });
+    expect(r).toBeNull();
+    expect(requests.filter((q) => q.label === "extractor:admin")).toHaveLength(0);
+  });
+
+  it("spoken to the others, untagged: their conversation, nothing done or said", async () => {
+    const deps = hqDeps({ action: "retry_ask", toMatchTime: false });
+    const r = await ask("try again tomorrow lads", "admin_ops", { deps });
+    expect(r).toBeNull();
+    expect(deps.latestAskForRetry).not.toHaveBeenCalled();
   });
 });

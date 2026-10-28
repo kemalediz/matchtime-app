@@ -156,6 +156,12 @@ import { parseJoinRequestRef, parsePoolAskRef } from "./admin-group-pool-refs";
 import { decideRecruitSource, namedSources, sourcesFromAnswer, sourceQuestionAnswered, type RecruitSource } from "./ask-source-rules";
 import { mergeOneReply } from "./pipeline/clause-peel";
 import { askWhichSource, sourcesAvailable } from "./ask-source";
+import { RETRY_FOLLOWUP_MS, latestAskFromRecords, retryFactsOf, type LatestAskForRetry } from "./refused-ask-retry";
+import { setVenueFromWords } from "./venue-from-words";
+import { parseVenuePickRef, venueListAnswered } from "./venue-from-words-rules";
+import { recordHqVenueList } from "./venue-list-log";
+import type { HqLogRow } from "./admin-group-log";
+import { adminVenueCopy } from "./i18n/admin-venue";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -199,7 +205,16 @@ export interface UnderstandInput {
    *  the platform switch row, or the e2e seam under MT_TEST_MODE=1. */
   poolEnv?: Record<string, string | undefined>;
   /** Injected in tests only. */
-  deps?: { routerModel?: PipelineModel; extractorModel?: PipelineModel };
+  deps?: {
+    routerModel?: PipelineModel;
+    extractorModel?: PipelineModel;
+    /** "Try again" (2026-10-28): the organisers' last ask, as stored. */
+    latestAskForRetry?: LatestAskForRetry;
+    /** "Our pitch is Goals Sutton" (2026-10-28). */
+    setVenueFromWords?: typeof setVenueFromWords;
+    /** Once the pitch is set: what waited for a venue is tried again. */
+    afterVenueSet?: (orgId: string) => Promise<unknown>;
+  };
 }
 
 export interface Understood {
@@ -660,6 +675,39 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
       console.log(`[admin-group] ${messageId}: players asked for, no source named: asking which (${d.options.join("+")})`);
       return said("hq-ask-source", await askWhichSource({ orgId: org.id, lang, options: d.options, now }));
     };
+    // SETTING THE PITCH, OR "TRY AGAIN" AFTER A REFUSAL (2026-10-28, Kemal:
+    // every admin feature by WhatsApp). Read on admin_ops and ask_group (the
+    // router sends "added the venue location" to either), and for an answer
+    // to MatchTime's own list of places. Only when asked of MatchTime (a
+    // tag, the model saying it is spoken to it, or the list's answer):
+    // otherwise the organisers' own conversation. An organiser's alone.
+    // "Try again" makes the organisers' stored ask again through the same
+    // doors as an ask in words; nothing stored, one short line. A number
+    // picked from the list is that place of the list's OWN words (`list`).
+    const venueOrRetry = async (facts: AdminFacts, list: HqLogRow | null): Promise<Understood | null> => {
+      if (!list && !tagged && facts.toMatchTime !== true) {
+        console.log(`[admin-group] ${messageId}: ${facts.action} not asked of MatchTime: their conversation`);
+        return null;
+      }
+      if (!actor) return onlyOrganisers();
+      if (facts.action === "set_venue") {
+        const listWords = list ? parseVenuePickRef(list.askRef) : null;
+        const choice = facts.venueChoice ?? null;
+        const words = listWords && choice ? listWords : (facts.venueName ?? listWords);
+        const r = await (input.deps?.setVenueFromWords ?? setVenueFromWords)({ orgId: org.id, userId: actor, words, choice, lang, now });
+        if (r.outcome === "venue-which" && words) await recordHqVenueList({ orgId: org.id, words, text: r.replyText, now });
+        if (r.set && input.deps?.afterVenueSet) {
+          await input.deps.afterVenueSet(org.id).catch((err) => console.error(`[admin-group] ${messageId}: after the pitch was set:`, err instanceof Error ? err.message : "failed"));
+        }
+        return said(`hq-${r.outcome}`, r.replyText);
+      }
+      const stored = await (input.deps?.latestAskForRetry ?? latestAskFromRecords)({ orgId: org.id, where: "hq", now }).catch(() => null);
+      const again = retryFactsOf(stored, now);
+      const places = again ? otherPlacesNamed(again) : null;
+      console.log(`[admin-group] ${messageId}: try again: ${places ? `repeating the last ask (${places.join("+")})` : "nothing stored to repeat"}`);
+      if (!places) return said("hq-retry-nothing", adminVenueCopy(lang).nothingToRetry);
+      return askFromSources(places, actor, again?.clubRef ?? null);
+    };
     /** The places a recruit names besides the club's own players, or null. */
     const otherPlacesNamed = (facts: AdminFacts | null): RecruitSource[] | null => {
       if (facts?.action !== "recruit") return null;
@@ -683,6 +731,29 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
       const picked = sourcesFromAnswer(answer);
       console.log(`[admin-group] ${messageId}: in the place of an answer to the source question: ${picked?.join("+") ?? "not an answer"}`);
       if (picked) return askFromSources(picked, actor, answer?.clubRef ?? null);
+    }
+    // AN ANSWER TO MATCHTIME'S LIST OF PLACES (2026-10-28), by the same two
+    // positional tests: read by the admin extractor whatever the router
+    // said ("@Match Time 2" is often routed elsewhere). A pick sets the
+    // pitch; anything else is handled as it would have been.
+    const venueList = actor ? venueListAnswered({ quoted, log, now }) : null;
+    if (venueList) {
+      const answer = await readAdminFacts();
+      console.log(`[admin-group] ${messageId}: in the place of an answer to MatchTime's list of places: ${answer?.action ?? "not read"}`);
+      if (answer?.action === "set_venue") return venueOrRetry(answer, venueList);
+    }
+    // A TAGGED FOLLOW-UP RIGHT AFTER THE ORGANISERS' ASK (2026-10-28): within
+    // 15 minutes of their stored ask to the partner clubs or the pool, a
+    // message the router sent elsewhere ("@Match Time added the venue
+    // location" came back `none` once) is read by the admin extractor as
+    // well. "Try again" or the pitch named is done; anything else carries on.
+    if (actor && tagged && route !== "admin_ops" && route !== "ask_group") {
+      const stored = await (input.deps?.latestAskForRetry ?? latestAskFromRecords)({ orgId: org.id, where: "hq", now }).catch(() => null);
+      if (stored && now.getTime() - stored.at.getTime() <= RETRY_FOLLOWUP_MS && retryFactsOf(stored, now)) {
+        const answer = await readAdminFacts();
+        console.log(`[admin-group] ${messageId}: a tagged follow-up to the organisers' ask (${route ?? "no route"}): ${answer?.action ?? "not read"}`);
+        if (answer?.action === "retry_ask" || answer?.action === "set_venue") return venueOrRetry(answer, null);
+      }
     }
     if (answersMomAsk) {
       if (route !== "score") console.log(`[admin-group] ${messageId}: a reply to the Man of the Match question; ${route ?? "nowhere"} -> score`);
@@ -866,6 +937,7 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         // club without the pool hears so instead of a post in its group.
         const partners = await activePartnerChoices(org.id).catch(() => []);
         const facts = await readAdminFacts();
+        if (facts && (facts.action === "set_venue" || facts.action === "retry_ask")) return venueOrRetry(facts, null);
         if (leavesHqUnasked(facts)) return null;
         // Another place named (the pool, the partners, or several): each is
         // asked. A partner club named by a club that has none stays the
@@ -904,6 +976,8 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
           if (!actor) return onlyOrganisers();
           return askFromSources(places, actor, facts.kind === "admin" ? (facts.clubRef ?? null) : null);
         }
+        // Setting the pitch, or "try again" after a refusal (2026-10-28).
+        if (facts.kind === "admin" && (facts.action === "set_venue" || facts.action === "retry_ask")) return venueOrRetry(facts, null);
         // Players asked for, no source named (2026-10-28): an organiser's
         // question back when the club has partners or the pool; otherwise
         // the one line below, as before.

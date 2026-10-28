@@ -383,6 +383,9 @@ import { askPartnersFromWords, partnerClubsForRouter } from "@/lib/partner-ask-w
 import { askPoolFromWords } from "@/lib/pool-ask-words";
 import { recruitPlacesFromWords } from "@/lib/recruit-source";
 import { groupSourceAnswers } from "@/lib/ask-source-group";
+import { groupAdminFollowups } from "@/lib/group-admin-followups";
+import { setVenueFromWords } from "@/lib/venue-from-words";
+import { recordVenueList } from "@/lib/venue-list-log";
 import { askWhichSource, nobodyLeftReply, sourcesAvailable } from "@/lib/ask-source";
 import { decideRecruitSource, type RecruitSource } from "@/lib/ask-source-rules";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
@@ -1143,6 +1146,68 @@ async function handleAnalyzeRequest(request: Request) {
         reply: null,
       });
       sourceAnswerAsks.push({ msg: m, sender, sources: a.sources, clubRef: a.clubRef });
+    }
+  }
+
+  // ── AN ORGANISER FOLLOWING UP MATCHTIME (2026-10-28) ────────────────
+  //   A pick from MatchTime's own list of places ("@Match Time 2"), or a
+  //   tagged "try again" within 15 minutes of the organisers' ask to the
+  //   partner clubs or the pool ("@Match Time added the venue location").
+  //   Short words the router often sends elsewhere (the paid check routed
+  //   both `question`), so they are read here, as an answer to "who shall
+  //   I ask?" is just above: the list's record, or the stored ask, then the
+  //   shared admin extractor (`group-admin-followups.ts`). Never a phrase
+  //   match. A pick sets the pitch now; a "try again" is the stored ask,
+  //   made in the batch-final pass with every other ask. Not at the AI cap.
+  //   One indexed read and no model call for a batch with neither waiting.
+  if (!aiCapped && fresh.length > 0) {
+    const followups = await groupAdminFollowups({
+      orgId: org.id,
+      now: new Date(),
+      messages: fresh
+        .filter((m) => !fastPathHandledIds.has(m.waMessageId))
+        .map((m) => {
+          const sender = senderById.get(m.waMessageId);
+          return {
+            id: m.waMessageId,
+            body: m.body,
+            authorName: sender?.name ?? m.authorName ?? null,
+            senderUserId: sender?.userId ?? null,
+            quoted:
+              m.quotedFromMatchTime || m.quotedBody || m.quotedMessageId
+                ? { fromMatchTime: m.quotedFromMatchTime === true, text: m.quotedBody ?? null, messageId: m.quotedMessageId ?? null }
+                : null,
+            ...replyField(replyById, m),
+            tagged: messageMentionsBotExplicitly(m),
+          };
+        }),
+    });
+    for (const m of fresh) {
+      const f = followups.get(m.waMessageId);
+      const sender = senderById.get(m.waMessageId);
+      if (!f || !sender?.userId) continue;
+      if (f.kind === "retry") {
+        await claimFastPath(m, null, {
+          handledBy: "fast-path",
+          intent: "retry_ask",
+          action: `retry:${f.sources.join("+")}`,
+          reasoning: `an organiser's "try again" after the organisers' ask: ${f.sources.join("+")} asked again`,
+          react: null,
+          reply: null,
+        });
+        sourceAnswerAsks.push({ msg: m, sender, sources: f.sources, clubRef: f.clubRef });
+        continue;
+      }
+      const r = await setVenueFromWords({ orgId: org.id, userId: sender.userId, words: f.words, choice: f.choice, lang: org.language, now: new Date() });
+      if (r.outcome === "venue-which" && f.words) await recordVenueList({ orgId: org.id, words: f.words, text: r.replyText, now: new Date() });
+      await claimFastPath(m, null, {
+        handledBy: "fast-path",
+        intent: r.outcome,
+        action: r.set ? "set_venue" : "reply",
+        reasoning: `an organiser named the pitch, or picked it from MatchTime's list: ${r.outcome}`,
+        react: null,
+        reply: r.replyText,
+      });
     }
   }
 

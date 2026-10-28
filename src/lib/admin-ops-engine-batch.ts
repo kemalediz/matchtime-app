@@ -217,6 +217,9 @@ import type {
   SquadState,
 } from "./pipeline/types";
 import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
+import { adminVenueCopy } from "./i18n/admin-venue";
+import { latestAskFromRecords, retryFactsOf, type LatestAskForRetry } from "./refused-ask-retry";
+import type { VenueFromWordsResult } from "./venue-from-words";
 
 export { ADMIN_OPS_APPLY_DEGRADED_PREFIX, ADMIN_OPS_HANDLED_BY };
 
@@ -336,6 +339,27 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
    *  MatchTime asking for players (2026-10-28). Defaults to HQ's own
    *  `onlyOrganisersLine`; injected so tests need no database. */
   onlyOrganisersLine?: (orgId: string, lang: string | null) => Promise<string>;
+  /** "Try again" (2026-10-28): the organisers' last ask, as stored.
+   *  Defaults to `refused-ask-retry.ts`'s interim reader; the stored
+   *  refused asks of feat/retry-refused-ask replace it when merged. */
+  latestAskForRetry?: LatestAskForRetry;
+  /** "Our pitch is Goals Sutton" (2026-10-28). Defaults to
+   *  `venue-from-words.ts`; injected so tests need no Google. */
+  setVenueFromWords?: (a: {
+    orgId: string;
+    userId: string;
+    words: string | null;
+    choice: number | null;
+    lang: string | null;
+    now: Date;
+  }) => Promise<VenueFromWordsResult>;
+  /** Called once the pitch is set, so asks refused for want of a venue are
+   *  tried again (`retryAsksAwaitingVenue(orgId)`, feat/retry-refused-ask).
+   *  Absent: nothing more happens until that branch wires it. */
+  afterVenueSet?: (orgId: string) => Promise<unknown>;
+  /** MatchTime's numbered list of places, logged as its question so the
+   *  pick is found (`venue-list-log.ts`). Injected so tests need no DB. */
+  recordVenueList?: (a: { orgId: string; words: string; text: string; now: Date }) => Promise<void>;
 }
 
 function empty(degradations: string[] = []): AdminOpsBatchResult {
@@ -494,6 +518,29 @@ export async function runAdminOpsBatch(args: {
   // and records it as unowned — silence plus the operator note, since
   // §10 step 8 deleted the verdict it used to leave alone), and its
   // reason is already in `degradations` before the `continue` runs.
+  // "Try again" (2026-10-28): the organisers' last ask, read ONCE, before
+  // the loop, and only when a message in the batch asks for it. A failed
+  // read is "nothing to repeat": never a guess at what was meant.
+  const wantsRetry = candidates.some((m) => {
+    const f = factsById.get(m.waMessageId);
+    return (
+      f?.kind === "admin" &&
+      f.action === "retry_ask" &&
+      m.tagged &&
+      (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body })) &&
+      state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin)
+    );
+  });
+  const askAgain = wantsRetry
+    ? retryFactsOf(
+        await (deps.latestAskForRetry ?? latestAskFromRecords)({ orgId, where: "group", now }).catch((err) => {
+          console.error("[admin-ops-engine] reading the last ask failed:", err instanceof Error ? err.message : "failed");
+          return null;
+        }),
+        now,
+      )
+    : null;
+
   const ownedIds = new Set<string>();
   /** Tagged `other`: answered in one line, outside the engine. */
   const unhandled = new Set<string>();
@@ -501,9 +548,15 @@ export async function runAdminOpsBatch(args: {
   const cancelAsks = new Map<string, { mode: "cancel" | "restore"; dayPhrase: string | null; pastGame: boolean }>();
   // A player who is not an owner or admin tagging MatchTime for players
   // (2026-10-28): the one line naming who can, as HQ says it. Nothing asked.
-  const recruitNotOrganiser = new Set<string>();
+  const recruitNotOrganiser = new Map<string, string>();
+  /** "Our pitch is Goals Sutton": looked up and set after this loop. */
+  const venueAsks = new Map<string, { words: string | null; choice: number | null }>();
+  /** "Try again" with nothing stored to repeat: one short line. */
+  const nothingToRetry = new Set<string>();
+  /** "Try again" acted on as the stored ask (for the reasoning row). */
+  const retried = new Set<string>();
   for (const m of candidates) {
-    const facts = factsById.get(m.waMessageId);
+    let facts = factsById.get(m.waMessageId);
     if (!facts) continue; // extraction failed; already reported above.
     // NAMED `hand` FOR A HAND-BACK IT NO LONGER PERFORMS. The name is
     // kept because every call site below reads `hand("why")`, and
@@ -540,6 +593,34 @@ export async function runAdminOpsBatch(args: {
       continue;
     }
 
+    // Setting the pitch, or "try again" after a refusal (2026-10-28, Kemal:
+    // every admin feature by WhatsApp, an owner or admin only). Only with an
+    // explicit tag: untagged it is the players talking, nothing done or said.
+    // A tagged player hears who can. "Try again" becomes the organisers'
+    // stored ask, and goes on below exactly as that ask did; with nothing
+    // to repeat it is one short line.
+    if (facts.action === "set_venue" || facts.action === "retry_ask") {
+      if (!(m.tagged && (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body })))) {
+        hand(`${facts.action} without an explicit MatchTime tag`);
+        continue;
+      }
+      if (!state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin)) {
+        recruitNotOrganiser.set(m.waMessageId, facts.action);
+        continue;
+      }
+      if (facts.action === "set_venue") {
+        venueAsks.set(m.waMessageId, { words: facts.venueName ?? null, choice: facts.venueChoice ?? null });
+        continue;
+      }
+      if (!askAgain) {
+        nothingToRetry.add(m.waMessageId);
+        continue;
+      }
+      facts = askAgain;
+      factsById.set(m.waMessageId, askAgain);
+      retried.add(m.waMessageId);
+    }
+
     // Players asked for by someone who is not an owner or admin of the
     // club, with an explicit tag (2026-10-28): every admin feature acts
     // only for an organiser, and a tagged player hears who can. Untagged it
@@ -550,7 +631,7 @@ export async function runAdminOpsBatch(args: {
       (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body })) &&
       !state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin)
     ) {
-      recruitNotOrganiser.add(m.waMessageId);
+      recruitNotOrganiser.set(m.waMessageId, "recruit");
       continue;
     }
 
@@ -687,7 +768,7 @@ export async function runAdminOpsBatch(args: {
     }
   }
 
-  for (const id of recruitNotOrganiser) {
+  for (const [id, what] of recruitNotOrganiser) {
     const m = messages.find((x) => x.waMessageId === id)!;
     const line = deps.onlyOrganisersLine ?? (async (o: string, l: string | null) => (await import("./admin-group-understand")).onlyOrganisersLine(o, l));
     const reply = await line(orgId, state.features.language).catch(() => null);
@@ -698,7 +779,7 @@ export async function runAdminOpsBatch(args: {
       react: null,
       intent: "organisers_only",
       action: reply ? "reply" : "none",
-      reasoning: `${ADMIN_OPS_HANDLED_BY} (${m.route}): recruit asked by someone who is not an organiser: the one line naming who can`,
+      reasoning: `${ADMIN_OPS_HANDLED_BY} (${m.route}): ${what} asked by someone who is not an organiser: the one line naming who can`,
       recruitRequest: false,
       recruitLookbackMatches: null,
       recruitSourceUnsaid: false,
@@ -707,6 +788,49 @@ export async function runAdminOpsBatch(args: {
       poolAskRequest: null,
       writeFailed: false,
     });
+  }
+
+  // ── The pitch, set from words (2026-10-28) ─────────────────────────
+  // Independent of the engine, like the cancels. The last one in the batch
+  // only would be the same thing; each is answered, in order.
+  const replyOnly = (id: string, reply: string | null, intent: string, reasoning: string, writeFailed = false): AdminOpsMessageOutcome => ({
+    waMessageId: id,
+    route: messages.find((x) => x.waMessageId === id)!.route as Route,
+    reply,
+    react: null,
+    intent,
+    action: reply ? "reply" : "none",
+    reasoning: `${ADMIN_OPS_HANDLED_BY} (admin_ops): ${reasoning}`,
+    recruitRequest: false,
+    recruitLookbackMatches: null,
+    recruitSourceUnsaid: false,
+    statsBlastRequest: false,
+    partnerAskRequest: null,
+    poolAskRequest: null,
+    writeFailed,
+  });
+  for (const [id, ask] of venueAsks) {
+    const m = messages.find((x) => x.waMessageId === id)!;
+    const setVenue = deps.setVenueFromWords ?? (async (a) => (await import("./venue-from-words")).setVenueFromWords(a));
+    try {
+      const r = await setVenue({ orgId, userId: m.senderUserId!, words: ask.words, choice: ask.choice, lang: state.features.language, now });
+      if (r.set && deps.afterVenueSet) {
+        await deps.afterVenueSet(orgId).catch((err) => console.error(`[admin-ops-engine] ${id}: after the pitch was set:`, err instanceof Error ? err.message : "failed"));
+      }
+      if (r.outcome === "venue-which" && ask.words) {
+        const record = deps.recordVenueList ?? (async (a) => (await import("./venue-list-log")).recordVenueList(a));
+        await record({ orgId, words: ask.words, text: r.replyText, now }).catch(() => undefined);
+      }
+      cancelOutcomes.push(replyOnly(id, r.replyText, r.outcome, `set_venue by an organiser: ${r.outcome}`));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[admin-ops-engine] ${id}: set_venue threw:`, err);
+      degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: set_venue threw (${detail}); nothing was said`);
+      cancelOutcomes.push(replyOnly(id, null, "noise", `set_venue threw (${detail}); the write FAILED and nothing was said`, true));
+    }
+  }
+  for (const id of nothingToRetry) {
+    cancelOutcomes.push(replyOnly(id, adminVenueCopy(state.features.language).nothingToRetry, "retry_nothing", "retry_ask with no stored ask to repeat: one short line"));
   }
 
   /** Adds the one-line answers for tagged `other`s, and the cancels, to
@@ -975,7 +1099,9 @@ export async function runAdminOpsBatch(args: {
                     : "noise",
       action: failed ? "none" : actedIds.has(m.waMessageId) ? action : react ? "react" : reply ? "reply" : "none",
       reasoning:
-        `${ADMIN_OPS_HANDLED_BY} (${m.route}): ${machineReasons || "no rule fired"}` +
+        `${ADMIN_OPS_HANDLED_BY} (${m.route}): ` +
+        (retried.has(m.waMessageId) ? "retry_ask, repeating the organisers' last ask; " : "") +
+        `${machineReasons || "no rule fired"}` +
         (failed ? "; the write FAILED and nothing was said" : ""),
       recruitRequest: isRecruit,
       recruitLookbackMatches: recruitByMessage.get(m.waMessageId) ?? null,
