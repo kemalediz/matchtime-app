@@ -69,6 +69,10 @@ export async function askPoolFromWords(args: {
   lang: string | null;
   now: Date;
   env?: Env;
+  /** An organiser's ask in words: a refusal the club can fix (no venue
+   *  yet) is remembered and asked again once it is fixed
+   *  (`pool-ask-retry.ts`). Absent (the retry itself, a notice): never. */
+  remember?: { askMessageId: string | null };
 }): Promise<{ outcome: PoolHqOutcome; replyText: string }> {
   const { orgId, lang, now } = args;
   const matchId = args.matchId ?? (await loadSquadState(orgId, now)).matchId;
@@ -87,7 +91,22 @@ export async function askPoolFromWords(args: {
     env: args.env,
   });
   console.log(`[pool-ask-words] ${orgId}: ${args.where ?? "hq"} ${args.via} ask for match ${match.id}: ${r.ok ? `asked ${r.askId}` : r.refusal}`);
-  if (!r.ok) return { outcome: "hq-pool-not-asked", replyText: poolHqAskReply(lang, { ok: false, refusal: r.refusal, placesOpen }) };
+  if (!r.ok) {
+    if (args.remember) {
+      const { rememberRefusedPoolAsk } = await import("./pool-ask-retry");
+      await rememberRefusedPoolAsk({
+        orgId,
+        matchId: match.id,
+        askedByUserId: args.userId,
+        askedIn: args.where ?? "hq",
+        askMessageId: args.remember.askMessageId,
+        places: round.places,
+        refusal: r.refusal,
+        now,
+      });
+    }
+    return { outcome: "hq-pool-not-asked", replyText: poolHqAskReply(lang, { ok: false, refusal: r.refusal, placesOpen }) };
+  }
   return {
     outcome: "hq-pool-asked",
     replyText: poolHqAskReply(lang, {

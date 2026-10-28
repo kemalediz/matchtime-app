@@ -45,6 +45,7 @@ const POOL_TABLES = [
   "PoolSport",
   "PoolAvailability",
   "PoolAsk",
+  "PoolAskRetry",
   "PoolOffer",
   "PoolBlock",
   "PoolCampaign",

@@ -622,7 +622,7 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
     const askPoolInWords = async (): Promise<Understood> => {
       if (!actor) return onlyOrganisers();
       if (!weekly) return notHere();
-      const r = await askPoolFromWords({ orgId: org.id, userId: actor, via: "words", lang, now, env: input.poolEnv });
+      const r = await askPoolFromWords({ orgId: org.id, userId: actor, via: "words", lang, now, env: input.poolEnv, remember: { askMessageId: messageId } });
       return said(r.outcome, r.replyText);
     };
 
