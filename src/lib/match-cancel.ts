@@ -37,7 +37,7 @@ import { buildMatchCancelledAnnouncement } from "./group-copy";
 import { dayMonthShortLabel, dayTimeLabel, weekdayLabel } from "./i18n/dates";
 import { normaliseLang } from "./i18n/lang";
 import { t } from "./i18n/t";
-import { PAST_CANCEL_WINDOW_DAYS, isPastGame, pickHqMatch, pointsAtPast, withinPastCancelWindow, type HqMatchMode } from "./match-cancel-rules";
+import { PAST_CANCEL_WINDOW_DAYS, bareWeekdayClash, isPastGame, pickHqMatch, pointsAtPast, withinPastCancelWindow, type HqMatchMode } from "./match-cancel-rules";
 import { isMonthlyRow } from "./monthly-week";
 import { cancelQueuedPlatformDms } from "./platform-jobs";
 
@@ -55,7 +55,13 @@ export type CancelResult =
       creditedGames: number;
     }
   | { kind: "scored"; activityName: string; date: Date }
-  | { kind: "already" | "completed" | "missing" | "too-old" };
+  /** Already CANCELLED. `notPlayed` when it was marked as not played after
+   *  kickoff (its after-game steps were run again, review of #437, 10). */
+  | { kind: "already"; activityName?: string; date?: Date; notPlayed?: boolean }
+  | { kind: "completed" | "missing" | "too-old" };
+
+export { NOT_PLAYED_KIND, notPlayedKey } from "./match-cancel-keys";
+import { NOT_PLAYED_KIND, notPlayedKey } from "./match-cancel-keys";
 
 /**
  * Cancel a match. Still to come: CANCELLED and the players' group told, as
@@ -78,8 +84,15 @@ export async function cancelMatchById(
     include: { activity: { select: { orgId: true, name: true, org: { select: { language: true, squadMode: true } } } } },
   });
   if (!match) return { kind: "missing" };
-  if (match.status === "CANCELLED") return { kind: "already" };
   const past = isPastGame(match.date, now);
+  if (match.status === "CANCELLED") {
+    if (!past) return { kind: "already" };
+    const marked = await db.sentNotification.findUnique({ where: { key: notPlayedKey(matchId) }, select: { id: true } });
+    if (!marked) return { kind: "already", activityName: match.activity.name, date: match.date };
+    // Idempotent: whatever a failure part way left undone is done now.
+    await stopAfterGame(matchId, now);
+    return { kind: "already", activityName: match.activity.name, date: match.date, notPlayed: true };
+  }
   if (!past && match.status === "COMPLETED") return { kind: "completed" };
   if (past) {
     if (!withinPastCancelWindow(match.date, now)) return { kind: "too-old" };
@@ -88,9 +101,33 @@ export async function cancelMatchById(
     if (match.redScore !== null && match.yellowScore !== null) return { kind: "scored", activityName: match.activity.name, date: match.date };
   }
 
-  // Only from the status just read: two doors at once cancel (and announce) once.
-  const res = await db.match.updateMany({ where: { id: matchId, status: match.status }, data: { status: "CANCELLED" } });
-  if (res.count === 0) return { kind: "already" };
+  // Only from the status just read: two doors at once cancel (and announce)
+  // once. A past game only while it still has no score (review of #437, 4):
+  // a score landing at the same moment wins, and the cancel says so. Its
+  // not-played record is written in the same transaction.
+  const res = past
+    ? await db.$transaction(async (tx) => {
+        const r = await tx.match.updateMany({
+          where: { id: matchId, status: match.status, redScore: null, yellowScore: null },
+          data: { status: "CANCELLED" },
+        });
+        if (r.count === 1) {
+          await tx.sentNotification.upsert({
+            where: { key: notPlayedKey(matchId) },
+            create: { key: notPlayedKey(matchId), kind: NOT_PLAYED_KIND, matchId },
+            update: {},
+          });
+        }
+        return r;
+      })
+    : await db.match.updateMany({ where: { id: matchId, status: match.status }, data: { status: "CANCELLED" } });
+  if (res.count === 0) {
+    if (past) {
+      const now2 = await db.match.findUnique({ where: { id: matchId }, select: { redScore: true, yellowScore: true } });
+      if (now2 && now2.redScore !== null && now2.yellowScore !== null) return { kind: "scored", activityName: match.activity.name, date: match.date };
+    }
+    return { kind: "already" };
+  }
 
   const lang = normaliseLang(match.activity.org?.language);
   // MONTHLY SQUAD (slice 6, plan section 7 "A cancelled week"): for a club
@@ -138,12 +175,18 @@ export async function cancelMatchById(
  *                                      no status to mark)
  *   the after-game "join the club?"    unanswered ones withdrawn, their
  *   pool question                      queued DMs cancelled
- *   guests' results                    unsettled: the no-show sweep settles
- *                                      a cancelled game as no game
+ *   guests' results                    LEFT AS THEY ARE (review of #437,
+ *                                      2): a cancelled game is never counted
+ *                                      (`countableGuestGames`), and a mark an
+ *                                      organiser made comes back on restore
  *   rating links sent                  read from the rate-dm keys
  *   players who paid                   paid rows (a monthly regular's is the
  *                                      month's, credited instead) plus the
  *                                      players a bulk payment covered
+ *
+ * Every step is idempotent, so a failure part way is finished by saying it
+ * again (`cancelMatchById` re-runs this on an "already" of a game marked as
+ * not played).
  *
  * Ratings and Man of the Match votes already given are KEPT: every reader
  * excludes a cancelled match (`played-match.ts`), so putting the game back
@@ -160,7 +203,6 @@ async function stopAfterGame(matchId: string, now: Date): Promise<{ droppedJobs:
     await cancelQueuedPlatformDms({ purposes: ["club-invite-ask"], refIds: ids, reason: "the game did not happen", now });
     await db.clubInvitation.updateMany({ where: { id: { in: ids }, status: "open" }, data: { status: "withdrawn", closedAt: now } });
   }
-  await db.guestPlace.updateMany({ where: { matchId, settledAt: { not: null } }, data: { settledAt: null } });
   const [rateLinks, paidRows, credits] = await Promise.all([
     db.sentNotification.count({ where: { matchId, OR: [{ key: { startsWith: `${matchId}:rate-dm:` } }, { key: `${matchId}:rate-promo` }] } }),
     db.attendance.findMany({ where: { matchId, paidAt: { not: null } }, select: { paymentMethod: true } }),
@@ -206,9 +248,18 @@ export type RestoreResult =
 
 /**
  * Put a cancelled match back. Still to come: UPCOMING and the players'
- * group told. ALREADY KICKED OFF, inside the window ("it did happen after
- * all"): COMPLETED, its ratings and votes count again, and nothing is
- * posted; the scheduler sends only what was never sent (its keys stay).
+ * group told. ALREADY KICKED OFF, inside the window, and marked as not
+ * played ("it did happen after all"): COMPLETED, its ratings and votes
+ * count again, and nothing is posted.
+ *
+ * What follows a restore, deliberately left to the scheduler: it sends only
+ * what was never sent (the keys stay), in its usual windows. Rating DMs go
+ * from 08:00 the morning after the game while that band lasts, so a game
+ * put back within a day or so gets its rating DMs; one put back later gets
+ * none (the same as a match completed late). Rating EMAILS are sent only by
+ * the completion cron on the first flip to COMPLETED; a game marked as not
+ * played before that flip and then put back gets no email. Not sent here: a
+ * second door sending them would be the only email path that can repeat.
  */
 export async function restoreMatchById(matchId: string, now: Date): Promise<RestoreResult> {
   const match = await db.match.findUnique({
@@ -219,8 +270,13 @@ export async function restoreMatchById(matchId: string, now: Date): Promise<Rest
   if (match.status !== "CANCELLED") return { kind: "not-cancelled" };
   const past = isPastGame(match.date, now);
   if (past && !withinPastCancelWindow(match.date, now)) return { kind: "past" };
+  // Only a game marked as NOT PLAYED after kickoff is put back as played;
+  // one called off before kickoff was announced, and stays off (review of
+  // #437, 7).
+  if (past && !(await db.sentNotification.findUnique({ where: { key: notPlayedKey(matchId) }, select: { id: true } }))) return { kind: "past" };
   const res = await db.match.updateMany({ where: { id: matchId, status: "CANCELLED" }, data: { status: past ? "COMPLETED" : "UPCOMING" } });
   if (res.count === 0) return { kind: "not-cancelled" };
+  if (past) await db.sentNotification.deleteMany({ where: { key: notPlayedKey(matchId) } });
   // Its guests' results (player pool, slice L7; review of #404, 2): a game
   // back on is played and marked as any other, so nothing stays settled.
   await db.guestPlace.updateMany({ where: { matchId, settledAt: { not: null } }, data: { settledAt: null } });
@@ -302,10 +358,33 @@ async function pickAndApply(input: {
   const s = t(input.lang);
   const days = PAST_CANCEL_WINDOW_DAYS;
   const back = pointsAtPast(input.dayPhrase, input.pastGame);
-  const matches = await db.match.findMany({
+  const loaded = await db.match.findMany({
     where: { activity: { orgId }, isHistorical: false, date: { gt: new Date(now.getTime() - days * 24 * 3600_000) } },
-    select: { id: true, date: true, status: true },
+    select: { id: true, date: true, status: true, redScore: true, yellowScore: true },
   });
+  // Which cancelled games were marked as NOT PLAYED (review of #437, 7).
+  const cancelledIds = loaded.filter((m) => m.status === "CANCELLED").map((m) => m.id);
+  const marked = new Set(
+    cancelledIds.length
+      ? (await db.sentNotification.findMany({ where: { key: { in: cancelledIds.map(notPlayedKey) } }, select: { matchId: true } })).map((r) => r.matchId)
+      : [],
+  );
+  const matches = loaded.map((m) => ({ ...m, notPlayed: marked.has(m.id) }));
+  // "cancel Tuesday" the day after an unscored Tuesday, with nothing saying
+  // which (review of #437, 3): ask, never guess.
+  if (mode === "cancel" && !back) {
+    const clash = bareWeekdayClash(matches, now, input.dayPhrase, input.pastGame);
+    if (clash) {
+      const weekday = weekdayLabel(input.lang, clash.past.date);
+      const pastDate = dayMonthShortLabel(input.lang, clash.past.date);
+      return {
+        kind: "nothing-done",
+        replyText: clash.next
+          ? s.not_played_which({ weekday, pastDate, nextDate: dayMonthShortLabel(input.lang, clash.next.date) })
+          : s.not_played_which_past({ weekday, pastDate }),
+      };
+    }
+  }
   const match = pickHqMatch(matches, now, mode, input.dayPhrase, input.pastGame);
   const day = input.dayPhrase?.trim() ?? "";
   const none = (): Applied => {
@@ -319,12 +398,27 @@ async function pickAndApply(input: {
     console.log(`[match-cancel] ${match.id}: cancel from ${input.where}: ${r.kind}`);
     if (r.kind === "cancelled") return r;
     if (r.kind === "scored") return { kind: "nothing-done", replyText: s.not_played_scored({ game: notPlayedGameLabel(input.lang, r.activityName, r.date) }) };
+    if (r.kind === "already" && r.activityName && r.date) {
+      return { kind: "nothing-done", replyText: s.not_played_already({ game: notPlayedGameLabel(input.lang, r.activityName, r.date) }) };
+    }
     if (r.kind !== "not-played") return { kind: "nothing-done", replyText: back ? s.not_played_none({ days }) : s.hq_cancel_no_match };
     const extra = [
       r.creditedGames > 0 ? (await import("./month-close-copy")).buildCancelCreditLine({ count: 1, lang: normaliseLang(input.lang) }) : null,
       input.ratingsLineInReply && r.ratingLinksSent ? ratingsClosedLine(input.lang, r.date) : null,
     ].filter(Boolean).join("\n");
-    return { kind: "not-played", replyText: notPlayedReply(input.lang, r, extra || null) };
+    // In the players' group the money stays private (review of #437, 8):
+    // who paid goes to the organisers by the club's admin notice channel,
+    // not into a group every player reads. HQ is the organisers' own group.
+    const privately = input.ratingsLineInReply === true;
+    if (privately && r.paidCount > 0) {
+      const { sendAdminNotice } = await import("./admin-channel");
+      await sendAdminNotice({
+        orgId,
+        now,
+        text: `${notPlayedGameLabel(input.lang, r.activityName, r.date)}: ${s.not_played_paid({ count: r.paidCount })}`,
+      });
+    }
+    return { kind: "not-played", replyText: notPlayedReply(input.lang, privately ? { ...r, paidCount: 0 } : r, extra || null) };
   }
   const r = await restoreMatchById(match.id, now);
   console.log(`[match-cancel] ${match.id}: restore from ${input.where}: ${r.kind}`);

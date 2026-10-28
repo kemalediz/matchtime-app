@@ -128,6 +128,7 @@ const NO_TICK: ReadonlySet<string> = new Set([
   "hq-score-not-changed",
   "hq-score-no-match",
   "hq-score-failed",
+  "hq-score-not-played",
   // Man of the Match picked by the organisers (2026-10-18): a tick only
   // when it was recorded.
   "hq-mom-asked",

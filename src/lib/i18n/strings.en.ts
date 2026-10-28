@@ -1558,6 +1558,14 @@ export const en = {
   not_played_none_day: (p: { day: string; days: number }): string => `I can't find a match in the last ${p.days} days for "${p.day}".`,
   not_played_restore_none: (p: { days: number }): string => `There's no cancelled match from the last ${p.days} days to put back.`,
   not_played_too_old: (p: { days: number }): string => `This match kicked off more than ${p.days} days ago, so it can't be changed now.`,
+  not_played_already: (p: { game: string }): string => `${p.game} is already marked as not played.`,
+  not_played_which: (p: { weekday: string; pastDate: string; nextDate: string }): string =>
+    `Which ${p.weekday}: last ${p.weekday}'s game on ${p.pastDate}, or next ${p.weekday}'s on ${p.nextDate}? Say "last ${p.weekday}" or "next ${p.weekday}".`,
+  not_played_which_past: (p: { weekday: string; pastDate: string }): string =>
+    `Do you mean last ${p.weekday}'s game on ${p.pastDate}? Say "last ${p.weekday}" and I'll mark it as not played.`,
+  not_played_failed: "That didn't go through. Please try again.",
+  not_played_already_completed: "This match is already completed.",
+  score_not_played: "That game is marked as not played, so I haven't recorded a score for it.",
   not_played_rate_closed: "This game was cancelled, so there is nothing to rate.",
   not_played_button: "This game didn't happen",
   not_played_confirm: (p: { game: string }): string =>

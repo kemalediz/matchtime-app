@@ -40,6 +40,7 @@ import { normaliseLang } from "@/lib/i18n/lang";
 import { NOT_CANCELLED } from "@/lib/played-match";
 import { notPlayedDoor } from "@/lib/match-cancel-rules";
 import { notPlayedGameLabel } from "@/lib/match-cancel";
+import { notPlayedKey } from "@/lib/match-cancel-keys";
 import { NotPlayedButton } from "@/components/match/not-played-button";
 
 export default async function MatchDetailPage({
@@ -229,7 +230,13 @@ export default async function MatchDetailPage({
   const isPastDeadline = new Date() > match.attendanceDeadline;
   // "This game didn't happen" (2026-10-28): an organiser's button on a past
   // game inside the 7-day window, or "It did happen" once it is marked.
-  const notPlayed = isAdmin ? notPlayedDoor(match, new Date()) : null;
+  // "It did happen" only for a game marked as not played after kickoff,
+  // never one called off before it (review of #437, 7).
+  const markedNotPlayed =
+    isAdmin && match.status === "CANCELLED"
+      ? !!(await db.sentNotification.findUnique({ where: { key: notPlayedKey(matchId) }, select: { id: true } }))
+      : false;
+  const notPlayed = isAdmin ? notPlayedDoor({ ...match, notPlayed: markedNotPlayed }, new Date()) : null;
   // "Enter score" / "Edit score" for an admin on any PLAYED match that was
   // not cancelled (FNF, 2026-10-18). Both open the score panel in the
   // result bar (Kemal, 2026-10-18); the teams page keeps its own box.

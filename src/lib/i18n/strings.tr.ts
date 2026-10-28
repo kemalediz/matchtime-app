@@ -1297,6 +1297,18 @@ export const tr: Strings = {
   not_played_none_day: (p) => `Son ${p.days} günde "${p.day}" için bir maç bulamadım.`,
   not_played_restore_none: (p) => `Geri alınacak, son ${p.days} günden iptal edilmiş bir maç yok.`,
   not_played_too_old: (p) => `Bu maçın başlama saatinin üzerinden ${p.days} günden fazla geçti, artık değiştirilemez.`,
+  not_played_already: (p) => `${p.game} zaten oynanmadı olarak işaretli.`,
+  not_played_which: (p) => {
+    const w = p.weekday.toLocaleLowerCase("tr");
+    return `Hangi ${w}: ${p.pastDate} günkü geçen maç mı, ${p.nextDate} günkü gelecek maç mı? "geçen ${w}" ya da "gelecek ${w}" yazın.`;
+  },
+  not_played_which_past: (p) => {
+    const w = p.weekday.toLocaleLowerCase("tr");
+    return `${p.pastDate} günkü geçen maçı mı kastediyorsunuz? "geçen ${w}" yazın, oynanmadı olarak işaretleyeyim.`;
+  },
+  not_played_failed: "Bir sorun çıktı, lütfen tekrar deneyin.",
+  not_played_already_completed: "Bu maç zaten tamamlandı.",
+  score_not_played: "Bu maç oynanmadı olarak işaretli, bu yüzden skor kaydetmedim.",
   not_played_rate_closed: "Bu maç iptal edildi, puanlanacak bir şey yok.",
   not_played_button: "Bu maç oynanmadı",
   not_played_confirm: (p) => `${p.game} oynanmadı olarak işaretlensin mi? Hiçbir yerde sayılmaz: skor, puanlama ya da maçın adamı yok.`,

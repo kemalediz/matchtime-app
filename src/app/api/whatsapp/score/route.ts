@@ -16,7 +16,8 @@ import { isGuestMembership } from "@/lib/guest-membership";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
-import { reconcileMatchElo, setMatchScore } from "@/lib/match-elo";
+import { MatchCancelledError, reconcileMatchElo, setMatchScore } from "@/lib/match-elo";
+import { t } from "@/lib/i18n/t";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -103,7 +104,15 @@ export async function POST(request: Request) {
   // the one writer every score path shares (lib/match-elo.ts), so the
   // points this result adds are stored with the match and a later
   // correction can take them back exactly.
-  await setMatchScore({ matchId: target.id, red: redScore, yellow: yellowScore });
+  try {
+    await setMatchScore({ matchId: target.id, red: redScore, yellow: yellowScore });
+  } catch (err) {
+    // Marked as not played in between (review of #437, 4): said, not a 500.
+    if (err instanceof MatchCancelledError) {
+      return NextResponse.json({ error: "not_played", message: t(org.language).score_not_played }, { status: 409 });
+    }
+    throw err;
+  }
 
   try {
     await reconcileMatchElo({ matchId: target.id });

@@ -124,6 +124,7 @@
  */
 import { quotesAnotherMatch, type QuotedGroupMessage } from "./reply-context";
 import { compose } from "./pipeline/compose";
+import { t } from "./i18n/t";
 import { decide as decideDefault } from "./pipeline/engine";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
@@ -193,6 +194,9 @@ export interface ScoreMessageOutcome {
   eloApplied: number;
   /** The write threw. The caller must not say anything cheerful. */
   writeFailed: boolean;
+  /** It threw because the game is marked as not played (review of #437,
+   *  4): the reply says so, and HQ answers the same. */
+  writeCancelled?: boolean;
   /** The result that LANDED, with the one it replaced on a correction.
    *  Null when nothing was written. The organisers' group words its own
    *  reply from it (`admin-group-score.ts`). */
@@ -616,7 +620,12 @@ export async function runScoreBatch(args: {
 
     // ONE reply per message, and NOTHING when the write threw. §3.2 S7:
     // the words must match the action.
-    const reply = failed ? null : (utteranceByMessageId.get(m.waMessageId) ?? []).join("\n\n") || null;
+    const cancelled = failed && write?.cancelled === true;
+    const reply = cancelled
+      ? t(state.features?.language).score_not_played
+      : failed
+        ? null
+        : (utteranceByMessageId.get(m.waMessageId) ?? []).join("\n\n") || null;
     const react = failed ? null : (reactByMessageId.get(m.waMessageId) ?? null);
     if (write?.ok) scoredMatchId = write.write.matchId;
 
@@ -636,6 +645,7 @@ export async function runScoreBatch(args: {
       matchId: write?.write.matchId ?? null,
       eloApplied: write?.eloApplied ?? 0,
       writeFailed: failed,
+      ...(cancelled ? { writeCancelled: true } : {}),
       recorded: write?.ok
         ? { red: write.write.red, yellow: write.write.yellow, previous: write.write.previous ?? null }
         : null,

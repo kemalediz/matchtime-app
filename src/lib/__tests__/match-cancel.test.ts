@@ -13,13 +13,16 @@ const dbMock = vi.hoisted(() => ({
   organisation: { findUnique: vi.fn() },
   membership: { findMany: vi.fn() },
   clubInvitation: { findMany: vi.fn(), updateMany: vi.fn() },
-  sentNotification: { count: vi.fn() },
+  sentNotification: { count: vi.fn(), upsert: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
+  $transaction: vi.fn(),
   attendance: { findMany: vi.fn() },
   paymentCredit: { findMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const platformJobs = vi.hoisted(() => ({ cancelQueuedPlatformDms: vi.fn() }));
 vi.mock("@/lib/platform-jobs", () => platformJobs);
+const adminChannel = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));
+vi.mock("@/lib/admin-channel", () => adminChannel);
 const monthClose = vi.hoisted(() => ({ afterMatchesCancelled: vi.fn() }));
 vi.mock("@/lib/month-close", () => monthClose);
 
@@ -41,6 +44,12 @@ beforeEach(() => {
   dbMock.botJob.deleteMany.mockResolvedValue({ count: 0 });
   dbMock.clubInvitation.findMany.mockResolvedValue([]);
   dbMock.sentNotification.count.mockResolvedValue(0);
+  dbMock.sentNotification.upsert.mockResolvedValue({});
+  dbMock.sentNotification.findUnique.mockResolvedValue(null);
+  dbMock.sentNotification.findMany.mockResolvedValue([]);
+  dbMock.sentNotification.deleteMany.mockResolvedValue({ count: 0 });
+  dbMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(dbMock));
+  adminChannel.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
   dbMock.attendance.findMany.mockResolvedValue([]);
   dbMock.paymentCredit.findMany.mockResolvedValue([]);
   platformJobs.cancelQueuedPlatformDms.mockResolvedValue({ cancelled: 0, alreadyClaimed: 0, byPurpose: {} });
@@ -214,7 +223,11 @@ describe("a past game marked as not played", () => {
     dbMock.botJob.deleteMany.mockResolvedValue({ count: 2 });
     const r = await cancelMatchById("tue", { now: WED });
     expect(r).toEqual({ kind: "not-played", activityName: "Tuesday 5-a-side", date: TUE, paidCount: 0, ratingLinksSent: false, creditedGames: 0, droppedJobs: 2 });
-    expect(dbMock.match.updateMany).toHaveBeenCalledWith({ where: { id: "tue", status: "COMPLETED" }, data: { status: "CANCELLED" } });
+    // Review of #437, 4: only while it still has no score, so a score
+    // landing at the same moment is never wiped out by the cancel.
+    expect(dbMock.match.updateMany).toHaveBeenCalledWith({ where: { id: "tue", status: "COMPLETED", redScore: null, yellowScore: null }, data: { status: "CANCELLED" } });
+    // Review of #437, 7: recorded as NOT PLAYED, in the same transaction.
+    expect(dbMock.sentNotification.upsert).toHaveBeenCalledWith({ where: { key: "tue:not-played" }, create: { key: "tue:not-played", kind: "not-played", matchId: "tue" }, update: {} });
     expect(dbMock.botJob.deleteMany).toHaveBeenCalledWith({ where: { matchId: "tue", sentAt: null } });
     expect(dbMock.botJob.create).not.toHaveBeenCalled();
   });
@@ -249,13 +262,37 @@ describe("a past game marked as not played", () => {
     expect(dbMock.attendance.findMany).toHaveBeenCalledWith({ where: { matchId: "tue", paidAt: { not: null } }, select: { paymentMethod: true } });
   });
 
-  it("the after-game 'join the club?' questions not yet answered are withdrawn and their queued DMs cancelled; guests' results unsettled", async () => {
+  it("the after-game 'join the club?' questions not yet answered are withdrawn and their queued DMs cancelled; guests' results LEFT AS THEY ARE (review of #437, 2)", async () => {
     dbMock.match.findUnique.mockResolvedValue(past());
     dbMock.clubInvitation.findMany.mockResolvedValue([{ id: "inv1" }]);
     await cancelMatchById("tue", { now: WED });
     expect(platformJobs.cancelQueuedPlatformDms).toHaveBeenCalledWith({ purposes: ["club-invite-ask"], refIds: ["inv1"], reason: "the game did not happen", now: WED });
     expect(dbMock.clubInvitation.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["inv1"] }, status: "open" }, data: { status: "withdrawn", closedAt: WED } });
-    expect(dbMock.guestPlace.updateMany).toHaveBeenCalledWith({ where: { matchId: "tue", settledAt: { not: null } }, data: { settledAt: null } });
+    expect(dbMock.guestPlace.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("review of #437, 4: a score landed in between: the cancel writes nothing and says it was played", async () => {
+    dbMock.match.findUnique.mockResolvedValueOnce(past()).mockResolvedValueOnce(past("COMPLETED", { redScore: 4, yellowScore: 2 }));
+    dbMock.match.updateMany.mockResolvedValue({ count: 0 });
+    expect((await cancelMatchById("tue", { now: WED })).kind).toBe("scored");
+    expect(dbMock.sentNotification.upsert).not.toHaveBeenCalled();
+    expect(dbMock.botJob.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("review of #437, 10: said again of a game already marked as not played, the after-game steps run again (a failure part way is retried); nothing posted twice", async () => {
+    dbMock.match.findUnique.mockResolvedValue(past("CANCELLED"));
+    dbMock.sentNotification.findUnique.mockResolvedValue({ id: "marker" });
+    dbMock.sentNotification.count.mockResolvedValue(8);
+    expect(await cancelMatchById("tue", { now: WED })).toEqual({ kind: "already", activityName: "Tuesday 5-a-side", date: TUE, notPlayed: true });
+    expect(dbMock.botJob.deleteMany).toHaveBeenCalledWith({ where: { matchId: "tue", sentAt: null } });
+    expect(dbMock.match.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+  });
+
+  it("already cancelled before kickoff (announced): 'already', and nothing is re-run", async () => {
+    dbMock.match.findUnique.mockResolvedValue(past("CANCELLED"));
+    expect((await cancelMatchById("tue", { now: WED })).kind).toBe("already");
+    expect(dbMock.botJob.deleteMany).not.toHaveBeenCalled();
   });
 
   it("a monthly club gets its credits, as for a game still to come", async () => {
@@ -281,7 +318,7 @@ describe("a past game marked as not played", () => {
   it("not yet completed by the cron (kicked off, still TEAMS_PUBLISHED): marked as not played too", async () => {
     dbMock.match.findUnique.mockResolvedValue(past("TEAMS_PUBLISHED"));
     expect((await cancelMatchById("tue", { now: WED })).kind).toBe("not-played");
-    expect(dbMock.match.updateMany).toHaveBeenCalledWith({ where: { id: "tue", status: "TEAMS_PUBLISHED" }, data: { status: "CANCELLED" } });
+    expect(dbMock.match.updateMany).toHaveBeenCalledWith({ where: { id: "tue", status: "TEAMS_PUBLISHED", redScore: null, yellowScore: null }, data: { status: "CANCELLED" } });
   });
 
   it("the reply copy, EN and TR, with who paid", () => {
@@ -304,11 +341,19 @@ describe("a past game put back as played", () => {
   const WED = new Date("2026-10-28T10:00:00Z");
   const c = { id: "tue", status: "CANCELLED", date: TUE, activity: { orgId: "sutton", name: "Tuesday 5-a-side", org: { language: "en" } } };
 
-  it("COMPLETED, not UPCOMING; nothing posted, so nothing already sent goes again", async () => {
+  it("COMPLETED, not UPCOMING; nothing posted, so nothing already sent goes again; the not-played record removed", async () => {
     dbMock.match.findUnique.mockResolvedValue(c);
+    dbMock.sentNotification.findUnique.mockResolvedValue({ id: "marker" });
     expect(await restoreMatchById("tue", WED)).toEqual({ kind: "restored", activityName: "Tuesday 5-a-side", date: TUE, past: true });
     expect(dbMock.match.updateMany).toHaveBeenCalledWith({ where: { id: "tue", status: "CANCELLED" }, data: { status: "COMPLETED" } });
     expect(dbMock.botJob.create).not.toHaveBeenCalled();
+    expect(dbMock.sentNotification.deleteMany).toHaveBeenCalledWith({ where: { key: "tue:not-played" } });
+  });
+
+  it("review of #437, 7: a game called off BEFORE kickoff is never put back as played", async () => {
+    dbMock.match.findUnique.mockResolvedValue(c);
+    expect((await restoreMatchById("tue", WED)).kind).toBe("past");
+    expect(dbMock.match.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -330,8 +375,8 @@ describe("the doors, for a past game", () => {
     expect(dbMock.botJob.create.mock.calls[0][0].data.text).toBe("Tuesday's game on 27 Oct didn't happen, so its rating links are closed.");
   });
 
-  it("HQ: the same words without the past never touch it: the coming Tuesday is cancelled", async () => {
-    dbMock.match.findMany.mockResolvedValue([{ id: "tue", date: TUE, status: "COMPLETED" }, { id: "next", date: NEXT, status: "UPCOMING" }]);
+  it("HQ: the same words without the past, after a PLAYED Tuesday, never touch it: the coming Tuesday is cancelled", async () => {
+    dbMock.match.findMany.mockResolvedValue([{ id: "tue", date: TUE, status: "COMPLETED", redScore: 5, yellowScore: 4 }, { id: "next", date: NEXT, status: "UPCOMING" }]);
     dbMock.match.findUnique.mockResolvedValue({ ...past, id: "next", status: "UPCOMING", date: NEXT });
     const r = await hqCancelOrRestore({ orgId: "sutton", lang: "en", mode: "cancel", dayPhrase: "Tuesday", addressed: true, now: WED });
     expect(r?.outcome).toBe("hq-match-cancelled");
@@ -354,6 +399,8 @@ describe("the doors, for a past game", () => {
   it("HQ: 'it did happen after all' puts it back as played, EN and TR", async () => {
     dbMock.match.findMany.mockResolvedValue([{ id: "tue", date: TUE, status: "CANCELLED" }]);
     dbMock.match.findUnique.mockResolvedValue({ ...past, status: "CANCELLED" });
+    dbMock.sentNotification.findMany.mockResolvedValue([{ matchId: "tue" }]);
+    dbMock.sentNotification.findUnique.mockResolvedValue({ id: "marker" });
     expect(await hqCancelOrRestore({ orgId: "sutton", lang: "en", mode: "restore", dayPhrase: "Tuesday", pastGame: true, addressed: true, now: WED })).toEqual({
       outcome: "hq-match-played-restored",
       replyText: "Done. Tuesday 5-a-side on 27 Oct is back on the record as played.",
@@ -376,5 +423,72 @@ describe("the doors, for a past game", () => {
       react: "✅",
     });
     expect(dbMock.botJob.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("review of #437: the doors, again", () => {
+  const TUE = new Date("2026-10-27T21:15:00Z");
+  const WED = new Date("2026-10-28T10:00:00Z");
+  const NEXT = new Date("2026-11-03T21:15:00Z");
+  const past = { id: "tue", status: "COMPLETED", date: TUE, redScore: null, yellowScore: null, activity: { orgId: "sutton", name: "Tuesday 5-a-side", org: { language: "en", squadMode: "weekly" } } };
+  const list = [{ id: "tue", date: TUE, status: "COMPLETED", redScore: null, yellowScore: null }, { id: "next", date: NEXT, status: "UPCOMING", redScore: null, yellowScore: null }];
+
+  it("1: 'the last match didn't happen' said twice: the second says 'already', the game before is never touched", async () => {
+    dbMock.match.findMany.mockResolvedValue([{ id: "old", date: new Date("2026-10-23T19:00:00Z"), status: "COMPLETED" }, { id: "tue", date: TUE, status: "CANCELLED" }]);
+    dbMock.match.findUnique.mockResolvedValue({ ...past, status: "CANCELLED" });
+    dbMock.sentNotification.findUnique.mockResolvedValue({ id: "marker" });
+    const r = await hqCancelOrRestore({ orgId: "sutton", lang: "en", mode: "cancel", dayPhrase: null, pastGame: true, addressed: true, now: WED });
+    expect(r).toEqual({ outcome: "hq-cancel-none", replyText: "Tuesday 5-a-side on 27 Oct is already marked as not played." });
+    expect(dbMock.match.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "tue" } }));
+    expect(dbMock.match.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("3: 'cancel Tuesday' (no pastGame) the day after an unscored Tuesday: one question naming both games, EN and TR; nothing done", async () => {
+    dbMock.match.findMany.mockResolvedValue(list);
+    expect(await hqCancelOrRestore({ orgId: "sutton", lang: "en", mode: "cancel", dayPhrase: "Tuesday", addressed: true, now: WED })).toEqual({
+      outcome: "hq-cancel-none",
+      replyText: `Which Tuesday: last Tuesday's game on 27 Oct, or next Tuesday's on 3 Nov? Say "last Tuesday" or "next Tuesday".`,
+    });
+    expect((await hqCancelOrRestore({ orgId: "sutton", lang: "tr", mode: "cancel", dayPhrase: "salı", addressed: true, now: WED }))?.replyText).toBe(
+      `Hangi salı: 27 Ekim günkü geçen maç mı, 3 Kasım günkü gelecek maç mı? "geçen salı" ya da "gelecek salı" yazın.`,
+    );
+    dbMock.match.findMany.mockResolvedValue([list[0]]);
+    expect((await hqCancelOrRestore({ orgId: "sutton", lang: "en", mode: "cancel", dayPhrase: "Tuesday", addressed: true, now: WED }))?.replyText).toBe(
+      `Do you mean last Tuesday's game on 27 Oct? Say "last Tuesday" and I'll mark it as not played.`,
+    );
+    expect((await hqCancelOrRestore({ orgId: "sutton", lang: "tr", mode: "cancel", dayPhrase: "salı", addressed: true, now: WED }))?.replyText).toBe(
+      `27 Ekim günkü geçen maçı mı kastediyorsunuz? "geçen salı" yazın, oynanmadı olarak işaretleyeyim.`,
+    );
+    expect(dbMock.match.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+  });
+
+  it("3: 'next Tuesday' still cancels the coming one", async () => {
+    dbMock.match.findMany.mockResolvedValue(list);
+    dbMock.match.findUnique.mockResolvedValue({ ...past, id: "next", status: "UPCOMING", date: NEXT });
+    expect((await hqCancelOrRestore({ orgId: "sutton", lang: "en", mode: "cancel", dayPhrase: "next Tuesday", addressed: true, now: WED }))?.outcome).toBe("hq-match-cancelled");
+  });
+
+  it("8: the players' group: who paid goes privately to the organisers (admin notice), not in the group reply", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ adminGroupId: null, squadMode: "weekly" });
+    dbMock.match.findMany.mockResolvedValue([list[0]]);
+    dbMock.match.findUnique.mockResolvedValue(past);
+    dbMock.attendance.findMany.mockResolvedValue([{ paymentMethod: "card" }, { paymentMethod: "card" }]);
+    const r = await playersGroupCancelOrRestore({ orgId: "sutton", lang: "en", mode: "cancel", dayPhrase: null, pastGame: true, organiser: true, now: WED });
+    expect(r.replyText).toBe("Done. Tuesday 5-a-side on 27 Oct is marked as not played: no score, ratings or Man of the Match for it.");
+    expect(adminChannel.sendAdminNotice).toHaveBeenCalledWith({
+      orgId: "sutton",
+      now: WED,
+      text: "Tuesday 5-a-side on 27 Oct: 2 players had already paid for it. MatchTime refunds nobody by itself, so please refund or credit them.",
+    });
+  });
+
+  it("8: HQ keeps the money line in its own reply (it is the organisers' group); no extra notice", async () => {
+    dbMock.match.findMany.mockResolvedValue([list[0]]);
+    dbMock.match.findUnique.mockResolvedValue(past);
+    dbMock.attendance.findMany.mockResolvedValue([{ paymentMethod: "card" }]);
+    const r = await hqCancelOrRestore({ orgId: "sutton", lang: "en", mode: "cancel", dayPhrase: null, pastGame: true, addressed: true, now: WED });
+    expect(r?.replyText).toContain("1 player had already paid for it.");
+    expect(adminChannel.sendAdminNotice).not.toHaveBeenCalled();
   });
 });

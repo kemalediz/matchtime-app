@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  blocksAfterGameAsk,
   CLUB_INVITE_RULES,
   afterGameAskDue,
   invitationStep,
@@ -146,5 +147,19 @@ describe("invitationView: what the guest card shows", () => {
     expect(invitationView([accepted, open({ clubYesAt: d(1) })], d(2))).toBe("club-yes");
     // Counted from when the link went, not from the second yes.
     expect(invitationView([{ ...accepted, linkSentAt: d(10) }], d(CLUB_INVITE_RULES.linkSentShownDays + 5))).toBe("accepted");
+  });
+});
+
+describe("review of #437, 6: an after-game question withdrawn because the game did not happen", () => {
+  const inv = { orgId: "o1", userId: "u1", status: "withdrawn", origin: "after-game", matchId: "tue" };
+  it("does not count as asked: the club may ask him after his next game", () => {
+    expect(blocksAfterGameAsk(inv, new Set(["tue"]))).toBe(false);
+  });
+  it("any other invitation still does, withdrawn for another reason included", () => {
+    expect(blocksAfterGameAsk(inv, new Set())).toBe(true);
+    expect(blocksAfterGameAsk({ ...inv, status: "open" }, new Set(["tue"]))).toBe(true);
+    expect(blocksAfterGameAsk({ ...inv, status: "declined" }, new Set(["tue"]))).toBe(true);
+    expect(blocksAfterGameAsk({ ...inv, origin: "organiser" }, new Set(["tue"]))).toBe(true);
+    expect(blocksAfterGameAsk({ ...inv, matchId: null }, new Set(["tue"]))).toBe(true);
   });
 });

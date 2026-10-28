@@ -4,7 +4,7 @@
  * named. Pure; no database.
  */
 import { describe, expect, it } from "vitest";
-import { PAST_CANCEL_WINDOW_DAYS, isPastGame, notPlayedDoor, pickHqMatch, withinPastCancelWindow } from "../match-cancel-rules";
+import { PAST_CANCEL_WINDOW_DAYS, bareWeekdayClash, isPastGame, notPlayedDoor, pickHqMatch, withinPastCancelWindow } from "../match-cancel-rules";
 
 // Thursday 22 Oct 2026, 15:00 London (14:00 UTC).
 const NOW = new Date("2026-10-22T14:00:00Z");
@@ -111,20 +111,42 @@ describe("a recent past match: marked as not played, or put back", () => {
     expect(pickHqMatch(all, WED, "cancel", "Monday", true)).toBeNull();
   });
 
-  it("an already cancelled game is not picked to cancel; a game still kicking off today but later is not the past", () => {
-    expect(pickHqMatch([{ ...TUE, status: "CANCELLED" }], WED, "cancel", "", true)).toBeNull();
+  it("review of #437, 1: a cancelled game is still the last game: picked, so the core says 'already'; never the one before", () => {
+    const c = { ...TUE, status: "CANCELLED" };
+    expect(pickHqMatch([OLD_TUE, c, NEXT_TUE], WED, "cancel", "", true)?.id).toBe("tue");
+    expect(pickHqMatch([OLD_TUE, c, NEXT_TUE], WED, "cancel", "Tuesday", true)?.id).toBe("tue");
+    expect(pickHqMatch([OLD_TUE, c], WED, "cancel", "last Tuesday")?.id).toBe("tue");
+  });
+
+  it("a game still kicking off today but later is not the past", () => {
     const tonight = m("tonight", "2026-10-28T21:15:00Z");
     expect(pickHqMatch([tonight], WED, "cancel", "today", true)).toBeNull();
     expect(pickHqMatch([tonight], new Date("2026-10-28T23:00:00Z"), "cancel", "today", true)?.id).toBe("tonight");
   });
 
-  it("put back: a cancelled past match inside the window, only when the words point at the past", () => {
-    const c = { ...TUE, status: "CANCELLED" };
-    expect(pickHqMatch([c, NEXT_TUE], WED, "restore", "", true)?.id).toBe("tue");
-    expect(pickHqMatch([c, NEXT_TUE], WED, "restore", "Tuesday", true)?.id).toBe("tue");
-    expect(pickHqMatch([c, NEXT_TUE], WED, "restore", "")).toBeNull();
-    expect(pickHqMatch([{ ...OLD_TUE, status: "CANCELLED" }], WED, "restore", "", true)).toBeNull();
+  it("review of #437, 3: on a Tuesday, 'last Tuesday' is 7 days ago, not today (as pickWaiverMatch reads it)", () => {
+    // Tuesday 27 Oct 23:00, after tonight's game: last week's is just over
+    // the 7 days, so "last Tuesday" names no game, never tonight's.
+    const tueNight = new Date("2026-10-27T23:00:00Z");
+    expect(pickHqMatch([OLD_TUE, TUE], tueNight, "cancel", "last Tuesday")).toBeNull();
+    expect(pickHqMatch([OLD_TUE, TUE], tueNight, "cancel", "Tuesday", true)?.id).toBe("tue");
+    // A Tuesday game earlier in the week of two: on the Tuesday at noon,
+    // "last Tuesday" is the one 7 days back.
+    const early = m("tue-1b", "2026-10-20T19:00:00Z", "COMPLETED");
+    expect(pickHqMatch([early, TUE], new Date("2026-10-27T12:00:00Z"), "cancel", "last Tuesday")?.id).toBe("tue-1b");
+  });
+
+  it("put back: only a game marked as NOT PLAYED after kickoff, the most recent one; never an older one", () => {
+    const np = { ...TUE, status: "CANCELLED", notPlayed: true };
+    expect(pickHqMatch([np, NEXT_TUE], WED, "restore", "", true)?.id).toBe("tue");
+    expect(pickHqMatch([np, NEXT_TUE], WED, "restore", "Tuesday", true)?.id).toBe("tue");
+    expect(pickHqMatch([np, NEXT_TUE], WED, "restore", "")).toBeNull();
+    expect(pickHqMatch([{ ...OLD_TUE, status: "CANCELLED", notPlayed: true }], WED, "restore", "", true)).toBeNull();
     expect(pickHqMatch([TUE], WED, "restore", "", true)).toBeNull();
+    // Called off before kickoff (announced to the group): never "it did happen".
+    expect(pickHqMatch([{ ...TUE, status: "CANCELLED" }], WED, "restore", "", true)).toBeNull();
+    // The last game was played: the older not-played one is not reached for.
+    expect(pickHqMatch([{ ...OLD_TUE, status: "CANCELLED", notPlayed: true, date: new Date("2026-10-23T19:00:00Z") }, TUE], WED, "restore", "", true)).toBeNull();
   });
 
   it("isPastGame: kicked off already", () => {
@@ -140,13 +162,33 @@ describe("notPlayedDoor: the match page's button", () => {
     expect(notPlayedDoor(tue, WED)).toBe("mark");
     expect(notPlayedDoor({ ...tue, status: "TEAMS_PUBLISHED" }, WED)).toBe("mark");
   });
-  it("cancelled and past, inside the window: 'It did happen'", () => {
-    expect(notPlayedDoor({ ...tue, status: "CANCELLED" }, WED)).toBe("restore");
+  it("marked as not played, inside the window: 'It did happen'; called off before kickoff: nothing", () => {
+    expect(notPlayedDoor({ ...tue, status: "CANCELLED", notPlayed: true }, WED)).toBe("restore");
+    expect(notPlayedDoor({ ...tue, status: "CANCELLED", notPlayed: false }, WED)).toBeNull();
   });
   it("nothing for a scored game, one still to come, or one past the window", () => {
     expect(notPlayedDoor({ ...tue, redScore: 3, yellowScore: 2 }, WED)).toBeNull();
     expect(notPlayedDoor({ ...tue, date: new Date("2026-11-03T21:15:00Z"), status: "UPCOMING" }, WED)).toBeNull();
     expect(notPlayedDoor(tue, new Date("2026-11-04T10:00:00Z"))).toBeNull();
-    expect(notPlayedDoor({ ...tue, status: "CANCELLED" }, new Date("2026-11-04T10:00:00Z"))).toBeNull();
+    expect(notPlayedDoor({ ...tue, status: "CANCELLED", notPlayed: true }, new Date("2026-11-04T10:00:00Z"))).toBeNull();
+  });
+});
+
+describe("review of #437, 3: a bare weekday that could be last week's game", () => {
+  const WED = new Date("2026-10-28T10:00:00Z");
+  const TUE = { id: "tue", date: new Date("2026-10-27T21:15:00Z"), status: "COMPLETED", redScore: null, yellowScore: null };
+  const NEXT = { id: "tue+1", date: new Date("2026-11-03T21:15:00Z"), status: "UPCOMING", redScore: null, yellowScore: null };
+  it("'cancel Tuesday' on a Wednesday after an unscored Tuesday: ask, naming both games", () => {
+    expect(bareWeekdayClash([TUE, NEXT], WED, "Tuesday", false)).toEqual({ past: TUE, next: NEXT });
+    expect(bareWeekdayClash([TUE], WED, "salı", false)).toEqual({ past: TUE, next: null });
+  });
+  it("no question when the words say which, or the past game was played or is already cancelled", () => {
+    expect(bareWeekdayClash([TUE, NEXT], WED, "Tuesday", true)).toBeNull();
+    expect(bareWeekdayClash([TUE, NEXT], WED, "last Tuesday", false)).toBeNull();
+    expect(bareWeekdayClash([TUE, NEXT], WED, "next Tuesday", false)).toBeNull();
+    expect(bareWeekdayClash([{ ...TUE, redScore: 3, yellowScore: 1 }, NEXT], WED, "Tuesday", false)).toBeNull();
+    expect(bareWeekdayClash([{ ...TUE, status: "CANCELLED" }, NEXT], WED, "Tuesday", false)).toBeNull();
+    expect(bareWeekdayClash([TUE, NEXT], WED, "Friday", false)).toBeNull();
+    expect(bareWeekdayClash([TUE, NEXT], WED, "", false)).toBeNull();
   });
 });

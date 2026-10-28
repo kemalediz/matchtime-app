@@ -40,7 +40,7 @@ export function NotPlayedButton({
       setConfirming(false);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      toast.error(err instanceof Error && err.message ? err.message : s.not_played_failed);
     } finally {
       setBusy(false);
     }

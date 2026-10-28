@@ -11,7 +11,7 @@ import { formatLondon } from "@/lib/london-time";
 import { buildFormatSwitchAnnouncement } from "@/lib/group-copy";
 import { normaliseLang } from "@/lib/i18n/lang";
 import { t } from "@/lib/i18n/t";
-import { reconcileMatchElo, setMatchScore } from "@/lib/match-elo";
+import { MatchCancelledError, reconcileMatchElo, setMatchScore } from "@/lib/match-elo";
 import { canEnterScore } from "@/lib/score-entry";
 import {
   planFormatSwitchSchedule,
@@ -201,10 +201,10 @@ export async function cancelMatch(matchId: string): Promise<{ message: string | 
     select: { status: true, activity: { select: { orgId: true, org: { select: { language: true } } } } },
   });
   if (!match) throw new Error("Match not found");
-  if (match.status === "CANCELLED") return { message: null }; // idempotent
-
   await requireOrgAdmin(session.user.id, match.activity.orgId);
 
+  // Already cancelled: the core says so (and, for a game marked as not
+  // played, finishes its after-game steps again, review of #437, 10).
   // The status, a monthly club's credits and the players' group
   // announcement: the ONE path HQ's cancel uses too (lib/match-cancel.ts).
   const { cancelMatchById, notPlayedGameLabel, notPlayedReply } = await import("@/lib/match-cancel");
@@ -212,7 +212,8 @@ export async function cancelMatch(matchId: string): Promise<{ message: string | 
   const lang = normaliseLang(match.activity.org?.language);
   const s = t(lang);
   const r = await cancelMatchById(matchId);
-  if (r.kind === "completed") throw new Error("Match is already completed");
+  if (r.kind === "completed") throw new Error(s.not_played_already_completed);
+  if (r.kind === "already" && r.activityName && r.date) return { message: s.not_played_already({ game: notPlayedGameLabel(lang, r.activityName, r.date) }) };
   if (r.kind === "too-old") throw new Error(s.not_played_too_old({ days: PAST_CANCEL_WINDOW_DAYS }));
   if (r.kind === "scored") throw new Error(s.not_played_scored({ game: notPlayedGameLabel(lang, r.activityName, r.date) }));
   let message: string | null = null;
@@ -291,11 +292,18 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
   // added the entered result's points on every save: a corrected score
   // left the ratings carrying both results, and saving twice added the
   // same result twice (`__tests__/update-match-score-elo.test.ts`).
-  const { previous } = await setMatchScore({
-    matchId,
-    red: parsed.redScore,
-    yellow: parsed.yellowScore,
-  });
+  let previous: Awaited<ReturnType<typeof setMatchScore>>["previous"];
+  try {
+    ({ previous } = await setMatchScore({
+      matchId,
+      red: parsed.redScore,
+      yellow: parsed.yellowScore,
+    }));
+  } catch (err) {
+    // Marked as not played in between (review of #437, 4).
+    if (err instanceof MatchCancelledError) throw new Error(t(normaliseLang(match.activity.org?.language)).score_not_played);
+    throw err;
+  }
 
   try {
     const elo = await reconcileMatchElo({ matchId });

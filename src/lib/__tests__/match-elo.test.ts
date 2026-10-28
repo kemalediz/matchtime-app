@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { computeEloDeltas, type PlayerEloInput } from "../elo";
-import { parseEloApplied, reconcileMatchElo, setMatchScore, ScoreMovedError } from "../match-elo";
+import { MatchCancelledError, parseEloApplied, reconcileMatchElo, setMatchScore, ScoreMovedError } from "../match-elo";
 import { fakeScoreDb as fakeDb, type FakeMatch } from "./fake-score-db";
 
 const RED = ["r1", "r2", "r3"];
@@ -480,5 +480,13 @@ describe("every score writer closes the open 'which team won?' question", () => 
       setMatchScore({ db: f.db, matchId: "m1", red: 1, yellow: 0, expectPrevious: { red: 9, yellow: 6 } }),
     ).rejects.toBeInstanceOf(ScoreMovedError);
     expect(f.notifications).toHaveLength(1);
+  });
+});
+
+describe("review of #437, 4: a game marked as not played takes no score", () => {
+  it("setMatchScore refuses a CANCELLED match inside its locked transaction: nothing written", async () => {
+    const f = fakeDb({ matches: [unscored({ status: "CANCELLED" })], ratings: { ...START } });
+    await expect(setMatchScore({ db: f.db as never, matchId: "m1", red: 5, yellow: 3 })).rejects.toBeInstanceOf(MatchCancelledError);
+    expect(f.matches.get("m1")).toMatchObject({ status: "CANCELLED", redScore: null, yellowScore: null });
   });
 });

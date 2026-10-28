@@ -174,3 +174,19 @@ export function invitationView(rows: readonly InvitationFacts[], now: Date): Inv
   const recentNo = rows.some((r) => r.status === "declined" && r.declinedBy === "player" && r.closedAt && now.getTime() - r.closedAt.getTime() < cooldown);
   return recentNo ? "declined" : "none";
 }
+
+/**
+ * Does an existing invitation stop the after-game question to the same
+ * player from the same club? Every one does, except an after-game question
+ * WITHDRAWN because its game was marked as not played (review of #437, 6):
+ * the player never had a game to be asked after, so his next one may ask.
+ * `notPlayedMatchIds` are the matches with the not-played record
+ * (`match-cancel.ts` `notPlayedKey`), which is what tells that withdrawal
+ * from any other.
+ */
+export function blocksAfterGameAsk(
+  inv: { status: string; origin: string; matchId: string | null },
+  notPlayedMatchIds: ReadonlySet<string>,
+): boolean {
+  return !(inv.status === "withdrawn" && inv.origin === "after-game" && inv.matchId !== null && notPlayedMatchIds.has(inv.matchId));
+}

@@ -57,10 +57,14 @@ export async function completeFinishedMatches(now: Date = new Date()): Promise<{
     );
     if (now < matchEndTime) continue;
 
-    await db.match.update({
-      where: { id: match.id },
+    // Only from the status just read (review of #437, 5): a game marked as
+    // not played (CANCELLED) between the read and here stays cancelled, and
+    // nothing after the game follows for it.
+    const flipped = await db.match.updateMany({
+      where: { id: match.id, status: match.status },
       data: { status: "COMPLETED" },
     });
+    if (flipped.count === 0) continue;
 
     // Auto-complete without a score = no Elo update yet. Admin enters
     // the score manually via /admin/matches/[id]/teams, which triggers

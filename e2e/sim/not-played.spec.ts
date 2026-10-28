@@ -30,10 +30,13 @@ const GONE = "@Match Time last night's game didn't happen";
 const GONE_TR = "@Match Time dünkü maç oynanmadı";
 const HAPPENED = "@Match Time it did happen after all, put it back";
 
-const admin = (action: string) => ({
+const admin = (action: string, matchDay = "", pastGame = true) => ({
   route: "admin_ops",
-  facts: { action, payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", pastGame: true, phrase: "", note: "", lookbackMatches: 0, playersFrom: "", clubRef: "" },
+  facts: { action, payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay, pastGame, phrase: "", note: "", lookbackMatches: 0, playersFrom: "", clubRef: "" },
 });
+/** Yesterday's weekday in London, as an organiser would name it ("Tuesday"). */
+const YESTERDAY = new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "Europe/London" }).format(new Date(Date.now() - 24 * 3600_000));
+const BARE_DAY = `@Match Time cancel ${YESTERDAY}, we didn't play`;
 
 let seq = 0;
 async function sayHq(request: APIRequestContext, text: string) {
@@ -73,7 +76,13 @@ test.beforeEach(async ({ db }) => {
   await db.run(`UPDATE "Match" SET "redScore" = NULL, "yellowScore" = NULL, "eloApplied" = NULL, status = 'COMPLETED' WHERE id = $1`, [MATCH.rate]);
   await db.run(`UPDATE "Match" SET date = now() - interval '10 days' WHERE id = $1`, [MATCH.pay]);
   await db.run(`DELETE FROM "BotJob"`);
-  engineOn({ [GONE]: admin("cancel_match"), [GONE_TR]: admin("cancel_match"), [HAPPENED]: admin("restore_match") });
+  engineOn({
+    [GONE]: admin("cancel_match"),
+    [GONE_TR]: admin("cancel_match"),
+    [HAPPENED]: admin("restore_match"),
+    // The extractor missed the past: a bare weekday, pastGame false.
+    [BARE_DAY]: admin("cancel_match", YESTERDAY, false),
+  });
 });
 
 test.afterAll(() => {
@@ -133,6 +142,25 @@ test("the players' group (no HQ): the organiser's reply carries the ratings line
   expect(await status(db)).toBe("CANCELLED");
   expect(await groupPosts(db)).toHaveLength(0);
   expect(await afterGamePosts(request, londonAt(0, 9, 0))).toEqual([]);
+});
+
+test("review of #437: said twice, the second says 'already' and the game before is untouched; a bare weekday asks which game", async ({ request, db }) => {
+  await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group' WHERE id = $1`, [ORG_ID, HQ]);
+  // Two past games in the window: the pay match two days before the rate match.
+  await db.run(`UPDATE "Match" SET date = now() - interval '3 days', "redScore" = NULL, "yellowScore" = NULL WHERE id = $1`, [MATCH.pay]);
+
+  // The bare weekday first, while yesterday's game is still unscored: a question, nothing done.
+  const ask = await sayHq(request, BARE_DAY);
+  expect(ask).toMatchObject({ outcome: "hq-cancel-none", react: null });
+  expect(ask.replyText).toMatch(new RegExp(`last ${YESTERDAY}`));
+  expect(await status(db)).toBe("COMPLETED");
+
+  expect((await sayHq(request, GONE)).outcome).toBe("hq-match-not-played");
+  const again = await sayHq(request, GONE);
+  expect(again).toMatchObject({ outcome: "hq-cancel-none", react: null });
+  expect(again.replyText).toMatch(/is already marked as not played\.$/);
+  const pay = await db.one<{ status: string }>(`SELECT status::text AS status FROM "Match" WHERE id = $1`, [MATCH.pay]);
+  expect(pay!.status).toBe("COMPLETED");
 });
 
 test("a game with a score was played: left alone, one line, no tick", async ({ request, db }) => {
