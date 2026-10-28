@@ -5611,26 +5611,54 @@ export const en = {
   // Read by src/lib/partner-ask-words-rules.ts: the ONE reply in the
   // players' group, the organisers' group or a DM, in the asking club's
   // language, for one partner or several.
-  xaskw_posted_one: (p: { partner: string }) => `I've posted in *${p.partner}*'s group. Anyone who replies IN goes on your bench.`,
-  xaskw_awaiting_one: (p: { partner: string }) =>
-    `I've asked *${p.partner}*'s organisers. Once they say yes, I'll post in their group, and anyone who replies IN goes on your bench.`,
-  xaskw_refused_generic: (p: { partner: string }) => `I can't ask ${p.partner} for this game right now.`,
+  // `firstCome`: the asking club's bench rule (`benchPickMode`), which
+  // decides where a volunteer goes (partner-guest.ts): first come takes an
+  // open place, organiser pick goes on the bench.
+  xaskw_posted_one: (p: { partner: string; firstCome: boolean }) =>
+    `I've posted in *${p.partner}*'s group. ${p.firstCome ? "The first to reply IN get the open places." : "Anyone who replies IN goes on your bench for you to pick."}`,
+  xaskw_awaiting_one: (p: { partner: string; firstCome: boolean }) =>
+    `I've asked *${p.partner}*'s organisers. Once they say yes, I'll post in their group. ${p.firstCome ? "The first to reply IN get the open places." : "Anyone who replies IN goes on your bench for you to pick."}`,
+  // Each refusal says what happened, why, and what to do next, and starts
+  // with what it is about, so it reads on its own next to the pool's line.
+  xaskw_refused_generic: (p: { partner: string }) => `*Partner clubs:* I couldn't ask ${p.partner} for this game just now. Please try again in a minute.`,
+  xaskw_refused_already_open: (p: { partner: string; askedOn: string | null; day: string | null; awaiting: boolean }) => {
+    const on = p.askedOn ? ` on ${p.askedOn}` : "";
+    const game = p.day ? `the game on ${p.day}` : "this game";
+    return p.awaiting
+      ? `*Partner clubs:* ${p.partner}'s organisers were already asked${on} for ${game} and haven't said yes yet, so I haven't asked them again. Once they say yes, I'll post in their group.`
+      : `*Partner clubs:* ${p.partner} were already asked${on} for ${game}, and that ask is still open, so I haven't asked them again. When one of their players says IN, I'll let you know and they show up on the match page.`;
+  },
+  xaskw_refused_too_late: (p: { partner: string; hours: number; link: string }) =>
+    `*Partner clubs:* it's too late to ask ${p.partner} for this game: the last ask goes out ${p.hours === 1 ? "1 hour" : `${p.hours} hours`} before kickoff, as your settings say. You can change that here: ${p.link}`,
+  xaskw_refused_daily_cap: (p: { partner: string }) =>
+    `*Partner clubs:* I didn't ask ${p.partner}: they've already had two asks today, the most a club gets in one day. Try again tomorrow.`,
+  xaskw_refused_no_places: (p: { partner: string }) =>
+    `*Partner clubs:* I didn't ask ${p.partner}: every place in this game is taken, so there's nobody to find.`,
+  xaskw_refused_paused: (p: { partner: string }) =>
+    `*Partner clubs:* I didn't ask ${p.partner}: they're paused on MatchTime for now. Ask another partner club, or try again once they're back.`,
+  xaskw_refused_unreachable: (p: { partner: string }) =>
+    `*Partner clubs:* I didn't ask ${p.partner}: I can't post in their players' group right now. Ask another partner club, or try again later.`,
+  xaskw_settings_line: (p: { link: string }) => `Your partner club settings: ${p.link}`,
   xaskw_header_asked: "I've asked your partner clubs:",
   xaskw_header_not_asked: "I couldn't ask your partner clubs:",
   xaskw_line_posted: (p: { partner: string }) => `• *${p.partner}*: posted in their group.`,
   xaskw_line_awaiting: (p: { partner: string }) => `• *${p.partner}*: waiting for their organisers to say yes.`,
-  xaskw_bench_line: "Anyone who replies IN goes on your bench.",
+  xaskw_bench_line: (p: { firstCome: boolean }): string => (p.firstCome ? "The first to reply IN get the open places." : "Anyone who replies IN goes on your bench for you to pick."),
   xaskw_line_too_late: (p: { partner: string; hours: number }) =>
-    `• *${p.partner}*: too late now, the last ask goes out ${p.hours === 1 ? "1 hour" : `${p.hours} hours`} before kickoff.`,
-  xaskw_line_daily_cap: (p: { partner: string }) => `• *${p.partner}*: they've had two asks today already.`,
-  xaskw_line_already_open: (p: { partner: string }) => `• *${p.partner}*: an ask to them is already open for this game.`,
-  xaskw_line_no_places: (p: { partner: string }) => `• *${p.partner}*: no place is open in this game.`,
-  xaskw_line_off: (p: { partner: string }) => `• *${p.partner}*: asking partner clubs is off in your settings.`,
-  xaskw_line_unreachable: (p: { partner: string }) => `• *${p.partner}*: their group can't be asked right now.`,
-  xaskw_line_generic: (p: { partner: string }) => `• *${p.partner}*: they can't be asked for this game right now.`,
-  xaskw_no_partner:
-    "You have no partner clubs yet, so I can't ask another club. When MatchTime pairs you with one, both clubs accept it in Settings, under Partner clubs.",
-  xaskw_off: "Asking partner clubs for players is off. An owner or admin can turn it on in Settings, under Partner clubs.",
+    `• *${p.partner}*: not asked, it's too late. The last ask goes out ${p.hours === 1 ? "1 hour" : `${p.hours} hours`} before kickoff (your settings).`,
+  xaskw_line_daily_cap: (p: { partner: string }) => `• *${p.partner}*: not asked, they've had two asks today, the most in one day. Try again tomorrow.`,
+  xaskw_line_already_open: (p: { partner: string; askedOn: string | null; awaiting: boolean }) =>
+    p.awaiting
+      ? `• *${p.partner}*: already asked${p.askedOn ? ` on ${p.askedOn}` : ""} and their organisers haven't said yes yet, so not asked again.`
+      : `• *${p.partner}*: already asked${p.askedOn ? ` on ${p.askedOn}` : ""} and that ask is still open, so not asked again.`,
+  xaskw_line_no_places: (p: { partner: string }) => `• *${p.partner}*: not asked, every place in this game is taken.`,
+  xaskw_line_off: (p: { partner: string }) => `• *${p.partner}*: not asked, asking partner clubs is off in your settings.`,
+  xaskw_line_unreachable: (p: { partner: string }) => `• *${p.partner}*: not asked, I can't post in their players' group right now. Try again later.`,
+  xaskw_line_generic: (p: { partner: string }) => `• *${p.partner}*: couldn't be asked just now. Try again in a minute.`,
+  xaskw_no_partner: (p: { link: string }) =>
+    `*Partner clubs:* I can't ask another club yet: you have no partner clubs. Once MatchTime pairs you with one and both clubs accept, you can ask them. Partner clubs are here: ${p.link}`,
+  xaskw_off: (p: { link: string }) =>
+    `*Partner clubs:* I didn't ask anyone: asking partner clubs for players is off for your club. An owner or admin can turn it on here: ${p.link}`,
   xaskw_no_match: (p: { ref: string; partners: string }) => `I don't know a partner club called "${p.ref}". Your partner clubs: ${p.partners}.`,
   xaskw_not_sure: "I wasn't sure you wanted me to ask your partner clubs. Tell me which club, or say all of them.",
   xaskw_ambiguous: (p: { ref: string; choice: string }) =>

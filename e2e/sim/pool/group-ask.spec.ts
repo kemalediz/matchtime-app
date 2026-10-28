@@ -92,21 +92,50 @@ scenarios("an organiser asks the MatchTime player pool in the players' group", (
     expect((await poolAsks(pool, tr)).map((a) => a.via)).toEqual(["words"]);
   });
 
+  scenario("the only pool player near is already down for tonight's game (MT Test 2026-10-28, here on its bench): nobody new, and why", async ({ pool }) => {
+    stubbedOnly();
+    const mt = await noHqClub(pool, "mtt");
+    const c2 = await poolPlayer(pool, "c2g", { at: near(mt) });
+    await pool.db.run(`INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt") VALUES ($1, $2, $3, 'BENCH', 1, now())`, ["sim-mtt-c2-att", mt.group.matchId, c2.userId]);
+
+    const ex = await say(mt, "owner", ASK);
+
+    expect(ex.sent.find((m) => m.to === "mtt.group")?.text).toMatch(
+      /^\*Player pool:\* nobody new to ask\. Of the pool players near .+, 1 is already down for this game\. I can ask your players' group instead\.$/,
+    );
+    expect(ex.sent.filter((m) => m.purpose === "pool-offer")).toEqual([]);
+  });
+
+  scenario("the only pool player near is one of the club's own players: nobody new, and the reply says why (Kemal, 2026-10-28)", async ({ pool }) => {
+    stubbedOnly();
+    const mine = await noHqClub(pool, "own");
+    const c2 = await poolPlayer(pool, "c2", { at: near(mine) });
+    await pool.db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ($1, $2, $3, 'PLAYER')`, ["sim-own-c2-mem", c2.userId, mine.group.orgId]);
+
+    const ex = await say(mine, "owner", ASK);
+
+    expect(ex.sent.find((m) => m.to === "own.group")?.text).toMatch(
+      /^\*Player pool:\* nobody new to ask\. Of the pool players near .+, 1 is already in .+\. The pool only reaches players outside your club\.$/,
+    );
+    expect(ex.sent.filter((m) => m.purpose === "pool-offer")).toEqual([]);
+    expect(await poolAsks(pool, mine)).toEqual([]);
+  });
+
   scenario("the pool off for the club (or switched off): the same helpful line as HQ, nobody asked, no DM", async ({ pool }) => {
     stubbedOnly();
     const off = await noHqClub(pool, "off", { pool: { featurePlayerPool: false } });
     await poolPlayer(pool, "bea", { at: near(off) });
 
     const ex = await say(off, "owner", ASK);
-    expect(ex.sent.find((m) => m.to === "off.group")?.text).toBe(
-      "The MatchTime player pool is not open for your club yet. I can ask your players' group if anyone can play instead.",
+    expect(ex.sent.find((m) => m.to === "off.group")?.text).toMatch(
+      /^\*Player pool:\* I didn't ask nearby players: the MatchTime player pool is switched off for your club\. An owner or admin can switch it on here, or I can ask your players' group instead: \S+\/admin\/settings#player-pool$/,
     );
     expect(ex.sent.filter((m) => m.channel === "dm")).toEqual([]);
     expect(await poolAsks(pool, off)).toEqual([]);
 
     const on = await noHqClub(pool, "sw");
     const closed = await say(on, "owner", ASK, false);
-    expect(closed.sent.find((m) => m.to === "sw.group")?.text).toMatch(/^The MatchTime player pool is not open for your club yet\./);
+    expect(closed.sent.find((m) => m.to === "sw.group")?.text).toMatch(/^\*Player pool:\* the MatchTime player pool is not open for your club yet\./);
     expect(await poolAsks(pool, on)).toEqual([]);
   });
 

@@ -103,26 +103,48 @@ const UNREACHABLE: ReadonlySet<string> = new Set([
   "partner-not-postable",
 ]);
 
-/** A refusal for ONE partner, as a whole sentence (the chat's wording of
- *  `askRefusalText`: a WhatsApp reply never says "reload the page"). */
-function refusalSentence(lang: string | null, partner: string, r: AskRefusal | "not-found", cutoffHours: number): string {
+/** The ask already open to a partner for this game (an `already-open`
+ *  refusal): when it was made, as a day label, and whether it still waits
+ *  for the partner's organisers. Null fields: not known. */
+export interface OpenPartnerAsk {
+  askedOn: string | null;
+  awaiting: boolean;
+}
+
+/** What a reply needs besides the results: the asking club's cut-off, the
+ *  game's day label, and the link to its Partner clubs settings card. */
+export interface PartnerReplyContext {
+  cutoffHours: number;
+  /** The asking club's bench rule: first come (the default) or organiser
+   *  pick, which decides where a volunteer who says IN goes. */
+  firstCome?: boolean;
+  day?: string | null;
+  settingsLink?: string;
+}
+
+/** A refusal for ONE partner, as a whole sentence: what happened, why, and
+ *  what to do next (the chat's wording; a WhatsApp reply never says
+ *  "reload the page"). */
+function refusalSentence(lang: string | null, partner: string, r: AskRefusal | "not-found", ctx: PartnerReplyContext, open?: OpenPartnerAsk | null): string {
   const s = t(lang);
-  if (r === "too-late") return s.xask_refused_too_late({ hours: cutoffHours });
-  if (r === "daily-cap") return s.xask_refused_daily_cap({ partner });
-  if (r === "already-open") return s.xask_refused_already_open({ partner });
-  if (r === "no-places") return s.xask_refused_no_places;
-  if (r === "asking-off") return s.xaskw_off;
-  if (PAUSED_REFUSALS.has(r)) return s.xask_refused_paused({ partner });
-  if (UNREACHABLE.has(r)) return s.xask_refused_unreachable({ partner });
+  const link = ctx.settingsLink ?? "";
+  if (r === "too-late") return s.xaskw_refused_too_late({ partner, hours: ctx.cutoffHours, link });
+  if (r === "daily-cap") return s.xaskw_refused_daily_cap({ partner });
+  if (r === "already-open")
+    return s.xaskw_refused_already_open({ partner, askedOn: open?.askedOn ?? null, day: ctx.day ?? null, awaiting: open?.awaiting === true });
+  if (r === "no-places") return s.xaskw_refused_no_places({ partner });
+  if (r === "asking-off") return s.xaskw_off({ link });
+  if (PAUSED_REFUSALS.has(r)) return s.xaskw_refused_paused({ partner });
+  if (UNREACHABLE.has(r)) return s.xaskw_refused_unreachable({ partner });
   return s.xaskw_refused_generic({ partner });
 }
 
 /** A refusal as a partner's line in a several-partner reply. */
-function refusalLine(lang: string | null, partner: string, r: AskRefusal | "not-found", cutoffHours: number): string {
+function refusalLine(lang: string | null, partner: string, r: AskRefusal | "not-found", cutoffHours: number, open?: OpenPartnerAsk | null): string {
   const s = t(lang);
   if (r === "too-late") return s.xaskw_line_too_late({ partner, hours: cutoffHours });
   if (r === "daily-cap") return s.xaskw_line_daily_cap({ partner });
-  if (r === "already-open") return s.xaskw_line_already_open({ partner });
+  if (r === "already-open") return s.xaskw_line_already_open({ partner, askedOn: open?.askedOn ?? null, awaiting: open?.awaiting === true });
   if (r === "no-places") return s.xaskw_line_no_places({ partner });
   if (r === "asking-off") return s.xaskw_line_off({ partner });
   if (PAUSED_REFUSALS.has(r)) return s.xaskw_line_paused({ partner });
@@ -139,38 +161,43 @@ const asked = (r: PartnerAskOutcome) => r === "posted" || r === "awaiting";
  */
 export function composePartnerAskReply(
   lang: string | null,
-  results: Array<{ partnerName: string; result: PartnerAskOutcome }>,
+  results: Array<{ partnerName: string; result: PartnerAskOutcome; open?: OpenPartnerAsk | null }>,
   /** `places`: how many players were asked for (P4: a words ask asks for
    *  every open place, and says how many). Absent: no number line. */
-  opts: { cutoffHours: number; places?: number },
+  opts: PartnerReplyContext & { places?: number },
 ): string {
   const s = t(lang);
+  const firstCome = opts.firstCome !== false;
   const placesLine = opts.places && opts.places > 0 ? [s.xaskw_places_line({ places: opts.places })] : [];
   if (results.length === 1) {
     const { partnerName: partner, result } = results[0];
-    if (result === "posted") return [s.xaskw_posted_one({ partner }), ...placesLine].join("\n");
-    if (result === "awaiting") return [s.xaskw_awaiting_one({ partner }), ...placesLine].join("\n");
-    return refusalSentence(lang, partner, result, opts.cutoffHours);
+    if (result === "posted") return [s.xaskw_posted_one({ partner, firstCome }), ...placesLine].join("\n");
+    if (result === "awaiting") return [s.xaskw_awaiting_one({ partner, firstCome }), ...placesLine].join("\n");
+    return refusalSentence(lang, partner, result, opts, results[0].open);
   }
   const any = results.some((r) => asked(r.result));
-  const lines = results.map(({ partnerName: partner, result }) =>
+  const lines = results.map(({ partnerName: partner, result, open }) =>
     result === "posted"
       ? s.xaskw_line_posted({ partner })
       : result === "awaiting"
         ? s.xaskw_line_awaiting({ partner })
-        : refusalLine(lang, partner, result, opts.cutoffHours),
+        : refusalLine(lang, partner, result, opts.cutoffHours, open),
   );
-  return [any ? s.xaskw_header_asked : s.xaskw_header_not_asked, ...lines, ...(any ? [s.xaskw_bench_line, ...placesLine] : [])].join("\n");
+  // A refusal a setting can lift (the cut-off, asking switched off): the
+  // settings card's link, once, after the list.
+  const settingsLine =
+    opts.settingsLink && results.some((r) => r.result === "too-late" || r.result === "asking-off") ? [s.xaskw_settings_line({ link: opts.settingsLink })] : [];
+  return [any ? s.xaskw_header_asked : s.xaskw_header_not_asked, ...lines, ...(any ? [s.xaskw_bench_line({ firstCome }), ...placesLine] : []), ...settingsLine].join("\n");
 }
 
 /** The one plain reply when nothing could be asked at all. */
-export function resolutionReply(lang: string | null, r: Exclude<PartnerRefResolution, { kind: "ask" }>): string {
+export function resolutionReply(lang: string | null, r: Exclude<PartnerRefResolution, { kind: "ask" }>, settingsLink = ""): string {
   const s = t(lang);
   switch (r.kind) {
     case "no-partner":
-      return s.xaskw_no_partner;
+      return s.xaskw_no_partner({ link: settingsLink });
     case "asking-off":
-      return s.xaskw_off;
+      return s.xaskw_off({ link: settingsLink });
     case "no-match":
       return s.xaskw_no_match({ ref: r.ref, partners: joinList(lang, r.partners.map((p) => p.name)) });
     case "ambiguous":

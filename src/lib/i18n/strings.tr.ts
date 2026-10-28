@@ -4154,25 +4154,46 @@ export const tr: Strings = {
   xaskw_line_paused: (p) => `• *${p.partner}*: MatchTime'da duraklatıldı, bu yüzden sormadım.`,
   xaskw_places_line: (p) => `${p.places} oyuncu istedim.`,
   // ─── Partner discovery P4 sonu ───────────────────────────────────────
-  xaskw_posted_one: (p) => `*${p.partner}* grubunda paylaştım. VARIM diye yanıtlayan herkes yedek listenize girer.`,
+  xaskw_posted_one: (p) => `*${p.partner}* grubunda paylaştım. ${p.firstCome ? "VARIM diye ilk yanıtlayanlar boş yerleri alır." : "VARIM diye yanıtlayan herkes, seçmeniz için yedek listenize girer."}`,
   xaskw_awaiting_one: (p) =>
-    `*${p.partner}* organizatörlerine sordum. Evet derlerse gruplarında paylaşırım ve VARIM diye yanıtlayan herkes yedek listenize girer.`,
-  xaskw_refused_generic: (p) => `Bu maç için şu an *${p.partner}* kulübüne soramıyorum.`,
+    `*${p.partner}* organizatörlerine sordum. Evet derlerse gruplarında paylaşırım. ${p.firstCome ? "VARIM diye ilk yanıtlayanlar boş yerleri alır." : "VARIM diye yanıtlayan herkes, seçmeniz için yedek listenize girer."}`,
+  xaskw_refused_generic: (p) => `*Partner kulüpler:* Bu maç için şu an ${p.partner} kulübüne soramadım. Lütfen bir dakika sonra yeniden deneyin.`,
+  xaskw_refused_already_open: (p) => {
+    const on = p.askedOn ? ` ${p.askedOn} tarihinde` : "";
+    const game = p.day ? `${p.day} maçı` : "bu maç";
+    return p.awaiting
+      ? `*Partner kulüpler:* ${p.partner} organizatörlerine${on} ${game} için zaten soruldu ve henüz onay vermediler, bu yüzden yeniden sormadım. Onay verdiklerinde gruplarında paylaşacağım.`
+      : `*Partner kulüpler:* ${p.partner} kulübüne${on} ${game} için zaten soruldu ve o istek hâlâ açık, bu yüzden yeniden sormadım. Oyuncularından biri VARIM derse size haber vereceğim, maç sayfasında da görünecek.`;
+  },
+  xaskw_refused_too_late: (p) =>
+    `*Partner kulüpler:* Bu maç için ${p.partner} kulübüne sormak için artık çok geç: ayarlarınıza göre son istek başlama saatinden ${p.hours} saat önce gider. Bunu buradan değiştirebilirsiniz: ${p.link}`,
+  xaskw_refused_daily_cap: (p) =>
+    `*Partner kulüpler:* ${p.partner} kulübüne sormadım: bugün zaten iki istek aldılar, bir kulübün bir günde alabileceği en fazla istek bu. Yarın yeniden deneyin.`,
+  xaskw_refused_no_places: (p) => `*Partner kulüpler:* ${p.partner} kulübüne sormadım: bu maçta bütün yerler dolu, aranacak kimse yok.`,
+  xaskw_refused_paused: (p) =>
+    `*Partner kulüpler:* ${p.partner} kulübüne sormadım: şu an MatchTime'da duraklatılmış durumdalar. Başka bir partner kulübe sorun ya da geri döndüklerinde yeniden deneyin.`,
+  xaskw_refused_unreachable: (p) =>
+    `*Partner kulüpler:* ${p.partner} kulübüne sormadım: şu an oyuncu gruplarında paylaşım yapamıyorum. Başka bir partner kulübe sorun ya da daha sonra yeniden deneyin.`,
+  xaskw_settings_line: (p) => `Partner kulüp ayarlarınız: ${p.link}`,
   xaskw_header_asked: "Partner kulüplerinize sordum:",
   xaskw_header_not_asked: "Partner kulüplerinize soramadım:",
   xaskw_line_posted: (p) => `• *${p.partner}*: gruplarında paylaşıldı.`,
   xaskw_line_awaiting: (p) => `• *${p.partner}*: organizatörlerinin onayı bekleniyor.`,
-  xaskw_bench_line: "VARIM diye yanıtlayan herkes yedek listenize girer.",
-  xaskw_line_too_late: (p) => `• *${p.partner}*: artık çok geç, son istek başlama saatinden ${p.hours} saat önce gider.`,
-  xaskw_line_daily_cap: (p) => `• *${p.partner}*: bugün zaten iki istek aldılar.`,
-  xaskw_line_already_open: (p) => `• *${p.partner}*: bu maç için onlara açık bir istek zaten var.`,
-  xaskw_line_no_places: (p) => `• *${p.partner}*: bu maçta boş yer yok.`,
-  xaskw_line_off: (p) => `• *${p.partner}*: ayarlarınızda partner kulüplerden oyuncu isteme kapalı.`,
-  xaskw_line_unreachable: (p) => `• *${p.partner}*: gruplarına şu an sorulamıyor.`,
-  xaskw_line_generic: (p) => `• *${p.partner}*: bu maç için şu an onlara sorulamıyor.`,
-  xaskw_no_partner:
-    "Henüz partner kulübünüz yok, bu yüzden başka bir kulübe soramıyorum. MatchTime sizi bir kulüple eşleştirdiğinde iki kulüp de bunu Ayarlar, Partner kulüpler bölümünde kabul eder.",
-  xaskw_off: "Partner kulüplerden oyuncu isteme kapalı. Bir sahip ya da yönetici bunu Ayarlar, Partner kulüpler bölümünden açabilir.",
+  xaskw_bench_line: (p) => (p.firstCome ? "VARIM diye ilk yanıtlayanlar boş yerleri alır." : "VARIM diye yanıtlayan herkes, seçmeniz için yedek listenize girer."),
+  xaskw_line_too_late: (p) => `• *${p.partner}*: sorulmadı, artık çok geç. Son istek başlama saatinden ${p.hours} saat önce gider (sizin ayarınız).`,
+  xaskw_line_daily_cap: (p) => `• *${p.partner}*: sorulmadı, bugün zaten iki istek aldılar, bir günde en fazla bu kadar. Yarın yeniden deneyin.`,
+  xaskw_line_already_open: (p) =>
+    p.awaiting
+      ? `• *${p.partner}*: ${p.askedOn ? `${p.askedOn} tarihinde ` : ""}zaten soruldu ve organizatörleri henüz onay vermedi, bu yüzden yeniden sorulmadı.`
+      : `• *${p.partner}*: ${p.askedOn ? `${p.askedOn} tarihinde ` : ""}zaten soruldu ve o istek hâlâ açık, bu yüzden yeniden sorulmadı.`,
+  xaskw_line_no_places: (p) => `• *${p.partner}*: sorulmadı, bu maçta bütün yerler dolu.`,
+  xaskw_line_off: (p) => `• *${p.partner}*: sorulmadı, ayarlarınızda partner kulüplerden oyuncu isteme kapalı.`,
+  xaskw_line_unreachable: (p) => `• *${p.partner}*: sorulmadı, şu an oyuncu gruplarında paylaşım yapamıyorum. Daha sonra yeniden deneyin.`,
+  xaskw_line_generic: (p) => `• *${p.partner}*: şu an sorulamadı. Bir dakika sonra yeniden deneyin.`,
+  xaskw_no_partner: (p) =>
+    `*Partner kulüpler:* Henüz başka bir kulübe soramıyorum: partner kulübünüz yok. MatchTime sizi bir kulüple eşleştirip iki kulüp de kabul ettiğinde onlara sorabilirsiniz. Partner kulüpler burada: ${p.link}`,
+  xaskw_off: (p) =>
+    `*Partner kulüpler:* Kimseye sormadım: kulübünüz için partner kulüplerden oyuncu isteme kapalı. Bir sahip ya da yönetici buradan açabilir: ${p.link}`,
   xaskw_no_match: (p) => `"${p.ref}" adında bir partner kulübünüz yok. Partner kulüpleriniz: ${p.partners}.`,
   xaskw_not_sure: "Partner kulüplerinize sormamı isteyip istemediğinizden emin olamadım. Hangi kulüp olduğunu yazın ya da hepsine sor deyin.",
   xaskw_ambiguous: (p) => `"${p.ref}" ${p.choice} olabilir. Hangisi olduğunu yazın ya da tüm partner kulüplerinize sorun.`,

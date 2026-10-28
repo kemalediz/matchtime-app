@@ -88,7 +88,45 @@ export const poolOfferEn = {
         : `🔎 Asking nearby players from the MatchTime player pool for ${p.places} ${plural(p.places, "place", "places")} on ${p.day}.`
     } ${p.inHq ? "I'll tell you here when one takes a place." : "I'll let you know when one takes a place."}`,
   /** Asked for the pool where it is not open for the club: what it can do instead. */
-  hq_closed: "The MatchTime player pool is not open for your club yet. I can ask your players' group if anyone can play instead.",
+  hq_closed: "*Player pool:* the MatchTime player pool is not open for your club yet. I can ask your players' group if anyone can play instead.",
+  /** The ask in words refused (L10, 2026-10-28): what happened, why, and
+   *  what to do next, with the exact link when a setting fixes it. Each
+   *  starts with what it is about, so it reads on its own next to the
+   *  partner clubs' line. The match page keeps its own `refused_*`. */
+  ask_refused_club_off: (p: { link: string }) =>
+    `*Player pool:* I didn't ask nearby players: the MatchTime player pool is switched off for your club. An owner or admin can switch it on here, or I can ask your players' group instead: ${p.link}`,
+  ask_refused_not_organiser: "*Player pool:* only an owner or admin of the club can ask nearby players. Ask one of them to tag me.",
+  ask_refused_match_not_open: (p: { day: string }) =>
+    `*Player pool:* I didn't ask nearby players: the game on ${p.day} has started, is over or is off, so there's no place to fill.`,
+  /** `retry`: the ask is kept and asked again by itself once the venue is
+   *  set (pool-ask-retry.ts, asks in words only). */
+  ask_refused_no_venue: (p: { club: string; link: string; retry: boolean }) =>
+    `*Player pool:* I couldn't ask nearby players yet: MatchTime doesn't know where ${p.club} plays, and pool players are found by how close they live to the pitch. ${p.retry ? "Set the venue on your weekly game here and I'll ask the pool straight away" : "Set the venue on your weekly game, then ask me again"}: ${p.link}`,
+  ask_refused_no_sport: (p: { link: string }) =>
+    `*Player pool:* I couldn't ask nearby players yet: your weekly game has no sport set, and pool players are matched by sport. Set it on your weekly game, then ask me again: ${p.link}`,
+  ask_refused_too_late: (p: { hours: number; link: string }) =>
+    `*Player pool:* it's too late to ask nearby players for this game: the last ask goes out ${p.hours === 1 ? "1 hour" : `${p.hours} hours`} before kickoff, as your settings say. You can change that here: ${p.link}`,
+  ask_refused_no_places: "*Player pool:* I didn't ask nearby players: every place in this game is taken, so there's nobody to find.",
+  ask_refused_round_open: "*Player pool:* nearby players are already being asked for this game, so I haven't asked again. I'll let you know when one takes a place.",
+  ask_refused_week_cap:
+    "*Player pool:* I didn't ask nearby players: your club has asked the pool 3 times in the last 7 days, the most allowed. You can ask again once the oldest of those asks is a week old.",
+  ask_refused_none_near:
+    "*Player pool:* I didn't ask anyone: no pool player near your pitch is free to be asked for this game right now. I can ask your players' group instead.",
+  ask_refused_generic: "*Player pool:* I couldn't ask nearby players just now. Please try again in a minute.",
+  /** Pool players near the venue, but none could be asked: why, as counts
+   *  grouped by reason (`why_*`, joined), never who. */
+  ask_refused_nobody_new: (p: { near: string; reasons: string; clubTail: boolean }) =>
+    `*Player pool:* nobody new to ask. Of the pool players ${p.near}, ${p.reasons}. ${p.clubTail ? "The pool only reaches players outside your club." : "I can ask your players' group instead."}`,
+  near_venue: (p: { venue: string }) => `near ${p.venue}`,
+  near_pitch: "near your pitch",
+  why_club: (p: { n: number; club: string }) => `${p.n} ${p.n === 1 ? "is" : "are"} already in ${p.club}`,
+  why_time: (p: { n: number }) => `${p.n} ${p.n === 1 ? "isn't" : "aren't"} free at that time`,
+  why_far: (p: { n: number }) => `${p.n} ${p.n === 1 ? "lives" : "live"} further away than they travel`,
+  why_format: (p: { n: number }) => `${p.n} ${p.n === 1 ? "plays" : "play"} a different format or level`,
+  why_busy: (p: { n: number }) => `${p.n} ${p.n === 1 ? "has" : "have"} another game then`,
+  why_on_match: (p: { n: number }) => `${p.n} ${p.n === 1 ? "is" : "are"} already down for this game`,
+  why_offered: (p: { n: number }) => `${p.n} ${p.n === 1 ? "has" : "have"} already been offered this game`,
+  why_caps: (p: { n: number }) => `${p.n} ${p.n === 1 ? "has" : "have"} had enough offers for now`,
 
   // ── The match page's pool line (organisers) ───────────────────────────
   pool_label: "MatchTime player pool",

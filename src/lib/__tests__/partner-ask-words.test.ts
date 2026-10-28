@@ -10,7 +10,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const dbMock = vi.hoisted(() => ({ clubPartnership: { findMany: vi.fn() }, membership: { findMany: vi.fn() } }));
+const dbMock = vi.hoisted(() => ({
+  clubPartnership: { findMany: vi.fn() },
+  membership: { findMany: vi.fn() },
+  match: { findUnique: vi.fn() },
+  partnerAsk: { findFirst: vi.fn() },
+  organisation: { findUnique: vi.fn() },
+}));
 vi.mock("../db", () => ({ db: dbMock }));
 const settingsMock = vi.hoisted(() => ({ loadPartnerAskSettings: vi.fn() }));
 vi.mock("../club-partnership", () => settingsMock);
@@ -60,7 +66,15 @@ describe("askPartnersFromWords", () => {
     expect(askMock.requestPartnerAsk).toHaveBeenCalledTimes(1);
     expect(askMock.requestPartnerAsk.mock.calls[0][0].partnershipId).toBe("p-sutton");
     expect(r.replyText).toBe(
-      "I've asked *Sutton FC*'s organisers. Once they say yes, I'll post in their group, and anyone who replies IN goes on your bench.",
+      "I've asked *Sutton FC*'s organisers. Once they say yes, I'll post in their group. The first to reply IN get the open places.",
+    );
+  });
+
+  it("an organiser-pick club: the reply says volunteers go on the bench to pick", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ benchPickMode: "organiser" });
+    const r = await askPartnersFromWords({ ...base, clubRef: "Sutton" });
+    expect(r.replyText).toBe(
+      "I've asked *Sutton FC*'s organisers. Once they say yes, I'll post in their group. Anyone who replies IN goes on your bench for you to pick.",
     );
   });
 
@@ -80,7 +94,7 @@ describe("askPartnersFromWords", () => {
     const r = await askPartnersFromWords({ ...base, clubRef: "Sutton" });
     expect(askMock.requestPartnerAsk).not.toHaveBeenCalled();
     expect(r.outcome).toBe("xask-words-no-partner");
-    expect(r.replyText).toMatch(/no partner clubs yet/);
+    expect(r.replyText).toMatch(/you have no partner clubs\. .+\/admin\/settings#partner-clubs$/);
   });
 
   it("asking switched off: one plain reply, nothing asked", async () => {
@@ -88,7 +102,7 @@ describe("askPartnersFromWords", () => {
     const r = await askPartnersFromWords({ ...base, clubRef: null });
     expect(askMock.requestPartnerAsk).not.toHaveBeenCalled();
     expect(r.outcome).toBe("xask-words-asking-off");
-    expect(r.replyText).toMatch(/turn it on in Settings/);
+    expect(r.replyText).toMatch(/turn it on here: .+\/admin\/settings#partner-clubs$/);
   });
 
   it("a club that is not a partner: one plain reply naming the partners", async () => {
@@ -111,9 +125,28 @@ describe("askPartnersFromWords", () => {
         ? { ok: false, refusal: "already-open", partnerName: "Sutton FC" }
         : { ok: true, askId: "x2", status: "awaiting-approval", partnerName: "Friday MT Community" },
     );
+    dbMock.match.findUnique.mockResolvedValue({ date: new Date("2026-10-17T19:00:00Z") });
+    dbMock.partnerAsk.findFirst.mockResolvedValue({ createdAt: new Date("2026-10-10T09:00:00Z"), status: "posted" });
     const r = await askPartnersFromWords({ ...base, clubRef: null });
     expect(r.asked).toBe(1);
-    expect(r.replyText).toContain("*Sutton FC*: an ask to them is already open for this game.");
+    expect(r.replyText).toContain("*Sutton FC*: already asked on 10 Oct and that ask is still open, so not asked again.");
+    expect(dbMock.partnerAsk.findFirst.mock.calls[0][0].where).toEqual({ matchId: "m1", partnershipId: "p-sutton", status: { in: ["awaiting-approval", "posted"] } });
+  });
+
+  it("one partner already asked: when, for which game, and that it is still open (Kemal, 2026-10-28)", async () => {
+    askMock.requestPartnerAsk.mockResolvedValue({ ok: false, refusal: "already-open", partnerName: "Friday MT Community" });
+    dbMock.match.findUnique.mockResolvedValue({ date: new Date("2026-10-28T20:30:00Z") });
+    dbMock.partnerAsk.findFirst.mockResolvedValue({ createdAt: new Date("2026-10-22T11:00:00Z"), status: "posted" });
+    const r = await askPartnersFromWords({ ...base, clubRef: "Friday" });
+    expect(r.outcome).toBe("xask-words-not-asked");
+    expect(r.replyText).toMatch(/^\*Partner clubs:\* Friday MT Community were already asked on 22 Oct for the game on .+, and that ask is still open, so I haven't asked them again\./);
+  });
+
+  it("the open ask cannot be read: the reply still says it, without the date", async () => {
+    askMock.requestPartnerAsk.mockResolvedValue({ ok: false, refusal: "already-open", partnerName: "Friday MT Community" });
+    dbMock.match.findUnique.mockRejectedValue(new Error("db down"));
+    const r = await askPartnersFromWords({ ...base, clubRef: "Friday" });
+    expect(r.replyText).toMatch(/^\*Partner clubs:\* Friday MT Community were already asked for this game, and that ask is still open/);
   });
 
   it("one partner's call throwing never loses the others' answer", async () => {
@@ -123,7 +156,7 @@ describe("askPartnersFromWords", () => {
     });
     const r = await askPartnersFromWords({ ...base, clubRef: null });
     expect(r.asked).toBe(1);
-    expect(r.replyText).toContain("*Sutton FC*: they can't be asked for this game right now.");
+    expect(r.replyText).toContain("*Sutton FC*: couldn't be asked just now. Try again in a minute.");
   });
 
   it("Turkish club: the reply is Turkish", async () => {

@@ -34,6 +34,11 @@ const SAMPLE: Record<string, unknown> = {
   asked: 4,
   declined: 1,
   max: 3,
+  hours: 4,
+  near: "near Goals Sutton",
+  reasons: "1 is already in FNF",
+  clubTail: true,
+  retry: true,
 };
 
 const render = (e: Entry): string => (typeof e === "function" ? e(SAMPLE) : e);

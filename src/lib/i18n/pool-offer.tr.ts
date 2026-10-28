@@ -59,7 +59,36 @@ export const poolOfferTr: PoolOfferStrings = {
         ? `🔎 ${p.day} maçı için partner kulüpleriniz bir saat içinde doldurmazsa MatchTime oyuncu havuzundaki yakın oyunculara soracağım (${p.places} kişi).`
         : `🔎 ${p.day} maçı için MatchTime oyuncu havuzundaki yakın oyunculara soruyorum (${p.places} kişi).`
     } ${p.inHq ? "Biri yer alınca burada haber vereceğim." : "Biri yer alınca size haber vereceğim."}`,
-  hq_closed: "MatchTime oyuncu havuzu kulübünüz için henüz açık değil. İsterseniz oyuncu grubunuza oynayabilecek biri var mı diye sorabilirim.",
+  hq_closed: "*Oyuncu havuzu:* MatchTime oyuncu havuzu kulübünüz için henüz açık değil. İsterseniz oyuncu grubunuza oynayabilecek biri var mı diye sorabilirim.",
+  ask_refused_club_off: (p) =>
+    `*Oyuncu havuzu:* Yakındaki oyunculara sormadım: MatchTime oyuncu havuzu kulübünüz için kapalı. Bir sahip ya da yönetici buradan açabilir, ya da oyuncu grubunuza sorabilirim: ${p.link}`,
+  ask_refused_not_organiser: "*Oyuncu havuzu:* Yakındaki oyunculara yalnızca kulübün sahibi ya da bir yönetici sorabilir. Onlardan birinden beni etiketlemesini isteyin.",
+  ask_refused_match_not_open: (p) => `*Oyuncu havuzu:* Yakındaki oyunculara sormadım: ${p.day} maçı başladı, bitti ya da iptal, doldurulacak yer yok.`,
+  ask_refused_no_venue: (p) =>
+    `*Oyuncu havuzu:* Yakındaki oyunculara henüz soramadım: MatchTime, ${p.club} kulübünün nerede oynadığını bilmiyor ve havuz oyuncuları sahaya ne kadar yakın oturduklarına göre bulunuyor. ${p.retry ? "Haftalık maçınızın sahasını buradan girin, havuza hemen sorayım" : "Haftalık maçınızın sahasını girin, sonra bana yeniden sorun"}: ${p.link}`,
+  ask_refused_no_sport: (p) =>
+    `*Oyuncu havuzu:* Yakındaki oyunculara henüz soramadım: haftalık maçınızda spor seçili değil ve havuz oyuncuları spora göre eşleşiyor. Haftalık maçınızda sporu seçin, sonra bana yeniden sorun: ${p.link}`,
+  ask_refused_too_late: (p) =>
+    `*Oyuncu havuzu:* Bu maç için yakındaki oyunculara sormak için artık çok geç: ayarlarınıza göre son istek başlama saatinden ${p.hours} saat önce gider. Bunu buradan değiştirebilirsiniz: ${p.link}`,
+  ask_refused_no_places: "*Oyuncu havuzu:* Yakındaki oyunculara sormadım: bu maçta bütün yerler dolu, aranacak kimse yok.",
+  ask_refused_round_open: "*Oyuncu havuzu:* Bu maç için yakındaki oyunculara zaten soruluyor, bu yüzden yeniden sormadım. Biri yer alınca size haber vereceğim.",
+  ask_refused_week_cap:
+    "*Oyuncu havuzu:* Yakındaki oyunculara sormadım: kulübünüz son 7 günde havuza 3 kez sordu, izin verilen en fazla sayı bu. Bu isteklerin en eskisi bir haftalık olunca yeniden sorabilirsiniz.",
+  ask_refused_none_near:
+    "*Oyuncu havuzu:* Kimseye sormadım: sahanızın yakınında bu maç için şu an sorulabilecek havuz oyuncusu yok. İsterseniz oyuncu grubunuza sorabilirim.",
+  ask_refused_generic: "*Oyuncu havuzu:* Şu an yakındaki oyunculara soramadım. Lütfen bir dakika sonra yeniden deneyin.",
+  ask_refused_nobody_new: (p) =>
+    `*Oyuncu havuzu:* Sorulacak yeni kimse yok. ${p.near} havuz oyuncularından ${p.reasons}. ${p.clubTail ? "Havuz yalnızca kulübünüz dışındaki oyunculara ulaşır." : "İsterseniz oyuncu grubunuza sorabilirim."}`,
+  near_venue: (p) => `${p.venue} yakınındaki`,
+  near_pitch: "Sahanızın yakınındaki",
+  why_club: (p) => `${p.n} kişi zaten ${p.club} kulübünde`,
+  why_time: (p) => `${p.n} kişi o saatte müsait değil`,
+  why_far: (p) => `${p.n} kişi gidebileceği mesafenin dışında`,
+  why_format: (p) => `${p.n} kişi başka bir formatta ya da seviyede oynuyor`,
+  why_busy: (p) => `${p.n} kişinin o saatte başka maçı var`,
+  why_on_match: (p) => `${p.n} kişi zaten bu maç için yazılı`,
+  why_offered: (p) => `${p.n} kişiye bu maç zaten teklif edildi`,
+  why_caps: (p) => `${p.n} kişi şimdilik yeterince teklif aldı`,
 
   pool_label: "MatchTime oyuncu havuzu",
   band_none: "bu sahanın yakınında henüz havuz oyuncusu yok",

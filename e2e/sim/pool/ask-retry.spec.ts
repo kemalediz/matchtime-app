@@ -39,7 +39,9 @@ const FACTS = {
   toMatchTime: true,
 };
 const OFFER_FACTS = { ...facts([], { sideRequests: ["recruit"] }), ...FACTS };
-const NO_VENUE = "Confirm your venue first: nearby players are found by the pitch.";
+const NO_VENUE = expect.stringMatching(
+  /^\*Player pool:\* I couldn't ask nearby players yet: MatchTime doesn't know where .+ plays, and pool players are found by how close they live to the pitch\. Set the venue on your weekly game here and I'll ask the pool straight away: \S+\/admin\/activities$/,
+);
 
 type Club = Awaited<ReturnType<typeof openClub>>;
 
@@ -106,7 +108,7 @@ scenarios("a refused pool ask is asked again once the venue is set", () => {
 
     // 15:37: the ask, refused for the venue.
     const ex = await askInGroup(mt);
-    expect(ex.sent.find((m) => m.to === "mtt.group")?.text).toBe(NO_VENUE);
+    expect(ex.sent.find((m) => m.to === "mtt.group")?.text).toEqual(NO_VENUE);
     expect(await offersOf(pool, ali)).toHaveLength(0);
     expect(await retryRows(pool, mt)).toEqual([{ refusal: "no-venue", askedIn: "group", claimedAt: null, outcome: null, places: 1 }]);
 
@@ -138,11 +140,13 @@ scenarios("a refused pool ask is asked again once the venue is set", () => {
     const mt = await mtTest(pool, "far");
 
     const ex = await askInGroup(mt);
-    expect(ex.sent.find((m) => m.to === "far.group")?.text).toBe(NO_VENUE);
+    expect(ex.sent.find((m) => m.to === "far.group")?.text).toEqual(NO_VENUE);
 
     await saveVenueOnWeb(pool, page, mt, mt.spot);
     const posts = await groupPostsWithin(pool, mt, 1, 20_000);
-    expect(posts.map((m) => m.text)).toEqual(["Your pitch is set, so I tried the player pool again:\nThere are no pool players near this venue for this game yet."]);
+    expect(posts.map((m) => m.text)).toEqual([
+      expect.stringMatching(/^Your pitch is set, so I tried the player pool again:\n\*Player pool:\* (nobody new to ask\. Of the pool players near .+, 1 lives further away than they travel\.|I didn't ask anyone: no pool player near your pitch is free to be asked for this game right now\.) I can ask your players' group instead\.$/),
+    ]);
     expect(await retryRows(pool, mt)).toEqual([expect.objectContaining({ claimedAt: expect.any(Date), outcome: "hq-pool-not-asked" })]);
 
     await saveVenueOnWeb(pool, page, mt, near(mt));
@@ -170,7 +174,7 @@ scenarios("a refused pool ask is asked again once the venue is set", () => {
     pool.arm(() => engineOn({ [HQ_ASK]: { route: "ask_group", facts: FACTS } }));
 
     const ex = await fnf.hq.say("owner", HQ_ASK);
-    expect(ex.sent.find((m) => m.to === "hqc.hq")?.text).toBe(NO_VENUE);
+    expect(ex.sent.find((m) => m.to === "hqc.hq")?.text).toEqual(NO_VENUE);
     expect(await retryRows(pool, fnf)).toEqual([expect.objectContaining({ askedIn: "hq", claimedAt: null })]);
 
     await saveVenueOnWeb(pool, page, fnf, fnf.spot);
