@@ -14,6 +14,7 @@ import { settingInfo } from "@/lib/settings-info";
 const lines = (c: PoolClubSwitchCopy): string[] => [
   c.notice("FNF", "group"),
   c.notice("FNF", "dm"),
+  c.groupAnnouncement("FNF"),
   c.title,
   c.lead,
   c.confirmOff,
@@ -103,6 +104,44 @@ describe("the message to the admin team", () => {
       expect(msg).toContain(`*${poolCopy(lang).pool_label}*`);
       expect(msg).toContain(`*${t(lang).pauto_title}*`);
       expect(msg).toContain(`*${poolClubShareCopy(lang).title}*`);
+    }
+  });
+});
+
+describe("the announcement in the players' group (a club with no admin group)", () => {
+  it("is worded for the whole group, exactly (EN)", () => {
+    expect(poolClubSwitchCopy("en").groupAnnouncement("FNF")).toBe(
+      [
+        "⚽ *The MatchTime player pool is now on for FNF*",
+        "When the club is short of players, MatchTime can ask nearby players who have joined the pool. When MatchTime asks by itself, partner clubs are asked first.",
+        "Only the club's organisers can ask the pool, and nothing is sent until they do. Organisers can:",
+        '• ask me here, for example "@Match Time ask the player pool for 2 players for Thursday"',
+        "• tick *MatchTime player pool* on a match",
+        "• turn on *Ask the player pool automatically* in Admin, then Settings",
+      ].join("\n"),
+    );
+  });
+
+  it("is worded for the whole group, exactly (TR)", () => {
+    expect(poolClubSwitchCopy("tr").groupAnnouncement("FNF")).toBe(
+      [
+        "⚽ *MatchTime oyuncu havuzu FNF için açıldı*",
+        "Kulüpte oyuncu eksik olduğunda MatchTime, havuza katılmış yakındaki oyunculara sorabilir. MatchTime kendiliğinden sorduğunda önce partner kulüplere sorulur.",
+        "Havuza yalnızca kulübün organizatörleri sorabilir ve onlar istemedikçe hiçbir şey gönderilmez. Organizatörler:",
+        '• buradan bana yazabilir, örneğin "@Match Time perşembe için havuzdan 2 oyuncu bul"',
+        "• bir maçta *MatchTime oyuncu havuzu* kutusunu işaretleyebilir",
+        "• Yönetim, sonra Ayarlar'da *Oyuncu havuzuna kendiliğinden sor* seçeneğini açabilir",
+      ].join("\n"),
+    );
+  });
+
+  it("quotes the real headings, and never points players at the share card", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const msg = poolClubSwitchCopy(lang).groupAnnouncement("FNF");
+      expect(msg).toContain(`*${poolCopy(lang).pool_label}*`);
+      expect(msg).toContain(`*${t(lang).pauto_title}*`);
+      expect(msg).not.toContain(poolClubShareCopy(lang).title);
+      expect(msg).not.toMatch(/always asked first|Önce her zaman/);
     }
   });
 });

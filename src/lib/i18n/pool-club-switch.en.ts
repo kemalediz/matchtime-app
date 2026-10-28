@@ -14,6 +14,15 @@ export const POOL_CLUB_SWITCH_EN: PoolClubSwitchCopy = {
       "• turn on *Ask the player pool automatically* in Admin, then Settings",
       "Want your players to know? Use *Tell your players about the player pool* in Settings.",
     ].join("\n"),
+  groupAnnouncement: (club) =>
+    [
+      `⚽ *The MatchTime player pool is now on for ${club}*`,
+      "When the club is short of players, MatchTime can ask nearby players who have joined the pool. When MatchTime asks by itself, partner clubs are asked first.",
+      "Only the club's organisers can ask the pool, and nothing is sent until they do. Organisers can:",
+      '• ask me here, for example "@Match Time ask the player pool for 2 players for Thursday"',
+      "• tick *MatchTime player pool* on a match",
+      "• turn on *Ask the player pool automatically* in Admin, then Settings",
+    ].join("\n"),
   title: "Player pool",
   lead: "When you're short of players, MatchTime can ask nearby players who have joined the MatchTime player pool. When MatchTime asks by itself, your partner clubs are asked first. Nothing is sent until an admin asks, or until you turn on automatic asking below.",
   confirmOff: "Turn the player pool off for your club? Any ask to the pool still open for your matches is closed now.",

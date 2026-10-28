@@ -10,8 +10,10 @@
  * and the pool tick on the match page; organisers can ask the pool from HQ
  * (`flags.ts` `poolOpenForClub`: the platform switch AND this flag). Nothing
  * is offered by switching on. The FIRST time a club's pool goes from off
- * to on, its admin team is told once, ever (`club-switch-rules.ts`),
- * through the club's own admin channel (`sendAdminNotice`).
+ * to on, the club is told once, ever (`club-switch-rules.ts`
+ * `poolOnRoute`): through its admin channel (`sendAdminNotice`) when it has
+ * an admin group, or in its players' group, for everyone, when that is its
+ * only group; the admin DMs only when it has no postable group at all.
  *
  * OFF: the flag is written first, so no new ask can open, then every open
  * pool ask of the club is closed at once through the pool's own close path
@@ -27,7 +29,9 @@ import { db } from "../db";
 import { sendAdminNotice, type AdminNoticeClient } from "../admin-channel";
 import { poolClubSwitchCopy } from "../i18n/pool-club-switch";
 import { closePoolAsk } from "./round";
-import { POOL_ON_NOTICE_KIND, poolOnNoticeKey } from "./club-switch-rules";
+import { isGroupPostable } from "../group-postability-store";
+import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf } from "../message-hours";
+import { POOL_ON_GROUP_KIND, POOL_ON_NOTICE_KIND, poolOnGroupKey, poolOnNoticeKey, poolOnRoute } from "./club-switch-rules";
 
 export type ClubPoolSwitchResult = { ok: true; on: boolean; closedAsks: number; autoAsk: boolean; told: boolean } | { ok: false; reason: "not-found" };
 
@@ -41,7 +45,7 @@ export async function setClubPlayerPool(orgId: string, on: boolean, now: Date = 
     let told = false;
     if (count === 1) {
       try {
-        told = await tellAdminTeamPoolOn(orgId, now);
+        told = await tellClubPoolOn(orgId, now);
       } catch (err) {
         console.error(`[pool] club ${orgId}: the pool-on message could not be queued: ${(err as Error)?.message ?? "error"}`);
       }
@@ -60,6 +64,61 @@ export async function setClubPlayerPool(orgId: string, on: boolean, now: Date = 
 /** Rolls the claim back when the club's channel queued nothing. */
 class NobodyToTell extends Error {}
 
+const isUniqueViolation = (err: unknown) => (err as { code?: string } | null)?.code === "P2002";
+
+/**
+ * The once-ever message that the pool is on (`poolOnRoute`). A club with an
+ * admin group, or with no postable players' group, is told through its
+ * admin channel (`tellAdminTeamPoolOn`); a club whose only group is its
+ * players' group gets ONE post there, worded for everyone, and no admin
+ * DM. True when it was queued now.
+ */
+export async function tellClubPoolOn(orgId: string, now: Date): Promise<boolean> {
+  const org = await db.organisation.findUnique({
+    where: { id: orgId },
+    select: { name: true, language: true, adminGroupId: true, whatsappGroupId: true, whatsappBotEnabled: true, ...QUIET_HOURS_SELECT },
+  });
+  if (!org) return false;
+  const route = poolOnRoute({
+    adminGroupId: org.adminGroupId ?? null,
+    whatsappGroupId: org.whatsappGroupId ?? null,
+    whatsappBotEnabled: org.whatsappBotEnabled === true,
+    playersGroupPostable: org.whatsappGroupId ? await isGroupPostable(org.whatsappGroupId) : false,
+  });
+  if (route === "admin-channel") return tellAdminTeamPoolOn(orgId, org, now);
+  return tellPlayersGroupPoolOn(orgId, org, now);
+}
+
+/**
+ * ONE post in the club's players' group, as the club's share post is
+ * queued (`club-share.ts`): a `BotJob` of kind "group", held through the
+ * club's quiet hours, carrying its claim's key. The claim and the post are
+ * ONE transaction; a racing switch-on loses on the key and writes nothing.
+ */
+async function tellPlayersGroupPoolOn(
+  orgId: string,
+  org: { name: string; language: string | null; quietHoursEnabled?: boolean | null; quietHoursFrom?: string | null; quietHoursTo?: string | null },
+  now: Date,
+): Promise<boolean> {
+  const key = poolOnGroupKey(orgId);
+  if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) return false;
+  const text = poolClubSwitchCopy(org.language).groupAnnouncement(org.name);
+  const sendAfter = messageHoursSendAfter(now, quietHoursOf(org));
+  try {
+    const queued = await db.$transaction(async (tx) => {
+      const { count } = await tx.sentNotification.createMany({ data: [{ key, kind: POOL_ON_GROUP_KIND }], skipDuplicates: true });
+      if (count !== 1) return false;
+      await tx.botJob.create({ data: { orgId, kind: "group", text, sendAfter, aboutKey: key } });
+      return true;
+    });
+    if (queued) console.log(`[pool] club ${orgId}: told its players' group the pool is on (sendAfter=${sendAfter?.toISOString() ?? "now"})`);
+    return queued;
+  } catch (err) {
+    if (isUniqueViolation(err)) return false;
+    throw err;
+  }
+}
+
 /**
  * The once-ever message to the club's admin team that the pool is on,
  * through the club's admin channel (`sendAdminNotice`: its admin group, the
@@ -70,11 +129,9 @@ class NobodyToTell extends Error {}
  * admin-group post that falls back to a DM at dispatch uses the DM wording.
  * True when it was queued now.
  */
-export async function tellAdminTeamPoolOn(orgId: string, now: Date): Promise<boolean> {
+async function tellAdminTeamPoolOn(orgId: string, org: { name: string; language: string | null }, now: Date): Promise<boolean> {
   const key = poolOnNoticeKey(orgId);
   if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) return false;
-  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { name: true, language: true } });
-  if (!org) return false;
   const copy = poolClubSwitchCopy(org.language);
   try {
     const queued = await db.$transaction(async (tx) => {

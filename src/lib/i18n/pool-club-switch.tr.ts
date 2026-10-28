@@ -14,6 +14,15 @@ export const POOL_CLUB_SWITCH_TR: PoolClubSwitchCopy = {
       "• Yönetim, sonra Ayarlar'da *Oyuncu havuzuna kendiliğinden sor* seçeneğini açın",
       "Oyuncularınız da bilsin mi? Ayarlar'daki *Oyuncularınıza oyuncu havuzunu anlatın* kartını kullanın.",
     ].join("\n"),
+  groupAnnouncement: (club) =>
+    [
+      `⚽ *MatchTime oyuncu havuzu ${club} için açıldı*`,
+      "Kulüpte oyuncu eksik olduğunda MatchTime, havuza katılmış yakındaki oyunculara sorabilir. MatchTime kendiliğinden sorduğunda önce partner kulüplere sorulur.",
+      "Havuza yalnızca kulübün organizatörleri sorabilir ve onlar istemedikçe hiçbir şey gönderilmez. Organizatörler:",
+      '• buradan bana yazabilir, örneğin "@Match Time perşembe için havuzdan 2 oyuncu bul"',
+      "• bir maçta *MatchTime oyuncu havuzu* kutusunu işaretleyebilir",
+      "• Yönetim, sonra Ayarlar'da *Oyuncu havuzuna kendiliğinden sor* seçeneğini açabilir",
+    ].join("\n"),
   title: "Oyuncu havuzu",
   lead: "Oyuncu eksik olduğunda MatchTime, MatchTime oyuncu havuzuna katılmış yakındaki oyunculara sorabilir. MatchTime kendiliğinden sorduğunda önce partner kulüplerinize sorulur. Bir yönetici istemedikçe ya da aşağıda otomatik sormayı açmadıkça hiçbir şey gönderilmez.",
   confirmOff: "Kulübünüz için oyuncu havuzu kapatılsın mı? Maçlarınız için havuza yapılmış ve hâlâ açık olan istekler şimdi kapatılır.",

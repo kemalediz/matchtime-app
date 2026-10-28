@@ -1,7 +1,8 @@
 /**
  * The words of a club's own "Player pool" switch (2026-10-28): the card on
- * /admin/settings, and the ONE message that tells the club's admin team the
- * pool is on for it (`pool/club-switch.ts`). CLIENT-SAFE.
+ * /admin/settings, and the ONE message that tells the club the pool is on
+ * for it (`pool/club-switch.ts`): to the admin team, or in the players'
+ * group of a club with no admin group. CLIENT-SAFE.
  *
  * One object per language (`pool-club-switch.en.ts`, `pool-club-switch.tr.ts`),
  * typed by `PoolClubSwitchCopy`, so a missing line in either language is a
@@ -18,6 +19,9 @@ export interface PoolClubSwitchCopy {
   /** The message to the admin team. "group": posted in the club's admin
    *  group (HQ); "dm": sent to each owner and admin when it has none. */
   notice: (club: string, audience: "group" | "dm") => string;
+  /** The same news posted in the players' group of a club with no admin
+   *  group: everyone reads it, so it says only organisers can ask. */
+  groupAnnouncement: (club: string) => string;
   /** The settings card. */
   title: string;
   lead: string;
