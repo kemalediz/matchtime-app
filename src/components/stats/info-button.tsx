@@ -47,6 +47,7 @@ export function InfoButton({
   label,
   closeLabel = "Close",
   testId,
+  tone = "default",
 }: {
   title: string;
   children: React.ReactNode;
@@ -54,6 +55,8 @@ export function InfoButton({
   label?: string;
   closeLabel?: string;
   testId?: string;
+  /** "onDark": a white "i" for a coloured strip (the pool banner). */
+  tone?: "default" | "onDark";
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -169,7 +172,7 @@ export function InfoButton({
         aria-haspopup="dialog"
         aria-expanded={open}
         data-testid={testId ? `info-${testId}` : undefined}
-        className="inline-flex shrink-0 items-center justify-center w-5 h-5 rounded-full text-slate-400 hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 active:scale-95 align-middle"
+        className={`inline-flex shrink-0 items-center justify-center w-5 h-5 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 active:scale-95 align-middle ${tone === "onDark" ? "text-white hover:text-blue-100 focus-visible:outline-white" : "text-slate-400 hover:text-slate-600 focus-visible:outline-blue-600"}`}
       >
         <Info aria-hidden="true" className="w-4 h-4" />
       </button>

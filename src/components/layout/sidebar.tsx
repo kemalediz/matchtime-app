@@ -219,7 +219,7 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile top bar */}
-      <div className="lg:hidden sticky top-0 z-40 flex items-center justify-between px-4 h-14 bg-slate-900 text-white border-b border-slate-800">
+      <div data-testid="mobile-topbar" className="lg:hidden sticky top-0 z-40 flex items-center justify-between px-4 h-14 bg-slate-900 text-white border-b border-slate-800">
         <button
           onClick={() => setMobileOpen((v) => !v)}
           className="p-2 -ml-2 rounded-md hover:bg-slate-800"
