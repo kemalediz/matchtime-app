@@ -540,7 +540,7 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
   });
 
   it("has nine cards, in order, the short-of-players card second, each with a title, a line and details", () => {
-    expect(HERO_DECK.cards.map((c) => c.key)).toEqual(["att", "short", "bench", "teams", "ratings", "stats", "fees", "admin", "lang"]);
+    expect(HERO_DECK.cards.map((c) => c.key)).toEqual(["att", "short", "bench", "teams", "ratings", "fees", "stats", "admin", "lang"]);
     for (const c of HERO_DECK.cards) {
       expect(c.title.length).toBeGreaterThan(3);
       expect(c.body.length).toBeGreaterThan(10);
@@ -552,8 +552,8 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
       "The bench steps in",
       "Fair teams, on request",
       "Ratings and Man of the Match",
-      "Track your progress",
       "Match fees, collected",
+      "Track your progress",
       "Your organisers' own chat",
       "Speaks your group's language",
     ]);
@@ -564,7 +564,7 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
     expect(HERO.titleTail).toBe("MatchTime runs the game.");
     expect(HERO.pill).toBe("For weekly football groups");
     expect(HERO).not.toHaveProperty("ticks");
-    expect(HERO.line).toBe("Who's in, the bench, fair teams, player ratings and Man of the Match, and nearby players when you're short. All in your group chat.");
+    expect(HERO.line).toBe("Who's in, the bench, and partner clubs and nearby players when you're short. Then fair teams, player ratings, Man of the Match and match fees, all in your group chat.");
     expect(HERO.secondary.href).toBe("#how-it-works");
   });
 

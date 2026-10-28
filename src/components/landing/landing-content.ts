@@ -27,6 +27,11 @@
  * partner clubs, then the player pool), the players' pool pitch, then the
  * rest of the features and the other spotlights.
  *
+ * FEATURE ORDER (Kemal, 2026-10-28): attendance first, the pain point
+ * (who's in, the bench, partner clubs and the pool when short), then fair
+ * teams, ratings, Man of the Match and payments. The meta and preview
+ * descriptions, the hero line, the deck and the features grid all follow it.
+ *
  * THE PLAYER POOL (G0 part 2, with slice L2): its section follows the
  * short-of-players one and carries the "Join the MatchTime player pool" invitation,
  * a button to /play. Whether a sign-up goes on the early sign-up list is
@@ -98,8 +103,8 @@ const FORMAT_KEYWORDS: string[] = liveSports().flatMap((s) => s.formats.map((n) 
 export const SITE_META = {
   title: "MatchTime: run your weekly football on autopilot",
   description:
-    "MatchTime runs your weekly football in WhatsApp: who's in, the bench, fair teams, player ratings, Man of the Match, and partner clubs and the pool when short.",
-  ogDescription: `${liveFormatsPhrase()} on WhatsApp: who's in, the bench, fair teams, player ratings, Man of the Match, and partner clubs and the pool when short.`,
+    "MatchTime runs weekly football in WhatsApp: who's in, the bench, partner clubs and the pool when short, then fair teams, ratings, Man of the Match and fees.",
+  ogDescription: `${liveFormatsPhrase()} on WhatsApp: who's in, the bench, partner clubs and the pool when short, then fair teams, ratings, Man of the Match and fees.`,
   keywords: [
     "football team management",
     ...FORMAT_KEYWORDS,
@@ -124,7 +129,7 @@ export const HERO = {
   pill: "For weekly football groups",
   titleLead: "Your players WhatsApp.",
   titleTail: "MatchTime runs the game.",
-  line: "Who's in, the bench, fair teams, player ratings and Man of the Match, and nearby players when you're short. All in your group chat.",
+  line: "Who's in, the bench, and partner clubs and nearby players when you're short. Then fair teams, player ratings, Man of the Match and match fees, all in your group chat.",
   primary: { label: "Start your group", href: "/signup" } satisfies NavLink,
   secondary: { label: "See how it works", href: "#how-it-works" } satisfies NavLink,
 };
@@ -327,18 +332,18 @@ export const FEATURES: Card[] = [
     body: "After the game every player gets a private link to rate the others from 1 to 10 and pick a Man of the Match. The winner is announced in the group once everyone has voted.",
   },
   {
-    key: "stats-qa",
-    color: "violet",
-    icon: "chart",
-    title: "Stats questions, answered in the group",
-    body: "Ask “@Match Time top 5 rated players this season” or “who's played the most?” and the answer is posted right there for everyone to see.",
-  },
-  {
     key: "payments",
     color: "teal",
     icon: "card",
     title: "Payments, if you want them",
     body: "Switch on card or bank payments and each player gets a pay link after the game. MatchTime chases whoever hasn't paid, so you stop doing the money chase yourself.",
+  },
+  {
+    key: "stats-qa",
+    color: "violet",
+    icon: "chart",
+    title: "Stats questions, answered in the group",
+    body: "Ask “@Match Time top 5 rated players this season” or “who's played the most?” and the answer is posted right there for everyone to see.",
   },
   {
     key: "quiet",
@@ -861,9 +866,9 @@ export const PERSONAS: Array<{ role: string; bullets: string[] }> = [
       "No more counting ‘IN’ messages or chasing late replies",
       "A bench that sorts itself out when someone drops",
       "Partner clubs nearby, then the MatchTime player pool, to fill a place when you're still short",
-      "An admin group where organisers run the week in their own words",
       "Balanced teams when you ask, instead of arguing over picks",
       "Attendance, ratings and payments logged for you",
+      "An admin group where organisers run the week in their own words",
     ],
   },
   {
@@ -1196,22 +1201,6 @@ export const HERO_DECK = {
       },
     },
     {
-      // src/app/profile/stats/page.tsx (STATS_SKETCH); badge-rules.ts BADGES;
-      // PLAYER_STAT_CARDS. Player-facing (Kemal, 2026-10-27: badges matter).
-      key: "stats",
-      title: "Track your progress",
-      body: "Every player gets a stats page: ratings over time, form and badges.",
-      visual: ["7.6", "On fire", "Badges 6 of 8"],
-      details: [
-        "Each player has their own stats page, opened from a link MatchTime sends. No app, no password.",
-        "Club rating, Man of the Match awards, games played and their win, draw and loss record.",
-        "Current form over the last 5 games, and ratings over time against the squad average.",
-        "Chemistry and rivalries, the squad leaderboard and the Team of the Season.",
-        "Badges to unlock as they play, from On the board to MoM Machine, and any badge earned can be shared as a picture.",
-      ],
-      sketch: "stats",
-    },
-    {
       // FEATURES payments; strings.en.ts dm_pay_link.
       key: "fees",
       title: "Match fees, collected",
@@ -1236,6 +1225,22 @@ export const HERO_DECK = {
           { from: "bot", text: "You can also pay for anyone you brought along.", time: "22:05" },
         ],
       },
+    },
+    {
+      // src/app/profile/stats/page.tsx (STATS_SKETCH); badge-rules.ts BADGES;
+      // PLAYER_STAT_CARDS. Player-facing (Kemal, 2026-10-27: badges matter).
+      key: "stats",
+      title: "Track your progress",
+      body: "Every player gets a stats page: ratings over time, form and badges.",
+      visual: ["7.6", "On fire", "Badges 6 of 8"],
+      details: [
+        "Each player has their own stats page, opened from a link MatchTime sends. No app, no password.",
+        "Club rating, Man of the Match awards, games played and their win, draw and loss record.",
+        "Current form over the last 5 games, and ratings over time against the squad average.",
+        "Chemistry and rivalries, the squad leaderboard and the Team of the Season.",
+        "Badges to unlock as they play, from On the board to MoM Machine, and any badge earned can be shared as a picture.",
+      ],
+      sketch: "stats",
     },
     {
       // ADMIN_GROUP spotlight; strings.en.ts hq_help, hq_match_cancelled.
