@@ -1001,7 +1001,7 @@ export const tr: Strings = {
   onbHelpTopicLine: (p: { word: string; label: string }): string =>
     `   • *@Match Time yardım ${p.word}*, ${p.label}`,
 
-  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" }): string =>
+  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
     ({
       availability: "kadro",
       teams: "takımlar",
@@ -1011,9 +1011,12 @@ export const tr: Strings = {
       payments: "ödeme",
       schedule: "program",
       badges: "rozetler",
+      partners: "partner",
+      pool: "havuz",
+      settings: "ayarlar",
     })[p.topic],
 
-  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" }): string =>
+  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
     ({
       availability: "kadro ve katılım",
       teams: "dengeli takımlar",
@@ -1023,6 +1026,9 @@ export const tr: Strings = {
       payments: "maç ücretleri",
       schedule: "program ve rezervasyonlar",
       badges: "rozetler ve nasıl kazanılır",
+      partners: "partner kulüpler",
+      pool: "oyuncu havuzu",
+      settings: "ayarların yeri",
     })[p.topic],
 
   onbHelpNotOn: (): string =>
@@ -1059,24 +1065,14 @@ export const tr: Strings = {
 
   onbHelpOffLead: (): string => `ℹ️ Bu özellik bu grupta henüz açık değil, ama nasıl çalıştığı şöyle.`,
 
-  // The Settings page is English only, so the setting is named as it
-  // appears there, with the Turkish in brackets.
-  onbHelpSettingLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
-    ({
-      availability: "Attendance tracking (yoklama)",
-      teams: "Team generation (takım kurma)",
-      mom: "Man of the Match (maçın adamı)",
-      ratings: "Player ratings (oyuncu puanları)",
-      reminders: "Personal reminders (kişisel hatırlatmalar)",
-      payments: "Collect match fees (maç ücreti toplama)",
-    })[p.topic],
-
   onbHelpPaymentsOff: (): string =>
     `💷 *Maç ücretleri nasıl çalışır*\n` +
     `Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra oynayan herkese payını kartla veya bankadan ödemesi için özelden bir bağlantı gönderirim. Para doğrudan parayı toplayan kişinin banka hesabına gider.\n` +
     `Ödemeyenlere her gün bir hatırlatma gönderirim, kimse arkadaşının peşinden para için koşmak zorunda kalmaz.\n` +
     `Nakit ya da havaleyle mi ödendi? Oyuncu bana *"ödedim"* yazar, ben de parayı toplayan kişiden paranın geldiğini onaylamasını isterim.`,
 
+  // The settings page speaks the club's language: `label` is the card's
+  // own Turkish title (settings-info.ts).
   onbHelpSwitchOn: (p: {
     topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments";
     audience: "group" | "admin" | "player";
@@ -1089,26 +1085,88 @@ export const tr: Strings = {
         ? `🔧 Bunu organizatör yönetici sayfasından açar. Bu şekilde ödemek istersen ona söyle.`
         : `🔧 Bunu organizatör yönetici sayfasından açabilir. İstersen ona söyle.`;
     }
+    const fees = p.topic === "payments";
     if (p.audience === "admin") {
-      const what =
-        p.topic === "payments"
-          ? `*Bot features* altında *Collect match fees* ayarını aç, parayı kimin toplayacağını seç, sonra o kişinin banka hesabını Stripe ile bir kez bağla (yaklaşık 2 dakika)`
-          : `*Bot features* altında *${p.label}* ayarını aç`;
-      return `🔧 Açmak için yönetici sayfanda *Settings* bölümüne gir, ${what}:\n${p.url}`;
+      return fees
+        ? `🔧 Açmak için *${p.label}* ayarını aç, parayı kimin toplayacağını seç, sonra o kişinin banka hesabını Stripe ile bir kez bağla (yaklaşık 2 dakika):\n${p.url}`
+        : `🔧 Açmak için buradan *${p.label}* ayarını aç:\n${p.url}`;
     }
-    const what =
-      p.topic === "payments"
-        ? `*Bot features* altında *Collect match fees* ayarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika)`
-        : `*Bot features* altında *${p.label}* ayarını açar`;
     return (
-      `🔧 Açmak için bir yönetici, yönetici sayfasında (${p.url}) *Settings* bölümüne girer, ${what}.\n` +
+      (fees
+        ? `🔧 Açmak için bir yönetici ayarlar sayfasında *${p.label}* ayarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika):\n${p.url}\n`
+        : `🔧 Açmak için bir yönetici ayarlar sayfasında *${p.label}* ayarını açar:\n${p.url}\n`) +
       `Yöneticiler: bana özelden *yardım ${p.word}* yazın, sizi doğrudan giriş yapmış olarak açan bir bağlantı göndereyim.`
     );
   },
 
+  onbHelpOnStatus: (p) =>
+    p.audience === "admin" ? `✅ Kulübünde açık. Kapatmak ya da nasıl çalıştığını değiştirmek için:\n${p.url}` : `✅ Bu kulüpte açık.`,
+
+  onbHelpOffTopics: (p) => `🔧 Kulübünde kapalı olanlar: ${p.labels.join(", ")}. Birini sor, nasıl açılacağını göstereyim.`,
+
+  onbHelpPartners: (p) => {
+    const head = `🤝 *Partner kulüpler nasıl çalışır*`;
+    if (p.audience === "admin") {
+      const body = `Partner kulüpler birbirine oyuncu verir. Kadronuz hâlâ eksikken MatchTime partner kulüplerinizden oyuncu ister, yanıt veren oyuncular yedek listenize misafir olarak girer. Sizin oyuncularınız da onların isteklerine yanıt verebilir.`;
+      const status =
+        p.active === 0
+          ? `❌ Kulübünün henüz partner kulübü yok. Yakınındaki kulüpleri bul ve ayarlar sayfasından istek gönder:\n${p.url}`
+          : p.askWhen === "off"
+            ? `⏸️ Kulübünün ${p.active} partner kulübü var, ama MatchTime onlardan oyuncu istemiyor. Açmak için *${p.askLabel}* ayarında ne zaman isteneceğini seç:\n${p.url}`
+            : `✅ Açık: kulübünün ${p.active} partner kulübü var ve MatchTime onlardan ${p.askWhen === "auto" ? "maç günü kendiliğinden ya da sen isteyince" : "sen isteyince"} oyuncu ister. Değiştirmek ya da kapatmak için:\n${p.url}`;
+      return `${head}\n${body}\n\n${status}`;
+    }
+    const body = `Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir. Bir partner kulübün bir oyuncusu eksik olduğunda isteği buraya gelebilir: oynamak istersen bağlantıya dokun. Biz eksik kalınca da onların oyuncuları yedek listemize misafir olarak girebilir.`;
+    const status =
+      p.active === 0
+        ? `❌ Bu kulübün henüz partner kulübü yok.` + (p.audience === "group" ? ` Bir yönetici yakındaki kulüpleri ayarlar sayfasında bulabilir:\n${p.url}` : ``)
+        : `✅ Bu kulübün ${p.active} partner kulübü var.`;
+    return `${head}\n${body}\n\n${status}`;
+  },
+
+  onbHelpPool: (p) => {
+    const head = `🌍 *MatchTime oyuncu havuzu nasıl çalışır*`;
+    const on = p.open;
+    if (p.audience === "admin") {
+      const body = `Yakınınızdaki oyuncular daha çok maç için havuza kaydolur. Kadronuz eksik kalınca MatchTime onlara sorabilir; her seferinde kendileri karar verir ve misafir olarak oynar.`;
+      const status = !p.platformOpen
+        ? `⏳ Havuz henüz açılmadı. Açılınca kulübün için ayarlardan açabilirsin.`
+        : !p.clubFlag
+          ? `❌ Kulübünde kapalı. Açmak için buradan *${p.poolLabel}* ayarını aç:\n${p.url}`
+          : `✅ Kulübünde açık. Kulübünün WhatsApp grubunda benden iste (örneğin *@Match Time havuzdan 2 oyuncu iste*) ya da *${p.autoLabel}* ayarını aç. Kapatmak için *${p.poolLabel}* ayarını kapat:\n${p.url}`;
+      return `${head}\n${body}\n\n${status}`;
+    }
+    const body = `Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.`;
+    const status = on
+      ? `✅ Bu kulüp eksik kalınca havuza da sorar.`
+      : !p.platformOpen
+        ? `⏳ Havuz henüz açılmadı: şimdi kaydolursan erken kayıt listesine girersin.`
+        : `Bu kulüp havuzdan oyuncu istemiyor.` +
+          (p.audience === "group" ? ` Bir yönetici bunu ayarlar sayfasında *${p.poolLabel}* ile kulüp için açabilir:\n${p.url}` : ``);
+    return `${head}\n${body}\n\n${status}`;
+  },
+
+  onbHelpSettings: (p) => {
+    if (p.audience === "admin") {
+      return (
+        `⚙️ *Ayarların*\n` +
+        `Kulübünün tüm ayarları tek bir ayarlar sayfasında, sekmelere ayrılmış olarak durur. Bir şeyin nerede olduğundan emin değil misin? Üstteki *Ayar bul* kutusuna adını yaz, seni doğrudan oraya götürür:\n${p.url}\n` +
+        `Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim.`
+      );
+    }
+    if (p.audience === "group") {
+      return (
+        `⚙️ *Ayarlar*\n` +
+        `Kulübün ayarları yönetici sayfasında, sekmelere ayrılmış olarak durur ve yalnızca yöneticiler değiştirebilir. Yöneticiler: üstteki *Ayar bul* kutusuna bir ayarın adını yazınca doğrudan oraya gidersiniz:\n${p.url}`
+      );
+    }
+    return `⚙️ *Ayarlar*\nKulübün ayarlarını organizatörler değiştirir. Bir şeyin değişmesini istersen onlara söyle. Kendi bilgilerin MatchTime profilinde.`;
+  },
+
   onbHelpAdminSettings: (p: { url: string }): string => `⚙️ Ayarları yönetici sayfanda:\n${p.url}`,
 
-  onbHelpAdminPage: (p: { url: string }): string => `⚙️ Kulübünün ayarları, giriş yapmış olarak:\n${p.url}`,
+  onbHelpAdminPage: (p) =>
+    p.signedIn === false ? `⚙️ Kulübünün ayarları:\n${p.url}` : `⚙️ Kulübünün ayarları, giriş yapmış olarak:\n${p.url}`,
 
   onbHelpForClub: (p: { club: string }): string => `🏟️ *${p.club}* için:`,
 
@@ -1192,13 +1250,15 @@ export const tr: Strings = {
       lines.push(`🔁 *"Sam ile Alex'i değiştir"*, *"Sam'i diğer takıma al"*: takımlarda değişiklik.`);
       lines.push(`✅ *EVET* (ya da mesajıma EVET diye cevap verin): önerilen takımları kesinleştiririm.`);
       lines.push(`📣 *"gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`);
+      if (p.pool) lines.push(`🌍 *"havuzdan 2 oyuncu iste"*: boş yer varsa MatchTime oyuncu havuzundaki yakın oyunculara sorarım.`);
       lines.push(`❌ *"@Match Time cuma maçını iptal et"*, *"@Match Time maç yapılıyor"*: sıradaki maçı iptal ederim ya da yeniden açarım, oyuncu grubuna da haber veririm.`);
     }
     if (p.graphics) lines.push(`🖼️ *"posteri gönder"*, *"takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`);
     if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın.`);
     if (p.paid) lines.push(`💷 *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`);
     if (p.free) lines.push(`🎁 *"Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`);
-    lines.push(``, `Bunu tekrar görmek için burada istediğiniz zaman *neler yapabilirsin?* diye sorun.`);
+    lines.push(``, `ℹ️ Herhangi bir bölümün nasıl çalıştığını, nasıl açılıp kapatıldığını kendi cümlelerinizle sorun: örneğin *partner kulüpler nasıl çalışır?* ya da *ayarlar nerede?*`);
+    lines.push(`Bunu tekrar görmek için burada istediğiniz zaman *neler yapabilirsin?* diye sorun.`);
     return lines.join("\n");
   },
 

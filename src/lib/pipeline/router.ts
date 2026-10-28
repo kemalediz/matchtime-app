@@ -878,6 +878,14 @@ export function parseRouterResponse(text: string, ids: string[], organiserIds: R
         );
         continue;
       }
+      if (route === "help" && !organiserIds.has(id)) {
+        // Asking MatchTime what it can do, in the players' group: there it
+        // is a how-it-works question, which the question extractor reads
+        // (2026-10-28). Never `unsure`: that reaches the attendance reader.
+        degradations.push(degradation("router", id, `router gave the organisers' route "help" to a players' group message; question`));
+        byId.set(id, "question");
+        continue;
+      }
       if (ORGANISER_ONLY_ROUTES.includes(route) && !organiserIds.has(id)) {
         // An organisers' group route on a players' group message: the
         // same bias toward action as a missing route.

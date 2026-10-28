@@ -52,6 +52,7 @@
  *     reminder a day later and the Go live button remain.
  */
 import { db } from "./db";
+import type { HelpRequest } from "./pipeline/types";
 import { resolveSenderUserIds } from "./admin-group-link";
 import { appUrl } from "./admin-link";
 import {
@@ -324,7 +325,13 @@ export async function handleSettingUpDm(input: {
   senderAltPhone?: string | null;
   senderLid?: string | null;
   waMessageId: string;
-  isHelpRequest: boolean;
+  /** Reads whether the DM asks for help, and about what (dm-help.ts
+   *  `readDmHelp`, the shared question extractor). Called only for an
+   *  owner or admin of a club setting up, after the duplicate claim.
+   *  Absent: nothing is read as help. */
+  readHelp?: () => Promise<HelpRequest | null>;
+  /** The pool switch as the request resolves it, for the pool's help. */
+  poolEnv?: () => Promise<Record<string, string | undefined>>;
   now?: Date;
 }): Promise<SettingUpDmOutcome> {
   const silent = { ignored: "club-setting-up" } as const;
@@ -347,7 +354,8 @@ export async function handleSettingUpDm(input: {
     const phone = (account?.phoneNumber ? normalisePhone(account.phoneNumber) : null) ?? envelopePhone(input.phone);
     const orgIds = runs.map((r) => r.orgId);
 
-    if (input.isHelpRequest) {
+    const helpReq = input.readHelp ? await input.readHelp() : null;
+    if (helpReq) {
       // Help queues its own job, so the cap is checked here, for whichever
       // number it will answer (the envelope's, else the account's).
       const helpPhone = envelopePhone(input.phone) ?? phone;
@@ -357,7 +365,13 @@ export async function handleSettingUpDm(input: {
       }
       const { handleDmHelp } = await import("./dm-help");
       try {
-        const help = await handleDmHelp({ userId: input.userId, text: input.text, envelopePhone: input.phone, deliver: "platform" });
+        const help = await handleDmHelp({
+          userId: input.userId,
+          req: helpReq,
+          envelopePhone: input.phone,
+          deliver: "platform",
+          ...(input.poolEnv ? { poolEnv: input.poolEnv } : {}),
+        });
         if (help) return help;
       } catch (err) {
         if (!(err instanceof PlatformDmRefused)) throw err;

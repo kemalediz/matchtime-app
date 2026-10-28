@@ -436,3 +436,37 @@ export function engineOn(
     ...(opts.extractorCostUsd !== undefined ? { costUsd: opts.extractorCostUsd } : {}),
   });
 }
+
+// ── Help (2026-10-28) ─────────────────────────────────────────────────
+//
+// Help is read by the question extractor in every place (`how_it_works`
+// and its `feature`, plus `badge` for a badges question): the players'
+// group and HQ through the router, a DM straight through `readDmHelp`.
+
+/** The question extractor's raw answer for a help question. `feature`
+ *  "none" is the menu. */
+export function helpFacts(feature = "none", badge = "none"): Record<string, unknown> {
+  return {
+    topic: "how_it_works",
+    personRef: "",
+    statedCount: -1,
+    table: "none",
+    listSize: -1,
+    listEnd: "top",
+    period: "none",
+    periodCount: -1,
+    periodUnit: "none",
+    feature,
+    badge,
+  };
+}
+
+/** Arm the router and the extractor for help questions, by body: the
+ *  route (default `question`; HQ's own is `help`) and the topic. */
+export function helpOn(map: Record<string, { feature?: string; badge?: string; route?: string }>): void {
+  engineOn(
+    Object.fromEntries(
+      Object.entries(map).map(([body, v]) => [body, { route: v.route ?? "question", facts: helpFacts(v.feature, v.badge) }]),
+    ),
+  );
+}

@@ -85,10 +85,12 @@ describe("help payments is about collecting match fees", () => {
   }
 
   it("the admin is told to switch on Collect match fees only", () => {
-    const en = buildHelpReply("payments", OFF, "en", { audience: "admin", links: { settings: "https://mt/s" } });
-    expect(en).toContain("turn on *Collect match fees* under Bot features");
-    const tr = buildHelpReply("payments", OFF, "tr", { audience: "admin", links: { settings: "https://mt/s" } });
-    expect(tr).toContain("*Bot features* altında *Collect match fees* ayarını aç");
+    const en = buildHelpReply("payments", OFF, "en", { audience: "admin", links: { topic: "https://mt/s" } });
+    expect(en).toContain("turn on *Collect match fees*, pick the money collector");
+    expect(en).toContain("https://mt/s");
+    const tr = buildHelpReply("payments", OFF, "tr", { audience: "admin", links: { topic: "https://mt/s" } });
+    // The settings page speaks the club's language: the card's own title.
+    expect(tr).toContain("*Maç ücreti toplama* ayarını aç");
   });
 
   it("a club with only the old tracking flag on is shown how fee collection works and how to switch it on", () => {

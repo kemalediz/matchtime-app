@@ -2,9 +2,10 @@
  * "help" by DM (2026-09-30).
  *
  * Kemal DMed MatchTime "help payments" after the first real self-setup and
- * got nothing useful: DM help did not exist. It now returns the SAME
- * deterministic help as the group (one builder, `buildHelpReply`), with no
- * model call, for the sender's club:
+ * got nothing useful: DM help did not exist. It now returns the SAME help
+ * as the group (one builder, `buildHelpReply`), for the sender's club.
+ * Whether a DM asks for help, and about what, is the shared question
+ * extractor's (`readDmHelp`, 2026-10-28; the regex reader is gone):
  *
  *   - one club: that club;
  *   - several: the club they run, when they run exactly one; otherwise the
@@ -41,8 +42,18 @@ vi.mock("@/lib/admin-link", async (orig) => ({
 const queuePlatformDm = vi.fn();
 vi.mock("@/lib/platform-jobs", () => ({ queuePlatformDm: (...a: unknown[]) => queuePlatformDm(...a) }));
 
-import { readHelpRequest, handleDmHelp } from "@/lib/dm-help";
+// The club's pool and partner clubs: both off unless a test says so.
+const loadHelpClubFacts = vi.fn();
+vi.mock("@/lib/help-club-facts", async (orig) => ({
+  ...(await orig<typeof import("@/lib/help-club-facts")>()),
+  loadHelpClubFacts: (...a: unknown[]) => loadHelpClubFacts(...a),
+}));
+
+import { readDmHelp, handleDmHelp } from "@/lib/dm-help";
 import { buildHelpReply } from "@/lib/onboarding-conversation";
+import { HELP_CLUB_FACTS_OFF } from "@/lib/help-club-facts";
+import type { PipelineModel } from "@/lib/pipeline/llm";
+import type { HelpRequest } from "@/lib/pipeline/types";
 
 const FEATS_PAY_OFF = {
   botEnabled: true,
@@ -68,45 +79,69 @@ beforeEach(() => {
   userFindUnique.mockResolvedValue({ phoneNumber: "+447700900001" });
   getOrgFeatures.mockResolvedValue(FEATS_PAY_OFF);
   matchFindFirst.mockResolvedValue(null);
+  loadHelpClubFacts.mockResolvedValue(HELP_CLUB_FACTS_OFF);
   buildAdminLink.mockImplementation(async ({ nextPath }: { nextPath: string }) => `https://mt.example/r/${nextPath.replace(/\W+/g, "-")}`);
 });
 
-describe("readHelpRequest", () => {
-  it.each([
-    ["help", null],
-    ["Help", null],
-    ["HELP PAYMENTS", "payments"],
-    ["help payments", "payments"],
-    ["@Match Time help teams", "teams"],
-    ["yardım ödeme", "payments"],
-    ["YARDIM", null],
-    ["help ratings", "ratings"],
-  ])("DM %j → a help request, topic %j", (body, topic) => {
-    expect(readHelpRequest(body, { dm: true })).toEqual({ topic });
+/** A model that answers the question extractor with these fields. */
+function questionModel(fields: Record<string, unknown> | Error): PipelineModel & { calls: number } {
+  const m = {
+    name: "fake",
+    calls: 0,
+    async complete() {
+      m.calls++;
+      if (fields instanceof Error) throw fields;
+      const raw = { topic: "other", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", period: "none", periodCount: -1, periodUnit: "none", feature: "none", badge: "none", ...fields };
+      return { text: JSON.stringify(raw), stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, ms: 0 };
+    },
+  };
+  return m as PipelineModel & { calls: number };
+}
+
+describe("readDmHelp: the question extractor reads it (2026-10-28)", () => {
+  const read = (text: string, model: PipelineModel) => readDmHelp({ text, authorName: "Kemal", now: new Date(), model });
+
+  it("how_it_works with a topic: that topic", async () => {
+    expect(await read("how do I turn on the player pool?", questionModel({ topic: "how_it_works", feature: "pool" }))).toEqual({ topic: "pool" });
+    expect(await read("havuz nasıl açılır", questionModel({ topic: "how_it_works", feature: "pool" }))).toEqual({ topic: "pool" });
   });
 
-  it.each([
-    "help me I can't make Tuesday",
-    "can you help",
-    "Paid",
-    "help, I paid but it says I owe",
-    "help me out",
-  ])("DM %j is NOT a help request (it goes to the handlers below)", (body) => {
-    expect(readHelpRequest(body, { dm: true })).toBeNull();
+  it("how_it_works with no part: the menu", async () => {
+    expect(await read("help", questionModel({ topic: "how_it_works" }))).toEqual({ topic: null });
   });
 
-  it("in the group the wider shape still reads as help (the tag gate is the caller's)", () => {
-    expect(readHelpRequest("@Match Time help me out", { dm: false })).toEqual({ topic: null });
+  it("a badge question carries the badge", async () => {
+    expect(await read("help badges Mr Reliable", questionModel({ topic: "how_it_works", feature: "badges", badge: "reliable" }))).toEqual({ topic: "badges", badge: "reliable" });
+  });
+
+  it("any other question is not help: null, and the DM carries on", async () => {
+    expect(await read("who's in?", questionModel({ topic: "squad" }))).toBeNull();
+    expect(await read("Paid", questionModel({ topic: "other" }))).toBeNull();
+  });
+
+  it("a failed call is not help: null", async () => {
+    expect(await read("help", questionModel(new Error("529 Overloaded")))).toBeNull();
+  });
+
+  it("an empty DM makes no call", async () => {
+    const m = questionModel({ topic: "how_it_works" });
+    expect(await read("   ", m)).toBeNull();
+    expect(m.calls).toBe(0);
   });
 });
 
 describe("handleDmHelp", () => {
-  const args = (text: string) => ({ userId: "u1", text, envelopePhone: "+447700900001" });
-
-  it("not a help request → null, nothing written", async () => {
-    expect(await handleDmHelp(args("I'm in"))).toBeNull();
-    expect(botJobCreate).not.toHaveBeenCalled();
-  });
+  // What the extractor read from each DM (readDmHelp, above).
+  const READ: Record<string, HelpRequest> = {
+    help: { topic: null },
+    yardım: { topic: null },
+    "help payments": { topic: "payments" },
+    "yardım ödeme": { topic: "payments" },
+    "help teams": { topic: "teams" },
+    "help badges": { topic: "badges" },
+    "help badges Mr Reliable": { topic: "badges", badge: "reliable" },
+  };
+  const args = (text: string) => ({ userId: "u1", req: READ[text], envelopePhone: "+447700900001" });
 
   it("no active approved club → null (falls through)", async () => {
     membershipFindMany.mockResolvedValue([]);
@@ -119,14 +154,14 @@ describe("handleDmHelp", () => {
     const out = await handleDmHelp(args("help payments"));
     expect(out).toMatchObject({ handled: "dm-help", topic: "payments", orgId: "org-mt", audience: "admin" });
     expect(buildAdminLink).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "u1", orgId: "org-mt", nextPath: "/admin/settings" }),
+      expect.objectContaining({ userId: "u1", orgId: "org-mt", nextPath: "/admin/settings#payments" }),
     );
     const job = botJobCreate.mock.calls[0][0].data;
     expect(job).toMatchObject({ orgId: "org-mt", kind: "dm", phone: "447700900001" });
     expect(job.text).toBe(
       buildHelpReply("payments", FEATS_PAY_OFF, "en", {
         audience: "admin",
-        links: { settings: "https://mt.example/r/-admin-settings" },
+        links: { topic: "https://mt.example/r/-admin-settings-payments" },
       }),
     );
   });
@@ -144,7 +179,7 @@ describe("handleDmHelp", () => {
     expect(job.sendAfter).toBeUndefined();
     const help = buildHelpReply("payments", FEATS_PAY_OFF, "en", {
       audience: "admin",
-      links: { settings: "https://mt.example/r/-admin-settings" },
+      links: { topic: "https://mt.example/r/-admin-settings-payments" },
     });
     expect(job.text).toBe(
       "MatchTime hasn't started in your group yet. Nothing below works there until you reply *GO* here or press *Go live* on your settings page." +
@@ -287,7 +322,7 @@ describe("handleDmHelp", () => {
   it("no phone to reply to → null", async () => {
     membershipFindMany.mockResolvedValue([mem("org-mt", "PLAYER")]);
     userFindUnique.mockResolvedValue({ phoneNumber: null });
-    expect(await handleDmHelp({ userId: "u1", text: "help", envelopePhone: "" })).toBeNull();
+    expect(await handleDmHelp({ userId: "u1", req: { topic: null }, envelopePhone: "" })).toBeNull();
     expect(botJobCreate).not.toHaveBeenCalled();
   });
 });

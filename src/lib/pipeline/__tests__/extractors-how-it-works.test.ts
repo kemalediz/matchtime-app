@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { EXTRACTOR_PROMPTS, factsSchemaFor, parseFacts } from "../extractors";
+import { HELP_BADGES, HELP_FEATURES } from "../types";
 
 const parse = (raw: Record<string, unknown>) =>
   parseFacts(
@@ -37,7 +38,7 @@ describe("a how-it-works question", () => {
   });
 
   it("every help topic is readable", () => {
-    for (const f of ["availability", "teams", "mom", "ratings", "reminders", "payments"]) {
+    for (const f of ["availability", "teams", "mom", "ratings", "reminders", "payments", "schedule", "badges", "partners", "pool", "settings"]) {
       expect(parse({ feature: f }).facts).toMatchObject({ feature: f });
     }
   });
@@ -47,6 +48,15 @@ describe("a how-it-works question", () => {
     const { facts, degradations } = parse({ feature: "parking" });
     expect(facts).toMatchObject({ feature: null });
     expect(degradations.length).toBe(1);
+  });
+
+  it("a badges question names its badge; an unknown one is every badge, loudly; other parts carry none (2026-10-28)", () => {
+    expect(parse({ feature: "badges", badge: "reliable" }).facts).toMatchObject({ feature: "badges", badge: "reliable" });
+    expect(parse({ feature: "badges", badge: "none" }).facts).toMatchObject({ feature: "badges", badge: null });
+    const odd = parse({ feature: "badges", badge: "golden-boot" });
+    expect(odd.facts).toMatchObject({ badge: null });
+    expect(odd.degradations.length).toBe(1);
+    expect(parse({ feature: "pool", badge: "reliable" }).facts).not.toHaveProperty("badge");
   });
 
   it("other topics never carry a feature", () => {
@@ -61,9 +71,17 @@ describe("a how-it-works question", () => {
   it("the schema and the prompt both know the topic and the field", () => {
     const schema = factsSchemaFor("question") as { properties: Record<string, { enum?: string[] }>; required: string[] };
     expect(schema.properties.topic.enum).toContain("how_it_works");
-    expect(schema.properties.feature.enum).toEqual(["availability", "teams", "mom", "ratings", "reminders", "payments", "none"]);
+    expect(schema.properties.feature.enum).toEqual([
+      "availability", "teams", "mom", "ratings", "reminders", "payments", "schedule", "badges", "partners", "pool", "settings", "none",
+    ]);
+    expect(schema.properties.badge.enum).toEqual([...HELP_BADGES, "none"]);
     expect(schema.required).toContain("feature");
+    expect(schema.required).toContain("badge");
     expect(EXTRACTOR_PROMPTS.question).toMatch(/how_it_works/);
     expect(EXTRACTOR_PROMPTS.question).toMatch(/\nfeature\n/);
+    expect(EXTRACTOR_PROMPTS.question).toMatch(/\nbadge\n/);
+    // Every topic and badge the schema allows is defined in the prompt.
+    for (const f of HELP_FEATURES) expect(EXTRACTOR_PROMPTS.question, f).toMatch(new RegExp(`\\n  ${f} +`));
+    for (const b of HELP_BADGES) expect(EXTRACTOR_PROMPTS.question, b).toContain(`${b} (`);
   });
 });

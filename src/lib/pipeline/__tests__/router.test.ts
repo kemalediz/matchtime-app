@@ -759,10 +759,10 @@ describe("the organisers' group", () => {
     expect(partnerClubsLine(["A"])).not.toMatch(/[–—]/);
   });
 
-  it("an organisers' route on a players' group message reads as unsure, never none", () => {
+  it("an organisers' route on a players' group message reads as unsure, never none; help reads as the question it is there (2026-10-28)", () => {
     for (const route of ["approve", "poster", "team_sheet", "help", "ask_group"]) {
       const r = parseRouterResponse(JSON.stringify({ routes: [{ id: "p", route }] }), ["p"]);
-      expect(r.routes[0]).toMatchObject({ messageId: "p", route: "unsure" });
+      expect(r.routes[0]).toMatchObject({ messageId: "p", route: route === "help" ? "question" : "unsure" });
       const hq = parseRouterResponse(JSON.stringify({ routes: [{ id: "h", route }] }), ["h"], new Set(["h"]));
       expect(hq.routes[0]).toMatchObject({ messageId: "h", route });
     }

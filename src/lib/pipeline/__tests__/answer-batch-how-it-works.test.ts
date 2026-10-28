@@ -31,7 +31,7 @@ const FEATURES = {
 const BENCH_POST = "Football 9-a-side is full at 18 of 18, but the bench is open. Say IN to go on the bench.";
 const BODY = "Bench? We do bench now?";
 
-function stubModel(calls: ModelRequest[], feature = "availability"): PipelineModel {
+function stubModel(calls: ModelRequest[], feature = "availability", badge = "none"): PipelineModel {
   return {
     name: "stub",
     async complete(req: ModelRequest): Promise<ModelResponse> {
@@ -48,6 +48,7 @@ function stubModel(calls: ModelRequest[], feature = "availability"): PipelineMod
           periodCount: -1,
           periodUnit: "none",
           feature,
+          badge,
         }),
         stopReason: "end_turn",
         usage: { inputTokens: 900, outputTokens: 40, cacheReadTokens: 0, cacheWriteTokens: 0 },
@@ -71,9 +72,9 @@ const message = (over: Partial<AnswerBatchMessage> = {}): AnswerBatchMessage => 
   ...over,
 });
 
-async function run(m: AnswerBatchMessage, calls: ModelRequest[], feature?: string) {
+async function run(m: AnswerBatchMessage, calls: ModelRequest[], feature?: string, badge?: string) {
   const st = world({ confirmed: ["kemal", "sait"] });
-  const asked: Array<{ topic: string | null; picks: string | undefined }> = [];
+  const asked: Array<{ topic: string | null; picks: string | undefined; admin?: boolean; badge?: string | null }> = [];
   const res = await runAnswerBatch({
     orgId: "org-1",
     now: NOW,
@@ -82,12 +83,12 @@ async function run(m: AnswerBatchMessage, calls: ModelRequest[], feature?: strin
     expectedMatchId: st.matchId,
     enabled: new Set<Route>(["question"]),
     deps: {
-      model: stubModel(calls, feature),
+      model: stubModel(calls, feature, badge),
       loadState: async () => st,
       loadFeatures: async () => FEATURES,
-      helpReply: async (topic, features) => {
-        asked.push({ topic, picks: features.benchPickMode });
-        return `HELP ${topic ?? "menu"}`;
+      helpReply: async (req, features, asker) => {
+        asked.push({ topic: req.topic, picks: features.benchPickMode, ...(asker.admin ? { admin: true } : {}), ...(req.badge ? { badge: req.badge } : {}) });
+        return `HELP ${req.topic ?? "menu"}`;
       },
     },
   });
@@ -127,6 +128,26 @@ describe("a how-it-works question through the whole batch", () => {
     expect(calls[0].user).toContain("MATCHTIME'S LAST POST: an older post");
     expect(calls[0].user).not.toContain("THEY ARE REPLYING TO");
     expect(calls[0].user).toContain("NOW: ");
+  });
+
+  it("the player pool, asked in any words: the pool's help (2026-10-28)", async () => {
+    const calls: ModelRequest[] = [];
+    const { res, asked } = await run(message({ body: "@Match Time how do I turn on the player pool?", reply: undefined }), calls, "pool");
+    expect(asked).toEqual([{ topic: "pool", picks: "organiser" }]);
+    expect(res.outcomes.get("wa-1")?.reply).toBe("HELP pool");
+  });
+
+  it("an organiser asking in the players' group is answered as one (how to switch it)", async () => {
+    const calls: ModelRequest[] = [];
+    const { asked } = await run(message({ senderUserId: "u-kemal", reply: undefined }), calls, "pool");
+    // `world()` makes kemal the admin.
+    expect(asked).toEqual([{ topic: "pool", picks: "organiser", admin: true }]);
+  });
+
+  it("a badge question carries the badge", async () => {
+    const calls: ModelRequest[] = [];
+    const { asked } = await run(message({ body: "@Match Time help badges Mr Reliable", reply: undefined }), calls, "badges", "reliable");
+    expect(asked).toEqual([{ topic: "badges", picks: "organiser", badge: "reliable" }]);
   });
 
   it("no part named: the help menu", async () => {

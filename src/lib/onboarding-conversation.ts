@@ -63,6 +63,10 @@ import {
 import { findExistingOrgMember } from "./resolve-player";
 import { t } from "./i18n/t";
 import { buildBadgeHelp } from "./badge-help";
+import type { HelpFeature } from "./pipeline/types";
+import type { HelpClubFacts } from "./help-club-facts";
+import { SETTINGS_PATH, helpTopicSettingsPath } from "./help-links";
+import { settingInfo, type SettingInfoKey } from "./settings-info";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "@/lib/pipeline/llm";
@@ -255,33 +259,44 @@ export function buildBotAddedIntro(lang: Lang | string): string {
 /** The English intro, for the golden and the legacy imports. */
 export const BOT_ADDED_INTRO = buildBotAddedIntro("en");
 
-// ── Topic-aware help (the "@Match Time help <topic>" router) ───────────
+// ── Help ("@Match Time help", "how do I turn on the pool?") ─────────────
+//
+// WHICH TOPIC is never read here (2026-10-28). The shared pipeline reads it
+// in all three places: the router sends a help question to `question` (or
+// HQ's `help`), and the question extractor's `how_it_works` names the
+// topic (`QuestionFacts.feature`, `HELP_FEATURES`). The players' group
+// (answer-batch.ts), the admin group (admin-group-question.ts) and DMs
+// (dm-help.ts) then call `buildHelpReply` below with that topic. The regex
+// topic reader that stood here (`parseHelpTopic`, `HELP_TOPIC_ALIASES`,
+// `readHelpRequest`) is deleted: "how do I turn on the player pool?" has no
+// keyword for a pattern to find, and people never type the phrase you
+// expect (Kemal's rule, 2026-10-16).
 
-/** A help topic the bot can explain on demand. Each maps to the org
- *  feature flag that gates it (see HELP_TOPIC_FEATURE). */
-export type HelpTopic =
-  | "ratings"
-  | "teams"
-  | "mom"
-  | "availability"
-  | "reminders"
-  | "payments"
-  // 2026-09-30: how to change the schedule in the admin screens. Not
-  // behind a feature flag: every club has a schedule.
-  | "schedule"
-  // 2026-10-01: every badge and its rules (badge-help.ts). Not behind a
-  // flag either: every club's players have a stats page.
-  | "badges";
+/** A help topic the bot can explain. The same list the question extractor
+ *  names (`HELP_FEATURES`). */
+export type HelpTopic = HelpFeature;
 
-/** The org-feature flag each topic is gated behind. A topic is only
- *  explained (and only listed in bare help) when its flag is ON. */
-const HELP_TOPIC_FEATURE: Record<Exclude<HelpTopic, "schedule" | "badges">, keyof HelpFeatures> = {
+/** The org-feature flag each flag-gated topic is behind. */
+const HELP_TOPIC_FEATURE = {
   ratings: "playerRating",
   teams: "teamBalancing",
   mom: "momVoting",
   availability: "attendance",
   reminders: "reminders",
   payments: "paymentTracking",
+} as const satisfies Record<string, keyof HelpFeatures>;
+type FlagTopic = keyof typeof HELP_TOPIC_FEATURE;
+const isFlagTopic = (tp: HelpTopic): tp is FlagTopic => tp in HELP_TOPIC_FEATURE;
+
+/** The settings card each flag-gated topic is switched with
+ *  (settings-info.ts), whose title the help quotes in the club's language. */
+const HELP_TOPIC_SETTING: Record<FlagTopic, SettingInfoKey> = {
+  availability: "attendance",
+  teams: "teamBalancing",
+  mom: "momVoting",
+  ratings: "playerRating",
+  reminders: "reminders",
+  payments: "paymentCollection",
 };
 
 export type HelpFeatures = {
@@ -299,29 +314,38 @@ export type HelpFeatures = {
   /** The club's organisers share the list and the teams
    *  (`Organisation.listAnnouncer = "organisers"`, 2026-10-15). MatchTime
    *  then posts neither in the players' group, so the help offers neither.
-   *  A missing value reads as off: today's help, byte for byte. */
+   *  A missing value reads as off. */
   organisersAnnounce?: boolean;
   /** The organisers pick who fills an open place
    *  (`Organisation.benchPickMode = "organiser"`): no bench offer on a
    *  drop. A missing value reads as off. */
   organiserPicks?: boolean;
+  /** The player pool (2026-10-28, help-club-facts.ts): the platform switch
+   *  and the club's own flag. Missing: closed. */
+  pool?: HelpClubFacts["pool"];
+  /** Partner clubs (2026-10-28, help-club-facts.ts). Missing: none. */
+  partners?: HelpClubFacts["partners"];
 };
 
-/** The help builder's view of a club's live flags. One mapping, so the
- *  group and the DM answer from the same facts. */
-export function helpFeaturesFrom(f: {
-  attendance: boolean;
-  teamBalancing: boolean;
-  momVoting: boolean;
-  playerRating: boolean;
-  statsQa: boolean;
-  reminders: boolean;
-  bench: boolean;
-  paymentTracking: boolean;
-  paymentCollection: boolean;
-  listAnnouncer?: string | null;
-  benchPickMode?: string | null;
-}): HelpFeatures {
+/** The help builder's view of a club's live flags. One mapping, so every
+ *  place answers from the same facts. `club` adds the pool and partner
+ *  clubs (`loadHelpClubFacts`); without it both read as off. */
+export function helpFeaturesFrom(
+  f: {
+    attendance: boolean;
+    teamBalancing: boolean;
+    momVoting: boolean;
+    playerRating: boolean;
+    statsQa: boolean;
+    reminders: boolean;
+    bench: boolean;
+    paymentTracking: boolean;
+    paymentCollection: boolean;
+    listAnnouncer?: string | null;
+    benchPickMode?: string | null;
+  },
+  club?: HelpClubFacts,
+): HelpFeatures {
   return {
     attendance: f.attendance,
     teamBalancing: f.teamBalancing,
@@ -334,133 +358,8 @@ export function helpFeaturesFrom(f: {
     paymentCollection: f.paymentCollection,
     organisersAnnounce: organisersAnnounce(f),
     organiserPicks: f.benchPickMode === "organiser",
+    ...(club ? { pool: club.pool, partners: club.partners } : {}),
   };
-}
-
-/** Words/aliases that map a free-text help message to a HelpTopic. Order
- *  matters: longer/more-specific aliases first so "man of the match"
- *  wins over a stray "match". */
-const HELP_TOPIC_ALIASES: Array<[RegExp, HelpTopic]> = [
-  [/\bman of the match\b/, "mom"],
-  [/\bmotm\b/, "mom"],
-  [/\bmom\b/, "mom"],
-  [/\bplayer ratings?\b/, "ratings"],
-  [/\bratings?\b/, "ratings"],
-  [/\brate\b/, "ratings"],
-  [/\bteams?\b/, "teams"],
-  [/\bbalanc\w*\b/, "teams"],
-  [/\bavailability\b/, "availability"],
-  [/\bsquad\b/, "availability"],
-  [/\battendance\b/, "availability"],
-  [/\breminders?\b/, "reminders"],
-  [/\bremind\b/, "reminders"],
-  [/\bpayments?\b/, "payments"],
-  [/\bpaid\b/, "payments"],
-  [/\bfees?\b/, "payments"],
-  // Schedule (2026-09-30). After every other topic, so "help teams" and
-  // "help payments" keep their own answers.
-  [/\b(?:re)?schedul\w*\b/, "schedule"],
-  [/\bblock bookings?\b/, "schedule"],
-  [/\bcancel\w*\b/, "schedule"],
-  [/\bkick-?\s?offs?\b/, "schedule"],
-  [/\bformats?\b/, "schedule"],
-  [/\bfixtures?\b/, "schedule"],
-  // Turkish (2026-09-17). `\b` is ASCII-only, so these use the letter
-  // class instead; the text is lower-cased with the Turkish rules.
-  [/maçın adamı|macin adami|maç adamı|mac adami/u, "mom"],
-  [/(?<!\p{L})(?:puan\p{L}*|oylama|değerlendirme|degerlendirme)(?!\p{L})/u, "ratings"],
-  [/(?<!\p{L})(?:takım\p{L}*|takim\p{L}*|denge\p{L}*)(?!\p{L})/u, "teams"],
-  [/(?<!\p{L})(?:kadro\p{L}*|yoklama|katılım|katilim|müsait\p{L}*|musait\p{L}*)(?!\p{L})/u, "availability"],
-  [/(?<!\p{L})(?:hatırlat\p{L}*|hatirlat\p{L}*)(?!\p{L})/u, "reminders"],
-  [/(?<!\p{L})(?:ödeme\p{L}*|odeme\p{L}*|ücret\p{L}*|ucret\p{L}*|para)(?!\p{L})/u, "payments"],
-  [/(?<!\p{L})(?:program\p{L}*|blok|rezervasyon\p{L}*|iptal\p{L}*|saat\p{L}*|format\p{L}*|fikstür\p{L}*|fikstur\p{L}*)(?!\p{L})/u, "schedule"],
-];
-
-/**
- * Extract the help TOPIC word from a help-message body, or null when the
- * message is bare help (no topic) or no known topic word appears. Robust
- * to the bot tag and the "help" keyword being present — it scans the
- * portion AFTER "help" for a known topic alias.
- */
-export function parseHelpTopic(raw: string): HelpTopic | null {
-  if (!raw) return null;
-  // Badges first, under both casings, so a badge name that is also a
-  // topic word ("help badges man of the match") stays with badges.
-  if (badgeWordTail(raw) !== null) return "badges";
-  // Both lower-casings, because they disagree on "I": the Turkish rules
-  // make "RATINGS" into "ratıngs" (dotless) and the plain rules make
-  // "YARDIM" into "yardim" and "MAÇIN" into "maçin". Each alias list is
-  // tested against the lower-casing it was written for.
-  const forms: Array<[string, (re: RegExp) => boolean]> = [
-    [raw.toLowerCase().replace(/’/g, "'"), (re) => !re.unicode],
-    [raw.toLocaleLowerCase("tr").replace(/’/g, "'"), (re) => re.unicode],
-  ];
-  for (const [lower, accepts] of forms) {
-    const m = lower.match(/(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})([\s\S]*)$/u);
-    // No "help" keyword at all → nothing to parse (caller gates on this too).
-    const tail = m ? m[1] : lower;
-    for (const [re, topic] of HELP_TOPIC_ALIASES) {
-      if (accepts(re) && re.test(tail)) return topic;
-    }
-  }
-  return null;
-}
-
-/**
- * The help keyword, alone or with a short tail: "@Match Time help",
- * "help teams", "yardım ödeme". Anchored over the WHOLE body, so a
- * message that matches cannot carry a second clause ("help, and I'm out"
- * fails on the comma). Moved here from analyze/route.ts on 2026-09-30 so
- * the group and the DM read help with the same pattern. "yardım"
- * (2026-09-17): `\b` is ASCII-only so the tail allows any letter; the
- * body is tested under BOTH lower-casings (the Turkish one turns "TIME"
- * into "tıme", and "YARDIM" only matches under the Turkish one).
- */
-/** The text after the badges word ("badges", "rozetler") when the help
- *  tail carries one, else null. */
-const BADGE_WORD_RE = /(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})[\s\S]*?(?<!\p{L})(?:badges?|rozet\p{L}*)(?!\p{L})([\s\S]*)$/u;
-function badgeWordTail(raw: string): string | null {
-  for (const lower of [raw.toLowerCase(), raw.toLocaleLowerCase("tr")]) {
-    const m = lower.match(BADGE_WORD_RE);
-    if (m) {
-      // Slice the ORIGINAL text, so the badge name keeps its casing; the
-      // two lower-casings never change the string's length here.
-      return lower.length === raw.length ? raw.slice(raw.length - m[1].length).trim() : m[1].trim();
-    }
-  }
-  return null;
-}
-
-export const HELP_REQUEST_RE =
-  /^\s*(?:@?\s*match\s*time|@mt|matchtime)?\s*(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})(?:\s+[\p{L}\p{N} &']+?)?\s*$/iu;
-
-/**
- * Is this message a help request, and for which topic?
- *
- * In the GROUP (dm: false) this is the shape the analyzer has always
- * accepted; the tag requirement is the caller's. In a DM there is no tag
- * to gate on, so the bar is higher: the keyword alone, or the keyword and
- * a KNOWN topic in at most four words. "help me I can't make Tuesday" is
- * not a help request by DM; it goes to the handlers that read it.
- */
-export function readHelpRequest(
-  body: string,
-  opts: { dm: boolean },
-): { topic: HelpTopic | null; badgeQuery?: string } | null {
-  if (!body) return null;
-  if (!HELP_REQUEST_RE.test(body.toLowerCase()) && !HELP_REQUEST_RE.test(body.toLocaleLowerCase("tr"))) return null;
-  const topic = parseHelpTopic(body);
-  // "help badges Mr Reliable": the badge name rides along (2026-10-01).
-  const badgeQuery = topic === "badges" ? badgeWordTail(body) || undefined : undefined;
-  const found = badgeQuery ? { topic, badgeQuery } : { topic };
-  if (!opts.dm) return found;
-  const tail = (body.toLocaleLowerCase("tr").match(/(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})([\s\S]*)$/u)?.[1] ??
-    body.toLowerCase().match(/(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})([\s\S]*)$/u)?.[1] ??
-    "").trim();
-  if (tail === "") return { topic: null };
-  // A badge name can be long ("help badges man of the match").
-  if (topic && tail.split(/\s+/).length <= (topic === "badges" ? 6 : 4)) return found;
-  return null;
 }
 
 // Stable order for the bare-help topic list.
@@ -472,32 +371,45 @@ const HELP_TOPIC_ORDER: HelpTopic[] = [
   "badges",
   "reminders",
   "payments",
+  "partners",
+  "pool",
   "schedule",
+  "settings",
 ];
 
-/** Who a help answer is for (2026-09-30). The group reply is public, so
- *  it never carries a signed-in link; an admin's DM does; a player's DM
- *  gets the player-facing text. */
+/** Who a help answer is for (2026-09-30; 2026-10-28). A group reply is
+ *  public, so it never carries a signed-in link. "group": the players'
+ *  group, asked by a player (mixed readers: what affects players, plus a
+ *  pointer for the admins when something is off). "admin": an organiser,
+ *  in their DM (signed-in links), in the admin group or in the players'
+ *  group (public links): how to switch each thing. "player": a player's
+ *  DM, only what affects them. */
 export type HelpAudience = "group" | "admin" | "player";
 
-/** The admin pages a help answer can point at. */
-export type HelpAdminPage = "settings" | "activities" | "blockBookings" | "bulk" | "matches";
+/** The admin pages a help answer can point at. "topic" is the asked
+ *  topic's own settings card (help-links.ts). */
+export type HelpAdminPage = "settings" | "topic" | "activities" | "blockBookings" | "bulk" | "matches";
 
-export const HELP_ADMIN_PAGE_PATH: Record<HelpAdminPage, string> = {
-  settings: "/admin/settings",
+const HELP_ADMIN_PAGE_PATH: Record<Exclude<HelpAdminPage, "topic">, string> = {
+  settings: SETTINGS_PATH,
   activities: "/admin/activities",
   blockBookings: "/admin/block-bookings",
   bulk: "/admin/matches/bulk",
   matches: "/matches",
 };
 
+/** The path of an admin page, for this topic. */
+export function helpAdminPagePath(page: HelpAdminPage, topic: HelpTopic | null): string {
+  return page === "topic" ? helpTopicSettingsPath(topic) : HELP_ADMIN_PAGE_PATH[page];
+}
+
 export interface HelpContext {
   audience: HelpAudience;
-  /** The URL for each admin page this answer names: the public URL in the
-   *  group, the admin's own signed-in link in their DM. A missing page
-   *  falls back to its public URL. */
+  /** The URL for each admin page this answer names: the admin's own
+   *  signed-in link in their DM. A missing page falls back to its public
+   *  URL, which is what every group gets. */
   links?: Partial<Record<HelpAdminPage, string>>;
-  /** "help badges <name>": the badge name as typed (readHelpRequest). */
+  /** "help badges <name>": the badge the question named (its label). */
   badgeQuery?: string;
   /** The club has an admin group linked (`Organisation.adminGroupId`), so
    *  an organiser's DM can point at the "help" there. */
@@ -510,15 +422,29 @@ export function helpPagesNeeded(topic: HelpTopic | null, audience: HelpAudience)
   if (audience === "player" || topic === "badges") return [];
   if (topic === "schedule") return ["activities", "blockBookings", "bulk", "matches"];
   if (audience === "group" && topic === null) return [];
-  return ["settings"];
+  return topic === null ? ["settings"] : ["topic"];
 }
 
-function helpLink(ctx: HelpContext, page: HelpAdminPage): string {
-  return ctx.links?.[page] ?? appUrl(HELP_ADMIN_PAGE_PATH[page]);
+function helpLink(ctx: HelpContext, page: HelpAdminPage, topic: HelpTopic | null): string {
+  return ctx.links?.[page] ?? appUrl(helpAdminPagePath(page, topic));
+}
+
+/** Is the pool open for the club: THE ONE RULE, as help-club-facts.ts
+ *  applied it (`poolOpenForClub`). */
+function poolOn(features: HelpFeatures): boolean {
+  return features.pool?.open === true;
+}
+
+/** Is partner asking on: an active partnership and an ask setting other
+ *  than off (`partner-ask-rules.ts` `canAsk`). */
+function partnersOn(features: HelpFeatures): boolean {
+  return (features.partners?.active ?? 0) > 0 && (features.partners?.askWhen ?? "off") !== "off";
 }
 
 function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
-  if (topic === "schedule" || topic === "badges") return true;
+  if (topic === "schedule" || topic === "badges" || topic === "settings") return true;
+  if (topic === "pool") return poolOn(features);
+  if (topic === "partners") return partnersOn(features);
   // Payments are on when the club collects match fees. Payment tracking
   // (the old payment poll) is hidden for now (2026-10-16): a club that
   // still has only that flag is shown how fee collection works and how to
@@ -528,32 +454,40 @@ function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
   return features[HELP_TOPIC_FEATURE[topic]] === true;
 }
 
+/** Can an organiser switch this topic on from the settings page now? The
+ *  pool cannot while the platform switch is off (its card is hidden). */
+function switchableOff(topic: HelpTopic, features: HelpFeatures): boolean {
+  if (topicIsOn(topic, features)) return false;
+  if (topic === "pool") return features.pool?.platformOpen === true;
+  return true;
+}
+
 /**
- * The "help [topic]" reply, in the group and by DM. ONE builder for both,
- * so the two can never disagree (2026-09-30); `ctx` only decides which
- * lines are added for an organiser.
+ * The help reply, in every group and by DM. ONE builder, so no two places
+ * can disagree (2026-09-30). Every topic answers three things in a few
+ * lines, in the club's language (2026-10-28): what it does, whether it is
+ * on for this club now, and (for an organiser) how to switch it, with a
+ * link straight to its card on the settings page (help-links.ts).
  *
- *   - topic === null (bare help): a short lead line + the list of
- *     AVAILABLE topics (only those whose gating feature is ON), a blank
- *     line, then the feature-aware buildHowToUseMe(features) block. An
- *     admin's DM adds a signed-in link to the club's settings.
- *   - topic with its feature ON → that topic's explainer. An admin's DM
- *     adds where its settings live.
- *   - topic with its feature OFF → how it works and how to switch it on,
- *     worded for the audience (2026-09-30; it used to decline, so an
- *     organiser asking "help payments" after setup learned nothing about
- *     a feature that is off by default).
+ *   - topic === null (bare help): the topics that apply to this club, then
+ *     the feature-aware buildHowToUseMe block. An organiser also gets the
+ *     topics that are switched off (each explains how to switch it on) and
+ *     a link to the settings page.
+ *   - a flag topic ON: its explainer and "it's on"; an organiser gets where
+ *     to switch it off.
+ *   - a flag topic OFF: that it is off, how it works, how to switch it on,
+ *     worded for the audience.
+ *   - partners, pool, settings: their own three-part answer
+ *     (`onbHelpPartners`, `onbHelpPool`, `onbHelpSettings`).
  *
  * ORGANISERS MODE (2026-10-15, `features.organisersAnnounce`): the club's
  * organisers share the list and the teams, so nothing here offers a squad
  * post, a team sheet or team building in the players' group. "help teams"
- * says the organisers share them, whatever the team flag (it is their job,
- * not a feature to switch on); availability and reminders say where the
- * list goes; the schedule's format switch says its line-up goes to them;
- * an organiser's DM points at the "help" in their admin group.
- * `features.organiserPicks` (organiser pick) replaces the bench nudge in
- * "help availability". With both off every answer is today's, byte for
- * byte (`help-organisers.test.ts`).
+ * says the organisers share them, whatever the team flag; availability and
+ * reminders say where the list goes; the schedule's format switch says its
+ * line-up goes to them; an organiser's DM points at the "help" in their
+ * admin group. `features.organiserPicks` replaces the bench nudge in "help
+ * availability".
  */
 export function buildHelpReply(
   topic: HelpTopic | null,
@@ -562,24 +496,49 @@ export function buildHelpReply(
   ctx: HelpContext = { audience: "group" },
 ): string {
   const s = t(lang);
-  const adminTail = (line: string) => (ctx.audience === "admin" ? `\n\n${line}` : "");
+  const admin = ctx.audience === "admin";
+  const adminTail = (line: string) => (admin ? `\n\n${line}` : "");
   const organisers = features.organisersAnnounce === true;
   const picks = features.organiserPicks === true;
+  const topicUrl = helpLink(ctx, "topic", topic);
+  const title = (key: SettingInfoKey) => settingInfo(lang, key).title;
+
   if (topic === "badges") return buildBadgeHelp(ctx.badgeQuery, lang, { dm: ctx.audience !== "group" });
   if (topic === "schedule") {
     return s.onbHelpSchedule({
       audience: ctx.audience,
-      activities: helpLink(ctx, "activities"),
-      blockBookings: helpLink(ctx, "blockBookings"),
-      bulk: helpLink(ctx, "bulk"),
-      matches: helpLink(ctx, "matches"),
+      activities: helpLink(ctx, "activities", topic),
+      blockBookings: helpLink(ctx, "blockBookings", topic),
+      bulk: helpLink(ctx, "bulk", topic),
+      matches: helpLink(ctx, "matches", topic),
       ...(organisers ? { organisers: true } : {}),
     });
   }
-  if (organisers && topic === "teams") {
-    return s.onbHelpOrganisersExplainer({ topic, organiserPicks: picks }) + adminTail(s.onbHelpAdminSettings({ url: helpLink(ctx, "settings") }));
+  if (topic === "settings") return s.onbHelpSettings({ audience: ctx.audience, url: topicUrl });
+  if (topic === "partners") {
+    return s.onbHelpPartners({
+      audience: ctx.audience,
+      active: features.partners?.active ?? 0,
+      askWhen: features.partners?.askWhen ?? "off",
+      url: topicUrl,
+      askLabel: title("partnerAskWhen"),
+    });
   }
-  if (topic) {
+  if (topic === "pool") {
+    return s.onbHelpPool({
+      audience: ctx.audience,
+      platformOpen: features.pool?.platformOpen === true,
+      clubFlag: features.pool?.clubFlag === true,
+      open: poolOn(features),
+      url: topicUrl,
+      poolLabel: title("playerPool"),
+      autoLabel: title("poolAutoAsk"),
+    });
+  }
+  if (topic && isFlagTopic(topic)) {
+    if (organisers && topic === "teams") {
+      return s.onbHelpOrganisersExplainer({ topic, organiserPicks: picks }) + adminTail(s.onbHelpAdminSettings({ url: topicUrl }));
+    }
     const explainer =
       organisers && (topic === "availability" || topic === "reminders")
         ? s.onbHelpOrganisersExplainer({ topic, organiserPicks: picks })
@@ -587,37 +546,36 @@ export function buildHelpReply(
           ? s.onbHelpAvailabilityOrganiserPicks
           : s.onbHelpExplainer({ topic });
     if (topicIsOn(topic, features)) {
-      return explainer + adminTail(s.onbHelpAdminSettings({ url: helpLink(ctx, "settings") }));
+      return `${explainer}\n\n${s.onbHelpOnStatus({ audience: ctx.audience, url: topicUrl })}`;
     }
     const body = topic === "payments" ? s.onbHelpPaymentsOff() : explainer;
     const switchOn = s.onbHelpSwitchOn({
       topic,
       audience: ctx.audience,
-      url: helpLink(ctx, "settings"),
+      url: topicUrl,
       word: s.onbHelpTopicWord({ topic }),
-      label: s.onbHelpSettingLabel({ topic }),
+      label: title(HELP_TOPIC_SETTING[topic]),
     });
     return `${s.onbHelpOffLead()}\n\n${body}\n\n${switchOn}`;
   }
 
-  // Bare help: list only the enabled topics, then the how-to block.
+  // Bare help: the topics that apply here, then the how-to block.
   const enabled = HELP_TOPIC_ORDER.filter((tp) => topicIsOn(tp, features));
   const topicLines = enabled.map((tp) =>
     s.onbHelpTopicLine({ word: s.onbHelpTopicWord({ topic: tp }), label: s.onbHelpTopicLabel({ topic: tp }) }),
   );
   const head = s.onbHelpHead();
   const list = topicLines.length > 0 ? `\n${topicLines.join("\n")}` : "";
+  // An organiser also hears what is switched off, each of which explains
+  // how to switch it on when asked about (2026-10-28).
+  const off = HELP_TOPIC_ORDER.filter((tp) => switchableOff(tp, features)).map((tp) => s.onbHelpTopicLabel({ topic: tp }));
+  const offLine = off.length > 0 ? adminTail(s.onbHelpOffTopics({ labels: off })) : "";
   const hqPointer = organisers && ctx.adminGroupLinked === true ? adminTail(s.onbHelpAdminOrganisers) : "";
   // The "Want to collect match fees?" pointer is for an organiser; in the
   // players' group every player saw it (FNF, 2026-10-15), so only an
-  // organiser's DM keeps it (a player's DM stays identical to the group's).
-  // Payments off already keeps "payments" out of the topic list.
-  const howTo = buildHowToUseMe(ctx.audience === "admin" ? features : { ...features, feesNudge: false }, lang);
-  return (
-    `${head}${list}\n\n${howTo}` +
-    hqPointer +
-    adminTail(s.onbHelpAdminPage({ url: helpLink(ctx, "settings") }))
-  );
+  // organiser keeps it (a player's DM stays identical to the group's).
+  const howTo = buildHowToUseMe(admin ? features : { ...features, feesNudge: false }, lang);
+  return `${head}${list}\n\n${howTo}` + offLine + hqPointer + adminTail(s.onbHelpAdminPage({ url: helpLink(ctx, "settings", null), signedIn: !!ctx.links?.settings }));
 }
 
 /**

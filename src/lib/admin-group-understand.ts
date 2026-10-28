@@ -174,6 +174,8 @@ export interface UnderstandInput {
     paymentHolderId?: string | null;
     /** Who chooses Man of the Match (mom-chooser.ts). */
     momChosenBy?: string | null;
+    /** The HQ help's pool line (2026-10-28), with `poolEnv`. */
+    featurePlayerPool?: boolean | null;
   };
   messageId: string;
   text: string;
@@ -542,7 +544,7 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
     };
     // The players' group's own question answering, for the organisers
     // (`admin-group-question.ts`). Null when it answers nothing.
-    const hqHelp = buildHqHelp({ lang, ...hqHelpGates(org) });
+    const hqHelp = buildHqHelp({ lang, ...hqHelpGates(org, input.poolEnv) });
     const answerQuestion = () =>
       answerHqQuestion({
         orgId: org.id,
@@ -556,6 +558,7 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         lastBotPost: lastHqPost,
         reply: replyShown,
         hqHelp,
+        ...(input.poolEnv ? { poolEnv: input.poolEnv } : {}),
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
 

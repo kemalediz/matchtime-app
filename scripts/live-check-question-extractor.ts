@@ -106,6 +106,27 @@ const CASES: Case[] = [
   { id: "H3", body: "@Match Time how are the teams picked?", topic: "how_it_works", check: (f) => f.feature === "teams", want: "feature teams" },
   { id: "H4", body: "@Match Time how do I pay?", topic: "how_it_works", check: (f) => f.feature === "payments", want: "feature payments" },
   { id: "H5", body: "@Match Time neler yapabiliyorsun?", topic: "how_it_works" },
+  // Help, any wording, every topic (2026-10-28: the regex help reader is
+  // gone; the topic is this extractor's `feature`, the badge its `badge`).
+  { id: "N1", body: "@Match Time help", topic: "how_it_works", check: (f) => f.feature == null, want: "the menu" },
+  { id: "N2", body: "@Match Time yardım", topic: "how_it_works", check: (f) => f.feature == null, want: "the menu" },
+  { id: "N3", body: "help", topic: "how_it_works", check: (f) => f.feature == null, want: "the menu (a DM)" },
+  { id: "N4", body: "@Match Time what can you do", topic: "how_it_works", check: (f) => f.feature == null, want: "the menu" },
+  { id: "N5", body: "@Match Time how do I turn on the player pool?", topic: "how_it_works", check: (f) => f.feature === "pool", want: "feature pool" },
+  { id: "N6", body: "havuz nasıl açılır", topic: "how_it_works", check: (f) => f.feature === "pool", want: "feature pool" },
+  { id: "N7", body: "how can I play for other teams near me too?", topic: "how_it_works", check: (f) => f.feature === "pool", want: "feature pool (a DM)" },
+  { id: "N8", body: "@Match Time how do partner clubs work?", topic: "how_it_works", check: (f) => f.feature === "partners", want: "feature partners" },
+  { id: "N9", body: "@Match Time başka kulüplerle nasıl eşleşiriz?", topic: "how_it_works", check: (f) => f.feature === "partners", want: "feature partners" },
+  { id: "N10", body: "@Match Time where do I find the settings?", topic: "how_it_works", check: (f) => f.feature === "settings", want: "feature settings" },
+  { id: "N11", body: "ayarları nereden değiştiriyorum", topic: "how_it_works", check: (f) => f.feature === "settings", want: "feature settings (a DM)" },
+  { id: "N12", body: "@Match Time help badges Mr Reliable", topic: "how_it_works", check: (f) => f.feature === "badges" && f.badge === "reliable", want: "badges, reliable" },
+  { id: "N13", body: "@Match Time how do I get the Iron Man badge?", topic: "how_it_works", check: (f) => f.feature === "badges" && f.badge === "ironman", want: "badges, ironman" },
+  { id: "N14", body: "@Match Time yardım rozetler", topic: "how_it_works", check: (f) => f.feature === "badges" && f.badge == null, want: "badges, every badge" },
+  { id: "N15", body: "@Match Time how do I change the kick-off time for the season?", topic: "how_it_works", check: (f) => f.feature === "schedule", want: "feature schedule" },
+  { id: "N16", body: "@Match Time can we switch off man of the match?", topic: "how_it_works", check: (f) => f.feature === "mom", want: "feature mom" },
+  { id: "N17", body: "@Match Time help ratings", topic: "how_it_works", check: (f) => f.feature === "ratings", want: "feature ratings" },
+  { id: "N18", body: "@Match Time yardım ödeme", topic: "how_it_works", check: (f) => f.feature === "payments", want: "feature payments" },
+  { id: "N19", body: "@Match Time how do I turn the reminders off?", topic: "how_it_works", check: (f) => f.feature === "reminders", want: "feature reminders" },
   // The rest of the topics.
   { id: "P1", body: "@Match Time Zair geliyor mu?", topic: "person_status", check: (f) => /zair/i.test(f.personRef ?? ""), want: "personRef Zair" },
   { id: "P2", body: "@Match Time anyone in the squad without a number?", topic: "phones" },
@@ -153,7 +174,7 @@ async function main() {
     const f = ex.facts.kind === "question" ? ex.facts : null;
     const topics = Array.isArray(c.topic) ? c.topic : [c.topic];
     const pass = !!f && topics.includes(f.topic) && (!c.check || c.check(f));
-    const got = f && { topic: f.topic, feature: f.feature, personRef: f.personRef, statedCount: f.statedCount, table: f.table, listSize: f.listSize, listEnd: f.listEnd, period: f.period };
+    const got = f && { topic: f.topic, feature: f.feature, badge: f.badge, personRef: f.personRef, statedCount: f.statedCount, table: f.table, listSize: f.listSize, listEnd: f.listEnd, period: f.period };
     results.push({ id: c.id, body: c.body, pass, got: got ?? ex.degradations.map((d) => d.detail) });
     console.log(`${pass ? "PASS" : "FAIL"}  ${c.id}  ${JSON.stringify(c.body)}  ${JSON.stringify(got)}  (want ${topics.join("|")}${c.want ? `, ${c.want}` : ""})`);
   }

@@ -13,7 +13,9 @@
  * (`AnswerAudience`): the club's setup (admins, money collector, fee,
  * teams time) is answered here, and the squad and bench are shown even
  * when the organisers announce the list to the players. A how-it-works
- * question gets the HQ menu, which is what MatchTime does in this group.
+ * question about MatchTime as a whole gets the HQ menu, which is what
+ * MatchTime does in this group; one about a part gets that part's help,
+ * worded for the organisers (2026-10-28).
  *
  * Returns null when the shared code answers nothing (a topic it does not
  * answer, a failed call, the asker's own stats link, which is a DM): the
@@ -41,8 +43,12 @@ export interface HqQuestionInput {
   /** The message the question is a WhatsApp reply to (slice S4), whoever
    *  wrote it, as `admin-group-understand.ts` resolved it. */
   reply?: QuotedGroupMessage | null;
-  /** The HQ menu, the answer to a how-it-works question here. */
+  /** The HQ menu, the answer to "what can you do?" here. A question about
+   *  one part ("how do I turn on the pool?") gets that part's help for the
+   *  organisers instead (2026-10-28). */
   hqHelp: string;
+  /** The pool switch as the request read it, for the pool's help. */
+  poolEnv?: Record<string, string | undefined>;
   deps?: Pick<AnswerBatchDeps, "model" | "loadFeatures" | "loadClub"> & {
     loadState?: (orgId: string, now: Date) => Promise<SquadState>;
   };
@@ -89,7 +95,13 @@ export async function answerHqQuestion(input: HqQuestionInput): Promise<{ outcom
       ...(deps.loadFeatures ? { loadFeatures: deps.loadFeatures } : {}),
       ...(deps.loadClub ? { loadClub: deps.loadClub } : {}),
       loadState: async () => state,
-      helpReply: () => input.hqHelp,
+      // The menu for MatchTime as a whole; one part's help, for the
+      // organisers, with public links (a group), for a part.
+      helpReply: async (req, features) => {
+        if (req.topic === null) return input.hqHelp;
+        const { clubHelpReply } = await import("./help-answer");
+        return clubHelpReply({ orgId, req, features, audience: "admin", poolEnv: async () => input.poolEnv ?? {} });
+      },
     },
   });
   const o = res.outcomes.get(messageId);

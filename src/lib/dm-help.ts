@@ -1,10 +1,20 @@
 /**
- * "help" by DM (2026-09-30): the same deterministic help as the group.
+ * "help" by DM (2026-09-30): the same help as the group.
  *
  * Kemal DMed MatchTime "help payments" after the first real self-setup;
  * DM help did not exist. This answers it with `buildHelpReply`, the SAME
  * builder the group's "@Match Time help" uses, so the two can never
- * disagree, and it never calls a model.
+ * disagree.
+ *
+ * READ BY THE MODEL (2026-10-28). Whether a DM asks for help, and about
+ * what, is the shared question extractor's `how_it_works` and its topic
+ * (`readDmHelp`), the reader the players' group and the admin group use.
+ * The regex reader (`readHelpRequest`: the keyword plus a known topic word
+ * in at most four words) is gone, so "how do I turn on the player pool?"
+ * and "havuz nasıl açılır" are help too. One extractor call, made where
+ * the DM reaches the scoped Q&A (dm-reply/route.ts), behind every handler
+ * that knows which question is being answered, and under the club's daily
+ * AI cap.
  *
  * WHICH CLUB. A DM has no group, so the club is the sender's:
  *   - one active club: that one;
@@ -40,18 +50,49 @@ import { APPROVED_CLUB_WHERE } from "@/lib/club-approval-state";
 import { SETUP_STAGE_SELECT, preferLiveClubs } from "@/lib/club-setup-rules";
 import { t } from "@/lib/i18n/t";
 import { queuePlatformDm } from "@/lib/platform-jobs";
-import {
-  buildHelpReply,
-  helpFeaturesFrom,
-  helpPagesNeeded,
-  readHelpRequest,
-  HELP_ADMIN_PAGE_PATH,
-  type HelpAdminPage,
-  type HelpAudience,
-  type HelpTopic,
-} from "@/lib/onboarding-conversation";
+import { helpAdminPagePath, helpPagesNeeded, type HelpAdminPage, type HelpAudience, type HelpTopic } from "@/lib/onboarding-conversation";
+import { clubHelpReply } from "@/lib/help-answer";
+import { extractForRoute } from "@/lib/pipeline/extractors";
+import { extractorStubFromEnv } from "@/lib/pipeline/extractor-stub";
+import { anthropicModel, type PipelineModel } from "@/lib/pipeline/llm";
+import type { HelpRequest } from "@/lib/pipeline/types";
 
-export { readHelpRequest };
+type Env = Record<string, string | undefined>;
+
+/**
+ * Does this DM ask for help, and about what? The shared question
+ * extractor reads it as the players' group's would (a DM is addressed to
+ * MatchTime, so `tagged`). Null for anything else, and when the call fails
+ * or the cap refuses it: the DM then carries on to the handlers below, as
+ * any other DM does.
+ */
+export async function readDmHelp(args: {
+  text: string;
+  authorName: string | null;
+  now: Date;
+  model?: PipelineModel;
+}): Promise<HelpRequest | null> {
+  const body = args.text.trim();
+  if (!body) return null;
+  try {
+    const model = args.model ?? extractorStubFromEnv() ?? anthropicModel();
+    const r = await extractForRoute(model, "question", {
+      id: "dm",
+      body,
+      authorName: args.authorName,
+      tagged: true,
+      history: [],
+      lastBotPost: null,
+      now: args.now,
+    });
+    const f = r.facts;
+    if (f.kind !== "question" || f.topic !== "how_it_works") return null;
+    return { topic: f.feature ?? null, ...(f.feature === "badges" && f.badge ? { badge: f.badge } : {}) };
+  } catch (err) {
+    console.error("[dm-help] help read failed:", err instanceof Error ? err.message : "failed");
+    return null;
+  }
+}
 
 type HelpMembership = {
   orgId: string;
@@ -104,7 +145,10 @@ export type DmHelpOutcome = {
  */
 export async function handleDmHelp(args: {
   userId: string;
-  text: string;
+  /** What the DM asks for, as `readDmHelp` read it. */
+  req: HelpRequest;
+  /** Resolves the pool switch as the request does. */
+  poolEnv?: () => Promise<Env>;
   /** The number the DM came from, in any format; "" when unknown. */
   envelopePhone: string | null | undefined;
   /** "platform": the club is setting up and its own channel is off, so
@@ -112,9 +156,7 @@ export async function handleDmHelp(args: {
    *  `PlatformDmRefused` if that channel refuses the number. */
   deliver?: "club" | "platform";
 }): Promise<DmHelpOutcome | null> {
-  const req = readHelpRequest(args.text, { dm: true });
-  if (!req) return null;
-
+  const req = args.req;
   const picked = await pickDmHelpClub(args.userId);
   if (!picked) return null;
   const { membership, clubCount } = picked;
@@ -135,7 +177,7 @@ export async function handleDmHelp(args: {
       links[page] = await buildAdminLink({
         userId: args.userId,
         orgId: membership.orgId,
-        nextPath: HELP_ADMIN_PAGE_PATH[page],
+        nextPath: helpAdminPagePath(page, req.topic),
       });
     }
   }
@@ -144,10 +186,13 @@ export async function handleDmHelp(args: {
   const lang = features.language;
   // An organisers-mode club's organiser is pointed at the "help" in their
   // admin group (2026-10-15), only when there is one to type it in.
-  const body = buildHelpReply(req.topic, helpFeaturesFrom(features), lang, {
+  const body = await clubHelpReply({
+    orgId: membership.orgId,
+    req,
+    features,
     audience,
     links,
-    badgeQuery: req.badgeQuery,
+    poolEnv: args.poolEnv ?? (async () => ({})),
     adminGroupLinked: !!membership.org.adminGroupId,
   });
   const text = clubCount > 1 ? `${t(lang).onbHelpForClub({ club: membership.org.name })}\n\n${body}` : body;

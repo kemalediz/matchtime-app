@@ -1,7 +1,8 @@
 /**
- * "@Match Time help badges" (Kemal, 2026-10-01): a deterministic help
- * topic that lists every badge and, with a badge name, explains its exact
- * rules. No model. The numbers in the text come from the SAME constants
+ * "@Match Time help badges" (Kemal, 2026-10-01): a help topic that lists
+ * every badge and, with a badge name, explains its exact rules. Which
+ * badge was asked about is the question extractor's `badge` (2026-10-28);
+ * the words are written here, with no model. The numbers in the text come from the SAME constants
  * the badges are computed with, so help can never disagree with the
  * stats page.
  */
@@ -21,6 +22,7 @@ import {
   resolveBadgeName,
   type BadgeKey,
 } from "@/lib/badge-rules";
+import { HELP_BADGES } from "@/lib/pipeline/types";
 import {
   MR_RELIABLE_MAX_SPREAD,
   MR_RELIABLE_MIN_AVG,
@@ -30,8 +32,6 @@ import {
 import {
   buildHelpReply,
   helpPagesNeeded,
-  parseHelpTopic,
-  readHelpRequest,
   type HelpFeatures,
 } from "@/lib/onboarding-conversation";
 
@@ -140,34 +140,14 @@ describe("resolveBadgeName", () => {
   });
 });
 
-describe("reading 'help badges'", () => {
-  it("parses the topic in English and Turkish", () => {
-    expect(parseHelpTopic("@Match Time help badges")).toBe("badges");
-    expect(parseHelpTopic("@Match Time help badge")).toBe("badges");
-    expect(parseHelpTopic("@MATCH TIME HELP BADGES")).toBe("badges");
-    expect(parseHelpTopic("@Match Time yardım rozetler")).toBe("badges");
-    expect(parseHelpTopic("@Match Time yardım rozet")).toBe("badges");
+describe("a badge question, as the extractor reads it", () => {
+  it("the question extractor names a badge by its key: the two lists are the same", () => {
+    expect([...HELP_BADGES]).toEqual(BADGES.map((b) => b.key));
   });
 
-  it("a badge name that is also a topic word stays with badges", () => {
-    expect(parseHelpTopic("@Match Time help badges mom machine")).toBe("badges");
-    expect(parseHelpTopic("@Match Time help badges man of the match")).toBe("badges");
-    expect(parseHelpTopic("@Match Time yardım rozetler maçın adamı")).toBe("badges");
-    // Plain "help mom" is still the MoM topic.
-    expect(parseHelpTopic("@Match Time help mom")).toBe("mom");
-  });
-
-  it("in the group: carries the badge name after the topic word", () => {
-    expect(readHelpRequest("@Match Time help badges", { dm: false })).toEqual({ topic: "badges" });
-    expect(readHelpRequest("@Match Time help badges Mr Reliable", { dm: false })).toEqual({ topic: "badges", badgeQuery: "Mr Reliable" });
-    expect(readHelpRequest("@Match Time yardım rozetler demir adam", { dm: false })).toEqual({ topic: "badges", badgeQuery: "demir adam" });
-  });
-
-  it("by DM: the same, including a five-word badge name", () => {
-    expect(readHelpRequest("help badges", { dm: true })).toEqual({ topic: "badges" });
-    expect(readHelpRequest("help badges iron man", { dm: true })).toEqual({ topic: "badges", badgeQuery: "iron man" });
-    expect(readHelpRequest("help badges man of the match", { dm: true })).toEqual({ topic: "badges", badgeQuery: "man of the match" });
-    expect(readHelpRequest("yardım rozetler güvenilir", { dm: true })).toEqual({ topic: "badges", badgeQuery: "güvenilir" });
+  it("the extractor's badge, given as its label, drills into that badge", () => {
+    for (const b of BADGES) expect(group(b.label)).toContain(`${b.emoji} *${b.label}*`);
+    expect(group("Mr Reliable")).not.toContain("Badges: how to earn them");
   });
 
   it("badge help never links to an admin page", () => {
