@@ -36,7 +36,7 @@ import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
 import { organisersContext, type PendingWithLabel } from "../src/lib/admin-group-context.ts";
 import { messageMentionsBotExplicitly } from "../src/lib/interaction-contract.ts";
-import { recruitWantsPool } from "../src/lib/recruit-source.ts";
+import { recruitPlacesFromWords } from "../src/lib/recruit-source.ts";
 
 const MAX_USD = 0.5;
 spendDevApiKeyOrExit("the HQ pool live check");
@@ -122,8 +122,10 @@ const CASES: Array<{ text: string; ctx?: typeof nothing; want: Got[]; why: strin
 // attendance extractor's "recruit" side request is then read for its source
 // before any blast (`recruit-source.ts`), or `admin_ops` reads it directly.
 //   pool   the pool is asked    blast   the recruit blast, as today
-//   none   nothing recruited
-type PgGot = "pool" | "blast" | "none";
+//   none   nothing recruited    which   no place named: MatchTime asks
+//                                      which (2026-10-28, this club has
+//                                      the pool)
+type PgGot = "pool" | "blast" | "none" | "which";
 const PLAYERS: Array<{ text: string; want: PgGot[]; why: string }> = [
   { text: "@Match Time ask the pool for a player", want: ["pool"], why: "the plain ask" },
   { text: "@Match Time find someone nearby for tonight", want: ["pool"], why: "someone nearby" },
@@ -131,8 +133,10 @@ const PLAYERS: Array<{ text: string; want: PgGot[]; why: string }> = [
   { text: "@Match Time havuzdan bir oyuncu bul", want: ["pool"], why: "TR" },
   { text: "@Match Time we're one short, try the MatchTime pool", want: ["pool"], why: "the shortage, then the pool" },
   // Unchanged: a shortage ask with no pool in it is today's recruit.
-  { text: "Najib is out. We need one more player. @Match Time", want: ["blast", "none"], why: "the production replay shape: never the pool" },
-  { text: "@Match Time we need one more, can you round someone up", want: ["blast", "none"], why: "the club's own players: never the pool" },
+  // 2026-10-28: a tagged shortage ask naming no place is MatchTime's
+  // question for a club with the pool, never the pool itself.
+  { text: "Najib is out. We need one more player. @Match Time", want: ["blast", "none", "which"], why: "the production replay shape: never the pool" },
+  { text: "@Match Time we need one more, can you round someone up", want: ["blast", "none", "which"], why: "no place named: never the pool" },
 ];
 
 async function playersGroup(): Promise<{ pass: number; fail: number }> {
@@ -149,12 +153,15 @@ async function playersGroup(): Promise<{ pass: number; fail: number }> {
       const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Oscar", tagged: true, history: [], lastBotPost: null });
       const f = ex.facts.kind === "admin" ? ex.facts : null;
       detail = ` -> ${f?.action}${f?.pool ? " pool" : ""}`;
-      got = f?.action === "recruit" ? (f.pool ? "pool" : f.partnerClubs ? "none" : "blast") : "none";
+      got = f?.action === "recruit" ? (f.pool ? "pool" : f.partnerClubs ? "none" : f.sourceUnsaid ? "which" : "blast") : "none";
     } else if (route === "offer" || route === "other_att" || route === "self_att" || route === "unsure") {
       const ex = await extractForRoute(model, route, { id, body: c.text, authorName: "Oscar", tagged: true, history: [], lastBotPost: null });
       const side = ex.facts.kind === "attendance" ? (ex.facts.sideRequests ?? []) : [];
       detail = ` -> side ${JSON.stringify(side)}`;
-      if (side.includes("recruit")) got = (await recruitWantsPool({ id, body: c.text, authorName: "Oscar", now: new Date(), model })) ? "pool" : "blast";
+      if (side.includes("recruit")) {
+        const places = await recruitPlacesFromWords({ id, body: c.text, authorName: "Oscar", now: new Date(), model });
+        got = places?.sources?.includes("pool") ? "pool" : places && places.sources === null ? "which" : "blast";
+      }
     }
     const ok = c.want.includes(got);
     ok ? pass++ : fail++;

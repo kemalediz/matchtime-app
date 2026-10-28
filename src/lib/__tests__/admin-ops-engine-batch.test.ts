@@ -526,6 +526,78 @@ describe("a pool ask is reported, never performed here", () => {
   });
 });
 
+// ── 4d. Several places, or none (2026-10-28, Friday MT Community) ───────
+
+describe("several places in one ask, or none named", () => {
+  const ASK = "@Match Time find me players feom partner clubs and player pool";
+  const base = { ...BLAST_FACTS, lookbackMatches: 0, clubRef: "" };
+  const outcomeOf = async (facts: Record<string, unknown>, senderUserId = "u-kemal") => {
+    const { model } = stubModel({ [ASK]: facts });
+    const r = recorder(model, paidWorld());
+    const res = await run({ messages: [msg({ body: ASK, senderUserId })], deps: r.deps });
+    return { out: [...res.outcomes.values()][0], dms: r.dms, degradations: res.degradations };
+  };
+
+  it("partner clubs and the pool: both reported for the batch-final pass, no blast, no DM", async () => {
+    const { out, dms, degradations } = await outcomeOf({ ...base, playersFrom: ["partners", "pool"] });
+    expect(degradations.join(" ")).not.toMatch(/cannot apply/);
+    expect(out.partnerAskRequest).toEqual({ clubRef: null, matchId: expect.any(String) });
+    expect(out.poolAskRequest).toEqual({ matchId: expect.any(String) });
+    expect(out.recruitRequest).toBe(false);
+    expect(dms).toEqual([]);
+  });
+
+  it("everywhere: the club's own players too, so the blast is reported beside both asks", async () => {
+    const { out } = await outcomeOf({ ...base, playersFrom: ["club", "partners", "pool"] });
+    expect(out.partnerAskRequest).not.toBeNull();
+    expect(out.poolAskRequest).not.toBeNull();
+    expect(out.recruitRequest).toBe(true);
+    expect(out.recruitSourceUnsaid).toBe(false);
+  });
+
+  it("no place named: the blast is reported marked unsaid, for the route to ask which", async () => {
+    const { out } = await outcomeOf({ ...base, playersFrom: [] });
+    expect(out.recruitRequest).toBe(true);
+    expect(out.recruitSourceUnsaid).toBe(true);
+    expect(out.partnerAskRequest).toBeNull();
+    expect(out.poolAskRequest).toBeNull();
+  });
+
+  it("the club's own players named: the blast, not unsaid (today's behaviour)", async () => {
+    const { out } = await outcomeOf({ ...base, playersFrom: ["club"] });
+    expect(out.recruitRequest).toBe(true);
+    expect(out.recruitSourceUnsaid).toBe(false);
+  });
+
+  it("a player who is not an admin, tagging MatchTime: nothing asked, the one line naming who can", async () => {
+    const { model } = stubModel({ [ASK]: { ...base, playersFrom: ["partners", "pool"] } });
+    const r = recorder(model, paidWorld());
+    const res = await run({
+      messages: [msg({ body: ASK, senderUserId: "u-zair", senderName: fullName("zair"), taggedExplicitly: true })],
+      deps: { ...r.deps, onlyOrganisersLine: async () => "Only Kemal can change that." },
+    });
+    const out = [...res.outcomes.values()][0];
+    expect(out.partnerAskRequest).toBeNull();
+    expect(out.poolAskRequest).toBeNull();
+    expect(out.recruitRequest).toBe(false);
+    expect(out.reply).toBe("Only Kemal can change that.");
+    expect(out.intent).toBe("organisers_only");
+    expect(r.dms).toEqual([]);
+  });
+
+  it("a player who is not an admin, untagged: silent, nothing asked", async () => {
+    const { model } = stubModel({ [ASK]: { ...base, playersFrom: [] } });
+    const r = recorder(model, paidWorld());
+    const res = await run({
+      messages: [msg({ body: ASK, senderUserId: "u-zair", senderName: fullName("zair"), tagged: false, taggedExplicitly: false })],
+      deps: { ...r.deps, onlyOrganisersLine: async () => "Only Kemal can change that." },
+    });
+    const out = res.outcomes.get(`wa-${ASK.slice(0, 14)}`);
+    expect(out?.reply ?? null).toBeNull();
+    expect(out?.recruitRequest ?? false).toBe(false);
+  });
+});
+
 describe("the recruit blast is reported, never fired here", () => {
   it("an admin's ask is owned and carries the clamped lookback", async () => {
     const { model } = stubModel({ [BLAST]: BLAST_FACTS });

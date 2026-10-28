@@ -6,9 +6,10 @@ import { describe, expect, it } from "vitest";
 import {
   askSourceRef,
   decideRecruitSource,
-  namedSource,
+  namedSources,
+  offerAfterNobodyLeft,
   parseAskSourceRef,
-  sourceFromAnswer,
+  sourcesFromAnswer,
   sourceQuestionAnswered,
   type SourcesAvailable,
 } from "../ask-source-rules";
@@ -31,26 +32,42 @@ const partners = { partnerClubs: true };
 const unsaid = { sourceUnsaid: true as const };
 const club = {};
 
-describe("namedSource: what the words named", () => {
+describe("namedSources: what the words named", () => {
   it("the pool, the partners, the club's own players, or nothing", () => {
-    expect(namedSource(pool)).toBe("pool");
-    expect(namedSource(partners)).toBe("partners");
-    expect(namedSource(club)).toBe("club");
-    expect(namedSource(unsaid)).toBeNull();
+    expect(namedSources(pool)).toEqual(["pool"]);
+    expect(namedSources(partners)).toEqual(["partners"]);
+    expect(namedSources(club)).toEqual(["club"]);
+    expect(namedSources({ ownClub: true })).toEqual(["club"]);
+    expect(namedSources(unsaid)).toBeNull();
+  });
+
+  it("several places, always in the order club, partners, pool (the partners before the pool)", () => {
+    expect(namedSources({ pool: true, partnerClubs: true })).toEqual(["partners", "pool"]);
+    expect(namedSources({ ownClub: true, partnerClubs: true })).toEqual(["club", "partners"]);
+    expect(namedSources({ pool: true, ownClub: true, partnerClubs: true })).toEqual(["club", "partners", "pool"]);
+    expect(namedSources({ pool: true, ownClub: true })).toEqual(["club", "pool"]);
+  });
+
+  it("another place named without the club's own players never adds them", () => {
+    expect(namedSources({ pool: true, partnerClubs: true })).not.toContain("club");
   });
 });
 
 describe("decideRecruitSource: for every club shape", () => {
   it.each(CLUBS)("an explicit pool ask goes to the pool (%s): its own door says when it is not open", (_n, available) => {
-    expect(decideRecruitSource(pool, available)).toEqual({ kind: "source", source: "pool" });
+    expect(decideRecruitSource(pool, available)).toEqual({ kind: "sources", sources: ["pool"] });
   });
 
   it.each(CLUBS)("an explicit partner ask goes to the partners (%s): their door says when there are none", (_n, available) => {
-    expect(decideRecruitSource(partners, available)).toEqual({ kind: "source", source: "partners" });
+    expect(decideRecruitSource(partners, available)).toEqual({ kind: "sources", sources: ["partners"] });
   });
 
-  it.each(CLUBS)("an ask to the club's own players stays the players' group (%s)", (_n, available) => {
-    expect(decideRecruitSource(club, available)).toEqual({ kind: "source", source: "club" });
+  it.each(CLUBS)("an ask to the club's own players stays its own players (%s)", (_n, available) => {
+    expect(decideRecruitSource(club, available)).toEqual({ kind: "sources", sources: ["club"] });
+  });
+
+  it.each(CLUBS)("partners and the pool, named (%s): both, whatever the club has (each door says when it is shut)", (_n, available) => {
+    expect(decideRecruitSource({ partnerClubs: true, pool: true }, available)).toEqual({ kind: "sources", sources: ["partners", "pool"] });
   });
 
   it("nowhere said, partners and the pool: ask, naming all three", () => {
@@ -65,16 +82,27 @@ describe("decideRecruitSource: for every club shape", () => {
     expect(decideRecruitSource(unsaid, POOL_ONLY)).toEqual({ kind: "ask-which", options: ["club", "pool"] });
   });
 
-  it("nowhere said, neither: the players' group as before, nothing to ask", () => {
-    expect(decideRecruitSource(unsaid, NEITHER)).toEqual({ kind: "source", source: "club" });
+  it("nowhere said, neither: the club's own players as before, nothing to ask", () => {
+    expect(decideRecruitSource(unsaid, NEITHER)).toEqual({ kind: "sources", sources: ["club"] });
   });
 
   it("never the pool or the partners from words that did not name them", () => {
     for (const [, available] of CLUBS) {
       const d = decideRecruitSource(unsaid, available);
-      expect(d).not.toEqual({ kind: "source", source: "pool" });
-      expect(d).not.toEqual({ kind: "source", source: "partners" });
+      if (d.kind === "sources") expect(d.sources).toEqual(["club"]);
     }
+  });
+});
+
+describe("offerAfterNobodyLeft: the recruit DM found nobody new to ask", () => {
+  it("offers the places besides the club's own players that the club has", () => {
+    expect(offerAfterNobodyLeft(BOTH)).toEqual(["partners", "pool"]);
+    expect(offerAfterNobodyLeft(PARTNERS_ONLY)).toEqual(["partners"]);
+    expect(offerAfterNobodyLeft(POOL_ONLY)).toEqual(["pool"]);
+  });
+
+  it("nothing to offer when the club has neither", () => {
+    expect(offerAfterNobodyLeft(NEITHER)).toEqual([]);
   });
 });
 
@@ -92,18 +120,23 @@ describe("the question's ref", () => {
   });
 });
 
-describe("sourceFromAnswer: the organiser's answer, as the model read it", () => {
+describe("sourcesFromAnswer: the organiser's answer, as the model read it", () => {
   const admin = (f: Partial<AdminFacts>): AdminFacts => ({ kind: "admin", action: "recruit", ...f });
-  it("a recruit naming a source is the answer", () => {
-    expect(sourceFromAnswer(admin({ pool: true }))).toBe("pool");
-    expect(sourceFromAnswer(admin({ partnerClubs: true }))).toBe("partners");
-    expect(sourceFromAnswer(admin({}))).toBe("club");
+  it("a recruit naming a place is the answer", () => {
+    expect(sourcesFromAnswer(admin({ pool: true }))).toEqual(["pool"]);
+    expect(sourcesFromAnswer(admin({ partnerClubs: true }))).toEqual(["partners"]);
+    expect(sourcesFromAnswer(admin({}))).toEqual(["club"]);
+  });
+
+  it("\"both\" or \"all of them\": every place it names", () => {
+    expect(sourcesFromAnswer(admin({ partnerClubs: true, pool: true }))).toEqual(["partners", "pool"]);
+    expect(sourcesFromAnswer(admin({ ownClub: true, partnerClubs: true, pool: true }))).toEqual(["club", "partners", "pool"]);
   });
 
   it("still nowhere said, not a recruit, or nothing read: not an answer", () => {
-    expect(sourceFromAnswer(admin({ sourceUnsaid: true }))).toBeNull();
-    expect(sourceFromAnswer(admin({ action: "other" }))).toBeNull();
-    expect(sourceFromAnswer(null)).toBeNull();
+    expect(sourcesFromAnswer(admin({ sourceUnsaid: true }))).toBeNull();
+    expect(sourcesFromAnswer(admin({ action: "other" }))).toBeNull();
+    expect(sourcesFromAnswer(null)).toBeNull();
   });
 });
 

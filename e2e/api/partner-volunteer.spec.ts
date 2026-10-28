@@ -166,7 +166,7 @@ test("the owner's reply to the ask saying 'they need 3 players' recruits nobody 
     { waMessageId: m, body: PROMOTE, authorPhone: "447700900001", authorName: "Alex Admin", quotedBody: "⚽ *FNF Guests* need 1 player", quotedFromMatchTime: true, quotedMessageId: "3EB0XVOLASK" },
   ]);
   const r = (res.results as Result[]).find((x) => x.waMessageId === m)!;
-  expect(r.reply ?? "").not.toMatch(/DM'd|pinged|No new players/);
+  expect(r.reply ?? "").not.toMatch(/DM'd|pinged|None of your recent players/);
   expect(await recruitDmCount(db)).toBe(before);
   const row = await db.one<{ action: string | null }>(`SELECT action FROM "AnalyzedMessage" WHERE "waMessageId" = $1`, [m]);
   expect(row?.action ?? "").not.toContain("recruit");

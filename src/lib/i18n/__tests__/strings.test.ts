@@ -246,6 +246,7 @@ const SAMPLES: SampleArgs = {
   recruit_invited: { invited: 5, matchName: "Tuesday 7-a-side", need: 2 },
   recruit_already_pinged: { matchName: "Tuesday 7-a-side" },
   recruit_nobody_new: { matchName: "Tuesday 7-a-side" },
+  recruit_nobody_left_ask: { matchName: "Tuesday 7-a-side", options: ["partners", "pool"] },
   swap_deferred: { a: "Kemal Ediz", b: "Sait Demir" },
   team_swap_done: { a: "Kemal Ediz", b: "Elvin Aliyev" },
   slot_transfer_done: { to: "Erdal Ozkan", from: "Sait Demir", teamLabel: "Kırmızı" },

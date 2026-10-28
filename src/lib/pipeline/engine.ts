@@ -3144,28 +3144,24 @@ export function decide(input: EngineInput): EngineResult {
           );
           return;
         }
-        // ── THE MATCHTIME PLAYER POOL (local player pool L10) ─────────
+        // ── WHERE FROM: EVERY PLACE THE WORDS NAMED (2026-10-28) ──────
         //
-        // "@Match Time ask the pool for a player": the same two gates (an
-        // admin, tagged), then the pool is asked by the batch-final pass
-        // through the match page tick's own function, never a blast to the
-        // club's own past players and never a partner ask.
-        if (facts.pool) {
-          emit({
-            kind: "pool_ask",
-            matchId: state.matchId,
-            sourceMessageId: msg.id,
-            reason: "admin asked MatchTime to ask the MatchTime player pool for a player",
-          });
-          return;
-        }
-        // ── ANOTHER CLUB'S PLAYERS (slice S6, 2026-10-21) ────────────
+        // The same two gates (an admin, tagged), then each place the
+        // message named is asked, in `ask-source-rules.ts`'s order:
         //
-        // "@Match Time ask Sutton if anyone can play": the same two gates
-        // (an admin, tagged), then the partner clubs are asked instead of
-        // the club's own past players being DM'd. Never both. Which
-        // partners the club name means is code's, after the batch
-        // (`partner-ask-words.ts`); the engine only carries the words.
+        //   another club's players (slice S6, "@Match Time ask Sutton if
+        //   anyone can play"): `partner_ask`. Which partners the club
+        //   name means is code's, after the batch (`partner-ask-words.ts`);
+        //   the engine only carries the words.
+        //   the MatchTime player pool (L10, "ask the pool for a player"):
+        //   `pool_ask`, performed after the partner ask, so the pool joins
+        //   the partners' round ("partner clubs and the pool").
+        //   the club's own recent players: `recruit_blast`, below, when the
+        //   words named them, or named no other place.
+        //
+        // Words that named no place at all carry `sourceUnsaid` on the
+        // blast: the route asks the organiser which place when the club has
+        // partner clubs or the pool, and sends it otherwise, as before.
         if (facts.partnerClubs) {
           emit({
             kind: "partner_ask",
@@ -3174,8 +3170,16 @@ export function decide(input: EngineInput): EngineResult {
             sourceMessageId: msg.id,
             reason: "admin asked MatchTime to ask the partner clubs for a player",
           });
-          return;
         }
+        if (facts.pool) {
+          emit({
+            kind: "pool_ask",
+            matchId: state.matchId,
+            sourceMessageId: msg.id,
+            reason: "admin asked MatchTime to ask the MatchTime player pool for a player",
+          });
+        }
+        if ((facts.partnerClubs || facts.pool) && !facts.ownClub) return;
         // "the last 5 matches" is a fact about the TEXT. The number the
         // model reports is untrusted and clamped to [1, 12] here, by
         // `recruit.ts`'s own clamp, because the ceiling exists for a
@@ -3195,8 +3199,9 @@ export function decide(input: EngineInput): EngineResult {
         emit({
           kind: "recruit_blast",
           lookbackMatches: lookback,
+          ...(facts.sourceUnsaid ? { sourceUnsaid: true as const } : {}),
           sourceMessageId: msg.id,
-          reason: "admin asked for a recruit blast",
+          reason: facts.sourceUnsaid ? "admin asked for players, no place named" : "admin asked for a recruit blast",
         });
         return;
       }

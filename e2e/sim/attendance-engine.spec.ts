@@ -588,7 +588,7 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     // squad this message just changed. One reply, not two.
     expect(res.results.filter((r) => (r.reply ?? "").length > 0)).toHaveLength(1);
     expect(res.results[0].reply ?? "").toMatch(
-      /DM'?d \d+ recent player|No new players to ask|Already pinged/,
+      /DM'?d \d+ recent player|None of your recent players are left to ask|Already pinged/,
     );
     expect(res.results[0].reply ?? "").not.toMatch(/already full|no open spots/i);
   });

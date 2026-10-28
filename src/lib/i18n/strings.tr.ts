@@ -747,7 +747,15 @@ export const tr: Strings = {
   recruit_invited: (p) =>
     `📣 Hallediyorum, cevap vermemiş ${p.invited} oyuncuya *${p.matchName}* için DM attım${p.need ? ` (${p.need} yer boş)` : ""}. Varım diyeni ekleyeceğim. 🙏`,
   recruit_already_pinged: (p) => `*${p.matchName}* için oyunculara zaten yazdım, cevaplarını bekliyorum. 🙏`,
-  recruit_nobody_new: (p) => `*${p.matchName}* için şu an sorulacak yeni oyuncu yok. 👍`,
+  recruit_nobody_new: (p) => `*${p.matchName}* için son oyuncularınızdan şu an sorulacak kimse kalmadı. 👍`,
+  recruit_nobody_left_ask: (p) => {
+    // Each with its own question particle (vowel harmony: kulüplerinize mi, havuzuna mı).
+    const one = { partners: "Partner kulüplerinize sorayım mı?", pool: "MatchTime oyuncu havuzuna sorayım mı?" };
+    const asked = { partners: "partner kulüplerinize mi", pool: "MatchTime oyuncu havuzuna mı" };
+    const both = p.options.map((o) => asked[o]).join(", ");
+    const ask = p.options.length === 1 ? one[p.options[0]] : `${both.charAt(0).toUpperCase()}${both.slice(1)} sorayım?`;
+    return `*${p.matchName}* için son oyuncularınızdan sorulacak kimse kalmadı. ${ask}`;
+  },
   swap_deferred: (p) =>
     `*${p.a}* ve *${p.b}* zaten kadroda, kimse çıkarılmadı. ` +
     `Takımlar henüz kurulmadı. Beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*), sonra ikisini farklı takımlara koyabilirim.`,
@@ -1277,7 +1285,7 @@ export const tr: Strings = {
   hq_nothing_waiting: `Şu anda EVET bekleyen bir şey yok.`,
   hq_not_here: `Bunu bu gruptan yapamam.`,
   hq_ask_source: (p) => {
-    const name = { club: "oyuncu grubunuza mı", partners: "partner kulüplerinize mi", pool: "MatchTime oyuncu havuzuna mı" };
+    const name = { club: p.inGroup ? "son oyuncularınıza mı" : "oyuncu grubunuza mı", partners: "partner kulüplerinize mi", pool: "MatchTime oyuncu havuzuna mı" };
     const names = p.options.map((o) => name[o]);
     return `Oyuncu için kime sorayım: ${names.slice(0, -1).join(", ")}, yoksa ${names[names.length - 1]}?`;
   },

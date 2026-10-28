@@ -870,7 +870,13 @@ export const en = {
   recruit_already_pinged: (p: { matchName: string }): string =>
     `Already pinged the recent players for *${p.matchName}*, just waiting on their replies. 🙏`,
   recruit_nobody_new: (p: { matchName: string }): string =>
-    `No new players to ask for *${p.matchName}* right now. 👍`,
+    `None of your recent players are left to ask for *${p.matchName}* right now. 👍`,
+  /** The recruit DM found nobody new, and the club has other places to
+   *  ask (2026-10-28): the offer, logged as MatchTime's question. */
+  recruit_nobody_left_ask: (p: { matchName: string; options: Array<"partners" | "pool"> }): string => {
+    const name = { partners: "your partner clubs", pool: "the MatchTime player pool" };
+    return `None of your recent players are left to ask for *${p.matchName}*. Want me to ask ${p.options.map((o) => name[o]).join(" or ")}?`;
+  },
   swap_deferred: (p: { a: string; b: string }): string =>
     `Both *${p.a}* and *${p.b}* are already in, nobody's dropped. ` +
     `Teams aren't generated yet. Tag me and ask for them in your own words (for example *@Match Time generate the teams*), then I can put them on opposite sides.`,
@@ -1525,8 +1531,10 @@ export const en = {
   /** An organiser asked for players in HQ and did not say from where, and
    *  the club has more than its own players' group to look in (2026-10-28,
    *  `ask-source-rules.ts`). Names only what the club has, in this order. */
-  hq_ask_source: (p: { options: Array<"club" | "partners" | "pool"> }): string => {
-    const name = { club: "your players' group", partners: "your partner clubs", pool: "the MatchTime player pool" };
+  /** `inGroup`: asked in the players' group itself, where the club's own
+   *  players are its recent players, DM'd (2026-10-28). */
+  hq_ask_source: (p: { options: Array<"club" | "partners" | "pool">; inGroup?: boolean }): string => {
+    const name = { club: p.inGroup ? "your recent players" : "your players' group", partners: "your partner clubs", pool: "the MatchTime player pool" };
     const names = p.options.map((o) => name[o]);
     return `Who shall I ask for players: ${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}?`;
   },
