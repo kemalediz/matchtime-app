@@ -90,8 +90,8 @@ test("no partner club yet: one plain reply, nothing asked, nobody DM'd", async (
   const g = await world(request, db);
   await db.run(`UPDATE "Organisation" SET "partnerAskWhen" = 'on-request' WHERE id = $1`, [g.orgId]);
   const r = await g.post("owner", ASK_SUTTON, { ...recruitFromPartners("Sutton"), tag: true });
-  expect(r.reply).toBe(
-    "You have no partner clubs yet, so I can't ask another club. When MatchTime pairs you with one, both clubs accept it in Settings, under Partner clubs.",
+  expect(r.reply).toMatch(
+    /^\*Partner clubs:\* I can't ask another club yet: you have no partner clubs\. Once MatchTime pairs you with one and both clubs accept, you can ask them\. Partner clubs are here: \S+\/admin\/settings#partner-clubs$/,
   );
   expect(await asks(db)).toHaveLength(0);
   expect(await g.botJobs("dm")).toHaveLength(0);
@@ -104,7 +104,7 @@ test("a named partner: that partner only, its organisers asked, one reply in the
   const r = await g.post("owner", ASK_SUTTON, { ...recruitFromPartners("Sutton"), tag: true });
   expect(r.reply).toBe(
     // P4 (2026-10-22): a words ask asks for every open place, and says how many.
-    "I've asked *Sutton FC*'s organisers. Once they say yes, I'll post in their group, and anyone who replies IN goes on your bench.\nI asked for 6 players.",
+    "I've asked *Sutton FC*'s organisers. Once they say yes, I'll post in their group. The first to reply IN get the open places.\nI asked for 6 players.",
   );
   const rows = await asks(db);
   expect(rows).toEqual([
@@ -134,14 +134,14 @@ test("a player who is not an admin: nothing asked, the one line naming who can (
 test("no club named: EVERY active partner is asked, and one reply says what happened with each", async ({ request, db }) => {
   const g = await world(request, db);
   const r = await g.post("owner", ASK_ALL, { ...recruitFromPartners(""), tag: true });
-  expect(r.reply).toBe(
+  expect((r.reply ?? "").split("\n")).toEqual(
     [
       "I've asked your partner clubs:",
-      "• *Sutton FC*: an ask to them is already open for this game.",
+      expect.stringMatching(/^• \*Sutton FC\*: already asked on \d{1,2} [A-Z][a-z]{2} and their organisers haven't said yes yet, so not asked again\.$/),
       "• *MT Vets*: waiting for their organisers to say yes.",
-      "Anyone who replies IN goes on your bench.",
+      "The first to reply IN get the open places.",
       "I asked for 6 players.",
-    ].join("\n"),
+    ],
   );
   const rows = await asks(db);
   expect(rows.map((x) => [x.partnerOrgId, x.requestedVia])).toEqual([
@@ -154,6 +154,8 @@ test("asking switched off: one plain reply, nothing more asked", async ({ reques
   const g = await world(request, db);
   await db.run(`UPDATE "Organisation" SET "partnerAskWhen" = 'off' WHERE id = $1`, [g.orgId]);
   const r = await g.post("owner", ASK_ALL, { ...recruitFromPartners(""), tag: true });
-  expect(r.reply).toBe("Asking partner clubs for players is off. An owner or admin can turn it on in Settings, under Partner clubs.");
+  expect(r.reply).toMatch(
+    /^\*Partner clubs:\* I didn't ask anyone: asking partner clubs for players is off for your club\. An owner or admin can turn it on here: \S+\/admin\/settings#partner-clubs$/,
+  );
   expect(await asks(db)).toHaveLength(2);
 });

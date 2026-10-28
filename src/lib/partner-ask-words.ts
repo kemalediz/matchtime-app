@@ -36,10 +36,16 @@ import {
   composePartnerAskReply,
   resolutionReply,
   resolvePartnerRef,
+  type OpenPartnerAsk,
   type PartnerAskOutcome,
   type PartnerChoice,
 } from "./partner-ask-words-rules";
 import { t } from "./i18n/t";
+import { dayCommaTimeLabel, dayMonthShortLabel } from "./i18n/dates";
+import { appUrl } from "./app-url";
+import { settingsAnchorPath } from "./help-links";
+import { OPEN_ASK_STATUSES } from "./partner-ask-rules";
+import { normaliseBenchPickMode } from "./squad-capacity";
 import { extractForRoute } from "./pipeline/extractors";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
@@ -104,9 +110,10 @@ export async function askPartnersFromWords(args: {
   const { orgId, lang, now } = args;
   const [partners, settings] = await Promise.all([activePartnerChoices(orgId), loadPartnerAskSettings(orgId)]);
   const resolved = resolvePartnerRef({ clubRef: args.clubRef, partners, askWhen: settings?.when ?? null });
+  const settingsLink = appUrl(settingsAnchorPath("partner-clubs"));
   if (resolved.kind !== "ask") {
     console.log(`[partner-ask-words] ${orgId}: nothing asked (${resolved.kind}, ${partners.length} partner(s))`);
-    return { outcome: `xask-words-${resolved.kind}`, replyText: resolutionReply(lang, resolved), asked: 0 };
+    return { outcome: `xask-words-${resolved.kind}`, replyText: resolutionReply(lang, resolved, settingsLink), asked: 0 };
   }
   const matchId = args.matchId !== undefined ? args.matchId : (await loadSquadState(orgId, now)).matchId;
   if (!matchId) return { outcome: "xask-words-no-game", replyText: t(lang).recruit_no_match, asked: 0 };
@@ -116,7 +123,7 @@ export async function askPartnersFromWords(args: {
   // place, and the reply says how many.
   const roundId = randomUUID();
   let places = 0;
-  const results: Array<{ partnerName: string; result: PartnerAskOutcome }> = [];
+  const results: Array<{ partnerName: string; result: PartnerAskOutcome; open?: OpenPartnerAsk | null; partnershipId: string }> = [];
   for (const p of resolved.partners) {
     let result: PartnerAskOutcome;
     try {
@@ -136,13 +143,44 @@ export async function askPartnersFromWords(args: {
       console.error(`[partner-ask-words] ${orgId}: asking ${p.partnerOrgId} failed:`, err instanceof Error ? err.message : "failed");
       result = "not-found";
     }
-    results.push({ partnerName: p.name, result });
+    results.push({ partnerName: p.name, result, partnershipId: p.partnershipId });
+  }
+  // An ask already open to a partner: the reply says when it was made and
+  // whether it still waits for their organisers. Only read when one was
+  // refused for that; a failed read leaves the reply without the date.
+  let day: string | null = null;
+  if (results.some((r) => r.result === "already-open")) {
+    try {
+      const match = await db.match.findUnique({ where: { id: matchId }, select: { date: true } });
+      day = match ? dayCommaTimeLabel(lang, match.date) : null;
+      for (const r of results) {
+        if (r.result !== "already-open") continue;
+        const ask = await db.partnerAsk.findFirst({
+          where: { matchId, partnershipId: r.partnershipId, status: { in: [...OPEN_ASK_STATUSES] } },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true, status: true },
+        });
+        r.open = ask ? { askedOn: dayMonthShortLabel(lang, ask.createdAt), awaiting: ask.status === "awaiting-approval" } : null;
+      }
+    } catch (err) {
+      console.error(`[partner-ask-words] ${orgId}: reading the open ask failed:`, err instanceof Error ? err.message : "failed");
+    }
   }
   const asked = results.filter((r) => r.result === "posted" || r.result === "awaiting").length;
+  // Where a volunteer goes is the club's own bench rule (partner-guest.ts).
+  let pick: { benchPickMode: string | null } | null = null;
+  if (asked > 0) {
+    try {
+      pick = await db.organisation.findUnique({ where: { id: orgId }, select: { benchPickMode: true } });
+    } catch {
+      pick = null; // the default rule, first come
+    }
+  }
+  const firstCome = normaliseBenchPickMode(pick?.benchPickMode) === "first-come";
   console.log(`[partner-ask-words] ${orgId}: ${args.via} asked ${asked} of ${results.length} partner(s) for match ${matchId}`);
   return {
     outcome: asked > 0 ? "xask-words-asked" : "xask-words-not-asked",
-    replyText: composePartnerAskReply(lang, results, { cutoffHours: settings?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS, places }),
+    replyText: composePartnerAskReply(lang, results, { cutoffHours: settings?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS, places, day, settingsLink, firstCome }),
     asked,
   };
 }

@@ -27,13 +27,13 @@ describe("composePartnerAskReply: how many, and who is paused", () => {
 
   it("one partner, asked for 1: the number is said", () => {
     expect(composePartnerAskReply("en", [{ partnerName: "Sutton FC", result: "posted" }], { cutoffHours: 4, places: 1 })).toBe(
-      "I've posted in *Sutton FC*'s group. Anyone who replies IN goes on your bench.\nI asked for 1 player.",
+      "I've posted in *Sutton FC*'s group. The first to reply IN get the open places.\nI asked for 1 player.",
     );
   });
 
   it("one partner, billing-paused: one plain sentence", () => {
     expect(composePartnerAskReply("en", [{ partnerName: "Cheam", result: "partner-paused" }], { cutoffHours: 4, places: 2 })).toBe(
-      "Cheam is paused on MatchTime, so I can't ask them now.",
+      "*Partner clubs:* I didn't ask Cheam: they're paused on MatchTime for now. Ask another partner club, or try again once they're back.",
     );
   });
 
@@ -57,7 +57,7 @@ describe("composePartnerAskReply: how many, and who is paused", () => {
 
   it("without a number (callers that never passed one): exactly as before", () => {
     expect(composePartnerAskReply("en", [{ partnerName: "Sutton FC", result: "posted" }], { cutoffHours: 4 })).toBe(
-      "I've posted in *Sutton FC*'s group. Anyone who replies IN goes on your bench.",
+      "I've posted in *Sutton FC*'s group. The first to reply IN get the open places.",
     );
   });
 });

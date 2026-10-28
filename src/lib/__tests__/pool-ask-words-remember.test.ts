@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const dbMock = vi.hoisted(() => ({ match: { findUnique: vi.fn() } }));
+const dbMock = vi.hoisted(() => ({ match: { findUnique: vi.fn() }, organisation: { findUnique: vi.fn() } }));
 vi.mock("../db", () => ({ db: dbMock }));
 vi.mock("../admin-group-log", () => ({ hqQuestionsSince: vi.fn() }));
 const squad = vi.hoisted(() => ({ loadSquadState: vi.fn() }));
@@ -26,7 +26,9 @@ const ENV = { MT_POOL_OPEN: "1" };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  dbMock.match.findUnique.mockResolvedValue({ id: "m1", date: new Date("2026-10-30T19:00:00Z") });
+  dbMock.match.findUnique.mockResolvedValue({ id: "m1", date: new Date("2026-10-30T19:00:00Z"), activity: { venueRef: null } });
+  // What the refusal's reply reads (`refusalContext`): the club's name, its pool switch and its cut-off.
+  dbMock.organisation.findUnique.mockResolvedValue({ name: "MT Test", featurePlayerPool: true, partnerAskCutoffHours: null });
   squad.loadSquadState.mockResolvedValue({ matchId: "m1" });
   round.placesOpenOf.mockResolvedValue(2);
   round.requestPoolAsk.mockResolvedValue({ ok: false, refusal: "no-venue" });
@@ -46,6 +48,7 @@ describe("askPoolFromWords remembers a refused ask only when asked to", () => {
       now: NOW,
     });
     expect(r.outcome).toBe("hq-pool-not-asked");
+    expect(r.replyText).toMatch(/^\*Player pool:\* .+MT Test.+Set the venue on your weekly game here and I'll ask the pool straight away: \S+\/admin\/activities$/);
   });
 
   it("in HQ (no `where`): remembered as asked in HQ", async () => {
@@ -54,8 +57,9 @@ describe("askPoolFromWords remembers a refused ask only when asked to", () => {
   });
 
   it("without `remember` (the retry itself, a YES to a notice): never remembered", async () => {
-    await askPoolFromWords({ orgId: "o1", matchId: "m1", userId: "u-owner", via: "words", where: "group", lang: "en", now: NOW, env: ENV });
+    const r = await askPoolFromWords({ orgId: "o1", matchId: "m1", userId: "u-owner", via: "words", where: "group", lang: "en", now: NOW, env: ENV });
     expect(retry.rememberRefusedPoolAsk).not.toHaveBeenCalled();
+    expect(r.replyText).toMatch(/Set the venue on your weekly game, then ask me again: \S+\/admin\/activities$/);
   });
 
   it("asked: nothing remembered", async () => {

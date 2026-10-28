@@ -49,7 +49,10 @@ import { t } from "./i18n/t";
 import { loadSquadState } from "./pipeline/load-state";
 import { openPartnerRoundOf } from "./pool/auto-ask";
 import { poolAutoRound } from "./pool/auto-ask-rules";
-import { poolHqAskReply } from "./pool/offer-copy";
+import { poolHqAskReply, type PoolRefusalContext } from "./pool/offer-copy";
+import { isPoolOffersEnabled } from "./pool/flags";
+import { settingsAnchorPath } from "./help-links";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS, parseCutoffHours } from "./club-partnership-rules";
 import { poolNoticeBand } from "./pool/panel";
 import { placesOpenOf, requestPoolAsk } from "./pool/round";
 
@@ -76,7 +79,9 @@ export async function askPoolFromWords(args: {
 }): Promise<{ outcome: PoolHqOutcome; replyText: string }> {
   const { orgId, lang, now } = args;
   const matchId = args.matchId ?? (await loadSquadState(orgId, now)).matchId;
-  const match = matchId ? await db.match.findUnique({ where: { id: matchId }, select: { id: true, date: true } }) : null;
+  const match = matchId
+    ? await db.match.findUnique({ where: { id: matchId }, select: { id: true, date: true, activity: { select: { venueRef: { select: { name: true } } } } } })
+    : null;
   if (!match) return { outcome: "hq-pool-no-match", replyText: t(lang).recruit_no_match };
   const placesOpen = await placesOpenOf(match.id);
   const round = poolAutoRound({ askedNowRoundId: null, openRound: await openPartnerRoundOf(orgId, match.id), placesOpen });
@@ -105,7 +110,8 @@ export async function askPoolFromWords(args: {
         now,
       });
     }
-    return { outcome: "hq-pool-not-asked", replyText: poolHqAskReply(lang, { ok: false, refusal: r.refusal, placesOpen }) };
+    const ctx = { ...(await refusalContext(orgId, lang, match.date, args.env)), venue: match.activity?.venueRef?.name ?? null, excluded: r.excluded, willRetry: !!args.remember };
+    return { outcome: "hq-pool-not-asked", replyText: poolHqAskReply(lang, { ok: false, refusal: r.refusal, placesOpen, ctx }) };
   }
   return {
     outcome: "hq-pool-asked",
@@ -116,6 +122,31 @@ export async function askPoolFromWords(args: {
       partnersFirst: round.roundId !== null && !r.waveSent,
       inHq: args.where !== "group",
     }),
+  };
+}
+
+/** What a refusal needs to say what to do next: the club's name, the
+ *  cut-off, whether only the club's own switch is off, and the links. */
+async function refusalContext(orgId: string, lang: string | null, kickoff: Date, env?: Env): Promise<PoolRefusalContext> {
+  let org: { name: string; featurePlayerPool: boolean; partnerAskCutoffHours: number | null } | null = null;
+  try {
+    org = await db.organisation.findUnique({ where: { id: orgId }, select: { name: true, featurePlayerPool: true, partnerAskCutoffHours: true } });
+  } catch (err) {
+    // The reply still goes, without the club's name and with the default cut-off.
+    console.error(`[pool-ask-words] ${orgId}: reading the club for the reply failed:`, err instanceof Error ? err.message : "failed");
+  }
+  return {
+    club: org?.name ?? "",
+    day: dayCommaTimeLabel(lang, kickoff),
+    cutoffHours: parseCutoffHours(org?.partnerAskCutoffHours) ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
+    clubSwitchOff: !!org && org.featurePlayerPool !== true && isPoolOffersEnabled(env ?? process.env),
+    links: {
+      // The weekly game's venue is the one the pool measures from
+      // (`activity.venueRef`), set and confirmed on the weekly games page.
+      weeklyGame: appUrl("/admin/activities"),
+      poolSwitch: appUrl(settingsAnchorPath("player-pool")),
+      partnerSettings: appUrl(settingsAnchorPath("partner-clubs")),
+    },
   };
 }
 

@@ -46,7 +46,7 @@ import { findPoolCandidates } from "./candidates";
 import { POOL_OFFER_PURPOSE, stampUnreportedDeliveries } from "./dispatch";
 import { isPoolOffersEnabled, poolOffersOpenForClub, poolSwitchUnread } from "./flags";
 import { buildPoolManageLink } from "./links";
-import { OPEN_MATCH_STATUSES } from "./matching-rules";
+import { OPEN_MATCH_STATUSES, type CandidateExclusion } from "./matching-rules";
 import { loadMatchOfferFacts } from "./offer-facts";
 import { poolOfferText, poolPausedText } from "./offer-copy";
 import { poolOfferPath } from "./offer-token";
@@ -89,7 +89,11 @@ async function isOrganiser(userId: string | null, orgId: string): Promise<boolea
   return !!m && !m.leftAt && !m.guestMatchId && (m.role === "OWNER" || m.role === "ADMIN");
 }
 
-export type PoolAskResult = { ok: true; askId: string; waveSent: boolean } | { ok: false; refusal: PoolAskRefusal | "not-found" };
+export type PoolAskResult =
+  | { ok: true; askId: string; waveSent: boolean }
+  /** `excluded`: on "none-near", how many pool players near the venue each
+   *  matching rule left out (counts only, never who), so the reply can say why. */
+  | { ok: false; refusal: PoolAskRefusal | "not-found"; excluded?: Partial<Record<CandidateExclusion, number>> };
 
 export async function requestPoolAsk(args: {
   orgId: string;
@@ -126,7 +130,7 @@ export async function requestPoolAsk(args: {
   });
   if (refusal) {
     console.log(`[pool] ask for match ${args.matchId} by ${args.orgId} refused: ${refusal}`);
-    return { ok: false, refusal };
+    return refusal === "none-near" ? { ok: false, refusal, excluded: found.selection.excluded } : { ok: false, refusal };
   }
   let askId: string;
   try {

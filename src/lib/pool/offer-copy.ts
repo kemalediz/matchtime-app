@@ -18,6 +18,8 @@ import { longDayTimeLabel } from "../i18n/dates";
 import type { Lang } from "../i18n/lang";
 import { poolCopy } from "../i18n/pool-offer";
 import { t } from "../i18n/t";
+import { joinList } from "../i18n/text";
+import type { CandidateExclusion } from "./matching-rules";
 import { sportLabel, type PoolSportKey } from "./sports";
 import type { OfferPageState } from "./accept-rules";
 import type { TurnUpRecord } from "./turn-up";
@@ -252,17 +254,94 @@ export function poolAskRefusalText(lang: Lang | string | null | undefined, refus
   }
 }
 
+/** What a refused ask in words needs to say what to do next (2026-10-28):
+ *  the club's name, the game's day, the cut-off, whether the club's own
+ *  switch is what is off, and the links to the exact places to fix it. */
+export interface PoolRefusalContext {
+  club: string;
+  day: string;
+  cutoffHours: number;
+  /** The platform pool is on and only this club's switch is off. */
+  clubSwitchOff: boolean;
+  links: { weeklyGame: string; poolSwitch: string; partnerSettings: string };
+  /** The refused ask is kept and asked again once the venue is set. */
+  willRetry?: boolean;
+  /** The game's venue name, for "nobody new near <venue>". */
+  venue?: string | null;
+  /** On "none-near": how many pool players near the venue each rule left out. */
+  excluded?: Partial<Record<CandidateExclusion, number>>;
+}
+
+/** The reasons an organiser can act on or understand, in the order they
+ *  are said. Not active, no consent, no phone and a block are never said:
+ *  they are not reachable pool players, and a block is private. */
+const NOBODY_REASONS = [
+  ["on_match", ["on-match"]],
+  ["club", ["club-member"]],
+  ["time", ["not-available"]],
+  ["far", ["too-far"]],
+  ["format", ["sport", "format", "level"]],
+  ["busy", ["busy"]],
+  ["offered", ["already-offered"]],
+  ["caps", ["day-cap", "week-cap", "decline-cooldown"]],
+] as const satisfies ReadonlyArray<readonly [string, readonly CandidateExclusion[]]>;
+
+/** "Nobody new to ask", with why, when the counts say; null when no pool
+ *  player near the venue was left out for a reason worth saying. */
+export function poolNobodyNewText(lang: Lang | string | null | undefined, ctx: Pick<PoolRefusalContext, "club" | "venue" | "excluded">): string | null {
+  const c = poolCopy(lang);
+  const ex = ctx.excluded ?? {};
+  const parts: string[] = [];
+  let club = false;
+  for (const [key, rules] of NOBODY_REASONS) {
+    const n = rules.reduce((sum, r) => sum + (ex[r] ?? 0), 0);
+    if (n <= 0) continue;
+    if (key === "club") club = true;
+    parts.push(key === "club" ? c.why_club({ n, club: ctx.club }) : c[`why_${key}`]({ n }));
+  }
+  if (parts.length === 0) return null;
+  const near = ctx.venue ? c.near_venue({ venue: ctx.venue }) : c.near_pitch;
+  return c.ask_refused_nobody_new({ near, reasons: joinList(lang, parts), clubTail: club });
+}
+
 /** What the organisers hear after asking the pool in words (HQ or the
- *  players' group), or a YES to the short-squad notice in HQ (L10). A refusal is the match page's own line
- *  (`poolAskRefusalText`), except the pool not open for the club, which
- *  says what MatchTime can do instead. */
+ *  players' group), or a YES to the short-squad notice in HQ (L10). A
+ *  refusal says what happened, why, and what to do next (its own chat
+ *  wording, `ask_refused_*`; the match page keeps `poolAskRefusalText`). */
 export function poolHqAskReply(
   lang: Lang | string | null | undefined,
-  r: { ok: true; places: number; day: string; partnersFirst: boolean; inHq?: boolean } | { ok: false; refusal: string; placesOpen: number },
+  r:
+    | { ok: true; places: number; day: string; partnersFirst: boolean; inHq?: boolean }
+    | { ok: false; refusal: string; placesOpen: number; ctx: PoolRefusalContext },
 ): string {
   const c = poolCopy(lang);
   if (r.ok) return c.hq_asked({ places: r.places, day: r.day, partnersFirst: r.partnersFirst, inHq: r.inHq !== false });
-  return r.refusal === "pool-closed" ? c.hq_closed : poolAskRefusalText(lang, r.refusal, r.placesOpen);
+  const { ctx } = r;
+  switch (r.refusal) {
+    case "pool-closed":
+      return ctx.clubSwitchOff ? c.ask_refused_club_off({ link: ctx.links.poolSwitch }) : c.hq_closed;
+    case "not-organiser":
+      return c.ask_refused_not_organiser;
+    case "match-not-open":
+      return c.ask_refused_match_not_open({ day: ctx.day });
+    case "no-venue":
+      return c.ask_refused_no_venue({ club: ctx.club, link: ctx.links.weeklyGame, retry: ctx.willRetry === true });
+    case "no-sport":
+      return c.ask_refused_no_sport({ link: ctx.links.weeklyGame });
+    case "too-late":
+      return c.ask_refused_too_late({ hours: ctx.cutoffHours, link: ctx.links.partnerSettings });
+    case "no-places":
+    case "bad-number":
+      return c.ask_refused_no_places;
+    case "round-open":
+      return c.ask_refused_round_open;
+    case "club-week-cap":
+      return c.ask_refused_week_cap;
+    case "none-near":
+      return poolNobodyNewText(lang, ctx) ?? c.ask_refused_none_near;
+    default:
+      return c.ask_refused_generic;
+  }
 }
 
 /** The short-squad notice's extra line (`panel.ts` `poolNoticeBand`). */

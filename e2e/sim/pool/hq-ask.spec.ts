@@ -127,7 +127,7 @@ scenarios("the organisers ask the MatchTime player pool from HQ", () => {
     const ex = await off.hq.say("owner", ASK_EN, { now: hoursBefore(off, 30), poolOpen: true });
 
     pool.expectSent(ex.sent, [
-      { to: "off.hq", channel: "hq", text: "The MatchTime player pool is not open for your club yet. I can ask your players' group if anyone can play instead." },
+      { to: "off.hq", channel: "hq", text: /^\*Player pool:\* I didn't ask nearby players: the MatchTime player pool is switched off for your club\. An owner or admin can switch it on here, or I can ask your players' group instead: \S+\/admin\/settings#player-pool$/ },
     ]);
     expect(await poolAsks(pool, off)).toEqual([]);
     expect(ex.json).toMatchObject({ outcome: "hq-pool-not-asked", react: null });
@@ -135,7 +135,7 @@ scenarios("the organisers ask the MatchTime player pool from HQ", () => {
     // The global switch off: the same line.
     const fnf = await hqClub(pool, "sw");
     const closed = await fnf.hq.say("owner", ASK_EN, { now: hoursBefore(fnf, 30), poolOpen: false });
-    pool.expectSent(closed.sent, [{ to: "sw.hq", channel: "hq", text: /^The MatchTime player pool is not open for your club yet\./ }]);
+    pool.expectSent(closed.sent, [{ to: "sw.hq", channel: "hq", text: /^\*Player pool:\* the MatchTime player pool is not open for your club yet\./ }]);
     expect(await poolAsks(pool, fnf)).toEqual([]);
   });
 

@@ -47,5 +47,8 @@ export async function requestAskRound(args: {
         env: args.poolEnv,
       })
     : null;
+  // The exclusion counts are for the chat's "nobody new" reply only; the
+  // match page's answer keeps its shape.
+  if (pool && !pool.ok && pool.excluded) delete pool.excluded;
   return { partner, pool };
 }
