@@ -23,7 +23,7 @@ const channel = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));
 vi.mock("../../admin-channel", () => channel);
 vi.mock("../../group-postability-store", () => ({ isGroupPostable: async () => state.postable }));
 
-import { setClubPlayerPool } from "../club-switch";
+import { poolOnLinks, setClubPlayerPool } from "../club-switch";
 import { poolClubSwitchCopy } from "../../i18n/pool-club-switch";
 
 const NOON = new Date("2026-10-27T12:00:00Z");
@@ -114,8 +114,8 @@ describe("telling the admin team, once per club, ever, through the club's admin 
     expect(req.holdOvernight).not.toBe(false);
     expect(req.nextPath ?? null).toBeNull();
     expect(req.client).toBe(state.tx);
-    expect(req.text("", "group")).toBe(poolClubSwitchCopy("tr").notice("FNF", "group"));
-    expect(req.text("", "dm")).toBe(poolClubSwitchCopy("tr").notice("FNF", "dm"));
+    expect(req.text("", "group")).toBe(poolClubSwitchCopy("tr").notice("FNF", "group", poolOnLinks()));
+    expect(req.text("", "dm")).toBe(poolClubSwitchCopy("tr").notice("FNF", "dm", poolOnLinks()));
     expect([...state.claims]).toEqual(["org-fnf:pool-club-on"]);
   });
 
@@ -158,7 +158,7 @@ describe("a club with only its players' group: the announcement goes in that gro
   it("ONE players' group post with the how-to, in the club's language, claimed with its own key; NO admin DM at all", async () => {
     expect(await setClubPlayerPool("fnf", true, NOON)).toMatchObject({ ok: true, told: true });
     expect(channel.sendAdminNotice).not.toHaveBeenCalled();
-    expect(state.jobs).toEqual([{ orgId: "fnf", kind: "group", text: poolClubSwitchCopy("tr").groupAnnouncement("FNF"), sendAfter: null, aboutKey: "org-fnf:pool-club-on-group" }]);
+    expect(state.jobs).toEqual([{ orgId: "fnf", kind: "group", text: poolClubSwitchCopy("tr").groupAnnouncement("FNF", poolOnLinks()), sendAfter: null, aboutKey: "org-fnf:pool-club-on-group" }]);
     expect(state.jobs.filter((j) => j.kind === "dm")).toHaveLength(0);
     expect([...state.claims]).toEqual(["org-fnf:pool-club-on-group"]);
   });

@@ -13,7 +13,15 @@ import type { Page } from "@playwright/test";
 import { scenario, scenarios, expect } from "./fixtures";
 import { signInAs } from "../../fixtures";
 import type { PoolClub, PoolWorld } from "./world";
-import { poolClubSwitchCopy } from "../../../src/lib/i18n/pool-club-switch";
+import { poolClubSwitchCopy, type PoolOnLinks } from "../../../src/lib/i18n/pool-club-switch";
+import type { SentMessage } from "./transcript";
+
+/** The links as the server built them (its own host), read off what it sent. */
+function linksIn(sent: readonly SentMessage[]): PoolOnLinks {
+  const text = sent.map((m) => m.text).join("\n");
+  const base = /(https?:\/\/\S+?)\/admin\/settings#pool-auto-ask/.exec(text)?.[1] ?? "missing";
+  return { autoAsk: `${base}/admin/settings#pool-auto-ask`, share: `${base}/admin/settings#pool-club-share` };
+}
 
 /** The club's quiet hours set well away from now, so nothing is held. */
 async function noQuietHours(pool: PoolWorld, club: PoolClub): Promise<void> {
@@ -45,7 +53,7 @@ scenarios("switching the player pool on tells the club once", () => {
 
     await flip(pool, page, fnf, true);
     const sent = await pool.collect();
-    const text = poolClubSwitchCopy("en").groupAnnouncement("FNF");
+    const text = poolClubSwitchCopy("en").groupAnnouncement("FNF", linksIn(sent));
     pool.expectSent(sent, [{ to: "fnf.group", channel: "group", text, sendAfter: null }]);
     expect(text).toContain("*How to ask* (organisers only)");
     expect(text).toContain("• @Match Time ask the player pool for 2 players for Thursday");
@@ -65,7 +73,8 @@ scenarios("switching the player pool on tells the club once", () => {
     await pool.db.run(`INSERT INTO "SentNotification" (id, key, kind, "createdAt") VALUES (gen_random_uuid()::text, $1, 'pool-club-on', now())`, [`org-${fnf.group.orgId}:pool-club-on`]);
     await openPoolCardAsOwner(pool, page, fnf);
     await flip(pool, page, fnf, true);
-    pool.expectSent(await pool.collect(), [{ to: "fnf.group", channel: "group", text: poolClubSwitchCopy("en").groupAnnouncement("FNF") }]);
+    const sent = await pool.collect();
+    pool.expectSent(sent, [{ to: "fnf.group", channel: "group", text: poolClubSwitchCopy("en").groupAnnouncement("FNF", linksIn(sent)) }]);
   });
 
   scenario("a Turkish club with only its players' group: the post in Turkish", async ({ pool, page }) => {
@@ -74,7 +83,8 @@ scenarios("switching the player pool on tells the club once", () => {
     await noQuietHours(pool, ist);
     await openPoolCardAsOwner(pool, page, ist);
     await flip(pool, page, ist, true);
-    pool.expectSent(await pool.collect(), [{ to: "ist.group", channel: "group", text: poolClubSwitchCopy("tr").groupAnnouncement("Kadıköy FC") }]);
+    const sent = await pool.collect();
+    pool.expectSent(sent, [{ to: "ist.group", channel: "group", text: poolClubSwitchCopy("tr").groupAnnouncement("Kadıköy FC", linksIn(sent)) }]);
   });
 
   scenario("a club with an admin group: the post goes to HQ only, nothing in the players' group", async ({ pool, page }) => {
@@ -83,7 +93,7 @@ scenarios("switching the player pool on tells the club once", () => {
     await openPoolCardAsOwner(pool, page, fnf);
     await flip(pool, page, fnf, true);
     const sent = await pool.collect();
-    pool.expectSent(sent, [{ to: "fnf.hq", channel: "hq", text: poolClubSwitchCopy("en").notice("FNF", "group") }]);
+    pool.expectSent(sent, [{ to: "fnf.hq", channel: "hq", text: poolClubSwitchCopy("en").notice("FNF", "group", linksIn(sent)) }]);
     expect(sent.filter((m) => m.channel === "group")).toEqual([]);
   });
 });

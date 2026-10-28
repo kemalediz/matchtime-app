@@ -2,7 +2,7 @@
 import type { PoolClubSwitchCopy } from "./pool-club-switch";
 
 export const POOL_CLUB_SWITCH_EN: PoolClubSwitchCopy = {
-  notice: (club, audience) =>
+  notice: (club, audience, links) =>
     [
       `⚽ *The MatchTime player pool is now on for ${club}*`,
       "Short of players? Ask MatchTime for nearby players who have joined the pool.",
@@ -15,10 +15,10 @@ export const POOL_CLUB_SWITCH_EN: PoolClubSwitchCopy = {
       "",
       "Also:",
       "• tick *MatchTime player pool* on a match",
-      "• turn on *Ask the player pool automatically* in Admin, then Settings (partner clubs are asked first)",
-      "Want your players to know? Use *Tell your players about the player pool* in Settings.",
+      `• turn on *Ask the player pool automatically*: on match day, if a place is still open and your bench is empty, MatchTime asks the pool by itself, at most once per match. ${links.autoAsk}`,
+      `Want your players to know? Use *Tell your players about the player pool*: ${links.share}`,
     ].join("\n"),
-  groupAnnouncement: (club) =>
+  groupAnnouncement: (club, links) =>
     [
       `⚽ *The MatchTime player pool is now on for ${club}*`,
       "Short of players? The club's organisers can now ask MatchTime for nearby players who have joined the pool.",
@@ -29,7 +29,8 @@ export const POOL_CLUB_SWITCH_EN: PoolClubSwitchCopy = {
       "• @Match Time find players from partner clubs and the player pool for Thursday",
       "MatchTime then offers the place to nearby pool players by WhatsApp and tells the organisers when one takes it.",
       "",
-      "Organisers can also tick *MatchTime player pool* on a match, or turn on *Ask the player pool automatically* in Admin, then Settings.",
+      "Organisers can also tick *MatchTime player pool* on a match, or turn on *Ask the player pool automatically*: on match day, if a place is still open and the bench is empty, MatchTime asks the pool by itself, at most once per match.",
+      links.autoAsk,
     ].join("\n"),
   title: "Player pool",
   lead: "When you're short of players, MatchTime can ask nearby players who have joined the MatchTime player pool. When MatchTime asks by itself, your partner clubs are asked first. Nothing is sent until an admin asks, or until you turn on automatic asking below.",

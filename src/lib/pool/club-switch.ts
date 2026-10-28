@@ -27,7 +27,9 @@
  */
 import { db } from "../db";
 import { sendAdminNotice, type AdminNoticeClient } from "../admin-channel";
-import { poolClubSwitchCopy } from "../i18n/pool-club-switch";
+import { poolClubSwitchCopy, type PoolOnLinks } from "../i18n/pool-club-switch";
+import { appUrl } from "../app-url";
+import { settingsAnchorPath } from "../help-links";
 import { closePoolAsk } from "./round";
 import { isGroupPostable } from "../group-postability-store";
 import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf } from "../message-hours";
@@ -63,6 +65,12 @@ export async function setClubPlayerPool(orgId: string, on: boolean, now: Date = 
 
 /** Rolls the claim back when the club's channel queued nothing. */
 class NobodyToTell extends Error {}
+
+/** The plain links to the settings cards the message names: a group post
+ *  never carries a personal sign-in link, and the page asks for sign-in. */
+export function poolOnLinks(): PoolOnLinks {
+  return { autoAsk: appUrl(settingsAnchorPath("pool-auto-ask")), share: appUrl(settingsAnchorPath("pool-club-share")) };
+}
 
 const isUniqueViolation = (err: unknown) => (err as { code?: string } | null)?.code === "P2002";
 
@@ -102,7 +110,7 @@ async function tellPlayersGroupPoolOn(
 ): Promise<boolean> {
   const key = poolOnGroupKey(orgId);
   if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) return false;
-  const text = poolClubSwitchCopy(org.language).groupAnnouncement(org.name);
+  const text = poolClubSwitchCopy(org.language).groupAnnouncement(org.name, poolOnLinks());
   const sendAfter = messageHoursSendAfter(now, quietHoursOf(org));
   try {
     const queued = await db.$transaction(async (tx) => {
@@ -140,7 +148,7 @@ async function tellAdminTeamPoolOn(orgId: string, org: { name: string; language:
       const r = await sendAdminNotice({
         orgId,
         now,
-        text: (_link, audience) => copy.notice(org.name, audience === "group" ? "group" : "dm"),
+        text: (_link, audience) => copy.notice(org.name, audience === "group" ? "group" : "dm", poolOnLinks()),
         dmWording: true,
         client: tx as unknown as AdminNoticeClient,
       });

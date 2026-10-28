@@ -11,10 +11,11 @@ import { poolCopy } from "@/lib/i18n/pool-offer";
 import { t } from "@/lib/i18n/t";
 import { settingInfo } from "@/lib/settings-info";
 
+const L = { autoAsk: "https://matchtime.ai/admin/settings#pool-auto-ask", share: "https://matchtime.ai/admin/settings#pool-club-share" };
 const lines = (c: PoolClubSwitchCopy): string[] => [
-  c.notice("FNF", "group"),
-  c.notice("FNF", "dm"),
-  c.groupAnnouncement("FNF"),
+  c.notice("FNF", "group", L),
+  c.notice("FNF", "dm", L),
+  c.groupAnnouncement("FNF", L),
   c.title,
   c.lead,
   c.confirmOff,
@@ -30,7 +31,7 @@ describe("house rules", () => {
   it("no em or en dash, no slash between words, never free, never a waiting list", () => {
     for (const l of [...EN, ...TR]) {
       expect(l).not.toMatch(/[—–]/);
-      expect(l).not.toMatch(/\w\/\w/);
+      expect(l.replace(/https:\/\/\S+/g, "")).not.toMatch(/\w\/\w/);
       expect(l).not.toMatch(/\bfree\b/i);
       expect(l).not.toMatch(/waiting list|bekleme listesi/i);
     }
@@ -54,8 +55,8 @@ const EN_HQ = [
   "",
   "Also:",
   "• tick *MatchTime player pool* on a match",
-  "• turn on *Ask the player pool automatically* in Admin, then Settings (partner clubs are asked first)",
-  "Want your players to know? Use *Tell your players about the player pool* in Settings.",
+  "• turn on *Ask the player pool automatically*: on match day, if a place is still open and your bench is empty, MatchTime asks the pool by itself, at most once per match. https://matchtime.ai/admin/settings#pool-auto-ask",
+  "Want your players to know? Use *Tell your players about the player pool*: https://matchtime.ai/admin/settings#pool-club-share",
 ];
 const TR_HQ = [
   "⚽ *MatchTime oyuncu havuzu FNF için açıldı*",
@@ -69,26 +70,26 @@ const TR_HQ = [
   "",
   "Ayrıca:",
   "• bir maçta *MatchTime oyuncu havuzu* kutusunu işaretleyin",
-  "• Yönetim, sonra Ayarlar'da *Oyuncu havuzuna kendiliğinden sor* seçeneğini açın (önce partner kulüplere sorulur)",
-  "Oyuncularınız da bilsin mi? Ayarlar'daki *Oyuncularınıza oyuncu havuzunu anlatın* kartını kullanın.",
+  "• *Oyuncu havuzuna kendiliğinden sor* seçeneğini açın: maç günü hâlâ boş yer varsa ve yedekte kimse yoksa MatchTime havuza kendisi sorar, her maç için en fazla bir kez. https://matchtime.ai/admin/settings#pool-auto-ask",
+  "Oyuncularınız da bilsin mi? *Oyuncularınıza oyuncu havuzunu anlatın* kartını kullanın: https://matchtime.ai/admin/settings#pool-club-share",
 ];
 
 describe("the message to the admin team", () => {
   it("leads with how to ask, exactly, in HQ (EN)", () => {
-    expect(poolClubSwitchCopy("en").notice("FNF", "group")).toBe(EN_HQ.join("\n"));
+    expect(poolClubSwitchCopy("en").notice("FNF", "group", L)).toBe(EN_HQ.join("\n"));
   });
 
   it("leads with how to ask, exactly, in HQ (TR)", () => {
-    expect(poolClubSwitchCopy("tr").notice("FNF", "group")).toBe(TR_HQ.join("\n"));
+    expect(poolClubSwitchCopy("tr").notice("FNF", "group", L)).toBe(TR_HQ.join("\n"));
   });
 
   it("by DM it points at the club's WhatsApp group instead of 'here', and the reply is not 'here' either", () => {
-    expect(poolClubSwitchCopy("en").notice("FNF", "dm").split("\n")).toEqual(
+    expect(poolClubSwitchCopy("en").notice("FNF", "dm", L).split("\n")).toEqual(
       EN_HQ.map((l) =>
         l === "Tag @Match Time here, for example:" ? "Tag @Match Time in your club's WhatsApp group, for example:" : l.replace("tells you here when", "tells you when"),
       ),
     );
-    expect(poolClubSwitchCopy("tr").notice("FNF", "dm").split("\n")).toEqual(
+    expect(poolClubSwitchCopy("tr").notice("FNF", "dm", L).split("\n")).toEqual(
       TR_HQ.map((l) =>
         l === "Burada @Match Time etiketleyip yazın, örneğin:" ? "Kulübünüzün WhatsApp grubunda @Match Time etiketleyip yazın, örneğin:" : l.replace("size burada haber", "size haber"),
       ),
@@ -98,7 +99,7 @@ describe("the message to the admin team", () => {
   it("never claims partners are ALWAYS asked first (false when an organiser asks the pool alone)", () => {
     for (const lang of ["en", "tr"] as const) {
       const c = poolClubSwitchCopy(lang);
-      for (const l of [c.notice("FNF", "group"), c.notice("FNF", "dm"), c.groupAnnouncement("FNF"), c.lead]) expect(l).not.toMatch(/always asked first|Önce her zaman/);
+      for (const l of [c.notice("FNF", "group", L), c.notice("FNF", "dm", L), c.groupAnnouncement("FNF", L), c.lead]) expect(l).not.toMatch(/always asked first|Önce her zaman/);
       expect(c.lead).toContain(lang === "en" ? "When MatchTime asks by itself, your partner clubs are asked first." : "MatchTime kendiliğinden sorduğunda önce partner kulüplerinize sorulur.");
       expect(settingInfo(lang, "playerPool").what.join(" ")).not.toMatch(/always asked first|Önce her zaman/);
     }
@@ -106,7 +107,7 @@ describe("the message to the admin team", () => {
 
   it("quotes the real headings: the match page tick, the automatic ask card and the share card", () => {
     for (const lang of ["en", "tr"] as const) {
-      const msg = poolClubSwitchCopy(lang).notice("FNF", "group");
+      const msg = poolClubSwitchCopy(lang).notice("FNF", "group", L);
       expect(msg).toContain(`*${poolCopy(lang).pool_label}*`);
       expect(msg).toContain(`*${t(lang).pauto_title}*`);
       expect(msg).toContain(`*${poolClubShareCopy(lang).title}*`);
@@ -116,7 +117,7 @@ describe("the message to the admin team", () => {
 
 describe("the announcement in the players' group (a club with no admin group)", () => {
   it("is worded for the whole group and leads with how to ask, exactly (EN)", () => {
-    expect(poolClubSwitchCopy("en").groupAnnouncement("FNF")).toBe(
+    expect(poolClubSwitchCopy("en").groupAnnouncement("FNF", L)).toBe(
       [
         "⚽ *The MatchTime player pool is now on for FNF*",
         "Short of players? The club's organisers can now ask MatchTime for nearby players who have joined the pool.",
@@ -127,13 +128,14 @@ describe("the announcement in the players' group (a club with no admin group)", 
         "• @Match Time find players from partner clubs and the player pool for Thursday",
         "MatchTime then offers the place to nearby pool players by WhatsApp and tells the organisers when one takes it.",
         "",
-        "Organisers can also tick *MatchTime player pool* on a match, or turn on *Ask the player pool automatically* in Admin, then Settings.",
+        "Organisers can also tick *MatchTime player pool* on a match, or turn on *Ask the player pool automatically*: on match day, if a place is still open and the bench is empty, MatchTime asks the pool by itself, at most once per match.",
+        "https://matchtime.ai/admin/settings#pool-auto-ask",
       ].join("\n"),
     );
   });
 
   it("is worded for the whole group and leads with how to ask, exactly (TR)", () => {
-    expect(poolClubSwitchCopy("tr").groupAnnouncement("FNF")).toBe(
+    expect(poolClubSwitchCopy("tr").groupAnnouncement("FNF", L)).toBe(
       [
         "⚽ *MatchTime oyuncu havuzu FNF için açıldı*",
         "Oyuncu mu eksik? Kulübün organizatörleri artık MatchTime'dan havuza katılmış yakındaki oyuncuları isteyebilir.",
@@ -144,7 +146,8 @@ describe("the announcement in the players' group (a club with no admin group)", 
         "• @Match Time perşembe için partner kulüplerden ve havuzdan oyuncu bul",
         "MatchTime yeri WhatsApp'tan yakındaki havuz oyuncularına önerir ve biri yeri alınca organizatörlere haber verir.",
         "",
-        "Organizatörler ayrıca bir maçta *MatchTime oyuncu havuzu* kutusunu işaretleyebilir ya da Yönetim, sonra Ayarlar'da *Oyuncu havuzuna kendiliğinden sor* seçeneğini açabilir.",
+        "Organizatörler ayrıca bir maçta *MatchTime oyuncu havuzu* kutusunu işaretleyebilir ya da *Oyuncu havuzuna kendiliğinden sor* seçeneğini açabilir: maç günü hâlâ boş yer varsa ve yedekte kimse yoksa MatchTime havuza kendisi sorar, her maç için en fazla bir kez.",
+        "https://matchtime.ai/admin/settings#pool-auto-ask",
       ].join("\n"),
     );
   });
@@ -152,7 +155,7 @@ describe("the announcement in the players' group (a club with no admin group)", 
   it("the how-to comes first, right after the opening line, in every version", () => {
     for (const lang of ["en", "tr"] as const) {
       const c = poolClubSwitchCopy(lang);
-      for (const msg of [c.notice("FNF", "group"), c.notice("FNF", "dm"), c.groupAnnouncement("FNF")]) {
+      for (const msg of [c.notice("FNF", "group", L), c.notice("FNF", "dm", L), c.groupAnnouncement("FNF", L)]) {
         const ls = msg.split("\n");
         expect(ls[3]).toMatch(lang === "en" ? /^\*How to ask\*/ : /^\*Nasıl istenir\*/);
         expect(ls[4]).toContain("@Match Time");
@@ -163,10 +166,28 @@ describe("the announcement in the players' group (a club with no admin group)", 
 
   it("quotes the real headings, and never points players at the share card", () => {
     for (const lang of ["en", "tr"] as const) {
-      const msg = poolClubSwitchCopy(lang).groupAnnouncement("FNF");
+      const msg = poolClubSwitchCopy(lang).groupAnnouncement("FNF", L);
       expect(msg).toContain(`*${poolCopy(lang).pool_label}*`);
       expect(msg).toContain(`*${t(lang).pauto_title}*`);
       expect(msg).not.toContain(poolClubShareCopy(lang).title);
+    }
+  });
+});
+
+describe("the links", () => {
+  it("point at the fixed settings anchors, and every version links the automatic ask card", async () => {
+    const { poolOnLinks } = await import("../club-switch");
+    const links = poolOnLinks();
+    expect(links.autoAsk).toMatch(/^https?:\/\/\S+\/admin\/settings#pool-auto-ask$/);
+    expect(links.share).toMatch(/^https?:\/\/\S+\/admin\/settings#pool-club-share$/);
+    for (const lang of ["en", "tr"] as const) {
+      const c = poolClubSwitchCopy(lang);
+      for (const m of [c.notice("FNF", "group", L), c.notice("FNF", "dm", L), c.groupAnnouncement("FNF", L)]) {
+        expect(m).toContain(L.autoAsk);
+        expect(m).not.toMatch(/Admin, then Settings|Yönetim, sonra Ayarlar/);
+      }
+      expect(c.notice("FNF", "group", L)).toContain(L.share);
+      expect(c.groupAnnouncement("FNF", L)).not.toContain(L.share);
     }
   });
 });
