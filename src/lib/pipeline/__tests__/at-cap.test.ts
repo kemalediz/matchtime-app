@@ -55,7 +55,6 @@ describe("floorAttendanceFacts: the facts a bare declaration states, read withou
     contingent: false,
     conditionOn: "none",
     tense: "present",
-    basis: "decision",
     reported: false,
     confidence: 1,
     replaces: "",

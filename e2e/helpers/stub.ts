@@ -21,7 +21,7 @@
  * anywhere: what used to be "the model said register this person IN" is
  * now a `claim` with a `polarity`, which the ENGINE then decides about,
  * against capacity, the interaction contract, authorisation, `tense`,
- * `basis`, `contingent` and the confidence floor. Every ported spec
+ * `contingent` and the confidence floor. Every ported spec
  * therefore pins a DECISION where it used to assume one.
  *
  * ── THE DM-Q&A FLAG IS A DIFFERENT THING AND HAS ITS OWN NAME NOW ────
@@ -311,7 +311,6 @@ export function claim(over: Record<string, unknown> = {}): Record<string, unknow
     contingent: false,
     conditionOn: "none",
     tense: "present",
-    basis: "decision",
     reported: false,
     confidence: 0.95,
     ...over,

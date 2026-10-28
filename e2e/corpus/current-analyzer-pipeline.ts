@@ -32,7 +32,7 @@
  * (`route`) and what the EXTRACTOR found (`facts`). Both are properties
  * of the message text, checkable by re-reading it. Everything between
  * here and the database — capacity, the interaction contract,
- * authorisation, `tense`, `basis`, `contingent`, the confidence floor,
+ * authorisation, `tense`, `contingent`, the confidence floor,
  * the bench, the batch-final squad post — is the real shipped code
  * deciding for itself, so every ported case PINS a decision where it
  * used to ASSUME one.

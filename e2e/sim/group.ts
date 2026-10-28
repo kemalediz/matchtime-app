@@ -42,7 +42,7 @@
  * WHY THAT IS NOT A RENAME OF `verdict:`. A verdict said what to DO —
  * `registerAttendance: "IN"` — and the suite then asserted the write it
  * had just asked for. Facts say only what the message SAID; `polarity`,
- * `tense`, `basis`, `contingent`, `personNamed` and `subject` are all
+ * `tense`, `contingent`, `personNamed` and `subject` are all
  * properties of the text, checkable by re-reading it. Whether that
  * becomes a CONFIRMED row, a BENCH row, a name-ask, a tentative or
  * nothing at all is `pipeline/engine.ts`'s decision, made against

@@ -95,8 +95,25 @@ const SHORT_HISTORY: Line[] = [
 ];
 /** An offer to fill a gap is the bench, conditional on the squad (Kemal's ruling, 2026-10-21). */
 const gapOffer = (f: AttendanceFacts) =>
-  self(f).some((c) => c.polarity === "bench" && c.contingent && c.conditionOn === "squad" && c.basis === "decision") &&
+  self(f).some((c) => c.polarity === "bench" && c.contingent && c.conditionOn === "squad") &&
   !self(f).some((c) => c.polarity !== "bench");
+
+/** No in and no bench for anyone: being free for something else, the fee, a question, a return date. */
+const noPlace = (f: AttendanceFacts) => !f.claims.some((c) => (c.polarity === "in" || c.polarity === "bench") && c.tense !== "past" && c.tense !== "hypothetical");
+/** Someone else offered as free: never the bench, never a claim for the sender, contingent (held by the engine). */
+const otherFreeHeld = (f: AttendanceFacts) =>
+  self(f).length === 0 && f.claims.length > 0 && f.claims.every((c) => c.subject === "other" && c.polarity !== "bench" && (c.contingent || c.polarity === "out"));
+
+// ── FNF, 2026-10-28: Seb, to a full squad with an empty bench ─────────
+// Friday 18/18, teams generated, bench empty. The extractor read bench,
+// contingent, squad, basis availability at 0.7 and the engine held it; 38
+// minutes later "@Match Time In" benched him. Kemal: being free for the
+// match is the bench. The last post is the squad-complete post's shape.
+const FNF_FULL_POST =
+  "✅ *Squad complete (18/18)* for *Friday 9-a-side* on Fri 30 Oct 20:30 🙌\n\n*Playing:*\n" +
+  Array.from({ length: 18 }, (_, i) => `${i + 1}. Player ${i + 1}`).join("\n") +
+  "\n\nSee you all there ⚽";
+const fnf = { author: "Seb", lastBotPost: FNF_FULL_POST, history: [{ author: "MatchTime", body: FNF_FULL_POST }], now: new Date("2026-10-28T14:46:00Z") };
 
 // ── The Sutton FC incident, rebuilt from production rows ──────────────
 // AnalyzedMessage cmvgsuqu2002108l07n6x7pf4 and the eight lines before it
@@ -226,7 +243,7 @@ const CASES: Case[] = [
     ...fromCorpus("S16b-wasim-relays-najib"),
     route: "other_att",
     repeat: true,
-    check: (f) => other(f, /najib/i).some((c) => c.polarity === "in" && !c.contingent && c.tense !== "past" && c.tense !== "hypothetical" && c.basis === "decision"),
+    check: (f) => other(f, /najib/i).some((c) => c.polarity === "in" && !c.contingent && c.tense !== "past" && c.tense !== "hypothetical"),
     want: "Najib in, reported, a decision",
   },
 
@@ -269,6 +286,45 @@ const CASES: Case[] = [
   { id: "O7", body: "happy to fill in if anyone drops out", route: "offer", repeat: true, check: gapOffer, want: "bench, contingent, squad, decision (held out)" },
   { id: "O8", body: "bir kişi lazım olursa söyleyin, oynarım", route: "offer", repeat: true, check: gapOffer, want: "bench, contingent, squad, decision (held out)" },
 
+  // ── Being free to play is the bench (FNF, Seb, 2026-10-28) ────────
+  { id: "F1", ...fnf, body: "I’m free to play this Friday if there’s any drop outs 👍🏼", route: "offer", check: gapOffer, want: "the incident: the sender bench, contingent, squad" },
+  { id: "F1b", ...fnf, body: "@Match Time In", route: "self_att", tagged: true, check: selfIn, want: "his follow-up: the sender in (the engine benches at full)" },
+  { id: "F2", ...fnf, body: "free to play if someone drops out", route: "offer", check: gapOffer, want: "bench, contingent, squad" },
+  { id: "F3", ...fnf, body: "available to play if needed", route: "offer", check: gapOffer, want: "bench, contingent, squad" },
+  { id: "F4", ...fnf, body: "I'm free if you need me", route: "offer", check: gapOffer, want: "bench, contingent, squad" },
+  { id: "F5", ...fnf, body: "I'm around if you're short", route: "offer", check: gapOffer, want: "bench, contingent, squad" },
+  { id: "F6", ...fnf, body: "I'm free Friday", route: "offer", check: gapOffer, want: "bench, contingent, squad" },
+  { id: "F7", ...fnf, body: "I'm around", route: "offer", check: gapOffer, want: "bench, contingent, squad" },
+  { id: "F8", ...fnf, body: "cuma boşum, lazım olursa", route: "offer", check: gapOffer, want: "bench, contingent, squad (Turkish)" },
+  { id: "F9", ...fnf, body: "biri düşerse oynarım", route: "offer", check: gapOffer, want: "bench, contingent, squad (Turkish)" },
+  { id: "F10", ...fnf, body: "müsaitim, gerekirse oynarım", route: "offer", check: gapOffer, want: "bench, contingent, squad (Turkish)" },
+  { id: "F11", ...fnf, body: "cuma boşum", route: "offer", check: gapOffer, want: "bench, contingent, squad (Turkish, bare)" },
+  // Held out: not quoted in the prompt.
+  { id: "F12", ...fnf, body: "I'm available Friday if anyone pulls out", route: "offer", check: gapOffer, want: "bench, contingent, squad (held out)" },
+  { id: "F13", ...fnf, body: "yedek gerekirse ben müsaitim cuma", route: "offer", check: (f) => self(f).some((c) => c.polarity === "bench") && !self(f).some((c) => c.polarity !== "bench"), want: "bench (held out, Turkish)" },
+  // Room in the squad: the same reading (the engine gives the place).
+  { id: "F14", body: "I'm free Tuesday if you need me", history: SHORT_HISTORY, lastBotPost: SHORT_HISTORY[0].body, author: "Noah North", route: "offer", check: gapOffer, want: "bench, contingent, squad, under a 7/14 call" },
+  // Third parties: never the bench, never the sender, held.
+  { id: "F15", ...fnf, body: "my brother is free Friday", route: "offer", check: otherFreeHeld, want: "the brother in, contingent; no claim for the sender" },
+  { id: "F16", ...fnf, body: "kardeşim cuma boş, lazım olursa", route: "offer", check: otherFreeHeld, want: "the brother in, contingent (Turkish)" },
+  { id: "F17", ...fnf, body: "Najib is free if we need one", route: "other_att", check: otherFreeHeld, want: "Najib in, contingent; no claim for the sender" },
+  { id: "F17b", ...fnf, body: "my mate's around Friday if you're short", route: "offer", check: otherFreeHeld, want: "the mate in, contingent; no claim for the sender (held out)" },
+  { id: "F17c", ...fnf, body: "Ozan cuma müsait", route: "other_att", check: otherFreeHeld, want: "Ozan in, contingent (held out, Turkish)" },
+  // Unable to play still settles it.
+  { id: "F18", ...fnf, body: "not free this Friday sorry lads", route: "self_att", check: selfOutDecided, want: "the sender out, decided" },
+  { id: "F19", ...fnf, body: "cuma müsait değilim", route: "self_att", check: selfOutDecided, want: "the sender out, decided (Turkish)" },
+  // Free that is not about a place.
+  { id: "F20", body: "is it free this week?", route: "unsure", check: noPlace, want: "no in, no bench: the fee" },
+  { id: "F21", body: "bu hafta ücretsiz mi?", route: "unsure", check: noPlace, want: "no in, no bench: the fee (Turkish)" },
+  { id: "F22", body: "anyone free Friday?", author: "Oscar Owner", route: "offer", check: (f) => self(f).length === 0 && noPlace(f), want: "no claim for anyone" },
+  { id: "F23", body: "cuma boş olan var mı?", author: "Oscar Owner", route: "offer", check: (f) => self(f).length === 0 && noPlace(f), want: "no claim for anyone (Turkish)" },
+  { id: "F24", body: "anyone free tonight for a pint after?", route: "unsure", check: noPlace, want: "no claim: not the match" },
+  { id: "F25", body: "I was free last week, shame there was no game", route: "unsure", check: noPlace, want: "no claim: past" },
+  { id: "F26", body: "geçen hafta boştum", route: "unsure", check: noPlace, want: "no claim: past (Turkish)" },
+  { id: "F27", body: "I land Monday", route: "unsure", check: noPlace, want: "no claim: a return date" },
+  { id: "F28", body: "free kick was class 😂", route: "unsure", check: noPlace, want: "no claim: banter" },
+  { id: "F29", body: "he plays for free, he did the bibs", author: "Oscar Owner", route: "unsure", check: noPlace, want: "no claim: the fee" },
+
   // Side requests: a named gap is "recruit", a general nudge is "chase" (recruit-live "a plain shortage
   // ask from an admin fires the blast" and corpus S12b / PR33). The first draft of the rewrite read
   // "we're 4 short, anyone free?" as a chase on both models; the old prompt read it as recruit.
@@ -306,13 +362,13 @@ const CASES: Case[] = [
   { id: "A8", body: "yedeğe yaz beni", check: (f) => self(f).some((c) => c.polarity === "bench"), want: "bench" },
   { id: "A9", body: "in", history: [{ author: "MatchTime", body: SUTTON_LAST_POST }], lastBotPost: SUTTON_LAST_POST, author: "Mojib", check: (f) => self(f).some((c) => c.polarity === "in") && !self(f).some((c) => c.polarity === "bench"), want: "in, not bench, at 14/14" },
   { id: "A10", body: "varım", lastBotPost: SUTTON_LAST_POST, author: "Habib", check: (f) => self(f).some((c) => c.polarity === "in") && !self(f).some((c) => c.polarity === "bench"), want: "in, not bench, at 14/14" },
-  { id: "B10", body: "I'm free Tuesday if you need me", check: (f) => self(f).length > 0 && self(f).every((c) => c.basis === "availability" || c.polarity === "out"), want: "availability" },
-  { id: "B11", body: "I'm around if you're short", check: (f) => self(f).length > 0 && self(f).every((c) => c.basis === "availability"), want: "availability" },
+  { id: "B10", body: "I'm free Tuesday if you need me", check: gapOffer, want: "bench, contingent, squad (being free is the offer, 2026-10-28)" },
+  { id: "B11", body: "I'm around if you're short", check: gapOffer, want: "bench, contingent, squad (being free is the offer, 2026-10-28)" },
   { id: "B12", body: "put me down if you're short", check: gapOffer, want: "bench, contingent, squad, decision" },
   { id: "B13", body: "count me as the 14th if you need one", check: gapOffer, want: "bench, contingent, squad, decision" },
-  { id: "B14", body: "I'm free Tuesday, put me down", check: (f) => self(f).some((c) => c.polarity === "in" && c.basis === "decision"), want: "in, decision" },
-  { id: "B15", body: "I will be back Tuesday week", check: (f) => !self(f).some((c) => c.polarity === "in" && c.basis === "decision"), want: "no decided in" },
-  { id: "B16", body: "I'm in for next Tuesday", check: (f) => self(f).some((c) => c.polarity === "in" && c.basis === "decision"), want: "in, decision" },
+  { id: "B14", body: "I'm free Tuesday, put me down", check: (f) => self(f).some((c) => c.polarity === "in" && !c.contingent), want: "in, not contingent" },
+  { id: "B15", body: "I will be back Tuesday week", check: noPlace, want: "no in and no bench: news of a return is no claim" },
+  { id: "B16", body: "I'm in for next Tuesday", check: (f) => self(f).some((c) => c.polarity === "in" && !c.contingent), want: "in, not contingent" },
   { id: "C1", body: "maybe", check: hedge, want: "the hedge" },
   { id: "C2", body: "belki", check: hedge, want: "the hedge" },
   { id: "C3", body: "50/50 for tuesday", check: hedge, want: "the hedge" },
@@ -415,7 +471,7 @@ async function main() {
       const pass = !!f && c.check(f);
       const got = f
         ? {
-            claims: f.claims.map((x) => `${x.subject === "sender" ? "sender" : x.personRef}:${x.polarity}${x.contingent ? `/cont-${x.conditionOn}` : ""}/${x.basis}/${x.tense}${x.replaces ? `/replaces=${x.replaces}` : ""}${x.reported ? "/reported" : ""}${x.personNamed ? "" : "/unnamed"}@${x.confidence}`),
+            claims: f.claims.map((x) => `${x.subject === "sender" ? "sender" : x.personRef}:${x.polarity}${x.contingent ? `/cont-${x.conditionOn}` : ""}/${x.tense}${x.replaces ? `/replaces=${x.replaces}` : ""}${x.reported ? "/reported" : ""}${x.personNamed ? "" : "/unnamed"}@${x.confidence}`),
             affirmation: f.affirmation,
             sideRequests: f.sideRequests,
           }

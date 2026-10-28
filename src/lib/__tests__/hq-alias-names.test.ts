@@ -112,7 +112,6 @@ function extractor(seen: string[]): PipelineModel {
           contingent: false,
           conditionOn: "none",
           tense: "present",
-          basis: "decision",
           reported: false,
           replaces: "",
           confidence: 0.9,

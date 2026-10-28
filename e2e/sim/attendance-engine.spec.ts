@@ -238,26 +238,53 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect(await g.attendanceOf("pete")).toBeNull();
   });
 
-  test("an AVAILABILITY statement registers nobody — PR #44's last spurious write", async ({
-    request,
-    db,
-  }) => {
-    // 2026-06-20, Abid Kazmi, ten days before kickoff, squad 0/14,
-    // answering a chase: "I will be back Tuesday week". The engine
-    // registered him CONFIRMED. `tense` said "future" and `contingent`
-    // said false — exactly what "I'm in for next Tuesday" says — so the
-    // schema had nothing to separate a travel statement from a
-    // commitment. `basis` is that field, and this is it end to end.
-    const g = await createGroup(request, db, { attendance: [] });
+  test("FREE TO PLAY at a full squad goes on the bench (FNF, Seb, 2026-10-28)", async ({ request, db }) => {
+    // Seb, Friday full and the bench empty: "I'm free to play this Friday
+    // if there's any drop outs". It used to be held as an availability
+    // statement and nothing happened; 38 minutes later his "@Match Time In"
+    // benched him. Kemal: saying you are free for the match is the bench.
+    const SEB = "I’m free to play this Friday if there’s any drop outs 👍🏼";
+    const g = await createGroup(request, db, {
+      maxPlayers: 2,
+      attendance: [
+        { key: "dan", status: "CONFIRMED" },
+        { key: "felix", status: "CONFIRMED" },
+      ],
+    });
     engineOn({
-      "I will be back Tuesday week": {
-        route: "self_att",
-        facts: IN({ tense: "future", basis: "availability", confidence: 0.7 }),
-      },
+      [SEB]: { route: "offer", facts: IN({ polarity: "bench", contingent: true, conditionOn: "squad", tense: "future", confidence: 0.7 }) },
+      "@Match Time In": { route: "self_att", facts: IN() },
     });
 
-    const res = await g.postBatch([{ player: "pete", body: "I will be back Tuesday week" }]);
+    const first = await g.postBatch([{ player: "pete", body: SEB }]);
+    expect(await g.attendanceOf("pete")).toMatchObject({ status: "BENCH" });
+    expect(first.results[0].react).toBe("🪑");
 
+    // The pair: his later tagged IN lands in the same place.
+    const later = await g.postBatch([{ player: "greg", body: "@Match Time In", tag: true }]);
+    expect(await g.attendanceOf("greg")).toMatchObject({ status: "BENCH" });
+    expect(later.results[0].react).toBe(first.results[0].react);
+  });
+
+  test("FREE TO PLAY with a place open takes the place: no bench beside empty slots", async ({ request, db }) => {
+    const g = await createGroup(request, db, { attendance: [{ key: "dan", status: "CONFIRMED" }] });
+    engineOn({
+      "I'm free Friday if you need me": {
+        route: "offer",
+        facts: IN({ polarity: "bench", contingent: true, conditionOn: "squad", tense: "future", confidence: 0.8 }),
+      },
+    });
+    await g.postBatch([{ player: "pete", body: "I'm free Friday if you need me" }]);
+    expect(await g.attendanceOf("pete")).toMatchObject({ status: "CONFIRMED" });
+    expect((await g.counts()).bench).toBe(0);
+  });
+
+  test("news of a return with no word on playing registers nobody (PR #44, Abid Kazmi)", async ({ request, db }) => {
+    // "I will be back Tuesday week" is no claim at all in the rewritten
+    // prompt: where he will be, not whether he plays.
+    const g = await createGroup(request, db, { attendance: [] });
+    engineOn({ "I will be back Tuesday week": { route: "self_att", facts: facts([]) } });
+    const res = await g.postBatch([{ player: "pete", body: "I will be back Tuesday week" }]);
     expect(await g.attendanceOf("pete")).toBeNull();
     expect(res.results[0].reply).toBeNull();
   });
@@ -269,7 +296,7 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     engineOn({
       "I'm in for next Tuesday": {
         route: "self_att",
-        facts: IN({ tense: "future", basis: "decision" }),
+        facts: IN({ tense: "future" }),
       },
     });
 
@@ -277,7 +304,7 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect(await g.attendanceOf("pete")).toMatchObject({ status: "CONFIRMED" });
   });
 
-  test("an availability OUT still frees the slot — the asymmetry is deliberate", async ({
+  test("an away OUT still frees the slot", async ({
     request,
     db,
   }) => {
@@ -291,7 +318,7 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     engineOn({
       "I'm away next week": {
         route: "self_att",
-        facts: IN({ polarity: "out", tense: "future", basis: "availability", confidence: 0.9 }),
+        facts: IN({ polarity: "out", tense: "future", confidence: 0.9 }),
       },
     });
 

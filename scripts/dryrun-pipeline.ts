@@ -55,7 +55,7 @@
  *                  the ROUTE spread (diagnostics: an LLM route is a
  *                  distribution, not a value). Three runs cannot settle
  *                  anything; 15 is the floor for a real question.
- *   FACTS=1        print basis / contingent / conditionOn on every run,
+ *   FACTS=1        print tense / contingent / conditionOn on every run,
  *                  not just when REPEAT=1
  *   FLOOR=0        run the router WITHOUT the deterministic floor in
  *                  front of it — production's setting
@@ -173,6 +173,9 @@ type Case = {
    *  incident that only happens at 14/14. See `FULL_SQUAD_INCLUDES` /
    *  `FULL_SQUAD_BENCH` for who ends up where, and override per case. */
   fullSquad?: boolean;
+  /** With `fullSquad`: the sender is never filled in (and any row of his is
+   *  removed, in memory), so a full-squad offer from him is really tested. */
+  senderOffSquad?: boolean;
   /** Who the fill must put IN the squad. Defaults to `FULL_SQUAD_INCLUDES`. */
   squadIncludes?: string[];
   /** Who the fill parks on the bench. Defaults to `FULL_SQUAD_BENCH`.
@@ -289,8 +292,8 @@ const CASES: Case[] = [
   { id: "C1", who: "Ali", body: "In", expect: "WRITE Ali CONFIRMED" },
   { id: "C2", who: "Wasim", body: "Sorry lads can't make it Tuesday", expect: "DROP Wasim (he is in the squad)" },
   { id: "C3", who: "Mojib", body: "I'm out", expect: "NO write (not registered), stay silent" },
-  { id: "C4", who: "Ilkay", body: "I'm around on Tuesday", expect: "NO write — availability is not a commitment (PR #46)" },
-  { id: "C5", who: "Ilkay", body: "I'm free Tuesday if you need me", expect: "NO write — availability, not commitment" },
+  { id: "C4", who: "Ilkay", body: "I'm around on Tuesday", expect: "WRITE — being around for the match is the standing offer (2026-10-28; was NO write under PR #46)" },
+  { id: "C5", who: "Ilkay", body: "I'm free Tuesday if you need me", expect: "WRITE — the standing offer (2026-10-28; was NO write under PR #48)" },
   { id: "C6", who: "Abid Kazmi", body: "maybe, 50/50 at the moment", expect: "NO confirmed write — tentative" },
   { id: "C7", who: "Amir", body: "@Kemal Ediz my brother can play if needed", expect: "NO attendance write for an unnamed guest; may ask for the name" },
   { id: "C8", who: "Elvin", body: "Shahrokh is IN", expect: "third-party guest registration — a write for Shahrokh is acceptable, must not touch Elvin" },
@@ -548,15 +551,24 @@ const CASES: Case[] = [
 
   // ── P: the availability / standing-offer boundary ─────────────────
   //
-  // The four probes that settle it. The two ends were always stable;
-  // P1 was a coin flip until the `basis` rule was rewritten around the
-  // VERB (PR #48). Kemal's decision, 2026-09-05: P1 must NOT register
-  // the sender — a real player complained on 1 Sept, "I can't come.
-  // Matchtime put my name down as reserve without my confirm".
-  { id: "P1", who: "Ilkay", body: "I'm free Tuesday if you need me", expect: "NO write — a state verb plus a courtesy is availability, never an ask" },
-  { id: "P2", who: "Ilkay", body: "I'm around if you're short", expect: "NO write — availability + politeness" },
+  // SUPERSEDED 2026-10-28 (FNF, Seb). PR #48 held P1 and P2 as
+  // "availability" (Kemal, 2026-09-05). Kemal's new ruling: saying you are
+  // free for the match puts you on the bench, so all four are the sender's
+  // standing offer and capacity decides: places open, the place; full, the
+  // bench. P5-P8 replay Seb's message and its pair at a FULL squad with an
+  // EMPTY bench; P9 is a third party, which must stay held.
+  { id: "P1", who: "Ilkay", body: "I'm free Tuesday if you need me", expect: "WRITE — standing offer: CONFIRMED with places open (BENCH when full)" },
+  { id: "P2", who: "Ilkay", body: "I'm around if you're short", expect: "WRITE — standing offer: CONFIRMED with places open (BENCH when full)" },
   { id: "P3", who: "Ilkay", body: "put me down if you're short", expect: "WRITE — 'put me down' asks for the place (standing offer, S15a)" },
   { id: "P4", who: "Ilkay", body: "count me as the 14th if you need one", expect: "WRITE — claims the place (standing offer, S15a)" },
+  { id: "P5", who: "Ilkay", senderOffSquad: true, teamsGenerated: true, body: "I’m free to play this Friday if there’s any drop outs 👍🏼", fullSquad: true, benched: null, expect: "WRITE BENCH — Seb's exact message (FNF 2026-10-28), full squad, empty bench" },
+  { id: "P6", who: "Ilkay", senderOffSquad: true, teamsGenerated: true, body: "@Match Time In", tagged: true, fullSquad: true, benched: null, expect: "WRITE BENCH — Seb's follow-up; P5 must land where this lands" },
+  { id: "P7", who: "Ilkay", senderOffSquad: true, teamsGenerated: true, body: "cuma boşum, lazım olursa", fullSquad: true, benched: null, expect: "WRITE BENCH — Turkish, full squad" },
+  { id: "P8", who: "Ilkay", senderOffSquad: true, teamsGenerated: true, body: "biri düşerse oynarım", fullSquad: true, benched: null, expect: "WRITE BENCH — Turkish, full squad" },
+  { id: "P9", who: "Ilkay", senderOffSquad: true, teamsGenerated: true, body: "my brother is free Friday if you need one", fullSquad: true, benched: null, expect: "NO write — a third party is never registered" },
+  { id: "P10", who: "Ilkay", senderOffSquad: true, teamsGenerated: true, body: "I'm free Friday", fullSquad: true, benched: null, expect: "WRITE BENCH — bare, full squad" },
+  { id: "P11", who: "Ilkay", senderOffSquad: true, teamsGenerated: true, body: "available to play if needed", fullSquad: true, benched: null, expect: "WRITE BENCH — full squad" },
+  { id: "P12", who: "Ilkay", body: "is it free this week?", expect: "NO write — the fee, not a place" },
 
   // ── S: the score route (§10 step 7 part 2) ────────────────────────
   //
@@ -1363,15 +1375,18 @@ function fillSquad(
   state: SquadState,
   include: string[],
   benchName: string | null,
+  /** Never fill this member in: the case's sender must be OFF the squad. */
+  skipUserId?: string,
 ): SquadState {
   const s = structuredClone(state);
   const taken = new Set(s.rows.map((r) => r.userId));
+  if (skipUserId && s.rows.some((r) => r.userId === skipUserId)) s.rows = s.rows.filter((r) => r.userId !== skipUserId);
   const bench = benchName === null ? null : memberByName(s.roster, benchName);
   const seed = include.map((n) => memberByName(s.roster, n));
 
   for (const m of [...seed, ...s.roster]) {
     if (s.rows.length >= s.maxPlayers) break;
-    if (taken.has(m.userId) || m.userId === bench?.userId) continue;
+    if (taken.has(m.userId) || m.userId === bench?.userId || m.userId === skipUserId) continue;
     taken.add(m.userId);
     s.rows.push({ userId: m.userId, status: "CONFIRMED", position: s.rows.length + 1 });
   }
@@ -2601,6 +2616,7 @@ async function main(): Promise<void> {
             // there is no bench, and nullish-coalescing would quietly
             // hand it the default bencher instead.
             c.benched === undefined ? FULL_SQUAD_BENCH : c.benched,
+            c.senderOffSquad ? sender.userId : undefined,
           )
         : structuredClone(base);
       if (c.alreadyAskedForGuestName) state.guestAskedUserIds = [sender.userId];
@@ -2658,7 +2674,7 @@ async function main(): Promise<void> {
         const claim = (r.facts[0]?.facts as { claims?: Array<Record<string, unknown>> })?.claims?.[0];
         console.log(
           claim
-            ? `  claim  : basis=${claim.basis} contingent=${claim.contingent} ` +
+            ? `  claim  : tense=${claim.tense} contingent=${claim.contingent} ` +
                 `conditionOn=${claim.conditionOn} polarity=${claim.polarity} ` +
                 `conf=${claim.confidence} -> ${r.engine.writes.length ? "WRITE" : "no write"}`
             : `  facts  : ${JSON.stringify(r.facts[0]?.facts ?? null)}`,

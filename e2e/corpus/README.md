@@ -275,7 +275,7 @@ describing different messages. Per claim those defaults are:
 
 ```
 subject "sender" · personRef "" · personNamed false · polarity "in"
-contingent false · conditionOn "none" · tense "present" · basis "decision"
+contingent false · conditionOn "none" · tense "present"
 reported false · confidence 0.95            … and per body: affirmation "none", sideRequests []
 ```
 

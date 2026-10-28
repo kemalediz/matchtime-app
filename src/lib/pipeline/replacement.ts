@@ -124,7 +124,6 @@ export interface FindStatedReplacementArgs {
 function isActionable(c: Claim, floor: number): boolean {
   if (c.confidence < floor) return false;
   if (c.tense === "past" || c.tense === "hypothetical") return false;
-  if (c.basis !== "decision") return false;
   if (c.contingent) return false;
   return true;
 }

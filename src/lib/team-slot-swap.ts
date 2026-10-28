@@ -356,7 +356,7 @@ function resolveSwapSideDetailed(query: string, roster: SwapCandidate[]): SideRe
 // teams not built) used to fall through, whole and silent, to the
 // attendance pipeline, and so did every UNTAGGED swap. The extractor
 // reads "swap David and Sait" as David leaving, with the same shape a
-// real drop has (`basis=decision polarity=out`). Measured live on the
+// real drop has (`polarity=out`, not contingent). Measured live on the
 // Sutton squad, REPEAT=10 (`scripts/dryrun-pipeline.ts`, TR26 / TR27):
 //
 //   "@Match Time swap David and Sait"          DROPPED David 10 of 10
@@ -372,7 +372,7 @@ function resolveSwapSideDetailed(query: string, roster: SwapCandidate[]): SideRe
 // purpose (rule 4: "moving, benching or swapping a named player"), and
 // every edit to that prompt carries the 373-message veto for a reason
 // written at the top of `router.ts`. The EXTRACTOR could be taught a
-// third `basis`, but a sentence of prose asking a model to tell "swap
+// new field, but a sentence of prose asking a model to tell "swap
 // David" from "drop David" is a probability, and the thing it protects
 // is the one error this product cannot afford. The ENGINE already holds
 // the message body and a deterministic parser for exactly this sentence

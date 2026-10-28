@@ -337,7 +337,7 @@ export function buildPasteNoMatchReply(p: { lang: string | null | undefined; nex
 // exactly as it would in the players' group (where a player's own injury
 // report rightly frees his place), and it replied "Nothing to change"
 // whenever the extractor had read ANY claim and nothing moved, whether the
-// engine had declined the claim (contingent, availability, past) or the
+// engine had declined the claim (contingent, past) or the
 // squad already said it.
 //
 // HQ is where the organisers talk. Silence is the default there, and only
@@ -355,8 +355,6 @@ export type AdminClaimHold =
   | "contingent"
   /** past or hypothetical: never a registration. */
   | "not-now"
-  /** reports what someone can do ("I'm injured"), not a decision. */
-  | "availability"
   /** relays what someone else said. */
   | "reported"
   /** below the engine's confidence floor. */
@@ -441,8 +439,7 @@ function isCommandClause(clause: string[], names: ReadonlySet<string>): boolean 
  * not applied; null when it is an explicit instruction.
  *
  * Every claim must be definite (not contingent, not past or hypothetical,
- * a decision rather than availability, not relayed, above the engine's
- * confidence floor). Then:
+ * not relayed, above the engine's confidence floor). Then:
  *
  *   - about the SENDER: a bare IN/OUT (`bareDeclaration`, the router's own
  *     floor), a stated wish for the bench, or a command naming them ("put
@@ -469,7 +466,6 @@ export function adminClaimHold(p: {
   if (c.contingent) return "contingent";
   if (c.tense === "past" || c.tense === "hypothetical") return "not-now";
   if (self && p.bareDeclaration) return null;
-  if (c.basis === "availability") return "availability";
   if (c.reported) return "reported";
   if (c.confidence < HQ_CONFIDENCE_FLOOR) return "unsure";
   if (!self && c.personRef && (p.listedNames ?? []).some((n) => fold(n) === fold(c.personRef))) return null;
@@ -619,7 +615,7 @@ function alreadySo(v: VettedClaim): boolean {
  * saying MatchTime could not tell who, and how to add someone. Never silence
  * for an organiser who asked.
  *
- * Anything else held (tentative, contingent, availability, past, relayed,
+ * Anything else held (tentative, contingent, past, relayed,
  * unsure, or any held claim not addressed to MatchTime): silence.
  */
 export function buildAdminSquadReply(p: {

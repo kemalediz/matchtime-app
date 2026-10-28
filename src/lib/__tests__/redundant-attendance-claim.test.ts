@@ -80,7 +80,6 @@ const CAPTURED_SELF_OUT = {
       contingent: false,
       conditionOn: "none",
       tense: "present",
-      basis: "decision",
       reported: false,
       replaces: "",
       confidence: 0.9,

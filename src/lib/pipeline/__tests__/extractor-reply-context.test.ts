@@ -139,7 +139,7 @@ async function attendanceRun(reply: EngineBatchMessage["reply"]) {
 }
 
 const SELF_IN = JSON.stringify({
-  claims: [{ subject: "sender", personRef: "", personNamed: false, polarity: "in", contingent: false, conditionOn: "none", tense: "present", basis: "decision", reported: false, replaces: "", confidence: 0.95 }],
+  claims: [{ subject: "sender", personRef: "", personNamed: false, polarity: "in", contingent: false, conditionOn: "none", tense: "present", reported: false, replaces: "", confidence: 0.95 }],
   affirmation: "none",
   sideRequests: [],
 });

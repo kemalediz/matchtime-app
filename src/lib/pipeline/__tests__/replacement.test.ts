@@ -47,7 +47,6 @@ function claim(partial: Partial<Claim> = {}): Claim {
     contingent: false,
     conditionOn: "none",
     tense: "present",
-    basis: "decision",
     reported: false,
     confidence: 0.95,
     ...partial,
@@ -191,10 +190,6 @@ describe("findStatedReplacement: the vetoes every other claim gets", () => {
   it("refuses a past or hypothetical claim", () => {
     expect(find(incidentClaims({ in: { tense: "past" } }))).toBeNull();
     expect(find(incidentClaims({ out: { tense: "hypothetical" } }))).toBeNull();
-  });
-
-  it("refuses an availability statement dressed as an arrival", () => {
-    expect(find(incidentClaims({ in: { basis: "availability" } }))).toBeNull();
   });
 
   it("accepts a future commitment", () => {
