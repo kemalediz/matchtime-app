@@ -52,7 +52,8 @@ import { poolAutoRound } from "./pool/auto-ask-rules";
 import { poolHqAskReply, type PoolRefusalContext } from "./pool/offer-copy";
 import { isPoolOffersEnabled } from "./pool/flags";
 import { settingsAnchorPath } from "./help-links";
-import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS, parseCutoffHours } from "./club-partnership-rules";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "./club-partnership-rules";
+import { loadPartnerAskSettings } from "./club-partnership";
 import { poolNoticeBand } from "./pool/panel";
 import { placesOpenOf, requestPoolAsk } from "./pool/round";
 
@@ -128,9 +129,17 @@ export async function askPoolFromWords(args: {
 /** What a refusal needs to say what to do next: the club's name, the
  *  cut-off, whether only the club's own switch is off, and the links. */
 async function refusalContext(orgId: string, lang: string | null, kickoff: Date, env?: Env): Promise<PoolRefusalContext> {
-  let org: { name: string; featurePlayerPool: boolean; partnerAskCutoffHours: number | null } | null = null;
+  // The club's name and pool switch here; its cut-off through the one reader
+  // of the asking club's settings (`club-partnership.ts`, which owns them).
+  let org: { name: string; featurePlayerPool: boolean } | null = null;
+  let cutoffHours = PARTNER_ASK_CUTOFF_DEFAULT_HOURS;
   try {
-    org = await db.organisation.findUnique({ where: { id: orgId }, select: { name: true, featurePlayerPool: true, partnerAskCutoffHours: true } });
+    const [o, settings] = await Promise.all([
+      db.organisation.findUnique({ where: { id: orgId }, select: { name: true, featurePlayerPool: true } }),
+      loadPartnerAskSettings(orgId),
+    ]);
+    org = o;
+    cutoffHours = settings?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS;
   } catch (err) {
     // The reply still goes, without the club's name and with the default cut-off.
     console.error(`[pool-ask-words] ${orgId}: reading the club for the reply failed:`, err instanceof Error ? err.message : "failed");
@@ -138,7 +147,7 @@ async function refusalContext(orgId: string, lang: string | null, kickoff: Date,
   return {
     club: org?.name ?? "",
     day: dayCommaTimeLabel(lang, kickoff),
-    cutoffHours: parseCutoffHours(org?.partnerAskCutoffHours) ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
+    cutoffHours,
     clubSwitchOff: !!org && org.featurePlayerPool !== true && isPoolOffersEnabled(env ?? process.env),
     links: {
       // The weekly game's venue is the one the pool measures from
