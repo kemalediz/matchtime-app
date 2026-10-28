@@ -2881,7 +2881,7 @@ export const en = {
   /** To the organiser, once, when the owner approves (2026-10-01: a short
    *  checklist). Each URL is the organiser's own signed-in link to that
    *  page, so this DM goes to the organiser only. Without billing the one
-   *  pricing sentence is "Your first two months are free." (the length comes
+   *  pricing sentence is "Your first three months are free." (the length comes
    *  from `FREE_PERIOD_MONTHS`, i18n/free-period.ts), never an amount, and
    *  it ends the DM. For a BILLED club (club fee billing slice B2:
    *  BILLING_ENABLED on and the plan not Free) `tip` is the
@@ -3560,7 +3560,7 @@ export const en = {
   //    MDs/club-fee-billing-plan-2026-10-01.md, sections 7.2 and 8. The
   //    numbers come from `clubFeeTip` (club-billing-rules.ts) and are
   //    formatted by club-billing-view.ts: `price`, `fee` and `feePlus` like
-  //    "£9.99" and "£8.25", `share` like "25p" (or "£1.05"), `format` from
+  //    "£4.99" and "£8.15", `share` like "25p" (or "£1.05"), `format` from
   //    `sj_per_side_option`. The tip only ever says what to CHARGE, never
   //    how players pay, so it reads right for a club that pays by bank
   //    transfer. Nothing here goes to players. ──
@@ -3585,7 +3585,7 @@ export const en = {
         ? `Your game is ${p.fee} each, so charging *${p.feePlus}* covers it.`
         : `If your game costs ${p.fee} each, charge *${p.feePlus}* and the club fee is covered.`) +
     ` Weeks you don't play cost nothing.`,
-  /** The short tip after "Your first two months are free." in `sj_dm_approved`,
+  /** The short tip after "Your first three months are free." in `sj_dm_approved`,
    *  only for a club that is billed. */
   sj_dm_approved_tip: (p: {
     players: number;
@@ -4654,7 +4654,7 @@ export const en = {
   mpy_admin_price_ask: (p: { month: string; regulars: number; payg: number; link: string; tip: string | null }): string =>
     `📋 ${p.month} list: ${p.regulars} ${p.regulars === 1 ? "regular" : "regulars"}, ${p.payg} PAYG so far. Set the price: ${p.link}` +
     (p.tip ? `\n\n${p.tip}` : ""),
-  /** The club fee, in month terms. Amounts are labels: "£9.99", "20p", "£1". */
+  /** The club fee, in month terms. Amounts are labels: "£4.99", "20p", "£1". */
   mpy_fee_tip: (p: { price: string; regulars: number; games: number; perGame: string; perMonth: string }): string =>
     `MatchTime charges the club up to ${p.price} a month, only for games played. For ${p.regulars} regulars and ${p.games} games, ` +
     `adding ${p.perGame} a game (${p.perMonth} for the month) to each regular's share covers it.`,

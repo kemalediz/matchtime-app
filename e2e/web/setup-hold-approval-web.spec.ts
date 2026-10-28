@@ -113,7 +113,7 @@ test("Approve with the hold on: the club is held and silent, the page says so, o
     /^Good news: Riverside FC is approved\. I'm in "Riverside Tuesday 5s" and I'm staying quiet there until you tell me to start\./,
   );
   expect(dm.text).toContain("reply *GO* here");
-  expect(dm.text).toContain("Your first two months are free. The free period starts when I go live in the group.");
+  expect(dm.text).toContain("Your first three months are free. The free period starts when I go live in the group.");
   expect(await db.one(`SELECT ("setupAskedAt" IS NOT NULL) AS asked FROM "Organisation" WHERE id = $1`, [ORG])).toEqual({ asked: true });
 });
 

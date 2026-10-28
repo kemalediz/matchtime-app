@@ -57,7 +57,7 @@ const dbMock = h.m;
 // Approved Thu 1 Oct 2026, 10:00 London; live Tue 20 Oct 2026, 19:30 London.
 const APPROVED = new Date("2026-10-01T09:00:00Z");
 const LIVE = new Date("2026-10-20T18:30:00Z");
-const FREE_UNTIL = new Date("2026-12-20T19:30:00Z");
+const FREE_UNTIL = new Date("2027-01-20T19:30:00Z"); // three months on
 
 const ENV = process.env.BILLING_ENABLED;
 afterEach(() => {
@@ -120,7 +120,7 @@ beforeEach(() => {
 });
 
 describe("went-live: a held club's free period starts at go-live", () => {
-  it("approved 1 October, live 20 October: free from 20 October until 20 December (London)", async () => {
+  it("approved 1 October, live 20 October: free from 20 October until 20 January (London)", async () => {
     expect(await setBillingState("org", { type: "went-live" }, LIVE)).toEqual({ ok: true, from: "exempt", to: "trial", resumed: false });
     expect(dbMock.clubBilling.create).toHaveBeenCalledTimes(1);
     expect(dbMock.clubBilling.create).toHaveBeenCalledWith({ data: { orgId: "org", trialStartedAt: LIVE, trialEndsAt: FREE_UNTIL } });
@@ -250,19 +250,19 @@ describe("a club that is still setting up has no free period", () => {
 });
 
 describe("a club that was never held keeps today's dates exactly", () => {
-  it("approved 1 October with no go-live stamp: free from the approval until 1 December", async () => {
+  it("approved 1 October with no go-live stamp: free from the approval until 1 January", async () => {
     setRow({ liveAt: null });
     expect(await setBillingState("org", { type: "approved" }, new Date("2026-10-01T09:00:02Z"))).toMatchObject({ ok: true, to: "trial" });
     expect(dbMock.clubBilling.create).toHaveBeenCalledWith({
-      data: { orgId: "org", trialStartedAt: APPROVED, trialEndsAt: new Date("2026-12-01T10:00:00Z") },
+      data: { orgId: "org", trialStartedAt: APPROVED, trialEndsAt: new Date("2027-01-01T10:00:00Z") },
     });
   });
 
   it("the owner's Start free period still starts NOW, held or not", async () => {
     const now = new Date("2026-11-03T12:00:00Z");
     const r = await startTrial("org", now);
-    expect(r).toEqual({ ok: true, trialEndsAt: new Date("2027-01-03T12:00:00Z") });
-    expect(dbMock.clubBilling.create).toHaveBeenCalledWith({ data: { orgId: "org", trialStartedAt: now, trialEndsAt: new Date("2027-01-03T12:00:00Z") } });
+    expect(r).toEqual({ ok: true, trialEndsAt: new Date("2027-02-03T12:00:00Z") });
+    expect(dbMock.clubBilling.create).toHaveBeenCalledWith({ data: { orgId: "org", trialStartedAt: now, trialEndsAt: new Date("2027-02-03T12:00:00Z") } });
   });
 });
 

@@ -5,7 +5,7 @@
  *   - `clubFeeTip`: the club fee tip's numbers (7.2 table, rounding up to
  *     the next 5p, 4 games per weekly slot, the example fee).
  *   - `parsePlanChoice`: the platform owner's plan control (Standard,
- *     Free, Custom GBP 1.00 to GBP 9.99).
+ *     Free, Custom GBP 1.00 to GBP 4.99).
  *   - `billingAccessRole`: who may open /billing/[orgId] and as what.
  *
  * No database, no clock, no model.
@@ -41,9 +41,9 @@ function act(over: Partial<TipActivity> = {}): TipActivity {
 const billed = { status: "trial", plan: "standard", pricePence: null } as const;
 
 describe("planPricePence", () => {
-  it("Standard is GBP 9.99, Custom its own price, Free nothing", () => {
-    expect(STANDARD_PRICE_PENCE).toBe(999);
-    expect(planPricePence("standard", null)).toBe(999);
+  it("Standard is GBP 4.99 (Kemal, 2026-10-28; it was GBP 9.99), Custom its own price, Free nothing", () => {
+    expect(STANDARD_PRICE_PENCE).toBe(499);
+    expect(planPricePence("standard", null)).toBe(499);
     expect(planPricePence("custom", 500)).toBe(500);
     expect(planPricePence("free", null)).toBeNull();
     // A custom row without a price cannot exist (CHECK), but never guess one.
@@ -52,35 +52,35 @@ describe("planPricePence", () => {
 });
 
 describe("clubFeeTip: the numbers (7.2)", () => {
-  it("5-a-side, GBP 9.99: 10 players, 4 games, 24.98p rounds up to 25p; GBP 8 example charges GBP 8.25", () => {
+  it("5-a-side, GBP 4.99: 10 players, 4 games, 12.48p rounds up to 15p; GBP 8 example charges GBP 8.15", () => {
     const tip = clubFeeTip({ ...billed, activities: [act({ playersPerTeam: 5 })] });
     expect(tip).toMatchObject({
-      pricePence: 999,
+      pricePence: 499,
       perSide: 5,
       players: 10,
       games: 4,
-      perGamePence: 250,
-      sharePence: 25,
+      perGamePence: 125,
+      sharePence: 15,
       feePence: 800,
-      feePlusPence: 825,
+      feePlusPence: 815,
       feeSource: "example",
       split: false,
     });
   });
 
-  it("7-a-side, GBP 9.99: 14 players, 17.84p rounds up to 20p", () => {
+  it("7-a-side, GBP 4.99: 14 players, 8.91p rounds up to 10p", () => {
     const tip = clubFeeTip({ ...billed, activities: [act({ playersPerTeam: 7, feePerPlayer: 7 })] });
-    expect(tip).toMatchObject({ players: 14, games: 4, sharePence: 20, feePence: 700, feePlusPence: 720, feeSource: "own" });
+    expect(tip).toMatchObject({ players: 14, games: 4, sharePence: 10, feePence: 700, feePlusPence: 710, feeSource: "own" });
   });
 
-  it("8-a-side, GBP 9.99: 16 players, 15.6p rounds up to 20p", () => {
+  it("8-a-side, GBP 4.99: 16 players, 7.8p rounds up to 10p", () => {
     const tip = clubFeeTip({ ...billed, activities: [act({ playersPerTeam: 8 })] });
-    expect(tip).toMatchObject({ players: 16, sharePence: 20 });
+    expect(tip).toMatchObject({ players: 16, sharePence: 10 });
   });
 
-  it("9-a-side, GBP 9.99: 18 players, 13.88p rounds up to 15p; GBP 6 game charges GBP 6.15", () => {
+  it("9-a-side, GBP 4.99: 18 players, 6.93p rounds up to 10p; GBP 6 game charges GBP 6.10", () => {
     const tip = clubFeeTip({ ...billed, activities: [act({ playersPerTeam: 9, feePerPlayer: 6 })] });
-    expect(tip).toMatchObject({ players: 18, sharePence: 15, feePence: 600, feePlusPence: 615 });
+    expect(tip).toMatchObject({ players: 18, sharePence: 10, feePence: 600, feePlusPence: 610 });
   });
 
   it("Custom GBP 5 on a 5-a-side: 12.5p rounds up to 15p; GBP 8 charges GBP 8.15", () => {
@@ -111,8 +111,8 @@ describe("clubFeeTip: the numbers (7.2)", () => {
       ...billed,
       activities: [act({ dayOfWeek: 2, playersPerTeam: 5 }), act({ dayOfWeek: 4, playersPerTeam: 7 })],
     });
-    // 999 / 96 = 10.4p, up to 15p.
-    expect(tip).toMatchObject({ games: 8, sharePence: 15 });
+    // 499 / 96 = 5.2p, up to 10p.
+    expect(tip).toMatchObject({ games: 8, sharePence: 10 });
   });
 
   it("a format-switch pair on the same evening (within 90 minutes) counts once", () => {
@@ -168,17 +168,19 @@ describe("parsePlanChoice: the platform owner's plan control", () => {
     expect(parsePlanChoice({ plan: "free", price: "5" })).toEqual({ ok: true, plan: "free", pricePence: null });
   });
 
-  it("Custom takes pounds and pence, GBP 1.00 to GBP 9.99", () => {
+  it("Custom takes pounds and pence, GBP 1.00 up to the Standard price, GBP 4.99", () => {
     expect(CUSTOM_PRICE_MIN_PENCE).toBe(100);
-    expect(CUSTOM_PRICE_MAX_PENCE).toBe(999);
-    expect(parsePlanChoice({ plan: "custom", price: "5" })).toEqual({ ok: true, plan: "custom", pricePence: 500 });
-    expect(parsePlanChoice({ plan: "custom", price: "£5.50" })).toEqual({ ok: true, plan: "custom", pricePence: 550 });
+    expect(CUSTOM_PRICE_MAX_PENCE).toBe(499);
+    // A custom price is a discount: never above Standard.
+    expect(CUSTOM_PRICE_MAX_PENCE).toBe(STANDARD_PRICE_PENCE);
+    expect(parsePlanChoice({ plan: "custom", price: "3" })).toEqual({ ok: true, plan: "custom", pricePence: 300 });
+    expect(parsePlanChoice({ plan: "custom", price: "£3.50" })).toEqual({ ok: true, plan: "custom", pricePence: 350 });
     expect(parsePlanChoice({ plan: "custom", price: " 1.00 " })).toEqual({ ok: true, plan: "custom", pricePence: 100 });
-    expect(parsePlanChoice({ plan: "custom", price: "9.99" })).toEqual({ ok: true, plan: "custom", pricePence: 999 });
+    expect(parsePlanChoice({ plan: "custom", price: "4.99" })).toEqual({ ok: true, plan: "custom", pricePence: 499 });
   });
 
   it("Custom outside the range, or not a price, is refused", () => {
-    for (const price of ["0.99", "10", "10.00", "0", "-5", "abc", "", "5.555", "5.5.5", undefined]) {
+    for (const price of ["0.99", "5", "5.00", "9.99", "10", "10.00", "0", "-5", "abc", "", "5.555", "5.5.5", undefined]) {
       expect(parsePlanChoice({ plan: "custom", price })).toMatchObject({ ok: false });
     }
   });

@@ -36,12 +36,15 @@ export type PausedReason = (typeof PAUSED_REASONS)[number];
 
 /**
  * A new club's free period, in London calendar months, from the day it
- * goes live (`freePeriodStart` below) (Kemal, 2026-10-12: two months; it
- * was 30 days). THE one definition of the length: `freePeriodEnd` below
- * turns it into the end date, and every sentence that states it is built
- * from it in i18n/free-period.ts.
+ * goes live (`freePeriodStart` below) (Kemal, 2026-10-28: three months; two
+ * from 2026-10-12, and 30 days before that). THE one definition of the
+ * length: `freePeriodEnd` below turns it into the end date, and every
+ * sentence that states it is built from it in i18n/free-period.ts. A club
+ * whose free period started on an older length keeps its stored
+ * `trialEndsAt` until `extendedFreePeriodEnd` below moves it
+ * (scripts/extend-free-periods.ts).
  */
-export const FREE_PERIOD_MONTHS = 2;
+export const FREE_PERIOD_MONTHS = 3;
 /** Grace after the free period (no card) or after a failed payment. */
 export const GRACE_DAYS = 7;
 /**
@@ -161,6 +164,31 @@ export function freePeriodStart(org: { approvedAt: Date | null | undefined; live
 
 export function trialWindow(start: Date): { trialStartedAt: Date; trialEndsAt: Date } {
   return { trialStartedAt: start, trialEndsAt: freePeriodEnd(start) };
+}
+
+/**
+ * THE FREE PERIOD GROWS FOR A CLUB ALREADY IN IT (Kemal, 2026-10-28: "make
+ * the trial 3 months everywhere"). `trialEndsAt` is stored when a free
+ * period starts, so a club that started on a shorter length keeps it
+ * until its row is moved. The new end, or null to leave the row alone:
+ *
+ *   - the current length from the SAME start (`trialStartedAt`), so the
+ *     club ends where a club starting that day today would;
+ *   - only while the free period is still running (`now` before the
+ *     stored end): one that is over stays over, a grace week included;
+ *   - only for a club never billed (no ClubBillingMonth row: month 1 opens
+ *     at `trialEndsAt`, so a row means the free period has ended);
+ *   - never earlier than the stored end, and idempotent.
+ */
+export function extendedFreePeriodEnd(
+  club: { trialStartedAt: Date; trialEndsAt: Date; billingMonths: number },
+  now: Date,
+  months: number = FREE_PERIOD_MONTHS,
+): Date | null {
+  if (club.billingMonths > 0) return null;
+  if (now.getTime() >= club.trialEndsAt.getTime()) return null;
+  const end = freePeriodEnd(club.trialStartedAt, months);
+  return end.getTime() > club.trialEndsAt.getTime() ? end : null;
 }
 
 export function graceEndsFrom(from: Date): Date {
@@ -519,11 +547,19 @@ export function billingContact(
 
 // ── Prices and the plan control (slice B2, 8.3; decisions 9 and 13) ─────
 
-/** Standard plan: GBP 9.99 a month, VAT included. */
-export const STANDARD_PRICE_PENCE = 999;
-/** Custom plan range (the CHECK constraint holds the same line). */
+/** Standard plan: GBP 4.99 a month at most, VAT included (Kemal,
+ *  2026-10-28; it was GBP 9.99). Every sentence that states it reads
+ *  club-price-words.ts. A month opened before the change closes at the
+ *  lower of its opening price and this one (`monthFee`). */
+export const STANDARD_PRICE_PENCE = 499;
+/**
+ * Custom plan range: GBP 1.00 up to the Standard price (a custom price is
+ * a discount). The CHECK constraint (prisma/sql/org-billing-check.sql)
+ * still allows up to 999 so a custom price saved before 2026-10-28 stays a
+ * valid row; the plan control refuses anything above this line.
+ */
 export const CUSTOM_PRICE_MIN_PENCE = 100;
-export const CUSTOM_PRICE_MAX_PENCE = 999;
+export const CUSTOM_PRICE_MAX_PENCE = STANDARD_PRICE_PENCE;
 
 /** The monthly price a plan charges, or null for Free (and for a custom
  *  plan with no price, which the CHECK constraint forbids anyway). */
@@ -539,7 +575,7 @@ export type PlanChoice =
 
 /**
  * The platform owner's plan control, parsed. Custom takes pounds as typed
- * ("5", "5.50", "£5.50"), GBP 1.00 to GBP 9.99, whole pence. Standard and
+ * ("3", "3.50", "£3.50"), GBP 1.00 to GBP 4.99, whole pence. Standard and
  * Free ignore any price.
  */
 export function parsePlanChoice(input: { plan: string; price?: string | null }): PlanChoice {
@@ -600,7 +636,7 @@ export interface ClubFeeTip {
   games: number;
   /** Slice P3 (games played): the most one game played costs the club,
    *  the monthly price over the month's games, rounded UP to the penny
-   *  (GBP 2.50 for GBP 9.99 and one weekly game). */
+   *  (GBP 1.25 for GBP 4.99 and one weekly game). */
   perGamePence: number;
   /** The share per player per game, rounded up to the next 5p. */
   sharePence: number;

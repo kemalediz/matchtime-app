@@ -128,22 +128,22 @@ describe("past months (8.1)", () => {
 describe("state lines: no flat fee left (8.1)", () => {
   it("trial: only the games played, up to the price", () => {
     expect(billingStateLines("en", state({ status: "trial", cardHolderUserId: null, cardLast4: null, trialEndsAt: new Date("2026-10-31T09:00:00Z") }))).toEqual([
-      "Free until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group.",
+      "Free until Sat 31 Oct. After that you only pay for the games you play, up to £4.99 a month for the whole group.",
     ]);
     expect(billingStateLines("tr", state({ status: "trial", cardHolderUserId: null, cardLast4: null, trialEndsAt: new Date("2026-10-31T09:00:00Z") }))).toEqual([
-      "31 Ekim Cumartesi tarihine kadar ücretsiz. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla £9.99.",
+      "31 Ekim Cumartesi tarihine kadar ücretsiz. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla £4.99.",
     ]);
   });
 
   it("subscribed: up to the price, the next charge, the card to its holder only", () => {
     expect(billingStateLines("en", state())).toEqual([
-      "Only the games played are charged, up to £9.99 a month. Next charge Tue 1 Dec.",
+      "Only the games played are charged, up to £4.99 a month. Next charge Tue 1 Dec.",
       "Card Visa ending 4242.",
     ]);
     expect(billingStateLines("en", state({ role: "viewer", viewerUserId: "admin" }))).toEqual([
-      "Only the games played are charged, up to £9.99 a month. Next charge Tue 1 Dec.",
+      "Only the games played are charged, up to £4.99 a month. Next charge Tue 1 Dec.",
     ]);
-    expect(billingStateLines("tr", state())[0]).toBe("Yalnızca oynanan maçlar için ücret alınır, ayda en fazla £9.99. Sonraki ödeme 1 Aralık Salı.");
+    expect(billingStateLines("tr", state())[0]).toBe("Yalnızca oynanan maçlar için ücret alınır, ayda en fazla £4.99. Sonraki ödeme 1 Aralık Salı.");
   });
 
   it("subscribed inside the free month: card saved, nothing taken until the first charge", () => {
@@ -157,7 +157,7 @@ describe("state lines: no flat fee left (8.1)", () => {
 
   it("someone else's card, to the new contact", () => {
     expect(billingStateLines("en", state({ cardHolderUserId: "old", cardHolderName: "Elvin" }))).toEqual([
-      "Paid with Elvin's card until you put yours on. Only the games played are charged, up to £9.99 a month. Next charge Tue 1 Dec.",
+      "Paid with Elvin's card until you put yours on. Only the games played are charged, up to £4.99 a month. Next charge Tue 1 Dec.",
     ]);
   });
 

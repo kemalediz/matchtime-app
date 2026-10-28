@@ -1,6 +1,7 @@
 /**
- * CLUB FEE BILLING: the free period is TWO London calendar months
- * (Kemal, 2026-10-12; it was 30 days of 24 hours).
+ * CLUB FEE BILLING: the free period is THREE London calendar months
+ * (Kemal, 2026-10-28: "make the trial 3 months everywhere"; two months from
+ * 2026-10-12, and 30 days of 24 hours before that).
  *
  * One constant, `FREE_PERIOD_MONTHS`, and one function, `freePeriodEnd`,
  * decide the length. Everything else reads the stored `trialEndsAt` or
@@ -22,14 +23,25 @@ import { tr } from "../i18n/strings.tr";
 
 const ON = { BILLING_ENABLED: "1" };
 const london = (d: Date) => formatLondon(d, "yyyy-MM-dd HH:mm:ss.SSS");
-const end = (iso: string) => freePeriodEnd(new Date(iso));
+// The calendar arithmetic is pinned on a two month length (any length runs
+// the same code); the default length has its own cases below.
+const end = (iso: string) => freePeriodEnd(new Date(iso), 2);
 
 describe("the one constant", () => {
-  it("is two months", () => {
-    expect(FREE_PERIOD_MONTHS).toBe(2);
+  it("is three months", () => {
+    expect(FREE_PERIOD_MONTHS).toBe(3);
   });
 
-  it("trialWindow starts where it is told and ends two months on", () => {
+  it("the default is three months: a club live today (Wed 28 Oct 2026, 19:00 GMT) is free until Thu 28 Jan 2027, 19:00", () => {
+    const start = new Date("2026-10-28T19:00:00Z");
+    expect(freePeriodEnd(start).toISOString()).toBe("2027-01-28T19:00:00.000Z");
+    expect(freePeriodEnd(start)).toEqual(freePeriodEnd(start, 3));
+    // 30 Nov ends 28 Feb (clamped); 31 Oct ends 31 Jan.
+    expect(freePeriodEnd(new Date("2026-11-30T10:00:00Z")).toISOString()).toBe("2027-02-28T10:00:00.000Z");
+    expect(freePeriodEnd(new Date("2026-10-31T10:00:00Z")).toISOString()).toBe("2027-01-31T10:00:00.000Z");
+  });
+
+  it("trialWindow starts where it is told and ends three months on", () => {
     const start = new Date("2026-10-12T13:45:10.250Z");
     expect(trialWindow(start)).toEqual({ trialStartedAt: start, trialEndsAt: freePeriodEnd(start) });
     expect(trialWindow(start).trialStartedAt).toBe(start);
@@ -37,12 +49,12 @@ describe("the one constant", () => {
 });
 
 describe("freePeriodEnd: London calendar months, the same London date and time", () => {
-  it("a club approved today (Mon 12 Oct 2026, 14:45 BST) is free until Sat 12 Dec, 14:45 GMT", () => {
+  it("a club approved on Mon 12 Oct 2026, 14:45 BST is free until Tue 12 Jan 2027, 14:45 GMT", () => {
     const start = new Date("2026-10-12T13:45:10.250Z");
     expect(london(start)).toBe("2026-10-12 14:45:10.250");
-    expect(london(freePeriodEnd(start))).toBe("2026-12-12 14:45:10.250");
-    // The clocks go back inside the period, so it is 61 days and one hour.
-    expect(freePeriodEnd(start).toISOString()).toBe("2026-12-12T14:45:10.250Z");
+    expect(london(freePeriodEnd(start))).toBe("2027-01-12 14:45:10.250");
+    // The clocks go back inside the period, so it is 92 days and one hour.
+    expect(freePeriodEnd(start).toISOString()).toBe("2027-01-12T14:45:10.250Z");
   });
 
   it("mid-month, no clock change inside: the same UTC time two months on", () => {
@@ -82,7 +94,7 @@ describe("freePeriodEnd: London calendar months, the same London date and time",
   it("the London date decides, not the UTC date (23:30 UTC on 30 Jun is 00:30 on 1 Jul in London)", () => {
     const start = new Date("2026-06-30T23:30:00Z");
     expect(london(start)).toBe("2026-07-01 00:30:00.000");
-    expect(london(freePeriodEnd(start))).toBe("2026-09-01 00:30:00.000");
+    expect(london(freePeriodEnd(start, 2))).toBe("2026-09-01 00:30:00.000");
   });
 
   it("across the March clock change: same London time, one hour shorter", () => {
@@ -120,13 +132,13 @@ describe("freePeriodEnd: London calendar months, the same London date and time",
     expect(end("2026-10-25T12:00:00Z").toISOString()).toBe("2026-12-25T12:00:00.000Z");
   });
 
-  it("is always longer than 58 days and never longer than 62 days and an hour", () => {
+  it("is always at least 89 days less an hour and never longer than 92 days and an hour", () => {
     const DAY = 24 * 60 * 60 * 1000;
     for (let i = 0; i < 800; i++) {
       const start = new Date(Date.UTC(2026, 0, 1, 0, 0) + i * (DAY + 37 * 60 * 1000));
       const len = freePeriodEnd(start).getTime() - start.getTime();
-      expect(len).toBeGreaterThanOrEqual(59 * DAY - 60 * 60 * 1000);
-      expect(len).toBeLessThanOrEqual(62 * DAY + 60 * 60 * 1000);
+      expect(len).toBeGreaterThanOrEqual(89 * DAY - 60 * 60 * 1000);
+      expect(len).toBeLessThanOrEqual(92 * DAY + 60 * 60 * 1000);
     }
   });
 
@@ -169,6 +181,18 @@ describe("the last free day and the first billed day", () => {
     expect(feeTipDue(sched(), new Date("2026-11-12T12:00:00Z"))).toBeNull();
   });
 
+  it("the old two month end (Sat 12 Dec) is still free: nothing is due and nothing moves", () => {
+    const oldEnd = freePeriodEnd(APPROVED, 2);
+    expect(oldEnd.toISOString()).toBe("2026-12-12T14:45:00.000Z");
+    expect(billingTransitionDue(sched(), oldEnd)).toBeNull();
+    expect(nextBillingState(club(), { type: "trial-ended" }, oldEnd, ON)).toBeNull();
+    expect(monthsToOpen(trialEndsAt, 0, oldEnd)).toEqual([]);
+    expect(aiAllowanceUsd({
+      createdAt: new Date("2026-10-01T00:00:00Z"), aiDailyCapUsd: null, aiWindowStartAt: null, whatsappBotEnabled: true,
+      whatsappGroupId: "g@g.us", approvalStatus: "approved", approvedAt: APPROVED, billingStatus: "trial",
+    }, oldEnd)).toBe(NEW_CLUB_CAP_USD);
+  });
+
   it("one millisecond before the end: still free", () => {
     expect(billingTransitionDue(sched(), justBefore)).toBeNull();
     expect(nextBillingState(club(), { type: "trial-ended" }, justBefore, ON)).toBeNull();
@@ -183,8 +207,8 @@ describe("the last free day and the first billed day", () => {
     expect(monthsToOpen(trialEndsAt, 0, trialEndsAt)).toEqual([1]);
     const m1 = monthBounds(trialEndsAt, 1);
     expect(m1.startsAt).toEqual(trialEndsAt);
-    // Month 1 runs from Sat 12 Dec 14:45 to 00:00 London on Tue 12 Jan.
-    expect(m1.endsAt.toISOString()).toBe("2027-01-12T00:00:00.000Z");
+    // Month 1 runs from Tue 12 Jan 14:45 to 00:00 London on Fri 12 Feb.
+    expect(m1.endsAt.toISOString()).toBe("2027-02-12T00:00:00.000Z");
   });
 
   it("a card on file at the end: billed with it, month 1 from the same instant", () => {
@@ -192,9 +216,9 @@ describe("the last free day and the first billed day", () => {
     expect(nextBillingState(withCard, { type: "trial-ended" }, trialEndsAt, ON)).toMatchObject({ to: "subscribed" });
   });
 
-  it("games played in month two are free: no billing month contains them", () => {
-    // Weekly games on Tuesdays at 20:00 London, all through month two.
-    for (const iso of ["2026-11-17T20:00:00Z", "2026-11-24T20:00:00Z", "2026-12-01T20:00:00Z", "2026-12-08T20:00:00Z"]) {
+  it("games played in months two and three are free: no billing month contains them", () => {
+    // Weekly games on Tuesdays at 20:00 London, all through months two and three.
+    for (const iso of ["2026-11-17T20:00:00Z", "2026-11-24T20:00:00Z", "2026-12-01T20:00:00Z", "2026-12-08T20:00:00Z", "2026-12-15T20:00:00Z", "2026-12-29T20:00:00Z", "2027-01-05T20:00:00Z"]) {
       const kickoff = new Date(iso);
       expect(kickoff.getTime()).toBeLessThan(trialEndsAt.getTime());
       expect(monthIndexAt(trialEndsAt, kickoff)).toBe(0);
@@ -202,33 +226,33 @@ describe("the last free day and the first billed day", () => {
       const m1 = monthBounds(trialEndsAt, 1);
       expect(kickoff.getTime()).toBeLessThan(m1.startsAt.getTime());
     }
-    // The first Tuesday after the end is the first game that can be charged.
-    expect(monthIndexAt(trialEndsAt, new Date("2026-12-15T20:00:00Z"))).toBe(1);
+    // The first Tuesday after the end (the end is 14:45 that day) is the first game that can be charged.
+    expect(monthIndexAt(trialEndsAt, new Date("2027-01-12T20:00:00Z"))).toBe(1);
   });
 
-  it("a card saved in month two changes nothing: Stop paying there goes back to the free period", () => {
+  it("a card saved in month three changes nothing: Stop paying there goes back to the free period", () => {
     const paying = club({ billingStatus: "subscribed", billing: { trialEndsAt, graceEndsAt: null, pausedReason: null, hasCard: true } });
-    const monthTwo = new Date("2026-12-01T12:00:00Z");
+    const monthTwo = new Date("2027-01-01T12:00:00Z");
     expect(nextBillingState(paying, { type: "billing-stopped" }, monthTwo, ON)).toMatchObject({ to: "trial" });
   });
 
   it("the card reminders count back from the end: 9 and 2 London days before, when the message hours open (09:00)", () => {
-    expect(london(reminderAt(trialEndsAt, 9))).toBe("2026-12-03 09:00:00.000");
-    expect(london(reminderAt(trialEndsAt, 2))).toBe("2026-12-10 09:00:00.000");
+    expect(london(reminderAt(trialEndsAt, 9))).toBe("2027-01-03 09:00:00.000");
+    expect(london(reminderAt(trialEndsAt, 2))).toBe("2027-01-10 09:00:00.000");
     const key = trialEndsAt.toISOString();
-    // Wed 2 Dec, in the daytime: a day early, nothing.
-    expect(billingDmsDue(sched(), new Date("2026-12-02T12:00:00Z"), { trial21Delivered: false })).toEqual([]);
-    expect(billingDmsDue(sched(), new Date("2026-12-03T08:59:00Z"), { trial21Delivered: false })).toEqual([]);
-    expect(billingDmsDue(sched(), new Date("2026-12-03T09:00:00Z"), { trial21Delivered: false })).toEqual([
+    // Sat 2 Jan, in the daytime: a day early, nothing.
+    expect(billingDmsDue(sched(), new Date("2027-01-02T12:00:00Z"), { trial21Delivered: false })).toEqual([]);
+    expect(billingDmsDue(sched(), new Date("2027-01-03T08:59:00Z"), { trial21Delivered: false })).toEqual([]);
+    expect(billingDmsDue(sched(), new Date("2027-01-03T09:00:00Z"), { trial21Delivered: false })).toEqual([
       { kind: "trial-21", cycleKey: key, withTip: true },
     ]);
-    // Wed 9 Dec: still the first reminder's days, the second is not due yet.
-    expect(billingDmsDue(sched(), new Date("2026-12-09T12:00:00Z"), { trial21Delivered: true })).toEqual([
+    // Sat 9 Jan: still the first reminder's days, the second is not due yet.
+    expect(billingDmsDue(sched(), new Date("2027-01-09T12:00:00Z"), { trial21Delivered: true })).toEqual([
       { kind: "trial-21", cycleKey: key, withTip: true },
     ]);
     // 08:59 on the second reminder's day: before the message hours, nothing.
-    expect(billingDmsDue(sched(), new Date("2026-12-10T08:59:00Z"), { trial21Delivered: true })).toEqual([]);
-    expect(billingDmsDue(sched(), new Date("2026-12-10T09:00:00Z"), { trial21Delivered: true })).toEqual([
+    expect(billingDmsDue(sched(), new Date("2027-01-10T08:59:00Z"), { trial21Delivered: true })).toEqual([]);
+    expect(billingDmsDue(sched(), new Date("2027-01-10T09:00:00Z"), { trial21Delivered: true })).toEqual([
       { kind: "trial-28", cycleKey: key, withTip: false },
     ]);
   });
@@ -258,18 +282,19 @@ describe("the AI allowance of a new club runs for the same free period", () => {
 
   it("a club that predates self-join counts from its own window start", () => {
     const old = org({ approvedAt: null, createdAt: new Date("2026-07-31T11:00:00Z") });
-    expect(aiAllowanceUsd(old, new Date("2026-09-30T10:59:59Z"))).toBe(NEW_CLUB_CAP_USD);
-    expect(aiAllowanceUsd(old, new Date("2026-09-30T11:00:00Z"))).toBe(DAILY_CAP_USD);
+    // 31 Jul 12:00 BST to 31 Oct 12:00 GMT (three months; the clocks went back on the 25th).
+    expect(aiAllowanceUsd(old, new Date("2026-10-31T11:59:59Z"))).toBe(NEW_CLUB_CAP_USD);
+    expect(aiAllowanceUsd(old, new Date("2026-10-31T12:00:00Z"))).toBe(DAILY_CAP_USD);
   });
 });
 
 describe("the copy says the same length the arithmetic uses", () => {
   it("the phrases, English and Turkish", () => {
-    expect(freePeriodLength("en")).toBe("two months");
-    expect(freePeriodLength("tr")).toBe("iki ay");
-    expect(firstMonthsFree("en")).toBe("Your first two months are free");
-    expect(firstMonthsFree("tr")).toBe("İlk iki ayınız ücretsiz");
-    expect(firstMonthsFreeBadge()).toBe("First two months free");
+    expect(freePeriodLength("en")).toBe("three months");
+    expect(freePeriodLength("tr")).toBe("üç ay");
+    expect(firstMonthsFree("en")).toBe("Your first three months are free");
+    expect(firstMonthsFree("tr")).toBe("İlk üç ayınız ücretsiz");
+    expect(firstMonthsFreeBadge()).toBe("First three months free");
   });
 
   it("the phrases follow the number (one month reads as it always did)", () => {
@@ -287,23 +312,23 @@ describe("the copy says the same length the arithmetic uses", () => {
   const args = { club: "Cron Rovers", group: "Cron Rovers", scheduleUrl: "https://x/s", ratingsUrl: "https://x/r", settingsUrl: "https://x/t" };
 
   it("the organiser's \"you're live\" DM", () => {
-    expect(en.sj_dm_approved(args)).toMatch(/\n\nYour first two months are free\.$/);
-    expect(tr.sj_dm_approved(args)).toMatch(/\n\nİlk iki ayınız ücretsiz\.$/);
-    expect(en.sj_dm_approved({ ...args, tip: "TIP" })).toMatch(/Your first two months are free\.\n\nTIP$/);
+    expect(en.sj_dm_approved(args)).toMatch(/\n\nYour first three months are free\.$/);
+    expect(tr.sj_dm_approved(args)).toMatch(/\n\nİlk üç ayınız ücretsiz\.$/);
+    expect(en.sj_dm_approved({ ...args, tip: "TIP" })).toMatch(/Your first three months are free\.\n\nTIP$/);
   });
 
   it("no message still says the free MONTH", () => {
     const samples = (s: typeof en) => [
       s.sj_dm_approved(args),
-      s.billing_state_trial({ date: "D", price: "£9.99" }),
+      s.billing_state_trial({ date: "D", price: "£4.99" }),
       s.billing_state_grace({ date: "D" }),
       s.billing_stop_confirm_free({ date: "D" }),
       s.billing_banner_grace({ date: "D" }),
       s.billing_notice_stopped_free,
-      s.billing_dm_plan_billed({ name: "Cole", club: "Cron Rovers", price: "£9.99", date: "D", link: "L" }),
-      s.billing_dm_trial_21({ name: "Cole", club: "Cron Rovers", date: "D", price: "£9.99", firstCharge: "F", link: "L", collector: true }),
-      s.billing_dm_trial_28({ name: "Cole", club: "Cron Rovers", date: "D", price: "£9.99", link: "L" }),
-      s.billing_dm_trial_ended({ name: "Cole", club: "Cron Rovers", date: "D", price: "£9.99", link: "L" }),
+      s.billing_dm_plan_billed({ name: "Cole", club: "Cron Rovers", price: "£4.99", date: "D", link: "L" }),
+      s.billing_dm_trial_21({ name: "Cole", club: "Cron Rovers", date: "D", price: "£4.99", firstCharge: "F", link: "L", collector: true }),
+      s.billing_dm_trial_28({ name: "Cole", club: "Cron Rovers", date: "D", price: "£4.99", link: "L" }),
+      s.billing_dm_trial_ended({ name: "Cole", club: "Cron Rovers", date: "D", price: "£4.99", link: "L" }),
       s.info_clubs_fee_body,
     ];
     for (const text of samples(en)) {

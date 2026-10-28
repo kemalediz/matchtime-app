@@ -388,7 +388,7 @@ describe("opening months (plan 6)", () => {
     club({ billingStatus: "trial" }, { stripePaymentMethodId: null });
     expect(await openDueMonths(ORG, new Date(TRIAL_ENDS.getTime() - 1))).toEqual({ opened: [] });
     expect(await openDueMonths(ORG, TRIAL_ENDS)).toEqual({ opened: [1] });
-    expect(month(1)).toMatchObject({ index: 1, startsAt: TRIAL_ENDS, endsAt: M1_END, priceAtStartPence: 999, status: "open" });
+    expect(month(1)).toMatchObject({ index: 1, startsAt: TRIAL_ENDS, endsAt: M1_END, priceAtStartPence: 499, status: "open" });
     expect(h.state.billings.get(ORG)!.currentPeriodEnd).toEqual(M1_END);
   });
 
@@ -453,23 +453,23 @@ describe("opening months (plan 6)", () => {
 // ── Closing: what each count charges ─────────────────────────────────────
 
 describe("closing a month: each count to an amount, or to no invoice at all (2A.4)", () => {
-  it("Kemal's example: 3 of 4 played is £7.49, ONE invoice, tax inclusive, on the club's card", async () => {
+  it("Kemal's example: 3 of 4 played is £3.74, ONE invoice, tax inclusive, on the club's card", async () => {
     club();
     weeks(NOV_TUESDAYS, ["played", "played", "cancelled", "played"]);
     await openThrough(TRIAL_ENDS);
     const r = await closeMonth(month(1).id, CLOSE_M1);
-    expect(r).toMatchObject({ outcome: "paid", amountPence: 749 });
-    expect(month(1)).toMatchObject({ status: "paid", scheduled: 4, played: 3, pricePence: 999, amountPence: 749 });
+    expect(r).toMatchObject({ outcome: "paid", amountPence: 374 });
+    expect(month(1)).toMatchObject({ status: "paid", scheduled: 4, played: 3, pricePence: 499, amountPence: 374 });
     const [inv] = invoices();
     expect(invoices()).toHaveLength(1);
     expect(month(1).stripeInvoiceId).toBe(inv.id);
-    expect(inv).toMatchObject({ customerId: "cus_sevens", status: "paid", totalPence: 749, metadata: { orgId: ORG, purpose: "club-fee", monthId: month(1).id } });
+    expect(inv).toMatchObject({ customerId: "cus_sevens", status: "paid", totalPence: 374, metadata: { orgId: ORG, purpose: "club-fee", monthId: month(1).id } });
     expect(inv.params).toMatchObject({ collection_method: "charge_automatically", pending_invoice_items_behavior: "exclude", auto_advance: false });
     // L4: no club name (it can change between retries of the same key).
     expect(inv.params.description).toBe("MatchTime club fee, 1 Nov 2026 to 30 Nov 2026: 3 of 4 games played");
     expect(inv.items).toHaveLength(1);
     expect(inv.items[0]).toMatchObject({
-      price_data: { currency: "gbp", product: "prod_club", unit_amount: 749 },
+      price_data: { currency: "gbp", product: "prod_club", unit_amount: 374 },
       tax_rates: ["txr_vat_inclusive"],
     });
     expect(inv.payAttempts).toEqual([{ paymentMethodId: "pm_colin", outcome: "succeed" }]);
@@ -477,20 +477,20 @@ describe("closing a month: each count to an amount, or to no invoice at all (2A.
     expect(fake.state().idempotency).toHaveProperty(`club-fee-item-${month(1).id}`);
   });
 
-  it("Kemal's example: 4 of 5 played is £7.99", async () => {
+  it("Kemal's example: 4 of 5 played is £3.99", async () => {
     club();
     weeks(DEC_TUESDAYS, ["played", "played", "nobody", "played", "played"]);
     await openThrough(new Date("2026-12-01T01:00:00Z"));
     const r = await closeMonth(month(2).id, CLOSE_M2);
-    expect(r).toMatchObject({ outcome: "paid", amountPence: 799 });
-    expect(month(2)).toMatchObject({ scheduled: 5, played: 4, amountPence: 799 });
+    expect(r).toMatchObject({ outcome: "paid", amountPence: 399 });
+    expect(month(2)).toMatchObject({ scheduled: 5, played: 4, amountPence: 399 });
   });
 
-  it("all played: the full £9.99", async () => {
+  it("all played: the full £4.99", async () => {
     club();
     weeks(NOV_TUESDAYS, ["played", "played", "played", "played"]);
     await openThrough(TRIAL_ENDS);
-    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ amountPence: 999 });
+    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ amountPence: 499 });
   });
 
   it("Kemal's example: 0 of 4 played is NOTHING: no invoice, no Stripe call, recorded with its reason and no amount", async () => {
@@ -534,17 +534,28 @@ describe("closing a month: each count to an amount, or to no invoice at all (2A.
     await openThrough(TRIAL_ENDS);
     const o = h.state.orgs.get(ORG)!;
     o.billingPlan = "custom";
-    o.billingPricePence = 500;
-    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ amountPence: 375 });
-    expect(month(1).pricePence).toBe(500);
+    o.billingPricePence = 300;
+    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ amountPence: 225 });
+    expect(month(1).pricePence).toBe(300);
     // And never the higher one.
     h.state.months.clear();
     o.billingPlan = "standard";
     o.billingPricePence = null;
     h.state.billings.get(ORG)!.currentPeriodEnd = null;
     await openThrough(TRIAL_ENDS);
-    h.state.months.get(month(1).id)!.priceAtStartPence = 500;
-    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ amountPence: 375 });
+    h.state.months.get(month(1).id)!.priceAtStartPence = 300;
+    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ amountPence: 225 });
+  });
+
+  // Kemal, 2026-10-28: Standard went from £9.99 to £4.99. A month that
+  // opened at the old price closes at the new one: the lower of the two.
+  it("a Standard month opened at the old £9.99 closes at £4.99: 3 of 4 is £3.74, never £7.49", async () => {
+    club();
+    weeks(NOV_TUESDAYS, ["played", "played", "played", "cancelled"]);
+    await openThrough(TRIAL_ENDS);
+    h.state.months.get(month(1).id)!.priceAtStartPence = 999;
+    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ outcome: "paid", amountPence: 374 });
+    expect(month(1)).toMatchObject({ pricePence: 499, amountPence: 374 });
   });
 
   it("games played but NO card on file: recorded 'no-card', nothing charged, no Stripe call", async () => {
@@ -561,7 +572,7 @@ describe("closing a month: each count to an amount, or to no invoice at all (2A.
     fake.setPayOutcome("pm_colin", "decline");
     weeks(NOV_TUESDAYS, ["played", "played", "played", "played"]);
     await openThrough(TRIAL_ENDS);
-    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ outcome: "invoiced", amountPence: 999 });
+    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ outcome: "invoiced", amountPence: 499 });
     expect(invoices()[0].status).toBe("open");
     expect(month(1).status).toBe("invoiced");
   });
@@ -684,7 +695,7 @@ describe("idempotency: double cron, retry after failure", () => {
     expect(await closeMonth(id, new Date(CLOSE_M1.getTime() + MIN))).toEqual({ skipped: "busy", monthId: id });
     // Stale: taken over, and the invoice is the same one.
     h.state.months.get(id)!.updatedAt = new Date(CLOSE_M1.getTime() - CLOSING_STALE_MS - MIN);
-    expect(await closeMonth(id, CLOSE_M1)).toMatchObject({ outcome: "paid", amountPence: 749 });
+    expect(await closeMonth(id, CLOSE_M1)).toMatchObject({ outcome: "paid", amountPence: 374 });
     expect(invoices()).toHaveLength(1);
     expect(invoices()[0].items).toHaveLength(1);
     expect(invoices()[0].payAttempts).toHaveLength(1);
@@ -718,7 +729,7 @@ describe("idempotency: double cron, retry after failure", () => {
     };
     expect(await closeMonth(id, CLOSE_M1)).toMatchObject({ error: expect.stringMatching(/Stripe is down/) });
     h.state.months.get(id)!.updatedAt = new Date(0);
-    expect(await closeMonth(id, CLOSE_M1)).toMatchObject({ outcome: "paid", amountPence: 749 });
+    expect(await closeMonth(id, CLOSE_M1)).toMatchObject({ outcome: "paid", amountPence: 374 });
     expect(invoices()).toHaveLength(1);
     expect(invoices()[0].items).toHaveLength(1);
   });
@@ -733,8 +744,8 @@ describe("idempotency: double cron, retry after failure", () => {
     const cancelled = h.state.matches.get(ORG)!.find((m) => m.status === "CANCELLED")!;
     Object.assign(cancelled, { status: "COMPLETED", confirmedCount: 5 });
     h.state.months.get(id)!.updatedAt = new Date(0);
-    expect(await closeMonth(id, CLOSE_M1)).toMatchObject({ outcome: "paid", amountPence: 749 });
-    expect(invoices()[0].totalPence).toBe(749);
+    expect(await closeMonth(id, CLOSE_M1)).toMatchObject({ outcome: "paid", amountPence: 374 });
+    expect(invoices()[0].totalPence).toBe(374);
   });
 
   it("L4: the club renamed between a crash and the retry: the SAME invoice, no idempotency error (no name in the request)", async () => {
@@ -747,7 +758,7 @@ describe("idempotency: double cron, retry after failure", () => {
     h.state.orgs.get(ORG)!.name = "Card Sevens Renamed";
     fake.findMonthInvoices = async () => []; // search not caught up yet: only the key protects
     h.state.months.get(id)!.updatedAt = new Date(0);
-    expect(await closeMonth(id, CLOSE_M1)).toMatchObject({ outcome: "paid", amountPence: 749 });
+    expect(await closeMonth(id, CLOSE_M1)).toMatchObject({ outcome: "paid", amountPence: 374 });
     expect(invoices()).toHaveLength(1);
   });
 
@@ -779,7 +790,7 @@ describe("Stop paying at the month end (4.2)", () => {
     await openThrough(TRIAL_ENDS);
     expect(h.state.billings.get(ORG)!.currentPeriodEnd).toEqual(M1_END);
     const r = await closeMonth(month(1).id, CLOSE_M1);
-    expect(r).toMatchObject({ outcome: "paid", amountPence: 749, stopped: true });
+    expect(r).toMatchObject({ outcome: "paid", amountPence: 374, stopped: true });
     expect(h.state.stateCalls).toEqual(["billing-stopped"]);
     expect(h.state.orgs.get(ORG)!.billingStatus).toBe("paused");
     expect(h.state.billings.get(ORG)!.pausedReason).toBe("cancelled");
@@ -1072,7 +1083,7 @@ describe("H1 (P2 review): months while not billable, or while billing was off, a
       [4, "open"],
     ]);
     // 2 and 9 Feb were inside the Free spell: scheduled, not played.
-    expect(await closeNextDueMonth(ORG, CLOSE_M4)).toMatchObject({ outcome: "paid", index: 4, amountPence: 499 });
+    expect(await closeNextDueMonth(ORG, CLOSE_M4)).toMatchObject({ outcome: "paid", index: 4, amountPence: 249 });
     expect(month(4)).toMatchObject({ scheduled: 4, played: 2 });
     expect(invoices()).toHaveLength(1);
   });
@@ -1092,7 +1103,7 @@ describe("H1 (P2 review): months while not billable, or while billing was off, a
     expect((await openDueMonths(ORG, backAt)).opened).toEqual([3]);
     expect(h.state.events.map((e) => e.type)).toEqual(["mt.suspended", "mt.unsuspended"]);
     // Only 26 Jan is after billing came back (5, 12 and 19 Jan were inside the spell).
-    expect(await closeNextDueMonth(ORG, CLOSE_M3)).toMatchObject({ outcome: "paid", index: 3, amountPence: 249 });
+    expect(await closeNextDueMonth(ORG, CLOSE_M3)).toMatchObject({ outcome: "paid", index: 3, amountPence: 124 });
     expect(month(3)).toMatchObject({ scheduled: 4, played: 1 });
   });
 
@@ -1117,7 +1128,7 @@ describe("H1 (P2 review): months while not billable, or while billing was off, a
     expect((await openDueMonths(ORG, backAt)).opened).toEqual([3]);
     expect(h.state.events.map((e) => e.type)).toEqual(["mt.suspended", "mt.unbilled", "mt.billed", "mt.unsuspended"]);
     // 5, 12 and 19 Jan were still inside the suspension: not played.
-    expect(await closeNextDueMonth(ORG, CLOSE_M3)).toMatchObject({ outcome: "paid", index: 3, amountPence: 249 });
+    expect(await closeNextDueMonth(ORG, CLOSE_M3)).toMatchObject({ outcome: "paid", index: 3, amountPence: 124 });
     expect(month(3)).toMatchObject({ scheduled: 4, played: 1 });
   });
 
@@ -1141,9 +1152,9 @@ describe("H1 (P2 review): months while not billable, or while billing was off, a
     expect((await openDueMonths(ORG, onAt)).opened).toEqual([4]);
     expect(monthsOf().map((m) => m.index)).toEqual([1, 4]);
     // Month 1 closes now: 3, 10 and 17 Nov played before billing went off; 24 Nov was inside it.
-    expect(await closeNextDueMonth(ORG, new Date("2027-02-03T11:00:00Z"))).toMatchObject({ outcome: "paid", index: 1, amountPence: 749 });
+    expect(await closeNextDueMonth(ORG, new Date("2027-02-03T11:00:00Z"))).toMatchObject({ outcome: "paid", index: 1, amountPence: 374 });
     // Month 4: 2 Feb was inside the off spell.
-    expect(await closeNextDueMonth(ORG, CLOSE_M4)).toMatchObject({ outcome: "paid", index: 4, amountPence: 749 });
+    expect(await closeNextDueMonth(ORG, CLOSE_M4)).toMatchObject({ outcome: "paid", index: 4, amountPence: 374 });
     expect(month(4)).toMatchObject({ scheduled: 4, played: 3 });
   });
 });

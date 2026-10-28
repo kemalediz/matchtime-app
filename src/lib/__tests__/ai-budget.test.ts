@@ -62,21 +62,22 @@ describe("aiAllowanceUsd: how much a club may spend today", () => {
 
   it("a club in its free period gets $2.00 a day", () => {
     expect(NEW_CLUB_CAP_USD).toBe(2);
-    expect(FREE_PERIOD_MONTHS).toBe(2);
+    expect(FREE_PERIOD_MONTHS).toBe(3);
     const fresh = { ...sutton, createdAt: new Date(NOW.getTime() - 3 * DAY) };
     expect(aiAllowanceUsd(fresh, NOW)).toBe(2);
   });
 
-  it("the free period is exactly two London calendar months (the billing trial's length): a second before is new, the boundary is established", () => {
-    // NOW is Tue 29 Sept 2026, 13:00 London. Two months back: Wed 29 Jul, 13:00 London.
-    const start = new Date("2026-07-29T12:00:00Z");
+  it("the free period is exactly three London calendar months (the billing trial's length): a second before is new, the boundary is established", () => {
+    // NOW is Tue 29 Sept 2026, 13:00 London. Three months back: Mon 29 Jun, 13:00 London.
+    const start = new Date("2026-06-29T12:00:00Z");
     expect(freePeriodEnd(start)).toEqual(NOW);
     expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(start.getTime() + 1000) }, NOW)).toBe(2);
     expect(aiAllowanceUsd({ ...sutton, createdAt: start }, NOW)).toBe(1.5);
     // Day 31 (the old 30 day window's first day out) is still the free period.
     expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - 31 * DAY) }, NOW)).toBe(2);
-    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - 60 * DAY) }, NOW)).toBe(2);
-    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - 63 * DAY) }, NOW)).toBe(1.5);
+    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - 63 * DAY) }, NOW)).toBe(2);
+    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - 91 * DAY) }, NOW)).toBe(2);
+    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - 93 * DAY) }, NOW)).toBe(1.5);
   });
 
   it("aiWindowStartAt, when set, starts the window instead of createdAt", () => {
@@ -87,7 +88,7 @@ describe("aiAllowanceUsd: how much a club may spend today", () => {
     const pinnedOld = {
       ...sutton,
       createdAt: new Date(NOW.getTime() - DAY),
-      aiWindowStartAt: new Date(NOW.getTime() - 90 * DAY),
+      aiWindowStartAt: new Date(NOW.getTime() - 120 * DAY),
     };
     expect(aiAllowanceUsd(pinnedOld, NOW)).toBe(1.5);
   });
@@ -157,7 +158,7 @@ describe("aiAllowanceUsd and club approval (self-join slice 1)", () => {
     expect(aiAllowanceUsd(approvedYesterday, NOW)).toBe(2);
     // approvedAt wins over a stale aiWindowStartAt in either direction.
     expect(aiAllowanceUsd({ ...approvedYesterday, aiWindowStartAt: new Date(NOW.getTime() - 120 * DAY) }, NOW)).toBe(2);
-    const approvedLongAgo = { ...sutton, approvedAt: new Date(NOW.getTime() - 63 * DAY) };
+    const approvedLongAgo = { ...sutton, approvedAt: new Date(NOW.getTime() - 93 * DAY) };
     expect(aiAllowanceUsd({ ...approvedLongAgo, aiWindowStartAt: new Date(NOW.getTime() - DAY) }, NOW)).toBe(1.5);
   });
 

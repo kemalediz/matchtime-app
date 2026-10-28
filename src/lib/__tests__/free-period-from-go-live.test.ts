@@ -3,7 +3,7 @@
  * plan 2.6, slice S4b). The PURE rules.
  *
  * A club that is approved but still setting up is silent in its group. Its
- * two free months must not run out while it is silent, so for a club that
+ * free months must not run out while it is silent, so for a club that
  * went through the hold every "first day" is the day it went LIVE:
  *
  *   - the billing free period (`freePeriodStart`, `nextBillingState`);
@@ -64,23 +64,23 @@ describe("freePeriodStart: the one definition of a club's first day", () => {
 describe("held club, approved 1 October, live 20 October", () => {
   const { trialStartedAt, trialEndsAt } = trialWindow(freePeriodStart({ approvedAt: APPROVED, liveAt: LIVE })!);
 
-  it("is free until 20 December, the same London time of day, not 1 December", () => {
+  it("is free until 20 January, the same London time of day, not 1 January", () => {
     expect(trialStartedAt).toEqual(LIVE);
-    expect(london(trialEndsAt)).toBe("2026-12-20 19:30");
+    expect(london(trialEndsAt)).toBe("2027-01-20 19:30");
     // The clocks went back on 25 October, so the end is an hour later in UTC.
-    expect(trialEndsAt.toISOString()).toBe("2026-12-20T19:30:00.000Z");
+    expect(trialEndsAt.toISOString()).toBe("2027-01-20T19:30:00.000Z");
     expect(trialEndsAt.getTime()).toBeGreaterThan(freePeriodEnd(APPROVED).getTime() + 18 * DAY);
   });
 
   it("the first card reminder is nine days before that, at 09:00 London, and the second two days before", () => {
-    expect(london(reminderAt(trialEndsAt, TRIAL_21_DAYS_BEFORE_END))).toBe("2026-12-11 09:00");
-    expect(london(reminderAt(trialEndsAt, TRIAL_28_DAYS_BEFORE_END))).toBe("2026-12-18 09:00");
+    expect(london(reminderAt(trialEndsAt, TRIAL_21_DAYS_BEFORE_END))).toBe("2027-01-11 09:00");
+    expect(london(reminderAt(trialEndsAt, TRIAL_28_DAYS_BEFORE_END))).toBe("2027-01-18 09:00");
     const sched = { status: "trial", trialEndsAt, graceEndsAt: null, pausedAt: null, pausedReason: null };
-    // 1 December, where a free period counted from approval would have ended: nothing is due.
-    expect(billingTransitionDue(sched, new Date("2026-12-01T12:00:00Z"))).toBeNull();
-    expect(billingDmsDue(sched, new Date("2026-12-01T12:00:00Z"), { trial21Delivered: false })).toEqual([]);
-    expect(billingDmsDue(sched, new Date("2026-12-11T08:59:00Z"), { trial21Delivered: false })).toEqual([]);
-    expect(billingDmsDue(sched, new Date("2026-12-11T09:00:00Z"), { trial21Delivered: false })).toEqual([
+    // 1 January, where a free period counted from approval would have ended: nothing is due.
+    expect(billingTransitionDue(sched, new Date("2027-01-01T12:00:00Z"))).toBeNull();
+    expect(billingDmsDue(sched, new Date("2027-01-01T12:00:00Z"), { trial21Delivered: false })).toEqual([]);
+    expect(billingDmsDue(sched, new Date("2027-01-11T08:59:00Z"), { trial21Delivered: false })).toEqual([]);
+    expect(billingDmsDue(sched, new Date("2027-01-11T09:00:00Z"), { trial21Delivered: false })).toEqual([
       { kind: "trial-21", cycleKey: trialEndsAt.toISOString(), withTip: true },
     ]);
   });
@@ -96,16 +96,16 @@ describe("held club, approved 1 October, live 20 October", () => {
       ON,
     );
     expect(t).toMatchObject({ to: "grace", graceEndsAt: graceEndsFrom(trialEndsAt) });
-    expect(london(t!.graceEndsAt!)).toBe("2026-12-27 19:30");
+    expect(london(t!.graceEndsAt!)).toBe("2027-01-27 19:30");
     expect(t!.graceEndsAt!.getTime() - trialEndsAt.getTime()).toBe(GRACE_DAYS * DAY);
   });
 
   it("the first billing month is anchored on that end: it starts there, and no month exists before it", () => {
     const m1 = monthBounds(trialEndsAt, 1);
     expect(m1.startsAt).toEqual(trialEndsAt);
-    expect(london(m1.endsAt)).toBe("2027-01-20 00:00");
+    expect(london(m1.endsAt)).toBe("2027-02-20 00:00");
     expect(monthIndexAt(trialEndsAt, new Date(trialEndsAt.getTime() - 1))).toBe(0);
-    expect(monthsToOpen(trialEndsAt, 0, new Date("2026-12-10T12:00:00Z"))).toEqual([]);
+    expect(monthsToOpen(trialEndsAt, 0, new Date("2027-01-10T12:00:00Z"))).toEqual([]);
     expect(monthsToOpen(trialEndsAt, 0, trialEndsAt)).toEqual([1]);
   });
 });
@@ -114,9 +114,9 @@ describe("other go-live days", () => {
   const endOf = (approved: string, live: string) =>
     trialWindow(freePeriodStart({ approvedAt: new Date(approved), liveAt: new Date(live) })!).trialEndsAt;
 
-  it("approved and live on the same day: two months from the go-live, hours later than from the approval", () => {
+  it("approved and live on the same day: three months from the go-live, hours later than from the approval", () => {
     const end = endOf("2026-10-12T09:00:00Z", "2026-10-12T13:00:00Z");
-    expect(london(end)).toBe("2026-12-12 14:00");
+    expect(london(end)).toBe("2027-01-12 14:00");
     expect(end.getTime() - freePeriodEnd(new Date("2026-10-12T09:00:00Z")).getTime()).toBe(4 * 60 * 60 * 1000);
   });
 
@@ -125,21 +125,21 @@ describe("other go-live days", () => {
   });
 
   it("across the autumn clock change: the same London time, an hour longer", () => {
-    // Live Tue 25 Aug 2026, 12:00 BST; free until Sun 25 Oct, 12:00 GMT.
+    // Live Tue 25 Aug 2026, 12:00 BST; free until Wed 25 Nov, 12:00 GMT.
     const end = endOf("2026-08-20T09:00:00Z", "2026-08-25T11:00:00Z");
-    expect(london(end)).toBe("2026-10-25 12:00");
-    expect(end.toISOString()).toBe("2026-10-25T12:00:00.000Z");
+    expect(london(end)).toBe("2026-11-25 12:00");
+    expect(end.toISOString()).toBe("2026-11-25T12:00:00.000Z");
   });
 
   it("across the spring clock change, onto a time the change skips: an hour later, never early", () => {
-    // Live Thu 28 Jan 2027, 01:30 GMT. 01:30 on Sun 28 Mar 2027 does not exist.
-    const end = endOf("2027-01-20T09:00:00Z", "2027-01-28T01:30:00Z");
+    // Live Mon 28 Dec 2026, 01:30 GMT. 01:30 on Sun 28 Mar 2027 does not exist.
+    const end = endOf("2026-12-20T09:00:00Z", "2026-12-28T01:30:00Z");
     expect(london(end)).toBe("2027-03-28 02:30");
     expect(end.toISOString()).toBe("2027-03-28T01:30:00.000Z");
   });
 
-  it("live on 31 December: free until 28 February", () => {
-    const end = endOf("2026-12-15T09:00:00Z", "2026-12-31T22:00:00Z");
+  it("live on 30 November: free until 28 February (clamped)", () => {
+    const end = endOf("2026-11-15T09:00:00Z", "2026-11-30T22:00:00Z");
     expect(london(end)).toBe("2027-02-28 22:00");
     // The first billing month is anchored on that end: 28 February to 28 March.
     expect(monthBounds(end, 1).startsAt).toEqual(end);
@@ -272,18 +272,18 @@ describe("the AI allowance of a new club runs from go-live", () => {
     expect(aiWindowStart(org({ approvedAt: null }))).toEqual(new Date("2026-09-20T09:00:00Z"));
   });
 
-  it("held club: the higher allowance lasts until two months after go-live, to the millisecond", () => {
+  it("held club: the higher allowance lasts until three months after go-live, to the millisecond", () => {
     const held = org({ liveAt: LIVE });
     const end = freePeriodEnd(LIVE);
-    // 5 December is past two months from the approval and still inside the window.
-    expect(aiAllowanceUsd(held, new Date("2026-12-05T12:00:00Z"))).toBe(NEW_CLUB_CAP_USD);
+    // 5 January is past three months from the approval and still inside the window.
+    expect(aiAllowanceUsd(held, new Date("2027-01-05T12:00:00Z"))).toBe(NEW_CLUB_CAP_USD);
     expect(aiAllowanceUsd(held, new Date(end.getTime() - 1))).toBe(NEW_CLUB_CAP_USD);
     expect(aiAllowanceUsd(held, end)).toBe(DAILY_CAP_USD);
   });
 
-  it("never-held club: the boundary is exactly where it was, two months after approval", () => {
+  it("never-held club: the boundary is the free period from approval, three months on", () => {
     const end = freePeriodEnd(APPROVED);
-    expect(end.toISOString()).toBe("2026-12-01T10:00:00.000Z");
+    expect(end.toISOString()).toBe("2027-01-01T10:00:00.000Z");
     expect(aiAllowanceUsd(org(), new Date(end.getTime() - 1))).toBe(NEW_CLUB_CAP_USD);
     expect(aiAllowanceUsd(org(), end)).toBe(DAILY_CAP_USD);
     expect(aiAllowanceUsd(org({ liveAt: null }), end)).toBe(DAILY_CAP_USD);

@@ -196,7 +196,7 @@ export interface AllowanceOrg extends SetupStageColumns {
  * billing started another way or not at all: the platform owner's "Start
  * free period" starts the billing window on the day it is pressed and
  * leaves this one where it was, and with billing off or on the Free plan
- * there is no billing window while this one still runs its two months. A
+ * there is no billing window while this one still runs its free period. A
  * club that was never held has no `liveAt`, and nothing changes for it.
  *
  * Why `approvedAt` next. It is a FACT, written once, by the approval

@@ -19,6 +19,7 @@ import { monthBounds, monthFee } from "./club-billing-cycle-rules";
 import { BILLING_DM_FROM_HOUR } from "./club-billing-schedule-rules";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { firstMonthsFree } from "./i18n/free-period";
+import { moneyLabel } from "./club-price-words";
 import type { MonthsSummary } from "./club-billing-month-summary";
 import {
   GRACE_DAYS,
@@ -32,10 +33,8 @@ type LangIn = Lang | string | null | undefined;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** "£9.99", "£5", "£8.25": as `gbp()` in payments.ts writes match fees. */
-export function moneyLabel(pence: number): string {
-  return pence % 100 === 0 ? `£${pence / 100}` : `£${(pence / 100).toFixed(2)}`;
-}
+/** "£4.99", "£5", "£8.25": the one money label (club-price-words.ts). */
+export { moneyLabel };
 
 /** The share per player per game: "25p", or "£1.05" from GBP 1 up. */
 export function shareLabel(pence: number): string {
@@ -56,7 +55,7 @@ export function clubFeeTipText(lang: LangIn, tip: ClubFeeTip): string {
   });
 }
 
-/** The short tip that follows "Your first month is free." in the
+/** The short tip that follows the free period sentence (`firstMonthsFree`) in the
  *  "you're live" DM of a billed club. */
 export function approvedTipText(lang: LangIn, tip: ClubFeeTip): string {
   return t(lang).sj_dm_approved_tip({

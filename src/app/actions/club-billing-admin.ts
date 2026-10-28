@@ -27,7 +27,7 @@ import { isSuperadmin } from "@/lib/org";
 import { setClubPlan, startTrial } from "@/lib/club-billing";
 import { detachDroppedCard, flushPendingBillingNotices, onPlanChanged } from "@/lib/club-billing-stripe";
 import { parsePlanChoice } from "@/lib/club-billing-rules";
-import { moneyLabel } from "@/lib/club-billing-view";
+import { CUSTOM_PRICE_RANGE_LABEL, STANDARD_PRICE_LABEL, moneyLabel } from "@/lib/club-price-words";
 import { dayLabel } from "@/lib/i18n/dates";
 
 export interface BillingAdminResult {
@@ -42,14 +42,14 @@ async function requireOwner(): Promise<string> {
   return userId;
 }
 
-/** Standard, Free or Custom (price in pounds as typed, GBP 1.00 to GBP 9.99). */
+/** Standard, Free or Custom (price in pounds as typed, GBP 1.00 up to the Standard price). */
 export async function setClubPlanAction(orgId: string, plan: string, price?: string | null): Promise<BillingAdminResult> {
   await requireOwner();
   const choice = parsePlanChoice({ plan, price });
   if (!choice.ok) {
     return {
       ok: false,
-      message: choice.reason === "unknown-plan" ? "That is not a plan." : "A custom price must be between £1.00 and £9.99.",
+      message: choice.reason === "unknown-plan" ? "That is not a plan." : `A custom price must be ${CUSTOM_PRICE_RANGE_LABEL}.`,
     };
   }
   const r = await setClubPlan(orgId, { plan: choice.plan, pricePence: choice.pricePence });
@@ -61,7 +61,7 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
     };
   }
   const label =
-    r.plan === "free" ? "Free" : r.plan === "custom" ? `Custom, up to ${moneyLabel(r.pricePence ?? 0)} a month` : "Standard, up to £9.99 a month";
+    r.plan === "free" ? "Free" : r.plan === "custom" ? `Custom, up to ${moneyLabel(r.pricePence ?? 0)} a month` : `Standard, up to ${STANDARD_PRICE_LABEL} a month`;
   let message = `Plan saved: ${label}.${r.plan === "free" ? " The club is not billed." : ""}${r.resumed ? " MatchTime is back on in its group." : ""}`;
 
   // Review M1: a card that was not the billing contact's was taken off the

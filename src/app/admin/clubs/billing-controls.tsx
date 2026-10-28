@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarPlus, Loader2, Save } from "lucide-react";
+import { STANDARD_PRICE_LABEL } from "@/lib/club-price-words";
 import { toast } from "sonner";
 import { freePeriodLength } from "@/lib/i18n/free-period";
 import { setClubPlanAction, startFreeMonthAction, type BillingAdminResult } from "@/app/actions/club-billing-admin";
@@ -42,7 +43,7 @@ export function PlanControl({
 }) {
   const { pending, run } = useAction();
   const [choice, setChoice] = useState(plan);
-  const [price, setPrice] = useState(pricePence ? (pricePence / 100).toFixed(2) : "5.00");
+  const [price, setPrice] = useState(pricePence ? (pricePence / 100).toFixed(2) : "3.00");
   const unchanged = choice === plan && (choice !== "custom" || price === (pricePence ? (pricePence / 100).toFixed(2) : ""));
 
   return (
@@ -57,7 +58,7 @@ export function PlanControl({
         disabled={pending}
         className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
       >
-        <option value="standard">Standard, up to £9.99</option>
+        <option value="standard">Standard, up to {STANDARD_PRICE_LABEL}</option>
         <option value="free">Free</option>
         <option value="custom">Custom</option>
       </select>

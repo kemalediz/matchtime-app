@@ -7,7 +7,8 @@
  * via execFile; exits non-zero with a readable message on any failure.
  *
  * The clock is passed in, so the dates are the brief's own: a club
- * approved on 1 October and live on 20 October is free until 20 December.
+ * approved on 1 October and live on 20 October is free until 20 January
+ * (three months since 2026-10-28).
  *
  * What only a real database can show: the go-live and the free period
  * commit TOGETHER or not at all, two GOs at once start ONE free period, a
@@ -54,7 +55,7 @@ async function main() {
   // Approved Thu 1 Oct 2026, 10:00 London; live Tue 20 Oct 2026, 19:30 London.
   const APPROVED = new Date("2026-10-01T09:00:00Z");
   const LIVE = new Date("2026-10-20T18:30:00Z");
-  const FREE_UNTIL = new Date("2026-12-20T19:30:00Z");
+  const FREE_UNTIL = new Date("2027-01-20T19:30:00Z");
 
   let seq = 0;
   /** An approved club that is setting up: bot off, group linked, exempt, no billing row. */
@@ -198,19 +199,19 @@ async function main() {
     assert.equal(s.billingStatus, "trial");
     assert.equal(s.clubBilling?.trialStartedAt.getTime(), LIVE.getTime());
     assert.equal(s.clubBilling?.trialEndsAt.toISOString(), FREE_UNTIL.toISOString());
-    assert.equal(london(s.clubBilling?.trialEndsAt), "2026-12-20 19:30");
+    assert.equal(london(s.clubBilling?.trialEndsAt), "2027-01-20 19:30");
     assert.equal(s.clubBilling?.trialEndsAt.getTime(), freePeriodEnd(LIVE).getTime());
     assert.notEqual(s.clubBilling?.trialEndsAt.getTime(), freePeriodEnd(APPROVED).getTime());
-    ok("approved 1 October, live 20 October: free from 20 October until 20 December (London), not 1 December");
+    ok("approved 1 October, live 20 October: free from 20 October until 20 January (London), not 1 January");
 
     const ends = s.clubBilling!.trialEndsAt;
-    assert.equal(london(reminderAt(ends, TRIAL_21_DAYS_BEFORE_END)), "2026-12-11 09:00");
+    assert.equal(london(reminderAt(ends, TRIAL_21_DAYS_BEFORE_END)), "2027-01-11 09:00");
     const sched = { status: "trial", trialEndsAt: ends, graceEndsAt: null, pausedAt: null, pausedReason: null };
-    assert.deepEqual(billingDmsDue(sched, new Date("2026-12-01T12:00:00Z"), { trial21Delivered: false }), []);
-    assert.deepEqual(await sendScheduledBillingDms(a, new Date("2026-12-01T12:00:00Z")), []);
-    assert.equal(london(monthBounds(ends, 1).startsAt), "2026-12-20 19:30");
-    assert.deepEqual(await openDueMonths(a, new Date("2026-12-10T12:00:00Z")), { opened: [] });
-    ok("its first card reminder is due on 11 December, nothing on 1 December, and no billing month exists inside the free period");
+    assert.deepEqual(billingDmsDue(sched, new Date("2027-01-01T12:00:00Z"), { trial21Delivered: false }), []);
+    assert.deepEqual(await sendScheduledBillingDms(a, new Date("2027-01-01T12:00:00Z")), []);
+    assert.equal(london(monthBounds(ends, 1).startsAt), "2027-01-20 19:30");
+    assert.deepEqual(await openDueMonths(a, new Date("2027-01-10T12:00:00Z")), { opened: [] });
+    ok("its first card reminder is due on 11 January, nothing on 1 January, and no billing month exists inside the free period");
 
     // The AI allowance and the member DM cap follow the same first day.
     const allowanceRow = await db.organisation.findUnique({
@@ -228,7 +229,7 @@ async function main() {
         billingStatus: true,
       } as never,
     });
-    assert.equal(aiAllowanceUsd(allowanceRow as never, new Date("2026-12-05T12:00:00Z")), NEW_CLUB_CAP_USD);
+    assert.equal(aiAllowanceUsd(allowanceRow as never, new Date("2027-01-05T12:00:00Z")), NEW_CLUB_CAP_USD);
     assert.equal(aiAllowanceUsd(allowanceRow as never, new Date(ends.getTime() - 1)), NEW_CLUB_CAP_USD);
     assert.equal(aiAllowanceUsd(allowanceRow as never, ends), DAILY_CAP_USD);
     assert.equal(newClubDmCap(s, new Date("2026-11-01T12:00:00Z")), NEW_CLUB_MEMBER_DMS_PER_DAY);
@@ -280,17 +281,17 @@ async function main() {
     assert.deepEqual(await openDueMonths(a, new Date(FREE_UNTIL.getTime() + 60_000)), { opened: [1] });
     const m1 = await db.clubBillingMonth.findFirst({ where: { orgId: a, index: 1 } });
     assert.equal(m1?.startsAt.getTime(), FREE_UNTIL.getTime());
-    assert.equal(london(m1?.endsAt), "2027-01-20 00:00");
-    const current = await loadCurrentMonth(a, new Date("2027-01-02T12:00:00Z"), { plan: "standard", pricePence: null });
+    assert.equal(london(m1?.endsAt), "2027-02-20 00:00");
+    const current = await loadCurrentMonth(a, new Date("2027-02-02T12:00:00Z"), { plan: "standard", pricePence: null });
     assert.equal(current?.played, 0);
     assert.equal(current?.soFarPence, 0);
-    const closed = await closeMonth(m1!.id, new Date("2027-01-20T10:00:00Z"));
+    const closed = await closeMonth(m1!.id, new Date("2027-02-20T10:00:00Z"));
     assert.equal("outcome" in closed ? closed.outcome : JSON.stringify(closed), "no-games");
     const m1After = await db.clubBillingMonth.findUnique({ where: { id: m1!.id } });
     assert.equal(m1After?.played, 0);
     assert.equal(m1After?.amountPence ?? 0, 0);
     assert.equal(m1After?.stripeInvoiceId, null);
-    ok("month 1 is anchored on 20 December; the billing page's count and the month close both find 0 played, and nothing is invoiced (a club that does not track attendance)");
+    ok("month 1 is anchored on 20 January; the billing page's count and the month close both find 0 played, and nothing is invoiced (a club that does not track attendance)");
 
     // ── 5. Two GOs at the same instant: one free period ────────────────
     for (let round = 1; round <= 3; round++) {
@@ -332,10 +333,10 @@ async function main() {
     // ── 7. Other go-live days ───────────────────────────────────────────
     const days: Array<[string, string, string, string]> = [
       // key, approved, live, expected end (UTC)
-      ["sameday", "2026-10-12T09:00:00Z", "2026-10-12T13:00:00Z", "2026-12-12T14:00:00.000Z"],
-      ["autumn", "2026-08-20T09:00:00Z", "2026-08-25T11:00:00Z", "2026-10-25T12:00:00.000Z"],
-      ["spring", "2027-01-20T09:00:00Z", "2027-01-28T01:30:00Z", "2027-03-28T01:30:00.000Z"],
-      ["dec31", "2026-12-15T09:00:00Z", "2026-12-31T22:00:00Z", "2027-02-28T22:00:00.000Z"],
+      ["sameday", "2026-10-12T09:00:00Z", "2026-10-12T13:00:00Z", "2027-01-12T14:00:00.000Z"],
+      ["autumn", "2026-08-20T09:00:00Z", "2026-08-25T11:00:00Z", "2026-11-25T12:00:00.000Z"],
+      ["spring", "2026-12-20T09:00:00Z", "2026-12-28T01:30:00Z", "2027-03-28T01:30:00.000Z"],
+      ["nov30", "2026-11-15T09:00:00Z", "2026-11-30T22:00:00Z", "2027-02-28T22:00:00.000Z"],
     ];
     for (const [key, approved, live, end] of days) {
       const id = await club(key, {}, { approvedAt: new Date(approved) });
@@ -344,7 +345,7 @@ async function main() {
       assert.equal(ds.clubBilling?.trialStartedAt.toISOString(), new Date(live).toISOString(), key);
       assert.equal(ds.clubBilling?.trialEndsAt.toISOString(), end, key);
     }
-    ok("approved and live on the same day; across both clock changes; live on 31 December is free until 28 February");
+    ok("approved and live on the same day; across both clock changes; live on 30 November is free until 28 February");
 
     // ── 8. When nothing starts, the club still goes live ───────────────
     const off = await club("flagoff");
@@ -353,7 +354,7 @@ async function main() {
     assert.deepEqual(await billingTraces(off), NONE);
     // Billing on later: the owner's button starts it, from that moment.
     const later = new Date("2026-11-03T12:00:00Z");
-    assert.deepEqual(await startTrial(off, later), { ok: true, trialEndsAt: new Date("2027-01-03T12:00:00Z") });
+    assert.deepEqual(await startTrial(off, later), { ok: true, trialEndsAt: new Date("2027-02-03T12:00:00Z") });
     assert.equal((await state(off)).clubBilling?.trialStartedAt.getTime(), later.getTime());
     ok("billing off at go-live: live, exempt, no row; with billing on later the owner's Start free period starts it from that day");
 
@@ -387,11 +388,11 @@ async function main() {
     const ns = await state(never);
     assert.equal(ns.liveAt, null);
     assert.equal(ns.clubBilling?.trialStartedAt.getTime(), APPROVED.getTime());
-    assert.equal(ns.clubBilling?.trialEndsAt.toISOString(), "2026-12-01T10:00:00.000Z");
+    assert.equal(ns.clubBilling?.trialEndsAt.toISOString(), "2027-01-01T10:00:00.000Z");
     assert.equal(newClubDmCap(ns, new Date(APPROVED.getTime() + 28 * DAY - 1)), NEW_CLUB_MEMBER_DMS_PER_DAY);
     assert.equal(newClubDmCap(ns, new Date(APPROVED.getTime() + 28 * DAY)), null);
     assert.deepEqual(await handleBillingRemoval(await groupOf(never), { flagOn: true, now: during }), { kind: "paused", orgId: never, stripe: "no-customer" });
-    ok("a never-held club: free from its approval until 1 December, DM cap from approval, and a removal pauses it, all as before");
+    ok("a never-held club: free from its approval until 1 January, DM cap from approval, and a removal pauses it, all as before");
 
     console.log(`OK: ${n} free-period-from-go-live checks against Postgres`);
   } finally {

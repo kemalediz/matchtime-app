@@ -52,7 +52,7 @@ const h = vi.hoisted(() => {
     flagStates: [] as boolean[],
     pendingFlushes: [] as string[],
     tip: {
-      pricePence: 999, perSide: 5, players: 10, games: 4, perGamePence: 250, sharePence: 25, feePence: 800, feePlusPence: 825, feeSource: "example", split: false,
+      pricePence: 499, perSide: 5, players: 10, games: 4, perGamePence: 125, sharePence: 15, feePence: 800, feePlusPence: 815, feeSource: "example", split: false,
     } as Record<string, unknown> | null,
     jobSeq: 0,
     /** Slice P3: the billing months the payment DMs name (by invoice id). */
@@ -343,7 +343,7 @@ beforeEach(() => {
   h.state.flagStates = [];
   h.state.pendingFlushes.length = 0;
   h.state.months.length = 0;
-  h.state.tip = { pricePence: 999, perSide: 5, players: 10, games: 4, perGamePence: 250, sharePence: 25, feePence: 800, feePlusPence: 825, feeSource: "example", split: false };
+  h.state.tip = { pricePence: 499, perSide: 5, players: 10, games: 4, perGamePence: 125, sharePence: 15, feePence: 800, feePlusPence: 815, feeSource: "example", split: false };
 });
 
 // ── The cron: day boundaries and once-only ─────────────────────────────
@@ -359,7 +359,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     expect(dm.text).toContain("Hi Cole, Riverside FC's free period on MatchTime ends on Sat 31 Oct.");
     expect(dm.text).toContain("As the person who collects the match fees");
     expect(dm.text).toContain(`https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}`);
-    expect(dm.text).toContain("*25p a player per game*");
+    expect(dm.text).toContain("*15p a player per game*");
     expect(dm.text).not.toContain("make them the money collector");
     expect(dm.sendAfter).toBeNull();
     expect(h.state.transitions).toEqual([]);
@@ -411,7 +411,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     expect(d28[0].text).toBe(
       "Hi Cole, a quick reminder: Riverside FC's free period ends on Sat 31 Oct. Add a card to keep MatchTime running in the Riverside FC WhatsApp group: " +
         `https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}\n` +
-        "You only pay for the games you play, up to £9.99 a month, and nothing is taken when you add the card.",
+        "You only pay for the games you play, up to £4.99 a month, and nothing is taken when you add the card.",
     );
   });
 
@@ -421,7 +421,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     await runBillingCron(new Date("2026-10-30T13:00:00Z"));
     expect(dmsOf("trial-21")).toEqual([]);
     expect(dmsOf("trial-28")).toHaveLength(1);
-    expect(dmsOf("trial-28")[0].text).toContain("*25p a player per game*");
+    expect(dmsOf("trial-28")[0].text).toContain("*15p a player per game*");
   });
 
   it("a collector named on day 25 gets the day 28 reminder (resolved when queued, never stored)", async () => {
@@ -482,7 +482,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     );
     await runBillingCron(new Date("2026-12-08T12:00:00Z"));
     expect(c.billingStatus).toBe("paused");
-    expect(dmsOf("paused")[0].text).toContain("Hi Owen, we couldn't take the £9.99 for Riverside FC, so MatchTime is now paused.");
+    expect(dmsOf("paused")[0].text).toContain("Hi Owen, we couldn't take the £4.99 for Riverside FC, so MatchTime is now paused.");
   });
 
   it("a club paused by the webhook (Stripe gave up, or a cancelled plan) at night gets its 'paused' DM at 10:00", async () => {
@@ -604,7 +604,7 @@ describe("sendClubFeeTip: the admin channel's tip, once per free month", () => {
     expect(await sendClubFeeTip("org_1", DAY21)).toBe("sent");
     expect(h.state.adminNotices).toHaveLength(1);
     const n = h.state.adminNotices[0];
-    expect(n.dm).toContain("*25p a player per game*");
+    expect(n.dm).toContain("*15p a player per game*");
     expect(n.dm).not.toContain("Nobody is set as the money collector");
     expect(n.excludeUserId).toBe("u_cole");
   });
@@ -662,9 +662,9 @@ describe("onBillingContactChanged: the 'payer changed' DM from setPaymentHolder"
     expect(dm.userId).toBe("u_cole");
     expect(dm.cycleKey).toBe("u_cole");
     expect(dm.text).toContain(
-      "Hi Cole, you're now the money collector for Riverside FC, so you look after MatchTime's club fee for the Riverside FC WhatsApp group: only the games played, up to £9.99 a month. Add a card before Sat 31 Oct to keep it running:",
+      "Hi Cole, you're now the money collector for Riverside FC, so you look after MatchTime's club fee for the Riverside FC WhatsApp group: only the games played, up to £4.99 a month. Add a card before Sat 31 Oct to keep it running:",
     );
-    expect(dm.text).toContain("*25p a player per game*");
+    expect(dm.text).toContain("*15p a player per game*");
   });
 
   it("someone else's card is paying: 'Owen's card keeps paying until you put yours on'", async () => {

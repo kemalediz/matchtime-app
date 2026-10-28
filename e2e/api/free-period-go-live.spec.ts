@@ -109,7 +109,7 @@ const billingTraces = async () => ({
 test.beforeAll(() => resetDb());
 test.afterAll(() => resetDb());
 
-test("a held club's two free months start when it goes LIVE: silent and unbilled while setting up, then the whole free period from GO", async ({ request }) => {
+test("a held club's free months start when it goes LIVE: silent and unbilled while setting up, then the whole free period from GO", async ({ request }) => {
   test.setTimeout(180_000);
   const db = testDb();
   const seededAt = new Date();
@@ -232,7 +232,7 @@ test("a held club's two free months start when it goes LIVE: silent and unbilled
     [digits(OWNER.phone)],
   );
   expect(done!.text).toMatch(
-    /^Done: I'm introducing myself in "Harbour Tuesday 5s" now\. It can take a few minutes to appear\.\n\nYour first two months are free\.\n\n💷 \*Club fee tip:\* after that MatchTime only charges for the games you play, up to £9\.99 a month for the group/,
+    /^Done: I'm introducing myself in "Harbour Tuesday 5s" now\. It can take a few minutes to appear\.\n\nYour first three months are free\.\n\n💷 \*Club fee tip:\* after that MatchTime only charges for the games you play, up to £4\.99 a month for the group/,
   );
 
   const after = (await club())!;
@@ -240,16 +240,16 @@ test("a held club's two free months start when it goes LIVE: silent and unbilled
   const live = after.live!;
   expect(live.getTime()).toBeGreaterThanOrEqual(seededAt.getTime());
   const row = (await billingRow())!;
-  // The free period runs from the go-live, two London calendar months.
+  // The free period runs from the go-live, three London calendar months.
   expect(row.starts).toEqual(live);
   expect(row.ends).toEqual(freePeriodEnd(live));
   expect(formatLondon(row.ends, "HH:mm:ss")).toBe(formatLondon(live, "HH:mm:ss"));
   const [ly, lm] = formatLondon(live, "yyyy-MM").split("-").map(Number);
   const [ey, em] = formatLondon(row.ends, "yyyy-MM").split("-").map(Number);
-  expect(ey * 12 + em - (ly * 12 + lm)).toBe(2);
+  expect(ey * 12 + em - (ly * 12 + lm)).toBe(3);
   // Not from the approval: the 19 days of silence were not taken off it.
   expect((row.ends.getTime() - fromApproval.getTime()) / DAY).toBeGreaterThan(HELD_DAYS - 3.1);
-  expect((row.ends.getTime() - approved.getTime()) / DAY).toBeGreaterThan(58.9 + HELD_DAYS - 3.1);
+  expect((row.ends.getTime() - approved.getTime()) / DAY).toBeGreaterThan(88.9 + HELD_DAYS - 3.1);
   // The fixtures from before the GO are completed and quiet; going live
   // then made next week's game (2026-10-15, the cron's own generator).
   const fixtures = await db.all<{ id: string; status: string; flow: boolean }>(
@@ -272,7 +272,7 @@ test("a held club's two free months start when it goes LIVE: silent and unbilled
   expect(await billingRow()).toEqual(row);
   expect(await db.count(`SELECT COUNT(*) FROM "ClubBilling" WHERE "orgId" = $1`, [ORG])).toBe(1);
 
-  // ── The two months, walked with the cron ────────────────────────────
+  // ── The three months, walked with the cron ────────────────────────────
   const ends = row.ends;
   const endKey = ends.toISOString();
   const endDay = formatLondon(ends, "EEE d MMM");

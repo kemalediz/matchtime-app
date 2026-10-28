@@ -235,38 +235,38 @@ describe("rewritten DMs", () => {
 
 describe("the club fee tip (7.2): the per game maximum", () => {
   it("perGamePence: the monthly price over the month's games, up to the penny", () => {
-    expect(tipFor().perGamePence).toBe(250); // 999 / 4 = 249.75
+    expect(tipFor().perGamePence).toBe(125); // 499 / 4 = 124.75
     expect(tipFor({}, "custom", 500).perGamePence).toBe(125);
     // Two weekly games: 8 a month.
-    expect(tipFor({}, "standard", null, [act({ dayOfWeek: 4 })]).perGamePence).toBe(125); // 999 / 8 = 124.875
+    expect(tipFor({}, "standard", null, [act({ dayOfWeek: 4 })]).perGamePence).toBe(63); // 499 / 8 = 62.375
   });
 
   it("en: exactly as the plan words it", () => {
     expect(all("en").tip).toBe(
-      "💷 *Club fee tip:* MatchTime only charges for the games you play, up to £9.99 a month. " +
-        "Each game played costs the club at most £2.50, which is about *25p a player per game* for your 10 players. " +
-        "If your game costs £8 each, charge *£8.25* and the club fee is covered. Weeks you don't play cost nothing.",
+      "💷 *Club fee tip:* MatchTime only charges for the games you play, up to £4.99 a month. " +
+        "Each game played costs the club at most £1.25, which is about *15p a player per game* for your 10 players. " +
+        "If your game costs £8 each, charge *£8.15* and the club fee is covered. Weeks you don't play cost nothing.",
     );
-    expect(clubFeeTipText("en", tipFor({ playersPerTeam: 7, feePerPlayer: 7 }))).toContain("Your game is £7 each, so charging *£7.20* covers it. Weeks you don't play cost nothing.");
-    expect(clubFeeTipText("en", tipFor({ feeSplitTotal: true }))).toContain("When you split the pitch cost, add about 25p to each player's share.");
+    expect(clubFeeTipText("en", tipFor({ playersPerTeam: 7, feePerPlayer: 7 }))).toContain("Your game is £7 each, so charging *£7.10* covers it. Weeks you don't play cost nothing.");
+    expect(clubFeeTipText("en", tipFor({ feeSplitTotal: true }))).toContain("When you split the pitch cost, add about 15p to each player's share.");
   });
 
   it("tr: exactly as the plan words it", () => {
     expect(all("tr").tip).toBe(
-      "💷 *Kulüp ücreti ipucu:* MatchTime yalnızca oynadığınız maçlar için ücret alır, ayda en fazla £9.99. " +
-        "Oynanan her maç kulübe en fazla £2.50 tutar; bu da 10 oyuncunuz için *oyuncu başına maç başına yaklaşık 25p* eder. " +
-        "Maç ücreti kişi başı £8 ise *£8.25* alın, kulüp ücreti karşılanmış olur. Oynamadığınız haftalar için hiçbir şey ödemezsiniz.",
+      "💷 *Kulüp ücreti ipucu:* MatchTime yalnızca oynadığınız maçlar için ücret alır, ayda en fazla £4.99. " +
+        "Oynanan her maç kulübe en fazla £1.25 tutar; bu da 10 oyuncunuz için *oyuncu başına maç başına yaklaşık 15p* eder. " +
+        "Maç ücreti kişi başı £8 ise *£8.15* alın, kulüp ücreti karşılanmış olur. Oynamadığınız haftalar için hiçbir şey ödemezsiniz.",
     );
   });
 
   it("the 'you're live' tip (sj_dm_approved_tip)", () => {
     expect(all("en").approvedTip).toBe(
-      "💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to £9.99 a month for the group, paid by card by whoever collects the match fees. " +
-        "Each game played costs at most £2.50, about *25p a player per game* with 10 players, so a £8 game could be charged at *£8.25*.",
+      "💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to £4.99 a month for the group, paid by card by whoever collects the match fees. " +
+        "Each game played costs at most £1.25, about *15p a player per game* with 10 players, so a £8 game could be charged at *£8.15*.",
     );
     expect(all("tr").approvedTip).toBe(
-      "💷 *Kulüp ücreti ipucu:* sonrasında MatchTime yalnızca oynadığınız maçlar için ücret alır, grup için ayda en fazla £9.99; ücreti maç ücretlerini toplayan kişi kartla öder. " +
-        "Oynanan her maç en fazla £2.50 tutar, 10 oyuncuyla *oyuncu başına maç başına yaklaşık 25p* eder; £8 olan bir maç için *£8.25* alabilirsiniz.",
+      "💷 *Kulüp ücreti ipucu:* sonrasında MatchTime yalnızca oynadığınız maçlar için ücret alır, grup için ayda en fazla £4.99; ücreti maç ücretlerini toplayan kişi kartla öder. " +
+        "Oynanan her maç en fazla £1.25 tutar, 10 oyuncuyla *oyuncu başına maç başına yaklaşık 15p* eder; £8 olan bir maç için *£8.15* alabilirsiniz.",
     );
   });
 });

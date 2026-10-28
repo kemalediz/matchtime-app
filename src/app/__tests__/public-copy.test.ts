@@ -2,22 +2,31 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { firstMonthsFree, firstMonthsFreeBadge } from "@/lib/i18n/free-period";
+import {
+  STANDARD_PER_GAME_MAX_LABEL,
+  STANDARD_PRICE_LABEL,
+  standardMonthSharedLabel,
+  standardPerPlayerPerGameLabel,
+  standardWeeksPlayedLabel,
+} from "@/lib/club-price-words";
 
 /**
  * House rules for the public website copy (Kemal): no em dashes or en
  * dashes anywhere a visitor can read them, the real domain is
  * matchtime.ai (never matchtime.app), the bot is tagged as "@Match Time",
- * no fee talk, no "free" claims (MatchTime costs up to £9.99 a month per
- * group, charged only for the weeks played, with the first two months
- * free: one month since 2026-10-01, two since 2026-10-12),
+ * no fee talk, no "free" claims (MatchTime costs up to £4.99 a month per
+ * group since 2026-10-28, £9.99 before, charged only for the weeks played,
+ * with a free period of one month since 2026-10-01, two since 2026-10-12
+ * and three since 2026-10-28),
  * hello@matchtime.ai as the contact email, no published
  * MatchTime number, and no real club or player names on public pages.
  *
  * Checks the source of every public page with comments stripped, so the
  * rendered strings, metadata and JSON-LD are all covered. The one thing
- * rendered first is the free period's length: the pages build that sentence
- * from `FREE_PERIOD_MONTHS` (i18n/free-period.ts), so the checks read what
- * a visitor reads, and a page that hardcodes the length fails.
+ * rendered first is the free period's length and the price: the pages
+ * build those from `FREE_PERIOD_MONTHS` (i18n/free-period.ts) and
+ * `STANDARD_PRICE_PENCE` (club-price-words.ts), so the checks read what a
+ * visitor reads, and a page that hardcodes them fails.
  */
 const ROOT = path.resolve(__dirname, "../../..");
 const PUBLIC_FILES = [
@@ -48,13 +57,27 @@ function stripComments(src: string): string {
 }
 
 /** The free period sentences, as the pages render them. */
-const FIRST_FREE = firstMonthsFree("en"); // "Your first two months are free"
-const FIRST_FREE_BADGE = firstMonthsFreeBadge(); // "First two months free"
+const FIRST_FREE = firstMonthsFree("en"); // "Your first three months are free"
+const FIRST_FREE_BADGE = firstMonthsFreeBadge(); // "First three months free"
+/** The price words the pages read, as a visitor sees them. */
+const PRICE_WORDS: Array<[string, string]> = [
+  ["STANDARD_PRICE_LABEL", STANDARD_PRICE_LABEL],
+  ["STANDARD_PER_GAME_MAX_LABEL", STANDARD_PER_GAME_MAX_LABEL],
+  ["standardWeeksPlayedLabel(3, 4)", standardWeeksPlayedLabel(3, 4)],
+  ["standardPerPlayerPerGameLabel(10)", standardPerPlayerPerGameLabel(10)],
+  ["standardMonthSharedLabel(20)", standardMonthSharedLabel(20)],
+];
 function renderFreePeriod(src: string): string {
-  return src
+  let out = src
     .replace(/^import \{[^}]*\} from "@\/lib\/i18n\/free-period";\n/m, "") // the module's name is not copy
+    .replace(/^import \{[^}]*\} from "@\/lib\/club-price-words";\n/m, "")
     .replaceAll('{firstMonthsFree("en")}', FIRST_FREE)
     .replaceAll("{firstMonthsFreeBadge()}", FIRST_FREE_BADGE);
+  for (const [expr, words] of PRICE_WORDS) out = out.replaceAll(`\${${expr}}`, words).replaceAll(`{${expr}}`, words);
+  // An explicit JSX space renders as a space. (Next's SWC drops the leading
+  // space of a multi-line JSX text holding an entity such as &apos; when it
+  // follows an expression, so the pages write {" "} after each price.)
+  return out.replaceAll('{" "}', " ");
 }
 /** The only "free" a visitor may read: the two sentences above, and "free
  *  period" where the organiser guide refers back to them. */
@@ -87,9 +110,9 @@ describe("public website copy", () => {
     expect(text).not.toMatch(/(^|[^\d])1\s?%|MatchTime fee|card fee|payment fee|processing fee|platform fee/i);
   });
 
-  // Kemal (2026-10-01): MatchTime is no longer free. It costs up to £9.99
-  // a month per group, only for the weeks played (2026-10-02), with the
-  // first two months free (2026-10-12), so the only "free" a visitor may
+  // Kemal (2026-10-01): MatchTime is no longer free. It costs up to £4.99
+  // a month per group (2026-10-28), only for the weeks played (2026-10-02),
+  // with the first three months free (2026-10-28), so the only "free" a visitor may
   // read is that sentence, its badge and "free period". Catches "free to
   // use", "it's free", "for free", "Free WhatsApp organiser" and the like.
   // The length is never typed into a page: it comes from the constant.
@@ -132,9 +155,18 @@ describe("public website copy", () => {
 
     const flat = (t: string) => t.replace(/\s+/g, " ");
 
-    it("the free period is two months, in the words the pages use", () => {
-      expect(FIRST_FREE).toBe("Your first two months are free");
-      expect(FIRST_FREE_BADGE).toBe("First two months free");
+    it("the free period is three months, in the words the pages use", () => {
+      expect(FIRST_FREE).toBe("Your first three months are free");
+      expect(FIRST_FREE_BADGE).toBe("First three months free");
+    });
+
+    it("no page types the price: it is read from STANDARD_PRICE_PENCE", () => {
+      for (const f of PUBLIC_FILES) {
+        const raw = stripComments(readFileSync(path.join(ROOT, f), "utf8"));
+        for (const typed of [STANDARD_PRICE_LABEL, STANDARD_PER_GAME_MAX_LABEL, standardWeeksPlayedLabel(3, 4), "£9.99", "£7.49", "£2.50"]) {
+          expect(raw, `${f} types ${typed}`).not.toContain(typed);
+        }
+      }
     });
 
     const pricing = sources.find((s) => s.file.endsWith("pricing-section.tsx"))!.text;
@@ -142,22 +174,23 @@ describe("public website copy", () => {
     // Kemal, 2026-10-25: the price has its own page (/pricing,
     // pricing-section.tsx); the home page keeps only its teaser, which
     // renders the same headline.
-    it("the pricing section has the price and the free first two months", () => {
+    it("the pricing section has the price and the free first three months", () => {
       expect(pricing).toMatch(/id="pricing"/);
-      expect(pricing).toMatch(/£9\.99/);
+      expect(pricing).toMatch(/£4\.99/);
+      expect(pricing).not.toMatch(/£9\.99/);
       expect(pricing).not.toMatch(/£5(?![\d.])/);
       expect(pricing).toMatch(/per WhatsApp group/i);
       expect(pricing).toContain(FIRST_FREE_BADGE);
       expect(flat(pricing)).toContain(`${FIRST_FREE}, so you can see how it runs your week before you pay.`);
       expect(pricing).not.toMatch(/first month/i);
-      expect(pricing).toMatch(/about 50p a player/);
-      expect(pricing).not.toMatch(/25p/);
+      expect(flat(pricing)).toMatch(/Even a month charged in full at £4\.99, shared by 20 players, works out at about 25p a player\./);
+      expect(pricing).not.toMatch(/50p/);
     });
 
     it("the home page keeps the free period in its steps and its closing line, free months before the price", () => {
       expect(landing).toContain("<PricingTeaser />");
       expect(flat(landing)).toContain(`${FIRST_FREE}, and you can remove it from your group any time.`);
-      expect(flat(landing)).toContain(`${FIRST_FREE}, then it&apos;s up to £9.99 a month`);
+      expect(flat(landing)).toContain(`${FIRST_FREE}, then it&apos;s up to £4.99 a month`);
       expect(landing).not.toMatch(/first month/i);
     });
 
@@ -167,24 +200,24 @@ describe("public website copy", () => {
       const f = flat(pricing);
       expect(f.indexOf(FIRST_FREE)).toBeGreaterThan(-1);
       const para = f.slice(f.indexOf("<p className=\"mt-5"), f.indexOf("</p>", f.indexOf("<p className=\"mt-5")));
-      expect(para.indexOf(FIRST_FREE)).toBeLessThan(para.indexOf("£9.99"));
+      expect(para.indexOf(FIRST_FREE)).toBeLessThan(para.indexOf("£4.99"));
     });
 
     // Kemal, 2026-10-02: the club fee is charged by games played, in
-    // arrears, up to £9.99 a month. The site says so, and never states a
-    // flat "£9.99 a month" that every month costs.
+    // arrears, up to £4.99 a month (2026-10-28). The site says so, and never
+    // states a flat "£4.99 a month" that every month costs.
     it.each([
       ["pricing", () => pricing],
       ["landing", () => landing],
-    ] as const)("%s says up to £9.99 a month, never a flat £9.99 a month", (_n, src) => {
-      expect(flat(src())).toMatch(/up to (<span[^>]*>)?£9\.99 a month/i);
-      expect(flat(src())).not.toMatch(/then it&apos;s £9\.99 a month/i);
-      expect(flat(src())).not.toMatch(/(?<!up to )£9\.99 a month per WhatsApp group/i);
+    ] as const)("%s says up to £4.99 a month, never a flat £4.99 a month", (_n, src) => {
+      expect(flat(src())).toMatch(/up to (<span[^>]*>)?£4\.99 a month/i);
+      expect(flat(src())).not.toMatch(/then it&apos;s £4\.99 a month/i);
+      expect(flat(src())).not.toMatch(/(?<!up to )£4\.99 a month per WhatsApp group/i);
     });
 
     it("the pricing section says you only pay for the weeks you play", () => {
       expect(flat(pricing)).toMatch(/you only pay for the weeks you play/i);
-      expect(flat(pricing)).toMatch(/Play 3 weeks out of 4 and it&apos;s £7\.49/);
+      expect(flat(pricing)).toMatch(/Play 3 weeks out of 4 and it&apos;s £3\.74/);
     });
 
     it("the home page, before the pricing teaser, carries no price", () => {
@@ -202,8 +235,9 @@ describe("public website copy", () => {
 
     it("the help pages state the price as a maximum, for the weeks played", () => {
       for (const t of [help, admin]) {
-        expect(flat(t)).toMatch(/up to £9\.99 a month/);
-        expect(flat(t)).not.toMatch(/(?<!up to )£9\.99 a month/);
+        expect(flat(t)).toMatch(/up to £4\.99 a month/);
+        expect(flat(t)).not.toMatch(/(?<!up to )£4\.99 a month/);
+        expect(t).not.toMatch(/£9\.99/);
         expect(t).not.toMatch(/£5(?![\d.])/);
         expect(flat(t)).toContain(`${FIRST_FREE}.`);
         expect(t).not.toMatch(/first month/i);
@@ -212,10 +246,11 @@ describe("public website copy", () => {
     });
 
     // The organiser guide's "Club fee" section (Kemal, P4 brief): the first
-    // two months free from the day MatchTime goes live in the group; then only the games played, up to £9.99 a
+    // three months free from the day MatchTime goes live in the group; then only the games played, up to £4.99 a
     // month per group including VAT; the money collector or the owner adds
     // a card; reminders; a week's grace; then quiet until a card is added,
-    // data kept; stop any time; the tip of 25p a player per game at most.
+    // data kept; stop any time; the tip of 13p a player per game at most
+    // (£1.25 a game, £4.99 over four weeks).
     it("the organiser guide has a Club fee section covering every point", () => {
       const start = admin.indexOf('id="club-fee"');
       expect(start).toBeGreaterThan(-1);
@@ -230,7 +265,9 @@ describe("public website copy", () => {
         /If the free period ends without a card, MatchTime keeps running for a week/,
         /goes live in your group/i,
         /only (pay|charged) for the (games|weeks) (you play|played)/i,
-        /up to £9\.99 a month/i,
+        /up to £4\.99 a month/i,
+        /Play 3 weeks out of 4 and it&apos;s £3\.74/,
+        /at most £1\.25 \(£4\.99 over four weeks\)/,
         /per WhatsApp group/i,
         /VAT/,
         /money collector/i,
@@ -241,7 +278,7 @@ describe("public website copy", () => {
         /quiet/i,
         /(data|players, matches and stats) (is|are) (all )?kept/i,
         /Stop paying/,
-        /25p a player per game/,
+        /13p a player per game/,
         /at most/i,
         /billing page/i,
       ]) {

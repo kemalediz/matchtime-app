@@ -196,7 +196,7 @@ describe("composeSetupAskDm: the blocks, in order", () => {
         "https://mt.link/settings\n" +
         "Until then I say nothing in the group.",
     );
-    expect(blocks[9]).toBe("Your first two months are free. The free period starts when I go live in the group.");
+    expect(blocks[9]).toBe("Your first three months are free. The free period starts when I go live in the group.");
     expect(blocks).toHaveLength(10);
     // Settings were switched, so "standard setup" would be false: never said.
     expect(text).not.toContain("Standard setup");
@@ -317,7 +317,7 @@ describe("composeSetupAskDm: the blocks, in order", () => {
       for (const reading of [{ kind: "nothing" }, { kind: "unread" }, { kind: "none" }, findings()] as ChatReading[]) {
         const withIt = composeSetupAskDm(input(reading, { lang, freePeriod: true })).split("\n\n");
         const without = composeSetupAskDm(input(reading, { lang, freePeriod: false })).split("\n\n");
-        const free = lang === "en" ? "Your first two months are free. The free period starts when I go live in the group." : "İlk iki ayınız ücretsiz. Ücretsiz dönem, grupta yayına geçtiğimde başlar.";
+        const free = lang === "en" ? "Your first three months are free. The free period starts when I go live in the group." : "İlk üç ayınız ücretsiz. Ücretsiz dönem, grupta yayına geçtiğimde başlar.";
         expect(withIt.at(-1)).toBe(free);
         // The same message, less its last block.
         expect(without).toEqual(withIt.slice(0, -1));
@@ -348,7 +348,7 @@ describe("composeSetupAskDm: the blocks, in order", () => {
         "https://mt.link/settings\n" +
         "O zamana kadar grupta hiçbir şey yazmam.",
     );
-    expect(blocks[9]).toBe("İlk iki ayınız ücretsiz. Ücretsiz dönem, grupta yayına geçtiğimde başlar.");
+    expect(blocks[9]).toBe("İlk üç ayınız ücretsiz. Ücretsiz dönem, grupta yayına geçtiğimde başlar.");
 
     const nothing = composeSetupAskDm(input({ kind: "nothing" }, { lang: "tr" })).split("\n\n");
     expect(nothing[1]).toBe(

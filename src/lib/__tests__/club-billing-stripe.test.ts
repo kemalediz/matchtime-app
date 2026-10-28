@@ -1066,7 +1066,7 @@ describe("review M1: billed again after Free, the DMs", () => {
     expect(h.state.dms).toHaveLength(1);
     expect(h.state.dms[0]).toMatchObject({ kind: "billed-again", userId: "user_colin", cycleKey: MID_M1.toISOString() });
     expect(h.state.dms[0].text).toBe(
-      "Hi Colin, Billing Sevens is on the MatchTime plan again and is paid with your card ending 4242: only the games played, up to £9.99 a month. The first charge is on Tue 1 Dec. To stop paying or change the card: https://mt.test/r/user_colin/billing/org_1",
+      "Hi Colin, Billing Sevens is on the MatchTime plan again and is paid with your card ending 4242: only the games played, up to £4.99 a month. The first charge is on Tue 1 Dec. To stop paying or change the card: https://mt.test/r/user_colin/billing/org_1",
     );
     // Once: a second flush sends nothing.
     expect(await flushPendingBillingNotices(ORG, MID_M1)).toBe(0);

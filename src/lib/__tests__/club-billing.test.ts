@@ -209,8 +209,8 @@ describe("setBillingState: the one writer", () => {
     setRow({ billingStatus: "exempt", billing: null });
     expect(await setBillingState("org", { type: "approved" }, NOW)).toMatchObject({ ok: true, to: "trial" });
     expect(dbMock.clubBilling.create).toHaveBeenCalledWith({
-      // Thu 1 Oct 10:00 London (BST) to Tue 1 Dec 10:00 London (GMT).
-      data: { orgId: "org", trialStartedAt: APPROVED_AT, trialEndsAt: new Date("2026-12-01T10:00:00Z") },
+      // Thu 1 Oct 10:00 London (BST) to Fri 1 Jan 2027 10:00 London (GMT).
+      data: { orgId: "org", trialStartedAt: APPROVED_AT, trialEndsAt: new Date("2027-01-01T10:00:00Z") },
     });
   });
 

@@ -34,6 +34,7 @@ import { loadClubBillingSnapshot } from "@/lib/club-billing";
 import { billingTotals, isBillingEnabled, planPricePence } from "@/lib/club-billing-rules";
 import { moneyLabel, ownerChargeDateLabel, ownerLastMonthLabel, ownerThisMonthLabel } from "@/lib/club-billing-view";
 import { loadCurrentMonth, loadPastMonths, loadUnpaidSummary } from "@/lib/club-billing-month-summary";
+import { STANDARD_PRICE_LABEL } from "@/lib/club-price-words";
 
 /**
  * /admin/clubs: the platform owner's decisions on self-join clubs (slice 7).
@@ -141,7 +142,7 @@ function planLabel(plan: string, pricePence: number | null): string {
   if (plan === "free") return "Free";
   const p = planPricePence(plan, pricePence);
   // Slice P4 (games played): the plan's price is a monthly MAXIMUM.
-  return plan === "custom" ? `Custom, up to ${p ? moneyLabel(p) : ""}` : "Standard, up to £9.99";
+  return plan === "custom" ? `Custom, up to ${p ? moneyLabel(p) : ""}` : `Standard, up to ${STANDARD_PRICE_LABEL}`;
 }
 
 type LiveClub = {

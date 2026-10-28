@@ -270,9 +270,9 @@ const FLAG_OFF_ORGANISER_DM = [
   "\n",
   "❓ *Help any time:* message me here, for example *help payments* or *help badges*.\n",
   "\n",
-  "Your first two months are free.\n",
+  "Your first three months are free.\n",
   "\n",
-  "💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to £9.99 a month for the group, paid by card by whoever collects the match fees. Each game played costs at most £2.50, about *25p a player per game* with 10 players, so a £8 game could be charged at *£8.25*.",
+  "💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to £4.99 a month for the group, paid by card by whoever collects the match fees. Each game played costs at most £1.25, about *15p a player per game* with 10 players, so a £8 game could be charged at *£8.15*.",
 ].join("");
 
 const alerts = (db: TestDb, orgId: string) =>
@@ -482,7 +482,7 @@ test("FLAG ON, by WhatsApp: held and silent; the reading runs after the response
   expect(dm.text).toMatch(
     /When you're happy, reply \*GO\* here and I'll introduce myself in the group, or press \*Go live\* on your settings page:\nhttp\S+\nUntil then I say nothing in the group\./,
   );
-  expect(blocks.at(-1)).toBe("Your first two months are free. The free period starts when I go live in the group.");
+  expect(blocks.at(-1)).toBe("Your first three months are free. The free period starts when I go live in the group.");
   // Rolling squad is on, so "standard setup" would be false; and the findings DM's own closing line is not repeated.
   expect(dm.text).not.toMatch(/standard setup/i);
   expect(dm.text).not.toContain("Everything is on your settings page");
@@ -530,7 +530,7 @@ test("FLAG ON, Turkish, no chat stored (skipped): the DM is Turkish and says the
   // The Turkish DM asks for BAŞLA and names the button "Yayına al" (as the go-live PR does).
   expect(dm.text).toContain("buraya *BAŞLA* yazın");
   expect(dm.text).toContain("*Yayına al* düğmesine basın");
-  expect(blocks.at(-1)).toBe("İlk iki ayınız ücretsiz. Ücretsiz dönem, grupta yayına geçtiğimde başlar.");
+  expect(blocks.at(-1)).toBe("İlk üç ayınız ücretsiz. Ücretsiz dönem, grupta yayına geçtiğimde başlar.");
 });
 
 test("FLAG ON, Turkish, the reading applied a setting: the findings are in Turkish", async ({ request, db }) => {

@@ -373,8 +373,8 @@ test.describe("the organiser of a club that is setting up", () => {
     const note = page.getByTestId("go-live-free-period");
     await expect(note).toBeVisible();
     await expect(status.getByTestId("go-live-free-period")).toHaveCount(1);
-    await expect(note).toContainText("Your first two months are free.");
-    await expect(note).toContainText("after that MatchTime only charges for the games you play, up to £9.99 a month for the group");
+    await expect(note).toContainText("Your first three months are free.");
+    await expect(note).toContainText("after that MatchTime only charges for the games you play, up to £4.99 a month for the group");
     await expect(note.locator("strong", { hasText: "Club fee tip:" })).toBeVisible();
     await expect(note).not.toContainText("*Club fee tip");
     const doneText = (await page.getByTestId("go-live-done-text").boundingBox())!;

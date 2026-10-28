@@ -4,21 +4,23 @@
  * here. Both read the words below, so the price can be stated in one
  * place.
  *
- * Lead with the free period, not the price (Kemal: a huge "£9.99" with the
+ * Lead with the free period, not the price (Kemal: a huge price with the
  * free months as a small badge "looks scary and expensive"): the biggest
  * line is the free period, built from FREE_PERIOD_MONTHS by
  * `firstMonthsFreeBadge` / `firstMonthsFree` (never typed), then, clearly
  * smaller, the price as a maximum for the whole group.
  *
- * Every line is already true: the club fee is up to £9.99 a month per
- * group, charged after each month for the weeks played
- * (club-billing-rules.ts STANDARD_PRICE_PENCE), no contract. Match fees are
+ * Every line is already true: the club fee is up to STANDARD_PRICE_PENCE
+ * (club-billing-rules.ts, GBP 4.99 since 2026-10-28) a month per group,
+ * charged after each month for the weeks played, no contract. Every amount
+ * is read from club-price-words.ts, never typed. Match fees are
  * separate and optional. No em or en dashes; public-copy.test.ts holds the
  * rules.
  */
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 import { firstMonthsFree, firstMonthsFreeBadge } from "@/lib/i18n/free-period";
+import { STANDARD_PRICE_LABEL, standardMonthSharedLabel, standardWeeksPlayedLabel } from "@/lib/club-price-words";
 import { PRICING_PATH, type Card } from "./landing-content";
 import { DISPLAY_FONT } from "./display-font";
 import { FeatureCard } from "./landing-sections";
@@ -38,7 +40,7 @@ const PRICING_CARDS: Card[] = [
     color: "teal",
     icon: "users",
     title: "Share it out if you like",
-    body: "The organiser can share the month's fee among the players who played. Even a month charged in full at £9.99, shared by 20 players, works out at about 50p a player.",
+    body: `The organiser can share the month's fee among the players who played. Even a month charged in full at ${STANDARD_PRICE_LABEL}, shared by 20 players, works out at about ${standardMonthSharedLabel(20)} a player.`,
   },
   {
     key: "match-fees",
@@ -61,7 +63,7 @@ export function PricingHeadline() {
         {firstMonthsFreeBadge()}
       </p>
       <p data-testid="price-amount" className="mt-3 text-lg sm:text-xl text-slate-200">
-        then up to <span className="font-bold text-white">£9.99 a month</span> for the whole group
+        then up to <span className="font-bold text-white">{STANDARD_PRICE_LABEL}{" "}a month</span> for the whole group
       </p>
     </div>
   );
@@ -86,10 +88,10 @@ export function PricingSection({ as: Heading = "h1" }: { as?: "h1" | "h2" }) {
           </Heading>
           <p className="mt-5 text-lg text-slate-600">
             {firstMonthsFree("en")}, so you can see how it runs your week before you pay. After that it&apos;s up
-            to £9.99 a month per WhatsApp group, not per player, and you only pay for the weeks you play.
+            to {STANDARD_PRICE_LABEL}{" "}a month per WhatsApp group, not per player, and you only pay for the weeks you play.
           </p>
           <p className="mt-3 text-base text-slate-500">
-            Play 3 weeks out of 4 and it&apos;s £7.49. Take a month off and it&apos;s nothing.
+            Play 3 weeks out of 4 and it&apos;s {standardWeeksPlayedLabel(3, 4)}. Take a month off and it&apos;s nothing.
           </p>
         </div>
 

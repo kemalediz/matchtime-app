@@ -50,7 +50,7 @@ for (const [name, size] of [["phone", PHONE], ["desktop", DESKTOP]] as const) {
     // Round three: the "No app for players" tick row is gone.
     await expect(hero.getByRole("list", { name: "Good to know" })).toHaveCount(0);
     await expect(hero.getByText("No app for players")).toHaveCount(0);
-    await expect(hero.getByText(/months free|first two months|weeks you play|£9|a month/i)).toHaveCount(0);
+    await expect(hero.getByText(/months free|first two months|first three months|weeks you play|£9|£4|a month/i)).toHaveCount(0);
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     await shot(page, `hero-e-${name}.png`);
   });

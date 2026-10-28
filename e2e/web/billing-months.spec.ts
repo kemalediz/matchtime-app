@@ -154,7 +154,10 @@ function expectedBox(): string {
     now: new Date(),
   });
   expect(count.played).toBe(1);
-  return monthBoxText("en", { ...CUR, played: count.played, scheduled: count.scheduled, upcoming: count.upcoming, pricePence: 999 });
+  // The open month was seeded at the old £9.99 (priceAtStartPence 999); the
+  // club is on Standard, now £4.99, and the box shows the lower of the two
+  // (Kemal, 2026-10-28: a month already open is charged the new price).
+  return monthBoxText("en", { ...CUR, played: count.played, scheduled: count.scheduled, upcoming: count.upcoming, pricePence: 499 });
 }
 
 test("1. the money collector: this month so far, past months, See games, and their own card's receipt only", async ({ page }) => {
@@ -162,7 +165,7 @@ test("1. the money collector: this month so far, past months, See games, and the
   await expect(page.getByTestId("billing-page")).toHaveAttribute("data-role", "contact", { timeout: 30_000 });
   await expect(page.getByTestId("billing-month-box")).toHaveText(expectedBox());
   await expect(page.getByTestId("billing-month-box")).toContainText("1 of ");
-  await expect(page.getByTestId("billing-state")).toContainText("Only the games played are charged, up to £9.99 a month. Next charge");
+  await expect(page.getByTestId("billing-state")).toContainText("Only the games played are charged, up to £4.99 a month. Next charge");
   await expect(page.getByTestId("billing-state")).toContainText("Card visa ending 4242.");
 
   const prev = monthRangeLabels("en", PREV);
@@ -242,7 +245,7 @@ test("5. /admin/clubs: this month so far, last month, and the totals line", asyn
   try {
     await signInAs(page, USER.owner, "/admin/clubs");
     const row = page.getByTestId("live-club").filter({ hasText: "Month Sevens" });
-    await expect(row.getByTestId("club-billing-summary")).toContainText("Standard, up to £9.99. Paying. Next charge", { timeout: 30_000 });
+    await expect(row.getByTestId("club-billing-summary")).toContainText("Standard, up to £4.99. Paying. Next charge", { timeout: 30_000 });
     // The London day the month ends and "from 09:00" (the close runs then),
     // never the month's 00:00 boundary.
     await expect(row.getByTestId("club-billing-summary")).toContainText(/Next charge \w{3} \d{1,2} \w{3}, from 09:00\./);

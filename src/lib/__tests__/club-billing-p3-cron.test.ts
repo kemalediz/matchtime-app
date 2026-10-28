@@ -470,15 +470,15 @@ describe("the cron opens and closes months (plan 6)", () => {
 
     const close = await runBillingCron(FIRST_DAYTIME_M1);
     expect(close.clubs[0].closed).toBe("1:paid");
-    expect(month(1)).toMatchObject({ status: "paid", scheduled: 4, played: 3, amountPence: 749 });
+    expect(month(1)).toMatchObject({ status: "paid", scheduled: 4, played: 3, amountPence: 374 });
     expect(invoices()).toHaveLength(1);
     expect(dmsOf("month-charged")).toEqual([
       expect.objectContaining({
         userId: "u_cole",
         cycleKey: month(1).id,
         text:
-          "Hi Cole, Cron Rovers played 3 of 4 games between 1 Nov and 30 Nov, so £7.49 was charged to your card ending 4242 " +
-          `(VAT included; a full month is £9.99). Stripe has emailed you the receipt. Details: https://mt.test/r/u_cole/billing/${ORG}`,
+          "Hi Cole, Cron Rovers played 3 of 4 games between 1 Nov and 30 Nov, so £3.74 was charged to your card ending 4242 " +
+          `(VAT included; a full month is £4.99). Stripe has emailed you the receipt. Details: https://mt.test/r/u_cole/billing/${ORG}`,
       }),
     ]);
     // The rest of the day: nothing more.
@@ -493,7 +493,7 @@ describe("the cron opens and closes months (plan 6)", () => {
     weeks(NOV_TUESDAYS, ["played", "played", "played", "played"]);
     await runBillingCron(TRIAL_ENDS);
     await Promise.all([runBillingCron(CLOSE_M1), runBillingCron(CLOSE_M1)]);
-    expect(month(1)).toMatchObject({ status: "paid", amountPence: 999 });
+    expect(month(1)).toMatchObject({ status: "paid", amountPence: 499 });
     expect(invoices()).toHaveLength(1);
     expect(payCalls()).toHaveLength(1);
     expect(dmsOf("month-charged")).toHaveLength(1);
@@ -620,7 +620,7 @@ describe("the month DMs: once each, daytime only, to the billing contact", () =>
     expect(dmsOf()).toEqual([]);
     await hourly(at("2026-12-02T00:00:00Z"), at("2026-12-02T12:00:00Z"));
     expect(dmsOf("month-charged")).toHaveLength(1);
-    expect(dmsOf("month-charged")[0].text).toContain("played all 4 games between 1 Nov and 30 Nov, so £9.99 was charged");
+    expect(dmsOf("month-charged")[0].text).toContain("played all 4 games between 1 Nov and 30 Nov, so £4.99 was charged");
     // A re-delivered webhook in the daytime: still one.
     expect(await sendMonthCharged(ORG, month(1).id, at("2026-12-02T13:00:00Z"))).toBe("already");
   });

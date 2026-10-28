@@ -189,7 +189,7 @@ const asks = () => state.jobs.filter((j) => j.purpose === SETUP_ASK_DM_PURPOSE);
 const codes = () => state.jobs.filter((j) => j.purpose === "setup-admin-code");
 
 describe("sendSetupDm: the free period is promised only when going live will start one", () => {
-  const FREE = "Your first two months are free. The free period starts when I go live in the group.";
+  const FREE = "Your first three months are free. The free period starts when I go live in the group.";
   const BILLING = process.env.BILLING_ENABLED;
   afterEach(() => {
     if (BILLING === undefined) delete process.env.BILLING_ENABLED;

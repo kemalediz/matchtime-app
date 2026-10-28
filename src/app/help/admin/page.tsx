@@ -1,5 +1,11 @@
 import { footballFormatsWords } from "@/components/landing/landing-content";
 import { firstMonthsFree } from "@/lib/i18n/free-period";
+import {
+  STANDARD_PER_GAME_MAX_LABEL,
+  STANDARD_PRICE_LABEL,
+  standardPerPlayerPerGameLabel,
+  standardWeeksPlayedLabel,
+} from "@/lib/club-price-words";
 import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-public-copy";
 import { isPictureReadingEnabled } from "@/lib/picture-reading-flag";
@@ -20,7 +26,7 @@ export default async function AdminGuidePage() {
       <p>
         You run the group. This guide walks through what MatchTime does for
         you each week, and what you can check or fix from the dashboard.
-        MatchTime costs up to £9.99 a month per group, and you only pay for
+        MatchTime costs up to {STANDARD_PRICE_LABEL}{" "}a month per group, and you only pay for
         the weeks you play. {firstMonthsFree("en")}. See{" "}
         <a href="#club-fee">Club fee</a> below.
       </p>
@@ -60,12 +66,12 @@ export default async function AdminGuidePage() {
         No card is needed to start.
       </p>
       <p>
-        After that you only pay for the weeks you play: up to £9.99 a month
+        After that you only pay for the weeks you play: up to {STANDARD_PRICE_LABEL}{" "}a month
         per WhatsApp group, VAT included, for the whole group rather than
         each player. After each month MatchTime counts the games your group
         played out of the games it had scheduled, and the card on file is
         charged for those only, the morning after the month ends. Play 3
-        weeks out of 4 and it&apos;s £7.49. Play none, or take a summer
+        weeks out of 4 and it&apos;s {standardWeeksPlayedLabel(3, 4)}. Play none, or take a summer
         break, and nothing is charged.
       </p>
       <p>
@@ -93,9 +99,9 @@ export default async function AdminGuidePage() {
         are charged when the month ends.
       </p>
       <p>
-        <strong>Tip:</strong> a game played costs the club at most £2.50
-        (£9.99 over four weeks), so with 10 players it&apos;s at most about
-        25p a player per game. Add that to each player&apos;s match fee and
+        <strong>Tip:</strong> a game played costs the club at most {STANDARD_PER_GAME_MAX_LABEL}{" "}
+        ({STANDARD_PRICE_LABEL}{" "}over four weeks), so with 10 players it&apos;s at most about{" "}
+        {standardPerPlayerPerGameLabel(10)}{" "}a player per game. Add that to each player&apos;s match fee and
         the club fee is covered; a week you don&apos;t play costs nothing.
         Match fees are separate: collecting them through MatchTime is
         optional (see <a href="#payments">Payments</a>).

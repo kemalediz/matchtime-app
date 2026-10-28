@@ -109,7 +109,7 @@ const botJobs = (db: TestDb, orgId: string) =>
  * sentence and the club fee tip (owner decision, 2026-10-12).
  */
 const doneWithFreePeriod = (group: string) =>
-  new RegExp(`^Done: I'm introducing myself in "${group}" now\\. It can take a few minutes to appear\\.\\n\\nYour first two months are free\\.\\n\\n💷 \\*Club fee tip:\\* after that MatchTime only charges for the games you play, up to £9\\.99 a month`);
+  new RegExp(`^Done: I'm introducing myself in "${group}" now\\. It can take a few minutes to appear\\.\\n\\nYour first three months are free\\.\\n\\n💷 \\*Club fee tip:\\* after that MatchTime only charges for the games you play, up to £4\\.99 a month`);
 const billing = (db: TestDb, orgId: string) =>
   db.one<{ status: string; rows: number }>(
     `SELECT o."billingStatus" AS status, (SELECT COUNT(*)::int FROM "ClubBilling" cb WHERE cb."orgId" = o.id) AS rows FROM "Organisation" o WHERE o.id = $1`,
@@ -416,7 +416,7 @@ test.describe("GO in Turkish", () => {
     expect(res).toMatchObject({ handled: "setup-go", outcome: "went-live", orgId: KIYI.id });
     expect(await club(db, KIYI.id)).toMatchObject({ setupStage: "live", whatsappBotEnabled: true });
     expect(await lastReply(db, KIYI.ownerPhone)).toMatchObject({
-      text: expect.stringMatching(/^Tamam: şimdi "Kıyı Salı Maçı" grubunda kendimi tanıtıyorum\. Mesajın görünmesi birkaç dakika sürebilir\.\n\nİlk iki ayınız ücretsiz\.\n\n💷 \*Kulüp ücreti ipucu:\* /),
+      text: expect.stringMatching(/^Tamam: şimdi "Kıyı Salı Maçı" grubunda kendimi tanıtıyorum\. Mesajın görünmesi birkaç dakika sürebilir\.\n\nİlk üç ayınız ücretsiz\.\n\n💷 \*Kulüp ücreti ipucu:\* /),
     });
     const jobs = await botJobs(db, KIYI.id);
     expect(jobs).toHaveLength(1);

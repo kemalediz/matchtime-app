@@ -18,7 +18,7 @@
  *     period was 30 days and they fell on day 21 and day 28; "day 21",
  *     "day 28" and "day 30" (the end) in this code mean these. Being
  *     counted from the END, they did not move when the free period became
- *     two months (2026-10-12).
+ *     two months (2026-10-12) or three (2026-10-28).
  *   - Each DM is claimed once per club, kind and cycle (`BillingNotice`),
  *     by the caller. A cron that was down for two days never sends two
  *     reminders in a row: day 21 is skipped once day 28 is due, and day 28
