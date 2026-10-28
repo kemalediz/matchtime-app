@@ -303,9 +303,9 @@ describe("landing content: every claim is present", () => {
     expect(keysOf(spotlight("your-way").points)).toEqual(["rolling", "pick", "announce", "monthly", "language"]);
   });
 
-  it("the features start with attendance, then short of players, then the bench (Kemal, 2026-10-27)", () => {
-    expect(keysOf(FEATURES).slice(0, 3)).toEqual(["in-out", "chase", "bench"]);
-    expect([...ATTENDANCE_FEATURE_KEYS]).toEqual(["in-out", "chase", "bench"]);
+  it("the features start with attendance, then the bench, then short of players (Kemal, 2026-10-28)", () => {
+    expect(keysOf(FEATURES).slice(0, 3)).toEqual(["in-out", "bench", "chase"]);
+    expect([...ATTENDANCE_FEATURE_KEYS]).toEqual(["in-out", "bench", "chase"]);
   });
 
   it("the features grid still covers the weekly cycle", () => {
@@ -539,8 +539,8 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
     }
   });
 
-  it("has nine cards, in order, the short-of-players card second, each with a title, a line and details", () => {
-    expect(HERO_DECK.cards.map((c) => c.key)).toEqual(["att", "short", "bench", "teams", "ratings", "fees", "stats", "admin", "lang"]);
+  it("has nine cards, in order, the bench second and short of players third (Kemal, 2026-10-28), each with a title, a line and details", () => {
+    expect(HERO_DECK.cards.map((c) => c.key)).toEqual(["att", "bench", "short", "teams", "ratings", "fees", "stats", "admin", "lang"]);
     for (const c of HERO_DECK.cards) {
       expect(c.title.length).toBeGreaterThan(3);
       expect(c.body.length).toBeGreaterThan(10);
@@ -548,8 +548,8 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
     }
     expect(HERO_DECK.cards.map((c) => c.title)).toEqual([
       "Who's in, counted",
-      "Dropouts? It asks around",
       "The bench steps in",
+      "Dropouts? It asks around",
       "Fair teams, on request",
       "Ratings and Man of the Match",
       "Match fees, collected",

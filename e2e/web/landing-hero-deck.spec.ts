@@ -201,9 +201,16 @@ test("section order (round three, 2026-10-27): hero, attendance, short of player
   });
   expect(ids).toEqual(["features", "short-of-players", "player-pool", "more-features"]);
   // The attendance section holds the first three feature cards: who's in,
-  // short of players, the bench.
+  // the bench, short of players (Kemal, 2026-10-28).
   const cards = page.locator("section#features").getByRole("heading", { level: 3 });
   await expect(cards).toHaveCount(3);
+  await expect(cards).toHaveText(["Tracks who's in", "Runs the bench", "Short of players? It asks around"]);
+  // The deck follows the same order: who's in, the bench, then short of players.
+  const deckTitles = HERO_DECK.cards.slice(0, 3).map((c) => c.title);
+  expect(deckTitles).toEqual(["Who's in, counted", "The bench steps in", "Dropouts? It asks around"]);
+  const xs: number[] = [];
+  for (const title of deckTitles) xs.push((await cardButton(page, title).first().boundingBox())!.x);
+  expect(xs).toEqual([...xs].sort((a, b) => a - b));
   const pool = LANDING_SPOTLIGHTS.find((s) => s.id === "player-pool")!;
   const section = page.locator("section#player-pool");
   await section.scrollIntoViewIfNeeded();

@@ -22,7 +22,7 @@
  * changes.
  *
  * PAGE ORDER (round three, Kemal 2026-10-27): the hero, the attendance
- * cards (`ATTENDANCE_FEATURE_KEYS`: who's in, short of players, the bench),
+ * cards (`ATTENDANCE_FEATURE_KEYS`: who's in, the bench, short of players),
  * the short-of-players story for clubs (`SHORT_OF_PLAYERS`: own group,
  * partner clubs, then the player pool), the players' pool pitch, then the
  * rest of the features and the other spotlights.
@@ -276,9 +276,9 @@ const poolJoinHref = (code: string) => `${POOL_PLAY_PATH}?src=${code}`;
 // ─── The features grid ("Why MatchTime") ───────────────────────────────
 
 /** The first three features, shown straight after the hero as the
- *  attendance section (round three): who's in, short of players, the
- *  bench. The rest follow the player pool under `MORE_FEATURES_INTRO`. */
-export const ATTENDANCE_FEATURE_KEYS = ["in-out", "chase", "bench"] as const;
+ *  attendance section (Kemal, 2026-10-28): who's in, the bench, short
+ *  of players. The rest follow the player pool under `MORE_FEATURES_INTRO`. */
+export const ATTENDANCE_FEATURE_KEYS = ["in-out", "bench", "chase"] as const;
 
 export const MORE_FEATURES_INTRO = {
   eyebrow: "Every week",
@@ -300,7 +300,14 @@ export const FEATURES: Card[] = [
     body: "Players say In or Out the way they always have. MatchTime ticks each one with ✅ and keeps the squad list. Say “maybe” and it checks back with you by DM a day before kickoff.",
   },
   {
-    // Short of players, second (Kemal, 2026-10-27): the chase (daily
+    key: "bench",
+    color: "purple",
+    icon: "users",
+    title: "Runs the bench",
+    body: "When the squad is full, late Ins go on the bench 🪑. When someone drops, the bench is offered the spot in the group and by DM, and the first to claim it plays.",
+  },
+  {
+    // Short of players, third (Kemal, 2026-10-28, after the bench): the chase (daily
     // update, match morning, last hours), then partner-ask.ts, then the
     // pool (pool/round-rules.ts, partners first). Told in full in the
     // short-of-players section below.
@@ -309,13 +316,6 @@ export const FEATURES: Card[] = [
     icon: "zap",
     title: "Short of players? It asks around",
     body: "Someone drops out and nobody's on the bench? MatchTime asks your group in its updates and stops the moment you're full. Then it can ask your partner clubs, and after them nearby players from the MatchTime player pool.",
-  },
-  {
-    key: "bench",
-    color: "purple",
-    icon: "users",
-    title: "Runs the bench",
-    body: "When the squad is full, late Ins go on the bench 🪑. When someone drops, the bench is offered the spot in the group and by DM, and the first to claim it plays.",
   },
   {
     key: "teams",
@@ -1084,30 +1084,6 @@ export const HERO_DECK = {
       },
     },
     {
-      // Spotlight short-of-players; pool/round-rules.ts POOL_AFTER_PARTNERS_MINS;
-      // pool/matching-rules.ts; pool/accept.ts; settings-info.ts partnerAskWhen
-      // and poolAutoAsk; PLAYER_POOL (opening town by town); the offer is
-      // POOL_OFFER_CHAT (pool-offer.en.ts). Second in the deck (Kemal, 2026-10-27).
-      key: "short",
-      title: "Dropouts? It asks around",
-      body: "Your group first, then partner clubs, then local players from the pool.",
-      visual: ["Your group", "Partner clubs", "Player pool"],
-      details: [
-        "Someone drops out and nobody's on the bench? MatchTime asks your group first, and stops the moment you're full.",
-        "Then partner clubs: their players answer privately and join as guests.",
-        `Then nearby players from the MatchTime player pool get a WhatsApp offer: ${POOL_AFTER} later, or straight away if you have no partner clubs.`,
-        "Pool players are matched on when they can play and how far they'll travel, and on level only when you ask for one.",
-        "A yes takes the place if it's still open, or the bench where your organisers pick.",
-        "Ask with one tap, or let MatchTime ask by itself on match day. The player pool is opening town by town.",
-      ],
-      steps: [
-        { title: "1. Your group", sub: "The group and the bench" },
-        { title: "2. Partner clubs", sub: "Asked in their group" },
-        { title: "3. Player pool", sub: `${POOL_AFTER_CAP} later, nearby players`, highlight: true },
-      ],
-      chat: POOL_OFFER_CHAT,
-    },
-    {
       // strings.en.ts bench_offer_group_post, bench_claim_replacing.
       key: "bench",
       title: "The bench steps in",
@@ -1134,6 +1110,30 @@ export const HERO_DECK = {
           { from: "bot", text: "*Kai* is in, replacing *Joe*. Squad *14/14*", time: "09:20" },
         ],
       },
+    },
+    {
+      // Spotlight short-of-players; pool/round-rules.ts POOL_AFTER_PARTNERS_MINS;
+      // pool/matching-rules.ts; pool/accept.ts; settings-info.ts partnerAskWhen
+      // and poolAutoAsk; PLAYER_POOL (opening town by town); the offer is
+      // POOL_OFFER_CHAT (pool-offer.en.ts). Third in the deck, after the bench (Kemal, 2026-10-28).
+      key: "short",
+      title: "Dropouts? It asks around",
+      body: "Your group first, then partner clubs, then local players from the pool.",
+      visual: ["Your group", "Partner clubs", "Player pool"],
+      details: [
+        "Someone drops out and nobody's on the bench? MatchTime asks your group first, and stops the moment you're full.",
+        "Then partner clubs: their players answer privately and join as guests.",
+        `Then nearby players from the MatchTime player pool get a WhatsApp offer: ${POOL_AFTER} later, or straight away if you have no partner clubs.`,
+        "Pool players are matched on when they can play and how far they'll travel, and on level only when you ask for one.",
+        "A yes takes the place if it's still open, or the bench where your organisers pick.",
+        "Ask with one tap, or let MatchTime ask by itself on match day. The player pool is opening town by town.",
+      ],
+      steps: [
+        { title: "1. Your group", sub: "The group and the bench" },
+        { title: "2. Partner clubs", sub: "Asked in their group" },
+        { title: "3. Player pool", sub: `${POOL_AFTER_CAP} later, nearby players`, highlight: true },
+      ],
+      chat: POOL_OFFER_CHAT,
     },
     {
       // FEATURES teams; strings.en.ts teams_post_header, teams_post_footer.
