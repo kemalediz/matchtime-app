@@ -8,6 +8,8 @@
  * Owners and admins of the club only (the admin layout checks too). The
  * facts are `loadGuestFacts`, every decision the pure `guest-report.ts`.
  */
+import { poolOffersOpenForClub } from "@/lib/pool/flags";
+import { poolEnvForRequest } from "@/lib/pool/switch-env";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getUserOrg, isOrgAdmin } from "@/lib/org";
@@ -39,7 +41,11 @@ export default async function GuestPlayersPage({ searchParams }: { searchParams:
   const players = buildGuestPlayers({ orgId, now, lang, games: facts.games, people: facts.people });
   // Invite to club (pool L8): the tap, and whether the club can send its link.
   // Only where the pool is on (review M4: live clubs unchanged).
-  const inviteOn = CLUB_INVITE_LIVE && membership.org.featurePlayerPool === true;
+  // Invite to club follows the pool's one rule (the platform switch AND the
+  // club's flag). Block and report on a pool guest who already played stay
+  // with the club's own flag: a safety control is never taken away by the
+  // platform kill switch (decision log P.4).
+  const inviteOn = CLUB_INVITE_LIVE && poolOffersOpenForClub(membership.org, await poolEnvForRequest());
   const linkReady = inviteOn && (await loadLinkSource(orgId)).kind !== "none";
   const list = { s, lang, orgId, cards: players.cards, poolClub: membership.org.featurePlayerPool === true, inviteAction: inviteOn ? inviteToClub : undefined, linkReady };
 

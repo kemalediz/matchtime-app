@@ -50,7 +50,7 @@ const PROFILE = (userId: string, lat: number) => ({
   sports: [{ sport: "football", formats: [7], level: null }],
   availability: [{ day: 2, fromMin: 18 * 60, toMin: 22 * 60 }],
 });
-const ON = { POOL_OFFERS_ENABLED: "1" };
+const ON = { MT_POOL_OPEN: "1" };
 
 beforeEach(() => {
   vi.clearAllMocks();

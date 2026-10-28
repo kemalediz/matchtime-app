@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { parsePoolAutoAsk, poolAutoAskApplies, poolAutoAskDue, poolAutoAskShown, poolAutoRound } from "../auto-ask-rules";
+import { poolSwitchEnv } from "../flags";
 
 const ASK_AT = new Date("2026-10-30T12:00:00Z");
 const POST_BY = new Date("2026-10-30T16:00:00Z");
@@ -81,9 +82,12 @@ describe("poolAutoRound: which round the pool joins, and for how many", () => {
 
 describe("the setting (slice L9): shown and saved only while the club may ask the pool", () => {
   it("shown with the club's pool flag on, as Style of play is", () => {
-    expect(poolAutoAskShown({ featurePlayerPool: true })).toBe(true);
-    expect(poolAutoAskShown({ featurePlayerPool: false })).toBe(false);
-    expect(poolAutoAskShown(null)).toBe(false);
+    expect(poolAutoAskShown({ featurePlayerPool: true }, poolSwitchEnv(true))).toBe(true);
+    // The platform switch off (or never resolved) hides it, whatever the club says.
+    expect(poolAutoAskShown({ featurePlayerPool: true }, poolSwitchEnv(false))).toBe(false);
+    expect(poolAutoAskShown({ featurePlayerPool: true }, {})).toBe(false);
+    expect(poolAutoAskShown({ featurePlayerPool: false }, poolSwitchEnv(true))).toBe(false);
+    expect(poolAutoAskShown(null, poolSwitchEnv(true))).toBe(false);
   });
 
   it("only a true or a false is saved", () => {

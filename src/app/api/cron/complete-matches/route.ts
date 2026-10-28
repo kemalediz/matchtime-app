@@ -68,7 +68,7 @@ export async function GET(request: Request) {
   // window has closed, every guest place gets its final result (played
   // unless an organiser marked a no-show), and a guest with a second
   // no-show in his last five games is paused. Never throws.
-  const guests = await finaliseGuestPlaces(now, poolEnvForApiRequest(request));
+  const guests = await finaliseGuestPlaces(now, await poolEnvForApiRequest(request));
   // Referrals (player pool, slice G4): AFTER the guests' results, so a
   // friend whose first guest game settled on this tick counts now. Marks
   // the referral counted once; sends nothing (the referrer's badge goes in

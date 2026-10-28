@@ -309,7 +309,7 @@ export async function GET(request: Request) {
   // one whose automatic ask includes the player pool (L9, the pool switch
   // read as the platform poll reads it); every other club makes two reads.
   // Never throws.
-  if (!previewOnly) await sweepAutoPartnerAsks(org.id, nowOverride ?? new Date(), { poolEnv: poolEnvForApiRequest(request) });
+  if (!previewOnly) await sweepAutoPartnerAsks(org.id, nowOverride ?? new Date(), { poolEnv: await poolEnvForApiRequest(request) });
 
   if (!previewOnly) {
     try {
@@ -399,7 +399,7 @@ export async function GET(request: Request) {
   const replyPriority = dmReplyPriorityEnabledForApiRequest(request);
   const result = await computeDuePosts(groupId, nowOverride, piCaps, runningMonths, liveMonths, {
     replyPriority,
-    poolEnv: poolEnvForApiRequest(request),
+    poolEnv: await poolEnvForApiRequest(request),
   });
   if (!result) {
     return NextResponse.json({ instructions: previewOnly ? [] : await bridgePlatformDmsForLegacyPi(request) });

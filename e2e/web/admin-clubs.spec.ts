@@ -9,7 +9,7 @@
  *   3. Approve, Reject, Turn off (with the club's name typed) and Leave
  *      work through the same writer as the WhatsApp reply;
  *   4. the seeded approved club (Sutton FC's shape) is in no self-join
- *      section (only under Player pool, the owner's per-club switch).
+ *      section (and Player pool is one switch for every club, listing none).
  */
 import { mkdirSync } from "node:fs";
 import path from "node:path";
@@ -146,11 +146,12 @@ test("the owner sees every section; the seeded approved club is in no self-join 
   await expect(page.getByTestId("site-limits")).toContainText("Groups connected: 2 of 5");
 
   // The seeded approved club (Sutton FC's shape) is in none of the self-join
-  // sections; it is only under Player pool, the owner's per-club switch.
-  for (const id of ["waiting", "live", "unsolicited", "rejected", "suspended", "posters"]) {
+  // sections. Player pool is ONE switch for every club (2026-10-28): no club
+  // is listed there either.
+  for (const id of ["waiting", "live", "unsolicited", "rejected", "suspended", "posters", "player-pool"]) {
     await expect(page.getByTestId(`section-${id}`)).not.toContainText("E2E Test FC");
   }
-  await expect(page.getByTestId("section-player-pool")).toContainText("E2E Test FC");
+  await expect(page.getByTestId("section-player-pool").getByRole("switch", { name: "Player pool for every club" })).toHaveCount(1);
   const text = await page.getByTestId("clubs-page").innerText();
   expect(text).not.toMatch(/[—–]/);
 

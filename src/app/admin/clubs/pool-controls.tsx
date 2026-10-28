@@ -1,26 +1,26 @@
 "use client";
 
 /**
- * The platform owner's "Player pool" switch for one club (2026-10-27).
- * The server action authorises (superadmin) and writes through
- * `setClubPlayerPool`, which closes the club's open pool asks when it goes
- * off; this only asks, shows the answer and refreshes.
+ * The platform owner's ONE "Player pool" switch (2026-10-28): the pool for
+ * every club, the kill switch. The server action authorises (superadmin)
+ * and writes through `setPoolPlatformSwitch`, which closes every open pool
+ * ask when it goes off; this only asks, shows the answer and refreshes.
  */
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { setClubPlayerPoolAction } from "@/app/actions/pool-club-switch";
+import { setPoolPlatformSwitchAction } from "@/app/actions/pool-platform-switch";
 
-export function ClubPoolSwitch(props: { orgId: string; club: string; on: boolean }) {
+export function PoolPlatformSwitch(props: { on: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
 
   const flip = () =>
     start(async () => {
       const next = !props.on;
-      if (!next && !window.confirm(`Switch the player pool off for ${props.club}? Any pool ask still open for its matches is closed now.`)) return;
+      if (!next && !window.confirm("Switch the player pool off for every club? Every pool ask still open is closed now, and no pool message is sent until it is on again.")) return;
       try {
-        const r = await setClubPlayerPoolAction(props.orgId, next);
+        const r = await setPoolPlatformSwitchAction(next);
         if (r.ok) toast.success(r.message);
         else toast.error(r.message);
         router.refresh();
@@ -35,8 +35,8 @@ export function ClubPoolSwitch(props: { orgId: string; club: string; on: boolean
         type="button"
         role="switch"
         aria-checked={props.on}
-        aria-label={`Player pool: ${props.club}`}
-        data-testid="club-pool-switch"
+        aria-label="Player pool for every club"
+        data-testid="pool-platform-switch"
         disabled={pending}
         onClick={flip}
         className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${props.on ? "bg-green-500" : "bg-slate-300"}`}

@@ -52,7 +52,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ mat
     places: Number(body.places),
     userId: session.user.id,
     now: nowOf(request),
-    poolEnv: poolEnvForApiRequest(request),
+    poolEnv: await poolEnvForApiRequest(request),
   });
   return NextResponse.json(result);
 }

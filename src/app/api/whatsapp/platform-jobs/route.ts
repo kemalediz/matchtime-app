@@ -93,7 +93,7 @@ export async function GET(request: Request) {
     }
   }
   const now = nowOf(request);
-  const poolEnv = poolEnvForApiRequest(request);
+  const poolEnv = await poolEnvForApiRequest(request);
   try {
     await sweepPool(now, poolEnv);
   } catch (err) {

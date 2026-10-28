@@ -13,6 +13,7 @@
  */
 import type { Page } from "@playwright/test";
 import { test, expect, resetDb, signInAs } from "../fixtures";
+import { setPoolPlatform } from "../helpers/pool-platform";
 import { E2E_BASE_URL } from "../helpers/env";
 import { PoolWorld } from "../sim/pool/world";
 import { at, holderDigits, near, openClub, organiserAsks, pollPlatform, poolPlayer, tapLinkIn } from "../sim/pool/offers-world";
@@ -88,6 +89,32 @@ test("the pool switch off: no pool line at all, the page as before", async ({ pa
   await expect(page.getByRole("heading").first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("pool-ask-row")).toHaveCount(0);
   await expect(page.getByTestId("partner-ask-panel")).toHaveCount(0);
+});
+
+test("no seam: the owner's platform switch (the database row) decides, read on every request", async ({ page, request, db }) => {
+  const world = new PoolWorld(request, db, false);
+  await world.start();
+  const fnf = await openClub(world, "fnf-row", { name: "FNF Row" });
+  await poolPlayer(world, "ali-row", { at: near(fnf) });
+  const owner = (await world.userOf(fnf.member("owner")))!;
+  await page.context().clearCookies();
+  try {
+    await setPoolPlatform(db, false);
+    await signInAs(page, owner.id, `/matches/${fnf.group.matchId}`);
+    await expect(page.getByRole("heading").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("pool-ask-row")).toHaveCount(0);
+    // The owner turns it on: the very next request shows the pool line.
+    await setPoolPlatform(db, true);
+    await page.reload();
+    await expect(page.getByTestId("pool-ask-row")).toBeVisible({ timeout: 30_000 });
+    // And off again: gone on the next request, no redeploy.
+    await setPoolPlatform(db, false);
+    await page.reload();
+    await expect(page.getByRole("heading").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("pool-ask-row")).toHaveCount(0);
+  } finally {
+    await setPoolPlatform(db, false);
+  }
 });
 
 for (const vp of WIDTHS) {

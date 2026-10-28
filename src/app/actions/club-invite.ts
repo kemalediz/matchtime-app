@@ -19,6 +19,7 @@ import { isOrgAdmin, requireOrgAdmin } from "@/lib/org";
 import type { InviteToClubInput, InviteToClubResult } from "@/lib/pool/club-invite";
 import { answerAsClub, answerAsPlayer, type PlayerAnswerResult } from "@/lib/pool/club-invitation";
 import { loadInviteLinkSettings, saveInviteLink, type InviteLinkSettings, type SaveInviteLinkResult } from "@/lib/pool/invite-link-settings";
+import { poolEnvForRequest } from "@/lib/pool/switch-env";
 
 async function sessionUserId(): Promise<string | null> {
   return (await auth())?.user?.id ?? null;
@@ -38,14 +39,14 @@ export async function getInviteLinkSettings(orgId: string): Promise<InviteLinkSe
   const userId = await sessionUserId();
   if (!userId) throw new Error("Not authenticated");
   await requireOrgAdmin(userId, orgId);
-  return loadInviteLinkSettings(orgId);
+  return loadInviteLinkSettings(orgId, await poolEnvForRequest());
 }
 
 export async function setInviteLink(orgId: string, input: unknown): Promise<SaveInviteLinkResult> {
   const userId = await sessionUserId();
   if (!userId) throw new Error("Not authenticated");
   await requireOrgAdmin(userId, orgId);
-  const r = await saveInviteLink({ orgId, input, byUserId: userId });
+  const r = await saveInviteLink({ orgId, input, byUserId: userId, env: await poolEnvForRequest() });
   if (r.ok) revalidatePath("/admin/settings");
   return r;
 }

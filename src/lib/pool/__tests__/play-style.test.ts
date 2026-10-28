@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parsePlayStyle, playStyleShown } from "../play-style";
+import { poolSwitchEnv } from "../flags";
 
 describe("the club's style of play (slice L5b)", () => {
   it("accepts the three styles, and empty as 'not set'", () => {
@@ -14,8 +15,11 @@ describe("the club's style of play (slice L5b)", () => {
     expect(parsePlayStyle(3)).toEqual({ ok: false });
   });
   it("the setting shows only while the club may ask the pool", () => {
-    expect(playStyleShown({ featurePlayerPool: true })).toBe(true);
-    expect(playStyleShown({ featurePlayerPool: false })).toBe(false);
-    expect(playStyleShown(null)).toBe(false);
+    expect(playStyleShown({ featurePlayerPool: true }, poolSwitchEnv(true))).toBe(true);
+    // The platform switch off (or never resolved) hides it, whatever the club says.
+    expect(playStyleShown({ featurePlayerPool: true }, poolSwitchEnv(false))).toBe(false);
+    expect(playStyleShown({ featurePlayerPool: true }, {})).toBe(false);
+    expect(playStyleShown({ featurePlayerPool: false }, poolSwitchEnv(true))).toBe(false);
+    expect(playStyleShown(null, poolSwitchEnv(true))).toBe(false);
   });
 });

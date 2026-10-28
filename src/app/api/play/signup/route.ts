@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     fields: valid.value,
     ip: requestIp(request),
     source,
-    earlyList: !poolOpenForApiRequest(request),
+    earlyList: !(await poolOpenForApiRequest(request)),
   });
   if (!res.ok) {
     const status = res.reason === "busy" ? 429 : 422;

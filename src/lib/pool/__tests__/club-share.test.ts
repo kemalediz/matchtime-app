@@ -65,6 +65,10 @@ vi.mock("../../app-url", () => ({ appBaseUrl: () => "https://matchtime.test" }))
 
 import { ensureClubPoolCampaign } from "../campaigns";
 import { loadClubShare, sendClubShare } from "../club-share";
+import { poolSwitchEnv } from "../flags";
+
+/** The platform switch on, as a request resolves it. */
+const OPEN = poolSwitchEnv(true);
 
 const ORG = {
   id: "org1",
@@ -104,7 +108,7 @@ describe("the club's campaign code (the G1 module)", () => {
 
 describe("sendClubShare", () => {
   it("in posting hours: one claim, one players' group post at once, in the club's language", async () => {
-    expect(await sendClubShare("org1", NOON)).toEqual({ ok: true, sendAfter: null });
+    expect(await sendClubShare("org1", NOON, OPEN)).toEqual({ ok: true, sendAfter: null });
     expect(state.claims.map((c) => [c.key, c.kind])).toEqual([["org-org1:pool-club-share", "pool-club-share"]]);
     expect(state.jobs).toHaveLength(1);
     expect(state.jobs[0]).toMatchObject({ orgId: "org1", kind: "group", sendAfter: null });
@@ -114,27 +118,27 @@ describe("sendClubShare", () => {
 
   it("a Turkish club: the Turkish post", async () => {
     state.org = { ...ORG, language: "tr" };
-    await sendClubShare("org1", NOON);
+    await sendClubShare("org1", NOON, OPEN);
     expect(state.jobs[0].text).toContain("Başka yerlerde de oyna");
   });
 
   it("inside the club's quiet hours: held until they end", async () => {
-    const r = await sendClubShare("org1", NIGHT);
+    const r = await sendClubShare("org1", NIGHT, OPEN);
     expect(r).toEqual({ ok: true, sendAfter: new Date("2026-10-25T09:00:00Z") }); // 09:00 London, GMT from 25 Oct
     expect(state.jobs[0].sendAfter).toEqual(new Date("2026-10-25T09:00:00Z"));
   });
 
   it("quiet hours off: at once, even at night", async () => {
     state.org = { ...ORG, quietHoursEnabled: false };
-    expect(await sendClubShare("org1", NIGHT)).toEqual({ ok: true, sendAfter: null });
+    expect(await sendClubShare("org1", NIGHT, OPEN)).toEqual({ ok: true, sendAfter: null });
   });
 
   it("a second tap, and two taps at once: nothing more", async () => {
-    await sendClubShare("org1", NOON);
-    expect(await sendClubShare("org1", NOON)).toEqual({ ok: false, reason: "already-sent" });
+    await sendClubShare("org1", NOON, OPEN);
+    expect(await sendClubShare("org1", NOON, OPEN)).toEqual({ ok: false, reason: "already-sent" });
     state.claims = [];
     state.jobs = [];
-    const both = await Promise.all([sendClubShare("org1", NOON), sendClubShare("org1", NOON)]);
+    const both = await Promise.all([sendClubShare("org1", NOON, OPEN), sendClubShare("org1", NOON, OPEN)]);
     expect(both.filter((r) => r.ok)).toHaveLength(1);
     expect(state.jobs).toHaveLength(1);
     expect(state.claims).toHaveLength(1);
@@ -142,35 +146,41 @@ describe("sendClubShare", () => {
 
   it("the pool off: nothing claimed, nothing queued, no code made", async () => {
     state.org = { ...ORG, featurePlayerPool: false };
-    expect(await sendClubShare("org1", NOON)).toEqual({ ok: false, reason: "not-shown" });
+    expect(await sendClubShare("org1", NOON, OPEN)).toEqual({ ok: false, reason: "not-shown" });
     expect([state.claims, state.jobs, state.campaigns]).toEqual([[], [], []]);
   });
 
   it("no players' group, or the bot off for it: nothing claimed, so it can be sent once it is", async () => {
     for (const org of [{ ...ORG, whatsappGroupId: null }, { ...ORG, whatsappBotEnabled: false }]) {
       state.org = org;
-      expect(await sendClubShare("org1", NOON)).toEqual({ ok: false, reason: "no-group" });
+      expect(await sendClubShare("org1", NOON, OPEN)).toEqual({ ok: false, reason: "no-group" });
     }
     expect([state.claims, state.jobs]).toEqual([[], []]);
     state.org = { ...ORG };
-    expect((await sendClubShare("org1", NOON)).ok).toBe(true);
+    expect((await sendClubShare("org1", NOON, OPEN)).ok).toBe(true);
   });
 
   it("no such club", async () => {
     state.org = null;
-    expect(await sendClubShare("org1", NOON)).toEqual({ ok: false, reason: "not-shown" });
+    expect(await sendClubShare("org1", NOON, OPEN)).toEqual({ ok: false, reason: "not-shown" });
+  });
+
+  it("the platform switch off: nothing claimed, nothing queued, even with the club's flag on", async () => {
+    expect(await sendClubShare("org1", NOON, poolSwitchEnv(false))).toEqual({ ok: false, reason: "not-shown" });
+    expect(await sendClubShare("org1", NOON, {})).toEqual({ ok: false, reason: "not-shown" });
+    expect([state.claims, state.jobs]).toEqual([[], []]);
   });
 });
 
 describe("loadClubShare", () => {
   it("the pool off: no card", async () => {
     state.org = { ...ORG, featurePlayerPool: false };
-    expect(await loadClubShare("org1")).toBeNull();
+    expect(await loadClubShare("org1", OPEN)).toBeNull();
   });
 
   it("ready: the exact post and its link, in the club's language", async () => {
     state.org = { ...ORG, language: "tr" };
-    const card = await loadClubShare("org1");
+    const card = await loadClubShare("org1", OPEN);
     expect(card).toMatchObject({ kind: "ready", url: "https://matchtime.test/play?src=club-fnf", language: "tr" });
     expect(card!.text).toContain("Başka yerlerde de oyna");
     expect(card!.sentOn).toBeNull();
@@ -178,12 +188,12 @@ describe("loadClubShare", () => {
 
   it("no group: the post, and why it cannot be sent", async () => {
     state.org = { ...ORG, whatsappGroupId: null };
-    expect(await loadClubShare("org1")).toMatchObject({ kind: "no-group" });
+    expect(await loadClubShare("org1", OPEN)).toMatchObject({ kind: "no-group" });
   });
 
   it("sent: the date, the same post", async () => {
-    await sendClubShare("org1", NOON);
-    const card = await loadClubShare("org1");
+    await sendClubShare("org1", NOON, OPEN);
+    const card = await loadClubShare("org1", OPEN);
     expect(card).toMatchObject({ kind: "sent", sentOn: "24 Oct 2026" });
     expect(card!.text).toBe(state.jobs[0].text);
   });
