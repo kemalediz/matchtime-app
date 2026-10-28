@@ -521,7 +521,7 @@ describe("parseFacts (other routes)", () => {
   it("admin · the S6 rewrite: partner clubs defined once, EN and TR examples, near misses", () => {
     const p = EXTRACTOR_PROMPTS.admin;
     expect(p).toMatch(/"Sutton'a sor bakalım oynayan var mı"[^\n]*clubRef "Sutton"/);
-    expect(p).toMatch(/"search for players from our partner groups"[^\n]*playersFrom "partners", clubRef ""/);
+    expect(p).toMatch(/"search for players from our partner groups"[^\n]*playersFrom \["partners"\], clubRef ""/);
     expect(p).toMatch(/"Sutton were great last week"[^\n]*other/);
     expect(p).not.toMatch(/[–—]/);
   });
@@ -568,7 +568,8 @@ describe("parseFacts (other routes)", () => {
   it("admin · the schema requires where the players come from, and the club named", () => {
     const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, unknown> };
     expect(schema.required).toEqual(expect.arrayContaining(["playersFrom", "clubRef"]));
-    expect(schema.properties.playersFrom).toEqual({ type: "string", enum: ["", "club", "partners", "pool", "unsaid"] });
+    // Every place named, as a list (2026-10-28: "partner clubs and the pool").
+    expect(schema.properties.playersFrom).toEqual({ type: "array", items: { type: "string", enum: ["club", "partners", "pool"] } });
     expect(schema.properties.clubRef).toEqual({ type: "string" });
     // One source, one field: S6's boolean is gone from what the model fills.
     expect(schema.properties.partnerClubs).toBeUndefined();
@@ -636,8 +637,8 @@ describe("parseFacts (other routes)", () => {
   it("admin · the L10 rewrite: playersFrom defined once with its three sources, pool examples EN and TR, near misses", () => {
     const p = EXTRACTOR_PROMPTS.admin;
     for (const source of ["club", "partners", "pool"]) expect(p.split(`\n    "${source}" `).length, source).toBe(2);
-    expect(p).toMatch(/"@Match Time ask the pool for a player" \/ "@Match Time havuzdan bir oyuncu bul" -> recruit, playersFrom "pool"/);
-    expect(p).toMatch(/"find someone nearby for tonight" \/ "bu akşam için yakınlardan birini bul" -> recruit, playersFrom "pool"/);
+    expect(p).toMatch(/"@Match Time ask the pool for a player" \/ "@Match Time havuzdan bir oyuncu bul" -> recruit, playersFrom \["pool"\]/);
+    expect(p).toMatch(/"find someone nearby for tonight" \/ "bu akşam için yakınlardan birini bul" -> recruit, playersFrom \["pool"\]/);
     expect(p).toMatch(/"shall we try the pool\?" \/ "havuza soralım mı\?" -> other, toMatchTime false/);
     expect(p).not.toMatch(/partnerClubs/);
   });
@@ -660,17 +661,55 @@ describe("parseFacts (other routes)", () => {
     for (const from of ["club", "partners", "pool", ""]) expect("sourceUnsaid" in recruitFrom(from), from).toBe(false);
   });
 
-  it("admin · the 2026-10-28 rewrite: four sources defined once, the unsaid and the answer examples EN and TR", () => {
+  it("admin · the 2026-10-28 rewrite: three places defined once, a list, the unsaid, several and the answer examples EN and TR", () => {
     const p = EXTRACTOR_PROMPTS.admin;
-    for (const source of ["club", "partners", "pool", "unsaid"]) expect(p.split(`\n    "${source}" `).length, source).toBe(2);
-    expect(p).toMatch(/"we need 2 players for Thursday" \/ "perşembeye 2 kişi lazım" -> recruit, playersFrom "unsaid"/);
-    expect(p).toMatch(/"@Match Time find us a player for Friday" \/ "@Match Time cumaya bir oyuncu bul" -> recruit, playersFrom "unsaid"/);
-    expect(p).toMatch(/"the pool" \/ "havuza" -> recruit, playersFrom "pool"/);
-    expect(p).toMatch(/"partners please" \/ "partner kulüplere" -> recruit, playersFrom "partners"/);
-    expect(p).toMatch(/"the group" \/ "gruba sor" -> recruit, playersFrom "club"/);
+    for (const source of ["club", "partners", "pool"]) expect(p.split(`\n    "${source}" `).length, source).toBe(2);
+    expect(p).not.toMatch(/"unsaid"/);
+    expect(p).toMatch(/"we need 2 players for Thursday" \/ "perşembeye 2 kişi lazım" -> recruit, playersFrom \[\]/);
+    expect(p).toMatch(/"@Match Time find us a player for Friday" \/ "@Match Time cumaya bir oyuncu bul" -> recruit, playersFrom \[\]/);
+    expect(p).toMatch(/"find me players from partner clubs and the player pool" \/ "partnerlere ve havuza sor" -> recruit, playersFrom \["partners","pool"\]/);
+    expect(p).toMatch(/"find us players everywhere" \/ "her yerden oyuncu bul" -> recruit, playersFrom \["club","partners","pool"\]/);
+    expect(p).toMatch(/"the pool" \/ "havuza" -> recruit, playersFrom \["pool"\]/);
+    expect(p).toMatch(/"partners please" \/ "partner kulüplere" -> recruit, playersFrom \["partners"\]/);
+    expect(p).toMatch(/"the group" \/ "gruba sor" -> recruit, playersFrom \["club"\]/);
+    expect(p).toMatch(/"both" \/ "ikisine de" -> recruit, playersFrom \["partners","pool"\]/);
     // The players' group, the regulars, past players: the club's own, as before.
-    expect(p).toMatch(/"ask the group if anyone can play" \/ "MatchTime oyuncu grubuna sor" -> recruit, playersFrom "club"/);
+    expect(p).toMatch(/"ask the group if anyone can play" \/ "MatchTime oyuncu grubuna sor" -> recruit, playersFrom \["club"\]/);
     expect(p).not.toMatch(/[–—]/);
+  });
+
+  // ── 2026-10-28, the Friday MT Community incident: "find me players feom
+  // partner clubs and player pool" named two places and the field held one.
+  const recruitFromList = (from: string[], clubRef = "", action = "recruit") =>
+    parseFacts(
+      "admin",
+      `{"action":"${action}","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","pastGame":false,"phrase":"","note":"","lookbackMatches":0,"playersFrom":${JSON.stringify(from)},"clubRef":"${clubRef}","toMatchTime":true}`,
+      "wa-1",
+    ).facts;
+
+  it("admin · several places: each one, never sourceUnsaid", () => {
+    const f = recruitFromList(["partners", "pool"]);
+    expect(f).toMatchObject({ kind: "admin", action: "recruit", partnerClubs: true, pool: true });
+    expect("ownClub" in f).toBe(false);
+    expect("sourceUnsaid" in f).toBe(false);
+    expect(recruitFromList(["club", "partners", "pool"])).toMatchObject({ ownClub: true, partnerClubs: true, pool: true });
+    expect(recruitFromList(["club", "pool"])).toMatchObject({ ownClub: true, pool: true });
+  });
+
+  it("admin · a club named with the pool: the pool only when the partners are named too", () => {
+    expect(recruitFromList(["partners", "pool"], "Sutton")).toMatchObject({ partnerClubs: true, pool: true, clubRef: "Sutton" });
+    expect("pool" in recruitFromList(["pool"], "Sutton")).toBe(false);
+  });
+
+  it("admin · an empty list is nowhere said; a list on another action is dropped", () => {
+    expect(recruitFromList([])).toMatchObject({ sourceUnsaid: true });
+    const other = recruitFromList(["partners", "pool"], "", "other");
+    for (const k of ["pool", "partnerClubs", "ownClub", "sourceUnsaid"]) expect(k in other, k).toBe(false);
+  });
+
+  it("admin · an unknown place in the list is ignored", () => {
+    expect(recruitFromList(["moon"])).toMatchObject({ sourceUnsaid: true });
+    expect(recruitFromList(["moon", "pool"])).toMatchObject({ pool: true });
   });
 
   it("admin · an unknown action still drops the whole shape rather than guessing", () => {

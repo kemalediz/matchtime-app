@@ -32,7 +32,7 @@ import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
 import { organisersContext } from "../src/lib/admin-group-context.ts";
 import { messageMentionsBotExplicitly } from "../src/lib/interaction-contract.ts";
-import { decideRecruitSource, sourceFromAnswer } from "../src/lib/ask-source-rules.ts";
+import { decideRecruitSource, sourcesFromAnswer } from "../src/lib/ask-source-rules.ts";
 import { t } from "../src/lib/i18n/t.ts";
 
 const MAX_USD = Number(process.env.MAX_USD ?? 0.5);
@@ -111,7 +111,9 @@ async function hqCase(i: number, c: (typeof CASES)[number]): Promise<boolean> {
     if (!asked) got = "quiet";
     else if (f?.action === "recruit") {
       const d = decideRecruitSource(f, { partners: true, pool: true });
-      got = d.kind === "ask-which" ? "which" : d.source === "club" ? (route === "ask_group" ? "group" : "other") : d.source;
+      // 2026-10-28: the places named are a list; one place is this suite's case.
+      const one = d.kind === "sources" && d.sources.length === 1 ? d.sources[0] : null;
+      got = d.kind === "ask-which" ? "which" : one === "club" ? (route === "ask_group" ? "group" : "other") : (one ?? "other");
     } else got = "other";
   }
   const ok = c.want.includes(got);
@@ -131,7 +133,8 @@ async function answerCase(i: number, c: (typeof ANSWERS)[number]): Promise<boole
     now: NOW,
   });
   const f = ex.facts.kind === "admin" ? ex.facts : null;
-  const got: Answer = sourceFromAnswer(f) ?? "not";
+  const picked = sourcesFromAnswer(f);
+  const got: Answer = picked && picked.length === 1 ? picked[0] : "not";
   const ok = c.want.includes(got);
   console.log(`${ok ? "PASS" : "FAIL"}  ANSWER ${JSON.stringify(c.text)}  -> ${f?.action ?? ex.facts.kind}${f?.pool ? " pool" : f?.partnerClubs ? " partners" : f?.sourceUnsaid ? " unsaid" : ""}  => ${got}   (${c.why}; want ${c.want.join("|")})`);
   return ok;

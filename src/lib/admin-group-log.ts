@@ -20,6 +20,13 @@ import { db } from "./db";
 export const HQ_LOG_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_TEXT = 500;
 
+/** The players' group's rows (2026-10-28, below): MatchTime's question
+ *  there, and an organiser's message read in the place of its answer.
+ *  Never in what HQ reads. */
+export const GROUP_QUESTION_ID_PREFIX = "mt:group:";
+export const GROUP_LINE_ID_PREFIX = "group:";
+const NOT_GROUP_ROWS = { NOT: [{ waMessageId: { startsWith: GROUP_QUESTION_ID_PREFIX } }, { waMessageId: { startsWith: GROUP_LINE_ID_PREFIX } }] };
+
 export const teamsAskRef = (matchId: string): string => `teams:${matchId}`;
 export const listAskRef = (pasteMessageId: string): string => `list:${pasteMessageId}`;
 
@@ -162,17 +169,76 @@ export async function recordMatchTimeLine(args: { orgId: string; idPrefix: strin
  *  `prefix`, oldest first (L10: the pool notice's). */
 export async function hqQuestionsSince(orgId: string, prefix: string, since: Date): Promise<Array<{ askRef: string; createdAt: Date }>> {
   const rows = await db.adminGroupMessage.findMany({
-    where: { orgId, fromMatchTime: true, askRef: { startsWith: prefix }, createdAt: { gte: since } },
+    where: { orgId, fromMatchTime: true, askRef: { startsWith: prefix }, createdAt: { gte: since }, ...NOT_GROUP_ROWS },
     orderBy: { createdAt: "asc" },
     select: { askRef: true, createdAt: true },
   });
   return (rows ?? []).flatMap((r) => (r.askRef ? [{ askRef: r.askRef, createdAt: r.createdAt }] : []));
 }
 
-/** HQ rows of a club since `since`, oldest first. */
+// ── The players' group's lines about MatchTime's question (2026-10-28) ──
+//
+// A club with no admin group asks for players in its players' group, and
+// MatchTime's "who shall I ask?" is asked there too (`ask-source-group.ts`).
+// Its answer is found by the same positional tests as in HQ
+// (`ask-source-rules.ts` `sourceQuestionAnswered`), on the same kind of
+// rows: MatchTime's question, and the organisers' messages read in the
+// place of an answer after it (players' chat is not the organisers' and is
+// never logged). Kept in this table, a day like HQ's, under their own id
+// prefixes, and left out of everything HQ reads.
+
+
+/** A question MatchTime asked the organisers in the players' group. Never throws. */
+export async function recordGroupQuestion(args: { orgId: string; askRef: string; text: string; now: Date }): Promise<void> {
+  try {
+    await db.adminGroupMessage.create({
+      data: {
+        orgId: args.orgId,
+        waMessageId: `${GROUP_QUESTION_ID_PREFIX}${args.askRef}:${args.now.getTime()}:${Math.random().toString(36).slice(2, 8)}`,
+        fromMatchTime: true,
+        text: (args.text ?? "").slice(0, MAX_TEXT),
+        askRef: args.askRef,
+        createdAt: args.now,
+      },
+    });
+    await prune(args.orgId, args.now);
+  } catch (err) {
+    console.error(`[ask-source-group] question ${args.askRef} not recorded:`, err instanceof Error ? err.message : "failed");
+  }
+}
+
+/** An organiser's message in the players' group, read in the place of an
+ *  answer to that question. Idempotent per WhatsApp id. Never throws. */
+export async function recordGroupOrganiserLine(args: { orgId: string; waMessageId: string; senderUserId: string; text: string; now: Date }): Promise<void> {
+  try {
+    const waMessageId = `${GROUP_LINE_ID_PREFIX}${args.waMessageId}`;
+    await db.adminGroupMessage.upsert({
+      where: { waMessageId },
+      create: { orgId: args.orgId, waMessageId, senderUserId: args.senderUserId, text: (args.text ?? "").slice(0, MAX_TEXT), createdAt: args.now },
+      update: {},
+    });
+  } catch (err) {
+    console.error(`[ask-source-group] ${args.waMessageId}: not recorded:`, err instanceof Error ? err.message : "failed");
+  }
+}
+
+/** The players' group's rows of a club since `since`, oldest first. */
+export async function groupLogSince(orgId: string, since: Date): Promise<HqLogRow[]> {
+  return ((await db.adminGroupMessage.findMany({
+    where: {
+      orgId,
+      createdAt: { gte: since },
+      OR: [{ waMessageId: { startsWith: GROUP_QUESTION_ID_PREFIX } }, { waMessageId: { startsWith: GROUP_LINE_ID_PREFIX } }],
+    },
+    orderBy: { createdAt: "asc" },
+    select: { waMessageId: true, waStanzaId: true, fromMatchTime: true, senderUserId: true, text: true, askRef: true, createdAt: true },
+  })) ?? []) as HqLogRow[];
+}
+
+/** HQ rows of a club since `since`, oldest first (never the players' group's). */
 export async function hqLogSince(orgId: string, since: Date): Promise<HqLogRow[]> {
   return (await db.adminGroupMessage.findMany({
-    where: { orgId, createdAt: { gte: since } },
+    where: { orgId, createdAt: { gte: since }, ...NOT_GROUP_ROWS },
     orderBy: { createdAt: "asc" },
     select: { waMessageId: true, waStanzaId: true, fromMatchTime: true, senderUserId: true, text: true, askRef: true, createdAt: true },
   })) as HqLogRow[];

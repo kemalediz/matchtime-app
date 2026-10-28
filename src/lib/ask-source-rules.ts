@@ -1,6 +1,6 @@
 /**
- * WHERE THE PLAYERS ARE TO COME FROM, WHEN AN ORGANISER ASKS IN HQ
- * (Kemal, 2026-10-28). Pure: no database, no model.
+ * WHERE THE PLAYERS ARE TO COME FROM, WHEN AN ORGANISER ASKS (Kemal,
+ * 2026-10-28). Pure: no database, no model.
  *
  * "Make it a little bit stricter so MatchTime doesn't misunderstand the
  * command. Only if the admin specifically asks for players from the pool,
@@ -9,22 +9,27 @@
  * ask the admin what they mean."
  *
  * The shared admin extractor reads WHERE the words say the players come
- * from (`AdminFacts`): the pool (`pool`), the partner clubs (`partnerClubs`),
- * the club's own players (none of the three), or nowhere said
- * (`sourceUnsaid`: "we need 2 players for Thursday", "bize oyuncu bul").
- * Code knows what this club actually has. This file puts the two together:
+ * from (`AdminFacts`): one place or several ("partner clubs and the pool",
+ * "everywhere", "her yerden"), or nowhere said (`sourceUnsaid`: "we need 2
+ * players for Thursday", "bize oyuncu bul"). Code knows what this club
+ * actually has. This file puts the two together:
  *
- *   the pool, asked for        the pool (its own door says when it is not
- *                              open for the club)
- *   the partners, asked for    the partners (their door says when there are
- *                              none)
- *   the club's own players     the players' group, as before
+ *   places named               each of them, in `SOURCE_ORDER` (the
+ *                              partners before the pool, so the pool joins
+ *                              the partners' round and they keep their
+ *                              hour); a place the club does not have says
+ *                              so through its own door, in the same reply
  *   nowhere said               the club has partner clubs it may ask, or
  *                              the pool open, or both: ONE short question
- *                              naming the players' group and what the club
- *                              has, never a guess. It has neither: the
- *                              players' group, as before (there is no
- *                              other place to mean, so nothing to ask).
+ *                              naming its own players and what the club
+ *                              has, never a guess. It has neither: its own
+ *                              players, as before (there is no other place
+ *                              to mean, so nothing to ask).
+ *
+ * The same in HQ (`admin-group-understand.ts`, "its own players" is a post
+ * in the players' group) and in the players' group of a club with no HQ
+ * (the analyze route, "its own players" is the recruit DM to its recent
+ * players, `ask-source-group.ts`).
  *
  * The question is logged as MatchTime's own (`askSourceRef`), so the
  * organiser's answer is found by the safe-YES rule's own positional test
@@ -51,29 +56,46 @@ export interface SourcesAvailable {
 }
 
 export type SourceDecision =
-  | { kind: "source"; source: RecruitSource }
+  | { kind: "sources"; sources: RecruitSource[] }
   | { kind: "ask-which"; options: RecruitSource[] };
 
-type RecruitFacts = Pick<AdminFacts, "pool" | "partnerClubs" | "sourceUnsaid">;
+type RecruitFacts = Pick<AdminFacts, "pool" | "partnerClubs" | "ownClub" | "sourceUnsaid">;
 
-/** The source the words named, or null when they named none. */
-export function namedSource(facts: RecruitFacts): RecruitSource | null {
-  if (facts.pool) return "pool";
-  if (facts.partnerClubs) return "partners";
+/**
+ * The places the words named, in `SOURCE_ORDER`, or null when they named
+ * none. Words naming no other place are the club's own players, as they
+ * always were.
+ */
+export function namedSources(facts: RecruitFacts): RecruitSource[] | null {
   if (facts.sourceUnsaid) return null;
-  return "club";
+  const named = SOURCE_ORDER.filter((s) => (s === "club" ? facts.ownClub === true : s === "partners" ? facts.partnerClubs === true : facts.pool === true));
+  return named.length > 0 ? named : ["club"];
+}
+
+/** The places besides the club's own players this club has. */
+export function otherSourcesOf(available: SourcesAvailable): RecruitSource[] {
+  return SOURCE_ORDER.filter((s) => s !== "club" && available[s as "partners" | "pool"]);
 }
 
 /**
- * What to do with a recruit read from an organiser's words. A source the
- * words named is that source; nowhere said is a question when the club
- * has anywhere besides its own players' group to look.
+ * What to do with a recruit read from an organiser's words. The places the
+ * words named are those places; nowhere said is a question when the club
+ * has anywhere besides its own players to look.
  */
 export function decideRecruitSource(facts: RecruitFacts, available: SourcesAvailable): SourceDecision {
-  const named = namedSource(facts);
-  if (named) return { kind: "source", source: named };
-  const options = SOURCE_ORDER.filter((s) => s === "club" || available[s]);
-  return options.length > 1 ? { kind: "ask-which", options } : { kind: "source", source: "club" };
+  const named = namedSources(facts);
+  if (named) return { kind: "sources", sources: named };
+  const others = otherSourcesOf(available);
+  return others.length > 0 ? { kind: "ask-which", options: ["club", ...others] } : { kind: "sources", sources: ["club"] };
+}
+
+/**
+ * NOBODY LEFT AMONG THE CLUB'S OWN PLAYERS (the recruit DM found nobody new
+ * to ask, 2026-10-28): the places the club has besides them, to offer as a
+ * question, or none (the plain "nobody left" line).
+ */
+export function offerAfterNobodyLeft(available: SourcesAvailable): RecruitSource[] {
+  return otherSourcesOf(available);
 }
 
 // ── The question, logged as MatchTime's in HQ ─────────────────────────
@@ -109,8 +131,11 @@ export function parseAskSourceRef(ref: string | null | undefined): RecruitSource
  *
  * Returns the options the question offered, or null.
  *
- * @param log HQ rows since a day ago, oldest first, NOT including the
- *            message being decided.
+ * @param log the question's log since a day ago, oldest first, NOT
+ *            including the message being decided: HQ's rows, or the
+ *            players' group's (MatchTime's question and the organisers'
+ *            messages read after it, `ask-source-group.ts`), so there
+ *            "nobody else spoke" means no other organiser.
  */
 export function sourceQuestionAnswered(p: {
   quoted: QuotedMessage | null;
@@ -134,12 +159,12 @@ export function sourceQuestionAnswered(p: {
 }
 
 /**
- * The organiser's answer, as the admin extractor read it: a recruit from a
- * source the words name. Anything else (not a recruit, "unsaid" again, a
- * failed read) is not an answer, and the message is handled as it would
- * have been with no question asked.
+ * The organiser's answer, as the admin extractor read it: a recruit from
+ * the places the words name ("the pool", "both", "everywhere"). Anything
+ * else (not a recruit, "unsaid" again, a failed read) is not an answer,
+ * and the message is handled as it would have been with no question asked.
  */
-export function sourceFromAnswer(facts: AdminFacts | null): RecruitSource | null {
+export function sourcesFromAnswer(facts: AdminFacts | null): RecruitSource[] | null {
   if (!facts || facts.action !== "recruit") return null;
-  return namedSource(facts);
+  return namedSources(facts);
 }

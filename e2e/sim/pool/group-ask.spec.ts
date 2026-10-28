@@ -146,8 +146,16 @@ scenarios("an organiser asks the MatchTime player pool in the players' group", (
       headers: { "x-mt-test-pool-open": "1" },
     });
     expect(await poolAsks(pool, fmc)).toEqual([]);
-    expect(ex.sent.some((m) => /MatchTime player pool/.test(m.text))).toBe(false);
-    // The recruit ran (this club has no past games, so it had nobody to DM).
-    expect(ex.json).toMatchObject({ results: [expect.objectContaining({ reply: expect.stringMatching(/^No new players to ask for \*Friday MT Community\* right now/) })] });
+    expect(ex.sent.filter((m) => m.purpose === "pool-offer")).toEqual([]);
+    // The recruit ran (this club has no past games, so it had nobody to DM),
+    // and with the pool open the reply offers it (2026-10-28): a question,
+    // nothing asked until the organiser answers.
+    expect(ex.json).toMatchObject({
+      results: [
+        expect.objectContaining({
+          reply: "None of your recent players are left to ask for *Friday MT Community*. Want me to ask the MatchTime player pool?",
+        }),
+      ],
+    });
   });
 });

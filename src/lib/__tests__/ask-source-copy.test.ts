@@ -34,3 +34,32 @@ describe("hq_ask_source", () => {
     }
   });
 });
+
+describe("hq_ask_source in the players' group (2026-10-28)", () => {
+  const g = (lang: string, options: Array<"club" | "partners" | "pool">) => t(lang).hq_ask_source({ options, inGroup: true });
+  it("the club's own players are its recent players, EN and TR", () => {
+    expect(g("en", ["club", "partners", "pool"])).toBe("Who shall I ask for players: your recent players, your partner clubs, or the MatchTime player pool?");
+    expect(g("tr", ["club", "partners", "pool"])).toBe("Oyuncu için kime sorayım: son oyuncularınıza mı, partner kulüplerinize mi, yoksa MatchTime oyuncu havuzuna mı?");
+  });
+});
+
+describe("recruit_nobody_left_ask and recruit_nobody_new", () => {
+  const o = (lang: string, options: Array<"partners" | "pool">) => t(lang).recruit_nobody_left_ask({ matchName: "Football 9-a-side", options });
+  it("English, every shape", () => {
+    expect(o("en", ["partners", "pool"])).toBe("None of your recent players are left to ask for *Football 9-a-side*. Want me to ask your partner clubs or the MatchTime player pool?");
+    expect(o("en", ["partners"])).toBe("None of your recent players are left to ask for *Football 9-a-side*. Want me to ask your partner clubs?");
+    expect(t("en").recruit_nobody_new({ matchName: "Football 9-a-side" })).toBe("None of your recent players are left to ask for *Football 9-a-side* right now. 👍");
+  });
+  it("Turkish, every shape, each with its own question particle", () => {
+    expect(o("tr", ["partners", "pool"])).toBe("*Football 9-a-side* için son oyuncularınızdan sorulacak kimse kalmadı. Partner kulüplerinize mi, MatchTime oyuncu havuzuna mı sorayım?");
+    expect(o("tr", ["partners"])).toBe("*Football 9-a-side* için son oyuncularınızdan sorulacak kimse kalmadı. Partner kulüplerinize sorayım mı?");
+    expect(o("tr", ["pool"])).toBe("*Football 9-a-side* için son oyuncularınızdan sorulacak kimse kalmadı. MatchTime oyuncu havuzuna sorayım mı?");
+  });
+  it("the house rules", () => {
+    for (const lang of ["en", "tr"]) {
+      const s = o(lang, ["partners", "pool"]);
+      expect(s).not.toMatch(/[–—/]/);
+      expect(s).not.toMatch(/\bfree\b|waiting list|ücretsiz|bekleme listesi/i);
+    }
+  });
+});

@@ -105,6 +105,16 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * MatchTime's own "who shall I ask?" is read as recruit from the place it
  * picks. In HQ code asks which is meant (`ask-source-rules.ts`). Sizes and
  * the paid check are in the PR (scripts/live-check-ask-source.ts).
+ *
+ * And rewritten whole again the same day (Friday MT Community, "find me
+ * players feom partner clubs and player pool": two places, a field for
+ * one, so "unsaid"): `playersFrom` is now the LIST of places named, empty
+ * when none, with "everywhere" as all three, the examples regrouped by one
+ * place, several places and none, and the answers "both" and "all".
+ * 10,540 to 11,257 characters. Paid check: scripts/live-check-ask-both.ts,
+ * then one pass of ask-source, hq-pool, partner-ask-words, admin-group,
+ * players-cancel, hq-outward, hq-cancel, free-places and the recruit and
+ * ask-source live sims.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: HAIKU_CALL,
@@ -555,47 +565,52 @@ THE FIELDS. toMatchTime is always filled; fill the others for the action, and ev
   pastGame cancel_match, restore_match: true when the game the message means has already been, or should have been, played: it says the game didn't happen or did happen after all, or names a game gone by ("last Tuesday's", "the last match", "yesterday", "dün", "geçen hafta"). False for a game still to come.
   phrase reminder: the time phrase exactly as written ("on Monday", "tomorrow at 6"), never a date.
   note reminder: what to remind them about, in their own words ("bring the bibs"); "" when it names nothing.
-  playersFrom recruit: where the message says the players are to come from, judged by what it means, never guessed. Each source is a different thing MatchTime does, so a message that does not say is "unsaid" and MatchTime asks the organiser.
+  playersFrom recruit: every place the message says the players are to come from, judged by what it means, never guessed. A message may name one place or several; each is a different thing MatchTime does, so list a place only when the message means it, and leave the list empty when it says none (MatchTime then asks the organiser).
     "club" the club's own players: its regulars, the lads, its past players, or its own players' group ("the group" and "the main group" are this club's players' group).
     "partners" another club: a partner club or the other groups, named or not.
     "pool" the MatchTime player pool: players from outside this club and its partner clubs, found by MatchTime ("the pool", "someone nearby", "a player from the app", "MatchTime's players").
-    "unsaid" the message asks for players but does not say from where ("we need 2 players", "find us someone").
-    A message answering MatchTime's own question about where to look (MATCHTIME'S LAST POST, or the message it replies to, asks it) is recruit from the place it picks, however short.
+    "everywhere" or "wherever you can" ("her yerden", "nereden olursa") is all three.
+    A message answering MatchTime's own question about where to look (MATCHTIME'S LAST POST, or the message it replies to, asks it) is recruit from the places it picks, however short. "both" is the two places the question offers (of three, the partner clubs and the pool), "all" is every place it offers, and a yes to a question offering one place is that place.
   lookbackMatches recruit from the club: how many of the club's recent matches to draw its own players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
   clubRef recruit from partners: the other club's name as written, without a Turkish case ending ("Sutton'a" -> "Sutton"); "" when the message names no club ("the partner clubs", "the other groups", "another club").
 
 EXAMPLES, English and Turkish side by side, grouped by what they teach. toMatchTime is true in each unless shown.
 Who it is spoken to:
-  "ask the group if anyone can play" / "MatchTime oyuncu grubuna sor" -> recruit, playersFrom "club", toMatchTime true
-  "@Match Time ask the group" / "@Match Time gruba sor" -> recruit, playersFrom "club", toMatchTime true
-  "@Kemal can we ask Sutton group?" -> recruit, playersFrom "partners", clubRef "Sutton", toMatchTime false: a question to Kemal
+  "ask the group if anyone can play" / "MatchTime oyuncu grubuna sor" -> recruit, playersFrom ["club"], toMatchTime true
+  "@Kemal can we ask Sutton group?" -> recruit, playersFrom ["partners"], clubRef "Sutton", toMatchTime false: a question to Kemal
   "should we ask the group?" / "gruba soralım mı?" -> other, toMatchTime false: the sender asks the others
-  "you able to find players?" / "oyuncu bulabilir misin?" (to another organiser) -> other, toMatchTime false
-Players from the club itself:
-  "message the lads from the last 5 matches and invite them" / "son 5 maçta oynayanlara yaz, davet et" -> recruit, playersFrom "club", lookbackMatches 5
-  "ask the regulars if they can play" / "düzenli gelenlere sor, oynayabilirler mi" -> recruit, playersFrom "club", lookbackMatches 0
-Players asked for, from nowhere said:
-  "we need 2 players for Thursday" / "perşembeye 2 kişi lazım" -> recruit, playersFrom "unsaid"
-  "@Match Time find us a player for Friday" / "@Match Time cumaya bir oyuncu bul" -> recruit, playersFrom "unsaid"
-  "we need more players, can you round some up" / "bize oyuncu bulur musun" -> recruit, playersFrom "unsaid"
-Players from another club:
-  "ask Sutton if anyone can play" / "Sutton'a sor bakalım oynayan var mı" -> recruit, playersFrom "partners", clubRef "Sutton"
-  "@Match Time ask Friday MT Community if anyone can play tonight" -> recruit, playersFrom "partners", clubRef "Friday MT Community"
-  "search for players from our partner groups" / "diğer gruplara sor, oynayacak biri var mı" -> recruit, playersFrom "partners", clubRef ""
-  "try another club for one more" / "başka bir kulübe sorar mısın" -> recruit, playersFrom "partners", clubRef ""
-  "Sutton were great last week" / "Sutton geçen hafta çok iyi oynadı" -> other, toMatchTime false: talk about another club
-  "did Sutton ever get back to us?" -> other, toMatchTime false: a question
-Players from the MatchTime player pool:
-  "@Match Time ask the pool for a player" / "@Match Time havuzdan bir oyuncu bul" -> recruit, playersFrom "pool"
-  "find someone nearby for tonight" / "bu akşam için yakınlardan birini bul" -> recruit, playersFrom "pool"
-  "get us a player from the app" / "uygulamadan bir oyuncu bulur musun" -> recruit, playersFrom "pool"
   "shall we try the pool?" / "havuza soralım mı?" -> other, toMatchTime false: the sender asks the others
-  "the pool lad last week was good" / "geçen haftaki havuz oyuncusu iyiydi" -> other, toMatchTime false: talk about the pool
+  "you able to find players?" / "oyuncu bulabilir misin?" (to another organiser) -> other, toMatchTime false
+Players from one place:
+  "@Match Time ask the group" / "@Match Time gruba sor" -> recruit, playersFrom ["club"]
+  "message the lads from the last 5 matches and invite them" / "son 5 maçta oynayanlara yaz, davet et" -> recruit, playersFrom ["club"], lookbackMatches 5
+  "ask the regulars if they can play" / "düzenli gelenlere sor, oynayabilirler mi" -> recruit, playersFrom ["club"], lookbackMatches 0
+  "ask Sutton if anyone can play" / "Sutton'a sor bakalım oynayan var mı" -> recruit, playersFrom ["partners"], clubRef "Sutton"
+  "@Match Time ask Friday MT Community if anyone can play tonight" -> recruit, playersFrom ["partners"], clubRef "Friday MT Community"
+  "search for players from our partner groups" / "diğer gruplara sor, oynayacak biri var mı" -> recruit, playersFrom ["partners"], clubRef ""
+  "@Match Time ask the pool for a player" / "@Match Time havuzdan bir oyuncu bul" -> recruit, playersFrom ["pool"]
+  "find someone nearby for tonight" / "bu akşam için yakınlardan birini bul" -> recruit, playersFrom ["pool"]
+  "get us a player from the app" / "uygulamadan bir oyuncu bulur musun" -> recruit, playersFrom ["pool"]
+Players from several places:
+  "find me players from partner clubs and the player pool" / "partnerlere ve havuza sor" -> recruit, playersFrom ["partners","pool"], clubRef ""
+  "ask Sutton and the pool" / "Sutton'a ve havuza sor" -> recruit, playersFrom ["partners","pool"], clubRef "Sutton"
+  "ask the group and our partner clubs" / "gruba ve partner kulüplere sor" -> recruit, playersFrom ["club","partners"]
+  "find us players everywhere" / "her yerden oyuncu bul" -> recruit, playersFrom ["club","partners","pool"]
+Players asked for, from nowhere said:
+  "we need 2 players for Thursday" / "perşembeye 2 kişi lazım" -> recruit, playersFrom []
+  "@Match Time find us a player for Friday" / "@Match Time cumaya bir oyuncu bul" -> recruit, playersFrom []
+  "we need more players, can you round some up" / "bize oyuncu bulur musun" -> recruit, playersFrom []
+Talk about a club or the pool, not a request:
+  "Sutton were great last week" / "Sutton geçen hafta çok iyi oynadı" -> other, toMatchTime false
+  "did Sutton ever get back to us?" -> other, toMatchTime false: a question
+  "the pool lad last week was good" / "geçen haftaki havuz oyuncusu iyiydi" -> other, toMatchTime false
 Answering MatchTime's "Who shall I ask for players: your players' group, your partner clubs, or the MatchTime player pool?":
-  "the pool" / "havuza" -> recruit, playersFrom "pool"
-  "partners please" / "partner kulüplere" -> recruit, playersFrom "partners", clubRef ""
-  "the group" / "gruba sor" -> recruit, playersFrom "club"
-  "ask Sutton" / "Sutton'a sor" -> recruit, playersFrom "partners", clubRef "Sutton"
+  "the pool" / "havuza" -> recruit, playersFrom ["pool"]
+  "partners please" / "partner kulüplere" -> recruit, playersFrom ["partners"], clubRef ""
+  "the group" / "gruba sor" -> recruit, playersFrom ["club"]
+  "ask Sutton" / "Sutton'a sor" -> recruit, playersFrom ["partners"], clubRef "Sutton"
+  "both" / "ikisine de" -> recruit, playersFrom ["partners","pool"]
+  "all of them" / "hepsine" -> recruit, playersFrom ["club","partners","pool"]
 Payments and free places:
   "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
   "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
@@ -816,12 +831,11 @@ const ADMIN_SCHEMA = {
     // 0 is the schema's stand-in for null, the same convention
     // `statedCount` uses. A nullable number is rejected by the API.
     lookbackMatches: { type: "number" },
-    // recruit: where the players are to come from (one choice, L10
-    // 2026-10-24: it replaced S6's `partnerClubs` boolean when the
-    // MatchTime player pool became a third source), and the other club's
-    // name as written for "partners" (slice S6, 2026-10-21). "unsaid"
-    // (2026-10-28): players asked for, no source named.
-    playersFrom: { type: "string", enum: ["", "club", "partners", "pool", "unsaid"] },
+    // recruit: every place the players are to come from (2026-10-28: a
+    // list, "partner clubs and the pool"; it was one choice since L10, and
+    // S6's `partnerClubs` boolean before that); empty when the words name
+    // none. The other club's name as written for "partners" (slice S6).
+    playersFrom: { type: "array", items: { type: "string", enum: ["club", "partners", "pool"] } },
     clubRef: { type: "string" },
     // Who the message is spoken to (2026-10-22): MatchTime, or a person or
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
@@ -1138,7 +1152,7 @@ export function parseFacts(
         return { facts: { kind: "none" }, degradations };
       }
       const clubRef = typeof raw.clubRef === "string" ? raw.clubRef.trim() : "";
-      const from = str(raw.playersFrom).toLowerCase();
+      const from = playersFromOf(raw.playersFrom);
       const facts: AdminFacts = {
         kind: "admin",
         action: action as AdminFacts["action"],
@@ -1165,14 +1179,18 @@ export function parseFacts(
           : {}),
         // Slice S6: another club's players. A club name as written is
         // another club, whatever the source said; both are recruit only.
-        ...(action === "recruit" && (from === "partners" || clubRef) ? { partnerClubs: true } : {}),
+        ...(action === "recruit" && (from.has("partners") || clubRef) ? { partnerClubs: true } : {}),
         ...(action === "recruit" && clubRef ? { clubRef } : {}),
-        // L10: the MatchTime player pool. Never with a club named: a club
-        // name is another club, so the pool is not asked by a guess.
-        ...(action === "recruit" && from === "pool" && !clubRef ? { pool: true } : {}),
+        // L10: the MatchTime player pool. With a club named, only when the
+        // partners are named too ("ask Sutton and the pool"): a club name
+        // alone is another club, so the pool is not asked by a guess.
+        ...(action === "recruit" && from.has("pool") && (!clubRef || from.has("partners")) ? { pool: true } : {}),
+        // 2026-10-28: the club's own players, named (alone or beside
+        // another place: "ask the group and the pool", "everywhere").
+        ...(action === "recruit" && from.has("club") ? { ownClub: true } : {}),
         // 2026-10-28 (Kemal, "stricter"): the words asked for players and
-        // named no source. Never with a club named (that is another club).
-        ...(action === "recruit" && from === "unsaid" && !clubRef ? { sourceUnsaid: true } : {}),
+        // named no place. Never with a club named (that is another club).
+        ...(action === "recruit" && from.size === 0 && !clubRef ? { sourceUnsaid: true } : {}),
         // Only a clear true: a missing or false value keeps HQ's outward
         // actions closed (`admin-group-understand.ts`).
         ...(raw.toMatchTime === true ? { toMatchTime: true } : {}),
@@ -1180,6 +1198,23 @@ export function parseFacts(
       return { facts, degradations };
     }
   }
+}
+
+/**
+ * The places `playersFrom` names (2026-10-28: a list). A single string is
+ * read too, the shape before the list, which stubs and recorded answers
+ * carry, with its meaning then: "unsaid" is no place, and "" or no field
+ * at all (on a recruit) was the club's own players. The schema requires the
+ * list, so a real answer always has it. Anything else is ignored.
+ */
+function playersFromOf(v: unknown): Set<"club" | "partners" | "pool"> {
+  const items = Array.isArray(v) ? v : v === undefined || v === null ? ["club"] : typeof v === "string" ? [v.trim() === "" ? "club" : v] : [];
+  const out = new Set<"club" | "partners" | "pool">();
+  for (const item of items) {
+    const x = typeof item === "string" ? item.trim().toLowerCase() : "";
+    if (x === "club" || x === "partners" || x === "pool") out.add(x);
+  }
+  return out;
 }
 
 // ── The call ───────────────────────────────────────────────────────────

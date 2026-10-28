@@ -749,18 +749,26 @@ export interface AdminFacts {
   /**
    * recruit, local player pool L10 (2026-10-24): the players are to come
    * from the MatchTime player pool (nearby players who are not in the
-   * club), not from the club or a partner. Asked only from the admin group
-   * (`admin-group-understand.ts`, `pool-ask-words.ts`); never with
-   * `partnerClubs`. Absent means not the pool.
+   * club). With `partnerClubs` too (2026-10-28, "partner clubs and the
+   * pool"): both, the partners first. Absent means not the pool.
    */
   pool?: true;
   /**
+   * recruit, 2026-10-28: the words named the club's own players together
+   * with, or as well as, another place ("ask the group and the pool",
+   * "everywhere"). Words that name only the club's own players may leave it
+   * absent: naming no other place has always meant them
+   * (`ask-source-rules.ts` `namedSources`).
+   */
+  ownClub?: true;
+  /**
    * recruit, 2026-10-28 (Kemal: "stricter"): the message asks for players
    * but does not say where from ("we need 2 players for Thursday", "bize
-   * oyuncu bul"). Never with `pool`, `partnerClubs` or `clubRef`. In HQ,
-   * a club with partner clubs or the pool is asked which it means
-   * (`ask-source-rules.ts`); everywhere else it is the club's own players,
-   * as an unnamed source always was. Absent: the words named a source.
+   * oyuncu bul"). Never with `pool`, `partnerClubs`, `ownClub` or
+   * `clubRef`. A club with partner clubs or the pool is asked which it
+   * means, in HQ and in the players' group (`ask-source-rules.ts`);
+   * otherwise it is the club's own players, as an unnamed source always
+   * was. Absent: the words named a place.
    */
   sourceUnsaid?: true;
   /**
@@ -1464,6 +1472,10 @@ export type ProposedWrite =
       /** Already clamped to `[1, RECRUIT_LOOKBACK_MAX]` by the engine.
        *  `null` means "use `LOOKBACK_MATCHES`", the shipped default. */
       lookbackMatches: number | null;
+      /** The words asked for players and named no place (2026-10-28): the
+       *  route asks the organiser which place, when the club has partner
+       *  clubs or the pool, instead of sending it (`ask-source-rules.ts`). */
+      sourceUnsaid?: true;
       sourceMessageId: string;
       reason: string;
     }

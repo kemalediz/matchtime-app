@@ -47,7 +47,10 @@
  *                         club with partner clubs or the pool: ONE question,
  *                         "who shall I ask?", and the organiser's answer is
  *                         read by the same extractor (`ask-source-rules.ts`,
- *                         Kemal 2026-10-28: "stricter")
+ *                         Kemal 2026-10-28: "stricter"). Several places
+ *                         named ("partner clubs and the pool", "everywhere"):
+ *                         each is asked, partners before the pool, in one
+ *                         reply (2026-10-28)
  *   admin_ops             the shared admin extractor: players from a
  *                         partner club ("ask Sutton if anyone can play",
  *                         slice S6) are asked for by `partner-ask-words.ts`,
@@ -150,7 +153,8 @@ import { activePartnerChoices, askPartnersFromWords } from "./partner-ask-words"
 import { answerJoinRequestInHq, askPoolFromWords, joinRequestsAwaiting, poolNoticesAwaiting } from "./pool-ask-words";
 import { confirmQuestion } from "./admin-group-confirm-copy";
 import { parseJoinRequestRef, parsePoolAskRef } from "./admin-group-pool-refs";
-import { decideRecruitSource, sourceFromAnswer, sourceQuestionAnswered, type RecruitSource } from "./ask-source-rules";
+import { decideRecruitSource, namedSources, sourcesFromAnswer, sourceQuestionAnswered, type RecruitSource } from "./ask-source-rules";
+import { mergeOneReply } from "./pipeline/clause-peel";
 import { askWhichSource, sourcesAvailable } from "./ask-source";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
@@ -623,11 +627,14 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
     };
 
     // WHERE THE PLAYERS COME FROM (Kemal, 2026-10-28: "stricter"; ask when
-    // in limbo). `ask-source-rules.ts`: a source the words named is that
-    // source; a request that names none, from a club with partner clubs or
-    // the pool, gets ONE question (logged as MatchTime's), and nothing is
-    // asked of anybody. An organiser's, weekly club's alone, as each ask is.
-    const askFromSource = async (source: RecruitSource, organiser: string, clubRef: string | null): Promise<Understood> => {
+    // in limbo). `ask-source-rules.ts`: the places the words named are
+    // asked, each through its own door, in one reply ("partner clubs and
+    // the pool": the partners first, so the pool joins their round and
+    // they keep their hour); a request that names none, from a club with
+    // partner clubs or the pool, gets ONE question (logged as MatchTime's),
+    // and nothing is asked of anybody. An organiser's, weekly club's alone,
+    // as each ask is.
+    const askOne = async (source: RecruitSource, organiser: string, clubRef: string | null): Promise<Understood> => {
       if (source === "pool") return askPoolInWords();
       if (source === "partners") {
         const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: organiser, via: "hq", clubRef, lang, now });
@@ -636,12 +643,28 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
       const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
       return said(r.outcome, r.replyText);
     };
+    const askFromSources = async (sources: RecruitSource[], organiser: string, clubRef: string | null): Promise<Understood> => {
+      const done: Understood[] = [];
+      for (const source of sources) done.push(await askOne(source, organiser, clubRef));
+      if (done.length === 1) return done[0];
+      console.log(`[admin-group] ${messageId}: players asked for from ${sources.join("+")}: ${done.map((d) => d.outcome).join(", ")}`);
+      return said(
+        done.map((d) => d.outcome).join("+"),
+        done.reduce<string | null>((text, d) => mergeOneReply(text, d.replyText), null),
+      );
+    };
     const askWhichIfUnsaid = async (facts: AdminFacts | null): Promise<Understood | null> => {
       if (!actor || !weekly || facts?.action !== "recruit" || !facts.sourceUnsaid) return null;
       const d = decideRecruitSource(facts, await sourcesAvailable(org.id, input.poolEnv));
       if (d.kind !== "ask-which") return null;
       console.log(`[admin-group] ${messageId}: players asked for, no source named: asking which (${d.options.join("+")})`);
       return said("hq-ask-source", await askWhichSource({ orgId: org.id, lang, options: d.options, now }));
+    };
+    /** The places a recruit names besides the club's own players, or null. */
+    const otherPlacesNamed = (facts: AdminFacts | null): RecruitSource[] | null => {
+      if (facts?.action !== "recruit") return null;
+      const named = namedSources(facts);
+      return named && named.some((x) => x !== "club") ? named : null;
     };
 
     // The safe-YES rule and the score keep their own rules for a quoted
@@ -657,9 +680,9 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
     const sourceOptions = actor && weekly ? sourceQuestionAnswered({ quoted, log, now }) : null;
     if (sourceOptions && actor) {
       const answer = await readAdminFacts();
-      const picked = sourceFromAnswer(answer);
-      console.log(`[admin-group] ${messageId}: in the place of an answer to the source question: ${picked ?? "not an answer"}`);
-      if (picked) return askFromSource(picked, actor, answer?.clubRef ?? null);
+      const picked = sourcesFromAnswer(answer);
+      console.log(`[admin-group] ${messageId}: in the place of an answer to the source question: ${picked?.join("+") ?? "not an answer"}`);
+      if (picked) return askFromSources(picked, actor, answer?.clubRef ?? null);
     }
     if (answersMomAsk) {
       if (route !== "score") console.log(`[admin-group] ${messageId}: a reply to the Man of the Match question; ${route ?? "nowhere"} -> score`);
@@ -844,13 +867,11 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         const partners = await activePartnerChoices(org.id).catch(() => []);
         const facts = await readAdminFacts();
         if (leavesHqUnasked(facts)) return null;
-        if (facts?.action === "recruit" && facts.pool) return askPoolInWords();
-        if (partners.length > 0) {
-          if (facts?.action === "recruit" && facts.partnerClubs) {
-            const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: actor, via: "hq", clubRef: facts.clubRef ?? null, lang, now });
-            return said(r.outcome, r.replyText);
-          }
-        }
+        // Another place named (the pool, the partners, or several): each is
+        // asked. A partner club named by a club that has none stays the
+        // players' group here, as before S6.
+        const places = otherPlacesNamed(facts)?.filter((x) => x !== "partners" || partners.length > 0) ?? null;
+        if (places && places.some((x) => x !== "club")) return askFromSources(places, actor, facts?.clubRef ?? null);
         // No source named, and the club has more than its players' group:
         // ask which (2026-10-28). Otherwise the players' group, as before.
         const which = await askWhichIfUnsaid(facts);
@@ -872,23 +893,16 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         // HQ: only when asked of MatchTime (2026-10-22). Untagged and spoken
         // to someone else, not even the "not from this group" line.
         if (facts.kind === "admin" && (facts.action === "recruit" || facts.action === "stats_blast") && leavesHqUnasked(facts)) return null;
-        // The MatchTime player pool (L10): "get us a player from the app".
-        if (facts.kind === "admin" && facts.action === "recruit" && facts.pool) return askPoolInWords();
-        // Another club's players (slice S6, 2026-10-21): "ask Sutton if
-        // anyone can play", "search for players from our partner groups".
-        // The shared door every surface uses (`partner-ask-words.ts`);
-        // an organiser's alone, like ask_group (the collector may not).
-        if (facts.kind === "admin" && facts.action === "recruit" && facts.partnerClubs) {
+        // Another place named: the MatchTime player pool (L10, "get us a
+        // player from the app"), another club's players (slice S6, "ask
+        // Sutton if anyone can play"), or several ("partner clubs and the
+        // pool", 2026-10-28). Each through the shared door every surface
+        // uses (`pool-ask-words.ts`, `partner-ask-words.ts`); an
+        // organiser's alone, like ask_group (the collector may not).
+        const places = facts.kind === "admin" ? otherPlacesNamed(facts) : null;
+        if (places) {
           if (!actor) return onlyOrganisers();
-          const r = await askPartnersFromWords({
-            orgId: org.id,
-            requestedByUserId: actor,
-            via: "hq",
-            clubRef: facts.clubRef ?? null,
-            lang,
-            now,
-          });
-          return said(r.outcome, r.replyText);
+          return askFromSources(places, actor, facts.kind === "admin" ? (facts.clubRef ?? null) : null);
         }
         // Players asked for, no source named (2026-10-28): an organiser's
         // question back when the club has partners or the pool; otherwise

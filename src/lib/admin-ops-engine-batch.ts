@@ -269,6 +269,9 @@ export interface AdminOpsMessageOutcome {
   /** The clamped lookback for that blast, or null for the default of 5.
    *  `inviteRecentPlayers` takes it as its second argument. */
   recruitLookbackMatches: number | null;
+  /** That ask named no place to find players (2026-10-28): the route asks
+   *  the organiser which, when the club has partner clubs or the pool. */
+  recruitSourceUnsaid: boolean;
   /**
    * An admin asked, with an @-tag, for every active member to be DM'd
    * their personal stats link. Same shape as `recruitRequest` and same
@@ -329,6 +332,10 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     organiser: boolean;
     now: Date;
   }) => Promise<{ outcome: string; replyText: string | null; react: string | null }>;
+  /** "Only Kemal or Hamzah can change that." for a player who tagged
+   *  MatchTime asking for players (2026-10-28). Defaults to HQ's own
+   *  `onlyOrganisersLine`; injected so tests need no database. */
+  onlyOrganisersLine?: (orgId: string, lang: string | null) => Promise<string>;
 }
 
 function empty(degradations: string[] = []): AdminOpsBatchResult {
@@ -492,6 +499,9 @@ export async function runAdminOpsBatch(args: {
   const unhandled = new Set<string>();
   /** Tagged cancel / back on: done outside the engine, after this loop. */
   const cancelAsks = new Map<string, { mode: "cancel" | "restore"; dayPhrase: string | null; pastGame: boolean }>();
+  // A player who is not an owner or admin tagging MatchTime for players
+  // (2026-10-28): the one line naming who can, as HQ says it. Nothing asked.
+  const recruitNotOrganiser = new Set<string>();
   for (const m of candidates) {
     const facts = factsById.get(m.waMessageId);
     if (!facts) continue; // extraction failed; already reported above.
@@ -527,6 +537,20 @@ export async function runAdminOpsBatch(args: {
       } else {
         hand(`${facts.action} without an explicit MatchTime tag`);
       }
+      continue;
+    }
+
+    // Players asked for by someone who is not an owner or admin of the
+    // club, with an explicit tag (2026-10-28): every admin feature acts
+    // only for an organiser, and a tagged player hears who can. Untagged it
+    // is the players' chat: the engine's own refusal, silent.
+    if (
+      facts.action === "recruit" &&
+      m.tagged &&
+      (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body })) &&
+      !state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin)
+    ) {
+      recruitNotOrganiser.add(m.waMessageId);
       continue;
     }
 
@@ -629,6 +653,7 @@ export async function runAdminOpsBatch(args: {
       route: m.route as Route,
       recruitRequest: false,
       recruitLookbackMatches: null,
+      recruitSourceUnsaid: false,
       statsBlastRequest: false,
       partnerAskRequest: null,
       poolAskRequest: null,
@@ -662,6 +687,28 @@ export async function runAdminOpsBatch(args: {
     }
   }
 
+  for (const id of recruitNotOrganiser) {
+    const m = messages.find((x) => x.waMessageId === id)!;
+    const line = deps.onlyOrganisersLine ?? (async (o: string, l: string | null) => (await import("./admin-group-understand")).onlyOrganisersLine(o, l));
+    const reply = await line(orgId, state.features.language).catch(() => null);
+    cancelOutcomes.push({
+      waMessageId: id,
+      route: m.route as Route,
+      reply,
+      react: null,
+      intent: "organisers_only",
+      action: reply ? "reply" : "none",
+      reasoning: `${ADMIN_OPS_HANDLED_BY} (${m.route}): recruit asked by someone who is not an organiser: the one line naming who can`,
+      recruitRequest: false,
+      recruitLookbackMatches: null,
+      recruitSourceUnsaid: false,
+      statsBlastRequest: false,
+      partnerAskRequest: null,
+      poolAskRequest: null,
+      writeFailed: false,
+    });
+  }
+
   /** Adds the one-line answers for tagged `other`s, and the cancels, to
    *  whatever the rest of this function returns, on EVERY path below:
    *  they depend on nothing the engine or the apply layer does. */
@@ -689,6 +736,7 @@ export async function runAdminOpsBatch(args: {
           `said so in one line rather than going silent`,
         recruitRequest: false,
         recruitLookbackMatches: null,
+        recruitSourceUnsaid: false,
         statsBlastRequest: false,
         partnerAskRequest: null,
         poolAskRequest: null,
@@ -743,6 +791,7 @@ export async function runAdminOpsBatch(args: {
   const payments: EnginePaymentWrite[] = [];
   const reminders: EngineReminderWrite[] = [];
   const recruitByMessage = new Map<string, number | null>();
+  const recruitUnsaidIds = new Set<string>();
   const statsBlastIds = new Set<string>();
   const partnerAskByMessage = new Map<string, { clubRef: string | null; matchId: string | null }>();
   const poolRequestByMessage = new Map<string, { matchId: string | null }>();
@@ -754,7 +803,10 @@ export async function runAdminOpsBatch(args: {
     }
     if (w.kind === "payment_credit") payments.push(w);
     else if (w.kind === "reminder") reminders.push(w);
-    else if (w.kind === "recruit_blast") recruitByMessage.set(w.sourceMessageId, w.lookbackMatches);
+    else if (w.kind === "recruit_blast") {
+      recruitByMessage.set(w.sourceMessageId, w.lookbackMatches);
+      if (w.sourceUnsaid) recruitUnsaidIds.add(w.sourceMessageId);
+    }
     // Deferred to the route's batch-final pass, exactly like
     // `recruit_blast` and for the same reason — see the header, and
     // `lib/stats-blast.ts` for why the classification moved here at all.
@@ -927,6 +979,7 @@ export async function runAdminOpsBatch(args: {
         (failed ? "; the write FAILED and nothing was said" : ""),
       recruitRequest: isRecruit,
       recruitLookbackMatches: recruitByMessage.get(m.waMessageId) ?? null,
+      recruitSourceUnsaid: recruitUnsaidIds.has(m.waMessageId),
       statsBlastRequest: isStatsBlast,
       partnerAskRequest: partnerAsk,
       poolAskRequest: poolRequest,

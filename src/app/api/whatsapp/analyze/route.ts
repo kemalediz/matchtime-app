@@ -381,7 +381,10 @@ import { handlePartnerVolunteer } from "@/lib/partner-guest";
 import { askPartnerAfterOwnInByDm, askPartnerWhichByDm } from "@/lib/partner-guest-dm";
 import { askPartnersFromWords, partnerClubsForRouter } from "@/lib/partner-ask-words";
 import { askPoolFromWords } from "@/lib/pool-ask-words";
-import { recruitWantsPool } from "@/lib/recruit-source";
+import { recruitPlacesFromWords } from "@/lib/recruit-source";
+import { groupSourceAnswers } from "@/lib/ask-source-group";
+import { askWhichSource, nobodyLeftReply, sourcesAvailable } from "@/lib/ask-source";
+import { decideRecruitSource, type RecruitSource } from "@/lib/ask-source-rules";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
 
@@ -1093,6 +1096,56 @@ async function handleAnalyzeRequest(request: Request) {
   //   and who's out" is ONE question and must stay one
   //   (`clause-peel.ts` pins it). "@Match Time dm me the fixtures. Also
   //   I'm out" answers the fixtures privately AND drops him.
+  // ── AN ANSWER TO "WHO SHALL I ASK FOR PLAYERS?" (2026-10-28) ────────
+  //   A club with no admin group is asked which place it means in the
+  //   players' group (`ask-source.ts`, below in the recruit pass), and the
+  //   organiser's answer is found by the safe-YES rule's positional tests
+  //   (a reply quoting the question, or the next organiser message within
+  //   15 minutes) and read by the shared admin extractor
+  //   (`ask-source-group.ts`). Never a phrase match. An answer is this
+  //   message's whole job: claimed here, and the places it picks are asked
+  //   in the batch-final pass with every other ask, after the batch's
+  //   writes. Not at the AI cap (the reading is a model call). One indexed
+  //   read for a batch with no question open.
+  const sourceAnswerAsks: Array<{ msg: InboundMessage; sender: ResolvedSender; sources: RecruitSource[]; clubRef: string | null }> = [];
+  if (!aiCapped && fresh.length > 0) {
+    const answers = await groupSourceAnswers({
+      orgId: org.id,
+      now: new Date(),
+      messages: fresh.map((m) => {
+        const sender = senderById.get(m.waMessageId);
+        return {
+          id: m.waMessageId,
+          body: m.body,
+          authorName: sender?.name ?? m.authorName ?? null,
+          senderUserId: sender?.userId ?? null,
+          // MatchTime's question in the group is an inline reply, never
+          // acked, so its quote is known by its words (`quotedLogRow`).
+          quoted:
+            m.quotedFromMatchTime || m.quotedBody || m.quotedMessageId
+              ? { fromMatchTime: m.quotedFromMatchTime === true, text: m.quotedBody ?? null, messageId: m.quotedMessageId ?? null }
+              : null,
+          ...replyField(replyById, m),
+          tagged: messageTagsBot(m),
+        };
+      }),
+    });
+    for (const m of fresh) {
+      const a = answers.get(m.waMessageId);
+      const sender = senderById.get(m.waMessageId);
+      if (!a || !sender) continue;
+      await claimFastPath(m, null, {
+        handledBy: "fast-path",
+        intent: "recruit_source_answer",
+        action: `recruit-from:${a.sources.join("+")}`,
+        reasoning: `an organiser's answer to "who shall I ask for players?": ${a.sources.join("+")}`,
+        react: null,
+        reply: null,
+      });
+      sourceAnswerAsks.push({ msg: m, sender, sources: a.sources, clubRef: a.clubRef });
+    }
+  }
+
   const DM_ME = /\b(dm|pm|message)\s+me\b/i;
   for (const m of fresh) {
     if (fastPathHandledIds.has(m.waMessageId)) continue;
@@ -2745,6 +2798,9 @@ async function handleAnalyzeRequest(request: Request) {
     /** From the attendance path's bare "recruit" side request (L10: its
      *  source is read before any blast, `recruit-source.ts`). */
     fromAttendance?: boolean;
+    /** The words named no place to find players (2026-10-28): the
+     *  organiser is asked which, when the club has more than its own. */
+    sourceUnsaid?: boolean;
   }> = [];
 
   // ── AND SO DOES THE STATS BLAST (2026-09-10) ────────────────────────
@@ -2769,6 +2825,14 @@ async function handleAnalyzeRequest(request: Request) {
   //   `requestPartnerAsk`, the match page button's own door.
   const partnerAskRequests: Array<{ msg: InboundMessage; sender: ResolvedSender; clubRef: string | null; matchId: string | null }> = [];
   const poolRequests: Array<{ msg: InboundMessage; userId: string; matchId: string | null }> = [];
+  // The places an organiser's answer to "who shall I ask?" picked (the
+  // early pass above): asked here with every other ask, partners before the
+  // pool so the pool joins their round.
+  for (const a of sourceAnswerAsks) {
+    if (a.sources.includes("club")) recruitRequests.push({ msg: a.msg, sender: a.sender, lookbackMatches: null });
+    if (a.sources.includes("partners")) partnerAskRequests.push({ msg: a.msg, sender: a.sender, clubRef: a.clubRef, matchId: null });
+    if (a.sources.includes("pool") && a.sender.userId) poolRequests.push({ msg: a.msg, userId: a.sender.userId, matchId: null });
+  }
 
   // ── EVERY MESSAGE NOBODY OWNED ─────────────────────────────────────
   //   The input to `lib/operator-note.ts`, which is what replaces "fall
@@ -3069,6 +3133,7 @@ async function handleAnalyzeRequest(request: Request) {
           msg,
           sender,
           lookbackMatches: adminOutcome.recruitLookbackMatches ?? null,
+          sourceUnsaid: adminOutcome.recruitSourceUnsaid === true,
         });
       }
       // An admin's stats blast, deferred the same way. The engine has
@@ -3812,22 +3877,63 @@ async function handleAnalyzeRequest(request: Request) {
   //   unchanged. What moved is WHEN it runs and WHO decided it was asked
   //   for. The reply is MERGED into the message's single existing result,
   //   never pushed as a second one: MatchTime replies once or not at all.
-  // ── THE POOL, NOT A BLAST (local player pool L10) ────────────────────
+  // ── WHERE FROM, FOR A RECRUIT FROM THE ATTENDANCE PATH (L10; 2026-10-28)
   //   "@Match Time ask the pool for a player" reaches here from the
   //   attendance path (the router calls it `offer`; its extractor only
   //   says "recruit"). Before a mass DM, the shared admin extractor reads
-  //   where the players are to come from; the MatchTime player pool is
-  //   asked instead (the pool pass below), and nobody is DM'd.
+  //   where the players are to come from (`recruit-source.ts`): the places
+  //   named besides the club's own players are asked (the partner and pool
+  //   passes below), the blast only when the club's own players were named
+  //   too, and words naming no place are the organiser's question below.
   if (recruitRequests.length > 0) {
     const last = recruitRequests[recruitRequests.length - 1];
-    if (
-      last.fromAttendance &&
-      last.sender.userId &&
-      (await recruitWantsPool({ id: last.msg.waMessageId, body: last.msg.body, authorName: last.sender.name ?? last.msg.authorName ?? null, now: new Date() }))
-    ) {
-      console.log(`[analyze] ${last.msg.waMessageId}: a recruit for the MatchTime player pool: the pool is asked, no recruit blast`);
-      poolRequests.push({ msg: last.msg, userId: last.sender.userId, matchId: null });
-      recruitRequests.length = 0;
+    if (last.fromAttendance && last.sender.userId) {
+      const places = await recruitPlacesFromWords({ id: last.msg.waMessageId, body: last.msg.body, authorName: last.sender.name ?? last.msg.authorName ?? null, now: new Date() });
+      if (places?.sources && places.sources.some((x) => x !== "club")) {
+        console.log(`[analyze] ${last.msg.waMessageId}: a recruit from ${places.sources.join("+")}: asked there${places.sources.includes("club") ? ", and the recruit blast" : ", no recruit blast"}`);
+        if (places.sources.includes("partners")) partnerAskRequests.push({ msg: last.msg, sender: last.sender, clubRef: places.clubRef, matchId: null });
+        if (places.sources.includes("pool")) poolRequests.push({ msg: last.msg, userId: last.sender.userId, matchId: null });
+        if (!places.sources.includes("club")) recruitRequests.length = 0;
+      } else if (places && places.sources === null && messageTagsBot(last.msg)) {
+        // Only when MatchTime was tagged: an untagged "Najib is out, we
+        // need one more" that changed the squad keeps today's blast.
+        last.sourceUnsaid = true;
+      }
+    }
+  }
+
+  // ── PLAYERS ASKED FOR, NO PLACE NAMED (Kemal, 2026-10-28) ───────────
+  //   The same rule as HQ (`ask-source-rules.ts`): a club with partner
+  //   clubs or the pool open is asked ONE question, "who shall I ask for
+  //   players: your recent players, your partner clubs, or the MatchTime
+  //   player pool?", logged as MatchTime's question in this group so the
+  //   organiser's answer is read (the early pass above). Nobody is DM'd.
+  //   A club with neither: the blast, as before.
+  if (recruitRequests.length > 0) {
+    const last = recruitRequests[recruitRequests.length - 1];
+    if (last.sourceUnsaid) {
+      const now = new Date();
+      const d = decideRecruitSource({ sourceUnsaid: true }, await sourcesAvailable(org.id, await poolEnvForApiRequest(request)).catch(() => ({ partners: false, pool: false })));
+      if (d.kind === "ask-which") {
+        const question = await askWhichSource({ orgId: org.id, lang: org.language, options: d.options, now, where: "group" });
+        console.log(`[analyze] ${last.msg.waMessageId}: players asked for, no place named: asking which (${d.options.join("+")}), no recruit blast`);
+        const idx = results.findIndex((x) => x.waMessageId === last.msg.waMessageId);
+        if (idx >= 0) {
+          results[idx].reply = mergeRecruitReply(results[idx].reply, question);
+          if (results[idx].handledBy === "ignored" || results[idx].intent === "noise" || results[idx].intent === "unclear") {
+            results[idx].handledBy = "fast-path";
+            results[idx].intent = "recruit_ask_source";
+          }
+        } else {
+          results.push({ waMessageId: last.msg.waMessageId, handledBy: "fast-path", intent: "recruit_ask_source", react: null, reply: question });
+        }
+        await augmentAnalysis({
+          waMessageId: last.msg.waMessageId,
+          action: `recruit-ask-source:${d.options.join("+")}`,
+          reasoningSuffix: `admin asked for players, no place named: asked which (${d.options.join("+")})`,
+        });
+        recruitRequests.length = 0;
+      }
     }
   }
 
@@ -3862,7 +3968,14 @@ async function handleAnalyzeRequest(request: Request) {
       // `recruit.ts`'s capacity guard is the only place holding the
       // squad, the features and the match at once, and the DM admin path
       // (`dm-reply/route.ts`) prints the same string.
-      const recruitReply = buildRecruitAckReply(r, org.language);
+      // NOBODY NEW TO ASK (2026-10-28, after "No new players to ask for
+      // Football 9-a-side right now."): said plainly, and when the club
+      // has partner clubs or the pool, the offer to ask them, logged as
+      // MatchTime's question so "the pool" or "both" answers it.
+      const nobodyLeft = r.ok && !r.reason && !(r.invited && r.invited > 0) && !(r.alreadyInvited && r.alreadyInvited > 0);
+      const recruitReply = nobodyLeft
+        ? (await nobodyLeftReply({ orgId: org.id, lang: org.language, matchName: r.matchName ?? "", now: new Date(), where: "group", env: await poolEnvForApiRequest(request) })).text
+        : buildRecruitAckReply(r, org.language);
       // The group is being told the recruit DMs went out for this many
       // open places. The match-day morning chase asks for the same
       // places, so it stays quiet for three hours unless the need
@@ -3933,7 +4046,9 @@ async function handleAnalyzeRequest(request: Request) {
         requestedByUserId: ask.sender.userId,
         via: "group",
         clubRef: ask.clubRef,
-        matchId: ask.matchId,
+        // Null: the asks code made from an answer or the attendance path,
+        // for the club's next match (`askPartnersFromWords` loads it).
+        matchId: ask.matchId ?? undefined,
         lang: org.language,
         now: new Date(),
       });

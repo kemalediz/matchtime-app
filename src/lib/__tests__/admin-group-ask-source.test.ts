@@ -346,3 +346,77 @@ describe("the organiser's answer to MatchTime's question", () => {
     expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
   });
 });
+
+describe("several places in one ask (2026-10-28, Friday MT Community)", () => {
+  const places = (list: string[], f: Record<string, unknown> = {}) =>
+    adminFacts({ action: "recruit", undo: false, matchDay: "", playersFrom: list, clubRef: "", toMatchTime: true, ...f });
+  const order: string[] = [];
+  beforeEach(() => {
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    hqLog.hqLogSince.mockResolvedValue([]);
+    source.sourcesAvailable.mockResolvedValue(BOTH);
+    partnerWords.activePartnerChoices.mockResolvedValue([{ partnershipId: "p1", partnerOrgId: "sutton", name: "Sutton FC" }]);
+    order.length = 0;
+    partnerWords.askPartnersFromWords.mockImplementation(async () => {
+      order.push("partners");
+      return { outcome: "xask-words-asked", replyText: "I've asked *Sutton FC*'s organisers.", asked: 1 };
+    });
+    hqPool.askPoolFromWords.mockImplementation(async () => {
+      order.push("pool");
+      return { outcome: "hq-pool-asked", replyText: "🔎 The pool joins once the partner clubs have had their hour." };
+    });
+    groupAsk.askPlayersGroup.mockImplementation(async () => {
+      order.push("club");
+      return { outcome: "group-asked", replyText: "Asked in the main chat for 1 player." };
+    });
+  });
+
+  it.each(["admin_ops", "ask_group"])("partner clubs and the pool (%s): the partners first, then the pool, in ONE reply; no question", async (route) => {
+    const r = await ask("@Match Time find me players feom partner clubs and player pool", route, { deps: { routerModel: routeTo(route), extractorModel: places(["partners", "pool"]) } });
+    expect(order).toEqual(["partners", "pool"]);
+    expect(r).toEqual({
+      route,
+      outcome: "xask-words-asked+hq-pool-asked",
+      replyText: "I've asked *Sutton FC*'s organisers.\n\n🔎 The pool joins once the partner clubs have had their hour.",
+    });
+    expect(source.askWhichSource).not.toHaveBeenCalled();
+  });
+
+  it("everywhere: the players' group as well, then the partners, then the pool", async () => {
+    const r = await ask("@Match Time her yerden oyuncu bul", "admin_ops", { deps: { routerModel: routeTo("admin_ops"), extractorModel: places(["club", "partners", "pool"]) } });
+    expect(order).toEqual(["club", "partners", "pool"]);
+    expect(r?.replyText?.split("\n\n")).toHaveLength(3);
+  });
+
+  it("a place the club does not have says so through its own door, in the same reply", async () => {
+    partnerWords.askPartnersFromWords.mockImplementation(async () => {
+      order.push("partners");
+      return { outcome: "xask-words-no-partners", replyText: "Your club has no partner clubs yet.", asked: 0 };
+    });
+    const r = await ask("@Match Time partnerlere ve havuza sor", "admin_ops", { deps: { routerModel: routeTo("admin_ops"), extractorModel: places(["partners", "pool"]) } });
+    expect(r?.replyText).toContain("Your club has no partner clubs yet.");
+    expect(r?.replyText).toContain("🔎");
+  });
+
+  it("an answer \"both\" to the question: the partners, then the pool", async () => {
+    const at = new Date(NOW.getTime() - 60_000);
+    hqLog.hqLogSince.mockResolvedValue([
+      { waMessageId: "mt:ask-source:1", fromMatchTime: true, senderUserId: null, text: "Who shall I ask for players: your players' group, your partner clubs, or the MatchTime player pool?", askRef: "ask-source:club+partners+pool", createdAt: at },
+    ]);
+    const r = await ask("both", "approve", { deps: { routerModel: routeTo("approve"), extractorModel: places(["partners", "pool"]) } });
+    expect(order).toEqual(["partners", "pool"]);
+    expect(r?.outcome).toBe("xask-words-asked+hq-pool-asked");
+  });
+
+  it("the money collector who is not an organiser: the one line, nothing asked", async () => {
+    const r = await ask("@Match Time partners and the pool", "admin_ops", {
+      organiser: false,
+      member: true,
+      senderUserId: "u-col",
+      org: { ...ORG, paymentHolderId: "u-col" },
+      deps: { routerModel: routeTo("admin_ops"), extractorModel: places(["partners", "pool"]) },
+    });
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(order).toEqual([]);
+  });
+});
