@@ -53,9 +53,10 @@ const EN_HQ = [
   "• @Match Time find players from partner clubs and the player pool for Thursday",
   "Only the club's organisers can ask. MatchTime then offers the place to nearby pool players by WhatsApp and tells you here when one takes it.",
   "",
-  "Also:",
-  "• tick *MatchTime player pool* on a match",
-  "• turn on *Ask the player pool automatically*: on match day, if a place is still open and your bench is empty, MatchTime asks the pool by itself, at most once per match. https://matchtime.ai/admin/settings#pool-auto-ask",
+  "*Other ways*",
+  "• Tick *MatchTime player pool* on a match: MatchTime asks nearby pool players for that match's open places.",
+  "• *Ask the player pool automatically*: on match day, if a place is still open and your bench is empty, MatchTime asks the pool by itself. Turn it on here: https://matchtime.ai/admin/settings#pool-auto-ask",
+  "",
   "Want your players to know? Use *Tell your players about the player pool*: https://matchtime.ai/admin/settings#pool-club-share",
 ];
 const TR_HQ = [
@@ -68,9 +69,10 @@ const TR_HQ = [
   "• @Match Time perşembe için partner kulüplerden ve havuzdan oyuncu bul",
   "Yalnızca kulübün organizatörleri isteyebilir. MatchTime yeri WhatsApp'tan yakındaki havuz oyuncularına önerir ve biri yeri alınca size burada haber verir.",
   "",
-  "Ayrıca:",
-  "• bir maçta *MatchTime oyuncu havuzu* kutusunu işaretleyin",
-  "• *Oyuncu havuzuna kendiliğinden sor* seçeneğini açın: maç günü hâlâ boş yer varsa ve yedekte kimse yoksa MatchTime havuza kendisi sorar, her maç için en fazla bir kez. https://matchtime.ai/admin/settings#pool-auto-ask",
+  "*Başka yollar*",
+  "• Bir maçta *MatchTime oyuncu havuzu* kutusunu işaretleyin: MatchTime o maçtaki boş yerler için yakındaki havuz oyuncularına sorar.",
+  "• *Oyuncu havuzuna kendiliğinden sor*: maç günü hâlâ boş yer varsa ve yedekte kimse yoksa MatchTime havuza kendisi sorar. Buradan açın: https://matchtime.ai/admin/settings#pool-auto-ask",
+  "",
   "Oyuncularınız da bilsin mi? *Oyuncularınıza oyuncu havuzunu anlatın* kartını kullanın: https://matchtime.ai/admin/settings#pool-club-share",
 ];
 
@@ -128,8 +130,9 @@ describe("the announcement in the players' group (a club with no admin group)", 
         "• @Match Time find players from partner clubs and the player pool for Thursday",
         "MatchTime then offers the place to nearby pool players by WhatsApp and tells the organisers when one takes it.",
         "",
-        "Organisers can also tick *MatchTime player pool* on a match, or turn on *Ask the player pool automatically*: on match day, if a place is still open and the bench is empty, MatchTime asks the pool by itself, at most once per match.",
-        "https://matchtime.ai/admin/settings#pool-auto-ask",
+        "*Organisers can also:*",
+        "• Tick *MatchTime player pool* on a match: MatchTime asks nearby pool players for that match's open places.",
+        "• *Ask the player pool automatically*: on match day, if a place is still open and the bench is empty, MatchTime asks the pool by itself. Turn it on here: https://matchtime.ai/admin/settings#pool-auto-ask",
       ].join("\n"),
     );
   });
@@ -146,8 +149,9 @@ describe("the announcement in the players' group (a club with no admin group)", 
         "• @Match Time perşembe için partner kulüplerden ve havuzdan oyuncu bul",
         "MatchTime yeri WhatsApp'tan yakındaki havuz oyuncularına önerir ve biri yeri alınca organizatörlere haber verir.",
         "",
-        "Organizatörler ayrıca bir maçta *MatchTime oyuncu havuzu* kutusunu işaretleyebilir ya da *Oyuncu havuzuna kendiliğinden sor* seçeneğini açabilir: maç günü hâlâ boş yer varsa ve yedekte kimse yoksa MatchTime havuza kendisi sorar, her maç için en fazla bir kez.",
-        "https://matchtime.ai/admin/settings#pool-auto-ask",
+        "*Organizatörler ayrıca şunları yapabilir:*",
+        "• Bir maçta *MatchTime oyuncu havuzu* kutusunu işaretlemek: MatchTime o maçtaki boş yerler için yakındaki havuz oyuncularına sorar.",
+        "• *Oyuncu havuzuna kendiliğinden sor* seçeneğini açmak: maç günü hâlâ boş yer varsa ve yedekte kimse yoksa MatchTime havuza kendisi sorar. Buradan açılır: https://matchtime.ai/admin/settings#pool-auto-ask",
       ].join("\n"),
     );
   });
@@ -188,6 +192,22 @@ describe("the links", () => {
       }
       expect(c.notice("FNF", "group", L)).toContain(L.share);
       expect(c.groupAnnouncement("FNF", L)).not.toContain(L.share);
+    }
+  });
+});
+
+describe("the other ways (2026-10-28 readability fix)", () => {
+  it("are a heading then one bullet per option, with no 'at most once per match'", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const c = poolClubSwitchCopy(lang);
+      for (const msg of [c.notice("FNF", "group", L), c.notice("FNF", "dm", L), c.groupAnnouncement("FNF", L)]) {
+        expect(msg).not.toMatch(/at most once per match|en fazla bir kez/);
+        const ls = msg.split("\n");
+        const tick = ls.findIndex((l) => l.startsWith("• ") && l.includes(`*${poolCopy(lang).pool_label}*`));
+        expect(tick).toBeGreaterThan(0);
+        expect(ls[tick - 1]).toMatch(/^\*.+\*$/);
+        expect(ls[tick + 1]).toMatch(new RegExp(`^• \\*${t(lang).pauto_title}\\*.*${L.autoAsk.replace(/[.#]/g, "\\$&")}$`));
+      }
     }
   });
 });
