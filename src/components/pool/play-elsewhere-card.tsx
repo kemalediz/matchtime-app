@@ -14,8 +14,13 @@
  *
  * The same fields component, form model and validator as /play and the
  * manage page; no wording here (`copy.member`, `copy.signup`).
+ *
+ * The pool banner's "Join the pool" (2026-10-28) links here as
+ * `/profile#play-elsewhere` (or, already on /profile, fires
+ * `PLAY_ELSEWHERE_FOCUS_EVENT`): once loaded, the card scrolls itself into
+ * view, lights up for a few seconds and puts the focus on its first step.
  */
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Globe2 } from "lucide-react";
 import { answerPlayElsewhereClaim, joinPlayElsewhereAction, loadPlayElsewhereAction, startPlayElsewhereWhatsApp, type PlayElsewhereState, type WhatsAppStep } from "@/app/actions/pool-member";
@@ -27,12 +32,14 @@ import type { Lang } from "@/lib/i18n/lang";
 import type { PoolErrorKey } from "@/lib/i18n/pool-play";
 import { fromSavedProfile, toPoolPayload, type PoolFormValue } from "@/lib/pool/form-state";
 import { fieldErrorKeys, poolPageCopy } from "@/lib/pool/page-copy";
-import { POOL_MANAGE_PATH } from "@/lib/pool/paths";
+import { PLAY_ELSEWHERE_ANCHOR, PLAY_ELSEWHERE_FOCUS_EVENT, POOL_MANAGE_PATH } from "@/lib/pool/paths";
 import { validatePoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fields";
 import { PolicyLink } from "@/components/policy-link";
 
 const BTN = "inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60";
 const KNOWN_FAILURES: readonly PoolErrorKey[] = ["busy", "area-not-found", "paused", "unavailable"];
+
+const HIGHLIGHT_MS = 4000;
 
 export function PlayElsewhereCard({ lang }: { lang: Lang }) {
   const copy = poolPageCopy(lang);
@@ -47,6 +54,8 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
   const [step, setStep] = useState<WhatsAppStep | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [highlight, setHighlight] = useState(false);
+  const sectionRef = useRef<HTMLElement>(null);
 
   const reload = () => loadPlayElsewhereAction().then((s) => {
     setState(s);
@@ -55,6 +64,31 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
   useEffect(() => {
     void reload();
   }, []);
+
+  // Arriving from the pool banner: scroll here, light up, focus the first step.
+  const loaded = !!state?.ok;
+  useEffect(() => {
+    if (!loaded) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const focusCard = () => {
+      const el = sectionRef.current;
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      el.querySelector<HTMLElement>("[data-play-elsewhere-first]")?.focus({ preventScroll: true });
+      setHighlight(true);
+      clearTimeout(timer);
+      timer = setTimeout(() => setHighlight(false), HIGHLIGHT_MS);
+    };
+    if (window.location.hash === `#${PLAY_ELSEWHERE_ANCHOR}`) focusCard();
+    const onHash = () => window.location.hash === `#${PLAY_ELSEWHERE_ANCHOR}` && focusCard();
+    window.addEventListener("hashchange", onHash);
+    window.addEventListener(PLAY_ELSEWHERE_FOCUS_EVENT, focusCard);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("hashchange", onHash);
+      window.removeEventListener(PLAY_ELSEWHERE_FOCUS_EVENT, focusCard);
+    };
+  }, [loaded]);
 
   if (!state || !state.ok) return null;
   const { view, paused } = state;
@@ -145,7 +179,7 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
     body = <p className="mt-3 text-sm text-slate-700">{copy.signup.pausedNote}</p>;
   } else if (!open) {
     body = (
-      <button type="button" onClick={() => setOpen(true)} className={`${BTN} mt-4 bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500`}>
+      <button type="button" data-play-elsewhere-first onClick={() => setOpen(true)} className={`${BTN} mt-4 bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500`}>
         {m.open}
       </button>
     );
@@ -176,8 +210,14 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
   }
 
   return (
-    <section aria-labelledby="play-elsewhere" className="bg-white rounded-xl border border-slate-200 shadow-sm p-6" data-testid="play-elsewhere">
-      <h2 id="play-elsewhere" className="flex items-center gap-2 text-lg font-semibold text-slate-800">
+    <section
+      ref={sectionRef}
+      aria-labelledby={PLAY_ELSEWHERE_ANCHOR}
+      data-highlight={highlight ? "on" : undefined}
+      className={`scroll-mt-20 bg-white rounded-xl border shadow-sm p-6 transition-shadow duration-500 ${highlight ? "border-blue-400 ring-4 ring-blue-200" : "border-slate-200"}`}
+      data-testid="play-elsewhere"
+    >
+      <h2 id={PLAY_ELSEWHERE_ANCHOR} className="flex items-center gap-2 text-lg font-semibold text-slate-800">
         <Globe2 className="h-5 w-5 text-blue-600" aria-hidden="true" />
         {m.heading}
       </h2>
