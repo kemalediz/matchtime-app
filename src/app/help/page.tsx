@@ -11,9 +11,10 @@ export default function HelpLandingPage() {
       <h2 className="!mt-0">Welcome</h2>
       <p>
         MatchTime runs your group&apos;s weekly match from WhatsApp. It
-        tracks who&apos;s in, runs the bench, chases when you&apos;re short,
-        balances the teams when you ask and collects player ratings and Man of the
-        Match votes after the game.
+        tracks who&apos;s in, runs the bench and, when you&apos;re short, asks
+        your group, then can ask your partner clubs and the local player pool. Then it
+        balances the teams when you ask, collects player ratings and Man of the
+        Match votes after the game, and can collect match fees.
         It costs up to {STANDARD_PRICE_LABEL}{" "}a month for the whole group, not per player, and
         you only pay for the weeks you play. {firstMonthsFree("en")}. Add it
         to your group, and if you don&apos;t like it, remove it.
