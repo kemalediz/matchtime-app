@@ -564,7 +564,7 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
     expect(HERO.titleTail).toBe("MatchTime runs the game.");
     expect(HERO.pill).toBe("For weekly football groups");
     expect(HERO).not.toHaveProperty("ticks");
-    expect(HERO.line).toBe("Who's in, the bench, fair teams, and nearby players when you're short. All in your group chat.");
+    expect(HERO.line).toBe("Who's in, the bench, fair teams, player ratings and Man of the Match, and nearby players when you're short. All in your group chat.");
     expect(HERO.secondary.href).toBe("#how-it-works");
   });
 

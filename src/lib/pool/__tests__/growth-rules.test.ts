@@ -67,12 +67,12 @@ describe("the ready-to-forward message", () => {
 
   it("English: natural, ends with the link, nothing else of his in it", () => {
     const m = poolShareMessage("en", url);
-    expect(m).toBe(`I get local games through MatchTime. Sign up here and they'll message you on WhatsApp when a team near you needs a player: ${url}`);
+    expect(m).toBe(`I get local games through MatchTime, and it does player ratings and Man of the Match too. Sign up here and they'll message you on WhatsApp when a team near you needs a player: ${url}`);
   });
 
   it("Turkish", () => {
     const m = poolShareMessage("tr", url);
-    expect(m).toBe(`Yakındaki maçlar için MatchTime kullanıyorum. Sen de kaydol, yakınında bir takıma oyuncu lazım olunca sana WhatsApp'tan yazsınlar: ${url}`);
+    expect(m).toBe(`Yakındaki maçlar için MatchTime kullanıyorum; oyuncu puanları ve maçın adamı seçimi de var. Sen de kaydol, yakınında bir takıma oyuncu lazım olunca sana WhatsApp'tan yazsınlar: ${url}`);
   });
 
   it("the WhatsApp button opens a chat picker with the message, never a number (reuses waMeLink)", () => {

@@ -98,8 +98,8 @@ const FORMAT_KEYWORDS: string[] = liveSports().flatMap((s) => s.formats.map((n) 
 export const SITE_META = {
   title: "MatchTime: run your weekly football on autopilot",
   description:
-    "MatchTime lives in your WhatsApp group and runs your weekly football: it tracks who's in, runs the bench, asks partner clubs and then the MatchTime player pool when you're short, balances teams on request, and collects ratings and Man of the Match votes.",
-  ogDescription: `WhatsApp organiser for weekly ${liveFormatsPhrase()}: who's in, the bench, fair teams, and players from partner clubs and the pool when you're short.`,
+    "MatchTime runs your weekly football in WhatsApp: who's in, the bench, fair teams, player ratings, Man of the Match, and partner clubs and the pool when short.",
+  ogDescription: `${liveFormatsPhrase()} on WhatsApp: who's in, the bench, fair teams, player ratings, Man of the Match, and partner clubs and the pool when short.`,
   keywords: [
     "football team management",
     ...FORMAT_KEYWORDS,
@@ -124,7 +124,7 @@ export const HERO = {
   pill: "For weekly football groups",
   titleLead: "Your players WhatsApp.",
   titleTail: "MatchTime runs the game.",
-  line: "Who's in, the bench, fair teams, and nearby players when you're short. All in your group chat.",
+  line: "Who's in, the bench, fair teams, player ratings and Man of the Match, and nearby players when you're short. All in your group chat.",
   primary: { label: "Start your group", href: "/signup" } satisfies NavLink,
   secondary: { label: "See how it works", href: "#how-it-works" } satisfies NavLink,
 };
