@@ -683,6 +683,9 @@ export async function setClubHomeVenueToPick(
  *                           on /admin/activities, and the reply shows its
  *                           address so the organiser can check it.
  *
+ * Like every venue write here it ends with `venueSet`: a pool ask refused
+ * for want of a venue is asked again (#445, `retryAsksAwaitingVenue`).
+ *
  * Google is asked once (Place Details, charged to the club's daily
  * lookups, as every pick is). "capped" and "unresolved" set nothing.
  * Who may call it is proven by the caller (an owner or admin).
@@ -737,5 +740,8 @@ export async function setClubVenueToPlace(
     if (before?.venueId && before.venueId !== got.venueId) await dropOrphanPin(before.venueId);
   }
   console.log(`[geocode] org=${orgId} pitch set from words by ${userId} (activity=${activityId ?? "none"}, confirmed=${opts.confirmed})`);
+  // As every other venue write: a pool ask refused for want of a venue is
+  // asked again now, once (`pool-ask-retry.ts`, #445).
+  await venueSet(orgId);
   return { status: "found", name, address: venue?.formattedAddress ?? "", activityId };
 }

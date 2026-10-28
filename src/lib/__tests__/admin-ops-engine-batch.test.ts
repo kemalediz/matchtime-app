@@ -1212,25 +1212,22 @@ describe("set the pitch by WhatsApp", () => {
     const { model } = stubModel({ [PITCH]: facts });
     const r = recorder(model, paidWorld());
     const calls: Array<{ words: string | null; choice: number | null; userId: string }> = [];
-    const after: string[] = [];
     const res = await run({
       messages: [msg({ body: PITCH, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true, ...m })],
       deps: {
         ...r.deps,
         onlyOrganisersLine: async () => "Only Kemal can change that.",
         setVenueFromWords: async (a) => (calls.push({ words: a.words, choice: a.choice, userId: a.userId }), { outcome: "venue-set", replyText: "📍 Done, your pitch is *Goals Sutton*, Oxford Rd.", set: true }),
-        afterVenueSet: async (orgId) => void after.push(orgId),
       },
     });
-    return { out: res.outcomes.get(`wa-${PITCH.slice(0, 14)}`), calls, after };
+    return { out: res.outcomes.get(`wa-${PITCH.slice(0, 14)}`), calls };
   };
 
-  it("an organiser: looked up and set, the reply names it, and what waited for a venue is tried again", async () => {
-    const { out, calls, after } = await outcomeOf();
+  it("an organiser: looked up and set, and the reply names it", async () => {
+    const { out, calls } = await outcomeOf();
     expect(calls).toEqual([{ words: "Goals Sutton", choice: null, userId: "u-kemal" }]);
     expect(out?.reply).toContain("*Goals Sutton*");
     expect(out?.intent).toBe("venue-set");
-    expect(after).toEqual(["org-1"]);
   });
 
   it("a number picked from MatchTime's list is passed on", async () => {

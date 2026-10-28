@@ -1725,7 +1725,6 @@ describe("try again, and set the pitch, from HQ", () => {
     extractorModel: adminFacts(facts),
     latestAskForRetry: vi.fn(async (): Promise<StoredAsk | null> => STORED),
     setVenueFromWords: vi.fn(async () => ({ outcome: "venue-set" as const, replyText: "📍 Done, your pitch is *Goals Sutton*.", set: true })),
-    afterVenueSet: vi.fn(async () => undefined),
     ...over,
   });
   beforeEach(() => {
@@ -1754,12 +1753,11 @@ describe("try again, and set the pitch, from HQ", () => {
     expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
   });
 
-  it("an organiser names the pitch: set, the reply names it, what waited for a venue is tried again", async () => {
+  it("an organiser names the pitch: set, and the reply names it", async () => {
     const deps = hqDeps({ action: "set_venue", venueName: "Goals Sutton", toMatchTime: true });
     const r = await ask("@Match Time our pitch is Goals Sutton", "admin_ops", { deps });
     expect(deps.setVenueFromWords).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", userId: "u-admin", words: "Goals Sutton", choice: null, lang: "en" }));
     expect(r).toEqual({ route: "admin_ops", outcome: "hq-venue-set", replyText: "📍 Done, your pitch is *Goals Sutton*." });
-    expect(deps.afterVenueSet).toHaveBeenCalledWith("org-fnf");
   });
 
   it("a member of HQ who is not an organiser, tagged: the one line naming who can, nothing done", async () => {

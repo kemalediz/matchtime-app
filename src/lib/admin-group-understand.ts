@@ -212,8 +212,6 @@ export interface UnderstandInput {
     latestAskForRetry?: LatestAskForRetry;
     /** "Our pitch is Goals Sutton" (2026-10-28). */
     setVenueFromWords?: typeof setVenueFromWords;
-    /** Once the pitch is set: what waited for a venue is tried again. */
-    afterVenueSet?: (orgId: string) => Promise<unknown>;
   };
 }
 
@@ -696,9 +694,6 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         const words = listWords && choice ? listWords : (facts.venueName ?? listWords);
         const r = await (input.deps?.setVenueFromWords ?? setVenueFromWords)({ orgId: org.id, userId: actor, words, choice, lang, now });
         if (r.outcome === "venue-which" && words) await recordHqVenueList({ orgId: org.id, words, text: r.replyText, now });
-        if (r.set && input.deps?.afterVenueSet) {
-          await input.deps.afterVenueSet(org.id).catch((err) => console.error(`[admin-group] ${messageId}: after the pitch was set:`, err instanceof Error ? err.message : "failed"));
-        }
         return said(`hq-${r.outcome}`, r.replyText);
       }
       const stored = await (input.deps?.latestAskForRetry ?? latestAskFromRecords)({ orgId: org.id, where: "hq", now }).catch(() => null);

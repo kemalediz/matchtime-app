@@ -353,10 +353,6 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     lang: string | null;
     now: Date;
   }) => Promise<VenueFromWordsResult>;
-  /** Called once the pitch is set, so asks refused for want of a venue are
-   *  tried again (`retryAsksAwaitingVenue(orgId)`, feat/retry-refused-ask).
-   *  Absent: nothing more happens until that branch wires it. */
-  afterVenueSet?: (orgId: string) => Promise<unknown>;
   /** MatchTime's numbered list of places, logged as its question so the
    *  pick is found (`venue-list-log.ts`). Injected so tests need no DB. */
   recordVenueList?: (a: { orgId: string; words: string; text: string; now: Date }) => Promise<void>;
@@ -814,9 +810,8 @@ export async function runAdminOpsBatch(args: {
     const setVenue = deps.setVenueFromWords ?? (async (a) => (await import("./venue-from-words")).setVenueFromWords(a));
     try {
       const r = await setVenue({ orgId, userId: m.senderUserId!, words: ask.words, choice: ask.choice, lang: state.features.language, now });
-      if (r.set && deps.afterVenueSet) {
-        await deps.afterVenueSet(orgId).catch((err) => console.error(`[admin-ops-engine] ${id}: after the pitch was set:`, err instanceof Error ? err.message : "failed"));
-      }
+      // A pool ask refused for want of a venue is asked again by the venue
+      // write itself (`setClubVenueToPlace` -> `retryAsksAwaitingVenue`, #445).
       if (r.outcome === "venue-which" && ask.words) {
         const record = deps.recordVenueList ?? (async (a) => (await import("./venue-list-log")).recordVenueList(a));
         await record({ orgId, words: ask.words, text: r.replyText, now }).catch(() => undefined);

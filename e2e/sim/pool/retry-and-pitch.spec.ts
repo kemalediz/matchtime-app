@@ -16,11 +16,15 @@
  * place, the stored ask read back from the first message's pipeline trace
  * (`refused-ask-retry.ts`), and the pool door (`pool-ask-words.ts`).
  *
- *   players' group, no HQ    ask refused, pitch set, try again: the ask goes out
- *   Turkish, several places  the numbered list, then "@Match Time 2" sets it
- *   a player tagging         the organisers-only line, nothing set
- *   nothing to try again     one short line, never "I can't change that"
- *   HQ                        the same three steps from the organisers' group
+ *   players' group, no HQ   refused no venue, the pitch set by words, and
+ *                           the refused ask goes out by itself (#445)
+ *   pool switched on        "try again" (routed question) makes the stored ask
+ *   Turkish, several places the numbered list, then "@Match Time 2" sets it
+ *   a player tagging        the organisers-only line, nothing set
+ *   nothing to try again    one short line, never "I can't change that"
+ *   nothing on the map      said, with the settings link
+ *   HQ                      the same from the organisers' group; try again
+ *                           after the automatic retry asks nobody twice
  */
 import { scenario, scenarios, stubbedOnly, expect } from "./fixtures";
 import { near, openClub, poolPlayer, type OpenClubOpts } from "./offers-world";
@@ -76,7 +80,7 @@ const pg = (club: Club, member: string, text: string, facts: Record<string, unkn
 scenarios("set the pitch, and try again after a refusal, by WhatsApp", () => {
   scenario.afterEach(() => clearPipelineStubs());
 
-  scenario("players' group, no HQ: the ask is refused for want of a venue, the pitch is set, try again asks the pool", async ({ pool }) => {
+  scenario("players' group, no HQ: refused for want of a venue, the pitch set by WhatsApp, and the refused ask goes out by itself", async ({ pool }) => {
     stubbedOnly();
     const mt = await noVenueClub(pool, "mtt");
     const ali = await poolPlayer(pool, "ali", { name: "Ali Kaya", at: near(mt) });
@@ -94,14 +98,32 @@ scenarios("set the pitch, and try again after a refusal, by WhatsApp", () => {
     // Set where the web sets it: the game's venue (unconfirmed: one clear
     // match, not a pick) and the club's home venue.
     expect(await venueOf(pool, mt)).toEqual({ venue: "Goals Sutton", placeId: GOALS.placeId, confirmed: false, home: GOALS.placeId });
+    // The venue write asks the refused pool ask again by itself (#445).
+    await expect.poll(async () => (await poolAsks(pool, mt)).length, { timeout: 20_000 }).toBe(1);
+    const offers: string[] = [];
+    await expect
+      .poll(async () => (offers.push(...(await pool.collect()).filter((m) => m.purpose === "pool-offer").map((m) => m.to)), offers), { timeout: 20_000, intervals: [300] })
+      .toEqual(["ali"]);
+    pool.expectNoLeaks(mt.secrets(), { to: ["ali"] });
+  });
+
+  scenario("players' group: the pool was off, the organiser switches it on and says try again (routed question): the ask goes out", async ({ pool }) => {
+    stubbedOnly();
+    const mt = await openClub(pool, "off", { name: "MT Test", maxPlayers: 1, pool: { featurePlayerPool: false } });
+    await poolPlayer(pool, "bob", { name: "Bob Lane", at: near(mt) });
+
+    const refused = await pg(mt, "owner", ASK, ASK_FACTS);
+    expect(groupLine(refused.sent, mt)).toMatch(/player pool/i);
+    expect(await poolAsks(pool, mt)).toEqual([]);
+    await pool.db.run(`UPDATE "Organisation" SET "featurePlayerPool" = true WHERE id = $1`, [mt.group.orgId]);
 
     // The router sends it to `question` (as the paid check saw): read anyway,
-    // as the organisers' follow-up to their own ask a minute ago.
+    // as the organisers' follow-up to their own ask a minute ago, and that
+    // ask (its stored facts, never its words) is made again.
     const again = await pg(mt, "owner", RETRY, RETRY_FACTS, "question");
     expect(groupLine(again.sent, mt)).toMatch(/^🔎 Asking nearby players from the MatchTime player pool for 1 place/);
-    expect(again.sent.filter((m) => m.purpose === "pool-offer").map((m) => m.to)).toEqual(["ali"]);
+    expect(again.sent.filter((m) => m.purpose === "pool-offer").map((m) => m.to)).toEqual(["bob"]);
     expect(await poolAsks(pool, mt)).toEqual([{ via: "words" }]);
-    pool.expectNoLeaks(mt.secrets(), { to: ["ali"] });
   });
 
   scenario("Turkish club, two places of that name: the numbered list in Turkish, then \"@Match Time 2\" sets the second, confirmed", async ({ pool }) => {
@@ -152,7 +174,7 @@ scenarios("set the pitch, and try again after a refusal, by WhatsApp", () => {
     expect((await venueOf(pool, mt))?.placeId).toBeNull();
   });
 
-  scenario("HQ: the same three steps from the organisers' group, nothing in the players' group", async ({ pool }) => {
+  scenario("HQ: refused, the pitch set (the pool asked again by itself), then try again asks nobody twice; nothing in the players' group", async ({ pool }) => {
     stubbedOnly();
     const fnf = await noVenueClub(pool, "hq", { name: "FNF", hq: true });
     const bea = await poolPlayer(pool, "bea", { name: "Bea Lane", at: near(fnf) });
@@ -174,9 +196,17 @@ scenarios("set the pitch, and try again after a refusal, by WhatsApp", () => {
     const set = await fnf.hq.say("owner", PITCH, { poolOpen: true });
     expect(set.sent.find((m) => m.to === "hq.hq")?.text).toMatch(/^📍 Done, your pitch is \*Goals Sutton\*, Oxford Rd, Sutton SM1 2AA, UK\./);
     expect(await venueOf(pool, fnf)).toEqual({ venue: "Goals Sutton", placeId: HQ_GOALS.placeId, confirmed: false, home: HQ_GOALS.placeId });
+    // The venue write asks the refused pool ask again by itself (#445).
+    const offers: string[] = [];
+    await expect
+      .poll(async () => (offers.push(...(await pool.collect()).filter((m) => m.purpose === "pool-offer").map((m) => m.to)), offers), { timeout: 20_000, intervals: [300] })
+      .toEqual(["bea"]);
+    // So "try again" (routed ask_group) repeats the stored ask, and the pool
+    // door says it is already asking: nobody is asked twice.
     const again = await fnf.hq.say("owner", RETRY, { poolOpen: true });
-    expect(again.sent.find((m) => m.to === "hq.hq")?.text).toMatch(/^🔎 Asking nearby players from the MatchTime player pool for 1 place/);
-    expect(again.sent.filter((m) => m.purpose === "pool-offer").map((m) => m.to)).toEqual(["bea"]);
+    expect(again.sent.find((m) => m.to === "hq.hq")?.text).toMatch(/already being asked/);
+    expect(again.sent.filter((m) => m.purpose === "pool-offer")).toEqual([]);
+    expect((await poolAsks(pool, fnf)).length).toBe(1);
     expect(pool.sent.filter((m) => m.to === "hq.group")).toEqual([]);
   });
 });

@@ -9,19 +9,23 @@
  * ask is never read from text, MatchTime's or anyone's: it is the
  * organisers' last ask for players as it was STORED, its extractor facts.
  *
- *   the store        `LatestAskForRetry`, an interface. The branch
- *                    feat/retry-refused-ask adds stored refused asks; when
- *                    it lands, its reader is injected here and replaces the
- *                    interim one below (one line in each caller's deps).
- *   interim reader   `latestAskFromRecords`: the newest message in the
+ *   the reader       `latestAskFromRecords`: the newest message in the
  *                    window whose stored pipeline trace (`pipelineTrace`, on
  *                    `AnalyzedMessage` for the players' group and
- *                    `AdminGroupMessage` for HQ) holds admin recruit facts.
- *                    It cannot tell an ask that was refused from one that
- *                    went out, and need not: the doors it goes back through
- *                    refuse a repeat themselves (one open partner ask per
- *                    pair, one open pool round per match) and say so.
- *
+ *                    `AdminGroupMessage` for HQ) holds admin recruit facts,
+ *                    behind the `LatestAskForRetry` interface so a store can
+ *                    replace it. It cannot tell an ask that was refused from
+ *                    one that went out, and need not: the doors it goes back
+ *                    through refuse a repeat themselves (one open partner
+ *                    ask per pair, one open pool round per match) and say so.
+ *   beside #445      `PoolAskRetry` (`pool-ask-retry.ts`) keeps a pool ask
+ *                    refused "no-venue" and asks it again BY ITSELF when a
+ *                    venue is linked, the WhatsApp pitch setter included
+ *                    (`setClubVenueToPlace`). This is the other half: the
+ *                    organiser ASKING to try again, for any refusal and for
+ *                    the partner clubs too. After #445 already asked, the
+ *                    repeat is answered "already being asked" by the door.
+
  * WHAT IS REPEATED: only the partner clubs and the MatchTime player pool
  * (`retryFactsOf`). Those are the asks MatchTime refuses for something an
  * organiser can fix (the venue, the pool switched off, a partner not set
