@@ -48,9 +48,13 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!session?.user?.id) return;
+    // A superseded load (React runs this effect twice in development) must
+    // not land after he has started typing and wipe the form.
+    let alive = true;
     fetch(`/api/players/${session.user.id}`)
       .then((r) => r.json())
       .then((data) => {
+        if (!alive) return;
         setProfile(data.player);
         setStats(data.stats);
         setName(data.player.name);
@@ -63,8 +67,11 @@ export default function ProfilePage() {
       for (const a of activities) {
         map[a.id] = { positions: a.sport.positions, sportName: a.sport.name };
       }
-      setActivitySports(map);
+      if (alive) setActivitySports(map);
     });
+    return () => {
+      alive = false;
+    };
   }, [session?.user?.id]);
 
   async function handleSave() {

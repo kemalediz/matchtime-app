@@ -100,6 +100,15 @@ model User {
   // src/lib/__tests__/no-discoverable-nearby-columns.test.ts fails if one
   // comes back.
 
+  /// The player pool banner's "Not interested" (2026-10-28), one per
+  /// banner: join, and share once he is in the pool. Hand-applied
+  /// migration 20261028180000_pool_banner_dismissals. @ignore: the client
+  /// never selects them, so every plain `db.user.find*` keeps working
+  /// before the columns exist; read and written only with raw SQL in
+  /// src/lib/pool/banner.ts, which shows no banner when they are missing.
+  poolBannerJoinDismissedAt  DateTime? @ignore
+  poolBannerShareDismissedAt DateTime? @ignore
+
   accounts                Account[]
   sessions                Session[]
   badgeAnnouncements      BadgeAnnouncement[]
