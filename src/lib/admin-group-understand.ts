@@ -362,6 +362,23 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
   const weekly = org.squadMode !== "monthly";
 
   return withOrgAiBudget(org.id, async () => {
+    // A MONTHLY club: the money collector answering MatchTime's list of
+    // paid claims ("PAID ALL", "1 and 3 are in"), read by a model against
+    // that list (`month-digest-reply.ts`). Asked only when he may confirm
+    // and a list is out for him; null for anybody else.
+    if (!weekly && input.senderUserId) {
+      const { handleCollectorPaidReply } = await import("./month-payment");
+      const { readDigestReply } = await import("./month-digest-reply");
+      const paid = await handleCollectorPaidReply({
+        text: input.text,
+        waMessageId: messageId,
+        senderUserIds: [input.senderUserId],
+        orgId: org.id,
+        read: (shown, text) => readDigestReply(shown, text),
+        now,
+      });
+      if (paid) return { route: null, outcome: paid.handled, replyText: paid.replyText || null };
+    }
     // A MONTHLY club (2026-10-29): an organiser's pasted list for the
     // coming month, not started yet, is proposed for YES like a weekly
     // list. Read by the monthly reader (the one model step every group's

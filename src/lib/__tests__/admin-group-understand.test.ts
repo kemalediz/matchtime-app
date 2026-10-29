@@ -101,6 +101,11 @@ vi.mock("@/lib/match-cancel", () => matchCancel);
 const monthSeedRead = vi.hoisted(() => ({ proposeMonthSeedPaste: vi.fn(async () => null as unknown) }));
 vi.mock("@/lib/month-seed-read", () => monthSeedRead);
 vi.mock("../month-seed-read", () => monthSeedRead);
+// The collector's answer to the paid-claims list (2026-10-29), read by a
+// model inside this door. Null: not such an answer.
+const monthPayment = vi.hoisted(() => ({ handleCollectorPaidReply: vi.fn(async () => null as unknown) }));
+vi.mock("@/lib/month-payment", () => monthPayment);
+vi.mock("../month-payment", () => monthPayment);
 
 import { understandAdminMessage } from "../admin-group-understand";
 
@@ -1828,5 +1833,14 @@ describe("a monthly club's coming-month list, read inside the door", () => {
     monthSeedRead.proposeMonthSeedPaste.mockClear();
     await ask("List for November\n1. A\n2. B", "none");
     expect(monthSeedRead.proposeMonthSeedPaste).not.toHaveBeenCalled();
+  });
+});
+
+describe("a monthly club's collector answering the paid-claims list, inside the door", () => {
+  it("his answer is read here (by the model), and its reply is HQ's", async () => {
+    monthPayment.handleCollectorPaidReply.mockResolvedValueOnce({ handled: "month-paid-confirmed", orgId: "org-fnf", replyText: "✅ Confirmed for November: Alex." });
+    const r = await ask("1 and 3 are in", "none", { org: { ...ORG, squadMode: "monthly" } });
+    expect(monthPayment.handleCollectorPaidReply).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", text: "1 and 3 are in" }));
+    expect(r).toEqual({ route: null, outcome: "month-paid-confirmed", replyText: "✅ Confirmed for November: Alex." });
   });
 });

@@ -107,6 +107,8 @@ export const CALLOFF_STUB_FILE_ENV = "MT_TEST_CALLOFF_STUB_FILE";
 export const MONTHLY_READER_STUB_FILE_ENV = "MT_TEST_MONTHLY_READER_STUB_FILE";
 /** Must equal `MONTH_SEED_REPLY_STUB_FILE_ENV` in `src/lib/month-seed-reply.ts`. */
 export const MONTH_SEED_REPLY_STUB_FILE_ENV = "MT_TEST_MONTH_SEED_REPLY_STUB_FILE";
+/** Must equal `DIGEST_REPLY_STUB_FILE_ENV` in `src/lib/month-digest-reply.ts`. */
+export const DIGEST_REPLY_STUB_FILE_ENV = "MT_TEST_DIGEST_REPLY_STUB_FILE";
 export const KEY_ENV = "ANTHROPIC_API_KEY";
 
 /**
@@ -287,6 +289,7 @@ export function assertSeamMatchesMode(
       [CALLOFF_STUB_FILE_ENV, "lib/calloff-reader.ts, which DMs an organiser about a call-off and cancels the game on his yes"],
       [MONTHLY_READER_STUB_FILE_ENV, "lib/monthly-reader.ts, which reads a monthly club's pasted lists and sign-ups"],
       [MONTH_SEED_REPLY_STUB_FILE_ENV, "lib/month-seed-reply.ts, which starts a month from an organiser's DM answer"],
+      [DIGEST_REPLY_STUB_FILE_ENV, "lib/month-digest-reply.ts, which confirms month payments from the collector's answer"],
     ] as const) {
       if (!blank(childEnv[env])) {
         throw new E2EPreflightError(

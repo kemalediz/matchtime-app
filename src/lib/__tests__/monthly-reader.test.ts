@@ -333,3 +333,23 @@ describe("a season break by WhatsApp (season-break-words)", () => {
     expect(nextBreakMonths([], ["2026-08"], [], NOW)).toEqual([]);
   });
 });
+
+// ── The collector's answer to the paid-claims list ──────────────────────
+import { buildDigestReplyUserTurn, parseDigestReply } from "../month-digest-reply";
+
+describe("the collector's answer to the paid-claims list (month-digest-reply)", () => {
+  const j = (o: unknown) => JSON.stringify(o);
+  it("all, some numbers, none, a month named; unsure or not an answer is nothing", () => {
+    expect(parseDigestReply(j({ answer: "all", numbers: [], month: 0, confidence: 0.95 }))).toEqual({ kind: "all" });
+    expect(parseDigestReply(j({ answer: "numbers", numbers: [1, 3, 3], month: 0, confidence: 0.9 }))).toEqual({ kind: "numbers", numbers: [1, 3] });
+    expect(parseDigestReply(j({ answer: "none", numbers: [], month: 11, confidence: 0.9 }))).toEqual({ kind: "none", month: 11 });
+    expect(parseDigestReply(j({ answer: "all", numbers: [], month: 0, confidence: 0.5 }))).toBeNull();
+    expect(parseDigestReply(j({ answer: "numbers", numbers: [], month: 0, confidence: 0.9 }))).toBeNull();
+    expect(parseDigestReply(j({ answer: "other", numbers: [], month: 0, confidence: 1 }))).toBeNull();
+    expect(parseDigestReply("not json")).toBeNull();
+  });
+  it("the turn shows each list he was sent, then his message", () => {
+    const turn = buildDigestReplyUserTurn([{ month: 11, monthName: "November", lines: [{ slot: 1, name: "Alex" }, { slot: 3, name: "Steff" }] }], "1 and 3 are in");
+    expect(turn).toBe("THE LIST FOR NOVEMBER (month 11):\n  1. Alex\n  3. Steff\n\nHIS MESSAGE:\n1 and 3 are in");
+  });
+});

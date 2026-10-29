@@ -6,7 +6,7 @@
  * monthly reader, a model step (`monthly-reader.ts`, Kemal: no code reads
  * what people mean, the numbering and headers included). This file holds
  * only what that reading is: the lines, their marks and the facts the model
- * gave about each, and the month words MatchTime's own money copy uses.
+ * gave about each.
  *
  * The deterministic parser that used to live here is kept only as a test
  * fixture (`__tests__/fixtures/monthly-legacy.ts`), and a source guard
@@ -16,8 +16,6 @@
  * A "(paid)" mark is a CLAIM written by whoever pasted the list. It is
  * never proof of payment.
  */
-import { normaliseName } from "./name-normalise";
-
 /** A date a PAYG player named: "5th" is `{ day: 5, month: null }`,
  *  "9 Kasım" is `{ day: 9, month: 11 }`. The month is 1 to 12, and null
  *  means "of the list's month". */
@@ -97,36 +95,4 @@ export interface MonthlyList {
      *  started again. Kept apart so it is never mistaken for slots. */
     other: MonthlyListEntry[];
   };
-}
-
-// ── Vocabulary ────────────────────────────────────────────────────────
-// Month names, matched on FOLDED text (`fold`): lower case, no accents,
-// dotless ı as i.
-
-const MONTHS: Record<string, number> = {
-  january: 1, jan: 1, ocak: 1,
-  february: 2, feb: 2, subat: 2,
-  march: 3, mar: 3, mart: 3,
-  april: 4, apr: 4, nisan: 4,
-  may: 5, mayis: 5,
-  june: 6, jun: 6, haziran: 6,
-  july: 7, jul: 7, temmuz: 7,
-  august: 8, aug: 8, agustos: 8,
-  september: 9, sep: 9, sept: 9, eylul: 9,
-  october: 10, oct: 10, ekim: 10,
-  november: 11, nov: 11, kasim: 11,
-  december: 12, dec: 12, aralik: 12,
-};
-
-/** Lower case, accents off, dotless ı as i, invisible characters out. */
-function fold(s: string): string {
-  return normaliseName(s).replace(/ı/g, "i");
-}
-
-/** `fold`, for MatchTime's own copy that names a month. */
-export const foldListText = fold;
-
-/** The month a folded word names ("november", "nov", "kasim"), 1 to 12, or null. */
-export function monthOfWord(word: string): number | null {
-  return Object.prototype.hasOwnProperty.call(MONTHS, word) ? MONTHS[word] : null;
 }

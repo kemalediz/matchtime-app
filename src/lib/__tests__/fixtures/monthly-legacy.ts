@@ -10,7 +10,7 @@
  * (`legacyReaderAnswer`) so the monthly scenarios written before the model
  * run unchanged, for free.
  */
-import { foldListText as fold, monthOfWord } from "../../monthly-list";
+import { normaliseName } from "../../name-normalise";
 import type { MonthlyList, MonthlyListEntry, MonthlyListMarks, MonthlyListMonth, PaygDate } from "../../monthly-list";
 import { cleanName, isCantPlayHeader, readListLine, sameName, splitRosterSections, type ListLine } from "../../pasted-roster";
 import { t } from "../../i18n/t";
@@ -21,6 +21,38 @@ import { footer, type SignupPostFacts } from "../../month-signup-copy";
 import type { SignupAsk, SignupChoice } from "../../month-signup-rules";
 
 type LangArg = Lang | string | null | undefined;
+
+// ── Vocabulary ────────────────────────────────────────────────────────
+// Month names, matched on FOLDED text (`fold`): lower case, no accents,
+// dotless ı as i.
+
+const MONTHS: Record<string, number> = {
+  january: 1, jan: 1, ocak: 1,
+  february: 2, feb: 2, subat: 2,
+  march: 3, mar: 3, mart: 3,
+  april: 4, apr: 4, nisan: 4,
+  may: 5, mayis: 5,
+  june: 6, jun: 6, haziran: 6,
+  july: 7, jul: 7, temmuz: 7,
+  august: 8, aug: 8, agustos: 8,
+  september: 9, sep: 9, sept: 9, eylul: 9,
+  october: 10, oct: 10, ekim: 10,
+  november: 11, nov: 11, kasim: 11,
+  december: 12, dec: 12, aralik: 12,
+};
+
+/** Lower case, accents off, dotless ı as i, invisible characters out. */
+function fold(s: string): string {
+  return normaliseName(s).replace(/ı/g, "i");
+}
+
+/** `fold`, for MatchTime's own copy that names a month. */
+export const foldListText = fold;
+
+/** The month a folded word names ("november", "nov", "kasim"), 1 to 12, or null. */
+export function monthOfWord(word: string): number | null {
+  return Object.prototype.hasOwnProperty.call(MONTHS, word) ? MONTHS[word] : null;
+}
 
 /** Without a month header, the pasted-roster thresholds apply: four list
  *  lines, three of them names. */
@@ -659,3 +691,102 @@ export function legacyReaderAnswer(body: string, quotedBody?: string | null): Re
     residual: legacyResidual(body),
   };
 }
+
+// ── The old fixed words for a month payment (month-payment-rules.ts) ──
+
+import type { CollectorReply } from "../../month-payment-rules";
+
+// ── A player's "paid" (plan 4.3) ───────────────────────────────────────
+
+const PAID_PHRASES = new Set([
+  "paid",
+  "i paid",
+  "ive paid",
+  "i ve paid",
+  "i have paid",
+  "all paid",
+  "paid now",
+  "paid it",
+  "payment sent",
+  "payment made",
+  "sent",
+  "sent it",
+  "transferred",
+  "odedim",
+  "odeme yaptim",
+  "odemeyi yaptim",
+  "gonderdim",
+  "havale yaptim",
+  "yatirdim",
+]);
+
+/**
+ * Is this DM a player saying they have paid, in the fixed vocabulary?
+ * The whole message: "paid", "I've paid", "paid £37.50", "ödedim". A
+ * question, a "not paid yet" and "paid for Tom too" are not. Returns the
+ * amount when one is written. A CLAIM, never a confirmation.
+ */
+export function readPaidMessage(text: string | null | undefined): { amountPence: number | null } | null {
+  const raw = text ?? "";
+  if (raw.includes("?")) return null;
+  const folded = fold(raw)
+    .replace(/['’`]/g, "")
+    .replace(/[^\p{L}\p{N}£.,\s]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const m = /^(.*?)(?:\s+£?\s?(\d{1,4})(?:[.,](\d{1,2}))?)?[.,]?$/u.exec(folded);
+  if (!m) return null;
+  const phrase = m[1].replace(/[.,£]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!PAID_PHRASES.has(phrase)) return null;
+  const amountPence = m[2] !== undefined ? Number(m[2]) * 100 + Number((m[3] ?? "0").padEnd(2, "0")) : null;
+  return { amountPence };
+}
+
+// ── The collector's reply (plan 4.3, D3) ───────────────────────────────
+
+
+const REPLY_VERB = new Set(["paid", "odendi"]);
+const REPLY_ALL = new Set(["all", "hepsi", "tumu"]);
+const REPLY_NONE = new Set(["none", "hicbiri", "yok"]);
+const REPLY_JOINER = new Set(["and", "ve"]);
+
+/**
+ * The collector's answer to "N say they've paid": "PAID ALL", "PAID 1 3"
+ * (their numbers on the month's list), "PAID NONE"; in Turkish "ÖDENDİ
+ * HEPSİ", "ÖDENDİ 1 3", "ÖDENDİ HİÇBİRİ".
+ *
+ * The word PAID is required, and the whole message must be the phrase. A
+ * stray "ok", a "yes", a thumbs up or a bare "1 3" (which is how an
+ * organiser picks a waiting player) is NEVER a confirmation of money.
+ */
+export function readCollectorReply(text: string | null | undefined): CollectorReply | null {
+  // An AMOUNT is never a list number: "paid £30" and "paid 22.50" are
+  // somebody saying what they paid, not the collector's reply.
+  if (/[£₺]|\d[.,]\d/.test(text ?? "")) return null;
+  const tokens = fold(text ?? "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .split(" ")
+    .filter(Boolean);
+  if (tokens.length < 2 || tokens.length > 40 || !REPLY_VERB.has(tokens[0])) return null;
+  let rest = tokens.slice(1);
+  // An optional month straight after the word: "PAID NOVEMBER ALL".
+  const named = monthOfWord(rest[0]);
+  const month = named !== null && rest.length > 1 ? { month: named } : {};
+  if (named !== null) rest = rest.slice(1);
+  if (rest.length === 0) return null;
+  if (rest.length === 1 && REPLY_ALL.has(rest[0])) return { kind: "all", ...month };
+  if (rest.length === 1 && REPLY_NONE.has(rest[0])) return { kind: "none", ...month };
+  const numbers: number[] = [];
+  for (let i = 0; i < rest.length; i++) {
+    const tok = rest[i];
+    if (/^\d{1,2}$/.test(tok)) {
+      const n = Number(tok);
+      if (n < 1) return null;
+      numbers.push(n);
+    } else if (!(REPLY_JOINER.has(tok) && i > 0 && i < rest.length - 1 && /^\d{1,2}$/.test(rest[i + 1]))) {
+      return null;
+    }
+  }
+  return numbers.length > 0 ? { kind: "numbers", numbers: [...new Set(numbers)], ...month } : null;
+}
+

@@ -55,8 +55,6 @@ import { resolveSenderUserIds } from "./admin-group-link";
 import { handlePickReply } from "./organiser-pick";
 import { PICK_RACE_WINDOW_MS } from "./organiser-pick-rules";
 import { isBillingPaused } from "./club-billing-rules";
-import { handleCollectorPaidReply } from "./month-payment";
-import { readCollectorReply } from "./month-payment-rules";
 import { proposeSquadPaste } from "./admin-group-paste";
 import { setAsideTeamProposal } from "./team-proposal";
 import { t } from "./i18n/t";
@@ -186,14 +184,9 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   // all: it is listed silent. This is the server's own refusal.)
   if (isBillingPaused(org)) return { handled: false, ignored: "club-billing-paused", orgId: org.id, replyText: null };
 
-  // 1a. MONTHLY SQUAD (slice 4): the collector answering the claims digest
-  // ("PAID ALL", "PAID 1 3", "PAID NONE"): numbers against MatchTime's own
-  // numbered digest. Read only when the text is exactly that.
-  if (readCollectorReply(msg.text)) {
-    const senders = await resolveSenderUserIds({ phones: [msg.senderPhone, msg.senderAltPhone], lid: msg.senderLid ?? null });
-    const paid = await handleCollectorPaidReply({ text: msg.text, waMessageId: msg.messageId ?? null, senderUserIds: senders, orgId: org.id, now });
-    if (paid) return acted(org.id, paid.handled, paid.replyText || null);
-  }
+  // 1a. MONTHLY SQUAD: the collector answering the claims digest is read
+  // by a model (2026-10-29), so it is the door's question now
+  // (`admin-group-understand.ts`), not a reader in front of it.
 
   const live = org.whatsappBotEnabled === true;
   const weekly = org.squadMode !== "monthly";

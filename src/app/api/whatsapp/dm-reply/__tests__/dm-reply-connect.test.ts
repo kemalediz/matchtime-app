@@ -79,8 +79,12 @@ describe("dm-reply: the connect DM", () => {
     expect(body).toEqual({ ok: true, ignored: "unknown-sender" });
     // Slice 2b: the organiser pick check (no round open: one cheap read,
     // then nothing) sits between the self-join handlers and the bench reply.
+    // 2026-10-29: then the month collector's lookup by phone (his answer
+    // to the paid-claims list is read by a model, so his text is no longer
+    // a gate): nobody here, no model call.
     expect(calls[0]).toBe("organiserPickRound.findFirst");
-    expect(calls[1]).toBe("benchSlotOffer.findMany");
+    expect(calls[1]).toBe("user.findMany");
+    expect(calls[2]).toBe("benchSlotOffer.findMany");
     expect(calls.some((c) => c.startsWith("clubConnect."))).toBe(false);
   });
 
@@ -107,8 +111,12 @@ describe("dm-reply: the connect DM", () => {
     expect(body).toEqual({ ok: true, ignored: "unknown-sender" });
     // Slice 2b: the organiser pick check (no round open: one cheap read,
     // then nothing) sits between the self-join handlers and the bench reply.
+    // 2026-10-29: then the month collector's lookup by phone (his answer
+    // to the paid-claims list is read by a model, so his text is no longer
+    // a gate): nobody here, no model call.
     expect(calls[0]).toBe("organiserPickRound.findFirst");
-    expect(calls[1]).toBe("benchSlotOffer.findMany");
+    expect(calls[1]).toBe("user.findMany");
+    expect(calls[2]).toBe("benchSlotOffer.findMany");
   });
 
   it("an older Pi that forwards no LID still works: the fields are simply absent", async () => {

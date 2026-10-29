@@ -1050,3 +1050,17 @@ describe("the attendance extractor reads Turkish", () => {
     expect(hedges).toMatch(/"maybe"[^\n]*\| "belki"/);
   });
 });
+
+describe("admin · season_break (2026-10-29, the prompt rewritten whole)", () => {
+  it("is defined once, with its two fields once each, apart from a one-game cancel, EN and TR side by side", () => {
+    const p = EXTRACTOR_PROMPTS.admin;
+    expect(p.split(`\n  "season_break" `).length).toBe(2);
+    for (const field of ["breakMonths", "playMonths"]) expect(p.split(`\n  ${field} `).length, field).toBe(2);
+    expect(p).toMatch(/"@Match Time no football in December" \/ "@Match Time aralıkta maç yok" -> season_break, breakMonths \["2026-12"\]/);
+    expect(p).toMatch(/"storm, no game Friday" \/ "bu hafta maç yok" -> cancel_match/);
+    expect(p).not.toMatch(/[–—]/);
+    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    expect(schema.properties.action.enum).toContain("season_break");
+    expect(schema.required).toEqual(expect.arrayContaining(["breakMonths", "playMonths"]));
+  });
+});

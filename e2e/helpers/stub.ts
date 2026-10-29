@@ -290,6 +290,15 @@ export function clearMonthlyReaderStub(): void {
   rmSync(`${E2E.MONTHLY_READER_STUB_FILE}.calls`, { force: true });
 }
 
+/** The DIGEST REPLY stub (2026-10-29): the collector's message → the
+ *  model's raw JSON (`{answer, numbers, month, confidence}`). The harness
+ *  also registers the old code's reading of every message it posts
+ *  (`monthly-reader-legacy.ts`). */
+export function setDigestReplyStub(stub: { bodies?: Record<string, string>; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.DIGEST_REPLY_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.DIGEST_REPLY_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
 /** The MONTH SEED REPLY stub (2026-10-29): an organiser's DM body → the
  *  model's raw JSON answer (`{answer, changes, confidence}`). */
 export function setMonthSeedReplyStub(stub: { bodies?: Record<string, string>; fail?: string[] }): void {
@@ -338,6 +347,7 @@ export function clearPipelineStubs(): void {
   clearCalloffStub();
   clearMonthlyReaderStub();
   setMonthSeedReplyStub({});
+  setDigestReplyStub({});
 }
 
 // ── Fact builders ─────────────────────────────────────────────────────

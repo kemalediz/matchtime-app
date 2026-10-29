@@ -272,13 +272,14 @@ export async function POST(request: Request) {
   }
 
   // ── Monthly squad (slice 4): the collector answers the claims digest ───
-  //   "PAID ALL", "PAID 1 3", "PAID NONE" (Turkish: "ÖDENDİ ..."). The
-  //   word PAID is required and the whole DM must be the phrase, so a
-  //   stray "ok" or a bare number never confirms money. The text is
-  //   checked first: any other DM costs no query here and carries on
-  //   exactly as before. Deterministic, no model.
+  //   "PAID ALL", "1 and 3 are in", "ÖDENDİ HİÇBİRİ", in any words, read
+  //   by a model against the list he was sent (`month-digest-reply.ts`,
+  //   2026-10-29; it was a fixed phrase). The model is asked only when the
+  //   sender may confirm payments and a list is out for him; for anybody
+  //   else this costs two indexed queries and the DM carries on as before.
   {
-    const paid = await handleCollectorPaidDm({ phone, senderAltPhone, text, waMessageId });
+    const { readDigestReply } = await import("@/lib/month-digest-reply");
+    const paid = await handleCollectorPaidDm({ phone, senderAltPhone, text, waMessageId, read: (shown, t) => readDigestReply(shown, t) });
     if (paid) return NextResponse.json({ ok: true, ...paid });
   }
 
@@ -753,17 +754,20 @@ export async function POST(request: Request) {
   //   indexed query first), and any verdict but a claim falls through to
   //   the handlers below unchanged. The bench-offer reply stays first; it
   //   resolves its own sender and owns the DM while an offer is open.
-  // MONTHLY SQUAD (slice 4): a regular who owes for the MONTH says "paid".
-  //   A fixed vocabulary, no model. Engages only for somebody with exactly
-  //   one month to pay for and no released per-match fee; anybody else
-  //   falls straight through to the per-match claim below, unchanged. It
-  //   records a CLAIM ("says paid"): only the collector confirms.
+  // MONTHLY SQUAD (slice 4): a regular who owes for the MONTH says he has
+  //   paid, in any words, read by the payment DM step's model (2026-10-29;
+  //   it was a fixed vocabulary). Engages only for somebody with exactly
+  //   one month to pay for and no released per-match fee (checked before
+  //   any model call); anybody else falls straight through to the
+  //   per-match claim below, unchanged. It records a CLAIM ("says paid"):
+  //   only the collector confirms.
   {
     const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
     const monthClaim = await handlePlayerPaidDm({
       userId: user.id,
       userName: user.name,
       text,
+      loadReplyContext: () => loadDmReplyContext(db, { userId: user.id, phone: phoneNoPlus, quoted }),
       replyPhone:
         phoneNoPlus ??
         (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??

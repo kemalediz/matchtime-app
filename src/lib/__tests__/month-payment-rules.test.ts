@@ -6,22 +6,8 @@
  * collector's reply, and when each reminder is due. No database, no model.
  */
 import { describe, expect, it } from "vitest";
-import {
-  claimsDigestDue,
-  decideCollectorReply,
-  defaultPayBy,
-  duePaymentReminder,
-  groupReminderDue,
-  monthFeeShare,
-  planPricing,
-  priceAskDue,
-  priceLocked,
-  readCollectorReply,
-  readPaidMessage,
-  suggestSharePence,
-  validatePricing,
-  type PricingMember,
-} from "@/lib/month-payment-rules";
+import { claimsDigestDue, decideCollectorReply, defaultPayBy, duePaymentReminder, groupReminderDue, monthFeeShare, planPricing, priceAskDue, priceLocked, suggestSharePence, validatePricing, type PricingMember } from "@/lib/month-payment-rules";
+import { readCollectorReply, readPaidMessage } from "@/lib/__tests__/fixtures/monthly-legacy";
 
 const regular = (o: Partial<PricingMember> & { userId: string }): PricingMember => ({
   kind: "regular",

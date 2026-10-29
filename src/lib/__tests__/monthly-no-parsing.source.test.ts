@@ -7,7 +7,8 @@
  *   1. the old deterministic reader lives only in the test fixture
  *      (`fixtures/monthly-legacy.ts`), and no file under src/ outside the
  *      tests imports it, statically or dynamically;
- *   2. no production file defines the old readers again;
+ *   2. no production file defines the old readers again (the list, the
+ *      sign-up words, and a month payment's "paid" and "PAID ALL");
  *   3. the admin-group route reaches the monthly reader only through its
  *      shared model door (`admin-group-understand.ts`), following dynamic
  *      imports too (the door test follows static ones).
@@ -20,6 +21,7 @@ const ROOT = path.resolve(__dirname, "../../..");
 const SRC = path.join(ROOT, "src");
 const FIXTURE = "src/lib/__tests__/fixtures/monthly-legacy.ts";
 const READER = "src/lib/monthly-reader.ts";
+const DIGEST_READER = "src/lib/month-digest-reply.ts";
 const DOOR = "src/lib/admin-group-understand.ts";
 
 function walk(dir: string): string[] {
@@ -75,7 +77,7 @@ describe("monthly lists are read by the model, never by code", () => {
   });
 
   it("no production file defines the old readers", () => {
-    const old = /export (?:async )?function (parseMonthlyList|readMarks|readSignupMessage|isMonthLevelList|quotedSignupMonth|pasteResidual|signupPasteResidual|isMonthListHeader)\b/;
+    const old = /export (?:async )?function (parseMonthlyList|readMarks|readSignupMessage|isMonthLevelList|quotedSignupMonth|pasteResidual|signupPasteResidual|isMonthListHeader|readPaidMessage|readCollectorReply|monthOfWord)\b/;
     const offenders = prodFiles.filter((f) => old.test(readFileSync(f, "utf8")));
     expect(offenders.map((f) => path.relative(ROOT, f))).toEqual([]);
   });
@@ -84,7 +86,9 @@ describe("monthly lists are read by the model, never by code", () => {
     const seen = reachable(path.join(SRC, "app/api/whatsapp/admin-group/route.ts"), [DOOR]);
     expect(seen.has(DOOR)).toBe(true);
     expect(seen.has(READER)).toBe(false);
+    expect(seen.has(DIGEST_READER)).toBe(false);
     // And the door does reach it (the HQ coming-month list).
     expect(reachable(path.join(ROOT, DOOR), []).has(READER)).toBe(true);
+    expect(reachable(path.join(ROOT, DOOR), []).has(DIGEST_READER)).toBe(true);
   });
 });

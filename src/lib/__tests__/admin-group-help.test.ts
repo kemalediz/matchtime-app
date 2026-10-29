@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildHqHelp, hqHelpGates } from "@/lib/admin-group-help";
-import { readCollectorReply } from "@/lib/month-payment-rules";
+import { readCollectorReply } from "@/lib/__tests__/fixtures/monthly-legacy";
 import { readSquadPaste } from "@/lib/admin-group-squad-rules";
 import { parsePickReply } from "@/lib/organiser-pick-rules";
 

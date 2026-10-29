@@ -37,6 +37,7 @@ import { defaultPayBy } from "@/lib/month-payment-rules";
 import { buildClaimsDigest, buildCollectorReplyAnswer, buildPaidClaimAckDm, buildPayBySummary, buildPayReminderDm, pounds } from "@/lib/month-payment-copy";
 import { listOpensAt, monthKickoffs, nextMonthStart } from "@/lib/month-signup-rules";
 import { londonMonthStart } from "@/lib/squad-month-rules";
+import { setPaymentClaimStub } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
 
@@ -156,6 +157,8 @@ async function credit(db: TestDb, id: string, who: Person, earnedMatchId: string
 
 test.beforeAll(async () => {
   resetDb();
+  // A month "paid" DM is read by the payment DM step's model (2026-10-29).
+  setPaymentClaimStub({ bodies: { paid: "paid", "Paid 👍": "paid", "I've paid": "paid" } });
   const db = testDb();
   await db.run(
     `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled", "squadMode", "paygPricePence",

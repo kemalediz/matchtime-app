@@ -20,7 +20,7 @@ import {
   pounds,
   type PricedLine,
 } from "@/lib/month-payment-copy";
-import { readCollectorReply, readPaidMessage } from "@/lib/month-payment-rules";
+import { readCollectorReply, readPaidMessage } from "@/lib/__tests__/fixtures/monthly-legacy";
 import { isMonthLevelList } from "@/lib/__tests__/fixtures/monthly-legacy";
 import { monthKickoffs, type SignupList } from "@/lib/month-signup-rules";
 
