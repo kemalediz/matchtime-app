@@ -45,6 +45,8 @@ import { isClubOperational } from "./club-approval-state";
 import { SETUP_STAGE_SELECT, isClubSettingUp } from "./club-setup-rules";
 import { planPricePence } from "./club-billing-rules";
 import { formatLondon } from "./london-time";
+import type { DigestShown } from "./month-digest-reply";
+import { monthNameLabel } from "./i18n/dates";
 import { QUIET_HOURS_SELECT, quietHoursOf, type QuietHours } from "./message-hours";
 import {
   buildClaimsDigest,
@@ -62,8 +64,11 @@ import {
 } from "./month-payment-copy";
 import {
   DIGEST_REPLY_WINDOW_MS,
+  DIGEST_ANSWER_WINDOW_MS,
+  answersOpenDigest,
   claimsDigestDue,
   decideCollectorReply,
+  type CollectorReply,
   priceAskDue,
   duePaymentReminder,
   groupReminderDue,
@@ -71,8 +76,6 @@ import {
   planPricing,
   priceLocked,
   creditInArrears,
-  readCollectorReply,
-  readPaidMessage,
   validatePricing,
   type PricingError,
   type PricingInput,
@@ -508,8 +511,8 @@ const digestItemPrefix = (orgId: string, monthId: string, day: string) => `${pay
 const MONTH_HAS_AMOUNTS = [{ pricedAt: { not: null } }, { startedMidMonthAt: { not: null }, sharePerGamePence: { not: null } }];
 
 /**
- * A player DMs "paid" (the fixed vocabulary of `readPaidMessage`; no
- * model). Engages only when they are a regular with ONE month to pay for
+ * A player DMs that he has paid, in any words, read by the payment DM
+ * step's model once the cheap gates below pass. Engages only when they are a regular with ONE month to pay for
  * and owe no released per-match fee (that "Paid" is today's per-match
  * claim, untouched). Records the claim and answers once a day. Null: not
  * ours, and the DM goes on exactly as before.
@@ -519,10 +522,12 @@ export async function handlePlayerPaidDm(input: {
   userName: string | null;
   text: string;
   replyPhone: string | null;
+  /** The DM's chat context, for the model (`loadDmReplyContext`), read
+   *  only once the cheap gates have passed. */
+  loadReplyContext?: () => Promise<import("./reply-context").ReplyContext>;
   now?: Date;
 }): Promise<{ handled: "month-paid-claim"; monthId: string; claimed: boolean } | null> {
-  const read = readPaidMessage(input.text);
-  if (!read || !input.replyPhone) return null;
+  if (!input.text?.trim() || !input.replyPhone) return null;
   const now = input.now ?? new Date();
   const owed = await db.squadMonthMember.findMany({
     where: {
@@ -556,15 +561,35 @@ export async function handlePlayerPaidDm(input: {
 
   const row = owed[0];
   const { orgId } = row.month;
+  // WHAT HE SAYS is read by the payment DM step the per-match "Paid" uses
+  // (`payment-claim-classifier.ts`, a model; 2026-10-29, Kemal: no code
+  // reads what people mean), told what he owes for the month and who the
+  // collector is. Only a plain "paid" is a month claim; anything else
+  // goes on below exactly as before.
+  const collectorRow = row.month.org.paymentHolderId
+    ? await db.user.findUnique({ where: { id: row.month.org.paymentHolderId }, select: { name: true } })
+    : null;
+  const monthDate = new Date(`${row.month.monthStart.toISOString().slice(0, 10)}T12:00:00.000Z`);
+  const { classifyPaymentClaimDetailed } = await import("./payment-claim-classifier");
+  const { withOrgAiBudget } = await import("./ai-budget");
+  const replyContext = input.loadReplyContext ? await input.loadReplyContext().catch(() => null) : null;
+  const verdict = await withOrgAiBudget(orgId, () =>
+    classifyPaymentClaimDetailed(input.text, {
+      playerName: input.userName,
+      owes: `£${((row.amountDuePence ?? 0) / 100).toFixed(2)} for ${monthNameLabel(row.month.org.language, monthDate)} (the month's games)`,
+      collectorName: collectorRow?.name ?? null,
+      replyContext,
+    }),
+  );
+  if (verdict.intent !== "paid") return null;
+  const read = { amountPence: null as number | null };
   // Saying it again after the collector said "not arrived" is a new claim
   // (`claimMonthPaid`): it goes on a new digest before it can be confirmed.
   const claimed = await claimMonthPaid({ monthId: row.monthId, userId: input.userId, source: "dm", amountPence: read.amountPence, now });
 
   const day = formatLondon(now, "yyyy-MM-dd");
   if (await claimOnce(`${paymentKeyPrefix(orgId)}claim-ack:${row.monthId}:${input.userId}:${day}`, "month-pay-dm")) {
-    const collector = row.month.org.paymentHolderId
-      ? await db.user.findUnique({ where: { id: row.month.org.paymentHolderId }, select: { name: true } })
-      : null;
+    const collector = collectorRow;
     await db.botJob.create({
       data: {
         orgId,
@@ -573,7 +598,7 @@ export async function handlePlayerPaidDm(input: {
         text: buildPaidClaimAckDm({
           name: input.userName,
           amountPence: read.amountPence ?? row.amountDuePence,
-          monthDate: new Date(`${row.month.monthStart.toISOString().slice(0, 10)}T12:00:00.000Z`),
+          monthDate,
           collectorName: collector?.name ?? null,
           lang: row.month.org.language,
         }),
@@ -627,13 +652,39 @@ async function latestDigest(orgId: string, monthId: string): Promise<SentDigest 
     where: { key: { startsWith: digestItemPrefix(orgId, monthId, row.key.slice(prefix.length)) } },
     select: { targetUser: true },
   });
-  return { at: row.createdAt, userIds: items.map((i) => i.targetUser).filter((u): u is string => !!u) };
+  return { at: row.createdAt, key: row.key, userIds: items.map((i) => i.targetUser).filter((u): u is string => !!u) };
+}
+
+/** MatchTime's own answer to his answer is part of the same conversation:
+ *  his next message, answering THAT, still answers the list. */
+const digestThreadKey = (digestKey: string, id: string) => `${digestKey.replace(":mpy:digest:", ":mpy:digest-thread:")}#${id}`;
+const digestOfThread = (threadKey: string) => threadKey.split("#")[0].replace(":mpy:digest-thread:", ":mpy:digest:");
+
+/**
+ * Is he answering one of MatchTime's open paid-claims lists? `answering`
+ * is the message he replies to, else MatchTime's newest message to him.
+ * One indexed query, and no model.
+ */
+export async function answersAnOpenDigest(p: { answering: string | null | (() => Promise<string | null>); now: Date }): Promise<boolean> {
+  const found = await db.sentNotification.findMany({
+    where: { kind: { in: ["month-pay-digest", "month-pay-digest-thread"] }, createdAt: { gte: new Date(p.now.getTime() - DIGEST_ANSWER_WINDOW_MS) }, text: { not: null } },
+    select: { key: true, kind: true, text: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+    take: 40,
+  });
+  const rows = found.map((r) => ({ ...r, key: r.kind === "month-pay-digest-thread" ? digestOfThread(r.key) : r.key }));
+  if (rows.length === 0) return false;
+  // Which message he answers is looked up only when a list is out at all.
+  const answering = typeof p.answering === "function" ? await p.answering() : p.answering;
+  if (!answering?.trim()) return false;
+  return answersOpenDigest({ answering, digests: rows.map((r) => ({ text: r.text, at: r.createdAt })), now: p.now });
 }
 
 /**
- * The collector answers the digest: "PAID ALL", "PAID 1 3", "PAID NONE"
- * (`readCollectorReply`: the word PAID is required; a stray "ok" or a
- * bare number is never read). Null when the text is not that, or the
+ * The collector answers the digest: "PAID ALL", "PAID 1 3", "PAID NONE",
+ * in any words, read by a model against the list he was sent
+ * (`month-digest-reply.ts`; a stray "ok" or a bare number is not an
+ * answer). Null when the text is not that, or the
  * sender may not confirm for any monthly club: the message then goes on
  * exactly as before, and nothing has been written for it. The same when
  * no digest is outstanding (none sent in the last two days), or when none
@@ -653,11 +704,21 @@ export async function handleCollectorPaidReply(input: {
   senderUserIds: string[];
   /** Only this club (the admin group's). Omitted for a DM. */
   orgId?: string;
+  /** The model step that reads his message against the lists he was sent
+   *  (`month-digest-reply.ts`'s `readDigestReply`). Passed in by the
+   *  caller, so this file, which the admin group reaches before its model
+   *  door, reaches no model itself. */
+  read: (shown: DigestShown[], text: string) => Promise<CollectorReply | null>;
+  /** The message he is answering: the one he replied to, else MatchTime's
+   *  newest message to him (in HQ: to the group). Looked up lazily. */
+  answering: string | null | (() => Promise<string | null>);
   now?: Date;
 }): Promise<{ handled: string; orgId: string; replyText: string } | null> {
-  const reply = readCollectorReply(input.text);
-  if (!reply || input.senderUserIds.length === 0) return null;
+  if (!input.text?.trim() || input.senderUserIds.length === 0) return null;
   const now = input.now ?? new Date();
+  // Only an answer to an open list is read as one (review of #465): a
+  // "yes" to the month's draft, or to anything else, never confirms money.
+  if (!(await answersAnOpenDigest({ answering: input.answering, now }))) return null;
 
   const memberships = await db.membership.findMany({
     where: {
@@ -679,6 +740,31 @@ export async function handleCollectorPaidReply(input: {
       if (digest) out.push({ month, actorUserId: m.userId, digest, lang: m.org.language });
     }
   }
+  // Nobody here may confirm, or no list is out for them: not an answer,
+  // and no model is asked.
+  const recentlyClosed =
+    confirmers.length > 0
+      ? await db.squadMonth.count({
+          where: { orgId: { in: confirmers.map((c) => c.orgId) }, status: "closed", closedAt: { gte: new Date(now.getTime() - DIGEST_REPLY_WINDOW_MS) } },
+        })
+      : 0;
+  // An out-of-date list is still answered (with the current one), so
+  // every list he has had counts here; the window is decided below.
+  const answerable = out;
+  if (answerable.length === 0 && recentlyClosed === 0) return null;
+  // WHAT HE SAYS, read by the model against the lists he was sent
+  // (`month-digest-reply.ts`, 2026-10-29: it was a fixed "PAID ..." phrase).
+  const shown: DigestShown[] = [];
+  for (const o of answerable) {
+    const listed = new Set(o.digest.userIds);
+    const lines = o.month.members.filter((m) => listed.has(m.userId)).map((m) => ({ slot: m.slot, name: m.name }));
+    shown.push({ month: o.month.monthNumber, monthName: monthNameLabel(o.lang, o.month.firstKickoff), lines });
+  }
+  const { withOrgAiBudget } = await import("./ai-budget");
+  const reply = await withOrgAiBudget(confirmers[0]?.orgId ?? input.orgId ?? "", () =>
+    input.read(shown.length > 0 ? shown : [{ month: 0, monthName: "the month just closed", lines: [] }], input.text),
+  );
+  if (!reply) return null;
   // WHICH MONTH. The one the reply names ("PAID NOVEMBER ALL"); else the
   // one whose digest is the newest: that is the message being answered.
   const named = reply.month != null ? out.filter((o) => o.month.monthNumber === reply.month) : out;
@@ -720,7 +806,17 @@ export async function handleCollectorPaidReply(input: {
       break;
     }
   }
-  const answer = (text: string, handled: string) => ({ handled, orgId: month.orgId, replyText: `${text}${hint}` });
+  const digestKey = best.digest.key ?? null;
+  const answer = async (text: string, handled: string) => {
+    const replyText = `${text}${hint}`;
+    // His next message, answering this reply, still answers the list.
+    if (digestKey) {
+      await db.sentNotification
+        .create({ data: { key: digestThreadKey(digestKey, input.waMessageId ?? String(now.getTime())), kind: "month-pay-digest-thread", text: replyText } })
+        .catch(() => undefined);
+    }
+    return { handled, orgId: month.orgId, replyText };
+  };
 
   if (decision.kind === "stale") {
     // Out of date: nobody is marked. The collector gets the list as it
@@ -760,7 +856,7 @@ export async function handleCollectorPaidReply(input: {
  * told so, with the link. Null: not that, and the reply goes on as before.
  */
 async function closedMonthAnswer(args: {
-  reply: NonNullable<ReturnType<typeof readCollectorReply>>;
+  reply: CollectorReply;
   confirmers: Array<{ orgId: string; lang: string | null }>;
   liveDigestAt: Date | null;
   waMessageId: string | null;
@@ -811,34 +907,44 @@ async function closedMonthAnswer(args: {
  */
 async function sendDigestNow(month: SignupMonth, claims: WaitingRow[], now: Date, id: string): Promise<string | null> {
   void now;
-  if (!(await claimOnce(`${digestPrefix(month.orgId, month.id)}${id}`, "month-pay-digest"))) return null;
+  const digestKey = `${digestPrefix(month.orgId, month.id)}${id}`;
+  if (!(await claimOnce(digestKey, "month-pay-digest"))) return null;
   // EXACTLY what this digest lists, recorded with it: a reply can only
   // ever confirm these. A claim made a moment later is not among them.
   await db.sentNotification.createMany({
     data: claims.map((c) => ({ key: `${digestItemPrefix(month.orgId, month.id, id)}${c.userId}`, kind: "month-pay-digest-item", targetUser: c.userId })),
     skipDuplicates: true,
   });
-  return buildClaimsDigest({ claims: claims.map((c) => ({ slot: c.slot, name: c.name, amountPence: c.amountPence })), monthDate: month.firstKickoff, lang: month.language });
+  const text = buildClaimsDigest({ claims: claims.map((c) => ({ slot: c.slot, name: c.name, amountPence: c.amountPence })), monthDate: month.firstKickoff, lang: month.language });
+  // Its words, kept: a reply is read as the answer only when it answers
+  // THIS message (`answersOpenDigest`).
+  await db.sentNotification.update({ where: { key: digestKey }, data: { text } }).catch(() => undefined);
+  return text;
 }
 
 /** The DM door: the sender is resolved by PHONE only, and the answer goes
- *  back by DM. The text is checked first, so a DM that is not a "PAID ..."
- *  reply costs no query at all. */
+ *  back by DM. The model is asked only when he may confirm and a list is
+ *  out for him (`handleCollectorPaidReply`). */
 export async function handleCollectorPaidDm(input: {
   phone?: string | null;
   senderAltPhone?: string | null;
   text: string;
   waMessageId: string;
+  /** The model step (see `handleCollectorPaidReply`). */
+  read: (shown: DigestShown[], text: string) => Promise<CollectorReply | null>;
+  /** The message he is answering (see `handleCollectorPaidReply`). */
+  answering: string | null | (() => Promise<string | null>);
   now?: Date;
 }): Promise<{ handled: string } | null> {
-  if (!readCollectorReply(input.text)) return null;
+  // Not an answer to an open list: no lookup, no model.
+  if (!(await answersAnOpenDigest({ answering: input.answering, now: input.now ?? new Date() }))) return null;
   const phones = [input.phone, input.senderAltPhone]
     .map((p) => (typeof p === "string" && p.trim() ? normalisePhone(p.trim().startsWith("+") ? p.trim() : `+${p.trim().replace(/\D/g, "")}`) : null))
     .filter((p): p is string => !!p);
   if (phones.length === 0) return null;
   const users = await db.user.findMany({ where: { phoneNumber: { in: phones } }, select: { id: true, phoneNumber: true } });
   if (users.length === 0) return null;
-  const res = await handleCollectorPaidReply({ text: input.text, waMessageId: input.waMessageId, senderUserIds: users.map((u) => u.id), now: input.now });
+  const res = await handleCollectorPaidReply({ text: input.text, waMessageId: input.waMessageId, senderUserIds: users.map((u) => u.id), read: input.read, answering: input.answering, now: input.now });
   if (!res) return null;
   const phone = users[0].phoneNumber?.replace(/^\+/, "");
   if (res.replyText && phone) await db.botJob.create({ data: { orgId: res.orgId, kind: "dm", phone, text: res.replyText, ...REPLY_PRIORITY } });
@@ -942,6 +1048,10 @@ async function claimsDigest(month: SignupMonth, collectorId: string | null, now:
     await db.botJob.create({ data: { orgId: month.orgId, kind: "dm", phone: collector.phoneNumber.replace(/^\+/, ""), text } });
   } else {
     await sendAdminNotice({ orgId: month.orgId, now, text });
+    // In the organisers' group it is MatchTime's line there, so an answer
+    // in HQ is known to answer it (`answersAnOpenDigest`).
+    const { recordMatchTimeQuestion } = await import("./admin-group-log");
+    await recordMatchTimeQuestion({ orgId: month.orgId, askRef: `mpy-digest:${month.id}`, text, now }).catch(() => undefined);
   }
 }
 

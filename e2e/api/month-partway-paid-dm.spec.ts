@@ -32,6 +32,7 @@ import { testDb, type TestDb } from "../helpers/test-db";
 import { londonDateTimeToUtc } from "@/lib/london-time";
 import { monthKickoffs, nextMonthStart } from "@/lib/month-signup-rules";
 import { londonMonthStart } from "@/lib/squad-month-rules";
+import { setPaymentClaimStub } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
 
@@ -118,6 +119,8 @@ async function dm(request: APIRequestContext, who: Person, body: string): Promis
 
 test.beforeAll(async () => {
   resetDb();
+  // A month "paid" DM is read by the payment DM step's model (2026-10-29).
+  setPaymentClaimStub({ bodies: { paid: "paid", "I've paid": "paid" } });
   const db = testDb();
   // Club A: started part-way WITH a share. Carl and Dev owe for the month.
   await club(db, A, P.rob, SHARE);

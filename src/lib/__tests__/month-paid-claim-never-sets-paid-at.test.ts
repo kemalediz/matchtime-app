@@ -39,6 +39,13 @@ vi.mock("@/lib/db", () => {
   return { db: new Proxy({}, { get: (_t, name: string) => model(name) }) };
 });
 
+// What the payment DM step's model says (2026-10-29: the month "paid" is
+// read by it, not by fixed words): a plain claim for "paid ...", else not.
+vi.mock("@/lib/payment-claim-classifier", () => ({
+  classifyPaymentClaimDetailed: async (text: string) => ({ intent: /^paid\b/i.test(text) && !text.includes("?") ? "paid" : "other", confidence: 1, reasoning: "" }),
+}));
+vi.mock("@/lib/ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Promise<unknown>) => fn() }));
+
 import { claimMonthPaid, handlePlayerPaidDm } from "@/lib/month-payment";
 
 const WRITES = new Set(["create", "createMany", "update", "updateMany", "upsert", "delete", "deleteMany"]);
@@ -109,9 +116,13 @@ describe("a claim never writes paidAt", () => {
     expect(dm).toContain("Sam will confirm when it arrives");
   });
 
-  it("not the fixed words, two months to pay for, or a per-match fee owed: nothing is read as a month claim, nothing is written", async () => {
+  it("not a claim (the model says so), two months to pay for, or a per-match fee owed: nothing is read as a month claim, nothing is written", async () => {
+    returns.set("squadMonthMember.findMany", () => [
+      { monthId: "m", amountDuePence: 1, paidClaimedAt: null, month: { orgId: "org", monthStart: new Date(), org: { language: "en", paymentHolderId: null } } },
+    ]);
+    returns.set("attendance.count", () => 0);
     expect(await handlePlayerPaidDm({ userId: "u", userName: null, text: "have I paid?", replyPhone: "44" })).toBeNull();
-    expect(calls).toEqual([]);
+    expect(writes()).toEqual([]);
 
     returns.set("squadMonthMember.findMany", () => [{ monthId: "a" }, { monthId: "b" }]);
     expect(await handlePlayerPaidDm({ userId: "u", userName: null, text: "paid", replyPhone: "44" })).toBeNull();

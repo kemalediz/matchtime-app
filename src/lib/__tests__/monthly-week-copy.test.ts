@@ -3,20 +3,9 @@
  * (MDs/monthly-squad-plan-2026-10-05.md, 5.3, 5.4, 6.2). Made-up names.
  */
 import { describe, it, expect } from "vitest";
-import { parseMonthlyList } from "../monthly-list";
-import {
-  buildPasteIgnoredAdminNotice,
-  buildPasteNotAddedNotice,
-  buildPasteSenderNotListDm,
-  buildPasteSenderNotMatchedDm,
-  buildSeedBumpedDm,
-  buildPasteUndoDm,
-  buildPaygPoolDm,
-  buildPaygPoolGroupPost,
-  buildWeekListPost,
-  pasteResidual,
-  paygPriceLabel,
-} from "../monthly-week-copy";
+import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
+import { buildPasteIgnoredAdminNotice, buildPasteNotAddedNotice, buildPasteSenderNotListDm, buildPasteSenderNotMatchedDm, buildSeedBumpedDm, buildPasteUndoDm, buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost, paygPriceLabel } from "../monthly-week-copy";
+import { pasteResidual } from "@/lib/__tests__/fixtures/monthly-legacy";
 import type { WeekList } from "../monthly-week-rules";
 
 // Monday 12 October 2026, 20:00 London (BST).

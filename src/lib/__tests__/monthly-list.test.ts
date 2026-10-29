@@ -5,12 +5,8 @@
  * fixtures are anonymised lists in the style a real group writes them.
  */
 import { describe, it, expect } from "vitest";
-import {
-  parseMonthlyList,
-  readMarks,
-  findInMonthlyList,
-  type MonthlyListEntry,
-} from "../monthly-list";
+import { type MonthlyListEntry } from "../monthly-list";
+import { parseMonthlyList, readMarks, findInMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
 import { parsePastedRoster } from "../pasted-roster";
 import f3Fixture from "../setup-learning/__fixtures__/monthly-list.json";
 import {

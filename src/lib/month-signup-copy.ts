@@ -17,8 +17,6 @@ import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import { formatLondon } from "./london-time";
 import { LANGS } from "./i18n/lang";
-import { isMonthListHeader, parseMonthlyList } from "./monthly-list";
-import { readListLine } from "./pasted-roster";
 import type { SignupList } from "./month-signup-rules";
 
 type LangArg = Lang | string | null | undefined;
@@ -50,7 +48,7 @@ export interface SignupPostFacts {
 
 /** The lines under the list. Kept apart so a paste of our own post can be
  *  told from what a member typed around it (`signupPasteResidual`). */
-function footer(p: Omit<SignupPostFacts, "list">): string[] {
+export function footer(p: Omit<SignupPostFacts, "list">): string[] {
   const s = t(p.lang);
   const month = monthNameLabel(p.lang, p.kickoffs[0]);
   const exampleDay = Number(formatLondon(p.kickoffs[Math.min(1, p.kickoffs.length - 1)], "d"));
@@ -103,122 +101,6 @@ export function buildSignupListPost(p: SignupPostFacts): string {
   }
   lines.push("", ...footer(p));
   return lines.join("\n");
-}
-
-const RESERVE_HEADER = /^\s*(reserves?|subs?|substitutes?|standby|stand-by)\b\s*:?\s*$/i;
-
-/**
- * What a member typed AROUND a pasted sign-up list. The list's own
- * furniture is taken out: its title, the waiting header and the lines of
- * MatchTime's own post, which a member who copies that post pastes back
- * (and which a model must never read as the sender saying IN or OUT).
- */
-export function signupPasteResidual(body: string, p: Omit<SignupPostFacts, "list">): string {
-  const s = t(p.lang);
-  const own = new Set<string>([...footer(p), s.mwk_list_reserves]);
-  // The carried-over line exists in both shapes.
-  const month = monthNameLabel(p.lang, p.kickoffs[0]);
-  own.add(s.msu_list_out({ month }));
-  const kept: string[] = [];
-  for (const raw of body.split(/\r?\n/)) {
-    if (readListLine(raw)) continue;
-    const line = raw.trim();
-    if (!line) continue;
-    if (isMonthListHeader(line) || RESERVE_HEADER.test(line) || own.has(line)) continue;
-    // Our own footer lines, whatever their dates were when it was copied.
-    if (isOwnFooterLine(line, p.lang)) continue;
-    kept.push(line);
-  }
-  return kept.join("\n").trim();
-}
-
-/** A line of MatchTime's sign-up post from any month or day: the fixed
- *  words around the variable parts. */
-function isOwnFooterLine(line: string, lang: LangArg): boolean {
-  const s = t(lang);
-  const SENTINEL = "\u0000";
-  const shapes = [
-    s.msu_list_out({ month: SENTINEL }),
-    s.msu_list_join({ month: SENTINEL }),
-    s.msu_list_link({ url: SENTINEL }),
-    s.msu_list_deadline({ when: SENTINEL }),
-    `${s.msu_list_carried({ prev: SENTINEL })} ${s.msu_list_out({ month: SENTINEL })}`,
-  ];
-  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const matches = (shape: string) =>
-    new RegExp(
-      `^${shape
-        .split(/\u0000/i)
-        .map(esc)
-        .join(".+")}$`,
-      "iu",
-    ).test(line);
-  if (shapes.some(matches)) return true;
-  for (let day = 1; day <= 31; day++) if (line === s.msu_list_payg({ day })) return true;
-  return false;
-}
-
-/** The title lines of MatchTime's own MONTH lists, as shapes (the fixed
- *  words around the variable parts), in every language. Slice 4 adds the
- *  priced list's title here. */
-function monthListTitleShapes(): RegExp[] {
-  const SENTINEL = "\u0000";
-  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return LANGS.flatMap((lang) => {
-    const s = t(lang);
-    return [
-      s.msu_list_header({ month: SENTINEL, games: 2, weekday: SENTINEL, days: SENTINEL }),
-      s.msu_list_header({ month: SENTINEL, games: 1, weekday: SENTINEL, days: SENTINEL }),
-      // Slice 4: the priced list.
-      s.mpy_priced_header({ month: SENTINEL, share: SENTINEL, when: SENTINEL, collector: SENTINEL }),
-      s.mpy_priced_header({ month: SENTINEL, share: SENTINEL, when: SENTINEL, collector: null }),
-    ].map(
-      (shape) =>
-        new RegExp(
-          `^${shape
-            .replace(/^[^\p{L}\u0000]+/u, "")
-            .replace(/\d+/g, SENTINEL)
-            .split(SENTINEL)
-            .map(esc)
-            .join(".+")}$`,
-          "iu",
-        ),
-    );
-  });
-}
-
-/** The title line of one of MatchTime's own month lists in this text, or null. */
-function monthListTitle(body: string | null | undefined): string | null {
-  const shapes = monthListTitleShapes();
-  for (const raw of (body ?? "").split(/\r?\n/)) {
-    const line = raw.trim().replace(/^\P{L}+/u, "");
-    if (line !== "" && shapes.some((re) => re.test(line))) return raw.trim();
-  }
-  return null;
-}
-
-/**
- * Is this pasted message one of MatchTime's own MONTH lists, going by its
- * title line ("List for November (5 Mondays: 2, 9, ...)")? Such a list is
- * the month's, not this week's game: a member who pastes one back must
- * never change who plays this week by doing so, so it never reaches the
- * week's reader. A list the group typed itself ("List for November:") and
- * the week's own post ("List for November: Mon 2 Nov, 20:00") are not one.
- */
-export function isMonthLevelList(body: string | null | undefined): boolean {
-  return monthListTitle(body) !== null;
-}
-
-/**
- * THE QUOTED-REPLY RULE. A bare "IN" (or "OUT", "PAYG 9th") counts as a
- * sign-up for a month ONLY when the message it replies to is MatchTime's
- * own sign-up list, and then for that list's month (1 to 12). A reply to
- * the WEEK's list, to a list the group typed, or to anything else returns
- * null: that "IN" is this week's game, exactly as it always was.
- */
-export function quotedSignupMonth(quotedBody: string | null | undefined): number | null {
-  if (!monthListTitle(quotedBody)) return null;
-  return parseMonthlyList(quotedBody)?.month?.month ?? null;
 }
 
 /** To somebody who asked for a regular place when every one was taken. */

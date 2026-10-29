@@ -15,8 +15,9 @@
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { inMessageHours, messageHoursDayStart, type QuietHours } from "./message-hours";
-import { isMonthListHeader, type MonthlyList, type MonthlyListEntry } from "./monthly-list";
-import { candidatesFor, nameKey, type MonthCreditRule } from "./squad-month-rules";
+import { type MonthlyList, type MonthlyListEntry } from "./monthly-list";
+import { nameKey, type MonthCreditRule } from "./squad-month-rules";
+import { entryResolver } from "./month-signup-rules";
 
 export type WeekPaid = "none" | "claimed" | "confirmed";
 export type WeekStatus = "CONFIRMED" | "BENCH" | "DROPPED";
@@ -650,7 +651,24 @@ export type PasteAction =
   /** Moved under "Paid but can't play", or their line blanked. */
   | { kind: "out"; userId: string; name: string; self: boolean; via: "cant-play" | "blank" }
   /** A new "(paid)" mark on a regular's line: "says paid", never confirmed. */
-  | { kind: "paid-claim"; userId: string; name: string; self: boolean; amountPence: number | null };
+  | { kind: "paid-claim"; userId: string; name: string; self: boolean; amountPence: number | null }
+  /** Somebody who is not a member, written in by a member ("Jon extra",
+   *  "David (my son)"), as the monthly reader read it: they play this week
+   *  as a PAYG guest of `hostUserId`. The caller adds them the way a typed
+   *  "David, my son, is IN" is added. */
+  | { kind: "guest"; name: string; hostUserId: string | null; slot: number | null };
+
+/** A non-organiser's paste adds at most this many guests, and never more
+ *  than the week's open places (review of #465). An organiser may fill
+ *  the open places, up to the squad size. */
+export const MAX_GUESTS_PER_PASTE = 3;
+
+/** "4 only" beside a player of the month, as the reader read it. */
+export interface PasteGames {
+  userId: string;
+  games: number;
+  self: boolean;
+}
 
 export interface PasteIgnored {
   name: string;
@@ -678,27 +696,6 @@ export interface PasteNotAdded {
  *  as the month's list at all. "Kit for Monday: 1. Bibs 2. Two balls" is
  *  a numbered list too. */
 export const MIN_LIST_OVERLAP = 0.6;
-
-type Resolved = { kind: "one"; userId: string } | { kind: "none" } | { kind: "ambiguous" };
-
-/** Name to player: the whole name, a known alias, then the leading name
- *  (`candidatesFor`, the mid-month seed's matcher). Never fuzzy, never a
- *  prefix. Two candidates are narrowed to the ones already part of this
- *  week; still two is ambiguous. */
-function makeResolver(roster: PasteRosterMember[], known: ReadonlySet<string>): (name: string) => Resolved {
-  const keyed = roster.map((m) => ({ userId: m.userId, key: nameKey(m.name), aliasKeys: (m.aliases ?? []).map(nameKey) }));
-  return (name: string): Resolved => {
-    const key = nameKey(name);
-    if (key === "") return { kind: "none" };
-    let found = [...new Set(candidatesFor(key, keyed))];
-    if (found.length > 1) {
-      const narrowed = found.filter((id) => known.has(id));
-      if (narrowed.length === 1) found = narrowed;
-    }
-    if (found.length === 0) return { kind: "none" };
-    return found.length === 1 ? { kind: "one", userId: found[0] } : { kind: "ambiguous" };
-  };
-}
 
 /**
  * Compare a member's pasted list with this week's state, BY NAME, and say
@@ -754,17 +751,26 @@ export function reconcileMonthPaste(args: {
    *  nothing changed but paid marks): the line was about that game, and
    *  only paid marks are read. Default true. */
   selfBeforeSeed?: boolean;
-}): { actions: PasteAction[]; ignored: PasteIgnored[]; notAdded: PasteNotAdded[]; otherMonth: boolean; notThisList: boolean } {
+}): {
+  actions: PasteAction[];
+  ignored: PasteIgnored[];
+  notAdded: PasteNotAdded[];
+  games: PasteGames[];
+  /** Guests past the cap: nobody added for them; the sender is told. */
+  guestsRefused: string[];
+  otherMonth: boolean;
+  notThisList: boolean;
+} {
   const { list, members, rows, senderUserId, senderIsAdmin } = args;
-  const nothing = { actions: [], ignored: [], notAdded: [] };
+  const nothing = { actions: [], ignored: [], notAdded: [], games: [], guestsRefused: [] };
   if (list.month && list.month.month !== args.matchMonth) return { ...nothing, otherMonth: true, notThisList: false };
 
   const memberOf = new Map(members.map((m) => [m.userId, m]));
   const rowOf = new Map(rows.map((r) => [r.userId, r]));
   const known = new Set<string>([...memberOf.keys(), ...rowOf.keys()]);
-  const resolve = makeResolver(args.roster, known);
+  const resolve = entryResolver(args.roster, known);
 
-  const named = (entries: MonthlyListEntry[]) => entries.filter((e) => e.name).map((e) => ({ e, r: resolve(e.name) }));
+  const named = (entries: MonthlyListEntry[]) => entries.filter((e) => e.name).map((e) => ({ e, r: resolve(e) }));
   const slotLines = named(list.slots);
   const cantLines = named(list.sections.cantPlay);
   const elsewhere = [...named(list.sections.reserves), ...named(list.sections.other)];
@@ -791,7 +797,18 @@ export function reconcileMonthPaste(args: {
   const actions: PasteAction[] = [];
   const ignored: PasteIgnored[] = [];
   const notAdded: PasteNotAdded[] = [];
+  const games: PasteGames[] = [];
   const handled = new Set<string>();
+  const senderIsClubPlayer = !!senderUserId && args.roster.some((m) => m.userId === senderUserId);
+  // Guests: never more than the open places; a non-organiser at most the cap.
+  const openPlaces = Math.max(0, args.maxPlayers - rows.filter((r) => r.status === "CONFIRMED").length);
+  const guestCap = senderIsAdmin ? openPlaces : Math.min(openPlaces, MAX_GUESTS_PER_PASTE);
+  let guestsAdded = 0;
+  const guestsRefused: string[] = [];
+  const gamesOf = (e: MonthlyListEntry, userId: string): void => {
+    const g = e.facts?.games ?? null;
+    if (g !== null && memberOf.get(userId)?.kind === "regular") games.push({ userId, games: g, self: userId === senderUserId });
+  };
 
   const claimIfNew = (e: MonthlyListEntry, userId: string): void => {
     const m = memberOf.get(userId);
@@ -829,6 +846,15 @@ export function reconcileMonthPaste(args: {
       if (e === selfLine && senderUserId) {
         handled.add(senderUserId);
         actions.push({ kind: "in", userId: senderUserId, name: e.name, self: true, slot: e.slot });
+      } else if (e.facts?.guest && senderIsClubPlayer) {
+        // B2: a member's guest. Nobody of the club (the reader matched
+        // nobody), so a new player, brought by the host: up to the cap.
+        if (guestsAdded < guestCap) {
+          guestsAdded++;
+          actions.push({ kind: "guest", name: e.name, hostUserId: e.facts.hostUserId ?? senderUserId, slot: e.slot });
+        } else {
+          guestsRefused.push(e.name);
+        }
       } else {
         notAdded.push({ name: e.name, reason: r.kind === "none" ? "unknown" : "ambiguous" });
       }
@@ -843,10 +869,13 @@ export function reconcileMonthPaste(args: {
       if (self) actions.push({ kind: "in", userId, name: e.name, self, slot: e.slot });
       else ignored.push({ name: e.name, reason: "stale-readd" });
     } else if (!row) {
+      // A club player who is not on the month comes in only when he is
+      // the sender (a member ref is never a guest, review of #465).
       if (self || memberOf.has(userId)) actions.push({ kind: "in", userId, name: e.name, self, slot: e.slot });
       else notAdded.push({ name: e.name, reason: "not-in-month" });
     }
     claimIfNew(e, userId);
+    gamesOf(e, userId);
   }
 
   for (const { e, r } of cantLines) {
@@ -862,6 +891,7 @@ export function reconcileMonthPaste(args: {
       else ignored.push({ name: e.name, reason: "old-copy" });
     }
     claimIfNew(e, userId);
+    gamesOf(e, userId);
   }
 
   // A numbered line left blank where we have somebody, who is nowhere else
@@ -887,18 +917,20 @@ export function reconcileMonthPaste(args: {
     return {
       actions: actions.filter((a) => {
         if (a.kind === "paid-claim") return true;
-        if (!a.self || args.selfBeforeSeed === false) return false;
+        if (a.kind === "guest" || !a.self || args.selfBeforeSeed === false) return false;
         // A regular who is not away is put in by the seed anyway.
         const m = memberOf.get(a.userId);
         return !(a.kind === "in" && m?.kind === "regular" && !m.absent);
       }),
       ignored: [],
       notAdded: [],
+      games,
+      guestsRefused: [],
       otherMonth: false,
       notThisList: false,
     };
   }
-  return { actions, ignored, notAdded, otherMonth: false, notThisList: false };
+  return { actions, ignored, notAdded, games, guestsRefused, otherMonth: false, notThisList: false };
 }
 
 /**
@@ -915,9 +947,9 @@ export function pasteShowsSameList(args: { list: MonthlyList; week: WeekList; ro
     ...week.cantPlay.map((n) => n.userId),
     ...week.reserves.map((n) => n.userId),
   ]);
-  const resolve = makeResolver(args.roster, known);
+  const resolve = entryResolver(args.roster, known);
   const who = (e: MonthlyListEntry): string => {
-    const r = resolve(e.name);
+    const r = resolve(e);
     return r.kind === "one" ? r.userId : `?${nameKey(e.name)}`;
   };
 
@@ -937,23 +969,6 @@ export function pasteShowsSameList(args: { list: MonthlyList; week: WeekList; ro
   if (pastedOut.size !== oursOut.size) return false;
   for (const u of oursOut) if (!pastedOut.has(u)) return false;
   return true;
-}
-
-/**
- * Which week a pasted list's TITLE says it is about, when it says: the
- * title line of MatchTime's own post carries the match date ("List for
- * October: Mon 12 Oct, 20:00"). Only the title line is read, and only a
- * number that stands alone in it, so a slot number or a paid amount is
- * never taken for a day. Null when the title names neither day (the
- * group's own "List for October:" has none).
- */
-export function pasteWeekHint(body: string, days: { upcomingDay: number; previousDay: number | null }): "upcoming" | "previous" | null {
-  const title = body.split(/\r?\n/).find((line) => isMonthListHeader(line));
-  if (!title) return null;
-  const numbers = new Set((title.match(/(?<![\d:.£₺])\b\d{1,2}\b(?![:.\d])/g) ?? []).map(Number));
-  if (numbers.has(days.upcomingDay)) return "upcoming";
-  if (days.previousDay !== null && numbers.has(days.previousDay)) return "previous";
-  return null;
 }
 
 // ── The collector's reply to an unstaged fee question ──────────────────

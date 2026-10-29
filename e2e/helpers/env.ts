@@ -141,6 +141,15 @@ export const E2E = {
    *  organiser's untagged group message → "calloff", his DM reply to the
    *  offer → "yes" | "no". Absent or `{}` → no call-off and "other". */
   CALLOFF_STUB_FILE: path.join(REPO_ROOT, ".e2e", "calloff-stub.json"),
+  /** The monthly reader (2026-10-29): `src/lib/monthly-reader.ts`. A body
+   *  with no entry is read by the deterministic stand-in. */
+  MONTHLY_READER_STUB_FILE: path.join(REPO_ROOT, ".e2e", "monthly-reader-stub.json"),
+  /** An organiser's DM answer to the coming month's draft (2026-10-29,
+   *  `src/lib/month-seed-reply.ts`): body → the model's raw JSON answer. */
+  MONTH_SEED_REPLY_STUB_FILE: path.join(REPO_ROOT, ".e2e", "month-seed-reply-stub.json"),
+  /** The collector's answer to the paid-claims list (2026-10-29,
+   *  `src/lib/month-digest-reply.ts`): body → the model's raw JSON. */
+  DIGEST_REPLY_STUB_FILE: path.join(REPO_ROOT, ".e2e", "digest-reply-stub.json"),
 
   /** The FAKE Stripe's world for club fee billing (slice B3,
    *  src/lib/stripe-billing-fake.ts): the calls the dev server made and the
@@ -256,6 +265,9 @@ export function buildTestEnv(): Record<string, string> {
     MT_TEST_VOLUNTEER_NAME_STUB_FILE: E2E.VOLUNTEER_NAME_STUB_FILE,
     MT_TEST_POOL_REPLY_STUB_FILE: E2E.POOL_REPLY_STUB_FILE,
     MT_TEST_CALLOFF_STUB_FILE: E2E.CALLOFF_STUB_FILE,
+    MT_TEST_MONTHLY_READER_STUB_FILE: E2E.MONTHLY_READER_STUB_FILE,
+    MT_TEST_MONTH_SEED_REPLY_STUB_FILE: E2E.MONTH_SEED_REPLY_STUB_FILE,
+    MT_TEST_DIGEST_REPLY_STUB_FILE: E2E.DIGEST_REPLY_STUB_FILE,
     // Phase 1 autonomous onboarding (bot-added → intro → YES → org).
     // ON for the suite so the flow is exercisable; prod keeps it OFF
     // until deliberately flipped (the route no-ops without it).
@@ -367,6 +379,9 @@ export function buildTestEnv(): Record<string, string> {
     // And for the untagged call-off reader (2026-10-29), which DMs an
     // organiser and, on his yes, cancels a game.
     env.MT_TEST_CALLOFF_STUB_FILE = "";
+    env.MT_TEST_MONTHLY_READER_STUB_FILE = "";
+    env.MT_TEST_MONTH_SEED_REPLY_STUB_FILE = "";
+    env.MT_TEST_DIGEST_REPLY_STUB_FILE = "";
     // THE KEY A LIVE SWEEP SPENDS IS THE DEVELOPER'S, NOT PRODUCTION'S.
     //
     // This line used to forward the orchestrator's own production key,

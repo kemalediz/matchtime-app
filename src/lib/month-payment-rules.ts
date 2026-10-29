@@ -20,7 +20,6 @@
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { isDaytime } from "./month-signup-rules";
 import type { QuietHours } from "./message-hours";
-import { foldListText, monthOfWord } from "./monthly-list";
 import { MAX_PER_GAME_PENCE } from "./squad-month-rules";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -184,102 +183,14 @@ export function priceLocked(members: PricingMember[]): boolean {
   return members.some((m) => owesForMonth(m) && m.paid !== "none");
 }
 
-// ── A player's "paid" (plan 4.3) ───────────────────────────────────────
-
-const PAID_PHRASES = new Set([
-  "paid",
-  "i paid",
-  "ive paid",
-  "i ve paid",
-  "i have paid",
-  "all paid",
-  "paid now",
-  "paid it",
-  "payment sent",
-  "payment made",
-  "sent",
-  "sent it",
-  "transferred",
-  "odedim",
-  "odeme yaptim",
-  "odemeyi yaptim",
-  "gonderdim",
-  "havale yaptim",
-  "yatirdim",
-]);
-
-/**
- * Is this DM a player saying they have paid, in the fixed vocabulary?
- * The whole message: "paid", "I've paid", "paid £37.50", "ödedim". A
- * question, a "not paid yet" and "paid for Tom too" are not. Returns the
- * amount when one is written. A CLAIM, never a confirmation.
- */
-export function readPaidMessage(text: string | null | undefined): { amountPence: number | null } | null {
-  const raw = text ?? "";
-  if (raw.includes("?")) return null;
-  const folded = foldListText(raw)
-    .replace(/['’`]/g, "")
-    .replace(/[^\p{L}\p{N}£.,\s]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const m = /^(.*?)(?:\s+£?\s?(\d{1,4})(?:[.,](\d{1,2}))?)?[.,]?$/u.exec(folded);
-  if (!m) return null;
-  const phrase = m[1].replace(/[.,£]+/g, " ").replace(/\s+/g, " ").trim();
-  if (!PAID_PHRASES.has(phrase)) return null;
-  const amountPence = m[2] !== undefined ? Number(m[2]) * 100 + Number((m[3] ?? "0").padEnd(2, "0")) : null;
-  return { amountPence };
-}
-
-// ── The collector's reply (plan 4.3, D3) ───────────────────────────────
+// ── A player's "paid", and the collector's reply (plan 4.3, D3) ────────
+// Both are read by a model since 2026-10-29 (the payment DM step,
+// `payment-claim-classifier.ts`, and `month-digest-reply.ts`). What the
+// collector's reply says, as code acts on it:
 
 /** `month` (1 to 12) only when the reply names one: "PAID NOVEMBER ALL",
  *  for a collector with two months' lists out at once. */
 export type CollectorReply = ({ kind: "all" } | { kind: "none" } | { kind: "numbers"; numbers: number[] }) & { month?: number };
-
-const REPLY_VERB = new Set(["paid", "odendi"]);
-const REPLY_ALL = new Set(["all", "hepsi", "tumu"]);
-const REPLY_NONE = new Set(["none", "hicbiri", "yok"]);
-const REPLY_JOINER = new Set(["and", "ve"]);
-
-/**
- * The collector's answer to "N say they've paid": "PAID ALL", "PAID 1 3"
- * (their numbers on the month's list), "PAID NONE"; in Turkish "ÖDENDİ
- * HEPSİ", "ÖDENDİ 1 3", "ÖDENDİ HİÇBİRİ".
- *
- * The word PAID is required, and the whole message must be the phrase. A
- * stray "ok", a "yes", a thumbs up or a bare "1 3" (which is how an
- * organiser picks a waiting player) is NEVER a confirmation of money.
- */
-export function readCollectorReply(text: string | null | undefined): CollectorReply | null {
-  // An AMOUNT is never a list number: "paid £30" and "paid 22.50" are
-  // somebody saying what they paid, not the collector's reply.
-  if (/[£₺]|\d[.,]\d/.test(text ?? "")) return null;
-  const tokens = foldListText(text ?? "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .split(" ")
-    .filter(Boolean);
-  if (tokens.length < 2 || tokens.length > 40 || !REPLY_VERB.has(tokens[0])) return null;
-  let rest = tokens.slice(1);
-  // An optional month straight after the word: "PAID NOVEMBER ALL".
-  const named = monthOfWord(rest[0]);
-  const month = named !== null && rest.length > 1 ? { month: named } : {};
-  if (named !== null) rest = rest.slice(1);
-  if (rest.length === 0) return null;
-  if (rest.length === 1 && REPLY_ALL.has(rest[0])) return { kind: "all", ...month };
-  if (rest.length === 1 && REPLY_NONE.has(rest[0])) return { kind: "none", ...month };
-  const numbers: number[] = [];
-  for (let i = 0; i < rest.length; i++) {
-    const tok = rest[i];
-    if (/^\d{1,2}$/.test(tok)) {
-      const n = Number(tok);
-      if (n < 1) return null;
-      numbers.push(n);
-    } else if (!(REPLY_JOINER.has(tok) && i > 0 && i < rest.length - 1 && /^\d{1,2}$/.test(rest[i + 1]))) {
-      return null;
-    }
-  }
-  return numbers.length > 0 ? { kind: "numbers", numbers: [...new Set(numbers)], ...month } : null;
-}
 
 export interface WaitingClaim {
   userId: string;
@@ -296,6 +207,30 @@ export const DIGEST_REPLY_WINDOW_MS = 2 * DAY_MS;
 export interface SentDigest {
   at: Date;
   userIds: string[];
+  /** Its SentNotification key, when read from the database. */
+  key?: string;
+}
+
+/** A list of paid claims can be answered for this long (review of #465). */
+export const DIGEST_ANSWER_WINDOW_MS = 7 * DAY_MS;
+
+/**
+ * Is the message he is answering (the one he swipe-replied to, or else
+ * MatchTime's newest message to him) one of MatchTime's paid-claims lists,
+ * still open (sent within the window and not fully answered)? Decided from
+ * WHICH message it is (MatchTime's own words, as it sent them), never from
+ * what he wrote. Only then is his message read as the answer.
+ */
+export function answersOpenDigest(p: {
+  answering: string | null;
+  digests: Array<{ text: string | null; at: Date }>;
+  now: Date;
+}): boolean {
+  const a = p.answering?.trim();
+  if (!a) return false;
+  return p.digests.some(
+    (d) => !!d.text && p.now.getTime() - d.at.getTime() <= DIGEST_ANSWER_WINDOW_MS && a.includes(d.text.trim()),
+  );
 }
 
 export type CollectorDecision =

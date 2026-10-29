@@ -373,10 +373,13 @@ describe("joining a month that has started", () => {
     expect(mayJoinStartedMonth(ok)).toBe(true);
     expect(mayJoinStartedMonth({ ...ok, source: "page" })).toBe(true);
   });
-  it("never out or pay-as-you-go, never by a pasted list, never with no game left, never while sign-up is open", () => {
+  it("never out or pay-as-you-go, never with no game left, never while sign-up is open", () => {
     expect(mayJoinStartedMonth({ ...ok, choice: "out" })).toBe(false);
     expect(mayJoinStartedMonth({ ...ok, choice: "payg" })).toBe(false);
-    expect(mayJoinStartedMonth({ ...ok, source: "paste" })).toBe(false);
+    // 2026-10-29 (B3): a newcomer adding his OWN name to the month's pasted
+    // list joins for the games left; `handleSignupPaste` allows only that.
+    expect(mayJoinStartedMonth({ ...ok, source: "paste" })).toBe(true);
+    expect(mayJoinStartedMonth({ ...ok, source: "admin" })).toBe(false);
     expect(mayJoinStartedMonth({ ...ok, gamesLeft: 0 })).toBe(false);
     expect(mayJoinStartedMonth({ ...ok, running: false })).toBe(false);
   });

@@ -269,6 +269,43 @@ export function clearCalloffStub(): void {
   rmSync(`${E2E.CALLOFF_STUB_FILE}.calls`, { force: true });
 }
 
+/** The MONTHLY READER stub (2026-10-29): a group message's body → the
+ *  model's raw answer (the schema's object). A body with no entry is read
+ *  by the deterministic stand-in, as every monthly scenario before. */
+export function setMonthlyReaderStub(stub: { bodies?: Record<string, unknown>; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.MONTHLY_READER_STUB_FILE), { recursive: true });
+  // The harness's legacy readings (`monthly-reader-legacy.ts`) are kept.
+  let legacy: unknown = undefined;
+  try {
+    legacy = (JSON.parse(readFileSync(E2E.MONTHLY_READER_STUB_FILE, "utf8")) as { legacy?: unknown }).legacy;
+  } catch {
+    legacy = undefined;
+  }
+  writeFileSync(E2E.MONTHLY_READER_STUB_FILE, JSON.stringify({ ...stub, ...(legacy ? { legacy } : {}) }, null, 2));
+}
+
+export function clearMonthlyReaderStub(): void {
+  mkdirSync(path.dirname(E2E.MONTHLY_READER_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.MONTHLY_READER_STUB_FILE, "{}");
+  rmSync(`${E2E.MONTHLY_READER_STUB_FILE}.calls`, { force: true });
+}
+
+/** The DIGEST REPLY stub (2026-10-29): the collector's message → the
+ *  model's raw JSON (`{answer, numbers, month, confidence}`). The harness
+ *  also registers the old code's reading of every message it posts
+ *  (`monthly-reader-legacy.ts`). */
+export function setDigestReplyStub(stub: { bodies?: Record<string, string>; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.DIGEST_REPLY_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.DIGEST_REPLY_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+/** The MONTH SEED REPLY stub (2026-10-29): an organiser's DM body → the
+ *  model's raw JSON answer (`{answer, changes, confidence}`). */
+export function setMonthSeedReplyStub(stub: { bodies?: Record<string, string>; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.MONTH_SEED_REPLY_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.MONTH_SEED_REPLY_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
 /** The POOL REPLY stub (slice L6): a pool player's reply to his offer →
  *  "accept" | "decline" | "stop" | "question" | "neither", or "low:<intent>"
  *  for an unsure reading. `{}` means "neither", which keeps today's line. */
@@ -308,6 +345,9 @@ export function clearPipelineStubs(): void {
   clearRosterSurveyStub();
   clearVolunteerNameStub();
   clearCalloffStub();
+  clearMonthlyReaderStub();
+  setMonthSeedReplyStub({});
+  setDigestReplyStub({});
 }
 
 // ── Fact builders ─────────────────────────────────────────────────────

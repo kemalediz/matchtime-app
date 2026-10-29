@@ -12,8 +12,6 @@
  */
 import { dayCommaTimeLabel, monthNameLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
-import { isMonthListHeader } from "./monthly-list";
-import { isCantPlayHeader, readListLine } from "./pasted-roster";
 import type { Lang } from "./i18n/lang";
 import type { WeekList, WeekName } from "./monthly-week-rules";
 
@@ -105,6 +103,17 @@ export function buildPasteSenderNotMatchedDm(p: { names: string[]; lang?: LangAr
   return t(p.lang).mwk_dm_sender_not_matched({ names: p.names });
 }
 
+/** To the member whose paste had more guests than one paste may add. */
+export function buildPasteGuestsRefusedDm(p: { names: string[]; lang?: LangArg }): string {
+  return t(p.lang).mwk_dm_paste_guests_refused({ names: p.names });
+}
+
+/** To the member whose paste added guests (B2, 2026-10-29): who, and to
+ *  which game. */
+export function buildPasteGuestsAddedDm(p: { names: string[]; matchDate: Date; lang?: LangArg }): string {
+  return t(p.lang).mwk_dm_paste_guests_added({ names: p.names, when: dayCommaTimeLabel(p.lang, p.matchDate) });
+}
+
 /** To a member of the month whose numbered list was not read as the
  *  month's list (no title line, and mostly not this month's players). */
 export function buildPasteSenderNotListDm(p: { matchDate: Date; lang?: LangArg }): string {
@@ -177,49 +186,3 @@ export function buildSeedBumpedDm(p: { name: string | null; activityName: string
   });
 }
 
-const RESERVE_HEADER = /^\s*(reserves?|subs?|substitutes?|standby|stand-by)\b\s*:?\s*$/i;
-
-/** `mwk_list_open_organiser` as MatchTime posted it in English until
- *  2026-10-12. Never sent any more, only recognised. The Turkish line did
- *  not change. */
-function legacyOpenOrganiserLine(open: number): string {
-  return `${open} ${open === 1 ? "place" : "places"} open. Say *IN* to go on the waiting list, and the organisers will pick who plays.`;
-}
-
-/**
- * What a member typed AROUND the list. The list's own furniture is taken
- * out: its title, its section headers, and the "N places open" line of
- * MatchTime's own post, which a member who copies that post pastes back
- * (and which a model must never read as the sender saying IN).
- */
-export function pasteResidual(body: string, ctx: { lang: string | null; maxPlayers: number; paygPricePence: number | null }): string {
-  const s = t(ctx.lang);
-  const own = new Set<string>([s.mwk_list_cant_play_paid, s.mwk_list_cant_play, s.mwk_list_reserves]);
-  const price = paygPriceLabel(ctx.paygPricePence);
-  for (let open = 1; open <= Math.max(ctx.maxPlayers, 1); open++) {
-    own.add(s.mwk_list_open({ open, price }));
-    own.add(s.mwk_list_open({ open, price: null }));
-    own.add(s.mwk_list_open_organiser({ open }));
-    // The same line as it read before 2026-10-12, when the English said
-    // "waiting list" for the bench. Posts in that wording are still in the
-    // groups, and one pasted back must not reach a model as "say IN".
-    own.add(legacyOpenOrganiserLine(open));
-  }
-  // A not-playing header only counts BELOW a list line, exactly as the
-  // reader decides it: "Can't make it" typed above the list is the sender
-  // speaking, and must reach the pipeline.
-  const kept: string[] = [];
-  let seenListLine = false;
-  for (const raw of body.split(/\r?\n/)) {
-    if (readListLine(raw)) {
-      seenListLine = true;
-      continue;
-    }
-    const line = raw.trim();
-    if (!line) continue;
-    if (isMonthListHeader(line) || RESERVE_HEADER.test(line) || own.has(line)) continue;
-    if (seenListLine && isCantPlayHeader(line)) continue;
-    kept.push(line);
-  }
-  return kept.join("\n").trim();
-}

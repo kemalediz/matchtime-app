@@ -547,6 +547,8 @@ export async function runAdminOpsBatch(args: {
   const recruitNotOrganiser = new Map<string, string>();
   /** "Our pitch is Goals Sutton": looked up and set after this loop. */
   const venueAsks = new Map<string, { words: string | null; choice: number | null }>();
+  /** season_break (2026-10-29): an organiser's months off, or back on. */
+  const breakAsks = new Map<string, { breakMonths: string[]; playMonths: string[] }>();
   /** "Try again" with nothing stored to repeat: one short line. */
   const nothingToRetry = new Set<string>();
   /** "Try again" acted on as the stored ask (for the reasoning row). */
@@ -595,6 +597,22 @@ export async function runAdminOpsBatch(args: {
     // A tagged player hears who can. "Try again" becomes the organisers'
     // stored ask, and goes on below exactly as that ask did; with nothing
     // to repeat it is one short line.
+    // A season break (2026-10-29, Kemal: every admin feature by tagging):
+    // "no football in December", "we're back mid January". Only with an
+    // explicit tag and from an organiser, as the pitch is.
+    if (facts.action === "season_break") {
+      if (!(m.tagged && (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body })))) {
+        hand("season_break without an explicit MatchTime tag");
+        continue;
+      }
+      if (!state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin)) {
+        recruitNotOrganiser.set(m.waMessageId, facts.action);
+        continue;
+      }
+      breakAsks.set(m.waMessageId, { breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [] });
+      continue;
+    }
+
     if (facts.action === "set_venue" || facts.action === "retry_ask") {
       if (!(m.tagged && (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body })))) {
         hand(`${facts.action} without an explicit MatchTime tag`);
@@ -822,6 +840,18 @@ export async function runAdminOpsBatch(args: {
       console.error(`[admin-ops-engine] ${id}: set_venue threw:`, err);
       degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: set_venue threw (${detail}); nothing was said`);
       cancelOutcomes.push(replyOnly(id, null, "noise", `set_venue threw (${detail}); the write FAILED and nothing was said`, true));
+    }
+  }
+  for (const [id, ask] of breakAsks) {
+    try {
+      const { applySeasonBreakWords } = await import("./season-break-words");
+      const r = await applySeasonBreakWords({ orgId, ...ask, lang: state.features.language, now });
+      cancelOutcomes.push(replyOnly(id, r.replyText, r.outcome, `season_break by an organiser: ${r.outcome}`));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[admin-ops-engine] ${id}: season_break threw:`, err);
+      degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: season_break threw (${detail}); nothing was said`);
+      cancelOutcomes.push(replyOnly(id, null, "noise", `season_break threw (${detail}); the write FAILED and nothing was said`, true));
     }
   }
   for (const id of nothingToRetry) {

@@ -3271,6 +3271,29 @@ export const tr: Strings = {
   mwk_dm_sender_not_matched: (p) =>
     `📋 Yapıştırdığın listedeki ${p.names.join(", ")} adını bir oyuncuyla eşleştiremedim, bu yüzden kimseyi eklemedim. ` +
     `Oynamak için grupta kendin *VARIM* yaz ya da bir organizatörden eklemesini iste.`,
+  mwk_dm_paste_guests_refused: (p) => `📋 Bir listeyle ancak birkaç yeni oyuncu eklenebilir, bu yüzden ${p.names.join(", ")} eklenmedi. Bir organizatör ekleyebilir.`,
+  msu_dm_join_ask: (p) =>
+    `📋 Kalan ${p.games} maç için ${p.month} ayına düzenli oyuncu olarak katılmak ister misin${p.price ? ` (${p.price})` : ""}? Evet yazarsan seni ekliyorum.`,
+  mwk_dm_paste_guests_added: (p) =>
+    `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
+    `Yanlışsa bir organizatöre söyle.`,
+  sb_set: (p) => `✅ ${p.months} ayında maç yok: o ay için liste paylaşmayacağım ve maç açmayacağım.`,
+  sb_back: (p) => `✅ ${p.months} yeniden açık: her zamanki gibi yürüteceğim.`,
+  sb_unchanged: (p) => `Değişiklik yok: ${p.months} ayında zaten maç yok.`,
+  sb_none: (p) => `Değişiklik yok: kapalı ay yok. Ara verilen ayları buradan ayarlayabilirsin: ${p.link}`,
+  sb_started: (p) => `${p.month} ayını ara veremem: başladı bile. Onun yerine maçlarını iptal et.`,
+  sb_failed: (p) => `Ara verilen ayları değiştiremedim. Buradan ayarlayabilirsin: ${p.link}`,
+  sb_not_organiser: "Ara verilen ayları yalnızca bir organizatör değiştirebilir.",
+  mwk_dm_seed_declined: (p) => `Tamam, ${p.month} ayını başlatmadım. Liste hazır olunca yeniden paylaş ya da aylar sayfasından başlat.`,
+  mwk_dm_seed_from_group: (p) =>
+    [
+      `📋 Grupta paylaştığın ${p.month} listesini okudum: ${p.count} oyuncu (${p.names}).`,
+      ...(p.unknown ? [`Henüz tanımadığım isimler: ${p.unknown}. Onları oyuncu olarak ekle ya da onlarsız başlat.`] : []),
+      p.hq
+        ? `${p.month} ayını onlarla başlatmak için organizatör grubunda EVET yaz ya da buradan kontrol edip başlat: ${p.link}`
+        : `${p.month} ayını onlarla başlatmak için buradan kontrol edip başlat: ${p.link}`,
+      `Grupta bir şey yazmadım.`,
+    ].join("\n"),
   mwk_dm_sender_not_list: (p) =>
     `📋 Gönderdiğin listeyi ${p.month} kadro listesi olarak okuyamadım, bu yüzden bir şey değiştirmedim. ` +
     `Kadro listesiyse başlık satırıyla yapıştır ("${p.month} listesi").`,

@@ -35,7 +35,7 @@ import { isClubOperational } from "./club-approval-state";
 import { SETUP_STAGE_SELECT, isClubSettingUp } from "./club-setup-rules";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { hasMatchForSlot, isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
-import { parseMonthlyList } from "./monthly-list";
+import type { MonthlyReading } from "./monthly-reader-prompt";
 import { weekListHash } from "./monthly-week-rules";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
 import { loadClubQuietHours } from "./club-quiet-hours";
@@ -48,8 +48,6 @@ import {
   buildSignupUnknownDaysDm,
   buildSignupWaitingAdminNotice,
   buildSignupWaitingDm,
-  quotedSignupMonth,
-  signupPasteResidual,
 } from "./month-signup-copy";
 import {
   WAITING_NOTE,
@@ -68,7 +66,6 @@ import {
   nextMonthStart,
   planCarryOver,
   previousMonthStart,
-  readSignupMessage,
   reconcileSignupPaste,
   signupEndsAt,
   signupPasteShowsSameList,
@@ -83,6 +80,7 @@ import {
 import { carryFromMonthStart, isBreakMonth, londonMonthStart, monthStartToDate, normaliseSquadMode } from "./squad-month-rules";
 import { monthSetupCopy } from "./i18n/month-setup";
 import { dayLabel, monthNameLabel } from "./i18n/dates";
+import { t } from "./i18n/t";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 const HOUR_MS = 60 * 60 * 1000;
@@ -998,7 +996,8 @@ async function loadRoster(orgId: string): Promise<{ roster: SignupRosterMember[]
   };
 }
 
-const footerFacts = (m: SignupMonth) => ({
+/** The facts under the sign-up list (exported for the monthly reader). */
+export const footerFacts = (m: SignupMonth) => ({
   kickoffs: m.kickoffs,
   carriedFrom: m.carriedFrom,
   endsAt: m.endsAt ?? m.firstKickoff,
@@ -1041,7 +1040,8 @@ export interface SignupPasteResult {
  */
 export async function handleSignupPaste(args: {
   orgId: string;
-  body: string;
+  /** What the monthly reader (the model) read in the message. */
+  reading: Extract<MonthlyReading, { kind: "list" }>;
   waMessageId: string;
   sender: { userId: string | null; name: string | null };
   senderWhatsAppName?: string | null;
@@ -1055,15 +1055,10 @@ export async function handleSignupPaste(args: {
    * Anybody already on the month writing on the week's list is the week's.
    */
   newcomerOnly?: boolean;
-  /** The paste is one of MatchTime's own MONTH lists (the sign-up list or
-   *  the priced list, by its title). Such a list is read for a month that
-   *  is already under way too, but then ONLY for its paid marks. */
-  monthLevel?: boolean;
   now?: Date;
 }): Promise<SignupPasteResult | null> {
   const now = args.now ?? new Date();
-  const list = parseMonthlyList(args.body);
-  if (!list) return null;
+  const { list } = args.reading;
   if (args.newcomerOnly && (!list.month || !args.sender.userId)) return null;
   if (!(await isLiveMonthlyClub(args.orgId))) return null;
   const months = await loadLiveMonths(args.orgId, now);
@@ -1073,9 +1068,20 @@ export async function handleSignupPaste(args: {
 
   let month: SignupMonth | null = null;
   let outcome: ReturnType<typeof reconcileSignupPaste> | null = null;
+  /** B3: somebody who is not on a running month adding themselves to the
+   *  MONTH's list (the reader says it is the month's, not one game's) in
+   *  the middle of the month: a sign-up for the games left. On a week's
+   *  list the same line is that game only, as before. */
+  const lateJoin = (m: SignupMonth) =>
+    !m.open &&
+    !canJoin(m) &&
+    args.reading.listOf === "month" &&
+    !!args.sender.userId &&
+    !m.members.some((x) => x.userId === args.sender.userId && !x.out);
   for (const m of months) {
-    // A month under way: only MatchTime's own month list, for its paid marks.
-    if (!canJoin(m) && !args.monthLevel) continue;
+    // A month under way is the week's business (its paid marks are read
+    // there too), except for a newcomer joining it for the games left.
+    if (!canJoin(m) && !lateJoin(m)) continue;
     // With no month in the title, only a month still in sign-up.
     if (!list.month && !m.open) continue;
     if (args.newcomerOnly && (m.open || m.members.some((x) => x.userId === args.sender.userId && !x.out))) continue;
@@ -1096,13 +1102,26 @@ export async function handleSignupPaste(args: {
   }
   if (!month || !outcome) return null;
   if (args.newcomerOnly && !outcome.self) return null;
+  // Joining a month under way is only ever as a regular for the games
+  // left. A PAYG line of theirs is the month list's paid marks only.
+  const joiningLate = lateJoin(month) && outcome.self?.choice === "in";
+  // A month under way reached only for a late join that is not one (no
+  // line of the sender's, or a PAYG one): the list is the week's (3b).
+  if (!canJoin(month) && !joiningLate) return null;
 
   const applied: string[] = [];
   let changed = false;
   // Once the month's first game has kicked off nobody joins or leaves it
-  // by a paste: the paid marks below are all that is read.
-  const joinable = canJoin(month);
-  if (!joinable) outcome = { ...outcome, self: null, notAdded: [] };
+  // by a paste (bar the late join above): the paid marks are all that is read.
+  const joinable = canJoin(month) || joiningLate;
+  if (!joinable) outcome = { ...outcome, self: null, notAdded: [], games: [] };
+  // Joining a month under way rests on more than one reading of a pasted
+  // list (review of #465): he is asked by DM to confirm, and joins on his
+  // yes (`month-join-dm.ts`).
+  if (joiningLate && outcome.self && args.sender.userId) {
+    if (await askToJoinMonth({ month, userId: args.sender.userId, now })) applied.push(`join-asked:${args.sender.name ?? args.sender.userId}`);
+    outcome = { ...outcome, self: null };
+  }
   if (outcome.self && args.sender.userId) {
     const res = await applySignup({
       monthId: month.id,
@@ -1118,6 +1137,24 @@ export async function handleSignupPaste(args: {
       applied.push(`${res.outcome}:${args.sender.name ?? args.sender.userId}`);
     } else if (res.ok && res.locked) {
       applied.push("locked: says paid");
+    }
+    if (res.ok && res.outcome === "regular" && outcome.self.games !== null) {
+      if (await commitMonthGames(month.id, args.sender.userId, outcome.self.games)) {
+        changed = true;
+        applied.push(`games:${outcome.self.games}:${args.sender.name ?? args.sender.userId}`);
+      }
+    }
+  }
+  // "4 only" beside a regular already on the month: their own line, or an
+  // organiser writing it for them. Anybody else's note is left alone.
+  if (joinable && outcome.games.length > 0) {
+    const organiser = args.sender.userId ? await isOrganiser(args.orgId, args.sender.userId) : false;
+    for (const g of outcome.games) {
+      if (!g.self && !organiser) continue;
+      if (await commitMonthGames(month.id, g.userId, g.games)) {
+        changed = true;
+        applied.push(`games:${g.games}:${g.userId}`);
+      }
     }
   }
 
@@ -1182,7 +1219,7 @@ export async function handleSignupPaste(args: {
     applied,
     notAdded: outcome.notAdded,
     paidClaims: outcome.paidClaims,
-    residual: signupPasteResidual(args.body, footerFacts(month)),
+    residual: args.reading.residual,
   };
 }
 
@@ -1195,39 +1232,36 @@ export interface SignupMessageResult {
 }
 
 /**
- * Door 2: a typed sign-up, for a club on "monthly" (the caller checks).
- * "IN FOR NOVEMBER" names its month; a bare "IN" counts only as a reply
- * to the month's list (`quotedBody`, which a Pi that forwards quoted
- * messages sends). Null for anything else, and for a sender we cannot
- * match to a player: the message then goes on exactly as before.
+ * Door 2: a typed sign-up, for a club on "monthly" (the caller checks), as
+ * the monthly reader (the model) read it: "IN FOR NOVEMBER", "November good
+ * for me", "Kasım varım son hafta hariç", or a bare "IN" replying to the
+ * month's own list. Null when no month of the club fits, and for a sender
+ * we cannot match to a player: the message then goes on exactly as before.
  */
 export async function handleSignupMessage(args: {
   orgId: string;
-  body: string;
-  /** The message this one replies to, when the Pi forwarded it. */
-  quotedBody?: string | null;
+  ask: Extract<MonthlyReading, { kind: "signup" }>;
   sender: { userId: string | null };
   now?: Date;
 }): Promise<SignupMessageResult | null> {
   const now = args.now ?? new Date();
+  const { ask } = args;
   if (!args.sender.userId) return null;
-  // THE QUOTED-REPLY RULE (`quotedSignupMonth`): only a reply to
-  // MatchTime's own SIGN-UP list. A bare "IN" quoting the week's list is
-  // this week's game.
-  const quotedMonth = quotedSignupMonth(args.quotedBody);
-  const ask = readSignupMessage(args.body, { quoted: quotedMonth !== null });
-  if (!ask) return null;
-  const wanted = ask.month ?? quotedMonth;
-  if (wanted === null) return null;
   if (!(await isLiveMonthlyClub(args.orgId))) return null;
   const live = await loadLiveMonths(args.orgId, now);
   const month =
-    live.find((m) => m.monthNumber === wanted && !hasStarted(m, now)) ??
+    live.find((m) => m.monthNumber === ask.month && !hasStarted(m, now)) ??
     // Slice 6: a month already under way can still be JOINED for the games
-    // left, and only by the full phrase that names it ("IN FOR OCTOBER").
-    // A bare "IN" is this week's game, whatever it quotes.
-    (ask.choice === "in" && ask.month !== null ? live.find((m) => m.monthNumber === wanted && !m.open && hasStarted(m, now)) : undefined);
+    // left. Anything else in it is the organiser's.
+    (ask.choice === "in" ? live.find((m) => m.monthNumber === ask.month && !m.open && hasStarted(m, now)) : undefined);
   if (!month) return null;
+  // A month under way (review of #465): somebody new joins on the reading
+  // that names this month; somebody who was on it and left is asked by DM
+  // to confirm first, never put back on by one reading.
+  if (hasStarted(month, now) && month.members.some((x) => x.userId === args.sender.userId && x.out)) {
+    const asked = await askToJoinMonth({ month, userId: args.sender.userId, now });
+    return { monthId: month.id, choice: ask.choice, changed: asked, locked: false, outcome: "out" };
+  }
   const res = await applySignup({
     monthId: month.id,
     userId: args.sender.userId,
@@ -1238,7 +1272,64 @@ export async function handleSignupMessage(args: {
     now,
   });
   if (!res.ok) return null;
-  return { monthId: month.id, choice: ask.choice, changed: res.changed, locked: res.locked, outcome: res.outcome };
+  // "except the last week": the games they commit to, for a regular.
+  let games = false;
+  if (res.outcome === "regular" && ask.games !== null) games = await commitMonthGames(month.id, args.sender.userId, ask.games);
+  return { monthId: month.id, choice: ask.choice, changed: res.changed || games, locked: res.locked, outcome: res.outcome };
+}
+
+/** The SentNotification kind of an open "join for the games left?" ask. */
+export const MONTH_JOIN_ASK_KIND = "month-join-ask";
+export const monthJoinAskKey = (orgId: string, monthId: string, userId: string) => `${signupKeyPrefix(orgId)}join-ask:${monthId}:${userId}`;
+
+/**
+ * Ask a player by DM to confirm joining a month under way for the games
+ * left (review of #465). Once per month and player. True when asked.
+ */
+export async function askToJoinMonth(p: { month: SignupMonth; userId: string; now: Date }): Promise<boolean> {
+  const { month, userId, now } = p;
+  const left = month.kickoffs.filter((k) => k.getTime() > now.getTime()).length;
+  if (left === 0) return false;
+  const user = await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } });
+  const phone = user?.phoneNumber?.replace(/^\+/, "");
+  if (!phone) return false;
+  const price = month.sharePerGamePence != null ? `£${((month.sharePerGamePence * left) / 100).toFixed(2)}` : null;
+  const text = t(month.language).msu_dm_join_ask({ month: monthNameLabel(month.language, month.firstKickoff), games: left, price });
+  try {
+    await db.sentNotification.create({ data: { key: monthJoinAskKey(month.orgId, month.id, userId), kind: MONTH_JOIN_ASK_KIND, targetUser: userId, text } });
+  } catch {
+    return false; // asked already
+  }
+  const sendAfter = adminNoticeSendAfter(now, await loadClubQuietHours(month.orgId));
+  await db.botJob.create({ data: { orgId: month.orgId, kind: "dm", phone, text, ...(sendAfter ? { sendAfter } : {}) } });
+  return true;
+}
+
+/** Is this person an OWNER or ADMIN of the club? */
+async function isOrganiser(orgId: string, userId: string): Promise<boolean> {
+  const m = await db.membership.findFirst({ where: { orgId, userId, leftAt: null }, select: { role: true } });
+  return m?.role === "OWNER" || m?.role === "ADMIN";
+}
+
+/**
+ * The games a regular commits to for the month ("4 only"), through the
+ * one setter (`month-member-games.ts`), which works out what they owe.
+ * True only when it CHANGED what was recorded: the same note on every
+ * re-paste writes nothing. A failure is logged and changes nothing else.
+ * Shared with the week's paste (`monthly-paste.ts`).
+ */
+export async function commitMonthGames(monthId: string, userId: string, games: number): Promise<boolean> {
+  try {
+    const row = await db.squadMonthMember.findUnique({ where: { monthId_userId: { monthId, userId } }, select: { gamesCommitted: true } });
+    if (!row || row.gamesCommitted === games) return false;
+    const { setMonthMemberGames } = await import("./month-member-games");
+    const res = await setMonthMemberGames({ squadMonthId: monthId, userId, games, by: "reader" });
+    if (!res.ok) console.info(`[month-signup] ${games} games for ${userId} on ${monthId} not recorded: ${res.error}`);
+    return res.ok;
+  } catch (err) {
+    console.error(`[month-signup] recording ${games} games for ${userId} on ${monthId} failed:`, err);
+    return false;
+  }
 }
 
 // ── The list post ──────────────────────────────────────────────────────

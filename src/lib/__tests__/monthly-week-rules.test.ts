@@ -4,7 +4,7 @@
  * No database, no clock, no model. Made-up names throughout.
  */
 import { describe, it, expect } from "vitest";
-import { parseMonthlyList } from "../monthly-list";
+import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
 import {
   FEE_REPLY_WINDOW_MS,
   LIST_REPOST_FLOOR_MS,
@@ -15,7 +15,6 @@ import {
   decideSlotFor,
   mayStagePaygFeeOnReply,
   pasteShowsSameList,
-  pasteWeekHint,
   paygPoolOfferAllowed,
   planOpenPlaceOffers,
   reconcileMonthPaste,
@@ -748,19 +747,6 @@ describe("round 2 of the review", () => {
 });
 
 describe("round 3 of the review", () => {
-  describe("which week a pasted list is about (its title line)", () => {
-    const days = { upcomingDay: 19, previousDay: 12 };
-    it("reads the day in the title line", () => {
-      expect(pasteWeekHint("📋 List for October: Mon 19 Oct, 20:00\n1. Alex", days)).toBe("upcoming");
-      expect(pasteWeekHint("📋 List for October: Mon 12 Oct, 20:00\n1. Alex", days)).toBe("previous");
-      expect(pasteWeekHint("📋 Ekim listesi: 12 Ekim Pazartesi 20:00\n1. Alex", days)).toBe("previous");
-    });
-    it("says nothing for a title with no day, and never reads a slot number or a price as a day", () => {
-      expect(pasteWeekHint("List for October:\n12. Alex\n19. Bilal (Paid £19)", days)).toBeNull();
-      expect(pasteWeekHint("1. Alex\n2. Bilal\n3. Chris\n4. Dave", days)).toBeNull();
-    });
-  });
-
   describe("the collector's yes to a fee question that was never staged", () => {
     const NOW = new Date("2026-10-12T21:10:00.000Z");
     const ok = {

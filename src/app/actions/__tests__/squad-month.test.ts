@@ -28,6 +28,20 @@ const revalidatePath = vi.fn();
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }));
 vi.mock("@/lib/org", () => ({ requireOrgAdmin: (...a: unknown[]) => requireOrgAdmin(...a) }));
 vi.mock("next/cache", () => ({ revalidatePath: (...a: unknown[]) => revalidatePath(...a) }));
+// The list is read by the monthly reader, a model step (2026-10-29). Here
+// the "model" answers with the old code's reading of the same text, from
+// the test fixture, so these cases keep their meaning for free.
+vi.mock("@/lib/monthly-reader", async () => {
+  const { legacyReaderAnswer } = await import("@/lib/__tests__/fixtures/monthly-legacy");
+  const { parseMonthlyReading } = await import("@/lib/monthly-reader-prompt");
+  const ctx = { orgId: "org-vets", members: [], months: [], week: null };
+  return {
+    loadMonthlyReaderContext: async () => ctx,
+    readMonthlyMessage: async (input: { body: string; sender: { userId: string | null; name: string | null; organiser: boolean }; history: never[]; reply: null; now: Date }) =>
+      parseMonthlyReading(legacyReaderAnswer(input.body), input, ctx),
+  };
+});
+vi.mock("@/lib/ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Promise<unknown>) => fn() }));
 vi.mock("@/lib/db", () => ({
   db: {
     organisation: {
@@ -306,7 +320,7 @@ Paid but can't play
 1. Sammy`;
 
 describe("readMonthList: a pasted list becomes a draft, and writes nothing", () => {
-  it("reads the list with the slice 1 reader and matches names to this club's players", async () => {
+  it("reads the list with the monthly reader and matches names to this club's players", async () => {
     const res = await readMonthList("org-vets", LIST);
     expect(requireOrgAdmin).toHaveBeenCalledWith("u-sam", "org-vets");
     if (!res.ok) throw new Error(res.error);

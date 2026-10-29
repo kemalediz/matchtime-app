@@ -1,0 +1,195 @@
+/**
+ * THE MONTHLY READER (2026-10-29): one model call per group message, for a
+ * club on "monthly" with a live month. It reads a pasted list (its lines,
+ * blanks, parts such as "Paid but can't play", the notes beside names,
+ * guests, the month or game it is for, whatever was typed around it) and a
+ * typed sign-up ("November good for me"). The prompt, schema and checks
+ * are in `monthly-reader-prompt.ts`; the code that acts on the answer is
+ * `monthly-paste.ts` and `month-signup.ts`.
+ *
+ * One Haiku call (`HAIKU_CALL`, budget-guarded like every pipeline call).
+ * FAIL SAFE: no key, a failed call, the daily cap or an unreadable answer
+ * is `{ kind: "none" }` and the caller changes nothing for the month. It
+ * never invents a player: a member is only ever a ref it was shown.
+ */
+import { appendFileSync, readFileSync } from "node:fs";
+import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
+import { formatLondon } from "./london-time";
+import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "./pipeline/llm";
+import {
+  buildMonthlyReaderUserTurn,
+  MONTHLY_READER_SCHEMA,
+  MONTHLY_READER_SYSTEM,
+  parseMonthlyReading,
+  type MonthlyReaderContext,
+  type MonthlyReaderInput,
+  type MonthlyReading,
+  type ReaderMember,
+} from "./monthly-reader-prompt";
+
+export type { MonthlyReading, MonthlyReaderContext, MonthlyReaderInput } from "./monthly-reader-prompt";
+
+/** Pinned. Exported for the dry run. */
+export const MONTHLY_READER_CALL: ModelCall = HAIKU_CALL;
+const LABEL = "monthly-reader";
+/** A long list is about 30 lines of a dozen fields, with Haiku's thinking. */
+const MAX_TOKENS = 4_096;
+
+/**
+ * The club's context for the reader, once per batch, for a club on
+ * "monthly" (the caller checks): its members, its live months (none yet is
+ * fine: an organiser may be posting the coming month's list) and the week.
+ */
+export async function loadMonthlyReaderContext(args: { orgId: string; matchId: string | null; now?: Date }): Promise<MonthlyReaderContext> {
+  const now = args.now ?? new Date();
+  const { loadLiveMonths, renderSignupList } = await import("./month-signup");
+  const { loadMonthlyWeek, renderWeekList } = await import("./monthly-week");
+  const months = await loadLiveMonths(args.orgId, now);
+  const week = args.matchId ? await loadMonthlyWeek(args.matchId) : null;
+  const liveWeek = week && week.orgId === args.orgId ? week : null;
+  // With no month live yet the reader still runs: an organiser may be
+  // posting the coming month's list to start it (`month-seed-group.ts`).
+  const [memberships, aliases] = await Promise.all([
+    db.membership.findMany({
+      where: { orgId: args.orgId, leftAt: null, ...ORDINARY_MEMBER_WHERE, user: { isActive: true } },
+      select: { role: true, user: { select: { id: true, name: true } } },
+      orderBy: { createdAt: "asc" },
+    }),
+    db.userAlias.findMany({ where: { orgId: args.orgId }, select: { userId: true, alias: true } }),
+  ]);
+  const members: ReaderMember[] = memberships
+    .filter((m) => m.user.name)
+    .map((m, i) => ({
+      ref: `p${i + 1}`,
+      userId: m.user.id,
+      name: m.user.name as string,
+      aliases: aliases.filter((a) => a.userId === m.user.id).map((a) => a.alias),
+      organiser: m.role === "OWNER" || m.role === "ADMIN",
+    }));
+
+  const day = (d: Date) => formatLondon(d, "EEE d MMM");
+  const monthBlocks = months.map((m) => {
+    const label = formatLondon(m.kickoffs[0] ?? m.firstKickoff, "MMMM yyyy");
+    const started = m.startedMidMonth || now.getTime() >= m.firstKickoff.getTime();
+    const state = m.open ? "sign-up open" : started ? "under way" : "sign-up closed, not started yet";
+    const games = m.kickoffs.map((k) => `${day(k)}${k.getTime() < now.getTime() ? " (played)" : ""}`);
+    const left = m.kickoffs.filter((k) => k.getTime() > now.getTime()).length;
+    return [
+      `  ${label} (month ${m.monthNumber}): ${state}. ${m.kickoffs.length} games: ${games.join(", ")}; ${left} still to play.`,
+      `  Its list as MatchTime has it:`,
+      ...renderSignupList(m).text.split("\n").map((l) => `    ${l}`),
+    ].join("\n");
+  });
+
+  // A coming month that can still be started from a list (agent A's rule).
+  const { comingMonth } = await import("./month-seed-hq");
+  const seedable = (await comingMonth(args.orgId, now).catch(() => null)) !== null;
+  return {
+    orgId: args.orgId,
+    seedable,
+    members,
+    months: monthBlocks,
+    week: liveWeek ? { game: formatLondon(liveWeek.matchDate, "EEE d MMM yyyy, HH:mm"), text: renderWeekList(liveWeek).text } : null,
+  };
+}
+
+// ── The e2e stub ──────────────────────────────────────────────────────
+
+/**
+ * TEST-ONLY seam, as the other model steps have: what the model would have
+ * said, read from a file the e2e suite writes. `bodies` are a spec's own
+ * answers, by the message body. `legacy` are the answers the e2e harness
+ * registers for every message it posts, read by the old code in the TEST
+ * process (`e2e/helpers/monthly-reader-legacy.ts`), keyed by the body and
+ * the quoted text, so the monthly scenarios written before the model run
+ * unchanged. No parsing code is reachable from here. A body with neither
+ * is "none". `e2e/helpers/live-llm.ts` refuses a live run that can still
+ * see the file.
+ */
+export const MONTHLY_READER_STUB_FILE_ENV = "MT_TEST_MONTHLY_READER_STUB_FILE";
+
+interface ReaderStub {
+  /** Trimmed body → the model's raw answer (the schema's object). */
+  bodies?: Record<string, unknown>;
+  /** `${trimmed body}\u0000${trimmed quoted text}` → the raw answer. */
+  legacy?: Record<string, unknown>;
+  /** Bodies whose call fails, the way an overloaded API does. */
+  fail?: string[];
+}
+
+/** The key the harness registers a message's legacy answer under. */
+export const legacyStubKey = (body: string, quoted: string | null | undefined): string => `${body.trim()}\u0000${(quoted ?? "").trim()}`;
+
+async function readFromStub(file: string, input: MonthlyReaderInput, ctx: MonthlyReaderContext): Promise<MonthlyReading> {
+  let cfg: ReaderStub = {};
+  try {
+    cfg = JSON.parse(readFileSync(file, "utf8")) as ReaderStub;
+  } catch {
+    cfg = {};
+  }
+  const user = buildMonthlyReaderUserTurn(input, ctx);
+  try {
+    appendFileSync(`${file}.calls`, `${JSON.stringify({ label: LABEL, user })}\n`);
+  } catch {
+    // Recording is for the spec only.
+  }
+  const body = input.body.trim();
+  if ((cfg.fail ?? []).includes(body)) throw new Error(`${LABEL} stub: forced failure`);
+  const answer = cfg.bodies?.[body] ?? cfg.legacy?.[legacyStubKey(body, input.reply?.text)] ?? cfg.legacy?.[legacyStubKey(body, null)];
+  return answer === undefined ? { kind: "none", why: "stub: no answer" } : parseMonthlyReading(answer, input, ctx);
+}
+
+function defaultModel(): PipelineModel | null {
+  return process.env.ANTHROPIC_API_KEY?.trim() ? anthropicModel() : null;
+}
+
+/**
+ * Read one group message, once. `deps.model` undefined uses the real model
+ * (or the e2e stub), null asserts there is none. Never throws.
+ */
+export async function readMonthlyMessage(
+  input: MonthlyReaderInput,
+  ctx: MonthlyReaderContext,
+  deps?: { model?: PipelineModel | null },
+): Promise<MonthlyReading> {
+  if (!input.body?.trim()) return { kind: "none", why: "empty" };
+  // COST GATES, on facts only (review of #465): a sender who is nobody of
+  // the club cannot sign up, add himself or bring anyone; and a club with
+  // no live month, no week and no coming month to start has nothing a
+  // message could change.
+  if (!input.sender.userId) return { kind: "none", why: "sender not a club member" };
+  if (ctx.months.length === 0 && !ctx.week && ctx.seedable !== true) return { kind: "none", why: "nothing monthly to act on" };
+  let reading: MonthlyReading;
+  try {
+    const stubFile = deps?.model === undefined ? process.env[MONTHLY_READER_STUB_FILE_ENV] : undefined;
+    if (stubFile) {
+      reading = await readFromStub(stubFile, input, ctx);
+    } else {
+      const model = deps?.model === undefined ? defaultModel() : deps.model;
+      if (!model) return { kind: "none", why: "reader unavailable" };
+      const resp = await model.complete({
+        ...MONTHLY_READER_CALL,
+        system: MONTHLY_READER_SYSTEM,
+        user: buildMonthlyReaderUserTurn(input, ctx),
+        maxTokens: MAX_TOKENS,
+        schema: MONTHLY_READER_SCHEMA as unknown as Record<string, unknown>,
+        label: LABEL,
+      });
+      reading = parseMonthlyReading(extractJson(resp.text), input, ctx);
+    }
+  } catch (err) {
+    // FAIL SAFE: nothing is read, so nothing changes for the month.
+    console.error(`[${LABEL}] read failed:`, err instanceof Error ? err.message : "failed");
+    return { kind: "none", why: "reader error" };
+  }
+  console.info(
+    `[${LABEL}] org=${ctx.orgId} sender=${input.sender.userId ?? "?"} kind=${reading.kind}` +
+      (reading.kind === "list"
+        ? ` month=${reading.list.month?.month ?? "-"} game=${reading.gameDay ?? "-"} of=${reading.listOf} lines=${reading.list.slots.length}+${reading.list.sections.cantPlay.length}`
+        : reading.kind === "signup"
+          ? ` choice=${reading.choice} month=${reading.month} games=${reading.games ?? "-"}`
+          : ` why=${reading.why}`),
+  );
+  return reading;
+}

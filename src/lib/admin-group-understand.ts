@@ -362,6 +362,42 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
   const weekly = org.squadMode !== "monthly";
 
   return withOrgAiBudget(org.id, async () => {
+    // A MONTHLY club: the money collector answering MatchTime's list of
+    // paid claims ("PAID ALL", "1 and 3 are in"), read by a model against
+    // that list (`month-digest-reply.ts`). Asked only when he may confirm
+    // and a list is out for him; null for anybody else.
+    if (!weekly && input.senderUserId) {
+      const { handleCollectorPaidReply } = await import("./month-payment");
+      const { readDigestReply } = await import("./month-digest-reply");
+      const paid = await handleCollectorPaidReply({
+        // Which of MatchTime's lines he answers: the one quoted, else its
+        // newest here (looked up only when a list is out).
+        answering: async () =>
+          input.quoted?.text ??
+          (await db.adminGroupMessage.findFirst({ where: { orgId: org.id, fromMatchTime: true }, orderBy: { createdAt: "desc" }, select: { text: true } }))?.text ??
+          null,
+        text: input.text,
+        waMessageId: messageId,
+        senderUserIds: [input.senderUserId],
+        orgId: org.id,
+        read: (shown, text) => readDigestReply(shown, text),
+        now,
+      });
+      if (paid) return { route: null, outcome: paid.handled, replyText: paid.replyText || null };
+    }
+    // A MONTHLY club (2026-10-29): an organiser's pasted list for the
+    // coming month, not started yet, is proposed for YES like a weekly
+    // list. Read by the monthly reader (the one model step every group's
+    // monthly list goes through, `month-seed-read.ts`); null for anything
+    // else, which goes on to the router below.
+    if (!weekly && input.organiser && input.senderUserId) {
+      const { proposeMonthSeedPaste } = await import("./month-seed-read");
+      const seeded = await proposeMonthSeedPaste({ orgId: org.id, lang, messageId, organiserUserId: input.senderUserId, text: input.text, now });
+      if (seeded) {
+        await recordMatchTimeQuestion({ orgId: org.id, askRef: listAskRef(messageId), text: seeded.replyText, now });
+        return { route: null, outcome: seeded.outcome, replyText: seeded.replyText };
+      }
+    }
     const [pending, logAll, body] = await Promise.all([
       loadPending(org.id, now, lang, input.poolEnv),
       hqLogSince(org.id, new Date(now.getTime() - DAY_MS)),
@@ -985,6 +1021,18 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         // or admin's alone (the collector may not), weekly or monthly (a
         // monthly club's cancelled-week credits come with it, 2026-10-29).
         // The one path the web page uses (`match-cancel.ts`).
+        // A season break (2026-10-29): "no football in December", "we're
+        // back mid January". Tagged, and an organiser's alone, like a cancel.
+        if (facts.kind === "admin" && facts.action === "season_break") {
+          if (!tagged) {
+            console.log(`[admin-group] ${messageId}: season_break not tagged: their conversation`);
+            return null;
+          }
+          if (!actor) return onlyOrganisers();
+          const { applySeasonBreakWords } = await import("./season-break-words");
+          const r = await applySeasonBreakWords({ orgId: org.id, breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [], lang, now });
+          return { route, outcome: r.outcome, replyText: r.replyText };
+        }
         if (facts.kind === "admin" && (facts.action === "cancel_match" || facts.action === "restore_match")) {
           // Only when an organiser TAGS MatchTime (Kemal, 2026-10-22: "it only
           // acts when an admin tags it"). Untagged, "storm, no game Friday" is

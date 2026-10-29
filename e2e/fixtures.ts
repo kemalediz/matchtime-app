@@ -14,9 +14,15 @@ import { signMagicLinkToken } from "@/lib/magic-link";
 import { testDb, TestDb } from "./helpers/test-db";
 import { E2E, REPO_ROOT } from "./helpers/env";
 import { clearPipelineStubs } from "./helpers/stub";
+import { withLegacyMonthlyReadings } from "./helpers/monthly-reader-legacy";
 import { U } from "./helpers/constants";
 
 export const test = base.extend<{ db: TestDb }>({
+  // Every post to the group routes also answers the monthly reader's stub
+  // with the old code's reading (`helpers/monthly-reader-legacy.ts`).
+  request: async ({ request }, provide) => {
+    await provide(withLegacyMonthlyReadings(request));
+  },
   // (named "provide" rather than Playwright's conventional "use" so the
   // react-hooks lint rule doesn't mistake the fixture for a hook call;
   // browserName is destructured only because Playwright requires the

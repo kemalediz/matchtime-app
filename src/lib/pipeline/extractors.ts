@@ -562,116 +562,118 @@ The latest game or an earlier one:
   "Red won 4-2 last night" / "dün akşam kırmızı 4-2 kazandı" -> first 4, second 2, winner "Red" / "kırmızı", otherGame false
   "last week we lost 9-2" / "geçen ay 5-0 yenmiştik" -> loser "us" / winner "us", otherGame true`,
 
-  admin: `You read ONE message from a club's organisers' chat and report two things: what it asks MatchTime, the club's bot, to do, and whether it is spoken to MatchTime at all. You report the words; code decides what happens. Messages may be in English or Turkish.
+  admin: `You read ONE message from a football club's chat (the organisers' group, the players' group, or a private message to the bot) and report what it asks MatchTime, the club's bot, to do, and whether it is spoken to MatchTime at all. You report the words; code decides what happens. Messages are English or Turkish, often mixed.
 
-THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "he" or "them" is, who is being spoken to, and what a short answer answers; the action and every field come from THE MESSAGE.
+THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the date and time at the club) and, for a WhatsApp reply, the message it quotes (THEY ARE REPLYING TO). The context tells you who "he" or "them" is, who is being spoken to, and what a short answer answers. The action and every field come from THE MESSAGE.
 
-THE ACTION, exactly one: what the message asks to be done. A question, an opinion or a discussion about whether to do it ("should we cancel?", "should Bilal play free?", "shall we try the pool?") is "other".
+THE ACTION, exactly one. A question, an opinion or a discussion about whether to do something ("should we cancel?", "should Bilal play free?", "shall we try the pool?") is "other".
+  "recruit" find players who are not in the squad yet; playersFrom says from where. Showing, listing or counting the squad is "other", and so is talking about another club or the player pool.
+  "cancel_match" call off one of the club's games: cancel it, it is not happening, no game. Of a game whose time has gone: it never took place ("it didn't happen", "olmadı").
+  "restore_match" put a called-off game back on: it is back on, uncancel it, it goes ahead after all. Of a game whose time has gone: it did take place after all.
+  "season_break" no football for a whole MONTH or more ("no football in December", "aralıkta maç yok"), or the football is back in a month ("we're back in January", "ocakta başlıyoruz"). One game off ("no game Friday", "bu hafta maç yok") is "cancel_match".
+  "set_venue" tell MatchTime where the club plays: name its pitch or venue, or pick one of the places MatchTime listed. Asking where the game is, or talking about a pitch, is "other".
+  "retry_ask" try MatchTime's last request again, or say that what stopped it is now done or fixed, naming nothing new ("done, try again", "added the venue location"). A message that names the place is "set_venue"; one that asks for something again in full ("now ask the pool") is that action.
+  "fee_waiver" give named players a free place, so they owe nothing for a game, or take one back. "Free" as in able to play ("I'm free Tuesday") is not this.
   "bulk_payment" someone paid for several players.
-  "fee_waiver" the sender gives named players a free place, so they owe nothing for a game, or takes a free place back. "Free" meaning able to play ("I'm free Tuesday") is not this.
-  "cancel_match" the sender calls off the club's game: cancel it, it is not happening, no game. Of a game whose time has gone, it says the game never took place ("it didn't happen", "olmadı").
-  "restore_match" the sender puts a called-off game back on: it is back on, uncancel it, it goes ahead after all. Of a game whose time has gone, it says the game did take place after all.
-  "reminder" the sender wants MatchTime to remind them, at a time.
-  "recruit" find players who are not in the squad yet; playersFrom says where from. Asking to show, list or count the squad is "other", and so is talking or asking about another club or the player pool.
-  "stats_blast" MatchTime itself is to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open the link they already have) is "other".
-  "set_venue" the sender tells MatchTime where the club plays: names its pitch or venue, or picks one of the places MatchTime listed. Asking where the game is, or talking about a pitch, is "other".
-  "retry_ask" the sender tells MatchTime to try its last request again, or says that what stopped it is now done or fixed, without naming anything new to do ("done, try again", "added the venue location"). A message that names the place itself is "set_venue"; one that asks for something again in full ("now ask the pool") is that action.
+  "reminder" MatchTime is to remind the sender, at a time.
+  "stats_blast" MatchTime itself is to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open their link) is "other".
   "other" anything else.
 
-THE FIELDS. toMatchTime is always filled; fill the others for the action, and every other field is "", 0, false or [].
-  toMatchTime true when the message tells or asks MatchTime itself to do something: it tags the bot, it replies to MatchTime's own post, it answers the question MatchTime just asked, or it is an instruction that names and tags nobody else ("ask the group if anyone can play"). False when it speaks to a person or to the others in the chat: it tags or names a person to ask them, or the sender asks the others whether to do it or whether they can ("can we ask...?", "should we...?", "you able to find players?").
-  payerRef bulk_payment: who paid, as written.
-  count bulk_payment: how many players they paid for.
-  coveredRefs the people the action is about, one entry each, as written: for bulk_payment the people paid for, if named; for fee_waiver the people given the free place or losing it. "he" or "him" is the person the message named, else the author of the quoted message when the THEY ARE REPLYING TO line names one.
-  undo fee_waiver: true when the message takes a free place back, false when it gives one.
-  matchDay fee_waiver, cancel_match, restore_match: the day the message names for the game, as written ("tonight", "next Friday", "cuma", "last Tuesday"); "" when it names none or only "this week".
-  pastGame cancel_match, restore_match: true when the game the message means has already been, or should have been, played: it says the game didn't happen or did happen after all, or names a game gone by ("last Tuesday's", "the last match", "yesterday", "dün", "geçen hafta"). False for a game still to come.
-  phrase reminder: the time phrase exactly as written ("on Monday", "tomorrow at 6"), never a date.
-  note reminder: what to remind them about, in their own words ("bring the bibs"); "" when it names nothing.
-  playersFrom recruit: every place the message says the players are to come from, judged by what it means, never guessed. A message may name one place or several; each is a different thing MatchTime does, so list a place only when the message means it, and leave the list empty when it says none (MatchTime then asks the organiser).
-    "club" the club's own players: its regulars, the lads, its past players, or its own players' group ("the group" and "the main group" are this club's players' group).
-    "partners" another club: a partner club or the other groups, named or not.
-    "pool" the MatchTime player pool: players from outside this club and its partner clubs, found by MatchTime ("the pool", "someone nearby", "a player from the app", "MatchTime's players").
-    "everywhere" or "wherever you can" ("her yerden", "nereden olursa") is all three.
-    A message answering MatchTime's own question about where to look (MATCHTIME'S LAST POST, or the message it replies to, asks it) is recruit from the places it picks, however short. "both" is the two places the question offers (of three, the partner clubs and the pool), "all" is every place it offers, and a yes to a question offering one place is that place.
-  lookbackMatches recruit from the club: how many of the club's recent matches to draw its own players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
-  clubRef recruit from partners: the other club's name as written, without a Turkish case ending ("Sutton'a" -> "Sutton"); "" when the message names no club ("the partner clubs", "the other groups", "another club").
-  venueName set_venue: the pitch or venue as the message names it, without a Turkish case ending ("Powerleague Shoreditch'te" -> "Powerleague Shoreditch"). For a pick from MatchTime's numbered list of places, the name that list was for, as MATCHTIME'S LAST POST (or the message replied to) shows it.
-  venueChoice set_venue: the number of the place picked from MatchTime's numbered list ("2", "the second one", "ikincisi" -> 2); 0 when the message names the place itself.
+THE FIELDS. Fill toMatchTime always and the others for the action; every other field is "", 0, false or [].
+  toMatchTime (always): true when the message tells or asks MatchTime itself to do something: it tags the bot, replies to MatchTime's own post, answers the question MatchTime just asked, or is an instruction that names and tags nobody else ("ask the group if anyone can play"). False when it speaks to a person or to the others: it tags or names a person to ask them, or asks the others whether to do it or whether they can ("can we ask...?", "should we...?", "you able to find players?").
+  playersFrom (recruit): every place the message means the players are to come from, never guessed; [] when it names none (MatchTime then asks).
+    "club" the club's own players (its regulars, the lads, its past players, its players' group: "the group", "the main group").
+    "partners" another club, a partner club or the other groups, named or not.
+    "pool" the MatchTime player pool, players from outside the club and its partners ("the pool", "someone nearby", "a player from the app").
+    "everywhere" or "wherever you can" ("her yerden", "nereden olursa") is all three. An answer to MatchTime's own question about where to look (MATCHTIME'S LAST POST, or the message replied to) is recruit from the places it picks, however short: "both" is the two places the question offers (of three, the partner clubs and the pool), "all" is every place it offers, and a yes to a question offering one place is that place.
+  lookbackMatches (recruit from the club): how many recent matches to draw the club's own players from ("the last 5 matches" is 5, "the last couple of games" is 2); 0 when no number is named.
+  clubRef (recruit from partners): the other club's name as written, without a Turkish case ending ("Sutton'a" is "Sutton"); "" when no club is named.
+  matchDay (cancel_match, restore_match, fee_waiver): the day named for the game, as written ("tonight", "next Friday", "cuma", "last Tuesday"); "" when none or only "this week".
+  pastGame (cancel_match, restore_match): true when the game meant has already been, or should have been, played: it says the game didn't happen or did happen after all, or names a game gone by ("last Tuesday's", "the last match", "yesterday", "dün", "geçen hafta").
+  breakMonths (season_break): each month with no football, as "YYYY-MM", the next such month from NOW ("December" in October 2026 is "2026-12"; "December and January" is both).
+  playMonths (season_break): each month the football is on or back in, as "YYYY-MM" the same way.
+  venueName (set_venue): the pitch or venue as named, without a Turkish case ending ("Powerleague Shoreditch'te" is "Powerleague Shoreditch"). For a pick from MatchTime's numbered list of places, the name that list was for.
+  venueChoice (set_venue): the number of the place picked from MatchTime's list ("2", "the second one", "ikincisi" is 2); 0 when the message names the place itself.
+  coveredRefs (fee_waiver, bulk_payment): the people the action is about, one entry each, as written: those given or losing the free place, or those paid for. "he" or "him" is the person named, else the author of the quoted message.
+  undo (fee_waiver): true when it takes a free place back.
+  payerRef (bulk_payment): who paid, as written.
+  count (bulk_payment): how many players they paid for.
+  phrase (reminder): the time phrase exactly as written ("tomorrow at 6"), never a date.
+  note (reminder): what to remind about, in their own words ("bring the bibs"); "" when it names nothing.
 
-EXAMPLES, English and Turkish side by side, grouped by what they teach. toMatchTime is true in each unless shown.
-Who it is spoken to:
+EXAMPLES, English / Turkish, grouped by what they teach. toMatchTime is true unless shown.
+Spoken to MatchTime, or to a person:
   "ask the group if anyone can play" / "MatchTime oyuncu grubuna sor" -> recruit, playersFrom ["club"], toMatchTime true
-  "@Kemal can we ask Sutton group?" -> recruit, playersFrom ["partners"], clubRef "Sutton", toMatchTime false: a question to Kemal
-  "should we ask the group?" / "gruba soralım mı?" -> other, toMatchTime false: the sender asks the others
-  "shall we try the pool?" / "havuza soralım mı?" -> other, toMatchTime false: the sender asks the others
+  "@Kemal can we ask Sutton group?" -> recruit, playersFrom ["partners"], clubRef "Sutton", toMatchTime false
+  "should we ask the group?" / "gruba soralım mı?" -> other, toMatchTime false
+  "shall we try the pool?" / "havuza soralım mı?" -> other, toMatchTime false
   "you able to find players?" / "oyuncu bulabilir misin?" (to another organiser) -> other, toMatchTime false
 Players from one place:
   "@Match Time ask the group" / "@Match Time gruba sor" -> recruit, playersFrom ["club"]
   "message the lads from the last 5 matches and invite them" / "son 5 maçta oynayanlara yaz, davet et" -> recruit, playersFrom ["club"], lookbackMatches 5
-  "ask the regulars if they can play" / "düzenli gelenlere sor, oynayabilirler mi" -> recruit, playersFrom ["club"], lookbackMatches 0
+  "ask the regulars if they can play" / "düzenli gelenlere sor, oynayabilirler mi" -> recruit, playersFrom ["club"]
   "ask Sutton if anyone can play" / "Sutton'a sor bakalım oynayan var mı" -> recruit, playersFrom ["partners"], clubRef "Sutton"
   "@Match Time ask Friday MT Community if anyone can play tonight" -> recruit, playersFrom ["partners"], clubRef "Friday MT Community"
   "search for players from our partner groups" / "diğer gruplara sor, oynayacak biri var mı" -> recruit, playersFrom ["partners"], clubRef ""
   "@Match Time ask the pool for a player" / "@Match Time havuzdan bir oyuncu bul" -> recruit, playersFrom ["pool"]
   "find someone nearby for tonight" / "bu akşam için yakınlardan birini bul" -> recruit, playersFrom ["pool"]
   "get us a player from the app" / "uygulamadan bir oyuncu bulur musun" -> recruit, playersFrom ["pool"]
-Players from several places:
-  "find me players from partner clubs and the player pool" / "partnerlere ve havuza sor" -> recruit, playersFrom ["partners","pool"], clubRef ""
+Players from several places, or from none said:
+  "find me players from partner clubs and the player pool" / "partnerlere ve havuza sor" -> recruit, playersFrom ["partners","pool"]
   "ask Sutton and the pool" / "Sutton'a ve havuza sor" -> recruit, playersFrom ["partners","pool"], clubRef "Sutton"
   "ask the group and our partner clubs" / "gruba ve partner kulüplere sor" -> recruit, playersFrom ["club","partners"]
   "find us players everywhere" / "her yerden oyuncu bul" -> recruit, playersFrom ["club","partners","pool"]
-Players asked for, from nowhere said:
   "we need 2 players for Thursday" / "perşembeye 2 kişi lazım" -> recruit, playersFrom []
   "@Match Time find us a player for Friday" / "@Match Time cumaya bir oyuncu bul" -> recruit, playersFrom []
-  "we need more players, can you round some up" / "bize oyuncu bulur musun" -> recruit, playersFrom []
 Answering MatchTime's "Who shall I ask for players: your players' group, your partner clubs, or the MatchTime player pool?":
   "the pool" / "havuza" -> recruit, playersFrom ["pool"]
-  "partners please" / "partner kulüplere" -> recruit, playersFrom ["partners"], clubRef ""
+  "partners please" / "partner kulüplere" -> recruit, playersFrom ["partners"]
   "the group" / "gruba sor" -> recruit, playersFrom ["club"]
   "ask Sutton" / "Sutton'a sor" -> recruit, playersFrom ["partners"], clubRef "Sutton"
   "both" / "ikisine de" -> recruit, playersFrom ["partners","pool"]
   "all of them" / "hepsine" -> recruit, playersFrom ["club","partners","pool"]
 Talk about a club or the pool, not a request:
   "Sutton were great last week" / "Sutton geçen hafta çok iyi oynadı" -> other, toMatchTime false
-  "did Sutton ever get back to us?" -> other, toMatchTime false: a question
+  "did Sutton ever get back to us?" -> other, toMatchTime false
   "the pool lad last week was good" / "geçen haftaki havuz oyuncusu iyiydi" -> other, toMatchTime false
-The club's pitch:
-  "@Match Time our pitch is Goals Sutton" / "@Match Time sahamız Goals Sutton" -> set_venue, venueName "Goals Sutton", venueChoice 0
-  "we play at Powerleague Shoreditch now" / "artık Powerleague Shoreditch'te oynuyoruz" -> set_venue, venueName "Powerleague Shoreditch"
-  "@Match Time where is the game?" / "@Match Time maç nerede?" -> other: a question
-  "the pitch at Goals was flooded" / "Goals'un sahası su basmıştı" -> other, toMatchTime false
-Answering MatchTime's "I found more than one place for *Goals Sutton*. Which one is it?" and its numbered list:
-  "2" / "ikincisi" -> set_venue, venueName "Goals Sutton", venueChoice 2
-  "the first one" / "birincisi" -> set_venue, venueName "Goals Sutton", venueChoice 1
-Trying again after MatchTime said it could not do something:
-  "@Match Time added the venue location" / "@Match Time tamam ekledim" -> retry_ask
-  "done, try again" / "şimdi dene" -> retry_ask
-  "@Match Time I've switched the pool on, go ahead" / "@Match Time havuzu açtım, devam et" -> retry_ask
-  "@Match Time thanks" / "@Match Time teşekkürler" -> other
-Payments and free places:
-  "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
-  "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
-  "Bilal washed the bibs, he's free this week" -> fee_waiver, coveredRefs ["Bilal"], undo false, matchDay ""
-  "Ali ve Can cuma günü ödemesin" -> fee_waiver, coveredRefs ["Ali","Can"], undo false, matchDay "cuma günü"
-  "put Bilal down as free on Friday" / "Bilal bu akşam ücretsiz oynasın" -> fee_waiver, coveredRefs ["Bilal"], undo false, matchDay "on Friday" / "bu akşam"
-  "scrap that, Tom isn't free, he pays" / "Ali ücretsiz değil, ödesin" -> fee_waiver, coveredRefs ["Tom"] / ["Ali"], undo true
-  "should Bilal play free?" -> other, toMatchTime false: a discussion
-Calling a game off, and putting it back on. pastGame is false unless shown:
+A game off, or back on (pastGame false unless shown):
   "Cancel the session" / "maçı iptal et" -> cancel_match, matchDay ""
   "storm, no game Friday" / "bu hafta maç yok" -> cancel_match, matchDay "Friday" / ""
   "it's back on, uncancel Friday" / "maç yapılıyor, iptali geri al" -> restore_match, matchDay "Friday" / ""
   "Tuesday's game never took place" / "salı maçı yapılmadı" -> cancel_match, matchDay "Tuesday" / "salı", pastGame true
   "cancel the last match, we didn't play" / "geçen haftaki maçı iptal et, oynamadık" -> cancel_match, matchDay "" / "geçen hafta", pastGame true
   "Tuesday's game did go ahead after all" / "salı maçı aslında oynandı" -> restore_match, matchDay "Tuesday" / "salı", pastGame true
-  "should we cancel Friday?" / "the session should be cancelled anyway" -> other, toMatchTime false: a question, an opinion
-Reminders:
+  "should we cancel Friday?" / "the session should be cancelled anyway" -> other, toMatchTime false
+A month or more off, or back (NOW is October 2026 here):
+  "@Match Time no football in December" / "@Match Time aralıkta maç yok" -> season_break, breakMonths ["2026-12"]
+  "no games December or January, back in February" / "aralık ve ocakta maç yok, şubatta dönüyoruz" -> season_break, breakMonths ["2026-12","2027-01"], playMonths ["2027-02"]
+  "@Match Time we're back mid January" / "@Match Time ocak ortasında dönüyoruz" -> season_break, playMonths ["2027-01"]
+  "are we playing in December?" / "aralıkta maç var mı?" -> other
+The club's pitch:
+  "@Match Time our pitch is Goals Sutton" / "@Match Time sahamız Goals Sutton" -> set_venue, venueName "Goals Sutton"
+  "we play at Powerleague Shoreditch now" / "artık Powerleague Shoreditch'te oynuyoruz" -> set_venue, venueName "Powerleague Shoreditch"
+  answering MatchTime's "I found more than one place for *Goals Sutton*. Which one is it?" and its list: "2" / "ikincisi" -> set_venue, venueName "Goals Sutton", venueChoice 2; "the first one" / "birincisi" -> venueChoice 1
+  "@Match Time where is the game?" / "@Match Time maç nerede?" -> other
+  "the pitch at Goals was flooded" / "Goals'un sahası su basmıştı" -> other, toMatchTime false
+Trying again after MatchTime said it could not do something:
+  "@Match Time added the venue location" / "@Match Time tamam ekledim" -> retry_ask
+  "done, try again" / "şimdi dene" -> retry_ask
+  "@Match Time I've switched the pool on, go ahead" / "@Match Time havuzu açtım, devam et" -> retry_ask
+  "@Match Time thanks" / "@Match Time teşekkürler" -> other
+Free places and payments:
+  "Bilal washed the bibs, he's free this week" -> fee_waiver, coveredRefs ["Bilal"]
+  "put Bilal down as free on Friday" / "Ali ve Can cuma günü ödemesin" -> fee_waiver, coveredRefs ["Bilal"] / ["Ali","Can"], matchDay "on Friday" / "cuma günü"
+  "Bilal bu akşam ücretsiz oynasın" -> fee_waiver, coveredRefs ["Bilal"], matchDay "bu akşam"
+  "scrap that, Tom isn't free, he pays" / "Ali ücretsiz değil, ödesin" -> fee_waiver, coveredRefs ["Tom"] / ["Ali"], undo true
+  "should Bilal play free?" -> other, toMatchTime false
+  "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
+  "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
+Reminders and stats:
   "remind me tomorrow at 6 to bring the bibs" / "yarın 6'da yelekleri getirmeyi hatırlat" -> reminder, phrase "tomorrow at 6" / "yarın 6'da", note "bring the bibs" / "yelekleri getirmeyi"
-Stats links:
   "@Match Time send everyone their stats" / "@Match Time DM the squad their ratings links" -> stats_blast
-  "lads don't forget to rate the players via the link MatchTime DM'ed you" -> other, toMatchTime false: it tells the players
-  "did everyone get their stats link?" -> other, toMatchTime false: a question
-  "@Match Time what are my stats" -> other: one person asking about themselves
+  "lads don't forget to rate the players via the link MatchTime DM'ed you" -> other, toMatchTime false
+  "did everyone get their stats link?" -> other, toMatchTime false
+  "@Match Time what are my stats" -> other
 `,
 };
 
@@ -852,8 +854,12 @@ const ADMIN_SCHEMA = {
   properties: {
     action: {
       type: "string",
-      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "other"],
+      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "other"],
     },
+    // season_break (2026-10-29): the months with no football, and the
+    // months it is back in, each "YYYY-MM".
+    breakMonths: { type: "array", items: { type: "string" } },
+    playMonths: { type: "array", items: { type: "string" } },
     payerRef: { type: "string" },
     count: { type: "number" },
     coveredRefs: { type: "array", items: { type: "string" } },
@@ -881,7 +887,7 @@ const ADMIN_SCHEMA = {
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1175,7 +1181,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "other"].includes(action)) {
+      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1225,6 +1231,8 @@ export function parseFacts(
         ...(action === "set_venue" && typeof raw.venueChoice === "number" && Number.isInteger(raw.venueChoice) && raw.venueChoice > 0
           ? { venueChoice: raw.venueChoice }
           : {}),
+        // season_break (2026-10-29): only well-formed "YYYY-MM" months.
+        ...(action === "season_break" ? { breakMonths: monthKeysOf(raw.breakMonths), playMonths: monthKeysOf(raw.playMonths) } : {}),
         // Only a clear true: a missing or false value keeps HQ's outward
         // actions closed (`admin-group-understand.ts`).
         ...(raw.toMatchTime === true ? { toMatchTime: true } : {}),
@@ -1232,6 +1240,12 @@ export function parseFacts(
       return { facts, degradations };
     }
   }
+}
+
+/** "YYYY-MM" months from the model, deduplicated; anything else dropped. */
+function monthKeysOf(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.filter((x): x is string => typeof x === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(x.trim())).map((x) => x.trim()))];
 }
 
 /**

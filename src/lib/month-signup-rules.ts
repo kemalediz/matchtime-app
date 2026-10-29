@@ -24,7 +24,7 @@
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { inMessageHours, type QuietHours } from "./message-hours";
-import { foldListText, monthOfWord, type MonthlyList, type MonthlyListEntry } from "./monthly-list";
+import { type MonthlyList, type MonthlyListEntry } from "./monthly-list";
 import { candidatesFor, monthFixtureDates, monthStartToDate, nameKey } from "./squad-month-rules";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -149,99 +149,10 @@ export interface SignupAsk {
   days: number[];
 }
 
-const TR_LOCATIVE = /^(.+?)(?:da|de|ta|te)$/;
-const DAY_TOKEN = /^(\d{1,2})(?:st|nd|rd|th)?$/;
-const DAY_JOINER = new Set(["and", "ve"]);
-
-/** Whole messages only, after the month is `M` and a run of days is `D`.
- *  The FULL form: "for <month>" in English, the month then the word in
- *  Turkish. "Jan payg" and "PAYG November" are not it. */
-const WITH_MONTH: Record<SignupChoice, ReadonlySet<string>> = {
-  in: new Set(["in for M", "im in for M", "i m in for M", "i am in for M", "count me in for M", "M varim", "M icin varim", "M ayi icin varim"]),
-  out: new Set([
-    "out for M",
-    "im out for M",
-    "i m out for M",
-    "i am out for M",
-    "not in for M",
-    "im not in for M",
-    "i m not in for M",
-    "i am not in for M",
-    "M yokum",
-    "M icin yokum",
-    "M ayi icin yokum",
-  ]),
-  payg: new Set(["payg for M", "payg for M D", "payg D for M", "M icin payg", "M icin payg D"]),
-};
-
-/** A month's short name is not enough to sign anybody up for it. */
-const MONTH_ABBREVIATIONS = new Set(["jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"]);
-
-/** The bare words, read only for a reply to the list itself. */
-const BARE: Record<SignupChoice, ReadonlySet<string>> = {
-  in: new Set(["in", "im in", "i m in", "i am in", "count me in", "yes", "varim", "ben varim", "evet"]),
-  out: new Set(["out", "im out", "i m out", "i am out", "not in", "not this month", "no", "yokum", "ben yokum", "bu ay yokum", "hayir"]),
-  payg: new Set(["payg", "payg D", "D payg"]),
-};
-
-/**
- * Is this message a sign-up for a month, in the fixed vocabulary?
- *
- * The WHOLE message must be one of the phrases, with the month's full
- * name: "IN FOR NOVEMBER", "I'm out for November", "PAYG for November 9th
- * and 23rd", "Kasım varım", "Kasım'da yokum". A sentence that merely mentions the month ("who is in
- * for November?") is not one, and a plain "IN" is this week's game, as it
- * always was (plan 4.1).
- *
- * `quoted`: the message is a reply to the list post, so the bare word
- * ("IN", "varım", "PAYG 9th only") is enough.
- */
-export function readSignupMessage(text: string | null | undefined, opts: { quoted: boolean }): SignupAsk | null {
-  const tokens = foldListText(text ?? "")
-    .replace(/['’`]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .split(" ")
-    .filter(Boolean);
-  if (tokens.length === 0 || tokens.length > 12) return null;
-
-  const months: number[] = [];
-  const days: number[] = [];
-  const out: string[] = [];
-  for (let i = 0; i < tokens.length; i++) {
-    const tok = tokens[i];
-    // "may" is also a word; nothing in this vocabulary uses it as one.
-    const month = MONTH_ABBREVIATIONS.has(tok) ? null : (monthOfWord(tok) ?? monthOfWord(TR_LOCATIVE.exec(tok)?.[1] ?? ""));
-    if (month !== null) {
-      months.push(month);
-      out.push("M");
-      continue;
-    }
-    const day = DAY_TOKEN.exec(tok);
-    if (day) {
-      const n = Number(day[1]);
-      if (n < 1 || n > 31) return null;
-      days.push(n);
-      if (out[out.length - 1] !== "D") out.push("D");
-      continue;
-    }
-    // "9th and 23rd": a joiner between two days is part of the run.
-    if (DAY_JOINER.has(tok) && out[out.length - 1] === "D" && DAY_TOKEN.test(tokens[i + 1] ?? "")) continue;
-    out.push(tok);
-  }
-  if (months.length > 1) return null;
-  // "only" / "sadece" at the end of a PAYG line adds nothing.
-  if (out.length > 1 && (out[out.length - 1] === "only" || out[out.length - 1] === "sadece")) out.pop();
-  const phrase = out.join(" ");
-
-  const table = months.length === 1 ? WITH_MONTH : opts.quoted ? BARE : null;
-  if (!table) return null;
-  for (const choice of ["in", "out", "payg"] as const) {
-    if (!table[choice].has(phrase)) continue;
-    if (choice !== "payg" && days.length > 0) return null;
-    return { choice, month: months[0] ?? null, days: [...new Set(days)] };
-  }
-  return null;
-}
+// The fixed-vocabulary reader of a typed sign-up ("IN FOR NOVEMBER") was
+// retired on 2026-10-29: the monthly reader (the model, `monthly-reader.ts`)
+// reads sign-ups now, in any words. It lives on as the e2e stub's
+// stand-in only, in `monthly-reader-legacy.ts`.
 
 // ── One member of a month in sign-up ───────────────────────────────────
 
@@ -394,7 +305,7 @@ export interface SignupPaidClaim {
  *  the month for it to be read as its list (slice 5's rule and number). */
 export const MIN_SIGNUP_OVERLAP = 0.6;
 
-type Resolved = { kind: "one"; userId: string } | { kind: "none" } | { kind: "ambiguous" };
+export type Resolved = { kind: "one"; userId: string } | { kind: "none" } | { kind: "ambiguous" };
 
 /** Whole name, a known alias, then the leading name. Never fuzzy. Two
  *  candidates are narrowed to the ones already on the month. */
@@ -411,6 +322,39 @@ function makeResolver(roster: SignupRosterMember[], known: ReadonlySet<string>):
     if (found.length === 0) return { kind: "none" };
     return found.length === 1 ? { kind: "one", userId: found[0] } : { kind: "ambiguous" };
   };
+}
+
+/**
+ * A list line to a player. The monthly reader (the model) names the
+ * member it matched from the club's list, and that is taken as it is; a
+ * line it calls a guest is nobody of the club; a line it matched to nobody
+ * is looked up by its clean name (whole name, alias, leading name), the
+ * same lookup a list parsed in code always had. Shared with the week's
+ * reconcile (`monthly-week-rules.ts`).
+ */
+export function entryResolver(roster: SignupRosterMember[], known: ReadonlySet<string>): (e: MonthlyListEntry) => Resolved {
+  const byName = makeResolver(roster, known);
+  // A guest is looked up only among the people already on this week or
+  // month: the same guest pasted again is the player he became, while a
+  // new guest is never taken for a club member the reader said he is not.
+  const byNameHere = makeResolver(roster.filter((m) => known.has(m.userId)), known);
+  const ids = new Set(roster.map((m) => m.userId));
+  return (e) => {
+    const id = e.facts?.memberId;
+    if (id && ids.has(id)) return { kind: "one", userId: id };
+    if (e.facts?.guest) {
+      const here = byNameHere(e.name);
+      return here.kind === "one" ? here : { kind: "none" };
+    }
+    return byName(e.name);
+  };
+}
+
+/** Games a line commits to ("4 only"), for a player on the month. */
+export interface SignupGames {
+  userId: string;
+  games: number;
+  self: boolean;
 }
 
 /**
@@ -441,15 +385,21 @@ export function reconcileSignupPaste(args: {
   senderUserId: string | null;
   senderNames?: Array<string | null | undefined>;
   needHeader?: boolean;
-}): { thisList: boolean; self: { choice: SignupChoice; days: number[] } | null; notAdded: SignupNotAdded[]; paidClaims: SignupPaidClaim[] } {
+}): {
+  thisList: boolean;
+  self: { choice: SignupChoice; days: number[]; games: number | null } | null;
+  notAdded: SignupNotAdded[];
+  paidClaims: SignupPaidClaim[];
+  games: SignupGames[];
+} {
   const { list, senderUserId } = args;
-  const nothing = { self: null, notAdded: [], paidClaims: [] };
+  const nothing = { self: null, notAdded: [], paidClaims: [], games: [] };
   if (list.month ? list.month.month !== args.monthNumber : args.needHeader === true) return { thisList: false, ...nothing };
 
   const active = args.members.filter((m) => !m.out);
   const memberOf = new Map(active.map((m) => [m.userId, m]));
-  const resolve = makeResolver(args.roster, new Set(memberOf.keys()));
-  const named = (entries: MonthlyListEntry[]) => entries.filter((e) => e.name).map((e) => ({ e, r: resolve(e.name) }));
+  const resolve = entryResolver(args.roster, new Set(memberOf.keys()));
+  const named = (entries: MonthlyListEntry[]) => entries.filter((e) => e.name).map((e) => ({ e, r: resolve(e) }));
   const lines = named(list.slots);
   const elsewhere = [...named(list.sections.cantPlay), ...named(list.sections.reserves), ...named(list.sections.other)];
 
@@ -481,9 +431,10 @@ export function reconcileSignupPaste(args: {
       ? unknown[0].e
       : null;
 
-  let self: { choice: SignupChoice; days: number[] } | null = null;
+  let self: { choice: SignupChoice; days: number[]; games: number | null } | null = null;
   const notAdded: SignupNotAdded[] = [];
   const paidClaims: SignupPaidClaim[] = [];
+  const games: SignupGames[] = [];
   const seen = new Set<string>();
   const selfFrom = (e: MonthlyListEntry): void => {
     const want: SignupChoice = e.marks.payg ? "payg" : "in";
@@ -491,7 +442,7 @@ export function reconcileSignupPaste(args: {
     const days = e.marks.paygDates.filter((d) => d.month === null || d.month === args.monthNumber).map((d) => d.day);
     // Already so: a regular restating their line, a PAYG player theirs.
     if (mine && !mine.waiting && ((want === "in" && mine.kind === "regular") || (want === "payg" && mine.kind === "payg" && days.length === 0))) return;
-    self = { choice: want, days: want === "payg" ? [...new Set(days)] : [] };
+    self = { choice: want, days: want === "payg" ? [...new Set(days)] : [], games: want === "in" ? (e.facts?.games ?? null) : null };
   };
 
   for (const { e, r } of lines) {
@@ -506,6 +457,10 @@ export function reconcileSignupPaste(args: {
     const m = memberOf.get(r.userId);
     if (isSelf) selfFrom(e);
     else if (!m) notAdded.push({ name: e.name, reason: "not-the-sender" });
+    // "4 only" beside a regular's line: what they commit to. A self line
+    // that joins is carried in `self` (it has no row yet).
+    const g = e.facts?.games ?? null;
+    if (g !== null && m?.kind === "regular" && !m.waiting) games.push({ userId: r.userId, games: g, self: isSelf });
     if (e.marks.paid && !e.marks.payg && m?.kind === "regular" && !m.waiting && m.paid === "none") {
       paidClaims.push({ userId: r.userId, name: e.name, self: isSelf, amountPence: e.marks.paidAmountPence });
     }
@@ -514,7 +469,7 @@ export function reconcileSignupPaste(args: {
   // A copy with the sender's own number blank, and their name nowhere on
   // it, takes NOBODY off: it may be an old copy, or one somebody else
   // edited. Only "OUT FOR <MONTH>" or the page takes a player off a month.
-  return { thisList: true, self, notAdded, paidClaims };
+  return { thisList: true, self, notAdded, paidClaims, games };
 }
 
 // ── The list ───────────────────────────────────────────────────────────
@@ -680,13 +635,16 @@ export function monthStarted(p: { firstKickoff: Date; startedMidMonthAt: Date | 
 /**
  * Slice 6 (plan section 7, "Joining mid-month"): may a player's own
  * choice change a month that has STARTED? Only to join it: "in", typed in
- * the group ("IN FOR OCTOBER") or pressed on their page, while the month
- * is running and a game is still to be played. They become a regular from
- * the next game and are charged for the games left. Anything else in a
- * started month (out, pay-as-you-go, a pasted list) is the organiser's.
+ * the group ("IN FOR OCTOBER", in any words), pressed on their page, or
+ * (2026-10-29) by adding their OWN name to a pasted "List for <month>"
+ * that is the month's list rather than one game's (`handleSignupPaste`
+ * decides that from the monthly reader), while the month is running and a
+ * game is still to be played. They become a regular from the next game
+ * and are charged for the games left. Anything else in a started month
+ * (out, pay-as-you-go, anybody else's line) is the organiser's.
  */
 export function mayJoinStartedMonth(p: { choice: SignupChoice; source: string; gamesLeft: number; running: boolean }): boolean {
-  return p.choice === "in" && (p.source === "reply" || p.source === "page") && p.running && p.gamesLeft > 0;
+  return p.choice === "in" && (p.source === "reply" || p.source === "page" || p.source === "paste") && p.running && p.gamesLeft > 0;
 }
 
 /** The second nudge for a held month comes no sooner than this after the first notice. */

@@ -4483,6 +4483,40 @@ export const en = {
   mwk_dm_sender_not_matched: (p: { names: string[] }): string =>
     `📋 I couldn't match ${p.names.join(", ")} on the list you pasted to a player, so I added nobody. ` +
     `To play, say *IN* in the group yourself, or ask an organiser to add them.`,
+  /** To a player asked to confirm joining a month under way (review of #465). */
+  msu_dm_join_ask: (p: { month: string; games: number; price: string | null }): string =>
+    `📋 Join ${p.month} as a regular for the ${p.games} ${p.games === 1 ? "game" : "games"} left${p.price ? `, ${p.price}` : ""}? Reply yes and I'll put you on it.`,
+  /** To a member whose paste had more new players than one paste may add. */
+  mwk_dm_paste_guests_refused: (p: { names: string[] }): string =>
+    `📋 One list can only add a few new players, so I didn't add ${p.names.join(", ")}. An organiser can add them.`,
+  /** To a member whose pasted list added guests (people who are not
+   *  members yet) to the week, once per paste. */
+  mwk_dm_paste_guests_added: (p: { names: string[]; when: string }): string =>
+    `📋 From the list you pasted I've added ${p.names.join(", ")} to ${p.when} as your guest, paying as they go. ` +
+    `If that's not right, tell an organiser.`,
+  /** To an organiser who said no to the coming month's draft by DM. */
+  /** A season break set by WhatsApp (2026-10-29, `season-break-words.ts`). */
+  sb_set: (p: { months: string }): string => `✅ No football in ${p.months}: I won't post a list or make games for it.`,
+  sb_back: (p: { months: string }): string => `✅ ${p.months} is back on: I'll run it as usual.`,
+  sb_unchanged: (p: { months: string }): string => `No change: there is already no football in ${p.months}.`,
+  sb_none: (p: { link: string }): string => `No change: no month is off. You can set the break months here: ${p.link}`,
+  sb_started: (p: { month: string }): string => `I can't make ${p.month} a break: it has already started. Cancel its games instead.`,
+  sb_failed: (p: { link: string }): string => `I couldn't change the break months. You can set them here: ${p.link}`,
+  sb_not_organiser: "Only an organiser can change the break months.",
+  mwk_dm_seed_declined: (p: { month: string }): string =>
+    `OK, I haven't started ${p.month}. Post the list again when it's ready, or start it on the months page.`,
+  /** To an organiser who posted the coming month's list in the PLAYERS'
+   *  group before that month was started: the draft, and how to start it.
+   *  MatchTime says nothing in the group. */
+  mwk_dm_seed_from_group: (p: { month: string; count: number; names: string; unknown: string | null; link: string; hq: boolean }): string =>
+    [
+      `📋 I read the list you posted in the group for ${p.month}: ${p.count} ${p.count === 1 ? "player" : "players"} (${p.names}).`,
+      ...(p.unknown ? [`Not known to me yet: ${p.unknown}. Add them as players, or start without them.`] : []),
+      p.hq
+        ? `To start ${p.month} with them, reply YES in the organisers' group, or check and start it here: ${p.link}`
+        : `To start ${p.month} with them, check and start it here: ${p.link}`,
+      `I've said nothing in the group.`,
+    ].join("\n"),
   /** To a member of the month whose numbered list was not read as the squad list. */
   mwk_dm_sender_not_list: (p: { month: string }): string =>
     `📋 I couldn't read the list you posted as the squad list for ${p.month}, so I changed nothing. ` +
