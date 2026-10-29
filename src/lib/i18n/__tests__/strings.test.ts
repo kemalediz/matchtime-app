@@ -389,6 +389,7 @@ const SAMPLES: SampleArgs = {
   hq_cancel_monthly: null,
   match_cancel_use_admin_group: null,
   hq_not_understood: null,
+  group_not_understood: null,
   hq_only_organisers: { names: "Hamzah or Raihan" },
   hq_score_saved: { redLabel: "Red", red: 4, yellow: 7, yellowLabel: "Yellow" },
   hq_score_changed: { redLabel: "Red", yellowLabel: "Yellow", oldRed: 4, oldYellow: 7, red: 5, yellow: 7 },

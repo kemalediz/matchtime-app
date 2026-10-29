@@ -801,6 +801,11 @@ describe("intentFor — the admin log's vocabulary, from the OUTCOME", () => {
     );
   });
 
+  it("an organiser's tagged chase the engine turned into a recruit is a cover request, not noise (2026-10-29)", () => {
+    expect(intentFor([], "u-kemal", att({ sideRequests: ["chase"] }), null, true)).toBe("replacement_request");
+    expect(intentFor([], "u-pete", att({ sideRequests: ["chase"] }), null)).toBe("noise");
+  });
+
   it("is `noise` only when nothing happened and nothing was said", () => {
     expect(intentFor([], "u-pete", att(), null)).toBe("noise");
     expect(intentFor([], "u-pete", att(), "here you go")).toBe("question");
