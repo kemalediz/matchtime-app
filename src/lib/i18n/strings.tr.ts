@@ -4128,6 +4128,11 @@ export const tr: Strings = {
   },
   xask_taken_off_dm: (p) => `*${p.asker}* organizatörleri seni ${p.day} maçından çıkardı. Teklifin için teşekkürler 🙏`,
   xask_vol_out_notice_asker: (p) => `${p.name} (${p.partner}) ${p.day} maçına gelemiyor, bu yüzden listeden çıkardım.`,
+  xask_group_notice_in: (p) => `🙋 ${p.partner} kulübünden ${p.name}, ${p.day} maçı için kadroya katıldı.`,
+  xask_group_notice_bench: (p) => `🙋 ${p.partner} kulübünden ${p.name}, ${p.day} maçı için yedekte.`,
+  xask_group_notice_bench_pick: (p) =>
+    `🙋 ${p.partner} kulübünden ${p.name}, ${p.day} maçı için yedekte. Yedeklerden kimin oynayacağını organizatörler seçer. Organizatörler, ${p.name} kadroya girsin isterseniz beni etiketleyip yazın, örneğin *@Match Time ${p.name} kadroya girsin*`,
+  xask_group_notice_out: (p) => `${p.partner} kulübünden ${p.name} artık ${p.day} maçına gelemiyor, bu yüzden listeden çıkardım.`,
   // ─── İstekten sonra misafirler (slice S4) ───────────────────────────
   xask_thanks_dm: (p) => `*${p.asker}* oyuncusunu buldu. Teklifin için teşekkürler 🙏`,
   xask_game_off_dm: (p) => `*${p.asker}* kulübünün ${p.day} maçı iptal oldu, yani artık gerek kalmadı. Teklifin için teşekkürler 🙏`,

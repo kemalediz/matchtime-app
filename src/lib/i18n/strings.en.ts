@@ -5578,6 +5578,16 @@ export const en = {
     `*${p.asker}*'s organisers have taken you off their game on ${p.day}. Thanks for offering 🙏`,
   xask_vol_out_notice_asker: (p: { name: string; partner: string; day: string }) =>
     `${p.name} (${p.partner}) can't play ${p.day} after all, so I've taken them off.`,
+  /** The players' group post about a partner club's guest, for a club whose
+   *  only group is its players' group (Kemal, 2026-10-29). Worded for
+   *  everyone, naming the partner club; never his standing there (another
+   *  club's data) and never "for you to pick". Read by
+   *  partner-guest-notice-copy.ts. */
+  xask_group_notice_in: (p: { name: string; partner: string; day: string }) => `🙋 ${p.name} from ${p.partner} has joined the squad for ${p.day}.`,
+  xask_group_notice_bench: (p: { name: string; partner: string; day: string }) => `🙋 ${p.name} from ${p.partner} is on the bench for ${p.day}.`,
+  xask_group_notice_bench_pick: (p: { name: string; partner: string; day: string }) =>
+    `🙋 ${p.name} from ${p.partner} is on the bench for ${p.day}. The organisers pick who plays from the bench. Organisers, to put ${p.name} in, tag me and say so, for example *@Match Time put ${p.name} in*`,
+  xask_group_notice_out: (p: { name: string; partner: string; day: string }) => `${p.name} from ${p.partner} can no longer play on ${p.day}, so I've taken them off.`,
   // ─── Guests after the ask (slice S4, 2026-10-16) ────────────────────
   // DMs to a guest are in HIS club's language (D9); the page words in the
   // asking club's. Read by partner-guest.ts, organiser-pick.ts and the
