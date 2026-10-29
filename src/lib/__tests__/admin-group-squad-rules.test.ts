@@ -256,7 +256,6 @@ function claim(over: Partial<Claim> = {}): Claim {
     contingent: false,
     conditionOn: "none",
     tense: "present",
-    basis: "decision",
     reported: false,
     confidence: 0.95,
     replaces: "",
@@ -328,11 +327,10 @@ describe("adminClaimHold: an explicit instruction applies, conversation does not
     expect(hold("put Ravi in", claim())).toBe("not-a-command"); // Kai is not in the sentence at all
   });
 
-  it("tentative, contingent, past, availability, relayed and unsure claims are held, whoever they are about", () => {
+  it("tentative, contingent, past, relayed and unsure claims are held, whoever they are about", () => {
     expect(hold("Kai out", claim({ polarity: "out", contingent: true, conditionOn: "self" }))).toBe("contingent");
     expect(hold("Kai out", claim({ polarity: "out", tense: "hypothetical" }))).toBe("not-now");
     expect(hold("Kai out", claim({ polarity: "out", tense: "past" }))).toBe("not-now");
-    expect(hold("Kai out", claim({ polarity: "out", basis: "availability" }))).toBe("availability");
     expect(hold("Kai out", claim({ polarity: "out", reported: true }))).toBe("reported");
     expect(hold("Kai out", claim({ polarity: "out", confidence: 0.4 }))).toBe("unsure");
   });
@@ -349,7 +347,6 @@ describe("adminClaimHold: an explicit instruction applies, conversation does not
     // the rehearsal's shapes, paraphrased
     expect(hold("won't be around on friday", self({ polarity: "out" }))).toBe("not-a-command");
     expect(hold("might have to pull out lads", self({ polarity: "out", contingent: true, conditionOn: "self" }))).toBe("contingent");
-    expect(hold("my ankle is wrecked", self({ polarity: "out", basis: "availability" }))).toBe("availability");
     expect(hold("my ankle is wrecked", self({ polarity: "out" }))).toBe("not-a-command");
     expect(hold("happy to go in goal but I'll stay in all session", self())).toBe("not-a-command");
   });
@@ -664,8 +661,8 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     });
 
     it("someone WAS named: that person's own rules, never this line", () => {
-      // a member, held (availability): silence, as before
-      expect(reply({ ...base, addressed: true, aboutOthers: true, vetted: [v({ claim: claim({ basis: "availability" }), hold: "availability" })] })).toBeNull();
+      // a member, held (relayed): silence, as before
+      expect(reply({ ...base, addressed: true, aboutOthers: true, vetted: [v({ claim: claim({ reported: true }), hold: "reported" })] })).toBeNull();
       // a stranger: the stranger line
       expect(
         reply({ ...base, addressed: true, aboutOthers: true, vetted: [v({ claim: claim({ personRef: "AH" }), hold: "not-a-command", ref: { kind: "unknown", name: "AH" } })] }),
@@ -747,12 +744,13 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     expect(
       reply({ ...base, addressed: true, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: null, ref: me })] }),
     ).toBeNull();
-    // an injury report (availability) is never turned into a question
+    // a tentative or contingent line about themselves is never turned into
+    // a question (an injury on its own is no claim at all since 2026-10-20)
     expect(
       reply({
         ...base,
         addressed: true,
-        vetted: [v({ claim: self({ polarity: "out", basis: "availability" }), hold: "availability", before: "CONFIRMED", ref: me })],
+        vetted: [v({ claim: self({ polarity: "out", contingent: true, conditionOn: "self" }), hold: "contingent", before: "CONFIRMED", ref: me })],
       }),
     ).toBeNull();
   });

@@ -156,41 +156,29 @@ export type Tense = "present" | "future" | "past" | "hypothetical";
  *  vs personal-uncertainty split, whose outcomes are opposites. */
 export type ConditionOn = "squad" | "self" | "none";
 
-/**
- * Does the message SETTLE this person's attendance, or only report their
- * availability?
+/*
+ * THERE IS NO `basis` FIELD ANY MORE (2026-10-28).
  *
- * The schema gap PR #44 left open, found by the §10 step 6 replay sweep:
+ * From PR #44 (June) to 2026-10-28 a claim carried `basis`: "decision" or
+ * "availability", and the engine gave no place to an availability claim
+ * that was not an OUT. #48 drew that line at the verb, so "I'm free
+ * Tuesday if you need me" registered nobody.
  *
- *   2026-06-20, Abid Kazmi, ten days before kickoff, squad 0/14 —
- *   "I will be back Tuesday week". The engine registered him CONFIRMED.
+ * FNF, 2026-10-28: Seb wrote "I'm free to play this Friday if there's any
+ * drop outs" to a full squad with an empty bench. The extractor read it
+ * exactly as #48 taught (bench, contingent on the squad, availability) and
+ * the engine wrote nothing; 38 minutes later he typed "@Match Time In" and
+ * was benched. Kemal's ruling that day: saying you are free for the match
+ * puts you on the bench.
  *
- * Three live runs of the shipped extractor on the real message returned
- * `polarity:"in" · contingent:false · conditionOn:"none" · tense:"future"`
- * — which is the SAME shape "I'm in for next Tuesday" returns. `tense`
- * covers WHEN ("future" is right for both) and `contingent` covers
- * WHETHER-IF (neither is conditional). Nothing in the schema covered
- * WHAT THE MESSAGE DOES, so a travel statement and a commitment were
- * literally indistinguishable and the engine had to guess.
- *
- * That is the same class of gap as the one that produced the Omar Yusuf
- * defect — `conditionOn` had no value for "the condition is about a
- * third party's willingness" — and it gets the same treatment: a field,
- * not a paragraph of prose in the prompt telling the model what to do.
- *
- * - `decision`     the message settles it: "I'm in", "count me in",
- *                  "I'm out", "can't make it", "I'll be there".
- * - `availability` the message reports where the person will be or what
- *                  they can do, and leaves the decision unmade: "I'll be
- *                  back Tuesday week", "I land Monday", "I'm away that
- *                  week", "I'm free after the 5th".
- *
- * The engine reads it asymmetrically, on purpose (§13): being ABLE to
- * play is necessary but never sufficient, so an `availability` claim
- * never gives anyone a squad place; being UNABLE to play settles the
- * question by itself, so an `availability` OUT still frees one.
+ * So being free to play is now the SAME fact as offering to fill a gap:
+ * polarity bench, contingent true, conditionOn squad, from the sender
+ * (and an offer of a third party, contingent, which the engine holds).
+ * A field whose only job was to hold those claims has nothing left to
+ * say, and news of where someone will be with no word on playing ("I
+ * will be back Tuesday week") is no claim at all. See the attendance
+ * prompt in `extractors.ts`.
  */
-export type ClaimBasis = "decision" | "availability";
 
 /**
  * One attendance claim the TEXT makes. Every field is a property of the
@@ -212,8 +200,6 @@ export interface Claim {
   contingent: boolean;
   conditionOn: ConditionOn;
   tense: Tense;
-  /** Settles it, or merely reports availability. See `ClaimBasis`. */
-  basis: ClaimBasis;
   /** Relaying what someone else said ("Najib said he's in"). */
   reported: boolean;
   confidence: number;

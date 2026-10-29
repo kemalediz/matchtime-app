@@ -95,7 +95,6 @@ function claim(over: Partial<Claim> = {}): Claim {
     contingent: false,
     conditionOn: "none",
     tense: "present",
-    basis: "decision",
     reported: false,
     confidence: 0.95,
     replaces: "",
@@ -424,7 +423,7 @@ describe("handleAdminSquadChange", () => {
     statuses.set("u-admin", "CONFIRMED");
     engineDoes(
       async (a) => {
-        const kept = vetThrough(a, [self({ polarity: "out", basis: "availability" })], [{ userId: "u-admin", status: "CONFIRMED", position: 1 }]);
+        const kept = vetThrough(a, [self({ polarity: "out" })], [{ userId: "u-admin", status: "CONFIRMED", position: 1 }]);
         expect(kept.claims).toEqual([]);
       },
       { claimCount: 0 },

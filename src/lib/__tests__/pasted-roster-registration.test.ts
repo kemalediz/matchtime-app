@@ -246,7 +246,6 @@ describe("clampPastedRosterFacts — a roster may carry the sender's drop and no
     contingent: false,
     conditionOn: "none",
     tense: "present",
-    basis: "decision",
     reported: false,
     confidence: 0.95,
     ...over,

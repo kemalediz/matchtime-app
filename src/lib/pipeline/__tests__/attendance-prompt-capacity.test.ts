@@ -125,8 +125,8 @@ describe("side requests: a named gap is recruit, a general nudge is chase (2026-
   // a chase.
   it("defines each value once, by whether the message says how many or for whom", () => {
     const s = P.slice(P.indexOf("  sideRequests"), P.indexOf("EXAMPLES"));
-    expect(s).toMatch(/"recruit"\s+it says how many players are needed or whose place needs taking[^\n]*"we're 4 short, anyone free\?"/);
-    expect(s).toMatch(/"chase"\s+it nudges for more players without saying how many or for whom[^\n]*"@all we need more players pls"/);
+    expect(s).toMatch(/"recruit"\s+it says how many players are needed, as a number, or whose place needs taking[^\n]*"we're 4 short, anyone free\?"/);
+    expect(s).toMatch(/"chase"\s+it nudges for more players with no number and no name[^\n]*"@all we need more players pls"/);
   });
 
   // FNF HQ 2026-10-24 13:47: "Glazers is out now.\n\n@Match Time what is the
@@ -155,7 +155,7 @@ describe("an injury is not an out (Sutton FC, 2026-10-20)", () => {
   });
 
   it("teaches it with grouped English and Turkish examples, both ways round", () => {
-    const g = P.slice(P.indexOf("Fitness and injuries"), P.indexOf("Talk about players"));
+    const g = P.slice(P.indexOf("Fitness and injuries"), P.indexOf("Other people: subject other"));
     expect(g).toContain("I've got a bad hamstring so taking it easy");
     expect(g).toMatch(/dizim ağrıyor[^\n]*no claim/);
     expect(g).toMatch(/bit sore from Sunday but I'll be there" \| "dizim ağrıyor ama gelirim" -> the sender in/);
@@ -165,7 +165,7 @@ describe("an injury is not an out (Sutton FC, 2026-10-20)", () => {
 
 describe("the rewrite keeps every behaviour the prompt already handled", () => {
   // One anchor per behaviour of the pre-rewrite prompt. Each must still
-  // be taught after it. The deeper pins for basis, replacements, Turkish
+  // be taught after it. The deeper pins for being free to play, replacements, Turkish
   // and hedges live in `availability-boundary.test.ts` and
   // `extractors.test.ts`.
   it.each([

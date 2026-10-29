@@ -56,7 +56,7 @@ function run(claims: Claim[], o: { tagged?: boolean; teams?: boolean; body?: str
   });
 }
 
-const theIncidentOut = (confidence = 0.75) => claim({ polarity: "out", basis: "decision", confidence });
+const theIncidentOut = (confidence = 0.75) => claim({ polarity: "out", confidence });
 
 describe("the incident: an untagged, unsure OUT from a player on the team sheet holds", () => {
   it("the bar is 0.85", () => {

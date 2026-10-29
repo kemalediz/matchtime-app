@@ -138,7 +138,6 @@ describe("the rating-progress answer is decided by the engine", () => {
                 contingent: false,
                 conditionOn: "none",
                 tense: "future",
-                basis: "decision",
                 reported: false,
                 confidence: 0.95,
               },

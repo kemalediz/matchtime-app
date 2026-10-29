@@ -98,7 +98,6 @@ export function hqNameListFacts(body: string): AttendanceFacts | null {
     contingent: false,
     conditionOn: "none",
     tense: "present",
-    basis: "decision",
     reported: false,
     confidence: 1,
     replaces: "",

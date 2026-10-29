@@ -96,20 +96,18 @@ describe("the extractor schemas contain no decision", () => {
         "tense",
         "reported",
         "confidence",
-        "basis",
       ]),
     );
   });
 
-  it("`basis` is an enum with exactly two values, and neither is a decision", () => {
-    // The field that separates "I'm in for next Tuesday" from "I will be
-    // back Tuesday week". It says what the TEXT does — settles the
-    // question, or reports availability — never what the engine should
-    // do about it.
+  it("has no `basis` field any more (2026-10-28)", () => {
+    // Being free to play is the sender's offer (bench, contingent,
+    // conditionOn squad), so the field that held such claims was retired.
     const claim = ATTENDANCE_SCHEMA.properties.claims as unknown as {
-      items: { properties: { basis: { enum: string[] } } };
+      items: { properties: Record<string, unknown>; required: string[] };
     };
-    expect(claim.items.properties.basis.enum).toEqual(["decision", "availability"]);
+    expect(claim.items.properties).not.toHaveProperty("basis");
+    expect(claim.items.required).not.toContain("basis");
   });
 });
 
@@ -132,16 +130,6 @@ describe("the extractor prompts ask for facts, not outcomes", () => {
     // Capacity is the engine's job. If the extractor could infer BENCH
     // from a full squad, PR #27's invariant would be back in the model.
     expect(EXTRACTOR_PROMPTS.attendance).toMatch(/explicit/i);
-  });
-
-  it("defines `basis` as a property of the text, with both values named", () => {
-    // The schema field is the fix; the prompt's job is only to say what
-    // the two values mean, the same way it does for `polarity` and
-    // `tense`. A rule of the form "do not register X" would be the
-    // prose the redesign is moving away from.
-    expect(EXTRACTOR_PROMPTS.attendance).toMatch(/\bbasis\b/);
-    expect(EXTRACTOR_PROMPTS.attendance).toMatch(/"decision"/);
-    expect(EXTRACTOR_PROMPTS.attendance).toMatch(/"availability"/);
   });
 });
 
@@ -221,16 +209,18 @@ describe("parseFacts (attendance)", () => {
     expect(degradations).toHaveLength(1);
   });
 
-  it("parses `basis` and keeps it verbatim", () => {
-    const avail = JSON.stringify({
+  it("drops a `basis` the model still sends, without a degradation", () => {
+    // A stub or an older model sending the retired field changes nothing:
+    // the parser builds a new claim, so the key never travels on.
+    const old = JSON.stringify({
       claims: [
         {
           subject: "sender",
           personRef: "",
           personNamed: false,
-          polarity: "in",
-          contingent: false,
-          conditionOn: "none",
+          polarity: "bench",
+          contingent: true,
+          conditionOn: "squad",
           tense: "future",
           basis: "availability",
           reported: false,
@@ -240,48 +230,10 @@ describe("parseFacts (attendance)", () => {
       affirmation: "none",
       sideRequests: [],
     });
-    const { facts, degradations } = parseFacts("attendance", avail, "wa-1");
+    const { facts, degradations } = parseFacts("attendance", old, "wa-1");
     expect(degradations).toHaveLength(0);
-    expect((facts as AttendanceFacts).claims[0].basis).toBe("availability");
-  });
-
-  it("falls back to `decision` on drift, and SAYS so", () => {
-    // The permissive direction on purpose, and it is the same choice
-    // `tense` and `conditionOn` already make: an unreadable value must
-    // not silently start suppressing writes the pipeline makes today.
-    // Structured output constrains the enum, so this is belt-and-braces
-    // — but a silent behaviour change on a model upgrade is exactly the
-    // §11.3 failure, so it is loud.
-    const drifted = JSON.stringify({
-      claims: [
-        {
-          subject: "sender",
-          personRef: "",
-          personNamed: false,
-          polarity: "in",
-          contingent: false,
-          conditionOn: "none",
-          tense: "present",
-          basis: "maybe",
-          reported: false,
-          confidence: 0.9,
-        },
-      ],
-      affirmation: "none",
-      sideRequests: [],
-    });
-    const { facts, degradations } = parseFacts("attendance", drifted, "wa-1");
-    expect((facts as AttendanceFacts).claims[0].basis).toBe("decision");
-    expect(degradations.map((d) => d.detail).join(" ")).toMatch(/basis/i);
-  });
-
-  it("treats an ABSENT `basis` as a decision, silently — that is today's behaviour", () => {
-    const partial = JSON.stringify({
-      claims: [{ subject: "sender", personRef: "", polarity: "in", tense: "present", confidence: 0.9 }],
-    });
-    const { facts, degradations } = parseFacts("attendance", partial, "wa-1");
-    expect((facts as AttendanceFacts).claims[0].basis).toBe("decision");
-    expect(degradations).toHaveLength(0);
+    expect((facts as AttendanceFacts).claims[0]).not.toHaveProperty("basis");
+    expect((facts as AttendanceFacts).claims[0]).toMatchObject({ polarity: "bench", contingent: true, conditionOn: "squad" });
   });
 
   it("ignores any decision field the model smuggles in", () => {
@@ -1011,7 +963,6 @@ describe("a replacement is two claims with a direction (2026-09-22)", () => {
     contingent: false,
     conditionOn: "none",
     tense: "present",
-    basis: "decision",
     reported: false,
     replaces: "",
     confidence: 0.95,

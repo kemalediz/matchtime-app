@@ -593,9 +593,7 @@ export function decide(input: EngineInput): EngineResult {
             conditionOn: "none" as const,
             tense: "present" as const,
             // The bot ASKED these names to confirm and one of them just
-            // said yes. That is a decision by construction; it is not the
-            // model's reading of anything.
-            basis: "decision" as const,
+            // said yes: a decision by construction, not a model reading.
             reported: true,
             confidence: 0.95,
           }));
@@ -646,11 +644,6 @@ export function decide(input: EngineInput): EngineResult {
               contingent: false,
               conditionOn: "none" as const,
               tense: "present" as const,
-              // The router said JOINING. Joining acts on the squad, so
-              // this is a decision, not a statement of availability —
-              // the same reading `basis` is defined by in the extractor
-              // prompt, reached from the route instead of from a verb.
-              basis: "decision" as const,
               reported: false,
               confidence: 0.95,
             },
@@ -690,7 +683,7 @@ export function decide(input: EngineInput): EngineResult {
       // and Sait", refused by the swap fast path (or sent untagged by an
       // admin, whose third-party OUT needs no tag), reached this function
       // and DROPPED David 10 of 10. The model's claim looked exactly like
-      // a real drop (`basis=decision polarity=out`), so no rule below
+      // a real drop (`polarity=out`, not contingent), so no rule below
       // could tell it apart. The body can: `parseSwapNames` is the fast
       // path's own parser, and a person the message asks to SWAP is not
       // being added, dropped or benched by it. The argument for putting
@@ -1488,37 +1481,6 @@ export function decide(input: EngineInput): EngineResult {
         const c = t.claim;
         const self = c.subject === "sender";
 
-        // ── Availability is not a commitment ──────────────────────────
-        //
-        // The last adjudicated spurious write left open by PR #44, found
-        // by the §10 step 6 replay sweep and adjudicated `old_right`:
-        //
-        //   2026-06-20, Abid Kazmi, 241.5h (ten days) to kickoff, squad
-        //   0/14, answering Kemal's chase — "I will be back Tuesday
-        //   week". The engine registered him CONFIRMED. Production
-        //   labelled it out/OUT and the incumbent wrote nothing; only
-        //   the engine put him in the squad.
-        //
-        // It was a SCHEMA gap, not a bad decision: `tense` said "future"
-        // and `contingent` said false, which is exactly what "I'm in for
-        // next Tuesday" says. `basis` is the missing field (see
-        // `ClaimBasis`), and this is the only place that reads it.
-        //
-        // ASYMMETRIC, and the asymmetry is the point. A squad place goes
-        // to someone who asked for one, and reporting that you will be
-        // in the country is not asking — being ABLE to play is necessary
-        // and never sufficient. Being UNABLE to play settles it on its
-        // own, so an availability OUT still frees the slot; a place
-        // nobody can use is a place the club loses, and refusing that
-        // direction too would trade one spurious write for a class of
-        // missed ones.
-        if (c.basis === "availability" && c.polarity !== "out") {
-          out.reasons.push(
-            `availability statement about ${t.name}, not a commitment to play: no write`,
-          );
-          continue;
-        }
-
         // ── Contingency (§3.2 S11, S12, S15) ──────────────────────────
         if (c.contingent) {
           if (c.polarity === "out") {
@@ -1591,6 +1553,19 @@ export function decide(input: EngineInput): EngineResult {
           // and its outcome is the OPPOSITE of (b): the person is
           // registered now, and capacity below decides whether that is a
           // slot or the bench.
+          //
+          // SAYING YOU ARE FREE TO PLAY IS THIS OFFER (FNF, 2026-10-28).
+          // Seb, to a full squad with an empty bench: "I'm free to play
+          // this Friday if there's any drop outs". It used to be held
+          // here as an "availability statement"; 38 minutes later he
+          // typed "@Match Time In" and was benched, which is what his
+          // first message meant. Kemal's ruling: being free for the
+          // match puts you on the bench. The extractor now reads it as
+          // the offer it is (bench, contingent, squad), so it reaches
+          // this line like "ping me if you need one more", and with a
+          // place open it takes the place, as every standing offer does:
+          // a bench beside empty slots is the 2026-08-31 incident
+          // (`applyClaim`).
           out.reasons.push(`standing offer for ${t.name}: registering`);
         }
 
@@ -3686,8 +3661,8 @@ export function decide(input: EngineInput): EngineResult {
 /**
  * Would this claim, on its own, ever produce a write?
  *
- * Only the vetoes that need no state: the confidence floor, tense, the
- * availability hold and the two contingency holds. Used by the state
+ * Only the vetoes that need no state: the confidence floor, tense and
+ * the two contingency holds. Used by the state
  * collapse so a claim the engine is going to decline cannot supersede an
  * earlier one it would have acted on. Kept beside the rules it mirrors —
  * if one moves, this has to move with it, and the collapse tests are
@@ -3701,7 +3676,6 @@ export function decide(input: EngineInput): EngineResult {
 function wouldWrite(c: Claim, floorExempt: boolean): boolean {
   if (c.confidence < CONFIDENCE_FLOOR && !floorExempt) return false;
   if (c.tense === "past" || c.tense === "hypothetical") return false;
-  if (c.basis === "availability" && c.polarity !== "out") return false;
   if (c.contingent && c.polarity === "out") return false;
   if (c.contingent && c.conditionOn === "self") return false;
   return true;

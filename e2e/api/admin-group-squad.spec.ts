@@ -131,7 +131,7 @@ test("an organiser who 'might have to pull out': no write, no reply", async ({ r
 });
 
 test("then an injury report: no write, no reply", async ({ request, db }) => {
-  engineOn({ "my knee is gone lads": { route: "self_att", facts: selfOut({ basis: "availability" }) } });
+  engineOn({ "my knee is gone lads": { route: "self_att", facts: selfOut() } });
   expect(await say(request, "my knee is gone lads")).toMatchObject({ handled: false, replyText: null });
   expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
 });
