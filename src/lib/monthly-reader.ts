@@ -43,7 +43,7 @@ const MAX_TOKENS = 4_096;
  */
 export async function loadMonthlyReaderContext(args: { orgId: string; matchId: string | null; now?: Date }): Promise<MonthlyReaderContext> {
   const now = args.now ?? new Date();
-  const { loadLiveMonths, renderSignupList, footerFacts } = await import("./month-signup");
+  const { loadLiveMonths, renderSignupList } = await import("./month-signup");
   const { loadMonthlyWeek, renderWeekList } = await import("./monthly-week");
   const months = await loadLiveMonths(args.orgId, now);
   const week = args.matchId ? await loadMonthlyWeek(args.matchId) : null;
@@ -82,49 +82,40 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     ].join("\n");
   });
 
-  const ctx: MonthlyReaderContext = {
+  return {
     orgId: args.orgId,
     members,
     months: monthBlocks,
     week: liveWeek ? { game: formatLondon(liveWeek.matchDate, "EEE d MMM yyyy, HH:mm"), text: renderWeekList(liveWeek).text } : null,
   };
-  // For the e2e stub's deterministic stand-in only; never shown to the model.
-  stubFactsOf.set(ctx, {
-    lang: liveWeek?.language ?? months[0]?.language ?? null,
-    maxPlayers: liveWeek?.maxPlayers ?? 0,
-    paygPricePence: liveWeek?.paygPricePence ?? null,
-    signupFooters: months.filter((m) => m.kickoffs.length > 0).map((m) => footerFacts(m)),
-  });
-  return ctx;
 }
-
-/** What the e2e stub's stand-in needs to strip MatchTime's own lines. */
-export interface ReaderStubFacts {
-  lang: string | null;
-  maxPlayers: number;
-  paygPricePence: number | null;
-  signupFooters: Array<ReturnType<Awaited<typeof import("./month-signup")>["footerFacts"]>>;
-}
-const stubFactsOf = new WeakMap<MonthlyReaderContext, ReaderStubFacts>();
 
 // ── The e2e stub ──────────────────────────────────────────────────────
 
 /**
  * TEST-ONLY seam, as the other model steps have: what the model would have
- * said, keyed by the message body, read from a file. A body with no entry
- * is read by the deterministic stand-in (`monthly-reader-legacy.ts`, the
- * reader this step replaced), so the existing monthly scenarios run
- * unchanged for free. `e2e/helpers/live-llm.ts` refuses a live run that
- * can still see the file.
+ * said, read from a file the e2e suite writes. `bodies` are a spec's own
+ * answers, by the message body. `legacy` are the answers the e2e harness
+ * registers for every message it posts, read by the old code in the TEST
+ * process (`e2e/helpers/monthly-reader-legacy.ts`), keyed by the body and
+ * the quoted text, so the monthly scenarios written before the model run
+ * unchanged. No parsing code is reachable from here. A body with neither
+ * is "none". `e2e/helpers/live-llm.ts` refuses a live run that can still
+ * see the file.
  */
 export const MONTHLY_READER_STUB_FILE_ENV = "MT_TEST_MONTHLY_READER_STUB_FILE";
 
 interface ReaderStub {
   /** Trimmed body → the model's raw answer (the schema's object). */
   bodies?: Record<string, unknown>;
+  /** `${trimmed body}\u0000${trimmed quoted text}` → the raw answer. */
+  legacy?: Record<string, unknown>;
   /** Bodies whose call fails, the way an overloaded API does. */
   fail?: string[];
 }
+
+/** The key the harness registers a message's legacy answer under. */
+export const legacyStubKey = (body: string, quoted: string | null | undefined): string => `${body.trim()}\u0000${(quoted ?? "").trim()}`;
 
 async function readFromStub(file: string, input: MonthlyReaderInput, ctx: MonthlyReaderContext): Promise<MonthlyReading> {
   let cfg: ReaderStub = {};
@@ -141,10 +132,8 @@ async function readFromStub(file: string, input: MonthlyReaderInput, ctx: Monthl
   }
   const body = input.body.trim();
   if ((cfg.fail ?? []).includes(body)) throw new Error(`${LABEL} stub: forced failure`);
-  const answer = cfg.bodies?.[body];
-  if (answer !== undefined) return parseMonthlyReading(answer, input, ctx);
-  const { legacyMonthlyReading } = await import("./monthly-reader-legacy");
-  return legacyMonthlyReading(input, stubFactsOf.get(ctx) ?? null);
+  const answer = cfg.bodies?.[body] ?? cfg.legacy?.[legacyStubKey(body, input.reply?.text)] ?? cfg.legacy?.[legacyStubKey(body, null)];
+  return answer === undefined ? { kind: "none", why: "stub: no answer" } : parseMonthlyReading(answer, input, ctx);
 }
 
 function defaultModel(): PipelineModel | null {

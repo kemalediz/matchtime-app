@@ -6,11 +6,12 @@
  * back must not have its footer read as their own message.
  */
 import { describe, expect, it } from "vitest";
-import { parseMonthlyList } from "@/lib/monthly-list";
-import { buildSignupListPost, isMonthLevelList, paygMark, quotedSignupMonth, signupPasteResidual } from "@/lib/month-signup-copy";
+import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
+import { buildSignupListPost, paygMark } from "@/lib/month-signup-copy";
+import { isMonthLevelList, quotedSignupMonth, signupPasteResidual } from "@/lib/__tests__/fixtures/monthly-legacy";
 import { buildWeekListPost } from "@/lib/monthly-week-copy";
 import { monthKickoffs, type SignupList } from "@/lib/month-signup-rules";
-import { readSignupMessage } from "@/lib/monthly-reader-legacy";
+import { readSignupMessage } from "@/lib/__tests__/fixtures/monthly-legacy";
 
 const kickoffs = monthKickoffs("2026-11-01", 1, "20:00");
 const list: SignupList = {

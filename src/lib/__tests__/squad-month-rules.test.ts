@@ -21,7 +21,7 @@ import {
   type MonthSeedInput,
   type SeedListInput,
 } from "../squad-month-rules";
-import { parseMonthlyList } from "../monthly-list";
+import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
 
 describe("normalisers", () => {
   it("anything that is not 'monthly' reads as weekly, today's behaviour", () => {

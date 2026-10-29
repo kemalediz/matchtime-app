@@ -274,11 +274,19 @@ export function clearCalloffStub(): void {
  *  by the deterministic stand-in, as every monthly scenario before. */
 export function setMonthlyReaderStub(stub: { bodies?: Record<string, unknown>; fail?: string[] }): void {
   mkdirSync(path.dirname(E2E.MONTHLY_READER_STUB_FILE), { recursive: true });
-  writeFileSync(E2E.MONTHLY_READER_STUB_FILE, JSON.stringify(stub, null, 2));
+  // The harness's legacy readings (`monthly-reader-legacy.ts`) are kept.
+  let legacy: unknown = undefined;
+  try {
+    legacy = (JSON.parse(readFileSync(E2E.MONTHLY_READER_STUB_FILE, "utf8")) as { legacy?: unknown }).legacy;
+  } catch {
+    legacy = undefined;
+  }
+  writeFileSync(E2E.MONTHLY_READER_STUB_FILE, JSON.stringify({ ...stub, ...(legacy ? { legacy } : {}) }, null, 2));
 }
 
 export function clearMonthlyReaderStub(): void {
-  setMonthlyReaderStub({});
+  mkdirSync(path.dirname(E2E.MONTHLY_READER_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.MONTHLY_READER_STUB_FILE, "{}");
   rmSync(`${E2E.MONTHLY_READER_STUB_FILE}.calls`, { force: true });
 }
 
@@ -321,6 +329,7 @@ export function clearPipelineStubs(): void {
   clearRosterSurveyStub();
   clearVolunteerNameStub();
   clearCalloffStub();
+  clearMonthlyReaderStub();
 }
 
 // ── Fact builders ─────────────────────────────────────────────────────

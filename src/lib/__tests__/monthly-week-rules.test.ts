@@ -4,7 +4,7 @@
  * No database, no clock, no model. Made-up names throughout.
  */
 import { describe, it, expect } from "vitest";
-import { parseMonthlyList } from "../monthly-list";
+import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
 import {
   FEE_REPLY_WINDOW_MS,
   LIST_REPOST_FLOOR_MS,

@@ -6,10 +6,11 @@
  * and WhatsApp can never disagree.
  *
  * How it stays inside the one pipeline, with no phrase reading:
- *   - the list is read by the month list reader, `readListForSeed` (agent
- *     B is replacing what sits behind it with a model step; this file only
- *     uses its structured output: names matched to players, PAYG, paid,
- *     "4 only", and whether it is headed with a month);
+ *   - the list is read by the monthly reader, a model step, in
+ *     `month-seed-read.ts` (`proposeMonthSeedPaste`), reached in HQ only
+ *     through the admin group's shared model door
+ *     (`admin-group-understand.ts`). This file holds the YES, which reads
+ *     nothing;
  *   - the proposal is stored as an `AdminSquadProposal` with `monthSeed`
  *     set, so the admin group's existing "a pasted list waits for YES"
  *     question is what the router sees (`loadPending` kind "list"), and the
@@ -25,12 +26,11 @@ import { appUrl } from "./app-url";
 import { monthNameLabel } from "./i18n/dates";
 import { monthSetupCopy } from "./i18n/month-setup";
 import { firstKickoffOf, nextMonthStart } from "./month-signup-rules";
-import type { MonthlyList } from "./monthly-list";
-import { readListForSeed, startMonth } from "./squad-month";
+import { startMonth } from "./squad-month";
 import { isBreakMonth, londonMonthStart, monthFixtureDates, monthStartToDate, normaliseSquadMode, type SeedRowInput } from "./squad-month-rules";
 
 /** As long as a weekly pasted list waits for its YES. */
-const SEED_PROPOSAL_TTL_MS = 30 * 60 * 1000;
+export const SEED_PROPOSAL_TTL_MS = 30 * 60 * 1000;
 
 export interface MonthSeedProposalData {
   activityId: string;
@@ -54,7 +54,7 @@ function isUniqueViolation(err: unknown): boolean {
 
 /** The coming month a pasted list may start, for this club: the next
  *  month, or this one while its first game is still to come. */
-async function comingMonth(orgId: string, now: Date) {
+export async function comingMonth(orgId: string, now: Date) {
   const org = await db.organisation.findUnique({ where: { id: orgId }, select: { squadMode: true, seasonBreakMonths: true } });
   if (!org || normaliseSquadMode(org.squadMode) !== "monthly") return null;
   const activities = await db.activity.findMany({ where: { orgId, isActive: true }, select: { id: true, dayOfWeek: true, time: true } });
@@ -71,71 +71,6 @@ async function comingMonth(orgId: string, now: Date) {
     return { activity: a, monthStart, first, games: monthFixtureDates(monthStart, a.dayOfWeek).length };
   }
   return null;
-}
-
-/**
- * A list pasted in the admin group by an organiser. Null when it is not a
- * list for a coming month this club has not started: the caller does what
- * it did before.
- */
-export async function proposeMonthSeedPaste(args: {
-  orgId: string;
-  lang: string | null | undefined;
-  messageId: string;
-  /** An OWNER or ADMIN. Nobody else starts a month. */
-  organiserUserId: string;
-  text: string;
-  now: Date;
-  /** The list as the monthly reader already read it (players' group). */
-  list?: MonthlyList;
-}): Promise<MonthSeedReply | null> {
-  const { orgId, now } = args;
-  const target = await comingMonth(orgId, now);
-  if (!target) return null;
-  const read = await readListForSeed(orgId, args.text, now, target.monthStart, args.list);
-  if (!read.ok || !read.headed || read.monthMismatch || read.rows.length === 0) return null;
-
-  const rows: SeedRowInput[] = read.rows.map((r) => ({
-    userId: r.userId,
-    kind: r.kind,
-    tier: r.tier,
-    slot: r.slot,
-    paid: r.paid,
-    paidAmountPence: r.paidAmountPence,
-    gamesCommitted: r.gamesCommitted,
-    listName: r.listName,
-  }));
-  const data: MonthSeedProposalData = { activityId: target.activity.id, games: target.games, rows };
-  try {
-    await db.adminSquadProposal.updateMany({ where: { orgId, resolvedAt: null }, data: { resolvedAt: now, outcome: "superseded" } });
-    await db.adminSquadProposal.create({
-      data: {
-        orgId,
-        // A month's list is about no one match.
-        matchId: "",
-        waMessageId: args.messageId,
-        proposedByUserId: args.organiserUserId,
-        playingUserIds: rows.map((r) => r.userId),
-        monthStart: target.monthStart,
-        monthSeed: data as unknown as object,
-        expiresAt: new Date(now.getTime() + SEED_PROPOSAL_TTL_MS),
-      },
-    });
-  } catch (err) {
-    if (isUniqueViolation(err)) return null;
-    throw err;
-  }
-  const c = monthSetupCopy(args.lang);
-  const month = monthNameLabel(args.lang, target.first);
-  console.log(`[month-seed-hq] ${args.messageId}: ${target.monthStart} proposed for ${orgId}: ${rows.length} matched, ${read.unmatched.length} not known`);
-  const proposal = {
-    month,
-    count: rows.length,
-    names: read.rows.map((r) => r.listName || r.name).join(", "),
-    unknown: read.unmatched.length > 0 ? read.unmatched.map((u) => u.name).join(", ") : null,
-    link: appUrl("/admin/months"),
-  };
-  return { outcome: "month-seed-proposed", replyText: c.hq_seed_proposal(proposal), proposal };
 }
 
 /**

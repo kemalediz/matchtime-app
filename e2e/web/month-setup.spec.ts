@@ -19,6 +19,13 @@ import { testDb } from "../helpers/test-db";
 import { monthFixtureDates, londonMonthStart } from "@/lib/squad-month-rules";
 import { nextMonthStart } from "@/lib/month-signup-rules";
 import { moneyLabel } from "@/lib/club-billing-view";
+import { registerLegacyReadings } from "../helpers/monthly-reader-legacy";
+
+/** Paste a list into the page, with the monthly reader's stub answer for it. */
+async function fillList(box: import("@playwright/test").Locator, text: string): Promise<void> {
+  registerLegacyReadings([{ body: text }]);
+  await box.fill(text);
+}
 
 test.describe.configure({ mode: "serial" });
 
@@ -49,7 +56,7 @@ test("the coming month: started from the group's pasted list, with a fewer-games
   await expect(card).toBeVisible({ timeout: 30_000 });
   await expect(card.getByTestId("next-month-held")).toHaveText(`MatchTime is not posting a list for ${NEXT_LABEL} until you start it here.`);
 
-  await card.getByTestId("next-start-paste-text").fill([`List for ${NEXT_NAME}`, "1. Patso", "2. Riley", "3. Ben (PAYG)"].join("\n"));
+  await fillList(card.getByTestId("next-start-paste-text"), [`List for ${NEXT_NAME}`, "1. Patso", "2. Riley", "3. Ben (PAYG)"].join("\n"));
   await card.getByTestId("next-start-paste-read").click();
   await expect(card.getByTestId("next-start-paste-note")).toContainText("Players read from your list: 3.");
   await expect(card.getByTestId("next-start-paste-month")).toHaveCount(0);

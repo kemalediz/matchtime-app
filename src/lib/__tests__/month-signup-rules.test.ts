@@ -6,8 +6,8 @@
  * and what a pasted sign-up list changes. No database, no model.
  */
 import { describe, expect, it } from "vitest";
-import { parseMonthlyList } from "@/lib/monthly-list";
-import { readSignupMessage } from "@/lib/monthly-reader-legacy";
+import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
+import { readSignupMessage } from "@/lib/__tests__/fixtures/monthly-legacy";
 import {
   WAITING_NOTE,
   buildSignupList,

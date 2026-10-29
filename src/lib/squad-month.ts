@@ -17,7 +17,6 @@ import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { defaultPayBy } from "./month-payment-rules";
 import { WAITING_NOTE, firstKickoffOf, nextMonthStart, signupEndsAt } from "./month-signup-rules";
-import { parseMonthlyList, type MonthlyList } from "./monthly-list";
 import {
   draftSeedFromList,
   gamesPlayedBy,
@@ -227,53 +226,9 @@ async function saveListAliases(orgId: string, aliases: Array<{ userId: string; a
 }
 
 // ── A pasted list, read into a draft ───────────────────────────────────
-
-/** Far longer than any group's list; a paste beyond it is not one. */
-const MAX_LIST_CHARS = 8000;
-
-export type ReadListError = "not-monthly" | "not-a-list";
-
-/**
- * Read the organiser's pasted list with the slice 1 reader and match its
- * names to this club's current players (names and known aliases). Returns
- * a DRAFT for the organiser to check on the page. Writes nothing: the
- * month is only started by `startMonth`, with what the organiser submits.
- */
-export async function readListForSeed(
-  orgId: string,
-  text: string,
-  now: Date = new Date(),
-  /** The month being started, "2026-11-01" (A1). Omitted: this month. */
-  forMonthStart?: string,
-  /** The list as the monthly reader (the model) already read it, from the
-   *  players' group (agent B, 2026-10-29). Omitted: read here. */
-  read?: MonthlyList,
-): Promise<
-  | { ok: true; rows: SeedDraftRow[]; unmatched: SeedDraftUnmatched[]; monthMismatch: boolean; headed: boolean }
-  | { ok: false; error: ReadListError }
-> {
-  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { squadMode: true } });
-  if (!org || normaliseSquadMode(org.squadMode) !== "monthly") return { ok: false, error: "not-monthly" };
-  if (typeof text !== "string" || text.length > MAX_LIST_CHARS) return { ok: false, error: "not-a-list" };
-  const list = read ?? parseMonthlyList(text);
-  if (!list) return { ok: false, error: "not-a-list" };
-
-  const [memberships, aliases] = await Promise.all([
-    db.membership.findMany({
-      where: { orgId, leftAt: null, user: { isActive: true } },
-      select: { user: { select: { id: true, name: true } } },
-    }),
-    db.userAlias.findMany({ where: { orgId }, select: { userId: true, alias: true } }),
-  ]);
-  const roster = memberships.map((m) => ({
-    userId: m.user.id,
-    name: m.user.name,
-    aliases: aliases.filter((a) => a.userId === m.user.id).map((a) => a.alias),
-  }));
-  const month = Number((forMonthStart ?? londonMonthStart(now)).slice(5, 7));
-  // `headed`: the list names its month ("List for November").
-  return { ok: true, ...draftSeedFromList(list, roster, { month }), headed: list.month != null };
-}
+// Moved to `month-seed-read.ts` (2026-10-29): the list is read by the
+// monthly reader, a model step, so the reading sits apart from this file,
+// which the admin group's YES path imports and which must reach no model.
 
 // ── Merging two player records ─────────────────────────────────────────
 

@@ -362,6 +362,19 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
   const weekly = org.squadMode !== "monthly";
 
   return withOrgAiBudget(org.id, async () => {
+    // A MONTHLY club (2026-10-29): an organiser's pasted list for the
+    // coming month, not started yet, is proposed for YES like a weekly
+    // list. Read by the monthly reader (the one model step every group's
+    // monthly list goes through, `month-seed-read.ts`); null for anything
+    // else, which goes on to the router below.
+    if (!weekly && input.organiser && input.senderUserId) {
+      const { proposeMonthSeedPaste } = await import("./month-seed-read");
+      const seeded = await proposeMonthSeedPaste({ orgId: org.id, lang, messageId, organiserUserId: input.senderUserId, text: input.text, now });
+      if (seeded) {
+        await recordMatchTimeQuestion({ orgId: org.id, askRef: listAskRef(messageId), text: seeded.replyText, now });
+        return { route: null, outcome: seeded.outcome, replyText: seeded.replyText };
+      }
+    }
     const [pending, logAll, body] = await Promise.all([
       loadPending(org.id, now, lang, input.poolEnv),
       hqLogSince(org.id, new Date(now.getTime() - DAY_MS)),

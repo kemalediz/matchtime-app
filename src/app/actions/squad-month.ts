@@ -13,7 +13,8 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { readListForSeed, startMonth, type ReadListError, type StartMonthError } from "@/lib/squad-month";
+import { startMonth, type StartMonthError } from "@/lib/squad-month";
+import { readListForSeed, type ReadListError } from "@/lib/month-seed-read";
 import {
   normaliseCreditRule,
   normaliseSquadMode,
@@ -130,8 +131,10 @@ export async function readMonthList(
   | { ok: true; rows: SeedDraftRow[]; unmatched: SeedDraftUnmatched[]; monthMismatch: boolean }
   | { ok: false; error: ReadListError }
 > {
-  await requireAdmin(orgId);
-  return readListForSeed(orgId, text, new Date(), typeof monthStart === "string" && /^\d{4}-\d{2}-01$/.test(monthStart) ? monthStart : undefined);
+  const userId = await requireAdmin(orgId);
+  return readListForSeed(orgId, text, new Date(), typeof monthStart === "string" && /^\d{4}-\d{2}-01$/.test(monthStart) ? monthStart : undefined, {
+    senderUserId: userId,
+  });
 }
 
 /**

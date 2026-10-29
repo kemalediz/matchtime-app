@@ -22,6 +22,13 @@ import { testDb } from "../helpers/test-db";
 import { monthKickoffs } from "@/lib/month-signup-rules";
 import { londonMonthStart } from "@/lib/squad-month-rules";
 import { openSettingsCard } from "../helpers/settings-nav";
+import { registerLegacyReadings } from "../helpers/monthly-reader-legacy";
+
+/** Paste a list into the page, with the monthly reader's stub answer for it. */
+async function fillList(box: import("@playwright/test").Locator, text: string): Promise<void> {
+  registerLegacyReadings([{ body: text }]);
+  await box.fill(text);
+}
 
 test.describe.configure({ mode: "serial" });
 
@@ -208,7 +215,7 @@ test("an admin starts the month by pasting the group's list: paid marks are only
   await expect(page.getByTestId("info-mth_paste")).toBeVisible();
 
   // Prose is not a list, and reading it changes nothing.
-  await page.getByTestId("start-paste-text").fill("£22.50 for 4 games next month, pay by Friday");
+  await fillList(page.getByTestId("start-paste-text"), "£22.50 for 4 games next month, pay by Friday");
   await page.getByTestId("start-paste-read").click();
   await expect(page.getByTestId("start-paste-error")).toHaveText(
     "That doesn't look like a list. Paste the whole numbered list from your group.",
@@ -217,7 +224,7 @@ test("an admin starts the month by pasting the group's list: paid marks are only
 
   // "Patso" is Pat Player's known alias; there are two Omars; nobody is called Zed.
   const monthName = new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "Europe/London" }).format(new Date());
-  await page.getByTestId("start-paste-text").fill(
+  await fillList(page.getByTestId("start-paste-text"), 
     [
       `List for ${monthName}:`,
       "",

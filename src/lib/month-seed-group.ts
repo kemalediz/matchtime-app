@@ -41,7 +41,7 @@ export async function proposeMonthSeedFromGroup(args: {
     db.organisation.findUnique({ where: { id: args.orgId }, select: { language: true, adminGroupId: true } }),
   ]);
   if (!admin || !org) return false;
-  const { proposeMonthSeedPaste } = await import("./month-seed-hq");
+  const { proposeMonthSeedPaste } = await import("./month-seed-read");
   const res = await proposeMonthSeedPaste({
     orgId: args.orgId,
     lang: org.language,

@@ -6,7 +6,7 @@
  * to reply with must be the words that are read.
  */
 import { describe, expect, it } from "vitest";
-import { parseMonthlyList } from "@/lib/monthly-list";
+import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
 import {
   buildClaimsDigest,
   buildCollectorReplyAnswer,
@@ -21,7 +21,7 @@ import {
   type PricedLine,
 } from "@/lib/month-payment-copy";
 import { readCollectorReply, readPaidMessage } from "@/lib/month-payment-rules";
-import { isMonthLevelList } from "@/lib/month-signup-copy";
+import { isMonthLevelList } from "@/lib/__tests__/fixtures/monthly-legacy";
 import { monthKickoffs, type SignupList } from "@/lib/month-signup-rules";
 
 const kickoffs = monthKickoffs("2026-11-01", 1, "20:00");
