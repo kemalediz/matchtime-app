@@ -10,7 +10,9 @@
  *   neither one postable        the admin channel, which DMs the admins.
  *
  * Used by the once-ever "the pool is on" message (`pool/club-switch.ts`)
- * and by every pool guest joining or leaving a game (`pool/accept.ts`).
+ * and by every guest joining or leaving a game, from the pool
+ * (`pool/accept.ts`) or a partner club (`partner-guest.ts`), through the
+ * shared guest notice (`guest-notice.ts`).
  */
 export type ClubNoticeRoute = "admin-channel" | "players-group";
 

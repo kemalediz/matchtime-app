@@ -11,8 +11,8 @@
  *   register   a guest membership in the asking club (or an ordinary IN
  *              for someone already its member), `registerAttendance` on
  *              the ASKING club's match with cause "partner-ask", the
- *              volunteer recorded on the ask, the asking club's
- *              organisers told, and a DM to him;
+ *              volunteer recorded on the ask, the asking club told
+ *              (`tellAskingClub`), and a DM to him;
  *   withdraw   his row on the asking club's match dropped, same cause;
  *   refuse     one plain reply (closed, unknown, an overlapping game of
  *              his own, not on the list) and nothing written.
@@ -45,7 +45,9 @@
 import { db } from "./db";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { registerAttendance, cancelAttendance } from "./attendance";
-import { sendAdminNotice } from "./admin-channel";
+import { tellClubAboutGuest } from "./guest-notice";
+import { partnerGuestGroupNotice, type PartnerGuestNoticeKind } from "./partner-guest-notice-copy";
+import { shortDisplayName } from "./pool/offer-copy";
 import { dayCommaTimeLabel, timeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { askWindows, gamesOverlap } from "./partner-ask-rules";
@@ -103,6 +105,43 @@ async function dmVolunteer(args: { partnerOrgId: string; userId: string | null; 
   } catch (err) {
     console.error(`[partner-guest] ${args.userId ?? "unknown sender"}: the DM was not queued:`, err instanceof Error ? err.message : "failed");
     return false;
+  }
+}
+
+/**
+ * THE ASKING CLUB HEARS ABOUT ITS GUEST where the whole club can see it
+ * (Kemal, 2026-10-29, the pool's rule of #458 applied to partner guests):
+ * the shared guest notice (`guest-notice.ts`, `clubNoticeRoute`) sends the
+ * organisers' words to HQ (or the admins' DMs), or ONE post worded for
+ * everyone to a club whose only group is its players' group. Claimed once
+ * on `key`. The group words name his club and leave out his standing there.
+ * Never throws: a notice that fails never fails his reply.
+ */
+async function tellAskingClub(a: {
+  askerOrgId: string;
+  askerLang: string | null;
+  organiserPicks: boolean;
+  matchId: string;
+  key: string;
+  now: Date;
+  hqText: string;
+  name: string;
+  partner: string;
+  day: string;
+  kind: PartnerGuestNoticeKind;
+}): Promise<void> {
+  try {
+    await tellClubAboutGuest({
+      orgId: a.askerOrgId,
+      matchId: a.matchId,
+      key: a.key,
+      kind: "xask-volunteer",
+      now: a.now,
+      hqText: a.hqText,
+      groupText: partnerGuestGroupNotice(a.askerLang, { name: shortDisplayName(a.name), partner: a.partner, day: a.day, kind: a.kind, organiserPicks: a.organiserPicks }),
+    });
+  } catch (err) {
+    console.error(`[partner-guest] club ${a.askerOrgId}: guest notice ${a.key} not sent:`, err instanceof Error ? err.message : "failed");
   }
 }
 
@@ -249,16 +288,23 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
   };
   const askerLang = asker.language;
   const day = dayCommaTimeLabel(askerLang, ask.match.date);
+  const organiserPicks = normaliseBenchPickMode(asker.benchPickMode) === "organiser";
   /** The asking club hears once per reply (review M7): keyed on the ask,
    *  the person, the direction and the message. */
-  const tellAskerOnce = async (dir: "in" | "out", text: string) => {
-    try {
-      await db.sentNotification.create({ data: { key: `xask:${ask.id}:vol:${userId}:${dir}:${w.sourceMessageId}`, kind: "xask-volunteer" } });
-    } catch {
-      return; // told already
-    }
-    await sendAdminNotice({ orgId: asker.id, now, holdOvernight: false, text });
-  };
+  const tellAskerOnce = (dir: "in" | "out", kind: PartnerGuestNoticeKind, hqText: string) =>
+    tellAskingClub({
+      askerOrgId: asker.id,
+      askerLang,
+      organiserPicks,
+      matchId: ask.matchId,
+      key: `xask:${ask.id}:vol:${userId}:${dir}:${w.sourceMessageId}`,
+      now,
+      hqText,
+      name: w.name,
+      partner: partner.name,
+      day,
+      kind,
+    });
 
   try {
     if (decision.kind === "withdraw") {
@@ -266,7 +312,7 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
       await markGuestPlaceDropped(ask.matchId, userId, await partnerDropResult(asker.id, ask.match.date, now), now);
       // Review M7: removed in SQL, never rewritten from a stale read.
       await db.$executeRaw`UPDATE "PartnerAsk" SET "volunteerUserIds" = array_remove("volunteerUserIds", ${userId}) WHERE id = ${ask.id}`;
-      await tellAskerOnce("out", t(askerLang).xask_vol_out_notice_asker({ name: w.name, partner: partner.name, day }));
+      await tellAskerOnce("out", "out", t(askerLang).xask_vol_out_notice_asker({ name: w.name, partner: partner.name, day }));
       console.log(`[partner-guest] ask ${ask.id}: ${userId} withdrew`);
       return { ok: true, outcome: "withdrawn", dmText: ps.xask_vol_out({ asker: asker.name }), partnerOrgId: partner.id };
     }
@@ -317,7 +363,7 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
     // so the next volunteer's check sees it.
     let result: Awaited<ReturnType<typeof registerAttendance>>;
     let roundNowFull = false;
-    if (normaliseBenchPickMode(asker.benchPickMode) === "organiser") {
+    if (organiserPicks) {
       result = await writePlace();
     } else {
       const locked = await underRoundLock(
@@ -359,7 +405,7 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
     // club's name alone, as before.
     const standing = (await loadGuestStandings([{ userId, homeOrgId: partner.id }])).get(userId);
     const from = standing ? standingPhrase(askerLang, standing) : partner.name;
-    await tellAskerOnce("in", t(askerLang).xask_vol_notice_asker({ name: w.name, from, day, bench }));
+    await tellAskerOnce("in", bench ? "bench" : "in", t(askerLang).xask_vol_notice_asker({ name: w.name, from, day, bench }));
     // His place filled the round: every ask in it closes now, each partner
     // group hears its one "filled" line (the sweep would, at its next poll).
     if (roundNowFull) {
@@ -572,22 +618,25 @@ export async function withdrawGuest(args: { userId: string; matchId: string; now
   await markGuestPlaceDropped(args.matchId, args.userId, await partnerDropResult(orgId, match.date, now), now);
   await db.$executeRaw`UPDATE "PartnerAsk" SET "volunteerUserIds" = array_remove("volunteerUserIds", ${args.userId}) WHERE "matchId" = ${args.matchId}`;
   const [asker, from, user] = await Promise.all([
-    db.organisation.findUnique({ where: { id: orgId }, select: { name: true, language: true } }),
+    db.organisation.findUnique({ where: { id: orgId }, select: { name: true, language: true, benchPickMode: true } }),
     db.organisation.findUnique({ where: { id: mem.guestFromOrgId }, select: { id: true, name: true, language: true } }),
     db.user.findUnique({ where: { id: args.userId }, select: { name: true, phoneNumber: true } }),
   ]);
   if (asker && from) {
-    try {
-      await db.sentNotification.create({ data: { key: `xask-dm:${args.matchId}:out:${args.userId}`, kind: "xask-volunteer" } });
-      await sendAdminNotice({
-        orgId,
-        now,
-        holdOvernight: false,
-        text: t(asker.language).xask_vol_out_notice_asker({ name: user?.name ?? "", partner: from.name, day: dayCommaTimeLabel(asker.language, match.date) }),
-      });
-    } catch {
-      // told already
-    }
+    const day = dayCommaTimeLabel(asker.language, match.date);
+    await tellAskingClub({
+      askerOrgId: orgId,
+      askerLang: asker.language,
+      organiserPicks: normaliseBenchPickMode(asker.benchPickMode) === "organiser",
+      matchId: args.matchId,
+      key: `xask-dm:${args.matchId}:out:${args.userId}`,
+      now,
+      hqText: t(asker.language).xask_vol_out_notice_asker({ name: user?.name ?? "", partner: from.name, day }),
+      name: user?.name ?? "",
+      partner: from.name,
+      day,
+      kind: "out",
+    });
     if (user?.phoneNumber) {
       await db.botJob.create({
         data: { orgId: from.id, kind: "dm", phone: user.phoneNumber.replace(/^\+/, ""), text: t(from.language).xask_vol_out({ asker: asker.name }), ...REPLY_PRIORITY },

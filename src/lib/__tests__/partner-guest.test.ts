@@ -27,6 +27,10 @@ vi.mock("../admin-channel", () => notice);
 // His standing at his own club (2026-10-22): read by partner-guest-standing.ts.
 const standing = vi.hoisted(() => ({ loadGuestStandings: vi.fn() }));
 vi.mock("../partner-guest-standing", () => standing);
+// 2026-10-29: the asking club is told through the shared guest notice (HQ,
+// else its players' group, else the admins' DMs): partner-guest-club-notice.test.ts.
+const guestNotice = vi.hoisted(() => ({ tellClubAboutGuest: vi.fn() }));
+vi.mock("../guest-notice", () => guestNotice);
 
 import { handlePartnerVolunteer } from "../partner-guest";
 
@@ -69,7 +73,11 @@ beforeEach(() => {
   dbMock.user.findUnique.mockResolvedValue({ phoneNumber: "+447700900111" });
   dbMock.botJob.create.mockResolvedValue({ id: "dm1" });
   standing.loadGuestStandings.mockResolvedValue(new Map([["ali", { club: "Sutton FC", band: "top", rating: null }]]));
+  guestNotice.tellClubAboutGuest.mockResolvedValue("admin-channel");
 });
+
+/** The organisers' words of the asking club's notice. */
+const toldAsker = (text: string) => expect(guestNotice.tellClubAboutGuest).toHaveBeenCalledWith(expect.objectContaining({ orgId: "fnf", hqText: expect.stringContaining(text) }));
 
 /** The one DM he was sent, or undefined. */
 const dmTo = () => dbMock.botJob.create.mock.calls.map((c) => c[0].data).find((d) => d.kind === "dm");
@@ -95,7 +103,7 @@ describe("handlePartnerVolunteer", () => {
     expect(dbMock.partnerAsk.updateMany.mock.invocationCallOrder[0]).toBeLessThan(att.registerAttendance.mock.invocationCallOrder[0]);
     // His reply is in HIS club's language (Turkish here); the asking club's notice in its own.
     expect(r.dmText).toContain("FNF* yedek listesindesin");
-    expect(notice.sendAdminNotice).toHaveBeenCalledWith(expect.objectContaining({ orgId: "fnf", text: expect.stringContaining("Ali Kaya (Sutton FC, top third there) answered your ask") }));
+    toldAsker("Ali Kaya (Sutton FC, top third there) answered your ask");
     // His standing is read at HIS club (the partner), never the asking club.
     expect(standing.loadGuestStandings).toHaveBeenCalledWith([{ userId: "ali", homeOrgId: "sutton" }]);
   });
@@ -103,13 +111,13 @@ describe("handlePartnerVolunteer", () => {
   it("2026-10-22: his club shares its ratings: the notice carries his number there too", async () => {
     standing.loadGuestStandings.mockResolvedValue(new Map([["ali", { club: "Sutton FC", band: "middle", rating: 7.4 }]]));
     await handlePartnerVolunteer(write(), NOW);
-    expect(notice.sendAdminNotice).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("Ali Kaya (Sutton FC, middle third there, rated 7.4) answered") }));
+    toldAsker("Ali Kaya (Sutton FC, middle third there, rated 7.4) answered");
   });
 
   it("2026-10-22: his standing cannot be read: the notice still goes, with his club alone", async () => {
     standing.loadGuestStandings.mockResolvedValue(new Map());
     await handlePartnerVolunteer(write(), NOW);
-    expect(notice.sendAdminNotice).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("Ali Kaya (Sutton FC) answered") }));
+    toldAsker("Ali Kaya (Sutton FC) answered");
   });
 
   it("M1 (review of #400): a former ADMIN who left the asking club comes back as a guest: his row is a PLAYER again, never an admin", async () => {
@@ -207,12 +215,9 @@ describe("handlePartnerVolunteer", () => {
     expect(att.cancelAttendance).toHaveBeenCalledWith("ali", "m-fnf", expect.objectContaining({ cause: "partner-ask" }));
   });
 
-  it("M7 (review): the asking club's notice is keyed, so a replayed reply tells it once", async () => {
+  it("M7 (review): the asking club's notice is keyed on the reply, so a replay is claimed once (guest-notice.ts)", async () => {
     await handlePartnerVolunteer(write(), NOW);
-    expect(dbMock.sentNotification.create).toHaveBeenCalledWith({ data: { key: "xask:ask1:vol:ali:in:wa-1", kind: "xask-volunteer" } });
-    notice.sendAdminNotice.mockClear();
-    dbMock.sentNotification.create.mockRejectedValue(Object.assign(new Error("dup"), { code: "P2002" }));
-    await handlePartnerVolunteer(write(), NOW);
+    expect(guestNotice.tellClubAboutGuest).toHaveBeenCalledWith(expect.objectContaining({ key: "xask:ask1:vol:ali:in:wa-1", kind: "xask-volunteer" }));
     expect(notice.sendAdminNotice).not.toHaveBeenCalled();
   });
 

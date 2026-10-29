@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Job = Record<string, unknown>;
-const state = vi.hoisted(() => ({ claims: new Set<string>(), jobs: [] as Job[], org: null as Record<string, unknown> | null, postable: true }));
+const state = vi.hoisted(() => ({ claims: new Set<string>(), kinds: [] as string[], jobs: [] as Job[], org: null as Record<string, unknown> | null, postable: true }));
 const dbMock = vi.hoisted(() => ({ organisation: { findUnique: vi.fn() }, $transaction: vi.fn() }));
 vi.mock("../../db", () => ({ db: dbMock }));
 const channel = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));
@@ -17,6 +17,7 @@ vi.mock("../../admin-channel", () => channel);
 vi.mock("../../group-postability-store", () => ({ isGroupPostable: async () => state.postable }));
 
 import { tellClubAboutPoolGuest } from "../guest-notice";
+import { tellClubAboutGuest } from "../../guest-notice";
 
 const NOON = new Date("2026-10-29T12:00:00Z");
 const NIGHT = new Date("2026-10-29T23:30:00Z");
@@ -25,6 +26,7 @@ const ARGS = { orgId: "fnf", matchId: "m1", key: "pool-offer:o1:placed", hqText:
 beforeEach(() => {
   vi.clearAllMocks();
   state.claims = new Set();
+  state.kinds = [];
   state.jobs = [];
   state.postable = true;
   state.org = { adminGroupId: null, whatsappGroupId: "fnf@g.us", whatsappBotEnabled: true, quietHoursEnabled: true, quietHoursFrom: "23:00", quietHoursTo: "09:00" };
@@ -33,8 +35,9 @@ beforeEach(() => {
     const added: string[] = [];
     const tx = {
       sentNotification: {
-        createMany: async ({ data }: { data: { key: string }[] }) => {
+        createMany: async ({ data }: { data: { key: string; kind: string }[] }) => {
           if (state.claims.has(data[0].key)) return { count: 0 };
+          state.kinds.push(data[0].kind);
           state.claims.add(data[0].key);
           added.push(data[0].key);
           return { count: 1 };
@@ -106,5 +109,15 @@ describe("tellClubAboutPoolGuest", () => {
     state.org = null;
     expect(await tellClubAboutPoolGuest({ ...ARGS, now: NOON })).toBe("none");
     expect(state.jobs).toEqual([]);
+  });
+});
+
+describe("tellClubAboutGuest (shared with partner club guests, 2026-10-29)", () => {
+  it("the pool claims with its own kind; a partner guest's notice with the caller's kind, by the same route", async () => {
+    await tellClubAboutPoolGuest({ ...ARGS, now: NOON });
+    expect(await tellClubAboutGuest({ ...ARGS, key: "xask:ask1:vol:ali:in:wa-1", kind: "xask-volunteer", now: NOON })).toBe("players-group");
+    expect(state.kinds).toEqual(["pool-guest", "xask-volunteer"]);
+    expect(state.jobs.map((j) => j.kind)).toEqual(["group", "group"]);
+    expect(channel.sendAdminNotice).not.toHaveBeenCalled();
   });
 });
