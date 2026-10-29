@@ -484,3 +484,24 @@ export function planAwayWeeks(p: { games: AwayGame[]; ticked: string[]; current:
   const changed = absentMatchIds.length !== before.size || absentMatchIds.some((id) => !before.has(id));
   return { absentMatchIds, changed };
 }
+
+// ── Before an amount is rewritten (PR #464 review) ─────────────────────
+
+/**
+ * Before what somebody owes is rewritten: a "paid" with no amount written
+ * down was for what they were asked THEN. That amount is written down, so
+ * the change shows as owing more or owed back, never as nothing paid.
+ */
+export function freezePaidAmount(row: {
+  amountDuePence: number | null;
+  paidAt: Date | null;
+  paidAmountPence: number | null;
+  paidClaimedAt: Date | null;
+  paidClaimedAmountPence: number | null;
+}): { paidClaimedAmountPence?: number; paidAmountPence?: number } {
+  const asked = row.amountDuePence;
+  if (asked === null) return {};
+  if (row.paidAt) return row.paidAmountPence == null ? { paidAmountPence: asked } : {};
+  if (row.paidClaimedAt) return row.paidClaimedAmountPence == null ? { paidClaimedAmountPence: asked } : {};
+  return {};
+}

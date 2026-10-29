@@ -19,6 +19,7 @@ function renderings(table: (typeof MONTH_SETUP_TABLES)["en"]): string[] {
     count: 2,
     names: "Davide, Steff",
     unknown: "Zed",
+    day: "Mon 2 Nov",
   };
   for (const k of KEYS) {
     const v = table[k] as unknown;

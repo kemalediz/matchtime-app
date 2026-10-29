@@ -12,7 +12,7 @@ export const monthSetupTr: MonthSetupStrings = {
     ].join("\n"),
 
   held_nudge: (p) =>
-    `📋 Hatırlatma: ${p.month} yarın başlıyor ve burada henüz başlatılmadı, bu yüzden bu haftanın maçı dahil onun için hiçbir şey paylaşmıyorum. Grubunuzun listesiyle başlatın ya da boş bir liste açın: ${p.link}`,
+    `📋 Hatırlatma: ${p.month} ayının ilk maçı ${p.day} ve ay burada henüz başlatılmadı, bu yüzden o maç dahil onun için hiçbir şey paylaşmıyorum. Grubunuzun listesiyle başlatın ya da boş bir liste açın: ${p.link}`,
 
   next_title: (p) => `${p.month} ayını listenizle başlatın`,
   next_body: (p) =>

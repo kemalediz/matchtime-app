@@ -109,3 +109,61 @@ describe("PR #464 review: changing the games of somebody who said paid keeps wha
     expect(freezePaidAmount({ ...base, amountDuePence: null, paidClaimedAt: new Date() })).toEqual({});
   });
 });
+
+import { decideMissedCredits } from "../monthly-week-rules";
+
+describe("PR #464 review, round 2: a missed credit already used against another month, then 4 only set", () => {
+  const member = { userId: "u4", name: "Smiler", kind: "regular" as const, slot: 7, paid: "claimed" as const, absent: false, paygDated: false, freeMiss: true };
+  const rows = [{ userId: "u4", name: "Smiler", status: "DROPPED" as const, position: 7 }];
+  it("is handed back there, as a called-off week's is, so the share is not gained twice", () => {
+    const res = decideMissedCredits({
+      rule: "any-miss",
+      members: [member],
+      rows,
+      maxPlayers: 10,
+      existing: [{ id: "c9", userId: "u4", voidedAt: null, voidedById: null, appliedMonthId: "m-dec", createdById: null }],
+    });
+    expect(res.create).toEqual([]);
+    expect(res.releaseElsewhere).toEqual([{ creditId: "c9", userId: "u4", monthId: "m-dec" }]);
+  });
+  it("a regular who plays after all keeps a credit already used, as before", () => {
+    const res = decideMissedCredits({
+      rule: "any-miss",
+      members: [{ ...member, freeMiss: undefined }],
+      rows: [{ ...rows[0], status: "CONFIRMED" as const }],
+      maxPlayers: 10,
+      existing: [{ id: "c9", userId: "u4", voidedAt: null, voidedById: null, appliedMonthId: "m-dec", createdById: null }],
+    });
+    expect(res.voidIds).toEqual([]);
+    expect(res.releaseElsewhere).toEqual([]);
+  });
+});
+
+import { renderPricedList } from "../month-payment";
+import { monthKickoffs } from "../month-signup-rules";
+
+describe("PR #464 review, round 2: the priced list's games note", () => {
+  const kickoffs = monthKickoffs("2026-11-01", 1, "20:30");
+  const member = (userId: string, name: string, slot: number, over: object) => ({
+    userId, name, kind: "regular" as const, slot, waiting: false, out: false, paid: "none" as const, paygMatchIds: [],
+    tier: "standard", gamesCovered: 5, gamesCommitted: null, creditsApplied: 0, amountDuePence: 3750, paidClaimedAt: null, paidPence: null, ...over,
+  });
+  const month = {
+    id: "m", orgId: "o", activityId: "a", activityName: "Monday", monthStart: "2026-11-01", monthNumber: 11, status: "priced", open: false,
+    listOpenedAt: null, kickoffs, startedMidMonth: false, firstKickoff: kickoffs[0], endsAt: null, maxRegulars: 3,
+    fixture: { orgId: "o", venue: "V", dayOfWeek: 1 }, matches: [],
+    members: [
+      member("u1", "Smiler", 1, { gamesCommitted: 4, amountDuePence: 3000 }),
+      member("u2", "Late Joiner", 2, { gamesCovered: 3, amountDuePence: 2250 }),
+      member("u3", "Dan", 3, {}),
+    ],
+    sharePerGamePence: 750, concessionPerGamePence: null, venueCostPence: null, payByAt: new Date("2026-10-30T21:00:00Z"),
+    pricedAt: new Date(), summarySentAt: null, carriedFrom: null, language: "en",
+  };
+  it("shows the games only for a regular who committed to fewer", () => {
+    const text = renderPricedList(month as never, { collectorName: null, instructions: null })!;
+    expect(text).toContain("1. Smiler (£30, 4 games)");
+    expect(text).toContain("2. Late Joiner (£22.50)\n");
+    expect(text).toContain("3. Dan (£37.50)");
+  });
+});

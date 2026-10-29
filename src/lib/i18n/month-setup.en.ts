@@ -16,8 +16,8 @@ export const monthSetupEn = {
     ].join("\n"),
 
   /** The day before the held month's first game, still not started. */
-  held_nudge: (p: { month: string; link: string }): string =>
-    `📋 Reminder: ${p.month} starts tomorrow and has not been started here yet, so I am posting nothing for it, this week's game included. Start it from your group's list, or open an empty list: ${p.link}`,
+  held_nudge: (p: { month: string; day: string; link: string }): string =>
+    `📋 Reminder: ${p.month}'s first game is on ${p.day} and the month has not been started here yet, so I am posting nothing for it, that game included. Start it from your group's list, or open an empty list: ${p.link}`,
 
   // ── /admin/months: the coming month ──────────────────────────────────
   next_title: (p: { month: string }): string => `Start ${p.month} from your list`,

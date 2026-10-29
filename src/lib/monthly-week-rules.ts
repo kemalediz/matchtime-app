@@ -407,7 +407,7 @@ export function decideMissedCredits(args: {
    *  another reason (it was called off, or they left part-way). One game
    *  is one credit: no "missed" credit is written beside it. */
   creditedElsewhere?: ReadonlySet<string>;
-}): { create: string[]; voidIds: string[] } {
+}): { create: string[]; voidIds: string[]; releaseElsewhere: Array<{ creditId: string; userId: string; monthId: string }> } {
   const rowOf = new Map(args.rows.map((r) => [r.userId, r]));
   const regulars = args.members.filter((m) => m.kind === "regular");
   const misses = (m: WeekMember): boolean => {
@@ -469,7 +469,16 @@ export function decideMissedCredits(args: {
         e.createdById === null,
     )
     .map((e) => e.id);
-  return { create, voidIds };
+  // "4 only" (PR #464 review, round 2): a week they never paid for whose
+  // credit was already USED against a month is handed back there (that
+  // month asks one game more), as a called-off week's is. Otherwise they
+  // would get the share twice. A regular who simply played after all keeps
+  // a used credit, as before.
+  const free = new Set(regulars.filter((m) => m.freeMiss && !m.left).map((m) => m.userId));
+  const releaseElsewhere = args.existing
+    .filter((e) => e.voidedAt === null && free.has(e.userId) && e.appliedMonthId !== null && e.createdById === null)
+    .map((e) => ({ creditId: e.id, userId: e.userId, monthId: e.appliedMonthId as string }));
+  return { create, voidIds, releaseElsewhere };
 }
 
 /**

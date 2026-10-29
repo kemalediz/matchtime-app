@@ -747,7 +747,7 @@ export async function syncMonthlyWeek(
       outAt: outAt.get(a.userId) ?? null,
       choseBench: choseBench.has(a.userId),
     }));
-    const { create, voidIds } = decideMissedCredits({
+    const { create, voidIds, releaseElsewhere } = decideMissedCredits({
       rule: week.creditRule,
       members: week.members,
       rows,
@@ -770,7 +770,21 @@ export async function syncMonthlyWeek(
     if (voidIds.length > 0) {
       await tx.squadCredit.updateMany({ where: { id: { in: voidIds }, voidedAt: null }, data: { voidedAt: now } });
     }
-    return { created: create.length, voided: voidIds.length };
+    return { created: create.length, voided: voidIds.length, releaseElsewhere };
+  }).then(async (res) => {
+    // Each under THAT month's lock, in a transaction of its own (never two
+    // months' locks at once), the way a called-off game back on does it.
+    if (res.releaseElsewhere.length > 0) {
+      const { releaseSpentCredit } = await import("./month-close");
+      for (const rel of res.releaseElsewhere) {
+        try {
+          await releaseSpentCredit(week.orgId, rel, now);
+        } catch (err) {
+          console.error(`[monthly-week] handing credit ${rel.creditId} back to month ${rel.monthId} failed (the next sync retries):`, err);
+        }
+      }
+    }
+    return { created: res.created, voided: res.voided + res.releaseElsewhere.length };
   });
 }
 

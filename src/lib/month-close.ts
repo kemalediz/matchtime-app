@@ -65,8 +65,7 @@ import {
   type CreditState,
   type LeaverGame,
   type MonthSummary,
-  type Paid,
-} from "./month-close-rules";
+  type Paid, freezePaidAmount } from "./month-close-rules";
 import { lockClubCredits, mayConfirmPayments } from "./month-payment";
 import { lockMonth } from "./month-signup";
 import { WAITING_NOTE, monthKickoffs, nextMonthStart } from "./month-signup-rules";
@@ -553,6 +552,9 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
           source: true,
           paidAt: true,
           paidClaimedAt: true,
+          paidAmountPence: true,
+          paidClaimedAmountPence: true,
+          amountDuePence: true,
           gamesCovered: true,
           gamesCommitted: true,
           creditsApplied: true,
@@ -666,7 +668,12 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
         // The game is on again: it goes back onto what they are asked for.
         // For somebody who has paid since, that shows as "owes more".
         const creditsApplied = Math.max(0, r.creditsApplied - 1);
-        await tx.squadMonthMember.update({ where: { id: r.id }, data: { creditsApplied, amountDuePence: amountAfter(r, creditsApplied) } });
+        // What a "paid" with no amount paid is written down first, so the
+        // game back on shows as owing one more (PR #464 review, round 2).
+        await tx.squadMonthMember.update({
+          where: { id: r.id },
+          data: { ...freezePaidAmount(r), creditsApplied, amountDuePence: amountAfter(r, creditsApplied) },
+        });
       }
     }
     return { created: plan.create.length, voided: plan.voidIds.length, elsewhere: plan.releaseElsewhere };
@@ -694,7 +701,7 @@ const cancelledAtKey = (orgId: string, matchId: string): string => `${closeKeyPr
  * "owes more" (`paidBalancePence`); nobody's payment is touched. A CLOSED
  * month is frozen and is left as it is.
  */
-async function releaseSpentCredit(orgId: string, rel: { creditId: string; userId: string; monthId: string }, now: Date): Promise<void> {
+export async function releaseSpentCredit(orgId: string, rel: { creditId: string; userId: string; monthId: string }, now: Date): Promise<void> {
   await db.$transaction(async (tx) => {
     await lockMonth(tx, rel.monthId);
     await lockClubCredits(tx, orgId);
@@ -703,7 +710,19 @@ async function releaseSpentCredit(orgId: string, rel: { creditId: string; userId
       tx.squadMonth.findFirst({ where: { id: rel.monthId, orgId }, select: { status: true, sharePerGamePence: true, concessionPerGamePence: true } }),
       tx.squadMonthMember.findUnique({
         where: { monthId_userId: { monthId: rel.monthId, userId: rel.userId } },
-        select: { id: true, tier: true, kind: true, gamesCovered: true, gamesCommitted: true, creditsApplied: true },
+        select: {
+          id: true,
+          tier: true,
+          kind: true,
+          gamesCovered: true,
+          gamesCommitted: true,
+          creditsApplied: true,
+          amountDuePence: true,
+          paidAt: true,
+          paidAmountPence: true,
+          paidClaimedAt: true,
+          paidClaimedAmountPence: true,
+        },
       }),
     ]);
     if (!credit || !state || state.status === "closed") return;
@@ -713,7 +732,10 @@ async function releaseSpentCredit(orgId: string, rel: { creditId: string; userId
     const share = shareFor(state, row.tier);
     await tx.squadMonthMember.update({
       where: { id: row.id },
-      data: { creditsApplied, ...(row.kind === "regular" && share != null ? { amountDuePence: share * Math.max(0, chargedGames(row) - creditsApplied) } : {}) },
+      data: {
+        creditsApplied,
+        ...(row.kind === "regular" && share != null ? { ...freezePaidAmount(row), amountDuePence: share * Math.max(0, chargedGames(row) - creditsApplied) } : {}),
+      },
     });
   });
 }

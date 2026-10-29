@@ -173,7 +173,7 @@ test("1. a club new to monthly: next month's list is due, MatchTime posts none, 
   await poll(request, new Date(FIRST.getTime() - 22.5 * 3600_000), A.group);
   const again = await dmsTo(db, A.org, P.davideA);
   expect(again).toHaveLength(2);
-  expect(again[1].text).toContain(`Reminder: ${MONTH_NAME} starts tomorrow and has not been started here yet`);
+  expect(again[1].text).toContain(`Reminder: ${MONTH_NAME}'s first game is on ${formatInTimeZone(FIRST, LONDON, "EEE d MMM")} and the month has not been started here yet`);
 });
 
 test("2. the admin group door: the organiser's pasted list starts next month after his YES, and MatchTime does not post it back", async ({ request, db }) => {

@@ -965,13 +965,22 @@ export async function computeDuePosts(
   // PR #464 review: a month MatchTime HELD for its organiser (a club's first
   // monthly month, `tellMonthHeld`) and nobody has started. Its games are
   // not run the weekly way beside the group's own list. "YYYY-MM-01".
-  let heldMonths = new Set<string>();
+  let heldMonths: Array<{ monthStart: string; fixture: { orgId: string; venue: string; dayOfWeek: number } }> = [];
   if (features.squadMode === "monthly") {
     try {
       const { signupKeyPrefix } = await import("./month-signup");
       const prefix = `${signupKeyPrefix(org.id)}held:`;
-      const held = await db.sentNotification.findMany({ where: { key: { startsWith: prefix } }, select: { key: true } });
-      heldMonths = new Set(held.map((h) => h.key.slice(prefix.length, prefix.length + 10)));
+      const held = (await db.sentNotification.findMany({ where: { key: { startsWith: prefix } }, select: { key: true } })).map((h) => ({
+        monthStart: h.key.slice(prefix.length, prefix.length + 10),
+        activityId: h.key.slice(prefix.length + 11),
+      }));
+      // By FIXTURE (the key's activity, PR #464 review round 2): a club with
+      // two weekly games holds only the one whose month waits.
+      const acts = held.length === 0 ? [] : await db.activity.findMany({ where: { orgId: org.id, id: { in: held.map((h) => h.activityId) } }, select: { id: true, venue: true, dayOfWeek: true } });
+      heldMonths = held.flatMap((h) => {
+        const a = acts.find((x) => x.id === h.activityId);
+        return a ? [{ monthStart: h.monthStart, fixture: { orgId: org.id, venue: a.venue, dayOfWeek: a.dayOfWeek } }] : [];
+      });
     } catch (err) {
       console.error(`[scheduler] org ${org.id}: the held months could not be read on this poll:`, err);
     }
@@ -1022,7 +1031,7 @@ export async function computeDuePosts(
         }
       : signupMonth
         ? { monthId: signupMonth.id, seeded: false, signup: true, members: [], paygPricePence: org.paygPricePence ?? null }
-        : heldMonths.has(londonMonthStart(m.date))
+        : heldMonths.some((h) => h.monthStart === londonMonthStart(m.date) && isSameRecurringFixture(h.fixture, m.activity))
           ? // Held, not started: treated as in sign-up, so nothing weekly goes out.
             { monthId: "", seeded: false, signup: true, members: [], paygPricePence: org.paygPricePence ?? null }
           : null;

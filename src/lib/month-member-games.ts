@@ -37,24 +37,8 @@ export type SetMonthMemberGamesError =
   | "locked"
   | "fewer-than-played";
 
-/**
- * Before what somebody owes is rewritten: a "paid" with no amount written
- * down was for what they were asked THEN. That amount is written down, so
- * the change shows as owing more or owed back, never as nothing paid.
- */
-export function freezePaidAmount(row: {
-  amountDuePence: number | null;
-  paidAt: Date | null;
-  paidAmountPence: number | null;
-  paidClaimedAt: Date | null;
-  paidClaimedAmountPence: number | null;
-}): { paidClaimedAmountPence?: number; paidAmountPence?: number } {
-  const asked = row.amountDuePence;
-  if (asked === null) return {};
-  if (row.paidAt) return row.paidAmountPence == null ? { paidAmountPence: asked } : {};
-  if (row.paidClaimedAt) return row.paidClaimedAmountPence == null ? { paidClaimedAmountPence: asked } : {};
-  return {};
-}
+export { freezePaidAmount } from "./month-close-rules";
+import { freezePaidAmount } from "./month-close-rules";
 
 export async function setMonthMemberGames(args: {
   squadMonthId: string;
@@ -222,7 +206,14 @@ export async function setMonthMemberGames(args: {
         where: { activity: { orgId: month.orgId }, isHistorical: false, status: { not: "CANCELLED" }, date: { gte: monthFrom(month.monthStart), lt: monthTo(month.monthStart) } },
         select: { id: true },
       });
-      for (const x of played) await syncMonthlyWeek(x.id, now);
+      // One week's failure must not skip the others.
+      for (const x of played) {
+        try {
+          await syncMonthlyWeek(x.id, now);
+        } catch (err) {
+          console.error(`[month-member-games] syncing match ${x.id} after ${args.userId}'s games changed failed (the next poll retries):`, err);
+        }
+      }
     } catch (err) {
       console.error(`[month-member-games] reconciling ${args.userId}'s credits for ${month.id} failed (the sweep retries):`, err);
     }

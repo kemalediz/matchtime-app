@@ -81,7 +81,7 @@ import {
 } from "./month-signup-rules";
 import { carryFromMonthStart, isBreakMonth, londonMonthStart, monthStartToDate, normaliseSquadMode } from "./squad-month-rules";
 import { monthSetupCopy } from "./i18n/month-setup";
-import { monthNameLabel } from "./i18n/dates";
+import { dayLabel, monthNameLabel } from "./i18n/dates";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 const HOUR_MS = 60 * 60 * 1000;
@@ -455,20 +455,24 @@ export async function openDueMonthLists(orgId: string, now: Date = new Date()): 
 async function tellMonthHeld(args: { orgId: string; activityId: string; monthStart: string; firstKickoff: Date; lang: string | null; now: Date }): Promise<void> {
   try {
     const month = monthNameLabel(args.lang, args.firstKickoff);
-    // The day before the month's first game, still not started: ONE more
-    // nudge (PR #464 review). Until then nothing, weekly or monthly, is
-    // posted for the month (`bot-scheduler.ts` reads the held key).
-    if (args.now.getTime() >= args.firstKickoff.getTime() - 24 * HOUR_MS) {
-      if (await claimOnce(`${signupKeyPrefix(args.orgId)}held-again:${args.monthStart}:${args.activityId}`, "admin-notice")) {
-        await sendAdminNotice({
-          orgId: args.orgId,
-          now: args.now,
-          nextPath: "/admin/months",
-          text: (link) => monthSetupCopy(args.lang).held_nudge({ month, link: link || appUrl("/admin/months") }),
-        });
-      }
+    const first = await claimOnce(`${signupKeyPrefix(args.orgId)}held:${args.monthStart}:${args.activityId}`, "admin-notice");
+    // The day before the month's first game (or later that day), still not
+    // started: ONE more nudge, never in the same poll as the first notice
+    // and so never before it (PR #464 review). Worded from the kick-off
+    // itself, so it is right on whichever day it goes out. Until then
+    // nothing, weekly or monthly, is posted for the month
+    // (`bot-scheduler.ts` reads the held key).
+    if (!first) {
+      if (args.now.getTime() < args.firstKickoff.getTime() - 24 * HOUR_MS) return;
+      if (!(await claimOnce(`${signupKeyPrefix(args.orgId)}held-again:${args.monthStart}:${args.activityId}`, "admin-notice"))) return;
+      await sendAdminNotice({
+        orgId: args.orgId,
+        now: args.now,
+        nextPath: "/admin/months",
+        text: (link) => monthSetupCopy(args.lang).held_nudge({ month, day: dayLabel(args.lang, args.firstKickoff), link: link || appUrl("/admin/months") }),
+      });
+      return;
     }
-    if (!(await claimOnce(`${signupKeyPrefix(args.orgId)}held:${args.monthStart}:${args.activityId}`, "admin-notice"))) return;
     await sendAdminNotice({
       orgId: args.orgId,
       now: args.now,
