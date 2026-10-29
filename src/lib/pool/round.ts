@@ -41,6 +41,7 @@ import { appUrl } from "../app-url";
 import { loadPartnerAskSettings } from "../club-partnership";
 import { askWindows } from "../partner-ask-rules";
 import { loadRoundFill } from "../partner-ask-round";
+import { askPlacesOpen } from "../monthly-week-asks";
 import { queuePlatformDm } from "../platform-jobs";
 import { pausesForIgnored } from "./caps";
 import { ledgerEntryOf } from "./candidate-rows";
@@ -78,12 +79,11 @@ async function cutoffOf(orgId: string, kickoff: Date): Promise<Date> {
   return askWindows(kickoff, settings?.cutoffHours ?? 4).postBy;
 }
 
-/** The match's places not yet taken (CONFIRMED against its size). */
+/** The match's places not yet taken (CONFIRMED against its size). In a
+ *  week of a running month, the week's own count: before the seed the
+ *  regulars who will be put in are not open (`monthly-week-asks.ts`). */
 export async function placesOpenOf(matchId: string): Promise<number> {
-  const m = await db.match.findUnique({ where: { id: matchId }, select: { maxPlayers: true } });
-  if (!m) return 0;
-  const confirmed = await db.attendance.count({ where: { matchId, status: "CONFIRMED" } });
-  return Math.max(0, m.maxPlayers - confirmed);
+  return askPlacesOpen(matchId);
 }
 
 async function isOrganiser(userId: string | null, orgId: string): Promise<boolean> {
