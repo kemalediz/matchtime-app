@@ -169,10 +169,42 @@ export function gamesPlayedBy(dates: string[], time: string, now: Date): number 
   }
 }
 
-/** share x (games covered - credits applied). null while no share is set; never negative. */
-export function amountDuePence(p: { sharePence: number | null | undefined; gamesCovered: number; creditsApplied: number }): number | null {
+/**
+ * The games a regular PAYS for (2026-10-29, "4 only"): the games they
+ * cover, or fewer when they committed to fewer. Never more than they
+ * cover, never negative. Every money path reads this, not `gamesCovered`.
+ */
+export function chargedGames(m: { gamesCovered: number; gamesCommitted?: number | null }): number {
+  const covered = Math.max(0, m.gamesCovered);
+  return m.gamesCommitted == null ? covered : Math.max(0, Math.min(m.gamesCommitted, covered));
+}
+
+export type GamesCommittedError = "bad-games" | "more-than-the-month";
+
+/**
+ * Is this a games count a regular may commit to? NULL (every game), or a
+ * whole number from 1 to the games they cover. A count equal to what they
+ * cover is stored as NULL: it is every game.
+ */
+export function checkGamesCommitted(
+  games: unknown,
+  gamesCovered: number,
+): { ok: true; value: number | null } | { ok: false; error: GamesCommittedError } {
+  if (games === null || games === undefined) return { ok: true, value: null };
+  if (!isWholeNumber(games) || games < 1 || games > MAX_GAMES_IN_MONTH) return { ok: false, error: "bad-games" };
+  if (games > gamesCovered) return { ok: false, error: "more-than-the-month" };
+  return { ok: true, value: games === gamesCovered ? null : games };
+}
+
+/** share x (games paid for - credits applied). null while no share is set; never negative. */
+export function amountDuePence(p: {
+  sharePence: number | null | undefined;
+  gamesCovered: number;
+  creditsApplied: number;
+  gamesCommitted?: number | null;
+}): number | null {
   if (p.sharePence == null) return null;
-  return p.sharePence * Math.max(0, p.gamesCovered - p.creditsApplied);
+  return p.sharePence * Math.max(0, chargedGames(p) - p.creditsApplied);
 }
 
 // ── Starting a month part-way through (plan 4.5) ───────────────────────
@@ -200,6 +232,9 @@ export interface SeedRowInput {
   paidAmountPence?: number | null;
   /** Games of credit this regular came into the month with (already taken off what they paid). */
   creditsCarriedIn?: number;
+  /** "4 only" (2026-10-29): the games this regular commits to. Null or
+   *  omitted: every game of the month. */
+  gamesCommitted?: number | null;
   /** From a pasted list only: the name as the list writes it ("Big Al").
    *  Saved as an alias of the player, so the group's later pastes of the
    *  same list resolve to them by name. */
@@ -236,6 +271,7 @@ export type MonthSeedError =
   | "bad-row"
   | "bad-credits"
   | "bad-amount"
+  | "bad-games-committed"
   | "duplicate-player"
   | "duplicate-slot"
   | "not-a-member";
@@ -257,6 +293,7 @@ export interface PlannedMember {
   tier: MemberTier;
   slot: number;
   gamesCovered: number;
+  gamesCommitted: number | null;
   creditsApplied: number;
   amountDuePence: number | null;
   paidClaimedAt: Date | null;
@@ -329,8 +366,12 @@ export function planMonthSeed(
       taken.add(r.slot);
     }
     if (r.kind === "regular") {
+      const committed = checkGamesCommitted(r.gamesCommitted ?? null, gamesScheduled);
+      if (!committed.ok) return { ok: false, error: "bad-games-committed", userId };
       const credits = r.creditsCarriedIn ?? 0;
-      if (!isWholeNumber(credits) || credits < 0 || credits > gamesScheduled) return { ok: false, error: "bad-credits", userId };
+      if (!isWholeNumber(credits) || credits < 0 || credits > chargedGames({ gamesCovered: gamesScheduled, gamesCommitted: committed.value })) {
+        return { ok: false, error: "bad-credits", userId };
+      }
       const amount = r.paidAmountPence;
       if (amount != null && !(isWholeNumber(amount) && amount >= 0 && amount <= MAX_PAID_PENCE)) return { ok: false, error: "bad-amount", userId };
     }
@@ -360,18 +401,21 @@ export function planMonthSeed(
       paidConfirmedByUserId: null,
     };
     if (r.kind === "payg") {
-      members.push({ ...base, tier: "standard", gamesCovered: 0, creditsApplied: 0, amountDuePence: null, ...unpaid });
+      members.push({ ...base, tier: "standard", gamesCovered: 0, gamesCommitted: null, creditsApplied: 0, amountDuePence: null, ...unpaid });
       continue;
     }
     const tier = r.tier ?? "standard";
     const creditsApplied = r.creditsCarriedIn ?? 0;
-    const due = amountDuePence({ sharePence: tier === "concession" ? concession : share, gamesCovered: gamesScheduled, creditsApplied });
+    const committed = checkGamesCommitted(r.gamesCommitted ?? null, gamesScheduled);
+    const gamesCommitted = committed.ok ? committed.value : null;
+    const due = amountDuePence({ sharePence: tier === "concession" ? concession : share, gamesCovered: gamesScheduled, gamesCommitted, creditsApplied });
     const paid = r.paid ?? "none";
     const amount = r.paidAmountPence ?? null;
     members.push({
       ...base,
       tier,
       gamesCovered: gamesScheduled,
+      gamesCommitted,
       creditsApplied,
       amountDuePence: due,
       ...unpaid,
@@ -431,6 +475,8 @@ export interface SeedListEntry {
     tier?: string | null;
     payg?: boolean;
     paygDates?: unknown[];
+    /** "4 only": the games this player commits to, as the reader read it. */
+    gamesCommitted?: number | null;
   };
 }
 
@@ -454,6 +500,7 @@ export interface SeedDraftRow extends SeedRowInput {
   slot: number | null;
   paid: SeedPaid;
   paidAmountPence: number | null;
+  gamesCommitted: number | null;
 }
 
 export interface SeedDraftUnmatched {
@@ -533,6 +580,7 @@ export function draftSeedFromList(
       slot,
       paid: saysPaid ? "claimed" : "none",
       paidAmountPence: saysPaid ? (e.marks?.paidAmountPence ?? null) : null,
+      gamesCommitted: kind === "regular" && typeof e.marks?.gamesCommitted === "number" ? e.marks.gamesCommitted : null,
     });
   };
 
@@ -540,4 +588,57 @@ export function draftSeedFromList(
   for (const e of list?.sections?.cantPlay ?? []) take(e, "cantPlay");
 
   return { rows, unmatched, monthMismatch: list?.month != null && list.month.month !== current.month };
+}
+
+// ── A season break (2026-10-29, Vets MNF: "no football in December") ───
+
+/** A "YYYY-MM" key of a London month, from "YYYY-MM-01" or "YYYY-MM". */
+export function monthKey(monthStart: string): string {
+  return monthStart.slice(0, 7);
+}
+
+/** Is this month one the club plays no games in? */
+export function isBreakMonth(breakMonths: readonly string[] | null | undefined, monthStart: string): boolean {
+  return (breakMonths ?? []).includes(monthKey(monthStart));
+}
+
+/** At most this many months ahead can be ticked off. */
+export const SEASON_BREAK_AHEAD_MONTHS = 12;
+
+/**
+ * The months an organiser ticked off, checked: each "YYYY-MM", none before
+ * this London month, none more than a year ahead, no repeats, in order.
+ * Months already past are dropped rather than refused: they no longer
+ * change anything.
+ */
+export function prepareSeasonBreak(v: unknown, now: Date): { ok: true; value: string[] } | { ok: false; error: "bad-months" } {
+  if (!Array.isArray(v) || v.length > 24) return { ok: false, error: "bad-months" };
+  const current = monthKey(londonMonthStart(now));
+  const last = (() => {
+    const d = monthStartToDate(londonMonthStart(now));
+    d.setUTCMonth(d.getUTCMonth() + SEASON_BREAK_AHEAD_MONTHS);
+    return d.toISOString().slice(0, 7);
+  })();
+  const out = new Set<string>();
+  for (const m of v) {
+    if (typeof m !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) return { ok: false, error: "bad-months" };
+    if (m > last) return { ok: false, error: "bad-months" };
+    if (m >= current) out.add(m);
+  }
+  return { ok: true, value: [...out].sort() };
+}
+
+/**
+ * The month whose regulars a new month carries over: the month before it,
+ * stepping back over the club's break months ("no football in December":
+ * January carries November's regulars). At most a year back.
+ */
+export function carryFromMonthStart(monthStart: string, breakMonths: readonly string[] | null | undefined): string {
+  const back = (n: number): string => {
+    const d = monthStartToDate(monthStart);
+    d.setUTCMonth(d.getUTCMonth() - n);
+    return d.toISOString().slice(0, 10);
+  };
+  for (let n = 1; n <= 12; n++) if (!isBreakMonth(breakMonths, back(n))) return back(n);
+  return back(1);
 }

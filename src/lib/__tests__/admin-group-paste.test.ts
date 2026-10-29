@@ -13,7 +13,7 @@ const dbMock = vi.hoisted(() => ({
   membership: { findMany: vi.fn() },
   userAlias: { findMany: vi.fn() },
   user: { findMany: vi.fn() },
-  adminSquadProposal: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
+  adminSquadProposal: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: vi.fn() }));
@@ -29,6 +29,10 @@ vi.mock("@/lib/squad-count", () => ({
     benchPickMode: null,
   }),
 }));
+
+const seedHq = vi.hoisted(() => ({ applyMonthSeedYes: vi.fn() }));
+vi.mock("../month-seed-hq", () => seedHq);
+vi.mock("@/lib/month-seed-hq", () => seedHq);
 
 import { answerSquadPasteYes, proposeSquadPaste } from "../admin-group-paste";
 
@@ -303,5 +307,36 @@ describe("answerSquadPasteYes", () => {
     att.cancelAttendance.mockRejectedValueOnce(new Error("boom"));
     const r = await answerSquadPasteYes(yes);
     expect(r?.replyText).toMatch(/^Done: Clarence Obi out, Bilal Ahmed in, Naim in\. I couldn't change Shehryar Khan\./);
+  });
+});
+
+
+// PR #464 review: a monthly club's list for the coming month is marked
+// applied only once its YES has started the month.
+describe("a month's list waiting for YES", () => {
+  const SEED = { id: "p-seed", orgId: "org", waMessageId: "wa-seed", proposedByUserId: "u-owner", matchId: "", monthStart: "2026-11-01", monthSeed: { activityId: "a", games: 5, rows: [] }, expiresAt: new Date(NOW.getTime() + 60_000), resolvedAt: null };
+  const yes = () => answerSquadPasteYes({ orgId: "org", lang: "en", messageId: "wa-yes", senderUserId: "u-owner", now: NOW });
+
+  it("a YES that fails leaves the list waiting for another", async () => {
+    dbMock.adminSquadProposal.findFirst.mockResolvedValue(SEED);
+    dbMock.adminSquadProposal.findUnique.mockResolvedValue({ resolvedAt: null });
+    seedHq.applyMonthSeedYes.mockResolvedValue({ outcome: "month-seed-failed", replyText: "no", error: "failed" });
+    expect(await yes()).toEqual({ outcome: "month-seed-failed", replyText: "no" });
+    expect(dbMock.adminSquadProposal.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("a YES that starts the month marks the list applied", async () => {
+    dbMock.adminSquadProposal.findFirst.mockResolvedValue(SEED);
+    seedHq.applyMonthSeedYes.mockResolvedValue({ outcome: "month-seed-applied", replyText: "ok" });
+    expect(await yes()).toEqual({ outcome: "month-seed-applied", replyText: "ok" });
+    expect(dbMock.adminSquadProposal.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "p-seed", resolvedAt: null } }));
+  });
+
+  it("a month started on the website meanwhile: the list is done with", async () => {
+    dbMock.adminSquadProposal.findFirst.mockResolvedValue(SEED);
+    dbMock.adminSquadProposal.findUnique.mockResolvedValue({ resolvedAt: null });
+    seedHq.applyMonthSeedYes.mockResolvedValue({ outcome: "month-seed-failed", replyText: "already", error: "already-started" });
+    await yes();
+    expect(dbMock.adminSquadProposal.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ outcome: "superseded" }) }));
   });
 });

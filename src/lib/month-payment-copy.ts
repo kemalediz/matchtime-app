@@ -16,6 +16,7 @@ import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import { gameDaysLabel } from "./month-signup-copy";
 import type { SignupList } from "./month-signup-rules";
+import { monthSetupCopy } from "./i18n/month-setup";
 
 type LangArg = Lang | string | null | undefined;
 
@@ -34,6 +35,9 @@ export interface PricedLine {
   paid: "none" | "claimed" | "confirmed";
   /** What was confirmed, else what was claimed, else null. */
   paidPence: number | null;
+  /** "4 only" (2026-10-29): the games this regular pays for. Shown beside
+   *  the amount when it is not the games in the header. */
+  games?: number;
 }
 
 /**
@@ -65,6 +69,7 @@ export function buildPricedListPost(p: {
   lang?: LangArg;
 }): string {
   const s = t(p.lang);
+  const headerGames = p.games ?? p.kickoffs.length;
   const out: string[] = [
     s.mpy_priced_header({
       month: monthNameLabel(p.lang, p.kickoffs[0]),
@@ -82,11 +87,15 @@ export function buildPricedListPost(p: {
     }
     const line = p.lines.get(slot.userId);
     const name = slot.name || s.unnamed;
+    // A regular in for fewer games than the header's: their own count, so
+    // the amount on their line is not read against the header's.
+    const fewer = line?.games !== undefined && line.games !== headerGames ? monthSetupCopy(p.lang).games_note({ games: line.games }) : null;
     if (line && line.paid !== "none") {
       const amount = line.paidPence ?? line.amountDuePence;
-      out.push(`${slot.slot}. ${name} ${amount != null ? s.mpy_list_paid_amount({ amount: pounds(amount) }) : s.mwk_list_paid}`);
+      const paid = amount != null ? s.mpy_list_paid_amount({ amount: pounds(amount) }) : s.mwk_list_paid;
+      out.push(`${slot.slot}. ${name} ${fewer ? `${paid.replace(/\)$/, "")}, ${fewer})` : paid}`);
     } else if (line?.amountDuePence != null) {
-      out.push(`${slot.slot}. ${name} (${pounds(line.amountDuePence)})`);
+      out.push(`${slot.slot}. ${name} (${pounds(line.amountDuePence)}${fewer ? `, ${fewer}` : ""})`);
     } else {
       out.push(`${slot.slot}. ${name}`);
     }

@@ -76,6 +76,22 @@ describe("the priced list", () => {
     expect(text.split("\n")[1]).toBe("(4 games = £30. Credits are already taken off.)");
   });
 
+  it("a 4 only regular's line says their own games, so £30 is not read against 5 games = £37.50 (PR #464 review)", () => {
+    const four = new Map<string, PricedLine>([
+      ["alex", { amountDuePence: 3000, paid: "none", paidPence: null, games: 4 }],
+      ["bilal", { amountDuePence: 3000, paid: "claimed", paidPence: null, games: 4 }],
+      ["carl", { amountDuePence: 3750, paid: "none", paidPence: null, games: 5 }],
+    ]);
+    const text = buildPricedListPost({ list, lines: four, kickoffs, sharePence: 750, payByAt, collectorName: null, instructions: null, lang: "en" });
+    expect(text).toContain("(5 games = £37.50. Credits are already taken off.)");
+    expect(text).toContain("1. Alex Carter (£30, 4 games)");
+    expect(text).toContain("2. Bilal Aydin (paid £30, 4 games)");
+    expect(text).toContain("4. Carl Young (£37.50)\n");
+    const tr = buildPricedListPost({ list, lines: four, kickoffs, sharePence: 750, payByAt, collectorName: null, instructions: null, lang: "tr" });
+    expect(tr).toContain("1. Alex Carter (£30, 4 maç)");
+    expect(tr).toContain("2. Bilal Aydin (ödedi £30, 4 maç)");
+  });
+
   it("no instructions: no payment line; instructions over several lines sit on one", () => {
     expect(post("en", null)).not.toContain("Payment:");
     expect(post("en", "Sort code in the description.\n1. Use your name as the reference")).toContain(

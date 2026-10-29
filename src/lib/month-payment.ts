@@ -86,7 +86,7 @@ import { loadLiveMonths, lockMonth, type SignupMonth } from "./month-signup";
 import { WAITING_NOTE, buildSignupList, isDaytime, SIGNUP_REPOST_FLOOR_MS } from "./month-signup-rules";
 import { weekListHash } from "./monthly-week-rules";
 import { normalisePhone } from "./phone";
-import { normaliseSquadMode } from "./squad-month-rules";
+import { chargedGames, normaliseSquadMode } from "./squad-month-rules";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
@@ -146,7 +146,9 @@ type MemberRow = {
   note: string | null;
   leftAt: Date | null;
   gamesCovered: number;
+  gamesCommitted: number | null;
   creditsApplied: number;
+  amountDuePence: number | null;
   paidAt: Date | null;
   paidClaimedAt: Date | null;
 };
@@ -159,7 +161,9 @@ const MEMBER_FIELDS = {
   note: true,
   leftAt: true,
   gamesCovered: true,
+  gamesCommitted: true,
   creditsApplied: true,
+  amountDuePence: true,
   paidAt: true,
   paidClaimedAt: true,
 } as const;
@@ -171,7 +175,8 @@ const pricingMember = (r: MemberRow, inClub: ReadonlySet<string>): PricingMember
   waiting: r.kind === "payg" && r.note === WAITING_NOTE,
   // Somebody who has left the group owes nothing more for the month.
   out: r.leftAt !== null || !inClub.has(r.userId),
-  gamesCovered: r.gamesCovered,
+  // The games they PAY for: fewer than they cover for a "4 only" regular.
+  gamesCovered: chargedGames(r),
   creditsApplied: r.creditsApplied,
   paid: r.paidAt ? "confirmed" : r.paidClaimedAt ? "claimed" : "none",
 });
@@ -182,7 +187,7 @@ const pricingMember = (r: MemberRow, inClub: ReadonlySet<string>): PricingMember
  * or carried credit). A credit for a game still to come can be taken back
  * if the regular plays after all, so it is never spent in advance.
  */
-async function usableCredits(
+export async function usableCredits(
   tx: Tx,
   orgId: string,
   userIds: string[],
@@ -273,6 +278,19 @@ export async function priceMonth(args: {
       current?.pricedAt ?? null,
     );
     const plan = planPricing({ members, credits, sharePence: args.input.sharePence, concessionPence: args.input.concessionPence });
+    // A regular who said "paid" BEFORE there was a price (a "(paid)" mark on
+    // the group's list the month was started from, 2026-10-29) was never
+    // asked for an amount: they get one now, from the games they pay for,
+    // with no credit pulled in behind their claim. One with an amount keeps it.
+    for (const r of rows) {
+      const m = pricingMember(r, inClub);
+      if (m.kind !== "regular" || m.out || m.waiting || m.paid === "none" || r.amountDuePence !== null) continue;
+      const share = m.tier === "concession" && args.input.concessionPence !== null ? args.input.concessionPence : args.input.sharePence;
+      await tx.squadMonthMember.updateMany({
+        where: { id: r.id, amountDuePence: null },
+        data: { amountDuePence: share * Math.max(0, m.gamesCovered - m.creditsApplied) },
+      });
+    }
     for (const row of plan) {
       if (row.creditIds.length > 0) {
         // `appliedMonthId: null` in the WHERE: a credit is used once.
@@ -962,7 +980,7 @@ export type PaymentInstruction =
 export function renderPricedList(month: SignupMonth, facts: { collectorName: string | null; instructions: string | null }): string | null {
   if (month.sharePerGamePence == null || !month.payByAt) return null;
   const lines = new Map<string, PricedLine>(
-    activeRegulars(month).map((m) => [m.userId, { amountDuePence: m.amountDuePence, paid: m.paid, paidPence: m.paidPence }]),
+    activeRegulars(month).map((m) => [m.userId, { amountDuePence: m.amountDuePence, paid: m.paid, paidPence: m.paidPence, ...(m.gamesCommitted != null ? { games: chargedGames(m) } : {}) }]),
   );
   return buildPricedListPost({
     list: buildSignupList({ members: month.members, maxRegulars: month.maxRegulars, matches: month.matches }),
@@ -1071,7 +1089,7 @@ export async function monthPaymentPosts(
           name: m.name,
           monthDate: month.firstKickoff,
           amountDuePence: m.amountDuePence ?? 0,
-          games: m.gamesCovered,
+          games: chargedGames(m),
           credits: m.creditsApplied,
           payByAt,
           collectorName: collector?.name ?? null,

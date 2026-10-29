@@ -38,6 +38,45 @@ export interface WeekMember {
    *  month for what they are OWED: every credit they earned stands. But
    *  they are no longer seeded, listed or holding a slot number. */
   left?: boolean;
+  /** "4 only" (2026-10-29): this regular has already played the games
+   *  they committed to. This week is an away week for them, and a game
+   *  they play anyway is pay-as-you-go (`commitmentForMatch`). */
+  extra?: boolean;
+  /** "4 only": missing this week earns no credit. They never paid for it. */
+  freeMiss?: boolean;
+}
+
+/**
+ * Where a "4 only" regular stands on one match of the month (2026-10-29).
+ * They pay for `committed` of the `covered` games, so `covered - committed`
+ * weeks are theirs to miss for nothing.
+ *
+ *  - `extra`: they have already played the games they committed to. This
+ *    week is an away week (seeded out, no credit), and if they play it
+ *    anyway it is a PAYG game, paid on the night;
+ *  - `freeMiss`: missing this week earns NO credit. A miss (dropped, away,
+ *    or the week called off) uses up the free weeks first; only a miss
+ *    beyond them earns a credit, because only then did they pay for a game
+ *    they did not get.
+ *
+ * `earlier`: the month's earlier games since they joined, in order, true
+ * where they played (CONFIRMED). `playedBefore`: games of the month played
+ * before MatchTime knew of it, which count as played (plan 4.5). With no
+ * commitment, neither flag is ever set: today's behaviour.
+ */
+export function commitmentForMatch(p: {
+  gamesCovered: number;
+  gamesCommitted: number | null | undefined;
+  playedBefore: number;
+  earlier: boolean[];
+}): { extra: boolean; freeMiss: boolean } {
+  if (p.gamesCommitted == null) return { extra: false, freeMiss: false };
+  const covered = Math.max(0, p.gamesCovered);
+  const committed = Math.max(0, Math.min(p.gamesCommitted, covered));
+  const played = Math.max(0, p.playedBefore) + p.earlier.filter(Boolean).length;
+  const missed = p.earlier.filter((x) => !x).length;
+  const extra = played >= committed;
+  return { extra, freeMiss: extra || missed < covered - committed };
 }
 
 /** One Attendance row on this week's match. */
@@ -71,6 +110,8 @@ export interface MonthlySeedWrite {
 
 export const SEED_NOTE_REGULAR = "regular of the month";
 export const SEED_NOTE_AWAY = "away this week";
+/** "4 only": they have played the games they committed to this month. */
+export const SEED_NOTE_COMMITTED = "played the games they committed to: away this week";
 export const SEED_NOTE_NO_PLACE = "regular of the month: no place left";
 export const SEED_NOTE_PAYG = "PAYG for this date";
 
@@ -144,13 +185,14 @@ export function decideMonthlySeed(args: {
   for (const m of regulars) {
     const row = rowOf.get(m.userId);
     if (row) {
-      markMonthly.push(m.userId);
+      // A game beyond a "4 only" commitment is not the month's: PAYG.
+      if (!m.extra) markMonthly.push(m.userId);
       if (row.status === "BENCH" && placed.has(m.userId)) promote.push(m.userId);
       continue;
     }
     const position = m.slot ?? freeNumber();
     if (m.absent) {
-      write.push({ userId: m.userId, status: "DROPPED", position, monthly: true, note: SEED_NOTE_AWAY });
+      write.push({ userId: m.userId, status: "DROPPED", position, monthly: !m.extra, note: m.extra ? SEED_NOTE_COMMITTED : SEED_NOTE_AWAY });
     } else if (placed.has(m.userId)) {
       write.push({ userId: m.userId, status: "CONFIRMED", position, monthly: true, note: SEED_NOTE_REGULAR });
     } else {
@@ -209,7 +251,8 @@ function placeRows(
   const placed = new Map<number, WeekSlot>();
   const markOf = (userId: string): WeekSlot["mark"] => {
     const m = memberOf.get(userId);
-    if (m?.kind !== "regular") return "payg";
+    // A "4 only" regular playing a game beyond their commitment pays for it.
+    if (m?.kind !== "regular" || m.extra) return "payg";
     return m.paid === "none" ? null : "paid";
   };
 
@@ -364,7 +407,7 @@ export function decideMissedCredits(args: {
    *  another reason (it was called off, or they left part-way). One game
    *  is one credit: no "missed" credit is written beside it. */
   creditedElsewhere?: ReadonlySet<string>;
-}): { create: string[]; voidIds: string[] } {
+}): { create: string[]; voidIds: string[]; releaseElsewhere: Array<{ creditId: string; userId: string; monthId: string }> } {
   const rowOf = new Map(args.rows.map((r) => [r.userId, r]));
   const regulars = args.members.filter((m) => m.kind === "regular");
   const misses = (m: WeekMember): boolean => {
@@ -397,6 +440,8 @@ export function decideMissedCredits(args: {
   const entitled = new Set<string>();
   for (const m of regulars) {
     if (m.paid === "none" || !misses(m) || args.rule === "none") continue;
+    // "4 only": a week they never paid for earns nothing.
+    if (m.freeMiss) continue;
     if (args.rule === "filled-only" && !filled.has(m.userId)) continue;
     entitled.add(m.userId);
   }
@@ -424,7 +469,16 @@ export function decideMissedCredits(args: {
         e.createdById === null,
     )
     .map((e) => e.id);
-  return { create, voidIds };
+  // "4 only" (PR #464 review, round 2): a week they never paid for whose
+  // credit was already USED against a month is handed back there (that
+  // month asks one game more), as a called-off week's is. Otherwise they
+  // would get the share twice. A regular who simply played after all keeps
+  // a used credit, as before.
+  const free = new Set(regulars.filter((m) => m.freeMiss && !m.left).map((m) => m.userId));
+  const releaseElsewhere = args.existing
+    .filter((e) => e.voidedAt === null && free.has(e.userId) && e.appliedMonthId !== null && e.createdById === null)
+    .map((e) => ({ creditId: e.id, userId: e.userId, monthId: e.appliedMonthId as string }));
+  return { create, voidIds, releaseElsewhere };
 }
 
 /**

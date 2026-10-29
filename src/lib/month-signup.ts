@@ -79,7 +79,9 @@ import {
   type SignupPaidClaim,
   type SignupRosterMember,
 } from "./month-signup-rules";
-import { londonMonthStart, monthStartToDate, normaliseSquadMode } from "./squad-month-rules";
+import { carryFromMonthStart, isBreakMonth, londonMonthStart, monthStartToDate, normaliseSquadMode } from "./squad-month-rules";
+import { monthSetupCopy } from "./i18n/month-setup";
+import { dayLabel, monthNameLabel } from "./i18n/dates";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 const HOUR_MS = 60 * 60 * 1000;
@@ -163,6 +165,8 @@ export interface SignupMonth {
 export interface SignupMemberMoney {
   tier: string;
   gamesCovered: number;
+  /** "4 only" (2026-10-29): NULL is every game. */
+  gamesCommitted: number | null;
   creditsApplied: number;
   amountDuePence: number | null;
   paidClaimedAt: Date | null;
@@ -203,6 +207,7 @@ const MONTH_SELECT = {
       paidAmountPence: true,
       paidClaimedAmountPence: true,
       gamesCovered: true,
+      gamesCommitted: true,
       creditsApplied: true,
       amountDuePence: true,
       paygMatchIds: true,
@@ -289,6 +294,7 @@ async function toSignupMonth(row: MonthRow): Promise<SignupMonth | null> {
         paid: m.paidAt ? "confirmed" : m.paidClaimedAt ? "claimed" : "none",
         paygMatchIds: m.paygMatchIds,
         gamesCovered: m.gamesCovered,
+        gamesCommitted: m.gamesCommitted,
         creditsApplied: m.creditsApplied,
         amountDuePence: m.amountDuePence,
         paidClaimedAt: m.paidClaimedAt,
@@ -368,7 +374,16 @@ export async function loadLiveMonths(orgId: string, now: Date = new Date()): Pro
 export async function openDueMonthLists(orgId: string, now: Date = new Date()): Promise<string[]> {
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { squadMode: true, monthListOpensDaysBefore: true, approvalStatus: true, dormantAt: true, billingStatus: true, ...QUIET_HOURS_SELECT },
+    select: {
+      squadMode: true,
+      monthListOpensDaysBefore: true,
+      seasonBreakMonths: true,
+      language: true,
+      approvalStatus: true,
+      dormantAt: true,
+      billingStatus: true,
+      ...QUIET_HOURS_SELECT,
+    },
   });
   if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org)) return [];
   const quiet = quietHoursOf(org);
@@ -376,6 +391,9 @@ export async function openDueMonthLists(orgId: string, now: Date = new Date()): 
 
   const current = londonMonthStart(now);
   const next = nextMonthStart(current);
+  // The months a new month may carry its regulars from: the one before,
+  // stepping back over the club's break months (A3).
+  const carryFrom = (monthStart: string) => carryFromMonthStart(monthStart, org.seasonBreakMonths);
   const [activities, months] = await Promise.all([
     db.activity.findMany({
       where: { orgId, isActive: true },
@@ -383,7 +401,7 @@ export async function openDueMonthLists(orgId: string, now: Date = new Date()): 
       orderBy: { createdAt: "asc" },
     }),
     db.squadMonth.findMany({
-      where: { orgId, monthStart: { in: [previousMonthStart(current), current, next].map(monthStartToDate) } },
+      where: { orgId, monthStart: { in: [...new Set([carryFrom(current), carryFrom(next), current, next])].map(monthStartToDate) } },
       select: { id: true, monthStart: true, activityId: true, activity: { select: { venue: true, dayOfWeek: true } } },
     }),
   ]);
@@ -391,9 +409,11 @@ export async function openDueMonthLists(orgId: string, now: Date = new Date()): 
   const monthsOf = (monthStart: string) => months.filter((m) => m.monthStart.toISOString().slice(0, 10) === monthStart);
 
   const opened: string[] = [];
-  for (const monthStart of [current, next]) {
+  // A season break (A3): no list, no month, no matches. The month after
+  // opens as usual, carrying the regulars of the last month played.
+  for (const monthStart of [current, next].filter((m) => !isBreakMonth(org.seasonBreakMonths, m))) {
     const have = new Set(monthsOf(monthStart).map((m) => fixtureKey(m.activity)));
-    const before = monthsOf(previousMonthStart(monthStart));
+    const before = monthsOf(carryFrom(monthStart));
     const done = new Set<string>();
     for (const a of activities) {
       const key = fixtureKey(a);
@@ -405,6 +425,15 @@ export async function openDueMonthLists(orgId: string, now: Date = new Date()): 
       const first = firstKickoffOf(monthStart, activity.dayOfWeek, activity.time);
       if (!first) continue;
       if (!listOpenDue({ now, opensAt: listOpensAt(first, org.monthListOpensDaysBefore), firstKickoff: first, quiet })) continue;
+      // THE FIRST MONTH IS THE ORGANISER'S (A1, 2026-10-29). With no month
+      // before it to carry regulars from, MatchTime has no list of its own:
+      // the group may well have one going already (Vets MNF joined with 11
+      // names pasted). It posts nothing for this month and tells the
+      // organisers, once, to start it from their list or open it empty.
+      if (!prior) {
+        await tellMonthHeld({ orgId, activityId: activity.id, monthStart, firstKickoff: first, lang: org.language, now });
+        continue;
+      }
       try {
         const id = await openMonthList({ orgId, activity, monthStart, previousMonthId: prior?.id ?? null, now });
         if (id) opened.push(id);
@@ -418,12 +447,71 @@ export async function openDueMonthLists(orgId: string, now: Date = new Date()): 
   return opened;
 }
 
-async function openMonthList(args: {
+/**
+ * A month MatchTime will not open by itself (A1): tell the organisers
+ * once per month and fixture, in the club's language, what to do. Never
+ * throws: the poll carries on.
+ */
+async function tellMonthHeld(args: { orgId: string; activityId: string; monthStart: string; firstKickoff: Date; lang: string | null; now: Date }): Promise<void> {
+  try {
+    const month = monthNameLabel(args.lang, args.firstKickoff);
+    const first = await claimOnce(`${signupKeyPrefix(args.orgId)}held:${args.monthStart}:${args.activityId}`, "admin-notice");
+    // The day before the month's first game (or later that day), still not
+    // started: ONE more nudge, never in the same poll as the first notice
+    // and so never before it (PR #464 review). Worded from the kick-off
+    // itself, so it is right on whichever day it goes out. Until then
+    // nothing, weekly or monthly, is posted for the month
+    // (`bot-scheduler.ts` reads the held key).
+    if (!first) {
+      if (args.now.getTime() < args.firstKickoff.getTime() - 24 * HOUR_MS) return;
+      if (!(await claimOnce(`${signupKeyPrefix(args.orgId)}held-again:${args.monthStart}:${args.activityId}`, "admin-notice"))) return;
+      await sendAdminNotice({
+        orgId: args.orgId,
+        now: args.now,
+        nextPath: "/admin/months",
+        text: (link) => monthSetupCopy(args.lang).held_nudge({ month, day: dayLabel(args.lang, args.firstKickoff), link: link || appUrl("/admin/months") }),
+      });
+      return;
+    }
+    await sendAdminNotice({
+      orgId: args.orgId,
+      now: args.now,
+      nextPath: "/admin/months",
+      text: (link, audience) => monthSetupCopy(args.lang).held_notice({ month, link: link || appUrl("/admin/months"), inGroup: audience === "group" }),
+    });
+  } catch (err) {
+    console.error(`[month-signup] telling the organisers ${args.monthStart} waits for their list failed:`, err);
+  }
+}
+
+/** What an organiser's list starts a coming month with (A1): the member
+ *  rows and the credits they came in with, worked out from the month's
+ *  game count once it is known inside the transaction. An error refuses
+ *  the whole start and writes nothing. */
+export type ComingMonthSeed = (games: number) =>
+  | { ok: true; members: Array<Record<string, unknown> & { userId: string }>; credits: Array<Record<string, unknown> & { userId: string }>; startedByUserId: string }
+  | { ok: false; error: string };
+
+export class SeedRefused extends Error {
+  constructor(public readonly reason: string) {
+    super(`seed refused: ${reason}`);
+  }
+}
+
+/**
+ * Open one month's list: the month's matches made, the month created
+ * "open", and its regulars written. Called by the poll for a month that
+ * carries regulars over, and (A1) by an organiser starting the coming
+ * month from their own list (`seed`) or opening it empty. Null when the
+ * fixture already has this month: the loser of a race writes nothing.
+ */
+export async function openMonthList(args: {
   orgId: string;
   activity: { id: string; venue: string; dayOfWeek: number; time: string; deadlineHours: number; sport: { playersPerTeam: number } };
   monthStart: string;
   previousMonthId: string | null;
   now: Date;
+  seed?: ComingMonthSeed;
 }): Promise<string | null> {
   const { orgId, activity, monthStart, now } = args;
   const fixture = { orgId, venue: activity.venue, dayOfWeek: activity.dayOfWeek };
@@ -491,10 +579,26 @@ async function openMonthList(args: {
         games++;
       }
 
+      const seeded = args.seed ? args.seed(games) : null;
+      if (seeded && !seeded.ok) throw new SeedRefused(seeded.error);
       const month = await tx.squadMonth.create({
-        data: { orgId, activityId: activity.id, monthStart: monthStartToDate(monthStart), status: "open", gamesScheduled: games, listOpenedAt: now },
+        data: {
+          orgId,
+          activityId: activity.id,
+          monthStart: monthStartToDate(monthStart),
+          status: "open",
+          gamesScheduled: games,
+          listOpenedAt: now,
+          ...(seeded ? { startedByUserId: seeded.startedByUserId } : {}),
+        },
         select: { id: true },
       });
+      if (seeded && seeded.members.length > 0) {
+        await tx.squadMonthMember.createMany({ data: seeded.members.map((m) => ({ ...m, monthId: month.id, joinedAt: now })) as never });
+        if (seeded.credits.length > 0) {
+          await tx.squadCredit.createMany({ data: seeded.credits.map((c) => ({ ...c, orgId, appliedMonthId: month.id })) as never });
+        }
+      }
       if (carried.length > 0) {
         await tx.squadMonthMember.createMany({
           data: carried.map((c) => ({
@@ -616,8 +720,10 @@ export async function applySignup(args: {
   const started = hasStarted(month, now);
   const joinsRest = started && !args.byOrganiser && mayJoinStartedMonth({ choice: args.choice, source: args.source, gamesLeft, running: !month.open });
   if (!args.byOrganiser && started && !joinsRest) return { ok: false, error: "closed" };
+  // A partner club's or the player pool's GUEST, booked for one game, is
+  // not a player of this club: never a member of its month (agent D, 2026-10-29).
   const member = await db.membership.findFirst({
-    where: { orgId: month.orgId, userId: args.userId, leftAt: null, user: { isActive: true } },
+    where: { orgId: month.orgId, userId: args.userId, leftAt: null, ...ORDINARY_MEMBER_WHERE, user: { isActive: true } },
     select: { user: { select: { name: true, phoneNumber: true } } },
   });
   if (!member) return { ok: false, error: "not-a-member" };
@@ -703,7 +809,7 @@ export async function applySignup(args: {
               : { gamesCovered: gamesLeft, joinedAt: now }
             : mine.paidAt
               ? {}
-              : { gamesCovered: 0, creditsApplied: 0, amountDuePence: null }),
+              : { gamesCovered: 0, gamesCommitted: null, creditsApplied: 0, amountDuePence: null }),
         },
       });
     }

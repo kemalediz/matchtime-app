@@ -256,22 +256,22 @@ describe("decideMissedCredits", () => {
   const base = { members: MEMBERS, rows, maxPlayers: 6, existing: [] };
 
   it("any-miss: a paid (or says-paid) regular who is out earns one game; an unpaid one does not", () => {
-    expect(decideMissedCredits({ ...base, rule: "any-miss" })).toEqual({ create: ["u-bilal"], voidIds: [] });
+    expect(decideMissedCredits({ ...base, rule: "any-miss" })).toEqual({ create: ["u-bilal"], voidIds: [], releaseElsewhere: [] });
   });
 
   it("filled-only: only once somebody has taken the place", () => {
-    expect(decideMissedCredits({ ...base, rule: "filled-only" })).toEqual({ create: [], voidIds: [] });
+    expect(decideMissedCredits({ ...base, rule: "filled-only" })).toEqual({ create: [], voidIds: [], releaseElsewhere: [] });
     const filled = [...rows, row("Omar", "CONFIRMED", 2)];
-    expect(decideMissedCredits({ ...base, rows: filled, rule: "filled-only" })).toEqual({ create: ["u-bilal"], voidIds: [] });
+    expect(decideMissedCredits({ ...base, rows: filled, rule: "filled-only" })).toEqual({ create: ["u-bilal"], voidIds: [], releaseElsewhere: [] });
   });
 
   it("none: never", () => {
-    expect(decideMissedCredits({ ...base, rule: "none" })).toEqual({ create: [], voidIds: [] });
+    expect(decideMissedCredits({ ...base, rule: "none" })).toEqual({ create: [], voidIds: [], releaseElsewhere: [] });
   });
 
   it("is idempotent: a credit that exists is not written again", () => {
     const existing = [{ id: "c1", userId: "u-bilal", voidedAt: null, voidedById: null, appliedMonthId: null, createdById: null }];
-    expect(decideMissedCredits({ ...base, rule: "any-miss", existing })).toEqual({ create: [], voidIds: [] });
+    expect(decideMissedCredits({ ...base, rule: "any-miss", existing })).toEqual({ create: [], voidIds: [], releaseElsewhere: [] });
   });
 
   it("a regular who comes back loses the credit MatchTime wrote, unless it was already used", () => {
@@ -286,7 +286,7 @@ describe("decideMissedCredits", () => {
 
   it("a credit an admin voided is never written again", () => {
     const existing = [{ id: "c1", userId: "u-bilal", voidedAt: new Date(), voidedById: "u-admin", appliedMonthId: null, createdById: null }];
-    expect(decideMissedCredits({ ...base, rule: "any-miss", existing })).toEqual({ create: [], voidIds: [] });
+    expect(decideMissedCredits({ ...base, rule: "any-miss", existing })).toEqual({ create: [], voidIds: [], releaseElsewhere: [] });
   });
 
   it("a paid regular left on the waiting list misses the game through no choice of their own: credited", () => {
@@ -300,7 +300,7 @@ describe("decideMissedCredits", () => {
   it("a regular who drops, comes back and is benched behind the fill-in keeps the credit", () => {
     const existing = [{ id: "c1", userId: "u-bilal", voidedAt: null, voidedById: null, appliedMonthId: null, createdById: null }];
     const benched = [row("Alex", "CONFIRMED", 1), row("Bilal", "BENCH", 9), row("Omar", "CONFIRMED", 2)];
-    expect(decideMissedCredits({ ...base, rows: benched, rule: "any-miss", existing })).toEqual({ create: [], voidIds: [] });
+    expect(decideMissedCredits({ ...base, rows: benched, rule: "any-miss", existing })).toEqual({ create: [], voidIds: [], releaseElsewhere: [] });
   });
 
   it("filled-only with two out and one fill-in: the place of whoever dropped FIRST is the one filled", () => {

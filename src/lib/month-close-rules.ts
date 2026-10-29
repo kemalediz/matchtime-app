@@ -77,6 +77,9 @@ export interface CancelMember {
   /** When they became a regular of this month: a game played before it is
    *  not one they are charged for. */
   joinedAt: Date;
+  /** "4 only" (2026-10-29): this game is one of the weeks they never paid
+   *  for (`commitmentForMatch`), so its being called off owes them nothing. */
+  freeMiss?: boolean;
 }
 
 export interface MatchCredit {
@@ -139,10 +142,11 @@ export function decideCancelledWeekCredits(p: {
   const here = p.members.filter((m) => m.regular && m.inClub);
   const mine = (userId: string, reason: string) => p.existing.filter((c) => c.userId === userId && c.reason === reason);
 
-  if (!p.cancelled) {
-    const hereIds = new Set(here.map((m) => m.userId));
+  /** Take back a member's "cancelled-week" credits for this game: the game
+   *  is on again, or (a "4 only" regular) it is a week they never paid for. */
+  const takeBack = (userIds: ReadonlySet<string>): void => {
     for (const c of p.existing) {
-      if (c.reason !== "cancelled-week" || c.voidedAt !== null || !hereIds.has(c.userId)) continue;
+      if (c.reason !== "cancelled-week" || c.voidedAt !== null || !userIds.has(c.userId)) continue;
       // Used against another month already: handed back there.
       if (c.appliedMonthId !== null && c.appliedMonthId !== p.monthId) {
         plan.releaseElsewhere.push({ creditId: c.id, userId: c.userId, monthId: c.appliedMonthId });
@@ -151,11 +155,20 @@ export function decideCancelledWeekCredits(p: {
       plan.voidIds.push(c.id);
       if (c.appliedMonthId === p.monthId) plan.release.push({ creditId: c.id, userId: c.userId });
     }
+  };
+
+  if (!p.cancelled) {
+    takeBack(new Set(here.map((m) => m.userId)));
     return plan;
   }
 
+  // "4 only": a week they never paid for owes them nothing, and a credit
+  // written for it before that was known is taken back (PR #464 review).
+  takeBack(new Set(here.filter((m) => m.freeMiss).map((m) => m.userId)));
+
   for (const m of here) {
     if (p.matchDate.getTime() <= m.joinedAt.getTime()) continue;
+    if (m.freeMiss) continue;
     if (p.cancelledAt && m.joinedAt.getTime() >= p.cancelledAt.getTime()) continue;
     const cancelled = mine(m.userId, "cancelled-week");
     const missed = mine(m.userId, "missed").filter((c) => c.voidedAt === null);
@@ -225,6 +238,9 @@ export function decideLeaverCredits(p: {
   existing: MatchCredit[];
   /** The matches this member already holds a live credit for, any reason. */
   creditedMatchIds: ReadonlySet<string>;
+  /** "4 only" (2026-10-29): the most games they can be owed, the games they
+   *  paid for and have not played. Absent: no commitment, every game left. */
+  maxGames?: number;
 }): { create: Array<{ matchId: string | null }>; voidIds: string[] } {
   const live = p.existing.filter((c) => c.voidedAt === null);
   if (!isLeaver(p.member)) {
@@ -234,7 +250,10 @@ export function decideLeaverCredits(p: {
   if (live.length > 0 || p.existing.some((c) => c.voidedById !== null)) return { create: [], voidIds: [] };
   const create = p.games
     .filter((g) => g.date.getTime() > p.leftAt.getTime() && !(g.matchId !== null && p.creditedMatchIds.has(g.matchId)))
-    .map((g) => ({ matchId: g.matchId }));
+    .map((g) => ({ matchId: g.matchId }))
+    // Never more than they paid for: a "4 only" regular is owed the
+    // committed games they did not play, the first games left first.
+    .slice(0, p.maxGames === undefined ? undefined : Math.max(0, p.maxGames));
   return { create, voidIds: [] };
 }
 
@@ -464,4 +483,25 @@ export function planAwayWeeks(p: { games: AwayGame[]; ticked: string[]; current:
   const before = new Set(p.current);
   const changed = absentMatchIds.length !== before.size || absentMatchIds.some((id) => !before.has(id));
   return { absentMatchIds, changed };
+}
+
+// ── Before an amount is rewritten (PR #464 review) ─────────────────────
+
+/**
+ * Before what somebody owes is rewritten: a "paid" with no amount written
+ * down was for what they were asked THEN. That amount is written down, so
+ * the change shows as owing more or owed back, never as nothing paid.
+ */
+export function freezePaidAmount(row: {
+  amountDuePence: number | null;
+  paidAt: Date | null;
+  paidAmountPence: number | null;
+  paidClaimedAt: Date | null;
+  paidClaimedAmountPence: number | null;
+}): { paidClaimedAmountPence?: number; paidAmountPence?: number } {
+  const asked = row.amountDuePence;
+  if (asked === null) return {};
+  if (row.paidAt) return row.paidAmountPence == null ? { paidAmountPence: asked } : {};
+  if (row.paidClaimedAt) return row.paidClaimedAmountPence == null ? { paidClaimedAmountPence: asked } : {};
+  return {};
 }

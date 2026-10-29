@@ -439,12 +439,12 @@ describe("draftSeedFromList: the slice 1 reader's output becomes a draft the org
   it("matches names to the club's players and keeps slot numbers as written", () => {
     const d = draftSeedFromList(LIST, ROSTER, { month: 10 });
     expect(d.rows).toEqual([
-      { userId: "u-alex", name: "Alex Carter", listName: "Alex", kind: "regular", tier: "standard", slot: 1, paid: "claimed", paidAmountPence: 3000 },
-      { userId: "u-bilal", name: "Bilal Khan", listName: "bilal khan", kind: "regular", tier: "standard", slot: 2, paid: "claimed", paidAmountPence: null },
-      { userId: "u-carl", name: "Carl Reyes", listName: "Carl", kind: "regular", tier: "concession", slot: 3, paid: "none", paidAmountPence: null },
-      { userId: "u-dev", name: "Dev😁 Patel", listName: "Dev", kind: "regular", tier: "standard", slot: 6, paid: "none", paidAmountPence: null },
+      { userId: "u-alex", name: "Alex Carter", listName: "Alex", kind: "regular", tier: "standard", slot: 1, paid: "claimed", paidAmountPence: 3000, gamesCommitted: null },
+      { userId: "u-bilal", name: "Bilal Khan", listName: "bilal khan", kind: "regular", tier: "standard", slot: 2, paid: "claimed", paidAmountPence: null, gamesCommitted: null },
+      { userId: "u-carl", name: "Carl Reyes", listName: "Carl", kind: "regular", tier: "concession", slot: 3, paid: "none", paidAmountPence: null, gamesCommitted: null },
+      { userId: "u-dev", name: "Dev😁 Patel", listName: "Dev", kind: "regular", tier: "standard", slot: 6, paid: "none", paidAmountPence: null, gamesCommitted: null },
       // "Paid but can't play" is a paid regular with no slot of their own this week.
-      { userId: "u-sam", name: "Sam Hill", listName: "Sammy", kind: "regular", tier: "standard", slot: null, paid: "claimed", paidAmountPence: 2250 },
+      { userId: "u-sam", name: "Sam Hill", listName: "Sammy", kind: "regular", tier: "standard", slot: null, paid: "claimed", paidAmountPence: 2250, gamesCommitted: null },
     ]);
   });
 

@@ -317,6 +317,19 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     }
   }
 
+  // 1d. A MONTHLY club (2026-10-29): an organiser's pasted list for the
+  // coming month, not started yet, proposed for YES like a weekly list
+  // (`month-seed-hq.ts`). Read by the month list reader; null for anything
+  // else, which goes on below.
+  if (!weekly && admin) {
+    const { proposeMonthSeedPaste } = await import("./month-seed-hq");
+    const seeded = await proposeMonthSeedPaste({ orgId: org.id, lang: org.language, messageId, organiserUserId: admin.userId, text: msg.text, now });
+    if (seeded) {
+      await recordMatchTimeQuestion({ orgId: org.id, askRef: listAskRef(messageId), text: seeded.replyText, now });
+      return acted(org.id, seeded.outcome, seeded.replyText);
+    }
+  }
+
   // 2. Everything else, through the shared pipeline, told whether the
   // sender is an organiser. Anyone in HQ (2026-10-16, Kemal: "Anyone in
   // that group should be able to ask questions") gets questions, help and

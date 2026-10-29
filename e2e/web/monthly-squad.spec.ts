@@ -194,7 +194,9 @@ test("an admin sees the empty month, with its info button", async ({ page, db })
   await expect(sheet.getByRole("heading", { name: "Starting part-way through a month" })).toBeVisible();
   await expect(sheet).toContainText("Games already played this month count as played for the regulars you tick");
   await sheet.getByRole("button", { name: "Close" }).click();
-  for (const k of ["mth_page", "mth_paid", "mth_credits"]) await expect(page.getByTestId(`info-${k}`), k).toBeVisible();
+  await expect(page.getByTestId("info-mth_page")).toBeVisible();
+  // (Next month's card is on the page too since 2026-10-29: scoped to this month's.)
+  for (const k of ["mth_paid", "mth_credits"]) await expect(card.getByTestId(`info-${k}`), k).toBeVisible();
 
   expect(await db.count(`SELECT COUNT(*) FROM "SquadMonth"`)).toBe(0);
 });

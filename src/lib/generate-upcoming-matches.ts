@@ -31,6 +31,7 @@ import { db } from "./db";
 import { nextLondonKickoff } from "./london-time";
 import { hasMatchForSlot } from "./match-slot";
 import { partitionGeneratable } from "./org-lifecycle";
+import { isBreakMonth, londonMonthStart } from "./squad-month-rules";
 
 export interface GenerateUpcomingMatchesResult {
   created: number;
@@ -53,7 +54,7 @@ export async function generateUpcomingMatches(
   // identical in the cron log, which is how that bug survived a quarter.
   const candidates = await db.activity.findMany({
     where: { isActive: true, ...(opts.orgId ? { orgId: opts.orgId } : {}) },
-    include: { sport: true, org: { select: { name: true, dormantAt: true, approvalStatus: true, billingStatus: true } } },
+    include: { sport: true, org: { select: { name: true, dormantAt: true, approvalStatus: true, billingStatus: true, seasonBreakMonths: true, squadMode: true } } },
   });
 
   // Filtered BEFORE the loop, not with a `continue` inside it: this repo
@@ -86,6 +87,15 @@ export async function generateUpcomingMatches(
     // clock, as a UTC instant. Shared with the admin "Generate match"
     // button.
     const matchDate = nextLondonKickoff(now, activity.dayOfWeek, activity.time);
+    // A season break (2026-10-29, "no football in December"): no game is
+    // made in a month the club ticked off on /admin/months. The guards
+    // below still run for every game that IS made.
+    // A club on monthly only: the setting lives on its Months page.
+    const onBreak = activity.org.squadMode === "monthly" && isBreakMonth(activity.org.seasonBreakMonths, londonMonthStart(matchDate));
+    if (onBreak) {
+      console.log(`${tag} skipping "${activity.name}": ${londonMonthStart(matchDate).slice(0, 7)} is a season break month`);
+    }
+    if (!onBreak) {
 
     // Dedupe window: ±12h around the intended match time.
     const dayStart = new Date(matchDate.getTime() - 12 * 60 * 60 * 1000);
@@ -128,6 +138,7 @@ export async function generateUpcomingMatches(
       },
     });
     createdMatchIds.push(created.id);
+    }
   }
 
   return {

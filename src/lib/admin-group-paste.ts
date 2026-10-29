@@ -48,7 +48,7 @@ import {
 } from "./admin-group-squad-rules";
 
 export interface PasteReply {
-  outcome: "paste-proposed" | "paste-same" | "paste-applied" | "paste-expired" | "paste-no-match";
+  outcome: "paste-proposed" | "paste-same" | "paste-applied" | "paste-expired" | "paste-no-match" | "month-seed-applied" | "month-seed-failed";
   replyText: string;
 }
 
@@ -248,6 +248,31 @@ export async function answerSquadPasteYes(args: {
     console.log(`[admin-group] ${args.messageId}: YES to expired list ${proposal.id}`);
     return { outcome: "paste-expired", replyText: buildPasteExpiredReply(args.lang) };
   }
+  // A monthly club's list for the coming month (2026-10-29): the YES starts
+  // that month, through the same action as the Months page. The month's
+  // own unique key makes two YES messages start it once, so the proposal
+  // is only marked applied once the month IS started: a YES that fails (not
+  // an organiser, a read error) leaves it waiting for another (PR #464 review).
+  if (proposal.monthSeed != null && proposal.monthStart) {
+    const { applyMonthSeedYes } = await import("./month-seed-hq");
+    const r = await applyMonthSeedYes({ orgId, lang: args.lang, proposal: { monthStart: proposal.monthStart, monthSeed: proposal.monthSeed }, senderUserId: args.senderUserId, now });
+    if (r.outcome === "month-seed-applied") {
+      await db.adminSquadProposal.updateMany({
+        where: { id: proposal.id, resolvedAt: null },
+        data: { resolvedAt: now, outcome: "applied", resolvedByUserId: args.senderUserId },
+      });
+      return { outcome: "month-seed-applied", replyText: r.replyText };
+    }
+    // Another YES started it a moment ago: that one answered.
+    const again = await db.adminSquadProposal.findUnique({ where: { id: proposal.id }, select: { resolvedAt: true } });
+    if (again?.resolvedAt) return null;
+    // Started some other way (the Months page): this list is done with.
+    if (r.error === "already-started") {
+      await db.adminSquadProposal.updateMany({ where: { id: proposal.id, resolvedAt: null }, data: { resolvedAt: now, outcome: "superseded" } });
+    }
+    return { outcome: "month-seed-failed", replyText: r.replyText };
+  }
+
   // Claim it once, before any write: two admins' YES apply it once.
   const claimed = await db.adminSquadProposal.updateMany({
     where: { id: proposal.id, resolvedAt: null },

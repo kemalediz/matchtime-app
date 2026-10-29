@@ -30,6 +30,7 @@
  * `loadMonthlyWeek` before anything is written.
  */
 import { db } from "./db";
+import { loadCommitmentStates } from "./month-member-commitment";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { EXPLICIT_BENCH_NOTE, recordAttendanceEvent } from "./attendance-events";
 import { isClubOperational, servingClubWhere } from "./club-approval-state";
@@ -98,6 +99,9 @@ export interface RunningMonth {
     /** Left the group or deactivated: no longer seeded or listed, but
      *  still a member of the month for the credits they earned. */
     left: boolean;
+    /** "4 only" (2026-10-29): where they stand on each of the month's
+     *  matches, by match id. Absent for a regular with no commitment. */
+    commitment?: Map<string, { extra: boolean; freeMiss: boolean }>;
   }>;
   /** Slice 6: the month has been CLOSED (its numbers are frozen). Only
    *  `loadSchedulerMonths` ever returns one, for the scheduler's gates on
@@ -144,6 +148,7 @@ async function loadMonthsWhere(orgId: string, where: MonthStatusWhere): Promise<
       monthStart: true,
       createdAt: true,
       startedMidMonthAt: true,
+      gamesPlayedBeforeStart: true,
       activity: { select: { orgId: true, venue: true, dayOfWeek: true } },
       members: {
         where: { leftAt: null },
@@ -156,12 +161,34 @@ async function loadMonthsWhere(orgId: string, where: MonthStatusWhere): Promise<
           paidClaimedAt: true,
           absentMatchIds: true,
           paygMatchIds: true,
+          gamesCovered: true,
+          gamesCommitted: true,
+          joinedAt: true,
+          source: true,
           user: { select: { name: true } },
         },
       },
     },
   });
   if (months.length === 0) return [];
+  // "4 only": one read of a month's matches, only for a month where somebody
+  // committed to fewer games.
+  const commitments = new Map(
+    await Promise.all(
+      months.map(async (m) => {
+        const monthStart = m.monthStart.toISOString().slice(0, 10);
+        const states = await loadCommitmentStates(db, {
+          orgId,
+          fixture: m.activity,
+          monthStart,
+          startsAt: m.startedMidMonthAt ?? londonDateTimeToUtc(monthStart, "00:00"),
+          gamesPlayedBeforeStart: m.gamesPlayedBeforeStart,
+          members: m.members.filter((r) => r.kind === "regular"),
+        });
+        return [m.id, states] as const;
+      }),
+    ),
+  );
   const memberIds = [...new Set(months.flatMap((m) => m.members.map((r) => r.userId)))];
   const here = new Set(
     memberIds.length === 0
@@ -190,6 +217,7 @@ async function loadMonthsWhere(orgId: string, where: MonthStatusWhere): Promise<
       paid: r.paidAt ? "confirmed" : r.paidClaimedAt ? "claimed" : "none",
       absentMatchIds: r.absentMatchIds,
       paygMatchIds: r.paygMatchIds,
+      ...(commitments.get(m.id)?.has(r.userId) ? { commitment: commitments.get(m.id)!.get(r.userId)! } : {}),
     })),
   }));
 }
@@ -215,16 +243,23 @@ export function monthForMatch(
 
 /** A month's members as one match sees them. */
 export function weekMembers(month: RunningMonth, matchId: string): WeekMember[] {
-  return month.members.map((m) => ({
-    userId: m.userId,
-    name: m.name,
-    kind: m.kind,
-    slot: m.slot,
-    paid: m.paid,
-    absent: m.absentMatchIds.includes(matchId),
-    paygDated: m.paygMatchIds.includes(matchId),
-    left: m.left,
-  }));
+  return month.members.map((m) => {
+    // "4 only": past the games they committed to, this week is an away
+    // week for them, and missing it earns nothing.
+    const c = m.commitment?.get(matchId);
+    return {
+      userId: m.userId,
+      name: m.name,
+      kind: m.kind,
+      slot: m.slot,
+      paid: m.paid,
+      absent: m.absentMatchIds.includes(matchId) || c?.extra === true,
+      paygDated: m.paygMatchIds.includes(matchId),
+      left: m.left,
+      ...(c?.extra ? { extra: true } : {}),
+      ...(c?.freeMiss ? { freeMiss: true } : {}),
+    };
+  });
 }
 
 export interface MonthlyWeek {
@@ -651,7 +686,9 @@ export async function syncMonthlyWeek(
   const week = await loadMonthlyWeek(matchId, months);
   if (!week || week.matchStatus === "CANCELLED") return { created: 0, voided: 0 };
 
-  const regulars = week.members.filter((m) => m.kind === "regular");
+  // A "4 only" regular playing beyond their commitment pays for that game
+  // per match, like a PAYG player: their row is not the month's.
+  const regulars = week.members.filter((m) => m.kind === "regular" && !m.extra);
   const current = regulars.filter((m) => !m.left).map((m) => m.userId);
   if (current.length > 0) {
     await db.attendance.updateMany({
@@ -710,7 +747,7 @@ export async function syncMonthlyWeek(
       outAt: outAt.get(a.userId) ?? null,
       choseBench: choseBench.has(a.userId),
     }));
-    const { create, voidIds } = decideMissedCredits({
+    const { create, voidIds, releaseElsewhere } = decideMissedCredits({
       rule: week.creditRule,
       members: week.members,
       rows,
@@ -733,7 +770,21 @@ export async function syncMonthlyWeek(
     if (voidIds.length > 0) {
       await tx.squadCredit.updateMany({ where: { id: { in: voidIds }, voidedAt: null }, data: { voidedAt: now } });
     }
-    return { created: create.length, voided: voidIds.length };
+    return { created: create.length, voided: voidIds.length, releaseElsewhere };
+  }).then(async (res) => {
+    // Each under THAT month's lock, in a transaction of its own (never two
+    // months' locks at once), the way a called-off game back on does it.
+    if (res.releaseElsewhere.length > 0) {
+      const { releaseSpentCredit } = await import("./month-close");
+      for (const rel of res.releaseElsewhere) {
+        try {
+          await releaseSpentCredit(week.orgId, rel, now);
+        } catch (err) {
+          console.error(`[monthly-week] handing credit ${rel.creditId} back to month ${rel.monthId} failed (the next sync retries):`, err);
+        }
+      }
+    }
+    return { created: res.created, voided: res.voided + res.releaseElsewhere.length };
   });
 }
 
@@ -779,8 +830,10 @@ export async function loadPaygPool(
   });
   const ids = [...new Set([...monthPayg, ...recent.map((r) => r.userId)])];
   if (ids.length === 0) return [];
+  // The club's own players only: a partner club's or the pool's guest
+  // (booked for one game) is never offered the club's PAYG places.
   const memberships = await db.membership.findMany({
-    where: { orgId: week.orgId, userId: { in: ids } },
+    where: { orgId: week.orgId, userId: { in: ids }, ...ORDINARY_MEMBER_WHERE },
     select: {
       userId: true,
       leftAt: true,
