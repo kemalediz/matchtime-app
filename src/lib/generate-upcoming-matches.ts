@@ -54,7 +54,7 @@ export async function generateUpcomingMatches(
   // identical in the cron log, which is how that bug survived a quarter.
   const candidates = await db.activity.findMany({
     where: { isActive: true, ...(opts.orgId ? { orgId: opts.orgId } : {}) },
-    include: { sport: true, org: { select: { name: true, dormantAt: true, approvalStatus: true, billingStatus: true, seasonBreakMonths: true } } },
+    include: { sport: true, org: { select: { name: true, dormantAt: true, approvalStatus: true, billingStatus: true, seasonBreakMonths: true, squadMode: true } } },
   });
 
   // Filtered BEFORE the loop, not with a `continue` inside it: this repo
@@ -90,7 +90,8 @@ export async function generateUpcomingMatches(
     // A season break (2026-10-29, "no football in December"): no game is
     // made in a month the club ticked off on /admin/months. The guards
     // below still run for every game that IS made.
-    const onBreak = isBreakMonth(activity.org.seasonBreakMonths, londonMonthStart(matchDate));
+    // A club on monthly only: the setting lives on its Months page.
+    const onBreak = activity.org.squadMode === "monthly" && isBreakMonth(activity.org.seasonBreakMonths, londonMonthStart(matchDate));
     if (onBreak) {
       console.log(`${tag} skipping "${activity.name}": ${londonMonthStart(matchDate).slice(0, 7)} is a season break month`);
     }

@@ -15,6 +15,10 @@ export const monthSetupEn = {
       `Until then I post nothing about ${p.month}.`,
     ].join("\n"),
 
+  /** The day before the held month's first game, still not started. */
+  held_nudge: (p: { month: string; link: string }): string =>
+    `📋 Reminder: ${p.month} starts tomorrow and has not been started here yet, so I am posting nothing for it, this week's game included. Start it from your group's list, or open an empty list: ${p.link}`,
+
   // ── /admin/months: the coming month ──────────────────────────────────
   next_title: (p: { month: string }): string => `Start ${p.month} from your list`,
   next_body: (p: { month: string }): string =>
@@ -30,6 +34,8 @@ export const monthSetupEn = {
   col_games_committed: "Games",
   games_hint: 'Leave blank for every game. For a player who said "4 only", put 4.',
   games_all: "All",
+  /** Beside a fewer-games regular's amount on the priced list. */
+  games_note: (p: { games: number }): string => `${p.games} ${p.games === 1 ? "game" : "games"}`,
   games_of: (p: { games: number; of: number }): string => `${p.games} of ${p.of}`,
   games_save: "Save",
   games_saved: "Games saved",

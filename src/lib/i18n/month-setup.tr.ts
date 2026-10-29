@@ -11,6 +11,9 @@ export const monthSetupTr: MonthSetupStrings = {
       `O zamana kadar ${p.month} hakkında hiçbir şey paylaşmıyorum.`,
     ].join("\n"),
 
+  held_nudge: (p) =>
+    `📋 Hatırlatma: ${p.month} yarın başlıyor ve burada henüz başlatılmadı, bu yüzden bu haftanın maçı dahil onun için hiçbir şey paylaşmıyorum. Grubunuzun listesiyle başlatın ya da boş bir liste açın: ${p.link}`,
+
   next_title: (p) => `${p.month} ayını listenizle başlatın`,
   next_body: (p) =>
     `Grubunuzun ${p.month} için kullandığı listeyi yapıştırın. MatchTime isimleri oyuncularınızla eşleştirir, siz kontrol edersiniz, sonra ayı onlarla başlatır. Hemen ardından kendi listesini paylaşmaz: listeyi yalnızca biri bir şey değiştirdiğinde paylaşır.`,
@@ -24,6 +27,7 @@ export const monthSetupTr: MonthSetupStrings = {
   col_games_committed: "Maç",
   games_hint: "Her maç için boş bırakın. \"Sadece 4\" diyen bir oyuncu için 4 yazın.",
   games_all: "Hepsi",
+  games_note: (p) => `${p.games} maç`,
   games_of: (p) => `${p.of} maçtan ${p.games}`,
   games_save: "Kaydet",
   games_saved: "Maç sayısı kaydedildi",

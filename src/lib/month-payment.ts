@@ -980,7 +980,7 @@ export type PaymentInstruction =
 export function renderPricedList(month: SignupMonth, facts: { collectorName: string | null; instructions: string | null }): string | null {
   if (month.sharePerGamePence == null || !month.payByAt) return null;
   const lines = new Map<string, PricedLine>(
-    activeRegulars(month).map((m) => [m.userId, { amountDuePence: m.amountDuePence, paid: m.paid, paidPence: m.paidPence }]),
+    activeRegulars(month).map((m) => [m.userId, { amountDuePence: m.amountDuePence, paid: m.paid, paidPence: m.paidPence, games: chargedGames(m) }]),
   );
   return buildPricedListPost({
     list: buildSignupList({ members: month.members, maxRegulars: month.maxRegulars, matches: month.matches }),

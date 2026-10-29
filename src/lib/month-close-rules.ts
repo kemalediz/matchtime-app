@@ -142,10 +142,11 @@ export function decideCancelledWeekCredits(p: {
   const here = p.members.filter((m) => m.regular && m.inClub);
   const mine = (userId: string, reason: string) => p.existing.filter((c) => c.userId === userId && c.reason === reason);
 
-  if (!p.cancelled) {
-    const hereIds = new Set(here.map((m) => m.userId));
+  /** Take back a member's "cancelled-week" credits for this game: the game
+   *  is on again, or (a "4 only" regular) it is a week they never paid for. */
+  const takeBack = (userIds: ReadonlySet<string>): void => {
     for (const c of p.existing) {
-      if (c.reason !== "cancelled-week" || c.voidedAt !== null || !hereIds.has(c.userId)) continue;
+      if (c.reason !== "cancelled-week" || c.voidedAt !== null || !userIds.has(c.userId)) continue;
       // Used against another month already: handed back there.
       if (c.appliedMonthId !== null && c.appliedMonthId !== p.monthId) {
         plan.releaseElsewhere.push({ creditId: c.id, userId: c.userId, monthId: c.appliedMonthId });
@@ -154,8 +155,16 @@ export function decideCancelledWeekCredits(p: {
       plan.voidIds.push(c.id);
       if (c.appliedMonthId === p.monthId) plan.release.push({ creditId: c.id, userId: c.userId });
     }
+  };
+
+  if (!p.cancelled) {
+    takeBack(new Set(here.map((m) => m.userId)));
     return plan;
   }
+
+  // "4 only": a week they never paid for owes them nothing, and a credit
+  // written for it before that was known is taken back (PR #464 review).
+  takeBack(new Set(here.filter((m) => m.freeMiss).map((m) => m.userId)));
 
   for (const m of here) {
     if (p.matchDate.getTime() <= m.joinedAt.getTime()) continue;

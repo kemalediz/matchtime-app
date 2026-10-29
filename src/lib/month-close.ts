@@ -600,7 +600,7 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
       startsAt: month.startsAt,
       gamesPlayedBeforeStart: month.gamesPlayedBeforeStart,
       members: rows.filter((r) => r.kind === "regular"),
-    });
+    }, now);
     const plan = decideCancelledWeekCredits({
       cancelled: match.status === "CANCELLED",
       matchDate: match.date,

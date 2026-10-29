@@ -31,7 +31,11 @@ export type CommitmentStates = Map<string, Map<string, { extra: boolean; freeMis
  * played the earlier games. One read of the month's matches. Empty, and no
  * read at all, when nobody committed to fewer games.
  */
-export async function loadCommitmentStates(client: Pick<typeof db, "match">, month: CommitmentMonth): Promise<CommitmentStates> {
+export async function loadCommitmentStates(
+  client: Pick<typeof db, "match">,
+  month: CommitmentMonth,
+  now: Date = new Date(),
+): Promise<CommitmentStates> {
   const out: CommitmentStates = new Map();
   const committed = month.members.filter((m) => m.gamesCommitted != null);
   if (committed.length === 0) return out;
@@ -57,8 +61,10 @@ export async function loadCommitmentStates(client: Pick<typeof db, "match">, mon
     const playedBefore = m.source.startsWith("seed") ? month.gamesPlayedBeforeStart : 0;
     for (const match of matches) {
       states.set(match.id, commitmentForMatch({ gamesCovered: m.gamesCovered, gamesCommitted: m.gamesCommitted, playedBefore, earlier }));
-      // A game before they joined is not one of theirs.
-      if (match.date.getTime() < m.joinedAt.getTime()) continue;
+      // A game before they joined is not one of theirs; a game still to
+      // come is neither played nor missed yet (PR #464 review: a week
+      // called off in advance must not be judged against unplayed weeks).
+      if (match.date.getTime() < m.joinedAt.getTime() || match.date.getTime() > now.getTime()) continue;
       const row = match.attendances.find((a) => a.userId === m.userId);
       earlier.push(match.status !== "CANCELLED" && row?.status === "CONFIRMED");
     }

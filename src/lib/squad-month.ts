@@ -538,10 +538,12 @@ export async function setSeasonBreak(
   now: Date = new Date(),
 ): Promise<{ ok: true; months: string[]; keptGames: number } | { ok: false; error: SeasonBreakError; month?: string }> {
   const org = await db.organisation.findUnique({ where: { id: orgId }, select: { squadMode: true, seasonBreakMonths: true } });
-  if (!org || normaliseSquadMode(org.squadMode) !== "monthly") return { ok: false, error: "not-monthly" };
+  if (!org) return { ok: false, error: "not-monthly" };
   const prepared = prepareSeasonBreak(months, now);
   if (!prepared.ok) return { ok: false, error: prepared.error };
   const wanted = prepared.value;
+  // Ticking a month off is for a monthly club; clearing a break always works.
+  if (wanted.length > 0 && normaliseSquadMode(org.squadMode) !== "monthly") return { ok: false, error: "not-monthly" };
   if (wanted.length > 0) {
     const started = await db.squadMonth.findFirst({
       where: { orgId, monthStart: { in: wanted.map((m) => monthStartToDate(`${m}-01`)) } },

@@ -37,6 +37,25 @@ export type SetMonthMemberGamesError =
   | "locked"
   | "fewer-than-played";
 
+/**
+ * Before what somebody owes is rewritten: a "paid" with no amount written
+ * down was for what they were asked THEN. That amount is written down, so
+ * the change shows as owing more or owed back, never as nothing paid.
+ */
+export function freezePaidAmount(row: {
+  amountDuePence: number | null;
+  paidAt: Date | null;
+  paidAmountPence: number | null;
+  paidClaimedAt: Date | null;
+  paidClaimedAmountPence: number | null;
+}): { paidClaimedAmountPence?: number; paidAmountPence?: number } {
+  const asked = row.amountDuePence;
+  if (asked === null) return {};
+  if (row.paidAt) return row.paidAmountPence == null ? { paidAmountPence: asked } : {};
+  if (row.paidClaimedAt) return row.paidClaimedAmountPence == null ? { paidClaimedAmountPence: asked } : {};
+  return {};
+}
+
 export async function setMonthMemberGames(args: {
   squadMonthId: string;
   userId: string;
@@ -51,13 +70,13 @@ export async function setMonthMemberGames(args: {
   if (args.games !== null && checkGamesCommitted(args.games, Number.MAX_SAFE_INTEGER).ok === false) return { ok: false, error: "bad-games" };
   const month = await db.squadMonth.findUnique({
     where: { id: args.squadMonthId },
-    select: { id: true, orgId: true, status: true, org: { select: { squadMode: true } } },
+    select: { id: true, orgId: true, status: true, monthStart: true, org: { select: { squadMode: true } } },
   });
   if (!month) return { ok: false, error: "not-found" };
   if (normaliseSquadMode(month.org.squadMode) !== "monthly") return { ok: false, error: "not-monthly" };
   if (month.status === "closed") return { ok: false, error: "closed" };
 
-  return db.$transaction(async (tx) => {
+  const res = await db.$transaction(async (tx) => {
     await lockMonth(tx, month.id);
     await lockClubCredits(tx, month.orgId);
     const [m, row] = await Promise.all([
@@ -85,6 +104,9 @@ export async function setMonthMemberGames(args: {
           creditsApplied: true,
           paidAt: true,
           paidClaimedAt: true,
+          paidAmountPence: true,
+          paidClaimedAmountPence: true,
+          amountDuePence: true,
           joinedAt: true,
           source: true,
         },
@@ -167,9 +189,16 @@ export async function setMonthMemberGames(args: {
       amountDuePence = concession * Math.max(0, charged - creditsApplied);
     }
 
+    // Somebody who said "paid" (or whose payment is confirmed) with no
+    // amount written down paid what they were asked for THEN: that amount
+    // is written down first, so the difference the new games make is shown
+    // (owes more, or owed back), never lost. The share-change path does the
+    // same (`planShareChange`'s `freezeClaimedPence`). PR #464 review.
+    const freeze = amountDuePence !== undefined ? freezePaidAmount(row) : {};
     await tx.squadMonthMember.update({
       where: { id: row.id },
       data: {
+        ...freeze,
         gamesCommitted: committed,
         // The CHECK holds credits to the games covered, whatever is committed.
         creditsApplied: Math.max(0, Math.min(row.gamesCovered, creditsApplied)),
@@ -178,4 +207,32 @@ export async function setMonthMemberGames(args: {
     });
     return { ok: true as const };
   });
+  // The credits follow the new count (PR #464 review): a called-off week,
+  // or a missed one, that is now one of the weeks they never paid for has
+  // its credit taken back, and one that is now paid for is credited, the
+  // way every other change to the month is reconciled. Worked out from the
+  // state, so the order of events does not matter. Best effort: the hourly
+  // sweep and the next poll do the same.
+  if (res.ok) {
+    try {
+      const { reconcileCancelledWeeks } = await import("./month-close");
+      await reconcileCancelledWeeks(month.orgId, now);
+      const { syncMonthlyWeek } = await import("./monthly-week");
+      const played = await db.match.findMany({
+        where: { activity: { orgId: month.orgId }, isHistorical: false, status: { not: "CANCELLED" }, date: { gte: monthFrom(month.monthStart), lt: monthTo(month.monthStart) } },
+        select: { id: true },
+      });
+      for (const x of played) await syncMonthlyWeek(x.id, now);
+    } catch (err) {
+      console.error(`[month-member-games] reconciling ${args.userId}'s credits for ${month.id} failed (the sweep retries):`, err);
+    }
+  }
+  return res;
 }
+
+const monthFrom = (monthStart: Date): Date => londonDateTimeToUtc(monthStart.toISOString().slice(0, 10), "00:00");
+const monthTo = (monthStart: Date): Date => {
+  const d = new Date(monthStart);
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  return londonDateTimeToUtc(d.toISOString().slice(0, 10), "00:00");
+};

@@ -454,8 +454,21 @@ export async function openDueMonthLists(orgId: string, now: Date = new Date()): 
  */
 async function tellMonthHeld(args: { orgId: string; activityId: string; monthStart: string; firstKickoff: Date; lang: string | null; now: Date }): Promise<void> {
   try {
-    if (!(await claimOnce(`${signupKeyPrefix(args.orgId)}held:${args.monthStart}:${args.activityId}`, "admin-notice"))) return;
     const month = monthNameLabel(args.lang, args.firstKickoff);
+    // The day before the month's first game, still not started: ONE more
+    // nudge (PR #464 review). Until then nothing, weekly or monthly, is
+    // posted for the month (`bot-scheduler.ts` reads the held key).
+    if (args.now.getTime() >= args.firstKickoff.getTime() - 24 * HOUR_MS) {
+      if (await claimOnce(`${signupKeyPrefix(args.orgId)}held-again:${args.monthStart}:${args.activityId}`, "admin-notice")) {
+        await sendAdminNotice({
+          orgId: args.orgId,
+          now: args.now,
+          nextPath: "/admin/months",
+          text: (link) => monthSetupCopy(args.lang).held_nudge({ month, link: link || appUrl("/admin/months") }),
+        });
+      }
+    }
+    if (!(await claimOnce(`${signupKeyPrefix(args.orgId)}held:${args.monthStart}:${args.activityId}`, "admin-notice"))) return;
     await sendAdminNotice({
       orgId: args.orgId,
       now: args.now,

@@ -155,6 +155,25 @@ test("1. a club new to monthly: next month's list is due, MatchTime posts none, 
   expect(told[0].text).toContain(`The list for ${MONTH_NAME} is due to open, but this is MatchTime's first month with your group`);
   expect(told[0].text).toContain(`Until then I post nothing about ${MONTH_NAME}.`);
   expect(told[0].text).not.toMatch(/[—–]/);
+
+  // Never started: the month's first game (made by the weekly cron) is not
+  // run the weekly way beside the group's own list (PR #464 review).
+  await db.run(
+    `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt")
+     VALUES ('e2e-ms-a-g1', $1, $2, 16, 'UPCOMING', $2, now())`,
+    [A.act, FIRST.toISOString()],
+  );
+  // 10:00 London two days before: the weekly "say IN" announcement's window.
+  for (const hoursBefore of [58.5, 34.5]) {
+    const out = await poll(request, new Date(FIRST.getTime() - hoursBefore * 3600_000), A.group);
+    expect(out.filter((i) => i.kind === "group-message"), `${hoursBefore}h before`).toEqual([]);
+  }
+  // The day before the first game, one more nudge to the organiser.
+  await poll(request, new Date(FIRST.getTime() - 23 * 3600_000), A.group);
+  await poll(request, new Date(FIRST.getTime() - 22.5 * 3600_000), A.group);
+  const again = await dmsTo(db, A.org, P.davideA);
+  expect(again).toHaveLength(2);
+  expect(again[1].text).toContain(`Reminder: ${MONTH_NAME} starts tomorrow and has not been started here yet`);
 });
 
 test("2. the admin group door: the organiser's pasted list starts next month after his YES, and MatchTime does not post it back", async ({ request, db }) => {

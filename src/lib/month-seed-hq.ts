@@ -40,6 +40,8 @@ export interface MonthSeedProposalData {
 export interface MonthSeedReply {
   outcome: "month-seed-proposed" | "month-seed-applied" | "month-seed-failed";
   replyText: string;
+  /** Why a YES did not start the month. */
+  error?: string;
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -160,6 +162,6 @@ export async function applyMonthSeedYes(args: {
     args.now,
     { monthStart: args.proposal.monthStart },
   );
-  if (!res.ok) return { outcome: "month-seed-failed", replyText: c.hq_seed_failed({ month, key: res.error }) };
+  if (!res.ok) return { outcome: "month-seed-failed", replyText: c.hq_seed_failed({ month, key: res.error }), error: res.error };
   return { outcome: "month-seed-applied", replyText: c.hq_seed_applied({ month, count: data.rows.length }) };
 }

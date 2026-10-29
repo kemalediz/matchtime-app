@@ -962,7 +962,19 @@ export async function computeDuePosts(
   // weekly list's `<matchId>:month-list:`. A club on "weekly" makes no
   // query here. A failure costs this one post, never the poll.
   let signupMonths: Array<{ id: string; monthStart: string; fixture: { orgId: string; venue: string; dayOfWeek: number } }> = [];
+  // PR #464 review: a month MatchTime HELD for its organiser (a club's first
+  // monthly month, `tellMonthHeld`) and nobody has started. Its games are
+  // not run the weekly way beside the group's own list. "YYYY-MM-01".
+  let heldMonths = new Set<string>();
   if (features.squadMode === "monthly") {
+    try {
+      const { signupKeyPrefix } = await import("./month-signup");
+      const prefix = `${signupKeyPrefix(org.id)}held:`;
+      const held = await db.sentNotification.findMany({ where: { key: { startsWith: prefix } }, select: { key: true } });
+      heldMonths = new Set(held.map((h) => h.key.slice(prefix.length, prefix.length + 10)));
+    } catch (err) {
+      console.error(`[scheduler] org ${org.id}: the held months could not be read on this poll:`, err);
+    }
     // The club's live months: the sweep's, else ONE read here for both
     // the sign-up list and the payment posts.
     let liveMonths = preloadedLiveMonths;
@@ -1010,7 +1022,10 @@ export async function computeDuePosts(
         }
       : signupMonth
         ? { monthId: signupMonth.id, seeded: false, signup: true, members: [], paygPricePence: org.paygPricePence ?? null }
-        : null;
+        : heldMonths.has(londonMonthStart(m.date))
+          ? // Held, not started: treated as in sign-up, so nothing weekly goes out.
+            { monthId: "", seeded: false, signup: true, members: [], paygPricePence: org.paygPricePence ?? null }
+          : null;
     await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly, cancelledHolds, opts.poolEnv);
   }
 

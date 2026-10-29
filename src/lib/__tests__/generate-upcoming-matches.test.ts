@@ -132,10 +132,15 @@ describe("nextNightlyFixtureRun: when the cron next makes games (what the admin 
 
 describe("a season break (2026-10-29)", () => {
   it("makes no game in a month the club ticked off, and the next one as usual", async () => {
-    dbMock.activity.findMany.mockResolvedValue([activity({ org: org({ seasonBreakMonths: ["2026-10"] }) })]);
+    dbMock.activity.findMany.mockResolvedValue([activity({ org: org({ squadMode: "monthly", seasonBreakMonths: ["2026-10"] }) })]);
     expect((await generateUpcomingMatches({ now: NOW })).created).toBe(0);
     expect(dbMock.match.create).not.toHaveBeenCalled();
-    dbMock.activity.findMany.mockResolvedValue([activity({ org: org({ seasonBreakMonths: ["2026-12"] }) })]);
+    dbMock.activity.findMany.mockResolvedValue([activity({ org: org({ squadMode: "monthly", seasonBreakMonths: ["2026-12"] }) })]);
+    expect((await generateUpcomingMatches({ now: NOW })).created).toBe(1);
+  });
+
+  it("a club back on weekly plays through months left ticked off", async () => {
+    dbMock.activity.findMany.mockResolvedValue([activity({ org: org({ squadMode: "weekly", seasonBreakMonths: ["2026-10"] }) })]);
     expect((await generateUpcomingMatches({ now: NOW })).created).toBe(1);
   });
 });
