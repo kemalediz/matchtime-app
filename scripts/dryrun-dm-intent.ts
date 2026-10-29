@@ -15,6 +15,7 @@
  *   REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-dm-intent.ts
  *   SET=heldout REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-dm-intent.ts
  *   SET=s3 REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-dm-intent.ts
+ *   SET=intro REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-dm-intent.ts
  *
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). Touches no
  * database and DMs nobody: it imports the classifier and prints what came
@@ -33,6 +34,8 @@ const MAX_USD = 0.2;
 interface Case {
   text: string;
   want: DmIntent;
+  /** For intro_messages: the categories the model must list ([] = all). */
+  intro?: number[];
   ctx?: ReplyContext;
   note?: string;
 }
@@ -136,6 +139,28 @@ const SLICE_S3: Case[] = [
   { text: "who hasn't rated yet?", want: "rating_progress", ctx: sent(PAY_CHASE), note: "after his own pay chase" },
 ];
 
+/**
+ * 2026-10-29: the owner's intro messages. The intent AND the categories
+ * listed must match. The first four are in the prompt; the rest are not.
+ */
+const INTRO: Case[] = [
+  { text: "send me the category 1 intro message", want: "intro_messages", intro: [1] },
+  { text: "intro for football groups that don't know MatchTime", want: "intro_messages", intro: [1] },
+  { text: "kategori 3 tanıtım mesajını gönder", want: "intro_messages", intro: [3] },
+  { text: "send me all the intro messages", want: "intro_messages", intro: [] },
+  { text: "can you send me the one for my office whatsapp group, to get people playing", want: "intro_messages", intro: [2], note: "held out" },
+  { text: "the intro message for clubs already on MatchTime pls", want: "intro_messages", intro: [3], note: "held out" },
+  { text: "tanıtım mesajlarının hepsini at", want: "intro_messages", intro: [], note: "held out" },
+  { text: "futbol gruplarına atacağım tanıtım mesajı lazım", want: "intro_messages", intro: [1], note: "held out" },
+  { text: "intro 2 and 3 please", want: "intro_messages", intro: [2, 3], note: "held out" },
+  { text: "I shared the intro in my work group", want: "other" },
+  { text: "introduce MatchTime to the new lads in the group", want: "other", note: "held out: a post to the group" },
+  { text: "that intro message went down well", want: "other", note: "held out" },
+];
+
+const sameIntro = (a: number[] | undefined, b: number[] | undefined) =>
+  JSON.stringify([...(a ?? [])].sort()) === JSON.stringify([...(b ?? [])].sort());
+
 async function main() {
   spendDevApiKeyOrExit("scripts/dryrun-dm-intent.ts");
   if (process.env[DM_INTENT_STUB_FILE_ENV]) {
@@ -143,7 +168,7 @@ async function main() {
     process.exit(1);
   }
   const m = meter("scripts/dryrun-dm-intent.ts", HAIKU_CLASSIFIER_ARM, MAX_USD);
-  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, s3: SLICE_S3 };
+  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, s3: SLICE_S3, intro: INTRO };
   const setName = process.env.SET && sets[process.env.SET] ? process.env.SET : "main";
   const only = process.env.ONLY;
   const set = only ? sets[setName].filter((c) => c.text === only) : sets[setName];
@@ -154,14 +179,15 @@ async function main() {
     const reasons: string[] = [];
     for (let i = 0; i < REPEAT; i++) {
       const r = await classifyDmIntent(c.text, { clubName: "Sutton FC", senderName: "Kemal Ediz", replyContext: c.ctx ?? noReplyContext(NOW) }, m.call);
-      got.push(`${r.intent}@${r.confidence.toFixed(2)}`);
+      const ok = r.intent === c.want && (c.want !== "intro_messages" || sameIntro(r.intro, c.intro));
+      got.push(`${ok ? "" : "!"}${r.intent}${r.intro ? JSON.stringify(r.intro) : ""}@${r.confidence.toFixed(2)}`);
       reasons.push(r.reasoning);
     }
-    const agreed = got.filter((g) => g.startsWith(`${c.want}@`)).length;
+    const agreed = got.filter((g) => !g.startsWith("!")).length;
     const pass = agreed === REPEAT;
     if (!pass) bad++;
     console.log(
-      `  ${pass ? "✓" : "✗"} ${agreed}/${REPEAT}  want=${c.want.padEnd(15)} got=[${got.join(", ")}]  ${JSON.stringify(c.text)}${c.note ? ` (${c.note})` : ""}`,
+      `  ${pass ? "✓" : "✗"} ${agreed}/${REPEAT}  want=${(c.want + (c.intro ? JSON.stringify(c.intro) : "")).padEnd(15)} got=[${got.join(", ")}]  ${JSON.stringify(c.text)}${c.note ? ` (${c.note})` : ""}`,
     );
     if (!pass) for (const why of reasons) console.log(`      reasoning: ${JSON.stringify(why)}`);
   }

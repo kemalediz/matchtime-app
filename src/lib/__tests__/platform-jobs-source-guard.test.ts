@@ -65,6 +65,9 @@ const OWNER_DM_IMPORTERS = new Set<string>([
   // promises a person). Action items he acts on at /admin/pool/safety; at
   // most one per player per day.
   "lib/pool/safety.ts",
+  // 2026-10-29: the intro messages the owner asked for by DM, the answer
+  // to his own message (the DM admin intent, owner only).
+  "lib/owner-intro.ts",
 ]);
 
 const OWNER_DM_IMPORT = /from\s+["'](?:@\/lib\/owner-dm|\.{1,2}\/(?:[\w-]+\/)*owner-dm)["']|import\(\s*["'][^"']*owner-dm["']\s*\)/;

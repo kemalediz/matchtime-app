@@ -154,7 +154,8 @@ export function clearExtractorStub(): void {
  * spec that has never heard of it.
  */
 export interface DmIntentStub {
-  /** Trimmed DM body → "recruit_blast" | "rating_progress" | "other". */
+  /** Trimmed DM body → "recruit_blast" | "rating_progress" | "other", or
+   *  "intro_messages:1,3" with the categories the model would list. */
   bodies?: Record<string, string>;
   /** Bodies whose model CALL throws, the way an overloaded API does. The
    *  only way to exercise the fail-closed path end to end. */

@@ -62,6 +62,8 @@ function recorder(over: Partial<DmAdminIntentDeps> = {}) {
     reply: async (args) => {
       calls.replies.push(args);
     },
+    isOwner: async () => false,
+    sendIntro: async () => {},
     ...over,
   };
   return { calls, deps };
@@ -294,5 +296,72 @@ describe("partner_ask: the partner clubs are asked, nobody is DM'd", () => {
   it("the user turn names the club's partner clubs when it has any", () => {
     expect(buildDmIntentUserTurn("ask Sutton", { clubName: "FNF", partnerClubs: ["Sutton FC", "MT Vets"] })).toContain("Partner clubs: Sutton FC, MT Vets");
     expect(buildDmIntentUserTurn("ask Sutton", { clubName: "FNF" })).not.toContain("Partner clubs");
+  });
+});
+
+// ── 2026-10-29: THE OWNER'S INTRO MESSAGES ────────────────────────────
+describe("intro_messages: only the platform owner gets them", () => {
+  const intro = (cats: number[]) => ({ classify: async () => ({ intent: "intro_messages" as DmIntent, intro: cats }) });
+  function withIntro(over: Partial<DmAdminIntentDeps> = {}) {
+    const sent: number[][] = [];
+    const r = recorder({
+      isOwner: async () => true,
+      sendIntro: async (cats) => {
+        sent.push(cats);
+      },
+      ...over,
+    });
+    return { ...r, sent };
+  }
+
+  it("the owner's ask sends the category he named, and nothing else happens", async () => {
+    const r = withIntro(intro([3]));
+    expect(await runDmAdminIntent(r.deps)).toEqual({ handled: "owner-intro-dm", categories: [3] });
+    expect(r.sent).toEqual([[3]]);
+    expect(r.calls.replies).toEqual([]);
+    expect(r.calls.invited).toEqual([]);
+  });
+
+  it("no category named: all three", async () => {
+    const r = withIntro(intro([]));
+    expect(await runDmAdminIntent(r.deps)).toEqual({ handled: "owner-intro-dm", categories: [1, 2, 3] });
+  });
+
+  it("anybody else asking: not handled, nothing sent, the DM carries on as normal", async () => {
+    const r = withIntro({ ...intro([1]), isOwner: async () => false });
+    expect((await runDmAdminIntent(r.deps)).handled).toBeNull();
+    expect(r.sent).toEqual([]);
+    expect(r.calls.replies).toEqual([]);
+  });
+
+  it("the owner is asked even when he runs no club; a non-admin non-owner never reaches the model", async () => {
+    const r = withIntro({ ...intro([2]), adminOrgIds: async () => [] });
+    expect(await runDmAdminIntent(r.deps)).toEqual({ handled: "owner-intro-dm", categories: [2] });
+    const p = withIntro({ ...intro([2]), adminOrgIds: async () => [], isOwner: async () => false });
+    expect((await runDmAdminIntent(p.deps)).handled).toBeNull();
+    expect(p.calls.classified).toBe(0);
+  });
+
+  it("the owner's other asks still go where they went", async () => {
+    const r = withIntro(says("rating_progress"));
+    expect((await runDmAdminIntent(r.deps)).handled).toBe("rating-progress-dm");
+    expect(r.sent).toEqual([]);
+  });
+
+  it("the classifier reads the intent and the categories, under the same floor", async () => {
+    const said = (o: object) => async () => JSON.stringify({ confidence: 0.95, reasoning: "stub", ...o });
+    const c = await classifyDmIntent("kategori 3 tanıtım mesajını gönder", {}, said({ intent: "intro_messages", intro: [3] }));
+    expect(c).toMatchObject({ intent: "intro_messages", intro: [3] });
+    const low = await classifyDmIntent("x", {}, async () => JSON.stringify({ intent: "intro_messages", intro: [1], confidence: 0.5 }));
+    expect(low.intent).toBe("other");
+    // A garbled list is the code's to clean (owner-intro.ts): here it is kept as numbers only.
+    const odd = await classifyDmIntent("x", {}, said({ intent: "intro_messages", intro: [1, "2", null] }));
+    expect(odd.intro).toEqual([1]);
+  });
+
+  it("the prompt defines intro_messages once, with its three categories and English beside Turkish", () => {
+    expect(DM_INTENT_SYSTEM_PROMPT.split('- "intro_messages"').length).toBe(2);
+    expect(DM_INTENT_SYSTEM_PROMPT).toMatch(/intro_messages[^\n]*"kategori 3 tanıtım mesajını gönder"/);
+    expect(DM_INTENT_SYSTEM_PROMPT).toContain('"intro"');
   });
 });

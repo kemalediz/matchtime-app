@@ -53,7 +53,8 @@
  *   owner-ack,          is the only door to Kemal's phone.
  *   owner-setup-stuck,
  *   owner-pool-report,
- *   owner-pool-review
+ *   owner-pool-review,
+ *   owner-intro
  *
  * ── Dispatch: claim-on-dispatch, as due-posts ────────────────────────
  * `claimDuePlatformJobs` flips each job queued -> claimed with a
@@ -155,7 +156,10 @@ const ANY_NUMBER_PURPOSES = ["otp", "pool-code-reply"] as const;
  *  to look at a pause MatchTime decided. Action items (the privacy policy
  *  promises a person), at most one per player per London day, held through
  *  the owner's quiet hours (src/lib/pool/safety.ts). */
-export const OWNER_DM_PURPOSES = ["owner-approval", "owner-ack", "owner-setup-stuck", "owner-pool-report", "owner-pool-review"] as const;
+/** "owner-intro" (2026-10-29): the introduction messages the owner asked
+ *  for by DM, an answer to his own message, so never held through quiet
+ *  hours (src/lib/owner-intro.ts). */
+export const OWNER_DM_PURPOSES = ["owner-approval", "owner-ack", "owner-setup-stuck", "owner-pool-report", "owner-pool-review", "owner-intro"] as const;
 export type OwnerDmPurpose = (typeof OWNER_DM_PURPOSES)[number];
 
 export const LEAVE_GROUP_PURPOSE = "leave-group" as const;

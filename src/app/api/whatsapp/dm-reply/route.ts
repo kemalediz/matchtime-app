@@ -40,7 +40,9 @@
  *   5. money-collector fee reply        (a match awaiting its fee)
  *   6. admin recruit blast / rating progress  (admin-gated, and
  *      MODEL-classified since 2026-09-11 — the two regexes that
- *      used to select it are deleted; see lib/dm-intent.ts)
+ *      used to select it are deleted; see lib/dm-intent.ts); since
+ *      2026-10-29 also the platform owner's intro messages (owner-gated
+ *      in code, lib/owner-intro.ts)
  *   7. roster check-in survey           (an open RosterSurveyDM)
  *   8. COLD self-attendance fallback    (2026-08-31 — a player replying
  *      "IN"/"OUT" to a recruit DM with nothing more specific to attribute
@@ -1144,9 +1146,10 @@ export async function POST(request: Request) {
         const { activePartnerChoices } = await import("@/lib/partner-ask-words");
         const partnerClubs = payer ? (await activePartnerChoices(payer).catch(() => [])).map((p) => p.name) : [];
         const ctx = { senderName: authorName ?? null, replyContext, partnerClubs };
-        return payer
-          ? (await withOrgAiBudget(payer, () => classifyDmIntent(text, ctx))).intent
-          : (await classifyDmIntent(text, ctx)).intent;
+        // The intent, and the intro categories the model listed (only
+        // `intro_messages` carries any).
+        const c = payer ? await withOrgAiBudget(payer, () => classifyDmIntent(text, ctx)) : await classifyDmIntent(text, ctx);
+        return { intent: c.intent, intro: c.intro };
       },
       // The quoted club first, when the quote named one of this admin's.
       orgWithUpcomingMatch: async (orgIds) => {
@@ -1216,6 +1219,17 @@ export async function POST(request: Request) {
           }),
         );
       },
+      // The platform owner (the self-join approver, by the envelope's
+      // phone) and his intro messages (2026-10-29). Anybody else's ask is
+      // not handled here and carries on below as before.
+      isOwner: async () => {
+        const { isPlatformOwnerSender } = await import("@/lib/owner-intro");
+        return isPlatformOwnerSender({ phone, senderAltPhone });
+      },
+      sendIntro: async (categories) => {
+        const { sendOwnerIntroMessages } = await import("@/lib/owner-intro");
+        await sendOwnerIntroMessages({ categories, waMessageId });
+      },
       reply: async ({ orgId, text: replyText }) => {
         const u = await db.user.findUnique({
           where: { id: user.id },
@@ -1236,6 +1250,9 @@ export async function POST(request: Request) {
     }
     if (outcome.handled === "partner-ask-dm") {
       return NextResponse.json({ ok: true, handled: "partner-ask-dm" });
+    }
+    if (outcome.handled === "owner-intro-dm") {
+      return NextResponse.json({ ok: true, handled: "owner-intro-dm", categories: outcome.categories });
     }
     // Not an admin, not one of the two asks, or nothing to act on →
     // fall through, exactly as an unmatched regex did.
