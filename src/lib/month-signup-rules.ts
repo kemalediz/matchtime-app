@@ -688,3 +688,16 @@ export function monthStarted(p: { firstKickoff: Date; startedMidMonthAt: Date | 
 export function mayJoinStartedMonth(p: { choice: SignupChoice; source: string; gamesLeft: number; running: boolean }): boolean {
   return p.choice === "in" && (p.source === "reply" || p.source === "page") && p.running && p.gamesLeft > 0;
 }
+
+/** The second nudge for a held month comes no sooner than this after the first notice. */
+export const HELD_NUDGE_GAP_MS = 12 * HOUR_MS;
+
+/**
+ * Is the second nudge for a month MatchTime holds due (PR #464 review)?
+ * From a day before its first game until kick-off, and never within 12
+ * hours of the first notice.
+ */
+export function heldNudgeDue(p: { now: Date; firstKickoff: Date; firstNoticeAt: Date }): boolean {
+  const t = p.now.getTime();
+  return t >= p.firstKickoff.getTime() - DAY_MS && t < p.firstKickoff.getTime() && t - p.firstNoticeAt.getTime() >= HELD_NUDGE_GAP_MS;
+}

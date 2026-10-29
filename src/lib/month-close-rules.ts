@@ -505,3 +505,25 @@ export function freezePaidAmount(row: {
   if (row.paidClaimedAt) return row.paidClaimedAmountPence == null ? { paidClaimedAmountPence: asked } : {};
   return {};
 }
+
+/**
+ * Credits to hand back to the months they were used in, minus those used
+ * against a CLOSED month: its numbers are frozen, so the credit is settled
+ * there and never retried (PR #464 review, round 3).
+ */
+export function liveReleases<T extends { monthId: string }>(releases: T[], closedMonthIds: ReadonlySet<string>): T[] {
+  return releases.filter((r) => !closedMonthIds.has(r.monthId));
+}
+
+/**
+ * Does a called-off week's new credit come off what this regular owes for
+ * THIS month at once? When they have not paid (as always), and also when
+ * they have paid but still owe at least a game more than they paid (a game
+ * put back on, then called off again, after a bare "paid": PR #464 review,
+ * round 3). Somebody who has paid in full keeps it for a later month.
+ */
+export function cancelledCreditAppliesNow(p: { paid: Paid; amountDuePence: number | null; paidPence: number | null; sharePence: number | null }): boolean {
+  if (p.paid === "none") return true;
+  if (p.amountDuePence == null || p.paidPence == null || p.sharePence == null) return false;
+  return p.amountDuePence - p.paidPence >= p.sharePence;
+}

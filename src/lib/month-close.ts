@@ -65,7 +65,7 @@ import {
   type CreditState,
   type LeaverGame,
   type MonthSummary,
-  type Paid, freezePaidAmount } from "./month-close-rules";
+  type Paid, freezePaidAmount, liveReleases, cancelledCreditAppliesNow } from "./month-close-rules";
 import { lockClubCredits, mayConfirmPayments } from "./month-payment";
 import { lockMonth } from "./month-signup";
 import { WAITING_NOTE, monthKickoffs, nextMonthStart } from "./month-signup-rules";
@@ -632,7 +632,20 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
       const r = rowOf.get(c.userId);
       // Off this month's amount at once, while there is a game left to take
       // it off. Otherwise it waits in the ledger like any other.
-      const applyNow = c.applyNow && !!r && r.creditsApplied < chargedGames(r);
+      // (PR #464 review, round 3) Also for somebody who has paid but still
+      // owes a game more than they paid: a game back on after a bare
+      // "paid", then called off again, comes off at once, so they are not
+      // shown owing for a game that is off.
+      const appliesNow =
+        !!r &&
+        (c.applyNow ||
+          cancelledCreditAppliesNow({
+            paid: paidOf(r),
+            amountDuePence: r.amountDuePence,
+            paidPence: r.paidAt ? r.paidAmountPence : r.paidClaimedAmountPence,
+            sharePence: shareFor(state, r.tier),
+          }));
+      const applyNow = appliesNow && !!r && r.creditsApplied < chargedGames(r);
       await tx.squadCredit.create({
         data: {
           orgId: month.orgId,
@@ -646,10 +659,10 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
       });
       if (applyNow && r) {
         const creditsApplied = r.creditsApplied + 1;
-        // `paidAt: null, paidClaimedAt: null` in the WHERE: somebody who
-        // paid a moment ago is not re-priced behind their back.
+        // The paid state as read in the WHERE: somebody who paid a moment
+        // ago is not re-priced behind their back.
         const res = await tx.squadMonthMember.updateMany({
-          where: { id: r.id, paidAt: null, paidClaimedAt: null },
+          where: { id: r.id, paidAt: r.paidAt, paidClaimedAt: r.paidClaimedAt },
           data: { creditsApplied, amountDuePence: amountAfter(r, creditsApplied) },
         });
         if (res.count === 0) {
@@ -681,7 +694,10 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
   // A restored game whose credit had already come off ANOTHER month: taken
   // back there, each in a transaction of its own under THAT month's lock
   // (never two months' locks at once).
-  for (const rel of res.elsewhere) {
+  // A credit used against a CLOSED month is settled there (frozen): not
+  // retried, and not counted (PR #464 review, round 3).
+  const live = await liveSpentReleases(month.orgId, res.elsewhere);
+  for (const rel of live) {
     try {
       await releaseSpentCredit(month.orgId, rel, now);
     } catch (err) {
@@ -689,6 +705,16 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
     }
   }
   return { created: res.created, voided: res.voided };
+}
+
+/** `liveReleases` against the months' statuses as they are now. */
+export async function liveSpentReleases<T extends { monthId: string }>(orgId: string, releases: T[]): Promise<T[]> {
+  if (releases.length === 0) return [];
+  const closed = await db.squadMonth.findMany({
+    where: { orgId, id: { in: [...new Set(releases.map((r) => r.monthId))] }, status: "closed" },
+    select: { id: true },
+  });
+  return liveReleases(releases, new Set(closed.map((m) => m.id)));
 }
 
 /** Where the moment a game was called off is kept: one row per match. */
