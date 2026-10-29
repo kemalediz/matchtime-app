@@ -17,7 +17,7 @@ import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { defaultPayBy } from "./month-payment-rules";
 import { WAITING_NOTE, firstKickoffOf, nextMonthStart, signupEndsAt } from "./month-signup-rules";
-import { parseMonthlyList } from "./monthly-list";
+import { parseMonthlyList, type MonthlyList } from "./monthly-list";
 import {
   draftSeedFromList,
   gamesPlayedBy,
@@ -245,6 +245,9 @@ export async function readListForSeed(
   now: Date = new Date(),
   /** The month being started, "2026-11-01" (A1). Omitted: this month. */
   forMonthStart?: string,
+  /** The list as the monthly reader (the model) already read it, from the
+   *  players' group (agent B, 2026-10-29). Omitted: read here. */
+  read?: MonthlyList,
 ): Promise<
   | { ok: true; rows: SeedDraftRow[]; unmatched: SeedDraftUnmatched[]; monthMismatch: boolean; headed: boolean }
   | { ok: false; error: ReadListError }
@@ -252,7 +255,7 @@ export async function readListForSeed(
   const org = await db.organisation.findUnique({ where: { id: orgId }, select: { squadMode: true } });
   if (!org || normaliseSquadMode(org.squadMode) !== "monthly") return { ok: false, error: "not-monthly" };
   if (typeof text !== "string" || text.length > MAX_LIST_CHARS) return { ok: false, error: "not-a-list" };
-  const list = parseMonthlyList(text);
+  const list = read ?? parseMonthlyList(text);
   if (!list) return { ok: false, error: "not-a-list" };
 
   const [memberships, aliases] = await Promise.all([

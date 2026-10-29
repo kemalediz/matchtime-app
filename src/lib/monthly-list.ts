@@ -66,6 +66,9 @@ export interface MonthlyListMarks {
   payg: boolean;
   /** The dates a PAYG mark names. Empty for a plain "(PAYG)". */
   paygDates: PaygDate[];
+  /** "4 only": the games of the month this person commits to, as the
+   *  monthly reader (the model) read it. Absent from a list parsed here. */
+  gamesCommitted?: number | null;
 }
 
 export interface MonthlyListEntry {

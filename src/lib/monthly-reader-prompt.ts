@@ -247,6 +247,8 @@ export function parseMonthlyReading(raw: unknown, input: MonthlyReaderInput, ctx
       payg,
       paygDates: payg ? paygDays : [],
     };
+    const games = name ? int(x.games, 1, 31) : null;
+    marks.gamesCommitted = games;
     const memberId = name ? refOf(x.member) : null;
     const guest = !!name && bool(x.guest) && memberId !== input.sender.userId;
     const entry: ReaderEntry = {
@@ -258,7 +260,7 @@ export function parseMonthlyReading(raw: unknown, input: MonthlyReaderInput, ctx
         memberId,
         guest,
         hostUserId: guest ? refOf(x.host) : null,
-        games: name ? int(x.games, 1, 31) : null,
+        games,
         newbie: bool(x.newbie),
       },
     };

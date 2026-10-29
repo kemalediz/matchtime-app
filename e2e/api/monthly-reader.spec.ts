@@ -25,6 +25,7 @@ import { E2E } from "../helpers/env";
 import { londonAt } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
 import { buildPasteGuestsAddedDm } from "@/lib/monthly-week-copy";
+import { firstKickoffOf, nextMonthStart } from "@/lib/month-signup-rules";
 
 test.describe.configure({ mode: "serial" });
 
@@ -223,6 +224,72 @@ test("B4: 'in for <month> except the last week' joins the month with the games c
   const res = await say(request, P.tom, body);
   expect(res).toMatchObject({ handledBy: "fast-path", intent: "month_signup", react: "✅" });
   expect(await monthRow(db, P.tom)).toMatchObject({ kind: "regular", gamesCommitted: 2 });
+});
+
+test("an organiser's list for the COMING month in the players' group: the draft goes to him by DM (with '4 only'), nothing in the group", async ({ request, db }) => {
+  // A second club with no month yet (Day 1: MatchTime joins while the
+  // group is filling in its list for the coming month).
+  const ORG2 = "e2e-mr-org2";
+  const GROUP2 = "e2e-monthly-reader-2@g.us";
+  await db.run(
+    `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled", "squadMode", "paygPricePence", "adminChannelMode", language, "updatedAt")
+     VALUES ($1, 'Vets Two', $1, $2, $3, true, 'monthly', 800, 'each-admin', 'en', now())`,
+    [ORG2, `${ORG2}-invite`, GROUP2],
+  );
+  await db.run(`INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "updatedAt") VALUES ('e2e-mr-sport2', $1, 'Football', 6, ARRAY['GK'], ARRAY['A','B'], now())`, [ORG2]);
+  await db.run(
+    `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "deadlineHours", "updatedAt") VALUES ('e2e-mr-act2', $1, 'e2e-mr-sport2', 'Monday 6-a-side', 1, '20:00', 'Goals', 5, now())`,
+    [ORG2],
+  );
+  const owner = { id: "e2e-mr2-owner", name: "Dave Owner", phone: "+447700931001" };
+  const player = { id: "e2e-mr2-pat", name: "Pat Jones", phone: "+447700931002" };
+  const sam = { id: "e2e-mr2-sam", name: "Sam Miles", phone: "+447700931003" };
+  for (const [p, role] of [[owner, "OWNER"], [player, "PLAYER"], [sam, "PLAYER"]] as const) {
+    await db.run(`INSERT INTO "User" (id, email, name, "phoneNumber", "updatedAt") VALUES ($1, $2, $3, $4, now())`, [p.id, `${p.id}@e2e.test`, p.name, p.phone]);
+    await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ($1, $2, $3, $4::"MemberRole")`, [`mem-${p.id}`, p.id, ORG2, role]);
+  }
+  // The coming month, as the seed door works it out: this month while its
+  // first Monday is still to come, else the next.
+  const cur = `${formatInTimeZone(new Date(), LONDON, "yyyy-MM")}-01`;
+  const next = nextMonthStart(cur);
+  const first = firstKickoffOf(cur, 1, "20:00");
+  const coming = first && first.getTime() > Date.now() ? cur : next;
+  const comingDate = new Date(`${coming}T12:00:00Z`);
+  const comingName = formatInTimeZone(comingDate, LONDON, "MMMM");
+  const body = `List for ${comingName}\n1. Dave\n2. smiler 4 only`;
+  setMonthlyReaderStub({
+    bodies: {
+      [body]: listAnswer([line(1, "Dave"), line(2, "smiler", { games: 4 })], { listOf: "month", month: Number(coming.slice(5, 7)) }),
+    },
+  });
+  const post = async (who: { phone: string; name: string }) => {
+    const res = await request.post("/api/whatsapp/analyze", {
+      headers: KEY,
+      data: { groupId: GROUP2, messages: [{ waMessageId: `e2e-mr2-${Date.now()}-${++seq}`, body, authorPhone: digits(who.phone), authorName: who.name, timestamp: new Date().toISOString() }] },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    return ((await res.json()) as { results?: Array<{ intent: string | null; react: string | null; reply: string | null }> }).results?.[0];
+  };
+  // "smiler" is matched by the alias the club has for Sam.
+  await db.run(`INSERT INTO "UserAlias" (id, "orgId", "userId", alias, source) VALUES ('e2e-mr2-alias', $1, $2, 'smiler', 'manual')`, [ORG2, sam.id]);
+  const res = await post(owner);
+  expect(res).toMatchObject({ intent: "month_seed_list", react: null, reply: null });
+  const proposal = await db.one<{ monthSeed: { rows: Array<{ userId: string; gamesCommitted: number | null }> } }>(
+    `SELECT "monthSeed" FROM "AdminSquadProposal" WHERE "orgId" = $1 AND "resolvedAt" IS NULL ORDER BY "createdAt" DESC LIMIT 1`,
+    [ORG2],
+  );
+  expect(proposal?.monthSeed.rows.map((r) => [r.userId, r.gamesCommitted])).toEqual([
+    [owner.id, null],
+    [sam.id, 4],
+  ]);
+  const ownerDms = await db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2`, [ORG2, digits(owner.phone)]);
+  expect(ownerDms.some((d) => d.text.includes(comingName) && d.text.includes("/admin/months")), JSON.stringify(ownerDms)).toBe(true);
+  // Nothing posted in the group.
+  expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind <> 'dm'`, [ORG2])).toBe(0);
+  // A player posting the same list is not an organiser: no new draft.
+  const before = await db.count(`SELECT COUNT(*) FROM "AdminSquadProposal" WHERE "orgId" = $1`, [ORG2]);
+  expect((await post(player))?.intent).not.toBe("month_seed_list");
+  expect(await db.count(`SELECT COUNT(*) FROM "AdminSquadProposal" WHERE "orgId" = $1`, [ORG2])).toBe(before);
 });
 
 test("FAIL SAFE: when the reading fails nothing changes, and no other path registers the list's names", async ({ request, db }) => {

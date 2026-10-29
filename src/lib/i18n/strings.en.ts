@@ -4488,6 +4488,18 @@ export const en = {
   mwk_dm_paste_guests_added: (p: { names: string[]; when: string }): string =>
     `📋 From the list you pasted I've added ${p.names.join(", ")} to ${p.when} as your guest, paying as they go. ` +
     `If that's not right, tell an organiser.`,
+  /** To an organiser who posted the coming month's list in the PLAYERS'
+   *  group before that month was started: the draft, and how to start it.
+   *  MatchTime says nothing in the group. */
+  mwk_dm_seed_from_group: (p: { month: string; count: number; names: string; unknown: string | null; link: string; hq: boolean }): string =>
+    [
+      `📋 I read the list you posted in the group for ${p.month}: ${p.count} ${p.count === 1 ? "player" : "players"} (${p.names}).`,
+      ...(p.unknown ? [`Not known to me yet: ${p.unknown}. Add them as players, or start without them.`] : []),
+      p.hq
+        ? `To start ${p.month} with them, reply YES in the organisers' group, or check and start it here: ${p.link}`
+        : `To start ${p.month} with them, check and start it here: ${p.link}`,
+      `I've said nothing in the group.`,
+    ].join("\n"),
   /** To a member of the month whose numbered list was not read as the squad list. */
   mwk_dm_sender_not_list: (p: { month: string }): string =>
     `📋 I couldn't read the list you posted as the squad list for ${p.month}, so I changed nothing. ` +

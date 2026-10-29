@@ -25,6 +25,7 @@ import { appUrl } from "./app-url";
 import { monthNameLabel } from "./i18n/dates";
 import { monthSetupCopy } from "./i18n/month-setup";
 import { firstKickoffOf, nextMonthStart } from "./month-signup-rules";
+import type { MonthlyList } from "./monthly-list";
 import { readListForSeed, startMonth } from "./squad-month";
 import { isBreakMonth, londonMonthStart, monthFixtureDates, monthStartToDate, normaliseSquadMode, type SeedRowInput } from "./squad-month-rules";
 
@@ -42,6 +43,9 @@ export interface MonthSeedReply {
   replyText: string;
   /** Why a YES did not start the month. */
   error?: string;
+  /** What the proposal says, for a caller that words it differently (the
+   *  players' group's DM to the organiser, `month-seed-group.ts`). */
+  proposal?: { month: string; count: number; names: string; unknown: string | null; link: string };
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -82,11 +86,13 @@ export async function proposeMonthSeedPaste(args: {
   organiserUserId: string;
   text: string;
   now: Date;
+  /** The list as the monthly reader already read it (players' group). */
+  list?: MonthlyList;
 }): Promise<MonthSeedReply | null> {
   const { orgId, now } = args;
   const target = await comingMonth(orgId, now);
   if (!target) return null;
-  const read = await readListForSeed(orgId, args.text, now, target.monthStart);
+  const read = await readListForSeed(orgId, args.text, now, target.monthStart, args.list);
   if (!read.ok || !read.headed || read.monthMismatch || read.rows.length === 0) return null;
 
   const rows: SeedRowInput[] = read.rows.map((r) => ({
@@ -122,16 +128,14 @@ export async function proposeMonthSeedPaste(args: {
   const c = monthSetupCopy(args.lang);
   const month = monthNameLabel(args.lang, target.first);
   console.log(`[month-seed-hq] ${args.messageId}: ${target.monthStart} proposed for ${orgId}: ${rows.length} matched, ${read.unmatched.length} not known`);
-  return {
-    outcome: "month-seed-proposed",
-    replyText: c.hq_seed_proposal({
-      month,
-      count: rows.length,
-      names: read.rows.map((r) => r.listName || r.name).join(", "),
-      unknown: read.unmatched.length > 0 ? read.unmatched.map((u) => u.name).join(", ") : null,
-      link: appUrl("/admin/months"),
-    }),
+  const proposal = {
+    month,
+    count: rows.length,
+    names: read.rows.map((r) => r.listName || r.name).join(", "),
+    unknown: read.unmatched.length > 0 ? read.unmatched.map((u) => u.name).join(", ") : null,
+    link: appUrl("/admin/months"),
   };
+  return { outcome: "month-seed-proposed", replyText: c.hq_seed_proposal(proposal), proposal };
 }
 
 /**

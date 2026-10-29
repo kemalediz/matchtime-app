@@ -3274,6 +3274,15 @@ export const tr: Strings = {
   mwk_dm_paste_guests_added: (p) =>
     `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
     `Yanlışsa bir organizatöre söyle.`,
+  mwk_dm_seed_from_group: (p) =>
+    [
+      `📋 Grupta paylaştığın ${p.month} listesini okudum: ${p.count} oyuncu (${p.names}).`,
+      ...(p.unknown ? [`Henüz tanımadığım isimler: ${p.unknown}. Onları oyuncu olarak ekle ya da onlarsız başlat.`] : []),
+      p.hq
+        ? `${p.month} ayını onlarla başlatmak için organizatör grubunda EVET yaz ya da buradan kontrol edip başlat: ${p.link}`
+        : `${p.month} ayını onlarla başlatmak için buradan kontrol edip başlat: ${p.link}`,
+      `Grupta bir şey yazmadım.`,
+    ].join("\n"),
   mwk_dm_sender_not_list: (p) =>
     `📋 Gönderdiğin listeyi ${p.month} kadro listesi olarak okuyamadım, bu yüzden bir şey değiştirmedim. ` +
     `Kadro listesiyse başlık satırıyla yapıştır ("${p.month} listesi").`,

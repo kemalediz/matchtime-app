@@ -2023,6 +2023,30 @@ async function handleAnalyzeRequest(request: Request) {
       if (fastPathHandledIds.has(m.waMessageId)) continue;
       const reading = listReadingOf(m);
       if (!reading) continue;
+      // An ORGANISER's list for the coming month, before that month is
+      // started: the draft goes to him by DM, with where to say YES (agent
+      // A's seed flow). Nothing is said in the group.
+      if (reading.listOf === "month") {
+        const sender = senderById.get(m.waMessageId)!;
+        let proposed = false;
+        try {
+          const { proposeMonthSeedFromGroup } = await import("@/lib/month-seed-group");
+          proposed = await proposeMonthSeedFromGroup({ orgId: org.id, reading, waMessageId: m.waMessageId, senderUserId: sender.userId });
+        } catch (err) {
+          console.error(`[analyze] month seed from ${m.waMessageId} failed:`, err);
+        }
+        if (proposed) {
+          await claimFastPath(m, reading.residual ? { consumed: m.body, residual: reading.residual } : null, {
+            handledBy: "fast-path",
+            intent: "month_seed_list",
+            action: "month-seed:proposed-by-dm",
+            reasoning: "an organiser's list for the coming month, read by the monthly reader: the draft went to him by DM",
+            react: null,
+            reply: null,
+          });
+          continue;
+        }
+      }
       // A list the reader calls the month's is read for a month that can
       // still be joined (or joined part-way by a newcomer). Anything else
       // about it, in a month under way, is the week's (3b), paid marks

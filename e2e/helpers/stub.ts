@@ -267,6 +267,8 @@ export function setCalloffStub(stub: { bodies?: Record<string, "calloff" | "yes"
 export function clearCalloffStub(): void {
   setCalloffStub({});
   rmSync(`${E2E.CALLOFF_STUB_FILE}.calls`, { force: true });
+}
+
 /** The MONTHLY READER stub (2026-10-29): a group message's body → the
  *  model's raw answer (the schema's object). A body with no entry is read
  *  by the deterministic stand-in, as every monthly scenario before. */

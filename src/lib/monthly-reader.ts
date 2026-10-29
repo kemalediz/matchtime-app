@@ -37,18 +37,19 @@ const LABEL = "monthly-reader";
 const MAX_TOKENS = 4_096;
 
 /**
- * The club's context for the reader, once per batch. Null when the club
- * has no live month (nothing for the reader to do) or it cannot be read.
+ * The club's context for the reader, once per batch, for a club on
+ * "monthly" (the caller checks): its members, its live months (none yet is
+ * fine: an organiser may be posting the coming month's list) and the week.
  */
-export async function loadMonthlyReaderContext(args: { orgId: string; matchId: string | null; now?: Date }): Promise<MonthlyReaderContext | null> {
+export async function loadMonthlyReaderContext(args: { orgId: string; matchId: string | null; now?: Date }): Promise<MonthlyReaderContext> {
   const now = args.now ?? new Date();
   const { loadLiveMonths, renderSignupList, footerFacts } = await import("./month-signup");
   const { loadMonthlyWeek, renderWeekList } = await import("./monthly-week");
   const months = await loadLiveMonths(args.orgId, now);
   const week = args.matchId ? await loadMonthlyWeek(args.matchId) : null;
   const liveWeek = week && week.orgId === args.orgId ? week : null;
-  if (months.length === 0 && !liveWeek) return null;
-
+  // With no month live yet the reader still runs: an organiser may be
+  // posting the coming month's list to start it (`month-seed-group.ts`).
   const [memberships, aliases] = await Promise.all([
     db.membership.findMany({
       where: { orgId: args.orgId, leftAt: null, ...ORDINARY_MEMBER_WHERE, user: { isActive: true } },
