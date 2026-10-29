@@ -290,6 +290,13 @@ export function clearMonthlyReaderStub(): void {
   rmSync(`${E2E.MONTHLY_READER_STUB_FILE}.calls`, { force: true });
 }
 
+/** The MONTH SEED REPLY stub (2026-10-29): an organiser's DM body → the
+ *  model's raw JSON answer (`{answer, changes, confidence}`). */
+export function setMonthSeedReplyStub(stub: { bodies?: Record<string, string>; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.MONTH_SEED_REPLY_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.MONTH_SEED_REPLY_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
 /** The POOL REPLY stub (slice L6): a pool player's reply to his offer →
  *  "accept" | "decline" | "stop" | "question" | "neither", or "low:<intent>"
  *  for an unsure reading. `{}` means "neither", which keeps today's line. */
@@ -330,6 +337,7 @@ export function clearPipelineStubs(): void {
   clearVolunteerNameStub();
   clearCalloffStub();
   clearMonthlyReaderStub();
+  setMonthSeedReplyStub({});
 }
 
 // ── Fact builders ─────────────────────────────────────────────────────

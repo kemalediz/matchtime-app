@@ -20,7 +20,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { formatInTimeZone } from "date-fns-tz";
 import { test, expect, resetDb } from "../fixtures";
-import { clearMonthlyReaderStub, engineOn, setMonthlyReaderStub } from "../helpers/stub";
+import { clearMonthlyReaderStub, engineOn, setMonthlyReaderStub, setMonthSeedReplyStub } from "../helpers/stub";
 import { E2E } from "../helpers/env";
 import { londonAt } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
@@ -290,6 +290,54 @@ test("an organiser's list for the COMING month in the players' group: the draft 
   const before = await db.count(`SELECT COUNT(*) FROM "AdminSquadProposal" WHERE "orgId" = $1`, [ORG2]);
   expect((await post(player))?.intent).not.toBe("month_seed_list");
   expect(await db.count(`SELECT COUNT(*) FROM "AdminSquadProposal" WHERE "orgId" = $1`, [ORG2])).toBe(before);
+
+  // HE ANSWERS BY DM, in his own words (the model reads it with the draft).
+  const ref = async (userId: string) => {
+    const rows = await db.all<{ userId: string }>(
+      `SELECT m."userId" FROM "Membership" m JOIN "User" u ON u.id = m."userId" WHERE m."orgId" = $1 AND m."leftAt" IS NULL AND m."guestMatchId" IS NULL AND u."isActive" AND u.name IS NOT NULL ORDER BY m."createdAt" ASC`,
+      [ORG2],
+    );
+    return `p${rows.findIndex((r) => r.userId === userId) + 1}`;
+  };
+  const dmSay = async (body: string) => {
+    const res = await request.post("/api/whatsapp/dm-reply", { headers: KEY, data: { phone: digits(owner.phone), body, waMessageId: `e2e-mr2-dm-${++seq}`, authorName: owner.name } });
+    expect(res.status(), await res.text()).toBe(200);
+    return res.json();
+  };
+  // A correction: Sam is PAYG and Pat is added. The draft changes and is sent again.
+  setMonthSeedReplyStub({
+    bodies: {
+      "Sam is PAYG, and add Pat": JSON.stringify({ answer: "change", changes: [{ action: "payg", member: await ref(sam.id), games: 0 }, { action: "add", member: await ref(player.id), games: 0 }], confidence: 0.95 }),
+      "go ahead": JSON.stringify({ answer: "yes", changes: [], confidence: 0.97 }),
+    },
+  });
+  expect(await dmSay("Sam is PAYG, and add Pat")).toMatchObject({ handled: "month-seed-changed" });
+  const changed = await db.one<{ monthSeed: { rows: Array<{ userId: string; kind: string }> } }>(
+    `SELECT "monthSeed" FROM "AdminSquadProposal" WHERE "orgId" = $1 AND "resolvedAt" IS NULL ORDER BY "createdAt" DESC LIMIT 1`,
+    [ORG2],
+  );
+  expect(changed?.monthSeed.rows.map((r) => [r.userId, r.kind])).toEqual([
+    [owner.id, "regular"],
+    [sam.id, "payg"],
+    [player.id, "regular"],
+  ]);
+  const resent = await db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2 ORDER BY "createdAt"`, [ORG2, digits(owner.phone)]);
+  expect(resent.at(-1)?.text).toContain("3 players");
+  // His yes, in any words, starts the month from the draft.
+  expect(await dmSay("go ahead")).toMatchObject({ handled: "month-seed-started", monthStart: coming });
+  const started = await db.all<{ userId: string; kind: string }>(
+    `SELECT smm."userId", smm.kind FROM "SquadMonthMember" smm JOIN "SquadMonth" sm ON sm.id = smm."monthId" WHERE sm."orgId" = $1 ORDER BY smm."userId"`,
+    [ORG2],
+  );
+  expect(started).toEqual(
+    [
+      { userId: owner.id, kind: "regular" },
+      { userId: player.id, kind: "regular" },
+      { userId: sam.id, kind: "payg" },
+    ].sort((a, b) => a.userId.localeCompare(b.userId)),
+  );
+  // The draft is answered: another "go ahead" is not read as it again.
+  expect((await dmSay("go ahead")).handled).not.toBe("month-seed-started");
 });
 
 test("FAIL SAFE: when the reading fails nothing changes, and no other path registers the list's names", async ({ request, db }) => {

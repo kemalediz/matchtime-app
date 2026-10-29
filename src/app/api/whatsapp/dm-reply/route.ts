@@ -717,6 +717,17 @@ export async function POST(request: Request) {
       null;
     const calloff = await handleCalloffDmReply({ userId: user.id, text, replyPhone, now: new Date() });
     if (calloff) return NextResponse.json({ ok: true, ...calloff });
+
+    // ── An organiser answering the coming month's draft (2026-10-29) ─────
+    //   He posted the coming month's list in the players' group and was
+    //   DMed the draft (`month-seed-group.ts`). While it is open, his DM is
+    //   read by the model against it (`month-seed-reply.ts`): a yes starts
+    //   the month as the admin group's YES does, a no leaves it, a
+    //   correction changes the draft and sends it again; anything else goes
+    //   on below. One indexed query for everybody else, and no model call.
+    const { handleMonthSeedDmReply } = await import("@/lib/month-seed-reply");
+    const seed = await handleMonthSeedDmReply({ userId: user.id, text, replyPhone, now: new Date() });
+    if (seed) return NextResponse.json({ ok: true, ...seed });
   }
 
   // ── Player payment claim: "Paid" (2026-09-23) ────────────────────────

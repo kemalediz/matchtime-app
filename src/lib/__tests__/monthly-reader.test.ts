@@ -274,3 +274,48 @@ describe("B3: joining a month under way", () => {
     expect(mayJoinStartedMonth({ choice: "in", source: "paste", gamesLeft: 0, running: true })).toBe(false);
   });
 });
+
+// ── The organiser's DM answer to the coming month's draft ─────────────
+import { applySeedChanges, parseSeedReply } from "../month-seed-reply";
+
+describe("the organiser's DM answer to the draft (month-seed-reply)", () => {
+  const members = [
+    { ref: "p1", userId: "u-davide" },
+    { ref: "p2", userId: "u-craig" },
+    { ref: "p3", userId: "u-ben" },
+  ];
+  const j = (o: unknown) => JSON.stringify(o);
+  it("yes, no and a correction, each only when sure; a change must name a member", () => {
+    expect(parseSeedReply(j({ answer: "yes", changes: [], confidence: 0.95 }), members)).toEqual({ kind: "yes" });
+    expect(parseSeedReply(j({ answer: "no", changes: [], confidence: 0.9 }), members)).toEqual({ kind: "no" });
+    expect(parseSeedReply(j({ answer: "yes", changes: [], confidence: 0.5 }), members).kind).toBe("other");
+    expect(
+      parseSeedReply(j({ answer: "change", changes: [{ action: "games", member: "p2", games: 4 }, { action: "payg", member: "p3", games: 0 }], confidence: 0.9 }), members),
+    ).toEqual({ kind: "change", changes: [{ action: "games", userId: "u-craig", games: 4 }, { action: "payg", userId: "u-ben" }] });
+    expect(parseSeedReply(j({ answer: "change", changes: [{ action: "add", member: "p9", games: 0 }], confidence: 0.9 }), members).kind).toBe("other");
+    expect(parseSeedReply("not json", members).kind).toBe("other");
+  });
+
+  it("the draft with his changes: 4 only, PAYG, added, taken off", () => {
+    const rows = [
+      { userId: "u-davide", kind: "regular" as const, gamesCommitted: null, listName: "Davide" },
+      { userId: "u-craig", kind: "regular" as const, gamesCommitted: null, listName: "Craig" },
+      { userId: "u-ben", kind: "regular" as const, gamesCommitted: null, listName: "Ben" },
+    ];
+    const out = applySeedChanges(
+      rows,
+      [
+        { action: "games", userId: "u-craig", games: 4 },
+        { action: "payg", userId: "u-ben" },
+        { action: "remove", userId: "u-davide" },
+        { action: "add", userId: "u-steve" },
+      ],
+      (id) => (id === "u-steve" ? "Steve" : ""),
+    );
+    expect(out.map((r) => [r.userId, r.kind, r.gamesCommitted ?? null])).toEqual([
+      ["u-craig", "regular", 4],
+      ["u-ben", "payg", null],
+      ["u-steve", "regular", null],
+    ]);
+  });
+});

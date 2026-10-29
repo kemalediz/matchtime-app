@@ -4488,6 +4488,9 @@ export const en = {
   mwk_dm_paste_guests_added: (p: { names: string[]; when: string }): string =>
     `📋 From the list you pasted I've added ${p.names.join(", ")} to ${p.when} as your guest, paying as they go. ` +
     `If that's not right, tell an organiser.`,
+  /** To an organiser who said no to the coming month's draft by DM. */
+  mwk_dm_seed_declined: (p: { month: string }): string =>
+    `OK, I haven't started ${p.month}. Post the list again when it's ready, or start it on the months page.`,
   /** To an organiser who posted the coming month's list in the PLAYERS'
    *  group before that month was started: the draft, and how to start it.
    *  MatchTime says nothing in the group. */

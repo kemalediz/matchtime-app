@@ -8,8 +8,9 @@
  * that waits for an organiser's YES.
  *
  * MatchTime says NOTHING in the players' group. The organiser who posted it
- * gets the draft by DM, with where to say YES: the organisers' group (the
- * existing YES flow) when the club has one, and always the page.
+ * gets the draft by DM and answers there in his own words: yes, no, or a
+ * correction (`month-seed-reply.ts`); the organisers' group's YES and the
+ * page work too.
  *
  * Null-safe: anything that does not fit (not an organiser, no coming month
  * to start, a list for another month) returns false and the caller goes on.
@@ -19,6 +20,7 @@ import { t } from "./i18n/t";
 import { loadClubQuietHours } from "./club-quiet-hours";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
 import type { MonthlyReading } from "./monthly-reader-prompt";
+import { MONTH_SEED_DM_KIND, MONTH_SEED_DM_TTL_MS } from "./month-seed-reply";
 
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "P2002";
@@ -53,22 +55,24 @@ export async function proposeMonthSeedFromGroup(args: {
   });
   if (!res || res.outcome !== "month-seed-proposed" || !res.proposal) return false;
   const phone = admin.user.phoneNumber?.replace(/^\+/, "");
-  if (phone) {
-    try {
-      await db.sentNotification.create({ data: { key: `org-${args.orgId}:month-seed-group:${args.waMessageId}`, kind: "admin-notice" } });
+  // The draft waits for his answer by DM (`month-seed-reply.ts`) for a day,
+  // not the half hour an answer in HQ gets.
+  const proposal = await db.adminSquadProposal.findFirst({
+    where: { orgId: args.orgId, waMessageId: args.waMessageId, resolvedAt: null },
+    select: { id: true },
+  });
+  if (!proposal) return false;
+  await db.adminSquadProposal.update({ where: { id: proposal.id }, data: { expiresAt: new Date(now.getTime() + MONTH_SEED_DM_TTL_MS) } });
+  const text = t(org.language).mwk_dm_seed_from_group({ ...res.proposal, hq: !!org.adminGroupId });
+  try {
+    // The offer, with its words: what his DM answer is read against.
+    await db.sentNotification.create({ data: { key: `org-${args.orgId}:month-seed-dm:${proposal.id}`, kind: MONTH_SEED_DM_KIND, text, targetUser: args.senderUserId } });
+    if (phone) {
       const sendAfter = adminNoticeSendAfter(now, await loadClubQuietHours(args.orgId));
-      await db.botJob.create({
-        data: {
-          orgId: args.orgId,
-          kind: "dm",
-          phone,
-          text: t(org.language).mwk_dm_seed_from_group({ ...res.proposal, hq: !!org.adminGroupId }),
-          ...(sendAfter ? { sendAfter } : {}),
-        },
-      });
-    } catch (err) {
-      if (!isUniqueViolation(err)) console.error("[month-seed-group] DM to the organiser failed:", err);
+      await db.botJob.create({ data: { orgId: args.orgId, kind: "dm", phone, text, ...(sendAfter ? { sendAfter } : {}) } });
     }
+  } catch (err) {
+    if (!isUniqueViolation(err)) console.error("[month-seed-group] DM to the organiser failed:", err);
   }
   console.log(`[month-seed-group] ${args.waMessageId}: the coming month proposed from the players' group for ${args.orgId}, by DM`);
   return true;

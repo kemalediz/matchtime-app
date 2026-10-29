@@ -3274,6 +3274,7 @@ export const tr: Strings = {
   mwk_dm_paste_guests_added: (p) =>
     `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
     `Yanlışsa bir organizatöre söyle.`,
+  mwk_dm_seed_declined: (p) => `Tamam, ${p.month} ayını başlatmadım. Liste hazır olunca yeniden paylaş ya da aylar sayfasından başlat.`,
   mwk_dm_seed_from_group: (p) =>
     [
       `📋 Grupta paylaştığın ${p.month} listesini okudum: ${p.count} oyuncu (${p.names}).`,
