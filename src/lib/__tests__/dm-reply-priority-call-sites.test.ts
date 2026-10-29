@@ -74,6 +74,9 @@ const MARKED: Record<string, number> = {
   "lib/partner-guest.ts": 2,
   // The ack to a player's own IN/OUT by DM or reaction.
   "lib/out-of-band-self-attendance.ts": 1,
+  // The organiser's untagged call-off (2026-10-29): the one DM asking him
+  // whether to cancel, which answers his message, and the answer to his reply.
+  "lib/calloff-offer.ts": 2,
 };
 
 /** Bulk and scheduled senders: never marked. */
