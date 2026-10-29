@@ -12,14 +12,15 @@
  *   acceptOffer    re-check, claim the offer (compare-and-set, so a double
  *                  tap writes once), place him under the club's rule and
  *                  the round's number (the per-match lock), then: the
- *                  organisers are told (first name, last initial, the
- *                  turn-up line; never a number), he gets the match
+ *                  club is told (`guest-notice.ts`: HQ with the turn-up
+ *                  line, or the players' group for everyone without it;
+ *                  first name, last initial, never a number), he gets the match
  *                  details by DM, and a round he filled closes now, its
  *                  partner asks too. Lost the race: "filled", nothing else.
  *   declineOffer   "No thanks": that club cannot offer him again for 14
  *                  days (`caps.ts`, decision cooldown).
  *   pullOutOfOffer he gives the place back: the normal drop flow, the
- *                  organisers told, his guest place marked in time or late.
+ *                  club told (as above), his guest place marked in time or late.
  *
  * WHO MAY ANSWER (review of #400, M2): the three answers change HIS record,
  * so the page's actions run them only for the holder (`isOfferHolder`:
@@ -30,7 +31,6 @@
  */
 import { db } from "../db";
 import { appUrl } from "../app-url";
-import { sendAdminNotice } from "../admin-channel";
 import { dayCommaTimeLabel } from "../i18n/dates";
 import { normaliseLang, type Lang } from "../i18n/lang";
 import { poolCopy } from "../i18n/pool-offer";
@@ -43,7 +43,9 @@ import { offerPageState, organiserRecordOf, type OfferPageState } from "./accept
 import { buildPoolManageLink } from "./links";
 import { OPEN_MATCH_STATUSES } from "./matching-rules";
 import { loadMatchOfferFacts, type MatchOfferFacts } from "./offer-facts";
-import { poolOrganiserNotice, poolPlacedText, shortDisplayName } from "./offer-copy";
+import { poolGuestGroupNotice, poolOrganiserNotice, poolPlacedText, shortDisplayName } from "./offer-copy";
+import { tellClubAboutPoolGuest } from "./guest-notice";
+import { normaliseBenchPickMode } from "../squad-capacity";
 import { poolOfferPath } from "./offer-token";
 import { closePoolAsk, poolAskFill } from "./round";
 import { acceptRefusal, pullOutResult } from "./round-rules";
@@ -203,13 +205,10 @@ async function recordOf(userId: string) {
   return organiserRecordOf({ confirmedCompleted, noShows, lateCancels });
 }
 
-async function tellOrganisersOnce(o: LoadedOffer, key: string, text: string, now: Date): Promise<void> {
-  try {
-    await db.sentNotification.create({ data: { key, kind: "pool-guest", matchId: o.matchId } });
-  } catch {
-    return; // told already
-  }
-  await sendAdminNotice({ orgId: o.orgId, now, holdOvernight: false, text });
+/** The club is told once, where it can see it (`guest-notice.ts`): HQ (or
+ *  the admins' DMs) with the turn-up line, or its players' group without. */
+async function tellClubOnce(o: LoadedOffer, key: string, text: { hq: string; group: string }, now: Date): Promise<void> {
+  await tellClubAboutPoolGuest({ orgId: o.orgId, matchId: o.matchId, key, now, hqText: text.hq, groupText: text.group });
 }
 
 /** How he answered: the tap link's page, or his own words by DM (L6). */
@@ -253,13 +252,18 @@ export async function acceptOffer(offerId: string, now: Date = new Date(), env?:
   // Slice G4: "Brought by Ali K." on his FIRST game, when the friend who
   // brought him lets himself be named.
   const broughtBy = await broughtByForFirstGame(o.userId);
-  const notice = poolOrganiserNotice(normaliseLang(clubLang), {
-    name: shortDisplayName(profile?.displayName ?? ""),
-    day: dayCommaTimeLabel(clubLang, o.ask.match.date),
-    bench,
-    record: await recordOf(o.userId),
-  });
-  await tellOrganisersOnce(o, `pool-offer:${o.id}:placed`, broughtBy ? `${notice} ${poolReferralCopy(clubLang).broughtBy(broughtBy)}` : notice, now);
+  const name = shortDisplayName(profile?.displayName ?? "");
+  const day = dayCommaTimeLabel(clubLang, o.ask.match.date);
+  const brought = (text: string) => (broughtBy ? `${text} ${poolReferralCopy(clubLang).broughtBy(broughtBy)}` : text);
+  await tellClubOnce(
+    o,
+    `pool-offer:${o.id}:placed`,
+    {
+      hq: brought(poolOrganiserNotice(normaliseLang(clubLang), { name, day, bench, record: await recordOf(o.userId) })),
+      group: brought(poolGuestGroupNotice(normaliseLang(clubLang), { name, day, kind: bench ? "bench" : "in", organiserPicks: normaliseBenchPickMode(o.ask.org.benchPickMode) === "organiser" })),
+    },
+    now,
+  );
 
   const phone = profile?.user?.phoneNumber;
   const facts = await loadMatchOfferFacts(o.matchId, now);
@@ -331,12 +335,8 @@ export async function pullOutOfOffer(offerId: string, now: Date = new Date()): P
   if (done) {
     await db.poolProfile.updateMany({ where: { userId: o.userId }, data: { lastActiveAt: now } });
     const clubLang = o.ask.org.language;
-    await tellOrganisersOnce(
-      o,
-      `pool-offer:${o.id}:out`,
-      poolCopy(clubLang).notice_out({ name: shortDisplayName(profile?.displayName ?? ""), day: dayCommaTimeLabel(clubLang, o.ask.match.date) }),
-      now,
-    );
+    const out = poolCopy(clubLang).notice_out({ name: shortDisplayName(profile?.displayName ?? ""), day: dayCommaTimeLabel(clubLang, o.ask.match.date) });
+    await tellClubOnce(o, `pool-offer:${o.id}:out`, { hq: out, group: out }, now);
   }
   return stateOf((await loadOffer(offerId))!, profile?.status === "active", now);
 }

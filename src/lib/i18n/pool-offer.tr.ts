@@ -43,6 +43,10 @@ export const poolOfferTr: PoolOfferStrings = {
   notice_in: (p) => `🙋 MatchTime oyuncu havuzundan ${p.name}, ${p.day} maçında bir yer aldı. ${p.turnUp}`,
   notice_bench: (p) => `🙋 MatchTime oyuncu havuzundan ${p.name}, ${p.day} maçı için yedekte, seçmeniz için. ${p.turnUp}`,
   notice_out: (p) => `MatchTime oyuncu havuzundan ${p.name} artık ${p.day} maçına gelemiyor. Yer yeniden boş.`,
+  group_notice_in: (p) => `🙋 MatchTime oyuncu havuzundan ${p.name}, ${p.day} maçı için kadroya katıldı.`,
+  group_notice_bench: (p) => `🙋 MatchTime oyuncu havuzundan ${p.name}, ${p.day} maçı için yedekte.`,
+  group_notice_bench_pick: (p) =>
+    `🙋 MatchTime oyuncu havuzundan ${p.name}, ${p.day} maçı için yedekte. Yedeklerden kimin oynayacağını organizatörler seçer. Organizatörler, ${p.name} kadroya girsin isterseniz beni etiketleyip yazın, örneğin *@Match Time ${p.name} kadroya girsin*`,
   turnup_new: "MatchTime'da yeni.",
   turnup_all: (p) => (p.n === 1 ? "MatchTime'da 1 maç oynadı ve geldi." : `MatchTime'da ${p.n} maç oynadı, hepsine geldi.`),
   turnup_some: (p) => `MatchTime'daki ${p.n} maçın ${p.played} tanesine geldi.`,

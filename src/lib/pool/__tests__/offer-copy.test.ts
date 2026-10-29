@@ -16,6 +16,7 @@ import {
   poolOfferText,
   withPoolOffer,
   poolOrganiserNotice,
+  poolGuestGroupNotice,
   poolPausedText,
   poolPlacedText,
   poolReplyFactsText,
@@ -182,6 +183,49 @@ describe("the organisers' notice: first name and last initial, the turn-up line,
     );
     expect(poolOrganiserNotice("en", { name: "Ali K", day, bench: true, record: { played: 0, missed: 0 } })).toMatch(/on the bench for Tue 27 Oct, for you to pick\. New to MatchTime\.$/);
     expect(poolOrganiserNotice("tr", { name: "Ali K", day: "27 Eki Sal", bench: false, record: { played: 0, missed: 0 } })).toContain("MatchTime oyuncu havuzundan Ali K");
+  });
+});
+
+describe("the players' group post about a pool guest (Kemal, 2026-10-29): for everyone, no turn-up record", () => {
+  const day = "Tue 27 Oct, 20:00";
+  const TURN_UP = /MatchTime games|New to MatchTime|turned up|MatchTime'da yeni|maç oynadı|tanesine geldi/i;
+  const all = (["en", "tr"] as const).flatMap((lang) =>
+    (["in", "bench", "out"] as const).flatMap((kind) => [true, false].map((organiserPicks) => ({ lang, kind, organiserPicks, text: poolGuestGroupNotice(lang, { name: "Ali K", day, kind, organiserPicks }) }))),
+  );
+
+  it("EN: a place, the bench, the bench in an organiser-pick club, and giving it back", () => {
+    expect(poolGuestGroupNotice("en", { name: "Ali K", day, kind: "in", organiserPicks: false })).toBe("🙋 Ali K from the MatchTime player pool has joined the squad for Tue 27 Oct, 20:00.");
+    expect(poolGuestGroupNotice("en", { name: "Ali K", day, kind: "bench", organiserPicks: false })).toBe("🙋 Ali K from the MatchTime player pool is on the bench for Tue 27 Oct, 20:00.");
+    expect(poolGuestGroupNotice("en", { name: "Ali K", day, kind: "bench", organiserPicks: true })).toBe(
+      "🙋 Ali K from the MatchTime player pool is on the bench for Tue 27 Oct, 20:00. The organisers pick who plays from the bench. Organisers, to put Ali K in, tag me and say so, for example *@Match Time put Ali K in*",
+    );
+    expect(poolGuestGroupNotice("en", { name: "Ali K", day, kind: "out", organiserPicks: false })).toBe("Ali K from the MatchTime player pool can no longer play on Tue 27 Oct, 20:00. The place is open again.");
+  });
+
+  it("TR: the same four", () => {
+    expect(poolGuestGroupNotice("tr", { name: "Ali K", day, kind: "in", organiserPicks: false })).toBe("🙋 MatchTime oyuncu havuzundan Ali K, Tue 27 Oct, 20:00 maçı için kadroya katıldı.");
+    expect(poolGuestGroupNotice("tr", { name: "Ali K", day, kind: "bench", organiserPicks: false })).toBe("🙋 MatchTime oyuncu havuzundan Ali K, Tue 27 Oct, 20:00 maçı için yedekte.");
+    expect(poolGuestGroupNotice("tr", { name: "Ali K", day, kind: "bench", organiserPicks: true })).toContain("Yedeklerden kimin oynayacağını organizatörler seçer.");
+    expect(poolGuestGroupNotice("tr", { name: "Ali K", day, kind: "bench", organiserPicks: true })).toContain("*@Match Time Ali K kadroya girsin*");
+    expect(poolGuestGroupNotice("tr", { name: "Ali K", day, kind: "out", organiserPicks: false })).toContain("artık Tue 27 Oct, 20:00 maçına gelemiyor");
+  });
+
+  it("never the turn-up record: another club's history about a stranger, read by the whole group", () => {
+    expect(all.filter((x) => TURN_UP.test(x.text))).toEqual([]);
+    // The HQ notice keeps it.
+    expect(poolOrganiserNotice("en", { name: "Ali K", day, bench: false, record: { played: 3, missed: 1 } })).toContain("Turned up to 3 of 4 MatchTime games.");
+  });
+
+  it("worded for the whole group: never 'for you to pick', no dashes or slashes as separators, bench never waiting list", () => {
+    for (const { text } of all) {
+      expect(text).not.toMatch(/for you to pick|seçmeniz için/);
+      expect(text).not.toMatch(/[\u2013\u2014]| \/ /);
+      expect(text).not.toMatch(/waiting list|bekleme listesi/i);
+    }
+  });
+
+  it("only an organiser-pick club's bench post says how an organiser puts him in", () => {
+    for (const x of all) expect(/@Match Time/.test(x.text)).toBe(x.kind === "bench" && x.organiserPicks);
   });
 });
 

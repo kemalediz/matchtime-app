@@ -3,15 +3,11 @@
  * `club-switch.ts`.
  *
  * When a club's pool goes from off to on (by whoever), the club is told
- * ONCE, ever (`poolOnRoute`, Kemal 2026-10-28):
- *
- *   a linked admin group (HQ)   its admin channel (`sendAdminNotice`: the
- *                               admin group, the one person it chose, or
- *                               each admin), never the players' group;
- *   only a players' group       ONE post in that group, worded for everyone
- *                               (organisers ask, players read), and NO
- *                               admin DM at all;
- *   neither one postable        the admin channel, which DMs the admins.
+ * ONCE, ever (Kemal 2026-10-28), where the shared rule sends it
+ * (`club-notice-route-rules.ts` `clubNoticeRoute`): HQ through its admin
+ * channel; a club whose only group is its players' group, ONE post there
+ * worded for everyone (organisers ask, players read) and NO admin DM; no
+ * postable group, the admin DMs.
  *
  * Each route has its own claim, a `SentNotification` key with nothing in it
  * but the club (`poolOnNoticeKey`, `poolOnGroupKey`), written in the same
@@ -32,19 +28,4 @@ export const POOL_ON_GROUP_KIND = "pool-club-on-group" as const;
 /** The once-ever claim for the players' group post: the club and nothing else. */
 export function poolOnGroupKey(orgId: string): string {
   return `org-${orgId}:${POOL_ON_GROUP_KIND}`;
-}
-
-export interface PoolOnRouteInput {
-  adminGroupId: string | null;
-  whatsappGroupId: string | null;
-  whatsappBotEnabled: boolean;
-  /** False only when MatchTime is known to be unable to post in the players' group. */
-  playersGroupPostable: boolean;
-}
-
-/** Where the club is told: its admin channel, or its players' group. */
-export function poolOnRoute(org: PoolOnRouteInput): "admin-channel" | "players-group" {
-  if (org.adminGroupId) return "admin-channel";
-  if (org.whatsappGroupId && org.whatsappBotEnabled && org.playersGroupPostable) return "players-group";
-  return "admin-channel";
 }
