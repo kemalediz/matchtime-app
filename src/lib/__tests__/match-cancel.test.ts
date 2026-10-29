@@ -89,6 +89,18 @@ describe("cancelMatchById", () => {
 });
 
 describe("restoreMatchById", () => {
+  it("a monthly club's game back on: its cancelled-week credits are taken back at once (the sweep's one reconcile)", async () => {
+    dbMock.match.findUnique.mockResolvedValue(row("CANCELLED", "en", "monthly"));
+    expect((await restoreMatchById("m1", NOW)).kind).toBe("restored");
+    expect(monthClose.afterMatchesCancelled).toHaveBeenCalledWith("org1", [], NOW);
+  });
+
+  it("a weekly club's game back on: no month is touched", async () => {
+    dbMock.match.findUnique.mockResolvedValue(row("CANCELLED"));
+    await restoreMatchById("m1", NOW);
+    expect(monthClose.afterMatchesCancelled).not.toHaveBeenCalled();
+  });
+
   it("a cancelled match still to come: UPCOMING again, and the players' group told", async () => {
     dbMock.match.findUnique.mockResolvedValue(row("CANCELLED"));
     expect((await restoreMatchById("m1", NOW)).kind).toBe("restored");
@@ -188,10 +200,12 @@ describe("playersGroupCancelOrRestore (2026-10-23)", () => {
     expect(dbMock.botJob.create).not.toHaveBeenCalled();
   });
 
-  it("a monthly club: the website, nothing cancelled", async () => {
+  it("a monthly club: cancelled through the same core as a weekly one (Kemal: every admin feature by tagging)", async () => {
     dbMock.organisation.findUnique.mockResolvedValue({ adminGroupId: null, squadMode: "monthly" });
-    expect((await go()).replyText).toBe("Cancelling a match from here isn't available for monthly squads yet. Please use the website.");
-    expect(dbMock.match.updateMany).not.toHaveBeenCalled();
+    dbMock.match.findMany.mockResolvedValue([{ id: "m1", date: FRI, status: "UPCOMING" }]);
+    dbMock.match.findUnique.mockResolvedValue(row("UPCOMING"));
+    expect(await go()).toEqual({ outcome: "match_cancelled", replyText: null, react: "✅" });
+    expect(dbMock.match.updateMany).toHaveBeenCalledWith({ where: { id: "m1", status: "UPCOMING" }, data: { status: "CANCELLED" } });
   });
 
   it("not an owner or admin: the organisers-only line, nothing read or written", async () => {

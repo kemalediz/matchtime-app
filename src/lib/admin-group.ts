@@ -134,10 +134,9 @@ const NO_TICK: ReadonlySet<string> = new Set([
   "hq-mom-asked",
   "hq-mom-organisers-only",
   "hq-mom-failed",
-  // A cancel or "back on" that changed nothing (no such match), and a
-  // monthly club told to use the website (2026-10-22, match-cancel.ts).
+  // A cancel or "back on" that changed nothing (no such match, 2026-10-22,
+  // match-cancel.ts).
   HQ_CANCEL_NOTHING_DONE,
-  "hq-cancel-monthly",
   // The MatchTime player pool asked from HQ (L10) and not asked: closed for
   // the club, nobody near, too late, no game.
   "hq-pool-not-asked",

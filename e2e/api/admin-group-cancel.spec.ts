@@ -104,11 +104,14 @@ test("a player in HQ: nothing cancelled, the line naming who can", async ({ requ
   expect(await groupPosts(db)).toHaveLength(0);
 });
 
-test("a monthly club: nothing cancelled; use the website", async ({ request, db }) => {
+test("a monthly club: cancelled from HQ the same way, then put back on", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET "squadMode" = 'monthly' WHERE id = $1`, [ORG_ID]);
   const out = await say(request, CANCEL);
-  expect(out).toMatchObject({ outcome: "hq-cancel-monthly", react: null });
-  expect(out.replyText).toBe("Cancelling a match from here isn't available for monthly squads yet. Please use the website.");
+  expect(out).toMatchObject({ outcome: "hq-match-cancelled" });
+  expect(out.replyText).toMatch(/^Done: .+ is cancelled\. I've told the players' group\.$/);
+  expect(await status(db)).toBe("CANCELLED");
+  const back = await say(request, BACK_ON);
+  expect(back).toMatchObject({ outcome: "hq-match-restored" });
   expect(await status(db)).toBe("UPCOMING");
 });
 
