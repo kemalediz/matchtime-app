@@ -334,6 +334,7 @@ import { dayCommaTimeLabel, dayLabel, kickoffLabel } from "@/lib/i18n/dates";
 import { CANCELLED_NOTICE_LOOKBACK_MS, SAME_FIXTURE_MS, cancelledMatchToMention } from "@/lib/cancelled-match-notice";
 import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { messageMentionsBotExplicitly, messageTagsBot } from "@/lib/interaction-contract";
+import { taggedSilence } from "@/lib/tagged-silence";
 import { mergeRecruitReply } from "@/lib/recruit-request";
 import { readBenchPromptAnswer } from "@/lib/bench-prompt-answer";
 import {
@@ -3115,6 +3116,10 @@ async function handleAnalyzeRequest(request: Request) {
         senderResolved: !!sender.userId,
         claimCount: engineOutcome.claimCount,
         sideRequestCount: engineOutcome.sideRequestCount,
+        // 2026-10-29: an organiser's tagged message that ended as noise is
+        // noted even with a side request (`silentDiscard`).
+        taggedByOrganiser: !!sender.userId && engineAdminIds.has(sender.userId) && messageMentionsBotExplicitly(msg),
+        intent: engineOutcome.intent,
         // Prose, for the bullet only. The engine writes this same string
         // to `AnalyzedMessage.reasoning`, so the DM and the admin log
         // say the same thing, and neither of them decides anything.
@@ -4377,6 +4382,38 @@ async function handleAnalyzeRequest(request: Request) {
       }
       seenIds.add(id);
     }
+  }
+
+  // ── A MESSAGE TAGGED TO MATCHTIME IS NEVER MET WITH SILENCE ───────
+  //   (MT Test, 2026-10-29.) The owner tagged "@Match Time invite players
+  //   from pool" and, routed `offer` with a bare "chase", it ended with no
+  //   reply, no tick, no write and nothing queued. Decided here, after every
+  //   pass that can add words, a tick or a queued ask to a result, from the
+  //   OUTCOME only (`tagged-silence.ts`), never the words: the players'
+  //   group twin of HQ's "I didn't catch that", pointing to help.
+  for (const r of results) {
+    const m = fresh.find((x) => x.waMessageId === r.waMessageId);
+    if (!m) continue;
+    const silent = taggedSilence({
+      taggedExplicitly: messageMentionsBotExplicitly(m),
+      senderKnown: !!senderById.get(m.waMessageId)?.userId,
+      late: lateById.has(m.waMessageId),
+      capped: cappedIds.has(m.waMessageId),
+      gated: gatedIds.has(m.waMessageId),
+      route: gateRouteById.get(m.waMessageId),
+      result: { reply: r.reply ?? null, react: r.react ?? null, intent: r.intent ?? "noise", handledBy: r.handledBy },
+    });
+    if (!silent) continue;
+    r.reply = strings(org.language).group_not_understood;
+    r.intent = "not_understood";
+    r.handledBy = "fast-path";
+    console.log(`[analyze] ${m.waMessageId}: tagged to MatchTime and nothing came of it: the not-understood line`);
+    await augmentAnalysis({
+      waMessageId: m.waMessageId,
+      action: "not-understood",
+      reasoningSuffix: "tagged to MatchTime, nothing written, queued or said: the not-understood line",
+      intent: "not_understood",
+    });
   }
 
   // 3b. Backfill the registration-react on earlier duplicate IN messages

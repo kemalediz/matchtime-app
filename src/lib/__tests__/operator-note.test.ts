@@ -613,6 +613,29 @@ describe("a message an owner CLAIMED and then did nothing with", () => {
     expect(note.noteIds).toEqual([]);
   });
 
+  // 2026-10-29 (MT Test): the owner's "@Match Time invite players from
+  // pool" came away with a chase side request and ended as noise. A tagged
+  // organiser's message that ends with nothing is noted, side requests or not.
+  it("DOES note a tagged organiser's message that ended as noise, even with a side request", () => {
+    const note = composeOperatorNote({
+      orgName: "MT Test",
+      messages: [],
+      owned: [o({ waMessageId: "kemal-pool", body: "@Match Time invite players from pool", route: "offer", sideRequestCount: 1, taggedByOrganiser: true, intent: "noise" })],
+      degradations: [],
+    });
+    expect(note.noteIds).toEqual(["kemal-pool"]);
+  });
+
+  it("does not note a tagged organiser's message that did something (its intent is not noise)", () => {
+    const note = composeOperatorNote({
+      orgName: "MT Test",
+      messages: [],
+      owned: [o({ route: "offer", sideRequestCount: 1, taggedByOrganiser: true, intent: "replacement_request" })],
+      degradations: [],
+    });
+    expect(note.noteIds).toEqual([]);
+  });
+
   it("stays silent when the sender never resolved to a member", () => {
     // An unresolved sender is a different failure with a different
     // remedy (link the pushname to a player), and the admin console's

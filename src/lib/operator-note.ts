@@ -208,6 +208,12 @@ export interface OwnedMessage {
    * says which rule stopped it. Null when the owner did not report one.
    */
   why?: string | null;
+  /** The sender is an owner or admin of the club AND the message tagged
+   *  MatchTime explicitly (2026-10-29). Optional: absent is false. */
+  taggedByOrganiser?: boolean;
+  /** The outcome's `intent` (`intentFor`): `noise` means nothing was
+   *  written, queued or said. Optional: absent never selects anything. */
+  intent?: string;
 }
 
 /**
@@ -283,6 +289,10 @@ export function silentDiscard(m: OwnedMessage): boolean {
   if (!m.senderResolved) return false;
   if (m.disposition === "acted") return false;
   if (m.spoke) return false;
+  // 2026-10-29 (MT Test): an organiser tagged MatchTime and it ended as
+  // noise. A side request does not excuse it: "@Match Time invite players
+  // from pool" came away with a chase, did nothing, and said nothing.
+  if (m.taggedByOrganiser && m.intent === "noise") return true;
   return m.claimCount === 0 && m.sideRequestCount === 0;
 }
 

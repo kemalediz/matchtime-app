@@ -795,9 +795,25 @@ export function decide(input: EngineInput): EngineResult {
       // decides the second from the writes that landed. This is the first.
       // The STRICT tag, never `tagged`: a swipe-reply to a MatchTime post
       // may ask a question, not open a mass DM.
-      if (facts.sideRequests.includes("recruit")) {
+      //
+      // 2026-10-29 (MT Test): an ORGANISER's chase that tags MatchTime is
+      // a request to find players, the same as "recruit". "@Match Time
+      // invite players from pool" from the owner was routed `offer` and
+      // read as a bare "chase", so it never reached the pool and partner
+      // decision and MatchTime said nothing. Anyone else's chase, and an
+      // organiser's untagged "@all we need more players", stay a nudge.
+      const taggedExplicitly = msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body });
+      const organiserChase =
+        facts.sideRequests.includes("chase") &&
+        taggedExplicitly &&
+        !!msg.senderUserId &&
+        !!w.roster.find((m2) => m2.userId === msg.senderUserId)?.isAdmin;
+      if (facts.sideRequests.includes("recruit") || organiserChase) {
         out.recruitRequested = true;
-        out.recruitTaggedExplicitly = msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body });
+        out.recruitTaggedExplicitly = taggedExplicitly;
+        if (organiserChase && !facts.sideRequests.includes("recruit")) {
+          out.reasons.push("an organiser's tagged chase: a request to find players");
+        }
       }
 
       // Review L1: a member picked as a partner club's guest for a game that

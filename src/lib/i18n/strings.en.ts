@@ -1590,6 +1590,11 @@ export const en = {
   /** A message addressed to MatchTime in the admin group (an @tag, or a
    *  reply to its own message) that it could not read as anything it does. */
   hq_not_understood: `I didn't catch what you'd like me to do.`,
+  /** The players' group twin of `hq_not_understood` (2026-10-29, MT Test):
+   *  a member tagged MatchTime and nothing came of it (no reply, no tick,
+   *  no write, nothing queued). Decided from the outcome
+   *  (`tagged-silence.ts`), never from the words. */
+  group_not_understood: `I didn't catch what you'd like me to do. Type *@Match Time help* to see what I can do.`,
   /** Someone in the admin group who is not an owner or admin of the club
    *  asked MatchTime to change something (2026-10-16). `names` is the
    *  club's owners and admins, joined ("Hamzah or Raihan"); empty when it

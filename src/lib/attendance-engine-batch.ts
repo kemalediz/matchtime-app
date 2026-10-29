@@ -1247,7 +1247,7 @@ export async function runAttendanceEngineBatch(args: {
       route: m.route as Route,
       reply,
       react: reactByMessageId.get(m.waMessageId) ?? partnerReact,
-      intent: partner ? "partner_volunteer" : intentFor(landed, m.senderUserId, attendanceFacts, reply),
+      intent: partner ? "partner_volunteer" : intentFor(landed, m.senderUserId, attendanceFacts, reply, !!engineOutcome?.recruitRequested),
       action: partner ? `partner-volunteer:${partner.outcome}` : analyzedActionFor(landed, m.senderUserId),
       reasoning,
       failures,
@@ -1334,12 +1334,16 @@ export function intentFor(
   senderUserId: string | null,
   facts: AttendanceFacts | null,
   reply: string | null,
+  /** The ENGINE's decision that players were asked for: a "recruit", or an
+   *  organiser's tagged "chase" (2026-10-29), which the facts alone call
+   *  noise. */
+  recruitRequested = false,
 ): string {
   const own = senderUserId ? landed.find((w) => w.userId === senderUserId) : undefined;
   if (own) return own.status === "DROPPED" ? "out" : "in";
   if (landed.length > 0) return "in";
   if (facts?.claims.some((c) => c.contingent)) return "conditional_in";
-  if (facts?.sideRequests.includes("recruit")) return "replacement_request";
+  if (recruitRequested || facts?.sideRequests.includes("recruit")) return "replacement_request";
   return reply ? "question" : "noise";
 }
 
