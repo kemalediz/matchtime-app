@@ -982,9 +982,9 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
           if (which) return which;
         }
         // Calling a match off, or putting it back on (2026-10-22): an owner's
-        // or admin's alone (the collector may not), a weekly club only
-        // (monthly squads are not live: the website does it). The one path
-        // the web page uses (`match-cancel.ts`).
+        // or admin's alone (the collector may not), weekly or monthly (a
+        // monthly club's cancelled-week credits come with it, 2026-10-29).
+        // The one path the web page uses (`match-cancel.ts`).
         if (facts.kind === "admin" && (facts.action === "cancel_match" || facts.action === "restore_match")) {
           // Only when an organiser TAGS MatchTime (Kemal, 2026-10-22: "it only
           // acts when an admin tags it"). Untagged, "storm, no game Friday" is
@@ -994,7 +994,6 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
             return null;
           }
           if (!actor) return onlyOrganisers();
-          if (!weekly) return said("hq-cancel-monthly", s.hq_cancel_monthly);
           const r = await hqCancelOrRestore({
             orgId: org.id,
             lang,

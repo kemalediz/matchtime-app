@@ -386,7 +386,6 @@ const SAMPLES: SampleArgs = {
   not_played_restore_confirm: { game: "GAMELABEL" },
   not_played_restore_yes: null,
   hq_restore_no_match: null,
-  hq_cancel_monthly: null,
   match_cancel_use_admin_group: null,
   hq_not_understood: null,
   group_not_understood: null,

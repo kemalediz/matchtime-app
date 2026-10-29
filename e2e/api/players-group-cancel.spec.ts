@@ -87,12 +87,12 @@ test("a player: refused with the line naming who can, nothing cancelled", async 
   expect(await groupPosts(db)).toHaveLength(0);
 });
 
-test("a monthly club: nothing cancelled; use the website", async ({ request, db }) => {
+test("a monthly club: cancelled the same way (its credits: monthly-cancel-credits.spec.ts)", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET "squadMode" = 'monthly' WHERE id = $1`, [ORG_ID]);
   const out = await say(request, CANCEL);
-  expect(out.reply).toBe("Cancelling a match from here isn't available for monthly squads yet. Please use the website.");
-  expect(await status(db)).toBe("UPCOMING");
-  expect(await groupPosts(db)).toHaveLength(0);
+  expect(out).toMatchObject({ reply: null, react: "✅", intent: "match_cancelled" });
+  expect(await status(db)).toBe("CANCELLED");
+  expect(await groupPosts(db)).toEqual([expect.stringMatching(/^❌ \*Match cancelled\*/)]);
 });
 
 test("a club WITH an admin group: pointed there, nothing cancelled (EN and TR)", async ({ request, db }) => {

@@ -335,6 +335,7 @@ import { CANCELLED_NOTICE_LOOKBACK_MS, SAME_FIXTURE_MS, cancelledMatchToMention 
 import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { messageMentionsBotExplicitly, messageTagsBot } from "@/lib/interaction-contract";
 import { taggedSilence } from "@/lib/tagged-silence";
+import { offerCalloffIfCalled } from "@/lib/calloff-offer";
 import { mergeRecruitReply } from "@/lib/recruit-request";
 import { readBenchPromptAnswer } from "@/lib/bench-prompt-answer";
 import {
@@ -4414,6 +4415,44 @@ async function handleAnalyzeRequest(request: Request) {
       reasoningSuffix: "tagged to MatchTime, nothing written, queued or said: the not-understood line",
       intent: "not_understood",
     });
+  }
+
+  // ── AN ORGANISER CALLING THE GAME OFF WITHOUT A TAG ────────────────
+  //   (Vets MNF, 2026-10-26.) "Alright, so it's off gents" from an
+  //   organiser, untagged, left the game live. The group hears nothing
+  //   (no tag, no words from MatchTime); for an organiser's untagged message
+  //   while a game is coming, the model reads it against the recent chat
+  //   (`calloff-reader.ts`) and, when it calls the game off, the organiser
+  //   is DM'd once to say *cancel* (`calloff-offer.ts`). No result here
+  //   changes. Best effort: it never costs the batch its replies.
+  {
+    const outcomes = await offerCalloffIfCalled({
+      orgId: org.id,
+      lang: org.language,
+      now: new Date(),
+      history,
+      messages: fresh.map((m) => {
+        const s = senderById.get(m.waMessageId);
+        return {
+          waMessageId: m.waMessageId,
+          body: m.body,
+          authorName: chatAuthorOf(s),
+          userId: s?.userId ?? null,
+          phone: s?.phone ?? (m.authorPhone || null),
+          tagged: messageTagsBot(m),
+          late: lateById.has(m.waMessageId),
+          capped: cappedIds.has(m.waMessageId),
+          reply: replyById.get(m.waMessageId) ?? null,
+        };
+      }),
+    });
+    for (const o of outcomes.filter((x) => x.outcome === "offered")) {
+      await augmentAnalysis({
+        waMessageId: o.waMessageId,
+        action: "calloff-offer",
+        reasoningSuffix: "an organiser called the next game off untagged: asked by DM whether to cancel it",
+      });
+    }
   }
 
   // 3b. Backfill the registration-react on earlier duplicate IN messages

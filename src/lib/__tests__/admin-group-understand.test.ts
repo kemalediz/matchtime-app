@@ -1422,14 +1422,14 @@ describe("cancelling a match from HQ, and putting it back on (2026-10-22)", () =
     expect(matchCancel.hqCancelOrRestore).not.toHaveBeenCalled();
   });
 
-  it("a monthly club: nothing is cancelled; use the website", async () => {
-    const r = await ask("@Match Time cancel the session", "admin_ops", { org: { ...ORG, squadMode: "monthly" }, deps: deps({ action: "cancel_match" }) });
-    expect(r).toEqual({
-      route: "admin_ops",
-      outcome: "hq-cancel-monthly",
-      replyText: "Cancelling a match from here isn't available for monthly squads yet. Please use the website.",
-    });
-    expect(matchCancel.hqCancelOrRestore).not.toHaveBeenCalled();
+  it("a monthly club: cancelled through the same core as a weekly one (Kemal: every admin feature by tagging)", async () => {
+    await ask("@Match Time cancel the session", "admin_ops", { org: { ...ORG, squadMode: "monthly" }, deps: deps({ action: "cancel_match" }) });
+    expect(matchCancel.hqCancelOrRestore).toHaveBeenCalledWith(expect.objectContaining({ mode: "cancel" }));
+  });
+
+  it("a monthly club: put back on through the same core", async () => {
+    await ask("@Match Time it's back on", "admin_ops", { org: { ...ORG, squadMode: "monthly" }, deps: deps({ action: "restore_match" }) });
+    expect(matchCancel.hqCancelOrRestore).toHaveBeenCalledWith(expect.objectContaining({ mode: "restore" }));
   });
 
   it("put back on with nothing cancelled, when the owner says nothing: silent", async () => {

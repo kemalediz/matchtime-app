@@ -1325,7 +1325,6 @@ export const tr: Strings = {
   not_played_restore_button: "Bu maç oynandı",
   not_played_restore_confirm: (p) => `${p.game} yeniden oynanmış olarak kaydedilsin mi?`,
   not_played_restore_yes: "Evet, geri al",
-  hq_cancel_monthly: `Aylık kadrolarda maçı buradan iptal etmek henüz mümkün değil. Lütfen web sitesini kullanın.`,
   match_cancel_use_admin_group: `Maçı iptal etmek ya da yeniden açmak yönetici grubunuzdan yapılıyor. Orada beni etiketleyin, ben yaparım.`,
   hq_not_understood: `Ne yapmamı istediğinizi anlayamadım.`,
   group_not_understood: `Ne yapmamı istediğinizi anlayamadım. Neler yapabildiğimi görmek için *@Match Time yardım* yazın.`,

@@ -702,6 +702,23 @@ export async function POST(request: Request) {
     }
   }
 
+  // ── An organiser answering "Sounds like Monday is off" (2026-10-29) ────
+  //   An organiser called the next game off in the players' group without
+  //   a tag, and MatchTime DM'd him once to reply *cancel*
+  //   (`calloff-offer.ts`). While that offer is open, his DM is read by the
+  //   model: a yes runs the one cancel core (`cancelMatchById`), a no leaves
+  //   the game on, anything else carries on to the handlers below. One
+  //   indexed query for everybody else, and no model call.
+  {
+    const { handleCalloffDmReply } = await import("@/lib/calloff-offer");
+    const replyPhone =
+      (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+      (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+      null;
+    const calloff = await handleCalloffDmReply({ userId: user.id, text, replyPhone, now: new Date() });
+    if (calloff) return NextResponse.json({ ok: true, ...calloff });
+  }
+
   // ── Player payment claim: "Paid" (2026-09-23) ────────────────────────
   //   A player who owes a released match fee DMs "Paid" / "sent it" /
   //   "ödedim" instead of using the pay link. It does EXACTLY what the pay

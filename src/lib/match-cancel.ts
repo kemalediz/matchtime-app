@@ -29,8 +29,10 @@
  * to COMPLETED, posting nothing.
  *
  * The HQ helpers below pick the match (`match-cancel-rules.ts`) and word
- * HQ's reply. HQ does not cancel for a club on monthly squads (Kemal,
- * 2026-10-22: not live); the caller answers that before reaching here.
+ * HQ's reply. A club on monthly squads is cancelled and put back on through
+ * the same core (2026-10-29: the 2026-10-22 refusal is gone; every admin
+ * feature works by tagging MatchTime): its cancelled-week credits are
+ * written on cancel and taken back on restore by month-close's reconcile.
  */
 import { db } from "./db";
 import { buildMatchCancelledAnnouncement } from "./group-copy";
@@ -264,7 +266,7 @@ export type RestoreResult =
 export async function restoreMatchById(matchId: string, now: Date): Promise<RestoreResult> {
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { select: { orgId: true, name: true, org: { select: { language: true } } } } },
+    include: { activity: { select: { orgId: true, name: true, org: { select: { language: true, squadMode: true } } } } },
   });
   if (!match) return { kind: "missing" };
   if (match.status !== "CANCELLED") return { kind: "not-cancelled" };
@@ -280,6 +282,15 @@ export async function restoreMatchById(matchId: string, now: Date): Promise<Rest
   // Its guests' results (player pool, slice L7; review of #404, 2): a game
   // back on is played and marked as any other, so nothing stays settled.
   await db.guestPlace.updateMany({ where: { matchId, settledAt: { not: null } }, data: { settledAt: null } });
+  // MONTHLY SQUAD: a game on again takes its "cancelled week" credits back
+  // now rather than at the hourly sweep. The same idempotent reconcile the
+  // sweep and the web's block-booking restore run (`reconcileCancelledWeeks`):
+  // it voids the game's live credits and puts an applied one back onto the
+  // regular's amount (a regular who has paid since shows as owing more).
+  if (match.activity.org?.squadMode === "monthly") {
+    const { afterMatchesCancelled } = await import("./month-close");
+    await afterMatchesCancelled(match.activity.orgId, [], now);
+  }
   if (past) return { kind: "restored", activityName: match.activity.name, date: match.date, past: true };
   const lang = normaliseLang(match.activity.org?.language);
   await db.botJob.create({
@@ -297,7 +308,7 @@ export const HQ_CANCEL_NOTHING_DONE = "hq-cancel-none";
 
 /**
  * An organiser's cancel or "it's back on" in HQ. The caller has checked the
- * sender is an owner or admin and the club is weekly. `dayPhrase` is the
+ * sender is an owner or admin. `dayPhrase` is the
  * admin extractor's `matchDay`, `pastGame` its word that the game's time
  * has gone ("it didn't happen"). Null for a restore with nothing cancelled
  * when the message was not addressed to MatchTime: an organiser saying the
@@ -434,7 +445,6 @@ export const PLAYERS_CANCEL_OUTCOMES = {
   nothingDone: "match_cancel_none",
   organisersOnly: "match_cancel_organisers_only",
   useAdminGroup: "match_cancel_use_admin_group",
-  monthly: "match_cancel_monthly",
   notPlayed: "match_not_played",
   restoredPlayed: "match_played_restored",
 } as const;
@@ -447,7 +457,9 @@ export const PLAYERS_CANCEL_OUTCOMES = {
  *   not an owner or admin   the organisers-only line HQ uses
  *   the club has HQ         pointed at the admin group (HQ is where the
  *                           organisers do it; nothing is cancelled here)
- *   monthly squads          the website, as in HQ
+ *   monthly squads          the same core (2026-10-29, Kemal: every admin
+ *                           feature works by tagging MatchTime): the week's
+ *                           credits are written by `cancelMatchById`
  *   otherwise               the one core above. Done: no reply, a ✅. The
  *                           "Match cancelled" (or back on) post the core
  *                           queues IS the announcement in this group, so a
@@ -474,9 +486,8 @@ export async function playersGroupCancelOrRestore(input: {
     const { onlyOrganisersLine } = await import("./admin-group-understand");
     return { outcome: O.organisersOnly, replyText: await onlyOrganisersLine(input.orgId, input.lang), react: null };
   }
-  const org = await db.organisation.findUnique({ where: { id: input.orgId }, select: { adminGroupId: true, squadMode: true } });
+  const org = await db.organisation.findUnique({ where: { id: input.orgId }, select: { adminGroupId: true } });
   if (org?.adminGroupId) return { outcome: O.useAdminGroup, replyText: s.match_cancel_use_admin_group, react: null };
-  if (org?.squadMode === "monthly") return { outcome: O.monthly, replyText: s.hq_cancel_monthly, react: null };
   const r = await pickAndApply({ ...input, where: "the players' group", ratingsLineInReply: true });
   if (r.kind === "nothing-done") return { outcome: O.nothingDone, replyText: r.replyText ?? s.hq_restore_no_match, react: null };
   if (r.kind === "not-played") return { outcome: O.notPlayed, replyText: r.replyText, react: "✅" };

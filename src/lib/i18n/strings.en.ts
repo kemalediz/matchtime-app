@@ -1583,7 +1583,6 @@ export const en = {
   not_played_restore_button: "It did happen",
   not_played_restore_confirm: (p: { game: string }): string => `Put ${p.game} back on the record as played?`,
   not_played_restore_yes: "Yes, put it back",
-  hq_cancel_monthly: `Cancelling a match from here isn't available for monthly squads yet. Please use the website.`,
   /** An organiser's tagged cancel or "back on" in the PLAYERS' group of a
    *  club that has an admin group (2026-10-23): HQ is where it is done. */
   match_cancel_use_admin_group: `Cancelling a match or putting it back on is done in your admin group. Tag me there and I'll do it.`,
