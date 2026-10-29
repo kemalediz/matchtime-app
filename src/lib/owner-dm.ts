@@ -10,11 +10,12 @@
  * here.
  *
  * What makes it hard to misuse:
- *   - five purposes only (the approval request, its ack, the one note
+ *   - six purposes only (the approval request, its ack, the one note
  *     about a club still setting up three days after its approval, which
- *     he acts on with "Go live now", and, for the player pool, a reported
+ *     he acts on with "Go live now", for the player pool, a reported
  *     problem and a player asking a person to look at his pause, which he
- *     acts on at /admin/pool/safety), checked at runtime, not just by the
+ *     acts on at /admin/pool/safety, and the intro messages he asked for
+ *     by DM, src/lib/owner-intro.ts), checked at runtime, not just by the
  *     type;
  *   - a refId is required, and there is ONE DM per (purpose, refId,
  *     approver phone), ever, so a retry or a re-add cannot DM twice about
