@@ -240,7 +240,6 @@ export function PartnerAskPanel(props: {
               {pending ? "…" : s.xask_round_button({ places: chosen })}
             </button>
             {tickedNow.length + (poolTicked ? 1 : 0) > 1 && <p className="w-full text-xs text-slate-500">{s.xask_round_count_hint}</p>}
-            {poolTicked && tickedNow.length > 0 && <p className="w-full text-xs text-slate-500">{ps.panel_partners_first}</p>}
           </div>
         ))}
     </section>

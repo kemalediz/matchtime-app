@@ -642,8 +642,8 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
     // WHERE THE PLAYERS COME FROM (Kemal, 2026-10-28: "stricter"; ask when
     // in limbo). `ask-source-rules.ts`: the places the words named are
     // asked, each through its own door, in one reply ("partner clubs and
-    // the pool": the partners first, so the pool joins their round and
-    // they keep their hour); a request that names none, from a club with
+    // the pool": the partners first, so the pool joins their round, and
+    // both are asked now, Kemal 2026-10-29); a request that names none, from a club with
     // partner clubs or the pool, gets ONE question (logged as MatchTime's),
     // and nothing is asked of anybody. An organiser's, weekly club's alone,
     // as each ask is.

@@ -311,11 +311,11 @@ export function poolNobodyNewText(lang: Lang | string | null | undefined, ctx: P
 export function poolHqAskReply(
   lang: Lang | string | null | undefined,
   r:
-    | { ok: true; places: number; day: string; partnersFirst: boolean; inHq?: boolean }
+    | { ok: true; places: number; day: string; withPartners: boolean; inHq?: boolean }
     | { ok: false; refusal: string; placesOpen: number; ctx: PoolRefusalContext },
 ): string {
   const c = poolCopy(lang);
-  if (r.ok) return c.hq_asked({ places: r.places, day: r.day, partnersFirst: r.partnersFirst, inHq: r.inHq !== false });
+  if (r.ok) return c.hq_asked({ places: r.places, day: r.day, withPartners: r.withPartners, inHq: r.inHq !== false });
   const { ctx } = r;
   switch (r.refusal) {
     case "pool-closed":

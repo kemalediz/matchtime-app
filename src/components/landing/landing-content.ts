@@ -64,7 +64,6 @@ import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
 
 /** The pool is asked this long after partner clubs (pool/round-rules.ts). */
 const POOL_AFTER = POOL_AFTER_PARTNERS_MINS === 60 ? "an hour" : `${POOL_AFTER_PARTNERS_MINS} minutes`;
-const POOL_AFTER_CAP = POOL_AFTER.charAt(0).toUpperCase() + POOL_AFTER.slice(1);
 
 /** "A, B or C". */
 function joinWords(words: readonly string[], last: "and" | "or"): string {
@@ -391,8 +390,9 @@ export const FEATURES: Card[] = [
  * in the order the code asks. The chase (daily update, match morning, last
  * hours) and the bench; then partner clubs (club-partnership-rules.ts,
  * partner-ask.ts, partner-guest.ts); then the pool (pool/round-rules.ts
- * POOL_AFTER_PARTNERS_MINS and wave1DueAt: an hour after a partner ask of
- * the same round, at once when none is open; pool/matching-rules.ts:
+ * POOL_AFTER_PARTNERS_MINS and wave1DueAt: at once when an organiser asks
+ * (Kemal, 2026-10-29); the automatic ask an hour after a partner ask of the
+ * same round, at once when none is open; pool/matching-rules.ts:
  * availability, travel distance, level only when the ask names levels);
  * then a yes (pool/accept.ts: the place while it is open, or the bench
  * where the organisers pick). It replaced the partner clubs section, whose
@@ -425,7 +425,7 @@ const SHORT_OF_PLAYERS: Spotlight = {
       // pool/round-rules.ts wave1DueAt; pool/matching-rules.ts candidateExclusion.
       key: "pool",
       title: "Then the local player pool",
-      body: `${POOL_AFTER_CAP} after your partner clubs, or straight away if you have none, nearby players from the MatchTime player pool get the offer by private message. They're matched on when they can play and how far they'll travel, and on level only when you ask for one.`,
+      body: `When you ask for players, nearby players from the MatchTime player pool get the offer by private message straight away, at the same time as your partner clubs. When MatchTime asks by itself, your partner clubs get ${POOL_AFTER} first. Pool players are matched on when they can play and how far they'll travel, and on level only when you ask for one.`,
     },
     {
       // partner-guest.ts; pool/accept.ts placed.kind "bench"; partner-ask.ts
@@ -1123,7 +1123,7 @@ export const HERO_DECK = {
       details: [
         "Someone drops out and nobody's on the bench? MatchTime asks your group first, and stops the moment you're full.",
         "Then partner clubs: their players answer privately and join as guests.",
-        `Then nearby players from the MatchTime player pool get a WhatsApp offer: ${POOL_AFTER} later, or straight away if you have no partner clubs.`,
+        `Then nearby players from the MatchTime player pool get a WhatsApp offer straight away when you ask, at the same time as your partner clubs; when MatchTime asks by itself, your partner clubs get ${POOL_AFTER} first.`,
         "Pool players are matched on when they can play and how far they'll travel, and on level only when you ask for one.",
         "A yes takes the place if it's still open, or the bench where your organisers pick.",
         "Ask with one tap, or let MatchTime ask by itself on match day. The player pool is opening town by town.",
@@ -1131,7 +1131,7 @@ export const HERO_DECK = {
       steps: [
         { title: "1. Your group", sub: "The group and the bench" },
         { title: "2. Partner clubs", sub: "Asked in their group" },
-        { title: "3. Player pool", sub: `${POOL_AFTER_CAP} later, nearby players`, highlight: true },
+        { title: "3. Player pool", sub: "Nearby players", highlight: true },
       ],
       chat: POOL_OFFER_CHAT,
     },

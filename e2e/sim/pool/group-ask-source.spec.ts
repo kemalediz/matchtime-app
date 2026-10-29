@@ -7,8 +7,10 @@
  *   an unclear ask from an organiser, a club with partner clubs and the
  *   pool -> ONE question in the group, nobody asked -> "the pool" -> the
  *   pool is asked
- *   "partner clubs and the pool" -> the partner club is asked now, the pool
- *   joins that round (it waits for the partners' hour), ONE reply
+ *   "partner clubs and the pool" -> the partner club AND the pool are asked
+ *   now, in one round (Kemal, 2026-10-29: no waiting), ONE reply
+ *   "the pool" with a partner round already open -> the pool is asked now,
+ *   no partner ask made
  *   a player who is not an organiser -> the one line naming who can
  *
  * Real routes, real database. The model is STUBBED ($0): the router's route
@@ -98,7 +100,7 @@ scenarios("players asked for in the players' group: several places, or MatchTime
     expect(groupLine(asked.sent, tr)).toBe(QUESTION_TR);
   });
 
-  scenario("'partner clubs and the pool': the partner club now, the pool joins its round; one reply, no DM blast", async ({ pool }) => {
+  scenario("'partner clubs and the pool' (Kemal, 2026-10-29): both asked now, in one round; one reply, no DM blast", async ({ pool }) => {
     stubbedOnly();
     const fmc = await noHqClub(pool, "gas3");
     await partnerOf(pool, fmc, "cheamg3", "Cheam Lads");
@@ -111,14 +113,33 @@ scenarios("players asked for in the players' group: several places, or MatchTime
     expect(xasks[0].via).toBe("group");
     const pasks = await poolAsks(pool, fmc);
     expect(pasks).toEqual([{ via: "words", roundId: xasks[0].roundId }]);
-    // The pool waits for the partners' hour: nobody in the pool is offered yet.
-    expect(offers(ex.sent)).toEqual([]);
-    expect(await offersOf(pool, bea)).toHaveLength(0);
+    // The pool never waits for the partners: its offer goes now.
+    expect(offers(ex.sent).map((m) => m.to)).toEqual(["beag3"]);
+    expect(await offersOf(pool, bea)).toHaveLength(1);
     const posts = ex.sent.filter((m) => m.to === "gas3.group");
     expect(posts).toHaveLength(1);
     expect(posts[0].text).toMatch(/Cheam Lads/);
-    expect(posts[0].text).toMatch(/MatchTime player pool/);
-    expect(toMembers(ex.sent, fmc)).toEqual([]);
+    expect(posts[0].text).toMatch(/Asking nearby players from the MatchTime player pool for 1 place on .+, at the same time as your partner clubs\./);
+    expect(posts[0].text).not.toMatch(/within the hour/);
+    expect(toMembers(ex.sent, fmc).filter((m) => m.purpose !== "pool-offer")).toEqual([]);
+  });
+
+  scenario("'the pool' only, a partner round already open on the match: the pool is asked now, no partner ask made (Kemal, 2026-10-29)", async ({ pool }) => {
+    stubbedOnly();
+    const fmc = await noHqClub(pool, "gas5");
+    await partnerOf(pool, fmc, "cheamg5", "Cheam Lads");
+    const bea = await poolPlayer(pool, "beag5", { at: near(fmc) });
+    await say(fmc, "owner", "@Match Time ask our partner clubs", { facts: recruitFrom(["partners"]) });
+    const before = await partnerAsks(pool, fmc);
+    expect(before).toHaveLength(1);
+    expect(await poolAsks(pool, fmc)).toEqual([]);
+
+    const ex = await say(fmc, "owner", "@Match Time ask the player pool", { facts: recruitFrom(["pool"]) });
+    expect(await partnerAsks(pool, fmc)).toEqual(before);
+    expect(await poolAsks(pool, fmc)).toEqual([{ via: "words", roundId: before[0].roundId }]);
+    expect(offers(ex.sent).map((m) => m.to)).toEqual(["beag5"]);
+    expect(await offersOf(pool, bea)).toHaveLength(1);
+    expect(groupLine(ex.sent, fmc)).toMatch(/^🔎 Asking nearby players from the MatchTime player pool for 1 place on .+, at the same time as your partner clubs\./);
   });
 
   scenario("a player who is not an organiser: the one line naming who can, nothing asked", async ({ pool }) => {
