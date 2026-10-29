@@ -5,7 +5,8 @@
  *
  * Written in his voice ("I built", "I run another football group"), so they
  * go to the platform owner only. Both languages go out every time, one
- * bubble each, so each copies whole: this is not "the reader's language".
+ * bubble each (category 3 is two bubbles per language), so each copies
+ * whole: this is not "the reader's language".
  *
  * One object per language (`owner-intro.en.ts`, `owner-intro.tr.ts`), typed
  * here, as `pool-club-share.ts`. House rules (unit tested in
@@ -22,8 +23,10 @@ export interface OwnerIntroCopy {
   footballGroups: (siteUrl: string) => string;
   /** 2: groups that are not about football: the player pool invite. `playUrl` is /play. */
   poolInvite: (playUrl: string) => string;
-  /** 3: clubs already using MatchTime: the new features. */
-  newFeatures: () => string;
+  /** 3: clubs already using MatchTime: the new features, in two parts
+   *  (part 1 the features, part 2 the pool invite). A tuple, so a missing
+   *  part in either language does not compile. `playUrl` is /play. */
+  newFeatures: (playUrl: string) => readonly [part1: string, part2: string];
 }
 
 const BY_LANG: Record<Lang, OwnerIntroCopy> = { en: OWNER_INTRO_EN, tr: OWNER_INTRO_TR };

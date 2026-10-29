@@ -4,7 +4,8 @@
  * Kemal promotes MatchTime by pasting introduction messages into WhatsApp
  * groups. He DMs MatchTime in his own words ("send me the category 1 intro
  * message", "kategori 3 tanıtım mesajını gönder", "send me all the intro
- * messages") and gets each category back as two DMs, English then Turkish.
+ * messages") and gets each category back as English then Turkish DMs: one
+ * bubble per language, two for category 3 (EN 1, EN 2, TR 1, TR 2).
  *
  * How the ask is understood: the DM admin intent (`dm-intent.ts`), one model
  * call that already reads every DM from an admin, says `intro_messages` and
@@ -32,16 +33,27 @@ export const OWNER_INTRO_PURPOSE = "owner-intro" as const;
 
 const LANGS = ["en", "tr"] as const;
 
-function messageFor(category: IntroCategory, lang: (typeof LANGS)[number]): string {
-  const c = ownerIntroCopy(lang);
-  if (category === 1) return c.footballGroups(appBaseUrl());
-  if (category === 2) return c.poolInvite(appUrl("/play"));
-  return c.newFeatures();
+interface IntroBubble {
+  text: string;
+  /** Unique per bubble within one DM answered: `<cat>:<lang>`, plus `:<part>` for category 3. */
+  key: string;
 }
 
-/** Each category's English message, then its Turkish one. */
+function bubblesFor(category: IntroCategory, lang: (typeof LANGS)[number]): IntroBubble[] {
+  const c = ownerIntroCopy(lang);
+  if (category === 1) return [{ text: c.footballGroups(appBaseUrl()), key: `1:${lang}` }];
+  if (category === 2) return [{ text: c.poolInvite(appUrl("/play")), key: `2:${lang}` }];
+  return c.newFeatures(appUrl("/play")).map((text, i) => ({ text, key: `3:${lang}:${i + 1}` }));
+}
+
+/** Every bubble in send order: per category, the English one(s), then the Turkish. */
+function introBubbles(categories: readonly IntroCategory[]): IntroBubble[] {
+  return categories.flatMap((cat) => LANGS.flatMap((lang) => bubblesFor(cat, lang)));
+}
+
+/** Each category's English message(s), then its Turkish one(s). */
 export function buildOwnerIntroMessages(categories: readonly IntroCategory[]): string[] {
-  return categories.flatMap((cat) => LANGS.map((lang) => messageFor(cat, lang)));
+  return introBubbles(categories).map((b) => b.text);
 }
 
 /** Is this DM from the platform owner? The self-join approver numbers. */
@@ -60,11 +72,9 @@ export async function sendOwnerIntroMessages(args: {
 }): Promise<{ categories: IntroCategory[]; queued: number }> {
   const queue = args.queue ?? ((text, purpose, refId) => queueOwnerDm(text, purpose, refId));
   let queued = 0;
-  for (const cat of args.categories) {
-    for (const lang of LANGS) {
-      const r = await queue(messageFor(cat, lang), OWNER_INTRO_PURPOSE, `intro:${args.waMessageId}:${cat}:${lang}`);
-      queued += r.queued;
-    }
+  for (const b of introBubbles(args.categories)) {
+    const r = await queue(b.text, OWNER_INTRO_PURPOSE, `intro:${args.waMessageId}:${b.key}`);
+    queued += r.queued;
   }
   return { categories: [...args.categories], queued };
 }

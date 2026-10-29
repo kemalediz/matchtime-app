@@ -36,7 +36,7 @@ const introJobs = (db: TestDb) =>
   test.describe.configure({ mode: "serial" });
   test.beforeAll(resetDb);
 
-  test("the owner's ask for category 3 queues its English and Turkish DMs to him", async ({ request, db }) => {
+  test("the owner's ask for category 3 queues its four DMs to him (EN part 1 and 2, TR part 1 and 2)", async ({ request, db }) => {
     await db.run(
       `INSERT INTO "User" (id, email, name, "phoneNumber", "updatedAt") VALUES ('live-intro-owner', 'live-intro-owner@e2e.test', 'Kemal Owner', $1, now())`,
       [`+${E2E.APPROVER_PHONE}`],
@@ -46,9 +46,9 @@ const introJobs = (db: TestDb) =>
     console.log(`[owner-intro-live] OWNER: ${JSON.stringify(json)}`);
     expect(json).toMatchObject({ handled: "owner-intro-dm", categories: [3] });
     const jobs = await introJobs(db);
-    expect(jobs.map((j) => j.phone)).toEqual([E2E.APPROVER_PHONE, E2E.APPROVER_PHONE]);
+    expect(jobs.map((j) => j.phone)).toEqual(Array(4).fill(E2E.APPROVER_PHONE));
     expect(jobs[0].text).toContain("Some new MatchTime features");
-    expect(jobs[1].text).toContain("Başka yerlerde de oyna");
+    expect(jobs[3].text).toContain("Başka yerlerde de oyna");
   });
 
   test("a club admin's identical ask queues no intro message", async ({ request, db }) => {
