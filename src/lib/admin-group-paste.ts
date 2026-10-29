@@ -48,7 +48,7 @@ import {
 } from "./admin-group-squad-rules";
 
 export interface PasteReply {
-  outcome: "paste-proposed" | "paste-same" | "paste-applied" | "paste-expired" | "paste-no-match";
+  outcome: "paste-proposed" | "paste-same" | "paste-applied" | "paste-expired" | "paste-no-match" | "month-seed-applied" | "month-seed-failed";
   replyText: string;
 }
 
@@ -254,6 +254,14 @@ export async function answerSquadPasteYes(args: {
     data: { resolvedAt: now, outcome: "applied", resolvedByUserId: args.senderUserId },
   });
   if (claimed.count === 0) return null;
+
+  // A monthly club's list for the coming month (2026-10-29): the YES starts
+  // that month, through the same action as the Months page.
+  if (proposal.monthSeed != null && proposal.monthStart) {
+    const { applyMonthSeedYes } = await import("./month-seed-hq");
+    const r = await applyMonthSeedYes({ orgId, lang: args.lang, proposal: { monthStart: proposal.monthStart, monthSeed: proposal.monthSeed }, senderUserId: args.senderUserId, now });
+    return { outcome: r.outcome === "month-seed-applied" ? "month-seed-applied" : "month-seed-failed", replyText: r.replyText };
+  }
 
   const matchId = proposal.matchId;
   const diff = diffPastedSquad({

@@ -24,6 +24,9 @@ const pick = vi.hoisted(() => ({ handlePickReply: vi.fn() }));
 vi.mock("@/lib/organiser-pick", () => pick);
 const paste = vi.hoisted(() => ({ proposeSquadPaste: vi.fn() }));
 vi.mock("@/lib/admin-group-paste", () => paste);
+const monthSeed = vi.hoisted(() => ({ proposeMonthSeedPaste: vi.fn(async () => null as unknown) }));
+vi.mock("@/lib/month-seed-hq", () => monthSeed);
+vi.mock("../month-seed-hq", () => monthSeed);
 const pay = vi.hoisted(() => ({ handleCollectorPaidReply: vi.fn() }));
 vi.mock("@/lib/month-payment", () => pay);
 const teams = vi.hoisted(() => ({ setAsideTeamProposal: vi.fn() }));
@@ -242,6 +245,17 @@ describe("structured data first, deterministically", () => {
     dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, squadMode: "monthly" });
     await handleAdminGroupMessage(msg("1. A\n2. B\n3. C\n4. D\n5. E"));
     expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
+  });
+
+  // 2026-10-29 (A1): an organiser's list for the COMING month, in a
+  // monthly club's HQ, is offered to the month's own door first.
+  it("a monthly club: an organiser's paste is offered to start the coming month, and its proposal is the reply", async () => {
+    dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, squadMode: "monthly" });
+    monthSeed.proposeMonthSeedPaste.mockResolvedValueOnce({ outcome: "month-seed-proposed", replyText: "📋 I read your list for November" });
+    const r = await handleAdminGroupMessage(msg("List for November\n1. A\n2. B"));
+    expect(monthSeed.proposeMonthSeedPaste).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", text: "List for November\n1. A\n2. B" }));
+    expect(r).toMatchObject({ handled: true, outcome: "month-seed-proposed", replyText: "📋 I read your list for November" });
+    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
   });
 });
 

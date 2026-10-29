@@ -22,6 +22,10 @@ import { mayConfirmPayments } from "@/lib/month-payment";
 import { buildMonthFeeTip } from "@/lib/month-payment-copy";
 import { monthFeeShare } from "@/lib/month-payment-rules";
 import { StartMonthForm } from "./start-month-form";
+import { MemberGamesForm } from "./games-form";
+import { SeasonBreakForm } from "./season-break-form";
+import { monthSetupCopy } from "@/lib/i18n/month-setup";
+import { SEASON_BREAK_AHEAD_MONTHS, isBreakMonth } from "@/lib/squad-month-rules";
 
 /**
  * /admin/months: the month's list for a club on a monthly squad (slice 2
@@ -73,7 +77,19 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
   // Next month, once MatchTime has opened its list (slice 3).
   const nextStart = nextMonthStart(data.monthStart);
   const nextMonth = monthYearLabel(lang, new Date(`${nextStart}T12:00:00.000Z`));
-  const nextFixtures = past ? [] : (await loadMonthPage(orgId, now, nextStart)).fixtures.filter((f) => f.month);
+  // A1 (2026-10-29): the coming month is always here, started or not, so
+  // an organiser can start it from the group's own list before MatchTime
+  // would post a list of its own. A3: not in a season break month.
+  const nextOff = isBreakMonth(current.seasonBreakMonths, nextStart);
+  const nextFixtures = past || nextOff ? [] : (await loadMonthPage(orgId, now, nextStart)).fixtures;
+  const thisOff = !past && isBreakMonth(current.seasonBreakMonths, data.monthStart);
+  const c = monthSetupCopy(lang);
+  // The months the season break form offers: this one and the next eleven.
+  const breakChoices = Array.from({ length: SEASON_BREAK_AHEAD_MONTHS }, (_, i) => {
+    const d = monthStartToDate(current.monthStart);
+    d.setUTCMonth(d.getUTCMonth() + i);
+    return { key: d.toISOString().slice(0, 7), label: monthYearLabel(lang, new Date(d.getTime() + 12 * 3600 * 1000)) };
+  });
   // The month before the one shown, when the club has one: a link to it.
   const earlierStart = previousMonthStart(data.monthStart);
   const hasEarlier = (await db.squadMonth.findFirst({ where: { orgId, monthStart: monthStartToDate(earlierStart) }, select: { id: true } })) !== null;
@@ -234,7 +250,21 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
                       <td className="py-2 pr-3 text-slate-600" data-kind={m.waiting ? "waiting" : m.kind}>
                         {kindCell(m)}
                       </td>
-                      <td className="py-2 pr-3 text-slate-600">{m.kind === "payg" ? "" : m.gamesCovered}</td>
+                      <td className="py-2 pr-3 text-slate-600">
+                        {m.kind === "payg" || m.waiting ? (
+                          ""
+                        ) : (
+                          <MemberGamesForm
+                            orgId={orgId}
+                            monthId={mo.id}
+                            userId={m.userId}
+                            lang={lang}
+                            covered={m.gamesCovered}
+                            committed={m.gamesCommitted}
+                            readOnly={mo.status === "closed"}
+                          />
+                        )}
+                      </td>
                       <td className="py-2 pr-3 text-slate-600">{m.kind === "payg" ? "" : m.creditsApplied}</td>
                       <td className="py-2 pr-3 text-slate-600">
                         {m.kind === "payg" ? "" : m.amountDuePence != null ? moneyLabel(m.amountDuePence) : s.mth_due_unknown}
@@ -307,15 +337,25 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
             )}
           </div>
         ) : (
-          <div className="p-6 space-y-4" data-testid="month-empty">
+          <div className="p-6 space-y-4" data-testid={next ? "next-month-empty" : "month-empty"}>
             <div>
               <h4 className="flex items-center gap-1 text-sm font-semibold text-slate-800">
-                {s.mth_empty_title({ month: label })}
-                <SectionInfo k="mth_start" lang={lang} />
+                {next ? c.next_title({ month: label }) : s.mth_empty_title({ month: label })}
+                {/* The info sheet is about starting part-way through. */}
+                {!next && <SectionInfo k="mth_start" lang={lang} />}
               </h4>
-              <p className="text-sm text-slate-500 mt-1 max-w-2xl">{s.mth_empty_body}</p>
+              <p className="text-sm text-slate-500 mt-1 max-w-2xl">{next ? c.next_body({ month: label }) : s.mth_empty_body}</p>
+              {next && (
+                <p className="text-sm text-slate-600 mt-1" data-testid="next-month-held">
+                  {c.next_held({ month: label })}
+                </p>
+              )}
             </div>
-            {past ? null : data.players.length === 0 ? (
+            {!next && thisOff ? (
+              <p className="text-sm text-slate-600" data-testid="month-break">
+                {c.next_break({ month: label })}
+              </p>
+            ) : past ? null : data.players.length === 0 ? (
               <p className="text-sm text-slate-500">{s.mth_no_players}</p>
             ) : (
               <StartMonthForm
@@ -324,8 +364,9 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
                 activityId={f.activityId}
                 month={label}
                 games={f.dates.length}
-                played={f.gamesPlayed}
+                played={next ? 0 : f.gamesPlayed}
                 players={data.players}
+                {...(next ? { monthStart: nextStart } : {})}
               />
             )}
           </div>
@@ -378,6 +419,13 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
           {nextFixtures.map((f) => card(f, nextMonth, true))}
         </div>
       )}
+      {!past && nextOff && (
+        <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600" data-testid="next-month-break">
+          {c.next_break({ month: nextMonth })}
+        </p>
+      )}
+
+      {!past && <SeasonBreakForm orgId={orgId} lang={lang} months={breakChoices} ticked={current.seasonBreakMonths} />}
     </div>
   );
 }

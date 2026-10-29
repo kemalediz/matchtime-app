@@ -1074,7 +1074,7 @@ export async function monthPaymentPosts(
           name: m.name,
           monthDate: month.firstKickoff,
           amountDuePence: m.amountDuePence ?? 0,
-          games: m.gamesCovered,
+          games: chargedGames(m),
           credits: m.creditsApplied,
           payByAt,
           collectorName: collector?.name ?? null,

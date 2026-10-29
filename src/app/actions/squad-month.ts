@@ -94,9 +94,12 @@ export async function setMonthlySquad(
 export async function startCurrentMonth(
   orgId: string,
   input: MonthSeedInput,
+  /** A1 (2026-10-29): "2026-11-01" to start the COMING month from the
+   *  organiser's list, or with nobody on it (the list is then posted). */
+  monthStart?: string,
 ): Promise<{ ok: true; monthId: string } | { ok: false; error: StartMonthError }> {
   const userId = await requireAdmin(orgId);
-  const res = await startMonth(orgId, userId, input, new Date());
+  const res = await startMonth(orgId, userId, input, new Date(), monthStart ? { monthStart } : {});
   if (res.ok) {
     // Slice 5: the regulars go onto the next match straight away, so the
     // organiser sees the week's squad without waiting for the next poll.
@@ -122,10 +125,43 @@ export async function startCurrentMonth(
 export async function readMonthList(
   orgId: string,
   text: string,
+  monthStart?: string,
 ): Promise<
   | { ok: true; rows: SeedDraftRow[]; unmatched: SeedDraftUnmatched[]; monthMismatch: boolean }
   | { ok: false; error: ReadListError }
 > {
   await requireAdmin(orgId);
-  return readListForSeed(orgId, text, new Date());
+  return readListForSeed(orgId, text, new Date(), typeof monthStart === "string" && /^\d{4}-\d{2}-01$/.test(monthStart) ? monthStart : undefined);
+}
+
+/**
+ * "4 only" (2026-10-29): how many of the month's games a regular commits
+ * to, set by an organiser on /admin/months. NULL is every game.
+ */
+export async function setMemberGames(
+  orgId: string,
+  monthId: string,
+  userId: string,
+  games: number | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireAdmin(orgId);
+  // The month must be this club's: the id alone is not trusted.
+  const month = await db.squadMonth.findFirst({ where: { id: monthId, orgId }, select: { id: true } });
+  if (!month) return { ok: false, error: "not-found" };
+  const { setMonthMemberGames } = await import("@/lib/month-member-games");
+  const res = await setMonthMemberGames({ squadMonthId: monthId, userId, games, by: "organiser" });
+  revalidatePath("/admin/months");
+  return res;
+}
+
+/** A3 (2026-10-29): the months the club plays no games in. */
+export async function saveSeasonBreak(
+  orgId: string,
+  months: string[],
+): Promise<{ ok: true; months: string[]; keptGames: number } | { ok: false; error: string; month?: string }> {
+  await requireAdmin(orgId);
+  const { setSeasonBreak } = await import("@/lib/squad-month");
+  const res = await setSeasonBreak(orgId, months, new Date());
+  revalidatePath("/admin/months");
+  return res;
 }

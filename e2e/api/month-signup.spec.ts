@@ -478,7 +478,14 @@ test("7. a WEEKLY club is untouched; a muted club and a dormant club open nothin
   expect((await say(request, P.ayse, `${MONTH_NAME} varım`, GROUP2)).handledBy).toBe("unknown-or-disabled-group");
   expect(await monthOf(db, ORG2)).toBeNull();
 
-  // Live again, in Turkish, with nobody to carry over.
+  // Live again, in Turkish, with nobody to carry over. (Since 2026-10-29
+  // a club's FIRST month waits for its organiser, e2e/api/month-setup.spec.ts:
+  // this club ran this month here already, with nobody left on it.)
+  await db.run(
+    `INSERT INTO "SquadMonth" (id, "orgId", "activityId", "monthStart", status, "gamesScheduled", "closedAt", "updatedAt")
+     VALUES ('e2e-su-tr-cur', $1, $2, $3::date, 'closed', 4, now(), now())`,
+    [ORG2, ACT2, CUR],
+  );
   await db.run(`UPDATE "Organisation" SET "whatsappBotEnabled" = true WHERE id = $1`, [ORG2]);
   const tr = listPosts(await poll(request, after(5), GROUP2), ORG2);
   expect(tr).toHaveLength(1);

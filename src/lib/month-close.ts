@@ -35,6 +35,7 @@
  * called anywhere in this file.
  */
 import { db } from "./db";
+import { loadCommitmentStates } from "./month-member-commitment";
 import { sendAdminNotice } from "./admin-channel";
 import { appUrl } from "./app-url";
 import { isClubOperational } from "./club-approval-state";
@@ -70,7 +71,7 @@ import { lockClubCredits, mayConfirmPayments } from "./month-payment";
 import { lockMonth } from "./month-signup";
 import { WAITING_NOTE, monthKickoffs, nextMonthStart } from "./month-signup-rules";
 import { weekListHash } from "./monthly-week-rules";
-import { MAX_PAID_PENCE, MAX_PER_GAME_PENCE, normaliseCreditRule, normaliseSquadMode, type MonthCreditRule } from "./squad-month-rules";
+import { MAX_PAID_PENCE, MAX_PER_GAME_PENCE, chargedGames, normaliseCreditRule, normaliseSquadMode, type MonthCreditRule } from "./squad-month-rules";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -116,6 +117,9 @@ export interface CloseMember {
   clubLeftAt: Date | null;
   absentMatchIds: string[];
   gamesCovered: number;
+  /** "4 only" (2026-10-29): NULL is every game. */
+  gamesCommitted: number | null;
+  source: string;
   creditsApplied: number;
   amountDuePence: number | null;
   paid: Paid;
@@ -186,8 +190,10 @@ const CLOSE_SELECT = {
       note: true,
       leftAt: true,
       joinedAt: true,
+      source: true,
       absentMatchIds: true,
       gamesCovered: true,
+      gamesCommitted: true,
       creditsApplied: true,
       amountDuePence: true,
       paidAt: true,
@@ -290,6 +296,8 @@ export async function loadCloseMonths(orgId: string, ids?: string[]): Promise<Cl
           clubLeftAt: ms?.leftAt ?? null,
           absentMatchIds: m.absentMatchIds,
           gamesCovered: m.gamesCovered,
+          gamesCommitted: m.gamesCommitted,
+          source: m.source,
           creditsApplied: m.creditsApplied,
           amountDuePence: m.amountDuePence,
           paid: paidOf(m),
@@ -535,7 +543,20 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
       tx.squadMonth.findUnique({ where: { id: month.id }, select: { status: true, sharePerGamePence: true, concessionPerGamePence: true } }),
       tx.squadMonthMember.findMany({
         where: { monthId: month.id },
-        select: { id: true, userId: true, kind: true, tier: true, leftAt: true, joinedAt: true, paidAt: true, paidClaimedAt: true, gamesCovered: true, creditsApplied: true },
+        select: {
+          id: true,
+          userId: true,
+          kind: true,
+          tier: true,
+          leftAt: true,
+          joinedAt: true,
+          source: true,
+          paidAt: true,
+          paidClaimedAt: true,
+          gamesCovered: true,
+          gamesCommitted: true,
+          creditsApplied: true,
+        },
       }),
       // Every credit earned on this game, WHATEVER the reason: one live
       // credit per player per game.
@@ -571,6 +592,15 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
             })
           ).map((m) => m.userId),
     );
+    // "4 only": a called-off week they never paid for owes them nothing.
+    const commitment = await loadCommitmentStates(tx, {
+      orgId: month.orgId,
+      fixture: month.fixture,
+      monthStart: month.monthStart,
+      startsAt: month.startsAt,
+      gamesPlayedBeforeStart: month.gamesPlayedBeforeStart,
+      members: rows.filter((r) => r.kind === "regular"),
+    });
     const plan = decideCancelledWeekCredits({
       cancelled: match.status === "CANCELLED",
       matchDate: match.date,
@@ -582,6 +612,7 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
         inClub: inClub.has(r.userId),
         paid: paidOf(r),
         joinedAt: r.joinedAt,
+        ...(commitment.get(r.userId)?.get(matchId)?.freeMiss ? { freeMiss: true } : {}),
       })),
       existing,
     });
@@ -589,7 +620,7 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
     /** A member's amount after their credits changed, when a share is set. */
     const amountAfter = (r: (typeof rows)[number], creditsApplied: number): number | null => {
       const share = shareFor(state, r.tier);
-      return share == null ? null : share * Math.max(0, r.gamesCovered - creditsApplied);
+      return share == null ? null : share * Math.max(0, chargedGames(r) - creditsApplied);
     };
 
     if (plan.voidMissedIds.length > 0) {
@@ -599,7 +630,7 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
       const r = rowOf.get(c.userId);
       // Off this month's amount at once, while there is a game left to take
       // it off. Otherwise it waits in the ledger like any other.
-      const applyNow = c.applyNow && !!r && r.creditsApplied < r.gamesCovered;
+      const applyNow = c.applyNow && !!r && r.creditsApplied < chargedGames(r);
       await tx.squadCredit.create({
         data: {
           orgId: month.orgId,
@@ -672,7 +703,7 @@ async function releaseSpentCredit(orgId: string, rel: { creditId: string; userId
       tx.squadMonth.findFirst({ where: { id: rel.monthId, orgId }, select: { status: true, sharePerGamePence: true, concessionPerGamePence: true } }),
       tx.squadMonthMember.findUnique({
         where: { monthId_userId: { monthId: rel.monthId, userId: rel.userId } },
-        select: { id: true, tier: true, kind: true, gamesCovered: true, creditsApplied: true },
+        select: { id: true, tier: true, kind: true, gamesCovered: true, gamesCommitted: true, creditsApplied: true },
       }),
     ]);
     if (!credit || !state || state.status === "closed") return;
@@ -682,7 +713,7 @@ async function releaseSpentCredit(orgId: string, rel: { creditId: string; userId
     const share = shareFor(state, row.tier);
     await tx.squadMonthMember.update({
       where: { id: row.id },
-      data: { creditsApplied, ...(row.kind === "regular" && share != null ? { amountDuePence: share * Math.max(0, row.gamesCovered - creditsApplied) } : {}) },
+      data: { creditsApplied, ...(row.kind === "regular" && share != null ? { amountDuePence: share * Math.max(0, chargedGames(row) - creditsApplied) } : {}) },
     });
   });
 }
@@ -767,6 +798,17 @@ async function reconcileLeaver(month: CloseMonth, m: CloseMember, now: Date): Pr
     if (!state || state.status === "closed" || !row) return { created: 0, voided: 0 };
     const inClub = !!membership && membership.leftAt === null && membership.user.isActive;
     const leftAt = row.leftAt ?? membership?.leftAt ?? now;
+    // "4 only": owed the committed games they have not played, at most.
+    let maxGames: number | undefined;
+    if (m.gamesCommitted != null) {
+      const from = Math.max(month.startsAt.getTime(), m.joinedAt.getTime());
+      const played = month.matches.filter((x) => x.status !== "CANCELLED" && x.date.getTime() >= from && x.date.getTime() < leftAt.getTime()).map((x) => x.id);
+      const confirmed =
+        played.length === 0 ? 0 : await tx.attendance.count({ where: { matchId: { in: played }, userId: m.userId, status: "CONFIRMED" } });
+      const before = m.source.startsWith("seed") ? month.gamesPlayedBeforeStart : 0;
+      const otherCredits = credits.filter((c) => c.voidedAt === null && c.earnedMonthId === month.id && c.reason !== "left-mid-month").length;
+      maxGames = Math.max(0, chargedGames(m) - confirmed - before - otherCredits);
+    }
     const plan = decideLeaverCredits({
       member: { regular: row.kind === "regular" && row.leftAt === null, offMonth: row.leftAt !== null || row.kind === "payg", inClub, paid: paidOf(row) },
       leftAt,
@@ -775,6 +817,7 @@ async function reconcileLeaver(month: CloseMonth, m: CloseMember, now: Date): Pr
       games: month.games.filter((g) => g.date.getTime() >= month.startsAt.getTime() && g.date.getTime() > m.joinedAt.getTime()),
       existing: credits.filter((c) => c.reason === "left-mid-month" && c.earnedMonthId === month.id),
       creditedMatchIds: new Set(credits.filter((c) => c.voidedAt === null && c.earnedMatchId !== null).map((c) => c.earnedMatchId as string)),
+      ...(maxGames !== undefined ? { maxGames } : {}),
     });
     if (plan.create.length > 0) {
       await tx.squadCredit.createMany({
@@ -839,6 +882,7 @@ export async function tellMidMonthJoin(args: { orgId: string; monthId: string; u
       kind: true,
       leftAt: true,
       gamesCovered: true,
+      gamesCommitted: true,
       amountDuePence: true,
       paidAt: true,
       paidClaimedAt: true,
@@ -852,7 +896,7 @@ export async function tellMidMonthJoin(args: { orgId: string; monthId: string; u
   if (row.paidAt || row.paidClaimedAt) return;
   const monthStart = row.month.monthStart.toISOString().slice(0, 10);
   const lang = row.month.org.language;
-  const facts = { name: row.user.name, monthDate: monthDateOf(monthStart), games: row.gamesCovered, amountDuePence: row.amountDuePence, lang };
+  const facts = { name: row.user.name, monthDate: monthDateOf(monthStart), games: chargedGames(row), amountDuePence: row.amountDuePence, lang };
   const phone = row.user.phoneNumber?.replace(/^\+/, "") ?? null;
   if (phone && !args.viaPage && (await claimOnce(`${closeKeyPrefix(args.orgId)}midjoin-dm:${args.monthId}:${args.userId}`, "month-join-dm"))) {
     const collector = row.month.org.paymentHolderId
@@ -979,6 +1023,7 @@ export async function changeShareAfterPaid(args: {
         note: true,
         leftAt: true,
         gamesCovered: true,
+        gamesCommitted: true,
         creditsApplied: true,
         amountDuePence: true,
         paidAt: true,
@@ -998,7 +1043,8 @@ export async function changeShareAfterPaid(args: {
         name: r.user.name ?? "",
         tier: r.tier,
         owes: r.kind === "regular" && r.leftAt === null && inClub.has(r.userId),
-        gamesCovered: r.gamesCovered,
+        // The games they pay for ("4 only").
+        gamesCovered: chargedGames(r),
         creditsApplied: r.creditsApplied,
         amountDuePence: r.amountDuePence,
         paid: paidOf(r),

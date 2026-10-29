@@ -84,3 +84,24 @@ export async function setMonthMember(
   revalidatePath("/admin/months");
   return res;
 }
+
+/**
+ * "4 only" (2026-10-29): a regular says on their own page how many of the
+ * month's games they are playing. Before the month's first game only, and
+ * not once they have paid or said so: after that the organiser changes it.
+ */
+export async function setMyMonthGames(monthId: string, games: number | null): Promise<{ ok: true } | { ok: false; error: string }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  if (typeof monthId !== "string") return { ok: false, error: "not-found" };
+  const { loadSignupMonth, hasStarted } = await import("@/lib/month-signup");
+  const month = await loadSignupMonth(monthId);
+  const me = month?.members.find((m) => m.userId === session.user!.id && !m.out);
+  if (!month || !me) return { ok: false, error: "not-a-member" };
+  if (hasStarted(month, new Date())) return { ok: false, error: "closed" };
+  if (me.paid !== "none") return { ok: false, error: "locked" };
+  const { setMonthMemberGames } = await import("@/lib/month-member-games");
+  const res = await setMonthMemberGames({ squadMonthId: monthId, userId: session.user.id, games, by: "reader" });
+  revalidatePath("/month");
+  return res;
+}

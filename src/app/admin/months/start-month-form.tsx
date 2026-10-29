@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { readMonthList, startCurrentMonth } from "@/app/actions/squad-month";
 import { SectionInfo } from "@/components/info/section-info";
 import { t } from "@/lib/i18n/t";
+import { monthSetupCopy } from "@/lib/i18n/month-setup";
 import { parsePounds, poundsText, type MemberKind, type MemberTier, type SeedPaid, type SeedRowInput } from "@/lib/squad-month-rules";
 
 interface RowState {
@@ -27,6 +28,8 @@ interface RowState {
   paid: SeedPaid;
   amount: string;
   credits: string;
+  /** "4 only": the games this regular commits to. Blank: every game. */
+  committed: string;
   /** From a pasted list only: the number as written, and a concession hint. */
   slot: number | null;
   tier: MemberTier;
@@ -34,7 +37,7 @@ interface RowState {
   listName?: string;
 }
 
-const BLANK: RowState = { on: false, kind: "regular", paid: "none", amount: "", credits: "", slot: null, tier: "standard" };
+const BLANK: RowState = { on: false, kind: "regular", paid: "none", amount: "", credits: "", committed: "", slot: null, tier: "standard" };
 
 const control =
   "h-9 px-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 disabled:opacity-40 disabled:bg-slate-50";
@@ -49,8 +52,16 @@ export function StartMonthForm(props: {
   games: number;
   played: number;
   players: { userId: string; name: string }[];
+  /** A1 (2026-10-29): "2026-11-01" to start the COMING month (its first
+   *  game still to come) from the group's list, or open it empty. */
+  monthStart?: string;
 }) {
   const s = t(props.lang);
+  const c = monthSetupCopy(props.lang);
+  const coming = props.monthStart !== undefined;
+  /** The coming month's form sits on the same page as this month's: its
+   *  test ids are its own. */
+  const tid = (id: string): string => (coming ? `next-${id}` : id);
   const router = useRouter();
   const [games, setGames] = useState(String(props.games));
   const [played, setPlayed] = useState(String(props.played));
@@ -70,7 +81,7 @@ export function StartMonthForm(props: {
     setPasteNote(null);
     setReading(true);
     try {
-      const res = await readMonthList(props.orgId, pasted);
+      const res = await readMonthList(props.orgId, pasted, props.monthStart);
       if (!res.ok) return setPasteError(res.error === "not-a-list" ? s.mth_paste_not_list : s.mth_start_error({ key: res.error }));
       const next: Record<string, RowState> = {};
       for (const r of res.rows) {
@@ -80,6 +91,7 @@ export function StartMonthForm(props: {
           paid: r.paid,
           amount: poundsText(r.paidAmountPence),
           credits: "",
+          committed: r.gamesCommitted != null ? String(r.gamesCommitted) : "",
           slot: r.slot,
           tier: r.tier,
           listName: r.listName,
@@ -104,7 +116,7 @@ export function StartMonthForm(props: {
     return { regulars: on.filter((r) => r.kind === "regular").length, payg: on.filter((r) => r.kind === "payg").length };
   }, [rows]);
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent, empty = false) {
     e.preventDefault();
     setError(null);
     const whole = (v: string): number | null => (/^\d+$/.test(v.trim()) ? Number(v) : null);
@@ -126,6 +138,8 @@ export function StartMonthForm(props: {
       if (r.amount.trim() !== "" && amount === null) return setError(s.mth_start_error({ key: "bad-amount" }));
       const credits = r.credits.trim() === "" ? 0 : whole(r.credits);
       if (credits === null) return setError(s.mth_start_error({ key: "bad-credits" }));
+      const committed = r.committed.trim() === "" ? null : whole(r.committed);
+      if (r.committed.trim() !== "" && committed === null) return setError(c.games_error({ key: "bad-games" }));
       seedRows.push({
         userId: p.userId,
         kind: "regular",
@@ -134,23 +148,33 @@ export function StartMonthForm(props: {
         paid: r.paid,
         paidAmountPence: r.paid === "none" ? null : amount,
         creditsCarriedIn: credits,
+        gamesCommitted: committed,
         listName: r.listName,
       });
     }
-    if (seedRows.length === 0) return setError(s.mth_start_error({ key: "no-players" }));
+    if (empty) seedRows.length = 0;
+    else if (seedRows.length === 0) return setError(s.mth_start_error({ key: "no-players" }));
 
     setSaving(true);
     try {
-      const res = await startCurrentMonth(props.orgId, {
-        activityId: props.activityId,
-        gamesScheduled,
-        gamesPlayed,
-        sharePerGamePence: sharePence,
-        source: fromList ? "seed-list" : "seed-tick",
-        rows: seedRows,
-      });
-      if (!res.ok) return setError(s.mth_start_error({ key: res.error }));
-      toast.success(s.mth_started({ month: props.month }));
+      const res = await startCurrentMonth(
+        props.orgId,
+        {
+          activityId: props.activityId,
+          gamesScheduled,
+          gamesPlayed: coming ? 0 : gamesPlayed,
+          sharePerGamePence: coming ? null : sharePence,
+          source: fromList ? "seed-list" : "seed-tick",
+          rows: seedRows,
+        },
+        props.monthStart,
+      );
+      if (!res.ok) {
+        return setError(
+          res.error === "bad-games-committed" ? c.games_error({ key: "more-than-the-month" }) : s.mth_start_error({ key: res.error }),
+        );
+      }
+      toast.success(empty ? c.next_opened({ month: props.month }) : s.mth_started({ month: props.month }));
       router.refresh();
     } catch {
       setError(s.mth_start_error({ key: "failed" }));
@@ -160,16 +184,16 @@ export function StartMonthForm(props: {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4" data-testid="start-month-form">
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2" data-testid="start-paste">
+    <form onSubmit={submit} className="space-y-4" data-testid={tid("start-month-form")}>
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2" data-testid={tid("start-paste")}>
         <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
           <label htmlFor={`paste-${props.activityId}`}>{s.mth_paste_label}</label>
-          <SectionInfo k="mth_paste" lang={props.lang} />
+          {!coming && <SectionInfo k="mth_paste" lang={props.lang} />}
         </div>
         <p className="text-xs text-slate-500">{s.mth_paste_hint}</p>
         <textarea
           id={`paste-${props.activityId}`}
-          data-testid="start-paste-text"
+          data-testid={tid("start-paste-text")}
           rows={5}
           value={pasted}
           onChange={(e) => setPasted(e.target.value)}
@@ -178,7 +202,7 @@ export function StartMonthForm(props: {
         <div>
           <button
             type="button"
-            data-testid="start-paste-read"
+            data-testid={tid("start-paste-read")}
             disabled={reading || pasted.trim() === ""}
             onClick={readList}
             className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-sm font-medium text-slate-700 disabled:opacity-50"
@@ -187,20 +211,20 @@ export function StartMonthForm(props: {
           </button>
         </div>
         {pasteError && (
-          <p role="alert" data-testid="start-paste-error" className="text-sm text-red-600">
+          <p role="alert" data-testid={tid("start-paste-error")} className="text-sm text-red-600">
             {pasteError}
           </p>
         )}
         {pasteNote && (
-          <div className="text-sm text-slate-700 space-y-1" data-testid="start-paste-note">
+          <div className="text-sm text-slate-700 space-y-1" data-testid={tid("start-paste-note")}>
             <p>{s.mth_paste_read({ count: pasteNote.read })}</p>
             {pasteNote.unmatched.length > 0 && (
-              <p className="text-amber-800" data-testid="start-paste-unmatched">
+              <p className="text-amber-800" data-testid={tid("start-paste-unmatched")}>
                 {s.mth_paste_unmatched({ names: pasteNote.unmatched.join(", ") })}
               </p>
             )}
             {pasteNote.otherMonth && (
-              <p className="text-amber-800" data-testid="start-paste-month">
+              <p className="text-amber-800" data-testid={tid("start-paste-month")}>
                 {s.mth_paste_month}
               </p>
             )}
@@ -211,16 +235,19 @@ export function StartMonthForm(props: {
       <div className="flex flex-wrap gap-4">
         <label className="text-sm text-slate-700">
           <span className="block text-xs font-medium text-slate-500 mb-1">{s.mth_games_label}</span>
-          <input data-testid="start-games" inputMode="numeric" value={games} onChange={(e) => setGames(e.target.value)} className={`w-20 ${control}`} />
+          <input data-testid={tid("start-games")} inputMode="numeric" value={games} onChange={(e) => setGames(e.target.value)} className={`w-20 ${control}`} />
         </label>
+        {!coming && (
         <label className="text-sm text-slate-700">
           <span className="block text-xs font-medium text-slate-500 mb-1">{s.mth_played_label}</span>
-          <input data-testid="start-played" inputMode="numeric" value={played} onChange={(e) => setPlayed(e.target.value)} className={`w-20 ${control}`} />
+          <input data-testid={tid("start-played")} inputMode="numeric" value={played} onChange={(e) => setPlayed(e.target.value)} className={`w-20 ${control}`} />
         </label>
+        )}
+        {!coming && (
         <label className="text-sm text-slate-700">
           <span className="block text-xs font-medium text-slate-500 mb-1">{s.mth_share_label}</span>
           <input
-            data-testid="start-share"
+            data-testid={tid("start-share")}
             inputMode="decimal"
             value={share}
             onChange={(e) => setShare(e.target.value)}
@@ -228,11 +255,12 @@ export function StartMonthForm(props: {
             className={`w-24 ${control}`}
           />
         </label>
+        )}
       </div>
-      <p className="text-xs text-slate-500">{s.mth_share_hint}</p>
+      <p className="text-xs text-slate-500">{coming ? c.games_hint : s.mth_share_hint}</p>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm" data-testid="start-players">
+        <table className="w-full text-sm" data-testid={tid("start-players")}>
           <thead>
             <tr className="text-left text-xs text-slate-500 border-b border-slate-100">
               <th className="py-2 pr-3 font-medium">{s.mth_col_in}</th>
@@ -241,14 +269,15 @@ export function StartMonthForm(props: {
               <th className="py-2 pr-3 font-medium">
                 <span className="inline-flex items-center gap-1">
                   {s.mth_col_paid}
-                  <SectionInfo k="mth_paid" lang={props.lang} />
+                  {!coming && <SectionInfo k="mth_paid" lang={props.lang} />}
                 </span>
               </th>
               <th className="py-2 pr-3 font-medium">{s.mth_col_amount}</th>
+              <th className="py-2 pr-3 font-medium">{c.col_games_committed}</th>
               <th className="py-2 font-medium">
                 <span className="inline-flex items-center gap-1">
                   {s.mth_col_credits}
-                  <SectionInfo k="mth_credits" lang={props.lang} />
+                  {!coming && <SectionInfo k="mth_credits" lang={props.lang} />}
                 </span>
               </th>
             </tr>
@@ -258,7 +287,7 @@ export function StartMonthForm(props: {
               const r = row(p.userId);
               const regular = r.on && r.kind === "regular";
               return (
-                <tr key={p.userId} className="border-b border-slate-50 last:border-0" data-testid="start-row" data-user={p.userId}>
+                <tr key={p.userId} className="border-b border-slate-50 last:border-0" data-testid={tid("start-row")} data-user={p.userId}>
                   <td className="py-1.5 pr-3">
                     <input
                       type="checkbox"
@@ -272,7 +301,7 @@ export function StartMonthForm(props: {
                   <td className="py-1.5 pr-3">
                     <select
                       aria-label={`${s.mth_col_type}: ${p.name}`}
-                      data-testid="start-kind"
+                      data-testid={tid("start-kind")}
                       value={r.kind}
                       disabled={!r.on}
                       onChange={(e) => patch(p.userId, { kind: e.target.value as MemberKind })}
@@ -285,7 +314,7 @@ export function StartMonthForm(props: {
                   <td className="py-1.5 pr-3">
                     <select
                       aria-label={`${s.mth_col_paid} ${p.name}`}
-                      data-testid="start-paid"
+                      data-testid={tid("start-paid")}
                       value={r.paid}
                       disabled={!regular}
                       onChange={(e) => patch(p.userId, { paid: e.target.value as SeedPaid })}
@@ -299,7 +328,7 @@ export function StartMonthForm(props: {
                   <td className="py-1.5 pr-3">
                     <input
                       aria-label={`${s.mth_col_amount}: ${p.name}`}
-                      data-testid="start-amount"
+                      data-testid={tid("start-amount")}
                       inputMode="decimal"
                       value={r.amount}
                       disabled={!regular || r.paid === "none"}
@@ -307,10 +336,22 @@ export function StartMonthForm(props: {
                       className={`w-24 ${control}`}
                     />
                   </td>
+                  <td className="py-1.5 pr-3">
+                    <input
+                      aria-label={`${c.col_games_committed}: ${p.name}`}
+                      data-testid={tid("start-committed")}
+                      inputMode="numeric"
+                      value={r.committed}
+                      disabled={!regular}
+                      onChange={(e) => patch(p.userId, { committed: e.target.value })}
+                      placeholder={c.games_all}
+                      className={`w-16 ${control}`}
+                    />
+                  </td>
                   <td className="py-1.5">
                     <input
                       aria-label={`${s.mth_col_credits}: ${p.name}`}
-                      data-testid="start-credits"
+                      data-testid={tid("start-credits")}
                       inputMode="numeric"
                       value={r.credits}
                       disabled={!regular}
@@ -327,24 +368,35 @@ export function StartMonthForm(props: {
       </div>
 
       {error && (
-        <p role="alert" data-testid="start-error" className="text-sm text-red-600">
+        <p role="alert" data-testid={tid("start-error")} className="text-sm text-red-600">
           {error}
         </p>
       )}
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          data-testid="start-submit"
+          data-testid={tid("start-submit")}
           disabled={saving}
           className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-50"
         >
           {s.mth_start_button({ month: props.month })}
         </button>
-        <span className="text-xs text-slate-500" data-testid="start-count">
+        <span className="text-xs text-slate-500" data-testid={tid("start-count")}>
           {s.mth_selected_count(counts)}
         </span>
+        {coming && (
+          <button
+            type="button"
+            data-testid={tid("start-open-empty")}
+            disabled={saving}
+            onClick={(e) => submit(e, true)}
+            className="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-sm font-medium text-slate-700 disabled:opacity-50"
+          >
+            {c.next_open_empty({ month: props.month })}
+          </button>
+        )}
       </div>
-      <p className="text-xs text-slate-500">{s.mth_nothing_posts}</p>
+      <p className="text-xs text-slate-500">{coming ? `${c.next_posts_note} ${c.next_open_empty_hint}` : s.mth_nothing_posts}</p>
     </form>
   );
 }

@@ -14,18 +14,20 @@
  */
 import { db } from "./db";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
-import { formatLondon } from "./london-time";
+import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { defaultPayBy } from "./month-payment-rules";
-import { WAITING_NOTE, firstKickoffOf, signupEndsAt } from "./month-signup-rules";
+import { WAITING_NOTE, firstKickoffOf, nextMonthStart, signupEndsAt } from "./month-signup-rules";
 import { parseMonthlyList } from "./monthly-list";
 import {
   draftSeedFromList,
   gamesPlayedBy,
+  isBreakMonth,
   londonMonthStart,
   monthFixtureDates,
   monthStartToDate,
   normaliseSquadMode,
   planMonthSeed,
+  prepareSeasonBreak,
   type MemberKind,
   type MemberTier,
   type MonthSeedError,
@@ -34,7 +36,7 @@ import {
   type SeedDraftUnmatched,
 } from "./squad-month-rules";
 
-export type StartMonthError = MonthSeedError | "not-monthly" | "already-started";
+export type StartMonthError = MonthSeedError | "not-monthly" | "already-started" | "bad-month" | "break-month";
 
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "P2002";
@@ -51,17 +53,33 @@ export async function startMonth(
   actorUserId: string,
   input: MonthSeedInput,
   now: Date = new Date(),
+  /** A1 (2026-10-29): "2026-11-01", the coming month. Omitted: this month. */
+  opts: { monthStart?: string } = {},
 ): Promise<{ ok: true; monthId: string } | { ok: false; error: StartMonthError }> {
-  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { squadMode: true } });
+  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { squadMode: true, seasonBreakMonths: true } });
   if (!org || normaliseSquadMode(org.squadMode) !== "monthly") return { ok: false, error: "not-monthly" };
 
   const activityId = typeof input?.activityId === "string" ? input.activityId : "";
   const activity = activityId
-    ? await db.activity.findFirst({ where: { id: activityId, orgId, isActive: true }, select: { id: true } })
+    ? await db.activity.findFirst({
+        where: { id: activityId, orgId, isActive: true },
+        select: { id: true, venue: true, dayOfWeek: true, time: true, deadlineHours: true, sport: { select: { playersPerTeam: true } } },
+      })
     : null;
   if (!activity) return { ok: false, error: "bad-fixture" };
 
-  const monthStart = monthStartToDate(londonMonthStart(now));
+  const current = londonMonthStart(now);
+  const target = opts.monthStart ?? current;
+  if (target !== current && target !== nextMonthStart(current)) return { ok: false, error: "bad-month" };
+  if (isBreakMonth(org.seasonBreakMonths, target)) return { ok: false, error: "break-month" };
+  // A month whose first game is still to come (A1): started like a month
+  // MatchTime opens itself, with the organiser's list instead of a
+  // carry-over. Only a month already under way is started part-way.
+  const first = firstKickoffOf(target, activity.dayOfWeek, activity.time);
+  if (first && first.getTime() > now.getTime()) return startComingMonth({ orgId, actorUserId, input, now, activity, monthStart: target });
+  if (target !== current) return { ok: false, error: "bad-month" };
+
+  const monthStart = monthStartToDate(current);
   const existing = await db.squadMonth.findUnique({
     where: { orgId_activityId_monthStart: { orgId, activityId, monthStart } },
     select: { id: true },
@@ -102,6 +120,78 @@ export async function startMonth(
     if (isUniqueViolation(err)) return { ok: false, error: "already-started" };
     throw err;
   }
+}
+
+/**
+ * A1: start a month whose first game is still to come, from the
+ * organiser's own list (or with nobody on it: MatchTime then posts its
+ * list and the group signs up). The month is "open" with sign-up running,
+ * exactly as if MatchTime had opened it, so every sign-up door works. With
+ * names on it, the group has just seen this list (it is theirs), so it is
+ * recorded as seen and MatchTime does not post it straight back; it posts
+ * the list when somebody changes it.
+ *
+ * Amounts are not worked out here: the price is set on the page, as for
+ * any month in sign-up. Idempotent on (club, fixture, month).
+ */
+async function startComingMonth(args: {
+  orgId: string;
+  actorUserId: string;
+  input: MonthSeedInput;
+  now: Date;
+  activity: { id: string; venue: string; dayOfWeek: number; time: string; deadlineHours: number; sport: { playersPerTeam: number } };
+  monthStart: string;
+}): Promise<{ ok: true; monthId: string } | { ok: false; error: StartMonthError }> {
+  const { orgId, actorUserId, input, now } = args;
+  const rows = Array.isArray(input.rows) ? input.rows : [];
+  const members = await db.membership.findMany({
+    where: { orgId, leftAt: null, ...ORDINARY_MEMBER_WHERE, user: { isActive: true } },
+    select: { userId: true },
+  });
+  const memberUserIds = new Set(members.map((m) => m.userId));
+  let aliases: Array<{ userId: string; alias: string }> = [];
+  const { openMonthList, SeedRefused, loadSignupMonth, recordSignupListShown, renderSignupList } = await import("./month-signup");
+  let monthId: string | null;
+  try {
+    monthId = await openMonthList({
+      orgId,
+      activity: args.activity,
+      monthStart: args.monthStart,
+      previousMonthId: null,
+      now,
+      seed: (games) => {
+        if (rows.length === 0) return { ok: true, members: [], credits: [], startedByUserId: actorUserId };
+        // No price yet: it is set on the page once the numbers are in.
+        const plan = planMonthSeed(
+          { ...input, gamesScheduled: Math.max(1, games), gamesPlayed: 0, sharePerGamePence: null, concessionPerGamePence: null },
+          { memberUserIds, actorUserId, now },
+        );
+        if (!plan.ok) return { ok: false, error: plan.error };
+        aliases = plan.aliases;
+        return {
+          ok: true,
+          startedByUserId: actorUserId,
+          members: plan.members.map((m) => ({ ...m, gamesCovered: m.kind === "regular" ? games : 0 })),
+          credits: plan.credits.map((c) => ({ userId: c.userId, games: c.games, reason: c.reason, appliedAt: c.appliedAt, createdById: c.createdById })),
+        };
+      },
+    });
+  } catch (err) {
+    if (err instanceof SeedRefused) return { ok: false, error: err.reason as StartMonthError };
+    if (isUniqueViolation(err)) return { ok: false, error: "already-started" };
+    throw err;
+  }
+  if (!monthId) return { ok: false, error: "already-started" };
+  await saveListAliases(orgId, aliases);
+  if (rows.length > 0) {
+    try {
+      const month = await loadSignupMonth(monthId);
+      if (month) await recordSignupListShown(month, renderSignupList(month).hash, "signup-list-seen");
+    } catch (err) {
+      console.error(`[squad-month] recording ${args.monthStart} as seen for ${orgId} failed (MatchTime will post its list):`, err);
+    }
+  }
+  return { ok: true, monthId };
 }
 
 /**
@@ -153,8 +243,10 @@ export async function readListForSeed(
   orgId: string,
   text: string,
   now: Date = new Date(),
+  /** The month being started, "2026-11-01" (A1). Omitted: this month. */
+  forMonthStart?: string,
 ): Promise<
-  | { ok: true; rows: SeedDraftRow[]; unmatched: SeedDraftUnmatched[]; monthMismatch: boolean }
+  | { ok: true; rows: SeedDraftRow[]; unmatched: SeedDraftUnmatched[]; monthMismatch: boolean; headed: boolean }
   | { ok: false; error: ReadListError }
 > {
   const org = await db.organisation.findUnique({ where: { id: orgId }, select: { squadMode: true } });
@@ -175,8 +267,9 @@ export async function readListForSeed(
     name: m.user.name,
     aliases: aliases.filter((a) => a.userId === m.user.id).map((a) => a.alias),
   }));
-  const month = Number(londonMonthStart(now).slice(5, 7));
-  return { ok: true, ...draftSeedFromList(list, roster, { month }) };
+  const month = Number((forMonthStart ?? londonMonthStart(now)).slice(5, 7));
+  // `headed`: the list names its month ("List for November").
+  return { ok: true, ...draftSeedFromList(list, roster, { month }), headed: list.month != null };
 }
 
 // ── Merging two player records ─────────────────────────────────────────
@@ -232,6 +325,8 @@ export interface MonthMemberView {
   kind: MemberKind;
   tier: MemberTier;
   gamesCovered: number;
+  /** "4 only" (2026-10-29). NULL: every game. */
+  gamesCommitted: number | null;
   creditsApplied: number;
   amountDuePence: number | null;
   paid: PaidState;
@@ -279,6 +374,8 @@ export interface MonthFixtureView {
 export interface MonthPageData {
   /** "2026-10-01". */
   monthStart: string;
+  /** A3: the club's season break months, "YYYY-MM". */
+  seasonBreakMonths: string[];
   fixtures: MonthFixtureView[];
   /** The club's current players, for the ticks. */
   players: { userId: string; name: string }[];
@@ -299,7 +396,7 @@ export async function loadMonthPage(
 ): Promise<MonthPageData> {
   const monthStart = forMonthStart ?? londonMonthStart(now);
   const monthFrom = monthStartToDate(monthStart);
-  const [activities, months, memberships, matches] = await Promise.all([
+  const [activities, months, memberships, matches, org] = await Promise.all([
     db.activity.findMany({
       where: { orgId, isActive: true },
       select: { id: true, name: true, dayOfWeek: true, time: true, sport: { select: { playersPerTeam: true } } },
@@ -331,6 +428,7 @@ export async function loadMonthPage(
             note: true,
             paygMatchIds: true,
             gamesCovered: true,
+            gamesCommitted: true,
             creditsApplied: true,
             amountDuePence: true,
             paidAt: true,
@@ -352,6 +450,7 @@ export async function loadMonthPage(
       where: { activity: { orgId }, date: { gte: monthFrom, lt: new Date(monthFrom.getTime() + 32 * 24 * 60 * 60 * 1000) } },
       select: { id: true, date: true },
     }),
+    db.organisation.findUnique({ where: { id: orgId }, select: { seasonBreakMonths: true } }),
   ]);
   const dayOfMatch = new Map(matches.map((x) => [x.id, Number(formatLondon(x.date, "d"))]));
   // In a month MatchTime opened itself, a member who has left the group is
@@ -395,6 +494,7 @@ export async function loadMonthPage(
           kind: r.kind === "payg" ? "payg" : "regular",
           tier: r.tier === "concession" ? "concession" : "standard",
           gamesCovered: r.gamesCovered,
+          gamesCommitted: r.gamesCommitted,
           creditsApplied: r.creditsApplied,
           amountDuePence: r.amountDuePence,
           paid: r.paidAt ? "confirmed" : r.paidClaimedAt ? "claimed" : "none",
@@ -406,7 +506,86 @@ export async function loadMonthPage(
 
   return {
     monthStart,
+    seasonBreakMonths: org?.seasonBreakMonths ?? [],
     fixtures,
     players: memberships.map((m) => ({ userId: m.user.id, name: m.user.name ?? "" })),
   };
+}
+
+// ── A season break (A3, 2026-10-29) ────────────────────────────────────
+
+export type SeasonBreakError = "not-monthly" | "bad-months" | "month-exists";
+
+/** The key MatchTime writes for a game it called off for a break: only
+ *  those are put back on when the month is unticked. */
+const breakCancelKey = (orgId: string, matchId: string) => `org-${orgId}:season-break:${matchId}`;
+
+/**
+ * Save the months a club plays no games in (`Organisation.seasonBreakMonths`).
+ * For those months no list opens and no month or match is made
+ * (`openDueMonthLists`, `generateUpcomingMatches`).
+ *
+ * A game already made for such a month (a block booking, say) with nobody
+ * on it is called off quietly: nothing is posted, as a break is not news.
+ * One somebody is already on is left for the organiser (counted in
+ * `keptGames`). Unticking a month puts back the games MatchTime itself
+ * called off for it. A month that has already been started here cannot be
+ * a break month.
+ */
+export async function setSeasonBreak(
+  orgId: string,
+  months: unknown,
+  now: Date = new Date(),
+): Promise<{ ok: true; months: string[]; keptGames: number } | { ok: false; error: SeasonBreakError; month?: string }> {
+  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { squadMode: true, seasonBreakMonths: true } });
+  if (!org || normaliseSquadMode(org.squadMode) !== "monthly") return { ok: false, error: "not-monthly" };
+  const prepared = prepareSeasonBreak(months, now);
+  if (!prepared.ok) return { ok: false, error: prepared.error };
+  const wanted = prepared.value;
+  if (wanted.length > 0) {
+    const started = await db.squadMonth.findFirst({
+      where: { orgId, monthStart: { in: wanted.map((m) => monthStartToDate(`${m}-01`)) } },
+      select: { monthStart: true },
+    });
+    if (started) return { ok: false, error: "month-exists", month: started.monthStart.toISOString().slice(0, 7) };
+  }
+  // Past months stay as they were: only this month and later change.
+  const current = londonMonthStart(now).slice(0, 7);
+  const kept = (org.seasonBreakMonths ?? []).filter((m) => m < current);
+  await db.organisation.update({ where: { id: orgId }, data: { seasonBreakMonths: [...kept, ...wanted] } });
+
+  const inMonths = async (list: string[]) =>
+    list.length === 0
+      ? []
+      : db.match.findMany({
+          where: {
+            activity: { orgId },
+            isHistorical: false,
+            date: { gt: now },
+            OR: list.map((m) => ({
+              date: { gte: londonDateTimeToUtc(`${m}-01`, "00:00"), lt: londonDateTimeToUtc(nextMonthStart(`${m}-01`), "00:00") },
+            })),
+          },
+          select: { id: true, status: true, _count: { select: { attendances: true } } },
+        });
+
+  let keptGames = 0;
+  for (const m of await inMonths(wanted)) {
+    if (m.status !== "UPCOMING") continue;
+    if (m._count.attendances > 0) {
+      keptGames++;
+      continue;
+    }
+    const res = await db.match.updateMany({ where: { id: m.id, status: "UPCOMING" }, data: { status: "CANCELLED" } });
+    if (res.count > 0) await db.sentNotification.create({ data: { key: breakCancelKey(orgId, m.id), kind: "season-break" } }).catch(() => {});
+  }
+  const unticked = (org.seasonBreakMonths ?? []).filter((m) => m >= current && !wanted.includes(m));
+  for (const m of await inMonths(unticked)) {
+    if (m.status !== "CANCELLED") continue;
+    const mark = await db.sentNotification.findUnique({ where: { key: breakCancelKey(orgId, m.id) }, select: { key: true } });
+    if (!mark) continue;
+    await db.match.updateMany({ where: { id: m.id, status: "CANCELLED" }, data: { status: "UPCOMING" } });
+    await db.sentNotification.delete({ where: { key: mark.key } }).catch(() => {});
+  }
+  return { ok: true, months: wanted, keptGames };
 }

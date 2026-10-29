@@ -77,6 +77,9 @@ export interface CancelMember {
   /** When they became a regular of this month: a game played before it is
    *  not one they are charged for. */
   joinedAt: Date;
+  /** "4 only" (2026-10-29): this game is one of the weeks they never paid
+   *  for (`commitmentForMatch`), so its being called off owes them nothing. */
+  freeMiss?: boolean;
 }
 
 export interface MatchCredit {
@@ -156,6 +159,7 @@ export function decideCancelledWeekCredits(p: {
 
   for (const m of here) {
     if (p.matchDate.getTime() <= m.joinedAt.getTime()) continue;
+    if (m.freeMiss) continue;
     if (p.cancelledAt && m.joinedAt.getTime() >= p.cancelledAt.getTime()) continue;
     const cancelled = mine(m.userId, "cancelled-week");
     const missed = mine(m.userId, "missed").filter((c) => c.voidedAt === null);
@@ -225,6 +229,9 @@ export function decideLeaverCredits(p: {
   existing: MatchCredit[];
   /** The matches this member already holds a live credit for, any reason. */
   creditedMatchIds: ReadonlySet<string>;
+  /** "4 only" (2026-10-29): the most games they can be owed, the games they
+   *  paid for and have not played. Absent: no commitment, every game left. */
+  maxGames?: number;
 }): { create: Array<{ matchId: string | null }>; voidIds: string[] } {
   const live = p.existing.filter((c) => c.voidedAt === null);
   if (!isLeaver(p.member)) {
@@ -234,7 +241,10 @@ export function decideLeaverCredits(p: {
   if (live.length > 0 || p.existing.some((c) => c.voidedById !== null)) return { create: [], voidIds: [] };
   const create = p.games
     .filter((g) => g.date.getTime() > p.leftAt.getTime() && !(g.matchId !== null && p.creditedMatchIds.has(g.matchId)))
-    .map((g) => ({ matchId: g.matchId }));
+    .map((g) => ({ matchId: g.matchId }))
+    // Never more than they paid for: a "4 only" regular is owed the
+    // committed games they did not play, the first games left first.
+    .slice(0, p.maxGames === undefined ? undefined : Math.max(0, p.maxGames));
   return { create, voidIds: [] };
 }
 
