@@ -25,6 +25,7 @@
  *                      when the offer's own time ran out with no answer;
  *                      closed first by others or the cut-off: "expired";
  *                      never sent: "cancelled".
+ *   offerNeverReachedHim   unsent and cancelled: not "already offered".
  *   acceptRefusal      who may still say yes.
  *   pullOutResult      a guest giving the place back: in time, or late.
  */
@@ -117,6 +118,16 @@ export function askStatusFor(reason: PoolAskCloseReason): Exclude<PoolAskStatus,
   if (reason === "filled") return "filled";
   if (reason === "organiser-cancelled") return "cancelled";
   return "closed";
+}
+
+/**
+ * An offer that never reached him: its DM never went and it ended
+ * "cancelled" (the round closed first, dispatch refused it, or the send
+ * failed). It is no offer for "one per match": he may be offered this
+ * match again. One with a sentAt counts, whatever its outcome.
+ */
+export function offerNeverReachedHim(o: { sentAt: Date | null; outcome: string | null }): boolean {
+  return !o.sentAt && o.outcome === "cancelled";
 }
 
 /** An open offer when its ask closes. */

@@ -10,6 +10,7 @@
 import type { Point } from "../club-discovery-rules";
 import type { OfferLedgerEntry } from "./caps";
 import type { PoolCandidateRow, PoolMatchContext } from "./matching-rules";
+import { offerNeverReachedHim } from "./round-rules";
 import { poolSportOfClubSport, type SportLevel } from "./sports";
 import { turnUpRecordOf } from "./turn-up";
 import { isOneOf, GUEST_RESULTS, POOL_OFFER_OUTCOMES, type GuestResult, type PoolOfferOutcome } from "./vocab";
@@ -129,7 +130,9 @@ export function candidateRowsOf(matchId: string, profiles: readonly RawProfile[]
       isClubMember: per.clubMemberIds.has(p.userId),
       onThisMatch: per.onMatchIds.has(p.userId),
       blocked: per.blockedIds.has(p.userId),
-      alreadyOffered: mine.some((o) => o.matchId === matchId),
+      // One per match ever, for offers that reached him (or may still):
+      // one cancelled before its DM went does not count.
+      alreadyOffered: mine.some((o) => o.matchId === matchId && !offerNeverReachedHim(o)),
       busyGames: (busy.get(p.userId) ?? []).map((b) => ({ kickoff: b.kickoff, durationMins: b.durationMins })),
       record: turnUpRecordOf(results),
       lastGameAt: lastTimes.length > 0 ? new Date(Math.max(...lastTimes)) : null,

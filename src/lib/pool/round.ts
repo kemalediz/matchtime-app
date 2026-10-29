@@ -54,6 +54,7 @@ import { poolOfferText, poolPausedText } from "./offer-copy";
 import { poolOfferPath } from "./offer-token";
 import {
   askStatusFor,
+  offerNeverReachedHim,
   offerOutcomeOnClose,
   ownTimeRanOut,
   poolAskCloseReason,
@@ -202,30 +203,53 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
         if (already.some((o) => o.wave === wave)) return 0;
         const room = POOL_ROUND.maxOffers - already.length;
         if (room <= 0) return 0;
-        const offeredHere = new Set(
-          (await tx.poolOffer.findMany({ where: { matchId: ask.matchId, userId: { in: prepared.map((p) => p.userId) } }, select: { userId: true } })).map((o) => o.userId),
+        // One offer per match per person (the unique index). An earlier one
+        // that never reached him (cancelled before its DM went, its job
+        // failed) is reset in place for this ask; any other still blocks him,
+        // including one whose DM the Pi had already claimed (it may yet go).
+        const onMatch = await tx.poolOffer.findMany({
+          where: { matchId: ask.matchId, userId: { in: prepared.map((p) => p.userId) } },
+          select: { id: true, userId: true, sentAt: true, outcome: true, platformJobId: true },
+        });
+        const neverReached = onMatch.filter(offerNeverReachedHim);
+        const oldJobIds = neverReached.map((o) => o.platformJobId).filter((id): id is string => !!id);
+        const mayStillGo = new Set(
+          oldJobIds.length > 0
+            ? (await tx.platformJob.findMany({ where: { id: { in: oldJobIds }, status: { not: "failed" } }, select: { id: true } })).map((j) => j.id)
+            : [],
         );
+        const reusable = new Map(
+          neverReached.filter((o) => !o.platformJobId || !mayStillGo.has(o.platformJobId)).map((o) => [o.userId as string, o.id as string]),
+        );
+        const offeredHere = new Set(onMatch.filter((o) => !reusable.has(o.userId)).map((o) => o.userId));
         const go = prepared.filter((p) => !offeredHere.has(p.userId)).slice(0, room);
         const done = await eachUnderSavepoint(
           tx,
           go,
           async (p) => {
-            const offer = await tx.poolOffer.create({
-              data: {
-                poolAskId: ask.id,
-                matchId: ask.matchId,
-                orgId: ask.orgId,
-                userId: p.userId,
-                distanceMiles: p.distanceMiles,
-                wave,
-                // The planned window; the real six hours start when the Pi
-                // reports the DM sent (`dispatch.ts` `onPoolOfferJobSent`).
-                expiresAt: offerExpiresAt(now, cutoff),
-                // The caps count a queued offer at its creation (L4.3).
-                createdAt: now,
-              },
-              select: { id: true },
-            });
+            const fields = {
+              poolAskId: ask.id,
+              orgId: ask.orgId,
+              distanceMiles: p.distanceMiles,
+              wave,
+              // The planned window; the real six hours start when the Pi
+              // reports the DM sent (`dispatch.ts` `onPoolOfferJobSent`).
+              expiresAt: offerExpiresAt(now, cutoff),
+              // The caps count a queued offer at its creation (L4.3).
+              createdAt: now,
+            };
+            const reuseId = reusable.get(p.userId);
+            let offer: { id: string };
+            if (reuseId) {
+              const reset = await tx.poolOffer.updateMany({
+                where: { id: reuseId, sentAt: null, outcome: "cancelled" },
+                data: { ...fields, outcome: null, resolvedAt: null, sentAt: null, platformJobId: null, repliedVia: null },
+              });
+              if (reset.count !== 1) throw new Error("earlier offer changed under us");
+              offer = { id: reuseId };
+            } else {
+              offer = await tx.poolOffer.create({ data: { ...fields, matchId: ask.matchId, userId: p.userId }, select: { id: true } });
+            }
             const text = poolOfferText(p.lang, { ...facts, places: ask.places, distanceMiles: p.distanceMiles }, {
               tapLink: appUrl(poolOfferPath(offer.id)),
               manageLink: p.manageLink,

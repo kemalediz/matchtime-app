@@ -10,6 +10,7 @@ import {
   POOL_WAITS_FOR_PARTNERS_VIA,
   acceptRefusal,
   askStatusFor,
+  offerNeverReachedHim,
   offerOutcomeOnClose,
   ownTimeRanOut,
   poolAskCloseReason,
@@ -129,5 +130,16 @@ describe("pullOutResult", () => {
   it("before the club's cut-off: withdrawn; after: late cancel", () => {
     expect(pullOutResult({ now: new Date(CUTOFF.getTime() - 1), cutoff: CUTOFF })).toBe("withdrawn");
     expect(pullOutResult({ now: CUTOFF, cutoff: CUTOFF })).toBe("late-cancel");
+  });
+});
+
+describe("offerNeverReachedHim", () => {
+  it("unsent and cancelled: it never reached him; sent, or still open: it did or may", () => {
+    const at = new Date("2026-10-29T10:00:00Z");
+    expect(offerNeverReachedHim({ sentAt: null, outcome: "cancelled" })).toBe(true);
+    expect(offerNeverReachedHim({ sentAt: at, outcome: "cancelled" })).toBe(false);
+    expect(offerNeverReachedHim({ sentAt: at, outcome: "expired" })).toBe(false);
+    expect(offerNeverReachedHim({ sentAt: null, outcome: null })).toBe(false);
+    expect(offerNeverReachedHim({ sentAt: null, outcome: "expired" })).toBe(false);
   });
 });
