@@ -37,7 +37,13 @@ I've built *MatchTime*, which helps local football teams, and it now has a *play
 🆓 Free to join
 
 Sign up here: ${playUrl}`,
-  newFeatures: () => `Hi all 👋 Some new MatchTime features you can use from today:
+  newFeatures: (playUrl) => [
+    `Hi all 👋
+
+Some new MatchTime features you can use from today:
+
+⚽ *The MatchTime player pool*
+The pool is a list of local players who'd like extra games. When a team nearby is a player short, MatchTime messages them on WhatsApp with the game, and they decide each time. Clubs can now fill their empty places from it.
 
 🔎 *Short of players? MatchTime finds them.*
 Organisers, just tag MatchTime and say where to look. It asks straight away:
@@ -47,9 +53,13 @@ Organisers, just tag MatchTime and say where to look. It asks straight away:
 
 🤝 *Partner clubs:* link up with other MatchTime clubs nearby and share spare players. If you switch it on, MatchTime can ask your partners automatically on match day.
 
-🙋 *You see who's coming:* when a pool player or a partner club's player takes a place or goes on the bench, MatchTime posts it here, so everyone knows who's joining.
+🙋 *You see who's coming:* when a pool player or a partner club's player takes a place or goes on the bench, MatchTime posts it here, so everyone knows who's joining.`,
+    `⚽ *Want more games yourself? Join the pool.*
+Turn on *Play elsewhere too* on your MatchTime profile, or sign up here:
+${playUrl}
 
-⚽ *Want more games yourself?* Turn on *Play elsewhere too* on your MatchTime profile. When a team near you is short, you get a WhatsApp message, and you decide each time. You also get your own link to invite friends.
+When a team near you is a player short, you get a WhatsApp message with the game, and you decide each time. No spam: a limited number of messages a week, and you can stop any time. You also get your own link to invite friends.
 
 Any questions, just tag *@Match Time help*.`,
+  ],
 };

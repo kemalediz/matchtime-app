@@ -2,8 +2,8 @@
  * /api/whatsapp/dm-reply: THE OWNER'S INTRO MESSAGES, END TO END (2026-10-29).
  *
  * The platform owner (SELF_JOIN_APPROVER_PHONES, E2E.APPROVER_PHONE here)
- * DMs MatchTime in his own words and gets each intro category back as two
- * DMs, English then Turkish, through the owner DM door (PlatformJob,
+ * DMs MatchTime in his own words and gets each intro category back as
+ * English then Turkish DMs (category 3 is two parts per language), through the owner DM door (PlatformJob,
  * purpose owner-intro). The DM admin intent's model is stubbed through
  * `MT_TEST_DM_INTENT_STUB_FILE` (what the model said, nothing more): the
  * owner gate, the category rule and the queue are the shipped code.
@@ -59,26 +59,35 @@ test("setup: the owner is a member (a player, not an admin) of the club", async 
   );
 });
 
-test("the owner asks for category 3: its English then its Turkish message, to him only, at once", async ({ request, db }) => {
+test("the owner asks for category 3: EN part 1, EN part 2, TR part 1, TR part 2, to him only, at once", async ({ request, db }) => {
   setDmIntentStub({ bodies: { [CAT3]: "intro_messages:3" } });
   const json = await postDm(request, `+${E2E.APPROVER_PHONE}`, CAT3, "e2e-intro-cat3");
   expect(json).toMatchObject({ handled: "owner-intro-dm", categories: [3] });
   const jobs = await introJobs(db);
-  expect(jobs).toHaveLength(2);
+  expect(jobs.map((j) => j.refId)).toEqual([
+    "intro:e2e-intro-cat3:3:en:1",
+    "intro:e2e-intro-cat3:3:en:2",
+    "intro:e2e-intro-cat3:3:tr:1",
+    "intro:e2e-intro-cat3:3:tr:2",
+  ]);
   expect(jobs.every((j) => j.phone === E2E.APPROVER_PHONE)).toBe(true);
   expect(jobs.every((j) => j.sendAfter === null)).toBe(true);
-  expect(jobs[0].text).toMatch(/^Hi all 👋 Some new MatchTime features/);
-  expect(jobs[0].text).toContain("*Play elsewhere too*");
-  expect(jobs[1].text).toMatch(/^Herkese selam 👋 Bugünden itibaren/);
-  expect(jobs[1].text).toContain("*Başka yerlerde de oyna*");
+  expect(jobs[0].text).toMatch(/^Hi all 👋\n\nSome new MatchTime features/);
+  expect(jobs[0].text).toContain("*The MatchTime player pool*");
+  expect(jobs[1].text).toMatch(/^⚽ \*Want more games yourself\? Join the pool\.\*/);
+  expect(jobs[1].text).toContain("*Play elsewhere too*");
+  expect(jobs[1].text).toMatch(/or sign up here:\nhttps?:\/\/\S+\/play\n/);
+  expect(jobs[2].text).toMatch(/^Herkese selam 👋\n\nBugünden itibaren/);
+  expect(jobs[3].text).toContain("*Başka yerlerde de oyna*");
+  expect(jobs[3].text).toMatch(/ya da buradan kaydolun:\nhttps?:\/\/\S+\/play\n/);
 });
 
 test("the same DM forwarded twice is answered once", async ({ request, db }) => {
   await postDm(request, `+${E2E.APPROVER_PHONE}`, CAT3, "e2e-intro-cat3");
-  expect(await introJobs(db)).toHaveLength(2);
+  expect(await introJobs(db)).toHaveLength(4);
 });
 
-test("all of them: six bubbles, 1 EN, 1 TR, 2 EN, 2 TR, 3 EN, 3 TR, with the app's own links", async ({ request, db }) => {
+test("all of them: eight bubbles, 1 EN, 1 TR, 2 EN, 2 TR, 3 EN part 1 and 2, 3 TR part 1 and 2, with the app's own links", async ({ request, db }) => {
   setDmIntentStub({ bodies: { [ALL]: "intro_messages" } });
   const json = await postDm(request, `+${E2E.APPROVER_PHONE}`, ALL, "e2e-intro-all");
   expect(json).toMatchObject({ handled: "owner-intro-dm", categories: [1, 2, 3] });
@@ -88,8 +97,10 @@ test("all of them: six bubbles, 1 EN, 1 TR, 2 EN, 2 TR, 3 EN, 3 TR, with the app
     "intro:e2e-intro-all:1:tr",
     "intro:e2e-intro-all:2:en",
     "intro:e2e-intro-all:2:tr",
-    "intro:e2e-intro-all:3:en",
-    "intro:e2e-intro-all:3:tr",
+    "intro:e2e-intro-all:3:en:1",
+    "intro:e2e-intro-all:3:en:2",
+    "intro:e2e-intro-all:3:tr:1",
+    "intro:e2e-intro-all:3:tr:2",
   ]);
   expect(jobs[0].text).toMatch(/^Hi lads 👋/);
   expect(jobs[1].text).toMatch(/^Selam arkadaşlar 👋/);

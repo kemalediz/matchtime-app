@@ -37,7 +37,13 @@ Yerel futbol takımlarına yardımcı olan *MatchTime*'ı geliştirdim. Artık b
 🆓 Katılım ücretsiz
 
 Buradan kaydolun: ${playUrl}`,
-  newFeatures: () => `Herkese selam 👋 Bugünden itibaren kullanabileceğiniz yeni MatchTime özellikleri:
+  newFeatures: (playUrl) => [
+    `Herkese selam 👋
+
+Bugünden itibaren kullanabileceğiniz yeni MatchTime özellikleri:
+
+⚽ *MatchTime oyuncu havuzu*
+Havuz, daha fazla maç yapmak isteyen yerel oyuncuların listesi. Yakındaki bir takımın oyuncusu eksik olduğunda MatchTime onlara maçı WhatsApp'tan iletir, her seferinde onlar karar verir. Kulüpler artık boş yerlerini havuzdan doldurabilir.
 
 🔎 *Oyuncu mu eksik? MatchTime bulur.*
 Organizatörler, MatchTime'ı etiketleyip nereden bulacağını yazmanız yeterli. Hemen sormaya başlar:
@@ -47,9 +53,13 @@ Organizatörler, MatchTime'ı etiketleyip nereden bulacağını yazmanız yeterl
 
 🤝 *Partner kulüpler:* yakındaki diğer MatchTime kulüpleriyle bağlantı kurun ve boştaki oyuncuları paylaşın. Açarsanız MatchTime maç günü partnerlerinize kendiliğinden sorabilir.
 
-🙋 *Kimin geldiğini görürsünüz:* havuzdan ya da partner kulüpten bir oyuncu yer alınca veya yedeğe geçince MatchTime bunu burada paylaşır, herkes kimin katıldığını bilir.
+🙋 *Kimin geldiğini görürsünüz:* havuzdan ya da partner kulüpten bir oyuncu yer alınca veya yedeğe geçince MatchTime bunu burada paylaşır, herkes kimin katıldığını bilir.`,
+    `⚽ *Daha çok maç mı istiyorsunuz? Havuza katılın.*
+MatchTime profilinizde *Başka yerlerde de oyna* seçeneğini açın ya da buradan kaydolun:
+${playUrl}
 
-⚽ *Daha çok maç mı istiyorsunuz?* MatchTime profilinizde *Başka yerlerde de oyna* seçeneğini açın. Yakınınızdaki bir takımın oyuncusu eksik olduğunda WhatsApp'tan mesaj alırsınız ve her seferinde siz karar verirsiniz. Arkadaşlarınızı davet etmek için kendi linkiniz de olur.
+Yakınınızdaki bir takımın oyuncusu eksik olduğunda maçı WhatsApp'tan alırsınız ve her seferinde siz karar verirsiniz. Spam yok: haftada sınırlı sayıda mesaj, istediğiniz zaman durdurabilirsiniz. Arkadaşlarınızı davet etmek için kendi linkiniz de olur.
 
 Sorunuz olursa *@Match Time yardım* yazmanız yeterli.`,
+  ],
 };
