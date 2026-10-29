@@ -1526,7 +1526,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       choices: [
         {
           name: ON.en,
-          text: `On match day, if the game is still short, MatchTime asks the pool by itself. It does this only when it is the club's next match, a place is still open, your bench is empty, and nobody has asked the pool for this match yet. It asks from your ask time (${PARTNER_ASK_TIME_DEFAULT} unless you change it) until your cut-off, and at most once per match. When it asks, your organisers are told, and no offer is sent late at night.`,
+          text: `On match day, if the game is still short, MatchTime asks the pool by itself. It does this only when it is the club's next match, a place is still open, your bench is empty, and nobody has asked the pool for this match yet. It asks from your ask time (${PARTNER_ASK_TIME_DEFAULT} unless you change it) until your cut-off, and at most once per match. When it asks, your organisers are told.`,
         },
         { name: OFF.en, text: "MatchTime asks the player pool only when an admin tells it to, by tagging MatchTime in WhatsApp or ticking the box on the match page." },
       ],
@@ -1541,7 +1541,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       choices: [
         {
           name: ON.tr,
-          text: `Maç günü hâlâ oyuncu eksikse MatchTime havuza kendisi sorar. Bunu yalnızca kulübün sıradaki maçıysa, hâlâ boş yer varsa, yedek listeniz boşsa ve bu maç için havuza henüz kimse sormadıysa yapar. Sorma saatinizden (değiştirmezseniz ${PARTNER_ASK_TIME_DEFAULT}) son saate kadar sorar, her maç için en fazla bir kez. Sorduğunda organizatörlerinize haber verilir ve gece geç saatte teklif gönderilmez.`,
+          text: `Maç günü hâlâ oyuncu eksikse MatchTime havuza kendisi sorar. Bunu yalnızca kulübün sıradaki maçıysa, hâlâ boş yer varsa, yedek listeniz boşsa ve bu maç için havuza henüz kimse sormadıysa yapar. Sorma saatinizden (değiştirmezseniz ${PARTNER_ASK_TIME_DEFAULT}) son saate kadar sorar, her maç için en fazla bir kez. Sorduğunda organizatörlerinize haber verilir.`,
         },
         { name: OFF.tr, text: "MatchTime oyuncu havuzuna yalnızca bir yönetici isterse sorar, WhatsApp'ta MatchTime'ı etiketleyerek ya da maç sayfasındaki kutuyu işaretleyerek." },
       ],

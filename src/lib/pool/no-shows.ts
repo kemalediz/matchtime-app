@@ -34,7 +34,6 @@ import { buildPoolManageLink } from "./links";
 import { POOL_RELIABILITY, countableGuestGames, finalGuestResult, noShowMarkRefusal, noShowMarkWindow, pausesForNoShows, type NoShowMarkRefusal } from "./reliability-rules";
 import { turnUpRecordOf, type TurnUpRecord } from "./turn-up";
 import { isOneOf, GUEST_RESULTS, type GuestResult } from "./vocab";
-import { poolSendAt } from "./waves";
 
 type Env = Record<string, string | undefined>;
 type Attendance = "CONFIRMED" | "BENCH" | "DROPPED" | null;
@@ -242,7 +241,6 @@ async function pauseForNoShowsIfDue(userId: string, now: Date, env?: Env): Promi
   if (profile.status === "stopped" || !profile.user?.phoneNumber || !isPoolOffersEnabled(env)) return true;
   const lang: Lang = normaliseLang(profile.language);
   try {
-    const sendAt = poolSendAt(now);
     await queuePlatformDm({
       phone: profile.user.phoneNumber,
       purpose: "pool-paused",
@@ -253,8 +251,7 @@ async function pauseForNoShowsIfDue(userId: string, now: Date, env?: Env): Promi
         days: POOL_RELIABILITY.noShowResumeAfterDays,
         link: await buildPoolManageLink(userId),
       }),
-      // Not a reply to anything he sent: the pool's quiet hours hold it.
-      sendAfter: sendAt.getTime() > now.getTime() ? sendAt : null,
+      sendAfter: null,
     });
   } catch (err) {
     console.error(`[pool-no-show] ${userId}: the pause DM was not queued:`, err instanceof Error ? err.message : "failed");

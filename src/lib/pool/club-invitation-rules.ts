@@ -23,8 +23,7 @@
  */
 
 export const CLUB_INVITE_RULES = Object.freeze({
-  /** The after-game question goes this long after the game ends (and is
-   *  then held to the end of the pool's quiet hours). */
+  /** The after-game question goes this long after the game ends. */
   afterGameDelayMins: 60,
   /** No after-game question once this long has passed since the game
    *  ended (a sweep that was down never sends a stale one). */

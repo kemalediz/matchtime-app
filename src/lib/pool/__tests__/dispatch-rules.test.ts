@@ -5,7 +5,7 @@
  * released, or sent), admits at most the room (claiming the job), re-checks
  * his caps (delivered and in-flight offers only), every switch, the
  * offer's own state and the game's (cut-off, kickoff, status, its planned
- * expiry), and holds the rest. Quiet hours defer. Nothing is stamped as
+ * expiry), and holds the rest. No night hold (2026-10-29). Nothing is stamped as
  * delivered here: that is the Pi's "sent".
  */
 import { describe, expect, it } from "vitest";
@@ -94,21 +94,22 @@ describe("re-checked at send time: switches, the offer, the game, the person", (
   });
 });
 
-describe("quiet hours: deferred to 08:30, never dropped", () => {
-  it("at 21:45 every job waits for 08:30", () => {
-    const late = londonDateTimeToUtc("2026-10-27", "21:45");
+describe("no night hold (Kemal, 2026-10-29): an offer at 03:00 London is admitted now", () => {
+  const night = londonDateTimeToUtc("2026-10-28", "03:00");
+  it("admitted at 03:00, nothing deferred", () => {
     const a = job();
-    const plan = planPoolAdmission([a], [], late, 5);
-    expect(plan.defer).toEqual([{ jobId: a.jobId, offerId: a.offerId, until: londonDateTimeToUtc("2026-10-28", "08:30") }]);
-    expect(plan.admit).toEqual([]);
+    const plan = planPoolAdmission([a], [], night, 5);
+    expect(plan.admit).toEqual([a.jobId]);
+    expect(plan).not.toHaveProperty("defer");
   });
-  it("the autumn clock change night: 21:45 BST on Sat 24 Oct waits for 08:30 GMT on Sun 25 Oct", () => {
-    const plan = planPoolAdmission([job()], [], new Date("2026-10-24T20:45:00Z"), 5);
-    expect(plan.defer[0].until).toEqual(new Date("2026-10-25T08:30:00Z"));
+  it("his caps still hold at night: an offer already sent to him today refuses", () => {
+    const sentToday: OfferLedgerEntry = { orgId: "club-b", at: londonDateTimeToUtc("2026-10-28", "00:30"), outcome: null, resolvedAt: null };
+    const a = job({ ledger: [sentToday] });
+    expect(planPoolAdmission([a], [], night, 5).cancel).toEqual([{ jobId: a.jobId, offerId: a.offerId, reason: "day-cap" }]);
   });
-  it("a switch-off still cancels in quiet hours", () => {
+  it("a switch-off still cancels at night", () => {
     const j = job({ clubOpen: false });
-    expect(planPoolAdmission([j], [], londonDateTimeToUtc("2026-10-27", "23:00"), 5).cancel).toHaveLength(1);
+    expect(planPoolAdmission([j], [], night, 5).cancel).toHaveLength(1);
   });
 });
 

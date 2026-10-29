@@ -4,7 +4,7 @@
  * Turkish, each with the links it must carry.
  */
 import { describe, expect, it } from "vitest";
-import { POOL_CAPS, POOL_QUIET_HOURS } from "../rules";
+import { POOL_CAPS } from "../rules";
 import { poolAlreadyText, poolCodeReplyText, poolFirstName, poolWelcomeText } from "../copy";
 
 const LINK = "https://matchtime.test/r/abc123";
@@ -14,7 +14,9 @@ describe("the welcome", () => {
     const s = poolWelcomeText("en", { displayName: "Ali Kaya", earlyList: false, manageLink: LINK });
     expect(s).toMatch(/^✅ Thanks Ali, you're in the MatchTime player pool/);
     expect(s).toContain(`At most ${POOL_CAPS.perPlayerPerWeek} a week`);
-    expect(s).toContain(`between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}`);
+    expect(s).toContain(`At most ${POOL_CAPS.perPlayerPerWeek} a week.`);
+    // No night hold since 2026-10-29: the welcome promises none.
+    expect(s).not.toMatch(/never between|21:30|08:30/);
     expect(s).toContain(LINK);
     expect(s).toMatch(/\/privacy$/);
   });
@@ -22,7 +24,8 @@ describe("the welcome", () => {
   it("in Turkish", () => {
     const s = poolWelcomeText("tr", { displayName: "Ali Kaya", earlyList: false, manageLink: LINK });
     expect(s).toMatch(/^✅ Teşekkürler Ali, MatchTime oyuncu havuzuna katıldın/);
-    expect(s).toContain(`Haftada en fazla ${POOL_CAPS.perPlayerPerWeek} kez`);
+    expect(s).toContain(`Haftada en fazla ${POOL_CAPS.perPlayerPerWeek} kez.`);
+    expect(s).not.toMatch(/arasında asla|21:30|08:30/);
     expect(s).toContain(LINK);
   });
 

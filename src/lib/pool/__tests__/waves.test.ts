@@ -1,52 +1,19 @@
 /**
  * A round's waves and send times (slice L4): up to 8, about 4 first, the
  * rest POOL_ROUND.secondWaveAfterMins later only while places are open;
- * nothing sent in quiet hours (deferred to 08:30 London, never dropped);
+ * no night hold (Kemal, 2026-10-29: the pool's quiet hours are removed);
  * nothing sent or open past the club's cut-off.
  */
 import { describe, expect, it } from "vitest";
 import { londonDateTimeToUtc } from "../../london-time";
-import { POOL_QUIET_HOURS, POOL_ROUND } from "../rules";
-import { firstWaveSize, offerExpiresAt, poolSendAt, secondWave } from "../waves";
+import * as rules from "../rules";
+import { POOL_ROUND } from "../rules";
+import * as waves from "../waves";
+import { firstWaveSize, offerExpiresAt, secondWave } from "../waves";
 
 const at = (date: string, time: string) => londonDateTimeToUtc(date, time);
 const MIN = 60_000;
 const HOUR = 60 * MIN;
-
-describe("the quiet hours are the pool's own (21:30 to 08:30 London)", () => {
-  it("reads them from rules.ts", () => {
-    expect(POOL_QUIET_HOURS).toMatchObject({ enabled: true, from: "21:30", to: "08:30" });
-  });
-});
-
-describe("poolSendAt: now, or the end of quiet hours (deferred, never dropped)", () => {
-  const table: Array<[string, Date, Date]> = [
-    ["21:29 goes now", at("2026-10-27", "21:29"), at("2026-10-27", "21:29")],
-    ["21:30 exactly waits for 08:30 tomorrow", at("2026-10-27", "21:30"), at("2026-10-28", "08:30")],
-    ["23:59 waits for 08:30 tomorrow", at("2026-10-27", "23:59"), at("2026-10-28", "08:30")],
-    ["00:00 waits for 08:30 today", at("2026-10-28", "00:00"), at("2026-10-28", "08:30")],
-    ["08:29 waits one minute", at("2026-10-28", "08:29"), at("2026-10-28", "08:30")],
-    ["08:30 exactly goes now", at("2026-10-28", "08:30"), at("2026-10-28", "08:30")],
-    ["summer (BST): 21:30 London is 20:30Z", new Date("2026-07-14T20:30:00Z"), new Date("2026-07-15T07:30:00Z")],
-    ["summer: 20:29Z is 21:29 BST, goes now", new Date("2026-07-14T20:29:00Z"), new Date("2026-07-14T20:29:00Z")],
-    ["autumn change night: Saturday 22:00 BST waits for Sunday 08:30 GMT", at("2026-10-24", "22:00"), new Date("2026-10-25T08:30:00Z")],
-    ["spring change night: Saturday 22:00 GMT waits for Sunday 08:30 BST", at("2027-03-27", "22:00"), new Date("2027-03-28T07:30:00Z")],
-  ];
-  it.each(table)("%s", (_n, now, want) => {
-    expect(poolSendAt(now).toISOString()).toBe(want.toISOString());
-  });
-
-  it("property: the send time is never before now and never inside quiet hours", () => {
-    const start = at("2026-10-24", "00:00").getTime();
-    for (let m = 0; m < 3 * 24 * 60; m += 7) {
-      const now = new Date(start + m * MIN);
-      const s = poolSendAt(now);
-      expect(s.getTime()).toBeGreaterThanOrEqual(now.getTime());
-      const hm = s.toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
-      expect(hm >= "08:30" && hm < "21:30").toBe(true);
-    }
-  });
-});
 
 describe("firstWaveSize: about 4 first, never more than 8 in all", () => {
   const table: Array<[string, number, number, number]> = [
@@ -81,17 +48,23 @@ describe("secondWave: the rest, only if places remain, after the delay", () => {
   it("a full first wave of 8: nothing left to send", () => {
     expect(secondWave({ ...base, wave1Count: 8, now: new Date(wave1At.getTime() + HOUR) })).toEqual({ kind: "none", reason: "round-full" });
   });
-  it("its time falls in quiet hours: it waits for 08:30", () => {
+  it("no night hold: a second wave due at 22:10 London goes at 22:10, not 08:30", () => {
     const late = at("2026-10-27", "21:10");
-    const r = secondWave({ ...base, wave1SentAt: late, cutoff: at("2026-10-28", "18:00"), now: new Date(late.getTime() + HOUR) });
-    expect(r).toEqual({ kind: "wait", at: at("2026-10-28", "08:30") });
+    const due = new Date(late.getTime() + POOL_ROUND.secondWaveAfterMins * MIN);
+    const cutoff = at("2026-10-28", "18:00");
+    expect(secondWave({ ...base, wave1SentAt: late, cutoff, now: new Date(due.getTime() - MIN) })).toEqual({ kind: "wait", at: due });
+    expect(secondWave({ ...base, wave1SentAt: late, cutoff, now: due })).toEqual({ kind: "send", size: POOL_ROUND.maxOffers - 4 });
   });
-  it("its time is at or past the cut-off: none (too late), even when deferred by quiet hours", () => {
+  it("its time is at or past the cut-off: none (too late)", () => {
     const r1 = secondWave({ ...base, cutoff: new Date(wave1At.getTime() + POOL_ROUND.secondWaveAfterMins * MIN), now: wave1At });
     expect(r1).toEqual({ kind: "none", reason: "too-late" });
-    const late = at("2026-10-27", "21:10");
-    const r2 = secondWave({ ...base, wave1SentAt: late, cutoff: at("2026-10-28", "08:00"), now: late });
-    expect(r2).toEqual({ kind: "none", reason: "too-late" });
+  });
+});
+
+describe("the pool has no quiet hours of its own (Kemal, 2026-10-29)", () => {
+  it("no pool quiet-hours constant and no send-time hold exist", () => {
+    expect("POOL_QUIET_HOURS" in rules).toBe(false);
+    expect("poolSendAt" in waves).toBe(false);
   });
 });
 

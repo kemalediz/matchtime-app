@@ -49,7 +49,9 @@
  *                      when a wave was chosen are not recorded anywhere and
  *                      are not counted.
  *   quiet-hour holds   offer DMs queued in the range that had to wait for
- *                      the end of quiet hours (`sendAfter` set).
+ *                      the end of quiet hours (`sendAfter` set). The pool's
+ *                      night hold was removed 2026-10-29, so this counts
+ *                      only offers queued before then.
  *   ignored pauses     profiles paused now for three ignored offers in a
  *                      row, paused in the range. A pause he has since
  *                      lifted leaves no record and is not counted.

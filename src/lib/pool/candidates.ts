@@ -24,7 +24,6 @@ import { OPEN_MATCH_STATUSES, selectCandidates, type PoolMatchContext, type Sele
 import { nearBand, type PoolNearBand } from "./near-band";
 import { POOL_CAPS, POOL_TRAVEL_MILES } from "./rules";
 import type { SportLevel } from "./sports";
-import { poolSendAt } from "./waves";
 
 const HOUR_MS = 3600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -43,20 +42,16 @@ export interface FindOptions {
 
 export interface FoundCandidates {
   ctx: PoolMatchContext | null;
-  /** When an offer queued now would reach people (quiet hours deferred). */
-  sendAt: Date;
   selection: Selection;
 }
 
-const closed = (gate: Selection["gate"], sendAt: Date, ctx: PoolMatchContext | null = null): FoundCandidates => ({
+const closed = (gate: Selection["gate"], ctx: PoolMatchContext | null = null): FoundCandidates => ({
   ctx,
-  sendAt,
   selection: { gate, eligible: [], excluded: {} },
 });
 
 export async function findPoolCandidates(matchId: string, opts: FindOptions = {}): Promise<FoundCandidates> {
   const now = opts.now ?? new Date();
-  const sendAt = poolSendAt(now);
 
   const match = await db.match.findUnique({
     where: { id: matchId },
@@ -76,11 +71,11 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
       },
     },
   });
-  if (!match) return closed("match-not-open", sendAt);
+  if (!match) return closed("match-not-open");
 
   const ctx = matchContextOf(match, poolOffersOpenForClub(match.activity.org, opts.env), opts.levels ?? null);
-  const gated = selectCandidates(ctx, [], now, sendAt);
-  if (gated.gate || !ctx.venue || !ctx.sport) return closed(gated.gate, sendAt, ctx);
+  const gated = selectCandidates(ctx, [], now);
+  if (gated.gate || !ctx.venue || !ctx.sport) return closed(gated.gate, ctx);
 
   // Coarse cut in SQL: his postcode area's centre inside the widest travel
   // box; the exact distance is the rules'.
@@ -106,7 +101,7 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
       availability: { select: { day: true, fromMin: true, toMin: true } },
     },
   });
-  if (profiles.length === 0) return { ctx, sendAt, selection: selectCandidates(ctx, [], now, sendAt) };
+  if (profiles.length === 0) return { ctx, selection: selectCandidates(ctx, [], now) };
 
   const userIds = profiles.map((p) => p.userId as string);
   const kickoff = ctx.kickoff;
@@ -171,7 +166,7 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
       ownGames: ownGames.map((g) => ({ userId: g.userId, matchDate: g.match.date })),
     },
   );
-  return { ctx, sendAt, selection: selectCandidates(ctx, rows, now, sendAt) };
+  return { ctx, selection: selectCandidates(ctx, rows, now) };
 }
 
 /** "Players near you" for the organiser: the band, never who. */

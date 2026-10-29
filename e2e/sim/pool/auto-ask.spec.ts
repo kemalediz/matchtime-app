@@ -215,23 +215,18 @@ scenarios("the automatic ask includes the MatchTime player pool", () => {
     expect(await poolAsksOf(pool, fnf)).toEqual([expect.objectContaining({ via: "page" })]);
   });
 
-  scenario("quiet hours hold the offer: asked at 07:05, it goes at 08:30", async ({ pool }) => {
+  scenario("no night hold (Kemal, 2026-10-29): the automatic ask at 07:05 sends its offer at once", async ({ pool }) => {
     const fnf = await autoClub(pool, "fnf", { name: "FNF", askTime: "07:00" });
     const ali = await poolPlayer(pool, "ali", { at: near(fnf) });
 
     const sent = await schedulerPoll(pool, fnf, { now: londonOn(fnf.kickoff, 0, "07:05") });
     expect(offers(sent).map((m) => m.to)).toEqual(["ali"]);
-    expect(offers(sent)[0].sendAfter?.toISOString()).toBe(londonOn(fnf.kickoff, 0, "08:30").toISOString());
+    expect(offers(sent)[0].sendAfter ?? null).toBeNull();
 
-    // (Scenarios share a database: earlier scenarios' queued offers are
-    // held by the same quiet hours, so only Ali's are looked at.)
+    // (Scenarios share a database, so only Ali's are looked at.)
     const toAli = (ms: readonly SentMessage[]) => offers(ms).filter((m) => m.to === "ali");
-    const night = await pollPlatform(pool, { now: londonOn(fnf.kickoff, 0, "07:10") });
-    expect(toAli(night.out)).toEqual([]);
-    expect((await offersOf(pool, ali))[0].sentAt).toBeNull();
-
-    const morning = await pollPlatform(pool, { now: londonOn(fnf.kickoff, 0, "08:31") });
-    expect(toAli(morning.out)).toHaveLength(1);
+    const poll = await pollPlatform(pool, { now: londonOn(fnf.kickoff, 0, "07:06") });
+    expect(toAli(poll.out)).toHaveLength(1);
     expect((await offersOf(pool, ali))[0].sentAt).not.toBeNull();
   });
 

@@ -9,9 +9,9 @@
  *
  * WHEN AN OFFER COUNTS (decision L4.3). Each offer is counted at the moment
  * it reaches (or will reach) him: its `sentAt`, or, while it waits, the
- * send time its platform job is held to (quiet hours defer, never drop), or
- * its creation. A deferred 08:30 offer therefore uses up the day it is
- * delivered on, not the evening it was queued. The caps are judged at the
+ * send time its platform job is held to, or its creation. A held offer
+ * (one queued before the pool's night hold was removed on 2026-10-29) uses
+ * up the day it is delivered on, not the evening it was queued. The caps are judged at the
  * NEW offer's send time for the same reason. `cancelled` offers never
  * reached him and never count.
  *

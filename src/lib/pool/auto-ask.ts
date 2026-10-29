@@ -9,7 +9,7 @@
  * (`round.ts`), with `via: "auto"` standing in for the tap: every rule of
  * a tap (the match gate, the cut-off, the club's 1-open and 3-a-week
  * caps, nobody near), and everything after it (partners first, the waves,
- * each person's caps, the platform cap, quiet hours, both switches at queue
+ * each person's caps, the platform cap, both switches at queue
  * and at dispatch) is that path's, unchanged. Nothing here sends an offer.
  *
  * The organisers hear one line when the pool was asked (the automatic

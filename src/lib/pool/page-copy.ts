@@ -6,13 +6,11 @@
 import { poolPlayCopy, type PoolErrorKey, type PoolPlayCopy, type PoolPlayFacts } from "../i18n/pool-play";
 import type { Lang } from "../i18n/lang";
 import type { PoolFieldErrors } from "./profile-fields";
-import { POOL_CAPS, POOL_CONFIRM, POOL_MIN_AGE, POOL_QUIET_HOURS } from "./rules";
+import { POOL_CAPS, POOL_CONFIRM, POOL_MIN_AGE } from "./rules";
 
 export const POOL_PAGE_FACTS: PoolPlayFacts = Object.freeze({
   minAge: POOL_MIN_AGE,
   perWeek: POOL_CAPS.perPlayerPerWeek,
-  quietFrom: POOL_QUIET_HOURS.from,
-  quietTo: POOL_QUIET_HOURS.to,
   codeDays: POOL_CONFIRM.codeTtlDays,
 });
 

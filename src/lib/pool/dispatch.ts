@@ -12,7 +12,7 @@
  * compare-and-set as every claim), so the count and the claim are one
  * step under the lock and no two claimers can spend the same room.
  * Cancelled ones end `cancelled` and their job is failed ("cancelled:
- * ..."); deferred ones are held to the end of quiet hours.
+ * ..."). No night hold (2026-10-29): nothing is deferred here.
  *
  * DELIVERED IS THE PI'S WORD (M3). Nothing here says the offer reached
  * him. `onPoolOfferJobSent` (the Pi's "sent") stamps `PoolOffer.sentAt` and
@@ -161,14 +161,10 @@ export async function admitPoolOfferJobs(jobIds: readonly string[], opts: { now:
             data: { status: "failed", failedAt: now, failReason: poolOfferCancelFailReason(c.reason) },
           });
         }
-        for (const d of plan.defer) {
-          skip.add(d.jobId);
-          await tx.platformJob.updateMany({ where: { id: d.jobId, status: "queued" }, data: { sendAfter: d.until } });
-        }
         for (const id of plan.hold) skip.add(id);
-        if (plan.admit.length + plan.cancel.length + plan.defer.length > 0) {
+        if (plan.admit.length + plan.cancel.length > 0) {
           console.log(
-            `[pool] dispatch: ${claimed.size} claimed, ${plan.hold.length} held, ${plan.defer.length} deferred, ${plan.cancel.length} cancelled (${plan.cancel.map((c) => c.reason).join(", ") || "none"})`,
+            `[pool] dispatch: ${claimed.size} claimed, ${plan.hold.length} held, ${plan.cancel.length} cancelled (${plan.cancel.map((c) => c.reason).join(", ") || "none"})`,
           );
         }
       },

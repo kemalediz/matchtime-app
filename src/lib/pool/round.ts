@@ -32,8 +32,8 @@
  * OFFERS GO AS PLATFORM DMs (`queuePlatformDm`, purpose "pool-offer"),
  * only to an ACTIVE profile with consent on record (L4's filters: such a
  * profile exists only after his own WhatsApp message confirmed it, so
- * MatchTime never writes first). Quiet hours defer the job (`sendAfter`);
- * the platform cap, his caps and every switch are re-checked at dispatch
+ * MatchTime never writes first). No night hold (Kemal, 2026-10-29): the job
+ * goes now, at any hour; the platform cap, his caps and every switch are re-checked at dispatch
  * (`dispatch.ts`). Logs carry ids only.
  */
 import { db } from "../db";
@@ -64,7 +64,7 @@ import {
 } from "./round-rules";
 import { POOL_CAPS, POOL_ROUND } from "./rules";
 import { eachUnderSavepoint } from "./savepoint";
-import { firstWaveSize, offerExpiresAt, poolSendAt, secondWave } from "./waves";
+import { firstWaveSize, offerExpiresAt, secondWave } from "./waves";
 import { normaliseLang } from "../i18n/lang";
 import type { PoolAskVia } from "./vocab";
 
@@ -192,7 +192,6 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
       if (!profile || !phone) continue;
       prepared.push({ userId: c.userId, distanceMiles: c.distanceMiles, phone, lang: normaliseLang(profile.language), manageLink: await buildPoolManageLink(c.userId) });
     }
-    const sendAfter = found.sendAt.getTime() > now.getTime() ? found.sendAt : null;
 
     const queued = await db.$transaction(
       async (tx) => {
@@ -221,7 +220,7 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
                 wave,
                 // The planned window; the real six hours start when the Pi
                 // reports the DM sent (`dispatch.ts` `onPoolOfferJobSent`).
-                expiresAt: offerExpiresAt(found.sendAt, cutoff),
+                expiresAt: offerExpiresAt(now, cutoff),
                 // The caps count a queued offer at its creation (L4.3).
                 createdAt: now,
               },
@@ -236,7 +235,8 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
               text,
               purpose: POOL_OFFER_PURPOSE,
               refId: offer.id,
-              sendAfter,
+              // No night hold (Kemal, 2026-10-29): it goes now, at any hour.
+              sendAfter: null,
               client: tx as unknown as Parameters<typeof queuePlatformDm>[0]["client"],
             });
             await tx.poolOffer.update({ where: { id: offer.id }, data: { platformJobId: job.id } });
@@ -248,7 +248,7 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
       },
       { maxWait: 20_000, timeout: 30_000 },
     );
-    console.log(`[pool] ask ${askId}: wave ${wave}, ${queued} offer(s) queued${sendAfter ? ` for ${sendAfter.toISOString()}` : ""}`);
+    console.log(`[pool] ask ${askId}: wave ${wave}, ${queued} offer(s) queued`);
     return queued;
   } catch (err) {
     console.error(`[pool] ask ${askId}: wave ${wave} not queued:`, err instanceof Error ? err.message : "failed");
@@ -326,8 +326,7 @@ async function pauseIfIgnoring(userId: string, now: Date, env?: Env): Promise<vo
     text: poolPausedText(normaliseLang(profile.language), { n: POOL_CAPS.ignoredInARowPause, manageLink: await buildPoolManageLink(userId) }),
     purpose: "pool-paused",
     refId: userId,
-    // Not a reply to anything he sent: the pool's quiet hours hold it.
-    sendAfter: poolSendAt(now).getTime() > now.getTime() ? poolSendAt(now) : null,
+    sendAfter: null,
   });
 }
 

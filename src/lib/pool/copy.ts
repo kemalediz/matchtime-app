@@ -8,7 +8,7 @@ import { PRIVACY_PATH } from "../privacy-policy";
 import { t } from "../i18n/t";
 import type { Lang } from "../i18n/lang";
 import { POOL_PLAY_PATH } from "./paths";
-import { POOL_CAPS, POOL_QUIET_HOURS } from "./rules";
+import { POOL_CAPS } from "./rules";
 
 export function poolFirstName(displayName: string | null | undefined): string | null {
   const first = (displayName ?? "").trim().split(/\s+/)[0];
@@ -21,8 +21,6 @@ export function poolWelcomeText(lang: Lang, p: { displayName: string; earlyList:
   const args = {
     name: poolFirstName(p.displayName),
     perWeek: POOL_CAPS.perPlayerPerWeek,
-    quietFrom: POOL_QUIET_HOURS.from,
-    quietTo: POOL_QUIET_HOURS.to,
     manageLink: p.manageLink,
     privacyLink: appUrl(PRIVACY_PATH),
   };

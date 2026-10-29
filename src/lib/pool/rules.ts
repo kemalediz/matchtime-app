@@ -3,21 +3,23 @@
  * database, no clock of its own.
  *
  * Every number the pool enforces is defined here once. Later slices
- * enforce them (L4 caps and quiet hours, L5 rounds and waves, L7 the
+ * enforce them (L4 caps, L5 rounds and waves, L7 the
  * pauses, the retention job); none of them may carry its own copy.
  * Approved spec, "Limits" (the doc's plain wording):
  *
- *   At most 2 offers a week and 1 a day per player, none 21:30-08:30. A
+ *   At most 2 offers a week and 1 a day per player. A
  *   round asks up to 8 pool players, about 4 first, the rest only if
  *   places are still open. 3 ignored offers in a row pause the player
  *   until they say they want more. One master switch pauses all pool
  *   offers (`./flags.ts`).
  *
- * The quiet hours are a `QuietHours` value read through
- * `src/lib/message-hours.ts` (`inQuietHours`, `messageHoursSendAfter`), the
- * one module that knows how a window is read. Only the hours are the pool's.
+ * NO NIGHT HOLD (Kemal, 2026-10-29: "I would remove this quiet hours for
+ * now"). The pool had its own hard-coded 21:30 to 08:30 hold on every pool
+ * DM; it is gone for every ask, the organiser's and the automatic one, with
+ * no setting in its place. A pool DM goes when it is made. Every cap above
+ * still holds. The club's own quiet hours (`message-hours.ts`) are a
+ * different rule and are unchanged.
  */
-import type { QuietHours } from "../message-hours";
 import { PRIVACY_POLICY_VERSION } from "../privacy-policy";
 import type { GeocodeHit } from "../geocode";
 
@@ -49,9 +51,6 @@ export const POOL_ROUND = Object.freeze({
    *  cut-off, whichever comes first. */
   offerTtlHours: 6,
 });
-
-/** No pool DM between 21:30 and 08:30 London. */
-export const POOL_QUIET_HOURS: Readonly<QuietHours> = Object.freeze({ enabled: true, from: "21:30", to: "08:30" });
 
 /** How far a player will travel, in miles. */
 export const POOL_TRAVEL_MILES = [1, 3, 5, 10] as const;
