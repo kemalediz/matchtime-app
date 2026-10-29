@@ -738,8 +738,35 @@ describe("the organisers' group", () => {
   it("a players' group organiser, in a club with partners: the partner line above the message", () => {
     const turn = renderRouterTurn([{ id: "a", authorName: "Raihan", body: "@Match Time ask Sutton", partnerClubs: ["Sutton FC", "MT Vets"] }], NOW);
     expect(turn).toBe(`${NOW_LINE}\n${partnerClubsLine(["Sutton FC", "MT Vets"])}\n[a] Raihan: @Match Time ask Sutton`);
-    expect(partnerClubsLine(["Sutton FC", "MT Vets"])).toMatch(/^PARTNER CLUBS of this club: Sutton FC, MT Vets\. /);
-    expect(partnerClubsLine(["Sutton FC"])).toMatch(/routed as if this line were not here\.$/);
+    // Only the fact (2026-10-29): what finding players routes to is the
+    // system prompt's, defined once there.
+    expect(partnerClubsLine(["Sutton FC", "MT Vets"])).toBe("PARTNER CLUBS of this club: Sutton FC, MT Vets.");
+  });
+
+  // 2026-10-29: "@Match Time invite players from pool" routed offer half
+  // the time; finding players is defined once, under admin_ops, and the
+  // boundary with asking the group is one ruling.
+  it("defines finding players (the pool, partner clubs, no place named) under admin_ops", () => {
+    const admin = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("admin_ops "));
+    expect(admin).toMatch(/find new players/);
+    expect(admin).toMatch(/player pool/);
+    expect(admin).toMatch(/partner club/);
+    expect(admin).toMatch(/no place named/);
+    const ruling = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("- Asking for a player"));
+    expect(ruling).toMatch(/WHO is asked decides/);
+    expect(ruling).toMatch(/offer/);
+    expect(ruling).toMatch(/admin_ops/);
+    // Question 1 only ever pushes towards attendance.
+    expect(ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("1. "))).not.toMatch(/admin_ops/);
+    const hq = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("ask_group "));
+    expect(hq).toMatch(/not admin_ops/);
+  });
+
+  it("keeps the live check's find-players wordings OUT of the prompt", () => {
+    // ("can you find us a player" is HQ's ask_group example, since 2026-10-16.)
+    for (const body of ["invite players from pool", "havuzdan oyuncu davet et", "@Match Time find us a player", "we need one more, anyone?"]) {
+      expect(ROUTER_SYSTEM_PROMPT, body).not.toContain(body);
+    }
   });
 
   it("the organisers' group turn is unchanged by partner clubs (slice S6)", () => {

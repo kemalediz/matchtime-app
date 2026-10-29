@@ -316,14 +316,32 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
  * thing, telling the bot it never took place (admin_ops), and admin_ops says
  * it calls such a game off. Rewritten where they stand; nothing added at
  * the end. Sizes in the PR.
+ *
+ * ── 2026-10-29: TELLING MATCHTIME TO FIND PLAYERS ─────────────────────
+ *
+ * The owner's "@Match Time invite players from pool" in the players' group
+ * routed offer 5 of 10 and admin_ops 5 of 10 (dev key): admin_ops never
+ * named finding players, the pool was nowhere in the prompt, and only the
+ * partner clubs line (shown to organisers of clubs with partners) sent an
+ * ask to other clubs to admin_ops. Finding new players, from the pool, a
+ * partner club or all of them, several places or none named, is now part
+ * of admin_ops's definition (the admin extractor's recruit reads where
+ * from); the "asking for a player" ruling says WHO is asked decides
+ * (the group: offer or other_att; MatchTime: admin_ops); and the examples
+ * for both sides are one group. A first draft also told question 1 that
+ * finding players settles nobody's place: that pushed real attendance
+ * ("Don't pull out", "Slott gone") towards none in the history sweep, so
+ * it went; question 1 only ever pushes towards attendance. The partner line's rule folded in, so the line is the names
+ * alone. In the organisers' group the same request stays ask_group, now
+ * said on that line. Sizes and live results before and after in the PR.
  */
-export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, results, payments, reminders and the players' stats. For EVERY message id you are given, return exactly one route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot.
+export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, finding players when the club is short, results, payments, reminders and the players' stats. For EVERY message id you are given, return exactly one route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot.
 
 WHAT YOU ARE SHOWN. Code knows these facts; rely on them rather than guessing.
 - NOW: the date and time at the club.
 - One line per message, "[m1] Name: text". Route every id; every other line is context.
 - An "ORGANISERS' GROUP" header above a message: it was sent in the club's organisers' group, and the header says whether the sender is an organiser, what MatchTime is WAITING to hear and what was said there EARLIER. Without that header a message is from the PLAYERS' GROUP. Everything below applies to both groups; "IN THE ORGANISERS' GROUP" adds what differs there.
-- A "PARTNER CLUBS" line: the club's partner clubs, and the one thing they change.
+- A "PARTNER CLUBS" line above an organiser's message: the names of the club's partner clubs, so a message naming one of them is about that club, not this group.
 
 REPLIES. A message that is a WhatsApp reply comes under a "THEY ARE REPLYING TO" line: whose message it quotes (MatchTime's or a member's), when (against NOW), and its words. Read the reply in the light of what it quotes, then route the reply itself. "same", "me too", "ben de", "he", "that" and a bare "no" take their meaning from it.
 
@@ -345,13 +363,13 @@ unsure      about a place, but you cannot tell who or what it does. A bare "conf
 question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), how the club is run (who the organisers are, who collects the money, the fee, when the teams come out), and how MatchTime works here (the bench, signing in, how the teams are picked). Asking how the bench or the list works asks for no place.
 balancer    asks to SEE or MAKE the TWO team line-ups (red and yellow): show, generate, shuffle or rename them.
 score       reports the final result of this group's own match (our team names, our colours or a bare scoreline), or answers who was its Man of the Match while MatchTime is WAITING for that (praise alone answers nothing). A professional scoreline somebody is watching is none.
-admin_ops   tells the bot to do something now: credit a payment, set a reminder, send a link, change a setting, call a match off (one still to come, or one that never took place) or put it back on. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
+admin_ops   tells the bot to do something now: find new players (from the MatchTime player pool, from one partner club or all of them, from several places, or with no place named), credit a payment, set a reminder, send a link, change a setting, call a match off (one still to come, or one that never took place) or put it back on. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
 none        everything else, as in question 3. A member asking another member something that settles nothing is none ("are you injured?", "which two of you can play tomorrow?"); as soon as a message STATES that somebody plays or does not, it is attendance.
 approve, poster, team_sheet, help and ask_group exist ONLY in the organisers' group; see that section.
 
 RULINGS. Each one settles a confusion that has really happened in a group.
 - A replacement is an attendance statement about two people and is other_att: "X is replacing Y", "X in for Y", "Y is out, X is in", "X takes Y's place".
-- Asking the group for a player is attendance, not question, question mark or not: "anyone able to replace me?", "anyone else want to join us?", "can we have more INs please?". It is other_att when a named or implied person is leaving, otherwise offer. The ask is often buried in praise, worry or a pitch, and that changes nothing.
+- Asking for a player: WHO is asked decides. A question to the members of this group ("anyone able to replace me?", "anyone else want to join us?", "can we have more INs please?") is attendance, not question, with or without a question mark or a tag: other_att when a named or implied person is leaving, otherwise offer; the ask is often buried in praise, worry or a pitch, and that changes nothing. An instruction to MATCHTIME to go and find, ask, invite or get players (from the player pool, from a partner club by name, from the partner clubs or other groups, or from nowhere named) is admin_ops, even when it ends "if anyone can play".
 - ASKING is question; INSTRUCTING is admin_ops. "Amir paid for 4 players" and "remind me on Monday" tell the bot to do something: admin_ops. "Who hasn't paid?" asks for what the bot knows: question.
 - Asking to SEE the squad ("who's in?", "list the players") is question. Asking to SEE or MAKE the teams ("teams?", "show me the teams") is balancer; asking WHEN they come out or HOW they are picked is question, because it asks for no line-up.
 - A match already played: asking about it ("did we win on tuesday?") is question; reporting its result ("we won 5-3") is score; telling the bot it never took place ("@Match Time Tuesday's game didn't happen", "@Match Time dünkü maç oynanmadı") is admin_ops, because it calls that game off. A question mark alone does not make a question.
@@ -361,7 +379,7 @@ approve     a yes to what MatchTime is WAITING for ("yes", "go ahead", "looks go
 poster      asks for the squad list as an image or graphic to share.
 team_sheet  asks for the teams as an image or graphic to share. A bare "teams" asks to see them: balancer.
 help        asks MatchTime what it can do here, or how to get it to do something: there, that is help, not question. Telling the others what MatchTime does or will do asks it nothing, tagged or not: none.
-ask_group   tells the bot to find a player, or to ask the players' group whether anyone can play. Only a request made TO the bot ("can you ask the group", "find us one"): a shortage or a question put to the other organisers ("one short this week, any ideas?", "anyone got a mate who can play?"), or an organiser saying they will ask the group themselves, is their own conversation, none.
+ask_group   tells the bot to find players, from anywhere or with no place named, or to ask the players' group whether anyone can play: there, that is ask_group, not admin_ops. Only a request made TO the bot ("can you ask the group", "find us one"): a shortage or a question put to the other organisers ("one short this week, any ideas?", "anyone got a mate who can play?"), or an organiser saying they will ask the group themselves, is their own conversation, none.
 
 LANGUAGE. Messages may be in English or Turkish; route on meaning, and every rule applies in both. "var", "varım", "ben varım" and "geliyorum" are the sender joining, like "in"; "yok", "yokum", "ben yokum" and "gelemiyorum" are the sender leaving, like "out". "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are offer. "X de geliyor" or "X de var" adds X and "X gelemiyor" or "X yok" drops X: other_att. "X, Y'nin yerine geliyor", "Y yerine X" and "Y çıkıyor X giriyor" are replacements.
 
@@ -411,16 +429,28 @@ Replacements, swaps and corrections:
   "Sorry, I got it wrong, it should be Zair not Baki" -> other_att
   "I'm covering for two people, Ismail and Ozgur" -> other_att
 
-Maybe, if needed, and asking the group for a player:
+Maybe and if needed:
   "Hey gents, I am in just in case someone drops." -> offer
   "belki" -> offer
   "Lemme know if we need more to make it 14. I can find another" -> offer
   "@Kemal my brother can play if needed" -> offer
+  "Will confirm shortly" -> unsure
+
+Asking for a player: the group is attendance, MatchTime is admin_ops:
   "We need one more player guys, anyone interested?" -> offer
+  "bir kişi eksik, gelmek isteyen var mı?" -> offer
   "great bunch of lads, same standard as us, come on, one player please" -> offer
+  "@Match Time we're one short tonight, who fancies it?" -> offer
+  "@Match Time bu akşam bir kişi eksiğiz, kim gelmek ister?" -> offer
   "Hi guys, does anyone wants to take my place for tonight?" -> other_att
   "@all we need one more player otherwise Salman will move to squad from bench" -> other_att
-  "Will confirm shortly" -> unsure
+  "@Match Time ask the player pool for one more" -> admin_ops
+  "@Match Time oyuncu havuzundan birini çağır" -> admin_ops
+  "@Match Time ask Sutton if anyone can play" -> admin_ops
+  "@Match Time diğer kulüplere sor" -> admin_ops
+  "@Match Time get us players from the partner clubs and the pool" -> admin_ops
+  "@Match Time we're short, find us someone" -> admin_ops
+  "@Match Time eksiğiz, birini bul" -> admin_ops
 
 A tagged message asks the bot, however short:
   "@Match Time Burak's chemistry" -> question
@@ -815,9 +845,16 @@ export function organisersHeader(senderIsOrganiser?: boolean): string {
  * for both, and the asks to another club admin_ops 10 of 10. (The
  * organisers' group's turn is unchanged: its ask_group route reads the
  * club named with the admin extractor, `admin-group-understand.ts`.)
+ *
+ * 2026-10-29: THE LINE IS ONLY THE FACT NOW. Its rule (telling the bot to
+ * ask another club is admin_ops, asking this group is not) moved into the
+ * system prompt, where telling MatchTime to find players from anywhere
+ * (the pool, a partner club, both, or no place named) is defined once
+ * under admin_ops and the boundary with asking the group is one ruling.
+ * The line keeps only what code knows: the partners' names.
  */
 export function partnerClubsLine(names: string[]): string {
-  return `PARTNER CLUBS of this club: ${names.join(", ")}. A message naming one of them, or the partner clubs, other clubs or other groups, and telling the bot to ask them for a player, is admin_ops. Any other message, asking this group for a player included, is routed as if this line were not here.`;
+  return `PARTNER CLUBS of this club: ${names.join(", ")}.`;
 }
 
 /** How much of a quoted message the router is shown: enough to know what

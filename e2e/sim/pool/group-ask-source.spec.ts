@@ -92,6 +92,20 @@ scenarios("players asked for in the players' group: several places, or MatchTime
     expect(toMembers(answered.sent, fmc)).toEqual([]);
   });
 
+  scenario("the owner's '@Match Time invite players from pool' routed admin_ops (2026-10-29 incident): the pool is asked, nobody else", async ({ pool }) => {
+    stubbedOnly();
+    const fmc = await noHqClub(pool, "gas6");
+    const ali = await poolPlayer(pool, "alig6", { name: "Ali Kaya", at: near(fmc) });
+
+    const ex = await say(fmc, "owner", "@Match Time invite players from pool", { route: "admin_ops", facts: recruitFrom(["pool"]) });
+    expect(groupLine(ex.sent, fmc)).toMatch(/^🔎 Asking nearby players from the MatchTime player pool for 1 place on /);
+    expect(offers(ex.sent).map((m) => m.to)).toEqual(["alig6"]);
+    expect((await poolAsks(pool, fmc)).map((a) => a.via)).toEqual(["words"]);
+    expect(await offersOf(pool, ali)).toHaveLength(1);
+    expect(await partnerAsks(pool, fmc)).toEqual([]);
+    expect(toMembers(ex.sent, fmc).filter((m) => m.purpose !== "pool-offer")).toEqual([]);
+  });
+
   scenario("Turkish: the question in Turkish", async ({ pool }) => {
     stubbedOnly();
     const tr = await noHqClub(pool, "gas2", { language: "tr" });
