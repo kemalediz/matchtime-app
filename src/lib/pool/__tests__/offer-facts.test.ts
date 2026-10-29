@@ -19,6 +19,11 @@ describe("poolFeeOf", () => {
     expect(poolFeeOf({ matchFee: 7, activityFee: 6, feeSplitTotal: false, paymentsOn: true })).toEqual({ kind: "amount", amount: "£7" });
     expect(poolFeeOf({ matchFee: null, activityFee: 6, feeSplitTotal: false, paymentsOn: true })).toEqual({ kind: "amount", amount: "£6" });
   });
+  it("a monthly club's week: the club's PAYG price (a pool guest pays per game there), unless the match has its own fee", () => {
+    expect(poolFeeOf({ matchFee: null, activityFee: 6, feeSplitTotal: false, paymentsOn: true, monthlyPaygPence: 800 })).toEqual({ kind: "amount", amount: "£8" });
+    expect(poolFeeOf({ matchFee: null, activityFee: 60, feeSplitTotal: true, paymentsOn: true, monthlyPaygPence: 800 })).toEqual({ kind: "amount", amount: "£8" });
+    expect(poolFeeOf({ matchFee: 7, activityFee: 6, feeSplitTotal: false, paymentsOn: true, monthlyPaygPence: 800 })).toEqual({ kind: "amount", amount: "£7" });
+  });
   it("a split total is not a per-player fee: unknown, the line is left out", () => {
     expect(poolFeeOf({ matchFee: null, activityFee: 60, feeSplitTotal: true, paymentsOn: false })).toBeNull();
   });

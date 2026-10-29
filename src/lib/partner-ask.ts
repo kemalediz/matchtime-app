@@ -43,6 +43,8 @@ import { retirePastGuests, standDownVolunteers, tellGuestsMoved } from "./partne
 import { matchtimeWaNumber } from "./club-connect";
 import { askDmLink, askDmPrefill, askRefCode } from "./partner-ask-ref";
 import { loadRoundFill, type RoundFill } from "./partner-ask-round";
+import { askPlacesOpen, clubFillsFirstFor, guestPaygPence } from "./monthly-week-asks";
+import { guestFeePounds } from "./monthly-week-asks-rules";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import {
@@ -136,9 +138,17 @@ export interface AskFacts {
   fee: string | null;
 }
 
-function factsFor(match: AskMatch, askerName: string, places: number, lang: string | null): AskFacts {
+/** The facts as the partner club is shown them. The fee is what a guest
+ *  pays: in a week of a running month, the club's PAYG price
+ *  (`guestFeePounds`), as a PAYG player is charged after the game. */
+async function factsFor(match: AskMatch, askerName: string, places: number, lang: string | null): Promise<AskFacts> {
   const perSide = match.activity.sport?.playersPerTeam;
-  const fee = match.feePerPlayer ?? (match.activity.feeSplitTotal ? null : match.activity.feePerPlayer);
+  const fee = guestFeePounds({
+    matchFee: match.feePerPlayer,
+    activityFee: match.activity.feePerPlayer,
+    feeSplitTotal: match.activity.feeSplitTotal,
+    monthlyPaygPence: await guestPaygPence(match.id),
+  });
   return {
     asker: askerName,
     places,
@@ -149,9 +159,11 @@ function factsFor(match: AskMatch, askerName: string, places: number, lang: stri
   };
 }
 
-export async function placesOpen(matchId: string, maxPlayers: number): Promise<number> {
-  const confirmed = await db.attendance.count({ where: { matchId, status: "CONFIRMED" } });
-  return Math.max(0, maxPlayers - confirmed);
+/** The match's places an ask may fill: its size less its CONFIRMED rows,
+ *  or, in a week of a running month, the week's own count
+ *  (`monthly-week-asks.ts`). */
+export async function placesOpen(matchId: string): Promise<number> {
+  return askPlacesOpen(matchId);
 }
 
 async function isNextMatch(orgId: string, match: AskMatch, now: Date): Promise<boolean> {
@@ -244,7 +256,7 @@ export async function requestPartnerAsk(args: {
   const partnerName = gate.org?.name ?? null;
   const { postBy, closesAt } = askWindows(match.date, settings.cutoffHours);
   const [places, next, open, today, role] = await Promise.all([
-    placesOpen(match.id, match.maxPlayers),
+    placesOpen(match.id),
     isNextMatch(args.askerOrgId, match, now),
     db.partnerAsk.count({ where: { matchId: match.id, partnerOrgId: partnership.partnerOrgId, status: { in: [...OPEN_ASK_STATUSES] } } }),
     partnerAsksToday(partnership.partnerOrgId, now),
@@ -315,7 +327,7 @@ export async function requestPartnerAsk(args: {
       await sendAdminNotice({
         orgId: partner.id,
         now,
-        text: t(partner.language).xask_posted_notice_partner(factsFor(match, asker.name, wanted, partner.language)),
+        text: t(partner.language).xask_posted_notice_partner(await factsFor(match, asker.name, wanted, partner.language)),
       });
       await tellAskerApproved(askId, now);
     }
@@ -399,7 +411,7 @@ export async function requestPartnerRound(args: {
     results,
     skippedPaused: skippedPaused.map((p) => p.name),
     asked,
-    placesOpen: match ? await placesOpen(match.id, match.maxPlayers) : 0,
+    placesOpen: match ? await placesOpen(match.id) : 0,
   };
 }
 
@@ -414,7 +426,7 @@ async function askPartnerToApprove(
   now: Date,
 ): Promise<void> {
   const own = await partnerOwnGameThatDay(partner.id, match.date);
-  const facts = factsFor(match, askerName, places, partner.language);
+  const facts = await factsFor(match, askerName, places, partner.language);
   const s = t(partner.language);
   const sent = await sendAdminNotice({
     orgId: partner.id,
@@ -462,14 +474,14 @@ async function postAsk(askId: string, approverUserId: string | null, now: Date):
     db.match.findUnique({ where: { id: ask.matchId }, select: MATCH_SELECT }) as Promise<AskMatch | null>,
   ]);
   if (!asker || !partner || !match) return false;
-  const open = await placesOpen(match.id, match.maxPlayers);
+  const open = await placesOpen(match.id);
   // P4: the post asks for the organiser's number (the round's), never more
   // than the places still open. The ask's own `places` is never rewritten.
   const places = Math.max(1, Math.min(ask.places, open));
   // Volunteers answer MatchTime by DM (2026-10-21): the post carries the
   // tap-to-DM link with this ask's code, and nothing else reaches the group.
   const text = t(partner.language).xask_post({
-    ...factsFor(match, asker.name, places, partner.language),
+    ...(await factsFor(match, asker.name, places, partner.language)),
     link: askDmLink({ number: matchtimeWaNumber(), lang: partner.language, askId }),
     prefill: askDmPrefill(partner.language, askRefCode(askId)),
   });
@@ -538,7 +550,7 @@ export async function approvePartnerAsk(args: { askId: string; userId: string; n
   if (now.getTime() >= a.ask.postBy.getTime()) return { ok: false, outcome: "too-late" };
   const partnership = await db.clubPartnership.findUnique({ where: { id: a.ask.partnershipId }, select: { status: true } });
   if (partnership?.status !== "active") return { ok: false, outcome: "closed" };
-  if ((await placesOpen(a.match.id, a.match.maxPlayers)) <= 0) return { ok: false, outcome: "no-places" };
+  if ((await placesOpen(a.match.id)) <= 0) return { ok: false, outcome: "no-places" };
   // P4: the round already has its number (from another of its asks).
   const fill = await loadRoundFill(a.ask);
   if (fill.placed >= fill.wanted) return { ok: false, outcome: "no-places" };
@@ -586,7 +598,7 @@ export async function loadPartnerAskForApprover(askId: string, userId: string) {
     status: a.ask.status,
     language: a.partner.language,
     partnerName: a.partner.name,
-    facts: factsFor(a.match, a.asker.name, a.ask.places, a.partner.language),
+    facts: await factsFor(a.match, a.asker.name, a.ask.places, a.partner.language),
     own: await partnerOwnGameThatDay(a.partner.id, a.match.date),
   };
 }
@@ -674,7 +686,7 @@ export async function loadPartnerAskPanel(
   if (pool?.ask?.status === "open" && !rounds.some((r) => r.roundKey === pool.ask!.roundKey)) {
     rounds.push({ roundKey: pool.ask.roundKey, wanted: pool.ask.wanted, placed: pool.ask.placed, partners: [], pool: true });
   }
-  return { placesOpen: await placesOpen(matchId, match.maxPlayers), rows, rounds, pool };
+  return { placesOpen: await placesOpen(matchId), rows, rounds, pool };
 }
 
 const isOpenAsk = (status: string): boolean => (OPEN_ASK_STATUSES as readonly string[]).includes(status);
@@ -746,7 +758,7 @@ type OpenAskRow = {
  * never came back is reported. True when it closed.
  */
 async function closeIfDue(ask: OpenAskRow, match: AskMatch, partnershipStatus: string, fills: Map<string, RoundFill>, now: Date): Promise<boolean> {
-  const places = await placesOpen(match.id, match.maxPlayers);
+  const places = await placesOpen(match.id);
   const key = roundKey(ask);
   let fill = fills.get(key);
   if (!fill) {
@@ -1025,9 +1037,18 @@ export async function sweepAutoPartnerAsks(
       const { postBy } = askWindows(match.date, settings.cutoffHours);
       const askAt = autoAskAt(match.date, effectiveAskTime(settings.time));
       const [places, waiting] = await Promise.all([
-        placesOpen(match.id, match.maxPlayers),
+        placesOpen(match.id),
         db.attendance.count({ where: { matchId: match.id, status: "BENCH" } }),
       ]);
+      // A MONTHLY WEEK (Vets MNF, 2026-10-29): the club's own bench, then
+      // its own PAYG players, have the place first; the pool and partner
+      // clubs are asked automatically only after their hour
+      // (`clubFillsFirst`). Every other match: no read beyond this one.
+      const inWindow = now.getTime() >= askAt.getTime() && now.getTime() < postBy.getTime();
+      if (inWindow && places > 0 && waiting === 0 && (await clubFillsFirstFor(match.id, now))) {
+        console.log(`[partner-ask] auto ask for match ${match.id} by ${orgId} waits: the club's own PAYG players are asked first`);
+        continue;
+      }
       const roundId = randomUUID();
       let askedHere = 0;
       for (const p of askPartners) {
@@ -1090,8 +1111,7 @@ async function partnerOwnOverlappingGameShort(partnerOrgId: string, kickoff: Dat
   });
   for (const g of own) {
     if (!gamesOverlap({ kickoff, durationMins }, { kickoff: g.date, durationMins: g.activity.matchDurationMins })) continue;
-    const confirmed = await db.attendance.count({ where: { matchId: g.id, status: "CONFIRMED" } });
-    if (confirmed < g.maxPlayers) return true;
+    if ((await placesOpen(g.id)) > 0) return true;
   }
   return false;
 }
