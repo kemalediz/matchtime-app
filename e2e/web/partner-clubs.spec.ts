@@ -155,12 +155,13 @@ test("the owner accepts; once the partner accepts too the asking settings save, 
   await expect(page.getByRole("dialog")).toContainText("Each pairing works one way");
   await page.getByRole("button", { name: "Close" }).click();
 
-  // When to ask: Automatically shows the time row; the cut-off defaults to 4 hours.
-  await expect(section.getByTestId("partner-ask-cutoff")).toHaveValue("4");
+  // When to ask: Automatically shows the time row; the cut-off defaults to 2 hours
+  // and the time to 08:00 (Kemal, 2026-10-29).
+  await expect(section.getByTestId("partner-ask-cutoff")).toHaveValue("2");
   await expect(section.getByTestId("partner-ask-time")).toHaveCount(0);
   await section.getByTestId("partner-ask-when").selectOption("auto");
   await expect.poll(async () => (await orgSettings(db))?.when).toBe("auto");
-  await expect(section.getByTestId("partner-ask-time")).toHaveValue("16:00");
+  await expect(section.getByTestId("partner-ask-time")).toHaveValue("08:00");
   await section.getByTestId("partner-ask-time").fill("17:30");
   await section.getByTestId("partner-ask-time").blur();
   await expect.poll(async () => (await orgSettings(db))?.time).toBe("17:30");

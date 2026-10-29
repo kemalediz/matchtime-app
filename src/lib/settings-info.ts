@@ -30,6 +30,7 @@
  * component.
  */
 import { normaliseLang, type Lang } from "./i18n/lang";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS, PARTNER_ASK_TIME_DEFAULT } from "./club-partnership-rules";
 
 /** Every setting with an explanation, in the page's order. */
 export const SETTING_INFO_KEYS = [
@@ -1246,7 +1247,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     en: {
       title: "Automatic ask time",
       what: ["Only used with Automatically at a time: the London time on match day when MatchTime asks your partner clubs by itself."],
-      newClubs: "16:00.",
+      newClubs: `${PARTNER_ASK_TIME_DEFAULT}.`,
       together: [
         "MatchTime asks only if a place is still open, nobody is on your bench, and it is still before Last ask before kickoff. A time after that is never reached, so MatchTime then never asks by itself.",
       ],
@@ -1254,7 +1255,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     tr: {
       title: "Otomatik istek saati",
       what: ["Yalnızca Belirli bir saatte kendiliğinden seçiliyken kullanılır: MatchTime'ın partner kulüplerinizden maç günü kendiliğinden oyuncu istediği Londra saati."],
-      newClubs: "16:00.",
+      newClubs: `${PARTNER_ASK_TIME_DEFAULT}.`,
       together: [
         "MatchTime yalnızca hâlâ boş yer varsa, yedek listenizde kimse yoksa ve Başlama saatinden önce son istek henüz geçmemişse ister. Bundan sonraki bir saate hiç gelinmez, yani MatchTime o zaman kendiliğinden hiç istemez.",
       ],
@@ -1267,7 +1268,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "The last moment an ask can go out to a partner club, in hours before kickoff, so their players have time to get to your game. You can choose from 1 to 24 hours.",
         "An ask still waiting for the partner club's organisers to approve it is dropped at that moment, and your organisers are told. An ask already posted stays open until kickoff or until the place is filled.",
       ],
-      newClubs: "4 hours.",
+      newClubs: `${PARTNER_ASK_CUTOFF_DEFAULT_HOURS} hours.`,
     },
     tr: {
       title: "Başlama saatinden önce son istek",
@@ -1275,7 +1276,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "Bir partner kulübe isteğin gidebileceği son an, başlama saatinden kaç saat önce olduğu; böylece oyuncularının maçınıza yetişecek zamanı olur. 1 ile 24 saat arasında seçebilirsiniz.",
         "Partner kulübün organizatörlerinin onayını hâlâ bekleyen bir istek o anda düşer ve organizatörlerinize haber verilir. Zaten paylaşılmış bir istek başlama saatine ya da yer dolana kadar açık kalır.",
       ],
-      newClubs: "4 saat.",
+      newClubs: `${PARTNER_ASK_CUTOFF_DEFAULT_HOURS} saat.`,
     },
   },
   partnerApproval: {
@@ -1525,7 +1526,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       choices: [
         {
           name: ON.en,
-          text: "On match day, if the game is still short, MatchTime asks the pool by itself. It does this only when it is the club's next match, a place is still open, your bench is empty, and nobody has asked the pool for this match yet. It asks from your ask time (4pm unless you change it) until your cut-off, and at most once per match. When it asks, your organisers are told, and no offer is sent late at night.",
+          text: `On match day, if the game is still short, MatchTime asks the pool by itself. It does this only when it is the club's next match, a place is still open, your bench is empty, and nobody has asked the pool for this match yet. It asks from your ask time (${PARTNER_ASK_TIME_DEFAULT} unless you change it) until your cut-off, and at most once per match. When it asks, your organisers are told, and no offer is sent late at night.`,
         },
         { name: OFF.en, text: "MatchTime asks the player pool only when an admin tells it to, by tagging MatchTime in WhatsApp or ticking the box on the match page." },
       ],
@@ -1540,7 +1541,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       choices: [
         {
           name: ON.tr,
-          text: "Maç günü hâlâ oyuncu eksikse MatchTime havuza kendisi sorar. Bunu yalnızca kulübün sıradaki maçıysa, hâlâ boş yer varsa, yedek listeniz boşsa ve bu maç için havuza henüz kimse sormadıysa yapar. Sorma saatinizden (değiştirmezseniz 16:00) son saate kadar sorar, her maç için en fazla bir kez. Sorduğunda organizatörlerinize haber verilir ve gece geç saatte teklif gönderilmez.",
+          text: `Maç günü hâlâ oyuncu eksikse MatchTime havuza kendisi sorar. Bunu yalnızca kulübün sıradaki maçıysa, hâlâ boş yer varsa, yedek listeniz boşsa ve bu maç için havuza henüz kimse sormadıysa yapar. Sorma saatinizden (değiştirmezseniz ${PARTNER_ASK_TIME_DEFAULT}) son saate kadar sorar, her maç için en fazla bir kez. Sorduğunda organizatörlerinize haber verilir ve gece geç saatte teklif gönderilmez.`,
         },
         { name: OFF.tr, text: "MatchTime oyuncu havuzuna yalnızca bir yönetici isterse sorar, WhatsApp'ta MatchTime'ı etiketleyerek ya da maç sayfasındaki kutuyu işaretleyerek." },
       ],

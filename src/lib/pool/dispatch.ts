@@ -22,6 +22,7 @@
 import { db } from "../db";
 import { askWindows } from "../partner-ask-rules";
 import { loadPartnerAskSettings } from "../club-partnership";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "../club-partnership-rules";
 import { ledgerEntryOf } from "./candidate-rows";
 import { POOL_CAPS } from "./rules";
 import { DM_SUB_FIELDS, type DmSubField } from "../dm-subscriptions";
@@ -40,7 +41,7 @@ const DAY_MS = 24 * HOUR_MS;
 const LEDGER_LOOKBACK_MS = (POOL_CAPS.declineCooldownDays + 7) * DAY_MS;
 
 async function cutoffFor(orgId: string, kickoff: Date): Promise<Date> {
-  return askWindows(kickoff, (await loadPartnerAskSettings(orgId))?.cutoffHours ?? 4).postBy;
+  return askWindows(kickoff, (await loadPartnerAskSettings(orgId))?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS).postBy;
 }
 
 export interface PoolAdmissionResult {

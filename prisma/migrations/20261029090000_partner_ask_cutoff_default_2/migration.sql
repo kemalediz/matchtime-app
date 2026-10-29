@@ -1,0 +1,18 @@
+-- The partner ask's cut-off defaults to 2 hours before kickoff, not 4
+-- (Kemal, 2026-10-29). Must match PARTNER_ASK_CUTOFF_DEFAULT_HOURS in
+-- src/lib/club-partnership-rules.ts (a test holds the schema to it).
+--
+-- The automatic ask's time default (NULL = 08:00, was 16:00) lives only in
+-- code, so it needs no SQL: a club with NULL picks it up on deploy.
+--
+--   psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261029090000_partner_ask_cutoff_default_2/migration.sql
+--
+-- WHAT APPLYING THIS DOES TO A LIVE DATABASE
+-- ------------------------------------------
+-- Changes only the column DEFAULT, which applies to rows inserted later
+-- (new clubs). No existing row is updated: a club already on 4 stays on 4.
+-- Moving existing clubs is a separate decision; see
+-- scripts/apply-ask-defaults-to-clubs.ts (dry run by default). The CHECK
+-- (1 to 24, prisma/sql/partner-ask-check.sql) still holds for 2.
+-- A metadata-only change: no table rewrite, only a brief lock.
+ALTER TABLE "Organisation" ALTER COLUMN "partnerAskCutoffHours" SET DEFAULT 2;

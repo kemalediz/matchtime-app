@@ -67,7 +67,7 @@ import {
   type PartnerAskVia,
 } from "./partner-ask-rules";
 import type { PartnerAskOutcome } from "./partner-ask-words-rules";
-import { effectiveAskTime, type ClubRole } from "./club-partnership-rules";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS, effectiveAskTime, type ClubRole } from "./club-partnership-rules";
 import { loadPoolPanel, type PoolPanelData } from "./pool/panel";
 import { cancelPoolAsk } from "./pool/round";
 import { autoAskPool, poolAutoAskClub } from "./pool/auto-ask";
@@ -700,7 +700,7 @@ export async function sweepPartnerAsks(orgId: string, now: Date = new Date()): P
       // A MOVED game (review H3): the ask follows the new kickoff and stays
       // open; nobody is told it is off. A compare-and-set on the old close.
       if (match.status !== "CANCELLED") {
-        const cutoff = (await loadPartnerAskSettings(ask.askerOrgId))?.cutoffHours ?? 4;
+        const cutoff = (await loadPartnerAskSettings(ask.askerOrgId))?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS;
         const moved = movedWindows({ closesAt: ask.closesAt, matchDate: match.date, cutoffHours: cutoff });
         if (moved) {
           const done = await db.partnerAsk.updateMany({

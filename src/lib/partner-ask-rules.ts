@@ -8,8 +8,9 @@
  *   askWindows        the cut-off (`postBy`) and the close (`closesAt`)
  *   closeReason       should an open ask close now, and why?
  *
- * THE CUT-OFF (Kemal, 2026-10-16): "the last partner ask goes out at least
- * 4 hours before kickoff" by default, the asking club's setting
+ * THE CUT-OFF (Kemal, 2026-10-16): the last partner ask goes out at least
+ * `PARTNER_ASK_CUTOFF_DEFAULT_HOURS` (club-partnership-rules.ts, 2 since
+ * 2026-10-29) before kickoff by default, the asking club's setting
  * (`partnerAskCutoffHours`, 1 to 24). Nothing is requested, approved or
  * posted after `postBy`; an ask still waiting for the partner's approval
  * expires there. A posted ask stays open for volunteers until kickoff

@@ -36,6 +36,7 @@ import { normaliseLang, type Lang } from "../i18n/lang";
 import { poolCopy } from "../i18n/pool-offer";
 import { askWindows } from "../partner-ask-rules";
 import { loadPartnerAskSettings } from "../club-partnership";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "../club-partnership-rules";
 import { placePoolGuest, withdrawPoolGuest } from "../partner-guest";
 import { queuePlatformDm } from "../platform-jobs";
 import { offerPageState, organiserRecordOf, type OfferPageState } from "./accept-rules";
@@ -325,7 +326,7 @@ export async function pullOutOfOffer(offerId: string, now: Date = new Date()): P
   if (o.outcome !== "accepted" || !matchLiveOf(o.ask.match) || now.getTime() >= o.ask.match.date.getTime()) {
     return stateOf(o, profile?.status === "active", now);
   }
-  const cutoff = askWindows(o.ask.match.date, (await loadPartnerAskSettings(o.orgId))?.cutoffHours ?? 4).postBy;
+  const cutoff = askWindows(o.ask.match.date, (await loadPartnerAskSettings(o.orgId))?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS).postBy;
   const done = await withdrawPoolGuest({ userId: o.userId, matchId: o.matchId, orgId: o.orgId, offerId: o.id, result: pullOutResult({ now, cutoff }), now });
   if (done) {
     await db.poolProfile.updateMany({ where: { userId: o.userId }, data: { lastActiveAt: now } });
