@@ -474,7 +474,9 @@ export function decideMissedCredits(args: {
   // month asks one game more), as a called-off week's is. Otherwise they
   // would get the share twice. A regular who simply played after all keeps
   // a used credit, as before.
-  const free = new Set(regulars.filter((m) => m.freeMiss && !m.left).map((m) => m.userId));
+  // Only when they MISSED that week (review round 3): a free week they
+  // played after all is a week like any other, whatever the credit rule.
+  const free = new Set(regulars.filter((m) => m.freeMiss && !m.left && misses(m)).map((m) => m.userId));
   const releaseElsewhere = args.existing
     .filter((e) => e.voidedAt === null && free.has(e.userId) && e.appliedMonthId !== null && e.createdById === null)
     .map((e) => ({ creditId: e.id, userId: e.userId, monthId: e.appliedMonthId as string }));

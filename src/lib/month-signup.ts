@@ -57,6 +57,7 @@ import {
   decideSignup,
   decideSignupListPost,
   firstKickoffOf,
+  heldNudgeDue,
   isDaytime,
   monthGames,
   monthStarted,
@@ -463,7 +464,12 @@ async function tellMonthHeld(args: { orgId: string; activityId: string; monthSta
     // nothing, weekly or monthly, is posted for the month
     // (`bot-scheduler.ts` reads the held key).
     if (!first) {
-      if (args.now.getTime() < args.firstKickoff.getTime() - 24 * HOUR_MS) return;
+      const notice = await db.sentNotification.findUnique({
+        where: { key: `${signupKeyPrefix(args.orgId)}held:${args.monthStart}:${args.activityId}` },
+        select: { createdAt: true },
+      });
+      // Never within 12 hours of the first notice (PR #464 review, round 3).
+      if (!notice || !heldNudgeDue({ now: args.now, firstKickoff: args.firstKickoff, firstNoticeAt: notice.createdAt })) return;
       if (!(await claimOnce(`${signupKeyPrefix(args.orgId)}held-again:${args.monthStart}:${args.activityId}`, "admin-notice"))) return;
       await sendAdminNotice({
         orgId: args.orgId,

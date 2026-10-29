@@ -168,6 +168,9 @@ test("1. a club new to monthly: next month's list is due, MatchTime posts none, 
     const out = await poll(request, new Date(FIRST.getTime() - hoursBefore * 3600_000), A.group);
     expect(out.filter((i) => i.kind === "group-message"), `${hoursBefore}h before`).toEqual([]);
   }
+  // The first notice is stamped by the real clock, the polls by a pinned
+  // one: dated well before them, as it would be (never within 12 hours).
+  await db.run(`UPDATE "SentNotification" SET "createdAt" = $2 WHERE key LIKE $1`, [`org-${A.org}:msu:held:%`, new Date(FIRST.getTime() - 7 * 86_400_000).toISOString()]);
   // The day before the first game, one more nudge to the organiser.
   await poll(request, new Date(FIRST.getTime() - 23 * 3600_000), A.group);
   await poll(request, new Date(FIRST.getTime() - 22.5 * 3600_000), A.group);

@@ -774,17 +774,20 @@ export async function syncMonthlyWeek(
   }).then(async (res) => {
     // Each under THAT month's lock, in a transaction of its own (never two
     // months' locks at once), the way a called-off game back on does it.
+    let handedBack = 0;
     if (res.releaseElsewhere.length > 0) {
-      const { releaseSpentCredit } = await import("./month-close");
-      for (const rel of res.releaseElsewhere) {
+      const { liveSpentReleases, releaseSpentCredit } = await import("./month-close");
+      // One used against a CLOSED month is settled there: not retried, not counted.
+      for (const rel of await liveSpentReleases(week.orgId, res.releaseElsewhere)) {
         try {
           await releaseSpentCredit(week.orgId, rel, now);
+          handedBack++;
         } catch (err) {
           console.error(`[monthly-week] handing credit ${rel.creditId} back to month ${rel.monthId} failed (the next sync retries):`, err);
         }
       }
     }
-    return { created: res.created, voided: res.voided + res.releaseElsewhere.length };
+    return { created: res.created, voided: res.voided + handedBack };
   });
 }
 
