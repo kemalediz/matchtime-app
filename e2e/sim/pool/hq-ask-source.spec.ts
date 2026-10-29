@@ -128,6 +128,26 @@ scenarios("players asked for in HQ with no source named: MatchTime asks which", 
     expect(offers(pool.sent)).toEqual([]);
   });
 
+  scenario("'partner clubs and the pool' in HQ (Kemal, 2026-10-29): both asked now, the pool never waits; one reply", async ({ pool }) => {
+    stubbedOnly();
+    const fnf = await hqClub(pool, "src6");
+    await partnerOf(pool, fnf, "cheam6", "Cheam Lads");
+    const ali = await poolPlayer(pool, "ali6", { at: near(fnf) });
+    const BOTH = "@Match Time ask partner clubs and the player pool";
+    pool.arm(() => engineOn({ [BOTH]: { route: "ask_group", facts: { action: "recruit", ...ADMIN_FACTS, playersFrom: ["partners", "pool"], toMatchTime: true } } }));
+
+    const asked = await fnf.hq.say("owner", BOTH, { now: hoursBefore(fnf, 30), poolOpen: true });
+    expect(await partnerAsks(pool, fnf)).toEqual([{ status: "awaiting-approval", via: "hq" }]);
+    expect(await poolAsks(pool, fnf)).toEqual([{ via: "words" }]);
+    expect(offers(asked.sent).map((m) => m.to)).toEqual(["ali6"]);
+    expect(await offersOf(pool, ali)).toHaveLength(1);
+    const hq = asked.sent.filter((m) => m.to === "src6.hq");
+    expect(hq).toHaveLength(1);
+    expect(hq[0].text).toMatch(/Cheam Lads/);
+    expect(hq[0].text).toMatch(/Asking nearby players from the MatchTime player pool for 1 place on .+, at the same time as your partner clubs\./);
+    expect(hq[0].text).not.toMatch(/within the hour/);
+  });
+
   scenario("Turkish: the question in Turkish, the club's own words", async ({ pool }) => {
     stubbedOnly();
     const fnf = await hqClub(pool, "src3", { language: "tr" });

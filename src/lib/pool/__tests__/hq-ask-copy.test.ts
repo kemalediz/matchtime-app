@@ -8,26 +8,29 @@ import { poolHqAskReply } from "../offer-copy";
 
 describe("the reply to an ask that went", () => {
   it("at once: says the pool is being asked, for how many and which game (EN, TR)", () => {
-    expect(poolHqAskReply("en", { ok: true, places: 2, day: "Tue 27 Oct, 20:00", partnersFirst: false })).toBe(
+    expect(poolHqAskReply("en", { ok: true, places: 2, day: "Tue 27 Oct, 20:00", withPartners: false })).toBe(
       "🔎 Asking nearby players from the MatchTime player pool for 2 places on Tue 27 Oct, 20:00. I'll tell you here when one takes a place.",
     );
-    expect(poolHqAskReply("tr", { ok: true, places: 1, day: "27 Eki Sal, 20:00", partnersFirst: false })).toBe(
+    expect(poolHqAskReply("tr", { ok: true, places: 1, day: "27 Eki Sal, 20:00", withPartners: false })).toBe(
       "🔎 27 Eki Sal, 20:00 maçı için MatchTime oyuncu havuzundaki yakın oyunculara soruyorum (1 kişi). Biri yer alınca burada haber vereceğim.",
     );
   });
 
   it("said in the players' group (L10): it lets them know, never \"here\"", () => {
-    expect(poolHqAskReply("en", { ok: true, places: 1, day: "Tue 27 Oct, 20:00", partnersFirst: false, inHq: false })).toBe(
+    expect(poolHqAskReply("en", { ok: true, places: 1, day: "Tue 27 Oct, 20:00", withPartners: false, inHq: false })).toBe(
       "🔎 Asking nearby players from the MatchTime player pool for 1 place on Tue 27 Oct, 20:00. I'll let you know when one takes a place.",
     );
-    expect(poolHqAskReply("tr", { ok: true, places: 1, day: "27 Eki Sal, 20:00", partnersFirst: true, inHq: false })).toMatch(/Biri yer alınca size haber vereceğim\.$/);
+    expect(poolHqAskReply("tr", { ok: true, places: 1, day: "27 Eki Sal, 20:00", withPartners: true, inHq: false })).toMatch(/Biri yer alınca size haber vereceğim\.$/);
   });
 
-  it("after the partner clubs: says it waits for them first", () => {
-    expect(poolHqAskReply("en", { ok: true, places: 1, day: "Tue 27 Oct, 20:00", partnersFirst: true })).toMatch(
-      /^🔎 I'll ask nearby players from the MatchTime player pool for 1 place on Tue 27 Oct, 20:00 if your partner clubs have not filled it within the hour\./,
-    );
-    expect(poolHqAskReply("tr", { ok: true, places: 1, day: "27 Eki Sal, 20:00", partnersFirst: true })).toMatch(/partner kulüpleriniz bir saat içinde doldurmazsa/);
+  it("asked with the partner clubs (Kemal, 2026-10-29): the pool is asked now, alongside them, never \"within the hour\" (EN, TR)", () => {
+    const en = poolHqAskReply("en", { ok: true, places: 1, day: "Tue 27 Oct, 20:00", withPartners: true });
+    expect(en).toBe("🔎 Asking nearby players from the MatchTime player pool for 1 place on Tue 27 Oct, 20:00, at the same time as your partner clubs. I'll tell you here when one takes a place.");
+    const tr = poolHqAskReply("tr", { ok: true, places: 1, day: "27 Eki Sal, 20:00", withPartners: true });
+    expect(tr).toBe("🔎 27 Eki Sal, 20:00 maçı için partner kulüplerinizle aynı anda MatchTime oyuncu havuzundaki yakın oyunculara da soruyorum (1 kişi). Biri yer alınca burada haber vereceğim.");
+    for (const text of [en, tr]) {
+      expect(text).not.toMatch(/within the hour|bir saat içinde|[—–]/);
+    }
   });
 });
 

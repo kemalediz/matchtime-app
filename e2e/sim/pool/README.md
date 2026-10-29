@@ -157,7 +157,7 @@ write; "today" rows exist now. EN and TR wherever MatchTime speaks.
 
 ### Offers (L4, L5, L9)
 
-- organiser approves on the match page, by YES to the short-squad notice, by the automatic ask (partners first, D-2); nobody is contacted before the approval
+- organiser approves on the match page, by YES to the short-squad notice, by the automatic ask (partners first, D-2, the automatic ask only since K.7); nobody is contacted before the approval; an organiser's ask asks exactly what it names, now (K.7, 2026-10-29)
 - the offer DM EN and TR: club, venue with address and map link, distance, day, date, kickoff, length, sport and format, play style (omitted when unset), club size and how often it plays, fee ("free" when none), places; NEVER the group name, members' names or numbers (`expectNoLeaks(fnf.secrets())`)
 - matching: sport, distance, format where it applies, day AND hours, not already in that club, not blocked either way, turn-up record ranks first
 - waves: about 4 first, the rest 30 minutes later only if places are still open, at most 8
@@ -214,7 +214,7 @@ venue in its OWN area so scenarios sharing a database never reach each other's p
 
 | File | Covers |
 | --- | --- |
-| `offers-ask.spec.ts` | one-tap approval, nothing before it; the offer EN and TR with every fact and no names or numbers; every exclusion gets no message; switch and club flag off at queue time AND at send time; paused after queueing; waves fired and skipped; partners first (the pool an hour later) |
+| `offers-ask.spec.ts` | one-tap approval, nothing before it; the offer EN and TR with every fact and no names or numbers; every exclusion gets no message; switch and club flag off at queue time AND at send time; paused after queueing; waves fired and skipped; the press asks what was ticked, now: partners only, the pool only (a partner round already open does not delay it), both at once (K.7) |
 | `offers-caps.spec.ts` | quiet hours; the autumn clock-change night; 1 a day and 2 a week across clubs; the 14-day decline cooldown; 3 ignored in a row pause him with one DM |
 | `offers-platform-cap.spec.ts` | the platform cap with two pollers racing for the last room |
 | `offers-accept.spec.ts` | yes (first-come) with the organisers' notice and his details; TR; two yeses for the last place; yes after expiry; organiser-pick (bench); a fee club and the club's own pay link; a reply in words; giving the place back; the stop link signs him in to his manage page |

@@ -9,8 +9,8 @@
  * `requestPoolAsk` (`pool/round.ts`), the match page tick's own function,
  * so every rule of a tap holds (the switch and the club's flag, an
  * organiser, the match gate, the cut-off, places open, one open ask, 3 a
- * week, somebody near) and everything after it is that path's (partners
- * first, the waves, each person's caps, quiet hours):
+ * week, somebody near) and everything after it is that path's (the
+ * waves, each person's caps, quiet hours):
  *
  *   in words       "ask the pool", "find someone nearby", "get a player from
  *                  the app" (EN/TR, any wording): the shared admin extractor
@@ -29,7 +29,9 @@
  * The organisers' request IS the approval the pool needs (an organiser
  * asked; `requestPoolAsk` re-checks the role). Like the automatic ask it
  * asks for every open place, or joins a partner round still open on the
- * match for its number (`poolAutoRound`), so partner clubs keep their hour.
+ * match for its number (`poolAutoRound`), so the round's fill counts both.
+ * It never waits for that round's partner clubs: an organiser's ask goes
+ * now (Kemal, 2026-10-29; `round-rules.ts` `poolWaitsForPartners`).
  *
  * Outside `src/lib/pool/` on purpose: the HQ reader calls the model, and
  * no model-facing file may import a pool module (`pool/__tests__/
@@ -120,7 +122,9 @@ export async function askPoolFromWords(args: {
       ok: true,
       places: round.places,
       day: dayCommaTimeLabel(lang, match.date),
-      partnersFirst: round.roundId !== null && !r.waveSent,
+      // Asked now either way (Kemal, 2026-10-29); the line says when the
+      // partner clubs of the same round are being asked alongside.
+      withPartners: round.roundId !== null,
       inHq: args.where !== "group",
     }),
   };

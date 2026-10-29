@@ -33,7 +33,7 @@ async function noHqClub(pool: PoolWorld, key: string, partnerKey: string): Promi
 const say = (club: Club, member: string, text: string, tag = true) => club.post(member, text, { tag, headers: { "x-mt-test-pool-open": "1" } });
 
 scenarios("players asked for in the players' group (live model)", () => {
-  scenario("the live case: 'find me players feom partner clubs and player pool' -> the partner club asked, the pool joins its round", async ({ pool }) => {
+  scenario("the live case: 'find me players feom partner clubs and player pool' -> the partner club and the pool both asked now, in one round (Kemal, 2026-10-29)", async ({ pool }) => {
     liveOnly();
     const fmc = await noHqClub(pool, "lgas1", "lgcheam1");
     await poolPlayer(pool, "lgali1", { at: near(fmc) });
@@ -45,6 +45,8 @@ scenarios("players asked for in the players' group (live model)", () => {
     expect(line).toMatch(/Cheam Lads/);
     expect(line).toMatch(/MatchTime player pool/);
     expect(line).not.toMatch(/No new players|None of your recent players/);
+    expect(line).not.toMatch(/within the hour/);
+    expect(ex.sent.filter((m) => m.purpose === "pool-offer").map((m) => m.to)).toEqual(["lgali1"]);
   });
 
   scenario("'@Match Time find us a player for Friday' -> the question -> 'the pool' -> the pool is asked", async ({ pool }) => {

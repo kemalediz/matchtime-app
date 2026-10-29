@@ -244,7 +244,9 @@ describe("landing content: every claim is present", () => {
   it("short of players: the pool step is true to round-rules and matching-rules", () => {
     const pool = spotlight("short-of-players").steps!.find((x) => x.key === "pool")!.body;
     expect(POOL_AFTER_PARTNERS_MINS).toBe(60);
-    expect(pool).toMatch(/An hour after your partner clubs, or straight away if you have none/);
+    // Kemal, 2026-10-29: an organiser's ask asks both at once; only the automatic ask gives the partners their hour.
+    expect(pool).toMatch(/When you ask for players, nearby players from the MatchTime player pool get the offer by private message straight away, at the same time as your partner clubs\./);
+    expect(pool).toMatch(/When MatchTime asks by itself, your partner clubs get an hour first\./);
     expect(pool).toMatch(/when they can play/);
     expect(pool).toMatch(/how far they'll travel/);
     expect(pool).toMatch(/on level only when you ask for one/);
@@ -605,7 +607,8 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
   it("the pool is asked after partner clubs, on the rule's delay, and is opening town by town", () => {
     const short = HERO_DECK.cards.find((c) => c.key === "short")!;
     expect(POOL_AFTER_PARTNERS_MINS).toBe(60);
-    expect(short.details.join(" ")).toMatch(/an hour later, or straight away if you have no partner clubs/);
+    expect(short.details.join(" ")).toMatch(/get a WhatsApp offer straight away when you ask, at the same time as your partner clubs; when MatchTime asks by itself, your partner clubs get an hour first\./);
+    expect(short.details.join(" ")).not.toMatch(/an hour later/);
     expect(short.details.join(" ")).toMatch(/opening town by town/);
     expect(short.steps!.map((s) => s.title)).toEqual(["1. Your group", "2. Partner clubs", "3. Player pool"]);
     expect(short.steps!.filter((s) => s.highlight).map((s) => s.title)).toEqual(["3. Player pool"]);

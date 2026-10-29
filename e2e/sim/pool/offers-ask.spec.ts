@@ -7,13 +7,28 @@
  *   fact of the approved spec's list, EN and TR, the tap link and the stop
  *   link, and never a member's name or number; every exclusion gets no
  *   message at all; the switch and the club's flag are checked when the
- *   offer is queued AND when it is sent; partners first (the pool an hour
- *   later); the second wave only while places are open.
+ *   offer is queued AND when it is sent; the press asks exactly what was
+ *   ticked, now: partners, the pool, or both at once (Kemal, 2026-10-29;
+ *   only the automatic ask gives partners an hour, `auto-ask.spec.ts`);
+ *   the second wave only while places are open.
  */
 import { scenario, scenarios, expect } from "./fixtures";
 import { askOf, at, far, near, offersOf, openClub, organiserAsks, pollPlatform, poolPlayer } from "./offers-world";
 
 const OFFER_EN = /⚽ \*FNF\* needs 1 player for a 7-a-side football game/;
+
+/** An active partner club the club may ask (its organisers check each ask first). */
+async function partnerClub(pool: Parameters<typeof openClub>[0], club: Awaited<ReturnType<typeof openClub>>): Promise<string> {
+  const cheam = await pool.club("cheam", { name: "Cheam Lads" });
+  const pid = `sim-pship-${Date.now()}`;
+  await pool.db.run(
+    `INSERT INTO "ClubPartnership" (id, "askerOrgId", "partnerOrgId", status, "partnerApproval", "askerAcceptedAt", "partnerAcceptedAt", "createdByUserId", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, 'active', 'each-ask', now(), now(), $4, now(), now())`,
+    [pid, club.group.orgId, cheam.group.orgId, (await pool.userOf(club.member("owner")))!.id],
+  );
+  await pool.db.run(`UPDATE "Organisation" SET "partnerAskWhen" = 'on-request' WHERE id = $1`, [club.group.orgId]);
+  return pid;
+}
 
 scenarios("a club asks the MatchTime player pool", () => {
   scenario("one tap asks the pool: ONE offer to the nearby player, every fact, nothing private, nothing before the tap", async ({ pool, page }) => {
@@ -169,28 +184,46 @@ scenarios("a club asks the MatchTime player pool", () => {
     expect(await pool.db.count(`SELECT count(*) FROM "PoolOffer" WHERE outcome = 'expired' AND "orgId" = $1`, [fnf.group.orgId])).toBe(4);
   });
 
-  scenario("partners first: with a partner club asked in the same round, the pool waits an hour", async ({ pool, page }) => {
+  scenario("both ticked (Kemal, 2026-10-29): the partner club and the pool are asked at once, in one round; the pool never waits", async ({ pool, page }) => {
     const fnf = await openClub(pool, "fnf", { name: "FNF" });
-    const cheam = await pool.club("cheam", { name: "Cheam Lads" });
-    const pid = `sim-pship-${Date.now()}`;
-    await pool.db.run(
-      `INSERT INTO "ClubPartnership" (id, "askerOrgId", "partnerOrgId", status, "partnerApproval", "askerAcceptedAt", "partnerAcceptedAt", "createdByUserId", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, 'active', 'each-ask', now(), now(), $4, now(), now())`,
-      [pid, fnf.group.orgId, cheam.group.orgId, (await pool.userOf(fnf.member("owner")))!.id],
-    );
-    await pool.db.run(`UPDATE "Organisation" SET "partnerAskWhen" = 'on-request' WHERE id = $1`, [fnf.group.orgId]);
+    const pid = await partnerClub(pool, fnf);
     await poolPlayer(pool, "ali", { at: near(fnf) });
     const t0 = at(fnf.kickoff, -8);
 
     const ex = await organiserAsks(pool, page, fnf, { places: 1, now: t0, partnershipIds: [pid] });
     expect(ex.json.partner).toMatchObject({ asked: 1 });
-    expect(ex.sent.filter((m) => m.purpose === "pool-offer")).toEqual([]);
-    expect((await askOf(pool, fnf))?.roundId).toBeTruthy();
+    expect(ex.json.pool).toMatchObject({ ok: true, waveSent: true });
+    expect(ex.sent.filter((m) => m.purpose === "pool-offer").map((m) => m.to)).toEqual(["ali"]);
+    const ask = await askOf(pool, fnf);
+    expect(ask?.roundId).toBeTruthy();
+    expect(await pool.db.count(`SELECT count(*) FROM "PartnerAsk" WHERE "roundId" = $1`, [ask!.roundId])).toBe(1);
+  });
 
-    const at59 = await pollPlatform(pool, { now: new Date(t0.getTime() + 59 * 60_000) });
-    expect(at59.queued.filter((m) => m.purpose === "pool-offer")).toEqual([]);
+  scenario("partner clubs only ticked: the partner club is asked now, the pool is not asked at all", async ({ pool, page }) => {
+    const fnf = await openClub(pool, "fnf", { name: "FNF" });
+    const pid = await partnerClub(pool, fnf);
+    await poolPlayer(pool, "ali", { at: near(fnf) });
+    const t0 = at(fnf.kickoff, -8);
 
-    const at61 = await pollPlatform(pool, { now: new Date(t0.getTime() + 61 * 60_000) });
-    expect(at61.queued.filter((m) => m.purpose === "pool-offer").map((m) => m.to)).toEqual(["ali"]);
+    const ex = await organiserAsks(pool, page, fnf, { places: 1, now: t0, pool: false, partnershipIds: [pid] });
+    expect(ex.json.partner).toMatchObject({ asked: 1 });
+    expect(ex.json.pool).toBeNull();
+    expect(await askOf(pool, fnf)).toBeFalsy();
+    const later = await pollPlatform(pool, { now: new Date(t0.getTime() + 61 * 60_000) });
+    expect(later.queued.filter((m) => m.purpose === "pool-offer")).toEqual([]);
+  });
+
+  scenario("the pool only ticked, with a partner round already open on the match: the pool is asked now, no new partner ask", async ({ pool, page }) => {
+    const fnf = await openClub(pool, "fnf", { name: "FNF" });
+    const pid = await partnerClub(pool, fnf);
+    await poolPlayer(pool, "ali", { at: near(fnf) });
+    const t0 = at(fnf.kickoff, -8);
+    await organiserAsks(pool, page, fnf, { places: 1, now: t0, pool: false, partnershipIds: [pid] });
+
+    const ex = await organiserAsks(pool, page, fnf, { places: 1, now: new Date(t0.getTime() + 5 * 60_000) });
+    expect(ex.json.partner).toBeNull();
+    expect(ex.json.pool).toMatchObject({ ok: true, waveSent: true });
+    expect(ex.sent.filter((m) => m.purpose === "pool-offer").map((m) => m.to)).toEqual(["ali"]);
+    expect(await pool.db.count(`SELECT count(*) FROM "PartnerAsk" WHERE "askerOrgId" = $1`, [fnf.group.orgId])).toBe(1);
   });
 });

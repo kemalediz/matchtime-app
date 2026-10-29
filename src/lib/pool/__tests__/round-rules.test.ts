@@ -1,18 +1,20 @@
 /**
  * A pool round's rules (slice L5a): may the club ask now, when do the
- * first offers go (partners first: an hour after the partner clubs, at
- * once with none open), when does the ask close, how does an offer end,
+ * first offers go (an organiser's ask at once; the automatic ask an hour
+ * after the partner clubs while one is open), when does the ask close, how does an offer end,
  * and who may say yes.
  */
 import { describe, expect, it } from "vitest";
 import {
   POOL_AFTER_PARTNERS_MINS,
+  POOL_WAITS_FOR_PARTNERS_VIA,
   acceptRefusal,
   askStatusFor,
   offerOutcomeOnClose,
   ownTimeRanOut,
   poolAskCloseReason,
   poolAskRefusal,
+  poolWaitsForPartners,
   pullOutResult,
   wave1DueAt,
 } from "../round-rules";
@@ -58,14 +60,23 @@ describe("poolAskRefusal: the organiser's ask, in order", () => {
   for (const [name, change, want] of table) it(name, () => expect(poolAskRefusal({ ...ok, ...change })).toBe(want));
 });
 
-describe("wave1DueAt: partners first", () => {
-  it("an hour after the ask while a partner ask of the round is open", () => {
-    expect(wave1DueAt({ createdAt: NOW, partnerAsksOpen: 2 })).toEqual(new Date(NOW.getTime() + POOL_AFTER_PARTNERS_MINS * MIN));
+describe("wave1DueAt: who waits for the partner clubs (Kemal, 2026-10-29)", () => {
+  const HOUR_LATER = new Date(NOW.getTime() + POOL_AFTER_PARTNERS_MINS * MIN);
+  it("an organiser's ask never waits: due at once with a partner ask of the round still open", () => {
+    for (const via of ["page", "words", "notice"] as const) {
+      expect(wave1DueAt({ createdAt: NOW, partnerAsksOpen: 2, via })).toEqual(NOW);
+      expect(poolWaitsForPartners({ via, partnerAsksOpen: 2 })).toBe(false);
+    }
   });
-  it("at once with no partner, or once every partner ask has closed", () => {
-    expect(wave1DueAt({ createdAt: NOW, partnerAsksOpen: 0 })).toEqual(NOW);
+  it("the automatic ask keeps partners first: an hour after the ask while a partner ask of the round is open", () => {
+    expect(wave1DueAt({ createdAt: NOW, partnerAsksOpen: 2, via: "auto" })).toEqual(HOUR_LATER);
+    expect(poolWaitsForPartners({ via: "auto", partnerAsksOpen: 1 })).toBe(true);
   });
-  it("is an hour", () => expect(POOL_AFTER_PARTNERS_MINS).toBe(60));
+  it("at once with no partner, or once every partner ask has closed, whoever asked", () => {
+    for (const via of ["page", "words", "notice", "auto"] as const) expect(wave1DueAt({ createdAt: NOW, partnerAsksOpen: 0, via })).toEqual(NOW);
+  });
+  it("one switch: only the automatic ask waits", () => expect([...POOL_WAITS_FOR_PARTNERS_VIA]).toEqual(["auto"]));
+it("is an hour", () => expect(POOL_AFTER_PARTNERS_MINS).toBe(60));
 });
 
 describe("poolAskCloseReason", () => {

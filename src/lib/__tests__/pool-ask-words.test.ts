@@ -54,12 +54,17 @@ describe("asking the pool from HQ", () => {
     expect(round.requestPoolAsk).toHaveBeenCalledWith(expect.objectContaining({ matchId: "m1", via: "notice" }));
   });
 
-  it("partner clubs already asked for this game: the pool joins their round, for their number, and waits its hour", async () => {
+  it("partner clubs already asked for this game: the pool joins their round for its number, and is asked NOW (Kemal, 2026-10-29)", async () => {
     autoAsk.openPartnerRoundOf.mockResolvedValue({ roundId: "r1", places: 1 });
-    round.requestPoolAsk.mockResolvedValue({ ok: true, askId: "a1", waveSent: false });
     const r = await askPoolFromWords({ orgId: "o1", userId: "u-owner", via: "words", lang: "en", now: NOW, env: ENV });
-    expect(round.requestPoolAsk).toHaveBeenCalledWith(expect.objectContaining({ roundId: "r1", places: 1 }));
-    expect(r.replyText).toMatch(/if your partner clubs have not filled it within the hour/);
+    expect(round.requestPoolAsk).toHaveBeenCalledWith(expect.objectContaining({ roundId: "r1", places: 1, via: "words" }));
+    expect(r.replyText).toMatch(/^🔎 Asking nearby players from the MatchTime player pool for 1 place on Tue 27 Oct, 20:00, at the same time as your partner clubs\./);
+    expect(r.replyText).not.toMatch(/within the hour/);
+  });
+
+  it("the pool alone, no partner round open: never says partner clubs", async () => {
+    const r = await askPoolFromWords({ orgId: "o1", userId: "u-owner", via: "words", lang: "tr", now: NOW, env: ENV });
+    expect(r.replyText).not.toMatch(/partner/i);
   });
 
   it("refused (the pool closed for the club): the helpful line, nothing asked, no tick outcome", async () => {
