@@ -86,7 +86,7 @@ import { loadLiveMonths, lockMonth, type SignupMonth } from "./month-signup";
 import { WAITING_NOTE, buildSignupList, isDaytime, SIGNUP_REPOST_FLOOR_MS } from "./month-signup-rules";
 import { weekListHash } from "./monthly-week-rules";
 import { normalisePhone } from "./phone";
-import { normaliseSquadMode } from "./squad-month-rules";
+import { chargedGames, normaliseSquadMode } from "./squad-month-rules";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
@@ -146,6 +146,7 @@ type MemberRow = {
   note: string | null;
   leftAt: Date | null;
   gamesCovered: number;
+  gamesCommitted: number | null;
   creditsApplied: number;
   paidAt: Date | null;
   paidClaimedAt: Date | null;
@@ -159,6 +160,7 @@ const MEMBER_FIELDS = {
   note: true,
   leftAt: true,
   gamesCovered: true,
+  gamesCommitted: true,
   creditsApplied: true,
   paidAt: true,
   paidClaimedAt: true,
@@ -171,7 +173,8 @@ const pricingMember = (r: MemberRow, inClub: ReadonlySet<string>): PricingMember
   waiting: r.kind === "payg" && r.note === WAITING_NOTE,
   // Somebody who has left the group owes nothing more for the month.
   out: r.leftAt !== null || !inClub.has(r.userId),
-  gamesCovered: r.gamesCovered,
+  // The games they PAY for: fewer than they cover for a "4 only" regular.
+  gamesCovered: chargedGames(r),
   creditsApplied: r.creditsApplied,
   paid: r.paidAt ? "confirmed" : r.paidClaimedAt ? "claimed" : "none",
 });
@@ -182,7 +185,7 @@ const pricingMember = (r: MemberRow, inClub: ReadonlySet<string>): PricingMember
  * or carried credit). A credit for a game still to come can be taken back
  * if the regular plays after all, so it is never spent in advance.
  */
-async function usableCredits(
+export async function usableCredits(
   tx: Tx,
   orgId: string,
   userIds: string[],

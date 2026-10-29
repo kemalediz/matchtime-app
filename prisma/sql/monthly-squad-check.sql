@@ -80,3 +80,13 @@ ALTER TABLE "SquadCredit" ADD CONSTRAINT "SquadCredit_voidNote_check"
 CREATE UNIQUE INDEX IF NOT EXISTS "SquadCredit_one_live_per_game"
   ON "SquadCredit" ("orgId", "userId", "earnedMatchId")
   WHERE "voidedAt" IS NULL AND "earnedMatchId" IS NOT NULL;
+
+-- 2026-10-29 (Vets MNF): "4 only" regulars and a season break. Applied to
+-- production by prisma/migrations/20261029120000_monthly_setup_games_break.
+ALTER TABLE "SquadMonthMember" DROP CONSTRAINT IF EXISTS "SquadMonthMember_gamesCommitted_check";
+ALTER TABLE "SquadMonthMember" ADD CONSTRAINT "SquadMonthMember_gamesCommitted_check"
+  CHECK ("gamesCommitted" IS NULL OR "gamesCommitted" BETWEEN 1 AND 10);
+
+ALTER TABLE "Organisation" DROP CONSTRAINT IF EXISTS "Organisation_seasonBreakMonths_check";
+ALTER TABLE "Organisation" ADD CONSTRAINT "Organisation_seasonBreakMonths_check"
+  CHECK (array_to_string("seasonBreakMonths", ',') ~ '^([0-9]{4}-(0[1-9]|1[0-2])(,|$))*$');

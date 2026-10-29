@@ -169,10 +169,42 @@ export function gamesPlayedBy(dates: string[], time: string, now: Date): number 
   }
 }
 
-/** share x (games covered - credits applied). null while no share is set; never negative. */
-export function amountDuePence(p: { sharePence: number | null | undefined; gamesCovered: number; creditsApplied: number }): number | null {
+/**
+ * The games a regular PAYS for (2026-10-29, "4 only"): the games they
+ * cover, or fewer when they committed to fewer. Never more than they
+ * cover, never negative. Every money path reads this, not `gamesCovered`.
+ */
+export function chargedGames(m: { gamesCovered: number; gamesCommitted?: number | null }): number {
+  const covered = Math.max(0, m.gamesCovered);
+  return m.gamesCommitted == null ? covered : Math.max(0, Math.min(m.gamesCommitted, covered));
+}
+
+export type GamesCommittedError = "bad-games" | "more-than-the-month";
+
+/**
+ * Is this a games count a regular may commit to? NULL (every game), or a
+ * whole number from 1 to the games they cover. A count equal to what they
+ * cover is stored as NULL: it is every game.
+ */
+export function checkGamesCommitted(
+  games: unknown,
+  gamesCovered: number,
+): { ok: true; value: number | null } | { ok: false; error: GamesCommittedError } {
+  if (games === null || games === undefined) return { ok: true, value: null };
+  if (!isWholeNumber(games) || games < 1 || games > MAX_GAMES_IN_MONTH) return { ok: false, error: "bad-games" };
+  if (games > gamesCovered) return { ok: false, error: "more-than-the-month" };
+  return { ok: true, value: games === gamesCovered ? null : games };
+}
+
+/** share x (games paid for - credits applied). null while no share is set; never negative. */
+export function amountDuePence(p: {
+  sharePence: number | null | undefined;
+  gamesCovered: number;
+  creditsApplied: number;
+  gamesCommitted?: number | null;
+}): number | null {
   if (p.sharePence == null) return null;
-  return p.sharePence * Math.max(0, p.gamesCovered - p.creditsApplied);
+  return p.sharePence * Math.max(0, chargedGames(p) - p.creditsApplied);
 }
 
 // ── Starting a month part-way through (plan 4.5) ───────────────────────

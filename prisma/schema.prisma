@@ -527,6 +527,13 @@ model Organisation {
   /// ("bank details are in the group description"). MatchTime never asks
   /// for account numbers and never reads this as anything but text.
   paymentInstructions      String?
+  /// Season break (2026-10-29, Vets MNF "no football in December"): the
+  /// London months, as "YYYY-MM", with no games. For such a month no list
+  /// opens, no month is created, no match is generated and none is posted
+  /// about; the month after resumes as normal (its regulars are carried
+  /// from the last month played). Set on /admin/months. CHECK: each entry
+  /// is "YYYY-MM" (prisma/sql/monthly-squad-check.sql).
+  seasonBreakMonths        String[] @default([])
 
   /// ─── Who announces the list and teams (2026-10-14) ────────────────
   /// "matchtime" (default, today's behaviour for every club, Sutton FC
@@ -1991,6 +1998,12 @@ model AdminSquadProposal {
   playingNewNames  String[]  @default([])
   reserveUserIds   String[]  @default([])
   reserveNewNames  String[]  @default([])
+  /// A MONTH's list (2026-10-29, monthly clubs): the month it starts,
+  /// "YYYY-MM-01", and the draft read from the paste (rows the organiser's
+  /// YES starts the month with, `src/lib/month-seed-hq.ts`). NULL for a
+  /// weekly squad list, which is everything before this.
+  monthStart       String?
+  monthSeed        Json?
   expiresAt        DateTime
   resolvedAt       DateTime?
   /// "applied" | "superseded"
@@ -2973,6 +2986,13 @@ model SquadMonthMember {
   /// when they joined. A regular seeded at a mid-month start covers the
   /// whole month (the games already played count as played).
   gamesCovered   Int        @default(0)
+  /// "4 only" (2026-10-29): a regular who commits to fewer games than the
+  /// month has. NULL = every game they cover. Pays share x
+  /// min(gamesCommitted, gamesCovered); once they have played that many,
+  /// the month's other weeks are away weeks WITHOUT a credit, and a game
+  /// played beyond them is pay-as-you-go. Written only by
+  /// src/lib/month-member-games.ts. CHECK: NULL or 1 to 10.
+  gamesCommitted Int?
   /// Credits used against this month, in games.
   creditsApplied Int        @default(0)
   /// share x (gamesCovered - creditsApplied). NULL while no share is set.
