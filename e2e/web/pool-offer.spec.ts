@@ -161,6 +161,37 @@ for (const vp of WIDTHS) {
   });
 }
 
+test("wrong digits, then the right ones: the answers show with no false error, and Yes gives the place", async ({ page, request, db }) => {
+  const world = new PoolWorld(request, db, false);
+  await world.start();
+  const fnf = await openClub(world, "fnf-digits", { name: "FNF Digits" });
+  await poolPlayer(world, "ali-digits", { at: near(fnf) });
+  const ex = await organiserAsks(world, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
+  await pollPlatform(world, { now: at(fnf.kickoff, -8) });
+  await page.context().clearCookies();
+  await poolOpenCookie(page);
+  await page.goto(tapLinkIn(ex.sent[0]));
+  await expect(page.getByTestId("pool-offer-yes")).toHaveCount(0);
+
+  const right = await holderDigits(world, tapLinkIn(ex.sent[0]));
+  const wrong = right.split("").map((d) => String((Number(d) + 1) % 10)).join("");
+  await page.getByTestId("pool-offer-digits").fill(wrong);
+  await page.getByTestId("pool-offer-confirm").click();
+  await expect(page.getByTestId("pool-offer-verify-wrong")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("pool-offer-yes")).toHaveCount(0);
+
+  await page.getByTestId("pool-offer-digits").fill(right);
+  await page.getByTestId("pool-offer-confirm").click();
+  await expect(page.getByTestId("pool-offer-yes")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("pool-offer-no")).toBeVisible();
+  await expect(page.getByTestId("pool-offer-verify-wrong")).toHaveCount(0);
+  await expect(page.getByTestId("pool-offer-error")).toHaveCount(0);
+
+  await page.getByTestId("pool-offer-yes").click();
+  await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "in", { timeout: 20_000 });
+  await expect(page.getByTestId("pool-offer-error")).toHaveCount(0);
+});
+
 test("a link that is not ours: the page says it does not work, and offers nothing", async ({ page }) => {
   await page.goto("/play/offer/not-a-real-offer.AAAAAAAAAAAAAAAAAAAAAA");
   await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "invalid");
