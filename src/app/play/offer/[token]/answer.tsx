@@ -27,7 +27,10 @@ export function PoolOfferAnswer(props: { token: string; language: string; state:
   const ready = !needsDigits || /^\d{4}$/.test(digits);
   const answerable = props.state === "open" || props.state === "in" || props.state === "bench";
 
-  const go = (fn: (token: string, digits: string | null) => Promise<Answer>) =>
+  // `answer`: an accept or decline that comes back "open" did not go through
+  // (the server's catch). Proving the digits always comes back "open" on
+  // success, so it is never read as a failure.
+  const go = (fn: (token: string, digits: string | null) => Promise<Answer>, kind: "prove" | "answer" = "answer") =>
     start(async () => {
       setFailed(false);
       setVerify(null);
@@ -37,7 +40,7 @@ export function PoolOfferAnswer(props: { token: string; language: string; state:
           setVerify(r.verify);
           return;
         }
-        if (r.state === "open" && props.state === "open") setFailed(true);
+        if (kind === "answer" && r.state === "open" && props.state === "open") setFailed(true);
         router.refresh();
       } catch {
         setFailed(true);
@@ -66,7 +69,7 @@ export function PoolOfferAnswer(props: { token: string; language: string; state:
               type="button"
               data-testid="pool-offer-confirm"
               disabled={pending || !ready}
-              onClick={() => go(provePoolOfferAction)}
+              onClick={() => go(provePoolOfferAction, "prove")}
               className="h-11 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium disabled:opacity-50"
             >
               {c.page_confirm}
