@@ -62,6 +62,13 @@ export const poolOfferEn = {
     `🙋 ${p.name} from the MatchTime player pool is on the bench for ${p.day}, for you to pick. ${p.turnUp}`,
   notice_out: (p: { name: string; day: string }) =>
     `${p.name} from the MatchTime player pool can no longer play on ${p.day}. The place is open again.`,
+  // ── The players' group post, for a club with no admin group (Kemal,
+  //    2026-10-29): for everyone, never the turn-up record. Giving the
+  //    place back is `notice_out`, already worded for everyone. ──────────
+  group_notice_in: (p: { name: string; day: string }) => `🙋 ${p.name} from the MatchTime player pool has joined the squad for ${p.day}.`,
+  group_notice_bench: (p: { name: string; day: string }) => `🙋 ${p.name} from the MatchTime player pool is on the bench for ${p.day}.`,
+  group_notice_bench_pick: (p: { name: string; day: string }) =>
+    `🙋 ${p.name} from the MatchTime player pool is on the bench for ${p.day}. The organisers pick who plays from the bench. Organisers, to put ${p.name} in, tag me and say so, for example *@Match Time put ${p.name} in*`,
   turnup_new: "New to MatchTime.",
   turnup_all: (p: { n: number }) =>
     p.n === 1 ? "Played 1 MatchTime game and turned up to it." : `Played ${p.n} MatchTime games, turned up to all of them.`,

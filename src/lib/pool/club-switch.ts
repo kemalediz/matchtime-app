@@ -10,8 +10,8 @@
  * and the pool tick on the match page; organisers can ask the pool from HQ
  * (`flags.ts` `poolOpenForClub`: the platform switch AND this flag). Nothing
  * is offered by switching on. The FIRST time a club's pool goes from off
- * to on, the club is told once, ever (`club-switch-rules.ts`
- * `poolOnRoute`): through its admin channel (`sendAdminNotice`) when it has
+ * to on, the club is told once, ever (`club-notice-route-rules.ts`
+ * `clubNoticeRoute`): through its admin channel (`sendAdminNotice`) when it has
  * an admin group, or in its players' group, for everyone, when that is its
  * only group; the admin DMs only when it has no postable group at all.
  *
@@ -31,9 +31,9 @@ import { poolClubSwitchCopy, type PoolOnLinks } from "../i18n/pool-club-switch";
 import { appUrl } from "../app-url";
 import { settingsAnchorPath } from "../help-links";
 import { closePoolAsk } from "./round";
-import { isGroupPostable } from "../group-postability-store";
+import { CLUB_NOTICE_ROUTE_SELECT, clubNoticeRouteOf } from "../club-notice-route";
 import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf } from "../message-hours";
-import { POOL_ON_GROUP_KIND, POOL_ON_NOTICE_KIND, poolOnGroupKey, poolOnNoticeKey, poolOnRoute } from "./club-switch-rules";
+import { POOL_ON_GROUP_KIND, POOL_ON_NOTICE_KIND, poolOnGroupKey, poolOnNoticeKey } from "./club-switch-rules";
 
 export type ClubPoolSwitchResult = { ok: true; on: boolean; closedAsks: number; autoAsk: boolean; told: boolean } | { ok: false; reason: "not-found" };
 
@@ -75,7 +75,7 @@ export function poolOnLinks(): PoolOnLinks {
 const isUniqueViolation = (err: unknown) => (err as { code?: string } | null)?.code === "P2002";
 
 /**
- * The once-ever message that the pool is on (`poolOnRoute`). A club with an
+ * The once-ever message that the pool is on (`clubNoticeRoute`). A club with an
  * admin group, or with no postable players' group, is told through its
  * admin channel (`tellAdminTeamPoolOn`); a club whose only group is its
  * players' group gets ONE post there, worded for everyone, and no admin
@@ -84,15 +84,10 @@ const isUniqueViolation = (err: unknown) => (err as { code?: string } | null)?.c
 export async function tellClubPoolOn(orgId: string, now: Date): Promise<boolean> {
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { name: true, language: true, adminGroupId: true, whatsappGroupId: true, whatsappBotEnabled: true, ...QUIET_HOURS_SELECT },
+    select: { name: true, language: true, ...CLUB_NOTICE_ROUTE_SELECT, ...QUIET_HOURS_SELECT },
   });
   if (!org) return false;
-  const route = poolOnRoute({
-    adminGroupId: org.adminGroupId ?? null,
-    whatsappGroupId: org.whatsappGroupId ?? null,
-    whatsappBotEnabled: org.whatsappBotEnabled === true,
-    playersGroupPostable: org.whatsappGroupId ? await isGroupPostable(org.whatsappGroupId) : false,
-  });
+  const route = await clubNoticeRouteOf(org);
   if (route === "admin-channel") return tellAdminTeamPoolOn(orgId, org, now);
   return tellPlayersGroupPoolOn(orgId, org, now);
 }

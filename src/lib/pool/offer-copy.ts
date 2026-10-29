@@ -229,6 +229,24 @@ export function poolOrganiserNotice(lang: Lang, p: { name: string; day: string; 
   return p.bench ? c.notice_bench(args) : c.notice_in(args);
 }
 
+/** What a pool guest's place means, in a notice. */
+export type PoolGuestNoticeKind = "in" | "bench" | "out";
+
+/**
+ * The players' group post about a pool guest, for a club whose only group
+ * is its players' group (Kemal, 2026-10-29): worded for everyone, and
+ * WITHOUT the turn-up record, which stays in HQ where only organisers read
+ * it (another club's history about a stranger is not for the whole group).
+ * On an organiser-pick club's bench it says how an organiser puts him in.
+ */
+export function poolGuestGroupNotice(lang: Lang, p: { name: string; day: string; kind: PoolGuestNoticeKind; organiserPicks: boolean }): string {
+  const c = poolCopy(lang);
+  const args = { name: p.name, day: p.day };
+  if (p.kind === "out") return c.notice_out(args);
+  if (p.kind === "in") return c.group_notice_in(args);
+  return p.organiserPicks ? c.group_notice_bench_pick(args) : c.group_notice_bench(args);
+}
+
 /** Why the organisers' ask to the pool was refused, in their words. */
 export function poolAskRefusalText(lang: Lang | string | null | undefined, refusal: string, placesOpen: number): string {
   const c = poolCopy(lang);

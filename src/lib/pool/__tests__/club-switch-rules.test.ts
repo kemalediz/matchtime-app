@@ -7,26 +7,10 @@
  * before this change still gets the group post next time.
  */
 import { describe, expect, it } from "vitest";
-import { POOL_ON_GROUP_KIND, POOL_ON_NOTICE_KIND, poolOnGroupKey, poolOnNoticeKey, poolOnRoute } from "../club-switch-rules";
+import { POOL_ON_GROUP_KIND, POOL_ON_NOTICE_KIND, poolOnGroupKey, poolOnNoticeKey } from "../club-switch-rules";
 
-const base = { adminGroupId: null, whatsappGroupId: "g@g.us", whatsappBotEnabled: true, playersGroupPostable: true };
-
-describe("poolOnRoute", () => {
-  it("a linked admin group: the admin channel, whatever the players' group", () => {
-    expect(poolOnRoute({ ...base, adminGroupId: "hq@g.us" })).toBe("admin-channel");
-    expect(poolOnRoute({ ...base, adminGroupId: "hq@g.us", whatsappGroupId: null })).toBe("admin-channel");
-  });
-
-  it("no admin group and a postable players' group: the players' group", () => {
-    expect(poolOnRoute(base)).toBe("players-group");
-  });
-
-  it("no admin group and no postable players' group: the admin channel (DMs)", () => {
-    expect(poolOnRoute({ ...base, whatsappGroupId: null })).toBe("admin-channel");
-    expect(poolOnRoute({ ...base, whatsappBotEnabled: false })).toBe("admin-channel");
-    expect(poolOnRoute({ ...base, playersGroupPostable: false })).toBe("admin-channel");
-  });
-});
+// The route itself is the shared rule, `club-notice-route-rules.ts`
+// (src/lib/__tests__/club-notice-route-rules.test.ts).
 
 describe("the once-ever keys", () => {
   it("the admin channel keeps the existing key; the players' group has its own", () => {
