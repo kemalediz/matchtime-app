@@ -8,7 +8,10 @@
  * analyze route hands a list-shaped group message here BEFORE the router
  * (no model reads it):
  *
- *   1. `parseMonthlyList` (slice 1) reads what the message says;
+ *   1. the monthly reader (the model, `monthly-reader.ts`, since
+ *      2026-10-29) has read what the message says: its lines, the notes
+ *      beside the names, guests, the game it is for, and what was typed
+ *      around it. The caller passes that reading in;
  *   2. `reconcileMonthPaste` (pure) compares it with this week's state BY
  *      NAME and returns what it changes;
  *   3. this file applies that through the ordinary attendance write path
@@ -30,20 +33,20 @@ import { sendAdminNotice } from "./admin-channel";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
 import { loadClubQuietHours } from "./club-quiet-hours";
 import { formatLondon } from "./london-time";
-import { parseMonthlyList } from "./monthly-list";
+import type { MonthlyReading } from "./monthly-reader-prompt";
+import { createProvisionalByName } from "./resolve-sender";
 import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek } from "./monthly-week";
 import {
+  buildPasteGuestsAddedDm,
   buildPasteIgnoredAdminNotice,
   buildPasteNotAddedNotice,
   buildPasteSenderNotListDm,
   buildPasteSenderNotMatchedDm,
   buildPasteUndoDm,
-  pasteResidual,
 } from "./monthly-week-copy";
 import {
   buildWeekList,
   pasteShowsSameList,
-  pasteWeekHint,
   reconcileMonthPaste,
   weekListHash,
   type PasteIgnored,
@@ -110,7 +113,8 @@ async function claimOnce(key: string, kind: string, matchId: string | null): Pro
 export async function handleMonthlyPaste(args: {
   orgId: string;
   matchId: string;
-  body: string;
+  /** What the monthly reader (the model) read in the message. */
+  reading: Extract<MonthlyReading, { kind: "list" }>;
   waMessageId: string;
   /** When the member sent it (the original WhatsApp time). */
   sentAt?: Date;
@@ -122,8 +126,7 @@ export async function handleMonthlyPaste(args: {
 }): Promise<MonthlyPasteResult | NotThisMonthsList | null> {
   const { orgId, matchId, sender } = args;
   const now = args.now ?? new Date();
-  const list = parseMonthlyList(args.body);
-  if (!list) return null;
+  const { list } = args.reading;
   const week = await loadMonthlyWeek(matchId);
   if (!week || week.orgId !== orgId) return null;
 
@@ -163,10 +166,17 @@ export async function handleMonthlyPaste(args: {
         break;
       }
     }
-    const hint = pasteWeekHint(args.body, {
-      upcomingDay: Number(formatLondon(week.matchDate, "d")),
-      previousDay: previous ? Number(formatLondon(previous.matchDate, "d")) : null,
-    });
+    // Which game the reader says the list is for (a stale title is read
+    // through, with the date and the chat).
+    const day = args.reading.gameDay;
+    const hint =
+      day === null
+        ? null
+        : day === Number(formatLondon(week.matchDate, "d"))
+          ? "upcoming"
+          : previous && day === Number(formatLondon(previous.matchDate, "d"))
+            ? "previous"
+            : null;
     if (hint === "previous") selfBeforeSeed = false;
     else if (hint === null && previous) {
       const last = buildWeekList({ members: previous.members, rows: previous.rows, maxPlayers: previous.maxPlayers });
@@ -237,8 +247,33 @@ export async function handleMonthlyPaste(args: {
 
   const applied: string[] = [];
   const failures: string[] = [];
+  const guestsAdded: string[] = [];
   for (const a of outcome.actions) {
     try {
+      if (a.kind === "guest") {
+        // B2: somebody who is not a member yet, written in by a member. The
+        // reader matched nobody of the club, so this is the same creation a
+        // typed "David, my son, is IN" ends in (`resolveOrProvisionByName`'s
+        // last step), without its prefix guess: "Luca" must not become the
+        // member "Lucas" when the reader has already said he is not one.
+        const created = await createProvisionalByName(orgId, a.name, null);
+        if (!created?.userId) {
+          failures.push(a.name);
+          continue;
+        }
+        const res = await registerAttendance(created.userId, matchId, {
+          event: {
+            cause: "pasted-roster",
+            actorKind: senderIsAdmin ? "admin" : "member",
+            actorUserId: sender.userId ?? null,
+            sourceRef: args.waMessageId,
+            note: `a guest${a.hostUserId ? ` of ${a.hostUserId}` : ""} written on a pasted monthly list`,
+          },
+        });
+        applied.push(`guest:${a.name}${res.status === "BENCH" ? " (bench)" : ""}`);
+        guestsAdded.push(a.name);
+        continue;
+      }
       if (a.kind === "in") {
         const before = rowOf.get(a.userId)?.status ?? null;
         const res = await registerAttendance(a.userId, matchId, {
@@ -301,6 +336,27 @@ export async function handleMonthlyPaste(args: {
     } catch (err) {
       console.error(`[monthly-paste] ${a.kind} for "${a.name}" on ${matchId} failed:`, err);
       failures.push(a.name);
+    }
+  }
+
+  // "4 only" beside a regular: their own line, or an organiser's paste.
+  // Anybody else's note is left alone. The one setter works out the money.
+  for (const g of outcome.games) {
+    if (!g.self && !senderIsAdmin) continue;
+    // Loaded here: month-signup imports this module's neighbours.
+    const { commitMonthGames } = await import("./month-signup");
+    if (await commitMonthGames(week.monthId, g.userId, g.games)) applied.push(`games:${g.games}:${g.userId}`);
+  }
+
+  // The member who brought guests is told who was added, once per paste.
+  if (guestsAdded.length > 0 && sender.userId) {
+    const phone = phoneOf.get(sender.userId);
+    try {
+      if (phone && (await claimOnce(`${matchId}:paste-guests:${args.waMessageId}`, "paste-sender-dm", matchId))) {
+        await dm(phone, buildPasteGuestsAddedDm({ names: guestsAdded, matchDate: week.matchDate, lang: week.language }));
+      }
+    } catch (err) {
+      console.error("[monthly-paste] guests DM failed:", err);
     }
   }
 
@@ -372,6 +428,6 @@ export async function handleMonthlyPaste(args: {
     ignored: outcome.ignored,
     notAdded: outcome.notAdded,
     failures,
-    residual: pasteResidual(args.body, { lang: week.language, maxPlayers: week.maxPlayers, paygPricePence: week.paygPricePence }),
+    residual: args.reading.residual,
   };
 }

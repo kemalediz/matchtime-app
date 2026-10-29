@@ -105,6 +105,12 @@ export function buildPasteSenderNotMatchedDm(p: { names: string[]; lang?: LangAr
   return t(p.lang).mwk_dm_sender_not_matched({ names: p.names });
 }
 
+/** To the member whose paste added guests (B2, 2026-10-29): who, and to
+ *  which game. */
+export function buildPasteGuestsAddedDm(p: { names: string[]; matchDate: Date; lang?: LangArg }): string {
+  return t(p.lang).mwk_dm_paste_guests_added({ names: p.names, when: dayCommaTimeLabel(p.lang, p.matchDate) });
+}
+
 /** To a member of the month whose numbered list was not read as the
  *  month's list (no title line, and mostly not this month's players). */
 export function buildPasteSenderNotListDm(p: { matchDate: Date; lang?: LangArg }): string {

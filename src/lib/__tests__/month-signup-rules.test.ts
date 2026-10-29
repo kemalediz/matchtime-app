@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { parseMonthlyList } from "@/lib/monthly-list";
+import { readSignupMessage } from "@/lib/monthly-reader-legacy";
 import {
   WAITING_NOTE,
   buildSignupList,
@@ -20,7 +21,6 @@ import {
   monthStarted,
   nextMonthStart,
   planCarryOver,
-  readSignupMessage,
   reconcileSignupPaste,
   signupEndsAt,
   signupPasteShowsSameList,
@@ -294,25 +294,25 @@ describe("a pasted sign-up list", () => {
   it("the sender adds themselves: a regular", () => {
     const out = run("List for November\n1. Alex\n2. Bilal\n3. Dan");
     expect(out.thisList).toBe(true);
-    expect(out.self).toEqual({ choice: "in", days: [] });
+    expect(out.self).toEqual({ choice: "in", days: [], games: null });
     expect(out.notAdded).toEqual([]);
   });
 
   it("with (PAYG) and dates: PAYG on those dates", () => {
-    expect(run("List for November\n1. Alex\n2. Bilal\n3. Dan (PAYG 9th only)").self).toEqual({ choice: "payg", days: [9] });
+    expect(run("List for November\n1. Alex\n2. Bilal\n3. Dan (PAYG 9th only)").self).toEqual({ choice: "payg", days: [9], games: null });
   });
 
   it("under a known alias", () => {
-    expect(run("List for November\n1. Alex\n2. Bilal\n3. Danny").self).toEqual({ choice: "in", days: [] });
+    expect(run("List for November\n1. Alex\n2. Bilal\n3. Danny").self).toEqual({ choice: "in", days: [], games: null });
   });
 
   it("under a name we do not have, when it is the one unknown line and carries their first name", () => {
-    expect(run("List for November\n1. Alex\n2. Bilal\n3. Big Dan").self).toEqual({ choice: "in", days: [] });
+    expect(run("List for November\n1. Alex\n2. Bilal\n3. Big Dan").self).toEqual({ choice: "in", days: [], games: null });
   });
 
   it("NEVER adds anybody else: a club player written in by somebody else is reported, not added", () => {
     const out = run("List for November\n1. Alex\n2. Bilal\n3. Chris\n4. Dan");
-    expect(out.self).toEqual({ choice: "in", days: [] });
+    expect(out.self).toEqual({ choice: "in", days: [], games: null });
     expect(out.notAdded).toEqual([{ name: "Chris", reason: "not-the-sender" }]);
   });
 
@@ -333,7 +333,7 @@ describe("a pasted sign-up list", () => {
 
   it("an old copy never takes anybody off: a missing name changes nothing", () => {
     const out = run("List for November\n1. Alex\n2. Dan");
-    expect(out.self).toEqual({ choice: "in", days: [] });
+    expect(out.self).toEqual({ choice: "in", days: [], games: null });
     // Bilal is simply not on this copy.
     expect(out.notAdded).toEqual([]);
   });

@@ -77,6 +77,24 @@ export interface MonthlyListEntry {
   /** The cleaned name with the marks taken out. Empty for a blank slot. */
   name: string;
   marks: MonthlyListMarks;
+  /** What the monthly READER (the model, `monthly-reader.ts`) said about
+   *  the line beyond its marks. Absent from a list this file parsed. */
+  facts?: MonthlyLineFacts;
+}
+
+/** The model's facts about one line, checked against the context it was
+ *  shown (`parseMonthlyReading`). */
+export interface MonthlyLineFacts {
+  /** The member the line is, when it is one of them. */
+  memberId: string | null;
+  /** Somebody who is not a member, brought along by a member. */
+  guest: boolean;
+  /** Whose guest, when the line or the chat says. */
+  hostUserId: string | null;
+  /** "4 only": the games this person commits to for the month. */
+  games: number | null;
+  /** A hint that this is somebody new to the club. Never applied alone. */
+  newbie: boolean;
 }
 
 export interface MonthlyListMonth {

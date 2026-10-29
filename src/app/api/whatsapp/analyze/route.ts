@@ -376,7 +376,7 @@ import { resolveOrProvisionByName } from "@/lib/resolve-or-provision-name";
 import { planUnresolvedNudge } from "@/lib/unresolved-nudge";
 import { recordGroupSightings, sightedUserIds } from "@/lib/group-sighting";
 import { quotedRefOf } from "@/lib/quoted-message";
-import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "@/lib/reply-context";
+import { loadGroupReplyContexts, parseGroupQuote, quoteFromPi, type QuotedGroupMessage } from "@/lib/reply-context";
 import { rosterMemberByPhone } from "@/lib/roster-name-by-phone";
 import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { handlePartnerVolunteer } from "@/lib/partner-guest";
@@ -392,6 +392,7 @@ import { askWhichSource, nobodyLeftReply, sourcesAvailable } from "@/lib/ask-sou
 import { decideRecruitSource, type RecruitSource } from "@/lib/ask-source-rules";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
+import type { MonthlyReading } from "@/lib/monthly-reader-prompt";
 
 interface InboundMessage {
   waMessageId: string;
@@ -1832,28 +1833,28 @@ async function handleAnalyzeRequest(request: Request) {
   //   below registers nobody from those pastes on purpose (it needs the
   //   squad restated as an exact prefix, and this group changes slots in
   //   the middle). So for a club on "monthly" with a RUNNING month, a
-  //   list-shaped message is read here first, by the slice 1 reader, and
-  //   reconciled BY NAME (`lib/monthly-paste.ts`): no model reads it.
+  //   message the monthly reader (3a-ter, the model) read as a list is
+  //   applied here first, reconciled BY NAME and member
+  //   (`lib/monthly-paste.ts`).
   //
   //   ONLY for `squadMode === "monthly"`: a weekly club (Sutton FC, and
   //   every club before this) skips the whole block with no query, and
   //   section 4 sees its pastes exactly as before.
-  //   `handleMonthlyPaste` returns null for a message that is not this
-  //   month's list (not list-shaped, no running month for the match, or
-  //   another month's header), and section 4 then decides, as before.
+  //   `handleMonthlyPaste` returns null when there is no running month for
+  //   the match, and "not this list" for another month's list.
   //
   //   WHERE IT SITS, and what that keeps (the terminal-branch bug class):
   //     - after the club lookup, so a muted or billing-paused club never
   //       gets here;
   //     - after the late-message hold-out: a late paste is not in `fresh`
   //       during the peels, so it changes nothing;
-  //     - it calls no model, so the daily AI cap neither stops it nor is
-  //       spent by it;
+  //     - the reading costs one Haiku call per message (3a-ter); at the
+  //       daily AI cap the reading is "none" and nothing monthly changes;
   //     - it claims the LIST through `claimFastPath`, not the message:
   //       whatever the member typed around the list ("can't make it
   //       lads") is the residual, and the router and the attendance
   //       engine still see it. A message that was only a list is fully
-  //       handled here, which also saves today's model call per paste.
+  //       handled here.
   //
   //   IT SAYS NOTHING. A ✅ on a paste that changed something, nothing on
   //   one that only restates the list. The list itself is posted by the
@@ -1878,19 +1879,108 @@ async function handleAnalyzeRequest(request: Request) {
   //       plain "IN" is this week's game, exactly as before.
   //   It says nothing in the group: a ✅ on a message that was read.
   const monthSignup = org.squadMode === "monthly" ? await import("@/lib/month-signup") : null;
-  /** Read `m` as a pasted sign-up list. True when it was one (and is claimed). */
+  //
+  // ── 3a-ter. THE MONTHLY READER (2026-10-29) ─────────────────────────
+  //
+  //   Kemal: no code reads what people mean, the list's own numbering and
+  //   headers included, because people never keep to a format. For a club
+  //   on "monthly" with a live month, every fresh message is read ONCE by
+  //   the monthly reader (`lib/monthly-reader.ts`, one Haiku call): is it
+  //   the month's or a week's list (its lines, blanks, can't-play part,
+  //   notes such as "4 only", "PAYG 5th only", "(paid £22.50)", guests,
+  //   the game it is for), a sign-up in any words ("November good for
+  //   me"), or neither. It sees the club's members, its months and games,
+  //   the week's list as MatchTime has it, the recent chat (the extractors'
+  //   RECENT CHAT, `groupChatHistory`) and the message replied to. The
+  //   doors below act only on that reading.
+  //
+  //   A failed or capped call is "none": nothing changes for the month,
+  //   and the message goes on to the router as any other. Section 4 never
+  //   registers names from a message the reader looked at.
+  const monthlyReadings = new Map<string, MonthlyReading>();
+  if (monthSignup) {
+    const reader = await import("@/lib/monthly-reader");
+    const ctx = await reader
+      .loadMonthlyReaderContext({ orgId: org.id, matchId: nextMatchForReply?.id ?? null })
+      .catch((err) => {
+        console.error(`[analyze] monthly reader context for ${org.id} failed:`, err);
+        return null;
+      });
+    if (ctx) {
+      const chat = await groupChatHistory({
+        orgId: org.id,
+        groupId: body.groupId,
+        pi: body.history ?? [],
+        batch: all.map((m) => ({
+          waMessageId: m.waMessageId,
+          authorName: m.authorName,
+          timestamp: m.timestamp,
+          author: chatAuthorOf(senderById.get(m.waMessageId)),
+          body: m.body,
+          stored: seenMap.has(m.waMessageId),
+        })),
+      }).catch(() => []);
+      for (const m of fresh) {
+        if (fastPathHandledIds.has(m.waMessageId)) continue;
+        const sender = senderById.get(m.waMessageId)!;
+        const reading = await reader.readMonthlyMessage(
+          {
+            body: m.body,
+            sender: {
+              userId: sender.userId,
+              name: sender.name ?? m.authorName ?? null,
+              organiser: !!sender.userId && ctx.members.some((x) => x.userId === sender.userId && x.organiser),
+            },
+            history: chat.filter((h) => !(h.body === m.body && h.author === chatAuthorOf(sender))),
+            reply:
+              replyById.get(m.waMessageId) ??
+              (() => {
+                const q = parseGroupQuote(m);
+                return q?.text ? quoteFromPi(q) : null;
+              })(),
+            now: new Date(),
+          },
+          ctx,
+        );
+        monthlyReadings.set(m.waMessageId, reading);
+      }
+    }
+  }
+  const listReadingOf = (m: InboundMessage) => {
+    const r = monthlyReadings.get(m.waMessageId);
+    return r?.kind === "list" ? r : null;
+  };
+  //
+  // ── 3b-bis. THE MONTH'S SIGN-UP (slice 3, 2026-10-06) ────────────────
+  //
+  //   Plan sections 4.1 and 6.2. Same place, same guards, same club gate
+  //   as 3b (`squadMode === "monthly"` only; a weekly club runs none of
+  //   it and makes no query), acting on the monthly reader's reading:
+  //     - a list that is the list of a month people can still join
+  //       ("List for November", pasted in October) is applied by name
+  //       (`lib/month-signup.ts`). It changes the SENDER'S own line only
+  //       (and its "4 only"; an organiser's for anybody), and never creates
+  //       a player. With a week live, a list the reader calls a week's is
+  //       the week's, never the sign-up list;
+  //     - a newcomer adding themselves to a running month's own list in
+  //       the middle of the month joins it for the games left;
+  //     - a typed sign-up, in any words ("IN FOR NOVEMBER", "November good
+  //       for me", "Kasım varım"). A plain "IN" is this week's game.
+  //   It says nothing in the group: a ✅ on a message that was read.
+  /** Apply `m`'s list reading as a pasted sign-up list. True when it was one (and is claimed). */
   const trySignupPaste = async (
     m: InboundMessage,
     needHeader: boolean,
-    mode: { newcomerOnly?: boolean; monthLevel?: boolean } = {},
+    mode: { newcomerOnly?: boolean } = {},
   ): Promise<boolean> => {
-    if (!monthSignup) return false;
+    const reading = listReadingOf(m);
+    if (!monthSignup || !reading) return false;
     const sender = senderById.get(m.waMessageId)!;
     let res: Awaited<ReturnType<typeof monthSignup.handleSignupPaste>> = null;
     try {
       res = await monthSignup.handleSignupPaste({
         orgId: org.id,
-        body: m.body,
+        reading,
         waMessageId: m.waMessageId,
         sender: { userId: sender.userId, name: sender.name ?? m.authorName ?? null },
         senderWhatsAppName: m.authorName ?? null,
@@ -1898,7 +1988,7 @@ async function handleAnalyzeRequest(request: Request) {
         ...mode,
       });
     } catch (err) {
-      // Left for section 4 and the pipeline, as if this block were not here.
+      // Left for the pipeline, as if this block were not here.
       console.error(`[analyze] sign-up paste ${m.waMessageId} failed:`, err);
     }
     if (!res) return false;
@@ -1910,39 +2000,42 @@ async function handleAnalyzeRequest(request: Request) {
       handledBy: "fast-path",
       intent: "month_signup_list",
       action: res.applied.length > 0 ? `month-signup:${res.applied.length}` : "none",
-      reasoning: `month sign-up list, read by name: ${notes.join("; ")}`,
+      reasoning: `month sign-up list, read by the monthly reader: ${notes.join("; ")}`,
       react: res.changed ? "✅" : null,
       reply: null,
     });
     return true;
   };
   // TWO THINGS ARE THE MONTH'S BEFORE THE WEEK'S READER (3b) SEES A PASTE:
-  //   - MatchTime's OWN month lists (the sign-up list and, slice 4, the
-  //     priced list, known by their title line), pasted back at any time.
-  //     They are lists of the MONTH: a member who pastes one back to add
-  //     "(paid)" must never change who plays this week by it, so it never
-  //     reaches 3b. It is read for the month (its paid marks; the sender's
-  //     own sign-up while the month can still be joined), or not at all;
-  //   - a list headed with a month that can still be joined, pasted by
-  //     somebody who is NOT on that month, with their own name on it. They
-  //     are signing up for the MONTH (a regular, or PAYG if their line
-  //     says so, subject to the cap), and must not slip onto game one as
-  //     a one-off instead.
+  //   - a list the reader calls the MONTH's (who is on the month: its
+  //     sign-up list, MatchTime's own month or priced list), while that
+  //     month can still be joined. In a month under way it goes on to 3b,
+  //     where it can only restate the week and record paid marks (3b never
+  //     brings back a player who dropped, and a missing name changes
+  //     nothing), unless a newcomer is joining with it (below);
+  //   - a list naming a month, pasted by somebody who is NOT on that month,
+  //     with their own name on it. They are signing up for the MONTH (a
+  //     regular, or PAYG if their line says so, subject to the cap; for the
+  //     games left in a month under way), and must not slip onto one game
+  //     as a one-off instead.
   if (monthSignup) {
-    const { isMonthLevelList } = await import("@/lib/month-signup-copy");
     for (const m of fresh) {
       if (fastPathHandledIds.has(m.waMessageId)) continue;
-      if (isMonthLevelList(m.body)) {
-        if (!(await trySignupPaste(m, false, { monthLevel: true }))) monthlyNotSquadList.add(m.waMessageId);
-      } else {
-        await trySignupPaste(m, false, { newcomerOnly: true });
-      }
+      const reading = listReadingOf(m);
+      if (!reading) continue;
+      // A list the reader calls the month's is read for a month that can
+      // still be joined (or joined part-way by a newcomer). Anything else
+      // about it, in a month under way, is the week's (3b), paid marks
+      // included.
+      await trySignupPaste(m, false, reading.listOf === "month" ? {} : { newcomerOnly: true });
     }
   }
   if (org.squadMode === "monthly" && nextMatchForReply) {
     const { handleMonthlyPaste } = await import("@/lib/monthly-paste");
     for (const m of fresh) {
       if (fastPathHandledIds.has(m.waMessageId) || monthlyNotSquadList.has(m.waMessageId)) continue;
+      const reading = listReadingOf(m);
+      if (!reading) continue;
       const sender = senderById.get(m.waMessageId)!;
       let res: Awaited<ReturnType<typeof handleMonthlyPaste>> = null;
       try {
@@ -1950,14 +2043,14 @@ async function handleAnalyzeRequest(request: Request) {
         res = await handleMonthlyPaste({
           orgId: org.id,
           matchId: nextMatchForReply.id,
-          body: m.body,
+          reading,
           waMessageId: m.waMessageId,
           sentAt: Number.isNaN(sentAt.getTime()) ? undefined : sentAt,
           sender: { userId: sender.userId, name: sender.name ?? m.authorName ?? null },
           senderWhatsAppName: m.authorName ?? null,
         });
       } catch (err) {
-        // Left for section 4 and the pipeline, as if this block were not here.
+        // Left for the pipeline, as if this block were not here.
         console.error(`[analyze] monthly paste ${m.waMessageId} failed:`, err);
       }
       if (!res) continue;
@@ -1966,9 +2059,9 @@ async function handleAnalyzeRequest(request: Request) {
         // can still join ("List for November", pasted in October): a week
         // is live, so only with that month in its title.
         if (await trySignupPaste(m, true)) continue;
-        // A numbered list that is not this month's squad list ("Kit for
-        // Monday", next month's header). Nothing is read from it here, and
-        // section 4 below must not register its lines either.
+        // A list that is not this month's squad list (next month's).
+        // Nothing is read from it here, and section 4 below must not
+        // register its lines either.
         monthlyNotSquadList.add(m.waMessageId);
         continue;
       }
@@ -1982,7 +2075,7 @@ async function handleAnalyzeRequest(request: Request) {
         handledBy: res.failures.length > 0 ? "error" : "fast-path",
         intent: "monthly_list",
         action: res.applied.length > 0 ? `monthly-list:${res.applied.length}` : "none",
-        reasoning: `monthly list, read by name: ${notes.join("; ")}`,
+        reasoning: `monthly list, read by the monthly reader: ${notes.join("; ")}`,
         react: res.changed && res.failures.length === 0 ? "✅" : null,
         reply: null,
       });
@@ -1994,15 +2087,12 @@ async function handleAnalyzeRequest(request: Request) {
       // A list no week's list took (no running month for the next match):
       // the sign-up list, with its month in the title or without.
       if (!monthlyNotSquadList.has(m.waMessageId) && (await trySignupPaste(m, false))) continue;
+      const reading = monthlyReadings.get(m.waMessageId);
+      if (reading?.kind !== "signup") continue;
       const sender = senderById.get(m.waMessageId)!;
       let res: Awaited<ReturnType<typeof monthSignup.handleSignupMessage>> = null;
       try {
-        res = await monthSignup.handleSignupMessage({
-          orgId: org.id,
-          body: m.body,
-          quotedBody: typeof m.quotedBody === "string" ? m.quotedBody : null,
-          sender: { userId: sender.userId },
-        });
+        res = await monthSignup.handleSignupMessage({ orgId: org.id, ask: reading, sender: { userId: sender.userId } });
       } catch (err) {
         console.error(`[analyze] month sign-up ${m.waMessageId} failed:`, err);
       }
@@ -2013,7 +2103,7 @@ async function handleAnalyzeRequest(request: Request) {
         action: res.changed ? `month-signup:${res.outcome}` : "none",
         reasoning: res.locked
           ? `month sign-up (${res.choice}): not changed, the player says they have paid; they are told by DM`
-          : `month sign-up (${res.choice}), fixed vocabulary: ${res.changed ? `now ${res.outcome}` : `already ${res.outcome}`}`,
+          : `month sign-up (${res.choice}), read by the monthly reader: ${res.changed ? `now ${res.outcome}` : `already ${res.outcome}`}`,
         react: res.locked ? null : "✅",
         reply: null,
       });
@@ -2051,7 +2141,7 @@ async function handleAnalyzeRequest(request: Request) {
       // creates a player. A list the monthly reader refused (not this
       // month's squad list) registers nobody here either, whatever its
       // shape. Empty for every weekly club.
-      if (decision.kind === "of_record" && monthlyNotSquadList.has(m.waMessageId)) {
+      if (decision.kind === "of_record" && (monthlyNotSquadList.has(m.waMessageId) || monthlyReadings.has(m.waMessageId))) {
         pastedRosterReports.set(m.waMessageId, {
           handledBy: "fast-path",
           action: "none",

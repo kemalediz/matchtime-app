@@ -1310,6 +1310,7 @@ const SAMPLES: SampleArgs = {
   mwk_list_open_organiser: { open: 3 },
   mwk_pool_group: { open: 3, when: "Mon 12 Oct, 20:00", price: "£8" },
   mwk_dm_sender_not_matched: { names: ["Gaz", "Tariq"] },
+  mwk_dm_paste_guests_added: { names: ["Jon", "Luca"], when: "Mon 9 Nov, 20:30" },
   mwk_dm_sender_not_list: { month: "October" },
   mwk_pool_dm: { firstName: "Omar", activityName: "Monday 7-a-side", when: "Mon 12 Oct, 20:00", price: "£8" },
   mwk_dm_moved_out_paid: { actor: "Rob", activityName: "Monday 7-a-side", when: "Mon 12 Oct, 20:00" },

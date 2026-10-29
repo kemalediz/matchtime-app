@@ -4483,6 +4483,11 @@ export const en = {
   mwk_dm_sender_not_matched: (p: { names: string[] }): string =>
     `📋 I couldn't match ${p.names.join(", ")} on the list you pasted to a player, so I added nobody. ` +
     `To play, say *IN* in the group yourself, or ask an organiser to add them.`,
+  /** To a member whose pasted list added guests (people who are not
+   *  members yet) to the week, once per paste. */
+  mwk_dm_paste_guests_added: (p: { names: string[]; when: string }): string =>
+    `📋 From the list you pasted I've added ${p.names.join(", ")} to ${p.when} as your guest, paying as they go. ` +
+    `If that's not right, tell an organiser.`,
   /** To a member of the month whose numbered list was not read as the squad list. */
   mwk_dm_sender_not_list: (p: { month: string }): string =>
     `📋 I couldn't read the list you posted as the squad list for ${p.month}, so I changed nothing. ` +

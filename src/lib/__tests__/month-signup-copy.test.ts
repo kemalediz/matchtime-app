@@ -9,7 +9,8 @@ import { describe, expect, it } from "vitest";
 import { parseMonthlyList } from "@/lib/monthly-list";
 import { buildSignupListPost, isMonthLevelList, paygMark, quotedSignupMonth, signupPasteResidual } from "@/lib/month-signup-copy";
 import { buildWeekListPost } from "@/lib/monthly-week-copy";
-import { monthKickoffs, readSignupMessage, type SignupList } from "@/lib/month-signup-rules";
+import { monthKickoffs, type SignupList } from "@/lib/month-signup-rules";
+import { readSignupMessage } from "@/lib/monthly-reader-legacy";
 
 const kickoffs = monthKickoffs("2026-11-01", 1, "20:00");
 const list: SignupList = {
