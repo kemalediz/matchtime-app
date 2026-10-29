@@ -148,6 +148,7 @@ type MemberRow = {
   gamesCovered: number;
   gamesCommitted: number | null;
   creditsApplied: number;
+  amountDuePence: number | null;
   paidAt: Date | null;
   paidClaimedAt: Date | null;
 };
@@ -162,6 +163,7 @@ const MEMBER_FIELDS = {
   gamesCovered: true,
   gamesCommitted: true,
   creditsApplied: true,
+  amountDuePence: true,
   paidAt: true,
   paidClaimedAt: true,
 } as const;
@@ -276,6 +278,19 @@ export async function priceMonth(args: {
       current?.pricedAt ?? null,
     );
     const plan = planPricing({ members, credits, sharePence: args.input.sharePence, concessionPence: args.input.concessionPence });
+    // A regular who said "paid" BEFORE there was a price (a "(paid)" mark on
+    // the group's list the month was started from, 2026-10-29) was never
+    // asked for an amount: they get one now, from the games they pay for,
+    // with no credit pulled in behind their claim. One with an amount keeps it.
+    for (const r of rows) {
+      const m = pricingMember(r, inClub);
+      if (m.kind !== "regular" || m.out || m.waiting || m.paid === "none" || r.amountDuePence !== null) continue;
+      const share = m.tier === "concession" && args.input.concessionPence !== null ? args.input.concessionPence : args.input.sharePence;
+      await tx.squadMonthMember.updateMany({
+        where: { id: r.id, amountDuePence: null },
+        data: { amountDuePence: share * Math.max(0, m.gamesCovered - m.creditsApplied) },
+      });
+    }
     for (const row of plan) {
       if (row.creditIds.length > 0) {
         // `appliedMonthId: null` in the WHERE: a credit is used once.

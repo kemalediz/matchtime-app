@@ -24,6 +24,7 @@ import { lockMonth } from "./month-signup";
 import { lockClubCredits, usableCredits } from "./month-payment";
 import { planPricing } from "./month-payment-rules";
 import { chargedGames, checkGamesCommitted, normaliseSquadMode } from "./squad-month-rules";
+import { londonDateTimeToUtc } from "./london-time";
 
 export type SetMonthMemberGamesError =
   | "bad-games"
@@ -33,7 +34,8 @@ export type SetMonthMemberGamesError =
   | "closed"
   | "not-a-member"
   | "not-a-regular"
-  | "locked";
+  | "locked"
+  | "fewer-than-played";
 
 export async function setMonthMemberGames(args: {
   squadMonthId: string;
@@ -61,7 +63,15 @@ export async function setMonthMemberGames(args: {
     const [m, row] = await Promise.all([
       tx.squadMonth.findUnique({
         where: { id: month.id },
-        select: { status: true, sharePerGamePence: true, concessionPerGamePence: true, pricedAt: true },
+        select: {
+          status: true,
+          sharePerGamePence: true,
+          concessionPerGamePence: true,
+          pricedAt: true,
+          monthStart: true,
+          gamesPlayedBeforeStart: true,
+          activity: { select: { venue: true, dayOfWeek: true } },
+        },
       }),
       tx.squadMonthMember.findUnique({
         where: { monthId_userId: { monthId: month.id, userId: args.userId } },
@@ -75,6 +85,8 @@ export async function setMonthMemberGames(args: {
           creditsApplied: true,
           paidAt: true,
           paidClaimedAt: true,
+          joinedAt: true,
+          source: true,
         },
       }),
     ]);
@@ -87,6 +99,23 @@ export async function setMonthMemberGames(args: {
     const checked = checkGamesCommitted(args.games, row.gamesCovered);
     if (!checked.ok) return { ok: false as const, error: checked.error };
     if (checked.value === row.gamesCommitted) return { ok: true as const };
+    // Never fewer games than they have already played this month: those
+    // were the month's games, paid for by it.
+    if (checked.value !== null) {
+      const monthStart = m.monthStart.toISOString().slice(0, 10);
+      const played = await tx.match.findMany({
+        where: {
+          activity: { orgId: month.orgId, venue: m.activity.venue, dayOfWeek: m.activity.dayOfWeek },
+          isHistorical: false,
+          status: { not: "CANCELLED" },
+          date: { gte: londonDateTimeToUtc(monthStart, "00:00"), lt: now },
+          attendances: { some: { userId: args.userId, status: "CONFIRMED" } },
+        },
+        select: { date: true },
+      });
+      const count = played.filter((x) => x.date.getTime() >= row.joinedAt.getTime()).length + (row.source.startsWith("seed") ? m.gamesPlayedBeforeStart : 0);
+      if (checked.value < count) return { ok: false as const, error: "fewer-than-played" };
+    }
 
     const committed = checked.value;
     const charged = chargedGames({ gamesCovered: row.gamesCovered, gamesCommitted: committed });

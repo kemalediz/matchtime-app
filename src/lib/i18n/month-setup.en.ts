@@ -42,6 +42,8 @@ export const monthSetupEn = {
           ? "This payment is confirmed. Ask an organiser to change the games."
           : p.key === "not-a-regular"
             ? "Only a regular of the month has a number of games."
+            : p.key === "fewer-than-played"
+              ? "They have already played more games than that this month."
             : "That did not save. Try again.",
   /** On a member's own page. */
   my_games_label: (p: { of: number }): string => `How many of the ${p.of} games are you playing?`,

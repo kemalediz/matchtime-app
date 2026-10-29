@@ -36,6 +36,8 @@ export const monthSetupTr: MonthSetupStrings = {
           ? "Bu ödeme onaylandı. Maç sayısını bir yöneticiye değiştirtin."
           : p.key === "not-a-regular"
             ? "Maç sayısı yalnızca ayın daimi oyuncuları içindir."
+            : p.key === "fewer-than-played"
+              ? "Bu ay zaten bundan fazla maç oynadı."
             : "Kaydedilemedi. Tekrar deneyin.",
   my_games_label: (p) => `${p.of} maçın kaçında oynuyorsunuz?`,
   my_games_all: (p) => `${p.of} maçın hepsi`,
