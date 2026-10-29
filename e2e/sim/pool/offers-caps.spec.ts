@@ -1,7 +1,7 @@
 /**
  * POOL SCENARIOS: the limits (slice L5a, 2026-10-24; the rules are L4's).
  * Approved spec, "Limits": at most 2 offers a week and 1 a day per
- * player, none 21:30 to 08:30; 3 ignored offers in a row pause the player;
+ * player (no night hold since 2026-10-29); 3 ignored offers in a row pause the player;
  * a decline keeps that club away for 14 days. Each is a real conversation
  * through the real routes: what is queued, what the Pi is handed and when,
  * and who hears nothing. Model-free ($0).
@@ -10,33 +10,17 @@ import { scenario, scenarios, expect } from "./fixtures";
 import { askOf, at, extraMatch, londonOn, near, offersOf, openClub, organiserAsks, pollPlatform, poolPlayer, tapLinkIn, tapOffer } from "./offers-world";
 
 scenarios("the pool's limits", () => {
-  scenario("quiet hours: an ask at 21:45 is queued for 08:30 and handed out then, not before", async ({ pool, page }) => {
+  scenario("no night hold (Kemal, 2026-10-29): an organiser's ask at 03:00 is handed out at once", async ({ pool, page }) => {
     const fnf = await openClub(pool, "fnf", { name: "FNF" });
     const ali = await poolPlayer(pool, "ali", { at: near(fnf) });
-    const late = londonOn(fnf.kickoff, -1, "21:45");
-    const morning = londonOn(fnf.kickoff, 0, "08:30");
+    const night = londonOn(fnf.kickoff, 0, "03:00");
 
-    const ex = await organiserAsks(pool, page, fnf, { places: 1, now: late });
-    pool.expectSent(ex.sent, [{ to: "ali", purpose: "pool-offer", sendAfter: morning }]);
+    const ex = await organiserAsks(pool, page, fnf, { places: 1, now: night });
+    pool.expectSent(ex.sent, [{ to: "ali", purpose: "pool-offer", sendAfter: null }]);
 
-    expect((await pollPlatform(pool, { now: londonOn(fnf.kickoff, -1, "23:00") })).out).toEqual([]);
-    expect((await pollPlatform(pool, { now: londonOn(fnf.kickoff, 0, "08:29") })).out).toEqual([]);
-    const { out } = await pollPlatform(pool, { now: morning });
-    expect(out.map((m) => m.to)).toEqual(["ali"]);
-    expect((await offersOf(pool, ali))[0].sentAt).toEqual(morning);
-  });
-
-  scenario("the autumn clock change night: 21:45 BST on Saturday 24 October waits for 08:30 GMT on Sunday", async ({ pool, page }) => {
-    const fnf = await openClub(pool, "fnf", { name: "FNF", kickoffInHours: Math.max(48, Math.ceil((Date.parse("2026-10-26T19:00:00Z") - Date.now()) / 3600_000)) });
-    await poolPlayer(pool, "ali", { at: near(fnf) });
-    const saturdayNight = new Date("2026-10-24T20:45:00Z");
-    const sundayMorning = new Date("2026-10-25T08:30:00Z");
-
-    const ex = await organiserAsks(pool, page, fnf, { places: 1, now: saturdayNight });
-    pool.expectSent(ex.sent, [{ to: "ali", purpose: "pool-offer", sendAfter: sundayMorning }]);
-    expect((await pollPlatform(pool, { now: new Date("2026-10-25T07:30:00Z") })).out).toEqual([]);
-    expect((await pollPlatform(pool, { now: new Date("2026-10-25T08:29:00Z") })).out).toEqual([]);
-    expect((await pollPlatform(pool, { now: sundayMorning })).out.map((m) => m.to)).toEqual(["ali"]);
+    const { out } = await pollPlatform(pool, { now: new Date(night.getTime() + 60_000) });
+    expect(out.filter((m) => m.to === "ali").map((m) => m.to)).toEqual(["ali"]);
+    expect((await offersOf(pool, ali))[0].sentAt).not.toBeNull();
   });
 
   scenario("one a day across clubs: a second club asking the same day reaches nobody, and he hears nothing more", async ({ pool, page }) => {

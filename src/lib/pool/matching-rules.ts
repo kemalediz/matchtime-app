@@ -211,7 +211,8 @@ export interface Selection {
 
 /**
  * The match gate at `now`, then every person's filters and caps at
- * `sendAt` (the moment the offer would reach him: `waves.ts` `poolSendAt`),
+ * `sendAt` (the moment the offer would reach him; now, since the pool has
+ * no night hold, 2026-10-29),
  * then the ranking.
  */
 export function selectCandidates(ctx: PoolMatchContext, rows: readonly PoolCandidateRow[], now: Date, sendAt: Date = now): Selection {

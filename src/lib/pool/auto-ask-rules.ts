@@ -7,7 +7,7 @@
  * and a club can switch on automatic asking (`Organisation.poolAutoAsk`,
  * off by default). Switched on, the club's automatic ask approves the round
  * instead of the tap, and everything after it is the tap's own path
- * (`round.ts` `requestPoolAsk`): every cap, quiet hours, the cut-off, the
+ * (`round.ts` `requestPoolAsk`): every cap, the cut-off, the
  * switches, partners first.
  *
  *   poolAutoAskApplies  the club level: the pool is open for the club, its

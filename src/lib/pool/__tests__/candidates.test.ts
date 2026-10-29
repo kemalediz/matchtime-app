@@ -93,7 +93,6 @@ describe("with the pool open", () => {
     expect(where).toMatchObject({ status: "active", userId: { not: null }, consentAt: { not: null }, sports: { some: { sport: "football" } } });
     expect(r.selection.eligible.map((e) => e.userId)).toEqual(["near"]);
     expect(r.selection.excluded).toEqual({ "too-far": 1 });
-    expect(r.sendAt).toEqual(NOW);
   });
 
   it("only his postcode area is searched: the travel box on its centre, never chosen pitches (2026-10-25)", async () => {

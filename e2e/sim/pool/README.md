@@ -166,10 +166,10 @@ write; "today" rows exist now. EN and TR wherever MatchTime speaks.
 - decline, then that club cannot offer him again for 14 days
 - he pulls out in time and late: the place goes back through the normal drop flow and bench offer
 
-### Caps and quiet hours (L4, L5)
+### Caps (L4, L5)
 
 - 2 offers a week, 1 a day, 1 per match, across clubs
-- an offer due at 21:45 is held to 08:30 (`sendAfter`), released by the platform poll then and not before
+- no night hold (Kemal, 2026-10-29): an ask at 03:00 is queued with no `sendAfter` and handed out at the next platform poll
 - 3 ignored offers in a row: paused, one DM with the resume link
 - the global switch off: nothing queued and nothing dispatched; a club's flag off: the club cannot ask
 - 3 pool rounds per club per week
@@ -215,7 +215,7 @@ venue in its OWN area so scenarios sharing a database never reach each other's p
 | File | Covers |
 | --- | --- |
 | `offers-ask.spec.ts` | one-tap approval, nothing before it; the offer EN and TR with every fact and no names or numbers; every exclusion gets no message; switch and club flag off at queue time AND at send time; paused after queueing; waves fired and skipped; the press asks what was ticked, now: partners only, the pool only (a partner round already open does not delay it), both at once (K.7) |
-| `offers-caps.spec.ts` | quiet hours; the autumn clock-change night; 1 a day and 2 a week across clubs; the 14-day decline cooldown; 3 ignored in a row pause him with one DM |
+| `offers-caps.spec.ts` | no night hold; 1 a day and 2 a week across clubs; the 14-day decline cooldown; 3 ignored in a row pause him with one DM |
 | `offers-platform-cap.spec.ts` | the platform cap with two pollers racing for the last room |
 | `offers-accept.spec.ts` | yes (first-come) with the organisers' notice and his details; TR; two yeses for the last place; yes after expiry; organiser-pick (bench); a fee club and the club's own pay link; a reply in words; giving the place back; the stop link signs him in to his manage page |
 | `offers-reply-words.spec.ts` | (L6, reader stubbed) answering in his own words: yes EN and TR (the tap's writer, `repliedVia` words), no EN and TR (the 14-day cooldown), stop EN and TR, a question (the offer's own facts, nothing invented) EN and TR, unsure (one re-ask, then today's line, then nothing), two open offers (which one; a swipe-reply books that one), a club member (his club's question carries on; a plain yes taken; after a club DM his words are his club's, the reader not even asked), offers stopped (nothing booked, one line), after expiry (the one "gone" line), a place given back in words |

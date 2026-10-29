@@ -8,7 +8,7 @@
  * language is a `tsc` error. The pages hold no wording of their own. The
  * pool's DMs stay in the string tables (`pool_dm_*`).
  *
- * Every number in a sentence (the age, the limits, the quiet hours) is
+ * Every number in a sentence (the age, the limits) is
  * passed in from `src/lib/pool/rules.ts`, never typed. House rules (unit
  * tested in `__tests__/pool-play.test.ts`): no em or en dashes, no slash as
  * a separator, "early sign-up list" and never "waiting list", Turkish never
@@ -22,8 +22,6 @@ import { buildPoolPlayTr } from "./pool-play.tr";
 export interface PoolPlayFacts {
   minAge: number;
   perWeek: number;
-  quietFrom: string;
-  quietTo: string;
   /** How long a /play code works. */
   codeDays: number;
 }

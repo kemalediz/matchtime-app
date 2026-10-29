@@ -50,7 +50,7 @@
 import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "@/lib/club-partnership-rules";
 import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
 import { PLAYERS_PAGE_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
-import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
+import { POOL_CAPS, POOL_MIN_AGE } from "@/lib/pool/rules";
 import { POOL_AFTER_PARTNERS_MINS } from "@/lib/pool/round-rules";
 import { SPORT_LEVELS, levelLabel, liveSports } from "@/lib/pool/sports";
 import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
@@ -710,7 +710,7 @@ export const POOL_OFFER_CHAT: DeckChat = {
 // src/lib/pool/*: the /play sign-up (slice L2), its WhatsApp confirmation
 // (pool/confirm.ts), the offer (pool/offer-copy.ts, pool-offer.en.ts), the
 // matching (pool/matching-rules.ts candidateExclusion), the limits
-// (pool/rules.ts POOL_QUIET_HOURS, POOL_MIN_AGE) and the privacy rules (plan
+// (pool/rules.ts POOL_MIN_AGE) and the privacy rules (plan
 // section 6). The copy says "once the pool opens in your town", never "today":
 // it is opening town by town. Round two (2026-10-26) rewrote it for
 // enthusiasm, facts only, and moved it straight under the hero.
@@ -743,11 +743,12 @@ const PLAYER_POOL: Spotlight = {
       body: "Once the pool opens in your town, a nearby club short at a time that suits you can call you up.",
     },
     {
-      // pool/offer-copy.ts poolOfferLines; pool/rules.ts POOL_QUIET_HOURS. The
-      // weekly cap still applies but is not on the site (Kemal, 2026-10-25).
+      // pool/offer-copy.ts poolOfferLines. The weekly cap still applies but
+      // is not on the site (Kemal, 2026-10-25). No night-time promise: the
+      // pool's quiet hours were removed (Kemal, 2026-10-29).
       key: "offer",
       title: "The offer lands on WhatsApp",
-      body: `The club, day and time, how far and the kind of game. Never between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}.`,
+      body: "The club, day and time, how far and the kind of game.",
     },
     {
       // pool/accept.ts: a yes takes the place while it is open ("gone" when it

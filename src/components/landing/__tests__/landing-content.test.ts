@@ -42,7 +42,7 @@ import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
 import { POOL_PLAY_PATH, PLAYERS_PAGE_PATH } from "@/lib/pool/paths";
 import { readSignupSource } from "@/lib/pool/profile-fields";
 import { poolPageCopy } from "@/lib/pool/page-copy";
-import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
+import { POOL_CAPS, POOL_MIN_AGE } from "@/lib/pool/rules";
 import { POOL_AFTER_PARTNERS_MINS } from "@/lib/pool/round-rules";
 import { SPORT_LEVELS, levelLabel } from "@/lib/pool/sports";
 import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
@@ -364,10 +364,10 @@ describe("landing content: the player pool (G0 part 2)", () => {
     expect(yes).not.toMatch(/it's yours/);
   });
 
-  it("the facts are kept: adults only, quiet hours, stop any time, number shared only when you join a group, postcode district", () => {
+  it("the facts are kept: adults only, no night-time promise (no pool quiet hours since 2026-10-29), stop any time, number shared only when you join a group, postcode district", () => {
     const text = copyStrings(s).map((x) => x.text).join(" ");
     expect(text).toContain(`${POOL_MIN_AGE} and over`);
-    expect(text).toContain(`between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}`);
+    expect(text).not.toMatch(/Never between|21:30|08:30/);
     expect(text).toMatch(/Stop any time/);
     expect(s.note!.items.find((i) => i.key === "number")!.text).toMatch(/only shared if you join a club's WhatsApp group yourself/);
     expect(s.note!.items.find((i) => i.key === "area")!.text).toMatch(/postcode district, never your full postcode/);
@@ -402,10 +402,10 @@ describe("landing content: the player pool (G0 part 2)", () => {
     expect(all).not.toMatch(/[—–]/);
   });
 
-  it("the quiet hours and the age come from pool/rules.ts; the weekly cap is not on the site", () => {
+  it("the age comes from pool/rules.ts; neither the weekly cap nor a night-time promise is on the site", () => {
     const offers = s.steps!.find((x) => x.key === "offer")!.body;
     expect(offers).not.toMatch(/a week|at most/i);
-    expect(offers).toContain(`between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}`);
+    expect(offers).toBe("The club, day and time, how far and the kind of game.");
     expect(s.points.find((x) => x.key === "age")!.title).toBe(`${POOL_MIN_AGE} and over`);
   });
 

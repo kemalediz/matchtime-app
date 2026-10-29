@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { fieldErrorKeys, POOL_PAGE_FACTS, poolPageCopy } from "../../pool/page-copy";
-import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "../../pool/rules";
+import { POOL_CAPS, POOL_MIN_AGE } from "../../pool/rules";
 import type { PoolPlayCopy } from "../pool-play";
 import { perWeekEn } from "../pool-play.en";
 import { perWeekTr } from "../pool-play.tr";
@@ -53,10 +53,11 @@ describe("Turkish is translated, line by line", () => {
 
 describe("the numbers come from rules.ts", () => {
   it("the facts", () => {
-    expect(POOL_PAGE_FACTS).toMatchObject({ minAge: POOL_MIN_AGE, perWeek: POOL_CAPS.perPlayerPerWeek, quietFrom: POOL_QUIET_HOURS.from });
+    expect(POOL_PAGE_FACTS).toMatchObject({ minAge: POOL_MIN_AGE, perWeek: POOL_CAPS.perPlayerPerWeek });
+    expect(POOL_PAGE_FACTS).not.toHaveProperty("quietFrom");
   });
   for (const [lang, c] of [["en", EN], ["tr", TR]] as Array<[string, PoolPlayCopy]>) {
-    it(`${lang}: the age, the weekly cap and the quiet hours`, () => {
+    it(`${lang}: the age and the weekly cap`, () => {
       expect(c.signup.adultLabel).toContain(String(POOL_MIN_AGE));
       expect(c.signup.consentLabel).toContain(lang === "en" ? perWeekEn(POOL_CAPS.perPlayerPerWeek) : perWeekTr(POOL_CAPS.perPlayerPerWeek));
       expect(c.fields.dayNames).toHaveLength(7);
@@ -110,11 +111,10 @@ describe("/play gets to the first field fast", () => {
   });
   for (const [lang, c] of [["en", EN], ["tr", TR]] as Array<[string, PoolPlayCopy]>) {
     const above = [c.signup.heading, ...c.signup.howItWorks, c.signup.earlyShort].join(" ");
-    it(`${lang}: nothing above the form repeats the limit, the quiet hours or the number line`, () => {
+    it(`${lang}: nothing above the form repeats the limit, a night-time promise or the number line`, () => {
       expect(above).not.toContain(String(POOL_CAPS.perPlayerPerWeek));
       expect(above).not.toMatch(/twice|a week|haftada/i);
-      expect(above).not.toContain(POOL_QUIET_HOURS.from);
-      expect(above).not.toContain(POOL_QUIET_HOURS.to);
+      expect(above).not.toMatch(/21:30|08:30|at night|gece/i);
       expect(above).not.toMatch(/phone number|never ask|telefon numaran|asla sormay/i);
     });
     it(`${lang}: a short headline and at most three very short lines`, () => {

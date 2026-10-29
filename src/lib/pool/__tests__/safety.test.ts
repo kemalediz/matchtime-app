@@ -1,7 +1,8 @@
 /**
  * Review of #404: a club's report names a match only of that club with that
- * guest (13); a database refusal is a friendly answer (11); the pause DMs
- * respect the pool's quiet hours (9).
+ * guest (13); a database refusal is a friendly answer (11). The pool has
+ * no night hold since 2026-10-29 (Kemal: "I would remove this quiet hours
+ * for now"), so the pause DMs go when they are made.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -44,12 +45,11 @@ describe("reportFromClub", () => {
 });
 
 describe("the owner lifts a pause at night", () => {
-  it("the 'offers on again' DM waits for the pool's morning", async () => {
+  it("the 'offers on again' DM goes now, with no night hold", async () => {
     dbMock.poolProfile.findUnique.mockResolvedValue({ id: "p", status: "paused", pausedReason: "no-shows", language: "en", user: { phoneNumber: "+447700900111" } });
     const night = new Date("2026-11-03T23:30:00Z");
     expect(await liftPoolPause("u", "owner", night, { MT_POOL_OPEN: "1" })).toBe(true);
     const sendAfter = (jobs.queuePlatformDm.mock.calls[0] as unknown as [{ sendAfter: Date | null }])[0].sendAfter;
-    expect(sendAfter).not.toBeNull();
-    expect(sendAfter!.getTime()).toBeGreaterThan(night.getTime());
+    expect(sendAfter).toBeNull();
   });
 });

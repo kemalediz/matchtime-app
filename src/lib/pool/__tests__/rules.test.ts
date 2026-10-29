@@ -1,15 +1,14 @@
 /**
  * The pool's limits and field rules (slice L1). Pure: every number here is
- * the ONE definition later slices enforce (L4 caps and quiet hours, L5
+ * the ONE definition later slices enforce (L4 caps, L5
  * rounds, L7 auto-pause, the retention job). Approved spec, "Limits".
  */
 import { describe, expect, it } from "vitest";
-import { inQuietHours } from "../../message-hours";
+import * as rules from "../rules";
 import {
   POOL_CAPS,
   POOL_CONSENT_VERSION,
   POOL_MIN_AGE,
-  POOL_QUIET_HOURS,
   POOL_RETENTION,
   POOL_ROUND,
   POOL_TRAVEL_MILES,
@@ -37,13 +36,8 @@ describe("the limits (approved spec, plain wording)", () => {
     expect(POOL_CAPS.ignoredInARowPause).toBe(3);
   });
 
-  it("no offer 21:30 to 08:30 London, read through the one quiet-hours module", () => {
-    expect(POOL_QUIET_HOURS).toEqual({ enabled: true, from: "21:30", to: "08:30" });
-    // 21:29 and 08:30 London on a winter day (UTC = London).
-    expect(inQuietHours(new Date("2026-11-10T21:29:00Z"), POOL_QUIET_HOURS)).toBe(false);
-    expect(inQuietHours(new Date("2026-11-10T21:30:00Z"), POOL_QUIET_HOURS)).toBe(true);
-    expect(inQuietHours(new Date("2026-11-11T08:29:00Z"), POOL_QUIET_HOURS)).toBe(true);
-    expect(inQuietHours(new Date("2026-11-11T08:30:00Z"), POOL_QUIET_HOURS)).toBe(false);
+  it("no pool quiet hours (Kemal, 2026-10-29): offers go when they are made", () => {
+    expect("POOL_QUIET_HOURS" in rules).toBe(false);
   });
 
   it("travel distance is 1, 3, 5 or 10 miles, default 3", () => {

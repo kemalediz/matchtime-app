@@ -6,7 +6,7 @@
  * players in the app" (Invite to club), "My invitations".
  *
  *   sweepClubInvitations   on every platform poll: the after-game question
- *                          (an hour after the game, quiet hours respected),
+ *                          (an hour after the game),
  *                          invitations the club never answered, and invite
  *                          code jobs that never came back.
  *   answerAsPlayer         Join / No thanks on My invitations.
@@ -64,7 +64,6 @@ import {
 } from "./club-invitation-rules";
 import { INVITE_LINK_SETTINGS_PATH, groupInviteLinkFromCode, inviteLinkSource, isGroupInviteCodeJobsOn, type InviteLinkSource } from "./invite-link";
 import { buildPoolInvitationsLink } from "./links";
-import { poolSendAt } from "./waves";
 import { isPoolOffersEnabled, poolOffersOpenForClub } from "./flags";
 
 type Env = Record<string, string | undefined>;
@@ -181,7 +180,7 @@ async function step(inv: InvitationRow, ev: InvitationEvent, now: Date, env: Env
     try {
       if (effect === "send-link") await deliverInviteLink(next.id, now, env);
       else if (effect === "tell-club-wants-join") await tellClubWantsJoin(next, now, env);
-      else if (effect === "tell-guest-closed") await tellGuestClosed(next, now);
+      else if (effect === "tell-guest-closed") await tellGuestClosed(next);
     } catch (err) {
       console.error(`[club-invite] ${effect} for invitation ${inv.id} failed:`, err instanceof Error ? err.message : "failed");
     }
@@ -253,7 +252,7 @@ export async function answerAsClub(args: { orgId: string; userId: string; actorI
         purpose: "club-invite-ask",
         refId: inv.id,
         text: inviteCopy(lang).ask_organiser({ club: club.name, link }),
-        sendAfter: poolSendAt(now),
+        sendAfter: null,
         client: tx as unknown as PlatformDmClient,
       });
     });
@@ -304,9 +303,6 @@ async function queueLinkDm(invitationId: string, link: string, now: Date): Promi
   if (await consentWithdrawn(inv.userId)) return false;
   const [phone, club, lang] = await Promise.all([phoneOf(inv.userId), clubOf(inv.orgId), guestLanguage(inv.userId, inv.orgId)]);
   if (!phone || !club) return false;
-  // His own tap was the second yes: an answer, sent now. The club's tap
-  // was: held to the end of the pool's quiet hours.
-  const answeredJustNow = inv.playerYesAt && now.getTime() - inv.playerYesAt.getTime() < 60_000;
   return db.$transaction(async (tx) => {
     const { count } = await tx.clubInvitation.updateMany({ where: { id: inv.id, status: "accepted", linkSentAt: null }, data: { linkSentAt: now } });
     if (count !== 1) return false;
@@ -315,7 +311,7 @@ async function queueLinkDm(invitationId: string, link: string, now: Date): Promi
       purpose: "club-invite-link",
       refId: inv.id,
       text: inviteCopy(lang).link_dm({ club: club.name, link }),
-      sendAfter: answeredJustNow ? null : poolSendAt(now),
+      sendAfter: null,
       client: tx as unknown as PlatformDmClient,
     });
     return true;
@@ -454,11 +450,11 @@ async function tellClubNoLink(inv: { id: string; orgId: string; userId: string }
   });
 }
 
-async function tellGuestClosed(inv: InvitationRow, now: Date): Promise<void> {
+async function tellGuestClosed(inv: InvitationRow): Promise<void> {
   if (await consentWithdrawn(inv.userId)) return;
   const [phone, club, lang] = await Promise.all([phoneOf(inv.userId), clubOf(inv.orgId), guestLanguage(inv.userId, inv.orgId)]);
   if (!phone || !club) return;
-  await queuePlatformDm({ phone, purpose: "club-invite-closed", refId: inv.id, text: inviteCopy(lang).closed_dm({ club: club.name }), sendAfter: poolSendAt(now) });
+  await queuePlatformDm({ phone, purpose: "club-invite-closed", refId: inv.id, text: inviteCopy(lang).closed_dm({ club: club.name }), sendAfter: null });
 }
 
 // ── Taking a link back (review M2) and a withdrawn consent (M3) ────────
@@ -692,7 +688,7 @@ async function askOne(a: { orgId: string; userId: string; matchId: string; kicko
         purpose: "club-invite-ask",
         refId: inv.id,
         text: inviteCopy(lang).ask_after_game({ club: club.name, day: dayLabel(lang, a.kickoff), link }),
-        sendAfter: poolSendAt(a.now),
+        sendAfter: null,
         client: tx as unknown as PlatformDmClient,
       });
     });

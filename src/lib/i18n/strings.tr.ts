@@ -4399,9 +4399,9 @@ export const tr: Strings = {
   // ── Local player pool: confirming a /play sign-up (slice L2, 2026-10-24) ──
   pool_confirm_prefill: (p) => `Merhaba MatchTime, oynamak için kaydet. Kod ${p.code}`,
   pool_dm_welcome: (p) =>
-    `✅ ${p.name ? `Teşekkürler ${p.name}, ` : ""}MatchTime oyuncu havuzuna katıldın. Yakınındaki bir kulübün, oynayabileceğin bir saatte oyuncuya ihtiyacı olduğunda maçı sana buradan yazacağım, karar senin. Haftada en fazla ${p.perWeek} kez, ${p.quietFrom} ile ${p.quietTo} arasında asla.\n\nGüvende kal: halka açık sahalarda oyna, bir sorun olursa bize buradan yaz.\n\nİstediğin zaman duraklatabilir, bilgilerini değiştirebilir ya da silebilirsin: ${p.manageLink}\nGizlilik: ${p.privacyLink}`,
+    `✅ ${p.name ? `Teşekkürler ${p.name}, ` : ""}MatchTime oyuncu havuzuna katıldın. Yakınındaki bir kulübün, oynayabileceğin bir saatte oyuncuya ihtiyacı olduğunda maçı sana buradan yazacağım, karar senin. Haftada en fazla ${p.perWeek} kez.\n\nGüvende kal: halka açık sahalarda oyna, bir sorun olursa bize buradan yaz.\n\nİstediğin zaman duraklatabilir, bilgilerini değiştirebilir ya da silebilirsin: ${p.manageLink}\nGizlilik: ${p.privacyLink}`,
   pool_dm_welcome_early: (p) =>
-    `✅ ${p.name ? `Teşekkürler ${p.name}, ` : ""}MatchTime oyuncu havuzunun erken kayıt listesine katıldın. Havuz henüz senin bölgende açık değil, açılana kadar sana maç için yazmayacağım. Açıldığında haftada en fazla ${p.perWeek} kez, ${p.quietFrom} ile ${p.quietTo} arasında asla.\n\nGüvende kal: halka açık sahalarda oyna, bir sorun olursa bize buradan yaz.\n\nBilgilerini istediğin zaman değiştirebilir ya da silebilirsin: ${p.manageLink}\nGizlilik: ${p.privacyLink}`,
+    `✅ ${p.name ? `Teşekkürler ${p.name}, ` : ""}MatchTime oyuncu havuzunun erken kayıt listesine katıldın. Havuz henüz senin bölgende açık değil, açılana kadar sana maç için yazmayacağım. Açıldığında haftada en fazla ${p.perWeek} kez.\n\nGüvende kal: halka açık sahalarda oyna, bir sorun olursa bize buradan yaz.\n\nBilgilerini istediğin zaman değiştirebilir ya da silebilirsin: ${p.manageLink}\nGizlilik: ${p.privacyLink}`,
   pool_dm_already: (p) =>
     `Zaten MatchTime oyuncu havuzundasın. Bilgilerini değiştirmek, duraklatmak ya da durdurmak için: ${p.manageLink}`,
   pool_dm_already_stopped: (p) =>

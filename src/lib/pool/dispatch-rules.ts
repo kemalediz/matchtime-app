@@ -15,8 +15,6 @@
  *           its round closed; or one of HIS caps refuses it now (another
  *           club's offer to him went out meanwhile). Never sent; the offer
  *           ends `cancelled` (it never reached him, so no cap counts it).
- *   defer   quiet hours (21:30 to 08:30 London): held to 08:30, never
- *           dropped.
  *   admit   CLAIM the job now (it is in flight from here), within the room
  *           the platform caps leave and the per-poll limit.
  *   hold    no room now: left queued for a later poll.
@@ -26,10 +24,12 @@
  * job the Pi releases (its DM pacing) is queued again and counts for
  * nothing until it is claimed again. An offer that never reached him and
  * whose round closes ends `cancelled`, which no cap counts.
+ *
+ * No night hold (Kemal, 2026-10-29): an offer is admitted at any hour, its
+ * caps and the platform room permitting.
  */
 import { DM_SUB_FIELDS, type DmSubField } from "../dm-subscriptions";
 import { platformRoom, playerCapRefusal, type OfferLedgerEntry, type PlayerCapRefusal } from "./caps";
-import { poolSendAt } from "./waves";
 
 export interface PoolJobView {
   jobId: string;
@@ -86,7 +86,6 @@ export interface PoolAdmission {
   admit: string[];
   hold: string[];
   cancel: Array<{ jobId: string; offerId: string; reason: AdmissionCancelReason }>;
-  defer: Array<{ jobId: string; offerId: string; until: Date }>;
 }
 
 /**
@@ -94,9 +93,7 @@ export interface PoolAdmission {
  *             delivered went: what the platform caps count.
  */
 export function planPoolAdmission(jobs: readonly PoolJobView[], busy: readonly Date[], now: Date, limit: number): PoolAdmission {
-  const plan: PoolAdmission = { admit: [], hold: [], cancel: [], defer: [] };
-  const quietUntil = poolSendAt(now);
-  const quiet = quietUntil.getTime() > now.getTime();
+  const plan: PoolAdmission = { admit: [], hold: [], cancel: [] };
   let room = platformRoom(busy, now);
   /** Offers admitted in THIS poll, per person, so his caps see them. */
   const admittedNow = new Map<string, OfferLedgerEntry[]>();
@@ -117,10 +114,6 @@ export function planPoolAdmission(jobs: readonly PoolJobView[], busy: readonly D
     }
     if (!j.offerOpen || !j.askOpen || !j.gameOpen) {
       cancel("closed");
-      continue;
-    }
-    if (quiet) {
-      plan.defer.push({ jobId: j.jobId, offerId: j.offerId, until: quietUntil });
       continue;
     }
     const ledger = [...j.ledger, ...(admittedNow.get(j.userId) ?? [])];

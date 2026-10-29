@@ -10,15 +10,13 @@
  * channel in his own language ("plans changed, they don't need a player
  * any more"). It never says he was removed, and never why. A service
  * message about a booking he made, so it goes whatever his offer settings
- * (he could arrive for a game he no longer has). Held to the pool's quiet
- * hours. Never throws.
+ * (he could arrive for a game he no longer has). Never throws.
  */
 import { db } from "../db";
 import { dayCommaTimeLabel } from "../i18n/dates";
 import { normaliseLang } from "../i18n/lang";
 import { poolSafetyCopy } from "../i18n/pool-safety";
 import { queuePlatformDm } from "../platform-jobs";
-import { poolSendAt } from "./waves";
 
 export async function tellPoolGuestRemoved(args: { userId: string; matchId: string; orgId: string; now?: Date }): Promise<boolean> {
   const now = args.now ?? new Date();
@@ -44,13 +42,12 @@ export async function tellPoolGuestRemoved(args: { userId: string; matchId: stri
     const phone = user?.phoneNumber;
     if (club && phone) {
       const lang = normaliseLang(profile?.language ?? club.language);
-      const sendAt = poolSendAt(now);
       await queuePlatformDm({
         phone,
         purpose: "pool-removed",
         refId: `removed:${args.matchId}:${args.userId}`,
         text: poolSafetyCopy(lang).dm_removed({ club: club.name, day: dayCommaTimeLabel(lang, match.date) }),
-        sendAfter: sendAt.getTime() > now.getTime() ? sendAt : null,
+        sendAfter: null,
       });
     }
     console.log(`[pool] ${args.userId}: taken off match ${args.matchId} by its organisers${phone ? "" : " (no number to tell)"}`);
