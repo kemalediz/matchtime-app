@@ -63,6 +63,14 @@ export async function handleMonthJoinDmReply(input: {
     await db.sentNotification.updateMany({ where: { id: ask.id, kind: MONTH_JOIN_ASK_KIND }, data: { kind: `${MONTH_JOIN_ASK_KIND}-closed` } });
     if (reading.choice !== "in") return { handled: "month-join-no", monthId };
     const res = await applySignup({ monthId, userId: input.userId, choice: "in", source: "reply", actorUserId: input.userId, now: input.now });
+    // "yes but only 3 games": the games he commits to, when FEWER than the
+    // games left (a plain "yes" can come back with the question's own "3
+    // games left", which is what he is joining for anyway: nothing to set).
+    const left = month.kickoffs.filter((k) => k.getTime() > input.now.getTime()).length;
+    if (res.ok && res.outcome === "regular" && reading.games !== null && reading.games < left) {
+      const { commitMonthGames } = await import("./month-signup");
+      await commitMonthGames(monthId, input.userId, reading.games);
+    }
     return res.ok ? { handled: "month-join-yes", monthId } : null;
   } catch (err) {
     console.error("[month-join-dm] failed:", err instanceof Error ? err.message : "failed");
