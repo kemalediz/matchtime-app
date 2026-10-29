@@ -597,6 +597,9 @@ const CASES: Case[] = [
   // back as `admin action \"other\" has no deterministic handler`, so the
   // ONLY thing that recognised them was the mega-prompt's
   // `verdict.recruitRequest`.
+  // 2026-10-29: the owner's "invite players from pool" routed offer 5 of
+  // 10 on the old prompt, so half the time the pool was never asked.
+  { id: "R0", who: "Kemal", body: "@Match Time invite players from pool", tagged: true, expect: "route=admin_ops, action=recruit, playersFrom pool -> WRITE pool_ask only, no recruit_blast" },
   { id: "R1", who: "Kemal", body: "@Match Time message all players who played in the last 5 matches to DM and invite them", tagged: true, expect: "route=admin_ops, action=recruit, lookbackMatches 5, WRITE recruit_blast. NO DM is sent from here — the route fires it after the batch" },
   // MEASURED 2026-09-06: the model reads "the last few games" as 3, not
   // as "unstated". That is a reading of the text and it is inside the
