@@ -72,6 +72,7 @@ const ALLOWED_HOUR_CONSTANTS: Record<string, string> = {
 /** Wall clock strings that are a schedule, not the window. */
 const ALLOWED_CLOCK_STRINGS: Record<string, string> = {
   "lib/rolling-squad-rules.ts:08:00": "ROLLING_SEED_HOUR: when the squad is carried over (a database write, not a message)",
+  "lib/club-partnership-rules.ts:08:00": "PARTNER_ASK_TIME_DEFAULT: a club's automatic-ask time when it set none (a setting's default, Kemal 2026-10-29), not a daytime window",
   "lib/pool/form-state.ts:22:00": "DEFAULT_RANGE: the /play form's suggested evening for a newly ticked day (a player's free time, not a messaging window)",
 };
 
