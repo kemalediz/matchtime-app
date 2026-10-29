@@ -134,4 +134,26 @@ describe("candidateRowsOf", () => {
     expect(b.lastGameAt).toEqual(d("2026-10-10T19:00:00Z"));
     expect(b.ledger[0]).toEqual({ orgId: "x", at: d("2026-10-20T10:00:00Z"), outcome: "ignored", resolvedAt: d("2026-10-20T16:00:00Z") });
   });
+  it("an offer that never reached him (cancelled before its DM went) is not already-offered; one that reached him is, whatever its outcome", () => {
+    const d = (s: string) => new Date(s);
+    const base = { orgId: "club", createdAt: d("2026-10-26T10:00:00Z"), resolvedAt: d("2026-10-26T10:05:00Z"), jobSendAfter: null };
+    const per: RawPerUser = {
+      ...empty,
+      offers: [
+        { ...base, userId: "never", matchId: "m1", sentAt: null, outcome: "cancelled" },
+        { ...base, userId: "sentCancelled", matchId: "m1", sentAt: d("2026-10-26T10:01:00Z"), outcome: "cancelled" },
+        { ...base, userId: "expired", matchId: "m1", sentAt: d("2026-10-26T10:01:00Z"), outcome: "expired" },
+        { ...base, userId: "queued", matchId: "m1", sentAt: null, outcome: null, resolvedAt: null },
+      ],
+    };
+    const rows = candidateRowsOf("m1", ["never", "sentCancelled", "expired", "queued"].map((userId) => profile({ userId })), per);
+    expect(rows.map((r) => [r.userId, r.alreadyOffered])).toEqual([
+      ["never", false],
+      ["sentCancelled", true],
+      ["expired", true],
+      ["queued", true],
+    ]);
+    // The caps already ignore it: its ledger entry is "cancelled".
+    expect(rows[0].ledger[0].outcome).toBe("cancelled");
+  });
 });
