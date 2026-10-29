@@ -569,8 +569,9 @@ THE MESSAGE is the one you report on, with its sender and whether they tagged th
 THE ACTION, exactly one: what the message asks to be done. A question, an opinion or a discussion about whether to do it ("should we cancel?", "should Bilal play free?", "shall we try the pool?") is "other".
   "bulk_payment" someone paid for several players.
   "fee_waiver" the sender gives named players a free place, so they owe nothing for a game, or takes a free place back. "Free" meaning able to play ("I'm free Tuesday") is not this.
-  "cancel_match" the sender calls off the club's game: cancel it, it is not happening, no game. Of a game whose time has gone, it says the game never took place ("it didn't happen", "olmadı").
+  "cancel_match" the sender calls off one of the club's games: cancel it, it is not happening, no game. Of a game whose time has gone, it says the game never took place ("it didn't happen", "olmadı").
   "restore_match" the sender puts a called-off game back on: it is back on, uncancel it, it goes ahead after all. Of a game whose time has gone, it says the game did take place after all.
+  "season_break" the sender says the club plays no football for a whole MONTH or more (a break: "no football in December", "aralıkta maç yok"), or that the football is back in a month ("we're back in January", "ocakta başlıyoruz"). One game off ("no game Friday", "bu hafta maç yok") is "cancel_match".
   "reminder" the sender wants MatchTime to remind them, at a time.
   "recruit" find players who are not in the squad yet; playersFrom says where from. Asking to show, list or count the squad is "other", and so is talking or asking about another club or the player pool.
   "stats_blast" MatchTime itself is to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open the link they already have) is "other".
@@ -598,6 +599,8 @@ THE FIELDS. toMatchTime is always filled; fill the others for the action, and ev
   clubRef recruit from partners: the other club's name as written, without a Turkish case ending ("Sutton'a" -> "Sutton"); "" when the message names no club ("the partner clubs", "the other groups", "another club").
   venueName set_venue: the pitch or venue as the message names it, without a Turkish case ending ("Powerleague Shoreditch'te" -> "Powerleague Shoreditch"). For a pick from MatchTime's numbered list of places, the name that list was for, as MATCHTIME'S LAST POST (or the message replied to) shows it.
   venueChoice set_venue: the number of the place picked from MatchTime's numbered list ("2", "the second one", "ikincisi" -> 2); 0 when the message names the place itself.
+  breakMonths season_break: each month with no football, as "YYYY-MM", the next such month from NOW ("December" in October 2026 is "2026-12"; "December and January" is both).
+  playMonths season_break: each month the message says the football is on or back in, as "YYYY-MM" the same way ("we're back mid January" is the January to come).
 
 EXAMPLES, English and Turkish side by side, grouped by what they teach. toMatchTime is true in each unless shown.
 Who it is spoken to:
@@ -665,6 +668,11 @@ Calling a game off, and putting it back on. pastGame is false unless shown:
   "cancel the last match, we didn't play" / "geçen haftaki maçı iptal et, oynamadık" -> cancel_match, matchDay "" / "geçen hafta", pastGame true
   "Tuesday's game did go ahead after all" / "salı maçı aslında oynandı" -> restore_match, matchDay "Tuesday" / "salı", pastGame true
   "should we cancel Friday?" / "the session should be cancelled anyway" -> other, toMatchTime false: a question, an opinion
+A month or more with no football (NOW is October 2026 here):
+  "@Match Time no football in December" / "@Match Time aralıkta maç yok" -> season_break, breakMonths ["2026-12"], playMonths []
+  "no games December or January, back in February" / "aralık ve ocakta maç yok, şubatta dönüyoruz" -> season_break, breakMonths ["2026-12","2027-01"], playMonths ["2027-02"]
+  "@Match Time we're back mid January" / "@Match Time ocak ortasında dönüyoruz" -> season_break, breakMonths [], playMonths ["2027-01"]
+  "are we playing in December?" / "aralıkta maç var mı?" -> other: a question
 Reminders:
   "remind me tomorrow at 6 to bring the bibs" / "yarın 6'da yelekleri getirmeyi hatırlat" -> reminder, phrase "tomorrow at 6" / "yarın 6'da", note "bring the bibs" / "yelekleri getirmeyi"
 Stats links:
@@ -852,8 +860,12 @@ const ADMIN_SCHEMA = {
   properties: {
     action: {
       type: "string",
-      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "other"],
+      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "other"],
     },
+    // season_break (2026-10-29): the months with no football, and the
+    // months it is back in, each "YYYY-MM".
+    breakMonths: { type: "array", items: { type: "string" } },
+    playMonths: { type: "array", items: { type: "string" } },
     payerRef: { type: "string" },
     count: { type: "number" },
     coveredRefs: { type: "array", items: { type: "string" } },
@@ -881,7 +893,7 @@ const ADMIN_SCHEMA = {
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1175,7 +1187,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "other"].includes(action)) {
+      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1225,6 +1237,8 @@ export function parseFacts(
         ...(action === "set_venue" && typeof raw.venueChoice === "number" && Number.isInteger(raw.venueChoice) && raw.venueChoice > 0
           ? { venueChoice: raw.venueChoice }
           : {}),
+        // season_break (2026-10-29): only well-formed "YYYY-MM" months.
+        ...(action === "season_break" ? { breakMonths: monthKeysOf(raw.breakMonths), playMonths: monthKeysOf(raw.playMonths) } : {}),
         // Only a clear true: a missing or false value keeps HQ's outward
         // actions closed (`admin-group-understand.ts`).
         ...(raw.toMatchTime === true ? { toMatchTime: true } : {}),
@@ -1232,6 +1246,12 @@ export function parseFacts(
       return { facts, degradations };
     }
   }
+}
+
+/** "YYYY-MM" months from the model, deduplicated; anything else dropped. */
+function monthKeysOf(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.filter((x): x is string => typeof x === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(x.trim())).map((x) => x.trim()))];
 }
 
 /**

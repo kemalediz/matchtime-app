@@ -338,6 +338,31 @@ test("an organiser's list for the COMING month in the players' group: the draft 
   );
   // The draft is answered: another "go ahead" is not read as it again.
   expect((await dmSay("go ahead")).handled).not.toBe("month-seed-started");
+
+  // A SEASON BREAK BY WHATSAPP: tagged in the players' group, then by DM.
+  const later = nextMonthStart(coming).slice(0, 7);
+  const laterName = formatInTimeZone(new Date(`${later}-15T12:00:00Z`), LONDON, "MMMM");
+  const offBody = `@Match Time no football in ${laterName}`;
+  const backBody = `we're back in ${laterName}`;
+  const sb = (breakMonths: string[], playMonths: string[]) => ({ action: "season_break", breakMonths, playMonths, toMatchTime: true });
+  engineOn({ [offBody]: { route: "admin_ops", facts: sb([later], []) }, [backBody]: { route: "admin_ops", facts: sb([], [later]) } });
+  const off = await request.post("/api/whatsapp/analyze", {
+    headers: KEY,
+    data: { groupId: GROUP2, messages: [{ waMessageId: `e2e-mr2-sb-${++seq}`, body: offBody, authorPhone: digits(owner.phone), authorName: owner.name, timestamp: new Date().toISOString(), botMentioned: true }] },
+  });
+  const offRes = ((await off.json()) as { results?: Array<{ reply: string | null }> }).results?.[0];
+  expect(offRes?.reply).toBe(`✅ No football in ${laterName}: I won't post a list or make games for it.`);
+  const breaks = async () => (await db.one<{ m: string[] }>(`SELECT "seasonBreakMonths" AS m FROM "Organisation" WHERE id = $1`, [ORG2]))?.m ?? [];
+  expect(await breaks()).toEqual([later]);
+  // A player tagging it is told who can, and nothing changes.
+  const pOff = await request.post("/api/whatsapp/analyze", {
+    headers: KEY,
+    data: { groupId: GROUP2, messages: [{ waMessageId: `e2e-mr2-sb-${++seq}`, body: offBody, authorPhone: digits(player.phone), authorName: player.name, timestamp: new Date().toISOString(), botMentioned: true }] },
+  });
+  expect(((await pOff.json()) as { results?: Array<{ intent: string | null }> }).results?.[0]?.intent).toBe("organisers_only");
+  // By DM, the organiser puts the month back on.
+  expect(await dmSay(backBody)).toMatchObject({ handled: "season-break-set" });
+  expect(await breaks()).toEqual([]);
 });
 
 test("FAIL SAFE: when the reading fails nothing changes, and no other path registers the list's names", async ({ request, db }) => {

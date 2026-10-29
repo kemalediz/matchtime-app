@@ -728,6 +728,14 @@ export async function POST(request: Request) {
     const { handleMonthSeedDmReply } = await import("@/lib/month-seed-reply");
     const seed = await handleMonthSeedDmReply({ userId: user.id, text, replyPhone, now: new Date() });
     if (seed) return NextResponse.json({ ok: true, ...seed });
+
+    // ── An organiser of a monthly club setting a season break by DM ─────
+    //   "no football in December", "we're back mid January" (2026-10-29,
+    //   every admin feature by WhatsApp). Read by the shared admin
+    //   extractor (`season-break-dm.ts`); only a season_break reading acts.
+    const { handleSeasonBreakDm } = await import("@/lib/season-break-dm");
+    const seasonBreak = await handleSeasonBreakDm({ userId: user.id, text, authorName: user.name ?? null, replyPhone, now: new Date() });
+    if (seasonBreak) return NextResponse.json({ ok: true, ...seasonBreak });
   }
 
   // ── Player payment claim: "Paid" (2026-09-23) ────────────────────────

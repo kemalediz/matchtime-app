@@ -4489,6 +4489,14 @@ export const en = {
     `📋 From the list you pasted I've added ${p.names.join(", ")} to ${p.when} as your guest, paying as they go. ` +
     `If that's not right, tell an organiser.`,
   /** To an organiser who said no to the coming month's draft by DM. */
+  /** A season break set by WhatsApp (2026-10-29, `season-break-words.ts`). */
+  sb_set: (p: { months: string }): string => `✅ No football in ${p.months}: I won't post a list or make games for it.`,
+  sb_back: (p: { months: string }): string => `✅ ${p.months} is back on: I'll run it as usual.`,
+  sb_unchanged: (p: { months: string }): string => `No change: there is already no football in ${p.months}.`,
+  sb_none: (p: { link: string }): string => `No change: no month is off. You can set the break months here: ${p.link}`,
+  sb_started: (p: { month: string }): string => `I can't make ${p.month} a break: it has already started. Cancel its games instead.`,
+  sb_failed: (p: { link: string }): string => `I couldn't change the break months. You can set them here: ${p.link}`,
+  sb_not_organiser: "Only an organiser can change the break months.",
   mwk_dm_seed_declined: (p: { month: string }): string =>
     `OK, I haven't started ${p.month}. Post the list again when it's ready, or start it on the months page.`,
   /** To an organiser who posted the coming month's list in the PLAYERS'

@@ -708,6 +708,7 @@ export interface AdminFacts {
     | "stats_blast"
     | "cancel_match"
     | "restore_match"
+    | "season_break"
     | "set_venue"
     | "retry_ask"
     | "other";
@@ -789,6 +790,10 @@ export interface AdminFacts {
    * untagged action that leaves HQ needs it (`admin-group-understand.ts`).
    */
   toMatchTime?: boolean;
+  /** season_break (2026-10-29): months with no football, "YYYY-MM". */
+  breakMonths?: string[];
+  /** season_break: months the football is on or back in, "YYYY-MM". */
+  playMonths?: string[];
 }
 
 export interface NoFacts {

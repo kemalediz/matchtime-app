@@ -319,3 +319,17 @@ describe("the organiser's DM answer to the draft (month-seed-reply)", () => {
     ]);
   });
 });
+
+// ── A season break by WhatsApp ─────────────────────────────────────────
+import { nextBreakMonths } from "../season-break-words";
+
+describe("a season break by WhatsApp (season-break-words)", () => {
+  const NOW = new Date("2026-10-29T12:00:00Z");
+  it("months off are added, months back on are taken out, and past months drop away", () => {
+    expect(nextBreakMonths([], ["2026-12"], [], NOW)).toEqual(["2026-12"]);
+    expect(nextBreakMonths(["2026-12"], [], ["2026-12"], NOW)).toEqual([]);
+    expect(nextBreakMonths(["2026-09", "2026-12"], ["2027-01"], [], NOW)).toEqual(["2026-12", "2027-01"]);
+    expect(nextBreakMonths(["2026-12", "2027-01"], [], ["2027-01"], NOW)).toEqual(["2026-12"]);
+    expect(nextBreakMonths([], ["2026-08"], [], NOW)).toEqual([]);
+  });
+});

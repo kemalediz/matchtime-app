@@ -22,7 +22,6 @@
  * the admin group carries on as before.
  */
 import { db } from "./db";
-import { appUrl } from "./app-url";
 import { monthNameLabel } from "./i18n/dates";
 import { monthSetupCopy } from "./i18n/month-setup";
 import { firstKickoffOf, nextMonthStart } from "./month-signup-rules";
@@ -48,9 +47,6 @@ export interface MonthSeedReply {
   proposal?: { month: string; count: number; names: string; unknown: string | null; link: string };
 }
 
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "P2002";
-}
 
 /** The coming month a pasted list may start, for this club: the next
  *  month, or this one while its first game is still to come. */

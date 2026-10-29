@@ -998,6 +998,18 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         // or admin's alone (the collector may not), weekly or monthly (a
         // monthly club's cancelled-week credits come with it, 2026-10-29).
         // The one path the web page uses (`match-cancel.ts`).
+        // A season break (2026-10-29): "no football in December", "we're
+        // back mid January". Tagged, and an organiser's alone, like a cancel.
+        if (facts.kind === "admin" && facts.action === "season_break") {
+          if (!tagged) {
+            console.log(`[admin-group] ${messageId}: season_break not tagged: their conversation`);
+            return null;
+          }
+          if (!actor) return onlyOrganisers();
+          const { applySeasonBreakWords } = await import("./season-break-words");
+          const r = await applySeasonBreakWords({ orgId: org.id, breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [], lang, now });
+          return { route, outcome: r.outcome, replyText: r.replyText };
+        }
         if (facts.kind === "admin" && (facts.action === "cancel_match" || facts.action === "restore_match")) {
           // Only when an organiser TAGS MatchTime (Kemal, 2026-10-22: "it only
           // acts when an admin tags it"). Untagged, "storm, no game Friday" is

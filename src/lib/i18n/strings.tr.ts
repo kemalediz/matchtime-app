@@ -3274,6 +3274,13 @@ export const tr: Strings = {
   mwk_dm_paste_guests_added: (p) =>
     `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
     `Yanlışsa bir organizatöre söyle.`,
+  sb_set: (p) => `✅ ${p.months} ayında maç yok: o ay için liste paylaşmayacağım ve maç açmayacağım.`,
+  sb_back: (p) => `✅ ${p.months} yeniden açık: her zamanki gibi yürüteceğim.`,
+  sb_unchanged: (p) => `Değişiklik yok: ${p.months} ayında zaten maç yok.`,
+  sb_none: (p) => `Değişiklik yok: kapalı ay yok. Ara verilen ayları buradan ayarlayabilirsin: ${p.link}`,
+  sb_started: (p) => `${p.month} ayını ara veremem: başladı bile. Onun yerine maçlarını iptal et.`,
+  sb_failed: (p) => `Ara verilen ayları değiştiremedim. Buradan ayarlayabilirsin: ${p.link}`,
+  sb_not_organiser: "Ara verilen ayları yalnızca bir organizatör değiştirebilir.",
   mwk_dm_seed_declined: (p) => `Tamam, ${p.month} ayını başlatmadım. Liste hazır olunca yeniden paylaş ya da aylar sayfasından başlat.`,
   mwk_dm_seed_from_group: (p) =>
     [

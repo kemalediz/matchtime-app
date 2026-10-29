@@ -88,12 +88,12 @@ const SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export function buildSeedReplyUserTurn(p: { draft: DraftLine[]; members: Array<{ ref: string; name: string }>; asked: string; text: string }): string {
+export function buildSeedReplyUserTurn(p: { draft: DraftLine[]; members: Array<{ ref: string; name: string; aliases?: string[] }>; asked: string; text: string }): string {
   return [
     "THE DRAFT:",
     ...p.draft.map((d) => `  ${d.ref}: ${d.name}, ${d.kind === "payg" ? "PAYG" : "regular"}${d.games ? `, ${d.games} games only` : ""}`),
     "MEMBERS:",
-    ...p.members.map((m) => `  ${m.ref}: ${m.name}`),
+    ...p.members.map((m) => `  ${m.ref}: ${m.name}${m.aliases && m.aliases.length > 0 ? ` (also: ${m.aliases.join(", ")})` : ""}`),
     `MATCHTIME ASKED HIM:\n${p.asked}`,
     `${HEADER}\n${p.text.trim()}`,
   ].join("\n");
@@ -167,7 +167,7 @@ function stubModel(env: NodeJS.ProcessEnv): PipelineModel | null {
 
 /** Read his reply, once. Never throws. */
 export async function readSeedReply(
-  p: { draft: DraftLine[]; members: Array<{ ref: string; userId: string; name: string }>; asked: string; text: string },
+  p: { draft: DraftLine[]; members: Array<{ ref: string; userId: string; name: string; aliases?: string[] }>; asked: string; text: string },
   deps?: { model?: PipelineModel | null },
 ): Promise<SeedReply> {
   if (!p.text?.trim()) return { kind: "other", why: "empty" };
@@ -248,7 +248,10 @@ async function reply(input: Parameters<typeof handleMonthSeedDmReply>[0]): Promi
   });
   // Still an organiser, or his word starts nothing.
   if (!memberships.some((m) => m.user.id === userId && (m.role === "OWNER" || m.role === "ADMIN"))) return null;
-  const members = memberships.filter((m) => m.user.name).map((m, i) => ({ ref: `p${i + 1}`, userId: m.user.id, name: m.user.name as string }));
+  const aliases = await db.userAlias.findMany({ where: { orgId: proposal.orgId }, select: { userId: true, alias: true } });
+  const members = memberships
+    .filter((m) => m.user.name)
+    .map((m, i) => ({ ref: `p${i + 1}`, userId: m.user.id, name: m.user.name as string, aliases: aliases.filter((a) => a.userId === m.user.id).map((a) => a.alias) }));
   const nameOf = (id: string) => members.find((m) => m.userId === id)?.name ?? "";
   const refOf = (id: string) => members.find((m) => m.userId === id)?.ref ?? "?";
   const draft: DraftLine[] = data.rows.map((r) => ({ ref: refOf(r.userId), name: r.listName || nameOf(r.userId), kind: r.kind === "payg" ? "payg" : "regular", games: r.gamesCommitted ?? null }));
