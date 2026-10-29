@@ -46,15 +46,28 @@ function resolveImport(from: string, spec: string): string | null {
   return null;
 }
 
-/** Every import of a file, static (not type-only) and dynamic. */
-function importsOf(file: string): string[] {
-  const src = readFileSync(file, "utf8");
-  const specs = [
-    ...[...src.matchAll(/^\s*import\s+(?!type\b)[^;]*?from\s+"([^"]+)"/gm)].map((m) => m[1]),
-    ...[...src.matchAll(/import\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]),
+/** Every module a source reaches: `import ... from`, `export ... from`
+ *  (not type-only), `import(...)` and `require(...)`, in either quote. */
+export function specifiersOf(src: string): string[] {
+  const Q = `["']([^"']+)["']`;
+  return [
+    ...[...src.matchAll(new RegExp(`^\\s*import\\s+(?!type\\b)[^;]*?from\\s+${Q}`, "gm"))].map((m) => m[1]),
+    ...[...src.matchAll(new RegExp(`^\\s*import\\s+${Q}`, "gm"))].map((m) => m[1]),
+    ...[...src.matchAll(new RegExp(`^\\s*export\\s+(?!type\\b)[^;]*?from\\s+${Q}`, "gm"))].map((m) => m[1]),
+    ...[...src.matchAll(new RegExp(`\\bimport\\(\\s*${Q}\\s*\\)`, "g"))].map((m) => m[1]),
+    ...[...src.matchAll(new RegExp(`\\brequire\\(\\s*${Q}\\s*\\)`, "g"))].map((m) => m[1]),
   ];
-  return specs.map((s) => resolveImport(file, s)).filter((x): x is string => !!x);
 }
+
+function importsOf(file: string): string[] {
+  return specifiersOf(readFileSync(file, "utf8"))
+    .map((s) => resolveImport(file, s))
+    .filter((x): x is string => !!x);
+}
+
+/** The old readers, defined in any form. */
+export const OLD_READER =
+  /export\s+(?:async\s+function|function|const|let|var)\s+(parseMonthlyList|readMarks|readSignupMessage|isMonthLevelList|quotedSignupMonth|pasteResidual|signupPasteResidual|isMonthListHeader|readPaidMessage|readCollectorReply|monthOfWord|foldListText)\b/;
 
 function reachable(entry: string, stop: string[]): Set<string> {
   const seen = new Set<string>();
@@ -77,8 +90,7 @@ describe("monthly lists are read by the model, never by code", () => {
   });
 
   it("no production file defines the old readers", () => {
-    const old = /export (?:async )?function (parseMonthlyList|readMarks|readSignupMessage|isMonthLevelList|quotedSignupMonth|pasteResidual|signupPasteResidual|isMonthListHeader|readPaidMessage|readCollectorReply|monthOfWord)\b/;
-    const offenders = prodFiles.filter((f) => old.test(readFileSync(f, "utf8")));
+    const offenders = prodFiles.filter((f) => OLD_READER.test(readFileSync(f, "utf8")));
     expect(offenders.map((f) => path.relative(ROOT, f))).toEqual([]);
   });
 
@@ -90,5 +102,18 @@ describe("monthly lists are read by the model, never by code", () => {
     // And the door does reach it (the HQ coming-month list).
     expect(reachable(path.join(ROOT, DOOR), []).has(READER)).toBe(true);
     expect(reachable(path.join(ROOT, DOOR), []).has(DIGEST_READER)).toBe(true);
+  });
+});
+
+describe("the guard itself catches every way in (review of #465)", () => {
+  const fx = "./__tests__/fixtures/monthly-legacy";
+  it("single quotes, re-exports, require and import(), and an exported const", () => {
+    expect(specifiersOf(`import { parseMonthlyList } from '${fx}';`)).toEqual([fx]);
+    expect(specifiersOf(`export { parseMonthlyList } from "${fx}";`)).toEqual([fx]);
+    expect(specifiersOf(`const L = require("${fx}");`)).toEqual([fx]);
+    expect(specifiersOf(`const L = await import('${fx}');`)).toEqual([fx]);
+    expect(specifiersOf(`import type { X } from "${fx}";`)).toEqual([]);
+    expect(OLD_READER.test("export const parseMonthlyList = (b: string) => b.split('\\n');")).toBe(true);
+    expect(OLD_READER.test("export async function readCollectorReply() {}")).toBe(true);
   });
 });

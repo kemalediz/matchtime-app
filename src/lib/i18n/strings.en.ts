@@ -4483,6 +4483,12 @@ export const en = {
   mwk_dm_sender_not_matched: (p: { names: string[] }): string =>
     `📋 I couldn't match ${p.names.join(", ")} on the list you pasted to a player, so I added nobody. ` +
     `To play, say *IN* in the group yourself, or ask an organiser to add them.`,
+  /** To a player asked to confirm joining a month under way (review of #465). */
+  msu_dm_join_ask: (p: { month: string; games: number; price: string | null }): string =>
+    `📋 Join ${p.month} as a regular for the ${p.games} ${p.games === 1 ? "game" : "games"} left${p.price ? `, ${p.price}` : ""}? Reply yes and I'll put you on it.`,
+  /** To a member whose paste had more new players than one paste may add. */
+  mwk_dm_paste_guests_refused: (p: { names: string[] }): string =>
+    `📋 One list can only add a few new players, so I didn't add ${p.names.join(", ")}. An organiser can add them.`,
   /** To a member whose pasted list added guests (people who are not
    *  members yet) to the week, once per paste. */
   mwk_dm_paste_guests_added: (p: { names: string[]; when: string }): string =>

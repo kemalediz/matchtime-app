@@ -3271,6 +3271,9 @@ export const tr: Strings = {
   mwk_dm_sender_not_matched: (p) =>
     `📋 Yapıştırdığın listedeki ${p.names.join(", ")} adını bir oyuncuyla eşleştiremedim, bu yüzden kimseyi eklemedim. ` +
     `Oynamak için grupta kendin *VARIM* yaz ya da bir organizatörden eklemesini iste.`,
+  mwk_dm_paste_guests_refused: (p) => `📋 Bir listeyle ancak birkaç yeni oyuncu eklenebilir, bu yüzden ${p.names.join(", ")} eklenmedi. Bir organizatör ekleyebilir.`,
+  msu_dm_join_ask: (p) =>
+    `📋 Kalan ${p.games} maç için ${p.month} ayına düzenli oyuncu olarak katılmak ister misin${p.price ? ` (${p.price})` : ""}? Evet yazarsan seni ekliyorum.`,
   mwk_dm_paste_guests_added: (p) =>
     `📋 Yapıştırdığın listeden ${p.names.join(", ")}, ${p.when} maçına misafirin olarak eklendi, ücret maç başı ödenecek. ` +
     `Yanlışsa bir organizatöre söyle.`,

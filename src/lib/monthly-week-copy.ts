@@ -103,6 +103,11 @@ export function buildPasteSenderNotMatchedDm(p: { names: string[]; lang?: LangAr
   return t(p.lang).mwk_dm_sender_not_matched({ names: p.names });
 }
 
+/** To the member whose paste had more guests than one paste may add. */
+export function buildPasteGuestsRefusedDm(p: { names: string[]; lang?: LangArg }): string {
+  return t(p.lang).mwk_dm_paste_guests_refused({ names: p.names });
+}
+
 /** To the member whose paste added guests (B2, 2026-10-29): who, and to
  *  which game. */
 export function buildPasteGuestsAddedDm(p: { names: string[]; matchDate: Date; lang?: LangArg }): string {

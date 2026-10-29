@@ -214,6 +214,10 @@ export async function handleMonthSeedDmReply(input: {
   userId: string;
   text: string;
   replyPhone: string | null;
+  /** The DM's WhatsApp id: one delivery is answered once. */
+  waMessageId: string;
+  /** Which of MatchTime's messages he answers (`dm-answering.ts`). */
+  answering: () => Promise<string | null>;
   now: Date;
   deps?: { model?: PipelineModel | null };
 }): Promise<SeedDmHandled | null> {
@@ -238,6 +242,10 @@ async function reply(input: Parameters<typeof handleMonthSeedDmReply>[0]): Promi
     select: { text: true },
   });
   if (!offered) return null;
+  // Only an answer to THIS draft (the message he replies to, or MatchTime's
+  // newest DM to him, is it): review of #465.
+  const answering = (await input.answering())?.trim() ?? "";
+  if (!offered.text || answering !== offered.text.trim()) return null;
   const org = await db.organisation.findUnique({ where: { id: proposal.orgId }, select: { language: true, adminGroupId: true } });
   const lang = org?.language ?? null;
   const data = proposal.monthSeed as unknown as MonthSeedProposalData;
@@ -256,6 +264,13 @@ async function reply(input: Parameters<typeof handleMonthSeedDmReply>[0]): Promi
   const refOf = (id: string) => members.find((m) => m.userId === id)?.ref ?? "?";
   const draft: DraftLine[] = data.rows.map((r) => ({ ref: refOf(r.userId), name: r.listName || nameOf(r.userId), kind: r.kind === "payg" ? "payg" : "regular", games: r.gamesCommitted ?? null }));
 
+  // One delivery of a DM is read and answered once (a Pi retry is not),
+  // claimed before the model is asked.
+  try {
+    await db.sentNotification.create({ data: { key: `org-${proposal.orgId}:month-seed-dm-reply:${input.waMessageId}`, kind: "month-seed-dm-reply" } });
+  } catch {
+    return null;
+  }
   const { withOrgAiBudget } = await import("./ai-budget");
   const answer = await withOrgAiBudget(proposal.orgId, () =>
     readSeedReply({ draft, members, asked: offered.text ?? "", text: input.text }, input.deps),
@@ -292,8 +307,11 @@ async function reply(input: Parameters<typeof handleMonthSeedDmReply>[0]): Promi
     await send(t(lang).mwk_dm_seed_declined({ month }));
     return { handled: "month-seed-declined", monthStart: proposal.monthStart };
   }
+  // The draft as it stands NOW, read after the claim: a correction that
+  // landed while his yes was being read is in it, and none can land after.
+  const latest = await db.adminSquadProposal.findUnique({ where: { id: proposal.id }, select: { monthSeed: true } });
   const { applyMonthSeedYes } = await import("./month-seed-hq");
-  const r = await applyMonthSeedYes({ orgId: proposal.orgId, lang, proposal: { monthStart: proposal.monthStart, monthSeed: data }, senderUserId: userId, now });
+  const r = await applyMonthSeedYes({ orgId: proposal.orgId, lang, proposal: { monthStart: proposal.monthStart, monthSeed: latest?.monthSeed ?? data }, senderUserId: userId, now });
   await send(r.replyText);
   return { handled: r.outcome === "month-seed-applied" ? "month-seed-started" : "month-seed-failed", monthStart: proposal.monthStart };
 }

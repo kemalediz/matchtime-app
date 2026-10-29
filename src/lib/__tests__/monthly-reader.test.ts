@@ -226,9 +226,10 @@ describe("the week's list, acted on (reconcileMonthPaste)", () => {
     expect(r.notAdded).toEqual([]);
   });
 
-  it("a guest from an earlier week, now a club player, comes in when a member writes him in again", () => {
+  it("a guest from an earlier week is a club player now: written in by somebody else he is a member like any other (review of #465)", () => {
     const r = run([entry(1, "Davide", { memberId: "u-davide" }), entry(2, "smiler", { memberId: "u-smiler" }), entry(3, "Lucas", { memberId: "u-lucas", guest: true })]);
-    expect(r.actions).toEqual([{ kind: "in", userId: "u-lucas", name: "Lucas", self: false, slot: 3 }]);
+    expect(r.actions).toEqual([]);
+    expect(r.notAdded).toEqual([{ name: "Lucas", reason: "not-in-month" }]);
   });
 
   it("a guest needs a member to bring him: from somebody who is not a club player, nothing is added", () => {

@@ -80,6 +80,7 @@ import {
 import { carryFromMonthStart, isBreakMonth, londonMonthStart, monthStartToDate, normaliseSquadMode } from "./squad-month-rules";
 import { monthSetupCopy } from "./i18n/month-setup";
 import { dayLabel, monthNameLabel } from "./i18n/dates";
+import { t } from "./i18n/t";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 const HOUR_MS = 60 * 60 * 1000;
@@ -1114,6 +1115,13 @@ export async function handleSignupPaste(args: {
   // by a paste (bar the late join above): the paid marks are all that is read.
   const joinable = canJoin(month) || joiningLate;
   if (!joinable) outcome = { ...outcome, self: null, notAdded: [], games: [] };
+  // Joining a month under way rests on more than one reading of a pasted
+  // list (review of #465): he is asked by DM to confirm, and joins on his
+  // yes (`month-join-dm.ts`).
+  if (joiningLate && outcome.self && args.sender.userId) {
+    if (await askToJoinMonth({ month, userId: args.sender.userId, now })) applied.push(`join-asked:${args.sender.name ?? args.sender.userId}`);
+    outcome = { ...outcome, self: null };
+  }
   if (outcome.self && args.sender.userId) {
     const res = await applySignup({
       monthId: month.id,
@@ -1247,6 +1255,13 @@ export async function handleSignupMessage(args: {
     // left. Anything else in it is the organiser's.
     (ask.choice === "in" ? live.find((m) => m.monthNumber === ask.month && !m.open && hasStarted(m, now)) : undefined);
   if (!month) return null;
+  // A month under way (review of #465): somebody new joins on the reading
+  // that names this month; somebody who was on it and left is asked by DM
+  // to confirm first, never put back on by one reading.
+  if (hasStarted(month, now) && month.members.some((x) => x.userId === args.sender.userId && x.out)) {
+    const asked = await askToJoinMonth({ month, userId: args.sender.userId, now });
+    return { monthId: month.id, choice: ask.choice, changed: asked, locked: false, outcome: "out" };
+  }
   const res = await applySignup({
     monthId: month.id,
     userId: args.sender.userId,
@@ -1261,6 +1276,33 @@ export async function handleSignupMessage(args: {
   let games = false;
   if (res.outcome === "regular" && ask.games !== null) games = await commitMonthGames(month.id, args.sender.userId, ask.games);
   return { monthId: month.id, choice: ask.choice, changed: res.changed || games, locked: res.locked, outcome: res.outcome };
+}
+
+/** The SentNotification kind of an open "join for the games left?" ask. */
+export const MONTH_JOIN_ASK_KIND = "month-join-ask";
+export const monthJoinAskKey = (orgId: string, monthId: string, userId: string) => `${signupKeyPrefix(orgId)}join-ask:${monthId}:${userId}`;
+
+/**
+ * Ask a player by DM to confirm joining a month under way for the games
+ * left (review of #465). Once per month and player. True when asked.
+ */
+export async function askToJoinMonth(p: { month: SignupMonth; userId: string; now: Date }): Promise<boolean> {
+  const { month, userId, now } = p;
+  const left = month.kickoffs.filter((k) => k.getTime() > now.getTime()).length;
+  if (left === 0) return false;
+  const user = await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } });
+  const phone = user?.phoneNumber?.replace(/^\+/, "");
+  if (!phone) return false;
+  const price = month.sharePerGamePence != null ? `£${((month.sharePerGamePence * left) / 100).toFixed(2)}` : null;
+  const text = t(month.language).msu_dm_join_ask({ month: monthNameLabel(month.language, month.firstKickoff), games: left, price });
+  try {
+    await db.sentNotification.create({ data: { key: monthJoinAskKey(month.orgId, month.id, userId), kind: MONTH_JOIN_ASK_KIND, targetUser: userId, text } });
+  } catch {
+    return false; // asked already
+  }
+  const sendAfter = adminNoticeSendAfter(now, await loadClubQuietHours(month.orgId));
+  await db.botJob.create({ data: { orgId: month.orgId, kind: "dm", phone, text, ...(sendAfter ? { sendAfter } : {}) } });
+  return true;
 }
 
 /** Is this person an OWNER or ADMIN of the club? */

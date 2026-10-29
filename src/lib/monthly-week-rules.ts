@@ -658,6 +658,11 @@ export type PasteAction =
    *  "David, my son, is IN" is added. */
   | { kind: "guest"; name: string; hostUserId: string | null; slot: number | null };
 
+/** A non-organiser's paste adds at most this many guests, and never more
+ *  than the week's open places (review of #465). An organiser may fill
+ *  the open places, up to the squad size. */
+export const MAX_GUESTS_PER_PASTE = 3;
+
 /** "4 only" beside a player of the month, as the reader read it. */
 export interface PasteGames {
   userId: string;
@@ -751,11 +756,13 @@ export function reconcileMonthPaste(args: {
   ignored: PasteIgnored[];
   notAdded: PasteNotAdded[];
   games: PasteGames[];
+  /** Guests past the cap: nobody added for them; the sender is told. */
+  guestsRefused: string[];
   otherMonth: boolean;
   notThisList: boolean;
 } {
   const { list, members, rows, senderUserId, senderIsAdmin } = args;
-  const nothing = { actions: [], ignored: [], notAdded: [], games: [] };
+  const nothing = { actions: [], ignored: [], notAdded: [], games: [], guestsRefused: [] };
   if (list.month && list.month.month !== args.matchMonth) return { ...nothing, otherMonth: true, notThisList: false };
 
   const memberOf = new Map(members.map((m) => [m.userId, m]));
@@ -793,6 +800,11 @@ export function reconcileMonthPaste(args: {
   const games: PasteGames[] = [];
   const handled = new Set<string>();
   const senderIsClubPlayer = !!senderUserId && args.roster.some((m) => m.userId === senderUserId);
+  // Guests: never more than the open places; a non-organiser at most the cap.
+  const openPlaces = Math.max(0, args.maxPlayers - rows.filter((r) => r.status === "CONFIRMED").length);
+  const guestCap = senderIsAdmin ? openPlaces : Math.min(openPlaces, MAX_GUESTS_PER_PASTE);
+  let guestsAdded = 0;
+  const guestsRefused: string[] = [];
   const gamesOf = (e: MonthlyListEntry, userId: string): void => {
     const g = e.facts?.games ?? null;
     if (g !== null && memberOf.get(userId)?.kind === "regular") games.push({ userId, games: g, self: userId === senderUserId });
@@ -836,8 +848,13 @@ export function reconcileMonthPaste(args: {
         actions.push({ kind: "in", userId: senderUserId, name: e.name, self: true, slot: e.slot });
       } else if (e.facts?.guest && senderIsClubPlayer) {
         // B2: a member's guest. Nobody of the club (the reader matched
-        // nobody), so a new player, brought by the host.
-        actions.push({ kind: "guest", name: e.name, hostUserId: e.facts.hostUserId ?? senderUserId, slot: e.slot });
+        // nobody), so a new player, brought by the host: up to the cap.
+        if (guestsAdded < guestCap) {
+          guestsAdded++;
+          actions.push({ kind: "guest", name: e.name, hostUserId: e.facts.hostUserId ?? senderUserId, slot: e.slot });
+        } else {
+          guestsRefused.push(e.name);
+        }
       } else {
         notAdded.push({ name: e.name, reason: r.kind === "none" ? "unknown" : "ambiguous" });
       }
@@ -852,10 +869,9 @@ export function reconcileMonthPaste(args: {
       if (self) actions.push({ kind: "in", userId, name: e.name, self, slot: e.slot });
       else ignored.push({ name: e.name, reason: "stale-readd" });
     } else if (!row) {
-      // A club player who is not on the month comes in when he is the
-      // sender, or a member brought him as a guest (a guest from an earlier
-      // week is a club player by now).
-      if (self || memberOf.has(userId) || (e.facts?.guest && senderIsClubPlayer)) actions.push({ kind: "in", userId, name: e.name, self, slot: e.slot });
+      // A club player who is not on the month comes in only when he is
+      // the sender (a member ref is never a guest, review of #465).
+      if (self || memberOf.has(userId)) actions.push({ kind: "in", userId, name: e.name, self, slot: e.slot });
       else notAdded.push({ name: e.name, reason: "not-in-month" });
     }
     claimIfNew(e, userId);
@@ -909,11 +925,12 @@ export function reconcileMonthPaste(args: {
       ignored: [],
       notAdded: [],
       games,
+      guestsRefused: [],
       otherMonth: false,
       notThisList: false,
     };
   }
-  return { actions, ignored, notAdded, games, otherMonth: false, notThisList: false };
+  return { actions, ignored, notAdded, games, guestsRefused, otherMonth: false, notThisList: false };
 }
 
 /**

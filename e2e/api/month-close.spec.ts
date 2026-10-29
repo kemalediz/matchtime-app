@@ -506,9 +506,15 @@ test("6. a closed month is frozen, and its last game still gets no payment poll"
 test("6b. a \"PAID ALL\" for the closed month's last list is answered, and marks nobody", async ({ request, db }) => {
   // Bilal's claim was on the collector's daily list while the month ran.
   expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key LIKE $1`, [`org-${ORG}:mpy:digest:${MONTH}:%`])).toBeGreaterThan(0);
+  // He swipe-replies to that list (MatchTime has DMed him other things
+  // since): an answer is read as one only when it answers the list
+  // (review of #465).
+  const list = await db.one<{ text: string }>(`SELECT text FROM "SentNotification" WHERE key LIKE $1 AND kind = 'month-pay-digest' ORDER BY "createdAt" DESC LIMIT 1`, [
+    `org-${ORG}:mpy:digest:${MONTH}:%`,
+  ]);
   const res = await request.post("/api/whatsapp/dm-reply", {
     headers: KEY,
-    data: { phone: digits(P.rob.phone), body: "PAID ALL", waMessageId: msgId(), authorName: P.rob.name },
+    data: { phone: digits(P.rob.phone), body: "PAID ALL", waMessageId: msgId(), authorName: P.rob.name, quotedText: list?.text, quotedFromMatchTime: true },
   });
   expect(res.status(), await res.text()).toBe(200);
   expect(((await res.json()) as { handled?: string }).handled).toBe("month-paid-closed");

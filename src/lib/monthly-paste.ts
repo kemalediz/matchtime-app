@@ -38,6 +38,7 @@ import { createProvisionalByName } from "./resolve-sender";
 import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek } from "./monthly-week";
 import {
   buildPasteGuestsAddedDm,
+  buildPasteGuestsRefusedDm,
   buildPasteIgnoredAdminNotice,
   buildPasteNotAddedNotice,
   buildPasteSenderNotListDm,
@@ -357,6 +358,18 @@ export async function handleMonthlyPaste(args: {
       }
     } catch (err) {
       console.error("[monthly-paste] guests DM failed:", err);
+    }
+  }
+
+  // More guests than one paste may add: the rest are nobody, and he is told once.
+  if (outcome.guestsRefused.length > 0 && sender.userId) {
+    const phone = phoneOf.get(sender.userId);
+    try {
+      if (phone && (await claimOnce(`${matchId}:paste-guests-refused:${args.waMessageId}`, "paste-sender-dm", matchId))) {
+        await dm(phone, buildPasteGuestsRefusedDm({ names: outcome.guestsRefused, lang: week.language }));
+      }
+    } catch (err) {
+      console.error("[monthly-paste] guests-refused DM failed:", err);
     }
   }
 

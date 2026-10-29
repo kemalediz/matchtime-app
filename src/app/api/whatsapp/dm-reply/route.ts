@@ -171,6 +171,11 @@ export async function POST(request: Request) {
   //   their whole chat context (`loadDmReplyContext`). Total: a failed read
   //   is logged and the DM carries on as a non-reply.
   const quoted = await logDmQuote(db, { body, waMessageId, phones: [phone, senderAltPhone] });
+  // Which of MatchTime's messages this DM answers (review of #465): the one
+  // quoted, else MatchTime's newest DM to him. The steps that wait for an
+  // answer act only when it is their message (`dm-answering.ts`).
+  const { answeringOnce } = await import("@/lib/dm-answering");
+  const answering = answeringOnce(quoted?.text ?? parseDmQuote(body)?.text ?? null, [phone, senderAltPhone]);
 
   // ── Local player pool: the /play confirm code (slice L2, 2026-10-24) ──
   //   "Hi MatchTime, sign me up to play. Code K7QP" (Turkish: "Merhaba
@@ -279,7 +284,7 @@ export async function POST(request: Request) {
   //   else this costs two indexed queries and the DM carries on as before.
   {
     const { readDigestReply } = await import("@/lib/month-digest-reply");
-    const paid = await handleCollectorPaidDm({ phone, senderAltPhone, text, waMessageId, read: (shown, t) => readDigestReply(shown, t) });
+    const paid = await handleCollectorPaidDm({ phone, senderAltPhone, text, waMessageId, answering, read: (shown, t) => readDigestReply(shown, t) });
     if (paid) return NextResponse.json({ ok: true, ...paid });
   }
 
@@ -727,16 +732,17 @@ export async function POST(request: Request) {
     //   correction changes the draft and sends it again; anything else goes
     //   on below. One indexed query for everybody else, and no model call.
     const { handleMonthSeedDmReply } = await import("@/lib/month-seed-reply");
-    const seed = await handleMonthSeedDmReply({ userId: user.id, text, replyPhone, now: new Date() });
+    const seed = await handleMonthSeedDmReply({ userId: user.id, text, replyPhone, waMessageId, answering, now: new Date() });
     if (seed) return NextResponse.json({ ok: true, ...seed });
 
-    // ── An organiser of a monthly club setting a season break by DM ─────
-    //   "no football in December", "we're back mid January" (2026-10-29,
-    //   every admin feature by WhatsApp). Read by the shared admin
-    //   extractor (`season-break-dm.ts`); only a season_break reading acts.
-    const { handleSeasonBreakDm } = await import("@/lib/season-break-dm");
-    const seasonBreak = await handleSeasonBreakDm({ userId: user.id, text, authorName: user.name ?? null, replyPhone, now: new Date() });
-    if (seasonBreak) return NextResponse.json({ ok: true, ...seasonBreak });
+    // ── A player confirming he joins a month under way (review of #465) ──
+    //   MatchTime asked "Join <month> for the N games left?" (`askToJoinMonth`);
+    //   while that is open and it is the message he answers, his reply is
+    //   read by the monthly reader (`month-join-dm.ts`).
+    const { handleMonthJoinDmReply } = await import("@/lib/month-join-dm");
+    const joined = await handleMonthJoinDmReply({ userId: user.id, text, waMessageId, answering, now: new Date() });
+    if (joined) return NextResponse.json({ ok: true, ...joined });
+
   }
 
   // ── Player payment claim: "Paid" (2026-09-23) ────────────────────────
@@ -1082,6 +1088,24 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ ok: true, handled: "collector-fee", released: feeResult.released });
     }
+  }
+
+  // ── An organiser of a monthly club setting a season break by DM ───────
+  //   "no football in December", "we're back mid January" (2026-10-29,
+  //   every admin feature by WhatsApp). Read by the shared admin extractor
+  //   (`season-break-dm.ts`); only a season_break reading acts. Placed after
+  //   every step that knows which question a DM answers, so the extractor
+  //   is asked only for a DM nothing earlier took (review of #465), and only
+  //   for an owner or admin of a monthly club.
+  {
+    const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+    const replyPhone =
+      phoneNoPlus ??
+      (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+      null;
+    const { handleSeasonBreakDm } = await import("@/lib/season-break-dm");
+    const seasonBreak = await handleSeasonBreakDm({ userId: user.id, text, authorName: user.name ?? null, replyPhone, now: new Date() });
+    if (seasonBreak) return NextResponse.json({ ok: true, ...seasonBreak });
   }
 
   // ── ADMIN COMMANDS BY DM — ONE MODEL CALL, TWO ACTIONS ─────────────

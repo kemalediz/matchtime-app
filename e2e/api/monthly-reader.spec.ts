@@ -20,7 +20,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { formatInTimeZone } from "date-fns-tz";
 import { test, expect, resetDb } from "../fixtures";
-import { clearMonthlyReaderStub, engineOn, setMonthlyReaderStub, setMonthSeedReplyStub } from "../helpers/stub";
+import { clearMonthlyReaderStub, engineOn, setDigestReplyStub, setMonthlyReaderStub, setMonthSeedReplyStub, stubCalls } from "../helpers/stub";
 import { E2E } from "../helpers/env";
 import { londonAt } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
@@ -210,11 +210,22 @@ test("B1: the same note written by somebody else (not an organiser) changes noth
   expect(await monthRow(db, P.bilal)).toMatchObject({ gamesCommitted: null });
 });
 
-test("B3: somebody not on the running month adds himself to the MONTH's list: he joins it for the games left", async ({ request, db }) => {
+test("B3: somebody not on the running month adds himself to the MONTH's list: he is asked by DM, and joins on his yes", async ({ request, db }) => {
   const body = LIST(["4. Will"]);
-  setMonthlyReaderStub({ bodies: { [body]: listAnswer([line(1, "Alex"), line(2, "Bilal"), line(3, "Chris"), line(4, "Will")], { listOf: "month" }) } });
+  setMonthlyReaderStub({
+    bodies: {
+      [body]: listAnswer([line(1, "Alex"), line(2, "Bilal"), line(3, "Chris"), line(4, "Will")], { listOf: "month" }),
+      "yes please": { ...listAnswer([]), kind: "signup", choice: "in", signupMonth: MONTH_NUMBER },
+    },
+  });
   const res = await say(request, P.will, body);
   expect(res).toMatchObject({ handledBy: "fast-path", intent: "month_signup_list" });
+  // One reading of a paste never joins a month under way (review of #465).
+  expect(await monthRow(db, P.will)).toBeNull();
+  const asked = await dms(db, P.will);
+  expect(asked.at(-1)?.text).toMatch(new RegExp(`^📋 Join ${MONTH_NAME} as a regular for the \\d+ games? left`));
+  const reply = await request.post("/api/whatsapp/dm-reply", { headers: KEY, data: { phone: digits(P.will.phone), body: "yes please", waMessageId: `e2e-mr-dm-${++seq}`, authorName: P.will.name } });
+  expect(await reply.json()).toMatchObject({ handled: "month-join-yes" });
   expect(await monthRow(db, P.will)).toMatchObject({ kind: "regular", out: false });
 });
 
@@ -323,8 +334,18 @@ test("an organiser's list for the COMING month in the players' group: the draft 
   ]);
   const resent = await db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2 ORDER BY "createdAt"`, [ORG2, digits(owner.phone)]);
   expect(resent.at(-1)?.text).toContain("3 players");
+  // HE IS ALSO THE COLLECTOR, with a paid-claims list out to him from
+  // earlier. His "go ahead" answers the DRAFT (MatchTime's newest DM to
+  // him), so it is never read as an answer to the list: no payment is
+  // confirmed, and the list's reader is not even asked (review of #465).
+  await db.run(
+    `INSERT INTO "SentNotification" (id, key, kind, text, "createdAt") VALUES ('e2e-mr2-digest', $1, 'month-pay-digest', '📋 2 say they have paid', now() - interval '1 hour')`,
+    [`org-${ORG2}:mpy:digest:e2e-mr2-month:2026-10-29`],
+  );
+  setDigestReplyStub({ bodies: { "go ahead": JSON.stringify({ answer: "all", numbers: [], month: 0, confidence: 1 }) } });
   // His yes, in any words, starts the month from the draft.
   expect(await dmSay("go ahead")).toMatchObject({ handled: "month-seed-started", monthStart: coming });
+  expect(stubCalls(E2E.DIGEST_REPLY_STUB_FILE).filter((c) => c.user.includes("go ahead"))).toEqual([]);
   const started = await db.all<{ userId: string; kind: string }>(
     `SELECT smm."userId", smm.kind FROM "SquadMonthMember" smm JOIN "SquadMonth" sm ON sm.id = smm."monthId" WHERE sm."orgId" = $1 ORDER BY smm."userId"`,
     [ORG2],

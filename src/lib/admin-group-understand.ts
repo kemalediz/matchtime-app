@@ -370,6 +370,12 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
       const { handleCollectorPaidReply } = await import("./month-payment");
       const { readDigestReply } = await import("./month-digest-reply");
       const paid = await handleCollectorPaidReply({
+        // Which of MatchTime's lines he answers: the one quoted, else its
+        // newest here (looked up only when a list is out).
+        answering: async () =>
+          input.quoted?.text ??
+          (await db.adminGroupMessage.findFirst({ where: { orgId: org.id, fromMatchTime: true }, orderBy: { createdAt: "desc" }, select: { text: true } }))?.text ??
+          null,
         text: input.text,
         waMessageId: messageId,
         senderUserIds: [input.senderUserId],

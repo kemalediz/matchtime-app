@@ -1923,6 +1923,21 @@ async function handleAnalyzeRequest(request: Request) {
       for (const m of fresh) {
         if (fastPathHandledIds.has(m.waMessageId)) continue;
         const sender = senderById.get(m.waMessageId)!;
+        // CLAIMED BEFORE THE MODEL IS ASKED (review of #465): a Pi retry of
+        // this message, arriving while the first is still being handled,
+        // is not read for the month, so a guest is never created twice; it
+        // goes on to the rest of the pipeline exactly as a message did before
+        // monthly mode (and section 4 registers nobody from it).
+        try {
+          await db.sentNotification.create({ data: { key: `monthly-read:${org.id}:${m.waMessageId}`, kind: "monthly-read" } });
+        } catch (err) {
+          if ((err as { code?: unknown })?.code === "P2002") {
+            console.log(`[analyze] ${m.waMessageId}: already read for the month (a retry): not read again`);
+            monthlyNotSquadList.add(m.waMessageId);
+            continue;
+          }
+          throw err;
+        }
         const reading = await reader.readMonthlyMessage(
           {
             body: m.body,

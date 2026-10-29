@@ -207,6 +207,30 @@ export const DIGEST_REPLY_WINDOW_MS = 2 * DAY_MS;
 export interface SentDigest {
   at: Date;
   userIds: string[];
+  /** Its SentNotification key, when read from the database. */
+  key?: string;
+}
+
+/** A list of paid claims can be answered for this long (review of #465). */
+export const DIGEST_ANSWER_WINDOW_MS = 7 * DAY_MS;
+
+/**
+ * Is the message he is answering (the one he swipe-replied to, or else
+ * MatchTime's newest message to him) one of MatchTime's paid-claims lists,
+ * still open (sent within the window and not fully answered)? Decided from
+ * WHICH message it is (MatchTime's own words, as it sent them), never from
+ * what he wrote. Only then is his message read as the answer.
+ */
+export function answersOpenDigest(p: {
+  answering: string | null;
+  digests: Array<{ text: string | null; at: Date }>;
+  now: Date;
+}): boolean {
+  const a = p.answering?.trim();
+  if (!a) return false;
+  return p.digests.some(
+    (d) => !!d.text && p.now.getTime() - d.at.getTime() <= DIGEST_ANSWER_WINDOW_MS && a.includes(d.text.trim()),
+  );
 }
 
 export type CollectorDecision =

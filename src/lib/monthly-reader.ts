@@ -82,8 +82,12 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     ].join("\n");
   });
 
+  // A coming month that can still be started from a list (agent A's rule).
+  const { comingMonth } = await import("./month-seed-hq");
+  const seedable = (await comingMonth(args.orgId, now).catch(() => null)) !== null;
   return {
     orgId: args.orgId,
+    seedable,
     members,
     months: monthBlocks,
     week: liveWeek ? { game: formatLondon(liveWeek.matchDate, "EEE d MMM yyyy, HH:mm"), text: renderWeekList(liveWeek).text } : null,
@@ -150,6 +154,12 @@ export async function readMonthlyMessage(
   deps?: { model?: PipelineModel | null },
 ): Promise<MonthlyReading> {
   if (!input.body?.trim()) return { kind: "none", why: "empty" };
+  // COST GATES, on facts only (review of #465): a sender who is nobody of
+  // the club cannot sign up, add himself or bring anyone; and a club with
+  // no live month, no week and no coming month to start has nothing a
+  // message could change.
+  if (!input.sender.userId) return { kind: "none", why: "sender not a club member" };
+  if (ctx.months.length === 0 && !ctx.week && ctx.seedable !== true) return { kind: "none", why: "nothing monthly to act on" };
   let reading: MonthlyReading;
   try {
     const stubFile = deps?.model === undefined ? process.env[MONTHLY_READER_STUB_FILE_ENV] : undefined;

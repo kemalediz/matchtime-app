@@ -1310,6 +1310,8 @@ const SAMPLES: SampleArgs = {
   mwk_list_open_organiser: { open: 3 },
   mwk_pool_group: { open: 3, when: "Mon 12 Oct, 20:00", price: "£8" },
   mwk_dm_sender_not_matched: { names: ["Gaz", "Tariq"] },
+  msu_dm_join_ask: { month: "November", games: 3, price: "£22.50" },
+  mwk_dm_paste_guests_refused: { names: ["Luca", "Max"] },
   mwk_dm_paste_guests_added: { names: ["Jon", "Luca"], when: "Mon 9 Nov, 20:30" },
   mwk_dm_seed_declined: { month: "November" },
   sb_set: { months: "December" },

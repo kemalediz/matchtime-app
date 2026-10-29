@@ -48,6 +48,10 @@ export interface MonthlyReaderContext {
   /** The next game's list as MatchTime has it, with the game's date. Null
    *  when no week of a month is live. */
   week: { game: string; text: string } | null;
+  /** A coming month can still be started from a list (no month for it
+   *  yet). With no live month, no week and nothing to start, no message
+   *  can act on anything monthly, and the reader is not asked. */
+  seedable?: boolean;
 }
 
 export interface MonthlyReaderInput {
@@ -256,7 +260,9 @@ export function parseMonthlyReading(raw: unknown, input: MonthlyReaderInput, ctx
     const games = name ? int(x.games, 1, 31) : null;
     marks.gamesCommitted = games;
     const memberId = name ? refOf(x.member) : null;
-    const guest = !!name && bool(x.guest) && memberId !== input.sender.userId;
+    // A line the reader matched to a member is that member, never a guest
+    // (review of #465): the month's own rules then decide who may add him.
+    const guest = !!name && bool(x.guest) && memberId === null;
     const entry: ReaderEntry = {
       slot: int(x.slot, 1, 99),
       raw: name,
