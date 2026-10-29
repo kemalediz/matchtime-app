@@ -34,14 +34,18 @@ export type ClubRole = "OWNER" | "ADMIN" | "PLAYER";
 export const PARTNER_ASK_WHEN: readonly PartnerAskWhen[] = ["off", "on-request", "auto"];
 export const PARTNER_APPROVALS: readonly PartnerApproval[] = ["each-ask", "standing"];
 
-/** The cut-off (Kemal, 2026-10-16): the last ask goes out at least this
- *  many hours before kickoff. The schema default and the CHECK agree. */
-export const PARTNER_ASK_CUTOFF_DEFAULT_HOURS = 4;
+/** The cut-off: the last ask goes out at least this many hours before
+ *  kickoff (Kemal, 2026-10-16; default 4 until 2026-10-29, now 2). The ONE
+ *  definition: the schema's column default matches it (a test holds it),
+ *  and every reader falls back to this constant, never a written number. */
+export const PARTNER_ASK_CUTOFF_DEFAULT_HOURS = 2;
 export const PARTNER_ASK_CUTOFF_MIN_HOURS = 1;
 export const PARTNER_ASK_CUTOFF_MAX_HOURS = 24;
 
-/** The automatic ask's match-day time when none is set. */
-export const PARTNER_ASK_TIME_DEFAULT = "16:00";
+/** The automatic ask's London match-day time when none is set (NULL in
+ *  `partnerAskTime`). 16:00 until 2026-10-29, now 08:00 (Kemal). The ONE
+ *  definition: read it through `effectiveAskTime`. */
+export const PARTNER_ASK_TIME_DEFAULT = "08:00";
 
 /** A stored value, read: anything unknown is "off", never a third meaning. */
 export function normalisePartnerAskWhen(value: unknown): PartnerAskWhen {

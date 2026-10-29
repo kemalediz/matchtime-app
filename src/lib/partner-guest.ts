@@ -50,6 +50,7 @@ import { dayCommaTimeLabel, timeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { askWindows, gamesOverlap } from "./partner-ask-rules";
 import { loadPartnerAskSettings } from "./club-partnership";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "./club-partnership-rules";
 import { pullOutResult } from "./pool/round-rules";
 import { decideVolunteer, isPastGuestDue } from "./partner-volunteer-rules";
 import { loadRoundFill, type RoundFill } from "./partner-ask-round";
@@ -724,7 +725,7 @@ export async function markGuestPlaceDropped(matchId: string, userId: string, res
 
 /** In time or late, by the asking club's cut-off (the pool's rule, `pullOutResult`). */
 async function partnerDropResult(askerOrgId: string, kickoff: Date, now: Date): Promise<"withdrawn" | "late-cancel"> {
-  return pullOutResult({ now, cutoff: askWindows(kickoff, (await loadPartnerAskSettings(askerOrgId))?.cutoffHours ?? 4).postBy });
+  return pullOutResult({ now, cutoff: askWindows(kickoff, (await loadPartnerAskSettings(askerOrgId))?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS).postBy });
 }
 
 // ── The pool's entry points (local player pool L5a, 2026-10-24) ─────────

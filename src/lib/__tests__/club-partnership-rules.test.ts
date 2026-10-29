@@ -44,8 +44,8 @@ describe("settings values", () => {
     expect(parsePartnerAskWhen("sometimes")).toBeNull();
   });
 
-  it("the cut-off is whole hours from 1 to 24, default 4", () => {
-    expect(PARTNER_ASK_CUTOFF_DEFAULT_HOURS).toBe(4);
+  it("the cut-off is whole hours from 1 to 24, default 2 (Kemal, 2026-10-29)", () => {
+    expect(PARTNER_ASK_CUTOFF_DEFAULT_HOURS).toBe(2);
     expect(PARTNER_ASK_CUTOFF_MIN_HOURS).toBe(1);
     expect(PARTNER_ASK_CUTOFF_MAX_HOURS).toBe(24);
     expect(parseCutoffHours(4)).toBe(4);
@@ -56,14 +56,14 @@ describe("settings values", () => {
     expect(parseCutoffHours("x")).toBeNull();
   });
 
-  it("the automatic time is a London HH:MM, zero padded; not set reads 16:00", () => {
+  it("the automatic time is a London HH:MM, zero padded; not set reads 08:00 (Kemal, 2026-10-29)", () => {
     expect(parseAskTime("9:30")).toBe("09:30");
     expect(parseAskTime("16:00")).toBe("16:00");
     expect(parseAskTime("24:00")).toBeNull();
     expect(parseAskTime("off")).toBeNull();
-    expect(PARTNER_ASK_TIME_DEFAULT).toBe("16:00");
-    expect(effectiveAskTime(null)).toBe("16:00");
-    expect(effectiveAskTime("bad")).toBe("16:00");
+    expect(PARTNER_ASK_TIME_DEFAULT).toBe("08:00");
+    expect(effectiveAskTime(null)).toBe("08:00");
+    expect(effectiveAskTime("bad")).toBe("08:00");
     expect(effectiveAskTime("17:15")).toBe("17:15");
   });
 

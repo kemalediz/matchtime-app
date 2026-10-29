@@ -556,12 +556,14 @@ model Organisation {
   /// `partnerAskTime` on match day, only with an empty waiting list).
   /// CHECK constraint: prisma/sql/partner-ask-check.sql.
   partnerAskWhen           String  @default("off")
-  /// The automatic ask's London time on match day ("HH:MM"). NULL = 16:00.
+  /// The automatic ask's London time on match day ("HH:MM"). NULL = 08:00.
+  /// (PARTNER_ASK_TIME_DEFAULT in src/lib/club-partnership-rules.ts.)
   partnerAskTime           String?
   /// The cut-off (Kemal, 2026-10-16): the last ask to a partner club goes
-  /// out at least this many hours before kickoff. 1 to 24, default 4. An
+  /// out at least this many hours before kickoff. 1 to 24, default 2
+  /// (4 until 2026-10-29; PARTNER_ASK_CUTOFF_DEFAULT_HOURS must match). An
   /// ask still waiting for the partner's approval expires at it.
-  partnerAskCutoffHours    Int     @default(4)
+  partnerAskCutoffHours    Int     @default(2)
 
   /// ─── Partner discovery (2026-10-21, slice P1) ─────────────────────
   /// Plan: MDs/partner-discovery-plan-2026-10-21.md, sections 2.1 and 6.

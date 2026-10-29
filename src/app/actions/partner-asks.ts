@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { requireOrgAdmin } from "@/lib/org";
 import { t } from "@/lib/i18n/t";
 import { loadPartnerAskSettings } from "@/lib/club-partnership";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "@/lib/club-partnership-rules";
 import { approvePartnerAsk, askRefusalText, cancelPartnerRound, declinePartnerAsk } from "@/lib/partner-ask";
 import { requestAskRound } from "@/lib/pool/ask-round";
 import { poolAskRefusalText } from "@/lib/pool/offer-copy";
@@ -59,7 +60,7 @@ export async function requestPartnerRoundAction(
   const parts: string[] = [];
   let asked = 0;
   if (r.partner) {
-    const cutoff = (await loadPartnerAskSettings(orgId))?.cutoffHours ?? 4;
+    const cutoff = (await loadPartnerAskSettings(orgId))?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS;
     const names = r.partner.results.filter((x) => x.result === "posted" || x.result === "awaiting").map((x) => x.partnerName);
     asked += names.length;
     if (names.length > 0) parts.push(s.xask_round_asked_toast({ partners: joinList(lang, names), places: Number(places) }));

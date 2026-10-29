@@ -14,6 +14,7 @@
  */
 import { db } from "../db";
 import { loadPartnerAskSettings } from "../club-partnership";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "../club-partnership-rules";
 import { askWindows } from "../partner-ask-rules";
 import { findPoolCandidates } from "./candidates";
 import { poolAskFill } from "./round";
@@ -60,7 +61,7 @@ export async function loadPoolPanel(matchId: string, orgId: string, opts: { now?
 
 export async function poolNoticeBand(orgId: string, match: { id: string; date: Date }, now: Date, env?: Env): Promise<PoolNearBand | null> {
   const settings = await loadPartnerAskSettings(orgId);
-  if (now.getTime() >= askWindows(match.date, settings?.cutoffHours ?? 4).postBy.getTime()) return null;
+  if (now.getTime() >= askWindows(match.date, settings?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS).postBy.getTime()) return null;
   const panel = await loadPoolPanel(match.id, orgId, { now, env });
   if (!panel || panel.gate || panel.ask?.status === "open") return null;
   return panel.band === "none" ? null : panel.band;

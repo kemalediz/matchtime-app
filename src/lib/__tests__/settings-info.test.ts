@@ -309,7 +309,7 @@ describe("settings explanations: the facts match the code", () => {
     expect(d.language).toBe("en");
   });
 
-  it("partner clubs: asking is off, the cut-off is 4 hours (1 to 24), the automatic time 16:00", () => {
+  it("partner clubs: asking is off, the cut-off is 2 hours (1 to 24), the automatic time 08:00", () => {
     expect(d.partnerAskWhen).toBe("off");
     expect(newClubs("partnerAskWhen")).toBe(`${t("en").pc_when_off}.`);
     expect(newClubs("partnerAskWhen", "tr")).toBe(`${t("tr").pc_when_off}.`);
