@@ -3274,6 +3274,12 @@ export const en = {
     !p.many ? `I can't add ${p.names} as a player, so I'll leave it out.` : `I can't add ${p.names} as players, so I'll leave them out.`,
   ag_paste_over: (p: { listed: number; max: number }): string =>
     `The list has ${p.listed} names for ${p.max} places, so the last ones go on the bench.`,
+  /** A pasted list that leaves confirmed players off without saying they
+   *  are out, or leaves off too many (2026-10-29): nobody is taken out. */
+  ag_paste_kept: (p: { names: string; count: number }): string =>
+    p.count === 1
+      ? `I haven't taken anyone out: ${p.names} is in the squad but not on this list. If they're out, tell me by name.`
+      : `I haven't taken anyone out: ${p.count} players in the squad are not on this list (${p.names}). If any of them are out, tell me who by name.`,
   ag_paste_confirm: "Reply YES to apply.",
   ag_paste_same: "That matches the squad, nothing to change.",
   ag_paste_expired: "That list is more than 30 minutes old, so I haven't applied it. Paste it again if it still stands.",

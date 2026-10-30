@@ -23,7 +23,7 @@
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { engineOn, clearPipelineStubs } from "../helpers/stub";
+import { engineOn, clearPipelineStubs, setHqSquadReaderStub, clearHqSquadReaderStub, squadReading } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -126,7 +126,21 @@ test("in Turkish: a player's number picks too", async ({ request, db }) => {
 // ── The pasted list and its YES ─────────────────────────────────────────
 
 const LIST = ["Friday squad", "1. Alex Admin", "2. Colin Collector", "3. Pat Player", "4. Ian Innes", "5. Zara Zest"].join("\n");
+const TR_LIST = ["Cuma kadro", "1. Alex Admin", "2. Colin Collector", "3. Pat Player", "4. Ian Innes", "5. Tom Third"].join("\n");
 let question = "";
+
+// What the HQ squad reader (a model, stubbed, 2026-10-29) reads each list
+// as: the whole squad, whoever playing is left off, left off on purpose
+// (the server keeps only those really playing at the time).
+test.beforeAll(() => {
+  setHqSquadReaderStub({
+    bodies: {
+      [LIST]: squadReading(["Alex Admin", "Colin Collector", "Pat Player", "Ian Innes", "Zara Zest"], { out: ["Ben Bench", "Tom Third"] }),
+      [TR_LIST]: squadReading(["Alex Admin", "Colin Collector", "Pat Player", "Ian Innes", "Tom Third"], { out: ["Zara Zest"] }),
+    },
+  });
+});
+test.afterAll(() => clearHqSquadReaderStub());
 
 test("a player pastes the squad: the exact changes and a YES question, nothing applied yet", async ({ request, db }) => {
   // The shared router reads every YES below (stubbed: what it would say).
@@ -158,8 +172,7 @@ test("the player who pasted it says YES (a reply to the question): applied, reco
 
 test("in Turkish: a player pastes the squad and their own EVET (the next message) applies it", async ({ request, db }) => {
   await lang(db, "tr");
-  const list = ["Cuma kadro", "1. Alex Admin", "2. Colin Collector", "3. Pat Player", "4. Ian Innes", "5. Tom Third"].join("\n");
-  const asked = await say(request, list, PLAYER, "e2e-aolp-paste-2");
+  const asked = await say(request, TR_LIST, PLAYER, "e2e-aolp-paste-2");
   const yes = await say(request, "EVET");
   await lang(db, "en");
   expect(asked).toMatchObject({ handled: true, outcome: "paste-proposed" });
@@ -174,8 +187,7 @@ test("in Turkish: a player pastes the squad and their own EVET (the next message
 });
 
 test("the organiser still says YES to a list a player pasted", async ({ request, db }) => {
-  const list = ["Friday squad", "1. Alex Admin", "2. Colin Collector", "3. Pat Player", "4. Ian Innes", "5. Zara Zest"].join("\n");
-  expect(await say(request, list, PLAYER, "e2e-aolp-paste-3")).toMatchObject({ outcome: "paste-proposed" });
+  expect(await say(request, LIST, PLAYER, "e2e-aolp-paste-3")).toMatchObject({ outcome: "paste-proposed" });
   const out = await say(request, "YES", ADMIN);
   expect(out).toMatchObject({ handled: true, outcome: "paste-applied" });
   expect(await statusOf(db, U.extra)).toBe("CONFIRMED");

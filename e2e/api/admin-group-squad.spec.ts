@@ -1,9 +1,11 @@
 /**
  * SQUAD CHANGES TYPED IN THE ADMIN GROUP (2026-10-14), against a real
  * Postgres and the real route. The router and the attendance extractor are
- * STUBBED (`engineOn`): no model is called. Everything from the routes on
- * is the shipped code: the attendance engine, the writers, the pasted-list
- * proposal and its YES.
+ * STUBBED (`engineOn`), and so is the HQ squad reader that says a pasted
+ * list is the squad (`setHqSquadReaderStub`, 2026-10-29): no model is
+ * called. Everything from the readings on is the shipped code: the
+ * attendance engine, the writers, the fact gates, the pasted-list proposal
+ * and its YES.
  *
  * The fixture club (E2E Test FC, weekly, first-come) has its upcoming
  * match at 4 of 5: Alex Admin, Colin Collector, Pat Player, Tom Third, and
@@ -13,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { engineOn, clearPipelineStubs, otherFacts, selfIn, selfOut } from "../helpers/stub";
+import { engineOn, clearPipelineStubs, otherFacts, selfIn, selfOut, setHqSquadReaderStub, clearHqSquadReaderStub, squadReading } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -58,6 +60,7 @@ test.beforeAll(async ({ db }) => {
 
 test.afterAll(() => {
   clearPipelineStubs();
+  clearHqSquadReaderStub();
   resetDb();
 });
 
@@ -211,12 +214,20 @@ test("the incident: a reply to another organiser naming players for next week: s
 });
 
 const LIST = ["Friday squad", "1. Alex Admin", "2. Colin Collector", "3. Ian Innes", "4. Zara Zest", "5. Naim Newman"].join("\n");
+const LATE_LIST = ["1. Alex Admin", "2. Colin Collector", "3. Ian Innes", "4. Zara Zest", "5. Pat Player"].join("\n");
+// What the HQ squad reader (a model) reads them as: the whole squad, Pat
+// left off on purpose in the first, Naim in the second.
+const READINGS = {
+  [LIST]: squadReading(["Alex Admin", "Colin Collector", "Ian Innes", "Zara Zest", "Naim Newman"], { out: ["Pat Player"] }),
+  [LATE_LIST]: squadReading(["Alex Admin", "Colin Collector", "Ian Innes", "Zara Zest", "Pat Player"], { out: ["Naim Newman"] }),
+};
 
 let pasteQuestion = "";
 
 test("a pasted list: the exact changes and a YES question, nothing applied yet", async ({ request, db }) => {
   // The shared router reads every YES below (stubbed: what it would say).
   engineOn({ YES: { route: "approve" }, yes: { route: "approve" } });
+  setHqSquadReaderStub({ bodies: READINGS });
   const out = await say(request, LIST, ADMIN, "e2e-ags-paste");
   pasteQuestion = out.replyText;
   expect(out).toMatchObject({
@@ -271,8 +282,7 @@ test("the same list again: 'That matches the squad'", async ({ request }) => {
 });
 
 test("YES more than 30 minutes after the list: not applied, and it says so", async ({ request, db }) => {
-  const list = ["1. Alex Admin", "2. Colin Collector", "3. Ian Innes", "4. Zara Zest", "5. Pat Player"].join("\n");
-  const proposed = await say(request, list);
+  const proposed = await say(request, LATE_LIST);
   expect(proposed.outcome).toBe("paste-proposed");
   // A UTC instant, as Prisma stores it (the column has no time zone).
   await db.run(`UPDATE "AdminSquadProposal" SET "expiresAt" = $2 WHERE "orgId" = $1 AND "resolvedAt" IS NULL`, [

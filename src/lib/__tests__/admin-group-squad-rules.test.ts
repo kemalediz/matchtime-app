@@ -18,7 +18,6 @@ import {
   buildSquadChangeReply,
   diffPastedSquad,
   matchPastedName,
-  readSquadPaste,
   type PasteMember,
 } from "../admin-group-squad-rules";
 import type { AttendanceFacts, Claim } from "../pipeline/types";
@@ -55,29 +54,9 @@ describe("matchPastedName", () => {
   });
 });
 
-describe("readSquadPaste", () => {
-  const list18 = Array.from({ length: 18 }, (_, i) => `${i + 1}. Player ${String.fromCharCode(65 + i)}`).join("\n");
-  it("a numbered list of the whole squad is a paste", () => {
-    const r = readSquadPaste(`Friday 8pm\n${list18}`, 18);
-    expect(r?.playing).toHaveLength(18);
-    expect(r?.reserves).toEqual([]);
-  });
-  it("one name per line counts too", () => {
-    const body = ["Shehryar", "Bilal", "Clarence", "Ali Raza", "Hafeez", "Ilker", "Naim", "Tom", "Sam"].join("\n");
-    expect(readSquadPaste(body, 18)?.playing).toHaveLength(9);
-  });
-  it("reserves are read separately", () => {
-    const r = readSquadPaste(`${list18}\nReserves:\n1. Naim\n2. Tariq`, 18);
-    expect(r?.reserves).toEqual(["Naim", "Tariq"]);
-  });
-  it("a short list is not the squad (fewer than half the places)", () => {
-    expect(readSquadPaste("1. Ali\n2. Bilal\n3. Clarence\n4. Shehryar", 18)).toBeNull();
-  });
-  it("chat is not a paste", () => {
-    expect(readSquadPaste("Shehryar out", 18)).toBeNull();
-    expect(readSquadPaste("Wasim played well last week", 18)).toBeNull();
-  });
-});
+// readSquadPaste is gone (2026-10-29): a pasted HQ list is read by the HQ
+// squad reader, a model (hq-squad-reader.test.ts); its fact gates are in
+// hq-squad-paste-gates.test.ts.
 
 describe("diffPastedSquad", () => {
   const current = [

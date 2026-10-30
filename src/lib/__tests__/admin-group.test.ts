@@ -217,14 +217,31 @@ describe("structured data first, deterministically", () => {
     expect(understand.understandAdminMessage).not.toHaveBeenCalled();
   });
 
-  it("a pasted list is proposed, recorded as MatchTime's question, and never sent to the model", async () => {
+  it("a pasted list is proposed, recorded as MatchTime's question, and never sent on to the shared pipeline", async () => {
     const LIST = "1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim";
     paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
     const r = await handleAdminGroupMessage(msg(LIST));
     expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply.", react: "✅" });
-    expect(paste.proposeSquadPaste).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", messageId: "wa-1", text: LIST, senderUserId: "u-admin", now: NOW });
+    expect(paste.proposeSquadPaste).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", messageId: "wa-1", text: LIST, senderUserId: "u-admin", now: NOW, quoted: null });
     expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith({ orgId: "org-fnf", askRef: "list:wa-1", text: "Adding: Bilal. Reply YES to apply.", now: NOW });
     expect(understand.understandAdminMessage).not.toHaveBeenCalled();
+  });
+
+  // 2026-10-29 (FNF HQ): a copy of the teams sheet, or a swap list, is not
+  // the squad. The HQ squad reader says so (proposeSquadPaste is null) and
+  // the message goes on to the shared pipeline, where teams are handled.
+  it("a multi-line message the squad reader says is not the squad goes on to the shared pipeline", async () => {
+    paste.proposeSquadPaste.mockResolvedValue(null);
+    await handleAdminGroupMessage(msg("Swap\nMo\nMojib\n\nWith\nHamzah\nYorel"));
+    expect(paste.proposeSquadPaste).toHaveBeenCalled();
+    expect(understand.understandAdminMessage).toHaveBeenCalled();
+  });
+
+  it("a pasted list that changed nothing and took nobody out: the line, and no tick", async () => {
+    paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-held", replyText: "I haven't taken anyone out: ..." });
+    const r = await handleAdminGroupMessage(msg("Ali\nTom\nSam"));
+    expect(r).toMatchObject({ handled: true, outcome: "paste-held", react: null });
+    expect(hqLog.recordMatchTimeQuestion).not.toHaveBeenCalled();
   });
 
   it("a pasted list asked about while teams wait: the teams are set aside, and the reply says so", async () => {

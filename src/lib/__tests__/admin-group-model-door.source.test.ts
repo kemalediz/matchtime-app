@@ -18,6 +18,14 @@
  *     STRUCTURED readers in front of the door (the PAID digest answer, a
  *     pick from MatchTime's numbered list, a pasted list) stay
  *     deterministic;
+ *   - since 2026-10-29 a SECOND, narrow door: the HQ squad reader
+ *     (`hq-squad-reader.ts`), the model that says whether a multi-line
+ *     message is the squad, the teams or something else (FNF HQ, 29 Oct:
+ *     the string parser read a pasted teams sheet as a squad of 9 and nine
+ *     players were dropped). It is imported by `admin-group-paste.ts`
+ *     alone, and has no pipeline step of its own beyond its one call.
+ *     (It belongs inside the shared door, as the monthly list's reader is:
+ *     a follow-up once the door's other work lands.)
  *   - the door is imported by `admin-group.ts` alone, after the admin and
  *     club checks (`admin-group.test.ts` pins that a non-admin never gets
  *     there);
@@ -34,6 +42,7 @@ const ROOT = path.resolve(__dirname, "../../..");
 const DOOR = "src/lib/admin-group-understand.ts";
 const WRITER = "src/lib/attendance.ts";
 const GENERATOR = "src/lib/team-generation.ts";
+const PASTE_READER = "src/lib/hq-squad-reader.ts";
 
 function resolveImport(from: string, spec: string): string | null {
   let base: string;
@@ -80,10 +89,11 @@ describe("admin-group paths and the model", () => {
     expectModelFree(files, packages);
   });
 
-  it("the admin-group route reaches one only through the shared-pipeline door (and the shared writer and generator)", () => {
-    const { files, packages, importers } = importGraph(path.join(ROOT, "src/app/api/whatsapp/admin-group/route.ts"), [DOOR, WRITER, GENERATOR]);
+  it("the admin-group route reaches one only through the shared-pipeline door and the HQ squad reader (and the shared writer and generator)", () => {
+    const { files, packages, importers } = importGraph(path.join(ROOT, "src/app/api/whatsapp/admin-group/route.ts"), [DOOR, WRITER, GENERATOR, PASTE_READER]);
     expectModelFree(files, packages);
     expect([...(importers.get(DOOR) ?? [])]).toEqual(["src/lib/admin-group.ts"]);
+    expect([...(importers.get(PASTE_READER) ?? [])]).toEqual(["src/lib/admin-group-paste.ts"]);
     expect([...(importers.get(WRITER) ?? [])]).toEqual(["src/lib/admin-group-paste.ts"]);
     expect([...(importers.get(GENERATOR) ?? [])]).toEqual(["src/lib/team-proposal.ts"]);
   });

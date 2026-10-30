@@ -839,6 +839,7 @@ const SAMPLES: SampleArgs = {
   ag_paste_unclear: { names: "Ali" },
   ag_paste_cannot_add: { names: "WhatsApp", many: false },
   ag_paste_over: { listed: 19, max: 18 },
+  ag_paste_kept: { names: "Yorel, Maj", count: 2 },
   ag_paste_confirm: null,
   ag_paste_same: null,
   ag_paste_expired: null,

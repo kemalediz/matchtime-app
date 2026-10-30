@@ -1998,6 +1998,10 @@ model AdminSquadProposal {
   playingNewNames  String[]  @default([])
   reserveUserIds   String[]  @default([])
   reserveNewNames  String[]  @default([])
+  /// Who the preview said comes OUT (2026-10-29): the YES takes out
+  /// exactly these, never anyone else the list leaves off. Empty on lists
+  /// stored before the column, whose YES then takes nobody out.
+  removeUserIds    String[]  @default([])
   /// A MONTH's list (2026-10-29, monthly clubs): the month it starts,
   /// "YYYY-MM-01", and the draft read from the paste (rows the organiser's
   /// YES starts the month with, `src/lib/month-seed-hq.ts`). NULL for a

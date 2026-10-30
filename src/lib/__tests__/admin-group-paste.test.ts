@@ -2,7 +2,8 @@
  * A squad list pasted in the admin group (2026-10-14): proposed, never
  * applied at once; applied on an admin's YES within 30 minutes, against
  * the squad as it stands at the YES. db and the attendance writers are
- * mocked. No model.
+ * mocked; WHAT the message is comes from the HQ squad reader, a model,
+ * stubbed here with the answer it would give (2026-10-29).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,7 +15,13 @@ const dbMock = vi.hoisted(() => ({
   userAlias: { findMany: vi.fn() },
   user: { findMany: vi.fn() },
   adminSquadProposal: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
+  adminGroupMessage: { findMany: vi.fn() },
+  teamAssignment: { findMany: vi.fn() },
+  adminTeamProposal: { findUnique: vi.fn() },
+  organisation: { findUnique: vi.fn() },
+  sport: { findUnique: vi.fn() },
 }));
+vi.mock("@/lib/ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Promise<unknown>) => fn() }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: vi.fn() }));
 vi.mock("@/lib/attendance", () => att);
@@ -35,6 +42,22 @@ vi.mock("../month-seed-hq", () => seedHq);
 vi.mock("@/lib/month-seed-hq", () => seedHq);
 
 import { answerSquadPasteYes, proposeSquadPaste } from "../admin-group-paste";
+import type { PipelineModel } from "../pipeline/llm";
+
+/** The reader's answer, as the model would give it. Members by ref: the
+ *  club's members in `people` order are p1 (Shehryar) to p7 (Ben). */
+type Line = { name: string; member?: string; section?: "playing" | "bench"; person?: boolean };
+let modelCalls: Array<{ user: string }> = [];
+function reader(kind: "squad" | "teams" | "other", lines: Line[] = [], out: string[] = []): PipelineModel {
+  return {
+    name: "stub",
+    async complete(req: { user: string }) {
+      modelCalls.push({ user: req.user });
+      const answer = { kind, lines: lines.map((l) => ({ member: "", section: "playing", person: true, ...l })), out };
+      return { text: JSON.stringify(answer), usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 }, model: "m", costUsd: 0, ms: 1 } as never;
+    },
+  } as never;
+}
 
 const NOW = new Date("2026-10-14T12:00:00Z");
 const MATCH = { id: "m1", date: new Date("2026-10-16T19:00:00Z"), status: "UPCOMING", maxPlayers: 6 };
@@ -84,19 +107,37 @@ beforeEach(() => {
     return { status };
   });
   prov.resolveOrProvisionByName.mockImplementation(async (_o: string, name: string) => ({ userId: `new-${name.toLowerCase()}`, name }));
+  dbMock.adminGroupMessage.findMany.mockResolvedValue([]);
+  dbMock.teamAssignment.findMany.mockResolvedValue([]);
+  dbMock.adminTeamProposal.findUnique.mockResolvedValue(null);
+  dbMock.organisation.findUnique.mockResolvedValue({ teamLabels: ["Non Bibs", "Bibs"] });
+  dbMock.sport.findUnique.mockResolvedValue(null);
+  modelCalls = [];
 });
 
 const LIST = "Friday 8pm\n1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim";
+/** The reader's reading of LIST: Shehryar and Clarence left off on purpose. */
+const LIST_READ = () =>
+  reader("squad", [{ name: "Bilal", member: "p2" }, { name: "Ali", member: "p4" }, { name: "Tom", member: "p5" }, { name: "Sam", member: "p6" }, { name: "Naim" }], ["p1", "p3"]);
 const base = { orgId: "org", lang: "en", messageId: "wa-paste", senderUserId: "u-admin", now: NOW };
 
 describe("proposeSquadPaste", () => {
-  it("not a list: not handled", async () => {
-    expect(await proposeSquadPaste({ ...base, text: "Shehryar out" })).toBeNull();
+  it("one line: not asked, not handled", async () => {
+    const m = LIST_READ();
+    expect(await proposeSquadPaste({ ...base, text: "Shehryar out", deps: { model: m } })).toBeNull();
+    expect(modelCalls).toHaveLength(0);
+    expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
+  });
+
+  it("the reader says it is not the squad (teams, other): not handled, so it goes on to the pipeline", async () => {
+    expect(await proposeSquadPaste({ ...base, text: LIST, deps: { model: reader("teams") } })).toBeNull();
+    expect(await proposeSquadPaste({ ...base, text: LIST, deps: { model: reader("other") } })).toBeNull();
+    expect(await proposeSquadPaste({ ...base, text: LIST, deps: { model: null } })).toBeNull();
     expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
   });
 
   it("a list: says the exact changes, asks for YES, applies NOTHING", async () => {
-    const r = await proposeSquadPaste({ ...base, text: LIST });
+    const r = await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } });
     expect(r).toEqual({
       outcome: "paste-proposed",
       replyText:
@@ -112,12 +153,38 @@ describe("proposeSquadPaste", () => {
       proposedByUserId: "u-admin",
       playingUserIds: ["u-bilal", "u-ali", "u-tom", "u-sam"],
       playingNewNames: ["Naim"],
+      removeUserIds: ["u-shehryar", "u-clarence"],
       expiresAt: new Date(NOW.getTime() + 30 * 60 * 1000),
     });
+    // The reader saw the squad, the members and the message.
+    expect(modelCalls[0].user).toContain("Playing (5): p1 Shehryar Khan, p3 Clarence Obi");
+    expect(modelCalls[0].user.trim().endsWith("5. Naim")).toBe(true);
+  });
+
+  it("the reader leaves off two players but does not say they are out: nobody is taken out, and it says so", async () => {
+    const m = reader("squad", [{ name: "Bilal", member: "p2" }, { name: "Ali", member: "p4" }, { name: "Tom", member: "p5" }, { name: "Sam", member: "p6" }]);
+    const r = await proposeSquadPaste({ ...base, text: "1. Bilal\n2. Ali\n3. Tom\n4. Sam", deps: { model: m } });
+    expect(r).toEqual({
+      outcome: "paste-proposed",
+      replyText:
+        "Adding: Bilal Ahmed. I haven't taken anyone out: 2 players in the squad are not on this list (Shehryar Khan, Clarence Obi). If any of them are out, tell me who by name. Reply YES to apply.",
+    });
+    expect(dbMock.adminSquadProposal.create.mock.calls[0][0].data.removeUserIds).toEqual([]);
+  });
+
+  it("nothing to add and players left off without a word: one line, nothing stored, no YES", async () => {
+    const m = reader("squad", [{ name: "Ali", member: "p4" }, { name: "Tom", member: "p5" }, { name: "Sam", member: "p6" }]);
+    const r = await proposeSquadPaste({ ...base, text: "Ali\nTom\nSam", deps: { model: m } });
+    expect(r).toEqual({
+      outcome: "paste-held",
+      replyText:
+        "I haven't taken anyone out: 2 players in the squad are not on this list (Shehryar Khan, Clarence Obi). If any of them are out, tell me who by name.",
+    });
+    expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
   });
 
   it("a new paste supersedes the open one", async () => {
-    await proposeSquadPaste({ ...base, text: LIST });
+    await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } });
     expect(dbMock.adminSquadProposal.updateMany).toHaveBeenCalledWith({
       where: { orgId: "org", resolvedAt: null },
       data: { resolvedAt: NOW, outcome: "superseded" },
@@ -125,16 +192,30 @@ describe("proposeSquadPaste", () => {
   });
 
   it("identical to the squad: says so, nothing stored", async () => {
-    const r = await proposeSquadPaste({ ...base, text: "1. Shehryar\n2. Clarence\n3. Ali\n4. Tom\n5. Sam" });
+    const m = reader("squad", ["p1", "p3", "p4", "p5", "p6"].map((member) => ({ name: member, member })));
+    const r = await proposeSquadPaste({ ...base, text: "1. Shehryar\n2. Clarence\n3. Ali\n4. Tom\n5. Sam", deps: { model: m } });
     expect(r).toEqual({ outcome: "paste-same", replyText: "That matches the squad, nothing to change." });
     expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
   });
 
-  it("Turkish club: Turkish proposal", async () => {
-    const r = await proposeSquadPaste({ ...base, lang: "tr", text: LIST });
+  it("Turkish club: Turkish proposal, and the Turkish kept line", async () => {
+    const r = await proposeSquadPaste({ ...base, lang: "tr", text: LIST, deps: { model: LIST_READ() } });
     expect(r?.replyText).toBe(
       "Eklenecek: Bilal Ahmed. Çıkarılacak: Shehryar Khan, Clarence Obi. Tanımadığım isimler: Naim (henüz üye değil, yeni oyuncu olarak ekleyeceğim). Uygulamak için EVET yazın.",
     );
+    const m = reader("squad", [{ name: "Ali", member: "p4" }, { name: "Tom", member: "p5" }, { name: "Sam", member: "p6" }, { name: "Clarence", member: "p3" }]);
+    const kept = await proposeSquadPaste({ ...base, lang: "tr", text: "Ali\nTom\nSam\nClarence", deps: { model: m } });
+    expect(kept?.replyText).toBe("Kimseyi çıkarmadım: Shehryar Khan kadroda ama bu listede yok. Gelmiyorsa ismiyle söyleyin.");
+  });
+
+  it("a name the reader says is not a person is never added as a player", async () => {
+    const m = reader("squad", [
+      { name: "Swap", person: false },
+      ...["p1", "p3", "p4", "p5", "p6"].map((member) => ({ name: member, member })),
+      { name: "With", person: false },
+    ]);
+    const r = await proposeSquadPaste({ ...base, text: "Swap\nShehryar\nClarence\nAli\nTom\nSam\nWith", deps: { model: m } });
+    expect(r?.outcome).toBe("paste-same");
   });
 
   // 2026-10-17: these tests started failing at 01:00 London because the
@@ -143,7 +224,7 @@ describe("proposeSquadPaste", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(new Date("2026-10-17T00:30:00Z")); // the day after MATCH
-      const r = await proposeSquadPaste({ ...base, text: LIST });
+      const r = await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } });
       expect(r?.outcome).toBe("paste-proposed");
     } finally {
       vi.useRealTimers();
@@ -152,7 +233,7 @@ describe("proposeSquadPaste", () => {
 
   it("a Pi retry of the same paste is not proposed twice", async () => {
     dbMock.adminSquadProposal.create.mockRejectedValueOnce(Object.assign(new Error("dup"), { code: "P2002" }));
-    expect(await proposeSquadPaste({ ...base, text: LIST })).toBeNull();
+    expect(await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } })).toBeNull();
   });
 
   // 2026-10-15 (FNF): the organiser pasted the squad a minute after going
@@ -161,7 +242,7 @@ describe("proposeSquadPaste", () => {
     beforeEach(() => dbMock.match.findMany.mockResolvedValue([]));
 
     it("a weekly game is set up: says there is no game yet and when the next one is made (BST: 01:00 London)", async () => {
-      const r = await proposeSquadPaste({ ...base, now: new Date("2026-10-15T21:13:00Z"), text: LIST });
+      const r = await proposeSquadPaste({ ...base, now: new Date("2026-10-15T21:13:00Z"), text: LIST, deps: { model: LIST_READ() } });
       expect(r).toEqual({
         outcome: "paste-no-match",
         replyText:
@@ -169,15 +250,16 @@ describe("proposeSquadPaste", () => {
       });
       expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
       expect(dbMock.adminSquadProposal.updateMany).not.toHaveBeenCalled();
+      expect(modelCalls[0].user).toContain("THE NEXT GAME: none yet.");
     });
 
     it("in winter (GMT) the same run is at 00:00 London", async () => {
-      const r = await proposeSquadPaste({ ...base, now: new Date("2026-12-03T21:13:00Z"), text: LIST });
+      const r = await proposeSquadPaste({ ...base, now: new Date("2026-12-03T21:13:00Z"), text: LIST, deps: { model: LIST_READ() } });
       expect(r?.replyText).toContain("every night at 00:00 (London time)");
     });
 
     it("Turkish club: Turkish", async () => {
-      const r = await proposeSquadPaste({ ...base, lang: "tr", now: new Date("2026-10-15T21:13:00Z"), text: LIST });
+      const r = await proposeSquadPaste({ ...base, lang: "tr", now: new Date("2026-10-15T21:13:00Z"), text: LIST, deps: { model: LIST_READ() } });
       expect(r).toEqual({
         outcome: "paste-no-match",
         replyText:
@@ -187,28 +269,87 @@ describe("proposeSquadPaste", () => {
 
     it("no weekly game at all: says to add one under Activities", async () => {
       dbMock.activity.findMany.mockResolvedValue([]);
-      const r = await proposeSquadPaste({ ...base, text: LIST });
+      const r = await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } });
       expect(r).toEqual({
         outcome: "paste-no-match",
         replyText:
           "This club has no weekly game set up yet, so there's nothing to put this list on. Add the game under Activities on the website, then paste the list again.",
       });
-      const tr = await proposeSquadPaste({ ...base, lang: "tr", text: LIST });
+      const tr = await proposeSquadPaste({ ...base, lang: "tr", text: LIST, deps: { model: LIST_READ() } });
       expect(tr?.replyText).toBe(
         "Bu kulübün henüz ayarlanmış haftalık maçı yok, bu yüzden listeyi koyacak bir maç yok. Maçı web sitesinde Etkinlikler bölümünden ekleyin, sonra listeyi yeniden yapıştırın.",
       );
     });
 
-    it("chatter is not a list: still not handled, so it goes on as before", async () => {
-      expect(await proposeSquadPaste({ ...base, text: "Shehryar out" })).toBeNull();
-      expect(await proposeSquadPaste({ ...base, text: "who's free friday?\nanyone?" })).toBeNull();
+    it("the reader says it is not the squad: still not handled, so it goes on as before", async () => {
+      expect(await proposeSquadPaste({ ...base, text: "Shehryar out", deps: { model: LIST_READ() } })).toBeNull();
+      expect(await proposeSquadPaste({ ...base, text: "who's free friday?\nanyone?", deps: { model: reader("other") } })).toBeNull();
     });
+  });
+});
 
-    it("too short to be the squad (under half the places of the weekly game): not handled", async () => {
-      dbMock.activity.findMany.mockResolvedValue([{ sport: { playersPerTeam: 9 } }]);
-      // 18 places: a list needs 9 names.
-      expect(await proposeSquadPaste({ ...base, text: LIST })).toBeNull();
-    });
+// ── FNF HQ, 29 Oct 2026 (traced): the teams sheet pasted back ────────────
+describe("29 Oct: MatchTime's own two-sided teams sheet pasted back", () => {
+  const NON_BIBS = ["Feroz", "Alamgir", "Rafi", "Hamza", "Mo", "Uncle Najib", "Abdul-Hafeez", "Mojib", "Yaseen"];
+  const BIBS = ["Yorel", "Maj", "Imz", "Hamzah", "Akram", "Mahir", "Shehryar", "Habib", "Ali"];
+  const FNF = [...NON_BIBS, ...BIBS].map((name) => [`u-${name.toLowerCase()}`, name] as const);
+  const SHEET = `Here’s the teams: \n\n*Non Bibs*:\n${NON_BIBS.map((n, i) => `${i + 1}. ${n}`).join("\n")}\n\n*Bibs*:\n${BIBS.map((n, i) => `${i + 1}. ${n}`).join("\n")}`;
+  const SWAP = `Swap \n${NON_BIBS.map((n) => (n === "Uncle Najib" ? "Uncle" : n)).join("\n")}\n\nWith \n\n${["Hamzah", "Yorel", "Akram", "Shehryar", "Imz", "Maj", "Mahir", "Habib", "Ali"].join("\n")}`;
+  const ref = (name: string) => `p${FNF.findIndex(([, n]) => n === name) + 1}`;
+
+  beforeEach(() => {
+    rows = FNF.map(([userId]) => ({ userId, status: "CONFIRMED" }));
+    dbMock.match.findMany.mockResolvedValue([{ ...MATCH, maxPlayers: 18 }]);
+    dbMock.membership.findMany.mockResolvedValue(FNF.map(([id, name]) => ({ user: { id, name } })));
+    dbMock.user.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+      FNF.filter(([id]) => where.id.in.includes(id)).map(([id, name]) => ({ id, name })),
+    );
+    dbMock.teamAssignment.findMany.mockResolvedValue([
+      ...NON_BIBS.map((n) => ({ userId: `u-${n.toLowerCase()}`, team: "RED" })),
+      ...BIBS.map((n) => ({ userId: `u-${n.toLowerCase()}`, team: "YELLOW" })),
+    ]);
+    dbMock.adminTeamProposal.findUnique.mockResolvedValue({ state: "proposed" });
+  });
+
+  it("the reader says teams: no proposal, no removal; it goes on to the teams handling", async () => {
+    expect(await proposeSquadPaste({ ...base, text: SHEET, deps: { model: reader("teams") } })).toBeNull();
+    expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
+    // It was shown the teams, by side, and the squad.
+    expect(modelCalls[0].user).toContain("Non Bibs: p1 Feroz, p2 Alamgir");
+    expect(modelCalls[0].user).toContain("Bibs: p10 Yorel, p11 Maj");
+    expect(modelCalls[0].user).toContain("Playing (18):");
+  });
+
+  it("even a reader that calls all 18 the squad: the teams' players are never a squad change", async () => {
+    const m = reader("squad", [...NON_BIBS, ...BIBS].map((name) => ({ name, member: ref(name) })));
+    expect(await proposeSquadPaste({ ...base, text: SHEET, deps: { model: m } })).toBeNull();
+    expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
+  });
+
+  it("even a reader that repeats the old parser's mistake (9 squad, 9 out): nobody is taken out", async () => {
+    const m = reader("squad", NON_BIBS.map((name) => ({ name, member: ref(name) })), BIBS.map(ref));
+    const r = await proposeSquadPaste({ ...base, text: SHEET, deps: { model: m } });
+    expect(r?.outcome).toBe("paste-held");
+    expect(r?.replyText).toBe(
+      `I haven't taken anyone out: 9 players in the squad are not on this list (${BIBS.join(", ")}). If any of them are out, tell me who by name.`,
+    );
+    expect(r?.replyText).not.toContain("Removing");
+    expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
+  });
+
+  it("18:37 'Swap / 9 names / With / 9 names': the reader says teams; nobody called Swap or With is ever proposed", async () => {
+    expect(await proposeSquadPaste({ ...base, text: SWAP, deps: { model: reader("teams") } })).toBeNull();
+    // And had it called it the squad, with Swap and With as people: the
+    // other 18 are the teams' players, and Swap and With are not in any
+    // proposal because nothing is proposed for a list the gates hold.
+    const m = reader("squad", [
+      { name: "Swap", person: false },
+      ...NON_BIBS.map((name) => ({ name: name === "Uncle Najib" ? "Uncle" : name, member: ref(name) })),
+      { name: "With", person: false },
+      ...BIBS.map((name) => ({ name, member: ref(name) })),
+    ]);
+    expect(await proposeSquadPaste({ ...base, text: SWAP, deps: { model: m } })).toBeNull();
+    expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
   });
 });
 
@@ -223,6 +364,7 @@ describe("answerSquadPasteYes", () => {
     playingNewNames: ["Naim"],
     reserveUserIds: [],
     reserveNewNames: [],
+    removeUserIds: ["u-shehryar", "u-clarence"],
     expiresAt: new Date(NOW.getTime() + 60_000),
     resolvedAt: null,
   };
@@ -269,6 +411,20 @@ describe("answerSquadPasteYes", () => {
     rows.find((r) => r.userId === "u-shehryar")!.status = "DROPPED";
     const r = await answerSquadPasteYes(yes);
     expect(r?.replyText).toBe("Done: Clarence Obi out, Bilal Ahmed in, Naim in. 5 of 6, 1 on the bench (Ben Bench).");
+  });
+
+  it("the YES takes out ONLY who the preview said: a player confirmed since, or one the gates kept, stays", async () => {
+    dbMock.adminSquadProposal.findFirst.mockResolvedValue({ ...open, removeUserIds: ["u-shehryar"] });
+    const r = await answerSquadPasteYes(yes);
+    expect(r?.replyText).toBe("Done: Shehryar Khan out, Bilal Ahmed in, Naim in. 6 of 6, 1 on the bench (Ben Bench).");
+    expect(att.cancelAttendance).toHaveBeenCalledTimes(1);
+  });
+
+  it("a list stored before the column (no removeUserIds): its YES takes nobody out", async () => {
+    const { removeUserIds: _gone, ...legacy } = open;
+    dbMock.adminSquadProposal.findFirst.mockResolvedValue(legacy);
+    await answerSquadPasteYes(yes);
+    expect(att.cancelAttendance).not.toHaveBeenCalled();
   });
 
   it("another admin got there first: the claim fails, nothing is written, silent", async () => {

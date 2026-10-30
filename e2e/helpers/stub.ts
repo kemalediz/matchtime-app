@@ -290,6 +290,37 @@ export function clearMonthlyReaderStub(): void {
   rmSync(`${E2E.MONTHLY_READER_STUB_FILE}.calls`, { force: true });
 }
 
+/** The HQ SQUAD READER stub (2026-10-29): a multi-line HQ message's body
+ *  (trimmed) → the model's raw answer (`{kind, lines, out}`). In an answer,
+ *  `member` and `out` may name a member by NAME; the server's stub seam
+ *  turns names into the refs it gave. A body with no entry is "other". */
+export function setHqSquadReaderStub(stub: { bodies?: Record<string, unknown>; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.HQ_SQUAD_READER_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.HQ_SQUAD_READER_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearHqSquadReaderStub(): void {
+  mkdirSync(path.dirname(E2E.HQ_SQUAD_READER_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.HQ_SQUAD_READER_STUB_FILE, "{}");
+  rmSync(`${E2E.HQ_SQUAD_READER_STUB_FILE}.calls`, { force: true });
+}
+
+/** A squad list the reader reads line for line: every name a person, no
+ *  ref (the club's name rules place them), under `bench` from `benchFrom`
+ *  on, with `out` the members (by name) it leaves off on purpose. */
+export function squadReading(names: string[], opts: { out?: string[]; benchFrom?: number; notPeople?: string[] } = {}): Record<string, unknown> {
+  return {
+    kind: "squad",
+    lines: names.map((name, i) => ({
+      name,
+      member: "",
+      section: opts.benchFrom !== undefined && i >= opts.benchFrom ? "bench" : "playing",
+      person: !(opts.notPeople ?? []).includes(name),
+    })),
+    out: opts.out ?? [],
+  };
+}
+
 /** The DIGEST REPLY stub (2026-10-29): the collector's message → the
  *  model's raw JSON (`{answer, numbers, month, confidence}`). The harness
  *  also registers the old code's reading of every message it posts
@@ -346,6 +377,7 @@ export function clearPipelineStubs(): void {
   clearVolunteerNameStub();
   clearCalloffStub();
   clearMonthlyReaderStub();
+  clearHqSquadReaderStub();
   setMonthSeedReplyStub({});
   setDigestReplyStub({});
 }
