@@ -330,7 +330,7 @@ Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeesh
   question: `You read ONE question from a football club's WhatsApp group (the players' group or the organisers' own group) and say which question it is. You never answer it: code reads the club's records and writes every name, date and number the group sees. Fill a field only from what the message says. A field the message does not state gets its empty value; never fill one in from a guess.
 
 WHAT YOU ARE SHOWN
-THE MESSAGE is the question, with the name of who sent it. Above it, as context only: RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, when the message is a WhatsApp reply, a THEY ARE REPLYING TO line with the message it quotes and whose it is. Use the context to understand what the message refers to: "list?" under a question about the bench, "still space?" under MatchTime's call for one more player. The topic is what THE MESSAGE asks, never what an earlier message asked. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
+THE MESSAGE is the question, with the name of who sent it. Above it, as context only: RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, when the message is a WhatsApp reply, a THEY ARE REPLYING TO line with the message it quotes and whose it is. Use the context to understand what the message refers to: "list?" under a question about the bench, "still space?" under MatchTime's call for one more player. The topic is what THE MESSAGE asks, never what an earlier message asked, with one exception: a MATCHTIME ASKED line. It shows the sender's earlier stats question, whose person MatchTime could not find and asked them about. When THE MESSAGE only says whom they meant ("Idris", "I mean Mojib", "Mojib'i kastettim"), it answers that: set answersClarification true and fill every field for the EARLIER question with this person as personRef. When it asks or says something else, it is a question of its own: answersClarification false and the fields for THE MESSAGE. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
 
 FIELDS
 
@@ -796,8 +796,11 @@ const QUESTION_SCHEMA = {
     feature: { type: "string", enum: [...HELP_FEATURES, "none"] },
     // 2026-10-28: for `feature: "badges"` only, the one badge it names.
     badge: { type: "string", enum: [...HELP_BADGES, "none"] },
+    // 2026-10-30 (review of #476): the message answers MatchTime's open
+    // "who do you mean?" (the MATCHTIME ASKED line), not a new question.
+    answersClarification: { type: "boolean" },
   },
-  required: ["topic", "personRef", "statedCount", "table", "listSize", "listEnd", "period", "periodCount", "periodUnit", "feature", "badge"],
+  required: ["topic", "personRef", "statedCount", "table", "listSize", "listEnd", "period", "periodCount", "periodUnit", "feature", "badge", "answersClarification"],
   additionalProperties: false,
 } as const;
 
@@ -1091,6 +1094,7 @@ export function parseFacts(
       const facts: QuestionFacts = {
         kind: "question",
         topic,
+        ...(raw.answersClarification === true ? { answersClarification: true } : {}),
         // "" and -1 are the schema's stand-ins for null.
         personRef: typeof raw.personRef === "string" && raw.personRef ? raw.personRef : null,
         statedCount:
@@ -1333,13 +1337,13 @@ export interface ExtractorMessage {
    */
   members?: readonly string[];
   /**
-   * The sender's reply to MatchTime's "who do you mean?" about THE
-   * MESSAGE, which is then their original stats question (2026-10-30).
-   * Shown as one line so the extractor reads the question with the person
-   * the reply names. Until then a word test (`clarificationSubject`) cut a
-   * name out of the reply and code overwrote `personRef` with it.
+   * The sender's earlier stats question, whose person MatchTime asked them
+   * about ("who do you mean?"), shown as the MATCHTIME ASKED line
+   * (2026-10-30, review of #476). The extractor says whether THE MESSAGE
+   * answers it (`answersClarification`) and, if so, returns the earlier
+   * question's fields with the person named. Absent otherwise.
    */
-  clarifiedBy?: string;
+  clarifying?: string;
   /** The time the NOW line states (club time). Defaults to now. */
   now?: Date;
 }
@@ -1412,10 +1416,8 @@ export async function extractForRoute(
   if (msg.members && msg.members.length > 0) {
     context.push(`CLUB MEMBERS NAMED: ${msg.members.join(", ")}`);
   }
-  if (msg.clarifiedBy) {
-    context.push(
-      `MATCHTIME ASKED them whom they meant in THE MESSAGE, and they answered: "${msg.clarifiedBy}". Read THE MESSAGE as being about the person that answer names.`,
-    );
+  if (msg.clarifying) {
+    context.push(`MATCHTIME ASKED them whom they meant in their earlier question: "${msg.clarifying}"`);
   }
   context.push("");
   context.push(

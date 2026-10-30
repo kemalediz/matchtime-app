@@ -553,6 +553,10 @@ export type StatsPeriod =
 export interface QuestionFacts {
   kind: "question";
   topic: QuestionTopic;
+  /** The message answers MatchTime's open "who do you mean?" about the
+   *  sender's earlier stats question, and these facts are that question's
+   *  with the person named (2026-10-30). Absent: a question of its own. */
+  answersClarification?: boolean;
   /** Who the question is about, verbatim, when it names anyone. */
   personRef: string | null;
   /** A number the message ASSERTS about the squad ("we're 9/14 right?").

@@ -2384,6 +2384,11 @@ async function handleAnalyzeRequest(request: Request) {
       body: pipelineBody(m),
       tagged: messageTagsBot(m),
       senderUserId: senderById.get(m.waMessageId)?.userId ?? null,
+      // A reply to one of MatchTime's own posts: the match it was about.
+      quotedMatchTimeAbout: (() => {
+        const q = replyById.get(m.waMessageId);
+        return q && !q.author ? q.matchId : null;
+      })(),
     })),
     new Date(),
   );

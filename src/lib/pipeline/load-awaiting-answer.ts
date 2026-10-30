@@ -16,6 +16,7 @@
  * `findMany`. The gate never writes.
  */
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
+import { GROUP_REPLY_KIND } from "../reply-context";
 import {
   SCORE_ASK_KIND,
   SCORE_ASK_TTL_MS,
@@ -302,6 +303,47 @@ export interface ScoreOverrideMessage {
   /** Tags MatchTime (in the organisers' group: addressed to it). */
   tagged: boolean;
   senderUserId: string | null;
+  /** When it is a WhatsApp reply to one of MatchTime's own posts: the match
+   *  that post was about (a fact from the quote). Absent otherwise. */
+  quotedMatchTimeAbout?: string | null;
+}
+
+/**
+ * PURE. Which messages the router is shown "MatchTime has recorded the
+ * latest game's result, and this sender may correct it" for (review of
+ * #476, M5). Facts only: a WhatsApp reply to MatchTime's post about that
+ * match, or a tagged message while MatchTime's LAST post in the group is
+ * that result. Shown on every tagged message for 48 hours, the line biased
+ * "@Match Time Tom out" towards score.
+ */
+export function correctionLineIds(
+  messages: readonly ScoreOverrideMessage[],
+  target: { matchId: string; lastPostIsResult: boolean },
+): Set<string> {
+  const out = new Set<string>();
+  for (const m of messages) {
+    if (m.quotedMatchTimeAbout === target.matchId || (m.tagged && target.lastPostIsResult)) out.add(m.id);
+  }
+  return out;
+}
+
+/**
+ * Is MatchTime's newest post in the players' group its reply about this
+ * match (the result it recorded)? Facts: the newest group reply MatchTime
+ * claimed names the match, and no scheduled group post went out after it.
+ */
+async function resultIsLastGroupPost(orgId: string, matchId: string): Promise<boolean> {
+  const [reply, job] = await Promise.all([
+    db.sentNotification.findFirst({
+      // The club's group replies, by their key (`groupReplyKey`, our own).
+      where: { kind: GROUP_REPLY_KIND, key: { startsWith: `greply:${orgId}:` } },
+      select: { matchId: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.botJob.findFirst({ where: { orgId, kind: "group" }, select: { createdAt: true }, orderBy: { createdAt: "desc" } }),
+  ]);
+  if (!reply || reply.matchId !== matchId) return false;
+  return !job || job.createdAt.getTime() <= reply.createdAt.getTime();
 }
 
 /**
@@ -349,13 +391,20 @@ export async function scoreRouteOverrides(
       }
     }
   }
-  const tagged = messages.filter((m) => m.tagged);
-  if (tagged.length > 0) {
+  if (messages.some((m) => m.tagged || m.quotedMatchTimeAbout)) {
     const target = await loadScoreCorrectionTarget(orgId, now).catch((err) => {
       console.error("[score-overrides] score correction target read failed:", err);
       return null;
     });
-    if (target) for (const m of tagged) scoreCorrectionIds.add(m.id);
+    if (target) {
+      const lastPostIsResult = messages.some((m) => m.tagged)
+        ? await resultIsLastGroupPost(orgId, target.matchId).catch((err) => {
+            console.error("[score-overrides] last group post read failed:", err);
+            return false;
+          })
+        : false;
+      for (const id of correctionLineIds(messages, { matchId: target.matchId, lastPostIsResult })) scoreCorrectionIds.add(id);
+    }
   }
   return { scoreAnswerIds, scoreCorrectionIds };
 }
