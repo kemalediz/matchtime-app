@@ -3737,8 +3737,9 @@ export function parsePendingSet(lastBotPost: string | null): string[] {
  *
  * Two refusals, both narrow:
  *   1. the target is speaking in this same window and says the opposite;
- *   2. someone drops another player amid laughing emoji, without having
- *      DELIBERATELY addressed MatchTime.
+ *   2. (since 2026-10-30 the extractor's) a drop made as a joke, which the
+ *      attendance prompt reports at a confidence of 0.3 or less, below
+ *      `CONFIDENCE_FLOOR`. Until then it was a laughing-emoji regex.
  * A TAGGED admin's uncontested instruction is always honoured — that is
  * the control case, and losing it would be its own incident.
  *
@@ -3770,10 +3771,9 @@ function banterRefusal(
   if (contradicts) {
     return `${target.name} contradicts this in the same window; refusing the drop (corroboration)`;
   }
-  if (!(senderIsAdmin && msg.tagged) && /😂|🤣|lol\b/i.test(msg.body)) {
-    const who = senderIsAdmin ? "an untagged admin" : "a non-admin";
-    return `banter markers in ${who} drop of ${target.name}; refusing without corroboration`;
-  }
+  // (2) is the extractor's now (2026-10-30, "no string parsing"): a drop
+  // made as a joke comes back at a confidence of 0.3 or less and stops at
+  // the confidence floor. The emoji and "lol" test that stood here is gone.
   return null;
 }
 

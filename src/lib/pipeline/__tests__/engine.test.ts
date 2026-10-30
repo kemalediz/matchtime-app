@@ -3297,7 +3297,7 @@ describe("2026-09-07 · an admin's untagged third-party OUT (Shahrokh)", () => {
   // that was safe only because an admin's third-party drop necessarily
   // carried a tag: a tag is a deliberate act. The waiver removes that,
   // so the exemption now hangs off the TAG rather than the seat.
-  it("an admin's untagged drop with banter markers is REFUSED", () => {
+  it("an admin's untagged drop the extractor reads as a joke is REFUSED (low confidence, 2026-10-30)", () => {
     const r = decide({
       now: NOW,
       state: squad(),
@@ -3306,13 +3306,15 @@ describe("2026-09-07 · an admin's untagged third-party OUT (Shahrokh)", () => {
           from: "kemal",
           body: "Shahrokh is out 😂😂 vote him out lads",
           route: "other_att",
-          facts: dropShahrokh(),
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "Shahrokh", personNamed: true, polarity: "out", confidence: 0.3 }),
+          ]),
         }),
       ],
     });
     expect(statusOf(r.nextState, "shahrokh")).toBe("CONFIRMED");
     expect(r.writes).toHaveLength(0);
-    expect(r.outcomes[0].reasons.join(" ")).toMatch(/banter/i);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/confidence/i);
   });
 
   it("the same banter markers WITH a tag are still honoured (unchanged)", () => {

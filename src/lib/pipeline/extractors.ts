@@ -321,7 +321,7 @@ A replacement: one person arrives and one leaves, and which way round it runs is
   "Ali is coming, Mehmet can't make it" -> two ordinary claims, replaces "" on both: nobody said one takes the other's place
 IF YOU CANNOT TELL WHICH OF THE TWO IS ARRIVING AND WHICH IS LEAVING, REPORT NO CLAIMS AT ALL. A wrong guess takes a real player out of a real squad; saying nothing costs one message somebody can retype.
 
-Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeeshan is out. Report it as written; whether it is a joke is decided elsewhere, with information you do not have.`,
+Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeeshan is out: report the claim, and let its confidence say whether it is meant. A claim made as a joke, a tease or a wind-up at somebody's expense gets a confidence of 0.3 or less; the same words said plainly keep their usual confidence.`,
 
   question: `You read ONE question from a football club's WhatsApp group (the players' group or the organisers' own group) and say which question it is. You never answer it: code reads the club's records and writes every name, date and number the group sees. Fill a field only from what the message says. A field the message does not state gets its empty value; never fill one in from a guess.
 
