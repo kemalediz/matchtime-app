@@ -1,19 +1,16 @@
 /**
  * A tagged score correction reaches the score route through the REAL
- * analyze route, whatever the router said (2026-10-07).
+ * analyze route (2026-10-07; since 2026-10-30, "no string parsing", the
+ * ROUTER routes it).
  *
- * The one approved live run had the router model send
- *
- *   "@Match Time other way round"            to `unsure`
- *   "@Match Time yanlış, kırmızı 6 sarı 9"   to `other_att`
- *
- * so neither correction happened. Here the router STUB gives exactly
- * those wrong routes, the extractor stub gives the facts the real
- * extractor returned in that run, and the request goes through
- * `/api/whatsapp/analyze` end to end: the route decides, from the words
- * alone and before the router answers, that the message is a correction
- * of a recorded result (`isScoreCorrectionText`), and hands the router
- * its id. No model is called anywhere in this file.
+ * The 2026-10-07 live run had the router send "@Match Time other way
+ * round" to `unsure`. Until 2026-10-30 a word test forced such messages
+ * to `score` before the router ran. Now the router is shown, as a fact,
+ * that a result is recorded and this sender may correct it, and its route
+ * stands; here the router STUB routes as the model is expected to, the
+ * extractor stub gives the facts the real extractor returned, and the
+ * request goes through `/api/whatsapp/analyze` end to end. Whether the
+ * real router does route these is the paid live check's.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { engineOn, selfOut } from "../helpers/stub";
@@ -60,11 +57,11 @@ test.afterAll(async ({ db }) => {
   await db.run(`DELETE FROM "Match" WHERE id = $1`, [MATCH_ID]);
 });
 
-test('X2: "@Match Time other way round", routed `unsure` by the router, still swaps the result', async ({ request, db }) => {
+test('X2: "@Match Time other way round", routed score by the router (shown the RECORDED line), swaps the result', async ({ request, db }) => {
   await playedAndRecorded(db);
   const body = "@Match Time other way round";
   const id = msgId();
-  engineOn({ [body]: { route: "unsure", facts: { ...NO_SCORE, correction: true, swapped: true } } });
+  engineOn({ [body]: { route: "score", facts: { ...NO_SCORE, correction: true, swapped: true } } });
   const res = await postAnalyze(request, [{ waMessageId: id, body, ...ADMIN }]);
   const r = res.results.find((x: { waMessageId: string }) => x.waMessageId === id);
 
@@ -83,14 +80,14 @@ test('X2: "@Match Time other way round", routed `unsure` by the router, still sw
   );
 });
 
-test('T6: a correction with a scoreline, routed `other_att` by the router, still corrects the result', async ({ request, db }) => {
+test('T6: a correction with a scoreline, routed score by the router, corrects the result', async ({ request, db }) => {
   await playedAndRecorded(db);
   // The e2e club's teams are Red and Yellow, so the English form of T6.
   const body = "@Match Time wrong, red 6 yellow 9";
   const id = msgId();
   engineOn({
     [body]: {
-      route: "other_att",
+      route: "score",
       facts: { ...NO_SCORE, hasScore: true, first: 6, second: 9, firstTeam: "red", secondTeam: "yellow", correction: true, swapped: false },
     },
   });
@@ -100,7 +97,7 @@ test('T6: a correction with a scoreline, routed `other_att` by the router, still
   expect((await analyzed(db, id))?.handledBy).toBe("score-engine");
 });
 
-test('"@Match Time no, I\'m out" is still attendance: the override does not fire, the result is untouched', async ({ request, db }) => {
+test('"@Match Time no, I\'m out" routed as attendance stays attendance: the result is untouched', async ({ request, db }) => {
   await playedAndRecorded(db);
   const body = "@Match Time no, I'm out";
   const id = msgId();
@@ -110,7 +107,7 @@ test('"@Match Time no, I\'m out" is still attendance: the override does not fire
   expect((await analyzed(db, id))?.handledBy).not.toBe("score-engine");
 });
 
-test("the same words with NO recorded result in the window do not fire: the router's route stands", async ({ request, db }) => {
+test("with NO recorded result in the window the router's route stands, and nothing is corrected", async ({ request, db }) => {
   await db.run(`DELETE FROM "Match" WHERE id = $1`, [MATCH_ID]);
   const body = "@Match Time other way round";
   const id = msgId();

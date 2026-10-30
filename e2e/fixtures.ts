@@ -8,6 +8,7 @@
  * DB access from specs goes through the pg-based TestDb (helpers/
  * test-db.ts); full reseeds shell out to the tsx seed (resetDb).
  */
+import { piBotMentioned } from "./helpers/pi-mention";
 import { execFileSync } from "node:child_process";
 import { test as base, expect, type Page, type APIRequestContext } from "@playwright/test";
 import { signMagicLinkToken } from "@/lib/magic-link";
@@ -112,7 +113,10 @@ export async function postAnalyze(
     headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
     data: {
       groupId: E2E.GROUP_ID,
-      messages: messages.map((m) => ({ ...m, timestamp: m.timestamp ?? new Date().toISOString() })),
+      messages: messages.map((m) => {
+        const botMentioned = piBotMentioned(m.body, m.botMentioned);
+        return { ...m, ...(botMentioned !== undefined ? { botMentioned } : {}), timestamp: m.timestamp ?? new Date().toISOString() };
+      }),
     },
   });
   expect(res.status(), await res.text()).toBe(200);

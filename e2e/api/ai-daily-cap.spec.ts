@@ -12,7 +12,7 @@
  * across a batch means nothing was asked.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
-import { engineOn, selfIn } from "../helpers/stub";
+import { engineOn, selfIn, selfOut } from "../helpers/stub";
 import { U, MATCH, ORG_ID } from "../helpers/constants";
 import type { TestDb } from "../helpers/test-db";
 
@@ -93,20 +93,23 @@ test("below the cap, every call is booked at what it cost and the holds drain to
   expect(u?.cappedAt).toBeNull();
 });
 
-test("at the cap: IN and OUT still work, banter is silent, a tagged ask gets ONE line, and no model is called", async ({
+test("at the cap: attendance is still READ by the model (up to twice the cap), banter is silent, a tagged ask gets ONE line", async ({
   request,
   db,
 }) => {
-  // Spend exactly the cap.
+  // 2026-10-30, "no string parsing": no regex floor reads IN and OUT at the
+  // cap. The router and the attendance extractor still read, inside the
+  // attendance overflow (twice the cap); everything that is not attendance
+  // is skipped and counted, and the first tagged one gets today's line.
   await db.run(`UPDATE "OrgAiUsage" SET "costUsd" = 1 WHERE "orgId" = $1`, [ORG_ID]);
   const before = (await usage(db))!;
 
-  // If anything DID reach the stubs, these would show: the tagged ask
-  // would be answered as a question and the banter routed somewhere.
   engineOn(
     {
+      in: { route: "self_att", facts: selfIn() },
+      out: { route: "self_att", facts: selfOut() },
       "@Match Time who is playing tuesday?": { route: "question" },
-      "lol what a goal": { route: "self_att", facts: selfIn() },
+      "lol what a goal": { route: "none" },
     },
     { routerCostUsd: 0.003, extractorCostUsd: 0.004 },
   );
@@ -125,26 +128,24 @@ test("at the cap: IN and OUT still work, banter is silent, a tagged ask gets ONE
     { waMessageId: ids.banter, body: "lol what a goal", authorPhone: "447700900008", authorName: "Tom Third" },
   ]);
 
-  // The floor's deterministic path wrote both, with no model.
   expect(["CONFIRMED", "BENCH"]).toContain((await status(db, U.extra))?.status);
   expect((await status(db, U.player))?.status).not.toBe("CONFIRMED");
-  // One polite line to the tagged ask; silence for the banter.
   expect(find(res, ids.ask).reply).toBe(EN_LINE);
   expect(find(res, ids.banter).reply).toBeNull();
   expect(EN_LINE).not.toMatch(/[—–]/);
 
   const after = (await usage(db))!;
-  expect(after.calls).toBe(before.calls); // NOTHING was asked
-  expect(Number(after.costUsd)).toBe(Number(before.costUsd));
-  expect(after.skippedMessages - before.skippedMessages).toBe(2);
+  // One router call and two attendance reads, booked past the cap.
+  expect(after.calls - before.calls).toBe(3);
+  expect(Number(after.costUsd) - Number(before.costUsd)).toBeCloseTo(0.003 + 2 * 0.004, 9);
+  // Only the tagged question was skipped because of the cap; banter is the
+  // model's own none, not a cap skip.
+  expect(after.skippedMessages - before.skippedMessages).toBe(1);
   expect(after.cappedAt).not.toBeNull();
   expect(after.capReplySentAt).not.toBeNull();
 
-  // Recorded for the owner's health page, once.
   expect(await db.count(`SELECT COUNT(*) FROM "OpsAlert" WHERE kind = 'ai-daily-cap' AND "orgId" = $1`, [ORG_ID])).toBe(1);
 
-  // The club's admins are told ONCE, through the admin channel (this club
-  // is on "each-admin": one DM per owner and admin with a phone).
   if (noticeExpected()) {
     expect(await noticeClaims(db)).toBe(1);
     expect(await noticeJobs(db)).toBe(await adminsWithPhone(db));
@@ -152,6 +153,31 @@ test("at the cap: IN and OUT still work, banter is silent, a tagged ask gets ONE
   } else {
     expect(await noticeJobs(db)).toBe(0);
   }
+});
+
+test("past twice the cap nothing is read: no write, no model call, the message counted", async ({ request, db }) => {
+  await db.run(`UPDATE "OrgAiUsage" SET "costUsd" = 2 WHERE "orgId" = $1`, [ORG_ID]);
+  const before = (await usage(db))!;
+  engineOn({ "in please": { route: "self_att", facts: selfIn() } }, { routerCostUsd: 0.003, extractorCostUsd: 0.004 });
+  const restore = () =>
+    engineOn(
+      {
+        "@Match Time who is playing tuesday?": { route: "question" },
+        "@Match Time who scored?": { route: "question" },
+        "@Match Time salı kim oynuyor?": { route: "question" },
+        "lol another one": { route: "none" },
+      },
+      { routerCostUsd: 0.003, extractorCostUsd: 0.004 },
+    );
+  await postAnalyze(request, [{ waMessageId: msgId(), body: "in please", authorPhone: "447700900005", authorName: "Bea Beyond" }]);
+  const after = (await usage(db))!;
+  expect(after.calls).toBe(before.calls);
+  expect(after.skippedMessages - before.skippedMessages).toBe(1);
+  expect(Number(after.costUsd)).toBe(Number(before.costUsd));
+  await db.run(`UPDATE "OrgAiUsage" SET "costUsd" = 1 WHERE "orgId" = $1`, [ORG_ID]);
+  // The router reads the later tests' messages too (it is past the cap,
+  // not past twice it): name their routes as the model would.
+  restore();
 });
 
 test("the polite line is sent at most once per club per day", async ({ request }) => {
@@ -209,7 +235,7 @@ test("concurrent requests cannot spend past the cap by more than the stated boun
   await db.run(`DELETE FROM "OpsAlert" WHERE kind = 'ai-daily-cap'`);
   await db.run(`DELETE FROM "SentNotification" WHERE key LIKE $1`, [`${ORG_ID}:ai-cap:%`]);
   await db.run(`DELETE FROM "BotJob" WHERE "orgId" = $1 AND text LIKE $2`, [ORG_ID, NOTICE_LIKE]);
-  const cap = 0.05;
+  const cap = 0.03;
   await setCap(db, cap);
   const bodies = Array.from({ length: 12 }, (_, i) => `just chatting number ${i + 1}`);
   // Each request is ONE router call at $0.009 (below the $0.01 hold), and
@@ -223,8 +249,10 @@ test("concurrent requests cannot spend past the cap by more than the stated boun
   );
 
   const u = (await usage(db))!;
-  // cap + one hold + Σ max(0, cost − hold); the last term is 0 here.
-  expect(Number(u.costUsd)).toBeLessThanOrEqual(cap + 0.01 + 1e-9);
+  // Router calls are attendance reads past the cap too (twice the cap,
+  // 2026-10-30): the overflow ceiling + one hold + Σ max(0, cost − hold),
+  // the last term 0 here.
+  expect(Number(u.costUsd)).toBeLessThanOrEqual(2 * cap + 0.01 + 1e-9);
   expect(Number(u.costUsd)).toBeCloseTo(u.calls * 0.009, 9);
   expect(Number(u.reservedUsd)).toBeCloseTo(0, 9);
   expect(u.calls).toBeGreaterThan(0);

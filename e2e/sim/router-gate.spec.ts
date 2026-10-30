@@ -127,7 +127,7 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect(theIn?.handledBy).toBe("attendance-engine");
   });
 
-  test("THE REGRESSION: a real IN misrouted `none` is dropped — with the floor off", async ({
+  test("THE REGRESSION: a real IN misrouted `none` is dropped (no floor rescues it since 2026-10-30)", async ({
     request,
     db,
   }) => {
@@ -153,60 +153,11 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect(row?.handledBy).toBe("router-gate");
   });
 
-  test("THE SEATBELT: the same misroute, with the floor ON, still registers", async ({
-    request,
-    db,
-  }) => {
-    const g = await createGroup(request, db, { attendance: [] });
-
-    await g.postBatch([{ player: "alice", body: "in", route: "none", facts: selfIn() }], {
-      floor: true,
-    });
-
-    expect(await g.attendanceOf("alice")).toMatchObject({ status: "CONFIRMED" });
-    const row = await db.one<{ handledBy: string }>(
-      `SELECT "handledBy" FROM "AnalyzedMessage" WHERE "orgId" = $1 AND body = 'in'`,
-      [g.orgId],
-    );
-    // Forced back onto an owned route — `routeFloor("in")` returns
-    // `self_att` — and decided by the engine exactly as if the router had
-    // never said `none`. It used to read `llm` for the same reason.
-    expect(row?.handledBy).toBe("attendance-engine");
-  });
-
-  test("the floor rescues an @mention registration too, and nothing else", async ({
-    request,
-    db,
-  }) => {
-    // `@Ehtisham Ul Haq In` routed `none` is the live-corpus failure the
-    // mention half of the floor was built for; `@Henry Hill In` is the
-    // same shape against this fixture's roster. `routeFloor` returns
-    // `other_att` for it, which is an engine route, so the extractor is
-    // then asked and the claim below is what it finds.
-    const g = await createGroup(request, db, { attendance: [] });
-
-    await g.postBatch(
-      [
-        {
-          player: "alice",
-          body: "@Henry Hill In",
-          route: "none",
-          facts: otherFacts("Henry Hill", "in"),
-        },
-        { player: "pete", body: "Zeeshan is out 😂", route: "none" },
-      ],
-      { floor: true },
-    );
-
-    expect(await g.attendanceOf("henry")).toMatchObject({ status: "CONFIRMED" });
-    // "Zeeshan is out 😂" is a SENTENCE, not a bare declaration — the
-    // floor must not claim it, or the floor becomes a classifier again.
-    const zeeshan = await db.one<{ handledBy: string }>(
-      `SELECT "handledBy" FROM "AnalyzedMessage" WHERE "orgId" = $1 AND body LIKE 'Zeeshan%'`,
-      [g.orgId],
-    );
-    expect(zeeshan?.handledBy).toBe("router-gate");
-  });
+  // THE SEATBELT AND THE MENTION FLOOR TESTS ARE DELETED (2026-10-30).
+  // The regex floor that rescued a bare "in" or "@Name In" the router
+  // called `none` was removed ("no string parsing"): the router decides,
+  // and the paid incident-corpus run is what proves it does. The
+  // REGRESSION test above still pins what a wrong `none` costs.
 
   test("WHAT GATING COSTS: a protest the router calls banter cannot protect its author", async ({
     request,
