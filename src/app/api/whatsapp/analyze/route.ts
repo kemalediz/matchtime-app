@@ -501,9 +501,15 @@ async function handleAnalyzeRequest(request: Request) {
   });
   if (!org) {
     // A silent group (a club waiting for approval, rejected or suspended,
-    // or a group nobody asked MatchTime into) says so, for the Pi's log.
+    // or a group nobody asked MatchTime into) says so, for the Pi's log, as
+    // the in-group setup's refusal did. A live club's group that is only
+    // billing-paused keeps "unknown-or-disabled-group", as before.
+    const liveClub = await db.organisation.findFirst({
+      where: { whatsappGroupId: body.groupId, whatsappBotEnabled: true },
+      select: { id: true },
+    });
     const { isSilentGroup } = await import("@/lib/club-approval");
-    const ignored = (await isSilentGroup(body.groupId)) ? "silent-group" : "unknown-or-disabled-group";
+    const ignored = !liveClub && (await isSilentGroup(body.groupId)) ? "silent-group" : "unknown-or-disabled-group";
     return NextResponse.json({ ok: true, ignored, results: [] });
   }
   const organisersMode = organisersAnnounce(org);

@@ -188,6 +188,12 @@ export interface CorpusMessage {
   route?: string;
   /** STUBBED MODE — the raw JSON the extractor for `route` returned. */
   facts?: CorpusFacts;
+  /** STUBBED MODE (2026-10-30) — the router flagged the message as a
+   *  pasted squad list (`RoutedMessage.pastedList`). */
+  pastedList?: boolean;
+  /** STUBBED MODE — the squad reader's raw answer for a flagged list
+   *  (`hq-squad-reader.ts`, `place: "players"`); members may be named. */
+  listReading?: Record<string, unknown>;
 }
 
 /** One line of the Pi's last-15 buffer, forwarded on every analyze call.

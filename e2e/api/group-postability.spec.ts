@@ -133,9 +133,13 @@ test("connect: MatchTime made admin there: the link is finished, the club pendin
 });
 
 test("a community announcements group: the self-join off path posts no intro and starts no session", async ({ request, db }) => {
+  // 2026-10-30: the legacy in-group setup is deleted (unreachable in
+  // production, SELF_JOIN_ENABLED=1), and with it its "MatchTime cannot
+  // post here" branch: with self-join off, no group with no club gets an
+  // intro or a session, postable or not.
   const group = "120363610000000009@g.us";
   const res = await post(request, "/api/whatsapp/bot-added", { groupId: group, groupSubject: "Club news", postability: COMMUNITY }, KEY);
-  expect(res).toMatchObject({ ignored: "not-postable", introText: null });
+  expect(res).toMatchObject({ ignored: "no-club", introText: null });
   const sessions = await db.all(`SELECT id FROM "OnboardingSession" WHERE "whatsappGroupId" = $1`, [group]);
   expect(sessions).toEqual([]);
 });
