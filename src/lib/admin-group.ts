@@ -59,6 +59,8 @@ export interface AdminGroupMessage {
   groupId: string;
   messageId?: string | null;
   text: string;
+  /** The Pi's real mention flag for the bot (a fact, 2026-10-30). */
+  botMentioned?: boolean;
   senderPhone?: string | null;
   senderLid?: string | null;
   senderAltPhone?: string | null;
@@ -243,6 +245,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
       org,
       messageId,
       text: msg.text,
+      botMentioned: msg.botMentioned === true,
       mentionNames: msg.mentionNames,
       // The quoted id is kept (slice S4): it names MatchTime's own post, or
       // another organiser's message, before any reading of its words.

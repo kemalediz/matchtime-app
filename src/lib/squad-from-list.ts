@@ -271,7 +271,7 @@ export interface SourceMessage {
 
 /** PURE. The user turn: every message in the window, oldest first,
  *  under its short id, with its lines intact. */
-export function squadListUserTurn(messages: SourceMessage[]): string {
+export function pastedListUserTurn(messages: SourceMessage[]): string {
   return [
     `MESSAGES (${messages.length}, oldest first):`,
     ...messages.map((m, i) => `\n[${shortId(i)}]\n${m.body.slice(0, 4000)}`),
@@ -315,7 +315,7 @@ export async function readSquadLists(
     const resp = await model.complete({
       ...SQUAD_LIST_CALL,
       system: SQUAD_LIST_SYSTEM,
-      user: squadListUserTurn(messages),
+      user: pastedListUserTurn(messages),
       maxTokens: MAX_TOKENS,
       schema: SCHEMA as unknown as Record<string, unknown>,
       label: "squad-from-list",

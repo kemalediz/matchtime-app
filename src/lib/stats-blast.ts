@@ -139,7 +139,7 @@ export const STATS_BLAST_REQUIRES_TAG = true;
  * through, and the whole fix would then rest on the model reading one
  * ambiguous sentence correctly, every time, at temperature 1.
  *
- * `messageMentionsBotExplicitly` (`interaction-contract.ts`) asks the
+ * `piMentionsBot` (the Pi's mention flag) (`interaction-contract.ts`) asks the
  * stricter question: the Pi's structured mention signal, or a literal
  * "@" in front of the name. That is a fact about the bytes the owner
  * sent — which is exactly what `RECRUIT_BLAST_REQUIRES_TAG` says a tag

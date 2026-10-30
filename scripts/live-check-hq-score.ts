@@ -23,7 +23,6 @@ import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { organisersContext, type ScoreWaiting } from "../src/lib/admin-group-context.ts";
 import { answerHqScore } from "../src/lib/admin-group-score.ts";
-import { hasScorelineShape } from "../src/lib/pipeline/score-ask.ts";
 import { world } from "../src/lib/pipeline/__tests__/helpers.ts";
 import type { SquadState } from "../src/lib/pipeline/types.ts";
 import type { ScoreApplyDeps } from "../src/lib/score-engine.ts";
@@ -125,7 +124,7 @@ async function main() {
     // As `admin-group-understand.ts`: `score`, or a scoreline the router
     // could not place while a score is waiting.
     const r =
-      route === "score" || (route === "unsure" && !!waiting && hasScorelineShape(c.text))
+      route === "score"
         ? await answerHqScore({
             orgId: "org-live",
             lang: c.lang,

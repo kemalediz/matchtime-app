@@ -1,5 +1,6 @@
 /**
- * STAGE 1 — the router, and the deterministic floor under it.
+ * STAGE 1 — the router. (The deterministic regex floor under it was
+ * removed on 2026-10-30, "no string parsing": nothing overrules the model.)
  *
  * §11.1 names router misclassification as the biggest risk in the whole
  * design AND a genuine regression: "a message routed `none` disappears
@@ -14,7 +15,6 @@ import {
   ROUTER_SYSTEM_PROMPT,
   normaliseRoute,
   parseRouterResponse,
-  routeFloor,
   routeBatch,
   renderRouterTurn,
   organisersHeader,
@@ -51,46 +51,6 @@ function fakeModel(responses: string[] | ((n: number) => string)): PipelineModel
     },
   };
 }
-
-// ── The deterministic floor (§11.1) ────────────────────────────────────
-
-describe("the regex floor — built new, because the old one was deleted", () => {
-  // ⚠️ §11.1 corrects its own first draft: the regex fast path CANNOT
-  // serve as this floor, because it was deleted on 2026-04-21 and
-  // handlers.ts:7-10 records that "Kemal explicitly asked for this". So
-  // the floor is built new, deliberately TINY, and it force-routes
-  // regardless of what the router says.
-  it.each([
-    ["in", "self_att"],
-    ["IN", "self_att"],
-    ["In 👍", "self_att"],
-    ["i'm in", "self_att"],
-    ["im in", "self_att"],
-    ["I am in", "self_att"],
-    ["out", "self_att"],
-    ["OUT", "self_att"],
-    ["i'm out", "self_att"],
-  ])("%s → %s", (body, route) => {
-    expect(routeFloor(body)).toBe(route);
-  });
-
-  it.each([
-    // "+1" offers a GUEST, not the sender, so the floor must not claim
-    // it: routing it self_att loses the guest and bypasses PR #29's
-    // name-ask on the commonest way to offer one.
-    "+1",
-    "+2",
-    "Zeeshan is out 😂😂 vote him out lads",
-    "anyone watching the derby tonight",
-    "my brother can play if needed",
-    "I was in last week and nobody added me",
-    "we're in trouble lads",
-    "@Match Time who's on the bench?",
-    "in the end we lost",
-  ])("does not claim %s", (body) => {
-    expect(routeFloor(body)).toBeNull();
-  });
-});
 
 // ── Parsing and normalisation ──────────────────────────────────────────
 
@@ -381,10 +341,57 @@ describe("the router prompt", () => {
     const line = ROUTER_SYSTEM_PROMPT.trimEnd().split("\n").at(-1)!;
     expect(line).toMatch(/^Return JSON only:/);
     const shape = line.slice(line.indexOf("{"));
-    const filled = shape.replace("<id>", "wa-1").replace("<route>", "other_att");
+    const filled = shape.replace("<id>", "wa-1").replace("<route>", "other_att").replaceAll("<true or false>", "true");
     const out = parseRouterResponse(filled, ["wa-1"]);
-    expect(out.routes).toEqual([{ messageId: "wa-1", route: "other_att", source: "model" }]);
+    expect(out.routes).toEqual([{ messageId: "wa-1", route: "other_att", source: "model", toBot: true, pastedList: true }]);
     expect(out.degradations).toEqual([]);
+  });
+
+  it("defines to_bot and pasted_list once each, beside the answer, and says neither changes the route", () => {
+    const lines = ROUTER_SYSTEM_PROMPT.split("\n");
+    expect(lines.filter((l) => l.startsWith("to_bot ")).length).toBe(1);
+    expect(lines.filter((l) => l.startsWith("pasted_list ")).length).toBe(1);
+    expect(lines.find((l) => l.startsWith("to_bot "))).toMatch(/question 2/);
+    expect(lines.find((l) => l.startsWith("THE ANSWER."))).toMatch(/neither changes the route/);
+  });
+});
+
+describe("to_bot: the router's own reading of who a message speaks to (B1, 2026-10-30)", () => {
+  it("is carried on the route when the model says true, and absent otherwise", () => {
+    const out = parseRouterResponse(
+      JSON.stringify({ routes: [{ id: "a", route: "question", to_bot: true }, { id: "b", route: "none", to_bot: false }] }),
+      ["a", "b"],
+    );
+    expect(out.routes[0]).toEqual({ messageId: "a", route: "question", source: "model", toBot: true });
+    expect(out.routes[1]).toEqual({ messageId: "b", route: "none", source: "model" });
+  });
+
+  it("pasted_list rides on the route as pastedList, for the players' group squad reader (P2)", () => {
+    const out = parseRouterResponse(
+      JSON.stringify({ routes: [{ id: "a", route: "other_att", to_bot: false, pasted_list: true }, { id: "b", route: "self_att", to_bot: false, pasted_list: false }] }),
+      ["a", "b"],
+    );
+    expect(out.routes[0]).toEqual({ messageId: "a", route: "other_att", source: "model", pastedList: true });
+    expect(out.routes[1].pastedList).toBeUndefined();
+  });
+
+  it("is never invented for a message the model did not route", () => {
+    const out = parseRouterResponse(JSON.stringify({ routes: [{ id: "zz", route: "question", to_bot: true }] }), ["a"]);
+    expect(out.routes[0]).toMatchObject({ messageId: "a", source: "fallback" });
+    expect(out.routes[0].toBot).toBeUndefined();
+  });
+
+  it("the request's schema requires it", async () => {
+    let schema: unknown;
+    const m: PipelineModel = {
+      name: "spy",
+      async complete(req) {
+        schema = req.schema;
+        return { text: '{"routes":[]}', stopReason: "end_turn", usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, ms: 0 };
+      },
+    };
+    await routeBatch(m, [{ id: "a", authorName: "Ali", body: "MatchTime who runs this club?" }]);
+    expect(JSON.stringify(schema)).toContain('"required":["id","route","to_bot","pasted_list"]');
   });
 });
 
@@ -396,15 +403,12 @@ describe("routeBatch", () => {
     { id: "wa-2", authorName: "Najib", body: "In" },
   ];
 
-  it("routes a batch in ONE call and lets the floor override the model", async () => {
-    const model = fakeModel(['{"routes":[{"id":"m1","route":"none"},{"id":"m2","route":"none"}]}']);
+  it("routes a batch in ONE call, and nothing overrules the model", async () => {
+    const model = fakeModel(['{"routes":[{"id":"m1","route":"none"},{"id":"m2","route":"self_att"}]}']);
     const out = await routeBatch(model, msgs);
     expect(model.calls).toHaveLength(1);
     expect(out.routes[0]).toMatchObject({ route: "none", source: "model" });
-    // "In" is bare self-attendance. The router said banter; the floor
-    // wins, because losing that is losing a player's slot.
-    expect(out.routes[1]).toMatchObject({ route: "self_att", source: "floor" });
-    expect(out.degradations.some((d) => /floor overrode/i.test(d.detail))).toBe(true);
+    expect(out.routes[1]).toMatchObject({ route: "self_att", source: "model" });
   });
 
   // FNF HQ, 2026-10-17/18 (Vercel request logs): three times in two days
@@ -481,7 +485,7 @@ describe("routeBatch", () => {
       },
     };
     const out = await routeBatch(model, msgs);
-    expect(out.routes.map((r) => r.route)).toEqual(["unsure", "self_att"]);
+    expect(out.routes.map((r) => r.route)).toEqual(["unsure", "unsure"]);
     expect(out.degradations[0].detail).toMatch(/router timeout/);
   });
 
@@ -491,50 +495,17 @@ describe("routeBatch", () => {
     expect(model.calls[0].maxTokens).toBeLessThanOrEqual(16_384);
   });
 
-  it("never calls the model at all when every message hits the floor", async () => {
-    const model = fakeModel(['{"routes":[]}']);
-    const out = await routeBatch(model, [
+  it("asks the model even when every message is a bare IN or OUT", async () => {
+    const model = fakeModel(['{"routes":[{"id":"m1","route":"self_att"},{"id":"m2","route":"self_att"}]}']);
+    await routeBatch(model, [
       { id: "wa-1", authorName: "Najib", body: "in" },
       { id: "wa-2", authorName: "Zair", body: "out" },
     ]);
-    expect(model.calls).toHaveLength(0);
-    expect(out.routes.every((r) => r.source === "floor")).toBe(true);
+    expect(model.calls).toHaveLength(1);
   });
 });
 
 // ── Found by the first live corpus sweep (2026-09-01) ──────────────────
-
-describe("the mention floor — a tagged person plus a bare IN/OUT", () => {
-  // §11.1 in its purest form: `@Ehtisham Ul Haq In` routed `none` on the
-  // live corpus, so a real third-party registration disappeared with no
-  // write, no reply and no signal. It is the same shape as the bare
-  // self-attendance floor — a mention and a token, nothing else — so it
-  // gets the same treatment, one route along.
-  it.each([
-    ["@Ehtisham Ul Haq In", "other_att"],
-    ["@Najib in", "other_att"],
-    ["@Zair Malik out", "other_att"],
-    ["@Faris Nasser IN 👍", "other_att"],
-  ])("%s → %s", (body, route) => {
-    expect(routeFloor(body)).toBe(route);
-  });
-
-  it.each([
-    // A tagged bot is never a player. Without this, "@Match Time in"
-    // would try to register a member called "Match Time" — the ghost
-    // user class of bug, one layer up.
-    "@Match Time in",
-    "@MatchTime out",
-    // Not a bare declaration: anything past the token is a sentence.
-    "@Zair Malik is in if we're short",
-    "@all we need more players pls",
-    "@Kemal Ediz my brother can play if needed",
-    "@Match Time who's on the bench?",
-    "@Ehtisham Ul Haq is replacing @Elnur Mammadov",
-  ])("does not claim %s", (body) => {
-    expect(routeFloor(body)).toBeNull();
-  });
-});
 
 describe("router prompt rules added after the live sweep", () => {
   it("tells the router that a reposted roster is not a team sheet", () => {
@@ -558,107 +529,6 @@ describe("router prompt rules added after the live sweep", () => {
 // and they were lost silently, exactly the failure the floor exists for.
 // The floor's vocabulary grows; its flag, its shape and its one-way
 // property do not.
-describe("the floor reads the bare Turkish forms, same shape as the English ones", () => {
-  it.each([
-    ["var", "self_att"],
-    ["Var", "self_att"],
-    ["VAR", "self_att"],
-    ["var.", "self_att"],
-    ["varım", "self_att"],
-    ["Varım", "self_att"],
-    ["VARIM", "self_att"],
-    ["varim", "self_att"],
-    ["ben varım", "self_att"],
-    ["Ben varım 👍", "self_att"],
-    ["yok", "self_att"],
-    ["Yok.", "self_att"],
-    ["yokum", "self_att"],
-    ["ben yokum", "self_att"],
-    ["gelemiyorum", "self_att"],
-    ["Gelemiyorum 😔", "self_att"],
-    // The mention half: a tagged person plus a bare Turkish token.
-    ["@Ali var", "other_att"],
-    ["@Ali Yok", "other_att"],
-    ["@Ali Veli yok", "other_att"],
-  ])("%s → %s", (body, route) => {
-    expect(routeFloor(body)).toBe(route);
-  });
-
-  it.each([
-    // Anything beyond the bare token is a sentence and goes to the model.
-    "var mı?",
-    "varım ama geç kalırım",
-    "yok artık",
-    "bir şey yok",
-    "top var mı bugün",
-    "varsa gelirim",
-    "bu hafta yokum",
-    "belki",
-    "bakarız",
-    "kesin değil",
-    // A mention of the bot is never a player.
-    "@Match Time var",
-  ])("does not claim %s", (body) => {
-    expect(routeFloor(body)).toBeNull();
-  });
-});
-
-// ── Emoji (2026-09-24): in a display name, and after the declaration ──
-//
-// The floor goes ON in production with the router rewrite, and a group
-// types emoji everywhere: in display names ("Jesse👑") and after the
-// token ("IN ✌️"). An emoji is never a word, so it can neither make a
-// bare declaration a sentence nor end a mentioned name. It is matched as
-// an emoji SEQUENCE, not a hand list: "✌️" carries U+FE0F (a nonspacing
-// mark, not a symbol), "🤷‍♂️" joins with U+200D (a format character).
-describe("the floor reads emoji in a name and after the declaration", () => {
-  it.each([
-    // In the mentioned display name: attached, leading, or its own word.
-    ["@Jesse👑 IN", "other_att"],
-    ["@👑Jesse in", "other_att"],
-    ["@Jesse 👑 IN", "other_att"],
-    ["@Ehtisham Ul Haq 🔥 In", "other_att"],
-    // After the declaration, self and mention alike.
-    ["In 👍", "self_att"],
-    ["IN ✌️", "self_att"],
-    ["In 💪🏽", "self_att"],
-    ["Out 🤷‍♂️", "self_att"],
-    ["In 🇬🇧", "self_att"],
-    ["In 🏴󠁧󠁢󠁥󠁮󠁧󠁿", "self_att"],
-    ["var ✅", "self_att"],
-    ["IN 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥", "self_att"],
-    ["@Jordan IN 🙏", "other_att"],
-    ["@Ali var 👍", "other_att"],
-    ["@Jesse👑 out 🤷‍♂️", "other_att"],
-  ])("%s → %s", (body, route) => {
-    expect(routeFloor(body)).toBe(route);
-  });
-
-  it.each([
-    // Emoji widen the floor; they never widen it into sentences.
-    "Hi @Jordan going forward we need to say IN",
-    "@Jordan in the car",
-    "@Jordan 👑 in the car",
-    "in 20 mins",
-    "in 20",
-    "Confirmed",
-    "Confirmed 👍",
-    // The bot is never a player, however it is decorated.
-    "@Match Time in",
-    "@Match Time 👍 in",
-    // Only emoji: no token, so nothing to claim.
-    "👍",
-    "🔥🔥🔥",
-    "@👑",
-    "@Jesse👑",
-    // Still deliberately unmatched: "+1" offers a guest.
-    "+1",
-    "+1 👍",
-  ])("does not claim %s", (body) => {
-    expect(routeFloor(body)).toBeNull();
-  });
-});
-
 describe("the router prompt reads Turkish", () => {
   it("says a message may be Turkish, and that a bare var/yok is attendance like a bare in/out", () => {
     expect(ROUTER_SYSTEM_PROMPT).toMatch(/Turkish/);
@@ -856,7 +726,6 @@ describe("the organisers' group", () => {
     const m = fakeModel([JSON.stringify({ routes: [{ id: "m1", route: "question" }] })]);
     await gateBatch([{ waMessageId: "r", authorName: "Can", body: "Bench? We do bench now?", reply: { ...BENCH, text: "the bench is open" } }], {
       model: m,
-      floor: false,
       now: NOW,
     });
     expect(m.calls[0].user).toBe(
@@ -898,9 +767,12 @@ describe("the two teams: seeing or making them is balancer, asking when is quest
     [...ROUTER_SYSTEM_PROMPT.matchAll(/^\s*"([^"]+)"\s+->\s*([a-z_]+)\s*$/gm)].map((m) => [m[1]!, m[2]!]),
   );
 
-  it("defines balancer as seeing or making the line-ups, and question as holding when the teams come out", () => {
+  it("defines balancer as the line-ups themselves (see, make, change, clear), and question as holding when the teams come out", () => {
     const balancer = lines.find((l) => l.startsWith("balancer "))!;
-    expect(balancer).toMatch(/SEE or MAKE/);
+    expect(balancer).toMatch(/to see them, make them/);
+    expect(balancer).toMatch(/swap two players between the teams/);
+    expect(balancer).toMatch(/clear them/);
+    expect(balancer).toMatch(/never attendance, in both groups/);
     const question = lines.find((l) => l.startsWith("question "))!;
     expect(question).toMatch(/when the teams come out/);
     expect(question).toMatch(/how the teams are picked/);

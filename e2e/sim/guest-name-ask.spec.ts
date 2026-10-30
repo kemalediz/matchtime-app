@@ -284,22 +284,20 @@ test.describe("unnamed-guest name ask — server behaviour (routes + facts)", ()
 
   // ── Banter must stay silent ─────────────────────────────────────────
 
-  test("banter that merely mentions a mate → silence, even if the ROUTER slips", async ({
+  test("banter that merely mentions a mate → silence: the extractor reads no offer (2026-10-30)", async ({
     request,
     db,
   }) => {
-    // The router is told these are offers — the slip — and real unnamed
-    // guest FACTS are sitting behind them. `shouldAskForGuestName`'s
-    // untagged branch still requires `looksLikeUnnamedGuestOffer(body)`,
-    // which is a property of the TEXT, so the ask does not fire. Two
-    // independent stages have to agree before MatchTime pipes up
-    // unprompted, and this is the second one.
+    // Until 2026-10-30 a word test (`looksLikeUnnamedGuestOffer`) also had
+    // to find an offer in the TEXT. "No string parsing": whether a mate is
+    // offered is the extractor's reading. Read correctly, banter carries
+    // no claim, so nothing is asked, even with the router's offer slip.
     const grp = (await mkGroup(request, db)).attach(request);
     for (const body of [
       "my brother watched the game last night lol",
       "my mate says the pitch is waterlogged",
     ]) {
-      const r = await grp.post("amir", body, vague());
+      const r = await grp.post("amir", body, { route: "offer", facts: { claims: [], affirmation: "none", sideRequests: [] } });
       expect(r.reply, `MatchTime must stay quiet on: ${body}`).toBeNull();
     }
     expect(await grp.attendanceOf("amir")).toBeNull();
@@ -330,20 +328,18 @@ test.describe("unnamed-guest name ask — server behaviour (routes + facts)", ()
   // SIX of six runs. That provisions a User literally called "Amir's
   // brother" into a paid squad.
 
-  test("a personRef of \"Amir's brother\" provisions no ghost — it becomes the name-ask", async ({
+  test("a personRef of \"Amir's brother\", read as unnamed, provisions no ghost: it becomes the name-ask", async ({
     request,
     db,
   }) => {
-    // `personNamed: true` DELIBERATELY. This is the extractor making the
-    // same mistake the mega-prompt made: insisting a relationship phrase
-    // is a name. §11.3 — structured output guarantees shape, never
-    // semantics — so `pipeline/identity.ts` re-checks it against
-    // `isPlaceholderGuestName` and hands it to the ask anyway. Testing it
-    // with `personNamed: false` would be testing the easy half.
+    // `personNamed: false`: the extractor's reading of a relationship
+    // (2026-10-30). The word list in `identity.ts` that also re-checked a
+    // model's `personNamed: true` is gone ("no string parsing"); the
+    // prompt names relationships and the whole group as unnamed.
     const grp = await mkGroup(request, db);
     const r = await grp.post("amir", "my brother can play if needed", {
       route: "other_att",
-      facts: otherFacts("Amir's brother", "in"),
+      facts: unnamedOther("Amir's brother"),
     });
     const ghost = await grp.db.one<{ id: string }>(
       `SELECT u.id FROM "User" u WHERE u.name ILIKE $1`,

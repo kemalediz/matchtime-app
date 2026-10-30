@@ -16,15 +16,12 @@
  * `findMany`. The gate never writes.
  */
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
+import { GROUP_REPLY_KIND } from "../reply-context";
 import {
   SCORE_ASK_KIND,
   SCORE_ASK_TTL_MS,
   isScoreAnswer,
-  isScoreCorrectionText,
-  mayBeScoreCorrection,
   parseScoreAskKey,
-  scoreAnswerSide,
-  scorePairAnswerSide,
 } from "./score-ask";
 import { resolveTeamLabels } from "../team-labels";
 import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
@@ -306,25 +303,66 @@ export interface ScoreOverrideMessage {
   /** Tags MatchTime (in the organisers' group: addressed to it). */
   tagged: boolean;
   senderUserId: string | null;
+  /** When it is a WhatsApp reply to one of MatchTime's own posts: the match
+   *  that post was about (a fact from the quote). Absent otherwise. */
+  quotedMatchTimeAbout?: string | null;
 }
 
 /**
- * THE MESSAGES THAT GO TO THE SCORE ROUTE WHATEVER THE ROUTER SAYS, in
- * every group (2026-10-07; shared with the organisers' group 2026-10-16):
+ * PURE. Which messages the router is shown "MatchTime has recorded the
+ * latest game's result, and this sender may correct it" for (review of
+ * #476, M5). Facts only: a WhatsApp reply to MatchTime's post about that
+ * match, or a tagged message while MatchTime's LAST post in the group is
+ * that result. Shown on every tagged message for 48 hours, the line biased
+ * "@Match Time Tom out" towards score.
+ */
+export function correctionLineIds(
+  messages: readonly ScoreOverrideMessage[],
+  target: { matchId: string; lastPostIsResult: boolean },
+): Set<string> {
+  const out = new Set<string>();
+  for (const m of messages) {
+    if (m.quotedMatchTimeAbout === target.matchId || (m.tagged && target.lastPostIsResult)) out.add(m.id);
+  }
+  return out;
+}
+
+/**
+ * Is MatchTime's newest post in the players' group its reply about this
+ * match (the result it recorded)? Facts: the newest group reply MatchTime
+ * claimed names the match, and no scheduled group post went out after it.
+ */
+async function resultIsLastGroupPost(orgId: string, matchId: string): Promise<boolean> {
+  const [reply, job] = await Promise.all([
+    db.sentNotification.findFirst({
+      // The club's group replies, by their key (`groupReplyKey`, our own).
+      where: { kind: GROUP_REPLY_KIND, key: { startsWith: `greply:${orgId}:` } },
+      select: { matchId: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.botJob.findFirst({ where: { orgId, kind: "group" }, select: { createdAt: true }, orderBy: { createdAt: "desc" } }),
+  ]);
+  if (!reply || reply.matchId !== matchId) return false;
+  return !job || job.createdAt.getTime() <= reply.createdAt.getTime();
+}
+
+/**
+ * WHO MAY ANSWER OR CORRECT A RESULT, AS FACTS FOR THE ROUTER (2026-10-07;
+ * shared with the organisers' group 2026-10-16; facts only since
+ * 2026-10-30, "no string parsing"):
  *
- *   - the answers to MatchTime's open "which team won?": a bare team
- *     name, or the asked-about pair restated with one team, from somebody
- *     who may answer it (`isScoreAnswer`, `score-ask.ts`);
- *   - a tagged correction of a recorded result, by its words
- *     (`isScoreCorrectionText`). The one approved live run had the router
- *     send "@Match Time other way round" to `unsure` and a Turkish
- *     correction to `other_att`, so neither reached the score route.
+ *   - `scoreAnswerIds`: messages from somebody who may answer MatchTime's
+ *     open "which team won?" (`isScoreAnswer`: a tag, or the scoreline's
+ *     poster or an identified admin within thirty minutes);
+ *   - `scoreCorrectionIds`: tagged messages while the latest played match
+ *     has a recorded result inside the correction window.
  *
- * Decided before any model runs. One indexed read, null on almost every
- * batch; the correction target is read only when a tagged message already
- * looks like one. A failed read only means the override does not fire: a
- * one-word answer is not picked up, the full result still is. Who may
- * answer or correct, and what it says, stay in the engine.
+ * The router is SHOWN these facts above the message
+ * (`scoreContextLine`) and routes on what the message says; nothing is
+ * forced to the score route any more. Until today a word test here
+ * (`scoreAnswerSide`, `isScoreCorrectionText`) picked the messages and
+ * forced their route. One indexed read each; a failed read only means
+ * the line is not shown.
  */
 export async function scoreRouteOverrides(
   orgId: string,
@@ -341,10 +379,7 @@ export async function scoreRouteOverrides(
   if (openScoreAsk) {
     for (const m of messages) {
       if (
-        (scoreAnswerSide(m.body, openScoreAsk.labels) !== null ||
-          scorePairAnswerSide(m.body, openScoreAsk, openScoreAsk.labels) !== null) &&
         isScoreAnswer({
-          body: m.body,
           tagged: m.tagged,
           senderUserId: m.senderUserId,
           senderIsAdmin: !!m.senderUserId && openScoreAsk.adminUserIds.includes(m.senderUserId),
@@ -356,16 +391,19 @@ export async function scoreRouteOverrides(
       }
     }
   }
-  const correctionCandidates = messages.filter((m) => m.tagged && mayBeScoreCorrection(m.body));
-  if (correctionCandidates.length > 0) {
+  if (messages.some((m) => m.tagged || m.quotedMatchTimeAbout)) {
     const target = await loadScoreCorrectionTarget(orgId, now).catch((err) => {
       console.error("[score-overrides] score correction target read failed:", err);
       return null;
     });
     if (target) {
-      for (const m of correctionCandidates) {
-        if (isScoreCorrectionText(m.body, target.labels)) scoreCorrectionIds.add(m.id);
-      }
+      const lastPostIsResult = messages.some((m) => m.tagged)
+        ? await resultIsLastGroupPost(orgId, target.matchId).catch((err) => {
+            console.error("[score-overrides] last group post read failed:", err);
+            return false;
+          })
+        : false;
+      for (const id of correctionLineIds(messages, { matchId: target.matchId, lastPostIsResult })) scoreCorrectionIds.add(id);
     }
   }
   return { scoreAnswerIds, scoreCorrectionIds };

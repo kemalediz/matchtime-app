@@ -39,6 +39,7 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
 import { parsePeriodFields } from "./stats-period";
 import { HELP_BADGES, HELP_FEATURES } from "./types";
 import type {
+  PersonKind,
   AdminFacts,
   AttendanceFacts,
   Claim,
@@ -239,11 +240,12 @@ THE CLAIMS
 Return one claim for each person the message speaks about as a player in the club's match: joining, leaving, the bench, a maybe, or being free to play. A message that says none of that about anyone returns an empty claims array. Being free means free for the match: free, around or available to play, on its own or with "if you need me" or "if someone drops". The word alone settles nothing: free of the fee, free for a drink, a question asking who is free, and news of where someone will be with no word on playing ("I land Monday", "I will be back Tuesday week") are not about anyone's place.
   subject      "sender" for the person who typed it, "other" for anyone else
   personRef    the words used for that person, VERBATIM. Never invent or expand a name. "" for the sender. A relationship followed by a name is the name: "my brother Shahrokh" is "Shahrokh". One exception: a "he", "him" or "o" that points at the author of the quoted message is written as that author's name, as the THEY ARE REPLYING TO line gives it; when that line names no one ("a member (not identified)"), keep the words as they are
-  personNamed  true when the words identify a particular person: a name, a nickname or an @mention, including a word that may only be a nickname (code checks every name against the squad). false only for a relationship, a quantity or an indefinite: "my brother", "2 of my guys", "someone", "a mate", "another keeper"
+  personKind   what personRef is, one of: "named" a particular person identified by a name, a nickname or an @mention, including a word that may only be a nickname (code checks every name against the squad), and the sender; "relation" someone described only by their tie to somebody ("my brother", "Amir's cousin", "his mate"); "group" the whole group or a crowd ("everyone", "@all", "the lads", "all of you"); "placeholder" a quantity or an indefinite ("2 of my guys", "someone", "a mate", "another keeper", "+1"). A relation followed by a name is the name, named: "my brother Shahrokh" is Shahrokh.
   polarity     what the message says that person is doing in the match:
                  "in"     joining, or staying in
                  "out"    leaving or not coming: the person gives up their place, asks for someone to take it, or says they will not or cannot play ("out", "can't make it", "anyone replace me?", "I can drop out", "I'm away that week"). An injury, a knock or tiredness on its own is not "out": someone "taking it easy" is still playing
                  "bench"  the bench, in one of two ways. The message names it explicitly: bench, reserve, sub, backup, spare, standby, waiting list, "yedek" in any form, or 🪑. Or the sender offers themselves to fill a gap, by asking to be called on or by saying they are free to play, and takes no place yet ("ping me if you need one more", "I can play if you're short", "I'm free Friday if you need me"): that is "bench" with contingent true and conditionOn "squad", never "in" and never a maybe. This second way is only ever the sender's own: someone else said to be free is "in". Nothing else is the bench. A message that also asks for the place outright is "in": "I'm free Tuesday, put me down"
+  benchAsked   true only when polarity is bench because the message itself asks for the bench for that person (it names the bench, a reserve, sub, backup, standby or waiting place, or 🪑); false for an offer to fill a gap, and false whenever polarity is not bench.
   contingent   true when the claim depends on something that has not happened yet: "in if my back holds up", "count me in if someone drops", "happy to drop if you find someone". An OFFER to give up a place is contingent with no "if" in it ("I can drop out", "happy to pull out", "I'll make room"): the test is whether the person IS doing it or only COULD. Being free to play is contingent too, with no "if" needed ("I'm free Friday", "my brother is free"): it says they can be called on, not that they are playing. Someone who can play, is coming or can take a place, with no condition, is not contingent: "my cousin Ali can play", "two of my guys can play", "Ali can take my spot" are false. false for a decision already taken ("I'm in", "I'm out", "can't make it"), and for asking for cover: "anyone able to replace me?" says they are leaving, whether or not someone is found. A position is a note, not a condition, so it is false too
   conditionOn  "squad" when the condition is the squad or the team's needs, which includes every offer to fill a gap, to give up a place or to play when free; "self" when it is about the person themselves; otherwise "none"
   tense        "present" now; "future" a commitment or offer about an upcoming match, including a standing one ("count me in whenever you are short") and one with a condition; "past" something that already happened ("I was in last week"); "hypothetical" a counterfactual about something that is not the case ("if I WAS in the team it would not be ruined"). Relayed words keep the tense of what was said, not of the saying: "Najib said he's in" is present
@@ -257,6 +259,7 @@ THE WHOLE MESSAGE
                  "recruit"   it says how many players are needed, as a number, or whose place needs taking ("we're 4 short, anyone free?", "can someone take my spot?")
                  "chase"     it nudges for more players with no number and no name ("@all we need more players pls")
                  "question"  it also asks MatchTime for something it holds, such as the list, who is in or how many ("@Match Time what's the list?", "how many are we now?"), never a question put to another member ("@Ali can you play?")
+                 "teams"     it also asks MatchTime to change the two teams as they stand: swap two players between the teams, move someone to the other team, swap the colours or clear the teams ("@Match Time swap me with Tom"). A swap between the teams is never a claim: both players stay in the squad
 
 EXAMPLES
 Messages come in English or Turkish, often mixed or misspelt, and carry the same facts either way. Each group teaches one thing, English | Turkish.
@@ -296,7 +299,7 @@ Other people: subject other, personRef as written.
   "Ali said he's coming" | "Ali geliyorum dedi" -> Ali in, reported true
   "Mehmet can't come" | "Mehmet gelemiyor" -> Mehmet out
   "he's out" replying to Ali Khan's message | "o yok" -> personRef "Ali Khan", out
-  "+1", "+2" or "plus one", alone or after the sender's own claim, is a GUEST the sender brings, never the sender: subject other, personRef the token verbatim ("+1"), personNamed false, in. "ben de" is the sender; "+1" is not.
+  "+1", "+2" or "plus one", alone or after the sender's own claim, is a GUEST the sender brings, never the sender: subject other, personRef the token verbatim ("+1"), personKind placeholder, in. "ben de" is the sender; "+1" is not.
 
 Offering someone else: the one who would play is another person, even when the sender brings them. One claim, for that person only: subject other, in, never bench: the bench is only ever the sender's own offer. The sender says nothing about their own place, so there is no claim for the sender. contingent is true only when the message states a condition or says the person is free, as for every claim.
   The player is whoever would be on the pitch. "I can play if you're short" is the sender. When the sender would bring, get or ask someone ("I can bring someone if you're short", "I'll get a mate if you need", "I can ask my brother"), the player is that someone, never the sender
@@ -310,6 +313,7 @@ Several people in one message: one claim each, with any side request.
 Several things in one message: the claims, plus what else it asks MatchTime for.
   "Kai is out now. @Match Time what's the list?" | "Kai yok. @Match Time liste ne?" -> Kai out, plus "question"
   "Kai out, @Ali can you play?" | "Kai yok, @Ali gelebilir misin?" -> Kai out, no side request: the question is put to Ali, not MatchTime
+  "@Match Time I'm out, swap Kai with Ali" | "@Match Time ben yokum, Kai ile Ali'yi değiştir" -> the sender out, plus "teams": Kai and Ali only change team
 
 Hedges: the sender might play and has not decided. Subject sender, in, contingent true, conditionOn "self", tense future. This shape is what gets the person asked again nearer the match; an empty claims array for a hedge is a maybe nobody follows up.
   "maybe", "50/50", "not sure yet", "I'll see" | "belki", "bakarız", "kesin değil", "bakacağım" -> the hedge
@@ -321,12 +325,12 @@ A replacement: one person arrives and one leaves, and which way round it runs is
   "Ali is coming, Mehmet can't make it" -> two ordinary claims, replaces "" on both: nobody said one takes the other's place
 IF YOU CANNOT TELL WHICH OF THE TWO IS ARRIVING AND WHICH IS LEAVING, REPORT NO CLAIMS AT ALL. A wrong guess takes a real player out of a real squad; saying nothing costs one message somebody can retype.
 
-Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeeshan is out. Report it as written; whether it is a joke is decided elsewhere, with information you do not have.`,
+Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeeshan is out: report the claim, and let its confidence say whether it is meant. A claim made as a joke, a tease or a wind-up at somebody's expense gets a confidence of 0.3 or less; the same words said plainly keep their usual confidence.`,
 
   question: `You read ONE question from a football club's WhatsApp group (the players' group or the organisers' own group) and say which question it is. You never answer it: code reads the club's records and writes every name, date and number the group sees. Fill a field only from what the message says. A field the message does not state gets its empty value; never fill one in from a guess.
 
 WHAT YOU ARE SHOWN
-THE MESSAGE is the question, with the name of who sent it. Above it, as context only: RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, when the message is a WhatsApp reply, a THEY ARE REPLYING TO line with the message it quotes and whose it is. Use the context to understand what the message refers to: "list?" under a question about the bench, "still space?" under MatchTime's call for one more player. The topic is what THE MESSAGE asks, never what an earlier message asked. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
+THE MESSAGE is the question, with the name of who sent it. Above it, as context only: RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, when the message is a WhatsApp reply, a THEY ARE REPLYING TO line with the message it quotes and whose it is. Use the context to understand what the message refers to: "list?" under a question about the bench, "still space?" under MatchTime's call for one more player. The topic is what THE MESSAGE asks, never what an earlier message asked, with one exception: a MATCHTIME ASKED line. It shows the sender's earlier stats question, whose person MatchTime could not find and asked them about. When THE MESSAGE only says whom they meant ("Idris", "I mean Mojib", "Mojib'i kastettim"), it answers that: set answersClarification true and fill every field for the EARLIER question with this person as personRef. When it asks or says something else, it is a question of its own: answersClarification false and the fields for THE MESSAGE. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
 
 FIELDS
 
@@ -472,7 +476,7 @@ Periods:
   "@Match Time who played most this month" | "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month
   "@Match Time all-time most MoMs" | "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time`,
 
-  teams: `You read ONE message about the club's two team line-ups and report what it asks for. You never pick the players: code builds and changes the line-ups.
+  teams: `You read ONE message about the club's two team line-ups and report what it asks for. You never pick the players: code builds, changes and clears the line-ups.
 
 THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST (often the two teams as they stand), NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "him", "them", "everyone" or "the teams" are and which team a player is on now; every field comes from THE MESSAGE.
 
@@ -480,9 +484,10 @@ WHAT YOU RETURN
 action, exactly one:
   "show" post the teams as they stand, unchanged.
   "generate" work the line-ups out again: new teams, made, made again or shuffled. This holds even when the same message also asks for new names, or says "again", "once more" or "instead".
-  "swap" change the teams as they stand and leave everyone else where they are: people change team, go to a named team, end up together, or the two teams swap over. A message that only puts people on a team or together, without asking for new teams, is "swap".
+  "swap" change the teams as they stand and leave everyone else where they are: people change team, go to a named team, end up together, or the two teams swap over, colours included. A message that only puts people on a team or together, without asking for new teams, is "swap".
   "suggest" asks you to recommend changes that make the teams fairer.
-  "rename" keep the same two line-ups and change only their names.
+  "rename" keep the same two line-ups and change only their NAMES. Swapping the two teams' colours is not a rename: it is "swap" with swapSides.
+  "clear" remove the line-ups altogether, so that there are no teams until they are made again ("clear the teams", "delete them").
 includeRefs
   people the message says must play.
 teamNames
@@ -494,7 +499,7 @@ swaps
 pairings
   people who must end up on the same team as each other, one array per group.
 swapSides
-  true when the two whole teams swap over, so that every player changes team; moves is then empty. False otherwise.
+  true when the two whole teams swap over, so that every player changes team: the teams trade places, or trade colours while each line-up stays together ("swap the colours"). moves is then empty. False otherwise.
 
 Write every person as the message writes them. When the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Every field the message says nothing about is empty, or false.
 
@@ -512,11 +517,16 @@ New names, same teams:
   "call the teams Lions and Tigers" / "takımların adı Aslanlar ve Kaplanlar olsun" -> rename, teamNames ["Lions","Tigers"] / ["Aslanlar","Kaplanlar"]
 Changing the teams as they stand:
   "swap Ali and Can" / "Ali ile Can'ı değiştir" -> swap, moves ["Ali","Can"]
+  "swap me with Elvin" / "Elvin ile yer değiştirelim" -> swap, moves ["me","Elvin"]
   "move Tom to the other team" / "Tom'u diğer takıma al" -> swap, moves ["Tom"]
   "swap Rafi and Yorel, Mo and Akram", one pair a line or not / "Rafi ile Yorel, Mo ile Akram yer değiştirsin" -> swap, moves ["Rafi","Yorel","Mo","Akram"]
   "put David in Red" / "David kırmızıya geçsin" -> swap, swaps [{"personRef":"David","team":"RED"}]
   "Ali and Habib on one team" / "put Ali with Habib" / "Ali ile Habib aynı takımda olsun" -> swap, pairings [["Ali","Habib"]]
+The two teams swap over, or swap colours:
   "swap everyone on bibs with non bibs" / "move team 1 over to team 2" / "swap them over", after both teams were listed / "takımların yerini değiştir" -> swap, swapSides true
+  "swap the colours" / "renkleri değiştir" -> swap, swapSides true
+No teams at all:
+  "clear the teams" / "takımları sil" -> clear
 Fairer teams:
   "recommend swaps" / "any swaps to even it up?" / "takımları dengelemek için ne önerirsin?" -> suggest`,
 
@@ -534,7 +544,7 @@ the two numbers of the final result, in the order written. In a story ("it was 6
 firstTeam, secondTeam
 the team written directly beside the first or the second number, with no word about who won or lost. It stays there when THE MESSAGE answers MatchTime's "which team won?" with a scoreline.
 winner
-the team a word names as the winner: "to" or "for" a team, "won", "wins", "beat", "kazandı", "yendi". A bare team name, the whole message, answering MatchTime's "which team won?" is the winner too. "" otherwise, and for a draw.
+the team a word names as the winner: "to" or "for" a team, "won", "wins", "beat", "kazandı", "yendi". A bare team name, the whole message, answering MatchTime's "which team won?" is the winner too. "" otherwise: for a draw, for a question ("Yellow?", "sarılar mı?"), and for chat that only mentions a team.
 loser
 the team a word names as the loser: "lost", "got beaten", "kaybetti", "yenildi". "" otherwise.
 momRef
@@ -610,7 +620,8 @@ THE FIELDS. Fill toMatchTime always and the others for the action; every other f
   undo (fee_waiver): true when it takes a free place back.
   payerRef (bulk_payment): who paid, as written.
   count (bulk_payment): how many players they paid for.
-  phrase (reminder): the time phrase exactly as written ("tomorrow at 6"), never a date.
+  phrase (reminder): the time phrase exactly as written ("tomorrow at 6"), kept as a record.
+  remindAt (reminder): when to send it, as a London date and time "YYYY-MM-DD HH:MM", worked out from NOW: the next such time that is still to come ("at 6" means 18:00 unless they say morning; a day with no time is 09:00). "" when the message names no time MatchTime could act on ("later", "soon").
   note (reminder): what to remind about, in their own words ("bring the bibs"); "" when it names nothing.
 
 EXAMPLES, English / Turkish, grouped by what they teach. toMatchTime is true unless shown.
@@ -681,7 +692,7 @@ Free places and payments:
   "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
   "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
 Reminders and stats:
-  "remind me tomorrow at 6 to bring the bibs" / "yarın 6'da yelekleri getirmeyi hatırlat" -> reminder, phrase "tomorrow at 6" / "yarın 6'da", note "bring the bibs" / "yelekleri getirmeyi"
+  "remind me tomorrow at 6 to bring the bibs" / "yarın 6'da yelekleri getirmeyi hatırlat", NOW Tuesday 20 October 2026 -> reminder, phrase "tomorrow at 6" / "yarın 6'da", remindAt "2026-10-21 18:00", note "bring the bibs" / "yelekleri getirmeyi"
   "@Match Time send everyone their stats" / "@Match Time DM the squad their ratings links" -> stats_blast
   "lads don't forget to rate the players via the link MatchTime DM'ed you" -> other, toMatchTime false
   "did everyone get their stats link?" -> other, toMatchTime false
@@ -701,7 +712,8 @@ export const ATTENDANCE_SCHEMA = {
         properties: {
           subject: { type: "string", enum: ["sender", "other"] },
           personRef: { type: "string" },
-          personNamed: { type: "boolean" },
+          personKind: { type: "string", enum: ["named", "relation", "group", "placeholder"] },
+          benchAsked: { type: "boolean" },
           polarity: { type: "string", enum: ["in", "out", "bench"] },
           contingent: { type: "boolean" },
           conditionOn: { type: "string", enum: ["squad", "self", "none"] },
@@ -716,7 +728,8 @@ export const ATTENDANCE_SCHEMA = {
         required: [
           "subject",
           "personRef",
-          "personNamed",
+          "personKind",
+          "benchAsked",
           "polarity",
           "contingent",
           "conditionOn",
@@ -735,7 +748,7 @@ export const ATTENDANCE_SCHEMA = {
     // degradation on the very first live case. The parser maps "none"
     // back to null so the fact type stays honest.
     affirmation: { type: "string", enum: ["yes", "no", "none"] },
-    sideRequests: { type: "array", items: { type: "string", enum: ["recruit", "chase", "question"] } },
+    sideRequests: { type: "array", items: { type: "string", enum: ["recruit", "chase", "question", "teams"] } },
   },
   required: ["claims", "affirmation", "sideRequests"],
   additionalProperties: false,
@@ -783,15 +796,18 @@ const QUESTION_SCHEMA = {
     feature: { type: "string", enum: [...HELP_FEATURES, "none"] },
     // 2026-10-28: for `feature: "badges"` only, the one badge it names.
     badge: { type: "string", enum: [...HELP_BADGES, "none"] },
+    // 2026-10-30 (review of #476): the message answers MatchTime's open
+    // "who do you mean?" (the MATCHTIME ASKED line), not a new question.
+    answersClarification: { type: "boolean" },
   },
-  required: ["topic", "personRef", "statedCount", "table", "listSize", "listEnd", "period", "periodCount", "periodUnit", "feature", "badge"],
+  required: ["topic", "personRef", "statedCount", "table", "listSize", "listEnd", "period", "periodCount", "periodUnit", "feature", "badge", "answersClarification"],
   additionalProperties: false,
 } as const;
 
 const TEAMS_SCHEMA = {
   type: "object",
   properties: {
-    action: { type: "string", enum: ["show", "generate", "rename", "swap", "suggest"] },
+    action: { type: "string", enum: ["show", "generate", "rename", "swap", "suggest", "clear"] },
     includeRefs: { type: "array", items: { type: "string" } },
     teamNames: { type: "array", items: { type: "string" } },
     swaps: {
@@ -884,6 +900,7 @@ const ADMIN_SCHEMA = {
     // cancel_match / restore_match (2026-10-28): a game whose time has gone.
     pastGame: { type: "boolean" },
     phrase: { type: "string" },
+    remindAt: { type: "string" },
     note: { type: "string" },
     // 0 is the schema's stand-in for null, the same convention
     // `statedCount` uses. A nullable number is rejected by the API.
@@ -902,7 +919,7 @@ const ADMIN_SCHEMA = {
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1029,10 +1046,20 @@ export function parseFacts(
         const condRaw = str(r.conditionOn).toLowerCase() as ConditionOn;
         const conditionOn = CONDITIONS.includes(condRaw) ? condRaw : "none";
         const subject = str(r.subject).toLowerCase() === "other" ? "other" : "sender";
+        // The extractor states the kind of person (2026-10-30); an older
+        // stub that only sends `personNamed` maps onto it.
+        const kindRaw = str(r.personKind).toLowerCase();
+        const kind: PersonKind = (["named", "relation", "group", "placeholder"] as const).includes(kindRaw as PersonKind)
+          ? (kindRaw as PersonKind)
+          : bool(r.personNamed)
+            ? "named"
+            : "placeholder";
         claims.push({
           subject,
           personRef: str(r.personRef),
-          personNamed: bool(r.personNamed),
+          personNamed: kind === "named",
+          personKind: kind,
+          benchAsked: polarity === "bench" && bool(r.benchAsked),
           polarity,
           contingent: bool(r.contingent),
           conditionOn,
@@ -1055,7 +1082,7 @@ export function parseFacts(
         Array.isArray(raw.sideRequests) ? raw.sideRequests : []
       )
         .map((s) => str(s).toLowerCase())
-        .filter((s): s is SideRequest => s === "recruit" || s === "chase" || s === "question");
+        .filter((s): s is SideRequest => s === "recruit" || s === "chase" || s === "question" || s === "teams");
       const facts: AttendanceFacts = { kind: "attendance", claims, affirmation, sideRequests };
       return { facts, degradations };
     }
@@ -1067,6 +1094,7 @@ export function parseFacts(
       const facts: QuestionFacts = {
         kind: "question",
         topic,
+        ...(raw.answersClarification === true ? { answersClarification: true } : {}),
         // "" and -1 are the schema's stand-ins for null.
         personRef: typeof raw.personRef === "string" && raw.personRef ? raw.personRef : null,
         statedCount:
@@ -1126,7 +1154,7 @@ export function parseFacts(
 
     case "teams": {
       const action = str(raw.action).toLowerCase();
-      if (!["show", "generate", "rename", "swap", "suggest"].includes(action)) {
+      if (!["show", "generate", "rename", "swap", "suggest", "clear"].includes(action)) {
         bad(`unknown team action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1217,6 +1245,7 @@ export function parseFacts(
           : {}),
         ...(["cancel_match", "restore_match"].includes(action) && raw.pastGame === true ? { pastGame: true } : {}),
         ...(typeof raw.phrase === "string" && raw.phrase ? { phrase: raw.phrase } : {}),
+        ...(typeof raw.remindAt === "string" && raw.remindAt.trim() ? { remindAt: raw.remindAt.trim() } : {}),
         ...(typeof raw.note === "string" && raw.note ? { note: raw.note } : {}),
         // 0 (the schema's stand-in for "not stated") and anything
         // non-finite are DROPPED rather than carried through as a
@@ -1307,6 +1336,14 @@ export interface ExtractorMessage {
    * person. Absent or empty: no line.
    */
   members?: readonly string[];
+  /**
+   * The sender's earlier stats question, whose person MatchTime asked them
+   * about ("who do you mean?"), shown as the MATCHTIME ASKED line
+   * (2026-10-30, review of #476). The extractor says whether THE MESSAGE
+   * answers it (`answersClarification`) and, if so, returns the earlier
+   * question's fields with the person named. Absent otherwise.
+   */
+  clarifying?: string;
   /** The time the NOW line states (club time). Defaults to now. */
   now?: Date;
 }
@@ -1378,6 +1415,9 @@ export async function extractForRoute(
   context.push(renderGroupReplyContext({ now: msg.now ?? new Date(), quoted: msg.reply ?? null }));
   if (msg.members && msg.members.length > 0) {
     context.push(`CLUB MEMBERS NAMED: ${msg.members.join(", ")}`);
+  }
+  if (msg.clarifying) {
+    context.push(`MATCHTIME ASKED them whom they meant in their earlier question: "${msg.clarifying}"`);
   }
   context.push("");
   context.push(

@@ -146,7 +146,7 @@ import { clampPastedRosterFacts } from "./pasted-roster-registration";
 import { extractForRouteTraced } from "./pipeline/trace";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
-import { floorAttendanceFacts } from "./pipeline/router";
+import { withAttendanceOverflow } from "./ai-budget-context";
 import { compose } from "./pipeline/compose";
 import { decide } from "./pipeline/engine";
 import { engineOwnsRoute } from "./pipeline/gate";
@@ -183,7 +183,7 @@ export interface EngineBatchMessage {
    *  readable one. Judges a rolling-squad late drop-out (2026-09-30). */
   sentAt?: Date;
   tagged: boolean;
-  /** `messageMentionsBotExplicitly`: the Pi's mention list, or the literal
+  /** `piMentionsBot` (the Pi's mention flag): the Pi's mention list, or the literal
    *  "@Match Time" it writes for one. Never a swipe-reply. Read only by the
    *  recruit side request (2026-10-22). Omitted: derived from the body. */
   taggedExplicitly?: boolean;
@@ -283,6 +283,14 @@ export interface EngineMessageOutcome {
    * facts itself (`admin-group-squad-change.ts`).
    */
   alsoAsksQuestion: boolean;
+  /**
+   * The extractor read that the message ALSO asks for a change to the two
+   * teams as they stand ("@Match Time I'm out, swap Kai with Ali", side
+   * request "teams", 2026-10-30). The engine does nothing with it; the
+   * analyze route hands these ids to the teams path (package P2,
+   * `team-also-signal.ts`), which reads and applies the change.
+   */
+  alsoChangesTeams: boolean;
 }
 
 export interface EngineBatchResult {
@@ -395,15 +403,15 @@ export interface EngineBatchDeps extends EngineApplyDeps {
   model?: PipelineModel;
   /**
    * THE CLUB IS AT ITS DAILY AI CAP (`ai-budget.ts`), known before the
-   * batch started. No extractor is called: a message the floor can read
-   * (a bare IN/OUT, with or without mentions) is decided from the floor's
-   * facts (`floorAttendanceFacts`), and anything else is owned by nobody,
-   * with no write. Absent or false, nothing changes.
+   * batch started. The attendance extractor still reads each owned
+   * message, inside `withAttendanceOverflow` (a ceiling of twice the cap);
+   * beyond that nothing is read, the message is owned by nobody with no
+   * write, logged, and counted (`recordCapSkips`). No regex reads it in the
+   * model's place (2026-10-30; the bare IN/OUT floor facts are gone).
    *
    * The cap can also be reached PART-WAY through a batch, when a
-   * concurrent request spends the last of it. That case needs no flag:
-   * the extractor reports `budgetRefused` and the same floor fallback
-   * applies per message.
+   * concurrent request spends the last of it: the extractor reports
+   * `budgetRefused` and the same overflow read is made once.
    */
   aiCapped?: boolean;
   /**
@@ -415,6 +423,10 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    * `admin-group-name-list.ts`). Absent, nothing changes.
    */
   presetFacts?: (message: EngineBatchMessage) => AttendanceFacts | null;
+  /** Counts messages nothing read because the club is past twice its cap
+   *  (the owner dashboard's counter). Injected by tests; defaults to
+   *  `recordCapSkips` in `ai-budget.ts`. */
+  recordCapSkips?: (orgId: string, count: number) => Promise<void>;
   /** Injected so tests can load a state without a database. */
   loadState?: (orgId: string, now: Date) => Promise<SquadState>;
   /**
@@ -710,10 +722,11 @@ export async function runAttendanceEngineBatch(args: {
   state = { ...state, lastBotPost };
 
   let cost = { usd: 0, calls: 0, ms: 0 };
+  let capSkipped = 0;
   const factsById = new Map<string, { facts: Facts; degraded: string | null }>();
   await fanOutWarmFirst(
     owned,
-    (m) => (deps.aiCapped ? null : extractorCacheKey(m.route as Route)),
+    (m) => extractorCacheKey(m.route as Route),
     async (m) => {
       // Structured data the caller read (the admin group's name list): no
       // model, at the cap or not.
@@ -723,27 +736,11 @@ export async function runAttendanceEngineBatch(args: {
         console.log(`[attendance-engine] ${m.waMessageId}: structured data, decided from the caller's facts, no model call`);
         return;
       }
-      // ── THE DAILY AI CAP: A BARE IN/OUT NEEDS NO MODEL ──────────────
-      // Only the two routes the floor itself produces. A floor reading
-      // of a message routed anywhere else is not what the router said,
-      // and the floor never overrules a route at the cap.
-      const floorFacts =
-        m.route === "self_att" || m.route === "other_att" ? floorAttendanceFacts(m.body) : null;
-      const useFloor = (why: string) => {
-        if (floorFacts) {
-          factsById.set(m.waMessageId, { facts: floorFacts, degraded: null });
-          console.log(`[attendance-engine] ${m.waMessageId}: ${why}; decided from the floor's facts, no model call`);
-        } else {
-          // Not a failure and not an operator note: the club is at its
-          // cap and this message is not one the floor can read.
-          ownedIds.delete(m.waMessageId);
-        }
-      };
-      if (deps.aiCapped) {
-        useFloor("the club is at its daily AI cap");
-        return;
-      }
-      const res = await extractForRouteTraced("attendance", model, m.route as Route, {
+      // ── THE DAILY AI CAP: ONE READ PAST IT, UP TO TWICE IT ─────────
+      // At the cap (known, or found when this call is refused) the
+      // extractor reads the message inside the attendance overflow. Past
+      // twice the cap nothing reads it: not owned, logged and counted.
+      const input = {
         id: m.waMessageId,
         body: m.body,
         authorName: m.authorName,
@@ -757,9 +754,17 @@ export async function runAttendanceEngineBatch(args: {
         // FNF HQ "Glazers OUT"): the extractor is told they are people.
         members: membersNamedIn(m.body, state.roster),
         now,
-      });
+      };
+      const read = (overflow: boolean) =>
+        overflow
+          ? withAttendanceOverflow(() => extractForRouteTraced("attendance", model, m.route as Route, input))
+          : extractForRouteTraced("attendance", model, m.route as Route, input);
+      let res = await read(!!deps.aiCapped);
+      if (res.budgetRefused && !deps.aiCapped) res = await read(true);
       if (res.budgetRefused) {
-        useFloor("the extractor was refused by the daily AI cap");
+        ownedIds.delete(m.waMessageId);
+        capSkipped++;
+        console.log(`[attendance-engine] ${m.waMessageId}: past twice the daily AI cap; not read, no write`);
         return;
       }
       for (const d of res.degradations) degradations.push(`extractor ${m.waMessageId}: ${d.detail}`);
@@ -779,6 +784,14 @@ export async function runAttendanceEngineBatch(args: {
       });
     },
   );
+  if (capSkipped > 0) {
+    try {
+      const record = deps.recordCapSkips ?? (async (org: string, n: number) => (await import("./ai-budget")).recordCapSkips(org, n));
+      await record(orgId, capSkipped);
+    } catch (err) {
+      console.error("[attendance-engine] could not count messages skipped past the cap:", err);
+    }
+  }
 
   // ── A FAILED EXTRACTION GOES SILENT, PER MESSAGE. SAY IT PLAINLY. ──
   //
@@ -1301,6 +1314,7 @@ export async function runAttendanceEngineBatch(args: {
       claimCount: attendanceFacts?.claims.length ?? 0,
       sideRequestCount: attendanceFacts?.sideRequests.filter((s) => s !== "question").length ?? 0,
       alsoAsksQuestion: attendanceFacts?.sideRequests.includes("question") ?? false,
+      alsoChangesTeams: attendanceFacts?.sideRequests.includes("teams") ?? false,
     });
   }
 

@@ -37,7 +37,6 @@ import { spendDevApiKey } from "../helpers/dev-api-key";
 import { anthropicModel, ROUTER_MODEL } from "../../src/lib/pipeline/llm";
 import { routeBatch } from "../../src/lib/pipeline/router";
 import { batchMessages, groupRefOf } from "./reconstruct";
-import { floorForcesAnalysis } from "../../src/lib/pipeline/gate";
 import {
   deriveFloorEffect,
   renderFloorEffect,
@@ -199,7 +198,8 @@ async function main(): Promise<number> {
   // exact answers. Two paid sweeps answer it badly: half the difference
   // between them is the model changing its mind. This isolates the
   // floor, costs nothing, and is reproducible from the stored run.
-  const derived = floor ? null : deriveFloorEffect(rows, report, floorForcesAnalysis);
+  // The regex floor was removed on 2026-10-30; there is no floor effect to derive.
+  const derived: ReturnType<typeof deriveFloorEffect> | null = null;
   if (derived) {
     console.log("");
     console.log(renderFloorEffect(derived, report));

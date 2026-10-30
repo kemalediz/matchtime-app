@@ -41,14 +41,12 @@ import * as gate from "../gate";
 import {
   engineOwnsRoute,
   ENGINE_ROUTES,
-  floorForcesAnalysis,
   isNoneBucketShadowEnabled,
-  isRouterFloorEnabled,
   partition,
   routerIsNeeded,
   type GateMessage,
 } from "../gate";
-import { routeBatch, routeFloor } from "../router";
+import { routeBatch } from "../router";
 import type { Route, RoutedMessage } from "../types";
 
 const ALL_ROUTES: Route[] = [
@@ -63,49 +61,6 @@ const ALL_ROUTES: Route[] = [
   "unsure",
 ];
 
-/** A spread of real message shapes: bare declarations the floor claims,
- *  banter it must not, and the awkward middle. */
-const BODIES = [
-  "in",
-  "In",
-  "IN",
-  "I'm in",
-  "im in",
-  "I am in",
-  "in 👍",
-  "innn",
-  "out",
-  "Out.",
-  "I'm out",
-  "can't make it",
-  "cant make it",
-  "@Ehtisham Ul Haq In",
-  "@Zair Malik out",
-  "@Najib in",
-  "@Match Time in",
-  "@Match Time who is playing?",
-  "+1",
-  "+2",
-  "😂😂😂",
-  "🐐",
-  "great game last night",
-  "Zeeshan is out 😂",
-  "I was in last week",
-  "if I was in the team it wouldn't be ruined",
-  "who's in?",
-  "in for next week if you're short",
-  "https://youtu.be/abc",
-  "move Mustafa to the bench, keep Idris in",
-  "generate the teams",
-  "5-3",
-  "Ayoub snatched that spot 😭",
-  "Najib said in as well",
-  "",
-  "   ",
-  "I'll be in and out of signal today so text me",
-  "in the end we lost",
-  "out of order that ref",
-];
 
 function msg(id: string, body: string): GateMessage {
   return { waMessageId: id, body, authorName: "someone" };
@@ -153,13 +108,11 @@ describe("the flags that are left default OFF", () => {
     expect(Object.keys(gate)).not.toContain("ENGINE_FLAG");
   });
 
-  it("the floor is off unless ROUTER_GATE_FLOOR_ENABLED is explicitly on", () => {
-    expect(isRouterFloorEnabled({})).toBe(false);
-    // Turning the GATE on must not turn the floor on: Kemal has to sign
-    // the floor off separately (§11.1), and the router's true recall is
-    // only measurable with the floor off.
-    expect(isRouterFloorEnabled({ ROUTER_GATE_ENABLED: "1" })).toBe(false);
-    expect(isRouterFloorEnabled({ ROUTER_GATE_FLOOR_ENABLED: "1" })).toBe(true);
+  it("names no predicate for the floor, which was removed on 2026-10-30", () => {
+    // No regex reads a message in the model's place ("no string parsing").
+    expect(Object.keys(gate)).not.toContain("isRouterFloorEnabled");
+    expect(Object.keys(gate)).not.toContain("floorForcesAnalysis");
+    expect(Object.keys(gate)).not.toContain("FLOOR_FLAG");
   });
 
   it("the none-bucket shadow is off unless NONE_BUCKET_SHADOW_ENABLED is on", () => {
@@ -175,110 +128,6 @@ describe("the flags that are left default OFF", () => {
 
 // ── The floor is monotone. This is the whole argument. ────────────────
 
-describe("the floor can only ever ADD a message to the analysed set", () => {
-  it("routeFloor never returns `none` — the property the override rests on", () => {
-    // If the floor could ever return `none` it could REMOVE a message
-    // from the analysed set, and every other guarantee here collapses.
-    for (const body of BODIES) {
-      expect(routeFloor(body)).not.toBe("none");
-    }
-  });
-
-  it("routeFloor never returns `none` for any generated body either", () => {
-    const tokens = ["in", "out", "I'm", "im", "@Ali", "@Match", "Time", "+1", "😂", ".", "lol", ""];
-    for (let i = 0; i < tokens.length; i++) {
-      for (let j = 0; j < tokens.length; j++) {
-        for (let k = 0; k < tokens.length; k++) {
-          const body = `${tokens[i]} ${tokens[j]} ${tokens[k]}`.trim();
-          expect(routeFloor(body)).not.toBe("none");
-        }
-      }
-    }
-  });
-
-  it("floorForcesAnalysis is exactly `routeFloor produced a route`", () => {
-    for (const body of BODIES) {
-      expect(floorForcesAnalysis(body)).toBe(routeFloor(body) !== null);
-    }
-  });
-
-  it("analysed(floor on) ⊇ analysed(floor off), for every route assignment", () => {
-    // Fuzz: every body against every route, plus mixed batches.
-    for (const body of BODIES) {
-      for (const route of ALL_ROUTES) {
-        const ms = [msg("m1", body)];
-        const rs: RoutedMessage[] = [{ messageId: "m1", route, source: "model" }];
-        const off = partition(ms, rs, { floor: false });
-        const on = partition(ms, rs, { floor: true });
-        for (const id of off.analysed) {
-          expect(on.analysed).toContain(id);
-        }
-        expect(on.analysed.length).toBeGreaterThanOrEqual(off.analysed.length);
-      }
-    }
-  });
-
-  it("skipped(floor on) ⊆ skipped(floor off) — the floor never skips anything", () => {
-    const ms = BODIES.map((b, i) => msg(`m${i}`, b));
-    for (let seed = 0; seed < 40; seed++) {
-      const rs = routed(
-        ms.map((m) => m.waMessageId),
-        (i) => ALL_ROUTES[(i * 7 + seed * 3) % ALL_ROUTES.length],
-      );
-      const off = partition(ms, rs, { floor: false });
-      const on = partition(ms, rs, { floor: true });
-      for (const id of on.skipped) {
-        expect(off.skipped).toContain(id);
-      }
-    }
-  });
-
-  it("a floor-forced message is always analysed and never skipped", () => {
-    const ms = BODIES.map((b, i) => msg(`m${i}`, b));
-    // The adversarial case: the router says `none` about everything.
-    const rs = routed(
-      ms.map((m) => m.waMessageId),
-      () => "none",
-    );
-    const on = partition(ms, rs, { floor: true });
-    expect(on.floorForced.length).toBeGreaterThan(0);
-    for (const id of on.floorForced) {
-      expect(on.analysed).toContain(id);
-      expect(on.skipped).not.toContain(id);
-    }
-    // With the floor off, the same batch is skipped entirely — which is
-    // the danger the floor exists to bound, stated as a test.
-    const off = partition(ms, rs, { floor: false });
-    expect(off.analysed).toEqual([]);
-    expect(off.skipped.length).toBe(ms.length);
-  });
-
-  it("the floor is the ONLY difference: routes are never rewritten by the gate", () => {
-    // "No floor pattern can cause a message to be handled differently
-    // once analysed." The gate's only output that reaches the analyzer
-    // is WHICH messages it sees; it never annotates or reorders them.
-    const ms = BODIES.map((b, i) => msg(`m${i}`, b));
-    const rs = routed(
-      ms.map((m) => m.waMessageId),
-      (i) => ALL_ROUTES[i % ALL_ROUTES.length],
-    );
-    const off = partition(ms, rs, { floor: false });
-    const on = partition(ms, rs, { floor: true });
-    // Identical order, drawn from the input order, no duplicates.
-    for (const p of [off, on]) {
-      const order = ms.map((m) => m.waMessageId).filter((id) => p.analysed.includes(id));
-      expect(p.analysed).toEqual(order);
-      expect(new Set(p.analysed).size).toBe(p.analysed.length);
-      // analysed ∪ skipped is exactly the input, with nothing invented.
-      expect([...p.analysed, ...p.skipped].sort()).toEqual(
-        ms.map((m) => m.waMessageId).sort(),
-      );
-    }
-  });
-});
-
-// ── The gate's own behaviour ──────────────────────────────────────────
-
 describe("partition", () => {
   it("skips only `none`; every other route reaches the analyzer unchanged", () => {
     const ms = ALL_ROUTES.map((r, i) => msg(`m${i}`, `body for ${r}`));
@@ -286,7 +135,7 @@ describe("partition", () => {
       ms.map((m) => m.waMessageId),
       (i) => ALL_ROUTES[i],
     );
-    const p = partition(ms, rs, { floor: false });
+    const p = partition(ms, rs);
     expect(p.skipped).toEqual(["m0"]); // none
     expect(p.analysed).toEqual(ms.slice(1).map((m) => m.waMessageId));
   });
@@ -295,31 +144,24 @@ describe("partition", () => {
     // §11.1's asymmetry, at the gate rather than in the parser: a
     // coverage hole must not look like a decision to drop.
     const ms = [msg("m1", "in"), msg("m2", "🐐")];
-    const p = partition(ms, [{ messageId: "m1", route: "none", source: "model" }], {
-      floor: false,
-    });
+    const p = partition(ms, [{ messageId: "m1", route: "none", source: "model" }]);
     expect(p.analysed).toContain("m2");
     expect(p.skipped).toEqual(["m1"]);
   });
 
   it("an empty batch decides nothing", () => {
-    const p = partition([], [], { floor: true });
+    const p = partition([], []);
     expect(p).toEqual({ analysed: [], skipped: [], floorForced: [] });
   });
 });
 
-describe("the floor's override records what it replaced", () => {
-  it("a floor override carries the model's route, so a RESCUE is distinguishable", async () => {
-    // Without this, "how often did the floor rescue a message?" has no
-    // honest answer, and the obvious proxy (count `source === "floor"`)
-    // over-reports: it counts `other_att → self_att` relabels, which
-    // change nothing the gate can see. The first full recall sweep
-    // reported 136 rescues that way against a true count of 0.
+describe("the router has no floor (2026-10-30)", () => {
+  it("a bare IN the model routed none stays none: no regex overrules it", async () => {
     const model = {
       name: "fake",
       async complete() {
         return {
-          text: JSON.stringify({ routes: [{ id: "m1", route: "none" }, { id: "m2", route: "😂" }] }),
+          text: JSON.stringify({ routes: [{ id: "m1", route: "none", to_bot: false }] }),
           stopReason: "end_turn",
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           costUsd: 0,
@@ -327,37 +169,8 @@ describe("the floor's override records what it replaced", () => {
         };
       },
     };
-    const out = await routeBatch(
-      model,
-      [
-        { id: "m1", authorName: "a", body: "in" },
-        { id: "m2", authorName: "b", body: "😂" },
-      ],
-      { floor: true },
-    );
-    const m1 = out.routes.find((r) => r.messageId === "m1")!;
-    expect(m1.source).toBe("floor");
-    expect(m1.route).toBe("self_att");
-    expect(m1.overrodeRoute).toBe("none"); // a real rescue
-  });
-
-  it("no override, no `overrodeRoute` — an absent field is not a rescue", async () => {
-    const model = {
-      name: "fake",
-      async complete() {
-        return {
-          text: JSON.stringify({ routes: [{ id: "m1", route: "self_att" }] }),
-          stopReason: "end_turn",
-          usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
-          costUsd: 0,
-          ms: 0,
-        };
-      },
-    };
-    const out = await routeBatch(model, [{ id: "m1", authorName: "a", body: "whatever" }], {
-      floor: true,
-    });
-    expect(out.routes[0].source).toBe("model");
+    const out = await routeBatch(model, [{ id: "m1", authorName: "a", body: "in" }]);
+    expect(out.routes[0]).toMatchObject({ route: "none", source: "model" });
     expect(out.routes[0].overrodeRoute).toBeUndefined();
   });
 });

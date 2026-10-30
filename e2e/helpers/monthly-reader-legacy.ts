@@ -14,6 +14,7 @@ import path from "node:path";
 import type { APIRequestContext } from "@playwright/test";
 import { legacyReaderAnswer, readCollectorReply } from "@/lib/__tests__/fixtures/monthly-legacy";
 import { E2E } from "./env";
+import { piBotMentioned } from "./pi-mention";
 
 const key = (body: string, quoted: string | null | undefined) => `${body.trim()}\u0000${(quoted ?? "").trim()}`;
 
@@ -83,6 +84,13 @@ export function withLegacyMonthlyReadings(request: APIRequestContext): APIReques
         if (typeof url === "string" && url.includes("/api/whatsapp/admin-group") && typeof data?.text === "string") {
           registerLegacyReadings([{ body: data.text }]);
           registerLegacyDigestReplies([data.text]);
+          // THE PI'S MENTION FLAG, as the real Pi sends it (review of #476):
+          // its own "@Match Time" body rewrite comes with botMentioned.
+          const d = data as { text: string; botMentioned?: unknown };
+          if (d.botMentioned === undefined) {
+            const flag = piBotMentioned(d.text, undefined);
+            if (flag !== undefined) options = { ...options, data: { ...d, botMentioned: flag } };
+          }
         }
         const dmBody = (data as { body?: unknown } | undefined)?.body;
         if (typeof url === "string" && url.includes("/api/whatsapp/dm-reply") && typeof dmBody === "string") registerLegacyDigestReplies([dmBody]);

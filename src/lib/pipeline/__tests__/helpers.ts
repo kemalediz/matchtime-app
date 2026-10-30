@@ -201,6 +201,10 @@ export interface MsgOpts {
   from: string | null;
   body?: string;
   tagged?: boolean;
+  /** The Pi's real mention flag (`EngineMessage.taggedExplicitly`). */
+  taggedExplicitly?: boolean;
+  /** The match of the MatchTime post it replies to. */
+  repliesToMatchTimeAbout?: string | null;
   route: Route;
   facts: Facts;
   degraded?: string | null;
@@ -214,6 +218,8 @@ export function msg(o: MsgOpts): EngineMessage {
     senderUserId: o.from ? `u-${o.from}` : null,
     senderName: o.from ? fullName(o.from) : null,
     tagged: o.tagged ?? false,
+    ...(o.taggedExplicitly !== undefined ? { taggedExplicitly: o.taggedExplicitly } : {}),
+    ...(o.repliesToMatchTimeAbout !== undefined ? { repliesToMatchTimeAbout: o.repliesToMatchTimeAbout } : {}),
     route: o.route,
     facts: o.facts,
     degraded: o.degraded ?? null,

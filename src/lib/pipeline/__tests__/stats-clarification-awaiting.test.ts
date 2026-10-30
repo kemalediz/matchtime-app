@@ -16,8 +16,7 @@ import {
   openStatsClarifications,
   type StatsClarificationRow,
 } from "../awaiting-answer";
-import { routeBatch } from "../router";
-import { gateBatch } from "../gate";
+import { clarificationLine, routeBatch } from "../router";
 import type { ModelResponse, PipelineModel } from "../llm";
 import type { Route } from "../types";
 
@@ -80,48 +79,33 @@ describe("which clarifications are open", () => {
   });
 });
 
-describe("the router, told a clarification is open", () => {
+describe("the router, told a clarification is open (2026-10-30: shown, not forced)", () => {
   const open = openStatsClarifications([row({})], "org-1", NOW);
+  const spy = (route: Route) => {
+    const users: string[] = [];
+    const m = modelSaying(route);
+    return { users, model: { ...m, complete: (req: Parameters<PipelineModel["complete"]>[0]) => (users.push(req.user), m.complete(req)) } as PipelineModel };
+  };
 
-  it("the asker's bare name is routed to the question owner, not dropped as banter", async () => {
-    const res = await routeBatch(modelSaying("none"), [{ id: "m1", authorName: "Kemal Ediz", body: "Idris" }], {
-      floor: false,
-      clarifications: open,
-    });
-    expect(res.routes[0]).toMatchObject({ route: "question", source: "awaiting", overrodeRoute: "none" });
+  it("the asker's message carries the MATCHTIME ASKED line with their original question", async () => {
+    const { users, model } = spy("question");
+    const res = await routeBatch(model, [{ id: "m1", authorName: "Kemal Ediz", body: "Idris" }], { clarifications: open });
+    expect(users[0]).toContain(`${clarificationLine(open[0].questionBody)}\n[m1] Kemal Ediz: Idris`);
+    expect(res.routes[0]).toMatchObject({ route: "question", source: "model" });
   });
 
-  it("even when the router read the bare name as an attendance claim", async () => {
-    const res = await routeBatch(modelSaying("other_att"), [{ id: "m1", authorName: "Kemal Ediz", body: "I mean Idris" }], {
-      floor: false,
-      clarifications: open,
-    });
-    expect(res.routes[0].route).toBe("question");
+  it("the model's route stands: a reply it reads as attendance stays attendance", async () => {
+    const res = await routeBatch(modelSaying("self_att"), [{ id: "m1", authorName: "Kemal Ediz", body: "I'm in" }], { clarifications: open });
+    expect(res.routes[0]).toMatchObject({ route: "self_att", source: "model" });
   });
 
-  it("anybody else's message is left exactly as routed", async () => {
-    const res = await routeBatch(modelSaying("none"), [{ id: "m1", authorName: "Sait Demir", body: "Idris" }], {
-      floor: false,
-      clarifications: open,
-    });
-    expect(res.routes[0]).toMatchObject({ route: "none", source: "model" });
+  it("anybody else's message gets no line", async () => {
+    const { users, model } = spy("none");
+    await routeBatch(model, [{ id: "m1", authorName: "Sait Demir", body: "Idris" }], { clarifications: open });
+    expect(users[0]).not.toContain("MATCHTIME ASKED");
   });
 
-  it("the asker saying something that is not a name is left exactly as routed", async () => {
-    const res = await routeBatch(modelSaying("self_att"), [{ id: "m1", authorName: "Kemal Ediz", body: "I'm in" }], {
-      floor: false,
-      clarifications: open,
-    });
-    expect(res.routes[0].route).toBe("self_att");
-  });
-
-  it("the gate passes it through and counts it as forced by an open question", async () => {
-    const g = await gateBatch([{ waMessageId: "m1", authorName: "Kemal Ediz", body: "Idris" } as never], {
-      model: modelSaying("none"),
-      floor: false,
-      clarifications: open,
-    });
-    expect(g.awaitingForced).toEqual(["m1"]);
-    expect(g.skipped).toEqual([]);
+  it("the line carries no dashes", () => {
+    expect(clarificationLine("x")).not.toMatch(/[\u2013\u2014]/);
   });
 });

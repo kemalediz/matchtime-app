@@ -44,6 +44,7 @@ export async function POST(request: Request) {
     poolEnv: await poolEnvForApiRequest(request),
     messageId: str(body.messageId),
     text: body.text,
+    botMentioned: body?.botMentioned === true,
     senderPhone: str(body.senderPhone),
     senderLid: str(body.senderLid),
     senderAltPhone: str(body.senderAltPhone),

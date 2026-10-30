@@ -129,7 +129,7 @@ const SQUAD_ROUTES = new Set<Route>(["self_att", "other_att"]);
 async function verdictOf(c: Case, id: string): Promise<{ verdict: Verdict; route: string; detail: string }> {
   const quoted = c.quoted ?? null;
   const quotedIsMatchTime = quoted?.fromMatchTime === true;
-  const { addressed, toAnotherOrganiser } = hqAddressing({ text: c.text, quoted, quotedIsMatchTime });
+  const { addressed, toAnotherOrganiser } = hqAddressing({ text: c.text, quoted, quotedIsMatchTime, botMentioned: c.text.includes("@Match Time") });
   const context = organisersContext({ pending: [], recent: (c.recent ?? []).slice(-5) });
   const quotedReply = quoted ? quoteFromPi({ id: null, ...quoted }) : null;
   const r = await routeBatch(model, [{ id, authorName: "Raihan", body: c.text, organisers: { context, senderIsOrganiser: true }, reply: quotedReply }], { floor: false });

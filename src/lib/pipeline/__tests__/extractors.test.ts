@@ -89,7 +89,8 @@ describe("the extractor schemas contain no decision", () => {
       expect.arrayContaining([
         "subject",
         "personRef",
-        "personNamed",
+        "personKind",
+        "benchAsked",
         "polarity",
         "contingent",
         "conditionOn",
@@ -164,10 +165,10 @@ describe("parseFacts (attendance)", () => {
   });
 
   // FNF HQ 2026-10-24: a claim plus a question to MatchTime in one message.
-  it("keeps a question to MatchTime as a side request, beside recruit and chase, and drops anything else", () => {
-    const raw = JSON.stringify({ claims: [], affirmation: "none", sideRequests: ["question", "recruit", "chase", "bogus"] });
-    expect((parseFacts("attendance", raw, "wa-1").facts as AttendanceFacts).sideRequests).toEqual(["question", "recruit", "chase"]);
-    expect(ATTENDANCE_SCHEMA.properties.sideRequests.items.enum).toEqual(["recruit", "chase", "question"]);
+  it("keeps a question and a team change (2026-10-30) as side requests, beside recruit and chase, and drops anything else", () => {
+    const raw = JSON.stringify({ claims: [], affirmation: "none", sideRequests: ["question", "recruit", "teams", "chase", "bogus"] });
+    expect((parseFacts("attendance", raw, "wa-1").facts as AttendanceFacts).sideRequests).toEqual(["question", "recruit", "teams", "chase"]);
+    expect(ATTENDANCE_SCHEMA.properties.sideRequests.items.enum).toEqual(["recruit", "chase", "question", "teams"]);
   });
 
   it("drops a claim with an unknown polarity and SAYS so (§11.3 schema drift)", () => {

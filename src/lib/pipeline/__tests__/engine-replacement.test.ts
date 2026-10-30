@@ -349,8 +349,8 @@ describe("a false drop is the whole danger, so: what it refuses", () => {
     expect(statusOf(result.nextState, "najib")).toBe("CONFIRMED");
   });
 
-  it("still refuses a non-admin's drop amid banter markers", () => {
-    const { result } = run([najibOut(), mojibIn()], {
+  it("still refuses a drop the extractor reads as a joke (low confidence; no emoji test since 2026-10-30)", () => {
+    const { result } = run([najibOut({ confidence: 0.3 }), mojibIn()], {
       body: "Najib is out 😂 Mojib is replacing him lads",
       teams: TEAMS,
     });

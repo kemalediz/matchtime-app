@@ -68,19 +68,7 @@ export interface PipelineInput {
   state: SquadState;
   now: Date;
   models?: { router: PipelineModel; extractor: PipelineModel };
-  /**
-   * Apply the deterministic floor in front of the router. DEFAULT TRUE,
-   * which is what every caller got before this field existed.
-   *
-   * It is settable because PRODUCTION does not run the floor
-   * (`ROUTER_GATE_FLOOR_ENABLED` is unset in Vercel, and `gate.ts` says
-   * why it ships default OFF), while `scripts/dryrun-pipeline.ts` always
-   * did — so a bare "in" in the harness was the regex's answer, never the
-   * router's, and the harness could not measure the question production
-   * asks. `FLOOR=0` there passes `false` here. See `router.ts`'s
-   * `RouteBatchOptions.floor` for the one-way property that makes either
-   * setting safe.
-   */
+  /** IGNORED since 2026-10-30, when the regex floor was removed. */
   floor?: boolean;
 }
 
@@ -127,7 +115,6 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
   const routed = await routeBatch(
     routerModel,
     input.messages.map((m) => ({ id: m.id, authorName: m.authorName, body: m.body })),
-    { floor: input.floor },
   );
   degradations.push(...routed.degradations);
   if (routed.usage) {

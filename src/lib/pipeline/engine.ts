@@ -47,7 +47,6 @@ import { partnerAskToQuestion } from "../partner-volunteer-rules";
 import { canTakeFreePlace, ORGANISER_PICK_BENCH_NOTE } from "../squad-capacity";
 import {
   actionRequiresTag,
-  messageMentionsBotExplicitly,
   registerForEntryRequiresTag,
   type GateRegisterForEntry,
   type GateVerdict,
@@ -70,14 +69,13 @@ import {
   RATING_PROGRESS_TAG_MUST_BE_EXPLICIT,
 } from "../rating-progress-answer";
 import { RECRUIT_LOOKBACK_MAX, resolveLookbackMatches } from "../recruit-lookback";
-import { resolveReminderPhrase } from "../reminder-time";
+import { reminderInstant } from "../reminder-time";
 import { swapGuardFor, type SwapCandidate } from "../team-slot-swap";
 // The 2026-09-15 replacement rule, pure and beside the pure core it is
 // built out of (§13) rather than inlined here — its header carries the
 // incident, the state-check argument and the pairing order.
 import { decideSlotInherits } from "../team-slot-inherit";
 import { findStatedReplacement, type StatedReplacement } from "./replacement";
-import { namesTheBench } from "./bench-words";
 import { isRawDigitName, resolvePerson } from "./identity";
 import { planResultsQuestion } from "./results-answer";
 import {
@@ -85,11 +83,9 @@ import {
   isScoreAskOpen,
   messageStatesScore,
   samePair,
-  scoreAnswerSide,
-  scorePairAnswerSide,
 } from "./score-ask";
 import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
-import { resolveScoreResult, resolveWinnerSide } from "./score-teams";
+import { resolveScoreResult, resolveTeamRef, resolveWinnerSide, type TeamSide } from "./score-teams";
 import { planStatsQuestion } from "./stats-answer";
 import { periodKey } from "./stats-period";
 import type {
@@ -717,29 +713,28 @@ export function decide(input: EngineInput): EngineResult {
       }
 
       // ══════════════════════════════════════════════════════════════
-      // "BENCH" IS EXPLICIT ONLY WHEN THE MESSAGE SAYS IT (2026-09-24)
+      // "BENCH" IS EXPLICIT ONLY WHEN THE EXTRACTOR SAYS IT WAS ASKED FOR
       // ══════════════════════════════════════════════════════════════
       //
-      // Sutton FC: Erdal, CONFIRMED at 14/14 by his own pasted roster a
-      // moment earlier, typed "in". The extractor returned an
-      // uncontingent `polarity: "bench"`, `applyClaim` took that as a
-      // human naming the bench, and he went CONFIRMED@14 -> BENCH@14
-      // with the note "explicit bench request". The posted 14/14 list was
-      // wrong from then on and nobody was told.
-      //
-      // `explicitBench` is the one signal that may take a confirmed
-      // place off somebody, so it needs the words, not only the model's
-      // reading of them. `namesTheBench` is a necessary condition, never
-      // a classifier (see its header): without the word, the claim is
-      // read as the IN it came from and capacity decides, which is how
-      // an inferred bench has always been treated (PR #27). For a player
-      // already in the squad that is a no-op.
-      if (!namesTheBench(msg.body) && claims.some((c) => c.polarity === "bench")) {
+      // Sutton FC, 2026-09-24: Erdal, CONFIRMED at 14/14, typed "in"; the
+      // extractor returned an uncontingent "bench" and he was demoted with
+      // the note "explicit bench request". Until 2026-10-30 a word list
+      // (`namesTheBench`) required a bench word in the body. "No string
+      // parsing": the same gate now reads a FIELD, `benchAsked` (the
+      // message itself asks for the bench). A "bench" without it is read
+      // as the IN it came from and capacity decides, which is how an
+      // inferred bench has always been treated (PR #27): a confirmed
+      // player is never demoted, a newcomer takes a free place, and on a
+      // full squad he is benched as inferred, never explicit.
+      // The SENDER's own claim only: benching somebody else is an
+      // admin's instruction, gated on the seat below, and "move Salman to
+      // the bench" must keep working.
+      if (claims.some((c) => c.subject === "sender" && c.polarity === "bench" && c.benchAsked !== true)) {
         claims = claims.map((c) => {
-          if (c.polarity !== "bench") return c;
+          if (c.subject !== "sender" || c.polarity !== "bench" || c.benchAsked === true) return c;
           out.reasons.push(
-            `"${c.personRef || "sender"}": the extractor read "bench" but the message never ` +
-              `names the bench; read as "in" and capacity decides`,
+            `"${c.personRef || "sender"}": the extractor read "bench" but not as asked for (benchAsked false); ` +
+              `read as "in" and capacity decides`,
           );
           return { ...c, polarity: "in" as const };
         });
@@ -802,7 +797,7 @@ export function decide(input: EngineInput): EngineResult {
       // read as a bare "chase", so it never reached the pool and partner
       // decision and MatchTime said nothing. Anyone else's chase, and an
       // organiser's untagged "@all we need more players", stay a nudge.
-      const taggedExplicitly = msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body });
+      const taggedExplicitly = msg.taggedExplicitly === true;
       const organiserChase =
         facts.sideRequests.includes("chase") &&
         taggedExplicitly &&
@@ -1330,28 +1325,21 @@ export function decide(input: EngineInput): EngineResult {
           continue;
         }
 
-        // Third party. A relationship is not a name — and the engine
-        // says so itself rather than trusting `personNamed` (§11.3).
-        const resolution = resolvePerson(c.personRef, w.roster);
-
-        // …and the same distrust runs the OTHER way. `personNamed` is
-        // the model's reading of the TEXT; whether a reference
-        // identifies a SQUAD MEMBER is the roster's business, and only
-        // code has the roster. The first live corpus sweep had the
-        // extractor call "habibi" an endearment rather than a name 3
-        // times out of 3, which blocked a drop the message plainly
-        // makes. A reference that uniquely resolves to a member has
-        // named someone, whatever the model thinks — and it can only get
-        // here after identity.ts has already refused relationships,
-        // quantities, indefinites and raw digits.
-        let personNamed = c.personNamed;
-        if (!personNamed && resolution.kind === "resolved") {
-          personNamed = true;
-          out.reasons.push(
-            `"${c.personRef}" was reported unnamed but resolves to a squad member ` +
-              `(${resolution.member.name}); treating it as named`,
-          );
-        }
+        // Third party. ONLY A NAMED PERSON IS RESOLVED OR PROVISIONED
+        // (2026-10-30, review of PR #476). The extractor states the kind
+        // of person (`personKind`: named, relation, group, placeholder);
+        // a relation ("Amir's brother"), a group ("everyone", "the lads")
+        // or a placeholder ("someone", "+1") is never matched against the
+        // roster, so it can never become a member by a first-name or
+        // prefix match. Until today word lists in `identity.ts` refused
+        // those, and a roster match could also overrule an "unnamed"
+        // reading; both are gone ("no string parsing"). An older stub
+        // with only `personNamed` maps onto the same kind.
+        const kind = c.personKind ?? (c.personNamed ? "named" : "placeholder");
+        const personNamed = kind === "named";
+        const resolution: ReturnType<typeof resolvePerson> = personNamed
+          ? resolvePerson(c.personRef, w.roster)
+          : { kind: "not-a-person", why: `the extractor read "${c.personRef}" as a ${kind}, not a named person` };
 
         // ── A MENTION NOBODY COULD NAME (2026-09-30, MT Test) ──────────
         //
@@ -1374,7 +1362,8 @@ export function decide(input: EngineInput): EngineResult {
         }
 
         if (!personNamed || resolution.kind === "not-a-person") {
-          if (c.polarity === "in" && !rawDigitsOnly) {
+          // A group ("everyone in") is nobody to ask a name for.
+          if (c.polarity === "in" && !rawDigitsOnly && kind !== "group") {
             guestAsks.push(c);
             out.reasons.push(`unnamed third party ("${c.personRef}") cannot register anyone`);
           } else {
@@ -1400,6 +1389,13 @@ export function decide(input: EngineInput): EngineResult {
             out.reasons.push(`"${c.personRef}" is not a member; nothing to drop or bench`);
             continue;
           }
+          // A VERIFIER ON THE MODEL'S OUTPUT (2026-10-30): a new player is
+          // provisioned only under a name the message actually wrote. A
+          // name the model invented, or expanded, provisions nobody.
+          if (!refWrittenIn(c.personRef, msg.body)) {
+            out.reasons.push(`"${c.personRef}" is not written in the message; nobody provisioned`);
+            continue;
+          }
           if (!msg.senderUserId) {
             degrade(`unknown guest "${c.personRef}" offered by an unresolved sender`);
             continue;
@@ -1423,7 +1419,6 @@ export function decide(input: EngineInput): EngineResult {
       // ── The guest name ask (a QUESTION, never a write) ───────────────
       if (guestAsks.length > 0) {
         const decision = shouldAskForGuestName({
-          body: msg.body,
           tagged: msg.tagged,
           senderKnown: !!msg.senderUserId,
           attendanceOn: state.features.attendance,
@@ -1438,7 +1433,7 @@ export function decide(input: EngineInput): EngineResult {
             kind: "guest_name_ask",
             messageId: msg.id,
             askerName: msg.senderName,
-            body: msg.body,
+            plural: guestAsks.length > 1,
           });
           out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
         }
@@ -1594,7 +1589,7 @@ export function decide(input: EngineInput): EngineResult {
             out.reasons.push(`only an admin may bench ${t.name}`);
             continue;
           }
-          const refusal = banterRefusal(msg, t, messages, senderIsAdmin);
+          const refusal = banterRefusal(msg, t, messages);
           if (refusal) {
             out.reasons.push(refusal);
             continue;
@@ -2011,7 +2006,7 @@ export function decide(input: EngineInput): EngineResult {
           // ── THE TAG is the question route's own, checked at the top
           //    of this function: `msg.tagged`, which is
           //    `messageTagsBot`. Not the stricter
-          //    `messageMentionsBotExplicitly` the two bulk-DM doors use
+          //    `piMentionsBot` (the Pi's mention flag) the two bulk-DM doors use
           //    — this answer sends no DM, so the asymmetry that justifies
           //    that gate does not exist here. See
           //    `RATING_PROGRESS_TAG_MUST_BE_EXPLICIT`, which is the
@@ -2029,7 +2024,7 @@ export function decide(input: EngineInput): EngineResult {
           }
           if (
             RATING_PROGRESS_TAG_MUST_BE_EXPLICIT &&
-            !(msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body }))
+            !(msg.taggedExplicitly === true)
           ) {
             out.reasons.push("a rating-progress answer requires an explicit @Match Time mention");
             out.disposition = "noop";
@@ -2738,10 +2733,16 @@ export function decide(input: EngineInput): EngineResult {
        *  a tag, or the asker or an identified admin within thirty
        *  minutes)? WHAT counts as an answer is decided from the text,
        *  separately, below. */
+      // AND A FACT SAYS IT IS AN ANSWER (2026-10-30, review of PR #476):
+      // a WhatsApp reply to MatchTime's post about THIS match, or the Pi's
+      // real mention flag. The router's `to_bot` alone, or merely being the
+      // asker inside thirty minutes, is not enough: a model can read the
+      // asker's chatter ("reds deserved it anyway") as naming a winner.
+      const answersByFact = msg.taggedExplicitly === true || msg.repliesToMatchTimeAbout === completed.id;
       const answerQualifies =
         !!pending &&
+        answersByFact &&
         isScoreAnswer({
-          body: msg.body,
           tagged: msg.tagged,
           senderUserId: msg.senderUserId ?? null,
           senderIsAdmin,
@@ -2775,7 +2776,7 @@ export function decide(input: EngineInput): EngineResult {
             // and nothing else ("Yellow 7-10", "10-7 yellow"), from
             // somebody who could have answered with the bare name: that
             // is the answer, not a second bare scoreline.
-            const restated = answerQualifies ? scorePairAnswerSide(msg.body, pending, labels) : null;
+            const restated = answerQualifies ? answeredSide(facts, labels, senderTeam) : null;
             if (restated) {
               const hi = Math.max(pending.first, pending.second);
               const lo = Math.min(pending.first, pending.second);
@@ -2818,14 +2819,11 @@ export function decide(input: EngineInput): EngineResult {
         // an identified admin) within thirty minutes. The winner takes
         // the bigger number.
         //
-        // AND THE BODY ITSELF MUST BE A BARE TEAM ANSWER, read here in
-        // code (`scoreAnswerSide`), which is also where the side comes
-        // from. The model's `winner` is not consulted: the asker's
-        // "yellow bibs stink mate ... reds deserved it anyway" came back
-        // with winner "reds" and recorded a result (third review,
-        // item 2). Who sent a message was never evidence of what it
-        // says.
-        const side = answerQualifies ? scoreAnswerSide(msg.body, labels) : null;
+        // WHAT the answer says is the extractor's (2026-10-30, "no string
+        // parsing"): the team its facts name as the winner (or the loser's
+        // opponent). Until today a word test on the body decided it and the
+        // model's `winner` was not consulted.
+        const side = answerQualifies ? answeredSide(facts, labels, senderTeam) : null;
         if (pending && side) {
           const hi = Math.max(pending.first, pending.second);
           const lo = Math.min(pending.first, pending.second);
@@ -2835,7 +2833,7 @@ export function decide(input: EngineInput): EngineResult {
           // Told who won and not the score, by somebody addressing the
           // bot: ask for the score, where there used to be silence.
           const namesAnOutcome = !!(facts.winner ?? "").trim() || !!(facts.loser ?? "").trim();
-          if (msg.tagged && namesAnOutcome && !/[?¿]/.test(msg.body)) {
+          if (msg.tagged && namesAnOutcome) {
             speech.push({ kind: "score_ask_score", messageId: msg.id });
           }
           return;
@@ -3020,16 +3018,15 @@ export function decide(input: EngineInput): EngineResult {
           return;
         }
         const phrase = (facts.phrase ?? "").trim();
-        if (!phrase) {
-          degrade("reminder request with no time phrase");
+        if (!(facts.remindAt ?? "").trim()) {
+          degrade("reminder request with no time the extractor could state");
           return;
         }
-        // §3.2 S22: the extractor returns the PHRASE and `date-fns-tz`
-        // resolves it. Neither the model nor this file does calendar
-        // arithmetic — `resolveReminderPhrase` is a pure function of
-        // (phrase, now) and refuses anything it is not sure about.
-        // In the group's language: its day words, and its label.
-        const when = resolveReminderPhrase(phrase, input.now, state.features.language);
+        // §3.2 S22, since 2026-10-30: the extractor states WHEN, as a
+        // London "YYYY-MM-DD HH:MM" worked out from NOW (`remindAt`); code
+        // turns it into an instant (DST) and refuses anything malformed.
+        // No word test reads the phrase any more.
+        const when = reminderInstant(facts.remindAt ?? "", state.features.language);
         if (!when.ok) {
           degrade(`reminder time could not be resolved: ${when.reason}`);
           return;
@@ -3039,6 +3036,14 @@ export function decide(input: EngineInput): EngineResult {
         // Anything outside it "is almost certainly a parse error, not a
         // real request. Stay silent rather than fire a wrong-day DM."
         const deltaMs = when.at.getTime() - input.now.getTime();
+        // ALREADY GONE ("remind me at 6", sent at 19:00): one line, not
+        // silence (review of #476). Nothing is queued.
+        if (deltaMs <= -REMINDER_PAST_GRACE_MS) {
+          out.reasons.push(`reminder time ${when.at.toISOString()} has already passed; told the sender`);
+          speech.push({ kind: "reminder_past", messageId: msg.id, whenLabel: when.whenLabel });
+          if (out.disposition !== "degraded") out.disposition = "acted";
+          return;
+        }
         if (deltaMs <= -REMINDER_PAST_GRACE_MS || deltaMs > REMINDER_MAX_AHEAD_MS) {
           degrade(
             `reminder resolves to ${when.at.toISOString()}, outside the 60-day window; refusing`,
@@ -3063,6 +3068,7 @@ export function decide(input: EngineInput): EngineResult {
           messageId: msg.id,
           phrase,
           whenLabel: when.whenLabel,
+          ...(when.shiftedForClocks ? { shiftedForClocks: true } : {}),
         });
         return;
       }
@@ -3116,7 +3122,7 @@ export function decide(input: EngineInput): EngineResult {
         // also sets. "Otherwise it DMs people unnecessarily and can create
         // noise." An admin_ops message changes nobody's attendance, so the
         // tag is its only way through.
-        if (RECRUIT_BLAST_REQUIRES_TAG && !(msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body }))) {
+        if (RECRUIT_BLAST_REQUIRES_TAG && !(msg.taggedExplicitly === true)) {
           out.reasons.push(
             "a recruit blast requires an @Match Time tag: a mass DM is not fired off an untagged message",
           );
@@ -3256,7 +3262,7 @@ export function decide(input: EngineInput): EngineResult {
         const addressed =
           !STATS_BLAST_TAG_MUST_BE_EXPLICIT
             ? msg.tagged
-            : (msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body }));
+            : (msg.taggedExplicitly === true);
         if (STATS_BLAST_REQUIRES_TAG && !addressed) {
           // A plain reason rather than `degrade()`: this IS a decision,
           // recorded on the message's row for the admin log, and it adds
@@ -3765,8 +3771,9 @@ export function parsePendingSet(lastBotPost: string | null): string[] {
  *
  * Two refusals, both narrow:
  *   1. the target is speaking in this same window and says the opposite;
- *   2. someone drops another player amid laughing emoji, without having
- *      DELIBERATELY addressed MatchTime.
+ *   2. (since 2026-10-30 the extractor's) a drop made as a joke, which the
+ *      attendance prompt reports at a confidence of 0.3 or less, below
+ *      `CONFIDENCE_FLOOR`. Until then it was a laughing-emoji regex.
  * A TAGGED admin's uncontested instruction is always honoured — that is
  * the control case, and losing it would be its own incident.
  *
@@ -3785,7 +3792,6 @@ function banterRefusal(
   msg: EngineMessage,
   target: Target,
   batch: EngineMessage[],
-  senderIsAdmin: boolean,
 ): string | null {
   if (!target.userId) return null;
   const contradicts = batch.some(
@@ -3798,10 +3804,9 @@ function banterRefusal(
   if (contradicts) {
     return `${target.name} contradicts this in the same window; refusing the drop (corroboration)`;
   }
-  if (!(senderIsAdmin && msg.tagged) && /😂|🤣|lol\b/i.test(msg.body)) {
-    const who = senderIsAdmin ? "an untagged admin" : "a non-admin";
-    return `banter markers in ${who} drop of ${target.name}; refusing without corroboration`;
-  }
+  // (2) is the extractor's now (2026-10-30, "no string parsing"): a drop
+  // made as a joke comes back at a confidence of 0.3 or less and stops at
+  // the confidence floor. The emoji and "lol" test that stood here is gone.
   return null;
 }
 
@@ -3996,3 +4001,44 @@ export function assertCoverage(messages: EngineMessage[], outcomes: MessageOutco
     }
   }
 }
+
+/**
+ * THE SIDE AN ANSWER TO "WHICH TEAM WON?" NAMES, from the score
+ * extractor's facts (2026-10-30): the outcome words first (`winner`,
+ * `loser`), else the one team written beside the restated pair
+ * (`firstTeam` / `secondTeam`). Null when they name nobody, name a team
+ * that is neither side, or disagree. Whether the sender may answer at all
+ * is `isScoreAnswer`, a fact check, applied by the caller.
+ */
+export function answeredSide(
+  facts: { winner?: string | null; loser?: string | null; firstTeam?: string | null; secondTeam?: string | null },
+  labels: readonly [string, string],
+  senderTeam: TeamSide | null,
+): TeamSide | null {
+  const outcome = resolveWinnerSide({ facts: facts as never, labels, senderTeam });
+  if (outcome) return outcome;
+  if ((facts.winner ?? "").trim() || (facts.loser ?? "").trim()) return null;
+  const named = [facts.firstTeam, facts.secondTeam].filter((t) => (t ?? "").trim());
+  if (named.length !== 1) return null;
+  return resolveTeamRef(named[0], labels, senderTeam);
+}
+
+/**
+ * Is the name the extractor returned WRITTEN in the message? A check on
+ * the model's OUTPUT against the text (2026-10-30), never a reading of
+ * what the person meant: case, accents and spacing are folded, and the
+ * name must appear as whole words.
+ */
+export function refWrittenIn(ref: string, body: string): boolean {
+  const fold = (x: string) =>
+    ` ${(x ?? "")
+      .toLocaleLowerCase("tr")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/ı/g, "i")
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim()} `;
+  const r = fold(ref);
+  return r.trim().length > 0 && fold(body).includes(r);
+}
+

@@ -66,7 +66,6 @@ const OLD_NAMES = [
 /** Hour constants that are 8, 9, 22 or 23 for a reason of their own. */
 const ALLOWED_HOUR_CONSTANTS: Record<string, string> = {
   "lib/bot-scheduler.ts:MOM_EARLY_FROM_HOUR": "Man of the Match early trigger, 09:00 to 20:59: a schedule for one post",
-  "lib/reminder-time.ts:DEFAULT_HOUR": "the time a player's reminder gets when they name a day but no time",
 };
 
 /** Wall clock strings that are a schedule, not the window. */

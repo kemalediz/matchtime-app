@@ -753,7 +753,7 @@ export function compose(result: EngineResult): ComposedOutput {
       case "guest_name_ask":
         utterances.push({
           messageId: sp.messageId,
-          text: renderGuestNameAsk({ askerName: sp.askerName, body: sp.body, lang }),
+          text: renderGuestNameAsk({ askerName: sp.askerName, plural: sp.plural, lang }),
         });
         break;
 
@@ -857,9 +857,15 @@ export function compose(result: EngineResult): ComposedOutput {
         utterances.push({
           messageId: sp.messageId,
           text: sp.whenLabel
-            ? s.reminder_ack_resolved({ whenLabel: sp.whenLabel })
+            ? sp.shiftedForClocks
+              ? s.reminder_ack_clocks({ whenLabel: sp.whenLabel })
+              : s.reminder_ack_resolved({ whenLabel: sp.whenLabel })
             : s.reminder_ack_unresolved({ phrase: sp.phrase }),
         });
+        break;
+
+      case "reminder_past":
+        utterances.push({ messageId: sp.messageId, text: s.reminder_past({ whenLabel: sp.whenLabel }) });
         break;
 
       case "slot_opened": {

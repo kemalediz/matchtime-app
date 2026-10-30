@@ -108,13 +108,21 @@ import { SETUP_STAGE_SELECT, isClubSettingUp, type SetupStageColumns } from "./c
 import { notifyAdminsOfAiCap } from "./ai-cap-notice";
 import {
   AiBudgetExceededError,
+  ATTENDANCE_OVERFLOW_MULTIPLIER,
   runWithAiBudget,
   runWithDeferredAiBudget,
   type AiBudgetHold,
   type AiBudgetLedger,
+  type ReserveOptions,
 } from "./ai-budget-context";
 
-export { bindAiBudgetKey, isAiBudgetExceeded, AiBudgetExceededError } from "./ai-budget-context";
+export {
+  bindAiBudgetKey,
+  isAiBudgetExceeded,
+  AiBudgetExceededError,
+  ATTENDANCE_OVERFLOW_MULTIPLIER,
+  withAttendanceOverflow,
+} from "./ai-budget-context";
 export { AI_CAP_ALERT_KIND } from "./ops-alerts";
 
 /** A paying club's default, after its free period (Kemal, 2026-10-01). */
@@ -132,6 +140,25 @@ export const NEW_CLUB_CAP_USD = 2.0;
 export const PRE_CLUB_CAP_USD = 0.25;
 /** Held per call between reserve and settle. See the bound above. */
 export const CALL_RESERVE_USD = 0.01;
+
+/**
+ * THE ATTENDANCE READS' MINIMUM, PER LONDON MONTH (2026-10-30, review of
+ * PR #476). With no regex left to read a bare IN at the cap, a live club
+ * whose cap is $0 (or too small for its twice-the-cap ceiling to fit one
+ * read) would read no attendance at all. Its attendance reads
+ * (`withAttendanceOverflow`) may still spend up to this much in a month.
+ * The anti-abuse rails (not approved, bot off, no group, billing paused)
+ * keep it at $0: they are not a cost ceiling.
+ */
+export const ATTENDANCE_MONTH_FLOOR_USD = 0.5;
+
+/** The attendance reads' monthly floor for a club: the floor for a club
+ *  that may spend at all (approved, live, not paused), else $0. */
+function attendanceFloorUsd(org: AllowanceOrg | null): number {
+  if (!org || !isClubApproved(org) || isBillingPaused(org)) return 0;
+  if (!org.whatsappBotEnabled || !org.whatsappGroupId) return 0;
+  return ATTENDANCE_MONTH_FLOOR_USD;
+}
 
 /**
  * What a club that is approved but still SETTING UP may spend in a day on
@@ -298,6 +325,22 @@ const ALLOWANCE_SELECT = {
   billingStatus: true,
 } as const;
 
+/** The attendance reads' monthly floor for a key (pseudo keys: $0). */
+async function floorFor(key: string): Promise<number> {
+  if (isPseudoKey(key)) return 0;
+  const org = await db.organisation.findUnique({ where: { id: key }, select: ALLOWANCE_SELECT });
+  return attendanceFloorUsd(org);
+}
+
+/** What the key spent (and holds) this London month, for the floor. */
+async function monthSpendUsd(key: string, now: Date): Promise<number> {
+  const monthStart = `${londonDay(now).slice(0, 7)}-01`;
+  const rows = await db.$queryRaw<Array<{ spent: number | null }>>`
+    SELECT SUM("costUsd" + "reservedUsd") AS "spent" FROM "OrgAiUsage"
+    WHERE "orgId" = ${key} AND "day" >= ${monthStart}::date`;
+  return Number(rows[0]?.spent ?? 0);
+}
+
 /** The cap for a key today. Throws on a database error (callers fail open). */
 async function capFor(key: string, now: Date, purpose: AllowancePurpose = {}): Promise<number> {
   if (isPseudoKey(key)) {
@@ -328,7 +371,7 @@ async function noteFirstCapToday(key: string, day: string, cap: number | null, w
     title: "AI daily cap reached",
     detail:
       `${isPseudoKey(key) ? `${key} ` : ""}reached ${allowance} AI allowance for ${day} (${what}). ` +
-      `Plain IN and OUT still work; other messages get no AI answer until London midnight. ` +
+      `Messages about a place are still read up to twice the allowance; other messages get no AI answer until London midnight. ` +
       `Usage: table "OrgAiUsage".`,
     dedupeKey: `${AI_CAP_ALERT_KIND}:${key}:${day}`,
   });
@@ -382,7 +425,7 @@ export function prismaAiBudgetLedger(
 ): AiBudgetLedger {
   const caps = new Map<string, number>();
   return {
-    async reserve(key, label): Promise<AiBudgetHold> {
+    async reserve(key, label, opts?: ReserveOptions): Promise<AiBudgetHold> {
       const now = clock();
       const day = londonDay(now);
       let cap: number;
@@ -393,7 +436,21 @@ export function prismaAiBudgetLedger(
         console.error(`[ai-budget] could not read the cap for ${key}; allowing ${label} (fail open):`, err);
         return { key, day, reservedUsd: 0 };
       }
-      if (cap <= 0) {
+      // An attendance read past the cap (`withAttendanceOverflow`) is
+      // checked against twice the cap; the row keeps the club's own cap.
+      // When that ceiling is below the monthly floor, the floor applies
+      // while this month's spend is under it (a $0-cap live club still
+      // reads IN and OUT).
+      let ceiling = opts?.overflow ? cap * ATTENDANCE_OVERFLOW_MULTIPLIER : cap;
+      if (opts?.overflow && ceiling < ATTENDANCE_MONTH_FLOOR_USD) {
+        try {
+          const floor = await floorFor(key);
+          if (floor > 0 && (await monthSpendUsd(key, now)) < floor) ceiling = Math.max(ceiling, floor);
+        } catch (err) {
+          console.error(`[ai-budget] could not read the attendance floor for ${key}; using the cap:`, err);
+        }
+      }
+      if (ceiling <= 0) {
         await recordRefusal(key, day, cap, label, now);
         throw new AiBudgetExceededError(key, label);
       }
@@ -408,7 +465,7 @@ export function prismaAiBudgetLedger(
             "reservedUsd" = "OrgAiUsage"."reservedUsd" + ${CALL_RESERVE_USD},
             "capUsd" = EXCLUDED."capUsd",
             "updatedAt" = now()
-          WHERE "OrgAiUsage"."costUsd" + "OrgAiUsage"."reservedUsd" < ${cap}
+          WHERE "OrgAiUsage"."costUsd" + "OrgAiUsage"."reservedUsd" < ${ceiling}
           RETURNING 1 AS "ok"`;
         granted = rows.length > 0;
       } catch (err) {
@@ -416,7 +473,7 @@ export function prismaAiBudgetLedger(
         return { key, day, reservedUsd: 0 };
       }
       if (!granted) {
-        await recordRefusal(key, day, cap, label, now);
+        await recordRefusal(key, day, cap, opts?.overflow ? `${label} (past twice the cap)` : label, now);
         throw new AiBudgetExceededError(key, label);
       }
       return { key, day, reservedUsd: CALL_RESERVE_USD };

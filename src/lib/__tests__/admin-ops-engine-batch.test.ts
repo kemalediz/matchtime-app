@@ -121,7 +121,9 @@ function msg(o: Partial<AdminOpsBatchMessage> & { body: string }): AdminOpsBatch
     senderUserId: o.senderUserId === undefined ? "u-elvin" : o.senderUserId,
     senderName: o.senderName ?? fullName("elvin"),
     tagged: o.tagged ?? true,
-    ...(o.taggedExplicitly === undefined ? {} : { taggedExplicitly: o.taggedExplicitly }),
+    // The Pi's mention flag, as the real Pi sets it with its "@Match Time"
+    // body rewrite (review of #476), unless the case says otherwise.
+    taggedExplicitly: o.taggedExplicitly ?? o.body.includes("@Match Time"),
     // `"route" in o` and not `?? "admin_ops"`: an EXPLICIT `undefined` is
     // the shape of a message the router never mentioned, and it has to
     // survive the builder or the "never owned" test tests nothing.
@@ -162,6 +164,8 @@ const REMIND_FACTS = {
   count: 0,
   coveredRefs: [],
   phrase: "tomorrow at 6",
+  // 2026-10-30: the extractor states the London time from NOW.
+  remindAt: "2026-09-02 18:00",
   note: "bring the bibs",
   lookbackMatches: 0,
 };
@@ -442,14 +446,14 @@ describe("S22 · a personal reminder", () => {
     expect(out.writeFailed).toBe(true);
   });
 
-  it("refuses a time it cannot resolve, rather than guessing a day", async () => {
+  it("refuses when the extractor could state no time, rather than guessing a day", async () => {
     const { model } = stubModel({
-      [REMIND]: { ...REMIND_FACTS, phrase: "before the match" },
+      [REMIND]: { ...REMIND_FACTS, phrase: "before the match", remindAt: "" },
     });
     const r = recorder(model, paidWorld());
     const res = await run({ messages: [msg({ body: REMIND })], deps: r.deps });
     expect(r.dms).toEqual([]);
-    expect(res.degradations.join(" ")).toMatch(/could not be resolved/);
+    expect(res.degradations.join(" ")).toMatch(/no time/);
   });
 
   it("falls back to the message itself when the extractor named no note", async () => {

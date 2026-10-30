@@ -11,7 +11,6 @@ import { describe, expect, it } from "vitest";
 import {
   GROUP_LIST_CAP,
   NEMESIS_IN_GROUP_FOR_OTHERS,
-  clarificationSubject,
   genericPeriodNote,
   groupListSize,
   planStatsQuestion,
@@ -439,25 +438,6 @@ describe("the safe line the generic path falls back to", () => {
   });
 });
 
-describe("reading the poster's answer to a clarification", () => {
-  it.each([
-    ["Mojib", "Mojib"],
-    ["mojib jalali", "mojib jalali"],
-    ["I mean Mojib", "Mojib"],
-    ["sorry, I meant Mojib Jalali!", "Mojib Jalali"],
-    ["@Match Time Mojib", "Mojib"],
-    ["Mojib demek istedim", "Mojib"],
-    ["Mojib'i kastettim", "Mojib"],
-  ])("%s is an answer naming %s", (body, name) => {
-    expect(clarificationSubject(body)).toBe(name);
-  });
-  it.each(["in", "I'm in", "yes", "Mojib is in for Tuesday", "haha", "var", "ok thanks", "3", ""])(
-    "%s is not an answer",
-    (body) => {
-      expect(clarificationSubject(body)).toBeNull();
-    },
-  );
-});
 
 // ═══════════════════════════════════════════════════════════════════════
 // THE PERIOD (2026-09-23). "@Match Time who has played most matches in

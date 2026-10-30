@@ -24,7 +24,6 @@ import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { organisersContext, type ScoreWaiting } from "../src/lib/admin-group-context.ts";
 import { answerHqScore } from "../src/lib/admin-group-score.ts";
-import { hasScorelineShape } from "../src/lib/pipeline/score-ask.ts";
 import { world } from "../src/lib/pipeline/__tests__/helpers.ts";
 import type { SquadState } from "../src/lib/pipeline/types.ts";
 import type { ScoreApplyDeps } from "../src/lib/score-engine.ts";
@@ -142,7 +141,7 @@ async function main() {
     // MoM question (the quoted row's ref, stood in for by MOM_ASK_*).
     const answersMomAsk = c.quoted === MOM_ASK_EN || c.quoted === MOM_ASK_TR;
     const r =
-      route === "score" || route === "approve" || answersMomAsk || (route === "unsure" && hasScorelineShape(c.text))
+      route === "score" || route === "approve" || answersMomAsk
         ? await answerHqScore({
             orgId: "org-live",
             lang: c.lang,

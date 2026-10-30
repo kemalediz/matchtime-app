@@ -1,6 +1,7 @@
 /**
- * Recognising the answer to "which team won?" without a model
- * (review of PR #214, item 4).
+ * "Which team won?": the stored question and WHO may answer it (facts).
+ * WHAT an answer says is the score extractor's since 2026-10-30 ("no
+ * string parsing"); the word tests that read it here are deleted.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -8,36 +9,13 @@ import {
   SCORE_ASK_TTL_MS,
   isScoreAnswer,
   isScoreAskOpen,
-  messageHasScoreline,
   messageStatesScore,
-  scorePairAnswerSide,
   parseScoreAskKey,
   samePair,
-  scoreAnswerRef,
-  scoreAnswerSide,
   scoreAskKey,
-  hasScorelineShape,
-  statesSeveralScorelines,
 } from "../score-ask";
 
-const EN: [string, string] = ["Red", "Yellow"];
-const TR: [string, string] = ["Kırmızı", "Sarı"];
 
-describe("the organisers' group's clear-or-ask shapes (2026-10-16)", () => {
-  it("several scorelines in one message", () => {
-    expect(statesSeveralScorelines("7-4 or 7-5")).toBe(true);
-    expect(statesSeveralScorelines("7-4 mü 7-5 mi")).toBe(true);
-    expect(statesSeveralScorelines("Yellow won 7-4")).toBe(false);
-    expect(statesSeveralScorelines("@447700900001 Yellow won 7-4")).toBe(false);
-  });
-  it("the shape of a scoreline, never a time", () => {
-    expect(hasScorelineShape("7-4 mü 7-5 mi emin değilim")).toBe(true);
-    expect(hasScorelineShape("10 - 7 to yellows")).toBe(true);
-    expect(hasScorelineShape("see you at 21:00")).toBe(false);
-    expect(hasScorelineShape("Tom out, 2 more needed")).toBe(false);
-    expect(hasScorelineShape("call 07700-900001")).toBe(false);
-  });
-});
 
 describe("the stored question", () => {
   it("round-trips its numbers through the key", () => {
@@ -60,51 +38,6 @@ describe("the stored question", () => {
   it("treats 10-7 and 7-10 as the same scoreline", () => {
     expect(samePair({ first: 10, second: 7 }, { first: 7, second: 10 })).toBe(true);
     expect(samePair({ first: 10, second: 7 }, { first: 10, second: 6 })).toBe(false);
-  });
-});
-
-describe("a message that is nothing but the winning team", () => {
-  it.each([
-    ["Yellow", "YELLOW"],
-    ["yellows", "YELLOW"],
-    ["Yellows won", "YELLOW"],
-    ["to the reds", "RED"],
-    ["@Match Time red", "RED"],
-    ["it was yellow!", "YELLOW"],
-    ["Red team", "RED"],
-    ["reds @Match Time", "RED"],
-  ] as const)("%s -> %s", (body, side) => {
-    expect(scoreAnswerSide(body, EN)).toBe(side);
-  });
-
-  it.each([
-    ["Sarı", "YELLOW"],
-    ["sarılar kazandı", "YELLOW"],
-    ["kırmızılar", "RED"],
-    ["Kırmızı takım", "RED"],
-  ] as const)("Turkish: %s -> %s", (body, side) => {
-    expect(scoreAnswerSide(body, TR)).toBe(side);
-  });
-
-  it("is not an answer when it has a number, is long, or names nobody", () => {
-    expect(scoreAnswerSide("10-7 to yellow", EN)).toBeNull();
-    expect(scoreAnswerRef("yellow 9")).toBeNull();
-    expect(scoreAnswerSide("yellow were the better side all night", EN)).toBeNull();
-    expect(scoreAnswerSide("good game lads", EN)).toBeNull();
-    expect(scoreAnswerSide("we won", EN)).toBeNull();
-    expect(scoreAnswerSide("", EN)).toBeNull();
-    expect(scoreAnswerSide("Reda", EN)).toBeNull();
-  });
-
-  it('"Yellow?" is a question, not an answer', () => {
-    expect(scoreAnswerSide("Yellow?", EN)).toBeNull();
-    expect(scoreAnswerSide("@Match Time yellow??", EN)).toBeNull();
-    expect(scoreAnswerSide("sarı mı?", TR)).toBeNull();
-  });
-
-  it("uses the club's own names", () => {
-    expect(scoreAnswerSide("Tigers", ["Lions", "Tigers"])).toBe("YELLOW");
-    expect(scoreAnswerSide("yellow", ["Lions", "Tigers"])).toBeNull();
   });
 });
 
@@ -145,24 +78,13 @@ describe("who may answer, and for how long (second review, M2)", () => {
     expect(isScoreAnswer({ ...unknown, ask: { ...ask, askerUserId: null }, now: at(MIN) })).toBe(false);
   });
 
-  it("never a question mark, never before the question, never after it closed", () => {
-    expect(isScoreAnswer({ ...base, body: "Yellow?", now: at(MIN) })).toBe(false);
-    expect(isScoreAnswer({ ...base, tagged: true, body: "@Match Time yellow?", now: at(MIN) })).toBe(false);
+  it("never before the question, and the words are not read (a question mark is the model's to judge)", () => {
     expect(isScoreAnswer({ ...base, now: at(-MIN) })).toBe(false);
+    expect(isScoreAnswer({ ...base, body: "Yellow?", now: at(MIN) })).toBe(true);
+    expect(isScoreAnswer({ ...base, body: "anything at all", now: at(MIN) })).toBe(true);
   });
 });
 
-describe("does the TEXT have a scoreline? (M1)", () => {
-  it.each(["9-6", "it was 6-6 then 9-6 to yellows", "Red 6 Yellow 9", "0-0", "10 - 7 :))", "3 all, well 3-3"])(
-    "yes: %s",
-    (body) => expect(messageHasScoreline(body)).toBe(true),
-  );
-
-  it.each(["good game lads", "yellows won", "yellows got 9", "", "@447700900123 @447700900456 good game", "wrong way round"])(
-    "no: %s",
-    (body) => expect(messageHasScoreline(body)).toBe(false),
-  );
-});
 
 describe("the extractor's numbers must be numbers the sender wrote (third review, item 1)", () => {
   it.each([
@@ -195,29 +117,3 @@ describe("the extractor's numbers must be numbers the sender wrote (third review
   });
 });
 
-describe("the open question, answered by restating it (third review, item 2)", () => {
-  const pair = { first: 10, second: 7 };
-
-  it.each([
-    ["Yellow 10-7", "YELLOW"],
-    ["Yellow 7-10", "YELLOW"],
-    ["10-7 yellow", "YELLOW"],
-    ["7 - 10 reds", "RED"],
-    ["@Match Time 10:7 red", "RED"],
-    ["10-7 to the yellows", "YELLOW"],
-  ] as const)("%s -> %s", (body, side) => {
-    expect(scorePairAnswerSide(body, pair, EN)).toBe(side);
-  });
-
-  it.each([
-    "10-7", // no team
-    "Yellow 9-7", // another pair
-    "Yellow 10-7-3", // a third number
-    "yellow were 7-10 down at one point you know", // a sentence
-    "Yellow 10-7?", // a question
-    "Yellow Red 10-7", // two teams
-    "Arsenal 10-7",
-  ])("not an answer: %s", (body) => {
-    expect(scorePairAnswerSide(body, pair, EN)).toBeNull();
-  });
-});

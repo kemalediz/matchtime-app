@@ -47,7 +47,7 @@ const STANDING_OFFER = {
 
 /** "in but stick me on the bench" — the sender named the bench
  *  themselves, so `polarity` carries it. EXPLICIT. */
-const EXPLICIT_BENCH = { route: "self_att", facts: selfIn({ polarity: "bench" }) };
+const EXPLICIT_BENCH = { route: "self_att", facts: selfIn({ polarity: "bench", benchAsked: true }) };
 
 const TEN = ["owner", "alice", "brian", "pete", "dan", "felix", "greg", "henry", "ivan", "jake"];
 const FOURTEEN = [...TEN, "kyle", "liam", "mike", "noah"];

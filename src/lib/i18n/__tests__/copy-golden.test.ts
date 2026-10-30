@@ -523,7 +523,7 @@ import { RECOMMENDED_BUNDLE, EVERYTHING_BUNDLE } from "../../onboarding-parse";
 import { composeJoinDm } from "../../join-dm";
 import { detailsFollowUpQuestion } from "../../onboarding-parse";
 import { buildBenchUpgradeReply } from "../../bench-upgrade-ack";
-import { resolveReminderPhrase } from "../../reminder-time";
+import { reminderInstant } from "../../reminder-time";
 import { FEE_REPLY_SYSTEM_PROMPT } from "../../fee-confirm";
 import { buildPickMessage, buildPickListChanged } from "../../organiser-pick-rules";
 import { buildGroupAskPost } from "../../admin-group-ask-group-rules";
@@ -907,9 +907,9 @@ function cases(lang: Lang): Case[] {
   add("R31 teams_post", say(teams, { kind: "teams_post", messageId: MSG }));
   add("R32 teams_not_generated", say(full, { kind: "teams_not_generated", messageId: MSG }));
 
-  add("R33 guest_name_ask / singular", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", body: "I'm in and bringing a mate" }));
-  add("R33 guest_name_ask / plural", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", body: "I'm in with two of my guys" }));
-  add("R33 guest_name_ask / no asker name", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: null, body: "+1" }));
+  add("R33 guest_name_ask / singular", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", plural: false }));
+  add("R33 guest_name_ask / plural", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", plural: true }));
+  add("R33 guest_name_ask / no asker name", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: null, plural: false }));
   add("R33b ask_who_mentioned", say(short, { kind: "ask_who_mentioned", messageId: MSG }));
 
   add("R34 score_ack", say(full, { kind: "score_ack", messageId: MSG, red: 3, yellow: 1 }));
@@ -1152,7 +1152,7 @@ function cases(lang: Lang): Case[] {
   add("R50 planUnresolvedNudge / anonymous, dropping", planUnresolvedNudge({ senderResolved: false, attendanceRelevant: true, matchId: "m-1", authorName: "447700900123", dropping: true, lang }).reply);
 
   // ── 1.1 guest-name-ask.ts (also reached via compose above) ──────────
-  add("R44 renderGuestNameAsk / plural, no name", renderGuestNameAsk({ askerName: null, body: "bringing 2 friends", lang }));
+  add("R44 renderGuestNameAsk / plural, no name", renderGuestNameAsk({ askerName: null, plural: true, lang }));
 
   // ── 1.1 stats-blast.ts ──────────────────────────────────────────────
   add("R100 composeStatsBlastDm / named", composeStatsBlastDm("Sait Demir", "https://mt.example/s/abc", lang));
@@ -1681,10 +1681,10 @@ function cases(lang: Lang): Case[] {
   add("R57 buildBenchUpgradeReply / no name", buildBenchUpgradeReply({ name: null, confirmedCount: 12, maxPlayers: 14 }));
 
   // ── R36 reminder-time.ts: the label the reminder ack interpolates ───
-  const now = new Date("2026-09-08T10:00:00.000Z"); // Tue 8 Sep 11:00 London
-  for (const phrase of ["thursday", "tomorrow morning", "in 2 hours", "friday at 6pm", "in a week"]) {
-    const r = resolveReminderPhrase(phrase, now, lang);
-    add(`R36 resolveReminderPhrase whenLabel / "${phrase}"`, r.ok ? r.whenLabel : `(not resolved: ${r.reason})`);
+  // Since 2026-10-30 the extractor states the London time ("YYYY-MM-DD HH:MM").
+  for (const at of ["2026-09-10 09:00", "2026-09-11 18:00", "2026-09-15 12:00"]) {
+    const r = reminderInstant(at, lang);
+    add(`R36 reminderInstant whenLabel / "${at}"`, r.ok ? r.whenLabel : `(not resolved: ${r.reason})`);
   }
 
   // ── R98 fee-confirm.ts: the prompt that embeds the collector prompt ─
@@ -2593,7 +2593,7 @@ describe("Turkish copy, the owner's review artefact", () => {
       if (LANGUAGE_FREE_CASES.has(k.id)) continue;
       // A reminder phrase the resolver refuses says so in the same words
       // in every language (it is a log reason, not copy).
-      if (k.id.startsWith("R36 resolveReminderPhrase") && k.text.startsWith("(not resolved")) continue;
+      if (k.id.startsWith("R36 reminderInstant") && k.text.startsWith("(not resolved")) continue;
       // A composer that says nothing, or returns null, does so in every language.
       if (k.text === "(says nothing)" || k.text === "(null)" || k.text === "(empty string)") continue;
       expect(k.text, k.id).not.toBe(enById.get(k.id));

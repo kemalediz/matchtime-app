@@ -8,7 +8,7 @@
 import { formatLondon } from "./london-time";
 import type { HqLogRow } from "./admin-group-log";
 import type { PendingItem, QuotedMessage } from "./admin-group-confirm-rules";
-import { messageMentionsBotExplicitly } from "./interaction-contract";
+import { piMentionsBot } from "./interaction-contract";
 
 export interface PendingWithLabel extends PendingItem {
   /** The game's day, in the club's language, for teams and a partner ask. */
@@ -105,18 +105,20 @@ function waitingLine(i: PendingWithLabel): string {
  * WHO AN HQ MESSAGE IS SAID TO (2026-10-17). Pure, so the live check
  * (`scripts/live-check-hq-chatter.ts`) decides exactly as production does.
  *
- *   tagged              an @tag of MatchTime (never the bare word, which is
- *                       talk ABOUT MatchTime)
+ *   tagged              the Pi's mention flag for a real @tag of MatchTime
+ *                       (never the bot's name typed as text)
  *   addressed           tagged, or a WhatsApp reply to MatchTime's own message
  *   toAnotherOrganiser  a reply to someone else's message, not tagged: the
  *                       organisers talking to each other (FNF HQ 2026-10-16,
  *                       "Imti Rafi AH back")
  */
-export function hqAddressing(p: { text: string; quoted: QuotedMessage | null; quotedIsMatchTime: boolean }): {
+export function hqAddressing(p: { text: string; quoted: QuotedMessage | null; quotedIsMatchTime: boolean; botMentioned?: boolean }): {
   tagged: boolean;
   addressed: boolean;
   toAnotherOrganiser: boolean;
 } {
-  const tagged = messageMentionsBotExplicitly({ body: p.text });
+  // The Pi's real mention flag, a fact (review of #476): the bot's name
+  // typed as text is not a tag.
+  const tagged = piMentionsBot({ botMentioned: p.botMentioned });
   return { tagged, addressed: p.quotedIsMatchTime || tagged, toAnotherOrganiser: !!p.quoted && !p.quotedIsMatchTime && !tagged };
 }

@@ -61,6 +61,7 @@
  * per-message routing at all; `postBatch` only writes the stub files
  * when the batch itself declares something.
  */
+import { piBotMentioned } from "../helpers/pi-mention";
 import type { APIRequestContext } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { TestDb } from "../helpers/test-db";
@@ -617,7 +618,7 @@ export class SimGroup {
         authorPhone = p.lid || !p.phone ? "" : p.phone.replace(/^\+/, "");
         authorName = p.name;
       }
-      const tagged = it.botMentioned ?? it.tag;
+      const tagged = piBotMentioned(it.body, it.botMentioned ?? it.tag);
       return {
         waMessageId: id,
         ...quoteFields(it),
@@ -625,8 +626,8 @@ export class SimGroup {
         authorPhone,
         authorName,
         timestamp: new Date().toISOString(),
-        // Only forward the structured signal when the spec set it, so the
-        // server's text fallback still exercises on untouched callers.
+        // The structured signal as the real Pi sends it (`pi-mention.ts`):
+        // the spec's value, else true for a body carrying "@Match Time".
         ...(typeof tagged === "boolean" ? { botMentioned: tagged } : {}),
       };
     });

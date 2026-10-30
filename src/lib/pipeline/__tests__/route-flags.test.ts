@@ -46,7 +46,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, afterAll } from "vitest";
-import { isRouterFloorEnabled, routerIsNeeded } from "../gate";
+import { isNoneBucketShadowEnabled, routerIsNeeded } from "../gate";
 import {
   ADMIN_OPS_ENGINE_ROUTES,
   ADMIN_OPS_FLAG,
@@ -197,9 +197,9 @@ describe("step 7 per-route flags", () => {
     ).toEqual(sorted(ALL_FOUR));
   });
 
-  it("a step-7 flag cannot turn the floor or the none-bucket sweep on", () => {
+  it("a step-7 flag cannot turn the none-bucket sweep on", () => {
     const env = { [QUESTION_FLAG]: "1", [BALANCER_FLAG]: "1" };
-    expect(isRouterFloorEnabled(env)).toBe(false);
+    expect(isNoneBucketShadowEnabled(env)).toBe(false);
   });
 
   it("its OFF spellings and gate.ts's ON spellings are DISJOINT, so neither can drift", () => {
@@ -211,11 +211,11 @@ describe("step 7 per-route flags", () => {
     // single value can be read as "affirmative" by both — which is what
     // a copied-then-edited helper would produce.
     for (const v of OFF) {
-      expect(isRouterFloorEnabled({ ROUTER_GATE_FLOOR_ENABLED: v })).toBe(false);
+      expect(isNoneBucketShadowEnabled({ NONE_BUCKET_SHADOW_ENABLED: v })).toBe(false);
       expect(enabledStepSevenRoutes({ [QUESTION_FLAG]: v }).has("question")).toBe(false);
     }
     for (const v of ["1", "true", "yes", "on", "ON", " Yes ", "TRUE"]) {
-      expect(isRouterFloorEnabled({ ROUTER_GATE_FLOOR_ENABLED: v })).toBe(true);
+      expect(isNoneBucketShadowEnabled({ NONE_BUCKET_SHADOW_ENABLED: v })).toBe(true);
       expect(enabledStepSevenRoutes({ [QUESTION_FLAG]: v }).has("question")).toBe(true);
     }
   });
@@ -328,8 +328,8 @@ describe("step 7 per-route flags", () => {
     // become nobody's problem AND nobody's decision.
     const owned = [...ANSWER_TEAM_ACTIONS, ...TEAM_OPS_TEAM_ACTIONS];
     const unowned = ALL_TEAM_ACTIONS.filter((a) => !owned.includes(a));
-    expect([...ALL_TEAM_ACTIONS].sort()).toEqual(["generate", "rename", "show", "suggest", "swap"]);
-    expect(unowned.sort()).toEqual(["rename", "suggest", "swap"]);
+    expect([...ALL_TEAM_ACTIONS].sort()).toEqual(["clear", "generate", "rename", "show", "suggest", "swap"]);
+    expect(unowned.sort()).toEqual(["clear", "rename", "suggest", "swap"]);
   });
 
   it("names every team action the facts type does, and no others", () => {
@@ -343,6 +343,7 @@ describe("step 7 per-route flags", () => {
       rename: true,
       swap: true,
       suggest: true,
+      clear: true,
     };
     const fromFlags: Record<TeamAction, true> = fromFacts;
     expect(Object.keys(fromFlags).sort()).toEqual([...ALL_TEAM_ACTIONS].sort());
@@ -474,7 +475,6 @@ describe("the stub-file seam", () => {
     // an EXPLICIT route set that wins over the (now ON) defaults.
     write({ enabled: true, engine: true, floor: true, engineRoutes: ["question", "balancer"] });
     expect(sorted(enabledStepSevenRoutes(env()))).toEqual(["balancer", "question"]);
-    expect(isRouterFloorEnabled(env())).toBe(true);
   });
 
   it("a stub with no engineRoutes key falls through to the env, exactly as gate.ts does", () => {
@@ -490,7 +490,6 @@ describe("the stub-file seam", () => {
       sorted(["balancer", "score", "admin_ops"]),
     );
     expect(sorted(enabledStepSevenRoutes(env()))).toEqual(sorted(ALL_FOUR));
-    expect(isRouterFloorEnabled(env())).toBe(true);
     write({ floor: true, engineRoutes: [] });
     expect([...enabledStepSevenRoutes(env({ [QUESTION_FLAG]: "1" }))]).toEqual([]);
   });

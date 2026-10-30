@@ -243,7 +243,7 @@ describe("S5 + PR#27 · a BENCH row means FULL or ASKED, never 'inferred'", () =
           from: "amir",
           body: "In. For bench👍",
           route: "self_att",
-          facts: attendanceFacts([claim({ polarity: "bench" })]),
+          facts: attendanceFacts([claim({ polarity: "bench", benchAsked: true })]),
         }),
       ],
     });
@@ -782,9 +782,10 @@ describe("A5 · 'my brother can play if needed' (2026-08-30, Amir)", () => {
     expect(r.outcomes[0].react).toBeNull();
   });
 
-  it("code says a relationship is not a name even if the model forgets", () => {
-    // Belt and braces: personNamed:true but the ref is "Amir's brother".
-    // §11.3 schema drift — the engine treats every field as untrusted.
+  it("a relationship the extractor reads as unnamed registers nobody (no word test since 2026-10-30)", () => {
+    // Until 2026-10-30 a word list also refused "Amir's brother" when the
+    // model said personNamed:true. "No string parsing": the extractor's
+    // personNamed is the reading, and the prompt names relationships.
     const r = decide({
       now: NOW,
       state: state(),
@@ -797,7 +798,7 @@ describe("A5 · 'my brother can play if needed' (2026-08-30, Amir)", () => {
             claim({
               subject: "other",
               personRef: "Amir's brother",
-              personNamed: true,
+              personNamed: false,
               polarity: "in",
             }),
           ]),
@@ -1614,7 +1615,7 @@ describe("SELF_IN_FROM_A_MEMBER_IS_NEVER_DROPPED_BY_THE_FLOOR", () => {
           from: "idris",
           body: "bench maybe",
           route: "self_att",
-          facts: attendanceFacts([claim({ subject: "sender", polarity: "bench", confidence: 0.1 })]),
+          facts: attendanceFacts([claim({ subject: "sender", polarity: "bench", benchAsked: true, confidence: 0.1 })]),
         }),
       ],
     });
@@ -2058,14 +2059,13 @@ describe("S28 · a replacement frees the slot BEFORE it fills it", () => {
 });
 
 describe("S12 · the roster decides whether a reference names someone", () => {
-  it("honours a nickname the model reported as personNamed:false", () => {
-    // Live corpus: the extractor called "habibi" an endearment rather
-    // than a name (3/3), so the engine's unnamed-third-party rule
-    // blocked a drop the message plainly makes. `personNamed` is the
-    // model's reading of the TEXT; whether a reference identifies a
-    // SQUAD MEMBER is the roster's business, and only code has the
-    // roster. Placeholder words still lose: identity.ts refuses them
-    // before this can fire.
+  it("a nickname the model reads as a NAMED person resolves to the member (personKind, 2026-10-30)", () => {
+    // Live corpus: the extractor once called "habibi" an endearment. Until
+    // 2026-10-30 a roster match overruled that reading; since the review
+    // of PR #476 only a ref the model calls a named person is resolved
+    // (`personKind`), so a relation, group or placeholder can never become
+    // a member by a name match. The prompt says a word that may only be a
+    // nickname is named.
     const state = world({
       confirmed: [...FULL_14.slice(0, 12), "mojib", "habib"],
     });
@@ -2084,7 +2084,8 @@ describe("S12 · the roster decides whether a reference names someone", () => {
               claim({
                 subject: "other",
                 personRef: "habibi",
-                personNamed: false,
+                personNamed: true,
+                personKind: "named",
                 polarity: "out",
               }),
             ],
@@ -2095,33 +2096,8 @@ describe("S12 · the roster decides whether a reference names someone", () => {
     });
     expect(statusOf(r.nextState, "mojib")).toBe("DROPPED");
     expect(statusOf(r.nextState, "habib")).toBe("DROPPED");
-    expect(r.outcomes[0].reasons.join(" ")).toMatch(/resolves to a squad member/i);
   });
 
-  it("still refuses a relationship, however confident the model is", () => {
-    const state = world({ confirmed: FULL_14.slice(0, 7) });
-    const r = decide({
-      now: NOW,
-      state,
-      messages: [
-        msg({
-          from: "amir",
-          body: "my brother can play",
-          route: "other_att",
-          facts: attendanceFacts([
-            claim({
-              subject: "other",
-              personRef: "my brother",
-              personNamed: true,
-              polarity: "in",
-              confidence: 1,
-            }),
-          ]),
-        }),
-      ],
-    });
-    expect(r.writes.filter((w) => w.kind === "attendance")).toHaveLength(0);
-  });
 });
 
 describe("S25 · a resolved confirmation is answered even when nothing changed", () => {
@@ -2555,7 +2531,7 @@ describe("PR#27 · a CONTINGENT bench is inferred, not explicit", () => {
           from: "amir",
           body: "In. For bench👍",
           route: "self_att",
-          facts: attendanceFacts([claim({ polarity: "bench" })]),
+          facts: attendanceFacts([claim({ polarity: "bench", benchAsked: true })]),
         }),
       ],
     });
@@ -3297,7 +3273,7 @@ describe("2026-09-07 · an admin's untagged third-party OUT (Shahrokh)", () => {
   // that was safe only because an admin's third-party drop necessarily
   // carried a tag: a tag is a deliberate act. The waiver removes that,
   // so the exemption now hangs off the TAG rather than the seat.
-  it("an admin's untagged drop with banter markers is REFUSED", () => {
+  it("an admin's untagged drop the extractor reads as a joke is REFUSED (low confidence, 2026-10-30)", () => {
     const r = decide({
       now: NOW,
       state: squad(),
@@ -3306,13 +3282,15 @@ describe("2026-09-07 · an admin's untagged third-party OUT (Shahrokh)", () => {
           from: "kemal",
           body: "Shahrokh is out 😂😂 vote him out lads",
           route: "other_att",
-          facts: dropShahrokh(),
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "Shahrokh", personNamed: true, polarity: "out", confidence: 0.3 }),
+          ]),
         }),
       ],
     });
     expect(statusOf(r.nextState, "shahrokh")).toBe("CONFIRMED");
     expect(r.writes).toHaveLength(0);
-    expect(r.outcomes[0].reasons.join(" ")).toMatch(/banter/i);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/confidence/i);
   });
 
   it("the same banter markers WITH a tag are still honoured (unchanged)", () => {

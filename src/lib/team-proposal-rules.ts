@@ -62,7 +62,7 @@ export type TeamCommand =
  * one line. Any number of names is one change.
  */
 export function teamCommandFromFacts(facts: {
-  action: "show" | "generate" | "rename" | "swap" | "suggest";
+  action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear";
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;
   moves?: string[];
   pairings?: string[][];
@@ -73,7 +73,9 @@ export function teamCommandFromFacts(facts: {
   if (facts.action === "show") return { kind: "show" };
   if (facts.action === "suggest") return { kind: "suggest" };
   if (facts.action === "generate") return { kind: "reshuffle", sides, together };
-  if (facts.action === "rename") return { kind: "unclear" };
+  // The organisers' group neither renames nor clears teams (2026-10-30:
+  // "clear" is a players' group action, `team-clear.ts`).
+  if (facts.action === "rename" || facts.action === "clear") return { kind: "unclear" };
   const moves = (facts.moves ?? []).map((m) => m.trim()).filter(Boolean);
   const swapSides = facts.swapSides === true;
   if (!swapSides && moves.length === 0 && sides.length === 0 && together.length === 0) return { kind: "unclear" };

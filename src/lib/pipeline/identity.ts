@@ -13,10 +13,12 @@
  *      incident (`a5a150a`) had the then-analyzer read the wire's `@lid`
  *      form; the failure mode on the other side of it is provisioning a
  *      member literally called "158055467598020".
- *   2. A relationship is never a person. `isPlaceholderGuestName` from
- *      `guest-name-ask.ts` is reused rather than reimplemented — §4.1
- *      measured the then-incumbent analyzer provisioning "Amir's
- *      brother" into a paid squad six times out of six.
+ *   2. A relationship is never a person. Since 2026-10-30 that is the
+ *      extractor's `personNamed: false` (relationships, quantities,
+ *      indefinites, the whole group), applied by the engine; the word
+ *      lists that read it here (`isPlaceholderGuestName`, `GROUP_ADDRESS`)
+ *      are gone ("no string parsing"). §4.1 measured the then-incumbent
+ *      analyzer provisioning "Amir's brother" six times out of six.
  *
  *   (Both are cited in the past tense on purpose. §10 step 8 deleted
  *   `analyzeBatch` and the 19,850-token `SYSTEM_PROMPT`, so neither
@@ -26,7 +28,6 @@
  *   3. Ambiguity BAILS. Two members whose names both match gets no
  *      write and a loud degradation, never a coin flip.
  */
-import { isPlaceholderGuestName } from "../guest-name-ask";
 import type { Member } from "./types";
 
 export type ResolutionOutcome =
@@ -115,18 +116,6 @@ function nearMiss(a: string, b: string): boolean {
   return a.startsWith(b) || b.startsWith(a);
 }
 
-/**
- * Words that address the GROUP rather than a person. "@everyone in" is
- * entirely idiomatic in a football group and the deterministic floor
- * routes it as a third-party add, so without this the engine provisions
- * a member called "everyone" and confirms them into the squad.
- *
- * Kept here rather than added to `guest-name-ask.ts`'s list: that module
- * is shipped and its list drives `stripPlaceholderGuests` on the live
- * path. This is the pipeline's own additional refusal.
- */
-const GROUP_ADDRESS =
-  /^(?:@?everyone|@?everybody|@?all(?:\s+of\s+(?:you|us))?|the\s+group|the\s+lads|the\s+boys|lads|boys|guys|team|squad)$/i;
 
 /**
  * THE CLUB'S MEMBERS A MESSAGE NAMES, from the club's records (2026-10-24).
@@ -201,12 +190,6 @@ export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome 
   if (!raw) return { kind: "not-a-person", why: "empty reference" };
   if (isRawDigitName(raw)) {
     return { kind: "not-a-person", why: `raw digits are never a name: "${raw}"` };
-  }
-  if (isPlaceholderGuestName(raw)) {
-    return { kind: "not-a-person", why: `a relationship is not a name: "${raw}"` };
-  }
-  if (GROUP_ADDRESS.test(raw.replace(/\s+/g, " ").trim())) {
-    return { kind: "not-a-person", why: `"${raw}" addresses the group, not a person` };
   }
 
   const target = norm(raw);

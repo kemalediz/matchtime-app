@@ -79,8 +79,16 @@ function fold(s: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-const SELF = new Set(["us", "we", "our", "ours", "biz", "bizim", "bizimkiler"]);
-const THEM = new Set(["them", "they", "their", "theirs", "onlar", "onlarin"]);
+/**
+ * The score extractor's two tokens for the sender's own side and the other
+ * side (its prompt: "us" for the sender's side, "them" for the other).
+ * Exactly those two strings, the model's output contract, and nothing
+ * else: until 2026-10-30 these were word sets ("we", "our", "biz",
+ * "onlar", ...) that read meaning off whatever was written, and the
+ * extractor already turns all of those into "us" or "them".
+ */
+const SELF = "us";
+const THEM = "them";
 
 /** Words people put around a team name that are not part of it. */
 const FILLER = new Set(["the", "team", "side", "lot", "lads", "boys", "takim", "takimi", "takimin"]);
@@ -187,8 +195,8 @@ export function resolveTeamRef(
   const raw = (ref ?? "").trim();
   if (!raw) return null;
   const folded = fold(raw);
-  if (SELF.has(folded)) return senderTeam;
-  if (THEM.has(folded)) return senderTeam ? other(senderTeam) : null;
+  if (folded === SELF) return senderTeam;
+  if (folded === THEM) return senderTeam ? other(senderTeam) : null;
 
   const w = words(raw);
   if (w.length === 0) return null;

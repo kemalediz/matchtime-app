@@ -70,6 +70,7 @@ describe("everything that is not structured data goes through the shared pipelin
       org: LIVE_ORG,
       messageId: "wa-1",
       text: "can you do the poster for this week",
+      botMentioned: false,
       mentionNames: [{ jid: "1@lid" }],
       quoted: { messageId: null, text: "Teams?", fromMatchTime: true, authorName: null, authorPhone: null },
       senderUserId: "u-admin",

@@ -1191,7 +1191,7 @@ describe("a plain 'in' from a confirmed player never reaches the apply layer as 
    *  uncontingent BENCH. Returned for every call, so the paste in the
    *  same batch gets it too and the pasted-roster clamp must discard it. */
   const SELF_BENCH = {
-    claims: [{ ...SELF_IN.claims[0], polarity: "bench" }],
+    claims: [{ ...SELF_IN.claims[0], polarity: "bench", benchAsked: true }],
     affirmation: "none",
     sideRequests: [],
   };
@@ -1211,33 +1211,6 @@ describe("a plain 'in' from a confirmed player never reaches the apply layer as 
         { userId: "u-pete", status: "CONFIRMED", position: 4 },
       ],
     });
-
-  const PASTE =
-    "Squad update — 3/4 in, just need 1\n1. Alice Admin\n2. Dan Drummer\n3. Sam Striker\n4. Pete";
-
-  it("THE INCIDENT: paste then 'in' in one batch writes nothing and benches nobody", async () => {
-    const calls: Array<{ userId: string; benchIntent: unknown }> = [];
-    const d = deps({
-      model: modelReturning(SELF_BENCH),
-      loadState: fullWithPete,
-      async registerAttendance(userId, _matchId, opts) {
-        calls.push({ userId, benchIntent: opts?.benchIntent });
-        return { status: "BENCH" as const, position: 4, slot: 1, confirmedCount: 3, maxPlayers: 4 };
-      },
-    });
-    const r = await run(
-      [
-        msg({ waMessageId: "wa-paste", body: PASTE, route: "other_att" }),
-        msg({ waMessageId: "wa-in", body: "in" }),
-      ],
-      d,
-    );
-    expect(calls).toEqual([]);
-    expect(d.cancelled).toEqual([]);
-    const out = r.outcomes.get("wa-in");
-    expect(out?.action).toBe("none");
-    expect(out?.reasoning).toMatch(/never names the bench/);
-  });
 
   it("a real bench request in words still reaches the apply layer as EXPLICIT", async () => {
     const calls: Array<{ userId: string; benchIntent: unknown }> = [];
@@ -1586,5 +1559,19 @@ describe("a recruit side request needs an explicit tag or an attendance change (
     });
     const r = await run([alice({ body: "Dan is out, we need one more", route: "other_att" })], d);
     expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(false);
+  });
+});
+
+describe("a team change asked beside the claim (2026-10-30, P2 reads it)", () => {
+  it("the extractor's \"teams\" side request is on the outcome as alsoChangesTeams", async () => {
+    const d = deps({ model: modelReturning({ ...SELF_IN, sideRequests: ["teams"] }) });
+    const r = await run([msg({ body: "@Match Time I'm in, swap Kai with Ali", tagged: true })], d);
+    expect(r.outcomes.get("wa-1")?.alsoChangesTeams).toBe(true);
+  });
+
+  it("without it, false", async () => {
+    const d = deps({ model: modelReturning(SELF_IN) });
+    const r = await run([msg()], d);
+    expect(r.outcomes.get("wa-1")?.alsoChangesTeams).toBe(false);
   });
 });

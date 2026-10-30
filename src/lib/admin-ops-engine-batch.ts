@@ -188,7 +188,6 @@
 import { type QuotedGroupMessage } from "./reply-context";
 import type { QuotedRef } from "./quoted-message";
 import { requestNotHandledAdminReply, requestNotHandledReply } from "./team-ops-engine";
-import { messageMentionsBotExplicitly } from "./interaction-contract";
 import {
   ADMIN_OPS_APPLY_DEGRADED_PREFIX,
   ADMIN_OPS_HANDLED_BY,
@@ -234,7 +233,7 @@ export interface AdminOpsBatchMessage {
   senderUserId: string | null;
   senderName: string | null;
   tagged: boolean;
-  /** `messageMentionsBotExplicitly` — the STRICTER tag test, read only by
+  /** `piMentionsBot` (the Pi's mention flag) — the STRICTER tag test, read only by
    *  the bulk-DM commands. Omitted → the engine derives it from the body.
    *  See `EngineMessage.taggedExplicitly` and `lib/stats-blast.ts`. */
   taggedExplicitly?: boolean;
@@ -523,7 +522,7 @@ export async function runAdminOpsBatch(args: {
       f?.kind === "admin" &&
       f.action === "retry_ask" &&
       m.tagged &&
-      (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body })) &&
+      (m.taggedExplicitly === true) &&
       state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin)
     );
   });
@@ -579,7 +578,7 @@ export async function runAdminOpsBatch(args: {
     // with one is pointed there). Outside the engine, like `unhandled`.
     // Untagged, it is the players talking: nothing done, nothing said.
     if (facts.action === "cancel_match" || facts.action === "restore_match") {
-      if (m.tagged && (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body }))) {
+      if (m.tagged && (m.taggedExplicitly === true)) {
         cancelAsks.set(m.waMessageId, {
           mode: facts.action === "cancel_match" ? "cancel" : "restore",
           dayPhrase: facts.matchDay?.trim() || null,
@@ -601,7 +600,7 @@ export async function runAdminOpsBatch(args: {
     // "no football in December", "we're back mid January". Only with an
     // explicit tag and from an organiser, as the pitch is.
     if (facts.action === "season_break") {
-      if (!(m.tagged && (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body })))) {
+      if (!(m.tagged && (m.taggedExplicitly === true))) {
         hand("season_break without an explicit MatchTime tag");
         continue;
       }
@@ -614,7 +613,7 @@ export async function runAdminOpsBatch(args: {
     }
 
     if (facts.action === "set_venue" || facts.action === "retry_ask") {
-      if (!(m.tagged && (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body })))) {
+      if (!(m.tagged && (m.taggedExplicitly === true))) {
         hand(`${facts.action} without an explicit MatchTime tag`);
         continue;
       }
@@ -642,7 +641,7 @@ export async function runAdminOpsBatch(args: {
     if (
       facts.action === "recruit" &&
       m.tagged &&
-      (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body })) &&
+      (m.taggedExplicitly === true) &&
       !state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin)
     ) {
       recruitNotOrganiser.set(m.waMessageId, "recruit");
@@ -673,11 +672,11 @@ export async function runAdminOpsBatch(args: {
       // still learns what was not modelled); the group now hears
       // "Sorry, I can't do that one yet." An UNTAGGED `other` stays
       // silent: the interaction contract does not answer banter.
-      // The STRICT tag (`messageMentionsBotExplicitly`), not the loose
+      // The STRICT tag (`piMentionsBot` (the Pi's mention flag)), not the loose
       // one: "rate the players via the link from Matchtime DM'ed to you"
       // (2026-09-10) names MatchTime without addressing it, and must not
       // be answered with "I can't do that".
-      if (m.tagged && (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body }))) {
+      if (m.tagged && (m.taggedExplicitly === true)) {
         degradations.push(
           `${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${m.waMessageId}: admin action "other" has no ` +
             `deterministic handler on this path — the group was told in one line that it cannot be done`,

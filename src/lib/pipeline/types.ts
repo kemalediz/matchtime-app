@@ -146,6 +146,21 @@ export interface RoutedMessage {
    * rescues against a true count of 0.
    */
   overrodeRoute?: Route;
+  /**
+   * The router's own reading that the message speaks TO MatchTime (its
+   * `to_bot`, 2026-10-30): a tag, the bot's name used to address it, or a
+   * reply to its own message. The analyze route treats it as a tag
+   * (`messageTagsBot`'s `routerAddressed`), so no word test on the body
+   * decides it. Absent: the model did not say so (or was not asked).
+   */
+  toBot?: boolean;
+  /**
+   * The router's reading that the message reposts the squad as a list of
+   * players (its `pasted_list`, 2026-10-30). The players' group's squad
+   * reader runs only for these (package P2), instead of on every message.
+   * Absent: the model did not say so (or was not asked).
+   */
+  pastedList?: boolean;
 }
 
 // ── Stage 2: FACTS ─────────────────────────────────────────────────────
@@ -184,6 +199,8 @@ export type ConditionOn = "squad" | "self" | "none";
  * One attendance claim the TEXT makes. Every field is a property of the
  * message, checkable by re-reading it. None of them is a decision.
  */
+export type PersonKind = "named" | "relation" | "group" | "placeholder";
+
 export interface Claim {
   /** Who the claim is about. `sender` = the person who typed it. */
   subject: "sender" | "other";
@@ -193,6 +210,23 @@ export interface Claim {
    *  "someone" → false. This single boolean is what stops a ghost user
    *  called "Amir's brother" being provisioned into a paid squad (§4.1). */
   personNamed: boolean;
+  /**
+   * WHAT KIND OF PERSON `personRef` IS, as the extractor reads it
+   * (2026-10-30, the review of PR #476): "named" (a particular person by
+   * name, nickname or @mention), "relation" ("my brother", "Amir's
+   * cousin"), "group" ("everyone", "the lads") or "placeholder" ("someone",
+   * "+1", "2 of my guys"). ONLY "named" is ever resolved against the roster
+   * or provisioned. Absent (older stubs): "named" when `personNamed`, else
+   * "placeholder". `parseFacts` always sets it, and `personNamed` follows it.
+   */
+  personKind?: PersonKind;
+  /**
+   * The message itself asks for the bench for this person (2026-10-30). A
+   * model "bench" without it is read as the IN it came from and capacity
+   * decides, so a CONFIRMED player is never demoted and a newcomer takes a
+   * free place (the Erdal incident, 2026-09-24). Absent: false.
+   */
+  benchAsked?: boolean;
   /** in = joining, out = leaving, bench = EXPLICITLY asked for the bench.
    *  The extractor never infers `bench` from squad capacity; capacity is
    *  the engine's job, so every `bench` here is a stated preference. */
@@ -241,7 +275,11 @@ export type SideRequest =
    *  (`admin-group-understand.ts`). The players' group answers it the same
    *  way when tagged (`runAnswerBatch`'s `alsoAsks`), except where the
    *  organisers announce the list; no other attendance reader counts it. */
-  | "question";
+  | "question"
+  /** "@Match Time I'm out, swap Kai with Ali" (2026-10-30): the message
+   *  ALSO asks for a change to the two teams as they stand. Surfaced on the
+   *  attendance outcome as `alsoChangesTeams`; the teams path applies it. */
+  | "teams";
 
 export interface AttendanceFacts {
   kind: "attendance";
@@ -515,6 +553,10 @@ export type StatsPeriod =
 export interface QuestionFacts {
   kind: "question";
   topic: QuestionTopic;
+  /** The message answers MatchTime's open "who do you mean?" about the
+   *  sender's earlier stats question, and these facts are that question's
+   *  with the person named (2026-10-30). Absent: a question of its own. */
+  answersClarification?: boolean;
   /** Who the question is about, verbatim, when it names anyone. */
   personRef: string | null;
   /** A number the message ASSERTS about the squad ("we're 9/14 right?").
@@ -551,8 +593,10 @@ export interface QuestionFacts {
 export interface TeamFacts {
   kind: "teams";
   /** show = re-post what exists. generate = run the balancer. §3.2 S19:
-   *  "show the teams again" once destroyed an admin's manual swap. */
-  action: "show" | "generate" | "rename" | "swap" | "suggest";
+   *  "show the teams again" once destroyed an admin's manual swap.
+   *  clear (2026-10-30) = remove the line-ups (`team-clear.ts` applies
+   *  it); it replaced the analyze route's word test. */
+  action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear";
   includeRefs: string[];
   teamNames: [string, string] | null;
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;
@@ -736,6 +780,9 @@ export interface AdminFacts {
    *  §3.2 S22: calendar arithmetic is `date-fns-tz`'s job, not the
    *  model's. The extractor hands back the words. */
   phrase?: string;
+  /** Reminder: when to send it, London wall-clock "YYYY-MM-DD HH:MM", as
+   *  the extractor worked it out from NOW (2026-10-30). */
+  remindAt?: string;
   /** reminder — what the nudge should say, in the sender's own words
    *  ("bring the bibs"). Absent when the message only names a time. */
   note?: string;
@@ -1462,11 +1509,9 @@ export type ProposedWrite =
        *  Nothing downstream parses it — `sendAt` is what is queued. */
       phrase: string;
       /**
-       * The resolved instant, in UTC. §3.2 S22 gives the calendar
-       * arithmetic to `date-fns-tz` and NOT to the model; `resolveReminderPhrase`
-       * is where that happens and it is a pure function of
-       * `(phrase, now)`. A phrase it cannot resolve produces no write at
-       * all, so this is never a guess.
+       * The instant, in UTC: the extractor's London `remindAt` turned
+       * into an instant by `reminderInstant` (DST in code, never the
+       * model). An unreadable `remindAt` produces no write at all.
        */
       sendAt: Date;
       /** "Mon 8 Sep at 18:00" — London, rendered once, by the resolver
@@ -1565,7 +1610,7 @@ export type ProposedWrite =
 export type SpeechIntent =
   /** The one authoritative squad post for the batch (§3.2 S36). */
   | { kind: "squad_status"; messageId: string | null }
-  | { kind: "guest_name_ask"; messageId: string; askerName: string | null; body: string }
+  | { kind: "guest_name_ask"; messageId: string; askerName: string | null; plural: boolean }
   /** Review L1: his own IN refused, he plays for a partner club then. */
   | { kind: "partner_guest_overlap"; messageId: string; askerName: string }
   /**
@@ -1730,7 +1775,10 @@ export type SpeechIntent =
    *  were a confirmation — "I'll nudge you on Monday" is not a promise
    *  anybody can check, and `route.ts:3986-3992` already says the
    *  resolved label out loud for exactly that reason. */
-  | { kind: "reminder_ack"; messageId: string; phrase: string; whenLabel: string | null }
+  | { kind: "reminder_ack"; messageId: string; phrase: string; whenLabel: string | null; shiftedForClocks?: boolean }
+  /** The time the extractor stated is already gone (2026-10-30): one line
+   *  saying so, and no reminder is queued. */
+  | { kind: "reminder_past"; messageId: string; whenLabel: string }
   /**
    * A COMPLETE SQUAD IS NOT COMPLETE ANY MORE, and there is no bench to
    * absorb it (2026-09-15). One post per batch however many rows moved.
@@ -1899,19 +1947,14 @@ export interface EngineMessage {
   tagged: boolean;
   /**
    * Did it mention the bot EXPLICITLY — the Pi's structured signal, or a
-   * literal "@" in front of the name? `messageMentionsBotExplicitly`.
+   * literal "@" in front of the name? `piMentionsBot` (the Pi's mention flag).
    *
-   * ⚠️ A SECOND, STRICTER TAG FIELD, AND IT EXISTS BECAUSE OF ONE
-   * MESSAGE. `tagged` is `messageTagsBot`, which counts the bare word
-   * "matchtime" ANYWHERE in a body — so the sentence that queued 69 mass
-   * DMs on 2026-09-10 ("…the link from Matchtime DM'ed to you…") is
-   * `tagged: true`. For an ANSWER that looseness is right and hardened
-   * in on purpose; in front of a mass DM it is not a gate at all.
-   *
-   * ONLY the bulk-DM commands read this. Optional so no caller is forced
-   * to learn a field it does not use: when it is absent the engine
-   * derives it from the body, which is safe because the Pi rewrites a
-   * real bot @-mention into the literal "@Match Time" in the text.
+   * THE PI'S REAL MENTION FLAG (`piMentionsBot`, `botMentioned === true`),
+   * and nothing else: never a reply, never the router's `to_bot`, never
+   * the bot's name typed as text (2026-10-30, review of PR #476). The
+   * bulk-DM commands need it (the 2026-09-10 "link from Matchtime"
+   * near-miss), and so does an answer to "which team won?" that is not a
+   * reply to MatchTime's question. Absent: false.
    */
   taggedExplicitly?: boolean;
   route: Route;
@@ -1926,6 +1969,14 @@ export interface EngineMessage {
    * it quotes (`quoted-message.ts`), never by its words. Absent otherwise.
    */
   quoted?: QuotedRef | null;
+  /**
+   * When the message is a WhatsApp reply to one of MATCHTIME's own posts,
+   * the match that post was about (2026-10-30, review of PR #476). A fact
+   * from the quote, never the words: an answer to "which team won?"
+   * counts only as a reply to MatchTime's post about that match, or with
+   * the Pi's real mention flag (`taggedExplicitly`). Absent otherwise.
+   */
+  repliesToMatchTimeAbout?: string | null;
 }
 
 export interface EngineInput {

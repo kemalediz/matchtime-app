@@ -182,7 +182,6 @@ import { anthropicModel, type PipelineModel } from "./llm";
 import {
   STATS_CLARIFICATION_INTENT,
   STATS_CLARIFIED_INTENT,
-  clarificationSubject,
   isFromAsker,
   type StatsClarification,
 } from "./awaiting-answer";
@@ -601,8 +600,14 @@ export interface AnswerBatchMessage {
   /** Resolved sender, or null for an unknown pushname / opaque @lid. */
   senderUserId: string | null;
   senderName: string | null;
-  /** Did this message @-mention the bot? The interaction-contract signal. */
+  /** Did this message tag the bot? FACTS only (`messageTagsBot`: the Pi's
+   *  mention flag, or a reply to MatchTime). */
   tagged: boolean;
+  /** Spoken TO MatchTime for an ANSWER (`messageAddressesBot`: a tag, or
+   *  the router's `to_bot`). Lets the question route answer an untagged
+   *  "MatchTime who runs this club?"; never lets the teams be shown, which
+   *  needs `tagged` (review of #476). Absent: `tagged`. */
+  addressed?: boolean;
   /** From the router. `undefined` when it never mentioned this id. */
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then step 7 never sees it. */
@@ -830,12 +835,14 @@ export async function runAnswerBatch(args: {
   // a reply to `question` for the asker (`router.ts`), and this matches
   // the resolved sender, not just the pushname, and only a reply that
   // reads as a name.
-  const clarificationFor = new Map<string, { c: StatsClarification; subject: string }>();
+  // FACTS only (2026-10-30): the router routed it `question`, shown the
+  // open clarification above it, and it is from the person asked. Which
+  // person the reply names is the extractor's to read (`clarifiedBy`).
+  let clarificationFor = new Map<string, { c: StatsClarification }>();
   for (const m of messages) {
     if (m.gated || m.route !== "question" || alsoAsks.has(m.waMessageId)) continue;
     const c = (args.clarifications ?? []).find((q) => isFromAsker(q, m));
-    const subject = c ? clarificationSubject(m.body) : null;
-    if (c && subject) clarificationFor.set(m.waMessageId, { c, subject });
+    if (c) clarificationFor.set(m.waMessageId, { c });
   }
 
   // ── Ownership, part 1: everything knowable without a model ─────────
@@ -843,7 +850,9 @@ export async function runAnswerBatch(args: {
     (m) =>
       !m.gated &&
       stepSevenOwnsRoute(m.route, enabled, ANSWER_ROUTES) &&
-      (m.tagged || clarificationFor.has(m.waMessageId)),
+      (m.tagged ||
+        (m.route === "question" && m.addressed === true) ||
+        clarificationFor.has(m.waMessageId)),
   );
   if (candidates.length === 0) return empty();
 
@@ -1018,25 +1027,25 @@ export async function runAnswerBatch(args: {
     eligible,
     (m) => extractorCacheKey(m.route as Route),
     async (m) => {
-      // A reply to a clarification is not itself a question: the ORIGINAL
-      // question is re-read, and the reply supplies the name below.
+      // A message from the person MatchTime asked "who do you mean?" is
+      // read AS IT IS, shown that earlier question (MATCHTIME ASKED); the
+      // extractor says whether it answers it (`answersClarification`) and
+      // only then returns the earlier question's fields (review of #476).
       const clar = clarificationFor.get(m.waMessageId);
       const res = await extractForRouteTraced("answer", model, m.route as Route, {
         id: m.waMessageId,
-        body: clar ? clar.c.questionBody : m.body,
+        body: m.body,
         authorName: m.authorName,
-        tagged: clar ? true : m.tagged,
+        tagged: m.tagged || (m.route === "question" && m.addressed === true),
         history,
         lastBotPost,
         // A reply is about the message it quotes, whoever wrote it, shown
         // as it is; team-ops shows the same, so a balancer message's two
         // owners send one input and share one call (`trace.ts`, #340).
         reply: m.reply ?? null,
+        ...(clar ? { clarifying: clar.c.questionBody } : {}),
         now,
       });
-      if (clar && res.facts.kind === "question" && res.facts.topic === "stats") {
-        res.facts.personRef = clar.subject;
-      }
       for (const d of res.degradations) {
         degradations.push(`extractor ${m.waMessageId}: ${d.detail}`);
       }
@@ -1077,6 +1086,24 @@ export async function runAnswerBatch(args: {
     },
   );
 
+  // ── A CLARIFICATION ONLY WHEN THE EXTRACTOR SAYS SO (review of #476) ─
+  // The asker's message is the answer to "who do you mean?" only when the
+  // extractor read it as one. Otherwise it is a question of its own,
+  // answered only when it is addressed to MatchTime like any other.
+  const unanswerable = new Set<string>();
+  const notClarifications = new Set<string>();
+  for (const id of [...clarificationFor.keys()]) {
+    const f = factsById.get(id);
+    if (f && f.kind === "question" && f.answersClarification === true) continue;
+    notClarifications.add(id);
+    const m = messages.find((x) => x.waMessageId === id);
+    if (m && !(m.tagged || (m.route === "question" && m.addressed === true))) {
+      unanswerable.add(id);
+      degradations.push(`${id}: from the person asked "who do you mean?", but not an answer to it and not addressed to MatchTime; not answered`);
+    }
+  }
+  clarificationFor = new Map([...clarificationFor].filter(([id]) => !notClarifications.has(id)));
+
   // ── Ownership, part 2: shapes only visible after extraction ────────
   //
   // Each rejection below used to be "the analyzer answers this one",
@@ -1100,7 +1127,7 @@ export async function runAnswerBatch(args: {
   // reason is already in `degradations` before the `continue` runs.
   const ownedIds = new Set<string>();
   for (const m of eligible) {
-    const facts = factsById.get(m.waMessageId);
+    const facts = unanswerable.has(m.waMessageId) ? undefined : factsById.get(m.waMessageId);
     if (!facts) continue; // extraction failed; already reported above.
     // NAMED `hand` FOR A HAND-BACK IT NO LONGER PERFORMS. The name is
     // kept because every call site below reads `hand("why")` and
@@ -1560,7 +1587,7 @@ export async function runAnswerBatch(args: {
     senderName: m.senderName ?? m.authorName,
     // A reply to MatchTime's own clarification is addressed to it; see
     // `clarificationFor` above.
-    tagged: m.tagged || clarificationFor.has(m.waMessageId),
+    tagged: m.tagged || (m.route === "question" && m.addressed === true) || clarificationFor.has(m.waMessageId),
     // A message this module does not own still carries its real route so
     // its outcome says why nothing happened. `none` is honest for an id
     // the router never mentioned.

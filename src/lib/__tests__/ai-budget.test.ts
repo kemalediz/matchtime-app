@@ -32,6 +32,7 @@ import {
   NEW_CLUB_CAP_USD,
   PRE_CLUB_CAP_USD,
   CALL_RESERVE_USD,
+  ATTENDANCE_MONTH_FLOOR_USD,
   SETUP_READING_CAP_USD,
 } from "../ai-budget";
 import { AiBudgetExceededError } from "../ai-budget-context";
@@ -262,6 +263,45 @@ describe("the database ledger fails OPEN", () => {
     const ledger = prismaAiBudgetLedger(() => NOW);
     const hold = await ledger.reserve("org-1", "router");
     expect(hold).toEqual({ key: "org-1", day: "2026-09-29", reservedUsd: CALL_RESERVE_USD });
+  });
+
+  it("an attendance-overflow reservation is checked against twice the cap", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue(sutton);
+    dbMock.$queryRaw.mockResolvedValue([{ ok: 1 }]);
+    const ledger = prismaAiBudgetLedger(() => NOW);
+    await ledger.reserve("org-1", "extractor:attendance", { overflow: true });
+    const values = dbMock.$queryRaw.mock.calls[0].slice(1);
+    // The row keeps the club's own cap; only the ceiling of the check doubles.
+    expect(values).toContain(1.5);
+    expect(values[values.length - 1]).toBe(3);
+  });
+
+  it("a live club with a $0 cap still gets attendance reads, up to $0.50 of AI spend a month (review of #476)", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ ...sutton, aiDailyCapUsd: 0 });
+    dbMock.$queryRaw.mockResolvedValueOnce([{ spent: 0.1 }]).mockResolvedValueOnce([{ ok: 1 }]);
+    const ledger = prismaAiBudgetLedger(() => NOW);
+    const hold = await ledger.reserve("org-1", "extractor:attendance", { overflow: true });
+    expect(hold.reservedUsd).toBe(CALL_RESERVE_USD);
+    expect(ATTENDANCE_MONTH_FLOOR_USD).toBe(0.5);
+  });
+
+  it("...and past $0.50 this month, nothing is read", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ ...sutton, aiDailyCapUsd: 0 });
+    dbMock.$queryRaw.mockResolvedValueOnce([{ spent: 0.5 }]).mockResolvedValue([]);
+    const ledger = prismaAiBudgetLedger(() => NOW);
+    await expect(ledger.reserve("org-1", "extractor:attendance", { overflow: true })).rejects.toBeInstanceOf(AiBudgetExceededError);
+  });
+
+  it("a $0 cap is still $0 for everything else, and for a club the rails keep at $0 (bot off)", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ ...sutton, aiDailyCapUsd: 0 });
+    dbMock.$queryRaw.mockResolvedValue([]);
+    await expect(prismaAiBudgetLedger(() => NOW).reserve("org-1", "extractor:question")).rejects.toBeInstanceOf(AiBudgetExceededError);
+    vi.clearAllMocks();
+    dbMock.organisation.findUnique.mockResolvedValue({ ...sutton, whatsappBotEnabled: false });
+    dbMock.$queryRaw.mockResolvedValue([]);
+    await expect(prismaAiBudgetLedger(() => NOW).reserve("org-1", "extractor:attendance", { overflow: true })).rejects.toBeInstanceOf(AiBudgetExceededError);
+    const sql = dbMock.$queryRaw.mock.calls.map((c) => (c[0] as string[]).join("?"));
+    expect(sql.some((q) => q.includes("SUM("))).toBe(false);
   });
 
   it("a refused reservation throws AiBudgetExceededError and records the refusal", async () => {

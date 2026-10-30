@@ -110,7 +110,6 @@ import type { Lang } from "../i18n/lang";
 import { cutsTheRecord, periodKey } from "./stats-period";
 import type { Member, QuestionFacts, SpeechIntent, StatsPeriod, StatsSnapshot, StatsTable } from "./types";
 
-export { clarificationSubject } from "./awaiting-answer";
 
 /** The most rows any list in the group carries (Kemal, 2026-09-23). */
 export const GROUP_LIST_CAP = 10;

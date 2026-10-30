@@ -62,9 +62,9 @@ describe("resolvePerson", () => {
     expect(r).toMatchObject({ kind: "not-a-person" });
   });
 
-  it("refuses a relationship (2026-08-30, 'Amir's brother' 6/6)", () => {
-    for (const ref of ["my brother", "Amir's brother", "2 of my guys", "someone"]) {
-      expect(resolvePerson(ref, roster).kind, ref).toBe("not-a-person");
+  it("reads no meaning off words: whether a ref is a relationship is the extractor's personNamed (2026-10-30)", () => {
+    for (const ref of ["my brother", "everyone", "lads"]) {
+      expect(resolvePerson(ref, roster).kind, ref).not.toBe("not-a-person");
     }
   });
 
@@ -122,11 +122,6 @@ describe("a member named with a relationship prefix is not a new person", () => 
     expect(r.kind === "resolved" && r.member.name).toBe("Najib Ali");
   });
 
-  it("'my brother' with no name attached is still not a person", () => {
-    const squad = [member("najib", { name: "Najib Ali" })];
-    expect(resolvePerson("my brother", squad).kind).toBe("not-a-person");
-  });
-
   it("bails rather than guessing when two tokens both match", () => {
     const squad = [member("najib", { name: "Najib Ali" }), member("ali", { name: "Ali Reza" })];
     expect(resolvePerson("Najib Ali", squad).kind).toBe("resolved");
@@ -134,15 +129,3 @@ describe("a member named with a relationship prefix is not a new person", () => 
   });
 });
 
-describe("a group address is never a person", () => {
-  it.each(["everyone", "@everyone", "everybody", "all", "all of you", "the group", "lads"])(
-    "%s",
-    (ref) => {
-      // "@everyone in" is entirely idiomatic in a football group, and the
-      // deterministic floor routes it as a third-party add. Without this
-      // the engine provisioned a member called "everyone" and confirmed
-      // them into the squad.
-      expect(resolvePerson(ref, [member("kemal")]).kind).toBe("not-a-person");
-    },
-  );
-});

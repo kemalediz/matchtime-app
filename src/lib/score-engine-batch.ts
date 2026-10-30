@@ -148,8 +148,6 @@ import {
   type ScoreApplyDeps,
 } from "./score-engine";
 import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
-import { isScoreAnswer, isScoreAskOpen, scoreAnswerRef } from "./pipeline/score-ask";
-import { resolveTeamRef } from "./pipeline/score-teams";
 
 export { SCORE_APPLY_DEGRADED_PREFIX, SCORE_HANDLED_BY };
 
@@ -173,6 +171,12 @@ export interface ScoreBatchMessage {
   /** The message this one is a WhatsApp reply to, whoever wrote it
    *  (quoted-reply context, slice S4). Absent when it is not a reply. */
   reply?: QuotedGroupMessage | null;
+  /** The Pi's real mention flag (`botMentioned === true`), never the
+   *  router's reading. Absent: false. */
+  taggedExplicitly?: boolean;
+  /** HQ: MatchTime is waiting there for which team won this match (a fact
+   *  from HQ's log), so the message stands as a reply to that question. */
+  answersWaitingQuestionFor?: string | null;
 }
 
 export interface ScoreMessageOutcome {
@@ -311,27 +315,12 @@ export async function runScoreBatch(args: {
   let cost = { usd: 0, calls: 0, ms: 0 };
   const factsById = new Map<string, Facts>();
 
-  // ── THE ANSWER TO "WHICH TEAM WON?" NEEDS NO MODEL ─────────────────
-  //
-  // While the bot has that question open for the played match
-  // (`pipeline/score-ask.ts`), a message that is nothing but one of the
-  // match's team names IS the answer. Its facts are written here, from
-  // the text, and the extractor is not called: paying a model to read
-  // one word would also be trusting it with the one decision this route
-  // keeps in code, whose team is whose.
-  //
-  // NARROW, and the same rule everywhere (`isScoreAnswer`): the match
-  // has NO result, the question is open, and the message tags the bot or
-  // comes from whoever posted the scoreline or an identified admin
-  // within thirty minutes. The engine applies the rule again before
-  // anything is written; this only decides who reads the message.
+  // ── EVERY MESSAGE IS READ BY THE EXTRACTOR ─────────────────────────
+  // Until 2026-10-30 an answer to "which team won?" that was nothing but a
+  // team name was read here from the text, with no model. The extractor
+  // reads it now (its `winner`, shown MatchTime's question as its last
+  // post); WHO may answer stays the engine's fact check (`isScoreAnswer`).
   const playedMatch = state.completedMatch;
-  const unscored = !!playedMatch && playedMatch.redScore === null && playedMatch.yellowScore === null;
-  const openAsk =
-    unscored && playedMatch?.pendingScore && isScoreAskOpen(playedMatch.pendingScore.askedAt, now)
-      ? playedMatch.pendingScore
-      : null;
-  const askLabels = playedMatch?.teamLabels ?? state.teamLabels;
   const toExtract: ScoreBatchMessage[] = [];
   for (const m of candidates) {
     // A REPLY TO MATCHTIME'S POST ABOUT ANOTHER MATCH (review of #341,
@@ -341,23 +330,7 @@ export async function runScoreBatch(args: {
       degradations.push(`${m.waMessageId}: replies to MatchTime's post about another match (${m.reply!.matchId}); nothing written to ${playedMatch.id}`);
       continue;
     }
-    const ref =
-      openAsk &&
-      isScoreAnswer({
-        body: m.body,
-        tagged: m.tagged,
-        senderUserId: m.senderUserId,
-        senderIsAdmin: !!m.senderUserId && !!state.roster.find((r) => r.userId === m.senderUserId)?.isAdmin,
-        ask: openAsk,
-        now,
-      })
-        ? scoreAnswerRef(m.body)
-        : null;
-    if (ref && resolveTeamRef(ref, askLabels, null)) {
-      factsById.set(m.waMessageId, { kind: "score", first: null, second: null, winner: ref });
-    } else {
-      toExtract.push(m);
-    }
+    toExtract.push(m);
   }
 
   await fanOutWarmFirst(
@@ -460,6 +433,10 @@ export async function runScoreBatch(args: {
     senderUserId: m.senderUserId,
     senderName: m.senderName ?? m.authorName,
     tagged: m.tagged,
+    taggedExplicitly: m.taggedExplicitly === true,
+    // A reply to one of MatchTime's own posts: the match that post was
+    // about (a fact from the quote; review of #476).
+    repliesToMatchTimeAbout: m.answersWaitingQuestionFor ?? (m.reply && !m.reply.author ? m.reply.matchId : null),
     route: m.route ?? "none",
     facts: ownedIds.has(m.waMessageId)
       ? (factsById.get(m.waMessageId) ?? { kind: "none" })

@@ -80,6 +80,7 @@ function msg(o: Partial<AnswerBatchMessage> & { body: string }): AnswerBatchMess
     senderUserId: o.senderUserId === undefined ? "u-kemal" : o.senderUserId,
     senderName: o.senderName ?? fullName("kemal"),
     tagged: o.tagged ?? true,
+    ...(o.addressed !== undefined ? { addressed: o.addressed } : {}),
     route: (o.route ?? "question") as Route,
     gated: false,
   };
@@ -274,20 +275,35 @@ describe("asking, and understanding the answer", () => {
     expect(o.intent).toBe("stats_clarification");
   });
 
-  it("the asker's untagged 'Idris' is read as the answer to the original question", async () => {
-    const { model, calls } = stubModel({
-      [ASKED.questionBody]: { topic: "stats", personRef: "Mo", statedCount: -1, table: "chemistry", listSize: -1, listEnd: "top" },
+  it("the asker's untagged 'Idris', read by the extractor as the answer, re-answers the original question", async () => {
+    // Since the review of #476 the reply is read AS IT IS, shown the
+    // earlier question; the extractor says it answers it.
+    const users: string[] = [];
+    const { model: inner, calls } = stubModel({
+      Idris: { topic: "stats", personRef: "Idris", statedCount: -1, table: "chemistry", listSize: -1, listEnd: "top", answersClarification: true },
     });
-    const { res } = await run({
-      messages: [msg({ body: "Idris", tagged: false })],
-      model,
-      clarifications: [ASKED],
-    });
+    const model: PipelineModel = { ...inner, complete: (req) => (users.push(req.user), inner.complete(req)) };
+    const { res } = await run({ messages: [msg({ body: "Idris", tagged: false })], model, clarifications: [ASKED] });
     const o = res.outcomes.get("wa-1")!;
     expect(o.reply).toContain("Idris Bello's best team-mates:");
     expect(o.intent).toBe("stats_clarified");
-    // The ORIGINAL question was re-read; the reply itself never was.
-    expect(calls).toEqual([`extractor:question|${ASKED.questionBody}`]);
+    expect(calls).toEqual(["extractor:question|Idris"]);
+    expect(users[0]).toContain(`MATCHTIME ASKED them whom they meant in their earlier question: "${ASKED.questionBody}"`);
+  });
+
+  it("the asker's NEW tagged question within the hour is answered as itself, not as the old one (review of #476)", async () => {
+    const COUNT = { topic: "count", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", answersClarification: false };
+    const { model } = stubModel({ "@Match Time how many are we?": COUNT });
+    const { res } = await run({ messages: [msg({ body: "@Match Time how many are we?", tagged: true })], model, clarifications: [ASKED] });
+    const o = res.outcomes.get("wa-1")!;
+    expect(o.intent).not.toBe("stats_clarified");
+    expect(o.reply ?? "").not.toMatch(/team-mates/);
+  });
+
+  it("the asker's untagged chat that does not answer it is not answered at all", async () => {
+    const { model } = stubModel({ "lol good game": { topic: "other", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top", answersClarification: false } });
+    const { res } = await run({ messages: [msg({ body: "lol good game", tagged: false })], model, clarifications: [ASKED] });
+    expect(res.outcomes.size).toBe(0);
   });
 
   it("the same word from somebody else is not an answer to Kemal's question", async () => {
@@ -303,7 +319,7 @@ describe("asking, and understanding the answer", () => {
 
   it("an answer that still names nobody is asked about again, not guessed", async () => {
     const { model } = stubModel({
-      [ASKED.questionBody]: { topic: "stats", personRef: "Mo", statedCount: -1, table: "chemistry", listSize: -1, listEnd: "top" },
+      Zork: { topic: "stats", personRef: "Zork", statedCount: -1, table: "chemistry", listSize: -1, listEnd: "top", answersClarification: true },
     });
     const { res } = await run({ messages: [msg({ body: "Zork", tagged: false })], model, clarifications: [ASKED] });
     expect(res.outcomes.get("wa-1")?.reply).toBe("Kemal, I don't have a Zork in the squad. Who do you mean?");
@@ -372,3 +388,26 @@ describe("the period (2026-09-23)", () => {
     expect(res.degradations.join(" ")).toMatch(/stats read failed/);
   });
 });
+
+describe("to_bot may make MatchTime ANSWER, never act (review of #476, M7)", () => {
+  const COUNT = { topic: "count", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top" };
+  it("an untagged question the router read as addressed to MatchTime is answered", async () => {
+    const { model } = stubModel({ "MatchTime how many are we?": COUNT });
+    const { res } = await run({ messages: [msg({ body: "MatchTime how many are we?", tagged: false, addressed: true })], model });
+    expect(res.outcomes.get("wa-1")?.reply).toBeTruthy();
+  });
+
+  it("the same question with neither a tag nor to_bot is not answered", async () => {
+    const { model } = stubModel({ "MatchTime how many are we?": COUNT });
+    const { res } = await run({ messages: [msg({ body: "MatchTime how many are we?", tagged: false })], model });
+    expect(res.outcomes.size).toBe(0);
+  });
+
+  it("showing the teams needs a real tag: to_bot alone does not post them", async () => {
+    const { model, calls } = stubModel({});
+    const { res } = await run({ messages: [msg({ body: "MatchTime teams?", tagged: false, addressed: true, route: "balancer" })], model });
+    expect(res.outcomes.size).toBe(0);
+    expect(calls).toEqual([]);
+  });
+});
+
