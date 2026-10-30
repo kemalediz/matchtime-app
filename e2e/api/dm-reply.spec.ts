@@ -186,7 +186,8 @@ test("a cold 'IN' DM registers against the next match and tells the group", asyn
   const json = await postDm(request, PHONE.fresh, "IN");
   expect(json.handled).toBe("dm-self-attendance");
   expect(json.decision).toBe("in");
-  expect(json.via).toBe("fast-path");
+  // 2026-10-30: read by the model (the free word-list fast path is deleted).
+  expect(json.via).toBe("llm");
   expect(json.matchId).toBe(MATCH.upcoming);
   expect(json.status).toBe("CONFIRMED");
 

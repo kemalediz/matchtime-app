@@ -1,11 +1,20 @@
 /**
  * DIRECT MESSAGES FROM THE ORGANISER OF A CLUB THAT IS SETTING UP
  * (go-live slice S4, 2026-10-12; plan 2.4 and 2.5, owner decisions 4, 5
- * and 8). Deterministic end to end: nothing here calls a model.
+ * and 8).
+ *
+ * WHETHER A DM IS "GO" IS THE MODEL'S READ, AND ONLY THAT (2026-10-30).
+ * It was a word list (`isGoCommand`: GO, GO LIVE, BAŞLA, BASLA). Now the
+ * one DM reader (`dm-intent.ts`, `go_live`, at 90% confidence) reads the
+ * message against MatchTime's setup message. Everything else stays code,
+ * and runs FIRST: the sender must be a current owner or admin, known by
+ * phone or a stored LID, of a club that is setting up or went live after
+ * one; nobody else's DM is read here at all.
  *
  * Two handlers, both called from `api/whatsapp/dm-reply`:
  *
- *   `handleGoDm`         "GO" (GO LIVE, BAŞLA, BASLA): take the club live.
+ *   `handleGoDm`         "GO" (GO LIVE, BAŞLA, in any words the reader
+ *                        reads as GO): take the club live.
  *                        Runs near the top of the route, before every
  *                        other handler, and outside the self-join flag.
  *   `handleSettingUpDm`  anything else from somebody the setting-up rail
@@ -61,7 +70,6 @@ import {
   WENT_LIVE_CLUB_WHERE,
   goLiveClub,
   isClubSettingUp,
-  isGoCommand,
   liveByUser,
   type GoLiveResult,
 } from "./club-setup";
@@ -197,13 +205,15 @@ export type GoDmOutcome =
 
 /**
  * "GO" by DM. Returns null, having changed and sent nothing, unless the
- * WHOLE message is the command AND the sender is a current owner or admin
+ * sender is a current owner or admin
  * of a club that is setting up, or of one that has been through the hold
  * and is live (they are told "already live", however long ago that was;
  * or, when that club is paused for the club fee, "already live, but
- * paused at the moment", with where to look). A club that was never held does not count: GO from its admin
- * is an ordinary DM and falls through. The text is checked first, so no
- * other DM costs a query here.
+ * paused at the moment", with where to look), AND the DM reader reads the
+ * message as GO. A club that was never held does not count: GO from its
+ * admin is an ordinary DM and falls through. The facts are checked first,
+ * so the model is asked only about such a sender's DM; the read is the
+ * route's one read of the DM (`dm-reader.ts`), reused by every later step.
  */
 export async function handleGoDm(input: {
   text: string;
@@ -216,8 +226,11 @@ export async function handleGoDm(input: {
   learningEnabled?: boolean;
   /** BILLING_ENABLED as the route reads it for this request. */
   billingEnabled?: boolean;
+  /** The DM reader (`dm-reader.ts`): what the message asks MatchTime to
+   *  do. Asked only once the sender is known to organise such a club.
+   *  Absent: nothing is read as GO. */
+  read?: (userId: string) => Promise<{ intent: string }>;
 }): Promise<GoDmOutcome | null> {
-  if (!isGoCommand(input.text)) return null;
   const userIds = await resolveSenderUserIds({ phones: [input.phone, input.senderAltPhone], lid: input.senderLid ?? null });
   if (userIds.length === 0) return null;
 
@@ -240,6 +253,12 @@ export async function handleGoDm(input: {
   // One row per club (a sender who resolves to two accounts in one club).
   const clubs = rows.filter((r, i) => rows.findIndex((x) => x.orgId === r.orgId) === i);
   if (clubs.length === 0) return null;
+
+  // Only now, for an organiser of such a club: is this message GO? A
+  // failed or unsure read is not GO, and the DM carries on as before.
+  if (!input.read) return null;
+  const read = await input.read(clubs[0].userId);
+  if (read.intent !== "go_live") return null;
 
   const key = goClaimKey(input.waMessageId);
   if (!(await claim(key))) return { handled: "setup-go-duplicate" };

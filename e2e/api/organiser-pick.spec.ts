@@ -32,6 +32,7 @@ import { clearOrganiserPickReaderStub, setOrganiserPickReaderStub } from "../hel
 import { readFileSync } from "node:fs";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
+import { addMatchAvailabilityBodies } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
 
@@ -347,6 +348,8 @@ test("nobody picks in time (D5): the place is offered to the whole waiting list"
   // The first on the waiting list to say IN takes it now.
   const bench = await db.all<{ userId: string }>(`SELECT "userId" FROM "Attendance" WHERE "matchId" = $1 AND status = 'BENCH' ORDER BY position`, [MATCH_ID]);
   const taker = Object.values(P).find((p) => p.id === bench[0].userId)!;
+  // The bench offer's "reply YES", read by the model (stubbed) since 2026-10-30.
+  addMatchAvailabilityBodies({ YES: "in" });
   const claim = await post(request, "/api/whatsapp/dm-reply", { phone: digits(taker.phone), body: "YES", waMessageId: "e2e-op-claim-1" });
   expect(claim.handled).not.toBe("organiser-pick");
   expect(await statusOf(db, taker.id)).toBe("CONFIRMED");
@@ -552,6 +555,7 @@ test("nobody picks with SEVERAL places open: one offer per waiting player, annou
 
   // Both waiting players can still take a place each.
   for (const [n, phone] of ["447700942002", "447700942003"].entries()) {
+    addMatchAvailabilityBodies({ YES: "in" });
     await post(request, "/api/whatsapp/dm-reply", { phone, body: "YES", waMessageId: `e2e-op-many-claim-${n}` });
   }
   const status = await db.all<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 ORDER BY position`, [M]);

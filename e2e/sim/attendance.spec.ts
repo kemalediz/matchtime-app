@@ -37,7 +37,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { createGroup, SimGroup } from "./group";
-import { claim, facts, otherFacts, selfIn, selfOut } from "../helpers/stub";
+import { claim, facts, otherFacts, selfIn, selfOut, addMatchAvailabilityBodies } from "../helpers/stub";
 import { buildSquadCompleteBenchInvite } from "../../src/lib/bench-offer-copy";
 
 /** The two bodies this file posts most: a plain self IN and a plain self
@@ -341,6 +341,7 @@ test.describe("bench-offer claim lifecycle", () => {
     await grp.post("pete", "out", OUT);
     expect(await grp.openOffers()).toHaveLength(1);
 
+    addMatchAvailabilityBodies({ YES: "in" }); // the bench offer's YES, read by the model (stubbed)
     const r = await grp.dm("greg", "YES");
     expect(r.json.handled).toBe("bench-dm");
     expect(r.json.result).toBe("confirmed");
@@ -354,6 +355,8 @@ test.describe("bench-offer claim lifecycle", () => {
 
   test("late claimer after the slot went → still on the bench, nothing changes", async ({ request, db }) => {
     const grp = await group(request, db);
+    // Nothing asked him to play: the model reads a bare YES as unclear.
+    addMatchAvailabilityBodies({ YES: "unclear" });
     const r = await grp.dm("henry", "YES");
     // No open offer anywhere → the bench-DM branch never engages.
     expect(r.json.handled).toBeUndefined();

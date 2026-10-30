@@ -23,16 +23,18 @@
  *   0b-go. GO                           (2026-10-12, go-live slice S4: "GO",
  *      "GO LIVE", "BAŞLA" from a current owner or admin of a club that is
  *      approved but still setting up; takes the club live; outside the
- *      self-join flag; deterministic, no model; the whole message must be
- *      the command, anything else falls through untouched. See
- *      lib/setup-go-dm.ts, handleGoDm)
+ *      self-join flag; the sender is checked first, then the one DM read
+ *      (2026-10-30, it was a word list) must say GO at 90%; anything else
+ *      falls through untouched. See lib/setup-go-dm.ts, handleGoDm)
  *   0c. organiser pick reply           (2026-10-01, slice 2b: an owner or
  *      admin, resolved BY PHONE ONLY, answering a pick round they were
  *      asked on: "2", "Wasim", "NONE", "YES"; deterministic, no model; a DM
  *      that is not a pick reply falls through untouched. See
  *      lib/organiser-pick.ts, handleOrganiserPickDm)
- *   1. bench-slot offer reply           (an open BenchSlotOffer)
- *   2. DM subscription command          ("stop messaging me about ratings")
+ *   1. bench-slot offer reply           (an open BenchSlotOffer; yes or no
+ *      read by the match-availability model since 2026-10-30)
+ *   2. DM subscription command          ("stop messaging me about ratings";
+ *      the one DM read since 2026-10-30, see lib/dm-reader.ts)
  *   3. player payment claim             (2026-09-23: "Paid" from a player
  *      who owes a released fee; the pay page's settle-directly, see
  *      lib/payment-claim.ts)
@@ -53,7 +55,8 @@
  *   9. help, read by the shared question extractor (2026-10-28: "help",
  *      "how do I turn on the player pool?", "havuz nasıl açılır"; the
  *      group's own builder, for the sender's club; see lib/dm-help.ts),
- *      then scoped Q&A, else ignore
+ *      then scoped Q&A when the one DM read says it is a question, else
+ *      ignore
  *
  * Adding a handler means slotting it by SPECIFICITY, never in front of a
  * prompt that knows which question is being answered.
@@ -99,15 +102,16 @@ import { loadDmReplyContext, logDmQuote, parseDmQuote, quoteForClubs, quoteForMa
 import { normalisePhone } from "@/lib/phone";
 import { classifyRosterReply } from "@/lib/roster-survey-classifier";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
-import { answerScopedQuestion, pickQaOrgAndQuote, looksLikeQuestion } from "@/lib/dm-qa";
+import { answerScopedQuestion, pickQaOrgAndQuote } from "@/lib/dm-qa";
 import { handleCollectorFeeReply } from "@/lib/payment-flow";
 import { feeConfirmAboutKey } from "@/lib/fee-confirm-reaction";
 import { setDmSubscriptions } from "@/lib/notification-prefs";
 import {
-  parseDmSubscriptionCommand,
+  subscriptionCommandOf,
   dmSubPatchForCommand,
   dmSubAckMessage,
 } from "@/lib/dm-subscriptions";
+import { createDmReader } from "@/lib/dm-reader";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { resolveTentative } from "@/lib/tentative-store";
 import { buildTentativeFollowupAck } from "@/lib/tentative-followup";
@@ -126,7 +130,6 @@ import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
 import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
 import { LANGS } from "@/lib/i18n/lang";
-import { readBenchDmReply, readTentativeFastPath } from "@/lib/dm-reply-words";
 import {
   buildAdminRecruitDmReply,
   buildBenchDmAck,
@@ -177,6 +180,23 @@ export async function POST(request: Request) {
   const { answeringOnce } = await import("@/lib/dm-answering");
   const answering = answeringOnce(quoted?.text ?? parseDmQuote(body)?.text ?? null, [phone, senderAltPhone]);
 
+  // ── THE ONE DM READ (2026-10-30, no string parsing) ───────────────────
+  //   What the message asks MatchTime to do (`dm-intent.ts`): GO, stop or
+  //   start its messages, an organiser's instruction, a question, or none
+  //   of these. Read by the model, once, the first time a step below asks
+  //   (`dm-reader.ts` memoises it), against the sender's clubs and what
+  //   MatchTime said to them. It replaced the GO, STOP and "is this a
+  //   question" word lists. Each step still gates on facts before acting.
+  const reader = createDmReader({
+    text,
+    quoted,
+    senderName: authorName ?? null,
+    phone: async (userId) =>
+      (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+      (await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+      null,
+  });
+
   // ── Local player pool: the /play confirm code (slice L2, 2026-10-24) ──
   //   "Hi MatchTime, sign me up to play. Code K7QP" (Turkish: "Merhaba
   //   MatchTime, oynamak için kaydet. Kod K7QP"), the message the /play form
@@ -225,14 +245,13 @@ export async function POST(request: Request) {
   // ── GO: the organiser of a club that is setting up takes it live ───────
   //   (go-live slice S4, 2026-10-12.) OUTSIDE the self-join flag, so a
   //   club already setting up can still go live with the flag off, and
-  //   ahead of every handler below. Deterministic, no model. The text is
-  //   checked first (the whole message must be GO, GO LIVE, BAŞLA or
-  //   BASLA), so no other DM costs a query here; and it engages only for a
-  //   current owner or admin, known by phone or a server-stored LID, of a
-  //   club that is setting up, or that has been through setting up and is
-  //   live (they are told "already live"). For everybody else, the admins
-  //   of every club that was never held among them, it returns null and
-  //   the DM carries on exactly as before. See lib/setup-go-dm.ts.
+  //   ahead of every handler below. It engages only for a current owner or
+  //   admin, known by phone or a server-stored LID, of a club that is
+  //   setting up, or that has been through setting up and is live (they
+  //   are told "already live"); only then is the DM read, by the one DM
+  //   reader (2026-10-30: it was a GO word list), and only a confident GO
+  //   acts. For everybody else it returns null with no model call, and the
+  //   DM carries on exactly as before. See lib/setup-go-dm.ts.
   {
     const go = await handleGoDm({
       text,
@@ -242,6 +261,7 @@ export async function POST(request: Request) {
       waMessageId,
       learningEnabled: setupLearningEnabledForRequest(request),
       billingEnabled: billingEnabledForApiRequest(request),
+      read: reader.read,
     });
     if (go) return NextResponse.json({ ok: true, ...go });
   }
@@ -351,8 +371,8 @@ export async function POST(request: Request) {
       }
 
       if (claimant) {
-        // The offered match's org decides the language: of the reply we
-        // read (`readBenchDmReply`) and of the DM we send back.
+        // The offered match's org decides the language of the DM we send
+        // back.
         const matchOrg = await db.match.findUnique({
           where: { id: claimant.matchId },
           select: { date: true, activity: { select: { orgId: true, org: { select: { language: true } } } } },
@@ -362,10 +382,34 @@ export async function POST(request: Request) {
         const offerMatchDate = matchOrg?.date ?? new Date();
         const replyNow = new Date();
         const benchLang = matchOrg?.activity.org.language;
-        const benchReply = readBenchDmReply(text, benchLang);
-        const isYes = benchReply === "yes";
-        const isNo = benchReply === "no";
         const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+        // Yes or no to the offer, read by the match-availability model
+        // against the offer MatchTime sent him (2026-10-30: it was a word
+        // list). "in" takes the place, "out" declines it; anything else,
+        // a failed call or the AI cap included, gets the one clarification.
+        const benchFacts = await loadMatchAvailabilityFacts({
+          userId: claimant.id,
+          matchId: claimant.matchId,
+          phone:
+            phoneNoPlus ??
+            (await db.user.findUnique({ where: { id: claimant.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+            null,
+          quoted: quoteForMatch(quoted, claimant.matchId),
+        });
+        const benchClub = orgId ? await db.organisation.findUnique({ where: { id: orgId }, select: { name: true } }) : null;
+        const benchMatch = await db.match.findUnique({ where: { id: claimant.matchId }, select: { activity: { select: { name: true } } } });
+        const benchVerdict = orgId
+          ? await withOrgAiBudget(orgId, () =>
+              classifyMatchAvailability(text, {
+                ...benchFacts,
+                clubName: benchClub?.name ?? null,
+                matchName: benchMatch?.activity.name ?? null,
+                matchWhen: dayCommaTimeLabel(benchLang, offerMatchDate),
+              }),
+            )
+          : null;
+        const isYes = benchVerdict?.decision === "in";
+        const isNo = benchVerdict?.decision === "out";
 
         if (!isYes && !isNo) {
           // One gentle clarification (this is a single reply to one
@@ -649,14 +693,16 @@ export async function POST(request: Request) {
     if (named) return NextResponse.json({ ok: true, ...named });
   }
 
-  // ── DM subscription-preference fast-path (2026-06-11; per-category
+  // ── DM subscription preferences (2026-06-11; per-category
   //    2026-07-17) ──────────────────────────────────────────────────────
   //   A player can text the bot to opt out of proactive DMs — either a
   //   single category ("stop messaging me about ratings") or everything
   //   except payment ("do not message me on any topic but payment", "only
   //   payment please"). Payment DMs have NO flag and are never silenced.
-  //   Deterministic keyword match (parser in lib/dm-subscriptions.ts), run
-  //   BEFORE the collector-fee and Q&A branches so it can't be swallowed:
+  //   Read by the one DM reader (2026-10-30: it was a keyword parser),
+  //   against what MatchTime last sent them, so "stop" answering a fee
+  //   question is not an opt-out. Run BEFORE the collector-fee and Q&A
+  //   branches so it can't be swallowed:
   //   the Q&A fallthrough only composes prose and writes nothing, which is
   //   exactly the gap that once let a player keep getting DMs after asking
   //   us to stop.
@@ -674,7 +720,7 @@ export async function POST(request: Request) {
     });
     // Someone in no club (a pool player) reads it in his pool language (L6.11).
     const subLang = subMem ? subMem.org.language : await poolLanguageOf(user.id);
-    const cmd = parseDmSubscriptionCommand(text ?? "", subLang);
+    const cmd = subscriptionCommandOf((await reader.read(user.id)).intent);
     if (cmd) {
       let written = false;
       try {
@@ -861,16 +907,11 @@ export async function POST(request: Request) {
       // the one it answers (review of #336).
       const chosen = (quoted?.matchId ? active.find((t) => t.match.id === quoted.matchId) : undefined) ?? active[0];
       const tentLang = chosen.match.activity.org.language;
-      // Cheap, instant FAST-PATH for the unambiguous replies. Free, so we
-      // use it — but it is NOT the decision (2026-08-31). A player who
-      // answers "yeah go on then" or "can't tomorrow sorry" is not
-      // ambiguous, they just didn't type a keyword; anything this misses
-      // now goes to the LLM below instead of triggering a re-ask.
-      const fast = readTentativeFastPath(text ?? "", tentLang);
-      let isIn = fast === "in";
-      let isOut = fast === "out";
-
-      if (!isIn && !isOut) {
+      // IN or OUT, read by the model against the follow-up (2026-10-30:
+      // the free word-list fast path in front of it is deleted).
+      let isIn = false;
+      let isOut = false;
+      {
         const row0 = chosen;
         const org0 = await db.organisation.findUnique({
           where: { id: row0.match.activity.orgId },
@@ -1159,7 +1200,7 @@ export async function POST(request: Request) {
   //      day, in exchange for never testing a mass-DM trigger with a
   //      pattern again. See `lib/dm-intent.ts`.
   {
-    const { classifyDmIntent, runDmAdminIntent } = await import("@/lib/dm-intent");
+    const { runDmAdminIntent } = await import("@/lib/dm-intent");
     const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
     let dmAdminOrgIds: string[] = [];
     // The club the quoted message's match belongs to (quoted-reply context
@@ -1195,24 +1236,13 @@ export async function POST(request: Request) {
           ? ((await db.match.findUnique({ where: { id: quoted.matchId }, select: { activity: { select: { orgId: true } } } }))
               ?.activity.orgId ?? null)
           : null;
+        // The club the quote picks, for which club the action is on.
         adminQuote = quoteForClubs(quoted, quotedOrgId, dmAdminOrgIds);
-        // Only this admin's clubs' DMs (review of #339, M1): the quoted
-        // club's when the quote picked one.
-        const replyContext = await loadDmReplyContext(db, {
-          userId: user.id,
-          phone: await dmPhone(),
-          quoted: adminQuote.quoted,
-          orgIds: adminQuote.orgId ? [adminQuote.orgId] : dmAdminOrgIds,
-        });
-        const payer = adminQuote.orgId ?? dmAdminOrgIds[0];
-        // The club's partner clubs (slice S6), so "ask Sutton" is read
-        // against them. Never fails the DM: on a read error, no line.
-        const { activePartnerChoices } = await import("@/lib/partner-ask-words");
-        const partnerClubs = payer ? (await activePartnerChoices(payer).catch(() => [])).map((p) => p.name) : [];
-        const ctx = { senderName: authorName ?? null, replyContext, partnerClubs };
         // The intent, and the intro categories the model listed (only
-        // `intro_messages` carries any).
-        const c = payer ? await withOrgAiBudget(payer, () => classifyDmIntent(text, ctx)) : await classifyDmIntent(text, ctx);
+        // `intro_messages` carries any): the DM's one read, made by now in
+        // the subscription step (`dm-reader.ts`), shown this admin's clubs,
+        // their partner clubs and what MatchTime said to him.
+        const c = await reader.read(user.id);
         return { intent: c.intent, intro: c.intro };
       },
       // The quoted club first, when the quote named one of this admin's.
@@ -1411,8 +1441,7 @@ export async function POST(request: Request) {
         quoted: quoteForMatch(quoted, target.matchId),
       });
       // Spent from the match's club (the daily AI cap). At the cap the
-      // regex fast path still registers a plain IN/OUT; only the model
-      // fallback is refused, which reads as "unclear".
+      // model is refused, which reads as "unclear": nothing is written.
       const resolution = await withOrgAiBudget(target.orgId, () => resolveDmSelfAttendance({
         text,
         hasPendingPrompt: !!dm,
@@ -1545,17 +1574,14 @@ export async function POST(request: Request) {
     //   their group's football (see dm-qa.ts — the LLM only ever sees
     //   safe, group-public data + the asker's own stats, never contact
     //   details or other groups). Reply via a DM BotJob the Pi sends.
-    // The org the question is about decides the language the gate reads
-    // (a Turkish question has no "?" often enough to matter).
+    // Whether it IS a question is the DM's one read (2026-10-30: it was a
+    // "?" and question-word gate, with a Turkish word list beside it).
     // A swipe-reply about one of his clubs' matches is a question about
     // that club, and is read against the quoted message; a quote about
     // another club's match is dropped (quoted-reply context S3).
     const qa = await pickQaOrgAndQuote(user.id, quoted);
     const qaOrgId = qa.orgId;
-    const qaLang = qaOrgId
-      ? (await db.organisation.findUnique({ where: { id: qaOrgId }, select: { language: true } }))?.language
-      : null;
-    if (looksLikeQuestion(text, qaLang)) {
+    if ((await reader.read(user.id)).intent === "question") {
       const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
       // Fall back to the user's stored phone for @lid senders.
       const u = await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } });

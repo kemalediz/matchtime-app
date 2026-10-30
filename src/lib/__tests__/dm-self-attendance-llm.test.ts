@@ -1,6 +1,7 @@
 /**
- * resolveDmSelfAttendance — the layered decision (pending prompt → regex
- * fast-path → LLM), with the classifier mocked.
+ * resolveDmSelfAttendance: a pending prompt wins, otherwise the model
+ * reads it (the regex fast path and the hypothetical regex are deleted,
+ * 2026-10-30), with the classifier mocked.
  *
  * NOTE: a stubbed classifier only proves the WIRING. The model's actual
  * behaviour on real wording is validated separately against the LIVE model
@@ -28,21 +29,21 @@ describe("resolveDmSelfAttendance", () => {
     expect(classify).not.toHaveBeenCalled();
   });
 
-  it("the free fast-path decides an unambiguous IN without an LLM call", async () => {
+  it("a plain IN is read by the model too: no word list decides it", async () => {
+    classify.mockResolvedValue({ decision: "in", confidence: 0.97, reasoning: "in" });
     const res = await resolveDmSelfAttendance({ text: "IN", hasPendingPrompt: false });
     expect(res.decision).toBe("in");
-    expect(res.via).toBe("fast-path");
-    expect(classify).not.toHaveBeenCalled();
+    expect(res.via).toBe("llm");
+    expect(classify).toHaveBeenCalledTimes(1);
   });
 
-  it("the free fast-path decides an unambiguous OUT without an LLM call", async () => {
+  it("a plain OUT the model reads as unclear (no invite known) writes nothing", async () => {
     const res = await resolveDmSelfAttendance({ text: "count me out", hasPendingPrompt: false });
-    expect(res.decision).toBe("out");
-    expect(res.via).toBe("fast-path");
-    expect(classify).not.toHaveBeenCalled();
+    expect(res.decision).toBeNull();
+    expect(classify).toHaveBeenCalledTimes(1);
   });
 
-  it("natural wording the fast-path misses goes to the LLM and registers", async () => {
+  it("natural wording goes to the LLM and registers", async () => {
     classify.mockResolvedValue({ decision: "in", confidence: 0.95, reasoning: "casual yes" });
     const res = await resolveDmSelfAttendance({
       text: "yeah sure why not, coming",
@@ -57,7 +58,7 @@ describe("resolveDmSelfAttendance", () => {
     });
   });
 
-  it("a natural decline the fast-path misses goes to the LLM and drops", async () => {
+  it("a natural decline goes to the LLM and drops", async () => {
     classify.mockResolvedValue({ decision: "out", confidence: 0.92, reasoning: "declines" });
     const res = await resolveDmSelfAttendance({
       text: "sorry mate, away that weekend",
@@ -77,13 +78,19 @@ describe("resolveDmSelfAttendance", () => {
     expect(res.via).toBe("llm");
   });
 
-  it("a hypothetical is blocked before the model is even asked", async () => {
+  it("a hypothetical is the model's to read: its unclear writes nothing", async () => {
     const res = await resolveDmSelfAttendance({
       text: "if I was in I would have scored",
       hasPendingPrompt: false,
     });
     expect(res.decision).toBeNull();
-    expect(classify).not.toHaveBeenCalled();
+    expect(classify).toHaveBeenCalledTimes(1);
+  });
+
+  it("a model call that fails (the classifier returns unclear) writes nothing", async () => {
+    classify.mockResolvedValue({ decision: "unclear", confidence: 0, reasoning: "classifier error" });
+    const res = await resolveDmSelfAttendance({ text: "varım", hasPendingPrompt: false });
+    expect(res.decision).toBeNull();
   });
 
   it("an empty body is dropped without an LLM call", async () => {

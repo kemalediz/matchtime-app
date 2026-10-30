@@ -18,7 +18,6 @@ import {
   settingUpOnly,
   WENT_LIVE_CLUB_WHERE,
   STILL_READING_WINDOW_MS,
-  isGoCommand,
   isSetupLearningFinal,
   liveByOwner,
   liveByUser,
@@ -141,69 +140,6 @@ describe("preferLiveClubs: a setting-up club does not exist for club selection, 
 
   it("nothing in, nothing out", () => {
     expect(preferLiveClubs([], (r: { org: typeof live }) => r.org)).toEqual([]);
-  });
-});
-
-describe("isGoCommand: the text gate of the GO handler (slice S4)", () => {
-  it.each(["GO", "go", "Go", "GO LIVE", "go live", "Go  Live", "BAŞLA", "başla", "Başla", "BASLA", "basla", " go ", "GO.", "go!", "başla!", "GO LIVE."])(
-    "%j is GO",
-    (text) => expect(isGoCommand(text)).toBe(true),
-  );
-
-  // PR #234 review, fix 6: our own messages print *GO* in bold, and people
-  // answer with what they see, with emphasis, with a thumbs up.
-  it.each([
-    "GO!!",
-    "go..",
-    "*GO*",
-    "*GO*.",
-    "_go_",
-    "~GO~",
-    "`GO`",
-    "*_GO_*",
-    "Go 👍",
-    "GO 👍🏽",
-    "go ✅🙌",
-    "GO LIVE!!!",
-    "*GO LIVE*",
-    "GO LIVE",
-    "GO LIVE",
-    "​GO​",
-    "GO\n",
-    "*BAŞLA* 👍",
-    "başla…",
-  ])("%j is GO too", (text) => expect(isGoCommand(text)).toBe(true));
-
-  it.each([
-    "go on then",
-    "GO now",
-    "let's go",
-    "go?",
-    "go!?",
-    "👍 go on",
-    "*go* on then",
-    "go 👍 later",
-    "*",
-    "👍",
-    "!!",
-    "go, please",
-    "golive",
-    "g o",
-    "başlat",
-    "basla artik",
-    "yes",
-    "in",
-    "help",
-    "",
-    "   ",
-    "GO\nlive now please",
-    "@Match Time go",
-  ])("%j is NOT GO", (text) => expect(isGoCommand(text)).toBe(false));
-
-  it("anything that is not a string is not GO", () => {
-    expect(isGoCommand(null)).toBe(false);
-    expect(isGoCommand(undefined)).toBe(false);
-    expect(isGoCommand(42 as unknown as string)).toBe(false);
   });
 });
 

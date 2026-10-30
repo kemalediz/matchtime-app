@@ -91,7 +91,7 @@ vi.mock("@/lib/pay-link", () => ({
   buildPayLinkUrl: vi.fn(async (userId: string, matchId: string) => `https://mt.example/s/${userId}-${matchId}`),
 }));
 
-import { answerScopedQuestion, DM_QA_CALL, looksLikeQuestion } from "../dm-qa";
+import { answerScopedQuestion, DM_QA_CALL } from "../dm-qa";
 import { HAIKU_CALL } from "../pipeline/llm";
 import { HAIKU_MODEL } from "../models";
 
@@ -152,20 +152,5 @@ describe("answerScopedQuestion: the asker's own payments", () => {
     const out = await answerScopedQuestion({ userId: "u-me", orgId: "org-1", question: "how do I pay?" });
     expect(out?.answer).not.toContain("mt.ex");
     expect(out?.answer).toMatch(/couldn't work that one out/i);
-  });
-});
-
-describe("looksLikeQuestion: money questions reach the Q&A, a bare claim does not", () => {
-  it.each(["how much do I owe", "did you get my payment", "have I paid", "what's the fee this week"])("EN %s", (q) => {
-    expect(looksLikeQuestion(q, "en")).toBe(true);
-  });
-  it.each(["ne kadar borcum var", "ödememi aldınız mı", "nasıl ödeyeceğim", "ücret ne kadar"])("TR %s", (q) => {
-    expect(looksLikeQuestion(q, "tr")).toBe(true);
-  });
-  it.each(["paid", "Paid!", "done", "sent"])("EN bare claim %s", (q) => {
-    expect(looksLikeQuestion(q, "en")).toBe(false);
-  });
-  it.each(["ödedim", "gönderdim"])("TR bare claim %s", (q) => {
-    expect(looksLikeQuestion(q, "tr")).toBe(false);
   });
 });

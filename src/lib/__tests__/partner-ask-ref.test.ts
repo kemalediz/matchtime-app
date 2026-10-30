@@ -10,7 +10,6 @@
  */
 import { describe, expect, it } from "vitest";
 import { CONNECT_CODE_ALPHABET } from "../club-connect-rules";
-import { classifyDmSelfAttendance } from "../dm-self-attendance";
 import { askDmLink, askDmPrefill, askRefCandidates, askRefCode, stripAskRef } from "../partner-ask-ref";
 
 describe("askRefCode", () => {
@@ -63,9 +62,6 @@ describe("the prefilled DM and its link", () => {
       const text = askDmPrefill(lang, askRefCode("ask-1"));
       expect(askRefCandidates(text)).toEqual([askRefCode("ask-1")]);
       expect(stripAskRef(text)).toBe(lang === "tr" ? "VARIM" : "IN");
-      // The untouched prefill is an IN on the resolver's free fast path: no
-      // model call for the common case.
-      expect(classifyDmSelfAttendance(stripAskRef(text))).toBe("in");
     }
   });
 

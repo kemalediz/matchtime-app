@@ -31,7 +31,7 @@ import { U, ORG_ID, PHONE, MATCH } from "../helpers/constants";
 import { E2E } from "../helpers/env";
 
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
-const RUNS = 5;
+const RUNS = Number(process.env.MT_LIVE_RUNS ?? "5") || 5; // MT_LIVE_RUNS=1: the cheap single pass
 
 interface DmResponse {
   handled?: string;

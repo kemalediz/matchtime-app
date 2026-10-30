@@ -170,7 +170,6 @@ export {
   WENT_LIVE_CLUB_WHERE,
   STILL_READING_WINDOW_MS,
   SETUP_LEARNING_FINAL_STATUSES,
-  isGoCommand,
   isSetupLearningFinal,
   liveByOwner,
   liveByUser,

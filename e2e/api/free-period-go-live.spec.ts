@@ -41,6 +41,7 @@ import { E2E, REPO_ROOT } from "../helpers/env";
 import { testDb } from "../helpers/test-db";
 import { freePeriodEnd } from "@/lib/club-billing-rules";
 import { formatLondon, londonDateTimeToUtc } from "@/lib/london-time";
+import { addDmIntentBodies, GO_READS } from "../helpers/stub";
 
 const execFileAsync = promisify(execFile);
 
@@ -203,6 +204,7 @@ test("a held club's free months start when it goes LIVE: silent and unbilled whi
   expect(await removed.json()).toMatchObject({ ok: true, billing: "setting-up", setup: "removed", orgId: ORG });
   expect(await billingTraces()).toEqual(NONE);
   expect(await club()).toMatchObject({ stage: "setting-up", status: "exempt" });
+  addDmIntentBodies(GO_READS);
   const refused = await request.post("/api/whatsapp/dm-reply", {
     headers: PI,
     data: { phone: digits(OWNER.phone), body: "GO", waMessageId: `e2e-fp-go0-${Date.now()}`, authorName: null },
@@ -219,6 +221,7 @@ test("a held club's free months start when it goes LIVE: silent and unbilled whi
   expect(await billingTraces()).toEqual(NONE);
 
   // ── GO ──────────────────────────────────────────────────────────────
+  addDmIntentBodies(GO_READS);
   const go = await request.post("/api/whatsapp/dm-reply", {
     headers: PI,
     data: { phone: digits(OWNER.phone), body: "GO", waMessageId: `e2e-fp-go-${Date.now()}`, authorName: null },
@@ -264,6 +267,7 @@ test("a held club's free months start when it goes LIVE: silent and unbilled whi
   expect(fixtures.slice(3)).toEqual([{ id: expect.any(String), status: "UPCOMING", flow: true }]);
 
   // A second GO, and a second removal-free look by the cron: nothing moves.
+  addDmIntentBodies(GO_READS);
   const again = await request.post("/api/whatsapp/dm-reply", {
     headers: PI,
     data: { phone: digits(OWNER.phone), body: "GO", waMessageId: `e2e-fp-go2-${Date.now()}`, authorName: null },

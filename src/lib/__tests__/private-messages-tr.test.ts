@@ -24,10 +24,8 @@ import {
   buildRosterSurveyClarification,
   rosterSurveyClarificationProbe,
 } from "../dm-copy";
-import { readBenchDmReply, readTentativeFastPath } from "../dm-reply-words";
-import { dmSubAckMessage, parseDmSubscriptionCommand } from "../dm-subscriptions";
-import { looksLikeQuestion } from "../dm-qa";
-import { classifyDmSelfAttendance } from "../dm-self-attendance";
+import { dmSubAckMessage } from "../dm-subscriptions";
+import { DM_INTENT_SYSTEM_PROMPT } from "../dm-intent";
 import { resolveReminderPhrase } from "../reminder-time";
 import { t } from "../i18n/t";
 import { buildLegacyFeatureMenu, legacyEventQuestion, legacySetupLang } from "../onboarding-conversation";
@@ -134,157 +132,19 @@ describe("the fee prompt the model reads (rewritten whole, quoted-reply context 
   });
 });
 
-// ── 2. the bench-offer DM's replies ──────────────────────────────────
+// ── 2. DM subscription commands ──────────────────────────────────────
 
-describe("the bench DM reply, Turkish", () => {
-  for (const yes of ["evet", "EVET", "Evet!", "varım", "VARIM", "varim", "ben varım", "tamam", "olur", "alırım", "👍", "✅"]) {
-    it(`${JSON.stringify(yes)} claims the slot for a Turkish org`, () => {
-      expect(readBenchDmReply(yes, "tr")).toBe("yes");
-    });
-  }
-  for (const no of ["hayır", "HAYIR", "yok", "yokum", "ben yokum", "olmaz", "gelemem", "gelemiyorum", "👎"]) {
-    it(`${JSON.stringify(no)} declines for a Turkish org`, () => {
-      expect(readBenchDmReply(no, "tr")).toBe("no");
-    });
-  }
-  for (const unclear of ["belki", "kaçta başlıyor?", "bilmiyorum"]) {
-    it(`${JSON.stringify(unclear)} is unclear (the clarification goes out)`, () => {
-      expect(readBenchDmReply(unclear, "tr")).toBeNull();
-    });
-  }
-  it("English is read exactly as before, and Turkish words mean nothing to it", () => {
-    expect(readBenchDmReply("yes", "en")).toBe("yes");
-    expect(readBenchDmReply("in", "en")).toBe("yes");
-    expect(readBenchDmReply("can't tonight", "en")).toBe("no");
-    expect(readBenchDmReply("maybe", "en")).toBeNull();
-    expect(readBenchDmReply("evet", "en")).toBeNull();
-  });
-  it("the Turkish DM asks for exactly the words the reader accepts", () => {
-    const dm = t("tr").dm_bench_offer({ firstName: "Erdal", context: "bu akşamki Cuma Maçı için", reactions: false });
-    expect(dm).toContain("*EVET*");
-    expect(readBenchDmReply("EVET", "tr")).toBe("yes");
-    expect(t("tr").dm_bench_unclear({ day: null })).toContain("*EVET*");
-    expect(t("tr").dm_bench_unclear({ day: "6 Ekim Salı" })).toContain("*EVET*");
-  });
-});
-
-// ── 3. the tentative follow-up's fast path ───────────────────────────
-
-describe("the tentative follow-up fast path, Turkish", () => {
-  it("VARIM / YOKUM (what the DM asks for) are read without the model", () => {
-    expect(readTentativeFastPath("VARIM", "tr")).toBe("in");
-    expect(readTentativeFastPath("varım", "tr")).toBe("in");
-    expect(readTentativeFastPath("geliyorum", "tr")).toBe("in");
-    expect(readTentativeFastPath("evet", "tr")).toBe("in");
-    expect(readTentativeFastPath("YOKUM", "tr")).toBe("out");
-    expect(readTentativeFastPath("gelemiyorum", "tr")).toBe("out");
-    expect(readTentativeFastPath("hayır", "tr")).toBe("out");
-  });
-  it("anything else goes to the classifier (which reads Turkish)", () => {
-    expect(readTentativeFastPath("belki", "tr")).toBeNull();
-    expect(readTentativeFastPath("yarın söylerim", "tr")).toBeNull();
-    expect(readTentativeFastPath("var mı yer?", "tr")).toBeNull();
-  });
-  it("English is read exactly as before", () => {
-    expect(readTentativeFastPath("in", "en")).toBe("in");
-    expect(readTentativeFastPath("yes", "en")).toBe("in");
-    expect(readTentativeFastPath("count me in!", "en")).toBe("in");
-    expect(readTentativeFastPath("out", "en")).toBe("out");
-    expect(readTentativeFastPath("nope", "en")).toBe("out");
-    expect(readTentativeFastPath("maybe", "en")).toBeNull();
-    expect(readTentativeFastPath("varım", "en")).toBeNull();
-  });
-  it("the Turkish follow-up asks for VARIM / YOKUM", () => {
-    const dm = t("tr").dm_tentative_followup({ firstName: "Mehmet", activityName: "Cuma Maçı", whenLabel: "18 Eylül Cuma 21:00" });
-    expect(dm).toContain("*VARIM*");
-    expect(dm).toContain("*YOKUM*");
-    expect(t("tr").dm_tentative_reask).toContain("*VARIM*");
-  });
-});
-
-// ── 4. DM "IN" with no pending prompt ────────────────────────────────
-
-describe("DM self-attendance, Turkish courtesy and day words", () => {
-  for (const [text, want] of [
-    ["varım abi", "in"],
-    ["varım kanka", "in"],
-    ["cuma varım", null],
-    ["varım cuma", "in"],
-    ["bu hafta varım", null],
-    ["varım bu akşam", "in"],
-    ["yokum yarın", "out"],
-    ["yokum bu hafta", "out"],
-    ["evet varım", "in"],
-    ["tamam geliyorum", "in"],
-    ["gelemiyorum sağol", "out"],
-    ["yokum teşekkürler", "out"],
-    ["varım pazartesi", "in"],
-  ] as const) {
-    it(`${JSON.stringify(text)} → ${want}`, () => {
-      expect(classifyDmSelfAttendance(text)).toBe(want);
-    });
-  }
-});
-
-// ── 5. DM subscription commands ──────────────────────────────────────
-
-describe("DM subscription commands, Turkish", () => {
-  it("the command each Turkish ack quotes turns the thing back on", () => {
-    const ackAll = dmSubAckMessage("opt-out-all", "tr");
-    const ackRatings = dmSubAckMessage("opt-out-ratings", "tr");
-    const quotedAll = /"([^"]+)"/.exec(ackAll)![1];
-    const quotedRatings = /"([^"]+)"/.exec(ackRatings)![1];
-    expect(parseDmSubscriptionCommand(quotedAll, "tr")).toBe("opt-in-all");
-    expect(parseDmSubscriptionCommand(quotedRatings, "tr")).toBe("opt-in-ratings");
-  });
-  for (const [text, want] of [
-    ["bana bir daha mesaj atma", "opt-out-all"],
-    ["mesaj gönderme lütfen", "opt-out-all"],
-    ["sadece ödeme ile ilgili yaz", "opt-out-all"],
-    ["puanlama mesajı istemiyorum", "opt-out-ratings"],
-    ["puanlamayı kapat", "opt-out-ratings"],
-    ["Mesajları aç", "opt-in-all"],
-    ["mesajları başlat", "opt-in-all"],
-    ["PUANLAMAYI AÇ", "opt-in-ratings"],
-    ["tamam", null],
-    ["varım", null],
-    ["dur", null],
-    ["maç kaçta?", null],
-  ] as const) {
-    it(`${JSON.stringify(text)} → ${want}`, () => {
-      expect(parseDmSubscriptionCommand(text, "tr")).toBe(want);
-    });
-  }
-  it("an English org never reads the Turkish words, and reads its own as before", () => {
-    expect(parseDmSubscriptionCommand("mesaj atma")).toBeNull();
-    expect(parseDmSubscriptionCommand("mesaj atma", "en")).toBeNull();
-    expect(parseDmSubscriptionCommand("stop")).toBe("opt-out-all");
-    expect(parseDmSubscriptionCommand("start ratings")).toBe("opt-in-ratings");
-    expect(parseDmSubscriptionCommand("stop", "tr")).toBe("opt-out-all");
+describe("DM subscription commands, Turkish (read by the one DM reader since 2026-10-30)", () => {
+  it("the command each ack quotes is one of the reader's resume examples, in both languages", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const quotedAll = /"([^"]+)"/.exec(dmSubAckMessage("opt-out-all", lang))![1];
+      const quotedRatings = /"([^"]+)"/.exec(dmSubAckMessage("opt-out-ratings", lang))![1];
+      expect(DM_INTENT_SYSTEM_PROMPT).toContain(`"${quotedAll}"`);
+      expect(DM_INTENT_SYSTEM_PROMPT).toContain(`"${quotedRatings}"`);
+    }
   });
   it("the English acks are unchanged", () => {
     expect(dmSubAckMessage("opt-out-all")).toContain('Text "start messages" anytime');
-  });
-});
-
-// ── 6. the DM Q&A gate ───────────────────────────────────────────────
-
-describe("the DM Q&A gate, Turkish", () => {
-  for (const q of ["maç ne zaman", "saat kaçta başlıyoruz", "kadroda kim var", "kaç kişiyiz", "nerede oynuyoruz", "istatistiklerim", "skor neydi", "geçen hafta maçın adamı kim oldu"]) {
-    it(`${JSON.stringify(q)} is a question for a Turkish org`, () => {
-      expect(looksLikeQuestion(q, "tr")).toBe(true);
-    });
-  }
-  for (const ack of ["tamam", "sağol", "sağ ol", "teşekkürler", "eyvallah", "süper", "👍", "ok"]) {
-    it(`${JSON.stringify(ack)} is an ack, not a question`, () => {
-      expect(looksLikeQuestion(ack, "tr")).toBe(false);
-    });
-  }
-  it("English is gated exactly as before", () => {
-    expect(looksLikeQuestion("when is the next match")).toBe(true);
-    expect(looksLikeQuestion("thanks")).toBe(false);
-    expect(looksLikeQuestion("maç ne zaman")).toBe(false);
-    expect(looksLikeQuestion("maç ne zaman?")).toBe(true);
   });
 });
 

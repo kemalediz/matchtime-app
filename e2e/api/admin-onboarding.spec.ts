@@ -15,6 +15,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import { E2E } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
+import { addDmIntentBodies, GO_READS } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
 
@@ -51,6 +52,7 @@ const KICKOFF_DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Fr
 const KICKOFF_TIME = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/London" }).format(KICKOFF);
 
 async function dm(request: APIRequestContext, phone: string, body: string) {
+  addDmIntentBodies(GO_READS);
   const res = await request.post("/api/whatsapp/dm-reply", {
     headers: HEADERS,
     data: { phone: bare(phone), body, waMessageId: msgId(), authorName: null },

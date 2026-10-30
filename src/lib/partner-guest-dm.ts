@@ -26,7 +26,7 @@ import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { withOrgAiBudget } from "./ai-budget";
 import { resolveDmSelfAttendance } from "./dm-self-attendance";
 import { loadMatchAvailabilityFacts } from "./match-availability-context";
-import { quoteForMatch, type QuotedBotMessage } from "./reply-context";
+import { quoteForMatch, type QuotedBotMessage, type ReplyContext } from "./reply-context";
 import { findDmRegistrationTarget } from "./dm-registration-target";
 import { applyOutOfBandSelfAttendance } from "./out-of-band-self-attendance";
 import { handlePartnerVolunteer, withdrawGuest } from "./partner-guest";
@@ -225,14 +225,22 @@ interface AskForDm {
   day: string;
   link: string | null;
   prefill: string;
+  /** The ask as MatchTime posted it in his group, with its tap-to-DM link:
+   *  what his DM answers. The model reads his words against it (2026-10-30:
+   *  the prefilled "IN" used to be read by a word list, with no context). */
+  replyContext: ReplyContext;
 }
 
 async function loadAskForDm(askId: string): Promise<AskForDm | null> {
   const ask = await db.partnerAsk.findUnique({
     where: { id: askId },
-    select: { id: true, askerOrgId: true, partnerOrgId: true, matchId: true, match: { select: { date: true } } },
+    select: { id: true, askerOrgId: true, partnerOrgId: true, matchId: true, postJobId: true, postedAt: true, match: { select: { date: true } } },
   });
   if (!ask) return null;
+  const post = ask.postJobId
+    ? await db.botJob.findUnique({ where: { id: ask.postJobId }, select: { text: true, createdAt: true } }).catch(() => null)
+    : null;
+  const now = new Date();
   const [asker, partner] = await Promise.all([
     db.organisation.findUnique({ where: { id: ask.askerOrgId }, select: { name: true } }),
     db.organisation.findUnique({ where: { id: ask.partnerOrgId }, select: { name: true, language: true } }),
@@ -248,6 +256,9 @@ async function loadAskForDm(askId: string): Promise<AskForDm | null> {
     day: dayCommaTimeLabel(partner.language, ask.match.date),
     link: askDmLink({ number: matchtimeWaNumber(), lang: partner.language, askId: ask.id }),
     prefill: askDmPrefill(partner.language, askRefCode(ask.id)),
+    replyContext: post
+      ? { now, quoted: { at: ask.postedAt ?? post.createdAt, text: post.text, topic: null, match: null }, recent: [], earlier: null }
+      : { now, quoted: null, recent: [], earlier: null },
   };
 }
 
@@ -290,7 +301,7 @@ export async function handleCodedPartnerAskDm(args: {
     resolveDmSelfAttendance({
       text: stripAskRef(args.text),
       hasPendingPrompt: false,
-      context: { playerName: args.userName, clubName: ask.askerName, matchName: ask.askerName, matchWhen: ask.day },
+      context: { playerName: args.userName, clubName: ask.askerName, matchName: ask.askerName, matchWhen: ask.day, replyContext: ask.replyContext },
     }),
   );
   if (!resolution.decision) {
@@ -561,7 +572,7 @@ export async function askAboutOpenPartnerAsk(args: {
       resolveDmSelfAttendance({
         text: args.text ?? "",
         hasPendingPrompt: false,
-        context: { playerName: args.userName ?? null, clubName: ask.askerName, matchName: ask.askerName, matchWhen: ask.day },
+        context: { playerName: args.userName ?? null, clubName: ask.askerName, matchName: ask.askerName, matchWhen: ask.day, replyContext: ask.replyContext },
       }),
     );
     if (resolution.decision !== "in") return false;

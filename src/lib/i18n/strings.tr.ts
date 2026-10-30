@@ -2119,8 +2119,8 @@ export const tr: Strings = {
   // ════ END settings-aware group hello ════
 
   // ════ BEGIN going live: replies to GO (go-live slice S4, 2026-10-12) ════
-  // See the English table. The Turkish command is BAŞLA (BASLA and GO are
-  // read as well: `isGoCommand`, club-setup-rules.ts).
+  // See the English table. The Turkish command is BAŞLA (the DM reader,
+  // dm-intent.ts `go_live`, reads GO and other wordings as well).
   sj_go_button: `Yayına al`,
   sj_go_done: (p) => `Tamam: şimdi "${p.group}" grubunda kendimi tanıtıyorum. Mesajın görünmesi birkaç dakika sürebilir.`,
   sj_go_still_reading: (p) =>

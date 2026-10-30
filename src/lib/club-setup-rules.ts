@@ -180,40 +180,6 @@ export function settingUpOnly(servedClubs: SetupStageColumns[]): boolean {
  */
 export const STILL_READING_WINDOW_MS = 2 * 60 * 60 * 1000;
 
-const GO_WORDS: ReadonlySet<string> = new Set(["go", "go live", "basla"]);
-
-/**
- * THE TEXT GATE OF THE GO HANDLER. True only when the WHOLE message is the
- * command: GO, GO LIVE, BAŞLA or BASLA, in any letter case. Pure and
- * cheap, so every other DM costs no query.
- *
- * People answer with what they see and how they talk (PR #234 review, fix
- * 6): our own messages print *GO* in bold, and a reply is as likely to be
- * "GO!!" or "Go 👍". So before matching, the text is trimmed, every kind
- * of space is collapsed, WhatsApp's formatting marks (* _ ~ `) round it
- * are dropped, and so are trailing full stops, exclamation marks and
- * emoji. What is LEFT must still be exactly one of the command words:
- * "go on then", "let's go" and "*go* on then" are not GO. A question mark
- * is not dropped: "go?" is a question, not a command.
- */
-export function isGoCommand(text: unknown): boolean {
-  if (typeof text !== "string") return false;
-  const word = text
-    // Every Unicode space, zero-width ones and line breaks included.
-    .replace(/[\s​-‍⁠﻿]+/gu, " ")
-    .trim()
-    // Leading formatting marks, then anything trailing that is a mark, a
-    // space, closing punctuation or an emoji (with its modifiers).
-    .replace(/^[*_~` ]+/u, "")
-    .replace(/[*_~` .!…\p{Extended_Pictographic}\p{Emoji_Modifier}️‍]+$/u, "")
-    // Turkish letters: "BAŞLA", and "GO LİVE" typed on a Turkish
-    // keyboard, must read the same as their plain forms.
-    .replace(/[İIı]/g, "i")
-    .replace(/[Şş]/g, "s")
-    .toLowerCase();
-  return GO_WORDS.has(word);
-}
-
 /** `liveBy` for an owner or admin who pressed Go live on the website. */
 export function liveByUser(userId: string): string {
   return userId;

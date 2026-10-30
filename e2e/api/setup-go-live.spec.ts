@@ -22,7 +22,7 @@ import { test, expect, resetDb } from "../fixtures";
 import { ORG_ID, PHONE } from "../helpers/constants";
 import { E2E, REPO_ROOT } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
-import { clearPipelineStubs, helpOn } from "../helpers/stub";
+import { clearPipelineStubs, helpOn, addDmIntentBodies, GO_READS } from "../helpers/stub";
 
 const execFileAsync = promisify(execFile);
 
@@ -43,6 +43,7 @@ async function dm(
   body: string,
   opts: { waMessageId?: string; headers?: Record<string, string> } = {},
 ) {
+  addDmIntentBodies(GO_READS);
   const res = await request.post("/api/whatsapp/dm-reply", {
     headers: { ...HEADERS, ...(opts.headers ?? {}) },
     data: { phone: bare(phone), body, waMessageId: opts.waMessageId ?? msgId(), authorName: null },
@@ -691,6 +692,9 @@ test.describe("the reply cap (review fix 1a)", () => {
   });
 });
 
+// 2026-10-30: these wordings are the DM reader's to read (the GO word list
+// is deleted); the stub says what it reads them as (`GO_READS`), and the
+// live set in scripts/dryrun-dm-intent.ts (SET=go) is what the model does.
 test.describe("GO as people really type it (review fix 6)", () => {
   for (const [i, word] of ["*GO*", "GO!!", "Go 👍", "*GO LIVE*"].entries()) {
     test(`${JSON.stringify(word)} takes the club live`, async ({ request, db }) => {

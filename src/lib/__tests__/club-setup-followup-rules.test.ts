@@ -31,7 +31,7 @@ import { ADMIN_GROUP_CODE_TTL_MS, ADMIN_GROUP_DM_CODE_TTL_MS, parseAdminGroupLin
 import { composeSetupAskDm } from "../club-setup-dm-rules";
 import { CANCELLABLE_DM_PURPOSES, OWNER_DM_PURPOSES, PLATFORM_DM_PURPOSES } from "../platform-jobs";
 import { t } from "../i18n/t";
-import { isGoCommand } from "../club-setup-rules";
+import { DM_INTENT_SYSTEM_PROMPT } from "../dm-intent";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -135,9 +135,8 @@ describe("the 24-hour reminder", () => {
     expect(composeSetupReminderDm({ lang: "tr", club: "Riverside FC", group: null, settingsUrl: "u" })).toContain("ama grubunuzda hâlâ sessizim.");
   });
 
-  it("the word it asks for is one the GO handler takes, in each language", () => {
-    expect(isGoCommand("GO")).toBe(true);
-    expect(isGoCommand("BAŞLA")).toBe(true);
+  it("the word it asks for is one the DM reader is taught as GO, in each language", () => {
+    expect(DM_INTENT_SYSTEM_PROMPT).toMatch(/go_live: "GO" \| "BAŞLA"/);
     expect(composeSetupReminderDm({ lang: "en", club: "c", group: "g", settingsUrl: "u" })).toContain("*GO*");
     expect(composeSetupReminderDm({ lang: "tr", club: "c", group: "g", settingsUrl: "u" })).toContain("*BAŞLA*");
   });

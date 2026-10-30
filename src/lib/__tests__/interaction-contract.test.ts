@@ -25,8 +25,6 @@ import {
   actionRequiresTag,
   isSelfAttendanceVerdict,
   registerForEntryRequiresTag,
-  looksLikeHypotheticalOrPast,
-  offerIsAboutSomeoneElse,
   type TagInput,
   type GateVerdict,
   type GateRegisterForEntry,
@@ -602,105 +600,6 @@ describe("actionRequiresTag is EXACTLY the OR of the per-entry answers", () => {
   });
 });
 
-describe("looksLikeHypotheticalOrPast — deterministic self-attendance seatbelt", () => {
-  it('flags "If I was in the team it won\'t be ruined"', () => {
-    expect(looksLikeHypotheticalOrPast("If I was in the team it won't be ruined")).toBe(true);
-  });
-
-  it('flags "I would have been in"', () => {
-    expect(looksLikeHypotheticalOrPast("I would have been in")).toBe(true);
-  });
-
-  it('flags "I would\'ve been in"', () => {
-    expect(looksLikeHypotheticalOrPast("I would've been in")).toBe(true);
-  });
-
-  it('flags past tense "I was in last week"', () => {
-    expect(looksLikeHypotheticalOrPast("I was in last week")).toBe(true);
-  });
-
-  it('does NOT flag a plain present-tense "I\'m in"', () => {
-    expect(looksLikeHypotheticalOrPast("I'm in")).toBe(false);
-    expect(looksLikeHypotheticalOrPast("in")).toBe(false);
-    expect(looksLikeHypotheticalOrPast("count me in")).toBe(false);
-  });
-
-  it('does NOT flag "I am in for tonight"', () => {
-    expect(looksLikeHypotheticalOrPast("I am in for tonight")).toBe(false);
-  });
-});
-
-describe("offerIsAboutSomeoneElse — third-party-subject seatbelt", () => {
-  // The production regression (Amir, 2026-08-30): the offer is about his
-  // BROTHER, and Amir never says he is playing.
-  it("flags the production message, @mention and all", () => {
-    expect(offerIsAboutSomeoneElse("@Kemal Ediz my brother can play if needed")).toBe(true);
-  });
-
-  it("flags other third-party-subject offers", () => {
-    expect(offerIsAboutSomeoneElse("my brother can play if needed")).toBe(true);
-    expect(offerIsAboutSomeoneElse("my mate could fill in if you're short")).toBe(true);
-    expect(offerIsAboutSomeoneElse("My cousin is up for it")).toBe(true);
-    expect(offerIsAboutSomeoneElse("my brother Shahrokh can play")).toBe(true);
-    expect(offerIsAboutSomeoneElse("Dan's brother can play if you need one")).toBe(true);
-    expect(offerIsAboutSomeoneElse("his mate wants a game")).toBe(true);
-  });
-
-  // MIXED — the sender says they are playing too. Never strip these.
-  it("does NOT flag a mixed offer that includes the sender", () => {
-    expect(offerIsAboutSomeoneElse("me and my brother are both in")).toBe(false);
-    expect(offerIsAboutSomeoneElse("my brother and I are in")).toBe(false);
-    expect(offerIsAboutSomeoneElse("my mate and I can fill in if you're short")).toBe(false);
-    expect(offerIsAboutSomeoneElse("my brother and me are playing")).toBe(false);
-    expect(offerIsAboutSomeoneElse("put us both down, my brother's coming")).toBe(false);
-  });
-
-  // The third-party phrase must be the SUBJECT of the message. A self
-  // statement that merely MENTIONS a mate is a legitimate self write.
-  it("does NOT flag a self statement that only mentions a third party later", () => {
-    expect(offerIsAboutSomeoneElse("in, my mate's coming too")).toBe(false);
-    expect(offerIsAboutSomeoneElse("count me in and my brother wants to play")).toBe(false);
-    expect(offerIsAboutSomeoneElse("I'll be the 14th if my mate can't")).toBe(false);
-  });
-
-  it("does NOT flag plain self attendance", () => {
-    expect(offerIsAboutSomeoneElse("in")).toBe(false);
-    expect(offerIsAboutSomeoneElse("I'm in")).toBe(false);
-    expect(offerIsAboutSomeoneElse("I'll be the 14th if you're short")).toBe(false);
-    expect(offerIsAboutSomeoneElse("ping me if you need one more")).toBe(false);
-    expect(offerIsAboutSomeoneElse("happy to fill in if anyone drops")).toBe(false);
-    expect(offerIsAboutSomeoneElse("available as a back-up tonight")).toBe(false);
-  });
-
-  it("does NOT flag possessives that are not people", () => {
-    expect(offerIsAboutSomeoneElse("my back is fine, in")).toBe(false);
-    expect(offerIsAboutSomeoneElse("my car broke down")).toBe(false);
-  });
-
-  it("handles empty / junk input", () => {
-    expect(offerIsAboutSomeoneElse("")).toBe(false);
-    expect(offerIsAboutSomeoneElse("   ")).toBe(false);
-  });
-});
-
-// Type smoke — TagInput accepts the InboundMessage subset we feed it.
-const _t: TagInput = { body: "x", botMentioned: undefined };
-void _t;
-
-// ── THE 2026-09-10 NEAR-MISS: "tagged" is weaker than it reads ────────
-//
-// `messageTagsBot` counts the bare word "matchtime", anywhere in a
-// message, as a tag. That is deliberate and it is right for what it
-// gates — the 2026-06-29 hardening exists because a real admin command
-// was dropped when the Pi's structured signal regressed, and dropping a
-// real action is the worse error for an ANSWER.
-//
-// It is NOT right in front of a mass DM. On 2026-09-10 Kemal wrote
-// "…the link from Matchtime DM'ed to you…" to his players — a sentence
-// ABOUT MatchTime, addressed to the group — and `messageTagsBot` calls
-// it tagged. `messageMentionsBotExplicitly` is the stricter question the
-// bulk-DM commands ask instead: was the bot ADDRESSED, with an @, or did
-// the Pi see a real mention?
 describe("messageMentionsBotExplicitly — the stricter test for a bulk-DM command", () => {
   const incident =
     "please do not forget to rate the players via the link from Matchtime DM'ed to you. " +
