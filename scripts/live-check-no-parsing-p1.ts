@@ -26,6 +26,8 @@ import { routeBatch, type RouterMessage } from "../src/lib/pipeline/router.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
 import type { Route } from "../src/lib/pipeline/types.ts";
 import type { StatsClarification } from "../src/lib/pipeline/awaiting-answer.ts";
+import { decide } from "../src/lib/pipeline/engine.ts";
+import { world, msg as engineMsg } from "../src/lib/pipeline/__tests__/helpers.ts";
 
 loadEnv({ quiet: true });
 const MAX_USD = 0.2;
@@ -154,8 +156,8 @@ async function extractorCases(): Promise<void> {
       tagged: true,
       id: "Q1",
       authorName: "Kemal Ediz",
-      body: CLAR.questionBody,
-      clarifiedBy: "I mean Idris",
+      body: "Idris",
+      clarifying: CLAR.questionBody,
     });
     const ref = r.facts.kind === "question" ? r.facts.personRef : "(not question)";
     record("question Q1-clarified", (ref ?? "").toLowerCase().includes("idris"), { personRef: ref }, "personRef Idris");
@@ -220,8 +222,101 @@ async function extractorCases2(): Promise<void> {
   }
 }
 
+/** Round 3 (the review of #476): each case once. */
+async function reviewCases(): Promise<void> {
+  // M6: the shapes the floor used to catch, and one it must not rescue.
+  for (const [id, body, want] of [
+    ["F-im-in", "I'm in", ["self_att"]],
+    ["F-innn", "innn", ["self_att"]],
+    ["F-cant-make-it", "can't make it", ["self_att"]],
+    ["F-ben-varim", "ben varım", ["self_att"]],
+    ["F-gelemiyorum", "gelemiyorum", ["self_att"]],
+    ["F-several-mentions", "@Ali Khan @Can Demir @Tom Hill in", ["other_att"]],
+    ["F-crown-emoji", "@Jesse 👑 IN", ["other_att"]],
+  ] as const) {
+    const r = await routeBatch(model, [{ id, authorName: "Pete", body }], { now: NOW });
+    record(`router ${id}`, (want as readonly string[]).includes(r.routes[0].route), { route: r.routes[0].route }, want.join("|"));
+  }
+  {
+    const r = await extractForRoute(model, "other_att", { ...base, id: "F-zeeshan", authorName: "Pete", body: "Zeeshan is out 😂" });
+    const c = r.facts.kind === "attendance" ? r.facts.claims.find((x) => x.subject === "other") : undefined;
+    record("attendance F-zeeshan-not-a-rescue", !c || c.confidence < 0.7, c ? { confidence: c.confidence } : "no claim", "a joke: confidence < 0.7 or no claim");
+  }
+  // M5: with a recorded result as MatchTime's last post, an attendance
+  // message is still attendance.
+  for (const [id, body, want] of [
+    ["S-tom-out-with-result", "@Match Time Tom out", "other_att"],
+    ["S-im-out-with-result", "@Match Time I'm out", "self_att"],
+  ] as const) {
+    const r = await routeBatch(model, [{ id, authorName: "Kemal", body }], { now: NOW, scoreCorrectionIds: new Set([id]) });
+    record(`router ${id}`, r.routes[0].route === want, { route: r.routes[0].route }, want);
+  }
+  // H1: the kind of person each ref is.
+  for (const [id, body, want] of [
+    ["K-everyone", "@everyone in", "group"],
+    ["K-the-lads", "the lads are in tonight", "group"],
+    ["K-brother", "my brother can play if needed", "relation"],
+    ["K-amirs-brother", "Amir's brother is in", "relation"],
+    ["K-someone", "someone can take my spot", "placeholder"],
+    ["K-named", "my brother Shahrokh can play", "named"],
+  ] as const) {
+    const r = await extractForRoute(model, "other_att", { ...base, id, authorName: "Amir", body });
+    const others = r.facts.kind === "attendance" ? r.facts.claims.filter((x) => x.subject === "other") : [];
+    const ok = want === "named" ? others.some((x) => x.personKind === "named" && /shahrokh/i.test(x.personRef)) : others.every((x) => x.personKind !== "named");
+    record(`attendance ${id}`, ok, others.map((x) => [x.personRef, x.personKind]), want === "named" ? "Shahrokh named" : `no named other (${want})`);
+  }
+  // H2: a bench asked for, or not.
+  const FULL = "Confirmed (14/14):\n1. Kemal\n2. Elvin\n3. Erdal\n4. Sait\n5. Tom\n6. Ali\n7. Can\n8. Mo\n9. Ibo\n10. Kai\n11. Sam\n12. Raj\n13. Dan\n14. Joe";
+  for (const [id, body, want] of [
+    ["B-bare-in-full", "in", false],
+    ["B-put-me-on-bench", "put me on the bench, let Habib play", true],
+    ["B-in-for-bench", "In. For bench👍", true],
+    ["B-yedek", "yedekte kalayım", true],
+  ] as const) {
+    const r = await extractForRoute(model, "self_att", { ...base, id, authorName: "Erdal", body, lastBotPost: FULL });
+    const c = r.facts.kind === "attendance" ? r.facts.claims.find((x) => x.subject === "sender") : undefined;
+    const asked = !!c && c.polarity === "bench" && c.benchAsked === true;
+    record(`attendance ${id}`, asked === want, c ? { polarity: c.polarity, benchAsked: c.benchAsked } : "no claim", `benchAsked ${want}`);
+  }
+  // H3: the asker's chatter within 30 minutes records nothing, whatever the
+  // extractor reads (not a reply to MatchTime's question, no real tag).
+  const ASK = "10 - 7 to which team?";
+  for (const [id, body] of [
+    ["M2i", "yellow bibs stink mate, whoever takes them home wash them. reds deserved it anyway"],
+    ["M2j", "honestly yellows always win when Najib plays"],
+    ["M2k", "MatchTime can you put me on yellow next week, reds won again"],
+  ] as const) {
+    const r = await extractForRoute(model, "score", { ...base, id, authorName: "Elvin", body, lastBotPost: ASK });
+    const state = world({
+      admins: ["kemal"],
+      completedMatch: {
+        id: "done-1",
+        participantUserIds: ["u-kemal", "u-elvin"],
+        teams: [{ userId: "u-kemal", team: "RED" as const }, { userId: "u-elvin", team: "YELLOW" as const }],
+        kickoffAt: new Date(NOW.getTime() - 2 * 3600_000).toISOString(),
+        pendingScore: { first: 10, second: 7, askedAt: new Date(NOW.getTime() - 5 * 60_000).toISOString(), askerUserId: "u-elvin" },
+      },
+    });
+    const d = decide({ now: NOW, state, messages: [engineMsg({ from: "elvin", body, route: "score", facts: r.facts, tagged: id === "M2k" })] });
+    const scores = d.writes.filter((w) => w.kind === "score");
+    record(`score ${id}-no-record`, scores.length === 0, { winner: r.facts.kind === "score" ? r.facts.winner : null, recorded: scores.length }, "nothing recorded");
+  }
+  // M4: a clarification only when the reply answers it.
+  for (const [id, body, want] of [
+    ["Q-answers", "I mean Idris", true],
+    ["Q-new-question", "@Match Time how many are we?", false],
+  ] as const) {
+    const r = await extractForRoute(model, "question", { ...base, tagged: true, id, authorName: "Kemal Ediz", body, clarifying: CLAR.questionBody });
+    const f = r.facts as { kind: string; answersClarification?: boolean; personRef?: string | null; topic?: string };
+    const ok = (f.answersClarification === true) === want && (!want || /idris/i.test(f.personRef ?? ""));
+    record(`question ${id}`, ok, { answersClarification: f.answersClarification === true, topic: f.topic, personRef: f.personRef }, `answersClarification ${want}`);
+  }
+}
+
 async function main(): Promise<void> {
-  if (process.env.P1_ONLY === "2") {
+  if (process.env.P1_ONLY === "3") {
+    await reviewCases();
+  } else if (process.env.P1_ONLY === "2") {
     await routerCases2();
     await extractorCases2();
   } else {
