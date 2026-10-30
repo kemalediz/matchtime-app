@@ -32,7 +32,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { format } from "date-fns";
 import { contradictsSquadState, type SquadTruth } from "../group-copy";
-import { normaliseBenchAnswerText, readBenchPromptAnswer } from "../bench-prompt-answer";
 import { formatLondon } from "../london-time";
 
 // ── 1. CLAIM_NAME accepts any Unicode uppercase initial ─────────────
@@ -76,43 +75,7 @@ describe("contradictsSquadState: a name with a Turkish capital is a name", () =>
   });
 });
 
-// ── 2. The bench-prompt normaliser keeps letters and digits ─────────
-
-describe("bench-prompt normaliser: non-ASCII letters survive", () => {
-  it("keeps the dotless ı and folds only the diacritics NFD can fold", () => {
-    // Ç → C, ğ → g (both decompose); ı has no decomposition and used to
-    // be deleted outright.
-    expect(normaliseBenchAnswerText("Hayır Çağrı")).toBe("hayır cagrı");
-  });
-
-  it("a Turkish player's name is no longer mangled", () => {
-    // ş folds to s (NFD), the dotless ı is kept, and the capital I
-    // lower-cases to i under the default locale. Turkish-locale casing
-    // (İ/I) is Phase 3b's decision; this pins that nothing is deleted.
-    expect(normaliseBenchAnswerText("evet ben Işık")).toBe("evet ben isık");
-  });
-
-  it("ASCII input normalises byte for byte as before", () => {
-    expect(normaliseBenchAnswerText("Yes mate!! I'm in")).toBe("yes mate im in");
-    expect(normaliseBenchAnswerText("@Match Time yes")).toBe("yes");
-    expect(normaliseBenchAnswerText("no 👎 sorry")).toBe("no sorry");
-    expect(normaliseBenchAnswerText("count me in 2nite")).toBe("count me in 2nite");
-  });
-
-  it("the ASCII recogniser is unchanged: yes is yes, no is no, junk is null", () => {
-    expect(readBenchPromptAnswer("yes")).not.toBeNull();
-    expect(readBenchPromptAnswer("nah can't make it")).not.toBeNull();
-    expect(readBenchPromptAnswer("what time is kickoff?")).toBeNull();
-  });
-
-  it("Turkish words survive the normaliser, so the word lists can read them", () => {
-    // Phase 0 pinned "hayır" as unrecognised; Phase 1 (PR #90, same day)
-    // added the Turkish vocabulary this normaliser change made possible.
-    expect(normaliseBenchAnswerText("hayır")).toBe("hayır");
-    expect(readBenchPromptAnswer("hayır")).toBe("no");
-    expect(readBenchPromptAnswer("evet")).toBe("yes");
-  });
-});
+// ── 2. (deleted 2026-10-30 with `bench-prompt-answer.ts`, which was dead code)
 
 // ── 4. Match dates render in London, never in the server's zone ─────
 

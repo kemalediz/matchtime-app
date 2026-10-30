@@ -13,8 +13,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { en } from "../strings.en";
-import { parseSwapNames } from "../../team-slot-swap";
-import { looksLikeColourSwapPhrase } from "../../team-colour-swap";
 
 const TAG = "@Match Time";
 const C = {
@@ -71,20 +69,6 @@ describe("the bot reads the forms the English copy quotes", () => {
     });
   }
 
-  it("the player swap parses to the two names", () => {
-    expect(parseSwapNames(typed(C.swapPlayers.replace("X", "David").replace("Y", "Ali")))).toEqual({
-      a: "david",
-      b: "ali",
-    });
-    expect(parseSwapNames(typed(C.swapPlayersExample))).toEqual({ a: "sam", b: "alex" });
-    expect(looksLikeColourSwapPhrase(typed("swap David with Ali"))).toBe(false);
-    expect(looksLikeColourSwapPhrase(typed(C.swapPlayersExample))).toBe(false);
-  });
-
-  for (const command of [C.generate, C.regenerate]) {
-    it(`"${typed(command)}" is left for the router and the teams extractor`, () => {
-      expect(looksLikeColourSwapPhrase(typed(command))).toBe(false);
-      expect(parseSwapNames(typed(command))).toBeNull();
-    });
-  }
+  // The forms are READ by the router and the teams extractor (2026-10-30):
+  // no code parses them, so nothing more is pinned here.
 });

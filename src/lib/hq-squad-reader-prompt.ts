@@ -23,6 +23,10 @@
  * instruction (`adminClaimHold`) and the parser of short name lists
  * (`admin-group-name-list.ts`).
  *
+ * The players' group of a weekly club reads a pasted list with it too
+ * (2026-10-30, `place: "players"`, WHERE in the user turn): there only a
+ * "squad" reading is acted on, and only the names it adds are registered.
+ *
  * Code only maps the refs it was shown back to ids, checks them, and gates
  * on facts (`gateSquadPaste` in `admin-group-squad-rules.ts`). Every answer
  * is checked here: a ref it was not shown is no member, an "out" must be a
@@ -70,6 +74,9 @@ export interface HqSquadReaderInput {
    *  fact code knows, `hqAddressing`). Absent: not. */
   addressed?: boolean;
   now: Date;
+  /** Which group it was sent in (2026-10-30): HQ when absent. The players'
+   *  group reads a pasted list with this same reader. */
+  place?: "hq" | "players";
 }
 
 export interface HqSquadLine {
@@ -109,29 +116,29 @@ export type HqSquadReading =
 
 // ── The prompt ────────────────────────────────────────────────────────
 
-export const HQ_SQUAD_READER_SYSTEM = `You read one message sent in a football club's admin group (HQ, the WhatsApp group where the organisers, and other members of the club, talk) for MatchTime, the club's bot. Say what the message does about who plays the next game.
+export const HQ_SQUAD_READER_SYSTEM = `You read one message sent in one of a football club's WhatsApp groups for MatchTime, the club's bot: the admin group (HQ, where the organisers, and other members of the club, talk) or the players' group. WHERE says which. Say what the message does about who plays the next game.
 
 THE CONTEXT comes first, and it does most of the work:
-- NOW, the date and time at the club.
+- NOW, the date and time at the club, and WHERE the message was sent.
 - THE NEXT GAME: its date and how many places it has.
 - MEMBERS: everybody in the club, each with a ref (p1, p2 ...) and any nicknames.
 - THE SQUAD AS MATCHTIME HAS IT: who is playing the next game and who is on the bench.
 - THE TEAMS AS MATCHTIME HAS THEM, when teams have been made: each side and its players.
-- RECENT HQ MESSAGES, oldest first, MatchTime's own posts among them, and the message replied to, if any.
+- RECENT MESSAGES in the same group, oldest first, MatchTime's own posts among them, and the message replied to, if any.
 - SAID TO MATCHTIME: whether the message tags MatchTime or replies to its post.
-Then who sent it (with their ref) and THE MESSAGE. Read it the way a member of the group would, with all of that in mind. Messages are English or Turkish, often mixed, misspelt, with emoji. Most talk in HQ is the members talking to each other.
+Then who sent it (with their ref) and THE MESSAGE. Read it the way a member of that group would, with all of that in mind. Messages are English or Turkish, often mixed, misspelt, with emoji. Most talk in either group is the members talking to each other.
 
 kind: what THE MESSAGE is.
-- "squad": the whole list of who plays the next game, sent so that the squad becomes this list. Usually one name per line, numbered or not, maybe with a bench part.
-- "change": it tells MatchTime to change who plays the next game: named people in, out, or to the bench. An instruction ("put Bilal in", "Tom to the bench", "Ali'yi kadroya ekle") or a plain statement of the squad ("Sam's out this week", "Kai can't make it tonight", "Mehmet bu hafta yok"), including a short list of names with in or out, and the sender about themselves ("I'm out this week", "bu hafta yokum").
-- "teams": anything about the teams or sides. A copy of a team sheet: two groups of names, often under the side names ("Bibs" and "Non Bibs", "Red" and "Yellow"), the numbering starting again for the second group, or MatchTime's own proposed teams pasted back. A swap or a move between the sides. Names sent while the group is talking about the teams. When the names are the players of THE TEAMS, it is teams, whatever words are around them.
+- "squad": the whole list of who plays the next game. Usually one name per line, numbered or not, maybe with a bench part. In HQ an organiser sends it so that the squad becomes this list. In the players' group it is usually the list copied with a name added at the end, the sender's own or a friend's, to join.
+- "change", in HQ only: it tells MatchTime to change who plays the next game: named people in, out, or to the bench. An instruction ("put Bilal in", "Tom to the bench", "Ali'yi kadroya ekle") or a plain statement of the squad ("Sam's out this week", "Kai can't make it tonight", "Mehmet bu hafta yok"), including a short list of names with in or out, and the sender about themselves ("I'm out this week", "bu hafta yokum"). In the players' group such a message is "other": MatchTime reads it another way there.
+- "teams": anything about the teams or sides. A copy of a team sheet: two groups of names, often under the side names ("Bibs" and "Non Bibs", "Red" and "Yellow"), the numbering starting again for the second group, or MatchTime's own teams pasted back. A swap or a move between the sides. Names sent while the group is talking about the teams. When the names are the players of THE TEAMS, it is teams, whatever words are around them.
 - "other": anything else, and every case of doubt. Members talking about players without telling MatchTime to change the squad: a hope, a maybe, a plan or news for another week, reassurance about players already in, news that someone is back or around again, what already happened, what someone else said. Also who has paid, kit, a vote, a question.
 
 FOR A SQUAD LIST (otherwise lines [] and out []):
 - lines: every name on the list, in order. For each:
   name: the person's name as written, without numbers, notes or emoji.
   member: the ref of the member it is: their name, first name, a nickname MEMBERS lists, or an obvious misspelling of one. "" when it is nobody on MEMBERS, or when two members could be meant. Never a member whose name only starts the same ("Mo" is not "Mojib" unless MEMBERS says so).
-  section: "playing" for the main list; "bench" under a part such as "Bench", "Reserves", "Subs", "Yedekler".
+  section: "playing" for the main list; "bench" under a part such as "Bench", "Reserves", "Subs", "Yedekler", or "can't play".
   person: true when the line is somebody's name; false for anything else (a title, a time, a place, a word such as "Swap", "With" or "Bench").
 - out: the refs of players PLAYING in THE SQUAD whom the list leaves off on purpose, because the list is the whole squad and they are no longer in it. Leave a player out of "out" when the list is not the whole squad, or when you cannot tell. Never a player who is on the list.
 
@@ -143,16 +150,22 @@ FOR A CHANGE (otherwise changes [] and alsoAsks false):
 - alsoAsks: true when THE MESSAGE also asks MatchTime for something it holds, such as the list or who is in.
 
 Examples (English | Turkish):
-- "Friday 8pm\\n1. Bilal\\n2. Ali\\n3. Tom\\n4. Sam\\n5. Naim", with Shehryar and Clarence also playing in THE SQUAD and no Naim among MEMBERS | "Cuma 20:00\\n1. Bilal\\n2. Ali\\n3. Tom\\n4. Sam\\n5. Naim": squad; Naim member "", person true; out the refs of Shehryar and Clarence.
+Squad lists:
+- "Friday 8pm\\n1. Bilal\\n2. Ali\\n3. Tom\\n4. Sam\\n5. Naim", in HQ, with Shehryar and Clarence also playing in THE SQUAD and no Naim among MEMBERS | "Cuma 20:00\\n1. Bilal\\n2. Ali\\n3. Tom\\n4. Sam\\n5. Naim": squad; Naim member "", person true; out the refs of Shehryar and Clarence.
+- In the players' group, the list as THE SQUAD has it with "11. Kieran" added at the end, sent by Kieran | the same with "11. Kerem": squad, every name on lines, the added line included; out [].
 - "1. Ali\\n2. Burak\\n3. Can\\n\\nBench\\n4. Deniz" | "1. Ali\\n2. Burak\\n3. Can\\n\\nYedekler\\n4. Deniz": squad, Deniz section bench.
+Changes, in HQ:
 - "Tom out" | "Tom bu hafta yok": change, Tom to out.
 - "Imti\\nRafi\\nAH\\n\\nIn", "Yaseen, Mo and Feroz out" | "Ali ve Can var", "Yaseen, Mo ve Feroz yok": change, each name in (or out).
 - "Mo is replacing Najib" | "Najib yerine Mo": change, Mo to in, replaces Najib's ref.
 - "Glazers is out now. @Match Time what is the list?" | "Glazers çıktı. @Match Time liste ne?": change, Glazers to out, alsoAsks true.
+Other:
 - "Zayn is back as well", "Imti Rafi AH back" while the group talks about next week, "Maybe Shehryar and Hamzah too", "Mojib and Habib are in dw" when both are already playing, "I'm hoping to be back next week" | "Ali belki gelir haftaya", "Mehmet döndü": other.
+- In the players' group, "IN", "Tom out" or "can't make it tonight lads" | "varım", "Tom yok" or "bu akşam gelemiyorum": other.
+- "Paid:\\nAli\\nBurak\\nCan" | "Ödeyenler:\\nAli\\nBurak\\nCan": other.
+Teams:
 - "Here's the teams:\\n*Non Bibs*:\\n1. Feroz\\n2. Alamgir ...\\n*Bibs*:\\n1. Yorel\\n2. Maj ..." | "Takımlar:\\n*Kırmızı*:\\n1. Ali ...\\n*Sarı*:\\n1. Can ...": teams.
 - "Swap\\nMo\\nMojib\\n\\nWith\\nHamzah\\nYorel" | "Değiştir\\nMo\\nMojib\\n\\nile\\nHamzah\\nYorel": teams.
-- "Paid:\\nAli\\nBurak\\nCan" | "Ödeyenler:\\nAli\\nBurak\\nCan": other.
 
 Output STRICT JSON only, no markdown, no fences.`;
 
@@ -212,7 +225,11 @@ export function buildHqSquadReaderUserTurn(input: HqSquadReaderInput, ctx: HqSqu
     return m ? `${m.ref} ${m.name}` : "(not a member)";
   };
   const names = (list: string[]) => (list.length > 0 ? list.map(who).join(", ") : "nobody");
-  const lines: string[] = [nowLine(input.now), ""];
+  const lines: string[] = [
+    nowLine(input.now),
+    input.place === "players" ? "WHERE: the players' group." : "WHERE: HQ, the organisers' admin group.",
+    "",
+  ];
   lines.push(ctx.game ? `THE NEXT GAME: ${ctx.game.label}, ${ctx.game.places} places.` : "THE NEXT GAME: none yet.", "");
   lines.push("MEMBERS:", ...ctx.members.map(memberLine), "");
   if (ctx.game) {
@@ -230,7 +247,7 @@ export function buildHqSquadReaderUserTurn(input: HqSquadReaderInput, ctx: HqSqu
   }
   const recent = input.history.filter((h) => h.body !== input.body).slice(-HQ_SQUAD_READER_RECENT_LINES);
   if (recent.length > 0) {
-    lines.push("RECENT HQ MESSAGES (context only):");
+    lines.push("RECENT MESSAGES IN THIS GROUP (context only):");
     for (const h of recent) lines.push(`  ${h.author ?? "(unknown)"}: ${h.body}`);
     lines.push("");
   }

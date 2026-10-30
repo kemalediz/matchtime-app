@@ -111,15 +111,16 @@ test("the admins' HQ group: an add by an admin does NOT start setup; it waits, s
   expect(orgs.silentGroups).toContain(HQ);
 });
 
-test("a stranger adding MatchTime to a group is still a new club: today's intro and session", async ({ request, db }) => {
+test("a stranger adding MatchTime to a group is not an admin group (no intro, no session: the legacy setup was deleted 2026-10-30)", async ({ request, db }) => {
   const out = await post(request, "/api/whatsapp/bot-added", {
     groupId: NEW_CLUB_GROUP,
     groupSubject: "Wednesday Ballers",
     addedByPhone: STRANGER,
     participants: [{ phone: STRANGER }],
   });
-  expect(typeof out.introText).toBe("string");
-  expect(await db.all(`SELECT id FROM "OnboardingSession" WHERE "whatsappGroupId" = $1`, [NEW_CLUB_GROUP])).toHaveLength(1);
+  expect(out.introText).toBeNull();
+  expect(out.ignored).not.toBe("admin-group-awaiting-code");
+  expect(await db.all(`SELECT id FROM "OnboardingSession" WHERE "whatsappGroupId" = $1`, [NEW_CLUB_GROUP])).toHaveLength(0);
 });
 
 test("the link code: nobody else is answered; a wrong code gets L2; the right one links and answers L1", async ({ request, db }) => {

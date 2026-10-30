@@ -188,7 +188,7 @@ site.
 | Analyzer apply path | `api/analyzer.spec.ts` | IN → CONFIRMED (react ✅); IN on full squad → BENCH (🪑, capacity respected); OUT → DROPPED + open BenchSlotOffer; **third-party BENCH demote** (CONFIRMED→BENCH, slot freed, exactly one row, no offer, no dup announce); **bench-demote safety net** (reply claims move, no registerFor → server synthesises the demote); waMessageId dedupe |
 | DM reply | `api/dm-reply.spec.ts` | opt-out keyword → `ratingDmOptOut` set + ack BotJob only after write; re-opt-in clears; unknown sender ignored with zero writes |
 | Scheduler | `api/due-posts.spec.ts` | morning rate-DMs to all confirmed players EXCEPT opted-out; evening reminders skip opted-out AND already-rated (clock pinned via x-test-now) |
-| Dedup helper + squad-from-list | `api/resolve-and-pricing.spec.ts` → `helpers/lib-tests.ts` (tsx) | `findExistingOrgMember`: phone wins, alias hit, unique exact, unique fuzzy, ambiguous→null, unknown→null; `normaliseName`, `parseReservesFromBody`; `resolveOrProvisionSquadName` reuse vs provision |
+| Dedup helper + squad-from-list | `api/resolve-and-pricing.spec.ts` → `helpers/lib-tests.ts` (tsx) | `findExistingOrgMember`: phone wins, alias hit, unique exact, unique fuzzy, ambiguous→null, unknown→null; `normaliseName`; `resolveOrProvisionSquadName` reuse vs provision |
 | Fee math | `api/resolve-and-pricing.spec.ts` | `totalForMethod`/`priceMethods`/`platformFeePence` against hardcoded oracles |
 
 ### Covered — group simulator (`e2e/sim/`, the WhatsApp regression net)
@@ -213,8 +213,7 @@ await g.dm("pete", "YES");                            // 1-1 DM path
 await g.reaction(msgId, "👍", "henry");               // offer-claim reaction
 await g.pollVote({ waMessageId, voterKey, optionName }); // MoM/payment poll
 await g.duePosts(londonAt(0, 8, 30));                 // scheduler at a pinned clock
-await g.botAdded({ … });                              // onboarding event
-// + createOnboardingGroup(request) for groups with no org yet.
+await g.botAdded({ … });                              // the bot-added event
 ```
 
 Default roster: 16 members with phones (owner + 2 admins + 13 players),
@@ -225,7 +224,6 @@ allocated per-process so groups never collide; specs `resetDb()` once in
 
 | Area | Spec | Scenarios |
 |---|---|---|
-| Onboarding | `sim/onboarding.spec.ts` | live-org group never re-enters onboarding; bot-added → intro; chat falls open; EVERYTHING → payments on + admins asked; admins by **name+phone AND @mention** → 2 ADMIN memberships + magic-link DMs; when&where → Activity + first Match (11-a-side → 22); roster import with @lid skipped; OWNER = consenting replier |
 | Attendance | `sim/attendance.spec.ts` | IN→CONFIRMED; the filling IN posts ONE squad-complete announcement; IN at capacity→BENCH; OUT→DROPPED + open BenchSlotOffer; in-group bench claim (benchConfirmation) → promoted + offer resolved + announce; admin "move X to bench" → demote, slot freed, NO offer, no dup announce; benched player's own IN → promoted when a slot is free; **banter "X is out" while X chats → NOT dropped, bot silent**; third-party OUT for an absent player honoured; OUT from a non-registered player → silent; DM "YES" claims the offer (ack + announce), late claimer misses; 👎 reaction no-op, 👍 reaction claims |
 | Squad messaging | `sim/squad-post.spec.ts` | burst of mixed messages collapses to ONE windowed "latest squad and bench" post; bench ALWAYS listed; stale single reply re-canonicalised (count + "slots open" + "need N more" prose recomputed); never "full + slot open"; never a total above the cap; never "X moves up from the bench" while X is benched; raw-digit pushnames never surface (provisioned as "New player") |
 | Recruit | `sim/recruit.spec.ts` | explicit shortage from an admin → invite DMs to recent non-responders with phones (idempotent per match); "list the players" NEVER recruits; non-admin → 🔒; full squad → DMs nobody |
@@ -294,9 +292,6 @@ MT_REHEARSAL_SCENARIO=e2e/rehearsal/examples/riverside.scenario.json \
 - **Squad-from-list EXTRACTION cron** (`/api/cron/extract-squads`) — the
   LLM extraction itself; the deterministic chain after it is covered in
   `sim/squad-from-list.spec.ts`.
-- **Onboarding conversation** (Phase 2 "@MatchTime setup" multi-turn
-  trigger; the group-add flow is covered in `api/onboarding.spec.ts` +
-  `sim/onboarding.spec.ts`).
 - **Roster survey** flows; **group-join/leave/sync-participants**.
 - **Other analyzer safety nets**: conditional-drop hold, IN/OUT intent
   backfills, proximity/roster reply rewriters (pure functions — easy

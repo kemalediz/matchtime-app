@@ -191,6 +191,40 @@ const CASES: Case[] = [
   C("TR: belki is talk", "Okan belki gelmez haftaya", TR_CTX, "Erdal Yilmaz", "2026-11-03T10:00:00Z", [], kind("other")),
 ];
 
+// ── The players' group (2026-10-30, `place: "players"`) ────────────────
+
+const SUT_NAMES = ["Kemal Ediz", "Elvin Aliyev", "Sait Demir", "Mustafa Kaya", "Abid Hussain", "Idris Bello", "Faris Nasser", "Shaz Iqbal", "Adam Osman", "Efat Rahman", "Kieran Lee", "Wasim Akhtar"];
+const sutId = (n: string) => `s-${n.split(" ")[0].toLowerCase()}`;
+const SUT_MEMBERS: HqReaderMember[] = SUT_NAMES.map((name, i) => ({ ref: `p${i + 1}`, userId: sutId(name), name, aliases: [] }));
+const SUT_PLAYING = SUT_NAMES.slice(0, 10).map(sutId);
+const SUT_CTX: HqSquadReaderContext = { orgId: "sutton", game: { label: "Tue 3 Nov, 21:30", places: 14 }, members: SUT_MEMBERS, squad: { playing: SUT_PLAYING, bench: [] }, teams: null };
+const SUT_POST = `⚽ *Tue 3 Nov, 21:30* at Goals Sutton\n\n${SUT_NAMES.slice(0, 10).map((n, i) => `${i + 1}. ${n}`).join("\n")}\n\n4 places left`;
+const SUT_HISTORY = [{ author: "MatchTime", body: SUT_POST }, { author: "Wasim Akhtar", body: "who's playing tuesday?" }];
+const SUT_REPASTE = `Tuesday 21:30 Goals Sutton\n${SUT_NAMES.slice(0, 10).map((n, i) => `${i + 1}. ${n}`).join("\n")}\n11. Kieran`;
+const SUT_FRIEND = `Tuesday 21:30 Goals Sutton\n${SUT_NAMES.slice(0, 10).map((n, i) => `${i + 1}. ${n}`).join("\n")}\n11. Wasim\n12. Sam (Wasim's mate)`;
+const TRP_CTX: HqSquadReaderContext = { ...TR_CTX, squad: { playing: TR_PLAYING, bench: [] } };
+const TRP_REPASTE = `Cuma 21:00 halısaha\n${["Erdal Yilmaz", "Burak", "Volkan", "Emre", "Mehmet", "Kemal", "Can", "Deniz", "Serkan", "Okan"].map((n, i) => `${i + 1}. ${n}`).join("\n")}\n11. Tolga`;
+const TRP_SHEET = `⚽ *Takımlar*\n\n*Kırmızı*:\n1. Erdal Yilmaz\n2. Burak\n3. Volkan\n4. Emre\n5. Mehmet\n\n*Sarı*:\n1. Kemal\n2. Can\n3. Deniz\n4. Serkan\n5. Okan`;
+const players = (c: Case): Case => ({ ...c, input: { ...c.input, place: "players" } });
+/** Every playing member of THE SQUAD is on the list as playing, plus `added`. */
+const restates = (squadIds: string[], added: string[]): Check => (r) => {
+  if (r.kind !== "squad") return `kind ${r.kind}`;
+  const playing = new Set(r.lines.filter((l) => l.section === "playing").map((l) => l.userId ?? l.name));
+  const missing = squadIds.filter((id) => !playing.has(id));
+  if (missing.length) return `not restated as playing: ${missing.join(",")}`;
+  const absent = added.filter((a) => !playing.has(a));
+  return absent.length ? `added not on it: ${absent.join(",")}` : null;
+};
+CASES.push(
+  players(C("PLAYERS EN: the list re-pasted with Kieran added, by Kieran", SUT_REPASTE, SUT_CTX, "Kieran Lee", "2026-11-02T18:00:00Z", SUT_HISTORY, restates(SUT_PLAYING, [sutId("Kieran Lee")]))),
+  players(C("PLAYERS EN: Wasim adds himself and a mate nobody knows", SUT_FRIEND, SUT_CTX, "Wasim Akhtar", "2026-11-02T18:00:00Z", SUT_HISTORY, restates(SUT_PLAYING, [sutId("Wasim Akhtar"), "Sam"]))),
+  players(C("PLAYERS EN: a bare IN is not a list", "IN", SUT_CTX, "Kieran Lee", "2026-11-02T18:00:00Z", SUT_HISTORY, kind("other"))),
+  players(C("PLAYERS EN: 'Elvin out' is not a change here (read another way)", "Elvin out", SUT_CTX, "Wasim Akhtar", "2026-11-02T18:00:00Z", SUT_HISTORY, kind("other"))),
+  players(C("PLAYERS EN: a drop in a sentence is not a list", "can't make it tuesday lads, sorry", SUT_CTX, "Elvin Aliyev", "2026-11-02T18:00:00Z", SUT_HISTORY, kind("other"))),
+  players(C("PLAYERS TR: liste Tolga eklenerek tekrar", TRP_REPASTE, TRP_CTX, "Tolga", "2026-11-05T18:00:00Z", [], restates(TR_PLAYING, [trId("Tolga")]))),
+  players(C("PLAYERS TR: MatchTime'ın takımları geri yapıştırıldı", TRP_SHEET, { ...TRP_CTX, teams: TR_TEAMS_CTX.teams }, "Erdal Yilmaz", "2026-11-05T18:00:00Z", [], (r) => (r.kind === "squad" ? "read as a squad" : null))),
+);
+
 async function main() {
   const first = process.argv.includes("--first");
   const outIdx = process.argv.indexOf("--out");

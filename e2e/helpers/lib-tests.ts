@@ -19,7 +19,7 @@ async function main() {
   process.env.DATABASE_URL = url;
 
   const { findExistingOrgMember } = await import("@/lib/resolve-player");
-  const { normaliseName, parseReservesFromBody, resolveOrProvisionSquadName } = await import(
+  const { normaliseName, resolveOrProvisionSquadName } = await import(
     "@/lib/squad-from-list"
   );
   const { db } = await import("@/lib/db");
@@ -70,12 +70,6 @@ async function main() {
   assert.equal(normaliseName("Çağlar"), "caglar");
   ok("normaliseName: zero-width junk, tildes, accents, case");
 
-  assert.deepEqual(
-    parseReservesFromBody("Squad:\n1. Alpha\n2. Bravo\n\nReserves:\n1. Charlie\n2) Delta\n"),
-    ["Charlie", "Delta"],
-  );
-  assert.deepEqual(parseReservesFromBody("no reserves here"), []);
-  ok("parseReservesFromBody: numbered reserves block");
 
   {
     const before = await db.user.count();

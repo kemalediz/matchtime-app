@@ -39,7 +39,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { tr as trLocale } from "date-fns/locale";
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
-import { clearFeeReplyStub, engineOn, selfIn, selfOut, setFeeReplyStub } from "../helpers/stub";
+import { clearFeeReplyStub, engineOn, selfIn, selfOut, setFeeReplyStub, setHqSquadReaderStub, setPastedListStub } from "../helpers/stub";
 import { E2E, REPO_ROOT } from "../helpers/env";
 import { MATCH, NAME, ORG_ID, PHONE, U, londonAt } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
@@ -806,9 +806,24 @@ test("9. WEEKLY: the fixture club (Sutton FC's shape) is untouched by any of it"
   const before = await db.all(`SELECT "userId", status::text, position, "paymentMethod" FROM "Attendance" WHERE "matchId" = $1 ORDER BY position`, [
     MATCH.upcoming,
   ]);
-  // The same shape of message in a weekly club: section 4's pasted-roster
-  // rule decides it, exactly as before monthly mode existed.
+  // The same shape of message in a weekly club: the squad reader reads it
+  // (2026-10-30), never the monthly reader. Tom is under "can't play", so
+  // the list does not restate the squad as playing: nobody is registered.
   const body = listText([NAME.admin, NAME.collector, NAME.player, "Brand New Person"], [NAME.third]);
+  setHqSquadReaderStub({
+    bodies: {
+      [body]: {
+        kind: "squad",
+        lines: [
+          ...[NAME.admin, NAME.collector, NAME.player].map((n) => ({ name: n, member: n, section: "playing", person: true })),
+          { name: "Brand New Person", member: "", section: "playing", person: true },
+          { name: NAME.third, member: NAME.third, section: "bench", person: true },
+        ],
+        out: [],
+      },
+    },
+  });
+  setPastedListStub({ bodies: [body] });
   const [res] = (await postAnalyze(request, [{ waMessageId: msgId(), body, authorPhone: PHONE.player, authorName: NAME.player }]))
     .results as AnalyzeResult[];
   expect(res.intent).not.toBe("monthly_list");

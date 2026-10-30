@@ -152,20 +152,8 @@ test('DM "who\'s missing a number?" — 📵 flags present for an ADMIN, still z
   expect(answer!.text).not.toContain(PHONE_MARKER);
 });
 
-test('group "dm me …" → answered PRIVATELY via scoped Q&A, 📩 react, no group reply', async ({ request, db }) => {
-  const grp = await group(request, db);
-  // "@Match Time" as the Pi writes a real mention (2026-10-30: a typed
-  // "@MatchTime" is no longer a tag by its text alone).
-  const r = await grp.post("dan", "@Match Time dm me when's the next game?");
-  expect(r.handledBy).toBe("fast-path");
-  expect(r.react).toBe("📩");
-  expect(r.reply).toBeNull();
-  const danPhone = grp.player("dan").phone!.replace(/^\+/, "");
-  const dm = r.dms.find((d) => d.phone === danPhone);
-  expect(dm).toBeTruthy();
-  expect(dm!.text).toContain("UPCOMING MATCH:");
-  expect(dm!.text).not.toContain(PHONE_MARKER); // group→DM context is flag-free too
-});
+// The group "dm me ..." regex fast path is deleted (2026-10-30, no string
+// parsing): a tagged question is the router's `question` route.
 
 /* ── THE PERSONAL STATS LINK, READ BY THE MODEL (2026-09-17) ───────────
  *

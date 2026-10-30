@@ -89,7 +89,7 @@ describe("joining the answer back onto the messages", () => {
     expect(out[1]).toMatchObject({ senderPushname: "T", names: ["Ehtisham", "Amir", "Tharan"], reserves: ["Martin"] });
   });
 
-  it("ignores an unknown id and a one-name list, and backstops a dropped Reserves block from the text", async () => {
+  it("ignores an unknown id and a one-name list; the reserves are the model's reading alone, never read back off the text", async () => {
     const { model } = stub({
       lists: [
         { id: "m9", names: ["A", "B"], reserves: [] },
@@ -99,7 +99,8 @@ describe("joining the answer back onto the messages", () => {
     });
     const out = await readSquadLists(MSGS, { model });
     expect(out).toHaveLength(1);
-    expect(out[0].reserves).toEqual(["Martin"]);
+    // The body has a "Reserves:" block the model left out: nothing reads it.
+    expect(out[0].reserves).toEqual([]);
   });
 
   it("fails open to no lists on a failed call or an unreadable body", async () => {

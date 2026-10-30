@@ -183,9 +183,10 @@ describe("a matched add (the organiser added MatchTime)", () => {
       addedByPhone: ALI,
       addedByLid: null,
       adderMatch: "phone",
-      detectedLang: "en",
       linkedAt: NOW,
     });
+    // No language is guessed from the chat: the club's own language is the fact.
+    expect(upd.data).not.toHaveProperty("detectedLang");
     expect(upd.data.participants).toEqual([
       { phone: ALI, lidId: null, pushname: "Ali" },
       { phone: "447700900201", lidId: null, pushname: "Ben" },
@@ -212,14 +213,14 @@ describe("a matched add (the organiser added MatchTime)", () => {
         "New club waiting: *Riverside FC* (ref 7KQ2)",
         "Organiser: Ali Demir, +44 7700 900123 (phone verified at sign-up)",
         "Added by: the organiser (matched by phone)",
-        'Group: "Riverside Tuesday 5s", 2 members, looks English (club chose English)',
+        'Group: "Riverside Tuesday 5s", 2 members (club chose English)',
         "Reply APPROVE 7KQ2 or REJECT 7KQ2, or use matchtime.ai/admin/clubs",
       ].join("\n"),
     );
     expect(anthropicCalls.n).toBe(0);
   });
 
-  it("a Turkish club: the ack is Turkish; the owner DM says what the group looks like", async () => {
+  it("a Turkish club: the ack is Turkish; the owner DM names the language the club chose", async () => {
     dbMock.organisation.findUnique.mockResolvedValue({ name: "Kartallar", language: "tr" });
     const out = await add({
       groupSubject: "Cuma Halı Saha",
@@ -230,7 +231,8 @@ describe("a matched add (the organiser added MatchTime)", () => {
       'Teşekkürler, "Cuma Halı Saha" grubuna katıldım. Kulübünüz onaylanana kadar orada sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.',
     );
     if (out.kind !== "linked") throw new Error("unreachable");
-    expect(out.ownerDm.text).toContain("looks Turkish (club chose Türkçe)");
+    expect(out.ownerDm.text).toContain('"Cuma Halı Saha", 2 members (club chose Türkçe)');
+    expect(out.ownerDm.text).not.toContain("looks");
   });
 
   it("matched by the connect DM's LID: labelled, acked", async () => {
@@ -801,7 +803,6 @@ describe("relink after a re-add (2026-10-11): removed while pending, added strai
       memberCount: 2,
       addedByPhone: ALI,
       adderMatch: "phone",
-      detectedLang: "en",
       linkedAt: NOW,
       botRemovedAt: null,
     });

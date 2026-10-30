@@ -45,9 +45,9 @@ const MARKED: Record<string, number> = {
   // queued by recruit.ts, unmarked.) And the owner's answer to the
   // partner-club pairing notice (2026-10-21).
   "app/api/whatsapp/dm-reply/route.ts": 11,
-  // "DM me <question>" answered privately, and the stats link a player
-  // asked for. (The stats BLAST to every member stays unmarked.)
-  "app/api/whatsapp/analyze/route.ts": 2,
+  // The stats link a player asked for. (The stats BLAST to every member
+  // stays unmarked; "DM me <question>" was deleted 2026-10-30.)
+  "app/api/whatsapp/analyze/route.ts": 1,
   // "Thanks Akram, I've told Raihan..." (the FNF case).
   "lib/payment-claim.ts": 1,
   // The collector's notice about a claim ("says they've paid you

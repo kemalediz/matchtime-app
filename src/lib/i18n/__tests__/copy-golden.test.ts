@@ -502,26 +502,10 @@ import {
 import { buildSelfAttendanceAck } from "../../out-of-band-self-attendance";
 import { dmSubAckMessage } from "../../dm-subscriptions";
 import {
-  ADMIN_QUESTION,
-  BOT_ADDED_INTRO,
-  buildAdminMagicLinkDm,
-  buildAdminsAck,
-  buildCoAdminMagicLinkDm,
-  buildConsentAck,
-  buildEnrichmentReviewDm,
-  buildLegacyFeatureMenu,
-  buildLegacyProvisionedLead,
-  buildLegacySetupIntro,
-  legacyEventQuestion,
-  legacyMenuRetryLead,
-  buildGroupAddCompletionPost,
   buildHelpReply,
   buildHowToUseMe,
-  buildLegacyCompletionPost,
 } from "../../onboarding-conversation";
-import { RECOMMENDED_BUNDLE, EVERYTHING_BUNDLE } from "../../onboarding-parse";
 import { composeJoinDm } from "../../join-dm";
-import { detailsFollowUpQuestion } from "../../onboarding-parse";
 import { buildBenchUpgradeReply } from "../../bench-upgrade-ack";
 import { reminderInstant } from "../../reminder-time";
 import { FEE_REPLY_SYSTEM_PROMPT } from "../../fee-confirm";
@@ -1231,7 +1215,6 @@ function cases(lang: Lang): Case[] {
   const ALL_ON = { attendance: true, teamBalancing: true, momVoting: true, playerRating: true, statsQa: true, reminders: true, bench: true, paymentTracking: true };
   const MINIMAL = { attendance: true, teamBalancing: false, momVoting: false, playerRating: false, statsQa: false, reminders: false, bench: false, paymentTracking: false };
   const LIST_MODE = { ...ALL_ON, attendance: false, paymentTracking: false };
-  add("R135 BOT_ADDED_INTRO", BOT_ADDED_INTRO);
   add("R141 buildHowToUseMe / everything on", buildHowToUseMe(ALL_ON));
   add("R141 buildHowToUseMe / attendance only", buildHowToUseMe(MINIMAL));
   add("R141 buildHowToUseMe / squad-from-list shape", buildHowToUseMe(LIST_MODE));
@@ -1263,10 +1246,6 @@ function cases(lang: Lang): Case[] {
   add("R148 buildHelpReply / payments on / admin", buildHelpReply("payments", ALL_ON, lang, { audience: "admin", links: SIGNED }));
   add("R148 buildHelpReply / bare / admin", buildHelpReply(null, ALL_ON, lang, { audience: "admin", links: SIGNED }));
   add("R149 requestNotHandledAdminReply", requestNotHandledAdminReply(lang));
-  add("R150 buildAdminMagicLinkDm / seeds, blocks, matches", buildAdminMagicLinkDm({
-    groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: false,
-    seedUrl: "https://mt.example/s/seeds", blockBookingsUrl: "https://mt.example/s/blocks", matchesUrl: "https://mt.example/s/matches",
-  }, lang));
   add("R151 composeJoinDm / new, unnamed", composeJoinDm(lang, { kind: "new", club: "MT Test", phone: "+447546111893" }, "https://mt.example/r/phones"));
   add("R151 composeJoinDm / new, named", composeJoinDm(lang, { kind: "new", club: "MT Test", phone: "+447546111893", name: "Ali" }, "https://mt.example/r/players"));
   add("R151 composeJoinDm / possible duplicate", composeJoinDm(lang, { kind: "first", club: "MT Test", name: "Hamzah Khan", link: { kind: "suggest", names: ["Hamzah", "Hamza"] } }, "https://mt.example/r/players"));
@@ -1648,32 +1627,9 @@ function cases(lang: Lang): Case[] {
     add("R194 admin onboarding / B teams for Friday, MatchTime posts them, ratings set", buildFirstTeamsNotice({ ...teams, readyTime: "18:00", organisers: false, seed: null }));
   }
 
-  add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
-  add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));
-  add("R138 detailsFollowUpQuestion / time and venue", detailsFollowUpQuestion(["time", "venue"]));
 
   // ── 1.4 the group-add flow's other turns (pinned 2026-09-17, before
   //    the self-setup rework; extracted as pure builders for the pin) ──
-  add("R138 ADMIN_QUESTION", ADMIN_QUESTION);
-  add("R138 buildConsentAck / admin captured", buildConsentAck(true));
-  add("R138 buildConsentAck / no admin", buildConsentAck(false));
-  add("R138 buildAdminsAck / none", buildAdminsAck(0));
-  add("R138 buildAdminsAck / one", buildAdminsAck(1));
-  add("R138 buildAdminsAck / two", buildAdminsAck(2));
-  const completion = { groupName: "Tuesday Ballers FC", chosen: [...RECOMMENDED_BUNDLE], dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley", weekly: true };
-  add("R140 buildGroupAddCompletionPost / roster, no co-admins, DM queued", buildGroupAddCompletionPost({ ...completion, rosterCount: 12, adminsAdded: 0, adminDmQueued: true, adminName: "Adam Admin" }));
-  add("R140 buildGroupAddCompletionPost / one person, two co-admins, no DM, no name", buildGroupAddCompletionPost({ ...completion, rosterCount: 1, adminsAdded: 2, adminDmQueued: false, adminName: null }));
-  add("R140 buildGroupAddCompletionPost / everything, one-off, empty roster, one co-admin", buildGroupAddCompletionPost({ ...completion, chosen: [...EVERYTHING_BUNDLE], weekly: false, rosterCount: 0, adminsAdded: 1, adminDmQueued: true, adminName: "" }));
-  add("R140 buildGroupAddCompletionPost / no group name", buildGroupAddCompletionPost({ ...completion, groupName: null, rosterCount: 0, adminsAdded: 0, adminDmQueued: false, adminName: null }));
-  add("R140 buildLegacyCompletionPost / weekly", buildLegacyCompletionPost(completion, lang));
-  add("R140 buildLegacyCompletionPost / one-off, MoM and ratings only", buildLegacyCompletionPost({ ...completion, chosen: ["momVoting", "playerRating"], weekly: false }, lang));
-  add("R118 buildAdminMagicLinkDm / no payments", buildAdminMagicLinkDm({ groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: false }));
-  add("R118 buildAdminMagicLinkDm / payments", buildAdminMagicLinkDm({ groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: true }));
-  add("R118 buildAdminMagicLinkDm / no group name", buildAdminMagicLinkDm({ groupName: null, url: "https://mt.example/s/abc", payments: false }));
-  add("R118 buildCoAdminMagicLinkDm", buildCoAdminMagicLinkDm({ groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc" }));
-  add("R118 buildCoAdminMagicLinkDm / no group name", buildCoAdminMagicLinkDm({ groupName: null, url: "https://mt.example/s/abc" }));
-  add("R119 buildEnrichmentReviewDm", buildEnrichmentReviewDm({ messagesAnalyzed: 340, groupName: "Tuesday Ballers FC", playerCount: 17, url: "https://mt.example/s/abc" }));
-  add("R119 buildEnrichmentReviewDm / no group name", buildEnrichmentReviewDm({ messagesAnalyzed: 12, groupName: null, playerCount: 3, url: "https://mt.example/s/abc" }));
 
   // ── 1.1 bench-upgrade-ack.ts (dead since 2026-09-06, still pure) ────
   add("R57 buildBenchUpgradeReply / space", buildBenchUpgradeReply({ name: "Erdal Ozkan", confirmedCount: 12, maxPlayers: 14 }));
@@ -1773,17 +1729,6 @@ function cases(lang: Lang): Case[] {
   add("R122 buildStatsLinkDm / no name", buildStatsLinkDm({ name: null, url: "https://mt.example/s/stats", lang }));
 
   // ── Phase 3c: the legacy "@Match Time setup" flow (pinned before it moved) ──
-  add("R136 buildLegacySetupIntro", buildLegacySetupIntro(lang));
-  const legacy = { groupName: null as string | null, playersPerSide: null as number | null, dayOfWeek: null as number | null, kickoffTime: null as string | null, venue: null as string | null, recurrence: null as string | null, oneOffDate: null as string | null };
-  add("R137 legacyEventQuestion / name", String(legacyEventQuestion(legacy, lang)));
-  add("R137 legacyEventQuestion / players per side", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC" }, lang)));
-  add("R137 legacyEventQuestion / day", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7 }, lang)));
-  add("R137 legacyEventQuestion / time", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2 }, lang)));
-  add("R137 legacyEventQuestion / venue", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00" }, lang)));
-  add("R137 legacyEventQuestion / recurrence", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley" }, lang)));
-  add("R137 legacyEventQuestion / one-off date", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley", recurrence: "oneoff" }, lang)));
-  add("R139 buildLegacyFeatureMenu / provisioned", buildLegacyFeatureMenu(buildLegacyProvisionedLead({ groupName: "Tuesday Ballers FC", playersPerTeam: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley" }, lang), lang));
-  add("R139 buildLegacyFeatureMenu / retry", buildLegacyFeatureMenu(legacyMenuRetryLead(lang), lang));
 
 
   // ── Rolling squad (2026-09-30, slice 1 of the Friday-group plan). NEW

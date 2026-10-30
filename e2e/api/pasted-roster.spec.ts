@@ -21,6 +21,15 @@
  * database ends up in the same place either way. That turns model
  * non-determinism into a deterministic, free, repeatable test.
  *
+ * ── 2026-10-30: THE LIST IS READ BY THE SQUAD READER ────────────────
+ *
+ * The numbered-list arithmetic (`reconcilePastedRoster`) is deleted (no
+ * string parsing). A pasted list in the players' group is read by the
+ * squad reader (`hq-squad-reader.ts`, `place: "players"`), stubbed here;
+ * the route registers only the names it adds to a list that restates
+ * the squad. The first tests below send lists the reader is not stubbed
+ * for ("other"), so they pin that nothing else registers off a list.
+ *
  * ── PORTED 2026-09-06, §10 STEP 8 ───────────────────────────────────
  *
  * The two readings were `AnalysisVerdict`s; they are now two sets of
@@ -44,7 +53,18 @@
  * guess.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
-import { claim, engineOn, facts, otherClaim, selfIn, type BodyRouting } from "../helpers/stub";
+import { claim, engineOn, facts, otherClaim, selfIn, setHqSquadReaderStub, setPastedListStub, type BodyRouting } from "../helpers/stub";
+
+/** The squad reader's reading of a list (2026-10-30): every line a person,
+ *  each member named (the stub seam turns a name into the ref it gave). */
+function listRead(names: string[], members: string[]): Record<string, unknown> {
+  return {
+    kind: "squad",
+    lines: names.map((name) => ({ name, member: members.includes(name) ? name : "", section: "playing", person: true })),
+    out: [],
+  };
+}
+const SEEDED = ["Alex Admin", "Colin Collector", "Pat Player", "Tom Third", "Ian Innes"];
 import { U, PHONE, MATCH } from "../helpers/constants";
 import type { TestDb } from "../helpers/test-db";
 
@@ -254,7 +274,7 @@ test("a real add alongside a paste is LOST — the accepted cost of the paste pe
 const OF_RECORD_PASTE =
   "1. Alex Admin\n2. Colin Collector\n3. Pat Player\n4. Tom Third\n5. Ian Innes";
 
-test("an OF-RECORD paste registers the appended name — and the same one either way", async ({
+test("a paste the reader reads as the squad registers the added name — whatever the extractor read", async ({
   request,
   db,
 }) => {
@@ -262,7 +282,7 @@ test("an OF-RECORD paste registers the appended name — and the same one either
   // the list are discarded and recomputed from the squad, so it does
   // not matter which of these it produced.
   const readings: BodyRouting[] = [
-    { route: "none" },
+    { route: "other_att", facts: facts([]) },
     {
       route: "other_att",
       // over-reads the list: re-registers two confirmed players and
@@ -280,6 +300,8 @@ test("an OF-RECORD paste registers the appended name — and the same one either
     resetDb();
     const id = msgId();
     engineOn({ [OF_RECORD_PASTE]: reading });
+    setHqSquadReaderStub({ bodies: { [OF_RECORD_PASTE]: listRead(SEEDED, SEEDED) } });
+  setPastedListStub({ bodies: [OF_RECORD_PASTE] });
     await postAnalyze(request, [
       {
         waMessageId: id,
@@ -303,7 +325,9 @@ test("the sender appending their OWN name registers them, not a third party", as
 }) => {
   resetDb();
   const id = msgId();
-  engineOn({ [OF_RECORD_PASTE]: { route: "none" } });
+  engineOn({ [OF_RECORD_PASTE]: { route: "other_att" } });
+  setHqSquadReaderStub({ bodies: { [OF_RECORD_PASTE]: listRead(SEEDED, SEEDED) } });
+  setPastedListStub({ bodies: [OF_RECORD_PASTE] });
   await postAnalyze(request, [
     {
       waMessageId: id,
@@ -403,6 +427,8 @@ test("an OF-RECORD paste that ALSO carries the sender's drop does BOTH", async (
   const id = msgId();
   const body = `${OF_RECORD_PASTE}\n\nI can't make it myself though lads`;
   engineOn({ [body]: { route: "self_att", facts: selfIn({ polarity: "out" }) } });
+  setHqSquadReaderStub({ bodies: { [body]: listRead(SEEDED, SEEDED) } });
+  setPastedListStub({ bodies: [body] });
   await postAnalyze(request, [
     {
       waMessageId: id,
@@ -442,4 +468,41 @@ test("a drop with no list in it is completely unaffected by the paste branch", a
     { waMessageId: id, body, authorPhone: PHONE.player, authorName: "Pat Player" },
   ]);
   expect(await squad(db)).toContain("Pat Player:DROPPED");
+});
+
+test("a list that leaves a confirmed player off does not restate the squad: nobody registered, nobody dropped", async ({
+  request,
+  db,
+}) => {
+  resetDb();
+  const body = "1. Alex Admin\n2. Colin Collector\n3. Tom Third\n4. Ian Innes";
+  engineOn({ [body]: { route: "other_att", facts: facts([]) } });
+  setHqSquadReaderStub({ bodies: { [body]: listRead(["Alex Admin", "Colin Collector", "Tom Third", "Ian Innes"], SEEDED) } });
+  setPastedListStub({ bodies: [body] });
+  const before = await squad(db);
+  await postAnalyze(request, [{ waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: "Alex Admin" }]);
+  expect(await squad(db)).toEqual(before);
+});
+
+test("a player who dropped is never brought back by a list", async ({ request, db }) => {
+  resetDb();
+  await db.run(`UPDATE "Attendance" SET status = 'DROPPED' WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
+  const body = "1. Alex Admin\n2. Colin Collector\n3. Pat Player\n4. Tom Third\n5. Ian Innes";
+  engineOn({ [body]: { route: "other_att", facts: facts([]) } });
+  setHqSquadReaderStub({ bodies: { [body]: listRead(SEEDED, SEEDED) } });
+  setPastedListStub({ bodies: [body] });
+  await postAnalyze(request, [{ waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: "Alex Admin" }]);
+  const s = await squad(db);
+  expect(s).toContain("Ian Innes:CONFIRMED");
+  expect(s).toContain("Tom Third:DROPPED");
+});
+
+test("a list the router does not flag as a pasted list is not read", async ({ request, db }) => {
+  resetDb();
+  engineOn({ [OF_RECORD_PASTE]: { route: "other_att", facts: facts([]) } });
+  setHqSquadReaderStub({ bodies: { [OF_RECORD_PASTE]: listRead(SEEDED, SEEDED) } });
+  setPastedListStub({});
+  const before = await squad(db);
+  await postAnalyze(request, [{ waMessageId: msgId(), body: OF_RECORD_PASTE, authorPhone: PHONE.admin, authorName: "Alex Admin" }]);
+  expect(await squad(db)).toEqual(before);
 });

@@ -281,7 +281,6 @@ export default async function ClubsPage() {
           groupSubject: true,
           memberCount: true,
           adderMatch: true,
-          detectedLang: true,
           participants: true,
           linkedAt: true,
           org: { select: { name: true, language: true } },
@@ -480,8 +479,7 @@ export default async function ClubsPage() {
                     </dd>
                     <dt className="text-slate-500">Group</dt>
                     <dd>
-                      &quot;{w.groupSubject ?? "(no name)"}&quot;, {w.memberCount ?? 0} members, looks{" "}
-                      {w.detectedLang === "tr" ? "Turkish" : "English"} (club chose{" "}
+                      &quot;{w.groupSubject ?? "(no name)"}&quot;, {w.memberCount ?? 0} members (club chose{" "}
                       {w.org.language === "tr" ? "Türkçe" : "English"})
                     </dd>
                     <dt className="text-slate-500">AI spend today</dt>

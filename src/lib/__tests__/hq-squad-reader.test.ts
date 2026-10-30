@@ -63,6 +63,19 @@ describe("the prompt", () => {
     expect(turn).toContain("AH: Swap them over");
     expect(turn.trim().endsWith("Mo\nMojib")).toBe(true);
     expect(turn).toContain("From Rafi (p3).");
+    // Where the message was sent, a fact: HQ unless the caller says so.
+    expect(turn).toContain("WHERE: HQ, the organisers' admin group.");
+  });
+
+  it("the players' group (2026-10-30): the same reader, told where it is", () => {
+    const turn = buildHqSquadReaderUserTurn(
+      input("1. Feroz\n2. Alamgir\n3. Kieran", { place: "players", history: [{ author: "Mo", body: "who's in?" }] }),
+      ctx,
+    );
+    expect(turn).toContain("WHERE: the players' group.");
+    expect(turn).not.toContain("HQ");
+    expect(turn).toContain("Mo: who's in?");
+    expect(HQ_SQUAD_READER_SYSTEM).toMatch(/players' group/);
   });
 });
 

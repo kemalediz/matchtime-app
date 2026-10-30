@@ -148,6 +148,8 @@ export const E2E = {
    *  multi-line HQ message's body → the model's raw answer; a body with no
    *  entry is "other" (not the squad). */
   HQ_SQUAD_READER_STUB_FILE: path.join(REPO_ROOT, ".e2e", "hq-squad-reader-stub.json"),
+  PASTED_LIST_STUB_FILE: path.join(REPO_ROOT, ".e2e", "pasted-list-stub.json"),
+  TEAM_ALSO_STUB_FILE: path.join(REPO_ROOT, ".e2e", "team-also-stub.json"),
   /** The PICK READER (2026-10-30): `src/lib/organiser-pick-reader.ts`. A
    *  reply to a bench pick round's body → the model's raw answer; a body
    *  with no entry is not a pick. */
@@ -275,6 +277,8 @@ export function buildTestEnv(): Record<string, string> {
     MT_TEST_CALLOFF_STUB_FILE: E2E.CALLOFF_STUB_FILE,
     MT_TEST_MONTHLY_READER_STUB_FILE: E2E.MONTHLY_READER_STUB_FILE,
     MT_TEST_HQ_SQUAD_READER_STUB_FILE: E2E.HQ_SQUAD_READER_STUB_FILE,
+    MT_TEST_PASTED_LIST_STUB_FILE: E2E.PASTED_LIST_STUB_FILE,
+    MT_TEST_TEAM_ALSO_STUB_FILE: E2E.TEAM_ALSO_STUB_FILE,
     MT_TEST_ORGANISER_PICK_READER_STUB_FILE: E2E.ORGANISER_PICK_READER_STUB_FILE,
     MT_TEST_MONTH_SEED_REPLY_STUB_FILE: E2E.MONTH_SEED_REPLY_STUB_FILE,
     MT_TEST_DIGEST_REPLY_STUB_FILE: E2E.DIGEST_REPLY_STUB_FILE,
@@ -391,6 +395,8 @@ export function buildTestEnv(): Record<string, string> {
     env.MT_TEST_CALLOFF_STUB_FILE = "";
     env.MT_TEST_MONTHLY_READER_STUB_FILE = "";
     env.MT_TEST_HQ_SQUAD_READER_STUB_FILE = "";
+    env.MT_TEST_PASTED_LIST_STUB_FILE = "";
+    env.MT_TEST_TEAM_ALSO_STUB_FILE = "";
     env.MT_TEST_ORGANISER_PICK_READER_STUB_FILE = "";
     env.MT_TEST_MONTH_SEED_REPLY_STUB_FILE = "";
     env.MT_TEST_DIGEST_REPLY_STUB_FILE = "";

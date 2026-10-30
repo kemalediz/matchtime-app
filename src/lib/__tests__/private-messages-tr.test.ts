@@ -28,7 +28,6 @@ import { dmSubAckMessage } from "../dm-subscriptions";
 import { DM_INTENT_SYSTEM_PROMPT } from "../dm-intent";
 import { reminderInstant } from "../reminder-time";
 import { t } from "../i18n/t";
-import { buildLegacyFeatureMenu, legacyEventQuestion, legacySetupLang } from "../onboarding-conversation";
 
 // ── 1. the money path ────────────────────────────────────────────────
 
@@ -179,28 +178,6 @@ describe("reminder-time, Turkish (the extractor states the time since 2026-10-30
   it("English labels", () => {
     const r = reminderInstant("2026-09-11 18:00", "en");
     expect(r.ok && r.whenLabel).toBe("Fri 11 Sep at 18:00");
-  });
-});
-
-// ── 8b. the legacy "@Match Time setup" trigger picks the language ────
-
-describe("legacy setup: the trigger decides the session language", () => {
-  it("a Turkish trigger word starts a Turkish session", () => {
-    expect(legacySetupLang(["@Match Time kurulum"])).toBe("tr");
-    expect(legacySetupLang(["@MatchTime KURALIM"])).toBe("tr");
-    expect(legacySetupLang(["@Match Time kuralım lütfen"])).toBe("tr");
-  });
-  it("Turkish chat around an English trigger reads as Turkish", () => {
-    expect(legacySetupLang(["arkadaşlar bu hafta cuma maç var", "@Match Time setup"])).toBe("tr");
-  });
-  it("an English trigger starts an English session, as it always did", () => {
-    expect(legacySetupLang(["@Match Time setup"])).toBe("en");
-    expect(legacySetupLang(["hey @MatchTime set up this group please"])).toBe("en");
-  });
-  it("the Turkish flow asks its questions in Turkish, and the English flow is unchanged", () => {
-    expect(legacyEventQuestion({}, "tr")).toContain("kuralım");
-    expect(legacyEventQuestion({})).toContain("Let's get MatchTime set up");
-    expect(buildLegacyFeatureMenu("x", "tr")).toContain('"hepsi"');
   });
 });
 

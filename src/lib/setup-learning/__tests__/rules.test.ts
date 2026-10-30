@@ -34,7 +34,6 @@ function planFor(name: Parameters<typeof loadFixture>[0], org: Partial<OrgSettin
     org: { ...DEFAULTS, language: fx.language, ...org },
     weeklyGame: fx.weeklyGame,
     activities: [{ dayOfWeek: fx.weeklyGame.dayOfWeek, time: fx.weeklyGame.time }],
-    chatLanguage: { lang: fx.language, confident: true },
   });
 }
 
@@ -405,20 +404,16 @@ describe("planSetup: the weekly game and the language are only ever suggested", 
     };
     expect(planFor("rolling", {}, ans).suggestions).toEqual([]);
   });
-  it("a chat clearly in another language: a suggestion, unless the organiser chose the language", () => {
+  it("a Turkish chat in a club set to English: no language suggestion (the organiser chose the language)", () => {
     const fx = loadFixture("turkish");
     const detection = parseDetection(STUB_ANSWERS.turkish, fx.history)!;
-    const base = {
+    const plan = planSetup({
       detection,
       weeklyGame: fx.weeklyGame,
       activities: [{ dayOfWeek: 5, time: "21:00" }],
-      chatLanguage: { lang: "tr", confident: true },
-    };
-    expect(planSetup({ ...base, org: { ...DEFAULTS, language: "en" } }).suggestions).toEqual([
-      { key: "language", current: "en", detected: "tr", evidence: [] },
-    ]);
-    expect(planSetup({ ...base, org: { ...DEFAULTS, language: "en", settingsSetByOrganiser: ["language"] } }).suggestions).toEqual([]);
-    expect(planSetup({ ...base, chatLanguage: { lang: "tr", confident: false }, org: { ...DEFAULTS } }).suggestions).toEqual([]);
+      org: { ...DEFAULTS, language: "en" },
+    });
+    expect(plan.suggestions.filter((sg) => sg.key === "language")).toEqual([]);
   });
 });
 
