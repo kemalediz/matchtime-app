@@ -42,7 +42,7 @@ const SHEET = `⚽ *Teams for tonight*: Tue 21:30 at Goals Sutton\n\n*Red*:\n${l
 const SQUAD_POST = `⚽ *Tue 3 Nov, 21:30* at Goals Sutton\n\n${list([...RED, ...YELLOW])}\n\n4 places left`;
 const REPASTE = `Tuesday 21:30 Goals Sutton\n${list([...RED, ...YELLOW])}\n11. Kieran`;
 
-type Verdict = { route: string; action?: string; shape?: string; facts?: string };
+type Verdict = { route: string; action?: string; shape?: string; facts?: string; pastedList?: boolean; teamsSide?: boolean };
 interface Case {
   id: string;
   text: string;
@@ -63,10 +63,10 @@ const CASES: Case[] = [
   { id: "T4", text: "@Match Time Elvin ile Idris'i değiştir", lastBotPost: SHEET, want: isSwap("two-players"), why: "the Turkish player swap" },
   { id: "T5", text: "@Match Time do not regenerate the teams. Instead swap Elvin with Raihan and share us the teams", lastBotPost: SHEET, want: isSwap("two-players"), why: "the 2026-09-08 incident message" },
   { id: "T6", text: "@Match Time put me in the same team with these guys in the match 😀", lastBotPost: SHEET, want: notGenerate, why: "the 2026-09-24 joke: never a build (the word gate is gone)" },
-  { id: "T7", text: "@Match Time delete these teams, early to form them, there is still 5 days", lastBotPost: SHEET, want: notGenerate, why: "the clear: no action for it now; it must never read as a build" },
+  { id: "T7", text: "@Match Time delete these teams, early to form them, there is still 5 days", lastBotPost: SHEET, want: (v) => v.route === "balancer" && v.action === "clear", why: "the clear: the teams extractor's clear action (#476)" },
   { id: "T8", text: "@Match Time generate the teams", lastBotPost: SQUAD_POST, want: (v) => v.route === "balancer" && v.action === "generate", why: "a real build still builds" },
-  { id: "T9", text: REPASTE, lastBotPost: SQUAD_POST, want: (v) => v.route !== "none", why: "a pasted list must reach the squad reader (not routed banter)" },
-  { id: "T10", text: "@Match Time swap Elvin with Idris, and I'm out", lastBotPost: SHEET, want: () => true, record: true, why: "compound: recorded (one route per message now)" },
+  { id: "T9", text: REPASTE, lastBotPost: SQUAD_POST, want: (v) => v.pastedList === true, why: "a pasted list: the router's pasted_list flag, so the squad reader reads it" },
+  { id: "T10", text: "@Match Time swap Elvin with Idris, and I'm out", lastBotPost: SHEET, want: (v) => (v.route === "balancer" ? v.shape === "two-players" : v.teamsSide === true), why: "compound: attendance with a teams side request (both halves), or the swap" },
 ];
 
 async function main() {
@@ -80,7 +80,14 @@ async function main() {
     // swap in the players' group is not this package's to change).
     const v: Verdict = process.env.FORCE_BALANCER
       ? { route: "balancer" }
-      : { route: (await routeBatch(model, [{ id: c.id, authorName: "Kemal Ediz", body: c.text }], { floor: true })).routes[0]?.route ?? "nowhere" };
+      : await (async () => {
+          const r = (await routeBatch(model, [{ id: c.id, authorName: "Kemal Ediz", body: c.text }], {})).routes[0];
+          return { route: r?.route ?? "nowhere", pastedList: r?.pastedList === true };
+        })();
+    if (["self_att", "other_att", "offer", "unsure"].includes(v.route)) {
+      const ex = await extractForRoute(model, v.route as never, { id: c.id, body: c.text, authorName: "Kemal Ediz", tagged: true, history, lastBotPost: c.lastBotPost });
+      if (ex.facts.kind === "attendance") v.teamsSide = ex.facts.sideRequests.includes("teams" as never);
+    }
     if (v.route === "balancer") {
       const ex = await extractForRoute(model, "balancer", { id: c.id, body: c.text, authorName: "Kemal Ediz", tagged: true, history, lastBotPost: c.lastBotPost });
       if (ex.facts.kind === "teams") {
@@ -91,7 +98,7 @@ async function main() {
     }
     const ok = c.want(v);
     if (!ok) failed++;
-    console.log(`${c.record ? "rec " : ok ? "ok  " : "FAIL"} ${c.id.padEnd(4)} routed ${v.route.padEnd(9)} ${v.action ?? ""} ${v.shape ?? ""}   (${c.why})`);
+    console.log(`${c.record ? "rec " : ok ? "ok  " : "FAIL"} ${c.id.padEnd(4)} routed ${v.route.padEnd(9)} ${v.action ?? ""} ${v.shape ?? ""}${v.pastedList ? " pasted_list" : ""}${v.teamsSide ? " +teams" : ""}   (${c.why})`);
     if (v.facts) console.log(`       facts ${v.facts}`);
   }
   console.log(`\n${cases.length - failed}/${cases.length} passed. ${calls} model call(s), $${usd.toFixed(4)}.`);

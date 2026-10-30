@@ -1105,6 +1105,36 @@ describe("teamActionOf: what the extractor's facts ask this path to do", () => {
     expect(teamActionOf({ ...base, action: "swap", swapSides: true })).toBe("swap");
     expect(teamActionOf({ ...base, action: "swap", moves: ["Tom"] })).toBe("unsupported");
     expect(teamActionOf({ ...base, action: "rename" })).toBe("unsupported");
-    expect(teamActionOf({ ...base, action: "clear" as never })).toBe("clear");
+    expect(teamActionOf({ ...base, action: "clear" })).toBe("clear");
+  });
+});
+
+describe("the teams extractor's `clear` (2026-10-30)", () => {
+  const CLEAR = "@Match Time delete these teams, early to form them";
+  it("an addressed clear runs team-clear and says its line", async () => {
+    const { model } = stubModel({ [CLEAR]: teamsFacts({ action: "clear" }) });
+    const clearTeams = vi.fn(async () => ({ kind: "cleared", reply: "Teams cleared. I'll build new ones on match day when asked.", logReason: "cleared" }));
+    const r = recorder(model, squadWorld(), { clearTeams });
+    const res = await run({ messages: [msg({ body: CLEAR })], deps: r.deps });
+    expect(clearTeams).toHaveBeenCalledWith("u-kemal");
+    expect([...res.outcomes.values()][0]).toMatchObject({ intent: "clear_teams_request", action: "clear-teams", reply: "Teams cleared. I'll build new ones on match day when asked." });
+    expect(r.generated).toEqual([]);
+  });
+
+  it("a clear that is not addressed (no mention flag, not a reply to MatchTime) clears nothing", async () => {
+    const { model } = stubModel({ [CLEAR]: teamsFacts({ action: "clear" }) });
+    const clearTeams = vi.fn();
+    const r = recorder(model, squadWorld(), { clearTeams });
+    const res = await run({ messages: [msg({ body: CLEAR, taggedExplicitly: false })], deps: r.deps });
+    expect(clearTeams).not.toHaveBeenCalled();
+    expect(res.ownedIds.size).toBe(0);
+  });
+
+  it("a build needs the tag too (Kemal, 2026-10-30): a generate not addressed builds nothing", async () => {
+    const { model } = stubModel({ [GEN]: teamsFacts() });
+    const r = recorder(model, squadWorld());
+    const res = await run({ messages: [msg({ body: GEN, taggedExplicitly: false })], deps: r.deps });
+    expect(r.generated).toEqual([]);
+    expect(res.ownedIds.size).toBe(0);
   });
 });

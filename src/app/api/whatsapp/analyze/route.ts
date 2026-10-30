@@ -152,14 +152,12 @@ import { SCORE_HANDLED_BY } from "@/lib/score-engine";
 import { runAdminOpsBatch } from "@/lib/admin-ops-engine-batch";
 import { ADMIN_OPS_HANDLED_BY } from "@/lib/admin-ops-engine";
 import { runTeamOpsBatch } from "@/lib/team-ops-engine-batch";
-import { applyClearTeams } from "@/lib/team-clear";
 import { alsoTeamsIds } from "@/lib/team-also-signal";
 import { TEAM_OPS_HANDLED_BY } from "@/lib/team-ops-engine";
 import {
   buildScoreApplyDeps,
   buildAdminOpsApplyDeps,
   buildTeamOpsApplyDeps,
-  buildTeamClearDeps,
   buildClaimGuestNameAsk,
 } from "@/lib/owner-deps";
 import {
@@ -2388,12 +2386,7 @@ async function handleAnalyzeRequest(request: Request) {
           messages: ownerBase,
           history: ownerHistory,
           enabled: stepSevenEnabled,
-          deps: {
-            ...buildTeamOpsApplyDeps({ orgId: org.id }),
-            // The teams extractor's `clear` (admins only, `team-clear.ts`).
-            clearTeams: (senderUserId) =>
-              applyClearTeams({ senderUserId, lang: org.language, deps: buildTeamClearDeps({ orgId: org.id, now: new Date() }) }),
-          },
+          deps: buildTeamOpsApplyDeps({ orgId: org.id }),
           // The team half of a message the attendance engine owns
           // ("swap X with Y, and I'm out"): the engine's signal, a fact.
           alsoTeams: new Set(

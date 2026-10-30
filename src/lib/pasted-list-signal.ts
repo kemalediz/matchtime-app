@@ -7,9 +7,7 @@
  * reader (`hq-squad-reader.ts`, `place: "players"`), so the reader is not
  * called on every message.
  *
- * THE SEAM. Until P1's field exists, `routerSaysPastedList` finds nothing
- * and no message is read as a list (nobody is registered off a list). When
- * the field lands, only `routerSaysPastedList` changes. The e2e suite
+ * The router's field is `RoutedMessage.pastedList` (#476). The e2e suite
  * flags messages through a stub file (`MT_TEST_PASTED_LIST_STUB_FILE`),
  * by id or by the trimmed body, as every other model seam does.
  */
@@ -25,9 +23,8 @@ export interface RoutedForListSignal {
 }
 
 /**
- * PURE. Does the router say this message is a pasted squad list? Reads the
- * field P1 adds. TODO(P1): the field name is confirmed when P1 lands; until
- * then nothing sets it and this is false.
+ * PURE. Does the router say this message is a pasted squad list? Its
+ * `pasted_list` answer, `RoutedMessage.pastedList` (#476).
  */
 export function routerSaysPastedList(r: RoutedForListSignal | undefined): boolean {
   return r?.pastedList === true;

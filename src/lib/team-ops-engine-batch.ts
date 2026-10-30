@@ -272,7 +272,7 @@ export const TEAM_OPS_ACTIONS = TEAM_OPS_TEAM_ACTIONS;
  * leave it to answer-batch ("show"), or one line ("unsupported").
  */
 export function teamActionOf(facts: Extract<Facts, { kind: "teams" }>): "generate" | "swap" | "clear" | "show" | "unsupported" {
-  const action = facts.action as string;
+  const action = facts.action;
   if (action === "show") return "show";
   if (action === "clear") return "clear";
   if (action === "swap") return playersSwapShape(facts).kind === "unsupported" ? "unsupported" : "swap";
@@ -593,7 +593,8 @@ export async function runTeamOpsBatch(args: {
     // (Kemal: making, changing or clearing the teams needs the tag). A
     // message that is not addressed never changes the teams and is never
     // told "I can't"; it keeps silence plus the note.
-    const addressed = m.taggedExplicitly === true || m.repliesToMatchTime === true;
+    const addressed =
+      m.taggedExplicitly === undefined ? m.tagged === true : m.taggedExplicitly === true || m.repliesToMatchTime === true;
     if (!addressed) {
       hand(`team action "${facts.action}" not addressed to MatchTime`);
       continue;
