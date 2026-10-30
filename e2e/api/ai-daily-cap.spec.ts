@@ -237,7 +237,10 @@ test("concurrent requests cannot spend past the cap by more than the stated boun
   await db.run(`DELETE FROM "BotJob" WHERE "orgId" = $1 AND text LIKE $2`, [ORG_ID, NOTICE_LIKE]);
   const cap = 0.03;
   await setCap(db, cap);
-  const bodies = Array.from({ length: 12 }, (_, i) => `just chatting number ${i + 1}`);
+  // Twice $0.03 is under the attendance reads' $0.50 monthly floor (review
+  // of #476), so the floor is the ceiling here: 60 calls at $0.009 would
+  // cost $0.54, past it.
+  const bodies = Array.from({ length: 60 }, (_, i) => `just chatting number ${i + 1}`);
   // Each request is ONE router call at $0.009 (below the $0.01 hold), and
   // the router calls it banter, so nothing else is asked.
   engineOn(Object.fromEntries(bodies.map((b) => [b, { route: "none" }])), { routerCostUsd: 0.009 });
@@ -249,10 +252,10 @@ test("concurrent requests cannot spend past the cap by more than the stated boun
   );
 
   const u = (await usage(db))!;
-  // Router calls are attendance reads past the cap too (twice the cap,
-  // 2026-10-30): the overflow ceiling + one hold + Σ max(0, cost − hold),
-  // the last term 0 here.
-  expect(Number(u.costUsd)).toBeLessThanOrEqual(2 * cap + 0.01 + 1e-9);
+  // Router calls are attendance reads past the cap too: the ceiling is
+  // twice the cap or the monthly floor, whichever is higher, + one hold +
+  // Σ max(0, cost − hold), the last term 0 here.
+  expect(Number(u.costUsd)).toBeLessThanOrEqual(Math.max(2 * cap, 0.5) + 0.01 + 1e-9);
   expect(Number(u.costUsd)).toBeCloseTo(u.calls * 0.009, 9);
   expect(Number(u.reservedUsd)).toBeCloseTo(0, 9);
   expect(u.calls).toBeGreaterThan(0);

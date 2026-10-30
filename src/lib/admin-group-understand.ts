@@ -597,6 +597,9 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         senderName: input.senderName,
         organiser: input.organiser,
         addressed,
+        // HQ's open "which team won?" is what MatchTime is WAITING to hear
+        // there: the fact an answer needs (review of #476).
+        answersWaitingQuestion: score.waiting?.kind === "which-team",
         history,
         reply: replyShown,
         now,

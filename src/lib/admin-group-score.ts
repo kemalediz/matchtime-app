@@ -75,6 +75,9 @@ export interface HqScoreInput {
   organiser: boolean;
   /** An @tag, or a reply to MatchTime's own message. */
   addressed: boolean;
+  /** MatchTime is WAITING in HQ for which team won this match (a fact
+   *  from HQ's log): the message may answer it (review of #476). */
+  answersWaitingQuestion?: boolean;
   history: Array<{ author: string | null; body: string }>;
   /** The message it is a WhatsApp reply to (slice S4), as resolved. */
   reply?: QuotedGroupMessage | null;
@@ -127,6 +130,7 @@ export async function answerHqScore(input: HqScoreInput): Promise<HqScoreResult>
         route: "score",
         gated: false,
         ...(input.reply ? { reply: input.reply } : {}),
+        ...(input.answersWaitingQuestion ? { answersWaitingQuestionFor: played.id } : {}),
       },
     ],
     history: input.history,

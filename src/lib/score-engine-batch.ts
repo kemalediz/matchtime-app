@@ -174,6 +174,9 @@ export interface ScoreBatchMessage {
   /** The Pi's real mention flag (`botMentioned === true`), never the
    *  router's reading. Absent: false. */
   taggedExplicitly?: boolean;
+  /** HQ: MatchTime is waiting there for which team won this match (a fact
+   *  from HQ's log), so the message stands as a reply to that question. */
+  answersWaitingQuestionFor?: string | null;
 }
 
 export interface ScoreMessageOutcome {
@@ -433,7 +436,7 @@ export async function runScoreBatch(args: {
     taggedExplicitly: m.taggedExplicitly === true,
     // A reply to one of MatchTime's own posts: the match that post was
     // about (a fact from the quote; review of #476).
-    repliesToMatchTimeAbout: m.reply && !m.reply.author ? m.reply.matchId : null,
+    repliesToMatchTimeAbout: m.answersWaitingQuestionFor ?? (m.reply && !m.reply.author ? m.reply.matchId : null),
     route: m.route ?? "none",
     facts: ownedIds.has(m.waMessageId)
       ? (factsById.get(m.waMessageId) ?? { kind: "none" })
