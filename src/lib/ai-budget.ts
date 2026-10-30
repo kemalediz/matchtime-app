@@ -108,13 +108,21 @@ import { SETUP_STAGE_SELECT, isClubSettingUp, type SetupStageColumns } from "./c
 import { notifyAdminsOfAiCap } from "./ai-cap-notice";
 import {
   AiBudgetExceededError,
+  ATTENDANCE_OVERFLOW_MULTIPLIER,
   runWithAiBudget,
   runWithDeferredAiBudget,
   type AiBudgetHold,
   type AiBudgetLedger,
+  type ReserveOptions,
 } from "./ai-budget-context";
 
-export { bindAiBudgetKey, isAiBudgetExceeded, AiBudgetExceededError } from "./ai-budget-context";
+export {
+  bindAiBudgetKey,
+  isAiBudgetExceeded,
+  AiBudgetExceededError,
+  ATTENDANCE_OVERFLOW_MULTIPLIER,
+  withAttendanceOverflow,
+} from "./ai-budget-context";
 export { AI_CAP_ALERT_KIND } from "./ops-alerts";
 
 /** A paying club's default, after its free period (Kemal, 2026-10-01). */
@@ -328,7 +336,7 @@ async function noteFirstCapToday(key: string, day: string, cap: number | null, w
     title: "AI daily cap reached",
     detail:
       `${isPseudoKey(key) ? `${key} ` : ""}reached ${allowance} AI allowance for ${day} (${what}). ` +
-      `Plain IN and OUT still work; other messages get no AI answer until London midnight. ` +
+      `Messages about a place are still read up to twice the allowance; other messages get no AI answer until London midnight. ` +
       `Usage: table "OrgAiUsage".`,
     dedupeKey: `${AI_CAP_ALERT_KIND}:${key}:${day}`,
   });
@@ -382,7 +390,7 @@ export function prismaAiBudgetLedger(
 ): AiBudgetLedger {
   const caps = new Map<string, number>();
   return {
-    async reserve(key, label): Promise<AiBudgetHold> {
+    async reserve(key, label, opts?: ReserveOptions): Promise<AiBudgetHold> {
       const now = clock();
       const day = londonDay(now);
       let cap: number;
@@ -397,6 +405,9 @@ export function prismaAiBudgetLedger(
         await recordRefusal(key, day, cap, label, now);
         throw new AiBudgetExceededError(key, label);
       }
+      // An attendance read past the cap (`withAttendanceOverflow`) is
+      // checked against twice the cap; the row keeps the club's own cap.
+      const ceiling = opts?.overflow ? cap * ATTENDANCE_OVERFLOW_MULTIPLIER : cap;
       let granted: boolean;
       try {
         // ONE statement: create today's row holding the reserve, or add
@@ -408,7 +419,7 @@ export function prismaAiBudgetLedger(
             "reservedUsd" = "OrgAiUsage"."reservedUsd" + ${CALL_RESERVE_USD},
             "capUsd" = EXCLUDED."capUsd",
             "updatedAt" = now()
-          WHERE "OrgAiUsage"."costUsd" + "OrgAiUsage"."reservedUsd" < ${cap}
+          WHERE "OrgAiUsage"."costUsd" + "OrgAiUsage"."reservedUsd" < ${ceiling}
           RETURNING 1 AS "ok"`;
         granted = rows.length > 0;
       } catch (err) {
@@ -416,7 +427,7 @@ export function prismaAiBudgetLedger(
         return { key, day, reservedUsd: 0 };
       }
       if (!granted) {
-        await recordRefusal(key, day, cap, label, now);
+        await recordRefusal(key, day, cap, opts?.overflow ? `${label} (past twice the cap)` : label, now);
         throw new AiBudgetExceededError(key, label);
       }
       return { key, day, reservedUsd: CALL_RESERVE_USD };

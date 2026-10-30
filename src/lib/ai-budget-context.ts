@@ -81,18 +81,41 @@ export interface AiBudgetHold {
  * and the call is allowed: fail open). `settle` and `release` never throw.
  */
 export interface AiBudgetLedger {
-  /** Hold money for one call about to be made, or refuse it. */
-  reserve(key: string, label: string): Promise<AiBudgetHold>;
+  /** Hold money for one call about to be made, or refuse it. With
+   *  `overflow`, the check is against `ATTENDANCE_OVERFLOW_MULTIPLIER`
+   *  times the cap instead of the cap. */
+  reserve(key: string, label: string, opts?: ReserveOptions): Promise<AiBudgetHold>;
   /** The call returned and cost `costUsd`: book it, free the hold. */
   settle(hold: AiBudgetHold, costUsd: number): Promise<void>;
   /** The call threw before anything was billed: free the hold. */
   release(hold: AiBudgetHold): Promise<void>;
 }
 
+export interface ReserveOptions {
+  /** The call is an attendance read past the cap (`withAttendanceOverflow`). */
+  overflow?: boolean;
+}
+
+/**
+ * THE ATTENDANCE OVERFLOW (Kemal's decision via the manager, 2026-10-30).
+ *
+ * At the per-club cap no regex takes over: until 2026-10-30 a bare IN/OUT
+ * floor read attendance with no model, and "no string parsing" retired it.
+ * Instead a message that may be about a place still gets read by the model
+ * past the cap, up to a HARD ceiling of this many times the cap; beyond it
+ * nothing is read, the message is logged and counted on the owner's
+ * dashboard (`recordCapSkips`). Only calls made inside
+ * `withAttendanceOverflow` get the higher ceiling; everything else in the
+ * same request is still refused at the cap.
+ */
+export const ATTENDANCE_OVERFLOW_MULTIPLIER = 2;
+
 interface Store {
   /** Null until the request knows whose money it is spending. */
   key: string | null;
   ledger: AiBudgetLedger;
+  /** Inside `withAttendanceOverflow`. */
+  overflow?: boolean;
 }
 
 const storage = new AsyncLocalStorage<Store>();
@@ -118,9 +141,21 @@ export function bindAiBudgetKey(key: string): void {
 }
 
 /** The current scope's key and ledger, or null when calls are unguarded. */
-export function currentAiBudget(): { key: string; ledger: AiBudgetLedger } | null {
+export function currentAiBudget(): { key: string; ledger: AiBudgetLedger; overflow: boolean } | null {
   const s = storage.getStore();
-  return s && s.key ? { key: s.key, ledger: s.ledger } : null;
+  return s && s.key ? { key: s.key, ledger: s.ledger, overflow: s.overflow === true } : null;
+}
+
+/**
+ * Run `fn` as an attendance read past the cap: the same club, the same
+ * ledger, the ceiling raised to `ATTENDANCE_OVERFLOW_MULTIPLIER` times the
+ * cap. Only the router and the attendance extractor open it, and only once
+ * the club is at its cap. Outside a scope it is a pass-through.
+ */
+export function withAttendanceOverflow<T>(fn: () => Promise<T>): Promise<T> {
+  const s = storage.getStore();
+  if (!s) return fn();
+  return storage.run({ ...s, overflow: true }, fn);
 }
 
 /**
@@ -144,7 +179,7 @@ export async function guardedModelCall<T>(
 ): Promise<T> {
   const scope = currentAiBudget();
   if (!scope) return call();
-  const hold = await scope.ledger.reserve(scope.key, label);
+  const hold = await scope.ledger.reserve(scope.key, label, scope.overflow ? { overflow: true } : undefined);
   let result: T;
   try {
     result = await call();

@@ -13,6 +13,8 @@ import {
   isAiBudgetExceeded,
   runWithAiBudget,
   runWithDeferredAiBudget,
+  withAttendanceOverflow,
+  ATTENDANCE_OVERFLOW_MULTIPLIER,
   type AiBudgetHold,
   type AiBudgetLedger,
 } from "../ai-budget-context";
@@ -32,9 +34,10 @@ const RESERVE = 0.01;
 function memoryLedger(cap: number) {
   const row = { costUsd: 0, reservedUsd: 0, calls: 0, refused: 0 };
   const ledger: AiBudgetLedger = {
-    async reserve(key, label) {
+    async reserve(key, label, opts) {
       // One synchronous step, exactly as the SQL is one statement.
-      if (row.costUsd + row.reservedUsd >= cap) {
+      const ceiling = opts?.overflow ? cap * ATTENDANCE_OVERFLOW_MULTIPLIER : cap;
+      if (row.costUsd + row.reservedUsd >= ceiling) {
         row.refused++;
         throw new AiBudgetExceededError(key, label);
       }
@@ -106,6 +109,50 @@ describe("guardedModelCall", () => {
       await guardedModelCall("after", async () => "ok", () => 0.3, 1);
     });
     expect(row.costUsd).toBe(0.3);
+  });
+});
+
+describe("the attendance overflow: one read past the cap, up to twice the cap (2026-10-30)", () => {
+  it("is twice the cap", () => {
+    expect(ATTENDANCE_OVERFLOW_MULTIPLIER).toBe(2);
+  });
+
+  it("a call inside it is allowed past the cap and booked to the same club", async () => {
+    const { ledger, row } = memoryLedger(0.5);
+    row.costUsd = 0.6;
+    const call = vi.fn(async () => "ok");
+    await runWithAiBudget("org-1", ledger, () =>
+      withAttendanceOverflow(() => guardedModelCall("extractor:attendance", call, () => 0.002, 1)),
+    );
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(row.costUsd).toBeCloseTo(0.602, 9);
+  });
+
+  it("beyond twice the cap nothing is read, even inside it", async () => {
+    const { ledger, row } = memoryLedger(0.5);
+    row.costUsd = 1.0;
+    const call = vi.fn(async () => "ok");
+    const err = await runWithAiBudget("org-1", ledger, () =>
+      withAttendanceOverflow(() => guardedModelCall("extractor:attendance", call, () => 0, 1)),
+    ).catch((e) => e);
+    expect(isAiBudgetExceeded(err)).toBe(true);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("a call outside it, in the same request, is still refused at the cap", async () => {
+    const { ledger, row } = memoryLedger(0.5);
+    row.costUsd = 0.6;
+    const call = vi.fn(async () => "ok");
+    const err = await runWithAiBudget("org-1", ledger, async () => {
+      await withAttendanceOverflow(async () => "inside");
+      return guardedModelCall("extractor:question", call, () => 0, 1);
+    }).catch((e) => e);
+    expect(isAiBudgetExceeded(err)).toBe(true);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("outside any scope it is a pass-through", async () => {
+    expect(await withAttendanceOverflow(async () => "ok")).toBe("ok");
   });
 });
 

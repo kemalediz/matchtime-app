@@ -146,6 +146,14 @@ export interface RoutedMessage {
    * rescues against a true count of 0.
    */
   overrodeRoute?: Route;
+  /**
+   * The router's own reading that the message speaks TO MatchTime (its
+   * `to_bot`, 2026-10-30): a tag, the bot's name used to address it, or a
+   * reply to its own message. The analyze route treats it as a tag
+   * (`messageTagsBot`'s `routerAddressed`), so no word test on the body
+   * decides it. Absent: the model did not say so (or was not asked).
+   */
+  toBot?: boolean;
 }
 
 // ── Stage 2: FACTS ─────────────────────────────────────────────────────

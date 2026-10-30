@@ -52,32 +52,32 @@ const THUMB: RouterMessage[] = [{ id: "m1", authorName: "Aydın Kocahal", body: 
 
 describe("a bare 👍 answering a question MatchTime is still waiting on", () => {
   it("reaches the analyzer even though the router said `none`", async () => {
-    const res = await routeBatch(modelSaying("none"), THUMB, { floor: false, awaiting: OPEN });
+    const res = await routeBatch(modelSaying("none"), THUMB, { awaiting: OPEN });
     expect(res.routes[0].route).not.toBe("none");
     expect(res.routes[0].source).toBe("awaiting");
     expect(res.routes[0].overrodeRoute).toBe("none");
   });
 
   it("says why, so a route can be explained after the fact", async () => {
-    const res = await routeBatch(modelSaying("none"), THUMB, { floor: false, awaiting: OPEN });
+    const res = await routeBatch(modelSaying("none"), THUMB, { awaiting: OPEN });
     expect(res.degradations.map((d) => d.detail).join(" ")).toContain("bench-slot-offer");
   });
 
   it("routes it `unsure`, which is where §11.4 sends anything attendance-shaped it cannot read", async () => {
-    const res = await routeBatch(modelSaying("none"), THUMB, { floor: false, awaiting: OPEN });
+    const res = await routeBatch(modelSaying("none"), THUMB, { awaiting: OPEN });
     expect(res.routes[0].route).toBe("unsure");
   });
 });
 
 describe("the negative direction — larger by far, and it must not move", () => {
   it("a bare 👍 with NO open question stays `none`", async () => {
-    const res = await routeBatch(modelSaying("none"), THUMB, { floor: false });
+    const res = await routeBatch(modelSaying("none"), THUMB, {});
     expect(res.routes[0].route).toBe("none");
     expect(res.routes[0].source).toBe("model");
   });
 
   it("a bare 👍 with `awaiting: null` stays `none`", async () => {
-    const res = await routeBatch(modelSaying("none"), THUMB, { floor: false, awaiting: null });
+    const res = await routeBatch(modelSaying("none"), THUMB, { awaiting: null });
     expect(res.routes[0].route).toBe("none");
   });
 
@@ -87,7 +87,7 @@ describe("the negative direction — larger by far, and it must not move", () =>
     // messages in 4.5 months and it cannot lose a write — the worst case
     // is one $0.03 call on a batch that did not need it.
     const banter: RouterMessage[] = [{ id: "m1", authorName: "Zair", body: "😂😂" }];
-    const res = await routeBatch(modelSaying("none"), banter, { floor: false, awaiting: OPEN });
+    const res = await routeBatch(modelSaying("none"), banter, { awaiting: OPEN });
     expect(res.routes[0].route).toBe("unsure");
   });
 });
@@ -107,7 +107,7 @@ describe("it can only ever ADD analysis — the same proof the floor has", () =>
 
   it("never produces `none` where the model did not", async () => {
     for (const r of ROUTES) {
-      const res = await routeBatch(modelSaying(r), THUMB, { floor: false, awaiting: OPEN });
+      const res = await routeBatch(modelSaying(r), THUMB, { awaiting: OPEN });
       if (r === "none") expect(res.routes[0].route).not.toBe("none");
       else expect(res.routes[0].route).toBe(r);
     }
@@ -115,7 +115,7 @@ describe("it can only ever ADD analysis — the same proof the floor has", () =>
 
   it("leaves every non-`none` route exactly as the model gave it", async () => {
     for (const r of ROUTES.filter((x) => x !== "none")) {
-      const res = await routeBatch(modelSaying(r), THUMB, { floor: false, awaiting: OPEN });
+      const res = await routeBatch(modelSaying(r), THUMB, { awaiting: OPEN });
       expect(res.routes[0].source).toBe("model");
       expect(res.routes[0].overrodeRoute).toBeUndefined();
     }
@@ -127,8 +127,8 @@ describe("it can only ever ADD analysis — the same proof the floor has", () =>
       { id: "b", authorName: "Zair", body: "😂" },
       { id: "c", authorName: "Mo", body: "In" },
     ];
-    const off = await routeBatch(modelSaying("none"), msgs, { floor: false });
-    const on = await routeBatch(modelSaying("none"), msgs, { floor: false, awaiting: OPEN });
+    const off = await routeBatch(modelSaying("none"), msgs, {});
+    const on = await routeBatch(modelSaying("none"), msgs, { awaiting: OPEN });
     const analysed = (rs: typeof off.routes) =>
       new Set(rs.filter((r) => r.route !== "none").map((r) => r.messageId));
     for (const id of analysed(off.routes)) expect(analysed(on.routes).has(id)).toBe(true);
@@ -141,40 +141,12 @@ describe("it can only ever ADD analysis — the same proof the floor has", () =>
         throw new Error("nope");
       },
     };
-    const res = await routeBatch(throwing, THUMB, { floor: false, awaiting: OPEN });
+    const res = await routeBatch(throwing, THUMB, { awaiting: OPEN });
     expect(res.routes[0].route).toBe("unsure");
     expect(res.routes[0].source).toBe("fallback");
   });
 });
 
-describe("it composes with the floor rather than fighting it", () => {
-  it("a floor-claimed message keeps the floor's route", async () => {
-    const bare: RouterMessage[] = [{ id: "m1", authorName: "Mo", body: "In" }];
-    const res = await routeBatch(modelSaying("none"), bare, { floor: true, awaiting: OPEN });
-    expect(res.routes[0].route).toBe("self_att");
-    expect(res.routes[0].source).toBe("floor");
-  });
-
-  it("the router is not asked at all when every message hits the floor, open question or not", async () => {
-    let calls = 0;
-    const counting: PipelineModel = {
-      name: "counting",
-      async complete(): Promise<ModelResponse> {
-        calls += 1;
-        return {
-          text: JSON.stringify({ routes: [] }),
-          stopReason: "end_turn",
-          usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
-          costUsd: 0,
-          ms: 0,
-        };
-      },
-    };
-    const bare: RouterMessage[] = [{ id: "m1", authorName: "Mo", body: "In" }];
-    await routeBatch(counting, bare, { floor: true, awaiting: OPEN });
-    expect(calls).toBe(0);
-  });
-});
 
 // ── The GATE, which is what actually decides what the analyzer sees ────
 
@@ -187,7 +159,6 @@ describe("the gate, with a question of MatchTime's still on the board", () => {
   it("analyses a 👍 the router called banter, and records why", async () => {
     const out = await gateBatch(gateMsgs, {
       model: modelSaying("none"),
-      floor: false,
       awaiting: OPEN,
     });
     expect(out.skipped).toEqual([]);
@@ -196,17 +167,16 @@ describe("the gate, with a question of MatchTime's still on the board", () => {
   });
 
   it("skips exactly as before when MatchTime is waiting for nothing", async () => {
-    const out = await gateBatch(gateMsgs, { model: modelSaying("none"), floor: false });
+    const out = await gateBatch(gateMsgs, { model: modelSaying("none") });
     expect(out.skipped).toEqual(["m1", "m2"]);
     expect(out.analysed).toEqual([]);
     expect(out.awaitingForced).toEqual([]);
   });
 
   it("skipped(question open) is a subset of skipped(no question) — it can only ADD analysis", async () => {
-    const closed = await gateBatch(gateMsgs, { model: modelSaying("none"), floor: false });
+    const closed = await gateBatch(gateMsgs, { model: modelSaying("none") });
     const open = await gateBatch(gateMsgs, {
       model: modelSaying("none"),
-      floor: false,
       awaiting: OPEN,
     });
     for (const id of open.skipped) expect(closed.skipped).toContain(id);
@@ -216,7 +186,6 @@ describe("the gate, with a question of MatchTime's still on the board", () => {
   it("hands the analyzer the same ids in the same order, with nothing invented", async () => {
     const out = await gateBatch(gateMsgs, {
       model: modelSaying("other_att"),
-      floor: false,
       awaiting: OPEN,
     });
     expect(out.analysed).toEqual(gateMsgs.map((m) => m.waMessageId));

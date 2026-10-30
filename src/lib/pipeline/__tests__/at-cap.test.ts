@@ -1,18 +1,24 @@
 /**
- * AT THE DAILY AI CAP, A BARE IN/OUT STILL WORKS, WITH NO MODEL CALL.
+ * AT THE DAILY AI CAP NO REGEX TAKES OVER (2026-10-30, "no string parsing").
  *
- * Before this change the floor (`routeFloor`) only spared the ROUTER: a
- * bare "in" routed `self_att` still went to the Sonnet attendance
- * extractor, so at the cap the most important message in the product
- * would have gone silent. These tests pin the deterministic path end to
- * end: floor facts, the router's capped mode, the gate's capped mode, and
- * the attendance engine writing from floor facts without calling a model.
+ * Until today a bare IN/OUT floor read attendance with no model at the
+ * cap. It is gone. The decision (Kemal, via the manager): a message that
+ * may be about a place still gets read by the model past the cap, up to a
+ * hard ceiling of twice the cap (`withAttendanceOverflow`); beyond that
+ * nothing is read, the message is logged and counted. These tests pin the
+ * router's and the gate's capped mode and the attendance engine's.
  */
 import { describe, expect, it, vi } from "vitest";
-import { floorAttendanceFacts, routeBatch } from "../router";
+import { routeBatch } from "../router";
 import { gateBatch } from "../gate";
-import { AiBudgetExceededError } from "../../ai-budget-context";
-import type { PipelineModel } from "../llm";
+import {
+  AiBudgetExceededError,
+  guardedModelCall,
+  runWithAiBudget,
+  ATTENDANCE_OVERFLOW_MULTIPLIER,
+  type AiBudgetLedger,
+} from "../../ai-budget-context";
+import type { ModelRequest, ModelResponse, PipelineModel } from "../llm";
 import {
   runAttendanceEngineBatch,
   type EngineBatchDeps,
@@ -20,91 +26,61 @@ import {
 } from "../../attendance-engine-batch";
 import type { SquadState } from "../types";
 
-/** A model that must never be reached. */
-function forbiddenModel(): PipelineModel & { calls: number } {
+const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+
+/**
+ * A club whose spend is already past its cap. The ledger is the database
+ * rule in memory (reserve only while spend is under the ceiling), and the
+ * model goes through the real guard, so what a call inside or outside the
+ * attendance overflow may do is the production rule.
+ */
+function overCap(opts: { cap: number; spent: number }) {
+  const row = { costUsd: opts.spent, calls: 0, refused: 0, labels: [] as string[] };
+  const ledger: AiBudgetLedger = {
+    async reserve(key, label, o) {
+      const ceiling = o?.overflow ? opts.cap * ATTENDANCE_OVERFLOW_MULTIPLIER : opts.cap;
+      if (row.costUsd >= ceiling) {
+        row.refused++;
+        throw new AiBudgetExceededError(key, label);
+      }
+      row.labels.push(`${label}${o?.overflow ? " (overflow)" : ""}`);
+      return { key, day: "2026-10-30", reservedUsd: 0 };
+    },
+    async settle(_h, cost) {
+      row.costUsd += cost;
+      row.calls++;
+    },
+    async release() {},
+  };
+  return { ledger, row, within: <T>(fn: () => Promise<T>) => runWithAiBudget("org-1", ledger, fn) };
+}
+
+/** A router model: answers each line by its body, through the guard. */
+function routerModel(byBody: Record<string, string>): PipelineModel & { calls: number } {
   const m = {
-    name: "forbidden",
+    name: "router-fake",
     calls: 0,
-    async complete(): Promise<never> {
-      m.calls++;
-      throw new Error("the model was called at the cap");
+    async complete(req: ModelRequest): Promise<ModelResponse> {
+      return guardedModelCall(
+        req.label,
+        async () => {
+          m.calls++;
+          const rows = [...req.user.matchAll(/^\[(m\d+)\] [^:]*: (.*)$/gm)];
+          return {
+            text: JSON.stringify({ routes: rows.map((r) => ({ id: r[1], route: byBody[r[2]] ?? "none", to_bot: false })) }),
+            stopReason: "end_turn",
+            usage,
+            costUsd: 0.002,
+            ms: 1,
+          };
+        },
+        (r) => r.costUsd,
+        0.01,
+      );
     },
   };
   return m;
 }
-
-/** What the guard throws when the ledger refuses. */
-function cappedModel(): PipelineModel & { calls: number } {
-  const m = {
-    name: "capped",
-    calls: 0,
-    async complete(req: { label: string }): Promise<never> {
-      m.calls++;
-      throw new AiBudgetExceededError("org-1", req.label);
-    },
-  };
-  return m;
-}
-
-describe("floorAttendanceFacts: the facts a bare declaration states, read without a model", () => {
-  const claim = (over: Record<string, unknown>) => ({
-    subject: "sender",
-    personRef: "",
-    personNamed: false,
-    polarity: "in",
-    contingent: false,
-    conditionOn: "none",
-    tense: "present",
-    reported: false,
-    confidence: 1,
-    replaces: "",
-    ...over,
-  });
-
-  it.each([
-    ["in", "in"],
-    ["IN 👍", "in"],
-    ["I'm in", "in"],
-    ["out", "out"],
-    ["can't make it", "out"],
-    ["var", "in"],
-    ["varım", "in"],
-    ["yokum", "out"],
-    ["gelemiyorum", "out"],
-  ])("%j is the sender, %s", (body, polarity) => {
-    expect(floorAttendanceFacts(body)).toEqual({
-      kind: "attendance",
-      claims: [claim({ polarity })],
-      affirmation: null,
-      sideRequests: [],
-    });
-  });
-
-  it("a mention and a token is that named person", () => {
-    expect(floorAttendanceFacts("@Ehtisham Ul Haq In")).toEqual({
-      kind: "attendance",
-      claims: [claim({ subject: "other", personRef: "Ehtisham Ul Haq", personNamed: true })],
-      affirmation: null,
-      sideRequests: [],
-    });
-  });
-
-  it("two mentions and a token are two people", () => {
-    const f = floorAttendanceFacts("@Zair Malik @Jesse out");
-    expect(f?.kind).toBe("attendance");
-    expect(f && f.kind === "attendance" && f.claims.map((c) => [c.personRef, c.polarity])).toEqual([
-      ["Zair Malik", "out"],
-      ["Jesse", "out"],
-    ]);
-  });
-
-  it.each(["in if we have 10", "who's in?", "@Match Time in", "lol", "", "in for tuesday and bringing my brother"])(
-    "%j is not a bare declaration: no floor facts",
-    (body) => {
-      expect(floorAttendanceFacts(body)).toBeNull();
-    },
-  );
-});
 
 describe("routeBatch at the cap", () => {
   const msgs = [
@@ -112,44 +88,69 @@ describe("routeBatch at the cap", () => {
     { id: "b", authorName: "Dan", body: "anyone got a spare shin pad" },
     { id: "c", authorName: "Ali", body: "@Match Time who is playing?" },
   ];
+  const byBody = { in: "self_att", "anyone got a spare shin pad": "none", "@Match Time who is playing?": "question" };
 
-  it("keeps the floor's routes and sends everything else to none, never to the extractor", async () => {
-    const r = await routeBatch(cappedModel(), msgs, { floor: true });
+  it("still asks the model, inside the overflow, and keeps only the attendance routes", async () => {
+    const { within, row } = overCap({ cap: 1, spent: 1.2 });
+    const model = routerModel(byBody);
+    const r = await within(() => routeBatch(model, msgs, { capped: true }));
     const by = Object.fromEntries(r.routes.map((x) => [x.messageId, [x.route, x.source]]));
-    expect(by).toEqual({ a: ["self_att", "floor"], b: ["none", "capped"], c: ["none", "capped"] });
-    // No `unsure`: that route goes to the extractor, which is another model call.
+    expect(by).toEqual({ a: ["self_att", "model"], b: ["none", "model"], c: ["none", "capped"] });
+    expect(model.calls).toBe(1);
+    expect(row.labels).toEqual(["router (overflow)"]);
+  });
+
+  it("a refusal found mid-batch (not known capped) asks once more inside the overflow", async () => {
+    const { within, row } = overCap({ cap: 1, spent: 1.2 });
+    const model = routerModel(byBody);
+    const r = await within(() => routeBatch(model, msgs));
+    expect(r.routes.find((x) => x.messageId === "a")).toMatchObject({ route: "self_att" });
+    expect(r.routes.find((x) => x.messageId === "c")).toMatchObject({ route: "none", source: "capped" });
+    expect(row.refused).toBe(1);
+    expect(model.calls).toBe(1);
+  });
+
+  it("past twice the cap nothing is read: every message is capped, none is guessed at", async () => {
+    const { within } = overCap({ cap: 1, spent: 2 });
+    const model = routerModel(byBody);
+    const r = await within(() => routeBatch(model, msgs, { capped: true }));
+    expect(model.calls).toBe(0);
+    expect(r.routes.map((x) => [x.route, x.source])).toEqual([
+      ["none", "capped"],
+      ["none", "capped"],
+      ["none", "capped"],
+    ]);
     expect(r.routes.some((x) => x.route === "unsure")).toBe(false);
   });
 
-  it("uses the floor at the cap even when the floor flag is off", async () => {
-    const r = await routeBatch(cappedModel(), msgs, { floor: false });
-    expect(r.routes.find((x) => x.messageId === "a")).toMatchObject({ route: "self_att", source: "floor" });
-  });
-
-  it("an open question does not rescue a capped none into unsure (that would be a model call)", async () => {
-    const r = await routeBatch(cappedModel(), [{ id: "b", authorName: "Dan", body: "👍" }], {
-      floor: true,
-      awaiting: { id: "x", orgId: "org-1", kind: "bench-slot-offer", askedAt: new Date(), closesAt: null },
-    });
-    expect(r.routes[0]).toMatchObject({ route: "none", source: "capped" });
+  it("an open question still rescues a none into unsure at the cap: that is an attendance read", async () => {
+    const { within } = overCap({ cap: 1, spent: 1.2 });
+    const r = await within(() =>
+      routeBatch(routerModel({}), [{ id: "b", authorName: "Dan", body: "👍" }], {
+        capped: true,
+        awaiting: { id: "x", orgId: "org-1", kind: "bench-slot-offer", askedAt: new Date(), closesAt: null },
+      }),
+    );
+    expect(r.routes[0]).toMatchObject({ route: "unsure", source: "awaiting" });
   });
 });
 
-describe("gateBatch in capped mode never calls the router", () => {
-  it("routes by the floor alone and skips the rest", async () => {
-    const model = forbiddenModel();
-    const g = await gateBatch(
-      [
-        { waMessageId: "a", body: "out", authorName: "Pete" },
-        { waMessageId: "b", body: "@Match Time what time is kickoff", authorName: "Ali" },
-      ],
-      { capped: true, model, floor: false },
+describe("gateBatch in capped mode", () => {
+  it("routes with the model inside the overflow and skips what is not attendance", async () => {
+    const { within } = overCap({ cap: 1, spent: 1.2 });
+    const g = await within(() =>
+      gateBatch(
+        [
+          { waMessageId: "a", body: "out", authorName: "Pete" },
+          { waMessageId: "b", body: "@Match Time what time is kickoff", authorName: "Ali" },
+        ],
+        { capped: true, model: routerModel({ out: "self_att", "@Match Time what time is kickoff": "question" }) },
+      ),
     );
-    expect(model.calls).toBe(0);
-    expect(g.modelCalled).toBe(false);
+    expect(g.modelCalled).toBe(true);
     expect(g.analysed).toEqual(["a"]);
     expect(g.skipped).toEqual(["b"]);
-    expect(g.routes.find((r) => r.messageId === "a")?.route).toBe("self_att");
+    expect(g.routes.find((r) => r.messageId === "b")?.source).toBe("capped");
   });
 });
 
@@ -230,45 +231,83 @@ const run = (messages: EngineBatchMessage[], d: EngineBatchDeps) =>
     deps: d,
   });
 
+/** An attendance extractor answering one sender claim per message,
+ *  through the guard. */
+function extractorModel(polarityByBody: Record<string, "in" | "out">): PipelineModel & { calls: number } {
+  const m = {
+    name: "extractor-fake",
+    calls: 0,
+    async complete(req: ModelRequest): Promise<ModelResponse> {
+      return guardedModelCall(
+        req.label,
+        async () => {
+          m.calls++;
+          const body = req.user.split("\n").at(-1)!.trim();
+          const polarity = polarityByBody[body];
+          const claims = polarity
+            ? [{ subject: "sender", personRef: "", personNamed: false, polarity, contingent: false, conditionOn: "none", tense: "present", reported: false, confidence: 0.95 }]
+            : [];
+          return { text: JSON.stringify({ claims, affirmation: "none", sideRequests: [] }), stopReason: "end_turn", usage, costUsd: 0.003, ms: 1 };
+        },
+        (r) => r.costUsd,
+        0.01,
+      );
+    },
+  };
+  return m;
+}
+
 describe("the attendance engine at the cap", () => {
-  it("known capped (aiCapped): a bare IN and a bare OUT are written with ZERO model calls", async () => {
-    const model = forbiddenModel();
+  it("known capped (aiCapped): IN and OUT are each read once inside the overflow and written", async () => {
+    const { within, row } = overCap({ cap: 1, spent: 1.2 });
+    const model = extractorModel({ in: "in", out: "out" });
     const { d, registered, cancelled } = deps(model, { aiCapped: true });
-    const r = await run(
-      [
-        msg({ waMessageId: "a", body: "in" }),
-        msg({ waMessageId: "b", body: "out", senderUserId: "u-dan", senderName: "Dan Drummer", authorName: "Dan Drummer" }),
-      ],
-      d,
+    const r = await within(() =>
+      run(
+        [
+          msg({ waMessageId: "a", body: "in" }),
+          msg({ waMessageId: "b", body: "out", senderUserId: "u-dan", senderName: "Dan Drummer", authorName: "Dan Drummer" }),
+        ],
+        d,
+      ),
     );
-    expect(model.calls).toBe(0);
+    expect(model.calls).toBe(2);
+    expect(row.labels).toEqual(["extractor:attendance (overflow)", "extractor:attendance (overflow)"]);
     expect(registered).toEqual(["u-pete"]);
     expect(cancelled).toEqual(["u-dan"]);
     expect(r.outcomes.get("a")).toMatchObject({ intent: "in", action: "IN" });
-    expect(r.cost.calls).toBe(0);
   });
 
-  it("capped mid-batch: an extractor call the ledger refuses falls back to the floor's facts", async () => {
-    const model = cappedModel();
+  it("capped mid-batch: a refused read is made once more inside the overflow", async () => {
+    const { within, row } = overCap({ cap: 1, spent: 1.2 });
+    const model = extractorModel({ IN: "in" });
     const { d, registered } = deps(model);
-    const r = await run([msg({ waMessageId: "a", body: "IN" })], d);
+    const r = await within(() => run([msg({ waMessageId: "a", body: "IN" })], d));
     expect(registered).toEqual(["u-pete"]);
     expect(r.ownedIds.has("a")).toBe(true);
-    // Refused once, and NOT retried: a refusal is not a flaky call.
+    expect(row.refused).toBe(1);
     expect(model.calls).toBe(1);
   });
 
-  it("a sentence the floor cannot read is NOT guessed at: owned by nobody, no write", async () => {
-    const model = forbiddenModel();
-    const { d, registered, cancelled } = deps(model, { aiCapped: true });
-    const r = await run([msg({ waMessageId: "a", body: "in if we get 10", route: "self_att" })], d);
+  it("past twice the cap nothing is read and nothing is guessed: no write, not owned, counted", async () => {
+    const { within } = overCap({ cap: 1, spent: 2 });
+    const model = extractorModel({ in: "in" });
+    const skips: number[] = [];
+    const { d, registered, cancelled } = deps(model, {
+      aiCapped: true,
+      recordCapSkips: async (_org: string, n: number) => {
+        skips.push(n);
+      },
+    });
+    const r = await within(() => run([msg({ waMessageId: "a", body: "in" })], d));
     expect(model.calls).toBe(0);
     expect(registered).toEqual([]);
     expect(cancelled).toEqual([]);
     expect(r.ownedIds.size).toBe(0);
+    expect(skips).toEqual([1]);
   });
 
-  it("below the cap nothing changes: the extractor still reads a bare IN", async () => {
+  it("below the cap nothing changes: the extractor reads a bare IN outside the overflow", async () => {
     const complete = vi.fn(async () => ({
       text: JSON.stringify({
         claims: [

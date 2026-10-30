@@ -174,6 +174,13 @@ describe('"we" and "they" are read from the sender\'s side', () => {
     });
   });
 
+  it("only the extractor's own tokens mean a side: a raw \"we\" or \"biz\" is not read (2026-10-30)", () => {
+    expect(resolveTeamRef("we", EN, "YELLOW")).toBeNull();
+    expect(resolveTeamRef("biz", TR, "RED")).toBeNull();
+    expect(resolveTeamRef("us", EN, "YELLOW")).toBe("YELLOW");
+    expect(resolveTeamRef("them", EN, "YELLOW")).toBe("RED");
+  });
+
   it("asks when the sender was on neither side", () => {
     expect(resolve(facts(5, 3, { winner: "us" }), EN, null)).toEqual({ kind: "ask", why: "unknown_team" });
   });

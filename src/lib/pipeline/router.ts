@@ -73,9 +73,7 @@
  *      trusted. Same one-directional shape as the floor, different
  *      trigger. See `awaiting-answer.ts`.
  */
-import { messageTagsBot } from "../interaction-contract";
 import {
-  clarificationSubject,
   describeQuestion,
   type AwaitingQuestion,
   type StatsClarification,
@@ -90,9 +88,15 @@ import {
 } from "./llm";
 import { HAIKU_EFFORT } from "../models";
 import { nowLine, quotedLines, type ContextMessage } from "../reply-context";
-import type { AttendanceFacts, Claim, Degradation, Route, RoutedMessage } from "./types";
+import type { Degradation, Route, RoutedMessage } from "./types";
 import { ORGANISER_ONLY_ROUTES } from "./types";
-import { isAiBudgetExceeded } from "../ai-budget-context";
+import { isAiBudgetExceeded, withAttendanceOverflow } from "../ai-budget-context";
+
+/**
+ * The HQ hold's last importer of the retired floor (package P3 removes it
+ * in parallel); see `legacy-floor.ts`. Nothing in this file uses it.
+ */
+export { floorAttendanceFacts, routeFloor } from "./legacy-floor";
 
 /**
  * ─────────────────────────────────────────────────────────────────────
@@ -342,6 +346,7 @@ WHAT YOU ARE SHOWN. Code knows these facts; rely on them rather than guessing.
 - One line per message, "[m1] Name: text". Route every id; every other line is context.
 - An "ORGANISERS' GROUP" header above a message: it was sent in the club's organisers' group, and the header says whether the sender is an organiser, what MatchTime is WAITING to hear and what was said there EARLIER. Without that header a message is from the PLAYERS' GROUP. Everything below applies to both groups; "IN THE ORGANISERS' GROUP" adds what differs there.
 - A "PARTNER CLUBS" line above an organiser's message: the names of the club's partner clubs, so a message naming one of them is about that club, not this group.
+- A "MATCHTIME ASKED" line above a message: MatchTime could not tell whom the sender's earlier stats question meant and asked them. A reply that names the person, in any words, answers it: question. Anything else they say is routed as usual ("I'm in" is still self_att).
 
 REPLIES. A message that is a WhatsApp reply comes under a "THEY ARE REPLYING TO" line: whose message it quotes (MatchTime's or a member's), when (against NOW), and its words. Read the reply in the light of what it quotes, then route the reply itself. "same", "me too", "ben de", "he", "that" and a bare "no" take their meaning from it.
 
@@ -530,7 +535,8 @@ Asking MatchTime what it can do, against telling the others about it:
   "once it's enabled, tag @Match Time here and ask it to cancel, and it will cancel the next match" -> none
   "MatchTime'ı etiketleyip iptal et derseniz maçı iptal eder" -> none
 
-Return JSON only: {"routes":[{"id":"<id>","route":"<route>"}]}`;
+THE ANSWER. For every id give its route and to_bot: true when the message speaks TO MatchTime as question 2 defines it (a tag, the bot's name used to speak to it, or a players' group reply to MatchTime's own message), false when it only talks about MatchTime or does not mention it at all. to_bot never changes the route.
+Return JSON only: {"routes":[{"id":"<id>","route":"<route>","to_bot":<true or false>}]}`;
 
 // Room for adaptive thinking on top of the routes: one message at medium
 // effort used up to 520 output tokens (2026-10-19); a batch of eight needs
@@ -565,196 +571,6 @@ const VALID: Record<string, Route> = {
 
 export function normaliseRoute(raw: string): Route | null {
   return VALID[(raw ?? "").trim().toLowerCase()] ?? null;
-}
-
-/**
- * THE DETERMINISTIC FLOOR. Twenty lines, anchored at both ends, and it
- * only ever claims a message that is ENTIRELY a bare self-attendance
- * token. "Zeeshan is out 😂" and "I was in last week" must not match, so
- * everything except the token, optional punctuation and an emoji is a
- * disqualifier.
- */
-const FLOOR_IN = /^(?:i\s*'?a?m|i\s+am|im)?\s*(?:in|innn+)\b/i;
-const FLOOR_OUT = /^(?:i\s*'?a?m|i\s+am|im)?\s*(?:out|can'?t\s+make\s+it)\b/i;
-/**
- * THE SAME FLOOR IN TURKISH (2026-09-16, Erdal's group). "var" / "varım"
- * / "ben varım" is a bare "in"; "yok" / "yokum" / "ben yokum" /
- * "gelemiyorum" is a bare "out". `MDs/second-group-readiness-erdal-
- * 2026-09-16.md` §2 measured the router losing all three bare forms
- * 30 of 30 — silently, `none`, no write, no react — which is the exact
- * failure this floor exists for. Vocabulary only: the flag, the tail
- * rule and the one-way property are untouched.
- *
- * NOT `\b`: JavaScript's `\b` is ASCII-only, so `var\b` matches INSIDE
- * "varım" (ı is not a `\w`), and the loop below would then reject the
- * tail "ım" and call "varım" a sentence. The end of a Turkish token is
- * "not followed by a letter" instead. `[ıi]` because the dotless ı is
- * typed as a plain i from an English keyboard, and `/i` folds I to i.
- */
-const FLOOR_IN_TR = /^(?:ben\s+)?(?:var[ıi]m|var)(?!\p{L})/iu;
-const FLOOR_OUT_TR = /^(?:ben\s+)?(?:yokum|yok|gelemiyorum)(?!\p{L})/iu;
-/**
- * ⚠️ "+1" IS NOT IN THE FLOOR, deliberately.
- *
- * The first cut force-routed it `self_att`, which is the wrong subject:
- * "+1" offers a GUEST, not the sender. The self extractor would then
- * produce a sender claim, the guest would be lost, and PR #29's
- * name-ask — the whole point of which is that an unnamed guest gets a
- * question rather than a ghost user — would be bypassed on the single
- * most common way to offer one. `guest-name-ask.ts` already classifies
- * `+N` as a placeholder guest, so the rest of the codebase agrees.
- * The router decides this one.
- */
-/**
- * ONE CHARACTER OF AN EMOJI SEQUENCE (2026-09-24). The pictograph itself
- * plus everything a sequence is built from: skin tones, regional
- * indicators (flags), U+200D (the ZWJ in "🤷‍♂️", a format character),
- * U+FE0F (the variation selector in "✌️", a nonspacing mark, so `\p{S}`
- * alone missed both), the keycap U+20E3 and the tag characters of the
- * subdivision flags ("🏴󠁧󠁢󠁥󠁮󠁧󠁿"). NOT `\p{Emoji_Component}`: that property
- * includes the digits 0-9, and "in 20" is a sentence.
- */
-const EMOJI_CHAR =
-  "\\p{Extended_Pictographic}\\p{Emoji_Modifier}\\p{Regional_Indicator}\\u200D\\uFE0F\\u20E3\\u{E0020}-\\u{E007F}";
-const EMOJI_RUN = new RegExp(`[${EMOJI_CHAR}]+`, "gu");
-
-/** Anything left after the token that is not punctuation or an emoji
- *  means this is a sentence, not a bare declaration. */
-const FLOOR_TAIL = new RegExp(`^[\\s\\p{P}\\p{S}${EMOJI_CHAR}]*$`, "u");
-
-/**
- * The MENTION half of the floor: `@Someone in`, `@Zair Malik out`.
- *
- * Same shape as the bare self-attendance floor — a subject and a token,
- * nothing else — one route along. It exists because the live corpus
- * caught `@Ehtisham Ul Haq In` routed `none`, which is §11.1's failure
- * exactly: a real third-party registration gone with no write, no reply
- * and no signal.
- *
- * A mention of the BOT is never a player. Without that check
- * "@Match Time in" would try to register a member called "Match Time",
- * which is the ghost-user class of bug one layer up.
- */
-const MENTION_TOKEN = new RegExp(`^@[\\p{L}\\d._'${EMOJI_CHAR}-]+`, "u");
-/** A capitalised word after a mention is part of the mentioned display
- *  name ("@Ehtisham Ul Haq") — the Pi expands a mention to the display
- *  name. A lower-case word is the sentence starting, and ends the
- *  subject. An emoji is part of a name too, attached ("Jesse👑") or as a
- *  word of its own ("@Jesse 👑 IN"): it is never the sentence starting. */
-const NAME_WORD = new RegExp(
-  `^[${EMOJI_CHAR}]*(?:\\p{Lu}[\\p{L}'-]*)?[${EMOJI_CHAR}]*$`,
-  "u",
-);
-
-export function routeFloor(body: string): Route | null {
-  return parseFloor(body)?.route ?? null;
-}
-
-/**
- * What the floor read: the route, which way, and (for a mention) whose
- * names. One parser behind both `routeFloor` and `floorAttendanceFacts`,
- * so the two can never disagree about which messages are bare.
- */
-interface FloorReading {
-  route: "self_att" | "other_att";
-  polarity: "in" | "out";
-  /** The mentioned display names, verbatim, for `other_att`. */
-  names: string[];
-}
-
-function parseFloor(body: string): FloorReading | null {
-  const t = (body ?? "").trim();
-  if (!t) return null;
-
-  if (t.startsWith("@")) {
-    // Never the bot. `messageTagsBot` is this project's one definition
-    // of "this message tags MatchTime"; it is reused, not re-derived.
-    if (messageTagsBot({ body: t })) return null;
-    let rest = t;
-    const names: string[] = [];
-    for (;;) {
-      const m = MENTION_TOKEN.exec(rest);
-      if (!m) break;
-      const words = [m[0].slice(1)];
-      rest = rest.slice(m[0].length).trimStart();
-      // Consume the rest of the mentioned display name.
-      for (;;) {
-        const word = rest.split(/\s+/)[0] ?? "";
-        if (!word || !NAME_WORD.test(word) || isFloorToken(word)) break;
-        words.push(word);
-        rest = rest.slice(word.length).trimStart();
-      }
-      names.push(words.join(" "));
-    }
-    if (names.length === 0) return null;
-    const polarity = bareDeclaration(rest);
-    return polarity ? { route: "other_att", polarity, names } : null;
-  }
-
-  const polarity = bareDeclaration(t);
-  return polarity ? { route: "self_att", polarity, names: [] } : null;
-}
-
-/**
- * THE FACTS A BARE DECLARATION STATES, READ WITHOUT A MODEL (2026-09-29).
- *
- * For the daily AI cap. Below the cap the floor only ROUTES a message and
- * the attendance extractor still reads it; at the cap there is no
- * extractor, and a bare "in" must still put the player in the squad. So
- * the floor states what it already proved about the text, as `Facts`,
- * and the engine decides exactly as it would on the extractor's answer.
- *
- * It claims no more than the floor does: ONLY a message that is entirely
- * a bare IN/OUT token (with optional mentions, punctuation and emoji).
- * "in if we get 10", "who's in?" and "in, bringing my brother" are null,
- * and at the cap they are simply not handled rather than guessed at.
- * Every field is what the words say: present tense, not contingent, a
- * decision, not reported, and a mention is a named person.
- */
-export function floorAttendanceFacts(body: string): AttendanceFacts | null {
-  const f = parseFloor(body);
-  if (!f) return null;
-  const claim = (subject: "sender" | "other", personRef: string): Claim => ({
-    subject,
-    personRef,
-    personNamed: subject === "other",
-    polarity: f.polarity,
-    contingent: false,
-    conditionOn: "none",
-    tense: "present",
-    reported: false,
-    confidence: 1,
-    replaces: "",
-  });
-  return {
-    kind: "attendance",
-    claims: f.route === "self_att" ? [claim("sender", "")] : f.names.map((n) => claim("other", n)),
-    affirmation: null,
-    sideRequests: [],
-  };
-}
-
-/** Is this single word one of the bare tokens the floor recognises? */
-function isFloorToken(word: string): boolean {
-  return /^(?:in|out|var|var[ıi]m|yok|yokum|gelemiyorum)$/iu.test(word.replace(/[^\p{L}]/gu, ""));
-}
-
-/** Is the whole of `t` a bare IN/OUT declaration and nothing else? Which
- *  way, or null. The length cap bounds the WORDS, so a run of emoji after
- *  "IN" never pushes a bare declaration over it. */
-function bareDeclaration(t: string): "in" | "out" | null {
-  if (!t || t.replace(EMOJI_RUN, "").length > 24) return null;
-  for (const [re, polarity] of [
-    [FLOOR_IN, "in"],
-    [FLOOR_OUT, "out"],
-    [FLOOR_IN_TR, "in"],
-    [FLOOR_OUT_TR, "out"],
-  ] as const) {
-    const m = re.exec(t);
-    if (!m) continue;
-    return FLOOR_TAIL.test(t.slice(m[0].length)) ? polarity : null;
-  }
-  return null;
 }
 
 export interface RouterMessage {
@@ -798,6 +614,21 @@ export interface RouterMessage {
    * message that is not a reply.
    */
   reply?: ContextMessage | null;
+  /**
+   * MatchTime asked this sender "who do you mean?" about their stats
+   * question (`StatsClarification`), and this is that original question,
+   * verbatim. Shown as the `clarificationLine` above the message, so the
+   * model reads a reply that names somebody as the answer (2026-10-30;
+   * replaces the `clarificationSubject` word test). Set by `routeBatch`
+   * from `RouteBatchOptions.clarifications`; absent otherwise.
+   */
+  clarifying?: string;
+}
+
+/** The line above a message from somebody MatchTime asked "who do you
+ *  mean?" (see `RouterMessage.clarifying`). */
+export function clarificationLine(question: string): string {
+  return `MATCHTIME ASKED this sender whom they meant in their earlier question: "${question}"`;
 }
 
 /**
@@ -871,7 +702,8 @@ export function renderRouterTurn(messages: RouterMessage[], now: Date = new Date
     const reply = m.reply ? quotedLines(m.reply, ROUTER_QUOTE_WORDS_MAX) : [];
     if (m.organisers) return [organisersHeader(m.organisers.senderIsOrganiser), ...m.organisers.context, ...reply, line].join("\n");
     const partners = m.partnerClubs && m.partnerClubs.length > 0 ? [partnerClubsLine(m.partnerClubs)] : [];
-    return [...partners, ...reply, line].join("\n");
+    const asked = m.clarifying ? [clarificationLine(m.clarifying)] : [];
+    return [...partners, ...asked, ...reply, line].join("\n");
   });
   return [nowLine(now), ...body].join("\n");
 }
@@ -904,14 +736,17 @@ function cleanId(id: string): string {
 export function parseRouterResponse(text: string, ids: string[], organiserIds: ReadonlySet<string> = new Set()): RouterResult {
   const degradations: Degradation[] = [];
   const byId = new Map<string, Route>();
+  /** The model's own reading of who each message speaks to (`to_bot`). */
+  const toBot = new Set<string>();
 
   try {
     const parsed = extractJson(text) as { routes?: Array<{ id?: unknown; route?: unknown }> };
     const rows = Array.isArray(parsed?.routes) ? parsed.routes : [];
-    for (const row of rows) {
+    for (const row of rows as Array<{ id?: unknown; route?: unknown; to_bot?: unknown }>) {
       const id = typeof row?.id === "string" ? cleanId(row.id) : null;
       const route = typeof row?.route === "string" ? normaliseRoute(row.route) : null;
       if (!id) continue;
+      if (ids.includes(id) && row.to_bot === true) toBot.add(id);
       if (!ids.includes(id)) {
         degradations.push(
           degradation("router", null, `router returned an unknown id "${id}"; dropped`),
@@ -949,7 +784,7 @@ export function parseRouterResponse(text: string, ids: string[], organiserIds: R
 
   const routes: RoutedMessage[] = ids.map((id) => {
     const route = byId.get(id);
-    if (route) return { messageId: id, route, source: "model" as const };
+    if (route) return { messageId: id, route, source: "model" as const, ...(toBot.has(id) ? { toBot: true } : {}) };
     // §3.2 S1's incident, and §11.1's asymmetry. A missing route is a
     // coverage hole; filling it with `none` would make that hole look
     // like a decision.
@@ -962,20 +797,10 @@ export function parseRouterResponse(text: string, ids: string[], organiserIds: R
 
 export interface RouteBatchOptions {
   /**
-   * Apply the deterministic floor. DEFAULT TRUE, which is PR #37's
-   * behaviour and what the dry-run pipeline still gets.
-   *
-   * §10 step 5 ships the floor behind its own flag, default off, for
-   * two reasons: §11.1 says reintroducing one at all is a product
-   * decision needing Kemal's sign-off, and the router's TRUE recall is
-   * only measurable with the floor out of the way. So the gate passes
-   * this explicitly rather than the floor being unconditional.
-   *
-   * Note what turning it off cannot do: the floor only ever returns
-   * `self_att` or `other_att`, never `none` (proved in
-   * `__tests__/gate.test.ts`), so its override below can only move a
-   * message OUT of `none`. Disabling it can therefore only lose
-   * analysis, never cause it — and enabling it can only add.
+   * IGNORED. The deterministic floor this switched was removed on
+   * 2026-10-30 ("no string parsing"); the field stays only so callers
+   * outside the pipeline package (scripts, other packages' tests) compile
+   * until they drop it.
    */
   floor?: boolean;
   /**
@@ -1021,8 +846,11 @@ export interface RouteBatchOptions {
    */
   scoreCorrectionIds?: ReadonlySet<string>;
   /**
-   * The club is at its daily AI cap: route with the floor alone and make
-   * no model call. See `ai-budget.ts`.
+   * The club is at its daily AI cap (`ai-budget.ts`). The router is still
+   * asked, inside `withAttendanceOverflow` (a ceiling of twice the cap),
+   * and only its attendance routes are kept: everything else becomes
+   * `none` with source `capped`, counted and not handled. Beyond twice the
+   * cap nothing is read and every message is `capped`.
    */
   capped?: boolean;
   /** The time the turn's NOW line states (club time). Defaults to now. */
@@ -1067,17 +895,32 @@ function withScoreAnswers(
   });
 }
 
-/** The routes a batch gets when the model may not be asked: the floor's
- *  reading where it has one, `none` (source `capped`) everywhere else. */
-function cappedRoutes(messages: RouterMessage[], floor: Map<string, Route>, why: string): RouterResult {
-  const degradations: Degradation[] = [];
-  const routes: RoutedMessage[] = messages.map((m) => {
-    const f = floor.get(m.id);
-    if (f) return { messageId: m.id, route: f, source: "floor" as const };
-    degradations.push(degradation("router", m.id, `${why}; not handled`));
-    return { messageId: m.id, route: "none" as const, source: "capped" as const };
+/** The routes the engine's attendance owner reads; at the cap these are
+ *  the only ones still handled. Mirrors `gate.ts`'s `ENGINE_ROUTES`. */
+const ATTENDANCE_ROUTES: readonly Route[] = ["self_att", "other_att", "offer", "unsure"];
+
+/** Every message `none` with source `capped`: nothing was read. */
+function cappedRoutes(messages: RouterMessage[], why: string): RouterResult {
+  return {
+    routes: messages.map((m) => ({ messageId: m.id, route: "none" as const, source: "capped" as const })),
+    degradations: messages.map((m) => degradation("router", m.id, `${why}; not read`)),
+  };
+}
+
+/**
+ * AT THE CAP ONLY ATTENDANCE IS HANDLED (2026-10-30). The router read the
+ * message (inside `withAttendanceOverflow`); a route the attendance engine
+ * owns stands, and the model's own `none` stays a model `none` (banter is
+ * not a message the cap cost anybody). Every other route becomes `none`
+ * with source `capped`: the analyze route counts those on the owner's
+ * dashboard and gives the first tagged one the day's polite line.
+ */
+function attendanceOnly(routes: RoutedMessage[], degradations: Degradation[]): RoutedMessage[] {
+  return routes.map((r) => {
+    if (r.route === "none" || ATTENDANCE_ROUTES.includes(r.route)) return r;
+    degradations.push(degradation("router", r.messageId, `${r.route} at the daily AI cap; not handled`));
+    return { ...r, route: "none" as const, source: "capped" as const, overrodeRoute: r.route };
   });
-  return { routes, degradations };
 }
 
 export async function routeBatch(
@@ -1100,46 +943,21 @@ async function routeBatchInner(
 ): Promise<RouterResult> {
   if (messages.length === 0) return { routes: [], degradations: [] };
 
-  const floorEnabled = opts.floor ?? true;
-  const floor = new Map<string, Route>();
-  const floorAll = new Map<string, Route>();
-  for (const m of messages) {
-    const f = routeFloor(m.body);
-    if (!f) continue;
-    floorAll.set(m.id, f);
-    if (floorEnabled) floor.set(m.id, f);
-  }
-
-  // ── AT THE DAILY AI CAP (2026-09-29) ───────────────────────────────
-  //
-  // No model call at all. The floor routes what it can read, whatever
-  // `ROUTER_GATE_FLOOR_ENABLED` says, because at the cap it is the ONLY
-  // reader left; everything else is `none`. NOT `unsure`, which is what a
-  // failed router call gets below: `unsure` goes to the attendance
-  // extractor, which is another model call the cap has just refused. No
-  // open-question or clarification rescue either, for the same reason.
-  if (opts.capped) return cappedRoutes(messages, floorAll, "the club is at its daily AI cap");
-
-  // Every message hit the floor: there is nothing left to ask about, so
-  // the batch costs nothing at all.
-  if (floor.size === messages.length) {
-    return {
-      routes: messages.map((m) => ({
-        messageId: m.id,
-        route: floor.get(m.id)!,
-        source: "floor" as const,
-      })),
-      degradations: [],
-    };
-  }
-
   const ids = messages.map((m) => m.id);
   // The model is shown, and answers with, m1, m2, ... never the WhatsApp
   // ids (`shortRouterIds`). Mapped back to the real ids right after parsing.
   const shortIds = shortRouterIds(messages.length);
   const realOf = new Map(shortIds.map((s, i) => [s, ids[i]]));
+  // The sender MatchTime asked "who do you mean?" sees that question above
+  // their message (`clarificationLine`); the model decides whether the
+  // message answers it. Matched on the sender, a fact.
+  const clarifyingFor = (m: RouterMessage) =>
+    (opts.clarifications ?? []).find((q) => !!q.askerName && q.askerName === m.authorName)?.questionBody;
   const user = renderRouterTurn(
-    messages.map((m, i) => ({ ...m, id: shortIds[i] })),
+    messages.map((m, i) => {
+      const q = clarifyingFor(m);
+      return { ...m, id: shortIds[i], ...(q ? { clarifying: q } : {}) };
+    }),
     opts.now ?? new Date(),
   );
 
@@ -1162,8 +980,9 @@ async function routeBatchInner(
             properties: {
               id: { type: "string" },
               route: { type: "string", enum: Object.keys(VALID) },
+              to_bot: { type: "boolean" },
             },
-            required: ["id", "route"],
+            required: ["id", "route", "to_bot"],
             additionalProperties: false,
           },
         },
@@ -1173,10 +992,28 @@ async function routeBatchInner(
     },
   };
 
+  // ── THE DAILY AI CAP (2026-09-29; no floor since 2026-10-30) ─────────
+  //
+  // At the cap, known up front (`opts.capped`) or found when this call is
+  // refused (a concurrent request spent the rest), the router is still
+  // asked, inside `withAttendanceOverflow`: a ceiling of twice the cap.
+  // Only its attendance routes are then kept (`attendanceOnly`). Beyond
+  // twice the cap nothing is read and every message is `capped`. No regex
+  // reads a message in its place.
+  let atCap = opts.capped === true;
+  const ask = () => (atCap ? withAttendanceOverflow(() => model.complete(req)) : model.complete(req));
+
   let result: RouterResult;
   let usage: RouterResult["usage"];
   try {
-    const resp = await model.complete(req);
+    let resp;
+    try {
+      resp = await ask();
+    } catch (err) {
+      if (!isAiBudgetExceeded(err) || atCap) throw err;
+      atCap = true;
+      resp = await ask();
+    }
     const parsed = parseRouterResponse(resp.text, shortIds, new Set(shortIds.filter((_, i) => messages[i].organisers)));
     const real = (id: string | null) => (id === null ? null : (realOf.get(id) ?? id));
     result = {
@@ -1190,23 +1027,16 @@ async function routeBatchInner(
       outputTokens: resp.usage.outputTokens,
     };
   } catch (err) {
-    // The cap was reached between the up-front check and this call (a
-    // concurrent request spent the rest): the same as `opts.capped`.
     if (isAiBudgetExceeded(err)) {
-      return cappedRoutes(messages, floorAll, "the router call was refused by the daily AI cap");
+      return cappedRoutes(messages, "the club is past twice its daily AI cap");
     }
     // §11.4: on router failure, route EVERYTHING to the attendance
     // extractor. Expensive, correct, and self-limiting because batches
     // are small. The alternative — routing everything to `none` — is
-    // the silent failure this whole design exists to remove.
-    //
-    // THIS COMMENT WAS NOT TRUE UNTIL §10 STEP 8. `unsure` was not an
-    // engine route, so the batch went to the mega-prompt instead of to
-    // any extractor. Step 8 added it to `gate.ts`'s `ENGINE_ROUTES`, so
-    // the sentence above now describes what happens; without that one
-    // line, a router outage after the deletion would have meant total
-    // silence for the whole batch. Do not remove `unsure` from that list
-    // without reading this.
+    // the silent failure this whole design exists to remove. (`unsure`
+    // is an engine route, `gate.ts`'s `ENGINE_ROUTES`; do not remove it
+    // from that list without reading this.) At the cap the extractor is
+    // read inside the same overflow ceiling.
     result = {
       routes: ids.map((id) => ({ messageId: id, route: "unsure" as const, source: "fallback" as const })),
       degradations: [
@@ -1219,56 +1049,19 @@ async function routeBatchInner(
     };
   }
 
-  // The floor OVERRIDES the model, in both directions.
-  const floored = result.routes.map((r) => {
-    const f = floor.get(r.messageId);
-    if (!f || f === r.route) return r;
-    result.degradations.push(
-      degradation(
-        "router",
-        r.messageId,
-        `the floor overrode the router: ${r.route} → ${f} (bare self-attendance)`,
-      ),
-    );
-    // `overrodeRoute` is what makes a RESCUE distinguishable from a
-    // mere relabel. Only `overrodeRoute === "none"` is the seatbelt
-    // actually firing; `other_att → self_att` changes nothing about
-    // whether the message reaches an owner at all (it used to say
-    // "whether the analyzer sees the message" — same channel, and since
-    // §10 step 8 the thing on the far end of it is the attendance
-    // engine, since both routes are in `ENGINE_ROUTES`).
-    return { ...r, route: f, source: "floor" as const, overrodeRoute: r.route };
-  });
-
   // ── WHILE MATCHTIME IS WAITING FOR AN ANSWER, `none` IS NOT TRUSTED ──
   //
-  // The gap PR #42 measured and would not turn the gate on without: two
-  // of 1,695 real messages are an attendance write the gate would lose,
-  // and both are a bare `👍` answering a slot MatchTime had left open.
-  //
-  // Note what this is NOT. It reads nothing out of the message — no
-  // token list, no emoji, no length. It reads a ROW. So it cannot fire
-  // on a thumbs-up in a group MatchTime has asked nothing of, which is
-  // where 99% of them live, and a `👍` pattern in the floor could not
-  // make that distinction at all (§11.1's "the floor becoming a
-  // classifier again").
-  //
-  // Structurally it is the floor's one-directional override with a
-  // different trigger: it only ever rewrites `none`, so it can add an
-  // extractor call and can never remove one. (It used to say "an
-  // analyzer call"; §10 step 8 deleted the analyzer, and `unsure` joined
-  // `gate.ts`'s `ENGINE_ROUTES` in the same change — WITHOUT which this
-  // rescue would, after step 8, have rescued a message into silence.)
-  // `overrodeRoute` is set for the same reason it is on the floor — so
-  // "how often did this actually rescue something?" is a query and not a
-  // guess.
-  //
-  // A `fallback` route is left alone: the batch is already going to the
-  // extractor and relabelling it would hide a router failure.
+  // The gap PR #42 measured: two of 1,695 real messages are an attendance
+  // write the gate would lose, and both are a bare `👍` answering a slot
+  // MatchTime had left open. This reads nothing out of the message; it
+  // reads a ROW (`awaiting-answer.ts`), so it cannot fire on a thumbs-up in
+  // a group MatchTime has asked nothing of. It only ever rewrites `none`,
+  // so it can add an extractor call and never remove one. A `fallback`
+  // route is left alone: the batch is already going to the extractor.
   const awaiting = opts.awaiting ?? null;
   const routes = !awaiting
-    ? floored
-    : floored.map((r) => {
+    ? result.routes
+    : result.routes.map((r) => {
         if (r.route !== "none" || r.source === "fallback") return r;
         result.degradations.push(
           degradation(
@@ -1281,43 +1074,14 @@ async function routeBatchInner(
         return { ...r, route: "unsure" as const, source: "awaiting" as const, overrodeRoute: "none" as const };
       });
 
-  // ── AND WHILE MATCHTIME IS WAITING FOR A NAME FROM ONE PERSON ──────
-  //
-  // The same override, narrowed twice (2026-09-23). It fires only for
-  // the person the clarification was put to, and only on a reply that
-  // reads as a name (`clarificationSubject`: "Idris", "I mean Mojib").
-  // It moves the message to `question`, the route whose owner holds the
-  // original question, from wherever the model put it: a bare "Idris"
-  // read as an attendance claim is the dangerous misreading here, not
-  // the harmless one. A `fallback` route is still left alone.
-  const clarifications = opts.clarifications ?? [];
-  const byId = new Map(messages.map((m) => [m.id, m]));
-  const finalRoutes =
-    clarifications.length === 0
-      ? routes
-      : routes.map((r) => {
-          if (r.route === "question" || r.source === "fallback") return r;
-          const m = byId.get(r.messageId);
-          if (!m) return r;
-          const c = clarifications.find((q) => !!q.askerName && q.askerName === m.authorName);
-          if (!c || clarificationSubject(m.body) === null) return r;
-          result.degradations.push(
-            degradation(
-              "router",
-              r.messageId,
-              `MatchTime asked ${c.askerName} who they meant (stats clarification ${c.id}); ` +
-                `${r.route} → question so the answer reaches the question it answers`,
-            ),
-          );
-          return {
-            ...r,
-            route: "question" as const,
-            source: "awaiting" as const,
-            overrodeRoute: r.overrodeRoute ?? r.route,
-          };
-        });
+  // A reply to MatchTime's "who do you mean?" is routed by the model, which
+  // is shown the open question above the message (`clarificationLine`).
+  // Until 2026-10-30 code moved such a reply to `question` whenever a word
+  // test (`clarificationSubject`) called it a name; that test is gone.
+  const finalRoutes = routes;
 
-  return { routes: finalRoutes, degradations: result.degradations, usage };
+  const out = atCap ? attendanceOnly(finalRoutes, result.degradations) : finalRoutes;
+  return { routes: out, degradations: result.degradations, usage };
 }
 
 /** Convenience for callers that do not inject a model. */

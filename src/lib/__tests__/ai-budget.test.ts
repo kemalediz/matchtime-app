@@ -264,6 +264,17 @@ describe("the database ledger fails OPEN", () => {
     expect(hold).toEqual({ key: "org-1", day: "2026-09-29", reservedUsd: CALL_RESERVE_USD });
   });
 
+  it("an attendance-overflow reservation is checked against twice the cap", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue(sutton);
+    dbMock.$queryRaw.mockResolvedValue([{ ok: 1 }]);
+    const ledger = prismaAiBudgetLedger(() => NOW);
+    await ledger.reserve("org-1", "extractor:attendance", { overflow: true });
+    const values = dbMock.$queryRaw.mock.calls[0].slice(1);
+    // The row keeps the club's own cap; only the ceiling of the check doubles.
+    expect(values).toContain(1.5);
+    expect(values[values.length - 1]).toBe(3);
+  });
+
   it("a refused reservation throws AiBudgetExceededError and records the refusal", async () => {
     dbMock.organisation.findUnique.mockResolvedValue(sutton);
     dbMock.$queryRaw.mockResolvedValue([]); // the conditional upsert matched nothing

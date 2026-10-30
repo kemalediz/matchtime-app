@@ -56,7 +56,7 @@ import { config as loadEnv } from "dotenv";
 import { probeAnthropic } from "../helpers/live-llm";
 import { spendDevApiKey } from "../helpers/dev-api-key";
 import { anthropicModel, ROUTER_MODEL } from "../../src/lib/pipeline/llm";
-import { routeBatch, routeFloor } from "../../src/lib/pipeline/router";
+import { routeBatch } from "../../src/lib/pipeline/router";
 import { batchMessages } from "./reconstruct";
 import type { ReplaySource } from "./types";
 
@@ -127,7 +127,8 @@ async function main(): Promise<number> {
   }
 
   const repeats = Math.max(1, Number(process.env.MT_ATT_REPEATS ?? 3));
-  const floorOn = process.env.ROUTER_VETO_FLOOR === "1";
+  // The regex floor was removed on 2026-10-30: the router is measured alone.
+  const floorOn = false;
   const probe = await probeAnthropic({ key, model: ROUTER_MODEL });
   console.log(
     `[att] LLM: LIVE — probe OK. ${probe.model} answered in ${probe.ms}ms and billed ` +
@@ -171,7 +172,7 @@ async function main(): Promise<number> {
         if (!isA(m.body)) continue;
         seen += 1;
         const r = by.get(m.waMessageId);
-        if (floorOn && routeFloor(m.body ?? "") !== null) {
+        if (floorOn) {
           floorTally.claimed += 1;
           if (!res.usage) floorTally.noModelCall += 1;
           else if (r?.overrodeRoute === "none") floorTally.overrodeNone += 1;

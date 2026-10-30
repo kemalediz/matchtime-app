@@ -55,9 +55,11 @@
  *      never mentioned is handed on). `unsure` is an OWNED route since
  *      step 8, so that bias now buys a real handler rather than a
  *      fallback — see the essay on `ENGINE_ROUTES` below.
- *   2. THE FLOOR — `floorForcesAnalysis`, behind its own flag, default
- *      OFF. See the essay below; it is unchanged and it is still the
- *      only regex in this file.
+ *   2. THE FLOOR — REMOVED 2026-10-30 ("no string parsing", Kemal). It
+ *      force-routed a bare IN/OUT by regex. The router reads every
+ *      message, and at the daily AI cap an attendance read still happens
+ *      up to twice the cap (`withAttendanceOverflow`), so no regex reads a
+ *      message in the model's place, below the cap or at it.
  *   3. FAIL OPEN — `routeBatch` routes a FAILED ROUTER CALL to `unsure`
  *      for the whole batch, and since step 8 that route has an owner.
  *      `gateBatch`'s own catch is weaker and this is stated rather than
@@ -70,43 +72,6 @@
  *      for a real IN the router called banter. Before step 8 a `none`
  *      that was wrong could still be caught by the analyzer looking at
  *      the same window; now nothing else ever looks.
- *
- * ─────────────────────────────────────────────────────────────────────
- * WHY THERE IS A REGEX HERE AT ALL, AFTER 2026-09-01
- * ─────────────────────────────────────────────────────────────────────
- *
- * Kemal's objection that day — "why still string regex??" — landed on a
- * regex FAST PATH that swallowed half a message: it read the message,
- * decided the message meant "in", acted on that, and the rest of the
- * sentence was never seen by anything. Regex doing CLASSIFICATION is
- * what failed and it stays deleted.
- *
- * The floor is a different object, and the difference is not a matter of
- * degree. THIS IS THE ARGUMENT THAT JUSTIFIES THE FLOOR EXISTING AT ALL,
- * and step 8 does not touch it:
- *
- *   a classifier decides WHAT a message means, and can be wrong in both
- *   directions. The floor decides only WHETHER anyone gets to look, and
- *   can be wrong in one. Its output feeds a set union, so its worst case
- *   is one extra owner's extractor call on a message that did not need
- *   it. It cannot suppress a write, cannot change a verdict, and cannot
- *   alter how a message is handled once it is in the set — the owner
- *   receives the identical message object either way and is told nothing
- *   about why it is there.
- *
- * That is a seatbelt, and it is proven rather than asserted:
- * `__tests__/gate.test.ts` fuzzes arbitrary routes against real message
- * bodies and shows `analysed(floor on) ⊇ analysed(floor off)`, that
- * `routeFloor` can never return `none` (the property the whole thing
- * rests on), and that the analysed list is the same objects in the same
- * order with or without it. That fuzz suite is untouched by step 8 and
- * must stay that way.
- *
- * It still ships DEFAULT OFF, separately from everything else, for two
- * reasons that step 8 did not change: §11.1 says reintroducing a floor
- * at all "is a product decision that needs his sign-off", and the
- * router's true recall can only be measured with the floor out of the
- * way.
  *
  * ─────────────────────────────────────────────────────────────────────
  * WHAT THIS FILE DELIBERATELY DOES *NOT* DO
@@ -136,7 +101,7 @@ import { readFileSync } from "node:fs";
 //   from here has to be type-only for the same reason.
 import type { AwaitingQuestion, StatsClarification } from "./awaiting-answer";
 import { anthropicModel, budgetedModel, degradation, type PipelineModel } from "./llm";
-import { routeBatch, routeFloor, type RouterMessage } from "./router";
+import { routeBatch, type RouterMessage } from "./router";
 import type { Degradation, Route, RoutedMessage } from "./types";
 
 // ── Flags ─────────────────────────────────────────────────────────────
@@ -178,11 +143,6 @@ import type { Degradation, Route, RoutedMessage } from "./types";
  * unguarded by their removal: the behaviour they used to select between
  * no longer has two sides.
  */
-
-/** The floor, separately signed off (§11.1). Default OFF. Reintroducing
- *  a floor at all is a product decision that needs Kemal's sign-off, and
- *  the router's true recall is only measurable with it out of the way. */
-export const FLOOR_FLAG = "ROUTER_GATE_FLOOR_ENABLED";
 
 /**
  * The nightly `none`-bucket sweep (§11.1's fourth containment). Default
@@ -285,7 +245,7 @@ export const ENGINE_ROUTES: readonly Route[] = [
 type Env = Record<string, string | undefined>;
 
 /** Deliberately strict: only these four spellings turn something on, so
- *  a typo in a Vercel env var can never enable the floor or the nightly
+ *  a typo in a Vercel env var can never enable the nightly
  *  sweep by accident. `route-flags.ts` keeps a deliberate COPY of this
  *  and asserts the two agree on the same inputs, so loosening one cannot
  *  quietly loosen the other. NOTE the asymmetry with that file: these
@@ -295,12 +255,6 @@ type Env = Record<string, string | undefined>;
 function on(env: Env, key: string): boolean {
   const raw = env[key]?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
-}
-
-export function isRouterFloorEnabled(env: Env = process.env): boolean {
-  const stub = routerStubConfig(env);
-  if (stub && typeof stub.floor === "boolean") return stub.floor;
-  return on(env, FLOOR_FLAG);
 }
 
 export function isNoneBucketShadowEnabled(env: Env = process.env): boolean {
@@ -351,30 +305,6 @@ export function routerIsNeeded(): boolean {
   return true;
 }
 
-// ── The floor, as a boolean ───────────────────────────────────────────
-
-/**
- * Does the deterministic floor insist somebody looks at this message?
- *
- * "Reaches the analyzer" is what this used to ask. Since §10 step 8 the
- * set it protects membership of is the set of messages that reach their
- * OWNER rather than being dropped as banter, which is the same channel
- * with a different thing on the far end — and the monotonicity argument
- * below is about the channel, so it is unchanged.
- *
- * A BOOLEAN, on purpose. `routeFloor` returns a `Route`, and inside the
- * dry-run pipeline that route is used — it decides which extractor runs.
- * Here it is DISCARDED. The gate does not care whether the floor thinks
- * a message is `self_att` or `other_att`; it cares only that the floor
- * says "not nothing". Throwing the route away at the boundary is what
- * makes the monotonicity argument structural rather than a promise:
- * there is no channel by which a floor pattern could influence what
- * happens to a message once it is in the batch.
- */
-export function floorForcesAnalysis(body: string): boolean {
-  return routeFloor(body) !== null;
-}
-
 // ── The decision ──────────────────────────────────────────────────────
 
 export interface GateMessage {
@@ -403,49 +333,27 @@ export interface Partitioned {
    * a second bug. It means "not skipped".
    */
   analysed: string[];
-  /** Ids the router routed `none` and the floor did not rescue. */
+  /** Ids the router routed `none`. */
   skipped: string[];
-  /** Ids the floor pulled back out of `skipped`. Always a subset of
-   *  `analysed`, and always empty when the floor is off. */
+  /** ALWAYS EMPTY since 2026-10-30, when the regex floor that filled it
+   *  was removed. Kept because the analyze route logs it. */
   floorForced: string[];
 }
 
 /**
- * PURE, and the function the monotonicity proof is about.
- *
- * skip(m) ⟺ route(m) === "none" ∧ ¬(floor ∧ floorForcesAnalysis(m))
- *
- * Read the second clause as the only thing the floor does: remove
- * members from the skip set. It cannot add one, because it appears
- * under a negation and nowhere else.
+ * PURE. skip(m) ⟺ route(m) === "none". A message the router never
+ * mentioned is NOT `none` (§11.1's asymmetry: a coverage hole must never
+ * look like a decision).
  */
-export function partition(
-  messages: GateMessage[],
-  routes: RoutedMessage[],
-  opts: { floor: boolean },
-): Partitioned {
+export function partition(messages: GateMessage[], routes: RoutedMessage[]): Partitioned {
   const routeById = new Map(routes.map((r) => [r.messageId, r.route]));
   const analysed: string[] = [];
   const skipped: string[] = [];
-  const floorForced: string[] = [];
-
   for (const m of messages) {
-    // A message the router never mentioned is NOT `none`. §11.1's
-    // asymmetry: a coverage hole must never look like a decision.
-    const isNone = routeById.get(m.waMessageId) === "none";
-    if (!isNone) {
-      analysed.push(m.waMessageId);
-      continue;
-    }
-    if (opts.floor && floorForcesAnalysis(m.body)) {
-      floorForced.push(m.waMessageId);
-      analysed.push(m.waMessageId);
-      continue;
-    }
-    skipped.push(m.waMessageId);
+    if (routeById.get(m.waMessageId) === "none") skipped.push(m.waMessageId);
+    else analysed.push(m.waMessageId);
   }
-
-  return { analysed, skipped, floorForced };
+  return { analysed, skipped, floorForced: [] };
 }
 
 // ── What a skipped message becomes ────────────────────────────────────
@@ -517,9 +425,10 @@ export interface GateOutcome extends Partitioned {
   routes: RoutedMessage[];
   degradations: Degradation[];
   /** Did the router actually make a call? False when the batch was
-   *  empty, or when every message hit the floor and there was nothing
-   *  left to ask about. */
+   *  empty or the club was past twice its daily AI cap. */
   modelCalled: boolean;
+  /** ALWAYS FALSE since 2026-10-30 (the floor was removed). Kept because
+   *  the analyze route and the trace log it. */
   floorEnabled: boolean;
   /** Ids the OPEN-QUESTION context pulled back out of `skipped`, i.e.
    *  the router said `none` while MatchTime was still waiting for an
@@ -530,7 +439,6 @@ export interface GateOutcome extends Partitioned {
 }
 
 export interface GateOptions {
-  floor?: boolean;
   /** The time the router's NOW line states. Defaults to now. */
   now?: Date;
   /** The messages that answer MatchTime's open "which team won?",
@@ -568,10 +476,10 @@ export interface GateOptions {
    *  `RouteBatchOptions.clarifications`. */
   clarifications?: StatsClarification[];
   /**
-   * The club is at its daily AI cap (`ai-budget.ts`). The router is not
-   * asked: the floor routes what it can read, ON regardless of the floor
-   * flag because it is the only reader left, and everything else is
-   * skipped. No model is constructed, so no model can be called.
+   * The club is at its daily AI cap (`ai-budget.ts`). The router is still
+   * asked, inside the attendance overflow (twice the cap), and only its
+   * attendance routes are handled; everything else is skipped with source
+   * `capped`. Past twice the cap nothing is read. See `routeBatch`.
    */
   capped?: boolean;
 }
@@ -619,7 +527,6 @@ export async function gateBatch(
   messages: GateMessage[],
   opts: GateOptions = {},
 ): Promise<GateOutcome> {
-  const floor = opts.floor ?? isRouterFloorEnabled();
   const everything = (degradations: Degradation[]): GateOutcome => ({
     analysed: messages.map((m) => m.waMessageId),
     skipped: [],
@@ -627,7 +534,7 @@ export async function gateBatch(
     routes: [],
     degradations,
     modelCalled: false,
-    floorEnabled: floor,
+    floorEnabled: false,
     awaitingForced: [],
   });
 
@@ -644,43 +551,21 @@ export async function gateBatch(
       ...(m.partnerClubs ? { partnerClubs: m.partnerClubs } : {}),
       ...(m.reply ? { reply: m.reply } : {}),
     }));
-    if (opts.capped) {
-      const routed = await routeBatch(NO_MODEL, routerMessages, {
-        floor: true,
-        capped: true,
-        scoreAnswerIds: opts.scoreAnswerIds,
-        scoreCorrectionIds: opts.scoreCorrectionIds,
-      });
-      return {
-        ...partition(messages, routed.routes, { floor: true }),
-        routes: routed.routes,
-        degradations: routed.degradations,
-        modelCalled: false,
-        floorEnabled: true,
-        awaitingForced: [],
-      };
-    }
     const model = opts.model ?? defaultGateModel();
-    // `floor: false` at the ROUTER when the floor flag is off, so the
-    // router's own answer is what we partition on and its recall is
-    // measurable. When the flag is on, the router-level floor and the
-    // gate-level floor agree by construction (both are `routeFloor`),
-    // and the gate-level one is what the proof is written against.
     const routed = await routeBatch(model, routerMessages, {
-      floor,
       awaiting: opts.awaiting ?? null,
       clarifications: opts.clarifications ?? [],
       scoreAnswerIds: opts.scoreAnswerIds,
       scoreCorrectionIds: opts.scoreCorrectionIds,
+      ...(opts.capped ? { capped: true } : {}),
       ...(opts.now ? { now: opts.now } : {}),
     });
-    const p = partition(messages, routed.routes, { floor });
     return {
-      ...p,
+      ...partition(messages, routed.routes),
       routes: routed.routes,
       degradations: routed.degradations,
       modelCalled: routed.usage !== undefined,
-      floorEnabled: floor,
+      floorEnabled: false,
       awaitingForced: routed.routes.filter((r) => r.source === "awaiting").map((r) => r.messageId),
       ...(routed.usage ? { usage: routed.usage } : {}),
     };
@@ -695,14 +580,6 @@ export async function gateBatch(
     ]);
   }
 }
-
-/** What the capped path hands `routeBatch`: a model it must never call. */
-const NO_MODEL: PipelineModel = {
-  name: "none (daily AI cap)",
-  complete: async () => {
-    throw new Error("the router was asked to call a model at the daily AI cap");
-  },
-};
 
 /** The stub seam is checked BEFORE the real model is constructed, so a
  *  stubbed e2e run never needs a key. A missing key in production
