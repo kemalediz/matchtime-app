@@ -68,6 +68,7 @@ import path from "node:path";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { HAIKU_EFFORT } from "../src/lib/models.ts";
 import { anthropicModel, costOf, estimateTokens, extractJson } from "../src/lib/pipeline/llm.ts";
+import { withFeeBasis } from "../src/lib/setup-learning/fee-basis.ts";
 import {
   SETUP_LEARNING_MAX_TOKENS,
   SETUP_LEARNING_MODEL,
@@ -208,7 +209,15 @@ async function main() {
     outTotal += resp.usage.outputTokens;
     console.log(`  ${resp.usage.inputTokens} in / ${resp.usage.outputTokens} out, $${(resp.costUsd ?? 0).toFixed(4)}, ${resp.ms} ms`);
     console.log(`  raw: ${resp.text}`);
-    const detection = parseDetection(extractJson(resp.text), fx.history, fx.description);
+    // Whose price the fee is: its own short call, as production makes it
+    // (setup-learning/fee-basis.ts, 2026-10-30).
+    const fee = await withFeeBasis(extractJson(resp.text), model);
+    calls += fee.calls;
+    spent += fee.costUsd;
+    inTotal += fee.inputTokens;
+    outTotal += fee.outputTokens;
+    if (fee.calls) console.log(`  fee basis: ${JSON.stringify((fee.raw as { match_fee?: { basis?: string } }).match_fee?.basis)}, $${fee.costUsd.toFixed(4)}`);
+    const detection = parseDetection(fee.raw, fx.history, fx.description);
     if (!detection) {
       console.log("  FAIL: not an object");
       failures.push(name);

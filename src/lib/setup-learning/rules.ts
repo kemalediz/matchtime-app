@@ -79,7 +79,7 @@
  *      states what each player pays for a game, in pounds, and the club's
  *      weekly game has no fee or a different one, the organiser is asked,
  *      with a link. The MODEL says the amount and that it is per player
- *      (`basis`, 2026-10-30); THE EVIDENCE NEEDED: a verified quote that
+ *      (`basis`, read by its own call, fee-basis.ts, 2026-10-30); THE EVIDENCE NEEDED: a verified quote that
  *      holds the number (`quoteHasAmount`), from the description (one is
  *      enough: it is the group's standing notice, and a suggestion changes
  *      nothing), or from TWO different messages (one message may be a
@@ -483,7 +483,7 @@ export const MAX_MATCH_FEE = 50;
  * own ("£6", "6 quid", "6.00", "£6,50")? A number run into letters ("6pm",
  * "6th", "7v7") is not one. It says nothing about what the words mean:
  * whether the number is a price, and a price for each player rather than
- * for the pitch, is the model's answer (`basis`). This only stops a fee
+ * for the pitch, is the model's answer (`basis`, fee-basis.ts). This only stops a fee
  * the model worked out, made up, or quoted from a line without it.
  */
 export function quoteHasAmount(quote: string, amount: number): boolean {
@@ -502,8 +502,8 @@ export function quoteHasAmount(quote: string, amount: number): boolean {
  * Until 2026-10-30 the server also read the chat for other prices with a
  * word list (pitch, total, each, per head, kişi başı) and dropped the
  * description's quote when a message stated another. Both are the model's
- * rulings now, stated once in the prompt (question 9 and the description
- * rulings): no code reads what a person meant.
+ * rulings now: the fee-basis call (fee-basis.ts) and the reading prompt's
+ * description rulings. No code reads what a person meant.
  */
 function matchFee(raw: unknown, src: Sources): Detection["matchFee"] {
   const o = obj(raw);

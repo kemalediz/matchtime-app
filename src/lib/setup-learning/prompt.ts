@@ -61,23 +61,9 @@
  * No new context: the user turn already carries everything the reading
  * needs, and the club's current settings are kept out on purpose, so the
  * reading describes the chat rather than agreeing with the settings.
- * Size then: 13,012 characters before, 12,611 after (count_tokens on
- * claude-haiku-5-5: 4,502 before, 4,395 after).
- *
- * QUESTION 9 RE-DEFINED 2026-10-30 (Kemal: no string parsing). The server
- * used to decide from a word list (pitch, total, each, per head, kişi
- * başı) whether a quoted price was each player's or the whole pitch's,
- * and read the chat for other prices to rule the description out of date.
- * Now the model says it: `match_fee.basis` ("per_player", "whole_pitch",
- * "none"), defined once in question 9, with the pitch price moved from
- * "Does not count" into the answer it now has, and the fee examples
- * regrouped to teach the three bases side by side in English and Turkish.
- * The out-of-date ruling was already the prompt's (WHAT YOU ARE SHOWN and
- * its fee example); the server no longer repeats it. Every other section
- * is unchanged from the whole rewrite of 2026-10-22, eight days old and
- * already one coherent document.
- * Size: 12,611 characters before, 13,141 after (about 3,152 tokens
- * before and 3,285 tokens after, by `estimateTokens`).
+ * Size: 13,012 characters before, 12,611 after (count_tokens on
+ * claude-haiku-5-5: 4,502 before, 4,395 after; about 3,152 tokens by
+ * `estimateTokens`).
  *
  * NOT CACHED, ON PURPOSE. The prompt is used once per club, and a club's
  * call is rarely within an hour of another's, so a 1-hour cache write
@@ -93,8 +79,7 @@
  * number a side or the fee, and "unclear" for an answer.
  *
  * The schema gained ONE field in the 2026-10-12 rewrite, `match_fee`
- * (amount, currency, confidence, evidence), and `match_fee.basis` on
- * 2026-10-30. It has no "which source"
+ * (amount, currency, confidence, evidence). It has no "which source"
  * field on purpose: the server finds each quote itself and so knows
  * where it came from (`verifyEvidenceTagged`, rules.ts).
  */
@@ -178,8 +163,8 @@ THE QUESTIONS
 
 8. weekly_game: the day, kickoff time, venue and number of players a side of the main regular game, as the group wrote them. The organiser's entry is shown so you can tell when the group clearly says something different; do not copy it. Day and time as in question 4; an hour with no am, pm or time of day ("see you at 9") is in the same half of the day as the organiser's entry. venue is the pitch or centre name as the group writes it, or "" when none is named. players_per_side is a number like 5, 6, 7 or 8 when the text says "7 a side", "7v7", "8'e 8", or "14 players" for two teams (then 7), and 0 when it does not. One week's talk of playing a different size is not the group's size.
 
-9. match_fee: the group's standing price for one game of the main regular game. amount is the number as written ("£6 each" is 6, "7.50 a head" is 7.5, "Pitch is £45" is 45), and 0 when no price is stated. basis says whose price it is: basis is "per_player" when it is what each player pays, "whole_pitch" when it is the cost of the pitch or the booking for everyone together (even when a message also says it gets split), and "none" when amount is 0. currency is "pounds" for pounds sterling (£, quid, GBP), "other" for any other currency (TL, lira, euro), and "none" when amount is 0. Every excerpt must contain the amount, written as a number. MatchTime never sets a fee: it only asks the organiser about a price per player, so one clear statement is enough to report one, at "medium".
-   Does not count: a price for a month or a block of games (that is question 7); one unusual week's price; a fine or a late fee; an amount one player happens to send with no price stated for everyone.
+9. match_fee: what each player pays for one game of the main regular game, as the group's standing price. amount is the number ("£6 each" is 6, "7.50 a head" is 7.5), and 0 when no such price is stated. currency is "pounds" for pounds sterling (£, quid, GBP), "other" for any other currency (TL, lira, euro), and "none" when amount is 0. Every excerpt must contain the amount. MatchTime never sets a fee: it only asks the organiser about it, so one clear statement is enough to report one, at "medium".
+   Does not count: the price of the whole pitch; a price for a month or a block of games (that is question 7); one unusual week's price; a fine or a late fee; an amount one player happens to send with no price stated for everyone.
 
 EXAMPLES, GROUPED BY WHAT THEY TEACH, ENGLISH / TURKISH
 
@@ -201,11 +186,9 @@ Players confirming payment (payments "players_confirm_paying"):
   "paid" "sent £7 to Gary" / "ödedim" "IBAN'a gönderdim"
 A monthly list (monthly_list "monthly_list", all three parts; squad and open_places "unclear"):
   "March list: 1. Ahmed (paid month) 2. Jack (PAYG)" "Paid for March but can't make the 12th, so that's credit for April" / "Mart listesi: aylık ödeyenler" "gelemediğin hafta bir sonraki aya devreder"
-A price per player, a price for the whole pitch, and amounts that are no price:
-  "£5 a head, cash on the night": 5, "per_player", "pounds" / "Kişi başı 200 TL": 200, "per_player", "other"
-  "Pitch is £45 a week, we split it": 45, "whole_pitch", "pounds" / "Saha toplam £45": 45, "whole_pitch", "pounds"
-  "Pitch went up, so it's £7 each now": 7, "per_player" / "Saha zamlandı, kişi başı £7": 7, "per_player"
-  "sent £10 for me and Dan" and "7 a side at 6": 0, "none", "none"
+A fee per player, and amounts that are not one:
+  "£5 a head, cash on the night" is 5, "pounds" / "Maç başı 200 TL" is 200, "other"
+  "Pitch is £70 this month" and "sent £10 for me and Dan": 0, "none"
 The description and one message agreeing (two sources, "high", one excerpt from each):
   description "Names off by Sunday 8pm or you pay" and message "Remember, names off by Sunday 8pm": drop_out_deadline sunday 20:00 / açıklama "Kadro her hafta aynı, gelemeyen yazsın" ve mesaj "Kadro aynı, gelemeyen yazsın": squad "rolling"
 The description alone (one source, "medium", one excerpt):
@@ -307,12 +290,11 @@ export const SETUP_LEARNING_SCHEMA = {
       type: "object",
       properties: {
         amount: { type: "number" },
-        basis: { type: "string", enum: ["per_player", "whole_pitch", "none"] },
         currency: { type: "string", enum: ["pounds", "other", "none"] },
         confidence: CONF,
         evidence: EVIDENCE,
       },
-      required: ["amount", "basis", "currency", "confidence", "evidence"],
+      required: ["amount", "currency", "confidence", "evidence"],
       additionalProperties: false,
     },
   },

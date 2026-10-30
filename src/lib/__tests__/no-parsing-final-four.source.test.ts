@@ -87,6 +87,7 @@ describe("no regex in these files reads a word of what a person meant", () => {
     ["src/lib/connect-dm.ts", /connect|ba\[?[ğg]/i],
     ["src/lib/club-decision-rules.ts", /approve|reject|onay|redd/i],
     ["src/lib/club-approval.ts", /approve|reject|onay|redd/i],
+    ["src/lib/setup-learning/fee-basis.ts", /pitch|saha|total|toplam|each|head|person|player|ki[şs]i|adam|quid|pound|gbp/i],
     ["src/lib/setup-learning/rules.ts", /pitch|saha|total|toplam|each|head|person|player|ki[şs]i|adam|quid|pound|gbp/i],
   ];
   it.each(WORDS)("%s", (rel, words) => {
