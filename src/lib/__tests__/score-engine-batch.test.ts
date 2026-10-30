@@ -494,10 +494,12 @@ describe("the 2026-10-06 incident, end to end through the batch", () => {
     expect(res.scoredMatchId).toBeNull();
   });
 
-  it('"Yellow" in answer to the open question records the result WITHOUT a model call', async () => {
-    // The stub has no entry for "Yellow": a model call would throw, the
-    // extraction would fail and nothing would be owned.
-    const { model, calls } = stubModel({});
+  it('"Yellow" in answer to the open question is read by the extractor and records the result', async () => {
+    // 2026-10-30, "no string parsing": no word test reads the answer; the
+    // extractor does, once, and the engine takes the side its facts name.
+    const { model, calls } = stubModel({
+      Yellow: { hasScore: false, first: 0, second: 0, firstTeam: "", secondTeam: "", winner: "Yellow", loser: "", correction: false, swapped: false, otherGame: false },
+    });
     const r = recorder(
       model,
       playedWorld({
@@ -514,8 +516,8 @@ describe("the 2026-10-06 incident, end to end through the batch", () => {
       }),
     );
     const res = await run({ messages: [msg({ body: "Yellow" })], model, deps: r.deps });
-    expect(calls).toEqual([]);
-    expect(res.cost.calls).toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(res.cost.calls).toBe(1);
     expect(r.recorded).toEqual([{ matchId: "done-1", red: 7, yellow: 10 }]);
     expect([...res.outcomes.values()][0].reply).toBe("Got it 👍 *Yellow* won 10 - 7 against Red. Recorded.");
   });

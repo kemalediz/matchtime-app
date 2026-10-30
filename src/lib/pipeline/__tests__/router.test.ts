@@ -716,7 +716,6 @@ describe("the organisers' group", () => {
     const m = fakeModel([JSON.stringify({ routes: [{ id: "m1", route: "question" }] })]);
     await gateBatch([{ waMessageId: "r", authorName: "Can", body: "Bench? We do bench now?", reply: { ...BENCH, text: "the bench is open" } }], {
       model: m,
-      floor: false,
       now: NOW,
     });
     expect(m.calls[0].user).toBe(

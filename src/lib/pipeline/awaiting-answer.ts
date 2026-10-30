@@ -200,8 +200,11 @@ export function describeQuestion(q: AwaitingQuestion): string {
 //      slot, so it widens to the group. A "who do you mean?" is answered
 //      by the person it was put to, and anybody else's "Idris" is
 //      ordinary chat.
-//   2. ONLY A REPLY THAT READS AS A NAME (`clarificationSubject`). The
-//      asker's "I'm in" an hour later is attendance, and must stay so.
+//   2. THE ROUTER DECIDES WHETHER THE REPLY ANSWERS IT (2026-10-30). It is
+//      shown the open question above the asker's message
+//      (`clarificationLine`); the asker's "I'm in" an hour later is still
+//      attendance. Until today a word test (`clarificationSubject`) did
+//      this; "no string parsing" retired it.
 //
 // ── WHY THESE ARE NOT `AwaitingQuestion`s. `openQuestionAt` picks ONE
 // question for the whole group and rescues everybody's `none`. Folding a
@@ -286,42 +289,4 @@ export function isFromAsker(
 ): boolean {
   if (c.askerUserId && m.senderUserId !== undefined) return m.senderUserId === c.askerUserId;
   return !!c.askerName && m.authorName === c.askerName;
-}
-
-const LEADING_TAG = /^\s*@\s*match\s*time\b[\s,:]*/iu;
-const LEADING_FILLER =
-  /^(?:(?:oh|ah|sorry|no|nope|i\s+mean|i\s+meant|meant|i\s+mean\s+to\s+say|the\s+one\s+i\s+mean\s+is|it'?s|yani|pardon|özür\s+dilerim)[\s,!.:]+)+/iu;
-const TRAILING_FILLER_TR = /\s+(?:demek\s+istedim|demek\s+istiyorum|kastettim|kastediyorum)\s*$/iu;
-/** A Turkish case suffix after an apostrophe: "Mojib'i", "Idris'in". */
-const APOSTROPHE_SUFFIX = /['’]\p{L}+$/u;
-/** Words that make a short reply something other than a name. */
-const NOT_A_NAME = new Set([
-  "in", "out", "im", "i'm", "i", "me", "yes", "no", "yeah", "yep", "nope", "ok", "okay", "k", "thanks", "thank",
-  "you", "cheers", "ta", "lol", "haha", "hahaha", "maybe", "sure", "bench", "is", "for", "the", "and", "a", "all",
-  "everyone", "nobody", "never", "mind", "nevermind", "var", "yok", "evet", "hayır", "hayir", "tamam", "tmm",
-  "belki", "ben", "beni", "benim", "sağol", "sagol", "teşekkürler", "tesekkurler", "herkes", "kimse",
-]);
-
-/**
- * PURE. The name a reply gives, when the whole reply reads as naming
- * somebody ("Idris", "I mean Mojib Jalali", "Mojib'i kastettim"), else
- * null. Deliberately strict: it is what lets the asker's reply past the
- * router, so "I'm in" and "Mojib is in for Tuesday" must come back null.
- */
-export function clarificationSubject(body: string): string | null {
-  let s = (body ?? "").trim().replace(LEADING_TAG, "");
-  s = s.replace(LEADING_FILLER, "").replace(TRAILING_FILLER_TR, "");
-  s = s.replace(/^[\s"'“”‘’(]+|[\s"'“”‘’).,!?]+$/gu, "").trim();
-  if (!s) return null;
-  const tokens = s.split(/\s+/);
-  if (tokens.length > 3) return null;
-  const cleaned: string[] = [];
-  for (const raw of tokens) {
-    const tok = raw.replace(APOSTROPHE_SUFFIX, "");
-    if (!/^\p{L}[\p{L}.-]*$/u.test(tok)) return null;
-    if (NOT_A_NAME.has(tok.toLocaleLowerCase("tr")) || NOT_A_NAME.has(tok.toLowerCase())) return null;
-    cleaned.push(tok);
-  }
-  const out = cleaned.join(" ");
-  return out.length >= 2 ? out : null;
 }

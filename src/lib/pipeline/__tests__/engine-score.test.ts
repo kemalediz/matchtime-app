@@ -253,9 +253,11 @@ describe("the question is asked ONCE, and a NARROW answer completes the result",
     expect(run(asked(SCORE_ASK_TTL_MS + MIN), answer("elvin", tagged)).writes).toHaveLength(0);
   });
 
-  it('"Yellow?" is a question, not an answer', () => {
-    expect(run(asked(), answer("elvin", { body: "Yellow?" })).writes).toHaveLength(0);
-    expect(run(asked(), answer("kemal", { tagged: true, body: "@Match Time yellow??" })).writes).toHaveLength(0);
+  it('"Yellow?" is a question when the extractor reads it as one (no winner): nothing recorded', () => {
+    // 2026-10-30: the question mark is the model's to judge, not a regex's.
+    const q = (o: { tagged?: boolean; body: string }, from: string) => ({ ...answer(from, o), facts: noNumbers() });
+    expect(run(asked(), q({ body: "Yellow?" }, "elvin")).writes).toHaveLength(0);
+    expect(run(asked(), q({ tagged: true, body: "@Match Time yellow??" }, "kemal")).writes).toHaveLength(0);
   });
 
   it("a sender WhatsApp did not identify can answer only by tagging the bot", () => {

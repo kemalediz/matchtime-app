@@ -346,6 +346,7 @@ WHAT YOU ARE SHOWN. Code knows these facts; rely on them rather than guessing.
 - One line per message, "[m1] Name: text". Route every id; every other line is context.
 - An "ORGANISERS' GROUP" header above a message: it was sent in the club's organisers' group, and the header says whether the sender is an organiser, what MatchTime is WAITING to hear and what was said there EARLIER. Without that header a message is from the PLAYERS' GROUP. Everything below applies to both groups; "IN THE ORGANISERS' GROUP" adds what differs there.
 - A "PARTNER CLUBS" line above an organiser's message: the names of the club's partner clubs, so a message naming one of them is about that club, not this group.
+- A "MATCHTIME IS WAITING to hear ... which team won" or "MATCHTIME HAS RECORDED" line above a message: this sender may answer which team won the scoreline MatchTime asked about, or may correct the result it recorded. The line says what the sender MAY do; route on what the message does.
 - A "MATCHTIME ASKED" line above a message: MatchTime could not tell whom the sender's earlier stats question meant and asked them. A reply that names the person, in any words, answers it: question. Anything else they say is routed as usual ("I'm in" is still self_att).
 
 REPLIES. A message that is a WhatsApp reply comes under a "THEY ARE REPLYING TO" line: whose message it quotes (MatchTime's or a member's), when (against NOW), and its words. Read the reply in the light of what it quotes, then route the reply itself. "same", "me too", "ben de", "he", "that" and a bare "no" take their meaning from it.
@@ -367,7 +368,7 @@ offer       a tentative or conditional commitment by anyone ("if you're short", 
 unsure      about a place, but you cannot tell who or what it does. A bare "confirmed" or "confirm" is unsure, never none: it may be somebody confirming their place. Never use it for plain banter.
 question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), how the club is run (who the organisers are, who collects the money, the fee, when the teams come out), and how MatchTime works here (the bench, signing in, how the teams are picked). Asking how the bench or the list works asks for no place.
 balancer    asks to SEE or MAKE the TWO team line-ups (red and yellow): show, generate, shuffle or rename them.
-score       reports the final result of this group's own match (our team names, our colours or a bare scoreline), or answers who was its Man of the Match while MatchTime is WAITING for that (praise alone answers nothing). A professional scoreline somebody is watching is none.
+score       reports the final result of this group's own match (our team names, our colours or a bare scoreline), answers which team won or who was its Man of the Match while MatchTime is WAITING for that (a team named alone, "Yellow", "sarılar kazandı"; praise alone answers nothing), or says a recorded result is wrong ("you've got it the wrong way round", "no, 5-7 to Red", "yanlış, sarılar kazandı"). A professional scoreline somebody is watching is none.
 admin_ops   tells the bot to do something now: find new players (from the MatchTime player pool, from one partner club or all of them, from several places, or with no place named), credit a payment, set a reminder, send a link, change a setting, call a match off (one still to come, or one that never took place) or put it back on. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
 none        everything else, as in question 3. A member asking another member something that settles nothing is none ("are you injured?", "which two of you can play tomorrow?"); as soon as a message STATES that somebody plays or does not, it is attendance.
 approve, poster, team_sheet, help and ask_group exist ONLY in the organisers' group; see that section.
@@ -623,6 +624,21 @@ export interface RouterMessage {
    * from `RouteBatchOptions.clarifications`; absent otherwise.
    */
   clarifying?: string;
+  /**
+   * A score fact about this sender, shown as `scoreContextLine` above the
+   * message (2026-10-30): MatchTime is waiting for them to say which team
+   * won (`which_team`), or a result is recorded that they may correct
+   * (`recorded`). Set by `routeBatch` from `scoreAnswerIds` and
+   * `scoreCorrectionIds`.
+   */
+  score?: "which_team" | "recorded";
+}
+
+/** The line above a message carrying a score fact (`RouterMessage.score`). */
+export function scoreContextLine(kind: "which_team" | "recorded"): string {
+  return kind === "which_team"
+    ? "MATCHTIME IS WAITING to hear from this sender which team won the scoreline it asked about."
+    : "MATCHTIME HAS RECORDED the latest game's result, and this sender may correct it.";
 }
 
 /** The line above a message from somebody MatchTime asked "who do you
@@ -700,10 +716,14 @@ export function renderRouterTurn(messages: RouterMessage[], now: Date = new Date
   const body = messages.map((m) => {
     const line = `[${m.id}] ${m.authorName ?? "(unknown)"}: ${m.body}`;
     const reply = m.reply ? quotedLines(m.reply, ROUTER_QUOTE_WORDS_MAX) : [];
-    if (m.organisers) return [organisersHeader(m.organisers.senderIsOrganiser), ...m.organisers.context, ...reply, line].join("\n");
+    if (m.organisers) {
+      const score = m.score ? [scoreContextLine(m.score)] : [];
+      return [organisersHeader(m.organisers.senderIsOrganiser), ...m.organisers.context, ...score, ...reply, line].join("\n");
+    }
     const partners = m.partnerClubs && m.partnerClubs.length > 0 ? [partnerClubsLine(m.partnerClubs)] : [];
     const asked = m.clarifying ? [clarificationLine(m.clarifying)] : [];
-    return [...partners, ...asked, ...reply, line].join("\n");
+    const score = m.score ? [scoreContextLine(m.score)] : [];
+    return [...partners, ...asked, ...score, ...reply, line].join("\n");
   });
   return [nowLine(now), ...body].join("\n");
 }
@@ -826,23 +846,16 @@ export interface RouteBatchOptions {
    */
   clarifications?: StatsClarification[];
   /**
-   * MESSAGES THAT ANSWER MATCHTIME'S OPEN "WHICH TEAM WON?" (2026-10-07,
-   * `score-ask.ts`). Decided by the CALLER, deterministically, from who
-   * sent each message, whether it tags the bot and how long ago the
-   * question was asked (`isScoreAnswer`); the router is only told the
-   * ids. Each goes to `score` whatever the model called it, AND when the
-   * model was not asked or did not answer: a failed router call must not
-   * lose the answer to a question the bot itself asked. Empty almost
-   * always.
+   * Messages from somebody who may answer MatchTime's open "which team
+   * won?" (`isScoreAnswer`, facts only). Shown the `scoreContextLine`
+   * "which team won" line; the model routes them (2026-10-30: until then
+   * they were forced to `score` by a word test). Empty almost always.
    */
   scoreAnswerIds?: ReadonlySet<string>;
   /**
-   * MESSAGES THAT ARE A TAGGED CORRECTION OF A RECORDED RESULT, by a
-   * fixed vocabulary (`isScoreCorrectionText`, `score-ask.ts`), decided
-   * by the caller before the router runs. The one approved live run had
-   * the model send "@Match Time other way round" to `unsure` and
-   * "@Match Time yanlış, kırmızı 6 sarı 9" to `other_att`; both go to
-   * `score` here, on every path, like `scoreAnswerIds`.
+   * Tagged messages while the latest played match has a recorded result
+   * this sender may correct (facts only). Shown the "recorded" line; the
+   * model routes them.
    */
   scoreCorrectionIds?: ReadonlySet<string>;
   /**
@@ -855,44 +868,6 @@ export interface RouteBatchOptions {
   capped?: boolean;
   /** The time the turn's NOW line states (club time). Defaults to now. */
   now?: Date;
-}
-
-/**
- * The answers to MatchTime's open "which team won?" go to `score`.
- * Applied to EVERY way a batch can be routed (model, floor, fallback,
- * capped), because which messages qualify was decided before the router
- * ran and does not depend on it. See `RouteBatchOptions.scoreAnswerIds`.
- */
-function withScoreAnswers(
-  routes: RoutedMessage[],
-  opts: RouteBatchOptions,
-  degradations: Degradation[],
-): RoutedMessage[] {
-  const answers = opts.scoreAnswerIds;
-  const corrections = opts.scoreCorrectionIds;
-  if (!answers?.size && !corrections?.size) return routes;
-  return routes.map((r) => {
-    const isAnswer = !!answers?.has(r.messageId);
-    const isCorrection = !!corrections?.has(r.messageId);
-    if (r.route === "score" || !(isAnswer || isCorrection)) return r;
-    degradations.push(
-      degradation(
-        "router",
-        r.messageId,
-        isAnswer
-          ? `MatchTime asked which team won a scoreline and this answers it; ${r.route} → score so the ` +
-              `answer reaches the question it answers`
-          : `a tagged score correction of a recorded result, by its words; ${r.route} → score so it ` +
-              `reaches the score route and not the attendance extractor`,
-      ),
-    );
-    return {
-      ...r,
-      route: "score" as const,
-      source: "awaiting" as const,
-      overrodeRoute: r.overrodeRoute ?? r.route,
-    };
-  });
 }
 
 /** The routes the engine's attendance owner reads; at the cap these are
@@ -928,12 +903,7 @@ export async function routeBatch(
   messages: RouterMessage[],
   opts: RouteBatchOptions = {},
 ): Promise<RouterResult> {
-  // Whatever happened inside (the model answered, the floor did, the
-  // call failed, the club is at its cap), the answers to MatchTime's
-  // own open question go to `score`. One place, after every return.
-  const res = await routeBatchInner(model, messages, opts);
-  const degradations = [...res.degradations];
-  return { ...res, routes: withScoreAnswers(res.routes, opts, degradations), degradations };
+  return routeBatchInner(model, messages, opts);
 }
 
 async function routeBatchInner(
@@ -953,10 +923,13 @@ async function routeBatchInner(
   // message answers it. Matched on the sender, a fact.
   const clarifyingFor = (m: RouterMessage) =>
     (opts.clarifications ?? []).find((q) => !!q.askerName && q.askerName === m.authorName)?.questionBody;
+  const scoreFact = (m: RouterMessage): RouterMessage["score"] =>
+    opts.scoreAnswerIds?.has(m.id) ? "which_team" : opts.scoreCorrectionIds?.has(m.id) ? "recorded" : undefined;
   const user = renderRouterTurn(
     messages.map((m, i) => {
       const q = clarifyingFor(m);
-      return { ...m, id: shortIds[i], ...(q ? { clarifying: q } : {}) };
+      const score = scoreFact(m);
+      return { ...m, id: shortIds[i], ...(q ? { clarifying: q } : {}), ...(score ? { score } : {}) };
     }),
     opts.now ?? new Date(),
   );

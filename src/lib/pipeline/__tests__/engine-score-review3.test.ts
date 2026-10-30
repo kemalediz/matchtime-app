@@ -129,48 +129,45 @@ describe("1. the extractor's two numbers must BE in the text, each as its own nu
   });
 });
 
-describe("2. only a BARE team answer completes the open question", () => {
-  it("M2i: the asker's untagged chatter that happens to name a winner records nothing", () => {
+describe("2. the extractor reads the answer; code decides only who may give it (2026-10-30)", () => {
+  // Until 2026-10-30 a word test on the body had to call the message a
+  // bare team answer, and the model's `winner` was ignored. "No string
+  // parsing": the extractor reads the message against MatchTime's question,
+  // and a correct reading of chatter names no winner.
+  it("M2i: the asker's untagged chatter, read correctly (no winner), records nothing", () => {
     const { scores, replies } = run(pend(5), {
       from: "elvin",
       body: "yellow bibs stink mate, whoever takes them home wash them. reds deserved it anyway",
-      facts: S(null, null, { winner: "reds" }),
+      facts: S(null, null),
     });
     expect(scores).toEqual([]);
     expect(replies).toEqual([]);
   });
 
-  it("M2j: nor an admin's, twenty minutes later", () => {
-    const { scores } = run(pend(20), {
-      from: "kemal",
-      body: "honestly yellows always win when Najib plays",
-      facts: S(null, null, { winner: "yellows" }),
-    });
+  it("M2j: an admin's, twenty minutes later, read correctly, records nothing", () => {
+    const { scores } = run(pend(20), { from: "kemal", body: "honestly yellows always win when Najib plays", facts: S(null, null) });
     expect(scores).toEqual([]);
   });
 
-  it("M2k: nor a TAGGED message about something else that mentions who won", () => {
-    const { scores } = run(pend(110), {
-      from: "wasim",
-      tagged: true,
-      body: "@Match Time can you put me on yellow next week, reds won again",
-      facts: S(null, null, { winner: "reds" }),
-    });
-    expect(scores).toEqual([]);
-  });
-
-  it("the side comes from the TEXT, not from what the model said won", () => {
-    // The body says Yellow. A model that reports "reds" is ignored.
-    const { scores } = run(pend(5), { from: "elvin", body: "Yellow", facts: S(null, null, { winner: "reds" }) });
-    expect(scores).toEqual([expect.objectContaining({ red: 7, yellow: 10 })]);
-    // And with no winner in the facts at all, the text is still enough.
-    expect(run(pend(5), { from: "elvin", body: "reds won", facts: S(null, null) }).scores).toEqual([
+  it("the side is the one the extractor's facts name", () => {
+    expect(run(pend(5), { from: "elvin", body: "Yellow", facts: S(null, null, { winner: "Yellow" }) }).scores).toEqual([
+      expect.objectContaining({ red: 7, yellow: 10 }),
+    ]);
+    expect(run(pend(5), { from: "elvin", body: "reds won", facts: S(null, null, { winner: "reds" }) }).scores).toEqual([
       expect.objectContaining({ red: 10, yellow: 7 }),
+    ]);
+    // The loser's opponent is the winner.
+    expect(run(pend(5), { from: "elvin", body: "reds lost", facts: S(null, null, { loser: "reds" }) }).scores).toEqual([
+      expect.objectContaining({ red: 7, yellow: 10 }),
     ]);
   });
 
-  it('"us" is not a team name in the text, so it completes nothing', () => {
-    expect(run(pend(5), { from: "elvin", body: "us", facts: S(null, null, { winner: "us" }) }).scores).toEqual([]);
+  it("no facts naming a side, no answer: the body alone is never read", () => {
+    expect(run(pend(5), { from: "elvin", body: "Yellow", facts: S(null, null) }).scores).toEqual([]);
+  });
+
+  it("a sender who may not answer (untagged, not the asker or an admin) records nothing, whatever the facts", () => {
+    expect(run(pend(5), { from: "sait", body: "Yellow", facts: S(null, null, { winner: "Yellow" }) }).scores).toEqual([]);
   });
 
   it('M2l / M2m: restating the SAME pair with one team is an answer: "Yellow 10-7", "Yellow 7-10", "10-7 yellow"', () => {
@@ -200,16 +197,16 @@ describe("2. only a BARE team answer completes the open question", () => {
     ).toEqual([expect.objectContaining({ red: 7, yellow: 10 })]);
   });
 
-  it("...and only for the pair that was asked about, with nothing else in the message", () => {
+  it("...and only for the pair that was asked about", () => {
     // A different pair is a different scoreline: asked about afresh.
     const diff = run(pend(5), { from: "elvin", body: "Yellow 7-9", facts: S(7, 9, { firstTeam: "Yellow" }) });
     expect(diff.scores).toEqual([]);
     expect(diff.asks).toEqual([expect.objectContaining({ first: 7, second: 9 })]);
-    // The same pair inside a sentence is not a bare answer.
+    // The same pair inside a sentence, read correctly (no final result).
     const chat = run(pend(5), {
       from: "elvin",
       body: "yellow were 7-10 down at one point you know",
-      facts: S(7, 10, { firstTeam: "yellow" }),
+      facts: S(null, null),
     });
     expect(chat.scores).toEqual([]);
     // Both teams named decides it the ordinary way, whoever sends it.

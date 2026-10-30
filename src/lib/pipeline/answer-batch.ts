@@ -182,7 +182,6 @@ import { anthropicModel, type PipelineModel } from "./llm";
 import {
   STATS_CLARIFICATION_INTENT,
   STATS_CLARIFIED_INTENT,
-  clarificationSubject,
   isFromAsker,
   type StatsClarification,
 } from "./awaiting-answer";
@@ -830,12 +829,14 @@ export async function runAnswerBatch(args: {
   // a reply to `question` for the asker (`router.ts`), and this matches
   // the resolved sender, not just the pushname, and only a reply that
   // reads as a name.
-  const clarificationFor = new Map<string, { c: StatsClarification; subject: string }>();
+  // FACTS only (2026-10-30): the router routed it `question`, shown the
+  // open clarification above it, and it is from the person asked. Which
+  // person the reply names is the extractor's to read (`clarifiedBy`).
+  const clarificationFor = new Map<string, { c: StatsClarification }>();
   for (const m of messages) {
     if (m.gated || m.route !== "question" || alsoAsks.has(m.waMessageId)) continue;
     const c = (args.clarifications ?? []).find((q) => isFromAsker(q, m));
-    const subject = c ? clarificationSubject(m.body) : null;
-    if (c && subject) clarificationFor.set(m.waMessageId, { c, subject });
+    if (c) clarificationFor.set(m.waMessageId, { c });
   }
 
   // ── Ownership, part 1: everything knowable without a model ─────────
@@ -1032,11 +1033,9 @@ export async function runAnswerBatch(args: {
         // as it is; team-ops shows the same, so a balancer message's two
         // owners send one input and share one call (`trace.ts`, #340).
         reply: m.reply ?? null,
+        ...(clar ? { clarifiedBy: m.body } : {}),
         now,
       });
-      if (clar && res.facts.kind === "question" && res.facts.topic === "stats") {
-        res.facts.personRef = clar.subject;
-      }
       for (const d of res.degradations) {
         degradations.push(`extractor ${m.waMessageId}: ${d.detail}`);
       }

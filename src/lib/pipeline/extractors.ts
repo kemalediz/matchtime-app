@@ -1307,6 +1307,14 @@ export interface ExtractorMessage {
    * person. Absent or empty: no line.
    */
   members?: readonly string[];
+  /**
+   * The sender's reply to MatchTime's "who do you mean?" about THE
+   * MESSAGE, which is then their original stats question (2026-10-30).
+   * Shown as one line so the extractor reads the question with the person
+   * the reply names. Until then a word test (`clarificationSubject`) cut a
+   * name out of the reply and code overwrote `personRef` with it.
+   */
+  clarifiedBy?: string;
   /** The time the NOW line states (club time). Defaults to now. */
   now?: Date;
 }
@@ -1378,6 +1386,11 @@ export async function extractForRoute(
   context.push(renderGroupReplyContext({ now: msg.now ?? new Date(), quoted: msg.reply ?? null }));
   if (msg.members && msg.members.length > 0) {
     context.push(`CLUB MEMBERS NAMED: ${msg.members.join(", ")}`);
+  }
+  if (msg.clarifiedBy) {
+    context.push(
+      `MATCHTIME ASKED them whom they meant in THE MESSAGE, and they answered: "${msg.clarifiedBy}". Read THE MESSAGE as being about the person that answer names.`,
+    );
   }
   context.push("");
   context.push(

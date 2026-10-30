@@ -1,6 +1,7 @@
 /**
- * Recognising the answer to "which team won?" without a model
- * (review of PR #214, item 4).
+ * "Which team won?": the stored question and WHO may answer it (facts).
+ * WHAT an answer says is the score extractor's since 2026-10-30 ("no
+ * string parsing"); the word tests that read it here are deleted.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -10,11 +11,8 @@ import {
   isScoreAskOpen,
   messageHasScoreline,
   messageStatesScore,
-  scorePairAnswerSide,
   parseScoreAskKey,
   samePair,
-  scoreAnswerRef,
-  scoreAnswerSide,
   scoreAskKey,
   hasScorelineShape,
   statesSeveralScorelines,
@@ -63,51 +61,6 @@ describe("the stored question", () => {
   });
 });
 
-describe("a message that is nothing but the winning team", () => {
-  it.each([
-    ["Yellow", "YELLOW"],
-    ["yellows", "YELLOW"],
-    ["Yellows won", "YELLOW"],
-    ["to the reds", "RED"],
-    ["@Match Time red", "RED"],
-    ["it was yellow!", "YELLOW"],
-    ["Red team", "RED"],
-    ["reds @Match Time", "RED"],
-  ] as const)("%s -> %s", (body, side) => {
-    expect(scoreAnswerSide(body, EN)).toBe(side);
-  });
-
-  it.each([
-    ["Sarı", "YELLOW"],
-    ["sarılar kazandı", "YELLOW"],
-    ["kırmızılar", "RED"],
-    ["Kırmızı takım", "RED"],
-  ] as const)("Turkish: %s -> %s", (body, side) => {
-    expect(scoreAnswerSide(body, TR)).toBe(side);
-  });
-
-  it("is not an answer when it has a number, is long, or names nobody", () => {
-    expect(scoreAnswerSide("10-7 to yellow", EN)).toBeNull();
-    expect(scoreAnswerRef("yellow 9")).toBeNull();
-    expect(scoreAnswerSide("yellow were the better side all night", EN)).toBeNull();
-    expect(scoreAnswerSide("good game lads", EN)).toBeNull();
-    expect(scoreAnswerSide("we won", EN)).toBeNull();
-    expect(scoreAnswerSide("", EN)).toBeNull();
-    expect(scoreAnswerSide("Reda", EN)).toBeNull();
-  });
-
-  it('"Yellow?" is a question, not an answer', () => {
-    expect(scoreAnswerSide("Yellow?", EN)).toBeNull();
-    expect(scoreAnswerSide("@Match Time yellow??", EN)).toBeNull();
-    expect(scoreAnswerSide("sarı mı?", TR)).toBeNull();
-  });
-
-  it("uses the club's own names", () => {
-    expect(scoreAnswerSide("Tigers", ["Lions", "Tigers"])).toBe("YELLOW");
-    expect(scoreAnswerSide("yellow", ["Lions", "Tigers"])).toBeNull();
-  });
-});
-
 describe("who may answer, and for how long (second review, M2)", () => {
   const asked = new Date("2026-10-06T21:00:00Z");
   const ask = { askedAt: asked.toISOString(), askerUserId: "u-elvin" };
@@ -145,10 +98,10 @@ describe("who may answer, and for how long (second review, M2)", () => {
     expect(isScoreAnswer({ ...unknown, ask: { ...ask, askerUserId: null }, now: at(MIN) })).toBe(false);
   });
 
-  it("never a question mark, never before the question, never after it closed", () => {
-    expect(isScoreAnswer({ ...base, body: "Yellow?", now: at(MIN) })).toBe(false);
-    expect(isScoreAnswer({ ...base, tagged: true, body: "@Match Time yellow?", now: at(MIN) })).toBe(false);
+  it("never before the question, and the words are not read (a question mark is the model's to judge)", () => {
     expect(isScoreAnswer({ ...base, now: at(-MIN) })).toBe(false);
+    expect(isScoreAnswer({ ...base, body: "Yellow?", now: at(MIN) })).toBe(true);
+    expect(isScoreAnswer({ ...base, body: "anything at all", now: at(MIN) })).toBe(true);
   });
 });
 
@@ -195,29 +148,3 @@ describe("the extractor's numbers must be numbers the sender wrote (third review
   });
 });
 
-describe("the open question, answered by restating it (third review, item 2)", () => {
-  const pair = { first: 10, second: 7 };
-
-  it.each([
-    ["Yellow 10-7", "YELLOW"],
-    ["Yellow 7-10", "YELLOW"],
-    ["10-7 yellow", "YELLOW"],
-    ["7 - 10 reds", "RED"],
-    ["@Match Time 10:7 red", "RED"],
-    ["10-7 to the yellows", "YELLOW"],
-  ] as const)("%s -> %s", (body, side) => {
-    expect(scorePairAnswerSide(body, pair, EN)).toBe(side);
-  });
-
-  it.each([
-    "10-7", // no team
-    "Yellow 9-7", // another pair
-    "Yellow 10-7-3", // a third number
-    "yellow were 7-10 down at one point you know", // a sentence
-    "Yellow 10-7?", // a question
-    "Yellow Red 10-7", // two teams
-    "Arsenal 10-7",
-  ])("not an answer: %s", (body) => {
-    expect(scorePairAnswerSide(body, pair, EN)).toBeNull();
-  });
-});

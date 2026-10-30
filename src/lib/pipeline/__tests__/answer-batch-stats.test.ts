@@ -275,9 +275,14 @@ describe("asking, and understanding the answer", () => {
   });
 
   it("the asker's untagged 'Idris' is read as the answer to the original question", async () => {
-    const { model, calls } = stubModel({
-      [ASKED.questionBody]: { topic: "stats", personRef: "Mo", statedCount: -1, table: "chemistry", listSize: -1, listEnd: "top" },
+    // 2026-10-30: the extractor re-reads the ORIGINAL question shown the
+    // reply (`clarifiedBy`) and names the person; no word test cuts the
+    // name out of the reply any more.
+    const users: string[] = [];
+    const { model: inner, calls } = stubModel({
+      [ASKED.questionBody]: { topic: "stats", personRef: "Idris", statedCount: -1, table: "chemistry", listSize: -1, listEnd: "top" },
     });
+    const model: PipelineModel = { ...inner, complete: (req) => (users.push(req.user), inner.complete(req)) };
     const { res } = await run({
       messages: [msg({ body: "Idris", tagged: false })],
       model,
@@ -286,8 +291,9 @@ describe("asking, and understanding the answer", () => {
     const o = res.outcomes.get("wa-1")!;
     expect(o.reply).toContain("Idris Bello's best team-mates:");
     expect(o.intent).toBe("stats_clarified");
-    // The ORIGINAL question was re-read; the reply itself never was.
+    // The ORIGINAL question was re-read, shown the reply as context.
     expect(calls).toEqual([`extractor:question|${ASKED.questionBody}`]);
+    expect(users[0]).toContain('MATCHTIME ASKED them whom they meant in THE MESSAGE, and they answered: "Idris".');
   });
 
   it("the same word from somebody else is not an answer to Kemal's question", async () => {
@@ -303,7 +309,7 @@ describe("asking, and understanding the answer", () => {
 
   it("an answer that still names nobody is asked about again, not guessed", async () => {
     const { model } = stubModel({
-      [ASKED.questionBody]: { topic: "stats", personRef: "Mo", statedCount: -1, table: "chemistry", listSize: -1, listEnd: "top" },
+      [ASKED.questionBody]: { topic: "stats", personRef: "Zork", statedCount: -1, table: "chemistry", listSize: -1, listEnd: "top" },
     });
     const { res } = await run({ messages: [msg({ body: "Zork", tagged: false })], model, clarifications: [ASKED] });
     expect(res.outcomes.get("wa-1")?.reply).toBe("Kemal, I don't have a Zork in the squad. Who do you mean?");

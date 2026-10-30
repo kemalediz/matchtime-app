@@ -85,11 +85,9 @@ import {
   isScoreAskOpen,
   messageStatesScore,
   samePair,
-  scoreAnswerSide,
-  scorePairAnswerSide,
 } from "./score-ask";
 import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
-import { resolveScoreResult, resolveWinnerSide } from "./score-teams";
+import { resolveScoreResult, resolveTeamRef, resolveWinnerSide, type TeamSide } from "./score-teams";
 import { planStatsQuestion } from "./stats-answer";
 import { periodKey } from "./stats-period";
 import type {
@@ -2775,7 +2773,7 @@ export function decide(input: EngineInput): EngineResult {
             // and nothing else ("Yellow 7-10", "10-7 yellow"), from
             // somebody who could have answered with the bare name: that
             // is the answer, not a second bare scoreline.
-            const restated = answerQualifies ? scorePairAnswerSide(msg.body, pending, labels) : null;
+            const restated = answerQualifies ? answeredSide(facts, labels, senderTeam) : null;
             if (restated) {
               const hi = Math.max(pending.first, pending.second);
               const lo = Math.min(pending.first, pending.second);
@@ -2818,14 +2816,11 @@ export function decide(input: EngineInput): EngineResult {
         // an identified admin) within thirty minutes. The winner takes
         // the bigger number.
         //
-        // AND THE BODY ITSELF MUST BE A BARE TEAM ANSWER, read here in
-        // code (`scoreAnswerSide`), which is also where the side comes
-        // from. The model's `winner` is not consulted: the asker's
-        // "yellow bibs stink mate ... reds deserved it anyway" came back
-        // with winner "reds" and recorded a result (third review,
-        // item 2). Who sent a message was never evidence of what it
-        // says.
-        const side = answerQualifies ? scoreAnswerSide(msg.body, labels) : null;
+        // WHAT the answer says is the extractor's (2026-10-30, "no string
+        // parsing"): the team its facts name as the winner (or the loser's
+        // opponent). Until today a word test on the body decided it and the
+        // model's `winner` was not consulted.
+        const side = answerQualifies ? answeredSide(facts, labels, senderTeam) : null;
         if (pending && side) {
           const hi = Math.max(pending.first, pending.second);
           const lo = Math.min(pending.first, pending.second);
@@ -2835,7 +2830,7 @@ export function decide(input: EngineInput): EngineResult {
           // Told who won and not the score, by somebody addressing the
           // bot: ask for the score, where there used to be silence.
           const namesAnOutcome = !!(facts.winner ?? "").trim() || !!(facts.loser ?? "").trim();
-          if (msg.tagged && namesAnOutcome && !/[?¿]/.test(msg.body)) {
+          if (msg.tagged && namesAnOutcome) {
             speech.push({ kind: "score_ask_score", messageId: msg.id });
           }
           return;
@@ -3996,3 +3991,25 @@ export function assertCoverage(messages: EngineMessage[], outcomes: MessageOutco
     }
   }
 }
+
+/**
+ * THE SIDE AN ANSWER TO "WHICH TEAM WON?" NAMES, from the score
+ * extractor's facts (2026-10-30): the outcome words first (`winner`,
+ * `loser`), else the one team written beside the restated pair
+ * (`firstTeam` / `secondTeam`). Null when they name nobody, name a team
+ * that is neither side, or disagree. Whether the sender may answer at all
+ * is `isScoreAnswer`, a fact check, applied by the caller.
+ */
+export function answeredSide(
+  facts: { winner?: string | null; loser?: string | null; firstTeam?: string | null; secondTeam?: string | null },
+  labels: readonly [string, string],
+  senderTeam: TeamSide | null,
+): TeamSide | null {
+  const outcome = resolveWinnerSide({ facts: facts as never, labels, senderTeam });
+  if (outcome) return outcome;
+  if ((facts.winner ?? "").trim() || (facts.loser ?? "").trim()) return null;
+  const named = [facts.firstTeam, facts.secondTeam].filter((t) => (t ?? "").trim());
+  if (named.length !== 1) return null;
+  return resolveTeamRef(named[0], labels, senderTeam);
+}
+
