@@ -162,9 +162,72 @@ async function extractorCases(): Promise<void> {
   }
 }
 
+const LIST = "Monday 7-a-side\n1. Kemal\n2. Elvin\n3. Raihan\n4. Tom\n5. Ali\n6. Sam\n7. Kai\n8. Najib (added)";
+
+const ROUTER_CASES_2: RouterCase[] = [
+  { id: "T-elvin-raihan-2026-09-08", msg: { authorName: "Kemal", body: "@Match Time do not regenerate the teams. Instead swap Elvin with Raihan and share us the teams" }, want: ["balancer"] },
+  { id: "T-swap-me", msg: { authorName: "Raihan", body: "@Match Time swap me with Elvin" }, want: ["balancer"] },
+  { id: "T-swap-tr", msg: { authorName: "Elvin", body: "Raihan ile yer değiştirelim" }, want: ["balancer"] },
+  { id: "T-clear-incident", msg: { authorName: "Kemal", body: "@Match Time delete these teams, early to form them, there is still 5 days" }, want: ["balancer"] },
+  { id: "T-colours-tr", msg: { authorName: "Erdal", body: "@Match Time renkleri değiştir, takımlar aynı kalsın" }, want: ["balancer"] },
+  { id: "T-replacement-stays", msg: { authorName: "Kemal", body: "Amir in for Zeeshan" }, want: ["other_att"] },
+  { id: "T-bench-is-not-a-team", msg: { authorName: "Elvin", body: "@Match Time move Salman to bench, keep Talha" }, want: ["other_att"] },
+  { id: "T-bench-is-not-a-team-2", msg: { authorName: "Elvin", body: "@Match Time put Mustafa on the bench for tonight" }, want: ["other_att"] },
+  { id: "T-replacement-tr-stays", msg: { authorName: "Kemal", body: "Najib çıkıyor, Mojib giriyor" }, want: ["other_att"] },
+];
+
+async function routerCases2(): Promise<void> {
+  for (const c of ROUTER_CASES_2) {
+    const r = await routeBatch(model, [{ id: c.id, ...c.msg }], { now: NOW });
+    const got = r.routes[0];
+    record(`router ${c.id}`, c.want.includes(got.route) && got.source === "model", { route: got.route }, c.want.join("|"));
+  }
+  for (const [id, body, want] of [
+    ["L-numbered-list", LIST, true],
+    ["L-sentence", "Sam can't make it tonight, Kai and Ali are in", false],
+  ] as const) {
+    const r = await routeBatch(model, [{ id, authorName: "Kemal", body }], { now: NOW });
+    const got = r.routes[0];
+    record(`router ${id}`, (got.pastedList === true) === want && (want ? got.route === "other_att" : true), { route: got.route, pastedList: !!got.pastedList }, `pasted_list ${want}`);
+  }
+}
+
+async function extractorCases2(): Promise<void> {
+  const TEAMS = "Red: Kemal, Elvin, Tom\nYellow: Raihan, Ali, Sam";
+  for (const [id, body, check, want] of [
+    ["X-colours-tr", "@Match Time renkleri değiştir, takımlar aynı kalsın", (f: any) => f.action === "swap" && f.swapSides === true, "swap, swapSides"],
+    ["X-colours-en", "@Match Time swap the colours, same teams", (f: any) => f.action === "swap" && f.swapSides === true, "swap, swapSides"],
+    ["X-clear-incident", "@Match Time delete these teams, early to form them, there is still 5 days", (f: any) => f.action === "clear", "clear"],
+    ["X-clear-tr", "@Match Time takımları kaldır, daha erken", (f: any) => f.action === "clear", "clear"],
+    ["X-rename-stays", "@Match Time call the teams Lions and Tigers", (f: any) => f.action === "rename", "rename"],
+    ["X-elvin-raihan", "@Match Time do not regenerate the teams. Instead swap Elvin with Raihan and share us the teams", (f: any) => f.action === "swap" && (f.moves ?? []).length === 2, "swap, two moves"],
+  ] as const) {
+    const r = await extractForRoute(model, "balancer", { ...base, tagged: true, id, authorName: "Kemal", body, lastBotPost: TEAMS });
+    const f = r.facts as any;
+    record(`teams ${id}`, f.kind === "teams" && check(f), { action: f.action, swapSides: f.swapSides, moves: f.moves }, want);
+  }
+  for (const [id, body, wantTeams, wantOut] of [
+    ["AT-out-and-swap", "@Match Time count me out tonight, and swap Tom with Ali", true, true],
+    ["AT-swap-only", "@Match Time swap me with Tom", true, false],
+    ["AT-question-not-teams", "Kai is out now. @Match Time what's the list?", false, false],
+  ] as const) {
+    const r = await extractForRoute(model, "self_att", { ...base, tagged: true, id, authorName: "Raihan", body });
+    const f = r.facts as any;
+    const teams = f.kind === "attendance" && f.sideRequests.includes("teams");
+    const senderOut = f.kind === "attendance" && f.claims.some((c: any) => c.subject === "sender" && c.polarity === "out");
+    const noSwapClaims = f.kind === "attendance" && !f.claims.some((c: any) => c.subject === "other" && /tom|ali/i.test(c.personRef) && c.polarity !== "out");
+    record(`attendance ${id}`, teams === wantTeams && (!wantOut || senderOut) && noSwapClaims, { sideRequests: f.sideRequests, claims: (f.claims ?? []).map((c: any) => [c.subject, c.personRef, c.polarity]) }, `teams ${wantTeams}${wantOut ? ", sender out" : ""}, no swap claims`);
+  }
+}
+
 async function main(): Promise<void> {
-  await routerCases();
-  await extractorCases();
+  if (process.env.P1_ONLY === "2") {
+    await routerCases2();
+    await extractorCases2();
+  } else {
+    await routerCases();
+    await extractorCases();
+  }
   const passed = results.filter((r) => r.pass).length;
   console.log(`\n${passed}/${results.length} passed; ${calls} model calls; $${usd.toFixed(4)} on the dev key`);
   writeFileSync(".e2e/live-check-no-parsing-p1.json", JSON.stringify({ results, calls, usd }, null, 2));

@@ -108,42 +108,24 @@ test("THE INCIDENT — the 18:38 sentence says nothing at all", async ({ request
   expect(answerDmsIn(r.dms), JSON.stringify(r.dms)).toHaveLength(0);
 });
 
-test("THE INCIDENT, WORST CASE — the MODEL is the only thing refusing it", async ({
+test("THE INCIDENT, WORST CASE — even if the model calls it rating_progress, no tag, no answer (2026-10-30)", async ({
   request,
   db,
 }) => {
-  // ⚠️ THIS TEST ASSERTS THE UNCOMFORTABLE TRUTH RATHER THAN THE
-  // COMFORTABLE ONE, and it is the most important comment in this file.
-  //
-  // The incident sentence contains the bare word "Matchtime", so
-  // `messageTagsBot` — and therefore the question route's tag gate — is
-  // TRUE for it. If the extractor calls it `rating_progress`, MatchTime
-  // ANSWERS, in the group, naming the players who have not rated. The
-  // tag is not a backstop here.
-  //
-  // That is a deliberate, argued position and not an oversight. The two
-  // BULK-DM doors (`STATS_BLAST_TAG_MUST_BE_EXPLICIT`,
-  // `RECRUIT_BLAST_REQUIRES_TAG`) demand an explicit @ because their
-  // costs are wildly asymmetric: a blast that fires wrongly costs 69 DMs
-  // from an unofficial WhatsApp client and possibly the account. THIS
-  // path sends no DM. A wrong answer is one sentence in a group
-  // MatchTime posts in several times a week, and the next message
-  // corrects it. `payments`, `count`, `squad` and `fixture` all rest on
-  // the model in exactly the same way, and singling this topic out would
-  // be stricter than every other answer for no difference in
-  // consequence. See `RATING_PROGRESS_TAG_MUST_BE_EXPLICIT`.
-  //
-  // So the defence here is the MODEL reading the sentence right, and
-  // that is measured rather than asserted: case M3 of `scripts/dryrun-
-  // pipeline.ts`, 15 live runs against the real Sutton state. Flip
-  // `RATING_PROGRESS_TAG_MUST_BE_EXPLICIT` to `true` the moment this
-  // topic gains a side effect, and this test flips with it.
+  // Until 2026-10-30 the incident sentence counted as TAGGED because it
+  // contains the bare word "Matchtime" (`messageTagsBot`'s text fallback),
+  // so the model was the only thing refusing it. "No string parsing": a tag
+  // is the Pi's mention flag, a reply to MatchTime, or the router's own
+  // `to_bot`. The router stub here says nothing of the sort (the live
+  // check measured to_bot false for this sentence), so even a model that
+  // reads it as `rating_progress` gets no answer in the group, and nobody
+  // is DM'd.
   const grp = await group(request, db);
   const r = await grp.post("owner", INCIDENT, RATING_Q);
-  expect(r.reply ?? "").toContain("rating progress");
-  // And even in the worst case it stays a SENTENCE. Nobody is DM'd.
+  expect(r.reply).toBeNull();
   expect(answerDmsIn(r.dms), JSON.stringify(r.dms)).toHaveLength(0);
 });
+
 
 test("the same ask UNTAGGED is refused", async ({ request, db }) => {
   // A REAL BEHAVIOUR CHANGE, and it is the one this file exists to
