@@ -17,6 +17,8 @@
  * classifier module and prints what came back, with a running cost and
  * a hard stop at MAX_USD.
  *
+ *   SET=all REPEAT=1 ...   every set once (the P5 check, 2026-10-30), SET=amount the stated amounts
+ *
  * Approved by Kemal on 2026-09-23 for this change, capped at $0.30.
  * Approved again on 2026-10-18 for the collector rewrite (Feroz, FNF):
  * SET=feroz once, plus one pass of SET=main and SET=heldout.
@@ -45,7 +47,7 @@ const REPEAT = Number(process.env.REPEAT ?? "3") || 3;
  *  can resolve it; `main` refuses to run if it drifts from production's pin. */
 const MODEL = HAIKU_MODEL;
 /** Hard cap for this run, in US dollars. */
-const MAX_USD = 0.3;
+const MAX_USD = 0.04;
 
 
 /** What the player was last sent, the context the route supplies: the
@@ -113,7 +115,24 @@ interface Case {
   ctx?: PaymentClaimContext;
   /** What the context is, for the table. */
   note?: string;
+  /** The stated amount the model must return (2026-10-30); null: none
+   *  stated. Absent: not checked. */
+  amount?: number | null;
 }
+
+/** P5 (2026-10-30): the amount a message states, checked against the owed
+ *  fee by code. Every case says what amount the model must return. */
+const AMOUNT: Case[] = [
+  { text: "Paid", want: "paid", amount: null },
+  { text: "sent Kemal £8", want: "paid", amount: 8 },
+  { text: "sent you 10 quid", want: "paid", amount: 10 },
+  { text: "paid £8 by bank transfer", want: "paid", amount: 8 },
+  { text: "Kemal'e 8 pound attım", want: "paid", amount: 8 },
+  { text: "ödedim", want: "paid", amount: null },
+  { text: "will give Kemal £8 cash tonight", want: "will_pay_direct", amount: 8 },
+  { text: "how much do I owe, £8?", want: "other", amount: null },
+  { text: "I owe £8 right? will pay later", want: "other", amount: null },
+];
 
 const CASES: Case[] = [
   // ── positives: a completed payment, stated by the sender ──
@@ -278,7 +297,8 @@ async function main() {
 
   console.log(`── payment-claim classifier, ${PAYMENT_CLAIM_MODEL}, REPEAT=${REPEAT}, cap $${MAX_USD} ──`);
   let bad = 0;
-  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, feroz: COLLECTOR, s2: SLICE_S2 };
+  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, feroz: COLLECTOR, s2: SLICE_S2, amount: AMOUNT };
+  sets.all = [...CASES, ...HELD_OUT, ...COLLECTOR, ...SLICE_S2, ...AMOUNT];
   const only = process.env.ONLY;
   const setName = process.env.SET && sets[process.env.SET] ? process.env.SET : "main";
   const set = only ? sets[setName].filter((c) => c.text === only) : sets[setName];
@@ -292,10 +312,11 @@ async function main() {
         process.exit(2);
       }
       const r = await classifyPaymentClaimDetailed(c.text, c.ctx ?? CTX, call);
-      got.push(`${r.intent}@${r.confidence.toFixed(2)}`);
+      const amountOk = c.amount === undefined || (r.amount ?? null) === c.amount;
+      got.push(`${r.intent}${r.amount != null ? `:${r.amount}` : ""}@${r.confidence.toFixed(2)}${amountOk ? "" : "!amount"}`);
       reasons.push(r.reasoning);
     }
-    const agreed = got.filter((g) => g.startsWith(`${c.want}@`)).length;
+    const agreed = got.filter((g) => g.startsWith(`${c.want}`) && !g.endsWith("!amount") && g.split("@")[0].split(":")[0] === c.want).length;
     const pass = agreed === REPEAT;
     if (!pass) bad++;
     const note = c.note ? ` (${c.note})` : "";

@@ -1717,6 +1717,11 @@ export const tr: Strings = {
     `Tamamdır${p.firstName ? ` ${p.firstName}` : ""}, *${p.activityName}* için *${p.amount}* ödemeni zaten ilettim. ` +
     `${p.collectorName ?? "Organizatör"} para eline geçince onaylayacak 👍`,
 
+  dm_paid_claim_amount_mismatch: (p) =>
+    `Teşekkürler${p.firstName ? ` ${p.firstName}` : ""}. *${p.activityName}* için borcun *${p.owed}*, sen *${p.stated}* dedin, ` +
+    `bu yüzden ${p.collectorName ?? "organizatör"} henüz bilgilendirilmedi. ${p.owed} ödediysen bana "ödedim" yazman yeterli. ` +
+    `Başkalarının parasını da kapsıyorsa ödeme linkini aç, kaç kişi için ödediğini seç ve *Pay the collector directly* seçeneğine dokun:\n${p.url}`,
+
   dm_paid_for_others: (p) =>
     `Teşekkürler${p.firstName ? ` ${p.firstName}` : ""}! ${p.collectorName ?? "Organizatör"} doğru tutarı görüp onaylayabilsin diye ` +
     `ödeme linkini aç, kaç kişi için ödediğini seç ve *Pay the collector directly* seçeneğine dokun:\n${p.url}`,

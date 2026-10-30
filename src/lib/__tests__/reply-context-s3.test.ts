@@ -19,7 +19,6 @@ import {
   buildFeeReplySystemPrompt,
   buildFeeReplyUserTurn,
   classifyFeeReply,
-  classifyFeeReplyDetailed,
   feeReplyBodyOf,
 } from "../fee-confirm";
 import {
@@ -64,7 +63,7 @@ const json = (o: Record<string, unknown>) => JSON.stringify({ confidence: 0.95, 
 // ── fee-confirm ───────────────────────────────────────────────────────
 
 describe("fee-confirm: the collector's reply is read against what MatchTime said", () => {
-  const CTX = { amount: 8, matchName: "Tuesday 7-a-side, Tue 13 Oct, 20:00", lang: "en" as const, replyContext: FEE_ASK };
+  const CTX = { pending: 8, matchName: "Tuesday 7-a-side, Tue 13 Oct, 20:00", lang: "en" as const, replyContext: FEE_ASK };
 
   it("the user turn: the match, the amount awaiting a yes, the chat context, then the reply under its header", () => {
     const u = buildFeeReplyUserTurn("yeah go on then", CTX);
@@ -81,7 +80,7 @@ describe("fee-confirm: the collector's reply is read against what MatchTime said
   });
 
   it("no chat context known: the time now and 'none', never a missing block", () => {
-    const u = buildFeeReplyUserTurn("go ahead", { amount: 10.3, matchName: "Tuesday 5-a-side" });
+    const u = buildFeeReplyUserTurn("go ahead", { pending: 10.3, matchName: "Tuesday 5-a-side" });
     expect(u).toContain("Amount waiting for their yes: £10.30 per player");
     expect(u).toContain("NOW: ");
     expect(u).toContain("MATCHTIME'S RECENT MESSAGES TO THEM: none");
@@ -95,16 +94,16 @@ describe("fee-confirm: the collector's reply is read against what MatchTime said
 
   it("sends the one system prompt and the user turn", async () => {
     const call = vi.fn(async () => json({ intent: "yes" }));
-    expect(await classifyFeeReply("yeah go on then", CTX, call)).toBe("yes");
+    expect((await classifyFeeReply("yeah go on then", CTX, call)).intent).toBe("yes");
     expect(call).toHaveBeenCalledWith(FEE_REPLY_SYSTEM_PROMPT, buildFeeReplyUserTurn("yeah go on then", CTX));
   });
 
-  it("the detailed call carries confidence and reasoning, and still fails closed", async () => {
-    expect(await classifyFeeReplyDetailed("x", CTX, async () => json({ intent: "yes", confidence: 0.6 }))).toMatchObject({
+  it("the call carries confidence and reasoning, and still fails closed", async () => {
+    expect(await classifyFeeReply("x", CTX, async () => json({ intent: "yes", confidence: 0.6 }))).toMatchObject({
       intent: "neither",
     });
     expect(
-      await classifyFeeReplyDetailed("x", CTX, async () => {
+      await classifyFeeReply("x", CTX, async () => {
         throw new Error("overloaded");
       }),
     ).toMatchObject({ intent: "neither", confidence: 0 });

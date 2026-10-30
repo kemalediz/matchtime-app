@@ -1,180 +1,124 @@
 /**
- * THE MONEY COLLECTOR'S "YES", AND THE THUMBS-UP THAT WAS NOT ONE.
+ * THE MONEY COLLECTOR'S REPLY TO A FEE QUESTION (2026-10-30, P5 of the
+ * "no string parsing" sweep).
  *
- * `isAffirmative`'s first line was `/[✅✔👍]/u.test(text)` — a thumbs-up
- * ANYWHERE in the body released the whole squad's pay links. Its word
- * list was unanchored at the end too (`/^(yes|…|ok|…)\b/`), so
- * "ok so I'll sort it tomorrow" was a yes. `isNegative` had the same
- * shape: "no worries mate" cancelled a pending fee.
- *
- * These tests pin the replacement. The two that matter most are the
- * first two — a fragment must not move money — and the two after them:
- * the anchored allowlist must keep working with the model unreachable,
- * and every failure of the model must leave the money where it is.
+ * The model reads every reply (a bare ✅ included); code acts on facts:
+ * the right sender, an open question, the amount waiting. These tests pin
+ * both halves with the model stubbed: what the reading may do, and the
+ * adversarial cases where it must do nothing (a wrong sender, no open
+ * question, a "no", a model failure, a yes naming a different amount).
  */
 import { describe, it, expect } from "vitest";
 import {
-  FEE_CONFIRM_ANCHORS_BEFORE_IT_ASKS,
+  FEE_REPLY_MAX_AMOUNT,
   FEE_REPLY_MIN_CONFIDENCE,
   FEE_REPLY_SYSTEM_PROMPT,
-  anchoredFeeReply,
+  buildFeeReplyUserTurn,
   classifyFeeReply,
   parseFeeReplyIntent,
-  type FeeReply,
+  type FeeReplyRead,
 } from "../fee-confirm";
 import { runCollectorFeeReply, type CollectorFeeDeps } from "../payment-flow";
 
-// ── THE DETERMINISTIC HALF ───────────────────────────────────────────
-
-describe("anchoredFeeReply — a whole-body allowlist, never a fragment", () => {
-  it("is what the constant says it is", () => {
-    expect(FEE_CONFIRM_ANCHORS_BEFORE_IT_ASKS).toBe(true);
-  });
-
-  const YES = [
-    "👍",
-    "✅",
-    "✔",
-    "✔️",
-    "👍🏽",
-    "yes",
-    "Yes",
-    "yes.",
-    "yeah",
-    "yep",
-    "yup",
-    "ok",
-    "OK!",
-    "okay",
-    "k",
-    "confirm",
-    "confirmed",
-    "correct",
-    "send",
-    "send it",
-    "send them",
-    "yes send them",
-    "yes please",
-    "go on",
-    "do it",
-    "sure",
-    "that's right",
-    "release",
-    "yes 👍",
-    "👍 yes",
-    "  ✅  ",
-  ];
-  for (const t of YES) {
-    it(`accepts ${JSON.stringify(t)}`, () => {
-      expect(anchoredFeeReply(t)).toBe("yes");
-    });
-  }
-
-  const NO = ["no", "No.", "nope", "nah", "not yet", "wait", "hold", "cancel", "stop", "❌", "🚫", "no ❌"];
-  for (const t of NO) {
-    it(`refuses ${JSON.stringify(t)}`, () => {
-      expect(anchoredFeeReply(t)).toBe("no");
-    });
-  }
-
-  // ⚠️ THE BUG, BY NAME. Every one of these used to be a "yes" or a "no".
-  const ABSTAIN = [
-    "great game 👍",
-    "cheers lads, great game 👍",
-    "ok so I'll sort it tomorrow",
-    "ok i will call goals and switch to 7aside again",
-    "yes, Elvin still collects it",
-    "sure will do",
-    "yes pls, can you share the name?",
-    "✅ means that player has been accepted to the main squad",
-    "no worries mate, great game",
-    "nah he's not playing, but send them anyway",
-    "£12 each",
-    "12",
-    "",
-    "   ",
-    "👍❌",
-    // An acknowledgement is not an authorisation. Each of these was in
-    // the first draft's YES list; none was in the list it replaces. They
-    // go to the model, which has the amount and the question in front of
-    // it, rather than being decided by a word.
-    "perfect",
-    "great",
-    "good",
-    "all good",
-    "spot on",
-    "that's it",
-  ];
-  for (const t of ABSTAIN) {
-    it(`abstains on ${JSON.stringify(t)}`, () => {
-      expect(anchoredFeeReply(t)).toBeNull();
-    });
-  }
+const read = (intent: FeeReplyRead["intent"], amount: number | null = null, amountIs: FeeReplyRead["amountIs"] = null): FeeReplyRead => ({
+  intent,
+  amount,
+  amountIs: amount != null ? (amountIs ?? "each") : null,
+  confidence: 0.95,
+  reasoning: "stub",
 });
 
-// ── THE MODEL HALF, AND EVERY WAY IT CAN FAIL ────────────────────────
+// ── THE MODEL CALL, AND EVERY WAY IT CAN FAIL ────────────────────────
 
 describe("classifyFeeReply fails closed to `neither`", () => {
-  const ctx = { amount: 10.3, matchName: "Tuesday 5-a-side" };
+  const ctx = { pending: 10.3, matchName: "Tuesday 5-a-side" };
 
   it("no classifier available → neither", async () => {
-    expect(await classifyFeeReply("go for it mate", ctx, null)).toBe("neither");
+    expect((await classifyFeeReply("go for it mate", ctx, null)).intent).toBe("neither");
   });
 
   it("a throwing call → neither", async () => {
     const boom = async () => {
       throw new Error("overloaded");
     };
-    expect(await classifyFeeReply("go for it mate", ctx, boom)).toBe("neither");
+    expect((await classifyFeeReply("go for it mate", ctx, boom)).intent).toBe("neither");
   });
 
   it("unparseable output → neither", async () => {
-    expect(await classifyFeeReply("go for it", ctx, async () => "I think so?")).toBe("neither");
+    expect((await classifyFeeReply("go for it", ctx, async () => "I think so?")).intent).toBe("neither");
   });
 
   it("an intent outside the enum → neither", async () => {
     const out = JSON.stringify({ intent: "maybe", confidence: 1, reasoning: "x" });
-    expect(await classifyFeeReply("go for it", ctx, async () => out)).toBe("neither");
+    expect((await classifyFeeReply("go for it", ctx, async () => out)).intent).toBe("neither");
   });
 
   it("below the confidence floor → neither", async () => {
-    const out = JSON.stringify({
-      intent: "yes",
-      confidence: FEE_REPLY_MIN_CONFIDENCE - 0.01,
-      reasoning: "unsure",
+    const out = JSON.stringify({ intent: "yes", amount: null, amountIs: null, confidence: FEE_REPLY_MIN_CONFIDENCE - 0.01 });
+    expect((await classifyFeeReply("go for it", ctx, async () => out)).intent).toBe("neither");
+  });
+
+  it("an empty reply never reaches the model", async () => {
+    let called = false;
+    const r = await classifyFeeReply("   ", ctx, async () => {
+      called = true;
+      return "{}";
     });
-    expect(await classifyFeeReply("go for it", ctx, async () => out)).toBe("neither");
+    expect(r.intent).toBe("neither");
+    expect(called).toBe(false);
   });
 
   it("a confident yes is passed through", async () => {
-    const out = JSON.stringify({ intent: "yes", confidence: 0.97, reasoning: "direct go-ahead" });
-    expect(await classifyFeeReply("go for it", ctx, async () => out)).toBe("yes");
+    const out = JSON.stringify({ intent: "yes", amount: null, amountIs: null, confidence: 0.97, reasoning: "go-ahead" });
+    expect(await classifyFeeReply("✅", ctx, async () => out)).toMatchObject({ intent: "yes", amount: null });
   });
 
-  it("the prompt carries the amount and the match, so the model knows what is being confirmed", async () => {
-    let seen = "";
-    await classifyFeeReply("go for it", ctx, async (_s, user) => {
-      seen = user;
-      return "{}";
-    });
-    expect(seen).toContain("10.30");
-    expect(seen).toContain("Tuesday 5-a-side");
-    expect(seen).toContain("go for it");
+  it("the user turn carries the amount waiting, the match and the reply", () => {
+    const turn = buildFeeReplyUserTurn("go for it", ctx);
+    expect(turn).toContain("Amount waiting for their yes: £10.30 per player");
+    expect(turn).toContain("Tuesday 5-a-side");
+    expect(turn).toMatch(/THEIR REPLY:\ngo for it$/);
   });
 
-  it("the system prompt names the failure shape it exists to catch", () => {
-    expect(FEE_REPLY_SYSTEM_PROMPT).toContain("great game 👍");
+  it("with nothing waiting, the user turn says so", () => {
+    expect(buildFeeReplyUserTurn("8", { pending: null, matchName: "Tue" })).toContain("Amount waiting for their yes: none");
+  });
+
+  it("the system prompt names the failure shape it exists to catch, in both languages", () => {
+    expect(FEE_REPLY_SYSTEM_PROMPT).toContain('"great game 👍" | "harika maç 👍"');
+    expect(FEE_REPLY_SYSTEM_PROMPT).not.toMatch(/[—–]/);
   });
 });
 
-describe("parseFeeReplyIntent", () => {
+describe("parseFeeReplyIntent checks the model's output, never his words", () => {
   it("tolerates a fenced block", () => {
     const raw = '```json\n{"intent":"no","confidence":0.9,"reasoning":"not yet"}\n```';
     expect(parseFeeReplyIntent(raw).intent).toBe("no");
   });
   it("clamps a nonsense confidence rather than trusting it", () => {
-    const raw = '{"intent":"yes","confidence":12,"reasoning":"x"}';
-    expect(parseFeeReplyIntent(raw).confidence).toBe(1);
+    expect(parseFeeReplyIntent('{"intent":"yes","confidence":12}').confidence).toBe(1);
+  });
+  it("an amount reading with each or total passes", () => {
+    expect(parseFeeReplyIntent('{"intent":"amount","amount":80,"amountIs":"total","confidence":0.9}')).toMatchObject({
+      intent: "amount",
+      amount: 80,
+      amountIs: "total",
+    });
+  });
+  it("an amount reading with no number, a zero, a negative or over the cap is `neither`", () => {
+    for (const amount of [null, 0, -8, FEE_REPLY_MAX_AMOUNT + 1, "8"]) {
+      const raw = JSON.stringify({ intent: "amount", amount, amountIs: "each", confidence: 0.95 });
+      expect(parseFeeReplyIntent(raw).intent).toBe("neither");
+    }
+  });
+  it("an amount reading that does not say each or total is `neither`", () => {
+    expect(parseFeeReplyIntent('{"intent":"amount","amount":8,"amountIs":"pp","confidence":0.95}').intent).toBe("neither");
+  });
+  it("a yes with a garbled amount is `neither`, not a bare yes", () => {
+    expect(parseFeeReplyIntent('{"intent":"yes","amount":-3,"amountIs":"each","confidence":0.95}').intent).toBe("neither");
+  });
+  it("a `no` drops any amount", () => {
+    expect(parseFeeReplyIntent('{"intent":"no","amount":8,"amountIs":"each","confidence":0.95}')).toMatchObject({ intent: "no", amount: null });
   });
 });
 
@@ -182,24 +126,20 @@ describe("parseFeeReplyIntent", () => {
 
 const AMOUNT = 10.3;
 
-function recorder(over: Partial<CollectorFeeDeps> = {}) {
+function recorder(over: Partial<CollectorFeeDeps> = {}, reading: FeeReplyRead = read("neither")) {
   const calls = {
     /** ⚠️ every entry here is 8-13 real people asked for money. */
     released: [] as Array<{ matchId: string; amount: number }>,
     cancelled: [] as string[],
     staged: [] as Array<{ matchId: string; perPlayer: number }>,
-    judged: [] as string[],
+    judged: [] as Array<{ text: string; pending: number | null }>,
   };
   const deps: CollectorFeeDeps = {
-    pendingMatch: async () => ({
-      id: "m1",
-      name: "Tuesday 5-a-side",
-      feePendingConfirm: AMOUNT,
-    }),
+    pendingMatch: async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: AMOUNT }),
     headcount: async () => 9,
-    judge: async (text) => {
-      calls.judged.push(text);
-      return "neither";
+    judge: async (text, ask) => {
+      calls.judged.push({ text, pending: ask.pending });
+      return reading;
     },
     release: async (matchId, amount) => {
       calls.released.push({ matchId, amount });
@@ -216,195 +156,173 @@ function recorder(over: Partial<CollectorFeeDeps> = {}) {
   return { deps, calls };
 }
 
-describe("runCollectorFeeReply — a fragment cannot release the squad's pay links", () => {
-  it('"great game 👍" releases NOTHING', async () => {
-    const { deps, calls } = recorder();
-    const res = await runCollectorFeeReply("great game 👍", deps);
-    expect(calls.released).toEqual([]);
-    expect(calls.cancelled).toEqual([]);
-    expect(res).toBeNull();
-  });
+const ASKED_NOTHING_WAITING = async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: null, feeAsked: true });
 
-  it('"ok so I\'ll sort it tomorrow" releases NOTHING', async () => {
-    const { deps, calls } = recorder();
-    const res = await runCollectorFeeReply("ok so I'll sort it tomorrow", deps);
-    expect(calls.released).toEqual([]);
-    expect(res).toBeNull();
-  });
-
-  it('"no worries mate, great game" cancels NOTHING', async () => {
-    const { deps, calls } = recorder();
-    await runCollectorFeeReply("no worries mate, great game", deps);
-    expect(calls.cancelled).toEqual([]);
-    expect(calls.released).toEqual([]);
-  });
-});
-
-describe("runCollectorFeeReply — what the collector actually types still works", () => {
-  for (const t of ["👍", "✅", "yes", "yes send them", "confirm", "ok", "yep"]) {
-    it(`${JSON.stringify(t)} releases the links, and the model is never asked`, async () => {
-      const { deps, calls } = recorder();
-      const res = await runCollectorFeeReply(t, deps);
-      expect(calls.released).toEqual([{ matchId: "m1", amount: AMOUNT }]);
-      expect(calls.judged).toEqual([]);
-      expect(res?.released).toBe(8);
-      expect(res?.reply).toContain("8 pay links");
-    });
-  }
-
-  it("the anchored yes does not need the model to be reachable at all", async () => {
-    const { deps, calls } = recorder({
-      judge: async () => {
-        throw new Error("anthropic is down");
-      },
-    });
+describe("an amount waiting: the model's yes releases exactly that amount", () => {
+  it("a bare ✅ goes to the model, and its yes releases the waiting amount", async () => {
+    const { deps, calls } = recorder({}, read("yes"));
     const res = await runCollectorFeeReply("✅", deps);
+    expect(calls.judged).toEqual([{ text: "✅", pending: AMOUNT }]);
     expect(calls.released).toEqual([{ matchId: "m1", amount: AMOUNT }]);
-    expect(res?.released).toBe(8);
+    expect(res?.reply).toContain("8 pay links");
   });
 
-  it('"no" cancels, and the model is never asked', async () => {
-    const { deps, calls } = recorder();
-    const res = await runCollectorFeeReply("no", deps);
-    expect(calls.cancelled).toEqual(["m1"]);
-    expect(calls.released).toEqual([]);
-    expect(calls.judged).toEqual([]);
-    expect(res?.reply).toContain("cancelled");
+  it("a natural go-ahead read as yes is released", async () => {
+    const { deps, calls } = recorder({}, read("yes"));
+    await runCollectorFeeReply("yeah go on then, fire them out", deps);
+    expect(calls.released).toEqual([{ matchId: "m1", amount: AMOUNT }]);
+  });
+
+  it("a yes naming the SAME amount releases it", async () => {
+    const { deps, calls } = recorder({}, read("yes", 10.3));
+    await runCollectorFeeReply("yes £10.30 is right", deps);
+    expect(calls.released).toEqual([{ matchId: "m1", amount: AMOUNT }]);
+  });
+
+  it("a release that lost the race (null) sends no ack", async () => {
+    const { deps } = recorder({ release: async () => null }, read("yes"));
+    expect(await runCollectorFeeReply("✅", deps)).toBeNull();
+  });
+
+  it("the release ack names the match's club and date when known", async () => {
+    const { deps } = recorder(
+      { pendingMatch: async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: AMOUNT, orgId: "org-b", date: new Date("2026-10-13T19:00:00Z") }) },
+      read("yes"),
+    );
+    const res = await runCollectorFeeReply("✅", deps);
+    expect(res).toMatchObject({ orgId: "org-b", matchId: "m1" });
+    expect(res?.reply).toContain("on Tue 13 Oct");
   });
 });
 
-describe("runCollectorFeeReply — the model only ever sees what the allowlist could not decide", () => {
-  it("a natural go-ahead the allowlist abstains on IS released when the model is sure", async () => {
-    const { deps, calls } = recorder({ judge: async () => "yes" });
-    const res = await runCollectorFeeReply("yeah go on then, fire them out", deps);
-    expect(calls.released).toEqual([{ matchId: "m1", amount: AMOUNT }]);
-    expect(res?.released).toBe(8);
-  });
-
-  it("a natural refusal is a cancel", async () => {
-    const { deps, calls } = recorder({ judge: async () => "no" });
-    await runCollectorFeeReply("hold off until I've counted the cash", deps);
-    expect(calls.cancelled).toEqual(["m1"]);
-    expect(calls.released).toEqual([]);
-  });
-
-  it("`neither` does nothing and falls through", async () => {
-    const { deps, calls } = recorder({ judge: async () => "neither" });
-    const res = await runCollectorFeeReply("did Wasim turn up in the end?", deps);
-    expect(calls.released).toEqual([]);
-    expect(calls.cancelled).toEqual([]);
-    expect(res).toBeNull();
-  });
-
-  // ⚠️ THE FAILURE DIRECTION, PROVEN.
-  it("a THROWN classifier releases nothing, cancels nothing and leaves the fee pending", async () => {
-    const { deps, calls } = recorder({
-      judge: async () => {
-        throw new Error("overloaded");
-      },
-    });
-    const res = await runCollectorFeeReply("cheers mate, go for it", deps);
-    expect(calls.released).toEqual([]);
-    expect(calls.cancelled).toEqual([]);
-    expect(calls.staged).toEqual([]);
-    expect(res).toBeNull();
-  });
-});
-
-describe("runCollectorFeeReply — a fresh amount is decided by code, before the model", () => {
-  it("a new amount supersedes the pending one and never reaches the model", async () => {
-    const { deps, calls } = recorder();
+describe("an amount: staged and asked again, never charged off the message", () => {
+  it("a new amount supersedes the waiting one", async () => {
+    const { deps, calls } = recorder({}, read("amount", 12));
     const res = await runCollectorFeeReply("£12 each", deps);
     expect(calls.staged).toEqual([{ matchId: "m1", perPlayer: 12 }]);
     expect(calls.released).toEqual([]);
-    expect(calls.judged).toEqual([]);
+    expect(res?.asked).toBe(true);
     expect(res?.reply).toContain("£12");
   });
 
-  // The old order asked `isAffirmative` first, so this released at the
-  // SUPERSEDED price — 13 people charged the wrong amount off one emoji.
-  it('"✅ actually make it £12" re-stages rather than releasing the old price', async () => {
-    const { deps, calls } = recorder();
-    await runCollectorFeeReply("✅ actually make it £12", deps);
-    expect(calls.released).toEqual([]);
-    expect(calls.staged).toEqual([{ matchId: "m1", perPlayer: 12 }]);
-  });
-});
-
-describe("runCollectorFeeReply — the gates that were already there stay there", () => {
-  it("no pending match → nothing happens and the model is never asked", async () => {
-    const { deps, calls } = recorder({ pendingMatch: async () => null });
-    expect(await runCollectorFeeReply("✅", deps)).toBeNull();
-    expect(calls.released).toEqual([]);
-    expect(calls.judged).toEqual([]);
-  });
-
-  it("a match with NO pending amount never releases, whatever the reply says", async () => {
-    const { deps, calls } = recorder({
-      pendingMatch: async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: null }),
-      judge: async () => "yes" as FeeReply,
-    });
-    const res = await runCollectorFeeReply("✅ yes send them", deps);
-    expect(calls.released).toEqual([]);
-    expect(calls.judged).toEqual([]);
-    expect(res).toBeNull();
-  });
-
-  it("an amount on a fee-less match stages it for confirmation, and sends nothing", async () => {
-    const { deps, calls } = recorder({
-      pendingMatch: async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: null }),
-    });
+  it("an amount with nothing waiting, after the fee ask, is staged", async () => {
+    const { deps, calls } = recorder({ pendingMatch: ASKED_NOTHING_WAITING }, read("amount", 10.3));
     const res = await runCollectorFeeReply("£10.30 each", deps);
     expect(calls.staged).toEqual([{ matchId: "m1", perPlayer: 10.3 }]);
-    expect(calls.released).toEqual([]);
+    expect(calls.judged).toEqual([{ text: "£10.30 each", pending: null }]);
     expect(res?.reply).toContain("£10.30");
   });
-});
 
-describe("runCollectorFeeReply: free places (2026-10-16)", () => {
   it("a total is split across the players who pay, and the confirm says how many are free", async () => {
-    const { deps, calls } = recorder({
-      pendingMatch: async () => ({ id: "m1", name: "Friday Night Football", feePendingConfirm: null }),
-      // 8 pay, 2 on a free place: £80 total is £10 each, not £8.
-      headcount: async () => 8,
-      freeCount: async () => 2,
-    });
+    const { deps, calls } = recorder({ pendingMatch: ASKED_NOTHING_WAITING, headcount: async () => 8, freeCount: async () => 2 }, read("amount", 80, "total"));
     const res = await runCollectorFeeReply("£80 total", deps);
     expect(calls.staged).toEqual([{ matchId: "m1", perPlayer: 10 }]);
     expect(res?.reply).toContain("8 players to charge");
     expect(res?.reply).toContain("(2 players are on a free place and not counted.)");
   });
 
-  it("no free places: the confirm is exactly what it was", async () => {
-    const { deps } = recorder({
-      pendingMatch: async () => ({ id: "m1", name: "Friday Night Football", feePendingConfirm: null }),
-      headcount: async () => 8,
-    });
-    const res = await runCollectorFeeReply("£8 each", deps);
-    expect(res?.reply).not.toContain("free place");
+  it("a total with nobody to charge stages nothing", async () => {
+    const { deps, calls } = recorder({ pendingMatch: ASKED_NOTHING_WAITING, headcount: async () => 0 }, read("amount", 80, "total"));
+    expect(await runCollectorFeeReply("£80 total", deps)).toBeNull();
+    expect(calls.staged).toEqual([]);
   });
 });
 
-describe("review of #339: a quote that is not the fee question, and a release someone else already made", () => {
-  it('allowlist off (a swipe-reply to a non-fee message): "✅" is NOT released by the allowlist, the model decides', async () => {
-    const { deps, calls } = recorder({ allowlist: false });
-    const res = await runCollectorFeeReply("✅", deps);
-    expect(calls.released).toEqual([]);
-    expect(calls.judged).toEqual(["✅"]);
-    expect(res).toBeNull();
-  });
+// ── ADVERSARIAL: ONE PER GATE ────────────────────────────────────────
 
-  it("a release that lost the race (null) sends no ack", async () => {
-    const { deps } = recorder({ release: async () => null });
+describe("adversarial: every gate holds even when the model says yes", () => {
+  it("WRONG SENDER: not this match's collector (no pending match) → nothing, and the model is never asked", async () => {
+    const { deps, calls } = recorder({ pendingMatch: async () => null }, read("yes"));
     expect(await runCollectorFeeReply("✅", deps)).toBeNull();
+    expect(calls.judged).toEqual([]);
+    expect(calls.released).toEqual([]);
+    expect(calls.staged).toEqual([]);
   });
 
-  it("the release ack names the match's club and date when known", async () => {
-    const { deps } = recorder({
-      pendingMatch: async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: AMOUNT, orgId: "org-b", date: new Date("2026-10-13T19:00:00Z") }),
+  it("NO OPEN QUESTION: nothing waiting and no fee ask sent → nothing, and the model is never asked", async () => {
+    const { deps, calls } = recorder(
+      { pendingMatch: async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: null, feeAsked: false }) },
+      read("amount", 8),
+    );
+    expect(await runCollectorFeeReply("£8 each", deps)).toBeNull();
+    expect(calls.judged).toEqual([]);
+    expect(calls.staged).toEqual([]);
+  });
+
+  it("NOTHING WAITING: a yes to the fee ask releases nothing (there is no amount to release)", async () => {
+    const { deps, calls } = recorder({ pendingMatch: ASKED_NOTHING_WAITING }, read("yes"));
+    expect(await runCollectorFeeReply("✅ yes send them", deps)).toBeNull();
+    expect(calls.released).toEqual([]);
+    expect(calls.staged).toEqual([]);
+  });
+
+  it('A "NO" READ: cancels the waiting amount and releases nothing', async () => {
+    const { deps, calls } = recorder({}, read("no"));
+    const res = await runCollectorFeeReply("hold off until I've counted the cash", deps);
+    expect(calls.cancelled).toEqual(["m1"]);
+    expect(calls.released).toEqual([]);
+    expect(res?.reply).toContain("cancelled");
+  });
+
+  it('A "NO" with nothing waiting changes nothing', async () => {
+    const { deps, calls } = recorder({ pendingMatch: ASKED_NOTHING_WAITING }, read("no"));
+    expect(await runCollectorFeeReply("not yet", deps)).toBeNull();
+    expect(calls.cancelled).toEqual([]);
+  });
+
+  it("MODEL FAILURE: a thrown judge releases, cancels and stages nothing", async () => {
+    const { deps, calls } = recorder({
+      judge: async () => {
+        throw new Error("overloaded");
+      },
     });
+    expect(await runCollectorFeeReply("✅", deps)).toBeNull();
+    expect(calls.released).toEqual([]);
+    expect(calls.cancelled).toEqual([]);
+    expect(calls.staged).toEqual([]);
+  });
+
+  it("MODEL FAILURE: a `neither` (what every classifier failure becomes) does nothing and falls through", async () => {
+    const { deps, calls } = recorder({}, read("neither"));
+    expect(await runCollectorFeeReply("great game 👍", deps)).toBeNull();
+    expect(calls.released).toEqual([]);
+    expect(calls.cancelled).toEqual([]);
+    expect(calls.staged).toEqual([]);
+  });
+
+  it("WRONG AMOUNT: a yes naming a different amount releases NOTHING; the new amount is staged and asked again", async () => {
+    const { deps, calls } = recorder({}, read("yes", 12));
+    const res = await runCollectorFeeReply("✅ actually make it £12", deps);
+    expect(calls.released).toEqual([]);
+    expect(calls.staged).toEqual([{ matchId: "m1", perPlayer: 12 }]);
+    expect(res?.asked).toBe(true);
+  });
+});
+
+describe("monthly: a yes to a PAYG question whose amount was never staged", () => {
+  it("the yes stages the asked price (the monthly gates decide) and releases it", async () => {
+    const { deps, calls } = recorder({ pendingMatch: ASKED_NOTHING_WAITING, stageAskedFee: async () => 8 }, read("yes"));
     const res = await runCollectorFeeReply("✅", deps);
-    expect(res).toMatchObject({ orgId: "org-b", matchId: "m1" });
-    expect(res?.reply).toContain("on Tue 13 Oct");
+    expect(calls.released).toEqual([{ matchId: "m1", amount: 8 }]);
+    expect(res?.released).toBe(8);
+  });
+
+  it("the monthly gates refusing (null) releases nothing", async () => {
+    const { deps, calls } = recorder({ pendingMatch: ASKED_NOTHING_WAITING, stageAskedFee: async () => null }, read("yes"));
+    expect(await runCollectorFeeReply("✅", deps)).toBeNull();
+    expect(calls.released).toEqual([]);
+  });
+
+  it("a `neither` never reaches the monthly staging", async () => {
+    let asked = false;
+    const { deps } = recorder({
+      pendingMatch: ASKED_NOTHING_WAITING,
+      stageAskedFee: async () => {
+        asked = true;
+        return 8;
+      },
+    });
+    await runCollectorFeeReply("ok so I'll sort it tomorrow", deps);
+    expect(asked).toBe(false);
   });
 });

@@ -1,408 +1,114 @@
 /**
- * THE MONEY COLLECTOR'S "YES" — an anchored allowlist that answers the
- * question we ASKED, and a model for everything else.
+ * THE MONEY COLLECTOR'S REPLY TO A FEE QUESTION, READ BY THE MODEL
+ * (2026-10-30, the "no string parsing" sweep, package P5).
  *
- * ═══════════════════════════════════════════════════════════════════════
- * WHAT WAS HERE UNTIL 2026-09-11
- * ═══════════════════════════════════════════════════════════════════════
+ * After a match MatchTime DMs the club's money collector one of two
+ * questions: "how much per player?" (the fee ask), or "£8 each for 12
+ * players, reply ✅ to send everyone their pay link, or send a different
+ * amount" (the confirm). Whatever he answers is read here, by one Haiku
+ * call, with what MatchTime last said to him as context. Code then acts on
+ * facts only (`payment-flow.ts`, `runCollectorFeeReply`).
  *
- * `payment-flow.ts`'s `isAffirmative`, whose first line was:
+ * WHAT WAS HERE UNTIL 2026-10-30. A whole-body allowlist (`anchoredFeeReply`:
+ * ✅ ✔ 👍 and about 60 English and Turkish yes and no words) decided first,
+ * then a regex amount test (`looksLikeFeeAmount`, `parseFeeReply` with its
+ * "total", "split", "toplam", "bölüş" detectors), and the model only saw
+ * what both abstained on. Kemal, 2026-10-30: "I don't want any string
+ * parsing at all." All three are gone; the model reads every reply that
+ * reaches it, including a bare ✅.
  *
- *     if (/[✅✔👍]/u.test(text)) return true;
+ * WHAT STILL KEEPS THE MONEY SAFE IS CODE, ON FACTS:
+ *   1. the sender is the club's money collector (`paymentHolderId`);
+ *   2. MatchTime has a question open with him for that match: an amount
+ *      awaiting his yes (`feePendingConfirm`), or the fee ask was sent;
+ *   3. a "yes" releases only the amount that is waiting, and a "yes" that
+ *      names a DIFFERENT amount releases nothing (it is staged and asked
+ *      again);
+ *   4. an amount is only ever STAGED: MatchTime repeats it back and waits
+ *      for a separate yes. Nothing is charged on an amount alone;
+ *   5. every model failure (no key, a throw, unparseable or out-of-enum
+ *      JSON, confidence under 0.8, an amount outside £0.01 to £1,000) is
+ *      `neither`, which releases, cancels and stages nothing.
  *
- * A thumbs-up ANYWHERE in the body released per-player pay links to the
- * whole confirmed squad. "great game 👍", typed while a fee confirmation
- * was pending, charged 8-13 real people. The word list under it was
- * unanchored at the end —
- *
- *     /^(yes|yeah|yep|yup|ok|okay|confirm|send|correct|sure|go)\b/
- *
- * — so "ok so I'll sort it tomorrow" was a yes too. `isNegative` had the
- * same two shapes, so "no worries mate" silently cancelled a pending
- * fee.
- *
- * This is the family this codebase has now deleted five times, each time
- * after a production incident (`__tests__/no-conjunction-classifiers.
- * test.ts` keeps the register). It is the mildest member of it — see
- * "HOW BAD WAS IT, HONESTLY" below — but it is the only one left
- * standing in front of money.
- *
- * ═══════════════════════════════════════════════════════════════════════
- * WHAT THE COLLECTOR ACTUALLY DOES — MEASURED, NOT IMAGINED
- * ═══════════════════════════════════════════════════════════════════════
- *
- * Read out of production on 2026-09-11 (`BotJob` + `Match` fee columns;
- * inbound DMs are not persisted anywhere, so the OUTCOME is recoverable
- * and the exact typed words are not):
- *
- *   6   fee-confirmation prompts ever sent, 2026-06-09 → 2026-09-08
- *   6   released — every single one confirmed, at the prompted amount
- *   0   cancelled (`isNegative` has never fired in production)
- *   0   superseded (no collector has ever answered with a new amount)
- *
- *   response time: 26s, 31s, 32s, 42s, 2m16s, 20m42s
- *   TOTAL TIME `feePendingConfirm` HAS EVER BEEN NON-NULL: ~25 minutes,
- *   across 94 days.
- *
- * So the live window in which a stray 👍 could have fired is about 25
- * minutes in three months, and in those 25 minutes it never did. THE
- * CURRENT BEHAVIOUR HAS NEVER MISFIRED. That is evidence about how hard
- * to swing, and it is why this is a tightening rather than a rewrite of
- * the flow.
- *
- * What the same collector types the rest of the time is the other half
- * of the evidence. Of his 467 messages in the live group:
- *
- *   4   contain ✅ or 👍 — and ALL FOUR are inside a sentence, none is a
- *       bare emoji. One of them is "Quick heads-up on match payments…".
- *  16   begin with a word-list token but run longer than two words:
- *       "yes, Elvin still collects it", "ok i will call goals and switch
- *       to 7aside again", "sure will do", "yes pls, can you share the
- *       name?"
- *
- * Every one of those twenty is a false "yes" under the deleted test. He
- * has simply never typed one of them into a DM during those 25 minutes.
- * (Caveat, said plainly: those are GROUP messages. The fee path only
- * ever reads DMs, and no DM corpus exists. It is the best available
- * sample of how this person writes, not a sample of the input.)
- *
- * ═══════════════════════════════════════════════════════════════════════
- * HOW BAD WAS IT, HONESTLY — BOTH DIRECTIONS PRICED
- * ═══════════════════════════════════════════════════════════════════════
- *
- * A WRONG RELEASE costs: 8-13 personal DMs, from an UNOFFICIAL WhatsApp
- * client, asking real people for money at a moment the collector did not
- * choose — some of whom may have already paid him in cash. It is
- * irreversible in the one way that matters: `paymentLinksReleasedAt` is
- * stamped, so the links are out and the flow cannot be re-run. The
- * amount is at least never invented — it is whatever MatchTime had just
- * echoed back — EXCEPT in the one case this change also fixes: under the
- * old ordering "✅ actually make it £12" released at the OLD price,
- * because the affirmative test ran before the amount test.
- *
- * A WRONG REFUSAL costs: one re-typed message. `feePendingConfirm`
- * survives untouched, the prompt is still on his phone, and the next
- * "✅" works.
- *
- * These are NOT symmetric, but they are far closer than the mass-DM
- * cases that motivated `stats-blast.ts` and `dm-intent.ts` — there the
- * downside was 69 DMs and possibly the WhatsApp account, and the upside
- * of firing was an unasked-for convenience. Here both outcomes are
- * recoverable and neither is catastrophic. That is why the answer below
- * is not "route it through the model and be done".
- *
- * ═══════════════════════════════════════════════════════════════════════
- * THE TWO GATES THAT MAKE THIS A NARROW PROBLEM
- * ═══════════════════════════════════════════════════════════════════════
- *
- * Unlike every classifier deleted before it, this one never reads cold
- * text. `handleCollectorFeeReply` only consults it when BOTH hold:
- *
- *   1. the sender is the org's `paymentHolderId` — one person per club;
- *   2. `match.feePendingConfirm != null` — MatchTime asked a closed
- *      question, in writing, seconds ago: *Reply ✅ (or "yes") to send
- *      everyone their pay link, or send a different amount to change
- *      it.*
- *
- * It is resolving a prompt, not classifying a message. That is a far
- * easier problem than "is this sentence an instruction to the bot", and
- * it is why an allowlist is a legitimate tool here in a way it was not
- * on the analyze route.
+ * WHAT THIS COSTS. A ✅ used to need no network. Now an Anthropic outage
+ * means the collector's ✅ does nothing until it is back (the ✅ REACTION on
+ * the question still works: `fee-confirm-reaction.ts` joins it by message
+ * id and never reads text). The live window is small: about six fee
+ * questions a quarter at Sutton FC, each answered within minutes.
  */
 
 import { bodyUnderHeader, dmClassifierStubCall } from "./dm-classifier-stub";
-import { normaliseLang, type Lang } from "./i18n/lang";
+import { type Lang } from "./i18n/lang";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 import { noReplyContext, renderReplyContext, type ReplyContext } from "./reply-context";
 
-/**
- * ⚠️ THE ARGUED DESIGN, IN ONE FLAG. The deterministic allowlist decides
- * FIRST and the model is only ever asked what the allowlist abstained
- * on. Set `false` nowhere: this constant exists to name the decision and
- * to make anyone who wants to change it read the argument.
- *
- * ── WHY NOT "JUST TIGHTEN THE REGEX" (the `HELP_RE` answer) ──────────
- *
- * §2.4 of `MDs/router-accuracy-2026-09-11.md` kept one regex, and the
- * reasoning transfers almost completely: an anchored whole-body test is
- * *structurally incapable* of matching a fragment, which is the single
- * property that caused 2026-04-21, 2026-09-01, 2026-09-10 and this. The
- * affirmative vocabulary here is closed and tiny — the prompt literally
- * tells the collector which two things to type — so an allowlist is the
- * right tool for the case that actually occurs, and it costs nothing:
- * no key, no network, no latency, no spend, and no new way to fail on
- * the money path.
- *
- * The reason it is not the WHOLE answer is the one thing the production
- * read could not recover. Inbound DMs are not persisted, so we know all
- * six confirmations succeeded but NOT what was typed. Under the deleted
- * code a release fired on "an emoji anywhere" OR "one of twelve opening
- * words" OR "an exact phrase" — three very different inputs, and they
- * are indistinguishable after the fact. Shipping an anchored allowlist
- * ALONE would therefore be shipping an unmeasured risk of refusing a
- * reply that has worked six times out of six, on the live money path of
- * a paying club. That is not a risk worth taking to avoid one model
- * call.
- *
- * ── WHY NOT "JUST ASK THE MODEL" (the `dm-intent.ts` answer) ─────────
- *
- * Because it would put a network call in front of the ONE reply we told
- * the collector to send. "✅" is not a classification problem; it is a
- * token match against a two-item menu we wrote ourselves, and a model
- * is strictly worse at that than the menu is. Routing it through Haiku
- * would mean an Anthropic outage, an expired key or a 30s timeout can
- * break the documented happy path of a live money flow — a failure mode
- * that does not exist today and that buys nothing, because the model
- * cannot be more right about "✅" than the allowlist already is.
- *
- * ── SO: BOTH, IN THAT ORDER, AND THE ORDER IS THE WHOLE POINT ───────
- *
- *   1. `anchoredFeeReply` — whole-body, `^…$` in effect: strip the
- *      affirm/deny emoji, and require what REMAINS to be empty or an
- *      exact member of a ~30-token set. "great game 👍" leaves "great
- *      game", which is not in the set, so it abstains. Deterministic,
- *      free, offline, and it cannot match a fragment.
- *   2. a fresh amount — `looksLikeFeeAmount` + `parseFeeReply`, also
- *      deterministic, also before the model, so "make it £12" can never
- *      be read as a confirmation of £10.30.
- *   3. only then the model, on a message that is neither the menu
- *      answer nor a number — i.e. approximately never. It returns a
- *      three-value enum and NOTHING ELSE; every gate and the action
- *      itself stay in code, which is this codebase's stated split.
- *
- * This is a WIDENING, not just a tightening: "yeah go on then, fire
- * them out" works now and did not before. The thing that got narrower
- * is only the fragment.
- *
- * ── WHICH WAY IT FAILS, AND WHAT THAT COSTS ─────────────────────────
- *
- * Every model failure — no key, a thrown call, a timeout, unparseable
- * JSON, an intent outside the enum, a confidence under the floor — is
- * `neither`. `neither` releases nothing, cancels nothing and stages
- * nothing: `handleCollectorFeeReply` returns null, the DM falls through
- * to the handlers below it exactly as unrecognised chatter always has,
- * and `feePendingConfirm` is still set. The collector re-types "✅" and
- * that path never touches the model. So the blast radius of the new
- * dependency is: natural-language confirmations stop working until
- * Anthropic comes back. `__tests__/fee-confirm.test.ts` proves both
- * halves — a throwing classifier releases nothing, and "✅" still
- * releases with the classifier throwing.
- *
- * ── WHAT THIS MAKES WORSE, SAID OUT LOUD ────────────────────────────
- *
- *   A SECOND THING TO GET WRONG. The model can, in principle, read
- *   "great game 👍" as a yes — the exact bug, reintroduced one layer
- *   down. The prompt carries that message as a named negative example
- *   and the floor is 0.8, but a prompt is not a proof, which is why
- *   `scripts/dryrun-fee-confirm.ts` exists and must be re-run against
- *   the live model if the prompt or the model is ever changed.
- *
- *   LATENCY ON A PATH THAT HAD NONE. Only on messages the allowlist
- *   abstains on, only while a fee is pending — measured above at ~25
- *   minutes in 94 days — so the expected number of live model calls per
- *   month is close to zero. It is not zero.
- */
-export const FEE_CONFIRM_ANCHORS_BEFORE_IT_ASKS = true;
-
-/**
- * Below this the model is not sure enough to charge 8-13 people, or to
- * throw away an amount the collector has already typed once.
- *
- * ONE number for both directions, deliberately, and it is the same 0.8
- * `dm-intent.ts` uses. A cheaper bar for `no` is tempting — cancelling
- * is the harmless half — but a wrong `no` still silently discards the
- * amount and makes MatchTime look broken, and a second threshold is a
- * second thing nobody would remember to re-argue.
- */
+/** Below this the model is not sure enough to charge the squad, to throw
+ *  away a waiting amount, or to stage a new one. The same 0.8 the other
+ *  DM readers use. */
 export const FEE_REPLY_MIN_CONFIDENCE = 0.8;
 
+/** The most a per-player fee or a match total can be. Anything above is
+ *  not a fee MatchTime will stage from a chat message. */
+export const FEE_REPLY_MAX_AMOUNT = 1000;
+
 /** The closed enum. Anything else the model returns becomes `neither`. */
-export type FeeReply = "yes" | "no" | "neither";
+export type FeeReply = "yes" | "no" | "amount" | "neither";
 
-const VALID: ReadonlySet<string> = new Set<FeeReply>(["yes", "no", "neither"]);
+/** What an amount he typed is: each player's fee, or the total to split. */
+export type FeeAmountIs = "each" | "total";
 
-// ── THE DETERMINISTIC HALF ───────────────────────────────────────────
-
-/** ✅ ✔ 👍 — matched, then REMOVED, so what is left has to stand on its
- *  own. This is the difference between an allowlist and the fragment
- *  test it replaces. */
-const AFFIRM_EMOJI = /[✅✔\u{1F44D}]/gu;
-/** ❌ ✖ 🚫 👎. `👎` is new — the old `isNegative` missed it, and a wrong
- *  `no` costs one re-typed amount. */
-const DENY_EMOJI = /[❌✖\u{1F6AB}\u{1F44E}]/gu;
-/** Variation selectors and skin tones, so `✔️` and `👍🏽` reduce to the
- *  same nothing as `✔` and `👍`. */
-const EMOJI_MODIFIERS = /[\uFE0E\uFE0F\u{1F3FB}-\u{1F3FF}]/gu;
-
-/** What the collector types when he means yes. Every entry is a WHOLE
- *  message, never a prefix. */
-const YES_WORDS: ReadonlySet<string> = new Set([
-  "y", "ye", "yes", "yep", "yeah", "yeh", "yup", "ya", "yes please", "yes pls",
-  "ok", "oki", "okay", "okey", "k", "kk", "ok send", "ok send them", "okay send",
-  "confirm", "confirmed", "correct", "thats correct", "thats right", "that is right",
-  "send", "send it", "send them", "send it out", "send them out", "send the links",
-  "yes send", "yes send it", "yes send them", "yes confirm", "yes go", "yes go ahead",
-  "release", "release them", "go", "go on", "go ahead", "do it", "sure", "right",
-  "agreed", "approved",
-  // ⚠️ NOT HERE, DELIBERATELY: "perfect", "great", "good", "all good",
-  //    "spot on", "thats it". They read as assent, and the first draft
-  //    of this list carried them — but each is equally an acknowledgement
-  //    of something else, and none of them was in the list this replaces.
-  //    A tightening that quietly adds six new ways to release the squad's
-  //    pay links is not a tightening. They fall to the model, which sees
-  //    the pending amount and the question that was asked, and a model
-  //    that is unsure or unreachable yields `neither` and does nothing.
-  //    The cost of being wrong in that direction is one re-typed word,
-  //    on a path that fires about six times a quarter.
-]);
-
-/** …and when he means not yet. */
-const NO_WORDS: ReadonlySet<string> = new Set([
-  "n", "no", "nope", "nah", "naw", "no thanks", "no not yet", "not yet", "not now",
-  "cancel", "cancel it", "stop", "stop it", "wait", "wait a sec", "hold", "hold on",
-  "hold off", "hang on", "dont", "do not", "dont send", "do not send", "not right now",
-  "one sec", "one moment", "later", "ignore", "ignore that", "scrap that", "forget it",
-]);
-
-/**
- * THE TURKISH HALF (Phase 3, 2026-09-17). Consulted ONLY for an org whose
- * language is Turkish, and IN ADDITION to the English sets above (a
- * Turkish collector types "ok" too); an English org never sees these, so
- * the English behaviour is byte for byte what it was.
- *
- * Same rule as the English: WHOLE messages, never prefixes, and short.
- * The Turkish prompt tells the collector to type *✅* or "evet", so
- * those two are the happy path; the rest are the literal ways a Turkish
- * speaker says "yes, send them" / "not yet". Left out on purpose, for
- * the reason the English list leaves out "great": "e" and "he" (bare
- * interjections as often as a yes), "süper", "harika", "güzel", "iyi"
- * (assent to something else as often as to this). They fall to the
- * model, which fails closed.
- *
- * Matched after `toLocaleLowerCase("tr")`, with letters kept (`\p{L}`),
- * so "HAYIR" is "hayır" and "hayır" is not reduced to "hay r".
- */
-const YES_WORDS_TR: ReadonlySet<string> = new Set([
-  "evet", "evt", "evet lütfen", "evet gönder", "evet gönderebilirsin", "evet doğru",
-  "tamam", "tamamdır", "tmm", "tamam gönder", "olur", "olur gönder",
-  "gönder", "gönder gitsin", "gönderebilirsin", "yolla", "yolla gitsin",
-  "onay", "onayla", "onaylı", "onaylıyorum", "doğru", "aynen", "hadi", "hadi gönder",
-  "tabii", "tabi",
-]);
-
-const NO_WORDS_TR: ReadonlySet<string> = new Set([
-  "hayır", "hayir", "yok", "yok gönderme", "gönderme", "henüz gönderme", "daha gönderme",
-  "bekle", "biraz bekle", "bi bekle", "bir dakika", "dur", "dur bekle",
-  "iptal", "iptal et", "vazgeç", "vazgeçtim", "boşver",
-  "şimdi değil", "henüz değil", "daha değil", "sonra",
-]);
-
-/** Everything that is not a letter, a digit or a space, collapsed. The
- *  digits are KEPT so "12" and "ok 12" stay out of the word sets and
- *  fall to the amount test instead. */
-function words(text: string): string {
-  return text
-    .toLowerCase()
-    // Apostrophes are DELETED, not spaced, so "that's right" and "don't
-    // send" reduce to the same tokens as "thats right" and "dont send"
-    // rather than splitting into a third word.
-    .replace(/['’‘`]/g, "")
-    .replace(/[^a-z0-9 ]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+/** The model's reading of his reply, checked. */
+export interface FeeReplyRead {
+  intent: FeeReply;
+  /** The amount he states, in pounds, or null. Set for `amount`; for
+   *  `yes`, only when he names one ("yes, £8"). */
+  amount: number | null;
+  /** Set exactly when `amount` is (null for `no` and `neither`). */
+  amountIs: FeeAmountIs | null;
+  confidence: number;
+  reasoning: string;
 }
 
-/** `words`, for Turkish: dotted and dotless i lower-cased the Turkish
- *  way, and letters kept rather than reduced to a-z. */
-function wordsTr(text: string): string {
-  return text
-    .toLocaleLowerCase("tr")
-    .replace(/['’‘`]/g, "")
-    .replace(/[^\p{L}\p{N} ]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/**
- * The whole-body allowlist. Returns `null` — ABSTAIN, not "no" — for
- * anything it does not recognise, which is what lets the model have the
- * remainder.
- *
- * The rule, in one line: strip the affirm/deny emoji, and whatever is
- * left must be empty or an exact member of the matching set. A message
- * carrying both kinds of emoji, or a recognised emoji plus unrecognised
- * prose, abstains — it is exactly the "great game 👍" shape and the
- * whole reason this function exists.
- */
-export function anchoredFeeReply(text: string, lang: Lang | string | null = "en"): "yes" | "no" | null {
-  if (!text) return null;
-  const tr = normaliseLang(lang) === "tr";
-  const hasYes = AFFIRM_EMOJI.test(text);
-  AFFIRM_EMOJI.lastIndex = 0;
-  const hasNo = DENY_EMOJI.test(text);
-  DENY_EMOJI.lastIndex = 0;
-  if (hasYes && hasNo) return null; // "👍❌" is a conversation, not an answer
-
-  const stripped = text.replace(AFFIRM_EMOJI, " ").replace(DENY_EMOJI, " ").replace(EMOJI_MODIFIERS, " ");
-  const rest = words(stripped);
-  // A Turkish org's reply is ALSO read with the Turkish normaliser and
-  // sets. For an English org `restTr` is never consulted.
-  const restTr = tr ? wordsTr(stripped) : null;
-  const isYes = (r: string) => YES_WORDS.has(r) || (restTr !== null && YES_WORDS_TR.has(restTr));
-  const isNo = (r: string) => NO_WORDS.has(r) || (restTr !== null && NO_WORDS_TR.has(restTr));
-  // Empty means empty in BOTH readings: "✅ ğ" is not a bare tick.
-  const empty = rest === "" && (restTr === null || restTr === "");
-
-  if (hasYes) return empty || isYes(rest) ? "yes" : null;
-  if (hasNo) return empty || isNo(rest) ? "no" : null;
-  if (empty) return null;
-  if (isYes(rest)) return "yes";
-  if (isNo(rest)) return "no";
-  return null;
-}
-
-// ── THE MODEL HALF ───────────────────────────────────────────────────
+const VALID: ReadonlySet<string> = new Set<FeeReply>(["yes", "no", "amount", "neither"]);
 
 const MODEL = HAIKU_MODEL;
 
 /**
- * The prompt. The NEGATIVE examples are the point, and they are not
- * invented: "great game 👍" is the message this whole change exists to
- * refuse, and the rest are real messages this collector has written in
- * the live group, lifted verbatim from `AnalyzedMessage`.
- *
- * Note what it is NOT asked. It never sees the squad, never proposes an
- * amount and never decides whether the sender is allowed to do this.
- * It answers one closed question about one reply.
- *
- * REWRITTEN WHOLE on 2026-10-20 (quoted-reply context, slice S3). The
- * model used to be shown the fee question as a template quoted into the
- * system prompt, one prompt per language, and nothing of what MatchTime
- * had actually said. It now reads the shared chat-context block
- * (`reply-context.ts`) in the user turn: the time now, and the message
- * they swipe-replied to, or else MatchTime's recent messages to them, so
- * "yes" is a yes to the fee only when it answers the fee question. One
- * prompt for every club, English and Turkish examples side by side.
+ * The prompt, the same for every club, English and Turkish examples side
+ * by side. Rewritten WHOLE on 2026-10-30: it now reads the whole reply
+ * (the allowlist and the amount regex in front of it are gone), so it also
+ * reads amounts, each or total, and knows which of the two questions is
+ * open. The negative examples are real messages the Sutton collector has
+ * written in the group (`AnalyzedMessage`).
  */
 export function buildFeeReplySystemPrompt(): string {
-  return `The person who collects the match fees for a football club sent MatchTime, the club's WhatsApp bot, the private reply under "THEIR REPLY". MatchTime had told them the fee per player for a match and how many players it will charge, and asked them to reply yes (or ✅) to send everyone their pay link now, or to send a different amount to change it. Above the reply you get that match, the amount waiting for their yes, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent.
+  return `The person who collects the match fees for a football club sent MatchTime, the club's WhatsApp bot, the private reply under "THEIR REPLY". Above it you get the match, what MatchTime is waiting for from them, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent.
 
-Is the reply a direct answer to that fee question? Pick one:
-- "yes": send the pay links now, at the amount waiting.
+MatchTime is waiting for one of two answers:
+- an amount, such as "Amount waiting for their yes: £8 per player": MatchTime told them the fee per player and how many players it will charge, and asked them to reply yes (or ✅) to send everyone their pay link now, or to send a different amount to change it.
+- "Amount waiting for their yes: none": nothing is waiting; MatchTime asked them how much each player pays for the match (or, when its message they answer names a fee and asks for their yes, that is the question).
+
+What does the reply say? Pick one intent:
+- "yes": send the pay links now, at the fee MatchTime asked them to confirm. A bare ✅, 👍, "ok", "yes", "tamam" or "evet" is a yes when it answers that question.
 - "no": do not send them, or not yet.
-- "neither": anything else. Chat, thanks, banter, a question of their own, news about a player, a plan to deal with it later, or an answer to a different message. A 👍, ✅, "ok" or "yes" inside a sentence about something else is not an answer, and the "no" in "no worries" is not a refusal.
+- "amount": they state the fee, or a new fee in place of the one waiting. Put the number in "amount", in pounds (8, 10.5), and in "amountIs" say whether it is what "each" player pays or the "total" to split between the players (the pitch cost, "altogether", "split"). If they only give a number, it is "each".
+- "neither": anything else. Chat, thanks, banter, a question of their own, news about a player, a plan to deal with it later, a number that is not a fee (how many played, a score), or an answer to a different message. A 👍, ✅, "ok" or "yes" inside a sentence about something else is not an answer, and the "no" in "no worries" is not a refusal.
 
-Which message the reply answers: the one they swipe-replied to; otherwise the newest of MatchTime's recent messages, unless their words plainly answer an earlier one (such as "send the links"). A reply to any message other than the fee question is "neither". A plain go-ahead ("perfect 👍", "all good, go") swipe-replied to the fee question is "yes". If none of MatchTime's messages is known, read the reply against the fee question.
+Which message the reply answers: the one they swipe-replied to; otherwise the newest of MatchTime's recent messages, unless their words plainly answer an earlier one (such as "send the links"). A reply to any message other than the fee question is "neither". If none of MatchTime's messages is known, read the reply against the fee question.
+
+If a "yes" also names an amount ("yes £8 is right"), put that amount in "amount" and "amountIs" too. Otherwise leave both null.
 
 Examples (English | Turkish):
-yes: "yeah go on then" | "tamam, yolla gitsin"; "go ahead and send them" | "evet evet at hepsine"; "that's right, fire them out" | "doğru, gönderebilirsin"; "correct, send the links" | "evet gönder"
-no: "hold off for now" | "şimdilik bekle"; "not yet, let me count the cash first" | "bekle, parayı bir sayayım"; "leave it till tomorrow" | "yarına kadar gönderme"; "don't send them" | "daha gönderme"
-neither: "great game 👍" | "harika maç 👍"; "cheers lads, great game 👍" | "eline sağlık beyler 👍"; "ok so I'll sort it tomorrow" | "tamam yarın hallederim"; "yes, Elvin still collects it" | "evet, parayı Elvin topluyor"; "how many are paying?" | "kaç kişi ödüyor?"; "no worries mate, great game" | "sorun yok kardeşim, güzel maçtı"; "sure will do"; "yes pls, can you share the name?"; "✅ means that player has been accepted"; "did Wasim turn up in the end?"; "make it £12" | "£12 yap" (an amount is handled elsewhere); "yes" answering a request to rate teammates
+yes: "✅" | "✅ evet"; "ok" | "tamam"; "ok send them" | "tamam gönder"; "yeah go on then" | "tamam, yolla gitsin"; "go ahead and send them" | "evet evet at hepsine"; "that's right, fire them out" | "doğru, gönderebilirsin"; "perfect 👍" swipe-replied to the fee question | "süper 👍" swipe-replied to the fee question
+no: "no" | "hayır"; "hold off for now" | "şimdilik bekle"; "not yet, let me count the cash first" | "bekle, parayı bir sayayım"; "don't send them" | "daha gönderme"
+amount, each: "£8" | "8 sterlin"; "8 each" | "kişi başı 8"; "make it £12" | "£12 yap"; "✅ actually make it £12" | "✅ yok 12 olsun"; "everyone pays 8" | "hepsi 8"
+amount, total: "£80 total" | "toplam £80"; "the pitch was 96, split it" | "saha 96, bölüşelim"
+neither: "great game 👍" | "harika maç 👍"; "ok so I'll sort it tomorrow" | "tamam yarın hallederim"; "yes, Elvin still collects it" | "evet, parayı Elvin topluyor"; "how many are paying?" | "kaç kişi ödüyor?"; "no worries mate, great game" | "sorun yok kardeşim, güzel maçtı"; "we had 10 players" | "10 kişiydik"; "did Wasim turn up in the end?" | "Wasim geldi mi sonunda?"; "yes" answering a request to rate teammates
 
-If you are not at least 80% sure, choose "neither". A wrong "yes" asks up to 13 real people for money at a moment the collector did not choose, and cannot be undone. A wrong "no" throws away the amount they typed. A wrong "neither" costs them one re-typed message, the cheapest of the three.
+If you are not at least 80% sure, choose "neither". A wrong "yes" asks up to 13 real people for money at a moment the collector did not choose, and cannot be undone. A wrong "amount" makes MatchTime ask about a fee they never gave. A wrong "neither" costs them one re-typed message, the cheapest of all.
 
 Output STRICT JSON only, no markdown, no fences:
-{"intent": "yes" | "no" | "neither", "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}`;
+{"intent": "yes" | "no" | "amount" | "neither", "amount": <number or null>, "amountIs": "each" | "total" | null, "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}`;
 }
 
 /** The prompt, the same for every club (pinned by `copy.en.snap` and
@@ -414,8 +120,8 @@ export const FEE_REPLY_SYSTEM_PROMPT = buildFeeReplySystemPrompt();
 export type FeeReplyCall = (system: string, user: string) => Promise<string>;
 
 export interface FeeReplyContext {
-  /** The amount awaiting confirmation: what a "yes" would charge. */
-  amount: number;
+  /** The amount awaiting his yes, or null: MatchTime asked how much. */
+  pending: number | null;
   /** The match it belongs to, with its day and time
    *  (`contextMatchLabel`), so the model sees which game it is about. */
   matchName: string;
@@ -428,20 +134,23 @@ export interface FeeReplyContext {
   replyContext?: ReplyContext | null;
 }
 
-export interface FeeReplyClassification {
-  intent: FeeReply;
-  confidence: number;
-  reasoning: string;
-}
-
-const NEITHER = (reasoning: string): FeeReplyClassification => ({
+const NEITHER = (reasoning: string, confidence = 0): FeeReplyRead => ({
   intent: "neither",
-  confidence: 0,
+  amount: null,
+  amountIs: null,
+  confidence,
   reasoning,
 });
 
-/** Exported for unit tests — the JSON contract is load-bearing. */
-export function parseFeeReplyIntent(rawText: string): FeeReplyClassification {
+function validAmount(v: unknown): number | null {
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  if (v <= 0 || v > FEE_REPLY_MAX_AMOUNT) return null;
+  return Math.round(v * 100) / 100;
+}
+
+/** Exported for unit tests: the JSON contract is load-bearing. Checks the
+ *  model's OUTPUT (enum, confidence, amount range), never his words. */
+export function parseFeeReplyIntent(rawText: string): FeeReplyRead {
   const cleaned = rawText
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
@@ -460,30 +169,36 @@ export function parseFeeReplyIntent(rawText: string): FeeReplyClassification {
   }
   if (!parsed || typeof parsed !== "object") return NEITHER("not an object");
   const obj = parsed as Record<string, unknown>;
-  // RE-VALIDATED against the enum rather than trusted: structured output
-  // guarantees shape, never semantics.
-  const intent =
-    typeof obj.intent === "string" && VALID.has(obj.intent) ? (obj.intent as FeeReply) : "neither";
-  const confidence =
-    typeof obj.confidence === "number" ? Math.max(0, Math.min(1, obj.confidence)) : 0;
+  const intent = typeof obj.intent === "string" && VALID.has(obj.intent) ? (obj.intent as FeeReply) : "neither";
+  const confidence = typeof obj.confidence === "number" ? Math.max(0, Math.min(1, obj.confidence)) : 0;
   const reasoning = typeof obj.reasoning === "string" ? obj.reasoning.slice(0, 200) : "";
-  if (intent !== "neither" && confidence < FEE_REPLY_MIN_CONFIDENCE) {
-    return { intent: "neither", confidence, reasoning: `[low-confidence forced] ${reasoning}` };
+  if (intent === "neither") return NEITHER(reasoning, confidence);
+  if (confidence < FEE_REPLY_MIN_CONFIDENCE) return NEITHER(`[low-confidence forced] ${reasoning}`, confidence);
+  if (intent === "no") return { intent, amount: null, amountIs: null, confidence, reasoning };
+
+  // An amount, when there is one, must be a real fee and say what it is.
+  const hasAmount = obj.amount !== null && obj.amount !== undefined;
+  const amount = validAmount(obj.amount);
+  const amountIs = obj.amountIs === "each" || obj.amountIs === "total" ? (obj.amountIs as FeeAmountIs) : null;
+  if (intent === "amount") {
+    if (amount === null || amountIs === null) return NEITHER(`[bad amount forced] ${reasoning}`, confidence);
+    return { intent, amount, amountIs, confidence, reasoning };
   }
-  return { intent, confidence, reasoning };
+  // "yes": with no amount, or with a valid one. A garbled amount on a yes
+  // is a reading we cannot trust: nothing.
+  if (!hasAmount) return { intent, amount: null, amountIs: null, confidence, reasoning };
+  if (amount === null || amountIs === null) return NEITHER(`[bad amount forced] ${reasoning}`, confidence);
+  return { intent, amount, amountIs, confidence, reasoning };
 }
 
 /**
- * TEST-ONLY seam, mirroring `DM_INTENT_STUB_FILE_ENV`. A write path that
- * can only be exercised by spending money is a write path nobody
- * exercises — and this one is the write path that charges a real club.
- *
- * It stubs what ENTERS the system (what the model said), never what the
- * system concludes. Shared with the other DM classifiers
- * (`dm-classifier-stub.ts`): each user turn it is asked about is appended
- * to `<file>.calls`, so a route-level spec can read what the model would
- * have been told. `e2e/helpers/live-llm.ts` refuses a "live" run that can
- * still see it.
+ * TEST-ONLY seam, mirroring `DM_INTENT_STUB_FILE_ENV`. It stubs what
+ * ENTERS the system (what the model said), never what the system
+ * concludes. The stub's label is "yes", "no" or "neither", or the model's
+ * whole JSON (starting "{") for an amount. Shared with the other DM
+ * classifiers (`dm-classifier-stub.ts`): each user turn it is asked about
+ * is appended to `<file>.calls`. `e2e/helpers/live-llm.ts` refuses a
+ * "live" run that can still see it.
  */
 export const FEE_REPLY_STUB_FILE_ENV = "MT_TEST_FEE_REPLY_STUB_FILE";
 
@@ -493,77 +208,63 @@ function stubCall(env: NodeJS.ProcessEnv): FeeReplyCall | null {
   return dmClassifierStubCall(env[FEE_REPLY_STUB_FILE_ENV], {
     label: "fee-confirm",
     header: REPLY_HEADER,
-    answer: (intent) => JSON.stringify({ intent: intent ?? "neither", confidence: 1, reasoning: "fee-reply stub" }),
+    answer: (label) =>
+      label?.trim().startsWith("{")
+        ? label
+        : JSON.stringify({ intent: label ?? "neither", amount: null, amountIs: null, confidence: 1, reasoning: "fee-reply stub" }),
   });
 }
 
 /** What separates the context lines from the reply itself. */
 const REPLY_HEADER = "THEIR REPLY:";
 
-/** Everything after the header, trimmed — so a multi-line reply is read
+/** Everything after the header, trimmed, so a multi-line reply is read
  *  whole rather than by its last line. */
 export function feeReplyBodyOf(user: string): string {
   return bodyUnderHeader(user, REPLY_HEADER);
 }
 
-/** The user turn: the match, the amount, the chat context, then the reply
- *  under a HEADER, not as a last line: a real WhatsApp reply can be several
- *  lines long, and a seam that read only the last line would classify a
- *  fragment, which is the bug this file replaces. */
+/** The user turn: the match, what is waiting, the chat context, then the
+ *  reply under a HEADER (a WhatsApp reply can be several lines long). */
 export function buildFeeReplyUserTurn(text: string, ctx: FeeReplyContext): string {
   return [
     `Match: ${ctx.matchName}`,
-    `Amount waiting for their yes: ${gbpish(ctx.amount)} per player`,
+    `Amount waiting for their yes: ${ctx.pending != null ? `${gbpish(ctx.pending)} per player` : "none"}`,
     renderReplyContext(ctx.replyContext ?? noReplyContext()),
     `${REPLY_HEADER}\n${text.trim()}`,
   ].join("\n");
 }
 
 /**
- * Ask the model, once, whether this reply answers the fee prompt.
+ * Ask the model, once, what this reply says about the fee.
  *
- * EVERY failure returns `neither`. That is not a convention, it is the
- * safety property: `neither` is the value that moves no money.
- *
- * `call` is `undefined` to use the real (or stubbed) model, and `null`
- * to assert there is none.
+ * EVERY failure returns `neither`. That is the safety property: `neither`
+ * moves no money and stages nothing. `call` is `undefined` to use the
+ * real (or stubbed) model, and `null` to assert there is none.
  */
 export async function classifyFeeReply(
   text: string,
   ctx: FeeReplyContext,
   call?: FeeReplyCall | null,
-): Promise<FeeReply> {
-  return (await classifyFeeReplyDetailed(text, ctx, call)).intent;
-}
-
-/** The same, with confidence and reasoning (the live dry run prints them). */
-export async function classifyFeeReplyDetailed(
-  text: string,
-  ctx: FeeReplyContext,
-  call?: FeeReplyCall | null,
-): Promise<FeeReplyClassification> {
+): Promise<FeeReplyRead> {
   if (!text || !text.trim()) return NEITHER("empty reply");
   const fn = call === undefined ? (stubCall(process.env) ?? liveCall()) : call;
   if (!fn) return NEITHER("classifier unavailable");
   try {
     return parseFeeReplyIntent(await fn(FEE_REPLY_SYSTEM_PROMPT, buildFeeReplyUserTurn(text, ctx)));
   } catch (err) {
-    // FAIL CLOSED. An overloaded API, a network blip, a revoked key —
-    // all of them are "we did not understand this reply", and the thing
-    // MatchTime does with a reply it did not understand is nothing.
+    // FAIL CLOSED: a reply we did not understand changes nothing.
     console.error("[fee-confirm] classifier call failed:", err);
     return NEITHER("classifier error");
   }
 }
 
-/** Local £ formatting — `payments.ts`'s `gbp` would be a circular
- *  import (it pulls the flow in via `payment-flow`), and this file is
- *  deliberately dependency-free apart from the SDK. */
+/** Local £ formatting: `payments.ts`'s `gbp` would be a circular import. */
 function gbpish(amount: number): string {
   return amount % 1 === 0 ? `£${amount.toFixed(0)}` : `£${amount.toFixed(2)}`;
 }
 
-/** The real call. Null when there is no key — which is `neither`. */
+/** The real call. Null when there is no key, which is `neither`. */
 function liveCall(): FeeReplyCall | null {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;

@@ -1972,7 +1972,7 @@ export const en = {
   dm_qa_apology: "Sorry, I couldn't work that one out. Try asking again? 🙂",
 
   /** Row 88: the fee ask to the money collector at match end. The reply
-   *  is parsed by `parseFeeReply` (a £ amount, "each" / "total"). */
+   *  is read by the fee reader (`fee-confirm.ts`, a model): an amount, each or total. */
   dm_fee_ask: (p: { firstName: string | null; activityName: string; headcount: number }): string =>
     `💷 ${p.firstName ?? "there"}, how much should each player pay for *${p.activityName}*` +
     (p.headcount > 0 ? ` (${p.headcount} played)` : "") +
@@ -2168,6 +2168,22 @@ export const en = {
   dm_paid_claim_already: (p: { firstName: string | null; collectorName: string | null; amount: string; activityName: string }): string =>
     `Already done${p.firstName ? ` ${p.firstName}` : ""}: ${p.collectorName ?? "the organiser"} knows about your ` +
     `*${p.amount}* for *${p.activityName}* and will confirm once it lands 👍`,
+
+  /** A "paid" DM naming an amount that is not what they owe (2026-10-30,
+   *  P5 of the no-parsing sweep). Nothing is recorded and the collector is
+   *  not told: the player is asked to say it again, or to use the pay link
+   *  when it covered other people. `owed` and `stated` are formatted £. */
+  dm_paid_claim_amount_mismatch: (p: {
+    firstName: string | null;
+    collectorName: string | null;
+    owed: string;
+    stated: string;
+    activityName: string;
+    url: string;
+  }): string =>
+    `Thanks${p.firstName ? ` ${p.firstName}` : ""}. You owe *${p.owed}* for *${p.activityName}*, and you said *${p.stated}*, ` +
+    `so I haven't told ${p.collectorName ?? "the organiser"} yet. If you paid ${p.owed}, just tell me you've paid. ` +
+    `If it covered other people too, open your pay link, set how many and choose *Pay the collector directly*:\n${p.url}`,
 
   /** Row 160: "paid for me and my mate". Nothing is recorded (MatchTime
    *  does not guess how many people a payment covered); the pay page has

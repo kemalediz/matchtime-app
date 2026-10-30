@@ -478,6 +478,7 @@ const SAMPLES: SampleArgs = {
   dm_paid_claim_already: { firstName: "Sait", collectorName: "Elvin", amount: "£8", activityName: "Tuesday 7-a-side" },
   dm_will_pay_direct_ack: { firstName: "Sait", collectorName: "Elvin", amount: "£8", activityName: "Tuesday 7-a-side" },
   dm_paid_for_others: { firstName: "Sait", collectorName: "Elvin", url: "https://mt.example/s/pay" },
+  dm_paid_claim_amount_mismatch: { firstName: "Sait", collectorName: "Elvin", owed: "£8", stated: "£10", activityName: "Cuma Maçı", url: "https://mt.example/s/pay" },
   dm_admin_recruit_done: { invited: 5, matchName: "Tuesday 7-a-side", matchWhen: "WHENLABEL", need: 2 },
   dm_admin_recruit_nobody_new: { matchName: "Tuesday 7-a-side" },
   dm_survey_clarify_probe: { firstName: "Sait" },

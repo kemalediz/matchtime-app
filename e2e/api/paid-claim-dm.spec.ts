@@ -172,3 +172,36 @@ test("the collector's own 'Paid' is not a claim against themselves", async ({ re
   expect(json.handled).not.toBe("paid-claim");
   expect((await row(db, U.collector))?.directPendingAt).toBeNull();
 });
+
+test("'sent Colin £10' when £8 is owed (P5, 2026-10-30): NOTHING recorded, the collector not told, the player asked", async ({
+  request,
+  db,
+}) => {
+  resetDb();
+  setPaymentClaimStub({
+    bodies: { "sent Colin £10": JSON.stringify({ intent: "paid", amount: 10, confidence: 1, reasoning: "stub" }) },
+  });
+  const before = (await collectorClaimDms(db)).length;
+  const dmId = `false_111222333@lid_E2EAMT${Date.now()}`;
+  const json = await postDm(request, PHONE.player, "sent Colin £10", dmId);
+  expect(json).toMatchObject({ handled: "paid-claim-amount-mismatch", stated: 10, owed: 8 });
+  const r = await row(db, U.player);
+  expect(r?.paidAt).toBeNull();
+  expect(r?.directPendingAt).toBeNull();
+  expect(await collectorClaimDms(db)).toHaveLength(before);
+  expect(await ticksOn(db, dmId)).toEqual([]);
+  expect((await dmsTo(db, PHONE.player))[0].text).toMatch(
+    /^Thanks Pat\. You owe \*£8\* for \*E2E 5-a-side\*, and you said \*£10\*, so I haven't told Colin yet\./,
+  );
+});
+
+test("'sent Colin £8' when £8 is owed: recorded as before", async ({ request, db }) => {
+  resetDb();
+  setPaymentClaimStub({
+    bodies: { "sent Colin £8": JSON.stringify({ intent: "paid", amount: 8, confidence: 1, reasoning: "stub" }) },
+  });
+  const json = await postDm(request, PHONE.player, "sent Colin £8");
+  expect(json.handled).toBe("paid-claim");
+  expect((await row(db, U.player))?.directPendingAt).not.toBeNull();
+  expect((await row(db, U.player))?.paidAt).toBeNull();
+});

@@ -1,40 +1,31 @@
 /**
- * LIVE dry run for the fee-confirmation classifier.
+ * LIVE dry run for the fee reader (`fee-confirm.ts`).
  *
- * A stubbed test proves the WIRING. It cannot prove that the real model
- * refuses "great game 👍" — and that refusal is the entire point of the
- * change, so it has to be measured against the real model before shipping
- * and again whenever the prompt or the model changes.
+ * Since 2026-10-30 (P5 of the "no string parsing" sweep) the model reads
+ * EVERY reply the collector sends to a fee question: a bare ✅ too, and
+ * amounts ("£8 each", "toplam 80"). A stubbed test proves the wiring; this
+ * measures what the real model reads.
  *
- *   REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-fee-confirm.ts
- *   LANG_UNDER_TEST=tr REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-fee-confirm.ts
- *   SET=s3 REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-fee-confirm.ts
+ *   node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-fee-confirm.ts            (every set, once)
+ *   SET=s3 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-fee-confirm.ts     (one set)
  *
- * `LANG_UNDER_TEST=tr` runs a Turkish club's cases: the Turkish allowlist,
- * Turkish replies, and "harika maç 👍" as the case that must never release
- * anything. `SET=s3` (quoted-reply context, 2026-10-20) runs the
- * swipe-reply and recent-messages cases, both languages: "yes" answers the
- * fee question only when it is the message they replied to, or the newest.
+ * Sets: en and tr (what used to be the allowlist's yes and no, the
+ * fragments it existed to refuse, natural go-aheads and refusals), amount
+ * (each and total, with an amount waiting and after "how much?"), s3
+ * (which message the reply answers).
  *
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). It sends nothing
- * to anybody, touches no database and moves no money: it calls
- * `classifyFeeReply` with a metered model and prints what came back, with
- * the cost and a hard stop at MAX_USD.
- *
- * The cases are split by who has to be right. The ANCHORED cases never
- * reach the model at all (the allowlist decides them offline) and are
- * printed to prove exactly that. The MODEL cases are the ones the
- * allowlist abstains on, and the `neither` ones are lifted verbatim from
- * the live group: real messages this collector has written.
+ * to anybody, touches no database and moves no money, with a hard stop at
+ * MAX_USD.
  */
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
-import { anchoredFeeReply, classifyFeeReply, parseFeeReplyIntent, type FeeReply } from "../src/lib/fee-confirm.ts";
-import { buildFeeConfirmPrompt, buildPayChaseDm, buildRatingDm } from "../src/lib/dm-copy.ts";
+import { classifyFeeReply, parseFeeReplyIntent, type FeeReply } from "../src/lib/fee-confirm.ts";
+import { buildFeeAskDm, buildFeeConfirmPrompt, buildPayChaseDm, buildRatingDm } from "../src/lib/dm-copy.ts";
 import { contextMatchLabel, pickRecentBotMessages, type ContextMessage, type ReplyContext } from "../src/lib/reply-context.ts";
 import { HAIKU_CLASSIFIER_ARM, meter } from "./dm-dryrun-meter.ts";
 
 const REPEAT = Number(process.env.REPEAT ?? "1") || 1;
-const MAX_USD = 0.2;
+const MAX_USD = 0.05;
 
 interface Case {
   text: string;
@@ -43,9 +34,12 @@ interface Case {
   /** The chat context; absent: the lang's default (the fee question, newest). */
   ctx?: ReplyContext;
   note?: string;
-  /** The route skips the allowlist (a swipe-reply to a message that is not
-   *  the fee question, review of #339 H2), so the model decides even "✅". */
-  skipsAllowlist?: boolean;
+  /** For `amount`: the amount and what it is. */
+  amount?: number;
+  amountIs?: "each" | "total";
+  /** The amount waiting for his yes; absent: the lang's default. null:
+   *  nothing waiting, MatchTime asked how much (`ASKED` context). */
+  pending?: number | null;
 }
 
 // ── The chat context, as `loadDmReplyContext` builds it ──
@@ -102,7 +96,34 @@ const PAY_CHASE: ContextMessage = {
 
 const DEFAULT_CTX = { en: sent(feeAsk("en")), tr: sent(feeAsk("tr")) };
 
-/** Decided offline by the allowlist. The model must never see these. */
+/** "How much per player?": MatchTime's fee ask, nothing waiting yet. */
+const howMuch = (lang: "en" | "tr"): ContextMessage => ({
+  at: at("2026-10-14T21:20:00Z"),
+  text: buildFeeAskDm({ collectorName: "Colin", activityName: lang === "tr" ? "Cuma Maçı" : "Tuesday 5-a-side", headcount: 10, lang }),
+  topic: "paymentCollection",
+  match: lang === "tr" ? MATCH_TR : MATCH_EN,
+});
+const ASKED = { en: sent(howMuch("en")), tr: sent(howMuch("tr")) };
+
+/** Amounts: after "how much?" (nothing waiting) and in place of a waiting one. */
+const AMOUNTS: Case[] = [
+  { text: "£8", want: "amount", amount: 8, amountIs: "each", pending: null, ctx: ASKED.en },
+  { text: "8 each", want: "amount", amount: 8, amountIs: "each", pending: null, ctx: ASKED.en },
+  { text: "£80 total", want: "amount", amount: 80, amountIs: "total", pending: null, ctx: ASKED.en },
+  { text: "pitch was 96, split it between the lads", want: "amount", amount: 96, amountIs: "total", pending: null, ctx: ASKED.en },
+  { text: "8.50 a head", want: "amount", amount: 8.5, amountIs: "each", pending: null, ctx: ASKED.en },
+  { text: "we had 10 players tonight", want: "neither", pending: null, ctx: ASKED.en },
+  { text: "make it £12", want: "amount", amount: 12, amountIs: "each" },
+  { text: "✅ actually make it £12", want: "amount", amount: 12, amountIs: "each" },
+  { text: "kişi başı 8", want: "amount", amount: 8, amountIs: "each", pending: null, lang: "tr", ctx: ASKED.tr },
+  { text: "toplam 80", want: "amount", amount: 80, amountIs: "total", pending: null, lang: "tr", ctx: ASKED.tr },
+  { text: "saha 96, bölüşelim", want: "amount", amount: 96, amountIs: "total", pending: null, lang: "tr", ctx: ASKED.tr },
+  { text: "hepsi 8", want: "amount", amount: 8, amountIs: "each", pending: null, lang: "tr", ctx: ASKED.tr },
+  { text: "10 kişiydik", want: "neither", pending: null, lang: "tr", ctx: ASKED.tr },
+  { text: "✅", want: "neither", pending: null, ctx: ASKED.en, note: "a tick to 'how much?' is no amount" },
+];
+
+/** What the deleted allowlist used to decide offline: the model now reads them. */
 const ANCHORED: Case[] = [
   { text: "👍", want: "yes" },
   { text: "✅", want: "yes" },
@@ -116,7 +137,7 @@ const ANCHORED: Case[] = [
   { text: "❌", want: "no" },
 ];
 
-/** The allowlist abstains; the model decides. */
+/** The fragments, real messages, and natural answers. */
 const MODEL: Case[] = [
   // ⚠️ the bug, and the reason this file exists
   { text: "great game 👍", want: "neither" },
@@ -140,8 +161,8 @@ const MODEL: Case[] = [
   { text: "not yet mate, a couple of them paid me cash", want: "no" },
 ];
 
-/** Turkish club: decided offline by the Turkish allowlist. */
-const ANCHORED_TR: Case[] = [
+/** Turkish club: what the deleted Turkish allowlist used to decide. */
+const ANCHORED_TR: Case[] = ([
   { text: "evet", want: "yes" },
   { text: "Tamam", want: "yes" },
   { text: "✅", want: "yes" },
@@ -150,9 +171,9 @@ const ANCHORED_TR: Case[] = [
   { text: "hayır", want: "no" },
   { text: "bekle", want: "no" },
   { text: "şimdi değil", want: "no" },
-];
+] as Case[]).map((c) => ({ ...c, lang: "tr" as const }));
 
-/** Turkish club: the allowlist abstains, the model decides. */
+/** Turkish club: fragments and natural answers. */
 const MODEL_TR: Case[] = ([
   // ⚠️ the same bug, in Turkish
   { text: "harika maç 👍", want: "neither" },
@@ -175,8 +196,7 @@ const MODEL_TR: Case[] = ([
 /**
  * SLICE S3 (quoted-reply context): which message the reply answers. A
  * swipe-reply answers the quoted message; otherwise the newest, unless the
- * words plainly answer an earlier one. Every reply here is one the
- * allowlist abstains on, so the model decides.
+ * words plainly answer an earlier one.
  */
 const SLICE_S3: Case[] = [
   { text: "sounds good 👍", want: "yes", ctx: quoting(feeAsk("en")), note: "swipe-reply to the fee question" },
@@ -198,23 +218,28 @@ const SLICE_S3: Case[] = [
   { text: "tamam, yolla gitsin", want: "yes", lang: "tr", ctx: quoting(feeAsk("tr")), note: "swipe-reply to the fee question" },
   { text: "süper 👍", want: "neither", lang: "tr", ctx: quoting(ratingDm("tr", "2026-10-14T09:00:00Z")), note: "swipe-reply to his own rating request" },
   // Review of #339 (H2): a bare ✅ or 👍 swipe-replied to another message.
-  { text: "✅", want: "neither", ctx: quoting(ratingDm("en", "2026-10-14T09:00:00Z")), note: "✅ swipe-replied to his own rating request", skipsAllowlist: true },
-  { text: "👍", want: "neither", ctx: quoting(PAY_CHASE), note: "👍 swipe-replied to his own pay chase", skipsAllowlist: true },
-  { text: "evet", want: "neither", lang: "tr", ctx: quoting(ratingDm("tr", "2026-10-14T09:00:00Z")), note: "evet swipe-replied to his own rating request", skipsAllowlist: true },
+  { text: "✅", want: "neither", ctx: quoting(ratingDm("en", "2026-10-14T09:00:00Z")), note: "✅ swipe-replied to his own rating request" },
+  { text: "👍", want: "neither", ctx: quoting(PAY_CHASE), note: "👍 swipe-replied to his own pay chase" },
+  { text: "evet", want: "neither", lang: "tr", ctx: quoting(ratingDm("tr", "2026-10-14T09:00:00Z")), note: "evet swipe-replied to his own rating request" },
 ];
 
-const LANG: "en" | "tr" = process.env.LANG_UNDER_TEST === "tr" ? "tr" : "en";
-const SETS: Record<string, { anchored: Case[]; model: Case[] }> = {
-  main: LANG === "tr" ? { anchored: ANCHORED_TR, model: MODEL_TR } : { anchored: ANCHORED, model: MODEL },
-  s3: { anchored: [], model: SLICE_S3 },
+const SETS: Record<string, Case[]> = {
+  en: [...ANCHORED, ...MODEL],
+  tr: [...ANCHORED_TR, ...MODEL_TR],
+  amount: AMOUNTS,
+  s3: SLICE_S3,
 };
 
 const ctxOf = (c: Case) => {
-  const lang = c.lang ?? LANG;
+  const lang = c.lang ?? "en";
+  const pending = c.pending !== undefined ? c.pending : lang === "tr" ? 8 : 10.3;
   return lang === "tr"
-    ? { amount: 8, matchName: MATCH_TR, lang: "tr" as const, replyContext: c.ctx ?? DEFAULT_CTX.tr }
-    : { amount: 10.3, matchName: MATCH_EN, lang: "en" as const, replyContext: c.ctx ?? DEFAULT_CTX.en };
+    ? { pending, matchName: MATCH_TR, lang: "tr" as const, replyContext: c.ctx ?? DEFAULT_CTX.tr }
+    : { pending, matchName: MATCH_EN, lang: "en" as const, replyContext: c.ctx ?? DEFAULT_CTX.en };
 };
+
+const matches = (c: Case, r: ReturnType<typeof parseFeeReplyIntent>) =>
+  r.intent === c.want && (c.want !== "amount" || (r.amount === c.amount && r.amountIs === c.amountIs));
 
 async function main() {
   spendDevApiKeyOrExit("scripts/dryrun-fee-confirm.ts");
@@ -223,52 +248,33 @@ async function main() {
     process.exit(1);
   }
   const m = meter("scripts/dryrun-fee-confirm.ts", HAIKU_CLASSIFIER_ARM, MAX_USD);
-  const setName = process.env.SET && SETS[process.env.SET] ? process.env.SET : "main";
-  const { anchored, model } = SETS[setName];
-  const only = process.env.ONLY;
-  console.log(`── fee-confirm, ${HAIKU_CLASSIFIER_ARM.model}, set ${setName}, language ${setName === "s3" ? "both" : LANG}, REPEAT=${REPEAT}, cap $${MAX_USD} ──`);
-
-  let anchoredBad = 0;
-  if (anchored.length) console.log(`── ANCHORED (decided offline, model never called) ──`);
-  for (const c of anchored) {
-    const got = anchoredFeeReply(c.text, c.lang ?? LANG);
-    const pass = got === c.want;
-    if (!pass) anchoredBad++;
-    console.log(`  ${pass ? "✓" : "✗"} ${JSON.stringify(c.text).padEnd(22)} → ${got ?? "abstain"}  (want ${c.want})`);
-  }
-
-  console.log(`\n── MODEL ──`);
-  let modelBad = 0;
-  const cases = only ? model.filter((c) => c.text === only) : model;
-  for (const c of cases) {
-    if (!c.skipsAllowlist && anchoredFeeReply(c.text, c.lang ?? LANG) !== null) {
-      console.log(`  ! ${JSON.stringify(c.text)} was decided by the allowlist; it should not have been`);
-      modelBad++;
-      continue;
+  const names = process.env.SET && SETS[process.env.SET] ? [process.env.SET] : Object.keys(SETS);
+  console.log(`── fee reader, ${HAIKU_CLASSIFIER_ARM.model}, sets ${names.join(", ")}, REPEAT=${REPEAT}, cap $${MAX_USD} ──`);
+  let bad = 0;
+  let total = 0;
+  for (const name of names) {
+    console.log(`\n── ${name} ──`);
+    for (const c of SETS[name]) {
+      total++;
+      const got: string[] = [];
+      const reasons: string[] = [];
+      let agreed = 0;
+      for (let i = 0; i < REPEAT; i++) {
+        await classifyFeeReply(c.text, ctxOf(c), m.call);
+        const r = parseFeeReplyIntent(m.lastRaw());
+        if (matches(c, r)) agreed++;
+        got.push(`${r.intent}${r.amount != null ? `:${r.amount}/${r.amountIs}` : ""}@${r.confidence.toFixed(2)}`);
+        reasons.push(r.reasoning);
+      }
+      const pass = agreed === REPEAT;
+      if (!pass) bad++;
+      const want = c.want === "amount" ? `amount:${c.amount}/${c.amountIs}` : c.want;
+      console.log(`  ${pass ? "✓" : "✗"} ${agreed}/${REPEAT}  ${c.lang ?? "en"} want=${want} got=[${got.join(", ")}]  ${JSON.stringify(c.text)}${c.note ? ` (${c.note})` : ""}`);
+      if (!pass) for (const why of reasons) console.log(`      reasoning: ${JSON.stringify(why)}`);
     }
-    const got: string[] = [];
-    const reasons: string[] = [];
-    for (let i = 0; i < REPEAT; i++) {
-      await classifyFeeReply(c.text, ctxOf(c), m.call);
-      // The production seam returns the label only; the raw answer gives
-      // the confidence and the reasoning, parsed by the production parser.
-      const r = parseFeeReplyIntent(m.lastRaw());
-      got.push(`${r.intent}@${r.confidence.toFixed(2)}`);
-      reasons.push(r.reasoning);
-    }
-    const agreed = got.filter((g) => g.startsWith(`${c.want}@`)).length;
-    const pass = agreed === REPEAT;
-    if (!pass) modelBad++;
-    console.log(
-      `  ${pass ? "✓" : "✗"} ${agreed}/${REPEAT}  ${c.lang ?? LANG} want=${c.want.padEnd(7)} got=[${got.join(", ")}]  ${JSON.stringify(c.text)}${c.note ? ` (${c.note})` : ""}`,
-    );
-    if (!pass) for (const why of reasons) console.log(`      reasoning: ${JSON.stringify(why)}`);
   }
-
-  console.log(
-    `\nanchored: ${anchored.length - anchoredBad}/${anchored.length}   model: ${cases.length - modelBad}/${cases.length} cases fully agreed. ${m.summary()}`,
-  );
-  process.exit(anchoredBad + modelBad > 0 ? 1 : 0);
+  console.log(`\n${total - bad}/${total} cases fully agreed. ${m.summary()}`);
+  process.exit(bad > 0 ? 1 : 0);
 }
 
 main().catch((e) => {

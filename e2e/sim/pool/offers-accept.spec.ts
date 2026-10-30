@@ -14,6 +14,7 @@
  */
 import { scenario, scenarios, expect } from "./fixtures";
 import { E2E } from "../../helpers/env";
+import { clearFeeReplyStub, setFeeReplyStub } from "../../helpers/stub";
 import { askOf, at, near, poolSwitchCookie, proveOffer, offersOf, openClub, organiserAsks, pollPlatform, poolPlayer, tapLinkIn, tapOffer } from "./offers-world";
 
 const PI = { "x-api-key": E2E.WHATSAPP_API_KEY };
@@ -196,8 +197,18 @@ scenarios("saying yes to a pool offer", () => {
     await pool.db.run(`UPDATE "Organisation" SET "paymentCollectionEnabled" = true, "paymentTrackingEnabled" = true, "paymentHolderId" = $2 WHERE id = $1`, [fnf.group.orgId, owner.id]);
     await pool.db.run(`UPDATE "Match" SET status = 'COMPLETED', date = $2 WHERE id = $1`, [fnf.group.matchId, new Date(Date.now() - 3 * 3600_000)]);
     const ownerPhone = fnf.member("owner").phone.replace(/^\+/, "");
+    // MatchTime asked him for the fee (what the scheduler records), and the
+    // fee reader (stubbed) reads "£6 each" as £6 a head.
+    await pool.db.run(`INSERT INTO "SentNotification" (id, key, kind, "matchId", "targetUser", "createdAt") VALUES ($1, $2, 'dm', $1, $3, now())`.replace("$1, $2, 'dm', $1", "$1, $2, 'dm', $4"), [
+      `sn-pool-fee-ask-${fnf.group.matchId}`,
+      `${fnf.group.matchId}:fee-ask`,
+      owner.id,
+      fnf.group.matchId,
+    ]);
+    setFeeReplyStub({ bodies: { "£6 each": JSON.stringify({ intent: "amount", amount: 6, amountIs: "each", confidence: 1 }) } });
     const fee = await pool.request.post("/api/whatsapp/dm-reply", { headers: PI, data: { phone: ownerPhone, body: "£6 each", waMessageId: `fee-${Date.now()}` } });
     expect((await fee.json()).handled).toBe("collector-fee");
+    clearFeeReplyStub();
     const prompt = await pool.db.one<{ id: string }>(`SELECT id FROM "BotJob" WHERE "orgId" = $1 AND "aboutKey" LIKE '%:fee-confirm' ORDER BY "createdAt" DESC LIMIT 1`, [fnf.group.orgId]);
     const stanza = `3EB0POOL${Date.now()}`;
     const wa = `true_${ownerPhone}@c.us_${stanza}`;

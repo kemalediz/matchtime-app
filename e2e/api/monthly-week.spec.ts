@@ -39,7 +39,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { tr as trLocale } from "date-fns/locale";
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
-import { engineOn, selfIn, selfOut } from "../helpers/stub";
+import { clearFeeReplyStub, engineOn, selfIn, selfOut, setFeeReplyStub } from "../helpers/stub";
 import { E2E, REPO_ROOT } from "../helpers/env";
 import { MATCH, NAME, ORG_ID, PHONE, U, londonAt } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
@@ -1074,7 +1074,9 @@ test.describe("after a game: the collector's reply, and the hourly sweep", () =>
       [S.sid.id, "monthly"],
       [S.pip.id, null],
     ]);
-    // No ack ever arrives. Cal answers the question he was sent.
+    // No ack ever arrives. Cal answers the question he was sent, and the
+    // model (stubbed) reads his "yes" as a yes.
+    setFeeReplyStub({ bodies: { yes: "yes" } });
     const res = await request.post("/api/whatsapp/dm-reply", {
       headers: KEY,
       data: { phone: S.cal.phone, body: "yes", waMessageId: msgId(), authorName: null },
@@ -1085,6 +1087,7 @@ test.describe("after a game: the collector's reply, and the hourly sweep", () =>
       [MATCH4],
     );
     expect(m).toEqual({ fee: 8, pending: null, released: true });
+    clearFeeReplyStub();
     // A pay link for the per-game player, and never for a regular.
     expect(await payLinks(db, S.pip)).toBe(1);
     expect(await payLinks(db, S.rae)).toBe(0);
@@ -1169,6 +1172,17 @@ test.describe("round 3: the collector's answer to the PAYG fee question", () => 
       });
       expect(res.status(), await res.text()).toBe(200);
     };
+    // The model (stubbed) reads each reply as the collector meant it.
+    setFeeReplyStub({
+      bodies: {
+        yes: "yes",
+        ok: "yes",
+        sure: "yes",
+        "👍": "yes",
+        no: "no",
+        "£7": JSON.stringify({ intent: "amount", amount: 7, amountIs: "each", confidence: 1 }),
+      },
+    });
     const first = `${MATCH5}:fee-ask`;
     const start = new Date();
     expect((await poll(request, start, GROUP5)).some((i) => i.key === first)).toBe(true);
@@ -1201,6 +1215,7 @@ test.describe("round 3: the collector's answer to the PAYG fee question", () => 
     // 5. The fee is his to set by typing an amount, as in a weekly club.
     await dm("£7");
     expect(await state(db)).toEqual({ fee: null, pending: 7, released: false });
+    clearFeeReplyStub();
   });
 });
 
