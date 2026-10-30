@@ -744,6 +744,9 @@ export interface AdminFacts {
    *  §3.2 S22: calendar arithmetic is `date-fns-tz`'s job, not the
    *  model's. The extractor hands back the words. */
   phrase?: string;
+  /** Reminder: when to send it, London wall-clock "YYYY-MM-DD HH:MM", as
+   *  the extractor worked it out from NOW (2026-10-30). */
+  remindAt?: string;
   /** reminder — what the nudge should say, in the sender's own words
    *  ("bring the bibs"). Absent when the message only names a time. */
   note?: string;
@@ -1470,11 +1473,9 @@ export type ProposedWrite =
        *  Nothing downstream parses it — `sendAt` is what is queued. */
       phrase: string;
       /**
-       * The resolved instant, in UTC. §3.2 S22 gives the calendar
-       * arithmetic to `date-fns-tz` and NOT to the model; `resolveReminderPhrase`
-       * is where that happens and it is a pure function of
-       * `(phrase, now)`. A phrase it cannot resolve produces no write at
-       * all, so this is never a guess.
+       * The instant, in UTC: the extractor's London `remindAt` turned
+       * into an instant by `reminderInstant` (DST in code, never the
+       * model). An unreadable `remindAt` produces no write at all.
        */
       sendAt: Date;
       /** "Mon 8 Sep at 18:00" — London, rendered once, by the resolver

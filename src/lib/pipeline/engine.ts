@@ -70,7 +70,7 @@ import {
   RATING_PROGRESS_TAG_MUST_BE_EXPLICIT,
 } from "../rating-progress-answer";
 import { RECRUIT_LOOKBACK_MAX, resolveLookbackMatches } from "../recruit-lookback";
-import { resolveReminderPhrase } from "../reminder-time";
+import { reminderInstant } from "../reminder-time";
 import { swapGuardFor, type SwapCandidate } from "../team-slot-swap";
 // The 2026-09-15 replacement rule, pure and beside the pure core it is
 // built out of (§13) rather than inlined here — its header carries the
@@ -2991,16 +2991,15 @@ export function decide(input: EngineInput): EngineResult {
           return;
         }
         const phrase = (facts.phrase ?? "").trim();
-        if (!phrase) {
-          degrade("reminder request with no time phrase");
+        if (!(facts.remindAt ?? "").trim()) {
+          degrade("reminder request with no time the extractor could state");
           return;
         }
-        // §3.2 S22: the extractor returns the PHRASE and `date-fns-tz`
-        // resolves it. Neither the model nor this file does calendar
-        // arithmetic — `resolveReminderPhrase` is a pure function of
-        // (phrase, now) and refuses anything it is not sure about.
-        // In the group's language: its day words, and its label.
-        const when = resolveReminderPhrase(phrase, input.now, state.features.language);
+        // §3.2 S22, since 2026-10-30: the extractor states WHEN, as a
+        // London "YYYY-MM-DD HH:MM" worked out from NOW (`remindAt`); code
+        // turns it into an instant (DST) and refuses anything malformed.
+        // No word test reads the phrase any more.
+        const when = reminderInstant(facts.remindAt ?? "", state.features.language);
         if (!when.ok) {
           degrade(`reminder time could not be resolved: ${when.reason}`);
           return;

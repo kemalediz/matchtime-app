@@ -26,7 +26,7 @@ import {
 } from "../dm-copy";
 import { dmSubAckMessage } from "../dm-subscriptions";
 import { DM_INTENT_SYSTEM_PROMPT } from "../dm-intent";
-import { resolveReminderPhrase } from "../reminder-time";
+import { reminderInstant } from "../reminder-time";
 import { t } from "../i18n/t";
 import { buildLegacyFeatureMenu, legacyEventQuestion, legacySetupLang } from "../onboarding-conversation";
 
@@ -171,48 +171,14 @@ describe("the roster clarification probe is the message's own opening", () => {
 
 // ── 8. the reminder label, and the Turkish day words ─────────────────
 
-describe("reminder-time, Turkish", () => {
-  const now = new Date("2026-09-08T10:00:00.000Z"); // Tue 8 Sep 11:00 London
-  it("labels the resolved time in Turkish", () => {
-    const r = resolveReminderPhrase("perşembe saat 9", now, "tr");
+describe("reminder-time, Turkish (the extractor states the time since 2026-10-30)", () => {
+  it("labels the time in Turkish", () => {
+    const r = reminderInstant("2026-09-10 09:00", "tr");
     expect(r.ok && r.whenLabel).toBe("10 Eylül Perşembe 09:00");
-    const bare = resolveReminderPhrase("thursday", now, "tr");
-    expect(bare.ok && bare.whenLabel).toBe("10 Eylül Perşembe");
-    const d = resolveReminderPhrase("tomorrow", now, "tr");
-    expect(d.ok && d.statedTime).toBe(false);
-    expect(d.ok && d.whenLabel).toBe("9 Eylül Çarşamba");
   });
-  it("English labels are unchanged", () => {
-    const r = resolveReminderPhrase("thursday", now);
-    expect(r.ok && r.whenLabel).toBe("Thu 10 Sep");
-    const r2 = resolveReminderPhrase("friday at 6pm", now, "en");
-    expect(r2.ok && r2.whenLabel).toBe("Fri 11 Sep at 18:00");
-  });
-  for (const [phrase, iso] of [
-    ["yarın", "2026-09-09T08:00:00.000Z"],
-    ["yarın akşam", "2026-09-09T17:00:00.000Z"],
-    ["yarın sabah", "2026-09-09T08:00:00.000Z"],
-    ["bu akşam", "2026-09-08T17:00:00.000Z"],
-    ["perşembe", "2026-09-10T08:00:00.000Z"],
-    ["Perşembe", "2026-09-10T08:00:00.000Z"],
-    ["cuma", "2026-09-11T08:00:00.000Z"],
-    ["cumartesi", "2026-09-12T08:00:00.000Z"],
-    ["pazartesi akşam", "2026-09-14T17:00:00.000Z"],
-    ["2 saat sonra", "2026-09-08T12:00:00.000Z"],
-    ["bir hafta sonra", "2026-09-15T10:00:00.000Z"],
-    ["öbür gün", "2026-09-10T08:00:00.000Z"],
-  ] as const) {
-    it(`${JSON.stringify(phrase)} resolves for a Turkish org`, () => {
-      const r = resolveReminderPhrase(phrase, now, "tr");
-      expect(r.ok && r.at.toISOString()).toBe(iso);
-    });
-  }
-  it("vague Turkish phrases are refused, not guessed", () => {
-    expect(resolveReminderPhrase("sonra", now, "tr").ok).toBe(false);
-    expect(resolveReminderPhrase("birazdan", now, "tr").ok).toBe(false);
-  });
-  it("an English org does not read Turkish day words", () => {
-    expect(resolveReminderPhrase("cuma", now).ok).toBe(false);
+  it("English labels", () => {
+    const r = reminderInstant("2026-09-11 18:00", "en");
+    expect(r.ok && r.whenLabel).toBe("Fri 11 Sep at 18:00");
   });
 });
 

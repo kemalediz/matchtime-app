@@ -117,8 +117,8 @@ describe("S17 · a score from an UNRESOLVED sender is still recorded", () => {
   });
 });
 
-describe("S22 · the reminder time is resolved by code, never by the model", () => {
-  const ask = (phrase: string, over: Parameters<typeof world>[0] = {}) =>
+describe("S22 · the extractor states the London time; code makes it an instant (2026-10-30)", () => {
+  const ask = (phrase: string, over: Parameters<typeof world>[0] = {}, remindAt = "2026-09-02 18:00") =>
     decide({
       // Tue 1 Sep 2026, 19:00 London (18:00Z, BST).
       now: NOW,
@@ -129,12 +129,12 @@ describe("S22 · the reminder time is resolved by code, never by the model", () 
           body: `@Match Time remind me ${phrase}`,
           tagged: true,
           route: "admin_ops",
-          facts: { kind: "admin", action: "reminder", phrase },
+          facts: { kind: "admin", action: "reminder", phrase, ...(remindAt ? { remindAt } : {}) },
         }),
       ],
     });
 
-  it("turns the phrase into an instant and a label", () => {
+  it("turns the extractor's remindAt into an instant and a label; the phrase is kept as a record", () => {
     const r = ask("tomorrow at 6");
     const w = r.writes.find((x) => x.kind === "reminder");
     expect(w).toBeTruthy();
@@ -145,19 +145,25 @@ describe("S22 · the reminder time is resolved by code, never by the model", () 
     }
   });
 
-  it("acknowledges with the RESOLVED time, not the words asked", () => {
+  it("acknowledges with the stated time", () => {
     const s = ask("tomorrow at 6").speech.find((x) => x.kind === "reminder_ack");
     expect(s).toMatchObject({ whenLabel: "Wed 2 Sep at 18:00" });
   });
 
-  it("refuses a phrase the resolver cannot read, and says so", () => {
-    const r = ask("before the match");
+  it("no remindAt from the extractor (a time it could not state): no reminder, said so", () => {
+    const r = ask("before the match", {}, "");
+    expect(r.writes).toHaveLength(0);
+    expect(r.degradations.some((d) => /no time/i.test(d.detail))).toBe(true);
+  });
+
+  it("a malformed remindAt is refused, never guessed", () => {
+    const r = ask("tomorrow at 6", {}, "tomorrow 18:00");
     expect(r.writes).toHaveLength(0);
     expect(r.degradations.some((d) => /could not be resolved/i.test(d.detail))).toBe(true);
   });
 
   it("refuses anything outside the shipped 60-day window", () => {
-    const r = ask("in 80 days");
+    const r = ask("in 80 days", {}, "2026-11-20 19:00");
     expect(r.writes).toHaveLength(0);
     expect(r.degradations.some((d) => /60-day/i.test(d.detail))).toBe(true);
   });

@@ -610,7 +610,8 @@ THE FIELDS. Fill toMatchTime always and the others for the action; every other f
   undo (fee_waiver): true when it takes a free place back.
   payerRef (bulk_payment): who paid, as written.
   count (bulk_payment): how many players they paid for.
-  phrase (reminder): the time phrase exactly as written ("tomorrow at 6"), never a date.
+  phrase (reminder): the time phrase exactly as written ("tomorrow at 6"), kept as a record.
+  remindAt (reminder): when to send it, as a London date and time "YYYY-MM-DD HH:MM", worked out from NOW: the next such time that is still to come ("at 6" means 18:00 unless they say morning; a day with no time is 09:00). "" when the message names no time MatchTime could act on ("later", "soon").
   note (reminder): what to remind about, in their own words ("bring the bibs"); "" when it names nothing.
 
 EXAMPLES, English / Turkish, grouped by what they teach. toMatchTime is true unless shown.
@@ -681,7 +682,7 @@ Free places and payments:
   "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
   "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
 Reminders and stats:
-  "remind me tomorrow at 6 to bring the bibs" / "yarın 6'da yelekleri getirmeyi hatırlat" -> reminder, phrase "tomorrow at 6" / "yarın 6'da", note "bring the bibs" / "yelekleri getirmeyi"
+  "remind me tomorrow at 6 to bring the bibs" / "yarın 6'da yelekleri getirmeyi hatırlat", NOW Tuesday 20 October 2026 -> reminder, phrase "tomorrow at 6" / "yarın 6'da", remindAt "2026-10-21 18:00", note "bring the bibs" / "yelekleri getirmeyi"
   "@Match Time send everyone their stats" / "@Match Time DM the squad their ratings links" -> stats_blast
   "lads don't forget to rate the players via the link MatchTime DM'ed you" -> other, toMatchTime false
   "did everyone get their stats link?" -> other, toMatchTime false
@@ -884,6 +885,7 @@ const ADMIN_SCHEMA = {
     // cancel_match / restore_match (2026-10-28): a game whose time has gone.
     pastGame: { type: "boolean" },
     phrase: { type: "string" },
+    remindAt: { type: "string" },
     note: { type: "string" },
     // 0 is the schema's stand-in for null, the same convention
     // `statedCount` uses. A nullable number is rejected by the API.
@@ -902,7 +904,7 @@ const ADMIN_SCHEMA = {
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1217,6 +1219,7 @@ export function parseFacts(
           : {}),
         ...(["cancel_match", "restore_match"].includes(action) && raw.pastGame === true ? { pastGame: true } : {}),
         ...(typeof raw.phrase === "string" && raw.phrase ? { phrase: raw.phrase } : {}),
+        ...(typeof raw.remindAt === "string" && raw.remindAt.trim() ? { remindAt: raw.remindAt.trim() } : {}),
         ...(typeof raw.note === "string" && raw.note ? { note: raw.note } : {}),
         // 0 (the schema's stand-in for "not stated") and anything
         // non-finite are DROPPED rather than carried through as a
