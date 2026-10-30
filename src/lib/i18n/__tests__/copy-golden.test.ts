@@ -907,9 +907,9 @@ function cases(lang: Lang): Case[] {
   add("R31 teams_post", say(teams, { kind: "teams_post", messageId: MSG }));
   add("R32 teams_not_generated", say(full, { kind: "teams_not_generated", messageId: MSG }));
 
-  add("R33 guest_name_ask / singular", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", body: "I'm in and bringing a mate" }));
-  add("R33 guest_name_ask / plural", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", body: "I'm in with two of my guys" }));
-  add("R33 guest_name_ask / no asker name", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: null, body: "+1" }));
+  add("R33 guest_name_ask / singular", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", plural: false }));
+  add("R33 guest_name_ask / plural", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", plural: true }));
+  add("R33 guest_name_ask / no asker name", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: null, plural: false }));
   add("R33b ask_who_mentioned", say(short, { kind: "ask_who_mentioned", messageId: MSG }));
 
   add("R34 score_ack", say(full, { kind: "score_ack", messageId: MSG, red: 3, yellow: 1 }));
@@ -1152,7 +1152,7 @@ function cases(lang: Lang): Case[] {
   add("R50 planUnresolvedNudge / anonymous, dropping", planUnresolvedNudge({ senderResolved: false, attendanceRelevant: true, matchId: "m-1", authorName: "447700900123", dropping: true, lang }).reply);
 
   // ── 1.1 guest-name-ask.ts (also reached via compose above) ──────────
-  add("R44 renderGuestNameAsk / plural, no name", renderGuestNameAsk({ askerName: null, body: "bringing 2 friends", lang }));
+  add("R44 renderGuestNameAsk / plural, no name", renderGuestNameAsk({ askerName: null, plural: true, lang }));
 
   // ── 1.1 stats-blast.ts ──────────────────────────────────────────────
   add("R100 composeStatsBlastDm / named", composeStatsBlastDm("Sait Demir", "https://mt.example/s/abc", lang));

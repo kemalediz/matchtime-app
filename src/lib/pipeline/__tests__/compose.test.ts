@@ -536,15 +536,16 @@ describe("the guest name ask", () => {
     expect(out.reacts).toHaveLength(0);
   });
 
-  it("asks for names in the plural", () => {
+  it("asks for names in the plural when more than one unnamed person was offered (claims, not words)", () => {
     const state = world({ confirmed: [...TEN, "usama"] });
     const { out } = composeFor(state, [
       msg({
         from: "amir",
-        body: "two of my guys can play",
+        body: "my cousin and a mate can play",
         route: "other_att",
         facts: attendanceFacts([
-          claim({ subject: "other", personRef: "two of my guys", personNamed: false, polarity: "in" }),
+          claim({ subject: "other", personRef: "my cousin", personNamed: false, polarity: "in" }),
+          claim({ subject: "other", personRef: "a mate", personNamed: false, polarity: "in" }),
         ]),
       }),
     ]);

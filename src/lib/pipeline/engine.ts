@@ -1398,7 +1398,6 @@ export function decide(input: EngineInput): EngineResult {
       // ── The guest name ask (a QUESTION, never a write) ───────────────
       if (guestAsks.length > 0) {
         const decision = shouldAskForGuestName({
-          body: msg.body,
           tagged: msg.tagged,
           senderKnown: !!msg.senderUserId,
           attendanceOn: state.features.attendance,
@@ -1413,7 +1412,7 @@ export function decide(input: EngineInput): EngineResult {
             kind: "guest_name_ask",
             messageId: msg.id,
             askerName: msg.senderName,
-            body: msg.body,
+            plural: guestAsks.length > 1,
           });
           out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
         }

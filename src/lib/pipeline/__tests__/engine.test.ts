@@ -782,9 +782,10 @@ describe("A5 · 'my brother can play if needed' (2026-08-30, Amir)", () => {
     expect(r.outcomes[0].react).toBeNull();
   });
 
-  it("code says a relationship is not a name even if the model forgets", () => {
-    // Belt and braces: personNamed:true but the ref is "Amir's brother".
-    // §11.3 schema drift — the engine treats every field as untrusted.
+  it("a relationship the extractor reads as unnamed registers nobody (no word test since 2026-10-30)", () => {
+    // Until 2026-10-30 a word list also refused "Amir's brother" when the
+    // model said personNamed:true. "No string parsing": the extractor's
+    // personNamed is the reading, and the prompt names relationships.
     const r = decide({
       now: NOW,
       state: state(),
@@ -797,7 +798,7 @@ describe("A5 · 'my brother can play if needed' (2026-08-30, Amir)", () => {
             claim({
               subject: "other",
               personRef: "Amir's brother",
-              personNamed: true,
+              personNamed: false,
               polarity: "in",
             }),
           ]),
@@ -2098,30 +2099,6 @@ describe("S12 · the roster decides whether a reference names someone", () => {
     expect(r.outcomes[0].reasons.join(" ")).toMatch(/resolves to a squad member/i);
   });
 
-  it("still refuses a relationship, however confident the model is", () => {
-    const state = world({ confirmed: FULL_14.slice(0, 7) });
-    const r = decide({
-      now: NOW,
-      state,
-      messages: [
-        msg({
-          from: "amir",
-          body: "my brother can play",
-          route: "other_att",
-          facts: attendanceFacts([
-            claim({
-              subject: "other",
-              personRef: "my brother",
-              personNamed: true,
-              polarity: "in",
-              confidence: 1,
-            }),
-          ]),
-        }),
-      ],
-    });
-    expect(r.writes.filter((w) => w.kind === "attendance")).toHaveLength(0);
-  });
 });
 
 describe("S25 · a resolved confirmation is answered even when nothing changed", () => {

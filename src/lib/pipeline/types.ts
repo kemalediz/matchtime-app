@@ -1573,7 +1573,7 @@ export type ProposedWrite =
 export type SpeechIntent =
   /** The one authoritative squad post for the batch (§3.2 S36). */
   | { kind: "squad_status"; messageId: string | null }
-  | { kind: "guest_name_ask"; messageId: string; askerName: string | null; body: string }
+  | { kind: "guest_name_ask"; messageId: string; askerName: string | null; plural: boolean }
   /** Review L1: his own IN refused, he plays for a partner club then. */
   | { kind: "partner_guest_overlap"; messageId: string; askerName: string }
   /**

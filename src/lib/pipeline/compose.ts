@@ -753,7 +753,7 @@ export function compose(result: EngineResult): ComposedOutput {
       case "guest_name_ask":
         utterances.push({
           messageId: sp.messageId,
-          text: renderGuestNameAsk({ askerName: sp.askerName, body: sp.body, lang }),
+          text: renderGuestNameAsk({ askerName: sp.askerName, plural: sp.plural, lang }),
         });
         break;
 
