@@ -173,26 +173,40 @@ test("the collector's own 'Paid' is not a claim against themselves", async ({ re
   expect((await row(db, U.collector))?.directPendingAt).toBeNull();
 });
 
-test("'sent Colin £10' when £8 is owed (P5, 2026-10-30): NOTHING recorded, the collector not told, the player asked", async ({
+test("'sent Colin £5' when £8 is owed (P5, 2026-10-30): NOTHING recorded, the collector not told, the player asked", async ({
   request,
   db,
 }) => {
   resetDb();
   setPaymentClaimStub({
-    bodies: { "sent Colin £10": JSON.stringify({ intent: "paid", amount: 10, confidence: 1, reasoning: "stub" }) },
+    bodies: { "sent Colin £5": JSON.stringify({ intent: "paid", amount: 5, confidence: 1, reasoning: "stub" }) },
   });
   const before = (await collectorClaimDms(db)).length;
   const dmId = `false_111222333@lid_E2EAMT${Date.now()}`;
-  const json = await postDm(request, PHONE.player, "sent Colin £10", dmId);
-  expect(json).toMatchObject({ handled: "paid-claim-amount-mismatch", stated: 10, owed: 8 });
+  const json = await postDm(request, PHONE.player, "sent Colin £5", dmId);
+  expect(json).toMatchObject({ handled: "paid-claim-amount-mismatch", stated: 5, owed: 8 });
   const r = await row(db, U.player);
   expect(r?.paidAt).toBeNull();
   expect(r?.directPendingAt).toBeNull();
   expect(await collectorClaimDms(db)).toHaveLength(before);
   expect(await ticksOn(db, dmId)).toEqual([]);
   expect((await dmsTo(db, PHONE.player))[0].text).toMatch(
-    /^Thanks Pat\. You owe \*£8\* for \*E2E 5-a-side\*, and you said \*£10\*, so I haven't told Colin yet\./,
+    /^Thanks Pat\. You owe \*£8\* for \*E2E 5-a-side\*, and you said \*£5\*, so I haven't told Colin yet\./,
   );
+});
+
+test("'gave Colin a tenner' when £8 is owed (review of #470): recorded, and the collector told the £10 he said", async ({ request, db }) => {
+  resetDb();
+  setPaymentClaimStub({
+    bodies: { "gave Colin a tenner": JSON.stringify({ intent: "paid", amount: 10, confidence: 1, reasoning: "stub" }) },
+  });
+  const json = await postDm(request, PHONE.player, "gave Colin a tenner");
+  expect(json.handled).toBe("paid-claim");
+  const r = await row(db, U.player);
+  expect(r?.directPendingAt).not.toBeNull();
+  expect(r?.paidAt).toBeNull();
+  expect((await collectorClaimDms(db)).at(-1)?.text).toContain("They said they paid *£10*.");
+  expect((await dmsTo(db, PHONE.player))[0].text).toContain("you've paid *£10*");
 });
 
 test("'sent Colin £8' when £8 is owed: recorded as before", async ({ request, db }) => {
@@ -204,4 +218,5 @@ test("'sent Colin £8' when £8 is owed: recorded as before", async ({ request, 
   expect(json.handled).toBe("paid-claim");
   expect((await row(db, U.player))?.directPendingAt).not.toBeNull();
   expect((await row(db, U.player))?.paidAt).toBeNull();
+  expect((await collectorClaimDms(db)).at(-1)?.text).not.toContain("They said they paid");
 });

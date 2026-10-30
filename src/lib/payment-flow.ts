@@ -30,7 +30,7 @@ import { classifyFeeReply, type FeeReplyRead } from "./fee-confirm";
 import { contextMatchLabel, loadDmReplyContext, quoteForMatch, type QuotedBotMessage } from "./reply-context";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { withOrgAiBudget } from "./ai-budget";
-import { MONTHLY_PAYMENT_METHOD, feeAskKeys, isMonthlyRow, recordPaygFeeDeclined, stagePaygFeeForReply } from "./monthly-week";
+import { MONTHLY_PAYMENT_METHOD, isMonthlyRow, recordPaygFeeDeclined, stagePaygFeeForReply } from "./monthly-week";
 import { isFeeWaived } from "./fee-waiver-rules";
 import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf, type QuietHours } from "./message-hours";
 import { formatLondon } from "./london-time";
@@ -368,11 +368,6 @@ export interface CollectorPendingMatch {
   /** An amount awaiting a yes/no. NULL means nothing has been proposed,
    *  and a "yes" is therefore meaningless. */
   feePendingConfirm: number | null;
-  /** MatchTime sent him this match's fee question ("how much per
-   *  player?", the `<matchId>:fee-ask` DM). A FACT: with no amount waiting
-   *  and no question sent, there is nothing for his DM to answer, and the
-   *  model is never asked. Absent: not sent. */
-  feeAsked?: boolean;
   /** The match's org language (`Organisation.language`): the replies are
    *  written in it. English when absent. */
   lang?: Lang;
@@ -422,8 +417,10 @@ export interface CollectorFeeDeps {
   stageAskedFee?: (matchId: string) => Promise<number | null>;
   /** Clears the pending amount. Sends nothing to anybody. */
   cancel: (matchId: string) => Promise<void>;
-  /** Stages an amount for confirmation. Sends nothing to anybody. */
-  stage: (matchId: string, perPlayer: number) => Promise<void>;
+  /** Stages an amount for confirmation. Sends nothing to anybody. False
+   *  when it was not staged (the links went out meanwhile): then no
+   *  confirm prompt is sent. */
+  stage: (matchId: string, perPlayer: number) => Promise<boolean | void>;
   /** The clock `release` uses, so the ack names the hold the links got.
    *  Absent: the real one. */
   now?: () => Date;
@@ -441,11 +438,14 @@ function sameFee(a: number, b: number): boolean {
  *   1. IS THERE A MATCH HE COLLECTS FOR? (`pendingMatch`: he is the club's
  *      money collector, the match is recent and its links are not out.)
  *      No → null, and the model is never asked.
- *   2. IS A QUESTION OPEN? An amount awaiting his yes, or the fee ask was
- *      sent. Neither → null, and the model is never asked.
- *   3. WHAT DOES HE SAY? One model call (`judge`), failing closed to
+ *      `findCollectorPendingMatch` also requires the match to be played,
+ *      within the window, and with no price set yet (an amount may be
+ *      waiting for his yes). An amount typed before the fee ask went out
+ *      (quiet hours, the end-of-match flow off) is read too, and only ever
+ *      staged (review of #470).
+ *   2. WHAT DOES HE SAY? One model call (`judge`), failing closed to
  *      `neither`.
- *   4. THE ACT, from the reading and the facts:
+ *   3. THE ACT, from the reading and the facts:
  *      - "yes" releases ONLY the amount waiting. A yes naming a different
  *        amount releases nothing: that amount is staged and asked again.
  *        A yes with nothing waiting releases nothing (a monthly PAYG
@@ -466,8 +466,6 @@ export async function runCollectorFeeReply(
   const match = await deps.pendingMatch();
   if (!match) return null;
   const pending = match.feePendingConfirm;
-  // No open question: nothing for his DM to answer.
-  if (pending == null && !match.feeAsked) return null;
 
   const lang: Lang = match.lang ?? "en";
   let read: FeeReplyRead;
@@ -520,7 +518,7 @@ export async function runCollectorFeeReply(
   const stageNow = async (r: FeeReplyRead): Promise<CollectorReplyResult | null> => {
     const perPlayer = perPlayerOf(r);
     if (perPlayer == null || perPlayer <= 0) return null;
-    await deps.stage(match.id, perPlayer);
+    if ((await deps.stage(match.id, perPlayer)) === false) return null;
     return {
       ...about,
       asked: true,
@@ -594,18 +592,10 @@ export async function handleCollectorFeeReply(
       feeOrgId = m?.activity.orgId ?? null;
       feeMatch = m ? { id: m.id, date: m.date } : null;
       if (!m) return null;
-      // Was the fee question sent for this match? A fact (the scheduler's
-      // SentNotification), read only when nothing is waiting already.
-      let feeAsked = false;
-      if (m.feePendingConfirm == null) {
-        const keys = feeAskKeys(m.id);
-        feeAsked = (await db.sentNotification.count({ where: { key: { in: [keys.first, keys.again] } } })) > 0;
-      }
       return {
         id: m.id,
         name: m.activity.name,
         feePendingConfirm: m.feePendingConfirm,
-        feeAsked,
         orgId: m.activity.orgId,
         date: m.date,
         lang: normaliseLang(m.activity.org.language),
@@ -674,27 +664,37 @@ export async function handleCollectorFeeReply(
       // staged again for this match. Nothing for a weekly club.
       await recordPaygFeeDeclined(matchId).catch((err) => console.error("[fee-confirm] recording the decline failed:", err));
     },
-    stage: async (matchId, perPlayer) => {
-      await db.match.update({
-        where: { id: matchId },
-        data: { feePendingConfirm: perPlayer, feeSetByUserId: userId },
-      });
-    },
+    stage: (matchId, perPlayer) => stageFee(userId, matchId, perPlayer),
   });
+}
+
+/**
+ * Stage an amount for the collector's yes, only while the links have not
+ * gone out (review of #470): a "make it £10" read while a yes released the
+ * links must never send a "reply ✅" prompt for a released match. True
+ * when staged.
+ */
+export async function stageFee(userId: string, matchId: string, perPlayer: number): Promise<boolean> {
+  const res = await db.match.updateMany({
+    where: { id: matchId, paymentLinksReleasedAt: null },
+    data: { feePendingConfirm: perPlayer, feeSetByUserId: userId },
+  });
+  return res.count > 0;
 }
 
 /**
  * ⚠️ THE MONEY: set the fee and DM the squad their pay links, once.
  *
- * COMPARE-AND-SET (review of #339): the fee and the release stamp are
- * written together, and only while the links have not gone out. Two quick
- * "yes"es, a typed yes and a ✅ reaction, or a Pi redelivery of either,
- * all pass the pending check; only the first claims the match and DMs the
- * squad. Null when another one got there first.
+ * COMPARE-AND-SET (review of #339, tightened in review of #470): the fee
+ * and the release stamp are written together, only while the links have
+ * not gone out AND the amount waiting is still the one this yes read. Two
+ * quick "yes"es, a typed yes and a ✅ reaction, or a Pi redelivery: only
+ * the first claims the match. A yes read at £8 while "make it £10" (or a
+ * "no") was being written releases nothing. Null when nothing was claimed.
  */
-async function claimAndReleaseFee(userId: string, matchId: string, amount: number, now: Date = new Date()): Promise<number | null> {
+export async function claimAndReleaseFee(userId: string, matchId: string, amount: number, now: Date = new Date()): Promise<number | null> {
   const claimed = await db.match.updateMany({
-    where: { id: matchId, paymentLinksReleasedAt: null },
+    where: { id: matchId, paymentLinksReleasedAt: null, feePendingConfirm: amount },
     data: {
       feePerPlayer: amount,
       feePendingConfirm: null,

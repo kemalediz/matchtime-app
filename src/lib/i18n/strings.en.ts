@@ -2150,6 +2150,10 @@ export const en = {
     `for *${p.activityName}*: *${p.amount}*${p.quantity > 1 ? ` (${p.quantity} players)` : ""}.\n\n` +
     `Mark it paid once it lands:\n${p.url}`,
 
+  /** Added to the collector's notice when a "Paid" DM said MORE than is
+   *  owed (review of #470), so he knows what to look for. */
+  dm_direct_pay_notice_stated: (p: { stated: string }): string => `\n\nThey said they paid *${p.stated}*.`,
+
   /** Row 158: the player's reply when their "Paid" DM was passed to the
    *  collector. `collectorName` is the collector's first name. */
   dm_paid_claim_ack: (p: { firstName: string | null; collectorName: string | null; amount: string; activityName: string }): string =>
@@ -2169,10 +2173,11 @@ export const en = {
     `Already done${p.firstName ? ` ${p.firstName}` : ""}: ${p.collectorName ?? "the organiser"} knows about your ` +
     `*${p.amount}* for *${p.activityName}* and will confirm once it lands 👍`,
 
-  /** A "paid" DM naming an amount that is not what they owe (2026-10-30,
-   *  P5 of the no-parsing sweep). Nothing is recorded and the collector is
-   *  not told: the player is asked to say it again, or to use the pay link
-   *  when it covered other people. `owed` and `stated` are formatted £. */
+  /** A "paid" DM naming LESS than they owe (2026-10-30, P5 of the
+   *  no-parsing sweep; more than owed is recorded). Nothing is recorded and
+   *  the collector is not told: the player is asked to say so if they paid
+   *  it all, or to pay the rest by the pay link. `owed` and `stated` are
+   *  formatted £. */
   dm_paid_claim_amount_mismatch: (p: {
     firstName: string | null;
     collectorName: string | null;
@@ -2182,8 +2187,8 @@ export const en = {
     url: string;
   }): string =>
     `Thanks${p.firstName ? ` ${p.firstName}` : ""}. You owe *${p.owed}* for *${p.activityName}*, and you said *${p.stated}*, ` +
-    `so I haven't told ${p.collectorName ?? "the organiser"} yet. If you paid ${p.owed}, just tell me you've paid. ` +
-    `If it covered other people too, open your pay link, set how many and choose *Pay the collector directly*:\n${p.url}`,
+    `so I haven't told ${p.collectorName ?? "the organiser"} yet. If you paid all of ${p.owed}, just tell me you've paid. ` +
+    `If you still owe the rest, your pay link has it:\n${p.url}`,
 
   /** Row 160: "paid for me and my mate". Nothing is recorded (MatchTime
    *  does not guess how many people a payment covered); the pay page has

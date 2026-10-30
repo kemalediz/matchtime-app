@@ -67,6 +67,16 @@ const MONTH_START = `${formatInTimeZone(KICKOFF, LONDON, "yyyy-MM")}-01`;
 const WEEKDAY = Number(formatInTimeZone(KICKOFF, LONDON, "i")) % 7; // 0 = Sunday
 const HEADER = `📋 List for ${MONTH_NAME}: ${WHEN}`;
 
+/**
+ * The fixture's weekday for a club whose game was PLAYED (2026-10-30): the
+ * played game's own London weekday, so that day is one of the month's games
+ * and the last of them is never more than a day behind. Without it, a run
+ * after the month's last Monday saw the poll close the month
+ * (`monthCloseDue`), and a closed month is not read as a running one
+ * (`loadMonthlyWeek`): the PAYG fee was never staged.
+ */
+const playedWeekday = (played: Date) => Number(formatInTimeZone(played, LONDON, "i")) % 7;
+
 /** Pinned polls: tomorrow, inside the day. */
 const at = (hour: number, minute = 0) => londonAt(1, hour, minute);
 
@@ -210,7 +220,7 @@ async function person(db: TestDb, orgId: string, p: { id: string; name: string; 
 
 async function club(
   db: TestDb,
-  o: { org: string; group: string; act: string; sport: string; name: string; language?: string; collector?: string | null },
+  o: { org: string; group: string; act: string; sport: string; name: string; language?: string; collector?: string | null; dayOfWeek?: number },
 ) {
   await db.run(
     `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled", "squadMode",
@@ -227,7 +237,7 @@ async function club(
   await db.run(
     `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "deadlineHours", "updatedAt")
      VALUES ($1, $2, $3, 'Monday 7-a-side', $4, '20:00', 'Goals', 5, now())`,
-    [o.act, o.org, o.sport, WEEKDAY],
+    [o.act, o.org, o.sport, o.dayOfWeek ?? WEEKDAY],
   );
 }
 
@@ -1039,7 +1049,7 @@ test.describe("after a game: the collector's reply, and the hourly sweep", () =>
 
   test.beforeAll(async () => {
     const db = testDb();
-    await club(db, { org: ORG4, group: GROUP4, act: "e2e-mw4-act", sport: "e2e-mw4-sport", name: "Played", collector: S.cal.id });
+    await club(db, { org: ORG4, group: GROUP4, act: "e2e-mw4-act", sport: "e2e-mw4-sport", name: "Played", collector: S.cal.id, dayOfWeek: playedWeekday(PLAYED) });
     await person(db, ORG4, S.cal, "OWNER");
     for (const p of [S.rae, S.sid, S.pip]) await person(db, ORG4, p);
     // Quiet hours off: these tests run on the real clock, and the fee
@@ -1142,7 +1152,7 @@ test.describe("round 3: the collector's answer to the PAYG fee question", () => 
 
   test.beforeAll(async () => {
     const db = testDb();
-    await club(db, { org: ORG5, group: GROUP5, act: "e2e-mw5-act", sport: "e2e-mw5-sport", name: "Fee Club", collector: T.cal.id });
+    await club(db, { org: ORG5, group: GROUP5, act: "e2e-mw5-act", sport: "e2e-mw5-sport", name: "Fee Club", collector: T.cal.id, dayOfWeek: playedWeekday(PLAYED) });
     await person(db, ORG5, T.cal, "OWNER");
     for (const p of [T.rae, T.pip]) await person(db, ORG5, p);
     // Quiet hours off: these tests run on the real clock, and the fee
@@ -1229,6 +1239,9 @@ test.describe("round 3: the collector's answer to the PAYG fee question", () => 
  */
 test.describe("a ✅ reaction on the PAYG fee question is the collector's yes", () => {
   const PLAYED = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  test.afterEach(() => {
+    clearFeeReplyStub();
+  });
   const people = (tag: string, n: number) => ({
     col: { id: `e2e-mw${n}-col`, name: `Col ${tag}`, phone: `+4477009${n}5001` },
     reg: { id: `e2e-mw${n}-reg`, name: `Reg ${tag}`, phone: `+4477009${n}5002` },
@@ -1240,7 +1253,7 @@ test.describe("a ✅ reaction on the PAYG fee question is the collector's yes", 
     const matchId = `e2e-mw${n}-match`;
     const T = people(tag, n);
     const db = testDb();
-    await club(db, { org, group, act: `e2e-mw${n}-act`, sport: `e2e-mw${n}-sport`, name: `React ${tag}`, collector: T.col.id });
+    await club(db, { org, group, act: `e2e-mw${n}-act`, sport: `e2e-mw${n}-sport`, name: `React ${tag}`, collector: T.col.id, dayOfWeek: playedWeekday(PLAYED) });
     await person(db, org, T.col, "OWNER");
     for (const p of [T.reg, T.pay]) await person(db, org, p);
     // Quiet hours off: these tests run on the real clock, and the fee
@@ -1326,6 +1339,8 @@ test.describe("a ✅ reaction on the PAYG fee question is the collector's yes", 
   }) => {
     const s = await setUp(7, "Seven");
     const wa = await askSent(request, s);
+    // The fee reader (stubbed) reads "£7" as £7 a head.
+    setFeeReplyStub({ bodies: { "£7": JSON.stringify({ intent: "amount", amount: 7, amountIs: "each", confidence: 1 }) } });
     const res = await request.post("/api/whatsapp/dm-reply", {
       headers: KEY,
       data: { phone: s.T.col.phone, body: "£7", waMessageId: msgId(), authorName: null },
@@ -1341,6 +1356,8 @@ test.describe("a ✅ reaction on the PAYG fee question is the collector's yes", 
   test("a ✅ after a 'no' does nothing: the decline is final", async ({ request, db }) => {
     const s = await setUp(8, "Eight");
     const wa = await askSent(request, s);
+    // The fee reader (stubbed) reads "no" as a no.
+    setFeeReplyStub({ bodies: { no: "no" } });
     const res = await request.post("/api/whatsapp/dm-reply", {
       headers: KEY,
       data: { phone: s.T.col.phone, body: "no", waMessageId: msgId(), authorName: null },

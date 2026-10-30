@@ -156,7 +156,7 @@ function recorder(over: Partial<CollectorFeeDeps> = {}, reading: FeeReplyRead = 
   return { deps, calls };
 }
 
-const ASKED_NOTHING_WAITING = async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: null, feeAsked: true });
+const ASKED_NOTHING_WAITING = async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: null });
 
 describe("an amount waiting: the model's yes releases exactly that amount", () => {
   it("a bare ✅ goes to the model, and its yes releases the waiting amount", async () => {
@@ -221,6 +221,12 @@ describe("an amount: staged and asked again, never charged off the message", () 
     expect(res?.reply).toContain("(2 players are on a free place and not counted.)");
   });
 
+  it("RACE: the links went out while the amount was being read: not staged, and no confirm prompt", async () => {
+    const { deps, calls } = recorder({ stage: async () => false }, read("amount", 12));
+    expect(await runCollectorFeeReply("£12 each", deps)).toBeNull();
+    expect(calls.released).toEqual([]);
+  });
+
   it("a total with nobody to charge stages nothing", async () => {
     const { deps, calls } = recorder({ pendingMatch: ASKED_NOTHING_WAITING, headcount: async () => 0 }, read("amount", 80, "total"));
     expect(await runCollectorFeeReply("£80 total", deps)).toBeNull();
@@ -239,13 +245,28 @@ describe("adversarial: every gate holds even when the model says yes", () => {
     expect(calls.staged).toEqual([]);
   });
 
-  it("NO OPEN QUESTION: nothing waiting and no fee ask sent → nothing, and the model is never asked", async () => {
-    const { deps, calls } = recorder(
-      { pendingMatch: async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: null, feeAsked: false }) },
-      read("amount", 8),
-    );
+  it("NO PLAYED MATCH: not a played, unreleased, unpriced match of his club in the window (no pending match) → the model is never asked", async () => {
+    const { deps, calls } = recorder({ pendingMatch: async () => null }, read("amount", 8));
     expect(await runCollectorFeeReply("£8 each", deps)).toBeNull();
     expect(calls.judged).toEqual([]);
+    expect(calls.staged).toEqual([]);
+  });
+
+  it("UNPROMPTED (review of #470): an amount typed before the fee ask went out is read and STAGED only", async () => {
+    const UNASKED = async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: null });
+    const { deps, calls } = recorder({ pendingMatch: UNASKED }, read("amount", 8));
+    const res = await runCollectorFeeReply("£8 each", deps);
+    expect(calls.judged).toEqual([{ text: "£8 each", pending: null }]);
+    expect(calls.staged).toEqual([{ matchId: "m1", perPlayer: 8 }]);
+    expect(calls.released).toEqual([]);
+    expect(res?.asked).toBe(true);
+  });
+
+  it("UNPROMPTED: a yes with nothing waiting and nothing asked releases nothing", async () => {
+    const UNASKED = async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: null });
+    const { deps, calls } = recorder({ pendingMatch: UNASKED }, read("yes"));
+    expect(await runCollectorFeeReply("✅", deps)).toBeNull();
+    expect(calls.released).toEqual([]);
     expect(calls.staged).toEqual([]);
   });
 

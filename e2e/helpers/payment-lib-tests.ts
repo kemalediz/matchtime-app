@@ -13,8 +13,8 @@
  *      that set it.
  *   3. Duplicate + out-of-order deliveries are no-ops (Stripe retries).
  *   4. The card happy path still marks paid (no regression).
- *   5. Only the org's money collector can set a match fee, only once
- *      MatchTime has asked for it, and only what the (stubbed) model read.
+ *   5. Only the org's money collector can set a match fee, and only what
+ *      the (stubbed) model read.
  *
  * The Stripe API is NEVER called: sessions are plain objects, exactly as
  * they arrive in a webhook payload.
@@ -215,19 +215,7 @@ async function main() {
     ok("non-collector cannot set a match fee");
   }
 
-  // ── 11. …but not before MatchTime has asked for it ────────────────
-  {
-    const unasked = await handleCollectorFeeReply(U.collector, "£7 each");
-    assert.equal(unasked, null, "no fee question out: nothing to answer");
-    const m = await db.match.findUnique({ where: { id: MATCH.rate }, select: { feePendingConfirm: true } });
-    assert.equal(m?.feePendingConfirm, null, "nothing was staged");
-    ok("with no fee question sent, the collector's amount is not read");
-  }
-
-  // The fee question goes out (what the scheduler records when it does).
-  await db.sentNotification.create({ data: { key: `${MATCH.rate}:fee-ask`, kind: "dm", matchId: MATCH.rate, targetUser: U.collector } });
-
-  // ── 11b. …and once it has, the collector can (happy path intact) ───
+  // ── 11. …and the collector still can, before or after MatchTime asks ──
   {
     const asCollector = await handleCollectorFeeReply(U.collector, "£7 each");
     assert.ok(asCollector, "the collector's amount is captured");
@@ -396,7 +384,6 @@ async function main() {
   } catch {
     /* best effort */
   }
-  await db.sentNotification.deleteMany({ where: { key: `${MATCH.rate}:fee-ask` } });
   await db.match.update({
     where: { id: MATCH.rate },
     data: {

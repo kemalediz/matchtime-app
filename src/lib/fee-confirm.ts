@@ -19,11 +19,14 @@
  *
  * WHAT STILL KEEPS THE MONEY SAFE IS CODE, ON FACTS:
  *   1. the sender is the club's money collector (`paymentHolderId`);
- *   2. MatchTime has a question open with him for that match: an amount
- *      awaiting his yes (`feePendingConfirm`), or the fee ask was sent;
- *   3. a "yes" releases only the amount that is waiting, and a "yes" that
- *      names a DIFFERENT amount releases nothing (it is staged and asked
- *      again);
+ *   2. the match is a played one of his club, within four days, with its
+ *      links not out and no price set (an amount may be waiting for his
+ *      yes, `feePendingConfirm`). An amount typed before the fee ask went
+ *      out is read too, and only staged;
+ *   3. a "yes" releases only the amount that is waiting, and only while it
+ *      is still waiting when the release is written (compare-and-set); a
+ *      "yes" that names a DIFFERENT amount releases nothing (it is staged
+ *      and asked again);
  *   4. an amount is only ever STAGED: MatchTime repeats it back and waits
  *      for a separate yes. Nothing is charged on an amount alone;
  *   5. every model failure (no key, a throw, unparseable or out-of-enum
@@ -86,7 +89,7 @@ export function buildFeeReplySystemPrompt(): string {
 
 MatchTime is waiting for one of two answers:
 - an amount, such as "Amount waiting for their yes: £8 per player": MatchTime told them the fee per player and how many players it will charge, and asked them to reply yes (or ✅) to send everyone their pay link now, or to send a different amount to change it.
-- "Amount waiting for their yes: none": nothing is waiting; MatchTime asked them how much each player pays for the match (or, when its message they answer names a fee and asks for their yes, that is the question).
+- "Amount waiting for their yes: none": nothing is waiting. MatchTime asked them how much each player pays for the match, or will ask them soon: they may give the fee before the question arrives. (When MatchTime's message they answer names a fee and asks for their yes, that is the question.)
 
 What does the reply say? Pick one intent:
 - "yes": send the pay links now, at the fee MatchTime asked them to confirm. A bare ✅, 👍, "ok", "yes", "tamam" or "evet" is a yes when it answers that question.

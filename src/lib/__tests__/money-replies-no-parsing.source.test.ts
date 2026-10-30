@@ -11,10 +11,16 @@
  *      `parseFeeReply`, their word sets and the Turkish unit and total
  *      regexes) are defined nowhere in production code and imported by
  *      nothing;
- *   2. the five money-reply files carry no regex, split, includes,
- *      startsWith or lower-casing outside an explicit list of lines that
- *      touch something other than a person's words (the model's JSON, our
- *      stub's label, a phone number, a stored name, our own enums).
+ *   2. the money-reply files (and `fee-confirm-reaction.ts`) carry no
+ *      regex, split, slice, exec, includes, startsWith, lower-casing,
+ *      parseFloat or Number() outside an explicit list of lines that touch
+ *      something other than a person's words (the model's JSON, our stub's
+ *      label, a phone number, a stored name, our own enums and keys, the
+ *      emoji WhatsApp reports on a reaction);
+ *   3. in those files and in `monthly-week.ts` (whose money steps take the
+ *      reader's verdict), no text-tool and no string comparison is applied
+ *      to a variable that holds a person's message (`text`, `reply`,
+ *      `body`, `message`, `msg`, `typed`), whatever other lines allow.
  */
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -50,13 +56,34 @@ export const DELETED_PARSER = /\b(?:function|const|let|var)\s+(anchoredFeeReply|
 const DELETED_IMPORT = /\b(anchoredFeeReply|looksLikeFeeAmount|parseFeeReply)\b/;
 
 /** Anything that could inspect text, or look a word up in a set. */
-const TEXT_TOOL = /\.has\(|new Set\b|\.split\(|\.match\(|\.matchAll\(|\.test\(|\.search\(|new RegExp|toLowerCase|toLocaleLowerCase|\.includes\(|\.startsWith\(|\.endsWith\(|\.replace\(|\.replaceAll\(|\.indexOf\(/;
+const TEXT_TOOL = /\.has\(|new Set\b|parseFloat\(|parseInt\(|\bNumber\(|\.exec\(|\.slice\(|\.substring\(|\.split\(|\.match\(|\.matchAll\(|\.test\(|\.search\(|new RegExp|toLowerCase|toLocaleLowerCase|\.includes\(|\.startsWith\(|\.endsWith\(|\.replace\(|\.replaceAll\(|\.indexOf\(/;
+
+/** A variable that holds a person's message. */
+const MSG = String.raw`\b(?:text|reply|body|message|msg|typed)\b`;
+/** A text-tool, a parse or a string comparison applied to one. */
+export const ON_MESSAGE = new RegExp(
+  [
+    String.raw`${MSG}\??\.(?:split|match|matchAll|test|search|exec|slice|substring|substr|includes|startsWith|endsWith|replace|replaceAll|indexOf|lastIndexOf|toLowerCase|toUpperCase|toLocaleLowerCase|toLocaleUpperCase|normalize|at|charAt)\(`,
+    String.raw`${MSG}\??\.trim\(\)\.`,
+    String.raw`${MSG}\s*[!=]==?\s*["'\`]`,
+    String.raw`["'\`]\s*[!=]==?\s*${MSG}`,
+    String.raw`(?:parseFloat|parseInt|Number)\(\s*${MSG}`,
+    String.raw`\.(?:test|exec|has)\(\s*${MSG}`,
+  ].join("|"),
+);
+
+/** Lines ON_MESSAGE matches that are not a person's message. */
+const ON_MESSAGE_ALLOWED: Record<string, string[]> = {
+  // `reply` is the fee reader's verdict ("yes" | "no" | null) here.
+  "src/lib/monthly-week.ts": ['if (args.reply !== "yes") return null;'],
+};
 
 /** The lines allowed to use one, each with what it touches. */
 const ALLOWED: Record<string, string[]> = {
   "src/lib/fee-confirm.ts": [
     'const VALID: ReadonlySet<string> = new Set<FeeReply>(["yes", "no", "amount", "neither"]);', // the model's enum
     'const intent = typeof obj.intent === "string" && VALID.has(obj.intent) ? (obj.intent as FeeReply) : "neither";',
+    'const reasoning = typeof obj.reasoning === "string" ? obj.reasoning.slice(0, 200) : "";', // the model's reasoning
     '.replace(/^```(?:json)?\\s*/i, "")', // the model's JSON fence
     '.replace(/\\s*```$/i, "")', // the model's JSON fence
     "const m = cleaned.match(/\\{[\\s\\S]*\\}/);", // the model's JSON
@@ -65,6 +92,7 @@ const ALLOWED: Record<string, string[]> = {
   "src/lib/payment-claim-classifier.ts": [
     'const VALID: ReadonlySet<string> = new Set<PaymentClaimIntent>(["paid", "paid_for_others", "will_pay_direct", "other"]);', // the model's enum
     'typeof obj.intent === "string" && VALID.has(obj.intent) ? (obj.intent as PaymentClaimIntent) : "other";',
+    'const reasoning = typeof obj.reasoning === "string" ? obj.reasoning.slice(0, 200) : "";',
     '.replace(/^```(?:json)?\\s*/i, "")',
     '.replace(/\\s*```$/i, "")',
     "const m = cleaned.match(/\\{[\\s\\S]*\\}/);",
@@ -72,6 +100,7 @@ const ALLOWED: Record<string, string[]> = {
   ],
   "src/lib/payment-flow.ts": [
     'phone: a.user.phoneNumber.replace(/^\\+/, ""),', // a phone number
+    'const quantity = Number(session.metadata?.quantity ?? "1") || 1;', // Stripe's metadata, ours
   ],
   "src/lib/payments.ts": [
     'return availablePayMethods(org).includes("direct") ? text : null;', // our enum
@@ -79,6 +108,15 @@ const ALLOWED: Record<string, string[]> = {
   ],
   "src/lib/payment-claim.ts": [
     'const first = name?.trim().split(" ")[0];', // a stored name
+    '`amount=${verdict.amount ?? "-"} confidence=${verdict.confidence.toFixed(2)} reasoning=${JSON.stringify(verdict.reasoning.slice(0, 120))}`,', // the model's reasoning, logged
+  ],
+  // A REACTION is a fact WhatsApp reports (an emoji on a message we sent),
+  // not words a person typed: the yes-emoji set is allowed here, and only here.
+  "src/lib/fee-confirm-reaction.ts": [
+    'const YES_EMOJI = new Set(["✅", "👍", "👍🏻", "👍🏼", "👍🏽", "👍🏾", "👍🏿"]);',
+    'return YES_EMOJI.has((emoji ?? "").trim());',
+    "if (dispatched.key.startsWith(DISPATCH_PREFIX)) return await botJobPrompt(dispatched.key);", // our own key
+    "const botJobId = ref.slice(DISPATCH_PREFIX.length);", // our own key
   ],
 };
 
@@ -99,6 +137,14 @@ describe("the money replies are read by the model, never by code", () => {
       expect(hits.filter((l) => !allowed.includes(l))).toEqual([]);
     });
   }
+
+  for (const file of [...Object.keys(ALLOWED), "src/lib/monthly-week.ts"]) {
+    it(`${file} applies no text-tool, parse or string comparison to a person's message`, () => {
+      const allowed = ON_MESSAGE_ALLOWED[file] ?? [];
+      const hits = codeLines(readFileSync(path.join(ROOT, file), "utf8")).filter((l) => ON_MESSAGE.test(l));
+      expect(hits.filter((l) => !allowed.includes(l))).toEqual([]);
+    });
+  }
 });
 
 describe("the guard itself", () => {
@@ -109,6 +155,28 @@ describe("the guard itself", () => {
     expect(DELETED_PARSER.test("function looksLikeFeeAmount(t: string) {")).toBe(true);
     expect(TEXT_TOOL.test('if (/£/.test(text)) return true;')).toBe(true);
     expect(TEXT_TOOL.test("const isTotal = text.toLowerCase().includes('total');")).toBe(true);
+    expect(TEXT_TOOL.test("const amount = parseFloat(m[1]);")).toBe(true);
+    expect(TEXT_TOOL.test("const n = Number(digits);")).toBe(true);
+    expect(TEXT_TOOL.test("const m = AMOUNT_RE.exec(t);")).toBe(true);
+    expect(TEXT_TOOL.test("const head = t.slice(0, 3);")).toBe(true);
+  });
+  it("catches anything done to a person's message", () => {
+    for (const line of [
+      'if (text === "yes") return releaseNow(pending);',
+      'if ("✅" === reply.trim()) return;',
+      "const amount = parseFloat(text);",
+      "const n = Number(body.trim());",
+      "if (YES.has(text)) return true;",
+      "if (/£/.test(message)) return true;",
+      "const first = msg.slice(0, 3);",
+      "const x = text.trim().toLowerCase();",
+      "const parts = reply?.split(' ');",
+      "const m = AMOUNT_RE.exec(typed);",
+    ]) {
+      expect(ON_MESSAGE.test(line), line).toBe(true);
+    }
+    expect(ON_MESSAGE.test("if (!text || !text.trim()) return NEITHER(\"empty reply\");")).toBe(false);
+    expect(ON_MESSAGE.test('if (read.intent === "neither") return null;')).toBe(false);
   });
   it("ignores comments", () => {
     expect(codeLines("/* anchoredFeeReply */\n// parseFeeReply\nconst x = 1;")).toEqual(["const x = 1;"]);

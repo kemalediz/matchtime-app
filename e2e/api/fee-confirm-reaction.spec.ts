@@ -14,7 +14,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
-import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
+import { ORG_ID, PHONE } from "../helpers/constants";
 import { E2E } from "../helpers/env";
 import { clearFeeReplyStub, setFeeReplyStub } from "../helpers/stub";
 
@@ -55,12 +55,6 @@ async function react(request: APIRequestContext, body: { waMessageId: string; em
 /** The collector types an amount; the newest confirm prompt is dispatched
  *  and acked like production. Returns the id a reaction on it carries. */
 async function promptSent(request: APIRequestContext, db: TestDb, amount: string): Promise<{ wa: string; matchId: string }> {
-  // MatchTime asked for the RATE match's fee (the only one with none yet).
-  await db.run(
-    `INSERT INTO "SentNotification" (id, key, kind, "matchId", "targetUser", "createdAt") VALUES ($1, $2, 'dm', $3, $4, now() - interval '30 minutes')
-     ON CONFLICT (key) DO NOTHING`,
-    ["sn-fcr-fee-ask", `${MATCH.rate}:fee-ask`, MATCH.rate, U.collector],
-  );
   const json = await postDm(request, PHONE.collector, amount);
   expect(json.handled).toBe("collector-fee");
   const job = await db.one<{ id: string; matchId: string }>(

@@ -109,7 +109,7 @@ describe("runCollectorFeeReply, Turkish org (the model reads; stubbed here)", ()
 
   it("a Turkish total read as a total is split, not charged per head", async () => {
     const { deps, calls } = recorder(
-      { pendingMatch: async () => ({ id: "m1", name: "Cuma Maçı", feePendingConfirm: null, feeAsked: true, lang: "tr" }) },
+      { pendingMatch: async () => ({ id: "m1", name: "Cuma Maçı", feePendingConfirm: null, lang: "tr" }) },
       reading("amount", 104, "total"),
     );
     const res = await runCollectorFeeReply("toplam £104", deps);

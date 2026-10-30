@@ -533,19 +533,40 @@ describe("the amount a claim states must be what the player owes", () => {
     expect(r.calls.marked).toEqual(["m-tue"]);
   });
 
-  it("WRONG AMOUNT: a different stated amount records NOTHING, tells the collector nothing, and asks the player", async () => {
-    const r = recorder(reads("paid", 10));
+  it("UNDERPAID: a stated amount BELOW what is owed records NOTHING, tells the collector nothing, and asks the player", async () => {
+    const r = recorder(reads("paid", 5));
     const out = await runPaymentClaim(r.deps);
-    expect(out).toEqual({ handled: "paid-claim-amount-mismatch", matchId: "m-tue", stated: 10, owed: 8 });
+    expect(out).toEqual({ handled: "paid-claim-amount-mismatch", matchId: "m-tue", stated: 5, owed: 8 });
     expect(r.calls.marked).toEqual([]);
     expect(r.calls.reacted).toEqual([]);
     expect(r.calls.replies).toHaveLength(1);
-    expect(r.calls.replies[0].text).toContain("You owe *£8* for *Tuesday 7-a-side*, and you said *£10*");
+    expect(r.calls.replies[0].text).toContain("You owe *£8* for *Tuesday 7-a-side*, and you said *£5*");
     expect(r.calls.replies[0].text).toContain("I haven't told Kemal yet");
     expect(r.calls.replies[0].text).toContain("https://mt.example/s/pay");
   });
 
-  it("a will-pay with a different amount is asked too, never recorded", async () => {
+  it("OVERPAID (review of #470): a stated amount ABOVE what is owed is recorded, and the stated amount reaches the collector and the ack", async () => {
+    const stated: Array<number | null | undefined> = [];
+    const r = recorder({
+      ...reads("paid", 10),
+      markPending: async (_matchId: string, _via: string, s?: number | null) => {
+        stated.push(s);
+        return { ok: true, alreadyPending: false, amount: 8, quantity: 1, collectorNotified: true };
+      },
+    });
+    const out = await runPaymentClaim(r.deps);
+    expect(out.handled).toBe("paid-claim");
+    expect(stated).toEqual([10]);
+    expect(r.calls.replies[0].text).toContain("*£10*");
+  });
+
+  it("£8.50 against £8.33 is recorded too", async () => {
+    const r = recorder({ ...reads("paid", 8.5), owedMatch: async () => ({ ...OWED, fee: 8.33 }) });
+    expect((await runPaymentClaim(r.deps)).handled).toBe("paid-claim");
+    expect(r.calls.marked).toEqual(["m-tue"]);
+  });
+
+  it("a will-pay BELOW what is owed is asked too, never recorded", async () => {
     const r = recorder(reads("will_pay_direct", 5));
     expect((await runPaymentClaim(r.deps)).handled).toBe("paid-claim-amount-mismatch");
     expect(r.calls.marked).toEqual([]);
@@ -558,15 +579,15 @@ describe("the amount a claim states must be what the player owes", () => {
   });
 
   it("a replay of a mismatched claim is silent", async () => {
-    const r = recorder({ ...reads("paid", 10), firstSighting: async () => false });
+    const r = recorder({ ...reads("paid", 5), firstSighting: async () => false });
     expect((await runPaymentClaim(r.deps)).handled).toBe("paid-claim-replay");
     expect(r.calls.replies).toEqual([]);
   });
 
   it("the mismatch reply is in the org's language", async () => {
-    const r = recorder({ ...reads("paid", 10), owedMatch: async () => ({ ...OWED, lang: "tr" }) });
+    const r = recorder({ ...reads("paid", 5), owedMatch: async () => ({ ...OWED, lang: "tr" }) });
     await runPaymentClaim(r.deps);
-    expect(r.calls.replies[0].text).toContain("borcun *£8*, sen *£10* dedin");
+    expect(r.calls.replies[0].text).toContain("borcun *£8*, sen *£5* dedin");
   });
 });
 

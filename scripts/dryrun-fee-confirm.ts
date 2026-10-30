@@ -104,6 +104,8 @@ const howMuch = (lang: "en" | "tr"): ContextMessage => ({
   match: lang === "tr" ? MATCH_TR : MATCH_EN,
 });
 const ASKED = { en: sent(howMuch("en")), tr: sent(howMuch("tr")) };
+/** Nothing sent to him recently: the fee ask has not gone out yet. */
+const NOTHING_SENT: ReplyContext = { now: NOW, quoted: null, recent: [], earlier: null };
 
 /** Amounts: after "how much?" (nothing waiting) and in place of a waiting one. */
 const AMOUNTS: Case[] = [
@@ -121,6 +123,13 @@ const AMOUNTS: Case[] = [
   { text: "hepsi 8", want: "amount", amount: 8, amountIs: "each", pending: null, lang: "tr", ctx: ASKED.tr },
   { text: "10 kişiydik", want: "neither", pending: null, lang: "tr", ctx: ASKED.tr },
   { text: "✅", want: "neither", pending: null, ctx: ASKED.en, note: "a tick to 'how much?' is no amount" },
+  // Review of #470: typed before the fee ask went out (nothing asked yet).
+  { text: "£8 each for last night", want: "amount", amount: 8, amountIs: "each", pending: null, ctx: NOTHING_SENT, note: "unprompted" },
+  { text: "pitch was £96, split it", want: "amount", amount: 96, amountIs: "total", pending: null, ctx: NOTHING_SENT, note: "unprompted" },
+  { text: "dün akşam kişi başı 8", want: "amount", amount: 8, amountIs: "each", pending: null, lang: "tr", ctx: NOTHING_SENT, note: "unprompted" },
+  { text: "great game lads 👍", want: "neither", pending: null, ctx: NOTHING_SENT, note: "unprompted" },
+  { text: "we had 12 tonight", want: "neither", pending: null, ctx: NOTHING_SENT, note: "unprompted" },
+  { text: "sounds good 👍", want: "neither", pending: null, ctx: quoting(ratingDm("en", "2026-10-14T09:00:00Z")), note: "unprompted, swipe-reply to a rating DM" },
 ];
 
 /** What the deleted allowlist used to decide offline: the model now reads them. */

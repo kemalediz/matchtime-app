@@ -232,12 +232,6 @@ test("fee (H2): '✅' swipe-replied to a rating DM about the pending match: the 
 /** The collector types an amount: the route stages it and queues the
  *  confirm question. The Pi then sends and acks that DM (its stanza id). */
 async function stageViaRoute(request: APIRequestContext, db: TestDb, amount: string): Promise<{ id: string; stanza: string }> {
-  // The fee question for the RATE match is out (a fact the gate reads).
-  await db.run(
-    `INSERT INTO "SentNotification" (id, key, kind, "matchId", "targetUser", "createdAt") VALUES ($1, $2, 'dm', $3, $4, NOW() - interval '30 minutes')
-     ON CONFLICT (key) DO NOTHING`,
-    [`sn-qc3-fee-ask`, `${MATCH.rate}:fee-ask`, MATCH.rate, U.collector],
-  );
   const json = await postDm(request, PHONE.collector, amount);
   expect(json.handled).toBe("collector-fee");
   const job = await db.one<{ id: string; matchId: string | null; aboutKey: string | null }>(

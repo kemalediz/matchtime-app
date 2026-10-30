@@ -3285,7 +3285,7 @@ The person who collects the match fees for a football club sent MatchTime, the c
 
 MatchTime is waiting for one of two answers:
 - an amount, such as "Amount waiting for their yes: £8 per player": MatchTime told them the fee per player and how many players it will charge, and asked them to reply yes (or ✅) to send everyone their pay link now, or to send a different amount to change it.
-- "Amount waiting for their yes: none": nothing is waiting; MatchTime asked them how much each player pays for the match (or, when its message they answer names a fee and asks for their yes, that is the question).
+- "Amount waiting for their yes: none": nothing is waiting. MatchTime asked them how much each player pays for the match, or will ask them soon: they may give the fee before the question arrives. (When MatchTime's message they answer names a fee and asks for their yes, that is the question.)
 
 What does the reply say? Pick one intent:
 - "yes": send the pay links now, at the fee MatchTime asked them to confirm. A bare ✅, 👍, "ok", "yes", "tamam" or "evet" is a yes when it answers that question.
