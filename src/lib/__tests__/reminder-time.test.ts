@@ -43,3 +43,18 @@ describe("reminderInstant", () => {
     expect(r.ok && r.whenLabel).not.toMatch(/[–—]/);
   });
 });
+
+describe("the clocks-go-forward gap (review of #476)", () => {
+  it("a time that does not exist in London moves to the next valid time, and says so", () => {
+    // 2027-03-28: 01:00 GMT jumps to 02:00 BST, so 01:30 never happens.
+    const r = reminderInstant("2027-03-28 01:30", "en");
+    expect(r.ok && r.shiftedForClocks).toBe(true);
+    expect(r.ok && r.at.toISOString()).toBe("2027-03-28T01:00:00.000Z"); // 02:00 BST
+    expect(r.ok && r.whenLabel).toBe("Sun 28 Mar at 02:00");
+  });
+
+  it("an ordinary time is not shifted", () => {
+    const r = reminderInstant("2027-03-28 09:00", "en");
+    expect(r.ok && r.shiftedForClocks).toBe(false);
+  });
+});

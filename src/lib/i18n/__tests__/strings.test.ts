@@ -178,6 +178,8 @@ const SAMPLES: SampleArgs = {
   payment_ack: { firstName: "Sait", count: 3 },
   payments_live_announcement: { collector: "Kemal", card: true, bank: true, direct: true },
   reminder_ack_resolved: { whenLabel: "Thu 10 Sep at 09:00" },
+  reminder_ack_clocks: { whenLabel: "Sun 28 Mar at 02:00" },
+  reminder_past: { whenLabel: "Tue 1 Sep at 18:00" },
   reminder_ack_unresolved: { phrase: "when the fixture list is out" },
   needs_tag_for_rest: { dropped: ["Abid Hussain"], benched: ["Idris Bello"] },
   bench_claim_too_late: { firstName: "Najib", confirmed: 14, maxPlayers: 14 },

@@ -72,6 +72,9 @@ export interface PictureDeps {
   /** The serving club whose players' group this is, or null. */
   findClub(groupId: string): Promise<{ id: string } | null>;
   isOwnerOrAdmin(orgId: string, sender: PictureSender): Promise<boolean>;
+  /** A current member of the club, matched as `isOwnerOrAdmin` matches
+   *  (by phone or a stored LID pair), never by the pushname. */
+  isMember(orgId: string, sender: PictureSender): Promise<boolean>;
   /** Pictures claimed for this club on this London day. */
   readsToday(orgId: string, day: string): Promise<number>;
   /** Claim one picture. False: this message was claimed already. */
@@ -123,7 +126,9 @@ export async function checkPicture(meta: PictureMeta, { enabled, now, deps }: Op
   const sender = { senderPhone: str(meta.senderPhone), senderAltPhone: str(meta.senderAltPhone), senderLid: str(meta.senderLid) };
   if ((sender.senderPhone || sender.senderAltPhone || sender.senderLid) && (await deps.isOwnerOrAdmin(club.id, sender))) {
     why = "admin";
-  } else if (str(meta.caption)) {
+  } else if (str(meta.caption) && (sender.senderPhone || sender.senderAltPhone || sender.senderLid) && (await deps.isMember(club.id, sender))) {
+    // A KNOWN member's captioned picture (review of #476): an unidentified
+    // sender or a non-member never triggers a vision read.
     why = "caption";
   }
   if (!why) return { read: false, reason: "not-qualifying", orgId: club.id };

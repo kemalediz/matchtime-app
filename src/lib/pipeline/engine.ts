@@ -3036,6 +3036,14 @@ export function decide(input: EngineInput): EngineResult {
         // Anything outside it "is almost certainly a parse error, not a
         // real request. Stay silent rather than fire a wrong-day DM."
         const deltaMs = when.at.getTime() - input.now.getTime();
+        // ALREADY GONE ("remind me at 6", sent at 19:00): one line, not
+        // silence (review of #476). Nothing is queued.
+        if (deltaMs <= -REMINDER_PAST_GRACE_MS) {
+          out.reasons.push(`reminder time ${when.at.toISOString()} has already passed; told the sender`);
+          speech.push({ kind: "reminder_past", messageId: msg.id, whenLabel: when.whenLabel });
+          if (out.disposition !== "degraded") out.disposition = "acted";
+          return;
+        }
         if (deltaMs <= -REMINDER_PAST_GRACE_MS || deltaMs > REMINDER_MAX_AHEAD_MS) {
           degrade(
             `reminder resolves to ${when.at.toISOString()}, outside the 60-day window; refusing`,
@@ -3060,6 +3068,7 @@ export function decide(input: EngineInput): EngineResult {
           messageId: msg.id,
           phrase,
           whenLabel: when.whenLabel,
+          ...(when.shiftedForClocks ? { shiftedForClocks: true } : {}),
         });
         return;
       }

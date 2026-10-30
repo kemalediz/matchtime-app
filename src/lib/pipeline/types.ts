@@ -1775,7 +1775,10 @@ export type SpeechIntent =
    *  were a confirmation — "I'll nudge you on Monday" is not a promise
    *  anybody can check, and `route.ts:3986-3992` already says the
    *  resolved label out loud for exactly that reason. */
-  | { kind: "reminder_ack"; messageId: string; phrase: string; whenLabel: string | null }
+  | { kind: "reminder_ack"; messageId: string; phrase: string; whenLabel: string | null; shiftedForClocks?: boolean }
+  /** The time the extractor stated is already gone (2026-10-30): one line
+   *  saying so, and no reminder is queued. */
+  | { kind: "reminder_past"; messageId: string; whenLabel: string }
   /**
    * A COMPLETE SQUAD IS NOT COMPLETE ANY MORE, and there is no bench to
    * absorb it (2026-09-15). One post per batch however many rows moved.

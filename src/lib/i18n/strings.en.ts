@@ -608,6 +608,12 @@ export const en = {
   payment_ack: (p: { firstName: string; count: number }): string =>
     `Noted 🙌 ${p.firstName} covered ${p.count} ${p.count === 1 ? "player" : "players"}.`,
   reminder_ack_resolved: (p: { whenLabel: string }): string => `👍 Got it, I'll DM you ${p.whenLabel}.`,
+  /** The time asked for falls in the hour the clocks skip (2026-10-30). */
+  reminder_ack_clocks: (p: { whenLabel: string }): string =>
+    `👍 Got it. The clocks go forward that night, so I'll DM you at the next valid time, ${p.whenLabel}.`,
+  /** The time asked for has already gone (2026-10-30). Nothing is queued. */
+  reminder_past: (p: { whenLabel: string }): string =>
+    `That time has already passed (${p.whenLabel}). Tell me when again and I'll set it.`,
   reminder_ack_unresolved: (p: { phrase: string }): string => `Will do 👍 I'll give you a nudge ${p.phrase}.`,
   needs_tag_for_rest: (p: { dropped: string[]; benched: string[] }): string => {
     const parts: string[] = [];

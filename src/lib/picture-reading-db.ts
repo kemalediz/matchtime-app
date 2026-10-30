@@ -45,6 +45,19 @@ export function prismaPictureDeps(model: PipelineModel = anthropicModel()): Pict
       return !!m;
     },
 
+    async isMember(orgId: string, sender: PictureSender) {
+      const ids = await resolveSenderUserIds({
+        phones: [sender.senderPhone, sender.senderAltPhone],
+        lid: sender.senderLid ?? null,
+      });
+      if (ids.length === 0) return false;
+      const m = await db.membership.findFirst({
+        where: { orgId, userId: { in: ids }, leftAt: null, ...ORDINARY_MEMBER_WHERE },
+        select: { userId: true },
+      });
+      return !!m;
+    },
+
     readsToday(orgId, day) {
       return db.sentNotification.count({ where: { key: { startsWith: `${PICTURE_CLAIM_KIND}:${orgId}:${day}:` } } });
     },

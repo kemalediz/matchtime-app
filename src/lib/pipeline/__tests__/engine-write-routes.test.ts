@@ -162,6 +162,23 @@ describe("S22 · the extractor states the London time; code makes it an instant 
     expect(r.degradations.some((d) => /could not be resolved/i.test(d.detail))).toBe(true);
   });
 
+  it("a time already gone is answered in one line, not silence (review of #476)", () => {
+    const r = ask("at 6", {}, "2026-09-01 18:00"); // NOW is 19:00 London
+    expect(r.writes).toHaveLength(0);
+    expect(r.speech).toEqual([expect.objectContaining({ kind: "reminder_past" })]);
+  });
+
+  it("a time moved forward by the clocks is acknowledged as such", () => {
+    const r = decide({
+      now: new Date("2027-03-27T12:00:00Z"),
+      state: world({ confirmed: ["kemal"] }),
+      messages: [
+        msg({ from: "zair", body: "@Match Time remind me at 1:30 tonight", tagged: true, route: "admin_ops", facts: { kind: "admin", action: "reminder", phrase: "at 1:30 tonight", remindAt: "2027-03-28 01:30" } }),
+      ],
+    });
+    expect(r.speech).toEqual([expect.objectContaining({ kind: "reminder_ack", shiftedForClocks: true })]);
+  });
+
   it("refuses anything outside the shipped 60-day window", () => {
     const r = ask("in 80 days", {}, "2026-11-20 19:00");
     expect(r.writes).toHaveLength(0);

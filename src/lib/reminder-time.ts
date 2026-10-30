@@ -32,6 +32,9 @@ export type ReminderResolution =
       at: Date;
       /** "Mon 7 Sep at 18:00", London, in the group's language. */
       whenLabel: string;
+      /** The time asked for does not exist in London (the clocks go
+       *  forward that night) and was moved to the next valid time. */
+      shiftedForClocks: boolean;
     }
   | { ok: false; reason: string };
 
@@ -51,13 +54,29 @@ export function reminderInstant(remindAt: string, lang?: Lang | string | null): 
   if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) {
     return { ok: false, reason: `the reminder time "${raw}" is not a real date and time` };
   }
-  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00`;
-  const at = fromZonedTime(iso, LONDON);
+  const day = `${m[1]}-${m[2]}-${m[3]}`;
   // A day that does not exist ("2026-02-30") rolls over in Date: refuse it.
-  if (Number.isNaN(at.getTime()) || formatInTimeZone(at, LONDON, "yyyy-MM-dd") !== `${m[1]}-${m[2]}-${m[3]}`) {
+  const probe = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (Number.isNaN(probe.getTime()) || probe.toISOString().slice(0, 10) !== day) {
     return { ok: false, reason: `the reminder time "${raw}" is not a real date` };
   }
+  // THE CLOCKS-GO-FORWARD GAP: a wall-clock time that never happens in
+  // London (01:30 on the last Sunday of March). Moved to the next valid
+  // time, a minute at a time, and the caller says so.
+  const wall = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), h, mi);
+  let at: Date | null = null;
+  let shiftedForClocks = false;
+  for (let step = 0; step <= 120; step++) {
+    const w = new Date(wall + step * 60_000).toISOString().slice(0, 16);
+    const candidate = fromZonedTime(`${w}:00`, LONDON);
+    if (formatInTimeZone(candidate, LONDON, "yyyy-MM-dd'T'HH:mm") === w) {
+      at = candidate;
+      shiftedForClocks = step > 0;
+      break;
+    }
+  }
+  if (!at) return { ok: false, reason: `the reminder time "${raw}" does not exist in London` };
   const l = normaliseLang(lang);
   const whenLabel = l === "en" ? formatInTimeZone(at, LONDON, "EEE d MMM 'at' HH:mm") : dayTimeLabel(l, at);
-  return { ok: true, at, whenLabel };
+  return { ok: true, at, whenLabel, shiftedForClocks };
 }

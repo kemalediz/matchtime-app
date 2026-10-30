@@ -45,6 +45,7 @@ function deps(over: Partial<PictureDeps> = {}) {
   const d: PictureDeps = {
     findClub: async (g) => (g === GROUP ? { id: "org-1" } : null),
     isOwnerOrAdmin: async (_org, s) => s.senderPhone === "447700900001" || s.senderLid === "123456789",
+    isMember: async () => true,
     readsToday: async () => claimed.size,
     claim: async (_o, _d, id) => {
       if (claimed.has(id)) return false;
@@ -106,6 +107,19 @@ describe("checkPicture: which pictures are read", () => {
         why: "caption",
       });
     }
+  });
+
+  it("an unidentified sender or a non-member never triggers a read, captioned or not (review of #476)", async () => {
+    const { d } = deps({ isMember: vi.fn(async () => false) });
+    expect(await checkPicture({ ...STRANGER, caption: "Teams for tonight" }, { enabled: true, now: NOW, deps: d })).toMatchObject({
+      read: false,
+      reason: "not-qualifying",
+    });
+    const { d: d2 } = deps();
+    expect(await checkPicture({ groupId: GROUP, waMessageId: "m9", caption: "Teams" }, { enabled: true, now: NOW, deps: d2 })).toMatchObject({
+      read: false,
+      reason: "not-qualifying",
+    });
   });
 
   it("a member's picture with no caption is not read", async () => {

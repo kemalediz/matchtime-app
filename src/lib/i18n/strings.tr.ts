@@ -510,6 +510,8 @@ export const tr: Strings = {
   },
   payment_ack: (p) => `Not aldım 🙌 ${p.firstName} ${p.count} kişinin ödemesini yaptı.`,
   reminder_ack_resolved: (p) => `👍 Tamam, ${p.whenLabel} sana DM atarım.`,
+  reminder_ack_clocks: (p) => `👍 Tamam. O gece saatler ileri alınıyor, bu yüzden geçerli ilk saatte, ${p.whenLabel} sana DM atarım.`,
+  reminder_past: (p) => `O saat geçti (${p.whenLabel}). Ne zaman istediğini tekrar yaz, kurayım.`,
   reminder_ack_unresolved: (p) => `Tamam 👍 ${p.phrase} sana hatırlatırım.`,
   needs_tag_for_rest: (p) => {
     const parts: string[] = [];
