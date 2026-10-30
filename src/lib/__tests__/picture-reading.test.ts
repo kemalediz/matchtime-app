@@ -97,25 +97,35 @@ describe("checkPicture: which pictures are read", () => {
     expect(r).toEqual({ read: false, reason: "not-qualifying", orgId: "org-1" });
   });
 
-  it("anyone's picture captioned like a list or teams: read (English and Turkish)", async () => {
+  it("a member's captioned picture is read, whatever the caption says: no word list decides (2026-10-30)", async () => {
     const { d } = deps();
-    expect(await checkPicture({ ...STRANGER, caption: "Teams for tonight" }, { enabled: true, now: NOW, deps: d })).toEqual({
-      read: true,
-      orgId: "org-1",
-      why: "caption",
-    });
-    expect(await checkPicture({ ...STRANGER, caption: "Cuma kadro" }, { enabled: true, now: NOW, deps: d })).toMatchObject({
-      read: true,
-      why: "caption",
-    });
+    for (const caption of ["Teams for tonight", "Cuma kadro", "😂😂", "look at this"]) {
+      expect(await checkPicture({ ...STRANGER, caption }, { enabled: true, now: NOW, deps: d }), caption).toEqual({
+        read: true,
+        orgId: "org-1",
+        why: "caption",
+      });
+    }
   });
 
-  it("a meme from a member with a meme caption: not read", async () => {
+  it("a member's picture with no caption is not read", async () => {
     const { d } = deps();
-    expect(await checkPicture({ ...STRANGER, caption: "😂😂" }, { enabled: true, now: NOW, deps: d })).toMatchObject({
+    for (const caption of [undefined, "", "   "]) {
+      expect(await checkPicture({ ...STRANGER, caption }, { enabled: true, now: NOW, deps: d })).toMatchObject({
+        read: false,
+        reason: "not-qualifying",
+      });
+    }
+  });
+
+  it("members' captioned pictures stop at half the day's cap, so the organisers' pictures keep room", async () => {
+    const { d } = deps({ readsToday: async () => PICTURE_DAILY_CAP / 2 });
+    expect(await checkPicture({ ...STRANGER, caption: "Teams" }, { enabled: true, now: NOW, deps: d })).toEqual({
       read: false,
-      reason: "not-qualifying",
+      reason: "daily-cap",
+      orgId: "org-1",
     });
+    expect(await checkPicture(ADMIN, { enabled: true, now: NOW, deps: d })).toMatchObject({ read: true, why: "admin" });
   });
 
   it(`at ${PICTURE_DAILY_CAP} pictures today the club is at its cap`, async () => {

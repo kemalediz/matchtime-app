@@ -15,7 +15,8 @@
  *   - posted by an owner or admin of the club, matched by phone or by a
  *     LID pair the server stored itself (`resolveSenderUserIds`), never by
  *     the pushname; or
- *   - captioned like a list, team sheet or result (picture-words.ts).
+ *   - posted by anyone else WITH a caption, up to half the day's cap (no
+ *     word list on the caption since 2026-10-30).
  *
  * THE CAPS. At most `PICTURE_DAILY_CAP` pictures per club per London day,
  * counted by claim (one per WhatsApp message id, so a retry is free and
@@ -29,7 +30,6 @@
  *
  * This file is free of Prisma: the database half is `picture-reading-db.ts`.
  */
-import { captionLooksAboutGame } from "./picture-words";
 import {
   PICTURE_READING_MAX_TOKENS,
   PICTURE_READING_MODEL,
@@ -113,15 +113,21 @@ export async function checkPicture(meta: PictureMeta, { enabled, now, deps }: Op
   if (!groupId || !groupId.endsWith("@g.us") || !str(meta?.waMessageId)) return { read: false, reason: "bad-request" };
   const club = await deps.findClub(groupId);
   if (!club) return { read: false, reason: "no-club" };
-  let why: "admin" | "caption" | null = captionLooksAboutGame(meta.caption) ? "caption" : null;
-  if (!why) {
-    const sender = { senderPhone: str(meta.senderPhone), senderAltPhone: str(meta.senderAltPhone), senderLid: str(meta.senderLid) };
-    if ((sender.senderPhone || sender.senderAltPhone || sender.senderLid) && (await deps.isOwnerOrAdmin(club.id, sender))) {
-      why = "admin";
-    }
+  // FACTS ONLY (2026-10-30, "no string parsing"): an organiser's picture,
+  // or a member's picture that carries a caption. Until today a caption had
+  // to contain a game word (`picture-words.ts`, deleted); the model now
+  // reads any captioned picture and answers "Not about the game" for a
+  // meme. Members' pictures stop at half the day's cap so the organisers'
+  // own posters and team sheets always keep room.
+  let why: "admin" | "caption" | null = null;
+  const sender = { senderPhone: str(meta.senderPhone), senderAltPhone: str(meta.senderAltPhone), senderLid: str(meta.senderLid) };
+  if ((sender.senderPhone || sender.senderAltPhone || sender.senderLid) && (await deps.isOwnerOrAdmin(club.id, sender))) {
+    why = "admin";
+  } else if (str(meta.caption)) {
+    why = "caption";
   }
   if (!why) return { read: false, reason: "not-qualifying", orgId: club.id };
-  if ((await deps.readsToday(club.id, day(now))) >= PICTURE_DAILY_CAP) {
+  if ((await deps.readsToday(club.id, day(now))) >= (why === "admin" ? PICTURE_DAILY_CAP : PICTURE_DAILY_CAP / 2)) {
     return { read: false, reason: "daily-cap", orgId: club.id };
   }
   return { read: true, orgId: club.id, why };

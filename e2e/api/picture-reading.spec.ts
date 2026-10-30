@@ -3,7 +3,7 @@
  *
  *   - flag off (the production default): every answer is "flag-off";
  *   - an owner's picture is read, a member's meme is not, a member's
- *     picture captioned "Teams" is;
+ *     picture with any caption is (no caption word list since 2026-10-30);
  *   - a read claims one slot per message (a retry is a duplicate, no second
  *     model call), the club's picture cap holds at 10 a day, and the stub
  *     model's cost lands in OrgAiUsage like any other call;
@@ -70,11 +70,12 @@ test("flag off: nothing is read and nothing is counted", async ({ request, db })
   expect(await db.all(`SELECT 1 FROM "SentNotification" WHERE kind = 'picture-read'`)).toHaveLength(0);
 });
 
-test("check: the owner yes, a member's meme no, a member's 'Teams' picture yes, an unknown group no", async ({ request }) => {
+test("check: the owner yes, a member's uncaptioned picture no, a member's captioned picture yes (no word list), an unknown group no", async ({ request }) => {
   const check = (sender: string, caption?: string, groupId: string = E2E.GROUP_ID) =>
     call(request, { mode: "check", groupId, waMessageId: "c1", senderPhone: sender, caption });
   expect(await check(OWNER)).toEqual({ read: true, why: "admin" });
-  expect(await check(MEMBER, "lol")).toEqual({ read: false, reason: "not-qualifying" });
+  expect(await check(MEMBER)).toEqual({ read: false, reason: "not-qualifying" });
+  expect(await check(MEMBER, "lol")).toEqual({ read: true, why: "caption" });
   expect(await check(MEMBER, "Teams for tonight")).toEqual({ read: true, why: "caption" });
   expect(await check(OWNER, undefined, "120363999999999999@g.us")).toEqual({ read: false, reason: "no-club" });
 });

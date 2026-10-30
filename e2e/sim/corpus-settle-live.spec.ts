@@ -14,8 +14,8 @@
  *
  * It records, per run: pass/fail, every `AnalyzedMessage` row the run
  * wrote (body, intent, handledBy and the model's free-text reasoning),
- * and what `outSafetyNetSignals` makes of that reasoning. The last part
- * is the point. When a case that a deterministic backstop is supposed to
+ * (The `outSafetyNetSignals` reading of that reasoning went with the
+ * dead `out-safety-net.ts` on 2026-10-30.) When a case that a deterministic backstop is supposed to
  * catch fails anyway, the interesting question is not the p-value, it is
  * WHICH SIGNAL DID NOT FIRE — and that is only answerable if the
  * reasoning that reached the guard was kept.
@@ -35,7 +35,6 @@ import { CurrentAnalyzerPipeline } from "../corpus/current-analyzer-pipeline";
 import { gradeCase, type CorpusCase } from "../corpus/grade";
 import { describeReach, liveReachFailure, reachWatermark, readReach } from "../helpers/live-llm";
 import { runsForHalfWidth, wilson } from "../replay/floor";
-import { outSafetyNetSignals } from "../../src/lib/out-safety-net";
 
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 const FILTER = process.env.MT_CORPUS_FILTER ?? "";
@@ -55,11 +54,7 @@ interface RunRecord {
   passed: boolean;
   failures: string[];
   classification: string | null;
-  messages: Array<
-    AnalyzedRow & {
-      backstop: { strongDrop: boolean; notDropping: boolean; forceOut: boolean };
-    }
-  >;
+  messages: AnalyzedRow[];
 }
 
 (LIVE ? test.describe : test.describe.skip)("settle one corpus case (real model)", () => {
@@ -93,7 +88,7 @@ interface RunRecord {
         passed: grade.passed,
         failures: grade.failures,
         classification: grade.classification ?? null,
-        messages: rows.map((r) => ({ ...r, backstop: outSafetyNetSignals(r.reasoning) })),
+        messages: rows,
       });
       const passes = records.filter((r) => r.passed).length;
       console.log(
@@ -121,8 +116,7 @@ interface RunRecord {
     );
     lines.push(`  ${describeReach(reach)}`);
 
-    // The backstop analysis. For every FAILING run, what did the model
-    // actually say, and what did `outSafetyNetSignals` make of it?
+    // For every FAILING run, what did the model actually say?
     const failing = records.filter((r) => !r.passed);
     lines.push(`\n  failing runs: ${failing.length}`);
     for (const f of failing) {
@@ -132,28 +126,9 @@ interface RunRecord {
         lines.push(`     msg  "${(m.body ?? "").slice(0, 90)}"`);
         lines.push(`     by   handledBy=${m.handledBy} intent=${m.intent}`);
         lines.push(`     why  ${(m.reasoning ?? "(none)").slice(0, 600)}`);
-        lines.push(
-          `     net  strongDrop=${m.backstop.strongDrop} ` +
-            `notDropping=${m.backstop.notDropping} forceOut=${m.backstop.forceOut}`,
-        );
       }
     }
 
-    // The same signals across the PASSING runs, so a fired-vs-not-fired
-    // comparison has a control group rather than an anecdote.
-    const tally = { strongDrop: 0, notDropping: 0, forceOut: 0, total: 0 };
-    for (const r of records) {
-      for (const m of r.messages) {
-        tally.total += 1;
-        if (m.backstop.strongDrop) tally.strongDrop += 1;
-        if (m.backstop.notDropping) tally.notDropping += 1;
-        if (m.backstop.forceOut) tally.forceOut += 1;
-      }
-    }
-    lines.push(
-      `\n  backstop across all ${tally.total} analyzed messages: ` +
-        `strongDrop ${tally.strongDrop}, notDropping ${tally.notDropping}, forceOut ${tally.forceOut}`,
-    );
     lines.push("═".repeat(62));
     const summary = lines.join("\n");
     console.log(summary);
