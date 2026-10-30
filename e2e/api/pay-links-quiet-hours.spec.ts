@@ -8,19 +8,25 @@
  * once and says when the links go out. Outside quiet hours, or with them off,
  * nothing waits.
  *
- * The clock is pinned with `x-test-now` (MT_TEST_MODE=1). Free: no model is
- * called (the "✅" is decided by the allowlist).
+ * The clock is pinned with `x-test-now` (MT_TEST_MODE=1). Free: the "✅" is
+ * read by the fee reader, stubbed to "yes" (2026-10-30).
  */
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { MATCH, ORG_ID, PHONE, U, londonAt } from "../helpers/constants";
 import { E2E } from "../helpers/env";
+import { clearFeeReplyStub, setFeeReplyStub } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
 
 test.beforeEach(() => {
   resetDb();
+  setFeeReplyStub({ bodies: { "✅": "yes" } });
+});
+
+test.afterEach(() => {
+  clearFeeReplyStub();
 });
 
 let n = 0;

@@ -132,7 +132,7 @@ function deps(quiet: QuietHours | undefined, now: Date, lang: "en" | "tr" = "en"
       ...(quiet ? { quietHours: quiet } : {}),
     }),
     headcount: async () => 12,
-    judge: async () => "neither",
+    judge: async () => ({ intent: "yes", amount: null, amountIs: null, confidence: 0.95, reasoning: "stub" }),
     release: async () => 12,
     cancel: async () => {},
     stage: async () => {},

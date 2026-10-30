@@ -209,7 +209,7 @@ test("fee (H1): a swipe-reply to a KNOWN message about a match with nothing to r
   expect(turns(E2E.FEE_REPLY_STUB_FILE, "fee-confirm")).toHaveLength(0);
 });
 
-test("fee (H2): '✅' swipe-replied to a rating DM about the pending match is NOT the allowlist's yes: the model reads it, nothing released", async ({ request, db }) => {
+test("fee (H2): '✅' swipe-replied to a rating DM about the pending match: the model reads it with that quote, and its neither releases nothing", async ({ request, db }) => {
   await db.run(`UPDATE "Match" SET "feePendingConfirm" = 8, "feeSetByUserId" = $2 WHERE id = $1`, [MATCH.rate, U.collector]);
   const stanza = await sentSchedulerDm(db, {
     key: `${MATCH.rate}:rate-dm:${U.collector}`,
@@ -250,6 +250,9 @@ async function stageViaRoute(request: APIRequestContext, db: TestDb, amount: str
 
 test("fee (H3): the queued confirm question carries its match, so '✅' swiped to it releases THAT match, not a newer pending one", async ({ request, db }) => {
   // Only the RATE match (yesterday) has no fee yet: the amount stages there.
+  setFeeReplyStub({
+    bodies: { "£8": JSON.stringify({ intent: "amount", amount: 8, amountIs: "each", confidence: 1 }), "✅": "yes" },
+  });
   const asked = await stageViaRoute(request, db, "£8");
   const job = await db.one<{ matchId: string | null; aboutKey: string | null }>(`SELECT "matchId", "aboutKey" FROM "BotJob" WHERE id = $1`, [asked.id]);
   expect(job).toEqual({ matchId: MATCH.rate, aboutKey: `${MATCH.rate}:fee-confirm` });
@@ -264,8 +267,11 @@ test("fee (H3): the queued confirm question carries its match, so '✅' swiped t
   expect(json.handled).toBe("collector-fee");
   expect((await released(db, MATCH.rate))?.paymentLinksReleasedAt).not.toBeNull();
   expect((await released(db, newer))?.paymentLinksReleasedAt).toBeNull();
-  // The allowlist decided: the confirm question IS the fee question.
-  expect(turns(E2E.FEE_REPLY_STUB_FILE, "fee-confirm")).toHaveLength(0);
+  // The model read the ✅ with the confirm question it swipe-replied to.
+  const all = turns(E2E.FEE_REPLY_STUB_FILE, "fee-confirm");
+  expect(all).toHaveLength(2);
+  expect(all[1]).toContain("THEY ARE REPLYING TO MatchTime's message of");
+  expect(all[1]).toContain("Amount waiting for their yes: £8 per player");
 });
 
 test("fee (H3): with no quote, the NEWEST pending match wins, not the highest amount (£10 older vs £8 newer)", async ({ request, db }) => {
@@ -276,6 +282,7 @@ test("fee (H3): with no quote, the NEWEST pending match wins, not the highest am
     [older, ACTIVITY_ID, U.collector],
   );
   await db.run(`UPDATE "Match" SET "feePendingConfirm" = 8, "feeSetByUserId" = $2 WHERE id = $1`, [MATCH.rate, U.collector]);
+  setFeeReplyStub({ bodies: { "✅": "yes" } });
   const json = await postDm(request, PHONE.collector, "✅");
   expect(json.handled).toBe("collector-fee");
   expect((await released(db, MATCH.rate))?.paymentLinksReleasedAt).not.toBeNull();
@@ -285,6 +292,7 @@ test("fee (H3): with no quote, the NEWEST pending match wins, not the highest am
 test("fee (idempotent): two '✅' at once, or a Pi redelivery, release the links ONCE", async ({ request, db }) => {
   await db.run(`UPDATE "Match" SET "feePendingConfirm" = 8, "feeSetByUserId" = $2 WHERE id = $1`, [MATCH.rate, U.collector]);
   const before = await db.one<{ n: number }>(`SELECT COUNT(*)::int AS n FROM "BotJob" WHERE phone = $1`, [digits(PHONE.player)]);
+  setFeeReplyStub({ bodies: { "✅": "yes" } });
   const send = (id: string) =>
     request.post("/api/whatsapp/dm-reply", {
       headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
@@ -308,6 +316,7 @@ test("fee: the collector's ack is queued under the MATCH's club and names the ma
     [OTHER.match, U.collector],
   );
   await db.run(`UPDATE "Match" SET "feePendingConfirm" = 8, "feeSetByUserId" = $2 WHERE id = $1`, [MATCH.rate, U.collector]);
+  setFeeReplyStub({ bodies: { "✅": "yes" } });
   const json = await postDm(request, PHONE.collector, "✅");
   expect(json.handled).toBe("collector-fee");
   expect((await released(db, OTHER.match))?.paymentLinksReleasedAt).not.toBeNull();

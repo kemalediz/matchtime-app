@@ -984,8 +984,8 @@ export const FEE_REPLY_WINDOW_MS = 15 * 60 * 1000;
  * ONLY when every one of these holds. Anything else does nothing, and the
  * collector sets a fee by typing an amount, as in the weekly flow.
  *
- *   - the reply is the explicit yes of the fee question's own menu (the
- *     whole-body allowlist, `anchoredFeeReply`). An amount is not this
+ *   - the reply is a yes to the fee question, as the fee reader (a model,
+ *     `fee-confirm.ts`) read it. An amount is not this
  *     path's business: the weekly path stages the amount they typed;
  *   - the question was handed to the Pi (`askedAt`), and is not known to
  *     have FAILED (`unsent`: the Pi acked it with no message id);

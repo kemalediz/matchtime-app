@@ -3280,24 +3280,33 @@ Fri 11 Sep at 18:00
 Tue 15 Sep at 11:00
 
 ### R98 FEE_REPLY_SYSTEM_PROMPT
-The person who collects the match fees for a football club sent MatchTime, the club's WhatsApp bot, the private reply under "THEIR REPLY". MatchTime had told them the fee per player for a match and how many players it will charge, and asked them to reply yes (or ✅) to send everyone their pay link now, or to send a different amount to change it. Above the reply you get that match, the amount waiting for their yes, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent.
+The person who collects the match fees for a football club sent MatchTime, the club's WhatsApp bot, the private reply under "THEIR REPLY". Above it you get the match, what MatchTime is waiting for from them, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent.
 
-Is the reply a direct answer to that fee question? Pick one:
-- "yes": send the pay links now, at the amount waiting.
+MatchTime is waiting for one of two answers:
+- an amount, such as "Amount waiting for their yes: £8 per player": MatchTime told them the fee per player and how many players it will charge, and asked them to reply yes (or ✅) to send everyone their pay link now, or to send a different amount to change it.
+- "Amount waiting for their yes: none": nothing is waiting. MatchTime asked them how much each player pays for the match, or will ask them soon: they may give the fee before the question arrives. (When MatchTime's message they answer names a fee and asks for their yes, that is the question.)
+
+What does the reply say? Pick one intent:
+- "yes": send the pay links now, at the fee MatchTime asked them to confirm. A bare ✅, 👍, "ok", "yes", "tamam" or "evet" is a yes when it answers that question.
 - "no": do not send them, or not yet.
-- "neither": anything else. Chat, thanks, banter, a question of their own, news about a player, a plan to deal with it later, or an answer to a different message. A 👍, ✅, "ok" or "yes" inside a sentence about something else is not an answer, and the "no" in "no worries" is not a refusal.
+- "amount": they state the fee, or a new fee in place of the one waiting. Put the number in "amount", in pounds (8, 10.5), and in "amountIs" say whether it is what "each" player pays or the "total" to split between the players (the pitch cost, "altogether", "split"). If they only give a number, it is "each".
+- "neither": anything else. Chat, thanks, banter, a question of their own, news about a player, a plan to deal with it later, a number that is not a fee (how many played, a score), or an answer to a different message. A 👍, ✅, "ok" or "yes" inside a sentence about something else is not an answer, and the "no" in "no worries" is not a refusal.
 
-Which message the reply answers: the one they swipe-replied to; otherwise the newest of MatchTime's recent messages, unless their words plainly answer an earlier one (such as "send the links"). A reply to any message other than the fee question is "neither". A plain go-ahead ("perfect 👍", "all good, go") swipe-replied to the fee question is "yes". If none of MatchTime's messages is known, read the reply against the fee question.
+Which message the reply answers: the one they swipe-replied to; otherwise the newest of MatchTime's recent messages, unless their words plainly answer an earlier one (such as "send the links"). A reply to any message other than the fee question is "neither". If none of MatchTime's messages is known, read the reply against the fee question.
+
+If a "yes" also names an amount ("yes £8 is right"), put that amount in "amount" and "amountIs" too. Otherwise leave both null.
 
 Examples (English | Turkish):
-yes: "yeah go on then" | "tamam, yolla gitsin"; "go ahead and send them" | "evet evet at hepsine"; "that's right, fire them out" | "doğru, gönderebilirsin"; "correct, send the links" | "evet gönder"
-no: "hold off for now" | "şimdilik bekle"; "not yet, let me count the cash first" | "bekle, parayı bir sayayım"; "leave it till tomorrow" | "yarına kadar gönderme"; "don't send them" | "daha gönderme"
-neither: "great game 👍" | "harika maç 👍"; "cheers lads, great game 👍" | "eline sağlık beyler 👍"; "ok so I'll sort it tomorrow" | "tamam yarın hallederim"; "yes, Elvin still collects it" | "evet, parayı Elvin topluyor"; "how many are paying?" | "kaç kişi ödüyor?"; "no worries mate, great game" | "sorun yok kardeşim, güzel maçtı"; "sure will do"; "yes pls, can you share the name?"; "✅ means that player has been accepted"; "did Wasim turn up in the end?"; "make it £12" | "£12 yap" (an amount is handled elsewhere); "yes" answering a request to rate teammates
+yes: "✅" | "✅ evet"; "ok" | "tamam"; "ok send them" | "tamam gönder"; "yeah go on then" | "tamam, yolla gitsin"; "go ahead and send them" | "evet evet at hepsine"; "that's right, fire them out" | "doğru, gönderebilirsin"; "perfect 👍" swipe-replied to the fee question | "süper 👍" swipe-replied to the fee question
+no: "no" | "hayır"; "hold off for now" | "şimdilik bekle"; "not yet, let me count the cash first" | "bekle, parayı bir sayayım"; "don't send them" | "daha gönderme"
+amount, each: "£8" | "8 sterlin"; "8 each" | "kişi başı 8"; "make it £12" | "£12 yap"; "✅ actually make it £12" | "✅ yok 12 olsun"; "everyone pays 8" | "hepsi 8"
+amount, total: "£80 total" | "toplam £80"; "the pitch was 96, split it" | "saha 96, bölüşelim"
+neither: "great game 👍" | "harika maç 👍"; "ok so I'll sort it tomorrow" | "tamam yarın hallederim"; "yes, Elvin still collects it" | "evet, parayı Elvin topluyor"; "how many are paying?" | "kaç kişi ödüyor?"; "no worries mate, great game" | "sorun yok kardeşim, güzel maçtı"; "we had 10 players" | "10 kişiydik"; "did Wasim turn up in the end?" | "Wasim geldi mi sonunda?"; "yes" answering a request to rate teammates
 
-If you are not at least 80% sure, choose "neither". A wrong "yes" asks up to 13 real people for money at a moment the collector did not choose, and cannot be undone. A wrong "no" throws away the amount they typed. A wrong "neither" costs them one re-typed message, the cheapest of the three.
+If you are not at least 80% sure, choose "neither". A wrong "yes" asks up to 13 real people for money at a moment the collector did not choose, and cannot be undone. A wrong "amount" makes MatchTime ask about a fee they never gave. A wrong "neither" costs them one re-typed message, the cheapest of all.
 
 Output STRICT JSON only, no markdown, no fences:
-{"intent": "yes" | "no" | "neither", "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}
+{"intent": "yes" | "no" | "amount" | "neither", "amount": <number or null>, "amountIs": "each" | "total" | null, "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}
 
 ### R91 buildRatingDm
 🏆 *Tuesday 7-a-side*, Tue 8 Sep

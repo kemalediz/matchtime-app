@@ -7,9 +7,9 @@
  *   1. the words a Turkish DM tells the player to type are the words the
  *      reader accepts (*EVET* / *VARIM* / *YOKUM*, "mesajları aç",
  *      "puanlamayı aç", ✅ / "evet" for the collector);
- *   2. the money path: Turkish "evet" / "tamam" / "✅" / "hayır" behave
- *      like their English counterparts, and "harika maç 👍" releases
- *      nothing, exactly as "great game 👍" does;
+ *   2. the money path: the collector's reply is read by the model
+ *      (`fee-confirm.ts`, 2026-10-30) and a Turkish org's replies and
+ *      acks are in Turkish; a Turkish total is split, not charged per head;
  *   3. the English behaviour is untouched: a Turkish word means nothing
  *      to an English org's readers;
  *   4. the two places where English prose doubles as a key (the roster
@@ -17,9 +17,8 @@
  *      are built from the same table entry as the message.
  */
 import { describe, it, expect } from "vitest";
-import { anchoredFeeReply, buildFeeReplySystemPrompt, FEE_REPLY_SYSTEM_PROMPT } from "../fee-confirm";
+import { buildFeeReplySystemPrompt, FEE_REPLY_SYSTEM_PROMPT, type FeeReplyRead } from "../fee-confirm";
 import { runCollectorFeeReply, type CollectorFeeDeps } from "../payment-flow";
-import { parseFeeReply } from "../payments";
 import {
   buildFeeConfirmPrompt,
   buildRosterSurveyClarification,
@@ -35,52 +34,17 @@ import { buildLegacyFeatureMenu, legacyEventQuestion, legacySetupLang } from "..
 
 // ── 1. the money path ────────────────────────────────────────────────
 
-describe("fee confirmation, Turkish: the anchored allowlist", () => {
-  for (const yes of ["evet", "Evet", "EVET", "evet.", "tamam", "Tamam!", "tamamdır", "tmm", "✅", "👍", "✅ evet", "evet ✅", "evet gönder", "gönder", "olur", "onaylıyorum", "ok"]) {
-    it(`${JSON.stringify(yes)} is a yes for a Turkish org`, () => {
-      expect(anchoredFeeReply(yes, "tr")).toBe("yes");
-    });
-  }
-  for (const no of ["hayır", "HAYIR", "Hayır.", "hayir", "yok", "bekle", "iptal", "dur", "şimdi değil", "henüz değil", "❌", "👎", "❌ hayır", "no"]) {
-    it(`${JSON.stringify(no)} is a no for a Turkish org`, () => {
-      expect(anchoredFeeReply(no, "tr")).toBe("no");
-    });
-  }
-  for (const neither of [
-    "harika maç 👍",
-    "harika maç",
-    "eline sağlık 👍",
-    "tamam yarın hallederim",
-    "evet, parayı Elvin topluyor",
-    "kaç kişi ödüyor?",
-    "hayır ✅",
-    "👍❌",
-    "e",
-    "süper",
-    "tamam 12",
-  ]) {
-    it(`${JSON.stringify(neither)} abstains (the fragment rule holds in Turkish)`, () => {
-      expect(anchoredFeeReply(neither, "tr")).toBeNull();
-    });
-  }
-
-  it("an English org does not read Turkish words: 'evet' and 'hayır' abstain", () => {
-    expect(anchoredFeeReply("evet", "en")).toBeNull();
-    expect(anchoredFeeReply("hayır", "en")).toBeNull();
-    expect(anchoredFeeReply("evet")).toBeNull();
-  });
-
-  it("an English org still reads its own words exactly as before", () => {
-    expect(anchoredFeeReply("yes", "en")).toBe("yes");
-    expect(anchoredFeeReply("✅")).toBe("yes");
-    expect(anchoredFeeReply("great game 👍", "en")).toBeNull();
-    expect(anchoredFeeReply("no", "en")).toBe("no");
-  });
-});
-
 const AMOUNT = 8;
 
-function recorder(over: Partial<CollectorFeeDeps> = {}) {
+const reading = (intent: FeeReplyRead["intent"], amount: number | null = null, amountIs: "each" | "total" | null = null): FeeReplyRead => ({
+  intent,
+  amount,
+  amountIs,
+  confidence: 0.95,
+  reasoning: "stub",
+});
+
+function recorder(over: Partial<CollectorFeeDeps> = {}, read: FeeReplyRead = reading("neither")) {
   const calls = {
     released: [] as Array<{ matchId: string; amount: number }>,
     cancelled: [] as string[],
@@ -90,9 +54,9 @@ function recorder(over: Partial<CollectorFeeDeps> = {}) {
   const deps: CollectorFeeDeps = {
     pendingMatch: async () => ({ id: "m1", name: "Cuma Maçı", feePendingConfirm: AMOUNT, lang: "tr" }),
     headcount: async () => 13,
-    judge: async (text, _amount, _name, lang) => {
-      calls.judged.push({ text, lang });
-      return "neither";
+    judge: async (text, ask) => {
+      calls.judged.push({ text, lang: ask.lang });
+      return read;
     },
     release: async (matchId, amount) => {
       calls.released.push({ matchId, amount });
@@ -109,93 +73,49 @@ function recorder(over: Partial<CollectorFeeDeps> = {}) {
   return { deps, calls };
 }
 
-describe("runCollectorFeeReply, Turkish org", () => {
-  for (const yes of ["evet", "tamam", "✅"]) {
-    it(`${JSON.stringify(yes)} releases the links like "yes" does, without the model, and replies in Turkish`, async () => {
-      const { deps, calls } = recorder();
-      const res = await runCollectorFeeReply(yes, deps);
-      expect(calls.released).toEqual([{ matchId: "m1", amount: AMOUNT }]);
-      expect(calls.judged).toEqual([]);
-      expect(res?.reply).toContain("13 ödeme linki gönderdim");
-    });
-  }
+describe("runCollectorFeeReply, Turkish org (the model reads; stubbed here)", () => {
+  it("a yes releases the links and replies in Turkish; the model is told the org's language", async () => {
+    const { deps, calls } = recorder({}, reading("yes"));
+    const res = await runCollectorFeeReply("evet", deps);
+    expect(calls.released).toEqual([{ matchId: "m1", amount: AMOUNT }]);
+    expect(calls.judged).toEqual([{ text: "evet", lang: "tr" }]);
+    expect(res?.reply).toContain("13 ödeme linki gönderdim");
+  });
 
-  it('"hayır" cancels like "no" does, and replies in Turkish', async () => {
-    const { deps, calls } = recorder();
+  it("a no cancels and replies in Turkish", async () => {
+    const { deps, calls } = recorder({}, reading("no"));
     const res = await runCollectorFeeReply("hayır", deps);
     expect(calls.cancelled).toEqual(["m1"]);
     expect(calls.released).toEqual([]);
     expect(res?.reply).toBe(t("tr").dm_fee_cancelled);
   });
 
-  it('"harika maç 👍" releases NOTHING (the model is asked, in Turkish, and says neither)', async () => {
-    const { deps, calls } = recorder();
-    const res = await runCollectorFeeReply("harika maç 👍", deps);
+  it('"harika maç 👍" read as neither releases NOTHING', async () => {
+    const { deps, calls } = recorder({}, reading("neither"));
+    expect(await runCollectorFeeReply("harika maç 👍", deps)).toBeNull();
     expect(calls.released).toEqual([]);
     expect(calls.cancelled).toEqual([]);
-    expect(res).toBeNull();
-    expect(calls.judged).toEqual([{ text: "harika maç 👍", lang: "tr" }]);
   });
 
-  it('"harika maç 👍" releases nothing even when the model is unreachable', async () => {
+  it("releases nothing when the model is unreachable", async () => {
     const { deps, calls } = recorder({
       judge: async () => {
         throw new Error("anthropic is down");
       },
     });
-    expect(await runCollectorFeeReply("harika maç 👍", deps)).toBeNull();
+    expect(await runCollectorFeeReply("evet", deps)).toBeNull();
     expect(calls.released).toEqual([]);
   });
 
-  it("a Turkish total is split, not charged per head", async () => {
-    const { deps, calls } = recorder({
-      pendingMatch: async () => ({ id: "m1", name: "Cuma Maçı", feePendingConfirm: null, lang: "tr" }),
-    });
+  it("a Turkish total read as a total is split, not charged per head", async () => {
+    const { deps, calls } = recorder(
+      { pendingMatch: async () => ({ id: "m1", name: "Cuma Maçı", feePendingConfirm: null, lang: "tr" }) },
+      reading("amount", 104, "total"),
+    );
     const res = await runCollectorFeeReply("toplam £104", deps);
     expect(calls.staged).toEqual([{ matchId: "m1", perPlayer: 8 }]);
     expect(res?.reply).toContain("kişi başı *£8* (13 kişiye bölündü)");
     expect(res?.reply).toContain('*✅* (ya da "evet")');
-  });
-
-  it("a Turkish per-head amount with no £ is still captured", async () => {
-    const { deps, calls } = recorder({
-      pendingMatch: async () => ({ id: "m1", name: "Cuma Maçı", feePendingConfirm: null, lang: "tr" }),
-    });
-    await runCollectorFeeReply("kişi başı 8", deps);
-    expect(calls.staged).toEqual([{ matchId: "m1", perPlayer: 8 }]);
-  });
-
-  it("an English org's collector is unaffected: no lang means English", async () => {
-    const { deps, calls } = recorder({
-      pendingMatch: async () => ({ id: "m1", name: "Tuesday 7-a-side", feePendingConfirm: AMOUNT }),
-    });
-    const res = await runCollectorFeeReply("yes", deps);
-    expect(calls.released).toHaveLength(1);
-    expect(res?.reply).toContain("13 pay links");
-    expect(await runCollectorFeeReply("evet", recorder({
-      pendingMatch: async () => ({ id: "m1", name: "Tuesday 7-a-side", feePendingConfirm: AMOUNT }),
-    }).deps)).toBeNull();
-  });
-});
-
-describe("parseFeeReply, Turkish totals", () => {
-  it("toplam / bölüş / saha mean a total for a Turkish org", () => {
-    expect(parseFeeReply("toplam £80", 10, "tr")).toEqual({ perPlayer: 8, wasTotal: true });
-    expect(parseFeeReply("80 bölüşelim", 10, "tr")).toEqual({ perPlayer: 8, wasTotal: true });
-    expect(parseFeeReply("£80, bölüşülsün", 10, "tr")).toEqual({ perPlayer: 8, wasTotal: true });
-    expect(parseFeeReply("saha 80", 10, "tr")).toEqual({ perPlayer: 8, wasTotal: true });
-    expect(parseFeeReply("kişi başı £8", 10, "tr")).toEqual({ perPlayer: 8, wasTotal: false });
-  });
-  it('"hepsi" (all of them) is NOT a total: "hepsi 8" is £8 a head, never 61p', () => {
-    expect(parseFeeReply("hepsi 8", 13, "tr")).toEqual({ perPlayer: 8, wasTotal: false });
-    expect(parseFeeReply("hepsi 8 pound", 13, "tr")).toEqual({ perPlayer: 8, wasTotal: false });
-  });
-  it('"toplam 104" still splits', () => {
-    expect(parseFeeReply("toplam 104", 13, "tr")).toEqual({ perPlayer: 8, wasTotal: true });
-  });
-  it("an English org's parse is unchanged", () => {
-    expect(parseFeeReply("toplam £80", 10)).toEqual({ perPlayer: 80, wasTotal: false });
-    expect(parseFeeReply("£80 total", 10)).toEqual({ perPlayer: 8, wasTotal: true });
   });
 });
 

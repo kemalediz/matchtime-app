@@ -1,13 +1,13 @@
 /**
  * Payments — pricing + fee parsing (2026-06-03).
  *
- * Pure helpers, no Stripe, no DB. Two jobs:
- *   1. Turn a base per-player fee into the THREE method prices, in a
- *      surcharge-compliant way (UK: you can't add a card surcharge, but
- *      you CAN discount cheaper methods — so card is the standard/highest
- *      price and the others are discounts from it).
- *   2. Parse what the money collector texts back ("£8", "8 each",
- *      "£112 total") into a per-player base fee.
+ * Pure helpers, no Stripe, no DB. Turns a base per-player fee into the
+ * method prices, in a surcharge-compliant way (UK: you can't add a card
+ * surcharge, but you CAN discount cheaper methods, so card is the
+ * standard/highest price and the others are discounts from it).
+ *
+ * What the money collector texts back ("£8", "8 each", "£112 total") is
+ * read by the model (`fee-confirm.ts`, 2026-10-30), never parsed here.
  *
  * Money is handled in pounds (Float) at this layer; the Stripe layer
  * converts to integer pence at charge time.
@@ -158,48 +158,6 @@ export function totalForMethod(baseFee: number, method: PayMethod, quantity: num
 export function platformFeePence(baseFee: number, method: PayMethod, quantity: number): number {
   if (method === "direct") return 0;
   return Math.round(baseFee * Math.max(1, quantity) * PLATFORM_FEE_RATE * 100);
-}
-
-export interface ParsedFee {
-  /** Per-player base fee in £ (already divided if the collector gave a total). */
-  perPlayer: number;
-  /** True when the collector gave a TOTAL to split rather than a per-head amount. */
-  wasTotal: boolean;
-}
-
-/** Turkish "this is the total" markers: toplam, bölüş(elim/ülsün/tür),
- *  saha (the pitch). Letter-bounded, not `\b` (ş, ü). NOT "hepsi" ("all of
- *  them"): "hepsi 8" means £8 EACH as often as not, and reading it as a
- *  total would charge 61p a head. */
-const TR_TOTAL = /(?<!\p{L})(?:toplam\p{L}*|b[öo]l[üu][şs]\p{L}*|saha(?:ya|n[ıi]n)?)(?!\p{L})/u;
-
-/**
- * Parse the money collector's chat reply into a per-player base fee.
- * Handles: "£8", "8", "8 each", "8 per person", "£8.50", "8 quid",
- * "£112 total", "112 split", "split 112". When a total is given, divide
- * by `headcount` (the players who'll be charged) — caller supplies it.
- * Returns null if no sensible amount found.
- */
-export function parseFeeReply(text: string, headcount: number, lang: "en" | "tr" = "en"): ParsedFee | null {
-  const t = text.toLowerCase().trim();
-  // Grab the first money-looking number (allow £ and decimals).
-  const numMatch = t.match(/£?\s*(\d+(?:\.\d{1,2})?)/);
-  if (!numMatch) return null;
-  const amount = parseFloat(numMatch[1]);
-  if (!isFinite(amount) || amount <= 0 || amount > 1000) return null;
-
-  const isTotal =
-    /\b(total|split|altogether|in total|the pitch|pitch (was|cost))\b/.test(t) ||
-    // Turkish (Phase 3, a Turkish org only): "toplam £80", "80 bölüşelim",
-    // "saha 80". Without this a Turkish TOTAL would be charged PER HEAD.
-    (lang === "tr" && TR_TOTAL.test(text.toLocaleLowerCase("tr")));
-  if (isTotal) {
-    if (headcount <= 0) return null;
-    const per = Math.round((amount / headcount) * 100) / 100;
-    return { perPlayer: per, wasTotal: true };
-  }
-  // Otherwise treat as per-player ("8", "8 each", "£8.50 pp").
-  return { perPlayer: amount, wasTotal: false };
 }
 
 /** Format £ cleanly: £8, £8.50, £8.40. */

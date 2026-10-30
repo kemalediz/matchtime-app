@@ -19,10 +19,9 @@
  *               links, so "great game 👍" charged 8-13 real people, and
  *               an unanchored word list made "ok so I'll sort it
  *               tomorrow" a yes. Replaced by `lib/fee-confirm.ts`: an
- *               anchored whole-body allowlist first, the model only for
- *               what it abstains on. That one is an ARGUED hybrid
- *               rather than a straight deletion — the argument is at
- *               `FEE_CONFIRM_ANCHORS_BEFORE_IT_ASKS`.
+ *               anchored whole-body allowlist first, the model for the
+ *               rest. On 2026-10-30 the allowlist went too: the model
+ *               reads every reply, and code gates on facts only.
  *
  * Every one had the same shape: two or three keyword tests ANDed over a
  * whole body, standing in for reading a sentence. This file asserts the
@@ -109,18 +108,15 @@ describe("the deleted conjunction classifiers have ZERO callers", () => {
     // regression.
     expect(code).not.toMatch(/\/\[[^\]]*[\u2705\u2714\u{1F44D}][^\]]*\]\/u?\.test/u);
     expect(code).not.toMatch(/\^\(yes\|/);
-    // …and the replacement is wired in.
-    expect(code).toContain("anchoredFeeReply");
+    // …and the model's reading is wired in (2026-10-30: no allowlist).
+    expect(code).toContain("classifyFeeReply");
+    expect(code).not.toContain("anchoredFeeReply");
   });
 
-  it("the money path's replacement carries its argument, not just its code", () => {
+  it("the money path's reader names the facts that gate it", () => {
     const fee = fs.readFileSync(path.join(REPO, "src", "lib", "fee-confirm.ts"), "utf8");
-    expect(fee).toContain("FEE_CONFIRM_ANCHORS_BEFORE_IT_ASKS");
-    // The measured history, so nobody re-argues this from imagination.
-    expect(fee).toContain("6   fee-confirmation prompts ever sent");
-    // Both directions priced, and the failure direction named.
-    expect(fee).toMatch(/A WRONG RELEASE costs/);
-    expect(fee).toMatch(/A WRONG REFUSAL costs/);
+    expect(fee).not.toMatch(/function anchoredFeeReply/);
+    expect(fee).toMatch(/WHAT STILL KEEPS THE MONEY SAFE IS CODE, ON FACTS/);
   });
 
   it("the personal-stats regex is gone from the analyze route, and its tombstone stays (2026-09-17)", () => {

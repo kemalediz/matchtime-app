@@ -25,6 +25,8 @@ import { db } from "./db";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { ALREADY_PAID_REASON, payBlockedReason } from "./payment-outcome";
 import { buildDirectPayCollectorNotice } from "./dm-copy";
+import { gbp } from "./payments";
+import { t } from "./i18n/t";
 import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf } from "./message-hours";
 
 /** Which door the player came through. Only the collector's wording
@@ -126,6 +128,10 @@ export async function markDirectPaymentPending(input: {
   matchId: string;
   quantity?: number;
   via: DirectPaymentVia;
+  /** The amount a "Paid" DM said, in pounds, when it said one and it is
+   *  more than what is owed (review of #470): the collector's notice says
+   *  it, so he knows what to look for. */
+  statedAmount?: number | null;
 }): Promise<DirectPendingOutcome> {
   const { userId, matchId, via } = input;
   const ctx = await resolvePayContext(userId, matchId);
@@ -206,7 +212,10 @@ export async function markDirectPaymentPending(input: {
             url: await buildShortMagicLinkUrl(token),
             claimedPaid: via === "dm-claim",
             lang: org.language,
-          }),
+          }) +
+            (input.statedAmount != null && Math.abs(input.statedAmount - amount) >= 0.005
+              ? t(org.language).dm_direct_pay_notice_stated({ stated: gbp(input.statedAmount) })
+              : ""),
           // About a claim the player has just made (a "Paid" DM or the pay
           // page's button): a conversational send (dm-reply-priority.ts).
           ...REPLY_PRIORITY,

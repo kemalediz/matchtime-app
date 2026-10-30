@@ -76,9 +76,10 @@ describe("confirmCollectorFeeByReaction", () => {
     // Scoped to the clubs this user collects for, and to THIS match.
     expect(orgFindMany.mock.calls[0][0].where).toEqual({ paymentHolderId: "kemal", paymentCollectionEnabled: true });
     expect(matchFindFirst.mock.calls[0][0].where).toMatchObject({ id: "m1", paymentLinksReleasedAt: null });
-    // Compare-and-set: only while the links have not gone out.
+    // Compare-and-set: only while the links have not gone out, and only at
+    // the amount still waiting (review of #470).
     expect(matchUpdateMany).toHaveBeenCalledTimes(1);
-    expect(matchUpdateMany.mock.calls[0][0].where).toEqual({ id: "m1", paymentLinksReleasedAt: null });
+    expect(matchUpdateMany.mock.calls[0][0].where).toEqual({ id: "m1", paymentLinksReleasedAt: null, feePendingConfirm: 10.15 });
     expect(matchUpdateMany.mock.calls[0][0].data).toMatchObject({
       feePerPlayer: 10.15,
       feePendingConfirm: null,

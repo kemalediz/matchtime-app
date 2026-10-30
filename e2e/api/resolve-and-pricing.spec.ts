@@ -15,7 +15,7 @@ import { test, expect, resetDb } from "../fixtures";
 import { REPO_ROOT } from "../helpers/env";
 // Static import — Playwright's transform only rewrites the "@/" alias for
 // static imports; a runtime `await import("@/…")` fails to resolve.
-import { totalForMethod, priceMethods, platformFeePence, parseFeeReply } from "@/lib/payments";
+import { totalForMethod, priceMethods, platformFeePence } from "@/lib/payments";
 
 const execFileAsync = promisify(execFile);
 
@@ -57,11 +57,5 @@ test.describe("payments pricing (single oracle for page + charge)", () => {
     // priceMethods respects the org's enabled set + canonical ordering.
     const prices = priceMethods(8, ["card", "direct"]);
     expect(prices.map((p) => p.method)).toEqual(["card", "direct"]);
-  });
-
-  test("parseFeeReply: per-head vs total-split", async () => {
-    expect(parseFeeReply("£8 each", 10)).toEqual({ perPlayer: 8, wasTotal: false });
-    expect(parseFeeReply("80 total", 10)).toEqual({ perPlayer: 8, wasTotal: true });
-    expect(parseFeeReply("no numbers here", 10)).toBeNull();
   });
 });

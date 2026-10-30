@@ -518,3 +518,127 @@ describe("every verdict is logged, `other` included", () => {
     expect(info.mock.calls.some((c) => c.join(" ").includes("[payment-claim] verdict"))).toBe(false);
   });
 });
+
+// ── P5 (2026-10-30): the stated amount, and one adversarial test per gate ──
+
+const reads = (intent: PaymentClaimIntent, amount: number | null) => ({
+  classify: async (): Promise<PaymentClaimClassification> => ({ intent, amount, confidence: 0.95, reasoning: "stub" }),
+});
+
+describe("the amount a claim states must be what the player owes", () => {
+  it("a stated amount equal to the fee is recorded as before", async () => {
+    const r = recorder(reads("paid", 8));
+    const out = await runPaymentClaim(r.deps);
+    expect(out.handled).toBe("paid-claim");
+    expect(r.calls.marked).toEqual(["m-tue"]);
+  });
+
+  it("UNDERPAID: a stated amount BELOW what is owed records NOTHING, tells the collector nothing, and asks the player", async () => {
+    const r = recorder(reads("paid", 5));
+    const out = await runPaymentClaim(r.deps);
+    expect(out).toEqual({ handled: "paid-claim-amount-mismatch", matchId: "m-tue", stated: 5, owed: 8 });
+    expect(r.calls.marked).toEqual([]);
+    expect(r.calls.reacted).toEqual([]);
+    expect(r.calls.replies).toHaveLength(1);
+    expect(r.calls.replies[0].text).toContain("You owe *£8* for *Tuesday 7-a-side*, and you said *£5*");
+    expect(r.calls.replies[0].text).toContain("I haven't told Kemal yet");
+    expect(r.calls.replies[0].text).toContain("https://mt.example/s/pay");
+  });
+
+  it("OVERPAID (review of #470): a stated amount ABOVE what is owed is recorded, and the stated amount reaches the collector and the ack", async () => {
+    const stated: Array<number | null | undefined> = [];
+    const r = recorder({
+      ...reads("paid", 10),
+      markPending: async (_matchId: string, _via: string, s?: number | null) => {
+        stated.push(s);
+        return { ok: true, alreadyPending: false, amount: 8, quantity: 1, collectorNotified: true };
+      },
+    });
+    const out = await runPaymentClaim(r.deps);
+    expect(out.handled).toBe("paid-claim");
+    expect(stated).toEqual([10]);
+    expect(r.calls.replies[0].text).toContain("*£10*");
+  });
+
+  it("£8.50 against £8.33 is recorded too", async () => {
+    const r = recorder({ ...reads("paid", 8.5), owedMatch: async () => ({ ...OWED, fee: 8.33 }) });
+    expect((await runPaymentClaim(r.deps)).handled).toBe("paid-claim");
+    expect(r.calls.marked).toEqual(["m-tue"]);
+  });
+
+  it("a will-pay BELOW what is owed is asked too, never recorded", async () => {
+    const r = recorder(reads("will_pay_direct", 5));
+    expect((await runPaymentClaim(r.deps)).handled).toBe("paid-claim-amount-mismatch");
+    expect(r.calls.marked).toEqual([]);
+  });
+
+  it("the guest count already chosen counts: £16 for two places matches", async () => {
+    const r = recorder({ ...reads("paid", 16), owedMatch: async () => ({ ...OWED, amountOwed: 16 }) });
+    expect((await runPaymentClaim(r.deps)).handled).toBe("paid-claim");
+    expect(r.calls.marked).toEqual(["m-tue"]);
+  });
+
+  it("a replay of a mismatched claim is silent", async () => {
+    const r = recorder({ ...reads("paid", 5), firstSighting: async () => false });
+    expect((await runPaymentClaim(r.deps)).handled).toBe("paid-claim-replay");
+    expect(r.calls.replies).toEqual([]);
+  });
+
+  it("the mismatch reply is in the org's language", async () => {
+    const r = recorder({ ...reads("paid", 5), owedMatch: async () => ({ ...OWED, lang: "tr" }) });
+    await runPaymentClaim(r.deps);
+    expect(r.calls.replies[0].text).toContain("borcun *£8*, sen *£5* dedin");
+  });
+});
+
+describe("adversarial: every gate holds even when the model says paid", () => {
+  it("WRONG SENDER: the club's own collector is never a payer (pickClaimMatch drops his org)", () => {
+    const row: OwedMatchRow = { matchId: "m1", date: new Date(), fee: 8, activityName: "Tue", orgId: "o", lang: "en", collectorId: "u-col", collectorName: "Col" };
+    expect(pickClaimMatch([row], "u-col")).toBeNull();
+  });
+
+  it("NO OPEN QUESTION: nothing owed (no released pay link) → the model is never asked, nothing written", async () => {
+    const r = recorder({ ...reads("paid", null), owedMatch: async () => null });
+    expect((await runPaymentClaim(r.deps)).handled).toBeNull();
+    expect(r.calls.classified).toBe(0);
+    expect(r.calls.marked).toEqual([]);
+    expect(r.calls.replies).toEqual([]);
+  });
+
+  it('A "NO" READ: "haven\'t paid yet" read as other writes nothing and replies nothing', async () => {
+    const r = recorder(reads("other", null));
+    expect((await runPaymentClaim(r.deps)).handled).toBeNull();
+    expect(r.calls.marked).toEqual([]);
+    expect(r.calls.replies).toEqual([]);
+  });
+
+  it("MODEL FAILURE: a thrown classifier writes nothing and replies nothing", async () => {
+    const r = recorder({
+      classify: async () => {
+        throw new Error("overloaded");
+      },
+    });
+    expect((await runPaymentClaim(r.deps)).handled).toBeNull();
+    expect(r.calls.marked).toEqual([]);
+    expect(r.calls.replies).toEqual([]);
+  });
+});
+
+describe("parsePaymentClaim reads the stated amount from the model's output only", () => {
+  it("passes a real amount through", () => {
+    expect(parsePaymentClaim('{"intent":"paid","amount":8,"confidence":0.95}')).toMatchObject({ intent: "paid", amount: 8 });
+  });
+  it("null when none is stated", () => {
+    expect(parsePaymentClaim('{"intent":"paid","amount":null,"confidence":0.95}')).toMatchObject({ intent: "paid", amount: null });
+    expect(parsePaymentClaim('{"intent":"paid","confidence":0.95}')).toMatchObject({ intent: "paid", amount: null });
+  });
+  it("a garbled amount (negative, zero, over £1,000, a string) is `other`, never a bare claim", () => {
+    for (const amount of [-8, 0, 5000, "8"]) {
+      expect(parsePaymentClaim(JSON.stringify({ intent: "paid", amount, confidence: 0.95 })).intent).toBe("other");
+    }
+  });
+  it("the prompt asks for the amount, and never to copy it from what they owe", () => {
+    expect(buildPaymentClaimSystemPrompt()).toContain('"amount": <number or null>');
+    expect(buildPaymentClaimSystemPrompt()).toContain("Never copy it from what they owe");
+  });
+});

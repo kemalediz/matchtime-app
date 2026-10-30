@@ -28,40 +28,37 @@ const VALID: ReadonlySet<string> = new Set<PaymentClaimIntent>(["paid", "paid_fo
 /**
  * The prompt. One prompt for every org: a Sutton player writes Turkish as
  * readily as a Turkish club's player writes English, so the examples are
- * English and Turkish side by side.
+ * English and Turkish side by side. The examples use a collector called
+ * Sam, so the live check's Raihan cases prove the rule rather than echo an
+ * example.
  *
- * Rewritten whole, and shorter, on 2026-10-18 (Feroz, FNF): "I bank
- * transferred Raihan" was read as `other` because the model was never told
- * Raihan is the money collector. The user turn now names the collector and
- * the context does the work; each intent is defined once. `will_pay_direct`
- * (Kemal, same day) is the pay page's "Pay the collector directly" button
- * said in words. The examples use a collector called Sam, so the live
- * check's Raihan cases prove the rule rather than echo an example.
- *
- * Rewritten whole again on 2026-10-20 (quoted-reply context, slice S2): the
- * context is now the shared block (`reply-context.ts`): the time now, and
- * the message they swipe-replied to, or else MatchTime's recent messages to
- * them. A bare "done" answers the quoted message, or else the newest one.
+ * Rewritten whole on 2026-10-30 (P5 of the "no string parsing" sweep): it
+ * now also says the AMOUNT the player states, if any, so code can check it
+ * against what he owes (`payment-claim.ts`) instead of anything reading
+ * his words. Before that: 2026-10-18 (the collector named in the context,
+ * `will_pay_direct`), 2026-10-20 (the shared chat-context block).
  */
 export function buildPaymentClaimSystemPrompt(): string {
   return `A player who owes a match fee sent MatchTime, their football club's bot, the private WhatsApp message under "THE DM". Above it you get what they owe, "Money collector:" (the club member the fees are paid to, through MatchTime's pay link or directly by cash or bank transfer), the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent and what it was about.
 
-What is the player telling us about paying? Pick one:
+What is the player telling us about paying? Pick one intent:
 - "paid": they say they have paid their own fee to the club: to the money collector (by name, even a first name or with a Turkish ending), "you", "the organiser", or nobody named. A bare "done" or "tamam" counts only if it answers a MatchTime message about paying: the one they swipe-replied to, or else the newest recent one.
 - "paid_for_others": they have paid, and it covers somebody else too, or instead.
 - "will_pay_direct": they have not paid yet but say they will pay the money collector directly (by name, or "the organiser"), by cash or transfer.
 - "other": anything else. A plan that does not say they will pay the collector directly, a question, a denial, a complaint, a payment made at an earlier time, a payment to someone who is not the money collector (or to anyone, when the collector is not known), or a message about something else.
 
+amount: the amount of money the message says they paid or will pay, in pounds (8, 10.5), when it states one. null when it states none, which is most messages. Never copy it from what they owe.
+
 Examples, if the money collector is Sam (English | Turkish):
-paid: "Paid" | "ödedim"; "sent it" | "gönderdim abi"; "transferred" | "havale yaptım"; "bank transferred Sam" | "Sam'e havale yaptım"; "paid Sam cash" | "Sam'e elden verdim"
+paid: "Paid" | "ödedim"; "sent it" | "gönderdim abi"; "transferred" | "havale yaptım"; "bank transferred Sam" | "Sam'e havale yaptım"; "paid Sam cash" | "Sam'e elden verdim"; "sent Sam £8" (amount 8) | "Sam'e 8 pound attım" (amount 8)
 paid_for_others: "paid for me and my mate" | "ikimizin parasını gönderdim"
-will_pay_direct: "will send Sam tonight" | "akşam Sam'e atarım"; "I'll give the organiser cash" | "organizatöre elden veririm"
+will_pay_direct: "will send Sam tonight" | "akşam Sam'e atarım"; "I'll give the organiser £8 cash" (amount 8) | "organizatöre elden veririm"
 other: "I'll pay later" | "sonra öderim"; "haven't paid yet" | "daha ödemedim"; "how much do I owe?" | "ne kadar borcum var?"; "did you get my payment?" | "parayı aldın mı?"; "did Sam get it?" | "Sam'e geçti mi?"; "paid last week" | "geçen hafta ödedim"; "paid Ali" | "Ali'ye verdim"; "👍"; "done 👍" answering a request to rate teammates
 
 If you are not at least 80% sure, choose "other": a wrong "other" only means they say it again.
 
 Output STRICT JSON only, no markdown, no fences:
-{"intent": "paid" | "paid_for_others" | "will_pay_direct" | "other", "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}`;
+{"intent": "paid" | "paid_for_others" | "will_pay_direct" | "other", "amount": <number or null>, "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}`;
 }
 
 /** The model, as one function, so a test can drive the real parse
@@ -84,11 +81,22 @@ export interface PaymentClaimContext {
 
 export interface PaymentClaimClassification {
   intent: PaymentClaimIntent;
+  /** The amount the message states they paid or will pay, in pounds, or
+   *  null when it states none (or the model's figure was not a real
+   *  amount). Code compares it with what they owe (`payment-claim.ts`). */
+  amount?: number | null;
   confidence: number;
   reasoning: string;
 }
 
-const OTHER = (reasoning: string): PaymentClaimClassification => ({ intent: "other", confidence: 0, reasoning });
+const OTHER = (reasoning: string): PaymentClaimClassification => ({ intent: "other", amount: null, confidence: 0, reasoning });
+
+/** A stated amount, checked: a positive number of pounds up to £1,000,
+ *  to the penny; null when it is not one. */
+function statedAmount(v: unknown): number | null {
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > 1000) return null;
+  return Math.round(v * 100) / 100;
+}
 
 /** Exported for unit tests. The JSON contract is load-bearing. */
 export function parsePaymentClaim(rawText: string): PaymentClaimClassification {
@@ -116,9 +124,15 @@ export function parsePaymentClaim(rawText: string): PaymentClaimClassification {
   const confidence = typeof obj.confidence === "number" ? Math.max(0, Math.min(1, obj.confidence)) : 0;
   const reasoning = typeof obj.reasoning === "string" ? obj.reasoning.slice(0, 200) : "";
   if (intent !== "other" && confidence < PAYMENT_CLAIM_MIN_CONFIDENCE) {
-    return { intent: "other", confidence, reasoning: `[low-confidence forced] ${reasoning}` };
+    return { intent: "other", amount: null, confidence, reasoning: `[low-confidence forced] ${reasoning}` };
   }
-  return { intent, confidence, reasoning };
+  if (intent === "other") return { intent, amount: null, confidence, reasoning };
+  // A figure that is not a real amount is a reading we cannot trust: `other`.
+  const stated = obj.amount === null || obj.amount === undefined ? null : statedAmount(obj.amount);
+  if (stated === null && obj.amount !== null && obj.amount !== undefined) {
+    return { intent: "other", amount: null, confidence, reasoning: `[bad amount forced] ${reasoning}` };
+  }
+  return { intent, amount: stated, confidence, reasoning };
 }
 
 /**
@@ -143,7 +157,12 @@ function stubCall(env: NodeJS.ProcessEnv): PaymentClaimCall | null {
   return dmClassifierStubCall(env[PAYMENT_CLAIM_STUB_FILE_ENV], {
     label: "payment-claim",
     header: MESSAGE_HEADER,
-    answer: (intent) => JSON.stringify({ intent: intent ?? "other", confidence: 1, reasoning: "payment-claim stub" }),
+    // A label is an intent, or the model's whole JSON (starting "{") when a
+    // spec needs a stated amount.
+    answer: (label) =>
+      label?.trim().startsWith("{")
+        ? label
+        : JSON.stringify({ intent: label ?? "other", amount: null, confidence: 1, reasoning: "payment-claim stub" }),
   });
 }
 

@@ -100,6 +100,16 @@
  * every verdict is logged, `other` included: "I bank transferred Raihan"
  * was read as paying some other person and left no trace.
  *
+ * THE AMOUNT A DM STATES (2026-10-30, P5 of the "no string parsing"
+ * sweep). The model also says the amount the DM states, if any ("sent Sam
+ * £10"). Code compares it with what the player owes. LESS than owed
+ * records NOTHING and tells the collector nothing; the player is asked to
+ * say so if they paid it all, or to pay the rest by the link. At or ABOVE
+ * what is owed is recorded (review of #470: "gave Sam a tenner" for £8),
+ * and the collector's notice and the player's ack say the amount stated.
+ * Several weeks in one amount is not split: it is recorded against the
+ * newest match owed, like any claim. No amount stated is the usual case.
+ *
  * PAYING FOR SOMEONE ELSE ("paid for me and my mate"): its own intent,
  * `paid_for_others`. Nothing is written, because MatchTime does not
  * guess how many people a payment covered. The player is sent their pay
@@ -112,6 +122,7 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { buildPaidClaimAck, buildPaidForOthersReply } from "./dm-copy";
 import { markDirectPaymentPending, type DirectPaymentVia, type DirectPendingOutcome } from "./direct-payment";
 import { gbp } from "./payments";
+import { t } from "./i18n/t";
 import { withOrgAiBudget } from "./ai-budget";
 import {
   classifyPaymentClaimDetailed,
@@ -157,6 +168,9 @@ export interface OwedMatchRow {
   lang: Lang;
   collectorId: string | null;
   collectorName: string | null;
+  /** What this player owes for it in total: the fee, times the guest
+   *  count already chosen when they are settling directly. Absent: the fee. */
+  amountOwed?: number;
 }
 
 export interface OwedMatch {
@@ -168,6 +182,8 @@ export interface OwedMatch {
   fee: number;
   lang: Lang;
   collectorName: string | null;
+  /** What they owe in total (see `OwedMatchRow.amountOwed`). Absent: `fee`. */
+  amountOwed?: number;
 }
 
 /** The most recent match still owed; the collector never owes their own
@@ -189,6 +205,7 @@ export function pickClaimMatch(rows: OwedMatchRow[], userId: string, quotedMatch
     fee: r.fee,
     lang: r.lang,
     collectorName: r.collectorName,
+    ...(r.amountOwed != null ? { amountOwed: r.amountOwed } : {}),
   };
 }
 
@@ -230,7 +247,7 @@ export interface PaymentClaimDeps {
    *  own implementation. Never sets paidAt. `via` picks the collector's
    *  wording: "dm-claim" ("says they've paid you") or "dm-will-pay"
    *  ("says they'll pay you", the button's own). */
-  markPending: (matchId: string, via: DirectPaymentVia) => Promise<DirectPendingOutcome>;
+  markPending: (matchId: string, via: DirectPaymentVia, statedAmount?: number | null) => Promise<DirectPendingOutcome>;
   /** The player's pay link for this match. Sends nothing. */
   payLink: (matchId: string) => Promise<string>;
   /** The ONE private reply, to the player. */
@@ -253,6 +270,9 @@ export type PaymentClaimResult =
       reactionQueued: boolean;
     }
   | { handled: "paid-claim-for-others"; matchId: string }
+  /** The DM stated an amount that is not what they owe: nothing recorded,
+   *  the player asked again. */
+  | { handled: "paid-claim-amount-mismatch"; matchId: string; stated: number; owed: number }
   | { handled: "paid-claim-replay" }
   | { handled: "paid-claim-blocked"; reason: string }
   | { handled: null };
@@ -279,7 +299,7 @@ export async function runPaymentClaim(deps: PaymentClaimDeps): Promise<PaymentCl
   // was read as `other` and left no trace at all (FNF 2026-10-18).
   console.info(
     `[payment-claim] verdict user=${deps.userId} match=${owed.matchId} intent=${verdict.intent} ` +
-      `confidence=${verdict.confidence.toFixed(2)} reasoning=${JSON.stringify(verdict.reasoning.slice(0, 120))}`,
+      `amount=${verdict.amount ?? "-"} confidence=${verdict.confidence.toFixed(2)} reasoning=${JSON.stringify(verdict.reasoning.slice(0, 120))}`,
   );
   const intent: PaymentClaimIntent = verdict.intent;
   if (intent === "other") return NOT_HANDLED;
@@ -301,8 +321,28 @@ export async function runPaymentClaim(deps: PaymentClaimDeps): Promise<PaymentCl
     return { handled: "paid-claim-for-others", matchId: owed.matchId };
   }
 
+  // THE AMOUNT GATE: a stated amount below what they owe (by a penny or
+  // more) records nothing; the player is asked. At or above is recorded.
+  const owedTotal = owed.amountOwed ?? owed.fee;
+  const stated = verdict.amount ?? null;
+  if (stated != null && owedTotal - stated >= 0.005) {
+    const url = await deps.payLink(owed.matchId);
+    await deps.reply({
+      orgId: owed.orgId,
+      text: t(owed.lang).dm_paid_claim_amount_mismatch({
+        firstName: firstNameOf(deps.playerName),
+        collectorName: firstNameOf(owed.collectorName),
+        owed: gbp(owedTotal),
+        stated: gbp(stated),
+        activityName: owed.activityName,
+        url,
+      }),
+    });
+    return { handled: "paid-claim-amount-mismatch", matchId: owed.matchId, stated, owed: owedTotal };
+  }
+
   const willPay = intent === "will_pay_direct";
-  const marked = await deps.markPending(owed.matchId, willPay ? "dm-will-pay" : "dm-claim");
+  const marked = await deps.markPending(owed.matchId, willPay ? "dm-will-pay" : "dm-claim", stated);
   if (!marked.ok) {
     // Paid or blocked between the gate and the write. Silent, and handled:
     // falling through would hand "Paid" to a tentative follow-up or a
@@ -315,7 +355,8 @@ export async function runPaymentClaim(deps: PaymentClaimDeps): Promise<PaymentCl
     text: buildPaidClaimAck({
       playerName: deps.playerName,
       collectorName: owed.collectorName,
-      amount: marked.amount,
+      // More than owed: the ack names what they said they paid.
+      amount: stated != null && stated > marked.amount ? stated : marked.amount,
       activityName: owed.activityName,
       alreadyPending: marked.alreadyPending,
       willPay,
@@ -336,6 +377,13 @@ export async function runPaymentClaim(deps: PaymentClaimDeps): Promise<PaymentCl
     collectorNotified: marked.collectorNotified,
     reactionQueued,
   };
+}
+
+/** A stored name's first word, as the other payment DMs greet people
+ *  (a name we hold, never a message's text). */
+function firstNameOf(name: string | null | undefined): string | null {
+  const first = name?.trim().split(" ")[0];
+  return first ? first : null;
 }
 
 // ── THE DATABASE WIRING ──────────────────────────────────────────────
@@ -385,6 +433,8 @@ export async function handlePaymentClaimDm(input: {
         },
         select: {
           directPendingAt: true,
+          paymentMethod: true,
+          paymentQuantity: true,
           match: {
             select: {
               id: true,
@@ -410,6 +460,11 @@ export async function handlePaymentClaimDm(input: {
           lang: normaliseLang(r.match.activity.org.language),
           collectorId: r.match.activity.org.paymentHolderId,
           collectorName: null,
+          // Already settling directly with guests: the count they chose
+          // (`markDirectPaymentPending` keeps it), else one place.
+          amountOwed:
+            (r.match.feePerPlayer ?? 0) *
+            (r.paymentMethod === "direct" && r.directPendingAt != null ? Math.max(1, r.paymentQuantity ?? 1) : 1),
         })),
         userId,
         input.quoted?.matchId,
@@ -446,7 +501,7 @@ export async function handlePaymentClaimDm(input: {
         throw err;
       }
     },
-    markPending: (matchId, via) => markDirectPaymentPending({ userId, matchId, via }),
+    markPending: (matchId, via, statedAmount) => markDirectPaymentPending({ userId, matchId, via, statedAmount }),
     payLink: async (matchId) => (await import("./pay-link")).buildPayLinkUrl(userId, matchId),
     reply: async ({ orgId, text: replyText }) => {
       await db.botJob.create({ data: { orgId, kind: "dm", phone: replyPhone, text: replyText, ...REPLY_PRIORITY } });

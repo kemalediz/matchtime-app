@@ -178,7 +178,7 @@ export function clearDmIntentStub(): void {
  * `other`, which writes nothing.
  */
 export interface PaymentClaimStub {
-  /** Trimmed DM body → "paid" | "paid_for_others" | "other". */
+  /** Trimmed DM body → "paid" | "paid_for_others" | "will_pay_direct" | "other", or the model's whole JSON (starting "{") for a stated amount. */
   bodies?: Record<string, string>;
   /** Bodies whose model CALL throws. */
   fail?: string[];
@@ -207,8 +207,9 @@ export function clearMatchAvailabilityStub(): void {
 }
 
 /** The FEE-REPLY stub (quoted-reply context S3): the collector's reply →
- *  "yes" | "no" | "neither". `{}` means "neither", which moves no money. */
-export function setFeeReplyStub(stub: { bodies?: Record<string, "yes" | "no" | "neither">; fail?: string[] }): void {
+ *  "yes" | "no" | "neither", or the model's whole JSON (starting "{") for
+ *  an amount (2026-10-30). `{}` means "neither", which moves no money. */
+export function setFeeReplyStub(stub: { bodies?: Record<string, string>; fail?: string[] }): void {
   mkdirSync(path.dirname(E2E.FEE_REPLY_STUB_FILE), { recursive: true });
   writeFileSync(E2E.FEE_REPLY_STUB_FILE, JSON.stringify(stub, null, 2));
 }

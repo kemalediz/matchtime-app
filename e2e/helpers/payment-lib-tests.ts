@@ -13,7 +13,8 @@
  *      that set it.
  *   3. Duplicate + out-of-order deliveries are no-ops (Stripe retries).
  *   4. The card happy path still marks paid (no regression).
- *   5. Only the org's money collector can set a match fee.
+ *   5. Only the org's money collector can set a match fee, and only what
+ *      the (stubbed) model read.
  *
  * The Stripe API is NEVER called: sessions are plain objects, exactly as
  * they arrive in a webhook payload.
@@ -187,6 +188,20 @@ async function main() {
     ok("session without matchId/userId metadata → ignored");
   }
 
+  // ── THE COLLECTOR'S REPLIES ARE READ BY THE MODEL (2026-10-30) ────
+  //   Stubbed throughout (no model is reachable and none is paid for):
+  //   the stub says what the model read; the gates, the writes and the
+  //   release run for real against the database. A body the stub does not
+  //   map is `neither`.
+  const feeStub = join(tmpdir(), `mt-fee-reply-${process.pid}.json`);
+  const amount = (n: number, is: "each" | "total" = "each") =>
+    JSON.stringify({ intent: "amount", amount: n, amountIs: is, confidence: 1, reasoning: "stub" });
+  const setFeeStub = (bodies: Record<string, string>, fail: string[] = []) => {
+    writeFileSync(feeStub, JSON.stringify({ bodies, fail }));
+    process.env[FEE_REPLY_STUB_FILE_ENV] = feeStub;
+  };
+  setFeeStub({ "£50 each": amount(50), "£7 each": amount(7), "✅": "yes" });
+
   // ── 10. Only the money collector can set a fee ─────────────────────
   {
     const notCollector = await handleCollectorFeeReply(U.player, "£50 each");
@@ -200,7 +215,7 @@ async function main() {
     ok("non-collector cannot set a match fee");
   }
 
-  // ── 11. …and the collector still can (happy path intact) ───────────
+  // ── 11. …and the collector still can, before or after MatchTime asks ──
   {
     const asCollector = await handleCollectorFeeReply(U.collector, "£7 each");
     assert.ok(asCollector, "the collector's amount is captured");
@@ -220,35 +235,20 @@ async function main() {
   //   unanchored prefix and "ok so I'll sort it tomorrow". Both are
   //   proven here against a REAL database, with the pending £7 from
   //   assertion 11 still staged.
-  //   The classifier is STUBBED to `neither` throughout, so this is a
-  //   test of the deterministic layer and nothing else — no model is
-  //   reachable and none is paid for. What the real model does with
-  //   these three is validated separately, live, by
-  //   `scripts/dryrun-fee-confirm.ts`.
+  //   The model's reading of each is stubbed to `neither` (the stub maps
+  //   none of them); what the real model does with these three is
+  //   validated separately, live, by `scripts/dryrun-fee-confirm.ts`.
   {
     const payLinkCount = () =>
       db.botJob.count({ where: { kind: "dm", text: { contains: "match fee for" } } });
     const before = await payLinkCount();
-
-    const stub = join(tmpdir(), `mt-fee-reply-neither-${process.pid}.json`);
-    writeFileSync(stub, JSON.stringify({ bodies: {} }));
-    process.env[FEE_REPLY_STUB_FILE_ENV] = stub;
-    try {
-      for (const fragment of [
-        "great game 👍",
-        "ok so I'll sort it tomorrow",
-        "no worries mate, great game",
-      ]) {
-        const res = await handleCollectorFeeReply(U.collector, fragment);
-        assert.equal(res, null, `${JSON.stringify(fragment)} must not be a fee instruction`);
-      }
-    } finally {
-      delete process.env[FEE_REPLY_STUB_FILE_ENV];
-      try {
-        unlinkSync(stub);
-      } catch {
-        /* best effort */
-      }
+    for (const fragment of [
+      "great game 👍",
+      "ok so I'll sort it tomorrow",
+      "no worries mate, great game",
+    ]) {
+      const res = await handleCollectorFeeReply(U.collector, fragment);
+      assert.equal(res, null, `${JSON.stringify(fragment)} must not be a fee instruction`);
     }
     const m = await db.match.findUnique({
       where: { id: MATCH.rate },
@@ -264,10 +264,8 @@ async function main() {
   // ── 13. …and an unreachable classifier releases nothing either ─────
   //   The new failure mode, in the direction it is supposed to fail.
   {
-    const stub = join(tmpdir(), `mt-fee-reply-stub-${process.pid}.json`);
-    writeFileSync(stub, JSON.stringify({ fail: ["cheers mate, go for it"] }));
-    process.env[FEE_REPLY_STUB_FILE_ENV] = stub;
-    try {
+    setFeeStub({ "£7 each": amount(7), "✅": "yes" }, ["cheers mate, go for it"]);
+    {
       const res = await handleCollectorFeeReply(U.collector, "cheers mate, go for it");
       assert.equal(res, null, "a thrown classifier is not a yes");
       const m = await db.match.findUnique({
@@ -278,10 +276,10 @@ async function main() {
       assert.equal(m?.paymentLinksReleasedAt, null, "no links were released");
       ok("a classifier that throws releases nothing and leaves the fee pending");
 
-      // …and the anchored path does NOT depend on it: the stub is still
-      // installed (so no real model is reachable) and ✅ still works.
+      // …and once the model is back, ✅ read as yes releases at the
+      // amount that was pending.
       const yes = await handleCollectorFeeReply(U.collector, "✅");
-      assert.ok(yes, "✅ is still a confirmation");
+      assert.ok(yes, "✅ read as yes is a confirmation");
       assert.ok((yes!.released ?? 0) > 0, "…and it released real pay links");
       const after = await db.match.findUnique({
         where: { id: MATCH.rate },
@@ -290,14 +288,7 @@ async function main() {
       assert.equal(after?.feePerPlayer, 7, "the fee is set at the amount that was pending");
       assert.equal(after?.feePendingConfirm, null, "…and nothing is left pending");
       assert.ok(after?.paymentLinksReleasedAt, "…and the release is stamped");
-      ok("✅ still releases with the model unreachable (the happy path is offline)");
-    } finally {
-      delete process.env[FEE_REPLY_STUB_FILE_ENV];
-      try {
-        unlinkSync(stub);
-      } catch {
-        /* best effort */
-      }
+      ok("✅ read as yes releases the pending amount");
     }
   }
 
@@ -366,6 +357,7 @@ async function main() {
     });
     const payers = confirmed.filter((a) => a.userId !== U.third);
     const total = payers.length * 10;
+    setFeeStub({ [`£${total} total`]: amount(total, "total"), "✅": "yes" });
     const staged = await handleCollectorFeeReply(U.collector, `£${total} total`);
     assert.ok(staged, "the total is staged");
     assert.ok(staged!.reply.includes(`${payers.length} players to charge`), `split across the ${payers.length} who pay: ${staged!.reply}`);
@@ -385,6 +377,13 @@ async function main() {
   }
 
   // Leave the fixture world as we found it — later specs assume the seed.
+  delete process.env[FEE_REPLY_STUB_FILE_ENV];
+  try {
+    unlinkSync(feeStub);
+    unlinkSync(`${feeStub}.calls`);
+  } catch {
+    /* best effort */
+  }
   await db.match.update({
     where: { id: MATCH.rate },
     data: {
