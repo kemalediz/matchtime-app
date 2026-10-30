@@ -26,7 +26,7 @@
  */
 import { test, expect, resetDb } from "../fixtures";
 import { createGroup, type SimPlayerSpec } from "./group";
-import { otherFacts, selfIn, selfOut } from "../helpers/stub";
+import { addMatchAvailabilityBodies, otherFacts, selfIn, selfOut } from "../helpers/stub";
 import { E2E } from "../helpers/env";
 
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
@@ -135,6 +135,8 @@ const SHEET: Record<string, "RED" | "YELLOW"> = {
     expect(offers.map((o) => o.replacingUserId)).toEqual([g.player("abid").userId]);
 
     // 08:05: Ozgur claims from the bench.
+    // The bench offer's "reply YES", read by the model (stubbed) since 2026-10-30.
+    addMatchAvailabilityBodies({ YES: "in" });
     const claim = await g.dm("ozgur", "YES");
     expect(claim.json.result).toBe("confirmed");
     const announce = claim.groupPosts.find((t) => t.includes("Ozgur Tan"));
@@ -191,6 +193,7 @@ const SHEET: Record<string, "RED" | "YELLOW"> = {
     await g.post("abid", "out", OUT);
     expect(await g.openOffers()).toHaveLength(2);
 
+    addMatchAvailabilityBodies({ YES: "in" });
     const dm = (key: string) => {
       const p = g.player(key);
       return request.post("/api/whatsapp/dm-reply", {

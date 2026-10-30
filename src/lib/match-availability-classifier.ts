@@ -48,6 +48,7 @@
  * imports the exact production prompt without importing Prisma.
  */
 import { dmClassifierStubCall } from "./dm-classifier-stub";
+import { firstJsonObject } from "./model-json";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 import { noReplyContext, renderReplyContext, type ReplyContext } from "./reply-context";
 
@@ -243,13 +244,9 @@ export function parse(rawText: string): MatchAvailabilityClassification {
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    const m = cleaned.match(/\{[\s\S]*\}/);
-    if (!m) return UNCLEAR("parse failed");
-    try {
-      parsed = JSON.parse(m[0]);
-    } catch {
-      return UNCLEAR("parse failed");
-    }
+    // The first complete object in the model's answer (`model-json.ts`).
+    parsed = firstJsonObject(cleaned);
+    if (parsed === null) return UNCLEAR("parse failed");
   }
   if (!parsed || typeof parsed !== "object") return UNCLEAR("not an object");
   const obj = parsed as Record<string, unknown>;

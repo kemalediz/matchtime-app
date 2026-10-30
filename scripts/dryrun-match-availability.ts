@@ -225,6 +225,61 @@ const CASES: Case[] = [
 ];
 
 /** HELD OUT: phrasings in neither prompt, so a pass is generalising. */
+/** The bench offer, a queued BotJob: a place has opened, reply YES. */
+const benchMsg = (lang: "en" | "tr"): ContextMessage => ({
+  at: new Date("2026-10-19T16:45:00Z"),
+  text: t(lang).dm_bench_offer({
+    firstName: lang === "en" ? "Ian" : "Emre",
+    context: lang === "en" ? "in Tuesday 7-a-side (Tue 20 Oct, 20:00)" : "Salı Halısaha (20 Eki Sal, 20:00)",
+    reactions: false,
+  }),
+  topic: null,
+  match: lang === "en" ? TUE : SALI,
+});
+const BENCH_EN: Ctx = { ...EN_MATCH, currentStatus: "on the bench", replyContext: sent(benchMsg("en")), oldAsked: true, label: "bench offer" };
+const BENCH_TR: Ctx = { ...TR_MATCH, currentStatus: "on the bench", replyContext: sent(benchMsg("tr")), oldAsked: true, label: "bench offer" };
+/** The coded partner ask: no context at all (`handleCodedPartnerAskDm`). */
+/** The coded partner ask: his DM is read against the ask as posted (`loadAskForDm`). */
+const ASK_POST: ContextMessage = {
+  at: new Date("2026-10-19T15:00:00Z"),
+  text: t("en").xask_post({ asker: "Riverside FC", places: 1, day: "Tue 20 Oct, 20:00", venue: "Goals Sutton", format: "7-a-side", fee: null, link: "https://wa.me/447700900555?text=IN%20(ref%20K7Q2)", prefill: "IN (ref K7Q2)" }),
+  topic: null,
+  match: null,
+};
+const CODED_EN: Ctx = { clubName: "Riverside FC", matchName: "Riverside FC", matchWhen: "Tue 20 Oct, 20:00", replyContext: quoting(ASK_POST), oldAsked: false, label: "coded partner ask, read against the ask" };
+
+/**
+ * 2026-10-30, the no-string-parsing sweep: what the deleted word lists
+ * used to decide WITHOUT the model (the bench offer's yes or no, the
+ * tentative follow-up's fast path, the cold DM IN and OUT, the
+ * hypothetical seatbelt), now the model's.
+ */
+const NO_REGEX: Case[] = [
+  { text: "yes", want: "in", ctx: BENCH_EN },
+  { text: "YES", want: "in", ctx: BENCH_EN },
+  { text: "👍", want: "in", ctx: BENCH_EN },
+  { text: "I'll take it", want: "in", ctx: BENCH_EN },
+  { text: "no", want: "out", ctx: BENCH_EN },
+  { text: "can't make it", want: "out", ctx: BENCH_EN },
+  { text: "maybe", want: "unclear", ctx: BENCH_EN },
+  { text: "EVET", want: "in", ctx: BENCH_TR },
+  { text: "tamam abi", want: "in", ctx: BENCH_TR },
+  { text: "hayır", want: "out", ctx: BENCH_TR },
+  { text: "in", want: "in", ctx: TENT_EN },
+  { text: "VARIM", want: "in", ctx: TENT_TR },
+  { text: "YOKUM", want: "out", ctx: TENT_TR },
+  { text: "evet", want: "in", ctx: TENT_TR },
+  { text: "belki", want: "unclear", ctx: TENT_TR },
+  { text: "IN", want: "in", ctx: INVITE_EN },
+  { text: "count me out", want: "out", ctx: INVITE_EN },
+  { text: "varım", want: "in", ctx: COLD_TR },
+  { text: "gelemiyorum", want: "out", ctx: COLD_TR },
+  { text: "I was in last week", want: "unclear", ctx: INVITE_EN },
+  { text: "if I was in I would have scored", want: "unclear", ctx: INVITE_EN },
+  { text: "IN", want: "in", ctx: CODED_EN },
+  { text: "VARIM", want: "in", ctx: { ...CODED_EN, label: "coded partner ask, Turkish prefill" } },
+];
+
 const HELD_OUT: Case[] = [
   { text: "deffo, see you then", want: "in", ctx: INVITE_EN },
   { text: "wouldn't miss it", want: "in", ctx: INVITE_EN },
@@ -348,9 +403,9 @@ async function main() {
 
   // The verdict log is the production line; the table below is the read.
   console.info = () => {};
-  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, s2: SLICE_S2 };
+  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, s2: SLICE_S2, noregex: NO_REGEX };
   const setName = process.env.SET && sets[process.env.SET] ? process.env.SET : "main";
-  const set = sets[setName];
+  const set = process.env.ONLY ? sets[setName].filter((c) => c.text === process.env.ONLY && (!process.env.ONLY_LABEL || c.ctx.label.startsWith(process.env.ONLY_LABEL))) : sets[setName];
   console.log(`── match-availability, ${which} prompt, ${MODEL}, set ${setName} (${set.length}), REPEAT=${REPEAT}, cap $${MAX_USD} ──`);
   let bad = 0;
   for (const c of set) {

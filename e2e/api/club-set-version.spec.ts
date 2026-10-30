@@ -23,6 +23,7 @@ import { test, expect, resetDb } from "../fixtures";
 import { ORG_ID } from "../helpers/constants";
 import { E2E, REPO_ROOT } from "../helpers/env";
 import type { TestDb } from "../helpers/test-db";
+import { addDmIntentBodies, GO_READS } from "../helpers/stub";
 
 const execFileAsync = promisify(execFile);
 
@@ -165,6 +166,7 @@ test.describe("every transition that changes the Pi's sets changes the stamp", (
 
   test("GO-LIVE (the organiser's GO, the real route): the group leaves the silent set and is served, with its go-live time", async ({ request, db }) => {
     const before = Date.now();
+    addDmIntentBodies(GO_READS);
     const res = await request.post("/api/whatsapp/dm-reply", {
       headers: HEADERS,
       data: { phone: bare(HELD.ownerPhone), body: "GO", waMessageId: `e2e-csv-go-${Date.now()}`, authorName: null },

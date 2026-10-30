@@ -21,6 +21,7 @@ import { describe, it, expect } from "vitest";
 import {
   DM_INTENT_MIN_CONFIDENCE,
   DM_INTENT_SYSTEM_PROMPT,
+  GO_LIVE_MIN_CONFIDENCE,
   classifyDmIntent,
   dmBodyOf,
   parseDmIntent,
@@ -363,5 +364,75 @@ describe("intro_messages: only the platform owner gets them", () => {
     expect(DM_INTENT_SYSTEM_PROMPT.split('- "intro_messages"').length).toBe(2);
     expect(DM_INTENT_SYSTEM_PROMPT).toMatch(/intro_messages[^\n]*"kategori 3 tanıtım mesajını gönder"/);
     expect(DM_INTENT_SYSTEM_PROMPT).toContain('"intro"');
+  });
+});
+
+// ── 2026-10-30: the one DM reader (no string parsing) ─────────────────
+
+describe("the one DM reader: GO, stop and start, and a question are its reads", () => {
+  const json = (o: Record<string, unknown>) => async () => JSON.stringify({ intro: [], reasoning: "r", ...o });
+
+  it.each(["go_live", "stop_messages", "stop_ratings", "resume_messages", "resume_ratings", "question"] as const)(
+    "reads %s at a confident answer",
+    async (intent) => {
+      const r = await classifyDmIntent("x", {}, json({ intent, confidence: 0.95 }));
+      expect(r.intent).toBe(intent);
+    },
+  );
+
+  it("GO needs 90%: at 85% it is `other`, so no club goes live on a wobbly read", async () => {
+    expect(GO_LIVE_MIN_CONFIDENCE).toBe(0.9);
+    expect((await classifyDmIntent("go", {}, json({ intent: "go_live", confidence: 0.85 }))).intent).toBe("other");
+    expect((await classifyDmIntent("go", {}, json({ intent: "go_live", confidence: 0.9 }))).intent).toBe("go_live");
+  });
+
+  it("a stop at 85% clears the general 80% floor", async () => {
+    expect((await classifyDmIntent("stop", {}, json({ intent: "stop_messages", confidence: 0.85 }))).intent).toBe("stop_messages");
+  });
+
+  it("a failed or garbled read is `other`: no opt-out, no GO, no answer", async () => {
+    expect((await classifyDmIntent("stop", {}, async () => { throw new Error("overloaded"); })).intent).toBe("other");
+    expect((await classifyDmIntent("GO", {}, async () => "GO!")).intent).toBe("other");
+  });
+
+  it("none of the new reads does anything on the admin path", async () => {
+    for (const intent of ["go_live", "stop_messages", "resume_ratings", "question"] as const) {
+      const { calls, deps } = recorder(says(intent));
+      expect(await runDmAdminIntent(deps)).toEqual({ handled: null });
+      expect(calls.invited).toEqual([]);
+      expect(calls.replies).toEqual([]);
+    }
+  });
+
+  it("the user turn names the sender's clubs: role and stage, facts the code holds", () => {
+    const u = buildDmIntentUserTurn("GO", {
+      senderName: "Raihan",
+      clubs: [
+        { name: "Riverside FC", organiser: true, settingUp: true },
+        { name: "Sutton FC", organiser: false, settingUp: false },
+      ],
+    });
+    expect(u).toContain("Their clubs: Riverside FC (organiser, setting up: not live until its organiser says GO); Sutton FC (player, live)");
+    expect(u).toContain("Sender: Raihan");
+    expect(dmBodyOf(u)).toBe("GO");
+  });
+
+  it("the prompt defines each new intent once, with English beside Turkish, and the old incident messages", () => {
+    for (const i of ["go_live", "stop_messages", "stop_ratings", "resume_messages", "resume_ratings", "question"]) {
+      expect(DM_INTENT_SYSTEM_PROMPT.split(`- "${i}"`).length).toBe(2);
+    }
+    expect(DM_INTENT_SYSTEM_PROMPT).toContain("do not message me on any topic but payment");
+    expect(DM_INTENT_SYSTEM_PROMPT).toContain('"GO" | "BAŞLA"');
+    expect(DM_INTENT_SYSTEM_PROMPT).not.toMatch(/[\u2014\u2013]/);
+  });
+});
+
+describe("parseDmIntent reads the model's FIRST object (seen live 2026-10-30)", () => {
+  it("an answer, a self-correction and a second object: the first answer stands", () => {
+    const raw = '{"intent": "go_live", "intro": [], "confidence": 0.97, "reasoning": "GO", "confidence_note": ""}\n\nWait, that output included an extra field. Correcting to the strict schema:\n\n{"intent": "go_live", "intro": []';
+    expect(parseDmIntent(raw).intent).toBe("go_live");
+  });
+  it("a brace inside a string does not confuse it", () => {
+    expect(parseDmIntent('note {"intent": "question", "confidence": 0.9, "reasoning": "asks about {x}"} trailing').intent).toBe("question");
   });
 });

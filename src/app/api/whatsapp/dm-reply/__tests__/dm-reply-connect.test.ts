@@ -82,10 +82,15 @@ describe("dm-reply: the connect DM", () => {
     // 2026-10-29: then whether a paid-claims list is out at all (an answer
     // to one is read by a model, only when it is the message answered):
     // none here, so no further lookup and no model call.
-    expect(calls[0]).toBe("organiserPickRound.findFirst");
-    expect(calls[1]).toBe("sentNotification.findMany");
-    expect(calls[2]).toBe("benchSlotOffer.findMany");
-    expect(calls.some((c) => c.startsWith("clubConnect."))).toBe(false);
+    // 2026-10-30: GO is read by the model now, so the GO step first looks
+    // the sender up (phone, then a stored LID: `resolveSenderUserIds`) and
+    // asks the model only for an organiser of a club setting up. That
+    // lookup is the only clubConnect read; the connect HANDLER never runs.
+    const at = (name: string) => calls.indexOf(name);
+    expect(at("organiserPickRound.findFirst")).toBeGreaterThan(-1);
+    expect(at("sentNotification.findMany")).toBeGreaterThan(at("organiserPickRound.findFirst"));
+    expect(at("benchSlotOffer.findMany")).toBeGreaterThan(at("sentNotification.findMany"));
+    expect(calls.slice(0, at("organiserPickRound.findFirst")).every((c) => /^(user|clubConnect|onboardingSession|membership)\./.test(c))).toBe(true);
   });
 
   it("flag ON and the DM is a connect DM: handled first, before the bench reply or any lookup", async () => {
@@ -114,9 +119,11 @@ describe("dm-reply: the connect DM", () => {
     // 2026-10-29: then whether a paid-claims list is out at all (an answer
     // to one is read by a model, only when it is the message answered):
     // none here, so no further lookup and no model call.
-    expect(calls[0]).toBe("organiserPickRound.findFirst");
-    expect(calls[1]).toBe("sentNotification.findMany");
-    expect(calls[2]).toBe("benchSlotOffer.findMany");
+    // 2026-10-30: after the GO step's sender lookup (see above).
+    const at = (name: string) => calls.indexOf(name);
+    expect(at("organiserPickRound.findFirst")).toBeGreaterThan(-1);
+    expect(at("sentNotification.findMany")).toBeGreaterThan(at("organiserPickRound.findFirst"));
+    expect(at("benchSlotOffer.findMany")).toBeGreaterThan(at("sentNotification.findMany"));
   });
 
   it("an older Pi that forwards no LID still works: the fields are simply absent", async () => {

@@ -1,99 +1,35 @@
 /**
- * Unit tests for the PURE DM-subscription command parser + helpers in
+ * Unit tests for the PURE DM-subscription helpers in
  * src/lib/dm-subscriptions.ts.
  *
- * These pin the message -> intent mapping the DM fast-path relies on
- * (src/app/api/whatsapp/dm-reply/route.ts). No DB, no network — the parser
- * is deliberately a pure function so the disambiguation can be tested
- * exhaustively and deterministically (no LLM in this path).
- *
- * The load-bearing case is the real incident message:
- *   "do not message me on any topic but payment"
- * which MUST classify as the BROAD all-but-payment opt-out, NOT the
- * narrow ratings-only opt-out (the old bug that made the bot lie).
+ * Since 2026-10-30 the message -> command step is the one DM reader's
+ * (`dm-intent.ts`, stop_* and resume_* intents): the keyword parser these
+ * tests used to pin is deleted. Its cases (the real incident message "do
+ * not message me on any topic but payment" first) are now live cases in
+ * `scripts/dryrun-dm-intent.ts` (SET=subs). What stays here is the
+ * mapping from the read to the command, and the command to the flags.
  */
 import { describe, it, expect } from "vitest";
 import {
-  parseDmSubscriptionCommand,
+  subscriptionCommandOf,
   dmSubPatchForCommand,
   dmSubAckMessage,
   subRatingDmFromLegacy,
   DM_SUB_FIELDS,
 } from "@/lib/dm-subscriptions";
 
-describe("parseDmSubscriptionCommand — BROAD all-but-payment opt-out", () => {
-  const broad = [
-    "do not message me on any topic but payment", // the real incident message
-    "only message me about payment",
-    "don't message me except about payment",
-    "nothing but payment",
-    "only payment please",
-    "just payment",
-    "leave me alone except payment",
-    "only payments from now on",
-    "please only contact me about payment",
-  ];
-  for (const msg of broad) {
-    it(`"${msg}" -> opt-out-all`, () => {
-      expect(parseDmSubscriptionCommand(msg)).toBe("opt-out-all");
-    });
-  }
-
-  it("a bare broad 'stop messaging me' (no category) -> opt-out-all", () => {
-    expect(parseDmSubscriptionCommand("stop messaging me")).toBe("opt-out-all");
-    expect(parseDmSubscriptionCommand("please stop messaging me")).toBe("opt-out-all");
-    expect(parseDmSubscriptionCommand("leave me alone")).toBe("opt-out-all");
-    expect(parseDmSubscriptionCommand("stop")).toBe("opt-out-all");
+describe("subscriptionCommandOf: the read's intent is the command", () => {
+  it("each stop and resume intent maps to its command", () => {
+    expect(subscriptionCommandOf("stop_messages")).toBe("opt-out-all");
+    expect(subscriptionCommandOf("stop_ratings")).toBe("opt-out-ratings");
+    expect(subscriptionCommandOf("resume_messages")).toBe("opt-in-all");
+    expect(subscriptionCommandOf("resume_ratings")).toBe("opt-in-ratings");
   });
-});
-
-describe("parseDmSubscriptionCommand — narrow ratings-only opt-out (preserved)", () => {
-  const ratings = [
-    "stop messaging me about ratings",
-    "no more rating messages",
-    "stop the mom prompts",
-    "don't message me about man of the match",
-    "unsubscribe from rating reminders",
-  ];
-  for (const msg of ratings) {
-    it(`"${msg}" -> opt-out-ratings`, () => {
-      expect(parseDmSubscriptionCommand(msg)).toBe("opt-out-ratings");
-    });
-  }
-});
-
-describe("parseDmSubscriptionCommand — opt back in", () => {
-  it("'start messages' -> opt-in-all", () => {
-    expect(parseDmSubscriptionCommand("start messages")).toBe("opt-in-all");
+  it("every other intent is no command, so nothing is written", () => {
+    for (const i of ["other", "question", "go_live", "recruit_blast", "partner_ask", "rating_progress", "intro_messages", "nonsense"]) {
+      expect(subscriptionCommandOf(i)).toBeNull();
+    }
   });
-  it("'resume' / 'opt in' -> opt-in-all", () => {
-    expect(parseDmSubscriptionCommand("resume")).toBe("opt-in-all");
-    expect(parseDmSubscriptionCommand("opt in")).toBe("opt-in-all");
-    expect(parseDmSubscriptionCommand("opt-in")).toBe("opt-in-all");
-  });
-  it("'start ratings' -> opt-in-ratings", () => {
-    expect(parseDmSubscriptionCommand("start ratings")).toBe("opt-in-ratings");
-  });
-  it("'start rating messages again' -> opt-in-ratings", () => {
-    expect(parseDmSubscriptionCommand("start rating messages again")).toBe("opt-in-ratings");
-  });
-});
-
-describe("parseDmSubscriptionCommand — ordinary chat falls through (null)", () => {
-  const chat = [
-    "what time is kickoff?",
-    "I'm in for tonight",
-    "cheers mate",
-    "can you start the match at 8?",
-    "no problem, see you there",
-    "great game lads",
-    "how much do I owe for payment?",
-  ];
-  for (const msg of chat) {
-    it(`"${msg}" -> null`, () => {
-      expect(parseDmSubscriptionCommand(msg)).toBeNull();
-    });
-  }
 });
 
 describe("dmSubPatchForCommand", () => {

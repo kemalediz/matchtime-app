@@ -29,6 +29,7 @@ import { E2E, E2E_BASE_URL, REPO_ROOT } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
 import { messageHoursSendAfter } from "@/lib/message-hours";
 import { formatLondon } from "@/lib/london-time";
+import { addDmIntentBodies, GO_READS } from "../helpers/stub";
 
 const execFileAsync = promisify(execFile);
 
@@ -541,6 +542,7 @@ test("C: the command in the SEPARATE group links it for the setting-up club, and
 });
 
 test("C: the organiser says GO: the club goes live and admin messages are still set to go to that group", async ({ request, db }) => {
+  addDmIntentBodies(GO_READS);
   const res = await request.post("/api/whatsapp/dm-reply", {
     headers: { ...KEY, "x-mt-test-setup-learning": "0" },
     data: { phone: HELD.phone, body: "GO", waMessageId: "e2e-s7-go", authorName: null },

@@ -167,8 +167,61 @@ export function setDmIntentStub(stub: DmIntentStub): void {
   writeFileSync(E2E.DM_INTENT_STUB_FILE, JSON.stringify(stub, null, 2));
 }
 
+/** Merge bodies into the DM-intent stub, keeping what a spec already set
+ *  (2026-10-30: GO, the stop and start commands and "is this a question"
+ *  are this reader's reads now, so a spec that sends one says what the
+ *  model would have read, e.g. `{ GO: "go_live" }`). */
+export function addDmIntentBodies(bodies: Record<string, string>): void {
+  let cur: DmIntentStub = {};
+  try {
+    cur = JSON.parse(readFileSync(E2E.DM_INTENT_STUB_FILE, "utf8")) as DmIntentStub;
+  } catch {
+    cur = {};
+  }
+  setDmIntentStub({ ...cur, bodies: { ...(cur.bodies ?? {}), ...bodies } });
+}
+
+/** Merge bodies into the match-availability stub (2026-10-30: the bench
+ *  offer's yes and no, and a DM IN or OUT, are this model's reads now). */
+export function addMatchAvailabilityBodies(bodies: Record<string, "in" | "out" | "unclear">): void {
+  let cur: { bodies?: Record<string, "in" | "out" | "unclear">; fail?: string[] } = {};
+  try {
+    cur = JSON.parse(readFileSync(E2E.MATCH_AVAILABILITY_STUB_FILE, "utf8"));
+  } catch {
+    cur = {};
+  }
+  setMatchAvailabilityStub({ ...cur, bodies: { ...(cur.bodies ?? {}), ...bodies } });
+}
+
+/** What the DM reader reads the GO words as (the words the setup DM asks for). */
+export const GO_READS: Record<string, string> = { GO: "go_live", go: "go_live", "*GO*": "go_live", "GO.": "go_live", "GO!! 👍": "go_live", "GO!!": "go_live", "Go 👍": "go_live", "*GO LIVE*": "go_live", "go live": "go_live", "BAŞLA": "go_live", "başla!": "go_live", basla: "go_live" };
+
+/**
+ * THE CLEARED STATE OF THE DM READER (2026-10-30). GO, the stop and start
+ * commands and "is this a question" were word lists the route ran for
+ * free; they are this reader's reads now, so the world every spec starts
+ * from says what the model reads the plain words the specs send as. No
+ * mass-DM intent is in it: a body not listed is still `other`.
+ */
+export const DEFAULT_DM_READS: Record<string, string> = {
+  ...GO_READS,
+  stop: "stop_messages",
+  "stop messaging me": "stop_messages",
+  "mesaj atma": "stop_messages",
+  "do not message me on any topic but payment": "stop_messages",
+  "stop messaging me about ratings please": "stop_ratings",
+  "start messages": "resume_messages",
+  "start ratings again please": "resume_ratings",
+  "how much do I owe?": "question",
+  "did you get my payment?": "question",
+  "what's Gary's phone number?": "question",
+  "who's missing a number on record?": "question",
+  "who is playing this week?": "question",
+  "what time is it?": "question",
+};
+
 export function clearDmIntentStub(): void {
-  setDmIntentStub({});
+  setDmIntentStub({ bodies: { ...DEFAULT_DM_READS } });
   rmSync(`${E2E.DM_INTENT_STUB_FILE}.calls`, { force: true });
 }
 
@@ -201,8 +254,27 @@ export function setMatchAvailabilityStub(stub: { bodies?: Record<string, "in" | 
   writeFileSync(E2E.MATCH_AVAILABILITY_STUB_FILE, JSON.stringify(stub, null, 2));
 }
 
+/** The cleared state of the match-availability stub (2026-10-30): the
+ *  plain IN, OUT, YES and NO the specs send were read by word lists for
+ *  free (the bench offer, the tentative fast path, a cold DM IN); the
+ *  model reads them now. A body not listed is still "unclear". A bare
+ *  yes or no is NOT here: the model reads it as an answer only to a
+ *  question about playing, so a spec that sends one to a bench offer says
+ *  so itself (`addMatchAvailabilityBodies`). */
+export const DEFAULT_AVAILABILITY_READS: Record<string, "in" | "out" | "unclear"> = {
+  IN: "in",
+  in: "in",
+  "i'm in": "in",
+  "count me in": "in",
+  OUT: "out",
+  out: "out",
+  VARIM: "in",
+  "varım": "in",
+  YOKUM: "out",
+};
+
 export function clearMatchAvailabilityStub(): void {
-  setMatchAvailabilityStub({});
+  setMatchAvailabilityStub({ bodies: { ...DEFAULT_AVAILABILITY_READS } });
   rmSync(`${E2E.MATCH_AVAILABILITY_STUB_FILE}.calls`, { force: true });
 }
 

@@ -19,7 +19,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { createGroup, SimGroup } from "./group";
-import { facts, otherClaim, otherFacts, selfIn, selfOut } from "../helpers/stub";
+import { facts, otherClaim, otherFacts, selfIn, selfOut, addMatchAvailabilityBodies } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
 
@@ -411,6 +411,7 @@ test.describe("an admin's untagged drop still opens the bench offer", () => {
     expect(offers).toHaveLength(1);
 
     // And the offer is claimable, so the chain really is the normal one.
+    addMatchAvailabilityBodies({ YES: "in" }); // the bench offer's YES, read by the model (stubbed)
     const claim = await grp.dm("greg", "YES");
     expect(claim.json.result).toBe("confirmed");
     expect((await grp.attendanceOf("greg"))?.status).toBe("CONFIRMED");
@@ -486,6 +487,7 @@ test.describe("an untagged admin's [OUT + BENCH] applies the OUT, end to end", (
     // the bench, and the offer is claimable.
     const offers = await grp.openOffers();
     expect(offers).toHaveLength(1);
+    addMatchAvailabilityBodies({ YES: "in" }); // the bench offer's YES, read by the model (stubbed)
     const claim = await grp.dm("greg", "YES");
     expect(claim.json.result).toBe("confirmed");
     expect((await grp.attendanceOf("greg"))?.status).toBe("CONFIRMED");

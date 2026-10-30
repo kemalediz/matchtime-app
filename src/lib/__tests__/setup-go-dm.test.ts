@@ -44,7 +44,12 @@ vi.mock("../admin-link", () => ({ buildAdminLink, appUrl: (p: string) => `https:
 const handleDmHelp = vi.hoisted(() => vi.fn());
 vi.mock("../dm-help", () => ({ handleDmHelp }));
 
-import { SETUP_REPLY_CAPS, goReplyText, handleGoDm, handleSettingUpDm, setupReplyCapReached } from "../setup-go-dm";
+import { SETUP_REPLY_CAPS, goReplyText, handleGoDm as handleGoDmBare, handleSettingUpDm, setupReplyCapReached } from "../setup-go-dm";
+
+/** The DM reader (2026-10-30: it replaced the GO word list). It reads GO
+ *  unless a test says otherwise; every test still drives the real handler. */
+const goRead = vi.fn(async (_userId: string) => ({ intent: "go_live" }));
+const handleGoDm = (input: Parameters<typeof handleGoDmBare>[0]) => handleGoDmBare({ read: goRead, ...input });
 import { en } from "../i18n/strings.en";
 import { tr } from "../i18n/strings.tr";
 
@@ -92,6 +97,7 @@ beforeEach(() => {
   dbMock.user.findUnique.mockResolvedValue({ phoneNumber: "+447700900971" });
   repliesSoFar(0, 0);
   queuePlatformDm.mockResolvedValue({ id: "pj1" });
+  goRead.mockResolvedValue({ intent: "go_live" });
 });
 
 describe("the replies to GO, word for word", () => {
@@ -212,11 +218,34 @@ describe("the reply cap (PR #234 review, fix 1a)", () => {
 });
 
 describe("handleGoDm", () => {
-  it("anything that is not GO costs nothing: no sender lookup, no query, no claim", async () => {
-    for (const text of ["go on then", "in", "help", "yes", "GO now", "let's go"]) expect(await go(text)).toBeNull();
-    expect(resolveSenderUserIds).not.toHaveBeenCalled();
-    expect(dbMock.membership.findMany).not.toHaveBeenCalled();
+  it("a DM the reader does not read as GO changes nothing: no claim, no go-live, no reply", async () => {
+    dbMock.membership.findMany.mockResolvedValue([held("o1", "Harbour FC")]);
+    for (const intent of ["other", "question", "stop_messages"]) {
+      goRead.mockResolvedValue({ intent });
+      expect(await go("go on then")).toBeNull();
+    }
+    expect(goLiveClub).not.toHaveBeenCalled();
     expect(dbMock.sentNotification.create).not.toHaveBeenCalled();
+    expect(queuePlatformDm).not.toHaveBeenCalled();
+  });
+
+  it("the model is asked only once the sender is known to organise such a club", async () => {
+    resolveSenderUserIds.mockResolvedValue([]);
+    expect(await go("GO")).toBeNull();
+    resolveSenderUserIds.mockResolvedValue(["u-hana"]);
+    dbMock.membership.findMany.mockResolvedValue([]);
+    expect(await go("GO")).toBeNull();
+    expect(goRead).not.toHaveBeenCalled();
+    dbMock.membership.findMany.mockResolvedValue([held("o1", "Harbour FC")]);
+    goRead.mockResolvedValue({ intent: "other" });
+    await go("GO");
+    expect(goRead).toHaveBeenCalledWith("u-hana");
+  });
+
+  it("with no reader, nothing is GO", async () => {
+    dbMock.membership.findMany.mockResolvedValue([held("o1", "Harbour FC")]);
+    expect(await handleGoDmBare({ text: "GO", phone: "447700900971", waMessageId: "wa-1", now: NOW })).toBeNull();
+    expect(goLiveClub).not.toHaveBeenCalled();
   });
 
   it("GO from somebody MatchTime does not know falls through, with no membership query", async () => {

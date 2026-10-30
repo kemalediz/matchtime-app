@@ -18,7 +18,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import { E2E } from "../helpers/env";
 import type { TestDb } from "../helpers/test-db";
-import { clearHqSquadReaderStub, setHqSquadReaderStub, squadReading } from "../helpers/stub";
+import { clearHqSquadReaderStub, setHqSquadReaderStub, squadReading, addDmIntentBodies, GO_READS } from "../helpers/stub";
 import { formatLondon, nextLondonKickoff } from "@/lib/london-time";
 import { nextNightlyFixtureRun } from "@/lib/nightly-fixture-run";
 
@@ -46,6 +46,7 @@ const SQUAD = [
 const SQUAD_READ = squadReading(["Hamzah Ali", "Raihan Ahmed", "Wasim Khan", "Bilal Shah", "Naim Patel", "Tariq Aziz", "Omar Farooq", "Yusuf Malik", "Zain Iqbal", "Imran Butt"]);
 
 async function dm(request: APIRequestContext, phone: string, body: string, waMessageId = msgId("dm")) {
+  addDmIntentBodies(GO_READS);
   const res = await request.post("/api/whatsapp/dm-reply", {
     headers: KEY,
     data: { phone: bare(phone), body, waMessageId, authorName: null },

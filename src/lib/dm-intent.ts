@@ -87,6 +87,7 @@ import { bodyUnderHeader, dmClassifierStubCall } from "./dm-classifier-stub";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 import { noReplyContext, renderReplyContext, type ReplyContext } from "./reply-context";
 import { introCategoriesToSend, type IntroCategory } from "./owner-intro-rules";
+import { firstJsonObject } from "./model-json";
 
 const MODEL = HAIKU_MODEL;
 
@@ -103,10 +104,42 @@ const MODEL = HAIKU_MODEL;
  */
 export const DM_INTENT_MIN_CONFIDENCE = 0.8;
 
-/** The closed enum. Anything else the model returns becomes `other`. */
-export type DmIntent = "recruit_blast" | "partner_ask" | "rating_progress" | "intro_messages" | "other";
+/**
+ * GO takes a club live (its trial starts, its bot speaks in the group), so
+ * the bar is higher than the others (2026-10-30, the no-string-parsing
+ * sweep, which retired the GO word list). And the model only ever says
+ * "this reads as GO": that the sender organises a club that is setting up
+ * is checked in code (`handleGoDm`), before the model is asked at all.
+ */
+export const GO_LIVE_MIN_CONFIDENCE = 0.9;
 
-const VALID: ReadonlySet<string> = new Set<DmIntent>(["recruit_blast", "partner_ask", "rating_progress", "intro_messages", "other"]);
+/** The closed enum. Anything else the model returns becomes `other`. */
+export type DmIntent =
+  | "go_live"
+  | "stop_messages"
+  | "stop_ratings"
+  | "resume_messages"
+  | "resume_ratings"
+  | "recruit_blast"
+  | "partner_ask"
+  | "rating_progress"
+  | "intro_messages"
+  | "question"
+  | "other";
+
+const VALID: ReadonlySet<string> = new Set<DmIntent>([
+  "go_live",
+  "stop_messages",
+  "stop_ratings",
+  "resume_messages",
+  "resume_ratings",
+  "recruit_blast",
+  "partner_ask",
+  "rating_progress",
+  "intro_messages",
+  "question",
+  "other",
+]);
 
 export interface DmIntentClassification {
   intent: DmIntent;
@@ -140,41 +173,77 @@ export interface DmIntentClassification {
  * messages, with the categories he picked in "intro". The model reads the
  * words for anyone; only the code knows who the owner is
  * (`runDmAdminIntent`, `isOwner`), so nobody else gets them.
+ *
+ * REWRITTEN WHOLE on 2026-10-30 (Kemal: "I don't want any string parsing
+ * at all"): THE ONE DM READER. It now reads every DM from a known person,
+ * not only an admin's, and took over what four word lists decided:
+ *   go_live          `isGoCommand` (club-setup-rules.ts, GO / GO LIVE / BAŞLA)
+ *   stop_* resume_*  `parseDmSubscriptionCommand` (dm-subscriptions.ts)
+ *   question         `looksLikeQuestion` (dm-qa.ts, the "?" and word gate)
+ * Read once per DM (`dm-reader.ts` memoises it) and consulted by each step
+ * of the DM route in its place, so one call serves them all. The model
+ * says only what the message asks; every fact (who organises which club,
+ * which club is setting up, who the owner is) is the code's.
  */
-export const DM_INTENT_SYSTEM_PROMPT = `A club admin sent MatchTime, their football club's WhatsApp bot, the private message under "THE DM". Above it you get the club, its partner clubs when it has any, the admin, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent and what it was about.
+export const DM_INTENT_SYSTEM_PROMPT = `Someone sent MatchTime, their football club's WhatsApp bot, the private message under "THE DM". Above it you get who they are (their clubs, whether they organise each one, and whether it is live or still setting up), the partner clubs of the clubs they organise when there are any, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent and what it was about.
 
-Is the message one of the four instructions MatchTime can carry out? You never carry it out and never answer it. Pick one:
+Say what the message asks MatchTime to do. You never do it and never answer it. Pick one:
+- "go_live": an organiser tells MatchTime to start their club now, as MatchTime's setup message asks ("reply GO"): "GO", "go live", "başla".
+- "stop_messages": they ask MatchTime to stop messaging them, about everything or about everything but payments.
+- "stop_ratings": they ask MatchTime to stop only the rating and Man of the Match messages.
+- "resume_messages": they ask MatchTime to message them again about everything.
+- "resume_ratings": they ask MatchTime to send them the rating and Man of the Match messages again.
 - "recruit_blast": they tell MatchTime to CONTACT the club's own players who are not signed up for the next match and invite them.
 - "partner_ask": they tell MatchTime to ask ANOTHER club, a partner club or the other groups whether anyone can play, whether a club is named or not.
 - "rating_progress": they ask HOW MANY have sent their ratings or Man of the Match votes for the match just played, or WHO has not.
 - "intro_messages": they ask MatchTime to send THEM its ready-made introduction messages, the ones they paste into other WhatsApp groups to introduce MatchTime. There are three: 1 for football groups that do not know MatchTime, 2 for groups that are not about football (inviting people to the player pool), 3 for clubs already using MatchTime (its new features). "intro" lists the ones they picked, by number or by description; when they want all of them, or pick none, it is [].
-- "other": everything else.
+- "question": they ask MatchTime something, with or without a question mark: the next match (when, where, who is in), their own stats, ratings or payments, results, how to rate, sign up or drop out, or anything else. Asking about a message MatchTime sent them ("what time?" to an invite) is a question too.
+- "other": everything else: saying they can or cannot play, answering something MatchTime asked them (a yes, a no, a number, a name, "paid"), thanks, news, chat or a complaint.
 
-Who is told to do the work decides it. Telling the PLAYERS to do something, describing what players said or did, reporting a fact (a drop-out, a shortage), talking about another club, thanking, complaining or chatting is "other", however often the message says players, ratings, DM, message, everyone, squad, intro or a club's name. Asking MatchTime to REMIND players is not asking for the rating tally, and asking it to post or say something to the group is not asking for the intro messages.
+Who is told to do the work decides it. Telling the PLAYERS to do something, describing what players said or did, reporting a fact (a drop-out, a shortage), talking about another club, thanking, complaining or chatting is "other", however often the message says players, ratings, DM, message, stop, everyone, squad, intro or a club's name. Asking MatchTime to REMIND players is not asking for the rating tally, and asking it to post or say something to the group is not asking for the intro messages.
 
-Read the message against what MatchTime said to them: the message they swipe-replied to, or else the newest recent one. A short follow-up such as "who's left?" or "and the MoM?" answering MatchTime's rating update is "rating_progress". An admin plays too, so a bare answer ("done", "ok", "👍") to a message MatchTime sent them as a player (a pay link, a request to rate teammates, a match invite) is about themselves: "other". A message that is itself one of the four instructions stays one, whatever it replies to.
+Read the message against what MatchTime said to them: the message they swipe-replied to, or else the newest recent one. A short follow-up such as "who's left?" or "and the MoM?" answering MatchTime's rating update is "rating_progress". A bare answer ("yes", "no", "done", "ok", "👍", "stop", "wait") to a question MatchTime asked them (an invite, a bench place, a fee to confirm, a request to rate teammates) is "other". A message that is itself one of the instructions stays one, whatever it replies to.
 
 Examples (English | Turkish):
-recruit_blast: "DM everyone who played in the last 5 matches and invite them" | "son 5 maçta oynayan herkese yaz, davet et"; "we need a couple more for tuesday, can you message the recent lads" | "salıya iki kişi eksik, son gelenlere mesaj atar mısın"; "we're short, round some players up" | "eksiğimiz var, birkaç oyuncu topla"; "ask the last few weeks' players if they can play" | "son haftalarda oynayanlara gelebilirler mi diye sor"
+go_live: "GO" | "BAŞLA"; "go live" | "başla"
+stop_messages: "do not message me on any topic but payment" | "ödeme dışında bana mesaj atma"; "stop messaging me" | "bana mesaj atmayın"; "only payment messages please" | "sadece ödeme mesajları gelsin"; "STOP" | "bildirimleri kapat"
+stop_ratings: "no more rating messages please" | "puanlama mesajı göndermeyin"; "stop sending me the MoM vote" | "maçın adamı oylamasını atma"
+resume_messages: "start messages" | "mesajları aç"; "you can message me again" | "tekrar mesaj atabilirsin"
+resume_ratings: "start ratings" | "puanlamayı aç"; "send me the rating links again" | "puanlama linklerini yine gönder"
+recruit_blast: "DM everyone who played in the last 5 matches and invite them" | "son 5 maçta oynayan herkese yaz, davet et"; "we need a couple more for tuesday, can you message the recent lads" | "salıya iki kişi eksik, son gelenlere mesaj atar mısın"; "we're short, round some players up" | "eksiğimiz var, birkaç oyuncu topla"
 partner_ask: "ask Sutton if anyone can play tonight" | "Sutton'a sor bakalım oynayan var mı"; "can you ask the partner clubs for a player" | "partner kulüplere sorar mısın, bir oyuncu lazım"; "try the other groups for one more" | "diğer gruplara sor, oynayacak biri var mı"
-rating_progress: "who hasn't rated yet?" | "kim daha puan vermedi?"; "how many have picked a MoM so far" | "kaç kişi maçın adamını seçti"; "is everyone done rating" | "herkes puanladı mı"; "any ratings outstanding from tuesday?" | "salı maçından eksik puan var mı?"
-intro_messages: "send me the category 1 intro message" | "kategori 1 tanıtım mesajını gönder" (intro [1]); "intro for football groups that don't know MatchTime" | "MatchTime'ı bilmeyen futbol grupları için tanıtım" (intro [1]); "the player pool invite for my running group" | "koşu grubum için oyuncu havuzu daveti" (intro [2]); "the new features message for clubs on MatchTime" | "kategori 3 tanıtım mesajını gönder" (intro [3]); "send me all the intro messages" | "tüm tanıtım mesajlarını gönder" (intro [])
-other: "please do not forget to rate the players via the link from Matchtime DM'ed to you. the more accurate ratings, the more balanced teams next time" (it tells the players); "Najib is out. We need one more player." | "Ahmet yok. Bir kişi lazım." (it reports a drop); "the lads keep asking me to DM them the ratings link" (it describes a situation); "Sutton were great last week" | "Sutton geçen hafta çok iyi oynadı" (talk about another club); "cheers for sorting the players out last week" | "geçen hafta oyuncuları ayarladığın için sağ ol"; "I haven't rated yet, I'll do it tonight" | "ben daha puanlamadım, akşam yaparım"; "who's playing tuesday?" | "salı kimler var?" (the squad, not the ratings); "can you remind everyone to rate the players" | "herkese puan vermeyi hatırlat" (a reminder); "I shared the intro in my work group" | "tanıtımı iş grubunda paylaştım" (it reports); "introduce yourself to the group" | "gruba kendini tanıt" (a post to the group); "IN" | "varım"; "sorry can't make tuesday" | "salı gelemiyorum"; "done 👍" answering a request to rate teammates
+rating_progress: "who hasn't rated yet?" | "kim daha puan vermedi?"; "how many have picked a MoM so far" | "kaç kişi maçın adamını seçti"; "is everyone done rating" | "herkes puanladı mı"
+intro_messages: "send me the category 1 intro message" | "kategori 1 tanıtım mesajını gönder" (intro [1]); "the player pool invite for my running group" | "koşu grubum için oyuncu havuzu daveti" (intro [2]); "the new features message for clubs on MatchTime" | "kategori 3 tanıtım mesajını gönder" (intro [3]); "send me all the intro messages" | "tüm tanıtım mesajlarını gönder" (intro [])
+question: "who's playing tuesday?" | "salı kimler var"; "what time is kick off" | "maç saat kaçta"; "what time?" | "saat kaçta?" answering an invite; "how much do I owe" | "ne kadar borcum var"; "what's my rating" | "puanım kaç"
+other: "please do not forget to rate the players via the link from Matchtime DM'ed to you" (it tells the players); "Najib is out. We need one more player." | "Ahmet yok. Bir kişi lazım." (it reports a drop); "the lads keep asking me to DM them the ratings link" (it describes a situation); "Sutton were great last week" | "Sutton geçen hafta çok iyi oynadı"; "can you remind everyone to rate the players" | "herkese puan vermeyi hatırlat" (a reminder); "introduce yourself to the group" | "gruba kendini tanıt" (a post to the group); "IN" | "varım"; "sorry can't make tuesday" | "salı gelemiyorum"; "go on then" | "olur, gelirim"; "thanks" | "sağ ol"; "dur" answering a fee to confirm; "done 👍" answering a request to rate teammates
 
-If you are not at least 80% sure, choose "other". A wrong "recruit_blast" sends an unwanted private message to up to 27 real people; a wrong "partner_ask" troubles another club's organisers; a wrong "other" costs the admin one re-typed message.
+If you are not at least 80% sure, choose "other". A wrong "go_live" starts a club before its organiser is ready; a wrong stop silences someone who wanted the messages; a wrong "recruit_blast" sends an unwanted private message to up to 27 real people; a wrong "partner_ask" troubles another club's organisers; a wrong "other" costs one re-typed message.
 
 Output STRICT JSON only, no markdown, no fences:
-{"intent": "recruit_blast" | "partner_ask" | "rating_progress" | "intro_messages" | "other", "intro": [<1, 2 or 3>, ...], "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}
-"intro" is [] for every intent but "intro_messages".`;
+{"intent": "go_live" | "stop_messages" | "stop_ratings" | "resume_messages" | "resume_ratings" | "recruit_blast" | "partner_ask" | "rating_progress" | "intro_messages" | "question" | "other", "intro": [<the category numbers, each 1, 2 or 3>], "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}
+Exactly these four keys, one object, nothing after it. "intro" is [] for every intent but "intro_messages".`;
 
 /** The model, as one function, so a test can drive the real parse
  *  without a key and the e2e suite can drive the real route without one
  *  either. */
 export type DmIntentCall = (system: string, user: string) => Promise<string>;
 
+/** One of the sender's clubs, as the reader is shown it: facts the code
+ *  already holds, never anything read from the message. */
+export interface DmReaderClub {
+  name: string;
+  /** An owner or admin of it. */
+  organiser: boolean;
+  /** Approved but not live yet: waiting for its organiser's GO. */
+  settingUp: boolean;
+}
+
 export interface DmIntentContext {
   senderName?: string | null;
+  /** One club, named alone (the dry runs). `clubs` says more. */
   clubName?: string | null;
+  /** The sender's clubs, with their role and stage (`dm-reader.ts`). */
+  clubs?: DmReaderClub[] | null;
   /** The club's active partner clubs (slice S6), shown so "ask Sutton" is
    *  read against them. Absent or empty: no line, as before. */
   partnerClubs?: string[] | null;
@@ -235,11 +304,17 @@ function stubCall(env: NodeJS.ProcessEnv): DmIntentCall | null {
  *  reason: a real WhatsApp message is routinely several lines long (the
  *  2026-09-01 incident message is), so a stub seam that read only the last
  *  line would silently classify a fragment. */
+function clubLine(c: DmReaderClub): string {
+  const role = c.organiser ? "organiser" : "player";
+  return c.settingUp ? `${c.name} (${role}, setting up: not live until its organiser says GO)` : `${c.name} (${role}, live)`;
+}
+
 export function buildDmIntentUserTurn(text: string, context: DmIntentContext = {}): string {
   return [
     context.clubName ? `Club: ${context.clubName}` : null,
+    context.clubs && context.clubs.length > 0 ? `Their clubs: ${context.clubs.map(clubLine).join("; ")}` : null,
     context.partnerClubs && context.partnerClubs.length > 0 ? `Partner clubs: ${context.partnerClubs.join(", ")}` : null,
-    context.senderName ? `Admin: ${context.senderName}` : null,
+    context.senderName ? `Sender: ${context.senderName}` : null,
     renderReplyContext(context.replyContext ?? noReplyContext()),
     `${MESSAGE_HEADER}\n${text.trim()}`,
   ]
@@ -303,13 +378,12 @@ export function parseDmIntent(rawText: string): DmIntentClassification {
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    const m = cleaned.match(/\{[\s\S]*\}/);
-    if (!m) return OTHER("parse failed");
-    try {
-      parsed = JSON.parse(m[0]);
-    } catch {
-      return OTHER("parse failed");
-    }
+    // The model's own answer, never the person's words: the FIRST complete
+    // JSON object in it. Seen live on 2026-10-30: a valid object, then
+    // "Wait, that output included an extra field. Correcting...", then a
+    // second one; one greedy match across both parsed as nothing.
+    parsed = firstJsonObject(cleaned);
+    if (parsed === null) return OTHER("parse failed");
   }
   if (!parsed || typeof parsed !== "object") return OTHER("not an object");
   const obj = parsed as Record<string, unknown>;
@@ -320,7 +394,8 @@ export function parseDmIntent(rawText: string): DmIntentClassification {
   const confidence =
     typeof obj.confidence === "number" ? Math.max(0, Math.min(1, obj.confidence)) : 0;
   const reasoning = typeof obj.reasoning === "string" ? obj.reasoning.slice(0, 200) : "";
-  if (intent !== "other" && confidence < DM_INTENT_MIN_CONFIDENCE) {
+  const floor = intent === "go_live" ? GO_LIVE_MIN_CONFIDENCE : DM_INTENT_MIN_CONFIDENCE;
+  if (intent !== "other" && confidence < floor) {
     return { intent: "other", confidence, reasoning: `[low-confidence forced] ${reasoning}` };
   }
   if (intent === "intro_messages") {

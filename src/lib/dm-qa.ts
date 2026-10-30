@@ -581,36 +581,3 @@ export function dmQaLanguageLine(lang: Lang, orgName: string): string | null {
     "WhatsApp formatting: bold is *single asterisks*. NEVER write an em dash (—) or an en dash (–); use a comma or a full stop.",
   ].join("\n");
 }
-
-/** A bare Turkish acknowledgement: never worth a model call. */
-const TR_ACK =
-  /^(?:tamam(?:d[ıi]r)?|tmm|ok(?:ey)?|sa[ğg]\s?ol|te[şs]ekk[üu]r(?:ler| ederim)?|eyvallah|peki|s[üu]per|harika|g[üu]zel|olur|anlad[ıi]m|[öo]dedim|g[öo]nderdim|👍|👌|🙏)[\s!.]*$/u;
-/** Turkish question words and the topics the Q&A answers. */
-const TR_QUESTION =
-  /(?<!\p{L})(?:ne\s+zaman|nerede|nerde|nereye|kim|kimler|ka[çc]|ka[çc]ta|saat\s+ka[çc]|hangi|neden|nas[ıi]l|var\s+m[ıi]|m[ıi]y[ıi]m|kadro\p{L}*|skor\p{L}*|sonu[çc]\p{L}*|ma[çc][ıi]n\s+adam\p{L}*|istatisti\p{L}*|puan\p{L}*|s[ıi]ralama\p{L}*|saha\p{L}*|ma[çc]\s+ne|ne\s+kadar|bor[cç]\p{L}*|[öo]de\p{L}*|[üu]cret\p{L}*)(?!\p{L})/u;
-
-/** Cheap heuristic: does this DM look like a question/request worth an
- *  LLM answer, vs a bare ack we should ignore (avoids burning the LLM
- *  on "ok"/"thanks"/"👍"). */
-export function looksLikeQuestion(text: string, lang?: Lang | string | null): boolean {
-  const t = text.trim();
-  if (t.length < 3) return false;
-  if (/[?]/.test(t)) return true;
-  if (normaliseLang(lang) === "tr") {
-    // A Turkish org (Phase 3). Its players often ask without a "?", so
-    // without this a Turkish question is dropped as an ack. Letter-bounded
-    // (`\p{L}`), after `toLocaleLowerCase("tr")`. English still applies.
-    const l = t.toLocaleLowerCase("tr");
-    if (TR_ACK.test(l)) return false;
-    if (TR_QUESTION.test(l)) return true;
-  }
-  // Bare acks / reactions → not a question.
-  // A bare "paid" / "sent" / "done" is a payment CLAIM, which
-  // `payment-claim.ts` reads before this; it is not a question.
-  if (/^(ok(ay)?|k|thanks?|thx|ta|cheers|👍|👌|🙏|nice|cool|great|lol|haha|yes|no|yep|nope|paid|sent|done)\b[\s!.]*$/i.test(t))
-    return false;
-  // Request verbs / question words.
-  return /\b(when|where|who|what|how|why|which|whats|what'?s|can you|could you|do i|am i|is there|are we|next match|my stats|my rating|leaderboard|fixture|kickoff|venue|squad|playing|score|results?|mom|man of the match|table|rank|form|owe[ds]?|owing|pay|paid|payments?|fees?)\b/i.test(
-    t,
-  );
-}

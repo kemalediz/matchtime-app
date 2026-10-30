@@ -182,9 +182,9 @@ describe("roster-survey: the check-in answer is read against what MatchTime said
 describe("dm-intent: an admin's DM is read against what MatchTime said", () => {
   const CTX = { clubName: "Sutton FC", senderName: "Kemal Ediz", replyContext: QUOTING_RATING };
 
-  it("the user turn: club, admin, the chat context, then the DM under its header", () => {
+  it("the user turn: club, sender, the chat context, then the DM under its header", () => {
     const u = buildDmIntentUserTurn("who's left?", CTX);
-    expect(u).toBe(["Club: Sutton FC", "Admin: Kemal Ediz", renderReplyContext(QUOTING_RATING), "THE DM:", "who's left?"].join("\n"));
+    expect(u).toBe(["Club: Sutton FC", "Sender: Kemal Ediz", renderReplyContext(QUOTING_RATING), "THE DM:", "who's left?"].join("\n"));
     expect(dmBodyOf(u)).toBe("who's left?");
   });
 
