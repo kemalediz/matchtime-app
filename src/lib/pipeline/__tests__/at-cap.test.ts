@@ -123,6 +123,22 @@ describe("routeBatch at the cap", () => {
     expect(r.routes.some((x) => x.route === "unsure")).toBe(false);
   });
 
+  it("a router failure that is NOT the budget, at the cap: everything goes to the attendance extractor (unsure), nothing is lost", async () => {
+    const { within } = overCap({ cap: 1, spent: 1.2 });
+    const broken: PipelineModel = {
+      name: "broken",
+      async complete(req: ModelRequest): Promise<ModelResponse> {
+        return guardedModelCall(req.label, async () => { throw new Error("529 Overloaded"); }, () => 0, 0.01);
+      },
+    };
+    const r = await within(() => routeBatch(broken, msgs, { capped: true }));
+    expect(r.routes.map((x) => [x.route, x.source])).toEqual([
+      ["unsure", "fallback"],
+      ["unsure", "fallback"],
+      ["unsure", "fallback"],
+    ]);
+  });
+
   it("an open question still rescues a none into unsure at the cap: that is an attendance read", async () => {
     const { within } = overCap({ cap: 1, spent: 1.2 });
     const r = await within(() =>

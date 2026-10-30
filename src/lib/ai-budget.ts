@@ -142,6 +142,25 @@ export const PRE_CLUB_CAP_USD = 0.25;
 export const CALL_RESERVE_USD = 0.01;
 
 /**
+ * THE ATTENDANCE READS' MINIMUM, PER LONDON MONTH (2026-10-30, review of
+ * PR #476). With no regex left to read a bare IN at the cap, a live club
+ * whose cap is $0 (or too small for its twice-the-cap ceiling to fit one
+ * read) would read no attendance at all. Its attendance reads
+ * (`withAttendanceOverflow`) may still spend up to this much in a month.
+ * The anti-abuse rails (not approved, bot off, no group, billing paused)
+ * keep it at $0: they are not a cost ceiling.
+ */
+export const ATTENDANCE_MONTH_FLOOR_USD = 0.5;
+
+/** The attendance reads' monthly floor for a club: the floor for a club
+ *  that may spend at all (approved, live, not paused), else $0. */
+function attendanceFloorUsd(org: AllowanceOrg | null): number {
+  if (!org || !isClubApproved(org) || isBillingPaused(org)) return 0;
+  if (!org.whatsappBotEnabled || !org.whatsappGroupId) return 0;
+  return ATTENDANCE_MONTH_FLOOR_USD;
+}
+
+/**
  * What a club that is approved but still SETTING UP may spend in a day on
  * its setup reading, and on nothing else (go-live slice S1). One reading
  * is one Haiku call of about a cent and a half, retried at most twice, so
@@ -306,6 +325,22 @@ const ALLOWANCE_SELECT = {
   billingStatus: true,
 } as const;
 
+/** The attendance reads' monthly floor for a key (pseudo keys: $0). */
+async function floorFor(key: string): Promise<number> {
+  if (isPseudoKey(key)) return 0;
+  const org = await db.organisation.findUnique({ where: { id: key }, select: ALLOWANCE_SELECT });
+  return attendanceFloorUsd(org);
+}
+
+/** What the key spent (and holds) this London month, for the floor. */
+async function monthSpendUsd(key: string, now: Date): Promise<number> {
+  const monthStart = `${londonDay(now).slice(0, 7)}-01`;
+  const rows = await db.$queryRaw<Array<{ spent: number | null }>>`
+    SELECT SUM("costUsd" + "reservedUsd") AS "spent" FROM "OrgAiUsage"
+    WHERE "orgId" = ${key} AND "day" >= ${monthStart}::date`;
+  return Number(rows[0]?.spent ?? 0);
+}
+
 /** The cap for a key today. Throws on a database error (callers fail open). */
 async function capFor(key: string, now: Date, purpose: AllowancePurpose = {}): Promise<number> {
   if (isPseudoKey(key)) {
@@ -401,13 +436,24 @@ export function prismaAiBudgetLedger(
         console.error(`[ai-budget] could not read the cap for ${key}; allowing ${label} (fail open):`, err);
         return { key, day, reservedUsd: 0 };
       }
-      if (cap <= 0) {
+      // An attendance read past the cap (`withAttendanceOverflow`) is
+      // checked against twice the cap; the row keeps the club's own cap.
+      // When that ceiling is below the monthly floor, the floor applies
+      // while this month's spend is under it (a $0-cap live club still
+      // reads IN and OUT).
+      let ceiling = opts?.overflow ? cap * ATTENDANCE_OVERFLOW_MULTIPLIER : cap;
+      if (opts?.overflow && ceiling < ATTENDANCE_MONTH_FLOOR_USD) {
+        try {
+          const floor = await floorFor(key);
+          if (floor > 0 && (await monthSpendUsd(key, now)) < floor) ceiling = Math.max(ceiling, floor);
+        } catch (err) {
+          console.error(`[ai-budget] could not read the attendance floor for ${key}; using the cap:`, err);
+        }
+      }
+      if (ceiling <= 0) {
         await recordRefusal(key, day, cap, label, now);
         throw new AiBudgetExceededError(key, label);
       }
-      // An attendance read past the cap (`withAttendanceOverflow`) is
-      // checked against twice the cap; the row keeps the club's own cap.
-      const ceiling = opts?.overflow ? cap * ATTENDANCE_OVERFLOW_MULTIPLIER : cap;
       let granted: boolean;
       try {
         // ONE statement: create today's row holding the reserve, or add
