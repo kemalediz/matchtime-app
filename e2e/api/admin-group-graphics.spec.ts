@@ -298,3 +298,93 @@ test.describe("the admin-group request", () => {
     await db.run(`DELETE FROM "TeamAssignment" WHERE "matchId" = $1`, [MATCH.upcoming]);
   });
 });
+
+// ── One team sheet per set of teams (2026-10-30) ───────────────────────
+//
+// 29 Oct, FNF HQ: the team sheet went out twice in a row with the same
+// teams (the approval's sheet and an asked one due on the same poll; an
+// asked one and the redraw still in its quiet period). Through the real
+// routes: due-posts emits, the Pi's fetch of /api/graphics/<token> records
+// what the sheet showed, and the next poll does not send the same teams.
+test.describe("one team sheet per set of teams", () => {
+  const SHEET = ["graphic:v1", "teams", MATCH.upcoming];
+  const POLL_HEADERS = { ...KEY, "x-mt-pi-caps": "admin-group" };
+
+  const queueSheet = (db: TestDb, id: string, how: "auto" | "asked") =>
+    db.run(
+      `INSERT INTO "BotJob" (id, "orgId", kind, text, "pollOptions", "createdAt") VALUES ($1, $2, 'admin-group', 'Ready to post', $3, now())`,
+      [id, ORG_ID, [...SHEET, how]],
+    );
+
+  /** One due-posts poll, claiming as the Pi's does; the team sheet instructions in it. */
+  async function pollSheets(request: APIRequestContext) {
+    const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(E2E.GROUP_ID)}`, { headers: POLL_HEADERS });
+    expect(res.status(), await res.text()).toBe(200);
+    const all = (await res.json()).instructions as Array<{ key: string; kind: string; imageUrl?: string }>;
+    return all.filter((i) => i.kind === "admin-group-message" && typeof i.imageUrl === "string" && i.imageUrl.includes("/api/graphics/"));
+  }
+
+  /** What the Pi does with one: fetch the image, post it, ack. */
+  async function piSends(request: APIRequestContext, instr: { key: string; kind: string; imageUrl?: string }, n: number) {
+    const img = await request.get(new URL(instr.imageUrl!).pathname);
+    expect(img.status()).toBe(200);
+    const ack = await request.post("/api/whatsapp/ack", { headers: KEY, data: { key: instr.key, kind: instr.kind, matchId: MATCH.upcoming, waMessageId: `wa-sheet-${n}` } });
+    expect(ack.status()).toBe(200);
+  }
+
+  const job = async (db: TestDb, id: string) =>
+    (await db.all<{ sentAt: Date | null; pollOptions: string[] }>(`SELECT "sentAt", "pollOptions" FROM "BotJob" WHERE id = $1`, [id]))[0];
+
+  test.beforeAll(async ({ db }) => {
+    await db.run(`DELETE FROM "BotJob" WHERE "orgId" = $1 AND "pollOptions"[1] = 'graphic:v1'`, [ORG_ID]);
+    // Off, so a trigger's sheet is due whatever the hour the suite runs.
+    await db.run(`UPDATE "Organisation" SET "quietHoursEnabled" = false WHERE id = $1`, [ORG_ID]);
+    await db.run(
+      `INSERT INTO "TeamAssignment" (id, "matchId", "userId", team) VALUES
+         ('e2e-ts-1', $1, $2, 'RED'), ('e2e-ts-2', $1, $3, 'YELLOW'), ('e2e-ts-3', $1, $4, 'RED'), ('e2e-ts-4', $1, $5, 'YELLOW')`,
+      [MATCH.upcoming, U.admin, U.collector, U.player, U.third],
+    );
+  });
+  test.beforeEach(() => engineOn({ "team sheet": { route: "team_sheet" }, "takım listesi": { route: "team_sheet" } }));
+  test.afterAll(async ({ db }) => {
+    clearPipelineStubs();
+    await db.run(`DELETE FROM "TeamAssignment" WHERE "matchId" = $1`, [MATCH.upcoming]);
+    await db.run(`UPDATE "Organisation" SET "quietHoursEnabled" = true WHERE id = $1`, [ORG_ID]);
+  });
+
+  test("the approval's sheet and an asked one due together: one image; the rest closed unsent; a request minutes later: one short line", async ({ request, db }) => {
+    // 18:09 on 29 Oct: both due on the same poll.
+    await queueSheet(db, "e2e-sheet-auto", "auto");
+    await queueSheet(db, "e2e-sheet-asked", "asked");
+    const first = await pollSheets(request);
+    expect(first.map((i) => i.key)).toEqual(["botjob-e2e-sheet-auto"]);
+    await piSends(request, first[0], 1);
+
+    // The next poll: the asked one shows the same teams, drawn seconds ago.
+    expect(await pollSheets(request)).toEqual([]);
+    expect(await job(db, "e2e-sheet-asked")).toMatchObject({ sentAt: expect.any(Date), pollOptions: [...SHEET, "asked", "skipped:same-teams"] });
+
+    // A redraw whose changes cancelled out: never sent.
+    await queueSheet(db, "e2e-sheet-redraw", "auto");
+    expect(await pollSheets(request)).toEqual([]);
+    expect((await job(db, "e2e-sheet-redraw")).pollOptions).toContain("skipped:same-teams");
+
+    // Asked for again within 10 minutes: one line, no job.
+    expect(await say(request, "team sheet")).toMatchObject({
+      handled: true,
+      outcome: "graphic-unchanged",
+      replyText: "The teams have not changed since the team sheet I just posted.",
+    });
+    expect((await graphicJobs(db)).filter((j) => !j.sentAt)).toHaveLength(0);
+  });
+
+  test("the teams changed: asked for, the new sheet goes at once", async ({ request, db }) => {
+    await db.run(`UPDATE "TeamAssignment" SET team = 'YELLOW' WHERE id = 'e2e-ts-1'`);
+    await db.run(`UPDATE "TeamAssignment" SET team = 'RED' WHERE id = 'e2e-ts-2'`);
+    expect(await say(request, "team sheet")).toMatchObject({ handled: true, outcome: "graphic-queued", replyText: null });
+    const sheets = await pollSheets(request);
+    expect(sheets).toHaveLength(1);
+    await piSends(request, sheets[0], 2);
+    expect(await pollSheets(request)).toEqual([]);
+  });
+});

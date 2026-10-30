@@ -30,6 +30,8 @@ const en = {
   teamsCaption: (club: string, day: string) => `Ready to post: ${club} teams for ${day}`,
   noTeams: "No teams yet.",
   noMatch: "No upcoming match to make that for.",
+  /** A team sheet asked for minutes after the same one was posted (2026-10-30). */
+  teamsUnchanged: "The teams have not changed since the team sheet I just posted.",
   /** A DM to the owner when the admin group cannot take the picture. */
   dmFallback: (caption: string, url: string) => `${caption}\nThe picture could not go to the admin group. Open it here (link valid for 24 hours):\n${url}`,
 };
@@ -51,6 +53,7 @@ const tr: MatchGraphicsCopy = {
   teamsCaption: (club: string, day: string) => `Paylaşıma hazır: ${club} takımları, ${day}`,
   noTeams: "Henüz takım yok.",
   noMatch: "Bunun için yaklaşan maç yok.",
+  teamsUnchanged: "Takımlar, az önce gönderdiğim takım görselinden beri değişmedi.",
   dmFallback: (caption: string, url: string) =>
     `${caption}\nResim yönetici grubuna gönderilemedi. Buradan açabilirsin (bağlantı 24 saat geçerli):\n${url}`,
 };
