@@ -474,39 +474,51 @@ Periods:
 
   teams: `You read ONE message about the club's two team line-ups and report what it asks for. You never pick the players: code builds and changes the line-ups.
 
-THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "him", "them" or "the teams" are; every field comes from THE MESSAGE.
+THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST (often the two teams as they stand), NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "him", "them", "everyone" or "the teams" are and which team a player is on now; every field comes from THE MESSAGE.
 
 WHAT YOU RETURN
 action, exactly one:
-  "show" post the teams that already exist, unchanged.
-  "generate" work the line-ups out again. This holds even when the same message also asks for new names, or says "again", "once more" or "instead".
+  "show" post the teams as they stand, unchanged.
+  "generate" work the line-ups out again: new teams, made, made again or shuffled. This holds even when the same message also asks for new names, or says "again", "once more" or "instead".
+  "swap" change the teams as they stand and leave everyone else where they are: people change team, go to a named team, end up together, or the two teams swap over. A message that only puts people on a team or together, without asking for new teams, is "swap".
+  "suggest" asks you to recommend changes that make the teams fairer.
   "rename" keep the same two line-ups and change only their names.
-  "swap" move named players between the existing teams and leave everyone else where they are.
 includeRefs
   people the message says must play.
 teamNames
   the two team names, in order: the ones the message gives or, when it asks you to pick the names, make up two short names (different, at most 24 characters each, not Red or Yellow, in the language THE MESSAGE is written in). An empty array when the message is not about names.
-swaps
-  people the message puts on a NAMED side, with that side, RED or YELLOW.
 moves
-  people who go to the OTHER team from wherever they are now, when the message names no side.
+  every person who goes to the OTHER team from wherever they are now, when no team is named for them. A swap of two people is both of them; a list of swaps is every name in it.
+swaps
+  people the message puts on a NAMED team, with that team, RED or YELLOW. When MATCHTIME'S LAST POST lists the two teams, the first one listed is RED and the second YELLOW, whatever they are called.
 pairings
   people who must end up on the same team as each other, one array per group.
+swapSides
+  true when the two whole teams swap over, so that every player changes team; moves is then empty. False otherwise.
 
-Write every person as the message writes them. When the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Every field the message says nothing about is empty.
+Write every person as the message writes them. When the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Every field the message says nothing about is empty, or false.
 
 EXAMPLES, English and Turkish
+Seeing the teams:
   "teams?" / "show me the teams" / "takımları göster" -> show
   "show us the teams again without regenerating" -> show
+New teams:
   "generate the teams" / "make the teams" / "shuffle them again" / "takımları kur" / "yeniden kur" -> generate
   "generate the teams, Ibrahim is playing" -> generate, includeRefs ["Ibrahim"]
   "make the teams and put me and David on the same team" -> generate, pairings [["me","David"]]
   "generate the teams, you pick some fun names" / "takımları kur, isimleri sen seç" -> generate, teamNames two names you make up
   "generate the teams, call them Lions and Tigers" -> generate, teamNames ["Lions","Tigers"]
+New names, same teams:
   "call the teams Lions and Tigers" / "takımların adı Aslanlar ve Kaplanlar olsun" -> rename, teamNames ["Lions","Tigers"] / ["Aslanlar","Kaplanlar"]
-  "put David in Red" -> swap, swaps [{"personRef":"David","team":"RED"}]
+Changing the teams as they stand:
   "swap Ali and Can" / "Ali ile Can'ı değiştir" -> swap, moves ["Ali","Can"]
-  "move Tom to the other team" / "Tom'u diğer takıma al" -> swap, moves ["Tom"]`,
+  "move Tom to the other team" / "Tom'u diğer takıma al" -> swap, moves ["Tom"]
+  "swap Rafi and Yorel, Mo and Akram", one pair a line or not / "Rafi ile Yorel, Mo ile Akram yer değiştirsin" -> swap, moves ["Rafi","Yorel","Mo","Akram"]
+  "put David in Red" / "David kırmızıya geçsin" -> swap, swaps [{"personRef":"David","team":"RED"}]
+  "Ali and Habib on one team" / "put Ali with Habib" / "Ali ile Habib aynı takımda olsun" -> swap, pairings [["Ali","Habib"]]
+  "swap everyone on bibs with non bibs" / "move team 1 over to team 2" / "swap them over", after both teams were listed / "takımların yerini değiştir" -> swap, swapSides true
+Fairer teams:
+  "recommend swaps" / "any swaps to even it up?" / "takımları dengelemek için ne önerirsin?" -> suggest`,
 
   score: `You read ONE message from a football group's WhatsApp chat about the result of the group's own match and report what it SAYS. You never decide which team is which, who won, who a player is, or what gets recorded: code does that.
 
@@ -779,7 +791,7 @@ const QUESTION_SCHEMA = {
 const TEAMS_SCHEMA = {
   type: "object",
   properties: {
-    action: { type: "string", enum: ["show", "generate", "rename", "swap"] },
+    action: { type: "string", enum: ["show", "generate", "rename", "swap", "suggest"] },
     includeRefs: { type: "array", items: { type: "string" } },
     teamNames: { type: "array", items: { type: "string" } },
     swaps: {
@@ -802,8 +814,11 @@ const TEAMS_SCHEMA = {
     // cannot be `swaps` (absolute). Each person here goes to the other
     // team from where they stand now.
     moves: { type: "array", items: { type: "string" } },
+    // 2026-10-29: "swap everyone on bibs with non bibs", "swap them over".
+    // The two whole teams swap over; no names, so not `moves`.
+    swapSides: { type: "boolean" },
   },
-  required: ["action", "includeRefs", "teamNames", "swaps", "moves", "pairings"],
+  required: ["action", "includeRefs", "teamNames", "swaps", "moves", "pairings", "swapSides"],
   additionalProperties: false,
 } as const;
 
@@ -1111,7 +1126,7 @@ export function parseFacts(
 
     case "teams": {
       const action = str(raw.action).toLowerCase();
-      if (!["show", "generate", "rename", "swap"].includes(action)) {
+      if (!["show", "generate", "rename", "swap", "suggest"].includes(action)) {
         bad(`unknown team action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1128,6 +1143,7 @@ export function parseFacts(
           }))
           .filter((s) => s.personRef),
         moves: (Array.isArray(raw.moves) ? (raw.moves as unknown[]) : []).map((m) => str(m).trim()).filter(Boolean),
+        swapSides: raw.swapSides === true,
         // A "pairing" of one person constrains nothing, so a stray
         // single-element group is dropped here rather than pinning
         // somebody to an arbitrary colour on the strength of it.

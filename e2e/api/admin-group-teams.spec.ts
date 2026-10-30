@@ -94,6 +94,14 @@ function hqStubs(extra: Parameters<typeof engineOn>[0] = {}) {
     "move Pat": { route: "balancer", facts: teamsFacts("swap", ["Pat"]) },
     "move Zed": { route: "balancer", facts: teamsFacts("swap", ["Zed"]) },
     "Zed'i taşı": { route: "balancer", facts: teamsFacts("swap", ["Zed"]) },
+    "@Match Time teams": { route: "balancer", facts: teamsFacts("show") },
+    "Pat & Tom in the same team": { route: "balancer", facts: teamsFacts("swap", [], { pairings: [["Pat", "Tom"]] }) },
+    "swap everyone on red with yellow": { route: "balancer", facts: teamsFacts("swap", [], { swapSides: true }) },
+    "swap all four": { route: "balancer", facts: teamsFacts("swap", ["Alex", "Colin", "Pat", "Tom"]) },
+    "swap Alex, Colin and Zed": { route: "balancer", facts: teamsFacts("swap", ["Alex", "Colin", "Zed"]) },
+    "Alex and Pat on one team": { route: "balancer", facts: teamsFacts("swap", [], { pairings: [["Alex", "Pat"]] }) },
+    "recommend swaps": { route: "balancer", facts: teamsFacts("suggest") },
+    "graphic please": { route: "team_sheet" },
     YES: { route: "approve" },
     yes: { route: "approve" },
     ...extra,
@@ -129,9 +137,15 @@ test("at 10:00 London: teams built and proposed in the admin group, once, nothin
   expect(teamText(await poll(request, londonAt(0, 10, 10)), /Proposed teams/)).toEqual([]);
 });
 
-test("a non-admin's 'teams' in the admin group changes nothing: one line naming who can (2026-10-20)", async ({ request, db }) => {
+test("a non-admin's '@Match Time teams' in the admin group changes nothing: one line naming who can (2026-10-20)", async ({ request, db }) => {
   const before = await sheet(db);
-  expect(await say(request, "teams", PLAYER)).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
+  expect(await say(request, "@Match Time teams", PLAYER)).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
+  expect(await sheet(db)).toEqual(before);
+});
+
+test("a non-admin's untagged teams talk: silent, nothing changed (2026-10-29, FNF HQ)", async ({ request, db }) => {
+  const before = await sheet(db);
+  expect(await say(request, "Pat & Tom in the same team", PLAYER)).toMatchObject({ handled: false, replyText: null });
   expect(await sheet(db)).toEqual(before);
 });
 
@@ -147,6 +161,43 @@ test("'reshuffle' rebuilds them", async ({ request, db }) => {
   const out = await say(request, "reshuffle");
   expect(out).toMatchObject({ handled: true, outcome: "teams-built" });
   expect(await sheet(db)).toHaveLength(4);
+});
+
+// 2026-10-29, FNF HQ: nine names, eight swaps on eight lines and "swap them
+// over" were all "Which players?"; "Ali and Habib on one team" reshuffled.
+test("the two sides swapped over: every player changes side, one reply", async ({ request, db }) => {
+  const before = await sheet(db);
+  const out = await say(request, "swap everyone on red with yellow");
+  expect(out).toMatchObject({ handled: true, outcome: "teams-changed" });
+  for (const r of before) expect(await teamOf(db, r.userId)).toBe(r.team === "RED" ? "YELLOW" : "RED");
+  expect(out.replyText).toContain("📝 *Proposed teams*");
+});
+
+test("four names in one message: all four change side as one change", async ({ request, db }) => {
+  const before = await sheet(db);
+  expect(await say(request, "swap all four")).toMatchObject({ handled: true, outcome: "teams-changed" });
+  for (const r of before) expect(await teamOf(db, r.userId)).toBe(r.team === "RED" ? "YELLOW" : "RED");
+});
+
+test("one name in the change that is nobody: the whole change refused, naming it, nothing written", async ({ request, db }) => {
+  const before = await sheet(db);
+  expect(await say(request, "swap Alex, Colin and Zed")).toMatchObject({ handled: true, outcome: "teams-name-unclear", replyText: "I can't find Zed in the teams." });
+  expect(await sheet(db)).toEqual(before);
+});
+
+test("'Alex and Pat on one team': a targeted change, never a reshuffle, the sides still 2 v 2", async ({ request, db }) => {
+  const out = await say(request, "Alex and Pat on one team");
+  expect(["teams-changed", "teams-unchanged"]).toContain(out.outcome);
+  expect(await teamOf(db, U.admin)).toBe(await teamOf(db, U.player));
+  const rows = await sheet(db);
+  expect(rows.filter((r) => r.team === "RED")).toHaveLength(2);
+  expect(rows).toHaveLength(4);
+});
+
+test("'recommend swaps': a suggestion, or that one swap cannot do better", async ({ request }) => {
+  const out = await say(request, "recommend swaps");
+  expect(["teams-suggested", "teams-suggest-none"]).toContain(out.outcome);
+  if (out.outcome === "teams-suggested") expect(out.replyText).toMatch(/^My suggestion, to even the ratings: swap .+ and .+\./);
 });
 
 test("'swap A B' swaps two players in TeamAssignment and reposts", async ({ request, db }) => {
@@ -231,6 +282,16 @@ test("the second YES: 'Teams are final.', TEAMS_PUBLISHED, nothing posted in the
   expect(tom?.status).toBe("CONFIRMED");
   // A second YES finds nothing waiting, and says nothing.
   expect(await say(request, "yes")).toMatchObject({ handled: false, replyText: null });
+});
+
+test("'graphic please' while the approved team sheet waits to go: no second one, the waiting one goes now (2026-10-29)", async ({ request, db }) => {
+  await say(request, "graphic please");
+  const sheets = await db.all<{ opts: string[] }>(
+    `SELECT "pollOptions" AS opts FROM "BotJob" WHERE "orgId" = $1 AND kind = 'admin-group' AND text LIKE 'Ready to post:%teams%'`,
+    [ORG_ID],
+  );
+  expect(sheets).toHaveLength(1);
+  expect(sheets[0].opts[3]).toBe("asked");
 });
 
 test("after approval, a drop-out is told to the admin group once, with the teams; the updated team sheet follows on its own", async ({ request, db }) => {

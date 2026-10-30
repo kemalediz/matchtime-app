@@ -328,8 +328,8 @@ describe("step 7 per-route flags", () => {
     // become nobody's problem AND nobody's decision.
     const owned = [...ANSWER_TEAM_ACTIONS, ...TEAM_OPS_TEAM_ACTIONS];
     const unowned = ALL_TEAM_ACTIONS.filter((a) => !owned.includes(a));
-    expect([...ALL_TEAM_ACTIONS].sort()).toEqual(["generate", "rename", "show", "swap"]);
-    expect(unowned.sort()).toEqual(["rename", "swap"]);
+    expect([...ALL_TEAM_ACTIONS].sort()).toEqual(["generate", "rename", "show", "suggest", "swap"]);
+    expect(unowned.sort()).toEqual(["rename", "suggest", "swap"]);
   });
 
   it("names every team action the facts type does, and no others", () => {
@@ -342,6 +342,7 @@ describe("step 7 per-route flags", () => {
       generate: true,
       rename: true,
       swap: true,
+      suggest: true,
     };
     const fromFlags: Record<TeamAction, true> = fromFacts;
     expect(Object.keys(fromFlags).sort()).toEqual([...ALL_TEAM_ACTIONS].sort());

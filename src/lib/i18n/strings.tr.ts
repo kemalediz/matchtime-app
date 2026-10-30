@@ -2448,6 +2448,13 @@ export const tr: Strings = {
   tp_name_unknown: (p) => `${p.name} takımlarda yok.`,
   tp_name_ambiguous: (p) => `${p.name} şunlardan biri olabilir: ${p.names}. Tam adını yazın.`,
   tp_same_team: (p) => `${p.a} ile ${p.b} aynı takımda, değişecek bir şey yok.`,
+  tp_evened: (p) => `Takımlar dengeli kalsın diye ${p.names} oyuncusunu da ${p.team} takımına aldım.`,
+  tp_nothing_to_change: "Takımlar zaten öyle, bir şey değişmedi.",
+  tp_suggested: (p) =>
+    `Önerim, puanları dengelemek için: ${p.a} ile ${p.b} yer değiştirsin. Aşağıda yaptım; geri almak isterseniz söyleyin.`,
+  tp_suggested_final: (p) =>
+    `Puanları dengelemek için ${p.a} ile ${p.b} yer değiştirsin derim. Takımlar kesin olduğu için değiştirmedim; isterseniz söylemeniz yeterli.`,
+  tp_suggest_none: "Bu takımlar tek bir değişiklikle olabilecek en dengeli halde.",
   tp_reminder: (p) => `⏰ ${p.kickoff} maçının takımları henüz kesinleşmedi. Görmek için kendi cümlelerinizle isteyin (örneğin *takımları göster*), sonra *EVET* yazın.`,
   tp_change_header: "🔄 *Takım değişikliği*",
   tp_change_replaced: (p) => `${p.to}, ${p.team} takımında ${p.from} yerine oynuyor`,

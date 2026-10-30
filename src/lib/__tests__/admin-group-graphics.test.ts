@@ -73,6 +73,35 @@ describe("answerGraphicRequest (the router's poster and team_sheet routes)", () 
     expect(dbMock.sentNotification.create).not.toHaveBeenCalled();
   });
 
+  // 2026-10-29, FNF HQ: the approval queued the team sheet at 18:09:13 and
+  // "Make a graphic" at 18:09:34 queued a second, identical one before the
+  // first had gone (sent 18:09:48 and 18:09:53). Again at 19:24:56, beside
+  // a redraw still in its quiet period. One team sheet still to go is
+  // drawn from the teams as they are when it goes, so it is the answer.
+  it("a team sheet still waiting to go: that one goes now, no second one", async () => {
+    dbMock.botJob.findFirst.mockResolvedValueOnce({ id: "job-wait", sendAfter: new Date(NOW.getTime() + 90_000) });
+    dbMock.botJob.updateMany.mockResolvedValue({ count: 1 });
+    expect(await ask("teams")).toEqual({ outcome: "graphic-queued", replyText: null });
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+    expect(dbMock.botJob.findFirst.mock.calls[0][0].where).toMatchObject({
+      orgId: "org-fnf",
+      kind: "admin-group",
+      sentAt: null,
+      pollOptions: { hasEvery: ["graphic:v1", "teams", "m-1"] },
+    });
+    expect(dbMock.botJob.updateMany).toHaveBeenCalledWith({
+      where: { id: "job-wait", sentAt: null },
+      data: { sendAfter: null, pollOptions: ["graphic:v1", "teams", "m-1", "asked"] },
+    });
+  });
+
+  it("the waiting one went out in the meantime: a new one is queued", async () => {
+    dbMock.botJob.findFirst.mockResolvedValueOnce({ id: "job-wait", sendAfter: null });
+    dbMock.botJob.updateMany.mockResolvedValue({ count: 0 });
+    expect(await ask("teams")).toEqual({ outcome: "graphic-queued", replyText: null });
+    expect(dbMock.botJob.create).toHaveBeenCalledTimes(1);
+  });
+
   it("the team sheet with no teams yet: 'No teams yet.' / 'Henüz takım yok.', nothing queued", async () => {
     data.loadGraphicData.mockResolvedValue(null);
     expect(await ask("teams")).toEqual({ outcome: "graphic-no-teams", replyText: "No teams yet." });

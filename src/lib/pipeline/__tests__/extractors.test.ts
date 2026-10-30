@@ -304,6 +304,41 @@ describe("parseFacts (other routes)", () => {
     expect(facts).toMatchObject({ kind: "teams", action: "swap", swaps: [], moves: ["Ali", "Can"] });
   });
 
+  it("teams carries SWAPSIDES and the SUGGEST action (2026-10-29, FNF HQ)", () => {
+    // "swap everyone on bibs with non bibs" names nobody; "recommend swaps"
+    // asks for a recommendation. Both came back as "Which players?" or nothing.
+    const sides = parseFacts(
+      "teams",
+      '{"action":"swap","includeRefs":[],"teamNames":[],"swaps":[],"moves":[],"pairings":[],"swapSides":true}',
+      "wa-1",
+    );
+    expect(sides.facts).toMatchObject({ kind: "teams", action: "swap", swapSides: true, moves: [] });
+    const older = parseFacts("teams", '{"action":"swap","includeRefs":[],"teamNames":[],"swaps":[],"moves":["Ali"]}', "wa-1");
+    expect(older.facts).toMatchObject({ swapSides: false });
+    const suggest = parseFacts(
+      "teams",
+      '{"action":"suggest","includeRefs":[],"teamNames":[],"swaps":[],"moves":[],"pairings":[],"swapSides":false}',
+      "wa-1",
+    );
+    expect(suggest.facts).toMatchObject({ kind: "teams", action: "suggest" });
+    const schema = factsSchemaFor("balancer") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    expect(schema.required).toContain("swapSides");
+    expect(schema.properties.action.enum).toContain("suggest");
+  });
+
+  it("the teams prompt (2026-10-29 rewrite): a change to the teams as they stand is swap, never generate", () => {
+    const p = EXTRACTOR_PROMPTS.teams;
+    // Each field defined once, at the start of its own line.
+    for (const field of ["includeRefs", "teamNames", "moves", "swaps", "pairings", "swapSides"]) {
+      expect(p.split(`\n${field}\n`).length, field).toBe(2);
+    }
+    expect(p).toMatch(/"Ali and Habib on one team"[^\n]*-> swap, pairings \[\["Ali","Habib"\]\]/);
+    expect(p).toMatch(/"swap everyone on bibs with non bibs"[^\n]*-> swap, swapSides true/);
+    expect(p).toMatch(/"swap Rafi and Yorel, Mo and Akram"[^\n]*moves \["Rafi","Yorel","Mo","Akram"\]/);
+    expect(p).toMatch(/"recommend swaps"[^\n]*-> suggest/);
+    expect(p).toMatch(/"make the teams and put me and David on the same team" -> generate, pairings/);
+  });
+
   // ── §10 step 8's additions to the teams extractor ───────────────────
 
   it("teams carries a PAIRING as a group of names, with no colour in it", () => {
@@ -363,7 +398,7 @@ describe("parseFacts (other routes)", () => {
     expect(p).toMatch(/You never pick the players/);
     expect(p).toMatch(/When the sender means themselves[^\n]*write "me"/);
     // Each action is defined in one place only.
-    for (const action of ['"show"', '"generate"', '"rename"', '"swap"']) {
+    for (const action of ['"show"', '"generate"', '"rename"', '"swap"', '"suggest"']) {
       expect(p.split(`\n  ${action} `).length, action).toBe(2);
     }
   });

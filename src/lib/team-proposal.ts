@@ -12,16 +12,25 @@
  * which hands this file a `TeamCommand`:
  *
  *   show       the teams as they stand; built first if none
- *   reshuffle  build new teams (asks for YES again)
- *   swap       swap two players between the teams
- *   move       move one player to the other team (or to a named one)
+ *   reshuffle  build new teams (asks for YES again), keeping anyone put
+ *              on a side or put together
+ *   change     the teams as they stand, as ONE change with any number of
+ *              names (2026-10-29): people change side as said, the two
+ *              teams swap over, or people go to a side or together, which
+ *              moves the fewest players and keeps the sides even (the one
+ *              sent back is the one that keeps the ratings closest); with
+ *              no teams yet, a side or a pair is a build that keeps them
+ *   suggest    "Recommend swaps": the swap that evens the ratings most,
+ *              made on proposed teams (YES still needed), only said on
+ *              final ones
  *
  * A YES that approves them goes through the safe-YES rule first
  * (`admin-group-confirm-rules.ts`), then `answerTeamsYes`.
  *
  * Every change reposts the teams in the admin group. Names are placed on
  * the players on the teams by the club's own rules (`nameCandidates`); an
- * unknown or ambiguous name gets one short line and changes nothing.
+ * unknown or ambiguous name gets one short line and changes nothing, the
+ * rest of the same change included.
  *
  * "TEAMS READY". A club setting, a London time on match day or "off";
  * not set, it is 10:00 when the organisers announce the list and teams
@@ -58,7 +67,7 @@
  * Logs carry ids and counts only.
  */
 import { db } from "./db";
-import { generateTeamsForMatch, type GenerateTeamsResult } from "./team-generation";
+import { generateTeamsForMatch, matchRatingsFor, type GenerateTeamsOptions, type GenerateTeamsResult } from "./team-generation";
 import { formatTeamsPost } from "./group-copy";
 import { resolveTeamLabels } from "./team-labels";
 import { formatLondon } from "./london-time";
@@ -70,6 +79,7 @@ import { loadOrganisersAnnounce } from "./list-announcer-store";
 import { redrawTeamSheet, sendGraphicToAdminChannel } from "./admin-group-graphics";
 import { t } from "./i18n/t";
 import {
+  bestSwap,
   buildChangeNotice,
   buildNameProblems,
   buildReminderText,
@@ -78,10 +88,12 @@ import {
   isProposalDue,
   isReminderDue,
   effectiveTeamsReadyTime,
+  planTeamChange,
   resolveSheetName,
   resolveSwap,
   unevenSides,
   type ChangeItem,
+  type NameResolution,
   type SheetPlayer,
   type SheetSlot,
   type SheetTeam,
@@ -91,7 +103,9 @@ import { recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 
 export interface TeamProposalDeps {
   /** The shared generator. Injected in tests only. */
-  generate?: (matchId: string) => Promise<GenerateTeamsResult>;
+  generate?: (matchId: string, opts: GenerateTeamsOptions) => Promise<GenerateTeamsResult>;
+  /** The rating each player is balanced on (`matchRatingsFor`). Injected in tests only. */
+  ratings?: (matchId: string, orgId: string, userIds: string[]) => Promise<Map<string, number>>;
   /** Do the organisers announce the teams themselves? */
   announce?: (org: { id: string }) => boolean | Promise<boolean>;
 }
@@ -108,6 +122,11 @@ export type TeamReplyOutcome =
   | "teams-same-team"
   | "teams-already-there"
   | "teams-uneven"
+  | "teams-changed"
+  | "teams-unchanged"
+  | "teams-suggested"
+  | "teams-suggested-final"
+  | "teams-suggest-none"
   | "teams-final";
 
 export interface TeamReply {
@@ -117,7 +136,9 @@ export interface TeamReply {
 
 const ACTIVE: Array<"UPCOMING" | "TEAMS_GENERATED" | "TEAMS_PUBLISHED"> = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"];
 
-const gen = (deps: TeamProposalDeps | undefined) => deps?.generate ?? ((id: string) => generateTeamsForMatch(id));
+const gen = (deps: TeamProposalDeps | undefined) =>
+  deps?.generate ?? ((id: string, opts: GenerateTeamsOptions) => generateTeamsForMatch(id, opts));
+const ratingsOf = (deps: TeamProposalDeps | undefined) => deps?.ratings ?? matchRatingsFor;
 const announces = async (deps: TeamProposalDeps | undefined, orgId: string): Promise<boolean> =>
   deps?.announce ? deps.announce({ id: orgId }) : loadOrganisersAnnounce(orgId);
 
@@ -153,6 +174,8 @@ interface Sheet {
   nameOf: Map<string, string>;
   /** Confirmed players with no team. */
   unseatedIds: string[];
+  /** Every confirmed player, on the teams or not: who a build can name. */
+  squad: SheetPlayer[];
   labels: [string, string];
   kickoff: string;
   venue: string;
@@ -187,11 +210,13 @@ async function loadSheet(match: MatchRow, lang: string | null | undefined, extra
     ids.length ? db.userAlias.findMany({ where: { orgId: activity.orgId, userId: { in: ids } } }) : Promise.resolve([]),
   ]);
   const nameOf = new Map(users.map((u) => [u.id, u.name ?? "?"]));
-  const players: SheetPlayer[] = slots.map((s) => ({
-    userId: s.userId,
-    name: nameOf.get(s.userId) ?? "?",
-    aliases: aliases.filter((a) => a.userId === s.userId).map((a) => a.alias),
-  }));
+  const asPlayer = (userId: string): SheetPlayer => ({
+    userId,
+    name: nameOf.get(userId) ?? "?",
+    aliases: aliases.filter((a) => a.userId === userId).map((a) => a.alias),
+  });
+  const players: SheetPlayer[] = slots.map((s) => asPlayer(s.userId));
+  const squad: SheetPlayer[] = [...confirmedIds].map(asPlayer);
   return {
     match,
     orgId: activity.orgId,
@@ -199,6 +224,7 @@ async function loadSheet(match: MatchRow, lang: string | null | undefined, extra
     players,
     nameOf,
     unseatedIds,
+    squad,
     labels: resolveTeamLabels(match, org, sport, lang),
     kickoff: formatLondon(match.date, "HH:mm"),
     venue: activity.venue,
@@ -300,6 +326,53 @@ export async function setAsideTeamProposal(orgId: string): Promise<number> {
 
 // ── The commands ──────────────────────────────────────────────────────
 
+/** "me" is the sender; anything else by the club's own name rules. */
+function resolveName(raw: string, players: SheetPlayer[], senderUserId: string): NameResolution {
+  if (raw.trim().toLowerCase() === "me") {
+    return players.some((p) => p.userId === senderUserId) ? { kind: "one", userId: senderUserId } : { kind: "unknown" };
+  }
+  return resolveSheetName(raw, players);
+}
+
+/**
+ * Every name of one change, resolved before anything is written. Any name
+ * that does not land on one player fails the whole change (2026-10-29).
+ */
+function resolveAll(
+  raws: string[],
+  players: SheetPlayer[],
+  senderUserId: string,
+): { ok: true; ids: string[] } | { ok: false; problems: Array<{ raw: string; res: NameResolution }> } {
+  const ids: string[] = [];
+  const problems: Array<{ raw: string; res: NameResolution }> = [];
+  for (const raw of raws) {
+    const res = resolveName(raw, players, senderUserId);
+    if (res.kind === "one") ids.push(res.userId);
+    else if (!problems.some((p) => p.raw === raw)) problems.push({ raw, res });
+  }
+  return problems.length ? { ok: false, problems } : { ok: true, ids };
+}
+
+/**
+ * The generator's pins for new teams: each person put on a side, then each
+ * group put together on the side one of them was put on, else Red (the
+ * colour means nothing; the players' group pins a pairing the same way,
+ * `pipeline/engine.ts`). First instruction about a person wins.
+ */
+function pinsFor(
+  sides: Array<{ ids: string[]; to: SheetTeam }>,
+  together: string[][],
+): Record<string, SheetTeam> {
+  const pins: Record<string, SheetTeam> = {};
+  for (const s of sides) for (const id of s.ids) pins[id] ??= s.to;
+  for (const group of together) {
+    if (new Set(group).size < 2) continue;
+    const side = group.map((id) => pins[id]).find((t): t is SheetTeam => !!t) ?? "RED";
+    for (const id of group) pins[id] ??= side;
+  }
+  return pins;
+}
+
 /**
  * One team change asked for in the admin group by a proven owner or
  * admin, as the shared pipeline read it (the router's `balancer` route,
@@ -321,8 +394,8 @@ export async function handleTeamCommand(args: {
   const match = await commandMatch(orgId, now);
   if (!match) return { outcome: "teams-no-match", replyText: s.tp_no_match };
 
-  const build = async (): Promise<TeamReply> => {
-    const res = await gen(deps)(match.id);
+  const build = async (pins: Record<string, SheetTeam> = {}): Promise<TeamReply> => {
+    const res = await gen(deps)(match.id, Object.keys(pins).length ? { pinnedToTeam: pins } : {});
     if (!res.ok) {
       console.log(`[team-proposal] ${args.messageId}: teams not built on match ${match.id}`);
       // A whole sentence, never the generator's bare fragment: the count
@@ -334,14 +407,30 @@ export async function handleTeamCommand(args: {
     }
     const fresh = (await db.match.findUnique({ where: { id: match.id } })) as unknown as MatchRow;
     const sheet = await loadSheet(fresh ?? match, lang);
-    console.log(`[team-proposal] ${args.messageId}: teams built on match ${match.id}, ${sheet.slots.length} on the teams`);
+    console.log(
+      `[team-proposal] ${args.messageId}: teams built on match ${match.id}, ${sheet.slots.length} on the teams, ${Object.keys(pins).length} pinned`,
+    );
     return { outcome: "teams-built", replyText: await propose(sheet, lang, now, announce) };
   };
 
-  if (command.kind === "reshuffle") return build();
-
   const sheet = await loadSheet(match, lang);
   const final = match.status === "TEAMS_PUBLISHED";
+  const label = (team: SheetTeam) => (team === "RED" ? sheet.labels[0] : sheet.labels[1]);
+  const nameOf = (id: string) => sheet.nameOf.get(id) ?? "?";
+  const unclear = (problems: Array<{ raw: string; res: NameResolution }>): TeamReply => ({
+    outcome: "teams-name-unclear",
+    replyText: buildNameProblems(lang, problems),
+  });
+
+  /** New teams, keeping who was put on a side or together. Named against the whole squad. */
+  const buildWith = async (sides: Array<{ name: string; to: SheetTeam }>, together: string[][]): Promise<TeamReply> => {
+    const res = resolveAll([...sides.map((x) => x.name), ...together.flat()], sheet.squad, args.senderUserId);
+    if (!res.ok) return unclear(res.problems);
+    const one = (raw: string) => (resolveName(raw, sheet.squad, args.senderUserId) as { userId: string }).userId;
+    return build(pinsFor(sides.map((x) => ({ ids: [one(x.name)], to: x.to })), together.map((g) => g.map(one))));
+  };
+
+  if (command.kind === "reshuffle") return buildWith(command.sides, command.together);
 
   if (command.kind === "show") {
     if (sheet.slots.length === 0) return build();
@@ -349,44 +438,102 @@ export async function handleTeamCommand(args: {
     return { outcome: "teams-shown", replyText: await propose(sheet, lang, now, announce) };
   }
 
-  if (sheet.slots.length === 0) return { outcome: "teams-no-teams", replyText: s.tp_no_teams };
-
-  let ids: string[];
-  if (command.kind === "swap") {
-    const res = resolveSwap(command.pairs, sheet.players);
-    if (res.kind === "problem") return { outcome: "teams-name-unclear", replyText: buildNameProblems(lang, res.problems) };
-    ids = [res.a, res.b];
-    const [a, b] = ids.map((id) => sheet.slots.find((x) => x.userId === id)!);
-    if (a.team === b.team) {
-      return {
-        outcome: "teams-same-team",
-        replyText: s.tp_same_team({ a: sheet.nameOf.get(a.userId) ?? "?", b: sheet.nameOf.get(b.userId) ?? "?" }),
-      };
+  // No teams yet: a pair or a side is a build that keeps them; a move is not.
+  if (sheet.slots.length === 0) {
+    if (command.kind === "change" && !command.swapSides && command.moves.length === 0) {
+      return buildWith(command.sides, command.together);
     }
-  } else {
-    const res = resolveSheetName(command.name, sheet.players);
-    if (res.kind !== "one") {
-      return { outcome: "teams-name-unclear", replyText: buildNameProblems(lang, [{ raw: command.name, res }]) };
-    }
-    const slot = sheet.slots.find((x) => x.userId === res.userId)!;
-    if (command.to && slot.team === command.to) {
-      const label = command.to === "RED" ? sheet.labels[0] : sheet.labels[1];
-      return { outcome: "teams-already-there", replyText: s.tp_already_on({ name: sheet.nameOf.get(res.userId) ?? "?", team: label }) };
-    }
-    ids = [res.userId];
+    return { outcome: "teams-no-teams", replyText: s.tp_no_teams };
   }
+
+  const rating = async () => {
+    const ids = sheet.slots.map((x) => x.userId);
+    const map = await ratingsOf(deps)(match.id, sheet.orgId, ids).catch(() => new Map<string, number>());
+    return (id: string) => map.get(id) ?? 5;
+  };
+
+  let plan: { team: Map<string, SheetTeam>; moved: string[]; evenedBy: string[] };
+  let outcome: TeamReplyOutcome = "teams-changed";
+  let lead: string | null = null;
+
+  if (command.kind === "suggest") {
+    const pick = bestSwap(sheet.slots, await rating());
+    if (!pick) return { outcome: "teams-suggest-none", replyText: s.tp_suggest_none };
+    const words = { a: nameOf(pick.red), b: nameOf(pick.yellow) };
+    console.log(`[team-proposal] ${args.messageId}: suggested a swap on match ${match.id}${final ? " (final, not made)" : ""}`);
+    // Final teams stay as they are: the swap is said, not made.
+    if (final) return { outcome: "teams-suggested-final", replyText: s.tp_suggested_final(words) };
+    plan = planTeamChange({ slots: sheet.slots, moveIds: [pick.red, pick.yellow], rating: () => 5 });
+    outcome = "teams-suggested";
+    lead = s.tp_suggested(words);
+  } else {
+    const { moves, sides, together, swapSides } = command;
+    const simple = !swapSides && sides.length === 0 && together.length === 0;
+    // "swap A and B": the two must be two players, on different teams.
+    if (simple && moves.length === 2) {
+      const res = resolveSwap([[moves[0], moves[1]]], sheet.players);
+      if (res.kind === "problem") return unclear(res.problems);
+      const [a, b] = [res.a, res.b].map((id) => sheet.slots.find((x) => x.userId === id)!);
+      if (a.team === b.team) {
+        return { outcome: "teams-same-team", replyText: s.tp_same_team({ a: nameOf(a.userId), b: nameOf(b.userId) }) };
+      }
+      outcome = "teams-swapped";
+    }
+    const res = resolveAll([...moves, ...sides.map((x) => x.name), ...together.flat()], sheet.players, args.senderUserId);
+    if (!res.ok) return unclear(res.problems);
+    const one = (raw: string) => (resolveName(raw, sheet.players, args.senderUserId) as { userId: string }).userId;
+    const sideIds = sides.map((x) => ({ userId: one(x.name), to: x.to }));
+    // "put Ali in Red" when he is: one line, as before.
+    if (!swapSides && moves.length === 0 && together.length === 0 && sideIds.length === 1) {
+      const slot = sheet.slots.find((x) => x.userId === sideIds[0].userId)!;
+      if (slot.team === sideIds[0].to) {
+        return { outcome: "teams-already-there", replyText: s.tp_already_on({ name: nameOf(slot.userId), team: label(slot.team) }) };
+      }
+    }
+    if (simple && moves.length === 1) outcome = "teams-moved";
+    // Every player of one team named, and nobody else ("swap everyone on
+    // bibs to non bibs. Switch all 9", read as nine names): moving them
+    // all would leave that team empty, so the two teams swap over. Three
+    // or more names only; two is "swap A and B", answered above.
+    const moveIds = [...new Set(moves.map(one))];
+    const playingOn = (team: SheetTeam) => sheet.slots.filter((x) => x.team === team && x.playing).map((x) => x.userId);
+    const wholeSide =
+      simple &&
+      moveIds.length >= 3 &&
+      (["RED", "YELLOW"] as const).some((team) => {
+        const side = playingOn(team);
+        return side.length === moveIds.length && side.every((id) => moveIds.includes(id));
+      });
+    if (wholeSide) console.log(`[team-proposal] ${args.messageId}: every player of one team named: the teams swap over`);
+    plan = planTeamChange({
+      slots: sheet.slots,
+      swapSides: swapSides || wholeSide,
+      moveIds: wholeSide ? [] : moveIds,
+      sides: sideIds,
+      together: together.map((g) => g.map(one)),
+      rating: sideIds.length || together.length ? await rating() : () => 5,
+    });
+    if (plan.evenedBy.length) {
+      const to = plan.team.get(plan.evenedBy[0])!;
+      lead = s.tp_evened({ names: plan.evenedBy.map(nameOf).join(", "), team: label(to) });
+    }
+  }
+
+  const changed = sheet.slots.filter((x) => plan.team.get(x.userId) !== x.team);
+  if (changed.length === 0) return { outcome: "teams-unchanged", replyText: s.tp_nothing_to_change };
 
   // Under the per-match slot lock, as every other seat change: a bench
   // claim landing at the same instant cannot interleave with this.
   await db.$transaction(async (tx) => {
     await lockTeamSlots(tx as unknown as SlotFillTx, match.id);
-    const rows = await tx.teamAssignment.findMany({ where: { matchId: match.id, userId: { in: ids } } });
-    for (const r of rows) await tx.teamAssignment.update({ where: { id: r.id }, data: { team: r.team === "RED" ? "YELLOW" : "RED" } });
+    for (const slot of changed) {
+      await tx.teamAssignment.update({ where: { id: slot.slotId }, data: { team: plan.team.get(slot.userId)! } });
+    }
   });
 
   const after = await loadSheet(match, lang);
-  const outcome: TeamReplyOutcome = command.kind === "swap" ? "teams-swapped" : "teams-moved";
-  console.log(`[team-proposal] ${args.messageId}: ${command.kind} on match ${match.id}`);
+  console.log(`[team-proposal] ${args.messageId}: ${outcome} on match ${match.id}, ${changed.length} changed side`);
+  const withLead = (text: string) => (lead ? `${lead}\n\n${text}` : text);
   if (final) {
     // Final teams stay final; the admin group has now seen this sheet.
     const row = (await db.adminTeamProposal.findUnique({ where: { matchId: match.id } })) as ProposalRow | null;
@@ -394,9 +541,9 @@ export async function handleTeamCommand(args: {
       await db.adminTeamProposal.update({ where: { id: row.id }, data: { toldSheet: after.slots as unknown as object } });
       await redrawAfterChange(orgId, match.id, now);
     }
-    return { outcome, replyText: teamsText(after, lang, true, announce) };
+    return { outcome, replyText: withLead(teamsText(after, lang, true, announce)) };
   }
-  return { outcome, replyText: await propose(after, lang, now, announce) };
+  return { outcome, replyText: withLead(await propose(after, lang, now, announce)) };
 }
 
 /**
@@ -559,7 +706,7 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
     }
     let ready = sheet;
     if (sheet.slots.length === 0) {
-      const res = await gen(deps)(match.id);
+      const res = await gen(deps)(match.id, {});
       if (!res.ok) {
         // Not this time; the next poll tries again.
         await db.sentNotification.deleteMany({ where: { key } });

@@ -261,8 +261,11 @@ export const TEAM_OPS_ENGINE_ROUTES: readonly Route[] = ["balancer"];
 //                  every `TeamAssignment`, force-confirms named players,
 //                  moves `Match.status` and runs the rating adjuster.
 //   • `rename`,
-//     `swap`     → NEITHER. Both are handed back; the two modules'
-//                  headers say why, and `route.ts`'s deterministic
+//     `swap`,
+//     `suggest`  → NEITHER. All three are handed back; the two modules'
+//                  headers say why for the first two, `suggest`
+//                  (2026-10-29) is the organisers' group's alone
+//                  (`team-proposal.ts`), and `route.ts`'s deterministic
 //                  pre-peel (`handleTeamSwapIfApplicable`) already owns
 //                  the swap on the raw body with no verdict at all.
 //
@@ -274,7 +277,7 @@ export const TEAM_OPS_ENGINE_ROUTES: readonly Route[] = ["balancer"];
 /** `TeamFacts["action"]`, restated here so this file does not import the
  *  facts module for one union. `route-flags.test.ts` asserts the two
  *  spellings agree. */
-export type TeamAction = "show" | "generate" | "rename" | "swap";
+export type TeamAction = "show" | "generate" | "rename" | "swap" | "suggest";
 
 /** Team actions `answer-batch.ts` owns. Reads only. */
 export const ANSWER_TEAM_ACTIONS: readonly TeamAction[] = ["show"];
@@ -284,7 +287,7 @@ export const TEAM_OPS_TEAM_ACTIONS: readonly TeamAction[] = ["generate"];
 
 /** Every team action, so a new one cannot be added to `TeamFacts`
  *  without this file failing to compile against it. */
-export const ALL_TEAM_ACTIONS: readonly TeamAction[] = ["show", "generate", "rename", "swap"];
+export const ALL_TEAM_ACTIONS: readonly TeamAction[] = ["show", "generate", "rename", "swap", "suggest"];
 
 type Env = Record<string, string | undefined>;
 

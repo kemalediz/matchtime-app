@@ -3318,6 +3318,18 @@ export const en = {
   tp_name_unknown: (p: { name: string }): string => `I can't find ${p.name} in the teams.`,
   tp_name_ambiguous: (p: { name: string; names: string }): string => `${p.name} could be ${p.names}; use the full name.`,
   tp_same_team: (p: { a: string; b: string }): string => `${p.a} and ${p.b} are on the same team, so there's nothing to swap.`,
+  /** A targeted change ("Ali and Habib on one team") moved others too, to keep the sides even. */
+  tp_evened: (p: { names: string; team: string }): string => `To keep the sides even, I also moved ${p.names} to ${p.team}.`,
+  /** A change that leaves the teams as they were. */
+  tp_nothing_to_change: "The teams are already like that, so nothing changed.",
+  /** "Recommend swaps": the swap, made on the proposed teams. */
+  tp_suggested: (p: { a: string; b: string }): string =>
+    `My suggestion, to even the ratings: swap ${p.a} and ${p.b}. I've made it below; tell me if you'd rather swap them back.`,
+  /** "Recommend swaps" on final teams: said, not made. */
+  tp_suggested_final: (p: { a: string; b: string }): string =>
+    `To even the ratings I'd swap ${p.a} and ${p.b}. The teams are final, so I haven't changed them; just tell me to swap them if you want it.`,
+  /** "Recommend swaps" when no swap helps. */
+  tp_suggest_none: "These teams are already as even as one swap can make them.",
   /** Kickoff minus 2 hours, teams still not approved. */
   tp_reminder: (p: { kickoff: string }): string =>
     `⏰ The teams for ${p.kickoff} aren't final yet. Ask me to show them, in your own words (for example *show me the teams*), then reply *YES*.`,
