@@ -45,42 +45,35 @@ export interface TagInput {
    *  WhatsApp reply quoting MatchTime's OWN message? Only the Pi knows the
    *  bot's ids, so this is computed there, never from the text. */
   quotedFromMatchTime?: boolean;
+  /** The router's own reading that the message speaks TO MatchTime (its
+   *  `to_bot`, `RoutedMessage.toBot`, 2026-10-30): the bot's name used to
+   *  address it without a real @-mention. Set by the analyze route after
+   *  the router has run; absent before. */
+  routerAddressed?: boolean;
 }
 
 /**
- * Did this message tag @Match Time?
+ * Did this message tag @Match Time? FACTS ONLY (2026-10-30, "no string
+ * parsing", B1):
  *
- *  - PRIMARY:  msg.botMentioned === true — the Pi matched the bot inside
- *              the message's mention list. Authoritative when true.
- *  - REPLY:    msg.quotedFromMatchTime === true: a WhatsApp reply quoting
- *              MatchTime's own message is addressed to it, exactly as a tag
- *              is (Kemal, 2026-10-16: FNF's "Bench? We do bench now?",
- *              replying to MatchTime's "the bench is open", went
- *              unanswered). A reply quoting a PLAYER is not.
- *  - FALLBACK: an explicit textual bot tag in the body. This runs whenever
- *              the structured signal is NOT a positive true — i.e. when
- *              botMentioned is `false` OR `undefined`.
+ *  - msg.botMentioned === true: the Pi matched the bot in the message's
+ *    mention list (`whatsapp-bot/src/mentions.ts`, the same function that
+ *    rewrites the mention into "@Match Time", so the two cannot disagree);
+ *  - msg.quotedFromMatchTime === true: a WhatsApp reply quoting
+ *    MatchTime's own message (Kemal, 2026-10-16: FNF's "Bench? We do
+ *    bench now?"); a reply quoting a player is not;
+ *  - msg.routerAddressed === true: the router read the message as spoken
+ *    to MatchTime ("MatchTime who runs this club?").
  *
- * HARDENED (prod incident 2026-06-29): a `false` botMentioned NO LONGER
- * suppresses a clear text tag. Root cause was a Pi-side @lid-vs-@c.us
- * self-mention bug that reported botMentioned:false for a genuinely-tagged
- * admin command ("@Match Time Kieran and Rashad are IN"), so the gate
- * silently dropped a real action. Since the Pi rewrites a bot @-mention
- * into the literal "@Match Time" in the body, the text tag is a reliable
- * second signal that survives a structured-signal regression. The
- * false-positive risk (casual "match time" banter) is the same tradeoff
- * already accepted for the undefined-fallback path, and we lean toward the
- * hardened fallback because dropping a real admin action is the worse error.
+ * WHAT WENT. Until today a text fallback matched "match time",
+ * "matchtime" or "@mt" anywhere in the body whenever the structured flag
+ * was not true (hardened after the 2026-06-29 wwebjs @lid bug, when the
+ * Pi reported false for a real tag). Since the Baileys migration the flag
+ * and the body rewrite come from one function, and a bot name typed
+ * without a real mention is the router's to judge, not a word test's.
  */
 export function messageTagsBot(msg: TagInput): boolean {
-  if (msg.botMentioned === true) return true;
-  if (msg.quotedFromMatchTime === true) return true;
-  const body = msg.body ?? "";
-  return (
-    /@?\s*match\s*time\b/i.test(body) ||
-    /\bmatchtime\b/i.test(body) ||
-    /@mt\b/i.test(body)
-  );
+  return msg.botMentioned === true || msg.quotedFromMatchTime === true || msg.routerAddressed === true;
 }
 
 /**

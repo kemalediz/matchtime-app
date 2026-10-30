@@ -30,60 +30,28 @@ import {
   type GateRegisterForEntry,
 } from "@/lib/interaction-contract";
 
-describe("messageTagsBot — structured signal OR hardened text fallback", () => {
-  it("returns true when botMentioned === true (regardless of body)", () => {
+describe("messageTagsBot: FACTS only, never the words (2026-10-30, B1)", () => {
+  it("the Pi's structured mention flag is a tag", () => {
     expect(messageTagsBot({ body: "what are the teams?", botMentioned: true })).toBe(true);
   });
 
-  it("HARDENED: botMentioned === false but body clearly tags the bot → true", () => {
-    // The structured signal can regress (the @lid-vs-@c.us self-mention bug
-    // that dropped a real admin add: "@Match Time Kieran and Rashad are IN").
-    // The Pi rewrites a bot @-mention into the literal "@Match Time" in the
-    // body, so an explicit text tag is a reliable second signal — don't let a
-    // false botMentioned suppress it.
-    expect(
-      messageTagsBot({ body: "@Match Time Kieran and Rashad are IN", botMentioned: false }),
-    ).toBe(true);
-    // The looser "matchtime" word match also counts — same false-positive
-    // tradeoff already accepted for the undefined-fallback path.
-    expect(messageTagsBot({ body: "matchtime is broken lol", botMentioned: false })).toBe(true);
+  it("the router's own reading that it speaks to MatchTime is a tag", () => {
+    expect(messageTagsBot({ body: "MatchTime who runs this club?", routerAddressed: true })).toBe(true);
   });
 
-  it("returns false when botMentioned === false and body does NOT tag the bot", () => {
-    expect(messageTagsBot({ body: "what are the teams?", botMentioned: false })).toBe(false);
-  });
-});
-
-describe("messageTagsBot — text fallback (undefined botMentioned, older Pi)", () => {
-  it('matches "@Match Time what are the teams?"', () => {
-    expect(messageTagsBot({ body: "@Match Time what are the teams?" })).toBe(true);
+  it("the bot's name in the text is NOT a tag by itself: the router reads that", () => {
+    expect(messageTagsBot({ body: "@Match Time what are the teams?" })).toBe(false);
+    expect(messageTagsBot({ body: "matchtime is broken lol", botMentioned: false })).toBe(false);
+    expect(messageTagsBot({ body: "match time generate the teams" })).toBe(false);
+    expect(messageTagsBot({ body: "@MT what are the teams" })).toBe(false);
   });
 
-  it('matches "match time generate the teams"', () => {
-    expect(messageTagsBot({ body: "match time generate the teams" })).toBe(true);
-  });
-
-  it('matches "matchtime who is playing"', () => {
-    expect(messageTagsBot({ body: "matchtime who is playing" })).toBe(true);
-  });
-
-  it('matches "@MT what are the teams"', () => {
-    expect(messageTagsBot({ body: "@MT what are the teams" })).toBe(true);
-  });
-
-  it("does NOT match untagged banter", () => {
+  it("nothing at all is not a tag", () => {
     expect(messageTagsBot({ body: "what are the teams?" })).toBe(false);
-    expect(messageTagsBot({ body: "Martin and ayaaz on the same team is ridiculous" })).toBe(false);
-  });
-
-  it("does NOT match the word 'time' alone", () => {
-    expect(messageTagsBot({ body: "what time is kickoff" })).toBe(false);
+    expect(messageTagsBot({ body: "what are the teams?", botMentioned: false, routerAddressed: false })).toBe(false);
   });
 });
 
-// 2026-10-16, FNF: "Bench? We do bench now?", sent as a WhatsApp reply to
-// MatchTime's own "the bench is open" post, went unanswered because it was
-// not tagged. A reply quoting MatchTime's own message is addressed to it.
 describe("messageTagsBot: a WhatsApp reply to MatchTime's own message", () => {
   it("a reply quoting MatchTime's own message is a tag", () => {
     expect(messageTagsBot({ body: "Bench? We do bench now?", quotedFromMatchTime: true })).toBe(true);
@@ -605,8 +573,8 @@ describe("messageMentionsBotExplicitly — the stricter test for a bulk-DM comma
     "please do not forget to rate the players via the link from Matchtime DM'ed to you. " +
     "the more accurate ratings, the more balanced teams next time";
 
-  it("THE INCIDENT SENTENCE counts as tagged, and is NOT an explicit mention", () => {
-    expect(messageTagsBot({ body: incident })).toBe(true);
+  it("THE INCIDENT SENTENCE is neither a tag (no word test since 2026-10-30) nor an explicit mention", () => {
+    expect(messageTagsBot({ body: incident })).toBe(false);
     expect(messageMentionsBotExplicitly({ body: incident })).toBe(false);
   });
 
