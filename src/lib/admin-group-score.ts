@@ -13,11 +13,13 @@
  *
  * What HQ adds, and only this:
  *
- *   - CLEAR OR ASK. A message with more than one possible scoreline
- *     ("7-4 or 7-5") is not recorded: one short question, and the answer
- *     (a reply, or the organiser's next message) goes through the batch.
- *     A scoreline with no team named is the engine's own "which team
- *     won?", answered the same way.
+ *   - CLEAR OR ASK. The score extractor reads the message (a model, with
+ *     the recent chat and MatchTime's last post); what it cannot read as one
+ *     result is not recorded. A scoreline with no team named is the
+ *     engine's own "which team won?", answered through the batch. No code
+ *     reads the words for a scoreline (2026-10-30: the "several
+ *     scorelines" check that stood here is gone, Kemal: "I don't want any
+ *     string parsing at all").
  *   - WHO. Anyone in HQ may report a first result (it is information,
  *     like a question). Only an owner or admin may CHANGE a recorded one:
  *     anyone else is handed to the caller's "only the organisers" line.
@@ -48,8 +50,7 @@ import { buildScoreApplyDeps } from "./owner-deps";
 import { runScoreBatch } from "./score-engine-batch";
 import type { ScoreApplyDeps } from "./score-engine";
 import { enabledStepSevenRoutes } from "./pipeline/route-flags";
-import { statesSeveralScorelines } from "./pipeline/score-ask";
-import { latestPlayedMatch, loadOpenScoreAsk, loadUnscoredPlayedMatch, scoreRouteOverrides } from "./pipeline/load-awaiting-answer";
+import { latestPlayedMatch, loadOpenScoreAsk, loadUnscoredPlayedMatch } from "./pipeline/load-awaiting-answer";
 import { SCORE_CORRECTION_WINDOW_MS } from "./pipeline/score-window";
 import { db } from "./db";
 import type { PipelineModel } from "./pipeline/llm";
@@ -112,14 +113,6 @@ export async function answerHqScore(input: HqScoreInput): Promise<HqScoreResult>
   // A recorded result is changed by an owner or admin only.
   if (recorded && !organiser) return addressed ? "organisers-only" : null;
 
-  // Clear or ask: two scorelines in one message are not a result.
-  if (statesSeveralScorelines(body)) {
-    if (!speaks) return null;
-    await recordQuestion({ orgId, askRef: scoreAskRef(played.id), text: s.hq_score_unclear, now });
-    console.log(`[admin-group] ${messageId}: score unclear (several scorelines); asked`);
-    return { outcome: "hq-score-asked", replyText: s.hq_score_unclear };
-  }
-
   const batch = await runScoreBatch({
     orgId,
     now,
@@ -169,6 +162,17 @@ export async function answerHqScore(input: HqScoreInput): Promise<HqScoreResult>
     scoreSaid = { outcome: "hq-score-asked", replyText: o.reply };
   } else if (o.reply) {
     scoreSaid = { outcome: "hq-score-not-changed", replyText: o.reply };
+  }
+  // CLEAR OR ASK: nothing in it read as one result (the score extractor,
+  // a model, read no scoreline: "7-4 or 7-5"), from an organiser or asked
+  // of MatchTime: one short question, filed so the answer is known as one.
+  // Anyone else's: their chat.
+  // (A result it read that the engine chose not to answer, such as a
+  // game before the latest one, stays silent.)
+  if (!scoreSaid && !o.momRef && !o.statesResult && speaks) {
+    await recordQuestion({ orgId, askRef: scoreAskRef(played.id), text: s.hq_score_unclear, now });
+    console.log(`[admin-group] ${messageId}: score: no one result read; asked`);
+    scoreSaid = { outcome: "hq-score-asked", replyText: s.hq_score_unclear };
   }
   if (!organisersPickMom(state.features)) return scoreSaid;
 
@@ -243,30 +247,23 @@ async function hqMom(
 }
 
 /**
- * What the router is shown and told about the score in HQ: the score
- * MatchTime is waiting for (a context line), and the messages that go to
- * `score` whatever the model says (`scoreRouteOverrides`, the players'
- * group's own rule). Never fails HQ: a read error means nothing waits.
+ * What the router is shown about the score in HQ: the score MatchTime is
+ * waiting for, as a context line. The router reads the message with it;
+ * since 2026-10-30 no code decides from the words that a message answers
+ * it. Never fails HQ: a read error means nothing waits.
  */
 export async function hqScoreRouting(args: {
   orgId: string;
   lang: string | null;
-  messageId: string;
-  body: string;
-  addressed: boolean;
-  senderUserId: string | null;
   now: Date;
   /** The organisers pick Man of the Match (mom-chooser.ts): it waits too. */
   momByOrganisers?: boolean;
-}): Promise<{ waiting: ScoreWaiting | null; scoreAnswerIds: Set<string>; scoreCorrectionIds: Set<string> }> {
+}): Promise<{ waiting: ScoreWaiting | null }> {
   const { orgId, now } = args;
-  const [ask, unscored, momMissing, overrides] = await Promise.all([
+  const [ask, unscored, momMissing] = await Promise.all([
     loadOpenScoreAsk(orgId, now).catch(() => null),
     loadUnscoredPlayedMatch(orgId, now).catch(() => null),
     args.momByOrganisers ? loadMomMissing(orgId, now).catch(() => null) : Promise.resolve(null),
-    scoreRouteOverrides(orgId, [{ id: args.messageId, body: args.body, tagged: args.addressed, senderUserId: args.senderUserId }], now).catch(
-      () => ({ scoreAnswerIds: new Set<string>(), scoreCorrectionIds: new Set<string>() }),
-    ),
   ]);
   const waiting: ScoreWaiting | null = ask
     ? { kind: "which-team", first: ask.first, second: ask.second, labels: ask.labels, askedAt: ask.askedAt }
@@ -280,7 +277,7 @@ export async function hqScoreRouting(args: {
       : momMissing
         ? { kind: "mom", day: dayLabel(args.lang, momMissing.date) }
         : null;
-  return { waiting, ...overrides };
+  return { waiting };
 }
 
 /**

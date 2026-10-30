@@ -41,7 +41,7 @@ const seedHq = vi.hoisted(() => ({ applyMonthSeedYes: vi.fn() }));
 vi.mock("../month-seed-hq", () => seedHq);
 vi.mock("@/lib/month-seed-hq", () => seedHq);
 
-import { answerSquadPasteYes, proposeSquadPaste } from "../admin-group-paste";
+import { answerSquadPasteYes, proposeSquadPaste, type PasteReply } from "../admin-group-paste";
 import type { PipelineModel } from "../pipeline/llm";
 
 /** The reader's answer, as the model would give it. Members by ref: the
@@ -122,11 +122,19 @@ const LIST_READ = () =>
 const base = { orgId: "org", lang: "en", messageId: "wa-paste", senderUserId: "u-admin", now: NOW };
 
 describe("proposeSquadPaste", () => {
-  it("one line: not asked, not handled", async () => {
-    const m = LIST_READ();
-    expect(await proposeSquadPaste({ ...base, text: "Shehryar out", deps: { model: m } })).toBeNull();
-    expect(modelCalls).toHaveLength(0);
+  it("no gate on the message's shape (2026-10-30): one line is read too, and only the reader says what it is", async () => {
+    expect(await proposeSquadPaste({ ...base, text: "Shehryar out", deps: { model: reader("other") } })).toBeNull();
+    expect(modelCalls).toHaveLength(1);
     expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
+  });
+
+  it("a reading the caller already has is used, and the model is not asked again", async () => {
+    const { readHqSquad } = await import("../admin-group-paste");
+    const read = await readHqSquad({ ...base, text: LIST, deps: { model: LIST_READ() } });
+    expect(modelCalls).toHaveLength(1);
+    const r = (await proposeSquadPaste({ ...base, text: LIST, read, deps: { model: null } })) as PasteReply | null;
+    expect(r).toMatchObject({ outcome: "paste-proposed" });
+    expect(modelCalls).toHaveLength(1);
   });
 
   it("the reader says it is not the squad (teams, other): not handled, so it goes on to the pipeline", async () => {
@@ -137,7 +145,7 @@ describe("proposeSquadPaste", () => {
   });
 
   it("a list: says the exact changes, asks for YES, applies NOTHING", async () => {
-    const r = await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } });
+    const r = (await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } })) as PasteReply | null;
     expect(r).toEqual({
       outcome: "paste-proposed",
       replyText:
@@ -163,7 +171,7 @@ describe("proposeSquadPaste", () => {
 
   it("the reader leaves off two players but does not say they are out: nobody is taken out, and it says so", async () => {
     const m = reader("squad", [{ name: "Bilal", member: "p2" }, { name: "Ali", member: "p4" }, { name: "Tom", member: "p5" }, { name: "Sam", member: "p6" }]);
-    const r = await proposeSquadPaste({ ...base, text: "1. Bilal\n2. Ali\n3. Tom\n4. Sam", deps: { model: m } });
+    const r = (await proposeSquadPaste({ ...base, text: "1. Bilal\n2. Ali\n3. Tom\n4. Sam", deps: { model: m } })) as PasteReply | null;
     expect(r).toEqual({
       outcome: "paste-proposed",
       replyText:
@@ -174,7 +182,7 @@ describe("proposeSquadPaste", () => {
 
   it("nothing to add and players left off without a word: one line, nothing stored, no YES", async () => {
     const m = reader("squad", [{ name: "Ali", member: "p4" }, { name: "Tom", member: "p5" }, { name: "Sam", member: "p6" }]);
-    const r = await proposeSquadPaste({ ...base, text: "Ali\nTom\nSam", deps: { model: m } });
+    const r = (await proposeSquadPaste({ ...base, text: "Ali\nTom\nSam", deps: { model: m } })) as PasteReply | null;
     expect(r).toEqual({
       outcome: "paste-held",
       replyText:
@@ -193,18 +201,18 @@ describe("proposeSquadPaste", () => {
 
   it("identical to the squad: says so, nothing stored", async () => {
     const m = reader("squad", ["p1", "p3", "p4", "p5", "p6"].map((member) => ({ name: member, member })));
-    const r = await proposeSquadPaste({ ...base, text: "1. Shehryar\n2. Clarence\n3. Ali\n4. Tom\n5. Sam", deps: { model: m } });
+    const r = (await proposeSquadPaste({ ...base, text: "1. Shehryar\n2. Clarence\n3. Ali\n4. Tom\n5. Sam", deps: { model: m } })) as PasteReply | null;
     expect(r).toEqual({ outcome: "paste-same", replyText: "That matches the squad, nothing to change." });
     expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
   });
 
   it("Turkish club: Turkish proposal, and the Turkish kept line", async () => {
-    const r = await proposeSquadPaste({ ...base, lang: "tr", text: LIST, deps: { model: LIST_READ() } });
+    const r = (await proposeSquadPaste({ ...base, lang: "tr", text: LIST, deps: { model: LIST_READ() } })) as PasteReply | null;
     expect(r?.replyText).toBe(
       "Eklenecek: Bilal Ahmed. Çıkarılacak: Shehryar Khan, Clarence Obi. Tanımadığım isimler: Naim (henüz üye değil, yeni oyuncu olarak ekleyeceğim). Uygulamak için EVET yazın.",
     );
     const m = reader("squad", [{ name: "Ali", member: "p4" }, { name: "Tom", member: "p5" }, { name: "Sam", member: "p6" }, { name: "Clarence", member: "p3" }]);
-    const kept = await proposeSquadPaste({ ...base, lang: "tr", text: "Ali\nTom\nSam\nClarence", deps: { model: m } });
+    const kept = (await proposeSquadPaste({ ...base, lang: "tr", text: "Ali\nTom\nSam\nClarence", deps: { model: m } })) as PasteReply | null;
     expect(kept?.replyText).toBe("Kimseyi çıkarmadım: Shehryar Khan kadroda ama bu listede yok. Gelmiyorsa ismiyle söyleyin.");
   });
 
@@ -214,7 +222,7 @@ describe("proposeSquadPaste", () => {
       ...["p1", "p3", "p4", "p5", "p6"].map((member) => ({ name: member, member })),
       { name: "With", person: false },
     ]);
-    const r = await proposeSquadPaste({ ...base, text: "Swap\nShehryar\nClarence\nAli\nTom\nSam\nWith", deps: { model: m } });
+    const r = (await proposeSquadPaste({ ...base, text: "Swap\nShehryar\nClarence\nAli\nTom\nSam\nWith", deps: { model: m } })) as PasteReply | null;
     expect(r?.outcome).toBe("paste-same");
   });
 
@@ -224,7 +232,7 @@ describe("proposeSquadPaste", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(new Date("2026-10-17T00:30:00Z")); // the day after MATCH
-      const r = await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } });
+      const r = (await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } })) as PasteReply | null;
       expect(r?.outcome).toBe("paste-proposed");
     } finally {
       vi.useRealTimers();
@@ -242,7 +250,7 @@ describe("proposeSquadPaste", () => {
     beforeEach(() => dbMock.match.findMany.mockResolvedValue([]));
 
     it("a weekly game is set up: says there is no game yet and when the next one is made (BST: 01:00 London)", async () => {
-      const r = await proposeSquadPaste({ ...base, now: new Date("2026-10-15T21:13:00Z"), text: LIST, deps: { model: LIST_READ() } });
+      const r = (await proposeSquadPaste({ ...base, now: new Date("2026-10-15T21:13:00Z"), text: LIST, deps: { model: LIST_READ() } })) as PasteReply | null;
       expect(r).toEqual({
         outcome: "paste-no-match",
         replyText:
@@ -254,12 +262,12 @@ describe("proposeSquadPaste", () => {
     });
 
     it("in winter (GMT) the same run is at 00:00 London", async () => {
-      const r = await proposeSquadPaste({ ...base, now: new Date("2026-12-03T21:13:00Z"), text: LIST, deps: { model: LIST_READ() } });
+      const r = (await proposeSquadPaste({ ...base, now: new Date("2026-12-03T21:13:00Z"), text: LIST, deps: { model: LIST_READ() } })) as PasteReply | null;
       expect(r?.replyText).toContain("every night at 00:00 (London time)");
     });
 
     it("Turkish club: Turkish", async () => {
-      const r = await proposeSquadPaste({ ...base, lang: "tr", now: new Date("2026-10-15T21:13:00Z"), text: LIST, deps: { model: LIST_READ() } });
+      const r = (await proposeSquadPaste({ ...base, lang: "tr", now: new Date("2026-10-15T21:13:00Z"), text: LIST, deps: { model: LIST_READ() } })) as PasteReply | null;
       expect(r).toEqual({
         outcome: "paste-no-match",
         replyText:
@@ -269,20 +277,20 @@ describe("proposeSquadPaste", () => {
 
     it("no weekly game at all: says to add one under Activities", async () => {
       dbMock.activity.findMany.mockResolvedValue([]);
-      const r = await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } });
+      const r = (await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } })) as PasteReply | null;
       expect(r).toEqual({
         outcome: "paste-no-match",
         replyText:
           "This club has no weekly game set up yet, so there's nothing to put this list on. Add the game under Activities on the website, then paste the list again.",
       });
-      const tr = await proposeSquadPaste({ ...base, lang: "tr", text: LIST, deps: { model: LIST_READ() } });
+      const tr = (await proposeSquadPaste({ ...base, lang: "tr", text: LIST, deps: { model: LIST_READ() } })) as PasteReply | null;
       expect(tr?.replyText).toBe(
         "Bu kulübün henüz ayarlanmış haftalık maçı yok, bu yüzden listeyi koyacak bir maç yok. Maçı web sitesinde Etkinlikler bölümünden ekleyin, sonra listeyi yeniden yapıştırın.",
       );
     });
 
-    it("the reader says it is not the squad: still not handled, so it goes on as before", async () => {
-      expect(await proposeSquadPaste({ ...base, text: "Shehryar out", deps: { model: LIST_READ() } })).toBeNull();
+    it("the reader says it is not the squad: not handled", async () => {
+      expect(await proposeSquadPaste({ ...base, text: "Shehryar out", deps: { model: reader("other") } })).toBeNull();
       expect(await proposeSquadPaste({ ...base, text: "who's free friday?\nanyone?", deps: { model: reader("other") } })).toBeNull();
     });
   });
@@ -322,13 +330,13 @@ describe("29 Oct: MatchTime's own two-sided teams sheet pasted back", () => {
 
   it("even a reader that calls all 18 the squad: the teams' players are never a squad change", async () => {
     const m = reader("squad", [...NON_BIBS, ...BIBS].map((name) => ({ name, member: ref(name) })));
-    expect(await proposeSquadPaste({ ...base, text: SHEET, deps: { model: m } })).toBeNull();
+    expect(await proposeSquadPaste({ ...base, text: SHEET, deps: { model: m } })).toBe("teams");
     expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
   });
 
   it("even a reader that repeats the old parser's mistake (9 squad, 9 out): nobody is taken out", async () => {
     const m = reader("squad", NON_BIBS.map((name) => ({ name, member: ref(name) })), BIBS.map(ref));
-    const r = await proposeSquadPaste({ ...base, text: SHEET, deps: { model: m } });
+    const r = (await proposeSquadPaste({ ...base, text: SHEET, deps: { model: m } })) as PasteReply | null;
     expect(r?.outcome).toBe("paste-held");
     expect(r?.replyText).toBe(
       `I haven't taken anyone out: 9 players in the squad are not on this list (${BIBS.join(", ")}). If any of them are out, tell me who by name.`,
@@ -348,7 +356,7 @@ describe("29 Oct: MatchTime's own two-sided teams sheet pasted back", () => {
       { name: "With", person: false },
       ...BIBS.map((name) => ({ name, member: ref(name) })),
     ]);
-    expect(await proposeSquadPaste({ ...base, text: SWAP, deps: { model: m } })).toBeNull();
+    expect(await proposeSquadPaste({ ...base, text: SWAP, deps: { model: m } })).toBe("teams");
     expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
   });
 });

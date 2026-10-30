@@ -24,6 +24,9 @@ const FACTS: Record<string, unknown> = {
   "sarı 7-4 kazandı": { ...NO, hasScore: true, first: 7, second: 4, winner: "sarı" },
   "7-4": { ...NO, hasScore: true, first: 7, second: 4 },
   "no, it was 7-5 to yellow": { ...NO, hasScore: true, first: 7, second: 5, winner: "yellow", correction: true },
+  // Two possible results: the score extractor (a model) reads no one result.
+  "7-4 or 7-5, Yellow won": { ...NO },
+  "7-4 ya da 7-5": { ...NO },
 };
 
 let calls: string[] = [];
@@ -101,27 +104,20 @@ describe("a clear score is recorded through the shared score handling", () => {
 });
 
 describe("unclear: one short question, nothing recorded", () => {
-  it('"7-4 or 7-5, Yellow won": several scorelines, asked once, no model call, no write', async () => {
+  // 2026-10-30: no code counts the scorelines in the words any more; the
+  // score extractor (a model) reads the message, and what it reads as no
+  // one result is asked about once, never recorded.
+  it('"7-4 or 7-5, Yellow won": the score extractor reads no one result: asked once, nothing recorded', async () => {
     const r = await hq("7-4 or 7-5, Yellow won", played());
     expect(r).toEqual({ outcome: "hq-score-asked", replyText: "I can't tell the final score from that. What was it, and which team won?" });
-    expect(calls).toEqual([]);
+    expect(calls).toHaveLength(1);
     expect(recorded).toEqual([]);
     expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith(expect.objectContaining({ askRef: scoreAskRef("done-1") }));
   });
 
-  it('"7-4" with no team: the engine\'s own "which team won?", remembered for the answer', async () => {
-    const r = await hq("7-4", played());
-    expect(r).toEqual({ outcome: "hq-score-asked", replyText: "7 - 4: which team won? Reply with the winning team: Red or Yellow." });
+  it("someone who is not an organiser, untagged: their chat, nothing said", async () => {
+    expect(await hq("7-4 or 7-5, Yellow won", played(), { organiser: false, senderUserId: "u-hamzah" })).toBeNull();
     expect(recorded).toEqual([]);
-    expect(asked).toEqual([expect.objectContaining({ first: 7, second: 4 })]);
-    expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith(expect.objectContaining({ askRef: scoreAskRef("done-1") }));
-  });
-
-  it('the organiser\'s answer "Yellow" records it, with no model call', async () => {
-    const state = played({ pendingScore: { first: 7, second: 4, askedAt: new Date(NOW.getTime() - 60_000).toISOString(), askerUserId: "u-kemal" } });
-    expect(await hq("Yellow", state)).toEqual({ outcome: "hq-score-saved", replyText: "Score saved: Yellow 7, Red 4." });
-    expect(calls).toEqual([]);
-    expect(recorded).toEqual([{ matchId: "done-1", red: 4, yellow: 7 }]);
   });
 
   it("the Turkish ask", async () => {

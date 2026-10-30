@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { buildHqHelp, hqHelpGates } from "@/lib/admin-group-help";
 import { readCollectorReply } from "@/lib/__tests__/fixtures/monthly-legacy";
 import { HQ_SQUAD_READER_SYSTEM } from "@/lib/hq-squad-reader-prompt";
-import { parsePickReply } from "@/lib/organiser-pick-rules";
+import { PICK_READER_SYSTEM } from "@/lib/organiser-pick-reader-prompt";
 
 const ALL = { squad: true, graphics: true, picks: true, paid: true };
 
@@ -128,16 +128,13 @@ describe("every STRUCTURED reply the help quotes is one the admin group really t
     expect(readCollectorReply("ÖDENDİ YOK")).not.toBeNull();
   });
 
-  it("ALL / NONE to a pick (organiser-pick-rules.ts parsePickReply)", () => {
-    const ctx = { list: [], confirmed: [], members: [], pendingConfirm: false, tags: [] };
-    expect(parsePickReply("ALL", ctx, "group")).toEqual({ kind: "all" });
-    expect(parsePickReply("NONE", ctx, "group")).toEqual({ kind: "none" });
-    expect(parsePickReply("HEPSİ", ctx, "group")).toEqual({ kind: "all" });
-    expect(parsePickReply("HİÇBİRİ", ctx, "group")).toEqual({ kind: "none" });
+  it("ALL / NONE to a pick are read by the pick reader, a model (organiser-pick-reader-prompt.ts, 2026-10-30)", () => {
+    expect(PICK_READER_SYSTEM).toContain(`"all" | "hepsi": all.`);
+    expect(PICK_READER_SYSTEM).toContain(`"none", "nobody", "leave it" | "hiçbiri", "kimse": none.`);
   });
 
   it("a pasted list is read as the squad by the HQ squad reader, a model (hq-squad-reader-prompt.ts, 2026-10-29)", () => {
-    expect(HQ_SQUAD_READER_SYSTEM).toContain(`"squad": the list of who plays the next game`);
+    expect(HQ_SQUAD_READER_SYSTEM).toContain(`"squad": the whole list of who plays the next game`);
   });
 
   it("asking what MatchTime can do is none of those structured replies", () => {

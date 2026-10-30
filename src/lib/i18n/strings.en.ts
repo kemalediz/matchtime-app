@@ -1615,7 +1615,7 @@ export const en = {
     yellow: number;
   }): string =>
     `Score changed: ${sidesEn(p)} (it was ${sidesEn({ ...p, red: p.oldRed, yellow: p.oldYellow })}).`,
-  /** More than one scoreline in the message ("7-4 or 7-5"). */
+  /** The router said score, and the score extractor read no one result ("7-4 or 7-5"). */
   hq_score_unclear: `I can't tell the final score from that. What was it, and which team won?`,
   /** A score in HQ with no played match waiting for one. */
   hq_score_no_match: `There's no finished match waiting for a score.`,
@@ -3236,20 +3236,11 @@ export const en = {
   ag_sq_failed: (p: { names: string }): string => `I couldn't change ${p.names}. Please check the match page.`,
   /** The admin asked for what the squad already says. */
   ag_sq_nothing: "Nothing to change: the squad already says that.",
-  /** A name nobody in the club has, said in passing as coming in (2026-10-15). */
-  ag_sq_unknown: (p: { name: string }): string => `I don't know ${p.name} yet. To add them, just ask me in your own words (for example put ${p.name} in).`,
   /** An OUT for a name nobody in the club has: nothing to take out (FNF HQ 2026-10-24, "Glazers is out now"). */
   ag_sq_not_on_list: (p: { names: string; when: string }): string => `I can't find ${p.names} on the list for ${p.when}, so nothing changed.`,
-  /** Said to MatchTime, read as about someone else's place, but no one named in it ("@Match Time AH back", 2026-10-19). */
-  ag_sq_who: `I couldn't tell who that's about, so I haven't changed anything. To add someone or take them out, just ask me in your own words with their name (for example put Bilal in).`,
   /** The game's list is not set yet: the rolling squad carries over in the morning (2026-10-17). */
   ag_sq_not_set: (p: { when: string; day: string; time: string }): string =>
     `The list for ${p.when} isn't set yet: last week's squad carries over at ${p.time} on ${p.day}. Send it again after that.`,
-  /** The sender said in conversation that they are out; nothing is written (2026-10-15). */
-  ag_sq_self_hint_out: (p: { name: string; when: string }): string =>
-    `If you want me to take you out of ${p.when}, just ask me in your own words (for example ${p.name} out).`,
-  /** The sender said in conversation that they are in; nothing is written (2026-10-15). */
-  ag_sq_self_hint_in: (p: { name: string; when: string }): string => `If you want me to put you in for ${p.when}, just ask me in your own words (for example ${p.name} in).`,
   /** The count after the change. `bench` is `benchClause` (squad-count-line.ts):
    *  ", 1 on the bench (Uncle Najib)", or "" with nobody on it. */
   ag_sq_count: (p: { confirmed: number; max: number; bench: string }): string => `${p.confirmed} of ${p.max}${p.bench}.`,

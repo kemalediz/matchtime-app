@@ -20,14 +20,17 @@
  * (`resolveOrProvisionByName`): outs first, so the places are free, then
  * the waiting list, then ins.
  *
- * WHAT the message is (the squad, a copy of the teams, a swap, chatter) is
- * read by a model, the HQ squad reader (`hq-squad-reader.ts`, 2026-10-29),
- * never by code: FNF's 29 Oct teams sheet pasted back was read by a string
- * parser as a squad of 9 and nine confirmed players were dropped. Code
- * gates on facts only (`gateSquadPaste`): the teams' players are never a
- * squad change, and players come out only as the reader accounted for
- * them, at most three. The YES takes out exactly who the preview said.
- * Logs carry ids and counts only.
+ * WHAT the message is (the squad, a change, a copy of the teams, a swap,
+ * chatter) is read by a model, the HQ squad reader (`hq-squad-reader.ts`,
+ * 2026-10-29), never by code: FNF's 29 Oct teams sheet pasted back was
+ * read by a string parser as a squad of 9 and nine confirmed players were
+ * dropped. The reader is asked when the shared router sends a message to
+ * the squad (`admin-group-understand.ts`, 2026-10-30), one line or many:
+ * no gate on the message's shape. Code gates on facts only
+ * (`gateSquadPaste`): the teams' players are never a squad change, and
+ * players come out only as the reader accounted for them, at most three.
+ * The YES takes out exactly who the preview said. Logs carry ids and
+ * counts only.
  */
 import { db } from "./db";
 import { cancelAttendance, registerAttendance } from "./attendance";
@@ -99,17 +102,45 @@ export interface PasteMessage {
   quoted?: { text?: string | null; fromMatchTime?: boolean } | null;
 }
 
-async function readPaste(args: {
+type RegistrationMatch = { id: string; date: Date; maxPlayers: number; activityId?: string | null; teamLabels?: string[] | null };
+
+/** One HQ message, read once by the HQ squad reader, with what it was read
+ *  against: the club's context and the game a squad would be for (null:
+ *  the club has none yet). */
+export interface HqSquadRead {
+  reading: HqSquadReading;
+  ctx: HqSquadReaderContext;
+  match: RegistrationMatch | null;
+}
+
+export interface HqSquadReadArgs {
   orgId: string;
   lang: string | null | undefined;
   messageId: string;
   text: string;
   senderUserId: string;
   now: Date;
-  match: { id: string; date: Date; maxPlayers: number; activityId?: string | null; teamLabels?: string[] | null } | null;
   quoted?: PasteMessage["quoted"];
+  /** Said to MatchTime (an @tag, or a reply to its post): a fact the
+   *  reader is told. */
+  addressed?: boolean;
+  /** Tests: the model (null: none). Omitted: the real one, or the e2e stub. */
   deps?: { model?: PipelineModel | null };
-}): Promise<{ reading: HqSquadReading; ctx: HqSquadReaderContext }> {
+}
+
+/**
+ * HQ's one model door for who plays (2026-10-30): the message, read by the
+ * HQ squad reader against the club's next game. Asked by
+ * `admin-group-understand.ts` when the shared router sends a member's
+ * message to the squad. Never throws: a failed read is "other".
+ */
+export async function readHqSquad(args: HqSquadReadArgs): Promise<HqSquadRead> {
+  const match = await registrationMatch(args.orgId, args.now);
+  const { reading, ctx } = await readPaste({ ...args, match });
+  return { reading, ctx, match };
+}
+
+async function readPaste(args: HqSquadReadArgs & { match: RegistrationMatch | null }): Promise<{ reading: HqSquadReading; ctx: HqSquadReaderContext }> {
   return withOrgAiBudget(args.orgId, async () => {
     const [ctx, history] = await Promise.all([
       loadHqSquadReaderContext({ orgId: args.orgId, match: args.match, lang: args.lang }),
@@ -121,7 +152,7 @@ async function readPaste(args: {
       ? { at: null, text: q.text, topic: null, match: null, author: q.fromMatchTime === true ? null : { name: null } }
       : null;
     const reading = await readHqSquadMessage(
-      { body: args.text, sender: { userId: args.senderUserId, name: sender?.name ?? null }, history, reply, now: args.now },
+      { body: args.text, sender: { userId: args.senderUserId, name: sender?.name ?? null }, history, reply, addressed: args.addressed === true, now: args.now },
       ctx,
       args.deps,
     );
@@ -134,14 +165,11 @@ async function readPaste(args: {
  * Club FNF's organiser pasted the squad a minute after going live, before
  * the nightly cron had made the game, and heard nothing. Now a message the
  * HQ squad reader reads as the squad gets one line saying there is no game
- * yet and when the next one is made; anything else is still null, so
- * chatter goes on exactly as before. Nothing is stored. Once per message:
+ * yet and when the next one is made. Nothing is stored. Once per message:
  * the caller has already claimed `admin-group-msg:<messageId>`.
  */
-async function answerPasteWithoutMatch(args: Parameters<typeof proposeSquadPaste>[0]): Promise<PasteReply | null> {
+async function answerPasteWithoutMatch(args: { orgId: string; lang: string | null | undefined; messageId: string; now: Date }): Promise<PasteReply> {
   const games = await db.activity.findMany({ where: { orgId: args.orgId, isActive: true }, select: { id: true } });
-  const { reading } = await readPaste({ ...args, match: null });
-  if (reading.kind !== "squad") return null;
   const nextRunTime = games.length > 0 ? formatLondon(nextNightlyFixtureRun(args.now), "HH:mm") : null;
   console.log(`[admin-group] ${args.messageId}: pasted list with no game to put it on (${games.length} weekly game(s))`);
   return { outcome: "paste-no-match", replyText: buildPasteNoMatchReply({ lang: args.lang, nextRunTime }) };
@@ -149,34 +177,21 @@ async function answerPasteWithoutMatch(args: Parameters<typeof proposeSquadPaste
 
 /**
  * The paste, proposed. Null when the message is not a squad list (the HQ
- * squad reader, a model, says so: a copy of the teams, a swap, chatter),
- * when its players are exactly the teams' (`gateSquadPaste`), or when this
- * message was already proposed (a Pi retry). Null goes on to the shared
- * pipeline. With no match to put it on, a list gets the "no game yet" line
- * (`answerPasteWithoutMatch`).
+ * squad reader, a model, says so: a change, a copy of the teams, a swap,
+ * chatter) or when this message was already proposed (a Pi retry).
+ * "teams" when its players are exactly the teams' (`gateSquadPaste`): the
+ * caller handles it as the teams. With no match to put it on, a list gets
+ * the "no game yet" line (`answerPasteWithoutMatch`). `read`: the reading
+ * the caller already has (`readHqSquad`); absent, the message is read here.
  */
-export async function proposeSquadPaste(args: {
-  orgId: string;
-  lang: string | null | undefined;
-  messageId: string;
-  text: string;
-  senderUserId: string;
-  now: Date;
-  quoted?: PasteMessage["quoted"];
-  /** Tests: the model (null: none). Omitted: the real one, or the e2e stub. */
-  deps?: { model?: PipelineModel | null };
-}): Promise<PasteReply | null> {
+export async function proposeSquadPaste(args: HqSquadReadArgs & { read?: HqSquadRead }): Promise<PasteReply | "teams" | null> {
   const { orgId, now } = args;
-  // Only a message of several lines is asked about (a cost gate on the
-  // message's shape; what the lines mean is the reader's).
-  if (!args.text.includes("\n")) return null;
-  const match = await registrationMatch(orgId, now);
-  if (!match) return answerPasteWithoutMatch(args);
-  const { reading, ctx } = await readPaste({ ...args, match });
+  const { reading, ctx, match } = args.read ?? (await readHqSquad(args));
   if (reading.kind !== "squad") {
-    console.log(`[admin-group] ${args.messageId}: multi-line message read as ${reading.kind}, not a squad list`);
+    console.log(`[admin-group] ${args.messageId}: read as ${reading.kind}, not a squad list`);
     return null;
   }
+  if (!match) return answerPasteWithoutMatch(args);
 
   const members: PasteMember[] = ctx.members.map((m) => ({ userId: m.userId, name: m.name, aliases: m.aliases }));
   const current = await currentSquad(match.id);
@@ -218,7 +233,7 @@ export async function proposeSquadPaste(args: {
   });
   if (gate.verdict === "teams") {
     console.log(`[admin-group] ${args.messageId}: pasted names are the teams' players on match ${match.id}: not a squad change`);
-    return null;
+    return "teams";
   }
   const diff = gate.diff;
 

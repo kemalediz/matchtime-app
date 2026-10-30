@@ -39,9 +39,13 @@ vi.mock("@/lib/ai-budget", () => ({
 }));
 const squad = vi.hoisted(() => ({ handleAdminSquadChange: vi.fn(), nameMentions: vi.fn(async (_o: string, text: string) => text) }));
 vi.mock("@/lib/admin-group-squad-change", () => squad);
-const teams = vi.hoisted(() => ({ answerTeamsYes: vi.fn(), handleTeamCommand: vi.fn() }));
+const teams = vi.hoisted(() => ({ answerTeamsYes: vi.fn(), handleTeamCommand: vi.fn(), setAsideTeamProposal: vi.fn() }));
 vi.mock("@/lib/team-proposal", () => teams);
-const paste = vi.hoisted(() => ({ answerSquadPasteYes: vi.fn() }));
+// The HQ squad reader (2026-10-30), HQ's one model door for who plays: by
+// default it reads a change (Tom out), as the engine's facts.
+const paste = vi.hoisted(() => ({ answerSquadPasteYes: vi.fn(), readHqSquad: vi.fn(), proposeSquadPaste: vi.fn() }));
+const CHANGE = { kind: "change", changes: [{ name: "Tom", userId: "u-tom", to: "out", replaces: "" }], alsoAsks: false };
+const read = (reading: unknown) => ({ reading, ctx: { orgId: "org-fnf", game: null, members: [], squad: { playing: [], bench: [] }, teams: null }, match: null });
 vi.mock("@/lib/admin-group-paste", () => paste);
 const graphics = vi.hoisted(() => ({ answerGraphicRequest: vi.fn() }));
 vi.mock("@/lib/admin-group-graphics", () => graphics);
@@ -162,12 +166,15 @@ beforeEach(() => {
   teams.answerTeamsYes.mockResolvedValue({ outcome: "teams-final", replyText: "Teams are final." });
   teams.handleTeamCommand.mockResolvedValue({ outcome: "teams-swapped", replyText: "📝 *Proposed teams* ..." });
   paste.answerSquadPasteYes.mockResolvedValue({ outcome: "paste-applied", replyText: "Done." });
+  paste.readHqSquad.mockResolvedValue(read(CHANGE));
+  paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
+  teams.setAsideTeamProposal.mockResolvedValue(0);
   graphics.answerGraphicRequest.mockResolvedValue({ outcome: "graphic-queued", replyText: null });
   squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Tom out." });
   groupAsk.askPlayersGroup.mockResolvedValue({ outcome: "group-asked", replyText: "Asked in the main chat for 1 player." });
   hqQuestion.answerHqQuestion.mockResolvedValue(null);
   dbMock.membership.findMany.mockResolvedValue([{ user: { name: "Hamzah Ali" } }, { user: { name: "Raihan" } }]);
-  hqScore.hqScoreRouting.mockResolvedValue({ waiting: null, scoreAnswerIds: new Set(), scoreCorrectionIds: new Set() });
+  hqScore.hqScoreRouting.mockResolvedValue({ waiting: null });
   hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-score-saved", replyText: "Score saved: Yellow 7, Red 4." });
   dbMock.sentNotification.findMany.mockResolvedValue([]);
   dbMock.botJob.findMany.mockResolvedValue([]);
@@ -201,6 +208,18 @@ describe("what MatchTime decided is kept on the HQ row (FNF HQ 2026-10-24, \"Gla
   it("an answered message: its outcome", async () => {
     await ask("Tom out", "other_att");
     expect(saved().data.hqOutcome).toBe("squad-changed");
+  });
+
+  it("what the HQ squad reader read is kept beside the router's route (2026-10-30)", async () => {
+    await ask("Tom out", "other_att");
+    expect(saved().data.pipelineTrace).toMatchObject({
+      router: { route: "other_att" },
+      hqSquadReader: { kind: "change", changes: [{ name: "Tom", userId: "u-tom", to: "out", replaces: "" }], alsoAsks: false },
+    });
+    paste.readHqSquad.mockResolvedValue(read({ kind: "other", why: "other" }));
+    dbMock.adminGroupMessage.updateMany.mockClear();
+    await ask("Mojib and Habib are in dw", "other_att");
+    expect(saved().data.pipelineTrace).toMatchObject({ hqSquadReader: { kind: "other", why: "other" } });
   });
 
   it("the organisers' own chat: none, and silent", async () => {
@@ -482,18 +501,67 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(requests).toHaveLength(1);
   });
 
-  // FNF HQ 2026-10-17 09:01: "Imti\nRafi\nAH\n\nIn" was routed none by the
-  // model. An organiser's list of names with IN/OUT is structured data: a
-  // squad change, and the router is not asked.
+  // FNF HQ 2026-10-17 09:01: "Imti\nRafi\nAH\n\nIn". Since 2026-10-30 no
+  // code reads a list of names (Kemal: "I don't want any string parsing at
+  // all"): the router routes it, and the HQ squad reader reads it, one line
+  // or many. Its change goes to the engine as the reader read it.
   it.each(["Imti \nRafi \nAH\n\nIn", "Yaseen \nMo\nFeroz\nAli\n\nOut", "Imti, Rafi and AH in"])(
-    "an organiser's list %j: a squad change without the router, even when the router would say none",
+    "an organiser's list %j: the router, then the HQ squad reader, then the engine with the reader's change",
     async (text) => {
-      const r = await ask(text, "none");
+      const r = await ask(text, "other_att");
       expect(r).toMatchObject({ route: "other_att", outcome: "squad-changed" });
-      expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route: "other_att", text }));
-      expect(requests).toHaveLength(0);
+      expect(requests).toHaveLength(1);
+      expect(paste.readHqSquad).toHaveBeenCalledWith(expect.objectContaining({ text, senderUserId: "u-admin", addressed: false }));
+      expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route: "other_att", text, reading: CHANGE }));
     },
   );
+
+  it("the same list routed none: nothing, and the reader is not asked (no code reads it)", async () => {
+    expect(await ask("Imti \nRafi \nAH\n\nIn", "none")).toBeNull();
+    expect(paste.readHqSquad).not.toHaveBeenCalled();
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
+  it("read as the organisers' own talk: nothing done and nothing said; addressed, the question answering then one line", async () => {
+    paste.readHqSquad.mockResolvedValue(read({ kind: "other", why: "other" }));
+    expect(await ask("Mojib and Habib are in dw", "other_att")).toBeNull();
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    const r = await ask("@Match Time Imti is in the hospital", "other_att");
+    expect(r?.outcome).toBe("hq-not-understood");
+    expect(hqQuestion.answerHqQuestion).toHaveBeenCalled();
+  });
+
+  it("read as the whole squad: proposed for YES, recorded as MatchTime's question; teams waiting are set aside", async () => {
+    paste.readHqSquad.mockResolvedValue(read({ kind: "squad", lines: [], out: [] }));
+    teams.setAsideTeamProposal.mockResolvedValue(1);
+    const r = await ask("1. Bilal\n2. Ali", "other_att");
+    expect(r?.outcome).toBe("paste-proposed");
+    expect(r?.replyText).toContain("Adding: Bilal.");
+    expect(r?.replyText?.length).toBeGreaterThan("Adding: Bilal. Reply YES to apply.".length);
+    expect(paste.proposeSquadPaste).toHaveBeenCalledWith(expect.objectContaining({ read: expect.objectContaining({ reading: { kind: "squad", lines: [], out: [] } }) }));
+    expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith(expect.objectContaining({ askRef: expect.stringContaining("wa-9") }));
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
+  it("read as about the teams (or a list that is exactly the teams): the teams' handling", async () => {
+    paste.readHqSquad.mockResolvedValue(read({ kind: "teams" }));
+    const r = await ask("Non Bibs\nFeroz\n\nBibs\nYorel", "other_att", { deps: { routerModel: routeTo("other_att"), extractorModel: teamsFacts({ action: "swap", swapSides: true }) } });
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    expect(r?.outcome).not.toBe("squad-changed");
+    paste.readHqSquad.mockResolvedValue(read({ kind: "squad", lines: [], out: [] }));
+    paste.proposeSquadPaste.mockResolvedValue("teams");
+    const again = await ask("Feroz\nYorel", "other_att", { deps: { routerModel: routeTo("other_att"), extractorModel: teamsFacts({ action: "swap", swapSides: true }) } });
+    expect(again?.outcome).not.toBe("paste-proposed");
+  });
+
+  it("a pasted squad as a reply to another organiser is still the list; anything else in such a reply is theirs", async () => {
+    paste.readHqSquad.mockResolvedValue(read({ kind: "squad", lines: [], out: [] }));
+    const r = await ask("1. Bilal\n2. Ali", "other_att", { quoted: { text: "what's the list?", fromMatchTime: false } });
+    expect(r?.outcome).toBe("paste-proposed");
+    paste.readHqSquad.mockResolvedValue(read(CHANGE));
+    expect(await ask("Tom out", "other_att", { quoted: { text: "who's out?", fromMatchTime: false } })).toBeNull();
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
 
   it("the same list from someone who is not an organiser goes to the router as before", async () => {
     await ask("Imti \nRafi \nAH\n\nIn", "none", { organiser: false });
@@ -1012,9 +1080,10 @@ describe("a member of the club who is not an organiser", () => {
     expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route, text, senderUserId: "u-ah", senderName: "Abdul-Hafeez" }));
   });
 
-  it("a list of names with IN: read as structured data, as an organiser's is", async () => {
-    await ask("Imti \nRafi \nAH\n\nIn", "none", member());
-    expect(requests).toHaveLength(0);
+  it("a list of names with IN: the router, then the reader, as an organiser's is", async () => {
+    await ask("Imti \nRafi \nAH\n\nIn", "other_att", member());
+    expect(requests).toHaveLength(1);
+    expect(paste.readHqSquad).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-ah" }));
     expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route: "other_att", senderUserId: "u-ah" }));
   });
 
@@ -1211,8 +1280,6 @@ describe("score: the players' group's score handling, with HQ's context (2026-10
   it("the router is shown the score MatchTime is waiting for", async () => {
     hqScore.hqScoreRouting.mockResolvedValue({
       waiting: { kind: "result", day: "Thu 15 Oct", labels: ["Red", "Yellow"] },
-      scoreAnswerIds: new Set(),
-      scoreCorrectionIds: new Set(),
     });
     await ask("Yellow won 7-4", "score");
     expect(requests[0].user).toContain("WAITING: the final score of Thu 15 Oct's match, Red against Yellow.");
@@ -1221,8 +1288,6 @@ describe("score: the players' group's score handling, with HQ's context (2026-10
   it("a scoreline the router could not place (unsure) while a score is waiting: the score handling reads it", async () => {
     hqScore.hqScoreRouting.mockResolvedValue({
       waiting: { kind: "result", day: "Thu 15 Oct", labels: ["Kırmızı", "Sarı"] },
-      scoreAnswerIds: new Set(),
-      scoreCorrectionIds: new Set(),
     });
     hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-score-asked", replyText: "Bundan son skoru çıkaramadım." });
     const r = await ask("7-4 mü 7-5 mi emin değilim", "unsure");
@@ -1230,22 +1295,20 @@ describe("score: the players' group's score handling, with HQ's context (2026-10
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
 
-  it("unsure with no score waiting, or with no scoreline: as before, never the score handling", async () => {
+  it("unsure with no score waiting: never the score handling; with one waiting, the score handling reads it and says nothing when it is no score", async () => {
     expect(await ask("7-4 mü 7-5 mi emin değilim", "unsure")).toBeNull();
-    hqScore.hqScoreRouting.mockResolvedValue({
-      waiting: { kind: "result", day: "Thu 15 Oct", labels: ["Red", "Yellow"] },
-      scoreAnswerIds: new Set(),
-      scoreCorrectionIds: new Set(),
-    });
-    expect(await ask("see you at 21:00", "unsure")).toBeNull();
     expect(hqScore.answerHqScore).not.toHaveBeenCalled();
+    hqScore.hqScoreRouting.mockResolvedValue({ waiting: { kind: "result", day: "Thu 15 Oct", labels: ["Red", "Yellow"] } });
+    hqScore.answerHqScore.mockResolvedValue(null);
+    expect(await ask("see you at 21:00", "unsure")).toBeNull();
+    expect(hqScore.answerHqScore).toHaveBeenCalledTimes(1);
   });
 
-  it('an answer to MatchTime\'s open "which team won?" goes to score whatever the router says', async () => {
-    hqScore.hqScoreRouting.mockResolvedValue({ waiting: null, scoreAnswerIds: new Set(["wa-9"]), scoreCorrectionIds: new Set() });
-    const r = await ask("Yellow", "none");
-    expect(r?.route).toBe("score");
-    expect(hqScore.answerHqScore).toHaveBeenCalledWith(expect.objectContaining({ body: "Yellow" }));
+  it("no code sends a message to the score from its words (2026-10-30): the router decides, with the WAITING line", async () => {
+    hqScore.hqScoreRouting.mockResolvedValue({ waiting: { kind: "which-team", first: 7, second: 4, labels: ["Red", "Yellow"], askedAt: ASKED } });
+    expect(await ask("Yellow", "none")).toBeNull();
+    expect(hqScore.answerHqScore).not.toHaveBeenCalled();
+    expect(hqScore.hqScoreRouting).toHaveBeenCalledWith(expect.not.objectContaining({ body: expect.anything() }));
   });
 });
 
@@ -1253,7 +1316,7 @@ describe("score: the players' group's score handling, with HQ's context (2026-10
 // showed the router calling "MoM was Naim" approve under the WAITING line.
 describe("Man of the Match, where the organisers pick it", () => {
   const momWaiting = () =>
-    hqScore.hqScoreRouting.mockResolvedValue({ waiting: { kind: "mom", day: "Fri 16 Oct" }, scoreAnswerIds: new Set(), scoreCorrectionIds: new Set() });
+    hqScore.hqScoreRouting.mockResolvedValue({ waiting: { kind: "mom", day: "Fri 16 Oct" } });
   const nothingPending = () => {
     dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
     partnerAsk.partnerAsksAwaitingApproval.mockResolvedValue([]);

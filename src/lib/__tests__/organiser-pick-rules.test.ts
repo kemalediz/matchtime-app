@@ -1,7 +1,8 @@
 /**
  * Slice 2b, the pure half of organiser pick (plan 2.7 to 2.11): when a
- * round opens, when nobody has picked in time, what an admin's reply
- * means, and the pick message. No database, no model.
+ * round opens, when nobody has picked in time, and the pick message. No
+ * database, no model. What an admin's reply means is read by the pick
+ * reader (organiser-pick-reader.test.ts).
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -11,10 +12,8 @@ import {
   buildPickMessage,
   decidePickRound,
   fallbackOfferCount,
-  parsePickReply,
   pickFallbackAt,
   positionLabel,
-  type PickReplyContext,
 } from "../organiser-pick-rules";
 import { LATE_MESSAGE_AFTER_MS } from "../late-message";
 
@@ -198,104 +197,6 @@ describe("decidePickRound", () => {
     expect(decidePickRound({ ...base, lastClosedRound: closed, waitingUserIds: [...base.waitingUserIds, "u-ali"], dropsSince: 0 }).action).toBe(
       "open",
     );
-  });
-});
-
-const ctx = (over: Partial<PickReplyContext> = {}): PickReplyContext => ({
-  list: [
-    { userId: "u-kemal", name: "Kemal Ediz" },
-    { userId: "u-wasim", name: "Wasim" },
-    { userId: "u-ali-k", name: "Ali Khan" },
-    { userId: "u-ibo", name: "İbrahim Işık" },
-  ],
-  confirmed: [{ userId: "u-hamzah", name: "Hamzah" }],
-  members: [
-    { userId: "u-ali-d", name: "Ali Demir" },
-    { userId: "u-sam", name: "Sam Lee" },
-  ],
-  pendingConfirm: false,
-  tags: [],
-  ...over,
-});
-
-describe("parsePickReply: numbers", () => {
-  it.each([
-    ["2", [2]],
-    ["2 3", [2, 3]],
-    ["2, 3", [2, 3]],
-    ["2 and 3", [2, 3]],
-    ["2 ve 3", [2, 3]],
-    ["1-3", [1, 2, 3]],
-    ["2.", [2]],
-    ["@Match Time 2", [2]],
-  ])("%s", (text, numbers) => {
-    expect(parsePickReply(text, ctx(), "group")).toEqual({ kind: "numbers", numbers });
-  });
-  it("out of range is not understood in a DM and ignored in the group", () => {
-    expect(parsePickReply("9", ctx(), "dm")).toEqual({ kind: "not-understood" });
-    expect(parsePickReply("9", ctx(), "group")).toEqual({ kind: "not-a-pick" });
-  });
-});
-
-describe("parsePickReply: names and tags", () => {
-  it("a unique first name, a full name, a name typed with @", () => {
-    expect(parsePickReply("Wasim", ctx(), "group")).toEqual({ kind: "people", userIds: ["u-wasim"] });
-    expect(parsePickReply("kemal ediz", ctx(), "group")).toEqual({ kind: "people", userIds: ["u-kemal"] });
-    expect(parsePickReply("@Wasim", ctx(), "group")).toEqual({ kind: "people", userIds: ["u-wasim"] });
-    expect(parsePickReply("Wasim, Kemal", ctx(), "group")).toEqual({ kind: "people", userIds: ["u-wasim", "u-kemal"] });
-  });
-  it("Turkish İ and ı, and accents, fold", () => {
-    expect(parsePickReply("ibrahim", ctx(), "group")).toEqual({ kind: "people", userIds: ["u-ibo"] });
-    expect(parsePickReply("İBRAHİM IŞIK", ctx(), "group")).toEqual({ kind: "people", userIds: ["u-ibo"] });
-  });
-  it("the waiting list wins over the club: 'Ali' is Ali Khan", () => {
-    expect(parsePickReply("Ali", ctx(), "group")).toEqual({ kind: "people", userIds: ["u-ali-k"] });
-  });
-  it("a first name that fits two candidates is ambiguous (E5)", () => {
-    const c = ctx({ list: [{ userId: "u-ali-k", name: "Ali Khan" }, { userId: "u-ali-d", name: "Ali Demir" }] });
-    expect(parsePickReply("ali", c, "group")).toEqual({ kind: "ambiguous", first: "ali", names: ["Ali Khan", "Ali Demir"] });
-    expect(parsePickReply("Ali", c, "dm")).toEqual({ kind: "ambiguous", first: "Ali", names: ["Ali Khan", "Ali Demir"] });
-  });
-  it("a club member not on the list and a confirmed player resolve too (E1, E2 are the caller's)", () => {
-    expect(parsePickReply("Sam", ctx(), "group")).toEqual({ kind: "people", userIds: ["u-sam"] });
-    expect(parsePickReply("Hamzah", ctx(), "group")).toEqual({ kind: "people", userIds: ["u-hamzah"] });
-  });
-  it("a real @tag resolved by the server; one it cannot resolve is E4", () => {
-    const tags = [{ digits: "252012071493723", userId: "u-wasim" }];
-    expect(parsePickReply("@252012071493723", ctx({ tags }), "group")).toEqual({ kind: "people", userIds: ["u-wasim"] });
-    expect(parsePickReply("@Match Time @252012071493723", ctx({ tags }), "group")).toEqual({ kind: "people", userIds: ["u-wasim"] });
-    expect(parsePickReply("@99999999999", ctx({ tags }), "group")).toEqual({ kind: "unresolved-tag" });
-    expect(parsePickReply("@99999999999", ctx({ tags: [{ digits: "99999999999", userId: null }] }), "group")).toEqual({
-      kind: "unresolved-tag",
-    });
-  });
-  it("a sentence with a name in it is chat, not a pick", () => {
-    expect(parsePickReply("Wasim played well last week", ctx(), "group")).toEqual({ kind: "not-a-pick" });
-    const tags = [{ digits: "252012071493723", userId: "u-wasim" }];
-    expect(parsePickReply("@252012071493723 played well", ctx({ tags }), "group")).toEqual({ kind: "not-a-pick" });
-  });
-  it("in a DM, a pick-shaped reply that does not resolve is P6; plain chat falls through", () => {
-    expect(parsePickReply("Wasim and Bob", ctx(), "dm")).toEqual({ kind: "not-understood" });
-    expect(parsePickReply("2 and Bob", ctx(), "dm")).toEqual({ kind: "not-understood" });
-    expect(parsePickReply("what time is kickoff?", ctx(), "dm")).toEqual({ kind: "not-a-pick" });
-  });
-});
-
-describe("parsePickReply: ALL, NONE, YES", () => {
-  it("ALL and HEPSİ", () => {
-    expect(parsePickReply("ALL", ctx(), "group")).toEqual({ kind: "all" });
-    expect(parsePickReply("hepsi", ctx(), "group")).toEqual({ kind: "all" });
-  });
-  it("NONE, NOBODY, LEAVE IT, HİÇBİRİ, KİMSE; never YOK", () => {
-    for (const w of ["NONE", "nobody", "Leave it", "HİÇBİRİ", "KİMSE"]) {
-      expect(parsePickReply(w, ctx(), "group"), w).toEqual({ kind: "none" });
-    }
-    expect(parsePickReply("YOK", ctx(), "group")).toEqual({ kind: "not-a-pick" });
-  });
-  it("YES and EVET only while a question is pending", () => {
-    expect(parsePickReply("YES", ctx(), "group")).toEqual({ kind: "not-a-pick" });
-    expect(parsePickReply("yes", ctx({ pendingConfirm: true }), "group")).toEqual({ kind: "yes" });
-    expect(parsePickReply("Evet", ctx({ pendingConfirm: true }), "dm")).toEqual({ kind: "yes" });
   });
 });
 

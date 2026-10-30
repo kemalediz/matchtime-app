@@ -22,12 +22,8 @@ const link = vi.hoisted(() => ({ resolveSenderUserIds: vi.fn() }));
 vi.mock("@/lib/admin-group-link", () => link);
 const pick = vi.hoisted(() => ({ handlePickReply: vi.fn() }));
 vi.mock("@/lib/organiser-pick", () => pick);
-const paste = vi.hoisted(() => ({ proposeSquadPaste: vi.fn() }));
-vi.mock("@/lib/admin-group-paste", () => paste);
 const pay = vi.hoisted(() => ({ handleCollectorPaidReply: vi.fn() }));
 vi.mock("@/lib/month-payment", () => pay);
-const teams = vi.hoisted(() => ({ setAsideTeamProposal: vi.fn() }));
-vi.mock("@/lib/team-proposal", () => teams);
 const hqLog = vi.hoisted(() => ({
   recordHqMessage: vi.fn(),
   recordMatchTimeQuestion: vi.fn(),
@@ -60,8 +56,6 @@ beforeEach(() => {
   dbMock.sentNotification.create.mockResolvedValue({});
   dbMock.user.findUnique.mockResolvedValue({ name: "Raihan" });
   link.resolveSenderUserIds.mockResolvedValue(["u-admin"]);
-  paste.proposeSquadPaste.mockResolvedValue(null);
-  teams.setAsideTeamProposal.mockResolvedValue(0);
   understand.understandAdminMessage.mockResolvedValue(null);
 });
 
@@ -96,7 +90,6 @@ describe("everything that is not structured data goes through the shared pipelin
     dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, squadMode: "monthly" });
     understand.understandAdminMessage.mockResolvedValue({ route: "help", outcome: "hq-help", replyText: "🛠️" });
     expect(await handleAdminGroupMessage(msg("what can you do?"))).toMatchObject({ handled: true, outcome: "hq-help" });
-    expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
   });
 });
 
@@ -133,7 +126,7 @@ describe("the ✅ on a message MatchTime acted on", () => {
     pick.handlePickReply.mockResolvedValue({ handled: true, outcome: "filled", replyText: "Done: Wasim is in." });
     expect(await handleAdminGroupMessage(msg("1"))).toMatchObject({ react: "✅" });
     dbMock.organiserPickRound.findFirst.mockResolvedValue(null);
-    paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
+    understand.understandAdminMessage.mockResolvedValue({ route: "other_att", outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
     expect(await handleAdminGroupMessage(msg("1. Bilal\n2. Ali", { messageId: "wa-2" }))).toMatchObject({ react: "✅" });
   });
 });
@@ -178,7 +171,7 @@ describe("the door", () => {
   });
 });
 
-describe("structured data first, deterministically", () => {
+describe("a pick reply first, then the shared pipeline", () => {
   it("a pick reply to MatchTime's numbered list is the pick round's, and nothing else runs", async () => {
     dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
     pick.handlePickReply.mockResolvedValue({ handled: true, outcome: "filled", replyText: "Done: Wasim is in." });
@@ -217,48 +210,20 @@ describe("structured data first, deterministically", () => {
     expect(understand.understandAdminMessage).not.toHaveBeenCalled();
   });
 
-  it("a pasted list is proposed, recorded as MatchTime's question, and never sent on to the shared pipeline", async () => {
-    const LIST = "1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim";
-    paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
-    const r = await handleAdminGroupMessage(msg(LIST));
+  // 2026-10-30: a pasted list is no longer read here, ahead of the router:
+  // it goes to the shared pipeline like everything else, where the router
+  // and then the HQ squad reader read it (admin-group-understand.test.ts).
+  it("a pasted list goes to the shared pipeline; its outcome is the pipeline's", async () => {
+    understand.understandAdminMessage.mockResolvedValue({ route: "other_att", outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
+    const r = await handleAdminGroupMessage(msg("1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim"));
     expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply.", react: "✅" });
-    expect(paste.proposeSquadPaste).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", messageId: "wa-1", text: LIST, senderUserId: "u-admin", now: NOW, quoted: null });
-    expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith({ orgId: "org-fnf", askRef: "list:wa-1", text: "Adding: Bilal. Reply YES to apply.", now: NOW });
-    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
-  });
-
-  // 2026-10-29 (FNF HQ): a copy of the teams sheet, or a swap list, is not
-  // the squad. The HQ squad reader says so (proposeSquadPaste is null) and
-  // the message goes on to the shared pipeline, where teams are handled.
-  it("a multi-line message the squad reader says is not the squad goes on to the shared pipeline", async () => {
-    paste.proposeSquadPaste.mockResolvedValue(null);
-    await handleAdminGroupMessage(msg("Swap\nMo\nMojib\n\nWith\nHamzah\nYorel"));
-    expect(paste.proposeSquadPaste).toHaveBeenCalled();
-    expect(understand.understandAdminMessage).toHaveBeenCalled();
+    expect(understand.understandAdminMessage).toHaveBeenCalledWith(expect.objectContaining({ text: "1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim", senderUserId: "u-admin" }));
   });
 
   it("a pasted list that changed nothing and took nobody out: the line, and no tick", async () => {
-    paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-held", replyText: "I haven't taken anyone out: ..." });
+    understand.understandAdminMessage.mockResolvedValue({ route: "other_att", outcome: "paste-held", replyText: "I haven't taken anyone out: ..." });
     const r = await handleAdminGroupMessage(msg("Ali\nTom\nSam"));
     expect(r).toMatchObject({ handled: true, outcome: "paste-held", react: null });
-    expect(hqLog.recordMatchTimeQuestion).not.toHaveBeenCalled();
-  });
-
-  it("a pasted list asked about while teams wait: the teams are set aside, and the reply says so", async () => {
-    paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
-    teams.setAsideTeamProposal.mockResolvedValue(1);
-    const r = await handleAdminGroupMessage(msg("1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim"));
-    expect(teams.setAsideTeamProposal).toHaveBeenCalledWith("org-fnf");
-    expect(r).toMatchObject({
-      outcome: "paste-proposed",
-      replyText: "Adding: Bilal. Reply YES to apply. The teams still need approving: ask me for them again after this, in your own words (for example *show me the teams*).",
-    });
-  });
-
-  it("a monthly club never has its message read as a pasted list", async () => {
-    dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, squadMode: "monthly" });
-    await handleAdminGroupMessage(msg("1. A\n2. B\n3. C\n4. D\n5. E"));
-    expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
   });
 
   // 2026-10-29: an organiser's list for the COMING month in a monthly
@@ -326,19 +291,12 @@ describe("anyone in HQ: questions for all, changes for the organisers", () => {
     expect(await handleAdminGroupMessage(msg("yes"))).toEqual({ handled: false, ignored: "no-open-pick", orgId: "org-fnf", replyText: null });
   });
 
-  it("a member who is not an admin pastes a list: proposed as theirs (2026-10-20)", async () => {
+  it("a member who is not an admin pastes a list: read by the shared pipeline as a member (2026-10-20)", async () => {
     dbMock.membership.findMany.mockResolvedValue(PLAYER);
-    paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
+    understand.understandAdminMessage.mockResolvedValue({ route: "other_att", outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
     const r = await handleAdminGroupMessage(msg("1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim"));
     expect(r).toMatchObject({ handled: true, outcome: "paste-proposed" });
-    expect(paste.proposeSquadPaste).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-kemal" }));
-    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
-  });
-
-  it("someone not in the club never reaches the structured readers that change things (a pasted list)", async () => {
-    dbMock.membership.findMany.mockResolvedValue([]);
-    await handleAdminGroupMessage(msg("1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim"));
-    expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
+    expect(understand.understandAdminMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-kemal", organiser: false, member: true }));
   });
 
   it("the line saying only the organisers can change that: no tick", async () => {

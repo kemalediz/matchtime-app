@@ -1,7 +1,8 @@
 /**
- * THE HQ SQUAD READER'S PROMPT, SCHEMA AND ANSWER CHECK (2026-10-29). Pure:
- * no database and no model, so the unit tests and the live dry run
- * (scripts/dryrun-hq-squad-reader.ts) import exactly what production sends.
+ * THE HQ SQUAD READER'S PROMPT, SCHEMA AND ANSWER CHECK (2026-10-29; every
+ * squad message since 2026-10-30). Pure: no database and no model, so the
+ * unit tests and the live dry run (scripts/dryrun-hq-squad-reader.ts)
+ * import exactly what production sends.
  *
  * WHY. FNF HQ, 29 Oct 18:04: an organiser pasted a copy of MatchTime's own
  * "Proposed teams" sheet (Non Bibs 1 to 9, Bibs 1 to 9). The deterministic
@@ -11,16 +12,24 @@
  * At 18:37 "Swap / 9 names / With / 9 names" was proposed as a squad with
  * two new players called "Swap" and "With". People never keep to a format,
  * so NOTHING here reads the text with code (Kemal, 2026-10-29, as for the
- * monthly reader): the model reads the message the way an organiser in the
- * group would, with the group's recent messages (MatchTime's own posts
- * among them), the squad and the teams as context, and says what it is.
- * Code only maps the refs it was shown back to ids, checks them, and gates
- * on facts (`gateSquadPaste` in `admin-group-squad-rules.ts`).
+ * monthly reader).
  *
- * Every answer is checked here: a ref it was not shown is no member, an
- * "out" must be a playing member who is not on the list, a name nobody has
- * must be a person's name that is in the message, and anything unreadable
- * is "other", which changes nothing.
+ * 2026-10-30 (Kemal: "I don't want any string parsing at all"): this reader
+ * is HQ's one model door for who plays. Every message the shared router
+ * sends to the squad in HQ comes here, one line or many, and the reader
+ * says what it is: the whole squad, a change to it ("Tom out", "Imti\nRafi
+ * \nAH\n\nIn"), something about the teams, or the organisers' own talk.
+ * It replaces the word lists that used to decide whether a sentence was an
+ * instruction (`adminClaimHold`) and the parser of short name lists
+ * (`admin-group-name-list.ts`).
+ *
+ * Code only maps the refs it was shown back to ids, checks them, and gates
+ * on facts (`gateSquadPaste` in `admin-group-squad-rules.ts`). Every answer
+ * is checked here: a ref it was not shown is no member, an "out" must be a
+ * playing member who is not on the list, a name nobody has must be a
+ * person's name that is in the message (the model's OUTPUT checked against
+ * the message, so it never adds a player it took from the context), and
+ * anything unreadable is "other", which changes nothing.
  */
 import { nowLine, quotedLines, type ContextMessage } from "./reply-context";
 
@@ -57,6 +66,9 @@ export interface HqSquadReaderInput {
   history: Array<{ author: string | null; body: string }>;
   /** The message this one replies to, when it is a reply. */
   reply: ContextMessage | null;
+  /** Said to MatchTime: an @tag, or a WhatsApp reply to its own post (a
+   *  fact code knows, `hqAddressing`). Absent: not. */
+  addressed?: boolean;
   now: Date;
 }
 
@@ -68,6 +80,17 @@ export interface HqSquadLine {
   section: "playing" | "bench";
 }
 
+export interface HqSquadChange {
+  /** A member's roster name, or a new person's name as written. */
+  name: string;
+  /** The member; null for a person nobody in the club is. */
+  userId: string | null;
+  to: "in" | "out" | "bench";
+  /** The roster name of the member this arriving player takes the place
+   *  of, when the message says so; "" otherwise. */
+  replaces: string;
+}
+
 export type HqSquadReading =
   | { kind: "other"; why: string }
   | { kind: "teams" }
@@ -76,11 +99,17 @@ export type HqSquadReading =
       lines: HqSquadLine[];
       /** Playing members the list leaves off on purpose (the reader's word). */
       out: string[];
+    }
+  | {
+      kind: "change";
+      changes: HqSquadChange[];
+      /** The message also asks MatchTime something it holds. */
+      alsoAsks: boolean;
     };
 
 // ── The prompt ────────────────────────────────────────────────────────
 
-export const HQ_SQUAD_READER_SYSTEM = `You read one message sent in a football club's admin group (the organisers' WhatsApp group, called HQ) for MatchTime, the club's bot. The message has several lines. Say what it is, and when it is the squad, who it lists.
+export const HQ_SQUAD_READER_SYSTEM = `You read one message sent in a football club's admin group (HQ, the WhatsApp group where the organisers, and other members of the club, talk) for MatchTime, the club's bot. Say what the message does about who plays the next game.
 
 THE CONTEXT comes first, and it does most of the work:
 - NOW, the date and time at the club.
@@ -89,27 +118,40 @@ THE CONTEXT comes first, and it does most of the work:
 - THE SQUAD AS MATCHTIME HAS IT: who is playing the next game and who is on the bench.
 - THE TEAMS AS MATCHTIME HAS THEM, when teams have been made: each side and its players.
 - RECENT HQ MESSAGES, oldest first, MatchTime's own posts among them, and the message replied to, if any.
-Then THE MESSAGE and who sent it. Read it the way an organiser in the group would, with all of that in mind. Messages are English or Turkish, often mixed, misspelt, with emoji.
+- SAID TO MATCHTIME: whether the message tags MatchTime or replies to its post.
+Then who sent it (with their ref) and THE MESSAGE. Read it the way a member of the group would, with all of that in mind. Messages are English or Turkish, often mixed, misspelt, with emoji. Most talk in HQ is the members talking to each other.
 
 kind: what THE MESSAGE is.
-- "squad": the list of who plays the next game, sent so that the squad becomes this list. One name per line, numbered or not, maybe with a bench part.
-- "teams": anything about the teams or sides. A copy of a team sheet: two groups of names, often under the side names ("Bibs" and "Non Bibs", "Red" and "Yellow"), the numbering starting again for the second group, or MatchTime's own proposed teams pasted back. A swap or a move ("Swap" then names then "With" then names; these names to the other side). Names sent while the group is talking about the teams. When the names are the players of THE TEAMS, it is teams, whatever words are around them.
-- "other": anything else: who has paid, kit, a vote, a conversation, a question.
+- "squad": the whole list of who plays the next game, sent so that the squad becomes this list. Usually one name per line, numbered or not, maybe with a bench part.
+- "change": it tells MatchTime to change who plays the next game: named people in, out, or to the bench. An instruction ("put Bilal in", "Tom to the bench", "Ali'yi kadroya ekle") or a plain statement of the squad ("Sam's out this week", "Kai can't make it tonight", "Mehmet bu hafta yok"), including a short list of names with in or out, and the sender about themselves ("I'm out this week", "bu hafta yokum").
+- "teams": anything about the teams or sides. A copy of a team sheet: two groups of names, often under the side names ("Bibs" and "Non Bibs", "Red" and "Yellow"), the numbering starting again for the second group, or MatchTime's own proposed teams pasted back. A swap or a move between the sides. Names sent while the group is talking about the teams. When the names are the players of THE TEAMS, it is teams, whatever words are around them.
+- "other": anything else, and every case of doubt. Members talking about players without telling MatchTime to change the squad: a hope, a maybe, a plan or news for another week, reassurance about players already in, news that someone is back or around again, what already happened, what someone else said. Also who has paid, kit, a vote, a question.
 
 FOR A SQUAD LIST (otherwise lines [] and out []):
 - lines: every name on the list, in order. For each:
   name: the person's name as written, without numbers, notes or emoji.
-  member: the ref of the member it is: their name, first name, nickname, or an obvious spelling of one. "" when it is nobody on MEMBERS, or when two members could be meant.
+  member: the ref of the member it is: their name, first name, a nickname MEMBERS lists, or an obvious misspelling of one. "" when it is nobody on MEMBERS, or when two members could be meant. Never a member whose name only starts the same ("Mo" is not "Mojib" unless MEMBERS says so).
   section: "playing" for the main list; "bench" under a part such as "Bench", "Reserves", "Subs", "Yedekler".
   person: true when the line is somebody's name; false for anything else (a title, a time, a place, a word such as "Swap", "With" or "Bench").
 - out: the refs of players PLAYING in THE SQUAD whom the list leaves off on purpose, because the list is the whole squad and they are no longer in it. Leave a player out of "out" when the list is not the whole squad, or when you cannot tell. Never a player who is on the list.
 
+FOR A CHANGE (otherwise changes [] and alsoAsks false):
+- changes: each person whose place it changes. For each:
+  name, member, person: as for a squad line. The sender's own place is the sender's ref.
+  to: "in" to play, "out" to leave the squad, "bench" for the bench.
+  replaces: the ref of the player this person takes the place of, when the message says so ("Mo instead of Najib"); "" otherwise.
+- alsoAsks: true when THE MESSAGE also asks MatchTime for something it holds, such as the list or who is in.
+
 Examples (English | Turkish):
 - "Friday 8pm\\n1. Bilal\\n2. Ali\\n3. Tom\\n4. Sam\\n5. Naim", with Shehryar and Clarence also playing in THE SQUAD and no Naim among MEMBERS | "Cuma 20:00\\n1. Bilal\\n2. Ali\\n3. Tom\\n4. Sam\\n5. Naim": squad; Naim member "", person true; out the refs of Shehryar and Clarence.
 - "1. Ali\\n2. Burak\\n3. Can\\n\\nBench\\n4. Deniz" | "1. Ali\\n2. Burak\\n3. Can\\n\\nYedekler\\n4. Deniz": squad, Deniz section bench.
+- "Tom out" | "Tom bu hafta yok": change, Tom to out.
+- "Imti\\nRafi\\nAH\\n\\nIn", "Yaseen, Mo and Feroz out" | "Ali ve Can var", "Yaseen, Mo ve Feroz yok": change, each name in (or out).
+- "Mo is replacing Najib" | "Najib yerine Mo": change, Mo to in, replaces Najib's ref.
+- "Glazers is out now. @Match Time what is the list?" | "Glazers çıktı. @Match Time liste ne?": change, Glazers to out, alsoAsks true.
+- "Zayn is back as well", "Imti Rafi AH back" while the group talks about next week, "Maybe Shehryar and Hamzah too", "Mojib and Habib are in dw" when both are already playing, "I'm hoping to be back next week" | "Ali belki gelir haftaya", "Mehmet döndü": other.
 - "Here's the teams:\\n*Non Bibs*:\\n1. Feroz\\n2. Alamgir ...\\n*Bibs*:\\n1. Yorel\\n2. Maj ..." | "Takımlar:\\n*Kırmızı*:\\n1. Ali ...\\n*Sarı*:\\n1. Can ...": teams.
-- "Swap\\nMo\\nMojib\\nAlamgir\\n\\nWith\\nHamzah\\nYorel\\nAkram" | "Değiştir\\nMo\\nMojib\\n\\nile\\nHamzah\\nYorel": teams.
-- Eighteen names in two blocks, just after MatchTime posted the proposed teams or someone said "swap them over", the same players as THE TEAMS | the same in Turkish ("takımları değiştir"): teams.
+- "Swap\\nMo\\nMojib\\n\\nWith\\nHamzah\\nYorel" | "Değiştir\\nMo\\nMojib\\n\\nile\\nHamzah\\nYorel": teams.
 - "Paid:\\nAli\\nBurak\\nCan" | "Ödeyenler:\\nAli\\nBurak\\nCan": other.
 
 Output STRICT JSON only, no markdown, no fences.`;
@@ -126,16 +168,31 @@ const LINE_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+const CHANGE_SCHEMA = {
+  type: "object",
+  properties: {
+    name: { type: "string" },
+    member: { type: "string" },
+    person: { type: "boolean" },
+    to: { type: "string", enum: ["in", "out", "bench"] },
+    replaces: { type: "string" },
+  },
+  required: ["name", "member", "person", "to", "replaces"],
+  additionalProperties: false,
+} as const;
+
 /** Structured output. No nullable types: the API rejects them, so "", []
  *  and false mean "not so" (the extractors' convention). */
 export const HQ_SQUAD_READER_SCHEMA = {
   type: "object",
   properties: {
-    kind: { type: "string", enum: ["squad", "teams", "other"] },
+    kind: { type: "string", enum: ["squad", "change", "teams", "other"] },
     lines: { type: "array", items: LINE_SCHEMA },
     out: { type: "array", items: { type: "string" } },
+    changes: { type: "array", items: CHANGE_SCHEMA },
+    alsoAsks: { type: "boolean" },
   },
-  required: ["kind", "lines", "out"],
+  required: ["kind", "lines", "out", "changes", "alsoAsks"],
   additionalProperties: false,
 } as const;
 
@@ -178,6 +235,7 @@ export function buildHqSquadReaderUserTurn(input: HqSquadReaderInput, ctx: HqSqu
     lines.push("");
   }
   if (input.reply) lines.push(...quotedLines(input.reply), "");
+  lines.push(`SAID TO MATCHTIME: ${input.addressed === true ? "yes" : "not tagged, not a reply to MatchTime"}.`, "");
   const sender = input.sender.userId ? byId.get(input.sender.userId) : undefined;
   lines.push(
     `From ${sender ? `${sender.name} (${sender.ref})` : `${input.sender.name ?? "somebody"} (not on the MEMBERS list)`}.`,
@@ -203,6 +261,7 @@ export function parseHqSquadReading(raw: unknown, input: HqSquadReaderInput, ctx
   if (!raw || typeof raw !== "object") return OTHER("not an object");
   const o = raw as Record<string, unknown>;
   if (o.kind === "teams") return { kind: "teams" };
+  if (o.kind === "change") return parseChange(o, input, ctx);
   if (o.kind !== "squad") return OTHER(o.kind === "other" ? "other" : "no valid kind");
 
   const byRef = new Map(ctx.members.map((m) => [m.ref, m.userId]));
@@ -237,4 +296,38 @@ export function parseHqSquadReading(raw: unknown, input: HqSquadReaderInput, ctx
     ),
   ];
   return { kind: "squad", lines, out };
+}
+
+const TO: ReadonlySet<string> = new Set(["in", "out", "bench"]);
+
+/** A change, checked as a squad line is: refs it was shown, a new person
+ *  only by a person's name written in the message. The last word on a
+ *  person stands. Nobody left: other. */
+function parseChange(o: Record<string, unknown>, input: HqSquadReaderInput, ctx: HqSquadReaderContext): HqSquadReading {
+  const byRef = new Map(ctx.members.map((m) => [m.ref, m]));
+  const body = fold(input.body);
+  const byKey = new Map<string, HqSquadChange>();
+  for (const c of Array.isArray(o.changes) ? o.changes : []) {
+    if (!c || typeof c !== "object") continue;
+    const x = c as Record<string, unknown>;
+    const to = str(x.to);
+    if (!TO.has(to)) continue;
+    const written = str(x.name).slice(0, 60);
+    const ref = str(x.member);
+    const member = ref ? byRef.get(ref) : undefined;
+    if (ref && !member) continue;
+    if (!member && (!written || x.person !== true || !body.includes(fold(written)))) continue;
+    const replaced = byRef.get(str(x.replaces));
+    const change: HqSquadChange = {
+      name: member ? member.name : written,
+      userId: member ? member.userId : null,
+      to: to as HqSquadChange["to"],
+      replaces: replaced ? replaced.name : "",
+    };
+    const key = member ? `u:${member.userId}` : `n:${fold(written)}`;
+    byKey.delete(key);
+    byKey.set(key, change);
+  }
+  if (byKey.size === 0) return OTHER("a change with nobody");
+  return { kind: "change", changes: [...byKey.values()], alsoAsks: o.alsoAsks === true };
 }

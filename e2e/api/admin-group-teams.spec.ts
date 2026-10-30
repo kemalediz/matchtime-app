@@ -234,6 +234,8 @@ test("one question at a time: a pasted list sets the teams aside; 'teams' asks a
   // The HQ squad reader (stubbed, 2026-10-29) reads it as the squad: Ben
   // in, Tom left off on purpose.
   setHqSquadReaderStub({ bodies: { [list]: squadReading(["Alex Admin", "Colin Collector", "Pat Player", "Ben Bench"], { out: ["Tom Third"] }) } });
+  // The router sends it to the squad first (2026-10-30), then the reader reads it.
+  hqStubs({ [list]: { route: "other_att" } });
   const pasted = await say(request, list);
   expect(pasted).toMatchObject({ handled: true, outcome: "paste-proposed" });
   expect(pasted.replyText).toMatch(/Reply YES to apply\. The teams still need approving: ask me for them again after this, in your own words \(for example \*show me the teams\*\)\.$/);

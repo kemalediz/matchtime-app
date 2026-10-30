@@ -21,7 +21,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
-import { clearPipelineStubs, engineOn, otherFacts, selfOut } from "../helpers/stub";
+import { changeReading, clearPipelineStubs, engineOn, selfOut } from "../helpers/stub";
 import { E2E, REPO_ROOT } from "../helpers/env";
 import { MATCH, NAME, ORG_ID, PHONE, U } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
@@ -510,7 +510,7 @@ test.describe("an organiser puts a left-out player back from HQ (2026-10-24)", (
 
   test("'Bob IN' with places open: Bob is back in the squad", async ({ request, db }) => {
     expect(await statusOn(db, "e2e-rsx-bob")).toBeNull();
-    engineOn({ "Bob IN": { route: "other_att", facts: otherFacts("Bob", "in") } });
+    engineOn({ "Bob IN": { route: "other_att", reading: changeReading([["Bob Out", "in"]]) } });
     const out = await hq(request, "Bob IN", "e2e-rsx-hq-bob");
     expect(out).toMatchObject({ handled: true, outcome: "squad-changed" });
     expect(await statusOn(db, "e2e-rsx-bob")).toBe("CONFIRMED");
@@ -518,7 +518,7 @@ test.describe("an organiser puts a left-out player back from HQ (2026-10-24)", (
 
   test("'Eve IN' when the squad is full: Eve goes on the bench", async ({ request, db }) => {
     await db.run(`UPDATE "Match" SET "maxPlayers" = 4 WHERE id = 'e2e-rsx-wk3'`);
-    engineOn({ "Eve IN": { route: "other_att", facts: otherFacts("Eve", "in") } });
+    engineOn({ "Eve IN": { route: "other_att", reading: changeReading([["Eve Away", "in"]]) } });
     const out = await hq(request, "Eve IN", "e2e-rsx-hq-eve");
     expect(out).toMatchObject({ handled: true, replyText: "Done: Eve Away on the bench. 4 of 4, 1 on the bench (Eve Away)." });
     expect(await statusOn(db, "e2e-rsx-eve")).toBe("BENCH");

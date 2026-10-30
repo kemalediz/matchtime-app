@@ -148,6 +148,10 @@ export const E2E = {
    *  multi-line HQ message's body → the model's raw answer; a body with no
    *  entry is "other" (not the squad). */
   HQ_SQUAD_READER_STUB_FILE: path.join(REPO_ROOT, ".e2e", "hq-squad-reader-stub.json"),
+  /** The PICK READER (2026-10-30): `src/lib/organiser-pick-reader.ts`. A
+   *  reply to a bench pick round's body → the model's raw answer; a body
+   *  with no entry is not a pick. */
+  ORGANISER_PICK_READER_STUB_FILE: path.join(REPO_ROOT, ".e2e", "organiser-pick-reader-stub.json"),
   /** An organiser's DM answer to the coming month's draft (2026-10-29,
    *  `src/lib/month-seed-reply.ts`): body → the model's raw JSON answer. */
   MONTH_SEED_REPLY_STUB_FILE: path.join(REPO_ROOT, ".e2e", "month-seed-reply-stub.json"),
@@ -271,6 +275,7 @@ export function buildTestEnv(): Record<string, string> {
     MT_TEST_CALLOFF_STUB_FILE: E2E.CALLOFF_STUB_FILE,
     MT_TEST_MONTHLY_READER_STUB_FILE: E2E.MONTHLY_READER_STUB_FILE,
     MT_TEST_HQ_SQUAD_READER_STUB_FILE: E2E.HQ_SQUAD_READER_STUB_FILE,
+    MT_TEST_ORGANISER_PICK_READER_STUB_FILE: E2E.ORGANISER_PICK_READER_STUB_FILE,
     MT_TEST_MONTH_SEED_REPLY_STUB_FILE: E2E.MONTH_SEED_REPLY_STUB_FILE,
     MT_TEST_DIGEST_REPLY_STUB_FILE: E2E.DIGEST_REPLY_STUB_FILE,
     // Phase 1 autonomous onboarding (bot-added → intro → YES → org).
@@ -386,6 +391,7 @@ export function buildTestEnv(): Record<string, string> {
     env.MT_TEST_CALLOFF_STUB_FILE = "";
     env.MT_TEST_MONTHLY_READER_STUB_FILE = "";
     env.MT_TEST_HQ_SQUAD_READER_STUB_FILE = "";
+    env.MT_TEST_ORGANISER_PICK_READER_STUB_FILE = "";
     env.MT_TEST_MONTH_SEED_REPLY_STUB_FILE = "";
     env.MT_TEST_DIGEST_REPLY_STUB_FILE = "";
     // THE KEY A LIVE SWEEP SPENDS IS THE DEVELOPER'S, NOT PRODUCTION'S.
