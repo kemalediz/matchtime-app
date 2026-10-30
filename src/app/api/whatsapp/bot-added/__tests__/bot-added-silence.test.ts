@@ -116,11 +116,11 @@ describe("bot-added and silent groups", () => {
     expect(dbMock.onboardingSession.create).not.toHaveBeenCalled();
   });
 
-  it("unchanged: an ordinary unknown group still gets today's intro with self-join off", async () => {
+  it("an ordinary unknown group with self-join off gets no intro and no session (legacy setup deleted 2026-10-30)", async () => {
     const body = await post("g-new");
-    expect(typeof body.introText).toBe("string");
-    expect(body.introText.length).toBeGreaterThan(0);
-    expect(dbMock.onboardingSession.create).toHaveBeenCalledOnce();
+    expect(body.introText).toBeNull();
+    expect(body.ignored).toBe("no-club");
+    expect(dbMock.onboardingSession.create).not.toHaveBeenCalled();
   });
 
   it("unchanged: a live club's group is ignored as before, before any silence check", async () => {

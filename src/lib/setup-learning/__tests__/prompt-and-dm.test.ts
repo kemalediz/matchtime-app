@@ -154,7 +154,6 @@ function dmFor(name: (typeof FIXTURE_NAMES)[number], lang?: string, answer?: Rec
     org: { ...DEFAULTS, language },
     weeklyGame: fx.weeklyGame,
     activities: [{ dayOfWeek: fx.weeklyGame.dayOfWeek, time: fx.weeklyGame.time }],
-    chatLanguage: { lang: fx.language, confident: true },
   });
   return composeSetupDm({
     lang: language,
@@ -220,12 +219,10 @@ describe("the organiser's DM", () => {
     expect(dmFor("organiser-picks")).not.toContain("✅");
   });
 
-  it("and in Turkish (a Turkish club whose chat is English also gets the language line, with its own link first)", () => {
+  it("and in Turkish (the language is the club's choice: no language line, 2026-10-30)", () => {
     expect(dmFor("organiser-picks", "tr")).toBe(
       `"Wednesday 7s" grubundaki son mesajları okuyup grubun nasıl işlediğine baktım. Hiçbir ayarı değiştirmedim, ama göz atmaya değer birkaç şey var.\n\n` +
         `Kontrol etmeye değer (burada hiçbir şeyi değiştirmedim):\n` +
-        `🔎 Sohbet çoğunlukla İngilizce; MatchTime bu grupta Türkçe konuşuyor.\n` +
-        `Buradan değiştirebilirsiniz: https://mt.link/settings\n` +
         `🔎 Görünüşe göre boşalan yeri kimin dolduracağını organizatörler seçiyor. Öyleyse "Organizatörler seçer" ayarını açın.\n` +
         `Şu tür mesajlardan: "Drop me a message if you fancy a game and I'll sort the team"\n` +
         `Buradan açabilirsiniz: https://mt.link/pick\n\n` +

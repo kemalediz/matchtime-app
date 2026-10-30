@@ -97,7 +97,6 @@ import { withSetupReadingAiBudget } from "../ai-budget";
 import { isAiBudgetExceeded } from "../ai-budget-context";
 import { anthropicModel, budgetedModel, extractJson, type ModelResponse, type PipelineModel } from "../pipeline/llm";
 import { coerceHistoryMessages } from "../onboarding-enrichment-reconcile";
-import { detectGroupLang } from "../i18n/detect";
 import { appUrl, buildAdminLink } from "../admin-link";
 import { PlatformDmRefused, queuePlatformDm } from "../platform-jobs";
 import { messageHoursSendAfter } from "../message-hours";
@@ -415,7 +414,6 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   };
 
   // ── Plan and apply ───────────────────────────────────────────────────
-  const chatLanguage = detectGroupLang({ subject: connect.groupSubject, history: history.map((m) => m.text) });
   const slots = activities.map((a) => ({ dayOfWeek: a.dayOfWeek, time: a.time }));
   // What is written on the row for a plan: the same record as before.
   const record = (p: SetupPlan): Record<string, unknown> => ({
@@ -430,7 +428,7 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   });
   let state = orgSettings(org);
   // Hidden settings (payment tracking, 2026-10-16) are never written.
-  let plan = hideUnofferedSettings(planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage }));
+  let plan = hideUnofferedSettings(planSetup({ detection, org: state, weeklyGame, activities: slots }));
   let res = await applyAndRecord(orgId, state, plan, held, record);
   // Why a HELD club's write was refused, when it was the club that moved:
   // suspended (no approved club to load) or gone live (no longer setting
@@ -445,7 +443,7 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
     moved = movedTo(fresh);
     if (fresh && !moved) {
       state = orgSettings(fresh);
-      plan = hideUnofferedSettings(planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage }));
+      plan = hideUnofferedSettings(planSetup({ detection, org: state, weeklyGame, activities: slots }));
       res = await applyAndRecord(orgId, state, plan, held, record);
       // Still refused, and it was held: see whether it moved just now.
       if (res === "moved" && held) moved = movedTo(await loadOrg(orgId));

@@ -71,7 +71,6 @@ function plan(
       org: { ...DEFAULTS, ...opts.org },
       weeklyGame: game,
       activities: [{ dayOfWeek: game.dayOfWeek, time: game.time }],
-      chatLanguage: null,
     }),
   };
 }

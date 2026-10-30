@@ -263,11 +263,11 @@ describe("self-join OFF: exactly today's route", () => {
     expect(ownerDm.queueOwnerDm).not.toHaveBeenCalled();
   });
 
-  it("with autostart on, an unknown group still gets today's intro", async () => {
+  it("with autostart on, an unknown group gets no intro and no session (the legacy setup was deleted 2026-10-30)", async () => {
     process.env.ONBOARDING_AUTOSTART = "1";
     const body = await post();
-    expect(typeof body.introText).toBe("string");
-    expect(dbMock.onboardingSession.create).toHaveBeenCalledOnce();
+    expect(body.introText).toBeNull();
+    expect(dbMock.onboardingSession.create).not.toHaveBeenCalled();
     expect(groupAdd.handleSelfJoinGroupAdd).not.toHaveBeenCalled();
   });
 

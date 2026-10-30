@@ -1,12 +1,7 @@
 /**
- * Unit tests for the autonomous-onboarding messaging copy:
- *   - BOT_ADDED_INTRO: the DESCRIPTIVE full-menu on-add pitch (a single
- *     string carrying the feature pitch + the consent question). It is
- *     intentionally long now (the descriptive menu), but MUST keep the
- *     consent keywords the `introduced` parser depends on, keep an
- *     opt-out, and surface the help commands.
- *   - buildHowToUseMe(): the feature-aware "how to use me" block posted
- *     when setup completes. Only mentions enabled capabilities.
+ * Unit tests for the help copy:
+ *   - buildHowToUseMe(): the feature-aware "how to use me" block. Only
+ *     mentions enabled capabilities.
  *   - buildHelpReply(): the help for a topic. Which topic was asked about
  *     is the question extractor's (`how_it_works`, its `feature`) since
  *     2026-10-28; the regex reader `parseHelpTopic` is gone.
@@ -14,15 +9,11 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  BOT_ADDED_INTRO,
-  buildBotAddedIntro,
   buildHowToUseMe,
   buildHelpReply,
-  buildAdminMagicLinkDm,
   helpPagesNeeded,
   type HelpTopic,
 } from "@/lib/onboarding-conversation";
-import { parseBundleReply } from "@/lib/onboarding-parse";
 
 const ALL_ON = {
   attendance: true,
@@ -37,49 +28,6 @@ const ALL_ON = {
 /** Payments count as on when the club collects match fees (payment
  *  tracking is hidden, 2026-10-16). */
 const FEES_ON = { ...ALL_ON, paymentCollection: true } as const;
-
-describe("BOT_ADDED_INTRO (the short on-add intro, 2026-09-17)", () => {
-  it("is a single string: one line on what MatchTime is, one question", () => {
-    expect(typeof BOT_ADDED_INTRO).toBe("string");
-    expect(BOT_ADDED_INTRO).toContain("\n\n");
-  });
-
-  // Kemal, 2026-09-30, replacing the 2026-09-17 "one line" rule: the
-  // intro lists what MatchTime does, like the ad for new groups. Still
-  // bounded, so it stays one readable WhatsApp message.
-  it("lists the features in one readable message", () => {
-    expect(BOT_ADDED_INTRO.length).toBeLessThan(1200);
-    for (const f of ["In", "bench", "teams", "Man of the Match", "stats", "Match fees"]) {
-      expect(BOT_ADDED_INTRO).toContain(f);
-    }
-    expect(BOT_ADDED_INTRO).not.toMatch(/[—–]/);
-  });
-
-  it("identifies MatchTime and keeps the consent keyword the parser needs", () => {
-    expect(BOT_ADDED_INTRO).toContain("MatchTime");
-    expect(BOT_ADDED_INTRO).toContain("*YES*");
-    expect(parseBundleReply("YES")?.choice).toBe("yes");
-  });
-
-  it("keeps an opt-out line (falls-open promise)", () => {
-    expect(BOT_ADDED_INTRO.toLowerCase()).toMatch(/ignore me|stay quiet/);
-  });
-
-  it("carries no feature pitch: that moved to help and the how-to block", () => {
-    expect(BOT_ADDED_INTRO).not.toContain("Payment tracking");
-    expect(BOT_ADDED_INTRO).not.toMatch(/help teams/);
-    expect(buildHelpReply("teams", ALL_ON)).toMatch(/balanced/i);
-  });
-
-  it("the Turkish intro keeps the same contract with EVET", () => {
-    const tr = buildBotAddedIntro("tr");
-    expect(tr).toContain("MatchTime");
-    expect(tr).toContain("*EVET*");
-    expect(tr.length).toBeLessThan(1300);
-    expect(tr).not.toMatch(/[—–]/);
-    expect(parseBundleReply("EVET")?.choice).toBe("yes");
-  });
-});
 
 describe("buildHowToUseMe — full-feature org", () => {
   const block = buildHowToUseMe(ALL_ON);
@@ -326,54 +274,6 @@ describe("buildHelpReply — bare help (topic null)", () => {
   it("with payments ON the payments topic IS listed", () => {
     const r = buildHelpReply(null, FEES_ON);
     expect(r).toMatch(/help payments/);
-  });
-});
-
-describe("buildAdminMagicLinkDm: the organiser's setup DM (2026-09-30)", () => {
-  // Kemal, first real self-setup: the DM never mentioned starting (seed)
-  // ratings, though the club-scoped ratings design decided a new club's
-  // admin is offered the seed editor at setup. It now links straight to
-  // it, signed in, and says why. Schedule changes live in the admin
-  // screens, not WhatsApp commands, so it also links block bookings and
-  // the match list.
-  const base = {
-    groupName: "MT Test",
-    url: "https://mt.example/r/admin",
-    payments: false,
-    seedUrl: "https://mt.example/r/seeds",
-    blockBookingsUrl: "https://mt.example/r/blocks",
-    matchesUrl: "https://mt.example/r/matches",
-  };
-
-  it("EN: offers the seed editor with the reason, then block bookings, then the match list", () => {
-    const dm = buildAdminMagicLinkDm(base, "en");
-    const seed = dm.indexOf("https://mt.example/r/seeds");
-    const blocks = dm.indexOf("https://mt.example/r/blocks");
-    const matches = dm.indexOf("https://mt.example/r/matches");
-    expect(seed).toBeGreaterThan(dm.indexOf("https://mt.example/r/admin"));
-    expect(blocks).toBeGreaterThan(seed);
-    expect(matches).toBeGreaterThan(blocks);
-    expect(dm).toMatch(/starting ratings/i);
-    expect(dm).toMatch(/first teams are balanced/);
-    expect(dm).toMatch(/Players never see these/);
-    expect(dm).toMatch(/block booking/i);
-    expect(dm).toMatch(/cancel one week or switch its format/);
-    expect(dm).not.toMatch(/[—–]/);
-  });
-
-  it("TR: the same lines in Turkish, no dash", () => {
-    const dm = buildAdminMagicLinkDm(base, "tr");
-    expect(dm).toContain("https://mt.example/r/seeds");
-    expect(dm).toMatch(/Başlangıç puanları/);
-    expect(dm).toMatch(/blok rezervasyon/);
-    expect(dm).toContain("https://mt.example/r/matches");
-    expect(dm).not.toMatch(/[—–]/);
-  });
-
-  it("no seed line when there is no seed link (team generation off)", () => {
-    const dm = buildAdminMagicLinkDm({ ...base, seedUrl: null }, "en");
-    expect(dm).not.toMatch(/starting ratings/i);
-    expect(dm).toContain("https://mt.example/r/blocks");
   });
 });
 

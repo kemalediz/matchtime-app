@@ -187,7 +187,6 @@ import {
   bindAiBudgetKey,
   claimCapReply,
   getAiBudgetStatus,
-  onboardingGroupKey,
   pickCapReplyMessage,
   recordCapSkips,
   withDeferredOrgAiBudget,
@@ -298,16 +297,6 @@ const AI_CAP_HANDLED_BY = "ai-daily-cap";
 //                                    as a seventh prose prefix; the note
 //                                    now matches ownership.
 //     FeatureKey, normaliseName     used only by `executeVerdict`.
-import {
-  handleOnboardingTurn,
-  legacySetupLang,
-} from "@/lib/onboarding-conversation";
-import {
-  ACTIVE_ONBOARDING_STAGES,
-  isCancelRequest,
-  isOnboardingSessionStale,
-} from "@/lib/onboarding-parse";
-import { inGroupSetupRefusal } from "@/lib/club-approval";
 import { t as strings } from "@/lib/i18n/t";
 import { loadPlayerNames } from "@/lib/player-display-name";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
@@ -401,7 +390,7 @@ interface InboundMessage {
   authorName: string | null;
   timestamp: string;
   /** Raw WhatsApp mention JIDs (e.g. "447700900123@c.us", "…@lid"),
-   *  forwarded UNCHANGED for the onboarding admin parser. */
+   *  forwarded UNCHANGED. */
   mentions?: string[];
   /**
    * The display name the Pi's contact lookup saw for each mentioned JID.
@@ -458,19 +447,6 @@ interface InboundBody {
   groupId: string;
   history?: InboundHistory[];
   messages: InboundMessage[];
-  /** Optional stored chat history for the onboarding ENRICHMENT pass.
-   *  DISTINCT from `history` above: that field is the LLM-context history
-   *  the main analyzer consumes ({authorName, body, timestamp}). This one
-   *  is the {author, authorPhone?, text, timestamp} shape consumed by
-   *  runOnboardingEnrichment via handleOnboardingTurn. Named separately
-   *  to avoid clobbering the existing `history` field; forwarded only to
-   *  the onboarding turn. Absent → no enrichment, behaviour unchanged. */
-  enrichmentHistory?: Array<{
-    author: string;
-    authorPhone?: string | null;
-    text: string;
-    timestamp: string | number;
-  }>;
 }
 
 type ActionForBot = {
@@ -527,25 +503,13 @@ async function handleAnalyzeRequest(request: Request) {
     return NextResponse.json({ error: "groupId and messages[] required" }, { status: 400 });
   }
 
-  // ── Phase 2: autonomous onboarding ───────────────────────────────
-  //   Runs BEFORE the bot-enabled-org gate. A group with no org is
-  //   normally ignored; here it can bootstrap itself via an explicit
-  //   "@MatchTime setup" trigger, then a multi-turn in-group Q&A.
-  //   While a session is active every batch routes here (not the
-  //   normal analyzer) until it completes/abandons.
-  {
-    // A group with no club yet spends from its own new-club allowance.
-    bindAiBudgetKey(onboardingGroupKey(body.groupId));
-    const onb = await handleOnboardingIfApplicable(body);
-    if (onb) return NextResponse.json(onb);
-  }
+  // A group with no bot-enabled club is ignored below. The legacy in-group
+  // setup ("@MatchTime set up") was deleted on 2026-10-30; new clubs join
+  // through self-join (lib/group-add.ts).
 
   // Club fee billing (B1, plan 4.3 point 4): a billing-paused club's batch
   // is ignored here, before any model call, even if a stale Pi forwarded
-  // it. `billingQuietWhere()` is empty while BILLING_ENABLED is off. (The
-  // live-org check in handleOnboardingIfApplicable deliberately keeps
-  // seeing a paused club, so its group can never fall through to the
-  // in-group setup.)
+  // it. `billingQuietWhere()` is empty while BILLING_ENABLED is off.
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: body.groupId, whatsappBotEnabled: true, ...billingQuietWhere() },
     // `language`: the squad post composed from the rows below speaks
@@ -556,7 +520,11 @@ async function handleAnalyzeRequest(request: Request) {
     select: { id: true, name: true, language: true, squadMode: true, listAnnouncer: true },
   });
   if (!org) {
-    return NextResponse.json({ ok: true, ignored: "unknown-or-disabled-group", results: [] });
+    // A silent group (a club waiting for approval, rejected or suspended,
+    // or a group nobody asked MatchTime into) says so, for the Pi's log.
+    const { isSilentGroup } = await import("@/lib/club-approval");
+    const ignored = (await isSilentGroup(body.groupId)) ? "silent-group" : "unknown-or-disabled-group";
+    return NextResponse.json({ ok: true, ignored, results: [] });
   }
   const organisersMode = organisersAnnounce(org);
   bindAiBudgetKey(org.id);
@@ -5122,184 +5090,6 @@ async function storeMessagesForSquadFromList(
     // re-arrive (we already dedupe on waMessageId).
     console.error("[analyze] storeMessagesForSquadFromList failed:", err);
   }
-}
-
-/**
- * Phase 2 onboarding router. Returns a bot response object when this
- * batch belongs to an onboarding flow (active session, or a fresh
- * "@MatchTime setup" trigger in a group with no bot-enabled org), or
- * null to fall through to normal analysis.
- *
- * Trigger is intentionally tight so it can't fire by accident in a
- * live group: must address MatchTime AND say set up / get started.
- */
-const SETUP_TRIGGER =
-  /(?:@?\s*match\s*time\b[\s\S]{0,40}(?<!\p{L})(?:set\s*up|get\s*started|onboard|kurulum|kuralım|kuralim)(?!\p{L}))|(?:\b(?:set\s*up|onboard)\s+match\s*time\b)/iu;
-
-/** What the analyze response carries when an onboarding session owned
- *  the batch. The Pi reads `completed` to refresh its org list at once,
- *  so the group it has been flushing as "onboarding" becomes a live org
- *  without waiting for the periodic refresh or a restart. */
-type OnboardingResponse = {
-  ok: true;
-  results: ActionForBot[];
-  onboarding: { stage: string; completed: boolean; language: string };
-};
-
-/** The onboarding gate refused the group outright (self-join slice 1):
- *  no session, no reply, no model call, and nothing falls through. */
-type OnboardingRefusedResponse = {
-  ok: true;
-  ignored: "self-join-mode" | "silent-group";
-  results: [];
-};
-
-async function handleOnboardingIfApplicable(
-  body: InboundBody,
-): Promise<OnboardingResponse | OnboardingRefusedResponse | null> {
-  const groupId = body.groupId;
-
-  // ── A LIVE ORG ALWAYS WINS (2026-09-17) ──────────────────────────
-  // This used to look the session up first, so an abandoned or stale
-  // session could hijack a group that was later set up another way
-  // (the manual `enable-*.ts` script, the dashboard). Now the live-org
-  // check comes first: if the group has a bot-enabled org, any session
-  // still lying around is marked superseded and the batch goes to the
-  // normal analyzer. The org's own trigger words are unaffected.
-  const liveOrg = await db.organisation.findFirst({
-    where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
-    select: { id: true },
-  });
-  if (liveOrg) {
-    await db.onboardingSession.updateMany({
-      where: { whatsappGroupId: groupId, stage: { in: [...ACTIVE_ONBOARDING_STAGES] } },
-      data: { stage: "abandoned" },
-    });
-    return null;
-  }
-
-  // ── SILENCE RAILS (self-join slice 1, 2026-09-29) ──────────────────
-  // After the live-club check, so a live club is untouched. A SILENT group
-  // (its club is waiting for approval, was rejected or suspended, or
-  // nobody asked MatchTime into it) never starts or continues a setup:
-  // no session, no reply, and never the Haiku call inside the turn. With
-  // self-join on, the in-group setup is retired for every group
-  // (decision 4). The Pi should not have forwarded such a batch at all;
-  // this is the server's own refusal (plan section 4.3, layer 3).
-  const refusal = await inGroupSetupRefusal(groupId);
-  if (refusal) {
-    console.log(`[analyze] onboarding refused for ${groupId} (${refusal})`);
-    return { ok: true, ignored: refusal, results: [] };
-  }
-
-  let session = await db.onboardingSession.findFirst({
-    where: {
-      whatsappGroupId: groupId,
-      stage: { in: [...ACTIVE_ONBOARDING_STAGES] },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  // A session nobody has touched for ONBOARDING_SESSION_TTL_MS is
-  // stale: it stops owning the group. Marked so the next bot-add
-  // starts a fresh one and the Pi stops monitoring the group.
-  if (session && isOnboardingSessionStale(session)) {
-    await db.onboardingSession.update({
-      where: { id: session.id },
-      data: { stage: "abandoned" },
-    });
-    session = null;
-  }
-
-  if (!session) {
-    // No active session — only start one on an explicit trigger (the
-    // live-org case returned above, so this cannot hijack a configured
-    // group).
-    const triggered = body.messages.some((m) => SETUP_TRIGGER.test(m.body || ""));
-    if (!triggered) return null;
-    session = await db.onboardingSession.create({
-      data: {
-        whatsappGroupId: groupId,
-        stage: "collecting",
-        // The legacy flow speaks the language the trigger was written in.
-        language: legacySetupLang(body.messages.map((m) => m.body || "")),
-      },
-    });
-  }
-
-  const lastWaId = body.messages[body.messages.length - 1]?.waMessageId ?? null;
-
-  // An explicit, tagged "@Match Time stop" / "iptal" ends the session.
-  // One short reply in the session's language, then silence.
-  if (body.messages.some((m) => isCancelRequest(m.body || ""))) {
-    await db.onboardingSession.update({
-      where: { id: session.id },
-      data: { stage: "abandoned", lastHandledWaId: lastWaId },
-    });
-    const results: ActionForBot[] = lastWaId
-      ? [{ waMessageId: lastWaId, handledBy: "llm", intent: "onboarding", react: null, reply: strings(session.language).onbCancelled() }]
-      : [];
-    return {
-      ok: true,
-      results,
-      onboarding: { stage: "abandoned", completed: false, language: session.language },
-    };
-  }
-
-  // Dedupe: if the last message we already handled is the tail of
-  // this batch, a flush re-sent it — stay silent.
-  if (lastWaId && session.lastHandledWaId === lastWaId) {
-    return {
-      ok: true,
-      results: [],
-      onboarding: { stage: session.stage, completed: false, language: session.language },
-    };
-  }
-
-  const result = await handleOnboardingTurn({
-    session,
-    messages: body.messages.map((m) => ({
-      waMessageId: m.waMessageId,
-      authorName: m.authorName,
-      body: m.body,
-      // Sender identity — used by the group-add flow to capture the
-      // consenting admin (design fix: this used to be dropped, so the
-      // flow COULDN'T assign an owner even if it wanted to).
-      authorPhone: m.authorPhone ?? null,
-      // Raw WhatsApp mention JIDs, forwarded UNCHANGED from the bot. The
-      // `admins` stage's parseAdmins() resolves "<digits>@c.us" → phone
-      // and treats "<digits>@lid" as a privacy id (no phone).
-      mentions: m.mentions,
-    })),
-    // Forward enrichment history (if any) to the onboarding turn; the
-    // turn fires the enrichment pass + admin DM on completion. Absent →
-    // no enrichment runs. Already in the HistoryMessage shape.
-    history: body.enrichmentHistory,
-  });
-
-  const results: ActionForBot[] = [];
-  if (result.reply && lastWaId) {
-    results.push({
-      waMessageId: lastWaId,
-      handledBy: "llm",
-      intent: "onboarding",
-      react: null,
-      reply: result.reply,
-    });
-  }
-  const after = await db.onboardingSession.findUnique({
-    where: { id: session.id },
-    select: { stage: true, language: true },
-  });
-  return {
-    ok: true,
-    results,
-    onboarding: {
-      stage: after?.stage ?? session.stage,
-      completed: result.completed,
-      language: after?.language ?? session.language,
-    },
-  };
 }
 
 /**

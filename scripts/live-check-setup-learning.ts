@@ -84,7 +84,6 @@ import {
 } from "../src/lib/setup-learning/rules.ts";
 import { composeSetupDm } from "../src/lib/setup-learning/dm.ts";
 import { gradeFixture, type FixtureExpect } from "../src/lib/setup-learning/__tests__/grade.ts";
-import { detectGroupLang } from "../src/lib/i18n/detect.ts";
 import type { HistoryMessage } from "../src/lib/onboarding-enrichment-reconcile.ts";
 
 const FIXTURES = [
@@ -232,7 +231,6 @@ async function main() {
       org: { ...DEFAULTS, language: fx.language },
       weeklyGame: fx.weeklyGame,
       activities: [{ dayOfWeek: fx.weeklyGame.dayOfWeek, time: fx.weeklyGame.time }],
-      chatLanguage: detectGroupLang({ subject: fx.groupSubject, history: fx.history.map((m) => m.text) }),
     });
     // The same grader the offline replay uses (__tests__/live-replay.test.ts).
     const misses = gradeFixture(fx.expect, detection, plan);

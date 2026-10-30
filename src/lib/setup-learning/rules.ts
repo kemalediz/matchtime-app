@@ -38,7 +38,9 @@
  *   5. The weekly game (day, time, venue, size) and the language were
  *      entered by the organiser when the club was created on the website,
  *      so they are NEVER changed: when the chat clearly says something
- *      different, it becomes a SUGGESTION in the DM with a link.
+ *      different about the game, it becomes a SUGGESTION in the DM with a
+ *      link. The language is never suggested (2026-10-30): it is not
+ *      guessed from the chat.
  *   6. A monthly list (regulars prepay the month, PAYG fill-ins, credits
  *      for missed games) is never switched from the chat (Monthly squad
  *      in Settings is the organiser's own choice; the DM points at it):
@@ -797,8 +799,6 @@ export function planSetup(args: {
   weeklyGame: WeeklyGameState | null;
   /** Every active activity of the club, for the deadline checks. */
   activities: ActivitySlot[];
-  /** From `detectGroupLang` on the same chat (no model). */
-  chatLanguage: { lang: string; confident: boolean } | null;
 }): SetupPlan {
   const { detection: d, org } = args;
   const plan: SetupPlan = { applied: [], suggestions: [], noted: [], kept: [], data: {} };
@@ -905,7 +905,8 @@ export function planSetup(args: {
     Object.assign(plan.data, dataFor(c.key, c.to));
   }
 
-  // The weekly game and the language: suggestions only.
+  // The weekly game: suggestions only. The language is the organiser's
+  // choice and is never guessed from the chat (2026-10-30).
   const g = args.weeklyGame;
   const w = d.weeklyGame;
   if (g && shown(w)) {
@@ -927,10 +928,6 @@ export function planSetup(args: {
         ...source(w),
       });
     }
-  }
-  const cl = args.chatLanguage;
-  if (cl && cl.confident && cl.lang !== org.language && !organiserSet.has("language")) {
-    plan.suggestions.push({ key: "language", current: org.language, detected: cl.lang, evidence: [] });
   }
 
   // The match fee: asked, never set (rule 8). A quote from the description

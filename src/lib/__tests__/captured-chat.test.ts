@@ -282,6 +282,5 @@ describe("nothing outside captured-chat.ts writes the captured chat or the descr
     expect(read("src/lib/setup-learning/run.ts")).toMatch(/clearCapturedChat\(db, /);
     expect(read("src/lib/captured-history-expiry.ts")).toMatch(/clearExpiredCapturedChat\(db, /);
     expect(read("src/lib/captured-history-expiry.ts")).toMatch(/clearExpiredSessionChat\(db, /);
-    expect(read("src/app/api/whatsapp/bot-added/route.ts")).toMatch(/capturedSessionChat\(/);
   });
 });

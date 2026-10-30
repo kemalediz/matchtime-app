@@ -160,7 +160,7 @@ test("the organiser adds MatchTime: linked, pending, silent, one owner DM, one a
       "New club waiting: *Riverside FC* (ref 7KQ2)",
       "Organiser: Ali Demir, +44 7700 900971 (phone verified at sign-up)",
       "Added by: the organiser (matched by phone)",
-      'Group: "Riverside Tuesday 5s", 3 members, looks English (club chose English)',
+      'Group: "Riverside Tuesday 5s", 3 members (club chose English)',
       "Reply APPROVE 7KQ2 or REJECT 7KQ2, or use matchtime.ai/admin/clubs",
     ].join("\n"),
   );

@@ -216,7 +216,6 @@ describe("the owner's approval DM (plan 6.1), English only", () => {
     numberUnconfirmed: false,
     groupSubject: "Riverside Tuesday 5s",
     memberCount: 18,
-    detectedLang: { lang: "tr" as const, confident: true },
     clubLang: "tr",
     alsoIn: [{ orgName: "Sutton FC", count: 3 }],
   };
@@ -227,7 +226,7 @@ describe("the owner's approval DM (plan 6.1), English only", () => {
         "New club waiting: *Riverside FC* (ref 7KQ2)",
         "Organiser: Ali Demir, +44 7700 900123 (phone verified at sign-up)",
         "Added by: the organiser (matched by phone)",
-        'Group: "Riverside Tuesday 5s", 18 members, looks Turkish (club chose Türkçe)',
+        'Group: "Riverside Tuesday 5s", 18 members (club chose Türkçe)',
         "Also in your other clubs: 3 members play at Sutton FC",
         "Reply APPROVE 7KQ2 or REJECT 7KQ2, or use matchtime.ai/admin/clubs",
       ].join("\n"),
@@ -241,17 +240,16 @@ describe("the owner's approval DM (plan 6.1), English only", () => {
     );
   });
 
-  it("an unreadable group: no name, no member list, language unclear", () => {
+  it("an unreadable group: no name, no member list", () => {
     const text = ownerApprovalDmText({
       ...base,
       groupSubject: null,
       memberCount: 0,
-      detectedLang: { lang: "en", confident: false },
       clubLang: "en",
       organiserName: null,
     });
     expect(text).toContain("Organiser: (no name), +44 7700 900123 (phone verified at sign-up)");
-    expect(text).toContain("Group: (no name), member list not read, language unclear (club chose English)");
+    expect(text).toContain("Group: (no name), member list not read (club chose English)");
   });
 
   it("never uses an em dash or an en dash", () => {

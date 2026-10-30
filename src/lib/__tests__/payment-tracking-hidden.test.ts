@@ -20,8 +20,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FEATURE_META, HIDDEN_FEATURE_KEYS, OFFERED_FEATURE_META, isFeatureOffered } from "../org-features-meta";
 import { SETTING_INFO_KEYS, SETTINGS_INFO } from "../settings-info";
-import { buildHelpReply, buildLegacyFeatureMenu, type HelpFeatures } from "../onboarding-conversation";
-import { regexExtract } from "../onboarding-parse";
+import { buildHelpReply, type HelpFeatures } from "../onboarding-conversation";
 import { hideUnofferedSettings, type SetupPlan } from "../setup-learning/rules";
 
 const ROOT = join(__dirname, "..", "..", "..");
@@ -102,24 +101,6 @@ describe("help payments is about collecting match fees", () => {
 });
 
 describe("no setup flow switches it on", () => {
-  it("the in-group setup menu does not list it (EN and TR)", () => {
-    for (const lang of LANGS) {
-      const menu = buildLegacyFeatureMenu("Pick", lang);
-      expect(menu, lang).not.toMatch(NAMES_IT);
-    }
-  });
-
-  it("a numbered pick reads the menu as shown: 8 is not payment tracking", () => {
-    const sel = regexExtract([{ body: "1, 2 and 8" }]).featureSelection ?? [];
-    expect(sel).not.toContain("paymentTracking");
-  });
-
-  it("onboarding only keeps offered features (the completion source)", () => {
-    const src = read("src/lib/onboarding-conversation.ts");
-    expect(src).not.toMatch(/new Set<ToggleableKey>\(FEATURE_META\.map/);
-    expect(src).toMatch(/paymentTrackingEnabled: chosenSet\.has\("paymentTracking"\) && isFeatureOffered\("paymentTracking"\)/);
-  });
-
   it("the learned setup never switches it on, and never says it held it off", () => {
     const plan: SetupPlan = {
       applied: [

@@ -131,7 +131,7 @@ test("the owner sees every section; the seeded approved club is in no self-join 
   await expect(waiting.nth(0)).toContainText("ref 7KQ2");
   await expect(waiting.nth(0)).toContainText("Ali Demir, +44 7700 900951 (phone verified at sign-up)");
   await expect(waiting.nth(0)).toContainText("the organiser (matched by phone)");
-  await expect(waiting.nth(0)).toContainText('"Riverside Tuesday 5s", 3 members, looks English (club chose English)');
+  await expect(waiting.nth(0)).toContainText('"Riverside Tuesday 5s", 3 members (club chose English)');
   await expect(waiting.nth(1)).toContainText("club chose Türkçe");
   // Pending clubs must have spent nothing.
   await expect(page.getByTestId("pending-ai-spend").first()).toHaveText("$0.00");

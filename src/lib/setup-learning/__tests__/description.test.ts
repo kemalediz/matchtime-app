@@ -69,7 +69,6 @@ function plan(answer: Record<string, unknown>, opts: { description?: string | nu
       org: DEFAULTS,
       weeklyGame: game,
       activities: [{ dayOfWeek: game.dayOfWeek, time: game.time }],
-      chatLanguage: null,
     }),
   };
 }
@@ -240,7 +239,6 @@ describe("the chat contradicts a stale description: the chat wins", () => {
       org: DEFAULTS,
       weeklyGame: { ...stale.weeklyGame, feePerPlayer: null },
       activities: [{ dayOfWeek: stale.weeklyGame.dayOfWeek, time: stale.weeklyGame.time }],
-      chatLanguage: null,
     });
     expect(gradeFixture(stale.expect, detection, p)).toEqual([]);
     expect(p.applied.map((a) => [a.key, a.to])).toEqual([["dropOutDeadline", { day: 4, time: "10:00" }]]);
@@ -261,7 +259,6 @@ describe("the chat contradicts a stale description: the chat wins", () => {
       org: DEFAULTS,
       weeklyGame: stale.weeklyGame,
       activities: [{ dayOfWeek: stale.weeklyGame.dayOfWeek, time: stale.weeklyGame.time }],
-      chatLanguage: null,
     });
     expect(p.applied).toEqual([]);
     expect(p.data).toEqual({});
@@ -341,7 +338,7 @@ describe("the match fee: only ever a suggestion", () => {
     expect(plan(monthly).plan.suggestions).toEqual([]);
     expect(plan(fee(6, ["£6 a player"]), { game: { ...GAME, feeSplitTotal: true } }).plan.suggestions).toEqual([]);
     const d = parseDetection({ ...blankAnswer(), ...fee(6, ["£6 a player"]) }, CHAT, DESC)!;
-    expect(planSetup({ detection: d, org: DEFAULTS, weeklyGame: null, activities: [], chatLanguage: null }).suggestions).toEqual([]);
+    expect(planSetup({ detection: d, org: DEFAULTS, weeklyGame: null, activities: [] }).suggestions).toEqual([]);
   });
   it("comes after the weekly game and language suggestions and before organisers pick", () => {
     const h = [at("Message me for a place and I'll pick the team", 7, "Kemal"), at("I'll pick the team again this week", 14, "Kemal")];
@@ -547,7 +544,6 @@ describe("the two description fixtures, with their correct answers", () => {
         org: DEFAULTS,
         weeklyGame: fx.weeklyGame,
         activities: [{ dayOfWeek: fx.weeklyGame.dayOfWeek, time: fx.weeklyGame.time }],
-        chatLanguage: null,
       });
       expect(gradeFixture(fx.expect, detection, p)).toEqual([]);
     });
@@ -561,7 +557,6 @@ describe("the two description fixtures, with their correct answers", () => {
       org: DEFAULTS,
       weeklyGame: fx.weeklyGame,
       activities: [{ dayOfWeek: fx.weeklyGame.dayOfWeek, time: fx.weeklyGame.time }],
-      chatLanguage: null,
     });
     expect(p.applied.map((a) => [a.key, a.to, a.fromDescription])).toEqual([
       ["dropOutDeadline", { day: 2, time: "18:00" }, ["Drop out by Tuesday 6pm or you still pay."]],
@@ -578,7 +573,6 @@ describe("the two description fixtures, with their correct answers", () => {
       org: DEFAULTS,
       weeklyGame: fx.weeklyGame,
       activities: [{ dayOfWeek: fx.weeklyGame.dayOfWeek, time: fx.weeklyGame.time }],
-      chatLanguage: null,
     });
     expect(gradeFixture(fx.expect, detection, p)).toEqual([
       "matchFee: expected 6, got null",

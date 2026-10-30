@@ -206,7 +206,7 @@ export function describeRelinkPlan(plan: RelinkPlan, apply: boolean): string[] {
     `  from: ${plan.from.groupId} ${label(plan.from.subject, plan.from.memberCount)}, adderMatch=${plan.from.adderMatch ?? "?"}`,
     `  to:   ${plan.to.groupId} ${label(plan.to.subject, plan.to.memberCount)}, adderMatch=${plan.to.adderMatch}`,
     `  MatchTime is in the target group: ${plan.evidence}`,
-    "  will write: ClubConnect groupId, groupSubject, memberCount, addedByPhone/Lid, adderMatch, detectedLang, linkedAt;",
+    "  will write: ClubConnect groupId, groupSubject, memberCount, addedByPhone/Lid, adderMatch, linkedAt;",
     "              participants set to NULL (no roster for the target group is known: approval imports none);",
     "              the captured chat and description of the old group deleted;",
     "              any open unsolicited row for the target group closed.",

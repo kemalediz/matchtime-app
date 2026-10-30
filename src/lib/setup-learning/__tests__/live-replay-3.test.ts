@@ -22,7 +22,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { detectGroupLang } from "../../i18n/detect";
 import { extractJson } from "../../pipeline/llm";
 import { SETUP_LEARNING_MODEL } from "../prompt";
 import { parseDetection, planSetup, type OrgSettingsState } from "../rules";
@@ -59,7 +58,6 @@ function replay(name: string) {
     org: { ...DEFAULTS, language: fx.language },
     weeklyGame: fx.weeklyGame,
     activities: [{ dayOfWeek: fx.weeklyGame.dayOfWeek, time: fx.weeklyGame.time }],
-    chatLanguage: detectGroupLang({ subject: fx.groupSubject, history: fx.history.map((m) => m.text) }),
   });
   return { saved, fx, detection, plan };
 }

@@ -243,7 +243,7 @@ test("the organiser adds it back with NO new code: linked again, the new chat st
       "New club waiting: *Riverside FC* (ref 7KQ2)",
       "Organiser: Ali Demir, +44 7700 900981 (phone verified at sign-up)",
       "Added by: the organiser (matched by phone)",
-      'Group: "Riverside Tuesday 5s (new)", 3 members, looks English (club chose English)',
+      'Group: "Riverside Tuesday 5s (new)", 3 members (club chose English)',
       "Reply APPROVE 7KQ2 or REJECT 7KQ2, or use matchtime.ai/admin/clubs",
     ].join("\n"),
   );

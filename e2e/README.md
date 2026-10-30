@@ -213,8 +213,7 @@ await g.dm("pete", "YES");                            // 1-1 DM path
 await g.reaction(msgId, "👍", "henry");               // offer-claim reaction
 await g.pollVote({ waMessageId, voterKey, optionName }); // MoM/payment poll
 await g.duePosts(londonAt(0, 8, 30));                 // scheduler at a pinned clock
-await g.botAdded({ … });                              // onboarding event
-// + createOnboardingGroup(request) for groups with no org yet.
+await g.botAdded({ … });                              // the bot-added event
 ```
 
 Default roster: 16 members with phones (owner + 2 admins + 13 players),
@@ -225,7 +224,6 @@ allocated per-process so groups never collide; specs `resetDb()` once in
 
 | Area | Spec | Scenarios |
 |---|---|---|
-| Onboarding | `sim/onboarding.spec.ts` | live-org group never re-enters onboarding; bot-added → intro; chat falls open; EVERYTHING → payments on + admins asked; admins by **name+phone AND @mention** → 2 ADMIN memberships + magic-link DMs; when&where → Activity + first Match (11-a-side → 22); roster import with @lid skipped; OWNER = consenting replier |
 | Attendance | `sim/attendance.spec.ts` | IN→CONFIRMED; the filling IN posts ONE squad-complete announcement; IN at capacity→BENCH; OUT→DROPPED + open BenchSlotOffer; in-group bench claim (benchConfirmation) → promoted + offer resolved + announce; admin "move X to bench" → demote, slot freed, NO offer, no dup announce; benched player's own IN → promoted when a slot is free; **banter "X is out" while X chats → NOT dropped, bot silent**; third-party OUT for an absent player honoured; OUT from a non-registered player → silent; DM "YES" claims the offer (ack + announce), late claimer misses; 👎 reaction no-op, 👍 reaction claims |
 | Squad messaging | `sim/squad-post.spec.ts` | burst of mixed messages collapses to ONE windowed "latest squad and bench" post; bench ALWAYS listed; stale single reply re-canonicalised (count + "slots open" + "need N more" prose recomputed); never "full + slot open"; never a total above the cap; never "X moves up from the bench" while X is benched; raw-digit pushnames never surface (provisioned as "New player") |
 | Recruit | `sim/recruit.spec.ts` | explicit shortage from an admin → invite DMs to recent non-responders with phones (idempotent per match); "list the players" NEVER recruits; non-admin → 🔒; full squad → DMs nobody |
@@ -294,9 +292,6 @@ MT_REHEARSAL_SCENARIO=e2e/rehearsal/examples/riverside.scenario.json \
 - **Squad-from-list EXTRACTION cron** (`/api/cron/extract-squads`) — the
   LLM extraction itself; the deterministic chain after it is covered in
   `sim/squad-from-list.spec.ts`.
-- **Onboarding conversation** (Phase 2 "@MatchTime setup" multi-turn
-  trigger; the group-add flow is covered in `api/onboarding.spec.ts` +
-  `sim/onboarding.spec.ts`).
 - **Roster survey** flows; **group-join/leave/sync-participants**.
 - **Other analyzer safety nets**: conditional-drop hold, IN/OUT intent
   backfills, proximity/roster reply rewriters (pure functions — easy

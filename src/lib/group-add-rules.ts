@@ -429,7 +429,6 @@ export function adderLine(match: AdderMatch, organiserPresent: boolean, numberUn
   return `Added by: ${who}${numberUnconfirmed ? " (organiser's WhatsApp number not confirmed)" : ""}`;
 }
 
-const LANG_LOOKS: Record<string, string> = { en: "English", tr: "Turkish" };
 const LANG_CHOSEN: Record<string, string> = { en: "English", tr: "Türkçe" };
 
 export interface OwnerApprovalDmInput {
@@ -445,7 +444,7 @@ export interface OwnerApprovalDmInput {
   numberUnconfirmed: boolean;
   groupSubject: string | null;
   memberCount: number;
-  detectedLang: { lang: string; confident: boolean };
+  /** The language the organiser chose for the club on the website. */
   clubLang: string | null;
   /** Group members who already play in an approved club, per club. */
   alsoIn: Array<{ orgName: string; count: number }>;
@@ -462,11 +461,8 @@ export function ownerApprovalDmText(p: OwnerApprovalDmInput): string {
   const group = p.groupSubject?.trim() ? `"${p.groupSubject.trim()}"` : "(no name)";
   const members =
     p.memberCount > 0 ? `${p.memberCount} ${p.memberCount === 1 ? "member" : "members"}` : "member list not read";
-  const looks = p.detectedLang.confident
-    ? `looks ${LANG_LOOKS[p.detectedLang.lang] ?? p.detectedLang.lang}`
-    : "language unclear";
   const chose = LANG_CHOSEN[p.clubLang ?? "en"] ?? p.clubLang ?? "English";
-  lines.push(`Group: ${group}, ${members}, ${looks} (club chose ${chose})`);
+  lines.push(`Group: ${group}, ${members} (club chose ${chose})`);
 
   const also = p.alsoIn.filter((a) => a.count > 0);
   if (also.length > 0) {
