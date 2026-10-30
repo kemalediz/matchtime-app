@@ -120,7 +120,7 @@ export function messageHasScoreline(body: string): boolean {
  *  removed first (WhatsApp writes a mention of a person as their phone
  *  number, and of the bot as "@Match Time"). */
 function numbersIn(body: string): number[] {
-  const text = (body ?? "").replace(/@\s*match\s*time\b/giu, " ").replace(/@\S+/g, " ");
+  const text = (body ?? "").replace(/@\S+/g, " ");
   return (text.match(/\d+/g) ?? []).map((d) => Number.parseInt(d, 10));
 }
 
@@ -185,5 +185,5 @@ export function scoreSwapKey(matchId: string): string {
 // meaning; the score extractor reads `correction` and `swapped`.
 
 function plainText(body: string): string {
-  return (body ?? "").replace(/@\s*match\s*time\b/giu, " ").replace(/@\S+/g, " ");
+  return (body ?? "").replace(/@\S+/g, " ");
 }
