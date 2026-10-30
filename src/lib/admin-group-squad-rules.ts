@@ -8,16 +8,17 @@
  * This module holds what needs no database and no model:
  *
  *   - which router routes the admin group acts on (`ADMIN_GROUP_SQUAD_ROUTES`);
- *   - reading a pasted squad list (`readSquadPaste`), placing each name on a
- *     club member (`matchPastedName`) and diffing it against the squad
- *     (`diffPastedSquad`);
+ *   - placing a name the HQ squad reader read on a club member
+ *     (`matchPastedName`), the fact gates on a pasted list
+ *     (`gateSquadPaste`) and diffing it against the squad
+ *     (`diffPastedSquad`). The list itself is read by a model
+ *     (`hq-squad-reader.ts`), never by code;
  *   - every sentence MatchTime says back, in the club's language.
  *
  * The impure halves: `admin-group-squad-change.ts` (one change, through the
  * router and the attendance engine) and `admin-group-paste.ts` (a pasted
  * list, a proposal, applied on YES).
  */
-import { cleanName, parsePastedRoster, readListLine } from "./pasted-roster";
 import { normaliseName } from "./name-normalise";
 import { t } from "./i18n/t";
 import { buildBenchPickHint, buildSquadCountLine } from "./squad-count-line";
@@ -39,74 +40,16 @@ export const ADMIN_GROUP_SQUAD_ROUTES: ReadonlySet<Route> = new Set<Route>(["sel
  *  organiser-pick "bring them in anyway? YES" question. */
 export const PASTE_PROPOSAL_TTL_MS = 30 * 60 * 1000;
 
-/** A pasted list with fewer playing names than this share of the places
- *  is not the squad (a list of who has not paid, say), and is ignored. */
-const MIN_SHARE_OF_PLACES = 0.5;
-
-// ── Reading a pasted list ─────────────────────────────────────────────
-
-export interface SquadPaste {
-  playing: string[];
-  reserves: string[];
-}
-
-const RESERVE_HEADER = /^\s*(reserves?|subs?|substitutes?|standby|stand-by|yedekler?)\b\s*:?\s*$/i;
-/** Words that make a line a change ("Bilal in"), never a name. */
-const CHANGE_WORDS = new Set(["in", "out", "bench", "maybe", "yes", "no", "var", "yok", "yedek", "belki", "evet", "hayir", "gelemiyor", "geliyor"]);
-
-function nameLikeLine(line: string): string | null {
-  const name = cleanName(line);
-  if (!name || name.length > 32 || /\d/.test(name) || /[?!;]/.test(line)) return null;
-  const words = name.split(/\s+/);
-  if (words.length > 4) return null;
-  if (words.some((w) => CHANGE_WORDS.has(normaliseName(w).replace(/ı/g, "i")))) return null;
-  return /\p{L}/u.test(name) ? name : null;
-}
-
 /**
- * One name per line, unnumbered: every non-blank line is a name, except
- * an optional title on the first line and a "Reserves:" header.
+ * At most this many confirmed players come OUT of the squad by one pasted
+ * list (2026-10-29). A weekly club's list changes by one to three from one
+ * week to the next (a drop-out, a late withdrawal); FNF's 29 Oct incident
+ * took out nine, half the squad, from a teams sheet pasted back. Taking a
+ * player out is the expensive mistake (his place goes to the bench and he
+ * is told), so more than this is never proposed from a paste: MatchTime
+ * says who is not on the list and asks to be told by name.
  */
-function readPlainList(body: string): SquadPaste | null {
-  const lines = body.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.some((l) => readListLine(l))) return null;
-  const playing: string[] = [];
-  const reserves: string[] = [];
-  let section: "playing" | "reserves" = "playing";
-  for (let i = 0; i < lines.length; i++) {
-    if (RESERVE_HEADER.test(lines[i])) {
-      section = "reserves";
-      continue;
-    }
-    const name = nameLikeLine(lines[i]);
-    if (!name) {
-      if (i === 0) continue; // a title
-      return null;
-    }
-    (section === "playing" ? playing : reserves).push(name);
-  }
-  return { playing, reserves };
-}
-
-/**
- * Is this message the whole squad, pasted? Numbered or bulleted (the
- * shape `parsePastedRoster` reads everywhere else), or one name per line.
- * Null when it is not a list, or when the list is too short to be the
- * squad (fewer names than half the places).
- */
-export function readSquadPaste(body: string, maxPlayers: number): SquadPaste | null {
-  if (typeof body !== "string" || !body.includes("\n")) return null;
-  const roster = parsePastedRoster(body);
-  const paste: SquadPaste | null = roster
-    ? {
-        playing: roster.entries.filter((e) => e.name && e.nameLike).map((e) => e.name),
-        reserves: roster.reserves.filter((e) => e.name && e.nameLike).map((e) => e.name),
-      }
-    : readPlainList(body);
-  if (!paste) return null;
-  const need = Math.max(4, Math.ceil(Math.max(1, maxPlayers) * MIN_SHARE_OF_PLACES));
-  return paste.playing.length >= need ? paste : null;
-}
+export const PASTE_MAX_REMOVALS = 3;
 
 // ── Placing a name on a member ────────────────────────────────────────
 
@@ -228,6 +171,63 @@ export function diffPastedSquad(input: {
   return { add, remove, toBench, same: add.length === 0 && remove.length === 0 && toBench.length === 0 };
 }
 
+/** Why confirmed players a pasted list leaves off were NOT taken out. */
+export type PasteHeldReason =
+  /** The reading did not say every one of them is out on purpose. */
+  | "unaccounted"
+  /** More than `PASTE_MAX_REMOVALS` of them. */
+  | "too-many";
+
+export type SquadPasteGate =
+  /** The list's players are exactly the teams' players: a copy of the
+   *  teams, never a squad change. */
+  | { verdict: "teams" }
+  | {
+      verdict: "squad";
+      diff: SquadDiff;
+      /** Confirmed players the list leaves off who stay in, in squad order. */
+      held: string[];
+      heldReason: PasteHeldReason | null;
+    };
+
+/**
+ * THE FACT GATES on a list the HQ squad reader read as the squad
+ * (2026-10-29). Whatever the model said:
+ *
+ *   - a list whose players are exactly the match's team players (every
+ *     slot, or every slot still playing) is the teams, not the squad;
+ *   - a confirmed player left off comes out only when the reading says so
+ *     for EVERY confirmed player left off (`out`, the model's "left off on
+ *     purpose"), and never more than `PASTE_MAX_REMOVALS` of them;
+ *     otherwise nobody comes out, and `held` names who stays in.
+ */
+export function gateSquadPaste(input: {
+  playing: SquadRef[];
+  reserves: SquadRef[];
+  /** Confirmed players the reader says the list leaves off on purpose. */
+  out: string[];
+  current: Array<{ userId: string; status: SquadStatus }>;
+  /** Everyone on the match's team sheet; empty with no teams. */
+  teamUserIds: string[];
+  /** Of those, the ones still in the squad. Omitted: `teamUserIds`. */
+  teamPlayingUserIds?: string[];
+}): SquadPasteGate {
+  const listed = [...input.playing, ...input.reserves];
+  const listedIds = new Set(listed.flatMap((r) => ("userId" in r ? [r.userId] : [])));
+  const sameSet = (team: string[]) =>
+    team.length > 0 && listed.every((r) => "userId" in r) && listedIds.size === new Set(team).size && team.every((id) => listedIds.has(id));
+  if (sameSet(input.teamUserIds) || sameSet(input.teamPlayingUserIds ?? [])) return { verdict: "teams" };
+
+  const full = diffPastedSquad({ playing: input.playing, reserves: input.reserves, current: input.current });
+  const leftOff = full.remove.map((r) => r.userId);
+  const out = new Set(input.out);
+  const heldReason: PasteHeldReason | null =
+    leftOff.length === 0 ? null : !leftOff.every((id) => out.has(id)) ? "unaccounted" : leftOff.length > PASTE_MAX_REMOVALS ? "too-many" : null;
+  if (heldReason === null) return { verdict: "squad", diff: full, held: [], heldReason: null };
+  const diff: SquadDiff = { ...full, remove: [], same: full.add.length === 0 && full.toBench.length === 0 };
+  return { verdict: "squad", diff, held: leftOff, heldReason };
+}
+
 // ── What MatchTime says ───────────────────────────────────────────────
 
 export type SquadChangeKind = "in" | "out" | "bench" | "maybe";
@@ -289,19 +289,25 @@ export function buildPasteProposalReply(p: {
   /** Playing names in the list, for the "too many names" line. */
   listed: number;
   maxPlayers: number;
+  /** Confirmed players the list leaves off who were NOT taken out
+   *  (`gateSquadPaste`): said, and nothing done about them. */
+  kept?: string[];
 }): string {
   const s = t(p.lang);
   const unclear = p.unclear.length > 0 ? s.ag_paste_unclear({ names: p.unclear.join(", ") }) : null;
   const cannotAdd = p.cannotAdd ?? [];
   const refused = cannotAdd.length > 0 ? s.ag_paste_cannot_add({ names: cannotAdd.join(", "), many: cannotAdd.length > 1 }) : null;
+  const keptNames = p.kept ?? [];
+  const kept = keptNames.length > 0 ? s.ag_paste_kept({ names: keptNames.join(", "), count: keptNames.length }) : null;
   if (p.add.length === 0 && p.remove.length === 0 && p.toBench.length === 0 && p.newNames.length === 0) {
-    return [s.ag_paste_same, unclear, refused].filter(Boolean).join(" ");
+    return [kept ?? s.ag_paste_same, unclear, refused].filter(Boolean).join(" ");
   }
   const parts: string[] = [];
   if (p.add.length > 0) parts.push(s.ag_paste_adding({ names: p.add.join(", ") }));
   if (p.remove.length > 0) parts.push(s.ag_paste_removing({ names: p.remove.join(", ") }));
   if (p.toBench.length > 0) parts.push(s.ag_paste_to_bench({ names: p.toBench.join(", ") }));
   if (p.newNames.length > 0) parts.push(s.ag_paste_new({ names: p.newNames.join(", "), many: p.newNames.length > 1 }));
+  if (kept) parts.push(kept);
   if (unclear) parts.push(unclear);
   if (refused) parts.push(refused);
   if (p.listed > p.maxPlayers) parts.push(s.ag_paste_over({ listed: p.listed, max: p.maxPlayers }));

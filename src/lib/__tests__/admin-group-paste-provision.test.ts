@@ -6,7 +6,9 @@
  * provisioner refused names under three letters (a guard meant for
  * truncated WhatsApp pushnames like "ba"). A name an admin pasted and
  * confirmed is deliberate. And whatever cannot be added, the preview says
- * so BEFORE the YES. db and the attendance writers are mocked. No model.
+ * so BEFORE the YES. db and the attendance writers are mocked; the HQ
+ * squad reader (a model since 2026-10-29) is stubbed with its reading,
+ * names only, so the club's own name rules place them.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -17,8 +19,12 @@ const dbMock = vi.hoisted(() => ({
   userAlias: { findMany: vi.fn(), findUnique: vi.fn() },
   user: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn() },
   adminSquadProposal: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
+  adminGroupMessage: { findMany: vi.fn(async () => []) },
+  teamAssignment: { findMany: vi.fn(async () => []) },
+  adminTeamProposal: { findUnique: vi.fn(async () => null) },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
+vi.mock("@/lib/ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Promise<unknown>) => fn() }));
 const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: vi.fn() }));
 vi.mock("@/lib/attendance", () => att);
 // The count line's facts (squad-count.ts), read off the same rows.
@@ -91,11 +97,21 @@ beforeEach(() => {
   });
 });
 
+/** The reader's reading: every line a person's name, no member ref. */
+const namesRead = (names: string[]) => ({
+  model: {
+    name: "stub",
+    complete: async () => ({
+      text: JSON.stringify({ kind: "squad", lines: names.map((name) => ({ name, member: "", section: "playing", person: true })), out: [] }),
+      usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    }),
+  } as never,
+});
 const base = { orgId: "org", lang: "en", messageId: "wa-paste", senderUserId: "u-ann", now: NOW };
 
 describe("a pasted 2-letter name: promised, then added", () => {
   it("Mo is proposed as new and, on YES, provisioned and put in the squad", async () => {
-    const r = await proposeSquadPaste({ ...base, text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. Mo\n6. Uncle" });
+    const r = await proposeSquadPaste({ ...base, text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. Mo\n6. Uncle", deps: namesRead(["Ann", "Bob", "Cal", "Dee", "Mo", "Uncle"]) });
     expect(r?.replyText).toContain("Mo, Uncle (not members yet, I'll add them as new players)");
 
     const yes = await answerSquadPasteYes({ ...base, messageId: "wa-yes" });
@@ -108,14 +124,14 @@ describe("a pasted 2-letter name: promised, then added", () => {
 
 describe("the preview never promises what the YES cannot do", () => {
   it("a name that cannot be a player is said up front, not promised", async () => {
-    const r = await proposeSquadPaste({ ...base, text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. WhatsApp" });
+    const r = await proposeSquadPaste({ ...base, text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. WhatsApp", deps: namesRead(["Ann", "Bob", "Cal", "Dee", "WhatsApp"]) });
     expect(r?.replyText).not.toContain("I'll add them");
     expect(r?.replyText).toContain("I can't add WhatsApp as a player, so I'll leave it out.");
     expect(proposal?.playingNewNames).toEqual([]);
   });
 
   it("Turkish: the same line in Turkish", async () => {
-    const r = await proposeSquadPaste({ ...base, lang: "tr", text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. WhatsApp" });
+    const r = await proposeSquadPaste({ ...base, lang: "tr", text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. WhatsApp", deps: namesRead(["Ann", "Bob", "Cal", "Dee", "WhatsApp"]) });
     expect(r?.replyText).toContain("WhatsApp adını oyuncu olarak ekleyemem, dışarıda bırakıyorum.");
   });
 });

@@ -25,7 +25,7 @@
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, SPORT_ID, U, londonAt } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { clearPipelineStubs, engineOn, teamsFacts } from "../helpers/stub";
+import { clearHqSquadReaderStub, clearPipelineStubs, engineOn, setHqSquadReaderStub, squadReading, teamsFacts } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -104,6 +104,7 @@ test.beforeEach(() => hqStubs());
 
 test.afterAll(() => {
   clearPipelineStubs();
+  clearHqSquadReaderStub();
   resetDb();
 });
 
@@ -179,6 +180,9 @@ test("a name not on the teams: one short line, nothing changed", async ({ reques
 
 test("one question at a time: a pasted list sets the teams aside; 'teams' asks again and the list is dropped", async ({ request, db }) => {
   const list = ["1. Alex Admin", "2. Colin Collector", "3. Pat Player", "4. Ben Bench"].join("\n");
+  // The HQ squad reader (stubbed, 2026-10-29) reads it as the squad: Ben
+  // in, Tom left off on purpose.
+  setHqSquadReaderStub({ bodies: { [list]: squadReading(["Alex Admin", "Colin Collector", "Pat Player", "Ben Bench"], { out: ["Tom Third"] }) } });
   const pasted = await say(request, list);
   expect(pasted).toMatchObject({ handled: true, outcome: "paste-proposed" });
   expect(pasted.replyText).toMatch(/Reply YES to apply\. The teams still need approving: ask me for them again after this, in your own words \(for example \*show me the teams\*\)\.$/);

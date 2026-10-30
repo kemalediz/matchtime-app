@@ -2421,6 +2421,10 @@ export const tr: Strings = {
       : `${p.names} adlarını oyuncu olarak ekleyemem, dışarıda bırakıyorum.`,
   ag_paste_over: (p: { listed: number; max: number }): string =>
     `Listede ${p.max} yer için ${p.listed} isim var, sondakiler yedek listesine gider.`,
+  ag_paste_kept: (p) =>
+    p.count === 1
+      ? `Kimseyi çıkarmadım: ${p.names} kadroda ama bu listede yok. Gelmiyorsa ismiyle söyleyin.`
+      : `Kimseyi çıkarmadım: kadrodaki ${p.count} oyuncu bu listede yok (${p.names}). Aralarında gelmeyen varsa ismiyle söyleyin.`,
   ag_paste_confirm: "Uygulamak için EVET yazın.",
   ag_paste_same: "Bu liste kadroyla aynı, değişecek bir şey yok.",
   ag_paste_expired: "O liste 30 dakikadan eski, bu yüzden uygulamadım. Hâlâ geçerliyse yeniden yapıştırın.",

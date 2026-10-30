@@ -19,8 +19,10 @@
  *         ("PAID ALL", "PAID 1 3") for a monthly club;
  *      b. a reply to an open pick round: numbers, names or @tags from
  *         MatchTime's own numbered list, ALL, NONE;
- *      c. a pasted multi-line squad list (a live weekly club): proposed,
- *         applied only on YES.
+ *      c. a pasted multi-line squad list (a live weekly club), read by the
+ *         HQ squad reader (a model, 2026-10-29, so not deterministic):
+ *         proposed, applied only on YES; a copy of the teams or a swap
+ *         goes on to step 2.
  *      Both b and c are WHO PLAYS, so since 2026-10-20 (Kemal) any member
  *      of the club may send them, as an owner or admin may; someone not in
  *      the club may not. A member says YES to the list they pasted; an
@@ -117,6 +119,9 @@ const NO_TICK: ReadonlySet<string> = new Set([
   // can carry changes that did land beside one that did not.)
   "squad-question",
   "squad-not-set",
+  // A pasted list that took nobody out and changed nothing (2026-10-29):
+  // it says who is not on the list, and nothing was done.
+  "paste-held",
   // An OUT for someone not on the list (2026-10-24): nothing was written.
   // With the answer to a question beside it the outcome is
   // "squad-not-on-list+hq-answered", a real answer, and keeps its tick.
@@ -296,8 +301,11 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   if (!live) return notRead();
 
   // 1c. A pasted squad list (a live weekly club), by any member of the club.
+  // What a multi-line message is (the squad, a copy of the teams, a swap)
+  // is read by a model, the HQ squad reader (2026-10-29); anything that is
+  // not the squad goes on to the shared pipeline below.
   if (weekly && squadActor) {
-    const pasted = await proposeSquadPaste({ orgId: org.id, lang: org.language, messageId, senderUserId: squadActor, now, text: msg.text });
+    const pasted = await proposeSquadPaste({ orgId: org.id, lang: org.language, messageId, senderUserId: squadActor, now, text: msg.text, quoted: msg.quoted ?? null });
     if (pasted) {
       let replyText = pasted.replyText;
       if (pasted.outcome === "paste-proposed") {

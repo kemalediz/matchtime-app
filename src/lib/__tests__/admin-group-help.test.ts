@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { buildHqHelp, hqHelpGates } from "@/lib/admin-group-help";
 import { readCollectorReply } from "@/lib/__tests__/fixtures/monthly-legacy";
-import { readSquadPaste } from "@/lib/admin-group-squad-rules";
+import { HQ_SQUAD_READER_SYSTEM } from "@/lib/hq-squad-reader-prompt";
 import { parsePickReply } from "@/lib/organiser-pick-rules";
 
 const ALL = { squad: true, graphics: true, picks: true, paid: true };
@@ -136,14 +136,13 @@ describe("every STRUCTURED reply the help quotes is one the admin group really t
     expect(parsePickReply("HİÇBİRİ", ctx, "group")).toEqual({ kind: "none" });
   });
 
-  it("a pasted list is read as the squad (admin-group-squad-rules.ts readSquadPaste)", () => {
-    expect(readSquadPaste("1. Sam\n2. Alex\n3. Tom\n4. Ben", 6)).not.toBeNull();
+  it("a pasted list is read as the squad by the HQ squad reader, a model (hq-squad-reader-prompt.ts, 2026-10-29)", () => {
+    expect(HQ_SQUAD_READER_SYSTEM).toContain(`"squad": the list of who plays the next game`);
   });
 
   it("asking what MatchTime can do is none of those structured replies", () => {
     for (const text of ["help", "what can you do?", "neler yapabilirsin?"]) {
       expect(readCollectorReply(text)).toBeNull();
-      expect(readSquadPaste(text, 18)).toBeNull();
     }
   });
 });

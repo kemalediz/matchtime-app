@@ -18,6 +18,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import { E2E } from "../helpers/env";
 import type { TestDb } from "../helpers/test-db";
+import { clearHqSquadReaderStub, setHqSquadReaderStub, squadReading } from "../helpers/stub";
 import { formatLondon, nextLondonKickoff } from "@/lib/london-time";
 import { nextNightlyFixtureRun } from "@/lib/nightly-fixture-run";
 
@@ -41,6 +42,8 @@ const SQUAD = [
   "9. Zain Iqbal",
   "10. Imran Butt",
 ].join("\n");
+// What the HQ squad reader (a model, stubbed, 2026-10-29) reads it as.
+const SQUAD_READ = squadReading(["Hamzah Ali", "Raihan Ahmed", "Wasim Khan", "Bilal Shah", "Naim Patel", "Tariq Aziz", "Omar Farooq", "Yusuf Malik", "Zain Iqbal", "Imran Butt"]);
 
 async function dm(request: APIRequestContext, phone: string, body: string, waMessageId = msgId("dm")) {
   const res = await request.post("/api/whatsapp/dm-reply", {
@@ -110,8 +113,14 @@ const matchesOf = (db: TestDb, activityId: string) =>
     [activityId],
   );
 
-test.beforeAll(() => resetDb());
-test.afterAll(() => resetDb());
+test.beforeAll(() => {
+  resetDb();
+  setHqSquadReaderStub({ bodies: { [SQUAD]: SQUAD_READ } });
+});
+test.afterAll(() => {
+  clearHqSquadReaderStub();
+  resetDb();
+});
 
 test.describe("GO makes the club's game at once, and a pasted squad then has it", () => {
   const FNF = { id: "e2e-glf-fnf", group: "120363900000000301@g.us", hq: "120363900000000302@g.us", ownerId: "e2e-glf-olly", ownerPhone: "+447700951001", held: true };
