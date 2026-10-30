@@ -148,15 +148,23 @@ async function main() {
 
     // ── The club fee: the free period ends, the grace week ends, a card ──
     assert.equal((await row(a.orgId)).billingStatus, "trial", "its free period started at go-live");
-    const later = new Date(NOW.getTime() + 70 * 24 * 3600_000);
+    // Every date below is read from what the club's billing row stores, a
+    // day past it, never a hard-coded day count: the free period's length
+    // (FREE_PERIOD_MONTHS) and the grace week are the product's to change.
+    const DAY = 24 * 3600_000;
+    const billing = async () => db.clubBilling.findUniqueOrThrow({ where: { orgId: a.orgId }, select: { trialEndsAt: true, graceEndsAt: true } });
+    const later = new Date((await billing()).trialEndsAt.getTime() + DAY);
     assert.ok((await setBillingState(a.orgId, { type: "trial-ended" }, later)).ok);
     assert.equal((await row(a.orgId)).billingStatus, "grace");
     await moved("free period over");
-    assert.ok((await setBillingState(a.orgId, { type: "grace-ended" }, new Date(later.getTime() + 8 * 24 * 3600_000))).ok);
+    const graceEndsAt = (await billing()).graceEndsAt;
+    assert.ok(graceEndsAt, "the free period's end set a grace end");
+    const afterGrace = new Date(graceEndsAt.getTime() + DAY);
+    assert.ok((await setBillingState(a.orgId, { type: "grace-ended" }, afterGrace)).ok);
     assert.equal((await row(a.orgId)).billingStatus, "paused");
     await moved("paused for the club fee");
     const paused = stamp;
-    assert.ok((await setBillingState(a.orgId, { type: "card-added" }, new Date(later.getTime() + 9 * 24 * 3600_000))).ok);
+    assert.ok((await setBillingState(a.orgId, { type: "card-added" }, new Date(afterGrace.getTime() + DAY))).ok);
     assert.notEqual((await row(a.orgId)).billingStatus, "paused");
     await moved("resumed");
     assert.notEqual(stamp, paused);
