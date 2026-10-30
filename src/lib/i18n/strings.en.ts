@@ -1485,7 +1485,7 @@ export const en = {
     const lines = [
       `🛠️ *MatchTime in your admin group*`,
       p.squad
-        ? `Just ask here in your own words. No need to tag me, except to make new teams, for the team sheet picture, or to cancel a match or put it back on. For example:`
+        ? `Just ask here in your own words. No need to tag me, except to make new teams, for the poster or team sheet picture, or to cancel a match or put it back on. For example:`
         : `Just ask here in your own words. No need to tag me. For example:`,
       ``,
     ];
@@ -1500,7 +1500,7 @@ export const en = {
       if (p.pool) lines.push(`🌍 *"ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
       lines.push(`❌ *"@Match Time cancel Friday"*, *"@Match Time it's back on"*: call the next match off or back on, and I tell the players' group.`);
     }
-    if (p.graphics) lines.push(`🖼️ *"send the poster"*, *"@Match Time team sheet please"*: the list or the teams as a graphic, ready to forward.`);
+    if (p.graphics) lines.push(`🖼️ *"@Match Time send the poster"*, *"@Match Time team sheet please"*: the list or the teams as a graphic, ready to forward.`);
     if (p.picks) lines.push(`🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`);
     if (p.paid) lines.push(`💷 *PAID ALL*, *PAID 1 3* or *PAID NONE*: the money collector's answer to my list of payment claims.`);
     if (p.free) lines.push(`🎁 *"Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`);
@@ -5193,7 +5193,7 @@ export const en = {
   mom_chooser_organisers: "Organisers pick",
   // /admin/settings, the "Posters" card (2026-10-14).
   gp_title: "Posters",
-  gp_lead: "The list poster and the team sheet MatchTime sends to your admin group, ready to forward to the players.",
+  gp_lead: "The list poster and the team sheet MatchTime sends to your admin group when you tag it and ask, ready to forward to the players.",
   gp_list_caption: "List poster",
   gp_teams_caption: "Team sheet",
   gp_alt_list: (p: { club: string }): string => `List poster: ${p.club}`,

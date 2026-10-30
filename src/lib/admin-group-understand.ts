@@ -1065,11 +1065,12 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       }
       case "poster":
       case "team_sheet": {
-        // THE TEAM SHEET ONLY WHEN ASKED OF MATCHTIME (Kemal, 2026-10-30:
-        // "it can only be generated when they tag matchtime while asking to
-        // generate"): a tag, or a reply to MatchTime. Otherwise their chat.
-        if (route === "team_sheet" && !addressed) {
-          console.log(`[admin-group] ${messageId}: team sheet not asked of MatchTime: nothing drawn`);
+        // A POSTER ONLY WHEN ASKED OF MATCHTIME, the list poster and the
+        // team sheet alike (Kemal, 2026-10-30: "it can only be generated
+        // when they tag matchtime while asking to generate"): a tag, or a
+        // reply to MatchTime. Otherwise their chat: nothing drawn or said.
+        if (!addressed) {
+          console.log(`[admin-group] ${messageId}: ${route} not asked of MatchTime: nothing drawn`);
           return null;
         }
         const r = await answerGraphicRequest({ orgId: org.id, lang, kind: route === "poster" ? "list" : "teams", now });

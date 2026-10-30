@@ -395,21 +395,15 @@ describe('"The organisers": the squad posts go to the admin group', () => {
     expect(groupPosts(out)).toHaveLength(0);
   });
 
-  it("the final list also queues the list poster in the admin group, once per match", async () => {
+  // Kemal, 2026-10-30: a poster only when asked, tagged. The final list
+  // still goes to the organisers; no list poster comes with it.
+  it("the final list queues no list poster on its own", async () => {
     graphics.sendGraphicToAdminChannel.mockClear();
-    const m = match(FNF_DEADLINES);
-    setWorld([m]);
-    await instructions(TUE_2005);
-    expect(graphics.sendGraphicToAdminChannel).toHaveBeenCalledTimes(1);
-    expect(graphics.sendGraphicToAdminChannel).toHaveBeenCalledWith(ORG.id, m.id, "list", { onceKey: `${m.id}:final-list` });
-  });
-
-  it("a poster that fails to queue never costs the club its posts", async () => {
-    graphics.sendGraphicToAdminChannel.mockRejectedValueOnce(new Error("boom"));
     const m = match(FNF_DEADLINES);
     setWorld([m]);
     const out = await instructions(TUE_2005);
     expect(byKey(out, `${m.id}:list-published`)?.kind).toBe("admin-group-message");
+    expect(graphics.sendGraphicToAdminChannel).not.toHaveBeenCalled();
   });
 
   it("no final list due: no poster", async () => {

@@ -1249,7 +1249,7 @@ export const tr: Strings = {
     const lines = [
       `🛠️ *Yönetici grubunda MatchTime*`,
       p.squad
-        ? `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok; yalnızca yeni takımlar kurmak, takım listesi görseli için ya da maçı iptal etmek veya yeniden açmak için etiketleyin. Örneğin:`
+        ? `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok; yalnızca yeni takımlar kurmak, afiş ya da takım listesi görseli için ya da maçı iptal etmek veya yeniden açmak için etiketleyin. Örneğin:`
         : `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok. Örneğin:`,
       ``,
     ];
@@ -1264,7 +1264,7 @@ export const tr: Strings = {
       if (p.pool) lines.push(`🌍 *"havuzdan 2 oyuncu iste"*: boş yer varsa MatchTime oyuncu havuzundaki yakın oyunculara sorarım.`);
       lines.push(`❌ *"@Match Time cuma maçını iptal et"*, *"@Match Time maç yapılıyor"*: sıradaki maçı iptal ederim ya da yeniden açarım, oyuncu grubuna da haber veririm.`);
     }
-    if (p.graphics) lines.push(`🖼️ *"posteri gönder"*, *"@Match Time takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`);
+    if (p.graphics) lines.push(`🖼️ *"@Match Time posteri gönder"*, *"@Match Time takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`);
     if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın.`);
     if (p.paid) lines.push(`💷 *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`);
     if (p.free) lines.push(`🎁 *"Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`);
@@ -3793,7 +3793,7 @@ export const tr: Strings = {
   mom_chooser_organisers: "Organizatörler seçer",
   // /admin/settings, "Afişler" kartı (2026-10-14).
   gp_title: "Afişler",
-  gp_lead: "MatchTime'ın yönetici grubunuza gönderdiği kadro afişi ve takım listesi, oyunculara iletmeye hazır.",
+  gp_lead: "Beni etiketleyip istediğinizde MatchTime'ın yönetici grubunuza gönderdiği kadro afişi ve takım listesi, oyunculara iletmeye hazır.",
   gp_list_caption: "Kadro afişi",
   gp_teams_caption: "Takım listesi",
   gp_alt_list: (p: { club: string }): string => `Kadro afişi: ${p.club}`,

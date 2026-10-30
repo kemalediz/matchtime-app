@@ -12,8 +12,8 @@
  *                                       `team_sheet` routes
  *                                       (`admin-group-understand.ts`);
  *   sendGraphicToAdminChannel(...)      queue one graphic for the admin
- *                                       group: the command, and the
- *                                       final-list trigger;
+ *                                       group: the command (no trigger
+ *                                       draws one on its own, 2026-10-30);
  *   recordTeamSheetShown(...)           the graphics route drew a team
  *   teamSheetJobVerdict(...)            sheet; the due-posts poll asks if a
  *                                       queued one should still go
@@ -25,10 +25,10 @@
  * signed (`admin-channel.ts`, `adminGroupJobInstruction`). The Pi fetches
  * the PNG from `/api/graphics/<token>` and posts it with the caption.
  *
- * THE TEAM SHEET ONLY WHEN ASKED (Kemal, 2026-10-30: "don't change poster
+ * A POSTER ONLY WHEN ASKED (Kemal, 2026-10-30: "don't change poster
  * generation logic, however it can only be generated when they tag
- * matchtime while asking to generate"). Neither the approval nor a change
- * to the teams draws one any more; the request is answered only when it is
+ * matchtime while asking to generate"). Neither the final list, the
+ * approval nor a change to the teams draws one any more; the request is answered only when it is
  * addressed to MatchTime by fact (`admin-group-understand.ts`). Teams not
  * approved yet are drawn as they are, and the caption says so.
  *
@@ -51,11 +51,11 @@ export type SendGraphicResult =
  * Queue the list poster or the team sheet for `matchId` in the club's
  * linked admin group, captioned "Ready to post: FNF list for Fri 16 Oct".
  *
- * The final-list trigger calls it once the final list is ready
- * (`kind: "list"`), with an `onceKey` such as `${matchId}:final-list`, so a
- * re-run never posts twice. A trigger's graphic waits for the admin group's
- * posting hours (09:00 to 22:59 London); `asked: true` (the command) goes
- * at once. The team sheet has no trigger (2026-10-30).
+ * No trigger calls it any more (2026-10-30: the list poster and the team
+ * sheet are drawn only when asked, tagged). An `onceKey` such as
+ * `${matchId}:final-list` still makes a re-run post nothing twice; a graphic
+ * not asked for waits for the admin group's posting hours (09:00 to 22:59
+ * London); `asked: true` (the command) goes at once.
  *
  * Queued only when the club has a linked admin group MatchTime can post in
  * and the graphic has something to show; otherwise a reason, and nothing.

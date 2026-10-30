@@ -628,7 +628,7 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
       "Your trophy awaits next match.",
       "You can also pay for anyone you brought along.",
       "MatchTime in your admin group",
-      "No need to tag me, except to make new teams, for the team sheet picture, or to cancel a match or put it back on.",
+      "No need to tag me, except to make new teams, for the poster or team sheet picture, or to cancel a match or put it back on.",
       "is cancelled. I've told the players' group.",
     ]) {
       expect(en, phrase).toContain(phrase);

@@ -256,7 +256,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Quiet hours",
       what: [
         "During quiet hours MatchTime holds the messages it sends on its own and sends them when quiet hours end. The times are London time.",
-        "These wait: admin messages, by DM or in your admin WhatsApp group (the Teams ready proposal, the organisers' pick list, the reminder to rate players before the first teams, and the list poster MatchTime makes by itself); bench offers; the one follow-up DM to a player invited to fill a place; the drop-out deadline reminder and summary; the published list; the pay links for a match (MatchTime still replies to the money collector at once, saying when they go out), the daily reminder to pay and the reminder to the money collector to confirm payments received, the question to the money collector about the match fee, and the DM telling a player they are on a free place; and for a monthly squad, the sign-up list, the list posts, the payment reminders, the month's close and the DMs about the month.",
+        "These wait: admin messages, by DM or in your admin WhatsApp group (the Teams ready proposal, the organisers' pick list, the reminder to rate players before the first teams); bench offers; the one follow-up DM to a player invited to fill a place; the drop-out deadline reminder and summary; the published list; the pay links for a match (MatchTime still replies to the money collector at once, saying when they go out), the daily reminder to pay and the reminder to the money collector to confirm payments received, the question to the money collector about the match fee, and the DM telling a player they are on a free place; and for a monthly squad, the sign-up list, the list posts, the payment reminders, the month's close and the DMs about the month.",
         "These never wait: MatchTime's replies to a message someone has just sent it, in the group or by DM; a poster or team sheet an admin asks for; and posts that go at their own time, such as the 17:00 update and the match-day kit reminder. By DM, the admin messages about someone joining or leaving the group, a new player's IN, and partner club asks go at once too.",
       ],
       choices: [
@@ -274,7 +274,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Sessiz saatler",
       what: [
         "Sessiz saatlerde MatchTime kendiliğinden gönderdiği mesajları bekletir ve sessiz saatler bitince gönderir. Saatler Londra saatidir.",
-        "Bunlar bekler: DM ile ya da yönetici WhatsApp grubunuzda giden yönetici mesajları (Takımlar hazır önerisi, organizatörlerin seçim listesi, ilk takımlardan önce oyuncuları puanlama hatırlatması, MatchTime'ın kendiliğinden hazırladığı kadro afişi); yedek oyunculara yer teklifleri; bir yeri doldurmaya çağrılan oyuncuya giden tek takip DM'i; bırakma son saati hatırlatması ve özeti; yayınlanan liste; bir maçın ödeme linkleri (MatchTime para toplayan kişiye yine hemen yanıt verir ve linklerin ne zaman gideceğini söyler), günlük ödeme hatırlatması ve para toplayan kişiye gelen ödemeleri onaylama hatırlatması, para toplayan kişiye maç ücretini soran mesaj ve bir oyuncuya ücretsiz yerde olduğunu söyleyen DM; aylık kadroda kayıt listesi, liste mesajları, ödeme hatırlatmaları, ayın kapanışı ve ayla ilgili DM'ler.",
+        "Bunlar bekler: DM ile ya da yönetici WhatsApp grubunuzda giden yönetici mesajları (Takımlar hazır önerisi, organizatörlerin seçim listesi, ilk takımlardan önce oyuncuları puanlama hatırlatması); yedek oyunculara yer teklifleri; bir yeri doldurmaya çağrılan oyuncuya giden tek takip DM'i; bırakma son saati hatırlatması ve özeti; yayınlanan liste; bir maçın ödeme linkleri (MatchTime para toplayan kişiye yine hemen yanıt verir ve linklerin ne zaman gideceğini söyler), günlük ödeme hatırlatması ve para toplayan kişiye gelen ödemeleri onaylama hatırlatması, para toplayan kişiye maç ücretini soran mesaj ve bir oyuncuya ücretsiz yerde olduğunu söyleyen DM; aylık kadroda kayıt listesi, liste mesajları, ödeme hatırlatmaları, ayın kapanışı ve ayla ilgili DM'ler.",
         "Bunlar hiç beklemez: MatchTime'ın birinin az önce gönderdiği mesaja, grupta ya da DM ile verdiği yanıtlar; bir yöneticinin istediği afiş ya da takım listesi; kendi saatinde giden mesajlar, örneğin 17:00 güncellemesi ve maç günü malzeme hatırlatması. DM ile giden yönetici mesajlarından gruba katılan ya da ayrılan biri, yeni bir oyuncunun VARIM yazması ve ortak kulüp istekleri de hemen gider.",
       ],
       choices: [
@@ -949,7 +949,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       newClubs: "MatchTime.",
       suits: "The organisers suits clubs where the organisers like to post the list themselves, in their own words.",
       together: [
-        "The squad updates go wherever Admin messages go to points. An admin WhatsApp group works best: MatchTime can then also send the list poster and the team sheet pictures there.",
+        "The squad updates go wherever Admin messages go to points. An admin WhatsApp group works best: MatchTime can then also send the list poster and the team sheet pictures there when asked.",
         "With an admin group linked, Teams ready proposes teams at 10:00 on match day unless you change it.",
         "When your admins approve teams with YES, MatchTime does not post them in the players' group.",
       ],
@@ -968,7 +968,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       newClubs: "MatchTime.",
       suits: "Organizatörler paylaşır; listeyi kendi cümleleriyle paylaşmayı seven organizatörleri olan kulüplere uygundur.",
       together: [
-        "Kadro güncellemeleri Yönetici mesajları ayarının gösterdiği yere gider. En iyisi yönetici WhatsApp grubudur: MatchTime oraya kadro afişini ve takım listesi resmini de gönderebilir.",
+        "Kadro güncellemeleri Yönetici mesajları ayarının gösterdiği yere gider. En iyisi yönetici WhatsApp grubudur: MatchTime istendiğinde oraya kadro afişini ve takım listesi resmini de gönderebilir.",
         "Yönetici grubu bağlıysa Takımlar hazır, siz değiştirmedikçe maç günü 10:00'da takım önerir.",
         "Yöneticileriniz takımları EVET ile onaylayınca MatchTime bunları oyuncu grubunda paylaşmaz.",
       ],
@@ -1034,7 +1034,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       suits: "Clubs that announce the squad at a fixed time each week.",
       together: [
         "Set this and a Drop-out deadline, and MatchTime stops its daily 17:00 post, except on match day.",
-        "With the organisers announcing the list, the final list goes to your admin messages, and with an admin group linked MatchTime also sends the list poster there.",
+        "With the organisers announcing the list, the final list goes to your admin messages. With an admin group linked, tag MatchTime there to get the list poster.",
         "It must be after the Drop-out deadline, between 09:00 and 22:30. Monthly squads don't use it.",
       ],
     },
@@ -1053,7 +1053,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       suits: "Kadroyu her hafta belli bir saatte duyuran kulüpler.",
       together: [
         "Bunu ve Son çıkış saatini ayarlarsanız MatchTime her gün 17:00'de gönderdiği mesajı maç günü dışında durdurur.",
-        "Listeyi organizatörler duyuruyorsa son liste yönetici mesajlarınıza gider; yönetici grubu bağlıysa MatchTime oraya kadro afişini de gönderir.",
+        "Listeyi organizatörler duyuruyorsa son liste yönetici mesajlarınıza gider. Yönetici grubu bağlıysa kadro afişi için orada MatchTime'ı etiketleyin.",
         "Son çıkış saatinden sonra, 09:00 ile 22:30 arasında olmalıdır. Aylık kadrolar bunu kullanmaz.",
       ],
     },
@@ -1588,8 +1588,8 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     en: {
       title: "Posters",
       what: [
-        "Pictures MatchTime makes for your club, ready to forward to the players' group: a list poster (who is playing) and a team sheet (the two teams). MatchTime sends them to your admin WhatsApp group:",
-        "the list poster at the List published time, when the organisers announce the list, and whenever someone asks for it in the admin group; the team sheet only when someone tags MatchTime and asks for it there. Teams not approved yet are drawn too, and the caption says so.",
+        "Pictures MatchTime makes for your club, ready to forward to the players' group: a list poster (who is playing) and a team sheet (the two teams). MatchTime sends them to your admin WhatsApp group only when someone there tags MatchTime and asks for one.",
+        "Teams not approved yet are drawn too, and the caption says so.",
         "The two pictures on this card show your next match, or sample names until there are enough players.",
       ],
       newClubs: "The MatchTime design.",
@@ -1601,8 +1601,8 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     tr: {
       title: "Afişler",
       what: [
-        "MatchTime'ın kulübünüz için hazırladığı, oyuncu grubuna iletmeye hazır resimler: kadro afişi (kimler oynuyor) ve takım listesi (iki takım). MatchTime bunları yönetici WhatsApp grubunuza gönderir:",
-        "listeyi organizatörler duyuruyorsa kadro afişini Liste yayını saatinde ve yönetici grubunda biri istediğinde; takım listesini yalnızca biri orada MatchTime'ı etiketleyip istediğinde. Henüz onaylanmamış takımlar da çizilir, açıklamada bu yazar.",
+        "MatchTime'ın kulübünüz için hazırladığı, oyuncu grubuna iletmeye hazır resimler: kadro afişi (kimler oynuyor) ve takım listesi (iki takım). MatchTime bunları yalnızca yönetici WhatsApp grubunuzda biri MatchTime'ı etiketleyip istediğinde oraya gönderir.",
+        "Henüz onaylanmamış takımlar da çizilir, açıklamada bu yazar.",
         "Bu karttaki iki resim bir sonraki maçınızı, yeterli oyuncu olana kadar da örnek isimleri gösterir.",
       ],
       newClubs: "MatchTime tasarımı.",

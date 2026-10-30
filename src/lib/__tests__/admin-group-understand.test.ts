@@ -470,7 +470,7 @@ describe("approve: the safe-YES rule", () => {
 
 describe("the other routes reach the code the rest of MatchTime uses", () => {
   it("poster and team_sheet: the graphics", async () => {
-    await ask("can you do the poster for this week", "poster");
+    await ask("@Match Time can you do the poster for this week", "poster");
     expect(graphics.answerGraphicRequest).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", kind: "list", now: NOW });
     await ask("@Match Time send us the team sheet image", "team_sheet");
     expect(graphics.answerGraphicRequest).toHaveBeenLastCalledWith({ orgId: "org-fnf", lang: "en", kind: "teams", now: NOW });
@@ -1975,6 +1975,17 @@ describe("HQ teams by fact (2026-10-30, FNF HQ)", () => {
   it("an untagged request for the team sheet: nothing drawn, nothing said", async () => {
     expect(await ask("Make teams and the graphic", "team_sheet")).toBeNull();
     expect(graphics.answerGraphicRequest).not.toHaveBeenCalled();
+  });
+
+  it("an untagged request for the list poster: nothing drawn, nothing said", async () => {
+    expect(await ask("can you do the poster for this week", "poster")).toBeNull();
+    expect(await ask("posteri gönder", "poster", { org: { ...ORG, language: "tr" } })).toBeNull();
+    expect(graphics.answerGraphicRequest).not.toHaveBeenCalled();
+  });
+
+  it("the list poster asked in a reply to MatchTime: drawn", async () => {
+    await ask("poster please", "poster", { quoted: { text: TEAMS_TEXT, fromMatchTime: true } });
+    expect(graphics.answerGraphicRequest).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", kind: "list", now: NOW });
   });
 
   it("a team sheet asked for in a reply to MatchTime: drawn", async () => {

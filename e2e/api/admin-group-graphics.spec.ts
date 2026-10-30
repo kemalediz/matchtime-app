@@ -243,6 +243,7 @@ test.describe("the admin-group request", () => {
     engineOn({
       poster: { route: "poster" },
       "can you do the poster for this week": { route: "poster" },
+      "@Match Time can you do the poster for this week": { route: "poster" },
       "team sheet": { route: "team_sheet" },
       "@Match Time team sheet": { route: "team_sheet" },
       "@Match Time takım listesi": { route: "team_sheet" },
@@ -270,8 +271,14 @@ test.describe("the admin-group request", () => {
     expect(await graphicJobs(db)).toHaveLength(0);
   });
 
-  test("an admin's 'can you do the poster for this week': a graphic job, emitted with a signed image URL the Pi can fetch", async ({ request, db }) => {
-    const out = await say(request, "can you do the poster for this week");
+  // Kemal, 2026-10-30: the list poster too, only when asked of MatchTime.
+  test("an untagged 'can you do the poster for this week': nothing drawn, nothing said", async ({ request, db }) => {
+    expect(await say(request, "can you do the poster for this week")).toMatchObject({ handled: false, replyText: null });
+    expect(await graphicJobs(db)).toHaveLength(0);
+  });
+
+  test("an admin's '@Match Time can you do the poster for this week': a graphic job, emitted with a signed image URL the Pi can fetch", async ({ request, db }) => {
+    const out = await say(request, "@Match Time can you do the poster for this week");
     expect(out).toMatchObject({ handled: true, outcome: "graphic-queued", replyText: null });
 
     const jobs = await graphicJobs(db);
