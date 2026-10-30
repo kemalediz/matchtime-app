@@ -20,7 +20,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { runAttendanceEngineBatch, type EngineBatchDeps } from "../attendance-engine-batch";
-import { hqNameListFacts } from "../admin-group-name-list";
+import { hqChangeFacts } from "../admin-group-squad-rules";
 import { membersNamedIn, resolvePerson } from "../pipeline/identity";
 import type { PipelineModel } from "../pipeline/llm";
 import type { Member, SquadState } from "../pipeline/types";
@@ -138,7 +138,15 @@ function deps(rows: SquadState["rows"], calls: Calls, model: PipelineModel): Eng
   return {
     model,
     loadState: async () => state(rows),
-    presetFacts: (m: { body: string }) => hqNameListFacts(m.body),
+    // The HQ squad reader's reading of the name list (2026-10-30: a model
+    // reads it, no code): each member by ref, given here by roster name.
+    presetFacts: (m: { body: string }) =>
+      m.body === NAME_LIST
+        ? hqChangeFacts(
+            [AH, ...ROSTER.filter((r) => ["u-rafi", "u-shehryar", "u-raihan", "u-hamzah"].includes(r.userId))].map((r) => ({ name: r.name, userId: r.userId, to: "in" as const, replaces: "" })),
+            "u-raihan",
+          )
+        : null,
     openBenchPromptUserIds: async () => [],
     claimGuestNameAsk: async () => true,
     registerAttendance: async (userId: string, _matchId: string, options?: { promoteFromBench?: boolean }) => {
@@ -180,6 +188,7 @@ async function run(body: string, rows: SquadState["rows"], calls: Calls, seen: s
   });
 }
 
+const NAME_LIST = "AH\nRafi\nShehryar \nRaihan \nHamzah \n\nIN";
 const BENCH: SquadState["rows"] = [
   { userId: "u-raihan", status: "CONFIRMED", position: 1 },
   { userId: "u-ah", status: "BENCH", position: 20 },
@@ -189,7 +198,7 @@ const BENCH: SquadState["rows"] = [
 describe("FNF HQ 2026-10-24: the alias AH, in a name list and in 'AH out'", () => {
   it("'AH\\nRafi\\n...\\nIN' brings Abdul-Hafeez off the bench, as the member, never as a new guest", async () => {
     const calls: Calls = { registered: [], cancelled: [], provisioned: [] };
-    await run("AH\nRafi\nShehryar \nRaihan \nHamzah \n\nIN", BENCH, calls);
+    await run(NAME_LIST, BENCH, calls);
     expect(calls.provisioned).not.toContain("AH");
     expect(calls.registered).toContainEqual({ userId: "u-ah", promote: true });
     expect(calls.registered).toContainEqual({ userId: "u-rafi", promote: true });

@@ -126,13 +126,13 @@ import { gateBatch } from "./pipeline/gate";
 import { extractForRouteTraced, persistPipelineTraces, traceRouting, withPipelineTrace, type PipelineTrace } from "./pipeline/trace";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
-import type { AdminFacts, Degradation, Route } from "./pipeline/types";
+import type { AdminFacts, Route } from "./pipeline/types";
 import { dayLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { handleAdminSquadChange, nameMentions, type AdminSquadChangeResult } from "./admin-group-squad-change";
-import { answerTeamsYes, handleTeamCommand } from "./team-proposal";
+import { answerTeamsYes, handleTeamCommand, setAsideTeamProposal } from "./team-proposal";
 import { teamCommandFromFacts } from "./team-proposal-rules";
-import { answerSquadPasteYes } from "./admin-group-paste";
+import { answerSquadPasteYes, proposeSquadPaste, readHqSquad, type HqSquadRead } from "./admin-group-paste";
 import { answerGraphicRequest } from "./admin-group-graphics";
 import { buildHqHelp, hqHelpGates } from "./admin-group-help";
 import { NOT_HERE_ID_PREFIX, hqLogSince, listAskRef, recordMatchTimeLine, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
@@ -146,9 +146,7 @@ import { joinAdminNames } from "./seed-nudge-rules";
 import { answerFeeProposalYes, feeProposalsAwaiting, proposeFeeFreeInHq } from "./fee-waiver";
 import { parseFeeAskRef } from "./fee-waiver-rules";
 import { answerHqScore, hqScoreRouting } from "./admin-group-score";
-import { hasScorelineShape } from "./pipeline/score-ask";
 import { organisersPickMom } from "./mom-chooser";
-import { readHqNameList } from "./admin-group-name-list";
 import { answerPairingInHq, pairingsAwaitingOwner } from "./pairing-reply";
 import { parsePairingNoticeKey } from "./club-partnership-rules";
 import { activePartnerChoices, askPartnersFromWords } from "./partner-ask-words";
@@ -334,30 +332,51 @@ function squadActorOf(input: Pick<UnderstandInput, "organiser" | "member" | "sen
  * could not be explained from the database). Never throws: a failed save is
  * logged and HQ carries on.
  */
-async function recordHqDecision(orgId: string, waMessageId: string, outcome: string): Promise<void> {
+async function recordHqDecision(orgId: string, waMessageId: string, outcome: string, reading: HqReadingTrace | null): Promise<void> {
   let trace: PipelineTrace | null = null;
   await persistPipelineTraces(async (id, t) => {
     if (id === waMessageId) trace = t;
   });
+  // The HQ squad reader's reading beside the router's (2026-10-30): it is
+  // HQ's reader for who plays, in place of the attendance extractor.
+  const stored = trace || reading ? { ...((trace as PipelineTrace | null) ?? { v: 1, extractions: [] }), ...(reading ? { hqSquadReader: reading } : {}) } : null;
   try {
     await db.adminGroupMessage.updateMany({
       where: { orgId, waMessageId },
-      data: { hqOutcome: outcome.slice(0, 64), ...(trace ? { pipelineTrace: trace as unknown as object } : {}) },
+      data: { hqOutcome: outcome.slice(0, 64), ...(stored ? { pipelineTrace: stored as unknown as object } : {}) },
     });
   } catch (err) {
     console.error(`[admin-group] ${waMessageId}: saving the decision failed (HQ is unaffected):`, err instanceof Error ? err.message : "unknown");
   }
 }
 
+/** What the HQ squad reader read, as kept on the HQ row. */
+export interface HqReadingTrace {
+  kind: HqSquadRead["reading"]["kind"];
+  why?: string;
+  changes?: Array<{ name: string; userId: string | null; to: string; replaces: string }>;
+  alsoAsks?: boolean;
+  lines?: number;
+  out?: number;
+}
+
+function readingTrace(r: HqSquadRead["reading"]): HqReadingTrace {
+  if (r.kind === "change") return { kind: r.kind, changes: r.changes.map((c) => ({ ...c })), alsoAsks: r.alsoAsks };
+  if (r.kind === "squad") return { kind: r.kind, lines: r.lines.length, out: r.out.length };
+  if (r.kind === "other") return { kind: r.kind, why: r.why };
+  return { kind: r.kind };
+}
+
 export async function understandAdminMessage(input: UnderstandInput): Promise<Understood | null> {
   return withPipelineTrace(async () => {
-    const understood = await understandInTrace(input);
-    await recordHqDecision(input.org.id, input.messageId, understood?.outcome ?? "silent");
+    const seen: { reading: HqReadingTrace | null } = { reading: null };
+    const understood = await understandInTrace(input, seen);
+    await recordHqDecision(input.org.id, input.messageId, understood?.outcome ?? "silent", seen.reading);
     return understood;
   });
 }
 
-async function understandInTrace(input: UnderstandInput): Promise<Understood | null> {
+async function understandInTrace(input: UnderstandInput, seen: { reading: HqReadingTrace | null } = { reading: null }): Promise<Understood | null> {
   const { org, messageId, now } = input;
   const lang = org.language;
   const s = t(lang);
@@ -433,15 +452,12 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
     // AH back" quoting an organiser about next week, routed other_att, got
     // a tick and "I don't know AH yet"). Nothing MatchTime does from it.
     const { tagged, addressed, toAnotherOrganiser } = hqAddressing({ text: input.text, quoted, quotedIsMatchTime });
-    // The score MatchTime is waiting for, and the answers and corrections
-    // that go to `score` whatever the model says (`admin-group-score.ts`).
+    // The score MatchTime is waiting for, shown to the router as context
+    // (`admin-group-score.ts`). The router reads the message with it; no
+    // code decides from the words that a message is the score (2026-10-30).
     const score = await hqScoreRouting({
       orgId: org.id,
       lang,
-      messageId,
-      body,
-      addressed,
-      senderUserId: input.organiser ? input.senderUserId : null,
       now,
       momByOrganisers: organisersPickMom(org),
     });
@@ -487,42 +503,30 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
     const lastHqPost = [...log].reverse().find((r) => r.fromMatchTime)?.text ?? null;
     const capped = (await getAiBudgetStatus(org.id).catch(() => null))?.capped ?? false;
 
-    // An organiser's short list of names with IN/OUT ("Imti\nRafi\nAH\n\nIn",
-    // FNF HQ 2026-10-17) is structured data, like a pasted list: a squad
-    // change, without asking the router (which once called it `none`). HQ
-    // only (`admin-group-name-list.ts`); the players' group is unchanged.
-    const nameList = squadActorOf(input) ? readHqNameList(body) : null;
-    const gate = nameList
-      ? {
-          routes: [{ messageId, route: "other_att" as Route, source: "name-list" as const }],
-          degradations: [] as Degradation[],
-          modelCalled: false,
-          floorEnabled: false,
-        }
-      : await gateBatch(
-          [
-            {
-              waMessageId: messageId,
-              body,
-              authorName: input.senderName,
-              organisers: { context: organisersContext({ pending, recent, score: score.waiting }), senderIsOrganiser: input.organiser },
-              ...(replyShown ? { reply: replyShown } : {}),
-            },
-          ],
-          {
-            now,
-            capped,
-            scoreAnswerIds: score.scoreAnswerIds,
-            scoreCorrectionIds: score.scoreCorrectionIds,
-            ...(input.deps?.routerModel ? { model: input.deps.routerModel } : {}),
-          },
-        );
+    // Every message goes to the shared router first. A list of names, a
+    // one-line change and a pasted squad alike: what it is about who plays
+    // is then the HQ squad reader's (`readWhoPlays` below), never code's
+    // (2026-10-30: the name-list parser that once skipped the router is gone).
+    const gate = await gateBatch(
+      [
+        {
+          waMessageId: messageId,
+          body,
+          authorName: input.senderName,
+          organisers: { context: organisersContext({ pending, recent, score: score.waiting }), senderIsOrganiser: input.organiser },
+          ...(replyShown ? { reply: replyShown } : {}),
+        },
+      ],
+      {
+        now,
+        capped,
+        ...(input.deps?.routerModel ? { model: input.deps.routerModel } : {}),
+      },
+    );
     // What the router said, kept on the message's HQ row (2026-10-24,
     // `admin-group.ts`): FNF's "Glazers OUT" could not be explained from
     // the database, as HQ messages are not AnalyzedMessage rows.
-    // The name list's "name-list" source is not a router source; the trace
-    // stores it as the string it is.
-    traceRouting(gate as Parameters<typeof traceRouting>[0]);
+    traceRouting(gate);
     const routed = gate.routes.find((r) => r.messageId === messageId);
     const route = routed?.route ?? null;
     // The source says whether the model chose the route or a fallback did
@@ -633,6 +637,93 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
       if (!answered) return said(change.outcome, change.replyText);
       return said(`${change.outcome}+${answered.outcome}`, `${change.replyText}\n\n${answered.replyText}`);
     };
+
+    // HQ'S ONE MODEL DOOR FOR WHO PLAYS (2026-10-30, Kemal: "I don't want
+    // any string parsing at all"). A message the router sends to the squad
+    // is read by the HQ squad reader (`hq-squad-reader.ts`), one line or
+    // many, with the squad, the teams and HQ's recent messages: the whole
+    // squad (a proposal for YES), a change (the shared attendance engine,
+    // from the reader's facts), the teams (the teams' handling), or the
+    // members' own talk (nothing). It replaces the attendance extractor
+    // here, so a squad message costs the router and this one call, as it
+    // did; a multi-line message no longer pays for a reading before the
+    // router. A failed read is "other": nothing is done.
+    const readWhoPlays = async (actorId: string): Promise<HqSquadRead> => {
+      const read = await readHqSquad({ orgId: org.id, lang, messageId, text: body, senderUserId: actorId, now, quoted: input.quoted, addressed });
+      seen.reading = readingTrace(read.reading);
+      return read;
+    };
+    /** What the reading does; "teams" for the teams' handling, null for
+     *  nothing done. */
+    const whoPlays = async (actorId: string, read: HqSquadRead): Promise<Understood | "teams" | null> => {
+      const r = read.reading;
+      if (r.kind === "teams") return "teams";
+      if (r.kind === "squad") {
+        const pasted = await proposeSquadPaste({ orgId: org.id, lang, messageId, text: body, senderUserId: actorId, now, read });
+        if (pasted === "teams" || pasted === null) return pasted;
+        let replyText = pasted.replyText;
+        if (pasted.outcome === "paste-proposed") {
+          // The list is now the question: teams waiting for YES are set aside.
+          const setAside = await setAsideTeamProposal(org.id);
+          if (setAside > 0) replyText = `${replyText} ${s.tp_teams_set_aside}`;
+          await recordMatchTimeQuestion({ orgId: org.id, askRef: listAskRef(messageId), text: replyText, now });
+        }
+        return { route, outcome: pasted.outcome, replyText };
+      }
+      if (r.kind !== "change") {
+        console.log(`[admin-group] ${messageId}: ${route} read as other (${r.why}): nothing to change`);
+        return null;
+      }
+      const change = await handleAdminSquadChange({
+        ...base(actorId),
+        text: input.text,
+        namedBody: body,
+        mentionNames: input.mentionNames,
+        senderName: input.senderName,
+        sentAt: input.sentAt,
+        route: route ?? "other_att",
+        reading: r,
+        addressed,
+        organiser: input.organiser,
+        reply: replyShown,
+      });
+      return withItsQuestion(change);
+    };
+
+    // The teams (a teams route, or a squad message the HQ squad reader read
+    // as about the teams): the teams extractor, then `team-proposal.ts`.
+    const teamsHere = async (): Promise<Understood | null> => {
+      // Not an organiser: the one line only when it was asked of
+      // MatchTime (2026-10-29, FNF HQ: a player's untagged "Akram & maj
+      // in the same team" and "We going with these teams right?" each
+      // got it, though nobody had asked MatchTime anything). Talk about
+      // the teams is theirs.
+      if (!actor) return notYours();
+      if (!weekly) return notHere();
+      const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
+      const extracted = await extractForRouteTraced("balancer", model, "balancer", {
+        id: messageId,
+        body,
+        authorName: input.senderName,
+        tagged: true,
+        history,
+        lastBotPost: lastHqPost,
+        reply: replyShown,
+        now,
+      });
+      if (extracted.facts.kind !== "teams") {
+        console.log(`[admin-group] ${messageId}: the teams extractor gave nothing (${extracted.degradations.length} degradation(s))`);
+        return null;
+      }
+      const command = teamCommandFromFacts(extracted.facts);
+      if (command.kind === "unclear") {
+        return extracted.facts.action === "rename"
+          ? notHere()
+          : said("teams-which-players", s.tp_which_players);
+      }
+      const r = await handleTeamCommand({ ...base(actor), command });
+      return said(r.outcome, r.replyText);
+      };
 
     // The shared admin extractor on this message, told truly whether the bot
     // was tagged. Null when its call fails or it reads nothing. Read once:
@@ -752,8 +843,9 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
 
     // The safe-YES rule and the score keep their own rules for a quoted
     // message (a YES quoting another organiser is already silent there; a
-    // scoreline answering "what was the score?" is still the score).
-    const scorelineWhileWaiting = !!score.waiting && hasScorelineShape(body);
+    // message the router could not place while the score waits is read by
+    // the score handling, which says nothing unless it is the score).
+    const unsureWhileScoreWaits = !!score.waiting && route === "unsure";
     // AN ANSWER TO "WHO SHALL I ASK FOR PLAYERS?" (2026-10-28), in the place
     // of one by the safe-YES rule's own tests (a reply quoting it, or the
     // next message after it), from an organiser: the admin extractor reads
@@ -794,7 +886,18 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
       if (route !== "score") console.log(`[admin-group] ${messageId}: a reply to the Man of the Match question; ${route ?? "nowhere"} -> score`);
       return scoreHere();
     }
-    if (toAnotherOrganiser && route !== "approve" && route !== "score" && !(route === "unsure" && scorelineWhileWaiting)) {
+    if (toAnotherOrganiser && route !== "approve" && route !== "score" && !unsureWhileScoreWaits) {
+      // A whole squad list pasted as a reply to another member's message
+      // is still the list (as before 2026-10-30, when it was read ahead of
+      // everything): read, and acted on only when the reader says it is the
+      // squad. A change or talk in such a reply stays their conversation.
+      if (weekly && squadActor && (route === "self_att" || route === "other_att")) {
+        const read = await readWhoPlays(squadActor);
+        if (read.reading.kind === "squad") {
+          const done = await whoPlays(squadActor, read);
+          if (done && done !== "teams") return done;
+        }
+      }
       console.log(`[admin-group] ${messageId}: a reply to another organiser, not tagged: their conversation`);
       return null;
     }
@@ -905,55 +1008,20 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         // else only when they asked MatchTime, else it is their own chat.
         return actor || addressed ? notHere() : null;
       }
-      case "balancer": {
-        // Not an organiser: the one line only when it was asked of
-        // MatchTime (2026-10-29, FNF HQ: a player's untagged "Akram & maj
-        // in the same team" and "We going with these teams right?" each
-        // got it, though nobody had asked MatchTime anything). Talk about
-        // the teams is theirs.
-        if (!actor) return notYours();
-        if (!weekly) return notHere();
-        const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
-        const extracted = await extractForRouteTraced("balancer", model, "balancer", {
-          id: messageId,
-          body,
-          authorName: input.senderName,
-          tagged: true,
-          history,
-          lastBotPost: lastHqPost,
-          reply: replyShown,
-          now,
-        });
-        if (extracted.facts.kind !== "teams") {
-          console.log(`[admin-group] ${messageId}: the teams extractor gave nothing (${extracted.degradations.length} degradation(s))`);
-          return null;
-        }
-        const command = teamCommandFromFacts(extracted.facts);
-        if (command.kind === "unclear") {
-          return extracted.facts.action === "rename"
-            ? notHere()
-            : said("teams-which-players", s.tp_which_players);
-        }
-        const r = await handleTeamCommand({ ...base(actor), command });
-        return said(r.outcome, r.replyText);
-      }
+      case "balancer":
+        return teamsHere();
       case "self_att":
       case "other_att": {
         if (!squadActor) return notYours();
         if (!weekly) return notHere();
-        const change = await handleAdminSquadChange({
-          ...base(squadActor),
-          text: input.text,
-          namedBody: body,
-          mentionNames: input.mentionNames,
-          senderName: input.senderName,
-          sentAt: input.sentAt,
-          route,
-          addressed,
-          organiser: input.organiser,
-          reply: replyShown,
-        });
-        return withItsQuestion(change);
+        const done = await whoPlays(squadActor, await readWhoPlays(squadActor));
+        if (done === "teams") return teamsHere();
+        if (done) return done;
+        // Nothing to change. Asked of MatchTime, it is answered as a
+        // question if it is one, else one line rather than silence.
+        if (!addressed) return null;
+        const answered = await answerQuestion();
+        return answered ? said(answered.outcome, answered.replyText) : said("hq-not-understood", s.hq_not_understood);
       }
       case "ask_group": {
         // One place-open ask in the players' group (`admin-group-ask-group.ts`).
@@ -1082,33 +1150,22 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
       case "score":
         return scoreHere();
       case "unsure": {
-        // A scoreline ("7-4 mü 7-5 mi") while MatchTime waits for the
-        // score, that the router could not place: the score handling
-        // reads it, and records only what is clear (2026-10-16 live check:
-        // the router sent that Turkish message to `unsure`).
-        if (scorelineWhileWaiting) return scoreHere();
+        // While MatchTime waits for the score, a message the router could
+        // not place ("7-4 mü 7-5 mi", 2026-10-16 live check) is read by the
+        // score handling first, which records only what is clear.
+        if (unsureWhileScoreWaits) {
+          const r = await scoreHere();
+          if (r && r.outcome !== "hq-not-understood") return r;
+        }
         // Not addressed to MatchTime: the organisers' own conversation.
         if (!addressed) return null;
         // Addressed, and the router could not tell what it does (or its
-        // call failed): the attendance engine, as in the players' group,
-        // then one line rather than silence (FNF, 2026-10-16). The engine
-        // changes the squad, so it is tried for a member of the club only.
+        // call failed): who plays, as in the players' group (a member of
+        // the club), then one line rather than silence (FNF, 2026-10-16).
         if (weekly && squadActor) {
-          const change = await handleAdminSquadChange({
-            ...base(squadActor),
-            text: input.text,
-            namedBody: body,
-            mentionNames: input.mentionNames,
-            senderName: input.senderName,
-            sentAt: input.sentAt,
-            route,
-            addressed,
-            organiser: input.organiser,
-          });
-          if (change.handled || change.alsoAsks) {
-            const r = await withItsQuestion(change);
-            if (r) return r;
-          }
+          const done = await whoPlays(squadActor, await readWhoPlays(squadActor));
+          if (done === "teams") return teamsHere();
+          if (done) return done;
         }
         // Then the question answering, for anyone (FNF HQ, 2026-10-18 13:32:
         // "@Match Time what is squad now including bench?" fell back to

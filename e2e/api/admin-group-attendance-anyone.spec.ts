@@ -5,7 +5,7 @@
  * and admins. The incident: Abdul-Hafeez Niaz, a PLAYER of FNF in HQ, wrote
  * "Naim is out" and nothing happened.
  *
- * The router and the attendance extractor are STUBBED (`engineOn`): no
+ * The router and the HQ squad reader are STUBBED (`engineOn`): no
  * model is called. Everything from the routes on is the shipped code.
  *
  * The fixture club (E2E Test FC, weekly, first-come) has its upcoming match
@@ -23,7 +23,7 @@
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { engineOn, clearPipelineStubs, otherFacts } from "../helpers/stub";
+import { engineOn, clearPipelineStubs, changeReading } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -69,7 +69,7 @@ test.afterAll(() => {
 });
 
 test("the incident: a player's 'Tom is out' takes Tom out, with the organiser's reply and tick, recorded as the player's", async ({ request, db }) => {
-  engineOn({ "Tom is out": { route: "other_att", facts: otherFacts("Tom", "out") } });
+  engineOn({ "Tom is out": { route: "other_att", reading: changeReading([["Tom Third", "out"]]) } });
   const out = await say(request, "Tom is out", PLAYER, "e2e-agaa-tom-out");
   expect(out).toMatchObject({ handled: true, outcome: "squad-changed", replyText: "Done: Tom Third out. 3 of 5, 1 on the bench (Ben Bench).", react: "✅" });
   expect(await statusOf(db, U.third)).toBe("DROPPED");
@@ -77,7 +77,7 @@ test("the incident: a player's 'Tom is out' takes Tom out, with the organiser's 
 });
 
 test("a player puts someone in", async ({ request, db }) => {
-  engineOn({ "put Ian in": { route: "other_att", facts: otherFacts("Ian", "in") } });
+  engineOn({ "put Ian in": { route: "other_att", reading: changeReading([["Ian Innes", "in"]]) } });
   const out = await say(request, "put Ian in");
   expect(out).toMatchObject({ handled: true, outcome: "squad-changed", replyText: "Done: Ian Innes in. 4 of 5, 1 on the bench (Ben Bench).", react: "✅" });
   expect(await statusOf(db, U.fresh)).toBe("CONFIRMED");
@@ -85,14 +85,14 @@ test("a player puts someone in", async ({ request, db }) => {
 });
 
 test("a player puts someone on the bench, as an organiser can", async ({ request, db }) => {
-  engineOn({ "Ian to the bench": { route: "other_att", facts: otherFacts("Ian", "bench") } });
+  engineOn({ "Ian to the bench": { route: "other_att", reading: changeReading([["Ian Innes", "bench"]]) } });
   const out = await say(request, "Ian to the bench");
   expect(out).toMatchObject({ handled: true, outcome: "squad-changed", react: "✅" });
   expect(await statusOf(db, U.fresh)).toBe("BENCH");
 });
 
 test("a player brings someone in from the bench, as an organiser can", async ({ request, db }) => {
-  engineOn({ "put Ben Bench in": { route: "other_att", facts: otherFacts("Ben Bench", "in") } });
+  engineOn({ "put Ben Bench in": { route: "other_att", reading: changeReading([["Ben Bench", "in"]]) } });
   const out = await say(request, "put Ben Bench in");
   expect(out).toMatchObject({ handled: true, outcome: "squad-changed", react: "✅" });
   expect(out.replyText).toMatch(/^Done: Ben Bench in\. 4 of 5/);
@@ -101,7 +101,7 @@ test("a player brings someone in from the bench, as an organiser can", async ({ 
 
 test("in Turkish", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
-  engineOn({ "Colin çıktı": { route: "other_att", facts: otherFacts("Colin", "out") } });
+  engineOn({ "Colin çıktı": { route: "other_att", reading: changeReading([["Colin Collector", "out"]]) } });
   const out = await say(request, "Colin çıktı");
   await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
   expect(out).toMatchObject({ handled: true, outcome: "squad-changed", react: "✅" });
@@ -111,8 +111,8 @@ test("in Turkish", async ({ request, db }) => {
 
 test("someone who is not in the club: nothing changed; tagged, one line naming who can", async ({ request, db }) => {
   engineOn({
-    "Pat out": { route: "other_att", facts: otherFacts("Pat", "out") },
-    "@Match Time Pat out": { route: "other_att", facts: otherFacts("Pat", "out") },
+    "Pat out": { route: "other_att", reading: changeReading([["Pat Player", "out"]]) },
+    "@Match Time Pat out": { route: "other_att", reading: changeReading([["Pat Player", "out"]]) },
   });
   expect(await say(request, "Pat out", STRANGER)).toMatchObject({ handled: false, replyText: null });
   expect(await say(request, "@Match Time Pat out", STRANGER)).toMatchObject({

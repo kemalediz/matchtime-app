@@ -1,12 +1,16 @@
 /**
- * THE HQ SQUAD READER (2026-10-29): one model call for a multi-line message
- * a member of a live weekly club sends in its admin group (HQ). It says
- * whether the message is the squad for the next game (with who plays and
- * who is on the bench), something about the teams (a copy of the team
- * sheet, a swap, a move), or something else. Only a squad list goes on to
- * a proposal (`admin-group-paste.ts`); everything else goes on to the
- * shared pipeline. The prompt, schema and checks are in
- * `hq-squad-reader-prompt.ts`; the fact gates in `admin-group-squad-rules.ts`.
+ * THE HQ SQUAD READER (2026-10-29; every squad message since 2026-10-30):
+ * one model call for a message a member of a live weekly club sends in its
+ * admin group (HQ) that the shared router sent to the squad
+ * (`admin-group-understand.ts`). It says whether the message is the squad
+ * for the next game (with who plays and who is on the bench), a change to
+ * it (who comes in, goes out or to the bench), something about the teams
+ * (a copy of the team sheet, a swap, a move), or something else. A squad
+ * list goes on to a proposal (`admin-group-paste.ts`), a change to the
+ * shared attendance engine (`admin-group-squad-change.ts`), the teams to
+ * the teams' handling; anything else changes nothing. The prompt, schema
+ * and checks are in `hq-squad-reader-prompt.ts`; the fact gates in
+ * `admin-group-squad-rules.ts`.
  *
  * One Haiku call (`HAIKU_CALL`, under the club's AI budget like every
  * pipeline call). FAIL SAFE: no key, a failed call, the cap or an
@@ -156,6 +160,13 @@ function refsByName(answer: unknown, ctx: HqSquadReaderContext): unknown {
     ...o,
     lines: Array.isArray(o.lines) ? o.lines.map((l) => (l && typeof l === "object" ? { ...l, member: refOf((l as Record<string, unknown>).member) } : l)) : o.lines,
     out: Array.isArray(o.out) ? o.out.map(refOf) : o.out,
+    changes: Array.isArray(o.changes)
+      ? o.changes.map((c) => {
+          if (!c || typeof c !== "object") return c;
+          const x = c as Record<string, unknown>;
+          return { ...x, member: refOf(x.member), replaces: refOf(x.replaces) };
+        })
+      : o.changes,
   };
 }
 
@@ -221,9 +232,11 @@ export async function readHqSquadMessage(
     `[${LABEL}] org=${ctx.orgId} sender=${input.sender.userId} kind=${reading.kind}` +
       (reading.kind === "squad"
         ? ` lines=${reading.lines.length} members=${reading.lines.filter((l) => l.userId).length} out=${reading.out.length}`
-        : reading.kind === "other"
-          ? ` why=${reading.why}`
-          : ""),
+        : reading.kind === "change"
+          ? ` changes=${reading.changes.length} members=${reading.changes.filter((c) => c.userId).length}${reading.alsoAsks ? " also-asks" : ""}`
+          : reading.kind === "other"
+            ? ` why=${reading.why}`
+            : ""),
   );
   return reading;
 }

@@ -37,12 +37,16 @@ const input = (body: string, extra: Partial<HqSquadReaderInput> = {}): HqSquadRe
 });
 
 describe("the prompt", () => {
-  it("says the three kinds and keeps to the house rules (no em or en dashes)", () => {
-    expect(HQ_SQUAD_READER_SYSTEM).toMatch(/"squad"/);
-    expect(HQ_SQUAD_READER_SYSTEM).toMatch(/"teams"/);
-    expect(HQ_SQUAD_READER_SYSTEM).toMatch(/"other"/);
+  it("says the four kinds and keeps to the house rules (no em or en dashes)", () => {
+    for (const kind of ["squad", "change", "teams", "other"]) expect(HQ_SQUAD_READER_SYSTEM).toContain(`"${kind}"`);
     expect(HQ_SQUAD_READER_SYSTEM).not.toMatch(/[–—]/);
-    expect(HQ_SQUAD_READER_SCHEMA.required).toEqual(["kind", "lines", "out"]);
+    expect(HQ_SQUAD_READER_SCHEMA.required).toEqual(["kind", "lines", "out", "changes", "alsoAsks"]);
+    expect(HQ_SQUAD_READER_SCHEMA.properties.kind.enum).toEqual(["squad", "change", "teams", "other"]);
+  });
+
+  it("the user turn says whether the message is said to MatchTime (a fact from code)", () => {
+    expect(buildHqSquadReaderUserTurn(input("Tom out", { addressed: true }), ctx)).toContain("SAID TO MATCHTIME: yes");
+    expect(buildHqSquadReaderUserTurn(input("Tom out"), ctx)).toContain("SAID TO MATCHTIME: not tagged");
   });
 
   it("the user turn shows the game, members by ref, the squad, the teams, the recent HQ messages and the message", () => {
@@ -103,6 +107,82 @@ describe("the answer, checked", () => {
 
   it("a squad with no lines is other", () => {
     expect(parseHqSquadReading({ kind: "squad", lines: [], out: [] }, input("a\nb"), ctx)).toMatchObject({ kind: "other" });
+  });
+});
+
+describe("a change, checked (2026-10-30: one-line changes and name lists are the reader's)", () => {
+  const change = (changes: unknown[], alsoAsks = false) => ({ kind: "change", lines: [], out: [], changes, alsoAsks });
+
+  it("members by ref, given as their roster name; the sender's own place is theirs", () => {
+    const r = parseHqSquadReading(
+      change([
+        { name: "Imran", member: "p9", person: true, to: "out", replaces: "" },
+        { name: "Rafi", member: "p3", person: true, to: "in", replaces: "" },
+        { name: "Akram", member: "p10", person: true, to: "bench", replaces: "" },
+      ]),
+      input("Imran out, I'm in, Akram to the bench"),
+      ctx,
+    );
+    expect(r).toEqual({
+      kind: "change",
+      changes: [
+        { name: "Imz", userId: "u-9", to: "out", replaces: "" },
+        { name: "Rafi", userId: "u-3", to: "in", replaces: "" },
+        { name: "Akram", userId: "u-10", to: "bench", replaces: "" },
+      ],
+      alsoAsks: false,
+    });
+  });
+
+  it("a person nobody in the club is: kept only when a person's name written in the message", () => {
+    const r = parseHqSquadReading(
+      change([
+        { name: "Bilal", member: "", person: true, to: "in", replaces: "" },
+        { name: "Ghost", member: "", person: true, to: "in", replaces: "" },
+        { name: "my brother", member: "", person: false, to: "in", replaces: "" },
+        { name: "Who", member: "p99", person: true, to: "out", replaces: "" },
+        { name: "Mo", member: "p5", person: true, to: "sideways", replaces: "" },
+      ]),
+      input("put bilal and my brother in"),
+      ctx,
+    );
+    expect(r).toEqual({ kind: "change", changes: [{ name: "Bilal", userId: null, to: "in", replaces: "" }], alsoAsks: false });
+  });
+
+  it("who an arriving player replaces, by ref; a ref it was not shown is nobody", () => {
+    const r = parseHqSquadReading(
+      change([
+        { name: "Mo", member: "p5", person: true, to: "in", replaces: "p6" },
+        { name: "Maj", member: "p8", person: true, to: "in", replaces: "p99" },
+      ]),
+      input("Mo instead of Najib, Maj in"),
+      ctx,
+    );
+    expect(r).toMatchObject({ changes: [{ userId: "u-5", replaces: "Uncle Najib" }, { userId: "u-8", replaces: "" }] });
+  });
+
+  it("the same person twice: the last word stands", () => {
+    const r = parseHqSquadReading(
+      change([
+        { name: "Mo", member: "p5", person: true, to: "in", replaces: "" },
+        { name: "Mo", member: "p5", person: true, to: "out", replaces: "" },
+      ]),
+      input("Mo in. Actually Mo out"),
+      ctx,
+    );
+    expect(r).toMatchObject({ changes: [{ userId: "u-5", to: "out" }] });
+  });
+
+  it("a question to MatchTime beside the change is kept", () => {
+    expect(parseHqSquadReading(change([{ name: "Mo", member: "p5", person: true, to: "out", replaces: "" }], true), input("Mo out. what is the list?"), ctx)).toMatchObject({
+      kind: "change",
+      alsoAsks: true,
+    });
+  });
+
+  it("a change with nobody left in it is other: nothing is done", () => {
+    expect(parseHqSquadReading(change([]), input("x"), ctx)).toMatchObject({ kind: "other" });
+    expect(parseHqSquadReading(change([{ name: "Ghost", member: "", person: true, to: "in", replaces: "" }]), input("x"), ctx)).toMatchObject({ kind: "other" });
   });
 });
 

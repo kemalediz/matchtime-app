@@ -10,7 +10,7 @@
  * "silent"). Two defects: the tagged question had nowhere to go, and an OUT
  * for a name not on the list changed nothing and said nothing.
  *
- * The router, the attendance extractor and the question extractor are
+ * The router, the HQ squad reader and the question extractor are
  * STUBBED (what the models would have said, the extractor now reporting the
  * question as a side request). Everything after is the shipped code.
  *
@@ -21,7 +21,7 @@
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { engineOn, clearPipelineStubs, otherFacts } from "../helpers/stub";
+import { engineOn, clearPipelineStubs, otherFacts, changeReading } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -73,12 +73,16 @@ test.beforeAll(async ({ db }) => {
   await db.run(`INSERT INTO "User" (id, email, name, "updatedAt") VALUES ($1, 'e2e-agoq-glazers@e2e.test', 'Glazers', now())`, [GLAZERS]);
   await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role, "leftAt") VALUES ('e2e-agoq-glazers-m', $1, $2, 'PLAYER', now())`, [GLAZERS, ORG_ID]);
   await db.run(`INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt") VALUES ('e2e-agoq-glazers-a', $1, $2, 'DROPPED', 9, now())`, [MATCH.upcoming, GLAZERS]);
+  // The HQ squad reader reads the change and the question beside it
+  // (2026-10-30); the question extractor reads its own fields from `facts`.
+  const glazersOut = (alsoAsks: boolean) => changeReading([[{ new: "Glazers" }, "out"]], { alsoAsks });
+  const tomOut = changeReading([["Tom Third", "out"]], { alsoAsks: true });
   engineOn({
-    [INCIDENT]: { route: "other_att", facts: outAndAsks("Glazers") },
-    [UNTAGGED]: { route: "other_att", facts: otherFacts("Glazers", "out", { confidence: 0.85 }) },
-    [TR]: { route: "other_att", facts: outAndAsks("Glazers") },
-    [TOM_AND_LIST]: { route: "other_att", facts: outAndAsks("Tom") },
-    [TOM_UNTAGGED_Q]: { route: "other_att", facts: outAndAsks("Tom") },
+    [INCIDENT]: { route: "other_att", facts: outAndAsks("Glazers"), reading: glazersOut(true) },
+    [UNTAGGED]: { route: "other_att", reading: glazersOut(false) },
+    [TR]: { route: "other_att", facts: outAndAsks("Glazers"), reading: glazersOut(true) },
+    [TOM_AND_LIST]: { route: "other_att", facts: outAndAsks("Tom"), reading: tomOut },
+    [TOM_UNTAGGED_Q]: { route: "other_att", facts: outAndAsks("Tom"), reading: tomOut },
   });
 });
 

@@ -19,11 +19,17 @@
  *   8. Sutton's shape (first-come, the fixture club) is unchanged: an IN
  *      takes a free place and an OUT opens a bench offer, no pick round.
  *
- * Deterministic: nothing here calls a model. January, so London is GMT.
+ * The pick reader (2026-10-30), the model that reads an admin's reply, is
+ * STUBBED by message body (`setOrganiserPickReaderStub`): the stub answers
+ * as the model would, and the server's own check of that answer, the
+ * tags it resolved and everything after are real. A body with no answer
+ * is no pick. Nothing here calls a model. January, so London is GMT.
  */
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
+import { clearOrganiserPickReaderStub, setOrganiserPickReaderStub } from "../helpers/stub";
+import { readFileSync } from "node:fs";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -103,8 +109,39 @@ async function pickMessage(request: APIRequestContext, now = WED_NOON) {
   return instructions.filter((i) => i.kind === "admin-group-message");
 }
 
+/** What the pick reader would say to each reply this file sends. */
+const pick = (positions: number[]) => ({ kind: "pick", positions });
+const person = (...people: string[]) => ({ kind: "pick", people });
+const READINGS: Record<string, unknown> = {
+  "1": pick([1]),
+  "2": pick([2]),
+  "3": pick([3]),
+  Wasim: person("Wasim Wali"),
+  "@447700999999": { kind: "unknown-tag" },
+  "@Kemal": person("Kemal Kaya"),
+  "@Ali": person("Ali Aziz"),
+  "@Match Time @447700940010": person("Cem Can"),
+  Zed: person("Zed Zulu"),
+  YES: { kind: "yes" },
+  NONE: { kind: "none" },
+};
+
+/** The user turns the pick reader was given, newest last. */
+const readerTurns = (): string[] => {
+  try {
+    return readFileSync(`${E2E.ORGANISER_PICK_READER_STUB_FILE}.calls`, "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => (JSON.parse(l) as { user: string }).user);
+  } catch {
+    return [];
+  }
+};
+
 test.beforeAll(async ({ db }) => {
   resetDb();
+  clearOrganiserPickReaderStub();
+  setOrganiserPickReaderStub({ bodies: READINGS });
   await db.run(
     `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled",
        "benchPickMode", "adminChannelMode", "adminGroupId", "adminGroupSubject", "updatedAt")
@@ -160,6 +197,7 @@ test.beforeAll(async ({ db }) => {
 });
 
 test.afterAll(() => {
+  clearOrganiserPickReaderStub();
   resetDb();
 });
 
@@ -268,6 +306,12 @@ test("a name ('Wasim', '@Kemal') resolves; an already-in player is E2; an unknow
     mentionNames: [{ jid: `${digits(P.cem.phone)}@c.us`, name: "cem" }],
   });
   expect(res2.replyText).toMatch(/^✅ Done: \*Cem Can\* is in/);
+  // The reader was told who the tag is, from the Pi's mention data, and
+  // was shown the list as sent with a ref on each row.
+  const turn = readerTurns().at(-1) ?? "";
+  expect(turn).toMatch(/@447700940010 is p\d+ Cem Can/);
+  expect(turn).toMatch(/THE LIST MatchTime sent:\n  1\. p1 /);
+  expect(turn.endsWith("THE MESSAGE:\n@Match Time @447700940010")).toBe(true);
   expect(await statusOf(db, P.cem.id)).toBe("CONFIRMED");
 });
 

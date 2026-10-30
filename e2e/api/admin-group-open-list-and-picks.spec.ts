@@ -23,7 +23,7 @@
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { engineOn, clearPipelineStubs, setHqSquadReaderStub, clearHqSquadReaderStub, squadReading } from "../helpers/stub";
+import { engineOn, clearPipelineStubs, setHqSquadReaderStub, clearHqSquadReaderStub, squadReading, setOrganiserPickReaderStub } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -79,6 +79,8 @@ async function openRound(db: TestDb, id: string, list: string[]) {
 
 test.beforeAll(async ({ db }) => {
   resetDb();
+  // The pick reader (a model, stubbed): "1" picks the first on the list.
+  setOrganiserPickReaderStub({ bodies: { "1": { kind: "pick", positions: [1] } } });
   await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group', "benchPickMode" = 'organiser' WHERE id = $1`, [
     ORG_ID,
     HQ,
@@ -144,7 +146,8 @@ test.afterAll(() => clearHqSquadReaderStub());
 
 test("a player pastes the squad: the exact changes and a YES question, nothing applied yet", async ({ request, db }) => {
   // The shared router reads every YES below (stubbed: what it would say).
-  engineOn({ YES: { route: "approve" }, EVET: { route: "approve" } });
+  // A pasted list goes to the router first (2026-10-30), then the reader.
+  engineOn({ YES: { route: "approve" }, EVET: { route: "approve" }, [LIST]: { route: "other_att" }, [TR_LIST]: { route: "other_att" } });
   const out = await say(request, LIST, PLAYER, "e2e-aolp-paste-1");
   question = out.replyText;
   expect(out).toMatchObject({ handled: true, outcome: "paste-proposed", react: "✅" });
@@ -223,15 +226,18 @@ test("in Turkish: the same, the Turkish line", async ({ request, db }) => {
   expect(await fee(db)).toBe(before);
 });
 
-test("a player asks, untagged, for a free place, the teams, or the players' group ask: the same line, nothing done", async ({ request, db }) => {
+test("a player asks, untagged, for a free place or the players' group ask: the same line; the teams: silent; nothing done", async ({ request, db }) => {
   engineOn({
     "Tom is free this week": { route: "admin_ops", facts: { action: "fee_waiver", ...ADMIN_FACTS, coveredRefs: ["Tom"] } },
     "make the teams": { route: "balancer" },
     "ask the group if anyone can play": { route: "ask_group" },
   });
-  for (const text of ["Tom is free this week", "make the teams", "ask the group if anyone can play"]) {
+  for (const text of ["Tom is free this week", "ask the group if anyone can play"]) {
     expect(await say(request, text), text).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
   }
+  // Talk about the teams from a player is theirs unless asked of MatchTime
+  // (#468, 2026-10-29, FNF HQ): untagged, silent.
+  expect(await say(request, "make the teams")).toMatchObject({ handled: false, replyText: null });
   const asked = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AdminGroupMessage" WHERE "orgId" = $1 AND "askRef" LIKE 'fee:%'`, [ORG_ID]);
   expect(asked?.n).toBe("0");
   expect(await db.one(`SELECT id FROM "AdminTeamProposal" WHERE "orgId" = $1`, [ORG_ID])).toBeFalsy();

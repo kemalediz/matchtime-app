@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   ADMIN_GROUP_SQUAD_ROUTES,
   PASTE_PROPOSAL_TTL_MS,
-  adminClaimHold,
+  hqChangeFacts,
   buildAdminSquadReply,
   vetAdminGroupFacts,
   type AdminClaimRef,
@@ -218,13 +218,13 @@ describe("copy, English and Turkish", () => {
   });
 });
 
-// \u2500\u2500 What an organiser's sentence in HQ is allowed to do (2026-10-15) \u2500\u2500
+// A change read in HQ (2026-10-30).
 //
-// The live club rehearsal replayed a real HQ fortnight and found ordinary
-// conversation among organisers turned into squad writes and false
-// "Nothing to change" lines. The extractor's facts are unchanged; what is
-// under test is OUR reading of them in the admin group. Paraphrased,
-// fictional names.
+// Which sentence in HQ is an instruction is the HQ squad reader's to say
+// (a model, `hq-squad-reader-prompt.ts`); the word lists that decided it
+// here are gone. What is pinned: the reader's change as the engine's facts,
+// the one fact hold (the list not set yet), and what MatchTime says back.
+// Paraphrased, fictional names.
 
 function claim(over: Partial<Claim> = {}): Claim {
   return {
@@ -242,100 +242,33 @@ function claim(over: Partial<Claim> = {}): Claim {
   };
 }
 const self = (over: Partial<Claim> = {}) => claim({ subject: "sender", personRef: "", personNamed: false, ...over });
-const hold = (body: string, c: Claim, extra: { claims?: Claim[]; bare?: boolean; sender?: string } = {}) =>
-  adminClaimHold({ body, claim: c, claims: extra.claims ?? [c], senderName: extra.sender ?? "Omar Shah", bareDeclaration: extra.bare ?? false });
 
-describe("adminClaimHold: an explicit instruction applies, conversation does not", () => {
-  it.each<[string, Claim]>([
-    ["put Kai in", claim()],
-    ["Kai out", claim({ polarity: "out" })],
-    ["Kai in", claim()],
-    ["Kai out, Ravi in?", claim({ polarity: "out" })],
-    ["Kai out, Ravi in?", claim({ personRef: "Ravi" })],
-    ["pls put Kai in for friday", claim()],
-    ["Kai to the bench", claim({ polarity: "bench" })],
-    ["Abdul-Rahim dropping out", claim({ personRef: "Abdul-Rahim", polarity: "out" })],
-    ["Kai can't make it", claim({ polarity: "out" })],
-    ["Kai and Ravi in", claim()],
-    ["swap Kai for Ravi", claim({ personRef: "Ravi", replaces: "Kai" })],
-    ["Kai Patel out", claim({ personRef: "Kai Patel", polarity: "out" })],
-    ["Kai is out", claim({ polarity: "out" })],
-    ["Kai yok", claim({ polarity: "out" })],
-    ["Kai var", claim()],
-    ["Kai'yi yede\u011fe al", claim({ polarity: "bench" })],
-  ])("%s: applies", (body, c) => {
-    expect(hold(body, c, { claims: [c, claim({ personRef: "Ravi" }), claim({ personRef: "Kai" })] })).toBeNull();
-  });
-
-  // Review of #269: future and negative auxiliaries. Every one an
-  // organiser's plain instruction about somebody else.
-  it.each<[string, string, Partial<Claim>]>([
-    ["Mo will play", "Mo", {}],
-    ["Ravi won't be playing", "Ravi", { polarity: "out" }],
-    ["Kofi is joining us", "Kofi", {}],
-    ["Yusuf's gonna play", "Yusuf", {}],
-    ["Ali is going to play", "Ali", {}],
-    ["Sam will be in", "Sam", {}],
-    ["Dev wont make it", "Dev", { polarity: "out" }],
-    ["Hari not playing", "Hari", { polarity: "out" }],
-    ["Kofi in for Dev", "Kofi", { replaces: "Dev" }],
-    ["Kofi in for Dev", "Dev", { polarity: "out" }],
-    ["Sam replaces Dev", "Sam", { replaces: "Dev" }],
-    ["Add Kofi to the list", "Kofi", {}],
-    ["Ali gelecek", "Ali", {}],
-    ["Ali bu hafta oynamayacak", "Ali", { polarity: "out" }],
-  ])("%s (%s): applies", (body, ref, over) => {
-    const c = claim({ personRef: ref, ...over });
-    const others = [claim({ personRef: "Kofi", replaces: "Dev" }), claim({ personRef: "Dev", polarity: "out" })];
-    expect(hold(body, c, { claims: [c, ...others] })).toBeNull();
-  });
-
-  it.each<[string, Claim]>([
-    ["Dev is back too", claim({ personRef: "Dev" })],
-    ["Kai is in the hospital", claim()],
-    ["will be good to see Mo", claim({ personRef: "Mo" })],
-    ["I might have to pull out", self({ polarity: "out" })],
-    ["my foot is wrecked", self({ polarity: "out" })],
-  ])("%s: held, even if the extractor calls it a definite decision", (body, c) => {
-    expect(hold(body, c)).toBe("not-a-command");
-  });
-
-  it("a third party mentioned in passing is not an instruction", () => {
-    expect(hold("Kai is back as well", claim())).toBe("not-a-command");
-    expect(hold("Kai is in the hospital", claim())).toBe("not-a-command");
-    expect(hold("put Ravi in", claim())).toBe("not-a-command"); // Kai is not in the sentence at all
-  });
-
-  it("tentative, contingent, past, relayed and unsure claims are held, whoever they are about", () => {
-    expect(hold("Kai out", claim({ polarity: "out", contingent: true, conditionOn: "self" }))).toBe("contingent");
-    expect(hold("Kai out", claim({ polarity: "out", tense: "hypothetical" }))).toBe("not-now");
-    expect(hold("Kai out", claim({ polarity: "out", tense: "past" }))).toBe("not-now");
-    expect(hold("Kai out", claim({ polarity: "out", reported: true }))).toBe("reported");
-    expect(hold("Kai out", claim({ polarity: "out", confidence: 0.4 }))).toBe("unsure");
-  });
-
-  it("the sender: a bare IN/OUT or a command applies; a sentence about themselves does not", () => {
-    expect(hold("out", self({ polarity: "out" }), { bare: true })).toBeNull();
-    expect(hold("put me in", self())).toBeNull();
-    expect(hold("I'm out this week", self({ polarity: "out" }))).toBeNull();
-    expect(hold("Omar out", self({ polarity: "out", personRef: "Omar" }))).toBeNull();
-    expect(hold("Omar Shah in", self({ personRef: "Omar Shah" }))).toBeNull();
-    // since the review of #269 the auxiliaries are command words, so the
-    // sender's own plain "won't be playing" is an instruction too
-    expect(hold("I won't be playing on friday", self({ polarity: "out" }))).toBeNull();
-    // the rehearsal's shapes, paraphrased
-    expect(hold("won't be around on friday", self({ polarity: "out" }))).toBe("not-a-command");
-    expect(hold("might have to pull out lads", self({ polarity: "out", contingent: true, conditionOn: "self" }))).toBe("contingent");
-    expect(hold("my ankle is wrecked", self({ polarity: "out" }))).toBe("not-a-command");
-    expect(hold("happy to go in goal but I'll stay in all session", self())).toBe("not-a-command");
-  });
-
-  it("the sender asking for the bench is a stated preference and applies", () => {
-    expect(hold("I'd rather just be a reserve", self({ polarity: "bench" }))).toBeNull();
+describe("hqChangeFacts: the reader's change, as the engine's facts", () => {
+  it("each person named, definite, present; a member by roster name; the sender's own place is theirs", () => {
+    const f = hqChangeFacts(
+      [
+        { name: "Kai Patel", userId: "u-kai", to: "out", replaces: "" },
+        { name: "Omar Shah", userId: "u-omar", to: "in", replaces: "" },
+        { name: "Zayn", userId: null, to: "bench", replaces: "" },
+        { name: "Mo Ali", userId: "u-mo", to: "in", replaces: "Kai Patel" },
+      ],
+      "u-omar",
+    );
+    expect(f).toEqual({
+      kind: "attendance",
+      affirmation: null,
+      sideRequests: [],
+      claims: [
+        claim({ personRef: "Kai Patel", polarity: "out", confidence: 1 }),
+        claim({ subject: "sender", personRef: "Omar Shah", polarity: "in", confidence: 1 }),
+        claim({ personRef: "Zayn", polarity: "bench", confidence: 1 }),
+        claim({ personRef: "Mo Ali", polarity: "in", confidence: 1, replaces: "Kai Patel" }),
+      ],
+    });
   });
 });
 
-describe("vetAdminGroupFacts: only explicit claims reach the engine", () => {
+describe("vetAdminGroupFacts: who each claim is about, and the one fact hold", () => {
   const roster: Record<string, AdminClaimRef> = {
     kai: { kind: "member", userId: "u-kai", name: "Kai Patel" },
     ravi: { kind: "member", userId: "u-ravi", name: "Ravi Singh" },
@@ -348,110 +281,31 @@ describe("vetAdminGroupFacts: only explicit claims reach the engine", () => {
     affirmation,
     sideRequests: [],
   });
-  const vet = (body: string, f: AttendanceFacts, status: Record<string, "CONFIRMED" | "BENCH" | "DROPPED"> = {}) =>
-    vetAdminGroupFacts({
-      body,
-      facts: f,
-      senderUserId: "u-omar",
-      senderName: "Omar Shah",
-      bareDeclaration: false,
-      resolve,
-      statusOf: (id) => status[id] ?? null,
-    });
+  const vet = (f: AttendanceFacts, status: Record<string, "CONFIRMED" | "BENCH" | "DROPPED"> = {}, listNotSet = false) =>
+    vetAdminGroupFacts({ facts: f, senderUserId: "u-omar", senderName: "Omar Shah", listNotSet, resolve, statusOf: (id) => status[id] ?? null });
 
-  it("keeps the command, drops the chatter, and records who each claim is about and where they stand", () => {
-    const out = vet("Kai out, Ravi is back as well", facts([claim({ polarity: "out" }), claim({ personRef: "Ravi" })]), { "u-kai": "CONFIRMED" });
-    expect(out.facts.claims.map((c) => c.personRef)).toEqual(["Kai"]);
+  it("every claim applies, with who it is about and where they stand", () => {
+    const out = vet(facts([claim({ polarity: "out" }), claim({ personRef: "Ravi" })]), { "u-kai": "CONFIRMED" });
+    expect(out.facts.claims.map((c) => c.personRef)).toEqual(["Kai", "Ravi"]);
     expect(out.vetted.map((v) => [v.claim.personRef, v.hold, v.ref.kind, v.before])).toEqual([
       ["Kai", null, "member", "CONFIRMED"],
-      ["Ravi", "not-a-command", "member", null],
+      ["Ravi", null, "member", null],
     ]);
   });
 
   it("the sender's own claim is about the sender", () => {
-    const out = vet("won't be around on friday", facts([self({ polarity: "out" })]), { "u-omar": "CONFIRMED" });
-    expect(out.facts.claims).toEqual([]);
-    expect(out.vetted[0]).toMatchObject({ self: true, hold: "not-a-command", before: "CONFIRMED", ref: { kind: "member", userId: "u-omar" } });
+    const out = vet(facts([self({ polarity: "out" })]), { "u-omar": "CONFIRMED" });
+    expect(out.vetted[0]).toMatchObject({ self: true, hold: null, before: "CONFIRMED", ref: { kind: "member", userId: "u-omar" } });
   });
 
-  it("the list is not set yet (the rolling squad still to carry over): nothing reaches the engine, the instruction is marked not-set", () => {
-    const out = vetAdminGroupFacts({
-      body: "Kai out, Ravi is back as well",
-      facts: facts([claim({ polarity: "out" }), claim({ personRef: "Ravi" })]),
-      senderUserId: "u-omar",
-      senderName: "Omar Shah",
-      bareDeclaration: false,
-      listNotSet: true,
-      resolve,
-      statusOf: () => null,
-    });
+  it("the list is not set yet (the rolling squad still to carry over): nothing reaches the engine, every claim is marked not-set", () => {
+    const out = vet(facts([claim({ polarity: "out" }), claim({ personRef: "Ravi" })]), {}, true);
     expect(out.facts.claims).toEqual([]);
-    expect(out.vetted.map((v) => [v.claim.personRef, v.hold])).toEqual([
-      ["Kai", "not-set"],
-      ["Ravi", "not-a-command"],
-    ]);
+    expect(out.vetted.map((v) => v.hold)).toEqual(["not-set", "not-set"]);
   });
 
   it('a bare "yes" pointing at something else is never read in HQ', () => {
-    expect(vet("yeah", facts([], "yes")).facts.affirmation).toBeNull();
-  });
-
-  // FNF HQ 2026-10-17 09:01: "Imti\nRafi\nAH\n\nIn". A name alone on its
-  // line is not a command clause, so every claim was held, and silence.
-  // The router's floor reads the shape as a list (`floorAttendanceFacts`),
-  // and its names are the instruction.
-  describe("a list of names with a bare IN or OUT (the floor's list)", () => {
-    const listVet = (body: string, names: string[], polarity: "in" | "out", listedNames?: string[]) =>
-      vetAdminGroupFacts({
-        body,
-        facts: facts(names.map((n) => claim({ personRef: n, polarity, confidence: 1 }))),
-        senderUserId: "u-omar",
-        senderName: "Omar Shah",
-        bareDeclaration: false,
-        ...(listedNames ? { listedNames } : {}),
-        resolve,
-        statusOf: () => null,
-      });
-
-    it("without the floor's names, every claim is held: the incident", () => {
-      expect(listVet("Imti \nRafi \nAH\n\nIn", ["Imti", "Rafi", "AH"], "in").vetted.map((v) => v.hold)).toEqual([
-        "not-a-command",
-        "not-a-command",
-        "not-a-command",
-      ]);
-    });
-
-    it.each<[string, string[], "in" | "out"]>([
-      ["Imti \nRafi \nAH\n\nIn", ["Imti", "Rafi", "AH"], "in"],
-      ["Yaseen \nMo\nFeroz\nAli\n\nOut", ["Yaseen", "Mo", "Feroz", "Ali"], "out"],
-      ["Imti, Rafi and AH in", ["Imti", "Rafi", "AH"], "in"],
-    ])("%j with the floor's names: every claim applies", (body, names, polarity) => {
-      const out = listVet(body, names, polarity, names);
-      expect(out.vetted.map((v) => v.hold)).toEqual(names.map(() => null));
-      expect(out.facts.claims.map((c) => c.personRef)).toEqual(names);
-    });
-
-    it("a name the floor did not list is still vetted as before", () => {
-      const out = listVet("Imti \nRafi\n\nIn", ["Imti", "Kai"], "in", ["Imti", "Rafi"]);
-      expect(out.vetted.map((v) => [v.claim.personRef, v.hold])).toEqual([
-        ["Imti", null],
-        ["Kai", "not-a-command"],
-      ]);
-    });
-
-    it("a listed name is still held when the claim is not definite", () => {
-      const out = vetAdminGroupFacts({
-        body: "Imti\nRafi\n\nIn",
-        facts: facts([claim({ personRef: "Imti", contingent: true, conditionOn: "self" })]),
-        senderUserId: "u-omar",
-        senderName: "Omar Shah",
-        bareDeclaration: false,
-        listedNames: ["Imti", "Rafi"],
-        resolve,
-        statusOf: () => null,
-      });
-      expect(out.vetted[0].hold).toBe("contingent");
-    });
+    expect(vet(facts([], "yes")).facts.affirmation).toBeNull();
   });
 });
 
@@ -465,7 +319,7 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
   });
   const me: AdminClaimRef = { kind: "member", userId: "u-omar", name: "Omar Shah" };
   const reply = (p: Parameters<typeof buildAdminSquadReply>[0]) => buildAdminSquadReply(p)?.text ?? null;
-  const base = { lang: "en", changes: [], failed: [], confirmed: 17, maxPlayers: 18, kickoffLabel: "Fri 20:30", senderName: "Omar Shah", bench: [] as string[], benchPickMode: null };
+  const base = { lang: "en", changes: [], failed: [], confirmed: 17, maxPlayers: 18, kickoffLabel: "Fri 20:30", bench: [] as string[], benchPickMode: null };
 
   it("a change is reported as before", () => {
     expect(
@@ -525,14 +379,6 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     it("a member who is not an organiser, untagged: silence, as for chatter", () => {
       expect(reply({ ...base, vetted: [glazers] })).toBeNull();
     });
-    it("held as conversation, even asked of MatchTime or by an organiser: silence, as a stranger's drop always was", () => {
-      expect(reply({ ...base, vetted: [{ ...glazers, hold: "not-a-command" }], addressed: true })).toBeNull();
-      expect(reply({ ...base, vetted: [{ ...glazers, hold: "not-a-command" }], organiser: true })).toBeNull();
-    });
-    it("a tentative or past mention: silence, tagged or not", () => {
-      expect(reply({ ...base, vetted: [{ ...glazers, hold: "contingent" }], addressed: true })).toBeNull();
-      expect(reply({ ...base, vetted: [{ ...glazers, hold: "not-now" }], addressed: true })).toBeNull();
-    });
     it("two names: one line naming both", () => {
       const zed = v({ claim: claim({ personRef: "Zed", polarity: "out" }), ref: { kind: "unknown", name: "Zed" } });
       expect(reply({ ...base, vetted: [glazers, zed], addressed: true })).toBe("I can't find Glazers, Zed on the list for Fri 20:30, so nothing changed.");
@@ -556,116 +402,11 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     );
   });
 
-  it("held chatter, a tentative or a contingent line: silence", () => {
-    expect(reply({ ...base, vetted: [v({ claim: claim({ contingent: true }), hold: "contingent" })] })).toBeNull();
-    expect(
-      reply({
-        ...base,
-        vetted: [v({ claim: self({ polarity: "out", contingent: true }), hold: "contingent", before: "CONFIRMED", ref: me })],
-      }),
-    ).toBeNull();
-    expect(reply({ ...base, vetted: [v({ claim: claim(), hold: "not-a-command" })] })).toBeNull();
-    expect(reply({ ...base, vetted: [] })).toBeNull();
-  });
 
-  it("a name nobody in the club has, mentioned in passing to MatchTime (a tag or a reply to it): says so and how to add them", () => {
-    const vetted = [v({ claim: claim({ personRef: "Zayn" }), hold: "not-a-command", ref: { kind: "unknown", name: "Zayn" } })];
-    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know Zayn yet. To add them, just ask me in your own words (for example put Zayn in).');
-    expect(reply({ ...base, addressed: true, lang: "tr", vetted })).toBe('Zayn adında birini henüz tanımıyorum. Eklemek için kendi cümlelerinizle yazmanız yeterli (örneğin Zayn var).');
-    // but not for a past or contingent mention, nor a drop of a stranger
-    expect(
-      reply({
-        ...base,
-        addressed: true,
-        vetted: [v({ claim: claim({ personRef: "Zayn", tense: "past" }), hold: "not-now", ref: { kind: "unknown", name: "Zayn" } })],
-      }),
-    ).toBeNull();
-    expect(
-      reply({
-        ...base,
-        addressed: true,
-        vetted: [v({ claim: claim({ personRef: "Zayn", contingent: true }), hold: "contingent", ref: { kind: "unknown", name: "Zayn" } })],
-      }),
-    ).toBeNull();
-    expect(
-      reply({
-        ...base,
-        addressed: true,
-        vetted: [v({ claim: claim({ personRef: "Zayn", polarity: "out" }), hold: "not-a-command", ref: { kind: "unknown", name: "Zayn" } })],
-      }),
-    ).toBeNull();
-  });
 
-  // FNF HQ, 2026-10-16 23:49 London: "Imti Rafi AH back", a WhatsApp reply
-  // to ANOTHER organiser about next week, got a tick and "I don't know AH
-  // yet...". Nothing was written. A hint for a held claim is said only when
-  // the message was addressed to MatchTime; otherwise it is their chat.
-  it("the incident: held chatter about a stranger and members, not addressed: silence", () => {
-    const vetted = [
-      v({ claim: claim({ personRef: "Imti" }), hold: "not-a-command", ref: { kind: "member", userId: "u-imti", name: "Imti" } }),
-      v({ claim: claim({ personRef: "Rafi" }), hold: "not-a-command", ref: { kind: "member", userId: "u-rafi", name: "Rafi" } }),
-      v({ claim: claim({ personRef: "AH" }), hold: "unsure", ref: { kind: "unknown", name: "AH" } }),
-    ];
-    expect(buildAdminSquadReply({ ...base, vetted })).toBeNull();
-    expect(buildAdminSquadReply({ ...base, addressed: false, vetted })).toBeNull();
-    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know AH yet. To add them, just ask me in your own words (for example put AH in).');
-  });
 
-  // "@Match Time AH back" in HQ, Haiku 5.5 (2026-10-19): the router reads
-  // it as about someone else (other_att), but the attendance extractor
-  // finds no name in it (live: a claim about the SENDER, confidence 0.3,
-  // held "unsure"). Nothing applied and nothing said; the organiser asked
-  // MatchTime and heard nothing. Now: one line saying it could not tell who,
-  // and how to add someone.
-  describe("addressed, read as about someone else, and no one named (FNF HQ, 2026-10-19)", () => {
-    const misread = [v({ claim: self({ personNamed: true, confidence: 0.3, tense: "future" }), hold: "unsure", ref: me })];
-    const WHO_EN = "I couldn't tell who that's about, so I haven't changed anything. To add someone or take them out, just ask me in your own words with their name (for example put Bilal in).";
-    const WHO_TR =
-      "Bunun kimle ilgili olduğunu anlayamadım, bu yüzden hiçbir şeyi değiştirmedim. Birini eklemek ya da çıkarmak için adıyla birlikte kendi cümlelerinizle yazmanız yeterli (örneğin Bilal var).";
 
-    it("the extractor read it as the sender's own: one line saying who it could not tell, and how to add someone", () => {
-      expect(buildAdminSquadReply({ ...base, addressed: true, aboutOthers: true, vetted: misread })).toEqual({ text: WHO_EN, outcome: "squad-question" });
-      expect(reply({ ...base, lang: "tr", addressed: true, aboutOthers: true, vetted: misread })).toBe(WHO_TR);
-      expect(`${WHO_EN} ${WHO_TR}`).not.toMatch(/[\u2013\u2014]/);
-    });
 
-    it("no claim read at all: the same line", () => {
-      expect(reply({ ...base, addressed: true, aboutOthers: true, vetted: [] })).toBe(WHO_EN);
-    });
-
-    it("not addressed, or read as the sender's own (self_att): silence, as before", () => {
-      expect(reply({ ...base, aboutOthers: true, vetted: misread })).toBeNull();
-      expect(reply({ ...base, addressed: false, aboutOthers: true, vetted: [] })).toBeNull();
-      expect(reply({ ...base, addressed: true, vetted: misread })).toBeNull();
-    });
-
-    it("someone WAS named: that person's own rules, never this line", () => {
-      // a member, held (relayed): silence, as before
-      expect(reply({ ...base, addressed: true, aboutOthers: true, vetted: [v({ claim: claim({ reported: true }), hold: "reported" })] })).toBeNull();
-      // a stranger: the stranger line
-      expect(
-        reply({ ...base, addressed: true, aboutOthers: true, vetted: [v({ claim: claim({ personRef: "AH" }), hold: "not-a-command", ref: { kind: "unknown", name: "AH" } })] }),
-      ).toBe("I don't know AH yet. To add them, just ask me in your own words (for example put AH in).");
-    });
-  });
-
-  it("a name two members could mean, held, said to MatchTime: asks for the full name; in conversation: silence", () => {
-    const vetted = [v({ claim: claim({ personRef: "Ali" }), hold: "not-a-command", ref: { kind: "ambiguous", name: "Ali" } })];
-    expect(buildAdminSquadReply({ ...base, addressed: true, vetted })).toEqual({
-      text: "Not sure who Ali is, so I'll leave them out; use the full name.",
-      outcome: "squad-question",
-    });
-    expect(reply({ ...base, addressed: true, lang: "tr", vetted })).toBe("Ali kim, emin değilim; dışarıda bırakıyorum, tam adını yazın.");
-    expect(reply({ ...base, vetted })).toBeNull();
-    // a past or contingent mention stays silent, as for a stranger
-    expect(reply({ ...base, addressed: true, vetted: [v({ claim: claim({ personRef: "Ali", contingent: true }), hold: "contingent", ref: { kind: "ambiguous", name: "Ali" } })] })).toBeNull();
-  });
-
-  it("the sender's own plain line in conversation, not addressed: silence", () => {
-    expect(
-      buildAdminSquadReply({ ...base, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })] }),
-    ).toBeNull();
-  });
 
   it("an instruction is answered whether or not it was addressed", () => {
     expect(
@@ -680,7 +421,7 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
   // over at 08:00 the morning after the last one. Until then that list is not
   // set: an instruction for it is not applied and gets one line saying so;
   // chatter about it stays silent.
-  it("the list is not set yet: an instruction gets one line, chatter nothing", () => {
+  it("the list is not set yet: an instruction gets one line", () => {
     const notSet = { day: "Saturday", time: "08:00" };
     const instruction = [v({ claim: claim({ polarity: "out" }), hold: "not-set", before: null })];
     expect(buildAdminSquadReply({ ...base, notSet, vetted: instruction })).toEqual({
@@ -690,10 +431,9 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     expect(reply({ ...base, lang: "tr", kickoffLabel: "Cuma 20:30", notSet: { day: "Cumartesi", time: "08:00" }, vetted: instruction })).toBe(
       "Cuma 20:30 listesi henüz belli değil: geçen haftanın kadrosu Cumartesi saat 08:00 itibarıyla aktarılacak. Ondan sonra tekrar yazın.",
     );
-    const chatter = [v({ claim: claim({ personRef: "AH" }), hold: "not-a-command", ref: { kind: "unknown", name: "AH" } })];
-    expect(buildAdminSquadReply({ ...base, notSet, vetted: chatter })).toBeNull();
-    // addressed to MatchTime: the same one line, never silence
-    expect(buildAdminSquadReply({ ...base, notSet, addressed: true, vetted: chatter })?.outcome).toBe("squad-not-set");
+    // nothing read, not addressed: silence; addressed: the same one line
+    expect(buildAdminSquadReply({ ...base, notSet, vetted: [] })).toBeNull();
+    expect(buildAdminSquadReply({ ...base, notSet, addressed: true, vetted: [] })?.outcome).toBe("squad-not-set");
   });
 
   it("an explicit command naming two possible players asks for the full name", () => {
@@ -702,48 +442,9 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     );
   });
 
-  it("the sender says plainly they are out (or in) to MatchTime: no write, one line saying how", () => {
-    const outLine = buildAdminSquadReply({ ...base, addressed: true, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })] });
-    expect(outLine).toEqual({ text: 'If you want me to take you out of Fri 20:30, just ask me in your own words (for example Omar Shah out).', outcome: "squad-question" });
-    const inLine = reply({ ...base, addressed: true, vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] });
-    expect(inLine).toBe('If you want me to put you in for Fri 20:30, just ask me in your own words (for example Omar Shah in).');
-    expect(
-      reply({
-        ...base,
-        addressed: true,
-        lang: "tr",
-        kickoffLabel: "Cum 20:30",
-        vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })],
-      }),
-    ).toBe('Sizi Cum 20:30 kadrosundan çıkarmamı isterseniz kendi cümlelerinizle yazmanız yeterli (örneğin Omar Shah yok).');
-    expect(
-      reply({ ...base, addressed: true, lang: "tr", kickoffLabel: "Cum 20:30", vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] }),
-    ).toBe('Sizi Cum 20:30 kadrosuna yazmamı isterseniz kendi cümlelerinizle yazmanız yeterli (örneğin Omar Shah var).');
-    // already where they say: silence, not "Nothing to change"
-    expect(
-      reply({ ...base, addressed: true, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: null, ref: me })] }),
-    ).toBeNull();
-    // a tentative or contingent line about themselves is never turned into
-    // a question (an injury on its own is no claim at all since 2026-10-20)
-    expect(
-      reply({
-        ...base,
-        addressed: true,
-        vetted: [v({ claim: self({ polarity: "out", contingent: true, conditionOn: "self" }), hold: "contingent", before: "CONFIRMED", ref: me })],
-      }),
-    ).toBeNull();
-  });
 
   it("the sender's own explicit line that changes nothing: silence, not a false or pointless line", () => {
     expect(reply({ ...base, vetted: [v({ claim: self({ polarity: "out" }), before: null, ref: me })] })).toBeNull();
   });
 
-  it("no dashes in the new lines", () => {
-    const all = ["en", "tr"].flatMap((lang) => [
-      reply({ ...base, addressed: true, lang, vetted: [v({ claim: claim({ personRef: "Zayn" }), hold: "not-a-command", ref: { kind: "unknown", name: "Zayn" } })] }),
-      reply({ ...base, addressed: true, lang, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })] }),
-      reply({ ...base, addressed: true, lang, vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] }),
-    ]);
-    expect(all.join(" ")).not.toMatch(/[\u2013\u2014]/);
-  });
 });

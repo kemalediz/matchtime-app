@@ -305,6 +305,21 @@ export function clearHqSquadReaderStub(): void {
   rmSync(`${E2E.HQ_SQUAD_READER_STUB_FILE}.calls`, { force: true });
 }
 
+/** The PICK READER stub (2026-10-30): a reply to a bench pick round's body
+ *  (trimmed) → the model's raw answer (`{kind, positions, people, name,
+ *  candidates}`; missing fields are filled empty). `people` and
+ *  `candidates` may name a person by NAME; the server's stub seam turns
+ *  names into the refs it gave. A body with no entry is not a pick. */
+export function setOrganiserPickReaderStub(stub: { bodies?: Record<string, unknown>; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.ORGANISER_PICK_READER_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.ORGANISER_PICK_READER_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearOrganiserPickReaderStub(): void {
+  setOrganiserPickReaderStub({});
+  rmSync(`${E2E.ORGANISER_PICK_READER_STUB_FILE}.calls`, { force: true });
+}
+
 /** A squad list the reader reads line for line: every name a person, no
  *  ref (the club's name rules place them), under `bench` from `benchFrom`
  *  on, with `out` the members (by name) it leaves off on purpose. */
@@ -320,6 +335,29 @@ export function squadReading(names: string[], opts: { out?: string[]; benchFrom?
     out: opts.out ?? [],
   };
 }
+
+/** A CHANGE the HQ squad reader reads (2026-10-30: every HQ message the
+ *  router sends to the squad is read by it, one line or many). Each entry
+ *  is a member by their FULL roster name (the stub turns it into a ref), or
+ *  `{ new: "Name" }` for a person nobody in the club is. */
+export function changeReading(
+  changes: Array<[string | { new: string }, "in" | "out" | "bench"]>,
+  opts: { alsoAsks?: boolean; replaces?: Record<string, string> } = {},
+): Record<string, unknown> {
+  return {
+    kind: "change",
+    lines: [],
+    out: [],
+    changes: changes.map(([who, to]) => {
+      const name = typeof who === "string" ? who : who.new;
+      return { name, member: typeof who === "string" ? who : "", person: true, to, replaces: opts.replaces?.[name] ?? "" };
+    }),
+    alsoAsks: opts.alsoAsks === true,
+  };
+}
+
+/** The HQ squad reader reads the message as the organisers' own talk. */
+export const OTHER_READING: Record<string, unknown> = { kind: "other", lines: [], out: [], changes: [], alsoAsks: false };
 
 /** The DIGEST REPLY stub (2026-10-29): the collector's message → the
  *  model's raw JSON (`{answer, numbers, month, confidence}`). The harness
@@ -378,6 +416,7 @@ export function clearPipelineStubs(): void {
   clearCalloffStub();
   clearMonthlyReaderStub();
   clearHqSquadReaderStub();
+  clearOrganiserPickReaderStub();
   setMonthSeedReplyStub({});
   setDigestReplyStub({});
 }
@@ -479,6 +518,10 @@ export function teamsFacts(
 export interface BodyRouting {
   route: string;
   facts?: Record<string, unknown>;
+  /** HQ only (2026-10-30): what the HQ squad reader reads this body as
+   *  (`changeReading`, `squadReading`, `OTHER_READING`). Merged into the
+   *  reader's stub; a body with no reading there is "other". */
+  reading?: Record<string, unknown>;
 }
 
 /**
@@ -505,9 +548,25 @@ export function engineOn(
 ): void {
   const bodies: Record<string, string> = {};
   const factBodies: Record<string, Record<string, unknown>> = {};
+  const readings: Record<string, unknown> = {};
   for (const [body, v] of Object.entries(map)) {
     bodies[body] = v.route;
+    // The router stub reads the turn one line per message (`[id] author:
+    // body`), so a multi-line body is seen by its first line only: keyed by
+    // that too (a pasted list goes to the router since 2026-10-30).
+    const first = body.split("\n")[0].trim();
+    if (first !== body.trim() && !(first in map)) bodies[first] = v.route;
     if (v.facts) factBodies[body] = v.facts;
+    if (v.reading) readings[body] = v.reading;
+  }
+  if (Object.keys(readings).length > 0) {
+    let current: { bodies?: Record<string, unknown>; fail?: string[] } = {};
+    try {
+      current = JSON.parse(readFileSync(E2E.HQ_SQUAD_READER_STUB_FILE, "utf8"));
+    } catch {
+      current = {};
+    }
+    setHqSquadReaderStub({ ...current, bodies: { ...(current.bodies ?? {}), ...readings } });
   }
   setRouterStub({
     floor: opts.floor ?? false,

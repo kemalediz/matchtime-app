@@ -7,18 +7,21 @@
  * plays to everyone there, and the sender acts with an organiser's
  * standing). The caller (`admin-group-understand.ts`) has already proven the
  * sender is a member of the club, claimed the message id, ruled out a pick
- * reply and a pasted list, and routed the message through the SHARED
- * router (`gateBatch`, with the organisers' group context) to `self_att`
- * or `other_att`. It hands that route here.
+ * reply, routed the message through the SHARED router (`gateBatch`, with
+ * the organisers' group context) to the squad, and had it read by the HQ
+ * squad reader (`hq-squad-reader.ts`, HQ's one model door for who plays,
+ * 2026-10-30), which read it as a CHANGE: who comes in, goes out or to the
+ * bench, an instruction and not the organisers' own talk. It hands that
+ * reading here.
  *
- * It applies the message through the SAME code a message in the players'
+ * It applies the change through the SAME code a message in the players'
  * group goes through, and through nothing else:
  *
- *   the route the shared router gave
- *     -> only `self_att` and `other_att` go on; anything else is silence
- *   attendance engine (`runAttendanceEngineBatch`, unchanged extractor
- *     prompt, the real `registerAttendance` / `cancelAttendance`, the
- *     same name resolver, the same team-slot move)
+ *   the reader's change, as the engine's facts (`hqChangeFacts`, no
+ *     extractor call: the reader already read the message)
+ *   attendance engine (`runAttendanceEngineBatch`, the real
+ *     `registerAttendance` / `cancelAttendance`, the same name resolver,
+ *     the same team-slot move)
  *
  * so names resolve, the waiting list fills, organiser pick behaves and
  * every follow-on flow (bench prompts, pick rounds, late-drop notices)
@@ -38,24 +41,23 @@ import type { QuotedGroupMessage } from "./reply-context";
 import { db } from "./db";
 import { cancelAttendance, registerAttendance } from "./attendance";
 import { runAttendanceEngineBatch } from "./attendance-engine-batch";
-import { getAiBudgetStatus, withOrgAiBudget } from "./ai-budget";
+import { withOrgAiBudget } from "./ai-budget";
 import { resolveMentionNames } from "./pipeline/mention-names";
 import { buildClaimGuestNameAsk } from "./owner-deps";
 import { moveNamedSlot } from "./team-slot-fill";
 import { recordTentative, resolveTentative } from "./tentative-store";
 import { resolveOrProvisionByName } from "./resolve-or-provision-name";
 import { adminGroupSourceRef } from "./admin-added";
-import { floorAttendanceFacts } from "./pipeline/router";
 import { resolvePerson } from "./pipeline/identity";
 import { loadSquadState } from "./pipeline/load-state";
 import { rollingSeedPendingAt } from "./rolling-squad";
-import { hqNameListFacts, readHqNameList } from "./admin-group-name-list";
 import { timeLabel, weekdayLabel } from "./i18n/dates";
+import type { HqSquadChange } from "./hq-squad-reader-prompt";
 import { loadSquadCount } from "./squad-count";
 import type { Route, SquadState } from "./pipeline/types";
 import {
-  ADMIN_GROUP_SQUAD_ROUTES,
   buildAdminSquadReply,
+  hqChangeFacts,
   vetAdminGroupFacts,
   type AdminClaimRef,
   type AdminSquadReplyOutcome,
@@ -75,6 +77,9 @@ export interface AdminSquadChangeInput {
   now: Date;
   /** What the shared router called this message (`admin-group-understand.ts`). */
   route: Route;
+  /** What the HQ squad reader read: the change, and whether the message
+   *  also asks MatchTime something. */
+  reading: { changes: readonly HqSquadChange[]; alsoAsks: boolean };
   /** The body with raw @tags named (`nameMentions`), when the caller has it. */
   namedBody?: string;
   /** Addressed to MatchTime: an @tag, or a reply to its own message. Only
@@ -88,17 +93,16 @@ export interface AdminSquadChangeInput {
 }
 
 /**
- * `alsoAsks`: the attendance extractor read that the message ALSO asks
- * MatchTime for something it holds (its "question" side request, FNF HQ
- * 2026-10-24: "Glazers is out now. @Match Time what is the list?"). Only
- * present when true. The caller answers it, after this change.
+ * `alsoAsks`: the reader read that the message ALSO asks MatchTime for
+ * something it holds (FNF HQ 2026-10-24: "Glazers is out now. @Match Time
+ * what is the list?"). Only present when true. The caller answers it,
+ * after this change.
  */
 export type AdminSquadChangeResult =
   | { handled: false; why: "not-a-squad-change" | "no-match"; alsoAsks?: true }
   | {
       handled: true;
-      /** "squad-question": nothing written, one line saying how to make the
-       *  change (an unknown name, the sender's own plain IN/OUT in chat).
+      /** "squad-question": nothing written, one line asking for a full name.
        *  "squad-not-on-list": nothing written, an OUT for a name nobody in
        *  the club has. */
       outcome: AdminSquadReplyOutcome;
@@ -137,14 +141,11 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
   const { orgId, messageId } = input;
   return withOrgAiBudget(orgId, async () => {
     const body = input.namedBody ?? (await nameMentions(orgId, input.text, input.mentionNames));
-    // The club's daily AI cap, as in the players' group: at the cap the
-    // extractor is not asked, and a bare IN/OUT is read by the floor.
-    const capped = (await getAiBudgetStatus(orgId).catch(() => null))?.capped ?? false;
-    const route = input.route;
-    if (!ADMIN_GROUP_SQUAD_ROUTES.has(route)) {
-      console.log(`[admin-group] ${messageId}: routed ${route}, not a squad change`);
-      return { handled: false, why: "not-a-squad-change" };
-    }
+    // The reader's change is the engine's facts: no extractor call, at the
+    // club's AI cap or not (the reader itself was the model call).
+    const facts = hqChangeFacts(input.reading.changes, input.senderUserId);
+    const alsoAsks = input.reading.alsoAsks === true;
+    const route: Route = facts.claims.every((c) => c.subject === "sender") ? "self_att" : "other_att";
 
     // What actually moved, read off the real writers as they run: the
     // status before and after, so a write that changed nothing says
@@ -154,15 +155,10 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       ((await db.attendance.findUnique({ where: { matchId_userId: { matchId, userId } }, select: { status: true } }))
         ?.status as Status | undefined) ?? null;
 
-    // HQ IS WHERE THE ORGANISERS TALK (2026-10-15). Only an explicit
-    // instruction reaches `decide()`; every claim the extractor read is
-    // kept here with why it was held, who it is about and where they stood,
-    // for the one line back. See `admin-group-squad-rules.ts`.
+    // Every claim the reader read, with who it is about and where they
+    // stood, for the one line back. See `admin-group-squad-rules.ts`.
     let vetted: VettedClaim[] = [];
     let kickoffLabel = "";
-    // The extractor's "question" side request (the engine does nothing with
-    // it): passed back so the caller answers the question after the change.
-    let alsoAsks = false;
     // THE NEXT GAME'S LIST NOT SET YET (2026-10-17): a rolling club's
     // squad is carried over at 08:00 the morning after the last game. Until
     // then nothing said in HQ is applied to it. Read on the match the
@@ -185,26 +181,16 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
     const vetFacts: NonNullable<Parameters<typeof runAttendanceEngineBatch>[0]["deps"]["vetFacts"]> = ({ message, facts, state }) => {
       if (message.waMessageId !== messageId) return facts;
       kickoffLabel = state.kickoffLabel;
-      alsoAsks = facts.sideRequests.includes("question");
-      // An organiser's list of names with IN/OUT ("Imti\nRafi\nAH\n\nIn",
-      // admin-group-name-list.ts): each listed name is the instruction.
-      const listedNames = readHqNameList(message.body)?.names ?? [];
       const out = vetAdminGroupFacts({
-        body: message.body,
         facts,
         senderUserId: input.senderUserId,
         senderName: input.senderName,
-        bareDeclaration: floorAttendanceFacts(message.body) !== null,
-        listedNames,
         listNotSet: notSetAt !== null,
         resolve: (ref) => refOn(state, ref),
         statusOf: (userId) => state.rows.find((r) => r.userId === userId)?.status ?? null,
       });
       vetted = out.vetted;
-      const held = vetted.filter((v) => v.hold !== null);
-      if (held.length > 0) {
-        console.log(`[admin-group] ${messageId}: ${held.length} of ${vetted.length} claim(s) held (${held.map((v) => v.hold).join(", ")})`);
-      }
+      if (notSetAt !== null) console.log(`[admin-group] ${messageId}: ${vetted.length} claim(s) held: the list is not set yet`);
       return out.facts;
     };
 
@@ -230,11 +216,8 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
         },
       ],
       deps: {
-        aiCapped: capped,
-        // An organiser's short list of names with IN/OUT is structured
-        // data: its facts are read in code, no extractor (FNF HQ
-        // 2026-10-17, "Imti\nRafi\nAH\n\nIn").
-        presetFacts: (message) => (message.waMessageId === messageId ? hqNameListFacts(message.body) : null),
+        // The reader already read the message: its change is the facts.
+        presetFacts: (message) => (message.waMessageId === messageId ? facts : null),
         loadState,
         vetFacts,
         // Every write is stamped as the admin group's (sourceRef
@@ -322,9 +305,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       benchPickMode: squad.benchPickMode,
       vetted,
       kickoffLabel,
-      senderName: input.senderName,
       addressed: input.addressed === true,
-      aboutOthers: route === "other_att",
       organiser: input.organiser === true,
       notSet: notSetAt ? { day: weekdayLabel(input.lang, notSetAt), time: timeLabel(notSetAt) } : null,
     });

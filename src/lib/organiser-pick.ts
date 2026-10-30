@@ -21,10 +21,13 @@
  *                         vacated team slot, the round;
  *   announcePick          who is told what (A1 to A3), after the commit.
  *
- * NO MODEL, EVER. Every word is composed by code from database facts, and
- * the admin-group route that reaches this module is pinned model-free by
- * `admin-group-model-door.source.test.ts`, which follows every import. That
- * is why nothing here imports `attendance.ts` or `bot-scheduler.ts`.
+ * ONE MODEL CALL, the pick reader (`organiser-pick-reader.ts`, 2026-10-30):
+ * what an admin's reply MEANS ("2 3", "all", "none", a name, an @tag, YES)
+ * is read by it, never by code (Kemal, 2026-10-30: "I don't want any string
+ * parsing at all"). Everything MatchTime says is still composed by code
+ * from database facts. `admin-group-model-door.source.test.ts` follows every
+ * import from the admin-group route and allows the reader as a narrow door;
+ * nothing here imports `attendance.ts` or `bot-scheduler.ts`.
  *
  * Messages to the admin channel go through `sendAdminNotice` (the one door,
  * slice 2a); posts to the community group and DMs to a player are BotJobs,
@@ -63,8 +66,6 @@ import {
   buildPickListChanged,
   buildPickMessage,
   decidePickRound,
-  foldPickText,
-  parsePickReply,
   pickFallbackAt,
   positionLabel,
   type PickCandidate,
@@ -74,6 +75,8 @@ import {
   fallbackOfferCount,
 } from "./organiser-pick-rules";
 import { NOT_CANCELLED } from "@/lib/played-match";
+import { hqLogSince } from "./admin-group-log";
+import { readPickReply, type PickReaderContext, type PickReaderInput, type PickReaderPerson } from "./organiser-pick-reader";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 const CLUB_RATING_WINDOW = 60;
@@ -827,35 +830,51 @@ async function loadClubMembers(orgId: string): Promise<Array<PickCandidate & { p
 }
 
 /**
- * The real @tags in an admin's reply, resolved against the CLUB's roster
- * (not the admin group's members): the phone behind the mention (a phone
- * JID, or the phone the Pi was told for a LID), then a LID the server
- * stored itself, then the display name as a lookup key against the club
- * (never as text). The same order of trust as `pipeline/mention-names.ts`,
- * which this path may not import (it has no model, and pins that).
+ * The real @tags in an admin's reply, from the Pi's STRUCTURED mention data
+ * (never the text), resolved against the CLUB's roster (not the admin
+ * group's members): the phone behind the mention (a phone JID, or the phone
+ * the Pi was told for a LID), then a LID the server stored itself. The same
+ * order of trust as `pipeline/mention-names.ts`. A tag that resolves to
+ * nobody keeps the person's own WhatsApp name, which the pick reader is
+ * shown as that and never as an identity.
  */
 async function resolvePickTags(
-  text: string,
   mentionNames: PickReplyInput["mentionNames"],
   members: Array<PickCandidate & { phone: string | null }>,
-): Promise<Array<{ digits: string; userId: string | null }>> {
-  const tokens = [...new Set([...(text ?? "").matchAll(/@(\d{5,})\b/g)].map((m) => m[1]))];
+): Promise<Array<{ digits: string; userId: string | null; whatsappName: string | null }>> {
   const memberIds = new Set(members.map((m) => m.userId));
-  const out: Array<{ digits: string; userId: string | null }> = [];
-  for (const digits of tokens) {
-    const mn = (mentionNames ?? []).find((x) => typeof x?.jid === "string" && x.jid.replace(/@.*$/, "").replace(/\D/g, "") === digits);
-    const isPhoneJid = !!mn && /@(c\.us|s\.whatsapp\.net)$/i.test(mn.jid);
-    const isLid = !!mn && /@lid$/i.test(mn.jid);
-    const phones = [isPhoneJid ? digits : null, mn?.phone ?? null];
-    let hits = (await resolveSenderUserIds({ phones, lid: isLid ? digits : null })).filter((id) => memberIds.has(id));
-    if (hits.length !== 1 && mn?.name) {
-      const key = foldPickText(mn.name);
-      const full = members.filter((m) => foldPickText(m.name) === key);
-      hits = full.length === 1 ? [full[0].userId] : members.filter((m) => foldPickText(m.name).split(" ")[0] === key).map((m) => m.userId);
-    }
-    out.push({ digits, userId: hits.length === 1 ? hits[0] : null });
+  const out: Array<{ digits: string; userId: string | null; whatsappName: string | null }> = [];
+  const seen = new Set<string>();
+  for (const mn of mentionNames ?? []) {
+    if (typeof mn?.jid !== "string") continue;
+    const [user, server = ""] = mn.jid.split("@");
+    const digits = user.split(":")[0];
+    if (!digits || seen.has(digits)) continue;
+    seen.add(digits);
+    const isPhoneJid = server === "c.us" || server === "s.whatsapp.net";
+    const isLid = server === "lid";
+    const phones = [isPhoneJid ? digits : null, mn.phone ?? null];
+    const hits = (await resolveSenderUserIds({ phones, lid: isLid ? digits : null })).filter((id) => memberIds.has(id));
+    out.push({ digits, userId: hits.length === 1 ? hits[0] : null, whatsappName: mn.name?.trim() || null });
   }
   return out;
+}
+
+/** HQ only: the recent messages there (the last hour), the reply itself
+ *  left out, MatchTime's own as "MatchTime", a member's under his roster
+ *  name. Never throws. */
+async function recentHqMessages(
+  orgId: string,
+  senderUserId: string,
+  text: string,
+  now: Date,
+  members: PickCandidate[],
+): Promise<PickReaderInput["history"]> {
+  const rows = await hqLogSince(orgId, new Date(now.getTime() - 60 * 60 * 1000)).catch(() => []);
+  const nameOf = new Map(members.map((m) => [m.userId, m.name]));
+  return (rows ?? [])
+    .filter((r) => !(r.senderUserId === senderUserId && r.text === text))
+    .map((r) => ({ author: r.fromMatchTime ? "MatchTime" : r.senderUserId ? (nameOf.get(r.senderUserId) ?? null) : null, body: r.text }));
 }
 
 /** The round a reply answers: the most recent open round of the club (for a
@@ -911,21 +930,50 @@ export async function handlePickReply(input: PickReplyInput): Promise<PickReplyO
     !!round.pendingConfirmUserId &&
     !!round.pendingConfirmAskedAt &&
     now.getTime() - round.pendingConfirmAskedAt.getTime() <= PICK_CONFIRM_TTL_MS;
-  const tags = await resolvePickTags(input.text, input.mentionNames, members);
-  const reply = parsePickReply(
-    input.text,
+  // Who the reader may be told about, each under a short ref: the list as
+  // sent, the squad, then the club's other members.
+  const others = members.filter((mm) => !listed.has(mm.userId) && !confirmedIds.has(mm.userId));
+  const refs = new Map<string, PickReaderPerson>();
+  const person = (c: PickCandidate): PickReaderPerson => {
+    const known = refs.get(c.userId);
+    if (known) return known;
+    const p = { ref: `p${refs.size + 1}`, userId: c.userId, name: c.name };
+    refs.set(c.userId, p);
+    return p;
+  };
+  const listPeople = list.map(person);
+  const confirmedPeople = world.confirmed.map(person);
+  const otherPeople = others.map(person);
+  const pendingUser = found.open && pendingFresh ? round.pendingConfirmUserId! : null;
+  const pending = pendingUser
+    ? (refs.get(pendingUser) ?? person({ userId: pendingUser, name: members.find((mm) => mm.userId === pendingUser)?.name ?? "?" }))
+    : null;
+  const tags = (await resolvePickTags(input.mentionNames, members)).map((tg) => ({
+    digits: tg.digits,
+    ref: tg.userId ? person({ userId: tg.userId, name: members.find((mm) => mm.userId === tg.userId)?.name ?? "?" }).ref : null,
+    whatsappName: tg.whatsappName,
+  }));
+  const readerCtx: PickReaderContext = {
+    orgId: org.id,
+    door: input.door,
+    list: listPeople,
+    confirmed: confirmedPeople,
+    others: otherPeople,
+    asked: audience === "group" ? s.pick_instructions_group : s.pick_instructions_dm,
+    pending,
+    tags,
+  };
+  const reply = await readPickReply(
     {
-      list,
-      confirmed: world.confirmed,
-      members: members.filter((mm) => !listed.has(mm.userId) && !confirmedIds.has(mm.userId)),
-      pendingConfirm: found.open && pendingFresh,
-      tags,
+      body: input.text ?? "",
+      senderName: members.find((mm) => mm.userId === input.senderUserId)?.name ?? null,
+      history: input.door === "admin-group" ? await recentHqMessages(org.id, input.senderUserId, input.text, now, members) : [],
     },
-    audience,
+    readerCtx,
   );
   if (reply.kind === "not-a-pick") return NOT_OURS;
   if (reply.kind === "not-understood") {
-    // The admin group never gets P6 (the parser says not-a-pick there).
+    // The admin group never gets P6 (the reader's check says not-a-pick there).
     return { handled: true, replyText: s.pick_not_understood, outcome: "not-understood" };
   }
 
@@ -953,24 +1001,22 @@ export async function handlePickReply(input: PickReplyInput): Promise<PickReplyO
 
   let userIds: string[];
   let allowNotOnList = false;
-  if (reply.kind === "numbers") {
+  if (reply.kind === "pick") {
     // Numbers typed before this list went out answer an older list.
-    if (sentAt.getTime() < round.createdAt.getTime()) {
+    if (reply.positions.length > 0 && sentAt.getTime() < round.createdAt.getTime()) {
       return {
         handled: true,
         replyText: buildPickListChanged({ lang: org.language, rows: await currentRows(), audience }),
         outcome: "stale-numbers",
       };
     }
-    userIds = reply.numbers.map((n) => round.listUserIds[n - 1]).filter(Boolean);
+    userIds = [...new Set([...reply.positions.map((n) => round.listUserIds[n - 1]).filter(Boolean), ...reply.userIds])];
   } else if (reply.kind === "all") {
     const waitingNow = new Set(world.waiting.map((w) => w.userId));
     userIds = round.listUserIds.filter((id) => waitingNow.has(id));
-  } else if (reply.kind === "yes") {
+  } else {
     userIds = [round.pendingConfirmUserId!];
     allowNotOnList = true;
-  } else {
-    userIds = reply.userIds;
   }
 
   const result = await applyOrganiserPick({

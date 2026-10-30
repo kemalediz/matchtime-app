@@ -65,11 +65,15 @@ test.beforeAll(async ({ db }) => {
   await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group' WHERE id = $1`, [ORG_ID, HQ]);
   engineOn({
     [WON]: { route: "score", facts: { ...NO, hasScore: true, first: 7, second: 4, winner: "Yellow" } },
-    [UNCLEAR]: { route: "score", facts: { ...NO, hasScore: true, first: 7, second: 4 } },
+    // Two possible results: the score extractor (a model) reads no one result
+    // (as the live one did, 2026-10-30). No code counts the scorelines.
+    [UNCLEAR]: { route: "score", facts: { ...NO } },
     [ANSWER]: { route: "score", facts: { ...NO, hasScore: true, first: 7, second: 4, winner: "Yellow" } },
     [BARE]: { route: "score", facts: { ...NO, hasScore: true, first: 7, second: 4 } },
-    // The router calls a bare "Yellow" chat; the open question makes it the answer.
-    Yellow: { route: "none" },
+    // A bare "Yellow" while "which team won?" is open: the router, shown
+    // that WAITING line, reads it as the answer (2026-10-30: no code
+    // override from the words; checked live once on the dev key).
+    Yellow: { route: "score", facts: { ...NO, winner: "Yellow" } },
     [CORRECT]: { route: "score", facts: { ...NO, hasScore: true, first: 7, second: 5, winner: "yellow", correction: true } },
   });
 });

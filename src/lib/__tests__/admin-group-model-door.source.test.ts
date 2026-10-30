@@ -14,18 +14,18 @@
  *   - the admin-group route reaches a model through ONE door,
  *     `admin-group-understand.ts` (the shared pipeline), plus the shared
  *     writer and team generator every path has always reached: with those
- *     cut out of the graph, nothing reachable can call a model. So the
- *     STRUCTURED readers in front of the door (the PAID digest answer, a
- *     pick from MatchTime's numbered list, a pasted list) stay
- *     deterministic;
- *   - since 2026-10-29 a SECOND, narrow door: the HQ squad reader
- *     (`hq-squad-reader.ts`), the model that says whether a multi-line
- *     message is the squad, the teams or something else (FNF HQ, 29 Oct:
- *     the string parser read a pasted teams sheet as a squad of 9 and nine
- *     players were dropped). It is imported by `admin-group-paste.ts`
- *     alone, and has no pipeline step of its own beyond its one call.
- *     (It belongs inside the shared door, as the monthly list's reader is:
- *     a follow-up once the door's other work lands.)
+ *     cut out of the graph, nothing reachable can call a model. Nothing
+ *     in front of the door reads words with code any more: the PAID digest
+ *     answer and the pasted list are read inside it (2026-10-29, 2026-10-30);
+ *   - since 2026-10-30 a THIRD, narrow door: the pick reader
+ *     (`organiser-pick-reader.ts`), the model that reads a reply to
+ *     MatchTime's numbered bench list ("2 3", "all", "none", a name, an
+ *     @tag, YES). Kemal, 2026-10-30: "I don't want any string parsing at
+ *     all". It is imported by `organiser-pick.ts` alone, one call;
+ *   - the HQ squad reader (`hq-squad-reader.ts`, 2026-10-29), the model
+ *     that says whether a message is the squad, a change, the teams or
+ *     something else, is INSIDE the shared door since 2026-10-30: the
+ *     router first, then the reader. Nothing outside the door reaches it.
  *   - the door is imported by `admin-group.ts` alone, after the admin and
  *     club checks (`admin-group.test.ts` pins that a non-admin never gets
  *     there);
@@ -43,6 +43,7 @@ const DOOR = "src/lib/admin-group-understand.ts";
 const WRITER = "src/lib/attendance.ts";
 const GENERATOR = "src/lib/team-generation.ts";
 const PASTE_READER = "src/lib/hq-squad-reader.ts";
+const PICK_READER = "src/lib/organiser-pick-reader.ts";
 
 function resolveImport(from: string, spec: string): string | null {
   let base: string;
@@ -89,13 +90,20 @@ describe("admin-group paths and the model", () => {
     expectModelFree(files, packages);
   });
 
-  it("the admin-group route reaches one only through the shared-pipeline door and the HQ squad reader (and the shared writer and generator)", () => {
-    const { files, packages, importers } = importGraph(path.join(ROOT, "src/app/api/whatsapp/admin-group/route.ts"), [DOOR, WRITER, GENERATOR, PASTE_READER]);
+  it("the admin-group route reaches one only through the shared-pipeline door, the HQ squad reader and the pick reader (and the shared writer and generator)", () => {
+    const { files, packages, importers } = importGraph(path.join(ROOT, "src/app/api/whatsapp/admin-group/route.ts"), [DOOR, WRITER, GENERATOR, PASTE_READER, PICK_READER]);
     expectModelFree(files, packages);
     expect([...(importers.get(DOOR) ?? [])]).toEqual(["src/lib/admin-group.ts"]);
-    expect([...(importers.get(PASTE_READER) ?? [])]).toEqual(["src/lib/admin-group-paste.ts"]);
-    expect([...(importers.get(WRITER) ?? [])]).toEqual(["src/lib/admin-group-paste.ts"]);
-    expect([...(importers.get(GENERATOR) ?? [])]).toEqual(["src/lib/team-proposal.ts"]);
+    // The HQ squad reader is reached only through the shared door since
+    // 2026-10-30 (the router first, then the reader): nothing outside the
+    // door imports the paste module any more.
+    expect([...(importers.get(PASTE_READER) ?? [])]).toEqual([]);
+    expect([...(importers.get(PICK_READER) ?? [])]).toEqual(["src/lib/organiser-pick.ts"]);
+    // The pasted list's writer is behind the door now (2026-10-30): outside
+    // it, nothing reaches the shared writer.
+    expect([...(importers.get(WRITER) ?? [])]).toEqual([]);
+    // Setting teams aside for a pasted list is the door's too (2026-10-30).
+    expect([...(importers.get(GENERATOR) ?? [])]).toEqual([]);
   });
 
   it("the shared writer reaches the SDK only by the scheduler's old import", () => {

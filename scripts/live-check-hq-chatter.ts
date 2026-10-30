@@ -1,28 +1,27 @@
 /**
  * THE ORGANISERS' OWN CONVERSATION IN HQ STAYS THEIRS: THE PAID CHECK
- * (2026-10-17).
+ * (2026-10-17; the HQ squad reader since 2026-10-30).
  *
  * FNF HQ, 2026-10-16 23:49 London: organisers talking about NEXT week ("Imti
  * Rafi AH back", a reply to another organiser) got a ✅ and "I don't know AH
- * yet...". Nothing was written. The fix is in code, not in a prompt: a reply
- * to another organiser without a tag is their conversation
- * (`hqAddressing`), and a claim the HQ vetting holds gets a line back only
- * when the message was addressed to MatchTime (`buildAdminSquadReply`).
+ * yet...". A reply to another organiser without a tag is their conversation
+ * (`hqAddressing`, a fact). Since 2026-10-30 (Kemal: "I don't want any
+ * string parsing at all") whether the rest is an instruction is the HQ
+ * squad reader's to say, a model, not EN and TR word lists in code.
  *
  * This runs each case ONCE through the real router (organisers' context,
- * as production renders it) and, for an attendance route, the real
- * attendance extractor, then the shipped pure code: `hqAddressing`,
- * `vetAdminGroupFacts`, `buildAdminSquadReply`. The verdict is what HQ
+ * as production renders it) and, for a route about the squad, the real HQ
+ * squad reader (`readHqSquadMessage`, the production prompt and checks),
+ * then decides as `admin-group-understand.ts` does. The verdict is what HQ
  * would see:
  *
  *   silent   no write, no reply, no tick
- *   acts     at least one instruction reaches the attendance engine
- *   reply    one line back and nothing written (only when addressed)
- *
- * Approved by Kemal for this change: dev key only, run once.
+ *   acts     the reader reads a change (or the squad): the engine applies it
+ *   reply    one line back and nothing written
  *
  *   ANTHROPIC_API_KEY_DEV=... npx tsx scripts/live-check-hq-chatter.ts
  *   ONLY="@Match Time AH back" ...   one case
+ *   FIRST=1 ...                      the first case only (measure one)
  *
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). No database,
  * sends nothing. Prints each case, the calls made and the cost.
@@ -30,19 +29,18 @@
 import { quoteFromPi } from "../src/lib/reply-context.ts";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
-import { floorAttendanceFacts, routeBatch } from "../src/lib/pipeline/router.ts";
-import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
+import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { hqAddressing, organisersContext } from "../src/lib/admin-group-context.ts";
-import { buildAdminSquadReply, vetAdminGroupFacts, type AdminClaimRef } from "../src/lib/admin-group-squad-rules.ts";
+import { readHqSquadMessage } from "../src/lib/hq-squad-reader.ts";
+import type { HqSquadReaderContext } from "../src/lib/hq-squad-reader-prompt.ts";
 import type { Route } from "../src/lib/pipeline/types.ts";
 
 const MAX_USD = 2;
 
-spendDevApiKeyOrExit("the HQ chatter live check");
+const inner = anthropicModel({ apiKey: spendDevApiKeyOrExit("the HQ chatter live check") });
 
 let calls = 0;
 let usd = 0;
-const inner = anthropicModel();
 const model: PipelineModel = {
   name: "metered",
   async complete(req) {
@@ -54,15 +52,16 @@ const model: PipelineModel = {
   },
 };
 
-// The club's members, as the engine's resolver would place them. Anyone
-// else is a name nobody in the club has.
+// The club's members. Anyone else is a name nobody in the club has. All of
+// them are playing the next game except Imti and Rafi (who are "back").
 const MEMBERS = ["Bilal", "Sam", "Tom", "Kai", "Imti", "Rafi", "Ali", "Mehmet", "Mojib", "Habib", "Shehryar", "Hamzah", "Wasim", "Raihan"];
-function resolve(ref: string): AdminClaimRef {
-  const first = ref.trim().replace(/^@/, "").split(/\s+/)[0]?.toLowerCase() ?? "";
-  if (!first) return { kind: "none" };
-  const hit = MEMBERS.find((m) => m.toLowerCase() === first || m.toLowerCase().startsWith(first) && first.length >= 3);
-  return hit ? { kind: "member", userId: `u-${hit.toLowerCase()}`, name: hit } : { kind: "unknown", name: ref.trim() };
-}
+const CTX: HqSquadReaderContext = {
+  orgId: "check",
+  game: { label: "Fri 23 Oct, 19:30", places: 18 },
+  members: MEMBERS.map((name, i) => ({ ref: `p${i + 1}`, userId: `u-${name.toLowerCase()}`, name, aliases: [] })),
+  squad: { playing: MEMBERS.filter((n) => n !== "Imti" && n !== "Rafi").map((n) => `u-${n.toLowerCase()}`), bench: [] },
+  teams: null,
+};
 
 // The real HQ chat around the incident (AdminGroupMessage rows, 22:47 to
 // 22:49 UTC), as the router's "EARLIER HERE" lines.
@@ -83,7 +82,8 @@ interface Case {
   text: string;
   quoted?: { text: string; fromMatchTime: boolean };
   recent?: Array<{ fromMatchTime: boolean; text: string }>;
-  want: Verdict;
+  /** One verdict, or the verdicts that are each right. */
+  want: Verdict | Verdict[];
   why: string;
 }
 
@@ -115,7 +115,13 @@ const CASES: Case[] = [
   { text: "Ali'yi kadroya ekle", want: "acts", why: "TR: imperative" },
   { text: "Mehmet bu hafta yok", want: "acts", why: "TR: a squad fact" },
   // Addressed, but not an instruction MatchTime can apply: one line, no write.
-  { text: "@Match Time AH back", want: "reply", why: "tagged, a stranger: says it could not tell who, and how to add someone" },
+  // Since 2026-10-30 the reader may read a tagged "AH back" as an instruction
+  // to put AH in (a new player), or not (one line): both are right.
+  { text: "@Match Time AH back", want: ["acts", "reply"], why: "tagged, a stranger: put in, or one line" },
+  // One-line and short lists (2026-10-30: no shape gate, no name-list parser).
+  { text: "Imti\nRafi\nAH\n\nIn", want: "acts", why: "the 17 Oct list of names with In" },
+  { text: "Yaseen, Mo, Feroz and Ali out", want: "acts", why: "a one-line list" },
+  { text: "Glazers, Imti out", want: "acts", why: "a one-line list (B2)" },
 ];
 
 const SQUAD_ROUTES = new Set<Route>(["self_att", "other_att"]);
@@ -126,50 +132,42 @@ async function verdictOf(c: Case, id: string): Promise<{ verdict: Verdict; route
   const { addressed, toAnotherOrganiser } = hqAddressing({ text: c.text, quoted, quotedIsMatchTime });
   const context = organisersContext({ pending: [], recent: (c.recent ?? []).slice(-5) });
   const quotedReply = quoted ? quoteFromPi({ id: null, ...quoted }) : null;
-  const r = await routeBatch(model, [{ id, authorName: "Raihan", body: c.text, organisers: { context }, reply: quotedReply }], { floor: true });
+  const r = await routeBatch(model, [{ id, authorName: "Raihan", body: c.text, organisers: { context, senderIsOrganiser: true }, reply: quotedReply }], { floor: false });
   const route = r.routes[0]?.route ?? "nowhere";
+  const squadRoute = SQUAD_ROUTES.has(route as Route);
+  const read = () =>
+    readHqSquadMessage(
+      {
+        body: c.text,
+        sender: { userId: "u-raihan", name: "Raihan" },
+        history: (c.recent ?? []).map((m) => ({ author: m.fromMatchTime ? "MatchTime" : "Hamzah", body: m.text })),
+        reply: quotedReply,
+        addressed,
+        now: new Date("2026-10-21T19:00:00Z"),
+      },
+      CTX,
+      { model },
+    );
   // `admin-group-understand.ts`, in order.
-  if (toAnotherOrganiser && route !== "approve" && route !== "score") return { verdict: "silent", route, detail: "reply to another organiser" };
-  if (route === "unsure" && !addressed) return { verdict: "silent", route, detail: "" };
-  if (route === "question" || route === "help") {
-    // What the question answering would be asked (2026-10-19): its topic
-    // and who it names, so a "reply" here says which reply.
-    const q = await extractForRoute(model, "question", { id, body: c.text, authorName: "Raihan", tagged: true, history: [], lastBotPost: null, reply: quotedReply });
-    const what = q.facts.kind === "question" ? `topic ${q.facts.topic}${q.facts.personRef ? `, about ${JSON.stringify(q.facts.personRef)}` : ""}` : q.facts.kind;
-    return { verdict: "reply", route, detail: `question answering: ${what}` };
+  if (toAnotherOrganiser && route !== "approve" && route !== "score") {
+    if (!squadRoute) return { verdict: "silent", route, detail: "reply to another organiser" };
+    const reading = await read();
+    return { verdict: reading.kind === "squad" ? "acts" : "silent", route, detail: `reply to another organiser; reader ${reading.kind}` };
   }
-  if (!SQUAD_ROUTES.has(route as Route) && route !== "unsure") {
+  if (route === "unsure" && !addressed) return { verdict: "silent", route, detail: "" };
+  if (route === "question" || route === "help") return { verdict: "reply", route, detail: "question answering" };
+  if (!squadRoute && route !== "unsure") {
     return { verdict: route === "none" || route === "offer" ? "silent" : "reply", route, detail: "not a squad route" };
   }
-  const ex = await extractForRoute(model, route as Route, { id, body: c.text, authorName: "Raihan", tagged: true, history: [], lastBotPost: null });
-  if (ex.facts.kind !== "attendance") return { verdict: addressed ? "reply" : "silent", route, detail: "no attendance facts" };
-  console.log(`      extractor: ${JSON.stringify(ex.facts.claims)}`);
-  const { facts, vetted } = vetAdminGroupFacts({
-    body: c.text,
-    facts: ex.facts,
-    senderUserId: "u-raihan",
-    senderName: "Raihan",
-    bareDeclaration: floorAttendanceFacts(c.text) !== null,
-    resolve,
-    statusOf: () => null,
-  });
-  const holds = vetted.map((v) => `${v.claim.personRef || "me"}:${v.claim.polarity}:${v.hold ?? "kept"}`).join(", ");
-  if (facts.claims.length > 0) return { verdict: "acts", route, detail: holds };
-  const reply = buildAdminSquadReply({
-    lang: "en",
-    changes: [],
-    failed: [],
-    confirmed: 16,
-    maxPlayers: 18,
-    bench: [],
-    benchPickMode: null,
-    vetted,
-    kickoffLabel: "Fri 19:30",
-    senderName: "Raihan",
-    addressed,
-    aboutOthers: route === "other_att",
-  });
-  return { verdict: reply ? "reply" : "silent", route, detail: `${holds}${reply ? ` -> ${JSON.stringify(reply.text)}` : ""}` };
+  const reading = await read();
+  const detail =
+    reading.kind === "change"
+      ? `change ${reading.changes.map((x) => `${x.name}${x.userId ? "" : "(new)"}:${x.to}`).join(", ")}${reading.alsoAsks ? " +asks" : ""}`
+      : reading.kind === "other"
+        ? `other (${reading.why})`
+        : reading.kind;
+  if (reading.kind === "change" || reading.kind === "squad") return { verdict: "acts", route, detail };
+  return { verdict: addressed ? "reply" : "silent", route, detail };
 }
 
 async function main() {
@@ -177,11 +175,11 @@ async function main() {
   let fail = 0;
   // ONLY="@Match Time AH back" runs that one case.
   const only = process.env.ONLY?.trim();
-  const cases = only ? CASES.filter((c) => c.text === only) : CASES;
+  const cases = only ? CASES.filter((c) => c.text === only) : process.env.FIRST ? CASES.slice(0, 1) : CASES;
   console.log(`\n== HQ: organisers' chatter and instructions, ${cases.length} cases, each once ==\n`);
   for (const [i, c] of cases.entries()) {
     const v = await verdictOf(c, `hc${i}`);
-    const ok = v.verdict === c.want;
+    const ok = (Array.isArray(c.want) ? c.want : [c.want]).includes(v.verdict);
     ok ? pass++ : fail++;
     console.log(`${ok ? "PASS" : "FAIL"}  ${JSON.stringify(c.text)}${c.quoted ? ` (reply to ${c.quoted.fromMatchTime ? "MatchTime" : "an organiser"})` : ""}  routed ${v.route} -> ${v.verdict}  [${v.detail}]   (${c.why}; want ${c.want})`);
   }

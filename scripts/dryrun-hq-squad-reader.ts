@@ -1,7 +1,9 @@
 /**
- * LIVE dry run for the HQ squad reader (2026-10-29), on the real FNF HQ
- * messages of 29 Oct (from the HQ log) and squad lists in English and
- * Turkish.
+ * LIVE dry run for the HQ squad reader (2026-10-29; every squad message
+ * since 2026-10-30), on the real FNF HQ messages of 29 Oct (from the HQ
+ * log), squad lists in English and Turkish, and the changes it now reads
+ * too (name lists, one-line changes, a replacement, a change beside a
+ * question to MatchTime).
  *
  * The unit and e2e tests stub the model: they prove what code does with a
  * reading. Only the real model can prove it reads MatchTime's own teams
@@ -136,6 +138,19 @@ const squad = (want: { out: string[]; bench?: string[]; lines?: number; newNames
   return null;
 };
 
+const change = (want: Array<[string, "in" | "out" | "bench"]>, opts: { alsoAsks?: boolean; replaces?: [string, string] } = {}): Check => (r) => {
+  if (r.kind !== "change") return `kind ${r.kind}`;
+  const got = r.changes.map((c) => `${c.userId ?? `new:${c.name}`}:${c.to}`).sort().join(",");
+  const exp = want.map(([who, to]) => `${who}:${to}`).sort().join(",");
+  if (got !== exp) return `changes [${got}] want [${exp}]`;
+  if (opts.alsoAsks !== undefined && r.alsoAsks !== opts.alsoAsks) return `alsoAsks ${r.alsoAsks}`;
+  if (opts.replaces) {
+    const c = r.changes.find((x) => x.userId === opts.replaces![0]);
+    if (c?.replaces !== opts.replaces[1]) return `replaces "${c?.replaces}"`;
+  }
+  return null;
+};
+
 interface Case {
   name: string;
   input: HqSquadReaderInput;
@@ -157,10 +172,23 @@ const CASES: Case[] = [
   C("EN: next week's squad, two left off, a reserve", EN_SQUAD, EN_CTX, "AH", "2026-10-31T10:00:00Z", [], squad({ out: [ref("Habib"), ref("Ali")], bench: [ref("Tariq")] })),
   C("EN: plain names, Akram left off as the chat says", EN_SQUAD_PLAIN, EN_CTX, "AH", "2026-10-31T10:00:00Z", H_SQUAD, squad({ out: [ref("Akram")], lines: 18 })),
   C("EN: a new name nobody has (Zubair) is a person, MatchTime's words are not", EN_SQUAD_NEW, EN_CTX, "AH", "2026-10-31T10:00:00Z", [], squad({ out: [ref("Ali")], newNames: ["Zubair"] })),
-  C("EN: a short list of two to add is never 'the rest are out'", "Add these two for Friday\nBilal\nNaim Khan", EN_CTX, "AH", "2026-10-31T10:00:00Z", [], (r) => (r.kind === "other" || r.kind === "teams" ? null : r.out.length === 0 ? null : `out [${r.out.join(",")}]`)),
+  C("EN: a short list of two to add is never 'the rest are out'", "Add these two for Friday\nBilal\nNaim Khan", EN_CTX, "AH", "2026-10-31T10:00:00Z", [], (r) => (r.kind === "squad" ? (r.out.length === 0 ? null : `out [${r.out.join(",")}]`) : r.kind === "change" ? change([[ref("Bilal"), "in"], [ref("Naim Khan"), "in"]])(r) : null)),
   C("TR: Cuma kadrosu with yedekler, Okan and Serkan off", TR_SQUAD, TR_CTX, "Erdal Yilmaz", "2026-11-03T10:00:00Z", [], squad({ out: [trId("Okan"), trId("Serkan")], bench: [trId("Hakan")] })),
   C("TR: takımlar pasted back", TR_TEAMS, TR_TEAMS_CTX, "Erdal Yilmaz", "2026-11-05T18:00:00Z", [], kind("teams")),
   C("TR: ödeyenler is not the squad", TR_PAID, TR_CTX, "Erdal Yilmaz", "2026-11-05T18:00:00Z", [], kind("other")),
+  // ── Changes (2026-10-30: one line or many, no code reads them) ──
+  C("EN: 17 Oct name list with In", "Imti\nRafi\nAH\n\nIn", { ...EN_CTX, members: [...FNF_MEMBERS, { ref: "p99", userId: "u-imti", name: "Imti", aliases: [] }] }, "Raihan", "2026-10-31T10:00:00Z", [], change([["u-imti", "in"], ["u-rafi", "in"], ["u-ah", "in"]])),
+  C("EN: one-line list out", "Yaseen, Mo, Feroz and Ali out", EN_CTX, "Raihan", "2026-10-31T10:00:00Z", [], change([["u-yaseen", "out"], ["u-mo", "out"], ["u-feroz", "out"], ["u-ali", "out"]])),
+  C("EN: a stranger out beside a question to MatchTime", "Glazers is out now.\n\n@Match Time what is the list?", EN_CTX, "Raihan", "2026-10-31T10:00:00Z", [], change([["new:Glazers", "out"]], { alsoAsks: true })),
+  C("EN: a replacement", "Bilal is replacing Habib", EN_CTX, "Raihan", "2026-10-31T10:00:00Z", [], (r) => {
+    if (r.kind !== "change") return `kind ${r.kind}`;
+    const b = r.changes.find((c) => c.userId === ref("Bilal"));
+    return b?.to === "in" && b.replaces === "Habib" ? null : `changes ${JSON.stringify(r.changes)}`;
+  }),
+  C("EN: the sender about himself", "I'm out this week lads", EN_CTX, "Raihan", "2026-10-31T10:00:00Z", [], change([["u-raihan", "out"]])),
+  C("EN: reassurance about players already in is talk", "Mojib and Habib are in dw", EN_CTX, "Raihan", "2026-10-31T10:00:00Z", [{ author: "AH", body: "Are Mojib and Habib still playing?" }], kind("other")),
+  C("TR: Tolga ve Cem var", "Tolga ve Cem var", TR_CTX, "Erdal Yilmaz", "2026-11-03T10:00:00Z", [], change([[trId("Tolga"), "in"], [trId("Cem"), "in"]])),
+  C("TR: belki is talk", "Okan belki gelmez haftaya", TR_CTX, "Erdal Yilmaz", "2026-11-03T10:00:00Z", [], kind("other")),
 ];
 
 async function main() {
@@ -186,7 +214,9 @@ async function main() {
   const results: Array<{ name: string; ok: boolean; why: string | null; raw: string }> = [];
   const onlyIdx = process.argv.indexOf("--only");
   const only = onlyIdx > 0 ? process.argv[onlyIdx + 1] : null;
-  const chosen = first ? CASES.slice(0, 1) : only ? CASES.filter((c) => c.name.includes(only)) : CASES;
+  const fromIdx = process.argv.indexOf("--from");
+  const from = fromIdx > 0 ? Number(process.argv[fromIdx + 1]) : 0;
+  const chosen = first ? CASES.slice(0, 1) : only ? CASES.filter((c) => c.name.includes(only)) : CASES.slice(from);
   for (const c of chosen) {
     lastRaw = "";
     const got = await readHqSquadMessage(c.input, c.ctx, { model });

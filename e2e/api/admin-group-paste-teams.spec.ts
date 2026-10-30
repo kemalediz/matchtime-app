@@ -79,7 +79,16 @@ test.beforeAll(async ({ db }) => {
     [ORG_ID, SHEET, `teams:${MATCH.upcoming}`],
   );
   // What the router reads in what goes on to the pipeline (stubbed).
-  engineOn({ [PASTED_BACK]: { route: "none" }, [SWAP]: { route: "none" }, [BARE]: { route: "none" }, YES: { route: "approve" } });
+  // The router sends each to the squad (as the live router did, 2026-10-30
+  // probe); the HQ squad reader then says what it is.
+  engineOn({
+    [PASTED_BACK]: { route: "other_att" },
+    [SWAP]: { route: "other_att" },
+    [BARE]: { route: "other_att" },
+    [REAL]: { route: "other_att" },
+    [SHORT]: { route: "other_att" },
+    YES: { route: "approve" },
+  });
   setHqSquadReaderStub({
     bodies: {
       [PASTED_BACK]: { kind: "teams", lines: [], out: [] },

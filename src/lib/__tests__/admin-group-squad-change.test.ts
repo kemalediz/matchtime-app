@@ -57,6 +57,8 @@ const input = {
   senderName: "Raihan",
   sentAt: null,
   now: new Date("2026-10-14T12:00:00Z"),
+  // What the HQ squad reader read (2026-10-30): the change, as the engine's facts.
+  reading: { changes: [{ name: "Shehryar", userId: "u-shehryar", to: "out" as const, replaces: "" }], alsoAsks: false },
 };
 
 /** The route the shared router gave, handed to every call below. */
@@ -101,7 +103,6 @@ function claim(over: Partial<Claim> = {}): Claim {
     ...over,
   };
 }
-const self = (over: Partial<Claim> = {}) => claim({ subject: "sender", personRef: "", personNamed: false, ...over });
 
 /** Run the facts through the hook this module handed the engine, against
  *  a squad state, as the real runner does before `decide()`. */
@@ -249,29 +250,46 @@ describe("handleAdminSquadChange", () => {
     expect(r).toMatchObject({ replyText: "Tamam: Shehryar çıktı. 17/18." });
   });
 
-  it.each(["none", "question", "balancer", "admin_ops", "score", "offer"])(
-    "routed %s: no engine, no reply",
-    async (route) => {
-      routed(route);
-      expect(await handleAdminSquadChange({ ...input, route: route as Route })).toEqual({ handled: false, why: "not-a-squad-change" });
-      expect(engine.runAttendanceEngineBatch).not.toHaveBeenCalled();
-    },
-  );
 
-  it("routed unsure (the caller hands it over only when addressed to MatchTime): the engine reads it, as in the players' group", async () => {
-    routed("unsure");
+  it("routed unsure (the caller hands it over only when addressed to MatchTime): the engine decides the reader's change, about others", async () => {
     engineDoes(async () => {}, { claimCount: 0 });
     await handleAdminSquadChange({ ...input, route: "unsure" });
     expect(engine.runAttendanceEngineBatch).toHaveBeenCalledTimes(1);
-    expect((engine.runAttendanceEngineBatch.mock.calls[0][0] as EngineArgs).messages[0].route).toBe("unsure");
+    expect((engine.runAttendanceEngineBatch.mock.calls[0][0] as EngineArgs).messages[0].route).toBe("other_att");
   });
 
-  it("at the daily AI cap: the engine is told, so only the floor reads it", async () => {
-    budget.getAiBudgetStatus.mockResolvedValue({ capped: true });
-    routed("other_att");
+  it("the sender's own change only: decided as about the sender", async () => {
     engineDoes(async () => {}, { claimCount: 0 });
-    await handleAdminSquadChange({ ...input, route });
-    expect((engine.runAttendanceEngineBatch.mock.calls[0][0] as EngineArgs).deps.aiCapped).toBe(true);
+    await handleAdminSquadChange({ ...input, route: "other_att", reading: { changes: [{ name: "Raihan", userId: "u-admin", to: "out", replaces: "" }], alsoAsks: false } });
+    expect((engine.runAttendanceEngineBatch.mock.calls[0][0] as EngineArgs).messages[0].route).toBe("self_att");
+  });
+
+  // 2026-10-30: the HQ squad reader read the message; its change IS the
+  // engine's facts, so no extractor is asked (at the AI cap or not), and no
+  // code reads the words (the floor, the name list).
+  it("the engine is handed the reader's change as its facts: no extractor, no floor", async () => {
+    routed("other_att");
+    const reading = {
+      changes: [
+        { name: "Yaseen", userId: null, to: "out" as const, replaces: "" },
+        { name: "Mo Ali", userId: "u-mo", to: "in" as const, replaces: "Shehryar" },
+      ],
+      alsoAsks: false,
+    };
+    engineDoes(async (a) => {
+      expect(a.deps.presetFacts?.(a.messages[0])).toEqual({
+        kind: "attendance",
+        affirmation: null,
+        sideRequests: [],
+        claims: [
+          claim({ personRef: "Yaseen", polarity: "out", confidence: 1 }),
+          claim({ personRef: "Mo Ali", polarity: "in", confidence: 1, replaces: "Shehryar" }),
+        ],
+      });
+      expect(a.deps.presetFacts?.({ ...a.messages[0], waMessageId: "other" })).toBeNull();
+      expect(a.deps.aiCapped).toBeUndefined();
+    });
+    await handleAdminSquadChange({ ...input, route, text: "Yaseen out, Mo instead of Shehryar", reading });
   });
 
   it("the engine owned nothing (no match, attendance off): silent", async () => {
@@ -295,13 +313,13 @@ describe("handleAdminSquadChange", () => {
   // roster. The extractor read the OUT; nothing moved; MatchTime said nothing.
   describe("the incident: an OUT for someone not on the list, beside a question to MatchTime", () => {
     const TEXT = "Glazers is out now.\n\n@Match Time what is the list?";
-    const glazersOut = (a: EngineArgs, side: AttendanceFacts["sideRequests"] = ["question"]) =>
-      void vetThrough(a, [claim({ personRef: "Glazers", polarity: "out", confidence: 0.85 })], [], TEXT, side);
+    const glazersOut = (a: EngineArgs) => void vetThrough(a, [claim({ personRef: "Glazers", polarity: "out", confidence: 1 })], [], TEXT);
+    const glazers = (alsoAsks: boolean) => ({ changes: [{ name: "Glazers", userId: null, to: "out" as const, replaces: "" }], alsoAsks });
 
     it("says Glazers is not on the list, nothing written, and passes on that the message also asks MatchTime something", async () => {
       routed("other_att");
       engineDoes(async (a) => glazersOut(a), { claimCount: 1 });
-      const r = await handleAdminSquadChange({ ...input, route, text: TEXT, addressed: true });
+      const r = await handleAdminSquadChange({ ...input, route, text: TEXT, addressed: true, reading: glazers(true) });
       expect(r).toEqual({
         handled: true,
         outcome: "squad-not-on-list",
@@ -313,15 +331,15 @@ describe("handleAdminSquadChange", () => {
 
     it("an organiser's untagged instruction: the same line, and no question passed on when none was asked", async () => {
       routed("other_att");
-      engineDoes(async (a) => glazersOut(a, []), { claimCount: 1 });
-      const r = await handleAdminSquadChange({ ...input, route, text: "Glazers is out now", organiser: true });
+      engineDoes(async (a) => glazersOut(a), { claimCount: 1 });
+      const r = await handleAdminSquadChange({ ...input, route, text: "Glazers is out now", organiser: true, reading: glazers(false) });
       expect(r).toEqual({ handled: true, outcome: "squad-not-on-list", replyText: "I can't find Glazers on the list for Fri 20:30, so nothing changed." });
     });
 
     it("a change that says nothing still passes the question on", async () => {
       routed("other_att");
-      engineDoes(async (a) => void vetThrough(a, [], [], TEXT, ["question"]), { claimCount: 0 });
-      expect(await handleAdminSquadChange({ ...input, route, text: TEXT })).toEqual({ handled: false, why: "not-a-squad-change", alsoAsks: true });
+      engineDoes(async (a) => void vetThrough(a, [], [], TEXT), { claimCount: 0 });
+      expect(await handleAdminSquadChange({ ...input, route, text: TEXT, reading: glazers(true) })).toEqual({ handled: false, why: "not-a-squad-change", alsoAsks: true });
     });
   });
 
@@ -356,192 +374,16 @@ describe("handleAdminSquadChange", () => {
   // hook this module hands the engine. The engine mock stands in for
   // `decide()`: it writes only what survives the hook.
 
-  it("hands the engine a vetting hook that resolves names on the squad state and reads a bare IN/OUT as explicit", async () => {
-    routed("self_att");
-    engineDoes(async (a) => {
-      const kept = vetThrough(a, [self({ polarity: "out" })], [{ userId: "u-admin", status: "CONFIRMED", position: 1 }], "out");
-      expect(kept.claims).toHaveLength(1);
-      await a.deps.cancelAttendance("u-admin", MATCH_ID, { cause: "admin-message", actorKind: "admin", actorUserId: "u-admin", sourceRef: "wa-1" });
-    });
-    dbMock.user.findMany.mockResolvedValue([{ id: "u-admin", name: "Omar" }]);
-    statuses.set("u-admin", "CONFIRMED");
-    const r = await handleAdminSquadChange({ ...input, route, senderName: "Omar", text: "out" });
-    expect(r).toMatchObject({ handled: true, outcome: "squad-changed", replyText: "Done: Omar out. 17 of 18." });
-  });
 
-  // FNF HQ 2026-10-17 09:01: an organiser's list of names and a bare
-  // IN/OUT is structured data. The engine reads it from the floor (no
-  // extractor), and the vetting takes the floor's names as the instruction.
-  it("the incident's list: the engine is handed its facts (no extractor), and every listed name applies", async () => {
-    routed("other_att");
-    const text = "Yaseen \nMo\nFeroz\nAli\n\nOut";
-    engineDoes(async (a) => {
-      expect(a.deps.presetFacts?.(a.messages[0])).toMatchObject({ kind: "attendance", claims: [{ personRef: "Yaseen" }, { personRef: "Mo" }, { personRef: "Feroz" }, { personRef: "Ali" }] });
-      const kept = vetThrough(
-        a,
-        ["Yaseen", "Mo", "Feroz", "Ali"].map((n) => claim({ personRef: n, polarity: "out", confidence: 1 })),
-        [],
-        text,
-      );
-      expect(kept.claims.map((c) => c.personRef)).toEqual(["Yaseen", "Mo", "Feroz", "Ali"]);
-    });
-    await handleAdminSquadChange({ ...input, route, text });
-  });
 
-  it("the same names in a sentence that is not a list are vetted as before, and read by the extractor", async () => {
-    routed("other_att");
-    engineDoes(
-      async (a) => {
-        expect(a.deps.presetFacts?.(a.messages[0])).toBeNull();
-        const kept = vetThrough(a, [claim({ personRef: "Dev" }), claim({ personRef: "Kofi" })], [], "Dev Kofi back");
-        expect(kept.claims).toEqual([]);
-      },
-      { claimCount: 0 },
-    );
-    await handleAdminSquadChange({ ...input, route, text: "Dev Kofi back" });
-  });
 
-  it('a confirmed organiser saying he "might have to pull out": no write, no reply', async () => {
-    routed("self_att");
-    statuses.set("u-admin", "CONFIRMED");
-    engineDoes(
-      async (a) => {
-        const kept = vetThrough(a, [self({ polarity: "out", contingent: true, conditionOn: "self" })], [
-          { userId: "u-admin", status: "CONFIRMED", position: 1 },
-        ]);
-        expect(kept.claims).toEqual([]);
-      },
-      { claimCount: 0 },
-    );
-    expect(await handleAdminSquadChange({ ...input, route, text: "might have to pull out this week" })).toEqual({ handled: false, why: "not-a-squad-change" });
-    expect(att.cancelAttendance).not.toHaveBeenCalled();
-    expect(tentative.recordTentative).not.toHaveBeenCalled();
-  });
 
-  it("his next message about an injury: never applied, no reply", async () => {
-    routed("self_att");
-    statuses.set("u-admin", "CONFIRMED");
-    engineDoes(
-      async (a) => {
-        const kept = vetThrough(a, [self({ polarity: "out" })], [{ userId: "u-admin", status: "CONFIRMED", position: 1 }]);
-        expect(kept.claims).toEqual([]);
-      },
-      { claimCount: 0 },
-    );
-    expect(await handleAdminSquadChange({ ...input, route, text: "my ankle is wrecked" })).toEqual({ handled: false, why: "not-a-squad-change" });
-  });
 
-  it("a plain self OUT said to MatchTime by a confirmed organiser: no write, one line with the command", async () => {
-    routed("self_att");
-    statuses.set("u-admin", "CONFIRMED");
-    engineDoes(
-      async (a) => {
-        vetThrough(a, [self({ polarity: "out" })], [{ userId: "u-admin", status: "CONFIRMED", position: 1 }]);
-      },
-      { claimCount: 0 },
-    );
-    const r = await handleAdminSquadChange({ ...input, route, addressed: true, senderName: "Omar", text: "@Match Time won't be around on friday" });
-    expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'If you want me to take you out of Fri 20:30, just ask me in your own words (for example Omar out).' });
-    expect(att.cancelAttendance).not.toHaveBeenCalled();
-  });
 
-  it("the same said in the organisers' own conversation (not addressed): silence", async () => {
-    routed("self_att");
-    statuses.set("u-admin", "CONFIRMED");
-    engineDoes(
-      async (a) => {
-        vetThrough(a, [self({ polarity: "out" })], [{ userId: "u-admin", status: "CONFIRMED", position: 1 }]);
-      },
-      { claimCount: 0 },
-    );
-    expect(await handleAdminSquadChange({ ...input, route, senderName: "Omar", text: "won't be around on friday" })).toEqual({ handled: false, why: "not-a-squad-change" });
-  });
 
-  it("the same said by an organiser not in the squad: silence (not a false 'Nothing to change')", async () => {
-    routed("self_att");
-    engineDoes(async (a) => void vetThrough(a, [self({ polarity: "out" })], []), { claimCount: 0 });
-    expect(await handleAdminSquadChange({ ...input, route, senderName: "Omar", text: "won't be around on friday" })).toEqual({ handled: false, why: "not-a-squad-change" });
-  });
 
-  it("a name nobody in the club has, said in passing to MatchTime: no write, says it does not know them and how to add them", async () => {
-    routed("other_att");
-    engineDoes(async (a) => void vetThrough(a, [claim({ personRef: "Zayn" })], []), { claimCount: 0 });
-    const r = await handleAdminSquadChange({ ...input, route, addressed: true, text: "@Match Time Zayn is around again" });
-    expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'I don\'t know Zayn yet. To add them, just ask me in your own words (for example put Zayn in).' });
-    expect(prov.resolveOrProvisionByName).not.toHaveBeenCalled();
-  });
 
-  // "@Match Time AH back" (2026-10-19, Haiku 5.5): routed other_att, and the
-  // attendance extractor (live, once) read no name in it: one claim about the
-  // SENDER, confidence 0.3. Held, nothing said: the organiser who asked
-  // MatchTime heard nothing.
-  describe("'@Match Time AH back': read as about someone else, but no one named", () => {
-    const WHO = "I couldn't tell who that's about, so I haven't changed anything. To add someone or take them out, just ask me in your own words with their name (for example put Bilal in).";
 
-    it("the extractor's reading as the sender's own: no write, one line saying it could not tell who, and how to add someone", async () => {
-      routed("other_att");
-      statuses.set("u-admin", "CONFIRMED");
-      engineDoes(
-        async (a) => {
-          const kept = vetThrough(
-            a,
-            [self({ personNamed: false, confidence: 0.3, tense: "future" })],
-            [{ userId: "u-admin", status: "CONFIRMED", position: 1 }],
-            "@Match Time AH back",
-          );
-          expect(kept.claims).toEqual([]);
-        },
-        { claimCount: 0 },
-      );
-      const r = await handleAdminSquadChange({ ...input, route, addressed: true, text: "@Match Time AH back" });
-      expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: WHO });
-      expect(att.registerAttendance).not.toHaveBeenCalled();
-      expect(prov.resolveOrProvisionByName).not.toHaveBeenCalled();
-    });
-
-    it("no claim read at all: the same line", async () => {
-      routed("other_att");
-      engineDoes(async (a) => void vetThrough(a, [], [], "@Match Time AH back"), { claimCount: 0 });
-      expect(await handleAdminSquadChange({ ...input, route, addressed: true, text: "@Match Time AH back" })).toEqual({
-        handled: true,
-        outcome: "squad-question",
-        replyText: WHO,
-      });
-    });
-
-    it("the same words in the organisers' own conversation (not addressed): silence, as before", async () => {
-      routed("other_att");
-      engineDoes(async (a) => void vetThrough(a, [], [], "AH back"), { claimCount: 0 });
-      expect(await handleAdminSquadChange({ ...input, route, text: "AH back" })).toEqual({ handled: false, why: "not-a-squad-change" });
-    });
-
-    it("read as the sender's own (self_att), addressed: silence, as before", async () => {
-      routed("self_att");
-      engineDoes(async (a) => void vetThrough(a, [self({ contingent: true, conditionOn: "self" })], [], "@Match Time might be late"), { claimCount: 0 });
-      expect(await handleAdminSquadChange({ ...input, route, addressed: true, text: "@Match Time might be late" })).toEqual({
-        handled: false,
-        why: "not-a-squad-change",
-      });
-    });
-  });
-
-  // FNF HQ, 2026-10-16 23:49 London (prod logs: "routed other_att by model
-  // (0 waiting, a reply)", "3 of 3 claim(s) held", "0 change(s) ...
-  // squad-question" on next week's match): organisers talking about next
-  // week. Nothing was written, yet HQ got a tick and "I don't know AH yet".
-  it("the incident: 'Imti Rafi AH back', organisers' chat, every claim held: silence, nothing written", async () => {
-    routed("other_att");
-    engineDoes(
-      async (a) => {
-        const kept = vetThrough(a, [claim({ personRef: "Imti" }), claim({ personRef: "Rafi" }), claim({ personRef: "AH", confidence: 0.6 })], [], "Imti Rafi AH back");
-        expect(kept.claims).toEqual([]);
-      },
-      { claimCount: 0 },
-    );
-    expect(await handleAdminSquadChange({ ...input, route, text: "Imti Rafi AH back" })).toEqual({ handled: false, why: "not-a-squad-change" });
-    expect(att.registerAttendance).not.toHaveBeenCalled();
-    expect(prov.resolveOrProvisionByName).not.toHaveBeenCalled();
-  });
 
   describe("the next game's list is not set yet (rolling squad still to carry over)", () => {
     const DUE = new Date("2026-10-17T07:00:00Z"); // 08:00 London, Saturday
@@ -571,17 +413,6 @@ describe("handleAdminSquadChange", () => {
       expect(att.cancelAttendance).not.toHaveBeenCalled();
     });
 
-    it("chatter about it: silence", async () => {
-      routed("other_att");
-      engineDoes(
-        async (a) => {
-          await a.deps.loadState!("org-fnf", input.now);
-          vetThrough(a, [claim({ personRef: "Zayn" })], [], "Zayn is back");
-        },
-        { claimCount: 0 },
-      );
-      expect(await handleAdminSquadChange({ ...input, route, text: "Zayn is back" })).toEqual({ handled: false, why: "not-a-squad-change" });
-    });
 
     it("the list is set (nothing pending): applied as usual", async () => {
       rolling.rollingSeedPendingAt.mockResolvedValue(null);
@@ -624,33 +455,8 @@ describe("handleAdminSquadChange", () => {
     ]);
   });
 
-  it("a member mentioned in passing: silence", async () => {
-    routed("other_att");
-    engineDoes(async (a) => void vetThrough(a, [claim({ personRef: "Dev" })], []), { claimCount: 0 });
-    expect(await handleAdminSquadChange({ ...input, route, text: "Dev is around again" })).toEqual({ handled: false, why: "not-a-squad-change" });
-  });
 
-  it("an admin reporting someone else's maybe in HQ: held, no tentative, no reply", async () => {
-    routed("other_att");
-    engineDoes(
-      async (a) => {
-        const kept = vetThrough(a, [claim({ personRef: "Dev", contingent: true, conditionOn: "self" })], []);
-        expect(kept.claims).toEqual([]);
-      },
-      { claimCount: 0 },
-    );
-    expect(await handleAdminSquadChange({ ...input, route, text: "Dev is a maybe" })).toEqual({ handled: false, why: "not-a-squad-change" });
-    expect(tentative.recordTentative).not.toHaveBeenCalled();
-  });
 
-  it("an explicit command still goes through the hook untouched", async () => {
-    routed("other_att");
-    engineDoes(async (a) => {
-      const kept = vetThrough(a, [claim({ personRef: "Kofi" })], []);
-      expect(kept.claims.map((c) => c.personRef)).toEqual(["Kofi"]);
-    }, { claimCount: 1 });
-    await handleAdminSquadChange({ ...input, route, text: "put Kofi in" });
-  });
 
   it("logs ids and counts, never the text or a name", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});

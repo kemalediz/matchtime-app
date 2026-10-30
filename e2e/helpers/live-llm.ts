@@ -107,6 +107,8 @@ export const CALLOFF_STUB_FILE_ENV = "MT_TEST_CALLOFF_STUB_FILE";
 export const MONTHLY_READER_STUB_FILE_ENV = "MT_TEST_MONTHLY_READER_STUB_FILE";
 /** Must equal `HQ_SQUAD_READER_STUB_FILE_ENV` in `src/lib/hq-squad-reader.ts`. */
 export const HQ_SQUAD_READER_STUB_FILE_ENV = "MT_TEST_HQ_SQUAD_READER_STUB_FILE";
+/** Must equal `PICK_READER_STUB_FILE_ENV` in `src/lib/organiser-pick-reader.ts`. */
+export const ORGANISER_PICK_READER_STUB_FILE_ENV = "MT_TEST_ORGANISER_PICK_READER_STUB_FILE";
 /** Must equal `MONTH_SEED_REPLY_STUB_FILE_ENV` in `src/lib/month-seed-reply.ts`. */
 export const MONTH_SEED_REPLY_STUB_FILE_ENV = "MT_TEST_MONTH_SEED_REPLY_STUB_FILE";
 /** Must equal `DIGEST_REPLY_STUB_FILE_ENV` in `src/lib/month-digest-reply.ts`. */
@@ -291,6 +293,7 @@ export function assertSeamMatchesMode(
       [CALLOFF_STUB_FILE_ENV, "lib/calloff-reader.ts, which DMs an organiser about a call-off and cancels the game on his yes"],
       [MONTHLY_READER_STUB_FILE_ENV, "lib/monthly-reader.ts, which reads a monthly club's pasted lists and sign-ups"],
       [HQ_SQUAD_READER_STUB_FILE_ENV, "lib/hq-squad-reader.ts, which reads a list pasted in HQ as the squad, the teams or chatter"],
+      [ORGANISER_PICK_READER_STUB_FILE_ENV, "lib/organiser-pick-reader.ts, which reads an organiser's pick from the bench list and brings players in"],
       [MONTH_SEED_REPLY_STUB_FILE_ENV, "lib/month-seed-reply.ts, which starts a month from an organiser's DM answer"],
       [DIGEST_REPLY_STUB_FILE_ENV, "lib/month-digest-reply.ts, which confirms month payments from the collector's answer"],
     ] as const) {

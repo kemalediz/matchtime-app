@@ -13,20 +13,13 @@
  * (2026-10-20); what else changes the club stays an owner's or admin's
  * (`admin-group-understand.ts` says who can). In this order:
  *
- *   1. STRUCTURED DATA, read deterministically, because it is data and not
- *      language:
- *      a. the collector's answer to MatchTime's numbered PAID digest
- *         ("PAID ALL", "PAID 1 3") for a monthly club;
- *      b. a reply to an open pick round: numbers, names or @tags from
- *         MatchTime's own numbered list, ALL, NONE;
- *      c. a pasted multi-line squad list (a live weekly club), read by the
- *         HQ squad reader (a model, 2026-10-29, so not deterministic):
- *         proposed, applied only on YES; a copy of the teams or a swap
- *         goes on to step 2.
- *      Both b and c are WHO PLAYS, so since 2026-10-20 (Kemal) any member
- *      of the club may send them, as an owner or admin may; someone not in
- *      the club may not. A member says YES to the list they pasted; an
- *      owner or admin to anyone's (`admin-group-understand.ts`).
+ *   1. A REPLY TO AN OPEN PICK ROUND (MatchTime's own numbered bench list),
+ *      read by the pick reader, a model, against that list (2026-10-30,
+ *      `organiser-pick-reader.ts`; the collector's PAID digest answer is
+ *      the shared pipeline's since 2026-10-29). A pick is WHO PLAYS, so since 2026-10-20 (Kemal) any member of the
+ *      club may send one, as an owner or admin may; someone not in the
+ *      club may not. (A pasted squad list was step c until 2026-10-30; it
+ *      is the shared pipeline's now, step 2.)
  *   2. EVERYTHING ELSE from anyone in a live club's HQ goes through
  *      the SAME pipeline as the players' group: the shared router with the
  *      organisers' group context, then the shared extractors and owners
@@ -57,10 +50,7 @@ import { resolveSenderUserIds } from "./admin-group-link";
 import { handlePickReply } from "./organiser-pick";
 import { PICK_RACE_WINDOW_MS } from "./organiser-pick-rules";
 import { isBillingPaused } from "./club-billing-rules";
-import { proposeSquadPaste } from "./admin-group-paste";
-import { setAsideTeamProposal } from "./team-proposal";
-import { t } from "./i18n/t";
-import { listAskRef, recordHqMessage, recordMatchTimeQuestion } from "./admin-group-log";
+import { recordHqMessage } from "./admin-group-log";
 import { understandAdminMessage } from "./admin-group-understand";
 import { HQ_FEE_FREE_EXPIRED, HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rules";
 import { HQ_CANCEL_NOTHING_DONE } from "./match-cancel";
@@ -194,7 +184,6 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   // (`admin-group-understand.ts`), not a reader in front of it.
 
   const live = org.whatsappBotEnabled === true;
-  const weekly = org.squadMode !== "monthly";
 
   const round = await db.organiserPickRound.findFirst({
     where: {
@@ -300,23 +289,10 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   }
   if (!live) return notRead();
 
-  // 1c. A pasted squad list (a live weekly club), by any member of the club.
-  // What a multi-line message is (the squad, a copy of the teams, a swap)
-  // is read by a model, the HQ squad reader (2026-10-29); anything that is
-  // not the squad goes on to the shared pipeline below.
-  if (weekly && squadActor) {
-    const pasted = await proposeSquadPaste({ orgId: org.id, lang: org.language, messageId, senderUserId: squadActor, now, text: msg.text, quoted: msg.quoted ?? null });
-    if (pasted) {
-      let replyText = pasted.replyText;
-      if (pasted.outcome === "paste-proposed") {
-        // The list is now the question: teams waiting for YES are set aside.
-        const setAside = await setAsideTeamProposal(org.id);
-        if (setAside > 0) replyText = `${replyText} ${t(org.language).tp_teams_set_aside}`;
-        await recordMatchTimeQuestion({ orgId: org.id, askRef: listAskRef(messageId), text: replyText, now });
-      }
-      return acted(org.id, pasted.outcome, replyText);
-    }
-  }
+  // 1c. A pasted squad list is read in the shared pipeline now
+  // (2026-10-30, `admin-group-understand.ts`): the router first, then the
+  // HQ squad reader, HQ's one model door for who plays, for a list, a
+  // name list or a one-line change alike.
 
   // 1d. A MONTHLY club's coming-month list (2026-10-29) is read by the
   // monthly reader, a model step, so it is the door's first question now

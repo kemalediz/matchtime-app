@@ -10,17 +10,16 @@
  *
  *   decidePickRound     open a round, supersede the open one, or wait;
  *   pickFallbackAt      when nobody has picked in time (D5);
- *   parsePickReply      what an admin's reply means, deterministically;
  *   buildPickMessage    P1 and P5, in the club's language.
  *
- * NO MODEL, EVER. The reply parser is code: a whole-message number, name,
- * @tag, ALL, NONE, or YES to a pending question. This module imports only
- * the string table and the name folding, and the admin-group route that
- * reaches it is pinned model-free by `admin-group-model-door.source.test.ts`.
+ * NO MODEL HERE, AND NO READING OF WORDS. What an admin's reply means
+ * ("2 3", "all", "none", a name, an @tag, YES) is read by the pick reader,
+ * a model (`organiser-pick-reader.ts`, 2026-10-30: Kemal, "I don't want
+ * any string parsing at all"); `organiser-pick-no-parsing.source.test.ts`
+ * pins that nothing here reads text again.
  */
 import { t } from "./i18n/t";
 import { inMessageHours, type QuietHours } from "./message-hours";
-import { normaliseName } from "./name-normalise";
 import { standingPhrase, type StandingBand } from "./partner-guest-standing-rules";
 
 const MINUTE_MS = 60 * 1000;
@@ -39,8 +38,6 @@ export const PICK_CONFIRM_TTL_MS = 30 * MINUTE_MS;
 /** A reply that races a pick that has just filled the place still gets E3
  *  "Already filled" for this long after the round closed. */
 export const PICK_RACE_WINDOW_MS = 30 * MINUTE_MS;
-/** A range like "1-3" never expands beyond this many picks. */
-const MAX_RANGE = 10;
 
 // ── When a round opens ──────────────────────────────────────────────────
 
@@ -202,198 +199,13 @@ export function decidePickRound(p: {
   return { action: "open" };
 }
 
-// ── Reading a reply ──────────────────────────────────────────────────────
+// ── Who a reply can name ────────────────────────────────────────────────
 
+/** A person a reply to a pick round can name. What the reply MEANS is read
+ *  by the pick reader, a model (`organiser-pick-reader.ts`, 2026-10-30). */
 export interface PickCandidate {
   userId: string;
   name: string;
-}
-
-export interface PickReplyContext {
-  /** The round's numbered list, as sent. */
-  list: PickCandidate[];
-  /** The match's CONFIRMED players (answer E2). */
-  confirmed: PickCandidate[];
-  /** The club's other active members (answer E1). */
-  members: PickCandidate[];
-  /** An E1 question is waiting for YES on this round. */
-  pendingConfirm: boolean;
-  /**
-   * The real WhatsApp @tags in the message: the digits of the `@<digits>`
-   * token the Pi left in the text, and who the server resolved it to
-   * (null: nobody it can vouch for).
-   */
-  tags: Array<{ digits: string; userId: string | null }>;
-}
-
-export type PickReply =
-  /** 1-based positions in the round's list. */
-  | { kind: "numbers"; numbers: number[] }
-  | { kind: "people"; userIds: string[] }
-  | { kind: "all" }
-  | { kind: "none" }
-  | { kind: "yes" }
-  /** E4: a real @tag MatchTime cannot identify. */
-  | { kind: "unresolved-tag" }
-  /** E5: a first name that fits several candidates. */
-  | { kind: "ambiguous"; first: string; names: string[] }
-  /** P6 (a DM only): shaped like a pick, but it does not resolve. */
-  | { kind: "not-understood" }
-  /** Chat, or anything else: not ours. */
-  | { kind: "not-a-pick" };
-
-/** Turkish-aware name folding: `normaliseName`, and dotless ı as i. */
-export function foldPickText(s: string): string {
-  return normaliseName(s).replace(/ı/g, "i");
-}
-
-const NONE_WORDS = new Set(["none", "nobody", "no one", "noone", "leave it", "hicbiri", "kimse"]);
-const ALL_WORDS = new Set(["all", "hepsi"]);
-const YES_WORDS = new Set(["yes", "evet"]);
-const BOT_MENTION = /@\s*match\s*time\b/gi;
-const TAG_TOKEN = /@(\d{5,})\b/g;
-const TAG_MARK = (i: number) => `\u0001${i}\u0001`;
-const TAG_MARK_RE = /^\u0001(\d+)\u0001$/;
-const NUMBERS_SHAPE = /^\d+(\s*-\s*\d+)?(\s*(,|&|\band\b|\bve\b|\s)\s*\d+(\s*-\s*\d+)?)*$/;
-
-function expandNumbers(folded: string): number[] | null {
-  const out: number[] = [];
-  for (const piece of folded.split(/\s*(?:,|&|\band\b|\bve\b|\s)\s*/).filter(Boolean)) {
-    const range = /^(\d+)-(\d+)$/.exec(piece.replace(/\s+/g, ""));
-    if (range) {
-      const a = Number(range[1]);
-      const b = Number(range[2]);
-      if (b < a || b - a + 1 > MAX_RANGE) return null;
-      for (let n = a; n <= b; n++) out.push(n);
-    } else {
-      out.push(Number(piece));
-    }
-  }
-  return [...new Set(out)];
-}
-
-type NameHit = { kind: "hit"; userId: string } | { kind: "ambiguous"; names: string[] } | { kind: "miss" };
-
-function resolveName(part: string, ctx: PickReplyContext): NameHit {
-  for (const tier of [ctx.list, ctx.confirmed, ctx.members]) {
-    const full = tier.filter((c) => foldPickText(c.name) === part);
-    if (full.length === 1) return { kind: "hit", userId: full[0].userId };
-    if (full.length > 1) return { kind: "ambiguous", names: full.map((c) => c.name) };
-    if (!part.includes(" ")) {
-      const first = tier.filter((c) => foldPickText(c.name).split(" ")[0] === part);
-      if (first.length === 1) return { kind: "hit", userId: first[0].userId };
-      if (first.length > 1) return { kind: "ambiguous", names: first.map((c) => c.name) };
-    }
-  }
-  return { kind: "miss" };
-}
-
-/**
- * What an admin's reply to a pick message means. Deterministic, no model.
- *
- * Only a WHOLE-MESSAGE pick is read: after the bot mention and the edge
- * punctuation are stripped, the message must be numbers ("2", "2 3",
- * "2, 3", "2 and 3", "1-3"), names that all resolve ("Wasim", "Ali Khan,
- * Sam"), @tags, ALL, NONE, or YES while a question is pending. "Wasim
- * played well last week" is chat: `not-a-pick`.
- *
- * Numbers are checked against the list's length only; resolving them
- * against the round's stored list is the caller's job. A leading "@"
- * typed by hand ("@Wasim") reads as the name. A real @tag arrives as an
- * "@<digits>" token and is looked up in `ctx.tags`.
- *
- * In a DM, a message that does not resolve but LOOKS like a pick (it
- * holds a digit, or a word equal to a listed first name) is
- * `not-understood` (P6); anything else falls through to the DM's other
- * handlers. The admin group never gets P6: its admins talk to each other.
- */
-export function parsePickReply(text: string, ctx: PickReplyContext, door: "dm" | "group"): PickReply {
-  const tagIndex = new Map(ctx.tags.map((tg, i) => [tg.digits, i]));
-  const extraTags: Array<{ digits: string; userId: null }> = [];
-  let body = (typeof text === "string" ? text : "").replace(BOT_MENTION, " ");
-  body = body.replace(TAG_TOKEN, (_m, digits: string) => {
-    let i = tagIndex.get(digits);
-    if (i === undefined) {
-      i = ctx.tags.length + extraTags.length;
-      extraTags.push({ digits, userId: null });
-      tagIndex.set(digits, i);
-    }
-    return ` ${TAG_MARK(i)} `;
-  });
-  const allTags = [...ctx.tags, ...extraTags];
-  const clean = body
-    .replace(/^[\s.,!?;:]+|[\s.,!?;:]+$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!clean) return { kind: "not-a-pick" };
-  const folded = foldPickText(clean);
-
-  if (NONE_WORDS.has(folded)) return { kind: "none" };
-  if (ALL_WORDS.has(folded)) return { kind: "all" };
-  if (YES_WORDS.has(folded)) return ctx.pendingConfirm ? { kind: "yes" } : { kind: "not-a-pick" };
-
-  if (NUMBERS_SHAPE.test(folded)) {
-    const numbers = expandNumbers(folded);
-    if (!numbers || numbers.some((n) => n < 1 || n > ctx.list.length)) {
-      return door === "dm" ? { kind: "not-understood" } : { kind: "not-a-pick" };
-    }
-    return { kind: "numbers", numbers };
-  }
-
-  // Names and tags, separated by commas, "and", "ve", "&" (and tags also
-  // by spaces).
-  const parts: string[] = [];
-  for (const raw of folded.split(/\s*(?:,|&|\band\b|\bve\b)\s*/).filter(Boolean)) {
-    const pieces = raw.split(" ");
-    if (pieces.every((p) => TAG_MARK_RE.test(p))) parts.push(...pieces);
-    else parts.push(raw.replace(/^@+/, "").trim());
-  }
-
-  const userIds: string[] = [];
-  let unresolvedTag = false;
-  let ambiguous: { first: string; names: string[] } | null = null;
-  let miss = false;
-  for (const part of parts) {
-    const mark = TAG_MARK_RE.exec(part);
-    if (mark) {
-      const tag = allTags[Number(mark[1])];
-      if (tag?.userId) userIds.push(tag.userId);
-      else unresolvedTag = true;
-      continue;
-    }
-    if (!part || part.includes("\u0001")) {
-      miss = true;
-      continue;
-    }
-    const hit = resolveName(part, ctx);
-    if (hit.kind === "hit") userIds.push(hit.userId);
-    else if (hit.kind === "ambiguous") ambiguous = ambiguous ?? { first: displayFirst(clean, part), names: hit.names };
-    else miss = true;
-  }
-
-  if (miss) {
-    if (door === "group") return { kind: "not-a-pick" };
-    return looksLikeAPick(folded, ctx) ? { kind: "not-understood" } : { kind: "not-a-pick" };
-  }
-  if (unresolvedTag) return { kind: "unresolved-tag" };
-  if (ambiguous) return { kind: "ambiguous", ...ambiguous };
-  return { kind: "people", userIds: [...new Set(userIds)] };
-}
-
-/** The part as the admin typed it, for E5 ("Two players are called *Ali*"). */
-function displayFirst(clean: string, foldedPart: string): string {
-  const word = clean
-    .split(/\s*(?:,|&|\band\b|\bve\b)\s*/i)
-    .map((w) => w.replace(/^@+/, "").trim())
-    .find((w) => foldPickText(w) === foldedPart);
-  return word ?? foldedPart;
-}
-
-/** P6's test in a DM: a digit, or a word equal to a listed first name. */
-function looksLikeAPick(folded: string, ctx: PickReplyContext): boolean {
-  if (/\d/.test(folded.replace(/\u0001\d+\u0001/g, ""))) return true;
-  const firsts = new Set(ctx.list.map((c) => foldPickText(c.name).split(" ")[0]).filter(Boolean));
-  return folded.split(/[\s,&]+/).some((w) => firsts.has(w.replace(/^@+/, "")));
 }
 
 // ── The pick message ────────────────────────────────────────────────────

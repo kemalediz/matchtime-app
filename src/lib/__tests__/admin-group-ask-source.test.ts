@@ -43,7 +43,12 @@ const squad = vi.hoisted(() => ({ handleAdminSquadChange: vi.fn(), nameMentions:
 vi.mock("@/lib/admin-group-squad-change", () => squad);
 const teams = vi.hoisted(() => ({ answerTeamsYes: vi.fn(), handleTeamCommand: vi.fn() }));
 vi.mock("@/lib/team-proposal", () => teams);
-const paste = vi.hoisted(() => ({ answerSquadPasteYes: vi.fn() }));
+// The HQ squad reader (2026-10-30): a change, Tom out.
+const paste = vi.hoisted(() => ({
+  answerSquadPasteYes: vi.fn(),
+  proposeSquadPaste: vi.fn(),
+  readHqSquad: vi.fn(async () => ({ reading: { kind: "change", changes: [{ name: "Tom", userId: "u-tom", to: "out", replaces: "" }], alsoAsks: false }, ctx: null, match: null })),
+}));
 vi.mock("@/lib/admin-group-paste", () => paste);
 const graphics = vi.hoisted(() => ({ answerGraphicRequest: vi.fn() }));
 vi.mock("@/lib/admin-group-graphics", () => graphics);

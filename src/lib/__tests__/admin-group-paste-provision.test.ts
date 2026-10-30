@@ -37,7 +37,7 @@ vi.mock("@/lib/squad-count", () => ({
   }),
 }));
 
-import { answerSquadPasteYes, proposeSquadPaste } from "../admin-group-paste";
+import { answerSquadPasteYes, proposeSquadPaste, type PasteReply } from "../admin-group-paste";
 
 const NOW = new Date("2026-10-14T12:00:00Z");
 const MATCH = { id: "m1", date: new Date("2026-10-16T19:00:00Z"), status: "UPCOMING", maxPlayers: 6 };
@@ -111,7 +111,7 @@ const base = { orgId: "org", lang: "en", messageId: "wa-paste", senderUserId: "u
 
 describe("a pasted 2-letter name: promised, then added", () => {
   it("Mo is proposed as new and, on YES, provisioned and put in the squad", async () => {
-    const r = await proposeSquadPaste({ ...base, text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. Mo\n6. Uncle", deps: namesRead(["Ann", "Bob", "Cal", "Dee", "Mo", "Uncle"]) });
+    const r = (await proposeSquadPaste({ ...base, text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. Mo\n6. Uncle", deps: namesRead(["Ann", "Bob", "Cal", "Dee", "Mo", "Uncle"]) })) as PasteReply | null;
     expect(r?.replyText).toContain("Mo, Uncle (not members yet, I'll add them as new players)");
 
     const yes = await answerSquadPasteYes({ ...base, messageId: "wa-yes" });
@@ -124,14 +124,14 @@ describe("a pasted 2-letter name: promised, then added", () => {
 
 describe("the preview never promises what the YES cannot do", () => {
   it("a name that cannot be a player is said up front, not promised", async () => {
-    const r = await proposeSquadPaste({ ...base, text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. WhatsApp", deps: namesRead(["Ann", "Bob", "Cal", "Dee", "WhatsApp"]) });
+    const r = (await proposeSquadPaste({ ...base, text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. WhatsApp", deps: namesRead(["Ann", "Bob", "Cal", "Dee", "WhatsApp"]) })) as PasteReply | null;
     expect(r?.replyText).not.toContain("I'll add them");
     expect(r?.replyText).toContain("I can't add WhatsApp as a player, so I'll leave it out.");
     expect(proposal?.playingNewNames).toEqual([]);
   });
 
   it("Turkish: the same line in Turkish", async () => {
-    const r = await proposeSquadPaste({ ...base, lang: "tr", text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. WhatsApp", deps: namesRead(["Ann", "Bob", "Cal", "Dee", "WhatsApp"]) });
+    const r = (await proposeSquadPaste({ ...base, lang: "tr", text: "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. WhatsApp", deps: namesRead(["Ann", "Bob", "Cal", "Dee", "WhatsApp"]) })) as PasteReply | null;
     expect(r?.replyText).toContain("WhatsApp adını oyuncu olarak ekleyemem, dışarıda bırakıyorum.");
   });
 });

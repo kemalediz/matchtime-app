@@ -18,11 +18,13 @@
  * waiting for YES is inserted directly (its own route stamps its expiry on
  * the real clock, which these polls do not run on).
  *
- * January 2027, so London is GMT. Nothing here calls a model.
+ * The pick reader (2026-10-30) is STUBBED too: "4" picks the fourth on
+ * the list, and every other HQ line is no pick and goes on to the
+ * pipeline. January 2027, so London is GMT. Nothing here calls a model.
  */
 import { test, expect, resetDb } from "../fixtures";
 import { E2E } from "../helpers/env";
-import { engineOn, clearPipelineStubs, otherFacts } from "../helpers/stub";
+import { engineOn, clearPipelineStubs, changeReading, setOrganiserPickReaderStub } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -78,7 +80,9 @@ const says = (request: APIRequestContext, who: { phone: string }, action: "IN" |
 let seq = 0;
 /** An admin's squad change in HQ, read by the real route (router stubbed). */
 async function hq(request: APIRequestContext, text: string, person: string, polarity: "in" | "out") {
-  engineOn({ [text]: { route: "other_att", facts: otherFacts(person, polarity) } });
+  // The HQ squad reader reads the change (2026-10-30), the member by name.
+  const member = Object.values(P).find((p) => p.name.split(" ")[0] === person)?.name ?? person;
+  engineOn({ [text]: { route: "other_att", reading: changeReading([[member, polarity]]) } });
   return post(request, "/api/whatsapp/admin-group", {
     channel: "admin-group",
     groupId: HQ,
@@ -109,6 +113,7 @@ async function setStatus(db: TestDb, who: { id: string }, status: string, positi
 
 test.beforeAll(async ({ db }) => {
   resetDb();
+  setOrganiserPickReaderStub({ bodies: { "4": { kind: "pick", positions: [4] } } });
   await db.run(
     `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled",
        "benchPickMode", "benchPickFallback", "listAnnouncer", "adminChannelMode", "adminGroupId", "adminGroupSubject", "updatedAt")
