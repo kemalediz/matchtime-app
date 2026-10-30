@@ -213,7 +213,7 @@ describe("Teams for <weekday> in computeDuePosts", () => {
     const text = textOf(ft[0]);
     expect(text).toContain("🟥🟦 *Teams for Friday*");
     expect(text).toContain("The squad is set, 18 of 18. At 10:00 on Friday I'll build two balanced teams and post them here for you to check.");
-    expect(text).toContain("Once they're final I send the team sheet here, a graphic to share with the players");
+    expect(text).toContain("For the team sheet, a graphic to share with the players, tag me and ask any time");
     expect(text).toContain("⭐ No one in this squad has a rating yet");
     expect(text).toContain(appUrl("/admin/players/ratings"));
     // The seed nudge would be due now (Thursday from 09:00); it is skipped.

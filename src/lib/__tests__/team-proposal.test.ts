@@ -102,6 +102,10 @@ function table(name: string) {
       rows().push(row);
       return { ...row };
     }),
+    createMany: vi.fn(async (a: { data: Array<Record<string, unknown>> }) => {
+      for (const d of a.data) rows().push({ id: `${name}-${++store.seq}`, ...d } as Row);
+      return { count: a.data.length };
+    }),
     deleteMany: vi.fn(async (a: { where: Record<string, unknown> }) => {
       const keep = rows().filter((r) => !matches(r, a.where));
       const n = rows().length - keep.length;
@@ -117,7 +121,7 @@ vi.mock("@/lib/team-generation", () => ({
   generateTeamsForMatch: vi.fn(),
   matchRatingsFor: vi.fn(async (_m: string, _o: string, ids: string[]) => new Map(ids.map((id) => [id, 5]))),
 }));
-const graphics = vi.hoisted(() => ({ sendGraphicToAdminChannel: vi.fn(), redrawTeamSheet: vi.fn() }));
+const graphics = vi.hoisted(() => ({ sendGraphicToAdminChannel: vi.fn() }));
 vi.mock("@/lib/admin-group-graphics", () => graphics);
 const announcer = vi.hoisted(() => ({ loadOrganisersAnnounce: vi.fn() }));
 vi.mock("@/lib/list-announcer-store", () => announcer);
@@ -163,6 +167,7 @@ function seed() {
     "botJob",
     "sentNotification",
     "sport",
+    "adminTeamSheet",
   ]) {
     dbMock[k] = table(k);
   }
@@ -229,8 +234,8 @@ function asCommand(text: string): TeamCommand {
   if (m) return change({ moves: [m[1]] });
   throw new Error(`no command for ${text}`);
 }
-const cmd = (text: string, deps = quiet, now = NOON) =>
-  handleTeamCommand({ orgId: ORG, lang: "en", command: asCommand(text), senderUserId: "u-admin", messageId: `wa-${text}`, now, deps });
+const cmd = (text: string, deps = quiet, now = NOON, addressed = true) =>
+  handleTeamCommand({ addressed, orgId: ORG, lang: "en", command: asCommand(text), senderUserId: "u-admin", messageId: `wa-${text}`, now, deps });
 const yes = (deps = quiet, now = NOON) =>
   answerTeamsYes({ orgId: ORG, lang: "en", senderUserId: "u-admin", messageId: "wa-yes", now, deps });
 
@@ -238,7 +243,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   seed();
   graphics.sendGraphicToAdminChannel.mockResolvedValue({ queued: true, jobId: "job-g" });
-  graphics.redrawTeamSheet.mockResolvedValue({ queued: true, jobId: "job-r" });
   announcer.loadOrganisersAnnounce.mockResolvedValue(true);
 });
 
@@ -250,7 +254,7 @@ describe("the commands", () => {
 
   it("a move to a named team the player is already on: one line, nothing moved", async () => {
     seedSheet();
-    const r = await handleTeamCommand({
+    const r = await handleTeamCommand({ addressed: true,
       orgId: ORG,
       lang: "en",
       command: change({ sides: [{ name: "Ali", to: "RED" }] }),
@@ -296,7 +300,7 @@ describe("the commands", () => {
   it("'takımlar' with too few players, in Turkish", async () => {
     store.tables.attendance = store.tables.attendance.slice(0, 3);
     const short = vi.fn(async () => ({ ok: false as const, reason: "yeterli onaylı oyuncu yok, 3/4" }));
-    const r = await handleTeamCommand({
+    const r = await handleTeamCommand({ addressed: true,
       orgId: ORG,
       lang: "tr",
       command: { kind: "show" },
@@ -381,7 +385,7 @@ describe("the commands", () => {
   });
 
   it("swap or move with no teams: tells them to type teams", async () => {
-    expect(await cmd("move Bilal")).toEqual({ outcome: "teams-no-teams", replyText: "There are no teams yet. Just ask me for them in your own words (for example *show me the teams*) and I'll build them." });
+    expect(await cmd("move Bilal")).toEqual({ outcome: "teams-no-teams", replyText: "There are no teams yet. Tag me and ask for them (for example *@Match Time make the teams*) and I'll build them." });
   });
 
   it("a change after approval keeps the teams final and updates what the group was told", async () => {
@@ -393,22 +397,14 @@ describe("the commands", () => {
     expect(proposal()).toMatchObject({ state: "approved" });
     expect((store.tables.match[0] as Row).status).toBe("TEAMS_PUBLISHED");
     expect(proposal()?.toldSheet).toEqual(expect.arrayContaining([expect.objectContaining({ userId: "u-bilal", team: "YELLOW" })]));
-    // The team sheet graphic follows on its own (Kemal, 2026-10-16).
-    expect(graphics.redrawTeamSheet).toHaveBeenCalledWith(ORG, MATCH, NOON);
+    // No team sheet picture on its own (Kemal, 2026-10-30: only when asked, tagged).
+    expect(graphics.sendGraphicToAdminChannel).not.toHaveBeenCalled();
   });
 
-  it("a change before approval: no team sheet graphic (the approval sends the first one)", async () => {
+  it("a change before approval: no team sheet graphic", async () => {
     seedSheet();
     await cmd("move Bilal");
-    expect(graphics.redrawTeamSheet).not.toHaveBeenCalled();
-  });
-
-  it("a team sheet that cannot be queued never fails the change", async () => {
-    seedSheet();
-    await cmd("teams");
-    await yes();
-    graphics.redrawTeamSheet.mockRejectedValue(new Error("db down"));
-    expect((await cmd("move Bilal"))?.outcome).toBe("teams-moved");
+    expect(graphics.sendGraphicToAdminChannel).not.toHaveBeenCalled();
   });
 
   it("'reshuffle' after approval reopens the question", async () => {
@@ -419,15 +415,13 @@ describe("the commands", () => {
     expect(proposal()).toMatchObject({ state: "proposed", approvedAt: null });
   });
 
-  it("final again after a reshuffle: the team sheet goes again (the first one's once-key is spent)", async () => {
+  it("final again after a reshuffle: still no team sheet picture on its own", async () => {
     seedSheet();
     await cmd("teams");
     await yes();
-    expect(graphics.redrawTeamSheet).not.toHaveBeenCalled();
     await cmd("reshuffle");
-    graphics.sendGraphicToAdminChannel.mockResolvedValue({ queued: false, reason: "already-sent" });
     await yes();
-    expect(graphics.redrawTeamSheet).toHaveBeenCalledWith(ORG, MATCH, NOON);
+    expect(graphics.sendGraphicToAdminChannel).not.toHaveBeenCalled();
   });
 });
 
@@ -450,18 +444,11 @@ describe("YES", () => {
     expect(groupJobs()[0].text).toContain("Ali Khan");
   });
 
-  it("YES queues the team sheet graphic in the admin group, once per match", async () => {
+  it("YES draws no team sheet picture: it is drawn only when asked, tagged (Kemal, 2026-10-30)", async () => {
     await cmd("teams");
     await yes();
-    expect(graphics.sendGraphicToAdminChannel).toHaveBeenCalledTimes(1);
-    expect(graphics.sendGraphicToAdminChannel).toHaveBeenCalledWith(ORG, MATCH, "teams", { onceKey: `${MATCH}:teams-approved` });
-  });
-
-  it("a graphic that fails to queue never undoes the approval", async () => {
-    graphics.sendGraphicToAdminChannel.mockRejectedValue(new Error("boom"));
-    await cmd("teams");
-    expect(await yes()).toEqual({ outcome: "teams-final", replyText: "Teams are final." });
-    expect((store.tables.match[0] as Row).status).toBe("TEAMS_PUBLISHED");
+    expect(graphics.sendGraphicToAdminChannel).not.toHaveBeenCalled();
+    expect(adminJobs()).toEqual([]);
   });
 
   it("with no announce dependency injected, the club's own setting is read", async () => {
@@ -484,7 +471,7 @@ describe("YES", () => {
   it("teams cleared since they were proposed: nothing to approve", async () => {
     await cmd("teams");
     store.tables.teamAssignment = [];
-    expect(await yes()).toEqual({ outcome: "teams-no-teams", replyText: "There are no teams yet. Just ask me for them in your own words (for example *show me the teams*) and I'll build them." });
+    expect(await yes()).toEqual({ outcome: "teams-no-teams", replyText: "There are no teams yet. Tag me and ask for them (for example *@Match Time make the teams*) and I'll build them." });
     expect(proposal()).toMatchObject({ state: "set-aside" });
   });
 });
@@ -644,9 +631,8 @@ describe("after approval: a squad change is told to the admin group", () => {
     // Told once.
     expect(await tick(new Date("2026-10-16T13:01:00.000Z"))).toBe(0);
     expect(groupJobs()).toEqual([]);
-    // And the updated team sheet graphic follows, no command needed (Kemal, 2026-10-16).
-    expect(graphics.redrawTeamSheet).toHaveBeenCalledTimes(1);
-    expect(graphics.redrawTeamSheet).toHaveBeenCalledWith(ORG, MATCH, new Date("2026-10-16T13:00:00.000Z"));
+    // No updated team sheet picture on its own (Kemal, 2026-10-30).
+    expect(graphics.sendGraphicToAdminChannel).not.toHaveBeenCalled();
   });
 
   it("a drop-out with nobody yet: the place is open", async () => {
@@ -662,7 +648,6 @@ describe("after approval: a squad change is told to the admin group", () => {
     await cmd("teams");
     await yes();
     expect(await tick(new Date("2026-10-16T13:00:00.000Z"))).toBe(0);
-    expect(graphics.redrawTeamSheet).not.toHaveBeenCalled();
   });
 });
 
@@ -728,7 +713,7 @@ describe("uneven sides", () => {
 
   it("Turkish", async () => {
     seedSheet();
-    await handleTeamCommand({ orgId: ORG, lang: "tr", command: asCommand("Bilal taşı"), senderUserId: "u-admin", messageId: "wa-tr", now: NOON, deps: quiet });
+    await handleTeamCommand({ addressed: true, orgId: ORG, lang: "tr", command: asCommand("Bilal taşı"), senderUserId: "u-admin", messageId: "wa-tr", now: NOON, deps: quiet });
     const r = await answerTeamsYes({ orgId: ORG, lang: "tr", senderUserId: "u-admin", messageId: "wa-yes", now: NOON, deps: quiet });
     expect(r?.replyText).toBe(
       "Takımlar dengesiz: Kırmızı 1, Sarı 3. Böyle kesinleşsin istiyorsanız yine *EVET* yazın, ya da önce kimin diğer takıma geçeceğini kendi cümlelerinizle yazın.",
@@ -739,7 +724,7 @@ describe("uneven sides", () => {
 // ── 2026-10-29, FNF HQ: many names, the sides swapped, pairings, "Recommend swaps" ──
 
 const run = (command: TeamCommand, deps: TeamProposalDeps = quiet, lang = "en") =>
-  handleTeamCommand({ orgId: ORG, lang, command, senderUserId: "u-admin", messageId: "wa-x", now: NOON, deps });
+  handleTeamCommand({ addressed: true, orgId: ORG, lang, command, senderUserId: "u-admin", messageId: "wa-x", now: NOON, deps });
 
 describe("one change with any number of names", () => {
   it("three names all change side in one change, and the teams are reposted once", async () => {
@@ -877,5 +862,157 @@ describe("'Recommend swaps'", () => {
 
   it("with no teams: says there are none", async () => {
     expect((await run({ kind: "suggest" }, rated)).outcome).toBe("teams-no-teams");
+  });
+});
+
+
+// ── 2026-10-30, Kemal: making or remaking teams needs the tag ─────────
+describe("a build only when asked of MatchTime by fact (a tag, or a reply to MatchTime)", () => {
+  const untagged = (text: string) => cmd(text, quiet, NOON, false);
+  it("an untagged reshuffle: nothing built, nothing said", async () => {
+    seedSheet();
+    const before = store.tables.teamAssignment.map((r) => ({ ...r }));
+    expect(await untagged("reshuffle")).toEqual({ outcome: "teams-not-asked", replyText: null });
+    expect(generate).not.toHaveBeenCalled();
+    expect(store.tables.teamAssignment).toEqual(before);
+  });
+  it("untagged 'teams' with none built: nothing built, nothing said", async () => {
+    expect(await untagged("teams")).toEqual({ outcome: "teams-not-asked", replyText: null });
+    expect(generate).not.toHaveBeenCalled();
+    expect(proposal()).toBeUndefined();
+  });
+  it("an untagged pair with no teams yet: no build", async () => {
+    const r = await handleTeamCommand({ addressed: false, orgId: ORG, lang: "en", command: change({ together: [["Ali", "Bilal"]] }), senderUserId: "u-admin", messageId: "wa-p", now: NOON, deps: quiet });
+    expect(r).toEqual({ outcome: "teams-not-asked", replyText: null });
+    expect(generate).not.toHaveBeenCalled();
+  });
+  it("an untagged single change on teams that exist still works", async () => {
+    seedSheet();
+    expect((await untagged("move Bilal")).outcome).toBe("teams-moved");
+    expect(teamOf("u-bilal")).toBe("YELLOW");
+  });
+  it("29 Oct: an untagged pairing on proposed teams is a targeted change, never a reshuffle", async () => {
+    seedSheet();
+    const r = await handleTeamCommand({ addressed: false, orgId: ORG, lang: "en", command: change({ together: [["Ali", "Tom"]] }), senderUserId: "u-admin", messageId: "wa-stick", now: NOON, deps: quiet });
+    expect(["teams-changed", "teams-unchanged"]).toContain(r.outcome);
+    expect(generate).not.toHaveBeenCalled();
+    expect(teamOf("u-ali")).toBe(teamOf("u-tom"));
+  });
+  it("a tagged reshuffle builds", async () => {
+    seedSheet();
+    expect((await cmd("reshuffle")).outcome).toBe("teams-built");
+    expect(generate).toHaveBeenCalled();
+  });
+});
+
+// ── 2026-10-30, FNF HQ: an earlier set of teams brought back ─────────
+describe("restore and set: the teams of an earlier sheet, or of a pasted one, as a proposal needing YES", () => {
+  const run = (command: TeamCommand, quotedSheet: unknown = null) =>
+    handleTeamCommand({ addressed: true, orgId: ORG, lang: "en", command, senderUserId: "u-admin", messageId: "wa-r", now: NOON, deps: quiet, quotedSheet: quotedSheet as never });
+  const sheets = () => store.tables.adminTeamSheet ?? [];
+  const firstSheet = () => {
+    const r = sheets()[0];
+    return { id: r.id, matchId: r.matchId as string, slots: r.slots as never, createdAt: new Date("2026-10-13T17:09:00.000Z") };
+  };
+
+  it("every proposal is kept as a sheet with its sides", async () => {
+    seedSheet();
+    await cmd("teams");
+    expect(sheets()).toHaveLength(1);
+    expect(sheets()[0]).toMatchObject({ orgId: ORG, matchId: MATCH, slots: expect.arrayContaining([{ userId: "u-ali", team: "RED" }, { userId: "u-tom", team: "YELLOW" }]) });
+  });
+
+  it("restore: the earlier sheet's teams come back, proposed, saying they are the earlier ones", async () => {
+    seedSheet();
+    await cmd("teams");
+    const earlier = firstSheet();
+    await cmd("swap Bilal Tom");
+    expect(teamOf("u-bilal")).toBe("YELLOW");
+    const r = await run({ kind: "restore" }, earlier);
+    expect(r.outcome).toBe("teams-restored");
+    expect(r.replyText?.startsWith("These are the earlier teams, from Tue 13 Oct at 18:09. They need your YES again.\n\n📝 *Proposed teams*")).toBe(true);
+    expect(teamOf("u-bilal")).toBe("RED");
+    expect(teamOf("u-tom")).toBe("YELLOW");
+    expect(proposal()).toMatchObject({ state: "proposed" });
+    // The YES then approves exactly that sheet.
+    await yes();
+    expect((store.tables.match[0] as Row).status).toBe("TEAMS_PUBLISHED");
+    expect(teamOf("u-bilal")).toBe("RED");
+  });
+
+  it("restore after approval: proposed again, needing YES", async () => {
+    seedSheet();
+    await cmd("teams");
+    const earlier = firstSheet();
+    await cmd("swap Bilal Tom");
+    await yes();
+    const r = await run({ kind: "restore" }, earlier);
+    expect(r.outcome).toBe("teams-restored");
+    expect((store.tables.match[0] as Row).status).toBe("TEAMS_GENERATED");
+    expect(proposal()).toMatchObject({ state: "proposed", approvedAt: null });
+  });
+
+  it("restore of the teams as they stand: said so, nothing rewritten", async () => {
+    seedSheet();
+    await cmd("teams");
+    const r = await run({ kind: "restore" }, firstSheet());
+    expect(r.outcome).toBe("teams-restore-same");
+    expect(r.replyText?.startsWith("Those are the teams as they stand.")).toBe(true);
+  });
+
+  it("restore with no sheet to bring back: one line", async () => {
+    seedSheet();
+    expect(await run({ kind: "restore" }, null)).toEqual({
+      outcome: "teams-restore-none",
+      replyText: "I can't find those teams. Reply to my team sheet you want back and say *use these*, or paste the two teams here.",
+    });
+  });
+
+  it("restore of a sheet with someone no longer in the squad: one line, nothing written", async () => {
+    seedSheet();
+    await cmd("teams");
+    const earlier = firstSheet();
+    await cmd("swap Bilal Tom");
+    (store.tables.attendance.find((a) => a.userId === "u-ali") as Row).status = "DROPPED";
+    store.tables.attendance.push({ id: "att-z", matchId: MATCH, userId: "u-zara", status: "CONFIRMED" });
+    const before = store.tables.teamAssignment.map((r) => ({ ...r }));
+    const r = await run({ kind: "restore" }, earlier);
+    expect(r.outcome).toBe("teams-sheet-invalid");
+    expect(r.replyText).toBe("Not in the squad now: Ali Khan. I can't use those teams as they are. On neither team: Zara Zest. Everyone in the squad needs a side.");
+    expect(store.tables.teamAssignment).toEqual(before);
+  });
+
+  it("set: a pasted sheet becomes the teams, proposed", async () => {
+    seedSheet();
+    const r = await run({ kind: "set", red: ["Ali", "Tom"], yellow: ["Bilal", "shez"] });
+    expect(r.outcome).toBe("teams-set");
+    expect(r.replyText?.startsWith("These are the teams you sent. They need your YES.\n\n📝 *Proposed teams*")).toBe(true);
+    expect([teamOf("u-ali"), teamOf("u-tom"), teamOf("u-bilal"), teamOf("u-sheh")]).toEqual(["RED", "RED", "YELLOW", "YELLOW"]);
+    expect(proposal()).toMatchObject({ state: "proposed" });
+  });
+
+  it("set: a pasted sheet MatchTime posted before is named as the earlier one", async () => {
+    seedSheet();
+    await cmd("teams");
+    await cmd("swap Bilal Tom");
+    const r = await run({ kind: "set", red: ["Ali", "Bilal"], yellow: ["Tom", "Shehryar"] });
+    expect(r.outcome).toBe("teams-restored");
+    expect(r.replyText).toMatch(/^These are the earlier teams, from /);
+  });
+
+  it("set: a name not in the squad, a name twice, uneven sides, someone left out: one line each, nothing written", async () => {
+    seedSheet();
+    const before = store.tables.teamAssignment.map((r) => ({ ...r }));
+    expect((await run({ kind: "set", red: ["Ali", "Zed"], yellow: ["Tom", "Shehryar"] })).replyText).toBe("I can't find Zed in the squad.");
+    expect((await run({ kind: "set", red: ["Ali", "Bilal"], yellow: ["Tom", "Ali Khan"] })).replyText).toBe("On the teams twice: Ali Khan. Each player goes on one side.");
+    expect((await run({ kind: "set", red: ["Ali", "Bilal", "Tom"], yellow: ["Shehryar"] })).replyText).toBe("Those sides are uneven: Red 3, Yellow 1. Send them again with the sides even.");
+    expect((await run({ kind: "set", red: ["Ali"], yellow: ["Tom"] })).replyText).toBe("On neither team: Bilal Ahmed, Shehryar Malik. Everyone in the squad needs a side.");
+    expect(store.tables.teamAssignment).toEqual(before);
+  });
+
+  it("set in Turkish", async () => {
+    seedSheet();
+    const r = await handleTeamCommand({ addressed: true, orgId: ORG, lang: "tr", command: { kind: "set", red: ["Ali", "Tom"], yellow: ["Bilal", "Shehryar"] }, senderUserId: "u-admin", messageId: "wa-tr", now: NOON, deps: quiet });
+    expect(r.replyText?.startsWith("Gönderdiğiniz takımlar bunlar. EVET'iniz gerekiyor.")).toBe(true);
   });
 });

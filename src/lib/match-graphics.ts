@@ -48,6 +48,9 @@ export interface TeamSheetData extends GraphicBase {
    * sheets with the same fingerprint are the same picture of the teams.
    */
   fingerprint?: string;
+  /** The teams are approved (the match is TEAMS_PUBLISHED). Set by
+   *  `loadGraphicData`; absent on a drawn sample. */
+  approved?: boolean;
 }
 
 /**
@@ -81,6 +84,7 @@ export async function loadGraphicData(target: GraphicTarget): Promise<GraphicDat
     select: {
       id: true,
       date: true,
+      status: true,
       teamLabels: true,
       activity: {
         select: {
@@ -147,6 +151,7 @@ export async function loadGraphicData(target: GraphicTarget): Promise<GraphicDat
       { label: red, names: pick("RED") },
       { label: yellow, names: pick("YELLOW") },
     ],
+    approved: match.status === "TEAMS_PUBLISHED",
     fingerprint: teamSheetFingerprint({
       labels: [red, yellow],
       red: on("RED").map((a) => a.userId),

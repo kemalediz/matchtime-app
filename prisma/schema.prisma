@@ -1980,6 +1980,26 @@ model AdminTeamProposal {
   @@index([orgId, state])
 }
 
+/// A team sheet MatchTime posted in a club's admin group (2026-10-30), so
+/// an organiser replying to an earlier one ("these are the final teams",
+/// "use these") gets exactly those teams back, from these rows, never read
+/// from the words. Kept 14 days. See src/lib/team-sheet-history.ts.
+model AdminTeamSheet {
+  id         String   @id @default(cuid())
+  orgId      String
+  matchId    String
+  /// [{ userId, team }]: the players on the teams when it was posted.
+  slots      Json
+  /// The sheet as posted (MatchTime's own words), to find the send.
+  text       String
+  /// The WhatsApp stanza id of the post, stamped on the Pi's ack.
+  waStanzaId String?
+  createdAt  DateTime @default(now())
+
+  @@index([orgId, waStanzaId])
+  @@index([matchId, createdAt])
+}
+
 /// A squad list an admin pasted in the club's admin group (2026-10-14),
 /// waiting for an admin's YES. Holds the list as the admin wrote it, read
 /// onto members when pasted; the changes are worked out again against the

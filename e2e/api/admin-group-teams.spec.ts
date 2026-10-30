@@ -41,7 +41,8 @@ let seq = 0;
 async function say(request: APIRequestContext, text: string, senderPhone = ADMIN) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-agt-${++seq}`, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
+    // "@Match Time" in the body comes with the Pi's real mention flag, as live.
+    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-agt-${++seq}`, text, senderPhone, botMentioned: text.includes("@Match Time"), timestamp: String(Math.floor(Date.now() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -91,6 +92,7 @@ function hqStubs(extra: Parameters<typeof engineOn>[0] = {}) {
     teams: { route: "balancer", facts: teamsFacts("show") },
     "takımlar": { route: "balancer", facts: teamsFacts("show") },
     reshuffle: { route: "balancer", facts: teamsFacts("generate") },
+    "@Match Time reshuffle": { route: "balancer", facts: teamsFacts("generate") },
     "move Pat": { route: "balancer", facts: teamsFacts("swap", ["Pat"]) },
     "move Zed": { route: "balancer", facts: teamsFacts("swap", ["Zed"]) },
     "Zed'i taşı": { route: "balancer", facts: teamsFacts("swap", ["Zed"]) },
@@ -102,6 +104,7 @@ function hqStubs(extra: Parameters<typeof engineOn>[0] = {}) {
     "Alex and Pat on one team": { route: "balancer", facts: teamsFacts("swap", [], { pairings: [["Alex", "Pat"]] }) },
     "recommend swaps": { route: "balancer", facts: teamsFacts("suggest") },
     "graphic please": { route: "team_sheet" },
+    "@Match Time graphic please": { route: "team_sheet" },
     YES: { route: "approve" },
     yes: { route: "approve" },
     ...extra,
@@ -157,8 +160,15 @@ test("'teams' shows the teams already built, without rebuilding them", async ({ 
   expect(await sheet(db)).toEqual(before);
 });
 
-test("'reshuffle' rebuilds them", async ({ request, db }) => {
-  const out = await say(request, "reshuffle");
+// 2026-10-30, Kemal: new teams only when MatchTime is asked by fact.
+test("an untagged 'reshuffle': nothing rebuilt, nothing said", async ({ request, db }) => {
+  const before = await sheet(db);
+  expect(await say(request, "reshuffle")).toMatchObject({ handled: false, replyText: null });
+  expect(await sheet(db)).toEqual(before);
+});
+
+test("'@Match Time reshuffle' rebuilds them", async ({ request, db }) => {
+  const out = await say(request, "@Match Time reshuffle");
   expect(out).toMatchObject({ handled: true, outcome: "teams-built" });
   expect(await sheet(db)).toHaveLength(4);
 });
@@ -272,13 +282,12 @@ test("the second YES: 'Teams are final.', TEAMS_PUBLISHED, nothing posted in the
   expect(out).toEqual(expect.objectContaining({ handled: true, outcome: "teams-final", replyText: "Teams are final." }));
   expect(await status(db)).toBe("TEAMS_PUBLISHED");
   expect(await playersGroupJobs(db)).toBe(0);
-  // The team sheet image is queued for the admin group, once.
+  // No team sheet picture on its own (Kemal, 2026-10-30): only when asked, tagged.
   const graphics = await db.all<{ text: string }>(
     `SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'admin-group' AND text LIKE 'Ready to post:%teams%'`,
     [ORG_ID],
   );
-  expect(graphics).toHaveLength(1);
-  expect(await db.count(`SELECT count(*) FROM "SentNotification" WHERE key = $1`, [`graphic:${MATCH.upcoming}:teams-approved`])).toBe(1);
+  expect(graphics).toHaveLength(0);
   // Tom is still in: the superseded list was never applied.
   const tom = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
   expect(tom?.status).toBe("CONFIRMED");
@@ -286,17 +295,23 @@ test("the second YES: 'Teams are final.', TEAMS_PUBLISHED, nothing posted in the
   expect(await say(request, "yes")).toMatchObject({ handled: false, replyText: null });
 });
 
-test("'graphic please' while the approved team sheet waits to go: no second one, the waiting one goes now (2026-10-29)", async ({ request, db }) => {
-  await say(request, "graphic please");
-  const sheets = await db.all<{ opts: string[] }>(
-    `SELECT "pollOptions" AS opts FROM "BotJob" WHERE "orgId" = $1 AND kind = 'admin-group' AND text LIKE 'Ready to post:%teams%'`,
-    [ORG_ID],
-  );
-  expect(sheets).toHaveLength(1);
-  expect(sheets[0].opts[3]).toBe("asked");
+test("an untagged 'graphic please': nothing drawn; '@Match Time graphic please': one team sheet, asked (2026-10-30)", async ({ request, db }) => {
+  const sheets = () =>
+    db.all<{ text: string; opts: string[] }>(
+      `SELECT text, "pollOptions" AS opts FROM "BotJob" WHERE "orgId" = $1 AND kind = 'admin-group' AND text LIKE 'Ready to post:%teams%'`,
+      [ORG_ID],
+    );
+  expect(await say(request, "graphic please")).toMatchObject({ handled: false, replyText: null });
+  expect(await sheets()).toHaveLength(0);
+  await say(request, "@Match Time graphic please");
+  const out = await sheets();
+  expect(out).toHaveLength(1);
+  expect(out[0].opts[3]).toBe("asked");
+  // Final teams: the caption as before, no "not approved yet".
+  expect(out[0].text).not.toContain("not approved");
 });
 
-test("after approval, a drop-out is told to the admin group once, with the teams; the updated team sheet follows on its own", async ({ request, db }) => {
+test("after approval, a drop-out is told to the admin group once, with the teams; no team sheet picture on its own (2026-10-30)", async ({ request, db }) => {
   // The approved team sheet went out (the Pi's ack), as at FNF on 2026-10-16.
   await db.run(`UPDATE "BotJob" SET "sentAt" = now() WHERE "orgId" = $1 AND text LIKE 'Ready to post:%teams%'`, [ORG_ID]);
   await db.run(`UPDATE "Attendance" SET status = 'DROPPED' WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
@@ -307,39 +322,21 @@ test("after approval, a drop-out is told to the admin group once, with the teams
   expect(notice[0].text).toMatch(/Tom Third is out, (Red|Yellow) has a place open\./);
   expect(notice[0].text).toContain("✅ *Final teams*");
 
-  // "Poster generation should be automated as soon as the teams are final.
-  // no need for any extra command" (Kemal, 2026-10-16). The updated team
-  // sheet is queued by the poll that told the change, for 2 quiet minutes on.
+  // Kemal, 2026-10-30: the team sheet only when asked, tagged. The change is
+  // told; no picture is queued.
   const waiting = () =>
-    // Epoch milliseconds: the column holds UTC without a zone, and a Date
-    // read back would be shifted by the machine's own zone.
-    db.all<{ id: string; sendAfter: string | null }>(
-      `SELECT id, (EXTRACT(EPOCH FROM "sendAfter") * 1000)::bigint::text AS "sendAfter" FROM "BotJob" WHERE "orgId" = $1 AND kind = 'admin-group' AND text LIKE 'Ready to post:%teams%' AND "sentAt" IS NULL`,
+    db.all<{ id: string }>(
+      `SELECT id FROM "BotJob" WHERE "orgId" = $1 AND kind = 'admin-group' AND text LIKE 'Ready to post:%teams%' AND "sentAt" IS NULL`,
       [ORG_ID],
     );
-  const queued = await waiting();
-  expect(queued).toHaveLength(1);
-  expect(Number(queued[0].sendAfter)).toBe(londonAt(0, 20, 42).getTime());
+  expect(await waiting()).toHaveLength(0);
   expect(teamText(ins, /Ready to post/)).toEqual([]);
-
-  // Another change inside the quiet period (Tom back): told, and the SAME
-  // sheet waits longer instead of a second one.
   await db.run(`UPDATE "Attendance" SET status = 'CONFIRMED' WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
   const at41 = await poll(request, londonAt(0, 20, 41));
   expect(teamText(at41, /Team change/)).toHaveLength(1);
-  expect(teamText(at41, /Ready to post/)).toEqual([]);
-  const later = await waiting();
-  expect(later.map((j) => j.id)).toEqual([queued[0].id]);
-  expect(Number(later[0].sendAfter)).toBe(londonAt(0, 20, 43).getTime());
-  expect(teamText(await poll(request, londonAt(0, 20, 42)), /Ready to post/)).toEqual([]);
-
-  // Then once, with the image, and nothing more to tell.
   const at45 = await poll(request, londonAt(0, 20, 45));
-  expect(teamText(at45, /Team change/)).toEqual([]);
-  const sheetOut = teamText(at45, /Ready to post/) as Array<Instruction & { imageUrl?: string }>;
-  expect(sheetOut).toHaveLength(1);
-  expect(sheetOut[0]).toMatchObject({ kind: "admin-group-message", groupId: HQ });
-  expect(sheetOut[0].imageUrl).toContain("/api/graphics/");
+  expect(teamText(at45, /Ready to post/)).toEqual([]);
+  expect(await waiting()).toHaveLength(0);
   expect(await playersGroupJobs(db)).toBe(0);
 });
 

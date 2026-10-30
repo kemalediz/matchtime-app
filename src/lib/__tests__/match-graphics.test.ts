@@ -113,6 +113,8 @@ describe("loadGraphicData: the team sheet", () => {
     const d = await loadGraphicData({ orgId: "org-fnf", matchId: "m-1", kind: "teams" });
     expect(d).toEqual({
       kind: "teams",
+      // Not TEAMS_PUBLISHED in this row: the caption says not approved yet (2026-10-30).
+      approved: false,
       clubName: "FNF",
       lang: "en",
       matchDate: DATE,

@@ -17,6 +17,9 @@ import {
   teamCommandFromFacts,
   planTeamChange,
   bestSwap,
+  buildNameProblems,
+  checkSheetFacts,
+  sameSheet,
   resolveSheetName,
   resolveSwap,
   teamsReadyAt,
@@ -377,7 +380,7 @@ describe("the words", () => {
         "1. Tom Third",
         "2. Shehryar Malik",
         "",
-        "To change them, just tell me in your own words (for example *swap Ali and Tom*, *move Ali to the other team* or *shuffle them again*).",
+        "To change them, just tell me in your own words (for example *swap Ali and Tom* or *move Ali to the other team*). For brand new teams, tag me (*@Match Time shuffle them again*).",
         "Reply *YES* when they are final. I won't post them in the players' group.",
       ].join("\n"),
     );
@@ -426,5 +429,62 @@ describe("the words", () => {
         }
       }
     }
+  });
+});
+
+// ── 2026-10-30: an earlier set of teams brought back, or a pasted sheet ──
+
+describe("teamCommandFromFacts: restore and set (2026-10-30, FNF HQ)", () => {
+  const base = { swaps: [], moves: [], pairings: [], swapSides: false };
+  it("restore: the teams of the message replied to", () => {
+    expect(teamCommandFromFacts({ ...base, action: "restore" })).toEqual({ kind: "restore" });
+  });
+  it("set: the two sides as written, first side Red", () => {
+    expect(teamCommandFromFacts({ ...base, action: "set", sides: { red: [" Ali ", "Bilal"], yellow: ["Tom", ""] } })).toEqual({
+      kind: "set",
+      red: ["Ali", "Bilal"],
+      yellow: ["Tom"],
+    });
+  });
+  it("set with a side missing is unclear: nothing is set", () => {
+    expect(teamCommandFromFacts({ ...base, action: "set", sides: { red: ["Ali"], yellow: [] } })).toEqual({ kind: "unclear" });
+    expect(teamCommandFromFacts({ ...base, action: "set" })).toEqual({ kind: "unclear" });
+  });
+});
+
+describe("checkSheetFacts: a sheet is used only when every fact holds", () => {
+  const confirmed = ["a", "b", "c", "d"];
+  const sheet = (red: string[], yellow: string[]) => new Map<string, "RED" | "YELLOW">([...red.map((id) => [id, "RED"] as const), ...yellow.map((id) => [id, "YELLOW"] as const)]);
+  it("every confirmed player placed, nobody else, even sides: ok", () => {
+    expect(checkSheetFacts({ target: sheet(["a", "b"], ["c", "d"]), confirmedIds: confirmed })).toEqual({ ok: true });
+  });
+  it("someone no longer in the squad", () => {
+    expect(checkSheetFacts({ target: sheet(["a", "b"], ["c", "x"]), confirmedIds: confirmed })).toEqual({ ok: false, notPlaying: ["x"], missing: ["d"], uneven: null });
+  });
+  it("a confirmed player on neither side", () => {
+    expect(checkSheetFacts({ target: sheet(["a", "b"], ["c"]), confirmedIds: confirmed })).toEqual({ ok: false, notPlaying: [], missing: ["d"], uneven: null });
+  });
+  it("uneven sides", () => {
+    expect(checkSheetFacts({ target: sheet(["a", "b", "c"], ["d"]), confirmedIds: confirmed })).toEqual({ ok: false, notPlaying: [], missing: [], uneven: { red: 3, yellow: 1 } });
+  });
+  it("an odd squad may be one apart", () => {
+    expect(checkSheetFacts({ target: sheet(["a", "b", "e"], ["c", "d"]), confirmedIds: [...confirmed, "e"] })).toEqual({ ok: true });
+  });
+});
+
+describe("sameSheet: the same players on the same sides, in any order", () => {
+  it("equal", () => {
+    expect(sameSheet([{ userId: "a", team: "RED" }, { userId: "b", team: "YELLOW" }], [{ userId: "b", team: "YELLOW" }, { userId: "a", team: "RED" }])).toBe(true);
+  });
+  it("a side differs, or a player is missing", () => {
+    expect(sameSheet([{ userId: "a", team: "RED" }, { userId: "b", team: "YELLOW" }], [{ userId: "a", team: "YELLOW" }, { userId: "b", team: "RED" }])).toBe(false);
+    expect(sameSheet([{ userId: "a", team: "RED" }], [{ userId: "a", team: "RED" }, { userId: "b", team: "RED" }])).toBe(false);
+  });
+});
+
+describe("buildNameProblems against the squad", () => {
+  it("EN and TR", () => {
+    expect(buildNameProblems("en", [{ raw: "Zed", res: { kind: "unknown" } }], "squad")).toBe("I can't find Zed in the squad.");
+    expect(buildNameProblems("tr", [{ raw: "Zed", res: { kind: "unknown" } }], "squad")).toBe("Zed kadroda yok.");
   });
 });

@@ -3002,7 +3002,7 @@ Neler yapabildiğimi görmek için bana istediğiniz zaman *yardım* yazın.
 
 Kadro belli: 18/18. Cuma günü saat 10:00 itibarıyla iki dengeli takım kurar, kontrol etmeniz için buraya gönderirim.
 
-Kesinleştirmek için *EVET* yazın; değişiklik isterseniz *değiş*, *taşı* ya da *yeniden* yazın. Kesinleşince oyunculara paylaşmanız için takım listesi görselini buraya gönderirim, *takım listesi* yazarak istediğiniz zaman yeniden alabilirsiniz.
+Kesinleştirmek için *EVET* yazın; değişiklik isterseniz *değiş* ya da *taşı* yazın (tamamen yeni takımlar için beni etiketleyin: *@Match Time yeniden kur*). Oyunculara paylaşmanız için takım listesi görselini istediğiniz zaman beni etiketleyerek isteyin: *@Match Time takım listesi*.
 
 ⭐ Bu kadroda henüz kimsenin puanı yok, bu yüzden takımlar dengesiz çıkabilir. Cuma günü saat 10:00 öncesinde her oyuncuya 1 ile 10 arasında kabaca bir puan verin:
 https://matchtime.ai/admin/players/ratings
@@ -3013,7 +3013,7 @@ Oyuncular bu puanları hiç görmez.
 
 Kadro belli: 18/18. Cuma günü saat 18:00 itibarıyla iki dengeli takım kurar, kontrol etmeniz için buraya gönderirim.
 
-Kesinleştirmek için *EVET* yazın, ana grupta ben paylaşırım; değişiklik isterseniz *değiş*, *taşı* ya da *yeniden* yazın.
+Kesinleştirmek için *EVET* yazın, ana grupta ben paylaşırım; değişiklik isterseniz *değiş* ya da *taşı* yazın (tamamen yeni takımlar için beni etiketleyin: *@Match Time yeniden kur*).
 
 ### R57 buildBenchUpgradeReply / space
 Thanks Erdal 🙌 We've got space, so you're straight in the squad: 12/14.

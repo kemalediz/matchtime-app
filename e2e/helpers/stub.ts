@@ -609,11 +609,13 @@ export function unnamedOther(
  * B" or "move A". `moves` are people to the other team, no side named.
  */
 export function teamsFacts(
-  action: "show" | "generate" | "rename" | "swap" | "suggest",
+  action: "show" | "generate" | "rename" | "swap" | "suggest" | "restore" | "set",
   moves: string[] = [],
   over: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  return { action, includeRefs: [], teamNames: [], swaps: [], moves, pairings: [], swapSides: false, ...over };
+  // toMatchTime: what the model reads an organiser's request as, unless a
+  // case says it is people talking among themselves (2026-10-30).
+  return { action, includeRefs: [], teamNames: [], swaps: [], moves, pairings: [], swapSides: false, sides: { red: [], yellow: [] }, toMatchTime: true, ...over };
 }
 
 export interface BodyRouting {

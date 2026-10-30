@@ -596,7 +596,7 @@ export interface TeamFacts {
    *  "show the teams again" once destroyed an admin's manual swap.
    *  clear (2026-10-30) = remove the line-ups (`team-clear.ts` applies
    *  it); it replaced the analyze route's word test. */
-  action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear";
+  action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear" | "restore" | "set";
   includeRefs: string[];
   teamNames: [string, string] | null;
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;
@@ -633,6 +633,18 @@ export interface TeamFacts {
    * whole group to the same side rather than by a new balancer concept.
    */
   pairings: string[][];
+  /**
+   * For "set" (2026-10-30, FNF HQ: a team sheet pasted back to be used):
+   * the two sides as written, the first side as red. Optional for older
+   * stubs; the parser always sets it.
+   */
+  sides?: { red: string[]; yellow: string[] };
+  /**
+   * The message asks MatchTime to do this, rather than people talking about
+   * the teams among themselves (2026-10-30). HQ reads it for an untagged
+   * change only; a build always needs the tag or a reply to MatchTime.
+   */
+  toMatchTime?: boolean;
 }
 
 /**

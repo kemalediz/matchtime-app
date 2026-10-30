@@ -103,7 +103,6 @@ import {
   SAME_SHEET_RESEND_MS,
   answerGraphicRequest,
   recordTeamSheetShown,
-  redrawTeamSheet,
   sendGraphicToAdminChannel,
   teamSheetJobVerdict,
 } from "../admin-group-graphics";
@@ -179,11 +178,11 @@ describe("29 Oct, 18:09: the approval's team sheet, then 'Make a graphic' 21 sec
   });
 });
 
-describe("29 Oct, 19:22 to 19:26: nine swaps, 'Graphic please' inside the redraw's quiet period", () => {
-  it("one image, showing the teams after the last swap; the redraw never goes on its own", async () => {
+describe("29 Oct, 19:22 to 19:26: nine swaps, then 'Graphic please'", () => {
+  it("one image, showing the teams after the last swap; nothing goes on its own (Kemal, 2026-10-30)", async () => {
     // The sheet already sent at 19:20.
     store.clock = at("19:20:13");
-    await sendGraphicToAdminChannel("org-fnf", "m-1", "teams");
+    await sendGraphicToAdminChannel("org-fnf", "m-1", "teams", { asked: true });
     await poll(at("19:20:13"));
     const swaps: Array<[string, string, string]> = [
       ["19:22:51", "Feroz", "Yorel"],
@@ -193,45 +192,50 @@ describe("29 Oct, 19:22 to 19:26: nine swaps, 'Graphic please' inside the redraw
     ];
     for (const [t, a, b] of swaps) {
       swap(a, b);
-      store.clock = at(t);
-      await redrawTeamSheet("org-fnf", "m-1", at(t));
-      await poll(at(t));
+      // A change queues no picture any more.
+      expect(await poll(at(t))).toEqual([]);
     }
+    expect(store.jobs).toHaveLength(1);
     expect(await ask(at("19:24:56"))).toEqual({ outcome: "graphic-queued", replyText: null });
-    // #468: the redraw waiting in its quiet period is the one sent, now.
     expect(store.jobs).toHaveLength(2);
-    expect(store.jobs[1]).toMatchObject({ sendAfter: null, pollOptions: ["graphic:v1", "teams", "m-1", "asked"] });
+    expect(store.jobs[1]).toMatchObject({ pollOptions: ["graphic:v1", "teams", "m-1", "asked"] });
     expect(await poll(at("19:25:12"))).toEqual([store.jobs[1].id]);
     await poll(at("19:26:44"));
-    await poll(at("19:27:14"));
     expect(sheetsSent()).toHaveLength(2); // 19:20's and the one asked for
     expect(store.jobs.filter((j) => j.sentAt === null)).toHaveLength(0);
   });
 });
 
-describe("a sheet whose teams equal the last one drawn is not sent automatically", () => {
+// No caller queues a team sheet on its own any more (Kemal, 2026-10-30);
+// the rule is kept for any job that is not asked for.
+const queueUnasked = (now: Date) => {
+  store.clock = now;
+  return sendGraphicToAdminChannel("org-fnf", "m-1", "teams");
+};
+
+describe("a sheet whose teams equal the last one drawn is not sent unasked", () => {
   async function firstSheet() {
     store.clock = at("19:00:00");
     await sendGraphicToAdminChannel("org-fnf", "m-1", "teams");
     await poll(at("19:00:10"));
   }
 
-  it("two changes that cancel out inside the quiet period: no second image, the job closed as skipped", async () => {
+  it("two changes that cancel out before the next poll: no second image, the job closed as skipped", async () => {
     await firstSheet();
     swap("Mo", "Hamzah");
-    await redrawTeamSheet("org-fnf", "m-1", at("19:10:18"));
+    await queueUnasked(at("19:10:18"));
     swap("Mo", "Hamzah");
-    await redrawTeamSheet("org-fnf", "m-1", at("19:11:00"));
+    await queueUnasked(at("19:11:00"));
     expect(await poll(at("19:13:30"))).toEqual([]);
     expect(sheetsSent()).toHaveLength(1);
     const skipped = store.jobs.find((j) => j.pollOptions.includes("skipped:same-teams"));
     expect(skipped?.sentAt).toEqual(at("19:13:30"));
   });
 
-  it("a change that stands: the redraw goes", async () => {
+  it("a change that stands: the sheet goes", async () => {
     await firstSheet();
     swap("Mo", "Hamzah");
-    await redrawTeamSheet("org-fnf", "m-1", at("19:10:18"));
+    await queueUnasked(at("19:10:18"));
     expect(await poll(at("19:12:30"))).toHaveLength(1);
     expect(sheetsSent()).toHaveLength(2);
   });
@@ -239,10 +243,10 @@ describe("a sheet whose teams equal the last one drawn is not sent automatically
   it("swapped at 19:10 and back at 19:17 (29 Oct): each sheet differs from the one before it, so both go", async () => {
     await firstSheet();
     swap("Mo", "Hamzah");
-    await redrawTeamSheet("org-fnf", "m-1", at("19:10:18"));
+    await queueUnasked(at("19:10:18"));
     await poll(at("19:12:30"));
     swap("Mo", "Hamzah");
-    await redrawTeamSheet("org-fnf", "m-1", at("19:17:48"));
+    await queueUnasked(at("19:17:48"));
     await poll(at("19:20:13"));
     expect(sheetsSent()).toHaveLength(3);
   });

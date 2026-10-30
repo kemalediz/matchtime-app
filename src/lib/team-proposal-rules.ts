@@ -48,12 +48,25 @@ export interface SideRef {
  *              `sides` and `together` move the fewest players and keep
  *              the sides even (`planTeamChange`).
  *   suggest    the one swap that evens the ratings most
+ *   restore    an earlier set of teams back (2026-10-30, FNF HQ: "These
+ *              are the final teams", replying to Tuesday's sheet): the
+ *              teams of MatchTime's own sheet the message replies to, from
+ *              the stored sheet, never read from the words
+ *   set        the two sides written out in the message (a pasted sheet),
+ *              as the teams extractor read them; code checks every fact
+ *              before anything is written (`checkSheetFacts`)
+ *
+ * reshuffle, and show or a side or a pair with no teams yet, BUILD teams:
+ * only when asked of MatchTime by fact, a tag or a reply to MatchTime
+ * (Kemal, 2026-10-30), `handleTeamCommand`'s `addressed`.
  */
 export type TeamCommand =
   | { kind: "show" }
   | { kind: "reshuffle"; sides: SideRef[]; together: string[][] }
   | { kind: "change"; swapSides: boolean; moves: string[]; sides: SideRef[]; together: string[][] }
-  | { kind: "suggest" };
+  | { kind: "suggest" }
+  | { kind: "restore" }
+  | { kind: "set"; red: string[]; yellow: string[] };
 
 /**
  * The teams extractor's facts for an admin-group message, as a command.
@@ -62,16 +75,24 @@ export type TeamCommand =
  * one line. Any number of names is one change.
  */
 export function teamCommandFromFacts(facts: {
-  action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear";
+  action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear" | "restore" | "set";
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;
   moves?: string[];
   pairings?: string[][];
   swapSides?: boolean;
+  sides?: { red: string[]; yellow: string[] };
 }): TeamCommand | { kind: "unclear" } {
   const sides: SideRef[] = facts.swaps.map((x) => ({ name: x.personRef.trim(), to: x.team })).filter((x) => x.name);
   const together = (facts.pairings ?? []).map((g) => g.map((n) => n.trim()).filter(Boolean)).filter((g) => g.length >= 2);
   if (facts.action === "show") return { kind: "show" };
   if (facts.action === "suggest") return { kind: "suggest" };
+  if (facts.action === "restore") return { kind: "restore" };
+  if (facts.action === "set") {
+    const clean = (xs: string[] | undefined) => (xs ?? []).map((n) => n.trim()).filter(Boolean);
+    const red = clean(facts.sides?.red);
+    const yellow = clean(facts.sides?.yellow);
+    return red.length && yellow.length ? { kind: "set", red, yellow } : { kind: "unclear" };
+  }
   if (facts.action === "generate") return { kind: "reshuffle", sides, together };
   // The organisers' group neither renames nor clears teams (2026-10-30:
   // "clear" is a players' group action, `team-clear.ts`).
@@ -441,16 +462,61 @@ export function buildChangeNotice(p: { lang: string | null | undefined; items: C
   return `${s.tp_change_header}: ${items.join("; ")}.\n\n${p.teamsText}`;
 }
 
-/** A name that did not land on one player, in one sentence each. */
-export function buildNameProblems(lang: string | null | undefined, problems: Array<{ raw: string; res: NameResolution }>): string {
+/** A name that did not land on one player, in one sentence each. Named
+ *  against the teams, or (a pasted sheet) against the squad. */
+export function buildNameProblems(
+  lang: string | null | undefined,
+  problems: Array<{ raw: string; res: NameResolution }>,
+  where: "teams" | "squad" = "teams",
+): string {
   const s = t(lang);
   return problems
     .map((p) =>
       p.res.kind === "ambiguous"
         ? s.tp_name_ambiguous({ name: p.raw, names: p.res.names.join(", ") })
-        : s.tp_name_unknown({ name: p.raw }),
+        : where === "squad"
+          ? s.tp_name_unknown_squad({ name: p.raw })
+          : s.tp_name_unknown({ name: p.raw }),
     )
     .join(" ");
+}
+
+// ── A whole sheet set at once (2026-10-30) ───────────────────────────
+
+/** One player's side on a stored or pasted sheet. */
+export interface SheetSide {
+  userId: string;
+  team: SheetTeam;
+}
+
+/** The same players on the same sides, in any order. */
+export function sameSheet(a: readonly SheetSide[], b: readonly SheetSide[]): boolean {
+  if (a.length !== b.length) return false;
+  const side = new Map(a.map((x) => [x.userId, x.team]));
+  return side.size === a.length && b.every((x) => side.get(x.userId) === x.team);
+}
+
+/**
+ * THE FACTS A WHOLE SHEET MUST MEET before it becomes the teams (an earlier
+ * sheet brought back, or one pasted): every player on it is in the squad
+ * now, every confirmed player is on a side, and the sides are even
+ * (`unevenSides`: an odd squad may be one apart). Pure: ids only.
+ */
+export function checkSheetFacts(p: {
+  target: ReadonlyMap<string, SheetTeam>;
+  confirmedIds: readonly string[];
+}):
+  | { ok: true }
+  | { ok: false; notPlaying: string[]; missing: string[]; uneven: { red: number; yellow: number } | null } {
+  const confirmed = new Set(p.confirmedIds);
+  const notPlaying = [...p.target.keys()].filter((id) => !confirmed.has(id));
+  const missing = p.confirmedIds.filter((id) => !p.target.has(id));
+  const n = (team: SheetTeam) => [...p.target.values()].filter((x) => x === team).length;
+  const red = n("RED");
+  const yellow = n("YELLOW");
+  const uneven = notPlaying.length === 0 && missing.length === 0 && unevenSides(red, yellow) ? { red, yellow } : null;
+  if (notPlaying.length === 0 && missing.length === 0 && !uneven) return { ok: true };
+  return { ok: false, notPlaying, missing, uneven };
 }
 
 /** The reminder, kickoff minus 2 hours. */

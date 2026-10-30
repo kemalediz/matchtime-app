@@ -27,6 +27,25 @@
  * A YES that approves them goes through the safe-YES rule first
  * (`admin-group-confirm-rules.ts`), then `answerTeamsYes`.
  *
+ * BUILDING TEAMS NEEDS THE TAG (Kemal, 2026-10-30: "when clear
+ * instructions such as generate or regenerate teams with Matchtime tag not
+ * given, it should never take any action"). reshuffle, and show or a side
+ * or a pair while there are no teams, build teams: only when the message is
+ * addressed to MatchTime by fact, the Pi's mention flag or a WhatsApp reply
+ * to MatchTime's own message (`addressed`). Otherwise nothing is done and
+ * nothing is said ("teams-not-asked"): organisers talk about the teams all
+ * the time. A single change to teams that exist is not a build.
+ *
+ * AN EARLIER SET OF TEAMS (2026-10-30, FNF HQ): every sheet posted here is
+ * kept (`team-sheet-history.ts`); "restore" brings back the one a reply
+ * quotes, "set" makes a pasted sheet the teams. Both only after every fact
+ * holds (`checkSheetFacts`), and both as a proposal needing YES.
+ *
+ * NO TEAM SHEET PICTURE ON ITS OWN (Kemal, 2026-10-30: "it can only be
+ * generated when they tag matchtime while asking to generate"). Neither the
+ * approval nor a later change draws one; the graphics route does, when
+ * asked (`admin-group-graphics.ts`).
+ *
  * Every change reposts the teams in the admin group. Names are placed on
  * the players on the teams by the club's own rules (`nameCandidates`); an
  * unknown or ambiguous name gets one short line and changes nothing, the
@@ -76,11 +95,15 @@ import { lockTeamSlots, type SlotFillTx } from "./team-slot-fill";
 import { isBillingPaused } from "./club-billing-rules";
 import { organisersAnnounce } from "./list-announcer";
 import { loadOrganisersAnnounce } from "./list-announcer-store";
-import { redrawTeamSheet, sendGraphicToAdminChannel } from "./admin-group-graphics";
 import { t } from "./i18n/t";
+import { dayLabel } from "./i18n/dates";
+import { earlierSheetLike, recordTeamSheet, type StoredTeamSheet } from "./team-sheet-history";
 import {
   bestSwap,
   buildChangeNotice,
+  checkSheetFacts,
+  sameSheet,
+  type SheetSide,
   buildNameProblems,
   buildReminderText,
   buildTeamsText,
@@ -127,11 +150,18 @@ export type TeamReplyOutcome =
   | "teams-suggested"
   | "teams-suggested-final"
   | "teams-suggest-none"
-  | "teams-final";
+  | "teams-final"
+  | "teams-not-asked"
+  | "teams-restored"
+  | "teams-set"
+  | "teams-restore-same"
+  | "teams-restore-none"
+  | "teams-sheet-invalid";
 
 export interface TeamReply {
   outcome: TeamReplyOutcome;
-  replyText: string;
+  /** Null only for "teams-not-asked": nothing is said. */
+  replyText: string | null;
 }
 
 const ACTIVE: Array<"UPCOMING" | "TEAMS_GENERATED" | "TEAMS_PUBLISHED"> = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"];
@@ -311,7 +341,24 @@ async function propose(sheet: Sheet, lang: string | null | undefined, now: Date,
   const text = teamsText(sheet, lang, false, announce);
   const out = superseded ? `${t(lang).tp_list_superseded}\n\n${text}` : text;
   await recordMatchTimeQuestion({ orgId: sheet.orgId, askRef: teamsAskRef(sheet.match.id), text: out, now });
+  await keepSheet(sheet, text, now);
   return out;
+}
+
+/** The players on each side now, those still playing. */
+const sidesOf = (sheet: Sheet): SheetSide[] => sheet.slots.filter((x) => x.playing).map((x) => ({ userId: x.userId, team: x.team }));
+
+/** The sheet about to be posted, kept so a reply to it can bring it back. */
+async function keepSheet(sheet: Sheet, text: string, now: Date): Promise<void> {
+  if (sheet.slots.length === 0) return;
+  await recordTeamSheet({ orgId: sheet.orgId, matchId: sheet.match.id, slots: sidesOf(sheet), text, now });
+}
+
+/** The final teams as a post, kept like a proposal. */
+async function finalText(sheet: Sheet, lang: string | null | undefined, now: Date, announce: boolean): Promise<string> {
+  const text = teamsText(sheet, lang, true, announce);
+  await keepSheet(sheet, text, now);
+  return text;
 }
 
 /**
@@ -385,6 +432,11 @@ export async function handleTeamCommand(args: {
   senderUserId: string;
   messageId: string;
   now: Date;
+  /** Asked of MatchTime by fact: the Pi's mention flag, or a reply to
+   *  MatchTime's own message. A build needs it (Kemal, 2026-10-30). */
+  addressed: boolean;
+  /** For "restore": the stored sheet the message replies to, if any. */
+  quotedSheet?: StoredTeamSheet | null;
   deps?: TeamProposalDeps;
 }): Promise<TeamReply> {
   const { orgId, lang, now, deps, command } = args;
@@ -395,6 +447,12 @@ export async function handleTeamCommand(args: {
   if (!match) return { outcome: "teams-no-match", replyText: s.tp_no_match };
 
   const build = async (pins: Record<string, SheetTeam> = {}): Promise<TeamReply> => {
+    if (!args.addressed) {
+      // Untagged, and not a reply to MatchTime: the organisers' own talk
+      // about the teams. Nothing built, nothing said.
+      console.log(`[team-proposal] ${args.messageId}: would build teams on match ${match.id}, not asked of MatchTime: nothing done`);
+      return { outcome: "teams-not-asked", replyText: null };
+    }
     const res = await gen(deps)(match.id, Object.keys(pins).length ? { pinnedToTeam: pins } : {});
     if (!res.ok) {
       console.log(`[team-proposal] ${args.messageId}: teams not built on match ${match.id}`);
@@ -434,8 +492,12 @@ export async function handleTeamCommand(args: {
 
   if (command.kind === "show") {
     if (sheet.slots.length === 0) return build();
-    if (final) return { outcome: "teams-shown", replyText: teamsText(sheet, lang, true, announce) };
+    if (final) return { outcome: "teams-shown", replyText: await finalText(sheet, lang, now, announce) };
     return { outcome: "teams-shown", replyText: await propose(sheet, lang, now, announce) };
+  }
+
+  if (command.kind === "restore" || command.kind === "set") {
+    return setWholeSheet({ ...args, command, match, sheet, announce });
   }
 
   // No teams yet: a pair or a side is a build that keeps them; a move is not.
@@ -539,9 +601,8 @@ export async function handleTeamCommand(args: {
     const row = (await db.adminTeamProposal.findUnique({ where: { matchId: match.id } })) as ProposalRow | null;
     if (row?.state === "approved") {
       await db.adminTeamProposal.update({ where: { id: row.id }, data: { toldSheet: after.slots as unknown as object } });
-      await redrawAfterChange(orgId, match.id, now);
     }
-    return { outcome, replyText: withLead(teamsText(after, lang, true, announce)) };
+    return { outcome, replyText: withLead(await finalText(after, lang, now, announce)) };
   }
   return { outcome, replyText: withLead(await propose(after, lang, now, announce)) };
 }
@@ -596,16 +657,8 @@ export async function answerTeamsYes(args: {
   });
   if (claimed.count === 0) return null;
   await db.match.update({ where: { id: match.id }, data: { status: "TEAMS_PUBLISHED" } });
-
-  // The team sheet image, in the admin group, once per match (#260). Final
-  // again after a reshuffle: the first one's once-key is spent, so the
-  // updated sheet follows as after any other change. A graphic that cannot
-  // be queued never undoes the approval.
-  const sheetSent = await sendGraphicToAdminChannel(orgId, match.id, "teams", { onceKey: `${match.id}:teams-approved` }).catch((err) => {
-    console.error(`[team-proposal] ${args.messageId}: team sheet graphic not queued:`, err instanceof Error ? err.message : "failed");
-    return null;
-  });
-  if (sheetSent && !sheetSent.queued && sheetSent.reason === "already-sent") await redrawAfterChange(orgId, match.id, now);
+  // No team sheet picture here (Kemal, 2026-10-30): it is drawn only when
+  // an organiser asks for it, tagged (`admin-group-graphics.ts`).
 
   if (await announces(deps, orgId)) {
     console.log(`[team-proposal] ${args.messageId}: teams final on match ${match.id}, organisers announce`);
@@ -750,21 +803,117 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
       ? { kind: "replaced", team: label(c.team), from: name(c.fromUserId), to: name(c.toUserId) }
       : { kind: c.kind, team: label(c.team), name: name(c.userId) },
   );
-  await queueAdminGroup(org.id, buildChangeNotice({ lang, items, teamsText: teamsText(sheet, lang, true, announce) }), match.id);
+  const finalTeams = teamsText(sheet, lang, true, announce);
+  await queueAdminGroup(org.id, buildChangeNotice({ lang, items, teamsText: finalTeams }), match.id);
+  await keepSheet(sheet, finalTeams, now);
   console.log(`[team-proposal] org ${org.id}: ${changes.length} team change(s) told on match ${match.id}`);
-  await redrawAfterChange(org.id, match.id, now);
   return 1;
 }
 
+// ── An earlier set of teams back, or a pasted one (2026-10-30) ─────────
+
 /**
- * The final teams changed: the updated team sheet graphic follows in the
- * admin group on its own, once the teams have been quiet for a moment
- * (`redrawTeamSheet`). Kemal, 2026-10-16: "poster generation should be
- * automated as soon as the teams are final. no need for any extra
- * command". A graphic that cannot be queued never undoes the change.
+ * A YES-like reply quoting one of MatchTime's stored sheets
+ * (`admin-group-understand.ts`, the approve route): is that sheet the teams
+ * as they stand ("same", so the YES is about them), other teams of the same
+ * game ("different", so it brings those back and approves nothing), or
+ * another game's ("elsewhere", the YES is decided as before)? Facts only.
  */
-async function redrawAfterChange(orgId: string, matchId: string, now: Date): Promise<void> {
-  await redrawTeamSheet(orgId, matchId, now).catch((err) =>
-    console.error(`[team-proposal] match ${matchId}: updated team sheet not queued:`, err instanceof Error ? err.message : "failed"),
-  );
+export async function compareQuotedSheet(orgId: string, quoted: StoredTeamSheet, now: Date): Promise<"same" | "different" | "elsewhere"> {
+  const match = await commandMatch(orgId, now);
+  if (!match || quoted.matchId !== match.id || quoted.slots.length === 0) return "elsewhere";
+  const sheet = await loadSheet(match, null);
+  return sheet.slots.every((x) => x.playing) && sameSheet(sidesOf(sheet), quoted.slots) ? "same" : "different";
+}
+
+/**
+ * RESTORE: the teams of the stored sheet the message replies to. SET: the
+ * two sides the teams extractor read from a pasted sheet, each name placed
+ * on a confirmed player by the club's own rules. Either way, only when
+ * every fact holds (every player on it is in the squad, every confirmed
+ * player has a side, the sides are even), and then as a proposal needing
+ * YES, saying when it is an earlier sheet. The current proposal is never
+ * approved by this. A YES then approves exactly these teams.
+ */
+async function setWholeSheet(a: {
+  orgId: string;
+  lang: string | null | undefined;
+  command: Extract<TeamCommand, { kind: "restore" | "set" }>;
+  messageId: string;
+  now: Date;
+  quotedSheet?: StoredTeamSheet | null;
+  match: MatchRow;
+  sheet: Sheet;
+  announce: boolean;
+}): Promise<TeamReply> {
+  const { lang, now, match, sheet } = a;
+  const s = t(lang);
+  let target: SheetSide[];
+  let earlier: StoredTeamSheet | null = null;
+  if (a.command.kind === "restore") {
+    const q = a.quotedSheet;
+    if (!q || q.matchId !== match.id || q.slots.length === 0) return { outcome: "teams-restore-none", replyText: s.tp_restore_none };
+    target = q.slots;
+    earlier = q;
+  } else {
+    const named = [...a.command.red.map((name) => ({ name, team: "RED" as const })), ...a.command.yellow.map((name) => ({ name, team: "YELLOW" as const }))];
+    const problems: Array<{ raw: string; res: NameResolution }> = [];
+    target = [];
+    for (const n of named) {
+      const res = resolveSheetName(n.name, sheet.squad);
+      if (res.kind === "one") target.push({ userId: res.userId, team: n.team });
+      else if (!problems.some((p) => p.raw === n.name)) problems.push({ raw: n.name, res });
+    }
+    if (problems.length) return { outcome: "teams-name-unclear", replyText: buildNameProblems(lang, problems, "squad") };
+    const seen = new Set<string>();
+    const twice = [...new Set(target.filter((x) => (seen.has(x.userId) ? true : (seen.add(x.userId), false))).map((x) => x.userId))];
+    if (twice.length) {
+      return { outcome: "teams-sheet-invalid", replyText: s.tp_sheet_twice({ names: twice.map((id) => sheet.nameOf.get(id) ?? "?").join(", ") }) };
+    }
+  }
+
+  const names = (ids: string[]) => ids.map((id) => sheet.nameOf.get(id) ?? "?").join(", ");
+  const confirmedIds = sheet.squad.map((p) => p.userId);
+  const check = checkSheetFacts({ target: new Map(target.map((x) => [x.userId, x.team])), confirmedIds });
+  if (!check.ok) {
+    // Names of players no longer in the squad are not on `sheet` yet.
+    const gone = check.notPlaying.filter((id) => !sheet.nameOf.has(id));
+    if (gone.length) {
+      const users = await db.user.findMany({ where: { id: { in: gone } } });
+      for (const u of users) sheet.nameOf.set(u.id, u.name ?? "?");
+    }
+    const lines: string[] = [];
+    if (check.notPlaying.length) lines.push(s.tp_sheet_not_playing({ names: names(check.notPlaying) }));
+    if (check.missing.length) lines.push(s.tp_sheet_missing({ names: names(check.missing) }));
+    if (check.uneven) {
+      lines.push(s.tp_sheet_uneven({ redLabel: sheet.labels[0], red: check.uneven.red, yellowLabel: sheet.labels[1], yellow: check.uneven.yellow }));
+    }
+    console.log(`[team-proposal] ${a.messageId}: ${a.command.kind} on match ${match.id} refused: ${check.notPlaying.length} not playing, ${check.missing.length} missing, ${check.uneven ? "uneven" : "even"}`);
+    return { outcome: "teams-sheet-invalid", replyText: lines.join(" ") };
+  }
+
+  // Exactly the teams as they stand: nothing to write.
+  if (sheet.slots.every((x) => x.playing) && sameSheet(sidesOf(sheet), target)) {
+    const final = match.status === "TEAMS_PUBLISHED";
+    const text = final ? await finalText(sheet, lang, now, a.announce) : await propose(sheet, lang, now, a.announce);
+    return { outcome: "teams-restore-same", replyText: `${s.tp_restore_same}\n\n${text}` };
+  }
+
+  if (a.command.kind === "set") earlier = await earlierSheetLike(match.id, target);
+
+  // Under the per-match slot lock, as every other seat change. Made a
+  // proposal again: the match is no longer final until a YES.
+  await db.$transaction(async (tx) => {
+    await lockTeamSlots(tx as unknown as SlotFillTx, match.id);
+    await tx.teamAssignment.deleteMany({ where: { matchId: match.id } });
+    await tx.teamAssignment.createMany({ data: target.map((x) => ({ matchId: match.id, userId: x.userId, team: x.team })) });
+    if (match.status === "TEAMS_PUBLISHED" || match.status === "UPCOMING") {
+      await tx.match.update({ where: { id: match.id }, data: { status: "TEAMS_GENERATED" } });
+    }
+  });
+  const fresh = ((await db.match.findUnique({ where: { id: match.id } })) as unknown as MatchRow) ?? match;
+  const after = await loadSheet(fresh, lang);
+  const lead = earlier ? s.tp_restored_earlier({ day: dayLabel(lang, earlier.createdAt), time: formatLondon(earlier.createdAt, "HH:mm") }) : s.tp_set_pasted;
+  console.log(`[team-proposal] ${a.messageId}: ${earlier ? "an earlier sheet" : "a pasted sheet"} set on match ${match.id}, ${target.length} on the teams, proposed`);
+  return { outcome: earlier ? "teams-restored" : "teams-set", replyText: `${lead}\n\n${await propose(after, lang, now, a.announce)}` };
 }

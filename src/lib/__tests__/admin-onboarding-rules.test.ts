@@ -215,13 +215,13 @@ describe("B: the text", () => {
       [
         "🟥🟦 *Teams for Friday*",
         "The squad is set, 18 of 18. At 10:00 on Friday I'll build two balanced teams and post them here for you to check.",
-        "Reply *YES* to make them final, or say *swap*, *move* or *reshuffle* if you want changes. Once they're final I send the team sheet here, a graphic to share with the players, and *team sheet* sends it again any time.",
+        "Reply *YES* to make them final, or say *swap* or *move* if you want changes (tag me for brand new teams: *@Match Time reshuffle*). For the team sheet, a graphic to share with the players, tag me and ask any time: *@Match Time team sheet*.",
       ].join("\n\n"),
     );
   });
   it("a club MatchTime announces for: YES posts them in the main chat", () => {
     const text = buildFirstTeamsNotice({ ...base, organisers: false, seed: null });
-    expect(text).toContain("Reply *YES* to make them final and I'll post them in the main chat, or say *swap*, *move* or *reshuffle* if you want changes.");
+    expect(text).toContain("Reply *YES* to make them final and I'll post them in the main chat, or say *swap* or *move* if you want changes (tag me for brand new teams: *@Match Time reshuffle*).");
     expect(text).not.toContain("share with the players");
   });
   it("the seed line, when nobody (or most) of the squad has a rating", () => {
@@ -236,7 +236,7 @@ describe("B: the text", () => {
     const text = buildFirstTeamsNotice({ ...base, lang: "tr", organisers: true, seed: { anySeeded: false, link: "L" } });
     expect(text).toContain("Cuma");
     expect(text).toContain("*EVET*");
-    expect(text).toContain("*takım listesi*");
+    expect(text).toContain("*@Match Time takım listesi*");
     expect(text).not.toMatch(/\bYES\b|\bswap\b|\bteam sheet\b/);
     expect(text).not.toMatch(/[–—]/);
   });

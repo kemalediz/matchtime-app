@@ -5,12 +5,14 @@
  * `admin-group` BotJob such as the teams proposal), the HQ log row that
  * recorded the same words (`recordMatchTimeQuestion`) gets the stanza id
  * (a scheduled post that asks something, by its key: `recordScheduledHqQuestion`),
- * so a YES quoting it is decided by the id (`quotedLogRow`). Our own two
+ * so a YES quoting it is decided by the id (`quotedLogRow`); the team sheet
+ * in it gets the id too (`stampTeamSheets`, 2026-10-30). Our own two
  * copies of one string are compared, never a person's words. Never throws.
  */
 import { db } from "./db";
 import { botJobIdOfKey } from "./dispatch-claim";
 import { scheduledHqQuestionId } from "./admin-group-log";
+import { stampTeamSheets } from "./team-sheet-history";
 
 const LOG_TEXT_MAX = 500;
 /** The logged line is written in the same request as the send is claimed. */
@@ -44,6 +46,9 @@ export async function stampHqLogStanza(key: string, waStanzaId: string | null): 
       at = job.createdAt;
     }
     if (!orgId || !text || !at) return 0;
+    // The team sheet in the post, kept beyond the day this log keeps
+    // (2026-10-30, `team-sheet-history.ts`). Never throws.
+    await stampTeamSheets({ orgId, sentText: text, at, waStanzaId });
     const { count } = await db.adminGroupMessage.updateMany({
       where: {
         orgId,

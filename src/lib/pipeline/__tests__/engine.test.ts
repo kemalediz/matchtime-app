@@ -1964,6 +1964,35 @@ describe("S19 · 'show the teams again' never re-runs the balancer (2026-06-18, 
   });
 });
 
+// 2026-10-30 (Kemal): new teams only when MatchTime is asked by fact. The
+// players' group already follows it: `msg.tagged` is `messageTagsBot` (the
+// Pi's mention flag, or a reply to MatchTime), and every team op needs it.
+describe("the players' group: an untagged 'make the teams' builds nothing (2026-10-30)", () => {
+  it.each(["generate", "swap", "restore", "set"] as const)("%s, untagged: no team write, nothing said", (action) => {
+    const state = world({
+      players: ["kemal", "elvin", "sait", "mustafa"],
+      confirmed: ["kemal", "elvin", "sait", "mustafa"],
+      maxPlayers: 4,
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "elvin",
+          body: "make the teams",
+          route: "balancer",
+          tagged: false,
+          facts: { kind: "teams", action, includeRefs: [], teamNames: null, swaps: [], pairings: [], moves: ["kemal"] },
+        }),
+      ],
+    });
+    expect(r.writes).toHaveLength(0);
+    expect(r.speech).toHaveLength(0);
+    expect(r.outcomes[0].reasons.join(" ")).toContain("team ops require an @Match Time tag");
+  });
+});
+
 // ── Degrade loudly ─────────────────────────────────────────────────────
 
 describe("degrade loudly (never a silent no-op)", () => {
