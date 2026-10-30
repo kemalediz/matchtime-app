@@ -13,7 +13,13 @@
  *   - the pasted roster's numbered-list arithmetic
  *     (`decidePastedRosterRegistration`): the squad reader, `place: "players"`;
  *   - the clause splitter (`splitClauses`, `peelClause`) and "DM me";
- *   - the squad-from-list reserves backstop (`parseReservesFromBody`).
+ *   - the squad-from-list reserves backstop (`parseReservesFromBody`);
+ *   - the engine's swap guard regexes (`parseSwapNames`, `parseSwapRequest`,
+ *     `SWAP_STOP`, `senderStatesAttendance`, `isSwapParty`): the guard reads
+ *     the teams extractor's reading (`EngineMessage.teamsReading`);
+ *   - the pasted-roster shape test (`pasted-roster.ts`, `parsePastedRoster`,
+ *     `pasted-roster-registration.ts`): the engine clamps a list on the
+ *     router's `pasted_list` flag (`clampPastedListFacts`).
  *
  * Pinned by reading the sources: the deleted modules and functions stay
  * gone, the analyze route and the team modules import no text parser, and
@@ -33,10 +39,19 @@ const SWAP_APPLY = "src/lib/team-swap-apply.ts";
 const TEAM_REQUESTS = "src/lib/team-requests.ts";
 const CLAUSE_PEEL = "src/lib/pipeline/clause-peel.ts";
 const SQUAD_FROM_LIST = "src/lib/squad-from-list.ts";
+const SLOT_SWAP = "src/lib/team-slot-swap.ts";
+const ENGINE = "src/lib/pipeline/engine.ts";
+const ENGINE_BATCH = "src/lib/attendance-engine-batch.ts";
+const DRY_RUN = "src/lib/pipeline/run.ts";
 
 describe("the deleted readers stay deleted", () => {
   it("their modules are gone", () => {
-    for (const f of ["src/lib/team-colour-swap.ts", "src/lib/bench-prompt-answer.ts"]) {
+    for (const f of [
+      "src/lib/team-colour-swap.ts",
+      "src/lib/bench-prompt-answer.ts",
+      "src/lib/pasted-roster.ts",
+      "src/lib/pasted-roster-registration.ts",
+    ]) {
       expect(existsSync(path.join(ROOT, f)), f).toBe(false);
     }
   });
@@ -46,7 +61,7 @@ describe("the deleted readers stay deleted", () => {
       [TEAM_REQUESTS, /\bfunction\s+(isExplicitTeamBuildRequest|isClearTeamsRequest)\b/],
       [CLAUSE_PEEL, /\bfunction\s+(splitClauses|peelClause)\b/],
       [SQUAD_FROM_LIST, /\bfunction\s+parseReservesFromBody\b/],
-      ["src/lib/pasted-roster-registration.ts", /\bfunction\s+decidePastedRosterRegistration\b/],
+      [SLOT_SWAP, /\b(function\s+(parseSwapNames|parseSwapRequest|senderStatesAttendance|isSwapParty)\b|SWAP_STOP|SENDER_STATEMENT|TR_SWAP)/],
     ];
     for (const [file, re] of gone) expect(codeOf(read(file)), file).not.toMatch(re);
   });
@@ -55,7 +70,7 @@ describe("the deleted readers stay deleted", () => {
 describe("the players' group paths import no text parser", () => {
   const PARSER_IMPORT =
     /["'](?:@\/lib|\.\.?)\/(?:lib\/)?(?:team-colour-swap|bench-prompt-answer|pasted-roster|pasted-roster-registration|admin-group-name-list)["']/;
-  for (const file of [ROUTE, TEAM_OPS, SWAP_APPLY]) {
+  for (const file of [ROUTE, TEAM_OPS, SWAP_APPLY, ENGINE, ENGINE_BATCH, DRY_RUN]) {
     it(`${file} imports none`, () => {
       expect(read(file)).not.toMatch(PARSER_IMPORT);
     });
@@ -81,5 +96,22 @@ describe("the players' group paths import no text parser", () => {
     const code = read(ROUTE);
     expect(code).toMatch(/readHqSquadMessage\(/);
     expect(code).toMatch(/place:\s*"players"/);
+  });
+});
+
+describe("the attendance engine reads facts for a swap and a pasted list", () => {
+  it("the swap guard is asked with the teams extractor's reading, never the body", () => {
+    const code = codeOf(read(ENGINE));
+    expect(code).toMatch(/swapGuardFor\(m\.teamsReading/);
+    expect(code).not.toMatch(/swapGuardFor\([^)]*\.body/);
+  });
+
+  it("the pasted-list clamp is asked of the router's flag, never the body", () => {
+    for (const file of [ENGINE_BATCH, DRY_RUN]) {
+      const code = codeOf(read(file));
+      expect(code, file).toMatch(/clampPastedListFacts\(/);
+      expect(code, file).not.toMatch(/clampPastedListFacts\([^)]*body/);
+      expect(code, file).not.toMatch(/\b(parsePastedRoster|isPastedRoster|clampPastedRosterFacts)\b/);
+    }
   });
 });

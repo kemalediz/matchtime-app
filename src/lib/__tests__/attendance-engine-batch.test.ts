@@ -158,8 +158,8 @@ function deps(over: Partial<EngineBatchDeps> = {}): EngineBatchDeps & {
   };
 }
 
-async function run(messages: EngineBatchMessage[], d = deps(), enabled = true) {
-  return runOn("match-1", messages, d, enabled);
+async function run(messages: EngineBatchMessage[], d = deps(), enabled = true, pastedListIds?: Set<string>) {
+  return runOn("match-1", messages, d, enabled, pastedListIds);
 }
 
 /** …against a named registration match, for the per-match assertions. */
@@ -168,6 +168,7 @@ async function runOn(
   messages: EngineBatchMessage[],
   d = deps(),
   enabled = true,
+  pastedListIds?: Set<string>,
 ) {
   return runAttendanceEngineBatch({
     orgId: "org-1",
@@ -176,6 +177,7 @@ async function runOn(
     history: [],
     expectedMatchId,
     enabled,
+    ...(pastedListIds ? { pastedListIds } : {}),
     deps: d,
   });
 }
@@ -362,7 +364,7 @@ describe("every failure owns nothing — which since §10 step 8 means silence +
     warn.mockRestore();
   });
 
-  it("the message is a pasted numbered roster — PR #39's shape, owned for nothing", async () => {
+  it("the message is a pasted list (the router's flag) — PR #39's case, owned for nothing", async () => {
     // `reconcilePastedRoster` is the shipped handling for this shape,
     // and PR #35 measured why: the same paste registered a DIFFERENT
     // SUBSET on each run. Who a list registers is arithmetic, done in
@@ -370,13 +372,14 @@ describe("every failure owns nothing — which since §10 step 8 means silence +
     // sender's own name is slot 1) buys nothing.
     //
     // 2026-09-07: the refusal is a clamp on the FACTS rather than on the
-    // message (`clampPastedRosterFacts`), because refusing the whole
+    // message (`clampPastedListFacts`), because refusing the whole
     // message also threw away the sender's own drop — see the case
-    // below. From outside, an ordinary paste behaves exactly as it did.
+    // below. Since 2026-10-30 a message is a list when the ROUTER says so
+    // (`pastedListIds`), never by its shape.
     const d = deps();
     const roster =
       "1. Pete Power\n2. Dan Drummer\n3. Alice Admin\n4. Someone Else\n5. Another Name";
-    const r = await run([msg({ body: roster })], d);
+    const r = await run([msg({ body: roster })], d, true, new Set(["wa-1"]));
     expect(r.ownedIds.size).toBe(0);
     expect(r.outcomes.size).toBe(0);
     expect(d.registered).toEqual([]);
@@ -404,9 +407,18 @@ describe("every failure owns nothing — which since §10 step 8 means silence +
     });
     const roster =
       "1. Pete Power\n2. Dan Drummer\n3. Alice Admin\n4. Someone Else\n5. Another Name";
-    const r = await run([msg({ body: roster, route: "other_att" })], d);
+    const r = await run([msg({ body: roster, route: "other_att" })], d, true, new Set(["wa-1"]));
     expect(r.ownedIds.size).toBe(0);
     expect(d.registered).toEqual([]);
+  });
+
+  it("a list-SHAPED body the router did not flag is read like any message: the shape decides nothing", async () => {
+    const d = deps();
+    const roster =
+      "1. Pete Power\n2. Dan Drummer\n3. Alice Admin\n4. Someone Else\n5. Another Name";
+    const r = await run([msg({ body: roster })], d);
+    expect([...r.ownedIds]).toEqual(["wa-1"]);
+    expect(d.registered).toEqual(["u-pete"]);
   });
 
   it("the message is a shared CONTACT CARD — its display name is not a registration", async () => {
@@ -883,10 +895,10 @@ describe("tentativeUserId — conditional_in flavour (b) survives the move", () 
  * and stays CONFIRMED — the squad reads full, the vacated slot is never
  * offered to the bench, and the club is a player short.
  *
- * The refusal is now `clampPastedRosterFacts` over the facts, and its
+ * The refusal is now `clampPastedListFacts` over the facts, and its
  * two directions are asserted here at the level that owns them.
  */
-describe("a roster-shaped message keeps exactly one thing: the sender's own drop", () => {
+describe("a pasted list (the router's flag) keeps exactly one thing: the sender's own drop", () => {
   const ROSTER =
     "1. Pete Power\n2. Dan Drummer\n3. Alice Admin\n4. Someone Else\n5. Another Name";
 
@@ -944,6 +956,8 @@ describe("a roster-shaped message keeps exactly one thing: the sender's own drop
     const r = await run(
       [msg({ body: `can't make it lads, someone take my spot\n${ROSTER}` })],
       d,
+      true,
+      new Set(["wa-1"]),
     );
     expect([...r.ownedIds]).toEqual(["wa-1"]);
     expect(d.cancelled).toEqual(["u-pete"]);
@@ -964,7 +978,7 @@ describe("a roster-shaped message keeps exactly one thing: the sender's own drop
       }),
       loadState: async () => withPeteIn(),
     });
-    const r = await run([msg({ body: ROSTER })], d);
+    const r = await run([msg({ body: ROSTER })], d, true, new Set(["wa-1"]));
     expect(r.ownedIds.size).toBe(0);
     expect(d.registered).toEqual([]);
     expect(d.cancelled).toEqual([]);
@@ -1573,5 +1587,88 @@ describe("a team change asked beside the claim (2026-10-30, P2 reads it)", () =>
     const d = deps({ model: modelReturning(SELF_IN) });
     const r = await run([msg()], d);
     expect(r.outcomes.get("wa-1")?.alsoChangesTeams).toBe(false);
+  });
+});
+
+// ── WHO A TEAM CHANGE MOVES: THE TEAMS EXTRACTOR, NEVER THE WORDS ──────
+//
+// 2026-10-30, "no string parsing": a message whose attendance facts carry
+// the "teams" side request is read by the TEAMS extractor too (route
+// `balancer`), once; the engine's swap guard reads who it moves, and the
+// reading is handed on to the teams path (`teamsReadings`).
+describe("a message that also asks for a team change: the swap guard reads the teams extractor", () => {
+  const PETE_OUT_AND_SWAP = {
+    claims: [
+      { subject: "sender", personRef: "", personNamed: false, polarity: "out", contingent: false, conditionOn: "none", tense: "present", reported: false, confidence: 0.95 },
+      // The misread this guard exists for: a swap party read as leaving.
+      { subject: "other", personRef: "Dan", personNamed: true, polarity: "out", contingent: false, conditionOn: "none", tense: "present", reported: false, confidence: 0.95 },
+    ],
+    affirmation: "none",
+    sideRequests: ["teams"],
+  };
+  const SWAP_DAN_ALICE = { action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: ["Dan", "Alice"], pairings: [], swapSides: false };
+
+  /** One model, two prompts: the attendance read, then the teams read. */
+  function twoReads(teams: Record<string, unknown> | "fail"): PipelineModel & { labels: string[] } {
+    const labels: string[] = [];
+    return {
+      name: "fake",
+      labels,
+      async complete(req) {
+        labels.push(req.label ?? "");
+        const isTeams = /teams/i.test(req.label ?? "");
+        if (isTeams && teams === "fail") throw new Error("boom");
+        return {
+          text: JSON.stringify(isTeams ? teams : PETE_OUT_AND_SWAP),
+          stopReason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          costUsd: 0,
+          ms: 1,
+        };
+      },
+    };
+  }
+  const allIn = () =>
+    state({
+      maxPlayers: 14,
+      rows: [
+        { userId: "u-pete", status: "CONFIRMED" as const, position: 1 },
+        { userId: "u-dan", status: "CONFIRMED" as const, position: 2 },
+        { userId: "u-alice", status: "CONFIRMED" as const, position: 3 },
+      ],
+      teams: [
+        { userId: "u-dan", team: "RED" as const },
+        { userId: "u-alice", team: "YELLOW" as const },
+      ],
+    });
+
+  it("the sender's OUT lands, Dan (moved by the swap) is not dropped, and the reading is handed on", async () => {
+    const model = twoReads(SWAP_DAN_ALICE);
+    const d = deps({ model, loadState: async () => allIn() });
+    const r = await run([msg({ body: "@Match Time I'm out, swap Dan with Alice", tagged: true })], d);
+    expect(d.cancelled).toEqual(["u-pete"]);
+    expect(r.teamsReadings?.get("wa-1")).toMatchObject({ kind: "teams", action: "swap", moves: ["Dan", "Alice"] });
+    expect(r.cost.calls).toBe(2);
+  });
+
+  it("no 'teams' side request, no teams read: one call, and the guard does not fire", async () => {
+    const d = deps({
+      model: modelReturning({ ...PETE_OUT_AND_SWAP, sideRequests: [] }),
+      loadState: async () => allIn(),
+    });
+    const r = await run([msg({ body: "@Match Time I'm out, Dan is out too", tagged: true, senderIsAdmin: true })], d);
+    expect(r.cost.calls).toBe(1);
+    expect(r.teamsReadings?.size ?? 0).toBe(0);
+    expect(d.cancelled.sort()).toEqual(["u-dan", "u-pete"]);
+  });
+
+  it("a teams read that FAILS applies no claim about anybody but the sender, and says so", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const d = deps({ model: twoReads("fail"), loadState: async () => allIn() });
+    const r = await run([msg({ body: "@Match Time I'm out, swap Dan with Alice", tagged: true, senderIsAdmin: true })], d);
+    expect(d.cancelled).toEqual(["u-pete"]);
+    expect(r.degradations.join(" ")).toMatch(/team change it asks for could not be read/);
+    expect(r.teamsReadings?.size ?? 0).toBe(0);
+    err.mockRestore();
   });
 });

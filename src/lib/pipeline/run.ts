@@ -31,7 +31,7 @@
  *
  * The router is the only SERIAL dependency; extractors fan out (§11.4).
  */
-import { clampPastedRosterFacts } from "../pasted-roster-registration";
+import { clampPastedListFacts } from "../pasted-list-signal";
 import { compose, type ComposedOutput } from "./compose";
 import { decide } from "./engine";
 import { extractForRoute, extractorFor } from "./extractors";
@@ -44,6 +44,7 @@ import type {
   Facts,
   RoutedMessage,
   SquadState,
+  TeamFacts,
 } from "./types";
 import { extractorCacheKey, fanOutWarmFirst } from "./fan-out";
 
@@ -182,21 +183,53 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
   //   the shape it is being used to investigate is worse than no dry
   //   run.
   //
-  //   `clampPastedRosterFacts` is the single source of that rule and
-  //   both callers use it, so the two cannot drift. What it keeps is the
+  //   `clampPastedListFacts` is the single source of that rule and
+  //   both callers use it, so the two cannot drift. Since 2026-10-30 a
+  //   message is a list when the ROUTER says so (`pastedList`), never by
+  //   the shape of its words. What it keeps is the
   //   sender's own OUT and nothing else — read its header for why that
   //   one claim and no other.
   //
   //   WHAT IS STILL NOT MODELLED HERE, said plainly: the route's own
-  //   pasted-roster arithmetic (`reconcilePastedRoster`, which registers
-  //   the appended names) and the vCard refusal. This module is router →
+  //   pasted-list reading (the squad reader, which registers the listed
+  //   names) and the vCard refusal. This module is router →
   //   extractors → engine → composer, not the route, and neither of
   //   those lives in it.
+  const listIds = new Set(routed.routes.filter((r) => r.pastedList === true).map((r) => r.messageId));
   const clamped = extractions.map((e) => {
-    const m = input.messages.find((x) => x.id === e.messageId);
-    const c = clampPastedRosterFacts(m?.body, e.facts);
+    if (!listIds.has(e.messageId)) return e;
+    const c = clampPastedListFacts(e.facts);
     return c.facts === e.facts ? e : { ...e, facts: c.facts };
   });
+
+  // ── Stage 2b: who a team change moves, as the attendance batch reads it
+  // (`attendance-engine-batch.ts` stage 2d): a message whose attendance
+  // facts carry the "teams" side request is read by the teams extractor
+  // too, for the engine's swap guard.
+  const teamsReadingById = new Map<string, TeamFacts | "unreadable">();
+  await Promise.all(
+    clamped
+      .filter((e) => e.facts.kind === "attendance" && e.facts.sideRequests.includes("teams"))
+      .map(async (e) => {
+        const m = input.messages.find((x) => x.id === e.messageId)!;
+        const res = await extractForRoute(extractorModel, "balancer", {
+          id: m.id,
+          body: m.body,
+          authorName: m.authorName,
+          tagged: m.tagged,
+          history: input.history,
+          lastBotPost,
+        });
+        degradations.push(...res.degradations);
+        if (res.usage) {
+          cost.extractorCalls += 1;
+          cost.extractorUsd += res.usage.costUsd ?? 0;
+          cost.inputTokens += res.usage.inputTokens;
+          cost.outputTokens += res.usage.outputTokens;
+        }
+        teamsReadingById.set(m.id, res.facts.kind === "teams" ? res.facts : "unreadable");
+      }),
+  );
 
   const factsById = new Map(clamped.map((e) => [e.messageId, e]));
 
@@ -213,6 +246,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
       route: routeById.get(m.id) ?? "unsure",
       facts: e?.facts ?? { kind: "none" },
       degraded: e?.degraded ?? null,
+      ...(teamsReadingById.has(m.id) ? { teamsReading: teamsReadingById.get(m.id) } : {}),
     };
   });
 

@@ -29,12 +29,9 @@ import { describe, it, expect } from "vitest";
 import { buildSwapRefusedReply } from "../group-copy";
 import {
   decideSwap,
-  isSwapParty,
-  parseSwapNames,
-  parseSwapRequest,
   planSwap,
-  senderStatesAttendance,
   resolveSwapSide,
+  swapGuardFor,
   type SwapCandidate,
   type SwapDecision,
   type SwapSide,
@@ -259,87 +256,6 @@ describe("decideSwap — the shipped two-confirmed-players team swap", () => {
 });
 
 // ── NAME PARSING ───────────────────────────────────────────────────────
-describe("parseSwapNames", () => {
-  it("reads the incident sentence, ignoring the 'do not regenerate' clause", () => {
-    expect(
-      parseSwapNames(
-        "@Match Time do not regenerate the teams. Instead swap Elvin with Raihan and share us the teams",
-      ),
-    ).toEqual({ a: "elvin", b: "raihan" });
-  });
-
-  const YES: Array<[string, string, string]> = [
-    ["swap Elvin with Raihan", "elvin", "raihan"],
-    ["switch Mustafa and Idris", "mustafa", "idris"],
-    ["swap Sait for Zeeshan", "sait", "zeeshan"],
-    ["swap Ali & Omar", "ali", "omar"],
-    ["please swap Nabeel, Adam", "nabeel", "adam"],
-  ];
-  for (const [body, a, b] of YES) {
-    it(`reads "${body}"`, () => expect(parseSwapNames(body)).toEqual({ a, b }));
-  }
-
-  const NO = [
-    "swap the colours",
-    "swap the teams please",
-    "can we swap sides",
-    // Used to come back as `need` + `ed`: the engine backtracked INSIDE
-    // one word. Saved only by neither half resolving to a player, which
-    // is not a guard. The `\b` after each captured name closes it.
-    "no swap needed",
-    "swap Elvin with Elvin",
-  ];
-  for (const body of NO) {
-    it(`declines "${body}"`, () => expect(parseSwapNames(body)).toBeNull());
-  }
-});
-
-// ── THE TURKISH FORM (2026-09-17) ──────────────────────────────────────
-//
-// The Turkish copy tells the group to type "@Match Time X ile Y'yi
-// değiştir". The second name carries the accusative suffix after an
-// apostrophe ('yi, 'ı, 'u, 'ü, 'yı…), which is stripped: the roster knows
-// "Can", not "Can'ı".
-describe("parseSwapNames: Turkish", () => {
-  const YES: Array<[string, string, string]> = [
-    ["@Match Time David ile Ali'yi değiştir", "david", "ali"],
-    ["@Match Time Mustafa ile Idris'i değiştir", "mustafa", "idris"],
-    ["Ali ile Can'ı değiştir", "ali", "can"],
-    ["Ali ile Can’ı değiştir", "ali", "can"], // the phone's curly apostrophe
-    ["ali ile can'ı degistir", "ali", "can"],
-    ["Sait ile Burak'ı değiştirir misin", "sait", "burak"],
-    ["Elvin ve Raihan'ı değiştir", "elvin", "raihan"],
-    ["Elvin ile Raihan değiştir", "elvin", "raihan"],
-  ];
-  for (const [body, a, b] of YES) {
-    it(`reads "${body}"`, () => expect(parseSwapNames(body)).toEqual({ a, b }));
-  }
-
-  const NO = [
-    // Colours are the colour swap's, never two players.
-    "@Match Time kırmızı ile sarıyı değiştir",
-    "@Match Time Kırmızı ile Sarı'yı değiştir",
-    "@Match Time renkleri değiştir",
-    "@Match Time renkleri ve takımları değiştir",
-    // Negated: "do not swap Ali and Can".
-    "Ali ile Can'ı değiştirme",
-    // No pair at all.
-    "@Match Time maç saatini değiştir",
-    "@Match Time takımları kur",
-    "Ali ile Ali'yi değiştir",
-  ];
-  for (const body of NO) {
-    it(`declines "${body}"`, () => expect(parseSwapNames(body)).toBeNull());
-  }
-});
-
-// ── NAME RESOLUTION ────────────────────────────────────────────────────
-//
-// The pool WIDENS from "CONFIRMED only" to "anyone with an attendance
-// row or a team slot", which is what lets a DROPPED Elvin be found at
-// all. Widening a pool can create ambiguity where there was none, so the
-// resolution is two-stage and a name that resolved before resolves to
-// the same person now.
 describe("resolveSwapSide", () => {
   const roster: SwapCandidate[] = [
     { userId: "u-elvin", name: "Elvin Aliyev", status: "DROPPED", team: "RED" },
@@ -377,98 +293,75 @@ describe("resolveSwapSide", () => {
 
 // ── A SWAP REQUEST IS NEVER ATTENDANCE (2026-09-17, TR26 / TR27) ───────
 //
-// The swap check refuses a message it cannot apply (an unknown or
-// ambiguous name, teams not generated) and the message reaches the
-// attendance pipeline. Measured live before this change, REPEAT=10:
-// "@Match Time swap David and Sait" dropped David 10 of 10, and "@Match
-// Time David ile Sait'i değiştir" 9 of 10. `isSwapParty` is the test the
-// engine asks of every claim in such a message: is this claim about one
-// of the two people the message asks to swap?
-describe("isSwapParty", () => {
-  const P = { a: "david", b: "sait" };
-  const other = (personRef: string) => ({ subject: "other" as const, personRef });
-
-  const YES: Array<[string, { a: string; b: string }, string]> = [
-    ["the first name, as typed", P, "David"],
-    ["the second name", P, "Sait"],
-    ["an @mention of the name", P, "@David"],
-    ["the full name the extractor copied", P, "Sait Demir"],
-    ["the Turkish accusative", P, "Sait'i"],
-    ["the curly apostrophe", P, "Sait’i"],
-    ["upper case", P, "DAVID"],
-    ["a dotted capital İ", { a: "idris", b: "can" }, "İdris"],
-    ["a parsed name with its own suffix", { a: "david", b: "ali'yi" }, "Ali"],
+// ── THE ENGINE'S SWAP GUARD, FROM FACTS (2026-10-30) ──────────────────
+//
+// "@Match Time swap David and Sait" once dropped David 10 of 10 (TR26 /
+// TR27). The engine asks `swapGuardFor` of every claim in a message the
+// attendance extractor said also asks for a team change, with the TEAMS
+// extractor's reading of it. No body is read: the parties are the
+// reading's `moves`, `swaps` and `pairings`.
+describe("swapGuardFor", () => {
+  const roster: SwapCandidate[] = [
+    { userId: "u-kemal", name: "Kemal Ediz", status: "CONFIRMED", team: "RED" },
+    { userId: "u-david", name: "David Smith", status: "CONFIRMED", team: "RED" },
+    { userId: "u-sait", name: "Sait Demir", status: "CONFIRMED", team: "YELLOW" },
+    { userId: "u-zee", name: "Zeeshan Ali", status: "CONFIRMED", team: "YELLOW" },
+    { userId: "u-ben", name: "Ben Bench", status: "BENCH", team: null },
+    { userId: "u-idris", name: "İdris Can", status: "CONFIRMED", team: "RED" },
   ];
-  for (const [label, parties, ref] of YES) {
-    it(`claims about "${ref}" are a swap party (${label})`, () => {
-      expect(isSwapParty(other(ref), parties)).toBe(true);
-    });
+  const opts = { sender: { userId: "u-kemal", name: "Kemal Ediz" }, teamsExist: true };
+  const swap = (moves: string[], over: Record<string, unknown> = {}) => ({ action: "swap", swaps: [], moves, pairings: [], swapSides: false, ...over });
+  const other = (personRef: string, replaces?: string) => ({ subject: "other" as const, personRef, ...(replaces ? { replaces } : {}) });
+  const sender = { subject: "sender" as const, personRef: "" };
+  const refuses = (reading: ReturnType<typeof swap> | null, c: { subject: "sender" | "other"; personRef: string; replaces?: string }, claims = [c]) =>
+    swapGuardFor(reading, claims, roster, opts)?.refuses(c) ?? false;
+
+  for (const [label, ref] of [
+    ["the name as typed", "David"],
+    ["an @mention", "@David"],
+    ["the full name", "Sait Demir"],
+    ["the Turkish accusative", "Sait'i"],
+    ["the curly apostrophe", "Sait’i"],
+    ["upper case", "DAVID"],
+  ] as const) {
+    it(`a claim about "${ref}" is a party (${label})`, () => expect(refuses(swap(["David", "Sait"]), other(ref))).toBe(true));
   }
+  it("a dotted capital İ is the same person", () => expect(refuses(swap(["idris", "Sait"]), other("İdris"))).toBe(true));
 
-  const NO: Array<[string, { a: string; b: string }, string]> = [
-    ["a different player", P, "Zeeshan"],
-    ["a name that merely STARTS with a party", P, "Davidson"],
-    ["an empty reference", P, ""],
-    // "@Kemal switch it to 7 a side and include Amir" parses as a swap of
-    // "it" and "to". Amir is not a party, and his IN must survive: this is
-    // router rule 15's own example, and it is why the guard is per NAME
-    // and never per message.
-    ["the rule-15 message's real player", { a: "it", b: "to" }, "Amir"],
-  ];
-  for (const [label, parties, ref] of NO) {
-    it(`claims about "${ref}" are not (${label})`, () => {
-      expect(isSwapParty(other(ref), parties)).toBe(false);
-    });
-  }
-
-  describe("substitution phrasing is never a swap (review of PR #99)", () => {
-    const NOT_SWAPS = [
-      "swap me out, Kieran can take my place",
-      "can someone swap in for me tonight? I'm out",
-      "@Kemal can you switch it to 7 a side and put Amir in as the 14th",
-      "can anyone swap with me",
-      "happy to swap for someone",
-      "switch me off the list",
-      "can we swap over",
-    ];
-    for (const body of NOT_SWAPS) {
-      it(`"${body}" parses as no swap`, () => expect(parseSwapNames(body)).toBeNull());
-    }
-    it("'swap me with Kieran' still parses (the rule for it lives in the guard)", () => {
-      expect(parseSwapNames("swap me with Kieran please, I can't make it")).toEqual({ a: "me", b: "kieran" });
-    });
+  it("a different player is not a party", () => expect(refuses(swap(["David", "Sait"]), other("Zeeshan"))).toBe(false));
+  it("an unknown name is a party only as that name", () => {
+    expect(refuses(swap(["David", "Zork"]), other("zork"))).toBe(true);
+    expect(refuses(swap(["David", "Zork"]), other("Mork"))).toBe(false);
+  });
+  it("named sides and pairings are parties", () => {
+    expect(refuses(swap([], { swaps: [{ personRef: "David", team: "RED" }] }), other("David"))).toBe(true);
+    expect(refuses(swap([], { pairings: [["Sait", "Zeeshan"]] }), other("Zeeshan"))).toBe(true);
+  });
+  it("no reading, a non-swap action or the two whole teams swapping over: the guard does not fire", () => {
+    expect(swapGuardFor(null, [], roster, opts)).toBeNull();
+    expect(swapGuardFor(swap([], { action: "clear" }), [], roster, opts)).toBeNull();
+    expect(swapGuardFor(swap([], { swapSides: true }), [], roster, opts)).toBeNull();
+  });
+  it("a claim in a stated replacement is not refused, on either side of it", () => {
+    const out = other("David");
+    const arrival = other("Sait", "David");
+    const g = swapGuardFor(swap(["David", "Sait"]), [out, arrival], roster, opts)!;
+    expect(g.refuses(out)).toBe(false);
+    expect(g.refuses(arrival)).toBe(false);
   });
 
-  describe("senderStatesAttendance", () => {
-    const YES = [
-      "swap me with Kieran please, I can't make it",
-      "swap me with Kieran, I'm out",
-      "swap me with Kieran as I cannot make it tonight",
-      "swap me with Kieran, not coming",
-      "swap me with Kieran, count me out",
-      "beni Kieran ile değiştir, yokum",
-    ];
-    for (const body of YES) {
-      it(`"${body}" states attendance outside the swap`, () =>
-        expect(senderStatesAttendance(body)).toBe(true));
-    }
-    const NO = ["@Match Time swap me with Kieran", "@Match Time swap David and Sait", "swap me with Kieran please"];
-    for (const body of NO) {
-      it(`"${body}" does not`, () => expect(senderStatesAttendance(body)).toBe(false));
-    }
+  it("the sender is a party only when the reading moves the sender", () => {
+    expect(refuses(swap(["David", "Sait"]), sender)).toBe(false);
+    expect(refuses(swap(["me", "David"]), sender)).toBe(true);
+    expect(refuses(swap(["Kemal", "David"]), sender)).toBe(true);
   });
-
-  it("the sender's own claim is a party only when the swap names the sender", () => {
-    const sender = { subject: "sender" as const, personRef: "" };
-    expect(isSwapParty(sender, P)).toBe(false);
-    expect(isSwapParty(sender, { a: "me", b: "david" })).toBe(true);
-    expect(isSwapParty(sender, { a: "david", b: "myself" })).toBe(true);
+  it("a swap naming the sender that cannot be applied is a substitution: the sender's claim stands", () => {
+    // Ben is on the bench: "swap me with Ben" is "Ben takes my place".
+    expect(refuses(swap(["me", "Ben"]), sender)).toBe(false);
   });
-
-  it("'Ben' is a player, not the Turkish 'I': the sender's own claim survives", () => {
-    const sender = { subject: "sender" as const, personRef: "" };
-    expect(isSwapParty(sender, { a: "ben", b: "pat" })).toBe(false);
-    expect(isSwapParty(other("Ben"), { a: "ben", b: "pat" })).toBe(true);
+  it("'Ben' in a reading is the player called Ben, never the sender", () => {
+    expect(refuses(swap(["Ben", "David"]), sender)).toBe(false);
+    expect(refuses(swap(["Ben", "David"]), other("Ben"))).toBe(true);
   });
 });
 
@@ -527,37 +420,16 @@ describe("planSwap", () => {
     });
   });
 
-  for (const body of [
-    "swap david and zork",
-    "@Match Time swap david and zork",
-    "@Match Time david ile zork'u değiştir",
-  ]) {
-    it(`"${body}": a lowercase unknown name is still refused, and named`, () => {
-      const req = parseSwapRequest(body)!;
-      const p = planSwap(req, roster, opts);
-      expect(p).toEqual({
-        kind: "refused",
-        a: "David",
-        b: "Zork",
-        why: { reason: "unknown-name", name: "Zork" },
-      });
-      if (p.kind === "refused") {
-        expect(buildSwapRefusedReply({ ...p, lang: "en" })).toContain("*Zork*");
-      }
+  it("a lowercase unknown name (the teams extractor copies it as typed) is still refused, and named", () => {
+    const p = planSwap({ a: "david", b: "zork" }, roster, opts);
+    expect(p).toEqual({
+      kind: "refused",
+      a: "David",
+      b: "Zork",
+      why: { reason: "unknown-name", name: "Zork" },
     });
-  }
-
-  it("a time or filler word is never a player: 'swap david and tonight' is no swap", () => {
-    for (const body of [
-      "swap david and tonight",
-      "swap david tomorrow",
-      "swap david please",
-      "swap david now mate",
-      "david ile yarın değiştir",
-      "david ile bugün değiştir",
-      "david ve akşam değiştir",
-    ]) {
-      expect(parseSwapRequest(body), body).toBeNull();
+    if (p.kind === "refused") {
+      expect(buildSwapRefusedReply({ ...p, lang: "en" })).toContain("*Zork*");
     }
   });
 
@@ -617,11 +489,6 @@ describe("planSwap", () => {
       sender: { userId: "u-new", name: "New Guy" },
       teamsExist: true,
     });
-    expect(p).toEqual({ kind: "not-a-player-swap" });
-  });
-
-  it("a swap naming the sender is left to the pipeline when the sender also states attendance", () => {
-    const p = planSwap({ a: "me", b: "david" }, roster, { ...opts, senderStatesAttendance: true });
     expect(p).toEqual({ kind: "not-a-player-swap" });
   });
 

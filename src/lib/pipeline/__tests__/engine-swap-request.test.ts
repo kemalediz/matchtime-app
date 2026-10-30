@@ -1,173 +1,248 @@
 /**
- * A MESSAGE THAT ASKS TO SWAP TWO PLAYERS IS NEVER AN ATTENDANCE CHANGE
- * FOR EITHER OF THEM (2026-09-17, dry-run cases TR26 / TR27).
+ * A MESSAGE THAT ASKS TO SWAP PLAYERS IS NEVER AN ATTENDANCE CHANGE FOR
+ * THE PEOPLE IT MOVES (2026-09-17, dry-run cases TR26 / TR27).
  *
- * The swap fast path in the analyze route applies what it can and hands
- * the rest on. When it cannot apply a swap (an unknown or ambiguous name,
- * teams not generated), or when the swap was not tagged, the message
- * reaches the attendance pipeline, and the extractor reads "swap David
- * and Sait" as David leaving. Measured live against the Sutton squad,
- * REPEAT=10, before this change:
+ * Measured live against the Sutton squad, REPEAT=10, before the guard:
  *
  *   "@Match Time swap David and Sait"          DROPPED David 10 of 10
  *   "@Match Time David ile Sait'i değiştir"    DROPPED David  9 of 10
  *
- * The claims are fed here in exactly the shape the live extractor
- * returned (`basis=decision polarity=out conf=0.7`), so these tests pin
- * the ENGINE's answer to the model's real reading, not to a reading we
- * would have preferred.
+ * SINCE 2026-10-30 THE GUARD READS FACTS, NEVER THE WORDS (Kemal: "no
+ * string parsing at all"). A message reaching the engine with a team
+ * change carries the attendance extractor's "teams" side request, and the
+ * attendance batch hands the engine the TEAMS extractor's reading of it
+ * (`EngineMessage.teamsReading`). Every test here feeds that reading; the
+ * body is never read, so the bodies below are only there for the human.
+ *
+ * The claims are fed in the shape the live extractor returned
+ * (`polarity=out conf=0.7`), so these tests pin the ENGINE's answer to
+ * the model's real reading, not to a reading we would have preferred.
  */
 import { describe, it, expect } from "vitest";
 import { decide } from "../engine";
+import type { EngineMessage, TeamFacts } from "../types";
 import { NOW, SUTTON, attendanceFacts, claim, msg, statusOf, world } from "./helpers";
 
 const PLAYERS = [...SUTTON, "david"];
 const CONFIRMED = ["kemal", "elvin", "sait", "mustafa", "abid", "david", "zeeshan", "najib"];
 
-function run(body: string, claims: ReturnType<typeof claim>[], o: { tagged?: boolean; from?: string } = {}) {
+/** The teams extractor's reading: "swap A and B" moves both. */
+function swapOf(moves: string[], over: Partial<TeamFacts> = {}): TeamFacts {
+  return {
+    kind: "teams",
+    action: "swap",
+    includeRefs: [],
+    teamNames: null,
+    swaps: [],
+    moves,
+    pairings: [],
+    swapSides: false,
+    ...over,
+  };
+}
+
+function withReading(m: EngineMessage, teamsReading: EngineMessage["teamsReading"]): EngineMessage {
+  return { ...m, teamsReading };
+}
+
+function run(
+  body: string,
+  claims: ReturnType<typeof claim>[],
+  reading: EngineMessage["teamsReading"],
+  o: { tagged?: boolean; from?: string } = {},
+) {
   const state = world({ players: PLAYERS, confirmed: CONFIRMED });
-  const r = decide({
+  return decide({
     now: NOW,
     state,
     messages: [
-      msg({
-        from: o.from ?? "kemal",
-        body,
-        tagged: o.tagged ?? true,
-        route: "other_att",
-        facts: attendanceFacts(claims),
-      }),
+      withReading(
+        msg({
+          from: o.from ?? "kemal",
+          body,
+          tagged: o.tagged ?? true,
+          route: "other_att",
+          facts: attendanceFacts(claims, { sideRequests: reading ? ["teams"] : [] }),
+        }),
+        reading,
+      ),
     ],
   });
-  return r;
 }
 
 const davidOut = claim({ subject: "other", personRef: "David", personNamed: true, polarity: "out", confidence: 0.7 });
 
-describe("a swap request writes no attendance for the two players it names", () => {
+describe("a swap the teams extractor read writes no attendance for the people it moves", () => {
   it("TR27: '@Match Time swap David and Sait' does not drop David", () => {
-    const r = run("@Match Time swap David and Sait", [davidOut]);
+    const r = run("@Match Time swap David and Sait", [davidOut], swapOf(["David", "Sait"]));
     expect(r.writes.filter((w) => w.kind === "attendance")).toEqual([]);
     expect(statusOf(r.nextState, "david")).toBe("CONFIRMED");
     expect(r.outcomes[0].reasons.join(" ")).toMatch(/swap/i);
   });
 
-  it("TR26: the Turkish form does not drop David or add Sait", () => {
-    const r = run("@Match Time David ile Sait'i değiştir", [
-      davidOut,
-      claim({ subject: "other", personRef: "Sait'i", personNamed: true, polarity: "in", confidence: 0.7 }),
-    ]);
+  it("TR26: the Turkish form does not drop David or add Sait (the reading carries the case ending)", () => {
+    const r = run(
+      "@Match Time David ile Sait'i değiştir",
+      [davidOut, claim({ subject: "other", personRef: "Sait'i", personNamed: true, polarity: "in", confidence: 0.7 })],
+      swapOf(["David", "Sait'i"]),
+    );
     expect(r.writes).toEqual([]);
     expect(statusOf(r.nextState, "david")).toBe("CONFIRMED");
   });
 
-  // Lowercase typing is how this group writes (review of PR #99): an
-  // unknown second name must protect David whatever its case.
-  for (const [body, tagged] of [
-    ["swap david and zork", false],
-    ["@Match Time swap david and zork", true],
-    ["@Match Time david ile zork'u değiştir", true],
-  ] as const) {
-    it(`"${body}" drops nobody`, () => {
-      const r = run(body, [{ ...davidOut, personRef: "david" }], { tagged });
-      expect(r.writes).toEqual([]);
-      expect(statusOf(r.nextState, "david")).toBe("CONFIRMED");
-    });
-  }
-
-  it("'swap david and tonight' is not a swap: a drop of David stays a drop", () => {
-    const r = run("@Match Time swap david and tonight", [{ ...davidOut, confidence: 0.95 }]);
-    expect(statusOf(r.nextState, "david")).toBe("DROPPED");
+  it("a party is matched through the roster, not by spelling: '@David' and 'David' are one person", () => {
+    const r = run("@Match Time swap @David and Sait", [{ ...davidOut, personRef: "@David" }], swapOf(["David", "Sait"]));
+    expect(statusOf(r.nextState, "david")).toBe("CONFIRMED");
   });
 
-  it("an UNTAGGED swap from an admin does not drop David either (the admin OUT waiver is not a swap waiver)", () => {
-    const r = run("swap David and Sait", [davidOut], { tagged: false });
+  it("an unknown second name still protects David, whatever its case", () => {
+    const r = run("swap david and zork", [{ ...davidOut, personRef: "david" }], swapOf(["david", "zork"]), { tagged: false });
     expect(r.writes).toEqual([]);
     expect(statusOf(r.nextState, "david")).toBe("CONFIRMED");
   });
 
-  it("the sender's own OUT in the same message still lands", () => {
-    const r = run("@Match Time swap David and Sait and I'm out", [
-      davidOut,
-      claim({ subject: "sender", polarity: "out" }),
-    ]);
+  it("a person moved to a named side or paired with another is a party too", () => {
+    expect(
+      statusOf(run("put David in Red", [davidOut], swapOf([], { swaps: [{ personRef: "David", team: "RED" }] })).nextState, "david"),
+    ).toBe("CONFIRMED");
+    expect(
+      statusOf(run("David and Sait together", [davidOut], swapOf([], { pairings: [["David", "Sait"]] })).nextState, "david"),
+    ).toBe("CONFIRMED");
+  });
+
+  it("the sender's own OUT in the same message still lands when the sender is not a party", () => {
+    const r = run(
+      "@Match Time swap David and Sait and I'm out",
+      [davidOut, claim({ subject: "sender", polarity: "out" })],
+      swapOf(["David", "Sait"]),
+    );
     expect(statusOf(r.nextState, "kemal")).toBe("DROPPED");
     expect(statusOf(r.nextState, "david")).toBe("CONFIRMED");
   });
 
-  it("a third party the swap does NOT name still drops", () => {
-    const r = run("@Match Time swap David and Sait. Zeeshan is out", [
-      davidOut,
-      claim({ subject: "other", personRef: "Zeeshan", personNamed: true, polarity: "out" }),
-    ]);
+  it("a third party the swap does NOT move still drops", () => {
+    const r = run(
+      "@Match Time swap David and Sait. Zeeshan is out",
+      [davidOut, claim({ subject: "other", personRef: "Zeeshan", personNamed: true, polarity: "out" })],
+      swapOf(["David", "Sait"]),
+    );
     expect(statusOf(r.nextState, "zeeshan")).toBe("DROPPED");
     expect(statusOf(r.nextState, "david")).toBe("CONFIRMED");
   });
 
-  it("'swap me with David' does not drop the sender", () => {
-    const r = run("@Match Time swap me with David", [claim({ subject: "sender", polarity: "out", confidence: 0.7 })]);
+  it("'swap me with David' (both in the squad) does not drop the sender", () => {
+    const r = run("@Match Time swap me with David", [claim({ subject: "sender", polarity: "out", confidence: 0.7 })], swapOf(["me", "David"]));
     expect(r.writes).toEqual([]);
     expect(statusOf(r.nextState, "kemal")).toBe("CONFIRMED");
   });
+
+  it("no reading, no guard: a drop with no team change read is a drop", () => {
+    const r = run("@Match Time David is out", [{ ...davidOut, confidence: 0.95 }], null);
+    expect(statusOf(r.nextState, "david")).toBe("DROPPED");
+  });
+
+  it("a reading that is not a swap (a clear, the two teams swapping over) moves no named person", () => {
+    expect(statusOf(run("x", [{ ...davidOut, confidence: 0.95 }], swapOf([], { action: "clear" })).nextState, "david")).toBe("DROPPED");
+    expect(statusOf(run("x", [{ ...davidOut, confidence: 0.95 }], swapOf([], { swapSides: true })).nextState, "david")).toBe("DROPPED");
+  });
+
+  it("an UNREADABLE team change applies no claim about anybody but the sender", () => {
+    const r = run(
+      "@Match Time swap David and Sait and I'm out",
+      [davidOut, claim({ subject: "sender", polarity: "out" })],
+      "unreadable",
+    );
+    expect(statusOf(r.nextState, "david")).toBe("CONFIRMED");
+    expect(statusOf(r.nextState, "kemal")).toBe("DROPPED");
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/could not be read/);
+  });
 });
 
-// ── THE MIRROR IMAGE (review of PR #99, 2026-09-17) ────────────────────
+describe("a stated replacement inside a swap message is attendance, not a swap", () => {
+  it("'swap Elvin with Raihan, Elvin is out, Raihan in for him': Elvin's OUT lands", () => {
+    const state = world({ players: [...PLAYERS, "raihan"], confirmed: CONFIRMED });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        withReading(
+          msg({
+            from: "kemal",
+            body: "@Match Time swap Elvin with Raihan, Elvin is out",
+            tagged: true,
+            route: "other_att",
+            facts: attendanceFacts(
+              [
+                claim({ subject: "other", personRef: "Elvin", personNamed: true, polarity: "out" }),
+                claim({ subject: "other", personRef: "Raihan", personNamed: true, polarity: "in", replaces: "Elvin" }),
+              ],
+              { sideRequests: ["teams"] },
+            ),
+          }),
+          swapOf(["Elvin", "Raihan"]),
+        ),
+      ],
+    });
+    expect(statusOf(r.nextState, "elvin")).toBe("DROPPED");
+    expect(statusOf(r.nextState, "raihan")).toBe("CONFIRMED");
+  });
+});
+
+// ── THE SENDER AS A PARTY (review of PR #99, 2026-09-17) ───────────────
 //
-// Substitution phrasing parses as a "swap" involving the sender, and the
-// first cut of the guard refused the sender's own OUT whenever either
-// party was "me". These are genuine drops and must stay drops.
+// A swap naming the sender that cannot be applied is a substitution, and
+// the sender's OUT is the point of it. Decided by `planSwap` over the
+// database, never by the words.
 describe("a substitution involving the sender is a drop, not a swap", () => {
   const PLAYERS_S = [...PLAYERS, "salman"];
+  const withZair = [...CONFIRMED, "zair"];
+  const senderOut = claim({ subject: "sender", polarity: "out" });
   function runS(
-    body: string,
     claims: ReturnType<typeof claim>[],
+    reading: EngineMessage["teamsReading"],
     o: { teams?: Record<string, "RED" | "YELLOW">; confirmed?: string[] } = {},
   ) {
     const state = world({
       players: PLAYERS_S,
-      confirmed: o.confirmed ?? CONFIRMED,
+      confirmed: o.confirmed ?? withZair,
       bench: o.confirmed?.includes("salman") ? [] : ["salman"],
       teams: o.teams,
     });
     return decide({
       now: NOW,
       state,
-      messages: [msg({ from: "zair", body, route: "self_att", facts: attendanceFacts(claims) })],
+      messages: [
+        withReading(
+          msg({ from: "zair", body: "(read by the models)", route: "self_att", facts: attendanceFacts(claims, { sideRequests: ["teams"] }) }),
+          reading,
+        ),
+      ],
     });
   }
-  const senderOut = claim({ subject: "sender", polarity: "out" });
-  const withZair = [...CONFIRMED, "zair"];
 
-  it("'swap me out, Salman can take my place' drops the sender", () => {
-    const r = runS("swap me out, Salman can take my place", [senderOut], { confirmed: withZair });
-    expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
+  it("'swap me with Salman', Salman on the bench: the sender's OUT applies", () => {
+    expect(statusOf(runS([senderOut], swapOf(["me", "Salman"])).nextState, "zair")).toBe("DROPPED");
   });
 
-  it("'can someone swap in for me tonight? I'm out' drops the sender", () => {
-    const r = runS("can someone swap in for me tonight? I'm out", [senderOut], { confirmed: withZair });
-    expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
-  });
-
-  it("'swap me with Salman please, I can't make it' drops the sender (Salman on the bench)", () => {
-    const r = runS("swap me with Salman please, I can't make it", [senderOut], { confirmed: withZair });
-    expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
-  });
-
-  it("…and still drops the sender when both are in and the teams exist: the statement wins", () => {
-    const r = runS("swap me with Salman please, I can't make it", [senderOut], {
+  it("'swap me with Salman', both in and the teams built: a team swap, nobody is dropped", () => {
+    const r = runS([senderOut], swapOf(["me", "Salman"]), {
       confirmed: [...withZair, "salman"],
       teams: { zair: "RED", salman: "YELLOW" },
     });
+    expect(statusOf(r.nextState, "zair")).toBe("CONFIRMED");
+  });
+
+  it("…but a stated replacement of the sender is his drop, both in or not", () => {
+    const r = runS(
+      [senderOut, claim({ subject: "other", personRef: "Salman", personNamed: true, polarity: "in", replaces: "me" })],
+      swapOf(["me", "Salman"]),
+      { confirmed: [...withZair, "salman"], teams: { zair: "RED", salman: "YELLOW" } },
+    );
     expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
   });
 
-  it("'swap me with Salman' alone, Salman on the bench, is a substitution: the sender's OUT applies", () => {
-    const r = runS("swap me with Salman", [senderOut], { confirmed: withZair });
-    expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
-  });
-
-  it("'swap me with Salman' alone, both in and the teams built, is a team swap: nobody is dropped", () => {
-    const r = runS("@Match Time swap me with Salman", [senderOut], {
+  it("the sender named by his own name is the sender", () => {
+    const r = runS([senderOut], swapOf(["Zair", "Salman"]), {
       confirmed: [...withZair, "salman"],
       teams: { zair: "RED", salman: "YELLOW" },
     });
@@ -190,13 +265,16 @@ describe("a refused swap claim supersedes nothing", () => {
       state,
       messages: [
         msg({ from: "zair", body: "out", route: "self_att", facts: attendanceFacts([claim({ polarity: "out" })]) }),
-        msg({
-          from: "zair",
-          body: "@Match Time swap me with David",
-          tagged: true,
-          route: "self_att",
-          facts: attendanceFacts([claim({ polarity: "out", confidence: 0.7 })]),
-        }),
+        withReading(
+          msg({
+            from: "zair",
+            body: "@Match Time swap me with David",
+            tagged: true,
+            route: "self_att",
+            facts: attendanceFacts([claim({ polarity: "out", confidence: 0.7 })], { sideRequests: ["teams"] }),
+          }),
+          swapOf(["me", "David"]),
+        ),
       ],
     });
     expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
@@ -221,9 +299,7 @@ describe("genuine drops are untouched", () => {
             body,
             tagged,
             route: "other_att",
-            facts: attendanceFacts([
-              claim({ subject: "other", personRef: ref, personNamed: true, polarity: "out" }),
-            ]),
+            facts: attendanceFacts([claim({ subject: "other", personRef: ref, personNamed: true, polarity: "out" })]),
           }),
         ],
       });
@@ -231,14 +307,17 @@ describe("genuine drops are untouched", () => {
     });
   }
 
-  it("router rule 15's own example: 'switch it to 7 a side and put Amir in' still registers Amir", () => {
-    // `parseSwapNames` reads this as a swap of "it" and "to". Neither is
-    // a person, so no claim is a party and Amir's IN is untouched. A
-    // message-level refusal would have lost it; that is why the guard is
-    // asked per claim.
-    const r = run("@Kemal can you switch it to 7 a side and put Amir in as the 14th", [
-      claim({ subject: "other", personRef: "Amir", personNamed: true, polarity: "in" }),
-    ]);
+  it("a body that LOOKS like a swap is not one without the reading: 'switch it to 7 a side and put Amir in' registers Amir", () => {
+    const r = run(
+      "@Kemal can you switch it to 7 a side and put Amir in as the 14th",
+      [claim({ subject: "other", personRef: "Amir", personNamed: true, polarity: "in" })],
+      null,
+    );
     expect(statusOf(r.nextState, "amir")).toBe("CONFIRMED");
+  });
+
+  it("…nor is 'swap David and Sait' typed with no reading: the body is never read", () => {
+    const r = run("@Match Time swap David and Sait", [{ ...davidOut, confidence: 0.95 }], null);
+    expect(statusOf(r.nextState, "david")).toBe("DROPPED");
   });
 });

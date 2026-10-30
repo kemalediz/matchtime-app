@@ -166,6 +166,9 @@ async function replay(
   const a = msgId();
   const b = msgId();
   engineOn({ [ADAM_PASTE]: readings[0], [NABEEL_PASTE]: readings[1] });
+  // The router flags both as pasted lists (a fact, 2026-10-30): that, not
+  // the numbered shape, is what clamps what the engine may act on.
+  setPastedListStub({ bodies: [ADAM_PASTE, NABEEL_PASTE] });
   await postAnalyze(request, [
     { waMessageId: a, body: ADAM_PASTE, authorPhone: PHONE.fresh, authorName: "Adam Khandaza" },
     { waMessageId: b, body: NABEEL_PASTE, authorPhone: PHONE.extra, authorName: "Nabeel" },
@@ -248,6 +251,7 @@ test("a real add alongside a paste is LOST — the accepted cost of the paste pe
       facts: facts([otherClaim("Amir", "in"), otherClaim("Ian Innes", "in")]),
     },
   });
+  setPastedListStub({ bodies: [body] });
   await postAnalyze(request, [
     {
       waMessageId: id,
@@ -389,8 +393,9 @@ test("the peel never eats a drop — an OUT beside a paste still fires", async (
   const id = msgId();
   const body = `can't make it lads, someone take my spot\n${ADAM_PASTE}`;
   engineOn({ [body]: { route: "self_att", facts: selfIn({ polarity: "out" }) } });
-  // Pat pastes the list AND says he is out. The peel only ever removes
-  // additions, so the OUT survives even though "Pat" is not a slot.
+  setPastedListStub({ bodies: [body] });
+  // Pat pastes the list AND says he is out. The clamp keeps the sender's
+  // own OUT, so it survives even though "Pat" is not a slot.
   await postAnalyze(request, [
     {
       waMessageId: id,
@@ -457,9 +462,8 @@ test("a drop with no list in it is completely unaffected by the paste branch", a
   request,
   db,
 }) => {
-  // The control. Section 4 has no opinion about a message
-  // `parsePastedRoster` does not recognise, and the clamp passes those
-  // facts through by identity.
+  // The control. The router did not flag it as a list, so neither the
+  // squad reader nor the clamp has any opinion about it.
   resetDb();
   const id = msgId();
   const body = "can't make it lads, someone take my spot";
@@ -505,4 +509,32 @@ test("a list the router does not flag as a pasted list is not read", async ({ re
   const before = await squad(db);
   await postAnalyze(request, [{ waMessageId: msgId(), body: OF_RECORD_PASTE, authorPhone: PHONE.admin, authorName: "Alex Admin" }]);
   expect(await squad(db)).toEqual(before);
+});
+
+// ── THE ROUTER'S FLAG DECIDES, NEVER THE SHAPE (2026-10-30) ────────────
+//
+// The attendance engine clamped a list by `parsePastedRoster`, a test on
+// the numbering of the words, until the "no string parsing" sweep. Now a
+// message is a list when the router says so (`pasted_list`), with the
+// squad reader's answer. A numbered body the router did not flag is an
+// ordinary message, read by the attendance extractor like any other.
+test("a numbered body the router did NOT flag is an ordinary message: its claims are read", async ({ request, db }) => {
+  resetDb();
+  const body = "1. Alex Admin\n2. Colin Collector\n3. Pat Player\n4. Tom Third\n5. Ian Innes";
+  engineOn({ [body]: { route: "self_att", facts: selfIn() } });
+  setPastedListStub({});
+  await postAnalyze(request, [{ waMessageId: msgId(), body, authorPhone: PHONE.fresh, authorName: "Ian Innes" }]);
+  expect(await squad(db)).toContain("Ian Innes:CONFIRMED");
+});
+
+test("the same body flagged as a pasted list: the sender's own IN read off it is refused", async ({ request, db }) => {
+  resetDb();
+  const body = "1. Alex Admin\n2. Colin Collector\n3. Pat Player\n4. Tom Third\n5. Ian Innes";
+  engineOn({ [body]: { route: "self_att", facts: selfIn() } });
+  // The reader reads it as something other than the squad, so the list
+  // registers nobody either: what the engine was given is all that could.
+  setHqSquadReaderStub({ bodies: {} });
+  setPastedListStub({ bodies: [body] });
+  await postAnalyze(request, [{ waMessageId: msgId(), body, authorPhone: PHONE.fresh, authorName: "Ian Innes" }]);
+  expect((await squad(db)).some((r) => r.startsWith("Ian Innes:"))).toBe(false);
 });

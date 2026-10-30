@@ -27,7 +27,7 @@
  *
  * ── WHY THE PAIRING IS CODE AND NOT A PROMPT ─────────────────────────
  *
- * The same argument `lib/team-slot-swap.ts` makes above `isSwapParty`.
+ * The same argument `lib/team-slot-swap.ts` makes above `swapGuardFor`.
  * A sentence of prose asking a model to be sure who is arriving is a
  * probability, and what it guards is the one error this product cannot
  * afford: a false positive DROPS A REAL PLAYER FROM A REAL SQUAD. So the

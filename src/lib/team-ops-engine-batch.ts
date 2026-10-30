@@ -409,6 +409,10 @@ export async function runTeamOpsBatch(args: {
    *  (its reading, a fact: `team-also-signal.ts`). Read with the teams
    *  extractor here; only a swap or a clear is done for them. */
   alsoTeams?: ReadonlySet<string>;
+  /** The teams extractor's reading of those messages, when the attendance
+   *  engine already made it for its swap guard
+   *  (`EngineBatchResult.teamsReadings`). Used as read; no second call. */
+  alsoTeamsFacts?: ReadonlyMap<string, Facts>;
 }): Promise<TeamOpsBatchResult> {
   const { orgId, now, messages, history, enabled, deps } = args;
   const alsoTeams = args.alsoTeams ?? new Set<string>();
@@ -513,6 +517,13 @@ export async function runTeamOpsBatch(args: {
     candidates,
     (m) => extractorCacheKey(routeOf(m)),
     async (m) => {
+      // The team half of an engine-owned message, already read by the
+      // attendance engine for its swap guard: used as read.
+      const preset = isAlso(m) ? args.alsoTeamsFacts?.get(m.waMessageId) : undefined;
+      if (preset) {
+        factsById.set(m.waMessageId, preset);
+        return;
+      }
       const res = await extractForRouteTraced("team_ops", model, routeOf(m), {
         id: m.waMessageId,
         body: m.body,

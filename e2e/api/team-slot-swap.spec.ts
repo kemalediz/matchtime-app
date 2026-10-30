@@ -31,7 +31,8 @@
  * `team-swap-apply.ts` then do to Postgres.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
-import { engineOn } from "../helpers/stub";
+import { engineOn, selfOut, otherClaim, stubCalls } from "../helpers/stub";
+import { E2E } from "../helpers/env";
 import { U, PHONE, MATCH, NAME } from "../helpers/constants";
 import type { TestDb } from "../helpers/test-db";
 
@@ -314,6 +315,14 @@ test.describe("a refused swap drops nobody and says so", () => {
     );
   });
 
+  // Since 2026-10-30 the engine's guard reads FACTS: the attendance
+  // extractor's "teams" side request, and the teams extractor's reading of
+  // who the change moves (one stub body carries both readings).
+  const teamsRead = (moves: string[]) => ({
+    sideRequests: ["teams"],
+    action: "swap", includeRefs: [], teamNames: [], swaps: [], moves, pairings: [], swapSides: false,
+  });
+
   test("routed as attendance, the sender's own OUT lands and the swap parties are refused", async ({ request, db }) => {
     // The router reads the whole message as attendance: the engine's swap
     // guard refuses Pat as a party; the sender is not a party and is dropped.
@@ -321,7 +330,11 @@ test.describe("a refused swap drops nobody and says so", () => {
     engineOn({
       [body]: {
         route: "other_att",
-        facts: { ...patOut, claims: [...patOut.claims, { ...patOut.claims[0], subject: "sender", personRef: "", personNamed: false, confidence: 0.95 }] },
+        facts: {
+          ...patOut,
+          claims: [...patOut.claims, { ...patOut.claims[0], subject: "sender", personRef: "", personNamed: false, confidence: 0.95 }],
+          ...teamsRead([PAT, "Zork"]),
+        },
       },
     });
 
@@ -337,7 +350,7 @@ test.describe("a refused swap drops nobody and says so", () => {
     // Never reaches the peel (no tag). An admin's third-party OUT needs
     // no tag, so before the engine guard this dropped Pat outright.
     const body = `swap ${PAT} with ${TOM}`;
-    engineOn({ [body]: { route: "other_att", facts: patOut } });
+    engineOn({ [body]: { route: "other_att", facts: { ...patOut, ...teamsRead([PAT, TOM]) } } });
     const before = await squad(db);
 
     await postAnalyze(request, [
@@ -354,7 +367,11 @@ test.describe("a refused swap drops nobody and says so", () => {
     engineOn({
       [body]: {
         route: "self_att",
-        facts: { ...patOut, claims: [{ ...patOut.claims[0], subject: "sender", personRef: "", personNamed: false, confidence: 0.95 }] },
+        facts: {
+          ...patOut,
+          claims: [{ ...patOut.claims[0], subject: "sender", personRef: "", personNamed: false, confidence: 0.95 }],
+          ...teamsRead(["me", NAME.bench.split(" ")[0]]),
+        },
       },
     });
     const res = await postAnalyze(request, [
@@ -461,5 +478,80 @@ test.describe("the two teams swap over (the colour swap), read by the teams extr
     const before = await sheet(db);
     await postAnalyze(request, [{ waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: NAME.admin }]);
     expect(await sheet(db)).toEqual(before);
+  });
+});
+
+// ── THE ENGINE'S SWAP GUARD READS FACTS, NEVER THE WORDS (2026-10-30) ──
+//
+// "@Match Time I'm out, swap Pat with Colin": one message, routed to the
+// sender's own attendance. The attendance extractor reads the sender's
+// OUT, says the message ALSO asks for a team change (its "teams" side
+// request), and here also MISREADS Pat as leaving, the shape that once
+// dropped David 10 of 10 (TR26 / TR27). The guard used to find the swap
+// with a regex on the body; it now reads the TEAMS extractor's reading
+// (who it moves), read once by the attendance batch and handed on to the
+// teams path. Stubbed: one facts body carries both readings.
+test.describe("a swap inside an attendance message: the sender leaves, the swap's parties stay", () => {
+  test.beforeEach(async ({ db }) => {
+    resetDb();
+    await db.run(`DELETE FROM "TeamAssignment" WHERE "matchId" = $1`, [MATCH.upcoming]);
+    for (const [userId, team] of [
+      [U.admin, "RED"],
+      [U.player, "RED"],
+      [U.collector, "YELLOW"],
+      [U.third, "YELLOW"],
+    ] as const) {
+      await db.run(
+        `INSERT INTO "TeamAssignment" (id, "matchId", "userId", team) VALUES ($1, $2, $3, $4::"Team")`,
+        [`e2e-ta-guard-${userId}`, MATCH.upcoming, userId, team],
+      );
+    }
+  });
+
+  const PAT = NAME.player.split(" ")[0];
+  const COLIN = NAME.collector.split(" ")[0];
+
+  test("the sender is dropped, Pat is NOT (the misread is refused), and the teams extractor reads it once", async ({ request, db }) => {
+    const body = `@Match Time I'm out, swap ${PAT} with ${COLIN}`;
+    const out = selfOut() as { claims: unknown[] };
+    engineOn({
+      [body]: {
+        route: "self_att",
+        facts: {
+          ...out,
+          claims: [...out.claims, otherClaim(PAT, "out")],
+          sideRequests: ["teams"],
+          action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: [PAT, COLIN], pairings: [], swapSides: false,
+        },
+      },
+    });
+    await postAnalyze(request, [
+      { waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
+    ]);
+    const rows = await squad(db);
+    expect(rows).toContain(`${NAME.admin}:DROPPED`);
+    expect(rows).toContain(`${NAME.player}:CONFIRMED`);
+    expect(rows).toContain(`${NAME.collector}:CONFIRMED`);
+    // The swap half still happened, from the same reading.
+    const s = await sheet(db);
+    expect(s).toContain(`${NAME.player}:YELLOW`);
+    expect(s).toContain(`${NAME.collector}:RED`);
+    // Read once: the attendance batch's teams read is handed to the teams
+    // path, which does not read the message again.
+    const teamsReads = stubCalls(E2E.EXTRACTOR_STUB_FILE).filter((c) => c.label === "extractor:teams" && c.user.includes(body));
+    expect(teamsReads).toHaveLength(1);
+  });
+
+  test("the same body without the 'teams' side request is read as it says: no guard, Pat's OUT applies", async ({ request, db }) => {
+    // The body is never read for a swap any more: without the extractor's
+    // side request there is no team change, and an admin's third-party
+    // OUT is applied as any other.
+    const body = `@Match Time I'm out, swap ${PAT} with ${COLIN}`;
+    const out = selfOut() as { claims: unknown[] };
+    engineOn({ [body]: { route: "self_att", facts: { ...out, claims: [...out.claims, otherClaim(PAT, "out")] } } });
+    await postAnalyze(request, [
+      { waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
+    ]);
+    expect(await squad(db)).toContain(`${NAME.player}:DROPPED`);
   });
 });
