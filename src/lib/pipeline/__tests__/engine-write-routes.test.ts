@@ -742,9 +742,9 @@ describe("the stats blast is DECIDED by the engine and RUN by the route", () => 
             route: "admin_ops",
             facts: { kind: "admin", action: "stats_blast" },
           }),
-          ...(opts.taggedExplicitly === undefined
-            ? {}
-            : { taggedExplicitly: opts.taggedExplicitly }),
+          // The Pi's mention flag; a tagged ask carries it unless the case
+          // says otherwise (the body is never read for it, review of #476).
+          taggedExplicitly: opts.taggedExplicitly ?? (opts.tagged ?? true),
         },
       ],
     });
@@ -807,18 +807,9 @@ describe("the stats blast is DECIDED by the engine and RUN by the route", () => 
     expect(blast("kemal").speech).toHaveLength(0);
   });
 
-  it("derives the explicit tag from the BODY when the caller supplied none", () => {
-    // The Pi rewrites a real bot @-mention into the literal "@Match
-    // Time" in the body, so a caller that has not been taught the new
-    // field still gets the right answer — and gets it in the safe
-    // direction for a body with no @ in it.
+  it("never derives the explicit tag from the BODY: without the Pi's flag, no blast (review of #476)", () => {
     expect(
-      blast("kemal", { body: "@Match Time send everyone their stats" }).writes.filter(
-        (x) => x.kind === "stats_blast",
-      ),
-    ).toHaveLength(1);
-    expect(
-      blast("kemal", { body: "send everyone their stats" }).writes.filter(
+      blast("kemal", { body: "@Match Time send everyone their stats", tagged: false }).writes.filter(
         (x) => x.kind === "stats_blast",
       ),
     ).toHaveLength(0);

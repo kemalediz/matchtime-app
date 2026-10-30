@@ -267,7 +267,6 @@ import type {
   SquadState,
 } from "./pipeline/types";
 import { isExplicitTeamBuildRequest, isMatchDay } from "./team-requests";
-import { messageMentionsBotExplicitly } from "./interaction-contract";
 import {
   TEAM_OPS_APPLY_DEGRADED_PREFIX,
   TEAM_OPS_HANDLED_BY,
@@ -302,7 +301,7 @@ export interface TeamOpsBatchMessage {
   senderName: string | null;
   /** Did this message @-mention the bot? The interaction-contract signal. */
   tagged: boolean;
-  /** `messageMentionsBotExplicitly`, the STRICT tag. Read only to decide
+  /** `piMentionsBot` (the Pi's mention flag), the STRICT tag. Read only to decide
    *  whether a declined request is answered out loud (2026-09-29): a
    *  message that merely names MatchTime is never told "I can't". Omitted
    *  → derived from the body. */
@@ -591,7 +590,7 @@ export async function runTeamOpsBatch(args: {
       // Answered out loud only when MatchTime was ADDRESSED. A message
       // that merely names it ("rate the players via the link from
       // Matchtime") keeps the old treatment: silence plus the note.
-      if (!(m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body }))) {
+      if (!(m.taggedExplicitly === true)) {
         hand(
           decline === "unsupported"
             ? `team action "${facts.action}" has no handler on this path`

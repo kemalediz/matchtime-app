@@ -142,6 +142,9 @@ function ask(text: string, route: string, over: Partial<Parameters<typeof unders
     org: ORG,
     messageId: "wa-9",
     text,
+    // As the real Pi sends it: "@Match Time" in the body is its own
+    // rewrite of a real mention, which comes with the flag (review of #476).
+    botMentioned: text.includes("@Match Time"),
     quoted: null,
     senderUserId: "u-admin",
     organiser: true,

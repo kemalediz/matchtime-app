@@ -12,7 +12,7 @@ import { decide } from "../engine";
 import { NOW, attendanceFacts, msg, world } from "./helpers";
 
 const chase = (from: string, body: string, tagged = true) =>
-  msg({ id: "wa-chase", from, body, route: "offer", tagged, facts: attendanceFacts([], { sideRequests: ["chase"] }) });
+  msg({ id: "wa-chase", from, body, route: "offer", tagged, taggedExplicitly: tagged, facts: attendanceFacts([], { sideRequests: ["chase"] }) });
 
 describe("a chase side request with no claims", () => {
   it("from the owner, tagged: the recruit is requested, explicitly tagged", () => {

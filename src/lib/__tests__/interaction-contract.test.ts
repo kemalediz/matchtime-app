@@ -21,7 +21,8 @@ import {
   ADMIN_REPORTED_OUT_IS_TAG_FREE,
   REPLACEMENT_OUT_IS_TAG_FREE,
   messageTagsBot,
-  messageMentionsBotExplicitly,
+  messageAddressesBot,
+  piMentionsBot,
   actionRequiresTag,
   isSelfAttendanceVerdict,
   registerForEntryRequiresTag,
@@ -30,25 +31,31 @@ import {
   type GateRegisterForEntry,
 } from "@/lib/interaction-contract";
 
-describe("messageTagsBot: FACTS only, never the words (2026-10-30, B1)", () => {
-  it("the Pi's structured mention flag is a tag", () => {
+describe("the tag is FACTS only, and to_bot only ever answers (2026-10-30, review of #476)", () => {
+  it("messageTagsBot: the Pi's mention flag or a reply to MatchTime, never the router's reading", () => {
     expect(messageTagsBot({ body: "what are the teams?", botMentioned: true })).toBe(true);
+    expect(messageTagsBot({ body: "Bench?", quotedFromMatchTime: true })).toBe(true);
+    expect(messageTagsBot({ body: "MatchTime who runs this club?", routerAddressed: true })).toBe(false);
   });
 
-  it("the router's own reading that it speaks to MatchTime is a tag", () => {
-    expect(messageTagsBot({ body: "MatchTime who runs this club?", routerAddressed: true })).toBe(true);
+  it("messageAddressesBot: a tag, or the router's to_bot; for answers only", () => {
+    expect(messageAddressesBot({ body: "MatchTime who runs this club?", routerAddressed: true })).toBe(true);
+    expect(messageAddressesBot({ body: "x", botMentioned: true })).toBe(true);
+    expect(messageAddressesBot({ body: "x" })).toBe(false);
   });
 
-  it("the bot's name in the text is NOT a tag by itself: the router reads that", () => {
-    expect(messageTagsBot({ body: "@Match Time what are the teams?" })).toBe(false);
-    expect(messageTagsBot({ body: "matchtime is broken lol", botMentioned: false })).toBe(false);
-    expect(messageTagsBot({ body: "match time generate the teams" })).toBe(false);
-    expect(messageTagsBot({ body: "@MT what are the teams" })).toBe(false);
+  it("piMentionsBot: the Pi's mention flag alone; the bot's name in the text is not it", () => {
+    expect(piMentionsBot({ body: "x", botMentioned: true })).toBe(true);
+    expect(piMentionsBot({ body: "@Match Time send everyone their stats" })).toBe(false);
+    expect(piMentionsBot({ body: "x", quotedFromMatchTime: true })).toBe(false);
   });
 
-  it("nothing at all is not a tag", () => {
-    expect(messageTagsBot({ body: "what are the teams?" })).toBe(false);
-    expect(messageTagsBot({ body: "what are the teams?", botMentioned: false, routerAddressed: false })).toBe(false);
+  it("the bot's name in the text is a tag for none of them", () => {
+    for (const body of ["@Match Time what are the teams?", "matchtime is broken lol", "@MT what are the teams"]) {
+      expect(messageTagsBot({ body })).toBe(false);
+      expect(messageAddressesBot({ body })).toBe(false);
+      expect(piMentionsBot({ body })).toBe(false);
+    }
   });
 });
 
@@ -64,7 +71,7 @@ describe("messageTagsBot: a WhatsApp reply to MatchTime's own message", () => {
   });
 
   it("the stricter bulk-DM test still asks for an explicit @, a reply is not one", () => {
-    expect(messageMentionsBotExplicitly({ body: "send everyone their stats", quotedFromMatchTime: true })).toBe(false);
+    expect(piMentionsBot({ body: "send everyone their stats", quotedFromMatchTime: true } as never)).toBe(false);
   });
 });
 
@@ -568,37 +575,19 @@ describe("actionRequiresTag is EXACTLY the OR of the per-entry answers", () => {
   });
 });
 
-describe("messageMentionsBotExplicitly — the stricter test for a bulk-DM command", () => {
+describe("piMentionsBot: the strict fact a bulk-DM command needs (replaces messageMentionsBotExplicitly)", () => {
   const incident =
     "please do not forget to rate the players via the link from Matchtime DM'ed to you. " +
     "the more accurate ratings, the more balanced teams next time";
 
-  it("THE INCIDENT SENTENCE is neither a tag (no word test since 2026-10-30) nor an explicit mention", () => {
+  it("THE INCIDENT SENTENCE is neither a tag nor a mention", () => {
     expect(messageTagsBot({ body: incident })).toBe(false);
-    expect(messageMentionsBotExplicitly({ body: incident })).toBe(false);
+    expect(piMentionsBot({ body: incident } as never)).toBe(false);
   });
 
-  it("trusts the Pi's structured mention signal", () => {
-    expect(messageMentionsBotExplicitly({ body: "send everyone their stats", botMentioned: true })).toBe(true);
-  });
-
-  it("accepts the literal @-tag the Pi writes into the body", () => {
-    expect(messageMentionsBotExplicitly({ body: "@Match Time send everyone their stats" })).toBe(true);
-    expect(messageMentionsBotExplicitly({ body: "@MatchTime send everyone their stats" })).toBe(true);
-    expect(messageMentionsBotExplicitly({ body: "@mt send everyone their stats" })).toBe(true);
-  });
-
-  it("refuses the bare word, wherever it appears", () => {
-    expect(messageMentionsBotExplicitly({ body: "matchtime is being weird today" })).toBe(false);
-    expect(messageMentionsBotExplicitly({ body: "match time lads, get your kit on" })).toBe(false);
-    expect(messageMentionsBotExplicitly({ body: "" })).toBe(false);
-  });
-
-  it("a FALSE structured signal does not suppress a real @-tag in the body", () => {
-    // The 2026-06-29 hardening, kept: the @lid self-mention bug reported
-    // botMentioned:false for a genuinely tagged admin command.
-    expect(
-      messageMentionsBotExplicitly({ body: "@Match Time send everyone their stats", botMentioned: false }),
-    ).toBe(true);
+  it("is the Pi's mention flag, and only that", () => {
+    expect(piMentionsBot({ botMentioned: true })).toBe(true);
+    expect(piMentionsBot({ botMentioned: false })).toBe(false);
+    expect(piMentionsBot({})).toBe(false);
   });
 });

@@ -600,8 +600,14 @@ export interface AnswerBatchMessage {
   /** Resolved sender, or null for an unknown pushname / opaque @lid. */
   senderUserId: string | null;
   senderName: string | null;
-  /** Did this message @-mention the bot? The interaction-contract signal. */
+  /** Did this message tag the bot? FACTS only (`messageTagsBot`: the Pi's
+   *  mention flag, or a reply to MatchTime). */
   tagged: boolean;
+  /** Spoken TO MatchTime for an ANSWER (`messageAddressesBot`: a tag, or
+   *  the router's `to_bot`). Lets the question route answer an untagged
+   *  "MatchTime who runs this club?"; never lets the teams be shown, which
+   *  needs `tagged` (review of #476). Absent: `tagged`. */
+  addressed?: boolean;
   /** From the router. `undefined` when it never mentioned this id. */
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then step 7 never sees it. */
@@ -844,7 +850,9 @@ export async function runAnswerBatch(args: {
     (m) =>
       !m.gated &&
       stepSevenOwnsRoute(m.route, enabled, ANSWER_ROUTES) &&
-      (m.tagged || clarificationFor.has(m.waMessageId)),
+      (m.tagged ||
+        (m.route === "question" && m.addressed === true) ||
+        clarificationFor.has(m.waMessageId)),
   );
   if (candidates.length === 0) return empty();
 
@@ -1026,7 +1034,7 @@ export async function runAnswerBatch(args: {
         id: m.waMessageId,
         body: clar ? clar.c.questionBody : m.body,
         authorName: m.authorName,
-        tagged: clar ? true : m.tagged,
+        tagged: clar ? true : m.tagged || (m.route === "question" && m.addressed === true),
         history,
         lastBotPost,
         // A reply is about the message it quotes, whoever wrote it, shown
@@ -1559,7 +1567,7 @@ export async function runAnswerBatch(args: {
     senderName: m.senderName ?? m.authorName,
     // A reply to MatchTime's own clarification is addressed to it; see
     // `clarificationFor` above.
-    tagged: m.tagged || clarificationFor.has(m.waMessageId),
+    tagged: m.tagged || (m.route === "question" && m.addressed === true) || clarificationFor.has(m.waMessageId),
     // A message this module does not own still carries its real route so
     // its outcome says why nothing happened. `none` is honest for an id
     // the router never mentioned.

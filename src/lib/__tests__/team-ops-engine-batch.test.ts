@@ -180,7 +180,9 @@ function msg(o: Partial<TeamOpsBatchMessage> & { body: string }): TeamOpsBatchMe
     senderName: o.senderName ?? fullName("kemal"),
     // TAGGED by default: every real generate request is.
     tagged: o.tagged ?? true,
-    ...(o.taggedExplicitly === undefined ? {} : { taggedExplicitly: o.taggedExplicitly }),
+    // The Pi's mention flag, as the real Pi sets it with its "@Match Time"
+    // body rewrite (review of #476), unless the case says otherwise.
+    taggedExplicitly: o.taggedExplicitly ?? o.body.includes("@Match Time"),
     // `"route" in o` and not `?? "balancer"`: an EXPLICIT `undefined` is
     // the shape of a message the router never mentioned, and it has to
     // survive the builder or the "never owned" test tests nothing.

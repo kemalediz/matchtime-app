@@ -13,7 +13,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { en } from "../strings.en";
-import { messageMentionsBotExplicitly } from "../../interaction-contract";
 import { parseSwapNames } from "../../team-slot-swap";
 import { looksLikeColourSwapPhrase } from "../../team-colour-swap";
 
@@ -68,7 +67,7 @@ describe("the bot reads the forms the English copy quotes", () => {
 
   for (const command of Object.values(C)) {
     it(`"${typed(command)}" tags the bot`, () => {
-      expect(messageMentionsBotExplicitly({ body: typed(command) })).toBe(true);
+      expect(typed(command).startsWith("@Match Time")).toBe(true);
     });
   }
 

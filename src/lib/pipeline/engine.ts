@@ -47,7 +47,6 @@ import { partnerAskToQuestion } from "../partner-volunteer-rules";
 import { canTakeFreePlace, ORGANISER_PICK_BENCH_NOTE } from "../squad-capacity";
 import {
   actionRequiresTag,
-  messageMentionsBotExplicitly,
   registerForEntryRequiresTag,
   type GateRegisterForEntry,
   type GateVerdict,
@@ -798,7 +797,7 @@ export function decide(input: EngineInput): EngineResult {
       // read as a bare "chase", so it never reached the pool and partner
       // decision and MatchTime said nothing. Anyone else's chase, and an
       // organiser's untagged "@all we need more players", stay a nudge.
-      const taggedExplicitly = msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body });
+      const taggedExplicitly = msg.taggedExplicitly === true;
       const organiserChase =
         facts.sideRequests.includes("chase") &&
         taggedExplicitly &&
@@ -2007,7 +2006,7 @@ export function decide(input: EngineInput): EngineResult {
           // ── THE TAG is the question route's own, checked at the top
           //    of this function: `msg.tagged`, which is
           //    `messageTagsBot`. Not the stricter
-          //    `messageMentionsBotExplicitly` the two bulk-DM doors use
+          //    `piMentionsBot` (the Pi's mention flag) the two bulk-DM doors use
           //    — this answer sends no DM, so the asymmetry that justifies
           //    that gate does not exist here. See
           //    `RATING_PROGRESS_TAG_MUST_BE_EXPLICIT`, which is the
@@ -2025,7 +2024,7 @@ export function decide(input: EngineInput): EngineResult {
           }
           if (
             RATING_PROGRESS_TAG_MUST_BE_EXPLICIT &&
-            !(msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body }))
+            !(msg.taggedExplicitly === true)
           ) {
             out.reasons.push("a rating-progress answer requires an explicit @Match Time mention");
             out.disposition = "noop";
@@ -3114,7 +3113,7 @@ export function decide(input: EngineInput): EngineResult {
         // also sets. "Otherwise it DMs people unnecessarily and can create
         // noise." An admin_ops message changes nobody's attendance, so the
         // tag is its only way through.
-        if (RECRUIT_BLAST_REQUIRES_TAG && !(msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body }))) {
+        if (RECRUIT_BLAST_REQUIRES_TAG && !(msg.taggedExplicitly === true)) {
           out.reasons.push(
             "a recruit blast requires an @Match Time tag: a mass DM is not fired off an untagged message",
           );
@@ -3254,7 +3253,7 @@ export function decide(input: EngineInput): EngineResult {
         const addressed =
           !STATS_BLAST_TAG_MUST_BE_EXPLICIT
             ? msg.tagged
-            : (msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body }));
+            : (msg.taggedExplicitly === true);
         if (STATS_BLAST_REQUIRES_TAG && !addressed) {
           // A plain reason rather than `degrade()`: this IS a decision,
           // recorded on the message's row for the admin log, and it adds

@@ -333,7 +333,7 @@ import { resolveTeamLabels } from "@/lib/team-labels";
 import { dayCommaTimeLabel, dayLabel, kickoffLabel } from "@/lib/i18n/dates";
 import { CANCELLED_NOTICE_LOOKBACK_MS, SAME_FIXTURE_MS, cancelledMatchToMention } from "@/lib/cancelled-match-notice";
 import { selectRegistrationMatch } from "@/lib/registration-match-select";
-import { messageMentionsBotExplicitly, messageTagsBot } from "@/lib/interaction-contract";
+import { messageAddressesBot, messageTagsBot, piMentionsBot } from "@/lib/interaction-contract";
 import { taggedSilence } from "@/lib/tagged-silence";
 import { offerCalloffIfCalled } from "@/lib/calloff-offer";
 import { mergeRecruitReply } from "@/lib/recruit-request";
@@ -1185,7 +1185,7 @@ async function handleAnalyzeRequest(request: Request) {
                 ? { fromMatchTime: m.quotedFromMatchTime === true, text: m.quotedBody ?? null, messageId: m.quotedMessageId ?? null }
                 : null,
             ...replyField(replyById, m),
-            tagged: messageMentionsBotExplicitly(m),
+            tagged: piMentionsBot(m),
           };
         }),
     });
@@ -1483,7 +1483,7 @@ async function handleAnalyzeRequest(request: Request) {
         !fastPathHandledIds.has(m.waMessageId) &&
         // The STRICT tag: clearing is destructive, so MatchTime must be
         // addressed, not merely named.
-        messageMentionsBotExplicitly(m) &&
+        piMentionsBot(m) &&
         isClearTeamsRequest(m.body),
     );
     if (clearCandidates.length > 0 && (await getOrgFeatures(org.id)).teamBalancing) {
@@ -2576,7 +2576,7 @@ async function handleAnalyzeRequest(request: Request) {
               // it writes for one; never a swipe-reply): a recruit side
               // request DMs players only with it or an attendance change
               // in the same message (2026-10-22).
-              taggedExplicitly: messageMentionsBotExplicitly(m),
+              taggedExplicitly: piMentionsBot(m),
               route: gateRouteById.get(m.waMessageId),
               gated: gatedIds.has(m.waMessageId),
               // A WhatsApp reply: which message it quotes (S0). Read by
@@ -2770,10 +2770,12 @@ async function handleAnalyzeRequest(request: Request) {
         senderUserId: s.userId,
         senderName: s.name,
         tagged: messageTagsBot(m),
-        // The STRICTER tag, read only by the bulk-DM commands. Same
-        // rule as `tagged` about which body it is computed from: what
-        // the sender WROTE, never a residual.
-        taggedExplicitly: messageMentionsBotExplicitly(m),
+        // For an ANSWER only: a tag, or the router's own to_bot reading
+        // (review of #476). Actions read `tagged`, which is facts only.
+        addressed: messageAddressesBot(m),
+        // The Pi's real mention flag, read by the bulk-DM commands and a
+        // score answer that is not a reply.
+        taggedExplicitly: piMentionsBot(m),
         route: gateRouteById.get(m.waMessageId),
         gated: gatedIds.has(m.waMessageId),
         // A reply: the message it quotes, whoever wrote it, for every
@@ -3260,7 +3262,7 @@ async function handleAnalyzeRequest(request: Request) {
         sideRequestCount: engineOutcome.sideRequestCount,
         // 2026-10-29: an organiser's tagged message that ended as noise is
         // noted even with a side request (`silentDiscard`).
-        taggedByOrganiser: !!sender.userId && engineAdminIds.has(sender.userId) && messageMentionsBotExplicitly(msg),
+        taggedByOrganiser: !!sender.userId && engineAdminIds.has(sender.userId) && piMentionsBot(msg),
         intent: engineOutcome.intent,
         // Prose, for the bullet only. The engine writes this same string
         // to `AnalyzedMessage.reasoning`, so the DM and the admin log
@@ -4537,7 +4539,7 @@ async function handleAnalyzeRequest(request: Request) {
     const m = fresh.find((x) => x.waMessageId === r.waMessageId);
     if (!m) continue;
     const silent = taggedSilence({
-      taggedExplicitly: messageMentionsBotExplicitly(m),
+      taggedExplicitly: piMentionsBot(m),
       senderKnown: !!senderById.get(m.waMessageId)?.userId,
       late: lateById.has(m.waMessageId),
       capped: cappedIds.has(m.waMessageId),

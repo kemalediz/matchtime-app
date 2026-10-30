@@ -189,6 +189,8 @@ export interface UnderstandInput {
   };
   messageId: string;
   text: string;
+  /** The Pi's real mention flag for the bot (a fact, 2026-10-30). */
+  botMentioned?: boolean;
   mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
   quoted: QuotedMessage | null;
   /** Who sent it, when MatchTime knows them; null for someone it does not. */
@@ -451,7 +453,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // organisers talking to each other (FNF HQ 2026-10-16 23:49, "Imti Rafi
     // AH back" quoting an organiser about next week, routed other_att, got
     // a tick and "I don't know AH yet"). Nothing MatchTime does from it.
-    const { tagged, addressed, toAnotherOrganiser } = hqAddressing({ text: input.text, quoted, quotedIsMatchTime });
+    const { tagged, addressed, toAnotherOrganiser } = hqAddressing({ text: input.text, quoted, quotedIsMatchTime, botMentioned: input.botMentioned });
     // The score MatchTime is waiting for, shown to the router as context
     // (`admin-group-score.ts`). The router reads the message with it; no
     // code decides from the words that a message is the score (2026-10-30).

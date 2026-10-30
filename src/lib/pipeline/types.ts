@@ -1940,19 +1940,14 @@ export interface EngineMessage {
   tagged: boolean;
   /**
    * Did it mention the bot EXPLICITLY — the Pi's structured signal, or a
-   * literal "@" in front of the name? `messageMentionsBotExplicitly`.
+   * literal "@" in front of the name? `piMentionsBot` (the Pi's mention flag).
    *
-   * ⚠️ A SECOND, STRICTER TAG FIELD, AND IT EXISTS BECAUSE OF ONE
-   * MESSAGE. `tagged` is `messageTagsBot`, which counts the bare word
-   * "matchtime" ANYWHERE in a body — so the sentence that queued 69 mass
-   * DMs on 2026-09-10 ("…the link from Matchtime DM'ed to you…") is
-   * `tagged: true`. For an ANSWER that looseness is right and hardened
-   * in on purpose; in front of a mass DM it is not a gate at all.
-   *
-   * ONLY the bulk-DM commands read this. Optional so no caller is forced
-   * to learn a field it does not use: when it is absent the engine
-   * derives it from the body, which is safe because the Pi rewrites a
-   * real bot @-mention into the literal "@Match Time" in the text.
+   * THE PI'S REAL MENTION FLAG (`piMentionsBot`, `botMentioned === true`),
+   * and nothing else: never a reply, never the router's `to_bot`, never
+   * the bot's name typed as text (2026-10-30, review of PR #476). The
+   * bulk-DM commands need it (the 2026-09-10 "link from Matchtime"
+   * near-miss), and so does an answer to "which team won?" that is not a
+   * reply to MatchTime's question. Absent: false.
    */
   taggedExplicitly?: boolean;
   route: Route;

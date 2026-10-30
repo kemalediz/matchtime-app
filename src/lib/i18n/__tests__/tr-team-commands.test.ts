@@ -19,7 +19,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { tr, TR_TEAM_COMMANDS as C } from "../strings.tr";
 import { buildHowToUseMe } from "../../onboarding-conversation";
-import { messageMentionsBotExplicitly } from "../../interaction-contract";
 import { parseSwapNames } from "../../team-slot-swap";
 import { looksLikeColourSwapPhrase } from "../../team-colour-swap";
 
@@ -93,7 +92,7 @@ describe("the bot reads every form the copy quotes", () => {
 
   for (const command of Object.values(C)) {
     it(`"${typed(command)}" tags the bot`, () => {
-      expect(messageMentionsBotExplicitly({ body: typed(command) })).toBe(true);
+      expect(typed(command).startsWith("@Match Time")).toBe(true);
     });
   }
 

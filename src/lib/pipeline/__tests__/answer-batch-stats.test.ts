@@ -80,6 +80,7 @@ function msg(o: Partial<AnswerBatchMessage> & { body: string }): AnswerBatchMess
     senderUserId: o.senderUserId === undefined ? "u-kemal" : o.senderUserId,
     senderName: o.senderName ?? fullName("kemal"),
     tagged: o.tagged ?? true,
+    ...(o.addressed !== undefined ? { addressed: o.addressed } : {}),
     route: (o.route ?? "question") as Route,
     gated: false,
   };
@@ -378,3 +379,26 @@ describe("the period (2026-09-23)", () => {
     expect(res.degradations.join(" ")).toMatch(/stats read failed/);
   });
 });
+
+describe("to_bot may make MatchTime ANSWER, never act (review of #476, M7)", () => {
+  const COUNT = { topic: "count", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top" };
+  it("an untagged question the router read as addressed to MatchTime is answered", async () => {
+    const { model } = stubModel({ "MatchTime how many are we?": COUNT });
+    const { res } = await run({ messages: [msg({ body: "MatchTime how many are we?", tagged: false, addressed: true })], model });
+    expect(res.outcomes.get("wa-1")?.reply).toBeTruthy();
+  });
+
+  it("the same question with neither a tag nor to_bot is not answered", async () => {
+    const { model } = stubModel({ "MatchTime how many are we?": COUNT });
+    const { res } = await run({ messages: [msg({ body: "MatchTime how many are we?", tagged: false })], model });
+    expect(res.outcomes.size).toBe(0);
+  });
+
+  it("showing the teams needs a real tag: to_bot alone does not post them", async () => {
+    const { model, calls } = stubModel({});
+    const { res } = await run({ messages: [msg({ body: "MatchTime teams?", tagged: false, addressed: true, route: "balancer" })], model });
+    expect(res.outcomes.size).toBe(0);
+    expect(calls).toEqual([]);
+  });
+});
+

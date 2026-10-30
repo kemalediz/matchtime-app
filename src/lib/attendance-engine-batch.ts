@@ -183,7 +183,7 @@ export interface EngineBatchMessage {
    *  readable one. Judges a rolling-squad late drop-out (2026-09-30). */
   sentAt?: Date;
   tagged: boolean;
-  /** `messageMentionsBotExplicitly`: the Pi's mention list, or the literal
+  /** `piMentionsBot` (the Pi's mention flag): the Pi's mention list, or the literal
    *  "@Match Time" it writes for one. Never a swipe-reply. Read only by the
    *  recruit side request (2026-10-22). Omitted: derived from the body. */
   taggedExplicitly?: boolean;
