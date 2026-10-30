@@ -113,7 +113,10 @@ function table(name: string) {
 
 const dbMock = vi.hoisted(() => ({}) as Record<string, unknown>);
 vi.mock("@/lib/db", () => ({ db: dbMock }));
-vi.mock("@/lib/team-generation", () => ({ generateTeamsForMatch: vi.fn() }));
+vi.mock("@/lib/team-generation", () => ({
+  generateTeamsForMatch: vi.fn(),
+  matchRatingsFor: vi.fn(async (_m: string, _o: string, ids: string[]) => new Map(ids.map((id) => [id, 5]))),
+}));
 const graphics = vi.hoisted(() => ({ sendGraphicToAdminChannel: vi.fn(), redrawTeamSheet: vi.fn() }));
 vi.mock("@/lib/admin-group-graphics", () => graphics);
 const announcer = vi.hoisted(() => ({ loadOrganisersAnnounce: vi.fn() }));
@@ -205,17 +208,25 @@ const loud: TeamProposalDeps = { generate, announce: () => false };
  * reading itself is the model's and is tested live; this file tests what
  * the command does.
  */
+const change = (more: Partial<Extract<TeamCommand, { kind: "change" }>>): TeamCommand => ({
+  kind: "change",
+  swapSides: false,
+  moves: [],
+  sides: [],
+  together: [],
+  ...more,
+});
 function asCommand(text: string): TeamCommand {
   if (text === "teams" || text === "takımlar") return { kind: "show" };
-  if (text === "reshuffle") return { kind: "reshuffle" };
+  if (text === "reshuffle") return { kind: "reshuffle", sides: [], together: [] };
   let m = /^swap (\S+) (\S+)$/.exec(text);
-  if (m) return { kind: "swap", pairs: [[m[1], m[2]]] };
+  if (m) return change({ moves: [m[1], m[2]] });
   m = /^(\S+) ile (\S+) değiş$/.exec(text);
-  if (m) return { kind: "swap", pairs: [[m[1], m[2]]] };
+  if (m) return change({ moves: [m[1], m[2]] });
   m = /^move (\S+)$/.exec(text);
-  if (m) return { kind: "move", name: m[1] };
+  if (m) return change({ moves: [m[1]] });
   m = /^(\S+) taşı$/.exec(text);
-  if (m) return { kind: "move", name: m[1] };
+  if (m) return change({ moves: [m[1]] });
   throw new Error(`no command for ${text}`);
 }
 const cmd = (text: string, deps = quiet, now = NOON) =>
@@ -242,7 +253,7 @@ describe("the commands", () => {
     const r = await handleTeamCommand({
       orgId: ORG,
       lang: "en",
-      command: { kind: "move", name: "Ali", to: "RED" },
+      command: change({ sides: [{ name: "Ali", to: "RED" }] }),
       senderUserId: "u-admin",
       messageId: "wa-red",
       now: NOON,
@@ -253,7 +264,7 @@ describe("the commands", () => {
 
   it("'teams' with none built: builds them with the shared generator and proposes them", async () => {
     const r = await cmd("teams");
-    expect(generate).toHaveBeenCalledWith(MATCH);
+    expect(generate).toHaveBeenCalledWith(MATCH, {});
     expect(r?.outcome).toBe("teams-built");
     expect(r?.replyText).toContain("📝 *Proposed teams*: 20:00 at Goals Sutton");
     expect(r?.replyText).toContain("*Red*:\n1. Ali Khan\n2. Bilal Ahmed");
@@ -516,7 +527,7 @@ describe("the scheduled proposal ('Teams ready')", () => {
 
   it("at the ready time with a full enough squad: builds and posts the proposal in the admin group, once", async () => {
     expect(await tick(new Date("2026-10-16T09:00:00.000Z"))).toBe(1);
-    expect(generate).toHaveBeenCalledWith(MATCH);
+    expect(generate).toHaveBeenCalledWith(MATCH, {});
     expect(adminJobs()).toHaveLength(1);
     expect(adminJobs()[0].text).toContain("📝 *Proposed teams*");
     expect(groupJobs()).toEqual([]);
@@ -722,5 +733,149 @@ describe("uneven sides", () => {
     expect(r?.replyText).toBe(
       "Takımlar dengesiz: Kırmızı 1, Sarı 3. Böyle kesinleşsin istiyorsanız yine *EVET* yazın, ya da önce kimin diğer takıma geçeceğini kendi cümlelerinizle yazın.",
     );
+  });
+});
+
+// ── 2026-10-29, FNF HQ: many names, the sides swapped, pairings, "Recommend swaps" ──
+
+const run = (command: TeamCommand, deps: TeamProposalDeps = quiet, lang = "en") =>
+  handleTeamCommand({ orgId: ORG, lang, command, senderUserId: "u-admin", messageId: "wa-x", now: NOON, deps });
+
+describe("one change with any number of names", () => {
+  it("three names all change side in one change, and the teams are reposted once", async () => {
+    seedSheet();
+    const r = await run(change({ moves: ["Ali", "Tom", "Shehryar"] }));
+    expect(r.outcome).toBe("teams-changed");
+    expect(teamOf("u-ali")).toBe("YELLOW");
+    expect(teamOf("u-tom")).toBe("RED");
+    expect(teamOf("u-sheh")).toBe("RED");
+    expect(teamOf("u-bilal")).toBe("RED");
+    expect(r.replyText).toContain("📝 *Proposed teams*");
+  });
+
+  it("two pairs on separate lines (four names) swap both pairs", async () => {
+    seedSheet();
+    const r = await run(change({ moves: ["Ali", "Tom", "Bilal", "Shehryar"] }));
+    expect(r.outcome).toBe("teams-changed");
+    expect([teamOf("u-ali"), teamOf("u-bilal"), teamOf("u-tom"), teamOf("u-sheh")]).toEqual(["YELLOW", "YELLOW", "RED", "RED"]);
+  });
+
+  it("one name that does not resolve rejects the whole change, names it, and writes nothing", async () => {
+    seedSheet();
+    const r = await run(change({ moves: ["Ali", "Tom", "Zed"] }));
+    expect(r).toEqual({ outcome: "teams-name-unclear", replyText: "I can't find Zed in the teams." });
+    expect(teamOf("u-ali")).toBe("RED");
+    expect(teamOf("u-tom")).toBe("YELLOW");
+  });
+
+  it("every name of one side and nobody else ('switch all 9'): the two sides swap over, never one side empty", async () => {
+    seedSheet();
+    store.tables.attendance.push({ id: "att-z", matchId: MATCH, userId: "u-zara", status: "CONFIRMED" });
+    store.tables.teamAssignment.push({ id: "ta-5", matchId: MATCH, userId: "u-zara", team: "YELLOW" });
+    const r = await run(change({ moves: ["Tom", "Shehryar", "Zara"] }));
+    expect(r.outcome).toBe("teams-changed");
+    expect(["u-ali", "u-bilal", "u-tom", "u-sheh", "u-zara"].map(teamOf)).toEqual(["YELLOW", "YELLOW", "RED", "RED", "RED"]);
+  });
+
+  it("the two sides swapped over: everyone changes side", async () => {
+    seedSheet();
+    const r = await run(change({ swapSides: true }));
+    expect(r.outcome).toBe("teams-changed");
+    expect([teamOf("u-ali"), teamOf("u-bilal"), teamOf("u-tom"), teamOf("u-sheh")]).toEqual(["YELLOW", "YELLOW", "RED", "RED"]);
+    expect(r.replyText).toContain("*Red*:\n1. Tom Third\n2. Shehryar Malik");
+  });
+});
+
+describe("put together, or on a side, on teams that exist: a targeted change", () => {
+  it("'Ali and Tom on one team': the fewest move, the sides stay even, and it says who else moved", async () => {
+    seedSheet();
+    const r = await run(change({ together: [["Ali", "Tom"]] }));
+    expect(generate).not.toHaveBeenCalled();
+    expect(r.outcome).toBe("teams-changed");
+    expect(teamOf("u-ali")).toBe(teamOf("u-tom"));
+    const red = store.tables.teamAssignment.filter((x) => x.team === "RED").length;
+    expect(red).toBe(2);
+    expect(r.replyText).toContain("To keep the sides even, I also moved Bilal Ahmed to Yellow.");
+  });
+
+  it("'Ali in Yellow': moved there and one comes back", async () => {
+    seedSheet();
+    const r = await run(change({ sides: [{ name: "Ali", to: "YELLOW" }] }));
+    expect(teamOf("u-ali")).toBe("YELLOW");
+    expect(store.tables.teamAssignment.filter((x) => x.team === "RED").length).toBe(2);
+    expect(r.replyText).toMatch(/To keep the sides even, I also moved (Tom Third|Shehryar Malik) to Red\./);
+  });
+
+  it("a pair already together: one line, nothing written", async () => {
+    seedSheet();
+    const r = await run(change({ together: [["Ali", "Bilal"]] }));
+    expect(r).toEqual({ outcome: "teams-unchanged", replyText: "The teams are already like that, so nothing changed." });
+  });
+
+  it("Turkish line for the one moved back", async () => {
+    seedSheet();
+    const r = await run(change({ together: [["Ali", "Tom"]] }), quiet, "tr");
+    expect(r.replyText).toContain("Takımlar dengeli kalsın diye Bilal Ahmed oyuncusunu da Sarı takımına aldım.");
+  });
+
+  it("with no teams yet: they are built with the pair on one side", async () => {
+    const r = await run(change({ together: [["Ali", "Tom"]] }));
+    expect(r.outcome).toBe("teams-built");
+    expect(generate).toHaveBeenCalledWith(MATCH, { pinnedToTeam: { "u-ali": "RED", "u-tom": "RED" } });
+  });
+
+  it("a name that is not in the squad stops a build too", async () => {
+    const r = await run(change({ together: [["Ali", "Zed"]] }));
+    expect(r).toEqual({ outcome: "teams-name-unclear", replyText: "I can't find Zed in the teams." });
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("new teams asked for with a pair and a side: the generator keeps both", async () => {
+    seedSheet();
+    await run({ kind: "reshuffle", sides: [{ name: "Shehryar", to: "YELLOW" }], together: [["Ali", "Tom"]] });
+    expect(generate).toHaveBeenCalledWith(MATCH, { pinnedToTeam: { "u-sheh": "YELLOW", "u-ali": "RED", "u-tom": "RED" } });
+  });
+
+  it("a plain reshuffle passes no pins", async () => {
+    seedSheet();
+    await run({ kind: "reshuffle", sides: [], together: [] });
+    expect(generate).toHaveBeenCalledWith(MATCH, {});
+  });
+});
+
+describe("'Recommend swaps'", () => {
+  // Red: Ali 9, Bilal 7. Yellow: Tom 5, Shehryar 3. Swapping Ali and Tom gives 12 v 12.
+  const R: Record<string, number> = { "u-ali": 9, "u-bilal": 7, "u-tom": 5, "u-sheh": 3 };
+  const rated: TeamProposalDeps = { ...quiet, ratings: async (_m, _o, ids) => new Map(ids.map((id) => [id, R[id] ?? 5])) };
+
+  it("on proposed teams: makes the swap that evens the ratings most, says so, and asks for YES", async () => {
+    seedSheet();
+    const r = await run({ kind: "suggest" }, rated);
+    expect(r.outcome).toBe("teams-suggested");
+    expect(r.replyText).toContain("My suggestion, to even the ratings: swap Ali Khan and Tom Third.");
+    expect(r.replyText).toContain("📝 *Proposed teams*");
+    expect(teamOf("u-ali")).toBe("YELLOW");
+    expect(teamOf("u-tom")).toBe("RED");
+    expect(proposal()).toMatchObject({ state: "proposed" });
+  });
+
+  it("on final teams: says the swap and changes nothing", async () => {
+    seedSheet();
+    await cmd("teams");
+    await yes();
+    const r = await run({ kind: "suggest" }, rated);
+    expect(r.outcome).toBe("teams-suggested-final");
+    expect(r.replyText).toContain("I'd swap Ali Khan and Tom Third");
+    expect(teamOf("u-ali")).toBe("RED");
+  });
+
+  it("when no swap helps: one line", async () => {
+    seedSheet();
+    const even: TeamProposalDeps = { ...quiet, ratings: async (_m, _o, ids) => new Map(ids.map((id) => [id, 5])) };
+    expect(await run({ kind: "suggest" }, even)).toEqual({ outcome: "teams-suggest-none", replyText: "These teams are already as even as one swap can make them." });
+  });
+
+  it("with no teams: says there are none", async () => {
+    expect((await run({ kind: "suggest" }, rated)).outcome).toBe("teams-no-teams");
   });
 });

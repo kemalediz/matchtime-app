@@ -134,60 +134,17 @@ export async function generateTeamsForMatch(
   // `MDs/club-scoped-ratings-design-2026-09-18.md`.
   const orgId = match.activity.org.id;
 
-  // ONE aggregate per generation, not one per player. It is the same
-  // number for all fourteen of them, and fourteen identical aggregates
-  // per team sheet would be a bug even though each returns the right
-  // answer. Null when the club has never rated anybody.
-  const clubMean = await db.rating.aggregate({
-    _avg: { score: true },
-    where: { match: { activity: { orgId }, ...NOT_CANCELLED } },
+  const ratingOf = await clubRatingsFor(orgId, match.attendances.map((a) => a.userId));
+  const basePlayers: PlayerWithRating[] = match.attendances.map((a) => {
+    const pap = a.user.activityPositions.find((p) => p.activityId === match.activityId);
+    return {
+      id: a.userId,
+      name: a.user.name ?? "Unknown",
+      positions: pap?.positions ?? [],
+      rating: ratingOf.get(a.userId) ?? 5,
+      image: a.user.image,
+    };
   });
-  const clubMeanRating = clubMean._avg.score ?? null;
-
-  // ONE query for the seeds, for the same reason. `Membership` is the
-  // club-scoped seed since slice 1; `User.seedRating` still exists and
-  // still holds the same values, but reading it here is what let one
-  // club's opinion decide another club's draft. A squad member with no
-  // membership row for this org simply has no club seed and falls to
-  // the club mean, which is the right answer for a guest.
-  const seedRows = await db.membership.findMany({
-    where: { orgId, userId: { in: match.attendances.map((a) => a.userId) } },
-    select: { userId: true, seedRating: true },
-  });
-  const clubSeedByUser = new Map(seedRows.map((m) => [m.userId, m.seedRating]));
-
-  const basePlayers: PlayerWithRating[] = await Promise.all(
-    match.attendances.map(async (a) => {
-      // `take: 60` sits NEXT TO the org filter on purpose: sixty of
-      // THIS club's rows, not sixty rows from anywhere then filtered.
-      // The difference is not cosmetic. Ehtisham has 65 ratings, so a
-      // global window truncated at 60 was letting a dead club's rows
-      // EVICT his own club's before the code ever saw them.
-      const ratings = await db.rating.findMany({
-        where: { playerId: a.userId, match: { activity: { orgId }, ...NOT_CANCELLED } },
-        orderBy: { createdAt: "desc" },
-        take: 60,
-      });
-      // Bayesian blend: the prior acts with weight 3, smoothly
-      // dominated by peer ratings as more arrive. Replaces the old
-      // step function (which jumped from pure-seed → pure-peer at
-      // exactly 3 ratings). The prior is this club's seed, else this
-      // club's mean, else 5.0.
-      const { rating } = computeClubRating({
-        clubSeedRating: clubSeedByUser.get(a.userId) ?? null,
-        clubPeerRatings: ratings.map((r) => r.score),
-        clubMeanRating,
-      });
-      const pap = a.user.activityPositions.find((p) => p.activityId === match.activityId);
-      return {
-        id: a.userId,
-        name: a.user.name ?? "Unknown",
-        positions: pap?.positions ?? [],
-        rating,
-        image: a.user.image,
-      };
-    }),
-  );
 
   // Phase 4 — hybrid LLM rating adjuster. LLM reads the last week of
   // group chat and proposes per-player deltas for tonight (sick,
@@ -368,4 +325,74 @@ async function runRatingAdjuster(args: {
   }
 
   return adjustments;
+}
+
+/**
+ * THE CLUB RATING THE BALANCER USES, per player (moved out of
+ * `generateTeamsForMatch` 2026-10-29 so a targeted change in the admin
+ * group, "Ali and Habib on one team", picks who goes back by the same
+ * number: `team-proposal.ts`). Same formula, same queries, as before.
+ */
+export async function clubRatingsFor(orgId: string, userIds: string[]): Promise<Map<string, number>> {
+  // ONE aggregate per generation, not one per player. It is the same
+  // number for all fourteen of them, and fourteen identical aggregates
+  // per team sheet would be a bug even though each returns the right
+  // answer. Null when the club has never rated anybody.
+  const clubMean = await db.rating.aggregate({
+    _avg: { score: true },
+    where: { match: { activity: { orgId }, ...NOT_CANCELLED } },
+  });
+  const clubMeanRating = clubMean._avg.score ?? null;
+
+  // ONE query for the seeds, for the same reason. `Membership` is the
+  // club-scoped seed since slice 1; `User.seedRating` still exists and
+  // still holds the same values, but reading it here is what let one
+  // club's opinion decide another club's draft. A squad member with no
+  // membership row for this org simply has no club seed and falls to
+  // the club mean, which is the right answer for a guest.
+  const seedRows = await db.membership.findMany({
+    where: { orgId, userId: { in: userIds } },
+    select: { userId: true, seedRating: true },
+  });
+  const clubSeedByUser = new Map(seedRows.map((m) => [m.userId, m.seedRating]));
+
+  const entries = await Promise.all(
+    userIds.map(async (userId) => {
+      // `take: 60` sits NEXT TO the org filter on purpose: sixty of
+      // THIS club's rows, not sixty rows from anywhere then filtered.
+      // The difference is not cosmetic. Ehtisham has 65 ratings, so a
+      // global window truncated at 60 was letting a dead club's rows
+      // EVICT his own club's before the code ever saw them.
+      const ratings = await db.rating.findMany({
+        where: { playerId: userId, match: { activity: { orgId }, ...NOT_CANCELLED } },
+        orderBy: { createdAt: "desc" },
+        take: 60,
+      });
+      // Bayesian blend: the prior acts with weight 3, smoothly
+      // dominated by peer ratings as more arrive. The prior is this
+      // club's seed, else this club's mean, else 5.0.
+      const { rating } = computeClubRating({
+        clubSeedRating: clubSeedByUser.get(userId) ?? null,
+        clubPeerRatings: ratings.map((r) => r.score),
+        clubMeanRating,
+      });
+      return [userId, rating] as const;
+    }),
+  );
+  return new Map(entries);
+}
+
+/**
+ * The rating each player on a match's teams is balanced on: the club
+ * rating above, with the rating adjuster's delta for THIS match when the
+ * teams were built with one (`RatingAdjustment`), clamped as the
+ * generator clamps it. For changing teams that already exist.
+ */
+export async function matchRatingsFor(matchId: string, orgId: string, userIds: string[]): Promise<Map<string, number>> {
+  const [base, adjustments] = await Promise.all([
+    clubRatingsFor(orgId, userIds),
+    db.ratingAdjustment.findMany({ where: { matchId, userId: { in: userIds } }, select: { userId: true, delta: true } }),
+  ]);
+  const delta = new Map(adjustments.map((a) => [a.userId, a.delta]));
+  return new Map(userIds.map((id) => [id, Math.max(1, Math.min(10, (base.get(id) ?? 5) + (delta.get(id) ?? 0)))]));
 }

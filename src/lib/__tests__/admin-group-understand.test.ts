@@ -464,7 +464,7 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
       messageId: "wa-9",
       senderUserId: "u-admin",
       now: NOW,
-      command: { kind: "swap", pairs: [["Ali", "Can"]] },
+      command: { kind: "change", swapSides: false, moves: ["Ali", "Can"], sides: [], together: [] },
     });
     expect(requests[1].system).toContain("moves");
   });
@@ -955,7 +955,6 @@ describe("a sender who is not an organiser", () => {
   // 2026-10-20 (Kemal): a request the router reads as one only an organiser
   // may make gets the line whether or not MatchTime was tagged.
   it.each([
-    ["swap Maj and Kieran", "balancer"],
     ["ask the group for a player", "ask_group"],
     ["make the fee 6 pounds", "admin_ops"],
   ])("untagged %s (%s): not done, the same one line", async (text, route) => {
@@ -963,6 +962,20 @@ describe("a sender who is not an organiser", () => {
     expect(r).toEqual({ route, outcome: "hq-only-organisers", replyText: ONLY });
     expect(teams.handleTeamCommand).not.toHaveBeenCalled();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+    expect(requests.length).toBe(1); // the router only
+  });
+
+  // 2026-10-29, FNF HQ: a player's "Akram & maj in the same team" (17:32)
+  // and "We going with these teams right?" (20:33), untagged and asked of
+  // nobody, each got "Only Hamzah, Raihan, Imz or Kemal can change that."
+  // Talk about the teams is theirs; only a request TO MatchTime gets the line.
+  it.each([
+    ["Akram & maj in the same team"],
+    ["We going with these teams right?"],
+    ["swap Maj and Kieran"],
+  ])("untagged teams talk from a player (%s): silent, nothing read, nothing done", async (text) => {
+    expect(await ask(text, "balancer", player())).toBeNull();
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
     expect(requests.length).toBe(1); // the router only
   });
 

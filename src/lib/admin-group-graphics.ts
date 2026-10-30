@@ -139,7 +139,7 @@ export async function redrawTeamSheet(orgId: string, matchId: string, now: Date)
  * the admin group of a live club. The caller has proven the sender and
  * claimed the message id. The graphic itself is the answer: no text when
  * it is queued. After the teams are approved a team sheet request sends it
- * again (no once-key here).
+ * again (no once-key here), unless one is still waiting to go.
  */
 export async function answerGraphicRequest(args: {
   orgId: string;
@@ -150,6 +150,28 @@ export async function answerGraphicRequest(args: {
   const s = graphicsCopy(args.lang);
   const matchId = await nextGraphicMatch(args.orgId, args.now);
   if (!matchId) return { outcome: "graphic-no-match", replyText: s.noMatch };
+  // ONE TEAM SHEET AT A TIME (2026-10-29, FNF HQ: the approval's team
+  // sheet, then "Make a graphic" 20 seconds later, sent two identical
+  // ones). A team sheet still waiting to go is drawn from the teams as
+  // they are when it goes (`/api/graphics/<token>`), so it IS the answer:
+  // it goes now, as an asked one, and no second one is queued.
+  if (args.kind === "teams") {
+    const waiting = await db.botJob.findFirst({
+      where: { orgId: args.orgId, kind: "admin-group", sentAt: null, pollOptions: { hasEvery: graphicJobOptions({ kind: "teams", matchId, asked: false }).slice(0, 3) } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, sendAfter: true },
+    });
+    if (waiting) {
+      const now = await db.botJob.updateMany({
+        where: { id: waiting.id, sentAt: null },
+        data: { sendAfter: null, pollOptions: graphicJobOptions({ kind: "teams", matchId, asked: true }) },
+      });
+      if (now.count > 0) {
+        console.log(`[graphics] team sheet asked for org=${args.orgId} match=${matchId}: job=${waiting.id} already waiting, sent now`);
+        return { outcome: "graphic-queued", replyText: null };
+      }
+    }
+  }
   const r = await sendGraphicToAdminChannel(args.orgId, matchId, args.kind, { asked: true });
   if (r.queued) return { outcome: "graphic-queued", replyText: null };
   if (r.reason === "no-teams") return { outcome: "graphic-no-teams", replyText: s.noTeams };

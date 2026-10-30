@@ -25,43 +25,175 @@ import { nameCandidates } from "./admin-group-squad-rules";
 
 // ── The commands ───────────────────────────────────────────────────────
 
+/** A person the message puts on a named side. */
+export interface SideRef {
+  name: string;
+  to: "RED" | "YELLOW";
+}
+
 /**
  * A team change asked for in the admin group. Not parsed from the text:
  * the shared pipeline reads the message (router `balancer`, then the
  * teams extractor) and `teamCommandFromFacts` turns its facts into this.
+ *
+ *   show       the teams as they stand (built first if none)
+ *   reshuffle  new teams, keeping anyone put on a side or put together
+ *   change     the teams as they stand, changed as asked, as ONE change
+ *              (2026-10-29, FNF HQ: nine names, eight swaps on eight
+ *              lines, "swap them over" were all "Which players?"):
+ *                swapSides  every player changes side
+ *                moves      these people change side, exactly as said
+ *                sides      these people go to the side named
+ *                together   each group ends up on one side
+ *              `sides` and `together` move the fewest players and keep
+ *              the sides even (`planTeamChange`).
+ *   suggest    the one swap that evens the ratings most
  */
 export type TeamCommand =
   | { kind: "show" }
-  | { kind: "reshuffle" }
-  /** Two named players swap sides. */
-  | { kind: "swap"; pairs: Array<[string, string]> }
-  /** One named player to the other side, or to `to` when one is named. */
-  | { kind: "move"; name: string; to?: "RED" | "YELLOW" };
+  | { kind: "reshuffle"; sides: SideRef[]; together: string[][] }
+  | { kind: "change"; swapSides: boolean; moves: string[]; sides: SideRef[]; together: string[][] }
+  | { kind: "suggest" };
 
 /**
  * The teams extractor's facts for an admin-group message, as a command.
  * "unclear" when they name no usable change (a rename, which the admin
- * group does not do, or a swap with no players or too many): the caller
- * says so in one line.
+ * group does not do, or a change naming nobody): the caller says so in
+ * one line. Any number of names is one change.
  */
 export function teamCommandFromFacts(facts: {
-  action: "show" | "generate" | "rename" | "swap";
+  action: "show" | "generate" | "rename" | "swap" | "suggest";
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;
   moves?: string[];
+  pairings?: string[][];
+  swapSides?: boolean;
 }): TeamCommand | { kind: "unclear" } {
+  const sides: SideRef[] = facts.swaps.map((x) => ({ name: x.personRef.trim(), to: x.team })).filter((x) => x.name);
+  const together = (facts.pairings ?? []).map((g) => g.map((n) => n.trim()).filter(Boolean)).filter((g) => g.length >= 2);
   if (facts.action === "show") return { kind: "show" };
-  if (facts.action === "generate") return { kind: "reshuffle" };
+  if (facts.action === "suggest") return { kind: "suggest" };
+  if (facts.action === "generate") return { kind: "reshuffle", sides, together };
   if (facts.action === "rename") return { kind: "unclear" };
   const moves = (facts.moves ?? []).map((m) => m.trim()).filter(Boolean);
-  const sided = facts.swaps.filter((x) => x.personRef.trim());
-  if (moves.length === 2 && sided.length === 0) return { kind: "swap", pairs: [[moves[0], moves[1]]] };
-  if (moves.length === 1 && sided.length === 0) return { kind: "move", name: moves[0] };
-  if (moves.length === 0 && sided.length === 1) return { kind: "move", name: sided[0].personRef.trim(), to: sided[0].team };
-  // Two players each put on a named side, one on each: the same as a swap.
-  if (moves.length === 0 && sided.length === 2 && sided[0].team !== sided[1].team) {
-    return { kind: "swap", pairs: [[sided[0].personRef.trim(), sided[1].personRef.trim()]] };
+  const swapSides = facts.swapSides === true;
+  if (!swapSides && moves.length === 0 && sides.length === 0 && together.length === 0) return { kind: "unclear" };
+  return { kind: "change", swapSides, moves, sides, together };
+}
+
+// ── Changing teams that exist ─────────────────────────────────────────
+
+export interface TeamChangePlan {
+  /** Every slot holder's side after the change. */
+  team: Map<string, SheetTeam>;
+  /** Who changes side because the message said so, in sheet order. */
+  moved: string[];
+  /** Who else changes side to keep the sides even, in the order chosen. */
+  evenedBy: string[];
+}
+
+const other = (t: SheetTeam): SheetTeam => (t === "RED" ? "YELLOW" : "RED");
+
+/**
+ * One change to the teams as they stand (2026-10-29). In order:
+ *
+ *   1. `swapSides`: every player changes side;
+ *   2. `moveIds`: these change side, exactly as said (an uneven result is
+ *      the proposal's own warning, as for any move);
+ *   3. `sides` and `together`: each named person is put on a side (a
+ *      group goes to the side one of them is put on by name, else the side
+ *      most of them are already on, else the first named one's), then,
+ *      while the sides are uneven, the player not named anywhere whose
+ *      move keeps the ratings closest goes from the bigger side to the
+ *      smaller. Nobody out of the game is moved to even the sides.
+ *
+ * First instruction about a person wins. Pure: ratings come in.
+ */
+export function planTeamChange(p: {
+  slots: SheetSlot[];
+  swapSides?: boolean;
+  moveIds?: string[];
+  sides?: Array<{ userId: string; to: SheetTeam }>;
+  together?: string[][];
+  rating: (userId: string) => number;
+}): TeamChangePlan {
+  const start = new Map(p.slots.map((s) => [s.userId, s.team]));
+  const team = new Map(start);
+  if (p.swapSides) for (const [id, t] of team) team.set(id, other(t));
+  const literal = new Set<string>();
+  for (const id of p.moveIds ?? []) {
+    if (!team.has(id) || literal.has(id)) continue;
+    literal.add(id);
+    team.set(id, other(team.get(id)!));
   }
-  return { kind: "unclear" };
+
+  // Who is held where by `sides` and `together`.
+  const held = new Map<string, SheetTeam>();
+  for (const s of p.sides ?? []) if (team.has(s.userId) && !held.has(s.userId)) held.set(s.userId, s.to);
+  const playing = new Set(p.slots.filter((s) => s.playing).map((s) => s.userId));
+  for (const group of p.together ?? []) {
+    const ids = group.filter((id) => team.has(id));
+    if (ids.length < 2) continue;
+    const named = ids.map((id) => held.get(id)).find((t): t is SheetTeam => !!t);
+    let side = named;
+    if (!side) {
+      const on = (t: SheetTeam) => ids.filter((id) => team.get(id) === t).length;
+      side = on("RED") > on("YELLOW") ? "RED" : on("YELLOW") > on("RED") ? "YELLOW" : team.get(ids[0])!;
+    }
+    for (const id of ids) if (!held.has(id)) held.set(id, side);
+  }
+  for (const [id, t] of held) team.set(id, t);
+
+  // Even the sides again, only after a targeted change.
+  const evenedBy: string[] = [];
+  if (held.size > 0) {
+    const fixed = new Set([...held.keys(), ...literal]);
+    const n = (t: SheetTeam) => [...team].filter(([id, x]) => x === t && playing.has(id)).length;
+    const sum = (t: SheetTeam) => [...team].filter(([id, x]) => x === t && playing.has(id)).reduce((a, [id]) => a + p.rating(id), 0);
+    while (unevenSides(n("RED"), n("YELLOW"))) {
+      const big: SheetTeam = n("RED") > n("YELLOW") ? "RED" : "YELLOW";
+      const candidates = p.slots.filter((s) => team.get(s.userId) === big && playing.has(s.userId) && !fixed.has(s.userId));
+      if (candidates.length === 0) break;
+      const gapIf = (id: string) => {
+        const r = p.rating(id);
+        const red = sum("RED") + (big === "RED" ? -r : r);
+        const yellow = sum("YELLOW") + (big === "YELLOW" ? -r : r);
+        return Math.abs(red - yellow);
+      };
+      let best = candidates[0].userId;
+      for (const c of candidates) if (gapIf(c.userId) < gapIf(best)) best = c.userId;
+      team.set(best, other(big));
+      fixed.add(best);
+      evenedBy.push(best);
+    }
+  }
+  const evened = new Set(evenedBy);
+  const moved = p.slots.map((s) => s.userId).filter((id) => team.get(id) !== start.get(id) && !evened.has(id));
+  return { team, moved, evenedBy };
+}
+
+/**
+ * "Recommend swaps" (2026-10-29): the one swap of two players still
+ * playing, one from each side, that brings the sides' rating totals
+ * closest. Null when no swap makes them fairer than they are.
+ */
+export function bestSwap(slots: SheetSlot[], rating: (userId: string) => number): { red: string; yellow: string } | null {
+  const on = (t: SheetTeam) => slots.filter((s) => s.team === t && s.playing).map((s) => s.userId);
+  const red = on("RED");
+  const yellow = on("YELLOW");
+  const total = (ids: string[]) => ids.reduce((a, id) => a + rating(id), 0);
+  const gap = total(red) - total(yellow);
+  let best: { red: string; yellow: string } | null = null;
+  let bestGap = Math.abs(gap) - 0.05;
+  for (const r of red) {
+    for (const y of yellow) {
+      const g = Math.abs(gap - 2 * (rating(r) - rating(y)));
+      if (g < bestGap) {
+        bestGap = g;
+        best = { red: r, yellow: y };
+      }
+    }
+  }
+  return best;
 }
 
 export interface SheetPlayer {

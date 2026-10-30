@@ -552,7 +552,7 @@ export interface TeamFacts {
   kind: "teams";
   /** show = re-post what exists. generate = run the balancer. §3.2 S19:
    *  "show the teams again" once destroyed an admin's manual swap. */
-  action: "show" | "generate" | "rename" | "swap";
+  action: "show" | "generate" | "rename" | "swap" | "suggest";
   includeRefs: string[];
   teamNames: [string, string] | null;
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;
@@ -564,6 +564,12 @@ export interface TeamFacts {
    * shape, the parser always sets it.
    */
   moves?: string[];
+  /**
+   * The two whole teams swap over, every player changing side
+   * (2026-10-29, FNF HQ: "swap everyone on bibs with non bibs"). Read by
+   * the organisers' group; optional for older stubs, the parser sets it.
+   */
+  swapSides?: boolean;
   /**
    * "put me and Kemal on the same team" — a PAIRING, added 2026-09-06.
    *

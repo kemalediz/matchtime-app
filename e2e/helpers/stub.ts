@@ -469,11 +469,11 @@ export function unnamedOther(
  * B" or "move A". `moves` are people to the other team, no side named.
  */
 export function teamsFacts(
-  action: "show" | "generate" | "rename" | "swap",
+  action: "show" | "generate" | "rename" | "swap" | "suggest",
   moves: string[] = [],
   over: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  return { action, includeRefs: [], teamNames: [], swaps: [], moves, pairings: [], ...over };
+  return { action, includeRefs: [], teamNames: [], swaps: [], moves, pairings: [], swapSides: false, ...over };
 }
 
 export interface BodyRouting {

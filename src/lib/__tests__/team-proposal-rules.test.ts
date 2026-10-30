@@ -15,6 +15,8 @@ import {
   effectiveTeamsReadyTime,
   normaliseTeamsReadyTime,
   teamCommandFromFacts,
+  planTeamChange,
+  bestSwap,
   resolveSheetName,
   resolveSwap,
   teamsReadyAt,
@@ -51,33 +53,146 @@ describe("unevenSides: an even total splits exactly, an odd one may be one apart
 });
 
 describe("teamCommandFromFacts: the shared teams extractor's facts as an admin-group command", () => {
-  const f = (action: "show" | "generate" | "rename" | "swap", moves: string[] = [], swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }> = []) =>
-    teamCommandFromFacts({ action, moves, swaps });
+  type Facts = Parameters<typeof teamCommandFromFacts>[0];
+  const f = (action: Facts["action"], more: Partial<Facts> = {}) =>
+    teamCommandFromFacts({ action, moves: [], swaps: [], pairings: [], swapSides: false, ...more });
+  const change = (more: object) => ({ kind: "change", swapSides: false, moves: [], sides: [], together: [], ...more });
 
-  it("show and generate are show and reshuffle", () => {
+  it("show is show; suggest is suggest", () => {
     expect(f("show")).toEqual({ kind: "show" });
-    expect(f("generate")).toEqual({ kind: "reshuffle" });
+    expect(f("suggest")).toEqual({ kind: "suggest" });
   });
-  it("two people with no side named swap", () => {
-    expect(f("swap", ["Ali", "Bilal Khan"])).toEqual({ kind: "swap", pairs: [["Ali", "Bilal Khan"]] });
+  it("generate is a reshuffle that keeps the sides and pairings asked for", () => {
+    expect(f("generate")).toEqual({ kind: "reshuffle", sides: [], together: [] });
+    expect(f("generate", { pairings: [["Ali", "Habib"]], swaps: [{ personRef: "Sam", team: "YELLOW" }] })).toEqual({
+      kind: "reshuffle",
+      sides: [{ name: "Sam", to: "YELLOW" }],
+      together: [["Ali", "Habib"]],
+    });
   });
-  it("one person with no side named moves to the other team", () => {
-    expect(f("swap", ["Tom"])).toEqual({ kind: "move", name: "Tom" });
+  it("any number of people with no side named all change side, as ONE change", () => {
+    expect(f("swap", { moves: ["Ali", "Bilal Khan"] })).toEqual(change({ moves: ["Ali", "Bilal Khan"] }));
+    expect(f("swap", { moves: ["Tom"] })).toEqual(change({ moves: ["Tom"] }));
+    const nine = ["Hamzah", "Yorel", "Akram", "Shehryar", "Imz", "Maj", "Mahir", "Habib", "Ali"];
+    expect(f("swap", { moves: nine })).toEqual(change({ moves: nine }));
+    const sixteen = Array.from({ length: 16 }, (_, i) => `P${i}`);
+    expect(f("swap", { moves: sixteen })).toEqual(change({ moves: sixteen }));
   });
-  it("one person put on a named side moves there", () => {
-    expect(f("swap", [], [{ personRef: "Sam", team: "YELLOW" }])).toEqual({ kind: "move", name: "Sam", to: "YELLOW" });
+  it("the two sides swapped over", () => {
+    expect(f("swap", { swapSides: true })).toEqual(change({ swapSides: true }));
   });
-  it("two people put on opposite named sides swap", () => {
-    expect(f("swap", [], [{ personRef: "Sam", team: "YELLOW" }, { personRef: "Ali", team: "RED" }])).toEqual({ kind: "swap", pairs: [["Sam", "Ali"]] });
+  it("people put on a named side, and people put together", () => {
+    expect(f("swap", { swaps: [{ personRef: "Sam", team: "YELLOW" }, { personRef: "Ali", team: "RED" }] })).toEqual(
+      change({ sides: [{ name: "Sam", to: "YELLOW" }, { name: "Ali", to: "RED" }] }),
+    );
+    expect(f("swap", { pairings: [["Ali", "Habib"]] })).toEqual(change({ together: [["Ali", "Habib"]] }));
   });
-  it("a rename, no players, or too many is unclear", () => {
+  it("a rename, or a change naming nobody, is unclear", () => {
     expect(f("rename")).toEqual({ kind: "unclear" });
     expect(f("swap")).toEqual({ kind: "unclear" });
-    expect(f("swap", ["A", "B", "C"])).toEqual({ kind: "unclear" });
-    expect(f("swap", [], [{ personRef: "Sam", team: "RED" }, { personRef: "Ali", team: "RED" }])).toEqual({ kind: "unclear" });
   });
-  it("an older stub with no moves field still reads", () => {
-    expect(teamCommandFromFacts({ action: "swap", swaps: [{ personRef: "Sam", team: "RED" }] })).toEqual({ kind: "move", name: "Sam", to: "RED" });
+  it("an older stub with no moves, pairings or swapSides still reads", () => {
+    expect(teamCommandFromFacts({ action: "swap", swaps: [{ personRef: "Sam", team: "RED" }] })).toEqual(change({ sides: [{ name: "Sam", to: "RED" }] }));
+  });
+});
+
+describe("planTeamChange: a change to teams that already exist", () => {
+  // Red: r1..r4, Yellow: y1..y4, all playing. Ratings by id.
+  const slots = (n = 4): SheetSlot[] => [
+    ...Array.from({ length: n }, (_, i) => ({ slotId: `sr${i + 1}`, userId: `r${i + 1}`, team: "RED" as const, playing: true })),
+    ...Array.from({ length: n }, (_, i) => ({ slotId: `sy${i + 1}`, userId: `y${i + 1}`, team: "YELLOW" as const, playing: true })),
+  ];
+  const R: Record<string, number> = { r1: 8, r2: 6, r3: 5, r4: 3, y1: 8, y2: 6, y3: 5, y4: 3 };
+  const rating = (id: string) => R[id] ?? 5;
+  const sideOf = (plan: ReturnType<typeof planTeamChange>, id: string) => plan.team.get(id);
+  const count = (plan: ReturnType<typeof planTeamChange>, t: "RED" | "YELLOW") => [...plan.team.values()].filter((x) => x === t).length;
+
+  it("named people change side exactly as said, with nobody else moved", () => {
+    const plan = planTeamChange({ slots: slots(), moveIds: ["r1", "y2", "y3"], rating });
+    expect(sideOf(plan, "r1")).toBe("YELLOW");
+    expect(sideOf(plan, "y2")).toBe("RED");
+    expect(sideOf(plan, "y3")).toBe("RED");
+    expect(plan.moved.sort()).toEqual(["r1", "y2", "y3"]);
+    expect(plan.evenedBy).toEqual([]);
+  });
+
+  it("the two sides swapped over: everyone changes side", () => {
+    const plan = planTeamChange({ slots: slots(), swapSides: true, rating });
+    for (const s of slots()) expect(sideOf(plan, s.userId)).toBe(s.team === "RED" ? "YELLOW" : "RED");
+    expect(plan.moved).toHaveLength(8);
+  });
+
+  it("two people put together: the fewest move, and the sides stay even", () => {
+    const plan = planTeamChange({ slots: slots(), together: [["r2", "y2"]], rating });
+    expect(sideOf(plan, "r2")).toBe(sideOf(plan, "y2"));
+    expect(count(plan, "RED")).toBe(4);
+    expect(count(plan, "YELLOW")).toBe(4);
+    // One of the pair moved, one other player went back: two moves in all.
+    expect(plan.moved.length + plan.evenedBy.length).toBe(2);
+  });
+
+  it("the one sent back is the one that keeps the ratings closest", () => {
+    // y2 (6) joins r2 on Red (the side of the first named); one Red player
+    // goes back. r1 (8) back: Red 20 v Yellow 24; r3 (5) back: 23 v 21;
+    // r4 (3) back: 25 v 19. r3 keeps them closest.
+    const plan = planTeamChange({ slots: slots(), together: [["r2", "y2"]], rating });
+    expect(plan.moved).toEqual(["y2"]);
+    expect(plan.evenedBy).toEqual(["r3"]);
+  });
+
+  it("a pair already together changes nothing", () => {
+    const plan = planTeamChange({ slots: slots(), together: [["r1", "r2"]], rating });
+    expect(plan.moved).toEqual([]);
+    expect(plan.evenedBy).toEqual([]);
+  });
+
+  it("a person put on a named side: moved there, and one comes back to keep it even", () => {
+    const plan = planTeamChange({ slots: slots(), sides: [{ userId: "y1", to: "RED" }], rating });
+    expect(sideOf(plan, "y1")).toBe("RED");
+    expect(count(plan, "RED")).toBe(4);
+    expect(plan.evenedBy).toHaveLength(1);
+    expect(sideOf(plan, plan.evenedBy[0])).toBe("YELLOW");
+  });
+
+  it("two put on opposite named sides: a plain swap, nobody else moves", () => {
+    const plan = planTeamChange({ slots: slots(), sides: [{ userId: "r1", to: "YELLOW" }, { userId: "y4", to: "RED" }], rating });
+    expect(plan.moved.sort()).toEqual(["r1", "y4"]);
+    expect(plan.evenedBy).toEqual([]);
+  });
+
+  it("a pair goes to the side a member is put on by name", () => {
+    const plan = planTeamChange({ slots: slots(), sides: [{ userId: "r1", to: "YELLOW" }], together: [["r1", "r2"]], rating });
+    expect(sideOf(plan, "r1")).toBe("YELLOW");
+    expect(sideOf(plan, "r2")).toBe("YELLOW");
+    expect(count(plan, "RED")).toBe(4);
+  });
+
+  it("nobody out of the game is sent back to even the sides", () => {
+    const s = slots().map((x) => (x.userId === "r3" || x.userId === "r4" ? { ...x, playing: false } : x));
+    // Red has 2 playing (r1, r2), Yellow 4. y1 joins r1: Red 3 v Yellow 3 already better; nobody is evened back
+    // past the even split, and r3, r4 (out) never move.
+    const plan = planTeamChange({ slots: s, together: [["r1", "y1"]], rating });
+    expect(plan.evenedBy).not.toContain("r3");
+    expect(plan.evenedBy).not.toContain("r4");
+  });
+});
+
+describe("bestSwap: the one swap that evens the ratings most", () => {
+  const s = (team: "RED" | "YELLOW", userId: string, playing = true): SheetSlot => ({ slotId: userId, userId, team, playing });
+  it("finds the swap that closes the gap", () => {
+    // Red 9+7+6=22, Yellow 5+4+3=12: swapping 9 and 4 gives 17 v 17.
+    const R: Record<string, number> = { a: 9, b: 7, e: 6, c: 5, d: 4, f: 3 };
+    const sheet = [s("RED", "a"), s("RED", "b"), s("RED", "e"), s("YELLOW", "c"), s("YELLOW", "d"), s("YELLOW", "f")];
+    expect(bestSwap(sheet, (id) => R[id])).toEqual({ red: "a", yellow: "d" });
+  });
+  it("none when no swap makes it fairer", () => {
+    const R: Record<string, number> = { a: 6, b: 4, c: 6, d: 4 };
+    expect(bestSwap([s("RED", "a"), s("RED", "b"), s("YELLOW", "c"), s("YELLOW", "d")], (id) => R[id])).toBeNull();
+  });
+  it("only players still playing are swapped", () => {
+    // Red a 9 + e 8 = 17 (b, out, does not count), Yellow c 5 + d 4 = 9.
+    const R: Record<string, number> = { a: 9, e: 8, b: 1, c: 5, d: 4 };
+    expect(bestSwap([s("RED", "a"), s("RED", "e"), s("RED", "b", false), s("YELLOW", "c"), s("YELLOW", "d")], (id) => R[id])).toEqual({ red: "a", yellow: "c" });
   });
 });
 

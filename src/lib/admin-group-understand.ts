@@ -111,8 +111,10 @@
  * admins ("Only Hamzah or Raihan can change that."), TAGGED OR NOT
  * (2026-10-20, Kemal): the route itself says the router read a request to
  * MatchTime for that, as an organiser's untagged "make the teams" is one;
- * the organisers' own chat routes none and stays silent. Logs carry ids
- * and counts only.
+ * the organisers' own chat routes none and stays silent. The exception is
+ * balancer (2026-10-29, FNF HQ): players talk about the teams all the time
+ * ("Akram & maj in the same team"), so for them it is the line only when
+ * tagged or a reply to MatchTime. Logs carry ids and counts only.
  */
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "./reply-context";
@@ -553,7 +555,9 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
     // help and the graphics are theirs too; anything that changes the club
     // beyond who plays is not. A route that asks MatchTime for such a
     // change (approve, balancer, ask_group, admin_ops) gets one line naming
-    // who can, tagged or not (2026-10-20, Kemal: untagged it was silent).
+    // who can, tagged or not (2026-10-20, Kemal: untagged it was silent),
+    // except talk about the teams (balancer), which gets it only when asked
+    // of MatchTime (2026-10-29).
     // `actor` is set only for an organiser.
     const actor = input.organiser ? input.senderUserId : null;
     // Who plays is open to everyone in the club here (2026-10-20, Kemal and
@@ -902,7 +906,12 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         return actor || addressed ? notHere() : null;
       }
       case "balancer": {
-        if (!actor) return onlyOrganisers();
+        // Not an organiser: the one line only when it was asked of
+        // MatchTime (2026-10-29, FNF HQ: a player's untagged "Akram & maj
+        // in the same team" and "We going with these teams right?" each
+        // got it, though nobody had asked MatchTime anything). Talk about
+        // the teams is theirs.
+        if (!actor) return notYours();
         if (!weekly) return notHere();
         const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
         const extracted = await extractForRouteTraced("balancer", model, "balancer", {
