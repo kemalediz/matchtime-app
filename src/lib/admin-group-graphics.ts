@@ -12,12 +12,8 @@
  *                                       `team_sheet` routes
  *                                       (`admin-group-understand.ts`);
  *   sendGraphicToAdminChannel(...)      queue one graphic for the admin
- *                                       group: the command, the final-list
- *                                       and the approved-teams triggers;
- *   redrawTeamSheet(...)                the final teams changed after their
- *                                       team sheet went out: the updated
- *                                       one, on its own, after a short
- *                                       quiet period (2026-10-16);
+ *                                       group: the command, and the
+ *                                       final-list trigger;
  *   recordTeamSheetShown(...)           the graphics route drew a team
  *   teamSheetJobVerdict(...)            sheet; the due-posts poll asks if a
  *                                       queued one should still go
@@ -28,6 +24,13 @@
  * goes out on the club's next due-posts poll, where its image URL is
  * signed (`admin-channel.ts`, `adminGroupJobInstruction`). The Pi fetches
  * the PNG from `/api/graphics/<token>` and posts it with the caption.
+ *
+ * THE TEAM SHEET ONLY WHEN ASKED (Kemal, 2026-10-30: "don't change poster
+ * generation logic, however it can only be generated when they tag
+ * matchtime while asking to generate"). Neither the approval nor a change
+ * to the teams draws one any more; the request is answered only when it is
+ * addressed to MatchTime by fact (`admin-group-understand.ts`). Teams not
+ * approved yet are drawn as they are, and the caption says so.
  *
  * Nothing here calls a model: the request was read before it got here.
  */
@@ -48,11 +51,11 @@ export type SendGraphicResult =
  * Queue the list poster or the team sheet for `matchId` in the club's
  * linked admin group, captioned "Ready to post: FNF list for Fri 16 Oct".
  *
- * FOR THE TRIGGERS (not wired yet): call it once the final list is ready
- * (`kind: "list"`) and once an admin approves the teams (`kind: "teams"`),
- * with an `onceKey` such as `${matchId}:final-list`, so a re-run never
- * posts twice. A trigger's graphic waits for the admin group's posting
- * hours (09:00 to 22:59 London); `asked: true` (the command) goes at once.
+ * The final-list trigger calls it once the final list is ready
+ * (`kind: "list"`), with an `onceKey` such as `${matchId}:final-list`, so a
+ * re-run never posts twice. A trigger's graphic waits for the admin group's
+ * posting hours (09:00 to 22:59 London); `asked: true` (the command) goes
+ * at once. The team sheet has no trigger (2026-10-30).
  *
  * Queued only when the club has a linked admin group MatchTime can post in
  * and the graphic has something to show; otherwise a reason, and nothing.
@@ -85,57 +88,14 @@ export async function sendGraphicToAdminChannel(
     data: {
       orgId,
       kind: "admin-group",
-      text: graphicCaption(kind, org.language, org.name, data.matchDate),
+      // Teams not approved yet say so (2026-10-30).
+      text: graphicCaption(kind, org.language, org.name, data.matchDate, { notApproved: data.kind === "teams" && data.approved === false }),
       pollOptions: graphicJobOptions({ kind, matchId, asked: opts.asked === true }),
       ...(opts.sendAfter ? { sendAfter: opts.sendAfter } : {}),
     },
   });
   console.log(`[graphics] queued ${kind} org=${orgId} match=${matchId} job=${job.id}${opts.asked ? " (asked)" : ""}`);
   return { queued: true, jobId: job.id };
-}
-
-// ── The teams changed after the team sheet was sent ─────────────────────
-
-/**
- * How long the teams must stay unchanged before the updated team sheet
- * goes out, so a burst of changes (a pick, then a swap) is one graphic.
- */
-export const REDRAW_QUIET_MS = 2 * 60 * 1000;
-
-export type RedrawResult = SendGraphicResult | { queued: true; jobId: string; coalesced: true } | { queued: false; reason: "never-sent" };
-
-/**
- * "Poster generation should be automated as soon as the teams are final.
- * No need for any extra command" (Kemal, 2026-10-16). Called when the
- * teams of `matchId` changed after they were made final
- * (`team-proposal.ts`). Only once a team sheet has gone to the admin group
- * for that match; never the first one (that is the approval's).
- *
- * The updated sheet waits `REDRAW_QUIET_MS` (`BotJob.sendAfter`). Another
- * change in that time pushes the same job back instead of queuing a second
- * one. A team sheet already due and not yet posted is left as it is: the
- * image is drawn when the Pi fetches it (`/api/graphics/<token>`), so it
- * shows the teams as they are then.
- */
-export async function redrawTeamSheet(orgId: string, matchId: string, now: Date): Promise<RedrawResult> {
-  const sheetJobs = { orgId, kind: "admin-group", pollOptions: { hasEvery: graphicJobOptions({ kind: "teams", matchId, asked: false }).slice(0, 3) } };
-  const sent = await db.botJob.findFirst({ where: sheetJobs, select: { id: true } });
-  if (!sent) return { queued: false, reason: "never-sent" };
-
-  const sendAfter = new Date(now.getTime() + REDRAW_QUIET_MS);
-  const waiting = await db.botJob.findFirst({
-    where: { ...sheetJobs, sentAt: null },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, sendAfter: true },
-  });
-  if (waiting) {
-    if (waiting.sendAfter && waiting.sendAfter.getTime() > now.getTime()) {
-      await db.botJob.updateMany({ where: { id: waiting.id, sentAt: null }, data: { sendAfter } });
-    }
-    console.log(`[graphics] team sheet redraw org=${orgId} match=${matchId} folded into job=${waiting.id}`);
-    return { queued: true, jobId: waiting.id, coalesced: true };
-  }
-  return sendGraphicToAdminChannel(orgId, matchId, "teams", { sendAfter });
 }
 
 // ── The admin's request ─────────────────────────────────────────────
@@ -200,8 +160,10 @@ export async function answerGraphicRequest(args: {
  * same teams (18:09, the approval's sheet and an asked one due on the same
  * poll; 19:25 and 19:26, an asked one and the redraw still in its quiet
  * period). So a team sheet whose teams are exactly those of the last one
- * DRAWN for that match is not sent again by a trigger, and a request for it
- * within `SAME_SHEET_RESEND_MS` is told the teams have not changed.
+ * DRAWN for that match is not sent again unasked, and a request for it
+ * within `SAME_SHEET_RESEND_MS` is told the teams have not changed. (The
+ * approval's sheet and the redraw were retired on 2026-10-30; the rule
+ * stays for every sheet.)
  *
  * WHERE. The image is drawn when the Pi fetches it (`/api/graphics/<token>`),
  * from the teams as they are then; so that is where what a sheet showed is

@@ -130,7 +130,9 @@ import type { AdminFacts, Route } from "./pipeline/types";
 import { dayLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { handleAdminSquadChange, nameMentions, type AdminSquadChangeResult } from "./admin-group-squad-change";
-import { answerTeamsYes, handleTeamCommand, setAsideTeamProposal } from "./team-proposal";
+import { answerTeamsYes, compareQuotedSheet, handleTeamCommand, setAsideTeamProposal } from "./team-proposal";
+import { quotedTeamSheet } from "./team-sheet-history";
+import { membersNamedIn } from "./pipeline/identity";
 import { teamCommandFromFacts } from "./team-proposal-rules";
 import { answerSquadPasteYes, proposeSquadPaste, readHqSquad, type HqSquadRead } from "./admin-group-paste";
 import { answerGraphicRequest } from "./admin-group-graphics";
@@ -367,6 +369,27 @@ function readingTrace(r: HqSquadRead["reading"]): HqReadingTrace {
   if (r.kind === "squad") return { kind: r.kind, lines: r.lines.length, out: r.out.length };
   if (r.kind === "other") return { kind: r.kind, why: r.why };
   return { kind: r.kind };
+}
+
+/**
+ * The club's members whose names appear in a teams message, from the
+ * roster (`membersNamedIn`, the identity lookup the attendance extractor is
+ * shown): a pasted sheet names many, so up to 30. Never throws.
+ */
+async function teamsMembersNamed(orgId: string, body: string): Promise<string[]> {
+  try {
+    const [members, aliases] = await Promise.all([
+      db.membership.findMany({ where: { orgId, leftAt: null }, select: { user: { select: { id: true, name: true } } } }),
+      db.userAlias.findMany({ where: { orgId }, select: { alias: true, userId: true } }),
+    ]);
+    const roster = (members ?? [])
+      .map((m) => m.user)
+      .filter((u): u is { id: string; name: string } => !!u?.name)
+      .map((u) => ({ name: u.name, aliases: (aliases ?? []).filter((a) => a.userId === u.id).map((a) => a.alias) }));
+    return membersNamedIn(body, roster, 30);
+  } catch {
+    return [];
+  }
 }
 
 export async function understandAdminMessage(input: UnderstandInput): Promise<Understood | null> {
@@ -695,8 +718,24 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       return withItsQuestion(change);
     };
 
+    // The stored team sheet a reply to MatchTime quotes (2026-10-30), read
+    // once: by the quoted post's id, never from the words.
+    let quotedSheetRead: ReturnType<typeof quotedTeamSheet> | null = null;
+    const quotedSheet = () =>
+      (quotedSheetRead ??= quotedIsMatchTime && input.quoted
+        ? quotedTeamSheet(org.id, { messageId: input.quoted.messageId ?? null, text: quotedWords, fromMatchTime: true })
+        : Promise.resolve(null));
+
     // The teams (a teams route, or a squad message the HQ squad reader read
     // as about the teams): the teams extractor, then `team-proposal.ts`.
+    //
+    // BY FACT (Kemal, 2026-10-30): a build (new teams, made or made again)
+    // only when the message is addressed to MatchTime, a tag or a reply to
+    // MatchTime (`addressed`), else nothing done and nothing said
+    // (`handleTeamCommand`). Untagged, a single change to the teams as they
+    // stand (a swap, a move, a pairing, a pasted sheet) is done only when
+    // the extractor reads it as an instruction to MatchTime (`toMatchTime`),
+    // not people talking about the teams among themselves.
     const teamsHere = async (): Promise<Understood | null> => {
       // Not an organiser: the one line only when it was asked of
       // MatchTime (2026-10-29, FNF HQ: a player's untagged "Akram & maj
@@ -710,14 +749,19 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         id: messageId,
         body,
         authorName: input.senderName,
-        tagged: true,
+        tagged,
         history,
         lastBotPost: lastHqPost,
         reply: replyShown,
+        members: await teamsMembersNamed(org.id, body),
         now,
       });
       if (extracted.facts.kind !== "teams") {
         console.log(`[admin-group] ${messageId}: the teams extractor gave nothing (${extracted.degradations.length} degradation(s))`);
+        return null;
+      }
+      if (!addressed && extracted.facts.action !== "show" && extracted.facts.toMatchTime !== true) {
+        console.log(`[admin-group] ${messageId}: teams ${extracted.facts.action}, not tagged and not asked of MatchTime: their conversation`);
         return null;
       }
       const command = teamCommandFromFacts(extracted.facts);
@@ -726,9 +770,15 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
           ? notHere()
           : said("teams-which-players", s.tp_which_players);
       }
-      const r = await handleTeamCommand({ ...base(actor), command });
-      return said(r.outcome, r.replyText);
-      };
+      const r = await handleTeamCommand({
+        ...base(actor),
+        command,
+        addressed,
+        quotedSheet: command.kind === "restore" ? await quotedSheet() : null,
+      });
+      // "teams-not-asked": a build nobody asked MatchTime for. Silent.
+      return r.replyText === null ? null : said(r.outcome, r.replyText);
+    };
 
     // The shared admin extractor on this message, told truly whether the bot
     // was tagged. Null when its call fails or it reads nothing. Read once:
@@ -922,6 +972,25 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
             return r;
           }
         }
+        // A YES-like reply to one of MatchTime's own team sheets is about
+        // THAT sheet (2026-10-30, FNF HQ: "These are the final teams", to
+        // Tuesday's sheet, meant those teams, and MatchTime asked for a YES
+        // on Thursday's). Decided by the stored sheet the reply quotes:
+        // the teams as they stand are approved; other teams of this game
+        // come back as a proposal needing YES, and nothing is approved.
+        const sheet = actor && weekly ? await quotedSheet() : null;
+        if (sheet && actor) {
+          const was = await compareQuotedSheet(org.id, sheet, now);
+          console.log(`[admin-group] ${messageId}: a YES quoting a stored team sheet: ${was}`);
+          if (was === "different") {
+            const r = await handleTeamCommand({ ...base(actor), command: { kind: "restore" }, addressed: true, quotedSheet: sheet });
+            return r.replyText === null ? null : said(r.outcome, r.replyText);
+          }
+          if (was === "same" && pending.some((i) => i.kind === "teams")) {
+            const r = await answerTeamsYes(base(actor));
+            return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
+          }
+        }
         const decision = decideApproval({ pending, quoted, log, now });
         console.log(`[admin-group] ${messageId}: approval ${decision.kind}${"why" in decision ? ` (${decision.why})` : ""}`);
         // Not an organiser: a YES that is about nothing stays theirs, and
@@ -996,6 +1065,13 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       }
       case "poster":
       case "team_sheet": {
+        // THE TEAM SHEET ONLY WHEN ASKED OF MATCHTIME (Kemal, 2026-10-30:
+        // "it can only be generated when they tag matchtime while asking to
+        // generate"): a tag, or a reply to MatchTime. Otherwise their chat.
+        if (route === "team_sheet" && !addressed) {
+          console.log(`[admin-group] ${messageId}: team sheet not asked of MatchTime: nothing drawn`);
+          return null;
+        }
         const r = await answerGraphicRequest({ orgId: org.id, lang, kind: route === "poster" ? "list" : "teams", now });
         return said(r.outcome, r.replyText);
       }

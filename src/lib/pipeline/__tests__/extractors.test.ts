@@ -1100,3 +1100,39 @@ describe("admin · season_break (2026-10-29, the prompt rewritten whole)", () =>
     expect(schema.required).toEqual(expect.arrayContaining(["breakMonths", "playMonths"]));
   });
 });
+
+// ── 2026-10-30, FNF HQ: an earlier set of teams back, a pasted sheet, and
+//    whether the message is an instruction to MatchTime at all ─────────
+describe("teams: restore, set, sides and toMatchTime (2026-10-30)", () => {
+  const base = '"includeRefs":[],"teamNames":[],"swaps":[],"moves":[],"pairings":[],"swapSides":false';
+  it("parses restore, and an instruction to MatchTime", () => {
+    const { facts } = parseFacts("teams", `{"action":"restore",${base},"sides":{"red":[],"yellow":[]},"toMatchTime":true}`, "wa-1");
+    expect(facts).toMatchObject({ kind: "teams", action: "restore", toMatchTime: true });
+  });
+  it("parses set with the two sides as written", () => {
+    const { facts } = parseFacts(
+      "teams",
+      `{"action":"set",${base},"sides":{"red":["Ali"," Bilal",""],"yellow":["Tom"]},"toMatchTime":true}`,
+      "wa-1",
+    );
+    expect(facts).toMatchObject({ kind: "teams", action: "set", sides: { red: ["Ali", "Bilal"], yellow: ["Tom"] } });
+  });
+  it("a remark is not an instruction; an older answer without the field is not one either", () => {
+    expect(parseFacts("teams", `{"action":"swap",${base},"sides":{"red":[],"yellow":[]},"toMatchTime":false}`, "wa-1").facts).toMatchObject({ toMatchTime: false });
+    expect(parseFacts("teams", `{"action":"swap",${base}}`, "wa-1").facts).toMatchObject({ toMatchTime: false, sides: { red: [], yellow: [] } });
+  });
+  it("the schema requires sides and toMatchTime and offers restore and set", () => {
+    const schema = factsSchemaFor("balancer") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    expect(schema.required).toEqual(expect.arrayContaining(["sides", "toMatchTime"]));
+    expect(schema.properties.action.enum).toEqual(expect.arrayContaining(["restore", "set"]));
+  });
+  it("the prompt defines restore, set, sides and toMatchTime once each, with EN and TR examples", () => {
+    const p = EXTRACTOR_PROMPTS.teams;
+    for (const action of ['"restore"', '"set"']) expect(p.split(`\n  ${action} `).length, action).toBe(2);
+    for (const field of ["sides", "toMatchTime"]) expect(p.split(`\n${field}\n`).length, field).toBe(2);
+    expect(p).toMatch(/"these are the final teams"[^\n]*-> restore/);
+    expect(p).toMatch(/"bunları kullan"[^\n]*-> restore/);
+    expect(p).toMatch(/-> set, sides/);
+    expect(p).toMatch(/"Ali and Habib on one team"[^\n]*-> swap, pairings \[\["Ali","Habib"\]\]/);
+  });
+});

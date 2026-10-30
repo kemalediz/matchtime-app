@@ -74,6 +74,15 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * every case, never returned an empty answer, and costs about a
  * fifteenth per call. Moving one back is one line here.
  *
+ * Teams was rewritten whole again on 2026-10-30 (FNF HQ, 29 Oct): two
+ * actions, "restore" (the teams of an earlier sheet the message quotes)
+ * and "set" (both sides written out, with `sides`), and `toMatchTime`
+ * (asked of MatchTime, or people talking about the teams), each defined
+ * once, the examples grouped by what they teach, EN and TR. 4,676 to 6,499
+ * characters. Paid check: scripts/live-check-hq-teams-2026-10-30.ts, then
+ * one pass of live-check-teams-extractor, live-check-hq-teams-2026-10-29
+ * and live-check-admin-group.
+ *
  * Question followed the same way the same day: rewritten whole, then the
  * live prompt on Sonnet 5, the new prompt on Sonnet 5 and the new prompt
  * on Haiku 5.5 through live-check-question-extractor, hq-questions,
@@ -476,15 +485,17 @@ Periods:
   "@Match Time who played most this month" | "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month
   "@Match Time all-time most MoMs" | "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time`,
 
-  teams: `You read ONE message about the club's two team line-ups and report what it asks for. You never pick the players: code builds, changes and clears the line-ups.
+  teams: `You read ONE message about the club's two team line-ups and report what it asks for. You never pick the players: code builds, changes, brings back and clears the line-ups, and checks every name.
 
-THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST (often the two teams as they stand), NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "him", "them", "everyone" or "the teams" are and which team a player is on now; every field comes from THE MESSAGE.
+THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST (often the two teams as they stand), NOW (the time at the club), CLUB MEMBERS NAMED (words in the message that are people in the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line, often one of MatchTime's earlier team sheets). They tell you who "him", "them", "these" or "the teams" are and which team a player is on now; every field comes from THE MESSAGE.
 
 WHAT YOU RETURN
 action, exactly one:
   "show" post the teams as they stand, unchanged.
   "generate" work the line-ups out again: new teams, made, made again or shuffled. This holds even when the same message also asks for new names, or says "again", "once more" or "instead".
   "swap" change the teams as they stand and leave everyone else where they are: people change team, go to a named team, end up together, or the two teams swap over, colours included. A message that only puts people on a team or together, without asking for new teams, is "swap".
+  "restore" use the teams of the quoted message, an earlier team sheet ("these are the final teams", "use these", "go back to these"). Only when a message is quoted; the names are not written in THE MESSAGE.
+  "set" THE MESSAGE itself writes out both teams, names under each side, to be used as the teams.
   "suggest" asks you to recommend changes that make the teams fairer.
   "rename" keep the same two line-ups and change only their NAMES. Swapping the two teams' colours is not a rename: it is "swap" with swapSides.
   "clear" remove the line-ups altogether, so that there are no teams until they are made again ("clear the teams", "delete them").
@@ -500,10 +511,14 @@ pairings
   people who must end up on the same team as each other, one array per group.
 swapSides
   true when the two whole teams swap over, so that every player changes team: the teams trade places, or trade colours while each line-up stays together ("swap the colours"). moves is then empty. False otherwise.
+sides
+  for "set" only: the players of the first team written, as red, and of the second, as yellow, each name as written, without numbers, headings, team names or notes such as "out, place open". Both empty for every other action.
+toMatchTime
+  true when THE MESSAGE asks MatchTime to do this: a request or an instruction about the teams, tagged or not ("swap Rafi and Yorel", "Ali and Habib on one team", "use these"). False when people are only talking about the teams among themselves: an opinion, a question to each other, a description of how the teams look ("Ali and Habib are always on one team", "are we going with these?").
 
 Write every person as the message writes them. When the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Every field the message says nothing about is empty, or false.
 
-EXAMPLES, English and Turkish
+EXAMPLES, English and Turkish (toMatchTime true unless shown)
 Seeing the teams:
   "teams?" / "show me the teams" / "takımları göster" -> show
   "show us the teams again without regenerating" -> show
@@ -521,14 +536,21 @@ Changing the teams as they stand:
   "move Tom to the other team" / "Tom'u diğer takıma al" -> swap, moves ["Tom"]
   "swap Rafi and Yorel, Mo and Akram", one pair a line or not / "Rafi ile Yorel, Mo ile Akram yer değiştirsin" -> swap, moves ["Rafi","Yorel","Mo","Akram"]
   "put David in Red" / "David kırmızıya geçsin" -> swap, swaps [{"personRef":"David","team":"RED"}]
-  "Ali and Habib on one team" / "put Ali with Habib" / "Ali ile Habib aynı takımda olsun" -> swap, pairings [["Ali","Habib"]]
+  "Ali and Habib on one team" / "Stick keeper. Ali and Habib on one team" / "Ali ile Habib aynı takımda olsun" -> swap, pairings [["Ali","Habib"]]
 The two teams swap over, or swap colours:
   "swap everyone on bibs with non bibs" / "move team 1 over to team 2" / "swap them over", after both teams were listed / "takımların yerini değiştir" -> swap, swapSides true
   "swap the colours" / "renkleri değiştir" -> swap, swapSides true
+An earlier set of teams, quoting it:
+  "these are the final teams" / "use these" / "go back to these" / "bunları kullan" / "bunlara dönelim" / "son takımlar bunlar" -> restore
+Teams written out in the message:
+  "Use these:\\nRed\\n1. Ali\\n2. Can\\nYellow\\n1. Tom\\n2. Elvin" / "Bunları kullan:\\nBibs\\nAli\\nCan\\nNon Bibs\\nTom\\nElvin" -> set, sides {"red":["Ali","Can"],"yellow":["Tom","Elvin"]}
 No teams at all:
   "clear the teams" / "takımları sil" -> clear
 Fairer teams:
-  "recommend swaps" / "any swaps to even it up?" / "takımları dengelemek için ne önerirsin?" -> suggest`,
+  "recommend swaps" / "any swaps to even it up?" / "takımları dengelemek için ne önerirsin?" -> suggest
+Talk among people, not asked of MatchTime:
+  "Ali and Habib are always on the same team lol" / "Ali ile Habib hep aynı takımda" -> swap, pairings [["Ali","Habib"]], toMatchTime false
+  "are we going with these teams?" / "bu takımlarla mı gidiyoruz?" -> show, toMatchTime false`,
 
   score: `You read ONE message from a football group's WhatsApp chat about the result of the group's own match and report what it SAYS. You never decide which team is which, who won, who a player is, or what gets recorded: code does that.
 
@@ -807,7 +829,7 @@ const QUESTION_SCHEMA = {
 const TEAMS_SCHEMA = {
   type: "object",
   properties: {
-    action: { type: "string", enum: ["show", "generate", "rename", "swap", "suggest", "clear"] },
+    action: { type: "string", enum: ["show", "generate", "rename", "swap", "suggest", "clear", "restore", "set"] },
     includeRefs: { type: "array", items: { type: "string" } },
     teamNames: { type: "array", items: { type: "string" } },
     swaps: {
@@ -833,8 +855,22 @@ const TEAMS_SCHEMA = {
     // 2026-10-29: "swap everyone on bibs with non bibs", "swap them over".
     // The two whole teams swap over; no names, so not `moves`.
     swapSides: { type: "boolean" },
+    // 2026-10-30: a pasted team sheet, "set": each side as written. Code
+    // resolves every name and checks the sheet (`checkSheetFacts`).
+    sides: {
+      type: "object",
+      properties: {
+        red: { type: "array", items: { type: "string" } },
+        yellow: { type: "array", items: { type: "string" } },
+      },
+      required: ["red", "yellow"],
+      additionalProperties: false,
+    },
+    // 2026-10-30: asked of MatchTime, or people talking among themselves.
+    // Read by HQ for an untagged change only; never enough for a build.
+    toMatchTime: { type: "boolean" },
   },
-  required: ["action", "includeRefs", "teamNames", "swaps", "moves", "pairings", "swapSides"],
+  required: ["action", "includeRefs", "teamNames", "swaps", "moves", "pairings", "swapSides", "sides", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -980,6 +1016,12 @@ const STATS_TABLES: StatsTable[] = [
 
 function bool(v: unknown, fallback = false): boolean {
   return typeof v === "boolean" ? v : fallback;
+}
+
+/** One side of a "set" sheet, names trimmed, blanks dropped. */
+function sideOf(sides: unknown, key: "red" | "yellow"): string[] {
+  const list = sides && typeof sides === "object" ? (sides as Record<string, unknown>)[key] : null;
+  return Array.isArray(list) ? list.map((n) => str(n).trim()).filter(Boolean) : [];
 }
 
 function str(v: unknown): string {
@@ -1154,7 +1196,7 @@ export function parseFacts(
 
     case "teams": {
       const action = str(raw.action).toLowerCase();
-      if (!["show", "generate", "rename", "swap", "suggest", "clear"].includes(action)) {
+      if (!["show", "generate", "rename", "swap", "suggest", "clear", "restore", "set"].includes(action)) {
         bad(`unknown team action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1178,6 +1220,8 @@ export function parseFacts(
         pairings: (Array.isArray(raw.pairings) ? (raw.pairings as unknown[]) : [])
           .map((g) => (Array.isArray(g) ? g.map(str).filter(Boolean) : []))
           .filter((g) => g.length >= 2),
+        sides: { red: sideOf(raw.sides, "red"), yellow: sideOf(raw.sides, "yellow") },
+        toMatchTime: raw.toMatchTime === true,
       };
       return { facts, degradations };
     }

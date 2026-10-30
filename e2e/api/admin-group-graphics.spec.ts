@@ -42,7 +42,8 @@ let seq = 0;
 async function say(request: APIRequestContext, text: string, senderPhone = ADMIN) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-agg-${++seq}`, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
+    // "@Match Time" in the body comes with the Pi's real mention flag, as live.
+    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-agg-${++seq}`, text, senderPhone, botMentioned: text.includes("@Match Time"), timestamp: String(Math.floor(Date.now() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -243,7 +244,8 @@ test.describe("the admin-group request", () => {
       poster: { route: "poster" },
       "can you do the poster for this week": { route: "poster" },
       "team sheet": { route: "team_sheet" },
-      "takım listesi": { route: "team_sheet" },
+      "@Match Time team sheet": { route: "team_sheet" },
+      "@Match Time takım listesi": { route: "team_sheet" },
     }),
   );
   test.afterAll(() => clearPipelineStubs());
@@ -251,14 +253,20 @@ test.describe("the admin-group request", () => {
   // 2026-10-16 (Kemal): anyone in HQ may ask for a graphic, as for a
   // question; only what changes the club is the organisers'. Before any
   // teams, so no job is queued and the counts below stand.
-  test("a non-admin's 'team sheet' is answered too: 'No teams yet.', no job", async ({ request, db }) => {
-    const out = await say(request, "team sheet", PLAYER);
+  // Kemal, 2026-10-30: the team sheet only when asked of MatchTime.
+  test("an untagged 'team sheet': nothing drawn, nothing said", async ({ request, db }) => {
+    expect(await say(request, "team sheet")).toMatchObject({ handled: false, replyText: null });
+    expect(await graphicJobs(db)).toHaveLength(0);
+  });
+
+  test("a non-admin's '@Match Time team sheet' is answered too: 'No teams yet.', no job", async ({ request, db }) => {
+    const out = await say(request, "@Match Time team sheet", PLAYER);
     expect(out).toMatchObject({ handled: true, outcome: "graphic-no-teams", replyText: "No teams yet." });
     expect(await graphicJobs(db)).toHaveLength(0);
   });
 
-  test("'team sheet' before any teams: 'No teams yet.', no job", async ({ request, db }) => {
-    expect(await say(request, "team sheet")).toMatchObject({ handled: true, outcome: "graphic-no-teams", replyText: "No teams yet." });
+  test("'@Match Time team sheet' before any teams: 'No teams yet.', no job", async ({ request, db }) => {
+    expect(await say(request, "@Match Time team sheet")).toMatchObject({ handled: true, outcome: "graphic-no-teams", replyText: "No teams yet." });
     expect(await graphicJobs(db)).toHaveLength(0);
   });
 
@@ -287,14 +295,15 @@ test.describe("the admin-group request", () => {
     expect(img.headers()["content-type"]).toBe("image/png");
   });
 
-  test("'takım listesi' with teams made: the team sheet is queued", async ({ request, db }) => {
+  test("'@Match Time takım listesi' with teams made: the team sheet is queued, captioned not approved yet", async ({ request, db }) => {
     await db.run(
       `INSERT INTO "TeamAssignment" (id, "matchId", "userId", team) VALUES ('e2e-ta-5', $1, $2, 'RED'), ('e2e-ta-6', $1, $3, 'YELLOW')`,
       [MATCH.upcoming, U.admin, U.collector],
     );
-    expect(await say(request, "takım listesi")).toMatchObject({ handled: true, outcome: "graphic-queued", replyText: null });
+    expect(await say(request, "@Match Time takım listesi")).toMatchObject({ handled: true, outcome: "graphic-queued", replyText: null });
     const jobs = await graphicJobs(db);
     expect(jobs.at(-1)!.pollOptions).toEqual(["graphic:v1", "teams", MATCH.upcoming, "asked"]);
+    expect(jobs.at(-1)!.text).toMatch(/\. These teams are not approved yet\.$/);
     await db.run(`DELETE FROM "TeamAssignment" WHERE "matchId" = $1`, [MATCH.upcoming]);
   });
 });
@@ -345,7 +354,7 @@ test.describe("one team sheet per set of teams", () => {
       [MATCH.upcoming, U.admin, U.collector, U.player, U.third],
     );
   });
-  test.beforeEach(() => engineOn({ "team sheet": { route: "team_sheet" }, "takım listesi": { route: "team_sheet" } }));
+  test.beforeEach(() => engineOn({ "@Match Time team sheet": { route: "team_sheet" }, "@Match Time takım listesi": { route: "team_sheet" } }));
   test.afterAll(async ({ db }) => {
     clearPipelineStubs();
     await db.run(`DELETE FROM "TeamAssignment" WHERE "matchId" = $1`, [MATCH.upcoming]);
@@ -370,7 +379,7 @@ test.describe("one team sheet per set of teams", () => {
     expect((await job(db, "e2e-sheet-redraw")).pollOptions).toContain("skipped:same-teams");
 
     // Asked for again within 10 minutes: one line, no job.
-    expect(await say(request, "team sheet")).toMatchObject({
+    expect(await say(request, "@Match Time team sheet")).toMatchObject({
       handled: true,
       outcome: "graphic-unchanged",
       replyText: "The teams have not changed since the team sheet I just posted.",
@@ -381,7 +390,7 @@ test.describe("one team sheet per set of teams", () => {
   test("the teams changed: asked for, the new sheet goes at once", async ({ request, db }) => {
     await db.run(`UPDATE "TeamAssignment" SET team = 'YELLOW' WHERE id = 'e2e-ts-1'`);
     await db.run(`UPDATE "TeamAssignment" SET team = 'RED' WHERE id = 'e2e-ts-2'`);
-    expect(await say(request, "team sheet")).toMatchObject({ handled: true, outcome: "graphic-queued", replyText: null });
+    expect(await say(request, "@Match Time team sheet")).toMatchObject({ handled: true, outcome: "graphic-queued", replyText: null });
     const sheets = await pollSheets(request);
     expect(sheets).toHaveLength(1);
     await piSends(request, sheets[0], 2);

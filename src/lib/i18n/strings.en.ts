@@ -1485,21 +1485,22 @@ export const en = {
     const lines = [
       `🛠️ *MatchTime in your admin group*`,
       p.squad
-        ? `Just ask here in your own words. No need to tag me, except to cancel a match or put it back on. For example:`
+        ? `Just ask here in your own words. No need to tag me, except to make new teams, for the team sheet picture, or to cancel a match or put it back on. For example:`
         : `Just ask here in your own words. No need to tag me. For example:`,
       ``,
     ];
     if (p.squad) {
       lines.push(`📋 *Paste the whole squad list*: I show you what would change, and *YES* within 30 minutes applies it.`);
       lines.push(`✏️ *"put Bilal in"*, *"Sam can't make it"*, *"Tom to the bench"*: changes to the squad.`);
-      lines.push(`🟥🟦 *"show me the teams"*, *"shuffle them again"*: the teams, built if there are none yet.`);
+      lines.push(`🟥🟦 *"show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`);
+      lines.push(`↩️ Reply to one of my earlier team sheets with *"use these"*, or paste the two teams: I bring those teams back for your *YES*.`);
       lines.push(`🔁 *"swap Sam and Alex"*, *"move Sam to the other team"*: changes to the teams.`);
       lines.push(`✅ *YES* (or reply YES to my message): make the proposed teams final.`);
       lines.push(`📣 *"ask the group if anyone can play"*: when a place is open, I ask in the main chat.`);
       if (p.pool) lines.push(`🌍 *"ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
       lines.push(`❌ *"@Match Time cancel Friday"*, *"@Match Time it's back on"*: call the next match off or back on, and I tell the players' group.`);
     }
-    if (p.graphics) lines.push(`🖼️ *"send the poster"*, *"team sheet please"*: the list or the teams as a graphic, ready to forward.`);
+    if (p.graphics) lines.push(`🖼️ *"send the poster"*, *"@Match Time team sheet please"*: the list or the teams as a graphic, ready to forward.`);
     if (p.picks) lines.push(`🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`);
     if (p.paid) lines.push(`💷 *PAID ALL*, *PAID 1 3* or *PAID NONE*: the money collector's answer to my list of payment claims.`);
     if (p.free) lines.push(`🎁 *"Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`);
@@ -3321,7 +3322,7 @@ export const en = {
   tp_unseated: (p: { names: string }): string => `Not on a team yet: ${p.names}.`,
   /** How to change them, with two real first names from the teams. */
   tp_how_to_change: (p: { a: string; b: string }): string =>
-    `To change them, just tell me in your own words (for example *swap ${p.a} and ${p.b}*, *move ${p.a} to the other team* or *shuffle them again*).`,
+    `To change them, just tell me in your own words (for example *swap ${p.a} and ${p.b}* or *move ${p.a} to the other team*). For brand new teams, tag me (*@Match Time shuffle them again*).`,
   /** The question, when the organisers announce the teams themselves. */
   tp_ask_yes_quiet: "Reply *YES* when they are final. I won't post them in the players' group.",
   /** The question, when MatchTime posts the final teams. */
@@ -3331,9 +3332,28 @@ export const en = {
   /** The answer to YES. */
   tp_final_reply_quiet: "Teams are final.",
   tp_final_reply_posted: "Teams are final. I've posted them in the players' group.",
-  tp_no_teams: "There are no teams yet. Just ask me for them in your own words (for example *show me the teams*) and I'll build them.",
+  tp_no_teams: "There are no teams yet. Tag me and ask for them (for example *@Match Time make the teams*) and I'll build them.",
   tp_no_match: "There's no upcoming game to build teams for.",
   tp_name_unknown: (p: { name: string }): string => `I can't find ${p.name} in the teams.`,
+  /** A pasted sheet names someone who is not in the squad (2026-10-30). */
+  tp_name_unknown_squad: (p: { name: string }): string => `I can't find ${p.name} in the squad.`,
+  /** An earlier sheet brought back (2026-10-30): above the proposal. */
+  tp_restored_earlier: (p: { day: string; time: string }): string => `These are the earlier teams, from ${p.day} at ${p.time}. They need your YES again.`,
+  /** A pasted sheet set as the teams: above the proposal. */
+  tp_set_pasted: "These are the teams you sent. They need your YES.",
+  /** The sheet asked for is the teams as they stand. */
+  tp_restore_same: "Those are the teams as they stand.",
+  /** "Use these" with no sheet of MatchTime's to bring back. */
+  tp_restore_none: "I can't find those teams. Reply to my team sheet you want back and say *use these*, or paste the two teams here.",
+  /** A sheet naming someone not in the squad now. */
+  tp_sheet_not_playing: (p: { names: string }): string => `Not in the squad now: ${p.names}. I can't use those teams as they are.`,
+  /** A sheet leaving out a confirmed player. */
+  tp_sheet_missing: (p: { names: string }): string => `On neither team: ${p.names}. Everyone in the squad needs a side.`,
+  /** A sheet naming one player twice. */
+  tp_sheet_twice: (p: { names: string }): string => `On the teams twice: ${p.names}. Each player goes on one side.`,
+  /** A sheet with uneven sides. */
+  tp_sheet_uneven: (p: { redLabel: string; red: number; yellowLabel: string; yellow: number }): string =>
+    `Those sides are uneven: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Send them again with the sides even.`,
   tp_name_ambiguous: (p: { name: string; names: string }): string => `${p.name} could be ${p.names}; use the full name.`,
   tp_same_team: (p: { a: string; b: string }): string => `${p.a} and ${p.b} are on the same team, so there's nothing to swap.`,
   /** A targeted change ("Ali and Habib on one team") moved others too, to keep the sides even. */
@@ -5147,11 +5167,11 @@ export const en = {
     `The squad is set, ${p.confirmed} of ${p.max}. At ${p.time} on ${p.weekday} I'll build two balanced teams and post them here for you to check.`,
   /** `organisers`: the organisers share the teams (no post in the main
    *  chat); otherwise YES posts them there (team-proposal.ts answerTeamsYes).
-   *  Either way the team sheet graphic comes here on YES. */
+   *  The team sheet graphic only when asked, tagged (2026-10-30). */
   ao_teams_approve: (p: { organisers: boolean }): string =>
     p.organisers
-      ? `Reply *YES* to make them final, or say *swap*, *move* or *reshuffle* if you want changes. Once they're final I send the team sheet here, a graphic to share with the players, and *team sheet* sends it again any time.`
-      : `Reply *YES* to make them final and I'll post them in the main chat, or say *swap*, *move* or *reshuffle* if you want changes.`,
+      ? `Reply *YES* to make them final, or say *swap* or *move* if you want changes (tag me for brand new teams: *@Match Time reshuffle*). For the team sheet, a graphic to share with the players, tag me and ask any time: *@Match Time team sheet*.`
+      : `Reply *YES* to make them final and I'll post them in the main chat, or say *swap* or *move* if you want changes (tag me for brand new teams: *@Match Time reshuffle*).`,
   ao_teams_seed: (p: { anySeeded: boolean; time: string; weekday: string; link: string }): string =>
     `⭐ ${p.anySeeded ? "Most of this squad have no rating yet" : "No one in this squad has a rating yet"}, so the teams could come out lopsided. Before ${p.time} on ${p.weekday}, give each player a rough rating from 1 to 10 here:\n${p.link}\nPlayers never see these.`,
   /** "Hamzah", "Hamzah or Raihan", "Hamzah, Raihan or Ali". */

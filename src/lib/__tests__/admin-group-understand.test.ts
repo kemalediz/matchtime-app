@@ -39,8 +39,11 @@ vi.mock("@/lib/ai-budget", () => ({
 }));
 const squad = vi.hoisted(() => ({ handleAdminSquadChange: vi.fn(), nameMentions: vi.fn(async (_o: string, text: string) => text) }));
 vi.mock("@/lib/admin-group-squad-change", () => squad);
-const teams = vi.hoisted(() => ({ answerTeamsYes: vi.fn(), handleTeamCommand: vi.fn(), setAsideTeamProposal: vi.fn() }));
+const teams = vi.hoisted(() => ({ answerTeamsYes: vi.fn(), handleTeamCommand: vi.fn(), setAsideTeamProposal: vi.fn(), compareQuotedSheet: vi.fn() }));
 vi.mock("@/lib/team-proposal", () => teams);
+// The team sheets MatchTime posted (2026-10-30): none quoted by default.
+const sheetHistory = vi.hoisted(() => ({ quotedTeamSheet: vi.fn() }));
+vi.mock("@/lib/team-sheet-history", () => sheetHistory);
 // The HQ squad reader (2026-10-30), HQ's one model door for who plays: by
 // default it reads a change (Tom out), as the engine's facts.
 const paste = vi.hoisted(() => ({ answerSquadPasteYes: vi.fn(), readHqSquad: vi.fn(), proposeSquadPaste: vi.fn() }));
@@ -130,7 +133,7 @@ function model(answer: (req: ModelRequest) => unknown): PipelineModel {
 }
 const routeTo = (route: string) => model(() => ({ routes: [{ id: "wa-9", route }] }));
 const teamsFacts = (facts: Record<string, unknown>) =>
-  model(() => ({ action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: [], pairings: [], ...facts }));
+  model(() => ({ action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: [], pairings: [], sides: { red: [], yellow: [] }, toMatchTime: true, ...facts }));
 const adminFacts = (facts: Record<string, unknown>) =>
   model(() => ({ action: "other", payerRef: "", count: 0, coveredRefs: [], phrase: "", note: "", lookbackMatches: 0, ...facts }));
 
@@ -168,6 +171,8 @@ beforeEach(() => {
   hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1")]);
   teams.answerTeamsYes.mockResolvedValue({ outcome: "teams-final", replyText: "Teams are final." });
   teams.handleTeamCommand.mockResolvedValue({ outcome: "teams-swapped", replyText: "📝 *Proposed teams* ..." });
+  teams.compareQuotedSheet.mockResolvedValue("elsewhere");
+  sheetHistory.quotedTeamSheet.mockResolvedValue(null);
   paste.answerSquadPasteYes.mockResolvedValue({ outcome: "paste-applied", replyText: "Done." });
   paste.readHqSquad.mockResolvedValue(read(CHANGE));
   paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
@@ -467,7 +472,7 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
   it("poster and team_sheet: the graphics", async () => {
     await ask("can you do the poster for this week", "poster");
     expect(graphics.answerGraphicRequest).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", kind: "list", now: NOW });
-    await ask("send us the team sheet image", "team_sheet");
+    await ask("@Match Time send us the team sheet image", "team_sheet");
     expect(graphics.answerGraphicRequest).toHaveBeenLastCalledWith({ orgId: "org-fnf", lang: "en", kind: "teams", now: NOW });
   });
 
@@ -487,6 +492,8 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
       senderUserId: "u-admin",
       now: NOW,
       command: { kind: "change", swapSides: false, moves: ["Ali", "Can"], sides: [], together: [] },
+      addressed: false,
+      quotedSheet: null,
     });
     expect(requests[1].system).toContain("moves");
   });
@@ -1921,5 +1928,93 @@ describe("a monthly club's collector answering the paid-claims list, inside the 
     const r = await ask("1 and 3 are in", "none", { org: { ...ORG, squadMode: "monthly" } });
     expect(monthPayment.handleCollectorPaidReply).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", text: "1 and 3 are in" }));
     expect(r).toEqual({ route: null, outcome: "month-paid-confirmed", replyText: "✅ Confirmed for November: Alex." });
+  });
+});
+
+
+// ── 2026-10-30, Kemal: making or remaking teams needs the tag; the team
+//    sheet only when asked of MatchTime; an earlier set of teams back ─────
+describe("HQ teams by fact (2026-10-30, FNF HQ)", () => {
+  const OLD_SHEET = { id: "sheet-tue", matchId: "m1", slots: [{ userId: "u-ali", team: "RED" }], createdAt: new Date("2026-10-27T17:09:00Z") };
+  const TUE_SHEET_POST = { messageId: "3EB0TUE", text: TEAMS_TEXT, fromMatchTime: true };
+
+  it("an untagged build is passed on as not addressed (the build itself refuses, silently)", async () => {
+    teams.handleTeamCommand.mockResolvedValue({ outcome: "teams-not-asked", replyText: null });
+    const r = await ask("Make teams", "balancer", { deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "generate" }) } });
+    expect(r).toBeNull();
+    expect(teams.handleTeamCommand).toHaveBeenCalledWith(expect.objectContaining({ addressed: false, command: { kind: "reshuffle", sides: [], together: [] } }));
+  });
+
+  it("a reply to MatchTime's own message is addressed", async () => {
+    await ask("shuffle them", "balancer", { quoted: { text: TEAMS_TEXT, fromMatchTime: true }, deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "generate" }) } });
+    expect(teams.handleTeamCommand).toHaveBeenCalledWith(expect.objectContaining({ addressed: true }));
+  });
+
+  it("29 Oct: 'Stick keeper. Ali and Habib on one team', untagged, read as an instruction: the pairing, as a change", async () => {
+    await ask("Stick keeper. Ali and Habib on one team", "balancer", {
+      deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ pairings: [["Ali", "Habib"]], toMatchTime: true }) },
+    });
+    expect(teams.handleTeamCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ addressed: false, command: { kind: "change", swapSides: false, moves: [], sides: [], together: [["Ali", "Habib"]] } }),
+    );
+  });
+
+  it("untagged teams talk the extractor reads as a remark: nothing done, nothing said", async () => {
+    const r = await ask("Ali and Habib always end up together lol", "balancer", {
+      deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ pairings: [["Ali", "Habib"]], toMatchTime: false }) },
+    });
+    expect(r).toBeNull();
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+  });
+
+  it("the extractor is told the truth about the tag", async () => {
+    await ask("swap Ali and Can", "balancer", { deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ moves: ["Ali", "Can"] }) } });
+    expect(requests[1].user).not.toContain("who tagged the bot");
+  });
+
+  it("an untagged request for the team sheet: nothing drawn, nothing said", async () => {
+    expect(await ask("Make teams and the graphic", "team_sheet")).toBeNull();
+    expect(graphics.answerGraphicRequest).not.toHaveBeenCalled();
+  });
+
+  it("a team sheet asked for in a reply to MatchTime: drawn", async () => {
+    await ask("graphic please", "team_sheet", { quoted: { text: TEAMS_TEXT, fromMatchTime: true } });
+    expect(graphics.answerGraphicRequest).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", kind: "teams", now: NOW });
+  });
+
+  it("'These are the final teams' replying to an EARLIER sheet (routed approve): those teams back, the current ones not approved", async () => {
+    sheetHistory.quotedTeamSheet.mockResolvedValue(OLD_SHEET);
+    teams.compareQuotedSheet.mockResolvedValue("different");
+    teams.handleTeamCommand.mockResolvedValue({ outcome: "teams-restored", replyText: "These are the earlier teams ..." });
+    const r = await ask("These are the final teams", "approve", { quoted: TUE_SHEET_POST });
+    expect(r).toEqual({ route: "approve", outcome: "teams-restored", replyText: "These are the earlier teams ..." });
+    expect(teams.answerTeamsYes).not.toHaveBeenCalled();
+    expect(teams.handleTeamCommand).toHaveBeenCalledWith(expect.objectContaining({ command: { kind: "restore" }, quotedSheet: OLD_SHEET, addressed: true }));
+  });
+
+  it("a YES replying to a sheet that IS the teams as they stand: approved", async () => {
+    sheetHistory.quotedTeamSheet.mockResolvedValue(OLD_SHEET);
+    teams.compareQuotedSheet.mockResolvedValue("same");
+    const r = await ask("yes", "approve", { quoted: TUE_SHEET_POST });
+    expect(r?.outcome).toBe("teams-final");
+    expect(teams.answerTeamsYes).toHaveBeenCalled();
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+  });
+
+  it("'use these' replying to an earlier sheet (routed balancer): the extractor reads restore, the stored sheet is passed", async () => {
+    sheetHistory.quotedTeamSheet.mockResolvedValue(OLD_SHEET);
+    teams.handleTeamCommand.mockResolvedValue({ outcome: "teams-restored", replyText: "These are the earlier teams ..." });
+    const r = await ask("use these", "balancer", { quoted: TUE_SHEET_POST, deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "restore" }) } });
+    expect(r?.outcome).toBe("teams-restored");
+    expect(sheetHistory.quotedTeamSheet).toHaveBeenCalledWith("org-fnf", expect.objectContaining({ messageId: "3EB0TUE", fromMatchTime: true }));
+    expect(teams.handleTeamCommand).toHaveBeenCalledWith(expect.objectContaining({ command: { kind: "restore" }, quotedSheet: OLD_SHEET }));
+  });
+
+  it("a pasted sheet the extractor reads as set: the two sides go to the team code", async () => {
+    teams.handleTeamCommand.mockResolvedValue({ outcome: "teams-set", replyText: "These are the teams you sent ..." });
+    await ask("Use these\nRed\nAli\nCan\nYellow\nTom\nElvin", "balancer", {
+      deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "set", sides: { red: ["Ali", "Can"], yellow: ["Tom", "Elvin"] } }) },
+    });
+    expect(teams.handleTeamCommand).toHaveBeenCalledWith(expect.objectContaining({ command: { kind: "set", red: ["Ali", "Can"], yellow: ["Tom", "Elvin"] } }));
   });
 });

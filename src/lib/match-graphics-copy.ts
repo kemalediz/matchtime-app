@@ -28,6 +28,8 @@ const en = {
   /** The caption the image is posted with in the admin group. */
   listCaption: (club: string, day: string) => `Ready to post: ${club} list for ${day}`,
   teamsCaption: (club: string, day: string) => `Ready to post: ${club} teams for ${day}`,
+  /** After the caption, when the teams drawn are not approved yet (2026-10-30). */
+  notApproved: "These teams are not approved yet.",
   noTeams: "No teams yet.",
   noMatch: "No upcoming match to make that for.",
   /** A team sheet asked for minutes after the same one was posted (2026-10-30). */
@@ -51,6 +53,7 @@ const tr: MatchGraphicsCopy = {
   sampleVenue: "Sahanız",
   listCaption: (club: string, day: string) => `Paylaşıma hazır: ${club} listesi, ${day}`,
   teamsCaption: (club: string, day: string) => `Paylaşıma hazır: ${club} takımları, ${day}`,
+  notApproved: "Bu takımlar henüz onaylanmadı.",
   noTeams: "Henüz takım yok.",
   noMatch: "Bunun için yaklaşan maç yok.",
   teamsUnchanged: "Takımlar, az önce gönderdiğim takım görselinden beri değişmedi.",
@@ -67,8 +70,15 @@ export function graphicsCopy(lang: Lang | string | null | undefined): MatchGraph
 export type GraphicKind = "list" | "teams";
 
 /** "Ready to post: FNF list for Fri 16 Oct" / "Paylaşıma hazır: FNF listesi, 16 Ekim Cuma". */
-export function graphicCaption(kind: GraphicKind, lang: Lang | string | null | undefined, clubName: string, matchDate: Date): string {
+export function graphicCaption(
+  kind: GraphicKind,
+  lang: Lang | string | null | undefined,
+  clubName: string,
+  matchDate: Date,
+  opts: { notApproved?: boolean } = {},
+): string {
   const s = graphicsCopy(lang);
   const day = dayLabel(lang, matchDate);
-  return kind === "list" ? s.listCaption(clubName, day) : s.teamsCaption(clubName, day);
+  if (kind === "list") return s.listCaption(clubName, day);
+  return opts.notApproved ? `${s.teamsCaption(clubName, day)}. ${s.notApproved}` : s.teamsCaption(clubName, day);
 }

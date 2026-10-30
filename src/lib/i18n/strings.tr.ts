@@ -1249,21 +1249,22 @@ export const tr: Strings = {
     const lines = [
       `🛠️ *Yönetici grubunda MatchTime*`,
       p.squad
-        ? `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok, yalnızca maçı iptal etmek ya da yeniden açmak için etiketleyin. Örneğin:`
+        ? `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok; yalnızca yeni takımlar kurmak, takım listesi görseli için ya da maçı iptal etmek veya yeniden açmak için etiketleyin. Örneğin:`
         : `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok. Örneğin:`,
       ``,
     ];
     if (p.squad) {
       lines.push(`📋 *Kadro listesinin tamamını yapıştırın*: neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`);
       lines.push(`✏️ *"Bilal'i ekle"*, *"Sam gelemiyor"*, *"Tom yedek"*: kadroda değişiklik.`);
-      lines.push(`🟥🟦 *"takımları göster"*, *"yeniden karıştır"*: takımlar, henüz yoksa kurarım.`);
+      lines.push(`🟥🟦 *"takımları göster"*: takımlar şu anki halleriyle. *"@Match Time takımları kur"*, *"@Match Time yeniden karıştır"*: yeni takımlar.`);
+      lines.push(`↩️ Önceki takım listelerimden birine *"bunları kullan"* diye yanıt verin ya da iki takımı yapıştırın: o takımları *EVET*'iniz için geri getiririm.`);
       lines.push(`🔁 *"Sam ile Alex'i değiştir"*, *"Sam'i diğer takıma al"*: takımlarda değişiklik.`);
       lines.push(`✅ *EVET* (ya da mesajıma EVET diye cevap verin): önerilen takımları kesinleştiririm.`);
       lines.push(`📣 *"gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`);
       if (p.pool) lines.push(`🌍 *"havuzdan 2 oyuncu iste"*: boş yer varsa MatchTime oyuncu havuzundaki yakın oyunculara sorarım.`);
       lines.push(`❌ *"@Match Time cuma maçını iptal et"*, *"@Match Time maç yapılıyor"*: sıradaki maçı iptal ederim ya da yeniden açarım, oyuncu grubuna da haber veririm.`);
     }
-    if (p.graphics) lines.push(`🖼️ *"posteri gönder"*, *"takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`);
+    if (p.graphics) lines.push(`🖼️ *"posteri gönder"*, *"@Match Time takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`);
     if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın.`);
     if (p.paid) lines.push(`💷 *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`);
     if (p.free) lines.push(`🎁 *"Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`);
@@ -2438,15 +2439,25 @@ export const tr: Strings = {
   tp_note_out: "çıktı, yeri boş",
   tp_unseated: (p) => `Henüz takımı olmayan: ${p.names}.`,
   tp_how_to_change: (p) =>
-    `Değiştirmek için kendi cümlelerinizle yazmanız yeterli (örneğin *${p.a} ile ${p.b} yer değiştirsin*, *${p.a} diğer takıma geçsin* ya da *takımları yeniden kur*).`,
+    `Değiştirmek için kendi cümlelerinizle yazmanız yeterli (örneğin *${p.a} ile ${p.b} yer değiştirsin* ya da *${p.a} diğer takıma geçsin*). Tamamen yeni takımlar için beni etiketleyin (*@Match Time takımları yeniden kur*).`,
   tp_ask_yes_quiet: "Kesinleşince *EVET* yazın. Oyuncu grubuna ben göndermeyeceğim.",
   tp_ask_yes_post: "Kesinleşince *EVET* yazın, oyuncu grubuna ben gönderirim.",
   tp_final_footer: "Bunlar kesin. Değişiklikleri hâlâ kendi cümlelerinizle isteyebilirsiniz; tamamen yeni takımlar yeniden onaylanır.",
   tp_final_reply_quiet: "Takımlar kesinleşti.",
   tp_final_reply_posted: "Takımlar kesinleşti. Oyuncu grubuna gönderdim.",
-  tp_no_teams: "Henüz takım yok. Kendi cümlelerinizle istemeniz yeterli (örneğin *takımları göster*), kurayım.",
+  tp_no_teams: "Henüz takım yok. Beni etiketleyip isteyin (örneğin *@Match Time takımları kur*), kurayım.",
   tp_no_match: "Takım kurulacak yaklaşan bir maç yok.",
   tp_name_unknown: (p) => `${p.name} takımlarda yok.`,
+  tp_name_unknown_squad: (p) => `${p.name} kadroda yok.`,
+  tp_restored_earlier: (p) => `Bunlar önceki takımlar, ${p.day} ${p.time}. Yeniden EVET'iniz gerekiyor.`,
+  tp_set_pasted: "Gönderdiğiniz takımlar bunlar. EVET'iniz gerekiyor.",
+  tp_restore_same: "Takımlar zaten bunlar.",
+  tp_restore_none: "O takımları bulamıyorum. Geri istediğiniz takım listeme yanıt verip *bunları kullan* yazın ya da iki takımı buraya yapıştırın.",
+  tp_sheet_not_playing: (p) => `Şu an kadroda değil: ${p.names}. Bu takımları olduğu gibi kullanamam.`,
+  tp_sheet_missing: (p) => `İki takımda da yok: ${p.names}. Kadrodaki herkesin bir takımı olmalı.`,
+  tp_sheet_twice: (p) => `Takımlarda iki kez var: ${p.names}. Her oyuncu tek bir takımda olur.`,
+  tp_sheet_uneven: (p) =>
+    `Takımlar dengesiz: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Takımları eşit sayıda tekrar gönderin.`,
   tp_name_ambiguous: (p) => `${p.name} şunlardan biri olabilir: ${p.names}. Tam adını yazın.`,
   tp_same_team: (p) => `${p.a} ile ${p.b} aynı takımda, değişecek bir şey yok.`,
   tp_evened: (p) => `Takımlar dengeli kalsın diye ${p.names} oyuncusunu da ${p.team} takımına aldım.`,
@@ -3766,8 +3777,8 @@ export const tr: Strings = {
     `Kadro belli: ${p.confirmed}/${p.max}. ${p.weekday} günü saat ${p.time} itibarıyla iki dengeli takım kurar, kontrol etmeniz için buraya gönderirim.`,
   ao_teams_approve: (p) =>
     p.organisers
-      ? `Kesinleştirmek için *EVET* yazın; değişiklik isterseniz *değiş*, *taşı* ya da *yeniden* yazın. Kesinleşince oyunculara paylaşmanız için takım listesi görselini buraya gönderirim, *takım listesi* yazarak istediğiniz zaman yeniden alabilirsiniz.`
-      : `Kesinleştirmek için *EVET* yazın, ana grupta ben paylaşırım; değişiklik isterseniz *değiş*, *taşı* ya da *yeniden* yazın.`,
+      ? `Kesinleştirmek için *EVET* yazın; değişiklik isterseniz *değiş* ya da *taşı* yazın (tamamen yeni takımlar için beni etiketleyin: *@Match Time yeniden kur*). Oyunculara paylaşmanız için takım listesi görselini istediğiniz zaman beni etiketleyerek isteyin: *@Match Time takım listesi*.`
+      : `Kesinleştirmek için *EVET* yazın, ana grupta ben paylaşırım; değişiklik isterseniz *değiş* ya da *taşı* yazın (tamamen yeni takımlar için beni etiketleyin: *@Match Time yeniden kur*).`,
   ao_teams_seed: (p) =>
     `⭐ ${p.anySeeded ? "Bu kadronun çoğunun henüz puanı yok" : "Bu kadroda henüz kimsenin puanı yok"}, bu yüzden takımlar dengesiz çıkabilir. ${p.weekday} günü saat ${p.time} öncesinde her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n${p.link}\nOyuncular bu puanları hiç görmez.`,
   oa_bench_claim_too_late: (p) =>
