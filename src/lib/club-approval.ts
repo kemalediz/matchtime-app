@@ -41,9 +41,10 @@ import { loadClubFeeTip, setBillingState } from "./club-billing";
 import { approvedTipText } from "./club-billing-view";
 import {
   isApproverSender,
+  approverCommandFromRead,
   ownerAckText,
-  parseApproverCommand,
   resolveApproverTarget,
+  type ApproverRead,
   suspendRefusal,
   type DecidedClub,
   type OwnerAck,
@@ -796,6 +797,16 @@ export interface ApproverDmInput {
   /** Go-live slice S3: SETUP_HOLD_ENABLED as the route read it (it has a
    *  per-request test seam). Absent: the environment decides. */
   setupHold?: boolean;
+  /**
+   * The one DM reader (`dm-reader.ts`, memoised per DM), asked ONLY once
+   * the envelope says the sender is the platform owner: does the DM
+   * approve or reject a club (`approve_club`, `reject_club`), and which
+   * ref did he name. Absent: nothing is decided.
+   */
+  read?: (userId: string) => Promise<ApproverRead>;
+  /** The text of the message of ours he swiped to reply, when there was
+   *  one: a ref he answers ("yes, that one") may stand there. */
+  quotedText?: string | null;
 }
 
 export interface ApproverDmOutcome {
@@ -804,12 +815,12 @@ export interface ApproverDmOutcome {
    *  Present only then; the route schedules its reading and setup DM. */
   heldOrgId?: string;
   result:
-    | "not-approver"
     | "approved"
     | "rejected"
     | "ambiguous"
     | "none-waiting"
     | "unknown-ref"
+    | "ref-needed"
     | "already"
     | "group-taken";
 }
@@ -849,36 +860,45 @@ async function loadDecidedForRef(ref: string): Promise<DecidedClub[]> {
 }
 
 /**
- * "APPROVE 7KQ2" / "REJECT 7KQ2" from the owner's phone. Runs at the TOP
- * of /api/whatsapp/dm-reply while SELF_JOIN_ENABLED is on, before every
- * other handler and every model path. Deterministic.
+ * The platform owner approves or rejects a club by WhatsApp, in his own
+ * words ("APPROVE 7KQ2", "yes approve 7KQ2", "onayla 7KQ2", "reject that
+ * one"). Runs at the TOP of /api/whatsapp/dm-reply while SELF_JOIN_ENABLED
+ * is on, before every other handler.
  *
- *   - not a command (the whole message must be one): null, today's
- *     handling, untouched;
- *   - a command WITH a ref from anybody who is not an approver: swallowed,
- *     logged, nothing decided, nothing sent, no model (a bare "approve"
- *     from anybody else is left to today's handling);
- *   - from an approver: resolved, decided through `decideClub`, and
+ *   - FACTS FIRST: a sender who is not the owner (SELF_JOIN_APPROVER_PHONES,
+ *     off the envelope) is not this handler's: null, no model, and the DM
+ *     goes on to today's handling;
+ *   - then the one DM reader says whether it approves or rejects, and which
+ *     ref he named. Anything else: null, and the DM goes on;
+ *   - the ref is checked against his words (`approverCommandFromRead`): one
+ *     the model gave that he did not write decides nothing and he is asked
+ *     which club;
+ *   - resolved against the clubs waiting, decided through `decideClub`, and
  *     answered with one line through `queueOwnerDm`, keyed on the WhatsApp
  *     message id, so a re-forwarded DM is never answered twice.
+ *
+ * Until 2026-10-30 an exact-phrase regex read the command (the whole
+ * message had to be "APPROVE <ref>"); Kemal: no string parsing.
  */
 export async function handleApproverDm(input: ApproverDmInput): Promise<ApproverDmOutcome | null> {
-  const cmd = parseApproverCommand(input.text);
-  if (!cmd) return null;
-  const now = input.now ?? new Date();
   const approvers = parseApproverPhones(process.env.SELF_JOIN_APPROVER_PHONES);
-  if (!isApproverSender(input, approvers)) {
-    if (cmd.ref === null) return null;
-    console.warn(
-      `[club-approval] "${cmd.verb.toUpperCase()} ${cmd.ref}" from a number that is not an approver ` +
-        `(phone=${input.phone ?? "-"}, alt=${input.senderAltPhone ?? "-"}); ignored`,
-    );
-    return { handled: "approver-dm", result: "not-approver" };
-  }
+  if (!isApproverSender(input, approvers) || !input.read) return null;
+  const now = input.now ?? new Date();
   const approver =
     [input.phone, input.senderAltPhone]
       .map((p) => (typeof p === "string" && p.trim() ? e164Digits(p) : null))
       .find((d): d is string => !!d && approvers.includes(d)) ?? "unknown";
+
+  const account = await db.user.findFirst({ where: { phoneNumber: { in: [`+${approver}`, approver] } }, select: { id: true } });
+  const cmd = approverCommandFromRead(await input.read(account?.id ?? `approver:${approver}`), [input.text, input.quotedText]);
+  if (!cmd) return null;
+
+  if (cmd.unverifiedRef) {
+    const ack: OwnerAck = { kind: "ref-needed", waiting: await loadWaitingClubs() };
+    await queueOwnerDm(ownerAckText(ack), "owner-ack", `dm:${input.waMessageId}`, now);
+    console.log(`[club-approval] owner DM ${input.waMessageId}: ${cmd.verb}, ref ${cmd.unverifiedRef} not in his words -> ref-needed`);
+    return { handled: "approver-dm", result: ack.kind };
+  }
 
   const [waiting, decided] = await Promise.all([
     loadWaitingClubs(),
@@ -920,6 +940,6 @@ export async function handleApproverDm(input: ApproverDmInput): Promise<Approver
   }
 
   await queueOwnerDm(ownerAckText(ack), "owner-ack", `dm:${input.waMessageId}`, now);
-  console.log(`[club-approval] owner DM "${input.text.trim()}" -> ${ack.kind}`);
+  console.log(`[club-approval] owner DM ${input.waMessageId}: ${cmd.verb} ${cmd.ref ?? "(no ref)"} -> ${ack.kind}`);
   return { handled: "approver-dm", result: ack.kind, ...(heldOrgId ? { heldOrgId } : {}) };
 }

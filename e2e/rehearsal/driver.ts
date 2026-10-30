@@ -38,8 +38,10 @@ import { diffSnapshots, type Channel, type RehearsalEvent } from "./transcript";
 const MIN = 60_000;
 const bare = (phone: string) => phone.replace(/^\+/, "");
 
-/** "@Match Time admin group CODE" (whatsapp-bot/src/admin-group.ts). */
-const LINK_COMMAND = /\badmin\s*group\b/i;
+/** What the Pi sends to the link route (whatsapp-bot/src/admin-group.ts,
+ *  2026-10-30): a REAL tag and a six-character token of the code alphabet.
+ *  No phrase is read. */
+const CODE_TOKEN = /(?<![\p{L}\p{N}])[ABCDEFGHJKMNPQRSTUVWXYZ23456789abcdefghjkmnpqrstuvwxyz]{6}(?![\p{L}\p{N}])/u;
 
 interface Buffered {
   waMessageId: string;
@@ -402,7 +404,7 @@ export class RehearsalDriver {
       return;
     }
 
-    if (LINK_COMMAND.test(step.body) && (step.tag || /match\s*time/i.test(step.body))) {
+    if (step.tag === true && CODE_TOKEN.test(step.body)) {
       const res = await this.post("/api/whatsapp/admin-group-link", {
         groupId: jid,
         text: step.body,
@@ -660,6 +662,7 @@ export class RehearsalDriver {
       return;
     }
     const body = `APPROVE ${ref}`;
+    if (!this.opts.live) setDmIntentStub({ bodies: { [body]: `approve_club:${ref.toUpperCase()}` } });
     const idx = this.push({ channel: { dm: E2E.APPROVER_PHONE }, kind: "in", from: "approver", text: body });
     const res = await this.post("/api/whatsapp/dm-reply", { phone: E2E.APPROVER_PHONE, body, waMessageId: this.nextId("dm"), authorName: null });
     this.events[idx].meta = { handledBy: `dm-reply: ${JSON.stringify(res ?? {}).slice(0, 200)}` };
@@ -730,7 +733,7 @@ export class RehearsalDriver {
       do: "message",
       group: groupKey,
       from: by,
-      body: `@Match Time admin group ${code}`,
+      body: `@Match Time ${code}`,
       tag: true,
       source: "script",
     });

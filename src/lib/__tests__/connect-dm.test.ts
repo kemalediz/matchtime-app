@@ -60,12 +60,17 @@ const connectRow = (over: Partial<Row> = {}): Row => ({
   ...over,
 });
 
+/** The one DM reader (dm-reader.ts), stubbed: what the model said the DM
+ *  asks. Consulted only for a code that names no request. */
+const read = vi.fn(async (_userId: string) => ({ intent: "connect_club", confidence: 0.95 }));
+
 const dm = (over: Record<string, unknown> = {}) =>
   handleConnectDm({
     text: "Connect Riverside FC, code 7KQ2",
     phone: ORGANISER,
     waMessageId: "wa-1",
     now: NOW,
+    read,
     ...over,
   } as Parameters<typeof handleConnectDm>[0]);
 
@@ -83,6 +88,7 @@ beforeEach(() => {
   dbMock.platformJob.create.mockImplementation(async ({ data }: { data: object }) => ({ id: "pj-1", ...data }));
   dbMock.user.findFirst.mockResolvedValue({ id: "u-1" });
   dbMock.user.findUnique.mockResolvedValue({ name: "Ali Demir" });
+  read.mockImplementation(async () => ({ intent: "connect_club", confidence: 0.95 }));
 });
 
 describe("falls through (returns null) without touching the database", () => {
@@ -98,8 +104,8 @@ describe("falls through (returns null) without touching the database", () => {
     expect(await dm({ text: "what's the code then" })).toBeNull();
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
     expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
-    // Not shaped like the connect message: nobody is even looked up.
-    expect(dbMock.clubConnect.findFirst).not.toHaveBeenCalled();
+    // No open request for this phone: the model is never asked.
+    expect(read).not.toHaveBeenCalled();
   });
 });
 
@@ -111,6 +117,7 @@ describe("a connect message whose code names no request (the wrong-code reply)",
     status: "issued",
     expiresAt: new Date(NOW.getTime() + 55 * MIN),
     addWindowEndsAt: null,
+    userId: "u-organiser",
     org: { name: "Riverside FC", language: "en" },
     ...over,
   });
@@ -143,6 +150,8 @@ describe("a connect message whose code names no request (the wrong-code reply)",
     expect(queued()[0].text).toBe(
       "The code in your message doesn't match the one for Riverside FC. Go back to your club page on matchtime.ai, press Add MatchTime to WhatsApp again, and send the message exactly as it opens.",
     );
+    // The DM reader was asked once, about the organiser of that request.
+    expect(read.mock.calls).toEqual([["u-organiser"]]);
     // Nothing is written to the request, and no code is ever sent back.
     expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
     expect(queued()[0].text).not.toContain("7KQ");
@@ -188,6 +197,7 @@ describe("a connect message whose code names no request (the wrong-code reply)",
     expect(await dm({ text: WRONG, phone: "447700900999" })).toBeNull();
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
     expect(dbMock.platformJob.findFirst).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
   });
 
   it("the sender's phone is hidden (LID only): null, and nobody is looked up", async () => {
@@ -203,11 +213,23 @@ describe("a connect message whose code names no request (the wrong-code reply)",
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
   });
 
-  it("ordinary chat with a code-shaped word, from an organiser with an open request: null", async () => {
-    for (const text of ["what's the code then", "what is the code that opens the pitch gate", "gate code ZZZZ"]) {
-      expect(await dm({ text }), text).toBeNull();
+  it("ordinary chat with a code-shaped word, from an organiser with an open request: the reader says it is not the connect message, null", async () => {
+    for (const intent of ["question", "other", "go_live"]) {
+      read.mockResolvedValueOnce({ intent, confidence: 0.95 });
+      expect(await dm({ text: "what's the code then" }), intent).toBeNull();
     }
-    expect(dbMock.clubConnect.findFirst).not.toHaveBeenCalled();
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
+  it("no word list decides it: the connect message in any words is answered when the reader says so, and nothing is answered without a reader", async () => {
+    // No "connect" or "bağla" in it: the old verb gate would have stayed silent.
+    expect(await dm({ text: "hi, here's my code 7KQ3, can you link my group?" })).toMatchObject({ result: "wrong-code", replied: true });
+    vi.clearAllMocks();
+    dbMock.clubConnect.findMany.mockResolvedValue([]);
+    dbMock.clubConnect.findFirst.mockResolvedValue(openRequest());
+    // The verb is there, but there is no reader to ask: silence, fail closed.
+    expect(await dm({ text: WRONG, read: undefined })).toBeNull();
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
   });
 

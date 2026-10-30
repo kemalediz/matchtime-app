@@ -1413,7 +1413,7 @@ function cases(lang: Lang): Case[] {
       `[${sj.settings_admin_channel_link_button}] [${sj.settings_admin_channel_link_again}]`,
       `1. ${sj.settings_admin_channel_step_code({ code: "K7P3QX" })}`,
       `2. ${sj.settings_admin_channel_step_add}`,
-      `3. ${sj.settings_admin_channel_step_send} ${sj.settings_admin_channel_command({ code: "K7P3QX" })}`,
+      `3. ${sj.settings_admin_channel_step_send} @Match Time K7P3QX`,
       sj.settings_admin_channel_validity,
       sj.settings_admin_channel_pending_note,
     ].join("\n"),
@@ -2437,6 +2437,9 @@ function render(lang: Lang): string {
 /** Cases under a migrated row whose text is the SAME in every language by
  *  design, each with its reason. */
 const LANGUAGE_FREE_CASES = new Set([
+  // The setup DM's second message is the admin group code alone since
+  // 2026-10-30 (no string parsing): data, not copy.
+  "SFU2 composeSetupAdminCommandDm / the second message, exactly the link command",
   // The fee-reply model's prompt is one prompt for every club since the
   // quoted-reply context S3 rewrite (2026-10-20): English and Turkish
   // examples side by side, the question's own words in the user turn.

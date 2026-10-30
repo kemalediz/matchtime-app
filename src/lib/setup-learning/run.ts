@@ -96,6 +96,7 @@ import {
 import { withSetupReadingAiBudget } from "../ai-budget";
 import { isAiBudgetExceeded } from "../ai-budget-context";
 import { anthropicModel, budgetedModel, extractJson, type ModelResponse, type PipelineModel } from "../pipeline/llm";
+import { feeBasisCandidate, withFeeBasis } from "./fee-basis";
 import { coerceHistoryMessages } from "../onboarding-enrichment-reconcile";
 import { appUrl, buildAdminLink } from "../admin-link";
 import { PlatformDmRefused, queuePlatformDm } from "../platform-jobs";
@@ -402,13 +403,22 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   } catch (err) {
     return await modelTrouble(orgId, connect.id, "model-error", err);
   }
-  const detection = parseDetection(raw, history, description);
+  // Whose price the fee is (fee-basis.ts, 2026-10-30): one short call of
+  // its own, only when the reading found a pounds price. Fails closed to
+  // "unclear", which suggests no fee.
+  let fee: Awaited<ReturnType<typeof withFeeBasis>>;
+  try {
+    fee = feeBasisCandidate(raw) ? await withSetupReadingAiBudget(orgId, () => withFeeBasis(raw, model)) : await withFeeBasis(raw, model);
+  } catch (err) {
+    return await modelTrouble(orgId, connect.id, isAiBudgetExceeded(err) ? "ai-cap" : "model-error", err);
+  }
+  const detection = parseDetection(fee.raw, history, description);
   if (!detection) return await modelTrouble(orgId, connect.id, "model-error", new Error("not an object"));
   const usage = {
     model: SETUP_LEARNING_MODEL,
-    inputTokens: resp.usage.inputTokens + resp.usage.cacheReadTokens + resp.usage.cacheWriteTokens,
-    outputTokens: resp.usage.outputTokens,
-    costUsd: resp.costUsd,
+    inputTokens: resp.usage.inputTokens + resp.usage.cacheReadTokens + resp.usage.cacheWriteTokens + fee.inputTokens,
+    outputTokens: resp.usage.outputTokens + fee.outputTokens,
+    costUsd: resp.costUsd === null ? null : resp.costUsd + fee.costUsd,
     messageCount: gate.messages,
     authorCount: gate.authors,
   };

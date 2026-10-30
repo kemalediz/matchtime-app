@@ -223,7 +223,8 @@ export function AdminChannelSettings({ orgId, lang }: { orgId: string; lang: Lan
                 <li>
                   {s.settings_admin_channel_step_send}{" "}
                   <code className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 break-all">
-                    {s.settings_admin_channel_command({ code: status.code.code })}
+                    {/* The tag and the code: the same in every language (2026-10-30). */}
+                    {`@Match Time ${status.code.code}`}
                   </code>
                 </li>
               </ol>

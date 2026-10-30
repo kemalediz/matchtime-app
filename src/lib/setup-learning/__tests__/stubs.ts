@@ -36,6 +36,7 @@ export const FIXTURE_NAMES = [
   "monthly-list",
   "description-supports",
   "description-stale",
+  "whole-pitch",
   "empty",
   "too-short",
 ] as const;
@@ -59,7 +60,7 @@ export function blankAnswer(): Record<string, unknown> {
     payments: unclear("no_sign"),
     monthly_list: { ...unclear("no_sign"), prepay_for_month: false, pay_as_you_go_fill_ins: false, credit_for_missed_games: false },
     weekly_game: { day: "none", time: "none", venue: "", players_per_side: 0, ...none },
-    match_fee: { amount: 0, currency: "none", ...none },
+    match_fee: { amount: 0, currency: "none", basis: "none", ...none },
   };
 }
 
@@ -111,7 +112,7 @@ export const STUB_ANSWERS: Record<string, Record<string, unknown>> = {
       evidence: ["Kickoff Thursday 8pm at Hackney Marshes"],
     },
     // The organiser asks for the same fee every week: two messages.
-    match_fee: { amount: 6, currency: "pounds", confidence: "high", evidence: [FEE_ASK, FEE_ASK] },
+    match_fee: { amount: 6, currency: "pounds", basis: "per_player", confidence: "high", evidence: [FEE_ASK, FEE_ASK] },
   },
   "first-come": {
     ...blankAnswer(),
@@ -123,7 +124,7 @@ export const STUB_ANSWERS: Record<string, Record<string, unknown>> = {
     squad: { answer: "rolling", confidence: "high", evidence: [KADRO, KADRO] },
     payments: { answer: "players_confirm_paying", confidence: "high", evidence: ["Ödedim", "Gönderdim abi"] },
     // Lira: the club's fee is held in pounds, so this is no fee.
-    match_fee: { amount: 150, currency: "other", confidence: "high", evidence: ["Kişi başı 150 TL", "Kişi başı 150 TL"] },
+    match_fee: { amount: 150, currency: "other", basis: "per_player", confidence: "high", evidence: ["Kişi başı 150 TL", "Kişi başı 150 TL"] },
   },
   // The description states the deadline and the fee; ONE message repeats
   // the deadline. The second deadline quote ends in the description's full
@@ -137,7 +138,7 @@ export const STUB_ANSWERS: Record<string, Record<string, unknown>> = {
       confidence: "high",
       evidence: ["drop out by Tuesday 6pm or you still pay, that hasn't changed", "Drop out by Tuesday 6pm or you still pay."],
     },
-    match_fee: { amount: 6, currency: "pounds", confidence: "medium", evidence: ["£6 a player, pay before kick off."] },
+    match_fee: { amount: 6, currency: "pounds", basis: "per_player", confidence: "medium", evidence: ["£6 a player, pay before kick off."] },
   },
   // The description is out of date; every answer comes from the chat.
   "description-stale": {
@@ -149,7 +150,20 @@ export const STUB_ANSWERS: Record<string, Record<string, unknown>> = {
       confidence: "high",
       evidence: ["tell me by Thursday 10am at the latest", "Drop outs by Thursday 10am please"],
     },
-    match_fee: { amount: 7, currency: "pounds", confidence: "high", evidence: ["it's £7 each from now on", "Reminder it's £7 each now"] },
+    match_fee: { amount: 7, currency: "pounds", basis: "per_player", confidence: "high", evidence: ["it's £7 each from now on", "Reminder it's £7 each now"] },
+  },
+  // The whole pitch's price, every week: the model says so (2026-10-30),
+  // and no fee is suggested, though every quote holds the number.
+  "whole-pitch": {
+    ...blankAnswer(),
+    squad: { answer: "sign_up_each_week", confidence: "high", evidence: ["in please", "ben varım"] },
+    match_fee: {
+      amount: 60,
+      currency: "pounds",
+      basis: "whole_pitch",
+      confidence: "high",
+      evidence: ["£60 for the hour, we split it between whoever turns up", "still £60 for the hour"],
+    },
   },
   "monthly-list": {
     ...blankAnswer(),

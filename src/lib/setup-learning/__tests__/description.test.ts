@@ -76,8 +76,8 @@ function plan(answer: Record<string, unknown>, opts: { description?: string | nu
 const deadline = (evidence: string[], confidence = "high") => ({
   drop_out_deadline: { day: "monday", time: "21:00", confidence, evidence },
 });
-const fee = (amount: number, evidence: string[], confidence = "medium", currency = "pounds") => ({
-  match_fee: { amount, currency, confidence, evidence },
+const fee = (amount: number, evidence: string[], confidence = "medium", currency = "pounds", basis = "per_player") => ({
+  match_fee: { amount, currency, basis, confidence, evidence },
 });
 
 describe("verifyEvidenceTagged: the server, not the model, says where a quote came from", () => {
@@ -315,7 +315,7 @@ describe("the match fee: only ever a suggestion", () => {
   it("another currency, no amount, a silly amount or a guess is nothing", () => {
     const tl = "Kişi başı 200 TL";
     expect(plan(fee(200, [tl], "high", "other"), { description: tl }).detection.matchFee.amount).toBeNull();
-    expect(plan(fee(200, ["£200 for the pitch"], "high"), { description: "£200 for the pitch" }).detection.matchFee.amount).toBeNull();
+    expect(plan(fee(200, ["£200 for the pitch"], "high", "pounds", "whole_pitch"), { description: "£200 for the pitch" }).detection.matchFee.amount).toBeNull();
     expect(plan(fee(0, [], "low", "none")).detection.matchFee.amount).toBeNull();
     expect(plan(fee(6, ["£6 a player"], "low")).plan.suggestions).toEqual([]);
   });

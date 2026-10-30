@@ -56,7 +56,7 @@ const BLANK = {
   payments: { answer: "no_sign", ...none },
   monthly_list: { answer: "no_sign", prepay_for_month: false, pay_as_you_go_fill_ins: false, credit_for_missed_games: false, ...none },
   weekly_game: { day: "none", time: "none", venue: "", players_per_side: 0, ...none },
-  match_fee: { amount: 0, currency: "none", ...none },
+  match_fee: { amount: 0, currency: "none", basis: "none", ...none },
 };
 
 /** A correct answer: one quote from the message, one from the description
@@ -71,7 +71,7 @@ const SUPPORTS_ANSWER = {
     evidence: ["drop out by Tuesday 6pm or you still pay, that hasn't changed", "Drop out by Tuesday 6pm or you still pay."],
   },
   payments: { answer: "players_confirm_paying", confidence: "high", evidence: ["Pay Kemal [number removed]", "[number removed]"] },
-  match_fee: { amount: 6, currency: "pounds", confidence: "medium", evidence: ["£6 a player, pay before kick off."] },
+  match_fee: { amount: 6, currency: "pounds", basis: "per_player", confidence: "medium", evidence: ["£6 a player, pay before kick off."] },
 };
 
 /** A WRONG answer: everything taken from the out-of-date description. */

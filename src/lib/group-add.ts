@@ -294,7 +294,7 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
     }
     // Slice 2a (plan 2.4): after every connect-request match has failed,
     // an add by an owner or admin of an approved club is their admins' HQ
-    // group, waiting for "@Match Time admin group CODE". Still silent, and
+    // group, waiting for its code (a real tag and the code). Still silent, and
     // still left after 48 hours if no code comes, but no approval DM and
     // no organiser ack. A matching connect request (above) wins.
     if (

@@ -26,6 +26,7 @@ import { promisify } from "node:util";
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import { E2E, REPO_ROOT } from "../helpers/env";
+import { addOwnerDecisionRead } from "../helpers/stub";
 import { testDb, type TestDb } from "../helpers/test-db";
 import { messageHoursSendAfter } from "@/lib/message-hours";
 
@@ -157,6 +158,7 @@ function flagHeaders(f: Flags): Record<string, string> {
 
 /** The owner's "APPROVE <ref>" by WhatsApp, the way the Pi forwards it. */
 async function approve(request: APIRequestContext, c: Club, f: Flags) {
+  addOwnerDecisionRead(`APPROVE ${c.code}`, "approve", c.code);
   const res = await request.post("/api/whatsapp/dm-reply", {
     headers: { ...KEY, "x-mt-test-self-join": "1", ...flagHeaders(f) },
     data: { phone: E2E.APPROVER_PHONE, body: `APPROVE ${c.code}`, waMessageId: `e2e-s3-wa-${++wa}` },

@@ -20,6 +20,7 @@
  */
 import { test, expect, resetDb } from "../fixtures";
 import { E2E } from "../helpers/env";
+import { addOwnerDecisionRead } from "../helpers/stub";
 import { testDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 import { freePeriodEnd } from "@/lib/club-billing-rules";
@@ -237,6 +238,7 @@ test("a club approved through the real path is free for THREE months: nothing at
   });
   expect(added.status(), await added.text()).toBe(200);
   expect(await added.json()).toMatchObject({ selfJoin: "linked", silent: true });
+  addOwnerDecisionRead("APPROVE 2MTH", "approve", "2MTH");
   const approve = await request.post("/api/whatsapp/dm-reply", {
     headers: SELF_JOIN,
     data: { phone: E2E.APPROVER_PHONE, body: "APPROVE 2MTH", waMessageId: "e2e-bc-two-approve" },

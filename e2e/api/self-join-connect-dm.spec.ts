@@ -14,6 +14,7 @@ import { test, expect, resetDb } from "../fixtures";
 import { PHONE, U, ORG_ID } from "../helpers/constants";
 import { E2E } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
+import { addDmIntentBodies } from "../helpers/stub";
 import type { APIRequestContext } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
@@ -242,6 +243,9 @@ test("wrong code from the organiser with an open request: told once, in the club
   request,
   db,
 }) => {
+  // The DM reader says these are the connect message (stubbed: what the
+  // model would read). Since 2026-10-30 no verb list decides it.
+  addDmIntentBodies({ "Kartallar kulübünü bağla, kod ZZZ9": "connect_club", "Kartallar kulübünü bağla, kod ZZZ8": "connect_club" });
   const first = await dm(request, { phone: AYSE_PHONE, body: "Kartallar kulübünü bağla, kod ZZZ9" });
   expect(first).toMatchObject({ handled: "connect-dm", result: "wrong-code", replied: true });
   let sent = await wrongCodeReplies(db, AYSE_PHONE);
@@ -267,14 +271,29 @@ test("wrong code from the organiser with an open request: told once, in the club
   expect(sent).toHaveLength(2);
 });
 
+test("the connect message in any words, no 'connect' or 'bağla' in it: the reader says so, and the organiser is told", async ({
+  request,
+  db,
+}) => {
+  await db.run(
+    `UPDATE "PlatformJob" SET "createdAt" = (now() at time zone 'utc') - interval '11 minutes' WHERE "refId" LIKE 'e2e-sj5-tr2:wrong-code:%'`,
+  );
+  const body = "merhaba, kodum ZZZ7, grubumuzu ekler misiniz";
+  addDmIntentBodies({ [body]: "connect_club" });
+  const json = await dm(request, { phone: AYSE_PHONE, body });
+  expect(json).toMatchObject({ handled: "connect-dm", result: "wrong-code", replied: true });
+  expect(await wrongCodeReplies(db, AYSE_PHONE)).toHaveLength(3);
+});
+
 test("wrong code after the organiser's request has run out: nothing, as before", async ({ request, db }) => {
+  addDmIntentBodies({ "Kartallar kulübünü bağla, kod ZZZ9": "connect_club" });
   await db.run(
     `UPDATE "PlatformJob" SET "createdAt" = (now() at time zone 'utc') - interval '11 minutes' WHERE "refId" LIKE 'e2e-sj5-tr2:wrong-code:%'`,
   );
   await db.run(`UPDATE "ClubConnect" SET "expiresAt" = (now() at time zone 'utc') - interval '1 minute' WHERE id = 'e2e-sj5-tr2'`);
   const json = await dm(request, { phone: AYSE_PHONE, body: "Kartallar kulübünü bağla, kod ZZZ9" });
   expect(json.handled).not.toBe("connect-dm");
-  expect(await wrongCodeReplies(db, AYSE_PHONE)).toHaveLength(2);
+  expect(await wrongCodeReplies(db, AYSE_PHONE)).toHaveLength(3);
 });
 
 test("flag ON leaves every other DM alone: a member's opt-out still works, an unknown code falls through", async ({

@@ -1,0 +1,143 @@
+{
+ "name": "whole-pitch",
+ "teaches": "The organiser states the cost of the whole pitch each week, to be split among whoever plays. That is not a price per player: the model answers basis whole_pitch and nothing is suggested (2026-10-30, the word list it replaced).",
+ "groupSubject": "Thursday Night Five",
+ "language": "en",
+ "weeklyGame": {
+  "dayOfWeek": 4,
+  "time": "20:00",
+  "venue": "Goals Wimbledon",
+  "playersPerSide": 5
+ },
+ "expect": {
+  "regularGame": true,
+  "squad": "sign_up_each_week",
+  "applied": [],
+  "noted": [],
+  "suggestions": [],
+  "dm": false,
+  "matchFee": null
+ },
+ "history": [
+  {
+   "author": "Rory Bell",
+   "text": "Pitch booked for Thursday, £60 for the hour, we split it between whoever turns up",
+   "timestamp": "2026-09-07T09:00:00.000Z"
+  },
+  {
+   "author": "Sam Ojo",
+   "text": "in",
+   "timestamp": "2026-09-07T09:10:00.000Z"
+  },
+  {
+   "author": "Luke Park",
+   "text": "IN",
+   "timestamp": "2026-09-07T09:20:00.000Z"
+  },
+  {
+   "author": "Deniz Kaya",
+   "text": "ben varım",
+   "timestamp": "2026-09-07T10:00:00.000Z"
+  },
+  {
+   "author": "Jack Hale",
+   "text": "in for Thursday",
+   "timestamp": "2026-09-07T11:00:00.000Z"
+  },
+  {
+   "author": "Omar Faruk",
+   "text": "in",
+   "timestamp": "2026-09-07T12:00:00.000Z"
+  },
+  {
+   "author": "Tom Grey",
+   "text": "in please",
+   "timestamp": "2026-09-08T08:00:00.000Z"
+  },
+  {
+   "author": "Rory Bell",
+   "text": "10 in, that's two fives sorted",
+   "timestamp": "2026-09-08T18:00:00.000Z"
+  },
+  {
+   "author": "Rory Bell",
+   "text": "Good game lads, see you next week",
+   "timestamp": "2026-09-11T21:30:00.000Z"
+  },
+  {
+   "author": "Jack Hale",
+   "text": "what a finish from Sam haha",
+   "timestamp": "2026-09-11T21:40:00.000Z"
+  },
+  {
+   "author": "Rory Bell",
+   "text": "Pitch is booked again, still £60 for the hour, split between us on the night",
+   "timestamp": "2026-09-14T09:00:00.000Z"
+  },
+  {
+   "author": "Sam Ojo",
+   "text": "in",
+   "timestamp": "2026-09-14T09:05:00.000Z"
+  },
+  {
+   "author": "Deniz Kaya",
+   "text": "Saha yine toplam £60, gelenler bölüşüyoruz. Ben varım",
+   "timestamp": "2026-09-14T09:30:00.000Z"
+  },
+  {
+   "author": "Luke Park",
+   "text": "in",
+   "timestamp": "2026-09-14T10:00:00.000Z"
+  },
+  {
+   "author": "Omar Faruk",
+   "text": "in",
+   "timestamp": "2026-09-14T11:00:00.000Z"
+  },
+  {
+   "author": "Jack Hale",
+   "text": "in",
+   "timestamp": "2026-09-14T12:00:00.000Z"
+  },
+  {
+   "author": "Tom Grey",
+   "text": "IN",
+   "timestamp": "2026-09-15T08:00:00.000Z"
+  },
+  {
+   "author": "Rory Bell",
+   "text": "Full again, cheers all",
+   "timestamp": "2026-09-15T18:00:00.000Z"
+  },
+  {
+   "author": "Rory Bell",
+   "text": "Same again next week, £60 for the pitch",
+   "timestamp": "2026-09-21T09:00:00.000Z"
+  },
+  {
+   "author": "Sam Ojo",
+   "text": "in",
+   "timestamp": "2026-09-21T09:02:00.000Z"
+  },
+  {
+   "author": "Luke Park",
+   "text": "in",
+   "timestamp": "2026-09-21T09:40:00.000Z"
+  },
+  {
+   "author": "Tom Grey",
+   "text": "in",
+   "timestamp": "2026-09-21T10:30:00.000Z"
+  },
+  {
+   "author": "Omar Faruk",
+   "text": "IN",
+   "timestamp": "2026-09-21T11:00:00.000Z"
+  },
+  {
+   "author": "Deniz Kaya",
+   "text": "varım",
+   "timestamp": "2026-09-21T12:00:00.000Z"
+  }
+ ]
+}

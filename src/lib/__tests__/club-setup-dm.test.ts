@@ -564,13 +564,13 @@ describe("slice S7: the optional admin group step, and the command as a second m
     const blocks = String(asks()[0].text).split("\n\n");
     const at = blocks.findIndex((b) => b.startsWith("👥 *Admin group (optional):*"));
     expect(blocks[at]).toBe(
-      "👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it and send my next message there. Admin messages will then go to that group instead of to you.",
+      "👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it, then tag me there with the code in my next message: type @Match Time, pick me from the list, and paste the code. Admin messages will then go to that group instead of to you.",
     );
     expect(blocks[at - 1]).toMatch(/^⭐ \*Starting ratings:\*/);
     expect(blocks[at + 1]).toMatch(/^When you're happy, reply \*GO\* here/);
   });
 
-  it("the second message is exactly the command with the club's new code, to the same number, and nothing else", async () => {
+  it("the second message is exactly the club's new code, to the same number, and nothing else", async () => {
     await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
     expect(state.jobs).toHaveLength(2);
     expect(state.jobs.map((j) => j.purpose)).toEqual(["setup-ask", "setup-admin-code"]);
@@ -583,7 +583,7 @@ describe("slice S7: the optional admin group step, and the command as a second m
       refId: "org-riverside:setup-admin-code",
       status: "queued",
       sendAfter: null,
-      text: `Match Time admin group ${code}`,
+      text: code,
     });
   });
 
@@ -620,15 +620,15 @@ describe("slice S7: the optional admin group step, and the command as a second m
     ]);
     expect([a.kind, b.kind].sort()).toEqual(["already", "sent"]);
     expect(codes()).toHaveLength(1);
-    expect(codes()[0].text).toBe(`Match Time admin group ${state.org!.adminGroupLinkCode}`);
+    expect(codes()[0].text).toBe(state.org!.adminGroupLinkCode);
     expect(state.orgUpdates.filter((u) => "adminGroupLinkCode" in u.data)).toHaveLength(1);
   });
 
-  it("Turkish club: the Turkish block and the Turkish form of the command", async () => {
+  it("Turkish club: the Turkish block, and the code alone", async () => {
     state.org = heldOrg({ language: "tr" });
     await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
     expect(String(asks()[0].text)).toContain("👥 *Yönetici grubu (isteğe bağlı):*");
-    expect(codes()[0].text).toBe(`Match Time yönetici grubu ${state.org!.adminGroupLinkCode}`);
+    expect(codes()[0].text).toBe(state.org!.adminGroupLinkCode);
   });
 
   it("a club that ALREADY has an admin group: no block, no second message, no code minted", async () => {
@@ -651,7 +651,6 @@ describe("slice S7: the optional admin group step, and the command as a second m
   it("the code is in no log line", async () => {
     await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
     expect(logs.join("\n")).not.toContain(String(state.org!.adminGroupLinkCode));
-    expect(logs.join("\n")).not.toContain("Match Time admin group");
   });
 });
 

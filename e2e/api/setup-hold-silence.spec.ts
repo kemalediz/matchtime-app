@@ -406,10 +406,17 @@ test.describe("the group routes are blind to it", () => {
 });
 
 test.describe("the admin group command", () => {
-  test("typed in the setting-up club's PLAYERS' group it gets no reply at all THERE; the organiser is told by DM (slice S7)", async ({ request, db }) => {
+  test("the code, tagged, in the setting-up club's PLAYERS' group gets no reply at all THERE; the organiser is told by DM (slice S7)", async ({ request, db }) => {
+    // A code we issued is the fact (2026-10-30: no phrase is read, and the
+    // tag is the Pi's mention flag).
+    await db.run(
+      `UPDATE "Organisation" SET "adminGroupLinkCode" = 'ABCDEF', "adminGroupLinkCodeExpiresAt" = now() + interval '1 hour' WHERE id = $1`,
+      [HELD_ORG],
+    );
     const out = await post(request, "/api/whatsapp/admin-group-link", {
       groupId: HELD_GROUP,
-      text: "@Match Time admin group ABCDEF",
+      text: "@447700900000 ABCDEF",
+      botMentioned: true,
       senderPhone: ORGANISER_PHONE.replace(/^\+/, ""),
       messageId: "e2e-silence-admin-link-1",
     });
@@ -427,10 +434,15 @@ test.describe("the admin group command", () => {
     );
   });
 
-  test("the live club's own group still gets today's refusal", async ({ request }) => {
+  test("the live club's own group still gets today's refusal", async ({ request, db }) => {
+    await db.run(
+      `UPDATE "Organisation" SET "adminGroupLinkCode" = 'ABCDEG', "adminGroupLinkCodeExpiresAt" = now() + interval '1 hour' WHERE id = $1`,
+      [ORG_ID],
+    );
     const out = await post(request, "/api/whatsapp/admin-group-link", {
       groupId: E2E.GROUP_ID,
-      text: "@Match Time admin group ABCDEF",
+      text: "@447700900000 ABCDEG",
+      botMentioned: true,
       senderPhone: PHONE.admin.replace(/^\+/, ""),
     });
     expect(out.outcome).toBe("main-group");

@@ -10,15 +10,17 @@
  *   FIX 2  a quote was found by raw substring ("paid" inside "Unpaid"):
  *          now at word boundaries for every source, and a description
  *          quote needs two words or eight characters;
- *   FIX 3  a number that is not a price counted as the fee ("7 a side"):
- *          now a currency sign or word beside the amount, in each excerpt,
- *          and never the price of the whole pitch;
+ *   FIX 3  a number that is not a price counted as the fee ("7 a side").
+ *          Since 2026-10-30 (no string parsing) the MODEL says the price
+ *          and whether it is per player or for the whole pitch; the server
+ *          checks only that each quote holds the number;
  *   FIX 4  the placeholder rule dropped ordinary chat quotes with a
  *          bracket in them: chat is never masked, so it no longer applies
  *          to chat (the parity with main is main-parity.test.ts);
- *   FIX 5  an out-of-date fee in the description was stopped only by the
- *          prompt: now also by the server, and no fee is suggested for a
- *          club whose stored squad mode is monthly;
+ *   FIX 5  no fee is suggested for a club whose stored squad mode is
+ *          monthly. (An out-of-date fee in the description was also stopped
+ *          by reading the chat for other prices; since 2026-10-30 that is
+ *          the model's ruling alone, as the prompt states it);
  *   FIX 8  WhatsApp formatting characters inside a quote broke the DM;
  *   FIX 9  the cases the reviewer found untested.
  */
@@ -27,8 +29,7 @@ import {
   buildUserContent,
   parseDetection,
   planSetup,
-  pricesIn,
-  statesPrice,
+  quoteHasAmount,
   verifyEvidence,
   verifyEvidenceTagged,
   type OrgSettingsState,
@@ -74,8 +75,8 @@ function plan(
     }),
   };
 }
-const fee = (amount: number, evidence: string[], confidence = "high") => ({
-  match_fee: { amount, currency: "pounds", confidence, evidence },
+const fee = (amount: number, evidence: string[], confidence = "high", basis = "per_player") => ({
+  match_fee: { amount, currency: "pounds", basis, confidence, evidence },
 });
 
 describe("FIX 1: a placeholder is decided by where the quote sits, not by how it is spelt", () => {
@@ -184,63 +185,37 @@ describe("FIX 2: a quote is whole words, and the description needs more than a s
   });
 });
 
-describe("FIX 3: a fee excerpt must state a PRICE, not just a number", () => {
-  it("statesPrice: a currency sign or word beside the amount", () => {
-    for (const q of ["£6 each", "£ 6 a head", "6 quid each", "6 pounds a game", "6 pound each", "GBP 6", "6 GBP a player", "it's £6.00 now", "£6,00"]) {
-      expect(statesPrice(q, 6), q).toBe(true);
-    }
-    expect(statesPrice("£6.50 each please", 6.5)).toBe(true);
-    expect(statesPrice("50p each for the bibs fund", 0.5)).toBe(true);
+describe("FIX 3, REDONE 2026-10-30 (no string parsing): the model says what the price is; the server checks the number is in the quote", () => {
+  it("quoteHasAmount: the number, written on its own", () => {
+    for (const q of ["£6 each", "£ 6 a head", "6 quid each", "it's £6.00 now", "£6,00", "6 a head"]) expect(quoteHasAmount(q, 6), q).toBe(true);
+    expect(quoteHasAmount("£6.50 each please", 6.5)).toBe(true);
   });
-  it("statesPrice: a bare number, a time, a date, a size or another amount is not this price", () => {
-    for (const q of [
-      "7 a side",
-      "at 6 lads",
-      "by 6/10 please",
-      "closes 6 Oct",
-      "6pm kick off",
-      "6:30 start",
-      "6 each",
-      "first 6 get a game",
-      "£16 each",
-      "£60 for the lot",
-      "£6.50 each",
-      "pay 6 to £Dave",
-    ]) {
-      expect(statesPrice(q, 6) || statesPrice(q, 7), q).toBe(false);
+  it("quoteHasAmount: another number, or a number run into letters, is not this amount", () => {
+    for (const q of ["£16 each", "£60 for the lot", "£6.50 each", "Six pounds a player", "pay before kick off", "drop out by Tuesday 6pm", "the 6th", "6v6"]) {
+      expect(quoteHasAmount(q, 6), q).toBe(false);
     }
   });
-  it("statesPrice: the price of the whole pitch is not a price per player, in English or Turkish", () => {
-    for (const q of ["Pitch is £45", "£45 for the pitch", "pitch costs £45 a week", "Saha £45", "saha ücreti toplam £45", "£45 total"]) {
-      expect(statesPrice(q, 45), q).toBe(false);
-    }
-    // A price per player that mentions the pitch is still a price per player.
-    for (const q of ["Pitch has gone up, so it's £7 each", "£7 a head now the pitch went up", "saha zamlandı, kişi başı £7"]) {
-      expect(statesPrice(q, 7), q).toBe(true);
-    }
-  });
-  it("pricesIn: every price a text states, per player", () => {
-    expect(pricesIn("£6 each, or £3 for under 16s")).toEqual([6, 3]);
-    expect(pricesIn("see you at 6, 7 a side")).toEqual([]);
-    expect(pricesIn("Pitch is £45")).toEqual([]);
-  });
-
-  const SIDE = [at("7 a side this week", 7, "Kemal"), at("7 a side again", 14, "Kemal")];
-  it("the reviewer's cases: none of them is a fee", () => {
-    expect(plan(fee(7, ["7 a side this week", "7 a side again"]), SIDE, null).detection.matchFee.amount).toBeNull();
-    const mixed = [at("£6 each please", 7, "Kemal"), at("see you at 6 lads", 14, "Kemal")];
-    const m = plan(fee(6, ["£6 each", "at 6 lads"]), mixed, null);
-    expect(m.detection.matchFee.evidence).toEqual(["£6 each"]);
-    expect(m.plan.suggestions).toEqual([]);
-    const dates = [at("names by 6/10 please", 7, "Kemal"), at("list closes 6 Oct", 14, "Kemal")];
-    expect(plan(fee(6, ["by 6/10 please", "closes 6 Oct"]), dates, null).detection.matchFee.amount).toBeNull();
-    expect(plan(fee(45, ["Pitch is £45"]), [], "Pitch is £45 a week, split between us").detection.matchFee.amount).toBeNull();
-  });
-  it("two messages that each state the price still suggest it", () => {
+  it("a price per player the model states is kept when its quote holds the number", () => {
     const h = [at("£6 each please", 7, "Kemal"), at("6 quid each lads", 14, "Kemal")];
     expect(plan(fee(6, ["£6 each please", "6 quid each"]), h, null).plan.suggestions).toEqual([
       { key: "matchFee", current: "", detected: "6", evidence: ["£6 each please", "6 quid each"] },
     ]);
+  });
+  it("the model says the price is for the whole pitch: no fee, in English or Turkish, whatever the quote", () => {
+    for (const q of ["Pitch is £45 a week", "saha toplam £45"]) {
+      expect(plan(fee(45, [q], "high", "whole_pitch"), [], q).detection.matchFee.amount, q).toBeNull();
+    }
+  });
+  it("no basis, or a basis outside the list (a reading stored before 2026-10-30): no fee", () => {
+    const d = "£6 a player, pay before kick off.";
+    expect(plan({ match_fee: { amount: 6, currency: "pounds", confidence: "high", evidence: ["£6 a player"] } }, [], d).detection.matchFee.amount).toBeNull();
+    expect(plan(fee(6, ["£6 a player"], "high", "per_head_maybe"), [], d).detection.matchFee.amount).toBeNull();
+  });
+  it("a quote that does not hold the number is dropped, and the rest are judged as usual", () => {
+    const mixed = [at("£6 each please", 7, "Kemal"), at("see you at 7 lads", 14, "Kemal")];
+    const m = plan(fee(6, ["£6 each", "at 7 lads"]), mixed, null);
+    expect(m.detection.matchFee.evidence).toEqual(["£6 each"]);
+    expect(m.plan.suggestions).toEqual([]);
   });
 });
 
@@ -259,28 +234,16 @@ describe("FIX 4: the placeholder rule is for the description only", () => {
   });
 });
 
-describe("FIX 5: the server stops an out-of-date fee, and a monthly club", () => {
-  it("the reviewer's case: the description's £4 is not suggested when a message states £6 each", () => {
-    const h = [at("£6 each lads", 7, "Kemal"), at("in", 7, "Joe")];
-    const { plan: p, detection } = plan(fee(4, ["£4 a game"]), h, "£4 a game. Tuesdays.");
-    expect(detection.matchFee.amount).toBeNull();
-    expect(p.suggestions).toEqual([]);
-  });
-  it("a message stating the SAME price does not stop it, nor does a number that is no price", () => {
-    const same = [at("£4 each as usual", 7, "Kemal"), at("see you at 6, 7 a side", 8, "Joe")];
-    expect(plan(fee(4, ["£4 a game"]), same, "£4 a game. Tuesdays.").plan.suggestions.map((s) => [s.key, s.detected])).toEqual([["matchFee", "4"]]);
-  });
-  it("the chat's own fee, twice, is still suggested over the description's", () => {
+describe("FIX 5, REDONE 2026-10-30: an out-of-date description is the model's ruling; a monthly club is the server's", () => {
+  it("the chat's own fee, twice, is suggested over the description's", () => {
     const h = [at("£6 each from now on", 7, "Kemal"), at("£6 each lads", 14, "Kemal")];
     const { plan: p } = plan(fee(6, ["£6 each from now on", "£6 each lads"]), h, "£4 a game. Tuesdays.");
     expect(p.suggestions).toEqual([{ key: "matchFee", current: "", detected: "6", evidence: ["£6 each from now on", "£6 each lads"] }]);
   });
-  it("a fee backed by the description AND a message loses only the description when another message states another price", () => {
-    const h = [at("£4 each", 7, "Kemal"), at("£6 each now", 14, "Kemal")];
-    const { detection, plan: p } = plan(fee(4, ["£4 a game", "£4 each"]), h, "£4 a game. Tuesdays.");
-    expect(detection.matchFee).toMatchObject({ amount: 4, evidence: ["£4 each"] });
-    expect(detection.matchFee.fromDescription).toBeUndefined();
-    expect(p.suggestions).toEqual([]);
+  it("the server no longer reads the chat for other prices: what the model answered, verified, is what counts", () => {
+    const h = [at("£6 each lads", 7, "Kemal"), at("in", 7, "Joe")];
+    const { detection } = plan(fee(4, ["£4 a game"]), h, "£4 a game. Tuesdays.");
+    expect(detection.matchFee).toMatchObject({ amount: 4, fromDescription: ["£4 a game"] });
   });
   it("no fee is suggested for a club whose stored squad mode is monthly, whatever the model says of a monthly list", () => {
     const d = "£6 a player, pay before kick off.";

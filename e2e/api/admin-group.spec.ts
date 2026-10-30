@@ -8,7 +8,9 @@
  *     before;
  *   - adding MatchTime to the admins' HQ group does NOT start the in-group
  *     setup (the dev server runs with ONBOARDING_AUTOSTART=1, like prod);
- *   - "@Match Time admin group CODE" links it, answers only a real admin;
+ *   - a real tag and the code we issued, in any words ("@MatchTime K7P3QX"),
+ *     links it and answers only a real admin (2026-10-30: no phrase is read,
+ *     and the words "Match Time" typed are not a tag);
  *   - notices then follow the club's setting: the admin group (only for a
  *     Pi that says it can post there), or one person;
  *   - a message in the admin group reaches no model and no analysis;
@@ -128,16 +130,21 @@ test("the link code: nobody else is answered; a wrong code gets L2; the right on
     `UPDATE "Organisation" SET "adminGroupLinkCode" = 'K7P3QX', "adminGroupLinkCodeExpiresAt" = now() + interval '1 hour' WHERE id = $1`,
     [ORG_ID],
   );
-  const link = (text: string, senderPhone: string) =>
-    post(request, "/api/whatsapp/admin-group-link", { groupId: HQ, text, senderPhone, botMentioned: false, messageId: "m", timestamp: NOON });
+  const link = (text: string, senderPhone: string, botMentioned = true) =>
+    post(request, "/api/whatsapp/admin-group-link", { groupId: HQ, text, senderPhone, botMentioned, messageId: "m", timestamp: NOON });
 
-  expect(await link("@Match Time admin group K7P3QX", STRANGER)).toMatchObject({ outcome: "ignored", replyText: null });
-  const wrong = await link("@Match Time admin group ZZZZZZ", ADMIN);
+  // The old typed command with no real tag: not the link message, nothing read.
+  expect(await link("@Match Time admin group K7P3QX", ADMIN, false)).toMatchObject({ outcome: "ignored", reason: "not-a-link-command", replyText: null });
+  expect((await org(db))?.adminGroupId).toBeNull();
+
+  expect(await link("@447700900000 K7P3QX", STRANGER)).toMatchObject({ outcome: "ignored", replyText: null });
+  const wrong = await link("@447700900000 ZZZZZZ", ADMIN);
   expect(wrong.outcome).toBe("bad-code");
   expect(wrong.replyText).toMatch(/^That code isn't valid any more\./);
   expect((await org(db))?.adminGroupId).toBeNull();
 
-  const ok = await link("@Match Time admin group k7p3qx", ADMIN);
+  // In any words: the code we issued is the fact, not a phrase around it.
+  const ok = await link("@447700900000 here's our code: k7p3qx", ADMIN);
   expect(ok).toMatchObject({ outcome: "linked", adminGroup: { groupId: HQ, orgId: ORG_ID } });
   // The one reply is MatchTime's introduction (admin-group-intro.ts), claimed once.
   expect(ok.replyText).toMatch(/^👋 I'm MatchTime, I'll help run \*E2E Test FC\*'s /);
@@ -158,15 +165,20 @@ test("the link code: nobody else is answered; a wrong code gets L2; the right on
   expect(orgs.silentGroups).not.toContain(HQ);
 
   // The code is single use.
-  expect((await link("@Match Time admin group K7P3QX", ADMIN)).replyText).toBeNull();
+  expect((await link("@447700900000 K7P3QX", ADMIN)).replyText).toBeNull();
 });
 
-test("the club's own community group can't be the admin group (L3)", async ({ request }) => {
-  const out = await post(request, "/api/whatsapp/admin-group-link", {
-    groupId: E2E.GROUP_ID,
-    text: "@Match Time admin group ABCDEF",
-    senderPhone: ADMIN,
-  });
+test("the club's own community group can't be the admin group (L3); a tag with no code we issued goes on to the pipeline", async ({ request, db }) => {
+  const send = (text: string) =>
+    post(request, "/api/whatsapp/admin-group-link", { groupId: E2E.GROUP_ID, text, botMentioned: true, senderPhone: ADMIN });
+  // No code we issued, and the players' group is not waiting for one: the
+  // Pi is told to carry on, and the shared pipeline reads the message.
+  expect(await send("@447700900000 THANKS lads")).toMatchObject({ outcome: "ignored", reason: "not-a-link-command" });
+  await db.run(
+    `UPDATE "Organisation" SET "adminGroupLinkCode" = 'ABCDEF', "adminGroupLinkCodeExpiresAt" = now() + interval '1 hour' WHERE id = $1`,
+    [ORG_ID],
+  );
+  const out = await send("@447700900000 ABCDEF");
   expect(out.outcome).toBe("main-group");
   expect(out.replyText).toBe("This is *E2E Test FC*'s main group, so it can't be the admin group. Add me to a separate group for the admins.");
 });

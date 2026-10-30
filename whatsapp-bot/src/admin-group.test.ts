@@ -1,7 +1,8 @@
 /**
  * Slice 2a on the Pi: an admin group's messages go to their own route at
- * once and never into the analysis history or batch; only a message shaped
- * like the link command leaves any other group, a silent one included.
+ * once and never into the analysis history or batch; from any other group,
+ * a silent one included, only a message that TAGS MatchTime and holds a
+ * code-shaped token goes to the link route (2026-10-30: no phrase read).
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -26,7 +27,7 @@ function deps(over: Partial<AdminGroupInboundDeps> = {}, admin: string[] = []) {
     read: vi.fn(async () => ({
       groupId: HQ,
       messageId: "m1",
-      text: "@Match Time admin group K7P3QX",
+      text: "@447700900000 K7P3QX",
       botMentioned: true,
       senderPhone: "447700900102",
       timestamp: "2026-09-30T12:00:00.000Z",
@@ -46,15 +47,22 @@ function deps(over: Partial<AdminGroupInboundDeps> = {}, admin: string[] = []) {
   return { d, forwarded, linkForwarded, replies, added };
 }
 
-describe("the link-command shape (a copy of the server's)", () => {
-  it("reads EN and TR, typed or tagged; refuses chat and wrong lengths", () => {
-    expect(looksLikeAdminGroupLink("@Match Time admin group K7P3QX", false)).toBe(true);
+describe("what may be the link message: a real tag and a code-shaped token, never a phrase", () => {
+  it("a tag and a six-character token of the code alphabet, in any words", () => {
+    expect(looksLikeAdminGroupLink("@447700900000 K7P3QX", true)).toBe(true);
+    expect(looksLikeAdminGroupLink("@447700900000 here's our code: k7p3qx", true)).toBe(true);
     expect(looksLikeAdminGroupLink("@447700900000 admin group K7P3QX", true)).toBe(true);
-    expect(looksLikeAdminGroupLink("@Match Time yönetici grubu K7P3QX", false)).toBe(true);
-    expect(looksLikeAdminGroupLink("admin group K7P3QX", false)).toBe(false);
-    expect(looksLikeAdminGroupLink("@Match Time admin group K7P3Q", false)).toBe(false);
-    expect(looksLikeAdminGroupLink("@Match Time admin group K7P3QXZ", false)).toBe(false);
+  });
+  it("the words 'Match Time' typed are not a tag", () => {
+    expect(looksLikeAdminGroupLink("@Match Time admin group K7P3QX", false)).toBe(false);
+    expect(looksLikeAdminGroupLink("Match Time yönetici grubu K7P3QX", false)).toBe(false);
+  });
+  it("no token of six from the alphabet: five, seven, or I, L, O, 0, 1 in it", () => {
+    expect(looksLikeAdminGroupLink("@447700900000 K7P3Q", true)).toBe(false);
+    expect(looksLikeAdminGroupLink("@447700900000 K7P3QXZ", true)).toBe(false);
+    expect(looksLikeAdminGroupLink("@447700900000 K7L3QX", true)).toBe(false);
     expect(mightBeAdminGroupLink("in for friday")).toBe(false);
+    expect(mightBeAdminGroupLink("@447700900000 K7P3QX")).toBe(true);
   });
 });
 
@@ -97,30 +105,42 @@ describe("routeAdminGroupInbound", () => {
     const { d, linkForwarded, replies, added } = deps();
     expect(await routeAdminGroupInbound(d, { from: SILENT, body: "in for friday" })).toBe("not-handled");
     expect(d.read).not.toHaveBeenCalled();
-    expect(await routeAdminGroupInbound(d, { from: SILENT, body: "@447700900000 admin group K7P3QX" })).toBe("link-command");
+    expect(await routeAdminGroupInbound(d, { from: SILENT, body: "@447700900000 K7P3QX" })).toBe("link-command");
     expect(linkForwarded).toHaveLength(1);
     expect(added).toEqual([[SILENT, "org-fnf"]]);
     expect(replies).toEqual(["✅ Linked as the admin group for *Friday FNF*."]);
   });
 
-  it("a link-shaped message the server does not answer: nothing posted, nothing linked", async () => {
+  it("a message the server does not answer (an error): nothing posted, nothing linked, and it carries on as any message", async () => {
     const { d, replies, added } = deps({ postAdminGroupLink: async () => null });
-    expect(await routeAdminGroupInbound(d, { from: SILENT, body: "@Match Time admin group K7P3QX" })).toBe("link-command");
+    expect(await routeAdminGroupInbound(d, { from: SILENT, body: "@447700900000 K7P3QX" })).toBe("not-handled");
     expect(replies).toEqual([]);
     expect(added).toEqual([]);
   });
 
+  it("the server says it is not the link message (no code it issued): it carries on as any message, so a players' group tag still reaches the pipeline", async () => {
+    const { d, replies, linkForwarded } = deps({
+      postAdminGroupLink: vi.fn(async () => ({ outcome: "ignored", reason: "not-a-link-command", replyText: null })),
+    });
+    expect(await routeAdminGroupInbound(d, { from: SILENT, body: "@447700900000 THANKS mate" })).toBe("not-handled");
+    expect(replies).toEqual([]);
+    expect(linkForwarded).toHaveLength(0);
+    // Any other "ignored" (not an admin, another club's group) is the link route's: handled, silent.
+    const other = deps({ postAdminGroupLink: async () => ({ outcome: "ignored", reason: "not-an-admin", replyText: null }) });
+    expect(await routeAdminGroupInbound(other.d, { from: SILENT, body: "@447700900000 K7P3QX" })).toBe("link-command");
+  });
+
   it("an answer naming a DIFFERENT group never turns this one into an admin group", async () => {
     const { d, added } = deps({ postAdminGroupLink: async () => ({ adminGroup: { groupId: "other@g.us", orgId: "o" } }) });
-    await routeAdminGroupInbound(d, { from: SILENT, body: "@Match Time admin group K7P3QX" });
+    await routeAdminGroupInbound(d, { from: SILENT, body: "@447700900000 K7P3QX" });
     expect(added).toEqual([]);
   });
 
-  it("the words without MatchTime being addressed are chat, not a command", async () => {
+  it("a code without a real tag never leaves the group, whatever the words", async () => {
     const { d, linkForwarded } = deps({
-      read: async () => ({ groupId: SILENT, messageId: "m2", text: "our admin group K7P3QX", botMentioned: false, senderPhone: "", timestamp: "t" }),
+      read: async () => ({ groupId: SILENT, messageId: "m2", text: "Match Time admin group K7P3QX", botMentioned: false, senderPhone: "", timestamp: "t" }),
     });
-    expect(await routeAdminGroupInbound(d, { from: SILENT, body: "our admin group K7P3QX" })).toBe("not-handled");
+    expect(await routeAdminGroupInbound(d, { from: SILENT, body: "Match Time admin group K7P3QX" })).toBe("not-handled");
     expect(linkForwarded).toHaveLength(0);
   });
 

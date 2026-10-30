@@ -1,26 +1,25 @@
 /**
- * GO-LIVE SLICE S7: THE COMMAND MATCHTIME SENDS BY DM, AS IT COMES BACK.
+ * THE CODE MATCHTIME SENDS BY DM, AS IT COMES BACK IN A GROUP.
  *
- * The setup DM's second message is the admin group link command, in the
- * club's language. The organiser forwards it into the organisers' own
- * group, which at that moment is a SILENT group nobody monitors. Two
- * things must both recognise it, or nothing happens and nobody is told:
+ * The setup DM's second message is the admin group code alone (go-live
+ * slice S7). The organiser tags MatchTime in the organisers' own group and
+ * pastes it there. That group is at that moment a SILENT group nobody
+ * monitors, so two things must both let it through, or nothing happens:
  *
- *   - THE PI's own copy of the command shape
- *     (whatsapp-bot/src/admin-group.ts). Only a message it accepts leaves
- *     a silent group. The REAL module is loaded here, read only (by a
- *     computed path, so the app's type check does not pull the bot's
- *     sources in);
- *   - THE SERVER's parser (`parseAdminGroupLinkMessage`), which reads the
- *     code out of what the Pi forwarded.
+ *   - THE PI (whatsapp-bot/src/admin-group.ts): only a message with a REAL
+ *     tag (the mention flag) and a code-shaped token leaves a silent group.
+ *     The REAL module is loaded here, read only (by a computed path, so the
+ *     app's type check does not pull the bot's sources in);
+ *   - THE SERVER (`adminGroupCodeCandidates`), which finds where a code it
+ *     issued may stand in what the Pi forwarded.
  *
- * Every way the text can come back is run through BOTH: forwarded as it
- * was sent; pasted with a trailing space or line break; retyped on a
- * Turkish keyboard (capital dotted İ, all capitals, no accents).
+ * Since 2026-10-30 (no string parsing) neither reads a phrase: the words
+ * "Match Time admin group" are only words, typed or forwarded, and without
+ * a real tag the message never leaves the group.
  */
 import path from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { parseAdminGroupLinkMessage } from "../admin-channel-rules";
+import { adminGroupCodeCandidates } from "../admin-channel-rules";
 import { composeSetupAdminCommandDm } from "../club-setup-followup-rules";
 
 interface PiAdminGroup {
@@ -39,21 +38,19 @@ beforeAll(async () => {
 });
 
 const CODE = "K7P3QX";
-const TR = composeSetupAdminCommandDm({ lang: "tr", code: CODE });
-const EN = composeSetupAdminCommandDm({ lang: "en", code: CODE });
-const CAPITAL_DOTTED_I = String.fromCharCode(0x130);
+/** How a real tag of MatchTime appears in the body: its number. */
+const TAG = "@447700900000";
 
 /** What the Pi does with a message in a group it does not monitor, and
- *  what the server then reads from what it forwarded. */
-async function through(body: string): Promise<{ forwarded: boolean; code: string | null }> {
+ *  where the server would then look for a code it issued. */
+async function through(body: string, botMentioned: boolean): Promise<{ forwarded: boolean; candidates: string[] }> {
   const postAdminGroupLink = vi.fn(async () => ({ outcome: "linked" }));
   const postAdminGroupMessage = vi.fn(async () => null);
   const route = await pi.routeAdminGroupInbound(
     {
-      // Not an admin group yet, and (being silent) not monitored either.
       isAdminGroup: () => false,
       addAdminGroup: () => {},
-      read: async () => ({ messageId: "m1", text: body, botMentioned: false }),
+      read: async () => ({ messageId: "m1", text: body, botMentioned }),
       postAdminGroupMessage,
       postAdminGroupLink,
       reply: async () => {},
@@ -63,75 +60,47 @@ async function through(body: string): Promise<{ forwarded: boolean; code: string
   );
   expect(postAdminGroupMessage).not.toHaveBeenCalled();
   const forwarded = route === "link-command" && postAdminGroupLink.mock.calls.length === 1;
-  return { forwarded, code: forwarded ? parseAdminGroupLinkMessage(body, { botMentioned: false }) : null };
+  return { forwarded, candidates: forwarded ? adminGroupCodeCandidates(body) : [] };
 }
 
-describe("the Turkish command, every way it can come back", () => {
-  it("is what a Turkish club is sent, in composed (NFC) letters", () => {
-    expect(TR).toBe("Match Time yönetici grubu K7P3QX");
-    expect(TR).toBe(TR.normalize("NFC"));
+describe("the code DM is the code alone, in both languages", () => {
+  it("so it can be copied whole", () => {
+    expect(composeSetupAdminCommandDm({ lang: "en", code: CODE })).toBe(CODE);
+    expect(composeSetupAdminCommandDm({ lang: "tr", code: CODE })).toBe(CODE);
   });
+});
 
+describe("tagged and pasted, every way it can come back", () => {
   const cases: Array<[string, string]> = [
-    ["forwarded exactly as it was sent", TR],
-    ["pasted with a trailing space", `${TR} `],
-    ["pasted with a trailing line break", `${TR}\n`],
-    ["pasted with a Windows line break", `${TR}\r\n`],
-    ["pasted with a leading line break and spaces", `\n  ${TR}`],
-    ["pasted with a non-breaking space at the end", `${TR}${String.fromCharCode(0xa0)}`],
-    ["retyped in capitals on a Turkish keyboard (capital dotted I)", `MATCH T${CAPITAL_DOTTED_I}ME YÖNET${CAPITAL_DOTTED_I}C${CAPITAL_DOTTED_I} GRUBU ${CODE}`],
-    ["retyped with a capital dotted I at the start of the word", `Match Time Yönet${CAPITAL_DOTTED_I}ci Grubu ${CODE}`],
-    ["retyped in plain capitals (the dotless capital I)", `MATCH TIME YONETICI GRUBU ${CODE}`],
-    ["retyped with no accents", `Match Time yonetici grubu ${CODE}`],
-    ["retyped with the code in small letters", `Match Time yönetici grubu ${CODE.toLowerCase()}`],
-    ["retyped with a colon before the code", `Match Time yönetici grubu: ${CODE}`],
-    ["retyped with two spaces between the words", `Match  Time  yönetici  grubu  ${CODE}`],
-    ["retyped as one word, MatchTime", `MatchTime yönetici grubu ${CODE}`],
-    ["sent with a tag in front, as the Settings page shows it", `@Match Time yönetici grubu ${CODE}`],
+    ["the tag, then the code", `${TAG} ${CODE}`],
+    ["pasted with a trailing space", `${TAG} ${CODE} `],
+    ["pasted with a trailing line break", `${TAG} ${CODE}\n`],
+    ["pasted with a Windows line break", `${TAG} ${CODE}\r\n`],
+    ["pasted with a non-breaking space at the end", `${TAG} ${CODE}${String.fromCharCode(0xa0)}`],
+    ["the code in small letters", `${TAG} ${CODE.toLowerCase()}`],
+    ["in a sentence, English", `${TAG} here's our code: ${CODE}, thanks`],
+    ["in a sentence, Turkish", `${TAG} kodumuz ${CODE}, teşekkürler`],
+    ["the old words, still fine as words", `${TAG} admin group ${CODE}`],
   ];
   for (const [label, body] of cases) {
-    it(`${label}: the Pi forwards it from an unmonitored group and the server reads the code`, async () => {
+    it(`${label}: the Pi forwards it, and the server finds the code`, async () => {
       expect(pi.mightBeAdminGroupLink(body), "the Pi's cheap pre-check").toBe(true);
-      expect(pi.looksLikeAdminGroupLink(body, false), "the Pi's full shape, untagged").toBe(true);
-      expect(await through(body)).toEqual({ forwarded: true, code: CODE });
+      const r = await through(body, true);
+      expect(r.forwarded).toBe(true);
+      expect(r.candidates).toContain(CODE);
     });
   }
 });
 
-describe("the English command, the same ways", () => {
-  const cases: Array<[string, string]> = [
-    ["forwarded exactly as it was sent", EN],
-    ["pasted with a trailing space", `${EN} `],
-    ["pasted with a trailing line break", `${EN}\n`],
-    ["retyped in capitals", `MATCH TIME ADMIN GROUP ${CODE}`],
-    ["retyped on a Turkish keyboard (capital dotted I)", `MATCH T${CAPITAL_DOTTED_I}ME ADM${CAPITAL_DOTTED_I}N GROUP ${CODE}`],
-  ];
-  for (const [label, body] of cases) {
-    it(`${label}`, async () => {
-      expect(EN).toBe("Match Time admin group K7P3QX");
-      expect(await through(body)).toEqual({ forwarded: true, code: CODE });
-    });
-  }
-});
-
-describe("what is NOT recognised, pinned so nobody is surprised", () => {
-  it("the words without 'Match Time' and without a tag: not addressed to MatchTime, never leaves the group", async () => {
-    expect(await through(`yönetici grubu ${CODE}`)).toEqual({ forwarded: false, code: null });
+describe("what never leaves the group", () => {
+  it("the code without a real tag, whatever the words: typed 'Match Time' is not a tag", async () => {
+    for (const body of [CODE, `Match Time admin group ${CODE}`, `@Match Time yönetici grubu ${CODE}`, `MatchTime ${CODE}`]) {
+      expect(await through(body, false), body).toEqual({ forwarded: false, candidates: [] });
+    }
   });
 
-  it("a Turkish command typed in DECOMPOSED letters (o plus a combining mark): missed by the Pi and by the server alike", async () => {
-    // No phone keyboard we know of produces this, and a forwarded message
-    // keeps the composed letters MatchTime sent. It is the one shape of
-    // the Turkish text that is lost; the English form has no accented
-    // letter and cannot be affected.
-    const decomposed = TR.normalize("NFD");
-    expect(decomposed).not.toBe(TR);
-    expect(pi.looksLikeAdminGroupLink(decomposed, false)).toBe(false);
-    expect(parseAdminGroupLinkMessage(decomposed, { botMentioned: false })).toBeNull();
-    expect(await through(decomposed)).toEqual({ forwarded: false, code: null });
-  });
-
-  it("an ordinary message in that group never leaves it", async () => {
-    expect(await through("Yönetici grubu kuralım mı?")).toEqual({ forwarded: false, code: null });
+  it("a tagged message with no code-shaped token is never read for one", async () => {
+    expect(pi.mightBeAdminGroupLink(`${TAG} is the admin group ready?`)).toBe(false);
+    expect(await through(`${TAG} is the admin group ready?`, true)).toEqual({ forwarded: false, candidates: [] });
   });
 });

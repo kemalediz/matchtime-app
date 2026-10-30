@@ -346,7 +346,7 @@ async function main() {
       assert.equal(codes.length, 1, "one admin group command");
       const org = await db.organisation.findUnique({ where: { id: c.orgId }, select: { adminGroupLinkCode: true, adminGroupLinkCodeExpiresAt: true } });
       assert.match(org?.adminGroupLinkCode ?? "", /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
-      assert.equal(codes[0].text, `Match Time admin group ${org!.adminGroupLinkCode}`, "the code that was sent is the code that is stored");
+      assert.equal(codes[0].text, org!.adminGroupLinkCode, "the code that was sent is the code that is stored");
       assert.deepEqual(org!.adminGroupLinkCodeExpiresAt, new Date(T0.getTime() + 7 * 24 * HOUR), "valid 7 days");
       assert.equal(codes[0].createdAt.getTime() - asks[0].createdAt.getTime(), 1, "ordered right after the setup DM");
       assert.deepEqual(codes[0].sendAfter, asks[0].sendAfter, "the same due time");
@@ -384,14 +384,14 @@ async function main() {
       assert.equal(await detectAdminGroupCandidate({ addedByPhone: c.phone, participants: [{ phone: c.phone }], now: T0 }), true);
 
       // (2a) The command forwarded into the PLAYERS' group by mistake: no post there, a DM instead.
-      const mistake = await handleAdminGroupLinkCommand({ groupId: c.groupId, text: command, senderPhone: c.phone, messageId: `${c.orgId}-m1`, now: T0 });
+      const mistake = await handleAdminGroupLinkCommand({ botMentioned: true, groupId: c.groupId, text: command, senderPhone: c.phone, messageId: `${c.orgId}-m1`, now: T0 });
       assert.deepEqual(mistake, { outcome: "ignored", replyText: null, reason: "club-setting-up" });
       const told = await db.platformJob.findMany({ where: { purpose: "setup-reply", phone: c.phone }, select: { text: true, refId: true, sendAfter: true } });
       assert.equal(told.length, 1);
       assert.equal(told[0].text, "That is your players' group, so it can't be the admin group. Add me to a separate group for the admins and send the message there.");
       assert.equal(told[0].sendAfter, null);
       // The Pi forwards the same message again: still one DM.
-      await handleAdminGroupLinkCommand({ groupId: c.groupId, text: command, senderPhone: c.phone, messageId: `${c.orgId}-m1`, now: T0 });
+      await handleAdminGroupLinkCommand({ botMentioned: true, groupId: c.groupId, text: command, senderPhone: c.phone, messageId: `${c.orgId}-m1`, now: T0 });
       assert.equal(await db.platformJob.count({ where: { purpose: "setup-reply", phone: c.phone } }), 1);
       // The code was not spent by the mistake.
       assert.ok((await db.organisation.findUnique({ where: { id: c.orgId }, select: { adminGroupLinkCode: true } }))?.adminGroupLinkCode);
@@ -399,7 +399,7 @@ async function main() {
 
       // (2b) The command in the SEPARATE group, six days later: linked, confirmed THERE.
       const day6 = new Date(T0.getTime() + 6 * 24 * HOUR);
-      const linked = await handleAdminGroupLinkCommand({ groupId: c.hq, text: command, senderPhone: c.phone, groupSubject: "Lib HQ", messageId: `${c.orgId}-m2`, now: day6 });
+      const linked = await handleAdminGroupLinkCommand({ botMentioned: true, groupId: c.hq, text: command, senderPhone: c.phone, groupSubject: "Lib HQ", messageId: `${c.orgId}-m2`, now: day6 });
       assert.equal(linked.outcome, "linked");
       assert.deepEqual("adminGroup" in linked ? linked.adminGroup : null, { groupId: c.hq, orgId: c.orgId });
       // The one reply is the introduction, for a club not switched on yet.
@@ -436,7 +436,7 @@ async function main() {
       // An eighth day: the code has expired.
       const d = await heldAndAsked(T0);
       const late = (await jobsOf(d.orgId, "setup-admin-code"))[0].text ?? "";
-      const expired = await linkAdminGroup({ groupId: d.hq, text: late, senderPhone: d.phone, now: new Date(T0.getTime() + 7 * 24 * HOUR + 60_000) });
+      const expired = await linkAdminGroup({ botMentioned: true, groupId: d.hq, text: late, senderPhone: d.phone, now: new Date(T0.getTime() + 7 * 24 * HOUR + 60_000) });
       assert.equal(expired.outcome, "bad-code");
       ok("the DM's code stops working after 7 days");
     }
@@ -515,7 +515,7 @@ async function main() {
       }
       assert.equal(await leaveOf(c.hq), 0);
       // Day three: the command is forwarded there, and it links.
-      const linked = await handleAdminGroupLinkCommand({ groupId: c.hq, text: command, senderPhone: c.phone, messageId: `${c.orgId}-al1`, now: new Date(T0.getTime() + 72 * HOUR) });
+      const linked = await handleAdminGroupLinkCommand({ botMentioned: true, groupId: c.hq, text: command, senderPhone: c.phone, messageId: `${c.orgId}-al1`, now: new Date(T0.getTime() + 72 * HOUR) });
       assert.equal(linked.outcome, "linked");
       assert.deepEqual(await queueUnsolicitedAutoLeaves(new Date(T0.getTime() + 30 * 24 * HOUR)), { queued: 0, markedLeft: 0 }, "a linked admin group is never left by the sweep");
 
@@ -557,16 +557,18 @@ async function main() {
       assert.deepEqual(shown, { code: dmCode, expiresAt: new Date(T0.getTime() + 7 * 24 * HOUR), reused: true }, "the same code, with its real expiry");
       // The command in the organiser's DM still works after the button was pressed.
       const dmCommand = (await jobsOf(g.orgId, "setup-admin-code"))[0].text ?? "";
-      const still = await linkAdminGroup({ groupId: g.hq, text: dmCommand, senderPhone: g.phone, now: day2 });
+      const still = await linkAdminGroup({ botMentioned: true, groupId: g.hq, text: dmCommand, senderPhone: g.phone, now: day2 });
       assert.equal(still.outcome, "linked", "pressing Link admin group did not kill the DM's command");
-      // "New code" replaces it, on purpose: the old command then gets the 'not valid' reply.
+      // "New code" replaces it, on purpose: the old code then gets the 'not valid' reply in the
+      // group MatchTime was added to and is waiting for its code (2026-10-30: only there).
       const h = await heldAndAsked(T0);
+      await recordAdminGroupCandidate({ groupId: h.hq, subject: "Lib HQ 5", memberCount: 2, addedByPhone: h.phone, now: T0 });
       const oldCommand = (await jobsOf(h.orgId, "setup-admin-code"))[0].text ?? "";
       const fresh = await adminGroupLinkCodeForSettings(h.orgId, { now: day2, fresh: true });
       assert.equal(fresh.reused, false);
       assert.deepEqual(fresh.expiresAt, new Date(day2.getTime() + 48 * HOUR));
-      assert.equal((await linkAdminGroup({ groupId: h.hq, text: oldCommand, senderPhone: h.phone, now: day2 })).outcome, "bad-code");
-      assert.equal((await linkAdminGroup({ groupId: h.hq, text: `Match Time admin group ${fresh.code}`, senderPhone: h.phone, now: day2 })).outcome, "linked");
+      assert.equal((await linkAdminGroup({ botMentioned: true, groupId: h.hq, text: oldCommand, senderPhone: h.phone, now: day2 })).outcome, "bad-code");
+      assert.equal((await linkAdminGroup({ botMentioned: true, groupId: h.hq, text: `@447700900000 ${fresh.code}`, senderPhone: h.phone, now: day2 })).outcome, "linked");
       ok("the Settings button shows the code MatchTime sent by DM (the DM's command keeps working); only 'New code' replaces it");
     }
 

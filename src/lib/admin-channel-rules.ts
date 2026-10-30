@@ -6,13 +6,14 @@
  *   - who an admin-only notice goes to (`resolveAdminNoticeTargets`);
  *   - whether MatchTime being added to a group is an admin group waiting
  *     for its code rather than a new club (`isAdminGroupCandidate`);
- *   - the link code: making one, and reading "@Match Time admin group
- *     CODE" (`generateAdminGroupLinkCode`, `parseAdminGroupLinkMessage`).
+ *   - the link code: making one, and finding where a code we issued may
+ *     stand in a message (`generateAdminGroupLinkCode`,
+ *     `adminGroupCodeCandidates`).
  *
  * The DB half is `admin-channel.ts` (sending) and `admin-group-link.ts`
- * (linking). A copy of the link-command shape lives on the Pi
- * (whatsapp-bot/src/admin-group.ts), so only a message shaped like the
- * command ever leaves a silent group.
+ * (linking). The Pi keeps a copy of the code shape
+ * (whatsapp-bot/src/admin-group.ts): only a message that tags MatchTime
+ * AND holds a code-shaped token ever leaves a silent group.
  */
 import { randomInt } from "node:crypto";
 import { inMessageHours, type QuietHours } from "./message-hours";
@@ -151,26 +152,35 @@ export function generateAdminGroupLinkCode(rand: (max: number) => number = (max)
   return out;
 }
 
-/** "admin group" or "yönetici grubu" (typed with or without the accents),
- *  then an optional colon or dash, then exactly six letters or digits. */
-const LINK_COMMAND =
-  /(?<![\p{L}\p{N}])(?:admin\s+group|y[oö]netici\s+grub[uü])\s*[:\-]?\s*([a-z0-9]{6})(?![\p{L}\p{N}])/u;
+/** A six-character token of the code alphabet, either case, standing on
+ *  its own (not inside a longer word or number). */
+const CODE_TOKEN = new RegExp(
+  `(?<![\\p{L}\\p{N}])[${ADMIN_GROUP_CODE_ALPHABET}${ADMIN_GROUP_CODE_ALPHABET.toLowerCase()}]{${ADMIN_GROUP_CODE_LENGTH}}(?![\\p{L}\\p{N}])`,
+  "gu",
+);
 
 /**
- * The code in "@Match Time admin group K7P3QX", upper-cased, or null.
+ * Where a code WE ISSUED may stand in a message: every six-character token
+ * of the code alphabet, upper-cased, once each, in order. Nothing more:
+ * the server looks these up against the codes it issued
+ * (`linkAdminGroup`), and only a real one means anything.
  *
- * MatchTime must be addressed: a real tag (`botMentioned`, which only the
- * Pi can tell) or the words "Match Time" typed. The code is read as any
- * six letters or digits, not only the alphabet above, so a typo reaches the
- * server and an admin is told the code is wrong instead of hearing nothing.
+ * Until 2026-10-30 `parseAdminGroupLinkMessage` read the message instead:
+ * the words "Match Time" typed counted as a tag, and the phrase "admin
+ * group" or "yönetici grubu" had to precede the code. Kemal: no string
+ * parsing. The tag is now the Pi's mention flag alone, and that this is
+ * the link message follows from FACTS: a code we issued is in it, a real
+ * tag, an owner or admin of that club sent it, in a group that is not a
+ * club's (admin-group-link.ts). No model is needed, and none is asked.
  */
-export function parseAdminGroupLinkMessage(text: string, opts: { botMentioned?: boolean } = {}): string | null {
-  if (typeof text !== "string" || !text.trim()) return null;
-  const folded = text.toLocaleLowerCase("tr").replace(/ı/g, "i");
-  const addressed = opts.botMentioned === true || /match\s*time/.test(folded);
-  if (!addressed) return null;
-  const m = LINK_COMMAND.exec(folded);
-  return m ? m[1].toUpperCase() : null;
+export function adminGroupCodeCandidates(text: string): string[] {
+  if (typeof text !== "string" || !text.trim() || text.length > 1000) return [];
+  const out: string[] = [];
+  for (const m of text.matchAll(CODE_TOKEN)) {
+    const code = m[0].toUpperCase();
+    if (!out.includes(code)) out.push(code);
+  }
+  return out.slice(0, 20);
 }
 
 // ── What the Pi can do (2.5) ────────────────────────────────────────────

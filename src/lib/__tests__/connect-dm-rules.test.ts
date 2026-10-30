@@ -11,7 +11,6 @@ import {
   decideConnectDm,
   effectiveConnectStatus,
   lidDigits,
-  looksLikeConnectMessage,
   maskPhoneForCard,
   type ConnectDmRow,
 } from "../connect-dm-rules";
@@ -31,45 +30,6 @@ const row = (over: Partial<ConnectDmRow> = {}): ConnectDmRow => ({
   lastMismatchAt: null,
   orgApprovalStatus: "draft",
   ...over,
-});
-
-describe("looksLikeConnectMessage: what may earn the wrong-code reply", () => {
-  it("the prefilled texts, edited or not, with a mistyped code", () => {
-    for (const text of [
-      connectPrefill("en", "Riverside FC", "7KQ3"),
-      connectPrefill("tr", "Kartallar", "7KQ3"),
-      "connect riverside fc, code 7kq3",
-      "CONNECT RIVERSIDE FC, CODE 7KQ3",
-      "please connect us! code 7KQ3 thanks",
-      "Salı ekibini bağla, kod 7KQ3",
-      "SALI EKİBİNİ BAĞLA, KOD 7KQ3",
-      "Kartallar kulubunu bagla, kod 7KQ3",
-    ]) {
-      expect(looksLikeConnectMessage(text), text).toBe(true);
-    }
-  });
-
-  it("ordinary chat that puts a code-shaped word after 'code' or 'kod' is not one", () => {
-    for (const text of [
-      "what's the code then",
-      "is the gate code 4829",
-      "what is the code that opens the pitch gate",
-      "gate code ZZZZ",
-      "kapı kodu 4829",
-      "code 7KQ3",
-      "reconnect the pitch booking, code 7KQ3",
-    ]) {
-      // Each of these DOES carry a candidate: that is why the shape is checked.
-      expect(connectCodeCandidates(text).length, text).toBeGreaterThan(0);
-      expect(looksLikeConnectMessage(text), text).toBe(false);
-    }
-  });
-
-  it("a message with no code candidate is never one", () => {
-    for (const text of ["Connect Riverside FC", "connect us, code 7KO2", "bağla", "", null, undefined]) {
-      expect(looksLikeConnectMessage(text), String(text)).toBe(false);
-    }
-  });
 });
 
 describe("reading the code", () => {

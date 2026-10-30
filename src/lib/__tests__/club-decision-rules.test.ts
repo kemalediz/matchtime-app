@@ -3,7 +3,8 @@
  * Plan: MDs/self-join-and-approval-plan-2026-09-28.md, sections 6.2, 6.4, 7
  * (cap 8) and 12.
  *
- * No database, no clock but the one passed in, NO MODEL.
+ * No database, no clock but the one passed in, NO MODEL. The owner's DM
+ * is read by the one DM reader; what is checked here is its answer.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -14,7 +15,7 @@ import {
   isApproverSender,
   newClubDmCap,
   ownerAckText,
-  parseApproverCommand,
+  approverCommandFromRead,
   resolveApproverTarget,
   suspendRefusal,
   type DecidedClub,
@@ -24,35 +25,38 @@ import {
 const NOW = new Date("2026-09-29T12:00:00Z");
 const days = (n: number) => new Date(NOW.getTime() + n * 24 * 60 * 60 * 1000);
 
-describe("parseApproverCommand", () => {
-  it("reads APPROVE and REJECT with a ref, any case, trailing punctuation allowed", () => {
-    expect(parseApproverCommand("APPROVE 7KQ2")).toEqual({ verb: "approve", ref: "7KQ2" });
-    expect(parseApproverCommand("approve 7kq2")).toEqual({ verb: "approve", ref: "7KQ2" });
-    expect(parseApproverCommand("  Reject 9xt4. ")).toEqual({ verb: "reject", ref: "9XT4" });
-    expect(parseApproverCommand("APPROVE: 7KQ2!")).toEqual({ verb: "approve", ref: "7KQ2" });
-    expect(parseApproverCommand("approved 7KQ2")).toBeNull();
+describe("approverCommandFromRead: the reader's answer, checked against what the owner wrote", () => {
+  const read = (intent: string, clubRef = "") => ({ intent, confidence: 0.95, clubRef });
+
+  it("approve or reject, as the reader said, with a ref that is in his message", () => {
+    expect(approverCommandFromRead(read("approve_club", "7KQ2"), ["approve 7kq2"])).toEqual({ verb: "approve", ref: "7KQ2" });
+    expect(approverCommandFromRead(read("reject_club", "9xt4"), ["reddet 9XT4."])).toEqual({ verb: "reject", ref: "9XT4" });
+    expect(approverCommandFromRead(read("approve_club", "7KQ2"), ["yes that one", "New club: Riverside FC, ref 7KQ2"])).toEqual({ verb: "approve", ref: "7KQ2" });
   });
 
-  it("reads a bare APPROVE or REJECT with no ref", () => {
-    expect(parseApproverCommand("APPROVE")).toEqual({ verb: "approve", ref: null });
-    expect(parseApproverCommand("reject")).toEqual({ verb: "reject", ref: null });
+  it("no ref named: a bare verb", () => {
+    expect(approverCommandFromRead(read("approve_club"), ["approve"])).toEqual({ verb: "approve", ref: null });
+    expect(approverCommandFromRead(read("reject_club", "  "), ["reject that one"])).toEqual({ verb: "reject", ref: null });
   });
 
-  it("is the WHOLE message, never a word inside a sentence", () => {
-    for (const text of [
-      "I approve of this",
-      "please approve 7KQ2 when you can",
-      "Connect Riverside FC, code 7KQ2",
-      "approve 7KQ2 and 9XT4",
-      "",
-      "IN",
-    ]) {
-      expect(parseApproverCommand(text), text).toBeNull();
+  it("a ref the model gave that is not in his words, or only inside a longer word, is flagged, never trusted", () => {
+    expect(approverCommandFromRead(read("approve_club", "7KQ2"), ["approve the riverside one"])).toEqual({ verb: "approve", ref: null, unverifiedRef: "7KQ2" });
+    expect(approverCommandFromRead(read("approve_club", "KQ2"), ["approve 7KQ2"])).toEqual({ verb: "approve", ref: null, unverifiedRef: "KQ2" });
+  });
+
+  it("anything the reader did not call an approve or a reject is no command", () => {
+    for (const intent of ["other", "question", "go_live", "intro_messages", "connect_club"]) {
+      expect(approverCommandFromRead(read(intent, "7KQ2"), ["approve 7KQ2"]), intent).toBeNull();
     }
   });
+});
 
-  it("keeps an odd-length ref, so the owner is told it matches nothing", () => {
-    expect(parseApproverCommand("APPROVE 7KQ")).toEqual({ verb: "approve", ref: "7KQ" });
+describe("ownerAckText: a ref the owner did not write", () => {
+  it("asks which club, with an example and the waiting list", () => {
+    expect(ownerAckText({ kind: "ref-needed", waiting: [{ orgId: "o1", code: "7KQ2", club: "Riverside FC" }] })).toBe(
+      "Which club? Reply with its ref, for example APPROVE 7KQ2. Waiting now: 7KQ2 Riverside FC.",
+    );
+    expect(ownerAckText({ kind: "ref-needed", waiting: [] })).toBe("Which club? Reply with its ref. Nothing is waiting right now.");
   });
 });
 

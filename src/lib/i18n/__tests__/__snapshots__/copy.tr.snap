@@ -2756,7 +2756,7 @@ Kim: Hamzah (kulüp sahibi)
 [Yönetici grubunu bağla] [Yeni kod]
 1. Bu sayfayı açık tutun. Kodunuz: K7P3QX
 2. MatchTime'ı yöneticilerin WhatsApp grubuna ekleyin.
-3. O grupta şunu gönderin: @Match Time yönetici grubu K7P3QX
+3. O grupta beni etiketleyin (@Match Time yazıp listeden beni seçin) ve kodu gönderin: @Match Time K7P3QX
 Kod bir kez çalışır ve 48 saat geçerlidir.
 Bir grup bağlanana kadar yönetici mesajları şu an gittiği yere gitmeye devam eder.
 
@@ -4163,7 +4163,7 @@ https://matchtime.ai/r/sched
 ⭐ *Başlangıç puanları:* ilk takımlar dengeli olsun diye her oyuncuya 10 üzerinden kabaca bir puan verin:
 https://matchtime.ai/r/ratings
 
-👥 *Yönetici grubu (isteğe bağlı):* organizatörlerinizin kendi WhatsApp grubu varsa beni o gruba ekleyin ve bir sonraki mesajımı orada gönderin. Yönetici mesajları o zaman size değil, o gruba gider.
+👥 *Yönetici grubu (isteğe bağlı):* organizatörlerinizin kendi WhatsApp grubu varsa beni o gruba ekleyin, sonra orada beni etiketleyip bir sonraki mesajımdaki kodu gönderin: @Match Time yazın, listeden beni seçin ve kodu yapıştırın. Yönetici mesajları o zaman size değil, o gruba gider.
 
 Hazır olduğunuzda buraya *BAŞLA* yazın, grupta kendimi tanıtayım; ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:
 https://matchtime.ai/r/settings
@@ -4172,7 +4172,7 @@ O zamana kadar grupta hiçbir şey yazmam.
 İlk üç ayınız ücretsiz. Ücretsiz dönem, grupta yayına geçtiğimde başlar.
 
 ### SFU2 composeSetupAdminCommandDm / the second message, exactly the link command
-Match Time yönetici grubu K7P3QX
+K7P3QX
 
 ### SFU3 composeSetupReminderDm / the one reminder, 24 hours after the setup DM was due
 Küçük bir hatırlatma: Thursday Ladies onaylandı, ama "Thursday Ladies 5s" grubunda hâlâ sessizim. Hazır olduğunuzda *BAŞLA* yazın, kendimi tanıtayım; ya da önce ayarlara göz atın: https://matchtime.ai/r/settings

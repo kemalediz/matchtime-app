@@ -90,9 +90,9 @@
  *
  * THE ADMIN GROUP STEP (go-live slice S7, owner decisions 6 and 10). A
  * club with no admin group linked gets one more block in the DM ("add me
- * to your organisers' group and send my next message there") and a SECOND
- * platform DM straight after it: exactly "Match Time admin group <CODE>",
- * so it can be forwarded whole. Both jobs are created in the claim's own
+ * to your organisers' group, then tag me there with the code in my next
+ * message") and a SECOND platform DM straight after it: exactly the code,
+ * so it can be copied whole (2026-10-30: the link needs a real tag). Both jobs are created in the claim's own
  * transaction, with the same due time, and the second is ordered after
  * the first (`createdAt`, one millisecond apart: dispatch is oldest
  * first). So it is sent at most once per club for the same reason the

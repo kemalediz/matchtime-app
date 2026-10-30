@@ -5,9 +5,12 @@
  * `handleApproverDm` in club-approval.ts.
  *
  * No database, no clock but the one passed in, NO MODEL. The owner's
- * WhatsApp reply is read by a regular expression over the WHOLE message,
- * and only from a number in SELF_JOIN_APPROVER_PHONES, read off the DM's
- * envelope (never a directory lookup).
+ * WhatsApp reply is read by the one DM reader (dm-intent.ts: `approve_club`
+ * or `reject_club`, and the ref he named), and only from a number in
+ * SELF_JOIN_APPROVER_PHONES, read off the DM's envelope (never a directory
+ * lookup). Until 2026-10-30 an exact-phrase regex read it ("APPROVE 7KQ2"
+ * as the whole message); Kemal: no string parsing. What stays here is the
+ * check of the reader's answer against the facts.
  */
 import { freePeriodStart } from "./club-billing-rules";
 import { isClubLimitExempt } from "./club-limit-exempt";
@@ -23,18 +26,33 @@ export interface ApproverCommand {
   ref: string | null;
 }
 
-/**
- * "APPROVE 7KQ2", "reject 9xt4.", "APPROVE" on its own. The whole message
- * must be the command: "please approve 7KQ2 when you can" is not one, so a
- * sentence that happens to contain the word never decides anything.
- */
-const COMMAND_RE = /^(approve|reject)(?:[\s:,-]+([a-z0-9]{2,8}))?[\s.!]*$/i;
+/** The DM reader's answer, as far as this file needs it. */
+export interface ApproverRead {
+  intent: string;
+  /** The club ref the model says he named, as he wrote it; "" for none. */
+  clubRef?: string;
+}
 
-export function parseApproverCommand(text: string | null | undefined): ApproverCommand | null {
-  if (typeof text !== "string") return null;
-  const m = COMMAND_RE.exec(text.trim());
-  if (!m) return null;
-  return { verb: m[1].toLowerCase() as ApproverVerb, ref: m[2] ? m[2].toUpperCase() : null };
+/** A command, and a ref the model gave that his words do not hold. */
+export type ApproverReadCommand = ApproverCommand & { unverifiedRef?: string };
+
+/**
+ * The reader's approve or reject, checked. A MODEL-OUTPUT VERIFIER, not a
+ * reader of meaning: the ref counts only when it stands as a whole token in
+ * what the owner wrote, or in the message of ours he swiped to reply
+ * (`sources`). A ref the model gave that is in neither is returned as
+ * `unverifiedRef` with no ref, and the caller decides nothing on it.
+ * Null when the reader did not say approve or reject.
+ */
+export function approverCommandFromRead(read: ApproverRead, sources: ReadonlyArray<string | null | undefined>): ApproverReadCommand | null {
+  const verb: ApproverVerb | null = read.intent === "approve_club" ? "approve" : read.intent === "reject_club" ? "reject" : null;
+  if (!verb) return null;
+  const ref = typeof read.clubRef === "string" ? read.clubRef.trim().toUpperCase() : "";
+  if (!ref) return { verb, ref: null };
+  const tokens = new Set(
+    sources.flatMap((t) => (typeof t === "string" ? (t.toUpperCase().match(/[\p{L}\p{N}]+/gu) ?? []) : [])),
+  );
+  return tokens.has(ref) ? { verb, ref } : { verb, ref: null, unverifiedRef: ref };
 }
 
 /**
@@ -109,6 +127,8 @@ export type OwnerAck =
   | { kind: "rejected"; club: string }
   | { kind: "ambiguous"; waiting: WaitingClub[] }
   | { kind: "unknown-ref"; ref: string; waiting: WaitingClub[] }
+  /** The reader gave a ref his words do not hold: nothing is decided. */
+  | { kind: "ref-needed"; waiting: WaitingClub[] }
   | { kind: "none-waiting" }
   | { kind: "already"; decided: DecidedClub }
   | { kind: "group-taken"; club: string; takenBy: string };
@@ -152,6 +172,10 @@ export function ownerAckText(a: OwnerAck): string {
       return a.waiting.length > 0
         ? `No club waiting with ref ${a.ref}. Waiting now: ${listWaiting(a.waiting)}.`
         : `No club waiting with ref ${a.ref}. Nothing else is waiting.`;
+    case "ref-needed":
+      return a.waiting.length > 0
+        ? `Which club? Reply with its ref, for example APPROVE ${a.waiting[0].code}. Waiting now: ${listWaiting(a.waiting)}.`
+        : "Which club? Reply with its ref. Nothing is waiting right now.";
     case "none-waiting":
       return "No clubs are waiting right now.";
     case "already": {

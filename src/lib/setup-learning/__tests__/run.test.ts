@@ -130,6 +130,7 @@ vi.mock("@/lib/platform-jobs", async (orig) => ({
 import { learnClubSetup, runSetupLearningSweep, MAX_ATTEMPTS } from "../run";
 import type { PipelineModel } from "../../pipeline/llm";
 import { FIXTURE_ANSWERS, FIXTURE_NAMES, loadFixture, STUB_ANSWERS } from "./stubs";
+import { feeBasisCandidate } from "../fee-basis";
 import { isFeatureOffered } from "../../org-features-meta";
 
 const ORG = "org-riverside";
@@ -227,8 +228,11 @@ describe("learnClubSetup, fixture by fixture (one stub call each, no real model)
         expect(state.orgUpdates).toEqual([]);
         expect(dms).toEqual([]);
       } else {
-        expect(model.calls).toBe(1);
-        expect(budget.keys).toEqual([ORG]);
+        // The reading, plus the fee-basis call when it found a pounds price
+        // (fee-basis.ts, 2026-10-30), each through the reading's budget.
+        const n = feeBasisCandidate(FIXTURE_ANSWERS[name] ?? {}) ? 2 : 1;
+        expect(model.calls).toBe(n);
+        expect(budget.keys).toEqual(Array(n).fill(ORG));
         // The fixture says what the rules decide; the run never writes a
         // hidden setting (payment tracking, 2026-10-16).
         expect((state.learning!.applied as Array<{ key: string }>).map((a) => a.key)).toEqual(
@@ -237,7 +241,7 @@ describe("learnClubSetup, fixture by fixture (one stub call each, no real model)
         expect((state.learning!.noted as Array<{ key: string }>).map((a) => a.key)).toEqual(fx.expect.noted);
         expect((state.learning!.suggestions as Array<{ key: string }>).map((a) => a.key)).toEqual(fx.expect.suggestions);
         expect(dms.length).toBe(fx.expect.dm ? 1 : 0);
-        expect(state.learning).toMatchObject({ model: "claude-haiku-5-5", costUsd: 0.011, inputTokens: 9_000, outputTokens: 400 });
+        expect(state.learning).toMatchObject({ model: "claude-haiku-5-5", costUsd: 0.011 * n, inputTokens: 9_000 * n, outputTokens: 400 * n });
       }
       // The chat is deleted once read, whatever came of it, and the group
       // description in the same statement (captured-chat.ts).
@@ -270,11 +274,13 @@ describe("learnClubSetup: the group description", () => {
     return { model, sent };
   }
 
-  it("is sent to the model as its own labelled block, with the chat, in ONE call", async () => {
+  it("is sent to the model as its own labelled block, with the chat, in ONE reading call (the fee-basis call sees only the fee's quotes)", async () => {
     const fx = setup("description-supports");
     const { model, sent } = capturing(STUB_ANSWERS["description-supports"]);
     await learnClubSetup(ORG, { now: DAYTIME, model });
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(2);
+    expect(sent[1].user).toBe("Amount: 6\nExcerpts:\n- £6 a player, pay before kick off.");
+    expect(sent[1].user).not.toContain("Pay Kemal");
     expect(sent[0].user).toContain(`Group description (one source, written by a group admin, maybe long ago):\n"""\n${fx.description}\n"""`);
     expect(sent[0].user).toContain("Messages (30, oldest first, London time):");
     expect(sent[0].user).toContain("Pay Kemal [number removed]");

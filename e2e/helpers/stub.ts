@@ -193,6 +193,16 @@ export function addMatchAvailabilityBodies(bodies: Record<string, "in" | "out" |
   setMatchAvailabilityStub({ ...cur, bodies: { ...(cur.bodies ?? {}), ...bodies } });
 }
 
+/**
+ * What the DM reader reads the owner's decision as (2026-10-30: the
+ * "APPROVE <ref>" regex is retired; the reader says approve or reject and
+ * the ref he named, which the route checks against his words). A spec that
+ * sends the owner's DM says what the model would have read.
+ */
+export function addOwnerDecisionRead(body: string, verb: "approve" | "reject", ref: string | null): void {
+  addDmIntentBodies({ [body.trim()]: `${verb}_club${ref ? `:${ref}` : ""}` });
+}
+
 /** What the DM reader reads the GO words as (the words the setup DM asks for). */
 export const GO_READS: Record<string, string> = { GO: "go_live", go: "go_live", "*GO*": "go_live", "GO.": "go_live", "GO!! 👍": "go_live", "GO!!": "go_live", "Go 👍": "go_live", "*GO LIVE*": "go_live", "go live": "go_live", "BAŞLA": "go_live", "başla!": "go_live", basla: "go_live" };
 

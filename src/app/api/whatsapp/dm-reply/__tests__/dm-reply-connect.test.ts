@@ -105,6 +105,9 @@ describe("dm-reply: the connect DM", () => {
       senderAltPhone: CONNECT.senderAltPhone,
       senderLid: CONNECT.senderLid,
       waMessageId: CONNECT.waMessageId,
+      // The one DM reader, consulted only for a code that names no request
+      // from a phone with an open one (2026-10-30, no string parsing).
+      read: expect.any(Function),
     });
   });
 
