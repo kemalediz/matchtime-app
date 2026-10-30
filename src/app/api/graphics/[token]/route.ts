@@ -27,12 +27,20 @@
  * area covered), or the default. A club that never chose keeps its own
  * template, so FNF's board is unchanged.
  *
+ * A team sheet drawn here is recorded (`recordTeamSheetShown`, 2026-10-30):
+ * the image is drawn from the teams as they are at this fetch, so this is
+ * the one place that knows which teams the posted sheet shows. The
+ * due-posts poll then does not send a sheet showing the same teams again
+ * (`teamSheetJobVerdict`). Best effort: a failed record never fails the
+ * image.
+ *
  * Logged: ids, kind, the design and sizes only, never a name.
  */
 import { verifyGraphicToken } from "@/lib/graphic-token";
 import { loadGraphicData } from "@/lib/match-graphics";
 import { loadClubDesign } from "@/lib/club-graphics-template";
 import { renderClubGraphic } from "@/lib/club-graphics-render";
+import { recordTeamSheetShown } from "@/lib/admin-group-graphics";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +58,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const { png, design } = await renderClubGraphic(data, chosen.template, { foreign: chosen.foreign });
   const count = data.kind === "list" ? data.players.length + data.reserves.length : data.teams[0].names.length + data.teams[1].names.length;
   const how = design.design === "default" ? `design=default reason=${design.reason}` : `design=${design.design} source=${chosen.source}`;
+  if (data.kind === "teams" && data.fingerprint) {
+    await recordTeamSheetShown(target.matchId, data.fingerprint, new Date()).catch((err: unknown) =>
+      console.error(`[graphics] teams match=${target.matchId}: not recorded as drawn:`, err instanceof Error ? err.message : "failed"),
+    );
+  }
   console.log(`[graphics] ${target.kind} org=${target.orgId} match=${target.matchId} names=${count} ${how} bytes=${png.length}`);
   return new Response(new Uint8Array(png), {
     status: 200,

@@ -12,7 +12,7 @@ const dbMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 
-import { loadGraphicData, nextGraphicMatch } from "../match-graphics";
+import { loadGraphicData, nextGraphicMatch, teamSheetFingerprint } from "../match-graphics";
 
 // Fri 16 Oct 2026, 21:00 London.
 const DATE = new Date("2026-10-16T20:00:00Z");
@@ -122,7 +122,32 @@ describe("loadGraphicData: the team sheet", () => {
         { label: "Red", names: ["Shehryar", "Ali Y."] },
         { label: "Yellow", names: ["Ali K.", "Player"] },
       ],
+      fingerprint: expect.any(String),
     });
+  });
+
+  // One team sheet per set of teams (2026-10-30): what the sheet shows, as
+  // a fact (user ids per side, labels, day and venue), never its text.
+  it("its fingerprint: the same teams in any order agree; a swap, or a dropped player's old slot, does not count", async () => {
+    const fp = async (assignments: Array<{ userId: string; team: string }>, over: Record<string, unknown> = {}) => {
+      dbMock.match.findFirst.mockResolvedValue(matchRow({ teamAssignments: assignments, ...over }));
+      const d = await loadGraphicData({ orgId: "org-fnf", matchId: "m-1", kind: "teams" });
+      return d && d.kind === "teams" ? d.fingerprint : null;
+    };
+    const base = await fp(teams);
+    expect(base).toBeTruthy();
+    expect(await fp([...teams].reverse())).toBe(base);
+    expect(await fp(teams.filter((t) => t.userId !== "u-dropped"))).toBe(base);
+    const swapped = teams.map((t) => (t.userId === "u1" ? { ...t, team: "YELLOW" } : t.userId === "u2" ? { ...t, team: "RED" } : t));
+    expect(await fp(swapped)).not.toBe(base);
+    expect(await fp(teams, { teamLabels: ["Non Bibs", "Bibs"] })).not.toBe(base);
+  });
+
+  it("teamSheetFingerprint: sorted ids per side, so order never matters", () => {
+    const a = teamSheetFingerprint({ labels: ["R", "Y"], red: ["b", "a"], yellow: ["d", "c"], matchDate: DATE, venue: "V" });
+    const b = teamSheetFingerprint({ labels: ["R", "Y"], red: ["a", "b"], yellow: ["c", "d"], matchDate: DATE, venue: "V" });
+    expect(a).toBe(b);
+    expect(teamSheetFingerprint({ labels: ["R", "Y"], red: ["c", "d"], yellow: ["a", "b"], matchDate: DATE, venue: "V" })).not.toBe(a);
   });
 
   it("the club's own team labels win over the sport's, and the match's over both", async () => {

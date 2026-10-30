@@ -28,6 +28,7 @@ import {
   type LoadedAdminChannel,
 } from "./admin-channel";
 import type { PiCaps } from "./admin-channel-rules";
+import { readGraphicJob } from "./graphic-job";
 import { getOrgFeatures, type OrgFeatures } from "./org-features";
 import { featureForDueKey } from "./due-key-feature";
 import { formatLondon } from "./london-time";
@@ -736,6 +737,9 @@ export async function computeDuePosts(
           ).map((a) => a.postJobId)
         : [],
     );
+    // One team sheet per set of teams (2026-10-30, admin-group-graphics.ts):
+    // the matches whose team sheet is already going out on this poll.
+    const teamSheetsEmitted = new Set<string>();
     for (const job of jobs) {
       const key = `botjob-${job.id}`;
       if (sentKeys.has(key)) continue;
@@ -763,7 +767,22 @@ export async function computeDuePosts(
         // owner by DM, so it is never swallowed.
         const channel = await getAdminChannel();
         const instr = channel ? adminGroupJobInstruction(job, channel, piCaps, now) : null;
-        if (instr) out.push(instr);
+        if (!instr) continue;
+        // A team sheet showing exactly the teams of the last one drawn is
+        // not sent again; a second one for the same match waits a poll.
+        // Fails open: a read that fails sends, as before this check.
+        const graphic = readGraphicJob(job.pollOptions);
+        if (graphic?.kind === "teams") {
+          const verdict = await (await import("./admin-group-graphics"))
+            .teamSheetJobVerdict({ job, orgId: org.id, now, emitted: teamSheetsEmitted })
+            .catch((err: unknown) => {
+              console.error(`[graphics] job ${job.id}: same-sheet check failed, sending:`, err instanceof Error ? err.message : "failed");
+              return "send" as const;
+            });
+          if (verdict !== "send") continue;
+          teamSheetsEmitted.add(graphic.matchId);
+        }
+        out.push(instr);
       } else if (job.kind === "group-poll" && job.pollQuestion && job.pollOptions.length >= 2) {
         // Ad-hoc admin-queued poll (e.g. feedback polls). Reuses the
         // same `botjob-<id>` ack key so sentAt clears on delivery.

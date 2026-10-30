@@ -42,6 +42,21 @@ export interface ListPosterData extends GraphicBase {
 export interface TeamSheetData extends GraphicBase {
   kind: "teams";
   teams: [{ label: string; names: string[] }, { label: string; names: string[] }];
+  /**
+   * What this sheet shows, as a fact: `teamSheetFingerprint`. Set by
+   * `loadGraphicData`; absent on a drawn sample (the Posters card). Two
+   * sheets with the same fingerprint are the same picture of the teams.
+   */
+  fingerprint?: string;
+}
+
+/**
+ * ONE TEAM SHEET PER SET OF TEAMS (2026-10-30). The players on each side by
+ * user id (sorted, so order never matters), the two labels, the day and the
+ * venue: everything on a team sheet that can change. Never built from text.
+ */
+export function teamSheetFingerprint(args: { labels: [string, string]; red: string[]; yellow: string[]; matchDate: Date; venue: string }): string {
+  return JSON.stringify([args.labels, [...args.red].sort(), [...args.yellow].sort(), args.matchDate.toISOString(), args.venue]);
 }
 
 export type GraphicData = ListPosterData | TeamSheetData;
@@ -123,7 +138,8 @@ export async function loadGraphicData(target: GraphicTarget): Promise<GraphicDat
     lang,
   );
   const [red, yellow] = resolveTeamLabels(match, org, match.activity.sport, lang);
-  const pick = (team: "RED" | "YELLOW") => onTeams.filter((a) => teamOf.get(a.userId) === team).map((a) => names.get(a.userId)!);
+  const on = (team: "RED" | "YELLOW") => onTeams.filter((a) => teamOf.get(a.userId) === team);
+  const pick = (team: "RED" | "YELLOW") => on(team).map((a) => names.get(a.userId)!);
   return {
     kind: "teams",
     ...base,
@@ -131,5 +147,12 @@ export async function loadGraphicData(target: GraphicTarget): Promise<GraphicDat
       { label: red, names: pick("RED") },
       { label: yellow, names: pick("YELLOW") },
     ],
+    fingerprint: teamSheetFingerprint({
+      labels: [red, yellow],
+      red: on("RED").map((a) => a.userId),
+      yellow: on("YELLOW").map((a) => a.userId),
+      matchDate: match.date,
+      venue: base.venue,
+    }),
   };
 }

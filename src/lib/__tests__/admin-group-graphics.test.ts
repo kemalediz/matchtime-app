@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const dbMock = vi.hoisted(() => ({
   organisation: { findUnique: vi.fn() },
   membership: { findFirst: vi.fn() },
-  sentNotification: { create: vi.fn() },
+  sentNotification: { create: vi.fn(), findFirst: vi.fn(async () => null) },
   botJob: { create: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));

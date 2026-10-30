@@ -17,7 +17,12 @@
  *   redrawTeamSheet(...)                the final teams changed after their
  *                                       team sheet went out: the updated
  *                                       one, on its own, after a short
- *                                       quiet period (2026-10-16).
+ *                                       quiet period (2026-10-16);
+ *   recordTeamSheetShown(...)           the graphics route drew a team
+ *   teamSheetJobVerdict(...)            sheet; the due-posts poll asks if a
+ *                                       queued one should still go
+ *                                       (one team sheet per set of teams,
+ *                                       2026-10-30).
  *
  * A graphic is queued as an `admin-group` BotJob (`graphic-job.ts`) and
  * goes out on the club's next due-posts poll, where its image URL is
@@ -28,9 +33,10 @@
  */
 import { db } from "./db";
 import { isGroupPostable } from "./group-postability-store";
+import { randomUUID } from "node:crypto";
 import { loadGraphicData, nextGraphicMatch } from "./match-graphics";
 import { graphicCaption, graphicsCopy, type GraphicKind } from "./match-graphics-copy";
-import { graphicJobOptions } from "./graphic-job";
+import { graphicJobOptions, readGraphicJob } from "./graphic-job";
 
 // ── Queue one graphic ───────────────────────────────────────────────────
 
@@ -139,7 +145,10 @@ export async function redrawTeamSheet(orgId: string, matchId: string, now: Date)
  * the admin group of a live club. The caller has proven the sender and
  * claimed the message id. The graphic itself is the answer: no text when
  * it is queued. After the teams are approved a team sheet request sends it
- * again (no once-key here), unless one is still waiting to go.
+ * again (no once-key here), unless one is still waiting to go, or the same
+ * teams were drawn less than `SAME_SHEET_RESEND_MS` ago: then one short
+ * line says they have not changed (2026-10-30), since a request answered
+ * by nothing at all reads as MatchTime being broken.
  */
 export async function answerGraphicRequest(args: {
   orgId: string;
@@ -155,6 +164,10 @@ export async function answerGraphicRequest(args: {
   // ones). A team sheet still waiting to go is drawn from the teams as
   // they are when it goes (`/api/graphics/<token>`), so it IS the answer:
   // it goes now, as an asked one, and no second one is queued.
+  if (args.kind === "teams" && (await sameSheetShownWithin(args.orgId, matchId, args.now, SAME_SHEET_RESEND_MS))) {
+    console.log(`[graphics] team sheet asked for org=${args.orgId} match=${matchId}: the same teams went out minutes ago, not sent again`);
+    return { outcome: "graphic-unchanged", replyText: s.teamsUnchanged };
+  }
   if (args.kind === "teams") {
     const waiting = await db.botJob.findFirst({
       where: { orgId: args.orgId, kind: "admin-group", sentAt: null, pollOptions: { hasEvery: graphicJobOptions({ kind: "teams", matchId, asked: false }).slice(0, 3) } },
@@ -178,4 +191,95 @@ export async function answerGraphicRequest(args: {
   if (r.reason === "no-match") return { outcome: "graphic-no-match", replyText: s.noMatch };
   // No group MatchTime can post in: a reply would not reach it either.
   return { outcome: `graphic-${r.reason}`, replyText: null };
+}
+
+// ── One team sheet per set of teams (2026-10-30) ───────────────────────
+
+/**
+ * 29 Oct, FNF HQ: the team sheet image went out twice in a row with the
+ * same teams (18:09, the approval's sheet and an asked one due on the same
+ * poll; 19:25 and 19:26, an asked one and the redraw still in its quiet
+ * period). So a team sheet whose teams are exactly those of the last one
+ * DRAWN for that match is not sent again by a trigger, and a request for it
+ * within `SAME_SHEET_RESEND_MS` is told the teams have not changed.
+ *
+ * WHERE. The image is drawn when the Pi fetches it (`/api/graphics/<token>`),
+ * from the teams as they are then; so that is where what a sheet showed is
+ * recorded (`recordTeamSheetShown`), as `teamSheetFingerprint`. The Pi
+ * fetches, posts and acks inside one tick before it polls again, so the
+ * record is there on the next poll. The decision to send is taken where a
+ * queued sheet is turned into an instruction (`bot-scheduler.ts`, through
+ * `teamSheetJobVerdict`), before it is claimed: a sheet not sent is never
+ * handed to the Pi at all. A fetch that fails posts nothing and records
+ * nothing, so the next sheet still goes.
+ *
+ * The record is a SentNotification ledger row (kind `teamsheet-shown`, the
+ * fingerprint in `text`, matchId left null so the scheduler's dedupe read
+ * never sees it, as the outbound text log): no migration.
+ */
+export const SAME_SHEET_RESEND_MS = 10 * 60 * 1000;
+
+const SHOWN_KIND = "teamsheet-shown";
+const shownPrefix = (matchId: string) => `${SHOWN_KIND}:${matchId}:`;
+/** Appended to a queued sheet's `pollOptions` when it was closed unsent. */
+export const SKIPPED_SAME_TEAMS = "skipped:same-teams";
+
+/** The graphics route drew the team sheet of `matchId` showing `fingerprint`. */
+export async function recordTeamSheetShown(matchId: string, fingerprint: string, now: Date): Promise<void> {
+  await db.sentNotification.create({
+    data: { key: `${shownPrefix(matchId)}${now.getTime()}:${randomUUID()}`, kind: SHOWN_KIND, text: fingerprint },
+  });
+}
+
+async function lastTeamSheetShown(matchId: string): Promise<{ fingerprint: string; at: Date } | null> {
+  const row = await db.sentNotification.findFirst({
+    where: { kind: SHOWN_KIND, key: { startsWith: shownPrefix(matchId) } },
+    orderBy: { createdAt: "desc" },
+    select: { text: true, createdAt: true },
+  });
+  return row?.text ? { fingerprint: row.text, at: row.createdAt } : null;
+}
+
+/**
+ * The teams of `matchId` now are exactly those of the last team sheet drawn,
+ * and that was drawn less than `withinMs` ago (Infinity: at any time).
+ */
+async function sameSheetShownWithin(orgId: string, matchId: string, now: Date, withinMs: number): Promise<boolean> {
+  const last = await lastTeamSheetShown(matchId);
+  if (!last || now.getTime() - last.at.getTime() >= withinMs) return false;
+  const data = await loadGraphicData({ orgId, matchId, kind: "teams" });
+  return !!data && data.kind === "teams" && !!data.fingerprint && data.fingerprint === last.fingerprint;
+}
+
+/**
+ * Whether a queued admin-group job may go out on this poll:
+ *
+ *   "send"  anything that is not a team sheet; a team sheet showing teams
+ *           not yet drawn; an asked one when the same sheet went out more
+ *           than `SAME_SHEET_RESEND_MS` ago (it may have scrolled away).
+ *   "hold"  another team sheet for the same match is already going out on
+ *           this poll (`emitted`, match ids): it waits for the next poll,
+ *           when that one's image is recorded and this one is decided.
+ *   "skip"  the same teams as the last sheet drawn: closed unsent (`sentAt`
+ *           stamped, `SKIPPED_SAME_TEAMS` appended) and never handed to the
+ *           Pi. Quietly: an asked one skipped here was queued while the same
+ *           sheet was on its way, so the image is just above it.
+ */
+export async function teamSheetJobVerdict(args: {
+  job: { id: string; pollOptions: readonly string[] | null };
+  orgId: string;
+  now: Date;
+  emitted: ReadonlySet<string>;
+}): Promise<"send" | "hold" | "skip"> {
+  const g = readGraphicJob(args.job.pollOptions);
+  if (!g || g.kind !== "teams") return "send";
+  if (args.emitted.has(g.matchId)) return "hold";
+  const within = g.asked ? SAME_SHEET_RESEND_MS : Number.POSITIVE_INFINITY;
+  if (!(await sameSheetShownWithin(args.orgId, g.matchId, args.now, within))) return "send";
+  await db.botJob.updateMany({
+    where: { id: args.job.id, sentAt: null },
+    data: { sentAt: args.now, pollOptions: [...graphicJobOptions(g), SKIPPED_SAME_TEAMS] },
+  });
+  console.log(`[graphics] team sheet job=${args.job.id} match=${g.matchId} (${g.asked ? "asked" : "auto"}): same teams as the last sheet drawn, not sent`);
+  return "skip";
 }
