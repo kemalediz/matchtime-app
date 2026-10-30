@@ -199,6 +199,8 @@ export type ConditionOn = "squad" | "self" | "none";
  * One attendance claim the TEXT makes. Every field is a property of the
  * message, checkable by re-reading it. None of them is a decision.
  */
+export type PersonKind = "named" | "relation" | "group" | "placeholder";
+
 export interface Claim {
   /** Who the claim is about. `sender` = the person who typed it. */
   subject: "sender" | "other";
@@ -208,6 +210,23 @@ export interface Claim {
    *  "someone" → false. This single boolean is what stops a ghost user
    *  called "Amir's brother" being provisioned into a paid squad (§4.1). */
   personNamed: boolean;
+  /**
+   * WHAT KIND OF PERSON `personRef` IS, as the extractor reads it
+   * (2026-10-30, the review of PR #476): "named" (a particular person by
+   * name, nickname or @mention), "relation" ("my brother", "Amir's
+   * cousin"), "group" ("everyone", "the lads") or "placeholder" ("someone",
+   * "+1", "2 of my guys"). ONLY "named" is ever resolved against the roster
+   * or provisioned. Absent (older stubs): "named" when `personNamed`, else
+   * "placeholder". `parseFacts` always sets it, and `personNamed` follows it.
+   */
+  personKind?: PersonKind;
+  /**
+   * The message itself asks for the bench for this person (2026-10-30). A
+   * model "bench" without it is read as the IN it came from and capacity
+   * decides, so a CONFIRMED player is never demoted and a newcomer takes a
+   * free place (the Erdal incident, 2026-09-24). Absent: false.
+   */
+  benchAsked?: boolean;
   /** in = joining, out = leaving, bench = EXPLICITLY asked for the bench.
    *  The extractor never infers `bench` from squad capacity; capacity is
    *  the engine's job, so every `bench` here is a stated preference. */
@@ -1948,6 +1967,14 @@ export interface EngineMessage {
    * it quotes (`quoted-message.ts`), never by its words. Absent otherwise.
    */
   quoted?: QuotedRef | null;
+  /**
+   * When the message is a WhatsApp reply to one of MATCHTIME's own posts,
+   * the match that post was about (2026-10-30, review of PR #476). A fact
+   * from the quote, never the words: an answer to "which team won?"
+   * counts only as a reply to MatchTime's post about that match, or with
+   * the Pi's real mention flag (`taggedExplicitly`). Absent otherwise.
+   */
+  repliesToMatchTimeAbout?: string | null;
 }
 
 export interface EngineInput {

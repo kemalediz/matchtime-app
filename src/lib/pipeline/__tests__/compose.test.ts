@@ -956,7 +956,7 @@ describe("a drop that opens a spot says so, in one line", () => {
         from: "wasim",
         body: "stick me on the bench tonight lads",
         route: "self_att",
-        facts: attendanceFacts([claim({ polarity: "bench" })]),
+        facts: attendanceFacts([claim({ polarity: "bench", benchAsked: true })]),
       }),
     ]);
     expect(out.utterances).toHaveLength(1);

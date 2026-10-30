@@ -19,11 +19,11 @@
  *
  * WHAT CHANGED ON 2026-10-30 ("no string parsing"). The fix was a word
  * list (`namesTheBench`) that turned a model "bench" into "in" when the
- * body had no bench word. It is gone: the attendance extractor's prompt
- * says, as one of its examples, that "in" from a sender already on a full
- * list is "in", not bench, and the engine applies the reading it is
- * given. These tests pin the engine on a CORRECT reading; whether the
- * model reads it correctly is the live check's (incident corpus).
+ * body had no bench word. The word list is gone; the same gate now reads
+ * a FIELD the extractor fills, `benchAsked` (the message itself asks for
+ * the bench). A "bench" without it is read as the IN it came from and
+ * capacity decides: a confirmed player is never demoted, a newcomer takes
+ * a free place.
  */
 import { describe, it, expect } from "vitest";
 import { decide } from "../engine";
@@ -158,18 +158,45 @@ describe("siblings of the incident", () => {
     expect(statusOf(r.nextState, "erdal")).toBe("DROPPED");
   });
 
-  it("the engine applies the reading it is given: no word test overrules a model 'bench' (2026-10-30)", () => {
+  it("THE INCIDENT: the extractor's 'bench' on a bare 'in' does NOT move Erdal off 14/14", () => {
+    const r = decide({
+      now: NOW,
+      state: afterThePaste(),
+      messages: [
+        PASTE,
+        // What production's extractor returned: an uncontingent bench, not asked for.
+        msg({ id: "wa-in", from: "erdal", body: "in", route: "self_att", facts: attendanceFacts([claim({ polarity: "bench" })]) }),
+      ],
+    });
+    expect(attWrites(r.writes)).toHaveLength(0);
+    expect(statusOf(r.nextState, "erdal")).toBe("CONFIRMED");
+    expect(positionOf(r.nextState, "erdal")).toBe(14);
+    expect(confirmedCount(r.nextState)).toBe(14);
+  });
+
+  it("a newcomer's bare 'in' read as 'bench' with room CONFIRMS: no bench beside an empty slot", () => {
+    const state = world({ players: PLAYERS, maxPlayers: 14, confirmed: THIRTEEN });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [msg({ from: "habib", body: "In", route: "self_att", facts: attendanceFacts([claim({ polarity: "bench" })]) })],
+    });
+    expect(statusOf(r.nextState, "habib")).toBe("CONFIRMED");
+    expect(attWrites(r.writes)[0]).toMatchObject({ status: "CONFIRMED", explicitBench: false });
+  });
+
+  it("a newcomer's bare 'in' read as 'bench' on a FULL squad is benched as INFERRED, never explicit", () => {
     const r = decide({
       now: NOW,
       state: afterThePaste(),
       messages: [msg({ from: "habib", body: "In", route: "self_att", facts: attendanceFacts([claim({ polarity: "bench" })]) })],
     });
     expect(statusOf(r.nextState, "habib")).toBe("BENCH");
-    expect(r.outcomes[0].reasons.join(" | ")).not.toMatch(/never names the bench/);
+    expect(attWrites(r.writes)[0]).toMatchObject({ status: "BENCH", explicitBench: false });
   });
 });
 
-describe("a bench the message DOES name is still honoured", () => {
+describe("a bench the extractor marks as ASKED FOR (benchAsked) is honoured", () => {
   it("a confirmed player asking for the bench in words is demoted (explicit)", () => {
     const r = decide({
       now: NOW,
@@ -179,7 +206,7 @@ describe("a bench the message DOES name is still honoured", () => {
           from: "erdal",
           body: "put me on the bench, let Habib play",
           route: "self_att",
-          facts: attendanceFacts([claim({ polarity: "bench" })]),
+          facts: attendanceFacts([claim({ polarity: "bench", benchAsked: true })]),
         }),
       ],
     });
@@ -197,7 +224,7 @@ describe("a bench the message DOES name is still honoured", () => {
           from: "youssef",
           body: "In as a reserve",
           route: "self_att",
-          facts: attendanceFacts([claim({ polarity: "bench" })]),
+          facts: attendanceFacts([claim({ polarity: "bench", benchAsked: true })]),
         }),
       ],
     });
@@ -214,7 +241,7 @@ describe("a bench the message DOES name is still honoured", () => {
           from: "erdal",
           body: "yedekte kalayım",
           route: "self_att",
-          facts: attendanceFacts([claim({ polarity: "bench" })]),
+          facts: attendanceFacts([claim({ polarity: "bench", benchAsked: true })]),
         }),
       ],
     });
@@ -231,7 +258,7 @@ describe("a bench the message DOES name is still honoured", () => {
           from: "habib",
           body: "put me down as backup",
           route: "self_att",
-          facts: attendanceFacts([claim({ polarity: "bench" })]),
+          facts: attendanceFacts([claim({ polarity: "bench", benchAsked: true })]),
         }),
       ],
     });
@@ -248,7 +275,7 @@ describe("a bench the message DOES name is still honoured", () => {
           from: "habib",
           body: "put me down as backup",
           route: "self_att",
-          facts: attendanceFacts([claim({ polarity: "bench" })]),
+          facts: attendanceFacts([claim({ polarity: "bench", benchAsked: true })]),
         }),
       ],
     });

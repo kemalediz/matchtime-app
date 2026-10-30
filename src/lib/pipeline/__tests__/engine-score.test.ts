@@ -203,9 +203,12 @@ describe("the question is asked ONCE, and a NARROW answer completes the result",
       },
       ...over,
     });
+  // Since the review of #476 an answer is a WhatsApp REPLY to MatchTime's
+  // question (untagged) or carries the Pi's real mention (tagged).
   const answer = (from: string | null, o: { tagged?: boolean; body?: string } = {}) => ({
     from,
     tagged: o.tagged ?? false,
+    ...(o.tagged ? { taggedExplicitly: true } : { repliesToMatchTimeAbout: "done-1" }),
     body: o.body ?? "Yellow",
     route: "score" as const,
     facts: noNumbers({ winner: "Yellow" }),

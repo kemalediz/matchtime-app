@@ -134,6 +134,8 @@ function msg(o: Partial<ScoreBatchMessage> & { body: string }): ScoreBatchMessag
     // survive the builder or the "never owned" test tests nothing.
     route: "route" in o ? o.route : "score",
     gated: o.gated ?? false,
+    ...(o.reply ? { reply: o.reply } : {}),
+    ...(o.taggedExplicitly !== undefined ? { taggedExplicitly: o.taggedExplicitly } : {}),
   };
 }
 
@@ -515,7 +517,10 @@ describe("the 2026-10-06 incident, end to end through the batch", () => {
         },
       }),
     );
-    const res = await run({ messages: [msg({ body: "Yellow" })], model, deps: r.deps });
+    // A WhatsApp reply to MatchTime's question about this match (the fact
+    // an answer needs since the review of #476).
+    const reply = { at: null, text: "10 - 7 to which team?", topic: null, match: null, author: null, matchId: "done-1", found: true };
+    const res = await run({ messages: [msg({ body: "Yellow", reply })], model, deps: r.deps });
     expect(calls).toHaveLength(1);
     expect(res.cost.calls).toBe(1);
     expect(r.recorded).toEqual([{ matchId: "done-1", red: 7, yellow: 10 }]);

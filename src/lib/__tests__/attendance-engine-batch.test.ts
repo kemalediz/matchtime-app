@@ -1191,7 +1191,7 @@ describe("a plain 'in' from a confirmed player never reaches the apply layer as 
    *  uncontingent BENCH. Returned for every call, so the paste in the
    *  same batch gets it too and the pasted-roster clamp must discard it. */
   const SELF_BENCH = {
-    claims: [{ ...SELF_IN.claims[0], polarity: "bench" }],
+    claims: [{ ...SELF_IN.claims[0], polarity: "bench", benchAsked: true }],
     affirmation: "none",
     sideRequests: [],
   };

@@ -171,6 +171,9 @@ export interface ScoreBatchMessage {
   /** The message this one is a WhatsApp reply to, whoever wrote it
    *  (quoted-reply context, slice S4). Absent when it is not a reply. */
   reply?: QuotedGroupMessage | null;
+  /** The Pi's real mention flag (`botMentioned === true`), never the
+   *  router's reading. Absent: false. */
+  taggedExplicitly?: boolean;
 }
 
 export interface ScoreMessageOutcome {
@@ -427,6 +430,10 @@ export async function runScoreBatch(args: {
     senderUserId: m.senderUserId,
     senderName: m.senderName ?? m.authorName,
     tagged: m.tagged,
+    taggedExplicitly: m.taggedExplicitly === true,
+    // A reply to one of MatchTime's own posts: the match that post was
+    // about (a fact from the quote; review of #476).
+    repliesToMatchTimeAbout: m.reply && !m.reply.author ? m.reply.matchId : null,
     route: m.route ?? "none",
     facts: ownedIds.has(m.waMessageId)
       ? (factsById.get(m.waMessageId) ?? { kind: "none" })

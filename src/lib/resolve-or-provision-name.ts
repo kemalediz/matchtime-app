@@ -58,9 +58,14 @@ export async function resolveOrProvisionByName(
     if (!c.user.name) return false;
     const dbTokens = norm(c.user.name).split(/\s+/).filter(Boolean);
     const dbFirst = dbTokens[0] ?? "";
+    // The PREFIX half only ever for a single-word ref (2026-10-30, review
+    // of PR #476): "the lads" is not Theo and "everyone" is never reached
+    // here at all (the engine resolves only what the model calls a named
+    // person). An exact first name still matches whatever follows it.
     return (
       dbFirst === pushFirst ||
-      (dbFirst.length >= 3 &&
+      (pushTokens.length === 1 &&
+        dbFirst.length >= 3 &&
         pushFirst.length >= 3 &&
         (dbFirst.startsWith(pushFirst) || pushFirst.startsWith(dbFirst)))
     );

@@ -713,12 +713,33 @@ export function decide(input: EngineInput): EngineResult {
         claims = kept;
       }
 
-      // "BENCH" IS THE EXTRACTOR'S READING (2026-10-30). A word list
-      // (`namesTheBench`, Sutton FC 2026-09-24: Erdal's "in" read as
-      // "bench" demoted him at 14/14) used to turn a model "bench" with no
-      // bench word into "in". "No string parsing" retired it; the
-      // attendance prompt teaches that very case ("in" from a sender on a
-      // full list is "in", not bench) and the incident corpus checks it.
+      // ══════════════════════════════════════════════════════════════
+      // "BENCH" IS EXPLICIT ONLY WHEN THE EXTRACTOR SAYS IT WAS ASKED FOR
+      // ══════════════════════════════════════════════════════════════
+      //
+      // Sutton FC, 2026-09-24: Erdal, CONFIRMED at 14/14, typed "in"; the
+      // extractor returned an uncontingent "bench" and he was demoted with
+      // the note "explicit bench request". Until 2026-10-30 a word list
+      // (`namesTheBench`) required a bench word in the body. "No string
+      // parsing": the same gate now reads a FIELD, `benchAsked` (the
+      // message itself asks for the bench). A "bench" without it is read
+      // as the IN it came from and capacity decides, which is how an
+      // inferred bench has always been treated (PR #27): a confirmed
+      // player is never demoted, a newcomer takes a free place, and on a
+      // full squad he is benched as inferred, never explicit.
+      // The SENDER's own claim only: benching somebody else is an
+      // admin's instruction, gated on the seat below, and "move Salman to
+      // the bench" must keep working.
+      if (claims.some((c) => c.subject === "sender" && c.polarity === "bench" && c.benchAsked !== true)) {
+        claims = claims.map((c) => {
+          if (c.subject !== "sender" || c.polarity !== "bench" || c.benchAsked === true) return c;
+          out.reasons.push(
+            `"${c.personRef || "sender"}": the extractor read "bench" but not as asked for (benchAsked false); ` +
+              `read as "in" and capacity decides`,
+          );
+          return { ...c, polarity: "in" as const };
+        });
+      }
 
       // ══════════════════════════════════════════════════════════════
       // A REPLY TO A PARTNER CLUB'S ASK IS ABOUT THAT ASK (2026-10-16)
@@ -1305,28 +1326,21 @@ export function decide(input: EngineInput): EngineResult {
           continue;
         }
 
-        // Third party. A relationship is not a name — and the engine
-        // says so itself rather than trusting `personNamed` (§11.3).
-        const resolution = resolvePerson(c.personRef, w.roster);
-
-        // …and the same distrust runs the OTHER way. `personNamed` is
-        // the model's reading of the TEXT; whether a reference
-        // identifies a SQUAD MEMBER is the roster's business, and only
-        // code has the roster. The first live corpus sweep had the
-        // extractor call "habibi" an endearment rather than a name 3
-        // times out of 3, which blocked a drop the message plainly
-        // makes. A reference that uniquely resolves to a member has
-        // named someone, whatever the model thinks — and it can only get
-        // here after identity.ts has already refused relationships,
-        // quantities, indefinites and raw digits.
-        let personNamed = c.personNamed;
-        if (!personNamed && resolution.kind === "resolved") {
-          personNamed = true;
-          out.reasons.push(
-            `"${c.personRef}" was reported unnamed but resolves to a squad member ` +
-              `(${resolution.member.name}); treating it as named`,
-          );
-        }
+        // Third party. ONLY A NAMED PERSON IS RESOLVED OR PROVISIONED
+        // (2026-10-30, review of PR #476). The extractor states the kind
+        // of person (`personKind`: named, relation, group, placeholder);
+        // a relation ("Amir's brother"), a group ("everyone", "the lads")
+        // or a placeholder ("someone", "+1") is never matched against the
+        // roster, so it can never become a member by a first-name or
+        // prefix match. Until today word lists in `identity.ts` refused
+        // those, and a roster match could also overrule an "unnamed"
+        // reading; both are gone ("no string parsing"). An older stub
+        // with only `personNamed` maps onto the same kind.
+        const kind = c.personKind ?? (c.personNamed ? "named" : "placeholder");
+        const personNamed = kind === "named";
+        const resolution: ReturnType<typeof resolvePerson> = personNamed
+          ? resolvePerson(c.personRef, w.roster)
+          : { kind: "not-a-person", why: `the extractor read "${c.personRef}" as a ${kind}, not a named person` };
 
         // ── A MENTION NOBODY COULD NAME (2026-09-30, MT Test) ──────────
         //
@@ -1349,7 +1363,8 @@ export function decide(input: EngineInput): EngineResult {
         }
 
         if (!personNamed || resolution.kind === "not-a-person") {
-          if (c.polarity === "in" && !rawDigitsOnly) {
+          // A group ("everyone in") is nobody to ask a name for.
+          if (c.polarity === "in" && !rawDigitsOnly && kind !== "group") {
             guestAsks.push(c);
             out.reasons.push(`unnamed third party ("${c.personRef}") cannot register anyone`);
           } else {
@@ -1373,6 +1388,13 @@ export function decide(input: EngineInput): EngineResult {
         if (resolution.kind === "unknown") {
           if (c.polarity !== "in") {
             out.reasons.push(`"${c.personRef}" is not a member; nothing to drop or bench`);
+            continue;
+          }
+          // A VERIFIER ON THE MODEL'S OUTPUT (2026-10-30): a new player is
+          // provisioned only under a name the message actually wrote. A
+          // name the model invented, or expanded, provisions nobody.
+          if (!refWrittenIn(c.personRef, msg.body)) {
+            out.reasons.push(`"${c.personRef}" is not written in the message; nobody provisioned`);
             continue;
           }
           if (!msg.senderUserId) {
@@ -2712,10 +2734,16 @@ export function decide(input: EngineInput): EngineResult {
        *  a tag, or the asker or an identified admin within thirty
        *  minutes)? WHAT counts as an answer is decided from the text,
        *  separately, below. */
+      // AND A FACT SAYS IT IS AN ANSWER (2026-10-30, review of PR #476):
+      // a WhatsApp reply to MatchTime's post about THIS match, or the Pi's
+      // real mention flag. The router's `to_bot` alone, or merely being the
+      // asker inside thirty minutes, is not enough: a model can read the
+      // asker's chatter ("reds deserved it anyway") as naming a winner.
+      const answersByFact = msg.taggedExplicitly === true || msg.repliesToMatchTimeAbout === completed.id;
       const answerQualifies =
         !!pending &&
+        answersByFact &&
         isScoreAnswer({
-          body: msg.body,
           tagged: msg.tagged,
           senderUserId: msg.senderUserId ?? null,
           senderIsAdmin,
@@ -3985,5 +4013,24 @@ export function answeredSide(
   const named = [facts.firstTeam, facts.secondTeam].filter((t) => (t ?? "").trim());
   if (named.length !== 1) return null;
   return resolveTeamRef(named[0], labels, senderTeam);
+}
+
+/**
+ * Is the name the extractor returned WRITTEN in the message? A check on
+ * the model's OUTPUT against the text (2026-10-30), never a reading of
+ * what the person meant: case, accents and spacing are folded, and the
+ * name must appear as whole words.
+ */
+export function refWrittenIn(ref: string, body: string): boolean {
+  const fold = (x: string) =>
+    ` ${(x ?? "")
+      .toLocaleLowerCase("tr")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/ı/g, "i")
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim()} `;
+  const r = fold(ref);
+  return r.trim().length > 0 && fold(body).includes(r);
 }
 

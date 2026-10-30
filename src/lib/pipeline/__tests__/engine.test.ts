@@ -243,7 +243,7 @@ describe("S5 + PR#27 · a BENCH row means FULL or ASKED, never 'inferred'", () =
           from: "amir",
           body: "In. For bench👍",
           route: "self_att",
-          facts: attendanceFacts([claim({ polarity: "bench" })]),
+          facts: attendanceFacts([claim({ polarity: "bench", benchAsked: true })]),
         }),
       ],
     });
@@ -1615,7 +1615,7 @@ describe("SELF_IN_FROM_A_MEMBER_IS_NEVER_DROPPED_BY_THE_FLOOR", () => {
           from: "idris",
           body: "bench maybe",
           route: "self_att",
-          facts: attendanceFacts([claim({ subject: "sender", polarity: "bench", confidence: 0.1 })]),
+          facts: attendanceFacts([claim({ subject: "sender", polarity: "bench", benchAsked: true, confidence: 0.1 })]),
         }),
       ],
     });
@@ -2059,14 +2059,13 @@ describe("S28 · a replacement frees the slot BEFORE it fills it", () => {
 });
 
 describe("S12 · the roster decides whether a reference names someone", () => {
-  it("honours a nickname the model reported as personNamed:false", () => {
-    // Live corpus: the extractor called "habibi" an endearment rather
-    // than a name (3/3), so the engine's unnamed-third-party rule
-    // blocked a drop the message plainly makes. `personNamed` is the
-    // model's reading of the TEXT; whether a reference identifies a
-    // SQUAD MEMBER is the roster's business, and only code has the
-    // roster. Placeholder words still lose: identity.ts refuses them
-    // before this can fire.
+  it("a nickname the model reads as a NAMED person resolves to the member (personKind, 2026-10-30)", () => {
+    // Live corpus: the extractor once called "habibi" an endearment. Until
+    // 2026-10-30 a roster match overruled that reading; since the review
+    // of PR #476 only a ref the model calls a named person is resolved
+    // (`personKind`), so a relation, group or placeholder can never become
+    // a member by a name match. The prompt says a word that may only be a
+    // nickname is named.
     const state = world({
       confirmed: [...FULL_14.slice(0, 12), "mojib", "habib"],
     });
@@ -2085,7 +2084,8 @@ describe("S12 · the roster decides whether a reference names someone", () => {
               claim({
                 subject: "other",
                 personRef: "habibi",
-                personNamed: false,
+                personNamed: true,
+                personKind: "named",
                 polarity: "out",
               }),
             ],
@@ -2096,7 +2096,6 @@ describe("S12 · the roster decides whether a reference names someone", () => {
     });
     expect(statusOf(r.nextState, "mojib")).toBe("DROPPED");
     expect(statusOf(r.nextState, "habib")).toBe("DROPPED");
-    expect(r.outcomes[0].reasons.join(" ")).toMatch(/resolves to a squad member/i);
   });
 
 });
@@ -2532,7 +2531,7 @@ describe("PR#27 · a CONTINGENT bench is inferred, not explicit", () => {
           from: "amir",
           body: "In. For bench👍",
           route: "self_att",
-          facts: attendanceFacts([claim({ polarity: "bench" })]),
+          facts: attendanceFacts([claim({ polarity: "bench", benchAsked: true })]),
         }),
       ],
     });

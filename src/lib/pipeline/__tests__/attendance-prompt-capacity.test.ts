@@ -171,7 +171,7 @@ describe("the rewrite keeps every behaviour the prompt already handled", () => {
   it.each([
     ["facts, never decisions", /never decide/i],
     ["personRef verbatim, never invented", /VERBATIM[^\n]*Never invent/],
-    ["personNamed false for a relationship or quantity", /"my brother", "2 of my guys", "someone", "a mate", "another keeper"/],
+    ["personKind: a relation, a group or a placeholder is not a named person", /"relation" someone described only by their tie to somebody \("my brother"/],
     ["standing future commitment", /count me in whenever you are short/],
     ["counterfactual is hypothetical", /if I WAS in the team/],
     ["a condition on a real commitment is future, not hypothetical", /"future"[^\n]*one with a condition/],

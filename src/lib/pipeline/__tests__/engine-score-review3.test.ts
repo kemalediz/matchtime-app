@@ -129,45 +129,60 @@ describe("1. the extractor's two numbers must BE in the text, each as its own nu
   });
 });
 
-describe("2. the extractor reads the answer; code decides only who may give it (2026-10-30)", () => {
-  // Until 2026-10-30 a word test on the body had to call the message a
-  // bare team answer, and the model's `winner` was ignored. "No string
-  // parsing": the extractor reads the message against MatchTime's question,
-  // and a correct reading of chatter names no winner.
-  it("M2i: the asker's untagged chatter, read correctly (no winner), records nothing", () => {
+describe("2. an answer counts only by a FACT: a reply to MatchTime's question, or the Pi's real tag (review of #476)", () => {
+  // The extractor reads the words, and a model can read chatter as an
+  // answer: "reds deserved it anyway" came back with winner "reds" (third
+  // review, item 2). So who may answer is facts (`isScoreAnswer`), AND the
+  // message must be a WhatsApp reply to MatchTime's post about this match,
+  // or carry the Pi's mention flag. Otherwise the model's winner is ignored.
+  it("M2i: the asker's untagged chatter that the model reads as naming a winner records nothing", () => {
     const { scores, replies } = run(pend(5), {
       from: "elvin",
       body: "yellow bibs stink mate, whoever takes them home wash them. reds deserved it anyway",
-      facts: S(null, null),
+      facts: S(null, null, { winner: "reds" }),
     });
     expect(scores).toEqual([]);
     expect(replies).toEqual([]);
   });
 
-  it("M2j: an admin's, twenty minutes later, read correctly, records nothing", () => {
-    const { scores } = run(pend(20), { from: "kemal", body: "honestly yellows always win when Najib plays", facts: S(null, null) });
+  it("M2j: nor an admin's, twenty minutes later", () => {
+    const { scores } = run(pend(20), {
+      from: "kemal",
+      body: "honestly yellows always win when Najib plays",
+      facts: S(null, null, { winner: "yellows" }),
+    });
     expect(scores).toEqual([]);
   });
 
-  it("the side is the one the extractor's facts name", () => {
-    expect(run(pend(5), { from: "elvin", body: "Yellow", facts: S(null, null, { winner: "Yellow" }) }).scores).toEqual([
-      expect.objectContaining({ red: 7, yellow: 10 }),
-    ]);
-    expect(run(pend(5), { from: "elvin", body: "reds won", facts: S(null, null, { winner: "reds" }) }).scores).toEqual([
-      expect.objectContaining({ red: 10, yellow: 7 }),
-    ]);
-    // The loser's opponent is the winner.
-    expect(run(pend(5), { from: "elvin", body: "reds lost", facts: S(null, null, { loser: "reds" }) }).scores).toEqual([
-      expect.objectContaining({ red: 7, yellow: 10 }),
-    ]);
+  it("M2k: nor a message the router alone called addressed (tagged by to_bot, no real mention)", () => {
+    const { scores } = run(pend(110), {
+      from: "wasim",
+      tagged: true,
+      body: "MatchTime can you put me on yellow next week, reds won again",
+      facts: S(null, null, { winner: "reds" }),
+    });
+    expect(scores).toEqual([]);
   });
 
-  it("no facts naming a side, no answer: the body alone is never read", () => {
-    expect(run(pend(5), { from: "elvin", body: "Yellow", facts: S(null, null) }).scores).toEqual([]);
+  it("a WhatsApp reply to MatchTime's question about this match answers it", () => {
+    const { scores } = run(pend(5), { from: "elvin", body: "Yellow", repliesToMatchTimeAbout: "done-1", facts: S(null, null, { winner: "Yellow" }) });
+    expect(scores).toEqual([expect.objectContaining({ red: 7, yellow: 10 })]);
   });
 
-  it("a sender who may not answer (untagged, not the asker or an admin) records nothing, whatever the facts", () => {
-    expect(run(pend(5), { from: "sait", body: "Yellow", facts: S(null, null, { winner: "Yellow" }) }).scores).toEqual([]);
+  it("a reply to MatchTime's post about ANOTHER match does not", () => {
+    const { scores } = run(pend(5), { from: "elvin", body: "Yellow", repliesToMatchTimeAbout: "other-match", facts: S(null, null, { winner: "Yellow" }) });
+    expect(scores).toEqual([]);
+  });
+
+  it("the Pi's real mention answers it, and the side is the one the extractor names", () => {
+    const { scores } = run(pend(5), { from: "elvin", tagged: true, taggedExplicitly: true, body: "@Match Time reds won", facts: S(null, null, { winner: "reds" }) });
+    expect(scores).toEqual([expect.objectContaining({ red: 10, yellow: 7 })]);
+  });
+
+  it("a sender who may not answer records nothing, even replying", () => {
+    expect(
+      run(pend(5), { from: "sait", body: "Yellow", repliesToMatchTimeAbout: "done-1", facts: S(null, null, { winner: "Yellow" }) }).scores,
+    ).toEqual([]);
   });
 
   it('M2l / M2m: restating the SAME pair with one team is an answer: "Yellow 10-7", "Yellow 7-10", "10-7 yellow"', () => {
@@ -177,7 +192,7 @@ describe("2. the extractor reads the answer; code decides only who may give it (
       ["10-7 yellow", S(10, 7, { secondTeam: "yellow" })],
       ["7 - 10 yellows", S(7, 10, { secondTeam: "yellows" })],
     ] as const) {
-      const { scores, asks, replies } = run(pend(5), { from: "elvin", body, facts });
+      const { scores, asks, replies } = run(pend(5), { from: "elvin", body, repliesToMatchTimeAbout: "done-1", facts });
       expect(scores, body).toEqual([expect.objectContaining({ red: 7, yellow: 10 })]);
       expect(asks).toEqual([]);
       expect(replies).toEqual(["Got it 👍 *Yellow* won 10 - 7 against Red. Recorded."]);
@@ -186,14 +201,14 @@ describe("2. the extractor reads the answer; code decides only who may give it (
 
   it("...but only from somebody who could have answered with the bare name", () => {
     // Another player, untagged: still "already asked", still silent.
-    const other = run(pend(5), { from: "sait", body: "Yellow 7-10", facts: S(7, 10, { firstTeam: "Yellow" }) });
+    const other = run(pend(5), { from: "sait", body: "Yellow 7-10", repliesToMatchTimeAbout: "done-1", facts: S(7, 10, { firstTeam: "Yellow" }) });
     expect(other.scores).toEqual([]);
     expect(other.replies).toEqual([]);
     // The asker, after thirty minutes, untagged.
-    expect(run(pend(31), { from: "elvin", body: "Yellow 7-10", facts: S(7, 10, { firstTeam: "Yellow" }) }).scores).toEqual([]);
+    expect(run(pend(31), { from: "elvin", body: "Yellow 7-10", repliesToMatchTimeAbout: "done-1", facts: S(7, 10, { firstTeam: "Yellow" }) }).scores).toEqual([]);
     // Tagged, anybody who may report.
     expect(
-      run(pend(31), { from: "sait", tagged: true, body: "@Match Time Yellow 7-10", facts: S(7, 10, { firstTeam: "Yellow" }) }).scores,
+      run(pend(31), { from: "sait", tagged: true, taggedExplicitly: true, body: "@Match Time Yellow 7-10", facts: S(7, 10, { firstTeam: "Yellow" }) }).scores,
     ).toEqual([expect.objectContaining({ red: 7, yellow: 10 })]);
   });
 

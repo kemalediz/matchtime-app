@@ -199,6 +199,10 @@ export function runScoreCase(c: ScoreLiveCase, facts: ScoreFacts): ScoreCaseOutc
         from: c.sender === "yellow" ? "najib" : "kemal",
         body: c.body,
         tagged: c.tagged ?? false,
+        // The facts an answer needs (review of #476): a real tag, or a reply
+        // to MatchTime's question when one is open.
+        taggedExplicitly: c.tagged ?? false,
+        ...(c.pending ? { repliesToMatchTimeAbout: "done-1" } : {}),
         route: "score",
         facts,
       }),

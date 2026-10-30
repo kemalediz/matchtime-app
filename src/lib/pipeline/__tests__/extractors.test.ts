@@ -89,7 +89,8 @@ describe("the extractor schemas contain no decision", () => {
       expect.arrayContaining([
         "subject",
         "personRef",
-        "personNamed",
+        "personKind",
+        "benchAsked",
         "polarity",
         "contingent",
         "conditionOn",

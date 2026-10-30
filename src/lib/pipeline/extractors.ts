@@ -39,6 +39,7 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
 import { parsePeriodFields } from "./stats-period";
 import { HELP_BADGES, HELP_FEATURES } from "./types";
 import type {
+  PersonKind,
   AdminFacts,
   AttendanceFacts,
   Claim,
@@ -239,11 +240,12 @@ THE CLAIMS
 Return one claim for each person the message speaks about as a player in the club's match: joining, leaving, the bench, a maybe, or being free to play. A message that says none of that about anyone returns an empty claims array. Being free means free for the match: free, around or available to play, on its own or with "if you need me" or "if someone drops". The word alone settles nothing: free of the fee, free for a drink, a question asking who is free, and news of where someone will be with no word on playing ("I land Monday", "I will be back Tuesday week") are not about anyone's place.
   subject      "sender" for the person who typed it, "other" for anyone else
   personRef    the words used for that person, VERBATIM. Never invent or expand a name. "" for the sender. A relationship followed by a name is the name: "my brother Shahrokh" is "Shahrokh". One exception: a "he", "him" or "o" that points at the author of the quoted message is written as that author's name, as the THEY ARE REPLYING TO line gives it; when that line names no one ("a member (not identified)"), keep the words as they are
-  personNamed  true when the words identify a particular person: a name, a nickname or an @mention, including a word that may only be a nickname (code checks every name against the squad). false only for a relationship, a quantity, an indefinite or the whole group: "my brother", "2 of my guys", "someone", "a mate", "another keeper", "everyone", "@all", "the lads"
+  personKind   what personRef is, one of: "named" a particular person identified by a name, a nickname or an @mention, including a word that may only be a nickname (code checks every name against the squad), and the sender; "relation" someone described only by their tie to somebody ("my brother", "Amir's cousin", "his mate"); "group" the whole group or a crowd ("everyone", "@all", "the lads", "all of you"); "placeholder" a quantity or an indefinite ("2 of my guys", "someone", "a mate", "another keeper", "+1"). A relation followed by a name is the name, named: "my brother Shahrokh" is Shahrokh.
   polarity     what the message says that person is doing in the match:
                  "in"     joining, or staying in
                  "out"    leaving or not coming: the person gives up their place, asks for someone to take it, or says they will not or cannot play ("out", "can't make it", "anyone replace me?", "I can drop out", "I'm away that week"). An injury, a knock or tiredness on its own is not "out": someone "taking it easy" is still playing
                  "bench"  the bench, in one of two ways. The message names it explicitly: bench, reserve, sub, backup, spare, standby, waiting list, "yedek" in any form, or 🪑. Or the sender offers themselves to fill a gap, by asking to be called on or by saying they are free to play, and takes no place yet ("ping me if you need one more", "I can play if you're short", "I'm free Friday if you need me"): that is "bench" with contingent true and conditionOn "squad", never "in" and never a maybe. This second way is only ever the sender's own: someone else said to be free is "in". Nothing else is the bench. A message that also asks for the place outright is "in": "I'm free Tuesday, put me down"
+  benchAsked   true only when polarity is bench because the message itself asks for the bench for that person (it names the bench, a reserve, sub, backup, standby or waiting place, or 🪑); false for an offer to fill a gap, and false whenever polarity is not bench.
   contingent   true when the claim depends on something that has not happened yet: "in if my back holds up", "count me in if someone drops", "happy to drop if you find someone". An OFFER to give up a place is contingent with no "if" in it ("I can drop out", "happy to pull out", "I'll make room"): the test is whether the person IS doing it or only COULD. Being free to play is contingent too, with no "if" needed ("I'm free Friday", "my brother is free"): it says they can be called on, not that they are playing. Someone who can play, is coming or can take a place, with no condition, is not contingent: "my cousin Ali can play", "two of my guys can play", "Ali can take my spot" are false. false for a decision already taken ("I'm in", "I'm out", "can't make it"), and for asking for cover: "anyone able to replace me?" says they are leaving, whether or not someone is found. A position is a note, not a condition, so it is false too
   conditionOn  "squad" when the condition is the squad or the team's needs, which includes every offer to fill a gap, to give up a place or to play when free; "self" when it is about the person themselves; otherwise "none"
   tense        "present" now; "future" a commitment or offer about an upcoming match, including a standing one ("count me in whenever you are short") and one with a condition; "past" something that already happened ("I was in last week"); "hypothetical" a counterfactual about something that is not the case ("if I WAS in the team it would not be ruined"). Relayed words keep the tense of what was said, not of the saying: "Najib said he's in" is present
@@ -297,7 +299,7 @@ Other people: subject other, personRef as written.
   "Ali said he's coming" | "Ali geliyorum dedi" -> Ali in, reported true
   "Mehmet can't come" | "Mehmet gelemiyor" -> Mehmet out
   "he's out" replying to Ali Khan's message | "o yok" -> personRef "Ali Khan", out
-  "+1", "+2" or "plus one", alone or after the sender's own claim, is a GUEST the sender brings, never the sender: subject other, personRef the token verbatim ("+1"), personNamed false, in. "ben de" is the sender; "+1" is not.
+  "+1", "+2" or "plus one", alone or after the sender's own claim, is a GUEST the sender brings, never the sender: subject other, personRef the token verbatim ("+1"), personKind placeholder, in. "ben de" is the sender; "+1" is not.
 
 Offering someone else: the one who would play is another person, even when the sender brings them. One claim, for that person only: subject other, in, never bench: the bench is only ever the sender's own offer. The sender says nothing about their own place, so there is no claim for the sender. contingent is true only when the message states a condition or says the person is free, as for every claim.
   The player is whoever would be on the pitch. "I can play if you're short" is the sender. When the sender would bring, get or ask someone ("I can bring someone if you're short", "I'll get a mate if you need", "I can ask my brother"), the player is that someone, never the sender
@@ -710,7 +712,8 @@ export const ATTENDANCE_SCHEMA = {
         properties: {
           subject: { type: "string", enum: ["sender", "other"] },
           personRef: { type: "string" },
-          personNamed: { type: "boolean" },
+          personKind: { type: "string", enum: ["named", "relation", "group", "placeholder"] },
+          benchAsked: { type: "boolean" },
           polarity: { type: "string", enum: ["in", "out", "bench"] },
           contingent: { type: "boolean" },
           conditionOn: { type: "string", enum: ["squad", "self", "none"] },
@@ -725,7 +728,8 @@ export const ATTENDANCE_SCHEMA = {
         required: [
           "subject",
           "personRef",
-          "personNamed",
+          "personKind",
+          "benchAsked",
           "polarity",
           "contingent",
           "conditionOn",
@@ -1039,10 +1043,20 @@ export function parseFacts(
         const condRaw = str(r.conditionOn).toLowerCase() as ConditionOn;
         const conditionOn = CONDITIONS.includes(condRaw) ? condRaw : "none";
         const subject = str(r.subject).toLowerCase() === "other" ? "other" : "sender";
+        // The extractor states the kind of person (2026-10-30); an older
+        // stub that only sends `personNamed` maps onto it.
+        const kindRaw = str(r.personKind).toLowerCase();
+        const kind: PersonKind = (["named", "relation", "group", "placeholder"] as const).includes(kindRaw as PersonKind)
+          ? (kindRaw as PersonKind)
+          : bool(r.personNamed)
+            ? "named"
+            : "placeholder";
         claims.push({
           subject,
           personRef: str(r.personRef),
-          personNamed: bool(r.personNamed),
+          personNamed: kind === "named",
+          personKind: kind,
+          benchAsked: polarity === "bench" && bool(r.benchAsked),
           polarity,
           contingent: bool(r.contingent),
           conditionOn,
