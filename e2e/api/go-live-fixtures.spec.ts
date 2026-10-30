@@ -11,14 +11,17 @@
  *
  * Against a real Postgres and the real routes: dm-reply (GO), admin-group
  * (the paste), the generate-matches cron and due-posts. No model is
- * called by anything here: GO, the paste and the summary are
- * deterministic.
+ * called: the paste goes to the shared router and then the HQ squad reader
+ * (since #471), and both are STUBBED to what the live models do with a
+ * pasted squad list (`scripts/live-check-hq-paste-route.ts`, 2026-10-30:
+ * the router sends every pasted list to other_att, the reader reads it as
+ * the squad). GO and the summary are deterministic.
  */
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import { E2E } from "../helpers/env";
 import type { TestDb } from "../helpers/test-db";
-import { clearHqSquadReaderStub, setHqSquadReaderStub, squadReading, addDmIntentBodies, GO_READS } from "../helpers/stub";
+import { clearHqSquadReaderStub, clearPipelineStubs, engineOn, setHqSquadReaderStub, squadReading, addDmIntentBodies, GO_READS } from "../helpers/stub";
 import { formatLondon, nextLondonKickoff } from "@/lib/london-time";
 import { nextNightlyFixtureRun } from "@/lib/nightly-fixture-run";
 
@@ -116,9 +119,13 @@ const matchesOf = (db: TestDb, activityId: string) =>
 
 test.beforeAll(() => {
   resetDb();
+  // The router sends a pasted list to the squad (as the live router does),
+  // then the reader reads it as the squad.
+  engineOn({ [SQUAD]: { route: "other_att" } });
   setHqSquadReaderStub({ bodies: { [SQUAD]: SQUAD_READ } });
 });
 test.afterAll(() => {
+  clearPipelineStubs();
   clearHqSquadReaderStub();
   resetDb();
 });
