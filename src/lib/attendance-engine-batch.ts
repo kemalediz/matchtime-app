@@ -137,6 +137,7 @@
  */
 import { quotesAnotherMatch, type QuotedGroupMessage } from "./reply-context";
 import type { QuotedRef } from "./quoted-message";
+import type { SilenceFacts } from "./tagged-silence";
 import type { ProposedWrite } from "./pipeline/types";
 import { quotedPartnerAsk } from "./pipeline/engine";
 import type { AttendanceWriteFailure } from "./attendance-write-outcome";
@@ -525,6 +526,9 @@ export async function runAttendanceEngineBatch(args: {
    */
   pastedListIds?: ReadonlySet<string>;
   deps: EngineBatchDeps;
+  /** Where this batch reports the silences it chose (`tagged-silence.ts`),
+   *  so the route does not call them "not understood". Absent: unreported. */
+  silence?: SilenceFacts;
 }): Promise<EngineBatchResult> {
   const { orgId, now, messages, history, expectedMatchId, deps } = args;
   if (!args.enabled) return empty();
@@ -883,6 +887,7 @@ export async function runAttendanceEngineBatch(args: {
     );
   }
   for (const id of failedIds) ownedIds.delete(id);
+  for (const id of failedIds) args.silence?.readFailed.add(id);
 
   // ── Stage 2b: THE PASTED-LIST CLAMP ─────────────────────────────────
   //

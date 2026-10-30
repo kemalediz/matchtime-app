@@ -93,6 +93,13 @@ describe("the rating-progress answer is decided by the engine", () => {
     expect(progressSpeech(r)).toHaveLength(0);
     expect(r.speech).toHaveLength(0);
     expect(r.outcomes[0].reasons.join(" ")).toMatch(/only an admin/i);
+    // Typed, so the route keeps the silence (no "I didn't catch that"):
+    // e2e/api/clause-peel.spec.ts:397.
+    expect(r.outcomes[0].refused).toBe("admin_only");
+  });
+
+  it("an admin's answered ask is not marked refused", () => {
+    expect(ask("kemal").outcomes[0].refused).toBeUndefined();
   });
 
   it("refuses an unresolved sender — nobody is an admin until they are somebody", () => {

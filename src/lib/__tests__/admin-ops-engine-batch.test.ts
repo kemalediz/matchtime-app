@@ -19,6 +19,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import { newSilenceFacts, type SilenceFacts } from "../tagged-silence";
 import type { ModelRequest, ModelResponse, PipelineModel } from "../pipeline/llm";
 import type { EngineResult, Route, SquadState } from "../pipeline/types";
 import { NOW, fullName, world, type WorldOpts } from "../pipeline/__tests__/helpers";
@@ -136,8 +137,10 @@ async function run(args: {
   messages: AdminOpsBatchMessage[];
   deps: AdminOpsBatchDeps;
   enabled?: Route[];
+  silence?: SilenceFacts;
 }) {
   return runAdminOpsBatch({
+    ...(args.silence ? { silence: args.silence } : {}),
     orgId: "org-1",
     now: NOW,
     messages: args.messages,
@@ -1016,6 +1019,33 @@ describe("the stats blast is reported, never fired here", () => {
     });
     expect([...res.outcomes.values()][0].statsBlastRequest).toBe(false);
     expect(r.dms).toEqual([]);
+  });
+
+  // e2e/sim/stats-blast.spec.ts:165 (2026-10-30): the refusal is silent by
+  // design, and the route can only keep it silent if it is told.
+  it("a non-admin's refused ask is recorded as refused; an admin's is not", async () => {
+    const { model } = stubModel({ [STATS]: STATS_FACTS });
+    const silence = newSilenceFacts();
+    await run({
+      messages: [
+        msg({ waMessageId: "wa-zair", body: STATS, senderUserId: "u-zair", senderName: fullName("zair"), taggedExplicitly: true }),
+        msg({ waMessageId: "wa-kemal", body: STATS, senderUserId: "u-kemal", taggedExplicitly: true }),
+      ],
+      deps: recorder(model, paidWorld()).deps,
+      silence,
+    });
+    expect([...silence.refused]).toEqual(["wa-zair"]);
+  });
+
+  it("an ask whose read failed is recorded as a failed read", async () => {
+    const { model } = stubModel({ [STATS]: STATS_FACTS }, { throwOn: STATS });
+    const silence = newSilenceFacts();
+    await run({
+      messages: [msg({ waMessageId: "wa-kemal", body: STATS, senderUserId: "u-kemal", taggedExplicitly: true })],
+      deps: recorder(model, paidWorld()).deps,
+      silence,
+    });
+    expect([...silence.readFailed]).toEqual(["wa-kemal"]);
   });
 
   // ⚠️ THE INCIDENT, AT THIS LAYER. `tagged` is TRUE here on purpose:

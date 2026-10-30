@@ -186,6 +186,7 @@
  * and one shape to review when the next one arrives.
  */
 import { type QuotedGroupMessage } from "./reply-context";
+import type { SilenceFacts } from "./tagged-silence";
 import type { QuotedRef } from "./quoted-message";
 import { requestNotHandledAdminReply, requestNotHandledReply } from "./team-ops-engine";
 import {
@@ -373,6 +374,9 @@ export async function runAdminOpsBatch(args: {
   history: Array<{ author: string | null; body: string }>;
   enabled: Set<Route>;
   deps: AdminOpsBatchDeps;
+  /** Where this batch reports the silences it chose (`tagged-silence.ts`),
+   *  so the route does not call them "not understood". Absent: unreported. */
+  silence?: SilenceFacts;
 }): Promise<AdminOpsBatchResult> {
   const { orgId, now, messages, history, enabled, deps } = args;
   const t0 = Date.now();
@@ -466,6 +470,7 @@ export async function runAdminOpsBatch(args: {
           `${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${m.waMessageId}: ${failure.detail} — ` +
             `nobody handles this message: no reply in the group, and it is on this note`,
         );
+        args.silence?.readFailed.add(m.waMessageId);
         return;
       }
       factsById.set(m.waMessageId, res.facts);
@@ -1075,6 +1080,8 @@ export async function runAdminOpsBatch(args: {
     const engineOutcome = result.outcomes.find((o) => o.messageId === m.waMessageId);
     const facts = factsById.get(m.waMessageId);
     const action = facts?.kind === "admin" ? (facts as AdminFacts).action : "other";
+    // A player's admin-only ask, refused on purpose: silence is the answer.
+    if (engineOutcome?.refused) args.silence?.refused.add(m.waMessageId);
     const failed = failedIds.has(m.waMessageId);
     const machineReasons = (engineOutcome?.reasons ?? []).join("; ");
     const isRecruit = recruitByMessage.has(m.waMessageId);

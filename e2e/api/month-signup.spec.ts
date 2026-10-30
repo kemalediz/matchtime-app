@@ -183,8 +183,14 @@ const users = (db: TestDb) => db.count(`SELECT COUNT(*) FROM "User"`);
 const listPosts = (instructions: Instruction[], org = ORG) => instructions.filter((i) => i.key.startsWith(`org-${org}:msu:list:`));
 
 /** Age every "list shown" row, so the 30-minute floor is not what a test is about. */
+/** The list rows are stamped with the REAL clock and the polls run on a
+ *  pinned one (OPENS + minutes), which is up to a week BEFORE now late in
+ *  the month: a post recorded "now" then reads as made after the poll, and
+ *  the 30-minute floor holds the next post back (failed on 30 Oct 2026).
+ *  Moving them 60 days back puts every one before any pinned poll in this
+ *  file, whatever the date, and keeps their order. */
 const ageListPosts = (db: TestDb) =>
-  db.run(`UPDATE "SentNotification" SET "createdAt" = "createdAt" - interval '3 days' WHERE key LIKE $1`, [`org-${ORG}:msu:list:%`]);
+  db.run(`UPDATE "SentNotification" SET "createdAt" = "createdAt" - interval '60 days' WHERE key LIKE $1`, [`org-${ORG}:msu:list:%`]);
 
 const footer = (carried: boolean) => [
   `${carried ? `Regulars from ${PREV_NAME} are on already. ` : ""}Not in for ${MONTH_NAME}? Say *OUT FOR ${MONTH_NAME.toUpperCase()}*.`,
@@ -408,7 +414,9 @@ test("5. door 2: PAYG with dates, OUT and back IN; a sentence about the month is
 
 test("6. the list is re-posted when it has changed, once, and not after a paste that shows it", async ({ request, db }) => {
   // (The 30-minute floor is pinned in the unit tests: here the rows are
-  // stamped with the real clock and the polls with a pinned one.)
+  // stamped with the real clock and the polls with a pinned one, so the
+  // earlier post is moved behind the pinned clock first.)
+  await ageListPosts(db);
   const out = listPosts(await poll(request, after(40)));
   expect(out).toHaveLength(1);
   expect(out[0].key.endsWith(":1")).toBe(true);

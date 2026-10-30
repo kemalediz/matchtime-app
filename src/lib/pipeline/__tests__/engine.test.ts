@@ -1880,6 +1880,7 @@ describe("S21 · bulk payment credit is admin-only", () => {
     });
     expect(r.writes).toHaveLength(0);
     expect(r.outcomes[0].reasons.join(" ")).toMatch(/admin/i);
+    expect(r.outcomes[0].refused).toBe("admin_only");
   });
 });
 
