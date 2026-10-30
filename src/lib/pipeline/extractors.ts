@@ -534,7 +534,7 @@ the two numbers of the final result, in the order written. In a story ("it was 6
 firstTeam, secondTeam
 the team written directly beside the first or the second number, with no word about who won or lost. It stays there when THE MESSAGE answers MatchTime's "which team won?" with a scoreline.
 winner
-the team a word names as the winner: "to" or "for" a team, "won", "wins", "beat", "kazandı", "yendi". A bare team name, the whole message, answering MatchTime's "which team won?" is the winner too. "" otherwise, and for a draw.
+the team a word names as the winner: "to" or "for" a team, "won", "wins", "beat", "kazandı", "yendi". A bare team name, the whole message, answering MatchTime's "which team won?" is the winner too. "" otherwise: for a draw, for a question ("Yellow?", "sarılar mı?"), and for chat that only mentions a team.
 loser
 the team a word names as the loser: "lost", "got beaten", "kaybetti", "yenildi". "" otherwise.
 momRef
