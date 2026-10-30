@@ -2755,7 +2755,7 @@ Who: Hamzah (owner)
 [Link admin group] [New code]
 1. Keep this page open. Your code: K7P3QX
 2. Add MatchTime to your admins' WhatsApp group.
-3. In that group, send: @Match Time admin group K7P3QX
+3. In that group, tag me (type @Match Time and pick me from the list) and send the code: @Match Time K7P3QX
 The code works once and lasts 48 hours.
 Until a group is linked, admin messages keep going where they go now.
 
@@ -4162,7 +4162,7 @@ https://matchtime.ai/r/sched
 ⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:
 https://matchtime.ai/r/ratings
 
-👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it and send my next message there. Admin messages will then go to that group instead of to you.
+👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it, then tag me there with the code in my next message: type @Match Time, pick me from the list, and paste the code. Admin messages will then go to that group instead of to you.
 
 When you're happy, reply *GO* here and I'll introduce myself in the group, or press *Go live* on your settings page:
 https://matchtime.ai/r/settings
@@ -4171,7 +4171,7 @@ Until then I say nothing in the group.
 Your first three months are free. The free period starts when I go live in the group.
 
 ### SFU2 composeSetupAdminCommandDm / the second message, exactly the link command
-Match Time admin group K7P3QX
+K7P3QX
 
 ### SFU3 composeSetupReminderDm / the one reminder, 24 hours after the setup DM was due
 Just checking: Thursday Ladies is approved, but I'm still quiet in "Thursday Ladies 5s". Reply *GO* when you're ready and I'll introduce myself, or check the settings first: https://matchtime.ai/r/settings

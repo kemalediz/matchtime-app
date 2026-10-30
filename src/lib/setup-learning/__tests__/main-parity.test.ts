@@ -130,7 +130,7 @@ function generator(seed: number, cutAnywhere: boolean) {
         confidence: conf(),
         evidence: evidence(h),
       },
-      match_fee: { amount: pick([0, 6, 7, 150]), currency: pick(["pounds", "other", "none"]), confidence: conf(), evidence: feeEvidence(h) },
+      match_fee: { amount: pick([0, 6, 7, 150]), currency: pick(["pounds", "other", "none"]), basis: pick(["per_player", "whole_pitch", "none"]), confidence: conf(), evidence: feeEvidence(h) },
     };
     const org = {
       rollingSquadEnabled: rnd() < 0.15,

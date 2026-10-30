@@ -66,16 +66,17 @@ test("Admin WhatsApp group: code and steps, linked by the command, then Unlink",
   await expect(steps).toContainText(/Your code: [ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}/);
   await expect(steps).toContainText("Add MatchTime to your admins' WhatsApp group.");
   const code = (await db.one<{ c: string }>(`SELECT "adminGroupLinkCode" AS c FROM "Organisation" WHERE id = $1`, [ORG_ID]))!.c;
-  await expect(steps).toContainText(`@Match Time admin group ${code}`);
+  await expect(steps).toContainText("tag me (type @Match Time and pick me from the list) and send the code:");
+  await expect(steps).toContainText(`@Match Time ${code}`);
 
-  // The organiser adds MatchTime to the HQ group and sends the command.
+  // The organiser adds MatchTime to the HQ group, tags it and sends the code.
   await request.post("/api/whatsapp/bot-added", {
     headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
     data: { groupId: HQ, groupSubject: "E2E HQ", addedByPhone: PHONE.admin.replace(/^\+/, ""), participants: [] },
   });
   const linked = await request.post("/api/whatsapp/admin-group-link", {
     headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
-    data: { groupId: HQ, text: `@Match Time admin group ${code}`, senderPhone: PHONE.admin.replace(/^\+/, "") },
+    data: { groupId: HQ, text: `@447700900000 ${code}`, botMentioned: true, senderPhone: PHONE.admin.replace(/^\+/, "") },
   });
   expect((await linked.json()).outcome).toBe("linked");
 
@@ -116,7 +117,7 @@ test("a code MatchTime already sent by DM is SHOWN with its real expiry, not rep
     // The same code and command, at once, with no button pressed.
     const steps = section.getByTestId("admin-group-steps");
     await expect(steps).toContainText("Your code: K7P3QX");
-    await expect(steps).toContainText("@Match Time admin group K7P3QX");
+    await expect(steps).toContainText("@Match Time K7P3QX");
     // Its real expiry, not "48 hours".
     const note = section.getByTestId("admin-group-code-note");
     await expect(note).toContainText(/The code works once and is valid until \w+ \d{1,2} \w+ at \d{2}:\d{2}\./);

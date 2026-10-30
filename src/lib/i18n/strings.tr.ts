@@ -2254,10 +2254,9 @@ export const tr: Strings = {
 
   // ════ BEGIN the setup follow-ups: reminder and admin group step (go-live slices S6 and S7, 2026-10-12) ════
   // See the English table. The Turkish command word is BAŞLA, and the
-  // link command is the Turkish form the parser reads ("yönetici grubu").
+  // admin group step asks for a real tag and the code (2026-10-30).
   sj_dm_ready_admin_group:
-    "👥 *Yönetici grubu (isteğe bağlı):* organizatörlerinizin kendi WhatsApp grubu varsa beni o gruba ekleyin ve bir sonraki mesajımı orada gönderin. Yönetici mesajları o zaman size değil, o gruba gider.",
-  sj_dm_ready_admin_command: (p) => `Match Time yönetici grubu ${p.code}`,
+    "👥 *Yönetici grubu (isteğe bağlı):* organizatörlerinizin kendi WhatsApp grubu varsa beni o gruba ekleyin, sonra orada beni etiketleyip bir sonraki mesajımdaki kodu gönderin: @Match Time yazın, listeden beni seçin ve kodu yapıştırın. Yönetici mesajları o zaman size değil, o gruba gider.",
   sj_dm_reminder: (p) =>
     `Küçük bir hatırlatma: ${p.club} onaylandı, ama ${p.group ? `"${p.group}" grubunda` : "grubunuzda"} hâlâ sessizim. Hazır olduğunuzda *BAŞLA* yazın, kendimi tanıtayım; ya da önce ayarlara göz atın: ${p.url}\nBir daha hatırlatmayacağım.`,
   sj_admin_group_players_group:
@@ -2506,8 +2505,7 @@ export const tr: Strings = {
   settings_admin_channel_link_again: "Yeni kod",
   settings_admin_channel_step_code: (p: { code: string }): string => `Bu sayfayı açık tutun. Kodunuz: ${p.code}`,
   settings_admin_channel_step_add: "MatchTime'ı yöneticilerin WhatsApp grubuna ekleyin.",
-  settings_admin_channel_step_send: "O grupta şunu gönderin:",
-  settings_admin_channel_command: (p: { code: string }): string => `@Match Time yönetici grubu ${p.code}`,
+  settings_admin_channel_step_send: "O grupta beni etiketleyin (@Match Time yazıp listeden beni seçin) ve kodu gönderin:",
   settings_admin_channel_validity: "Kod bir kez çalışır ve 48 saat geçerlidir.",
   settings_admin_channel_valid_until: (p: { when: string }): string => `Kod bir kez çalışır ve şu zamana kadar geçerlidir: ${p.when}.`,
   settings_admin_channel_linked: (p: { group: string }): string => `Bağlı: ${p.group}`,

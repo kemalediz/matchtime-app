@@ -215,16 +215,21 @@ export async function POST(request: Request) {
   //   The organiser's prefilled "Connect Riverside FC, code 7KQ2" (Turkish:
   //   "... kulübünü bağla, kod 7KQ2"). FIRST, ahead of the bench reply and
   //   the sender lookup: the organiser of a draft club may be known only by
-  //   the LID on the envelope, and nothing below may answer this DM with a
-  //   model. Deterministic. Off with the flag: then not even called.
+  //   the LID on the envelope. Off with the flag: then not even called.
+  //   Since 2026-10-30 (no string parsing) both consult the one DM reader,
+  //   and only AFTER their facts: the owner's number for a decision, an
+  //   open request on the sender's phone for the wrong-code reply. A code
+  //   that names a request is still handled with no model at all.
   if (selfJoinEnabledForApiRequest(request)) {
-    // The owner's APPROVE / REJECT (slice 7) comes first of all: it is the
-    // most specific thing a DM can be, and it must never reach a model.
+    // The owner's approve or reject (slice 7) comes first of all: it is the
+    // most specific thing a DM can be. Nobody else's DM is read here.
     const decision = await handleApproverDm({
       text,
       phone,
       senderAltPhone,
       waMessageId,
+      read: reader.read,
+      quotedText: quoted?.text ?? parseDmQuote(body)?.text ?? null,
       setupHold: setupHoldEnabledForApiRequest(request),
       // The approval is stamped on the same clock as the run that follows
       // it (`scheduleSetupAfterApproval` reads the same seam), so the
@@ -238,7 +243,7 @@ export async function POST(request: Request) {
     // never inline: the Pi is awaiting it. The learn-setup cron retries.
     if (decision?.heldOrgId) scheduleSetupAfterApproval(decision.heldOrgId, request);
     if (decision) return NextResponse.json({ ok: true, ...decision });
-    const connect = await handleConnectDm({ text, phone, senderAltPhone, senderLid, waMessageId });
+    const connect = await handleConnectDm({ text, phone, senderAltPhone, senderLid, waMessageId, read: reader.read });
     if (connect) return NextResponse.json({ ok: true, ...connect });
   }
 

@@ -5,9 +5,11 @@
  *
  * The organiser taps "Add MatchTime to WhatsApp" and sends the prefilled
  * "Connect Riverside FC, code 7KQ2" (Turkish: "Riverside FC kulübünü bağla,
- * kod 7KQ2"). This file reads the code out of whatever arrived and decides
- * what the DM does. No database, no clock, NO MODEL: the handler that uses
- * it (connect-dm.ts) runs at the top of dm-reply, before every model path.
+ * kod 7KQ2"). This file finds the code we issued in whatever arrived and
+ * decides what the DM does. No database, no clock, NO MODEL. It never reads
+ * what the words mean: whether a DM with a code that names no request was
+ * the connect message is the one DM reader's call (connect-dm.ts,
+ * 2026-10-30; it was a verb list, `looksLikeConnectMessage`).
  *
  * The code is a pointer, not the proof. The proof is that the DM came from
  * the phone the organiser signed up with, read off the message envelope
@@ -58,24 +60,6 @@ export function connectCodeCandidates(text: string | null | undefined): string[]
 /** A code nobody issued gets, at most, this often, the "that code does not
  *  match" reply, per open request, however many wrong codes arrive. */
 export const WRONG_CODE_REPLY_THROTTLE_MS = 10 * 60 * 1000;
-
-/** The verb of the prefilled text: "Connect ..." or "... kulübünü bağla"
- *  (also "bagla" from a keyboard without ğ, and "bağlayın", "connecting").
- *  It must start a word, so "reconnect" is not it. */
-const CONNECT_VERB_RE = /(?<![\p{L}\p{N}])(?:connect|ba[ğg]la)/iu;
-
-/**
- * Does this text read like the connect message: the verb, and a code after
- * "code"/"kod"? Used ONLY to decide whether a code that names no request
- * earns the wrong-code reply. `connectCodeCandidates` alone is too wide for
- * that: any four letters of the alphabet after "code" count ("what's the
- * code then" gives THEN), which is right for finding a real code and wrong
- * for answering one. Recognising a correct code never goes through here.
- */
-export function looksLikeConnectMessage(text: string | null | undefined): boolean {
-  if (connectCodeCandidates(text).length === 0) return false;
-  return CONNECT_VERB_RE.test(text as string);
-}
 
 // ── Identities off the envelope ─────────────────────────────────────────
 

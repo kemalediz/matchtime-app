@@ -13,7 +13,7 @@ import {
   generateAdminGroupLinkCode,
   isAdminGroupCandidate,
   normaliseAdminChannelMode,
-  parseAdminGroupLinkMessage,
+  adminGroupCodeCandidates,
   resolveAdminNoticeTargets,
   type ChannelAdmin,
 } from "../admin-channel-rules";
@@ -162,33 +162,27 @@ describe("the link code", () => {
   });
 });
 
-describe("parseAdminGroupLinkMessage", () => {
-  it("reads the English command, typed or with a real tag", () => {
-    expect(parseAdminGroupLinkMessage("@Match Time admin group K7P3QX")).toBe("K7P3QX");
-    expect(parseAdminGroupLinkMessage("@447700900000 admin group k7p3qx", { botMentioned: true })).toBe("K7P3QX");
-    expect(parseAdminGroupLinkMessage("@MatchTime Admin Group: K7P3QX")).toBe("K7P3QX");
-    expect(parseAdminGroupLinkMessage("@Match Time admin group K7P3QX thanks!")).toBe("K7P3QX");
+describe("adminGroupCodeCandidates: where a code we issued may stand, never what the words mean", () => {
+  it("every six-character token of the code alphabet, upper-cased, once each, in order", () => {
+    expect(adminGroupCodeCandidates("@447700900000 K7P3QX")).toEqual(["K7P3QX"]);
+    expect(adminGroupCodeCandidates("@447700900000 here's our code: k7p3qx, thanks!")).toEqual(["K7P3QX", "THANKS"]);
+    expect(adminGroupCodeCandidates("K7P3QX K7P3QX")).toEqual(["K7P3QX"]);
   });
 
-  it("reads the Turkish command", () => {
-    expect(parseAdminGroupLinkMessage("@Match Time yönetici grubu K7P3QX")).toBe("K7P3QX");
-    expect(parseAdminGroupLinkMessage("@Match Time YÖNETİCİ GRUBU k7p3qx")).toBe("K7P3QX");
-    expect(parseAdminGroupLinkMessage("@447700900000 yonetici grubu K7P3QX", { botMentioned: true })).toBe("K7P3QX");
+  it("no phrase is read: the old command words are only words", () => {
+    expect(adminGroupCodeCandidates("Match Time admin group K7P3QX")).toEqual(["K7P3QX"]);
+    expect(adminGroupCodeCandidates("Match Time yönetici grubu K7P3QX")).toEqual(["K7P3QX"]);
   });
 
-  it("needs MatchTime to be addressed", () => {
-    expect(parseAdminGroupLinkMessage("admin group K7P3QX")).toBeNull();
-    expect(parseAdminGroupLinkMessage("@447700900000 admin group K7P3QX")).toBeNull();
+  it("not a token of six: five, seven, a letter outside the alphabet (I, L, O, 0, 1), or inside a longer word", () => {
+    expect(adminGroupCodeCandidates("K7P3Q K7P3QXZ")).toEqual([]);
+    expect(adminGroupCodeCandidates("K7P3QI K7L3QX K7P0QX")).toEqual([]);
+    expect(adminGroupCodeCandidates("xK7P3QX")).toEqual([]);
   });
 
-  it("refuses a missing code, and 5 or 7 characters", () => {
-    expect(parseAdminGroupLinkMessage("@Match Time admin group")).toBeNull();
-    expect(parseAdminGroupLinkMessage("@Match Time admin group K7P3Q")).toBeNull();
-    expect(parseAdminGroupLinkMessage("@Match Time admin group K7P3QXZ")).toBeNull();
-  });
-
-  it("is not fooled by chat that mentions the admin group", () => {
-    expect(parseAdminGroupLinkMessage("@Match Time is the admin group ready")).toBeNull();
+  it("nothing for an empty or overlong text", () => {
+    expect(adminGroupCodeCandidates("")).toEqual([]);
+    expect(adminGroupCodeCandidates("K7P3QX " + "x".repeat(2000))).toEqual([]);
   });
 });
 

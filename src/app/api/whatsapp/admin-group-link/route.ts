@@ -2,11 +2,14 @@
  * POST /api/whatsapp/admin-group-link (slice 2a, 2026-09-30).
  * Plan: MDs/friday-group-features-plan-2026-09-30.md, sections 2.3 and 2.5.
  *
- * The Pi forwards a message shaped like "@Match Time admin group CODE"
- * from a group that is not a live club's group and not an admin group
- * (including a SILENT group: this is the one narrow exception to the
- * silence rail), and from a club's own group (so it can be refused with
- * L3 instead of reaching the model):
+ * The Pi forwards a message that TAGS MatchTime (its mention flag) and
+ * holds a code-shaped token (2026-10-30: no phrase is read) from a group
+ * that is not an admin group (including a SILENT group: this is the one
+ * narrow exception to the silence rail), and from a club's own group (so
+ * it can be refused with L3 instead of reaching the model). An answer of
+ * "ignored" for "not-a-link-command" (no code we issued, and the group is
+ * not waiting for one) tells the Pi to carry on with the message as with
+ * any other:
  *
  *   { groupId, messageId, text, botMentioned, senderPhone, senderAltPhone,
  *     senderLid, groupSubject?, timestamp }

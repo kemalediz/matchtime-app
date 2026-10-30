@@ -739,7 +739,6 @@ const SAMPLES: SampleArgs = {
   sj_card_pending_held: null,
   // Go-live slices S6 and S7: the reminder and the admin group step.
   sj_dm_ready_admin_group: null,
-  sj_dm_ready_admin_command: { code: "K7P3QX" },
   sj_dm_reminder: { club: "Riverside FC", group: "Riverside Tuesday 5s", url: "https://mt.example/r/settings" },
   sj_admin_group_players_group: null,
   dm_admin_join_new: { club: "Sutton FC", phone: "+447376548222", url: "https://mt.example/r/phones" },
@@ -911,7 +910,6 @@ const SAMPLES: SampleArgs = {
   settings_admin_channel_step_code: { code: "K7P3QX" },
   settings_admin_channel_step_add: null,
   settings_admin_channel_step_send: null,
-  settings_admin_channel_command: { code: "K7P3QX" },
   settings_admin_channel_validity: null,
   settings_admin_channel_valid_until: { when: "Monday 19 October at 12:00" },
   settings_admin_channel_linked: { group: "FNF HQ" },

@@ -4,8 +4,10 @@
  * 5.3, 5.4 and cap 6 of section 7. The rules are in connect-dm-rules.ts.
  *
  * Runs at the TOP of /api/whatsapp/dm-reply, only while SELF_JOIN_ENABLED
- * is on, before the bench reply, the sender lookup and every model path.
- * DETERMINISTIC: no model call anywhere in here.
+ * is on, before the bench reply and the sender lookup. A code that names a
+ * request is handled with no model at all. Only a code that names NONE,
+ * from a phone with an open request, asks the one DM reader (injected,
+ * `read`) whether the DM was the connect message (2026-10-30).
  *
  * Returns null (the DM goes on to today's handling, untouched) when the
  * message carries no code or a code that names no connect request.
@@ -37,7 +39,6 @@ import {
   effectiveConnectStatus,
   connectCodeCandidates,
   lidDigits,
-  looksLikeConnectMessage,
   type ConnectDmReply,
 } from "./connect-dm-rules";
 import { PlatformDmRefused, platformPhoneDigits, queuePlatformDm } from "./platform-jobs";
@@ -53,7 +54,18 @@ export interface ConnectDmInput {
   senderLid?: string | null;
   waMessageId: string;
   now?: Date;
+  /**
+   * The one DM reader (`dm-reader.ts`, memoised per DM): what the message
+   * asks. Consulted ONLY for a code that names no request, and only after
+   * the facts say the sender has an open request, to decide whether the
+   * DM was the connect message (`connect_club`) and so earns the wrong-code
+   * reply. Absent: no reply, as for any DM that is not the connect message.
+   */
+  read?: (userId: string) => Promise<{ intent: string; confidence?: number }>;
 }
+
+/** The reader's verdict that this DM IS the connect message. */
+export const CONNECT_CLUB_INTENT = "connect_club";
 
 export interface ConnectDmOutcome {
   handled: "connect-dm";
@@ -205,10 +217,13 @@ function senderPhones(input: ConnectDmInput): string[] {
  *
  * Answered ONLY when all of this holds, and otherwise null, exactly as
  * before (the DM goes on to today's handling and nobody is told anything):
- *   - the text reads like the connect message, not chat that happens to
- *     say "code" (`looksLikeConnectMessage`);
  *   - the envelope gave a phone (a LID alone proves nothing here);
- *   - that phone has an OPEN request: issued, not expired, on a draft club.
+ *   - that phone has an OPEN request: issued, not expired, on a draft club;
+ *   - THEN, and only then, the one DM reader says the message is the
+ *     connect message (`connect_club`), not chat that happens to say
+ *     "code". Until 2026-10-30 a verb list decided that ("connect",
+ *     "bağla"); Kemal: no string parsing. The facts come first, so the
+ *     model is asked only about an organiser's DM with an open request.
  * MatchTime's number gets DMs from strangers: an unknown number is never
  * answered, and nobody learns from the silence or the reply whether a code
  * exists. The reply goes to the request's own verified phone and never
@@ -220,7 +235,6 @@ function senderPhones(input: ConnectDmInput): string[] {
  * handled in the same instant could both get through.
  */
 async function wrongCodeReply(input: ConnectDmInput, now: Date): Promise<ConnectDmOutcome | null> {
-  if (!looksLikeConnectMessage(input.text)) return null;
   const phones = senderPhones(input);
   if (phones.length === 0) return null;
 
@@ -233,10 +247,14 @@ async function wrongCodeReply(input: ConnectDmInput, now: Date): Promise<Connect
       status: true,
       expiresAt: true,
       addWindowEndsAt: true,
+      userId: true,
       org: { select: { name: true, language: true } },
     },
   });
   if (!open || effectiveConnectStatus(open, now) !== "issued" || !phones.includes(open.phone)) return null;
+  if (!input.read) return null;
+  const read = await input.read(open.userId);
+  if (read.intent !== CONNECT_CLUB_INTENT) return null;
 
   const prefix = `${open.id}:wrong-code:`;
   const text = connectReplyText("wrong-code", open.org.language, { name: null, club: open.org.name });

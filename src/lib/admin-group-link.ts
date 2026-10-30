@@ -3,8 +3,8 @@
  * Plan: MDs/friday-group-features-plan-2026-09-30.md, sections 2.3 and 2.4.
  *
  * An organiser presses "Link admin group" on the settings page, adds
- * MatchTime to the admins' HQ group and sends "@Match Time admin group
- * CODE" there. This module:
+ * MatchTime to the admins' HQ group and tags MatchTime there with the
+ * code ("@MatchTime K7P3QX", in any words). This module:
  *
  *   - makes the code (`createAdminGroupLinkCode`);
  *   - keeps the HQ group out of the in-group setup: an add by an owner or
@@ -40,8 +40,8 @@ import {
   ADMIN_GROUP_CODE_REUSE_MIN_MS,
   ADMIN_GROUP_CODE_TTL_MS,
   generateAdminGroupLinkCode,
+  adminGroupCodeCandidates,
   isAdminGroupCandidate,
-  parseAdminGroupLinkMessage,
 } from "./admin-channel-rules";
 import { queuePlatformLeaveGroup } from "./platform-jobs";
 import { introduceOnLink } from "./admin-group-intro";
@@ -342,10 +342,53 @@ export type AdminGroupLinkResult =
 
 const ignored = (reason: string): AdminGroupLinkResult => ({ outcome: "ignored", replyText: null, reason });
 
+/**
+ * The link message, decided by FACTS (2026-10-30, no string parsing):
+ *   1. a real tag: the Pi's mention flag, never the words "Match Time";
+ *   2. a code WE ISSUED among the code-shaped tokens of the text
+ *      (`adminGroupCodeCandidates`), looked up in one query, in any words
+ *      ("@MatchTime K7P3QX", "@MatchTime here's our code: k7p3qx");
+ *   3. sent by an owner or admin of that club (checked below, as before),
+ *      in a group that is not a club's players' group (L3 there).
+ * A tagged message with no issued code is a link attempt only in a group
+ * that is WAITING for its code (an admin added MatchTime to it: the
+ * candidate row, `awaitingAdminLink`), where an admin hears L2. Anywhere
+ * else it is "not-a-link-command" and the Pi carries on with it as with
+ * any message (in a players' group, the shared pipeline reads it).
+ * Until today the phrase "admin group" / "yönetici grubu" decided it
+ * (`parseAdminGroupLinkMessage`). No model is asked: the facts settle it.
+ */
 export async function linkAdminGroup(input: AdminGroupLinkInput): Promise<AdminGroupLinkResult> {
   const now = input.now ?? new Date();
-  const code = parseAdminGroupLinkMessage(input.text, { botMentioned: input.botMentioned === true });
-  if (!code) return ignored("not-a-link-command");
+  if (input.botMentioned !== true) return ignored("not-a-link-command");
+  const candidates = adminGroupCodeCandidates(input.text);
+  if (candidates.length === 0) return ignored("not-a-link-command");
+
+  const [target, waitingForCode, owner] = await Promise.all([
+    db.organisation.findFirst({
+      where: { ...APPROVED_CLUB_WHERE, adminGroupLinkCode: { in: candidates } },
+      select: {
+        id: true,
+        name: true,
+        language: true,
+        adminGroupId: true,
+        adminGroupLinkCode: true,
+        adminGroupLinkCodeExpiresAt: true,
+        billingStatus: true,
+      },
+    }),
+    db.unsolicitedGroup.findFirst({
+      where: { groupId: input.groupId, leftAt: null, awaitingAdminLink: true },
+      select: { id: true },
+    }),
+    // Already some club's admin group (a Pi retry after the link spent the code).
+    db.organisation.findFirst({
+      where: { adminGroupId: input.groupId },
+      select: { id: true, name: true, language: true },
+    }),
+  ]);
+  if (!target && !waitingForCode && !owner) return ignored("not-a-link-command");
+  const code = target?.adminGroupLinkCode ?? null;
 
   const userIds = await resolveSenderUserIds({
     phones: [input.senderPhone, input.senderAltPhone],
@@ -385,34 +428,18 @@ export async function linkAdminGroup(input: AdminGroupLinkInput): Promise<AdminG
     return { outcome: "main-group", replyText: t(community.language).admin_group_main_group({ club: community.name }) };
   }
 
-  // Already some club's admin group.
-  const owner = await db.organisation.findFirst({
-    where: { adminGroupId: input.groupId },
-    select: { id: true, name: true, language: true },
-  });
   if (owner) {
     if (!adminOf.has(owner.id)) return ignored("another-clubs-admin-group");
     // A Pi retry, or the command sent twice: linked already, say nothing.
     return { outcome: "already-linked", replyText: null, adminGroup: { groupId: input.groupId, orgId: owner.id } };
   }
 
-  const target = await db.organisation.findFirst({
-    where: { ...APPROVED_CLUB_WHERE, adminGroupLinkCode: code },
-    select: {
-      id: true,
-      name: true,
-      language: true,
-      adminGroupId: true,
-      adminGroupLinkCodeExpiresAt: true,
-      billingStatus: true,
-    },
-  });
   // Club fee billing (B1): a club paused for the club fee links no admin
   // group, and says nothing (not even L2). Never while the flag is off.
   if (target && isBillingPaused(target)) return ignored("club-billing-paused");
   const valid =
-    !!target && !!target.adminGroupLinkCodeExpiresAt && target.adminGroupLinkCodeExpiresAt.getTime() > now.getTime();
-  if (!valid) {
+    !!target && !!code && !!target.adminGroupLinkCodeExpiresAt && target.adminGroupLinkCodeExpiresAt.getTime() > now.getTime();
+  if (!valid || !code) {
     const lang = clubs[0].org.language;
     return { outcome: "bad-code", replyText: t(lang).admin_group_bad_code };
   }

@@ -545,6 +545,9 @@ export interface AdminGroupAnswer {
   replyKey?: string;
   adminGroup?: { groupId?: unknown; orgId?: unknown } | null;
   outcome?: string;
+  /** Why an "ignored" answer was ignored; "not-a-link-command" sends the
+   *  message on as any other (2026-10-30). */
+  reason?: string;
   /** The emoji to place on the admin's message: "✅" when MatchTime acted
    *  on it (2026-10-16). Absent or null: none. */
   react?: string | null;
@@ -574,7 +577,7 @@ export function postAdminGroupMessage(msg: AdminGroupForward): Promise<AdminGrou
   return postAdminGroupForward("/api/whatsapp/admin-group", { channel: "admin-group", ...msg });
 }
 
-/** "@Match Time admin group CODE" from a group that is not an admin group. */
+/** A message tagging MatchTime with a code-shaped token, from a group that is not an admin group. */
 export function postAdminGroupLink(msg: AdminGroupForward): Promise<AdminGroupAnswer | null> {
   return postAdminGroupForward("/api/whatsapp/admin-group-link", { ...msg });
 }

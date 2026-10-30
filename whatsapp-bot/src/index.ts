@@ -673,10 +673,11 @@ async function main() {
       // ── Slice 2a: admin groups and the link command ────────────────
       // A message in a club's linked admin group goes to its own route at
       // once and NEVER into the analysis history or batch (no model). A
-      // message shaped like "@Match Time admin group CODE" in any other
-      // group, a silent one included, goes to the link route, and is not
-      // analysed either. Everything else carries on below, unchanged.
-      // Returns early only for those two.
+      // message that tags MatchTime and holds a code-shaped token, in any
+      // other group, a silent one included, goes to the link route; when
+      // the server says it is not the link message it carries on below as
+      // any other (2026-10-30: no phrase is read). Returns early only for
+      // the admin group and a real link message.
       const adminRoute = await routeAdminGroupInbound(
         {
           isAdminGroup,

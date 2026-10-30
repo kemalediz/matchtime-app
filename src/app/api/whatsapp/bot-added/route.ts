@@ -294,7 +294,7 @@ export async function POST(request: Request) {
   //     to his admins' group would start the in-group setup there. An add
   //     by an owner or admin of an approved club (or to a group one of
   //     their admins is in, while that club has a link code open) waits
-  //     silently for "@Match Time admin group CODE" instead: no session,
+  //     silently for its code (a real tag and the code) instead: no session,
   //     no intro. A group that is already a club's admin group is left
   //     alone. Placed after the live-org check and before every setup path.
   const linkedAdminGroup = await db.organisation.findFirst({

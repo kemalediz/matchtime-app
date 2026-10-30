@@ -78,14 +78,13 @@
  *   8. THE MATCH FEE IS ONLY EVER SUGGESTED (same slice). When the text
  *      states what each player pays for a game, in pounds, and the club's
  *      weekly game has no fee or a different one, the organiser is asked,
- *      with a link. THE EVIDENCE NEEDED: a verified quote that itself
- *      states the amount AS A PRICE (a currency sign or word beside it,
- *      and not the price of the whole pitch: `statesPrice`), from the
- *      description (one is enough: it is the group's standing notice, and
- *      a suggestion changes nothing), or from TWO different messages (one
- *      message may be a single week's price). The description's quote is
- *      not counted when any message states a different price: it is out
- *      of date. Never for a group that runs a monthly list (by the
+ *      with a link. The MODEL says the amount and that it is per player
+ *      (`basis`, 2026-10-30); THE EVIDENCE NEEDED: a verified quote that
+ *      holds the number (`quoteHasAmount`), from the description (one is
+ *      enough: it is the group's standing notice, and a suggestion changes
+ *      nothing), or from TWO different messages (one message may be a
+ *      single week's price). An out-of-date description is the model's
+ *      ruling. Never for a group that runs a monthly list (by the
  *      model's answer OR by the club's stored squad mode) or splits the
  *      pitch cost: neither has one fixed fee a game.
  */
@@ -478,68 +477,44 @@ function dayTime(raw: unknown, src: Sources): DayTimeAnswer {
 export const MIN_MATCH_FEE = 0.5;
 export const MAX_MATCH_FEE = 50;
 
-const AMOUNT = String.raw`\d+(?:[.,]\d{1,2})?(?!\d)`;
-/** "£6", "£ 6.50" | "6 quid", "6.50 pounds", "6 GBP" | "GBP 6" | "50p". */
-const PRICE_RES = [
-  new RegExp(String.raw`£\s?(${AMOUNT})`, "giu"),
-  new RegExp(String.raw`(?<![\d.,£])(${AMOUNT})\s?(?:quid|pounds?|gbp)(?![\p{L}\p{N}])`, "giu"),
-  new RegExp(String.raw`(?<![\p{L}\p{N}])gbp\s?(${AMOUNT})`, "giu"),
-];
-const PENCE_RE = /(?<![\d.,£])(\d{1,2})p(?![\p{L}\p{N}])/giu;
-/** The whole pitch is being priced ... */
-const WHOLE_PITCH_RE = /(?<!\p{L})(?:pitch|saha|total|toplam)/iu;
-/** ... unless the same words say it is a price for each player. */
-const PER_PLAYER_RE = /(?<!\p{L})(?:each|a player|per player|a head|per head|per person|a man|kişi başı|adam başı)/iu;
-
 /**
- * Every price per player a text states, in pounds (review fix 3). A price
- * is an amount WITH a currency sign or word right beside it: a bare
- * number is a time, a date, a size or a count ("at 6", "6/10", "7 a
- * side", "first 6"). A text that prices the whole pitch ("Pitch is £45",
- * "saha toplam £45") states no price per player, unless it also says
- * "each", "a head", "kişi başı" and the like. Kept narrow on purpose: this
- * decides only whether a fee may be SUGGESTED.
+ * A MODEL-OUTPUT VERIFIER (2026-10-30, no string parsing): does this quote
+ * hold the amount the model stated, written as a number standing on its
+ * own ("£6", "6 quid", "6.00", "£6,50")? A number run into letters ("6pm",
+ * "6th", "7v7") is not one. It says nothing about what the words mean:
+ * whether the number is a price, and a price for each player rather than
+ * for the pitch, is the model's answer (`basis`). This only stops a fee
+ * the model worked out, made up, or quoted from a line without it.
  */
-export function pricesIn(text: string): number[] {
-  if (WHOLE_PITCH_RE.test(text) && !PER_PLAYER_RE.test(text)) return [];
-  const found: Array<[number, number]> = [];
-  for (const re of PRICE_RES) {
-    for (const m of text.matchAll(re)) found.push([m.index, Number(m[1].replace(",", "."))]);
-  }
-  for (const m of text.matchAll(PENCE_RE)) found.push([m.index, Number(m[1]) / 100]);
-  return found.sort((a, b) => a[0] - b[0]).map(([, amount]) => amount);
-}
-
-/** Does the excerpt itself state `amount` as a price per player? */
-export function statesPrice(quote: string, amount: number): boolean {
-  return pricesIn(quote).some((p) => Math.abs(p - amount) < 0.005);
+export function quoteHasAmount(quote: string, amount: number): boolean {
+  const numbers = [...quote.matchAll(/(?<![\p{L}\p{N}.,])(\d+(?:[.,]\d{1,2})?)(?![\p{L}\p{N}]|[.,]\d)/gu)].map((m) => Number(m[1].replace(",", ".")));
+  return numbers.some((n) => Math.abs(n - amount) < 0.005);
 }
 
 /**
- * The match fee: an amount in pounds, kept only with a verified quote
- * that itself states the amount as a price (`statesPrice`), so a fee the
- * model worked out, made up or read off a number that is no price is no
- * fee. Any other currency is no fee: the club's fee is held in pounds.
- * Absent from the answer (a stub, a reading before this slice): no fee.
+ * The match fee: an amount in pounds that the MODEL says each player pays
+ * (`basis` "per_player"; "whole_pitch" or anything else is no fee), kept
+ * only with a verified quote that holds the number (`quoteHasAmount`).
+ * Any other currency is no fee: the club's fee is held in pounds. Absent
+ * from the answer (a stub, a reading before this slice, or one before
+ * `basis`): no fee.
  *
- * AN OUT-OF-DATE DESCRIPTION (review fix 5): when ANY chat message states
- * a different price per player, the description's quote is not counted,
- * whatever the model answered. The prompt says the same, but a ruling the
- * server can check is not left to the prompt. What is left (two messages
- * stating the amount, or nothing) is judged as usual.
+ * Until 2026-10-30 the server also read the chat for other prices with a
+ * word list (pitch, total, each, per head, kişi başı) and dropped the
+ * description's quote when a message stated another. Both are the model's
+ * rulings now, stated once in the prompt (question 9 and the description
+ * rulings): no code reads what a person meant.
  */
 function matchFee(raw: unknown, src: Sources): Detection["matchFee"] {
   const o = obj(raw);
   const none: Detection["matchFee"] = { amount: null, confidence: "low", evidence: [] };
   const n = typeof o.amount === "number" && Number.isFinite(o.amount) ? Math.round(o.amount * 100) / 100 : null;
-  if (n === null || o.currency !== "pounds" || n < MIN_MATCH_FEE || n > MAX_MATCH_FEE) return none;
-  let stated = verifyEvidenceTagged(
-    Array.isArray(o.evidence) ? o.evidence.filter((q) => typeof q === "string" && statesPrice(q, n)) : [],
+  if (n === null || o.currency !== "pounds" || o.basis !== "per_player" || n < MIN_MATCH_FEE || n > MAX_MATCH_FEE) return none;
+  const stated = verifyEvidenceTagged(
+    Array.isArray(o.evidence) ? o.evidence.filter((q) => typeof q === "string" && quoteHasAmount(q, n)) : [],
     src.history,
     src.description,
   );
-  const chatSaysOtherwise = src.history.some((m) => pricesIn(m.text).some((p) => Math.abs(p - n) >= 0.005));
-  if (chatSaysOtherwise) stated = stated.filter((v) => v.source !== "description");
   if (stated.length === 0) return none;
   return { amount: n, confidence: conf(o.confidence), ...evidenced(stated) };
 }

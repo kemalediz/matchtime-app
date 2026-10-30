@@ -2996,14 +2996,12 @@ export const en = {
   // For a club that is approved and still setting up. All deterministic,
   // all on the platform channel. No dashes.
   /** The optional admin group step of the setup DM: its own block, right
-   *  before the GO line. "My next message" is `sj_dm_ready_admin_command`,
-   *  sent as a separate DM straight after, so it can be forwarded whole. */
+   *  before the GO line. "My next message" is the code alone (`composeSetupAdminCommandDm`),
+   *  sent as a separate DM straight after, so the code can be copied whole.
+   *  Since 2026-10-30 the link needs a REAL tag (the Pi's mention flag):
+   *  typed words, or a forwarded message, are not one. */
   sj_dm_ready_admin_group:
-    "👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it and send my next message there. Admin messages will then go to that group instead of to you.",
-  /** The second DM, on its own: exactly the link command, and nothing
-   *  else. No tag: the words "Match Time" address it
-   *  (`parseAdminGroupLinkMessage`, admin-channel-rules.ts). */
-  sj_dm_ready_admin_command: (p: { code: string }): string => `Match Time admin group ${p.code}`,
+    "👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it, then tag me there with the code in my next message: type @Match Time, pick me from the list, and paste the code. Admin messages will then go to that group instead of to you.",
   /** The ONE reminder, 24 hours after the setup DM was due. `url` is the
    *  organiser's signed-in link to /admin/settings. Never repeated, and
    *  there is no automatic go-live. */
@@ -3418,8 +3416,7 @@ export const en = {
   settings_admin_channel_link_again: "New code",
   settings_admin_channel_step_code: (p: { code: string }): string => `Keep this page open. Your code: ${p.code}`,
   settings_admin_channel_step_add: "Add MatchTime to your admins' WhatsApp group.",
-  settings_admin_channel_step_send: "In that group, send:",
-  settings_admin_channel_command: (p: { code: string }): string => `@Match Time admin group ${p.code}`,
+  settings_admin_channel_step_send: "In that group, tag me (type @Match Time and pick me from the list) and send the code:",
   settings_admin_channel_validity: "The code works once and lasts 48 hours.",
   /** Under a code that is on screen: its REAL expiry (2026-10-12). The
    *  code MatchTime sent in the setup DM lasts 7 days, and the Settings

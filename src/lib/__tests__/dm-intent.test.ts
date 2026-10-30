@@ -20,7 +20,9 @@
 import { describe, it, expect } from "vitest";
 import {
   DM_INTENT_MIN_CONFIDENCE,
+  DM_INTENT_SCHEMA,
   DM_INTENT_SYSTEM_PROMPT,
+  CLUB_DECISION_MIN_CONFIDENCE,
   GO_LIVE_MIN_CONFIDENCE,
   classifyDmIntent,
   dmBodyOf,
@@ -434,5 +436,65 @@ describe("parseDmIntent reads the model's FIRST object (seen live 2026-10-30)", 
   });
   it("a brace inside a string does not confuse it", () => {
     expect(parseDmIntent('note {"intent": "question", "confidence": 0.9, "reasoning": "asks about {x}"} trailing').intent).toBe("question");
+  });
+});
+
+describe("the self-join reads (2026-10-30, the last no-string-parsing sweep): the connect message, and the owner's approve or reject", () => {
+  const json = (o: Record<string, unknown>) => async () => JSON.stringify({ intro: [], club_ref: "", reasoning: "r", ...o });
+
+  it("connect_club is read at the general floor", async () => {
+    expect((await classifyDmIntent("x", {}, json({ intent: "connect_club", confidence: 0.85 }))).intent).toBe("connect_club");
+    expect((await classifyDmIntent("x", {}, json({ intent: "connect_club", confidence: 0.7 }))).intent).toBe("other");
+  });
+
+  it("approve_club and reject_club carry the ref the model says was named, upper-cased; they need 90%", async () => {
+    expect(CLUB_DECISION_MIN_CONFIDENCE).toBe(0.9);
+    const ok = await classifyDmIntent("onayla 7kq2", {}, json({ intent: "approve_club", club_ref: " 7kq2 ", confidence: 0.95 }));
+    expect(ok).toMatchObject({ intent: "approve_club", clubRef: "7KQ2" });
+    expect((await classifyDmIntent("reject", {}, json({ intent: "reject_club", club_ref: "", confidence: 0.92 })))).toMatchObject({ intent: "reject_club", clubRef: "" });
+    expect((await classifyDmIntent("approve", {}, json({ intent: "approve_club", club_ref: "7KQ2", confidence: 0.85 }))).intent).toBe("other");
+  });
+
+  it("a ref that is not a short run of letters and digits is no ref", async () => {
+    for (const club_ref of ["7KQ2 and 9XT4", "Riverside FC", "x".repeat(12), 42]) {
+      const r = await classifyDmIntent("approve", {}, json({ intent: "approve_club", club_ref, confidence: 0.95 }));
+      expect(r.clubRef, String(club_ref)).toBe("");
+    }
+  });
+
+  it("no other intent carries a ref", async () => {
+    const r = await classifyDmIntent("x", {}, json({ intent: "question", club_ref: "7KQ2", confidence: 0.95 }));
+    expect(r.clubRef).toBeUndefined();
+  });
+
+  it("none of them does anything on the admin path", async () => {
+    for (const intent of ["connect_club", "approve_club", "reject_club"] as const) {
+      const { calls, deps } = recorder(says(intent));
+      expect(await runDmAdminIntent(deps)).toEqual({ handled: null });
+      expect(calls.invited).toEqual([]);
+      expect(calls.replies).toEqual([]);
+    }
+  });
+
+  it("the prompt defines each once, English beside Turkish, and asks for club_ref in the JSON", () => {
+    for (const i of ["connect_club", "approve_club", "reject_club"]) {
+      expect(DM_INTENT_SYSTEM_PROMPT.split(`- "${i}"`).length, i).toBe(2);
+    }
+    expect(DM_INTENT_SYSTEM_PROMPT).toContain('"club_ref"');
+    expect(DM_INTENT_SYSTEM_PROMPT).toContain("onayla");
+    expect(DM_INTENT_SYSTEM_PROMPT).toContain("bağla");
+    expect(DM_INTENT_SYSTEM_PROMPT).not.toMatch(/[\u2014\u2013]/);
+  });
+});
+
+describe("structured output (2026-10-30): the API returns the object and nothing after it", () => {
+  it("the schema names every intent the parser accepts, and every key the prompt asks for", () => {
+    expect([...DM_INTENT_SCHEMA.properties.intent.enum].sort()).toEqual(
+      ["connect_club", "go_live", "approve_club", "reject_club", "stop_messages", "stop_ratings", "resume_messages", "resume_ratings", "recruit_blast", "partner_ask", "rating_progress", "intro_messages", "question", "other"].sort(),
+    );
+    expect([...DM_INTENT_SCHEMA.required].sort()).toEqual(["club_ref", "confidence", "intent", "intro", "reasoning"]);
+    for (const key of DM_INTENT_SCHEMA.required) expect(DM_INTENT_SYSTEM_PROMPT).toContain(`"${key}"`);
+    // No nullable types: the API rejects them at request time.
+    expect(JSON.stringify(DM_INTENT_SCHEMA)).not.toMatch(/null/);
   });
 });

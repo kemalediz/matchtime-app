@@ -48,11 +48,25 @@ const DEFAULTS: OrgSettingsState = {
   settingsSetByOrganiser: [],
 };
 
+/**
+ * The run predates `match_fee.basis` (2026-10-30). Its prompt asked for
+ * the price EACH player pays and nothing else, so a stated fee was a price
+ * per player by the question: "per_player" is added to it here, and
+ * nothing else of the answer is touched.
+ */
+function withBasis(raw: unknown): unknown {
+  const o = raw as { match_fee?: { amount?: number; basis?: string } };
+  if (o?.match_fee && o.match_fee.basis === undefined) {
+    o.match_fee.basis = (o.match_fee.amount ?? 0) > 0 ? "per_player" : "none";
+  }
+  return o;
+}
+
 /** One saved answer through today's parser and planner, set up as the live check sets them up. */
 function replay(name: string) {
   const saved = RUN.answers.find((a) => a.fixture === name)!;
   const fx = loadFixture(saved.fixture);
-  const detection = parseDetection(extractJson(saved.raw), fx.history, fx.description)!;
+  const detection = parseDetection(withBasis(extractJson(saved.raw)), fx.history, fx.description)!;
   const plan = planSetup({
     detection,
     org: { ...DEFAULTS, language: fx.language },

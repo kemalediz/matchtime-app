@@ -10,41 +10,43 @@
  *      analyze. The server answers with an optional reply, posted in the
  *      same group, and an optional reaction (✅ on a message it acted on,
  *      2026-10-16), placed on the admin's message.
- *   2. "@Match Time admin group CODE" (or "yönetici grubu") in any other
- *      group, a silent one included. This is the one narrow exception to
- *      the silence rail: only a message shaped exactly like the command
- *      leaves the Pi, and the server decides (it answers only a real
- *      admin). On `adminGroup` in the answer the group becomes an admin
- *      group here at once.
+ *   2. A message that TAGS MatchTime (the mention flag, never the words
+ *      "Match Time" typed) and holds a code-shaped token (six characters
+ *      of the code alphabet), in any other group, a silent one included.
+ *      This is the one narrow exception to the silence rail: only such a
+ *      message leaves the Pi, and the server decides by facts (a code it
+ *      issued, sent by that club's owner or admin). On `adminGroup` in the
+ *      answer the group becomes an admin group here at once. When the
+ *      server answers "not-a-link-command" (no code it issued, and the
+ *      group is not waiting for one), or does not answer, the message
+ *      carries on as any other ("not-handled"): in a players' group the
+ *      pipeline reads it, in a silent group it is dropped as before.
  *
  * Everything else returns "not-handled" and index.ts carries on exactly
- * as before. The message is read (`read`) only once we know it is one of
- * the two, so an ordinary message costs nothing extra.
+ * as before. The message is read (`read`) only once the raw body holds a
+ * code-shaped token, so an ordinary message costs nothing extra.
  *
- * The command shape is a copy of `parseAdminGroupLinkMessage` in the
- * server's src/lib/admin-channel-rules.ts; keep the two in step.
+ * Until 2026-10-30 a phrase decided it ("@Match Time admin group CODE" or
+ * "yönetici grubu"), a copy of the server's `parseAdminGroupLinkMessage`.
+ * Kemal: no string parsing. The code shape is a copy of the server's
+ * `adminGroupCodeCandidates` (src/lib/admin-channel-rules.ts); keep the
+ * alphabet in step.
  */
 import type { AdminGroupAnswer, AdminGroupForward } from "./api.js";
 import { describeReactionFailure, planReaction, type ReactionOutcome } from "./react-with-id.js";
 
-const LINK_COMMAND =
-  /(?<![\p{L}\p{N}])(?:admin\s+group|y[oö]netici\s+grub[uü])\s*[:\-]?\s*([a-z0-9]{6})(?![\p{L}\p{N}])/u;
+/** The server's ADMIN_GROUP_CODE_ALPHABET: no 0/O, 1/I/L. */
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const CODE_TOKEN = new RegExp(`(?<![\\p{L}\\p{N}])[${CODE_ALPHABET}${CODE_ALPHABET.toLowerCase()}]{6}(?![\\p{L}\\p{N}])`, "u");
 
-function fold(text: string): string {
-  return text.toLocaleLowerCase("tr").replace(/ı/g, "i");
-}
-
-/** Cheap pre-check on the raw body, before anything is read. */
+/** Cheap pre-check on the raw body, before anything is read: a code-shaped token. */
 export function mightBeAdminGroupLink(rawBody: string): boolean {
-  return typeof rawBody === "string" && LINK_COMMAND.test(fold(rawBody));
+  return typeof rawBody === "string" && CODE_TOKEN.test(rawBody);
 }
 
-/** The full shape: addressed to MatchTime (a real tag or the words), then the command. */
+/** What may be the link message: a REAL tag and a code-shaped token. */
 export function looksLikeAdminGroupLink(body: string, botMentioned: boolean): boolean {
-  if (typeof body !== "string" || !body.trim()) return false;
-  const folded = fold(body);
-  if (!botMentioned && !/match\s*time/.test(folded)) return false;
-  return LINK_COMMAND.test(folded);
+  return botMentioned === true && typeof body === "string" && CODE_TOKEN.test(body);
 }
 
 export interface AdminGroupInboundDeps {
@@ -121,7 +123,9 @@ export async function routeAdminGroupInbound(
   const msg = await deps.read();
   if (!msg || !looksLikeAdminGroupLink(msg.text, msg.botMentioned)) return "not-handled";
   const answer = await deps.postAdminGroupLink(msg);
-  log(`[admin-group] link command in ${head.from} forwarded (${answer?.outcome ?? "no answer"})`);
+  log(`[admin-group] link command in ${head.from} forwarded (${answer?.outcome ?? "no answer"}${answer?.reason ? `: ${answer.reason}` : ""})`);
+  // Not the link message, or no answer: the message carries on as any other.
+  if (!answer || (answer.outcome === "ignored" && answer.reason === "not-a-link-command")) return "not-handled";
   const link = answer?.adminGroup;
   if (link && link.groupId === head.from && typeof link.orgId === "string" && link.orgId) {
     deps.addAdminGroup(head.from, link.orgId);

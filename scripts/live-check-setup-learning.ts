@@ -95,6 +95,7 @@ const FIXTURES = [
   "monthly-list",
   "description-supports",
   "description-stale",
+  "whole-pitch",
   "empty",
   "too-short",
 ];

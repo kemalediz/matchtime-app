@@ -27,7 +27,13 @@ import {
   setupStuckRefId,
   setupStuckRemovedKey,
 } from "../club-setup-followup-rules";
-import { ADMIN_GROUP_CODE_TTL_MS, ADMIN_GROUP_DM_CODE_TTL_MS, parseAdminGroupLinkMessage } from "../admin-channel-rules";
+import {
+  ADMIN_GROUP_CODE_ALPHABET,
+  ADMIN_GROUP_CODE_LENGTH,
+  ADMIN_GROUP_CODE_TTL_MS,
+  ADMIN_GROUP_DM_CODE_TTL_MS,
+  adminGroupCodeCandidates,
+} from "../admin-channel-rules";
 import { composeSetupAskDm } from "../club-setup-dm-rules";
 import { CANCELLABLE_DM_PURPOSES, OWNER_DM_PURPOSES, PLATFORM_DM_PURPOSES } from "../platform-jobs";
 import { t } from "../i18n/t";
@@ -42,43 +48,41 @@ const NO_DASH = new RegExp("[" + String.fromCharCode(0x2013, 0x2014) + "]");
 describe("the admin group step of the setup DM", () => {
   it("English: the block, exact", () => {
     expect(setupAdminGroupBlock("en")).toBe(
-      "👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it and send my next message there. Admin messages will then go to that group instead of to you.",
+      "👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it, then tag me there with the code in my next message: type @Match Time, pick me from the list, and paste the code. Admin messages will then go to that group instead of to you.",
     );
   });
 
   it("Turkish: the block, exact", () => {
     expect(setupAdminGroupBlock("tr")).toBe(
-      "👥 *Yönetici grubu (isteğe bağlı):* organizatörlerinizin kendi WhatsApp grubu varsa beni o gruba ekleyin ve bir sonraki mesajımı orada gönderin. Yönetici mesajları o zaman size değil, o gruba gider.",
+      "👥 *Yönetici grubu (isteğe bağlı):* organizatörlerinizin kendi WhatsApp grubu varsa beni o gruba ekleyin, sonra orada beni etiketleyip bir sonraki mesajımdaki kodu gönderin: @Match Time yazın, listeden beni seçin ve kodu yapıştırın. Yönetici mesajları o zaman size değil, o gruba gider.",
     );
   });
 
-  it("the second message is exactly the command, and nothing else", () => {
-    expect(composeSetupAdminCommandDm({ lang: "en", code: "K7P3QX" })).toBe("Match Time admin group K7P3QX");
-    expect(composeSetupAdminCommandDm({ lang: "tr", code: "K7P3QX" })).toBe("Match Time yönetici grubu K7P3QX");
+  it("the second message is exactly the code, and nothing else", () => {
+    expect(composeSetupAdminCommandDm({ lang: "en", code: "K7P3QX" })).toBe("K7P3QX");
+    expect(composeSetupAdminCommandDm({ lang: "tr", code: "K7P3QX" })).toBe("K7P3QX");
   });
 
-  it("the EXISTING parser reads the code out of it, with no tag, in both languages", () => {
+  it("the server finds the code in it, pasted after a real tag, in both languages", () => {
     for (const lang of ["en", "tr"]) {
-      const text = composeSetupAdminCommandDm({ lang, code: "K7P3QX" });
-      expect(parseAdminGroupLinkMessage(text, { botMentioned: false }), lang).toBe("K7P3QX");
+      const text = `@447700900000 ${composeSetupAdminCommandDm({ lang, code: "K7P3QX" })}`;
+      expect(adminGroupCodeCandidates(text), lang).toEqual(["K7P3QX"]);
     }
   });
 
-  it("the Pi forwards it from a silent group: its copy of the command shape is the server's, character for character", () => {
+  it("the Pi's code shape is the server's: the same alphabet, six long, and no phrase on either side", () => {
     // Only a message the Pi's own copy accepts ever leaves a silent group
-    // (whatsapp-bot/src/admin-group.ts, read here and not changed). The
-    // same pattern, the same folding and the same "Match Time" test mean
-    // that what the server's parser reads above, the Pi forwards.
+    // (whatsapp-bot/src/admin-group.ts, read here). Since 2026-10-30 both
+    // look for a code-shaped token, never for "admin group" or "Match Time".
     const pi = readFileSync(path.join(REPO, "whatsapp-bot/src/admin-group.ts"), "utf8");
     const server = readFileSync(path.join(REPO, "src/lib/admin-channel-rules.ts"), "utf8");
-    const pattern = /const LINK_COMMAND =\s*\n\s*(\/.+\/u);/;
-    expect(pattern.exec(pi)?.[1]).toBeTruthy();
-    expect(pattern.exec(pi)?.[1]).toBe(pattern.exec(server)?.[1]);
-    const fold = 'toLocaleLowerCase("tr").replace(/ı/g, "i")';
-    expect(pi).toContain(fold);
-    expect(server).toContain(fold);
-    expect(pi).toContain("/match\\s*time/.test(folded)");
-    expect(server).toContain("/match\\s*time/.test(folded)");
+    expect(pi).toContain(`const CODE_ALPHABET = "${ADMIN_GROUP_CODE_ALPHABET}";`);
+    expect(ADMIN_GROUP_CODE_LENGTH).toBe(6);
+    expect(pi).toMatch(/\]\{6\}/);
+    for (const src of [pi, server]) {
+      expect(src).not.toMatch(/match\\s\*time/);
+      expect(src).not.toMatch(/admin\\s\+group|y\[o\u00f6\]netici/);
+    }
   });
 
   it("the block goes in right before the GO line, in both languages, and only when it is given", () => {

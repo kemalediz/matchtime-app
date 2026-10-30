@@ -8,8 +8,9 @@
  * AT MOST ONCE PER CLUB:
  *
  *   THE ADMIN GROUP COMMAND   a second, short platform DM straight after
- *       the setup DM: exactly "Match Time admin group <CODE>", so the
- *       organiser can forward it whole into the organisers' own group.
+ *       the setup DM: exactly the code, so the organiser can copy it and
+ *       send it in the organisers' own group with a real tag (since
+ *       2026-10-30 the words "Match Time" typed are not a tag).
  *       Purpose `SETUP_ADMIN_CODE_DM_PURPOSE`. Queued with the setup DM in
  *       one transaction (club-setup-dm.ts), so "once" is the setup DM's own
  *       claim.
@@ -43,9 +44,14 @@ export function setupAdminGroupBlock(lang: string): string {
   return t(lang).sj_dm_ready_admin_group;
 }
 
-/** The second message: the link command and nothing else. */
+/**
+ * The second message: the code and nothing else, so it can be copied
+ * whole (2026-10-30). The same in every language: it is the code, not
+ * copy. The block before it (`sj_dm_ready_admin_group`) says to tag
+ * MatchTime in the group and paste it.
+ */
 export function composeSetupAdminCommandDm(p: { lang: string; code: string }): string {
-  return t(p.lang).sj_dm_ready_admin_command({ code: p.code });
+  return p.code;
 }
 
 // ── The reminder ────────────────────────────────────────────────────────

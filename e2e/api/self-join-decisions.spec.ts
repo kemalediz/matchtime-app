@@ -20,6 +20,7 @@ import { promisify } from "node:util";
 import { test, expect, resetDb } from "../fixtures";
 import { ORG_ID } from "../helpers/constants";
 import { E2E, REPO_ROOT } from "../helpers/env";
+import { addOwnerDecisionRead } from "../helpers/stub";
 import { testDb, type TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 import { t } from "@/lib/i18n/t";
@@ -171,7 +172,10 @@ test("the whole flow: connect DM, add, pending, APPROVE by DM, hello first, orga
   const pendingPoll = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(EN_GROUP)}`, { headers: PI });
   expect(pendingPoll.status()).toBe(404);
 
-  // 3. The owner replies from their own phone, in lower case.
+  // 3. The owner replies from their own phone, in lower case. The DM reader
+  //    reads it (stubbed: what the model would say); the route checks the
+  //    ref is in his words and names the waiting club.
+  addOwnerDecisionRead("approve 7kq2", "approve", "7KQ2");
   const decision = await dm(request, E2E.APPROVER_PHONE, "approve 7kq2");
   expect(decision).toMatchObject({ handled: "approver-dm", result: "approved" });
 
@@ -275,6 +279,7 @@ test("a club approved before the claim existed still gets no second introduction
 
 test("the same APPROVE forwarded twice acks once; a new APPROVE says it was already approved", async ({ request, db }) => {
   const before = (await jobsTo(db, E2E.APPROVER_PHONE)).length;
+  addOwnerDecisionRead("APPROVE 7KQ2", "approve", "7KQ2");
   await dm(request, E2E.APPROVER_PHONE, "APPROVE 7KQ2", ON, "e2e-sj7-dup");
   const twice = await dm(request, E2E.APPROVER_PHONE, "APPROVE 7KQ2", ON, "e2e-sj7-dup");
   expect(twice).toMatchObject({ handled: "approver-dm", result: "already" });
@@ -284,7 +289,7 @@ test("the same APPROVE forwarded twice acks once; a new APPROVE says it was alre
   expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group'`, [EN_ORG])).toBe(1);
 });
 
-test("a non-approver's APPROVE is ignored: nothing decided, nothing sent", async ({ request, db }) => {
+test("a non-approver's APPROVE is not a decision: nothing decided, nothing sent", async ({ request, db }) => {
   await botAdded(request, {
     groupId: X_GROUP,
     groupSubject: "Hackney Weds",
@@ -294,9 +299,12 @@ test("a non-approver's APPROVE is ignored: nothing decided, nothing sent", async
   expect((await org(db, X_ORG))?.approvalStatus).toBe("pending");
   const jobsBefore = await db.count(`SELECT COUNT(*) FROM "PlatformJob"`);
 
+  // Even with the reader saying "approve": the sender is not the owner, so
+  // the handler never asks it and the DM goes on to the usual handling.
+  addOwnerDecisionRead("APPROVE 4HCW", "approve", "4HCW");
   for (const phone of [HAL_PHONE, ALI_PHONE, "447700900999"]) {
     const r = await dm(request, phone, "APPROVE 4HCW");
-    expect(r).toEqual({ ok: true, handled: "approver-dm", result: "not-approver" });
+    expect(r.handled).not.toBe("approver-dm");
   }
   expect(await org(db, X_ORG)).toMatchObject({ approvalStatus: "pending", whatsappBotEnabled: false, whatsappGroupId: null });
   expect(await db.count(`SELECT COUNT(*) FROM "PlatformJob"`)).toBe(jobsBefore);
@@ -317,14 +325,17 @@ test("REJECT by DM: leaves the group silently, one polite Turkish DM to the orga
   });
   expect((await org(db, TR_ORG))?.approvalStatus).toBe("pending");
 
-  // Two clubs wait now: a bare REJECT decides nothing and lists them.
+  // Two clubs wait now: a REJECT with no ref decides nothing and lists them.
+  addOwnerDecisionRead("REJECT", "reject", null);
   const bare = await dm(request, E2E.APPROVER_PHONE, "REJECT");
   expect(bare).toMatchObject({ result: "ambiguous" });
   expect((await jobsTo(db, E2E.APPROVER_PHONE)).at(-1)?.text).toBe(
     "Two clubs are waiting: 4HCW Hackney Weds, 9XT4 Kartallar. Reply APPROVE and the ref.",
   );
 
-  const r = await dm(request, E2E.APPROVER_PHONE, "reject 9xt4");
+  // In his own words, Turkish or English: the reader says reject, 9XT4.
+  addOwnerDecisionRead("bunu reddet, 9xt4", "reject", "9XT4");
+  const r = await dm(request, E2E.APPROVER_PHONE, "bunu reddet, 9xt4");
   expect(r).toMatchObject({ result: "rejected" });
   expect(await org(db, TR_ORG)).toMatchObject({ approvalStatus: "rejected", whatsappBotEnabled: false, whatsappGroupId: null });
   expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1`, [TR_ORG])).toBe(0);

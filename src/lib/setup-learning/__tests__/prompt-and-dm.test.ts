@@ -95,6 +95,11 @@ describe("the prompt", () => {
     expect(SETUP_LEARNING_SYSTEM_PROMPT).toContain("MatchTime never sets a fee");
     expect(SETUP_LEARNING_SCHEMA.properties.match_fee.properties.currency.enum).toEqual(["pounds", "other", "none"]);
     expect(SETUP_LEARNING_SCHEMA.required).toContain("match_fee");
+    // The model says whether the price is each player's or the whole
+    // pitch's (2026-10-30, no string parsing): the server reads no words.
+    expect(SETUP_LEARNING_SCHEMA.properties.match_fee.properties.basis.enum).toEqual(["per_player", "whole_pitch", "none"]);
+    expect(SETUP_LEARNING_SCHEMA.properties.match_fee.required).toContain("basis");
+    expect(SETUP_LEARNING_SYSTEM_PROMPT.match(/basis is "per_player"/g) ?? []).toHaveLength(1);
     // Source tagging is the server's: the model is given no field for it.
     expect(JSON.stringify(SETUP_LEARNING_SCHEMA)).not.toMatch(/source/);
   });

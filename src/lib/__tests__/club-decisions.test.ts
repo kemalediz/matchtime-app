@@ -4,8 +4,9 @@
  * mocked database. Plan: MDs/self-join-and-approval-plan-2026-09-28.md,
  * sections 4.1, 5.4, 6.2, 6.3, 6.4.
  *
- * Deterministic: no model anywhere (the Anthropic SDK is mocked and its
- * calls counted). The real-Postgres checks (the CHECK constraint, two
+ * No model call: the Anthropic SDK is mocked and its calls counted. The
+ * owner's DM is read by the one DM reader, injected here as a stub
+ * (`read`), since 2026-10-30. The real-Postgres checks (the CHECK constraint, two
  * decisions racing) are in e2e/api/self-join-decisions.spec.ts.
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -579,6 +580,7 @@ describe("decideClub on a club that is approved but SETTING UP", () => {
 });
 
 describe("handleApproverDm with the setup hold ON (go-live S3)", () => {
+  const approveRead = async () => ({ intent: "approve_club", confidence: 0.95, clubRef: "7KQ2" });
   beforeEach(() => {
     dbMock.clubConnect.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
       where.status === "group_linked" ? [{ code: "7KQ2", orgId: "org-riverside", org: { name: "Riverside FC" } }] : [],
@@ -586,7 +588,7 @@ describe("handleApproverDm with the setup hold ON (go-live S3)", () => {
   });
 
   it("holds the club, names it for the prompt reading, and tells the owner the organiser is being asked", async () => {
-    const r = await handleApproverDm({ text: "APPROVE 7KQ2", phone: APPROVER, waMessageId: "wa-9", now: NOW, setupHold: true });
+    const r = await handleApproverDm({ text: "APPROVE 7KQ2", phone: APPROVER, waMessageId: "wa-9", now: NOW, setupHold: true, read: approveRead });
     expect(r).toEqual({ handled: "approver-dm", result: "approved", heldOrgId: "org-riverside" });
     expect(dbMock.botJob.create).not.toHaveBeenCalled();
     const jobs = created("platformJob");
@@ -597,7 +599,7 @@ describe("handleApproverDm with the setup hold ON (go-live S3)", () => {
   });
 
   it("hold off: the outcome carries no held club (today's reply, byte for byte)", async () => {
-    const r = await handleApproverDm({ text: "APPROVE 7KQ2", phone: APPROVER, waMessageId: "wa-9", now: NOW, setupHold: false });
+    const r = await handleApproverDm({ text: "APPROVE 7KQ2", phone: APPROVER, waMessageId: "wa-9", now: NOW, setupHold: false, read: approveRead });
     expect(r).toEqual({ handled: "approver-dm", result: "approved" });
   });
 });
@@ -707,22 +709,33 @@ describe("leaveUnsolicitedGroup (the owner page's Leave button)", () => {
   });
 });
 
-describe("handleApproverDm: APPROVE / REJECT by WhatsApp", () => {
+describe("handleApproverDm: the owner approves or rejects by WhatsApp, in his own words", () => {
+  // Since 2026-10-30 (no string parsing) the DM reader says approve or
+  // reject and which ref he named; the code checks only facts: the sender
+  // is the platform owner, the ref is in what he wrote (or in the message
+  // of ours he swiped), and it names a club.
   const waiting = (rows: Array<{ code: string; orgId: string; name: string }>) =>
     rows.map((r) => ({ code: r.code, orgId: r.orgId, org: { name: r.name } }));
+  type Verdict = { intent: string; confidence?: number; clubRef?: string };
+  const read = vi.fn(async (_userId: string): Promise<Verdict> => ({ intent: "other", confidence: 0 }));
+  const says = (v: Verdict) => read.mockResolvedValue({ confidence: 0.95, ...v });
 
   beforeEach(() => {
     // Waiting clubs (group_linked, pending), then decided rows for a ref.
     dbMock.clubConnect.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
       where.status === "group_linked" ? waiting([{ code: "7KQ2", orgId: "org-riverside", name: "Riverside FC" }]) : [],
     );
+    dbMock.user.findFirst.mockResolvedValue({ id: "u-owner" });
+    read.mockReset();
+    read.mockResolvedValue({ intent: "other", confidence: 0 });
   });
 
   const dm = (text: string, over: Record<string, unknown> = {}) =>
-    handleApproverDm({ text, phone: APPROVER, waMessageId: "wa-1", now: NOW, ...over });
+    handleApproverDm({ text, phone: APPROVER, waMessageId: "wa-1", now: NOW, read, ...over });
   const ownerJobs = () => created("platformJob").filter((j) => j.purpose === "owner-ack");
 
-  it("APPROVE <ref> from the approver approves and acks once", async () => {
+  it("'approve 7kq2': the reader says approve with the ref; it is approved and acked once, read as the owner", async () => {
+    says({ intent: "approve_club", clubRef: "7KQ2" });
     const r = await dm("approve 7kq2");
     expect(r).toMatchObject({ handled: "approver-dm", result: "approved" });
     expect(orgs["org-riverside"].approvalStatus).toBe("approved");
@@ -734,38 +747,68 @@ describe("handleApproverDm: APPROVE / REJECT by WhatsApp", () => {
       }),
     ]);
     expect(dbMock.organisation.updateMany.mock.calls[0][0].data.approvalDecidedBy).toBe(`whatsapp:${APPROVER}`);
+    expect(read.mock.calls).toEqual([["u-owner"]]);
     expect(anthropicCalls.n).toBe(0);
   });
 
-  it("REJECT <ref> rejects and acks", async () => {
-    const r = await dm("REJECT 7KQ2");
+  it("any words, English or Turkish: 'yes approve 7KQ2', 'onayla 7KQ2'", async () => {
+    says({ intent: "approve_club", clubRef: "7KQ2" });
+    expect(await dm("yes approve 7KQ2")).toMatchObject({ result: "approved" });
+    orgs["org-riverside"] = riverside();
+    expect(await dm("onayla 7KQ2", { waMessageId: "wa-2" })).toMatchObject({ result: "approved" });
+  });
+
+  it("'reject that one' (no ref) with one club waiting rejects it; 'reddet 7KQ2' rejects by ref", async () => {
+    says({ intent: "reject_club", clubRef: "" });
+    const r = await dm("reject that one");
     expect(r).toMatchObject({ result: "rejected" });
     expect(orgs["org-riverside"].approvalStatus).toBe("rejected");
     expect(ownerJobs()[0].text).toBe("Rejected Riverside FC. Leaving the group now.");
+    orgs["org-riverside"] = riverside();
+    says({ intent: "reject_club", clubRef: "7KQ2" });
+    expect(await dm("reddet 7KQ2", { waMessageId: "wa-2" })).toMatchObject({ result: "rejected" });
   });
 
-  it("a bare APPROVE with one club waiting decides it; with two, it asks for the ref and decides nothing", async () => {
-    expect(await dm("APPROVE")).toMatchObject({ result: "approved" });
+  it("no ref with one club waiting decides it; with two, it asks for the ref and decides nothing", async () => {
+    says({ intent: "approve_club", clubRef: "" });
+    expect(await dm("approve")).toMatchObject({ result: "approved" });
 
     orgs["org-riverside"] = riverside();
     vi.clearAllMocks();
+    dbMock.user.findFirst.mockResolvedValue({ id: "u-owner" });
     dbMock.clubConnect.findMany.mockResolvedValue(
       waiting([
         { code: "7KQ2", orgId: "org-riverside", name: "Riverside FC" },
         { code: "9XT4", orgId: "org-hackney", name: "Hackney Weds" },
       ]),
     );
-    const r = await dm("APPROVE", { waMessageId: "wa-2" });
+    const r = await dm("approve it", { waMessageId: "wa-2" });
     expect(r).toMatchObject({ result: "ambiguous" });
     expect(orgs["org-riverside"].approvalStatus).toBe("pending");
     expect(ownerJobs()[0].text).toBe("Two clubs are waiting: 7KQ2 Riverside FC, 9XT4 Hackney Weds. Reply APPROVE and the ref.");
   });
 
-  it("an unknown ref decides nothing and lists what is waiting", async () => {
+  it("a ref he named that no club has decides nothing and lists what is waiting", async () => {
+    says({ intent: "approve_club", clubRef: "ZZZZ" });
     const r = await dm("APPROVE ZZZZ");
     expect(r).toMatchObject({ result: "unknown-ref" });
     expect(orgs["org-riverside"].approvalStatus).toBe("pending");
     expect(ownerJobs()[0].text).toBe("No club waiting with ref ZZZZ. Waiting now: 7KQ2 Riverside FC.");
+  });
+
+  it("A REF THE MODEL GAVE THAT IS NOT IN HIS MESSAGE decides nothing, even when it names the one waiting club", async () => {
+    says({ intent: "approve_club", clubRef: "7KQ2" });
+    const r = await dm("approve the riverside one");
+    expect(r).toMatchObject({ result: "ref-needed" });
+    expect(orgs["org-riverside"].approvalStatus).toBe("pending");
+    expect(ownerJobs()[0].text).toBe("Which club? Reply with its ref, for example APPROVE 7KQ2. Waiting now: 7KQ2 Riverside FC.");
+    expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("the ref may come from the message of ours he swiped to reply", async () => {
+    says({ intent: "approve_club", clubRef: "7KQ2" });
+    const r = await dm("yes approve that one", { quotedText: "New club waiting: Riverside FC (ref 7KQ2). Reply APPROVE 7KQ2 or REJECT 7KQ2." });
+    expect(r).toMatchObject({ result: "approved" });
   });
 
   it("a ref already decided says when", async () => {
@@ -779,12 +822,14 @@ describe("handleApproverDm: APPROVE / REJECT by WhatsApp", () => {
             },
           ],
     );
+    says({ intent: "approve_club", clubRef: "7KQ2" });
     const r = await dm("APPROVE 7KQ2");
     expect(r).toMatchObject({ result: "already" });
     expect(ownerJobs()[0].text).toBe("Riverside FC was already approved on 28 Sept at 19:04.");
   });
 
   it("the same WhatsApp message forwarded twice acks once", async () => {
+    says({ intent: "approve_club", clubRef: "7KQ2" });
     await dm("APPROVE 7KQ2");
     dbMock.platformJob.findFirst.mockResolvedValue({ id: "pj-1" });
     const before = ownerJobs().length;
@@ -794,32 +839,44 @@ describe("handleApproverDm: APPROVE / REJECT by WhatsApp", () => {
   });
 
   it("the approver's alt phone counts when the chat id was a LID", async () => {
+    says({ intent: "approve_club", clubRef: "7KQ2" });
     const r = await dm("APPROVE 7KQ2", { phone: null, senderAltPhone: APPROVER });
     expect(r).toMatchObject({ result: "approved" });
   });
 
-  it("A NON-APPROVER'S 'APPROVE 7KQ2' IS SWALLOWED: nothing decided, nothing sent, no model", async () => {
+  it("the owner with no user account is still read, under a key of his number", async () => {
+    dbMock.user.findFirst.mockResolvedValue(null);
+    says({ intent: "approve_club", clubRef: "7KQ2" });
+    expect(await dm("APPROVE 7KQ2")).toMatchObject({ result: "approved" });
+    expect(read.mock.calls).toEqual([[`approver:${APPROVER}`]]);
+  });
+
+  it("A NON-OWNER'S 'APPROVE 7KQ2' IS NOT THIS HANDLER'S: no read, nothing decided, nothing sent", async () => {
+    says({ intent: "approve_club", clubRef: "7KQ2" });
     for (const phone of [ALI, "447700900445", null]) {
-      const r = await dm("APPROVE 7KQ2", { phone, senderAltPhone: null });
-      expect(r).toEqual({ handled: "approver-dm", result: "not-approver" });
+      expect(await dm("APPROVE 7KQ2", { phone, senderAltPhone: null })).toBeNull();
     }
+    expect(read).not.toHaveBeenCalled();
     expect(orgs["org-riverside"].approvalStatus).toBe("pending");
     expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
     expect(dbMock.clubConnect.findMany).not.toHaveBeenCalled();
-    expect(anthropicCalls.n).toBe(0);
   });
 
-  it("a non-approver's bare word, and anything that is not a command, is not this handler's", async () => {
-    expect(await dm("approve", { phone: ALI })).toBeNull();
-    expect(await dm("IN")).toBeNull();
-    expect(await dm("please approve 7KQ2")).toBeNull();
+  it("the owner's DM that is not an approve or a reject goes on to the rest of the route", async () => {
+    for (const intent of ["other", "question", "intro_messages", "go_live"]) {
+      says({ intent, clubRef: "7KQ2" });
+      expect(await dm("please approve 7KQ2 when you can"), intent).toBeNull();
+    }
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+    expect(orgs["org-riverside"].approvalStatus).toBe("pending");
   });
 
-  it("with no approver configured, nobody is an approver", async () => {
+  it("with no reader, or no approver configured, nothing is decided", async () => {
+    says({ intent: "approve_club", clubRef: "7KQ2" });
+    expect(await dm("APPROVE 7KQ2", { read: undefined })).toBeNull();
     delete process.env.SELF_JOIN_APPROVER_PHONES;
-    expect(await dm("APPROVE 7KQ2")).toEqual({ handled: "approver-dm", result: "not-approver" });
+    expect(await dm("APPROVE 7KQ2")).toBeNull();
     expect(orgs["org-riverside"].approvalStatus).toBe("pending");
   });
 });

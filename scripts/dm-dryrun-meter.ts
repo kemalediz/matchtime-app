@@ -19,6 +19,8 @@ export interface DryRunArm {
   maxTokens: number;
   /** `HAIKU_THINKING` for Haiku 5.5, thinking disabled for Sonnet 5. */
   thinking: "haiku" | "off";
+  /** Structured output, as the site sends it (`output_config.format`). */
+  schema?: Record<string, unknown>;
 }
 
 /** The DM classifiers' production call (Haiku 5.5, adaptive medium). */
@@ -60,6 +62,14 @@ export function meter(harness: string, arm: DryRunArm, maxUsd: number): Meter {
       model: arm.model,
       max_tokens: arm.maxTokens,
       ...(arm.thinking === "haiku" ? HAIKU_THINKING : { thinking: { type: "disabled" as const } }),
+      ...(arm.schema
+        ? {
+            output_config: {
+              ...(arm.thinking === "haiku" ? HAIKU_THINKING.output_config : {}),
+              format: { type: "json_schema" as const, schema: arm.schema },
+            },
+          }
+        : {}),
       system: systemBlock(system),
       messages: [{ role: "user", content: user }],
     });

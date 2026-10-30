@@ -17,13 +17,14 @@
  *   SET=s3 REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-dm-intent.ts
  *   SET=intro REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-dm-intent.ts
  *   SET=subs|go|question REPEAT=1 ... (2026-10-30, the one DM reader)
+ *   SET=selfjoin REPEAT=1 ... (2026-10-30: the connect message, the owner's approve or reject)
  *
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). Touches no
  * database and DMs nobody: it imports the classifier and prints what came
  * back, with the cost and a hard stop at MAX_USD.
  */
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
-import { DM_INTENT_STUB_FILE_ENV, classifyDmIntent, type DmIntent } from "../src/lib/dm-intent.ts";
+import { DM_INTENT_SCHEMA, DM_INTENT_STUB_FILE_ENV, classifyDmIntent, type DmIntent } from "../src/lib/dm-intent.ts";
 import { buildPayChaseDm, buildRatingDm } from "../src/lib/dm-copy.ts";
 import { formatRatingProgressReply } from "../src/lib/rating-progress-answer.ts";
 import { noReplyContext, pickRecentBotMessages, type ContextMessage, type ReplyContext } from "../src/lib/reply-context.ts";
@@ -37,6 +38,8 @@ interface Case {
   want: DmIntent;
   /** For intro_messages: the categories the model must list ([] = all). */
   intro?: number[];
+  /** For approve_club and reject_club: the ref the model must give ("" = none). */
+  ref?: string;
   ctx?: ReplyContext;
   note?: string;
 }
@@ -255,6 +258,30 @@ const QUESTION: Case[] = [
   { text: "great game lads", want: "other" },
 ];
 
+/** 2026-10-30, the last sweep: the owner's request DM and the connect
+ *  message's wrong-code reply, read by the one DM reader. */
+const OWNER_ASK: ContextMessage = {
+  at: new Date("2026-10-14T10:00:00Z"),
+  text: "New club waiting: Riverside FC (Tuesday 7-a-side), ref 7KQ2. Reply APPROVE 7KQ2 or REJECT 7KQ2.",
+  topic: null,
+  match: null,
+};
+const SELF_JOIN: Case[] = [
+  { text: "Connect Riverside FC, code 7KQ3", want: "connect_club" },
+  { text: "Kartallar kulübünü bağla, kod ZZZ9", want: "connect_club" },
+  { text: "hi, here's my code 7KQ3, can you link my group?", want: "connect_club", note: "no 'connect' word" },
+  { text: "where do I find the code?", want: "question" },
+  { text: "the gate code is 4829", want: "other" },
+  { text: "APPROVE 7KQ2", want: "approve_club", ref: "7KQ2", ctx: sent(OWNER_ASK) },
+  { text: "yes approve 7kq2", want: "approve_club", ref: "7KQ2", ctx: sent(OWNER_ASK) },
+  { text: "onayla 7KQ2", want: "approve_club", ref: "7KQ2", ctx: sent(OWNER_ASK) },
+  { text: "yes, approve it", want: "approve_club", ref: "", ctx: quoting(OWNER_ASK) },
+  { text: "REJECT 9XT4", want: "reject_club", ref: "9XT4", ctx: sent(OWNER_ASK) },
+  { text: "reject that one", want: "reject_club", ref: "", ctx: quoting(OWNER_ASK) },
+  { text: "bunu reddet", want: "reject_club", ref: "", ctx: quoting(OWNER_ASK) },
+  { text: "I'll approve the Riverside lot later, not now", want: "other", ctx: sent(OWNER_ASK) },
+];
+
 const sameIntro = (a: number[] | undefined, b: number[] | undefined) =>
   JSON.stringify([...(a ?? [])].sort()) === JSON.stringify([...(b ?? [])].sort());
 
@@ -264,8 +291,9 @@ async function main() {
     console.error(`REFUSING: ${DM_INTENT_STUB_FILE_ENV} is set, this would measure the stub.`);
     process.exit(1);
   }
-  const m = meter("scripts/dryrun-dm-intent.ts", HAIKU_CLASSIFIER_ARM, MAX_USD);
-  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, s3: SLICE_S3, intro: INTRO, subs: SUBS, go: GO, question: QUESTION };
+  // The production call: the classifier arm with the reader's schema (2026-10-30).
+  const m = meter("scripts/dryrun-dm-intent.ts", { ...HAIKU_CLASSIFIER_ARM, schema: DM_INTENT_SCHEMA as unknown as Record<string, unknown> }, MAX_USD);
+  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, s3: SLICE_S3, intro: INTRO, subs: SUBS, go: GO, question: QUESTION, selfjoin: SELF_JOIN };
   const setName = process.env.SET && sets[process.env.SET] ? process.env.SET : "main";
   const only = process.env.ONLY;
   const set = only ? sets[setName].filter((c) => c.text === only) : sets[setName];
@@ -280,8 +308,11 @@ async function main() {
       // live one.
       const clubs = setName === "go" ? [{ name: "Riverside FC", organiser: true, settingUp: true }] : [{ name: "Sutton FC", organiser: true, settingUp: false }];
       const r = await classifyDmIntent(c.text, { clubs, senderName: "Kemal Ediz", replyContext: c.ctx ?? noReplyContext(NOW) }, m.call);
-      const ok = r.intent === c.want && (c.want !== "intro_messages" || sameIntro(r.intro, c.intro));
-      got.push(`${ok ? "" : "!"}${r.intent}${r.intro ? JSON.stringify(r.intro) : ""}@${r.confidence.toFixed(2)}`);
+      const ok =
+        r.intent === c.want &&
+        (c.want !== "intro_messages" || sameIntro(r.intro, c.intro)) &&
+        (c.ref === undefined || (r.clubRef ?? "") === c.ref);
+      got.push(`${ok ? "" : "!"}${r.intent}${r.intro ? JSON.stringify(r.intro) : ""}${r.clubRef !== undefined ? `(${r.clubRef})` : ""}@${r.confidence.toFixed(2)}`);
       reasons.push(r.reasoning === "parse failed" ? `parse failed, raw: ${JSON.stringify(m.lastRaw().slice(0, 300))}` : r.reasoning);
     }
     const agreed = got.filter((g) => !g.startsWith("!")).length;

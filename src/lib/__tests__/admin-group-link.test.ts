@@ -80,7 +80,7 @@ const FNF = {
 const introKeys = new Set<string>();
 
 /** Users by phone. Raihan is an admin of Friday FNF (approved). */
-function world(opts: { code?: Partial<typeof FNF>; adminGroupOwner?: unknown; communityOwner?: unknown } = {}) {
+function world(opts: { code?: Partial<typeof FNF>; adminGroupOwner?: unknown; communityOwner?: unknown; waitingForCode?: boolean } = {}) {
   const fnf = { ...FNF, ...(opts.code ?? {}) };
   dbMock.user.findMany.mockImplementation(async (args: { where: { phoneNumber: { in: string[] } } }) =>
     args.where.phoneNumber.in.includes(`+${RAIHAN_PHONE}`) ? [{ id: "u-raihan" }] : [],
@@ -94,10 +94,22 @@ function world(opts: { code?: Partial<typeof FNF>; adminGroupOwner?: unknown; co
     if ("whatsappGroupId" in args.where) return opts.communityOwner ?? null;
     if ("adminGroupId" in args.where) return opts.adminGroupOwner ?? null;
     if ("adminGroupLinkCode" in args.where) {
-      return args.where.adminGroupLinkCode === fnf.adminGroupLinkCode ? fnf : null;
+      // The link looks up every code-shaped token at once.
+      const asked = args.where.adminGroupLinkCode as string | { in: string[] };
+      const codes = typeof asked === "string" ? [asked] : asked.in;
+      return fnf.adminGroupLinkCode && codes.includes(fnf.adminGroupLinkCode) ? fnf : null;
     }
     return null;
   });
+  // The group MatchTime was added to by an admin, silent and waiting for
+  // its code (a candidate row, awaitingAdminLink). HQ is one by default.
+  dbMock.unsolicitedGroup.findFirst.mockImplementation(async (args: { where: Record<string, unknown> }) =>
+    args.where.awaitingAdminLink === true
+      ? opts.waitingForCode === false || args.where.groupId !== HQ
+        ? null
+        : { id: "ug-hq" }
+      : null,
+  );
   dbMock.organisation.updateMany.mockResolvedValue({ count: 1 });
   dbMock.organisation.findUnique.mockImplementation(async (args: { where: { id: string } }) => (args.where.id === fnf.id ? fnf : null));
   return fnf;
@@ -128,13 +140,16 @@ beforeEach(() => {
   });
 });
 
+/** A real tag (the Pi's mention flag), as every link must have since
+ *  2026-10-30. WhatsApp writes a tag into the body as the bot's number. */
+const TAG = "@447700900000";
 const send = (text: string, over: Record<string, unknown> = {}) =>
-  linkAdminGroup({ groupId: HQ, text, senderPhone: RAIHAN_PHONE, groupSubject: "FNF HQ", now: NOW, ...over });
+  linkAdminGroup({ groupId: HQ, text, botMentioned: true, senderPhone: RAIHAN_PHONE, groupSubject: "FNF HQ", now: NOW, ...over });
 
 describe("linkAdminGroup", () => {
   it("a valid code from an admin links the group, clears the code, abandons a setup, closes the candidate row, replies with the introduction", async () => {
     world();
-    const r = await send("@Match Time admin group k7p3qx");
+    const r = await send(`${TAG} k7p3qx`);
     expect(r).toEqual({
       outcome: "linked",
       replyText: buildAdminGroupIntro({ ...FNF, activityDays: [5] }),
@@ -167,14 +182,14 @@ describe("linkAdminGroup", () => {
   it("with no subject from the Pi, the subject recorded at the add is used", async () => {
     world();
     dbMock.unsolicitedGroup.findFirst.mockResolvedValue({ subject: "FNF HQ (from the add)" });
-    await send("@Match Time admin group K7P3QX", { groupSubject: undefined });
+    await send(`${TAG} K7P3QX`, { groupSubject: undefined });
     expect(dbMock.organisation.updateMany.mock.calls[0][0].data.adminGroupSubject).toBe("FNF HQ (from the add)");
   });
 
   it("the sender is resolved by a stored LID pair when the phone is hidden", async () => {
     world();
     dbMock.clubConnect.findMany.mockResolvedValue([{ userId: "u-raihan", dmLid: RAIHAN_LID, participants: null }]);
-    const r = await send("@Match Time admin group K7P3QX", { senderPhone: null, senderLid: `${RAIHAN_LID}@lid` });
+    const r = await send(`${TAG} K7P3QX`, { senderPhone: null, senderLid: `${RAIHAN_LID}@lid` });
     expect(r.outcome).toBe("linked");
   });
 
@@ -183,29 +198,29 @@ describe("linkAdminGroup", () => {
     dbMock.membership.findMany.mockResolvedValue([
       { userId: "u-raihan", orgId: "org-fnf", org: { id: "org-fnf", name: "Friday FNF", language: "tr" } },
     ]);
-    const r = await send("@Match Time yönetici grubu K7P3QX");
+    const r = await send(`${TAG} yönetici grubu K7P3QX`);
     expect(r.replyText).toBe(buildAdminGroupIntro({ ...FNF, language: "tr", activityDays: [5] }));
     expect(r.replyText).toMatch(/^👋 Ben MatchTime\. \*Friday FNF\* cuma maçlarını/);
   });
 
   it("the same code posted again (a Pi retry, or twice): linked already, no second message", async () => {
     world();
-    expect((await send("@Match Time admin group K7P3QX")).outcome).toBe("linked");
+    expect((await send(`${TAG} K7P3QX`)).outcome).toBe("linked");
     // The group is now FNF's admin group; the code is spent.
     world({ adminGroupOwner: { id: "org-fnf", name: "Friday FNF", language: "en" }, code: { adminGroupLinkCode: null } });
-    expect(await send("@Match Time admin group K7P3QX")).toEqual({ outcome: "already-linked", replyText: null, adminGroup: { groupId: HQ, orgId: "org-fnf" } });
+    expect(await send(`${TAG} K7P3QX`)).toEqual({ outcome: "already-linked", replyText: null, adminGroup: { groupId: HQ, orgId: "org-fnf" } });
     expect(introKeys.size).toBe(1);
   });
 
   it("the same group linked again after an unlink: introduced already, so the short line", async () => {
     introKeys.add(`hq-intro:org-fnf:${HQ}`);
     world();
-    expect((await send("@Match Time admin group K7P3QX")).replyText).toBe("✅ Linked as the admin group for *Friday FNF*.");
+    expect((await send(`${TAG} K7P3QX`)).replyText).toBe("✅ Linked as the admin group for *Friday FNF*.");
   });
 
   it("a wrong code from an admin gets L2", async () => {
     world();
-    const r = await send("@Match Time admin group ZZZZZZ");
+    const r = await send(`${TAG} ZZZZZZ`);
     expect(r.outcome).toBe("bad-code");
     expect(r.replyText).toMatch(/^That code isn't valid any more\./);
     expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
@@ -213,12 +228,12 @@ describe("linkAdminGroup", () => {
 
   it("an expired code from an admin gets L2", async () => {
     world({ code: { adminGroupLinkCodeExpiresAt: new Date(NOW.getTime() - 1) } });
-    expect((await send("@Match Time admin group K7P3QX")).outcome).toBe("bad-code");
+    expect((await send(`${TAG} K7P3QX`)).outcome).toBe("bad-code");
   });
 
   it("anyone who is not an admin anywhere gets no reply, right code or wrong", async () => {
     world();
-    for (const text of ["@Match Time admin group K7P3QX", "@Match Time admin group ZZZZZZ"]) {
+    for (const text of [`${TAG} K7P3QX`, `${TAG} ZZZZZZ`]) {
       const r = await send(text, { senderPhone: STRANGER_PHONE });
       expect(r).toEqual({ outcome: "ignored", replyText: null, reason: "not-an-admin" });
     }
@@ -227,7 +242,7 @@ describe("linkAdminGroup", () => {
 
   it("the club's own community group gets L3 and is not linked", async () => {
     world({ communityOwner: { id: "org-fnf", name: "Friday FNF", language: "en" } });
-    const r = await send("@Match Time admin group K7P3QX", { groupId: FNF_GROUP });
+    const r = await send(`${TAG} K7P3QX`, { groupId: FNF_GROUP });
     expect(r.outcome).toBe("main-group");
     expect(r.replyText).toBe("This is *Friday FNF*'s main group, so it can't be the admin group. Add me to a separate group for the admins.");
     expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
@@ -237,7 +252,7 @@ describe("linkAdminGroup", () => {
     world({
       communityOwner: { id: "org-fnf", name: "Friday FNF", language: "en", approvalStatus: "approved", setupStage: "setting-up" },
     });
-    const r = await send("@Match Time admin group K7P3QX", { groupId: FNF_GROUP });
+    const r = await send(`${TAG} K7P3QX`, { groupId: FNF_GROUP });
     // Slice S7: and it says whose players' group it is, so the caller can
     // tell that organiser by DM (admin-group-link-command.test.ts).
     expect(r).toEqual({
@@ -253,35 +268,61 @@ describe("linkAdminGroup", () => {
     world({
       communityOwner: { id: "org-fnf", name: "Friday FNF", language: "en", approvalStatus: "approved", setupStage: "live" },
     });
-    const r = await send("@Match Time admin group K7P3QX", { groupId: FNF_GROUP });
+    const r = await send(`${TAG} K7P3QX`, { groupId: FNF_GROUP });
     expect(r.outcome).toBe("main-group");
     expect(r.replyText).toContain("main group");
   });
 
   it("go-live S1: a setting-up club can still link a SEPARATE admin group (owner decision 10)", async () => {
     world();
-    const r = await send("@Match Time admin group K7P3QX");
+    const r = await send(`${TAG} K7P3QX`);
     expect(r.outcome).toBe("linked");
   });
 
   it("another club's admin group gets no reply", async () => {
     world({ adminGroupOwner: { id: "org-other", name: "Other", language: "en" } });
-    const r = await send("@Match Time admin group K7P3QX");
+    const r = await send(`${TAG} K7P3QX`);
     expect(r).toMatchObject({ outcome: "ignored", replyText: null });
     expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
   });
 
   it("a Pi retry after linking is answered quietly, not with L2", async () => {
     world({ adminGroupOwner: { id: "org-fnf", name: "Friday FNF", language: "en" }, code: { adminGroupLinkCode: null } });
-    const r = await send("@Match Time admin group K7P3QX");
+    const r = await send(`${TAG} K7P3QX`);
     expect(r).toEqual({ outcome: "already-linked", replyText: null, adminGroup: { groupId: HQ, orgId: "org-fnf" } });
   });
 
   it("a code reused after linking fails (the compare-and-set on the code loses)", async () => {
     world();
     dbMock.organisation.updateMany.mockResolvedValue({ count: 0 });
-    const r = await send("@Match Time admin group K7P3QX");
+    const r = await send(`${TAG} K7P3QX`);
     expect(r).toMatchObject({ outcome: "ignored", replyText: null, reason: "race-lost" });
+  });
+
+  it("NO STRING PARSING (2026-10-30): the code we issued, with a real tag, in any words, links; no phrase is needed", async () => {
+    for (const text of [`${TAG} K7P3QX`, `${TAG} here's our code: k7p3qx, thanks!`, `${TAG} kodumuz K7P3QX`]) {
+      world();
+      introKeys.clear();
+      expect((await send(text)).outcome, text).toBe("linked");
+    }
+  });
+
+  it("the words 'Match Time' typed are not a tag: without the Pi's mention flag nothing is read, whatever the words", async () => {
+    world();
+    for (const text of ["Match Time admin group K7P3QX", "@Match Time admin group K7P3QX", "MatchTime yönetici grubu K7P3QX"]) {
+      expect(await send(text, { botMentioned: false }), text).toEqual({ outcome: "ignored", replyText: null, reason: "not-a-link-command" });
+    }
+    expect(dbMock.user.findMany).not.toHaveBeenCalled();
+    expect(dbMock.organisation.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("a wrong code gets L2 only in a group waiting for its code; elsewhere it is not a link and the message carries on", async () => {
+    world({ waitingForCode: false });
+    expect(await send(`${TAG} ZZZZZZ`)).toEqual({ outcome: "ignored", replyText: null, reason: "not-a-link-command" });
+    expect(await send(`${TAG} THANKS mate`, { groupId: FNF_GROUP })).toEqual({ outcome: "ignored", replyText: null, reason: "not-a-link-command" });
+    expect(dbMock.user.findMany).not.toHaveBeenCalled();
+    world();
+    expect((await send(`${TAG} ZZZZZZ`)).outcome).toBe("bad-code");
   });
 
   it("a message that is not the command is ignored without a single read", async () => {
@@ -473,7 +514,7 @@ describe("club fee billing (B1): a paused club cannot link an admin group", () =
   it("flag on: a valid code of a paused club links nothing and says nothing", async () => {
     process.env.BILLING_ENABLED = "1";
     world({ code: { billingStatus: "paused" } as Partial<typeof FNF> });
-    const r = await send("@Match Time admin group k7p3qx");
+    const r = await send(`${TAG} k7p3qx`);
     expect(r).toEqual({ outcome: "ignored", replyText: null, reason: "club-billing-paused" });
     expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
   });
@@ -481,13 +522,13 @@ describe("club fee billing (B1): a paused club cannot link an admin group", () =
   it("flag on: an exempt (Sutton-shaped) club links as before", async () => {
     process.env.BILLING_ENABLED = "1";
     world({ code: { billingStatus: "exempt" } as Partial<typeof FNF> });
-    expect((await send("@Match Time admin group k7p3qx")).outcome).toBe("linked");
+    expect((await send(`${TAG} k7p3qx`)).outcome).toBe("linked");
   });
 
   it("flag off: a club whose column says paused links as before", async () => {
     delete process.env.BILLING_ENABLED;
     world({ code: { billingStatus: "paused" } as Partial<typeof FNF> });
-    expect((await send("@Match Time admin group k7p3qx")).outcome).toBe("linked");
+    expect((await send(`${TAG} k7p3qx`)).outcome).toBe("linked");
   });
 
   it("candidate detection: flag on, a paused club's open code does not count; flag off, today's query", async () => {

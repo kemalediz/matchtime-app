@@ -29,7 +29,7 @@ import { E2E, E2E_BASE_URL, REPO_ROOT } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
 import { messageHoursSendAfter } from "@/lib/message-hours";
 import { formatLondon } from "@/lib/london-time";
-import { addDmIntentBodies, GO_READS } from "../helpers/stub";
+import { addDmIntentBodies, addOwnerDecisionRead, GO_READS } from "../helpers/stub";
 
 const execFileAsync = promisify(execFile);
 
@@ -198,6 +198,7 @@ async function expectPlayersGroupSilent(request: APIRequestContext, db: TestDb, 
 /** The owner's "APPROVE <ref>" by WhatsApp, the way the Pi forwards it. */
 let wa = 0;
 async function approve(request: APIRequestContext, c: Club, hold: "1" | "0", now: Date = DAY) {
+  addOwnerDecisionRead(`APPROVE ${c.code}`, "approve", c.code);
   const res = await request.post("/api/whatsapp/dm-reply", {
     headers: {
       ...KEY,
@@ -215,6 +216,9 @@ async function waitForJob(db: TestDb, c: Club, purpose: string) {
   await expect.poll(async () => (await jobs(db, c.phone, purpose)).length, { timeout: 30_000, intervals: [200, 500, 1000] }).toBe(1);
   return (await jobs(db, c.phone, purpose))[0];
 }
+/** The code pasted after a REAL tag, as the setup DM asks (2026-10-30:
+ *  the words "Match Time" typed are not a tag). */
+const TAGGED = () => `@447700900000 ${COMMAND}`;
 const link = async (request: APIRequestContext, data: Record<string, unknown>) => {
   const res = await request.post("/api/whatsapp/admin-group-link", { headers: KEY, data });
   expect(res.status(), await res.text()).toBe(200);
@@ -420,7 +424,7 @@ test("C: the setup DM carries the optional admin group step, and the command fol
   const ask = await waitForJob(db, HELD, "setup-ask");
   const blocks = ask.text.split("\n\n");
   const at = blocks.indexOf(
-    "👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it and send my next message there. Admin messages will then go to that group instead of to you.",
+    "👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it, then tag me there with the code in my next message: type @Match Time, pick me from the list, and paste the code. Admin messages will then go to that group instead of to you.",
   );
   expect(at, ask.text).toBeGreaterThan(0);
   expect(blocks[at - 1]).toMatch(/^⭐ \*Starting ratings:\*/);
@@ -434,8 +438,8 @@ test("C: the setup DM carries the optional admin group step, and the command fol
 
   const second = await jobs(db, HELD.phone, "setup-admin-code");
   expect(second).toHaveLength(1);
-  // Exactly the command: nothing before it, nothing after it.
-  expect(second[0].text).toBe(`Match Time admin group ${org.code}`);
+  // Exactly the code: nothing before it, nothing after it (2026-10-30).
+  expect(second[0].text).toBe(org.code);
   expect(second[0]).toMatchObject({ refId: `${HELD.org}:setup-admin-code`, status: "queued", sendAfter: ask.sendAfter });
   // Its own job, ordered right after the setup DM.
   expect(second[0].createdAt.getTime() - ask.createdAt.getTime()).toBe(1);
@@ -483,8 +487,8 @@ test("C: the organiser adds MatchTime to the organisers' own group: recorded as 
   await expectPlayersGroupSilent(request, db, HELD);
 });
 
-test("C: the command forwarded into the PLAYERS' group by mistake: nothing is posted there; the organiser is told by DM, once", async ({ request, db }) => {
-  const out = await link(request, { groupId: HELD.group, text: COMMAND, senderPhone: HELD.phone, botMentioned: false, messageId: "e2e-s7-m1" });
+test("C: the code sent with a tag in the PLAYERS' group by mistake: nothing is posted there; the organiser is told by DM, once", async ({ request, db }) => {
+  const out = await link(request, { groupId: HELD.group, text: TAGGED(), senderPhone: HELD.phone, botMentioned: true, messageId: "e2e-s7-m1" });
   // What the Pi gets: no reply text, so it posts nothing in the players' group.
   expect(out).toEqual({ ok: true, outcome: "ignored", replyText: null, reason: "club-setting-up" });
 
@@ -496,21 +500,21 @@ test("C: the command forwarded into the PLAYERS' group by mistake: nothing is po
   expect(told[0]).toMatchObject({ status: "queued", sendAfter: null });
 
   // The Pi forwards the same message again: still one DM.
-  await link(request, { groupId: HELD.group, text: COMMAND, senderPhone: HELD.phone, botMentioned: false, messageId: "e2e-s7-m1" });
+  await link(request, { groupId: HELD.group, text: TAGGED(), senderPhone: HELD.phone, botMentioned: true, messageId: "e2e-s7-m1" });
   expect(await jobs(db, HELD.phone, "setup-reply")).toHaveLength(1);
 
   // A stranger sending it there: silence, and no DM to anyone.
-  const stranger = await link(request, { groupId: HELD.group, text: COMMAND, senderPhone: "447700900977", messageId: "e2e-s7-m2" });
+  const stranger = await link(request, { groupId: HELD.group, text: TAGGED(), senderPhone: "447700900977", botMentioned: true, messageId: "e2e-s7-m2" });
   expect(stranger).toEqual({ ok: true, outcome: "ignored", replyText: null, reason: "not-an-admin" });
   expect(await db.count(`SELECT COUNT(*) FROM "PlatformJob" WHERE phone = '447700900977'`)).toBe(0);
 
   // The mistake did not spend the code, link anything, or wake the group.
-  expect(await orgRow(db, HELD.org)).toMatchObject({ adminGroupId: null, code: COMMAND.slice(-6) });
+  expect(await orgRow(db, HELD.org)).toMatchObject({ adminGroupId: null, code: COMMAND });
   await expectPlayersGroupSilent(request, db, HELD);
 });
 
-test("C: the command in the SEPARATE group links it for the setting-up club, and the confirmation is posted THERE", async ({ request, db }) => {
-  const out = await link(request, { groupId: HELD.hq, text: COMMAND, senderPhone: HELD.phone, botMentioned: false, messageId: "e2e-s7-m3" });
+test("C: the code sent with a tag in the SEPARATE group links it for the setting-up club, and the confirmation is posted THERE", async ({ request, db }) => {
+  const out = await link(request, { groupId: HELD.hq, text: TAGGED(), senderPhone: HELD.phone, botMentioned: true, messageId: "e2e-s7-m3" });
   expect(out).toMatchObject({ ok: true, outcome: "linked", adminGroup: { groupId: HELD.hq, orgId: HELD.org } });
   // The introduction, for a club not switched on yet: it says so.
   expect(out.replyText).toMatch(/^👋 I'm MatchTime, I'll help run \*Harbour FC\*'s .*Once I'm switched on for the club, this is what I do\./);
@@ -580,25 +584,25 @@ test("C: a club that already has an admin group: no admin block and no second me
   expect((await orgRow(db, c.org))!.code).toBeNull();
 });
 
-test("C: Turkish club: the Turkish block and the Turkish form of the command, which the same route reads", async ({ request, db }) => {
+test("C: Turkish club: the Turkish block, and the code alone, which the same route reads after a real tag", async ({ request, db }) => {
   const c = club("Moda Spor", "tr");
   await seedPending(c);
   await approve(request, c, "1");
   const ask = await waitForJob(db, c, "setup-ask");
   expect(ask.text).toContain(
-    "👥 *Yönetici grubu (isteğe bağlı):* organizatörlerinizin kendi WhatsApp grubu varsa beni o gruba ekleyin ve bir sonraki mesajımı orada gönderin. Yönetici mesajları o zaman size değil, o gruba gider.",
+    "👥 *Yönetici grubu (isteğe bağlı):* organizatörlerinizin kendi WhatsApp grubu varsa beni o gruba ekleyin, sonra orada beni etiketleyip bir sonraki mesajımdaki kodu gönderin: @Match Time yazın, listeden beni seçin ve kodu yapıştırın. Yönetici mesajları o zaman size değil, o gruba gider.",
   );
   const code = (await orgRow(db, c.org))!.code;
   const second = await jobs(db, c.phone, "setup-admin-code");
   expect(second).toHaveLength(1);
-  expect(second[0].text).toBe(`Match Time yönetici grubu ${code}`);
+  expect(second[0].text).toBe(code);
 
-  const mistake = await link(request, { groupId: c.group, text: second[0].text, senderPhone: c.phone, messageId: "e2e-s7-tr1" });
+  const mistake = await link(request, { groupId: c.group, text: `@447700900000 ${second[0].text}`, botMentioned: true, senderPhone: c.phone, messageId: "e2e-s7-tr1" });
   expect(mistake).toEqual({ ok: true, outcome: "ignored", replyText: null, reason: "club-setting-up" });
   expect((await jobs(db, c.phone, "setup-reply")).map((j) => j.text)).toEqual([
     "Orası oyuncularınızın grubu, bu yüzden yönetici grubu olamaz. Beni yöneticiler için ayrı bir gruba ekleyin ve mesajı orada gönderin.",
   ]);
-  const ok = await link(request, { groupId: c.hq, text: second[0].text, senderPhone: c.phone, messageId: "e2e-s7-tr2" });
+  const ok = await link(request, { groupId: c.hq, text: `@447700900000 ${second[0].text}`, botMentioned: true, senderPhone: c.phone, messageId: "e2e-s7-tr2" });
   expect(ok).toMatchObject({ outcome: "linked" });
   // The introduction in Turkish, for a club not switched on yet.
   expect(ok.replyText).toMatch(/^👋 Ben MatchTime\. \*Moda Spor\* .*Kulüp için açıldığımda burada şunları yaparım\./);
@@ -654,7 +658,7 @@ test("D: removal takes back the queued setup DM AND its admin group command; aft
   const firstAsk = await waitForJob(db, c, "setup-ask");
   expect(firstAsk.sendAfter).toEqual(messageHoursSendAfter(NIGHT));
   const firstCode = (await orgRow(db, c.org))!.code;
-  expect((await jobs(db, c.phone, "setup-admin-code")).map((j) => j.text)).toEqual([`Match Time admin group ${firstCode}`]);
+  expect((await jobs(db, c.phone, "setup-admin-code")).map((j) => j.text)).toEqual([firstCode]);
 
   await botRemoved(request, c);
   for (const purpose of ["setup-ask", "setup-admin-code"]) {
@@ -682,7 +686,7 @@ test("D: removal takes back the queued setup DM AND its admin group command; aft
   expect(codes.map((j) => j.status)).toEqual(["failed", "queued"]);
   const org = (await orgRow(db, c.org))!;
   expect(org.code).not.toBe(firstCode);
-  expect(codes[1].text).toBe(`Match Time admin group ${org.code}`);
+  expect(codes[1].text).toBe(org.code);
   const newAsked = org.asked!;
   expect(newAsked.getTime()).toBeGreaterThanOrEqual(BACK.getTime());
   // The new code's 7 days run from the NEW setup DM.
@@ -764,8 +768,12 @@ test("FLAG OFF: an approval that does not hold the club never produces a reminde
   expect((await alerts(db, c.org)).filter((a) => (a.dedupeKey ?? "").startsWith("setup-stuck"))).toEqual([]);
   expect((await orgRow(db, c.org))!.code).toBeNull();
 
-  // Its own group still gets L3 for the command, as today (it is live).
-  const l3 = await link(request, { groupId: c.group, text: "@Match Time admin group ABCDEF", senderPhone: c.phone, messageId: "e2e-s7-off" });
+  // Its own group still gets L3 for a code we issued, as today (it is live).
+  await db.run(
+    `UPDATE "Organisation" SET "adminGroupLinkCode" = 'ABCDEF', "adminGroupLinkCodeExpiresAt" = now() + interval '1 hour' WHERE id = $1`,
+    [c.org],
+  );
+  const l3 = await link(request, { groupId: c.group, text: "@447700900000 ABCDEF", botMentioned: true, senderPhone: c.phone, messageId: "e2e-s7-off" });
   expect(l3).toEqual({
     ok: true,
     outcome: "main-group",
