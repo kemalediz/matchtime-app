@@ -24,9 +24,11 @@
  * Cast, in the fixture world: Pat Player is Elvin (drops out holding
  * RED), Ian Innes is Raihan (arrives, confirmed, no slot).
  *
- * The route is driven with NO stub for the incident message on purpose.
- * The swap peel runs before the router on the raw body, so if this test
- * needed a stubbed route it would be testing the wrong code.
+ * SINCE 2026-10-30 the swap is READ by the pipeline (Kemal: no string
+ * parsing): the router sends it to `balancer` and the teams extractor
+ * returns `swap` with the two names in `moves`. Both are stubbed below
+ * with that reading; what this file pins is what the route and
+ * `team-swap-apply.ts` then do to Postgres.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { engineOn } from "../helpers/stub";
@@ -37,6 +39,16 @@ test.describe.configure({ mode: "serial" });
 
 let n = 0;
 const msgId = () => `e2e-slotswap-${Date.now()}-${++n}`;
+
+/** The teams extractor's reading of "swap A with B": both change team. */
+function swapRead(body: string, a: string, b: string): void {
+  engineOn({
+    [body]: {
+      route: "balancer",
+      facts: { action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: [a, b], pairings: [], swapSides: false },
+    },
+  });
+}
 
 interface Row {
   name: string;
@@ -120,11 +132,13 @@ test.describe("the replacement transfer — 2026-09-08", () => {
     db,
   }) => {
     const before = await squad(db);
+    const body = `@Match Time do not regenerate the teams. Instead swap ${NAME.player.split(" ")[0]} with ${NAME.fresh.split(" ")[0]} and share us the teams`;
+    swapRead(body, NAME.player.split(" ")[0], NAME.fresh.split(" ")[0]);
 
     const res = await postAnalyze(request, [
       {
         waMessageId: msgId(),
-        body: `@Match Time do not regenerate the teams. Instead swap ${NAME.player.split(" ")[0]} with ${NAME.fresh.split(" ")[0]} and share us the teams`,
+        body,
         authorPhone: PHONE.admin,
         authorName: NAME.admin,
         botMentioned: true,
@@ -162,10 +176,12 @@ test.describe("the replacement transfer — 2026-09-08", () => {
   });
 
   test("reads the same the other way round — 'swap Ian with Pat'", async ({ request, db }) => {
+    const body = `@Match Time swap ${NAME.fresh.split(" ")[0]} with ${NAME.player.split(" ")[0]}`;
+    swapRead(body, NAME.fresh.split(" ")[0], NAME.player.split(" ")[0]);
     await postAnalyze(request, [
       {
         waMessageId: msgId(),
-        body: `@Match Time swap ${NAME.fresh.split(" ")[0]} with ${NAME.player.split(" ")[0]}`,
+        body,
         authorPhone: PHONE.admin,
         authorName: NAME.admin,
         botMentioned: true,
@@ -182,10 +198,12 @@ test.describe("the replacement transfer — 2026-09-08", () => {
     // The person who knows a replacement has arrived is the player who
     // brought them. On 2026-09-08 that was Wasim, not an admin. The tag
     // is the deliberate act; see the contract note in team-slot-swap.ts.
+    const body = `@Match Time swap ${NAME.player.split(" ")[0]} with ${NAME.fresh.split(" ")[0]}`;
+    swapRead(body, NAME.player.split(" ")[0], NAME.fresh.split(" ")[0]);
     await postAnalyze(request, [
       {
         waMessageId: msgId(),
-        body: `@Match Time swap ${NAME.player.split(" ")[0]} with ${NAME.fresh.split(" ")[0]}`,
+        body,
         authorPhone: PHONE.rater, // Riley Rater — an ordinary member
         authorName: NAME.rater,
         botMentioned: true,
@@ -205,10 +223,10 @@ test.describe("the replacement transfer — 2026-09-08", () => {
     // CHANGED 2026-09-17. This used to assert the peel did NOT own the
     // message, and so the owner heard nothing. A refusal is now answered
     // (the sheet is still untouched), and the WHOLE message still goes
-    // down the pipeline: the router is stubbed to `none` here, so the
-    // refusal is the only thing said.
+    // down the pipeline as `balancer`, so the refusal is the only thing
+    // said.
     const body = `@Match Time swap ${NAME.bench.split(" ")[0]} with ${NAME.player.split(" ")[0]}`;
-    engineOn({ [body]: { route: "none" } });
+    swapRead(body, NAME.bench.split(" ")[0], NAME.player.split(" ")[0]);
     const before = await sheet(db);
     const beforeSquad = await squad(db);
 
@@ -274,8 +292,9 @@ test.describe("a refused swap drops nobody and says so", () => {
   });
 
   test("an unknown name: Pat stays in, the owner is told, one reply", async ({ request, db }) => {
+    // Read by the pipeline as the swap it is (2026-10-30).
     const body = `@Match Time swap ${PAT} and Zork`;
-    engineOn({ [body]: { route: "other_att", facts: patOut } });
+    swapRead(body, PAT, "Zork");
     const before = await squad(db);
     const beforeSheet = await sheet(db);
 
@@ -295,10 +314,9 @@ test.describe("a refused swap drops nobody and says so", () => {
     );
   });
 
-  test("the sender's own OUT in the same message still lands, with no comma", async ({ request, db }) => {
-    // The swap clause cannot be split off without a comma, so the whole
-    // body is what the pipeline sees. Pat is refused as a swap party; the
-    // sender is not a party and is dropped.
+  test("routed as attendance, the sender's own OUT lands and the swap parties are refused", async ({ request, db }) => {
+    // The router reads the whole message as attendance: the engine's swap
+    // guard refuses Pat as a party; the sender is not a party and is dropped.
     const body = `@Match Time swap ${PAT} and Zork and I'm out`;
     engineOn({
       [body]: {
@@ -383,10 +401,12 @@ test.describe("the shipped both-CONFIRMED team swap still works", () => {
 
   test("exchanges two confirmed players' sides, drops nobody", async ({ request, db }) => {
     const before = await squad(db);
+    const body = `@Match Time swap ${NAME.player.split(" ")[0]} with ${NAME.third.split(" ")[0]}`;
+    swapRead(body, NAME.player.split(" ")[0], NAME.third.split(" ")[0]);
     await postAnalyze(request, [
       {
         waMessageId: msgId(),
-        body: `@Match Time swap ${NAME.player.split(" ")[0]} with ${NAME.third.split(" ")[0]}`,
+        body,
         authorPhone: PHONE.admin,
         authorName: NAME.admin,
         botMentioned: true,
@@ -396,5 +416,50 @@ test.describe("the shipped both-CONFIRMED team swap still works", () => {
     expect(after).toContain(`${NAME.player}:YELLOW`);
     expect(after).toContain(`${NAME.third}:RED`);
     expect(await squad(db)).toEqual(before);
+  });
+});
+
+test.describe("the two teams swap over (the colour swap), read by the teams extractor", () => {
+  test.beforeEach(async ({ db }) => {
+    resetDb();
+    await seedTheIncident(db);
+  });
+
+  test("every slot flips, same players, the balancer never runs", async ({ request, db }) => {
+    const body = "@Match Time swap the colours and keep the same teams";
+    engineOn({
+      [body]: {
+        route: "balancer",
+        facts: { action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: [], pairings: [], swapSides: true },
+      },
+    });
+    const before = await squad(db);
+    const res = await postAnalyze(request, [
+      { waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
+    ]);
+    expect((await sheet(db)).sort()).toEqual(
+      [`${NAME.admin}:YELLOW`, `${NAME.player}:YELLOW`, `${NAME.collector}:RED`, `${NAME.third}:RED`].sort(),
+    );
+    expect(await squad(db)).toEqual(before);
+    expect(await matchStatus(db)).toBe("UPCOMING");
+    const owned = res.results.find((r: { intent: string }) => r.intent === "team_colour_swap");
+    expect(owned, JSON.stringify(res.results)).toBeTruthy();
+    expect(owned.react).toBe("✅");
+    // The reply is the sheet itself, never recomposed into the squad post.
+    expect(owned.reply).toContain("Swapped the colours");
+    expect(owned.reply).toContain(NAME.collector);
+  });
+
+  test("the same words NOT addressed with an @ change nothing", async ({ request, db }) => {
+    const body = "matchtime swap the colours";
+    engineOn({
+      [body]: {
+        route: "balancer",
+        facts: { action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: [], pairings: [], swapSides: true },
+      },
+    });
+    const before = await sheet(db);
+    await postAnalyze(request, [{ waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: NAME.admin }]);
+    expect(await sheet(db)).toEqual(before);
   });
 });

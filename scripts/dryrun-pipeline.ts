@@ -126,9 +126,12 @@
  * ═══════════════════════════════════════════════════════════════════════
  */
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
-import { peelClause } from "../src/lib/pipeline/clause-peel.ts";
 import { parseSwapNames } from "../src/lib/team-slot-swap.ts";
-import { looksLikeColourSwapPhrase } from "../src/lib/team-colour-swap.ts";
+// The analyze route's regex pre-peels (colour swap, "swap A with B") and
+// the clause splitter were deleted on 2026-10-30: those messages now go
+// through the router and the teams extractor. Nothing is peeled any more.
+const peelClause = (_body: string, _matches: (clause: string) => boolean): { consumed: string; residual: string } | null => null;
+const looksLikeColourSwapPhrase = (_body: string): boolean => false;
 import { loadSquadState, loadRatingProgressSnapshot } from "../src/lib/pipeline/load-state.ts";
 import { runPipeline } from "../src/lib/pipeline/run.ts";
 import { runAnswerBatch } from "../src/lib/pipeline/answer-batch.ts";

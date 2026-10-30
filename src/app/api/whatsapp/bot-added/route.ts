@@ -38,32 +38,15 @@
  * reconnect sweep posts `discovered: true` for groups it found itself
  * in; with self-join off such a post is ignored outright.
  *
- * Server behaviour (idempotent), self-join off:
+ * Server behaviour, self-join off:
  *   0. HARD GATE: the ONBOARDING_AUTOSTART env flag must be on,
- *      otherwise this route is a no-op — nothing can fire in prod
- *      until the flag is deliberately flipped.
- *   1. A bot-enabled org already exists for the group → ignore (re-add
- *      of the bot to a LIVE group must never restart onboarding).
- *   1a. Slice 2a: the group is a club's linked admin group → ignore; an
- *      add by an owner or admin of an approved club → an admin group
- *      waiting for its code: silent, no session, no intro.
- *   1b. The group is SILENT (club not approved, or nobody asked for
- *      MatchTime there), or self-join is on → no intro, no session
- *      (self-join plan, section 4.3 layer 4).
- *   2. An active onboarding session exists → idempotent re-add: return
- *      the intro again only if we're still at `introduced` (the bot
- *      was likely kicked + re-added before anyone replied), else stay
- *      silent. A STALE session (older than ONBOARDING_SESSION_TTL_MS)
- *      is abandoned and a fresh one created (2026-09-17).
- *   3. Else create an OnboardingSession (source="group-add",
- *      stage="introduced") seeded with the group subject, the adder's
- *      phone, the participant snapshot and the LANGUAGE detected from
- *      the subject and the synced history, and return the intro text
- *      in that language for the bot to post.
- *
- * The conversation continues through the normal /api/whatsapp/analyze
- * path (handleOnboardingIfApplicable routes the active stages to the
- * onboarding state machine).
+ *      otherwise this route is a no-op.
+ *   1. A bot-enabled org already exists for the group: ignore.
+ *   1a. Slice 2a: the group is a club's linked admin group: ignore; an
+ *      add by an owner or admin of an approved club: an admin group
+ *      waiting for its code, silent.
+ *   1b. Anything else: ignored, no intro. The legacy in-group setup
+ *      (OnboardingSession, intro, Q&A) was deleted on 2026-10-30.
  *
  * Club fee billing, slice B5 (2026-10-01): before anything above, a
  * real self-add (never the sweep's `discovered`) of the group of a club
@@ -78,17 +61,9 @@
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { normalisePhone } from "@/lib/phone";
-import { buildBotAddedIntro } from "@/lib/onboarding-conversation";
-import {
-  ACTIVE_ONBOARDING_STAGES,
-  isOnboardingAutostartEnabled,
-  isOnboardingSessionStale,
-} from "@/lib/onboarding-parse";
+import { isOnboardingAutostartEnabled } from "@/lib/onboarding-parse";
 import { parseParticipantSnapshot } from "@/lib/participant-sync";
-import { coerceHistoryMessages } from "@/lib/onboarding-enrichment-reconcile";
-import { detectGroupLang } from "@/lib/i18n/detect";
-import { inGroupSetupRefusal } from "@/lib/club-approval";
+import { isSilentGroup } from "@/lib/club-approval";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import {
   attachLateGroupHistory,
@@ -103,9 +78,6 @@ import { handleBillingReAdd } from "@/lib/club-billing-removal";
 import { handleSetupReAdd } from "@/lib/club-setup-removal";
 import { scheduleSetupAfterApproval } from "@/lib/club-setup-schedule";
 import { ingestGroupDescription } from "@/lib/group-description";
-import { capturedSessionChat } from "@/lib/captured-chat";
-import { connectNotPostableText, decideGroupPostability, parsePostabilityInput } from "@/lib/group-postability-rules";
-import { PlatformDmRefused, queuePlatformDm } from "@/lib/platform-jobs";
 
 /** Slice B5: MatchTime added back to a club paused because it was removed.
  *  Reads a CLONE of the body, so the route below still reads it. Never throws. */
@@ -287,21 +259,11 @@ export async function POST(request: Request) {
     groupSubject?: string | null;
     addedByPhone?: string | null;
     participants?: unknown;
-    // Chat history the Pi captured shortly after the bot was added (it can
-    // only reliably fetch WhatsApp history around join time). We PERSIST it
-    // on the OnboardingSession (capturedHistory) so the enrichment pass,
-    // which runs later at completion from /api/whatsapp/analyze, can fall
-    // back to it when the completing request omits its own
-    // enrichmentHistory. It is also the evidence for the language
-    // detection below. Validated/coerced defensively.
-    enrichmentHistory?: unknown;
     /** Self-join's reconnect sweep. Only a Pi told to sweep (by a server
-     *  with self-join on) sends it; the in-group setup never starts from one. */
+     *  with self-join on) sends it. */
     discovered?: unknown;
     /** The adder's LID, bare digits, when it was LID-addressed. */
     addedByLid?: unknown;
-    /** What the Pi read of the group's settings (2026-10-14). */
-    postability?: unknown;
   } | null;
   if (!body?.groupId) {
     return NextResponse.json({ error: "groupId required" }, { status: 400 });
@@ -311,20 +273,9 @@ export async function POST(request: Request) {
   }
   const groupId = body.groupId;
 
-  // Validate the Pi-captured chat history into HistoryMessage[] (blank
-  // author/text rows dropped; chronological order is the Pi's job —
-  // we never reorder). Empty → don't persist anything.
-  // Cast through `unknown as object` (the repo's convention for typed
-  // structs → Prisma Json — see onboarding-enrichment.ts): our struct
-  // carries optional/null fields that don't line up with InputJsonValue,
-  // but the shape is valid JSON.
-  const captured = coerceHistoryMessages(body.enrichmentHistory);
-  const capturedJson =
-    captured.length > 0 ? (captured as unknown as object) : undefined;
-
-  // 1. Live-org short-circuit — a group that already has a bot-enabled
-  //    org must NEVER re-enter onboarding (e.g. the bot was kicked and
-  //    re-added to Sutton FC's group).
+  // 1. Live-org short-circuit: a group that already has a bot-enabled
+  //    org is ignored (e.g. the bot was kicked and re-added to Sutton
+  //    FC's group).
   const liveOrg = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
     select: { id: true },
@@ -379,131 +330,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: "admin-group-awaiting-code", silent: true, introText: null });
   }
 
-  // 1b. SILENCE RAILS (self-join slice 1, 2026-09-29). A group whose club
-  //     is waiting for approval, was rejected or suspended, or that nobody
-  //     asked MatchTime into, never gets an intro and never starts a
-  //     session. With self-join on this code is never reached: the add
-  //     went to the self-join linker at the top of the route
-  //     (`selfJoinAdd`), and the in-group setup is retired altogether
-  //     (decision 4). Placed after the live-org check, so a live club is
-  //     answered exactly as before.
-  const refusal = await inGroupSetupRefusal(groupId);
-  if (refusal) {
-    console.log(`[bot-added] ${groupId}: no intro (${refusal})`);
-    return NextResponse.json({ ok: true, ignored: refusal, introText: null });
-  }
-
-  // 1c. A GROUP MATCHTIME CANNOT POST IN (2026-10-14): only admins can
-  //     send there and MatchTime is not one, so an intro would reach
-  //     nobody and the setup could never be answered. No intro, no
-  //     session; the adder (when MatchTime knows their number) gets one DM
-  //     saying why and what to do. The Pi refuses to post there anyway.
-  const reading = parsePostabilityInput(body.postability);
-  const decided = reading ? decideGroupPostability(reading) : null;
-  if (decided && !decided.canPost && decided.reason !== "ok") {
-    const lang = detectGroupLang({ subject: body.groupSubject?.trim() || null, history: captured.map((m) => m.text) }).lang;
-    const phone = typeof body.addedByPhone === "string" ? body.addedByPhone.replace(/\D/g, "") : "";
-    const refId = `onboarding:${groupId}:not-postable`;
-    let dm = "not sent";
-    if (phone && !(await db.platformJob.findFirst({ where: { purpose: "connect-reply", refId }, select: { id: true } }))) {
-      try {
-        await queuePlatformDm({
-          phone,
-          text: connectNotPostableText(lang, { group: body.groupSubject?.trim() || null, reason: decided.reason }),
-          purpose: "connect-reply",
-          refId,
-        });
-        dm = "queued";
-      } catch (err) {
-        if (!(err instanceof PlatformDmRefused)) throw err;
-        dm = `refused (${err.reason})`;
-      }
-    }
-    console.log(`[bot-added] ${groupId}: MatchTime cannot post here (${decided.reason}); no intro, no session, adder DM ${dm}`);
-    return NextResponse.json({ ok: true, ignored: "not-postable", silent: true, introText: null });
-  }
-
-  // 2. Idempotent re-add while a session is in flight.
-  const active = await db.onboardingSession.findFirst({
-    where: { whatsappGroupId: groupId, stage: { in: [...ACTIVE_ONBOARDING_STAGES] } },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, stage: true, capturedHistory: true, language: true, createdAt: true },
-  });
-  if (active && isOnboardingSessionStale(active)) {
-    // Nobody answered for two weeks; this add starts over with what the
-    // group looks like today (subject, roster, language).
-    await db.onboardingSession.update({
-      where: { id: active.id },
-      data: { stage: "abandoned" },
-    });
-  } else if (active) {
-    // Late-sync rescue: if this re-add finally carries history and the
-    // session has none yet, store it. We never CLOBBER existing history —
-    // a later re-add could fetch fewer/no messages than the first.
-    if (capturedJson && active.capturedHistory == null) {
-      await db.onboardingSession.update({
-        where: { id: active.id },
-        data: capturedSessionChat(capturedJson),
-      });
-    }
-    return NextResponse.json({
-      ok: true,
-      existing: true,
-      stage: active.stage,
-      language: active.language,
-      // Still waiting on consent → safe (and useful) to re-post the
-      // intro; mid-flow → stay silent, the Q&A continues via analyze.
-      introText: active.stage === "introduced" ? buildBotAddedIntro(active.language) : null,
-    });
-  }
-
-  // 3. Fresh session.
-  const subject = body.groupSubject?.trim() || null;
-  const adderPhone = body.addedByPhone
-    ? normalisePhone(
-        body.addedByPhone.startsWith("+")
-          ? body.addedByPhone
-          : `+${body.addedByPhone}`,
-      )
-    : null;
-  const snapshot = parseParticipantSnapshot(body.participants);
-
-  // The language the group speaks, decided before the first word: from
-  // the subject and whatever history WhatsApp had synced by the time
-  // the Pi read it. English when there is nothing to go on; the consent
-  // reply ("evet" / "yes") corrects it either way. See i18n/detect.ts.
-  const detected = detectGroupLang({
-    subject,
-    history: captured.map((m) => m.text),
-  });
-  console.log(
-    `[bot-added] ${groupId} language=${detected.lang} (${detected.reason}; ` +
-      `subject=${subject ? JSON.stringify(subject) : "none"}, history=${captured.length} msgs)`,
-  );
-
-  const session = await db.onboardingSession.create({
-    data: {
-      whatsappGroupId: groupId,
-      stage: "introduced",
-      source: "group-add",
-      groupSubject: subject,
-      groupName: subject ? subject.slice(0, 80) : null,
-      addedByPhone: adderPhone,
-      participants:
-        snapshot.length > 0
-          ? (snapshot.map((p) => ({ ...p })) as Array<Record<string, string | null>>)
-          : undefined,
-      ...capturedSessionChat(capturedJson),
-      language: detected.lang,
-    },
-    select: { id: true },
-  });
-
-  return NextResponse.json({
-    ok: true,
-    sessionId: session.id,
-    language: detected.lang,
-    languageConfident: detected.confident,
-    introText: buildBotAddedIntro(detected.lang),
-  });
+  // 1b. No club owns this group. The legacy in-group setup that used to
+  //     start here (intro, OnboardingSession) was deleted on 2026-10-30:
+  //     no intro, no session. A silent group keeps its word for the Pi log.
+  const ignored = (await isSilentGroup(groupId)) ? "silent-group" : "no-club";
+  console.log(`[bot-added] ${groupId}: no intro (${ignored})`);
+  return NextResponse.json({ ok: true, ignored, introText: null });
 }

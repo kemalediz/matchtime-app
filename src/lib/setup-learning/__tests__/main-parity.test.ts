@@ -146,16 +146,15 @@ function generator(seed: number, cutAnywhere: boolean) {
     if (org.dropOutDeadlineDay !== null) org.dropOutDeadlineTime = "21:00";
     const weeklyGame = rnd() < 0.9 ? { dayOfWeek: 1 + int(5), time: pick(["19:00", "20:00", "21:00"]), venue: pick(["Goals North Cheam", "Astro"]), playersPerSide: pick([5, 6, 7]) } : null;
     const activities = weeklyGame ? [{ dayOfWeek: weeklyGame.dayOfWeek, time: weeklyGame.time }] : [];
-    const chatLanguage = rnd() < 0.5 ? { lang: pick(["en", "tr"]), confident: rnd() < 0.7 } : null;
-    return { h, answer, org, weeklyGame, activities, chatLanguage };
+    return { h, answer, org, weeklyGame, activities };
   };
 }
 
 function both(c: ReturnType<ReturnType<typeof generator>>) {
   const dMain = main.parseDetection(c.answer, c.h)!;
   const dToday = today.parseDetection(c.answer, c.h, null)!;
-  const pMain = main.planSetup({ detection: dMain, org: c.org, weeklyGame: c.weeklyGame, activities: c.activities, chatLanguage: c.chatLanguage });
-  const pToday = today.planSetup({ detection: dToday, org: c.org, weeklyGame: c.weeklyGame, activities: c.activities, chatLanguage: c.chatLanguage });
+  const pMain = main.planSetup({ detection: dMain, org: c.org, weeklyGame: c.weeklyGame, activities: c.activities, chatLanguage: null });
+  const pToday = today.planSetup({ detection: dToday, org: c.org, weeklyGame: c.weeklyGame, activities: c.activities });
   return { dMain, dToday, pMain, pToday };
 }
 

@@ -167,42 +167,6 @@ const shortId = (i: number) => `m${i + 1}`;
 // and `pasted-roster.ts` wanted the folding rule without the database.
 // Read that module's header for the failure that forced it.
 
-/** Deterministic backstop for the "Reserves: / Subs: / Standby:" block
- *  the LLM sometimes splits off or drops. Reads the message body
- *  AFTER a literal header label and extracts numbered names. This is
- *  structural-label parsing — the header is an explicit section
- *  marker the human typed deliberately, not user-intent guessing.
- *  Returns [] if no header is found. */
-export function parseReservesFromBody(body: string): string[] {
-  const lower = body.toLowerCase();
-  const headers = ["reserves:", "subs:", "subs ", "standby:", "standby ", "reserve:"];
-  let idx = -1;
-  for (const h of headers) {
-    const i = lower.indexOf(h);
-    if (i !== -1 && (idx === -1 || i < idx)) idx = i;
-  }
-  if (idx === -1) return [];
-  const after = body.slice(idx);
-  // Take subsequent numbered lines: "1.⁠ ⁠Name", "1) Name", "1. Name",
-  // possibly with unusual unicode spacing. Stop at a blank line that's
-  // followed by another section header, or end-of-string.
-  const lines = after.split(/\n/).slice(1); // drop the header line itself
-  const out: string[] = [];
-  for (const raw of lines) {
-    const m = raw.match(/^\s*\d+\s*[.)]\s*(.+?)\s*$/);
-    if (m) {
-      const name = m[1].replace(/[​-‏⁠‪-‮﻿]/g, "").trim();
-      if (name.length >= 2) out.push(name);
-      continue;
-    }
-    if (raw.trim() === "") continue;
-    // Non-numbered, non-blank line → likely the start of new content;
-    // stop.
-    break;
-  }
-  return out;
-}
-
 /** Compute the lower bound of the extraction window for an org.
  *
  *  Rule (in priority order):
@@ -362,17 +326,12 @@ export async function readSquadLists(
     const extraNames = parts.slice(1).flatMap((p) => p.names);
     const extraReserves = parts.flatMap((p) => p.reserves);
     if (primary.names.length < 2 && extraNames.length === 0) continue; // noise
-    let reserves = [...extraNames, ...extraReserves];
-    let names = primary.names;
+    const reserves = [...extraNames, ...extraReserves];
+    const names = primary.names;
 
-    // Backstop: if reserves is STILL empty after all the LLM gymnastics
-    // but the source body explicitly contains a Reserves/Subs/Standby
-    // header, scan the body deterministically. This is structural-label
-    // parsing (the header is a literal section marker the user typed
-    // intentionally), not regex-guessing user intent.
-    if (reserves.length === 0) {
-      reserves = parseReservesFromBody(src.body);
-    }
+    // The reserves are the model's reading alone (SQUAD_LIST_SYSTEM's
+    // `reserves`): the regex backstop over the body that stood here
+    // (`parseReservesFromBody`) is deleted (2026-10-30, no string parsing).
 
     out.push({
       waMessageId: waId,

@@ -135,56 +135,10 @@ test.describe("capacity lifecycle", () => {
     expect(offers).toHaveLength(1);
     expect(offers[0].replacingUserId).toBe(grp.player("pete").userId);
   });
-
-  test("bencher claims the slot in-group → promoted, offer resolved, group told", async ({ request, db }) => {
-    const grp = await group(request, db);
-    // ── PORTED 2026-09-06, §10 STEP 8, AND IT NOW DRIVES THE REAL
-    //    SHIPPED PATH RATHER THAN A FIELD THAT SHORT-CIRCUITED IT ─────
-    //
-    // This used `verdict.benchConfirmation = "yes"`, which
-    // `executeVerdict` handed straight to `resolveBenchConfirmation`.
-    // There is no such field, and there is deliberately no successor:
-    // `attendance-engine-batch.ts` REFUSES this shape ("a bare 'yes'
-    // from someone with a prompt open") because a
-    // `PendingBenchConfirmation` is a different table and a different
-    // flow from the `BenchSlotOffer` the engine models.
-    //
-    // What handles it now is `lib/bench-prompt-answer.ts`, consulted by
-    // `analyze/route.ts` ONLY when the database says this exact sender
-    // has an unanswered prompt open for this match. That prior is the
-    // whole mechanism — it is what lets a bare "yes" be read without a
-    // model — so the row has to exist for the path to be reachable, and
-    // the old verdict field is precisely what let the test skip it.
-    // Seeding it is not scaffolding; it is the trigger.
-    //
-    // The body changed too. "yes I'll take it" is five words with a
-    // second clause and `readBenchPromptAnswer` returns null for it BY
-    // DESIGN ("anything carrying a second clause, a condition or a
-    // question mark returns null"). That is a real narrowing versus the
-    // mega-prompt, it is documented in that file's "What is LOST"
-    // section, and it is the conservative direction.
-    await grp.db.run(
-      `INSERT INTO "PendingBenchConfirmation" (id, "matchId", "userId", "expiresAt", "replacingUserId", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, (now() AT TIME ZONE 'UTC') + interval '2 hours', $4,
-               now() AT TIME ZONE 'UTC', now() AT TIME ZONE 'UTC')`,
-      [`pbc-${grp.orgId}`, grp.matchId, grp.player("ivan").userId, grp.player("pete").userId],
-    );
-
-    const r = await grp.post("ivan", "yes");
-    expect(r.handledBy).toBe("fast-path");
-    expect(r.intent).toBe("bench_confirmation");
-    expect(r.react).toBe("✅");
-    expect((await grp.attendanceOf("ivan"))?.status).toBe("CONFIRMED");
-    expect(await grp.openOffers()).toHaveLength(0);
-    // The claim announce names both sides; the refilled squad announces again
-    // (the dedupe key is cleared on every confirmed-drop).
-    const claim = r.groupPosts.find((t) => t.includes("replacing"));
-    expect(claim).toBeTruthy();
-    expect(claim).toContain("Ivan Ice");
-    expect(claim).toContain("Pete Power");
-    expect(r.groupPosts.some((t) => t.includes("Squad complete"))).toBe(true);
-    expect((await grp.counts()).confirmed).toBe(8);
-  });
+  // "bencher claims the slot in-group" answered a PendingBenchConfirmation
+  // with a yes/no word list (`bench-prompt-answer.ts`). Deleted 2026-10-30:
+  // nothing has created such a row since the 2026-05-19 bench redesign (a
+  // claim is a BenchSlotOffer, read by the attendance pipeline).
 });
 
 // ── B. admin demote + bench re-promotion ───────────────────────────────

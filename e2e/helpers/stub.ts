@@ -393,6 +393,32 @@ export function clearOrganiserPickReaderStub(): void {
   rmSync(`${E2E.ORGANISER_PICK_READER_STUB_FILE}.calls`, { force: true });
 }
 
+/** The PASTED-LIST signal stub (2026-10-30): which players'-group messages
+ *  the router flags as a pasted squad list, by id or trimmed body, until
+ *  the router's own field exists (`src/lib/pasted-list-signal.ts`). */
+export function setPastedListStub(stub: { ids?: string[]; bodies?: string[] }): void {
+  mkdirSync(path.dirname(E2E.PASTED_LIST_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.PASTED_LIST_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+/** The TEAM-ALSO signal stub (2026-10-30): which attendance messages the
+ *  engine says also ask for a team change, until its field exists
+ *  (`src/lib/team-also-signal.ts`). */
+export function setTeamAlsoStub(stub: { ids?: string[]; bodies?: string[] }): void {
+  mkdirSync(path.dirname(E2E.TEAM_ALSO_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.TEAM_ALSO_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearTeamAlsoStub(): void {
+  mkdirSync(path.dirname(E2E.TEAM_ALSO_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.TEAM_ALSO_STUB_FILE, "{}");
+}
+
+export function clearPastedListStub(): void {
+  mkdirSync(path.dirname(E2E.PASTED_LIST_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.PASTED_LIST_STUB_FILE, "{}");
+}
+
 /** A squad list the reader reads line for line: every name a person, no
  *  ref (the club's name rules place them), under `bench` from `benchFrom`
  *  on, with `out` the members (by name) it leaves off on purpose. */
@@ -489,6 +515,8 @@ export function clearPipelineStubs(): void {
   clearCalloffStub();
   clearMonthlyReaderStub();
   clearHqSquadReaderStub();
+  clearPastedListStub();
+  clearTeamAlsoStub();
   clearOrganiserPickReaderStub();
   setMonthSeedReplyStub({});
   setDigestReplyStub({});

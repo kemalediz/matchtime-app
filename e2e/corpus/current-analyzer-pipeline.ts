@@ -65,7 +65,7 @@
  * and later turns also see the earlier turns and MatchTime's own replies.
  */
 import { SimGroup, type SimHistoryEntry } from "../sim/group";
-import { claim, facts } from "../helpers/stub";
+import { claim, facts, setHqSquadReaderStub, setPastedListStub } from "../helpers/stub";
 import type { CorpusCase, CorpusFacts, CorpusMessage, CorpusObservation } from "./grade";
 import type { CorpusMode, CorpusPipeline, PipelineContext } from "./pipeline";
 // The world builder and the read-back helpers moved to ./world when the
@@ -142,6 +142,15 @@ export class CurrentAnalyzerPipeline implements CorpusPipeline {
 
     for (const turn of [...turns.keys()].sort((a, b) => a - b)) {
       const items = turns.get(turn)!;
+      // STUBBED MODE ONLY: the router's pasted-list flag and the squad
+      // reader's answer (2026-10-30). Reset every turn, so a case that
+      // says nothing about lists reads none.
+      if (stubbed) {
+        setPastedListStub({ bodies: items.filter((m) => m.pastedList).map((m) => m.body.trim()) });
+        setHqSquadReaderStub({
+          bodies: Object.fromEntries(items.filter((m) => m.listReading).map((m) => [m.body.trim(), m.listReading])),
+        });
+      }
       const batch = await grp.postBatch(
         items.map((m) => ({
           ...(typeof m.from === "string" ? { player: m.from } : { author: m.from }),

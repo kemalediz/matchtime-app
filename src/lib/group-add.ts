@@ -40,7 +40,6 @@
  */
 import { db } from "./db";
 import { t } from "./i18n/t";
-import { detectGroupLang } from "./i18n/detect";
 import { coerceHistoryMessages } from "./onboarding-enrichment-reconcile";
 import { parseParticipantSnapshot, snapshotPhone } from "./participant-snapshot";
 import {
@@ -458,7 +457,6 @@ export async function relinkToOrganiserGroup(
 ): Promise<GroupAddOutcome> {
   const history = coerceHistoryMessages(a.history);
   const memberCount = a.memberCount ?? a.snapshot.length;
-  const detected = detectGroupLang({ subject: a.subject, history: history.map((m) => m.text) });
   let before: { groupSubject: string | null; memberCount: number | null } | null = null;
   let result: "linked" | "race-lost" | { already: string };
   result = await db.$transaction(async (tx) => {
@@ -488,7 +486,6 @@ export async function relinkToOrganiserGroup(
         addedByLid: a.ev.addedByLid,
         adderMatch: a.adderMatch,
         participants: a.snapshot.length > 0 ? (a.snapshot.map((p) => ({ ...p })) as unknown as object) : undefined,
-        detectedLang: detected.lang,
         linkedAt: a.now,
       },
     });
@@ -537,7 +534,6 @@ export async function relinkToOrganiserGroup(
       numberUnconfirmed: row.dmAt !== null && row.dmPhone === null,
       groupSubject: a.subject,
       memberCount,
-      detectedLang: detected,
       clubLang: org?.language ?? null,
       alsoIn,
     }),
@@ -938,7 +934,6 @@ async function linkGroupToRequest(
   const { row } = target;
   const relinked = target.relink !== null;
   const history = coerceHistoryMessages(ctx.history);
-  const detected = detectGroupLang({ subject, history: history.map((m) => m.text) });
 
   // 4. Link, and set the club pending, together or not at all.
   let result: "linked" | "race-lost" | typeof RELINK_ABANDONED | { already: string };
@@ -962,7 +957,6 @@ async function linkGroupToRequest(
           addedByLid: ev.addedByLid,
           adderMatch: target.adderMatch,
           participants: snapshot.length > 0 ? (snapshot.map((p) => ({ ...p })) as unknown as object) : undefined,
-          detectedLang: detected.lang,
           // F3: the chat, kept until the learned setup has read it once
           // after approval (or the club is rejected). See setup-learning/.
           // A relink stores what THIS add brought: the removal deleted
@@ -1035,7 +1029,6 @@ async function linkGroupToRequest(
       numberUnconfirmed: row.dmAt !== null && row.dmPhone === null,
       groupSubject: subject,
       memberCount: snapshot.length,
-      detectedLang: detected,
       clubLang: org?.language ?? null,
       alsoIn,
     }),
@@ -1054,8 +1047,7 @@ async function linkGroupToRequest(
     `[group-add] ${groupId} ("${subject ?? "?"}") ${relinked ? "relinked after re-add" : "linked"} to ${row.id} ` +
       `(club ${row.orgId}, now pending): adder=${target.adderMatch}, ${snapshot.length} member(s), ` +
       `${history.length} chat message(s), ${description ? `description ${description.length} chars` : "no description"}, ` +
-      `looks ${detected.lang}` +
-      `${detected.confident ? "" : " (unsure)"}, organiser ack ${organiserAckQueued ? "queued" : "not sent"}`,
+      `organiser ack ${organiserAckQueued ? "queued" : "not sent"}`,
   );
   return {
     kind: "linked",

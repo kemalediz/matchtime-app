@@ -16,10 +16,10 @@
  * destructive for everybody in the match, unlike a slot swap, which
  * changes one row. A non-admin is told so in one line.
  *
- * WHEN IT IS REACHED. From `analyze/route.ts`, as a deterministic peel
- * BEFORE the router, on the raw body (`isClearTeamsRequest` in
- * `team-requests.ts`) of a message that tags MatchTime. No model call
- * decides it.
+ * NOT REACHED SINCE 2026-10-30. It was called from `analyze/route.ts` on a
+ * word test of the raw body (`isClearTeamsRequest`), deleted with the "no
+ * string parsing" sweep. It is kept, tested, for a `clear` action of the
+ * teams extractor (`pipeline/extractors.ts`), which does not exist yet.
  *
  * Pure over injected deps, like `team-ops-engine.ts`: no database import
  * here, so every branch is unit-testable. The real deps are

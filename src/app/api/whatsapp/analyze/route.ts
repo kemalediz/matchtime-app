@@ -98,7 +98,6 @@ import { uniqueByWaMessageId } from "@/lib/analyze-batch";
 import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "@/lib/magic-link";
 import { buildShortMagicLinkUrl } from "@/lib/short-link";
-import { answerScopedQuestion } from "@/lib/dm-qa";
 // §10 step 8: `analyzeBatch`, `AnalysisVerdict` and `BatchInputMessage`
 // were imported here until this change. They no longer exist.
 // `enforceProximity` does, and stays: it rewrites "tonight" → "Tue 8 Sep"
@@ -116,13 +115,7 @@ import {
   composeSquadStateReply,
   skipsSquadComposition,
   buildRecruitAckReply,
-  buildTeamSheet,
   teamSheetNames,
-  buildSwapDeferredReply,
-  buildSwapRefusedReply,
-  buildTeamSwapReply,
-  buildSlotTransferReply,
-  buildColourSwapReply,
   stripSquadPostMarker,
   SQUAD_POST_MARKER,
   type SquadTruth,
@@ -159,13 +152,11 @@ import { SCORE_HANDLED_BY } from "@/lib/score-engine";
 import { runAdminOpsBatch } from "@/lib/admin-ops-engine-batch";
 import { ADMIN_OPS_HANDLED_BY } from "@/lib/admin-ops-engine";
 import { runTeamOpsBatch } from "@/lib/team-ops-engine-batch";
-import { applyClearTeams } from "@/lib/team-clear";
-import { isClearTeamsRequest } from "@/lib/team-requests";
+import { alsoTeamsIds } from "@/lib/team-also-signal";
 import { TEAM_OPS_HANDLED_BY } from "@/lib/team-ops-engine";
 import {
   buildScoreApplyDeps,
   buildAdminOpsApplyDeps,
-  buildTeamClearDeps,
   buildTeamOpsApplyDeps,
   buildClaimGuestNameAsk,
 } from "@/lib/owner-deps";
@@ -176,7 +167,6 @@ import {
 } from "@/lib/pipeline/load-awaiting-answer";
 import { ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
 import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
-import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { moveNamedSlot } from "@/lib/team-slot-fill";
 import { getOrgFeatures } from "@/lib/org-features";
 import { organisersAnnounce } from "@/lib/list-announcer";
@@ -187,7 +177,6 @@ import {
   bindAiBudgetKey,
   claimCapReply,
   getAiBudgetStatus,
-  onboardingGroupKey,
   pickCapReplyMessage,
   recordCapSkips,
   withDeferredOrgAiBudget,
@@ -298,16 +287,6 @@ const AI_CAP_HANDLED_BY = "ai-daily-cap";
 //                                    as a seventh prose prefix; the note
 //                                    now matches ownership.
 //     FeatureKey, normaliseName     used only by `executeVerdict`.
-import {
-  handleOnboardingTurn,
-  legacySetupLang,
-} from "@/lib/onboarding-conversation";
-import {
-  ACTIVE_ONBOARDING_STAGES,
-  isCancelRequest,
-  isOnboardingSessionStale,
-} from "@/lib/onboarding-parse";
-import { inGroupSetupRefusal } from "@/lib/club-approval";
 import { t as strings } from "@/lib/i18n/t";
 import { loadPlayerNames } from "@/lib/player-display-name";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
@@ -337,27 +316,12 @@ import { messageAddressesBot, messageTagsBot, piMentionsBot } from "@/lib/intera
 import { taggedSilence } from "@/lib/tagged-silence";
 import { offerCalloffIfCalled } from "@/lib/calloff-offer";
 import { mergeRecruitReply } from "@/lib/recruit-request";
-import { readBenchPromptAnswer } from "@/lib/bench-prompt-answer";
 import {
-  peelClause,
   applyClauseReports,
   mergeOneReply,
   type ClausePeel,
   type ClauseReport,
 } from "@/lib/pipeline/clause-peel";
-import {
-  parseSwapNames,
-  parseSwapRequest,
-  planSwap,
-  senderStatesAttendance,
-  type SwapCandidate,
-} from "@/lib/team-slot-swap";
-import {
-  looksLikeColourSwapPhrase,
-  looksLikeLabelSwapPhrase,
-  TR_SWAP_VERB,
-} from "@/lib/team-colour-swap";
-import { decidePastedRosterRegistration } from "@/lib/pasted-roster-registration";
 import {
   describeMentionOutcomes,
   resolveMentionNames,
@@ -392,6 +356,7 @@ import { askWhichSource, nobodyLeftReply, sourcesAvailable } from "@/lib/ask-sou
 import { decideRecruitSource, type RecruitSource } from "@/lib/ask-source-rules";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
+import { pastedListIds, type RoutedForListSignal } from "@/lib/pasted-list-signal";
 import type { MonthlyReading } from "@/lib/monthly-reader-prompt";
 
 interface InboundMessage {
@@ -401,7 +366,7 @@ interface InboundMessage {
   authorName: string | null;
   timestamp: string;
   /** Raw WhatsApp mention JIDs (e.g. "447700900123@c.us", "…@lid"),
-   *  forwarded UNCHANGED for the onboarding admin parser. */
+   *  forwarded UNCHANGED. */
   mentions?: string[];
   /**
    * The display name the Pi's contact lookup saw for each mentioned JID.
@@ -462,19 +427,6 @@ interface InboundBody {
   groupId: string;
   history?: InboundHistory[];
   messages: InboundMessage[];
-  /** Optional stored chat history for the onboarding ENRICHMENT pass.
-   *  DISTINCT from `history` above: that field is the LLM-context history
-   *  the main analyzer consumes ({authorName, body, timestamp}). This one
-   *  is the {author, authorPhone?, text, timestamp} shape consumed by
-   *  runOnboardingEnrichment via handleOnboardingTurn. Named separately
-   *  to avoid clobbering the existing `history` field; forwarded only to
-   *  the onboarding turn. Absent → no enrichment, behaviour unchanged. */
-  enrichmentHistory?: Array<{
-    author: string;
-    authorPhone?: string | null;
-    text: string;
-    timestamp: string | number;
-  }>;
 }
 
 type ActionForBot = {
@@ -531,25 +483,13 @@ async function handleAnalyzeRequest(request: Request) {
     return NextResponse.json({ error: "groupId and messages[] required" }, { status: 400 });
   }
 
-  // ── Phase 2: autonomous onboarding ───────────────────────────────
-  //   Runs BEFORE the bot-enabled-org gate. A group with no org is
-  //   normally ignored; here it can bootstrap itself via an explicit
-  //   "@MatchTime setup" trigger, then a multi-turn in-group Q&A.
-  //   While a session is active every batch routes here (not the
-  //   normal analyzer) until it completes/abandons.
-  {
-    // A group with no club yet spends from its own new-club allowance.
-    bindAiBudgetKey(onboardingGroupKey(body.groupId));
-    const onb = await handleOnboardingIfApplicable(body);
-    if (onb) return NextResponse.json(onb);
-  }
+  // A group with no bot-enabled club is ignored below. The legacy in-group
+  // setup ("@MatchTime set up") was deleted on 2026-10-30; new clubs join
+  // through self-join (lib/group-add.ts).
 
   // Club fee billing (B1, plan 4.3 point 4): a billing-paused club's batch
   // is ignored here, before any model call, even if a stale Pi forwarded
-  // it. `billingQuietWhere()` is empty while BILLING_ENABLED is off. (The
-  // live-org check in handleOnboardingIfApplicable deliberately keeps
-  // seeing a paused club, so its group can never fall through to the
-  // in-group setup.)
+  // it. `billingQuietWhere()` is empty while BILLING_ENABLED is off.
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: body.groupId, whatsappBotEnabled: true, ...billingQuietWhere() },
     // `language`: the squad post composed from the rows below speaks
@@ -560,7 +500,17 @@ async function handleAnalyzeRequest(request: Request) {
     select: { id: true, name: true, language: true, squadMode: true, listAnnouncer: true },
   });
   if (!org) {
-    return NextResponse.json({ ok: true, ignored: "unknown-or-disabled-group", results: [] });
+    // A silent group (a club waiting for approval, rejected or suspended,
+    // or a group nobody asked MatchTime into) says so, for the Pi's log, as
+    // the in-group setup's refusal did. A live club's group that is only
+    // billing-paused keeps "unknown-or-disabled-group", as before.
+    const liveClub = await db.organisation.findFirst({
+      where: { whatsappGroupId: body.groupId, whatsappBotEnabled: true },
+      select: { id: true },
+    });
+    const { isSilentGroup } = await import("@/lib/club-approval");
+    const ignored = !liveClub && (await isSilentGroup(body.groupId)) ? "silent-group" : "unknown-or-disabled-group";
+    return NextResponse.json({ ok: true, ignored, results: [] });
   }
   const organisersMode = organisersAnnounce(org);
   bindAiBudgetKey(org.id);
@@ -1090,22 +1040,6 @@ async function handleAnalyzeRequest(request: Request) {
   //   worth one, is a `sideRequests` entry on the ATTENDANCE extractor,
   //   which is how a recruit ask survives beside a drop.
 
-  // ── Group → DM: "@MT DM me <question>" ──────────────────────────────
-  //   When someone in the group explicitly asks to be DM'd an answer
-  //   ("dm me the fixtures", "@Match Time message me when's the next
-  //   game"), answer them PRIVATELY via the scoped Q&A engine instead
-  //   of cluttering the group. Same no-leak guardrails as direct DMs
-  //   (dm-qa.ts: only group-public + the asker's own data). React 📩 in
-  //   the group so it's clear it was handled.
-  //
-  //   CLAUSE-PEELED, AND THIS IS THE ONE WHERE THE CONSUMED CLAUSE IS
-  //   LOAD-BEARING. Every other peel ignores the body once it has
-  //   matched; this one FEEDS it to `answerScopedQuestion`, so what gets
-  //   answered is the clause that asked, not the whole message. That is
-  //   why the splitter refuses to break on a bare "and": "dm me who's in
-  //   and who's out" is ONE question and must stay one
-  //   (`clause-peel.ts` pins it). "@Match Time dm me the fixtures. Also
-  //   I'm out" answers the fixtures privately AND drops him.
   // ── AN ANSWER TO "WHO SHALL I ASK FOR PLAYERS?" (2026-10-28) ────────
   //   A club with no admin group is asked which place it means in the
   //   players' group (`ask-source.ts`, below in the recruit pass), and the
@@ -1218,45 +1152,12 @@ async function handleAnalyzeRequest(request: Request) {
     }
   }
 
-  const DM_ME = /\b(dm|pm|message)\s+me\b/i;
-  for (const m of fresh) {
-    if (fastPathHandledIds.has(m.waMessageId)) continue;
-    // Interaction contract: "DM me <question>" is an answer MT gives →
-    // requires an @Match Time tag. Untagged → ordinary chat, stay silent.
-    if (!messageTagsBot(m)) continue;
-    // The answer is a model call. At the daily AI cap the message is
-    // left for the capped path below, which gives a tagged message its
-    // one polite line.
-    if (aiCapped) continue;
-    const dmPeel = peelClause(m.body, (c) => DM_ME.test(c));
-    if (!dmPeel) continue;
-    const sender = senderById.get(m.waMessageId)!;
-    const phone = (sender.phone || m.authorPhone || "").replace(/^\+/, "");
-    if (!sender.userId || !phone) continue; // can't DM an unresolved sender
-    try {
-      const result = await answerScopedQuestion({
-        userId: sender.userId,
-        orgId: org.id,
-        question: dmPeel.consumed,
-        askerName: sender.name,
-      });
-      if (result) {
-        await db.botJob.create({
-          data: { orgId: org.id, kind: "dm", phone, text: result.answer, ...REPLY_PRIORITY },
-        });
-      }
-    } catch (err) {
-      console.error("[analyze] group→DM Q&A failed:", err);
-    }
-    await claimFastPath(m, dmPeel, {
-      handledBy: "fast-path",
-      intent: "dm-qa",
-      action: "dm-scoped-answer",
-      reasoning: "group request to be DM'd — answered privately via scoped Q&A",
-      react: "📩",
-      reply: null,
-    });
-  }
+  // ── DELETED 2026-10-30: the "DM me" REGEX fast path ─────────────────
+  //   `/\b(dm|pm|message)\s+me\b/i`, clause-peeled, answered the question by
+  //   DM. It never fired in production (0 rows since April), and a recruit
+  //   post ending "pls message me" was exactly its shape. A tagged question
+  //   is the router's `question` route, answered in the group (Kemal,
+  //   2026-10-30: no string parsing).
 
   // ── DELETED 2026-09-01: the recruit REGEX fast path ─────────────────
   //   It lived here, matched `looksLikeRecruitRequest(m.body)`, and then
@@ -1376,460 +1277,19 @@ async function handleAnalyzeRequest(request: Request) {
       })
     : null;
 
-  // ═══════════════════════════════════════════════════════════════════
-  // §10 STEP 8 — FOUR DETERMINISTIC PEELS, NONE OF WHICH NEEDS A MODEL
-  // ═══════════════════════════════════════════════════════════════════
-  //
-  // Each of these was already deterministic. What made them look like
-  // model work was only that they hung off a field the model populated,
-  // and deleting the model would have deleted them by accident.
-  //
-  // They run BEFORE the router, on the raw body and on database rows, so
-  // no owner can also claim them and there is exactly one decider per
-  // message — the same invariant `claim()` asserts for the owners.
-  //
-  // Every one requires an `@Match Time` tag except the bench-prompt
-  // answer, which is a player answering a direct question MatchTime
-  // asked them about their own slot — the purest self-attendance there
-  // is, and `interaction-contract.ts` exempts exactly that. Requiring a
-  // tag there would mean ignoring the answer to our own question.
-  //
-  // ═════════════════════════════════════════════════════════════════
-  // WHAT A PEEL SKIPS. ASK THIS, NOT "IS MY NEW CODE CORRECT?"
-  // ═════════════════════════════════════════════════════════════════
-  //
-  // This file's worst bug class is a terminal branch that silently
-  // deletes every guard beneath it — three incidents in two days. A peel
-  // is terminal by construction: it pushes a result and adds the id to
-  // `fastPathHandledIds`, which the ONE splice below removes from `fresh`.
-  // So the message skips EVERYTHING after this point. Enumerated, with
-  // why each is covered, subsumed or inapplicable:
-  //
-  //   the router                    Inapplicable. The peel already knows
-  //                                 what the message is, from a database
-  //                                 row or a whole-message match. Paying
-  //                                 Haiku to label it would be paying for
-  //                                 an answer we have.
-  //   all five owners               COVERED, and this is the POINT. Two
-  //                                 deciders for one message is two
-  //                                 replies for one message. The engine
-  //                                 independently refuses a pasted roster
-  //                                 (its `parsePastedRoster` carve-out)
-  //                                 and a sender with an open bench
-  //                                 prompt (its `promptedUserIds` carve-out), so those two are
-  //                                 belt AND braces; the swaps are peeled
-  //                                 only because nothing else models a
-  //                                 `TeamAssignment` move.
-  //   the operator note             SUBSUMED. The note is for a message
-  //                                 NOBODY handled. A peel handled it,
-  //                                 and its `AnalyzedMessage` row records
-  //                                 what it did.
-  //   the unresolved-sender nudge   Inapplicable to three of the four
-  //                                 (they need no sender), and for the
-  //                                 bench answer the trigger IS a
-  //                                 resolved `senderUserId` — an
-  //                                 unresolved sender cannot be on the
-  //                                 `PendingBenchConfirmation` list, so
-  //                                 the peel never fires for one.
-  //   the react/status audit        Inapplicable: no peel emits a
-  //                                 registration react (✅/🪑/👋).
-  //   the batch-final squad post    NOT skipped for the one peel that
-  //                                 changes the squad. The pasted-roster
-  //                                 ack is `SQUAD_POST_MARKER`, and the
-  //                                 composer's candidate filter admits it
-  //                                 by name. The first draft did not, and
-  //                                 a paste that had just registered four
-  //                                 players said NOTHING — see the note
-  //                                 on `pastedRosterAck` below.
-  //
-  // ⚠️ THE ONE REAL COST, stated rather than discovered later: a peeled
-  // message is spliced out of `fresh`, so it is absent from the WINDOW
-  // the owners reason over. §10 step 6 is emphatic that this matters —
-  // "taking a message OUT of the batch changed what the mega-prompt
-  // concluded about the message NEXT to it". The splice is not new (the
-  // stats link, the blast, group→DM and help have always been spliced),
-  // but this change adds four shapes to it, and one of them —
-  // a bench-prompt answer — is attendance-shaped. If a batch ever
-  // contained both a bench answer and a third-party claim about that
-  // same player, the corroboration policy would not see the answer.
-  // Judged acceptable because the corroboration policy looks for a
-  // SELF-DROP, and a bench answer is neither, but it is a genuine
-  // narrowing and it is written down here rather than left to be found.
+  // ── DELETED 2026-10-30: three regex fast paths and a dead one ───────
+  //   "@Match Time clear the teams" (`isClearTeamsRequest`), the colour
+  //   swap (`looksLikeColourSwapPhrase`) and "swap A with B"
+  //   (`parseSwapNames`) were read here from the raw words before the
+  //   router. The two swaps now go through the pipeline: router `balancer`,
+  //   the teams extractor's `swap` facts (`swapSides`, `moves`), applied in
+  //   `team-ops-engine-batch.ts` by `team-swap-apply.ts`, the same reading
+  //   the admin group uses since #468. A clear is the teams extractor's
+  //   `clear` action, done there with `team-clear.ts` (admins only).
+  //   The bench-prompt answer (`readBenchPromptAnswer`) was dead: nothing
+  //   has created a `PendingBenchConfirmation` since the 2026-05-19 bench
+  //   redesign (the last row is from that day, none is open).
 
-  // ── 0. "@MATCH TIME CLEAR THE TEAMS" (2026-09-29) ──────────────────
-  //
-  //   Sutton FC, Thu 24 Sep 22:52 BST: "@Match Time delete these teams,
-  //   early to form them, there is still 5 days". The router sent it to
-  //   `admin_ops`, the admin extractor said `other`, and NOTHING
-  //   happened and nobody was told: the sheet built a minute earlier
-  //   from a joke stood until match day.
-  //
-  //   A clear is recognised on the RAW BODY by `isClearTeamsRequest`
-  //   (English and Turkish, negation-aware, and never when the same
-  //   message also asks to build: "scrap the teams and generate new
-  //   teams" is a regenerate and goes on to the balancer). Admins only;
-  //   anyone else is told so in one line. `lib/team-clear.ts` has the
-  //   rest. WHOLE-MESSAGE, not clause-peeled: the residual of a clear is
-  //   the reason for it ("early to form them, there is still 5 days"),
-  //   never a second request, and sending it on to the router is how it
-  //   got lost the first time.
-  //
-  //   Not claimed when team balancing is off for the org: such a club
-  //   picks its teams by hand and `team-ops-engine-batch.ts` owns that
-  //   silence.
-  {
-    const clearCandidates = fresh.filter(
-      (m) =>
-        !fastPathHandledIds.has(m.waMessageId) &&
-        // The STRICT tag: clearing is destructive, so MatchTime must be
-        // addressed, not merely named.
-        piMentionsBot(m) &&
-        isClearTeamsRequest(m.body),
-    );
-    if (clearCandidates.length > 0 && (await getOrgFeatures(org.id)).teamBalancing) {
-      const clearDeps = buildTeamClearDeps({ orgId: org.id, now: new Date() });
-      for (const m of clearCandidates) {
-        const sender = senderById.get(m.waMessageId);
-        const res = await applyClearTeams({
-          senderUserId: sender?.userId ?? null,
-          lang: org.language,
-          deps: clearDeps,
-        });
-        await claimFastPath(m, null, {
-          handledBy: res.kind === "failed" ? "error" : "fast-path",
-          intent: "clear_teams_request",
-          action:
-            res.kind === "cleared"
-              ? "clear-teams"
-              : res.kind === "not_admin"
-                ? "clear-teams-refused"
-                : "none",
-          reasoning: res.logReason,
-          react: null,
-          reply: res.reply,
-        });
-      }
-    }
-  }
-
-  // ── 1 + 2. COLOUR SWAP and TEAM SWAP ───────────────────────────────
-  //
-  //   Both shipped, both already pure functions of `(orgId, body)`, and
-  //   both used to sit INSIDE the per-message loop after the tag gate —
-  //   which meant they were reached only when the model's verdict had
-  //   survived that far. They are moved up rather than rewritten.
-  //
-  //   The tag requirement is now EXPLICIT instead of being inherited
-  //   from `actionRequiresTag(verdict)`. That is the same policy stated
-  //   directly: both team intents are in `ACTIONY_INTENTS`, so an
-  //   untagged one was already refused. Measured on 120 days of real
-  //   traffic, every colour/team swap in the group carries the tag
-  //   ("@Match Time swap the colors and keep the same squad").
-  //
-  //   Order matters and is preserved from the loop: COLOUR first, so
-  //   "swap the colours" can never be read as a player swap.
-  for (const m of fresh) {
-    if (fastPathHandledIds.has(m.waMessageId)) continue;
-    if (!messageTagsBot(m)) continue;
-    // CLAUSE-PEELED. `looksLikeColourSwapPhrase` is the handler's own
-    // literal-colour detection, lifted out so the clause can be chosen
-    // WITHOUT a database read. It is deliberately the label-free half:
-    // when it finds nothing, the WHOLE body still goes to the handler,
-    // so the custom-team-label branch (which needs the match row to know
-    // what this org calls its sides) is reached exactly as it is today.
-    const colourPeel = peelClause(m.body, looksLikeColourSwapPhrase);
-    const colourResult = await handleColorSwapIfApplicable(
-      org.id,
-      colourPeel?.consumed ?? m.body,
-    );
-    if (colourResult) {
-      await claimFastPath(m, colourPeel, {
-        handledBy: "fast-path",
-        intent: "team_colour_swap",
-        action: "colour-swap",
-        reasoning: colourResult.logReason,
-        react: "✅",
-        reply: colourResult.reply,
-      });
-      continue;
-    }
-    // "swap A with B" is a TEAM-SHEET edit, never a drop. This guard
-    // exists because the mega-prompt had a forceful "swap X with Y =
-    // X OUT" rule that wrongly dropped Elvin on 2026-05-19. The prompt
-    // is gone, so the rule that misfired is gone — but the FEATURE is
-    // not, and it is the reason this stays: "swap Mustafa and Idris" is
-    // a team change the group asks for every few weeks (5 in the last
-    // 90 days), and it is a `TeamAssignment` move that no attendance
-    // extractor models.
-    //
-    // ⚠️ WIDENED 2026-09-08 — THE PEEL NOW SWALLOWS MORE. WHAT, AND
-    //    WHAT THOSE MESSAGES LOSE:
-    //
-    // It used to own a swap only when BOTH named players were
-    // CONFIRMED. It now also owns the REPLACEMENT — one side CONFIRMED
-    // holding no slot, the other holding a slot but NOT CONFIRMED —
-    // because that is the state the Elvin/Raihan message was in and
-    // declining it left a stale team sheet on a match night.
-    //
-    // The widening is one DATABASE STATE, not one message shape. The
-    // sentence matched is byte-identical, and the PARSE actually got
-    // stricter: `parseSwapNames` can no longer backtrack inside a word,
-    // so "no swap needed" (which used to yield `need` + `ed` and was
-    // saved only by neither half resolving) now matches nothing at all.
-    //
-    // ✅ FIXED 2026-09-09 — WHAT THAT WIDENING COST, AND WHAT PAID IT.
-    //
-    // The paragraph that stood here said: "a peel is terminal — the id
-    // goes into `fastPathHandledIds` and the one splice below removes
-    // the message from `fresh` — so '@Match Time swap Elvin with
-    // Raihan, and I'm out' now applies the slot move and drops the
-    // sender's own OUT on the floor", and accepted it. That was the
-    // SIXTH instance of this file's worst bug class, and it is the
-    // headline case the clause peel exists for.
-    //
-    // The peel now takes the SWAP CLAUSE. "and I'm out" stays in the
-    // batch, reaches the router and the attendance engine, and the
-    // sender is dropped in the same request that moves the slot. Both
-    // halves land; one message is sent. `e2e/api/clause-peel.spec.ts`
-    // is that sentence, verbatim.
-    //
-    // THE LIMIT, STATED: the splitter refuses to break on a bare "and",
-    // because "swap the reds and yellows" is one request and splitting
-    // it would break the colour peel above. So "swap A with B and I'm
-    // out", with NO comma, is still peeled whole and still loses the
-    // OUT. Half the incident's phrasings, not all of them, and the
-    // reason is written down in `clause-peel.ts` rather than left to be
-    // rediscovered.
-    //
-    // AND THE ALTERNATIVE IS MEASURED, not assumed: before this change
-    // a replacement-shaped swap fell through to the router, reached
-    // `balancer`, and `team-ops-engine-batch.ts` handed `swap` back —
-    // SILENCE plus one operator note. That is exactly what the owner
-    // got at 16:47 on 2026-09-08. Nothing useful is being taken from
-    // the pipeline; the pipeline had nothing to give this shape.
-    //
-    // ⚠️ CHANGED 2026-09-17 — A REFUSAL IS ANSWERED, AND THE WHOLE
-    //    MESSAGE STILL GOES ON.
-    //
-    // This paragraph used to say "EVERY REFUSAL STILL FALLS THROUGH":
-    // the handler returned null for every refusal, the message reached
-    // the router whole, and the owner was never told. Measured live
-    // (`scripts/dryrun-pipeline.ts`, TR26 / TR27, REPEAT=10), what the
-    // pipeline then did with "@Match Time swap David and Sait" was DROP
-    // DAVID, 10 of 10, and the Turkish form 9 of 10. Two changes, one
-    // per layer:
-    //
-    //   1. THE ENGINE refuses any claim about a person the message asks
-    //      to swap (`pipeline/engine.ts`, `isSwapParty`). That is the
-    //      fix for the drop, and it holds for every path that reaches
-    //      the engine, including an untagged swap from an admin, which
-    //      never reaches this peel at all.
-    //   2. HERE, a refusal of a REAL swap (at least one name is somebody
-    //      in this match; `planSwap` says which) is claimed with a reply
-    //      saying it was not applied and why. The residual is the WHOLE
-    //      BODY, not `swapPeel.residual`: nothing was done, so nothing is
-    //      taken away, and "swap A with B and I'm out", with no comma,
-    //      still reaches the engine and still drops the sender (the swap
-    //      parties are refused there). Being claimed has two other
-    //      effects, both the ones a successful swap already has: the
-    //      message is kept from the step-7 owners (so `balancer` does
-    //      not answer it too) and from the operator note.
-    //
-    // A message that is not a player swap at all ("switch it to 7 a
-    // side": neither word is a person) is still not owned, exactly as
-    // before.
-    //
-    // AND THE PEEL SELECTS ITS CLAUSE WITH THE HANDLER'S OWN PARSER.
-    // `peelClause` applies `parseSwapNames` to the whole body FIRST and
-    // returns null if it finds nothing — which is precisely when
-    // `handleTeamSwapIfApplicable` would have returned null on its first
-    // line.
-    const swapPeel = peelClause(m.body, (c) => parseSwapNames(c) !== null);
-    if (!swapPeel) continue;
-    const sender = senderById.get(m.waMessageId);
-    const swapResult = await handleTeamSwapIfApplicable(
-      org.id,
-      swapPeel.consumed,
-      sender?.userId ? { userId: sender.userId, name: sender.name ?? m.authorName ?? "" } : null,
-      m.body,
-    );
-    if (swapResult?.kind === "applied") {
-      await claimFastPath(m, swapPeel, {
-        handledBy: "fast-path",
-        intent: "team_swap",
-        action: "team-swap",
-        reasoning: swapResult.logReason,
-        react: "✅",
-        reply: swapResult.reply,
-      });
-    } else if (swapResult?.kind === "refused") {
-      await claimFastPath(
-        m,
-        { consumed: swapPeel.consumed, residual: m.body },
-        {
-          handledBy: "fast-path",
-          intent: "team_swap",
-          action: "team-swap-refused",
-          reasoning: swapResult.logReason,
-          react: null,
-          reply: swapResult.reply,
-        },
-      );
-    }
-  }
-
-  // ── 3. THE BENCH-PROMPT ANSWER ─────────────────────────────────────
-  //
-  //   A bench player answering MatchTime's own "do you want the slot?"
-  //   in the GROUP instead of reacting to the DM. `executeVerdict` used
-  //   to reach `resolveBenchConfirmation` through
-  //   `verdict.benchConfirmation`, and `attendance-engine-batch.ts`
-  //   refuses the message for exactly that reason: "a bare 'yes' from
-  //   someone with a prompt open stays with the analyzer."
-  //
-  //   There is no analyzer. But there was never anything to classify
-  //   either: the TRIGGER is a `PendingBenchConfirmation` row for this
-  //   exact sender, so by the time the text is read the prior is
-  //   overwhelming and only a yes/no has to be told apart.
-  //   `lib/bench-prompt-answer.ts` does that on a whole-message
-  //   allowlist, never a substring, so "no idea what time we're playing"
-  //   and "yes but I can only do the first half" both come back null and
-  //   fall through to the ordinary pipeline.
-  //
-  //   ⚠️ ONE SHIPPED BEHAVIOUR IS PRESERVED THAT I WOULD QUESTION IF
-  //   THIS WERE NOT A DELETION PR. A bench player who writes "I'm out"
-  //   meaning "drop me from the match entirely" is read as DECLINING the
-  //   slot, which `resolveBenchConfirmation` treats as a no-op — they
-  //   stay on the bench rather than being dropped. That is exactly what
-  //   ships today: `route.ts:3186-3190`'s own comment said
-  //   "bench-confirmation outranks generic IN/OUT for users on the
-  //   open-prompt list". Changing it here would be inventing new product
-  //   semantics inside a change that is meant to preserve them, so it is
-  //   preserved and flagged instead.
-  //
-  //   ── NOT CLAUSE-PEELED, AND THAT IS ARGUED, NOT DEFERRED ──────────
-  //   `readBenchPromptAnswer` is a WHOLE-MESSAGE allowlist, never a
-  //   substring: this section's own header says so, and it is why "yes
-  //   but I can only do the first half" comes back null and falls
-  //   through. A message it accepts is a bare "yes"/"no" and has no
-  //   second clause to lose — `peelClause` would return
-  //   `{consumed: body, residual: ""}` for every input it can see.
-  //   Adding the call would be ceremony, not a guard.
-  if (nextMatchForReply) {
-    const openPrompts = await db.pendingBenchConfirmation.findMany({
-      where: { matchId: nextMatchForReply.id, resolvedAt: null },
-      select: { userId: true },
-    });
-    const prompted = new Set(openPrompts.map((p) => p.userId));
-    if (prompted.size > 0) {
-      for (const m of fresh) {
-        if (fastPathHandledIds.has(m.waMessageId)) continue;
-        const sender = senderById.get(m.waMessageId)!;
-        if (!sender.userId || !prompted.has(sender.userId)) continue;
-        const answer = readBenchPromptAnswer(m.body);
-        if (!answer) continue;
-        fastPathHandledIds.add(m.waMessageId);
-        // The server posts its own group announcement on a confirm, so
-        // the reply here is null in every branch and only the react
-        // speaks — byte-identical to `route.ts:3199-3206`.
-        let react: string | null = null;
-        try {
-          const result = await resolveBenchConfirmation({
-            matchId: nextMatchForReply.id,
-            userId: sender.userId,
-            decision: answer === "yes",
-          });
-          if (result.kind === "confirmed") react = "✅";
-          else if (result.kind === "declined") react = "👋";
-          // "ignored" — the prompt was resolved between the read above
-          // and here. Say nothing; there is nothing true to say.
-        } catch (err) {
-          console.error("[analyze] bench-prompt answer failed:", err);
-        }
-        await recordAnalysis({
-          orgId: org.id, groupId: body.groupId, msg: m,
-          handledBy: "fast-path", intent: "bench_confirmation",
-          action: react ? `bench-${answer}` : "none",
-          confidence: 1,
-          reasoning: `bench prompt open for this sender; answer read as "${answer}"`,
-          authorUserId: sender.userId, authorName: m.authorName ?? null,
-        });
-        results.push({
-          waMessageId: m.waMessageId, handledBy: "fast-path",
-          intent: "bench_confirmation", react, reply: null,
-        });
-      }
-    }
-  }
-
-  // ── 4. THE PASTED ROSTER — THIS BRANCH OWNS THE LIST, NOT THE MESSAGE ─
-  //
-  //   THE ARITHMETIC WAS NEVER THE MODEL'S. `reconcilePastedRoster`
-  //   decides whether the paste restates our own roster post in Match
-  //   Context order and, if it does, COMPUTES which lines are new. The
-  //   old code took the model's picks off the list and threw all of them
-  //   away, replacing them with that computation. So this branch loses
-  //   only the residue — names the model found that the LIST does not
-  //   mention, i.e. prose travelling alongside a paste ("here's the
-  //   list, also adding Kieran"). Kieran needs one more message, which
-  //   is §13's stated trade: "a missed add is recoverable in one
-  //   message; a wrong registration on a paid match is not."
-  //
-  //   Anything that is NOT of record registers NOBODY — the clamp's
-  //   outcome, reached by construction rather than by subtraction, since
-  //   with no model there are no list-derived writes to clamp.
-  //
-  //   ═════════════════════════════════════════════════════════════════
-  //   IT IS NO LONGER TERMINAL (2026-09-07) — AND THAT IS THE FIX
-  //   ═════════════════════════════════════════════════════════════════
-  //
-  //   It used to do `fastPathHandledIds.add(m.waMessageId)`, which peels
-  //   the WHOLE message out of `fresh` before the router runs. So a
-  //   message that was BOTH a list and its sender's own drop lost the
-  //   drop: Pat writes "can't make it lads, someone take my spot" above
-  //   the list, and stays CONFIRMED. The squad reads full, the vacated
-  //   slot is never offered to the bench, and the club is a player short
-  //   on the night. It is the FOURTH instance of one bug class in this
-  //   file — a terminal branch that silently deletes every guard below
-  //   it — after the recruit fast path (2026-09-01), PR #29's
-  //   guest-name-ask branch, and step 6's engine short-circuit.
-  //
-  //   The message now stays in the batch. This branch still applies the
-  //   arithmetic, and `attendance-engine-batch.ts`'s clamp
-  //   (`clampPastedRosterFacts`) lets the engine take exactly one thing
-  //   off a roster-shaped message: THE SENDER'S OWN DROP. Nothing about
-  //   drop handling is reimplemented here — the drop goes to the owner
-  //   whose rules already cover it, which is what MEMORY.md's note on
-  //   this bug class asks for ("prefer NOT OWNING a shape over
-  //   reimplementing a shipped guard inside the new branch").
-  //
-  //   WHAT NOT PEELING EXPOSES THE MESSAGE TO, and what covers each:
-  //
-  //     • THE ROUTER. It now costs one line of a batched Haiku call and
-  //       one attendance-extractor call per paste. Real money, a few
-  //       times a week, and the clamp above discards everything the
-  //       extractor reads off the list.
-  //     • THE ATTENDANCE ENGINE. Clamped to the sender's own OUT, per
-  //       above. It can no longer read fourteen third-party INs off a
-  //       list, which was the original reason for refusing the shape.
-  //     • THE FOUR STEP-7 OWNERS (`question`, `balancer`, `score`,
-  //       `admin_ops`). Explicitly excluded — `ownerBase` filters
-  //       `pastedRosterIds` out. A misrouted list must not be answered
-  //       as a question or read as a score, and that exposure is new
-  //       with this change, so it is closed here rather than argued
-  //       about.
-  //     • THE "NOBODY OWNED IT" BRANCH. A paste the engine does not own
-  //       would otherwise land there: an `ignored`/`noise` row and a
-  //       line on the operator DM, replacing this branch's own
-  //       `pasted_roster` row. So the row and the reply are DEFERRED
-  //       into `pastedRosterReports` and emitted in that same loop, one
-  //       result per message, only when no owner spoke.
-  //
-  //   ONE OWNER PER MESSAGE STILL HOLDS. Two things can WRITE for one
-  //   paste (this branch registers the appended names; the engine drops
-  //   the sender), which is the same shape as PR #33's "a recruit ask
-  //   alongside a drop must do BOTH". Only one of them ever SPEAKS:
-  //   whoever owns the message in the loop below.
   // ── 3b. A MONTHLY CLUB'S PASTED LIST (slice 5, 2026-10-06) ──────────
   //
   //   MDs/monthly-squad-plan-2026-10-05.md, section 6.2. A group that
@@ -2153,121 +1613,6 @@ async function handleAnalyzeRequest(request: Request) {
     }
   }
 
-  const pastedRosterIds = new Set<string>();
-  const pastedRosterReports = new Map<
-    string,
-    {
-      handledBy: ActionForBot["handledBy"];
-      action: string;
-      reasoning: string;
-      react: string | null;
-      reply: string | null;
-    }
-  >();
-  if (nextMatchForReply) {
-    const confirmedNames = nextMatchForReply.attendances.map((a) => a.user.name ?? "");
-    for (const m of fresh) {
-      if (fastPathHandledIds.has(m.waMessageId)) continue;
-      const sender = senderById.get(m.waMessageId)!;
-      const decision = decidePastedRosterRegistration({
-        body: m.body,
-        confirmedNames,
-        senderNames: [sender.name, m.authorName],
-      });
-      if (decision.kind === "not_a_roster") continue;
-      // NOT `fastPathHandledIds` — that set is what the splice below reads,
-      // and peeling the message is the defect this section's header is
-      // about. This one only says "the list has been dealt with".
-      pastedRosterIds.add(m.waMessageId);
-
-      // MONTHLY SQUAD (slice 5): in a running month a pasted list never
-      // creates a player. A list the monthly reader refused (not this
-      // month's squad list) registers nobody here either, whatever its
-      // shape. Empty for every weekly club.
-      if (decision.kind === "of_record" && (monthlyNotSquadList.has(m.waMessageId) || monthlyReadings.has(m.waMessageId))) {
-        pastedRosterReports.set(m.waMessageId, {
-          handledBy: "fast-path",
-          action: "none",
-          reasoning: "pasted list in a monthly club's running month that is not the month's list: nobody registered",
-          react: null,
-          reply: null,
-        });
-        continue;
-      }
-
-      if (decision.kind === "not_of_record") {
-        console.warn(
-          `[analyze] pasted-roster: "${(m.body || "").slice(0, 60)}" (${m.waMessageId}) is a ` +
-            `pasted list that does not restate the squad (${decision.reason}) — registering nobody. ` +
-            `A re-paste is a restatement, not a registration; org ${org.id} should use ` +
-            `featureSquadFromList if it maintains its squad this way.`,
-        );
-        pastedRosterReports.set(m.waMessageId, {
-          handledBy: "fast-path",
-          action: "none",
-          reasoning: `pasted roster, not of record (${decision.reason}) — nobody registered`,
-          react: null,
-          reply: null,
-        });
-        continue;
-      }
-
-      // Of record. The appended names are new, arithmetically.
-      const failures: string[] = [];
-      const registered: string[] = [];
-      for (const name of decision.additions) {
-        const isSender = name === decision.senderAddition;
-        try {
-          const target =
-            isSender && sender.userId
-              ? { userId: sender.userId, name: sender.name }
-              : await resolveOrProvisionByName(org.id, name);
-          if (!target) {
-            failures.push(name);
-            continue;
-          }
-          await registerAttendance(target.userId, nextMatchForReply.id, {
-            // The `pasted-roster` cause already exists in
-            // `attendance-events.ts` for the `featureSquadFromList`
-            // pipeline. This is the same event for the same reason on a
-            // different door, so it reuses the cause rather than
-            // inventing a synonym nobody would think to query for.
-            event: {
-              cause: "pasted-roster",
-              actorKind: isSender ? "player" : "member",
-              actorUserId: sender.userId ?? null,
-              sourceRef: m.waMessageId,
-              note: "appended to a pasted roster that restates the squad (S26)",
-            },
-          });
-          registered.push(target.name ?? name);
-        } catch (err) {
-          console.error(`[analyze] pasted-roster register failed for ${name}:`, err);
-          failures.push(name);
-        }
-      }
-      console.warn(
-        `[analyze] pasted-roster reconcile: "${(m.body || "").slice(0, 60)}" (${m.waMessageId}) ` +
-          `restates the confirmed squad in order, so the ${decision.additions.length} appended ` +
-          `name(s) [${decision.additions.join(", ")}] are new. Computed from the squad, not from ` +
-          `anyone's reading of the list.`,
-      );
-      // The honest ack: nothing cheerful is said about a write that
-      // threw, and the squad post below is composed from the DATABASE
-      // after every write in this request has landed, so it shows what
-      // actually happened either way (9f19040, §3.2 S7).
-      pastedRosterReports.set(m.waMessageId, {
-        handledBy: failures.length > 0 ? "error" : "fast-path",
-        action: registered.length > 0 ? `register:${registered.length}` : "none",
-        reasoning:
-          `pasted roster of record — registered [${registered.join(", ")}]` +
-          (failures.length > 0 ? `; FAILED for [${failures.join(", ")}]` : ""),
-        react: failures.length > 0 ? null : registered.length > 0 ? "✅" : null,
-        reply: registered.length > 0 ? SQUAD_POST_MARKER : null,
-      });
-    }
-  }
-
   // Drop every FULLY peeled message from the batch the pipeline sees.
   // ONE splice for all of them, after the last peel, so a peel added
   // later cannot leave its message in the batch for an owner to claim as
@@ -2502,6 +1847,156 @@ async function handleAnalyzeRequest(request: Request) {
           ? `, router $${(gate.usage.costUsd ?? 0).toFixed(5)} in ${gate.usage.ms}ms`
           : ", no router call"),
     );
+  }
+
+  // ── A LIST PASTED IN THE PLAYERS' GROUP OF A WEEKLY CLUB (2026-10-30) ─
+  //
+  //   People never keep to a format (Kemal: "no string parsing at all"), so
+  //   the list is read by the model, with the same reader the admin group
+  //   uses (`hq-squad-reader.ts`, `place: "players"`): the members by ref,
+  //   the squad and the teams as MatchTime has them, the recent chat and the
+  //   message replied to. It replaced `parsePastedRoster` and its
+  //   numbering and header regexes. A monthly club has its own reader above.
+  //
+  //   WHO IS READ, on facts: a message the ROUTER flagged as a pasted
+  //   squad list (`pasted-list-signal.ts`), in a weekly club with a next
+  //   game, from a resolved member, not at the AI cap, not late. One Haiku
+  //   call each (about $0.0004), on those messages only.
+  //
+  //   WHAT A READING MAY DO, checked against the database, never the words:
+  //     - only a "squad" reading counts ("teams" and "other" go on as any
+  //       message does);
+  //     - the list must restate the squad: every CONFIRMED player is on it
+  //       as playing, and the squad is not empty (the rule the arithmetic had, "a
+  //       restatement with names added"; anything else registers nobody);
+  //     - it ADDS only: a listed member or new person who is not already in
+  //       the squad or on the bench is registered (the bench part as bench),
+  //       a member who DROPPED is never brought back, and nobody is ever
+  //       dropped by a list;
+  //     - the message stays in the batch, so its sender's own drop still
+  //       reaches the attendance engine, and the step-7 owners skip it.
+  //   A failed or unreadable reading is "other": nothing changes.
+  const pastedRosterIds = new Set<string>();
+  const pastedRosterReports = new Map<
+    string,
+    {
+      handledBy: ActionForBot["handledBy"];
+      action: string;
+      reasoning: string;
+      react: string | null;
+      reply: string | null;
+    }
+  >();
+  if (org.squadMode !== "monthly" && nextMatchForReply && !aiCapped) {
+    // The router's signal, a fact (`pasted-list-signal.ts`): only a message
+    // it flagged as a pasted squad list is read.
+    const listIds = pastedListIds(fresh, (gate?.routes ?? []) as unknown as RoutedForListSignal[]);
+    const listCandidates = fresh.filter((m) => {
+      const sender = senderById.get(m.waMessageId);
+      return (
+        listIds.has(m.waMessageId) &&
+        !!sender?.userId &&
+        !lateById.has(m.waMessageId) &&
+        !clauseResidualById.has(m.waMessageId)
+      );
+    });
+    if (listCandidates.length > 0) {
+      const { loadHqSquadReaderContext, readHqSquadMessage } = await import("@/lib/hq-squad-reader");
+      const ctx = await loadHqSquadReaderContext({
+        orgId: org.id,
+        match: await db.match.findUnique({
+          where: { id: nextMatchForReply.id },
+          select: { id: true, date: true, maxPlayers: true, activityId: true, teamLabels: true },
+        }),
+        lang: org.language,
+      }).catch((err) => {
+        console.error(`[analyze] squad reader context for ${org.id} failed:`, err instanceof Error ? err.message : "failed");
+        return null;
+      });
+      for (const m of ctx ? listCandidates : []) {
+        const sender = senderById.get(m.waMessageId)!;
+        const reading = await readHqSquadMessage(
+          {
+            body: m.body,
+            sender: { userId: sender.userId, name: sender.name ?? null },
+            history: history.filter((h) => !(h.body === m.body && h.author === senderLabel(m.waMessageId))),
+            reply:
+              replyById.get(m.waMessageId) ??
+              (() => {
+                const q = parseGroupQuote(m);
+                return q?.text ? quoteFromPi(q) : null;
+              })(),
+            now: new Date(),
+            place: "players",
+          },
+          ctx!,
+        );
+        if (reading.kind !== "squad") continue;
+        pastedRosterIds.add(m.waMessageId);
+        const rows = await db.attendance.findMany({
+          where: { matchId: nextMatchForReply.id },
+          select: { userId: true, status: true },
+        });
+        const statusOf = new Map(rows.map((r) => [r.userId, r.status]));
+        const confirmed = rows.filter((r) => r.status === "CONFIRMED").map((r) => r.userId);
+        // Playing on the list, not merely on it: a confirmed player put under
+        // a bench or "can't play" part is not restated as playing.
+        const listed = new Set(reading.lines.flatMap((l) => (l.userId && l.section === "playing" ? [l.userId] : [])));
+        const restates = confirmed.length > 0 && confirmed.every((id) => listed.has(id));
+        if (!restates) {
+          pastedRosterReports.set(m.waMessageId, {
+            handledBy: "fast-path",
+            action: "none",
+            reasoning: `pasted list read by the squad reader; it does not restate the squad (${confirmed.filter((id) => !listed.has(id)).length} confirmed player(s) not on it): nobody registered`,
+            react: null,
+            reply: null,
+          });
+          continue;
+        }
+        const failures: string[] = [];
+        const registered: string[] = [];
+        for (const line of reading.lines) {
+          if (line.userId && statusOf.has(line.userId)) continue; // in, on the bench, or dropped
+          const isSender = line.userId === sender.userId;
+          try {
+            const target = line.userId
+              ? { userId: line.userId, name: line.name }
+              : await resolveOrProvisionByName(org.id, line.name);
+            if (!target) {
+              failures.push(line.name);
+              continue;
+            }
+            if (statusOf.has(target.userId)) continue;
+            statusOf.set(target.userId, "CONFIRMED");
+            await registerAttendance(target.userId, nextMatchForReply.id, {
+              ...(line.section === "bench" ? { benchIntent: "explicit" as const } : {}),
+              event: {
+                cause: "pasted-roster",
+                actorKind: isSender ? "player" : "member",
+                actorUserId: sender.userId ?? null,
+                sourceRef: m.waMessageId,
+                note: "added to a pasted list that restates the squad, read by the squad reader",
+              },
+            });
+            registered.push(target.name ?? line.name);
+          } catch (err) {
+            console.error(`[analyze] pasted list: register failed for ${line.name}:`, err);
+            failures.push(line.name);
+          }
+        }
+        // The honest ack: the squad post is composed from the DATABASE after
+        // every write in this request, so it shows what actually happened.
+        pastedRosterReports.set(m.waMessageId, {
+          handledBy: failures.length > 0 ? "error" : "fast-path",
+          action: registered.length > 0 ? `register:${registered.length}` : "none",
+          reasoning:
+            `pasted list read by the squad reader, restating the squad: registered [${registered.join(", ")}]` +
+            (failures.length > 0 ? `; FAILED for [${failures.join(", ")}]` : ""),
+          react: failures.length > 0 ? null : registered.length > 0 ? "✅" : null,
+          reply: registered.length > 0 ? SQUAD_POST_MARKER : null,
+        });
+      }
+    }
   }
 
   // ── §10 STEP 6 — THE ATTENDANCE ENGINE, NOW THE ONLY DECIDER ───────
@@ -2781,6 +2276,9 @@ async function handleAnalyzeRequest(request: Request) {
         // The Pi's real mention flag, read by the bulk-DM commands and a
         // score answer that is not a reply.
         taggedExplicitly: piMentionsBot(m),
+        // A WhatsApp reply to MatchTime's own post addresses it (the
+        // quoted id, a fact the Pi computes): a swipe-replied swap counts.
+        repliesToMatchTime: m.quotedFromMatchTime === true,
         route: gateRouteById.get(m.waMessageId),
         gated: gatedIds.has(m.waMessageId),
         // A reply: the message it quotes, whoever wrote it, for every
@@ -2895,6 +2393,11 @@ async function handleAnalyzeRequest(request: Request) {
           history: ownerHistory,
           enabled: stepSevenEnabled,
           deps: buildTeamOpsApplyDeps({ orgId: org.id }),
+          // The team half of a message the attendance engine owns
+          // ("swap X with Y, and I'm out"): the engine's signal, a fact.
+          alsoTeams: new Set(
+            [...alsoTeamsIds(fresh, engineBatch?.outcomes.values() ?? [])].filter((id) => engineOwnedIds.has(id)),
+          ),
         })
       : null;
 
@@ -3411,6 +2914,9 @@ async function handleAnalyzeRequest(request: Request) {
       // only labels the row so the failure is one query away rather than
       // one log line away.
       const writeFailed = "writeFailed" in stepSeven && stepSeven.writeFailed;
+      // A swap's reply IS the team sheet it wrote (2026-10-30): never
+      // recomposed into the squad post below.
+      if (teamOpsBatch?.outcomes.get(msg.waMessageId)?.teamSheetPost) deterministicTeamPostIds.add(msg.waMessageId);
       let reply = stepSeven.reply;
       if (reply && nextMatchForReply) {
         reply = enforceProximity(reply, nextMatchForReply.date, org.language);
@@ -4080,6 +3586,15 @@ async function handleAnalyzeRequest(request: Request) {
   for (const [id, text] of alsoAnswerAfterComposition) {
     const r = results.find((x) => x.waMessageId === id);
     if (r) r.reply = appendAfterComposition(r.reply ?? null, text);
+  }
+  // The team half of an attendance message (2026-10-30): its line, after
+  // the change's own line and any list, in the same one reply.
+  for (const [id, o] of teamOpsBatch?.alsoOutcomes ?? []) {
+    const r = results.find((x) => x.waMessageId === id);
+    if (!r) continue;
+    if (o.reply) r.reply = appendAfterComposition(r.reply ?? null, o.reply);
+    r.react = r.react ?? o.react;
+    await augmentAnalysis({ waMessageId: id, action: o.action, reasoningSuffix: o.reasoning });
   }
 
   // ── RUN THE RECRUIT (verdict-driven, 2026-09-01) ────────────────────
@@ -5141,506 +4656,4 @@ async function storeMessagesForSquadFromList(
     // re-arrive (we already dedupe on waMessageId).
     console.error("[analyze] storeMessagesForSquadFromList failed:", err);
   }
-}
-
-/**
- * Phase 2 onboarding router. Returns a bot response object when this
- * batch belongs to an onboarding flow (active session, or a fresh
- * "@MatchTime setup" trigger in a group with no bot-enabled org), or
- * null to fall through to normal analysis.
- *
- * Trigger is intentionally tight so it can't fire by accident in a
- * live group: must address MatchTime AND say set up / get started.
- */
-const SETUP_TRIGGER =
-  /(?:@?\s*match\s*time\b[\s\S]{0,40}(?<!\p{L})(?:set\s*up|get\s*started|onboard|kurulum|kuralım|kuralim)(?!\p{L}))|(?:\b(?:set\s*up|onboard)\s+match\s*time\b)/iu;
-
-/** What the analyze response carries when an onboarding session owned
- *  the batch. The Pi reads `completed` to refresh its org list at once,
- *  so the group it has been flushing as "onboarding" becomes a live org
- *  without waiting for the periodic refresh or a restart. */
-type OnboardingResponse = {
-  ok: true;
-  results: ActionForBot[];
-  onboarding: { stage: string; completed: boolean; language: string };
-};
-
-/** The onboarding gate refused the group outright (self-join slice 1):
- *  no session, no reply, no model call, and nothing falls through. */
-type OnboardingRefusedResponse = {
-  ok: true;
-  ignored: "self-join-mode" | "silent-group";
-  results: [];
-};
-
-async function handleOnboardingIfApplicable(
-  body: InboundBody,
-): Promise<OnboardingResponse | OnboardingRefusedResponse | null> {
-  const groupId = body.groupId;
-
-  // ── A LIVE ORG ALWAYS WINS (2026-09-17) ──────────────────────────
-  // This used to look the session up first, so an abandoned or stale
-  // session could hijack a group that was later set up another way
-  // (the manual `enable-*.ts` script, the dashboard). Now the live-org
-  // check comes first: if the group has a bot-enabled org, any session
-  // still lying around is marked superseded and the batch goes to the
-  // normal analyzer. The org's own trigger words are unaffected.
-  const liveOrg = await db.organisation.findFirst({
-    where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
-    select: { id: true },
-  });
-  if (liveOrg) {
-    await db.onboardingSession.updateMany({
-      where: { whatsappGroupId: groupId, stage: { in: [...ACTIVE_ONBOARDING_STAGES] } },
-      data: { stage: "abandoned" },
-    });
-    return null;
-  }
-
-  // ── SILENCE RAILS (self-join slice 1, 2026-09-29) ──────────────────
-  // After the live-club check, so a live club is untouched. A SILENT group
-  // (its club is waiting for approval, was rejected or suspended, or
-  // nobody asked MatchTime into it) never starts or continues a setup:
-  // no session, no reply, and never the Haiku call inside the turn. With
-  // self-join on, the in-group setup is retired for every group
-  // (decision 4). The Pi should not have forwarded such a batch at all;
-  // this is the server's own refusal (plan section 4.3, layer 3).
-  const refusal = await inGroupSetupRefusal(groupId);
-  if (refusal) {
-    console.log(`[analyze] onboarding refused for ${groupId} (${refusal})`);
-    return { ok: true, ignored: refusal, results: [] };
-  }
-
-  let session = await db.onboardingSession.findFirst({
-    where: {
-      whatsappGroupId: groupId,
-      stage: { in: [...ACTIVE_ONBOARDING_STAGES] },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  // A session nobody has touched for ONBOARDING_SESSION_TTL_MS is
-  // stale: it stops owning the group. Marked so the next bot-add
-  // starts a fresh one and the Pi stops monitoring the group.
-  if (session && isOnboardingSessionStale(session)) {
-    await db.onboardingSession.update({
-      where: { id: session.id },
-      data: { stage: "abandoned" },
-    });
-    session = null;
-  }
-
-  if (!session) {
-    // No active session — only start one on an explicit trigger (the
-    // live-org case returned above, so this cannot hijack a configured
-    // group).
-    const triggered = body.messages.some((m) => SETUP_TRIGGER.test(m.body || ""));
-    if (!triggered) return null;
-    session = await db.onboardingSession.create({
-      data: {
-        whatsappGroupId: groupId,
-        stage: "collecting",
-        // The legacy flow speaks the language the trigger was written in.
-        language: legacySetupLang(body.messages.map((m) => m.body || "")),
-      },
-    });
-  }
-
-  const lastWaId = body.messages[body.messages.length - 1]?.waMessageId ?? null;
-
-  // An explicit, tagged "@Match Time stop" / "iptal" ends the session.
-  // One short reply in the session's language, then silence.
-  if (body.messages.some((m) => isCancelRequest(m.body || ""))) {
-    await db.onboardingSession.update({
-      where: { id: session.id },
-      data: { stage: "abandoned", lastHandledWaId: lastWaId },
-    });
-    const results: ActionForBot[] = lastWaId
-      ? [{ waMessageId: lastWaId, handledBy: "llm", intent: "onboarding", react: null, reply: strings(session.language).onbCancelled() }]
-      : [];
-    return {
-      ok: true,
-      results,
-      onboarding: { stage: "abandoned", completed: false, language: session.language },
-    };
-  }
-
-  // Dedupe: if the last message we already handled is the tail of
-  // this batch, a flush re-sent it — stay silent.
-  if (lastWaId && session.lastHandledWaId === lastWaId) {
-    return {
-      ok: true,
-      results: [],
-      onboarding: { stage: session.stage, completed: false, language: session.language },
-    };
-  }
-
-  const result = await handleOnboardingTurn({
-    session,
-    messages: body.messages.map((m) => ({
-      waMessageId: m.waMessageId,
-      authorName: m.authorName,
-      body: m.body,
-      // Sender identity — used by the group-add flow to capture the
-      // consenting admin (design fix: this used to be dropped, so the
-      // flow COULDN'T assign an owner even if it wanted to).
-      authorPhone: m.authorPhone ?? null,
-      // Raw WhatsApp mention JIDs, forwarded UNCHANGED from the bot. The
-      // `admins` stage's parseAdmins() resolves "<digits>@c.us" → phone
-      // and treats "<digits>@lid" as a privacy id (no phone).
-      mentions: m.mentions,
-    })),
-    // Forward enrichment history (if any) to the onboarding turn; the
-    // turn fires the enrichment pass + admin DM on completion. Absent →
-    // no enrichment runs. Already in the HistoryMessage shape.
-    history: body.enrichmentHistory,
-  });
-
-  const results: ActionForBot[] = [];
-  if (result.reply && lastWaId) {
-    results.push({
-      waMessageId: lastWaId,
-      handledBy: "llm",
-      intent: "onboarding",
-      react: null,
-      reply: result.reply,
-    });
-  }
-  const after = await db.onboardingSession.findUnique({
-    where: { id: session.id },
-    select: { stage: true, language: true },
-  });
-  return {
-    ok: true,
-    results,
-    onboarding: {
-      stage: after?.stage ?? session.stage,
-      completed: result.completed,
-      language: after?.language ?? session.language,
-    },
-  };
-}
-
-/**
- * SEATBELT (2026-05-19, WIDENED 2026-09-08): "swap A with B" /
- * "switch A and B" is a TEAM-SHEET edit, never a drop. It is resolved
- * deterministically from database state, on the RAW BODY, with no model
- * anywhere in the path.
- *
- * TWO SHAPES ARE OWNED. `lib/team-slot-swap.ts` holds the whole rule,
- * the 8x8 state matrix behind it, and the argument for every refusal:
- *
- *   both CONFIRMED           → they exchange sides. The 2026-05-19
- *                              seatbelt, unchanged, including its
- *                              defensive one-sided case.
- *   one CONFIRMED holding no
- *   slot, the other holding a
- *   slot but NOT CONFIRMED   → the slot MOVES. NEW (2026-09-08): the
- *                              Elvin/Raihan replacement, where a
- *                              DROPPED player's stale RED slot had to
- *                              follow the body of the man who replaced
- *                              him, and the shipped both-CONFIRMED rule
- *                              declined the message entirely.
- *
- * Returns:
- *   { kind: "applied", … }  → handled (the caller peels the clause)
- *   { kind: "refused", … }  → a real player swap that was NOT applied,
- *                             with the reply that says so (2026-09-17).
- *                             The caller claims it with the WHOLE body
- *                             as the residual, so no other clause of
- *                             the message is lost.
- *   null                    → not a player swap at all, or no upcoming
- *                             match; the ordinary flow decides it,
- *                             exactly as before.
- *
- * It writes `TeamAssignment` and nothing else: never attendance, never
- * the balancer.
- */
-/**
- * ── `looksLikeConditionalDrop` IS DELETED (§10 step 8) ───────────────
- *
- * The deterministic HOLD for "happy to drop if you can find someone"
- * (Kemal, 2026-06-09: Erdal was dropped on "If u can make happy to
- * drop"). It fired only when the model had already read the message as
- * a drop, and it decided contingency by looking for a literal `if`.
- *
- * §9 files it under "becomes a schema field", and names the hole the
- * regex had in its own words: it "requires a literal `if`, so 'happy to
- * drop WHEN you find someone' bypasses the hold entirely". The
- * extractor now returns `contingent` and `conditionOn` as FACTS about
- * the sentence, and `engine.ts` refuses to write a contingent claim
- * whatever conjunction it was phrased with. Corpus case
- * `S11-erdal-conditional-drop`.
- */
-
-async function handleTeamSwapIfApplicable(
-  orgId: string,
-  rawBody: string,
-  sender: { userId: string; name: string } | null,
-  wholeBody: string,
-): Promise<{ kind: "applied" | "refused"; reply: string; logReason: string } | null> {
-  const names = parseSwapRequest(rawBody);
-  if (!names) return null;
-
-  const match = await db.match.findFirst({
-    where: {
-      activity: { orgId },
-      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-    },
-    orderBy: { date: "asc" },
-    include: {
-      activity: {
-        include: {
-          sport: { select: { teamLabels: true } },
-          org: { select: { teamLabels: true, language: true } },
-        },
-      },
-      // EVERY attendance row, not only the CONFIRMED ones. The shipped
-      // query filtered to CONFIRMED, which is the whole reason a DROPPED
-      // Elvin could not be FOUND on 2026-09-08, let alone acted on.
-      // Widening the query does not widen who a name resolves to:
-      // `resolveSwapSide` still gives a unique CONFIRMED match outright
-      // priority, so every name that resolved before resolves to the
-      // same person.
-      attendances: { include: { user: { select: { id: true, name: true } } } },
-      teamAssignments: { include: { user: { select: { id: true, name: true } } } },
-    },
-  });
-  if (!match) return null;
-
-  const teamOf = new Map(match.teamAssignments.map((t) => [t.userId, t.team]));
-  const roster: SwapCandidate[] = [];
-  for (const a of match.attendances) {
-    if (!a.user.name) continue;
-    roster.push({
-      userId: a.user.id,
-      name: a.user.name,
-      status: a.status,
-      team: teamOf.get(a.user.id) ?? null,
-    });
-  }
-  // Anyone holding a slot with NO attendance row at all. The generator
-  // cannot produce that state (it builds from CONFIRMED rows only), but
-  // a hand-edited or half-cleaned sheet can be left in it, and such a
-  // player is exactly the stale occupant a replacement needs to
-  // displace. They enter the pool as `NONE`.
-  const seen = new Set(roster.map((r) => r.userId));
-  for (const t of match.teamAssignments) {
-    if (seen.has(t.userId) || !t.user.name) continue;
-    roster.push({ userId: t.userId, name: t.user.name, status: "NONE", team: t.team });
-  }
-
-  // THE WHOLE DECISION IS `planSwap`, pure and tested in
-  // `lib/team-slot-swap.ts`. A REAL swap it cannot apply is ANSWERED
-  // (2026-09-17). The old comment here said none was safe to answer
-  // because answering removed every other clause of the message; the
-  // caller now claims a refusal with the whole body as its residual,
-  // so nothing is removed, and the engine refuses the swap's two names.
-  const plan = planSwap(names, roster, {
-    sender,
-    teamsExist: match.teamAssignments.length > 0,
-    // Asked of the WHOLE message, not the peeled clause: "swap me with
-    // Kieran please, I can't make it" is a drop plus a replacement, and
-    // a swap naming the sender is then left to the pipeline.
-    senderStatesAttendance: senderStatesAttendance(wholeBody),
-  });
-  if (plan.kind === "not-a-player-swap") return null;
-  if (plan.kind === "refused") {
-    return {
-      kind: "refused",
-      reply: buildSwapRefusedReply({ a: plan.a, b: plan.b, why: plan.why, lang: match.activity.org.language }),
-      logReason: `team-swap refused (${plan.why.reason}): ${plan.a} <-> ${plan.b}; nothing written`,
-    };
-  }
-  const decision = plan.decision;
-
-  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
-  const sheet = async () => {
-    return buildTeamSheet({
-      redLabel: labels[0],
-      yellowLabel: labels[1],
-      ...(await honestSheetNames(match.id, match.activity.org.language)),
-    });
-  };
-
-  if (decision.kind === "defer-no-teams") {
-    // Teams not generated yet — nothing to swap, but make ABSOLUTELY
-    // sure nobody is dropped. Acknowledge + defer. Unchanged wording.
-    return {
-      kind: "applied",
-      reply: buildSwapDeferredReply({ a: decision.a.name, b: decision.b.name, lang: match.activity.org.language }),
-      logReason: `team-swap deferred (no teams yet): ${decision.a.name} <-> ${decision.b.name}`,
-    };
-  }
-
-  if (decision.kind === "team-swap") {
-    await db.$transaction([
-      db.teamAssignment.upsert({
-        where: { matchId_userId: { matchId: match.id, userId: decision.a.userId } },
-        create: { matchId: match.id, userId: decision.a.userId, team: decision.teamForA },
-        update: { team: decision.teamForA },
-      }),
-      db.teamAssignment.upsert({
-        where: { matchId_userId: { matchId: match.id, userId: decision.b.userId } },
-        create: { matchId: match.id, userId: decision.b.userId, team: decision.teamForB },
-        update: { team: decision.teamForB },
-      }),
-    ]);
-    return {
-      kind: "applied",
-      reply: buildTeamSwapReply({ a: decision.a.name, b: decision.b.name, sheet: await sheet(), lang: match.activity.org.language }),
-      logReason: `team-swap applied: ${decision.a.name} <-> ${decision.b.name}`,
-    };
-  }
-
-  // ── THE REPLACEMENT TRANSFER ───────────────────────────────────────
-  //
-  // One `TeamAssignment` row moves from a player who is not coming to a
-  // player who is. Same transaction shape as the bench-promote path in
-  // `lib/bench-confirmation.ts:129-138`, which has done exactly this
-  // slot transfer since the bench redesign: DELETE the donor's row and
-  // UPSERT the receiver's, atomically, so the sheet is never briefly a
-  // player short nor briefly holding two people in one seat.
-  //
-  // NO ATTENDANCE WRITE. Elvin stays DROPPED, Raihan stays CONFIRMED;
-  // the only thing that was ever wrong was which of them the team sheet
-  // named. And NO BALANCER: the message that caused this said "do not
-  // regenerate the teams" in as many words, and re-running it over a
-  // hand-made line-up on match night is 2026-06-18 (`c408649`).
-  await db.$transaction([
-    db.teamAssignment.delete({
-      where: { matchId_userId: { matchId: match.id, userId: decision.from.userId } },
-    }),
-    db.teamAssignment.upsert({
-      where: { matchId_userId: { matchId: match.id, userId: decision.to.userId } },
-      create: { matchId: match.id, userId: decision.to.userId, team: decision.team },
-      update: { team: decision.team },
-    }),
-  ]);
-  const movedTo = decision.team === "RED" ? labels[0] : labels[1];
-  return {
-    kind: "applied",
-    reply: buildSlotTransferReply({
-      to: decision.to.name,
-      from: decision.from.name,
-      teamLabel: movedTo,
-      sheet: await sheet(),
-      lang: match.activity.org.language,
-    }),
-    logReason:
-      `team-slot-transfer applied: ${decision.from.name} (${decision.from.status}) ` +
-      `-> ${decision.to.name} on ${decision.team}`,
-  };
-}
-
-/**
- * The team sheet as the swap replies print it: sheet order (`id: asc`),
- * and a holder who is no longer CONFIRMED shown as an open slot rather
- * than by name (2026-09-29, see `teamSheetNames`).
- */
-async function honestSheetNames(
-  matchId: string,
-  lang: string | null | undefined,
-): Promise<{ red: string[]; yellow: string[] }> {
-  const [rows, playing] = await Promise.all([
-    db.teamAssignment.findMany({
-      where: { matchId },
-      orderBy: { id: "asc" },
-      select: { userId: true, team: true, user: { select: { name: true } } },
-    }),
-    db.attendance.findMany({ where: { matchId, status: "CONFIRMED" }, select: { userId: true } }),
-  ]);
-  return teamSheetNames(
-    rows.map((r) => ({ userId: r.userId, team: r.team, name: r.user.name })),
-    new Set(playing.map((p) => p.userId)),
-    lang,
-  );
-}
-
-/**
- * "swap/switch/flip the colours", "swap colors", "swap red and yellow" —
- * a request to flip the team LABELS while keeping the exact same player
- * groupings. Deterministic guard so it NEVER reaches the LLM's
- * generate_teams_request path, which rebalances into different teams
- * (Kemal 2026-06-09: "swap the colours and keep the same teams" ran a
- * full regen and produced different teams the night of a match). Returns
- * null when it isn't a colour swap or no teams exist yet — caller falls
- * through to normal handling.
- */
-// `looksLikeColourSwapPhrase` (the literal-colour half, English and
-// Turkish) lives in `lib/team-colour-swap.ts`. When it returns false the
-// peel hands the handler the WHOLE body, so the custom-label branch below
-// is reached exactly as it was before clause peeling existed.
-async function handleColorSwapIfApplicable(
-  orgId: string,
-  rawBody: string,
-): Promise<{ reply: string; logReason: string } | null> {
-  const body = (rawBody || "").trim();
-
-  // Fast path: "swap/flip the colours" or "swap red and yellow" need no DB
-  // lookup — the literal colour words / "colours" keyword are enough.
-  const hasSwapVerb =
-    /\b(swap|switch|flip|reverse|invert|change)\b/i.test(body) ||
-    new RegExp(TR_SWAP_VERB, "u").test(body.toLocaleLowerCase("tr"));
-  let isColourSwap = looksLikeColourSwapPhrase(body);
-
-  // Cheap pre-gate before touching the DB: only orgs with a swap verb in
-  // the message can possibly be a "swap <labelA> and <labelB>" — anything
-  // without a swap verb can't be a colour swap at all.
-  if (!isColourSwap && !hasSwapVerb) return null;
-
-  const match = await db.match.findFirst({
-    where: {
-      activity: { orgId },
-      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-    },
-    orderBy: { date: "asc" },
-    include: {
-      activity: {
-        include: {
-          sport: { select: { teamLabels: true } },
-          org: { select: { teamLabels: true, language: true } },
-        },
-      },
-      teamAssignments: { include: { user: { select: { name: true } } } },
-    },
-  });
-  // No teams generated yet → nothing to flip; let normal handling decide.
-  if (!match || match.teamAssignments.length === 0) return null;
-
-  // Custom-label aware detection: if not already a literal red/yellow or
-  // "colours" swap, recognise "swap <labelA> and <labelB>" using THIS org's
-  // configured team labels (resolved from Organisation/Sport.teamLabels).
-  // Red/Yellow stay covered by the regexes above as a fallback.
-  if (!isColourSwap) {
-    const cfgLabels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
-    // English "swap <A> and <B>" or Turkish "<A> ile <B>'yi değiştir";
-    // one definition, in `lib/team-colour-swap.ts`.
-    if (looksLikeLabelSwapPhrase(body, cfgLabels)) isColourSwap = true;
-    if (!isColourSwap) return null;
-  }
-
-  // Flip every assignment RED<->YELLOW in one transaction — same rosters,
-  // labels swapped. No rebalance, no LLM.
-  await db.$transaction(
-    match.teamAssignments.map((t) =>
-      db.teamAssignment.update({
-        where: { id: t.id },
-        data: { team: t.team === "RED" ? "YELLOW" : "RED" },
-      }),
-    ),
-  );
-
-  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
-  return {
-    reply: buildColourSwapReply({
-      sheet: buildTeamSheet({
-        redLabel: labels[0],
-        yellowLabel: labels[1],
-        ...(await honestSheetNames(match.id, match.activity.org.language)),
-      }),
-      lang: match.activity.org.language,
-    }),
-    logReason: `colour-swap applied (labels flipped, rosters unchanged)`,
-  };
 }

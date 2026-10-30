@@ -1,76 +1,18 @@
 /**
- * A FAST PATH CLAIMS A CLAUSE, NOT A MESSAGE.
+ * WHAT A FAST PATH TOOK, AND WHAT IS LEFT FOR THE PIPELINE.
  *
- * ═══════════════════════════════════════════════════════════════════════
- * THE BUG CLASS THIS MODULE EXISTS TO END
- * ═══════════════════════════════════════════════════════════════════════
+ * A fast path that owns only part of a message (the monthly reader's list,
+ * with the member's own words around it as `residual`) leaves the rest in
+ * the batch, so the router and the attendance engine still read it. Its
+ * own outcome is deferred (`ClauseReport`) and merged into the ONE result
+ * the pipeline produces for that message (`applyClauseReports`):
+ * MatchTime replies once or not at all.
  *
- * `api/whatsapp/analyze/route.ts` is a long per-message loop of fast
- * paths. Each one used to do this:
- *
- *     fastPathHandledIds.add(m.waMessageId);   // peel the WHOLE message
- *     continue;                                // skip every guard below
- *
- * A message was claimed ENTIRELY by whichever fast path matched first,
- * and everything else in it was destroyed. SIX production incidents,
- * all the same shape:
- *
- *   1. 2026-09-01  the recruit regex claimed "Najib is out. We need one
- *                  more player" and threw the drop away. The owner was
- *                  told his squad was full moments after saying a player
- *                  was out.
- *   2. PR #29      the guest-name-ask branch discarded the sender's own
- *                  attendance. Caught in review.
- *   3. §10 step 6  an engine short-circuit would have bypassed PR #39's
- *                  pasted-roster clamp.
- *   4. 2026-09-06  a pasted list swallowed the sender's own drop; he
- *                  stayed CONFIRMED and his slot was never offered.
- *   5. 2026-09-08  a BENCH clause poisoned a whole message and took a
- *                  clean "David is OUT" down with it. Fixed PER ENTRY in
- *                  `interaction-contract.ts:registerForEntryRequiresTag`.
- *   6. 2026-09-08  "@Match Time swap Elvin with Raihan, and I'm out"
- *                  applied the swap and lost the sender's OUT.
- *
- * Incident 5's fix is the pattern, and this module is the same move one
- * layer up: **ask the question per CLAUSE, not per message**. There is no
- * longer a message-shaped answer for a fast path to over-apply.
- *
- * ═══════════════════════════════════════════════════════════════════════
- * THE SAFETY PROPERTY: THIS OWNS NOT ONE MESSAGE MORE
- * ═══════════════════════════════════════════════════════════════════════
- *
- * `peelClause` REFUSES before it splits anything unless the predicate
- * matches the WHOLE body — the exact test the caller ran before this
- * module existed. So the set of messages a fast path owns is unchanged,
- * byte for byte. The only thing this adds is a `residual`: the clauses
- * the fast path did NOT recognise, handed back to the caller to send on
- * down the pipeline. A clause peel can never make a handled message
- * unhandled, and it can never make an unhandled message handled.
- *
- * ═══════════════════════════════════════════════════════════════════════
- * THE BOUNDARIES, AND THE TWO THIS DELIBERATELY DOES NOT TAKE
- * ═══════════════════════════════════════════════════════════════════════
- *
- * A boundary is a newline, a sentence terminator, a semicolon, or a
- * comma FOLLOWED BY a coordinator ("…, and I'm out"). That is enough for
- * incident 6 verbatim and for incident 5's shape.
- *
- * NOT a bare "and". "swap the reds and yellows" and "dm me who's in and
- * who's out" are single requests; splitting them would break two shipped
- * features to fix a third. THE COST, stated rather than discovered
- * later: "swap A with B and I'm out", with no comma, is NOT split, so it
- * behaves exactly as it does today — the swap applies and the OUT is
- * lost. That is a narrower fix than the incident deserves and it is the
- * deliberate half, because the alternative direction of error is worse:
- *
- * NOT a bare comma either, for the same reason plus one of its own.
- * `parseSwapNames` reads "swap Nabeel, Adam" with the comma AS the
- * separator, and "my stats, I'm in the top 5 right?" is one thought
- * whose second half reads as a self-registration ONLY once it has been
- * torn off the first. Handing a fragment to the attendance extractor
- * with its context removed is how a WRONG write happens, and §13's trade
- * is explicit about which way to err: "a missed add is recoverable in
- * one message; a wrong registration on a paid match is not."
+ * The regex clause splitter that stood here (`splitClauses`, `peelClause`:
+ * newlines, sentence ends, "; " and ", and") is deleted (2026-10-30, Kemal:
+ * "no string parsing at all"). What part of a message a fast path took is
+ * now said by the model that read it (the monthly reader's `residual`),
+ * never cut out of the words by code.
  */
 
 /** What a fast path took, and what is left for the pipeline. */
@@ -80,76 +22,6 @@ export interface ClausePeel {
   /** Everything else in the message, in order. `""` when the fast path
    *  legitimately owns the whole thing. */
   residual: string;
-}
-
-/**
- * Words that can OPEN a clause without carrying meaning into it. Stripped
- * from the front of every clause so the residual handed to the extractor
- * reads as its own sentence ("and I'm out" → "I'm out") rather than as a
- * fragment of one.
- */
-const LEADING_COORDINATOR = /^(?:and|but|also|plus|then|so|&)\b[\s,]*/i;
-
-/**
- * The boundary set. Read as an alternation of four things:
- *   - one or more newlines
- *   - the whitespace AFTER a sentence terminator (a lookbehind, so the
- *     terminator stays attached to the clause it ends, and so "5.5" in
- *     "we won 5.5 to 2" is never a boundary — the dot there is followed
- *     by a digit, not by whitespace)
- *   - a semicolon
- *   - a comma followed by a coordinator
- */
-const BOUNDARY =
-  /(?:\r?\n)+|(?<=[.!?…])\s+|\s*;\s*|\s*,\s+(?=(?:and|but|also|plus|then|so|&)\b)/i;
-
-/**
- * Cut a message body into clauses. Terminal punctuation is PRESERVED on
- * the clause it ends — the text a clause peel hands onward should read
- * the way the sender wrote it, not the way a tokeniser left it.
- */
-export function splitClauses(body: string): string[] {
-  return (body ?? "")
-    .split(BOUNDARY)
-    .map((c) => (c ?? "").trim().replace(LEADING_COORDINATOR, "").trim())
-    .filter((c) => c.length > 0);
-}
-
-/**
- * WHAT A FAST PATH MAY CLAIM.
- *
- * `matches` is the fast path's OWN whole-body test, unchanged — the
- * regex or parser it already ran. It is applied twice:
- *
- *   1. To the whole body FIRST. A `false` here returns null and the
- *      caller does exactly what it does today: nothing. This is the
- *      guarantee that ownership does not widen.
- *   2. To each clause, to find which one the fast path was reacting to.
- *      The FIRST match wins, and every other clause becomes the
- *      residual.
- *
- * When no single clause matches — the split broke the phrase the
- * predicate needed, as it does for "please swap Nabeel, Adam" — the
- * whole body is the consumed clause and the residual is empty. That is
- * today's behaviour, reached deliberately rather than by accident.
- */
-export function peelClause(
-  body: string,
-  matches: (clause: string) => boolean,
-): ClausePeel | null {
-  const whole = (body ?? "").trim();
-  if (!whole) return null;
-  if (!matches(whole)) return null;
-
-  const clauses = splitClauses(whole);
-  if (clauses.length > 1) {
-    const idx = clauses.findIndex(matches);
-    if (idx >= 0) {
-      const residual = clauses.filter((_, i) => i !== idx).join(" ").trim();
-      if (residual) return { consumed: clauses[idx], residual };
-    }
-  }
-  return { consumed: whole, residual: "" };
 }
 
 /**

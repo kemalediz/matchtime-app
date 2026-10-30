@@ -33,7 +33,7 @@
  *                     all" survives two owners writing for one message.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
-import { engineOn, selfOut } from "../helpers/stub";
+import { engineOn, selfOut, setTeamAlsoStub } from "../helpers/stub";
 import { U, PHONE, MATCH, NAME } from "../helpers/constants";
 import type { TestDb } from "../helpers/test-db";
 
@@ -103,107 +103,6 @@ async function seedTheIncident(db: TestDb): Promise<void> {
 const PAT = NAME.player.split(" ")[0];
 const IAN = NAME.fresh.split(" ")[0];
 
-test.describe("incident #6 — the swap peel used to swallow the sender's OUT", () => {
-  test.beforeEach(async ({ db }) => {
-    resetDb();
-    await seedTheIncident(db);
-  });
-
-  test("the swap applies AND the sender is dropped", async ({ request, db }) => {
-    // The residual — what is LEFT of the message once the swap clause is
-    // peeled off — is what reaches the router and the extractor. Stubbing
-    // it by body is how this spec asserts the split happened at all: if
-    // the whole message were still being peeled, nothing would ever be
-    // routed and this stub would go unread.
-    engineOn({ "I'm out": { route: "self_att", facts: selfOut() } });
-
-    await postAnalyze(request, [
-      {
-        waMessageId: msgId(),
-        body: `@Match Time swap ${PAT} with ${IAN}, and I'm out`,
-        authorPhone: PHONE.admin,
-        authorName: NAME.admin,
-        botMentioned: true,
-      },
-    ]);
-
-    // HALF ONE — the slot moved. Ian holds the RED slot Pat left behind.
-    expect(await sheet(db)).toContain(`${NAME.fresh}:RED`);
-    expect(await sheet(db)).not.toContain(`${NAME.player}:RED`);
-
-    // HALF TWO — the thing six incidents lost. The sender said he was
-    // out in the same breath and he is out.
-    expect(await statusOf(db, U.admin)).toBe("DROPPED");
-
-    // A swap still never moves anybody else's attendance.
-    expect(await statusOf(db, U.player)).toBe("DROPPED");
-    expect(await statusOf(db, U.fresh)).toBe("CONFIRMED");
-  });
-
-  test("ONE reply, not two — the invariant survives two owners", async ({ request }) => {
-    engineOn({ "I'm out": { route: "self_att", facts: selfOut() } });
-
-    const id = msgId();
-    const res = await postAnalyze(request, [
-      {
-        waMessageId: id,
-        body: `@Match Time swap ${PAT} with ${IAN}, and I'm out`,
-        authorPhone: PHONE.admin,
-        authorName: NAME.admin,
-        botMentioned: true,
-      },
-    ]);
-
-    // Exactly one result for the message, and exactly one outbound
-    // message inside it. Two owners WROTE; one SPOKE.
-    const mine = res.results.filter((r: { waMessageId: string }) => r.waMessageId === id);
-    expect(mine, JSON.stringify(res.results)).toHaveLength(1);
-    const speaks = res.results.filter(
-      (r: { reply: string | null }) => (r.reply ?? "").length > 0,
-    );
-    expect(speaks).toHaveLength(1);
-
-    // And the one message that IS sent carries the team sheet the swap
-    // clause asked for — the half that would otherwise be silently
-    // replaced by the drop's ack.
-    expect(speaks[0].reply).toContain(NAME.fresh);
-  });
-
-  test("the single-purpose swap is unchanged", async ({ request, db }) => {
-    const res = await postAnalyze(request, [
-      {
-        waMessageId: msgId(),
-        body: `@Match Time swap ${PAT} with ${IAN}`,
-        authorPhone: PHONE.admin,
-        authorName: NAME.admin,
-        botMentioned: true,
-      },
-    ]);
-    expect(await sheet(db)).toContain(`${NAME.fresh}:RED`);
-    // Nobody's attendance moved, and the admin who asked is still in.
-    expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
-    const owned = res.results.find((r: { intent: string }) => r.intent === "team_swap");
-    expect(owned, JSON.stringify(res.results)).toBeTruthy();
-    expect(owned.reply).toContain(NAME.fresh);
-  });
-});
-
-// ── THE OTHER FOUR PEELS ────────────────────────────────────────────
-//
-// Same mechanism, two more sites. TWO OF THE ORIGINAL SIX ARE GONE, and
-// both went with the regex that made them possible: the stats blast on
-// 2026-09-10 (three ANDed keyword tests, 69 mass DMs) and the
-// rating-progress answer on 2026-09-11 (a rating word AND a progress
-// word, which this file used to call out as the widest of the six).
-// What replaced each is a fact the model extracts on a WHOLE-message
-// route, so the compound form loses its attendance half — the price
-// stated in `lib/stats-blast.ts` and `lib/rating-progress-answer.ts`,
-// and measured by the last two tests in this file.
-//
-// Each is asserted three ways: the compound message lands BOTH halves,
-// the single-purpose message is unchanged, and exactly one outbound
-// message is produced.
-
 /** Every DM queued for a phone, newest first. */
 async function dms(db: TestDb, phone: string): Promise<string[]> {
   const rows = await db.all<{ text: string }>(
@@ -217,41 +116,50 @@ function speaks(res: { results: Array<{ reply: string | null }> }) {
   return res.results.filter((r) => (r.reply ?? "").length > 0);
 }
 
-test.describe("the colour swap keeps the sender's OUT", () => {
+// ── THE SWAP PEELS ARE GONE (2026-10-30): BOTH HALVES STILL HAPPEN ────
+//
+// The swap pre-peels were regexes over the words (Kemal: no string
+// parsing). A compound "swap X with Y, and I'm out" is one message on one
+// route. Routed to attendance, the engine drops the sender, and the swap
+// half is the engine's signal (`team-also-signal.ts`: the attendance
+// extractor's "teams" side request, P1): the teams extractor reads it and
+// the slot moves, in the same one reply. Stubbed here: one facts body
+// carries both readings (each extractor reads its own fields).
+test.describe("a compound swap: the attendance half and the team half both land", () => {
   test.beforeEach(async ({ db }) => {
     resetDb();
     await seedTheIncident(db);
   });
 
-  test("flips the sides AND drops the sender, in one reply", async ({ request, db }) => {
-    engineOn({ "I'm out": { route: "self_att", facts: selfOut() } });
-    const res = await postAnalyze(request, [
-      {
-        waMessageId: msgId(),
-        body: "@Match Time swap the colours, and I'm out",
-        authorPhone: PHONE.admin,
-        authorName: NAME.admin,
-        botMentioned: true,
+  test("routed self_att with the engine's team signal: the sender is dropped AND the slot moves, one reply", async ({ request, db }) => {
+    const body = `@Match Time swap ${PAT} with ${IAN}, and I'm out`;
+    engineOn({
+      [body]: {
+        route: "self_att",
+        facts: {
+          ...selfOut(),
+          action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: [PAT, IAN], pairings: [], swapSides: false,
+        },
       },
+    });
+    setTeamAlsoStub({ bodies: [body] });
+    const res = await postAnalyze(request, [
+      { waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
     ]);
-    // Colin was YELLOW in the seed; the flip puts him on RED.
-    expect(await sheet(db)).toContain(`${NAME.collector}:RED`);
     expect(await statusOf(db, U.admin)).toBe("DROPPED");
-    expect(speaks(res)).toHaveLength(1);
+    expect(await sheet(db)).toContain(`${NAME.fresh}:RED`);
+    const said = speaks(res);
+    expect(said).toHaveLength(1);
+    expect(said[0].reply).toContain(NAME.fresh);
   });
 
-  test("the single-purpose colour swap is unchanged", async ({ request, db }) => {
+  test("without the engine's signal the attendance half still lands (the OUT is never lost)", async ({ request, db }) => {
+    const body = `@Match Time swap ${PAT} with ${IAN}, and I'm out`;
+    engineOn({ [body]: { route: "self_att", facts: selfOut() } });
     await postAnalyze(request, [
-      {
-        waMessageId: msgId(),
-        body: "@Match Time swap the colours",
-        authorPhone: PHONE.admin,
-        authorName: NAME.admin,
-        botMentioned: true,
-      },
+      { waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
     ]);
-    expect(await sheet(db)).toContain(`${NAME.collector}:RED`);
-    expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
+    expect(await statusOf(db, U.admin)).toBe("DROPPED");
   });
 });
 
@@ -313,23 +221,6 @@ test.describe("the answer peels keep the sender's OUT", () => {
     expect(said).toHaveLength(1);
     expect(said[0].reply).toBe(`📊 ${NAME.admin.split(" ")[0]}, I'm sending your stats to you privately by DM.`);
     expect((said[0] as { react?: string | null }).react ?? null).toBeNull();
-  });
-
-  test("dm me — answers privately AND drops the sender", async ({ request, db }) => {
-    engineOn({ "I'm out": { route: "self_att", facts: selfOut() } });
-    const before = (await dms(db, PHONE.admin)).length;
-    const res = await postAnalyze(request, [
-      {
-        waMessageId: msgId(),
-        body: "@Match Time dm me the fixtures. Also I'm out",
-        authorPhone: PHONE.admin,
-        authorName: NAME.admin,
-        botMentioned: true,
-      },
-    ]);
-    expect((await dms(db, PHONE.admin)).length).toBeGreaterThan(before);
-    expect(await statusOf(db, U.admin)).toBe("DROPPED");
-    expect(speaks(res).length).toBeLessThanOrEqual(1);
   });
 
   // ── THE STATS BLAST IS NO LONGER A PEEL, AND THIS IS THE COST ──────

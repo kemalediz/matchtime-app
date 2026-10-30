@@ -4,12 +4,11 @@
  * `football-8aside` was missing: a club that chose 8 players per side in
  * the self-join setup (`sportForPlayersPerSide`) fell through to plain
  * football balanced on rating alone, and the group-add onboarding
- * (`presetForSide`) fell all the way back to the 7-a-side preset.
+ * fell all the way back to the 7-a-side preset.
  */
 import { describe, it, expect } from "vitest";
 import { SPORT_PRESETS, findPreset } from "@/lib/sport-presets";
 import { sportForPlayersPerSide } from "@/lib/club-connect-rules";
-import { presetForSide } from "@/lib/onboarding-conversation";
 import { balanceTeams } from "@/lib/team-balancer";
 import type { PlayerWithRating } from "@/types";
 
@@ -40,8 +39,8 @@ describe("football-8aside", () => {
     expect(keys.indexOf("football-8aside")).toBe(keys.indexOf("football-7aside") + 1);
   });
 
-  it("is what the in-group setup picks for 8 per side", () => {
-    expect(presetForSide(8).preset).toBe("football-8aside");
+  it("is what is picked for 8 per side", () => {
+    expect(sportForPlayersPerSide(8).preset).toBe("football-8aside");
   });
 });
 
@@ -73,8 +72,8 @@ describe("football-9aside", () => {
     expect(sport.positionComposition).toEqual({ GK: 1, DEF: 3, MID: 3, FWD: 2 });
   });
 
-  it("is what the in-group setup picks for 9 per side", () => {
-    const p = presetForSide(9);
+  it("is what is picked for 9 per side", () => {
+    const p = sportForPlayersPerSide(9);
     expect(p.preset).toBe("football-9aside");
     expect(p.playersPerTeam).toBe(9);
   });
@@ -136,29 +135,26 @@ describe("every preset", () => {
  * live preset, and for a size with none it builds the same plain-football
  * sport the self-join setup builds.
  */
-describe("in-group setup picks only a live sport (presetForSide)", () => {
+describe("only a live sport is picked for a size (sportForPlayersPerSide)", () => {
   const FOOTBALLISH = /^(football-\d+aside|futsal)$/;
 
   it.each([5, 7, 11])("%d per side is the football preset", (n) => {
-    const p = presetForSide(n);
+    const p = sportForPlayersPerSide(n);
     expect(p.preset).toBe(`football-${n}aside`);
     expect(p.name).toBe(`Football ${n}-a-side`);
     expect(p.playersPerTeam).toBe(n);
   });
 
-  it.each([3, 4, 6, 10])("%d per side is plain football, the same sport self-join builds", (n) => {
-    const p = presetForSide(n);
+  it.each([3, 4, 6, 10])("%d per side is plain football", (n) => {
+    const p = sportForPlayersPerSide(n);
     expect(p.preset).toBeNull();
     expect(p.name).toBe(`Football ${n}-a-side`);
     expect(p.playersPerTeam).toBe(n);
-    const { name: _name, ...rest } = p;
-    const { name: _sjName, ...selfJoin } = sportForPlayersPerSide(n);
-    expect(rest).toEqual(selfJoin);
   });
 
   it("never picks a sport that is not football, for any size", () => {
     for (let n = 1; n <= 15; n++) {
-      const p = presetForSide(n);
+      const p = sportForPlayersPerSide(n);
       if (p.preset !== null) expect(p.preset).toMatch(FOOTBALLISH);
       expect(p.positions).toEqual(["GK", "DEF", "MID", "FWD"]);
       expect(p.mvpLabel).toBe("Man of the Match");

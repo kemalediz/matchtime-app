@@ -13,16 +13,20 @@
  *
  * Kemal's rules, pinned here against Postgres:
  *
- *   • a pairing preference builds nothing;
- *   • "generate the teams" before match day gets a polite reply and
- *     builds nothing;
- *   • on match day it builds, and asking again replaces the sheet;
- *   • an admin's "clear the teams" clears; a non-admin's is refused.
+ *   • teams are built only on match day (a fact);
+ *   • whether a message asks for teams is the teams extractor's reading
+ *     (2026-10-30, no word test): the joke read as people put together
+ *     (`swap` with a pairing, what the rewritten prompt gives) builds
+ *     nothing and gets one line;
+ *   • on match day "generate the teams" builds, and asking again
+ *     replaces the sheet.
  *
- * The router and the extractor are STUBBED with the verdicts production
- * actually produced (from the AnalyzedMessage rows): no model is called.
- * The clear is a deterministic peel before the router, so its messages
- * carry no stub at all; if they needed one this would test the wrong code.
+ * The clear by message is gone with its word test (2026-10-30): the
+ * teams extractor has no `clear` action yet, so "delete these teams" is
+ * whatever the extractor reads it as. Pinned below for the reading that
+ * matters most: it is never a build before match day.
+ *
+ * The router and the extractor are STUBBED: no model is called.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { engineOn } from "../helpers/stub";
@@ -39,10 +43,10 @@ const GEN = "@Match Time generate the teams";
 const REGEN = "@Match Time regenerate the teams";
 const CLEAR = "@Match Time delete these teams, early to form them, there is still 5 days";
 
-/** The extractor's facts for the joke, verbatim from production. */
+/** The joke as the rewritten teams prompt reads it: people put together. */
 const JOKE_ROUTING = {
   route: "balancer",
-  facts: { action: "generate", includeRefs: [], teamNames: null, swaps: [], pairings: [["me", "these guys"]] },
+  facts: { action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: [], pairings: [["me", "these guys"]], swapSides: false },
 };
 const GEN_ROUTING = {
   route: "balancer",
@@ -106,7 +110,7 @@ test.describe("teams are built only on a clear ask, only on match day", () => {
     await twoASide(db);
   });
 
-  test("THE INCIDENT: the pairing joke five days early builds nothing", async ({ request, db }) => {
+  test("THE INCIDENT: the pairing joke builds nothing and gets one line", async ({ request, db }) => {
     engineOn({ [JOKE]: JOKE_ROUTING });
     const id = msgId();
     const res = await postAnalyze(request, [
@@ -115,7 +119,7 @@ test.describe("teams are built only on a clear ask, only on match day", () => {
     expect(await teamRows(db)).toBe(0);
     expect(await matchStatus(db)).toBe("UPCOMING");
     const r = resultFor(res, id);
-    expect(r.reply).toBe("I only build the teams on match day, when someone asks me to generate them.");
+    expect(r.reply).toBe("Sorry, I can't do that one yet.");
     expect(r.intent).not.toBe("generate_teams_request");
   });
 
@@ -128,8 +132,7 @@ test.describe("teams are built only on a clear ask, only on match day", () => {
     ]);
     expect(await teamRows(db)).toBe(0);
     expect(await matchStatus(db)).toBe("UPCOMING");
-    // It IS match day, so the line says how to ask, never "on match day".
-    expect(resultFor(res, id).reply).toBe(`Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I'll build them.`);
+    expect(resultFor(res, id).reply).toBe("Sorry, I can't do that one yet.");
   });
 
   test("'generate the teams' before match day gets the polite reply and builds nothing", async ({
@@ -220,50 +223,21 @@ test.describe("teams are built only on a clear ask, only on match day", () => {
   });
 });
 
-test.describe("an admin can clear the teams", () => {
+test.describe("'delete these teams' is never a build before match day", () => {
   test.beforeEach(async ({ db }) => {
     resetDb();
+    await twoASide(db);
     await seedPublishedSheet(db);
   });
 
-  test("THE INCIDENT MESSAGE from the admin clears the sheet and says so in one line", async ({
-    request,
-    db,
-  }) => {
+  test("even read as generate, nothing is rebuilt before match day and the sheet stands", async ({ request, db }) => {
+    engineOn({ [CLEAR]: GEN_ROUTING });
     const id = msgId();
     const res = await postAnalyze(request, [
       { waMessageId: id, body: CLEAR, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
     ]);
-    expect(await teamRows(db)).toBe(0);
-    expect(await matchStatus(db)).toBe("UPCOMING");
-    const r = resultFor(res, id);
-    expect(r.reply).toBe("Teams cleared. I'll build new ones on match day when asked.");
-    expect(r.intent).toBe("clear_teams_request");
-  });
-
-  test("a NON-ADMIN asking is refused politely and the sheet is untouched", async ({ request, db }) => {
-    const id = msgId();
-    const res = await postAnalyze(request, [
-      {
-        waMessageId: id,
-        body: "@Match Time clear the teams",
-        authorPhone: PHONE.rater, // Riley Rater, an ordinary member
-        authorName: NAME.rater,
-        botMentioned: true,
-      },
-    ]);
     expect(await teamRows(db)).toBe(4);
     expect(await matchStatus(db)).toBe("TEAMS_PUBLISHED");
-    expect(resultFor(res, id).reply).toBe("Only an admin can clear the teams.");
-  });
-
-  test("clearing when there are no teams says so, and nothing else happens", async ({ request, db }) => {
-    await db.run(`DELETE FROM "TeamAssignment" WHERE "matchId" = $1`, [MATCH.upcoming]);
-    await db.run(`UPDATE "Match" SET status = 'UPCOMING' WHERE id = $1`, [MATCH.upcoming]);
-    const id = msgId();
-    const res = await postAnalyze(request, [
-      { waMessageId: id, body: "@Match Time scrap the teams", authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
-    ]);
-    expect(resultFor(res, id).reply).toBe("There are no teams to clear.");
+    expect(resultFor(res, id).reply).toBe("I'll build the teams on match day, just ask me then.");
   });
 });

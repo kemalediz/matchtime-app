@@ -35,20 +35,21 @@
  *
  *   • `show`     → `answer-batch.ts`  (`ANSWER_TEAM_ACTIONS`)
  *   • `generate` → HERE              (`TEAM_OPS_TEAM_ACTIONS`)
- *   • `rename`, `swap` → neither runs the balancer, see below. Since
- *     2026-09-29 both are OWNED here and answered in one line
- *     ("Sorry, I can't do that one yet.") instead of going silent.
+ *   • `swap`     → HERE, since 2026-10-30, for the two changes the
+ *     players' group supports (the teams swap over; two players swap or a
+ *     replacement takes a stale slot), applied by `team-swap-apply.ts`
+ *     from the facts and the database. They used to be regex fast paths in
+ *     the analyze route.
+ *   • `rename`, `suggest`, any other `swap` → owned and answered in one
+ *     line ("Sorry, I can't do that one yet.").
  *
- * AND SINCE 2026-09-29, TWO GATES IN CODE ON `generate` (the Sutton FC
+ * ONE GATE IN CODE ON `generate`, a fact: the target match must be TODAY
+ * in London (`isMatchDay`), or the asker is told "I'll build the teams on
+ * match day, just ask me then." and nothing is written (the Sutton FC
  * incident of 24 Sep, where a pairing joke built the teams five days
- * early; `lib/team-requests.ts` has the full story):
- *
- *   • the WORDS must clearly ask for the teams to be built
- *     (`isExplicitTeamBuildRequest`), or the message is owned and told
- *     teams are built on request, on match day;
- *   • the target match must be TODAY in London (`isMatchDay`), or the
- *     asker is told "I'll build the teams on match day, just ask me
- *     then." and nothing is written, force-includes included.
+ * early). The word test that also stood here (`isExplicitTeamBuildRequest`)
+ * is deleted: whether a message asks for new teams is the extractor's
+ * reading ("put me with these guys" is `swap`, not `generate`).
  *
  * `__tests__/route-flags.test.ts` asserts the two lists are DISJOINT,
  * which is the property that makes two owners safe rather than merely
@@ -66,33 +67,8 @@
  * ─────────────────────────────────────────────────────────────────────
  * WHAT IS HANDED BACK, AND WHY EACH ONE
  * ─────────────────────────────────────────────────────────────────────
- *   • `swap` — IT ALREADY HAS AN OWNER. `route.ts`'s
- *     `handleTeamSwapIfApplicable` / `handleColorSwapIfApplicable` is a
- *     deterministic pre-peel that runs on the RAW BODY with no verdict
- *     at all, so it survives the mega-prompt's deletion untouched.
- *     Owning `swap` here would put two deciders on one message.
- *
- *     ⚠️ 2026-09-08 RE-EXAMINED AND UPHELD, after this hand-back was
- *     the visible symptom of a real incident. "@Match Time do not
- *     regenerate the teams. Instead swap Elvin with Raihan and share us
- *     the teams" produced the operator note
- *     `team action "swap" is not a read (no module owns it)` and a
- *     stale team sheet on a match night. The note was accurate and this
- *     module was not the bug: the pre-peel had ALREADY matched the
- *     sentence and then declined it on its own rule ("both must be
- *     CONFIRMED"), and Elvin was DROPPED. The fix belongs where the
- *     decision was made, so `lib/team-slot-swap.ts` now carries the
- *     full state matrix and the pre-peel also owns the REPLACEMENT
- *     case: a stale slot moves from a player who is not coming to a
- *     confirmed player who has none.
- *
- *     Giving `balancer` a `swap` owner here was considered and
- *     REFUSED, for the reason above and one more: this path's only
- *     apply layer re-runs the balancer, and re-running the balancer is
- *     the precise thing the message asked it not to do. A `swap` owner
- *     here would need a second, non-generating apply layer — a
- *     `TeamAssignment` mover that ignores the extractor's team facts —
- *     which is the pre-peel, written twice.
+ *   • `swap` — applied here from the extractor's facts since 2026-10-30
+ *     (see above), never by re-running the balancer.
  *   • `rename` — IT IS NOT A GENERATE. §10 step 8's brief allowed
  *     mapping it onto generate-with-`teamNames`, and it is refused:
  *     re-running the balancer over line-ups an admin has hand-swapped is
@@ -159,12 +135,12 @@
  *   • the action is `show`                  → not owned here;
  *                                             `answer-batch.ts` answers
  *                                             it
- *   • the action is `rename` or `swap`      → owned; one line saying it
+ *   • `rename`, `suggest`, an unsupported
+ *     `swap`                                → owned; one line saying it
  *                                             cannot be done (2026-09-29)
- *   • `generate` with no clear ask in the
- *     words                                 → owned; one line saying
- *                                             teams are built on request,
- *                                             on match day (2026-09-29)
+ *   • a supported `swap`                    → owned; applied, refused
+ *                                             with the reason, or one
+ *                                             line (2026-10-30)
  *   • `generate` before match day           → owned; "I'll build the
  *                                             teams on match day, just
  *                                             ask me then." Nothing is
@@ -266,15 +242,14 @@ import type {
   Route,
   SquadState,
 } from "./pipeline/types";
-import { isExplicitTeamBuildRequest, isMatchDay } from "./team-requests";
+import { isMatchDay } from "./team-requests";
+import { applyPlayersGroupSwap, playersSwapShape, type PlayersSwapResult } from "./team-swap-apply";
 import {
   TEAM_OPS_APPLY_DEGRADED_PREFIX,
   TEAM_OPS_HANDLED_BY,
   applyGenerateTeams,
   requestNotHandledReply,
-  teamOpsNotABuildRequestReply,
   teamOpsNotMatchDayReply,
-  teamOpsSayGenerateReply,
   type EngineGenerateTeamsWrite,
   type TeamOpsApplyDeps,
 } from "./team-ops-engine";
@@ -289,6 +264,21 @@ export const TEAM_OPS_ROUTES = TEAM_OPS_ENGINE_ROUTES;
 /** The team ACTIONS this module owns, from the same file, so the split
  *  with `answer-batch.ts` lives in one place and cannot drift. */
 export const TEAM_OPS_ACTIONS = TEAM_OPS_TEAM_ACTIONS;
+
+/**
+ * PURE. What this path does with the teams extractor's facts: build
+ * ("generate"), change the teams as they stand ("swap", the two supported
+ * shapes), clear them ("clear", the extractor's action once it has one),
+ * leave it to answer-batch ("show"), or one line ("unsupported").
+ */
+export function teamActionOf(facts: Extract<Facts, { kind: "teams" }>): "generate" | "swap" | "clear" | "show" | "unsupported" {
+  const action = facts.action;
+  if (action === "show") return "show";
+  if (action === "clear") return "clear";
+  if (action === "swap") return playersSwapShape(facts).kind === "unsupported" ? "unsupported" : "swap";
+  if (TEAM_OPS_ACTIONS.includes(facts.action)) return "generate";
+  return "unsupported";
+}
 
 export interface TeamOpsBatchMessage {
   waMessageId: string;
@@ -306,6 +296,9 @@ export interface TeamOpsBatchMessage {
    *  message that merely names MatchTime is never told "I can't". Omitted
    *  → derived from the body. */
   taggedExplicitly?: boolean;
+  /** A WhatsApp reply to one of MatchTime's own posts (the quoted id, a
+   *  fact the Pi computes). Addresses MatchTime like an @ tag does. */
+  repliesToMatchTime?: boolean;
   /** From the router. `undefined` when it never mentioned this id. */
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then this never sees it. */
@@ -340,11 +333,18 @@ export interface TeamOpsMessageOutcome {
   teamsGenerated: boolean;
   /** The write threw. The caller must not say anything cheerful. */
   writeFailed: boolean;
+  /** The reply is a team sheet a swap wrote (two numbered lists): the
+   *  route must not recompose it as the squad post. */
+  teamSheetPost?: boolean;
 }
 
 export interface TeamOpsBatchResult {
   ownedIds: Set<string>;
   outcomes: Map<string, TeamOpsMessageOutcome>;
+  /** The team half of a message another owner (the attendance engine)
+   *  owns: "swap X with Y, and I'm out" (2026-10-30). NOT owned here; the
+   *  caller adds the reply to that owner's one reply. */
+  alsoOutcomes: Map<string, TeamOpsMessageOutcome>;
   /** The match teams were generated for, or null. */
   generatedMatchId: string | null;
   degradations: string[];
@@ -363,6 +363,13 @@ export interface TeamOpsBatchDeps extends TeamOpsApplyDeps {
   /** Injected so a test can prove the write assertion and the
    *  throw-safety without a fabricated rule in the real engine. */
   decide?: (input: EngineInput) => EngineResult;
+  /** Applies a `swap` the teams extractor read (`team-swap-apply.ts`).
+   *  Injected in tests only. */
+  applySwap?: typeof applyPlayersGroupSwap;
+  /** Clears the teams, for the teams extractor's `clear` action. Injected
+   *  in tests only; the real one is `applyClearTeams` (`team-clear.ts`,
+   *  admins only). */
+  clearTeams?: (senderUserId: string | null) => Promise<{ kind: string; reply: string | null; logReason: string }>;
 }
 
 /**
@@ -382,6 +389,7 @@ function empty(degradations: string[] = []): TeamOpsBatchResult {
   return {
     ownedIds: new Set(),
     outcomes: new Map(),
+    alsoOutcomes: new Map(),
     generatedMatchId: null,
     degradations,
     cost: { usd: 0, calls: 0, ms: 0 },
@@ -397,14 +405,22 @@ export async function runTeamOpsBatch(args: {
    *  also knows about the test-only per-request override). */
   enabled: Set<Route>;
   deps: TeamOpsBatchDeps;
+  /** Messages the attendance engine owns that ALSO ask for a team change
+   *  (its reading, a fact: `team-also-signal.ts`). Read with the teams
+   *  extractor here; only a swap or a clear is done for them. */
+  alsoTeams?: ReadonlySet<string>;
 }): Promise<TeamOpsBatchResult> {
   const { orgId, now, messages, history, enabled, deps } = args;
+  const alsoTeams = args.alsoTeams ?? new Set<string>();
   const t0 = Date.now();
 
   // ── Ownership, part 1: everything knowable without a model ─────────
-  const candidates = messages.filter(
-    (m) => !m.gated && stepSevenOwnsRoute(m.route, enabled, TEAM_OPS_ROUTES) && m.tagged,
-  );
+  const routeOwned = (m: TeamOpsBatchMessage) => !m.gated && stepSevenOwnsRoute(m.route, enabled, TEAM_OPS_ROUTES) && m.tagged;
+  // The team half of an engine-owned message (never one this route owns).
+  const isAlso = (m: TeamOpsBatchMessage) => !routeOwned(m) && alsoTeams.has(m.waMessageId) && m.tagged;
+  const candidates = messages.filter((m) => routeOwned(m) || isAlso(m));
+  /** The route the teams extractor is asked for: `balancer` for a team half. */
+  const routeOf = (m: TeamOpsBatchMessage): Route => (isAlso(m) ? "balancer" : (m.route as Route));
   if (candidates.length === 0) return empty();
 
   const degradations: string[] = [];
@@ -452,7 +468,7 @@ export async function runTeamOpsBatch(args: {
   // outcome is silence either way.
   if (!features.teamBalancing) {
     const outcomes = new Map<string, TeamOpsMessageOutcome>();
-    for (const m of candidates) {
+    for (const m of candidates.filter((x) => !isAlso(x))) {
       outcomes.set(m.waMessageId, {
         waMessageId: m.waMessageId,
         route: m.route as Route,
@@ -468,8 +484,9 @@ export async function runTeamOpsBatch(args: {
       });
     }
     return {
-      ownedIds: new Set(candidates.map((m) => m.waMessageId)),
+      ownedIds: new Set(outcomes.keys()),
       outcomes,
+      alsoOutcomes: new Map(),
       generatedMatchId: null,
       degradations,
       cost: { usd: 0, calls: 0, ms: Date.now() - t0 },
@@ -494,9 +511,9 @@ export async function runTeamOpsBatch(args: {
   const factsById = new Map<string, Facts>();
   await fanOutWarmFirst(
     candidates,
-    (m) => extractorCacheKey(m.route as Route),
+    (m) => extractorCacheKey(routeOf(m)),
     async (m) => {
-      const res = await extractForRouteTraced("team_ops", model, m.route as Route, {
+      const res = await extractForRouteTraced("team_ops", model, routeOf(m), {
         id: m.waMessageId,
         body: m.body,
         authorName: m.authorName,
@@ -530,40 +547,29 @@ export async function runTeamOpsBatch(args: {
     },
   );
 
-  // ── Ownership, part 2: shapes only visible after extraction ────────
+  // ── Ownership, part 2: what the extractor read ─────────────────────
   //
-  // ON THE `continue`s. Three defects in one week came from a terminal
-  // `continue` silently skipping every guard below it, so, explicitly:
-  // the ONLY effect of a full pass through this loop body is
-  // `ownedIds.add(...)`. There is no write, no send, no state mutation
-  // and no later guard inside it, so a `continue` can skip exactly one
-  // thing — ownership — which is the intent. Everything a skipped
-  // message still needs happens OUTSIDE the loop: it reaches `decide()`
-  // with `facts: {kind:"none"}` (so `assertCoverage` still sees one
-  // outcome per input id and the window is intact for its neighbours),
-  // it gets no entry in `outcomes`, and its reason is already in
-  // `degradations` before the `continue` runs.
+  // The only effect of a pass through this loop is bookkeeping (a set or
+  // map entry); a `continue` skips ownership and nothing else. A skipped
+  // message still reaches `decide()` with `{kind:"none"}`, and its reason
+  // is in `degradations` first.
   //
-  // 2026-09-29: the loop also sorts owned messages into DECLINED ones,
-  // which is still pure bookkeeping (a map entry, no write): a declined
-  // message is owned, reaches `decide()` with `{kind:"none"}` like any
-  // non-firing neighbour, and gets a one-line reply in the outcomes loop.
+  //   • `generate`  owned; built only on match day (below).
+  //   • `swap`      owned when it is one of the two changes the players'
+  //                 group supports (the two teams swap over, or two
+  //                 players: `team-swap-apply.ts`), applied after the
+  //                 engine from the facts and the database.
+  //   • `rename`, `suggest`, and any other `swap` → "unsupported": one
+  //                 line when MatchTime was addressed (Kemal, 2026-09-29).
+  //   • `show`      not owned here; `answer-batch.ts` answers it.
   //
-  //   • `rename`, `swap` → "unsupported". They used to be handed back,
-  //     which since §10 step 8 is silence plus an operator note. Kemal,
-  //     2026-09-29: a tagged team request that cannot be handled is
-  //     answered in one line, never swallowed. The balancer still never
-  //     runs for them (see the header for why each is not a generate).
-  //   • `generate` whose WORDS hold no clear ask to build the teams →
-  //     "not_a_build". THE 2026-09-24 INCIDENT: "@Match Time put me in
-  //     the same team with these guys in the match 😀" was extracted as
-  //     `generate` with a pairing and built the teams five days early.
-  //     `isExplicitTeamBuildRequest` is a second, independent gate in
-  //     code: the model must say `generate` AND the text must ask.
-  //
-  // `show` is still handed on: `answer-batch.ts` owns it and answers it.
+  // What the words ask for is the extractor's reading alone: no code reads
+  // them (Kemal, 2026-10-30, "no string parsing at all").
   const ownedIds = new Set<string>();
-  const declined = new Map<string, "unsupported" | "not_a_build">();
+  const alsoIds = new Set<string>();
+  const declined = new Map<string, "unsupported">();
+  const swapFacts = new Map<string, Extract<Facts, { kind: "teams" }>>();
+  const clearIds = new Set<string>();
   for (const m of candidates) {
     const facts = factsById.get(m.waMessageId);
     if (!facts) continue; // extraction failed; already reported above.
@@ -581,28 +587,34 @@ export async function runTeamOpsBatch(args: {
       hand(`team action "show" is not owned here (answer-batch.ts owns show)`);
       continue;
     }
-    const decline: "unsupported" | "not_a_build" | null = !TEAM_OPS_ACTIONS.includes(facts.action)
-      ? "unsupported"
-      : !isExplicitTeamBuildRequest(m.body)
-        ? "not_a_build"
-        : null;
-    if (decline) {
-      // Answered out loud only when MatchTime was ADDRESSED. A message
-      // that merely names it ("rate the players via the link from
-      // Matchtime") keeps the old treatment: silence plus the note.
-      if (!(m.taggedExplicitly === true)) {
-        hand(
-          decline === "unsupported"
-            ? `team action "${facts.action}" has no handler on this path`
-            : "extracted as generate, but the words hold no clear ask to build the teams",
-        );
-        continue;
-      }
-      declined.set(m.waMessageId, decline);
+    // ADDRESSED, facts only (`messageTagsBot`): the Pi's mention flag, or a
+    // WhatsApp reply to MatchTime's own post (the quoted id). Never the
+    // router's `to_bot`, which may only let MatchTime answer a question
+    // (Kemal: making, changing or clearing the teams needs the tag). A
+    // message that is not addressed never changes the teams and is never
+    // told "I can't"; it keeps silence plus the note.
+    const addressed =
+      m.taggedExplicitly === undefined ? m.tagged === true : m.taggedExplicitly === true || m.repliesToMatchTime === true;
+    if (!addressed) {
+      hand(`team action "${facts.action}" not addressed to MatchTime`);
+      continue;
     }
+    const kind = teamActionOf(facts);
+    if (isAlso(m)) {
+      // The team half of an engine-owned message: a swap or a clear, done
+      // and added to the engine's one reply; anything else is left alone.
+      if (kind === "swap") swapFacts.set(m.waMessageId, facts);
+      else if (kind === "clear") clearIds.add(m.waMessageId);
+      else continue;
+      alsoIds.add(m.waMessageId);
+      continue;
+    }
+    if (kind === "swap") swapFacts.set(m.waMessageId, facts);
+    else if (kind === "clear") clearIds.add(m.waMessageId);
+    else if (kind !== "generate") declined.set(m.waMessageId, "unsupported");
     ownedIds.add(m.waMessageId);
   }
-  if (ownedIds.size === 0) return empty(degradations);
+  if (ownedIds.size === 0 && alsoIds.size === 0) return empty(degradations);
 
   // ── ONE GENERATE PER BATCH, AND IT IS THE LAST ONE ─────────────────
   //
@@ -614,7 +626,7 @@ export async function runTeamOpsBatch(args: {
   // line apart, with two different line-ups, is the worst possible
   // answer to "generate the teams" asked twice.
   const orderedOwned = messages.filter(
-    (m) => ownedIds.has(m.waMessageId) && !declined.has(m.waMessageId),
+    (m) => ownedIds.has(m.waMessageId) && !declined.has(m.waMessageId) && !swapFacts.has(m.waMessageId) && !clearIds.has(m.waMessageId),
   );
   const firingId = orderedOwned[orderedOwned.length - 1]?.waMessageId ?? null;
   const supersededIds = new Set(
@@ -828,63 +840,125 @@ export async function runTeamOpsBatch(args: {
     if (!degradations.includes(n)) degradations.push(n);
   }
 
-  // ── IS IT MATCH DAY, FOR A DECLINED NON-BUILD? ─────────────────────
+  // ── Stage 5: the swaps, from the facts and the database ────────────
   //
-  // On match day the decline must not say "I only build the teams on
-  // match day"; it says how to ask instead. Reuses the lookup above when
-  // there was one; otherwise one query, only when a non-build was
-  // declined. A lookup that throws falls back to the generic line (it is
-  // true on any day) and the operator hears why.
-  let notABuildOnMatchDay = false;
-  if ([...declined.values()].includes("not_a_build")) {
+  // After the generate (one write path at a time against the match).
+  // Writes TeamAssignment only. A throw says nothing and is reported.
+  const swapResults = new Map<string, PlayersSwapResult>();
+  for (const [id, facts] of swapFacts) {
+    const m = messages.find((x) => x.waMessageId === id)!;
     try {
-      const date =
-        targetMatchDate ?? (await deps.selectTeamsMatch(orgId, now))?.date ?? null;
-      notABuildOnMatchDay = date !== null && isMatchDay(date, now);
+      swapResults.set(
+        id,
+        await (deps.applySwap ?? applyPlayersGroupSwap)({
+          orgId,
+          facts,
+          sender: m.senderUserId ? { userId: m.senderUserId, name: m.senderName ?? m.authorName ?? "" } : null,
+        }),
+      );
     } catch (err) {
+      failedIds.add(id);
       degradations.push(
-        `${TEAM_OPS_APPLY_DEGRADED_PREFIX} the match lookup for a declined non-build failed (${
+        `${TEAM_OPS_APPLY_DEGRADED_PREFIX} ${id}: the team change failed (${
           err instanceof Error ? err.message : String(err)
-        }); the generic line was used`,
+        }); NOTHING was posted`,
+      );
+    }
+  }
+
+  // ── Stage 6: the clears (`team-clear.ts`, admins only) ─────────────
+  const clearResults = new Map<string, { kind: string; reply: string | null; logReason: string }>();
+  for (const id of clearIds) {
+    const m = messages.find((x) => x.waMessageId === id)!;
+    try {
+      const clear =
+        deps.clearTeams ??
+        (async (senderUserId: string | null) => {
+          // Dynamic: `owner-deps.ts` reaches Prisma, which this module's
+          // corpus worker must not load.
+          const [{ applyClearTeams }, { buildTeamClearDeps }] = await Promise.all([import("./team-clear"), import("./owner-deps")]);
+          return applyClearTeams({ senderUserId, lang: state.features.language, deps: buildTeamClearDeps({ orgId, now }) });
+        });
+      clearResults.set(id, await clear(m.senderUserId));
+    } catch (err) {
+      failedIds.add(id);
+      degradations.push(
+        `${TEAM_OPS_APPLY_DEGRADED_PREFIX} ${id}: clearing the teams failed (${err instanceof Error ? err.message : String(err)}); NOTHING was posted`,
       );
     }
   }
 
   // ── Per-message outcomes ───────────────────────────────────────────
   const outcomes = new Map<string, TeamOpsMessageOutcome>();
+  const alsoOutcomes = new Map<string, TeamOpsMessageOutcome>();
   for (const m of messages) {
-    if (!ownedIds.has(m.waMessageId)) continue;
+    if (!ownedIds.has(m.waMessageId) && !alsoIds.has(m.waMessageId)) continue;
+    const into = alsoIds.has(m.waMessageId) ? alsoOutcomes : outcomes;
+
+    if (clearIds.has(m.waMessageId)) {
+      const r = clearResults.get(m.waMessageId);
+      into.set(m.waMessageId, {
+        waMessageId: m.waMessageId,
+        route: routeOf(m),
+        reply: r?.reply ?? null,
+        react: null,
+        intent: "clear_teams_request",
+        action: !r ? "none" : r.kind === "cleared" ? "clear-teams" : r.kind === "not_admin" ? "clear-teams-refused" : "none",
+        reasoning: `${TEAM_OPS_HANDLED_BY} (${m.route}): clear read by the teams extractor; ${r ? r.logReason : "the clear failed"}`,
+        matchId: null,
+        teamsGenerated: false,
+        writeFailed: failedIds.has(m.waMessageId),
+      });
+      continue;
+    }
     const engineOutcome = result.outcomes.find((o) => o.messageId === m.waMessageId);
     const machineReasons = (engineOutcome?.reasons ?? []).join("; ");
     const superseded = supersededIds.has(m.waMessageId);
     const failed = failedIds.has(m.waMessageId);
 
-    const declinedAs = declined.get(m.waMessageId);
-    if (declinedAs) {
+    if (declined.has(m.waMessageId)) {
       outcomes.set(m.waMessageId, {
         waMessageId: m.waMessageId,
         route: m.route as Route,
-        reply:
-          declinedAs === "not_a_build"
-            ? notABuildOnMatchDay
-              ? teamOpsSayGenerateReply(state.features.language)
-              : teamOpsNotABuildRequestReply(state.features.language)
-            : requestNotHandledReply(state.features.language),
+        reply: requestNotHandledReply(state.features.language),
         react: null,
         // NOT `generate_teams_request`: nothing was built, and that
         // label is the cross-module contract for a team POST.
-        intent: declinedAs === "not_a_build" ? "team_request_not_a_build" : "team_request_unsupported",
+        intent: "team_request_unsupported",
         action: "reply",
         reasoning:
-          `${TEAM_OPS_HANDLED_BY} (${m.route}): ` +
-          (declinedAs === "not_a_build"
-            ? "extracted as generate, but the words hold no clear ask to build the teams " +
-              "(a pairing or preference is not a build); nothing was built"
-            : `team action "${(factsById.get(m.waMessageId) as { action?: string } | undefined)?.action ?? "?"}" ` +
-              "has no handler on this path; said so in one line"),
+          `${TEAM_OPS_HANDLED_BY} (${m.route}): team action ` +
+          `"${(factsById.get(m.waMessageId) as { action?: string } | undefined)?.action ?? "?"}" ` +
+          "has no handler on this path; said so in one line",
         matchId: null,
         teamsGenerated: false,
         writeFailed: false,
+      });
+      continue;
+    }
+
+    if (swapFacts.has(m.waMessageId)) {
+      const facts = swapFacts.get(m.waMessageId)!;
+      const r = swapResults.get(m.waMessageId);
+      const sides = facts.swapSides === true;
+      const applied = r?.kind === "applied";
+      // A team half that could not be made says nothing beside the
+      // engine's reply: the engine has already answered the message.
+      if (into === alsoOutcomes && r?.kind === "unsupported") continue;
+      into.set(m.waMessageId, {
+        waMessageId: m.waMessageId,
+        route: m.route as Route,
+        // A throw says nothing (§3.2 S7). A change this path cannot make
+        // is said in one line, as any other unsupported team request.
+        reply: !r ? null : r.kind === "unsupported" ? requestNotHandledReply(state.features.language) : r.reply,
+        react: applied ? "✅" : null,
+        intent: sides ? "team_colour_swap" : "team_swap",
+        action: !r ? "none" : applied ? (sides ? "colour-swap" : "team-swap") : r.kind === "refused" ? "team-swap-refused" : "reply",
+        reasoning: `${TEAM_OPS_HANDLED_BY} (${m.route}): swap read by the teams extractor; ${r ? r.logReason : "the change failed"}`,
+        matchId: null,
+        teamsGenerated: false,
+        writeFailed: failedIds.has(m.waMessageId),
+        teamSheetPost: applied,
       });
       continue;
     }
@@ -944,6 +1018,7 @@ export async function runTeamOpsBatch(args: {
   return {
     ownedIds,
     outcomes,
+    alsoOutcomes,
     generatedMatchId,
     degradations,
     cost: { ...cost, ms: Date.now() - t0 },

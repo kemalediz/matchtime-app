@@ -19,8 +19,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { tr, TR_TEAM_COMMANDS as C } from "../strings.tr";
 import { buildHowToUseMe } from "../../onboarding-conversation";
-import { parseSwapNames } from "../../team-slot-swap";
-import { looksLikeColourSwapPhrase } from "../../team-colour-swap";
 
 const TAG = "@Match Time";
 const ALL_ON = {
@@ -96,24 +94,6 @@ describe("the bot reads every form the copy quotes", () => {
     });
   }
 
-  it("the player swap parses to the two names, placeholder or example", () => {
-    expect(parseSwapNames(typed(C.swapPlayersExample))).toEqual({ a: "ali", b: "can" });
-    expect(parseSwapNames(typed(C.swapPlayers.replace("X", "David").replace("Y", "Ali")))).toEqual({
-      a: "david",
-      b: "ali",
-    });
-    expect(looksLikeColourSwapPhrase(typed(C.swapPlayersExample))).toBe(false);
-  });
-
-  it("the colour swap is the colour pre-peel's, never a player swap", () => {
-    expect(looksLikeColourSwapPhrase(typed(C.swapColours))).toBe(true);
-    expect(parseSwapNames(typed(C.swapColours))).toBeNull();
-  });
-
-  for (const command of [C.generate, C.regenerate, C.show]) {
-    it(`"${typed(command)}" is left for the router and the teams extractor`, () => {
-      expect(looksLikeColourSwapPhrase(typed(command))).toBe(false);
-      expect(parseSwapNames(typed(command))).toBeNull();
-    });
-  }
+  // The forms are READ by the router and the teams extractor (2026-10-30):
+  // no code parses them, so nothing more is pinned here.
 });

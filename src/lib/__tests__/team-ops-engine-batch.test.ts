@@ -32,6 +32,7 @@ import { NOW, fullName, world, type WorldOpts } from "../pipeline/__tests__/help
 import {
   runTeamOpsBatch,
   describeTeamOpsBatch,
+  teamActionOf,
   TEAM_OPS_ROUTES,
   TEAM_OPS_ACTIONS,
   type TeamOpsBatchMessage,
@@ -183,6 +184,7 @@ function msg(o: Partial<TeamOpsBatchMessage> & { body: string }): TeamOpsBatchMe
     // The Pi's mention flag, as the real Pi sets it with its "@Match Time"
     // body rewrite (review of #476), unless the case says otherwise.
     taggedExplicitly: o.taggedExplicitly ?? o.body.includes("@Match Time"),
+    ...(o.repliesToMatchTime === undefined ? {} : { repliesToMatchTime: o.repliesToMatchTime }),
     // `"route" in o` and not `?? "balancer"`: an EXPLICIT `undefined` is
     // the shape of a message the router never mentioned, and it has to
     // survive the builder or the "never owned" test tests nothing.
@@ -570,24 +572,23 @@ describe("actions this module does not own are handed on, with a reason", () => 
     expect(res.degradations.join(" ")).toMatch(/answer-batch\.ts owns show/);
   });
 
-  // CHANGED 2026-09-29 (Kemal: "never fail silently"). A tagged `swap`
-  // or `rename` that reaches this module used to be handed back, which
-  // since §10 step 8 means SILENCE plus an operator note. They are now
-  // OWNED with one honest line. The balancer still never runs for them:
-  // a swap that route.ts's pre-peel could apply never reaches here, and
-  // regenerating over a manual swap is c408649.
-  it("owns a `swap` the pre-peel could not apply, says so in one line, and builds nothing", async () => {
-    const body = "@Match Time swap Kemal and Sait";
+  // A tagged team change the players' group does not support (a named
+  // side, a pairing, one or three names) is OWNED with one honest line
+  // (Kemal, 2026-09-29). The balancer never runs for it.
+  it("owns a `swap` it cannot make (a named side), says so in one line, and builds nothing", async () => {
+    const body = "@Match Time put Kemal in yellow";
     const { model } = stubModel({
       [body]: teamsFacts({ action: "swap", swaps: [{ personRef: "Kemal", team: "YELLOW" }] }),
     });
-    const r = recorder(model, squadWorld());
+    const applySwap = vi.fn();
+    const r = recorder(model, squadWorld(), { applySwap });
     const res = await run({ messages: [msg({ body })], deps: r.deps });
     expect(res.ownedIds.size).toBe(1);
     const out = [...res.outcomes.values()][0];
     expect(out.reply).toBe("Sorry, I can't do that one yet.");
     expect(out.teamsGenerated).toBe(false);
     expect(r.generated).toEqual([]);
+    expect(applySwap).not.toHaveBeenCalled();
   });
 
   it("owns a `rename`, says so in one line, and never regenerates (c408649)", async () => {
@@ -797,6 +798,7 @@ describe("describeTeamOpsBatch", () => {
       {
         ownedIds: new Set(),
         outcomes: new Map(),
+        alsoOutcomes: new Map(),
         generatedMatchId: null,
         degradations: ["extractor died"],
         cost: { usd: 0, calls: 0, ms: 3 },
@@ -812,6 +814,7 @@ describe("describeTeamOpsBatch", () => {
       {
         ownedIds: new Set(),
         outcomes: new Map(),
+        alsoOutcomes: new Map(),
         generatedMatchId: null,
         degradations: [],
         cost: { usd: 0, calls: 0, ms: 0 },
@@ -847,16 +850,19 @@ describe("the apply layer's dependencies are injected, asserted by scanning it",
 //
 // Thu 24 Sep 22:51 BST, after a chemistry table, the admin joked "@Match
 // Time put me in the same team with these guys in the match 😀". The
-// router said `balancer`, the teams extractor said `generate` with the
-// pairing ["me", "these guys"] (verbatim from the prod AnalyzedMessage
-// row), and the balancer built the teams for Tue 29 Sep, five days
-// early. Kemal's rule: teams are built only on a CLEAR ask, and only on
-// match day. Both halves are enforced in code, after the extractor.
+// teams extractor of the day said `generate` with the pairing ["me",
+// "these guys"], and the balancer built the teams for Tue 29 Sep, five
+// days early. Kemal's rule: teams are built only on match day (a fact,
+// enforced here). Whether the words ask for new teams is the extractor's
+// reading alone since 2026-10-30 (no word test): its prompt now reads a
+// message that only puts people together as `swap`.
 
-describe("teams are built only on a clear ask, and only on match day", () => {
+describe("teams are built only on match day, as the extractor read the ask", () => {
   const JOKE = "@Match Time put me in the same team with these guys in the match 😀";
-  // The extractor's real output for the joke, from production.
-  const JOKE_FACTS = teamsFacts({ pairings: [["me", "these guys"]], teamNames: null });
+  // The extractor's output for the joke on 24 Sep (the old prompt).
+  const JOKE_AS_GENERATE = teamsFacts({ pairings: [["me", "these guys"]], teamNames: null });
+  // What the rewritten teams prompt reads it as: people put together.
+  const JOKE_AS_SWAP = teamsFacts({ action: "swap", pairings: [["me", "these guys"]], teamNames: null });
   const THU_2251 = new Date("2026-09-24T21:51:00Z");
   const TUE_KICKOFF = new Date("2026-09-29T19:30:00Z");
   const TUE_MORNING = new Date("2026-09-29T08:00:00Z");
@@ -877,41 +883,21 @@ describe("teams are built only on a clear ask, and only on match day", () => {
     return { r, res, out: [...res.outcomes.values()][0] };
   }
 
-  it("THE INCIDENT: the pairing joke builds nothing and says teams are built on request", async () => {
-    const { r, res, out } = await runAt(THU_2251, JOKE, JOKE_FACTS);
+  it("THE INCIDENT, read as before: five days early nothing is built", async () => {
+    const { r, out } = await runAt(THU_2251, JOKE, JOKE_AS_GENERATE);
     expect(r.generated).toEqual([]);
     expect(r.confirmed).toEqual([]);
-    expect(res.ownedIds.size).toBe(1);
     expect(out.teamsGenerated).toBe(false);
-    expect(out.reply).toBe(
-      "I only build the teams on match day, when someone asks me to generate them.",
-    );
-    expect(out.intent).not.toBe("generate_teams_request");
+    expect(out.reply).toBe("I'll build the teams on match day, just ask me then.");
   });
 
-  it("the pairing joke builds nothing ON MATCH DAY either: a preference is not a build", async () => {
-    const { r, out } = await runAt(TUE_MORNING, JOKE, JOKE_FACTS);
-    expect(r.generated).toEqual([]);
-    expect(out.teamsGenerated).toBe(false);
-    // On match day the line must NOT say "I only build the teams on
-    // match day": it is match day. It says how to ask instead.
-    expect(out.reply).toBe(`Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I'll build them.`);
-    expect(out.reply).not.toMatch(/match day/i);
-  });
-
-  it("if the match lookup throws, a non-build still gets the generic line, and the operator hears why", async () => {
-    const { model } = stubModel({ [JOKE]: JOKE_FACTS });
-    const r = recorder(model, squadWorld(), {
-      selectTeamsMatch: async () => {
-        throw new Error("timeout");
-      },
-    });
-    const res = await run({ messages: [msg({ body: JOKE })], deps: r.deps });
-    expect([...res.outcomes.values()][0].reply).toBe(
-      "I only build the teams on match day, when someone asks me to generate them.",
-    );
-    expect(res.degradations.join(" ")).toMatch(/timeout/);
-    expect(r.generated).toEqual([]);
+  it("THE INCIDENT, as the extractor reads it now: people put together, one line, nothing built", async () => {
+    for (const now of [THU_2251, TUE_MORNING]) {
+      const { r, out } = await runAt(now, JOKE, JOKE_AS_SWAP);
+      expect(r.generated).toEqual([]);
+      expect(out.teamsGenerated).toBe(false);
+      expect(out.reply).toBe("Sorry, I can't do that one yet.");
+    }
   });
 
   it("'generate the teams' five days early gets the polite reply and builds nothing", async () => {
@@ -937,8 +923,8 @@ describe("teams are built only on a clear ask, and only on match day", () => {
     expect(out.intent).toBe("generate_teams_request");
   });
 
-  it("regenerating on match day still runs the balancer (it replaces the existing sheet)", async () => {
-    const body = "@Match Time regenerate the teams once more";
+  it("whatever the words, a generate the extractor read is built on match day: no code reads them", async () => {
+    const body = "@Match Time yeniden kur şunları";
     const { r, out } = await runAt(TUE_MORNING, body, teamsFacts());
     expect(r.generated).toEqual([{ matchId: "match-tue" }]);
     expect(out.teamsGenerated).toBe(true);
@@ -951,16 +937,105 @@ describe("teams are built only on a clear ask, and only on match day", () => {
     expect(early.r.generated).toEqual([]);
     expect(early.out.reply).toBe("Takımları maç günü kuracağım, o gün benden isteyin yeter.");
 
-    const joke = await runAt(THU_2251, "@Match Time beni Sait ile aynı takıma koy", JOKE_FACTS, trState);
+    const joke = await runAt(TUE_MORNING, "@Match Time beni Sait ile aynı takıma koy", JOKE_AS_SWAP, trState);
     expect(joke.r.generated).toEqual([]);
-    expect(joke.out.reply).toBe("Takımları sadece maç günü, biri benden istediğinde kuruyorum.");
+    expect(joke.out.reply).toBe("Kusura bakmayın, bunu henüz yapamıyorum.");
 
     const onTheDay = await runAt(TUE_MORNING, "@Match Time takımları kur", teamsFacts(), trState);
     expect(onTheDay.r.generated).toEqual([{ matchId: "match-tue" }]);
+  });
+});
 
-    const jokeOnTheDay = await runAt(TUE_MORNING, "@Match Time beni Sait ile aynı takıma koy", JOKE_FACTS, trState);
-    expect(jokeOnTheDay.r.generated).toEqual([]);
-    expect(jokeOnTheDay.out.reply).toBe(`Beni etiketleyip takımları kendi cümlelerinizle isteyin (örneğin "@Match Time takımları kur"), kurayım.`);
+// ── 10. A SWAP, READ BY THE TEAMS EXTRACTOR (2026-10-30) ───────────────
+//
+// "swap the colours", "swap A and B" used to be regex fast paths in the
+// analyze route. They now come through the pipeline: router `balancer`,
+// the teams extractor's `swap` facts, applied by `team-swap-apply.ts`.
+
+describe("a swap the teams extractor read is applied from its facts, never by the balancer", () => {
+  const SIDES = "@Match Time swap the colours and keep the same teams";
+  const TWO = "@Match Time swap Elvin with Raihan";
+
+  it("the two teams swap over: applied, ✅, the sheet is the reply and is not recomposed", async () => {
+    const { model } = stubModel({ [SIDES]: teamsFacts({ action: "swap", swapSides: true, moves: [] }) });
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "🎨 Swapped.\n\n*Red*:\n1. A", logReason: "flipped" }));
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: SIDES })], deps: r.deps });
+    expect(applySwap).toHaveBeenCalledTimes(1);
+    expect((applySwap.mock.calls[0] as unknown[])[0]).toMatchObject({ orgId: "org-1", facts: { swapSides: true }, sender: { userId: "u-kemal" } });
+    const out = [...res.outcomes.values()][0];
+    expect(out).toMatchObject({ reply: "🎨 Swapped.\n\n*Red*:\n1. A", react: "✅", intent: "team_colour_swap", action: "colour-swap", teamSheetPost: true });
+    expect(r.generated).toEqual([]);
+  });
+
+  it("two players: applied as a team swap", async () => {
+    const { model } = stubModel({ [TWO]: teamsFacts({ action: "swap", moves: ["Elvin", "Raihan"] }) });
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", logReason: "slot moved" }));
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: TWO })], deps: r.deps });
+    const out = [...res.outcomes.values()][0];
+    expect(out).toMatchObject({ reply: "done", react: "✅", intent: "team_swap", action: "team-swap" });
+    expect(r.generated).toEqual([]);
+  });
+
+  it("a refusal is said with its reason, no ✅, and is not a team post", async () => {
+    const { model } = stubModel({ [TWO]: teamsFacts({ action: "swap", moves: ["Elvin", "Zork"] }) });
+    const applySwap = vi.fn(async () => ({ kind: "refused" as const, reply: "I haven't swapped *Elvin* and *Zork*.", logReason: "unknown" }));
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: TWO })], deps: r.deps });
+    expect([...res.outcomes.values()][0]).toMatchObject({ reply: "I haven't swapped *Elvin* and *Zork*.", react: null, action: "team-swap-refused", teamSheetPost: false });
+  });
+
+  it("a swap naming nobody it can place gets the one line", async () => {
+    const { model } = stubModel({ [TWO]: teamsFacts({ action: "swap", moves: ["it", "seven"] }) });
+    const applySwap = vi.fn(async () => ({ kind: "unsupported" as const, logReason: "nobody" }));
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: TWO })], deps: r.deps });
+    expect([...res.outcomes.values()][0].reply).toBe("Sorry, I can't do that one yet.");
+  });
+
+  it("a swap that throws says nothing and is reported", async () => {
+    const { model } = stubModel({ [TWO]: teamsFacts({ action: "swap", moves: ["Elvin", "Raihan"] }) });
+    const applySwap = vi.fn(async () => {
+      throw new Error("deadlock");
+    });
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: TWO })], deps: r.deps });
+    const out = [...res.outcomes.values()][0];
+    expect(out.reply).toBeNull();
+    expect(out.writeFailed).toBe(true);
+    expect(res.degradations.join(" ")).toMatch(/deadlock/);
+  });
+
+  it("a swap and a generate in one batch: both are done, one balancer run", async () => {
+    const { model } = stubModel({
+      [TWO]: teamsFacts({ action: "swap", moves: ["Elvin", "Raihan"] }),
+      [GEN]: teamsFacts(),
+    });
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", logReason: "x" }));
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: GEN }), msg({ body: TWO })], deps: r.deps });
+    expect(r.generated).toHaveLength(1);
+    expect(applySwap).toHaveBeenCalledTimes(1);
+    expect(res.ownedIds.size).toBe(2);
+  });
+
+  it("a WhatsApp reply to MatchTime's own post addresses it (the quoted id, a fact): the swap is made", async () => {
+    const { model } = stubModel({ [TWO]: teamsFacts({ action: "swap", moves: ["Elvin", "Raihan"] }) });
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", logReason: "x" }));
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: TWO, tagged: true, taggedExplicitly: false, repliesToMatchTime: true })], deps: r.deps });
+    expect(applySwap).toHaveBeenCalledTimes(1);
+    expect([...res.outcomes.values()][0].reply).toBe("done");
+  });
+
+  it("not addressed (a mere mention, not a reply to MatchTime): nothing changes and nothing is said", async () => {
+    const { model } = stubModel({ [TWO]: teamsFacts({ action: "swap", moves: ["Elvin", "Raihan"] }) });
+    const applySwap = vi.fn();
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await run({ messages: [msg({ body: TWO, tagged: true, taggedExplicitly: false })], deps: r.deps });
+    expect(res.ownedIds.size).toBe(0);
+    expect(applySwap).not.toHaveBeenCalled();
   });
 });
 
@@ -975,5 +1050,91 @@ describe("a declined team request is answered only when MatchTime was addressed"
     });
     expect(res.ownedIds.size).toBe(0);
     expect(r.generated).toEqual([]);
+  });
+});
+
+// ── 11. THE TEAM HALF OF AN ATTENDANCE MESSAGE, AND THE CLEAR (2026-10-30)
+
+describe("a message the attendance engine owns that also asks for a team change", () => {
+  const BODY = "@Match Time swap Elvin with Idris, and I'm out";
+
+  it("the swap is made and reported apart, never owned here (one owner, one reply)", async () => {
+    const { model } = stubModel({ [BODY]: teamsFacts({ action: "swap", moves: ["Elvin", "Idris"] }) });
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "swapped", logReason: "x" }));
+    const r = recorder(model, squadWorld(), { applySwap });
+    const res = await runTeamOpsBatch({
+      orgId: "org-1",
+      now: NOW,
+      messages: [msg({ body: BODY, route: "self_att" })],
+      history: [],
+      enabled: new Set<Route>(["balancer"]),
+      deps: r.deps,
+      alsoTeams: new Set([`wa-${BODY.slice(0, 14)}`]),
+    });
+    expect(res.ownedIds.size).toBe(0);
+    expect(applySwap).toHaveBeenCalledTimes(1);
+    expect([...res.alsoOutcomes.values()][0]).toMatchObject({ reply: "swapped", intent: "team_swap" });
+    expect(r.generated).toEqual([]);
+  });
+
+  it("without the engine's signal an attendance message is not read for the teams at all", async () => {
+    const { model, calls } = stubModel({});
+    const r = recorder(model, squadWorld());
+    const res = await run({ messages: [msg({ body: BODY, route: "self_att" })], deps: r.deps });
+    expect(calls).toEqual([]);
+    expect(res.alsoOutcomes.size).toBe(0);
+  });
+
+  it("a team half that is a build is left alone (the engine answered the message)", async () => {
+    const { model } = stubModel({ [BODY]: teamsFacts() });
+    const r = recorder(model, squadWorld());
+    const res = await runTeamOpsBatch({
+      orgId: "org-1", now: NOW, messages: [msg({ body: BODY, route: "self_att" })], history: [],
+      enabled: new Set<Route>(["balancer"]), deps: r.deps, alsoTeams: new Set([`wa-${BODY.slice(0, 14)}`]),
+    });
+    expect(r.generated).toEqual([]);
+    expect(res.alsoOutcomes.size).toBe(0);
+  });
+});
+
+describe("teamActionOf: what the extractor's facts ask this path to do", () => {
+  const base = { kind: "teams" as const, includeRefs: [], teamNames: null, swaps: [], moves: [], pairings: [], swapSides: false };
+  it("reads every action, the extractor's future `clear` included", () => {
+    expect(teamActionOf({ ...base, action: "generate" })).toBe("generate");
+    expect(teamActionOf({ ...base, action: "show" })).toBe("show");
+    expect(teamActionOf({ ...base, action: "swap", swapSides: true })).toBe("swap");
+    expect(teamActionOf({ ...base, action: "swap", moves: ["Tom"] })).toBe("unsupported");
+    expect(teamActionOf({ ...base, action: "rename" })).toBe("unsupported");
+    expect(teamActionOf({ ...base, action: "clear" })).toBe("clear");
+  });
+});
+
+describe("the teams extractor's `clear` (2026-10-30)", () => {
+  const CLEAR = "@Match Time delete these teams, early to form them";
+  it("an addressed clear runs team-clear and says its line", async () => {
+    const { model } = stubModel({ [CLEAR]: teamsFacts({ action: "clear" }) });
+    const clearTeams = vi.fn(async () => ({ kind: "cleared", reply: "Teams cleared. I'll build new ones on match day when asked.", logReason: "cleared" }));
+    const r = recorder(model, squadWorld(), { clearTeams });
+    const res = await run({ messages: [msg({ body: CLEAR })], deps: r.deps });
+    expect(clearTeams).toHaveBeenCalledWith("u-kemal");
+    expect([...res.outcomes.values()][0]).toMatchObject({ intent: "clear_teams_request", action: "clear-teams", reply: "Teams cleared. I'll build new ones on match day when asked." });
+    expect(r.generated).toEqual([]);
+  });
+
+  it("a clear that is not addressed (no mention flag, not a reply to MatchTime) clears nothing", async () => {
+    const { model } = stubModel({ [CLEAR]: teamsFacts({ action: "clear" }) });
+    const clearTeams = vi.fn();
+    const r = recorder(model, squadWorld(), { clearTeams });
+    const res = await run({ messages: [msg({ body: CLEAR, taggedExplicitly: false })], deps: r.deps });
+    expect(clearTeams).not.toHaveBeenCalled();
+    expect(res.ownedIds.size).toBe(0);
+  });
+
+  it("a build needs the tag too (Kemal, 2026-10-30): a generate not addressed builds nothing", async () => {
+    const { model } = stubModel({ [GEN]: teamsFacts() });
+    const r = recorder(model, squadWorld());
+    const res = await run({ messages: [msg({ body: GEN, taggedExplicitly: false })], deps: r.deps });
+    expect(r.generated).toEqual([]);
+    expect(res.ownedIds.size).toBe(0);
   });
 });
