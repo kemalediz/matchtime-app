@@ -59,6 +59,8 @@ const CORE = [
   "src/lib/guest-name-ask.ts",
   "src/lib/reminder-time.ts",
   "src/lib/picture-reading.ts",
+  "src/lib/interaction-contract.ts",
+  "src/lib/pipeline/load-awaiting-answer.ts",
 ];
 
 describe("the deleted parsers stay deleted", () => {
@@ -136,3 +138,47 @@ describe("the retired floor is gone", () => {
     }
   });
 });
+
+describe("no NEW reading of a message's words in these files (review of #476, L10)", () => {
+  // Any regex, split, includes, match, test or replace on a message body,
+  // text or caption. The only ones allowed are named here, each with why:
+  // they check MODEL OUTPUT against the message, look the roster up to
+  // give the model context, or read an attachment's format.
+  const ALLOWED: Record<string, string> = {
+    refWrittenIn: "a verifier: the name the model returned must be written in the message",
+    numbersIn: "a verifier: the score the model returned must be numbers the sender wrote",
+    membersNamedIn: "roster lookup: which club members' names appear, given to the model as context",
+    asWritten: "roster lookup: an alias shown as the message wrote it",
+    VCARD: "an attachment format marker (a shared contact card), not a person's words",
+  };
+  const BODY_PARSE =
+    /(?:\b(?:msg|m|message|input|it|c)\.(?:body|text)\b|\bbody\b|\bcaption\b)[^;\n]{0,25}?\.(?:match|matchAll|split|includes|startsWith|endsWith|search|replace|test|exec)\(|\.(?:test|exec|match)\(\s*(?:(?:msg|m|message)\.)?(?:body|caption)\b/;
+
+  /** The function a line sits in: the nearest "function NAME(" above it. */
+  function enclosing(lines: string[], i: number): string {
+    for (let k = i; k >= 0; k--) {
+      const m = /function\s+(\w+)\s*\(/.exec(lines[k]);
+      if (m) return m[1];
+    }
+    return "(top level)";
+  }
+
+  it("every hit is one of the allowed checks", () => {
+    const hits: string[] = [];
+    for (const f of CORE) {
+      const lines = code(read(f)).split("\n");
+      lines.forEach((l, i) => {
+        if (!BODY_PARSE.test(l)) return;
+        const fn = enclosing(lines, i);
+        if (ALLOWED[fn] || (l.includes("BEGIN:VCARD") && ALLOWED.VCARD)) return;
+        hits.push(`${f}:${i + 1} in ${fn}: ${l.trim().slice(0, 100)}`);
+      });
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it("interaction-contract.ts reads no body at all", () => {
+    expect(code(read("src/lib/interaction-contract.ts"))).not.toMatch(/\.body\b[^;\n]*\.(?:test|match|includes|split|replace)\(|\/[^/\n]*match\\s\*time/i);
+  });
+});
+
