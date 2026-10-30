@@ -92,11 +92,6 @@ import type { Degradation, Route, RoutedMessage } from "./types";
 import { ORGANISER_ONLY_ROUTES } from "./types";
 import { isAiBudgetExceeded, withAttendanceOverflow } from "../ai-budget-context";
 
-/**
- * The HQ hold's last importer of the retired floor (package P3 removes it
- * in parallel); see `legacy-floor.ts`. Nothing in this file uses it.
- */
-export { floorAttendanceFacts, routeFloor } from "./legacy-floor";
 
 /**
  * ─────────────────────────────────────────────────────────────────────

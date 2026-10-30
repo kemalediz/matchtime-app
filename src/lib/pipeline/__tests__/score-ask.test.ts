@@ -9,31 +9,13 @@ import {
   SCORE_ASK_TTL_MS,
   isScoreAnswer,
   isScoreAskOpen,
-  messageHasScoreline,
   messageStatesScore,
   parseScoreAskKey,
   samePair,
   scoreAskKey,
-  hasScorelineShape,
-  statesSeveralScorelines,
 } from "../score-ask";
 
 
-describe("the organisers' group's clear-or-ask shapes (2026-10-16)", () => {
-  it("several scorelines in one message", () => {
-    expect(statesSeveralScorelines("7-4 or 7-5")).toBe(true);
-    expect(statesSeveralScorelines("7-4 mü 7-5 mi")).toBe(true);
-    expect(statesSeveralScorelines("Yellow won 7-4")).toBe(false);
-    expect(statesSeveralScorelines("@447700900001 Yellow won 7-4")).toBe(false);
-  });
-  it("the shape of a scoreline, never a time", () => {
-    expect(hasScorelineShape("7-4 mü 7-5 mi emin değilim")).toBe(true);
-    expect(hasScorelineShape("10 - 7 to yellows")).toBe(true);
-    expect(hasScorelineShape("see you at 21:00")).toBe(false);
-    expect(hasScorelineShape("Tom out, 2 more needed")).toBe(false);
-    expect(hasScorelineShape("call 07700-900001")).toBe(false);
-  });
-});
 
 describe("the stored question", () => {
   it("round-trips its numbers through the key", () => {
@@ -103,17 +85,6 @@ describe("who may answer, and for how long (second review, M2)", () => {
   });
 });
 
-describe("does the TEXT have a scoreline? (M1)", () => {
-  it.each(["9-6", "it was 6-6 then 9-6 to yellows", "Red 6 Yellow 9", "0-0", "10 - 7 :))", "3 all, well 3-3"])(
-    "yes: %s",
-    (body) => expect(messageHasScoreline(body)).toBe(true),
-  );
-
-  it.each(["good game lads", "yellows won", "yellows got 9", "", "@447700900123 @447700900456 good game", "wrong way round"])(
-    "no: %s",
-    (body) => expect(messageHasScoreline(body)).toBe(false),
-  );
-});
 
 describe("the extractor's numbers must be numbers the sender wrote (third review, item 1)", () => {
   it.each([

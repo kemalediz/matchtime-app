@@ -98,23 +98,6 @@ export function isScoreAnswer(args: {
   return now.getTime() - t <= SCORE_ANSWER_UNTAGGED_MS;
 }
 
-/**
- * Does the TEXT contain a scoreline: two numbers? (M1, second review.)
- *
- * The extractor says whether a message has a score (`hasScore`), and a
- * model that ignores that instruction sends `true` with two zeros for
- * "good game lads". So the flag is not trusted alone: no two numbers in
- * the message, no score, whatever the model said. Digits only. A result
- * written in words ("five three") is therefore not recorded; the bot
- * asks for the score when it is tagged.
- *
- * @-mentions are removed first: WhatsApp writes a mention of a person
- * as their phone number.
- */
-export function messageHasScoreline(body: string): boolean {
-  const text = (body ?? "").replace(/@\S+/g, " ");
-  return (text.match(/\d+/g) ?? []).length >= 2;
-}
 
 /** The whole numbers written in a message, in order, with @-mentions
  *  removed first (WhatsApp writes a mention of a person as their phone
@@ -128,7 +111,7 @@ function numbersIn(body: string): number[] {
  * Does the TEXT state this score: is `first` one of its numbers and
  * `second` ANOTHER? (Third review, item 1.)
  *
- * `messageHasScoreline` only asked for two numbers, any two, so "see you
+ * A first version only asked for two numbers, any two, so "see you
  * at 21:30" passed and the model's 0-0, or 3-3, was recorded. The
  * extractor's two numbers have to be numbers the sender wrote, each its
  * own: "3-3" needs two threes, and "21:30" supplies neither a 0 nor a
@@ -143,25 +126,7 @@ export function messageStatesScore(body: string, first: number, second: number):
   return found.includes(second);
 }
 
-/**
- * More than two numbers (mentions removed): more than one possible
- * scoreline ("7-4 or 7-5"). The organisers' group records a score only
- * when it is clear, so it asks once instead (`admin-group-score.ts`).
- */
-export function statesSeveralScorelines(body: string): boolean {
-  return numbersIn(body).length > 2;
-}
 
-/**
- * The shape of a scoreline, "7-4" (a hyphen or dash between two numbers
- * of one or two digits; never a time, "21:00"). In the organisers' group,
- * while MatchTime waits for a score, a message the router could not place
- * (`unsure`) with this shape goes to the score handling, which still reads
- * it with the extractor and records only what is clear.
- */
-export function hasScorelineShape(body: string): boolean {
-  return new RegExp("(?:^|[^\\d])\\d{1,2}\\s*[-\\u2013]\\s*\\d{1,2}(?:[^\\d]|$)", "u").test(plainText(body));
-}
 
 /**
  * A BARE "WRONG WAY ROUND" IS HONOURED ONCE PER MATCH (third review,
@@ -183,7 +148,3 @@ export function scoreSwapKey(matchId: string): string {
 // before the router ran. The router is now shown, as a fact, that a
 // result is recorded and this sender may correct it, and it routes on
 // meaning; the score extractor reads `correction` and `swapped`.
-
-function plainText(body: string): string {
-  return (body ?? "").replace(/@\S+/g, " ");
-}

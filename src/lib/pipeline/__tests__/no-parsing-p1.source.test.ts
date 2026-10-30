@@ -14,9 +14,7 @@
  *      and offer cues, the group-address list, the reminder phrase
  *      vocabulary, the laughing-emoji banter test, the dead OUT safety net);
  *   2. `messageTagsBot` reads no text: only the structured flags;
- *   3. the retired floor survives only in `legacy-floor.ts`, for its last
- *      importer in the HQ package, and nothing in the pipeline core
- *      imports it (the manager deletes it when that importer is gone).
+ *   3. the retired floor and the score-shape helpers are deleted outright.
  */
 import { describe, expect, it } from "vitest";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -124,20 +122,17 @@ describe("the bot tag is facts only", () => {
   });
 });
 
-describe("the retired floor lives only in legacy-floor.ts, for the HQ importer", () => {
-  it("no pipeline-core file imports legacy-floor", () => {
-    for (const f of CORE.filter((x) => x !== "src/lib/pipeline/router.ts")) {
-      expect(read(f), f).not.toMatch(/legacy-floor/);
+describe("the retired floor is gone", () => {
+  it("legacy-floor.ts is deleted and nothing names the floor's parsers", () => {
+    expect(existsSync(path.join(ROOT, "src/lib/pipeline/legacy-floor.ts"))).toBe(false);
+    for (const f of prod) {
+      expect(code(readFileSync(f, "utf8")), rel(f)).not.toMatch(/\b(?:routeFloor|floorAttendanceFacts|parseFloor|bareDeclaration)\b/);
     }
   });
 
-  it("the router only re-exports it, and never calls it", () => {
-    const c = code(read("src/lib/pipeline/router.ts"));
-    expect(c).toMatch(/export \{ floorAttendanceFacts, routeFloor \} from "\.\/legacy-floor";/);
-    expect(c).not.toMatch(/\b(?:routeFloor|floorAttendanceFacts|parseFloor|bareDeclaration)\(/);
-  });
-
-  it("the attendance engine does not read floor facts at the cap", () => {
-    expect(code(read("src/lib/attendance-engine-batch.ts"))).not.toMatch(/floorAttendanceFacts/);
+  it("the score-shape helpers HQ used are deleted", () => {
+    for (const f of prod) {
+      expect(code(readFileSync(f, "utf8")), rel(f)).not.toMatch(/\b(?:statesSeveralScorelines|hasScorelineShape|messageHasScoreline)\b/);
+    }
   });
 });
