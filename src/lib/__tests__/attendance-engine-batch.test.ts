@@ -1561,3 +1561,17 @@ describe("a recruit side request needs an explicit tag or an attendance change (
     expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(false);
   });
 });
+
+describe("a team change asked beside the claim (2026-10-30, P2 reads it)", () => {
+  it("the extractor's \"teams\" side request is on the outcome as alsoChangesTeams", async () => {
+    const d = deps({ model: modelReturning({ ...SELF_IN, sideRequests: ["teams"] }) });
+    const r = await run([msg({ body: "@Match Time I'm in, swap Kai with Ali", tagged: true })], d);
+    expect(r.outcomes.get("wa-1")?.alsoChangesTeams).toBe(true);
+  });
+
+  it("without it, false", async () => {
+    const d = deps({ model: modelReturning(SELF_IN) });
+    const r = await run([msg()], d);
+    expect(r.outcomes.get("wa-1")?.alsoChangesTeams).toBe(false);
+  });
+});

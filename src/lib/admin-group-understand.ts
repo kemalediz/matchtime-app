@@ -717,7 +717,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       }
       const command = teamCommandFromFacts(extracted.facts);
       if (command.kind === "unclear") {
-        return extracted.facts.action === "rename"
+        return extracted.facts.action === "rename" || extracted.facts.action === "clear"
           ? notHere()
           : said("teams-which-players", s.tp_which_players);
       }

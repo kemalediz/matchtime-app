@@ -15,7 +15,7 @@ import {
   readSquadLists,
   SQUAD_LIST_CALL,
   SQUAD_LIST_SYSTEM,
-  squadListUserTurn,
+  pastedListUserTurn,
   type SourceMessage,
 } from "../squad-from-list";
 
@@ -66,7 +66,7 @@ describe("the squad-list reading's request", () => {
   });
 
   it("shows each message under a short id with its lines intact, never the WhatsApp id", () => {
-    const turn = squadListUserTurn(MSGS);
+    const turn = pastedListUserTurn(MSGS);
     expect(turn).toContain("m1");
     expect(turn).toContain("1. Ehtisham\n2. Amir");
     expect(turn).not.toContain("3EB0");

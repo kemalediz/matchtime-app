@@ -378,20 +378,20 @@ other_att   adds, drops, benches, moves, swaps or replaces SOMEONE ELSE in the s
 offer       a tentative or conditional commitment by anyone ("if you're short", "if my back holds up"), or asking the group for a player when nobody named is leaving.
 unsure      about a place, but you cannot tell who or what it does. A bare "confirmed" or "confirm" is unsure, never none: it may be somebody confirming their place. Never use it for plain banter.
 question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), how the club is run (who the organisers are, who collects the money, the fee, when the teams come out), and how MatchTime works here (the bench, signing in, how the teams are picked). Asking how the bench or the list works asks for no place.
-balancer    asks to SEE or MAKE the TWO team line-ups (red and yellow): show, generate, shuffle or rename them.
+balancer    asks about the TWO team line-ups (red and yellow) themselves: to see them, make them, shuffle or rename them, change them as they stand (swap two players between the teams, move a player to the other team, swap the two teams' colours) or clear them. Swapping between the teams changes nobody's place in the squad, so it is balancer, never attendance, in both groups.
 score       reports the final result of this group's own match (our team names, our colours or a bare scoreline), answers which team won or who was its Man of the Match while MatchTime is WAITING for that (a team named alone, "Yellow", "sarılar kazandı"; praise alone answers nothing), or says a recorded result is wrong ("you've got it the wrong way round", "no, 5-7 to Red", "yanlış, sarılar kazandı"). A professional scoreline somebody is watching is none.
 admin_ops   tells the bot to do something now: find new players (from the MatchTime player pool, from one partner club or all of them, from several places, or with no place named), credit a payment, set a reminder, send a link, change a setting, call a match off (one still to come, or one that never took place) or put it back on. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
 none        everything else, as in question 3. A member asking another member something that settles nothing is none ("are you injured?", "which two of you can play tomorrow?"); as soon as a message STATES that somebody plays or does not, it is attendance.
 approve, poster, team_sheet, help and ask_group exist ONLY in the organisers' group; see that section.
 
 RULINGS. Each one settles a confusion that has really happened in a group.
-- A replacement is an attendance statement about two people and is other_att: "X is replacing Y", "X in for Y", "Y is out, X is in", "X takes Y's place".
+- A replacement is an attendance statement about two people and is other_att: "X is replacing Y", "X in for Y", "Y is out, X is in", "X takes Y's place". A swap between the two teams is not a replacement: both players stay in the squad and only change team, so it is balancer ("swap me with Elvin", "Raihan ile yer değiştirelim", "put Sam in yellow").
 - Asking for a player: WHO is asked decides. A question to the members of this group ("anyone able to replace me?", "anyone else want to join us?", "can we have more INs please?") is attendance, not question, with or without a question mark or a tag: other_att when a named or implied person is leaving, otherwise offer; the ask is often buried in praise, worry or a pitch, and that changes nothing. An instruction to MATCHTIME to go and find, ask, invite or get players (from the player pool, from a partner club by name, from the partner clubs or other groups, or from nowhere named) is admin_ops, even when it ends "if anyone can play".
 - ASKING is question; INSTRUCTING is admin_ops. "Amir paid for 4 players" and "remind me on Monday" tell the bot to do something: admin_ops. "Who hasn't paid?" asks for what the bot knows: question.
 - Asking to SEE the squad ("who's in?", "list the players") is question. Asking to SEE or MAKE the teams ("teams?", "show me the teams") is balancer; asking WHEN they come out or HOW they are picked is question, because it asks for no line-up.
 - A match already played: asking about it ("did we win on tuesday?") is question; reporting its result ("we won 5-3") is score; telling the bot it never took place ("@Match Time Tuesday's game didn't happen", "@Match Time dünkü maç oynanmadı") is admin_ops, because it calls that game off. A question mark alone does not make a question.
 
-IN THE ORGANISERS' GROUP. The organisers mostly talk to each other there, and the header says whether this sender is one of them; route on what a message does whoever sends it, because code decides what each sender may do. Question 1 still comes first and is never none: a message saying a player is in, out, can or cannot play ("Tom out", "put Bilal in", "Shehryar can't make it tonight") changes the squad, other_att, however chatty. Otherwise a message is for the bot only when it asks the bot for something it holds, tells the bot to do something, or answers what the bot is WAITING for; other talk there is none, even when it names teams or players or asks the others something ("who's bringing the bibs?"), and so is a reply to another member's message unless it plainly tells the bot to act. Moving or swapping players between the two teams is balancer there, not attendance, because nobody joins or leaves: "swap Ali and Can", "move Tom to the other team", "put Sam in yellow".
+IN THE ORGANISERS' GROUP. The organisers mostly talk to each other there, and the header says whether this sender is one of them; route on what a message does whoever sends it, because code decides what each sender may do. Question 1 still comes first and is never none: a message saying a player is in, out, can or cannot play ("Tom out", "put Bilal in", "Shehryar can't make it tonight") changes the squad, other_att, however chatty. Otherwise a message is for the bot only when it asks the bot for something it holds, tells the bot to do something, or answers what the bot is WAITING for; other talk there is none, even when it names teams or players or asks the others something ("who's bringing the bibs?"), and so is a reply to another member's message unless it plainly tells the bot to act.
 approve     a yes to what MatchTime is WAITING for ("yes", "go ahead", "looks good", "evet", "tamam", "olur"), even if it might be for somebody else: code checks who it was for. With nothing waiting, it is none.
 poster      asks for the squad list as an image or graphic to share.
 team_sheet  asks for the teams as an image or graphic to share. A bare "teams" asks to see them: balancer.
@@ -434,7 +434,7 @@ Somebody else's place, however it is addressed:
   "Rashad my cousin to add if poss" -> other_att
   "@Kemal can you switch it to 7 a side and put Amir in as the 14th" -> other_att
 
-Replacements, swaps and corrections:
+Replacements and corrections:
   "Hi guys, Mojib is replacing Najib on the list. We can change" -> other_att
   "Mojib, Najib'in yerine geliyor" -> other_att
   "Najib is out, Mojib is in" -> other_att
@@ -442,7 +442,6 @@ Replacements, swaps and corrections:
   "Amir in for Zeeshan" -> other_att
   "Zair takes Abid's place tonight" -> other_att
   "@Match Time move @Aydin from bench to squad to replace @Ehtisham" -> other_att
-  "@Match Time swap David and Abid" -> other_att
   "Sorry, I got it wrong, it should be Zair not Baki" -> other_att
   "I'm covering for two people, Ismail and Ozgur" -> other_att
 
@@ -499,6 +498,11 @@ The two teams: seeing or making them is balancer, asking when or how they are ma
   "@Match Time takımları göster" -> balancer
   "@Match Time regenerate the teams once more" -> balancer
   "@Match Time generate the teams, put me and David together" -> balancer
+  "@Match Time swap David and Abid" -> balancer
+  "Ali ile Can'ı değiştir" -> balancer
+  "@Match Time swap the colours" -> balancer
+  "@Match Time clear the teams" -> balancer
+  "@Match Time takımları sil" -> balancer
   "@Match Time what time do the teams come out?" -> question
   "@Match Time takımlar saat kaçta açıklanıyor?" -> question
 
@@ -528,7 +532,6 @@ In the organisers' group:
   "tamam onaylıyorum" (teams waiting for approval) -> approve
   "can you do the poster for this week" -> poster
   "send us the team sheet image" -> team_sheet
-  "Ali ile Can'ı değiştir" -> balancer
   "we're one short, can you find us a player" -> ask_group
   "ana gruba sorar mısın, gelebilecek var mı" -> ask_group
   "I'll ask the lads in the group later" -> none
@@ -547,8 +550,10 @@ Asking MatchTime what it can do, against telling the others about it:
   "once it's enabled, tag @Match Time here and ask it to cancel, and it will cancel the next match" -> none
   "MatchTime'ı etiketleyip iptal et derseniz maçı iptal eder" -> none
 
-THE ANSWER. For every id give its route and to_bot: true when the message speaks TO MatchTime as question 2 defines it (a tag, the bot's name used to speak to it, or a players' group reply to MatchTime's own message), false when it only talks about MatchTime or does not mention it at all. to_bot never changes the route.
-Return JSON only: {"routes":[{"id":"<id>","route":"<route>","to_bot":<true or false>}]}`;
+THE ANSWER. For every id give its route and two facts about the message; neither changes the route.
+to_bot       true when the message speaks TO MatchTime as question 2 defines it (a tag, the bot's name used to speak to it, or a players' group reply to MatchTime's own message); false when it only talks about MatchTime or does not mention it at all.
+pasted_list  true when the message reposts the squad as a list of players, one name a line, numbered or not, the roster other_att defines (often MatchTime's own list copied with a name added); false for anything else, including a sentence that names a few players.
+Return JSON only: {"routes":[{"id":"<id>","route":"<route>","to_bot":<true or false>,"pasted_list":<true or false>}]}`;
 
 // Room for adaptive thinking on top of the routes: one message at medium
 // effort used up to 520 output tokens (2026-10-19); a batch of eight needs
@@ -769,15 +774,18 @@ export function parseRouterResponse(text: string, ids: string[], organiserIds: R
   const byId = new Map<string, Route>();
   /** The model's own reading of who each message speaks to (`to_bot`). */
   const toBot = new Set<string>();
+  /** The model's reading that the message reposts the squad list (`pasted_list`). */
+  const pastedList = new Set<string>();
 
   try {
     const parsed = extractJson(text) as { routes?: Array<{ id?: unknown; route?: unknown }> };
     const rows = Array.isArray(parsed?.routes) ? parsed.routes : [];
-    for (const row of rows as Array<{ id?: unknown; route?: unknown; to_bot?: unknown }>) {
+    for (const row of rows as Array<{ id?: unknown; route?: unknown; to_bot?: unknown; pasted_list?: unknown }>) {
       const id = typeof row?.id === "string" ? cleanId(row.id) : null;
       const route = typeof row?.route === "string" ? normaliseRoute(row.route) : null;
       if (!id) continue;
       if (ids.includes(id) && row.to_bot === true) toBot.add(id);
+      if (ids.includes(id) && row.pasted_list === true) pastedList.add(id);
       if (!ids.includes(id)) {
         degradations.push(
           degradation("router", null, `router returned an unknown id "${id}"; dropped`),
@@ -815,7 +823,15 @@ export function parseRouterResponse(text: string, ids: string[], organiserIds: R
 
   const routes: RoutedMessage[] = ids.map((id) => {
     const route = byId.get(id);
-    if (route) return { messageId: id, route, source: "model" as const, ...(toBot.has(id) ? { toBot: true } : {}) };
+    if (route) {
+      return {
+        messageId: id,
+        route,
+        source: "model" as const,
+        ...(toBot.has(id) ? { toBot: true } : {}),
+        ...(pastedList.has(id) ? { pastedList: true } : {}),
+      };
+    }
     // §3.2 S1's incident, and §11.1's asymmetry. A missing route is a
     // coverage hole; filling it with `none` would make that hole look
     // like a decision.
@@ -965,8 +981,9 @@ async function routeBatchInner(
               id: { type: "string" },
               route: { type: "string", enum: Object.keys(VALID) },
               to_bot: { type: "boolean" },
+              pasted_list: { type: "boolean" },
             },
-            required: ["id", "route", "to_bot"],
+            required: ["id", "route", "to_bot", "pasted_list"],
             additionalProperties: false,
           },
         },

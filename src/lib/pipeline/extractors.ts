@@ -257,6 +257,7 @@ THE WHOLE MESSAGE
                  "recruit"   it says how many players are needed, as a number, or whose place needs taking ("we're 4 short, anyone free?", "can someone take my spot?")
                  "chase"     it nudges for more players with no number and no name ("@all we need more players pls")
                  "question"  it also asks MatchTime for something it holds, such as the list, who is in or how many ("@Match Time what's the list?", "how many are we now?"), never a question put to another member ("@Ali can you play?")
+                 "teams"     it also asks MatchTime to change the two teams as they stand: swap two players between the teams, move someone to the other team, swap the colours or clear the teams ("@Match Time swap me with Tom"). A swap between the teams is never a claim: both players stay in the squad
 
 EXAMPLES
 Messages come in English or Turkish, often mixed or misspelt, and carry the same facts either way. Each group teaches one thing, English | Turkish.
@@ -310,6 +311,7 @@ Several people in one message: one claim each, with any side request.
 Several things in one message: the claims, plus what else it asks MatchTime for.
   "Kai is out now. @Match Time what's the list?" | "Kai yok. @Match Time liste ne?" -> Kai out, plus "question"
   "Kai out, @Ali can you play?" | "Kai yok, @Ali gelebilir misin?" -> Kai out, no side request: the question is put to Ali, not MatchTime
+  "@Match Time I'm out, swap Kai with Ali" | "@Match Time ben yokum, Kai ile Ali'yi değiştir" -> the sender out, plus "teams": Kai and Ali only change team
 
 Hedges: the sender might play and has not decided. Subject sender, in, contingent true, conditionOn "self", tense future. This shape is what gets the person asked again nearer the match; an empty claims array for a hedge is a maybe nobody follows up.
   "maybe", "50/50", "not sure yet", "I'll see" | "belki", "bakarız", "kesin değil", "bakacağım" -> the hedge
@@ -472,7 +474,7 @@ Periods:
   "@Match Time who played most this month" | "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month
   "@Match Time all-time most MoMs" | "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time`,
 
-  teams: `You read ONE message about the club's two team line-ups and report what it asks for. You never pick the players: code builds and changes the line-ups.
+  teams: `You read ONE message about the club's two team line-ups and report what it asks for. You never pick the players: code builds, changes and clears the line-ups.
 
 THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST (often the two teams as they stand), NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "him", "them", "everyone" or "the teams" are and which team a player is on now; every field comes from THE MESSAGE.
 
@@ -480,9 +482,10 @@ WHAT YOU RETURN
 action, exactly one:
   "show" post the teams as they stand, unchanged.
   "generate" work the line-ups out again: new teams, made, made again or shuffled. This holds even when the same message also asks for new names, or says "again", "once more" or "instead".
-  "swap" change the teams as they stand and leave everyone else where they are: people change team, go to a named team, end up together, or the two teams swap over. A message that only puts people on a team or together, without asking for new teams, is "swap".
+  "swap" change the teams as they stand and leave everyone else where they are: people change team, go to a named team, end up together, or the two teams swap over, colours included. A message that only puts people on a team or together, without asking for new teams, is "swap".
   "suggest" asks you to recommend changes that make the teams fairer.
-  "rename" keep the same two line-ups and change only their names.
+  "rename" keep the same two line-ups and change only their NAMES. Swapping the two teams' colours is not a rename: it is "swap" with swapSides.
+  "clear" remove the line-ups altogether, so that there are no teams until they are made again ("clear the teams", "delete them").
 includeRefs
   people the message says must play.
 teamNames
@@ -494,7 +497,7 @@ swaps
 pairings
   people who must end up on the same team as each other, one array per group.
 swapSides
-  true when the two whole teams swap over, so that every player changes team; moves is then empty. False otherwise.
+  true when the two whole teams swap over, so that every player changes team: the teams trade places, or trade colours while each line-up stays together ("swap the colours"). moves is then empty. False otherwise.
 
 Write every person as the message writes them. When the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Every field the message says nothing about is empty, or false.
 
@@ -512,11 +515,16 @@ New names, same teams:
   "call the teams Lions and Tigers" / "takımların adı Aslanlar ve Kaplanlar olsun" -> rename, teamNames ["Lions","Tigers"] / ["Aslanlar","Kaplanlar"]
 Changing the teams as they stand:
   "swap Ali and Can" / "Ali ile Can'ı değiştir" -> swap, moves ["Ali","Can"]
+  "swap me with Elvin" / "Elvin ile yer değiştirelim" -> swap, moves ["me","Elvin"]
   "move Tom to the other team" / "Tom'u diğer takıma al" -> swap, moves ["Tom"]
   "swap Rafi and Yorel, Mo and Akram", one pair a line or not / "Rafi ile Yorel, Mo ile Akram yer değiştirsin" -> swap, moves ["Rafi","Yorel","Mo","Akram"]
   "put David in Red" / "David kırmızıya geçsin" -> swap, swaps [{"personRef":"David","team":"RED"}]
   "Ali and Habib on one team" / "put Ali with Habib" / "Ali ile Habib aynı takımda olsun" -> swap, pairings [["Ali","Habib"]]
+The two teams swap over, or swap colours:
   "swap everyone on bibs with non bibs" / "move team 1 over to team 2" / "swap them over", after both teams were listed / "takımların yerini değiştir" -> swap, swapSides true
+  "swap the colours" / "renkleri değiştir" -> swap, swapSides true
+No teams at all:
+  "clear the teams" / "takımları sil" -> clear
 Fairer teams:
   "recommend swaps" / "any swaps to even it up?" / "takımları dengelemek için ne önerirsin?" -> suggest`,
 
@@ -736,7 +744,7 @@ export const ATTENDANCE_SCHEMA = {
     // degradation on the very first live case. The parser maps "none"
     // back to null so the fact type stays honest.
     affirmation: { type: "string", enum: ["yes", "no", "none"] },
-    sideRequests: { type: "array", items: { type: "string", enum: ["recruit", "chase", "question"] } },
+    sideRequests: { type: "array", items: { type: "string", enum: ["recruit", "chase", "question", "teams"] } },
   },
   required: ["claims", "affirmation", "sideRequests"],
   additionalProperties: false,
@@ -792,7 +800,7 @@ const QUESTION_SCHEMA = {
 const TEAMS_SCHEMA = {
   type: "object",
   properties: {
-    action: { type: "string", enum: ["show", "generate", "rename", "swap", "suggest"] },
+    action: { type: "string", enum: ["show", "generate", "rename", "swap", "suggest", "clear"] },
     includeRefs: { type: "array", items: { type: "string" } },
     teamNames: { type: "array", items: { type: "string" } },
     swaps: {
@@ -1057,7 +1065,7 @@ export function parseFacts(
         Array.isArray(raw.sideRequests) ? raw.sideRequests : []
       )
         .map((s) => str(s).toLowerCase())
-        .filter((s): s is SideRequest => s === "recruit" || s === "chase" || s === "question");
+        .filter((s): s is SideRequest => s === "recruit" || s === "chase" || s === "question" || s === "teams");
       const facts: AttendanceFacts = { kind: "attendance", claims, affirmation, sideRequests };
       return { facts, degradations };
     }
@@ -1128,7 +1136,7 @@ export function parseFacts(
 
     case "teams": {
       const action = str(raw.action).toLowerCase();
-      if (!["show", "generate", "rename", "swap", "suggest"].includes(action)) {
+      if (!["show", "generate", "rename", "swap", "suggest", "clear"].includes(action)) {
         bad(`unknown team action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }

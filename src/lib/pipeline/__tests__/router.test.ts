@@ -341,17 +341,18 @@ describe("the router prompt", () => {
     const line = ROUTER_SYSTEM_PROMPT.trimEnd().split("\n").at(-1)!;
     expect(line).toMatch(/^Return JSON only:/);
     const shape = line.slice(line.indexOf("{"));
-    const filled = shape.replace("<id>", "wa-1").replace("<route>", "other_att").replace("<true or false>", "true");
+    const filled = shape.replace("<id>", "wa-1").replace("<route>", "other_att").replaceAll("<true or false>", "true");
     const out = parseRouterResponse(filled, ["wa-1"]);
-    expect(out.routes).toEqual([{ messageId: "wa-1", route: "other_att", source: "model", toBot: true }]);
+    expect(out.routes).toEqual([{ messageId: "wa-1", route: "other_att", source: "model", toBot: true, pastedList: true }]);
     expect(out.degradations).toEqual([]);
   });
 
-  it("defines to_bot once, beside the answer, as what question 2 calls speaking to the bot", () => {
-    expect(ROUTER_SYSTEM_PROMPT.split("to_bot:").length - 1).toBe(1);
-    const answer = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("THE ANSWER."))!;
-    expect(answer).toMatch(/question 2/);
-    expect(answer).toMatch(/never changes the route/);
+  it("defines to_bot and pasted_list once each, beside the answer, and says neither changes the route", () => {
+    const lines = ROUTER_SYSTEM_PROMPT.split("\n");
+    expect(lines.filter((l) => l.startsWith("to_bot ")).length).toBe(1);
+    expect(lines.filter((l) => l.startsWith("pasted_list ")).length).toBe(1);
+    expect(lines.find((l) => l.startsWith("to_bot "))).toMatch(/question 2/);
+    expect(lines.find((l) => l.startsWith("THE ANSWER."))).toMatch(/neither changes the route/);
   });
 });
 
@@ -363,6 +364,15 @@ describe("to_bot: the router's own reading of who a message speaks to (B1, 2026-
     );
     expect(out.routes[0]).toEqual({ messageId: "a", route: "question", source: "model", toBot: true });
     expect(out.routes[1]).toEqual({ messageId: "b", route: "none", source: "model" });
+  });
+
+  it("pasted_list rides on the route as pastedList, for the players' group squad reader (P2)", () => {
+    const out = parseRouterResponse(
+      JSON.stringify({ routes: [{ id: "a", route: "other_att", to_bot: false, pasted_list: true }, { id: "b", route: "self_att", to_bot: false, pasted_list: false }] }),
+      ["a", "b"],
+    );
+    expect(out.routes[0]).toEqual({ messageId: "a", route: "other_att", source: "model", pastedList: true });
+    expect(out.routes[1].pastedList).toBeUndefined();
   });
 
   it("is never invented for a message the model did not route", () => {
@@ -381,7 +391,7 @@ describe("to_bot: the router's own reading of who a message speaks to (B1, 2026-
       },
     };
     await routeBatch(m, [{ id: "a", authorName: "Ali", body: "MatchTime who runs this club?" }]);
-    expect(JSON.stringify(schema)).toContain('"required":["id","route","to_bot"]');
+    expect(JSON.stringify(schema)).toContain('"required":["id","route","to_bot","pasted_list"]');
   });
 });
 
@@ -757,9 +767,12 @@ describe("the two teams: seeing or making them is balancer, asking when is quest
     [...ROUTER_SYSTEM_PROMPT.matchAll(/^\s*"([^"]+)"\s+->\s*([a-z_]+)\s*$/gm)].map((m) => [m[1]!, m[2]!]),
   );
 
-  it("defines balancer as seeing or making the line-ups, and question as holding when the teams come out", () => {
+  it("defines balancer as the line-ups themselves (see, make, change, clear), and question as holding when the teams come out", () => {
     const balancer = lines.find((l) => l.startsWith("balancer "))!;
-    expect(balancer).toMatch(/SEE or MAKE/);
+    expect(balancer).toMatch(/to see them, make them/);
+    expect(balancer).toMatch(/swap two players between the teams/);
+    expect(balancer).toMatch(/clear them/);
+    expect(balancer).toMatch(/never attendance, in both groups/);
     const question = lines.find((l) => l.startsWith("question "))!;
     expect(question).toMatch(/when the teams come out/);
     expect(question).toMatch(/how the teams are picked/);

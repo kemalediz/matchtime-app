@@ -154,6 +154,13 @@ export interface RoutedMessage {
    * decides it. Absent: the model did not say so (or was not asked).
    */
   toBot?: boolean;
+  /**
+   * The router's reading that the message reposts the squad as a list of
+   * players (its `pasted_list`, 2026-10-30). The players' group's squad
+   * reader runs only for these (package P2), instead of on every message.
+   * Absent: the model did not say so (or was not asked).
+   */
+  pastedList?: boolean;
 }
 
 // ── Stage 2: FACTS ─────────────────────────────────────────────────────
@@ -249,7 +256,11 @@ export type SideRequest =
    *  (`admin-group-understand.ts`). The players' group answers it the same
    *  way when tagged (`runAnswerBatch`'s `alsoAsks`), except where the
    *  organisers announce the list; no other attendance reader counts it. */
-  | "question";
+  | "question"
+  /** "@Match Time I'm out, swap Kai with Ali" (2026-10-30): the message
+   *  ALSO asks for a change to the two teams as they stand. Surfaced on the
+   *  attendance outcome as `alsoChangesTeams`; the teams path applies it. */
+  | "teams";
 
 export interface AttendanceFacts {
   kind: "attendance";
@@ -559,8 +570,10 @@ export interface QuestionFacts {
 export interface TeamFacts {
   kind: "teams";
   /** show = re-post what exists. generate = run the balancer. §3.2 S19:
-   *  "show the teams again" once destroyed an admin's manual swap. */
-  action: "show" | "generate" | "rename" | "swap" | "suggest";
+   *  "show the teams again" once destroyed an admin's manual swap.
+   *  clear (2026-10-30) = remove the line-ups (`team-clear.ts` applies
+   *  it); it replaced the analyze route's word test. */
+  action: "show" | "generate" | "rename" | "swap" | "suggest" | "clear";
   includeRefs: string[];
   teamNames: [string, string] | null;
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;

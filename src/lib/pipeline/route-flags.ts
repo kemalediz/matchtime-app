@@ -277,7 +277,7 @@ export const TEAM_OPS_ENGINE_ROUTES: readonly Route[] = ["balancer"];
 /** `TeamFacts["action"]`, restated here so this file does not import the
  *  facts module for one union. `route-flags.test.ts` asserts the two
  *  spellings agree. */
-export type TeamAction = "show" | "generate" | "rename" | "swap" | "suggest";
+export type TeamAction = "show" | "generate" | "rename" | "swap" | "suggest" | "clear";
 
 /** Team actions `answer-batch.ts` owns. Reads only. */
 export const ANSWER_TEAM_ACTIONS: readonly TeamAction[] = ["show"];
@@ -287,7 +287,7 @@ export const TEAM_OPS_TEAM_ACTIONS: readonly TeamAction[] = ["generate"];
 
 /** Every team action, so a new one cannot be added to `TeamFacts`
  *  without this file failing to compile against it. */
-export const ALL_TEAM_ACTIONS: readonly TeamAction[] = ["show", "generate", "rename", "swap", "suggest"];
+export const ALL_TEAM_ACTIONS: readonly TeamAction[] = ["show", "generate", "rename", "swap", "suggest", "clear"];
 
 type Env = Record<string, string | undefined>;
 

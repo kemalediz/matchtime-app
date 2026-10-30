@@ -283,6 +283,14 @@ export interface EngineMessageOutcome {
    * facts itself (`admin-group-squad-change.ts`).
    */
   alsoAsksQuestion: boolean;
+  /**
+   * The extractor read that the message ALSO asks for a change to the two
+   * teams as they stand ("@Match Time I'm out, swap Kai with Ali", side
+   * request "teams", 2026-10-30). The engine does nothing with it; the
+   * analyze route hands these ids to the teams path (package P2,
+   * `team-also-signal.ts`), which reads and applies the change.
+   */
+  alsoChangesTeams: boolean;
 }
 
 export interface EngineBatchResult {
@@ -1306,6 +1314,7 @@ export async function runAttendanceEngineBatch(args: {
       claimCount: attendanceFacts?.claims.length ?? 0,
       sideRequestCount: attendanceFacts?.sideRequests.filter((s) => s !== "question").length ?? 0,
       alsoAsksQuestion: attendanceFacts?.sideRequests.includes("question") ?? false,
+      alsoChangesTeams: attendanceFacts?.sideRequests.includes("teams") ?? false,
     });
   }
 
