@@ -18,8 +18,6 @@ import {
   statesSeveralScorelines,
 } from "../score-ask";
 
-const EN: [string, string] = ["Red", "Yellow"];
-const TR: [string, string] = ["Kırmızı", "Sarı"];
 
 describe("the organisers' group's clear-or-ask shapes (2026-10-16)", () => {
   it("several scorelines in one message", () => {

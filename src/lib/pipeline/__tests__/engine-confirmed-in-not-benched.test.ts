@@ -31,7 +31,6 @@ import {
   NOW,
   SUTTON,
   attendanceFacts,
-  benchCount,
   claim,
   confirmedCount,
   msg,

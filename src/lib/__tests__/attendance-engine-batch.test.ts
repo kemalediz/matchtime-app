@@ -1212,9 +1212,6 @@ describe("a plain 'in' from a confirmed player never reaches the apply layer as 
       ],
     });
 
-  const PASTE =
-    "Squad update — 3/4 in, just need 1\n1. Alice Admin\n2. Dan Drummer\n3. Sam Striker\n4. Pete";
-
   it("a real bench request in words still reaches the apply layer as EXPLICIT", async () => {
     const calls: Array<{ userId: string; benchIntent: unknown }> = [];
     const d = deps({

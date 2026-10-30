@@ -1568,7 +1568,7 @@ export function decide(input: EngineInput): EngineResult {
             out.reasons.push(`only an admin may bench ${t.name}`);
             continue;
           }
-          const refusal = banterRefusal(msg, t, messages, senderIsAdmin);
+          const refusal = banterRefusal(msg, t, messages);
           if (refusal) {
             out.reasons.push(refusal);
             continue;
@@ -3756,7 +3756,6 @@ function banterRefusal(
   msg: EngineMessage,
   target: Target,
   batch: EngineMessage[],
-  senderIsAdmin: boolean,
 ): string | null {
   if (!target.userId) return null;
   const contradicts = batch.some(

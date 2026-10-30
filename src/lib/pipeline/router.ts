@@ -339,6 +339,22 @@ export { floorAttendanceFacts, routeFloor } from "./legacy-floor";
  * alone. In the organisers' group the same request stays ask_group, now
  * said on that line. Sizes and live results before and after in the PR.
  */
+/*
+ * ── 2026-10-30: NO STRING PARSING, AND THE FACTS AS LINES ─────────────
+ *
+ * Kemal: "I don't want any string parsing at all." Three word tests that
+ * used to overrule or pre-empt this router are gone: the bare IN/OUT
+ * floor (`routeFloor`), the "which team won?" and score-correction
+ * vocabularies that forced `score`, and the "who do you mean?" name reader
+ * that forced `question`. In their place the turn carries the FACTS code
+ * has, as lines above the message (`scoreContextLine`,
+ * `clarificationLine`), and the prompt says what each line means where it
+ * defines what the model is shown; the score route names answering which
+ * team won and correcting a recorded result. The answer gains `to_bot`,
+ * the model's reading of whether a message speaks to MatchTime, which the
+ * analyze route now treats as a tag in place of the "match time" text
+ * match. Nothing appended at the end; the output contract is where it was.
+ */
 export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, finding players when the club is short, results, payments, reminders and the players' stats. For EVERY message id you are given, return exactly one route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot.
 
 WHAT YOU ARE SHOWN. Code knows these facts; rely on them rather than guessing.

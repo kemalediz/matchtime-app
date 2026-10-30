@@ -47,7 +47,7 @@ export function reminderInstant(remindAt: string, lang?: Lang | string | null): 
   const raw = (remindAt ?? "").trim();
   const m = REMIND_AT.exec(raw);
   if (!m) return { ok: false, reason: `the reminder time "${raw}" is not YYYY-MM-DD HH:MM` };
-  const [y, mo, d, h, mi] = m.slice(1).map(Number);
+  const [, mo, d, h, mi] = m.slice(1).map(Number);
   if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) {
     return { ok: false, reason: `the reminder time "${raw}" is not a real date and time` };
   }
