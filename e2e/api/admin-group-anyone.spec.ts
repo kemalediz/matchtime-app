@@ -33,8 +33,8 @@ const PLAYER = PHONE.player.replace(/^\+/, "");
 const STRANGER = "447700900999";
 const KICKOFF = londonAt(0, 22, 0);
 
-const ADMINS_Q = "Who are are admins?";
-const BENCH_Q = "MatchTime who's on the bench?";
+const ADMINS_Q = "@Match Time Who are are admins?";
+const BENCH_Q = "@Match Time who's on the bench?";
 const CHAT = "who is bringing the bibs?";
 
 /** The question extractor's raw answer. */
