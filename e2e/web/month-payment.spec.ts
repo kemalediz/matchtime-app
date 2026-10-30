@@ -524,6 +524,14 @@ test("7. reminders: the count and a DM a day before, a second on the day, the su
   for (const i of dayBefore) expect(i.text).not.toMatch(/https?:/);
   // Once: the next poll has nothing.
   expect(money(await poll(request, new Date(PAY_BY.getTime() - 24 * HOUR + 40 * 60_000)))).toEqual([]);
+  // The first DMs are stamped with the REAL clock, and the second waits six
+  // hours after the first. Late in the month the pay-by day is today, so a
+  // pinned poll that morning reads as before they were sent (failed on
+  // 30 Oct 2026). Stamp them with the pinned clock they went out on.
+  await db.run(`UPDATE "SentNotification" SET "createdAt" = $2 WHERE key LIKE $1`, [
+    `org-${ORG}:mpy:dm:${MONTH}:%:r1`,
+    new Date(PAY_BY.getTime() - 24 * HOUR + 30 * 60_000),
+  ]);
 
   // The deadline's own morning: the second DM, to the same two.
   const onTheDay = money(await poll(request, new Date(PAY_BY.getTime() - 11 * HOUR)));

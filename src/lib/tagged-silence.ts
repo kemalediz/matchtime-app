@@ -13,8 +13,39 @@
  * written or queued. The handled-silently cases stay silent by
  * construction: a tick is a reaction, applied attendance has an intent of
  * its own, banter and thanks are the router's `none`.
+ *
+ * 2026-10-30: three more silences are not "nothing came of it", found by
+ * stubbed e2e specs that went red with #455: a player's admin-only ask
+ * refused on purpose (clause-peel, stats-blast), a read lost to an API
+ * error (attendance-engine-overload), and a squad question the batch's one
+ * squad post answered (squad-post). Each is reported by its owner as a
+ * typed fact (`SilenceFacts`).
  */
 import type { Route } from "./pipeline/types";
+
+/**
+ * What the owners report about the silences they chose (2026-10-30), so
+ * the rule below reads facts rather than reasons written for humans. Each
+ * owner adds a message id; the analyze route reads them. Ids only: an
+ * owner records what it decided, never anything about the words.
+ *
+ *   refused           an admin-only ask from a player (`engine.ts`
+ *                     `MessageOutcome.refused`);
+ *   readFailed        the model read of the message failed;
+ *   squadPostAnswers  a squad question (count, squad, bench, a player's
+ *                     place) held back because a neighbour changed the
+ *                     squad; the batch's squad post answers it, when one
+ *                     goes out.
+ */
+export interface SilenceFacts {
+  refused: Set<string>;
+  readFailed: Set<string>;
+  squadPostAnswers: Set<string>;
+}
+
+export function newSilenceFacts(): SilenceFacts {
+  return { refused: new Set(), readFailed: new Set(), squadPostAnswers: new Set() };
+}
 
 /** The intents a result carries when nothing was written, queued or said. */
 const NOTHING_HAPPENED: readonly string[] = ["noise", "unclear"];
@@ -30,6 +61,17 @@ export interface TaggedSilenceInput {
   capped: boolean;
   /** Skipped by the gate on purpose (a feature switched off). */
   gated: boolean;
+  /** An owner REFUSED it on permission: an admin-only ask from a player.
+   *  That silence is designed (`engine.ts`), and "I didn't catch that"
+   *  would be false: it was caught, and refused. */
+  refused: boolean;
+  /** The model read of it failed (an API error after the retries). A
+   *  system failure, on the operator note, exactly like a write that
+   *  threw (`handledBy: "error"`); the group is not told it was unclear. */
+  readFailed: boolean;
+  /** A squad question held back because a neighbour in the batch changed
+   *  the squad, and the batch's squad post, which answers it, went out. */
+  answeredBySquadPost: boolean;
   /** The router's answer; `undefined` when it gave none. */
   route: Route | undefined;
   /** The message's one result, after every pass of the batch. */
@@ -39,6 +81,7 @@ export interface TaggedSilenceInput {
 export function taggedSilence(i: TaggedSilenceInput): boolean {
   if (!i.taggedExplicitly || !i.senderKnown) return false;
   if (i.late || i.capped || i.gated) return false;
+  if (i.refused || i.readFailed || i.answeredBySquadPost) return false;
   // Banter and thanks: the router said so, and silence is the answer.
   // No route at all is a router failure, which the operator note reports.
   if (i.route === undefined || i.route === "none") return false;

@@ -1884,6 +1884,14 @@ export interface MessageOutcome {
   writes: ProposedWrite[];
   react: string | null;
   /**
+   * The engine REFUSED this message on permission (2026-10-30): an
+   * admin-only ask (a stats or recruit blast, a payment credit, who has
+   * rated) from somebody who is not an admin. Silent by design; typed so
+   * the analyze route does not answer it with "I didn't catch that"
+   * (`tagged-silence.ts`). Absent means no.
+   */
+  refused?: "admin_only";
+  /**
    * The engine decided this message's SENDER gets their personal stats
    * link by DM (`QuestionTopic.my_stats`, 2026-09-17). A boolean on
    * purpose: it names no recipient, so nothing a model extracts can

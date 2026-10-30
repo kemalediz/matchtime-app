@@ -123,6 +123,7 @@
  * believed it.
  */
 import { quotesAnotherMatch, type QuotedGroupMessage } from "./reply-context";
+import type { SilenceFacts } from "./tagged-silence";
 import { compose } from "./pipeline/compose";
 import { t } from "./i18n/t";
 import { decide as decideDefault } from "./pipeline/engine";
@@ -268,6 +269,9 @@ export async function runScoreBatch(args: {
    *  also knows about the test-only per-request override). */
   enabled: Set<Route>;
   deps: ScoreBatchDeps;
+  /** Where this batch reports the silences it chose (`tagged-silence.ts`),
+   *  so the route does not call them "not understood". Absent: unreported. */
+  silence?: SilenceFacts;
 }): Promise<ScoreBatchResult> {
   const { orgId, now, messages, history, enabled, deps } = args;
   const t0 = Date.now();
@@ -383,6 +387,7 @@ export async function runScoreBatch(args: {
           `${SCORE_APPLY_DEGRADED_PREFIX} ${m.waMessageId}: ${failure.detail} — ` +
             `nobody records this score: no reply in the group, and it is on this note`,
         );
+        args.silence?.readFailed.add(m.waMessageId);
         return;
       }
       factsById.set(m.waMessageId, res.facts);

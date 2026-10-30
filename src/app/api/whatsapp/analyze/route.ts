@@ -313,7 +313,7 @@ import { dayCommaTimeLabel, dayLabel, kickoffLabel } from "@/lib/i18n/dates";
 import { CANCELLED_NOTICE_LOOKBACK_MS, SAME_FIXTURE_MS, cancelledMatchToMention } from "@/lib/cancelled-match-notice";
 import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { messageAddressesBot, messageTagsBot, piMentionsBot } from "@/lib/interaction-contract";
-import { taggedSilence } from "@/lib/tagged-silence";
+import { newSilenceFacts, taggedSilence } from "@/lib/tagged-silence";
 import { offerCalloffIfCalled } from "@/lib/calloff-offer";
 import { mergeRecruitReply } from "@/lib/recruit-request";
 import {
@@ -2042,9 +2042,13 @@ async function handleAnalyzeRequest(request: Request) {
       })
     ).map((m) => m.userId),
   );
+  // What every owner reports about the silences it chose, for the
+  // "never met with silence" pass at the foot of this handler.
+  const silence = newSilenceFacts();
   const engineBatch =
     fresh.length > 0
       ? await runAttendanceEngineBatch({
+          silence,
           orgId: org.id,
           now: new Date(),
           expectedMatchId: activeMatchForReply?.id ?? null,
@@ -2324,6 +2328,7 @@ async function handleAnalyzeRequest(request: Request) {
   const answerBatch =
     fresh.length > 0
       ? await runAnswerBatch({
+          silence,
           orgId: org.id,
           now,
           messages: ownerBase,
@@ -2345,6 +2350,7 @@ async function handleAnalyzeRequest(request: Request) {
   const scoreBatch =
     fresh.length > 0
       ? await runScoreBatch({
+          silence,
           orgId: org.id,
           now,
           messages: ownerBase,
@@ -2357,6 +2363,7 @@ async function handleAnalyzeRequest(request: Request) {
   const adminOpsBatch =
     fresh.length > 0
       ? await runAdminOpsBatch({
+          silence,
           orgId: org.id,
           now,
           messages: ownerBase,
@@ -2393,6 +2400,7 @@ async function handleAnalyzeRequest(request: Request) {
   const teamOpsBatch =
     fresh.length > 0
       ? await runTeamOpsBatch({
+          silence,
           orgId: org.id,
           now,
           messages: ownerBase,
@@ -3360,6 +3368,9 @@ async function handleAnalyzeRequest(request: Request) {
   //   `show_teams_request` replies intentionally carry two numbered
   //   lists (Red + Yellow) and are already deterministic. That is the
   //   same exclusion the deleted in-loop pass used.
+  // The message the batch's ONE composed squad post rides on, when there
+  // is one (2026-10-30, read by the "never met with silence" pass).
+  let squadPostCarrierId: string | null = null;
   if (nextMatchForReply) {
     try {
       const candidates: number[] = [];
@@ -3579,6 +3590,7 @@ async function handleAnalyzeRequest(request: Request) {
         // literal duplicates — silence them, keeping the last (the
         // freshest message), exactly as the collapse did.
         for (const i of composedIdx.slice(0, -1)) results[i].reply = null;
+        if (composedIdx.length > 0) squadPostCarrierId = results[composedIdx[composedIdx.length - 1]].waMessageId;
         if (composedIdx.length > 0) {
           console.log(
             `[analyze] composed the squad status from the DB for ${composedIdx.length} repl${composedIdx.length === 1 ? "y" : "ies"}; ${composedIdx.length - 1} silenced`,
@@ -4064,6 +4076,11 @@ async function handleAnalyzeRequest(request: Request) {
   //   pass that can add words, a tick or a queued ask to a result, from the
   //   OUTCOME only (`tagged-silence.ts`), never the words: the players'
   //   group twin of HQ's "I didn't catch that", pointing to help.
+  // The batch's squad post went out when the message carrying it still
+  // speaks after composition (the composer, the organisers' net and the
+  // marker strip above can each leave it with nothing).
+  const squadPostWentOut =
+    squadPostCarrierId !== null && !!results.find((x) => x.waMessageId === squadPostCarrierId)?.reply;
   for (const r of results) {
     const m = fresh.find((x) => x.waMessageId === r.waMessageId);
     if (!m) continue;
@@ -4073,6 +4090,9 @@ async function handleAnalyzeRequest(request: Request) {
       late: lateById.has(m.waMessageId),
       capped: cappedIds.has(m.waMessageId),
       gated: gatedIds.has(m.waMessageId),
+      refused: silence.refused.has(m.waMessageId),
+      readFailed: silence.readFailed.has(m.waMessageId),
+      answeredBySquadPost: silence.squadPostAnswers.has(m.waMessageId) && squadPostWentOut,
       route: gateRouteById.get(m.waMessageId),
       result: { reply: r.reply ?? null, react: r.react ?? null, intent: r.intent ?? "noise", handledBy: r.handledBy },
     });

@@ -221,6 +221,7 @@
  *     silently guessed.
  */
 import { type QuotedGroupMessage } from "./reply-context";
+import type { SilenceFacts } from "./tagged-silence";
 import type { OrgFeatures } from "./org-features";
 import { compose } from "./pipeline/compose";
 import { decide as decideDefault } from "./pipeline/engine";
@@ -413,6 +414,9 @@ export async function runTeamOpsBatch(args: {
    *  engine already made it for its swap guard
    *  (`EngineBatchResult.teamsReadings`). Used as read; no second call. */
   alsoTeamsFacts?: ReadonlyMap<string, Facts>;
+  /** Where this batch reports the silences it chose (`tagged-silence.ts`),
+   *  so the route does not call them "not understood". Absent: unreported. */
+  silence?: SilenceFacts;
 }): Promise<TeamOpsBatchResult> {
   const { orgId, now, messages, history, enabled, deps } = args;
   const alsoTeams = args.alsoTeams ?? new Set<string>();
@@ -552,6 +556,7 @@ export async function runTeamOpsBatch(args: {
           `${TEAM_OPS_APPLY_DEGRADED_PREFIX} ${m.waMessageId}: ${failure.detail} — ` +
             `no teams were generated and nothing was said`,
         );
+        args.silence?.readFailed.add(m.waMessageId);
         return;
       }
       factsById.set(m.waMessageId, res.facts);

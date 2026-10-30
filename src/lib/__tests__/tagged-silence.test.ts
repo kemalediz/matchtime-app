@@ -13,6 +13,9 @@ const base: TaggedSilenceInput = {
   late: false,
   capped: false,
   gated: false,
+  refused: false,
+  readFailed: false,
+  answeredBySquadPost: false,
   route: "offer",
   result: { reply: null, react: null, intent: "noise", handledBy: "llm" },
 };
@@ -65,5 +68,26 @@ describe("taggedSilence", () => {
     expect(taggedSilence(w({ capped: true }))).toBe(false);
     expect(taggedSilence(w({ gated: true }))).toBe(false);
     expect(taggedSilence(w({ result: { handledBy: "error" } }))).toBe(false);
+  });
+
+  // e2e/api/clause-peel.spec.ts:397, e2e/sim/stats-blast.spec.ts:165 (2026-10-30):
+  // a player's tagged "who hasn't rated yet" / "send everyone their stats" was
+  // refused by the engine's admin gate, which is silent by design, and then
+  // told "I didn't catch what you'd like me to do".
+  it("does not fire on a permission refusal: that silence is designed", () => {
+    expect(taggedSilence(w({ refused: true }))).toBe(false);
+  });
+
+  // e2e/sim/attendance-engine-overload.spec.ts:158: the extractor failed (529)
+  // and the sender was told he was not understood. A system failure is the
+  // operator note's, like a write that threw.
+  it("does not fire when the model read of the message failed", () => {
+    expect(taggedSilence(w({ readFailed: true, route: "other_att", result: { handledBy: "ignored" } }))).toBe(false);
+  });
+
+  // e2e/sim/squad-post.spec.ts:77: "who's on the bench?" beside somebody's IN
+  // is answered by the batch's one squad post, and got a second message.
+  it("does not fire on a squad question the batch's squad post answered", () => {
+    expect(taggedSilence(w({ answeredBySquadPost: true, route: "question", result: { handledBy: "ignored" } }))).toBe(false);
   });
 });

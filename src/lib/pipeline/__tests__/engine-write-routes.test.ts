@@ -334,6 +334,7 @@ describe("the recruit blast is DECIDED by the engine and RUN by the route", () =
     const r = recruit("zair");
     expect(r.writes).toHaveLength(0);
     expect(r.outcomes[0].reasons.join(" ")).toMatch(/only an admin/i);
+    expect(r.outcomes[0].refused).toBe("admin_only");
   });
 
   // ── THE TAG IS REQUIRED FOR THE BULK COMMAND (2026-09-06) ──────────
@@ -775,6 +776,13 @@ describe("the stats blast is DECIDED by the engine and RUN by the route", () => 
     const r = blast("zair");
     expect(r.writes.filter((x) => x.kind === "stats_blast")).toHaveLength(0);
     expect(r.outcomes[0].reasons.join(" ")).toMatch(/only an admin/i);
+    // Typed, so the route keeps the silence: e2e/sim/stats-blast.spec.ts:165.
+    expect(r.outcomes[0].refused).toBe("admin_only");
+  });
+
+  it("an admin's untagged blast is a tag rule, not a permission refusal", () => {
+    const r = blast("kemal", { tagged: false, taggedExplicitly: false, body: "send everyone their stats" });
+    expect(r.outcomes[0].refused).toBeUndefined();
   });
 
   it("refuses an unresolved sender — nobody is an admin until they are somebody", () => {

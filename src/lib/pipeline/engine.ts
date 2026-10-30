@@ -2031,6 +2031,7 @@ export function decide(input: EngineInput): EngineResult {
             // is admin-facing, and the deleted fast path stayed silent
             // for a non-admin too (no react, no reply).
             out.reasons.push("only an admin may see who has and has not rated");
+            out.refused = "admin_only";
             out.disposition = "noop";
             break;
           }
@@ -2900,6 +2901,7 @@ export function decide(input: EngineInput): EngineResult {
           // Real money, live on Sutton FC. The chase math must not be
           // corruptible by any member who can type.
           out.reasons.push("only an admin may credit a payment");
+          out.refused = "admin_only";
           return;
         }
         const payer = resolvePerson(facts.payerRef ?? "", w.roster);
@@ -3091,6 +3093,7 @@ export function decide(input: EngineInput): EngineResult {
         // Admin-only, exactly as `route.ts:1548-1557` gates it.
         if (!senderIsAdmin) {
           out.reasons.push("only an admin may send a recruit blast");
+          out.refused = "admin_only";
           return;
         }
         // ── AND THEY MUST TAG IT (2026-09-06) ─────────────────────────
@@ -3247,6 +3250,7 @@ export function decide(input: EngineInput): EngineResult {
         //    CLASSIFIER, not a re-litigation of the permission.
         if (!senderIsAdmin) {
           out.reasons.push("only an admin may send a stats blast");
+          out.refused = "admin_only";
           return;
         }
         // ── AND THEY MUST ADDRESS THE BOT, WITH AN @ ─────────────────

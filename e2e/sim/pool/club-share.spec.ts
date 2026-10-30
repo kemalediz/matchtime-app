@@ -16,8 +16,10 @@
 import type { Page } from "@playwright/test";
 import { scenario, scenarios, expect } from "./fixtures";
 import { signInAs } from "../../fixtures";
+import { openSettingsCard, openSettingsTab } from "../../helpers/settings-nav";
 import type { PoolClub, PoolWorld } from "./world";
 import { E2E } from "../../helpers/env";
+import { poolClubShareCopy } from "@/lib/i18n/pool-club-share";
 
 const PI = { "x-api-key": E2E.WHATSAPP_API_KEY };
 const MIN = 60_000;
@@ -55,11 +57,16 @@ async function piPoll(pool: PoolWorld, club: PoolClub, now: Date): Promise<Instr
 
 const sharePosts = (ins: readonly Instruction[]) => ins.filter((i) => i.kind === "group-message" && /\/play\?src=club-/.test(i.text ?? ""));
 
-async function openSettingsAsOwner(pool: PoolWorld, page: Page, club: PoolClub): Promise<void> {
+/** Club settings is tabs of collapsible cards since #435 (2026-10-28): the
+ *  share card is on "Finding players", and is opened the way an organiser
+ *  opens it. With the player pool off the tab is shown and the card is not
+ *  there to open. */
+async function openSettingsAsOwner(pool: PoolWorld, page: Page, club: PoolClub, opts: { card?: boolean } = {}): Promise<void> {
   const owner = await pool.userOf(club.member("owner"));
   pool.note(`${club.key}.owner opens club settings`);
   await signInAs(page, owner!.id, "/admin/settings");
-  await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+  if (opts.card === false) await openSettingsTab(page, "finding");
+  else await openSettingsCard(page, "pool-club-share");
   await page.waitForLoadState("networkidle");
 }
 
@@ -81,7 +88,9 @@ scenarios("a club's one share post about the player pool", () => {
 
     pool.note("fnf.owner taps Send twice, fast");
     await page.getByTestId("pool-club-share-send").dblclick();
-    await expect(page.getByTestId("pool-club-share-sent")).toBeVisible();
+    // #435 (2026-10-28): until the Pi has posted it, the card says it is queued.
+    await expect(page.getByTestId("pool-club-share-queued")).toHaveText(poolClubShareCopy("en").queuedSoon);
+    await expect(page.getByTestId("pool-club-share-send")).toHaveCount(0);
     const sent = await pool.collect();
     pool.expectSent(sent, [{ to: "fnf.group", channel: "group", text: shown, sendAfter: null }]);
     expect(shown).toContain("The MatchTime player pool");
@@ -91,9 +100,11 @@ scenarios("a club's one share post about the player pool", () => {
     const first = await piPoll(pool, fnf, new Date(Date.now() + MIN));
     expect(sharePosts(first).map((i) => i.text)).toEqual([shown]);
 
-    pool.note("he reloads: the card says it was sent; no Send button");
+    pool.note("the Pi posts it; he reloads: the card says it was sent; no Send button");
+    await pool.db.run(`UPDATE "BotJob" SET "sentAt" = now() WHERE "aboutKey" = $1`, [`org-${fnf.group.orgId}:pool-club-share`]);
     await page.reload();
-    await expect(page.getByTestId("pool-club-share-sent")).toBeVisible({ timeout: 30_000 });
+    await openSettingsCard(page, "pool-club-share");
+    await expect(page.getByTestId("pool-club-share-sent")).toContainText("Sent to your players' group on", { timeout: 30_000 });
     await expect(page.getByTestId("pool-club-share-send")).toHaveCount(0);
     pool.expectSent(await pool.collect(), []);
     expect(sharePosts(await piPoll(pool, fnf, new Date(Date.now() + 2 * MIN)))).toEqual([]);
@@ -127,7 +138,8 @@ scenarios("a club's one share post about the player pool", () => {
     await openSettingsAsOwner(pool, page, ist);
     await expect(page.getByRole("heading", { name: "Oyuncularınıza oyuncu havuzunu anlatın" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Oyuncu grubuna gönder" }).click();
-    await expect(page.getByTestId("pool-club-share-sent")).toContainText("oyuncu grubunuza gönderdiniz");
+    // #435: queued until the Pi has posted it, in Turkish.
+    await expect(page.getByTestId("pool-club-share-queued")).toHaveText(poolClubShareCopy("tr").queuedSoon);
 
     const [post] = sharePosts(await piPoll(pool, ist, new Date(Date.now() + MIN)));
     expect(post.text).toContain("MatchTime oyuncu havuzu");
@@ -140,7 +152,7 @@ scenarios("a club's one share post about the player pool", () => {
   scenario("the player pool off: no card, nothing posted, no code made", async ({ pool, page }) => {
     const fnf = await pool.club("fnf", { name: "FNF", pool: { featurePlayerPool: false } });
     await quietHours(pool, fnf, false);
-    await openSettingsAsOwner(pool, page, fnf);
+    await openSettingsAsOwner(pool, page, fnf, { card: false });
     await expect(page.getByTestId("pool-club-share")).toHaveCount(0);
     pool.expectSent(await pool.collect(), []);
     expect(sharePosts(await piPoll(pool, fnf, new Date(Date.now() + MIN)))).toEqual([]);

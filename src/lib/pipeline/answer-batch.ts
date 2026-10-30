@@ -168,6 +168,7 @@
 // function, and only when the caller did not inject them. The analyze
 // route (which has Prisma) gets the real loaders; the corpus injects
 // its SQL ones and never touches Prisma at all.
+import type { SilenceFacts } from "../tagged-silence";
 import type { QuotedGroupMessage } from "../reply-context";
 import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
@@ -571,6 +572,10 @@ function batchCarriesAnUnsettledWriter(messages: AnswerBatchMessage[]): boolean 
  */
 const SQUAD_SHAPED_TOPICS: ReadonlySet<string> = new Set(["squad", "count"]);
 
+/** The topics the batch's squad post answers: it lists the playing squad,
+ *  the count and the bench, by name (2026-10-30, `tagged-silence.ts`). */
+const SQUAD_POST_ANSWERS: ReadonlySet<string> = new Set(["squad", "count", "bench", "person_status"]);
+
 /**
  * Prefix on every degradation this module reports.
  *
@@ -817,6 +822,9 @@ export async function runAnswerBatch(args: {
    *  for the help's pool answer; called only when a help question is
    *  answered. Absent: the pool reads as closed. */
   poolEnv?: () => Promise<Record<string, string | undefined>>;
+  /** Where this batch reports the silences it chose (`tagged-silence.ts`),
+   *  so the route does not call them "not understood". Absent: unreported. */
+  silence?: SilenceFacts;
 }): Promise<AnswerBatchResult> {
   const { orgId, now, history, expectedMatchId, enabled, deps } = args;
   const alsoAsks: ReadonlySet<string> = args.alsoAsks ?? new Set<string>();
@@ -1080,6 +1088,7 @@ export async function runAnswerBatch(args: {
           `${ANSWER_DEGRADED_PREFIX} ${m.waMessageId}: ${failure.detail} — ` +
             `nobody answers this message: no reply in the group, and it is on this note`,
         );
+        args.silence?.readFailed.add(m.waMessageId);
         return;
       }
       factsById.set(m.waMessageId, res.facts);
@@ -1254,6 +1263,9 @@ export async function runAnswerBatch(args: {
           `the batch also carries messages this step does not own, which may change the ` +
             `squad after this answer is composed (S36, and the pre-write snapshot)`,
         );
+        // The batch's squad post, built after every write, lists the squad
+        // and the bench: when it goes out it is this question's answer.
+        if (SQUAD_POST_ANSWERS.has(facts.topic)) args.silence?.squadPostAnswers.add(m.waMessageId);
         continue;
       }
       if (facts.topic === "person_status") {
@@ -1740,6 +1752,9 @@ export async function runAnswerBatch(args: {
     (id) => !statsLinkIds.has(id) && (utteranceByMessageId.get(id) ?? []).length === 0,
   );
   for (const id of silentIds) {
+    // An admin-only ask from a player, refused on purpose: silence is the
+    // answer, and the route must not call it "not understood".
+    if (result.outcomes.find((o) => o.messageId === id)?.refused) args.silence?.refused.add(id);
     // The old line ended "handing this message back to the analyzer
     // rather than going silent". After §10 step 8 that is the exact
     // inverse of what happens: disowning the id here IS going silent.

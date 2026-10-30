@@ -23,6 +23,7 @@
  * 0` as "MatchTime said nothing", not as "somebody else handled it".
  */
 import { describe, expect, it, vi } from "vitest";
+import { newSilenceFacts } from "../tagged-silence";
 import {
   intentFor,
   describeEngineBatch,
@@ -520,6 +521,33 @@ describe("an extractor failure hands the message BACK to the analyzer", () => {
     expect(r.ownedIds.size).toBe(0);
     expect(d.registered).toEqual([]);
     expect(r.degradations.join(" ")).toMatch(/529 Overloaded/);
+    warn.mockRestore();
+  });
+
+  // e2e/sim/attendance-engine-overload.spec.ts:158 (2026-10-30): a tagged
+  // message lost to a failed read was told "I didn't catch what you'd like
+  // me to do". The route keeps a system failure off the group only if told.
+  it("a message whose read failed is recorded as a failed read", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const throwing: PipelineModel = {
+      name: "throwing",
+      async complete() {
+        throw new Error("529 Overloaded");
+      },
+    };
+    const silence = newSilenceFacts();
+    const m = msg();
+    await runAttendanceEngineBatch({
+      orgId: "org-1",
+      now: new Date("2026-09-03T12:00:00Z"),
+      messages: [m],
+      history: [],
+      expectedMatchId: "match-1",
+      enabled: true,
+      deps: deps({ model: throwing }),
+      silence,
+    });
+    expect([...silence.readFailed]).toEqual([m.waMessageId]);
     warn.mockRestore();
   });
 

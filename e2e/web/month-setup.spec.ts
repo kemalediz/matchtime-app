@@ -85,7 +85,15 @@ test("the coming month: started from the group's pasted list, with a fewer-games
 });
 
 test("priced: the fewer-games regular is asked for fewer games; changing the games works it out again; too many is refused", async ({ page, db }) => {
-  const games = GAMES;
+  // The month's games as MatchTime counted them when it opened the month:
+  // its Tuesdays, plus any match of the fixture already in the month. The
+  // seed's upcoming match is two days on, so on the last two days of a
+  // month it lands in the coming one (5 games in November on 30 Oct 2026).
+  const games = (await db.one<{ g: number }>(
+    `SELECT "gamesScheduled" AS g FROM "SquadMonth" WHERE "orgId" = $1 AND "monthStart" = $2::date`,
+    [ORG_ID, NEXT],
+  ))!.g;
+  expect(games).toBeGreaterThanOrEqual(GAMES);
   await signInAs(page, U.admin, "/admin/months");
   const card = page.getByTestId("next-month-card");
   await expect(card).toBeVisible({ timeout: 30_000 });

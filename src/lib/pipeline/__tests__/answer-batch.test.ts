@@ -37,6 +37,7 @@ import {
 import type { OrgFeatures } from "../../org-features";
 import type { PaymentSnapshot, Route, SpeechIntent, SquadState } from "../types";
 import { NOW, fullName, world, type WorldOpts } from "./helpers";
+import { newSilenceFacts, type SilenceFacts } from "../../tagged-silence";
 
 // ── Fixtures ───────────────────────────────────────────────────────────
 
@@ -133,9 +134,11 @@ async function run(args: {
   expectedMatchId?: string | null;
   loadPayments?: AnswerBatchDeps["loadPayments"];
   loadRatingProgress?: AnswerBatchDeps["loadRatingProgress"];
+  silence?: SilenceFacts;
 }) {
   const state = args.state ?? world(args.worldOpts ?? { confirmed: ELEVEN });
   return runAnswerBatch({
+    ...(args.silence ? { silence: args.silence } : {}),
     orgId: "org-1",
     now: NOW,
     messages: args.messages,
@@ -1623,5 +1626,72 @@ describe("incident 2026-10-21: an untagged payment question the day after a matc
     expect([...res.ownedIds]).toHaveLength(1);
     expect(pay.calls).toEqual(["org-1"]);
     expect([...res.outcomes.values()][0]?.reply ?? "").toMatch(/No payments have reached me/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// WHY A TAGGED QUESTION WENT UNANSWERED, TYPED FOR THE ROUTE (2026-10-30)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// The analyze route says "I didn't catch what you'd like me to do" to a
+// tagged message that came to nothing (#455). Three silences here are not
+// that, and the route can only tell them apart if this module says which.
+
+describe("the silences the route must not call 'not understood'", () => {
+  const RATE_Q = "@Match Time who hasn't rated yet please";
+  const RATE_FACTS = { topic: "rating_progress", personRef: "", statedCount: -1 };
+  const BENCH_Q = "@Match Time who's on the bench?";
+
+  it("a player's rating-progress ask refused by the admin gate is recorded as refused", async () => {
+    const silence = newSilenceFacts();
+    const { model } = stubModel({ [RATE_Q]: RATE_FACTS });
+    const res = await run({
+      messages: [msg({ waMessageId: "wa-rate", body: RATE_Q, route: "question", senderUserId: "u-zair", senderName: fullName("zair") })],
+      model,
+      loadRatingProgress: async () => ({ ok: true, matchName: "T", matchWhen: "Tue", confirmed: 1, ratedCount: 0, momCount: 0, notRated: [], ratedNoMom: [] }),
+      silence,
+    });
+    expect(res.outcomes.has("wa-rate")).toBe(false);
+    expect([...silence.refused]).toEqual(["wa-rate"]);
+    expect(silence.readFailed.size + silence.squadPostAnswers.size).toBe(0);
+  });
+
+  it("a question whose read failed is recorded as a failed read", async () => {
+    const silence = newSilenceFacts();
+    const { model } = stubModel({ [COUNT_Q]: COUNT_FACTS }, { throwOn: COUNT_Q });
+    await run({ messages: [msg({ waMessageId: "wa-count", body: COUNT_Q, route: "question" })], model, silence });
+    expect([...silence.readFailed]).toEqual(["wa-count"]);
+    expect(silence.refused.size).toBe(0);
+  });
+
+  it("a bench question held back beside somebody's IN is one the squad post answers", async () => {
+    const silence = newSilenceFacts();
+    const { model } = stubModel({ [BENCH_Q]: { topic: "bench", personRef: "", statedCount: -1 } });
+    const res = await run({
+      messages: [
+        msg({ waMessageId: "wa-in", body: "in", route: "self_att", tagged: false }),
+        msg({ waMessageId: "wa-bench", body: BENCH_Q, route: "question" }),
+      ],
+      model,
+      worldOpts: { confirmed: ELEVEN, bench: ["zair"] },
+      silence,
+    });
+    expect(res.outcomes.has("wa-bench")).toBe(false);
+    expect([...silence.squadPostAnswers]).toEqual(["wa-bench"]);
+  });
+
+  it("a payments question held back the same way is NOT one the squad post answers", async () => {
+    const silence = newSilenceFacts();
+    const PAY_Q = "@Match Time who hasn't paid?";
+    const { model } = stubModel({ [PAY_Q]: { topic: "payments", personRef: "", statedCount: -1 } });
+    await run({
+      messages: [
+        msg({ waMessageId: "wa-in", body: "in", route: "self_att", tagged: false }),
+        msg({ waMessageId: "wa-pay", body: PAY_Q, route: "question" }),
+      ],
+      model,
+      silence,
+    });
+    expect(silence.squadPostAnswers.size).toBe(0);
   });
 });
