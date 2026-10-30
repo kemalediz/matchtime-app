@@ -1876,6 +1876,11 @@ async function handleAnalyzeRequest(request: Request) {
   //     - the message stays in the batch, so its sender's own drop still
   //       reaches the attendance engine, and the step-7 owners skip it.
   //   A failed or unreadable reading is "other": nothing changes.
+  // The router's signal, a fact (`pasted-list-signal.ts`): the messages it
+  // flagged as a pasted squad list. Read below by the squad reader, and
+  // handed to the attendance engine, which keeps only a list's sender's
+  // own OUT (`clampPastedListFacts`).
+  const listIds = pastedListIds(fresh, (gate?.routes ?? []) as unknown as RoutedForListSignal[]);
   const pastedRosterIds = new Set<string>();
   const pastedRosterReports = new Map<
     string,
@@ -1888,9 +1893,7 @@ async function handleAnalyzeRequest(request: Request) {
     }
   >();
   if (org.squadMode !== "monthly" && nextMatchForReply && !aiCapped) {
-    // The router's signal, a fact (`pasted-list-signal.ts`): only a message
-    // it flagged as a pasted squad list is read.
-    const listIds = pastedListIds(fresh, (gate?.routes ?? []) as unknown as RoutedForListSignal[]);
+    // Only a message the router flagged as a pasted squad list is read.
     const listCandidates = fresh.filter((m) => {
       const sender = senderById.get(m.waMessageId);
       return (
@@ -2089,6 +2092,9 @@ async function handleAnalyzeRequest(request: Request) {
               ...replyField(replyById, m),
             };
           }),
+          // A pasted list keeps only its sender's own OUT: the router's
+          // flag, with the squad reader's "squad" answer (both facts).
+          pastedListIds: new Set([...listIds, ...pastedRosterIds]),
           deps: {
             // At the daily AI cap a bare IN/OUT is decided from the
             // floor's facts, with no extractor call.
@@ -2398,6 +2404,9 @@ async function handleAnalyzeRequest(request: Request) {
           alsoTeams: new Set(
             [...alsoTeamsIds(fresh, engineBatch?.outcomes.values() ?? [])].filter((id) => engineOwnedIds.has(id)),
           ),
+          // The teams extractor's reading the attendance engine already
+          // made of those messages (its swap guard reads it): not read twice.
+          alsoTeamsFacts: engineBatch?.teamsReadings,
         })
       : null;
 

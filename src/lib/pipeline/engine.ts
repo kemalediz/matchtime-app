@@ -70,7 +70,7 @@ import {
 } from "../rating-progress-answer";
 import { RECRUIT_LOOKBACK_MAX, resolveLookbackMatches } from "../recruit-lookback";
 import { reminderInstant } from "../reminder-time";
-import { swapGuardFor, type SwapCandidate } from "../team-slot-swap";
+import { swapGuardFor, type SwapCandidate, type SwapGuardClaim } from "../team-slot-swap";
 // The 2026-09-15 replacement rule, pure and beside the pure core it is
 // built out of (§13) rather than inlined here — its header carries the
 // incident, the state-check argument and the pairing order.
@@ -437,13 +437,26 @@ export function decide(input: EngineInput): EngineResult {
       status: statusById.get(mem.userId) ?? "NONE",
       team: teamById.get(mem.userId) ?? null,
     }));
-  const swapGuard = (m: EngineMessage) =>
-    swapGuardFor(m.body, swapPool, {
+  // The guard reads FACTS (2026-10-30): the teams extractor's reading of
+  // a message the attendance extractor said also asks for a team change
+  // (`EngineMessage.teamsReading`), never the words. When that read
+  // failed, nobody knows who the change moves, so no claim about anybody
+  // but the sender is applied from that message (the safe direction: a
+  // player is never dropped on a misread swap; the reason says so).
+  const swapGuard = (
+    m: EngineMessage,
+    claims: SwapGuardClaim[],
+  ): { parties: string[]; refuses: (c: SwapGuardClaim) => boolean } | null => {
+    if (m.teamsReading === "unreadable") {
+      return { parties: ["(the team change could not be read)"], refuses: (c) => c.subject !== "sender" };
+    }
+    return swapGuardFor(m.teamsReading ?? null, claims, swapPool, {
       sender: m.senderUserId
         ? { userId: m.senderUserId, name: m.senderName ?? nameOf(w, m.senderUserId) }
         : null,
       teamsExist: state.teams.length > 0,
     });
+  };
   messages.forEach((m, i) => {
     if (!m.senderUserId) return;
     if (m.facts.kind !== "attendance") return;
@@ -454,7 +467,7 @@ export function decide(input: EngineInput): EngineResult {
     // A self claim the swap guard in `handleAttendance` will refuse
     // ("swap me with David") writes nothing, so it must not supersede
     // an earlier real "in" from the same author.
-    const guard = swapGuard(m);
+    const guard = swapGuard(m, m.facts.claims);
     if (
       !m.facts.claims.some(
         (c) =>
@@ -672,20 +685,19 @@ export function decide(input: EngineInput): EngineResult {
       }
 
       // ══════════════════════════════════════════════════════════════
-      // A SWAP REQUEST IS NEVER ATTENDANCE FOR THE TWO IT NAMES
+      // A SWAP REQUEST IS NEVER ATTENDANCE FOR THE PEOPLE IT MOVES
       // ══════════════════════════════════════════════════════════════
       //
       // 2026-09-17, dry-run cases TR26 / TR27: "@Match Time swap David
-      // and Sait", refused by the swap fast path (or sent untagged by an
-      // admin, whose third-party OUT needs no tag), reached this function
-      // and DROPPED David 10 of 10. The model's claim looked exactly like
-      // a real drop (`polarity=out`, not contingent), so no rule below
-      // could tell it apart. The body can: `parseSwapNames` is the fast
-      // path's own parser, and a person the message asks to SWAP is not
-      // being added, dropped or benched by it. The argument for putting
-      // this here rather than in a prompt, and for matching per NAME
-      // rather than refusing the whole message, is in
-      // `lib/team-slot-swap.ts` above `isSwapParty`.
+      // and Sait" reached this function and DROPPED David 10 of 10. The
+      // model's claim looked exactly like a real drop (`polarity=out`, not
+      // contingent), so no rule below could tell it apart. Since
+      // 2026-10-30 the guard reads facts, never the body: the teams
+      // extractor's reading of a message the attendance extractor said
+      // also asks for a team change (`msg.teamsReading`). A person that
+      // reading moves between the teams is not being added, dropped or
+      // benched. Why per PERSON and not per message, and the sender's
+      // rule, are in `lib/team-slot-swap.ts` above `swapGuardFor`.
       //
       // FILTERED, NOT RETURNED. Every other claim in the message (the
       // sender's own "and I'm out", a third party the swap does not
@@ -693,10 +705,10 @@ export function decide(input: EngineInput): EngineResult {
       // requests. The one early exit is for a message whose ONLY claims
       // were about the swap's parties, and it sits after the chase
       // branch so that branch still speaks.
-      const guard = swapGuard(msg);
+      const guard = swapGuard(msg, claims);
       let refusedAsSwapParty = 0;
       if (guard && claims.length > 0) {
-        const swapParties = guard.parties;
+        const swapParties = guard.parties.join(" / ");
         const kept: Claim[] = [];
         for (const c of claims) {
           if (!guard.refuses(c)) {
@@ -706,7 +718,7 @@ export function decide(input: EngineInput): EngineResult {
           refusedAsSwapParty++;
           out.reasons.push(
             `"${c.personRef || "sender"}" is named in a team-swap request ` +
-              `(${swapParties.a} / ${swapParties.b}): a swap is never an attendance change`,
+              `(${swapParties}): a swap is never an attendance change`,
           );
         }
         claims = kept;

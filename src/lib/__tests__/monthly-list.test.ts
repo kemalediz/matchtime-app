@@ -7,7 +7,6 @@
 import { describe, it, expect } from "vitest";
 import { type MonthlyListEntry } from "../monthly-list";
 import { parseMonthlyList, readMarks, findInMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
-import { parsePastedRoster } from "../pasted-roster";
 import f3Fixture from "../setup-learning/__fixtures__/monthly-list.json";
 import {
   OPENING_POST,
@@ -529,12 +528,6 @@ describe("a whole month of pastes (the anonymised F3 fixture)", () => {
       "Sam",
       "Alfie",
     ]);
-  });
-
-  it("the same paste through the pasted-roster parser has 13 playing names, not 18", () => {
-    const r = parsePastedRoster(pastes[pastes.length - 1])!;
-    expect(r.names).toHaveLength(13);
-    expect(r.notPlaying.map((e) => e.name)).toEqual(["Paulo", "Kai", "Finn", "Nico", "Wes"]);
   });
 });
 

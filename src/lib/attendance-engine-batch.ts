@@ -140,7 +140,7 @@ import type { QuotedRef } from "./quoted-message";
 import type { ProposedWrite } from "./pipeline/types";
 import { quotedPartnerAsk } from "./pipeline/engine";
 import type { AttendanceWriteFailure } from "./attendance-write-outcome";
-import { clampPastedRosterFacts } from "./pasted-roster-registration";
+import { clampPastedListFacts } from "./pasted-list-signal";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
 import { extractForRouteTraced } from "./pipeline/trace";
@@ -159,6 +159,7 @@ import type {
   Facts,
   Route,
   SquadState,
+  TeamFacts,
 } from "./pipeline/types";
 import {
   ENGINE_APPLY_DEGRADED_PREFIX,
@@ -306,6 +307,14 @@ export interface EngineBatchResult {
   degradations: string[];
   cost: { usd: number; calls: number; ms: number };
   /**
+   * THE TEAMS EXTRACTOR'S READING of each owned message the attendance
+   * extractor said also asks for a team change (its "teams" side
+   * request), read once here for the engine's swap guard and handed on so
+   * the teams path (`runTeamOpsBatch`'s `alsoTeamsFacts`) applies the
+   * change without reading the message a second time. Absent: none read.
+   */
+  teamsReadings?: Map<string, TeamFacts>;
+  /**
    * Lines for the club's organisers (`ComposedOutput.adminNotices`): only
    * when they announce the list and teams, e.g. "a slot opened". This
    * runner sends nothing; the analyze route puts each on the admin
@@ -432,7 +441,7 @@ export interface EngineBatchDeps extends EngineApplyDeps {
   /**
    * THE CALLER NARROWS WHAT THE ENGINE MAY ACT ON (2026-10-15). Called
    * once per owned message with attendance facts, after extraction and
-   * the pasted-roster clamp and BEFORE `decide()`; what it returns is all
+   * the pasted-list clamp and BEFORE `decide()`; what it returns is all
    * the engine sees. Only the admin group passes it
    * (`admin-group-squad-change.ts`): there an organiser's conversation
    * ("might have to pull out", "my ankle is wrecked") must not write, and
@@ -506,6 +515,15 @@ export async function runAttendanceEngineBatch(args: {
    * without deleting the call site.
    */
   enabled: boolean;
+  /**
+   * THE MESSAGES THAT ARE A PASTED SQUAD LIST (2026-10-30): the router's
+   * `pasted_list` flag (`pasted-list-signal.ts`), with the players' group
+   * squad reader's "squad" answer (`hq-squad-reader.ts`, `place:
+   * "players"`). A fact, never the shape of the words: it replaced the
+   * `parsePastedRoster` shape test. Each keeps only its sender's own OUT
+   * (`clampPastedListFacts`). Absent: no message is a list.
+   */
+  pastedListIds?: ReadonlySet<string>;
   deps: EngineBatchDeps;
 }): Promise<EngineBatchResult> {
   const { orgId, now, messages, history, expectedMatchId, deps } = args;
@@ -638,7 +656,7 @@ export async function runAttendanceEngineBatch(args: {
     // never offered, and the club is a player short.
     //
     // The refusal is now a CLAMP ON THE FACTS rather than on the
-    // message: `clampPastedRosterFacts` (applied after extraction,
+    // message: `clampPastedListFacts` (applied after extraction,
     // below) keeps the sender's own OUT claims and discards everything
     // else — third-party claims, the sender's own IN, the affirmation
     // and the side requests. Read that function's header for the
@@ -648,16 +666,16 @@ export async function runAttendanceEngineBatch(args: {
     // stop (PR #35: the same paste, the same world, `Nabeel` one run and
     // `Adam, Amir, Ehtisham, Martin` the next).
     //
-    // WHAT STILL OWNS THE LIST ITSELF: nothing here. The arithmetic —
-    // `reconcilePastedRoster`, "which appended lines are new" — is
-    // `lib/pasted-roster-registration.ts`, applied in `route.ts`'s
-    // pasted-roster section, which no longer peels the message out of
-    // the batch on its way past. That guard is not reimplemented here
-    // and must not be.
+    // WHAT STILL OWNS THE LIST ITSELF: nothing here. Since 2026-10-30
+    // the squad reader reads it (`route.ts`'s pasted-list section, `place:
+    // "players"`), which leaves the message in the batch on its way past.
+    // That is not reimplemented here and must not be.
     //
-    // SHAPE, NEVER CONTENT, unchanged: the test is `parsePastedRoster`
-    // on the envelope and `subject`/`polarity` on the claim, so nothing
-    // about who is named can steer it.
+    // FACTS, NEVER THE WORDS (2026-10-30): which message is a list is the
+    // router's `pasted_list` flag plus the squad reader's answer
+    // (`args.pastedListIds`), never a shape test on the body (the
+    // `parsePastedRoster` test is deleted), and what survives is
+    // `subject`/`polarity` on the claim.
     // ── A SHARED CONTACT CARD IS NOT AN ATTENDANCE MESSAGE ───────────
     //
     // Found by the §10 step 6 replay sweep, adjudicated `old_right`:
@@ -866,17 +884,18 @@ export async function runAttendanceEngineBatch(args: {
   }
   for (const id of failedIds) ownedIds.delete(id);
 
-  // ── Stage 2b: THE PASTED-ROSTER CLAMP ───────────────────────────────
+  // ── Stage 2b: THE PASTED-LIST CLAMP ─────────────────────────────────
   //
   // The successor to the blanket `if (parsePastedRoster(m.body)) return
   // false;` in the ownership filter above — see the essay there. A
-  // roster-shaped message keeps ONLY its sender's own OUT claims;
+  // message the router flagged as a pasted list (`args.pastedListIds`)
+  // keeps ONLY its sender's own OUT claims;
   // everything else the extractor read off a list is discarded before
   // `decide()` ever sees it, so no rule downstream can act on it.
   //
   // A message left with nothing is UNOWNED, which is byte-identical to
   // what the old refusal did: no facts, no outcome, no reply, and
-  // `route.ts`'s pasted-roster section reports the message instead. That
+  // `route.ts`'s pasted-list section reports the message instead. That
   // is why this is a `delete` from `ownedIds` and not a `noop` outcome —
   // an outcome here would be a second owner for a message the route is
   // already reporting.
@@ -884,24 +903,25 @@ export async function runAttendanceEngineBatch(args: {
   // NOT a degradation. An ordinary paste reaching this line and losing
   // every claim is the normal, correct case; putting it on the operator
   // DM would page a human for a list being posted.
+  const pastedListIds = args.pastedListIds ?? new Set<string>();
   for (const m of owned) {
-    if (!ownedIds.has(m.waMessageId)) continue;
+    if (!ownedIds.has(m.waMessageId) || !pastedListIds.has(m.waMessageId)) continue;
     const before = factsById.get(m.waMessageId);
     if (!before) continue;
-    const clamped = clampPastedRosterFacts(m.body, before.facts);
-    if (clamped.facts === before.facts) continue; // not a roster at all
+    const clamped = clampPastedListFacts(before.facts);
+    if (clamped.facts === before.facts) continue; // nothing to clamp
     if (clamped.facts.kind === "none") {
       console.warn(
-        `[attendance-engine] pasted roster ${m.waMessageId}: ${clamped.dropped} claim(s) read off ` +
+        `[attendance-engine] pasted list ${m.waMessageId}: ${clamped.dropped} claim(s) read off ` +
           `a list, none of them the sender's own drop — owning nothing. The list itself is ` +
-          `arithmetic (lib/pasted-roster-registration.ts), never a reading.`,
+          `the squad reader's (route.ts, place "players").`,
       );
       ownedIds.delete(m.waMessageId);
       factsById.set(m.waMessageId, { facts: clamped.facts, degraded: before.degraded });
       continue;
     }
     console.warn(
-      `[attendance-engine] pasted roster ${m.waMessageId}: keeping the sender's own drop and ` +
+      `[attendance-engine] pasted list ${m.waMessageId}: keeping the sender's own drop and ` +
         `discarding ${clamped.dropped} other claim(s) read off the list.`,
     );
     factsById.set(m.waMessageId, { facts: clamped.facts, degraded: before.degraded });
@@ -924,6 +944,56 @@ export async function runAttendanceEngineBatch(args: {
   // throw away the only record of why the engine went quiet.
   if (ownedIds.size === 0) return empty(degradations);
 
+  // ── Stage 2d: WHO A TEAM CHANGE MOVES (2026-10-30) ──────────────────
+  //
+  // A message the attendance extractor says ALSO asks for a team change
+  // (its "teams" side request: "I'm out, swap Kai with Ali") is read by
+  // the TEAMS extractor too, here, once. The engine's swap guard reads
+  // who it moves, so no attendance claim about them is applied
+  // (`swapGuardFor`, the successor to the swap regex), and the teams path
+  // applies the change from the same reading (`teamsReadings`). A read
+  // that fails is "unreadable": the guard then applies no claim about
+  // anybody but the sender, the safe direction. Same daily-cap rule as
+  // the attendance read above.
+  const teamsReadingById = new Map<string, TeamFacts | "unreadable">();
+  const asksTeamChange = owned.filter((m) => {
+    const f = factsById.get(m.waMessageId)?.facts;
+    return ownedIds.has(m.waMessageId) && f?.kind === "attendance" && f.sideRequests.includes("teams");
+  });
+  await Promise.all(
+    asksTeamChange.map(async (m) => {
+      const input = {
+        id: m.waMessageId,
+        body: m.body,
+        authorName: m.authorName,
+        tagged: m.tagged,
+        history,
+        lastBotPost,
+        reply: m.reply ?? null,
+        now,
+      };
+      const read = (overflow: boolean) =>
+        overflow
+          ? withAttendanceOverflow(() => extractForRouteTraced("attendance", model, "balancer", input))
+          : extractForRouteTraced("attendance", model, "balancer", input);
+      let res = await read(!!deps.aiCapped);
+      if (res.budgetRefused && !deps.aiCapped) res = await read(true);
+      if (res.usage) {
+        cost = { usd: cost.usd + (res.usage.costUsd ?? 0), calls: cost.calls + 1, ms: Math.max(cost.ms, res.usage.ms) };
+      }
+      if (res.facts.kind === "teams") {
+        teamsReadingById.set(m.waMessageId, res.facts);
+        return;
+      }
+      teamsReadingById.set(m.waMessageId, "unreadable");
+      degradations.push(
+        `extractor ${m.waMessageId}: the team change it asks for could not be read ` +
+          `(${res.budgetRefused ? "past the daily AI cap" : res.degradations.map((d) => d.detail).join("; ") || `"${res.facts.kind}" facts`}); ` +
+          `no claim about anybody but the sender was applied`,
+      );
+    }),
+  );
+
   // ── Stage 3: the engine, over the WHOLE window ─────────────────────
   const engineMessages: EngineMessage[] = messages.map((m) => {
     const f = factsById.get(m.waMessageId);
@@ -941,6 +1011,7 @@ export async function runAttendanceEngineBatch(args: {
       facts: f?.facts ?? { kind: "none" },
       degraded: f?.degraded ?? null,
       ...(m.quoted ? { quoted: m.quoted } : {}),
+      ...(teamsReadingById.has(m.waMessageId) ? { teamsReading: teamsReadingById.get(m.waMessageId) } : {}),
     };
   });
 
@@ -1325,6 +1396,9 @@ export async function runAttendanceEngineBatch(args: {
     matchId,
     degradations,
     cost: { ...cost, ms: Date.now() - t0 },
+    teamsReadings: new Map(
+      [...teamsReadingById].filter((e): e is [string, TeamFacts] => e[1] !== "unreadable"),
+    ),
     // Only when a write landed: a slot that the projection opened but the
     // database never did is not news for the organisers.
     adminNotices: applied.some((a) => a.ok) ? composed.adminNotices : [],

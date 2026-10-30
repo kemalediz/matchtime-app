@@ -1989,6 +1989,17 @@ export interface EngineMessage {
    * the Pi's real mention flag (`taggedExplicitly`). Absent otherwise.
    */
   repliesToMatchTimeAbout?: string | null;
+  /**
+   * THE TEAMS EXTRACTOR'S READING of a message whose attendance facts
+   * carry the "teams" side request (2026-10-30, the "no string parsing"
+   * sweep): what change to the teams it asks for, and so who it moves.
+   * The engine's swap guard reads its parties (`swapGuardFor` in
+   * `team-slot-swap.ts`); the attendance batch reads it once and hands it
+   * on to the teams path. Absent: no team change was read, or none asked.
+   * `"unreadable"`: one was asked for and the read FAILED, so nobody
+   * knows who it moves.
+   */
+  teamsReading?: TeamFacts | "unreadable" | null;
 }
 
 export interface EngineInput {

@@ -12,7 +12,7 @@
  */
 import { normaliseName } from "../../name-normalise";
 import type { MonthlyList, MonthlyListEntry, MonthlyListMarks, MonthlyListMonth, PaygDate } from "../../monthly-list";
-import { cleanName, isCantPlayHeader, readListLine, sameName, splitRosterSections, type ListLine } from "../../pasted-roster";
+import { cleanName, isCantPlayHeader, readListLine, sameName, splitRosterSections, type ListLine } from "./legacy-list-lines";
 import { t } from "../../i18n/t";
 import { LANGS, type Lang } from "../../i18n/lang";
 import { monthNameLabel } from "../../i18n/dates";
