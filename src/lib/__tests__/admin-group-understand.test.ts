@@ -477,7 +477,7 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
   });
 
   it("help that the question extractor does not answer: the HQ list for this club", async () => {
-    const r = await ask("what can you do?", "help");
+    const r = await ask("@Match Time what can you do?", "help");
     expect(r?.outcome).toBe("hq-help");
     expect(r?.replyText).toContain("*MatchTime in your admin group*");
   });
@@ -876,19 +876,21 @@ describe("unsure, addressed to MatchTime: never silent", () => {
 // players' group uses (`answerHqQuestion`, `runAnswerBatch` with the
 // organisers as the audience); the HQ menu stays for what that code does not
 // answer on the help route.
+// Since 2026-10-30 a question or help in HQ is answered only when asked of
+// MatchTime (see the next describe), so these cases carry the tag.
 describe("questions in HQ: the shared question answering, with the organisers' context", () => {
   const ADMINS = "👥 Admins: Hamzah and Raihan\n💷 Money collector: Hamzah\n💷 Match fee: £5 a player\n⚽ Teams ready: 10:00 on match day";
 
   it("the incident: routed help, the extractor reads a club question, the admins are named", async () => {
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: ADMINS });
-    const r = await ask("MatchTime who are the admins?", "help");
+    const r = await ask("@Match Time who are the admins?", "help");
     expect(r).toEqual({ route: "help", outcome: "hq-answered", replyText: ADMINS });
     expect(hqQuestion.answerHqQuestion).toHaveBeenCalledWith(
       expect.objectContaining({
         orgId: "org-fnf",
         lang: "en",
         messageId: "wa-9",
-        body: "MatchTime who are the admins?",
+        body: "@Match Time who are the admins?",
         senderUserId: "u-admin",
         senderName: "Raihan",
         now: NOW,
@@ -900,13 +902,13 @@ describe("questions in HQ: the shared question answering, with the organisers' c
 
   it("routed question: the same path", async () => {
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: "On the bench: Tom." });
-    const r = await ask("who's on the bench?", "question");
+    const r = await ask("@Match Time who's on the bench?", "question");
     expect(r).toEqual({ route: "question", outcome: "hq-answered", replyText: "On the bench: Tom." });
   });
 
   it("the recent HQ chat is the extractor's history, MatchTime's own lines as MatchTime", async () => {
     hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1"), orgRow(new Date("2026-10-16T09:05:00Z"))]);
-    await ask("how many are in?", "question");
+    await ask("@Match Time how many are in?", "question");
     expect(hqQuestion.answerHqQuestion.mock.calls[0][0].history).toEqual([
       { author: "MatchTime", body: TEAMS_TEXT },
       { author: null, body: "who has the bibs?" },
@@ -918,7 +920,7 @@ describe("questions in HQ: the shared question answering, with the organisers' c
     dbMock.user.findMany.mockImplementation(async (args: { where?: { id?: { in?: string[] } } }) =>
       args.where?.id?.in?.includes("u-2") ? [{ id: "u-2", name: "Hamzah Ali" }] : [],
     );
-    await ask("how many are in?", "question");
+    await ask("@Match Time how many are in?", "question");
     expect(hqQuestion.answerHqQuestion.mock.calls[0][0].history).toEqual([
       { author: "MatchTime", body: TEAMS_TEXT },
       { author: "Hamzah Ali", body: "who has the bibs?" },
@@ -926,13 +928,65 @@ describe("questions in HQ: the shared question answering, with the organisers' c
   });
 
   it("a question nothing answers: one line, never silent", async () => {
-    const r = await ask("what's the weather like?", "question");
+    const r = await ask("@Match Time what's the weather like?", "question");
     expect(r).toEqual({ route: "question", outcome: "hq-not-here", replyText: "I can't do that from this group." });
   });
 
   it("in Turkish: the club's language reaches the answering code", async () => {
-    await ask("yöneticiler kim?", "help", { org: { ...ORG, language: "tr" } });
+    await ask("@Match Time yöneticiler kim?", "help", { org: { ...ORG, language: "tr" } });
     expect(hqQuestion.answerHqQuestion.mock.calls[0][0].lang).toBe("tr");
+  });
+});
+
+// FNF HQ, 2026-10-30 23:31 UTC: MatchTime posted "Score saved: Bibs 5, Non
+// Bibs 4. Who was Man of the Match?", and twelve seconds later Raihan, an
+// organiser, wrote "Who got motm" to the other organisers: no tag, not a
+// reply to MatchTime. The router called it a `question`, and MatchTime
+// answered with the all-time Man of the Match table, as if it had asked a
+// question and answered it itself. In HQ, MatchTime speaks only when it is
+// asked (Kemal, 2026-10-30): a real tag, or a reply to its own message. An
+// untagged question or help there is the organisers' own talk: nothing
+// asked of the answering code, nothing said, not even the one line.
+describe("a question or help in HQ is answered only when asked of MatchTime (FNF HQ 2026-10-30)", () => {
+  const LEADERBOARD = "Most Man of the Match wins:\n1. Naim: 1 win";
+
+  it.each(["question", "help"])("the incident, routed %s: no tag, no reply, silent, and the answering code is never asked", async (route) => {
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LEADERBOARD });
+    expect(await ask("Who got motm", route)).toBeNull();
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
+  });
+
+  it.each(["question", "help"])("routed %s, nothing would answer it: still silent, no 'not from this group' line for an organiser", async (route) => {
+    expect(await ask("what's the weather like?", route)).toBeNull();
+    expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
+  });
+
+  it("the bare word MatchTime, with no real mention, is talk about MatchTime: silent", async () => {
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LEADERBOARD });
+    expect(await ask("MatchTime who got motm", "question")).toBeNull();
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+  });
+
+  it("the same words, tagged: answered", async () => {
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LEADERBOARD });
+    expect(await ask("@Match Time Who got motm", "question")).toEqual({ route: "question", outcome: "hq-answered", replyText: LEADERBOARD });
+  });
+
+  it("the real mention flag alone (the Pi's rewrite missing from the words): answered", async () => {
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LEADERBOARD });
+    expect((await ask("Who got motm", "question", { botMentioned: true }))?.outcome).toBe("hq-answered");
+  });
+
+  it("the same words as a WhatsApp reply to MatchTime's own message: answered", async () => {
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LEADERBOARD });
+    const r = await ask("Who got motm", "question", { quoted: { text: TEAMS_TEXT, fromMatchTime: true } });
+    expect(r).toEqual({ route: "question", outcome: "hq-answered", replyText: LEADERBOARD });
+  });
+
+  it("help, tagged, that the answering code does not answer: the HQ menu", async () => {
+    const r = await ask("@Match Time what can you do?", "help");
+    expect(r?.outcome).toBe("hq-help");
   });
 });
 
@@ -957,20 +1011,20 @@ describe("a sender who is not an organiser", () => {
 
   it("the incident: Kemal, a player, asks who the admins are and is answered by the shared question code", async () => {
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: "👥 Admins: Hamzah and Raihan" });
-    const r = await ask("Who are are admins?", "question", player());
+    const r = await ask("@Match Time Who are are admins?", "question", player());
     expect(r).toEqual({ route: "question", outcome: "hq-answered", replyText: "👥 Admins: Hamzah and Raihan" });
     expect(hqQuestion.answerHqQuestion).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-kemal", senderName: "Kemal" }));
   });
 
   it("someone MatchTime does not know: answered, with no sender", async () => {
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: "On the bench: Tom." });
-    const r = await ask("who's on the bench?", "question", player({ senderUserId: null, senderName: null }));
+    const r = await ask("@Match Time who's on the bench?", "question", player({ senderUserId: null, senderName: null }));
     expect(r?.outcome).toBe("hq-answered");
     expect(hqQuestion.answerHqQuestion).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: null, senderName: null }));
   });
 
   it("help: the HQ menu, as for an organiser", async () => {
-    const r = await ask("what can you do?", "help", player());
+    const r = await ask("@Match Time what can you do?", "help", player());
     expect(r?.outcome).toBe("hq-help");
     expect(r?.replyText).toContain("*MatchTime in your admin group*");
   });

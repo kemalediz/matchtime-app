@@ -24,12 +24,15 @@ const KEY = { "x-api-key": E2E.WHATSAPP_API_KEY };
 const HQ = "120363777000000052@g.us";
 const ADMIN = PHONE.admin.replace(/^\+/, "");
 
-const ADMINS = "MatchTime who are the admins?";
-const ADMINS_TR = "MatchTime yöneticiler kim?";
-const BENCH = "MatchTime who's on the bench?";
+const ADMINS = "@Match Time who are the admins?";
+const ADMINS_TR = "@Match Time yöneticiler kim?";
+const BENCH = "@Match Time who's on the bench?";
 const COUNT = "@Match Time how many are in?";
-const MENU = "what can you do?";
+const MENU = "@Match Time what can you do?";
 const WEATHER = "@Match Time what's the weather like on Friday?";
+// FNF HQ, 2026-10-30 23:31 UTC: an organiser asking the other organisers.
+const MOTM = "Who got motm";
+const MENU_UNTAGGED = "what can you do?";
 
 /** The question extractor's raw answer. */
 const q = (topic: string) => ({
@@ -38,10 +41,10 @@ const q = (topic: string) => ({
 });
 
 let seq = 0;
-async function say(request: APIRequestContext, text: string) {
+async function say(request: APIRequestContext, text: string, extra: Record<string, unknown> = {}) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-agq-${++seq}`, text, senderPhone: ADMIN, timestamp: String(Math.floor(Date.now() / 1000)) },
+    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-agq-${++seq}`, text, senderPhone: ADMIN, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -58,6 +61,8 @@ test.beforeAll(async ({ db }) => {
     [COUNT]: q("count"),
     [MENU]: { ...q("how_it_works"), route: "help" },
     [WEATHER]: q("other"),
+    [MOTM]: q("club"),
+    [MENU_UNTAGGED]: { ...q("how_it_works"), route: "help" },
   });
 });
 
@@ -108,6 +113,29 @@ test("a question nothing answers: one line, never silent", async ({ request }) =
     handled: true,
     outcome: "hq-not-here",
     replyText: "I can't do that from this group.",
+  });
+});
+
+// FNF HQ, 2026-10-30 23:31 UTC: right after MatchTime's "Who was Man of
+// the Match?", Raihan, an organiser, wrote "Who got motm" to the other
+// organisers, untagged and not a reply to MatchTime. The router called it a
+// question and MatchTime posted the all-time Man of the Match table. In HQ,
+// MatchTime answers only when asked: a real tag or a reply to its message.
+test.describe("an untagged question or help in HQ is the organisers' own talk (FNF HQ 2026-10-30)", () => {
+  test("the incident: an organiser's untagged question, not a reply to MatchTime: silent, nothing recorded as said", async ({ request, db }) => {
+    const before = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AdminGroupMessage" WHERE "fromMatchTime" = true`);
+    expect(await say(request, MOTM)).toMatchObject({ handled: false, replyText: null });
+    const after = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AdminGroupMessage" WHERE "fromMatchTime" = true`);
+    expect(after?.n).toBe(before?.n);
+  });
+
+  test("untagged help from an organiser: silent too", async ({ request }) => {
+    expect(await say(request, MENU_UNTAGGED)).toMatchObject({ handled: false, replyText: null });
+  });
+
+  test("the same words as a WhatsApp reply to MatchTime's own message: answered", async ({ request }) => {
+    const out = await say(request, MOTM, { quotedText: "Score saved: Bibs 5, Non Bibs 4. Who was Man of the Match?", quotedFromMatchTime: true });
+    expect(out).toMatchObject({ handled: true, outcome: "hq-answered" });
   });
 });
 

@@ -1083,12 +1083,24 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // question there, and anything it does not answer on the help
         // route (2026-10-16, FNF: "MatchTime who are the admins?" came back
         // `help` and got the menu instead of the admins).
+        // ONLY WHEN ASKED OF MATCHTIME (FNF HQ 2026-10-30 23:31 UTC): right
+        // after MatchTime's "Who was Man of the Match?", Raihan wrote "Who
+        // got motm" to the other organisers, untagged and not a reply; the
+        // router called it a question and MatchTime posted the all-time Man
+        // of the Match table. In HQ a question or help with no tag and no
+        // reply to MatchTime is the organisers talking to each other
+        // (Kemal, 2026-10-30): nothing answered, nothing said, not even the
+        // one line. Answers to MatchTime's own waiting questions are decided
+        // above, from the quoted row or the score's waiting question.
+        if (!addressed) {
+          console.log(`[admin-group] ${messageId}: ${route} not asked of MatchTime: silent`);
+          return null;
+        }
         const r = await answerQuestion();
         if (r) return said(r.outcome, r.replyText);
         if (route === "help") return said("hq-help", hqHelp);
-        // Nothing answered it. An organiser always hears the one line; anyone
-        // else only when they asked MatchTime, else it is their own chat.
-        return actor || addressed ? notHere() : null;
+        // Nothing answered it: the one line.
+        return notHere();
       }
       case "balancer":
         return teamsHere();

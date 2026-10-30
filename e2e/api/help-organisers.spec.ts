@@ -141,7 +141,7 @@ test("HQ: an admin asking what MatchTime can do gets the list, and never reaches
   // stub would read it as "Tom out" if the squad path were ever asked.
   engineOn({
     "@Match Time what can you do here?": { route: "help", facts: otherFacts("Tom", "out") },
-    "yardım": { route: "help" },
+    "@Match Time yardım": { route: "help" },
   });
   const before = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AnalyzedMessage"`);
   const out = await hq(request, "@Match Time what can you do here?");
@@ -156,10 +156,10 @@ test("HQ: an admin asking what MatchTime can do gets the list, and never reaches
   expect((await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AnalyzedMessage"`))?.n).toBe(before?.n);
 });
 
-test("HQ: bare 'yardım' in a Turkish club answers in Turkish", async ({ request, db }) => {
+test("HQ: a tagged 'yardım' in a Turkish club answers in Turkish", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   try {
-    const out = await hq(request, "yardım");
+    const out = await hq(request, "@Match Time yardım");
     expect(out).toMatchObject({ handled: true, outcome: "hq-help" });
     expect(out.replyText).toContain("*Yönetici grubunda MatchTime*");
   } finally {
