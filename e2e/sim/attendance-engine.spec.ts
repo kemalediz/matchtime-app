@@ -42,6 +42,7 @@ import {
   clearRouterStub,
   facts,
   setExtractorStub,
+  setPastedListStub,
   setRouterStub,
 } from "../helpers/stub";
 
@@ -389,7 +390,7 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect(await g.attendanceOf("pete")).toMatchObject({ status: "CONFIRMED" });
   });
 
-  test("a pasted numbered roster is not the engine's — PR #39's guard still runs", async ({
+  test("a pasted list (the router's flag) is not the engine's — PR #39's guard still runs", async ({
     request,
     db,
   }) => {
@@ -412,6 +413,9 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
       },
     });
 
+    // A list is a list because the ROUTER flags it (`pasted_list`,
+    // 2026-10-30), never by its numbered shape.
+    setPastedListStub({ bodies: [roster] });
     await g.postBatch([{ player: "pete", body: roster, tag: true }]);
 
     // Nobody off the list is registered, by either decider.
