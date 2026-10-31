@@ -88,7 +88,8 @@ test("the next squad answer lists neither him nor 'a player'", async ({ request 
   engineOn({ [WHO]: { route: "question", facts: question("squad") } });
   const id = `e2e-rm-${Date.now()}`;
   const res = await postAnalyze(request, [
-    { waMessageId: id, body: WHO, authorPhone: "447700900003", authorName: "Pat Player", quotedBody: "Who's in?", quotedFromMatchTime: true },
+    // Tagged: since #487 an untagged question is silent.
+    { waMessageId: id, body: WHO, authorPhone: "447700900003", authorName: "Pat Player", quotedBody: "Who's in?", quotedFromMatchTime: true, botMentioned: true },
   ]);
   const r = (res.results as Result[]).find((x) => x.waMessageId === id)!;
   const reply = r.reply ?? "";

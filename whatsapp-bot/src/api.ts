@@ -601,6 +601,9 @@ export async function postGroupJoin(params: {
 export async function postGroupLeave(params: {
   groupId: string;
   phones: string[];
+  /** Who removed them (2026-10-31), when the event said: group-leave.ts. */
+  removedByPhone?: string;
+  removedByLid?: string;
 }): Promise<void> {
   const res = await apiFetch(`${config.apiUrl}/api/whatsapp/group-leave`, {
     method: "POST",

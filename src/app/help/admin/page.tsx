@@ -303,6 +303,11 @@ export default async function AdminGuidePage() {
         reminding you.
       </p>
       <p>
+        A player you remove here won&apos;t be brought back into your games
+        as a guest through the MatchTime player pool or a friend&apos;s link.
+        Adding them back yourself undoes this.
+      </p>
+      <p>
         If the same person ends up on the list twice under different names,
         use <strong>Merge</strong>. You can also add nicknames, so
         &quot;Danny&quot; and &quot;Dan&quot; always mean the same player.

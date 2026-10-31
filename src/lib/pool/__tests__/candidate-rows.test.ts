@@ -76,6 +76,7 @@ describe("candidateRowsOf", () => {
     clubMemberIds: new Set(),
     onMatchIds: new Set(),
     blockedIds: new Set(),
+    clubMemberships: [],
     offers: [],
     busy: [],
     guestPlaces: [],
@@ -97,6 +98,21 @@ describe("candidateRowsOf", () => {
       lastGameAt: null,
       ledger: [],
     });
+  });
+
+  it("somebody an organiser removed from this club is blocked for its games; one who left the group himself is not (Kemal, 2026-10-31)", () => {
+    const T = new Date("2026-10-30T10:00:00Z");
+    const per: RawPerUser = {
+      ...empty,
+      clubMemberships: [
+        { userId: "removed", leftAt: T, removedByOrganiserAt: T, guestMatchId: null, guestFromOrgId: null, guestVia: null },
+        { userId: "left", leftAt: T, removedByOrganiserAt: null, guestMatchId: null, guestFromOrgId: null, guestVia: null },
+      ],
+    };
+    const [removed, left, stranger] = candidateRowsOf("m1", [profile({ userId: "removed" }), profile({ userId: "left" }), profile({ userId: "stranger" })], per);
+    expect(removed.blocked).toBe(true);
+    expect(left.blocked).toBe(false);
+    expect(stranger.blocked).toBe(false);
   });
 
   it("no phone and no area: no position at all, and no chosen pitches either (postcode area only)", () => {

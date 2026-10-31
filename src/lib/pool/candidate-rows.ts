@@ -8,6 +8,7 @@
  * last game is) is unit tested without a database.
  */
 import type { Point } from "../club-discovery-rules";
+import { guestDoorShut, type GuestDoorMembership } from "../guest-door-rules";
 import type { OfferLedgerEntry } from "./caps";
 import type { PoolCandidateRow, PoolMatchContext } from "./matching-rules";
 import { offerNeverReachedHim } from "./round-rules";
@@ -77,6 +78,9 @@ export interface RawPerUser {
   onMatchIds: ReadonlySet<string>;
   /** A PoolBlock with the club, either way. */
   blockedIds: ReadonlySet<string>;
+  /** Their memberships of the asking club that an organiser ended
+   *  (`removedByOrganiserAt` set): the guest door's other half. */
+  clubMemberships: ReadonlyArray<{ userId: string } & GuestDoorMembership>;
   offers: readonly RawOffer[];
   /** CONFIRMED or BENCH on another live game near kickoff. */
   busy: ReadonlyArray<{ userId: string; kickoff: Date; durationMins: number }>;
@@ -110,6 +114,7 @@ export function candidateRowsOf(matchId: string, profiles: readonly RawProfile[]
   const busy = groupBy(per.busy);
   const places = groupBy(per.guestPlaces);
   const own = groupBy(per.ownGames);
+  const membershipOf = new Map(per.clubMemberships.map((m) => [m.userId, m]));
 
   return profiles.map((p) => {
     const mine = offers.get(p.userId) ?? [];
@@ -129,7 +134,9 @@ export function candidateRowsOf(matchId: string, profiles: readonly RawProfile[]
       availability: p.availability.map((a) => ({ day: a.day, fromMin: a.fromMin, toMin: a.toMin })),
       isClubMember: per.clubMemberIds.has(p.userId),
       onThisMatch: per.onMatchIds.has(p.userId),
-      blocked: per.blockedIds.has(p.userId),
+      // A block, or an organiser removed him from this club: never offered
+      // its games (guest-door-rules.ts), and never said to the organiser.
+      blocked: guestDoorShut({ blocked: per.blockedIds.has(p.userId), membership: membershipOf.get(p.userId) }),
       // One per match ever, for offers that reached him (or may still):
       // one cancelled before its DM went does not count.
       alreadyOffered: mine.some((o) => o.matchId === matchId && !offerNeverReachedHim(o)),

@@ -38,7 +38,8 @@
  *   club-member      a live, non-guest member of the asking club.
  *   on-match         already on this match (any attendance row, a dropped
  *                    one included: he has answered for it).
- *   blocked          a PoolBlock between him and the club, either way.
+ *   blocked          a PoolBlock between him and the club, either way, or an
+ *                    organiser removed him from the club (guest-door-rules.ts).
  *   already-offered  an offer for this match exists (one per match ever).
  *   busy             CONFIRMED or BENCH on another live game that overlaps,
  *                    an hour of travel either side (`gamesOverlap`,

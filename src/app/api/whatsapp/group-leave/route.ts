@@ -9,7 +9,10 @@
  *   3. Find User by phone. If not found, silent noop.
  *   4. Find Membership for (user, org). If not found or already leftAt,
  *      silent noop.
- *   5. Set Membership.leftAt = now.
+ *   5. Set Membership.leftAt = now, and `removedByOrganiserAt` too when
+ *      the Pi named a remover who is an OWNER or ADMIN of this club and
+ *      not the person himself (group-leave-rules.ts, 2026-10-31). An old
+ *      Pi sends no remover: never marked, as before.
  *   6. Take him off the club's upcoming matches (member-removal.ts).
  *   7. Queue BotJob DM to every admin: "<name|phone> left the group."
  */
@@ -18,6 +21,9 @@ import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { sendAdminNotice } from "@/lib/admin-channel";
 import { takeRemovedMemberOffUpcomingMatches } from "@/lib/member-removal";
+import { resolveSenderUserIds } from "@/lib/admin-group-link";
+import { leaveIsOrganiserRemoval } from "@/lib/group-leave-rules";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -26,9 +32,13 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => null);
-  const { groupId, phones } = (body ?? {}) as {
+  const { groupId, phones, removedByPhone, removedByLid } = (body ?? {}) as {
     groupId?: string;
     phones?: string[];
+    /** Who removed them (Pi, 2026-10-31), when the event said. Optional:
+     *  an older Pi sends neither, and nothing is marked (as before). */
+    removedByPhone?: unknown;
+    removedByLid?: unknown;
   };
 
   if (!groupId || !Array.isArray(phones) || phones.length === 0) {
@@ -48,11 +58,28 @@ export async function POST(request: Request) {
 
   const now = new Date();
 
+  // The remover, as MatchTime accounts, and this club's organisers: a
+  // removal by one of them is stamped (group-leave-rules.ts).
+  const removerPhone = typeof removedByPhone === "string" && removedByPhone.trim() ? removedByPhone : null;
+  const removerLid = typeof removedByLid === "string" && removedByLid.trim() ? removedByLid : null;
+  const removerUserIds = removerPhone || removerLid ? await resolveSenderUserIds({ phones: [removerPhone], lid: removerLid }) : [];
+  const organiserUserIds = new Set(
+    removerUserIds.length > 0
+      ? (
+          await db.membership.findMany({
+            where: { orgId: org.id, userId: { in: removerUserIds }, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
+            select: { userId: true },
+          })
+        ).map((m) => m.userId)
+      : [],
+  );
+
   type Result = {
     phone: string;
     marked: boolean;
     skipped?: string;
     userId?: string;
+    removedByOrganiser?: boolean;
   };
   const results: Result[] = [];
 
@@ -85,10 +112,12 @@ export async function POST(request: Request) {
       continue;
     }
 
+    const byOrganiser = leaveIsOrganiserRemoval({ removerUserIds, leaverUserId: user.id, organiserUserIds });
     await db.membership.update({
       where: { id: membership.id },
-      data: { leftAt: now },
+      data: byOrganiser ? { leftAt: now, removedByOrganiserAt: now } : { leftAt: now },
     });
+    if (byOrganiser) console.log(`[group-leave] org=${org.id} user=${user.id}: removed by an organiser (${removerUserIds.join(",")})`);
     // Off every match of the club still to come (2026-10-24): a place held
     // for a player who is no longer in the group is printed nameless and
     // cannot be dropped by "X out". Past matches keep their history.
@@ -116,7 +145,7 @@ export async function POST(request: Request) {
       await sendAdminNotice({ orgId: org.id, holdOvernight: false, excludeUserId: user.id, text });
     }
 
-    results.push({ phone: normalised, marked: true, userId: user.id });
+    results.push({ phone: normalised, marked: true, userId: user.id, ...(byOrganiser ? { removedByOrganiser: true } : {}) });
   }
 
   return NextResponse.json({ ok: true, orgId: org.id, results });

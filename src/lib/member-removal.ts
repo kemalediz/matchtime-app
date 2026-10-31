@@ -24,11 +24,16 @@
  * THE WRITERS OF `Membership.leftAt`, AND WHICH CALL THIS:
  *   - `removeProvisionalPlayer` (admin players page "Remove"): calls it,
  *     actor the admin. The page's confirm already promises "they won't
- *     appear in future matches".
+ *     appear in future matches". The one ORGANISER removal: it also stamps
+ *     `removedByOrganiserAt`, which shuts this club's guest doors to him
+ *     (`guest-door-rules.ts`, Kemal 2026-10-31).
  *   - `api/whatsapp/group-leave` (he left the WhatsApp group): calls it,
  *     actor `system`. He can no longer read the group, a place held for
  *     him is printed nameless and cannot be dropped by "X out". A rejoin
- *     reactivates the membership, and he says IN again like anyone.
+ *     reactivates the membership, and he says IN again like anyone. Also
+ *     stamps `removedByOrganiserAt` when the Pi names a remover who is an
+ *     OWNER or ADMIN of the club and not him (group-leave-rules.ts); a
+ *     person leaving himself, or an old Pi payload, is never stamped.
  *   - `partner-guest.ts standDownVolunteers`: does not. It already drops
  *     the guest's BENCH row (cause partner-ask) before closing the guest
  *     membership, and keeps a place he was picked for on purpose.

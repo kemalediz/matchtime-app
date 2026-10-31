@@ -457,6 +457,9 @@ export async function mergePlayersCore(
         : km.leftAt > dm.leftAt
           ? km.leftAt
           : dm.leftAt;
+    // An organiser's Remove (guest-door-rules.ts) carries over only while
+    // the merged row stays ended: a live row means the club has him back.
+    const newRemovedByOrganiser = newLeftAt === null ? null : (km.removedByOrganiserAt ?? dm.removedByOrganiserAt ?? null);
     const newProvisional =
       km.provisionallyAddedAt === null || dm.provisionallyAddedAt === null
         ? null
@@ -479,6 +482,7 @@ export async function mergePlayersCore(
       data: {
         role: newRole,
         leftAt: newLeftAt,
+        removedByOrganiserAt: newRemovedByOrganiser,
         provisionallyAddedAt: newProvisional,
         lastSeenInGroupAt: newLastSeen,
         seedRating: newSeedRating,

@@ -823,6 +823,17 @@ model Membership {
   /// from roster queries. A `group_join` later will null this back out.
   leftAt DateTime?
 
+  /// Non-null when an ORGANISER ended this membership (the players page
+  /// Remove), as opposed to the person leaving the WhatsApp group himself
+  /// (Kemal, 2026-10-31). While set, MatchTime never brings him back into
+  /// THIS club's games as a guest: no player pool offer, and a friend's
+  /// link does not book him (`guest-door-rules.ts`). Other clubs are
+  /// unaffected. Cleared only by an organiser's own action: re-adding him
+  /// to the club, or adding him to a match. Never set on rows ended before
+  /// this column existed (they cannot be told apart, so they stay as they
+  /// were). A guest placement never touches it.
+  removedByOrganiserAt DateTime?
+
   /// Non-null when this membership was auto-created by the analyzer
   /// because an unknown sender posted in the org's monitored group.
   /// The admin dashboard surfaces these so owners can fill in phone,
