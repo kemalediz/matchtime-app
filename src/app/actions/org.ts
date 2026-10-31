@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { clubNameSchema, createOrgSchema, CLUB_NAME_MAX, CLUB_NAME_MIN } from "@/lib/validations";
 import { DRAFT_CLUB_WHERE } from "@/lib/club-approval";
 import { setCurrentOrgId } from "@/lib/org";
+import { newClubQuietHoursFields } from "@/lib/message-hours";
 import { isLang, LANGS, normaliseLang } from "@/lib/i18n/lang";
 import { t } from "@/lib/i18n/t";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
@@ -47,6 +48,7 @@ export async function createOrganisation(formData: { name: string; slug: string 
     data: {
       name: parsed.name,
       slug: parsed.slug,
+      ...newClubQuietHoursFields(),
       memberships: {
         create: {
           userId: session.user.id,

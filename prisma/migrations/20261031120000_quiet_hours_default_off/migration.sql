@@ -1,0 +1,26 @@
+-- Quiet hours are OFF for a new club (Kemal, 2026-10-31).
+-- See `newClubQuietHoursFields` in src/lib/message-hours.ts.
+--
+-- NOT APPLIED BY THE PULL REQUEST THAT ADDED IT. Apply it by hand:
+--
+--   psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261031120000_quiet_hours_default_off/migration.sql
+--
+-- Order does not matter: every club creation in the code already passes
+-- quietHoursEnabled = false itself, so a new club is off whether this has
+-- been applied or not. This only keeps the column default in step.
+--
+-- WHAT APPLYING THIS DOES TO A LIVE DATABASE
+-- ------------------------------------------
+-- Changes only the column DEFAULT, which applies to rows inserted later
+-- (new clubs). No existing row is updated: a club with quiet hours on
+-- keeps them on, a club with them off keeps them off. "quietHoursFrom"
+-- and "quietHoursTo" keep their defaults ('23:00', '09:00'). A
+-- metadata-only change: no table rewrite, only a brief lock.
+--
+-- Verify after applying (expect: false):
+--   SELECT column_default FROM information_schema.columns
+--    WHERE table_name = 'Organisation' AND column_name = 'quietHoursEnabled';
+--
+-- Rolling back:
+--   ALTER TABLE "Organisation" ALTER COLUMN "quietHoursEnabled" SET DEFAULT true;
+ALTER TABLE "Organisation" ALTER COLUMN "quietHoursEnabled" SET DEFAULT false;

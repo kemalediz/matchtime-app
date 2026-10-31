@@ -84,6 +84,21 @@ export const DEFAULT_QUIET_HOURS: Readonly<QuietHours> = Object.freeze({
   to: MESSAGE_HOURS_FROM_TIME,
 });
 
+/**
+ * A NEW club starts with quiet hours OFF (Kemal, 2026-10-31); its times
+ * keep the default 23:00 to 09:00, for when an organiser switches them on.
+ * Existing clubs keep what they have. `DEFAULT_QUIET_HOURS` stays ON: it
+ * is the reader's fallback for a row or columns it could not read, and
+ * moving it would change existing clubs.
+ */
+export const NEW_CLUB_QUIET_HOURS_ENABLED = false;
+
+/** Spread into every `organisation.create`, so a new club is off even on
+ *  a database whose column default has not been moved yet. */
+export function newClubQuietHoursFields(): { quietHoursEnabled: boolean } {
+  return { quietHoursEnabled: NEW_CLUB_QUIET_HOURS_ENABLED };
+}
+
 /** "HH:MM" (24 hours, a one digit hour padded), or null. */
 export function normaliseQuietTime(v: unknown): string | null {
   if (typeof v !== "string") return null;

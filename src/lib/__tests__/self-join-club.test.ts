@@ -77,6 +77,8 @@ describe("createSelfJoinClub", () => {
     expect(data.approvalStatus).toBe("draft");
     expect(data.whatsappBotEnabled).toBeUndefined();
     expect(data.whatsappGroupId).toBeUndefined();
+    // Quiet hours are off for a new club (Kemal, 2026-10-31).
+    expect(data.quietHoursEnabled).toBe(false);
   });
 
   it("sets up the weekly game: a sport for the size and an activity on the day, time and venue", async () => {

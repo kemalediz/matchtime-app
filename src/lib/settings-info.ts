@@ -263,7 +263,8 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         { name: ON.en, text: "Messages wait from the From time until the To time." },
         { name: OFF.en, text: "Nothing waits. MatchTime sends at any hour." },
       ],
-      newClubs: "On, 23:00 to 09:00.",
+      newClubs:
+        "Off. Switched on, they run from 23:00 to 09:00 until you change the times. You can also say \"@Match Time turn on quiet hours from 23:00 to 09:00\" in WhatsApp.",
       suits: "Off suits clubs whose organisers want admin messages as they happen, at any hour.",
       together: [
         "If the daily AI limit notice would have to wait until the next day, it is not sent.",
@@ -281,7 +282,8 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         { name: ON.tr, text: "Mesajlar Başlangıç saatinden Bitiş saatine kadar bekler." },
         { name: OFF.tr, text: "Hiçbir şey beklemez. MatchTime her saatte gönderir." },
       ],
-      newClubs: "Açık, 23:00 ile 09:00 arası.",
+      newClubs:
+        "Kapalı. Açılınca, saatleri değiştirene kadar 23:00 ile 09:00 arasındadır. WhatsApp'ta \"@Match Time sessiz saatleri 23:00 ile 09:00 arası aç\" yazarak da açabilirsiniz.",
       suits: "Kapalı, yönetici mesajlarını her saatte, olduğu anda almak isteyen organizatörlere uyar.",
       together: [
         "Günlük yapay zekâ kullanım hakkı bildirimi ertesi güne kadar beklemek zorunda kalacaksa gönderilmez.",

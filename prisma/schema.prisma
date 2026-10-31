@@ -326,11 +326,15 @@ model Organisation {
   /// messages (admin notices and admin group posts, bench offers, picks,
   /// chases, the weekly deadline posts, the monthly squad's posts and DMs)
   /// until they end. London "HH:MM", `quietHoursFrom` inclusive,
-  /// `quietHoursTo` exclusive. Default ON, 23:00 to 09:00: exactly the
-  /// shared window before the setting existed. Off: nothing is held.
+  /// `quietHoursTo` exclusive. OFF for a new club (Kemal, 2026-10-31;
+  /// migration 20261031120000_quiet_hours_default_off moved only the
+  /// column default, so every club that existed keeps what it had). The
+  /// times keep 23:00 to 09:00, the shared window before the setting
+  /// existed, for a club that switches them on. Off: nothing is held.
+  /// Every club creation also passes `newClubQuietHoursFields()`.
   /// Read through `quietHoursOf` (src/lib/message-hours.ts). Migration
   /// 20261016230000_quiet_hours_setting.
-  quietHoursEnabled Boolean @default(true)
+  quietHoursEnabled Boolean @default(false)
   quietHoursFrom    String  @default("23:00")
   quietHoursTo      String  @default("09:00")
 

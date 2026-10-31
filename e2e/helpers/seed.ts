@@ -72,6 +72,9 @@ export async function seedAll(db: PrismaClient): Promise<void> {
       // Every club that existed before the admin-channel migration was put
       // on "each-admin" by it (slice 2a); the fixture club is one of them.
       adminChannelMode: "each-admin",
+      // Quiet hours are OFF for a new club since 2026-10-31, but every club
+      // that existed before kept them on; the fixture club is one of them.
+      quietHoursEnabled: true,
     },
   });
 
