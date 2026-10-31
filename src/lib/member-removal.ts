@@ -30,9 +30,10 @@
  *   - `api/whatsapp/group-leave` (he left the WhatsApp group): calls it,
  *     actor `system`. He can no longer read the group, a place held for
  *     him is printed nameless and cannot be dropped by "X out". A rejoin
- *     reactivates the membership, and he says IN again like anyone. NOT
- *     an organiser removal: `removedByOrganiserAt` is not stamped (the
- *     event does not say who removed him today).
+ *     reactivates the membership, and he says IN again like anyone. Also
+ *     stamps `removedByOrganiserAt` when the Pi names a remover who is an
+ *     OWNER or ADMIN of the club and not him (group-leave-rules.ts); a
+ *     person leaving himself, or an old Pi payload, is never stamped.
  *   - `partner-guest.ts standDownVolunteers`: does not. It already drops
  *     the guest's BENCH row (cause partner-ask) before closing the guest
  *     membership, and keeps a place he was picked for on purpose.

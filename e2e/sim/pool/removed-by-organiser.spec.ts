@@ -10,6 +10,11 @@
  *   removed, re-added by the organiser offered and bookable again once he is
  *                                      not a member (the organiser's own action wins)
  *
+ *   removed from the WhatsApp group    marked only when the remover the Pi
+ *                                      reports is an OWNER or ADMIN of the club
+ *                                      and not the person himself; an old Pi
+ *                                      payload (no remover) is never marked
+ *
  * The removal is the real players page Remove (the real server action); a
  * leave is the Pi's real group-leave call. Model-free ($0).
  */
@@ -63,10 +68,28 @@ async function organiserReAdds(pool: PoolWorld, page: Page, club: PoolClub, p: P
   await expect(page.getByText("Welcomed back an existing player")).toBeVisible();
 }
 
-/** He leaves the club's WhatsApp group himself (the Pi's group-leave). */
+/** He leaves the club's WhatsApp group himself: the Pi's group-leave as an
+ *  old Pi sends it, with no remover. */
 async function leavesGroupHimself(pool: PoolWorld, club: PoolClub, p: Player): Promise<void> {
   pool.log({ kind: "in", from: p.key, channel: "group", text: "(leaves the WhatsApp group)" });
   const res = await pool.request.post("/api/whatsapp/group-leave", { headers: PI, data: { groupId: club.group.groupId, phones: [p.phone.replace(/^\+/, "")] } });
+  expect(res.status(), await res.text()).toBe(200);
+  await pool.collect();
+}
+
+/** Somebody removes him from the club's WhatsApp group: the Pi's group-leave
+ *  with the remover it resolved (phone and, when addressed by one, LID). */
+async function removedFromGroupBy(pool: PoolWorld, club: PoolClub, p: Player, by: { phone?: string; lid?: string; label: string }): Promise<void> {
+  pool.log({ kind: "in", from: by.label, channel: "group", text: `(removes ${p.name} from the WhatsApp group)` });
+  const res = await pool.request.post("/api/whatsapp/group-leave", {
+    headers: PI,
+    data: {
+      groupId: club.group.groupId,
+      phones: [p.phone.replace(/^\+/, "")],
+      ...(by.phone ? { removedByPhone: by.phone.replace(/^\+/, "") } : {}),
+      ...(by.lid ? { removedByLid: by.lid } : {}),
+    },
+  });
   expect(res.status(), await res.text()).toBe(200);
   await pool.collect();
 }
@@ -199,5 +222,88 @@ scenarios("removed by an organiser: a friend's link", () => {
     const token = await linkFor(pool, fnf);
     const j = await friendJoins(pool, "ali", token, { person: ali });
     expect(j.sent.map((m) => m.purpose)).toContain("friend-booked");
+  });
+});
+
+scenarios("removed from the WhatsApp group (the Pi reports who removed him)", () => {
+  const rosterClub = async (pool: PoolWorld, key: string, name: string) => {
+    const c = await openClub(pool, key, { name, hq: true, players: ROSTER, attendance: [] });
+    await pool.db.run(`UPDATE "Organisation" SET "quietHoursEnabled" = false WHERE id = $1`, [c.group.orgId]);
+    return c;
+  };
+
+  scenario("the club's owner removes him from the group: marked, not offered the club's game, and a friend's link does not book him", async ({ pool, page }) => {
+    const fnf = await rosterClub(pool, "fnf", "FNF");
+    const ali = await poolPlayer(pool, "ali", { name: "Ali Yilmaz", at: near(fnf) });
+    await provisionalMember(pool, fnf, ali);
+
+    await removedFromGroupBy(pool, fnf, ali, { phone: fnf.member("owner").phone, label: "fnf.owner" });
+    expect(await membership(pool, fnf, ali)).toMatchObject({ leftAt: expect.any(Date), removedByOrganiserAt: expect.any(Date) });
+
+    const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
+    expect(ex.sent.filter((m) => m.to === "ali")).toEqual([]);
+
+    const token = await linkFor(pool, fnf);
+    const j = await friendJoins(pool, "ali", token, { person: ali });
+    pool.expectSent(j.sent, [{ to: "ali", purpose: "friend-not-booked", text: /^You're not booked into that game\./ }]);
+    expect(await pool.profileOf(ali)).toMatchObject({ status: "active" });
+  });
+
+  scenario("a club ADMIN removes him from the group: marked", async ({ pool }) => {
+    const fnf = await rosterClub(pool, "fnf", "FNF");
+    const ali = await poolPlayer(pool, "ali", { name: "Ali Yilmaz", at: near(fnf) });
+    await provisionalMember(pool, fnf, ali);
+    await removedFromGroupBy(pool, fnf, ali, { phone: fnf.member("alice").phone, label: "fnf.alice" });
+    expect(await membership(pool, fnf, ali)).toMatchObject({ removedByOrganiserAt: expect.any(Date) });
+  });
+
+  scenario("a WhatsApp group admin who is not one of the club's organisers removes him: not marked, still offered", async ({ pool, page }) => {
+    const fnf = await rosterClub(pool, "fnf", "FNF");
+    const ali = await poolPlayer(pool, "ali", { name: "Ali Yilmaz", at: near(fnf) });
+    const stranger = await pool.stranger("wa-admin", { name: "Group Admin" });
+    await provisionalMember(pool, fnf, ali);
+
+    pool.note("a player of the club who is a WhatsApp admin, then a number MatchTime does not know");
+    await removedFromGroupBy(pool, fnf, ali, { phone: fnf.member("shane").phone, label: "fnf.shane" });
+    expect(await membership(pool, fnf, ali)).toMatchObject({ leftAt: expect.any(Date), removedByOrganiserAt: null });
+    await pool.db.run(`UPDATE "Membership" SET "leftAt" = NULL WHERE "userId" = $1 AND "orgId" = $2`, [ali.userId, fnf.group.orgId]);
+    await removedFromGroupBy(pool, fnf, ali, { phone: stranger.phone, label: "wa-admin" });
+    expect(await membership(pool, fnf, ali)).toMatchObject({ leftAt: expect.any(Date), removedByOrganiserAt: null });
+
+    const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
+    expect(ex.sent.filter((m) => m.to === "ali").map((m) => m.purpose)).toEqual(["pool-offer"]);
+  });
+
+  scenario("he leaves himself (the new Pi names him as the remover): not marked, a friend's link books him", async ({ pool }) => {
+    const fnf = await rosterClub(pool, "fnf", "FNF");
+    const ali = await poolPlayer(pool, "ali", { name: "Ali Yilmaz", at: near(fnf) });
+    await provisionalMember(pool, fnf, ali);
+    await removedFromGroupBy(pool, fnf, ali, { phone: ali.phone, label: "ali" });
+    expect(await membership(pool, fnf, ali)).toMatchObject({ leftAt: expect.any(Date), removedByOrganiserAt: null });
+
+    const token = await linkFor(pool, fnf);
+    const j = await friendJoins(pool, "ali", token, { person: ali });
+    expect(j.sent.map((m) => m.purpose)).toContain("friend-booked");
+  });
+
+  scenario("an organiser leaving the group himself is not marked either", async ({ pool }) => {
+    const fnf = await rosterClub(pool, "fnf", "FNF");
+    const alice = fnf.member("alice");
+    await removedFromGroupBy(pool, fnf, { ...alice, userId: fnf.group.player("alice").userId } as Player, { phone: alice.phone, label: "fnf.alice" });
+    const row = await pool.db.one<{ leftAt: Date | null; removedByOrganiserAt: Date | null }>(
+      `SELECT "leftAt", "removedByOrganiserAt" FROM "Membership" WHERE "userId" = $1 AND "orgId" = $2`,
+      [fnf.group.player("alice").userId, fnf.group.orgId],
+    );
+    expect(row).toMatchObject({ leftAt: expect.any(Date), removedByOrganiserAt: null });
+  });
+
+  scenario("an old Pi payload (no remover): not marked, exactly as before", async ({ pool, page }) => {
+    const fnf = await rosterClub(pool, "fnf", "FNF");
+    const ali = await poolPlayer(pool, "ali", { name: "Ali Yilmaz", at: near(fnf) });
+    await provisionalMember(pool, fnf, ali);
+    await leavesGroupHimself(pool, fnf, ali);
+    expect(await membership(pool, fnf, ali)).toMatchObject({ leftAt: expect.any(Date), removedByOrganiserAt: null });
+    const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
+    expect(ex.sent.filter((m) => m.to === "ali").map((m) => m.purpose)).toEqual(["pool-offer"]);
   });
 });

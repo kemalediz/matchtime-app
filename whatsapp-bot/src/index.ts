@@ -1,3 +1,4 @@
+import { groupLeavePost } from "./group-leave.js";
 import { namesForJoiners } from "./join-names.js";
 import type { GroupMembershipEvent, InboundPollVote } from "./driver.js";
 import { baileysLiveBanner, createDriver } from "./driver-select.js";
@@ -1025,11 +1026,15 @@ async function main() {
         },
         notification,
       );
-      const selfId = driver.selfId();
-      const phones = extractPhones(notification.recipientIds, selfId);
-      if (phones.length === 0) return;
-      console.log(`group_leave in ${groupId}: ${phones.join(", ")}`);
-      await postGroupLeave({ groupId, phones });
+      // Who removed them, when the event says (Kemal, 2026-10-31): the
+      // server marks a removal by one of the club's organisers. group-leave.ts.
+      const post = await groupLeavePost(driver, notification, driver.selfId());
+      if (!post) return;
+      console.log(
+        `group_leave in ${groupId}: ${post.phones.join(", ")}` +
+          (post.removedByPhone || post.removedByLid ? ` (by phone=${post.removedByPhone ?? "-"} lid=${post.removedByLid ?? "-"})` : ""),
+      );
+      await postGroupLeave(post);
     } catch (err) {
       console.error("Error forwarding group_leave:", err);
     }
