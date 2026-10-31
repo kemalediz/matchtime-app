@@ -16,6 +16,7 @@ export const POOL_SIGNUP_EVENT = "pool_signup";
 const SECRET_SEGMENTS: ReadonlyArray<readonly [string, string]> = [
   ["/r/", "[token]"],
   ["/play/offer/", "[token]"],
+  ["/play/f/", "[token]"],
   ["/join/", "[code]"],
   ["/finish-setup/", "[sessionId]"],
 ];

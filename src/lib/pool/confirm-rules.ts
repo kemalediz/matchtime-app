@@ -123,6 +123,10 @@ export type PoolConfirmDecision =
    *  sign-up is NOT attached (a code belongs to the sign-up that made it),
    *  he is told how to manage his own, and the attempt counts. */
   | { action: "already-signed-up"; status: "active" | "paused" | "stopped" }
+  /** A FRIEND LINK's sign-up (2026-10-31) from a number that already has a
+   *  profile: his own profile stays (no second one), and he is booked into
+   *  the link's game with it (`friend-link/book.ts`). Not a failure. */
+  | { action: "friend-existing"; status: "active" | "paused" | "stopped" }
   /** Record a failed attempt, and reply if `codeReplyAllowed` says so.
    *  "not-yours" (slice L3): a member's code from another account's number;
    *  the code dies too. */
@@ -146,7 +150,9 @@ export type PoolConfirmDecision =
  *   expired                                failed: expired
  *   a member's code, another account's     failed: not-yours (slice L3;
  *     number                               the code dies too)
- *   he has a profile already               already-signed-up (counted)
+ *   he has a profile already               already-signed-up (counted);
+ *                                          for a friend link's sign-up,
+ *                                          friend-existing (booked with it)
  *   otherwise                              confirm
  */
 export function decidePoolConfirm(args: {
@@ -160,6 +166,8 @@ export function decidePoolConfirm(args: {
   /** Slice L3: the named sign-up was started by a signed-in member and the
    *  sending number belongs to a DIFFERENT account (`confirmTarget`). */
   notYours?: boolean;
+  /** The named sign-up came from a friend link (2026-10-31). */
+  friendLink?: boolean;
   now: Date;
 }): PoolConfirmDecision {
   const { row, sender, now } = args;
@@ -170,7 +178,7 @@ export function decidePoolConfirm(args: {
   if (!row) return { action: "failed", reply: "wrong-code" };
   if (row.expiresAt && row.expiresAt.getTime() <= now.getTime()) return { action: "failed", reply: "expired" };
   if (args.notYours) return { action: "failed", reply: "not-yours" };
-  if (sender) return { action: "already-signed-up", status: sender.status };
+  if (sender) return args.friendLink ? { action: "friend-existing", status: sender.status } : { action: "already-signed-up", status: sender.status };
   return { action: "confirm" };
 }
 

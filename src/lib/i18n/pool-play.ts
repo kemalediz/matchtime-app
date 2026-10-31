@@ -48,6 +48,8 @@ export type PoolErrorKey =
   | "busy"
   | "area-not-found"
   | "paused"
+  /** A friend link (2026-10-31) that was used, or whose game started or was called off, meanwhile. */
+  | "link-closed"
   | "unavailable"
   | "generic";
 

@@ -208,10 +208,10 @@ describe("buildFunnelReport", () => {
     ];
     const r = buildFunnelReport({ profiles, campaigns, now: NOW }, q);
     expect(r.weeks.map((w) => w.key)).toEqual(["2026-10-19", "2026-10-12", "2026-10-05"]);
-    expect(r.weeks[0].bySource).toEqual({ web: 0, profile: 0, referral: 1, campaign: 1 });
+    expect(r.weeks[0].bySource).toEqual({ web: 0, profile: 0, referral: 1, campaign: 1, friend: 0 });
     expect(r.weeks[1].counts.signedUp).toBe(0);
     // A sign-up with no source stamped is the web (G1.1: "else the web").
-    expect(r.weeks[2].bySource).toEqual({ web: 1, profile: 1, referral: 0, campaign: 0 });
+    expect(r.weeks[2].bySource).toEqual({ web: 1, profile: 1, referral: 0, campaign: 0, friend: 0 });
     expect(r.weeks[2].counts).toMatchObject({ signedUp: 2, verified: 1, offered: 1 });
   });
 
@@ -228,6 +228,7 @@ describe("buildFunnelReport", () => {
       ["profile", 0, 0],
       ["referral", 1, 1],
       ["campaign", 3, 2],
+      ["friend", 0, 0],
     ]);
     expect(r.byCampaign).toEqual([
       expect.objectContaining({ code: "li-kemal", label: "LinkedIn post", counts: expect.objectContaining({ signedUp: 2, verified: 1 }) }),
@@ -270,7 +271,7 @@ describe("buildFunnelReport", () => {
     const r = buildFunnelReport({ profiles: [profile({ town: "sutton" }), profile({ town: null }), profile({ town: "sutton" })], campaigns, now: NOW }, q);
     expect(r.options.towns).toEqual(["_first", "sutton"]);
     expect(r.options.sports).toContain("football");
-    expect(r.options.sources).toEqual(["web", "profile", "referral", "campaign", "campaign:li-kemal", "campaign:lf-sutton"]);
+    expect(r.options.sources).toEqual(["web", "profile", "referral", "campaign", "friend", "campaign:li-kemal", "campaign:lf-sutton"]);
   });
 });
 
@@ -371,7 +372,7 @@ describe("funnelCsv", () => {
     expect(lines[0]).toBe("Pool funnel,From 2026-10-05,To 2026-10-24,Town: all,Sport: all,Source: all");
     expect(csv).toContain("Step,People,Conversion from the step before\r\nSigned up,2,\r\nConfirmed on WhatsApp,1,50%\r\n");
     expect(csv).toContain(
-      "Week from,Signed up,Web,From a club profile,Referral,Campaign,Confirmed on WhatsApp,Active,Offered,Accepted,Played,Became members\r\n2026-10-19,2,1,0,0,1,1,1,0,0,0,0\r\n",
+      "Week from,Signed up,Web,From a club profile,Referral,Campaign,A member's friend link,Confirmed on WhatsApp,Active,Offered,Accepted,Played,Became members\r\n2026-10-19,2,1,0,0,1,0,1,1,0,0,0,0\r\n",
     );
     expect(csv).toContain("Source,Signed up,");
     expect(csv).toContain("Campaign code,What it is for,Signed up,");

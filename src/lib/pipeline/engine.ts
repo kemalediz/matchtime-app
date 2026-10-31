@@ -56,6 +56,7 @@ import {
   type PromoteRegisterEntry,
 } from "../promote-authorization";
 import { shouldAskForGuestName } from "../guest-name-ask";
+import { decideThirdPartyIn } from "../friend-link/rules";
 import {
   RECRUIT_BLAST_REQUIRES_TAG,
   RECRUIT_COMMAND_IMPLIES_ADDRESSED,
@@ -1366,6 +1367,38 @@ export function decide(input: EngineInput): EngineResult {
         // one says "I'll add them to the squad", and this person may
         // already be in it).
         const rawDigitsOnly = isRawDigitName((c.personRef ?? "").trim());
+
+        // ── A PLAYER'S FRIEND: A LINK, NOBODY ADDED (2026-10-31) ────────
+        //
+        // Kemal: a friend joins only through his own link, his details and
+        // his WhatsApp code, so MatchTime has his number. The reading is the
+        // extractor's (`personKind`, the roster resolution, the written-name
+        // verifier); the rule is `friend-link/rules.ts`. A link writes
+        // nothing and says nothing here: the batch DMs the SENDER and reacts
+        // ✉️ once that DM is queued (`attendance-engine-batch.ts`). An
+        // organiser's message is "today" and carries on below (D1).
+        const friend = decideThirdPartyIn({
+          polarity: c.polarity,
+          personKind: kind,
+          personRef: c.personRef ?? "",
+          resolution: resolution.kind,
+          writtenInMessage: personNamed && refWrittenIn(c.personRef, msg.body),
+          rawDigits: rawDigitsOnly,
+          senderKnown: !!msg.senderUserId,
+          senderIsAdmin,
+          attendanceOn: state.features.attendance,
+          hasActiveMatch: !!state.matchId,
+        });
+        if (friend.kind !== "today") {
+          out.reasons.push(friend.reason);
+          if (friend.kind === "friend_link") {
+            const at = claims.indexOf(c);
+            const links = (out.friendLinks ??= []);
+            links.push({ claimIndex: at >= 0 ? at : 1000 + links.length, friendName: friend.friendName });
+            if (out.disposition !== "degraded") out.disposition = "acted";
+          }
+          continue;
+        }
         if (rawDigitsOnly && (msg.tagged || senderIsAdmin) && !askedWhoMentioned) {
           askedWhoMentioned = true;
           speech.push({ kind: "ask_who_mentioned", messageId: msg.id });

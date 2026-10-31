@@ -25,6 +25,13 @@ describe("retiredAuthRedirect", () => {
     expect(isPublicPath("/api/player")).toBe(false);
   });
 
+  // A friend link (2026-10-31): the friend has no session; the signed token is the access control.
+  it("lets a friend open his friend link, and nothing that merely starts like it", () => {
+    expect(isPublicPath("/play/f/abc.def")).toBe(true);
+    expect(isPublicPath("/play/f")).toBe(false);
+    expect(isPublicPath("/play/fixtures")).toBe(false);
+  });
+
   // The players' page (website update, 2026-10-25): read before signing up.
   it("lets a visitor read the players' page, and nothing under it", () => {
     expect(isPublicPath("/players")).toBe(true);

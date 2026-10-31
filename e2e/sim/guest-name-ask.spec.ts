@@ -66,6 +66,9 @@ import type { TestDb } from "../helpers/test-db";
 import { createGroup, SimGroup } from "./group";
 import { claim, facts, otherFacts, selfIn, unnamedOther } from "../helpers/stub";
 
+// ⚠️ 2026-10-31: the name ask is now an ORGANISER's only (friend link D1).
+// A player's "my brother can play" gets a ✉️ and a friend link by DM; see
+// e2e/sim/friend-link/. The senders below are organisers for that reason.
 const ASK_RE = /what(?:'s| is| are) their names?\?/i;
 
 test.describe("unnamed-guest name ask — server behaviour (routes + facts)", () => {
@@ -79,7 +82,10 @@ test.describe("unnamed-guest name ask — server behaviour (routes + facts)", ()
   ) => {
     const roster = [
       { key: "owner", name: "Oscar Owner", role: "OWNER" as const },
-      { key: "amir", name: "Amir Ahmadi" },
+      // ORGANISERS since the friend link (2026-10-31, D1): a PLAYER's
+      // unnamed or new guest gets a friend link instead of this ask
+      // (e2e/sim/friend-link/issue.spec.ts); an organiser keeps it.
+      { key: "amir", name: "Amir Ahmadi", role: "ADMIN" as const },
       { key: "pete", name: "Pete Power" },
       { key: "dan", name: "Dan Drummer" },
       { key: "felix", name: "Felix Fox" },
@@ -87,7 +93,7 @@ test.describe("unnamed-guest name ask — server behaviour (routes + facts)", ()
       { key: "henry", name: "Henry Hill" },
       { key: "ivan", name: "Ivan Ice" },
       { key: "jake", name: "Jake Jolly" },
-      { key: "noah", name: "Noah North" },
+      { key: "noah", name: "Noah North", role: "ADMIN" as const },
       { key: "quinn", name: "Quinn Quick" },
     ];
     const fillers = roster

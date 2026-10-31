@@ -195,3 +195,18 @@ describe("whose profile a confirmed code becomes", () => {
     expect(confirmTarget({ numberUserId: null, starterId: null })).toEqual({ kind: "new-account" });
   });
 });
+
+describe("decidePoolConfirm: a friend link's sign-up (2026-10-31)", () => {
+  const base = { hasPhone: true, sender: null, ownCode: false, failuresToday: 0, looksLikeConfirm: true, now: NOW };
+  const live = { expiresAt: new Date(NOW.getTime() + 3600_000) };
+  it("a number with a profile of any status is booked with it, not refused", () => {
+    for (const status of ["active", "paused", "stopped"] as const) {
+      expect(decidePoolConfirm({ ...base, row: live, sender: { status }, friendLink: true })).toEqual({ action: "friend-existing", status });
+    }
+  });
+  it("a new number confirms as any sign-up; the lock, the expiry and a wrong code still apply first", () => {
+    expect(decidePoolConfirm({ ...base, row: live, friendLink: true })).toEqual({ action: "confirm" });
+    expect(decidePoolConfirm({ ...base, row: { expiresAt: NOW }, sender: { status: "active" }, friendLink: true })).toEqual({ action: "failed", reply: "expired" });
+    expect(decidePoolConfirm({ ...base, row: live, sender: { status: "active" }, failuresToday: POOL_CONFIRM.wrongCodesPerDay, friendLink: true })).toEqual({ action: "ignore", reason: "locked" });
+  });
+});

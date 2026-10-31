@@ -98,37 +98,31 @@ test.describe("third-party offer — the sender is not the subject", () => {
     expect(await attendanceByName(grp, "brother"), "no ghost guest is registered").toBeNull();
     expect(r.groupPosts).toEqual([]);
 
-    // ── WHAT CHANGED, AND IT IS AN IMPROVEMENT ──────────────────────
-    // The old assertions here were `r.reply === null` and
-    // `r.react === null`, because the seatbelt's only move was to
-    // suppress the model's false "putting you on the bench". MatchTime
-    // saying nothing was the accepted cost, and it is the exact
-    // complaint that produced the name-ask feature: the club owner had
-    // to type "yes pls, can you share the name?" himself.
-    //
-    // Now the same facts reach `guest-name-ask.ts`'s four gates — squad
-    // is short (3/14), the guest is unnamed, this player has not been
-    // asked for this match — so MatchTime ASKS. The row is still
-    // untouched, which is the property this file is about; the silence
-    // is not. `guest-name-ask.spec.ts` owns the copy and the gates.
-    expect(r.reply ?? "", "and it asks for the name rather than saying nothing").toMatch(
-      /what(?:'s| is| are) their names?\?/i,
-    );
-    expect(r.react, "asking is not a registration, so no ✅ / 🪑").toBeNull();
+    // ── WHAT CHANGED, TWICE ─────────────────────────────────────────
+    // Until 2026-10-31 the same facts reached `guest-name-ask.ts` and
+    // MatchTime asked "what's their name?". Since the friend link (Kemal,
+    // 2026-10-31) a PLAYER's friend gets a personal link by DM instead,
+    // and the message a ✉️: the friend joins only through his own details
+    // and WhatsApp code. The row is still untouched, which is the property
+    // this file is about. `e2e/sim/friend-link/` owns the link.
+    expect(r.reply, "nothing is said in the group").toBeNull();
+    expect(r.react, "✉️: a link went to him by DM").toBe("✉️");
+    expect(r.dms.map((d) => d.text).join("\n")).toMatch(/link for your friend/);
   });
 
   // ── The property must not eat the working paths ──────────────────────
 
-  test("a NAMED guest is registered; the sender still gets no row", async ({ request, db }) => {
+  test("a NAMED guest from an organiser is registered; the sender still gets no row", async ({ request, db }) => {
+    // An organiser (2026-10-31): a player's named newcomer gets a friend link.
     const grp = await mkGroup(request, db);
-    await grp.post("amir", "my brother Shahrokh can play", {
+    await grp.post("owner", "my brother Shahrokh can play", {
       tag: true,
       route: "other_att",
       facts: otherFacts("Shahrokh", "in"),
     });
     const guest = await attendanceByName(grp, "Shahrokh");
     expect(guest, "Shahrokh must still be registered").not.toBeNull();
-    expect(await grp.attendanceOf("amir"), "Amir must not be").toBeNull();
+    expect(await grp.attendanceOf("owner"), "the owner must not be moved").toMatchObject({ status: "CONFIRMED" });
   });
 
   test("a MIXED offer that includes the sender registers the sender too", async ({

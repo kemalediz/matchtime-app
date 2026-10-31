@@ -2147,6 +2147,12 @@ async function handleAnalyzeRequest(request: Request) {
             // step 8 and the WRITER did not arrive anywhere — see the
             // tombstone comment at the top of this file, now corrected.
             claimGuestNameAsk: buildClaimGuestNameAsk(),
+            // A player's friend (2026-10-31): his link, DMed to the
+            // message's own sender (`friend-link/issue.ts`).
+            issueFriendLinks: async (a) => {
+              const { issueFriendLinks } = await import("@/lib/friend-link/issue");
+              return issueFriendLinks({ ...a, orgId: org.id });
+            },
           },
         })
       : null;

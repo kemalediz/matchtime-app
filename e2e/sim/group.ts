@@ -470,6 +470,9 @@ export interface BatchItem {
    * `text` and whether it was MatchTime's.
    */
   quote?: { of?: number; id?: string; text?: string; fromMatchTime?: boolean };
+  /** Reuse this WhatsApp message id: the same message delivered again (a
+   *  Pi retry or restart replay). Default: a fresh id. */
+  waMessageId?: string;
 }
 
 /** One line of the "Recent chat history" block the Pi keeps in memory
@@ -604,7 +607,7 @@ export class SimGroup {
       };
     };
     const messages = items.map((it) => {
-      const id = nextMsgId();
+      const id = it.waMessageId ?? nextMsgId();
       ids.push(id);
       if (it.route) routes[id] = it.route;
       if (it.facts) factBodies[it.body.trim()] = it.facts;

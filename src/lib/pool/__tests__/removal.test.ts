@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
   membership: { findUnique: vi.fn(), updateMany: vi.fn() },
-  guestPlace: { updateMany: vi.fn() },
+  guestPlace: { updateMany: vi.fn(), findUnique: vi.fn() },
   organisation: { findUnique: vi.fn() },
   match: { findUnique: vi.fn() },
   poolProfile: { findUnique: vi.fn() },
@@ -26,6 +26,7 @@ beforeEach(() => {
   dbMock.membership.findUnique.mockResolvedValue({ guestVia: "pool", guestMatchId: "m1", leftAt: null });
   dbMock.membership.updateMany.mockResolvedValue({ count: 1 });
   dbMock.guestPlace.updateMany.mockResolvedValue({ count: 1 });
+  dbMock.guestPlace.findUnique.mockResolvedValue({ friendLinkId: null });
   dbMock.organisation.findUnique.mockResolvedValue({ name: "FNF", language: "en" });
   dbMock.match.findUnique.mockResolvedValue({ date: new Date("2026-11-03T20:00:00Z") });
   dbMock.poolProfile.findUnique.mockResolvedValue({ language: "en" });
@@ -37,6 +38,20 @@ describe("tellPoolGuestRemoved", () => {
     expect(await tellPoolGuestRemoved({ userId: "u", matchId: "m1", orgId: "o", now: NOW })).toBe(true);
     expect(dbMock.guestPlace.updateMany).toHaveBeenCalled();
     expect(jobs.queuePlatformDm).toHaveBeenCalledTimes(1);
+  });
+  it("a member's friend (friend link, 2026-10-31): Kemal's own words, purpose friend-removed", async () => {
+    dbMock.guestPlace.findUnique.mockResolvedValue({ friendLinkId: "fl1" });
+    await tellPoolGuestRemoved({ userId: "u", matchId: "m1", orgId: "o", now: NOW });
+    expect(jobs.queuePlatformDm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: "friend-removed",
+        text: "The organisers of *FNF* took you out of the game on Tue 3 Nov, 20:00. You stay in the MatchTime player pool and will keep hearing about new games near you.",
+      }),
+    );
+  });
+  it("a pool guest keeps the neutral line", async () => {
+    await tellPoolGuestRemoved({ userId: "u", matchId: "m1", orgId: "o", now: NOW });
+    expect(jobs.queuePlatformDm).toHaveBeenCalledWith(expect.objectContaining({ purpose: "pool-removed" }));
   });
   it("another call already made him a past guest: no second DM", async () => {
     dbMock.membership.updateMany.mockResolvedValue({ count: 0 });

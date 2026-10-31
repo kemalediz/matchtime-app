@@ -165,6 +165,7 @@ export const SOURCE_LABEL: Record<PoolProfileSource, string> = {
   profile: "From a club profile",
   referral: "Referral",
   campaign: "Campaign",
+  friend: "A member's friend link",
 };
 
 export const sourceOf = (p: Pick<FunnelProfileFact, "source">): PoolProfileSource => (isOneOf(POOL_PROFILE_SOURCES, p.source) ? p.source : "web");

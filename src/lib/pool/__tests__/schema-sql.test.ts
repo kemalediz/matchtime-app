@@ -60,6 +60,26 @@ const ENUM_CHECKS: string[] = [
   nullOrIn("playStyle", V.PLAY_STYLES),
 ];
 
+const SOURCE_CHECK = nullOrIn("source", V.POOL_PROFILE_SOURCES);
+const FRIEND_MIGRATION = "prisma/migrations/20261101090000_friend_link/migration.sql";
+
+describe("the friend link migration (2026-10-31)", () => {
+  const sql = code(read(FRIEND_MIGRATION));
+  it("carries the current profile source list", () => expect(sql).toContain(SOURCE_CHECK));
+  it("is one transaction with no session-level SET", () => {
+    expect(sql).toMatch(/^\s*BEGIN;/m);
+    expect(sql).toMatch(/COMMIT;\s*$/);
+    expect(sql.replace(/SET LOCAL/g, "")).not.toMatch(/\bSET\s+\w+\s*=/i);
+  });
+  it("is additive: no DROP TABLE, no DROP COLUMN, no UPDATE, no DELETE", () => {
+    expect(sql).not.toMatch(/DROP TABLE|DROP COLUMN|\bUPDATE\s+"|DELETE FROM/i);
+  });
+  it("the CHECK file carries the same friend CHECKs", () => {
+    const checks = code(read(CHECKS));
+    for (const name of ["GuestPlace_friend_check", "FriendLink_used_check"]) expect(checks).toContain(name);
+  });
+});
+
 /** The formats CHECK, built from the catalogue. */
 function formatsCheck(): string {
   const withFormats = POOL_SPORTS.filter((s) => s.formats.length > 0);
@@ -77,7 +97,11 @@ describe("the CHECKs carry the TypeScript's values", () => {
   for (const file of [MIGRATION, CHECKS]) {
     it(`${file}: every enum column`, () => {
       const sql = code(read(file));
-      for (const c of ENUM_CHECKS) expect(sql, c).toContain(c);
+      // The profile source list grew after L1 (the friend link, 2026-10-31):
+      // the L1 migration carries the list as it was then, and the friend
+      // link migration the current one (pinned below).
+      const checks = file === MIGRATION ? ENUM_CHECKS.filter((c) => c !== SOURCE_CHECK) : ENUM_CHECKS;
+      for (const c of checks) expect(sql, c).toContain(c);
     });
     it(`${file}: the postcode district`, () => {
       expect(code(read(file))).toContain(`"areaDistrict" ~ '${POSTCODE_DISTRICT_RE.source}'`);

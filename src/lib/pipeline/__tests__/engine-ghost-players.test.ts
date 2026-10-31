@@ -90,13 +90,13 @@ describe("only a NAMED person is resolved or provisioned", () => {
 });
 
 describe("a new player is provisioned only when the name returned is written in the message", () => {
-  it("a named guest whose name is in the message is provisioned", () => {
+  it("an organiser's named guest whose name is in the message is provisioned (a player's gets a friend link)", () => {
     const r = decide({
       now: NOW,
       state: state(),
       messages: [
         msg({
-          from: "amir",
+          from: "kemal",
           body: "my brother Shahrokh can play",
           route: "other_att",
           facts: attendanceFacts([claim({ subject: "other", personRef: "Shahrokh", personNamed: true, personKind: "named", polarity: "in" })]),
@@ -129,7 +129,7 @@ describe("a new player is provisioned only when the name returned is written in 
       state: state(),
       messages: [
         msg({
-          from: "amir",
+          from: "kemal",
           body: "kuzenim ÖMER de geliyor",
           route: "other_att",
           facts: attendanceFacts([claim({ subject: "other", personRef: "Ömer", personNamed: true, personKind: "named", polarity: "in" })]),

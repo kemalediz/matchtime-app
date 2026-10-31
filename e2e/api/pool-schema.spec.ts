@@ -210,6 +210,34 @@ const REFUSED: Array<{ name: string; constraint: string; write: (db: TestDb) => 
     write: async (db) =>
       insert(db, "ClubInvitation", { id: id("inv"), orgId: ORG_ID, userId: await user(db), origin: "after-game", status: "accepted", clubYesAt: NOW, closedAt: NOW, updatedAt: NOW }),
   },
+  {
+    name: "a friend-link guest place that also names an offer",
+    constraint: "GuestPlace_friend_check",
+    write: async (db) => {
+      const fl = id("fl");
+      await insert(db, "FriendLink", { id: fl, orgId: ORG_ID, matchId: MATCH.rate, issuedByUserId: "u-issuer", sourceMessageId: id("wamid"), updatedAt: NOW });
+      return insert(db, "GuestPlace", { id: id("gp"), orgId: ORG_ID, matchId: MATCH.rate, userId: await user(db), source: "pool", poolOfferId: "some-offer", friendLinkId: fl, updatedAt: NOW });
+    },
+  },
+  {
+    name: "a friend-link guest place from a partner club",
+    constraint: "GuestPlace_friend_check",
+    write: async (db) => {
+      const fl = id("fl");
+      await insert(db, "FriendLink", { id: fl, orgId: ORG_ID, matchId: MATCH.rate, issuedByUserId: "u-issuer", sourceMessageId: id("wamid"), updatedAt: NOW });
+      return insert(db, "GuestPlace", { id: id("gp"), orgId: ORG_ID, matchId: MATCH.rate, userId: await user(db), source: "partner", fromOrgId: OTHER_ORG, friendLinkId: fl, updatedAt: NOW });
+    },
+  },
+  {
+    name: "a friend link marked used with no message",
+    constraint: "FriendLink_used_check",
+    write: (db) => insert(db, "FriendLink", { id: id("fl"), orgId: ORG_ID, matchId: MATCH.rate, issuedByUserId: "u-issuer", sourceMessageId: id("wamid"), usedAt: NOW, outcome: "in", updatedAt: NOW }),
+  },
+  {
+    name: "a profile source off the list",
+    constraint: "PoolProfile_source_check",
+    write: (db) => profile(db, { source: "billboard" }),
+  },
   { name: "a play style off the list", constraint: "Organisation_playStyle_check", write: (db) => db.run(`UPDATE "Organisation" SET "playStyle" = 'serious' WHERE id = $1`, [ORG_ID]) },
 ];
 
@@ -284,6 +312,20 @@ test("the migrations re-run cleanly on a database that already has them, and the
   await db.run(readFileSync(path.join(REPO_ROOT, "prisma/sql/pool-check.sql"), "utf8"));
   expect(await db.count(`SELECT count(*) FROM pg_constraint WHERE contype = 'c' AND conname LIKE ANY (ARRAY['Pool%', 'GuestPlace%', 'ClubInvitation%'])`)).toBe(checks);
   expect(checks).toBeGreaterThan(30);
+});
+
+test("the friend link (2026-10-31): a friend's profile, his link and his guest place are accepted; the migration re-runs", async ({ db }) => {
+  const fl = id("fl");
+  await insert(db, "FriendLink", { id: fl, orgId: ORG_ID, matchId: MATCH.upcoming, issuedByUserId: "u-issuer", friendName: "Ali", sourceMessageId: id("wamid"), claimIndex: 0, updatedAt: NOW });
+  const p = await profile(db, { source: "friend", referrerUserId: "u-issuer", friendLinkId: fl });
+  const uid = (await db.one<{ userId: string }>(`SELECT "userId" FROM "PoolProfile" WHERE id = $1`, [p]))!.userId;
+  await db.run(`UPDATE "FriendLink" SET "usedAt" = now(), "usedByUserId" = $2, "usedMessageId" = $3, outcome = 'in' WHERE id = $1`, [fl, uid, id("wamid")]);
+  await insert(db, "GuestPlace", { id: id("gp"), orgId: ORG_ID, matchId: MATCH.upcoming, userId: uid, source: "pool", friendLinkId: fl, updatedAt: NOW });
+  // One link per (message, claim).
+  const dup = await db.one<{ sourceMessageId: string }>(`SELECT "sourceMessageId" FROM "FriendLink" WHERE id = $1`, [fl]);
+  await expect(insert(db, "FriendLink", { id: id("fl"), orgId: ORG_ID, matchId: MATCH.upcoming, issuedByUserId: "u-issuer", sourceMessageId: dup!.sourceMessageId, claimIndex: 0, updatedAt: NOW })).rejects.toThrow(/sourceMessageId|unique/i);
+  await db.run(readFileSync(path.join(REPO_ROOT, "prisma/migrations/20261101090000_friend_link/migration.sql"), "utf8"));
+  expect(await db.count(`SELECT count(*) FROM "FriendLink" WHERE id = $1`, [fl])).toBe(1);
 });
 
 test("a profile always has a postcode district and its centre point (the area CHECK)", async ({ db }) => {

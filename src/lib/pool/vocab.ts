@@ -38,7 +38,7 @@ export type PoolConsentChannel = (typeof POOL_CONSENT_CHANNELS)[number];
 
 /** How the person came to the pool. `sourceCode` names the campaign or the
  *  referrer's share code. */
-export const POOL_PROFILE_SOURCES = ["web", "profile", "referral", "campaign"] as const;
+export const POOL_PROFILE_SOURCES = ["web", "profile", "referral", "campaign", "friend"] as const;
 export type PoolProfileSource = (typeof POOL_PROFILE_SOURCES)[number];
 
 /** `PoolAttempt.kind` (slice L2): a WhatsApp confirm code that did not

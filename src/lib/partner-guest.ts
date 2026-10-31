@@ -57,6 +57,7 @@ import { pullOutResult } from "./pool/round-rules";
 import { decideVolunteer, isPastGuestDue } from "./partner-volunteer-rules";
 import { loadRoundFill, type RoundFill } from "./partner-ask-round";
 import { GUEST_MEMBER_WHERE, isGuestMembership } from "./guest-membership";
+import type { AttendanceEventContext } from "./attendance-events";
 import { normaliseBenchPickMode } from "./squad-capacity";
 import { loadGuestStandings } from "./partner-guest-standing";
 import { standingPhrase } from "./partner-guest-standing-rules";
@@ -159,12 +160,16 @@ const GUEST_MARKS = { guestFromOrgId: true, guestMatchId: true, guestVia: true }
  */
 async function underRoundLock<R extends { status: string }>(
   matchId: string,
-  fill: () => Promise<RoundFill | null>,
+  /** The round's number, read under the lock. Null (a friend link,
+   *  2026-10-31): no round, only the per-match lock, so a friend and a pool
+   *  or partner guest taking the last place are judged one at a time. */
+  fill: (() => Promise<RoundFill | null>) | null,
   write: () => Promise<R>,
 ): Promise<{ r: R; full: boolean } | null> {
   return db.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`xask-fill:${matchId}`}))`;
+      if (!fill) return { r: await write(), full: false };
       const f = await fill();
       if (!f || f.placed >= f.wanted) return null;
       const r = await write();
@@ -807,20 +812,70 @@ export type PoolGuestPlaced =
  * Never throws.
  */
 export async function placePoolGuest(w: PoolGuestWrite): Promise<PoolGuestPlaced> {
+  return placeGuestOnMatch({
+    userId: w.userId,
+    orgId: w.orgId,
+    matchId: w.matchId,
+    benchPickMode: w.benchPickMode,
+    fill: w.fill,
+    logRef: `pool offer ${w.offerId}`,
+    place: { poolOfferId: w.offerId, friendLinkId: null },
+    event: {
+      cause: "pool-ask",
+      actorKind: "player",
+      actorUserId: w.userId,
+      sourceRef: `pool-offer:${w.offerId}`,
+      note: "MatchTime player pool: said yes by the offer link",
+    },
+  });
+}
+
+/**
+ * A MEMBER'S FRIEND SENT HIS CODE (friend link, 2026-10-31). The caller
+ * (`friend-link/book.ts`) has claimed the link and gives it back on
+ * "failed" or "elsewhere". Placed exactly as a pool guest is (he IS a pool
+ * member now): a guest of this club for this match, under the club's rule,
+ * one at a time per match. No round: he was vouched for, not offered.
+ */
+export async function placeFriendGuest(w: { linkId: string; userId: string; orgId: string; matchId: string; benchPickMode: string | null; issuedByUserId: string }): Promise<PoolGuestPlaced> {
+  return placeGuestOnMatch({
+    userId: w.userId,
+    orgId: w.orgId,
+    matchId: w.matchId,
+    benchPickMode: w.benchPickMode,
+    fill: null,
+    logRef: `friend link ${w.linkId}`,
+    place: { poolOfferId: null, friendLinkId: w.linkId },
+    event: {
+      cause: "friend-link",
+      actorKind: "player",
+      actorUserId: w.userId,
+      sourceRef: `friend-link:${w.linkId}`,
+      note: `a member's friend, by his link and WhatsApp code (vouched by ${w.issuedByUserId})`,
+    },
+  });
+}
+
+/** The one guest writer behind both: the membership's guest marks, the
+ *  row under the club's rule and the per-match lock, the GuestPlace. */
+async function placeGuestOnMatch(w: {
+  userId: string;
+  orgId: string;
+  matchId: string;
+  benchPickMode: string | null;
+  fill: (() => Promise<RoundFill | null>) | null;
+  logRef: string;
+  place: { poolOfferId: string | null; friendLinkId: string | null };
+  event: AttendanceEventContext;
+}): Promise<PoolGuestPlaced> {
   try {
     const mem = await db.membership.findUnique({ where: { userId_orgId: { userId: w.userId, orgId: w.orgId } }, select: { leftAt: true, ...GUEST_MARKS } });
     const ordinary = !!mem && !mem.leftAt && !isGuestMembership(mem);
     if (mem && !mem.leftAt && isGuestMembership(mem) && mem.guestMatchId !== w.matchId) {
-      console.log(`[partner-guest] pool offer ${w.offerId}: ${w.userId} is already this club's guest for another match; not written`);
+      console.log(`[partner-guest] ${w.logRef}: ${w.userId} is already this club's guest for another match; not written`);
       return { kind: "elsewhere" };
     }
-    const event = {
-      cause: "pool-ask" as const,
-      actorKind: "player" as const,
-      actorUserId: w.userId,
-      sourceRef: `pool-offer:${w.offerId}`,
-      note: "MatchTime player pool: said yes by the offer link",
-    };
+    const event = w.event;
     const writePlace = async () => {
       if (!ordinary) {
         const liveHere = !!mem && !mem.leftAt && mem.guestMatchId === w.matchId;
@@ -840,7 +895,7 @@ export async function placePoolGuest(w: PoolGuestWrite): Promise<PoolGuestPlaced
     } else {
       const locked = await underRoundLock(w.matchId, w.fill, writePlace);
       if (!locked) {
-        console.log(`[partner-guest] pool offer ${w.offerId}: ${w.userId} too late, the round has its number`);
+        console.log(`[partner-guest] ${w.logRef}: ${w.userId} too late, the round has its number`);
         return { kind: "gone" };
       }
       result = locked.r;
@@ -850,14 +905,14 @@ export async function placePoolGuest(w: PoolGuestWrite): Promise<PoolGuestPlaced
     if (!ordinary) {
       await db.guestPlace.upsert({
         where: { matchId_userId: { matchId: w.matchId, userId: w.userId } },
-        create: { orgId: w.orgId, matchId: w.matchId, userId: w.userId, source: "pool", poolOfferId: w.offerId },
-        update: { source: "pool", fromOrgId: null, partnerAskId: null, poolOfferId: w.offerId, result: "booked", resultAt: null, resultById: null, settledAt: null },
+        create: { orgId: w.orgId, matchId: w.matchId, userId: w.userId, source: "pool", ...w.place },
+        update: { source: "pool", fromOrgId: null, partnerAskId: null, ...w.place, result: "booked", resultAt: null, resultById: null, settledAt: null },
       });
     }
-    console.log(`[partner-guest] pool offer ${w.offerId}: ${w.userId} on match ${w.matchId} as ${result.status}${ordinary ? " (member)" : " (pool guest)"}`);
+    console.log(`[partner-guest] ${w.logRef}: ${w.userId} on match ${w.matchId} as ${result.status}${ordinary ? " (member)" : " (pool guest)"}`);
     return { kind: result.status === "CONFIRMED" ? "in" : "bench", roundNowFull };
   } catch (err) {
-    console.error(`[partner-guest] pool offer ${w.offerId}: ${w.userId} not written:`, err instanceof Error ? err.message : "failed");
+    console.error(`[partner-guest] ${w.logRef}: ${w.userId} not written:`, err instanceof Error ? err.message : "failed");
     return { kind: "failed" };
   }
 }
@@ -870,19 +925,31 @@ export async function placePoolGuest(w: PoolGuestWrite): Promise<PoolGuestPlaced
  * guest. True when there was a place to give back.
  */
 export async function withdrawPoolGuest(args: { userId: string; matchId: string; orgId: string; offerId: string; result: "withdrawn" | "late-cancel"; now: Date }): Promise<boolean> {
+  return withdrawGuestPlace({
+    ...args,
+    logRef: `pool offer ${args.offerId}`,
+    event: { cause: "pool-ask", actorKind: "player", actorUserId: args.userId, sourceRef: `pool-offer:${args.offerId}`, note: "MatchTime player pool: gave the place back by the offer link" },
+  });
+}
+
+/** A member's friend gives his place back (his link's page, or his own
+ *  words by DM; friend link, 2026-11-01). The same as a pool guest's. */
+export async function withdrawFriendGuest(args: { userId: string; matchId: string; orgId: string; linkId: string; result: "withdrawn" | "late-cancel"; now: Date }): Promise<boolean> {
+  return withdrawGuestPlace({
+    ...args,
+    logRef: `friend link ${args.linkId}`,
+    event: { cause: "friend-link", actorKind: "player", actorUserId: args.userId, sourceRef: `friend-link:${args.linkId}`, note: "a member's friend gave the place back" },
+  });
+}
+
+async function withdrawGuestPlace(args: { userId: string; matchId: string; orgId: string; result: "withdrawn" | "late-cancel"; now: Date; logRef: string; event: AttendanceEventContext }): Promise<boolean> {
   const mem = await db.membership.findUnique({ where: { userId_orgId: { userId: args.userId, orgId: args.orgId } }, select: { leftAt: true, ...GUEST_MARKS } });
   if (!mem || mem.leftAt || mem.guestVia !== "pool" || mem.guestMatchId !== args.matchId) return false;
   const row = await db.attendance.findUnique({ where: { matchId_userId: { matchId: args.matchId, userId: args.userId } }, select: { status: true } });
   if (!row || (row.status !== "CONFIRMED" && row.status !== "BENCH")) return false;
-  await cancelAttendance(args.userId, args.matchId, {
-    cause: "pool-ask",
-    actorKind: "player",
-    actorUserId: args.userId,
-    sourceRef: `pool-offer:${args.offerId}`,
-    note: "MatchTime player pool: gave the place back by the offer link",
-  });
+  await cancelAttendance(args.userId, args.matchId, args.event);
   await db.guestPlace.updateMany({ where: { matchId: args.matchId, userId: args.userId, result: "booked" }, data: { result: args.result, resultAt: args.now } });
   await db.membership.updateMany({ where: { userId: args.userId, orgId: args.orgId, guestMatchId: args.matchId, leftAt: null }, data: { leftAt: args.now } });
-  console.log(`[partner-guest] pool offer ${args.offerId}: ${args.userId} gave the place back (${args.result})`);
+  console.log(`[partner-guest] ${args.logRef}: ${args.userId} gave the place back (${args.result})`);
   return true;
 }

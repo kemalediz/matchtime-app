@@ -778,7 +778,9 @@ describe("A5 · 'my brother can play if needed' (2026-08-30, Amir)", () => {
     });
     expect(attWrites(r.writes)).toHaveLength(0);
     expect(statusOf(r.nextState, "amir")).toBe("ABSENT");
-    expect(r.speech.some((s) => s.kind === "guest_name_ask")).toBe(true);
+    // A player's unnamed friend: a friend link, never a name question (2026-10-31).
+    expect(r.speech.some((s) => s.kind === "guest_name_ask")).toBe(false);
+    expect(r.outcomes[0].friendLinks).toEqual([{ claimIndex: 0, friendName: null }]);
     expect(r.outcomes[0].react).toBeNull();
   });
 
@@ -809,13 +811,13 @@ describe("A5 · 'my brother can play if needed' (2026-08-30, Amir)", () => {
     expect(r.nextState.roster.map((m) => m.name)).not.toContain("Amir's brother");
   });
 
-  it("a NAMED guest still registers — 'my brother Shahrokh can play'", () => {
+  it("an organiser's NAMED guest still registers; a player's gets a friend link", () => {
     const r = decide({
       now: NOW,
       state: state(),
       messages: [
         msg({
-          from: "amir",
+          from: "kemal",
           body: "my brother Shahrokh can play",
           route: "other_att",
           facts: attendanceFacts([
@@ -861,7 +863,7 @@ describe("PR#29 · a message carrying TWO facts loses neither", () => {
       ],
     });
     expect(statusOf(r.nextState, "zair")).toBe("CONFIRMED");
-    expect(r.speech.some((s) => s.kind === "guest_name_ask")).toBe(true);
+    expect(r.outcomes[0].friendLinks).toEqual([{ claimIndex: 1, friendName: null }]);
   });
 
   it("'I can't make it but my mate can play' still drops the sender", () => {
@@ -2438,7 +2440,8 @@ describe("a CONTINGENT claim about someone ELSE never registers them", () => {
       ],
     });
     expect(r.writes).toEqual([]);
-    expect(r.outcomes[0].reasons.join(" ")).toMatch(/contingent claim about .*not the sender/);
+    // A player's: a friend link (D4, 2026-10-31); an organiser's is held below.
+    expect(r.outcomes[0].friendLinks).toEqual([{ claimIndex: 0, friendName: "David" }]);
   });
 
   it("still registers the SENDER's own standing offer — S15(a) is unchanged", () => {
@@ -4426,7 +4429,9 @@ describe("S44 · a replacement takes the dropped player's slot (2026-09-15)", ()
     expect(r.writes).toHaveLength(0);
   });
 
-  it("a replacement nobody has seen before still inherits the slot", () => {
+  it("a replacement nobody has seen before, named by an organiser, still inherits the slot", () => {
+    // A PLAYER naming a newcomer gets a friend link instead (2026-10-31);
+    // the friend books himself later and does not inherit the slot.
     // The name resolves to no member, so `applyClaim` provisions
     // `new:Raihan` and the inherit carries that placeholder. The apply
     // layer is what turns it into a real id, and
@@ -4441,7 +4446,7 @@ describe("S44 · a replacement takes the dropped player's slot (2026-09-15)", ()
       state,
       messages: [
         msg({
-          from: "amir",
+          from: "kemal",
           body: "I have a friend who will play instead of my dad. His name is Raihan",
           route: "other_att",
           facts: attendanceFacts([

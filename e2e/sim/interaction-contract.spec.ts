@@ -291,20 +291,30 @@ test.describe("third-party adds tag-free; drops/swaps still tagged", () => {
 
   const addRashad = { route: "other_att", facts: otherFacts("Rashad", "in") };
 
-  test('untagged "Add Rashad please" → registers Rashad, NOT the sender (gate + relay guard)', async ({
+  test('untagged "Add Rashad please" from a PLAYER → a friend link (✉️), nobody registered, NOT the sender', async ({
     request,
     db,
   }) => {
+    // 2026-10-31 (friend link): a player's new guest joins only through his
+    // own link, details and WhatsApp code. Until then nobody is added.
     const grp = (await mkGroup(request, db)).attach(request);
     // greg is NOT in the seeded squad — he's only adding Rashad, not joining.
     const r = await grp.post("greg", "Add Rashad please", addRashad);
-    // The gate must NOT suppress it: handled by the LLM path.
+    expect(r.handledBy).toBe("llm");
+    expect(r.react).toBe("✉️");
+    expect(await attendanceByName(grp, "Rashad"), "Rashad is not registered yet").toBeNull();
+    expect(r.dms.map((d) => d.text).join("\n")).toMatch(/Here's the link for Rashad/);
+    // RELAY GUARD: the sender (greg) was only relaying — must NOT be joined.
+    expect(await grp.attendanceOf("greg"), "sender must not be auto-joined").toBeNull();
+  });
+
+  test('untagged "Add Rashad please" from an ORGANISER → registers Rashad, NOT the sender', async ({ request, db }) => {
+    const grp = (await mkGroup(request, db)).attach(request);
+    const r = await grp.post("alice", "Add Rashad please", addRashad);
     expect(r.handledBy).toBe("llm");
     const att = await attendanceByName(grp, "Rashad");
     expect(att, "Rashad must be registered").not.toBeNull();
     expect(["CONFIRMED", "BENCH"]).toContain(att!.status);
-    // RELAY GUARD: the sender (greg) was only relaying — must NOT be joined.
-    expect(await grp.attendanceOf("greg"), "sender must not be auto-joined").toBeNull();
   });
 
   // ⚠️ SENDER CHANGED 2026-09-07, and the change is the point.
@@ -355,16 +365,15 @@ test.describe("third-party adds tag-free; drops/swaps still tagged", () => {
     expect(await grp.confirmed()).not.toContain("Dan Drummer");
   });
 
-  test('TAGGED third-party add behaves exactly as before (still registers)', async ({
+  test("a TAGGED third-party add from a player is a friend link too (the tag changes nothing)", async ({
     request,
     db,
   }) => {
     const grp = (await mkGroup(request, db)).attach(request);
     const r = await grp.post("pete", "@Match Time add Rashad", { ...addRashad, tag: true });
     expect(r.handledBy).toBe("llm");
-    const att = await attendanceByName(grp, "Rashad");
-    expect(att, "Rashad must be registered when tagged too").not.toBeNull();
-    expect(["CONFIRMED", "BENCH"]).toContain(att!.status);
+    expect(r.react).toBe("✉️");
+    expect(await attendanceByName(grp, "Rashad"), "Rashad joins only through his link").toBeNull();
   });
 });
 

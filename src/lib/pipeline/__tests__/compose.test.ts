@@ -513,11 +513,13 @@ describe("questions are answered from state, not from the model", () => {
 });
 
 describe("the guest name ask", () => {
+  // An organiser's offer (friend link D1, 2026-10-31): a player's gets a
+  // friend link instead (engine-friend-link.test.ts).
   it("asks for one name in the singular", () => {
     const state = world({ confirmed: TEN.slice(0, 7) });
     const { out } = composeFor(state, [
       msg({
-        from: "amir",
+        from: "elvin",
         body: "@Kemal Ediz my brother can play if needed",
         route: "offer",
         facts: attendanceFacts([
@@ -540,7 +542,7 @@ describe("the guest name ask", () => {
     const state = world({ confirmed: [...TEN, "usama"] });
     const { out } = composeFor(state, [
       msg({
-        from: "amir",
+        from: "elvin",
         body: "my cousin and a mate can play",
         route: "other_att",
         facts: attendanceFacts([

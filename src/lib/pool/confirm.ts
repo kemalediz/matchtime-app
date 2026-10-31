@@ -47,7 +47,10 @@
 import { applyStandingPause, type StandingPauseClient } from "./standing-pause";
 import { db } from "../db";
 import { normaliseLang } from "../i18n/lang";
-import { PlatformDmRefused, platformPhoneDigits, queuePlatformDm, type PlatformDmPurpose } from "../platform-jobs";
+import { platformPhoneDigits } from "../platform-jobs";
+import { queue, queueOnce } from "./queue-once";
+import { bookFriend } from "../friend-link/book";
+import { claimFriendCode, confirmFriendWithProfile, friendCodeExpiresAt, friendCodeHandled, friendCodeSeen, releaseFriendCode, retryFriendBooking } from "./friend-confirm";
 import {
   codeReplyAllowed,
   confirmTarget,
@@ -83,7 +86,6 @@ export interface PoolConfirmOutcome {
 export type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
 export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<PoolConfirmOutcome | null> {
-  if (isPoolSignupPaused()) return null;
   const candidates = poolCodeCandidates(input.text);
   if (candidates.length === 0) return null;
   const now = input.now ?? new Date();
@@ -92,16 +94,19 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
     return { handled: "pool-confirm", result, replied };
   };
 
+  const rows = await db.poolProfile.findMany({
+    where: { status: "pending-verify", confirmCode: { in: candidates } },
+    select: { id: true, confirmCode: true, confirmCodeExpiresAt: true, language: true, claimPhone: true, userId: true, friendLinkId: true, referrerUserId: true, createdAt: true },
+  });
+  const row = candidates.map((c) => rows.find((r) => r.confirmCode === c)).find(Boolean) ?? null;
+  // Paused sign-ups: a friend link's code still works (friend link D5).
+  if (isPoolSignupPaused() && !row?.friendLinkId) return null;
+
   // The same WhatsApp message forwarded twice (a Pi retry, a restart replay).
   if (await db.poolConsentRecord.findFirst({ where: { evidence: input.waMessageId }, select: { id: true } })) {
     return out("duplicate");
   }
-
-  const rows = await db.poolProfile.findMany({
-    where: { status: "pending-verify", confirmCode: { in: candidates } },
-    select: { id: true, confirmCode: true, confirmCodeExpiresAt: true, language: true, claimPhone: true, userId: true },
-  });
-  const row = candidates.map((c) => rows.find((r) => r.confirmCode === c)).find(Boolean) ?? null;
+  if (await friendCodeHandled(input.waMessageId)) return out("duplicate");
   // Slice L3: a member's code that a number has already claimed waits for
   // HIS answer on his page. The same message again (a retry), the code
   // again, or from anyone else: silent, counted for nobody.
@@ -109,7 +114,7 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
 
   const phone = senderPhone(input);
   const sender = phone
-    ? await db.user.findUnique({ where: { phoneNumber: `+${phone}` }, select: { id: true, poolProfile: { select: { status: true, language: true } } } })
+    ? await db.user.findUnique({ where: { phoneNumber: `+${phone}` }, select: { id: true, poolProfile: { select: { id: true, status: true, language: true, pausedReason: true, pausedAt: true } } } })
     : null;
   const senderProfile = sender?.poolProfile && sender.poolProfile.status !== "pending-verify" ? sender.poolProfile : null;
   const ownCode =
@@ -118,9 +123,14 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
     ? await db.poolAttempt.count({ where: { kind: "confirm", key: phone, createdAt: { gte: confirmWindowStart(now) } } })
     : 0;
 
+  // A friend code this number used already (booked, or told why not): a
+  // resend is silent, never "that code did not work" (review of #488, 4).
+  if (!row && sender && (await friendCodeSeen(sender.id, candidates))) return out("friend-code-again");
+
   const message = readPoolConfirmMessage(input.text);
   const decision = decidePoolConfirm({
-    row: row ? { expiresAt: row.confirmCodeExpiresAt } : null,
+    // A friend link's code follows the game's current kick-off (review 8).
+    row: row ? { expiresAt: await friendCodeExpiresAt(row) } : null,
     hasPhone: phone !== null,
     sender: (senderProfile ? { status: senderProfile.status } : null) as SenderProfile,
     ownCode,
@@ -128,13 +138,31 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
     looksLikeConfirm: message !== null,
     // Slice L3: a member's sign-up only ever ends on his own account.
     notYours: !!row && confirmTarget({ numberUserId: sender?.id ?? null, starterId: row.userId }).kind === "not-yours",
+    friendLink: !!row?.friendLinkId,
     now,
   });
 
+  // A friend link's code is handled once per WhatsApp message: claimed
+  // before the work, given back if the work fails (review of #488, 6).
+  const friendClaim = !!row?.friendLinkId && (decision.action === "confirm" || decision.action === "friend-existing");
+  if (friendClaim && !(await claimFriendCode(input.waMessageId))) return out("duplicate");
+  try {
+    return await act();
+  } catch (err) {
+    if (friendClaim) await releaseFriendCode(input.waMessageId);
+    throw err;
+  }
+
+  async function act(): Promise<PoolConfirmOutcome | null> {
   switch (decision.action) {
     case "pass":
       return null;
     case "ignore":
+      // A new friend's own code again after his booking failed: retry it.
+      if (decision.reason === "already-in-pool" && sender && phone) {
+        const retried = await retryFriendBooking({ userId: sender.id, phone, waMessageId: input.waMessageId, now });
+        if (retried) return out(`friend-retry:${retried.booked || retried.reason}`, true);
+      }
       return out(decision.reason);
     case "failed": {
       await recordFailure(phone!, decision.reply === "expired" ? "expired" : "wrong");
@@ -155,19 +183,33 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
       const text = poolAlreadyText(normaliseLang(senderProfile!.language), decision.status, await buildPoolManageLink(sender!.id));
       return out("already-signed-up", await replyIfAllowed(phone!, text, now));
     }
+    case "friend-existing": {
+      const r = await confirmFriendWithProfile({ row: row!, userId: sender!.id, profile: senderProfile!, phone: phone!, waMessageId: input.waMessageId, now });
+      return out(r.result, r.replied);
+    }
     case "confirm":
       break;
   }
 
   const confirmed = await confirmOnce(row!.id, row!.confirmCode!, phone!, input.waMessageId, now);
-  if (!confirmed) return out("race-lost");
+  if (!confirmed) {
+    if (friendClaim) await releaseFriendCode(input.waMessageId);
+    return out("race-lost");
+  }
   if (confirmed.kind === "claim") {
     // Nothing attached. One line to the number that wrote: the sign-up
     // goes on in the app. It names no account and no person.
     const text = poolClaimWaitText(normaliseLang(confirmed.language));
     return out("claim-recorded", await queueOnce(phone!, text, "pool-code-reply", `pool-claim:${confirmed.id}`));
   }
+  if (row!.friendLinkId) {
+    // His welcome is the booking's DM, which says he joined the pool too.
+    // A failed booking is retried by his next code message (retryFriendBooking).
+    const r = await bookFriend({ linkId: row!.friendLinkId, userId: confirmed.userId, phone: phone!, waMessageId: input.waMessageId, newToPool: true, now });
+    return out(`confirmed:friend-${r.booked || r.reason}`, true);
+  }
   return out("confirmed", await queuePoolWelcome(confirmed, phone!));
+  }
 }
 
 /** The ONE welcome to the number a sign-up was confirmed for. */
@@ -326,27 +368,3 @@ async function replyIfAllowed(phone: string, text: string, now: Date): Promise<b
     return queue(phone, text, "pool-code-reply", `pool-code:${phone}`, tx);
   });
 }
-
-/** Queue a DM unless one with this refId exists, under a lock on the refId. */
-async function queueOnce(phone: string, text: string, purpose: PlatformDmPurpose, refId: string): Promise<boolean> {
-  return db.$transaction(async (tx: Tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${refId}))`;
-    if (await tx.platformJob.findFirst({ where: { purpose, refId }, select: { id: true } })) return false;
-    return queue(phone, text, purpose, refId, tx);
-  });
-}
-
-/** False, and logged, when the platform channel refuses it; never thrown at the DM route. */
-async function queue(phone: string, text: string, purpose: PlatformDmPurpose, refId: string, tx: Tx): Promise<boolean> {
-  try {
-    await queuePlatformDm({ phone, text, purpose, refId, client: tx as never });
-    return true;
-  } catch (err) {
-    if (err instanceof PlatformDmRefused) {
-      console.error(`[pool-confirm] ${purpose} not queued: ${err.code}`);
-      return false;
-    }
-    throw err;
-  }
-}
-

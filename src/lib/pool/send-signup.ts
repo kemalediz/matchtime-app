@@ -26,7 +26,7 @@ export type PoolSignupResult =
   | { kind: "fields"; errors: PoolFieldErrors }
   | { kind: "error"; reason: PoolErrorKey };
 
-const SERVER_REASONS = ["busy", "area-not-found", "paused", "unavailable"] as const;
+const SERVER_REASONS = ["busy", "area-not-found", "paused", "unavailable", "link-closed"] as const;
 
 export async function sendPoolSignup(body: unknown, fetchImpl: typeof fetch = (input, init) => fetch(input, init)): Promise<PoolSignupResult> {
   let data: Partial<Omit<PoolSignupConfirm, "expiresAt">> & { expiresAt?: unknown; ok?: boolean; reason?: string; errors?: PoolFieldErrors };

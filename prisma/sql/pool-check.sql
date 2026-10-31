@@ -62,7 +62,7 @@ ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_consent_check"
     AND "consentChannel" IS NOT NULL AND "consentEvidence" IS NOT NULL AND "adultConfirmedAt" IS NOT NULL));
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_source_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_source_check"
-  CHECK ("source" IS NULL OR "source" IN ('web', 'profile', 'referral', 'campaign'));
+  CHECK ("source" IS NULL OR "source" IN ('web', 'profile', 'referral', 'campaign', 'friend'));
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_maxMiles_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_maxMiles_check"
   CHECK ("maxMiles" IN (1, 3, 5, 10));
@@ -212,6 +212,10 @@ ALTER TABLE "GuestPlace" ADD CONSTRAINT "GuestPlace_from_check"
 ALTER TABLE "GuestPlace" DROP CONSTRAINT IF EXISTS "GuestPlace_refs_check";
 ALTER TABLE "GuestPlace" ADD CONSTRAINT "GuestPlace_refs_check"
   CHECK (("source" = 'pool' OR "poolOfferId" IS NULL) AND ("source" = 'partner' OR "partnerAskId" IS NULL));
+-- A friend-link guest (2026-10-31) is a pool guest with no offer.
+ALTER TABLE "GuestPlace" DROP CONSTRAINT IF EXISTS "GuestPlace_friend_check";
+ALTER TABLE "GuestPlace" ADD CONSTRAINT "GuestPlace_friend_check"
+  CHECK ("friendLinkId" IS NULL OR ("source" = 'pool' AND "poolOfferId" IS NULL));
 ALTER TABLE "GuestPlace" DROP CONSTRAINT IF EXISTS "GuestPlace_resultAt_check";
 ALTER TABLE "GuestPlace" ADD CONSTRAINT "GuestPlace_resultAt_check"
   CHECK (("result" = 'booked') = ("resultAt" IS NULL));
@@ -238,3 +242,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "ClubInvitation_one_open_per_club_user"
   WHERE "status" = 'open';
 
 COMMIT;
+
+-- FriendLink (2026-10-31): used once, all three together.
+ALTER TABLE "FriendLink" DROP CONSTRAINT IF EXISTS "FriendLink_used_check";
+ALTER TABLE "FriendLink" ADD CONSTRAINT "FriendLink_used_check"
+  CHECK ((("usedAt" IS NULL) = ("usedMessageId" IS NULL)) AND (("usedAt" IS NULL) = ("outcome" IS NULL)));

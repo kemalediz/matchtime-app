@@ -8,6 +8,12 @@ import { MAGIC_LINK_TTL, signMagicLinkToken } from "../magic-link";
 import { buildShortMagicLinkUrl } from "../short-link";
 import { POOL_INVITATIONS_PATH, POOL_MANAGE_PATH } from "./paths";
 
+/** A signed sign-in link that lands on `nextPath` (also the friend link's
+ *  "give your place back" link, 2026-11-01). */
+export async function buildSignedPoolLink(userId: string, nextPath: string): Promise<string> {
+  return signedLinkTo(userId, nextPath);
+}
+
 async function signedLinkTo(userId: string, nextPath: string): Promise<string> {
   const token = signMagicLinkToken({ userId, purpose: "sign-in", nextPath, ttlSeconds: MAGIC_LINK_TTL.bookmark });
   return buildShortMagicLinkUrl(token);

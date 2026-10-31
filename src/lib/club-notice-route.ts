@@ -10,13 +10,17 @@ import { clubNoticeRoute, type ClubNoticeRoute } from "./club-notice-route-rules
 export const CLUB_NOTICE_ROUTE_SELECT = { adminGroupId: true, whatsappGroupId: true, whatsappBotEnabled: true } as const;
 
 /** The route for a club already read with `CLUB_NOTICE_ROUTE_SELECT`. */
-export async function clubNoticeRouteOf(org: { adminGroupId?: string | null; whatsappGroupId?: string | null; whatsappBotEnabled?: boolean | null }): Promise<ClubNoticeRoute> {
+export async function clubNoticeRouteOf(
+  org: { adminGroupId?: string | null; whatsappGroupId?: string | null; whatsappBotEnabled?: boolean | null },
+  /** "players-group-first": attendance news for everyone (friend link D8). */
+  prefer: "club" | "players-group-first" = "club",
+): Promise<ClubNoticeRoute> {
   return clubNoticeRoute({
     adminGroupId: org.adminGroupId ?? null,
     whatsappGroupId: org.whatsappGroupId ?? null,
     whatsappBotEnabled: org.whatsappBotEnabled === true,
     playersGroupPostable: org.whatsappGroupId ? await isGroupPostable(org.whatsappGroupId) : false,
-  });
+  }, prefer);
 }
 
 /** The route for a club by id; a club that is gone: the admin channel (which finds nobody). */

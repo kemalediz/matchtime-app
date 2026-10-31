@@ -540,7 +540,9 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 
     await g.postBatch([
       { player: "pete", body: "I'm out" },
-      { player: "dan", body: "Add Rashad please" },
+      // An ORGANISER adds him (2026-10-31): a player's "Add Rashad" gets a
+      // friend link instead (e2e/sim/friend-link/issue.spec.ts).
+      { player: "alice", body: "Add Rashad please" },
     ]);
 
     expect(await g.attendanceOf("pete")).toMatchObject({ status: "DROPPED" });

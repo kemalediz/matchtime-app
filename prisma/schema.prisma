@@ -660,6 +660,7 @@ model Organisation {
   clubBlocksAgainst  ClubBlock[]       @relation("ClubBlocked")
   poolAsks           PoolAsk[]
   poolAskRetries     PoolAskRetry[]
+  friendLinks        FriendLink[]
   poolBlocks         PoolBlock[]
   poolReports        PoolReport[]
   guestPlaces        GuestPlace[]
@@ -1217,6 +1218,7 @@ model Match {
   partnerAsks             PartnerAsk[]
   poolAsks                PoolAsk[]
   poolAskRetries          PoolAskRetry[]
+  friendLinks             FriendLink[]
   guestPlaces             GuestPlace[]
   benchConfirmations      PendingBenchConfirmation[]
   benchSlotOffers         BenchSlotOffer[]
@@ -3265,6 +3267,9 @@ model PoolProfile {
   referrerUserId    String?
   /// When the referral counted (only once the friend has played).
   referralCountedAt DateTime?
+  /// The friend link (FriendLink.id) this sign-up came from, when a member
+  /// vouched for him for one match (2026-10-31). Source "friend".
+  friendLinkId      String?
   /// His own share code for matchtime.ai/p/<code> (G1).
   shareCode         String?   @unique
   /// "Keep my badges and 'Brought by' private" OFF: shown. The manage page
@@ -3292,6 +3297,7 @@ model PoolProfile {
   @@index([areaLat, areaLng])
   @@index([town, status])
   @@index([referrerUserId])
+  @@index([friendLinkId])
 }
 
 /// One sport on a pool profile, with its formats and optional level.
@@ -3535,6 +3541,40 @@ model PoolCampaign {
   createdAt DateTime @default(now())
 }
 
+/// A member vouched for a friend for ONE match (friend link, 2026-10-31,
+/// src/lib/friend-link). The link names the match and nothing about the
+/// friend: his details arrive only through the /play form and his own
+/// WhatsApp code. One row per (group message, claim in it). Open while the
+/// match is live and before its CURRENT kick-off (read at use time, so a
+/// moved match moves it). `usedAt`, `usedMessageId` and `outcome` are set
+/// together, once (CHECK "FriendLink_used_check").
+model FriendLink {
+  id              String       @id @default(cuid())
+  orgId           String
+  org             Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  matchId         String
+  match           Match        @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  /// The member who said his friend is coming.
+  issuedByUserId  String
+  /// The name as written in the message, for the form's prefill; NULL for "+1".
+  friendName      String?
+  /// The WhatsApp id of the group message, and which claim in it.
+  sourceMessageId String
+  claimIndex      Int          @default(0)
+  /// The BotJob that carried the link to the member.
+  botJobId        String?
+  usedAt          DateTime?
+  usedByUserId    String?
+  usedMessageId   String?      @unique
+  /// "in" | "bench" | a refusal (friend-link/rules.ts FRIEND_NOT_BOOKED).
+  outcome         String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([sourceMessageId, claimIndex])
+  @@index([matchId, issuedByUserId])
+}
+
 /// One guest's game for a club: partner guests and pool guests alike. The
 /// ONE record of how a guest's game went, read by the Guest players page
 /// (Upcoming, History, Report), the turn-up record and the "Invite to
@@ -3556,6 +3596,8 @@ model GuestPlace {
   partnerAskId String?
   /// The offer he accepted: only for "pool".
   poolOfferId  String?      @unique
+  /// The friend link he came by (2026-10-31): source "pool", no offer (CHECK).
+  friendLinkId String?      @unique
   /// "booked" | "played" | "no-show" | "late-cancel" | "withdrawn".
   /// `resultAt` set exactly when it is no longer "booked".
   result       String       @default("booked")
