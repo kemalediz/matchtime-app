@@ -24,6 +24,8 @@ const dbMock = vi.hoisted(() => ({
   user: { findMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
+const quietWords = vi.hoisted(() => ({ applyQuietHoursWords: vi.fn() }));
+vi.mock("@/lib/quiet-hours-words", () => quietWords);
 const hqLog = vi.hoisted(() => ({
   hqLogSince: vi.fn(),
   recordMatchTimeQuestion: vi.fn(),
@@ -1977,6 +1979,35 @@ describe("L10 follow-up: YES to a guest who wants to join (L8's notice)", () => 
     hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1")]);
     dbMock.adminTeamProposal.findFirst.mockResolvedValue({ matchId: "m1", askedAt: ASKED, state: "proposed" });
     expect((await ask("looks good, go", "approve"))?.outcome).toBe("teams-final");
+  });
+});
+
+// 2026-10-31 (Kemal): quiet hours by tagging MatchTime in HQ, through the
+// one core the settings page uses (quiet-hours-words.ts -> quiet-hours-save.ts).
+describe("quiet hours from HQ", () => {
+  const deps = (facts: Record<string, unknown>) => ({ routerModel: routeTo("admin_ops"), extractorModel: adminFacts(facts) });
+  beforeEach(() => {
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    hqLog.hqLogSince.mockResolvedValue([]);
+    quietWords.applyQuietHoursWords.mockReset();
+    quietWords.applyQuietHoursWords.mockResolvedValue({ outcome: "quiet-hours-off", replyText: "✅ Quiet hours are off. I'll post at any time of day." });
+  });
+
+  it("an organiser's tagged \"turn off quiet hours\": switched off, and the reply says so", async () => {
+    const r = await ask("@Match Time turn off quiet hours now", "admin_ops", { deps: deps({ action: "quiet_hours", quietOff: true, toMatchTime: true }) });
+    expect(quietWords.applyQuietHoursWords).toHaveBeenCalledWith({ orgId: "org-fnf", off: true, from: null, to: null, lang: "en", now: NOW });
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-quiet-hours-off", replyText: "✅ Quiet hours are off. I'll post at any time of day." });
+  });
+
+  it("the times read are passed on", async () => {
+    await ask("@Match Time quiet from 22:00 to 8am", "admin_ops", { deps: deps({ action: "quiet_hours", quietFrom: "22:00", quietTo: "08:00", toMatchTime: true }) });
+    expect(quietWords.applyQuietHoursWords).toHaveBeenCalledWith(expect.objectContaining({ off: false, from: "22:00", to: "08:00" }));
+  });
+
+  it("a member of HQ who is not an organiser: the one line naming who can, nothing changed", async () => {
+    const r = await ask("@Match Time turn off quiet hours now", "admin_ops", { deps: deps({ action: "quiet_hours", quietOff: true, toMatchTime: true }), organiser: false, senderUserId: "u-2" });
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(quietWords.applyQuietHoursWords).not.toHaveBeenCalled();
   });
 });
 

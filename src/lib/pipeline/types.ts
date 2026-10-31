@@ -773,6 +773,7 @@ export interface AdminFacts {
     | "season_break"
     | "set_venue"
     | "retry_ask"
+    | "quiet_hours"
     | "other";
   /** bulk_payment */
   payerRef?: string;
@@ -848,6 +849,15 @@ export interface AdminFacts {
   /** set_venue: the number picked from MatchTime's numbered list of places
    *  (1 is the first). Absent when the message names a place itself. */
   venueChoice?: number;
+  /** quiet_hours (2026-10-31, MT Test: "@Match Time turn off quiet hours
+   *  now"): switch the club's quiet hours off. Set only when true; absent
+   *  means switch them on or set their times (`quiet-hours-words.ts`). */
+  quietOff?: true;
+  /** quiet_hours: when they start, a London "HH:MM" as the model wrote it,
+   *  checked by code (`validateQuietHours`). Absent when not said. */
+  quietFrom?: string;
+  /** quiet_hours: when they end, the same way. */
+  quietTo?: string;
   /**
    * The message is spoken to MatchTime itself, not to a person or the
    * others in the chat (2026-10-22, FNF HQ: "@Kemal can we ask Sutton

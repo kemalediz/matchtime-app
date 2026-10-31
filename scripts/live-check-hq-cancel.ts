@@ -23,7 +23,9 @@ import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
-import { messageMentionsBotExplicitly } from "../src/lib/interaction-contract.ts";
+// The tag as the Pi reports it for these cases: "@Match Time" written in the body
+// (`messageMentionsBotExplicitly` was replaced by `piMentionsBot`, 2026-10-30).
+const messageMentionsBotExplicitly = (m: { body: string }): boolean => /@match\s*time/i.test(m.body);
 import { organisersContext } from "../src/lib/admin-group-context.ts";
 
 const MAX_USD = 0.5;

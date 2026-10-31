@@ -356,6 +356,17 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
   /** MatchTime's numbered list of places, logged as its question so the
    *  pick is found (`venue-list-log.ts`). Injected so tests need no DB. */
   recordVenueList?: (a: { orgId: string; words: string; text: string; now: Date }) => Promise<void>;
+  /** "Turn off quiet hours" (2026-10-31). Defaults to
+   *  `quiet-hours-words.ts`, the settings page's own save core; injected so
+   *  tests need no database. */
+  applyQuietHoursWords?: (a: {
+    orgId: string;
+    off: boolean;
+    from: string | null;
+    to: string | null;
+    lang: string | null;
+    now: Date;
+  }) => Promise<{ outcome: string; replyText: string }>;
 }
 
 function empty(degradations: string[] = []): AdminOpsBatchResult {
@@ -553,6 +564,8 @@ export async function runAdminOpsBatch(args: {
   const venueAsks = new Map<string, { words: string | null; choice: number | null }>();
   /** season_break (2026-10-29): an organiser's months off, or back on. */
   const breakAsks = new Map<string, { breakMonths: string[]; playMonths: string[] }>();
+  /** quiet_hours (2026-10-31): an organiser's quiet hours off, on, or new times. */
+  const quietAsks = new Map<string, { off: boolean; from: string | null; to: string | null }>();
   /** "Try again" with nothing stored to repeat: one short line. */
   const nothingToRetry = new Set<string>();
   /** "Try again" acted on as the stored ask (for the reasoning row). */
@@ -604,16 +617,22 @@ export async function runAdminOpsBatch(args: {
     // A season break (2026-10-29, Kemal: every admin feature by tagging):
     // "no football in December", "we're back mid January". Only with an
     // explicit tag and from an organiser, as the pitch is.
-    if (facts.action === "season_break") {
+    // Quiet hours (2026-10-31, MT Test: "@Match Time turn off quiet hours
+    // now" got "I can't change that by message"): the same gates.
+    if (facts.action === "season_break" || facts.action === "quiet_hours") {
       if (!(m.tagged && (m.taggedExplicitly === true))) {
-        hand("season_break without an explicit MatchTime tag");
+        hand(`${facts.action} without an explicit MatchTime tag`);
         continue;
       }
       if (!state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin)) {
         recruitNotOrganiser.set(m.waMessageId, facts.action);
         continue;
       }
-      breakAsks.set(m.waMessageId, { breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [] });
+      if (facts.action === "quiet_hours") {
+        quietAsks.set(m.waMessageId, { off: facts.quietOff === true, from: facts.quietFrom ?? null, to: facts.quietTo ?? null });
+      } else {
+        breakAsks.set(m.waMessageId, { breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [] });
+      }
       continue;
     }
 
@@ -856,6 +875,18 @@ export async function runAdminOpsBatch(args: {
       console.error(`[admin-ops-engine] ${id}: season_break threw:`, err);
       degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: season_break threw (${detail}); nothing was said`);
       cancelOutcomes.push(replyOnly(id, null, "noise", `season_break threw (${detail}); the write FAILED and nothing was said`, true));
+    }
+  }
+  for (const [id, ask] of quietAsks) {
+    try {
+      const apply = deps.applyQuietHoursWords ?? (async (a) => (await import("./quiet-hours-words")).applyQuietHoursWords(a));
+      const r = await apply({ orgId, ...ask, lang: state.features.language, now });
+      cancelOutcomes.push(replyOnly(id, r.replyText, r.outcome, `quiet_hours by an organiser: ${r.outcome}`));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[admin-ops-engine] ${id}: quiet_hours threw:`, err);
+      degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: quiet_hours threw (${detail}); nothing was said`);
+      cancelOutcomes.push(replyOnly(id, null, "noise", `quiet_hours threw (${detail}); the write FAILED and nothing was said`, true));
     }
   }
   for (const id of nothingToRetry) {

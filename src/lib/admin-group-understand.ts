@@ -149,6 +149,7 @@ import { decideRecruitSource, namedSources, sourcesFromAnswer, sourceQuestionAns
 import { mergeOneReply } from "./pipeline/clause-peel";
 import { askWhichSource, sourcesAvailable } from "./ask-source";
 import { RETRY_FOLLOWUP_MS, latestAskFromRecords, retryFactsOf, type LatestAskForRetry } from "./refused-ask-retry";
+import { applyQuietHoursWords } from "./quiet-hours-words";
 import { setVenueFromWords } from "./venue-from-words";
 import { parseVenuePickRef, venueListAnswered } from "./venue-from-words-rules";
 import { recordHqVenueList } from "./venue-list-log";
@@ -1111,6 +1112,13 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // The one path the web page uses (`match-cancel.ts`).
         // A season break (2026-10-29): "no football in December", "we're
         // back mid January". An organiser's alone, like a cancel.
+        // Quiet hours (2026-10-31): off, on, or new times, through the
+        // settings page's own save core. An organiser's alone.
+        if (facts.kind === "admin" && facts.action === "quiet_hours") {
+          if (!actor) return onlyOrganisers();
+          const r = await applyQuietHoursWords({ orgId: org.id, off: facts.quietOff === true, from: facts.quietFrom ?? null, to: facts.quietTo ?? null, lang, now });
+          return said(`hq-${r.outcome}`, r.replyText);
+        }
         if (facts.kind === "admin" && facts.action === "season_break") {
           if (!actor) return onlyOrganisers();
           const { applySeasonBreakWords } = await import("./season-break-words");
