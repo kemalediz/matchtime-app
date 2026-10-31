@@ -45,6 +45,10 @@
  *                       A `pool-offer` is ADMITTED at dispatch under the
  *                       platform cap's lock (`pool/dispatch.ts`): switches,
  *                       his caps and quiet hours are re-checked there.
+ *   friend-booked,      only a number MatchTime already knows: a friend
+ *   friend-not-booked,  whose own WhatsApp code confirmed his friend-link
+ *   friend-removed      sign-up (2026-10-31). Queued only by
+ *                       src/lib/friend-link/ (book.ts) and pool/removal.ts.
  *   club-invite-ask,    only a number MatchTime already knows: a guest who
  *   club-invite-link,   played with the club (pool L8). Queued only by
  *   club-invite-closed  src/lib/pool/club-invitation.ts. The LINK goes only
@@ -139,6 +143,9 @@ export const PLATFORM_DM_PURPOSES = [
   "club-invite-ask",
   "club-invite-link",
   "club-invite-closed",
+  "friend-booked",
+  "friend-not-booked",
+  "friend-removed",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
