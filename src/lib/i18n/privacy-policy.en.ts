@@ -153,6 +153,7 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
               "hosting and database providers, which store the data;",
               "an AI service, which reads messages so MatchTime can understand them. For the player pool it reads only your reply to your own offer, together with that offer, and your pool profile is never shared with it;",
               "a card payment provider, for clubs that take payments;",
+              "a website analytics service, which counts visits to our web pages and completed player pool sign-ups. It sets no cookies and never receives your name, phone number or postcode;",
               "an email provider, for the few emails we send.",
             ],
           },

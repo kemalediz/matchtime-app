@@ -8,6 +8,8 @@
  * once; the server's answer is the truth. No wording here (page-copy.ts).
  * What he types is kept as a draft in this tab (signup-draft.ts) until the
  * sign-up is sent, and the policy opens in a new tab, so nothing is lost.
+ * The POST itself is `sendPoolSignup`, which also counts the sign-up in
+ * Vercel Web Analytics (one `pool_signup` event, no personal data).
  */
 import { poolShareCopy } from "@/lib/i18n/pool-share";
 import { useEffect, useState } from "react";
@@ -22,13 +24,9 @@ import { fieldErrorKeys, poolPageCopy } from "@/lib/pool/page-copy";
 import { validatePoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fields";
 import { PolicyLink } from "@/components/policy-link";
 import { clearSignupDraft, loadSignupDraft, saveSignupDraft } from "@/lib/pool/signup-draft";
+import { sendPoolSignup, type PoolSignupConfirm } from "@/lib/pool/send-signup";
 
-interface Confirm {
-  code: string;
-  prefill: string;
-  waLink: string;
-  earlyList: boolean;
-}
+type Confirm = PoolSignupConfirm;
 
 export function PlaySignup({
   source,
@@ -89,18 +87,15 @@ export function PlaySignup({
     setErrors({});
     setSending(true);
     try {
-      const res = await fetch("/api/play/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const data = (await res.json().catch(() => ({}))) as Partial<Confirm> & { ok?: boolean; reason?: string; errors?: PoolFieldErrors };
-      if (data.ok && data.code && data.waLink && data.prefill) {
+      const result = await sendPoolSignup(body);
+      if (result.kind === "ok") {
         clearSignupDraft();
-        setConfirm({ code: data.code, prefill: data.prefill, waLink: data.waLink, earlyList: !!data.earlyList });
+        setConfirm(result.confirm);
         window.scrollTo({ top: 0 });
         return;
       }
-      if (data.errors) setErrors(data.errors);
-      else setFormError((["busy", "area-not-found", "paused", "unavailable"] as const).find((r) => r === data.reason) ?? "generic");
-    } catch {
-      setFormError("generic");
+      if (result.kind === "fields") setErrors(result.errors);
+      else setFormError(result.reason);
     } finally {
       setSending(false);
     }

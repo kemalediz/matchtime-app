@@ -3,6 +3,7 @@ import { Inter, Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { AppShell } from "@/components/layout/app-shell";
+import { WebAnalytics } from "@/components/web-analytics";
 import { SITE_META } from "@/components/landing/landing-content";
 
 // Inter for body copy — tightly hinted, great on every device at every
@@ -83,6 +84,7 @@ export default function RootLayout({
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>
+        <WebAnalytics />
       </body>
     </html>
   );
