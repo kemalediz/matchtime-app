@@ -209,19 +209,25 @@ describe("B: decideFirstTeams", () => {
 });
 
 describe("B: the text", () => {
-  const base = { lang: "en", matchDate: KICKOFF, readyTime: "10:00", confirmed: 18, maxPlayers: 18 };
-  it("FNF (organisers share): post here, YES, the team sheet to share", () => {
+  // In the admin group (its usual home), so the YES is tagged (#482).
+  const base = { lang: "en", matchDate: KICKOFF, readyTime: "10:00", confirmed: 18, maxPlayers: 18, audience: "group" as const };
+  it("FNF (organisers share): post here, a tagged YES, the team sheet to share", () => {
     expect(buildFirstTeamsNotice({ ...base, organisers: true, seed: null })).toBe(
       [
         "🟥🟦 *Teams for Friday*",
         "The squad is set, 18 of 18. At 10:00 on Friday I'll build two balanced teams and post them here for you to check.",
-        "Reply *YES* to make them final, or say *swap* or *move* if you want changes (tag me for brand new teams: *@Match Time reshuffle*). For the team sheet, a graphic to share with the players, tag me and ask any time: *@Match Time team sheet*.",
+        "Say *@Match Time YES* to make them final, or tag me and say *swap* or *move* if you want changes (for brand new teams: *@Match Time reshuffle*). For the team sheet, a graphic to share with the players, tag me and ask any time: *@Match Time team sheet*. To tag me, type *@* and pick *Match Time* from the list.",
       ].join("\n\n"),
+    );
+  });
+  it("by DM: the plain YES", () => {
+    expect(buildFirstTeamsNotice({ ...base, audience: "dm", organisers: true, seed: null })).toContain(
+      "Reply *YES* to make them final, or say *swap* or *move* if you want changes (tag me for brand new teams: *@Match Time reshuffle*).",
     );
   });
   it("a club MatchTime announces for: YES posts them in the main chat", () => {
     const text = buildFirstTeamsNotice({ ...base, organisers: false, seed: null });
-    expect(text).toContain("Reply *YES* to make them final and I'll post them in the main chat, or say *swap* or *move* if you want changes (tag me for brand new teams: *@Match Time reshuffle*).");
+    expect(text).toContain("Say *@Match Time YES* to make them final and I'll post them in the main chat, or tag me and say *swap* or *move* if you want changes (for brand new teams: *@Match Time reshuffle*).");
     expect(text).not.toContain("share with the players");
   });
   it("the seed line, when nobody (or most) of the squad has a rating", () => {
@@ -235,7 +241,7 @@ describe("B: the text", () => {
   it("in Turkish", () => {
     const text = buildFirstTeamsNotice({ ...base, lang: "tr", organisers: true, seed: { anySeeded: false, link: "L" } });
     expect(text).toContain("Cuma");
-    expect(text).toContain("*EVET*");
+    expect(text).toContain("*@Match Time EVET*");
     expect(text).toContain("*@Match Time takım listesi*");
     expect(text).not.toMatch(/\bYES\b|\bswap\b|\bteam sheet\b/);
     expect(text).not.toMatch(/[–—]/);

@@ -34,7 +34,7 @@ import { E2E } from "../helpers/env";
 import { ORG_ID, PHONE, U } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
 import { defaultPayBy } from "@/lib/month-payment-rules";
-import { buildClaimsDigest, buildCollectorReplyAnswer, buildPaidClaimAckDm, buildPayBySummary, buildPayReminderDm, pounds } from "@/lib/month-payment-copy";
+import { buildClaimsDigest, buildCollectorReplyAnswer, claimsDigestMessage, buildPaidClaimAckDm, buildPayBySummary, buildPayReminderDm, pounds } from "@/lib/month-payment-copy";
 import { listOpensAt, monthKickoffs, nextMonthStart } from "@/lib/month-signup-rules";
 import { londonMonthStart } from "@/lib/squad-month-rules";
 import { setPaymentClaimStub } from "../helpers/stub";
@@ -374,16 +374,21 @@ test("4. the collector's digest and reply: never a stray word, never a wrong num
   expect(await digestOf()).toHaveLength(0);
   await poll(request, new Date(dayAfter.getTime() + 5 * 60_000));
   await poll(request, new Date(dayAfter.getTime() + 60 * 60_000));
+  // The list, then how to answer it by DM (2026-10-31: the how line is
+  // per channel; the list alone is what a reply is matched against).
+  const sent = (body: string) => claimsDigestMessage({ body, lang: "en", audience: "dm" });
   expect((await digestOf()).map((d) => d.text)).toEqual([
-    buildClaimsDigest({
-      claims: [
-        { slot: 1, name: P.alex.name, amountPence: DUE.alex },
-        { slot: 2, name: P.bilal.name, amountPence: DUE.bilal },
-        { slot: 3, name: P.carl.name, amountPence: DUE.carl },
-      ],
-      monthDate: FIRST,
-      lang: "en",
-    }),
+    sent(
+      buildClaimsDigest({
+        claims: [
+          { slot: 1, name: P.alex.name, amountPence: DUE.alex },
+          { slot: 2, name: P.bilal.name, amountPence: DUE.bilal },
+          { slot: 3, name: P.carl.name, amountPence: DUE.carl },
+        ],
+        monthDate: FIRST,
+        lang: "en",
+      }),
+    ),
   ]);
   expect((await dms(db, P.adam)).some((d) => d.text.includes("they've paid"))).toBe(false);
 
@@ -403,7 +408,7 @@ test("4. the collector's digest and reply: never a stray word, never a wrong num
   const wrong = await dm(request, P.rob, "PAID 1 4");
   expect(wrong.handled).toBe("month-paid-unknown");
   expect(await paidCount(db)).toBe(0);
-  expect(await lastDm(db, P.rob)).toBe(buildCollectorReplyAnswer({ kind: "unknown-numbers", numbers: [4], monthDate: FIRST, lang: "en" }));
+  expect(await lastDm(db, P.rob)).toBe(buildCollectorReplyAnswer({ kind: "unknown-numbers", numbers: [4], monthDate: FIRST, lang: "en", audience: "dm" }));
 
   // "PAID 1": Alex, and only Alex.
   const one = await dm(request, P.rob, "PAID 1");
@@ -446,7 +451,7 @@ test("4. the collector's digest and reply: never a stray word, never a wrong num
   await poll(request, new Date(twoDays.getTime() + 60 * 60_000));
   const digests = await digestOf();
   expect(digests).toHaveLength(2);
-  expect(digests[1].text).toBe(buildClaimsDigest({ claims: [{ slot: 2, name: P.bilal.name, amountPence: DUE.bilal }], monthDate: FIRST, lang: "en" }));
+  expect(digests[1].text).toBe(sent(buildClaimsDigest({ claims: [{ slot: 2, name: P.bilal.name, amountPence: DUE.bilal }], monthDate: FIRST, lang: "en" })));
   // "PAID ALL" is what that digest showed: Bilal. Not Carl, who was declined.
   expect((await dm(request, P.rob, "PAID ALL")).handled).toBe("month-paid-confirmed");
   expect((await member(db, P.bilal))!.paidAt).not.toBeNull();
@@ -462,7 +467,7 @@ test("4. the collector's digest and reply: never a stray word, never a wrong num
   expect(old.handled).toBe("month-paid-stale");
   expect(await paidCount(db)).toBe(2);
   expect(await lastDm(db, P.rob)).toBe(
-    `That list is out of date, so I marked nobody.\n\n${buildClaimsDigest({ claims: [{ slot: 3, name: P.carl.name, amountPence: DUE.carl }], monthDate: FIRST, lang: "en" })}`,
+    `That list is out of date, so I marked nobody.\n\n${sent(buildClaimsDigest({ claims: [{ slot: 3, name: P.carl.name, amountPence: DUE.carl }], monthDate: FIRST, lang: "en" }))}`,
   );
   // The current list is now the one a reply answers: "PAID NONE" for Carl.
   expect((await dm(request, P.rob, "PAID NONE")).handled).toBe("month-paid-declined");

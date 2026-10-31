@@ -166,7 +166,7 @@ test("'These are the final teams' replying to an EARLIER sheet: those teams back
   // Hamzah's reply to the earlier sheet, by its id alone.
   const out = await say(request, "These are the final teams", { quotedMessageId: "3EB0E2EEARLIER", quotedFromMatchTime: true, botMentioned: true });
   expect(out).toMatchObject({ handled: true, outcome: "teams-restored" });
-  expect(out.replyText).toMatch(/^These are the earlier teams, from .+ at \d\d:\d\d\. They need your YES again\.\n\n📝 \*Proposed teams\*/);
+  expect(out.replyText).toMatch(/^These are the earlier teams, from .+ at \d\d:\d\d\. They need your \*@Match Time YES\* again\.\n\n📝 \*Proposed teams\*/);
   expect(await sheet(db)).toEqual(earlier);
   expect(await status(db)).not.toBe("TEAMS_PUBLISHED");
 

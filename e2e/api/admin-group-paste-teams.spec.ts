@@ -149,7 +149,7 @@ test("half the list with the rest not said to be out: nobody is taken out, it sa
 test("a real squad list still proposes the right changes, and the YES makes exactly them", async ({ request, db }) => {
   const out = await say(request, REAL);
   expect(out).toMatchObject({ handled: true, outcome: "paste-proposed" });
-  expect(out.replyText).toMatch(/^Adding: Ben Bench\. Removing: Tom Third\. Reply YES to apply\./);
+  expect(out.replyText).toMatch(/^Adding: Ben Bench\. Removing: Tom Third\. Say \*@Match Time YES\* to apply\./);
   const row = await db.one<{ remove: string[] }>(`SELECT "removeUserIds" AS remove FROM "AdminSquadProposal" WHERE "orgId" = $1 AND "resolvedAt" IS NULL`, [ORG_ID]);
   expect(row?.remove).toEqual([U.third]);
 

@@ -110,6 +110,10 @@ function organiserAskTail(open: number): string {
   return `Say *IN* if you can make it and the organisers will confirm who gets ${open === 1 ? "the place" : "the places"}.`;
 }
 
+/** How to make a real tag (#482, #487, 2026-10-31), the one sentence the
+ *  HQ notices end with. */
+const en_tagHow = "To tag me, type *@* and pick *Match Time* from the list.";
+
 export const en = {
   // ── shared fragments ─────────────────────────────────────────────
 
@@ -940,10 +944,10 @@ export const en = {
   /** The same ask in the club's admin group (2026-10-16): the organisers
    *  report the score there. */
   ask_score_hq: (p: { activityName: string }): string =>
-    `🏁 *${p.activityName}*: what was the final score, and which team won? Reply here and I'll record it.`,
+    `🏁 *${p.activityName}*: what was the final score, and which team won? Tag me here with it and I'll record it. ${en_tagHow}`,
   /** The same ask when the organisers pick Man of the Match (2026-10-18). */
   ask_score_hq_mom: (p: { activityName: string; mvpLabel: string }): string =>
-    `🏁 *${p.activityName}*: what was the final score, which team won, and who was ${p.mvpLabel}? Reply here and I'll record it.`,
+    `🏁 *${p.activityName}*: what was the final score, which team won, and who was ${p.mvpLabel}? Tag me here with it and I'll record it. ${en_tagHow}`,
 
   // ═══════════════════════════════════════════════════════════════════
   // Phase 2, slice 3: the server-computed day headers.
@@ -1528,7 +1532,7 @@ export const en = {
   /** Several things waiting: which one, each named by its `hq_which_*`
    *  label (`admin-group-confirm-copy.ts`, L10). */
   hq_confirm_which: (p: { items: string[] }): string =>
-    `Which one is that YES for: ${p.items.length > 1 ? `${p.items.slice(0, -1).join(", ")}, or ${p.items[p.items.length - 1]}` : p.items.join("")}? Reply YES to that message.`,
+    `Which one is that YES for: ${p.items.length > 1 ? `${p.items.slice(0, -1).join(", ")}, or ${p.items[p.items.length - 1]}` : p.items.join("")}? Reply to that message with *@Match Time YES*.`,
   hq_which_teams: (p: { day: string }): string => `the proposed teams for ${p.day}`,
   hq_which_list: `the pasted squad list`,
   hq_which_fee: (p: { names: string; day: string }): string => `the free place for ${p.names} on ${p.day}`,
@@ -1684,9 +1688,9 @@ export const en = {
   /** The question before anything is written (review of #301): `notes`
    *  are whole sentences ("Bilal said they'd pay Colin directly."), or "". */
   hq_fee_free_ask: (p: { names: string; day: string; notes: string }): string =>
-    `Make ${p.names} free for ${p.day}?${p.notes ? ` ${p.notes}` : ""} Reply YES.`,
+    `Make ${p.names} free for ${p.day}?${p.notes ? ` ${p.notes}` : ""} Say *@Match Time YES*.`,
   hq_fee_unfree_ask: (p: { names: string; day: string }): string =>
-    `Take the free place away from ${p.names} for ${p.day}? They'll be asked to pay. Reply YES.`,
+    `Take the free place away from ${p.names} for ${p.day}? They'll be asked to pay. Say *@Match Time YES*.`,
   /** A player who said they would pay the collector directly. */
   hq_fee_free_direct_note: (p: { name: string; collector: string | null }): string =>
     `${p.name} said they'd pay ${p.collector ?? "the money collector"} directly.`,
@@ -3307,7 +3311,7 @@ export const en = {
     p.count === 1
       ? `I haven't taken anyone out: ${p.names} is in the squad but not on this list. If they're out, tell me by name.`
       : `I haven't taken anyone out: ${p.count} players in the squad are not on this list (${p.names}). If any of them are out, tell me who by name.`,
-  ag_paste_confirm: "Reply YES to apply.",
+  ag_paste_confirm: "Say *@Match Time YES* to apply.",
   ag_paste_same: "That matches the squad, nothing to change.",
   ag_paste_expired: "That list is more than 30 minutes old, so I haven't applied it. Paste it again if it still stands.",
   /** A pasted list with no game to put it on (2026-10-15): the club has a
@@ -3330,13 +3334,13 @@ export const en = {
   tp_unseated: (p: { names: string }): string => `Not on a team yet: ${p.names}.`,
   /** How to change them, with two real first names from the teams. */
   tp_how_to_change: (p: { a: string; b: string }): string =>
-    `To change them, just tell me in your own words (for example *swap ${p.a} and ${p.b}* or *move ${p.a} to the other team*). For brand new teams, tag me (*@Match Time shuffle them again*).`,
+    `To change them, tag me and say it in your own words (for example *@Match Time swap ${p.a} and ${p.b}* or *@Match Time move ${p.a} to the other team*). For brand new teams: *@Match Time shuffle them again*.`,
   /** The question, when the organisers announce the teams themselves. */
-  tp_ask_yes_quiet: "Reply *YES* when they are final. I won't post them in the players' group.",
+  tp_ask_yes_quiet: `Say *@Match Time YES* when they are final. I won't post them in the players' group. ${en_tagHow}`,
   /** The question, when MatchTime posts the final teams. */
-  tp_ask_yes_post: "Reply *YES* when they are final and I'll post them in the players' group.",
+  tp_ask_yes_post: `Say *@Match Time YES* when they are final and I'll post them in the players' group. ${en_tagHow}`,
   /** Under the final teams. */
-  tp_final_footer: "These are final. You can still ask me for changes in your own words; brand new teams need approving again.",
+  tp_final_footer: "These are final. You can still tag me for changes in your own words; brand new teams need approving again.",
   /** The answer to YES. */
   tp_final_reply_quiet: "Teams are final.",
   tp_final_reply_posted: "Teams are final. I've posted them in the players' group.",
@@ -3346,13 +3350,13 @@ export const en = {
   /** A pasted sheet names someone who is not in the squad (2026-10-30). */
   tp_name_unknown_squad: (p: { name: string }): string => `I can't find ${p.name} in the squad.`,
   /** An earlier sheet brought back (2026-10-30): above the proposal. */
-  tp_restored_earlier: (p: { day: string; time: string }): string => `These are the earlier teams, from ${p.day} at ${p.time}. They need your YES again.`,
+  tp_restored_earlier: (p: { day: string; time: string }): string => `These are the earlier teams, from ${p.day} at ${p.time}. They need your *@Match Time YES* again.`,
   /** A pasted sheet set as the teams: above the proposal. */
-  tp_set_pasted: "These are the teams you sent. They need your YES.",
+  tp_set_pasted: "These are the teams you sent. They need your *@Match Time YES*.",
   /** The sheet asked for is the teams as they stand. */
   tp_restore_same: "Those are the teams as they stand.",
   /** "Use these" with no sheet of MatchTime's to bring back. */
-  tp_restore_none: "I can't find those teams. Reply to my team sheet you want back and say *use these*, or paste the two teams here.",
+  tp_restore_none: "I can't find those teams. Reply to my team sheet you want back with *@Match Time use these*, or tag me and paste the two teams here.",
   /** A sheet naming someone not in the squad now. */
   tp_sheet_not_playing: (p: { names: string }): string => `Not in the squad now: ${p.names}. I can't use those teams as they are.`,
   /** A sheet leaving out a confirmed player. */
@@ -3378,7 +3382,7 @@ export const en = {
   tp_suggest_none: "These teams are already as even as one swap can make them.",
   /** Kickoff minus 2 hours, teams still not approved. */
   tp_reminder: (p: { kickoff: string }): string =>
-    `⏰ The teams for ${p.kickoff} aren't final yet. Ask me to show them, in your own words (for example *show me the teams*), then reply *YES*.`,
+    `⏰ The teams for ${p.kickoff} aren't final yet. Tag me and ask to see them, in your own words (for example *@Match Time show me the teams*), then say *@Match Time YES*.`,
   /** After approval, something changed in the teams. */
   tp_change_header: "🔄 *Team change*",
   tp_change_replaced: (p: { to: string; from: string; team: string }): string => `${p.to} replaces ${p.from} on ${p.team}`,
@@ -3388,7 +3392,7 @@ export const en = {
   tp_change_added: (p: { name: string; team: string }): string => `${p.name} added to ${p.team}`,
   tp_change_removed: (p: { name: string; team: string }): string => `${p.name} taken off ${p.team}`,
   /** Under a pasted list's question, when teams were waiting for YES. */
-  tp_teams_set_aside: "The teams still need approving: ask me for them again after this, in your own words (for example *show me the teams*).",
+  tp_teams_set_aside: "The teams still need approving: tag me and ask for them again after this, in your own words (for example *@Match Time show me the teams*).",
   /** Under a team proposal, when a pasted list was waiting for YES. */
   tp_list_superseded: "The list pasted earlier was not applied.",
   /** At "Teams ready" with a short squad (once per match), and the answer
@@ -3397,10 +3401,10 @@ export const en = {
     `⚠️ Not enough players to make the teams for ${p.kickoff}: ${p.confirmed} of ${p.needed} in. Add players, then ask me for the teams again.`,
   /** Under a proposal whose sides differ by more than an odd total needs. */
   tp_uneven: (p: { redLabel: string; red: number; yellowLabel: string; yellow: number }): string =>
-    `⚠️ The sides are uneven: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Tell me who to move to even them, in your own words, or reply *YES* twice to keep them.`,
+    `⚠️ The sides are uneven: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Tag me and say who to move to even them, in your own words, or say *@Match Time YES* twice to keep them.`,
   /** The answer to the first YES on uneven sides. */
   tp_uneven_confirm: (p: { redLabel: string; red: number; yellowLabel: string; yellow: number }): string =>
-    `The sides are uneven: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Reply *YES* again to make them final as they are, or first tell me who to move, in your own words.`,
+    `The sides are uneven: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Say *@Match Time YES* again to make them final as they are, or first tag me and say who to move, in your own words.`,
   // Settings: "Teams ready".
   tp_settings_label: "Teams ready",
   tp_settings_blurb: "When MatchTime proposes the teams in your admin group on match day.",
@@ -3475,7 +3479,7 @@ export const en = {
   pick_instructions_dm:
     "Reply with a number or a name to bring someone in, e.g. *2*, or *2 3* for two. Reply *NONE* to leave it open.",
   pick_instructions_group:
-    "Reply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",
+    `Tag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. ${en_tagHow}`,
   pick_fallback_offer: (p: { when: string }): string =>
     `If nobody picks by ${p.when}, I'll offer the place to the whole bench.`,
   pick_fallback_leave: (p: { when: string }): string => `If nobody picks by ${p.when}, the place stays open.`,
@@ -3489,8 +3493,8 @@ export const en = {
   pick_player_dm: (p: { dayTime: string; venue: string }): string =>
     `You're in for ${p.dayTime} at ${p.venue} ⚽ Can't make it after all? Just say *OUT*.`,
   /** E1 */
-  pick_not_on_list: (p: { name: string }): string =>
-    `*${p.name}* isn't on the bench. Bring them in anyway? Reply *YES*.`,
+  pick_not_on_list: (p: { name: string; audience: "dm" | "group" }): string =>
+    `*${p.name}* isn't on the bench. Bring them in anyway? ${p.audience === "group" ? "Say *@Match Time YES*." : "Reply *YES*."}`,
   /** E2 */
   pick_already_in: (p: { name: string }): string => `*${p.name}* is already in. Pick someone else?`,
   /** E3 */
@@ -3502,8 +3506,8 @@ export const en = {
   /** E4 */
   pick_unresolved_tag: "I couldn't tell who that is, can you type their name?",
   /** E5 */
-  pick_ambiguous: (p: { first: string; names: string[] }): string =>
-    `${p.names.length === 2 ? "Two" : p.names.length === 3 ? "Three" : String(p.names.length)} players are called *${p.first}*: ${joinList("en", p.names.map((n) => `*${n}*`))}. Which one? Reply with the full name.`,
+  pick_ambiguous: (p: { first: string; names: string[]; audience: "dm" | "group" }): string =>
+    `${p.names.length === 2 ? "Two" : p.names.length === 3 ? "Three" : String(p.names.length)} players are called *${p.first}*: ${joinList("en", p.names.map((n) => `*${n}*`))}. Which one? ${p.audience === "group" ? "Tag me with the full name." : "Reply with the full name."}`,
   /** P5 lead; the list and the instructions follow. */
   pick_list_changed: "The bench has changed since my last message. Here it is again:",
   /** P6 (DM only) */
@@ -4576,7 +4580,7 @@ export const en = {
       `📋 I read the list you posted in the group for ${p.month}: ${p.count} ${p.count === 1 ? "player" : "players"} (${p.names}).`,
       ...(p.unknown ? [`Not known to me yet: ${p.unknown}. Add them as players, or start without them.`] : []),
       p.hq
-        ? `To start ${p.month} with them, reply YES in the organisers' group, or check and start it here: ${p.link}`
+        ? `To start ${p.month} with them, say *@Match Time YES* in the organisers' group, or check and start it here: ${p.link}`
         : `To start ${p.month} with them, check and start it here: ${p.link}`,
       `I've said nothing in the group.`,
     ].join("\n"),
@@ -4761,19 +4765,26 @@ export const en = {
     `adding ${p.perGame} a game (${p.perMonth} for the month) to each regular's share covers it.`,
   /** To the collector, once a day while claims wait. `lines` are "1. Alex £37.50". */
   mpy_digest: (p: { count: number; month: string; lines: string[] }): string =>
-    `💷 ${p.count} ${p.count === 1 ? "says" : "say"} they've paid for ${p.month}:\n${p.lines.join("\n")}\n\n` +
-    `Reply *PAID ALL*, or *PAID* and the numbers that arrived (PAID 1 3), or *PAID NONE*.`,
+    `💷 ${p.count} ${p.count === 1 ? "says" : "say"} they've paid for ${p.month}:\n${p.lines.join("\n")}`,
+  /** Under the list, by channel (#482: HQ reads only a real tag). Kept
+   *  apart from the list, which is what a reply is matched against. */
+  mpy_digest_how: (p: { audience: "dm" | "group" }): string =>
+    p.audience === "group"
+      ? `Tag me with *@Match Time PAID ALL*, or *@Match Time PAID* and the numbers that arrived (*@Match Time PAID 1 3*), or *@Match Time PAID NONE*. ${en_tagHow}`
+      : `Reply *PAID ALL*, or *PAID* and the numbers that arrived (PAID 1 3), or *PAID NONE*.`,
   mpy_reply_confirmed: (p: { month: string; names: string[] }): string => `✅ Marked as paid for ${p.month}: ${p.names.join(", ")}.`,
   mpy_reply_declined: (p: { month: string; names: string[] }): string =>
     `Noted: nothing has arrived yet for ${p.month} from ${p.names.join(", ")}. I won't ask about these again. Confirm them on the Months page when the money arrives.`,
   /** `numbers` is "9" or "7, 9". */
-  mpy_reply_unknown: (p: { numbers: string; month: string }): string =>
-    `I have no "says paid" at number ${p.numbers} on the ${p.month} list, so I marked nobody. Reply *PAID* and the numbers from my last message.`,
+  mpy_reply_unknown: (p: { numbers: string; month: string; audience: "dm" | "group" }): string =>
+    `I have no "says paid" at number ${p.numbers} on the ${p.month} list, so I marked nobody. ${p.audience === "group" ? "Tag me with *@Match Time PAID* and the numbers from my last message." : "Reply *PAID* and the numbers from my last message."}`,
   /** A reply to a digest more than two days old. The current list follows it. */
   mpy_reply_stale: "That list is out of date, so I marked nobody.",
   /** After a reply, when ANOTHER month has a list out too. */
-  mpy_reply_other_month: (p: { month: string; other: string }): string =>
-    `That was for ${p.month}. For ${p.other}, name the month: *PAID ${p.other.toUpperCase()} ALL*, or *PAID ${p.other.toUpperCase()}* and the numbers.`,
+  mpy_reply_other_month: (p: { month: string; other: string; audience: "dm" | "group" }): string => {
+    const tag = p.audience === "group" ? "@Match Time " : "";
+    return `That was for ${p.month}. For ${p.other}, name the month: *${tag}PAID ${p.other.toUpperCase()} ALL*, or *${tag}PAID ${p.other.toUpperCase()}* and the numbers.`;
+  },
   mpy_reply_no_digest: "Nothing is waiting for your word right now. You can confirm payments on the Months page.",
   /** After the pay-by date, to the organisers. */
   mpy_summary_head: (p: { month: string }): string => `📒 ${p.month}: the pay-by date has passed.`,
@@ -5174,10 +5185,15 @@ export const en = {
   /** `organisers`: the organisers share the teams (no post in the main
    *  chat); otherwise YES posts them there (team-proposal.ts answerTeamsYes).
    *  The team sheet graphic only when asked, tagged (2026-10-30). */
-  ao_teams_approve: (p: { organisers: boolean }): string =>
-    p.organisers
-      ? `Reply *YES* to make them final, or say *swap* or *move* if you want changes (tag me for brand new teams: *@Match Time reshuffle*). For the team sheet, a graphic to share with the players, tag me and ask any time: *@Match Time team sheet*.`
-      : `Reply *YES* to make them final and I'll post them in the main chat, or say *swap* or *move* if you want changes (tag me for brand new teams: *@Match Time reshuffle*).`,
+  ao_teams_approve: (p: { organisers: boolean; audience: "dm" | "group" }): string =>
+    // HQ reads only a real tag (#482, 2026-10-31); a DM needs none.
+    p.audience === "group"
+      ? p.organisers
+        ? `Say *@Match Time YES* to make them final, or tag me and say *swap* or *move* if you want changes (for brand new teams: *@Match Time reshuffle*). For the team sheet, a graphic to share with the players, tag me and ask any time: *@Match Time team sheet*. ${en_tagHow}`
+        : `Say *@Match Time YES* to make them final and I'll post them in the main chat, or tag me and say *swap* or *move* if you want changes (for brand new teams: *@Match Time reshuffle*). ${en_tagHow}`
+      : p.organisers
+        ? `Reply *YES* to make them final, or say *swap* or *move* if you want changes (tag me for brand new teams: *@Match Time reshuffle*). For the team sheet, a graphic to share with the players, tag me and ask any time: *@Match Time team sheet*.`
+        : `Reply *YES* to make them final and I'll post them in the main chat, or say *swap* or *move* if you want changes (tag me for brand new teams: *@Match Time reshuffle*).`,
   ao_teams_seed: (p: { anySeeded: boolean; time: string; weekday: string; link: string }): string =>
     `⭐ ${p.anySeeded ? "Most of this squad have no rating yet" : "No one in this squad has a rating yet"}, so the teams could come out lopsided. Before ${p.time} on ${p.weekday}, give each player a rough rating from 1 to 10 here:\n${p.link}\nPlayers never see these.`,
   /** "Hamzah", "Hamzah or Raihan", "Hamzah, Raihan or Ali". */
@@ -5322,9 +5338,9 @@ export const en = {
   // admin group (`inGroup`) the owner is asked to reply TO this message, so
   // the answer is known to be about it.
   pc_paired_notice_asker: (p: { club: string; other: string; link: string; inGroup?: boolean }) =>
-    `🤝 MatchTime has paired *${p.club}* with *${p.other}*: when you are short of players, MatchTime can ask ${p.other} for one, with their organisers' OK. Nothing happens until both clubs' owners accept. Club owner: ${p.inGroup ? "reply to this message with" : "reply"} *1* to accept or *2* to decline, or open ${p.link}`,
+    `🤝 MatchTime has paired *${p.club}* with *${p.other}*: when you are short of players, MatchTime can ask ${p.other} for one, with their organisers' OK. Nothing happens until both clubs' owners accept. Club owner: ${p.inGroup ? "reply to this message with *@Match Time 1* to accept or *@Match Time 2* to decline" : "reply *1* to accept or *2* to decline"}, or open ${p.link}`,
   pc_paired_notice_partner: (p: { club: string; other: string; link: string; inGroup?: boolean }) =>
-    `🤝 MatchTime has paired *${p.club}* with *${p.other}*: when ${p.other} are short of players, MatchTime can ask your group if anyone can play for them. Your organisers approve each ask first, unless you choose otherwise. Nothing happens until both clubs' owners accept. Club owner: ${p.inGroup ? "reply to this message with" : "reply"} *1* to accept or *2* to decline, or open ${p.link}`,
+    `🤝 MatchTime has paired *${p.club}* with *${p.other}*: when ${p.other} are short of players, MatchTime can ask your group if anyone can play for them. Your organisers approve each ask first, unless you choose otherwise. Nothing happens until both clubs' owners accept. Club owner: ${p.inGroup ? "reply to this message with *@Match Time 1* to accept or *@Match Time 2* to decline" : "reply *1* to accept or *2* to decline"}, or open ${p.link}`,
   // The answer to a WhatsApp reply (or a ✅/👍 reaction) on that notice.
   pc_reply_accepted_waiting: (p: { club: string; other: string }) =>
     `✅ Accepted for *${p.club}*. Waiting for ${p.other}'s owner to accept too.`,
@@ -5414,7 +5430,7 @@ export const en = {
   // pairing notice. In the admin group (`inGroup`) they are asked to reply
   // TO this message, so the answer is known to be about it.
   pr_request_notice: (p: { asker: string; club: string; card: string; link: string; inGroup?: boolean }) =>
-    `🤝 *${p.asker}* (${p.card}) would like to ask *${p.club}* for players when they are short. If you accept, their asks go straight into your players' group; you can change that, pause or end it at any time. ${p.inGroup ? "Answer by replying to this message. " : ""}Reply *1* to accept or *2* to decline, or open ${p.link}`,
+    `🤝 *${p.asker}* (${p.card}) would like to ask *${p.club}* for players when they are short. If you accept, their asks go straight into your players' group; you can change that, pause or end it at any time. ${p.inGroup ? "Answer by replying to this message with *@Match Time 1* to accept or *@Match Time 2* to decline" : "Reply *1* to accept or *2* to decline"}, or open ${p.link}`,
   // The card in the notice: what one club sees about another (plan 2.3).
   pr_card_miles: (p: { miles: number }) => `${p.miles.toFixed(1)} miles away`,
   pr_card_game: (p: { dow: number; time: string; format: string | null }) =>
@@ -5573,7 +5589,7 @@ export const en = {
     const who = p.places === 1 ? "one of your players" : `${p.places} of your players`;
     const own = p.own ? ` Your own game that day is ${p.own.confirmed} of ${p.own.max}.` : "";
     const how = p.inGroup
-      ? `Reply YES to this message${p.link ? `, or open ${p.link}` : ""}.`
+      ? `Reply to this message with *@Match Time YES*${p.link ? `, or open ${p.link}` : ""}.`
       : `Tap to say yes or no: ${p.link}`;
     return `🤝 *${p.asker}* ask if ${who} can play for them: ${p.day} at ${p.venue}${extras ? ` (${extras})` : ""}.${own}\nOK to post this in your players' group? ${how}`;
   },

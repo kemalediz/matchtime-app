@@ -57,7 +57,7 @@ scenarios("after the game: joining the club's group", () => {
     const guest = await browserOf(browser);
     expect(await openAndAnswer(pool, guest, linkIn(queued[0]), "join", "sam")).toBe("waiting-club");
     const told = await pool.collect();
-    pool.expectSent(told, [{ to: "fnf.hq", channel: "hq", text: /^🙋 Sam K played with you on .+ as a guest and wants to join your group\. Reply YES here to send them the group's invite link, or tap Send the invite link on their card: \S+\/admin\/guests\?tab=history$/ }]);
+    pool.expectSent(told, [{ to: "fnf.hq", channel: "hq", text: /^🙋 Sam K played with you on .+ as a guest and wants to join your group\. Say \*@Match Time YES\* here to send them the group's invite link, or tap Send the invite link on their card: \S+\/admin\/guests\?tab=history$/ }]);
     pool.expectNoLeaks(sam.phoneVariants(), { to: ["fnf.hq"] });
 
     const owner = await browserOf(browser);

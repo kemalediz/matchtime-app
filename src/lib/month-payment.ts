@@ -50,6 +50,8 @@ import { monthNameLabel } from "./i18n/dates";
 import { QUIET_HOURS_SELECT, quietHoursOf, type QuietHours } from "./message-hours";
 import {
   buildClaimsDigest,
+  claimsDigestMessage,
+  type CollectorAudience,
   buildCollectorReplyAnswer,
   buildGroupPayReminder,
   buildMonthFeeTip,
@@ -783,6 +785,9 @@ export async function handleCollectorPaidReply(input: {
   // Nobody who may confirm, or no digest ever sent: not a reply to one.
   if (!best) return null;
   const { month, actorUserId, lang } = best;
+  // Where he wrote: HQ (this club's admin group) reads only a tagged reply
+  // (#482), so the words he is shown say so; his DM takes a plain one.
+  const audience: CollectorAudience = input.orgId ? "group" : "dm";
 
   const claims = await waitingClaims(month);
   const decision = decideCollectorReply({ reply, claims, digest: best.digest, now });
@@ -802,7 +807,7 @@ export async function handleCollectorPaidReply(input: {
     if (o.month.id === month.id || now.getTime() - o.digest.at.getTime() > DIGEST_REPLY_WINDOW_MS) continue;
     const listed = new Set(o.digest.userIds);
     if ((await waitingClaims(o.month)).some((c) => listed.has(c.userId))) {
-      hint = `\n\n${buildOtherMonthHint({ monthDate: month.firstKickoff, otherDate: o.month.firstKickoff, lang })}`;
+      hint = `\n\n${buildOtherMonthHint({ monthDate: month.firstKickoff, otherDate: o.month.firstKickoff, lang, audience })}`;
       break;
     }
   }
@@ -823,13 +828,13 @@ export async function handleCollectorPaidReply(input: {
     // stands now, sent and recorded as a digest of its own, so the next
     // reply answers THAT.
     const current = claims.length > 0 ? await sendDigestNow(month, claims, now, `${formatLondon(now, "yyyy-MM-dd")}:again:${input.waMessageId ?? now.getTime()}`) : null;
-    return answer(buildStaleReplyAnswer({ current, lang }), "month-paid-stale");
+    return answer(buildStaleReplyAnswer({ current: current ? claimsDigestMessage({ body: current, lang, audience }) : null, lang }), "month-paid-stale");
   }
   if (decision.kind === "nothing-waiting") {
     return answer(buildCollectorReplyAnswer({ kind: "nothing", lang }), "month-paid-nothing");
   }
   if (decision.kind === "unknown-numbers") {
-    return answer(buildCollectorReplyAnswer({ kind: "unknown-numbers", numbers: decision.numbers, monthDate: month.firstKickoff, lang }), "month-paid-unknown");
+    return answer(buildCollectorReplyAnswer({ kind: "unknown-numbers", numbers: decision.numbers, monthDate: month.firstKickoff, lang, audience }), "month-paid-unknown");
   }
   if (decision.kind === "decline") {
     for (const userId of decision.userIds) {
@@ -902,8 +907,10 @@ async function closedMonthAnswer(args: {
 
 /**
  * Record a digest (its key, then exactly the claims it lists) and return
- * its text. The caller sends it. Null when that digest id was already
- * recorded (another poll, or a retry).
+ * its list. The caller sends it with the how line for its channel
+ * (`claimsDigestMessage`, 2026-10-31): the list alone is stored, so a reply
+ * quoting either channel's message contains it (`answersOpenDigest`). Null
+ * when that digest id was already recorded (another poll, or a retry).
  */
 async function sendDigestNow(month: SignupMonth, claims: WaitingRow[], now: Date, id: string): Promise<string | null> {
   void now;
@@ -1041,16 +1048,20 @@ async function claimsDigest(month: SignupMonth, collectorId: string | null, now:
   if (sentToday) return;
   const claims = await waitingClaims(month);
   if (!claimsDigestDue({ now, sentToday, waiting: claims.length, quiet })) return;
-  const text = await sendDigestNow(month, claims, now, day);
-  if (!text) return;
+  const body = await sendDigestNow(month, claims, now, day);
+  if (!body) return;
+  const lang = month.language;
   const collector = collectorId ? await db.user.findUnique({ where: { id: collectorId }, select: { phoneNumber: true } }) : null;
   if (collector?.phoneNumber) {
+    const text = claimsDigestMessage({ body, lang, audience: "dm" });
     await db.botJob.create({ data: { orgId: month.orgId, kind: "dm", phone: collector.phoneNumber.replace(/^\+/, ""), text } });
   } else {
-    await sendAdminNotice({ orgId: month.orgId, now, text });
+    // HQ reads only a tagged PAID (#482); a DM fallback reads as a DM.
+    const sent = await sendAdminNotice({ orgId: month.orgId, now, text: (_link, audience) => claimsDigestMessage({ body, lang, audience }), dmWording: true });
     // In the organisers' group it is MatchTime's line there, so an answer
     // in HQ is known to answer it (`answersAnOpenDigest`).
     const { recordMatchTimeQuestion } = await import("./admin-group-log");
+    const text = sent.groupText ?? claimsDigestMessage({ body, lang, audience: "group" });
     await recordMatchTimeQuestion({ orgId: month.orgId, askRef: `mpy-digest:${month.id}`, text, now }).catch(() => undefined);
   }
 }

@@ -265,13 +265,16 @@ export function buildFirstTeamsNotice(args: {
   organisers: boolean;
   /** The seed line, or null. */
   seed: { anySeeded: boolean; link: string } | null;
+  /** Where it lands (`AdminNotice.text`'s audience): the admin group reads
+   *  only a tagged YES (#482); a DM takes a plain one. */
+  audience: "dm" | "group";
 }): string {
   const s = t(args.lang);
   const weekday = weekdayLabel(args.lang, args.matchDate);
   const parts = [
     s.ao_teams_title({ weekday }),
     s.ao_teams_set({ confirmed: args.confirmed, max: args.maxPlayers, time: args.readyTime, weekday }),
-    s.ao_teams_approve({ organisers: args.organisers }),
+    s.ao_teams_approve({ organisers: args.organisers, audience: args.audience }),
   ];
   if (args.seed) parts.push(s.ao_teams_seed({ anySeeded: args.seed.anySeeded, time: args.readyTime, weekday, link: args.seed.link }));
   return parts.join("\n\n");

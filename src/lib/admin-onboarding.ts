@@ -210,7 +210,7 @@ export async function firstTeamsInstructions(args: {
       key: (who) => firstTeamsKey(org.id, who, withSeed),
       notice: {
         nextPath: withSeed ? SEED_RATINGS_PATH : null,
-        text: (link) =>
+        text: (link, audience) =>
           buildFirstTeamsNotice({
             lang,
             matchDate: next.date,
@@ -219,6 +219,7 @@ export async function firstTeamsInstructions(args: {
             maxPlayers: next.maxPlayers,
             organisers,
             seed: seed ? { anySeeded: seed.anySeeded, link } : null,
+            audience,
           }),
       },
     });

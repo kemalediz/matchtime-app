@@ -158,7 +158,7 @@ test.describe("GO makes the club's game at once, and a pasted squad then has it"
   test("the squad pasted in the admin group a minute later is proposed, with the YES question", async ({ request }) => {
     const out = await hq(request, FNF.hq, SQUAD, FNF.ownerPhone);
     expect(out).toMatchObject({ handled: true, outcome: "paste-proposed" });
-    expect(out.replyText).toMatch(/Reply YES to apply\.$/);
+    expect(out.replyText).toMatch(/Say \*@Match Time YES\* to apply\.$/);
   });
 
   test("the nightly cron afterwards makes no second game (its own dedupe)", async ({ request, db }) => {

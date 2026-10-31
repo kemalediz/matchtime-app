@@ -239,10 +239,10 @@ describe("the organisers' side: the notice line and refusals, a band never a lis
   });
   it("in the admin group (L10) the line invites a YES there, the match page still linked; a DM is unchanged", () => {
     expect(withPoolOffer("Squad short.", "few", "https://m/1", "en", { inHq: true })).toBe(
-      "Squad short.\n\n🔎 Or I can ask nearby players from the MatchTime pool (a few near you): reply YES here, or open the match page: https://m/1",
+      "Squad short.\n\n🔎 Or I can ask nearby players from the MatchTime pool (a few near you): say *@Match Time YES* here, or open the match page: https://m/1",
     );
     expect(withPoolOffer("Kadro eksik.", "few", "https://m/1", "tr", { inHq: true })).toBe(
-      "Kadro eksik.\n\n🔎 Ya da MatchTime havuzundan yakındaki oyunculara sorayım (yakınınızda birkaç kişi): burada EVET yazın ya da maç sayfasını açın: https://m/1",
+      "Kadro eksik.\n\n🔎 Ya da MatchTime havuzundan yakındaki oyunculara sorayım (yakınınızda birkaç kişi): burada *@Match Time EVET* yazın ya da maç sayfasını açın: https://m/1",
     );
     expect(withPoolOffer("Squad short.", "few", "https://m/1", "en", { inHq: false })).toBe(withPoolOffer("Squad short.", "few", "https://m/1", "en"));
     expect(withPoolOffer("Squad short.", null, "https://m/1", "en", { inHq: true })).toBe("Squad short.");

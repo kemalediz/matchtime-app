@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
 import {
   buildClaimsDigest,
+  claimsDigestMessage,
   buildCollectorReplyAnswer,
   buildGroupPayReminder,
   buildOtherMonthHint,
@@ -150,14 +151,20 @@ describe("is it one of MatchTime's own month lists?", () => {
 });
 
 describe("the collector's digest", () => {
-  const digest = (lang: string) =>
-    buildClaimsDigest({
-      claims: [
-        { slot: 1, name: "Alex Carter", amountPence: 3750 },
-        { slot: 7, name: "Carl Young", amountPence: null },
-      ],
-      monthDate: kickoffs[0],
+  // The list, then the how line for its channel (2026-10-31): the DM's,
+  // whose replies `readCollectorReply` reads; HQ's is the same tagged.
+  const digest = (lang: string, audience: "dm" | "group" = "dm") =>
+    claimsDigestMessage({
+      body: buildClaimsDigest({
+        claims: [
+          { slot: 1, name: "Alex Carter", amountPence: 3750 },
+          { slot: 7, name: "Carl Young", amountPence: null },
+        ],
+        monthDate: kickoffs[0],
+        lang,
+      }),
       lang,
+      audience,
     });
 
   it("lists each claim by its number on the month's list", () => {
@@ -174,6 +181,11 @@ describe("the collector's digest", () => {
       expect(readCollectorReply(told[told.length - 1])).toEqual({ kind: "none" });
       const example = /\(([^)]*\d[^)]*)\)/.exec(text)![1];
       expect(readCollectorReply(example)).toEqual({ kind: "numbers", numbers: [1, 3] });
+      // In HQ the same replies, each behind the tag.
+      const hq = digest(lang, "group");
+      const toldHq = [...hq.matchAll(/\*([^*]+)\*/g)].map((m) => m[1]).filter((x) => x.startsWith("@Match Time "));
+      expect(readCollectorReply(toldHq[0].replace("@Match Time ", ""))).toEqual({ kind: "all" });
+      expect(readCollectorReply(toldHq[toldHq.length - 1].replace("@Match Time ", ""))).toEqual({ kind: "none" });
     });
   }
 });
@@ -221,7 +233,7 @@ describe("the rest", () => {
 
   it("the collector's answers", () => {
     expect(buildCollectorReplyAnswer({ kind: "confirmed", names: ["Alex Carter"], monthDate: kickoffs[0], lang: "en" })).toBe("✅ Marked as paid for November: Alex Carter.");
-    expect(buildCollectorReplyAnswer({ kind: "unknown-numbers", numbers: [9], monthDate: kickoffs[0], lang: "en" })).toContain("number 9 on the November list, so I marked nobody");
+    expect(buildCollectorReplyAnswer({ kind: "unknown-numbers", numbers: [9], monthDate: kickoffs[0], lang: "en", audience: "dm" })).toContain("number 9 on the November list, so I marked nobody");
     expect(buildCollectorReplyAnswer({ kind: "nothing", lang: "en" })).toContain("Nothing is waiting");
   });
 
@@ -232,7 +244,7 @@ describe("the rest", () => {
 
   for (const lang of ["en", "tr"]) {
     it(`with two months out, the hint names both, and the reply it gives is one that is read (${lang})`, () => {
-      const hint = buildOtherMonthHint({ monthDate: kickoffs[0], otherDate: new Date("2026-12-07T20:00:00.000Z"), lang });
+      const hint = buildOtherMonthHint({ monthDate: kickoffs[0], otherDate: new Date("2026-12-07T20:00:00.000Z"), lang, audience: "dm" });
       const told = [...hint.matchAll(/\*([^*]+)\*/g)].map((m) => m[1]);
       expect(readCollectorReply(told[0])).toEqual({ kind: "all", month: 12 });
       expect(readCollectorReply(`${told[1]} 1 3`)).toEqual({ kind: "numbers", numbers: [1, 3], month: 12 });

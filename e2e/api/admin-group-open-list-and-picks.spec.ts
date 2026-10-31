@@ -151,7 +151,7 @@ test("a player pastes the squad: the exact changes and a YES question, nothing a
   const out = await say(request, LIST, PLAYER, "e2e-aolp-paste-1");
   question = out.replyText;
   expect(out).toMatchObject({ handled: true, outcome: "paste-proposed", react: "✅" });
-  expect(out.replyText).toMatch(/^Adding: Zara Zest\. Removing: Ben Bench\..*Reply YES to apply\.$/);
+  expect(out.replyText).toMatch(/^Adding: Zara Zest\. Removing: Ben Bench\..*Say \*@Match Time YES\* to apply\.$/);
   const proposal = await db.one<{ by: string }>(`SELECT "proposedByUserId" AS by FROM "AdminSquadProposal" WHERE "waMessageId" = 'e2e-aolp-paste-1'`);
   expect(proposal?.by).toBe(U.player);
   expect(await statusOf(db, U.extra)).toBeNull();

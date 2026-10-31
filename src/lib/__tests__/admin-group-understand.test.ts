@@ -177,7 +177,7 @@ beforeEach(() => {
   sheetHistory.quotedTeamSheet.mockResolvedValue(null);
   paste.answerSquadPasteYes.mockResolvedValue({ outcome: "paste-applied", replyText: "Done." });
   paste.readHqSquad.mockResolvedValue(read(CHANGE));
-  paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
+  paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Say *@Match Time YES* to apply." });
   teams.setAsideTeamProposal.mockResolvedValue(0);
   graphics.answerGraphicRequest.mockResolvedValue({ outcome: "graphic-queued", replyText: null });
   squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Tom out." });
@@ -502,15 +502,15 @@ describe("approve: the safe-YES rule", () => {
 
   it("two items waiting: asks which", async () => {
     dbMock.adminSquadProposal.findFirst.mockResolvedValue({ waMessageId: "wa-paste", createdAt: new Date("2026-10-16T09:02:00Z") });
-    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1"), orgRow(new Date("2026-10-16T09:01:00Z")), mtRow(new Date("2026-10-16T09:02:00Z"), "list:wa-paste", "Reply YES to apply."), orgRow(new Date("2026-10-16T09:03:00Z"))]);
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1"), orgRow(new Date("2026-10-16T09:01:00Z")), mtRow(new Date("2026-10-16T09:02:00Z"), "list:wa-paste", "Say *@Match Time YES* to apply."), orgRow(new Date("2026-10-16T09:03:00Z"))]);
     const r = await ask("yes", "approve");
-    expect(r?.replyText).toBe("Which one is that YES for: the proposed teams for Fri 16 Oct, or the pasted squad list? Reply YES to that message.");
+    expect(r?.replyText).toBe("Which one is that YES for: the proposed teams for Fri 16 Oct, or the pasted squad list? Reply to that message with *@Match Time YES*.");
   });
 
   it("the pasted list, as the last question: applied", async () => {
     dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
     dbMock.adminSquadProposal.findFirst.mockResolvedValue({ waMessageId: "wa-paste", createdAt: ASKED });
-    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "list:wa-paste", "Adding: Bilal. Reply YES to apply.")]);
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "list:wa-paste", "Adding: Bilal. Say *@Match Time YES* to apply.")]);
     expect((await ask("go ahead", "approve"))?.outcome).toBe("paste-applied");
   });
 
@@ -521,7 +521,7 @@ describe("approve: the safe-YES rule", () => {
     const listWaiting = (by: string) => {
       dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
       dbMock.adminSquadProposal.findFirst.mockResolvedValue({ waMessageId: "wa-paste", createdAt: ASKED, proposedByUserId: by });
-      hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "list:wa-paste", "Adding: Bilal. Reply YES to apply.")]);
+      hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "list:wa-paste", "Adding: Bilal. Say *@Match Time YES* to apply.")]);
     };
 
     it("their YES to the list they pasted: applied, that list only", async () => {
@@ -641,7 +641,7 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     const r = await ask("1. Bilal\n2. Ali", "other_att");
     expect(r?.outcome).toBe("paste-proposed");
     expect(r?.replyText).toContain("Adding: Bilal.");
-    expect(r?.replyText?.length).toBeGreaterThan("Adding: Bilal. Reply YES to apply.".length);
+    expect(r?.replyText?.length).toBeGreaterThan("Adding: Bilal. Say *@Match Time YES* to apply.".length);
     expect(paste.proposeSquadPaste).toHaveBeenCalledWith(expect.objectContaining({ read: expect.objectContaining({ reading: { kind: "squad", lines: [], out: [] } }) }));
     expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith(expect.objectContaining({ askRef: expect.stringContaining("wa-9") }));
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
@@ -1810,7 +1810,7 @@ describe("an action that leaves HQ happens only when MatchTime is tagged (2026-1
 describe("local player pool L10: asking the pool in HQ, in words and by YES to its notice", () => {
   const fromPool = (f: Record<string, unknown> = {}) =>
     adminFacts({ action: "recruit", undo: false, matchDay: "", playersFrom: "pool", clubRef: "", toMatchTime: true, ...f });
-  const POOL_NOTICE = "📋 Fri 16 Oct, 20:00: 6 of 7.\n\n🔎 Or I can ask nearby players from the MatchTime pool (a few near you): reply YES here, or open the match page: https://matchtime.ai/matches/m1";
+  const POOL_NOTICE = "📋 Fri 16 Oct, 20:00: 6 of 7.\n\n🔎 Or I can ask nearby players from the MatchTime pool (a few near you): say *@Match Time YES* here, or open the match page: https://matchtime.ai/matches/m1";
   const poolWaiting = { ref: "pool-ask:m1", kind: "pool-ask" as const, day: "Fri 16 Oct", askedAt: ASKED };
   const ENV = { MT_POOL_OPEN: "1" };
 
@@ -1932,7 +1932,7 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
 });
 
 describe("L10 follow-up: YES to a guest who wants to join (L8's notice)", () => {
-  const NOTICE = "🙋 Sam K played with you on Tue 27 Oct as a guest and wants to join your group. Reply YES here to send them the group's invite link, or tap Send the invite link on their card: https://matchtime.ai/admin/guests?tab=history";
+  const NOTICE = "🙋 Sam K played with you on Tue 27 Oct as a guest and wants to join your group. Say *@Match Time YES* here to send them the group's invite link, or tap Send the invite link on their card: https://matchtime.ai/admin/guests?tab=history";
   const join = { ref: "join-request:inv1", kind: "join-request" as const, day: null, names: "Sam K", askedAt: ASKED };
   beforeEach(() => {
     dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
@@ -1968,7 +1968,7 @@ describe("L10 follow-up: YES to a guest who wants to join (L8's notice)", () => 
     hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "pool-ask:m1"), mtRow(ASKED, "join-request:inv1", NOTICE), orgRow(new Date(ASKED.getTime() + 60_000))]);
     const r = await ask("yes", "approve");
     expect(r?.replyText).toBe(
-      "Which one is that YES for: asking nearby players from the MatchTime player pool for Fri 16 Oct, 20:00, or sending Sam K the players' group's invite link? Reply YES to that message.",
+      "Which one is that YES for: asking nearby players from the MatchTime player pool for Fri 16 Oct, 20:00, or sending Sam K the players' group's invite link? Reply to that message with *@Match Time YES*.",
     );
     expect(hqPool.answerJoinRequestInHq).not.toHaveBeenCalled();
     expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();

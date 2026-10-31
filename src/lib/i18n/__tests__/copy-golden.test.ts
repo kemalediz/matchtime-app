@@ -437,6 +437,7 @@ import { monthKickoffs } from "../../month-signup-rules";
 import { buildFirstTeamsNotice, buildGettingReady } from "../../admin-onboarding-rules";
 import {
   buildClaimsDigest,
+  claimsDigestHow,
   buildCollectorReplyAnswer,
   buildGroupPayReminder,
   buildMonthFeeTip,
@@ -1619,12 +1620,13 @@ function cases(lang: Lang): Case[] {
       ready({ ...fnf, name: "Harbour FC", listAnnouncer: "matchtime", benchPickMode: "first-come", paymentCollectionEnabled: false }, "group"),
     );
     add("R194 admin onboarding / A getting ready, by DM, fees with no collector", ready({ ...fnf, name: "Harbour FC", listAnnouncer: "matchtime" }, "dm"));
-    const teams = { lang, matchDate: fri, readyTime: "10:00", confirmed: 18, maxPlayers: 18 };
+    const teams = { lang, matchDate: fri, readyTime: "10:00", confirmed: 18, maxPlayers: 18, audience: "group" as const };
     add(
       "R194 admin onboarding / B teams for Friday, organisers share, nobody seeded (FNF-like)",
       buildFirstTeamsNotice({ ...teams, organisers: true, seed: { anySeeded: false, link: "https://matchtime.ai/admin/players/ratings" } }),
     );
     add("R194 admin onboarding / B teams for Friday, MatchTime posts them, ratings set", buildFirstTeamsNotice({ ...teams, readyTime: "18:00", organisers: false, seed: null }));
+    add("R194 admin onboarding / B teams for Friday, by DM", buildFirstTeamsNotice({ ...teams, audience: "dm", organisers: true, seed: null }));
   }
 
 
@@ -1911,13 +1913,14 @@ function cases(lang: Lang): Case[] {
   add(
     "OPK4 pick edge cases (E1 to E5)",
     [
-      wr.pick_not_on_list({ name: "Wasim" }),
+      wr.pick_not_on_list({ name: "Wasim", audience: "group" }),
+      wr.pick_not_on_list({ name: "Wasim", audience: "dm" }),
       wr.pick_already_in({ name: "Wasim" }),
       wr.pick_already_filled({ name: "Wasim", pickerName: "Raihan" }),
       wr.pick_already_filled_full({ confirmed: 18, maxPlayers: 18 }),
       wr.pick_unresolved_tag,
-      wr.pick_ambiguous({ first: "Ali", names: ["Ali Khan", "Ali Demir"] }),
-      wr.pick_ambiguous({ first: "Ali", names: ["Ali Khan", "Ali Demir", "Ali Veli"] }),
+      wr.pick_ambiguous({ first: "Ali", names: ["Ali Khan", "Ali Demir"], audience: "group" }),
+      wr.pick_ambiguous({ first: "Ali", names: ["Ali Khan", "Ali Demir", "Ali Veli"], audience: "dm" }),
     ].join("\n"),
   );
   add(
@@ -2399,9 +2402,12 @@ function cases(lang: Lang): Case[] {
       lang,
     }),
   );
+  add("MPY6 claimsDigestHow / by DM", claimsDigestHow({ lang, audience: "dm" }));
+  add("MPY6 claimsDigestHow / in HQ", claimsDigestHow({ lang, audience: "group" }));
   add("MPY7 buildCollectorReplyAnswer / confirmed", buildCollectorReplyAnswer({ kind: "confirmed", names: ["Alex Carter", "Carl Young"], monthDate: mpyMonth, lang }));
   add("MPY7 buildCollectorReplyAnswer / declined", buildCollectorReplyAnswer({ kind: "declined", names: ["Alex Carter"], monthDate: mpyMonth, lang }));
-  add("MPY7 buildCollectorReplyAnswer / a number that is not a claim", buildCollectorReplyAnswer({ kind: "unknown-numbers", numbers: [9], monthDate: mpyMonth, lang }));
+  add("MPY7 buildCollectorReplyAnswer / a number that is not a claim", buildCollectorReplyAnswer({ kind: "unknown-numbers", numbers: [9], monthDate: mpyMonth, lang, audience: "dm" }));
+  add("MPY7 buildCollectorReplyAnswer / a number that is not a claim, in HQ", buildCollectorReplyAnswer({ kind: "unknown-numbers", numbers: [9], monthDate: mpyMonth, lang, audience: "group" }));
   add("MPY7 buildCollectorReplyAnswer / nothing waiting", buildCollectorReplyAnswer({ kind: "nothing", lang }));
   add(
     "MPY8 buildPayBySummary",

@@ -178,7 +178,7 @@ scenarios("the organisers ask the MatchTime player pool from HQ", () => {
 
     const posts = await noticePoll(pool, fnf, hoursBefore(fnf, 3.5));
     const notice = posts.find((p) => /MatchTime pool/.test(p.text));
-    expect(notice?.text).toMatch(/🔎 Or I can ask nearby players from the MatchTime pool \(a few near you\): reply YES here, or open the match page: \S+\/matches\//);
+    expect(notice?.text).toMatch(/🔎 Or I can ask nearby players from the MatchTime pool \(a few near you\): say \*@Match Time YES\* here, or open the match page: \S+\/matches\//);
     // Nobody is contacted before the organisers say so.
     expect(await offersOf(pool, eli)).toEqual([]);
 
@@ -239,7 +239,7 @@ scenarios("the organisers ask the MatchTime player pool from HQ", () => {
       {
         to: "two.hq",
         channel: "hq",
-        text: /^Which one is that YES for: asking nearby players from the MatchTime player pool for .+, or asking nearby players from the MatchTime player pool for .+\? Reply YES to that message\.$/,
+        text: /^Which one is that YES for: asking nearby players from the MatchTime player pool for .+, or asking nearby players from the MatchTime player pool for .+\? Reply to that message with \*@Match Time YES\*\.$/,
       },
     ]);
     expect(await poolAsks(pool, fnf)).toEqual([]);

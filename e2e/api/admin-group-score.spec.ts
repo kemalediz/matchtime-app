@@ -152,7 +152,7 @@ test('"what was the final score?" goes to HQ for an admin-group club, the player
   expect(hq[0]).toMatchObject({
     kind: "admin-group-message",
     groupId: HQ,
-    text: "🏁 *E2E 5-a-side*: what was the final score, and which team won? Reply here and I'll record it.",
+    text: "🏁 *E2E 5-a-side*: what was the final score, and which team won? Tag me here with it and I'll record it. To tag me, type *@* and pick *Match Time* from the list.",
   });
 
   await db.run(`UPDATE "Organisation" SET "adminChannelMode" = 'each-admin' WHERE id = $1`, [ORG_ID]);

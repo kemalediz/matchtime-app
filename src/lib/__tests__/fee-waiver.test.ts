@@ -244,7 +244,7 @@ describe("HQ: MatchTime proposes, an organiser's YES applies (item 2)", () => {
   it("'Bilal washed the bibs, he's free this week': a question naming the game, NOTHING written yet", async () => {
     rows = [att("tue", "u1", "Bilal Ahmed"), att("fri", "u1", "Bilal Ahmed")];
     const r = await proposeFeeFreeInHq({ ...base, refs: ["Bilal"] });
-    expect(r).toEqual({ outcome: "fee-free-asked", replyText: "Make Bilal Ahmed free for Tue 20 Oct? Reply YES." });
+    expect(r).toEqual({ outcome: "fee-free-asked", replyText: "Make Bilal Ahmed free for Tue 20 Oct? Say *@Match Time YES*." });
     expect(rowOf("tue", "u1").feeWaivedAt).toBeNull();
     expect(proposals).toHaveLength(1);
     expect(proposals[0]).toMatchObject({ matchId: "tue", userIds: ["u1"], undo: false, proposedByUserId: "org1", waMessageId: "wa1" });
@@ -254,7 +254,7 @@ describe("HQ: MatchTime proposes, an organiser's YES applies (item 2)", () => {
   it("a named day picks that game (item 3): 'last night' is Friday's", async () => {
     rows = [att("fri", "u1", "Bilal Ahmed")];
     const r = await proposeFeeFreeInHq({ ...base, refs: ["Bilal"], dayPhrase: "last night" });
-    expect(r.replyText).toBe("Make Bilal Ahmed free for Fri 16 Oct? Reply YES.");
+    expect(r.replyText).toBe("Make Bilal Ahmed free for Fri 16 Oct? Say *@Match Time YES*.");
   });
 
   it("a named day with no game: says so, proposes nothing", async () => {
@@ -304,7 +304,7 @@ describe("HQ: MatchTime proposes, an organiser's YES applies (item 2)", () => {
   it("'Bilal isn't free after all' (undo): asks, then YES takes the free place back", async () => {
     rows = [att("tue", "u1", "Bilal Ahmed", { feeWaivedAt: NOW, feeWaivedReason: "organiser" })];
     const r = await proposeFeeFreeInHq({ ...base, refs: ["Bilal"], undo: true });
-    expect(r.replyText).toBe("Take the free place away from Bilal Ahmed for Tue 20 Oct? They'll be asked to pay. Reply YES.");
+    expect(r.replyText).toBe("Take the free place away from Bilal Ahmed for Tue 20 Oct? They'll be asked to pay. Say *@Match Time YES*.");
     expect(rowOf("tue", "u1").feeWaivedAt).toEqual(NOW);
     const yes = await answerFeeProposalYes({ orgId: "org", proposalId: proposals[0].id, userId: "org1", lang: "en", now: NOW });
     expect(yes?.replyText).toBe("No longer free for Tue 20 Oct: Bilal Ahmed. They'll get the usual reminders to pay.");
@@ -321,7 +321,7 @@ describe("HQ: MatchTime proposes, an organiser's YES applies (item 2)", () => {
   it("a player who said he'd pay the collector directly: the question says so (item 5)", async () => {
     rows = [att("tue", "u1", "Bilal Ahmed", { paymentMethod: "direct", directPendingAt: NOW })];
     const r = await proposeFeeFreeInHq({ ...base, refs: ["Bilal"] });
-    expect(r.replyText).toBe("Make Bilal Ahmed free for Tue 20 Oct? Bilal Ahmed said they'd pay Colin Collector directly. Reply YES.");
+    expect(r.replyText).toBe("Make Bilal Ahmed free for Tue 20 Oct? Bilal Ahmed said they'd pay Colin Collector directly. Say *@Match Time YES*.");
   });
 
   it("the collector is never offered a free place (item 8)", async () => {
@@ -334,7 +334,7 @@ describe("HQ: MatchTime proposes, an organiser's YES applies (item 2)", () => {
     rows = [att("fri", "u1", "Bilal Ahmed", { paidAt: new Date("2026-10-16T22:00:00Z") }), att("fri", "u2", "Tom Third")];
     const r = await proposeFeeFreeInHq({ ...base, refs: ["Bilal", "Tom"], dayPhrase: "Friday" });
     expect(r.replyText.split("\n")).toEqual([
-      "Make Tom Third free for Fri 16 Oct? Reply YES.",
+      "Make Tom Third free for Fri 16 Oct? Say *@Match Time YES*.",
       "Bilal Ahmed has already paid for Fri 16 Oct, so I've left it as paid. The money collector can refund it if they should play free.",
     ]);
     expect(proposals[0].userIds).toEqual(["u2"]);
@@ -344,7 +344,7 @@ describe("HQ: MatchTime proposes, an organiser's YES applies (item 2)", () => {
     rows = [att("tue", "u1", "Bilal Ahmed"), att("tue", "u2", "Sam Stone"), att("tue", "u3", "Sam Smith")];
     const r = await proposeFeeFreeInHq({ ...base, refs: ["Bilal", "Zed", "Sam"] });
     expect(r.replyText.split("\n")).toEqual([
-      "Make Bilal Ahmed free for Tue 20 Oct? Reply YES.",
+      "Make Bilal Ahmed free for Tue 20 Oct? Say *@Match Time YES*.",
       "I can't find Zed in the squad for Tue 20 Oct.",
       "Which Sam: Sam Stone or Sam Smith?",
     ]);
@@ -353,7 +353,7 @@ describe("HQ: MatchTime proposes, an organiser's YES applies (item 2)", () => {
   it("Turkish: the question in Turkish", async () => {
     rows = [att("tue", "u1", "Ali Kaya"), att("tue", "u2", "Can Demir")];
     const r = await proposeFeeFreeInHq({ ...base, lang: "tr", refs: ["Ali", "Can"] });
-    expect(r.replyText).toBe("20 Ekim Salı için Ali Kaya ve Can Demir ücretsiz olsun mu? Onaylamak için EVET yazın.");
+    expect(r.replyText).toBe("20 Ekim Salı için Ali Kaya ve Can Demir ücretsiz olsun mu? Onaylamak için *@Match Time EVET* yazın.");
   });
 
   it("no names, no payments, no match: one line each, nothing proposed", async () => {

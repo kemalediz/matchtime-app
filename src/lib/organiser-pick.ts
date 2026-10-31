@@ -992,7 +992,7 @@ export async function handlePickReply(input: PickReplyInput): Promise<PickReplyO
 
   if (reply.kind === "unresolved-tag") return { handled: true, replyText: s.pick_unresolved_tag, outcome: "unresolved-tag" };
   if (reply.kind === "ambiguous") {
-    return { handled: true, replyText: s.pick_ambiguous({ first: reply.first, names: reply.names }), outcome: "ambiguous" };
+    return { handled: true, replyText: s.pick_ambiguous({ first: reply.first, names: reply.names, audience }), outcome: "ambiguous" };
   }
   if (reply.kind === "none") {
     await closeRound(round.id, "none-by-admin", now);
@@ -1049,7 +1049,7 @@ export async function handlePickReply(input: PickReplyInput): Promise<PickReplyO
       where: { id: round.id, resolvedAt: null },
       data: { pendingConfirmUserId: notListed[0], pendingConfirmAskedByUserId: input.senderUserId, pendingConfirmAskedAt: now },
     });
-    lines.push(s.pick_not_on_list({ name: nameOf(notListed[0]) }));
+    lines.push(s.pick_not_on_list({ name: nameOf(notListed[0]), audience }));
   }
 
   let alsoTell: PickReplyOutcome["alsoTell"];

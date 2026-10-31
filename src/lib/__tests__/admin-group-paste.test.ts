@@ -149,7 +149,7 @@ describe("proposeSquadPaste", () => {
     expect(r).toEqual({
       outcome: "paste-proposed",
       replyText:
-        "Adding: Bilal Ahmed. Removing: Shehryar Khan, Clarence Obi. Unknown names: Naim (not a member yet, I'll add them as a new player). Reply YES to apply.",
+        "Adding: Bilal Ahmed. Removing: Shehryar Khan, Clarence Obi. Unknown names: Naim (not a member yet, I'll add them as a new player). Say *@Match Time YES* to apply.",
     });
     expect(att.registerAttendance).not.toHaveBeenCalled();
     expect(att.cancelAttendance).not.toHaveBeenCalled();
@@ -175,7 +175,7 @@ describe("proposeSquadPaste", () => {
     expect(r).toEqual({
       outcome: "paste-proposed",
       replyText:
-        "Adding: Bilal Ahmed. I haven't taken anyone out: 2 players in the squad are not on this list (Shehryar Khan, Clarence Obi). If any of them are out, tell me who by name. Reply YES to apply.",
+        "Adding: Bilal Ahmed. I haven't taken anyone out: 2 players in the squad are not on this list (Shehryar Khan, Clarence Obi). If any of them are out, tell me who by name. Say *@Match Time YES* to apply.",
     });
     expect(dbMock.adminSquadProposal.create.mock.calls[0][0].data.removeUserIds).toEqual([]);
   });
@@ -209,7 +209,7 @@ describe("proposeSquadPaste", () => {
   it("Turkish club: Turkish proposal, and the Turkish kept line", async () => {
     const r = (await proposeSquadPaste({ ...base, lang: "tr", text: LIST, deps: { model: LIST_READ() } })) as PasteReply | null;
     expect(r?.replyText).toBe(
-      "Eklenecek: Bilal Ahmed. Çıkarılacak: Shehryar Khan, Clarence Obi. Tanımadığım isimler: Naim (henüz üye değil, yeni oyuncu olarak ekleyeceğim). Uygulamak için EVET yazın.",
+      "Eklenecek: Bilal Ahmed. Çıkarılacak: Shehryar Khan, Clarence Obi. Tanımadığım isimler: Naim (henüz üye değil, yeni oyuncu olarak ekleyeceğim). Uygulamak için *@Match Time EVET* yazın.",
     );
     const m = reader("squad", [{ name: "Ali", member: "p4" }, { name: "Tom", member: "p5" }, { name: "Sam", member: "p6" }, { name: "Clarence", member: "p3" }]);
     const kept = (await proposeSquadPaste({ ...base, lang: "tr", text: "Ali\nTom\nSam\nClarence", deps: { model: m } })) as PasteReply | null;

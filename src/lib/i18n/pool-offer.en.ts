@@ -77,7 +77,7 @@ export const poolOfferEn = {
   notice_offer_line: (p: { band: string; link: string }) => `🔎 Or ask nearby players from the MatchTime pool (${p.band}). Open the match page: ${p.link}`,
   /** The same line in the admin group, where a YES asks the pool (L10). */
   notice_offer_line_hq: (p: { band: string; link: string }) =>
-    `🔎 Or I can ask nearby players from the MatchTime pool (${p.band}): reply YES here, or open the match page: ${p.link}`,
+    `🔎 Or I can ask nearby players from the MatchTime pool (${p.band}): say *@Match Time YES* here, or open the match page: ${p.link}`,
   /** The automatic ask asked the pool (slice L9): one line to the organisers. */
   notice_auto: (p: { day: string; partnersFirst: boolean }) =>
     p.partnersFirst

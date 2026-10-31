@@ -529,7 +529,7 @@ const ADMIN_GROUP: Spotlight = {
   // admin-channel.ts ("Admin WhatsApp group"); strings.en.ts hq_help;
   // settings-info.ts adminChannel ("MatchTime only acts on messages from
   // owners and admins there").
-  lead: "Link your organisers' own WhatsApp group and MatchTime works there too. Admins just ask in their own words, and the messages only organisers should see arrive there instead of the players' chat. In that group MatchTime only acts on messages from your club's owners and admins.",
+  lead: "Link your organisers' own WhatsApp group and MatchTime works there too. Admins tag MatchTime and ask in their own words, and the messages only organisers should see arrive there instead of the players' chat. In that group MatchTime only acts on messages that tag it, from your club's owners and admins.",
   points: [
     // strings.en.ts hq_help: "Paste the whole squad list"; admin-group-paste.ts.
     {
@@ -537,7 +537,7 @@ const ADMIN_GROUP: Spotlight = {
       icon: "clipboard",
       color: "blue",
       title: "Paste the squad list",
-      body: "Paste the whole list and MatchTime shows you what would change. Reply YES and it's applied.",
+      body: "Tag MatchTime and paste the whole list, and it shows you what would change. Tag it with YES and it's applied.",
     },
     // strings.en.ts hq_help; admin-group-squad-change.ts.
     {
@@ -545,7 +545,7 @@ const ADMIN_GROUP: Spotlight = {
       icon: "pencil",
       color: "green",
       title: "Change the squad in plain words",
-      body: "“Put Bilal in”, “Sam can't make it”, “Tom to the bench”. No tag and no special commands.",
+      body: "“@Match Time put Bilal in”, “@Match Time Sam can't make it”, “@Match Time Tom to the bench”. Plain words, no special commands.",
     },
     // settings-info.ts teamsReady; strings.en.ts hq_help (show, shuffle, swap, YES).
     {
@@ -553,7 +553,7 @@ const ADMIN_GROUP: Spotlight = {
       icon: "shuffle",
       color: "purple",
       title: "Check the teams first",
-      body: "MatchTime can propose balanced teams on match day. Swap players or reshuffle them, then reply YES when they're final.",
+      body: "MatchTime can propose balanced teams on match day. Swap players or reshuffle them, then tag MatchTime with YES when they're final.",
     },
     // match-cancel.ts; strings.en.ts hq_help, hq_match_cancelled, hq_match_restored.
     {
@@ -577,15 +577,15 @@ const ADMIN_GROUP: Spotlight = {
       icon: "hand",
       color: "violet",
       title: "Pick who plays",
-      body: "If your organisers choose who fills a place, the bench arrives here with positions and club ratings. Reply with a number or a name.",
+      body: "If your organisers choose who fills a place, the bench arrives here with positions and club ratings. Tag MatchTime with a number or a name.",
     },
-    // strings.en.ts xask_approval_notice (inGroup: "Reply YES to this message"), xaskw_*.
+    // strings.en.ts xask_approval_notice (inGroup: "Reply to this message with *@Match Time YES*"), xaskw_*.
     {
       key: "partners",
       icon: "handshake",
       color: "teal",
       title: "Partner club asks",
-      body: "Say YES to a partner club's ask for one of your players, or ask your partner clubs for a player in your own words.",
+      body: "Tag MatchTime with YES to a partner club's ask for one of your players, or tag it and ask your partner clubs for a player in your own words.",
     },
     // fee-waiver.ts answerFeeFreeInHq; strings.en.ts hq_help (free line).
     {

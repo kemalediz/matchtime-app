@@ -244,7 +244,7 @@ test("somebody new on the bench while a place is open: one short bench update, n
       "3. Wasim Wali (no position, new)",
       "4. Fay Ford (no position, new)",
       "",
-      "Reply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",
+      "Tag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.",
     ].join("\n"),
   );
   expect(await pickPosts(request, WED("19:35"))).toEqual([]);

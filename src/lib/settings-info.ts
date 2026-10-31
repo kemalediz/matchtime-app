@@ -468,7 +468,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "Decides who picks Man of the Match after each game: the players, by voting on their rating page, or your organisers, on the pitch.",
         "Either way the winner gets the same crown in their stats and counts the same for badges.",
       ],
-      example: "🏁 *Tuesday 7-a-side*: what was the final score, which team won, and who was Man of the Match? Reply here and I'll record it.\nYellow won 7-4, MoM Naim\nScore saved: Yellow 7, Red 4. Man of the Match: Naim.",
+      example: "🏁 *Tuesday 7-a-side*: what was the final score, which team won, and who was Man of the Match? Tag me here with it and I'll record it.\n@Match Time Yellow won 7-4, MoM Naim\nScore saved: Yellow 7, Red 4. Man of the Match: Naim.",
       choices: [
         { name: "Players vote", text: "Players rate each other and vote for Man of the Match on the rating page MatchTime sends them. The player with the most votes wins." },
         {
@@ -489,7 +489,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "Her maçtan sonra maçın adamını kimin seçeceğini belirler: oyuncular puanlama sayfasında oy vererek ya da organizatörleriniz sahada.",
         "İki durumda da kazanan istatistiklerinde aynı tacı alır ve rozetlerde aynı şekilde sayılır.",
       ],
-      example: "🏁 *Salı 7'li maç*: maç kaç kaç bitti, hangi takım kazandı ve Man of the Match kim? Buraya yazın, kaydedeyim.\nSarı 7-4 kazandı, maçın adamı Naim\nSkor kaydedildi: Sarı 7, Kırmızı 4. Man of the Match kaydedildi: Naim.",
+      example: "🏁 *Salı 7'li maç*: maç kaç kaç bitti, hangi takım kazandı ve Man of the Match kim? Beni etiketleyip buraya yazın, kaydedeyim.\n@Match Time Sarı 7-4 kazandı, maçın adamı Naim\nSkor kaydedildi: Sarı 7, Kırmızı 4. Man of the Match kaydedildi: Naim.",
       choices: [
         { name: "Oyuncular oy verir", text: "Oyuncular MatchTime'ın gönderdiği puanlama sayfasında birbirlerine puan verir ve maçın adamı için oy kullanır. En çok oyu alan kazanır." },
         {
@@ -877,7 +877,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
           text: "MatchTime never fills a place by itself. Anyone who says IN goes on the bench. Your admin messages list the bench with positions and club ratings, and the first admin to reply with a number, a name or an @tag brings that player in. MatchTime then lets the player know by private message.",
         },
       ],
-      example: "Bench:\n1. Ali (midfield, 6.8)\n2. Bilal (new)\nReply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",
+      example: "Bench:\n1. Ali (midfield, 6.8)\n2. Bilal (new)\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open.",
       newClubs: "First to say IN. MatchTime never switches this from your group chat; it can only suggest it.",
       suits: "The organisers pick suits clubs where the organisers choose who plays, to keep the sides fair or to give regulars first call.",
       together: [
@@ -896,7 +896,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
           text: "MatchTime hiçbir yeri kendisi doldurmaz. VARIM diyen herkes yedek listesine girer. Yönetici mesajlarınız yedek listesini mevkiler ve kulüp puanlarıyla gösterir; numara, isim ya da @etiketle ilk yanıt veren yöneticinin seçtiği oyuncu kadroya girer. MatchTime sonra oyuncuya özel mesajla haber verir.",
         },
       ],
-      example: "Yedekler:\n1. Ali (orta saha, 6.8)\n2. Bilal (yeni)\nBuraya numara, isim ya da @etiket yazın, örneğin *2*, iki kişi için *2 3*. *HİÇBİRİ* yazarsanız yer boş kalır.",
+      example: "Yedekler:\n1. Ali (orta saha, 6.8)\n2. Bilal (yeni)\nBeni etiketleyip numara, isim ya da @etiket yazın, örneğin *@Match Time 2*, iki kişi için *@Match Time 2 3*. *@Match Time HİÇBİRİ* yazarsanız yer boş kalır.",
       newClubs: "İlk VARIM diyen. MatchTime bunu grup sohbetinize bakarak hiçbir zaman değiştirmez; yalnızca önerebilir.",
       suits: "Organizatörler seçer; takımları dengeli tutmak ya da daimi oyunculara öncelik vermek için kimin oynayacağını organizatörlerin seçtiği kulüplere uygundur.",
       together: [
@@ -1135,7 +1135,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "On match day at this time, MatchTime builds balanced teams from the squad and posts them in your admin WhatsApp group as a proposal. Admins can change them there (swap Ali Bilal, move Ali, or @Match Time reshuffle for brand new teams) and reply YES when they are final. If the squad is short, MatchTime says so instead.",
         "If nobody has said YES 2 hours before kickoff, MatchTime reminds the admin group once.",
       ],
-      example: "📝 *Proposed teams*: Tue 20:00 at Goals Sutton\n…\nReply *YES* when they are final and I'll post them in the players' group.",
+      example: "📝 *Proposed teams*: Tue 20:00 at Goals Sutton\n…\nSay *@Match Time YES* when they are final and I'll post them in the players' group.",
       choices: [
         { name: "A time", text: "Teams are proposed in the admin group at that time on match day." },
         { name: "Off", text: "MatchTime never proposes teams by itself. Admins can still type teams in the admin group to get a proposal." },
@@ -1153,7 +1153,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "Maç günü bu saatte MatchTime kadrodan dengeli takımlar kurar ve öneri olarak yönetici WhatsApp grubunuza gönderir. Yöneticiler takımları orada değiştirebilir (Ali ile Bilal değiş, Ali taşı ya da tamamen yeni takımlar için @Match Time yeniden kur) ve kesinleşince EVET yazar. Kadro eksikse MatchTime takım yerine bunu söyler.",
         "Başlama saatinden 2 saat önce hâlâ EVET yazan olmadıysa MatchTime yönetici grubuna bir kez hatırlatır.",
       ],
-      example: "📝 *Önerilen takımlar*: Salı 20:00, Goals Sutton\n…\nKesinleşince *EVET* yazın, oyuncu grubuna ben gönderirim.",
+      example: "📝 *Önerilen takımlar*: Salı 20:00, Goals Sutton\n…\nKesinleşince *@Match Time EVET* yazın, oyuncu grubuna ben gönderirim.",
       choices: [
         { name: "Saat ayarlı", text: "Takımlar maç günü o saatte yönetici grubunda önerilir." },
         { name: "Kapalı", text: "MatchTime kendiliğinden takım önermez. Yöneticiler öneri almak için yönetici grubunda yine takımlar yazabilir." },
@@ -1285,7 +1285,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     en: {
       title: "Asks from partner clubs",
       what: ["How a partner club's ask for a player reaches your players' group. Set separately for each club that may ask you."],
-      example: "FNF ask if one of your players can play for them: Fri 16 Oct, 20:30 at Goals Sutton, 9-a-side, £8. OK to post this in your group? Reply YES, or tap the link.",
+      example: "FNF ask if one of your players can play for them: Fri 16 Oct, 20:30 at Goals Sutton, 9-a-side, £8. OK to post this in your group? Reply to this message with *@Match Time YES*, or tap the link.",
       choices: [
         {
           name: "Ask our organisers each time",
@@ -1302,7 +1302,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     tr: {
       title: "Partner kulüplerden gelen istekler",
       what: ["Bir partner kulübün oyuncu isteğinin oyuncu grubunuza nasıl ulaşacağı. Sizden oyuncu isteyebilecek her kulüp için ayrı ayarlanır."],
-      example: "FNF oyuncularınızdan birinin onlar için oynayıp oynayamayacağını soruyor: Cuma 16 Eki, 20:30, Goals Sutton, 9'a 9, £8. Bunu grubunuzda paylaşayım mı? EVET yazın ya da bağlantıya dokunun.",
+      example: "FNF oyuncularınızdan birinin onlar için oynayıp oynayamayacağını soruyor: Cuma 16 Eki, 20:30, Goals Sutton, 9'a 9, £8. Bunu grubunuzda paylaşayım mı? Bu mesajı yanıtlayıp *@Match Time EVET* yazın ya da bağlantıya dokunun.",
       choices: [
         {
           name: "Her seferinde organizatörlerimize sor",

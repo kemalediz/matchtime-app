@@ -18,7 +18,7 @@ export const poolInviteTr: PoolInviteStrings = {
   notice_wants_join: (p) =>
     `🙋 ${p.name}, ${p.day} günü sizinle misafir olarak oynadı ve grubunuza katılmak istiyor. Grubun davet bağlantısını göndermek için kartındaki Davet bağlantısını gönder düğmesine dokunun: ${p.link}`,
   notice_wants_join_hq: (p) =>
-    `🙋 ${p.name}, ${p.day} günü sizinle misafir olarak oynadı ve grubunuza katılmak istiyor. Grubun davet bağlantısını göndermek için burada EVET yazın ya da kartındaki Davet bağlantısını gönder düğmesine dokunun: ${p.link}`,
+    `🙋 ${p.name}, ${p.day} günü sizinle misafir olarak oynadı ve grubunuza katılmak istiyor. Grubun davet bağlantısını göndermek için burada *@Match Time EVET* yazın ya da kartındaki Davet bağlantısını gönder düğmesine dokunun: ${p.link}`,
   /** The guest when he has no name on MatchTime. */
   notice_someone: "Bir misafir",
   hq_link_sending: (p) => `✅ ${p.name} kişisine oyuncu grubunun davet bağlantısını gönderiyorum.`,
