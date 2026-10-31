@@ -118,6 +118,21 @@ export const POOL_SIGNUP = Object.freeze({
   nameMax: 40,
 });
 
+/**
+ * The /play reminder's status check (2026-10-31, `signup-status.ts`): a
+ * browser that signed up asks whether its sign-up still waits for the code.
+ *   perIpPerHour   checks one requesting address may make an hour, whatever
+ *                  the answer. A returning visitor makes one per visit, so
+ *                  this is generous for carrier NAT and still stops a flood.
+ *                  Counted in the server's memory, not in PoolAttempt: the
+ *                  signed token already makes guessing pointless (a forged
+ *                  one never reaches the database), so the cap only guards
+ *                  load, and a new PoolAttempt kind would need a migration.
+ */
+export const POOL_SIGNUP_STATUS = Object.freeze({
+  perIpPerHour: 60,
+});
+
 /** The WhatsApp confirm code: from an alphabet with no 0, O, 1, I or L (the
  *  ClubConnect code's alphabet), so nobody mistypes it. FIVE characters
  *  (slice L2), where a self-join connect code has four: the two readers

@@ -29,7 +29,7 @@ import { POOL_SIGNUP } from "./rules";
 import type { PoolProfileSource, PoolSignupAttemptResult } from "./vocab";
 
 export type PoolSignupResult =
-  | { ok: true; code: string; earlyList: boolean }
+  | { ok: true; id: string; code: string; expiresAt: Date; earlyList: boolean }
   | { ok: false; reason: "busy" | "area-not-found" };
 
 export async function createPoolSignup(args: {
@@ -66,13 +66,14 @@ export async function createPoolSignup(args: {
 
   for (let attempt = 0; attempt < 10; attempt++) {
     const code = generatePoolConfirmCode();
+    const expiresAt = poolCodeExpiry(now);
     try {
-      await db.poolProfile.create({
+      const row = await db.poolProfile.create({
         data: {
           status: "pending-verify",
           userId: args.startedByUserId ?? null,
           confirmCode: code,
-          confirmCodeExpiresAt: poolCodeExpiry(now),
+          confirmCodeExpiresAt: expiresAt,
           signupIp: args.ip,
           adultConfirmedAt: now,
           language: f.language,
@@ -89,7 +90,7 @@ export async function createPoolSignup(args: {
         select: { id: true },
       });
       console.log(`[pool-signup] waiting sign-up created early=${args.earlyList} source=${source.source}`);
-      return { ok: true, code, earlyList: args.earlyList };
+      return { ok: true, id: row.id, code, expiresAt, earlyList: args.earlyList };
     } catch (err) {
       // Another waiting sign-up holds this code: draw again. (His user id
       // taken meanwhile, by a second tap, is not a code clash.)

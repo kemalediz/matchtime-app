@@ -25,7 +25,13 @@ function secret(): string {
 const b64url = (b: Buffer): string => b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
 function sign(offerId: string, purpose = "pool-offer"): string {
-  return b64url(createHmac("sha256", secret()).update(`${purpose}:${offerId}`).digest().subarray(0, SIG_BYTES));
+  return poolSignature(purpose, offerId);
+}
+
+/** The pool's one HMAC (AUTH_SECRET), for any signed pool value: `purpose`
+ *  keeps one kind of token from ever passing as another. */
+export function poolSignature(purpose: string, value: string): string {
+  return b64url(createHmac("sha256", secret()).update(`${purpose}:${value}`).digest().subarray(0, SIG_BYTES));
 }
 
 /** The cookie value that says "this browser proved it is his" for ONE

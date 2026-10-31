@@ -10,10 +10,15 @@
  * sign-up is sent, and the policy opens in a new tab, so nothing is lost.
  * The POST itself is `sendPoolSignup`, which also counts the sign-up in
  * Vercel Web Analytics (one `pool_signup` event, no personal data).
+ *
+ * THE REMINDER (2026-10-31): a sent sign-up is remembered in this browser
+ * (`pending-signup.ts`, the code and its WhatsApp link only). On a later
+ * visit the page asks the server whether it still waits; only then is the
+ * reminder shown above the form. Confirmed, run out or gone: forgotten, and
+ * for a code that no longer works one line says to fill in the form again.
  */
 import { poolShareCopy } from "@/lib/i18n/pool-share";
 import { useEffect, useState } from "react";
-import { MessageCircle } from "lucide-react";
 import { PoolProfileFields, type FieldErrorText } from "@/components/pool/pool-profile-fields";
 import { PoolPageShell } from "@/components/pool/pool-page-shell";
 import { useBrowserLang } from "@/lib/i18n/browser-lang";
@@ -25,6 +30,16 @@ import { validatePoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fie
 import { PolicyLink } from "@/components/policy-link";
 import { clearSignupDraft, loadSignupDraft, saveSignupDraft } from "@/lib/pool/signup-draft";
 import { sendPoolSignup, type PoolSignupConfirm } from "@/lib/pool/send-signup";
+import {
+  checkPendingSignup,
+  clearPendingSignup,
+  loadPendingSignup,
+  pendingSignupExpired,
+  savePendingSignup,
+  type PendingSignup,
+} from "@/lib/pool/pending-signup";
+import { PoolPendingReminder } from "@/components/pool/pool-pending-reminder";
+import { PoolWhatsAppStep } from "@/components/pool/pool-whatsapp-step";
 
 type Confirm = PoolSignupConfirm;
 
@@ -56,6 +71,45 @@ export function PlaySignup({
   const [formError, setFormError] = useState<PoolErrorKey | null>(null);
   const [sending, setSending] = useState(false);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [pending, setPending] = useState<PendingSignup | null>(null);
+  const [expiredNote, setExpiredNote] = useState(false);
+
+  // The reminder: once, on mount. Nothing shows until the server says the
+  // sign-up still waits; a check that fails (busy, offline) shows nothing
+  // and keeps the entry for next time.
+  useEffect(() => {
+    const stored = loadPendingSignup();
+    if (!stored) return;
+    if (pendingSignupExpired(stored, Date.now())) {
+      clearPendingSignup();
+      setExpiredNote(true);
+      return;
+    }
+    let live = true;
+    void checkPendingSignup(stored).then((state) => {
+      if (!live) return;
+      if (state === "waiting") setPending(stored);
+      else if (state === "done") clearPendingSignup();
+      else if (state === "gone") {
+        clearPendingSignup();
+        setExpiredNote(true);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  // A page left open past the code's end drops the reminder and its link.
+  useEffect(() => {
+    if (!pending) return;
+    const wait = Math.min(Math.max(pending.expiresAt - Date.now(), 0), 2 ** 31 - 1);
+    const timer = window.setTimeout(() => {
+      clearPendingSignup();
+      setPending(null);
+      setExpiredNote(true);
+    }, wait);
+    return () => window.clearTimeout(timer);
+  }, [pending]);
 
   // The draft: read once after mount (the server never sees it), saved on
   // every change he makes, cleared once the sign-up is sent.
@@ -90,7 +144,11 @@ export function PlaySignup({
       const result = await sendPoolSignup(body);
       if (result.kind === "ok") {
         clearSignupDraft();
-        setConfirm(result.confirm);
+        const c = result.confirm;
+        if (c.statusToken && c.expiresAt) savePendingSignup({ code: c.code, waLink: c.waLink, token: c.statusToken, expiresAt: c.expiresAt });
+        setPending(null);
+        setExpiredNote(false);
+        setConfirm(c);
         window.scrollTo({ top: 0 });
         return;
       }
@@ -105,30 +163,9 @@ export function PlaySignup({
     return (
       <PoolPageShell lang={lang} onLang={setChosen} copy={copy}>
         <h1 className="text-2xl font-bold text-slate-900">{copy.signup.confirmHeading}</h1>
-        <p className="mt-3 text-slate-700">{copy.signup.confirmLead}</p>
-        <a
-          href={confirm.waLink}
-          className="mt-6 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-base font-semibold text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-        >
-          <MessageCircle className="h-5 w-5" aria-hidden="true" />
-          {copy.signup.openWhatsApp}
-        </a>
-        <dl className="mt-6 space-y-3 rounded-xl bg-slate-50 p-4 text-sm">
-          <div>
-            <dt className="font-semibold text-slate-900">{copy.signup.codeLabel}</dt>
-            <dd className="mt-1 font-mono text-lg tracking-widest text-slate-900" data-testid="pool-code">
-              {confirm.code}
-            </dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-slate-900">{copy.signup.messageLabel}</dt>
-            <dd className="mt-1 text-slate-700" data-testid="pool-prefill">
-              {confirm.prefill}
-            </dd>
-          </div>
-        </dl>
-        {confirm.earlyList && <p className="mt-4 text-slate-700">{copy.signup.confirmEarly}</p>}
-        <p className="mt-2 text-sm text-slate-600">{copy.signup.confirmHelp}</p>
+        <div className="mt-3">
+          <PoolWhatsAppStep copy={copy} step={confirm} earlyList={confirm.earlyList} />
+        </div>
       </PoolPageShell>
     );
   }
@@ -144,6 +181,12 @@ export function PlaySignup({
       }}
       copy={copy}
     >
+      {pending && <PoolPendingReminder copy={copy} lang={lang} pending={pending} />}
+      {expiredNote && (
+        <p role="status" data-testid="pool-expired-note" className="mb-6 rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-800">
+          {copy.signup.expiredNote}
+        </p>
+      )}
       {invitedBy && (
         <p data-testid="pool-invited-by" className="mb-3 text-sm font-medium text-emerald-800">
           {poolShareCopy(lang).invitedBy(invitedBy)}

@@ -18,14 +18,25 @@ function fakeFetch(status: number, body: unknown): typeof fetch {
 const BODY = { name: "Ali Veli", area: "SM1", phone: "+447700900000" };
 
 describe("sendPoolSignup: the /play form's POST /api/play/signup", () => {
+  it("an answer with no status token or expiry still confirms (the reminder just has nothing to keep)", async () => {
+    const r = await sendPoolSignup(BODY, fakeFetch(200, { ok: true, code: "AB12", prefill: "JOIN AB12", waLink: "https://wa.me/x", earlyList: false }));
+    expect(r).toEqual({ kind: "ok", confirm: { code: "AB12", prefill: "JOIN AB12", waLink: "https://wa.me/x", earlyList: false, statusToken: null, expiresAt: null } });
+  });
+
   beforeEach(() => {
     track.mockReset();
     analyticsThrows = false;
   });
 
   it("on success returns the confirm details and counts one pool_signup event with no personal data", async () => {
-    const r = await sendPoolSignup(BODY, fakeFetch(200, { ok: true, code: "AB12", prefill: "JOIN AB12", waLink: "https://wa.me/x", earlyList: true }));
-    expect(r).toEqual({ kind: "ok", confirm: { code: "AB12", prefill: "JOIN AB12", waLink: "https://wa.me/x", earlyList: true } });
+    const r = await sendPoolSignup(
+      BODY,
+      fakeFetch(200, { ok: true, code: "AB12", prefill: "JOIN AB12", waLink: "https://wa.me/x", earlyList: true, statusToken: "p1.sig", expiresAt: "2026-11-03T12:00:00.000Z" }),
+    );
+    expect(r).toEqual({
+      kind: "ok",
+      confirm: { code: "AB12", prefill: "JOIN AB12", waLink: "https://wa.me/x", earlyList: true, statusToken: "p1.sig", expiresAt: Date.parse("2026-11-03T12:00:00.000Z") },
+    });
     expect(track).toHaveBeenCalledTimes(1);
     expect(track).toHaveBeenCalledWith("pool_signup");
   });

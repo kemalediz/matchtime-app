@@ -1,26 +1,22 @@
 "use client";
 
 /**
- * The pool's last step (slice L3): open WhatsApp with the confirm message,
- * the code and the message shown as well. The same wording as the /play
- * sign-up's confirm screen (`copy.signup.*`), for a member with no number on
- * his account. Nothing happens until he sends it himself.
+ * The pool's last step: open WhatsApp with the confirm message. Used by the
+ * /play confirm screen (slice L2) and a member with no number on his account
+ * (slice L3). Nothing happens until he sends it himself, so (2026-10-31, two
+ * in ten never sent it) the order is: one short line, the big WhatsApp
+ * button, how long the code works, then the code and the message as well.
  */
 import { MessageCircle } from "lucide-react";
 import type { PoolPlayCopy } from "@/lib/i18n/pool-play";
 
 export function PoolWhatsAppStep({ copy, step, earlyList }: { copy: PoolPlayCopy; step: { code: string; prefill: string; waLink: string }; earlyList: boolean }) {
   return (
-    <div>
+    <div data-testid="pool-whatsapp-step">
       <p className="text-slate-700">{copy.signup.confirmLead}</p>
-      <a
-        href={step.waLink}
-        className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-base font-semibold text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-      >
-        <MessageCircle className="h-5 w-5" aria-hidden="true" />
-        {copy.signup.openWhatsApp}
-      </a>
-      <dl className="mt-4 space-y-3 rounded-xl bg-slate-50 p-4 text-sm">
+      <PoolWhatsAppButton href={step.waLink} label={copy.signup.openWhatsApp} className="mt-4" />
+      <p className="mt-3 text-sm font-medium text-slate-800">{copy.signup.confirmHelp}</p>
+      <dl className="mt-5 space-y-3 rounded-xl bg-slate-50 p-4 text-sm">
         <div>
           <dt className="font-semibold text-slate-900">{copy.signup.codeLabel}</dt>
           <dd className="mt-1 font-mono text-lg tracking-widest text-slate-900" data-testid="pool-code">
@@ -35,7 +31,19 @@ export function PoolWhatsAppStep({ copy, step, earlyList }: { copy: PoolPlayCopy
         </div>
       </dl>
       {earlyList && <p className="mt-3 text-sm text-slate-700">{copy.signup.confirmEarly}</p>}
-      <p className="mt-2 text-sm text-slate-600">{copy.signup.confirmHelp}</p>
     </div>
+  );
+}
+
+/** The green "send it on WhatsApp" button: full width on a phone. */
+export function PoolWhatsAppButton({ href, label, className = "" }: { href: string; label: string; className?: string }) {
+  return (
+    <a
+      href={href}
+      className={`inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-4 text-lg font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 sm:w-auto ${className}`}
+    >
+      <MessageCircle className="h-6 w-6" aria-hidden="true" />
+      {label}
+    </a>
   );
 }

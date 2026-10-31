@@ -111,6 +111,15 @@ export interface PoolPlayCopy {
     messageLabel: string;
     confirmEarly: string;
     confirmHelp: string;
+    /** The /play reminder (2026-10-31): a returning visitor whose sign-up
+     *  still waits for its WhatsApp code. */
+    reminderHeading: string;
+    reminderLead: string;
+    reminderNoForm: string;
+    /** When the code runs out, a date already in the page's language. */
+    reminderUntil: (date: string) => string;
+    /** Once, when his remembered code no longer works. */
+    expiredNote: string;
   };
   manage: {
     heading: string;
