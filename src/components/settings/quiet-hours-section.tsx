@@ -3,7 +3,7 @@
 /**
  * "Quiet hours" (2026-10-16), its own card on /admin/settings: whether
  * MatchTime holds the club's messages during quiet hours, and From and To
- * (London). Default ON, 23:00 to 09:00. Words from the club's language
+ * (London). OFF for a new club (2026-10-31), times 23:00 to 09:00. Words from the club's language
  * table, with its ⓘ. Loads and saves through its own server actions
  * (`app/actions/quiet-hours.ts`), so the page only renders it.
  */

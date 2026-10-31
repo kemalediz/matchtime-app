@@ -153,8 +153,13 @@ test("flag ON: sign up, set up the club and its weekly game, connect, and the ca
     language: string;
     whatsappBotEnabled: boolean;
     whatsappGroupId: string | null;
-  }>(`SELECT id, "approvalStatus", language, "whatsappBotEnabled", "whatsappGroupId" FROM "Organisation" WHERE name = 'Riverside FC'`);
+    quietHoursEnabled: boolean;
+    quietHoursFrom: string;
+    quietHoursTo: string;
+  }>(`SELECT id, "approvalStatus", language, "whatsappBotEnabled", "whatsappGroupId", "quietHoursEnabled", "quietHoursFrom", "quietHoursTo" FROM "Organisation" WHERE name = 'Riverside FC'`);
   expect(org).toMatchObject({ approvalStatus: "draft", language: "tr", whatsappBotEnabled: false, whatsappGroupId: null });
+  // Quiet hours are off for a new club, with the times ready for switching on (2026-10-31).
+  expect(org).toMatchObject({ quietHoursEnabled: false, quietHoursFrom: "23:00", quietHoursTo: "09:00" });
   const game = await db.one<{ dayOfWeek: number; time: string; venue: string; name: string; playersPerTeam: number }>(
     `SELECT a."dayOfWeek", a.time, a.venue, a.name, s."playersPerTeam"
        FROM "Activity" a JOIN "Sport" s ON s.id = a."sportId" WHERE a."orgId" = $1`,

@@ -13,6 +13,7 @@ import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { revalidatePath } from "next/cache";
 import { scheduleVenueResolveForOrg } from "@/lib/venue-location-schedule";
 import { VENUE_MIN_LENGTH, VENUE_TOO_SHORT } from "@/lib/activity-update";
+import { newClubQuietHoursFields } from "@/lib/message-hours";
 
 /**
  * Server-side counterpart for the onboarding wizard (/onboarding).
@@ -241,6 +242,7 @@ export async function createOrgFromWizard(data: WizardSubmission): Promise<Wizar
         data: {
           name: data.orgName.trim(),
           slug,
+          ...newClubQuietHoursFields(),
           memberships: {
             create: { userId, role: "OWNER" },
           },

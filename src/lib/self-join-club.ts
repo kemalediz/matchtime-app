@@ -23,6 +23,7 @@
  */
 import { db } from "./db";
 import { draftClubFields, SELF_JOIN_CLUB_WHERE } from "./club-approval";
+import { newClubQuietHoursFields } from "./message-hours";
 import { isLang } from "./i18n/lang";
 import { t } from "./i18n/t";
 import { clubNameSchema } from "./validations";
@@ -130,6 +131,7 @@ export async function createSelfJoinClub(
         slug,
         language,
         ...draftClubFields(),
+        ...newClubQuietHoursFields(),
         memberships: { create: { userId, role: "OWNER" } },
       },
     });

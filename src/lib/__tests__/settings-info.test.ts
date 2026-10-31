@@ -242,12 +242,16 @@ describe("settings explanations: the facts match the code", () => {
   const d = orgDefaults();
   const newClubs = (k: SettingInfoKey, lang: Lang = "en") => settingInfo(lang, k).newClubs;
 
-  it("quiet hours: the default stated is the schema's and the code's (On, 23:00 to 09:00)", () => {
-    expect(d.quietHoursEnabled).toBe("true");
+  it("quiet hours: the default stated is the schema's and the code's (Off; on later, 23:00 to 09:00)", () => {
+    expect(d.quietHoursEnabled).toBe("false");
     expect(d.quietHoursFrom).toBe(DEFAULT_QUIET_HOURS.from);
     expect(d.quietHoursTo).toBe(DEFAULT_QUIET_HOURS.to);
-    expect(newClubs("quietHours")).toBe(`On, ${DEFAULT_QUIET_HOURS.from} to ${DEFAULT_QUIET_HOURS.to}.`);
-    expect(newClubs("quietHours", "tr")).toBe(`Açık, ${DEFAULT_QUIET_HOURS.from} ile ${DEFAULT_QUIET_HOURS.to} arası.`);
+    expect(newClubs("quietHours")).toBe(
+      `Off. Switched on, they run from ${DEFAULT_QUIET_HOURS.from} to ${DEFAULT_QUIET_HOURS.to} until you change the times. You can also say "@Match Time turn on quiet hours from ${DEFAULT_QUIET_HOURS.from} to ${DEFAULT_QUIET_HOURS.to}" in WhatsApp.`,
+    );
+    expect(newClubs("quietHours", "tr")).toBe(
+      `Kapalı. Açılınca, saatleri değiştirene kadar ${DEFAULT_QUIET_HOURS.from} ile ${DEFAULT_QUIET_HOURS.to} arasındadır. WhatsApp'ta "@Match Time sessiz saatleri ${DEFAULT_QUIET_HOURS.from} ile ${DEFAULT_QUIET_HOURS.to} arası aç" yazarak da açabilirsiniz.`,
+    );
     for (const lang of LANGS) {
       const c = settingInfo(lang, "quietHours");
       expect(c.choices!.map((x) => x.name)).toEqual(lang === "en" ? ["On", "Off"] : ["Açık", "Kapalı"]);

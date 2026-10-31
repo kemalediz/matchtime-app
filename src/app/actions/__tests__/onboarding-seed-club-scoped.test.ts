@@ -33,6 +33,7 @@ const txUserCreate = vi.fn();
 const txUserUpdateMany = vi.fn();
 const txMembershipUpsert = vi.fn();
 const txMembershipUpdate = vi.fn();
+const txOrgCreate = vi.fn();
 
 const orgFindUnique = vi.fn();
 const userFindMany = vi.fn();
@@ -94,10 +95,11 @@ beforeEach(() => {
   txUserUpdateMany.mockResolvedValue({ count: 1 });
   txMembershipUpsert.mockResolvedValue({});
   txMembershipUpdate.mockResolvedValue({});
+  txOrgCreate.mockResolvedValue({ id: NEW_ORG, slug: "turkish-club" });
   transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
     fn({
       organisation: {
-        create: vi.fn().mockResolvedValue({ id: NEW_ORG, slug: "turkish-club" }),
+        create: (...a: unknown[]) => txOrgCreate(...a),
         update: vi.fn(),
       },
       sport: { create: vi.fn().mockResolvedValue({ id: "sport-1" }) },
@@ -126,6 +128,11 @@ const ACTIVITY = {
 };
 
 describe("createOrgFromWizard seeds the new club's memberships", () => {
+  it("creates the club with quiet hours off (Kemal, 2026-10-31)", async () => {
+    await createOrgFromWizard({ orgName: "Turkish Club", players: [{ name: "Yeni", seedRating: 8 }], activity: ACTIVITY });
+    expect(txOrgCreate.mock.calls[0][0].data).toMatchObject({ name: "Turkish Club", quietHoursEnabled: false });
+  });
+
   it("puts a brand new player's seed on their membership at the org being set up", async () => {
     await createOrgFromWizard({
       orgName: "Turkish Club",
