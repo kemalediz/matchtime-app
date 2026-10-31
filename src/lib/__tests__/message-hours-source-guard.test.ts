@@ -73,6 +73,9 @@ const ALLOWED_CLOCK_STRINGS: Record<string, string> = {
   "lib/rolling-squad-rules.ts:08:00": "ROLLING_SEED_HOUR: when the squad is carried over (a database write, not a message)",
   "lib/club-partnership-rules.ts:08:00": "PARTNER_ASK_TIME_DEFAULT: a club's automatic-ask time when it set none (a setting's default, Kemal 2026-10-29), not a daytime window",
   "lib/pool/form-state.ts:22:00": "DEFAULT_RANGE: the /play form's suggested evening for a newly ticked day (a player's free time, not a messaging window)",
+  "lib/pipeline/extractors.ts:22:00": "the admin extractor's quiet_hours examples (2026-10-31): how the model writes a time said (\"10pm\" is \"22:00\"), not a window",
+  "lib/pipeline/extractors.ts:23:00": "the admin extractor's quiet_hours examples (\"gece 11\" is \"23:00\"), not a window",
+  "lib/pipeline/extractors.ts:08:00": "the admin extractor's quiet_hours examples (\"8am\" is \"08:00\"), not a window",
 };
 
 describe("message-hours.ts is the one definition of the daytime window", () => {

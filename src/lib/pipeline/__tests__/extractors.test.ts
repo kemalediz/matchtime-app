@@ -1101,6 +1101,49 @@ describe("admin · season_break (2026-10-29, the prompt rewritten whole)", () =>
   });
 });
 
+describe("admin · quiet_hours (2026-10-31, MT Test: \"@Match Time turn off quiet hours now\" was read other)", () => {
+  const BASE = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", pastGame: false, phrase: "", remindAt: "", note: "", lookbackMatches: 0, playersFrom: [], clubRef: "", venueName: "", venueChoice: 0, breakMonths: [], playMonths: [], quietOff: false, quietFrom: "", quietTo: "", toMatchTime: true };
+  const of = (fields: Record<string, unknown>) => parseFacts("admin", JSON.stringify({ ...BASE, ...fields }), "wa-1").facts;
+
+  it("off carries quietOff true and no times", () => {
+    const f = of({ action: "quiet_hours", quietOff: true, quietFrom: "22:00" });
+    expect(f).toMatchObject({ kind: "admin", action: "quiet_hours", quietOff: true, toMatchTime: true });
+    expect("quietFrom" in f).toBe(false);
+    expect("quietTo" in f).toBe(false);
+  });
+
+  it("on carries the times said, trimmed, as written; an empty time is absent", () => {
+    expect(of({ action: "quiet_hours", quietFrom: " 22:00 ", quietTo: "08:00" })).toMatchObject({ action: "quiet_hours", quietFrom: "22:00", quietTo: "08:00" });
+    const onlyTo = of({ action: "quiet_hours", quietTo: "07:30" });
+    expect(onlyTo).toMatchObject({ quietTo: "07:30" });
+    expect("quietFrom" in onlyTo).toBe(false);
+    expect("quietOff" in onlyTo).toBe(false);
+  });
+
+  it("the quiet fields are dropped on every other action", () => {
+    for (const action of ["other", "set_venue", "season_break"]) {
+      const f = of({ action, quietOff: true, quietFrom: "22:00", quietTo: "08:00" });
+      for (const k of ["quietOff", "quietFrom", "quietTo"]) expect(k in f, `${action} ${k}`).toBe(false);
+    }
+  });
+
+  it("the schema offers quiet_hours and requires its three fields", () => {
+    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    expect(schema.properties.action.enum).toContain("quiet_hours");
+    expect(schema.required).toEqual(expect.arrayContaining(["quietOff", "quietFrom", "quietTo"]));
+  });
+
+  it("the prompt defines quiet_hours and its fields once each, with EN and TR examples side by side and a non-request", () => {
+    const p = EXTRACTOR_PROMPTS.admin;
+    expect(p.split(`\n  "quiet_hours" `).length).toBe(2);
+    for (const field of ["quietOff", "quietFrom", "quietTo"]) expect(p.split(`\n  ${field} `).length, field).toBe(2);
+    expect(p).toMatch(/"@Match Time turn off quiet hours now" \/ "@Match Time sessiz saatleri kapat" -> quiet_hours, quietOff true/);
+    expect(p).toMatch(/-> quiet_hours, quietFrom "22:00", quietTo "08:00"/);
+    expect(p).toMatch(/quiet hours[^\n]*-> other/);
+    expect(p).not.toMatch(/[–—]/);
+  });
+});
+
 // ── 2026-10-30, FNF HQ: an earlier set of teams back, a pasted sheet, and
 //    whether the message is an instruction to MatchTime at all ─────────
 describe("teams: restore, set, sides and toMatchTime (2026-10-30)", () => {

@@ -1281,3 +1281,75 @@ describe("set the pitch by WhatsApp", () => {
     expect(calls).toEqual([]);
   });
 });
+
+// ── 2026-10-31 (Kemal): quiet hours by tagging MatchTime. MT Test, "@Match
+// Time turn off quiet hours now" was read `other` and got "I can't change
+// that by message". An owner or admin, with the Pi's real tag, only.
+
+describe("quiet hours by WhatsApp", () => {
+  const OFF = "@Match Time turn off quiet hours now";
+  const QUIET_FACTS = { ...BLAST_FACTS, action: "quiet_hours", lookbackMatches: 0, playersFrom: [], clubRef: "", quietOff: true, quietFrom: "", quietTo: "", toMatchTime: true };
+
+  const outcomeOf = async (m: Partial<AdminOpsBatchMessage> = {}, facts: Record<string, unknown> = QUIET_FACTS) => {
+    const { model } = stubModel({ [OFF]: facts });
+    const r = recorder(model, paidWorld());
+    const calls: Array<{ orgId: string; off: boolean; from: string | null; to: string | null; lang: string | null }> = [];
+    const res = await run({
+      messages: [msg({ body: OFF, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true, ...m })],
+      deps: {
+        ...r.deps,
+        onlyOrganisersLine: async () => "Only Kemal can change that.",
+        applyQuietHoursWords: async (a) => (
+          calls.push({ orgId: a.orgId, off: a.off, from: a.from, to: a.to, lang: a.lang }),
+          { outcome: "quiet-hours-off", replyText: "✅ Quiet hours are off. The 2 messages I was holding go out now." }
+        ),
+      },
+    });
+    return { out: res.outcomes.get(`wa-${OFF.slice(0, 14)}`), calls };
+  };
+
+  it("an organiser, tagged: switched off through the one core, and the reply says so (never \"can't change that\")", async () => {
+    const { out, calls } = await outcomeOf();
+    expect(calls).toEqual([{ orgId: "org-1", off: true, from: null, to: null, lang: expect.anything() }]);
+    expect(out?.reply).toBe("✅ Quiet hours are off. The 2 messages I was holding go out now.");
+    expect(out?.intent).toBe("quiet-hours-off");
+    expect(out?.reply).not.toMatch(/can't change that/);
+  });
+
+  it("the times read are passed on", async () => {
+    const { calls } = await outcomeOf({}, { ...QUIET_FACTS, quietOff: false, quietFrom: "22:00", quietTo: "08:00" });
+    expect(calls[0]).toMatchObject({ off: false, from: "22:00", to: "08:00" });
+  });
+
+  it("a player who is not an organiser: the one line naming who can, nothing changed", async () => {
+    const { out, calls } = await outcomeOf({ senderUserId: "u-zair", senderName: fullName("zair") });
+    expect(out?.reply).toBe("Only Kemal can change that.");
+    expect(out?.intent).toBe("organisers_only");
+    expect(calls).toEqual([]);
+  });
+
+  it("untagged (no Pi mention flag): nothing changed, nothing said", async () => {
+    const { out, calls } = await outcomeOf({ tagged: false, taggedExplicitly: false });
+    expect(out?.reply ?? null).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it("named but not the Pi's real tag: nothing changed", async () => {
+    const { out, calls } = await outcomeOf({ tagged: true, taggedExplicitly: false });
+    expect(out?.reply ?? null).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it("the write throws: nothing said, the failure on the note", async () => {
+    const { model } = stubModel({ [OFF]: QUIET_FACTS });
+    const r = recorder(model, paidWorld());
+    const res = await run({
+      messages: [msg({ body: OFF, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true })],
+      deps: { ...r.deps, applyQuietHoursWords: async () => { throw new Error("db down"); } },
+    });
+    const out = res.outcomes.get(`wa-${OFF.slice(0, 14)}`);
+    expect(out?.reply ?? null).toBeNull();
+    expect(out?.writeFailed).toBe(true);
+    expect(res.degradations.join("\n")).toMatch(/quiet_hours threw \(db down\)/);
+  });
+});

@@ -36,7 +36,9 @@ import { HAIKU_CALL, anthropicModel, type PipelineModel } from "../src/lib/pipel
 import { HAIKU_SHORT_ANSWER_MAX_TOKENS } from "../src/lib/models.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
-import { messageMentionsBotExplicitly } from "../src/lib/interaction-contract.ts";
+// The tag as the Pi reports it for these cases: "@Match Time" written in the body
+// (`messageMentionsBotExplicitly` was replaced by `piMentionsBot`, 2026-10-30).
+const messageMentionsBotExplicitly = (m: { body: string }): boolean => /@match\s*time/i.test(m.body);
 import { organisersContext } from "../src/lib/admin-group-context.ts";
 import { resolvePartnerRef, type PartnerChoice } from "../src/lib/partner-ask-words-rules.ts";
 import { DM_INTENT_SYSTEM_PROMPT, buildDmIntentUserTurn, parseDmIntent, type DmIntent } from "../src/lib/dm-intent.ts";

@@ -136,6 +136,15 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * context also tells what a short answer answers. 11,257 to 13,391
  * characters. Paid check: scripts/live-check-admin-retry-venue.ts, then
  * one pass of every suite above.
+ *
+ * And on 2026-10-31 (MT Test, "@Match Time turn off quiet hours now" was
+ * read "other" and got "I can't change that by message"): one action,
+ * `quiet_hours`, defined once in the action list, its three fields
+ * (`quietOff`, `quietFrom`, `quietTo`) once in the field list, and one
+ * example group, EN and TR side by side, with a question and talk about
+ * them as "other". Nothing else reworded. 13,528 to 14,818 characters.
+ * Paid check: scripts/live-check-quiet-hours.ts, then one pass of the
+ * admin extractor's suites.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: HAIKU_CALL,
@@ -617,6 +626,7 @@ THE ACTION, exactly one. A question, an opinion or a discussion about whether to
   "season_break" no football for a whole MONTH or more ("no football in December", "aralıkta maç yok"), or the football is back in a month ("we're back in January", "ocakta başlıyoruz"). One game off ("no game Friday", "bu hafta maç yok") is "cancel_match".
   "set_venue" tell MatchTime where the club plays: name its pitch or venue, or pick one of the places MatchTime listed. Asking where the game is, or talking about a pitch, is "other".
   "retry_ask" try MatchTime's last request again, or say that what stopped it is now done or fixed, naming nothing new ("done, try again", "added the venue location"). A message that names the place is "set_venue"; one that asks for something again in full ("now ask the pool") is that action.
+  "quiet_hours" switch the club's quiet hours (the night hours MatchTime holds its own messages in) off or on, or set when they start or end. Asking about them, or talking about them, is "other".
   "fee_waiver" give named players a free place, so they owe nothing for a game, or take one back. "Free" as in able to play ("I'm free Tuesday") is not this.
   "bulk_payment" someone paid for several players.
   "reminder" MatchTime is to remind the sender, at a time.
@@ -638,6 +648,9 @@ THE FIELDS. Fill toMatchTime always and the others for the action; every other f
   playMonths (season_break): each month the football is on or back in, as "YYYY-MM" the same way.
   venueName (set_venue): the pitch or venue as named, without a Turkish case ending ("Powerleague Shoreditch'te" is "Powerleague Shoreditch"). For a pick from MatchTime's numbered list of places, the name that list was for.
   venueChoice (set_venue): the number of the place picked from MatchTime's list ("2", "the second one", "ikincisi" is 2); 0 when the message names the place itself.
+  quietOff (quiet_hours): true when it switches quiet hours off, so MatchTime posts at any hour; false when it switches them on or sets their times.
+  quietFrom (quiet_hours): when they start, as a 24-hour London time "HH:MM" ("10pm" is "22:00", "gece 11" is "23:00"); "" when not said.
+  quietTo (quiet_hours): when they end, the same way ("8am" is "08:00", "sabah 9" is "09:00"); "" when not said.
   coveredRefs (fee_waiver, bulk_payment): the people the action is about, one entry each, as written: those given or losing the free place, or those paid for. "he" or "him" is the person named, else the author of the quoted message.
   undo (fee_waiver): true when it takes a free place back.
   payerRef (bulk_payment): who paid, as written.
@@ -705,6 +718,13 @@ Trying again after MatchTime said it could not do something:
   "done, try again" / "şimdi dene" -> retry_ask
   "@Match Time I've switched the pool on, go ahead" / "@Match Time havuzu açtım, devam et" -> retry_ask
   "@Match Time thanks" / "@Match Time teşekkürler" -> other
+The club's quiet hours:
+  "@Match Time turn off quiet hours now" / "@Match Time sessiz saatleri kapat" -> quiet_hours, quietOff true
+  "@Match Time switch quiet hours back on" / "@Match Time sessiz saatleri tekrar aç" -> quiet_hours
+  "@Match Time quiet hours from 22:00 to 8am" / "@Match Time sessiz saatler 22:00 ile 08:00 arası" -> quiet_hours, quietFrom "22:00", quietTo "08:00"
+  "@Match Time don't post before 7am" / "@Match Time sabah 7'den önce mesaj atma" -> quiet_hours, quietTo "07:00"
+  "@Match Time are quiet hours on?" / "@Match Time sessiz saatler açık mı?" -> other
+  "the quiet hours held my message again" / "sessiz saatler yine mesajımı bekletti" -> other, toMatchTime false
 Free places and payments:
   "Bilal washed the bibs, he's free this week" -> fee_waiver, coveredRefs ["Bilal"]
   "put Bilal down as free on Friday" / "Ali ve Can cuma günü ödemesin" -> fee_waiver, coveredRefs ["Bilal"] / ["Ali","Can"], matchDay "on Friday" / "cuma günü"
@@ -921,7 +941,7 @@ const ADMIN_SCHEMA = {
   properties: {
     action: {
       type: "string",
-      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "other"],
+      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "other"],
     },
     // season_break (2026-10-29): the months with no football, and the
     // months it is back in, each "YYYY-MM".
@@ -951,11 +971,16 @@ const ADMIN_SCHEMA = {
     // MatchTime's list of places (0 is the stand-in for "none picked").
     venueName: { type: "string" },
     venueChoice: { type: "number" },
+    // quiet_hours (2026-10-31): switch them off, and the London times said
+    // ("HH:MM", "" when not said).
+    quietOff: { type: "boolean" },
+    quietFrom: { type: "string" },
+    quietTo: { type: "string" },
     // Who the message is spoken to (2026-10-22): MatchTime, or a person or
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1269,7 +1294,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "other"].includes(action)) {
+      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1320,6 +1345,11 @@ export function parseFacts(
         ...(action === "set_venue" && typeof raw.venueChoice === "number" && Number.isInteger(raw.venueChoice) && raw.venueChoice > 0
           ? { venueChoice: raw.venueChoice }
           : {}),
+        // quiet_hours (2026-10-31): off only when true, and then no times;
+        // the times as written, trimmed, checked by the save core.
+        ...(action === "quiet_hours" && raw.quietOff === true ? { quietOff: true as const } : {}),
+        ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietFrom === "string" && raw.quietFrom.trim() ? { quietFrom: raw.quietFrom.trim() } : {}),
+        ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietTo === "string" && raw.quietTo.trim() ? { quietTo: raw.quietTo.trim() } : {}),
         // season_break (2026-10-29): only well-formed "YYYY-MM" months.
         ...(action === "season_break" ? { breakMonths: monthKeysOf(raw.breakMonths), playMonths: monthKeysOf(raw.playMonths) } : {}),
         // Only a clear true: a missing or false value keeps HQ's outward
