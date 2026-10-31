@@ -6,7 +6,8 @@
  *
  * Validates (lib/pool/profile-fields.ts), writes ONE waiting profile
  * (lib/pool/signup.ts) and answers with the code and the wa.me link that
- * opens WhatsApp with the confirm message. Nothing is live, and nobody is
+ * opens WhatsApp with the confirm message, plus the status token the /play
+ * reminder asks with (`signup-status-token.ts`). Nothing is live, and nobody is
  * messaged, until the person sends that message himself.
  *
  * THE MATCHTIME NUMBER. This answer carries it inside the wa.me link, as the
@@ -16,6 +17,7 @@
  * MatchTime; that is the whole point of the pool's WhatsApp-first sign-up.
  */
 import { NextResponse } from "next/server";
+import { poolRequestIp } from "@/lib/pool/request-ip";
 import { matchtimeWaNumber } from "@/lib/club-connect";
 import { waMeLink } from "@/lib/club-connect-rules";
 import { poolConfirmPrefill } from "@/lib/pool/confirm-rules";
@@ -23,12 +25,7 @@ import { isPoolSignupPaused } from "@/lib/pool/flags";
 import { poolOpenForApiRequest } from "@/lib/pool/flags-request";
 import { readSignupSource, validatePoolSignup } from "@/lib/pool/profile-fields";
 import { createPoolSignup } from "@/lib/pool/signup";
-
-function requestIp(request: Request): string | null {
-  const first = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim();
-  const ip = first || (request.headers.get("x-real-ip") ?? "").trim();
-  return ip ? ip.slice(0, 64) : null;
-}
+import { poolSignupStatusToken } from "@/lib/pool/signup-status-token";
 
 export async function POST(request: Request) {
   if (isPoolSignupPaused()) return NextResponse.json({ ok: false, reason: "paused" }, { status: 503 });
@@ -44,7 +41,7 @@ export async function POST(request: Request) {
   const source = readSignupSource((body.source ?? {}) as Record<string, unknown>);
   const res = await createPoolSignup({
     fields: valid.value,
-    ip: requestIp(request),
+    ip: poolRequestIp(request),
     source,
     earlyList: !(await poolOpenForApiRequest(request)),
   });
@@ -54,5 +51,15 @@ export async function POST(request: Request) {
   }
 
   const prefill = poolConfirmPrefill(valid.value.language, res.code);
-  return NextResponse.json({ ok: true, code: res.code, prefill, waLink: waMeLink(number, prefill), earlyList: res.earlyList });
+  return NextResponse.json({
+    ok: true,
+    code: res.code,
+    prefill,
+    waLink: waMeLink(number, prefill),
+    earlyList: res.earlyList,
+    // For the /play reminder (signup-status-token.ts): only this browser's
+    // own sign-up can be asked about, and only "waiting", "done" or "gone".
+    statusToken: poolSignupStatusToken(res.id, res.code),
+    expiresAt: res.expiresAt.toISOString(),
+  });
 }

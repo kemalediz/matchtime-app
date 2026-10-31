@@ -128,3 +128,33 @@ describe("/play gets to the first field fast", () => {
     expect(ALL.filter((l) => /\bfree\b|ücretsiz|bedava/i.test(l.text))).toEqual([]);
   });
 });
+
+/**
+ * Two in ten sign-ups never sent the WhatsApp code (2026-10-31). The confirm
+ * screen must make it unmissable that he is NOT in yet, and a returning
+ * visitor whose code still waits is reminded on /play.
+ */
+describe("the confirm screen says he is not in yet", () => {
+  for (const [lang, c] of [["en", EN], ["tr", TR]] as Array<[string, PoolPlayCopy]>) {
+    it(`${lang}: a heading that says not in yet, one short line, and the code's ${POOL_PAGE_FACTS.codeDays} days`, () => {
+      expect(c.signup.confirmHeading).toMatch(lang === "en" ? /not in yet/i : /henüz/i);
+      expect(c.signup.confirmHeading.length).toBeLessThanOrEqual(60);
+      expect(c.signup.confirmLead.length).toBeLessThanOrEqual(90);
+      expect(c.signup.confirmHelp).toContain(`${POOL_PAGE_FACTS.codeDays}`);
+      expect(c.signup.openWhatsApp).toMatch(/WhatsApp/);
+    });
+    it(`${lang}: the reminder says nearly done, send the code, no new form, and when it runs out`, () => {
+      expect(c.signup.reminderHeading.length).toBeLessThanOrEqual(40);
+      expect(c.signup.reminderLead).toMatch(/WhatsApp/);
+      expect(c.signup.reminderNoForm.length).toBeGreaterThan(0);
+      expect(c.signup.reminderUntil("Monday 3 November")).toContain("Monday 3 November");
+      expect(c.signup.expiredNote.length).toBeLessThanOrEqual(110);
+    });
+  }
+  it("the exact English and Turkish", () => {
+    expect(EN.signup.confirmHeading).toBe("You're not in yet: send the WhatsApp message");
+    expect(TR.signup.confirmHeading).toBe("Henüz katılmadın: WhatsApp mesajını gönder");
+    expect(EN.signup.reminderHeading).toBe("You're nearly done");
+    expect(TR.signup.reminderHeading).toBe("Neredeyse bitti");
+  });
+});
