@@ -1911,6 +1911,15 @@ export interface MessageOutcome {
    */
   statsLinkRequested?: boolean;
   /**
+   * A PLAYER SAID A FRIEND IS COMING (friend link, 2026-10-31). One entry
+   * per friend claim, in message order: `claimIndex` is the claim's place
+   * in the message's facts (the FriendLink row's idempotency key with the
+   * message id), `friendName` the name as written, or null for "+1" and
+   * "my brother". NOTHING here names a recipient: the link goes to this
+   * message's resolved sender (`friend-link/issue.ts`). Absent means none.
+   */
+  friendLinks?: Array<{ claimIndex: number; friendName: string | null }>;
+  /**
    * A how-it-works question (2026-10-16): the asker gets the help
    * explainer for this topic (null: the help menu), written for the club's
    * settings. Decided here; the words are `buildHelpReply`'s, attached by

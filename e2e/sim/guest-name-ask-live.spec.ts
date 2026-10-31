@@ -66,7 +66,9 @@ const ASK_RE = /what(?:'s| is| are) their names?\?/i;
         players: [
           { key: "owner", name: "Oscar Owner", role: "OWNER" },
           { key: "alice", name: "Alice Admin", role: "ADMIN" },
-          { key: "amir", name: "Amir Ahmadi" },
+          // Organisers since the friend link (2026-10-31, D1): a PLAYER's guest
+          // gets a friend link instead (e2e/sim/friend-link/).
+          { key: "amir", name: "Amir Ahmadi", role: "ADMIN" },
           { key: "enayem", name: "Enayem Rashid" },
           { key: "pete", name: "Pete Power" },
           { key: "dan", name: "Dan Drummer" },
@@ -75,7 +77,7 @@ const ASK_RE = /what(?:'s| is| are) their names?\?/i;
           { key: "henry", name: "Henry Hill" },
           { key: "ivan", name: "Ivan Ice" },
           { key: "jake", name: "Jake Jolly" },
-          { key: "noah", name: "Noah North" },
+          { key: "noah", name: "Noah North", role: "ADMIN" },
           { key: "quinn", name: "Quinn Quick" },
           { key: "ryan", name: "Ryan Reef" },
         ],

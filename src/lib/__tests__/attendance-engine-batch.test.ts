@@ -1039,6 +1039,8 @@ describe("a pasted list (the router's flag) keeps exactly one thing: the sender'
  * the ORDER, which is the part that matters: claim, then speak.
  */
 describe("the unnamed-guest name ask claims its once-per-match slot before it speaks", () => {
+  // An ORGANISER's "+1" (friend link D1, 2026-10-31): a player's gets a
+  // friend link instead (see "the friend link" below).
   const OFFER = "my brother can play if needed";
   const UNNAMED_GUEST = {
     claims: [
@@ -1063,14 +1065,14 @@ describe("the unnamed-guest name ask claims its once-per-match slot before it sp
 
   it("asks, and RECORDS the ask against this player and this match", async () => {
     const d = offerDeps();
-    const r = await run([msg({ body: OFFER, route: "offer" })], d);
+    const r = await run([msg({ body: OFFER, route: "offer", senderUserId: "u-alice" })], d);
     expect(r.outcomes.get("wa-1")?.reply).toMatch(/what(?:'s| is| are) their names?\?/i);
-    expect(d.guestAsksClaimed).toEqual([{ matchId: "match-1", userId: "u-pete" }]);
+    expect(d.guestAsksClaimed).toEqual([{ matchId: "match-1", userId: "u-alice" }]);
   });
 
   it("does NOT ask when the state already carries the row — the shipped gate", async () => {
-    const d = offerDeps({ loadState: async () => state({ guestAskedUserIds: ["u-pete"] }) });
-    const r = await run([msg({ body: OFFER, route: "offer" })], d);
+    const d = offerDeps({ loadState: async () => state({ guestAskedUserIds: ["u-alice"] }) });
+    const r = await run([msg({ body: OFFER, route: "offer", senderUserId: "u-alice" })], d);
     expect(r.outcomes.get("wa-1")?.reply).toBeNull();
     // Nothing was said, so nothing was claimed.
     expect(d.guestAsksClaimed).toEqual([]);
@@ -1083,9 +1085,9 @@ describe("the unnamed-guest name ask claims its once-per-match slot before it sp
       // week's match cannot silence this week's ask.
       loadState: async () => state({ matchId: "match-2", guestAskedUserIds: [] }),
     });
-    const r = await runOn("match-2", [msg({ body: OFFER, route: "offer" })], d);
+    const r = await runOn("match-2", [msg({ body: OFFER, route: "offer", senderUserId: "u-alice" })], d);
     expect(r.outcomes.get("wa-1")?.reply).toMatch(/what(?:'s| is| are) their names?\?/i);
-    expect(d.guestAsksClaimed).toEqual([{ matchId: "match-2", userId: "u-pete" }]);
+    expect(d.guestAsksClaimed).toEqual([{ matchId: "match-2", userId: "u-alice" }]);
   });
 
   it("LOSES the race → says nothing, rather than asking twice", async () => {
@@ -1093,7 +1095,7 @@ describe("the unnamed-guest name ask claims its once-per-match slot before it sp
     // double-asking is the nagging the gate exists to prevent, which is
     // why the claim happens before composition and not after the send.
     const d = offerDeps({ claimGuestNameAsk: async () => false });
-    const r = await run([msg({ body: OFFER, route: "offer" })], d);
+    const r = await run([msg({ body: OFFER, route: "offer", senderUserId: "u-alice" })], d);
     expect(r.outcomes.get("wa-1")?.reply).toBeNull();
   });
 
@@ -1104,14 +1106,14 @@ describe("the unnamed-guest name ask claims its once-per-match slot before it sp
         throw new Error("db down");
       },
     });
-    const r = await run([msg({ body: OFFER, route: "offer" })], d);
+    const r = await run([msg({ body: OFFER, route: "offer", senderUserId: "u-alice" })], d);
     expect(r.outcomes.get("wa-1")?.reply).toBeNull();
     err.mockRestore();
   });
 
   it("never writes an attendance row either way", async () => {
     const d = offerDeps();
-    await run([msg({ body: OFFER, route: "offer" })], d);
+    await run([msg({ body: OFFER, route: "offer", senderUserId: "u-alice" })], d);
     expect(d.registered).toEqual([]);
     expect(d.cancelled).toEqual([]);
   });
@@ -1698,5 +1700,72 @@ describe("a message that also asks for a team change: the swap guard reads the t
     expect(r.degradations.join(" ")).toMatch(/team change it asks for could not be read/);
     expect(r.teamsReadings?.size ?? 0).toBe(0);
     err.mockRestore();
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+ * THE FRIEND LINK (2026-10-31): a player's friend gets a link by DM, the
+ * message gets ✉️ once it is queued, and nobody is added or asked about.
+ * ══════════════════════════════════════════════════════════════════════ */
+describe("the friend link", () => {
+  const FRIEND = (personRef: string, personKind: string, personNamed: boolean) => ({
+    claims: [{ subject: "other", personRef, personNamed, personKind, polarity: "in", contingent: false, conditionOn: "none", tense: "present", reported: false, confidence: 0.9 }],
+    affirmation: "none",
+    sideRequests: [],
+  });
+  type Issued = Parameters<NonNullable<EngineBatchDeps["issueFriendLinks"]>>[0];
+  const linkDeps = (body: Record<string, unknown>, answer: { queued: boolean; reason: string; groupLine: string | null }) => {
+    const issued: Issued[] = [];
+    const d = deps({
+      model: modelReturning(body),
+      async issueFriendLinks(a) {
+        issued.push(a);
+        return answer;
+      },
+    });
+    return { d, issued };
+  };
+
+  it("named: the sender is sent his link, the message gets ✉️, nobody is added and nothing is said", async () => {
+    const { d, issued } = linkDeps(FRIEND("Ali", "named", true), { queued: true, reason: "queued", groupLine: null });
+    const r = await run([msg({ body: "my friend Ali is in", route: "other_att" })], d);
+    expect(issued).toEqual([{ matchId: "match-1", messageId: "wa-1", senderUserId: "u-pete", friends: [{ claimIndex: 0, friendName: "Ali" }] }]);
+    expect(r.outcomes.get("wa-1")).toMatchObject({ react: "✉️", reply: null, intent: "friend_link" });
+    expect(d.registered).toEqual([]);
+    expect(r.squadPostForMessageId).toBeNull();
+  });
+
+  it("unnamed: the same, with no name, and no name question", async () => {
+    const { d, issued } = linkDeps(FRIEND("+1", "placeholder", false), { queued: true, reason: "queued", groupLine: null });
+    const r = await run([msg({ body: "+1", route: "offer" })], d);
+    expect(issued[0].friends).toEqual([{ claimIndex: 0, friendName: null }]);
+    expect(r.outcomes.get("wa-1")?.react).toBe("✉️");
+    expect(d.guestAsksClaimed).toEqual([]);
+  });
+
+  it("nothing queued: no ✉️; a no-phone line is said in the group", async () => {
+    const { d } = linkDeps(FRIEND("+1", "placeholder", false), { queued: false, reason: "no phone", groupLine: "Pete, I couldn't DM you" });
+    const r = await run([msg({ body: "+1", route: "offer" })], d);
+    expect(r.outcomes.get("wa-1")).toMatchObject({ react: null, reply: "Pete, I couldn't DM you" });
+  });
+
+  it("a dep that throws: no ✉️, no reply, and the batch carries on", async () => {
+    const d = deps({
+      model: modelReturning(FRIEND("+1", "placeholder", false)),
+      async issueFriendLinks() {
+        throw new Error("db down");
+      },
+    });
+    const r = await run([msg({ body: "+1", route: "offer" })], d);
+    expect(r.outcomes.get("wa-1")).toMatchObject({ react: null, reply: null });
+  });
+
+  it("the sender's own ✅ is kept when the same message also brought a friend", async () => {
+    const both = { ...SELF_IN, claims: [...SELF_IN.claims, FRIEND("Ali", "named", true).claims[0]] };
+    const { d, issued } = linkDeps(both, { queued: true, reason: "queued", groupLine: null });
+    const r = await run([msg({ body: "I'm in and Ali too", route: "self_att" })], d);
+    expect(d.registered).toEqual(["u-pete"]);
+    expect(issued).toHaveLength(1);
+    expect(r.outcomes.get("wa-1")?.react).toBe("✅");
   });
 });

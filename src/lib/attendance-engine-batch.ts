@@ -481,6 +481,20 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    * `partner-guest-dm.ts`'s `askPartnerAfterOwnInByDm` in production.
    */
   askPartnerAfterOwnIn?: (args: { askId: string; userId: string; matchId: string }) => Promise<boolean>;
+  /**
+   * THE FRIEND LINK (2026-10-31): a player said a friend is coming
+   * (`MessageOutcome.friendLinks`). Writes the links and DMs them to the
+   * SENDER of that message, never anyone else (`friend-link/issue.ts`).
+   * `queued` true: the message gets ✉️. `groupLine`: said in the group
+   * instead (he has no number to DM, D7). Absent (the admin group, where
+   * only organisers speak and the engine never asks for a link): nothing.
+   */
+  issueFriendLinks?: (args: {
+    matchId: string;
+    messageId: string;
+    senderUserId: string;
+    friends: Array<{ claimIndex: number; friendName: string | null }>;
+  }) => Promise<{ queued: boolean; reason: string; groupLine: string | null }>;
 }
 
 export async function runAttendanceEngineBatch(args: {
@@ -1144,6 +1158,31 @@ export async function runAttendanceEngineBatch(args: {
     }
   }
 
+  // ── Stage 3a'': THE FRIEND LINK (2026-10-31) ──────────────────────
+  //
+  //   A player's "my friend Ali is in" or "+1": the engine wrote nothing
+  //   and said nothing, and asked for a link. The link goes to the
+  //   message's own resolved sender, by DM; ✉️ only once it is queued. A
+  //   dep that throws or is absent sends nothing and is reported: no ✉️
+  //   for a DM that never went.
+  const friendByMessage = new Map<string, { queued: boolean; groupLine: string | null }>();
+  for (const o of result.outcomes) {
+    if (!o.friendLinks?.length || !ownedIds.has(o.messageId)) continue;
+    const senderUserId = messages.find((m) => m.waMessageId === o.messageId)?.senderUserId ?? null;
+    if (!senderUserId || !matchId || !deps.issueFriendLinks) {
+      degradations.push(`friend link for ${o.messageId} not sent: ${!deps.issueFriendLinks ? "no sender wired here" : "no sender or match"}`);
+      continue;
+    }
+    try {
+      const sent = await deps.issueFriendLinks({ matchId, messageId: o.messageId, senderUserId, friends: o.friendLinks });
+      friendByMessage.set(o.messageId, { queued: sent.queued, groupLine: sent.groupLine });
+      if (!sent.queued) console.log(`[attendance-engine] friend link for ${o.messageId} not queued: ${sent.reason}`);
+    } catch (err) {
+      console.error(`[attendance-engine] friend link for ${o.messageId} threw; nothing sent:`, err);
+      degradations.push(`friend link for ${o.messageId} threw; nothing sent`);
+    }
+  }
+
   // ── Stage 3b: APPLY. Only writes from owned messages. ──────────────
   //
   // The engine cannot produce a write from a message it was not given
@@ -1328,6 +1367,11 @@ export async function runAttendanceEngineBatch(args: {
       ? `${ENGINE_APPLY_DEGRADED_PREFIX} ${degraded}`
       : `attendance-engine (${m.route}): ${machineReasons || "no rule fired"}`;
     if (degraded) reply = null;
+    // The friend link (2026-10-31): ✉️ when his link went; the one group
+    // line when it could not (no number to DM).
+    const friend = friendByMessage.get(m.waMessageId);
+    if (friend?.groupLine && !degraded) reply = reply ? `${reply}\n\n${friend.groupLine}` : friend.groupLine;
+    const friendReact = friend?.queued ? "✉️" : null;
 
     const senderOwnRowMoved = landed.some((w) => w.userId === m.senderUserId);
 
@@ -1335,8 +1379,12 @@ export async function runAttendanceEngineBatch(args: {
       waMessageId: m.waMessageId,
       route: m.route as Route,
       reply,
-      react: reactByMessageId.get(m.waMessageId) ?? partnerReact,
-      intent: partner ? "partner_volunteer" : intentFor(landed, m.senderUserId, attendanceFacts, reply, !!engineOutcome?.recruitRequested),
+      react: reactByMessageId.get(m.waMessageId) ?? partnerReact ?? friendReact,
+      intent: partner
+        ? "partner_volunteer"
+        : friend && landed.length === 0
+          ? "friend_link"
+          : intentFor(landed, m.senderUserId, attendanceFacts, reply, !!engineOutcome?.recruitRequested),
       action: partner ? `partner-volunteer:${partner.outcome}` : analyzedActionFor(landed, m.senderUserId),
       reasoning,
       failures,

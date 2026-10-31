@@ -92,7 +92,10 @@ const RUNS = 5; // repeat each classification-sensitive case 5×
 
     // ── POSITIVES — must register the named player EVERY run ──────────────
 
-    test(`untagged "Add Rashad please" → registers Rashad, NOT the sender (×${RUNS})`, async ({
+    // 2026-10-31 (friend link): a PLAYER's new guest is not registered; the
+    // player is sent a link for him (✉️). These positives now prove the
+    // model reads the add as a third-party IN, which is what earns the link.
+    test(`untagged "Add Rashad please" from a player → a friend link for Rashad, nobody registered (×${RUNS})`, async ({
       request,
       db,
     }) => {
@@ -102,25 +105,15 @@ const RUNS = 5; // repeat each classification-sensitive case 5×
         // kyle is NOT in the seeded squad — he's only adding Rashad.
         const r = await grp.post("kyle", "Add Rashad please");
         // eslint-disable-next-line no-console
-        console.log(
-          `[adds-live] add-Rashad run ${i + 1}: intent=${r.intent} react=${r.react} reply=${JSON.stringify((r.reply ?? "").slice(0, 60))} posts=${r.groupPosts.length}`,
-        );
-        const att = await attendanceByName(grp, "Rashad");
-        expect(att, `run ${i + 1}: Rashad must be registered`).not.toBeNull();
-        expect(["CONFIRMED", "BENCH"], `run ${i + 1}`).toContain(att!.status);
-        // Relay guard: the sender must NOT be auto-joined.
-        expect(
-          await grp.attendanceOf("kyle"),
-          `run ${i + 1}: sender (kyle) must not be auto-joined`,
-        ).toBeNull();
-        // Visible confirmation: either a ✅/🪑 react or a group post.
-        const confirmed =
-          r.react === "✅" || r.react === "🪑" || !!r.reply || r.groupPosts.length > 0;
-        expect(confirmed, `run ${i + 1}: MT must visibly confirm the add`).toBe(true);
+        console.log(`[adds-live] add-Rashad run ${i + 1}: intent=${r.intent} react=${r.react} dms=${r.dms.length}`);
+        expect(r.react, `run ${i + 1}: ✉️`).toBe("✉️");
+        expect(r.dms.map((d) => d.text).join("\n"), `run ${i + 1}: the link names Rashad`).toMatch(/link for Rashad/);
+        expect(await attendanceByName(grp, "Rashad"), `run ${i + 1}: Rashad joins only through his link`).toBeNull();
+        expect(await grp.attendanceOf("kyle"), `run ${i + 1}: sender (kyle) must not be auto-joined`).toBeNull();
       }
     });
 
-    test(`untagged 2-message "My friends down to play" + "His name is Kieran" → registers Kieran (×${RUNS})`, async ({
+    test(`untagged 2-message "My friends down to play" + "His name is Kieran" → a friend link, nobody registered (×${RUNS})`, async ({
       request,
       db,
     }) => {
@@ -132,12 +125,9 @@ const RUNS = 5; // repeat each classification-sensitive case 5×
           { player: "liam", body: "His name is Kieran" },
         ]);
         // eslint-disable-next-line no-console
-        console.log(
-          `[adds-live] Kieran-context run ${i + 1}: intents=${r.results.map((x) => x.intent).join(",")} posts=${r.groupPosts.length}`,
-        );
-        const att = await attendanceByName(grp, "Kieran");
-        expect(att, `run ${i + 1}: Kieran must be registered`).not.toBeNull();
-        expect(["CONFIRMED", "BENCH"], `run ${i + 1}`).toContain(att!.status);
+        console.log(`[adds-live] Kieran-context run ${i + 1}: intents=${r.results.map((x) => x.intent).join(",")} reacts=${r.results.map((x) => x.react).join(",")}`);
+        expect(r.results.some((x) => x.react === "✉️"), `run ${i + 1}: a link went to liam`).toBe(true);
+        expect(await attendanceByName(grp, "Kieran"), `run ${i + 1}: Kieran joins only through his link`).toBeNull();
       }
     });
 
