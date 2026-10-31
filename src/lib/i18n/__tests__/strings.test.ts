@@ -191,7 +191,6 @@ const SAMPLES: SampleArgs = {
   mom_shared: { names: "Sait Demir & Kemal Ediz", top: 4, total: 12 },
   mom_votes_header: null,
   mom_vote_row: { name: "Sait Demir", votes: 6 },
-  mom_trophy_line: null,
   mom_picked: { name: "Naim Khan" },
   format_switch_proposal: { shortBy: 2, formatName: "5-a-side", total: 10, confirmed: 10, benched: [] },
   kickoff_move_line: { newTime: "21:15", oldTime: "21:30" },

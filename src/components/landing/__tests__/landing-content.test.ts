@@ -625,7 +625,6 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
       "is in, replacing",
       "Objections? Tag me and say what to change, in your own words (for example @Match Time swap Sam with Alex), and an admin will confirm.",
       "a personal rating link. The more ratings we get, the better-balanced the",
-      "Your trophy awaits next match.",
       "You can also pay for anyone you brought along.",
       "MatchTime in your admin group",
       "Typing my name or replying to my message is not enough.",

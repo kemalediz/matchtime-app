@@ -58,7 +58,7 @@ test("the organisers' pick is announced in the players' group, in civil hours, w
   await pick(db, U.player);
   const post = (await due(request, londonAt(0, 10, 0))).find((i) => i.key === MOM_KEY);
   expect(post).toMatchObject({ kind: "group-message" });
-  expect(post?.text).toBe(`🏆 *Man of the Match: E2E 5-a-side*\n\nCongrats *${NAME.player}* 🎉\n\nYour trophy awaits next match.`);
+  expect(post?.text).toBe(`🏆 *Man of the Match: E2E 5-a-side*\n\nCongrats *${NAME.player}* 🎉`);
   // Not overnight.
   expect((await due(request, londonAt(0, 22, 30))).find((i) => i.key === MOM_KEY)).toBeUndefined();
 });

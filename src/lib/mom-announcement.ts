@@ -29,8 +29,8 @@ export interface BuildMomAnnouncementArgs {
 }
 
 /**
- * Build the MoM result announcement text. The closing perk line is trophy
- * only — the drink offer was removed 2026-07-06.
+ * Build the MoM result announcement text. It ends on the vote breakdown:
+ * the drink offer went 2026-07-06 and the trophy line 2026-10-31.
  */
 export function buildMomAnnouncement(args: BuildMomAnnouncementArgs): string {
   const { mvpLabel, activityName, tally } = args;
@@ -52,15 +52,14 @@ export function buildMomAnnouncement(args: BuildMomAnnouncementArgs): string {
     (sharedHeader
       ? `${s.mom_shared({ names: namesText, top: topCount, total: totalVotes })}\n\n`
       : `${s.mom_winner({ name: namesText, top: topCount, total: totalVotes })}\n\n`) +
-    `${s.mom_votes_header}\n${breakdown}\n\n` +
-    s.mom_trophy_line
+    `${s.mom_votes_header}\n${breakdown}`
   );
 }
 
 /**
  * The announcement when the organisers picked Man of the Match
- * (mom-chooser.ts): the same header and trophy line, the winner's name,
- * and no word about votes.
+ * (mom-chooser.ts): the same header, the winner's name, and no word about
+ * votes.
  */
 export function buildMomPickedAnnouncement(args: {
   mvpLabel: string;
@@ -71,7 +70,6 @@ export function buildMomPickedAnnouncement(args: {
   const s = t(args.lang);
   return (
     `${s.mom_header({ mvpLabel: args.mvpLabel, activityName: args.activityName })}\n\n` +
-    `${s.mom_picked({ name: args.name })}\n\n` +
-    s.mom_trophy_line
+    s.mom_picked({ name: args.name })
   );
 }
