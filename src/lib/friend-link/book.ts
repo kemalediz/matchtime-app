@@ -6,7 +6,8 @@
  *
  *   1. the refusals first (`friendBookingRefusal`): the link used or the
  *      game started or called off, the member's own number, a player
- *      already on the list, blocked by the club or paused for reports, a
+ *      already on the list, blocked by the club or paused for reports,
+ *      removed from this club by an organiser (`guest-door-rules.ts`), a
  *      guest of this club for another game. Told in one DM; the link is
  *      not spent.
  *   2. the link is claimed once (compare-and-set on `usedAt`, his message
@@ -22,6 +23,7 @@
  */
 import { db } from "../db";
 import { normaliseLang } from "../i18n/lang";
+import { GUEST_DOOR_SELECT, guestDoorShut } from "../guest-door-rules";
 import { tellClubAboutGuest } from "../guest-notice";
 import { placeFriendGuest } from "../partner-guest";
 import { buildPoolManageLink, buildSignedPoolLink } from "../pool/links";
@@ -90,13 +92,15 @@ async function bookUnlocked(a: BookFriendArgs, now: Date): Promise<BookFriendRes
 
   const [row, mem] = await Promise.all([
     db.attendance.findUnique({ where: { matchId_userId: { matchId: link.matchId, userId: a.userId } }, select: { status: true } }),
-    db.membership.findUnique({ where: { userId_orgId: { userId: a.userId, orgId: link.orgId } }, select: { leftAt: true, guestMatchId: true } }),
+    db.membership.findUnique({ where: { userId_orgId: { userId: a.userId, orgId: link.orgId } }, select: GUEST_DOOR_SELECT }),
   ]);
   const refusal = friendBookingRefusal({
     linkState: friendLinkState({ used: !!link.usedAt, matchStatus: facts.status, isHistorical: facts.isHistorical, kickoff: facts.kickoff, now }),
     isIssuer: a.userId === link.issuedByUserId,
     alreadyOnMatch: row?.status === "CONFIRMED" || row?.status === "BENCH",
-    blocked: profile.blockedByClub || a.blockedProfile === true,
+    // The club blocked him or MatchTime paused him, or an organiser removed
+    // him from this club (guest-door-rules.ts). He stays a pool member.
+    blocked: guestDoorShut({ blocked: profile.blockedByClub || a.blockedProfile === true, membership: mem }),
     guestElsewhere: !!mem && !mem.leftAt && !!mem.guestMatchId && mem.guestMatchId !== link.matchId,
   });
   if (refusal) return refuse(refusal);

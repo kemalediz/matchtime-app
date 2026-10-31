@@ -373,7 +373,7 @@ export default function PlayersPage() {
 
   async function handleRemove(userId: string) {
     if (!orgId) return;
-    if (!confirm("Remove this player? Their attendance/rating history is preserved, but they won't appear in future matches.")) return;
+    if (!confirm("Remove this player? Their attendance and rating history is kept, but they won't appear in future matches, and MatchTime won't bring them back as a guest through the player pool or a friend's link. Adding them back yourself undoes this.")) return;
     try {
       const res = await removeProvisionalPlayer(userId, orgId);
       if (!res.ok) {

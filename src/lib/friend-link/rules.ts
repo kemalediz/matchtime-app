@@ -92,7 +92,8 @@ export function friendBookingRefusal(a: {
   isIssuer: boolean;
   /** He already has a CONFIRMED or BENCH row on this match. */
   alreadyOnMatch: boolean;
-  /** The club blocked him, or MatchTime paused him for reports or by hand. */
+  /** The club blocked him, MatchTime paused him for reports or by hand, or
+   *  an organiser removed him from this club (`guest-door-rules.ts`). */
   blocked: boolean;
   /** He is this club's live guest for another match (one guest match per row). */
   guestElsewhere: boolean;

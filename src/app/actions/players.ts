@@ -441,7 +441,9 @@ export async function createPlayer(
       if (!mem.leftAt) {
         return { ok: false, error: `That number already belongs to ${existing.name ?? "a player"} in this group.` };
       }
-      await db.membership.update({ where: { id: mem.id }, data: { leftAt: null } });
+      // The organiser's own re-add wins over his earlier Remove: the club's
+      // guest doors open again (guest-door-rules.ts).
+      await db.membership.update({ where: { id: mem.id }, data: { leftAt: null, removedByOrganiserAt: null } });
       revalidatePath("/admin/players");
       return { ok: true, userId: existing.id, created: false, rejoined: true };
     }
@@ -472,7 +474,7 @@ export async function createPlayer(
       return { ok: true, userId: nameMatch.userId, created: false, rejoined: false };
     }
     if (mem && mem.leftAt) {
-      await db.membership.update({ where: { id: mem.id }, data: { leftAt: null } });
+      await db.membership.update({ where: { id: mem.id }, data: { leftAt: null, removedByOrganiserAt: null } });
       revalidatePath("/admin/players");
       return { ok: true, userId: nameMatch.userId, created: false, rejoined: true };
     }
@@ -507,7 +509,10 @@ export async function confirmProvisionalPlayer(userId: string, orgId: string) {
 /**
  * Admin: remove a player who was auto-provisioned but shouldn't have
  * been (e.g. non-playing group member). Sets leftAt, preserving any
- * attendance/rating history.
+ * attendance/rating history, and stamps `removedByOrganiserAt` (Kemal,
+ * 2026-10-31): an ORGANISER ended this membership, so MatchTime never
+ * brings him back into this club's games as a guest, by a pool offer or a
+ * friend's link (guest-door-rules.ts). Re-adding him clears it.
  */
 export async function removeProvisionalPlayer(
   userId: string,
@@ -519,9 +524,10 @@ export async function removeProvisionalPlayer(
   const { refusal } = await playerEditContext(session.user.id, orgId);
   if (refusal) return { ok: false, error: refusal.error };
 
+  const now = new Date();
   await db.membership.update({
     where: { userId_orgId: { userId, orgId } },
-    data: { leftAt: new Date(), provisionallyAddedAt: null },
+    data: { leftAt: now, removedByOrganiserAt: now, provisionallyAddedAt: null },
   });
   // ...and off every match of the club still to come (FNF, 2026-10-24:
   // "Glazers" stayed on the bench, printed as "a player"). After the
@@ -1068,13 +1074,15 @@ async function ensureOrgPlayer(
   return { ok: true, userId: user.id, created: true };
 }
 
+/** The organiser put him on a match himself: his own action, so a stamp
+ *  from an earlier Remove is cleared too (guest-door-rules.ts). */
 async function ensureMembership(userId: string, orgId: string) {
   const mem = await db.membership.findUnique({
     where: { userId_orgId: { userId, orgId } },
-    select: { id: true, leftAt: true },
+    select: { id: true, leftAt: true, removedByOrganiserAt: true },
   });
   if (!mem) await db.membership.create({ data: { userId, orgId, role: "PLAYER" } });
-  else if (mem.leftAt) await db.membership.update({ where: { id: mem.id }, data: { leftAt: null } });
+  else if (mem.leftAt || mem.removedByOrganiserAt) await db.membership.update({ where: { id: mem.id }, data: { leftAt: null, removedByOrganiserAt: null } });
 }
 
 export type AddToMatchResult =

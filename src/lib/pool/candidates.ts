@@ -17,6 +17,7 @@
  */
 import { db } from "../db";
 import { boundingBox } from "../club-discovery-rules";
+import { GUEST_DOOR_SELECT } from "../guest-door-rules";
 import { platformRoom } from "./caps";
 import { candidateRowsOf, matchContextOf, type RawOffer } from "./candidate-rows";
 import { poolOffersOpenForClub } from "./flags";
@@ -106,8 +107,10 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
   const userIds = profiles.map((p) => p.userId as string);
   const kickoff = ctx.kickoff;
 
-  const [members, onMatch, blocks, offers, busy, guestPlaces, ownGames] = await Promise.all([
+  const [members, removed, onMatch, blocks, offers, busy, guestPlaces, ownGames] = await Promise.all([
     db.membership.findMany({ where: { orgId: ctx.orgId, userId: { in: userIds }, leftAt: null, guestMatchId: null }, select: { userId: true } }),
+    // Removed from this club by an organiser (guest-door-rules.ts).
+    db.membership.findMany({ where: { orgId: ctx.orgId, userId: { in: userIds }, removedByOrganiserAt: { not: null } }, select: { userId: true, ...GUEST_DOOR_SELECT } }),
     db.attendance.findMany({ where: { matchId, userId: { in: userIds } }, select: { userId: true } }),
     db.poolBlock.findMany({ where: { orgId: ctx.orgId, userId: { in: userIds } }, select: { userId: true } }),
     db.poolOffer.findMany({
@@ -160,6 +163,7 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
       clubMemberIds: new Set(members.map((m) => m.userId)),
       onMatchIds: new Set(onMatch.map((a) => a.userId)),
       blockedIds: new Set(blocks.map((b) => b.userId)),
+      clubMemberships: removed,
       offers: rawOffers,
       busy: busy.map((b) => ({ userId: b.userId, kickoff: b.match.date, durationMins: b.match.activity.matchDurationMins })),
       guestPlaces: guestPlaces.map((g) => ({ userId: g.userId, result: g.result, matchDate: g.match.date })),
