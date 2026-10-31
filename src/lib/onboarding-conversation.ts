@@ -337,12 +337,19 @@ export function buildHelpReply(
     if (organisers && topic === "teams") {
       return s.onbHelpOrganisersExplainer({ topic, organiserPicks: picks }) + adminTail(s.onbHelpAdminSettings({ url: topicUrl }));
     }
-    const explainer =
+    const base =
       organisers && (topic === "availability" || topic === "reminders")
         ? s.onbHelpOrganisersExplainer({ topic, organiserPicks: picks })
         : topic === "availability" && picks
           ? s.onbHelpAvailabilityOrganiserPicks
           : s.onbHelpExplainer({ topic });
+    // The friend link (#488, 2026-10-31) is part of saying who plays: a
+    // player's friend joins by his own link (friend-link/rules.ts); an
+    // organiser's add stays direct (D1).
+    const explainer =
+      topic === "availability"
+        ? `${base}\n${s.onbHelpFriendLink}${admin ? ` ${s.onbHelpFriendLinkOrganiser}` : ""}`
+        : base;
     if (topicIsOn(topic, features)) {
       return `${explainer}\n\n${s.onbHelpOnStatus({ audience: ctx.audience, url: topicUrl })}`;
     }

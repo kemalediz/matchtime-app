@@ -95,8 +95,7 @@ const EN_CASES: Case[] = [
     en.payments_live_announcement({ collector: "Raihan", card: true, bank: false, direct: true }),
     /Just DM me \*Paid\*/,
   ],
-  ["ao_ready_no_tag (reads)", en.ao_ready_no_tag({ reads: true, mainChat: false }), /just type the command/],
-  ["ao_ready_no_tag (not reads)", en.ao_ready_no_tag({ reads: false, mainChat: false }), /just type the command|clear commands/],
+  ["ao_ready_no_tag", en.ao_ready_no_tag({ mainChat: false }), /just type the command|clear commands/],
   ["ao_ready_help_group", en.ao_ready_help_group, /Type \*help\* here/],
 ];
 
@@ -135,8 +134,7 @@ const TR_CASES: Case[] = [
     tr.payments_live_announcement({ collector: "Raihan", card: true, bank: false, direct: true }),
     /\*Ödedim\* yazın/,
   ],
-  ["ao_ready_no_tag (reads)", tr.ao_ready_no_tag({ reads: true, mainChat: false }), /komutu yazmanız yeter/],
-  ["ao_ready_no_tag (not reads)", tr.ao_ready_no_tag({ reads: false, mainChat: false }), /komutu yazmanız yeter|açık komutlarla/],
+  ["ao_ready_no_tag", tr.ao_ready_no_tag({ mainChat: false }), /komutu yazmanız yeter|açık komutlarla/],
   ["ao_ready_help_group", tr.ao_ready_help_group, /\*yardım\* yazın/],
 ];
 

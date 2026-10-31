@@ -279,8 +279,17 @@ export default async function AdminGuidePage() {
           isn&apos;t lost) and flagged <strong>NEW</strong> for you to check.
         </li>
         <li>
-          <strong>Someone brings them</strong> (&quot;my brother Dan is in
-          too&quot;). Same as above: added and flagged for you.
+          <strong>A player brings a friend</strong> (&quot;my friend Ali is
+          coming&quot;). MatchTime reacts ✉️ and DMs that player a friend
+          link to forward. The friend is added only once they open it, fill
+          in their details and send the WhatsApp code: then they are booked
+          in (or on the bench if the squad is full), join the MatchTime
+          player pool, and the group is told &quot;Ali Y. (Shane&apos;s
+          friend) is in&quot;. The link works until kick-off. The friend pays
+          like any guest, as a pay as you go player in a monthly squad, and
+          can give the place back by WhatsApp or the button on their page.
+          When an organiser or admin adds someone, they go straight on the
+          list, with no link.
         </li>
       </ol>
 
@@ -486,7 +495,35 @@ export default async function AdminGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="admin-dms">9. DMs you&apos;ll get as an admin</h2>
+      <h2 id="quiet-hours">9. Quiet hours</h2>
+      <p>
+        During quiet hours MatchTime holds the messages it sends on its own,
+        such as bench offers, pay links and admin messages, and sends them
+        when quiet hours end. Its replies to a message someone has just sent
+        it never wait, and nor do posts with their own time, like the 17:00
+        update. The times are London time.
+      </p>
+      <p>
+        A new club starts with quiet hours off, so nothing waits. To switch
+        them on, change the times or switch them off again:
+      </p>
+      <ul>
+        <li>
+          In <strong>Settings</strong>, under <strong>Quiet hours</strong>.
+          Switched on, they run from 23:00 to 09:00 until you change the
+          times.
+        </li>
+        <li>
+          Or tag MatchTime in WhatsApp, in your admin group or the
+          players&apos; group:{" "}
+          <code>@Match Time turn on quiet hours from 23:00 to 09:00</code> or{" "}
+          <code>@Match Time turn off quiet hours</code>. Only an organiser or
+          admin can change them.
+        </li>
+      </ul>
+
+      {/* ───────────────────────────────────────────────── */}
+      <h2 id="admin-dms">10. DMs you&apos;ll get as an admin</h2>
 
       <ul>
         <li>
@@ -509,7 +546,7 @@ export default async function AdminGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="corrections">10. Fixing things</h2>
+      <h2 id="corrections">11. Fixing things</h2>
 
       <h3>Someone&apos;s attendance is wrong</h3>
       <p>
@@ -525,7 +562,7 @@ export default async function AdminGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="faq">11. FAQ</h2>
+      <h2 id="faq">12. FAQ</h2>
 
       <h3>How do I get MatchTime into my group?</h3>
       <p>
@@ -536,8 +573,12 @@ export default async function AdminGuidePage() {
 
       <h3>Does MatchTime reply to everything?</h3>
       <p>
-        No. It only acts on In, Out and messages that tag{" "}
-        <strong>@Match Time</strong>. The rest of the chat is left alone.
+        No. In the players&apos; group it only acts on In, Out (and a player
+        saying a friend is coming) and on messages that tag{" "}
+        <strong>@Match Time</strong>. In your admin group it acts only on
+        messages that tag it. To tag it, type @ and pick Match Time from the
+        list. Typing the name or replying to MatchTime is not enough. The
+        rest of the chat is left alone.
       </p>
 
       {picturesOn && (

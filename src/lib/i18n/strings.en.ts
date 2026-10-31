@@ -1124,6 +1124,8 @@ export const en = {
     if (f.attendance) {
       lines.push(`✅ Say *"In"* or *"Out"* to mark your own availability, no need to tag me.`);
       lines.push(`🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.`);
+      // The friend link (#488, 2026-10-31): friend-link/rules.ts.
+      lines.push(`👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.`);
     } else {
       lines.push(`📋 Paste your squad list and I'll read who's playing, no need to tag me.`);
     }
@@ -1147,6 +1149,9 @@ export const en = {
       lines.push(`💬 Tag *@Match Time* when you want me to do or tell you something:`);
       for (const c of caps) lines.push(`   • ${c}`);
     }
+    // A real tag only (#482, #487, 2026-10-31): interaction-contract.ts
+    // `piMentionsBot`.
+    lines.push(`👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.`);
     lines.push(`🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.`);
     if (f.momVoting) lines.push(`🏆 After the game I'll run a quick *Man of the Match* vote.`);
     if (f.playerRating) lines.push(`⭐ I'll DM you a one-tap *rating* link after the match.`);
@@ -1360,7 +1365,7 @@ export const en = {
       return (
         `⚙️ *Your settings*\n` +
         `Every switch for your club is on one settings page, grouped in tabs. Not sure where something is? Type its name in *Find a setting* at the top and it takes you straight there:\n${p.url}\n` +
-        `Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch.`
+        `Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*.`
       );
     }
     if (p.audience === "group") {
@@ -1470,6 +1475,13 @@ export const en = {
     `I keep a live, numbered squad list. When it's full, extra players go on the *bench*. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
     `When a place opens, the organisers pick who plays from the bench. Say *Out* any time if you can't make it.`,
 
+  /** "help availability" (2026-10-31): the friend link (#488), as
+   *  friend-link/rules.ts and friend-link.en.ts do it. Appended to every
+   *  availability explainer by buildHelpReply. */
+  onbHelpFriendLink: `👥 Bringing a friend? Say so in the group (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them. Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.`,
+  /** The same, for an organiser: his own add is direct (friend link D1). */
+  onbHelpFriendLinkOrganiser: `When an organiser adds someone, they go straight on the list.`,
+
   /** An organiser's DM bare help, organisers mode with an admin group
    *  linked: where the HQ commands are. */
   onbHelpAdminOrganisers: `📣 Your organisers share the list and the teams. In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).`,
@@ -1501,6 +1513,7 @@ export const en = {
     if (p.picks) lines.push(`🙋 When I ask you to pick who plays, tag me with the numbers or names from my list, or *ALL* or *NONE* (for example *@Match Time 2 3*).`);
     if (p.paid) lines.push(`💷 *@Match Time PAID ALL*, *@Match Time PAID 1 3* or *@Match Time PAID NONE*: the money collector's answer to my list of payment claims.`);
     if (p.free) lines.push(`🎁 *"@Match Time Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`);
+    lines.push(`🌙 *"@Match Time turn on quiet hours from 23:00 to 09:00"*, *"@Match Time turn off quiet hours"*: I hold my own messages overnight, or send at any time. A new club starts with quiet hours off.`);
     lines.push(``, `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *@Match Time how do partner clubs work?* or *@Match Time where are the settings?*`);
     lines.push(`Ask *@Match Time what can you do?* here any time to see this again.`);
     return lines.join("\n");
@@ -5141,20 +5154,19 @@ export const en = {
     `💷 Pick your *Money collector* in Settings, so I know who to ask how much each player owes after a match:\n${p.link}`,
   /** The admin group reads a pasted list (admin-group-paste.ts). */
   ao_ready_paste_now: (p: { weekday: string }): string =>
-    `📋 Paste the squad list for ${p.weekday}'s game here now. I'll show you what it changes, and *YES* within 30 minutes applies it.`,
+    `📋 Tag me and paste the squad list for ${p.weekday}'s game here now. I'll show you what it changes, and *@Match Time YES* within 30 minutes applies it.`,
   /** No game yet: the nightly fixture run adds it (cron/generate-matches). */
   ao_ready_paste_later: (p: { weekday: string | null }): string =>
-    `📋 ${p.weekday ? `${p.weekday}'s game` : "Your next game"} is added overnight. From tomorrow, paste its squad list here: I'll show you what it changes, and *YES* within 30 minutes applies it.`,
-  /** `reads`: a weekly club, whose admins' every message is read
-   *  (admin-group.ts `readsSquad`). `mainChat`: attendance is on. */
-  ao_ready_no_tag: (p: { reads: boolean; mainChat: boolean }): string =>
-    (p.reads
-      ? `💬 No need to tag me here. I read every message from an admin in this group, so just say what you need in your own words. Your normal chat is fine too, I only act on clear instructions.`
-      : `💬 No need to tag me here: just say what you need in your own words. Your normal chat is fine too, I only act on clear instructions.`) +
+    `📋 ${p.weekday ? `${p.weekday}'s game` : "Your next game"} is added overnight. From tomorrow, tag me and paste its squad list here: I'll show you what it changes, and *@Match Time YES* within 30 minutes applies it.`,
+  /** How to talk to MatchTime in HQ: since #482 (2026-10-31) it acts only
+   *  on a real tag, in every club. The key keeps its old name.
+   *  `mainChat`: attendance is on. */
+  ao_ready_no_tag: (p: { mainChat: boolean }): string =>
+    `💬 Tag me in every message here: type *@* and pick *Match Time* from the list, then say what you need in your own words. Typing my name or replying to my message is not enough. Your normal chat is fine too, I stay out of it.` +
     (p.mainChat ? ` In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.` : ``),
   /** By DM (no admin group). */
   ao_ready_main_chat: `💬 In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.`,
-  ao_ready_help_group: `Ask me here any time what I can do, in your own words (for example *what can you do?*).`,
+  ao_ready_help_group: `Ask me here any time what I can do, in your own words (for example *@Match Time what can you do?*).`,
   ao_ready_help_dm: `Message me *help* any time to see what I can do.`,
   ao_teams_title: (p: { weekday: string }): string => `🟥🟦 *Teams for ${p.weekday}*`,
   ao_teams_set: (p: { confirmed: number; max: number; time: string; weekday: string }): string =>

@@ -13,8 +13,11 @@ export default function PlayerGuidePage() {
       <h3>The one rule: tag it for anything but In or Out</h3>
       <p>
         MatchTime picks up <code>IN</code> and <code>OUT</code> on its own.
-        For anything else (questions, teams, stats) start your message with{" "}
-        <strong>@Match Time</strong>. Everything else in the group, like the
+        For anything else (questions, teams, stats) tag it: type @ and pick
+        Match Time from the list, so it shows as{" "}
+        <strong>@Match Time</strong> in your message. Typing the name or
+        replying to MatchTime is not enough: without the tag it stays quiet.
+        Everything else in the group, like the
         jokes and the arguments about last week&apos;s penalty, it leaves
         alone. Tagged messages are answered straight away; plain In and Out
         messages are picked up within about 10 minutes (straight away in the
@@ -46,15 +49,14 @@ export default function PlayerGuidePage() {
         decided. Just reply <code>IN</code> or <code>OUT</code>.
       </p>
 
-      <h3>Bringing a mate</h3>
+      <h3>Saying in for someone in the group</h3>
       <ul>
-        <li><code>my brother Dan is in too</code></li>
         <li><code>me and Steve both in</code></li>
       </ul>
       <p>
-        MatchTime reacts 👍 and posts the updated squad. If your mate
-        isn&apos;t known yet, they&apos;re added and the organiser checks them
-        later.
+        If Steve is already a player in your group, MatchTime reacts 👍 and
+        posts the updated squad. Bringing someone new? See{" "}
+        <a href="#friend">Bringing a friend</a>.
       </p>
 
       <h3>Adding names to the list</h3>
@@ -65,7 +67,45 @@ export default function PlayerGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="dropping-out">2. Dropping out</h2>
+      <h2 id="friend">2. Bringing a friend</h2>
+
+      <p>
+        Say it in the group the way you normally would, no need to tag
+        MatchTime:
+      </p>
+      <ul>
+        <li><code>my friend Ali is coming</code></li>
+        <li><code>my brother can play</code></li>
+        <li><code>+1</code></li>
+      </ul>
+      <p>
+        MatchTime reacts <strong>✉️</strong> and DMs you a personal link for
+        your friend. Forward it to them. Each friend needs their own link.
+      </p>
+      <p>
+        Your friend opens the link, fills in their details and sends the
+        WhatsApp code the page gives them. They are not in the game until
+        they send that code. Once they do:
+      </p>
+      <ul>
+        <li>They are booked into the match, or onto the bench if the squad is full.</li>
+        <li>They join the MatchTime player pool, so they hear about other games near them.</li>
+        <li>The group is told, for example <em>Ali Y. (Shane&apos;s friend) is in</em>.</li>
+      </ul>
+      <p>
+        The link works until kick-off. If your friend can&apos;t make it after
+        all, they can give their place back by replying to MatchTime on
+        WhatsApp or with the button on their link&apos;s page.
+      </p>
+      <p>
+        Your friend pays like any guest: if your club collects match fees,
+        they get their own pay link after the game (in a club with a monthly
+        squad, as a pay as you go player). When an organiser adds someone
+        themselves, that person goes straight on the list, with no link.
+      </p>
+
+      {/* ───────────────────────────────────────────────── */}
+      <h2 id="dropping-out">3. Dropping out</h2>
 
       <p>Just say so:</p>
       <ul>
@@ -97,7 +137,7 @@ export default function PlayerGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="bench">3. The bench</h2>
+      <h2 id="bench">4. The bench</h2>
 
       <p>
         When the squad is full, late Ins go on the bench 🪑 in the order they
@@ -113,7 +153,7 @@ export default function PlayerGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="questions">4. Asking MatchTime questions</h2>
+      <h2 id="questions">5. Asking MatchTime questions</h2>
 
       <p>Tag it and ask. The answer is posted in the group:</p>
       <ul>
@@ -132,7 +172,7 @@ export default function PlayerGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="teams">5. Teams</h2>
+      <h2 id="teams">6. Teams</h2>
 
       <p>Anyone can ask MatchTime to split the confirmed squad:</p>
       <ul>
@@ -151,7 +191,7 @@ export default function PlayerGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="match-day">6. Before the match</h2>
+      <h2 id="match-day">7. Before the match</h2>
       <ul>
         <li>
           <strong>Daily update at 17:00.</strong> The squad so far, and a call
@@ -169,7 +209,7 @@ export default function PlayerGuidePage() {
       </ul>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="after-match">7. After the match</h2>
+      <h2 id="after-match">8. After the match</h2>
 
       <h3>Score</h3>
       <p>
@@ -207,13 +247,14 @@ export default function PlayerGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="emoji-reference">8. Reactions quick reference</h2>
+      <h2 id="emoji-reference">9. Reactions quick reference</h2>
 
       <ul>
         <li><strong>✅</strong>: you&apos;re in the squad</li>
         <li><strong>🪑</strong>: you&apos;re on the bench (squad was full)</li>
         <li><strong>👋</strong>: you&apos;ve dropped out</li>
         <li><strong>👍</strong>: got it, for a message about someone else or a score</li>
+        <li><strong>✉️</strong>: I&apos;ve DMed you a link for your friend</li>
         <li><strong>⚽</strong>: teams posted</li>
         <li>No reaction on a maybe: you&apos;ll get a DM before kickoff</li>
       </ul>
@@ -224,7 +265,7 @@ export default function PlayerGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="profile">9. Your stats page and profile</h2>
+      <h2 id="profile">10. Your stats page and profile</h2>
 
       <p>
         Every rating and result builds into your own stats page: your rating
@@ -249,7 +290,7 @@ export default function PlayerGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="tips">10. Tips</h2>
+      <h2 id="tips">11. Tips</h2>
 
       <ul>
         <li>

@@ -205,9 +205,11 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
         ``,
         `✅ Say *"In"* or *"Out"* to mark your own availability, no need to tag me.`,
         `🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.`,
+        `👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.`,
         `📣 The organisers share the squad list and the teams. I keep track of who's in and out for them.`,
         `💬 Tag *@Match Time* when you want me to do or tell you something:`,
         `   • who won last week? / past stats`,
+        `👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.`,
         `🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.`,
         `🏆 After the game I'll run a quick *Man of the Match* vote.`,
         `⭐ I'll DM you a one-tap *rating* link after the match.`,
@@ -255,13 +257,13 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
       `⚽ *Squad & availability: how it works*\n` +
         `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
         `I keep track of who's in for the organisers, and they share the list with the group. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
-        `When the squad is full, say *In* to go on the bench. When a place opens, the organisers pick who plays. Say *Out* any time if you can't make it.\n\n✅ It's on for this club.`,
+        `When the squad is full, say *In* to go on the bench. When a place opens, the organisers pick who plays. Say *Out* any time if you can't make it.\n👥 Bringing a friend? Say so in the group (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them. Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.\n\n✅ It's on for this club.`,
     );
     expect(buildHelpReply("availability", FNF, "tr", { audience: "group" })).toBe(
       `⚽ *Kadro ve katılım nasıl çalışır*\n` +
         `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
         `Kimin geldiğini organizatörler için ben takip ederim, listeyi grupla onlar paylaşır. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
-        `Kadro doluysa yedeğe girmek için *varım* yazın. Bir yer açılınca kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.\n\n✅ Bu kulüpte açık.`,
+        `Kadro doluysa yedeğe girmek için *varım* yazın. Bir yer açılınca kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.\n👥 Arkadaşınızı mı getiriyorsunuz? Grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim. Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.\n\n✅ Bu kulüpte açık.`,
     );
   });
 
@@ -311,13 +313,13 @@ describe("organiser pick in a club MatchTime still announces for", () => {
       `⚽ *Squad & availability: how it works*\n` +
         `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
         `I keep a live, numbered squad list. When it's full, extra players go on the *bench*. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
-        `When a place opens, the organisers pick who plays from the bench. Say *Out* any time if you can't make it.\n\n✅ It's on for this club.`,
+        `When a place opens, the organisers pick who plays from the bench. Say *Out* any time if you can't make it.\n👥 Bringing a friend? Say so in the group (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them. Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.\n\n✅ It's on for this club.`,
     );
     expect(buildHelpReply("availability", f, "tr", { audience: "group" })).toBe(
       `⚽ *Kadro ve katılım nasıl çalışır*\n` +
         `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
         `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
-        `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.\n\n✅ Bu kulüpte açık.`,
+        `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.\n👥 Arkadaşınızı mı getiriyorsunuz? Grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim. Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.\n\n✅ Bu kulüpte açık.`,
     );
   });
   it("every other topic is as before", () => {

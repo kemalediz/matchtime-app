@@ -975,6 +975,7 @@ export const tr: Strings = {
     if (f.attendance) {
       lines.push(`✅ Kendi durumunuz için *"varım"* veya *"yokum"* yazın, beni etiketlemenize gerek yok.`);
       lines.push(`🤔 Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce size özelden sorarım.`);
+      lines.push(`👥 Arkadaşınızı mı getiriyorsunuz? Söylemeniz yeter (örneğin *arkadaşım Ali de geliyor*), ona göndermeniz için size özelden bir bağlantı yollarım.`);
     } else {
       lines.push(`📋 Kadro listesini yapıştırın, kimin oynadığını okurum, beni etiketlemenize gerek yok.`);
     }
@@ -994,6 +995,7 @@ export const tr: Strings = {
       lines.push(`💬 Bir şey yapmamı veya söylememi istediğinizde *@Match Time* etiketleyin:`);
       for (const c of caps) lines.push(`   • ${c}`);
     }
+    lines.push(`👉 Etiketlemek için *@* yazıp listeden *Match Time*'ı seçin. Adımı yazmak ya da mesajıma yanıt vermek yetmez.`);
     lines.push(`🤐 Diğer zamanlarda sessizim, sohbet ve şaka serbest, araya girmem.`);
     if (f.momVoting) lines.push(`🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.`);
     if (f.playerRating) lines.push(`⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.`);
@@ -1160,7 +1162,7 @@ export const tr: Strings = {
       return (
         `⚙️ *Ayarların*\n` +
         `Kulübünün tüm ayarları tek bir ayarlar sayfasında, sekmelere ayrılmış olarak durur. Bir şeyin nerede olduğundan emin değil misin? Üstteki *Ayar bul* kutusuna adını yaz, seni doğrudan oraya götürür:\n${p.url}\n` +
-        `Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim.`
+        `Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim. Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*.`
       );
     }
     if (p.audience === "group") {
@@ -1239,6 +1241,9 @@ export const tr: Strings = {
     `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
     `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
 
+  onbHelpFriendLink: `👥 Arkadaşınızı mı getiriyorsunuz? Grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim. Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.`,
+  onbHelpFriendLinkOrganiser: `Bir organizatör birini eklediğinde doğrudan listeye girer.`,
+
   onbHelpAdminOrganisers: `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda beni etiketleyip orada neler yapabildiğimi kendi cümlelerinle sor (örneğin *@Match Time neler yapabilirsin?*).`,
 
   // Yönetici grubunda her şey kendi cümlelerinizle sorulur (paylaşılan
@@ -1265,6 +1270,7 @@ export const tr: Strings = {
     if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde beni etiketleyip listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın (örneğin *@Match Time 2 3*).`);
     if (p.paid) lines.push(`💷 *@Match Time ÖDENDİ HEPSİ*, *@Match Time ÖDENDİ 1 3* ya da *@Match Time ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`);
     if (p.free) lines.push(`🎁 *"@Match Time Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`);
+    lines.push(`🌙 *"@Match Time sessiz saatleri 23:00 ile 09:00 arası aç"*, *"@Match Time sessiz saatleri kapat"*: kendi mesajlarımı gece bekletirim ya da her saatte gönderirim. Yeni bir kulüpte sessiz saatler kapalı başlar.`);
     lines.push(``, `ℹ️ Herhangi bir bölümün nasıl çalıştığını, nasıl açılıp kapatıldığını kendi cümlelerinizle sorun: örneğin *@Match Time partner kulüpler nasıl çalışır?* ya da *@Match Time ayarlar nerede?*`);
     lines.push(`Bunu tekrar görmek için burada istediğiniz zaman *@Match Time neler yapabilirsin?* diye sorun.`);
     return lines.join("\n");
@@ -3756,16 +3762,14 @@ export const tr: Strings = {
   ao_ready_collector: (p) =>
     `💷 Ayarlar'da *Para toplayan kişi* seçimini yapın; maçtan sonra her oyuncunun ne kadar ödeyeceğini ona sorarım:\n${p.link}`,
   ao_ready_paste_now: (p) =>
-    `📋 ${p.weekday} günkü maçın kadro listesini şimdi buraya yapıştırın. Neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`,
+    `📋 Beni etiketleyip ${p.weekday} günkü maçın kadro listesini şimdi buraya yapıştırın. Neyin değişeceğini gösteririm, 30 dakika içinde *@Match Time EVET* yazarsanız uygularım.`,
   ao_ready_paste_later: (p) =>
-    `📋 ${p.weekday ? `${p.weekday} günkü maç` : "Sonraki maçınız"} gece ekleniyor. Yarından itibaren kadro listesini buraya yapıştırın: neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`,
+    `📋 ${p.weekday ? `${p.weekday} günkü maç` : "Sonraki maçınız"} gece ekleniyor. Yarından itibaren beni etiketleyip kadro listesini buraya yapıştırın: neyin değişeceğini gösteririm, 30 dakika içinde *@Match Time EVET* yazarsanız uygularım.`,
   ao_ready_no_tag: (p) =>
-    (p.reads
-      ? `💬 Burada beni etiketlemenize gerek yok. Bu gruptaki yöneticilerin her mesajını okurum, ne istediğinizi kendi cümlelerinizle yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım.`
-      : `💬 Burada beni etiketlemenize gerek yok, ne istediğinizi kendi cümlelerinizle yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım.`) +
+    `💬 Burada her mesajda beni etiketleyin: *@* yazıp listeden *Match Time*'ı seçin, sonra ne istediğinizi kendi cümlelerinizle yazın. Adımı yazmak ya da mesajıma yanıt vermek yetmez. Normal sohbetiniz de sorun değil, ona karışmam.` +
     (p.mainChat ? ` Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.` : ``),
   ao_ready_main_chat: `💬 Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.`,
-  ao_ready_help_group: `Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).`,
+  ao_ready_help_group: `Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *@Match Time neler yapabilirsin?*).`,
   ao_ready_help_dm: `Neler yapabildiğimi görmek için bana istediğiniz zaman *yardım* yazın.`,
   ao_teams_title: (p) => `🟥🟦 *${p.weekday} günkü takımlar*`,
   ao_teams_set: (p) =>
