@@ -116,7 +116,8 @@ scenarios("the friend sends his code", () => {
     const token = await linkFor(pool, fnf);
     const j = await friendJoins(pool, "ali", token, { person: ali });
     expect(j.sent.map((m) => m.purpose)).toContain("friend-booked");
-    expect(await pool.profileOf(ali)).toMatchObject({ status: "active", source: "friend" });
+    // Reactivated in place (review of #488): his own row, so his source stays.
+    expect(await pool.profileOf(ali)).toMatchObject({ status: "active", source: "web", consentChannel: "whatsapp" });
     expect(await pool.db.count(`SELECT count(*) FROM "PoolProfile" WHERE "userId" = $1`, [ali.userId])).toBe(1);
   });
 
