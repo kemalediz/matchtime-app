@@ -41,6 +41,7 @@ async function say(request: APIRequestContext, text: string, senderPhone = ADMIN
     headers: KEY,
     data: {
       channel: "admin-group",
+      botMentioned: true,
       groupId: HQ,
       messageId: `e2e-hqm-${++seq}`,
       text,

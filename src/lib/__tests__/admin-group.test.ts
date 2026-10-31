@@ -125,7 +125,7 @@ describe("the ✅ on a message MatchTime acted on", () => {
   it("a pick and a pasted list: ✅", async () => {
     dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round-1" });
     pick.handlePickReply.mockResolvedValue({ handled: true, outcome: "filled", replyText: "Done: Wasim is in." });
-    expect(await handleAdminGroupMessage(msg("1"))).toMatchObject({ react: "✅" });
+    expect(await handleAdminGroupMessage(msg("@Match Time 1", { botMentioned: true }))).toMatchObject({ react: "✅" });
     dbMock.organiserPickRound.findFirst.mockResolvedValue(null);
     understand.understandAdminMessage.mockResolvedValue({ route: "other_att", outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
     expect(await handleAdminGroupMessage(msg("1. Bilal\n2. Ali", { messageId: "wa-2" }))).toMatchObject({ react: "✅" });
@@ -173,12 +173,20 @@ describe("the door", () => {
 });
 
 describe("a pick reply first, then the shared pipeline", () => {
-  it("a pick reply to MatchTime's numbered list is the pick round's, and nothing else runs", async () => {
+  it("a tagged pick reply to MatchTime's numbered list is the pick round's, and nothing else runs", async () => {
     dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
     pick.handlePickReply.mockResolvedValue({ handled: true, outcome: "filled", replyText: "Done: Wasim is in." });
-    const r = await handleAdminGroupMessage(msg("2"));
+    const r = await handleAdminGroupMessage(msg("@Match Time 2", { botMentioned: true, quoted: { text: "1. Wasim\n2. Ali", fromMatchTime: true } }));
     expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "filled", replyText: "Done: Wasim is in.", react: "✅" });
     expect(understand.understandAdminMessage).not.toHaveBeenCalled();
+  });
+
+  it("an untagged pick, even as a reply to the numbered list (2026-10-31, \"real tag pls\"): never read as a pick, no tick", async () => {
+    dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
+    pick.handlePickReply.mockResolvedValue({ handled: true, outcome: "filled", replyText: "Done: Wasim is in." });
+    const r = await handleAdminGroupMessage(msg("2", { quoted: { text: "1. Wasim\n2. Ali", fromMatchTime: true } }));
+    expect(r).toEqual({ handled: false, ignored: "not-a-pick", orgId: "org-fnf", replyText: null });
+    expect(pick.handlePickReply).not.toHaveBeenCalled();
   });
 
   it("not a pick: the shared pipeline reads it, and the old answer stands when it says nothing", async () => {
@@ -192,8 +200,8 @@ describe("a pick reply first, then the shared pipeline", () => {
     dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
     dbMock.membership.findMany.mockResolvedValue([{ userId: "u-player", role: "PLAYER" }]);
     pick.handlePickReply.mockResolvedValue({ handled: false });
-    expect(await handleAdminGroupMessage(msg("2"))).toMatchObject({ handled: false, ignored: "not-an-admin" });
-    expect(pick.handlePickReply).toHaveBeenCalledWith(expect.objectContaining({ door: "admin-group", senderUserId: "u-player", text: "2" }));
+    expect(await handleAdminGroupMessage(msg("@Match Time 2", { botMentioned: true }))).toMatchObject({ handled: false, ignored: "not-an-admin" });
+    expect(pick.handlePickReply).toHaveBeenCalledWith(expect.objectContaining({ door: "admin-group", senderUserId: "u-player", text: "@Match Time 2" }));
   });
 
   it("someone not in the club, while a round is open: never a pick", async () => {
@@ -207,7 +215,8 @@ describe("a pick reply first, then the shared pipeline", () => {
     dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, whatsappBotEnabled: false });
     dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
     pick.handlePickReply.mockResolvedValue({ handled: false });
-    expect(await handleAdminGroupMessage(msg("hello"))).toMatchObject({ ignored: "not-a-pick" });
+    expect(await handleAdminGroupMessage(msg("@Match Time hello", { botMentioned: true }))).toMatchObject({ ignored: "not-a-pick" });
+    expect(pick.handlePickReply).toHaveBeenCalled();
     expect(understand.understandAdminMessage).not.toHaveBeenCalled();
   });
 

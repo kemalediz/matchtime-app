@@ -36,10 +36,11 @@ const PLAYER = PHONE.player.replace(/^\+/, "");
 const STRANGER = "447700900998";
 
 let seq = 0;
-async function say(request: APIRequestContext, text: string, senderPhone = PLAYER, messageId = `e2e-agaa-${++seq}`) {
+// Tagged by default: HQ answers only the Pi's real mention flag (2026-10-31).
+async function say(request: APIRequestContext, text: string, senderPhone = PLAYER, messageId = `e2e-agaa-${++seq}`, tagged = true) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
+    data: { channel: "admin-group", botMentioned: tagged, groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -114,7 +115,7 @@ test("someone who is not in the club: nothing changed; tagged, one line naming w
     "Pat out": { route: "other_att", reading: changeReading([["Pat Player", "out"]]) },
     "@Match Time Pat out": { route: "other_att", reading: changeReading([["Pat Player", "out"]]) },
   });
-  expect(await say(request, "Pat out", STRANGER)).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, "Pat out", STRANGER, undefined, false)).toMatchObject({ handled: false, replyText: null });
   expect(await say(request, "@Match Time Pat out", STRANGER)).toMatchObject({
     handled: true,
     outcome: "hq-only-organisers",
@@ -126,7 +127,7 @@ test("someone who is not in the club: nothing changed; tagged, one line naming w
 
 const ADMIN_FACTS = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0 };
 
-test("a player asking to change the fee: not done; one line naming who can, tagged or not (2026-10-20)", async ({ request, db }) => {
+test("a player asking to change the fee: not done; tagged, one line naming who can; untagged, silent (2026-10-31)", async ({ request, db }) => {
   const fee = async () =>
     (await db.one<{ f: number | null }>(`SELECT "feePerPlayer" AS f FROM "Match" WHERE id = $1`, [MATCH.upcoming]))?.f ?? null;
   const before = await fee();
@@ -135,7 +136,7 @@ test("a player asking to change the fee: not done; one line naming who can, tagg
     "@Match Time make the fee 6 pounds": { route: "admin_ops", facts: { action: "other", ...ADMIN_FACTS } },
   });
   const line = { handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null };
-  expect(await say(request, "make the fee 6 pounds")).toMatchObject(line);
+  expect(await say(request, "make the fee 6 pounds", PLAYER, undefined, false)).toMatchObject({ handled: false, replyText: null });
   expect(await say(request, "@Match Time make the fee 6 pounds")).toMatchObject(line);
   expect(await fee()).toBe(before);
 });

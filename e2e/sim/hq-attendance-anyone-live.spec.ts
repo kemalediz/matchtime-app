@@ -5,7 +5,8 @@
  * attendance extractor (no stub): in FNF HQ Abdul-Hafeez Niaz, a PLAYER,
  * wrote "Naim is out" and nothing happened. Since Kemal and FNF's Raihan
  * agreed that anyone in HQ changes who plays, Naim is taken out, with the
- * organiser's reply, recorded as the player's.
+ * organiser's reply, recorded as the player's. Since 2026-10-31 HQ answers
+ * only a real tag, so the message tags MatchTime.
  *
  * Opt in: MT_SIM_LIVE_LLM=1 (spends ANTHROPIC_API_KEY_DEV). Skipped otherwise.
  *
@@ -36,9 +37,10 @@ const HQ = "120363777000000072@g.us";
       headers: KEY,
       data: {
         channel: "admin-group",
+        botMentioned: true,
         groupId: HQ,
         messageId,
-        text: "Naim is out",
+        text: "@Match Time Naim is out",
         senderPhone: PHONE.player.replace(/^\+/, ""),
         timestamp: String(Math.floor(Date.now() / 1000)),
       },

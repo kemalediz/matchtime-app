@@ -47,7 +47,7 @@ async function say(
 ) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
+    data: { channel: "admin-group", botMentioned: true, groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -96,7 +96,7 @@ test.afterAll(() => {
 
 test("someone who is not in the club: their number in the pick round picks nobody", async ({ request, db }) => {
   await openRound(db, "e2e-aolp-round-1", [U.bench]);
-  expect(await say(request, "1", STRANGER)).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, "1", STRANGER, undefined, { botMentioned: false })).toMatchObject({ handled: false, replyText: null });
   expect(await statusOf(db, U.bench)).toBe("BENCH");
 });
 
@@ -204,9 +204,10 @@ const ADMIN_FACTS = { payerRef: "", count: 0, coveredRefs: [], undo: false, matc
 const fee = async (db: TestDb) =>
   (await db.one<{ f: number | null }>(`SELECT "feePerPlayer" AS f FROM "Match" WHERE id = $1`, [MATCH.upcoming]))?.f ?? null;
 
-test("a player asks, untagged, to change the fee: one line naming who can, nothing changed", async ({ request, db }) => {
+test("a player asks, tagged, to change the fee: one line naming who can, nothing changed (untagged: silent, 2026-10-31)", async ({ request, db }) => {
   const before = await fee(db);
   engineOn({ "make the fee 6 pounds": { route: "admin_ops", facts: { action: "other", ...ADMIN_FACTS } } });
+  expect(await say(request, "make the fee 6 pounds", undefined, undefined, { botMentioned: false })).toMatchObject({ handled: false, replyText: null });
   expect(await say(request, "make the fee 6 pounds")).toMatchObject({
     handled: true,
     outcome: "hq-only-organisers",
@@ -226,18 +227,16 @@ test("in Turkish: the same, the Turkish line", async ({ request, db }) => {
   expect(await fee(db)).toBe(before);
 });
 
-test("a player asks, untagged, for a free place or the players' group ask: the same line; the teams: silent; nothing done", async ({ request, db }) => {
+test("a player asks, untagged, for a free place, the players' group ask or the teams: silent, nothing done (2026-10-31)", async ({ request, db }) => {
   engineOn({
     "Tom is free this week": { route: "admin_ops", facts: { action: "fee_waiver", ...ADMIN_FACTS, coveredRefs: ["Tom"] } },
     "make the teams": { route: "balancer" },
     "ask the group if anyone can play": { route: "ask_group" },
   });
-  for (const text of ["Tom is free this week", "ask the group if anyone can play"]) {
-    expect(await say(request, text), text).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
+  // Until 2026-10-31 the first two got the line naming who can, untagged.
+  for (const text of ["Tom is free this week", "ask the group if anyone can play", "make the teams"]) {
+    expect(await say(request, text, undefined, undefined, { botMentioned: false }), text).toMatchObject({ handled: false, replyText: null });
   }
-  // Talk about the teams from a player is theirs unless asked of MatchTime
-  // (#468, 2026-10-29, FNF HQ): untagged, silent.
-  expect(await say(request, "make the teams")).toMatchObject({ handled: false, replyText: null });
   const asked = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AdminGroupMessage" WHERE "orgId" = $1 AND "askRef" LIKE 'fee:%'`, [ORG_ID]);
   expect(asked?.n).toBe("0");
   expect(await db.one(`SELECT id FROM "AdminTeamProposal" WHERE "orgId" = $1`, [ORG_ID])).toBeFalsy();
@@ -249,7 +248,8 @@ test("the organisers' own chat, untagged (EN and TR, an organiser and a player):
     "the fee went up last week didn't it": { route: "none" },
     "ücreti gelecek ay artıralım mı?": { route: "none" },
   });
-  expect(await say(request, "should we put the fee up next month?", ADMIN)).toMatchObject({ handled: false, replyText: null });
-  expect(await say(request, "the fee went up last week didn't it", PLAYER)).toMatchObject({ handled: false, replyText: null });
-  expect(await say(request, "ücreti gelecek ay artıralım mı?", ADMIN)).toMatchObject({ handled: false, replyText: null });
+  const untagged = { botMentioned: false };
+  expect(await say(request, "should we put the fee up next month?", ADMIN, undefined, untagged)).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, "the fee went up last week didn't it", PLAYER, undefined, untagged)).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, "ücreti gelecek ay artıralım mı?", ADMIN, undefined, untagged)).toMatchObject({ handled: false, replyText: null });
 });

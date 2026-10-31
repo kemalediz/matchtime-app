@@ -43,7 +43,7 @@ scenarios("a guest wants to join: the organisers' YES in HQ", () => {
     pool.arm(() => engineOn({ yes: { route: "approve" } }));
     await wantsToJoin(pool, browser, fnf, sam);
 
-    const ex = await fnf.hq.say("owner", "yes");
+    const ex = await fnf.hq.say("owner", "yes", { tagged: true });
     pool.expectSent(ex.sent, [
       { to: "fnf.hq", channel: "hq", text: "✅ Sending Sam K the players' group's invite link." },
       { to: "sam", channel: "dm", purpose: "club-invite-link", text: `Join their WhatsApp group here: ${PASTED}` },
@@ -51,7 +51,7 @@ scenarios("a guest wants to join: the organisers' YES in HQ", () => {
     expect(await invitationsOf(pool, fnf, sam)).toMatchObject([{ status: "accepted", linkSentAt: expect.any(Date) }]);
     expect(pool.sent.filter((m) => m.text.includes(PASTED) && m.to !== "sam")).toEqual([]);
 
-    const again = await fnf.hq.say("owner", "yes");
+    const again = await fnf.hq.say("owner", "yes", { tagged: true });
     expect(linkDms(again.sent)).toEqual([]);
     expect(linkDms(pool.sent)).toHaveLength(1);
   });
@@ -76,7 +76,7 @@ scenarios("a guest wants to join: the organisers' YES in HQ", () => {
     pool.arm(() => engineOn({ yes: { route: "approve" } }));
     await wantsToJoin(pool, browser, fnf, bea);
 
-    const ex = await fnf.hq.say("pete", "yes");
+    const ex = await fnf.hq.say("pete", "yes", { tagged: true });
     pool.expectSent(ex.sent, [{ to: "np.hq", channel: "hq", text: /^Only .* can change that\.$/ }]);
     expect(linkDms(pool.sent)).toEqual([]);
     expect(await invitationsOf(pool, fnf, bea)).toMatchObject([{ status: "open", clubYesAt: null }]);
@@ -98,7 +98,7 @@ scenarios("a guest wants to join: the organisers' YES in HQ", () => {
     await pool.collect();
     await fnf.hq.say("alice", BIBS);
 
-    const ex = await fnf.hq.say("owner", "yes");
+    const ex = await fnf.hq.say("owner", "yes", { tagged: true });
     pool.expectSent(ex.sent, [
       { to: "two.hq", channel: "hq", text: /^Which one is that YES for: sending (Cem Y|Dan W) the players' group's invite link, or sending (Cem Y|Dan W) the players' group's invite link\? Reply YES to that message\.$/ },
     ]);

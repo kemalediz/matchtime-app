@@ -145,9 +145,9 @@ function ask(text: string, route: string, over: Partial<Parameters<typeof unders
     org: ORG,
     messageId: "wa-9",
     text,
-    // As the real Pi sends it: "@Match Time" in the body is its own
-    // rewrite of a real mention, which comes with the flag (review of #476).
-    botMentioned: text.includes("@Match Time"),
+    // Tagged by default (Kemal, 2026-10-31: HQ answers only a real tag, the
+    // Pi's mention flag); the untagged cases pass `botMentioned: false`.
+    botMentioned: true,
     quoted: null,
     senderUserId: "u-admin",
     organiser: true,
@@ -198,19 +198,94 @@ beforeEach(() => {
   hqPool.askPoolFromWords.mockResolvedValue({ outcome: "hq-pool-asked", replyText: "🔎 Asking nearby players from the MatchTime player pool for 1 place on Fri 16 Oct, 20:00." });
 });
 
+// FNF HQ, 2026-10-30 23:56 UTC, after #481: the organisers were chatting
+// about the match and Raihan wrote "FNF refresh needed 👀", untagged and not
+// a reply. MatchTime answered "I can't do that from this group." Kemal,
+// 2026-10-31: "It should get quiet for HQ unless it is tagged", then "real
+// tag pls". One gate, before any model: only the Pi's real mention flag
+// opens HQ. Not a reply to MatchTime without it, not the bot's name typed,
+// not the model's `toMatchTime`.
+describe("HQ is quiet unless MatchTime is tagged (FNF HQ 2026-10-30 23:56 UTC)", () => {
+  const INCIDENT = "FNF refresh needed 👀";
+  const nothingDone = () => {
+    expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
+    expect(hqLog.recordMatchTimeQuestion).not.toHaveBeenCalled();
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+    expect(teams.answerTeamsYes).not.toHaveBeenCalled();
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    expect(paste.readHqSquad).not.toHaveBeenCalled();
+    expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    expect(graphics.answerGraphicRequest).not.toHaveBeenCalled();
+    expect(hqScore.answerHqScore).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(0);
+  };
+
+  it("the incident, routed admin_ops: silent, nothing read, nothing written", async () => {
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "other", toMatchTime: true }) };
+    expect(await ask(INCIDENT, "admin_ops", { deps, botMentioned: false })).toBeNull();
+    nothingDone();
+  });
+
+  it("the incident, routed balancer with the extractor's toMatchTime true: silent, nothing read, nothing written", async () => {
+    const deps = { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "rename", toMatchTime: true }) };
+    expect(await ask(INCIDENT, "balancer", { deps, botMentioned: false })).toBeNull();
+    nothingDone();
+  });
+
+  it("one log line, ids only, and the row says silent", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await ask(INCIDENT, "admin_ops", { botMentioned: false });
+    const lines = log.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("[admin-group]"));
+    log.mockRestore();
+    expect(lines).toEqual(["[admin-group] wa-9: not asked of MatchTime: silent"]);
+    expect(dbMock.adminGroupMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { hqOutcome: "silent" } }));
+  });
+
+  it("every route and every sender, untagged: silent", async () => {
+    for (const route of ["approve", "balancer", "self_att", "other_att", "ask_group", "admin_ops", "score", "question", "help", "poster", "team_sheet", "unsure", "none"]) {
+      for (const who of [{}, { organiser: false, member: true, senderUserId: "u-p" }, { organiser: false, senderUserId: null }]) {
+        expect(await ask(INCIDENT, route, { ...who, botMentioned: false })).toBeNull();
+      }
+    }
+    nothingDone();
+  });
+
+  it("the bot's name typed as words, and a reply to MatchTime's own post, without the real tag: silent", async () => {
+    expect(await ask("@Match Time refresh the list", "admin_ops", { botMentioned: false })).toBeNull();
+    expect(await ask("refresh it", "admin_ops", { quoted: { text: TEAMS_TEXT, fromMatchTime: true }, botMentioned: false })).toBeNull();
+    nothingDone();
+  });
+
+  it("the same words, tagged: read and answered as before (the one line, it cannot be done here)", async () => {
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "other" }) };
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    expect((await ask(`@Match Time ${INCIDENT}`, "admin_ops", { deps }))?.replyText).toBe("I can't do that from this group.");
+  });
+});
+
 describe("what MatchTime decided is kept on the HQ row (FNF HQ 2026-10-24, \"Glazers OUT\")", () => {
   const saved = () => {
     expect(dbMock.adminGroupMessage.updateMany).toHaveBeenCalledTimes(1);
     return dbMock.adminGroupMessage.updateMany.mock.calls[0][0];
   };
 
-  it("a squad change that went silent: the router's route and source, and \"silent\"", async () => {
+  it("a tagged squad change that changed nothing: the router's route and source, and its outcome", async () => {
     squad.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
-    expect(await ask("Glazers OUT", "other_att")).toBeNull();
+    expect(await ask("Glazers OUT", "other_att")).toMatchObject({ outcome: "hq-not-understood" });
     const arg = saved();
     expect(arg.where).toEqual({ orgId: ORG.id, waMessageId: "wa-9" });
-    expect(arg.data.hqOutcome).toBe("silent");
+    expect(arg.data.hqOutcome).toBe("hq-not-understood");
     expect(arg.data.pipelineTrace).toMatchObject({ v: 1, router: { route: "other_att", source: "model" } });
+  });
+
+  it("an untagged message (2026-10-31): \"silent\", and no router reading to keep", async () => {
+    expect(await ask("Glazers OUT", "other_att", { botMentioned: false })).toBeNull();
+    const arg = saved();
+    expect(arg.data.hqOutcome).toBe("silent");
+    expect(arg.data.pipelineTrace).toBeUndefined();
+    expect(requests).toHaveLength(0);
   });
 
   it("an answered message: its outcome", async () => {
@@ -301,15 +376,17 @@ describe("an HQ reply is decided by the quoted message's id (quoted-reply contex
     expect(teams.answerTeamsYes).not.toHaveBeenCalled();
   });
 
-  it("another organiser's message, found by id, is named, and an untagged reply to it is their conversation", async () => {
+  it("another organiser's message, found by id, is named to the router for a tagged reply; an untagged reply to it is their conversation", async () => {
     dbMock.adminGroupMessage.findMany.mockResolvedValue([
       { waMessageId: "false_hq@g.us_3EB0ORG_4478@s.whatsapp.net", waStanzaId: null, fromMatchTime: false, senderUserId: "u-2", text: "Imti is back next week", createdAt: new Date("2026-10-16T09:05:00Z") },
     ]);
     dbMock.user.findMany.mockResolvedValue([{ id: "u-2", name: "Hamzah Ali" }]);
-    const r = await ask("Rafi too", "other_att", { quoted: { messageId: "3EB0ORG", text: "Imti is back", fromMatchTime: false } });
-    expect(requests[0].user).toContain('THEY ARE REPLYING TO Hamzah Ali\'s message of Fri 16 Oct, 10:05:\n"Imti is back next week"');
-    expect(r).toBeNull();
+    const quoted = { messageId: "3EB0ORG", text: "Imti is back", fromMatchTime: false };
+    expect(await ask("Rafi too", "other_att", { quoted, botMentioned: false })).toBeNull();
+    expect(requests).toHaveLength(0);
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    await ask("Rafi too", "other_att", { quoted });
+    expect(requests[0].user).toContain('THEY ARE REPLYING TO Hamzah Ali\'s message of Fri 16 Oct, 10:05:\n"Imti is back next week"');
   });
 
   it("an organiser's message, found by id, whose words copy MatchTime's proposal is NOT relabelled MatchTime's: a YES to it is their conversation", async () => {
@@ -346,7 +423,13 @@ describe("a partner-club pairing waiting for the owner (2026-10-21)", () => {
     expect(requests[0].user).toContain("WAITING: the club owner's answer to pairing FNF with MT Test as partner clubs (1 or yes accepts, 2 or no declines), asked at 10:00.");
   });
 
-  it("a reply quoting the notice is read by the pairing reader, whatever the router would say, and no router call is paid", async () => {
+  it("an untagged reply quoting the notice: silent, never read (2026-10-31, \"real tag pls\")", async () => {
+    expect(await ask("1", "none", { quoted: { messageId: "3EB0PAIR", text: NOTICE, fromMatchTime: true }, botMentioned: false })).toBeNull();
+    expect(pairing.answerPairingInHq).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(0);
+  });
+
+  it("a tagged reply quoting the notice is read by the pairing reader, whatever the router would say, and no router call is paid", async () => {
     const r = await ask("2", "none", { quoted: { messageId: "3EB0PAIR", text: NOTICE, fromMatchTime: true } });
     expect(pairing.answerPairingInHq).toHaveBeenCalledWith({ ref: REF, orgId: "org-fnf", text: "2", senderUserId: "u-admin", noticeText: NOTICE, noticeAt: ASKED, quoted: true, now: NOW });
     expect(r).toEqual({ route: null, outcome: "pairing-accepted", replyText: "✅ Accepted." });
@@ -358,7 +441,7 @@ describe("a partner-club pairing waiting for the owner (2026-10-21)", () => {
     expect(await ask("who are they?", "question", { quoted: { messageId: "3EB0PAIR", text: NOTICE, fromMatchTime: true } })).toBeNull();
   });
 
-  it("an unquoted YES as the next message after the notice: the safe-YES rule hands it to the pairing reader", async () => {
+  it("an unquoted, tagged YES as the next message after the notice: the safe-YES rule hands it to the pairing reader", async () => {
     const r = await ask("yes", "approve");
     expect(pairing.answerPairingInHq).toHaveBeenCalledWith(expect.objectContaining({ ref: REF, text: "yes", quoted: false, noticeText: NOTICE }));
     expect(r?.outcome).toBe("pairing-accepted");
@@ -373,12 +456,19 @@ describe("a partner-club pairing waiting for the owner (2026-10-21)", () => {
 });
 
 describe("approve: the safe-YES rule", () => {
-  it("the next message after the teams were proposed, within 15 minutes: the teams are final", async () => {
+  it("an untagged YES, the next message or a reply to the proposal: silent, nothing approved (2026-10-31)", async () => {
+    expect(await ask("looks good, go", "approve", { botMentioned: false })).toBeNull();
+    expect(await ask("YES", "approve", { quoted: { text: TEAMS_TEXT, fromMatchTime: true }, botMentioned: false })).toBeNull();
+    expect(teams.answerTeamsYes).not.toHaveBeenCalled();
+    expect(hqLog.recordMatchTimeQuestion).not.toHaveBeenCalled();
+  });
+
+  it("a tagged YES, the next message after the teams were proposed, within 15 minutes: the teams are final", async () => {
     expect(await ask("looks good, go", "approve")).toEqual({ route: "approve", outcome: "teams-final", replyText: "Teams are final." });
     expect(teams.answerTeamsYes).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", messageId: "wa-9", senderUserId: "u-admin", now: NOW });
   });
 
-  it("a quoted reply to the proposal: final, whatever was said in between", async () => {
+  it("a tagged, quoted reply to the proposal: final, whatever was said in between", async () => {
     hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1"), orgRow(new Date("2026-10-16T09:05:00Z"))]);
     const r = await ask("YES", "approve", { quoted: { text: TEAMS_TEXT, fromMatchTime: true } });
     expect(r?.outcome).toBe("teams-final");
@@ -492,7 +582,7 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
       senderUserId: "u-admin",
       now: NOW,
       command: { kind: "change", swapSides: false, moves: ["Ali", "Can"], sides: [], together: [] },
-      addressed: false,
+      addressed: true,
       quotedSheet: null,
     });
     expect(requests[1].system).toContain("moves");
@@ -521,7 +611,7 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
       const r = await ask(text, "other_att");
       expect(r).toMatchObject({ route: "other_att", outcome: "squad-changed" });
       expect(requests).toHaveLength(1);
-      expect(paste.readHqSquad).toHaveBeenCalledWith(expect.objectContaining({ text, senderUserId: "u-admin", addressed: false }));
+      expect(paste.readHqSquad).toHaveBeenCalledWith(expect.objectContaining({ text, senderUserId: "u-admin", addressed: true }));
       expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route: "other_att", text, reading: CHANGE }));
     },
   );
@@ -532,11 +622,13 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
 
-  it("read as the organisers' own talk: nothing done and nothing said; addressed, the question answering then one line", async () => {
+  it("read as talk, not a change: nothing changed; tagged, the question answering then one line", async () => {
     paste.readHqSquad.mockResolvedValue(read({ kind: "other", why: "other" }));
-    expect(await ask("Mojib and Habib are in dw", "other_att")).toBeNull();
+    expect(await ask("Mojib and Habib are in dw", "other_att", { botMentioned: false })).toBeNull();
+    expect(paste.readHqSquad).not.toHaveBeenCalled();
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
     const r = await ask("@Match Time Imti is in the hospital", "other_att");
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
     expect(r?.outcome).toBe("hq-not-understood");
     expect(hqQuestion.answerHqQuestion).toHaveBeenCalled();
   });
@@ -564,13 +656,13 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(again?.outcome).not.toBe("paste-proposed");
   });
 
-  it("a pasted squad as a reply to another organiser is still the list; anything else in such a reply is theirs", async () => {
+  it("a pasted squad as a reply to another organiser: untagged, their conversation; tagged, the list (2026-10-31)", async () => {
     paste.readHqSquad.mockResolvedValue(read({ kind: "squad", lines: [], out: [] }));
-    const r = await ask("1. Bilal\n2. Ali", "other_att", { quoted: { text: "what's the list?", fromMatchTime: false } });
-    expect(r?.outcome).toBe("paste-proposed");
-    paste.readHqSquad.mockResolvedValue(read(CHANGE));
-    expect(await ask("Tom out", "other_att", { quoted: { text: "who's out?", fromMatchTime: false } })).toBeNull();
-    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    const quoted = { text: "what's the list?", fromMatchTime: false };
+    expect(await ask("1. Bilal\n2. Ali", "other_att", { quoted, botMentioned: false })).toBeNull();
+    expect(paste.readHqSquad).not.toHaveBeenCalled();
+    expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
+    expect((await ask("1. Bilal\n2. Ali", "other_att", { quoted }))?.outcome).toBe("paste-proposed");
   });
 
   it("the same list from someone who is not an organiser goes to the router as before", async () => {
@@ -584,13 +676,14 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
 
-  it("tells the squad change whether the message was addressed to MatchTime", async () => {
-    await ask("Tom is out tonight", "other_att");
-    expect(squad.handleAdminSquadChange).toHaveBeenLastCalledWith(expect.objectContaining({ addressed: false }));
+  it("tells the squad change it was addressed to MatchTime (only a tagged message gets there)", async () => {
     await ask("@Match Time Tom is out tonight", "other_att");
     expect(squad.handleAdminSquadChange).toHaveBeenLastCalledWith(expect.objectContaining({ addressed: true }));
     await ask("Tom is out tonight", "other_att", { quoted: { text: TEAMS_TEXT, fromMatchTime: true } });
     expect(squad.handleAdminSquadChange).toHaveBeenLastCalledWith(expect.objectContaining({ addressed: true }));
+    squad.handleAdminSquadChange.mockClear();
+    expect(await ask("Tom is out tonight", "other_att", { botMentioned: false })).toBeNull();
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
 
   it("tells the squad change whether the sender is an organiser", async () => {
@@ -632,10 +725,10 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
       expect(await ask(TEXT, "other_att")).toEqual({ route: "other_att", outcome: "squad-not-on-list", replyText: NOT_ON });
     });
 
-    it("not asked of MatchTime (no tag, not a reply to it): the question is the organisers' own, never answered", async () => {
+    it("untagged (2026-10-31): neither the change nor the question, nothing said", async () => {
       squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Tom out.", alsoAsks: true });
-      const r = await ask("Tom out, who's got the bibs?", "other_att");
-      expect(r).toEqual({ route: "other_att", outcome: "squad-changed", replyText: "Done: Tom out." });
+      expect(await ask("Tom out, who's got the bibs?", "other_att", { botMentioned: false })).toBeNull();
+      expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
       expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
     });
 
@@ -681,8 +774,12 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
   });
 
-  it.each(["none", "offer", "unsure"])("%s: the organisers' own conversation, silent", async (route) => {
-    expect(await ask("who is bringing the bibs?", route)).toBeNull();
+  it.each(["none", "offer", "unsure"])("%s, untagged: the organisers' own conversation, silent", async (route) => {
+    expect(await ask("who is bringing the bibs?", route, { botMentioned: false })).toBeNull();
+  });
+
+  it.each(["none", "offer"])("%s, tagged: still nothing", async (route) => {
+    expect(await ask("@Match Time who is bringing the bibs?", route)).toBeNull();
   });
 });
 
@@ -699,13 +796,14 @@ describe("a reply to another organiser, not tagged: the organisers' own conversa
   it.each(["other_att", "self_att", "unsure", "balancer", "ask_group", "question", "help", "admin_ops", "poster", "team_sheet"])(
     "%s: silent, nothing asked or done",
     async (route) => {
-      expect(await ask("Imti Rafi AH back", route, { quoted: fromOrganiser })).toBeNull();
+      expect(await ask("Imti Rafi AH back", route, { quoted: fromOrganiser, botMentioned: false })).toBeNull();
       expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
       expect(teams.handleTeamCommand).not.toHaveBeenCalled();
       expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
       expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
       expect(graphics.answerGraphicRequest).not.toHaveBeenCalled();
-      expect(requests).toHaveLength(1);
+      // Not even the router is asked (2026-10-31).
+      expect(requests).toHaveLength(0);
     },
   );
 
@@ -715,18 +813,24 @@ describe("a reply to another organiser, not tagged: the organisers' own conversa
     expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ addressed: true }));
   });
 
-  it("a reply to MatchTime's own message is not this", async () => {
-    const r = await ask("put Imti in", "other_att", { quoted: { text: TEAMS_TEXT, fromMatchTime: true } });
-    expect(r?.outcome).toBe("squad-changed");
+  it("a reply to MatchTime's own message without the tag: silent too (2026-10-31, \"real tag pls\"); with it, applied", async () => {
+    const quoted = { text: TEAMS_TEXT, fromMatchTime: true };
+    expect(await ask("put Imti in", "other_att", { quoted, botMentioned: false })).toBeNull();
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    expect((await ask("put Imti in", "other_att", { quoted }))?.outcome).toBe("squad-changed");
   });
 
-  it("a plain instruction in HQ, quoting nobody: still applied", async () => {
-    expect((await ask("put Bilal in", "other_att"))?.outcome).toBe("squad-changed");
-    expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ addressed: false }));
+  it("a plain instruction in HQ, quoting nobody: silent untagged, applied tagged", async () => {
+    expect(await ask("put Bilal in", "other_att", { botMentioned: false })).toBeNull();
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    expect((await ask("@Match Time put Bilal in", "other_att"))?.outcome).toBe("squad-changed");
   });
 
-  it("the score keeps its own rules: a scoreline replying to another organiser's question is still read", async () => {
-    expect((await ask("7-4", "score", { quoted: { text: "What was the final score!", fromMatchTime: false } }))?.outcome).toBe("hq-score-saved");
+  it("a scoreline replying to another organiser's question: silent untagged (2026-10-31), read tagged", async () => {
+    const quoted = { text: "What was the final score!", fromMatchTime: false };
+    expect(await ask("7-4", "score", { quoted, botMentioned: false })).toBeNull();
+    expect(hqScore.answerHqScore).not.toHaveBeenCalled();
+    expect((await ask("7-4", "score", { quoted }))?.outcome).toBe("hq-score-saved");
   });
 });
 
@@ -756,8 +860,9 @@ describe("unsure, addressed to MatchTime: never silent", () => {
     expect((await ask("@Match Time can you sort it", "unsure"))?.outcome).toBe("hq-not-understood");
   });
 
-  it("a reply to MatchTime's own message, with no tag, is enough", async () => {
-    expect((await ask("can you sort it", "unsure", { quoted: changeMsg }))?.outcome).toBe("hq-not-understood");
+  it("a reply to MatchTime's own message with no real tag is not enough (2026-10-31): silent", async () => {
+    expect(await ask("can you sort it", "unsure", { quoted: changeMsg, botMentioned: false })).toBeNull();
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
 
   it("the attendance engine owns it: its line, not the fallback", async () => {
@@ -772,12 +877,12 @@ describe("unsure, addressed to MatchTime: never silent", () => {
   });
 
   it("the bare word matchtime, no @ and no reply, is talk ABOUT MatchTime: silent, nothing asked", async () => {
-    expect(await ask("Matchtime has done it according to ratings", "unsure")).toBeNull();
+    expect(await ask("Matchtime has done it according to ratings", "unsure", { botMentioned: false })).toBeNull();
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
 
   it("a reply to another organiser: silent", async () => {
-    expect(await ask("can you sort it", "unsure", { quoted: { text: "who has the bibs?", fromMatchTime: false } })).toBeNull();
+    expect(await ask("can you sort it", "unsure", { quoted: { text: "who has the bibs?", fromMatchTime: false }, botMentioned: false })).toBeNull();
   });
 
   it("a monthly club: the one line, no weekly squad engine", async () => {
@@ -854,7 +959,7 @@ describe("unsure, addressed to MatchTime: never silent", () => {
     });
 
     it("not addressed to MatchTime: silent, and no question is asked", async () => {
-      expect(await ask("what is squad now including bench?", "unsure", player)).toBeNull();
+      expect(await ask("what is squad now including bench?", "unsure", { ...player, botMentioned: false })).toBeNull();
       expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
     });
 
@@ -952,19 +1057,19 @@ describe("a question or help in HQ is answered only when asked of MatchTime (FNF
 
   it.each(["question", "help"])("the incident, routed %s: no tag, no reply, silent, and the answering code is never asked", async (route) => {
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LEADERBOARD });
-    expect(await ask("Who got motm", route)).toBeNull();
+    expect(await ask("Who got motm", route, { botMentioned: false })).toBeNull();
     expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
     expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
   });
 
   it.each(["question", "help"])("routed %s, nothing would answer it: still silent, no 'not from this group' line for an organiser", async (route) => {
-    expect(await ask("what's the weather like?", route)).toBeNull();
+    expect(await ask("what's the weather like?", route, { botMentioned: false })).toBeNull();
     expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
   });
 
   it("the bare word MatchTime, with no real mention, is talk about MatchTime: silent", async () => {
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LEADERBOARD });
-    expect(await ask("MatchTime who got motm", "question")).toBeNull();
+    expect(await ask("MatchTime who got motm", "question", { botMentioned: false })).toBeNull();
     expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
   });
 
@@ -978,9 +1083,12 @@ describe("a question or help in HQ is answered only when asked of MatchTime (FNF
     expect((await ask("Who got motm", "question", { botMentioned: true }))?.outcome).toBe("hq-answered");
   });
 
-  it("the same words as a WhatsApp reply to MatchTime's own message: answered", async () => {
+  it("the same words as a WhatsApp reply to MatchTime's own message: silent untagged (2026-10-31, \"real tag pls\"), answered tagged", async () => {
     hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LEADERBOARD });
-    const r = await ask("Who got motm", "question", { quoted: { text: TEAMS_TEXT, fromMatchTime: true } });
+    const quoted = { text: TEAMS_TEXT, fromMatchTime: true };
+    expect(await ask("Who got motm", "question", { quoted, botMentioned: false })).toBeNull();
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    const r = await ask("Who got motm", "question", { quoted });
     expect(r).toEqual({ route: "question", outcome: "hq-answered", replyText: LEADERBOARD });
   });
 
@@ -1035,7 +1143,7 @@ describe("a sender who is not an organiser", () => {
   });
 
   it("a question nothing answers, not addressed to MatchTime: silent (their own chat)", async () => {
-    expect(await ask("what's the weather like?", "question", player())).toBeNull();
+    expect(await ask("what's the weather like?", "question", player({ botMentioned: false }))).toBeNull();
   });
 
   it("a question nothing answers, tagged: the one line, as for an organiser", async () => {
@@ -1058,7 +1166,7 @@ describe("a sender who is not an organiser", () => {
     expect(requests.length).toBe(1); // the router only: no extractor call for a change they cannot make
   });
 
-  it("a reply to MatchTime's own message asking for a change: the same line", async () => {
+  it("a tagged reply to MatchTime's own message asking for a change: the same line", async () => {
     const r = await ask("swap Maj and Kieran", "balancer", player({ quoted: { text: TEAMS_TEXT, fromMatchTime: true } }));
     expect(r?.outcome).toBe("hq-only-organisers");
   });
@@ -1080,21 +1188,20 @@ describe("a sender who is not an organiser", () => {
     ["shall we swap Maj and Kieran?", "none"],
     ["Matchtime has done it according to ratings", "unsure"],
   ])("their chat, not addressed to MatchTime (%s): silent", async (text, route) => {
-    expect(await ask(text, route, player())).toBeNull();
+    expect(await ask(text, route, player({ botMentioned: false }))).toBeNull();
     expect(dbMock.membership.findMany).not.toHaveBeenCalled();
   });
 
-  // 2026-10-20 (Kemal): a request the router reads as one only an organiser
-  // may make gets the line whether or not MatchTime was tagged.
+  // 2026-10-20 (Kemal) gave the line untagged too; since 2026-10-31 an
+  // untagged message is silent whatever the router would call it.
   it.each([
     ["ask the group for a player", "ask_group"],
     ["make the fee 6 pounds", "admin_ops"],
-  ])("untagged %s (%s): not done, the same one line", async (text, route) => {
-    const r = await ask(text, route, player());
-    expect(r).toEqual({ route, outcome: "hq-only-organisers", replyText: ONLY });
+  ])("untagged %s (%s): silent, nothing done, not even the router asked", async (text, route) => {
+    expect(await ask(text, route, player({ botMentioned: false }))).toBeNull();
     expect(teams.handleTeamCommand).not.toHaveBeenCalled();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
-    expect(requests.length).toBe(1); // the router only
+    expect(requests.length).toBe(0);
   });
 
   // 2026-10-29, FNF HQ: a player's "Akram & maj in the same team" (17:32)
@@ -1106,9 +1213,9 @@ describe("a sender who is not an organiser", () => {
     ["We going with these teams right?"],
     ["swap Maj and Kieran"],
   ])("untagged teams talk from a player (%s): silent, nothing read, nothing done", async (text) => {
-    expect(await ask(text, "balancer", player())).toBeNull();
+    expect(await ask(text, "balancer", player({ botMentioned: false }))).toBeNull();
     expect(teams.handleTeamCommand).not.toHaveBeenCalled();
-    expect(requests.length).toBe(1); // the router only
+    expect(requests.length).toBe(0);
   });
 
   it("tagged, and the router cannot tell what it is: the one line, never the attendance engine", async () => {
@@ -1134,11 +1241,11 @@ describe("a member of the club who is not an organiser", () => {
   });
 
   it.each([
-    ["Naim is out", "other_att"],
+    ["@Match Time Naim is out", "other_att"],
     ["@Match Time Naim IN", "other_att"],
-    ["put Bilal on the bench", "other_att"],
-    ["I'm in", "self_att"],
-  ])("the incident and its kin (%s, %s): the attendance engine, as the sender", async (text, route) => {
+    ["@Match Time put Bilal on the bench", "other_att"],
+    ["@Match Time I'm in", "self_att"],
+  ])("the incident and its kin, tagged (%s, %s): the attendance engine, as the sender", async (text, route) => {
     const r = await ask(text, route, member());
     expect(r?.outcome).toBe("squad-changed");
     expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route, text, senderUserId: "u-ah", senderName: "Abdul-Hafeez" }));
@@ -1197,7 +1304,13 @@ describe("a free place, asked for in HQ in the organisers' own words, given on Y
     hqLog.hqLogSince.mockResolvedValue([]);
   });
 
-  it("an organiser, untagged: MatchTime ASKS (nothing written here), with the day and the undo flag read", async () => {
+  it("an organiser, untagged (2026-10-31): silent, nothing asked, no model call", async () => {
+    expect(await ask("Bilal washed the bibs, he's free this week", "admin_ops", { deps: free(), botMentioned: false })).toBeNull();
+    expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(0);
+  });
+
+  it("an organiser, tagged: MatchTime ASKS (nothing written here), with the day and the undo flag read", async () => {
     const r = await ask("Bilal washed the bibs, he's free this week", "admin_ops", { deps: free() });
     expect(r).toEqual({ route: "admin_ops", outcome: "fee-free-asked", replyText: ASKED_TEXT });
     expect(feeWaiver.proposeFeeFreeInHq).toHaveBeenCalledWith({
@@ -1243,11 +1356,10 @@ describe("a free place, asked for in HQ in the organisers' own words, given on Y
     expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
   });
 
-  it("not an organiser, untagged: the line naming who can (2026-10-20), and the extractor is never asked", async () => {
-    const r = await ask("Bilal is free this week", "admin_ops", { deps: free(), senderUserId: "u-kemal", organiser: false });
-    expect(r?.outcome).toBe("hq-only-organisers");
+  it("not an organiser, untagged: silent (2026-10-31; it was the line naming who can since 2026-10-20)", async () => {
+    expect(await ask("Bilal is free this week", "admin_ops", { deps: free(), senderUserId: "u-kemal", organiser: false, botMentioned: false })).toBeNull();
     expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
-    expect(requests).toHaveLength(1);
+    expect(requests).toHaveLength(0);
   });
 
   it("an organiser's other instruction on admin_ops: still the one line, never a free place", async () => {
@@ -1259,7 +1371,14 @@ describe("a free place, asked for in HQ in the organisers' own words, given on Y
   const WAITING = { ref: "fee:fp1", kind: "fee" as const, day: "Fri 16 Oct", names: "Bilal Ahmed", undo: false, askedAt: ASKED };
   const asked = () => ({ waMessageId: "mt:fee:fp1:1", fromMatchTime: true, senderUserId: null, text: ASKED_TEXT, askRef: "fee:fp1", createdAt: ASKED });
 
-  it("the next message is YES: the free place is given (the safe-YES rule)", async () => {
+  it("the next message is an untagged YES: silent, nothing given (2026-10-31)", async () => {
+    feeWaiver.feeProposalsAwaiting.mockResolvedValue([WAITING]);
+    hqLog.hqLogSince.mockResolvedValue([asked()]);
+    expect(await ask("yes", "approve", { botMentioned: false })).toBeNull();
+    expect(feeWaiver.answerFeeProposalYes).not.toHaveBeenCalled();
+  });
+
+  it("the next message is a tagged YES: the free place is given (the safe-YES rule)", async () => {
     feeWaiver.feeProposalsAwaiting.mockResolvedValue([WAITING]);
     hqLog.hqLogSince.mockResolvedValue([asked()]);
     const r = await ask("yes", "approve");
@@ -1321,11 +1440,13 @@ describe("a partner club's ask waiting for this club's YES", () => {
 });
 
 describe("score: the players' group's score handling, with HQ's context (2026-10-16)", () => {
-  it("an organiser's score goes to the shared score handler, addressed or not", async () => {
+  it("an organiser's tagged score goes to the shared score handler; untagged, silent (2026-10-31)", async () => {
+    expect(await ask("We won 5-4", "score", { botMentioned: false })).toBeNull();
+    expect(hqScore.answerHqScore).not.toHaveBeenCalled();
     const r = await ask("Yellow won 7-4", "score");
     expect(r).toEqual({ route: "score", outcome: "hq-score-saved", replyText: "Score saved: Yellow 7, Red 4." });
     expect(hqScore.answerHqScore).toHaveBeenCalledWith(
-      expect.objectContaining({ orgId: "org-fnf", lang: "en", messageId: "wa-9", body: "Yellow won 7-4", senderUserId: "u-admin", organiser: true, addressed: false, now: NOW }),
+      expect.objectContaining({ orgId: "org-fnf", lang: "en", messageId: "wa-9", body: "Yellow won 7-4", senderUserId: "u-admin", organiser: true, addressed: true, now: NOW }),
     );
   });
 
@@ -1359,13 +1480,20 @@ describe("score: the players' group's score handling, with HQ's context (2026-10
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
 
-  it("unsure with no score waiting: never the score handling; with one waiting, the score handling reads it and says nothing when it is no score", async () => {
-    expect(await ask("7-4 mü 7-5 mi emin değilim", "unsure")).toBeNull();
+  it("tagged unsure with no score waiting: never the score handling; with one waiting, the score handling reads it first, then the usual unsure path", async () => {
+    paste.readHqSquad.mockResolvedValue(read({ kind: "other", why: "other" }));
+    expect(await ask("7-4 mü 7-5 mi emin değilim", "unsure")).toMatchObject({ outcome: "hq-not-understood" });
     expect(hqScore.answerHqScore).not.toHaveBeenCalled();
     hqScore.hqScoreRouting.mockResolvedValue({ waiting: { kind: "result", day: "Thu 15 Oct", labels: ["Red", "Yellow"] } });
     hqScore.answerHqScore.mockResolvedValue(null);
-    expect(await ask("see you at 21:00", "unsure")).toBeNull();
+    expect(await ask("see you at 21:00", "unsure")).toMatchObject({ outcome: "hq-not-understood" });
     expect(hqScore.answerHqScore).toHaveBeenCalledTimes(1);
+  });
+
+  it("untagged unsure while the score waits: silent, the score handling never asked (2026-10-31)", async () => {
+    hqScore.hqScoreRouting.mockResolvedValue({ waiting: { kind: "result", day: "Thu 15 Oct", labels: ["Red", "Yellow"] } });
+    expect(await ask("7-4", "unsure", { botMentioned: false })).toBeNull();
+    expect(hqScore.answerHqScore).not.toHaveBeenCalled();
   });
 
   it("no code sends a message to the score from its words (2026-10-30): the router decides, with the WAITING line", async () => {
@@ -1416,7 +1544,14 @@ describe("Man of the Match, where the organisers pick it", () => {
     expect(hqScore.answerHqScore).not.toHaveBeenCalled();
   });
 
-  it("a reply quoting MatchTime's Man of the Match question goes to the score handling, whatever the router says", async () => {
+  it("a reply quoting MatchTime's Man of the Match question, untagged: silent (2026-10-31, \"real tag pls\")", async () => {
+    const asked = "Score saved: Yellow 7, Red 4. Who was Man of the Match?";
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "mom:m1", asked)]);
+    expect(await ask("Mo was man of the match", "score", { org: PICK_ORG, quoted: { text: asked, fromMatchTime: true }, botMentioned: false })).toBeNull();
+    expect(hqScore.answerHqScore).not.toHaveBeenCalled();
+  });
+
+  it("a tagged reply quoting MatchTime's Man of the Match question goes to the score handling, whatever the router says", async () => {
     const asked = "Score saved: Yellow 7, Red 4. Who was Man of the Match?";
     hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "mom:m1", asked)]);
     hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-mom-saved", replyText: "Man of the Match: Naim Khan." });
@@ -1532,8 +1667,10 @@ describe("cancelling a match from HQ, and putting it back on (2026-10-22)", () =
 
   it("untagged (Kemal: it only acts when an admin tags it): nothing written, nothing said", async () => {
     for (const [text, action] of [["Cancel the session", "cancel_match"], ["storm, no game Friday", "cancel_match"], ["it's back on", "restore_match"]]) {
-      expect(await ask(text, "admin_ops", { deps: deps({ action }) })).toBeNull();
+      expect(await ask(text, "admin_ops", { deps: deps({ action }), botMentioned: false })).toBeNull();
     }
+    // Not even read (2026-10-31): no router, no extractor.
+    expect(requests).toHaveLength(0);
     expect(matchCancel.hqCancelOrRestore).not.toHaveBeenCalled();
     expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
   });
@@ -1616,43 +1753,26 @@ describe("'I can't do that from this group' is one line, and not repeated (2026-
 // AN ACTION THAT LEAVES HQ NEEDS TO BE ASKED OF MATCHTIME (2026-10-22).
 // FNF HQ 07:22 UTC: Raihan wrote "@89485761081551 can we ask Sutton
 // group?". The tag was Kemal, a person. The router sent it to ask_group and
-// MatchTime posted "We need 3 more players" in the players' group. Now a
-// post in the players' group or an ask to partner clubs happens only when
-// the message tags MatchTime, or the admin extractor says it is spoken to
-// MatchTime (toMatchTime). Otherwise nothing leaves HQ and nothing is said.
-describe("an action that leaves HQ happens only when it is asked of MatchTime (2026-10-22)", () => {
+// MatchTime posted "We need 3 more players" in the players' group. Since
+// 2026-10-31 (Kemal: "real tag pls") only the real tag of MatchTime opens HQ
+// at all; the admin extractor's `toMatchTime` no longer decides anything.
+describe("an action that leaves HQ happens only when MatchTime is tagged (2026-10-22, 2026-10-31)", () => {
   const INCIDENT = "@89485761081551 can we ask Sutton group?";
   const SUTTON = { partnershipId: "p1", partnerOrgId: "sutton", name: "Sutton FC" };
   const facts = (f: Record<string, unknown>) => adminFacts({ undo: false, matchDay: "", playersFrom: "club", clubRef: "", ...f });
 
-  it("the incident, a club with no partner: the extractor says it is spoken to a person, nothing posted, silent", async () => {
-    const deps = { routerModel: routeTo("ask_group"), extractorModel: facts({ action: "recruit", playersFrom: "partners", clubRef: "Sutton", toMatchTime: false }) };
-    expect(await ask(INCIDENT, "ask_group", { deps })).toBeNull();
-    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
-    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
-    // The extractor is told the truth: no tag on the bot.
-    const ex = requests.find((r) => r.label === "extractor:admin");
-    expect(ex?.user).toContain("THE MESSAGE (from Raihan):");
-  });
-
-  it("the incident, a partnered club: no partner ask either", async () => {
+  it.each(["ask_group", "admin_ops"])("the incident (%s), a person tagged and not MatchTime: nothing posted, nothing read, silent", async (route) => {
     partnerWords.activePartnerChoices.mockResolvedValue([SUTTON]);
-    const deps = { routerModel: routeTo("ask_group"), extractorModel: facts({ action: "recruit", playersFrom: "partners", clubRef: "Sutton", toMatchTime: false }) };
-    expect(await ask(INCIDENT, "ask_group", { deps })).toBeNull();
-    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
+    const deps = { routerModel: routeTo(route), extractorModel: facts({ action: "recruit", playersFrom: "partners", clubRef: "Sutton", toMatchTime: true }) };
+    expect(await ask(INCIDENT, route, { deps, botMentioned: false })).toBeNull();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(0);
   });
 
-  it("untagged, spoken to MatchTime: the players' group is asked, as before", async () => {
+  it("untagged, though the extractor would say it is spoken to MatchTime: silent (the model never opens HQ)", async () => {
     const deps = { routerModel: routeTo("ask_group"), extractorModel: facts({ action: "recruit", toMatchTime: true }) };
-    const r = await ask("ask the group if anyone can play", "ask_group", { deps });
-    expect(r?.outcome).toBe("group-asked");
-    expect(groupAsk.askPlayersGroup).toHaveBeenCalledTimes(1);
-  });
-
-  it("untagged, the extractor failing: nothing leaves HQ (fails closed)", async () => {
-    const broken: PipelineModel = { name: "broken", async complete() { throw new Error("529"); } };
-    expect(await ask("ask the group if anyone can play", "ask_group", { deps: { routerModel: routeTo("ask_group"), extractorModel: broken } })).toBeNull();
+    expect(await ask("ask the group if anyone can play", "ask_group", { deps, botMentioned: false })).toBeNull();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
   });
 
@@ -1670,22 +1790,18 @@ describe("an action that leaves HQ happens only when it is asked of MatchTime (2
     expect(r?.outcome).toBe("xask-words-asked");
   });
 
-  it("admin_ops, recruit from a partner club, spoken to a person: no partner ask, silent", async () => {
-    const deps = { routerModel: routeTo("admin_ops"), extractorModel: facts({ action: "recruit", playersFrom: "partners", clubRef: "Sutton", toMatchTime: false }) };
-    expect(await ask(INCIDENT, "admin_ops", { deps })).toBeNull();
-    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
-  });
-
-  it.each(["recruit", "stats_blast"])("admin_ops %s, untagged and spoken to the others: silent, not even the one line", async (action) => {
+  it.each(["recruit", "stats_blast"])("admin_ops %s, untagged: silent, not even the one line", async (action) => {
     const deps = { routerModel: routeTo("admin_ops"), extractorModel: facts({ action, toMatchTime: false }) };
-    expect(await ask("should we send everyone their stats?", "admin_ops", { deps })).toBeNull();
+    expect(await ask("should we send everyone their stats?", "admin_ops", { deps, botMentioned: false })).toBeNull();
     expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
   });
 
-  it("what stays in HQ is unchanged: an untagged free place spoken to the others is still asked about", async () => {
+  it("an untagged free place is silent too; tagged, it is asked about", async () => {
     feeWaiver.proposeFeeFreeInHq.mockResolvedValue({ outcome: "fee-asked", replyText: "Bilal plays free on Fri? YES to confirm." });
     const deps = { routerModel: routeTo("admin_ops"), extractorModel: facts({ action: "fee_waiver", coveredRefs: ["Bilal"], toMatchTime: false }) };
-    expect((await ask("Bilal washed the bibs, he's free this week", "admin_ops", { deps }))?.outcome).toBe("fee-asked");
+    expect(await ask("Bilal washed the bibs, he's free this week", "admin_ops", { deps, botMentioned: false })).toBeNull();
+    expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
+    expect((await ask("@Match Time Bilal washed the bibs, he's free this week", "admin_ops", { deps }))?.outcome).toBe("fee-asked");
   });
 });
 
@@ -1706,9 +1822,9 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
     expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
   });
 
-  it("Turkish, untagged but spoken to MatchTime: the same ask", async () => {
+  it("Turkish, tagged: the same ask", async () => {
     const deps = { routerModel: routeTo("ask_group"), extractorModel: fromPool() };
-    expect((await ask("havuzdan bir oyuncu bulur musun", "ask_group", { deps, org: { ...ORG, language: "tr" } }))?.outcome).toBe("hq-pool-asked");
+    expect((await ask("@Match Time havuzdan bir oyuncu bulur musun", "ask_group", { deps, org: { ...ORG, language: "tr" } }))?.outcome).toBe("hq-pool-asked");
     expect(hqPool.askPoolFromWords).toHaveBeenCalledWith(expect.objectContaining({ via: "words", lang: "tr" }));
   });
 
@@ -1725,9 +1841,9 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
     expect(hqPool.askPoolFromWords).toHaveBeenCalledWith(expect.objectContaining({ via: "words", userId: "u-admin" }));
   });
 
-  it("untagged and spoken to the others ('shall we try the pool?'): nothing leaves HQ, silent", async () => {
+  it("untagged ('shall we try the pool?'): nothing leaves HQ, silent", async () => {
     const deps = { routerModel: routeTo("ask_group"), extractorModel: fromPool({ toMatchTime: false }) };
-    expect(await ask("shall we try the pool?", "ask_group", { deps })).toBeNull();
+    expect(await ask("shall we try the pool?", "ask_group", { deps, botMentioned: false })).toBeNull();
     expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
   });
@@ -1925,12 +2041,14 @@ describe("try again, and set the pitch, from HQ", () => {
     expect(r?.replyText).toContain("Asked the pool.");
   });
 
-  it("an untagged \"2\" right after MatchTime's list of places: that place of the list's own words, whatever the route", async () => {
+  it("a tagged \"2\" right after MatchTime's list of places: that place of the list's own words, whatever the route; untagged, silent (2026-10-31)", async () => {
     hqLog.hqLogSince.mockResolvedValue([
       { waMessageId: "mt:venue-pick:1", fromMatchTime: true, senderUserId: null, text: "I found more than one place for *Goals Sutton*. Which one is it?", askRef: "venue-pick:Goals Sutton", createdAt: new Date(NOW.getTime() - 60_000) },
     ]);
     const deps = { ...hqDeps({ action: "set_venue", venueName: "", venueChoice: 2, toMatchTime: true }), routerModel: routeTo("none") };
-    const r = await ask("2", "none", { deps });
+    expect(await ask("2", "none", { deps, botMentioned: false })).toBeNull();
+    expect(deps.setVenueFromWords).not.toHaveBeenCalled();
+    const r = await ask("@Match Time 2", "none", { deps });
     expect(deps.setVenueFromWords).toHaveBeenCalledWith(expect.objectContaining({ words: "Goals Sutton", choice: 2 }));
     expect(r?.outcome).toBe("hq-venue-set");
   });
@@ -1949,9 +2067,9 @@ describe("try again, and set the pitch, from HQ", () => {
     expect(requests.filter((q) => q.label === "extractor:admin")).toHaveLength(0);
   });
 
-  it("spoken to the others, untagged: their conversation, nothing done or said", async () => {
-    const deps = hqDeps({ action: "retry_ask", toMatchTime: false });
-    const r = await ask("try again tomorrow lads", "admin_ops", { deps });
+  it("untagged: their conversation, nothing done or said", async () => {
+    const deps = hqDeps({ action: "retry_ask", toMatchTime: true });
+    const r = await ask("try again tomorrow lads", "admin_ops", { deps, botMentioned: false });
     expect(r).toBeNull();
     expect(deps.latestAskForRetry).not.toHaveBeenCalled();
   });
@@ -1969,6 +2087,12 @@ describe("a monthly club's coming-month list, read inside the door", () => {
     expect(requests).toEqual([]);
   });
 
+  it("untagged (2026-10-31): never read, silent", async () => {
+    monthSeedRead.proposeMonthSeedPaste.mockResolvedValueOnce({ outcome: "month-seed-proposed", replyText: "📋 I read your list for November" });
+    expect(await ask("List for November\n1. A\n2. B", "none", { org: { ...ORG, squadMode: "monthly" }, botMentioned: false })).toBeNull();
+    expect(monthSeedRead.proposeMonthSeedPaste).not.toHaveBeenCalled();
+  });
+
   it("a weekly club, or a member who is not an organiser, is never offered it", async () => {
     monthSeedRead.proposeMonthSeedPaste.mockClear();
     await ask("List for November\n1. A\n2. B", "none");
@@ -1983,6 +2107,12 @@ describe("a monthly club's collector answering the paid-claims list, inside the 
     expect(monthPayment.handleCollectorPaidReply).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", text: "1 and 3 are in" }));
     expect(r).toEqual({ route: null, outcome: "month-paid-confirmed", replyText: "✅ Confirmed for November: Alex." });
   });
+
+  it("untagged, even replying to MatchTime's list (2026-10-31, \"real tag pls\"): never read, nothing confirmed", async () => {
+    const r = await ask("1 and 3 are in", "none", { org: { ...ORG, squadMode: "monthly" }, quoted: { text: "Paid claims for November: 1. Alex", fromMatchTime: true }, botMentioned: false });
+    expect(r).toBeNull();
+    expect(monthPayment.handleCollectorPaidReply).not.toHaveBeenCalled();
+  });
 });
 
 
@@ -1992,57 +2122,60 @@ describe("HQ teams by fact (2026-10-30, FNF HQ)", () => {
   const OLD_SHEET = { id: "sheet-tue", matchId: "m1", slots: [{ userId: "u-ali", team: "RED" }], createdAt: new Date("2026-10-27T17:09:00Z") };
   const TUE_SHEET_POST = { messageId: "3EB0TUE", text: TEAMS_TEXT, fromMatchTime: true };
 
-  it("an untagged build is passed on as not addressed (the build itself refuses, silently)", async () => {
-    teams.handleTeamCommand.mockResolvedValue({ outcome: "teams-not-asked", replyText: null });
-    const r = await ask("Make teams", "balancer", { deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "generate" }) } });
-    expect(r).toBeNull();
-    expect(teams.handleTeamCommand).toHaveBeenCalledWith(expect.objectContaining({ addressed: false, command: { kind: "reshuffle", sides: [], together: [] } }));
+  it("untagged teams words (a build, a pairing, a remark, a swap, the sheet, the poster): nothing read, done or drawn (2026-10-31)", async () => {
+    const cases: Array<[string, string]> = [
+      ["Make teams", "balancer"],
+      ["Stick keeper. Ali and Habib on one team", "balancer"],
+      ["Ali and Habib always end up together lol", "balancer"],
+      ["Swap Rafi and Yorel", "balancer"],
+      ["Make teams and the graphic", "team_sheet"],
+      ["can you do the poster for this week", "poster"],
+    ];
+    for (const [text, route] of cases) {
+      expect(await ask(text, route, { botMentioned: false, deps: { routerModel: routeTo(route), extractorModel: teamsFacts({ action: "generate" }) } })).toBeNull();
+    }
+    expect(await ask("posteri gönder", "poster", { org: { ...ORG, language: "tr" }, botMentioned: false })).toBeNull();
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+    expect(graphics.answerGraphicRequest).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(0);
   });
 
-  it("a reply to MatchTime's own message is addressed", async () => {
-    await ask("shuffle them", "balancer", { quoted: { text: TEAMS_TEXT, fromMatchTime: true }, deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "generate" }) } });
-    expect(teams.handleTeamCommand).toHaveBeenCalledWith(expect.objectContaining({ addressed: true }));
+  it("a reply to MatchTime's own sheet without the tag: silent too; tagged, a build", async () => {
+    const quoted = { text: TEAMS_TEXT, fromMatchTime: true };
+    const deps = { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "generate" }) };
+    expect(await ask("shuffle them", "balancer", { quoted, deps, botMentioned: false })).toBeNull();
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+    await ask("shuffle them", "balancer", { quoted, deps });
+    expect(teams.handleTeamCommand).toHaveBeenCalledWith(expect.objectContaining({ addressed: true, command: { kind: "reshuffle", sides: [], together: [] } }));
   });
 
-  it("29 Oct: 'Stick keeper. Ali and Habib on one team', untagged, read as an instruction: the pairing, as a change", async () => {
-    await ask("Stick keeper. Ali and Habib on one team", "balancer", {
+  it("29 Oct: 'Stick keeper. Ali and Habib on one team', tagged: the pairing, as a change", async () => {
+    await ask("@Match Time Stick keeper. Ali and Habib on one team", "balancer", {
       deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ pairings: [["Ali", "Habib"]], toMatchTime: true }) },
     });
     expect(teams.handleTeamCommand).toHaveBeenCalledWith(
-      expect.objectContaining({ addressed: false, command: { kind: "change", swapSides: false, moves: [], sides: [], together: [["Ali", "Habib"]] } }),
+      expect.objectContaining({ addressed: true, command: { kind: "change", swapSides: false, moves: [], sides: [], together: [["Ali", "Habib"]] } }),
     );
   });
 
-  it("untagged teams talk the extractor reads as a remark: nothing done, nothing said", async () => {
-    const r = await ask("Ali and Habib always end up together lol", "balancer", {
+  it("tagged, the extractor's toMatchTime false no longer decides anything: the tag says it was asked", async () => {
+    await ask("@Match Time Ali and Habib on one team", "balancer", {
       deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ pairings: [["Ali", "Habib"]], toMatchTime: false }) },
     });
-    expect(r).toBeNull();
-    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+    expect(teams.handleTeamCommand).toHaveBeenCalled();
   });
 
   it("the extractor is told the truth about the tag", async () => {
-    await ask("swap Ali and Can", "balancer", { deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ moves: ["Ali", "Can"] }) } });
-    expect(requests[1].user).not.toContain("who tagged the bot");
+    await ask("@Match Time swap Ali and Can", "balancer", { deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ moves: ["Ali", "Can"] }) } });
+    expect(requests[1].user).toContain("who tagged the bot");
   });
 
-  it("an untagged request for the team sheet: nothing drawn, nothing said", async () => {
-    expect(await ask("Make teams and the graphic", "team_sheet")).toBeNull();
-    expect(graphics.answerGraphicRequest).not.toHaveBeenCalled();
-  });
-
-  it("an untagged request for the list poster: nothing drawn, nothing said", async () => {
-    expect(await ask("can you do the poster for this week", "poster")).toBeNull();
-    expect(await ask("posteri gönder", "poster", { org: { ...ORG, language: "tr" } })).toBeNull();
-    expect(graphics.answerGraphicRequest).not.toHaveBeenCalled();
-  });
-
-  it("the list poster asked in a reply to MatchTime: drawn", async () => {
+  it("the list poster asked in a tagged reply to MatchTime: drawn", async () => {
     await ask("poster please", "poster", { quoted: { text: TEAMS_TEXT, fromMatchTime: true } });
     expect(graphics.answerGraphicRequest).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", kind: "list", now: NOW });
   });
 
-  it("a team sheet asked for in a reply to MatchTime: drawn", async () => {
+  it("a team sheet asked for in a tagged reply to MatchTime: drawn", async () => {
     await ask("graphic please", "team_sheet", { quoted: { text: TEAMS_TEXT, fromMatchTime: true } });
     expect(graphics.answerGraphicRequest).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", kind: "teams", now: NOW });
   });

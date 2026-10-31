@@ -31,7 +31,7 @@ let seq = 0;
 async function say(request: APIRequestContext, text: string, senderPhone = digits(PHONE.admin), extra: Record<string, unknown> = {}) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-hqpair-${Date.now()}-${++seq}`, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
+    data: { channel: "admin-group", botMentioned: true, groupId: HQ, messageId: `e2e-hqpair-${Date.now()}-${++seq}`, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -68,7 +68,15 @@ test.afterAll(() => {
   resetDb();
 });
 
-test("'2' swipe-replied to the notice declines it", async ({ request, db }) => {
+test("'2' swipe-replied to the notice, untagged: silent, nothing changes (2026-10-31, \"real tag pls\")", async ({ request, db }) => {
+  setPairingReplyStub({ bodies: { "2": "decline" } });
+  const before = (await row(db))?.status;
+  const out = await say(request, "2", digits(PHONE.admin), { quotedMessageId: STANZA, quotedText: NOTICE, quotedFromMatchTime: true, botMentioned: false });
+  expect(out).toMatchObject({ handled: false, replyText: null });
+  expect((await row(db))?.status).toBe(before);
+});
+
+test("'2' swipe-replied to the notice, tagged, declines it", async ({ request, db }) => {
   setPairingReplyStub({ bodies: { "2": "decline" } });
   const out = await say(request, "2", digits(PHONE.admin), { quotedMessageId: STANZA, quotedText: NOTICE, quotedFromMatchTime: true });
   expect(out).toMatchObject({ outcome: "pairing-declined" });

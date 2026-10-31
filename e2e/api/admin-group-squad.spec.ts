@@ -37,7 +37,7 @@ async function say(
 ) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
+    data: { channel: "admin-group", botMentioned: true, groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -69,7 +69,7 @@ test.afterAll(() => {
 // (admin-group-attendance-anyone.spec.ts); someone not in the club does not.
 test("'Tom out' from someone not in the club is ignored: no reply, no write", async ({ request, db }) => {
   engineOn({ "Tom out": { route: "other_att", reading: changeReading([["Tom Third", "out"]]) } });
-  const out = await say(request, "Tom out", "447700900997");
+  const out = await say(request, "Tom out", "447700900997", undefined, { botMentioned: false });
   expect(out).toMatchObject({ handled: false, ignored: "no-open-pick", replyText: null });
   expect(await statusOf(db, U.third)).toBe("CONFIRMED");
 });
@@ -131,7 +131,7 @@ test("a tagged message the router calls unsure: one line, never silence, and no 
 
 test("an organiser who 'might have to pull out': read as talk, no write, no reply", async ({ request, db }) => {
   engineOn({ "might have to pull out this week": { route: "self_att", reading: OTHER_READING } });
-  expect(await say(request, "might have to pull out this week")).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, "might have to pull out this week", ADMIN, undefined, { botMentioned: false })).toMatchObject({ handled: false, replyText: null });
   expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
 });
 
@@ -143,7 +143,7 @@ test("then an injury report, a plain 'won't be around', a stranger around again:
     "AH back": { route: "other_att", reading: OTHER_READING },
   });
   for (const text of ["my knee is gone lads", "won't be around on friday", "Zed is around again", "AH back"]) {
-    expect(await say(request, text), text).toMatchObject({ handled: false, replyText: null });
+    expect(await say(request, text, ADMIN, undefined, { botMentioned: false }), text).toMatchObject({ handled: false, replyText: null });
   }
   expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
   expect(await db.one(`SELECT id FROM "User" WHERE name = 'Zed'`)).toBeFalsy();
@@ -172,7 +172,7 @@ test("'@Match Time AH back' routed question (Haiku 4.5's route), topic other: th
 
 test("the incident: a reply to another organiser naming players for next week: silent, nothing written, no tick", async ({ request, db }) => {
   engineOn({ "Imti Rafi Zed back": { route: "other_att", reading: changeReading([[{ new: "Zed" }, "in"]]) } });
-  const out = await say(request, "Imti Rafi Zed back", ADMIN, undefined, { quotedText: "We have the below out", quotedFromMatchTime: false });
+  const out = await say(request, "Imti Rafi Zed back", ADMIN, undefined, { quotedText: "We have the below out", quotedFromMatchTime: false, botMentioned: false });
   expect(out).toMatchObject({ handled: false, replyText: null });
   expect(out).not.toHaveProperty("react");
   expect(await db.one(`SELECT id FROM "User" WHERE name = 'Zed'`)).toBeFalsy();
@@ -222,7 +222,7 @@ test("an admin's YES straight after a non-admin spoke: asked once which it is fo
 test("an admin's YES as a WhatsApp reply to the list question applies it: out first, then in, new names added as players", async ({ request, db }) => {
   // A reply to MatchTime's question is clearly about it, whatever was said
   // since (the Pi forwards the quoted text and whose it was).
-  await say(request, "who's got the bibs?", PLAYER);
+  await say(request, "who's got the bibs?", PLAYER, undefined, { botMentioned: false });
   const out = await say(request, "YES", ADMIN, undefined, { quotedText: pasteQuestion, quotedFromMatchTime: true });
   expect(out).toMatchObject({ handled: true, outcome: "paste-applied" });
   expect(out.replyText).toMatch(/^Done: Pat Player out, Zara Zest in, Naim Newman in\. 5 of 5(, \d on the bench \(.+\))?\.$/);
@@ -235,8 +235,8 @@ test("an admin's YES as a WhatsApp reply to the list question applies it: out fi
   expect(naim).toBeTruthy();
   expect(await statusOf(db, naim!.id)).toBe("CONFIRMED");
 
-  // A second YES finds nothing waiting, and says nothing.
-  expect(await say(request, "yes")).toMatchObject({ handled: false, replyText: null });
+  // A second YES, untagged, says nothing.
+  expect(await say(request, "yes", ADMIN, undefined, { botMentioned: false })).toMatchObject({ handled: false, replyText: null });
 });
 
 test("the same list again: 'That matches the squad'", async ({ request }) => {

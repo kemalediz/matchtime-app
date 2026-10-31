@@ -44,11 +44,12 @@ const q = (topic: string) => ({
 });
 
 let seq = 0;
-async function say(request: APIRequestContext, text: string, senderPhone: string) {
+// Tagged by default: HQ answers only the Pi's real mention flag (2026-10-31).
+async function say(request: APIRequestContext, text: string, senderPhone: string, tagged = true) {
   const messageId = `e2e-aga-${++seq}`;
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
+    data: { channel: "admin-group", botMentioned: tagged, groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return { messageId, ...(await res.json()) };
@@ -127,7 +128,7 @@ test("in Turkish", async ({ request, db }) => {
 });
 
 test("a player's chat between the organisers: silent", async ({ request }) => {
-  expect(await say(request, CHAT, PLAYER)).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, CHAT, PLAYER, false)).toMatchObject({ handled: false, replyText: null });
 });
 
 test("the admin: the same swap is done, as before", async ({ request, db }) => {

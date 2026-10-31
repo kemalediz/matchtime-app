@@ -35,6 +35,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { E2E } from "../../helpers/env";
+import { piBotMentioned } from "../../helpers/pi-mention";
 import type { TestDb } from "../../helpers/test-db";
 import { createGroup, nextMsgId, nextSimPhone, type CreateGroupOpts, type SimGroup } from "../group";
 import {
@@ -166,6 +167,9 @@ export class PoolPerson {
 /** How a message is said in HQ. */
 export interface HqSayOpts {
   tag?: boolean;
+  /** The Pi's real mention flag with the words left as they are (HQ answers
+   *  only a real tag, 2026-10-31). Unset: as the Pi sets it from the words. */
+  tagged?: boolean;
   /** The server's clock for this message (`x-test-now`, MT_TEST_MODE only). */
   now?: Date;
   /** The pool switch for this message (`x-mt-test-pool-open`); unset: the environment. */
@@ -200,6 +204,8 @@ export class PoolClub {
           },
           data: {
             channel: "admin-group",
+            // The Pi's mention flag, as the real Pi sets it with its rewrite.
+            botMentioned: opts.tagged ?? piBotMentioned(body, undefined) === true,
             groupId: hqGroupId,
             messageId: nextMsgId(),
             text: body,

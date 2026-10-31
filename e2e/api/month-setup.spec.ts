@@ -67,7 +67,7 @@ let seq = 0;
 async function hq(request: APIRequestContext, text: string, who: Person, extra: Record<string, unknown> = {}) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: B.hq, messageId: `e2e-ms-hq-${++seq}`, text, senderPhone: digits(who.phone), timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
+    data: { channel: "admin-group", botMentioned: true, groupId: B.hq, messageId: `e2e-ms-hq-${++seq}`, text, senderPhone: digits(who.phone), timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();

@@ -38,7 +38,7 @@ let seq = 0;
 async function say(request: APIRequestContext, text: string, extra: Record<string, unknown> = {}) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-apt-${++seq}`, text, senderPhone: ADMIN, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
+    data: { channel: "admin-group", botMentioned: true, groupId: HQ, messageId: `e2e-apt-${++seq}`, text, senderPhone: ADMIN, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();

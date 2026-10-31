@@ -36,10 +36,11 @@ const admin = (action: string) => ({
 });
 
 let seq = 0;
-async function say(request: APIRequestContext, text: string, senderPhone = ADMIN) {
+// Tagged by default: HQ answers only the Pi's real mention flag (2026-10-31).
+async function say(request: APIRequestContext, text: string, senderPhone = ADMIN, tagged = true) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-cancel-${++seq}`, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
+    data: { channel: "admin-group", botMentioned: tagged, groupId: HQ, messageId: `e2e-cancel-${++seq}`, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -84,7 +85,7 @@ test("an organiser tags MatchTime to cancel: the next match is cancelled, the pl
 });
 
 test("untagged, from an organiser (only a tag acts): nothing cancelled, nothing posted, nothing said", async ({ request, db }) => {
-  const out = await say(request, UNTAGGED);
+  const out = await say(request, UNTAGGED, ADMIN, false);
   expect(out.replyText ?? null).toBeNull();
   expect(await status(db)).toBe("UPCOMING");
   expect(await groupPosts(db)).toHaveLength(0);

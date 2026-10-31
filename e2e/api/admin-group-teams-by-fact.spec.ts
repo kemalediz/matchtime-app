@@ -36,7 +36,7 @@ let seq = 0;
 async function say(
   request: APIRequestContext,
   text: string,
-  extra: { quotedMessageId?: string; quotedText?: string; quotedFromMatchTime?: boolean } = {},
+  extra: { quotedMessageId?: string; quotedText?: string; quotedFromMatchTime?: boolean; botMentioned?: boolean } = {},
 ) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
@@ -126,9 +126,16 @@ test("an untagged team sheet request: nothing drawn; tagged on proposed teams: d
   expect(jobs[0].text).toMatch(/^Ready to post: .+ teams for .+\. These teams are not approved yet\.$/);
 });
 
-test("29 Oct: an untagged pairing on proposed teams is a targeted change, never a reshuffle", async ({ request, db }) => {
+// 2026-10-31 (Kemal: "real tag pls"): untagged, nothing at all.
+test("29 Oct: an untagged pairing on proposed teams: nothing changed, nothing said", async ({ request, db }) => {
   const before = await sheet(db);
-  const out = await say(request, "Stick keeper. Alex and Pat on one team");
+  expect(await say(request, "Stick keeper. Alex and Pat on one team")).toMatchObject({ handled: false, replyText: null });
+  expect(await sheet(db)).toEqual(before);
+});
+
+test("29 Oct: a tagged pairing on proposed teams is a targeted change, never a reshuffle", async ({ request, db }) => {
+  const before = await sheet(db);
+  const out = await say(request, "Stick keeper. Alex and Pat on one team", { botMentioned: true });
   expect(["teams-changed", "teams-unchanged"]).toContain(out.outcome);
   expect(await teamOf(db, U.admin)).toBe(await teamOf(db, U.player));
   // Colin and Tom never both moved by a rebuild: at most the fewest moves.
@@ -153,24 +160,24 @@ test("'These are the final teams' replying to an EARLIER sheet: those teams back
   const earlier = await sheet(db);
 
   // Then the teams change.
-  await say(request, "swap Alex and Colin");
+  await say(request, "swap Alex and Colin", { botMentioned: true });
   expect(await sheet(db)).not.toEqual(earlier);
 
   // Hamzah's reply to the earlier sheet, by its id alone.
-  const out = await say(request, "These are the final teams", { quotedMessageId: "3EB0E2EEARLIER", quotedFromMatchTime: true });
+  const out = await say(request, "These are the final teams", { quotedMessageId: "3EB0E2EEARLIER", quotedFromMatchTime: true, botMentioned: true });
   expect(out).toMatchObject({ handled: true, outcome: "teams-restored" });
   expect(out.replyText).toMatch(/^These are the earlier teams, from .+ at \d\d:\d\d\. They need your YES again\.\n\n📝 \*Proposed teams\*/);
   expect(await sheet(db)).toEqual(earlier);
   expect(await status(db)).not.toBe("TEAMS_PUBLISHED");
 
-  const yes = await say(request, "YES");
+  const yes = await say(request, "YES", { botMentioned: true });
   expect(yes).toMatchObject({ handled: true, outcome: "teams-final" });
   expect(await status(db)).toBe("TEAMS_PUBLISHED");
   expect(await sheet(db)).toEqual(earlier);
 });
 
 test("a pasted sheet: set as the teams, proposed again for YES", async ({ request, db }) => {
-  const out = await say(request, "Use these\nNon Bibs\n1. Alex\n2. Tom\nBibs\n1. Colin\n2. Pat");
+  const out = await say(request, "Use these\nNon Bibs\n1. Alex\n2. Tom\nBibs\n1. Colin\n2. Pat", { botMentioned: true });
   expect(["teams-set", "teams-restored", "teams-restore-same"]).toContain(out.outcome);
   expect(await teamOf(db, U.admin)).toBe("RED");
   expect(await teamOf(db, U.third)).toBe("RED");

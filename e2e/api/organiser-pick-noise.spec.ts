@@ -85,6 +85,7 @@ async function hq(request: APIRequestContext, text: string, person: string, pola
   engineOn({ [text]: { route: "other_att", reading: changeReading([[member, polarity]]) } });
   return post(request, "/api/whatsapp/admin-group", {
     channel: "admin-group",
+    botMentioned: true,
     groupId: HQ,
     messageId: `e2e-opn-msg-${++seq}`,
     text,
@@ -252,6 +253,7 @@ test("somebody new on the bench while a place is open: one short bench update, n
   // which is the stale-numbers rule doing its job.)
   const picked = await post(request, "/api/whatsapp/admin-group", {
     channel: "admin-group",
+    botMentioned: true,
     groupId: HQ,
     messageId: `e2e-opn-msg-${++seq}`,
     text: "4",

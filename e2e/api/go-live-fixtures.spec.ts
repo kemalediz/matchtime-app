@@ -61,7 +61,7 @@ async function dm(request: APIRequestContext, phone: string, body: string, waMes
 async function hq(request: APIRequestContext, groupId: string, text: string, senderPhone: string, messageId = msgId("hq")) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId, messageId, text, senderPhone: bare(senderPhone), timestamp: String(Math.floor(Date.now() / 1000)) },
+    data: { channel: "admin-group", botMentioned: true, groupId, messageId, text, senderPhone: bare(senderPhone), timestamp: String(Math.floor(Date.now() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();

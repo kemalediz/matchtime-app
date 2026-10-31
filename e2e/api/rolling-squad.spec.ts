@@ -467,7 +467,7 @@ test.describe("an organiser puts a left-out player back from HQ (2026-10-24)", (
   async function hq(request: APIRequestContext, text: string, messageId: string) {
     const res = await request.post("/api/whatsapp/admin-group", {
       headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
-      data: { channel: "admin-group", groupId: HQ_X, messageId, text, senderPhone: ANN_PHONE, timestamp: String(Math.floor(Date.now() / 1000)) },
+      data: { channel: "admin-group", botMentioned: true, groupId: HQ_X, messageId, text, senderPhone: ANN_PHONE, timestamp: String(Math.floor(Date.now() / 1000)) },
     });
     expect(res.status(), await res.text()).toBe(200);
     return res.json();
