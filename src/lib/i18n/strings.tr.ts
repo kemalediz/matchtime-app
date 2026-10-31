@@ -794,9 +794,9 @@ export const tr: Strings = {
   intro_mom_bit: "maçın adamını uygulamadan ya da paylaştığım anketten seçin, herkes oy verince (en geç maçtan 5 gün sonra) kazananı açıklarım",
   intro_ratings_line: (p) => `🏆  *Puanlama ve maçın adamı*, ${p.bits.join("; ")}.`,
   intro_reminders: `⏰  *Hatırlatmalar*, beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin "@Match Time pazartesi hatırlat"), o gün size DM atarım.`,
-  intro_stats: `📊  *İstatistikler*, "geçen hafta maçın adamı kimdi?" ya da "en istikrarlı oyuncumuz kim?" gibi sorular sorabilirsiniz.`,
+  intro_stats: `📊  *İstatistikler*, beni etiketleyip "@Match Time geçen hafta maçın adamı kimdi?" ya da "@Match Time en istikrarlı oyuncumuz kim?" gibi sorular sorabilirsiniz.`,
   intro_payments: `💳  *Ödemeler*, her maçtan hemen sonra "ödedin mi?" anketi paylaşırım.`,
-  intro_closer: "Sorunuz varsa buradan sorun. Hadi başlayalım.",
+  intro_closer: "Sorunuz varsa beni burada etiketleyerek sorun, örneğin *@Match Time yardım*. Hadi başlayalım.",
 
   // ── rows 74 to 77: the remaining scheduler posts ───────────────────
 

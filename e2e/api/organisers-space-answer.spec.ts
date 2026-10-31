@@ -52,8 +52,9 @@ type Result = { waMessageId: string; reply?: string | null; react?: string | nul
 async function ask(request: Parameters<typeof postAnalyze>[0], body: string): Promise<Result> {
   const id = msgId();
   const res = await postAnalyze(request, [
-    // A swipe-reply to MatchTime's call-out: the reply itself is the address.
-    { waMessageId: id, body, authorPhone: "447700900009", authorName: "Ian Innes", quotedBody: CALL_OUT, quotedFromMatchTime: true },
+    // A tagged reply to MatchTime's call-out (an answer needs the real tag
+    // since 2026-10-31; the reply alone is silent).
+    { waMessageId: id, body, authorPhone: "447700900009", authorName: "Ian Innes", botMentioned: true, quotedBody: CALL_OUT, quotedFromMatchTime: true },
   ]);
   return (res.results as Result[]).find((x) => x.waMessageId === id)!;
 }

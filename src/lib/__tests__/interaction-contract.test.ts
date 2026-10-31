@@ -31,17 +31,30 @@ import {
   type GateRegisterForEntry,
 } from "@/lib/interaction-contract";
 
-describe("the tag is FACTS only, and to_bot only ever answers (2026-10-30, review of #476)", () => {
-  it("messageTagsBot: the Pi's mention flag or a reply to MatchTime, never the router's reading", () => {
+describe("the tag is FACTS only (2026-10-30, review of #476)", () => {
+  it("messageTagsBot: the Pi's mention flag or a reply to MatchTime", () => {
     expect(messageTagsBot({ body: "what are the teams?", botMentioned: true })).toBe(true);
     expect(messageTagsBot({ body: "Bench?", quotedFromMatchTime: true })).toBe(true);
-    expect(messageTagsBot({ body: "MatchTime who runs this club?", routerAddressed: true })).toBe(false);
+    expect(messageTagsBot({ body: "MatchTime who runs this club?" })).toBe(false);
   });
 
-  it("messageAddressesBot: a tag, or the router's to_bot; for answers only", () => {
-    expect(messageAddressesBot({ body: "MatchTime who runs this club?", routerAddressed: true })).toBe(true);
+  // Kemal, 2026-10-31: in the players' group MatchTime answers only on a
+  // real tag, the rule HQ got in #482.
+  it("messageAddressesBot: an answer opens on the Pi's real mention flag only", () => {
     expect(messageAddressesBot({ body: "x", botMentioned: true })).toBe(true);
+    expect(messageAddressesBot({ body: "x", botMentioned: true, quotedFromMatchTime: true })).toBe(true);
     expect(messageAddressesBot({ body: "x" })).toBe(false);
+  });
+
+  it("messageAddressesBot: a WhatsApp reply to MatchTime without the tag is not asked of it", () => {
+    expect(messageAddressesBot({ body: "Bench? We do bench now?", quotedFromMatchTime: true })).toBe(false);
+    expect(messageAddressesBot({ body: "Bench?", botMentioned: false, quotedFromMatchTime: true })).toBe(false);
+  });
+
+  it("messageAddressesBot: the router's own to_bot reading is not an input any more", () => {
+    // A stray field from an old caller must not open the gate either.
+    const legacy = { body: "MatchTime who runs this club?", routerAddressed: true } as unknown as TagInput;
+    expect(messageAddressesBot(legacy)).toBe(false);
   });
 
   it("piMentionsBot: the Pi's mention flag alone; the bot's name in the text is not it", () => {

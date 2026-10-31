@@ -1,17 +1,19 @@
 /**
- * A WHATSAPP REPLY TO MATCHTIME'S OWN MESSAGE IS ADDRESSED TO IT, END TO
- * END (2026-10-16, FNF).
+ * A WHATSAPP REPLY TO MATCHTIME'S OWN MESSAGE, END TO END (2026-10-16, FNF;
+ * the answer half changed 2026-10-31).
  *
  * MatchTime posted "Football 9-a-side is full at 18 of 18, but the bench is
  * open. Say IN to go on the bench..." and a player replied to THAT message
- * "Bench? We do bench now?". MatchTime stayed silent: it was not tagged.
+ * "Bench? We do bench now?".
  *
- *   1. the same reply quoting MatchTime's post is answered with the bench
- *      explainer for this club's settings (FNF's: the organisers pick), and
- *      nothing is written;
- *   2. the same words quoting ANOTHER PLAYER stay unanswered, as untagged
- *      chat always has;
- *   3. "IN" quoting MatchTime's post is attendance, as an IN always was.
+ *   1. Since 2026-10-31 (Kemal: in the players' group MatchTime answers only
+ *      on a real tag, the rule HQ got in #482) the reply alone is SILENT: no
+ *      answer, no "tag me" line, nothing written;
+ *   2. the same reply WITH the tag is answered with the bench explainer for
+ *      this club's settings (FNF's: the organisers pick), and nothing is
+ *      written;
+ *   3. the same words quoting ANOTHER PLAYER stay unanswered;
+ *   4. "IN" quoting MatchTime's post is attendance, as an IN always was.
  *
  * The router and the question extractor are stubbed (what the model would
  * say); the tag, the ownership, the help copy and the organisers-mode net
@@ -61,12 +63,23 @@ test.afterAll(() => {
   resetDb();
 });
 
-test("a reply to MatchTime's bench post is answered with how the bench works here, and writes nothing", async ({ request, db }) => {
+test("a reply to MatchTime's bench post WITHOUT the tag is silent, and writes nothing", async ({ request, db }) => {
   engineOn({ [ASK]: { route: "question", facts: howItWorks("availability") } });
   const id = msgId();
   const res = await postAnalyze(request, [
-    // No @Match Time anywhere: the reply itself is the address.
     { waMessageId: id, body: ASK, authorPhone: "447700900009", authorName: "Ian Innes", quotedBody: BENCH_POST, quotedFromMatchTime: true },
+  ]);
+  const r = (res.results as Result[]).find((x) => x.waMessageId === id)!;
+  expect(r.reply ?? null).toBeNull();
+  expect(r.react ?? null).toBeNull();
+  expect(await statusOf(db, U.fresh)).toBeUndefined();
+});
+
+test("a TAGGED reply to MatchTime's bench post is answered with how the bench works here, and writes nothing", async ({ request, db }) => {
+  engineOn({ [ASK]: { route: "question", facts: howItWorks("availability") } });
+  const id = msgId();
+  const res = await postAnalyze(request, [
+    { waMessageId: id, body: ASK, authorPhone: "447700900009", authorName: "Ian Innes", botMentioned: true, quotedBody: BENCH_POST, quotedFromMatchTime: true },
   ]);
   const r = (res.results as Result[]).find((x) => x.waMessageId === id)!;
   expect(r.handledBy).toBe("llm");

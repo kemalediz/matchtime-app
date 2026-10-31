@@ -89,6 +89,9 @@ export interface RouterStub {
   costUsd?: number;
   /** Every router call fails, as an outage would. */
   fail?: boolean;
+  /** Trimmed bodies the stubbed router reads as spoken TO MatchTime
+   *  (`to_bot: true`), with no real @-mention. */
+  toBotBodies?: string[];
 }
 
 export function setRouterStub(stub: RouterStub): void {
@@ -635,6 +638,9 @@ export interface BodyRouting {
    *  (`changeReading`, `squadReading`, `OTHER_READING`). Merged into the
    *  reader's stub; a body with no reading there is "other". */
   reading?: Record<string, unknown>;
+  /** The router also reads this body as spoken TO MatchTime (`to_bot`),
+   *  as the live model does for "MatchTime who's playing?" untagged. */
+  toBot?: boolean;
 }
 
 /**
@@ -662,8 +668,10 @@ export function engineOn(
   const bodies: Record<string, string> = {};
   const factBodies: Record<string, Record<string, unknown>> = {};
   const readings: Record<string, unknown> = {};
+  const toBotBodies: string[] = [];
   for (const [body, v] of Object.entries(map)) {
     bodies[body] = v.route;
+    if (v.toBot) toBotBodies.push(body.split("\n")[0].trim());
     // The router stub reads the turn one line per message (`[id] author:
     // body`), so a multi-line body is seen by its first line only: keyed by
     // that too (a pasted list goes to the router since 2026-10-30).
@@ -686,6 +694,7 @@ export function engineOn(
     ...(opts.engineRoutes ? { engineRoutes: opts.engineRoutes } : {}),
     ...(opts.routerCostUsd !== undefined ? { costUsd: opts.routerCostUsd } : {}),
     bodies,
+    ...(toBotBodies.length > 0 ? { toBotBodies } : {}),
   });
   setExtractorStub({
     bodies: factBodies,

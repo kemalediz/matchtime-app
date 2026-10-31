@@ -922,9 +922,9 @@ export const en = {
   intro_mom_bit: "vote MoM in-app or in the poll I post, winner announced once everyone's voted (or 5 days after the match at the latest)",
   intro_ratings_line: (p: { bits: string[] }): string => `🏆  *Ratings & MoM*: ${p.bits.join("; ")}.`,
   intro_reminders: `⏰  *Reminders*: Tag me and say when, in your own words (for example "@Match Time remind me Monday"), and I'll DM you then.`,
-  intro_stats: `📊  *Stats*: Ask me things like "who got MoM last week?" or "who's our most consistent player?"`,
+  intro_stats: `📊  *Stats*: Tag me and ask things like "@Match Time who got MoM last week?" or "@Match Time who's our most consistent player?"`,
   intro_payments: `💳  *Payments*: I auto-post "paid?" polls right after each match.`,
-  intro_closer: "Questions? Just ask here. Let's go.",
+  intro_closer: "Questions? Tag me here, for example *@Match Time help*. Let's go.",
 
   // ── rows 74 to 77: the remaining scheduler posts ───────────────────
 

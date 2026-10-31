@@ -404,10 +404,6 @@ interface InboundMessage {
    *  signal. PRIMARY input to the @Match Time interaction-contract gate;
    *  `undefined` from older Pi builds is simply not a tag. */
   botMentioned?: boolean;
-  /** Set here after the router has run: the router read the message as
-   *  spoken TO MatchTime (`RoutedMessage.toBot`), which `messageTagsBot`
-   *  counts as a tag (2026-10-30, no word test on the body). */
-  routerAddressed?: boolean;
 }
 
 /** The message `m` is a WhatsApp reply to, as `loadGroupReplyContexts`
@@ -1795,14 +1791,8 @@ async function handleAnalyzeRequest(request: Request) {
         )
       : null;
   if (gate) traceRouting(gate);
-  // The router's own reading of who each message speaks to is a tag from
-  // here on (`messageTagsBot`): "MatchTime who runs this club?" with no
-  // real @-mention. P1 of the no-string-parsing sweep, 2026-10-30.
-  for (const r of gate?.routes ?? []) {
-    if (!r.toBot) continue;
-    const m = fresh.find((f) => f.waMessageId === r.messageId);
-    if (m) m.routerAddressed = true;
-  }
+  // The router's own `to_bot` reading opens nothing here (Kemal,
+  // 2026-10-31): an answer needs the real tag (`messageAddressesBot`).
   const gatedIds = new Set(gate?.skipped ?? []);
 
   // ── WHAT THE CAP COST THIS BATCH, AND THE ONE LINE IT MAY SAY ──────
@@ -2280,8 +2270,9 @@ async function handleAnalyzeRequest(request: Request) {
         senderUserId: s.userId,
         senderName: s.name,
         tagged: messageTagsBot(m),
-        // For an ANSWER only: a tag, or the router's own to_bot reading
-        // (review of #476). Actions read `tagged`, which is facts only.
+        // May MatchTime ANSWER it? The real tag only (Kemal, 2026-10-31):
+        // not a swipe-reply, not the name typed, not the router's to_bot.
+        // Actions read `tagged`, which is unchanged.
         addressed: messageAddressesBot(m),
         // The Pi's real mention flag, read by the bulk-DM commands and a
         // score answer that is not a reply.

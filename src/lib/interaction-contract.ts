@@ -45,11 +45,6 @@ export interface TagInput {
    *  WhatsApp reply quoting MatchTime's OWN message? Only the Pi knows the
    *  bot's ids, so this is computed there, never from the text. */
   quotedFromMatchTime?: boolean;
-  /** The router's own reading that the message speaks TO MatchTime (its
-   *  `to_bot`, `RoutedMessage.toBot`, 2026-10-30): the bot's name used to
-   *  address it without a real @-mention. Set by the analyze route after
-   *  the router has run; absent before. */
-  routerAddressed?: boolean;
 }
 
 /**
@@ -65,23 +60,35 @@ export interface TagInput {
  *
  * This is the gate for anything that CHANGES something (a write, a
  * reminder, the teams, payments). The router's own reading (`to_bot`)
- * never counts here: see `messageAddressesBot`, which may only make
- * MatchTime ANSWER. Until 2026-10-30 a text fallback matched "match time",
- * "matchtime" or "@mt" in the body; it is gone.
+ * never counts here, and an ANSWER is stricter still: see
+ * `messageAddressesBot`. Until 2026-10-30 a text fallback matched "match
+ * time", "matchtime" or "@mt" in the body; it is gone.
  */
 export function messageTagsBot(msg: TagInput): boolean {
   return msg.botMentioned === true || msg.quotedFromMatchTime === true;
 }
 
 /**
- * Is the message spoken TO MatchTime, for an ANSWER only (2026-10-30)? A
- * tag (`messageTagsBot`) or the router's own reading (`routerAddressed`,
- * its `to_bot`: "MatchTime who runs this club?" with no real mention). A
- * model's judgement may make MatchTime answer a question; it is never the
- * only basis for an action (Kemal's rule: commands need the tag).
+ * May MatchTime ANSWER this group message? THE ONE GATE for every answer
+ * in the players' group: a question (the count, the list, a fixture, the
+ * club, stats, a person's place), help and how it works, and showing the
+ * teams.
+ *
+ * Only the Pi's real @-mention flag opens it (Kemal, 2026-10-31, the rule
+ * HQ got in #482: "real tag pls"). These do NOT, and each is silent, with
+ * no "tag me" line:
+ *  - the router's own `to_bot` reading ("MatchTime who runs this club?"
+ *    with no mention: until 2026-10-31 it was enough to answer);
+ *  - "MatchTime" typed as text;
+ *  - a WhatsApp reply quoting MatchTime's own post, without the tag
+ *    (`quotedFromMatchTime`: it still counts for `messageTagsBot`).
+ *
+ * Attendance never reads this: a player's own IN or OUT, a friend added,
+ * an organiser reporting someone OUT and a replacement stay tag-free
+ * (`actionRequiresTag`), and the action gate stays `messageTagsBot`.
  */
 export function messageAddressesBot(msg: TagInput): boolean {
-  return messageTagsBot(msg) || msg.routerAddressed === true;
+  return piMentionsBot(msg);
 }
 
 /**

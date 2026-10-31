@@ -389,25 +389,39 @@ describe("the period (2026-09-23)", () => {
   });
 });
 
-describe("to_bot may make MatchTime ANSWER, never act (review of #476, M7)", () => {
+describe("an answer needs the real tag (Kemal, 2026-10-31; was to_bot, review of #476)", () => {
   const COUNT = { topic: "count", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top" };
-  it("an untagged question the router read as addressed to MatchTime is answered", async () => {
-    const { model } = stubModel({ "MatchTime how many are we?": COUNT });
-    const { res } = await run({ messages: [msg({ body: "MatchTime how many are we?", tagged: false, addressed: true })], model });
+  it("a question with the real tag is answered", async () => {
+    const { model } = stubModel({ "@Match Time how many are we?": COUNT });
+    const { res } = await run({ messages: [msg({ body: "@Match Time how many are we?", tagged: true, addressed: true })], model });
     expect(res.outcomes.get("wa-1")?.reply).toBeTruthy();
   });
 
-  it("the same question with neither a tag nor to_bot is not answered", async () => {
-    const { model } = stubModel({ "MatchTime how many are we?": COUNT });
-    const { res } = await run({ messages: [msg({ body: "MatchTime how many are we?", tagged: false })], model });
-    expect(res.outcomes.size).toBe(0);
-  });
-
-  it("showing the teams needs a real tag: to_bot alone does not post them", async () => {
-    const { model, calls } = stubModel({});
-    const { res } = await run({ messages: [msg({ body: "MatchTime teams?", tagged: false, addressed: true, route: "balancer" })], model });
+  it("a swipe-reply to MatchTime without the tag (tagged, not addressed) is not answered and costs no call", async () => {
+    const { model, calls } = stubModel({ "how many are we?": COUNT });
+    const { res } = await run({ messages: [msg({ body: "how many are we?", tagged: true, addressed: false })], model });
     expect(res.outcomes.size).toBe(0);
     expect(calls).toEqual([]);
+  });
+
+  it("an untagged question is not answered", async () => {
+    const { model, calls } = stubModel({ "MatchTime how many are we?": COUNT });
+    const { res } = await run({ messages: [msg({ body: "MatchTime how many are we?", tagged: false, addressed: false })], model });
+    expect(res.outcomes.size).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
+  it("showing the teams as a swipe-reply without the tag: not shown", async () => {
+    const { model, calls } = stubModel({});
+    const { res } = await run({ messages: [msg({ body: "teams?", tagged: true, addressed: false, route: "balancer" })], model });
+    expect(res.outcomes.size).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
+  it("with no `addressed` (HQ's own door, already gated on the tag), `tagged` decides", async () => {
+    const { model } = stubModel({ "how many are we?": COUNT });
+    const { res } = await run({ messages: [msg({ body: "how many are we?", tagged: true })], model });
+    expect(res.outcomes.get("wa-1")?.reply).toBeTruthy();
   });
 });
 

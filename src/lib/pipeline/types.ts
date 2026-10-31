@@ -149,9 +149,10 @@ export interface RoutedMessage {
   /**
    * The router's own reading that the message speaks TO MatchTime (its
    * `to_bot`, 2026-10-30): a tag, the bot's name used to address it, or a
-   * reply to its own message. The analyze route treats it as a tag
-   * (`messageTagsBot`'s `routerAddressed`), so no word test on the body
-   * decides it. Absent: the model did not say so (or was not asked).
+   * reply to its own message. Since 2026-10-31 it opens nothing: an
+   * answer needs the Pi's real mention flag (`messageAddressesBot`), and
+   * an action the facts-only tag (`messageTagsBot`). Kept as the router's
+   * trace. Absent: the model did not say so (or was not asked).
    */
   toBot?: boolean;
   /**

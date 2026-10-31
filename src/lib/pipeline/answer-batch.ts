@@ -608,10 +608,11 @@ export interface AnswerBatchMessage {
   /** Did this message tag the bot? FACTS only (`messageTagsBot`: the Pi's
    *  mention flag, or a reply to MatchTime). */
   tagged: boolean;
-  /** Spoken TO MatchTime for an ANSWER (`messageAddressesBot`: a tag, or
-   *  the router's `to_bot`). Lets the question route answer an untagged
-   *  "MatchTime who runs this club?"; never lets the teams be shown, which
-   *  needs `tagged` (review of #476). Absent: `tagged`. */
+  /** May MatchTime ANSWER it (`messageAddressesBot`: the Pi's real
+   *  mention flag, Kemal 2026-10-31)? When set it decides alone, for the
+   *  question route and showing the teams: a swipe-reply to MatchTime is
+   *  `tagged` but not `addressed`, and is not answered. Absent (HQ's door,
+   *  which gates on the real tag before it gets here): `tagged`. */
   addressed?: boolean;
   /** From the router. `undefined` when it never mentioned this id. */
   route: Route | undefined;
@@ -779,6 +780,16 @@ function empty(degradations: string[] = []): AnswerBatchResult {
   };
 }
 
+/**
+ * May MatchTime answer this message? `addressed` when the caller set it
+ * (the players' group: the real tag, `messageAddressesBot`), else `tagged`
+ * (HQ's door, already gated on the real tag). Every ownership and extractor
+ * check in this module reads it, so the rule lives in one place.
+ */
+function asksMatchTime(m: AnswerBatchMessage): boolean {
+  return m.addressed ?? m.tagged;
+}
+
 export async function runAnswerBatch(args: {
   orgId: string;
   now: Date;
@@ -858,9 +869,7 @@ export async function runAnswerBatch(args: {
     (m) =>
       !m.gated &&
       stepSevenOwnsRoute(m.route, enabled, ANSWER_ROUTES) &&
-      (m.tagged ||
-        (m.route === "question" && m.addressed === true) ||
-        clarificationFor.has(m.waMessageId)),
+      (asksMatchTime(m) || clarificationFor.has(m.waMessageId)),
   );
   if (candidates.length === 0) return empty();
 
@@ -1044,7 +1053,7 @@ export async function runAnswerBatch(args: {
         id: m.waMessageId,
         body: m.body,
         authorName: m.authorName,
-        tagged: m.tagged || (m.route === "question" && m.addressed === true),
+        tagged: m.tagged || asksMatchTime(m),
         history,
         lastBotPost,
         // A reply is about the message it quotes, whoever wrote it, shown
@@ -1106,7 +1115,7 @@ export async function runAnswerBatch(args: {
     if (f && f.kind === "question" && f.answersClarification === true) continue;
     notClarifications.add(id);
     const m = messages.find((x) => x.waMessageId === id);
-    if (m && !(m.tagged || (m.route === "question" && m.addressed === true))) {
+    if (m && !asksMatchTime(m)) {
       unanswerable.add(id);
       degradations.push(`${id}: from the person asked "who do you mean?", but not an answer to it and not addressed to MatchTime; not answered`);
     }
@@ -1599,7 +1608,7 @@ export async function runAnswerBatch(args: {
     senderName: m.senderName ?? m.authorName,
     // A reply to MatchTime's own clarification is addressed to it; see
     // `clarificationFor` above.
-    tagged: m.tagged || (m.route === "question" && m.addressed === true) || clarificationFor.has(m.waMessageId),
+    tagged: asksMatchTime(m) || clarificationFor.has(m.waMessageId),
     // A message this module does not own still carries its real route so
     // its outcome says why nothing happened. `none` is honest for an id
     // the router never mentioned.

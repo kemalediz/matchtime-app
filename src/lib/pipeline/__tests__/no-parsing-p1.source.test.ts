@@ -116,11 +116,21 @@ describe("the deleted parsers stay deleted", () => {
 describe("the bot tag is facts only", () => {
   it("messageTagsBot reads the structured flags and never the body", () => {
     const src = code(read("src/lib/interaction-contract.ts"));
-    const fn = src.slice(src.indexOf("export function messageTagsBot"), src.indexOf("export function messageMentionsBotExplicitly"));
+    const fn = src.slice(src.indexOf("export function messageTagsBot"), src.indexOf("export function messageAddressesBot"));
     expect(fn).toMatch(/botMentioned === true/);
     expect(fn).toMatch(/quotedFromMatchTime === true/);
-    expect(fn).toMatch(/routerAddressed === true/);
+    expect(fn).not.toMatch(/routerAddressed/);
     expect(fn).not.toMatch(/\.body|\.test\(|RegExp/);
+  });
+
+  // Kemal, 2026-10-31: an answer opens on the Pi's real mention flag only.
+  it("messageAddressesBot is the real tag alone: no reply, no router reading, no body", () => {
+    const src = code(read("src/lib/interaction-contract.ts"));
+    const start = src.indexOf("export function messageAddressesBot");
+    const fn = src.slice(start, src.indexOf("\n}", start));
+    expect(fn).toMatch(/piMentionsBot\(msg\)/);
+    expect(fn).not.toMatch(/routerAddressed|quotedFromMatchTime|messageTagsBot|\.body/);
+    expect(src).not.toMatch(/routerAddressed/);
   });
 });
 

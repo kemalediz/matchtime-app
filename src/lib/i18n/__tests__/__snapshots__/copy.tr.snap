@@ -1204,11 +1204,11 @@ Yaptıklarım:
 
 ⏰  *Hatırlatmalar*, beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin "@Match Time pazartesi hatırlat"), o gün size DM atarım.
 
-📊  *İstatistikler*, "geçen hafta maçın adamı kimdi?" ya da "en istikrarlı oyuncumuz kim?" gibi sorular sorabilirsiniz.
+📊  *İstatistikler*, beni etiketleyip "@Match Time geçen hafta maçın adamı kimdi?" ya da "@Match Time en istikrarlı oyuncumuz kim?" gibi sorular sorabilirsiniz.
 
 💳  *Ödemeler*, her maçtan hemen sonra "ödedin mi?" anketi paylaşırım.
 
-Sorunuz varsa buradan sorun. Hadi başlayalım.
+Sorunuz varsa beni burada etiketleyerek sorun, örneğin *@Match Time yardım*. Hadi başlayalım.
 
 ### R67 buildBotIntro / attendance only
 👋 Herkese merhaba, MatchTime botu bu grupta aktif.
@@ -1219,7 +1219,7 @@ Yaptıklarım:
 
 🗒  *Günlük hatırlatma*, kadro dolana kadar her gün 17:00'de kadro listesini yeniden paylaşırım, kaç kişi eksik hep birlikte görürüz.
 
-Sorunuz varsa buradan sorun. Hadi başlayalım.
+Sorunuz varsa beni burada etiketleyerek sorun, örneğin *@Match Time yardım*. Hadi başlayalım.
 
 ### R67 buildBotIntro / ratings and MoM only
 👋 Herkese merhaba, MatchTime botu bu grupta aktif.
@@ -1228,7 +1228,7 @@ Yaptıklarım:
 
 🏆  *Puanlama ve maçın adamı*, her maçtan sonra herkese puanlama linkini DM'den gönderirim (kayıt yok, tıklamanız yeterli); maçın adamını uygulamadan ya da paylaştığım anketten seçin, herkes oy verince (en geç maçtan 5 gün sonra) kazananı açıklarım.
 
-Sorunuz varsa buradan sorun. Hadi başlayalım.
+Sorunuz varsa beni burada etiketleyerek sorun, örneğin *@Match Time yardım*. Hadi başlayalım.
 
 ### R74 buildChasePreKickoffFallback
 ⏳ *Tuesday 7-a-side* (21:30) için hâlâ *2 kişi* eksiğiz. Bu akşam müsait olan var mı?
@@ -3555,11 +3555,11 @@ Yaptıklarım:
 
 ⏰  *Hatırlatmalar*, beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin "@Match Time pazartesi hatırlat"), o gün size DM atarım.
 
-📊  *İstatistikler*, "geçen hafta maçın adamı kimdi?" ya da "en istikrarlı oyuncumuz kim?" gibi sorular sorabilirsiniz.
+📊  *İstatistikler*, beni etiketleyip "@Match Time geçen hafta maçın adamı kimdi?" ya da "@Match Time en istikrarlı oyuncumuz kim?" gibi sorular sorabilirsiniz.
 
 💳  *Ödemeler*, her maçtan hemen sonra "ödedin mi?" anketi paylaşırım.
 
-Sorunuz varsa buradan sorun. Hadi başlayalım.
+Sorunuz varsa beni burada etiketleyerek sorun, örneğin *@Match Time yardım*. Hadi başlayalım.
 
 ### RSQ4 buildLateDropAdminNotice
 Geç çıkış: *Wasim Ali*, *Friday 9-a-side* (9 Ekim Cuma 20:30) için 16:05 saatinde YOKUM dedi, son çıkış Perşembe 15:30 idi. Kadro şimdi 17/18, yedekte 1 kişi (Uncle Najib).
