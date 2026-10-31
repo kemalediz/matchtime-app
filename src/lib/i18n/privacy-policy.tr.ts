@@ -153,6 +153,7 @@ export function buildPrivacyPolicyTr(f: PolicyFacts): PrivacyPolicyCopy {
               "verileri saklayan barındırma ve veritabanı sağlayıcıları;",
               "MatchTime'ın mesajları anlayabilmesi için onları okuyan bir yapay zeka hizmeti. Oyuncu havuzunda yalnızca kendi teklifinize verdiğiniz yanıtı, o teklifle birlikte okur; havuz profiliniz bu hizmetle hiçbir zaman paylaşılmaz;",
               "ödeme alan kulüpler için bir kart ödeme sağlayıcısı;",
+              "web sayfalarımızın ziyaretlerini ve tamamlanan oyuncu havuzu kayıtlarını sayan bir web analiz hizmeti. Bu hizmet çerez kullanmaz ve adınızı, telefon numaranızı ya da posta kodunuzu hiçbir zaman almaz;",
               "gönderdiğimiz az sayıdaki e-posta için bir e-posta sağlayıcısı.",
             ],
           },
