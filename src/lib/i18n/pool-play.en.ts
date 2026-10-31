@@ -62,6 +62,7 @@ export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
       busy: "We're busy right now, please try again in an hour.",
       "area-not-found": "We couldn't find that postcode area. Please check it, for example SM1 or SW19.",
       paused: "Sign-ups are paused for a short while. Please try again later.",
+      "link-closed": "This link no longer works for this game. Reload the page to see why.",
       unavailable: "Sign-ups are not available right now. Please try again later.",
       generic: "Something went wrong. Please try again.",
     },

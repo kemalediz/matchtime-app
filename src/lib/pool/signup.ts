@@ -23,6 +23,7 @@
  */
 import { db } from "../db";
 import { generatePoolConfirmCode, poolCodeExpiry } from "./confirm-rules";
+import { friendCodeExpiry } from "../friend-link/rules";
 import type { PoolFields } from "./profile-fields";
 import { availabilityRows, resolveArea, sportRows } from "./profile-store";
 import { POOL_SIGNUP } from "./rules";
@@ -39,6 +40,9 @@ export async function createPoolSignup(args: {
   earlyList: boolean;
   /** Slice L3: the signed-in member (with no phone) who started it. */
   startedByUserId?: string;
+  /** The friend link it came from (2026-10-31): source "friend", the member
+   *  who sent it as referrer, and the code dies at kick-off if sooner. */
+  friendLink?: { id: string; issuedByUserId: string; kickoff: Date };
   now?: Date;
 }): Promise<PoolSignupResult> {
   const now = args.now ?? new Date();
@@ -61,12 +65,14 @@ export async function createPoolSignup(args: {
 
   const source = args.startedByUserId
     ? { source: "profile" as const, sourceCode: null, referrerUserId: null }
-    : await resolveSource(args.source);
+    : args.friendLink
+      ? { source: "friend" as const, sourceCode: null, referrerUserId: args.friendLink.issuedByUserId }
+      : await resolveSource(args.source);
   const f = args.fields;
 
   for (let attempt = 0; attempt < 10; attempt++) {
     const code = generatePoolConfirmCode();
-    const expiresAt = poolCodeExpiry(now);
+    const expiresAt = args.friendLink ? friendCodeExpiry(now, args.friendLink.kickoff) : poolCodeExpiry(now);
     try {
       const row = await db.poolProfile.create({
         data: {
@@ -83,6 +89,7 @@ export async function createPoolSignup(args: {
           areaLng: area.areaLng,
           maxMiles: f.maxMiles,
           earlyList: args.earlyList,
+          friendLinkId: args.friendLink?.id ?? null,
           ...source,
           sports: { create: sportRows(f) },
           availability: { create: availabilityRows(f) },

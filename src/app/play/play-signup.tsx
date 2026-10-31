@@ -40,14 +40,33 @@ import {
 } from "@/lib/pool/pending-signup";
 import { PoolPendingReminder } from "@/components/pool/pool-pending-reminder";
 import { PoolWhatsAppStep } from "@/components/pool/pool-whatsapp-step";
+import { dayCommaTimeLabel } from "@/lib/i18n/dates";
+import { friendLinkCopy } from "@/lib/i18n/friend-link";
+import type { PoolFee } from "@/lib/pool/offer-copy";
 
 type Confirm = PoolSignupConfirm;
+
+/** A friend link's game (2026-10-31, `/play/f/<token>`). */
+export interface FriendLinkCard {
+  token: string;
+  /** The member's first name. */
+  member: string;
+  club: string;
+  kickoffIso: string;
+  venue: string | null;
+  address: string | null;
+  fee: PoolFee;
+  monthly: boolean;
+  /** The name the member gave, for the form; null for "+1". */
+  friendName: string | null;
+}
 
 export function PlaySignup({
   source,
   paused,
   invitedBy = null,
   earlyList,
+  friend = null,
 }: {
   source: { campaignCode: string | null; referralCode: string | null };
   paused: boolean;
@@ -56,6 +75,8 @@ export function PlaySignup({
   earlyList: boolean;
   /** Slice G1: the friend whose link this is, when his privacy switch shows his name. */
   invitedBy?: string | null;
+  /** A friend link (2026-10-31): the game shown at the top, his name filled in. */
+  friend?: FriendLinkCard | null;
 }) {
   const browserLang = useBrowserLang();
   const [chosen, setChosen] = useState<Lang | null>(null);
@@ -64,7 +85,7 @@ export function PlaySignup({
 
   // The form's language follows the page's until he picks one himself.
   const [form, setForm] = useState<PoolFormValue | null>(null);
-  const value = form ?? defaultPoolForm(lang);
+  const value = form ?? { ...defaultPoolForm(lang), name: friend?.friendName ?? "" };
   const [adult, setAdult] = useState(false);
   const [consent, setConsent] = useState(false);
   const [errors, setErrors] = useState<PoolFieldErrors>({});
@@ -114,6 +135,8 @@ export function PlaySignup({
   // The draft: read once after mount (the server never sees it), saved on
   // every change he makes, cleared once the sign-up is sent.
   useEffect(() => {
+    // A friend link starts from the member's words, never an older draft.
+    if (friend) return;
     const draft = loadSignupDraft(defaultPoolForm(browserLang));
     if (draft) setForm((f) => f ?? draft);
     // Once, on mount: a later language change must not reload the draft.
@@ -131,7 +154,13 @@ export function PlaySignup({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const body = { ...toPoolPayload(value), adult, consent, source: { c: source.campaignCode ?? undefined, ref: source.referralCode ?? undefined } };
+    const body = {
+      ...toPoolPayload(value),
+      adult,
+      consent,
+      source: { c: source.campaignCode ?? undefined, ref: source.referralCode ?? undefined },
+      ...(friend ? { friendToken: friend.token } : {}),
+    };
     const local = validatePoolSignup(body);
     setFormError(null);
     if (!local.ok) {
@@ -187,6 +216,7 @@ export function PlaySignup({
           {copy.signup.expiredNote}
         </p>
       )}
+      {friend && <FriendCard friend={friend} lang={lang} />}
       {invitedBy && (
         <p data-testid="pool-invited-by" className="mb-3 text-sm font-medium text-emerald-800">
           {poolShareCopy(lang).invitedBy(invitedBy)}
@@ -231,6 +261,22 @@ export function PlaySignup({
         </form>
       )}
     </PoolPageShell>
+  );
+}
+
+function FriendCard({ friend, lang }: { friend: FriendLinkCard; lang: Lang }) {
+  const c = friendLinkCopy(lang);
+  const fee =
+    friend.fee?.kind === "amount" ? (friend.monthly ? c.page_fee_payg({ amount: friend.fee.amount }) : c.page_fee({ amount: friend.fee.amount })) : friend.fee?.kind === "free" ? c.page_free : null;
+  return (
+    <section data-testid="friend-link-card" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-slate-900">
+      <p className="text-sm font-semibold text-emerald-800">{c.page_invited({ member: friend.member })}</p>
+      <p className="mt-1 text-lg font-bold">{friend.club}</p>
+      <p className="text-sm">{dayCommaTimeLabel(lang, new Date(friend.kickoffIso))}</p>
+      {friend.venue && <p className="text-sm">{friend.address ? `${friend.venue}, ${friend.address}` : friend.venue}</p>}
+      {fee && <p className="text-sm">{fee}</p>}
+      <p className="mt-3 text-sm text-slate-700">{c.page_explain}</p>
+    </section>
   );
 }
 

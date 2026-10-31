@@ -68,3 +68,11 @@ export async function friendLinkRows(pool: PoolWorld, orgId: string) {
     [orgId],
   );
 }
+
+/** Shane says his friend is coming; the token of the link he was sent. */
+export async function linkFor(pool: PoolWorld, club: PoolClub, member = "shane", friend: string | null = "Ali"): Promise<string> {
+  const r = await say(pool, club, member, friend ? `my friend ${friend} is in` : "+1", friend ? namedFriend(friend) : unnamedFriend("+1"), { route: friend ? "other_att" : "offer" });
+  const path = linksIn(r.sent.map((m) => m.text).join("\n"))[0];
+  if (!path) throw new Error(`friend-link: no link was sent to ${member}`);
+  return tokenOf(path);
+}

@@ -63,6 +63,7 @@ export function buildPoolPlayTr(f: PoolPlayFacts): PoolPlayCopy {
       busy: "Şu an çok yoğunuz, lütfen bir saat sonra yeniden dene.",
       "area-not-found": "Bu posta kodu bölgesini bulamadık. Lütfen kontrol et, örneğin SM1 ya da SW19.",
       paused: "Kayıtlar kısa bir süreliğine durduruldu. Lütfen daha sonra yeniden dene.",
+      "link-closed": "Bu bağlantı bu maç için artık geçerli değil. Nedenini görmek için sayfayı yenile.",
       unavailable: "Kayıt şu an yapılamıyor. Lütfen daha sonra yeniden dene.",
       generic: "Bir şeyler ters gitti. Lütfen yeniden dene.",
     },

@@ -26,10 +26,14 @@ import { poolOpenForApiRequest } from "@/lib/pool/flags-request";
 import { readSignupSource, validatePoolSignup } from "@/lib/pool/profile-fields";
 import { createPoolSignup } from "@/lib/pool/signup";
 import { poolSignupStatusToken } from "@/lib/pool/signup-status-token";
+import { openFriendLink } from "@/lib/friend-link/page";
 
 export async function POST(request: Request) {
-  if (isPoolSignupPaused()) return NextResponse.json({ ok: false, reason: "paused" }, { status: 503 });
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  // A friend link still works while sign-ups are paused (friend link D5).
+  if (isPoolSignupPaused() && !(body && typeof body === "object" && body.friendToken !== undefined)) {
+    return NextResponse.json({ ok: false, reason: "paused" }, { status: 503 });
+  }
   if (!body || typeof body !== "object") return NextResponse.json({ ok: false, reason: "invalid" }, { status: 400 });
 
   const valid = validatePoolSignup(body);
@@ -39,11 +43,20 @@ export async function POST(request: Request) {
   if (!number) return NextResponse.json({ ok: false, reason: "unavailable" }, { status: 503 });
 
   const source = readSignupSource((body.source ?? {}) as Record<string, unknown>);
+  // A friend link (2026-10-31): only while it is still usable, decided by
+  // the same reading the page shows (`openFriendLink`).
+  let friendLink: { id: string; issuedByUserId: string; kickoff: Date } | undefined;
+  if (body.friendToken !== undefined) {
+    const opened = typeof body.friendToken === "string" ? await openFriendLink(body.friendToken) : null;
+    if (!opened || opened.state !== "open") return NextResponse.json({ ok: false, reason: "link-closed" }, { status: 409 });
+    friendLink = { id: opened.id, issuedByUserId: opened.issuedByUserId, kickoff: opened.facts.kickoff };
+  }
   const res = await createPoolSignup({
     fields: valid.value,
     ip: poolRequestIp(request),
     source,
     earlyList: !(await poolOpenForApiRequest(request)),
+    friendLink,
   });
   if (!res.ok) {
     const status = res.reason === "busy" ? 429 : 422;

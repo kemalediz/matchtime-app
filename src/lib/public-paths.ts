@@ -51,6 +51,9 @@ export function isPublicPath(pathname: string): boolean {
     // the path is the access control (src/lib/pool/offer-token.ts, the
     // prefix pinned by its test); opening it changes nothing.
     pathname.startsWith("/play/offer/") ||
+    // A friend link (2026-10-31): the same, its token signed by
+    // src/lib/friend-link/token.ts; opening it changes nothing.
+    pathname.startsWith("/play/f/") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/cron") ||
     pathname.startsWith("/api/whatsapp") ||

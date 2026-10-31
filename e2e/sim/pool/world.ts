@@ -73,6 +73,8 @@ export interface SignUpBody {
   adult: boolean;
   consent: boolean;
   source: { c?: string; src?: string; ref?: string };
+  /** A friend link's token (`/play/f/<token>`, 2026-10-31). */
+  friendToken?: string;
 }
 
 /** The sign-up route's answer. */
