@@ -459,6 +459,9 @@ export type QuestionTopic =
  *  the explainer. The regex topic reader is gone. */
 export const HELP_FEATURES = [
   "availability",
+  // The friend link (#488; its own topic 2026-10-31): how a player brings
+  // a friend. Works only while attendance is on (friend-link/rules.ts).
+  "friend",
   "teams",
   "mom",
   "ratings",

@@ -62,6 +62,7 @@ const CASES: Case[] = [
   { text: "@Match Time help badges Mr Reliable", feature: "badges", badge: "reliable" },
   { text: "@Match Time how do I switch off man of the match?", feature: "mom" },
   { text: "@Match Time how do I cancel next week?", feature: "schedule" },
+  { text: "@Match Time how do I bring a friend?", feature: "friend" },
   // HQ, untagged, as organisers write there.
   { text: "what can you do?", hq: true, feature: null },
   { text: "how does the player pool work?", hq: true, feature: "pool" },

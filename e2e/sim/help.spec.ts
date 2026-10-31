@@ -82,6 +82,24 @@ test('tagged bare "help" → topic menu, omits the disabled payments topic', asy
   expect(r.reply).not.toMatch(/• \*@Match Time help payments\*/);
 });
 
+// The friend link's own topic (2026-10-31), in the words a player uses.
+test('tagged "how do I bring a friend?" → how the friend link works', async ({ request, db }) => {
+  const sim = await group(request, db);
+  const r = await sim.post("pete", "@Match Time how do I bring a friend?", { tag: true, ...asHelp("friend") });
+  expect(r.intent).toBe("help");
+  expect(r.reply).toMatch(/\*Bringing a friend: how it works\*/);
+  expect(r.reply).toMatch(/I react ✉️ and DM you a personal link/);
+  expect(r.reply).toMatch(/on the bench if it's full/);
+  expect(r.reply).toMatch(/give the place back/);
+  expect(r.reply).not.toMatch(/[—–]/);
+});
+
+test('tagged bare "help" lists the friend topic', async ({ request, db }) => {
+  const sim = await group(request, db);
+  const r = await sim.post("pete", "@Match Time help", { tag: true, ...asHelp() });
+  expect(r.reply).toMatch(/• \*@Match Time help friend\*: bringing a friend/);
+});
+
 test('UNtagged "help" → ignored (no help reply produced)', async ({
   request,
   db,

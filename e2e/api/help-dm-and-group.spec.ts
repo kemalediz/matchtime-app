@@ -34,6 +34,9 @@ test.beforeAll(async () => {
     "@Match Time help badges": { feature: "badges" },
     "help badges iron man": { feature: "badges", badge: "ironman" },
     "help badges golden boot": { feature: "badges" },
+    "@Match Time how do I bring a friend?": { feature: "friend" },
+    "help friend": { feature: "friend" },
+    "arkadaşımı nasıl getiririm?": { feature: "friend" },
   });
 });
 
@@ -180,4 +183,42 @@ test("DM 'help badges iron man' answers with that badge; a name the extractor do
   const unknown = (await lastDmTo(db, PHONE.rater))!.text;
   expect(unknown).toContain("*help badges Mr Reliable*");
   for (const name of ["On the board", "Iron Man", "Above the Curve"]) expect(unknown).toContain(`*${name}*: `);
+});
+
+// The friend link's own topic (2026-10-31): the group, a player's DM in
+// Turkish, and an organiser's DM.
+test("group: '@Match Time how do I bring a friend?' explains the friend link", async ({ request }) => {
+  const id = msgId();
+  const res = await postAnalyze(request, [
+    { waMessageId: id, body: "@Match Time how do I bring a friend?", authorPhone: PHONE.player, authorName: NAME.player, botMentioned: true },
+  ]);
+  const r = (res.results as Array<{ waMessageId: string; reply?: string; handledBy?: string }>).find((x) => x.waMessageId === id)!;
+  expect(r.handledBy).toBe("llm");
+  expect(r.reply).toMatch(/\*Bringing a friend: how it works\*/);
+  expect(r.reply).toMatch(/my friend Ali is coming/);
+  expect(r.reply).toMatch(/until kick-off/);
+  expect(r.reply).not.toContain("When an organiser adds someone");
+  expect(r.reply).not.toMatch(/https?:\/\//);
+});
+
+test("DM 'arkadaşımı nasıl getiririm?' from a PLAYER in a Turkish club: the Turkish friend help", async ({ request, db }) => {
+  await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
+  try {
+    const json = await postDm(request, PHONE.rater, "arkadaşımı nasıl getiririm?");
+    expect(json).toMatchObject({ handled: "dm-help", topic: "friend", audience: "player" });
+    const text = (await lastDmTo(db, PHONE.rater))!.text;
+    expect(text).toContain("*Arkadaş getirmek nasıl çalışır*");
+    expect(text).toContain("kadro doluysa yedeğe");
+    expect(text).not.toMatch(/https?:\/\//);
+  } finally {
+    await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
+  }
+});
+
+test("DM 'help friend' from the ADMIN: the friend help and that his own add is direct", async ({ request, db }) => {
+  const json = await postDm(request, PHONE.admin, "help friend");
+  expect(json).toMatchObject({ handled: "dm-help", topic: "friend", audience: "admin", orgId: ORG_ID });
+  const text = (await lastDmTo(db, PHONE.admin))!.text;
+  expect(text).toMatch(/\*Bringing a friend: how it works\*/);
+  expect(text).toContain("When an organiser adds someone, they go straight on the list.");
 });

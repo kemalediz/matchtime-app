@@ -127,6 +127,10 @@ const CASES: Case[] = [
   { id: "N17", body: "@Match Time help ratings", topic: "how_it_works", check: (f) => f.feature === "ratings", want: "feature ratings" },
   { id: "N18", body: "@Match Time yardım ödeme", topic: "how_it_works", check: (f) => f.feature === "payments", want: "feature payments" },
   { id: "N19", body: "@Match Time how do I turn the reminders off?", topic: "how_it_works", check: (f) => f.feature === "reminders", want: "feature reminders" },
+  // The friend link's own topic (2026-10-31), and a friend said to be coming, which asks nothing.
+  { id: "N20", body: "@Match Time how do I bring a friend?", topic: "how_it_works", check: (f) => f.feature === "friend", want: "feature friend" },
+  { id: "N21", body: "arkadaşımı nasıl getiririm?", topic: "how_it_works", check: (f) => f.feature === "friend", want: "feature friend (a DM)" },
+  { id: "N22", body: "my friend Ali is coming on Friday", topic: "other", want: "not help (a DM)" },
   // The rest of the topics.
   { id: "P1", body: "@Match Time Zair geliyor mu?", topic: "person_status", check: (f) => /zair/i.test(f.personRef ?? ""), want: "personRef Zair" },
   { id: "P2", body: "@Match Time anyone in the squad without a number?", topic: "phones" },

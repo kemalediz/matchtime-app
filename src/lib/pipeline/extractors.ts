@@ -239,6 +239,16 @@ export function extractorFor(route: Route): ExtractorKind {
 // pool and settings, a new `badge` field names one badge, and the examples
 // are one "Help with MatchTime" group. 11,122 to 13,106 characters. Live
 // results in the PR (scripts/live-check-question-extractor.ts).
+//
+// QUESTION, 2026-10-31: "HELP FRIEND". The friend link (#488) gets its own
+// help topic: `feature` gains `friend`, defined once beside availability,
+// and one EN | TR example joins the "Help with MatchTime" group. A small
+// additive patch, not a rewrite: it adds one value to one field in the
+// place every other value is defined, changes no existing definition or
+// ruling, and a friend coming to play is never read here (the router sends
+// it to attendance). 13,596 to 13,849 characters. Live results in the PR
+// (scripts/live-check-help-friend.ts, then one full pass of
+// live-check-question-extractor.ts and live-check-help-routing.ts).
 
 export const EXTRACTOR_PROMPTS: Record<Exclude<ExtractorKind, "none">, string> = {
   attendance: `You read ONE message from a football club's WhatsApp group and report what it says about who is playing in the club's match. You report facts about the words. You never decide what happens next: code does that, from the club's records.
@@ -379,6 +389,7 @@ A number the message ASSERTS about the squad, for checking: "we're 9/14 right?" 
 feature
 For how_it_works only, the part of MatchTime it asks about. Every other topic is none.
   availability     signing in and out, the squad list, the bench, saying maybe
+  friend           bringing a friend to a match: the personal link a player is sent to forward, how the friend joins, pulls out or pays
   teams            how the two teams are made
   mom              Man of the Match
   ratings          player ratings
@@ -444,6 +455,7 @@ Help with MatchTime:
   "@Match Time help" | "@Match Time yardım" -> how_it_works
   "@Match Time what can you do?" | "@Match Time neler yapabiliyorsun?" -> how_it_works
   "Bench? We do bench now?" | "yedek ne demek?" -> how_it_works, feature availability
+  "@Match Time how do I bring a friend?" | "@Match Time arkadaşımı nasıl getiririm?" -> how_it_works, feature friend
   "@Match Time how are the teams picked?" | "@Match Time yardım takımlar" -> how_it_works, feature teams
   "@Match Time how do we pay?" | "@Match Time ödemeyi nasıl yapıyoruz?" -> how_it_works, feature payments
   "@Match Time how do I turn off Man of the Match?" | "@Match Time maçın adamı oylamasını nasıl kapatırım?" -> how_it_works, feature mom

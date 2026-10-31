@@ -47,6 +47,9 @@ export function settingsAnchorPath(id: SettingsAnchor): string {
  *  no card of its own. */
 export const HELP_TOPIC_ANCHOR: Partial<Record<HelpFeature, SettingsAnchor>> = {
   availability: "attendance",
+  // The friend link has no switch of its own: it works while attendance
+  // tracking is on, so its card is attendance's.
+  friend: "attendance",
   teams: "teams",
   mom: "mom",
   ratings: "ratings",

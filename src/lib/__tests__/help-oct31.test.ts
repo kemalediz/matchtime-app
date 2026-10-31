@@ -7,9 +7,9 @@
  *      fills in the form and sends his WhatsApp code, which books him in
  *      (bench if full) and adds him to the player pool; the link works
  *      until kick-off. An organiser adding someone adds him directly.
- *      Explained under "help availability" and one line of the bare help
- *      (no new topic: a topic is a new value the question extractor would
- *      have to name, a prompt change).
+ *      Explained under "help availability" and one line of the bare help.
+ *      Since the same day it is also a topic of its own, "help friend"
+ *      (help-friend-topic.test.ts).
  *   2. A REAL tag (#482, #487): type @ and pick Match Time; typing the name
  *      or replying to MatchTime does not count. Attendance never needs one.
  *   3. Quiet hours by tag (#483, #486): in HQ's help and the organiser's

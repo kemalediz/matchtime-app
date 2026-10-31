@@ -307,6 +307,14 @@
  *     Settings line under a code that is on screen, which now gives the
  *     code's real expiry (the setup DM's code lasts 7 days).
  *
+ *   - 2026-10-31, "help friend" (the friend link's own help topic):
+ *     ADDED R153f (the friend topic for each audience, with and without
+ *     match fees, and with attendance off). CHANGED, on purpose: every
+ *     bare help menu with attendance on gains one line, "help friend" in
+ *     English and "yardım arkadaş" in Turkish, after squad and
+ *     availability; an organiser's list of what is switched off names
+ *     "bringing a friend" when attendance is off. No other line changed.
+ *
  *   - A deliberate CHANGE across the whole English document (2026-10-06,
  *     Kemal: "remove long dashes"). Every em and en dash used as
  *     punctuation in the English table was rewritten as a comma, a
@@ -1278,6 +1286,13 @@ function cases(lang: Lang): Case[] {
   }
   add("R153 buildHelpReply / bare, pool and partners on / group", buildHelpReply(null, { ...ALL_ON, pool: POOL_ON, partners: PARTNERS_AUTO }, lang));
   add("R153 buildHelpReply / bare, pool open, partners off / admin", buildHelpReply(null, { ...ALL_ON, pool: POOL_OFF, partners: NO_PARTNERS }, lang, { audience: "admin", links: SIGNED }));
+  // ── 1.4e "help friend" (2026-10-31): NEW cases ───────────────────────
+  for (const audience of ["group", "admin", "player"] as const) {
+    const ctx = { audience, links: audience === "admin" ? SIGNED : undefined };
+    add(`R153f buildHelpReply / friend / ${audience}`, buildHelpReply("friend", { ...ALL_ON, paymentCollection: false }, lang, ctx));
+    add(`R153f buildHelpReply / friend, match fees / ${audience}`, buildHelpReply("friend", { ...ALL_ON, paymentCollection: true }, lang, ctx));
+    add(`R153f buildHelpReply / friend, attendance off / ${audience}`, buildHelpReply("friend", { ...MINIMAL, attendance: false }, lang, ctx));
+  }
   // ── 1.5 the web surfaces (slice 6, 2026-09-19) ──────────────────────
   //    NEW copy, not a move, so these cases are additive to both
   //    snapshots and the only other line in the English diff is the
