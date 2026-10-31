@@ -194,6 +194,7 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
       [
         `ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:`,
         `   • *@Match Time help availability*: squad & availability`,
+        `   • *@Match Time help friend*: bringing a friend`,
         `   • *@Match Time help teams*: fair teams`,
         `   • *@Match Time help mom*: Man of the Match`,
         `   • *@Match Time help ratings*: player ratings`,

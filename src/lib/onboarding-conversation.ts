@@ -163,6 +163,7 @@ export function helpFeaturesFrom(
 // Stable order for the bare-help topic list.
 const HELP_TOPIC_ORDER: HelpTopic[] = [
   "availability",
+  "friend",
   "teams",
   "mom",
   "ratings",
@@ -241,6 +242,8 @@ function partnersOn(features: HelpFeatures): boolean {
 
 function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
   if (topic === "schedule" || topic === "badges" || topic === "settings") return true;
+  // The friend link works only while attendance is on (`decideThirdPartyIn`).
+  if (topic === "friend") return features.attendance === true;
   if (topic === "pool") return poolOn(features);
   if (topic === "partners") return partnersOn(features);
   // Payments are on when the club collects match fees. Payment tracking
@@ -332,6 +335,24 @@ export function buildHelpReply(
       poolLabel: title("playerPool"),
       autoLabel: title("poolAutoAsk"),
     });
+  }
+  if (topic === "friend") {
+    // The friend link (#488): its own topic since 2026-10-31. Organisers
+    // mode and organiser picks change nothing about it; an organiser also
+    // hears that his own add is direct (D1). It has no switch of its own:
+    // with attendance off it works nowhere, so the answer says so and how
+    // attendance is switched on, like any flag topic that is off.
+    const body =
+      s.onbHelpFriend({ fees: features.paymentCollection === true }) + adminTail(s.onbHelpFriendLinkOrganiser);
+    if (topicIsOn(topic, features)) return body;
+    const switchOn = s.onbHelpSwitchOn({
+      topic: "availability",
+      audience: ctx.audience,
+      url: topicUrl,
+      word: s.onbHelpTopicWord({ topic }),
+      label: title("attendance"),
+    });
+    return `${s.onbHelpOffLead()}\n\n${body}\n\n${switchOn}`;
   }
   if (topic && isFlagTopic(topic)) {
     if (organisers && topic === "teams") {

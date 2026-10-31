@@ -34,6 +34,7 @@ const WEATHER = "@Match Time what's the weather like on Friday?";
 const MOTM = "Who got motm";
 const REFRESH = "FNF refresh needed 👀";
 const MENU_UNTAGGED = "what can you do?";
+const FRIEND = "@Match Time how do I bring a friend?";
 
 /** The question extractor's raw answer. */
 const q = (topic: string) => ({
@@ -64,6 +65,8 @@ test.beforeAll(async ({ db }) => {
     [WEATHER]: q("other"),
     [MOTM]: q("club"),
     [MENU_UNTAGGED]: { ...q("how_it_works"), route: "help" },
+    // The friend link's own help topic (2026-10-31).
+    [FRIEND]: { route: "help", facts: { ...q("how_it_works").facts, feature: "friend", badge: "none" } },
     // FNF HQ 2026-10-30 23:56 UTC: what the router and extractor would say.
     [REFRESH]: { route: "admin_ops", facts: { action: "other", payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0, toMatchTime: true } },
   });
@@ -109,6 +112,14 @@ test("what can you do: the HQ menu, as before", async ({ request }) => {
   const out = await say(request, MENU);
   expect(out).toMatchObject({ handled: true, outcome: "hq-help" });
   expect(out.replyText).toContain("*MatchTime in your admin group*");
+});
+
+test("how do I bring a friend: the friend help, with the organiser's direct add", async ({ request }) => {
+  const out = await say(request, FRIEND);
+  expect(out).toMatchObject({ handled: true });
+  expect(out.replyText).toMatch(/\*Bringing a friend: how it works\*/);
+  expect(out.replyText).toContain("When an organiser adds someone, they go straight on the list.");
+  expect(out.replyText).not.toContain("*MatchTime in your admin group*");
 });
 
 test("a question nothing answers: one line, never silent", async ({ request }) => {

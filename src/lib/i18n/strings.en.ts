@@ -1186,15 +1186,16 @@ export const en = {
     `   • *@Match Time help ${p.word}*: ${p.label}`,
 
   /** The word a player types after "help" for each topic, in this language. */
-  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
+  onbHelpTopicWord: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
     p.topic,
 
   /** Human label for each topic, used in the bare-help topic menu. */
-  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
+  onbHelpTopicLabel: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
     ({
       schedule: "schedule & bookings",
       badges: "badges and how to earn them",
       availability: "squad & availability",
+      friend: "bringing a friend",
       teams: "fair teams",
       mom: "Man of the Match",
       ratings: "player ratings",
@@ -1483,6 +1484,16 @@ export const en = {
    *  friend-link/rules.ts and friend-link.en.ts do it. Appended to every
    *  availability explainer by buildHelpReply. */
   onbHelpFriendLink: `👥 Bringing a friend? Say so in the group (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them. Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.`,
+  /** "help friend" (2026-10-31): the friend link's own topic, from
+   *  friend-link/rules.ts, book.ts, withdraw.ts and friend-link.en.ts.
+   *  `fees`: the club takes match fees (`paymentCollection`). An organiser
+   *  also gets `onbHelpFriendLinkOrganiser` (buildHelpReply). */
+  onbHelpFriend: (p: { fees: boolean }): string =>
+    `👥 *Bringing a friend: how it works*\n` +
+    `Say in the group that a friend is coming (for example *my friend Ali is coming*), no need to tag me. I react ✉️ and DM you a personal link to forward to them.\n` +
+    `Your friend opens it, fills in their details and sends the WhatsApp code: that puts them in the game (on the bench if it's full) and in the MatchTime player pool. The link works until kick-off.\n` +
+    `If your friend can't make it, they can message me on WhatsApp or tap the button on their page to give the place back.` +
+    (p.fees ? `\n💷 Your friend pays the match fee like any guest, after the game (in a monthly club, as a pay as you go player).` : ""),
   /** The same, for an organiser: his own add is direct (friend link D1). */
   onbHelpFriendLinkOrganiser: `When an organiser adds someone, they go straight on the list.`,
 

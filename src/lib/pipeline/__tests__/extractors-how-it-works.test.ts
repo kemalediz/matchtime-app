@@ -38,7 +38,7 @@ describe("a how-it-works question", () => {
   });
 
   it("every help topic is readable", () => {
-    for (const f of ["availability", "teams", "mom", "ratings", "reminders", "payments", "schedule", "badges", "partners", "pool", "settings"]) {
+    for (const f of ["availability", "friend", "teams", "mom", "ratings", "reminders", "payments", "schedule", "badges", "partners", "pool", "settings"]) {
       expect(parse({ feature: f }).facts).toMatchObject({ feature: f });
     }
   });
@@ -72,7 +72,7 @@ describe("a how-it-works question", () => {
     const schema = factsSchemaFor("question") as { properties: Record<string, { enum?: string[] }>; required: string[] };
     expect(schema.properties.topic.enum).toContain("how_it_works");
     expect(schema.properties.feature.enum).toEqual([
-      "availability", "teams", "mom", "ratings", "reminders", "payments", "schedule", "badges", "partners", "pool", "settings", "none",
+      "availability", "friend", "teams", "mom", "ratings", "reminders", "payments", "schedule", "badges", "partners", "pool", "settings", "none",
     ]);
     expect(schema.properties.badge.enum).toEqual([...HELP_BADGES, "none"]);
     expect(schema.required).toContain("feature");
