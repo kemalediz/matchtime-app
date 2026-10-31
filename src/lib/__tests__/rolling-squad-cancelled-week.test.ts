@@ -99,11 +99,46 @@ describe("cancelledWeekIntents", () => {
     expect(i.size).toBe(0);
   });
 
-  it("a row removed outright, or left on the bench, says neither IN nor OUT", () => {
+  // 2026-10-31 (FNF, Kemal): the cancelled week's list as the organisers
+  // left it carries over, so taking a player off it counts like an OUT.
+  it("moved from the squad to the bench before the cancellation: off the list, like an OUT", () => {
+    const i = cancelledWeekIntents([
+      week([
+        ev("wasim", null, "CONFIRMED", before(3000), "rolling-squad"),
+        ev("wasim", "CONFIRMED", "BENCH", before(2000), "admin-message"),
+      ]),
+    ]);
+    expect(i.get("wasim")?.intent).toBe("out");
+  });
+
+  it("a row removed outright (from the squad or the bench) before the cancellation: off the list, like an OUT", () => {
     const i = cancelledWeekIntents([
       week([
         ev("wasim", "CONFIRMED", null, before(2000), "admin-squad-edit"),
+        ev("seb", "BENCH", null, before(1500), "admin-squad-edit"),
+      ]),
+    ]);
+    expect(i.get("wasim")?.intent).toBe("out");
+    expect(i.get("seb")?.intent).toBe("out");
+  });
+
+  it("a new row on the bench (an IN on a full squad), or a DROPPED moved to the bench, is still no word", () => {
+    const i = cancelledWeekIntents([
+      week([
         ev("glazers", null, "BENCH", before(1000)),
+        ev("kieran", "CONFIRMED", "DROPPED", before(900)),
+        ev("kieran", "DROPPED", "BENCH", before(800)),
+      ]),
+    ]);
+    expect(i.has("glazers")).toBe(false);
+    expect(i.has("kieran")).toBe(false);
+  });
+
+  it("benched or removed AFTER the cancellation: not a statement, still carried", () => {
+    const i = cancelledWeekIntents([
+      week([
+        ev("wasim", "CONFIRMED", "BENCH", after(10), "admin-message"),
+        ev("seb", "CONFIRMED", null, after(20), "admin-squad-edit"),
       ]),
     ]);
     expect(i.size).toBe(0);
@@ -143,6 +178,26 @@ describe("applyCancelledWeeks", () => {
     expect(decideSeed({ sourceRows: res.rows, targetRows: [], maxPlayers: 18 }).map((d) => d.userId)).toEqual([
       "bilal",
       "seb",
+    ]);
+  });
+
+  it("benched or removed on the cancelled week: not carried, and named to the organisers like an OUT", () => {
+    const res = applyCancelledWeeks({
+      sourceRows: source,
+      weeks: [
+        week([
+          ev("feroz", "CONFIRMED", "BENCH", before(4000), "admin-message"),
+          ev("mo", "CONFIRMED", null, before(3000), "admin-squad-edit"),
+          ev("imti", null, "CONFIRMED", before(2000), "admin-message", 19),
+        ]),
+      ],
+      cancelledWeekRows: [row("imti", 19)],
+    });
+    expect(res.leftOut).toEqual(["mo", "feroz"]);
+    expect(decideSeed({ sourceRows: res.rows, targetRows: [], maxPlayers: 18 }).map((d) => d.userId)).toEqual([
+      "bilal",
+      "seb",
+      "imti",
     ]);
   });
 

@@ -44,18 +44,18 @@ describe("buildOrganiserListUpdate", () => {
     const en = buildOrganiserListUpdate({ ...args, lang: "en" });
     // Kemal, 2026-10-24: the organisers are told they can put any of them back.
     expect(en).toContain(
-      "Left off this week's squad because they said *OUT* last week:\n• Yaseen\n• Mo\n\nTo put any of them back, just say their name and *IN*, for example *Yaseen IN*.",
+      "Left off this week's squad because they said *OUT* or were taken off the list last week:\n• Yaseen\n• Mo\n\nTo put any of them back, just say their name and *IN*, for example *Yaseen IN*.",
     );
     expect(en.indexOf("Deniz")).toBeLessThan(en.indexOf("Left off this week's squad"));
     expect(en.indexOf("Left off this week's squad")).toBeLessThan(en.indexOf(t("en").oa_footer));
     const tr = buildOrganiserListUpdate({ ...args, lang: "tr" });
     expect(tr).toContain(
-      "Geçen hafta *YOKUM* dedikleri için bu haftanın kadrosuna alınmadılar:\n• Yaseen\n• Mo\n\nGeri almak istediğiniz biri varsa adını yazıp *VARIM* demeniz yeterli, örneğin *Yaseen VARIM*.",
+      "Geçen hafta *YOKUM* dedikleri ya da listeden çıkarıldıkları için bu haftanın kadrosuna alınmadılar:\n• Yaseen\n• Mo\n\nGeri almak istediğiniz biri varsa adını yazıp *VARIM* demeniz yeterli, örneğin *Yaseen VARIM*.",
     );
     const one = buildOrganiserListUpdate({ ...args, leftOut: [{ name: "Mo" }], lang: "en" });
-    expect(one).toContain("Left off this week's squad because they said *OUT* last week:\n• Mo\n\nTo put them back, just say *Mo IN*.");
+    expect(one).toContain("Left off this week's squad because they said *OUT* or were taken off the list last week:\n• Mo\n\nTo put them back, just say *Mo IN*.");
     const oneTr = buildOrganiserListUpdate({ ...args, leftOut: [{ name: "Mo" }], lang: "tr" });
-    expect(oneTr).toContain("Geçen hafta *YOKUM* dediği için bu haftanın kadrosuna alınmadı:\n• Mo\n\nGeri almak isterseniz *Mo VARIM* demeniz yeterli.");
+    expect(oneTr).toContain("Geçen hafta *YOKUM* dediği ya da listeden çıkarıldığı için bu haftanın kadrosuna alınmadı:\n• Mo\n\nGeri almak isterseniz *Mo VARIM* demeniz yeterli.");
     expect(buildOrganiserListUpdate({ ...args, leftOut: [], lang: "en" })).not.toContain("Left off");
   });
 

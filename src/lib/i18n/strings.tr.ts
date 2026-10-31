@@ -2308,8 +2308,8 @@ export const tr: Strings = {
   rolling_tail_full: "Kadro dolu. Yedek listesine girmek için *VARIM* yazın.",
   rolling_left_out_organisers: (p) =>
     p.names.length === 1
-      ? `Geçen hafta *YOKUM* dediği için bu haftanın kadrosuna alınmadı:\n• ${p.names[0]}\n\nGeri almak isterseniz *${firstWord(p.names[0])} VARIM* demeniz yeterli.`
-      : `Geçen hafta *YOKUM* dedikleri için bu haftanın kadrosuna alınmadılar:\n${p.names.map((n) => `• ${n}`).join("\n")}\n\n` +
+      ? `Geçen hafta *YOKUM* dediği ya da listeden çıkarıldığı için bu haftanın kadrosuna alınmadı:\n• ${p.names[0]}\n\nGeri almak isterseniz *${firstWord(p.names[0])} VARIM* demeniz yeterli.`
+      : `Geçen hafta *YOKUM* dedikleri ya da listeden çıkarıldıkları için bu haftanın kadrosuna alınmadılar:\n${p.names.map((n) => `• ${n}`).join("\n")}\n\n` +
         `Geri almak istediğiniz biri varsa adını yazıp *VARIM* demeniz yeterli, örneğin *${firstWord(p.names[0])} VARIM*.`,
   rolling_left_out_notice_lead: (p) =>
     `📋 *${p.activityName}, ${p.whenLabel}*: geçen haftadan devam eden kadro grupta paylaşıldı.`,

@@ -183,8 +183,13 @@ export const SEED_NOTE_OVERFLOW = "rolling overflow: no place left";
  * for it is still their latest word:
  *
  *   - a carried player whose last statement for it was OUT is left out
- *     of the next week, and the announcement names him ("they said OUT
- *     last week");
+ *     of the next week, and the organisers are told his name;
+ *   - so is one the organisers took off its list before it was cancelled
+ *     (moved from the squad to the bench, or his row removed outright):
+ *     the cancelled week's list as they left it carries over (2026-10-31,
+ *     Kemal, after FNF's 23 Oct). Not covered: that week's ORDER (its
+ *     newcomers go after last week's squad) and three or more cancelled
+ *     weeks in a row (the played week is then past the 21 day lookback);
  *   - a player who said IN for it, not on last week's played squad, is
  *     carried too, after last week's squad (owner suggestion, flagged as
  *     a decision in the PR).
@@ -217,7 +222,18 @@ export interface CancelledWeek {
  *  rows, a duplicate merge, a format recut. */
 const NOT_A_STATEMENT = new Set(["rolling-squad", "player-merge", "format-switch"]);
 
+/** "out": the player said OUT, or was taken off the cancelled week's list
+ *  (benched from the squad, or the row removed). */
 export type CancelledWeekIntent = { intent: "out" } | { intent: "in"; position: number };
+
+/** Off the cancelled week's list, by the player or an organiser: an OUT
+ *  (CONFIRMED or BENCH -> DROPPED), the squad -> BENCH, or the row
+ *  removed outright (CONFIRMED or BENCH -> no row, `toStatus` null). */
+function takenOffTheList(e: CancelledWeekEvent): boolean {
+  if (e.fromStatus === "CONFIRMED") return e.toStatus === "DROPPED" || e.toStatus === "BENCH" || e.toStatus === null;
+  if (e.fromStatus === "BENCH") return e.toStatus === "DROPPED" || e.toStatus === null;
+  return false;
+}
 
 /**
  * Each player's latest word over the cancelled weeks, oldest week first,
@@ -225,8 +241,12 @@ export type CancelledWeekIntent = { intent: "out" } | { intent: "in"; position: 
  * player's LAST statement before the cancellation decides:
  *
  *   CONFIRMED or BENCH -> DROPPED   "out"
+ *   CONFIRMED -> BENCH              "out" (off the list, 2026-10-31)
+ *   CONFIRMED or BENCH -> removed   "out" (off the list, 2026-10-31)
  *   anything -> CONFIRMED           "in" (with the position it took)
- *   to BENCH, or the row removed    no word (not carried either way)
+ *   a new row on the BENCH, or      no word (an IN on a full squad, or a
+ *   DROPPED -> BENCH                change of mind: not carried either way,
+ *                                   and a carried player stays carried)
  */
 export function cancelledWeekIntents(weeks: CancelledWeek[]): Map<string, CancelledWeekIntent> {
   const out = new Map<string, CancelledWeekIntent>();
@@ -238,7 +258,7 @@ export function cancelledWeekIntents(weeks: CancelledWeek[]): Map<string, Cancel
       last.set(e.userId, e);
     }
     for (const [userId, e] of last) {
-      if (e.toStatus === "DROPPED" && (e.fromStatus === "CONFIRMED" || e.fromStatus === "BENCH")) {
+      if (takenOffTheList(e)) {
         out.set(userId, { intent: "out" });
       } else if (e.toStatus === "CONFIRMED") {
         out.set(userId, { intent: "in", position: e.toPosition ?? Number.MAX_SAFE_INTEGER });

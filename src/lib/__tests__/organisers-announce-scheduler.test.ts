@@ -300,7 +300,7 @@ describe("MatchTime announces, after a cancelled week: the left-out names go to 
       groupId: ADMIN_GROUP,
       text:
         "📋 *FNF, Fri 9 Oct at 20:30*: the squad carried over from last week is posted in the group.\n\n" +
-        "Left off this week's squad because they said *OUT* last week:\n• Mo\n• Feroz\n• Yaseen\n\n" +
+        "Left off this week's squad because they said *OUT* or were taken off the list last week:\n• Mo\n• Feroz\n• Yaseen\n\n" +
         "To put any of them back, just say their name and *IN*, for example *Mo IN*.",
     });
     setWorld([m], { carried: 4, sent: [`${m.id}:rolling-announce`, key] });
@@ -433,7 +433,7 @@ describe('"The organisers": the squad posts go to the admin group', () => {
       const out = await instructions(MON_1005);
       const text = byKey(out, `${m.id}:rolling-announce`)?.text ?? "";
       expect(text).toContain(
-        "Left off this week's squad because they said *OUT* last week:\n• Yaseen\n• Mo\n• Feroz\n\nTo put any of them back, just say their name and *IN*, for example *Yaseen IN*.",
+        "Left off this week's squad because they said *OUT* or were taken off the list last week:\n• Yaseen\n• Mo\n• Feroz\n\nTo put any of them back, just say their name and *IN*, for example *Yaseen IN*.",
       );
       expect(groupPosts(out)).toHaveLength(0);
       // Inside the one notice: no separate left-out notice as well.
