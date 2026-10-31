@@ -58,12 +58,12 @@ describe("the words", () => {
   });
 
   it("the HQ score ask asks for Man of the Match too, only when the organisers pick", () => {
-    expect(buildAskScoreHqPost({ activityName: "FNF" })).toBe("🏁 *FNF*: what was the final score, and which team won? Reply here and I'll record it.");
+    expect(buildAskScoreHqPost({ activityName: "FNF" })).toBe("🏁 *FNF*: what was the final score, and which team won? Tag me here with it and I'll record it. To tag me, type *@* and pick *Match Time* from the list.");
     expect(buildAskScoreHqPost({ activityName: "FNF", momLabel: "Man of the Match" })).toBe(
-      "🏁 *FNF*: what was the final score, which team won, and who was Man of the Match? Reply here and I'll record it.",
+      "🏁 *FNF*: what was the final score, which team won, and who was Man of the Match? Tag me here with it and I'll record it. To tag me, type *@* and pick *Match Time* from the list.",
     );
     expect(buildAskScoreHqPost({ activityName: "FNF", momLabel: "Man of the Match", lang: "tr" })).toBe(
-      "🏁 *FNF*: maç kaç kaç bitti, hangi takım kazandı ve Man of the Match kim? Buraya yazın, kaydedeyim.",
+      "🏁 *FNF*: maç kaç kaç bitti, hangi takım kazandı ve Man of the Match kim? Beni etiketleyip buraya yazın, kaydedeyim. Etiketlemek için *@* yazıp listeden *Match Time*'ı seçin.",
     );
   });
 

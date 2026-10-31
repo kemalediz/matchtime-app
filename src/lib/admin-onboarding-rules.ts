@@ -28,10 +28,9 @@
  *                      otherwise the nightly fixture run
  *                      (cron/generate-matches) adds it, so "from tomorrow".
  *                      No active game at all: no line.
- *    no need to tag    admin group only. A weekly club's admin messages
- *                      are all read (admin-group.ts `readsSquad`); a monthly
- *                      club's only as commands, so it is not told "every
- *                      message". The main-chat sentence needs attendance
+ *    how to tag        admin group only. HQ acts only on a real tag (#482,
+ *                      2026-10-31), in every club, so every club is told
+ *                      to tag. The main-chat sentence needs attendance
  *                      (an IN or OUT needs no tag: interaction contract).
  *    help              "help" in the admin group (admin-group-help.ts), or
  *                      by DM (dm-help.ts).
@@ -132,7 +131,7 @@ export type GettingReadyItem =
   | { kind: "collector" }
   | { kind: "paste-now"; weekday: string }
   | { kind: "paste-later"; weekday: string | null }
-  | { kind: "no-tag"; reads: boolean; mainChat: boolean }
+  | { kind: "no-tag"; mainChat: boolean }
   | { kind: "main-chat" }
   | { kind: "help" };
 
@@ -152,7 +151,7 @@ export function gettingReadyItems(i: GettingReadyInput): GettingReadyItem[] {
         items.push({ kind: "paste-later", weekday: days.length === 1 ? t(c.language).wd_weekday({ dow: days[0] }) : null });
       }
     }
-    items.push({ kind: "no-tag", reads: weekly, mainChat: attendance });
+    items.push({ kind: "no-tag", mainChat: attendance });
   } else if (attendance) {
     items.push({ kind: "main-chat" });
   }
@@ -174,7 +173,7 @@ export function buildGettingReady(i: GettingReadyInput): string | null {
       case "paste-later":
         return s.ao_ready_paste_later({ weekday: x.weekday });
       case "no-tag":
-        return s.ao_ready_no_tag({ reads: x.reads, mainChat: x.mainChat });
+        return s.ao_ready_no_tag({ mainChat: x.mainChat });
       case "main-chat":
         return s.ao_ready_main_chat;
       case "help":
@@ -266,13 +265,16 @@ export function buildFirstTeamsNotice(args: {
   organisers: boolean;
   /** The seed line, or null. */
   seed: { anySeeded: boolean; link: string } | null;
+  /** Where it lands (`AdminNotice.text`'s audience): the admin group reads
+   *  only a tagged YES (#482); a DM takes a plain one. */
+  audience: "dm" | "group";
 }): string {
   const s = t(args.lang);
   const weekday = weekdayLabel(args.lang, args.matchDate);
   const parts = [
     s.ao_teams_title({ weekday }),
     s.ao_teams_set({ confirmed: args.confirmed, max: args.maxPlayers, time: args.readyTime, weekday }),
-    s.ao_teams_approve({ organisers: args.organisers }),
+    s.ao_teams_approve({ organisers: args.organisers, audience: args.audience }),
   ];
   if (args.seed) parts.push(s.ao_teams_seed({ anySeeded: args.seed.anySeeded, time: args.readyTime, weekday, link: args.seed.link }));
   return parts.join("\n\n");

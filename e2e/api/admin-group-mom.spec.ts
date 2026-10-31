@@ -174,7 +174,7 @@ test('the HQ score ask asks for Man of the Match too: "who was Man of the Match?
   expect(ask[0]).toMatchObject({
     kind: "admin-group-message",
     groupId: HQ,
-    text: "🏁 *E2E 5-a-side*: what was the final score, which team won, and who was Man of the Match? Reply here and I'll record it.",
+    text: "🏁 *E2E 5-a-side*: what was the final score, which team won, and who was Man of the Match? Tag me here with it and I'll record it. To tag me, type *@* and pick *Match Time* from the list.",
   });
 });
 

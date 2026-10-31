@@ -6,7 +6,7 @@ export const monthSetupTr: MonthSetupStrings = {
     [
       `📋 ${p.month} listesinin açılma zamanı geldi, ama bu MatchTime'ın grubunuzla ilk ayı, bu yüzden paylaşacağı kendi listesi yok.`,
       `${p.month} ayını grubunuzun listesiyle buradan başlatın: ${p.link}`,
-      ...(p.inGroup ? ["Ya da listeyi bu gruba yapıştırın, isimleri önce sizinle kontrol edeyim."] : []),
+      ...(p.inGroup ? ["Ya da beni etiketleyip listeyi bu gruba yapıştırın, isimleri önce sizinle kontrol edeyim."] : []),
       "Grubunuzun henüz listesi yoksa o sayfada boş bir liste açın, ben paylaşırım.",
       `O zamana kadar ${p.month} hakkında hiçbir şey paylaşmıyorum.`,
     ].join("\n"),
@@ -66,7 +66,7 @@ export const monthSetupTr: MonthSetupStrings = {
     [
       `📋 ${p.month} listenizi okudum: ${p.count} oyuncu (${p.names}).`,
       ...(p.unknown ? [`Henüz tanımadığım isimler: ${p.unknown}. Onları oyuncu olarak ekleyin ya da onlarsız başlatın.`] : []),
-      `${p.month} ayını onlarla başlatmak için EVET yazın. Önce kontrol etmek ya da değiştirmek için: ${p.link}`,
+      `${p.month} ayını onlarla başlatmak için *@Match Time EVET* yazın. Önce kontrol etmek ya da değiştirmek için: ${p.link}`,
     ].join("\n"),
   hq_seed_applied: (p) => `✅ ${p.month} ${p.count} oyuncuyla başladı. Biri bir şey değiştirene kadar kendi listemi paylaşmayacağım.`,
   hq_seed_failed: (p) =>

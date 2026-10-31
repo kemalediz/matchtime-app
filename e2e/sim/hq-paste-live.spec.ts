@@ -85,6 +85,6 @@ const usage = async (db: TestDb) =>
     const out = await say(request, REAL);
     console.log(`[live] real list: ${JSON.stringify(out)}`);
     expect(out).toMatchObject({ handled: true, outcome: "paste-proposed" });
-    expect(out.replyText).toMatch(/^Adding: Ben Bench\. Removing: Tom Third\. Reply YES to apply\./);
+    expect(out.replyText).toMatch(/^Adding: Ben Bench\. Removing: Tom Third\. Say \*@Match Time YES\* to apply\./);
   });
 });

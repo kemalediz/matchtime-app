@@ -200,7 +200,7 @@ test("a pasted list: the exact changes and a YES question, nothing applied yet",
     handled: true,
     outcome: "paste-proposed",
     replyText:
-      "Adding: Zara Zest. Removing: Pat Player. Unknown names: Naim Newman (not a member yet, I'll add them as a new player). Reply YES to apply.",
+      "Adding: Zara Zest. Removing: Pat Player. Unknown names: Naim Newman (not a member yet, I'll add them as a new player). Say *@Match Time YES* to apply.",
   });
   expect(await statusOf(db, U.player)).toBe("CONFIRMED");
   expect(await statusOf(db, U.extra)).toBeNull();

@@ -186,7 +186,7 @@ test("2. the admin group door: the organiser's pasted list starts next month aft
   expect(asked).toMatchObject({ handled: true, outcome: "month-seed-proposed" });
   expect(asked.replyText).toContain(`I read your list for ${MONTH_NAME}: 4 players`);
   expect(asked.replyText).toContain("Not known to me yet: Zed");
-  expect(asked.replyText).toContain(`Reply YES to start ${MONTH_NAME} with them.`);
+  expect(asked.replyText).toContain(`Say *@Match Time YES* to start ${MONTH_NAME} with them.`);
   // Nothing is written before the YES.
   expect(await monthRow(db, B.org)).toBeNull();
 

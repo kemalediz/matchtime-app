@@ -84,7 +84,8 @@ export default function HelpLandingPage() {
         </li>
         <li>
           <strong>Stays quiet during banter.</strong> It only replies when
-          tagged, or when someone says In or Out.
+          tagged (type @ and pick Match Time from the list), or when someone
+          says In or Out.
         </li>
       </ul>
 

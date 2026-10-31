@@ -31,8 +31,8 @@ describe("the request notice", () => {
   it("ends with the old notice's words, word for word, in a DM and in the admin group", () => {
     expect(t("en").pr_request_notice(args).endsWith("Reply *1* to accept or *2* to decline, or open https://x/L")).toBe(true);
     const group = t("en").pr_request_notice({ ...args, inGroup: true });
-    expect(group).toContain("Answer by replying to this message.");
-    expect(group.endsWith("Reply *1* to accept or *2* to decline, or open https://x/L")).toBe(true);
+    // In HQ the 1 or 2 is read only behind a real tag (#482, 2026-10-31).
+    expect(group.endsWith("Answer by replying to this message with *@Match Time 1* to accept or *@Match Time 2* to decline, or open https://x/L")).toBe(true);
     // Turkish keeps the Turkish notice's ending.
     expect(t("tr").pr_request_notice(args).endsWith("Kabul etmek için *1*, reddetmek için *2* yazın ya da şunu açın: https://x/L")).toBe(true);
   });

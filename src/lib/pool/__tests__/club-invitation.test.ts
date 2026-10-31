@@ -132,7 +132,7 @@ describe("L10: his yes, told to the organisers in HQ, is a question a YES answer
     const req = notice.sendAdminNotice.mock.calls[0][0];
     const inHq = req.text("https://mt.test/admin/guests?tab=history", "group");
     expect(inHq).toBe(
-      "🙋 Sam K played with you on  as a guest and wants to join your group. Reply YES here to send them the group's invite link, or tap Send the invite link on their card: https://mt.test/admin/guests?tab=history",
+      "🙋 Sam K played with you on  as a guest and wants to join your group. Say *@Match Time YES* here to send them the group's invite link, or tap Send the invite link on their card: https://mt.test/admin/guests?tab=history",
     );
     expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith({ orgId: "o1", askRef: "join-request:inv1", text: inHq, now: NOW });
   });

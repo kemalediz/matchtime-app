@@ -51,7 +51,7 @@ export const poolOfferTr: PoolOfferStrings = {
   turnup_all: (p) => (p.n === 1 ? "MatchTime'da 1 maç oynadı ve geldi." : `MatchTime'da ${p.n} maç oynadı, hepsine geldi.`),
   turnup_some: (p) => `MatchTime'daki ${p.n} maçın ${p.played} tanesine geldi.`,
   notice_offer_line: (p) => `🔎 Ya da MatchTime havuzundan yakındaki oyunculara sorayım (${p.band}). Maç sayfasını açın: ${p.link}`,
-  notice_offer_line_hq: (p) => `🔎 Ya da MatchTime havuzundan yakındaki oyunculara sorayım (${p.band}): burada EVET yazın ya da maç sayfasını açın: ${p.link}`,
+  notice_offer_line_hq: (p) => `🔎 Ya da MatchTime havuzundan yakındaki oyunculara sorayım (${p.band}): burada *@Match Time EVET* yazın ya da maç sayfasını açın: ${p.link}`,
   notice_auto: (p) =>
     p.partnersFirst
       ? `🔎 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok; partner kulüpleriniz bir saat içinde doldurmazsa MatchTime oyuncu havuzundaki yakın oyunculara soracağım. Biri yer alınca size haber vereceğim.`

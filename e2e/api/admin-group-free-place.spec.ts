@@ -90,7 +90,7 @@ test.afterAll(() => {
 test("an organiser's own words: MatchTime ASKS, naming today's game; nothing written until YES", async ({ request, db }) => {
   const out = await say(request, FREE);
   expect(out).toMatchObject({ handled: true, outcome: "fee-free-asked", react: "✅" });
-  expect(out.replyText).toMatch(/^Make Ian Innes free for \w{3} \d{1,2} \w{3}\? Reply YES\.$/);
+  expect(out.replyText).toMatch(/^Make Ian Innes free for \w{3} \d{1,2} \w{3}\? Say \*@Match Time YES\*\.$/);
   expect((await waived(db, U.fresh)).at).toBeNull();
   expect(await dmsTo(db, IAN)).toHaveLength(0);
 
@@ -117,7 +117,7 @@ test("a YES after other chat: asked once whether it is for the free place, nothi
 test("Turkish club: asked and answered in Turkish", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   const out = await say(request, FREE_TR);
-  expect(out.replyText).toMatch(/için Ian Innes ücretsiz olsun mu\? Onaylamak için EVET yazın\.$/);
+  expect(out.replyText).toMatch(/için Ian Innes ücretsiz olsun mu\? Onaylamak için \*@Match Time EVET\* yazın\.$/);
   const yes = await say(request, "evet");
   expect(yes.replyText).toMatch(/için ücretsiz yer: Ian Innes\. Ödeme linki ve ödeme hatırlatması gitmeyecek\.$/);
   expect((await dmsTo(db, IAN)).map((d) => d.text)).toEqual([expect.stringMatching(/maçı için ücretsiz yerdesin, ödeme yapman gerekmiyor\.$/)]);
@@ -146,7 +146,7 @@ test("taken back: 'Ian isn't free after all' asks, YES takes the free place away
   await say(request, FREE);
   await say(request, "yes");
   const out = await say(request, UNDO);
-  expect(out.replyText).toMatch(/^Take the free place away from Ian Innes for .+\? They'll be asked to pay\. Reply YES\.$/);
+  expect(out.replyText).toMatch(/^Take the free place away from Ian Innes for .+\? They'll be asked to pay\. Say \*@Match Time YES\*\.$/);
   expect((await waived(db, U.fresh)).at).not.toBeNull();
   const yes = await say(request, "yes");
   expect(yes.replyText).toMatch(/^No longer free for .+: Ian Innes\. They'll get the usual reminders to pay\.$/);

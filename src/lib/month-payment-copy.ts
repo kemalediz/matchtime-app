@@ -180,7 +180,24 @@ export interface DigestClaim {
   amountPence: number | null;
 }
 
-/** To the collector: who says they have paid, by their list number. */
+/** Where a collector's message goes or came from: his DM, or the
+ *  organisers' group (HQ), which reads only a tagged reply (#482). */
+export type CollectorAudience = "dm" | "group";
+
+/** The line under the list: how to answer it, for its channel. Kept apart
+ *  from the list, because the list is what a reply is matched against
+ *  (`answersOpenDigest`), and it must match in either channel. */
+export function claimsDigestHow(p: { lang?: LangArg; audience: CollectorAudience }): string {
+  return t(p.lang).mpy_digest_how({ audience: p.audience });
+}
+
+/** The list and its how line, as sent. */
+export function claimsDigestMessage(p: { body: string; lang?: LangArg; audience: CollectorAudience }): string {
+  return `${p.body}\n\n${claimsDigestHow(p)}`;
+}
+
+/** To the collector: who says they have paid, by their list number. The
+ *  list only: `claimsDigestMessage` adds how to answer it. */
 export function buildClaimsDigest(p: { claims: DigestClaim[]; monthDate: Date; lang?: LangArg }): string {
   const s = t(p.lang);
   return s.mpy_digest({
@@ -194,13 +211,13 @@ export function buildClaimsDigest(p: { claims: DigestClaim[]; monthDate: Date; l
 export function buildCollectorReplyAnswer(
   p:
     | { kind: "confirmed" | "declined"; names: string[]; monthDate: Date; lang?: LangArg }
-    | { kind: "unknown-numbers"; numbers: number[]; monthDate: Date; lang?: LangArg }
+    | { kind: "unknown-numbers"; numbers: number[]; monthDate: Date; lang?: LangArg; audience: CollectorAudience }
     | { kind: "nothing"; lang?: LangArg },
 ): string {
   const s = t(p.lang);
   if (p.kind === "nothing") return s.mpy_reply_no_digest;
   const month = monthNameLabel(p.lang, p.monthDate);
-  if (p.kind === "unknown-numbers") return s.mpy_reply_unknown({ numbers: p.numbers.join(", "), month });
+  if (p.kind === "unknown-numbers") return s.mpy_reply_unknown({ numbers: p.numbers.join(", "), month, audience: p.audience });
   return p.kind === "confirmed" ? s.mpy_reply_confirmed({ month, names: p.names }) : s.mpy_reply_declined({ month, names: p.names });
 }
 
@@ -213,8 +230,8 @@ export function buildStaleReplyAnswer(p: { current: string | null; lang?: LangAr
 
 /** Added to an answer when another month has a list out too: which month
  *  this was for, and how to answer the other. */
-export function buildOtherMonthHint(p: { monthDate: Date; otherDate: Date; lang?: LangArg }): string {
-  return t(p.lang).mpy_reply_other_month({ month: monthNameLabel(p.lang, p.monthDate), other: monthNameLabel(p.lang, p.otherDate) });
+export function buildOtherMonthHint(p: { monthDate: Date; otherDate: Date; lang?: LangArg; audience: CollectorAudience }): string {
+  return t(p.lang).mpy_reply_other_month({ month: monthNameLabel(p.lang, p.monthDate), other: monthNameLabel(p.lang, p.otherDate), audience: p.audience });
 }
 
 /** After the pay-by date, to the organisers: who paid, who says so, who has not. */

@@ -246,7 +246,7 @@ describe("the pick message (P1) and the list again (P5)", () => {
         "2. Wasim (MID, 7.9)",
         "3. Ali (mevki yok, yeni)",
         "",
-        "Buraya numara, isim ya da @etiket yazın, örneğin *2*, iki kişi için *2 3*. *HİÇBİRİ* yazarsanız yer boş kalır.",
+        "Beni etiketleyip numara, isim ya da @etiket yazın, örneğin *@Match Time 2*, iki kişi için *@Match Time 2 3*. *@Match Time HİÇBİRİ* yazarsanız yer boş kalır. Etiketlemek için *@* yazıp listeden *Match Time*'ı seçin.",
         "Cumartesi 20:30 saatine kadar kimse seçmezse yer boş kalır.",
       ].join("\n"),
     );
@@ -281,7 +281,7 @@ describe("the pick message (P1) and the list again (P5)", () => {
         "2. Wasim (MID, 7.9)",
         "3. Ali (no position, new)",
         "",
-        "Reply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",
+        "Tag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.",
       ].join("\n"),
     );
     expect(buildPickMessage({ ...base, lang: "tr", reason: "bench-update", audience: "group" }).split("\n")[0]).toBe(
@@ -296,7 +296,7 @@ describe("the pick message (P1) and the list again (P5)", () => {
         "Bench:",
         "1. Kemal (GK, 7.4)",
         "",
-        "Reply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",
+        "Tag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.",
       ].join("\n"),
     );
   });

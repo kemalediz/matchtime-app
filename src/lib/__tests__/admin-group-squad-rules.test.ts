@@ -161,10 +161,10 @@ describe("copy, English and Turkish", () => {
       maxPlayers: 18,
     };
     expect(buildPasteProposalReply({ lang: "en", ...p })).toBe(
-      "Adding: Bilal. Removing: Shehryar, Clarence. Unknown names: Naim (not a member yet, I'll add them as a new player). Reply YES to apply.",
+      "Adding: Bilal. Removing: Shehryar, Clarence. Unknown names: Naim (not a member yet, I'll add them as a new player). Say *@Match Time YES* to apply.",
     );
     expect(buildPasteProposalReply({ lang: "tr", ...p })).toBe(
-      "Eklenecek: Bilal. Çıkarılacak: Shehryar, Clarence. Tanımadığım isimler: Naim (henüz üye değil, yeni oyuncu olarak ekleyeceğim). Uygulamak için EVET yazın.",
+      "Eklenecek: Bilal. Çıkarılacak: Shehryar, Clarence. Tanımadığım isimler: Naim (henüz üye değil, yeni oyuncu olarak ekleyeceğim). Uygulamak için *@Match Time EVET* yazın.",
     );
   });
   it("several unknown names, a reserve, an unclear name and too many names", () => {
@@ -180,12 +180,12 @@ describe("copy, English and Turkish", () => {
     expect(buildPasteProposalReply({ lang: "en", ...p })).toBe(
       "To the bench: Clarence. Unknown names: Naim, Tariq (not members yet, I'll add them as new players). " +
         "Not sure who Ali is, so I'll leave them out; use the full name. " +
-        "The list has 19 names for 18 places, so the last ones go on the bench. Reply YES to apply.",
+        "The list has 19 names for 18 places, so the last ones go on the bench. Say *@Match Time YES* to apply.",
     );
     expect(buildPasteProposalReply({ lang: "tr", ...p })).toBe(
       "Yedek listesine alınacak: Clarence. Tanımadığım isimler: Naim, Tariq (henüz üye değiller, yeni oyuncu olarak ekleyeceğim). " +
         "Ali kim, emin değilim; dışarıda bırakıyorum, tam adını yazın. " +
-        "Listede 18 yer için 19 isim var, sondakiler yedek listesine gider. Uygulamak için EVET yazın.",
+        "Listede 18 yer için 19 isim var, sondakiler yedek listesine gider. Uygulamak için *@Match Time EVET* yazın.",
     );
   });
   it("a list identical to the squad", () => {

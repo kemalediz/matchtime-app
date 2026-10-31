@@ -10,7 +10,7 @@ export const monthSetupEn = {
     [
       `📋 The list for ${p.month} is due to open, but this is MatchTime's first month with your group, so it has no list of its own to post.`,
       `Start ${p.month} from your group's list here: ${p.link}`,
-      ...(p.inGroup ? ["Or paste the list in this group and I'll check the names with you first."] : []),
+      ...(p.inGroup ? ["Or tag me and paste the list in this group and I'll check the names with you first."] : []),
       "If your group has no list yet, open an empty one on that page and I'll post it.",
       `Until then I post nothing about ${p.month}.`,
     ].join("\n"),
@@ -77,7 +77,7 @@ export const monthSetupEn = {
     [
       `📋 I read your list for ${p.month}: ${p.count} ${p.count === 1 ? "player" : "players"} (${p.names}).`,
       ...(p.unknown ? [`Not known to me yet: ${p.unknown}. Add them as players, or start without them.`] : []),
-      `Reply YES to start ${p.month} with them. To check or change it first: ${p.link}`,
+      `Say *@Match Time YES* to start ${p.month} with them. To check or change it first: ${p.link}`,
     ].join("\n"),
   hq_seed_applied: (p: { month: string; count: number }): string =>
     `✅ ${p.month} is started with ${p.count} ${p.count === 1 ? "player" : "players"}. I won't post my own list for it until someone changes it.`,

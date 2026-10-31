@@ -44,13 +44,13 @@ describe("unevenSides: an even total splits exactly, an odd one may be one apart
     const base = { lang: "en", announce: true, redLabel: "Red", yellowLabel: "Yellow", unseated: [], kickoff: "20:30", venue: "Powerleague" };
     const n = (k: number) => Array.from({ length: k }, (_, i) => ({ name: `P${i}` }));
     expect(buildTeamsText({ ...base, final: false, red: n(8), yellow: n(10) })).toContain(
-      "⚠️ The sides are uneven: Red 8, Yellow 10. Tell me who to move to even them, in your own words, or reply *YES* twice to keep them.",
+      "⚠️ The sides are uneven: Red 8, Yellow 10. Tag me and say who to move to even them, in your own words, or say *@Match Time YES* twice to keep them.",
     );
     // A player who is out does not count on his side.
     expect(buildTeamsText({ ...base, final: false, red: [...n(9), { name: "X", out: true }], yellow: n(9) })).not.toContain("uneven");
     expect(buildTeamsText({ ...base, final: true, red: n(8), yellow: n(10) })).not.toContain("uneven");
     expect(buildTeamsText({ ...base, lang: "tr", final: false, red: n(8), yellow: n(10) })).toContain(
-      "⚠️ Takımlar dengesiz: Red 8, Yellow 10. Dengelemek için kimin diğer takıma geçeceğini kendi cümlelerinizle yazın ya da böyle kalsın diye iki kez *EVET* yazın.",
+      "⚠️ Takımlar dengesiz: Red 8, Yellow 10. Dengelemek için beni etiketleyip kimin diğer takıma geçeceğini kendi cümlelerinizle yazın ya da böyle kalsın diye iki kez *@Match Time EVET* yazın.",
     );
   });
 });
@@ -380,8 +380,8 @@ describe("the words", () => {
         "1. Tom Third",
         "2. Shehryar Malik",
         "",
-        "To change them, just tell me in your own words (for example *swap Ali and Tom* or *move Ali to the other team*). For brand new teams, tag me (*@Match Time shuffle them again*).",
-        "Reply *YES* when they are final. I won't post them in the players' group.",
+        "To change them, tag me and say it in your own words (for example *@Match Time swap Ali and Tom* or *@Match Time move Ali to the other team*). For brand new teams: *@Match Time shuffle them again*.",
+        "Say *@Match Time YES* when they are final. I won't post them in the players' group. To tag me, type *@* and pick *Match Time* from the list.",
       ].join("\n"),
     );
   });
@@ -391,15 +391,15 @@ describe("the words", () => {
     expect(text).toContain("📝 *Önerilen takımlar*: 20:00, Goals Sutton");
     expect(text).toContain("2. Bilal Ahmed  (çıktı, yeri boş)");
     expect(text).toContain("Henüz takımı olmayan: Zara Zest.");
-    expect(text).toContain("*Ali ile Tom yer değiştirsin*");
-    expect(text).toContain("*Ali diğer takıma geçsin*");
+    expect(text).toContain("*@Match Time Ali ile Tom yer değiştirsin*");
+    expect(text).toContain("*@Match Time Ali diğer takıma geçsin*");
     expect(text).toContain("kendi cümlelerinizle");
-    expect(text).toContain("Kesinleşince *EVET* yazın. Oyuncu grubuna ben göndermeyeceğim.");
+    expect(text).toContain("Kesinleşince *@Match Time EVET* yazın. Oyuncu grubuna ben göndermeyeceğim. Etiketlemek için *@* yazıp listeden *Match Time*'ı seçin.");
   });
 
   it("not in quiet mode, YES says the teams go to the players' group", () => {
     expect(buildTeamsText({ lang: "en", final: false, announce: false, ...TEAMS })).toContain(
-      "Reply *YES* when they are final and I'll post them in the players' group.",
+      "Say *@Match Time YES* when they are final and I'll post them in the players' group. To tag me, type *@* and pick *Match Time* from the list.",
     );
   });
 

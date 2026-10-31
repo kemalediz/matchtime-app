@@ -604,7 +604,7 @@ describe("the reminder at kickoff minus 2 hours", () => {
     await tick(NOON);
     expect(await tick(new Date("2026-10-16T16:59:00.000Z"))).toBe(0);
     expect(await tick(new Date("2026-10-16T17:00:00.000Z"))).toBe(1);
-    expect(adminJobs()[1].text).toBe("⏰ The teams for 20:00 aren't final yet. Ask me to show them, in your own words (for example *show me the teams*), then reply *YES*.");
+    expect(adminJobs()[1].text).toBe("⏰ The teams for 20:00 aren't final yet. Tag me and ask to see them, in your own words (for example *@Match Time show me the teams*), then say *@Match Time YES*.");
     expect(await tick(new Date("2026-10-16T17:30:00.000Z"))).toBe(0);
     expect(groupJobs()).toEqual([]);
   });
@@ -687,7 +687,7 @@ describe("uneven sides", () => {
     const first = await yes();
     expect(first).toEqual({
       outcome: "teams-uneven",
-      replyText: "The sides are uneven: Red 1, Yellow 3. Reply *YES* again to make them final as they are, or first tell me who to move, in your own words.",
+      replyText: "The sides are uneven: Red 1, Yellow 3. Say *@Match Time YES* again to make them final as they are, or first tag me and say who to move, in your own words.",
     });
     expect((store.tables.match[0] as Row).status).toBe("TEAMS_GENERATED");
     const second = await yes();
@@ -716,7 +716,7 @@ describe("uneven sides", () => {
     await handleTeamCommand({ addressed: true, orgId: ORG, lang: "tr", command: asCommand("Bilal taşı"), senderUserId: "u-admin", messageId: "wa-tr", now: NOON, deps: quiet });
     const r = await answerTeamsYes({ orgId: ORG, lang: "tr", senderUserId: "u-admin", messageId: "wa-yes", now: NOON, deps: quiet });
     expect(r?.replyText).toBe(
-      "Takımlar dengesiz: Kırmızı 1, Sarı 3. Böyle kesinleşsin istiyorsanız yine *EVET* yazın, ya da önce kimin diğer takıma geçeceğini kendi cümlelerinizle yazın.",
+      "Takımlar dengesiz: Kırmızı 1, Sarı 3. Böyle kesinleşsin istiyorsanız yine *@Match Time EVET* yazın, ya da önce beni etiketleyip kimin diğer takıma geçeceğini kendi cümlelerinizle yazın.",
     );
   });
 });
@@ -930,7 +930,7 @@ describe("restore and set: the teams of an earlier sheet, or of a pasted one, as
     expect(teamOf("u-bilal")).toBe("YELLOW");
     const r = await run({ kind: "restore" }, earlier);
     expect(r.outcome).toBe("teams-restored");
-    expect(r.replyText?.startsWith("These are the earlier teams, from Tue 13 Oct at 18:09. They need your YES again.\n\n📝 *Proposed teams*")).toBe(true);
+    expect(r.replyText?.startsWith("These are the earlier teams, from Tue 13 Oct at 18:09. They need your *@Match Time YES* again.\n\n📝 *Proposed teams*")).toBe(true);
     expect(teamOf("u-bilal")).toBe("RED");
     expect(teamOf("u-tom")).toBe("YELLOW");
     expect(proposal()).toMatchObject({ state: "proposed" });
@@ -964,7 +964,7 @@ describe("restore and set: the teams of an earlier sheet, or of a pasted one, as
     seedSheet();
     expect(await run({ kind: "restore" }, null)).toEqual({
       outcome: "teams-restore-none",
-      replyText: "I can't find those teams. Reply to my team sheet you want back and say *use these*, or paste the two teams here.",
+      replyText: "I can't find those teams. Reply to my team sheet you want back with *@Match Time use these*, or tag me and paste the two teams here.",
     });
   });
 
@@ -986,7 +986,7 @@ describe("restore and set: the teams of an earlier sheet, or of a pasted one, as
     seedSheet();
     const r = await run({ kind: "set", red: ["Ali", "Tom"], yellow: ["Bilal", "shez"] });
     expect(r.outcome).toBe("teams-set");
-    expect(r.replyText?.startsWith("These are the teams you sent. They need your YES.\n\n📝 *Proposed teams*")).toBe(true);
+    expect(r.replyText?.startsWith("These are the teams you sent. They need your *@Match Time YES*.\n\n📝 *Proposed teams*")).toBe(true);
     expect([teamOf("u-ali"), teamOf("u-tom"), teamOf("u-bilal"), teamOf("u-sheh")]).toEqual(["RED", "RED", "YELLOW", "YELLOW"]);
     expect(proposal()).toMatchObject({ state: "proposed" });
   });
@@ -1013,6 +1013,6 @@ describe("restore and set: the teams of an earlier sheet, or of a pasted one, as
   it("set in Turkish", async () => {
     seedSheet();
     const r = await handleTeamCommand({ addressed: true, orgId: ORG, lang: "tr", command: { kind: "set", red: ["Ali", "Tom"], yellow: ["Bilal", "Shehryar"] }, senderUserId: "u-admin", messageId: "wa-tr", now: NOON, deps: quiet });
-    expect(r.replyText?.startsWith("Gönderdiğiniz takımlar bunlar. EVET'iniz gerekiyor.")).toBe(true);
+    expect(r.replyText?.startsWith("Gönderdiğiniz takımlar bunlar. *@Match Time EVET* yazmanız gerekiyor.")).toBe(true);
   });
 });

@@ -94,6 +94,32 @@ test("the organiser guide explains the club fee: games played, up to £4.99, the
   expect(text).not.toMatch(/[—–]/);
 });
 
+test("the player guide explains the friend link and the real tag (2026-10-31)", async ({ page }) => {
+  await page.goto("/help/player");
+  const guide = page.locator("article");
+  await expect(guide.getByText(/type @ and pick Match Time from the list/)).toBeVisible();
+  await expect(guide.getByText(/Typing the name or replying to MatchTime is not enough/)).toBeVisible();
+  const heading = page.getByRole("heading", { name: "2. Bringing a friend", exact: true });
+  await heading.scrollIntoViewIfNeeded();
+  await expect(heading).toBeVisible();
+  await expect(guide.getByText(/MatchTime reacts ✉️ and DMs you a personal link for your friend/)).toBeVisible();
+  await expect(guide.getByText(/They are not in the game until they send that code/)).toBeVisible();
+  await expect(guide.getByText(/The link works until kick-off/)).toBeVisible();
+  expect(await guide.innerText()).not.toMatch(/[—–]|waiting list/i);
+});
+
+test("the organiser guide explains quiet hours, off for a new club, by settings or a tag (2026-10-31)", async ({ page }) => {
+  await page.goto("/help/admin");
+  const heading = page.getByRole("heading", { name: "9. Quiet hours", exact: true });
+  await heading.scrollIntoViewIfNeeded();
+  await expect(heading).toBeVisible();
+  const guide = page.locator("article");
+  await expect(guide.getByText(/A new club starts with quiet hours off/)).toBeVisible();
+  await expect(guide.getByText("@Match Time turn on quiet hours from 23:00 to 09:00")).toBeVisible();
+  await expect(guide.getByText(/A player brings a friend/)).toBeVisible();
+  expect(await guide.innerText()).not.toMatch(/[—–]|waiting list/i);
+});
+
 test("signed-in admin still gets the guides", async ({ page }) => {
   await signInAs(page, U.admin);
   await page.goto("/help/admin");

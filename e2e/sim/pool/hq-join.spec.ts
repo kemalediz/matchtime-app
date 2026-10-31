@@ -28,7 +28,7 @@ async function wantsToJoin(pool: PoolWorld, browser: Browser, club: PoolClub, gu
   expect(ask, "the after-game question").toBeTruthy();
   expect(await openAndAnswer(pool, await browserOf(browser), linkIn(ask!), "join", guest.key)).toBe("waiting-club");
   const told = (await pool.collect()).find((m) => m.to === `${club.key}.hq`);
-  expect(told?.text).toMatch(/wants to join your group\. Reply YES here to send them the group's invite link, or tap Send the invite link on their card: \S+$/);
+  expect(told?.text).toMatch(/wants to join your group\. Say \*@Match Time YES\* here to send them the group's invite link, or tap Send the invite link on their card: \S+$/);
   return told!;
 }
 
@@ -100,7 +100,7 @@ scenarios("a guest wants to join: the organisers' YES in HQ", () => {
 
     const ex = await fnf.hq.say("owner", "yes", { tagged: true });
     pool.expectSent(ex.sent, [
-      { to: "two.hq", channel: "hq", text: /^Which one is that YES for: sending (Cem Y|Dan W) the players' group's invite link, or sending (Cem Y|Dan W) the players' group's invite link\? Reply YES to that message\.$/ },
+      { to: "two.hq", channel: "hq", text: /^Which one is that YES for: sending (Cem Y|Dan W) the players' group's invite link, or sending (Cem Y|Dan W) the players' group's invite link\? Reply to that message with \*@Match Time YES\*\.$/ },
     ]);
     expect(ex.sent[0].text).toContain("Cem Y");
     expect(ex.sent[0].text).toContain("Dan W");

@@ -34,7 +34,7 @@ export const poolInviteEn = {
   /** The guest when he has no name on MatchTime. */
   /** The same notice in the admin group, where a YES sends the link (L10). */
   notice_wants_join_hq: (p: { name: string; day: string; link: string }) =>
-    `🙋 ${p.name} played with you on ${p.day} as a guest and wants to join your group. Reply YES here to send them the group's invite link, or tap Send the invite link on their card: ${p.link}`,
+    `🙋 ${p.name} played with you on ${p.day} as a guest and wants to join your group. Say *@Match Time YES* here to send them the group's invite link, or tap Send the invite link on their card: ${p.link}`,
   notice_someone: "A guest",
   /** The organisers' YES in the admin group (L10), one line back. */
   hq_link_sending: (p: { name: string }) => `✅ Sending ${p.name} the players' group's invite link.`,

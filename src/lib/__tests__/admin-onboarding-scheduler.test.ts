@@ -285,7 +285,7 @@ describe("Teams for <weekday> in computeDuePosts", () => {
     const ft = firstTeams(await poll(THU_2000));
     expect(ft).toHaveLength(1);
     expect(textOf(ft[0])).toContain("At 18:00 on Friday");
-    expect(textOf(ft[0])).toContain("Reply *YES* to make them final and I'll post them in the main chat");
+    expect(textOf(ft[0])).toContain("Say *@Match Time YES* to make them final and I'll post them in the main chat");
   });
 
   it("not for a monthly club or with attendance off", async () => {

@@ -95,7 +95,7 @@ describe("queueGettingReady", () => {
     expect(claims.has("org-org-fnf:getting-ready")).toBe(true);
     expect(sent).toHaveLength(1);
     expect(sent[0].text).toContain("🧰 *Getting FNF ready*");
-    expect(sent[0].text).toContain("Paste the squad list for Friday's game here now.");
+    expect(sent[0].text).toContain("Tag me and paste the squad list for Friday's game here now.");
     expect(sent[0].nextPath).toBeNull();
 
     expect(await queueGettingReady("org-fnf", NOW)).toEqual({ status: "already" });

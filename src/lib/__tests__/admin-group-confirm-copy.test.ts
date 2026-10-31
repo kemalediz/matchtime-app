@@ -30,27 +30,27 @@ describe("one item", () => {
 describe("several items: which one", () => {
   it("the teams and the list: exactly today's words, EN and TR", () => {
     expect(confirmQuestion("en", [TEAMS, LIST])).toBe(
-      "Which one is that YES for: the proposed teams for Tue 27 Oct, or the pasted squad list? Reply YES to that message.",
+      "Which one is that YES for: the proposed teams for Tue 27 Oct, or the pasted squad list? Reply to that message with *@Match Time YES*.",
     );
     expect(confirmQuestion("tr", [TEAMS, LIST])).toBe(
-      "Bu EVET hangisi için: Tue 27 Oct için önerilen takımlar mı, yapıştırılan kadro listesi mi? O mesaja EVET diye cevap verin.",
+      "Bu EVET hangisi için: Tue 27 Oct için önerilen takımlar mı, yapıştırılan kadro listesi mi? O mesaja *@Match Time EVET* diye cevap verin.",
     );
   });
 
   it("names whatever is waiting: the pool notice beside the teams, two pool notices, three items", () => {
     expect(confirmQuestion("en", [TEAMS, POOL])).toBe(
-      "Which one is that YES for: the proposed teams for Tue 27 Oct, or asking nearby players from the MatchTime player pool for Tue 27 Oct? Reply YES to that message.",
+      "Which one is that YES for: the proposed teams for Tue 27 Oct, or asking nearby players from the MatchTime player pool for Tue 27 Oct? Reply to that message with *@Match Time YES*.",
     );
     expect(confirmQuestion("en", [POOL, POOL2])).toMatch(/pool for Tue 27 Oct, or asking nearby players from the MatchTime player pool for Thu 29 Oct\?/);
     expect(confirmQuestion("en", [TEAMS, FEE, POOL])).toBe(
-      "Which one is that YES for: the proposed teams for Tue 27 Oct, the free place for Bilal on Tue 27 Oct, or asking nearby players from the MatchTime player pool for Tue 27 Oct? Reply YES to that message.",
+      "Which one is that YES for: the proposed teams for Tue 27 Oct, the free place for Bilal on Tue 27 Oct, or asking nearby players from the MatchTime player pool for Tue 27 Oct? Reply to that message with *@Match Time YES*.",
     );
     expect(confirmQuestion("en", [POOL, JOIN])).toBe(
-      "Which one is that YES for: asking nearby players from the MatchTime player pool for Tue 27 Oct, or sending Sam K the players' group's invite link? Reply YES to that message.",
+      "Which one is that YES for: asking nearby players from the MatchTime player pool for Tue 27 Oct, or sending Sam K the players' group's invite link? Reply to that message with *@Match Time YES*.",
     );
     expect(confirmQuestion("tr", [TEAMS, JOIN])).toMatch(/, Sam K kişisine oyuncu grubunun davet bağlantısını göndermek mi\? O mesaja/);
     expect(confirmQuestion("tr", [TEAMS, POOL])).toBe(
-      "Bu EVET hangisi için: Tue 27 Oct için önerilen takımlar mı, Tue 27 Oct maçı için MatchTime oyuncu havuzundaki yakın oyunculara sormak mı? O mesaja EVET diye cevap verin.",
+      "Bu EVET hangisi için: Tue 27 Oct için önerilen takımlar mı, Tue 27 Oct maçı için MatchTime oyuncu havuzundaki yakın oyunculara sormak mı? O mesaja *@Match Time EVET* diye cevap verin.",
     );
   });
 });

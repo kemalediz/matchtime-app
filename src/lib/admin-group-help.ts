@@ -36,6 +36,10 @@
  *                                Listed only while the pool is open for the
  *                                club (2026-10-28, Kemal; the log's L3.6
  *                                "no help-menu line" is superseded, row H.1)
+ *   quiet hours on, off, times   router admin_ops, the admin extractor's
+ *                                quiet_hours, then quiet-hours-words.ts and
+ *                                quiet-hours-save.ts (#483; every club, a
+ *                                new one starts with them off, #486)
  *   how any part works           router help or question, the question
  *                                extractor's how_it_works with its topic,
  *                                then buildHelpReply for the organisers

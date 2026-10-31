@@ -222,7 +222,7 @@ test("an OUT opens one pick round, posted in the admin group; no bench offer", a
       "4. Bob Bell (no position, new)",
       "5. Cem Can (no position, new)",
       "",
-      "Reply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",
+      "Tag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.",
       "If nobody picks by Thursday 12:00, I'll offer the place to the whole bench.",
     ].join("\n"),
   );
@@ -322,7 +322,7 @@ test("a name ('Wasim', '@Kemal') resolves; an already-in player is E2; an unknow
 test("a club member not on the waiting list: E1, then YES brings them in", async ({ request, db }) => {
   await out(request, P.cem);
   expect(await pickMessage(request)).toHaveLength(1);
-  expect((await reply(request, P.hamzah, "Zed")).replyText).toBe("*Zed Zulu* isn't on the bench. Bring them in anyway? Reply *YES*.");
+  expect((await reply(request, P.hamzah, "Zed")).replyText).toBe("*Zed Zulu* isn't on the bench. Bring them in anyway? Say *@Match Time YES*.");
   expect(await statusOf(db, P.zed.id)).toBeUndefined();
   const yes = await reply(request, P.raihan, "YES");
   expect(yes.replyText).toMatch(/^✅ Done: \*Zed Zulu\* is in, replacing \*Cem Can\* \(picked by Raihan Rahman\)\.$/);
@@ -456,7 +456,7 @@ test("slice 3: no pick round before the drop-out deadline; the summary IS the fi
       "Bench:",
       "1. Ben Best (no position, new)",
       "",
-      "Reply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",
+      "Tag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.",
       "If nobody picks by Tuesday 21:05, I'll offer the place to the whole bench.",
     ].join("\n"),
   );
