@@ -546,7 +546,6 @@ export const tr: Strings = {
   mom_shared: (p) => `*${p.names}* paylaştı (her biri ${p.top} oy, toplam ${p.total}) 🎉`,
   mom_votes_header: "Oylar:",
   mom_vote_row: (p) => `• ${p.name}: ${p.votes}`,
-  mom_trophy_line: "Kupa gelecek maçta sahibini bekliyor.",
   mom_picked: (p) => `Tebrikler *${p.name}* 🎉`,
 
   // ── row 46: the format-switch proposal ─────────────────────────────

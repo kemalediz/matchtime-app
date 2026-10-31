@@ -653,7 +653,6 @@ export const en = {
     `Shared between *${p.names}* (${p.top} vote${p.top === 1 ? "" : "s"} each, ${p.total} total) 🎉`,
   mom_votes_header: "Votes:",
   mom_vote_row: (p: { name: string; votes: number }): string => `• ${p.name} (${p.votes})`,
-  mom_trophy_line: "Your trophy awaits next match.",
   /** The organisers picked Man of the Match (mom-chooser.ts): no votes to show. */
   mom_picked: (p: { name: string }): string => `Congrats *${p.name}* 🎉`,
 

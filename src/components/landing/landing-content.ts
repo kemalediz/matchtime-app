@@ -1172,7 +1172,7 @@ export const HERO_DECK = {
       },
     },
     {
-      // strings.en.ts rate_promo, mom_header, mom_winner, mom_trophy_line.
+      // strings.en.ts rate_promo, mom_header, mom_winner.
       key: "ratings",
       title: "Ratings and Man of the Match",
       body: "After the game, players rate each other and vote for the best.",
@@ -1195,7 +1195,7 @@ export const HERO_DECK = {
           },
           {
             from: "bot",
-            text: "*Man of the Match: Thursday 7-a-side*\nCongrats *Kai* (6/12 votes)\nYour trophy awaits next match.",
+            text: "*Man of the Match: Thursday 7-a-side*\nCongrats *Kai* (6/12 votes)",
             time: "Fri 18:30",
           },
         ],

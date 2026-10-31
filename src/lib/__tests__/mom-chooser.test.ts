@@ -25,12 +25,12 @@ describe("the setting", () => {
 });
 
 describe("the words", () => {
-  it("the organisers' pick is announced with the voted post's header and trophy line, and no vote count", () => {
+  it("the organisers' pick is announced with the voted post's header, no vote count and no trophy line", () => {
     const picked = buildMomPickedAnnouncement({ mvpLabel: "Man of the Match", activityName: "FNF", name: "Naim" });
-    expect(picked).toBe("🏆 *Man of the Match: FNF*\n\nCongrats *Naim* 🎉\n\nYour trophy awaits next match.");
+    expect(picked).toBe("🏆 *Man of the Match: FNF*\n\nCongrats *Naim* 🎉");
     expect(picked).not.toMatch(/vote/i);
     expect(buildMomPickedAnnouncement({ mvpLabel: "Man of the Match", activityName: "FNF", name: "Naim", lang: "tr" })).toBe(
-      "🏆 *Man of the Match, FNF*\n\nTebrikler *Naim* 🎉\n\nKupa gelecek maçta sahibini bekliyor.",
+      "🏆 *Man of the Match, FNF*\n\nTebrikler *Naim* 🎉",
     );
     // The voted one is unchanged.
     expect(buildMomAnnouncement({ mvpLabel: "Man of the Match", activityName: "FNF", tally: [{ name: "Naim", votes: 3 }] })).toContain("(3/3 votes)");
