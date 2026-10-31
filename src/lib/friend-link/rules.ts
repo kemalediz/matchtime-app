@@ -50,7 +50,7 @@ export type ThirdPartyInDecision =
   | { kind: "friend_link"; friendName: string | null; reason: string }
   /** Not a friend link: the engine carries on exactly as before. */
   | { kind: "today"; reason: string }
-  /** A friend, but nothing to link to (no match, no sender): nothing at all. */
+  /** A friend, but nothing to link to (no match, attendance off): nothing at all. */
   | { kind: "none"; reason: string };
 
 export function decideThirdPartyIn(f: ThirdPartyInFacts): ThirdPartyInDecision {
@@ -62,7 +62,9 @@ export function decideThirdPartyIn(f: ThirdPartyInFacts): ThirdPartyInDecision {
   if (!unnamed && !newNamed) return { kind: "today", reason: "the person is a member, ambiguous or not written in the message" };
   // D1: an organiser adding a guest is roster work by the person in charge.
   if (f.senderIsAdmin) return { kind: "today", reason: "an organiser adds a guest directly (friend link D1)" };
-  if (!f.senderKnown) return { kind: "none", reason: "friend link: the sender could not be resolved, nobody to send it to" };
+  // Nobody to send a link to: today's path, which degrades it ("unknown
+  // guest ... offered by an unresolved sender") so the operator sees it.
+  if (!f.senderKnown) return { kind: "today", reason: "friend link: the sender could not be resolved" };
   if (!f.attendanceOn) return { kind: "none", reason: "friend link: attendance is off for this club" };
   if (!f.hasActiveMatch) return { kind: "none", reason: "friend link: no match to link to" };
   const friendName = newNamed ? f.personRef.trim() || null : null;
@@ -105,8 +107,12 @@ export function friendBookingRefusal(a: {
 
 /** D6: a friend whose number already has a pool profile. */
 export function existingProfileOutcome(p: { status: string; pausedReason: string | null }): { book: boolean; reactivate: boolean } {
+  // A pause for reports or by the MatchTime team is a person's to lift,
+  // whatever the status (a stopped profile keeps it, `manage-rules.ts`).
+  if (p.pausedReason === "reports" || p.pausedReason === "admin") return { book: false, reactivate: false };
+  // Stopped (consent withdrawn): his code is fresh consent. Reactivated in
+  // place by the pool's own restart rule, which keeps a no-show pause.
   if (p.status === "stopped") return { book: true, reactivate: true };
-  if (p.status === "paused" && (p.pausedReason === "reports" || p.pausedReason === "admin")) return { book: false, reactivate: false };
   return { book: true, reactivate: false };
 }
 

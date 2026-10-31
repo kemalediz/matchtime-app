@@ -34,6 +34,7 @@ export const friendLinkTr: FriendLinkStrings = {
     `*${p.club}* ile ${p.day}${p.venue ? `, ${p.venue}` : ""} maçında yedektesin. Seni ${p.member} getirdi. Yedeklerden kimin oynayacağını organizatörler seçer.`,
   booked_fee: (p) => `Ücret: ${p.amount}, maçtan sonra senden istenecek.`,
   booked_fee_payg: (p) => `Ücret: maç başı ödeyen oyuncu olarak ${p.amount}, maçtan sonra senden istenecek.`,
+  booked_pull_out: (p) => `Gelemiyor musun? Yerini buradan geri ver: ${p.link}`,
   booked_pool: "Artık MatchTime oyuncu havuzundasın, yakınındaki diğer maçlardan da haberin olacak.",
   not_booked_pool: "Artık MatchTime oyuncu havuzundasın, yakınındaki maçlardan haberin olacak.",
   not_used: "O bağlantıdaki yer zaten alındı, bu yüzden o maça kaydın yapılmadı.",
@@ -48,6 +49,14 @@ export const friendLinkTr: FriendLinkStrings = {
   group_bench: (p) => `🙋 ${p.name} (${p.member} getirdi) ${p.day} maçı için yedekte.`,
   group_bench_pick: (p) =>
     `🙋 ${p.name} (${p.member} getirdi) ${p.day} maçı için yedekte. Yedeklerden kimin oynayacağını organizatörler seçer. Organizatörler, ${p.name} kadroya girsin isterseniz beni etiketleyip yazın, örneğin *@Match Time ${p.name} kadroya girsin*`,
+
+  group_out: (p) => `${p.name} (${p.member} getirdi) artık ${p.day} maçına gelemiyor. Yer yeniden boş.`,
+
+  out_dm: (p) => `*${p.club}* ile ${p.day} maçındaki yerini geri verdin. MatchTime oyuncu havuzunda kalıyorsun.`,
+  reply_tap: (p) => `Yerini geri vermek için bağlantını aç: ${p.link}`,
+  page_held: (p) => `${p.club} ile ${p.day} maçında yerin var.`,
+  page_pull_out: "Gelemiyorum",
+  page_out: "Yerini geri verdin. MatchTime oyuncu havuzunda kalıyorsun.",
 
   removed: (p) =>
     `*${p.club}* organizatörleri seni ${p.day} maçından çıkardı. MatchTime oyuncu havuzunda kalıyorsun ve yakınındaki yeni maçlardan haberin olmaya devam edecek.`,

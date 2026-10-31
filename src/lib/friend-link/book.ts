@@ -24,7 +24,8 @@ import { db } from "../db";
 import { normaliseLang } from "../i18n/lang";
 import { tellClubAboutGuest } from "../guest-notice";
 import { placeFriendGuest } from "../partner-guest";
-import { buildPoolManageLink } from "../pool/links";
+import { buildPoolManageLink, buildSignedPoolLink } from "../pool/links";
+import { friendLinkPath } from "./token";
 import { queueOnce } from "../pool/queue-once";
 import { friendPoolFacts, markPoolActive } from "../pool/friend-profile";
 import { normaliseBenchPickMode } from "../squad-capacity";
@@ -54,62 +55,104 @@ export type BookFriendResult = { booked: "in" | "bench" } | { booked: false; rea
 export async function bookFriend(a: BookFriendArgs): Promise<BookFriendResult> {
   const now = a.now ?? new Date();
   try {
-    const link = await db.friendLink.findUnique({ where: { id: a.linkId }, select: { id: true, orgId: true, matchId: true, issuedByUserId: true, usedAt: true } });
-    const facts = link ? await loadFriendMatchFacts(link.matchId) : null;
-    const profile = link ? await friendPoolFacts(a.userId, link.orgId) : { language: null, displayName: null, blockedByClub: false };
-    const lang = normaliseLang(profile.language ?? facts?.language);
-    const manageLink = await buildPoolManageLink(a.userId);
-    const refuse = async (reason: FriendNotBooked): Promise<BookFriendResult> => {
-      console.log(`[friend-link] link ${a.linkId}: ${a.userId} not booked (${reason})`);
-      await queueOnce(a.phone, friendNotBookedDm(lang, { reason, newToPool: a.newToPool, manageLink }), "friend-not-booked", `friend-not-booked:${a.linkId}:${a.userId}`);
-      return { booked: false, reason };
-    };
-    if (!link || !facts) return refuse("failed");
-
-    const [row, mem] = await Promise.all([
-      db.attendance.findUnique({ where: { matchId_userId: { matchId: link.matchId, userId: a.userId } }, select: { status: true } }),
-      db.membership.findUnique({ where: { userId_orgId: { userId: a.userId, orgId: link.orgId } }, select: { leftAt: true, guestMatchId: true } }),
-    ]);
-    const refusal = friendBookingRefusal({
-      linkState: friendLinkState({ used: !!link.usedAt, matchStatus: facts.status, isHistorical: facts.isHistorical, kickoff: facts.kickoff, now }),
-      isIssuer: a.userId === link.issuedByUserId,
-      alreadyOnMatch: row?.status === "CONFIRMED" || row?.status === "BENCH",
-      blocked: profile.blockedByClub || a.blockedProfile === true,
-      guestElsewhere: !!mem && !mem.leftAt && !!mem.guestMatchId && mem.guestMatchId !== link.matchId,
-    });
-    if (refusal) return refuse(refusal);
-
-    // Claimed once: a second person with this link, or this message again.
-    const claimed = await db.friendLink.updateMany({
-      where: { id: link.id, usedAt: null },
-      data: { usedAt: now, usedByUserId: a.userId, usedMessageId: a.waMessageId, outcome: "in" },
-    });
-    if (claimed.count === 0) return refuse("used");
-
-    const placed = await placeFriendGuest({ linkId: link.id, userId: a.userId, orgId: link.orgId, matchId: link.matchId, benchPickMode: facts.benchPickMode, issuedByUserId: link.issuedByUserId });
-    if (placed.kind !== "in" && placed.kind !== "bench") {
-      await db.friendLink.updateMany({ where: { id: link.id, usedMessageId: a.waMessageId }, data: { usedAt: null, usedByUserId: null, usedMessageId: null, outcome: null } });
-      return refuse(placed.kind === "elsewhere" ? "elsewhere" : "failed");
-    }
-    await db.friendLink.update({ where: { id: link.id }, data: { outcome: placed.kind } });
-    await markPoolActive(a.userId, now);
-
-    const issuer = await db.user.findUnique({ where: { id: link.issuedByUserId }, select: { name: true } });
-    const member = issuer?.name ?? "";
-    const organiserPicks = normaliseBenchPickMode(facts.benchPickMode) === "organiser";
-    const clubLang = normaliseLang(facts.language);
-    const line = friendGroupLine(clubLang, { displayName: profile.displayName ?? "", member, kickoff: facts.kickoff, status: placed.kind, organiserPicks });
-    await tellClubAboutGuest({ orgId: link.orgId, matchId: link.matchId, key: `friend-link:${link.id}:placed`, kind: FRIEND_GUEST_NOTICE_KIND, now, hqText: line, groupText: line, prefer: "players-group-first" });
-    await queueOnce(
-      a.phone,
-      friendBookedDm(lang, { club: facts.club, kickoff: facts.kickoff, venue: facts.venue, member, status: placed.kind, organiserPicks, fee: facts.fee, monthly: facts.monthly, newToPool: a.newToPool, manageLink }),
-      "friend-booked",
-      `friend-booked:${link.id}`,
+    const link0 = await db.friendLink.findUnique({ where: { id: a.linkId }, select: { matchId: true } });
+    if (!link0) return await bookUnlocked(a, now);
+    // One booking at a time per (match, person): the same code twice at
+    // once books him once and tells him once (review of #488, 3). The lock
+    // is held by this transaction while the writes run on their own.
+    return await db.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`friend-book:${link0.matchId}:${a.userId}`}))`;
+        return bookUnlocked(a, now);
+      },
+      { maxWait: 20_000, timeout: 45_000 },
     );
-    console.log(`[friend-link] link ${link.id}: ${a.userId} booked ${placed.kind} on match ${link.matchId}`);
-    return { booked: placed.kind };
   } catch (err) {
     console.error(`[friend-link] link ${a.linkId}: booking ${a.userId} failed:`, err instanceof Error ? err.message : "failed");
     return { booked: false, reason: "failed" };
+  }
+}
+
+async function bookUnlocked(a: BookFriendArgs, now: Date): Promise<BookFriendResult> {
+  const link = await db.friendLink.findUnique({ where: { id: a.linkId }, select: { id: true, orgId: true, matchId: true, issuedByUserId: true, usedAt: true, usedByUserId: true, outcome: true } });
+  // HIS link already: booked by an earlier message of his. Nothing more.
+  if (link?.usedAt && link.usedByUserId === a.userId && (link.outcome === "in" || link.outcome === "bench")) return { booked: link.outcome };
+  const facts = link ? await loadFriendMatchFacts(link.matchId) : null;
+  const profile = link ? await friendPoolFacts(a.userId, link.orgId) : { language: null, displayName: null, blockedByClub: false };
+  const lang = normaliseLang(profile.language ?? facts?.language);
+  const manageLink = await buildPoolManageLink(a.userId);
+  const refuse = async (reason: FriendNotBooked): Promise<BookFriendResult> => {
+    console.log(`[friend-link] link ${a.linkId}: ${a.userId} not booked (${reason})`);
+    await queueOnce(a.phone, friendNotBookedDm(lang, { reason, newToPool: a.newToPool, manageLink }), "friend-not-booked", `friend-not-booked:${a.linkId}:${a.userId}`);
+    return { booked: false, reason };
+  };
+  if (!link || !facts) return refuse("failed");
+
+  const [row, mem] = await Promise.all([
+    db.attendance.findUnique({ where: { matchId_userId: { matchId: link.matchId, userId: a.userId } }, select: { status: true } }),
+    db.membership.findUnique({ where: { userId_orgId: { userId: a.userId, orgId: link.orgId } }, select: { leftAt: true, guestMatchId: true } }),
+  ]);
+  const refusal = friendBookingRefusal({
+    linkState: friendLinkState({ used: !!link.usedAt, matchStatus: facts.status, isHistorical: facts.isHistorical, kickoff: facts.kickoff, now }),
+    isIssuer: a.userId === link.issuedByUserId,
+    alreadyOnMatch: row?.status === "CONFIRMED" || row?.status === "BENCH",
+    blocked: profile.blockedByClub || a.blockedProfile === true,
+    guestElsewhere: !!mem && !mem.leftAt && !!mem.guestMatchId && mem.guestMatchId !== link.matchId,
+  });
+  if (refusal) return refuse(refusal);
+
+  // Claimed once: a second person with this link, or this message again.
+  const claimed = await db.friendLink.updateMany({
+    where: { id: link.id, usedAt: null },
+    data: { usedAt: now, usedByUserId: a.userId, usedMessageId: a.waMessageId, outcome: "in" },
+  });
+  if (claimed.count === 0) return refuse("used");
+
+  const placed = await placeFriendGuest({ linkId: link.id, userId: a.userId, orgId: link.orgId, matchId: link.matchId, benchPickMode: facts.benchPickMode, issuedByUserId: link.issuedByUserId });
+  if (placed.kind !== "in" && placed.kind !== "bench") {
+    await db.friendLink.updateMany({ where: { id: link.id, usedMessageId: a.waMessageId }, data: { usedAt: null, usedByUserId: null, usedMessageId: null, outcome: null } });
+    return refuse(placed.kind === "elsewhere" ? "elsewhere" : "failed");
+  }
+  await db.friendLink.update({ where: { id: link.id }, data: { outcome: placed.kind } });
+  await markPoolActive(a.userId, now);
+
+  const issuer = await db.user.findUnique({ where: { id: link.issuedByUserId }, select: { name: true } });
+  const member = issuer?.name ?? "";
+  const organiserPicks = normaliseBenchPickMode(facts.benchPickMode) === "organiser";
+  const clubLang = normaliseLang(facts.language);
+  const line = friendGroupLine(clubLang, { displayName: profile.displayName ?? "", member, kickoff: facts.kickoff, status: placed.kind, organiserPicks });
+  // The group and he are told independently, each once (review of #488, 7).
+  await safely(`group notice for link ${link.id}`, () =>
+    tellClubAboutGuest({ orgId: link.orgId, matchId: link.matchId, key: `friend-link:${link.id}:placed`, kind: FRIEND_GUEST_NOTICE_KIND, now, hqText: line, groupText: line, prefer: "players-group-first" }),
+  );
+  await safely(`his DM for link ${link.id}`, async () =>
+    queueOnce(
+      a.phone,
+      friendBookedDm(lang, {
+        club: facts.club,
+        kickoff: facts.kickoff,
+        venue: facts.venue,
+        member,
+        status: placed.kind as "in" | "bench",
+        organiserPicks,
+        fee: facts.fee,
+        monthly: facts.monthly,
+        newToPool: a.newToPool,
+        manageLink,
+        pullOutLink: await buildSignedPoolLink(a.userId, friendLinkPath(link.id)),
+      }),
+      "friend-booked",
+      `friend-booked:${link.id}`,
+    ),
+  );
+  console.log(`[friend-link] link ${link.id}: ${a.userId} booked ${placed.kind} on match ${link.matchId}`);
+  return { booked: placed.kind };
+}
+
+async function safely(what: string, fn: () => Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    console.error(`[friend-link] ${what} not queued:`, err instanceof Error ? err.message : "failed");
   }
 }

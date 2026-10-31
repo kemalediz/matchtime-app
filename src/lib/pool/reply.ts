@@ -38,7 +38,10 @@ import { e164Digits } from "../phone";
 import { queuePlatformDm } from "../platform-jobs";
 import { sameWhatsAppMessage } from "../quoted-message";
 import { acceptOffer, declineOffer, pullOutOfOffer } from "./accept";
-import { buildPoolManageLink } from "./links";
+import { buildPoolManageLink, buildSignedPoolLink } from "./links";
+import { pullOutOfFriendPlace } from "../friend-link/withdraw";
+import { friendLinkPath } from "../friend-link/token";
+import { friendLinkCopy } from "../i18n/friend-link";
 import { applyManageAction } from "./manage";
 import { OPEN_MATCH_STATUSES } from "./matching-rules";
 import { loadMatchOfferFacts } from "./offer-facts";
@@ -151,6 +154,63 @@ export async function answerPoolOfferReply(args: PoolReplyInput): Promise<PoolRe
 /** His delivered offers in the window and the places he holds, newest
  *  first, each only if it went to his number. */
 async function loadReplyOffers(userId: string, his: string, quotedId: string | null, now: Date): Promise<LoadedReplyOffer[]> {
+  const [offers, friends] = await Promise.all([loadOfferRows(userId, his, quotedId, now), loadFriendPlaces(userId, his, quotedId, now)]);
+  return [...offers, ...friends].sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
+}
+
+/** A friend link's id as a reply "offer" (2026-11-01). */
+const FRIEND_PREFIX = "friend:";
+const friendLinkOf = (id: string) => (id.startsWith(FRIEND_PREFIX) ? id.slice(FRIEND_PREFIX.length) : null);
+
+/**
+ * A MEMBER'S FRIEND'S BOOKED PLACE (friend link, Kemal 2026-11-01), read
+ * like an offer he took: the "you're in" DM MatchTime sent him (its exact
+ * words, from his number's own platform job) is the offer's text, and the
+ * state is "taken" while he holds the place before kick-off. So "can't make
+ * it Monday" is the reader's "decline" of a taken place, a pull-out, with
+ * the same prompt and the same rules (`reply-rules.ts`).
+ */
+async function loadFriendPlaces(userId: string, his: string, quotedId: string | null, now: Date): Promise<LoadedReplyOffer[]> {
+  const links = await db.friendLink.findMany({
+    where: { usedByUserId: userId, outcome: { in: ["in", "bench"] }, match: { date: { gt: now } } },
+    select: { id: true, orgId: true, matchId: true, org: { select: { name: true } }, match: { select: { date: true, status: true, isHistorical: true } } },
+  });
+  if (links.length === 0) return [];
+  const [jobs, holds] = await Promise.all([
+    db.platformJob.findMany({ where: { purpose: "friend-booked", refId: { in: links.map((l) => `friend-booked:${l.id}`) } }, select: { refId: true, waMessageId: true, text: true, phone: true, sentAt: true, createdAt: true } }),
+    db.attendance.findMany({ where: { userId, matchId: { in: links.map((l) => l.matchId) }, status: { in: ["CONFIRMED", "BENCH"] } }, select: { matchId: true } }),
+  ]);
+  const held = new Set(holds.map((h) => h.matchId));
+  const out: LoadedReplyOffer[] = [];
+  for (const l of links) {
+    const job = jobs.find((j) => j.refId === `friend-booked:${l.id}`);
+    if (!job || digitsOf(job.phone) !== his) continue;
+    const sentAt = job.sentAt ?? job.createdAt;
+    out.push({
+      id: `${FRIEND_PREFIX}${l.id}`,
+      state: offerReplyState({
+        outcome: "accepted",
+        askStatus: "open",
+        sentAt,
+        expiresAt: l.match.date,
+        matchLive: LIVE_STATUSES.includes(l.match.status) && !l.match.isHistorical,
+        kickoff: l.match.date,
+        holdsPlace: held.has(l.matchId),
+        now,
+      }),
+      sentAt,
+      quoted: !!quotedId && sameWhatsAppMessage(quotedId, job.waMessageId),
+      orgId: l.orgId,
+      matchId: l.matchId,
+      club: l.org.name,
+      kickoff: l.match.date,
+      text: job.text ?? "",
+    });
+  }
+  return out;
+}
+
+async function loadOfferRows(userId: string, his: string, quotedId: string | null, now: Date): Promise<LoadedReplyOffer[]> {
   const rows = await db.poolOffer.findMany({
     where: {
       userId,
@@ -239,8 +299,10 @@ interface ActCtx {
 
 async function act(action: ReplyAction, c: ActCtx): Promise<PoolReplyAnswer> {
   if (action.kind === "carry-on") return null;
+  const friend = "offerId" in action ? friendLinkOf(action.offerId) : null;
+  if (friend) return actOnFriendPlace(action, friend, c);
   const offerOf = (id: string) => c.offers.find((o) => o.id === id)!;
-  const tapLink = (id: string) => appUrl(poolOfferPath(id));
+  const tapLink = (id: string) => appUrl(friendLinkOf(id) ? friendLinkPath(friendLinkOf(id)!) : poolOfferPath(id));
   const send = async (text: string, refId: string | null) => {
     await queuePlatformDm({ phone: c.phone, text, purpose: "pool-reply", refId });
   };
@@ -315,4 +377,21 @@ async function act(action: ReplyAction, c: ActCtx): Promise<PoolReplyAnswer> {
       return "pool-reply-profile-off";
     }
   }
+}
+
+/**
+ * His words about a friend link's booked place (2026-11-01): a "decline" of
+ * the taken place gives it back (`friend-link/withdraw.ts`, which tells the
+ * group and DMs him); anything else he could do with an offer gets one
+ * line pointing to his link's page, once.
+ */
+async function actOnFriendPlace(action: ReplyAction, linkId: string, c: ActCtx): Promise<PoolReplyAnswer> {
+  if (action.kind === "pull-out" || action.kind === "decline") {
+    await pullOutOfFriendPlace({ linkId, userId: c.userId, now: c.now });
+    return "pool-reply-pull-out";
+  }
+  if (!(await once(`pool-reply:friend:${linkId}:tap`))) return null;
+  const link = await buildSignedPoolLink(c.userId, friendLinkPath(linkId));
+  await queuePlatformDm({ phone: c.phone, text: [friendLinkCopy(c.lang).reply_tap({ link }), friendLinkCopy(c.lang).footer({ link: await buildPoolManageLink(c.userId) })].join("\n\n"), purpose: "pool-reply", refId: `friend:${linkId}` });
+  return "pool-offer-tap-link";
 }

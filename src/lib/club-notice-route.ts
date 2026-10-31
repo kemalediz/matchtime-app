@@ -4,7 +4,7 @@
  */
 import { db } from "./db";
 import { isGroupPostable } from "./group-postability-store";
-import { clubNoticeRoute, playersGroupFirstRoute, type ClubNoticeRoute } from "./club-notice-route-rules";
+import { clubNoticeRoute, type ClubNoticeRoute } from "./club-notice-route-rules";
 
 /** The club's fields the route needs. */
 export const CLUB_NOTICE_ROUTE_SELECT = { adminGroupId: true, whatsappGroupId: true, whatsappBotEnabled: true } as const;
@@ -15,12 +15,12 @@ export async function clubNoticeRouteOf(
   /** "players-group-first": attendance news for everyone (friend link D8). */
   prefer: "club" | "players-group-first" = "club",
 ): Promise<ClubNoticeRoute> {
-  return (prefer === "players-group-first" ? playersGroupFirstRoute : clubNoticeRoute)({
+  return clubNoticeRoute({
     adminGroupId: org.adminGroupId ?? null,
     whatsappGroupId: org.whatsappGroupId ?? null,
     whatsappBotEnabled: org.whatsappBotEnabled === true,
     playersGroupPostable: org.whatsappGroupId ? await isGroupPostable(org.whatsappGroupId) : false,
-  });
+  }, prefer);
 }
 
 /** The route for a club by id; a club that is gone: the admin channel (which finds nobody). */

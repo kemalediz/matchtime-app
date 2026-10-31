@@ -3541,12 +3541,6 @@ model PoolCampaign {
   createdAt DateTime @default(now())
 }
 
-/// One guest's game for a club: partner guests and pool guests alike. The
-/// ONE record of how a guest's game went, read by the Guest players page
-/// (Upcoming, History, Report), the turn-up record and the "Invite to
-/// club" rule (at least one game with this club). The guest membership
-/// (`Membership.guestMatchId`) only holds his current match; this keeps
-/// every one.
 /// A member vouched for a friend for ONE match (friend link, 2026-10-31,
 /// src/lib/friend-link). The link names the match and nothing about the
 /// friend: his details arrive only through the /play form and his own
@@ -3581,6 +3575,12 @@ model FriendLink {
   @@index([matchId, issuedByUserId])
 }
 
+/// One guest's game for a club: partner guests and pool guests alike. The
+/// ONE record of how a guest's game went, read by the Guest players page
+/// (Upcoming, History, Report), the turn-up record and the "Invite to
+/// club" rule (at least one game with this club). The guest membership
+/// (`Membership.guestMatchId`) only holds his current match; this keeps
+/// every one.
 model GuestPlace {
   id           String       @id @default(cuid())
   orgId        String

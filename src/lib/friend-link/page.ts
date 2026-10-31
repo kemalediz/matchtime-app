@@ -17,13 +17,17 @@ export interface OpenedFriendLink {
   /** The member's first name, for "Shane invited you to play". */
   issuer: string;
   friendName: string | null;
+  /** Who used it (the booked friend), or null. */
+  usedByUserId: string | null;
+  /** The game itself is still to play (whatever the link's own use). */
+  gameOpen: boolean;
   facts: FriendMatchFacts;
 }
 
 export async function openFriendLink(token: string, now: Date = new Date()): Promise<OpenedFriendLink | null> {
   const id = friendLinkIdFromToken(token);
   if (!id) return null;
-  const link = await db.friendLink.findUnique({ where: { id }, select: { id: true, matchId: true, issuedByUserId: true, friendName: true, usedAt: true } });
+  const link = await db.friendLink.findUnique({ where: { id }, select: { id: true, matchId: true, issuedByUserId: true, friendName: true, usedAt: true, usedByUserId: true, outcome: true } });
   if (!link) return null;
   const [facts, issuer] = await Promise.all([
     loadFriendMatchFacts(link.matchId),
@@ -36,6 +40,8 @@ export async function openFriendLink(token: string, now: Date = new Date()): Pro
     issuedByUserId: link.issuedByUserId,
     issuer: (issuer?.name ?? "").trim().split(/\s+/)[0] ?? "",
     friendName: link.friendName,
+    usedByUserId: link.outcome === "in" || link.outcome === "bench" ? link.usedByUserId : null,
+    gameOpen: friendLinkState({ used: false, matchStatus: facts.status, isHistorical: facts.isHistorical, kickoff: facts.kickoff, now }) === "open",
     facts,
   };
 }

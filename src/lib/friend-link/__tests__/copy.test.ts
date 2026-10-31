@@ -3,16 +3,16 @@
  * languages, so a reviewer sees what people will read.
  */
 import { describe, expect, it } from "vitest";
-import { friendBookedDm, friendGroupLine, friendNotBookedDm, friendRemovedDm, memberLinkDm } from "../copy";
+import { friendBookedDm, friendGroupLine, friendGroupOutLine, friendNotBookedDm, friendOutDm, friendRemovedDm, memberLinkDm } from "../copy";
 
 const kickoff = new Date("2026-11-02T20:00:00Z"); // 20:00 London (GMT)
 
 describe("memberLinkDm", () => {
   it("one named friend, English", () => {
     expect(memberLinkDm("en", { club: "Sutton FC", kickoff, venue: "Goals Sutton", links: [{ friend: "Ali", url: "https://m.ai/play/f/a.b" }], capped: false })).toBe(
-      "Here's the link for Ali to join *Sutton FC* on Mon 2 Nov, 20:00 at Goals Sutton. Please forward it to him.\n\n" +
+      "Here's the link for Ali to join *Sutton FC* on Mon 2 Nov, 20:00 at Goals Sutton. Please forward it to them.\n\n" +
         "https://m.ai/play/f/a.b\n\n" +
-        "Your friend can only join this game by opening the link, filling in his details and sending the WhatsApp code it gives him. Each link works for one person, until kick-off.",
+        "Your friend can only join this game by opening the link, filling in their details and sending the WhatsApp code it gives them. Each link works for one person, until kick-off.",
     );
   });
   it("one unnamed friend, Turkish", () => {
@@ -24,7 +24,7 @@ describe("memberLinkDm", () => {
   });
   it("two friends: numbered lines", () => {
     const text = memberLinkDm("en", { club: "Sutton FC", kickoff, venue: null, links: [{ friend: "Ali", url: "u1" }, { friend: null, url: "u2" }], capped: false });
-    expect(text).toContain("Each friend needs his own link.");
+    expect(text).toContain("Each friend needs their own link.");
     expect(text).toContain("1. Ali: u1\n2. Friend: u2");
   });
   it("capped: the unused links again", () => {
@@ -34,16 +34,16 @@ describe("memberLinkDm", () => {
 });
 
 describe("friendBookedDm", () => {
-  const base = { club: "Sutton FC", kickoff, venue: "Goals Sutton", member: "Shane", status: "in" as const, organiserPicks: false, fee: { kind: "amount", amount: "£6" } as const, monthly: false, newToPool: true, manageLink: "https://m.ai/s" };
-  it("in, weekly fee, new to the pool", () => {
+  const base = { club: "Sutton FC", kickoff, venue: "Goals Sutton", member: "Shane", status: "in" as const, organiserPicks: false, fee: { kind: "amount", amount: "£6" } as const, monthly: false, newToPool: true, manageLink: "https://m.ai/s", pullOutLink: "https://m.ai/p" };
+  it("in, weekly fee, new to the pool, the pull-out link", () => {
     expect(friendBookedDm("en", base)).toBe(
-      "You're in for *Sutton FC* on Mon 2 Nov, 20:00 at Goals Sutton. Shane brought you in.\nFee: £6, asked of you after the game.\n\n" +
+      "You're in for *Sutton FC* on Mon 2 Nov, 20:00 at Goals Sutton. Shane brought you in.\nFee: £6, asked of you after the game.\nCan't make it? Give your place back here: https://m.ai/p\n\n" +
         "You're now in the MatchTime player pool too, so you'll hear about other games near you.\n\nYour settings: https://m.ai/s",
     );
   });
   it("monthly club: pay as you go, Turkish", () => {
     expect(friendBookedDm("tr", { ...base, monthly: true, fee: { kind: "amount", amount: "£7" }, newToPool: false })).toBe(
-      "*Sutton FC* ile 2 Kasım Pazartesi 20:00, Goals Sutton maçındasın. Seni Shane getirdi.\nÜcret: maç başı ödeyen oyuncu olarak £7, maçtan sonra senden istenecek.\n\nAyarların: https://m.ai/s",
+      "*Sutton FC* ile 2 Kasım Pazartesi 20:00, Goals Sutton maçındasın. Seni Shane getirdi.\nÜcret: maç başı ödeyen oyuncu olarak £7, maçtan sonra senden istenecek.\nGelemiyor musun? Yerini buradan geri ver: https://m.ai/p\n\nAyarların: https://m.ai/s",
     );
   });
   it("bench, and bench in an organiser-pick club; no fee line when unknown or free", () => {
@@ -67,6 +67,14 @@ describe("friendNotBookedDm", () => {
     for (const reason of ["blocked", "elsewhere", "failed"] as const) {
       expect(friendNotBookedDm("en", { reason, newToPool: false, manageLink: "L" })).toBe("You're not booked into that game.\n\nYour settings: L");
     }
+  });
+});
+
+describe("pulling out", () => {
+  it("the group line and his DM", () => {
+    expect(friendGroupOutLine("en", { displayName: "Ali Yilmaz", member: "Shane Smith", kickoff })).toBe("Ali Y. (Shane's friend) can no longer play on Mon 2 Nov, 20:00. The place is open again.");
+    expect(friendGroupOutLine("tr", { displayName: "Ali Yilmaz", member: "Shane Smith", kickoff })).toBe("Ali Y. (Shane getirdi) artık 2 Kasım Pazartesi 20:00 maçına gelemiyor. Yer yeniden boş.");
+    expect(friendOutDm("en", { club: "FNF", kickoff, manageLink: "L" })).toBe("You've given your place back for *FNF* on Mon 2 Nov, 20:00. You stay in the MatchTime player pool.\n\nYour settings: L");
   });
 });
 

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { openFriendLink } from "@/lib/friend-link/page";
 import { PlaySignup } from "../../play-signup";
 import { FriendLinkClosed } from "./friend-link-closed";
+import { FriendLinkHeld } from "./friend-link-held";
+import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "MatchTime", robots: { index: false, follow: false } };
@@ -18,6 +20,10 @@ export default async function FriendLinkPage({ params }: { params: Promise<{ tok
   const { token } = await params;
   const opened = await openFriendLink(token);
   if (!opened) return <FriendLinkClosed state="invalid" />;
+  // His own place, signed in as him: he can give it back (2026-11-01).
+  if (opened.state === "used" && opened.gameOpen && opened.usedByUserId && opened.usedByUserId === (await auth())?.user?.id) {
+    return <FriendLinkHeld token={token} club={opened.facts.club} kickoffIso={opened.facts.kickoff.toISOString()} />;
+  }
   if (opened.state !== "open") return <FriendLinkClosed state={opened.state} />;
   const f = opened.facts;
   return (

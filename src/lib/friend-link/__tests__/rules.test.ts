@@ -53,8 +53,8 @@ describe("decideThirdPartyIn: who gets a friend link", () => {
     expect(d({ senderIsAdmin: true }).kind).toBe("today");
     expect(d({ senderIsAdmin: true, personKind: "named", personRef: "Ali", resolution: "unknown" }).kind).toBe("today");
   });
-  it("no resolved sender, attendance off, or no match: nothing to link", () => {
-    expect(d({ senderKnown: false }).kind).toBe("none");
+  it("no resolved sender: today's path (which degrades it); attendance off or no match: nothing to link", () => {
+    expect(d({ senderKnown: false }).kind).toBe("today");
     expect(d({ attendanceOn: false }).kind).toBe("none");
     expect(d({ hasActiveMatch: false }).kind).toBe("none");
   });
@@ -113,8 +113,11 @@ describe("existingProfileOutcome (D6)", () => {
   it("paused by himself, for ignoring offers or for no-shows: booked, pause kept", () => {
     for (const r of ["self", "ignored", "no-shows"]) expect(existingProfileOutcome({ status: "paused", pausedReason: r })).toEqual({ book: true, reactivate: false });
   });
-  it("paused for reports or by the MatchTime team: not booked", () => {
-    for (const r of ["reports", "admin"]) expect(existingProfileOutcome({ status: "paused", pausedReason: r })).toEqual({ book: false, reactivate: false });
+  it("paused for reports or by the MatchTime team, stopped or not: not booked", () => {
+    for (const r of ["reports", "admin"]) {
+      expect(existingProfileOutcome({ status: "paused", pausedReason: r })).toEqual({ book: false, reactivate: false });
+      expect(existingProfileOutcome({ status: "stopped", pausedReason: r })).toEqual({ book: false, reactivate: false });
+    }
   });
 });
 

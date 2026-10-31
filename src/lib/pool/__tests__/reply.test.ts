@@ -10,6 +10,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const dbMock = vi.hoisted(() => ({
   poolProfile: { findUnique: vi.fn(), updateMany: vi.fn() },
   poolOffer: { findMany: vi.fn(), findUnique: vi.fn() },
+  // No friend-link places here (friend link, 2026-11-01).
+  friendLink: { findMany: vi.fn(async () => []) },
   platformJob: { findMany: vi.fn() },
   attendance: { findMany: vi.fn() },
   membership: { findFirst: vi.fn() },

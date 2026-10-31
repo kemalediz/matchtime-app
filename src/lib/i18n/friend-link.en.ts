@@ -9,10 +9,10 @@
 export const friendLinkEn = {
   // ── DM to the member who said his friend is coming (club bot) ────────
   member_one: (p: { friend: string | null; club: string; day: string; venue: string | null }) =>
-    `Here's the link for ${p.friend ?? "your friend"} to join *${p.club}* on ${p.day}${p.venue ? ` at ${p.venue}` : ""}. Please forward it to ${p.friend ? "him" : "them"}.`,
+    `Here's the link for ${p.friend ?? "your friend"} to join *${p.club}* on ${p.day}${p.venue ? ` at ${p.venue}` : ""}. Please forward it to them.`,
   member_many: (p: { club: string; day: string; venue: string | null }) =>
-    `Here are the links for your friends to join *${p.club}* on ${p.day}${p.venue ? ` at ${p.venue}` : ""}. Please forward each one to the friend it is for. Each friend needs his own link.`,
-  member_how: "Your friend can only join this game by opening the link, filling in his details and sending the WhatsApp code it gives him. Each link works for one person, until kick-off.",
+    `Here are the links for your friends to join *${p.club}* on ${p.day}${p.venue ? ` at ${p.venue}` : ""}. Please forward each one to the friend it is for. Each friend needs their own link.`,
+  member_how: "Your friend can only join this game by opening the link, filling in their details and sending the WhatsApp code it gives them. Each link works for one person, until kick-off.",
   member_cap: (p: { club: string; day: string }) =>
     `You already have links for *${p.club}* on ${p.day} that nobody has used yet, so here they are again:`,
   member_link_line: (p: { n: number; friend: string | null; link: string }) => `${p.n}. ${p.friend ?? "Friend"}: ${p.link}`,
@@ -41,6 +41,7 @@ export const friendLinkEn = {
     `You're on the bench for *${p.club}* on ${p.day}${p.venue ? ` at ${p.venue}` : ""}. ${p.member} brought you in. The organisers pick who plays from the bench.`,
   booked_fee: (p: { amount: string }) => `Fee: ${p.amount}, asked of you after the game.`,
   booked_fee_payg: (p: { amount: string }) => `Fee: ${p.amount} as a pay as you go player, asked of you after the game.`,
+  booked_pull_out: (p: { link: string }) => `Can't make it? Give your place back here: ${p.link}`,
   booked_pool: "You're now in the MatchTime player pool too, so you'll hear about other games near you.",
   not_booked_pool: "You're in the MatchTime player pool now, so you'll hear about games near you.",
   not_used: "The place on that link was already taken, so you're not booked into that game.",
@@ -57,7 +58,16 @@ export const friendLinkEn = {
   group_bench_pick: (p: { name: string; member: string; day: string }) =>
     `🙋 ${p.name} (${p.member}'s friend) is on the bench for ${p.day}. The organisers pick who plays from the bench. Organisers, to put ${p.name} in, tag me and say so, for example *@Match Time put ${p.name} in*`,
 
-  // ── DM to the friend when an organiser takes him off (platform) ──────
+  group_out: (p: { name: string; member: string; day: string }) => `${p.name} (${p.member}'s friend) can no longer play on ${p.day}. The place is open again.`,
+
+  // ── The friend gives the place back (his link's page, or by WhatsApp) ─
+  out_dm: (p: { club: string; day: string }) => `You've given your place back for *${p.club}* on ${p.day}. You stay in the MatchTime player pool.`,
+  reply_tap: (p: { link: string }) => `To give your place back, open your link: ${p.link}`,
+  page_held: (p: { club: string; day: string }) => `You have a place for ${p.club} on ${p.day}.`,
+  page_pull_out: "I can't make it",
+  page_out: "You've given your place back. You stay in the MatchTime player pool.",
+
+  // ── DM to the friend when an organiser takes them off (platform) ─────
   removed: (p: { club: string; day: string }) =>
     `The organisers of *${p.club}* took you out of the game on ${p.day}. You stay in the MatchTime player pool and will keep hearing about new games near you.`,
 };

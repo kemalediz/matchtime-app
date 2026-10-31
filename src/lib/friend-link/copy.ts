@@ -41,13 +41,28 @@ export type FriendPlace = "in" | "bench";
 /** The friend's DM once he is booked. */
 export function friendBookedDm(
   lang: Lang,
-  p: { club: string; kickoff: Date; venue: string | null; member: string; status: FriendPlace; organiserPicks: boolean; fee: PoolFee; monthly: boolean; newToPool: boolean; manageLink: string },
+  p: {
+    club: string;
+    kickoff: Date;
+    venue: string | null;
+    member: string;
+    status: FriendPlace;
+    organiserPicks: boolean;
+    fee: PoolFee;
+    monthly: boolean;
+    newToPool: boolean;
+    manageLink: string;
+    /** A signed link to his link's page, where he can give the place back. */
+    pullOutLink: string;
+  },
 ): string {
   const c = friendLinkCopy(lang);
   const game = { club: p.club, day: dayCommaTimeLabel(lang, p.kickoff), venue: p.venue, member: firstName(p.member) };
   const head = p.status === "in" ? c.booked_in(game) : p.organiserPicks ? c.booked_bench_pick(game) : c.booked_bench(game);
   const fee = p.fee?.kind === "amount" ? (p.monthly ? c.booked_fee_payg({ amount: p.fee.amount }) : c.booked_fee({ amount: p.fee.amount })) : null;
-  return [[head, fee].filter(Boolean).join("\n"), p.newToPool ? c.booked_pool : null, c.footer({ link: p.manageLink })].filter(Boolean).join("\n\n");
+  return [[head, fee, c.booked_pull_out({ link: p.pullOutLink })].filter(Boolean).join("\n"), p.newToPool ? c.booked_pool : null, c.footer({ link: p.manageLink })]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /** The friend's DM when his code confirmed him but he is not booked. */
@@ -77,4 +92,15 @@ export function friendGroupLine(lang: Lang, p: { displayName: string; member: st
 /** The friend's DM when an organiser takes him off the game. */
 export function friendRemovedDm(lang: Lang, p: { club: string; kickoff: Date }): string {
   return friendLinkCopy(lang).removed({ club: p.club, day: dayCommaTimeLabel(lang, p.kickoff) });
+}
+
+/** The players' group line when he gives his place back. */
+export function friendGroupOutLine(lang: Lang, p: { displayName: string; member: string; kickoff: Date }): string {
+  return friendLinkCopy(lang).group_out({ name: friendShortName(p.displayName), member: firstName(p.member), day: dayCommaTimeLabel(lang, p.kickoff) });
+}
+
+/** His DM once he gave his place back. */
+export function friendOutDm(lang: Lang, p: { club: string; kickoff: Date; manageLink: string }): string {
+  const c = friendLinkCopy(lang);
+  return [c.out_dm({ club: p.club, day: dayCommaTimeLabel(lang, p.kickoff) }), c.footer({ link: p.manageLink })].join("\n\n");
 }

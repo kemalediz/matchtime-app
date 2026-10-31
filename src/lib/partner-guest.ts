@@ -925,19 +925,31 @@ async function placeGuestOnMatch(w: {
  * guest. True when there was a place to give back.
  */
 export async function withdrawPoolGuest(args: { userId: string; matchId: string; orgId: string; offerId: string; result: "withdrawn" | "late-cancel"; now: Date }): Promise<boolean> {
+  return withdrawGuestPlace({
+    ...args,
+    logRef: `pool offer ${args.offerId}`,
+    event: { cause: "pool-ask", actorKind: "player", actorUserId: args.userId, sourceRef: `pool-offer:${args.offerId}`, note: "MatchTime player pool: gave the place back by the offer link" },
+  });
+}
+
+/** A member's friend gives his place back (his link's page, or his own
+ *  words by DM; friend link, 2026-11-01). The same as a pool guest's. */
+export async function withdrawFriendGuest(args: { userId: string; matchId: string; orgId: string; linkId: string; result: "withdrawn" | "late-cancel"; now: Date }): Promise<boolean> {
+  return withdrawGuestPlace({
+    ...args,
+    logRef: `friend link ${args.linkId}`,
+    event: { cause: "friend-link", actorKind: "player", actorUserId: args.userId, sourceRef: `friend-link:${args.linkId}`, note: "a member's friend gave the place back" },
+  });
+}
+
+async function withdrawGuestPlace(args: { userId: string; matchId: string; orgId: string; result: "withdrawn" | "late-cancel"; now: Date; logRef: string; event: AttendanceEventContext }): Promise<boolean> {
   const mem = await db.membership.findUnique({ where: { userId_orgId: { userId: args.userId, orgId: args.orgId } }, select: { leftAt: true, ...GUEST_MARKS } });
   if (!mem || mem.leftAt || mem.guestVia !== "pool" || mem.guestMatchId !== args.matchId) return false;
   const row = await db.attendance.findUnique({ where: { matchId_userId: { matchId: args.matchId, userId: args.userId } }, select: { status: true } });
   if (!row || (row.status !== "CONFIRMED" && row.status !== "BENCH")) return false;
-  await cancelAttendance(args.userId, args.matchId, {
-    cause: "pool-ask",
-    actorKind: "player",
-    actorUserId: args.userId,
-    sourceRef: `pool-offer:${args.offerId}`,
-    note: "MatchTime player pool: gave the place back by the offer link",
-  });
+  await cancelAttendance(args.userId, args.matchId, args.event);
   await db.guestPlace.updateMany({ where: { matchId: args.matchId, userId: args.userId, result: "booked" }, data: { result: args.result, resultAt: args.now } });
   await db.membership.updateMany({ where: { userId: args.userId, orgId: args.orgId, guestMatchId: args.matchId, leftAt: null }, data: { leftAt: args.now } });
-  console.log(`[partner-guest] pool offer ${args.offerId}: ${args.userId} gave the place back (${args.result})`);
+  console.log(`[partner-guest] ${args.logRef}: ${args.userId} gave the place back (${args.result})`);
   return true;
 }

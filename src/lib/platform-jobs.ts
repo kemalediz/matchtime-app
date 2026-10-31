@@ -47,8 +47,9 @@
  *                       his caps and quiet hours are re-checked there.
  *   friend-booked,      only a number MatchTime already knows: a friend
  *   friend-not-booked,  whose own WhatsApp code confirmed his friend-link
- *   friend-removed      sign-up (2026-10-31). Queued only by
- *                       src/lib/friend-link/ (book.ts) and pool/removal.ts.
+ *   friend-removed,     sign-up (2026-10-31). Queued only by
+ *   friend-out          src/lib/friend-link/ (book.ts, withdraw.ts) and
+ *                       pool/removal.ts.
  *   club-invite-ask,    only a number MatchTime already knows: a guest who
  *   club-invite-link,   played with the club (pool L8). Queued only by
  *   club-invite-closed  src/lib/pool/club-invitation.ts. The LINK goes only
@@ -146,6 +147,7 @@ export const PLATFORM_DM_PURPOSES = [
   "friend-booked",
   "friend-not-booked",
   "friend-removed",
+  "friend-out",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 

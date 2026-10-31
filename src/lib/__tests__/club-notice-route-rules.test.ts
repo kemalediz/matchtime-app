@@ -28,14 +28,16 @@ describe("clubNoticeRoute", () => {
   });
 });
 
-describe("playersGroupFirstRoute: attendance news for everyone (friend link D8, 2026-10-31)", () => {
+describe("clubNoticeRoute players-group-first: attendance news for everyone (friend link D8, 2026-10-31)", () => {
   it("the players' group whenever MatchTime can post there, HQ or not", async () => {
-    const { playersGroupFirstRoute } = await import("../club-notice-route-rules");
+    const { clubNoticeRoute } = await import("../club-notice-route-rules");
+    const playersGroupFirstRoute = (o: Parameters<typeof clubNoticeRoute>[0]) => clubNoticeRoute(o, "players-group-first");
     expect(playersGroupFirstRoute({ adminGroupId: "hq", whatsappGroupId: "g", whatsappBotEnabled: true, playersGroupPostable: true })).toBe("players-group");
     expect(playersGroupFirstRoute({ adminGroupId: null, whatsappGroupId: "g", whatsappBotEnabled: true, playersGroupPostable: true })).toBe("players-group");
   });
   it("the admin channel when the players' group cannot be posted in", async () => {
-    const { playersGroupFirstRoute } = await import("../club-notice-route-rules");
+    const { clubNoticeRoute } = await import("../club-notice-route-rules");
+    const playersGroupFirstRoute = (o: Parameters<typeof clubNoticeRoute>[0]) => clubNoticeRoute(o, "players-group-first");
     expect(playersGroupFirstRoute({ adminGroupId: "hq", whatsappGroupId: "g", whatsappBotEnabled: true, playersGroupPostable: false })).toBe("admin-channel");
     expect(playersGroupFirstRoute({ adminGroupId: null, whatsappGroupId: null, whatsappBotEnabled: true, playersGroupPostable: false })).toBe("admin-channel");
     expect(playersGroupFirstRoute({ adminGroupId: null, whatsappGroupId: "g", whatsappBotEnabled: false, playersGroupPostable: true })).toBe("admin-channel");

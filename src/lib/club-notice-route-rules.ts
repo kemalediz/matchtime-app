@@ -24,20 +24,15 @@ export interface ClubNoticeRouteInput {
   playersGroupPostable: boolean;
 }
 
-/** Where the club is told: its admin channel, or its players' group. */
-export function clubNoticeRoute(org: ClubNoticeRouteInput): ClubNoticeRoute {
-  if (org.adminGroupId) return "admin-channel";
-  if (org.whatsappGroupId && org.whatsappBotEnabled && org.playersGroupPostable) return "players-group";
-  return "admin-channel";
-}
-
 /**
- * ATTENDANCE NEWS FOR THE WHOLE CLUB (friend link D8, Kemal 2026-10-31):
- * "Ali Y. (Shane's friend) is in" goes to the players' group whenever
- * MatchTime can post there, even in a club with HQ; otherwise the admin
- * channel, as every other notice.
+ * Where the club is told: its admin channel, or its players' group.
+ * `prefer: "players-group-first"` is attendance news for the whole club (a
+ * member's friend joining or leaving, friend link D8, Kemal 2026-10-31):
+ * the players' group whenever MatchTime can post there, even with HQ.
  */
-export function playersGroupFirstRoute(org: ClubNoticeRouteInput): ClubNoticeRoute {
-  if (org.whatsappGroupId && org.whatsappBotEnabled && org.playersGroupPostable) return "players-group";
-  return "admin-channel";
+export function clubNoticeRoute(org: ClubNoticeRouteInput, prefer: "club" | "players-group-first" = "club"): ClubNoticeRoute {
+  const playersGroup = !!org.whatsappGroupId && org.whatsappBotEnabled && org.playersGroupPostable;
+  if (prefer === "players-group-first" && playersGroup) return "players-group";
+  if (org.adminGroupId) return "admin-channel";
+  return playersGroup ? "players-group" : "admin-channel";
 }

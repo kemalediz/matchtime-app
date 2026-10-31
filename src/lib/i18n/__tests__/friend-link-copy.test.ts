@@ -38,6 +38,13 @@ describe("friend link copy", () => {
       expect(texts.filter(([, s]) => /good (morning|afternoon|evening)|günaydın|iyi akşamlar/i.test(s)).map(([k]) => k)).toEqual([]);
     });
   }
+  it("English is neutral: their and them, never his, him or he (Kemal, 2026-11-01)", () => {
+    const en = friendLinkEn as unknown as Record<string, Entry>;
+    expect(KEYS.filter((k) => /\b(his|him|he|he's|himself)\b/i.test(render(en[k])))).toEqual([]);
+  });
+  it("the pull-out words exist in both languages", () => {
+    for (const k of ["booked_pull_out", "group_out", "out_dm", "reply_tap", "page_held", "page_pull_out", "page_out"]) expect(KEYS).toContain(k);
+  });
   it("the bench is called the bench, and yedek", () => {
     expect(render(friendLinkEn.group_bench as Entry)).toMatch(/bench/);
     expect(render(FRIEND_LINK_TABLES.tr.group_bench as Entry)).toMatch(/yedek/);

@@ -12,7 +12,7 @@ import { otherFacts } from "../../helpers/stub";
 import { friendClub, friendLinkRows, linksIn, namedFriend, say, unnamedFriend } from "./world";
 import { facts, claim } from "../../helpers/stub";
 
-const HOW = "Your friend can only join this game by opening the link, filling in his details and sending the WhatsApp code it gives him. Each link works for one person, until kick-off.";
+const HOW = "Your friend can only join this game by opening the link, filling in their details and sending the WhatsApp code it gives them. Each link works for one person, until kick-off.";
 
 scenarios("a player says a friend is coming", () => {
   scenario("a named friend: ✉️, one DM to the player with Ali's link, nobody added, nothing in the group", async ({ pool }) => {
@@ -20,7 +20,7 @@ scenarios("a player says a friend is coming", () => {
     const r = await say(pool, fnf, "shane", "my friend Ali is in", namedFriend("Ali"));
 
     expect(r.react).toBe("✉️");
-    pool.expectSent(r.sent, [{ to: "fnf.shane", channel: "dm", text: /^Here's the link for Ali to join \*FNF\* on \w{3} \d+ \w{3}, 20:00 at Sim Arena\. Please forward it to him\.\n\nhttps?:\/\/\S+\/play\/f\/\S+\n\n/ }]);
+    pool.expectSent(r.sent, [{ to: "fnf.shane", channel: "dm", text: /^Here's the link for Ali to join \*FNF\* on \w{3} \d+ \w{3}, 20:00 at Sim Arena\. Please forward it to them\.\n\nhttps?:\/\/\S+\/play\/f\/\S+\n\n/ }]);
     expect(r.sent[0].text.endsWith(HOW)).toBe(true);
     expect(linksIn(r.sent[0].text)).toHaveLength(1);
     expect(await fnf.group.counts()).toMatchObject({ confirmed: 2, bench: 0 });
@@ -51,7 +51,7 @@ scenarios("a player says a friend is coming", () => {
     const r = await say(pool, fnf, "shane", "Ali and my cousin are in", two);
     expect(r.react).toBe("✉️");
     expect(r.sent).toHaveLength(1);
-    expect(r.sent[0].text).toMatch(/Each friend needs his own link\.\n\n1\. Ali: \S+\/play\/f\/\S+\n2\. Friend: \S+\/play\/f\/\S+/);
+    expect(r.sent[0].text).toMatch(/Each friend needs their own link\.\n\n1\. Ali: \S+\/play\/f\/\S+\n2\. Friend: \S+\/play\/f\/\S+/);
     expect(await friendLinkRows(pool, fnf.group.orgId)).toHaveLength(2);
   });
 
