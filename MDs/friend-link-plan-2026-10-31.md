@@ -8,6 +8,16 @@ Worktree: `/Users/kemal/Projects/Cressoft/Sports/mt-friend-link`, branch
 
 Cost of writing this plan: **$0**. No model calls, no paid APIs.
 
+**As built (2026-11-01), differences from the plan below:** no `tr-genitive.ts`
+(the Turkish group line says "Ali Y. (Shane getirdi)", which needs no
+suffix); the match facts are `friend-link/facts.ts` (any sport, not only pool
+sports); the shared code DM helper moved to `pool/queue-once.ts`; the pool's
+tables are read through `pool/friend-profile.ts` (source guard); the guest
+writer's shared core is `placeGuestOnMatch` behind `placePoolGuest` and
+`placeFriendGuest`; a friend-link code message is claimed once by a
+`SentNotification` key `friend-code:<waMessageId>`; and when a message also
+carries the sender's own IN, his ✅ is kept (the DM still goes).
+
 ---
 
 ## 0. Kemal's build rules, baked in

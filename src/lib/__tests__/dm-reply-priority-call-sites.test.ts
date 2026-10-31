@@ -77,6 +77,9 @@ const MARKED: Record<string, number> = {
   // The organiser's untagged call-off (2026-10-29): the one DM asking him
   // whether to cancel, which answers his message, and the answer to his reply.
   "lib/calloff-offer.ts": 2,
+  // The friend link (2026-10-31): the member's link, the answer to his own
+  // "my friend is in" in the group.
+  "lib/friend-link/issue.ts": 1,
 };
 
 /** Bulk and scheduled senders: never marked. */

@@ -31,6 +31,8 @@ describe("the organisers' removal DM goes to the guest alone", () => {
   it("removal.ts queues one platform DM and no club notice", () => {
     const r = src("removal.ts");
     expect(r).not.toMatch(/admin-channel|sendAdminNotice|botJob/);
-    expect([...r.matchAll(/purpose:\s*"([^"]+)"/g)].map((m) => m[1])).toEqual(["pool-removed"]);
+    expect([...r.matchAll(/queuePlatformDm\(/g)]).toHaveLength(1);
+    // A pool guest's neutral line, or a member's friend's (friend link, 2026-10-31).
+    expect([...r.matchAll(/purpose:[^,]*/g)].map((m) => m[0])).toEqual(['purpose: friend ? "friend-removed" : "pool-removed"']);
   });
 });
