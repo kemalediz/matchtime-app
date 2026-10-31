@@ -127,6 +127,10 @@ export const ATTENDANCE_EVENT_CAUSES = [
    *  offer's tap link (local player pool L5a). `sourceRef` is
    *  "pool-offer:<offerId>". Written only by partner-guest.ts. */
   "pool-ask",
+  /** A member's friend took a place with his friend link and his WhatsApp
+   *  code (2026-10-31). `sourceRef` is "friend-link:<linkId>". Written only
+   *  by partner-guest.ts `placeFriendGuest`. */
+  "friend-link",
   /** A posted squad list was extracted and written to the DB
    *  (`featureSquadFromList` orgs). */
   "pasted-roster",

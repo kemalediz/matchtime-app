@@ -30,3 +30,14 @@ export function clubNoticeRoute(org: ClubNoticeRouteInput): ClubNoticeRoute {
   if (org.whatsappGroupId && org.whatsappBotEnabled && org.playersGroupPostable) return "players-group";
   return "admin-channel";
 }
+
+/**
+ * ATTENDANCE NEWS FOR THE WHOLE CLUB (friend link D8, Kemal 2026-10-31):
+ * "Ali Y. (Shane's friend) is in" goes to the players' group whenever
+ * MatchTime can post there, even in a club with HQ; otherwise the admin
+ * channel, as every other notice.
+ */
+export function playersGroupFirstRoute(org: ClubNoticeRouteInput): ClubNoticeRoute {
+  if (org.whatsappGroupId && org.whatsappBotEnabled && org.playersGroupPostable) return "players-group";
+  return "admin-channel";
+}

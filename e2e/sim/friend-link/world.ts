@@ -76,3 +76,22 @@ export async function linkFor(pool: PoolWorld, club: PoolClub, member = "shane",
   if (!path) throw new Error(`friend-link: no link was sent to ${member}`);
   return tokenOf(path);
 }
+
+/** A stranger fills in /play from the link and sends his code. */
+export async function friendJoins(
+  pool: PoolWorld,
+  key: string,
+  token: string,
+  opts: { name?: string; messageId?: string; person?: import("../pool/world").PoolPerson } = {},
+) {
+  const person = opts.person ?? (await pool.stranger(key, { name: opts.name ?? "Ali Yilmaz" }));
+  const a = await pool.signUp({ name: opts.name ?? "Ali Yilmaz", friendToken: token });
+  if (!a.ok || !a.prefill) throw new Error(`friend-link: sign-up refused (${a.status} ${a.reason ?? ""})`);
+  const ex = await person.dm(a.prefill, opts.messageId ? { messageId: opts.messageId } : {});
+  return { person, code: a.code!, prefill: a.prefill, sent: ex.sent, messageId: ex.messageId! };
+}
+
+/** His attendance on the club's match, by user id. */
+export async function rowOf(pool: PoolWorld, matchId: string, userId: string) {
+  return pool.db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [matchId, userId]);
+}

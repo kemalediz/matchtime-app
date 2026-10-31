@@ -4,14 +4,18 @@
  */
 import { db } from "./db";
 import { isGroupPostable } from "./group-postability-store";
-import { clubNoticeRoute, type ClubNoticeRoute } from "./club-notice-route-rules";
+import { clubNoticeRoute, playersGroupFirstRoute, type ClubNoticeRoute } from "./club-notice-route-rules";
 
 /** The club's fields the route needs. */
 export const CLUB_NOTICE_ROUTE_SELECT = { adminGroupId: true, whatsappGroupId: true, whatsappBotEnabled: true } as const;
 
 /** The route for a club already read with `CLUB_NOTICE_ROUTE_SELECT`. */
-export async function clubNoticeRouteOf(org: { adminGroupId?: string | null; whatsappGroupId?: string | null; whatsappBotEnabled?: boolean | null }): Promise<ClubNoticeRoute> {
-  return clubNoticeRoute({
+export async function clubNoticeRouteOf(
+  org: { adminGroupId?: string | null; whatsappGroupId?: string | null; whatsappBotEnabled?: boolean | null },
+  /** "players-group-first": attendance news for everyone (friend link D8). */
+  prefer: "club" | "players-group-first" = "club",
+): Promise<ClubNoticeRoute> {
+  return (prefer === "players-group-first" ? playersGroupFirstRoute : clubNoticeRoute)({
     adminGroupId: org.adminGroupId ?? null,
     whatsappGroupId: org.whatsappGroupId ?? null,
     whatsappBotEnabled: org.whatsappBotEnabled === true,

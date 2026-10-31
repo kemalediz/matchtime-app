@@ -42,10 +42,13 @@ export async function tellClubAboutGuest(a: {
   hqText: string;
   /** The players' group words: for everyone, nothing organiser-only. */
   groupText: string;
+  /** "players-group-first": the players' group even in a club with HQ
+   *  (a member's friend joining, friend link D8). Default: the club's route. */
+  prefer?: "club" | "players-group-first";
 }): Promise<GuestNoticeOutcome> {
   const org = await db.organisation.findUnique({ where: { id: a.orgId }, select: { ...CLUB_NOTICE_ROUTE_SELECT, ...QUIET_HOURS_SELECT } });
   if (!org) return "none";
-  const route = await clubNoticeRouteOf(org);
+  const route = await clubNoticeRouteOf(org, a.prefer ?? "club");
   const queued = await db.$transaction(async (tx) => {
     const { count } = await tx.sentNotification.createMany({ data: [{ key: a.key, kind: a.kind, matchId: a.matchId }], skipDuplicates: true });
     if (count !== 1) return false;
