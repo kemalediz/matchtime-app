@@ -64,6 +64,8 @@ describe("flag OFF: today's behaviour", () => {
       data: {
         name: "Sunday League FC",
         slug: "sunday-league-fc",
+        // A new club starts with quiet hours off (#486, Kemal 2026-10-31).
+        quietHoursEnabled: false,
         memberships: { create: { userId: "u1", role: "OWNER" } },
       },
     });

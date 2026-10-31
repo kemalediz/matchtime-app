@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildHqHelp, hqHelpGates } from "@/lib/admin-group-help";
+import { t } from "@/lib/i18n/t";
 import { readCollectorReply } from "@/lib/__tests__/fixtures/monthly-legacy";
 import { HQ_SQUAD_READER_SYSTEM } from "@/lib/hq-squad-reader-prompt";
 import { PICK_READER_SYSTEM } from "@/lib/organiser-pick-reader-prompt";
@@ -20,33 +21,33 @@ describe("buildHqHelp, English", () => {
     expect(buildHqHelp({ lang: "en", squad: true, graphics: true, picks: true, paid: false })).toBe(
       [
         `🛠️ *MatchTime in your admin group*`,
-        `Just ask here in your own words. No need to tag me, except to make new teams, for the poster or team sheet picture, or to cancel a match or put it back on. For example:`,
+        `Tag me in every message here: type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough. Then ask in your own words, for example:`,
         ``,
-        `📋 *Paste the whole squad list*: I show you what would change, and *YES* within 30 minutes applies it.`,
-        `✏️ *"put Bilal in"*, *"Sam can't make it"*, *"Tom to the bench"*: changes to the squad.`,
-        `🟥🟦 *"show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`,
-        `↩️ Reply to one of my earlier team sheets with *"use these"*, or paste the two teams: I bring those teams back for your *YES*.`,
-        `🔁 *"swap Sam and Alex"*, *"move Sam to the other team"*: changes to the teams.`,
-        `✅ *YES* (or reply YES to my message): make the proposed teams final.`,
-        `📣 *"ask the group if anyone can play"*: when a place is open, I ask in the main chat.`,
+        `📋 *Tag me and paste the whole squad list*: I show you what would change, and *@Match Time YES* within 30 minutes applies it.`,
+        `✏️ *"@Match Time put Bilal in"*, *"@Match Time Sam can't make it"*, *"@Match Time Tom to the bench"*: changes to the squad.`,
+        `🟥🟦 *"@Match Time show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`,
+        `↩️ Reply to one of my earlier team sheets with *"@Match Time use these"*, or tag me and paste the two teams: I bring those teams back for your *@Match Time YES*.`,
+        `🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams.`,
+        `✅ *@Match Time YES*: make the proposed teams final.`,
+        `📣 *"@Match Time ask the group if anyone can play"*: when a place is open, I ask in the main chat.`,
         `❌ *"@Match Time cancel Friday"*, *"@Match Time it's back on"*: call the next match off or back on, and I tell the players' group.`,
         `🖼️ *"@Match Time send the poster"*, *"@Match Time team sheet please"*: the list or the teams as a graphic, ready to forward.`,
-        `🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`,
+        `🙋 When I ask you to pick who plays, tag me with the numbers or names from my list, or *ALL* or *NONE* (for example *@Match Time 2 3*).`,
         ``,
-        `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *how do partner clubs work?* or *where are the settings?*`,
-        `Ask *what can you do?* here any time to see this again.`,
+        `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *@Match Time how do partner clubs work?* or *@Match Time where are the settings?*`,
+        `Ask *@Match Time what can you do?* here any time to see this again.`,
       ].join("\n"),
     );
   });
 
   it("a monthly club: no weekly squad commands, the collector's PAID line instead", () => {
     const out = buildHqHelp({ lang: "en", squad: false, graphics: true, picks: false, paid: true });
-    expect(out).toContain(`💷 *PAID ALL*, *PAID 1 3* or *PAID NONE*: the money collector's answer to my list of payment claims.`);
+    expect(out).toContain(`💷 *@Match Time PAID ALL*, *@Match Time PAID 1 3* or *@Match Time PAID NONE*: the money collector's answer to my list of payment claims.`);
     expect(out).not.toContain("Paste the whole squad list");
     expect(out).not.toContain("shuffle them again");
     expect(out).not.toContain("pick who plays");
     expect(out).toContain("send the poster");
-    expect(out).toContain("Just ask here in your own words. No need to tag me. For example:");
+    expect(out).toContain("Tag me in every message here: type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough. Then ask in your own words, for example:");
   });
 
   it("first-come club: no pick line", () => {
@@ -59,22 +60,22 @@ describe("buildHqHelp, Turkish", () => {
     expect(buildHqHelp({ lang: "tr", ...ALL })).toBe(
       [
         `🛠️ *Yönetici grubunda MatchTime*`,
-        `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok; yalnızca yeni takımlar kurmak, afiş ya da takım listesi görseli için ya da maçı iptal etmek veya yeniden açmak için etiketleyin. Örneğin:`,
+        `Burada her mesajda beni etiketleyin: *@* yazıp listeden *Match Time*'ı seçin. Adımı yazmak ya da mesajıma yanıt vermek yetmez. Sonra kendi cümlelerinizle sorun, örneğin:`,
         ``,
-        `📋 *Kadro listesinin tamamını yapıştırın*: neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`,
-        `✏️ *"Bilal'i ekle"*, *"Sam gelemiyor"*, *"Tom yedek"*: kadroda değişiklik.`,
-        `🟥🟦 *"takımları göster"*: takımlar şu anki halleriyle. *"@Match Time takımları kur"*, *"@Match Time yeniden karıştır"*: yeni takımlar.`,
-        `↩️ Önceki takım listelerimden birine *"bunları kullan"* diye yanıt verin ya da iki takımı yapıştırın: o takımları *EVET*'iniz için geri getiririm.`,
-        `🔁 *"Sam ile Alex'i değiştir"*, *"Sam'i diğer takıma al"*: takımlarda değişiklik.`,
-        `✅ *EVET* (ya da mesajıma EVET diye cevap verin): önerilen takımları kesinleştiririm.`,
-        `📣 *"gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`,
+        `📋 *Beni etiketleyip kadro listesinin tamamını yapıştırın*: neyin değişeceğini gösteririm, 30 dakika içinde *@Match Time EVET* yazarsanız uygularım.`,
+        `✏️ *"@Match Time Bilal'i ekle"*, *"@Match Time Sam gelemiyor"*, *"@Match Time Tom yedek"*: kadroda değişiklik.`,
+        `🟥🟦 *"@Match Time takımları göster"*: takımlar şu anki halleriyle. *"@Match Time takımları kur"*, *"@Match Time yeniden karıştır"*: yeni takımlar.`,
+        `↩️ Önceki takım listelerimden birine *"@Match Time bunları kullan"* diye yanıt verin ya da beni etiketleyip iki takımı yapıştırın: o takımları *@Match Time EVET* yazmanız için geri getiririm.`,
+        `🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik.`,
+        `✅ *@Match Time EVET*: önerilen takımları kesinleştiririm.`,
+        `📣 *"@Match Time gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`,
         `❌ *"@Match Time cuma maçını iptal et"*, *"@Match Time maç yapılıyor"*: sıradaki maçı iptal ederim ya da yeniden açarım, oyuncu grubuna da haber veririm.`,
         `🖼️ *"@Match Time posteri gönder"*, *"@Match Time takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`,
-        `🙋 Kimin oynayacağını seçmenizi istediğimde listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın.`,
-        `💷 *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`,
+        `🙋 Kimin oynayacağını seçmenizi istediğimde beni etiketleyip listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın (örneğin *@Match Time 2 3*).`,
+        `💷 *@Match Time ÖDENDİ HEPSİ*, *@Match Time ÖDENDİ 1 3* ya da *@Match Time ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`,
         ``,
-        `ℹ️ Herhangi bir bölümün nasıl çalıştığını, nasıl açılıp kapatıldığını kendi cümlelerinizle sorun: örneğin *partner kulüpler nasıl çalışır?* ya da *ayarlar nerede?*`,
-        `Bunu tekrar görmek için burada istediğiniz zaman *neler yapabilirsin?* diye sorun.`,
+        `ℹ️ Herhangi bir bölümün nasıl çalıştığını, nasıl açılıp kapatıldığını kendi cümlelerinizle sorun: örneğin *@Match Time partner kulüpler nasıl çalışır?* ya da *@Match Time ayarlar nerede?*`,
+        `Bunu tekrar görmek için burada istediğiniz zaman *@Match Time neler yapabilirsin?* diye sorun.`,
       ].join("\n"),
     );
   });
@@ -83,9 +84,9 @@ describe("buildHqHelp, Turkish", () => {
 describe("the player pool line (2026-10-28, decision log H.1)", () => {
   it("listed only when the pool is open for a weekly club; EN and TR, no dash", () => {
     const en = buildHqHelp({ lang: "en", squad: true, graphics: true, picks: false, paid: false, pool: true });
-    expect(en).toContain(`🌍 *"ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
+    expect(en).toContain(`🌍 *"@Match Time ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
     const tr = buildHqHelp({ lang: "tr", squad: true, graphics: true, picks: false, paid: false, pool: true });
-    expect(tr).toContain(`🌍 *"havuzdan 2 oyuncu iste"*: boş yer varsa MatchTime oyuncu havuzundaki yakın oyunculara sorarım.`);
+    expect(tr).toContain(`🌍 *"@Match Time havuzdan 2 oyuncu iste"*: boş yer varsa MatchTime oyuncu havuzundaki yakın oyunculara sorarım.`);
     for (const out of [en, tr]) expect(out).not.toMatch(/[—–]/);
     expect(buildHqHelp({ lang: "en", squad: true, graphics: true, picks: false, paid: false })).not.toContain("player pool");
     // A monthly club has no weekly ask, so no line even when asked for.
@@ -100,12 +101,34 @@ describe("free places (2026-10-16)", () => {
     expect(gates({ squadMode: "weekly", paymentTrackingEnabled: true }).free).toBe(true);
     expect(gates({ squadMode: "weekly" }).free).toBe(false);
     expect(buildHqHelp({ lang: "en", ...ALL, free: true })).toContain(
-      `🎁 *"Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`,
+      `🎁 *"@Match Time Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`,
     );
     expect(buildHqHelp({ lang: "tr", ...ALL, free: true })).toContain(
-      `🎁 *"Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`,
+      `🎁 *"@Match Time Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`,
     );
     expect(buildHqHelp({ lang: "en", ...ALL })).not.toContain("free place");
+  });
+});
+
+describe("HQ needs the real tag (Kemal, 2026-10-31, #482)", () => {
+  it("never says a tag is not needed, and says how to make the tag, EN and TR", () => {
+    for (const squad of [true, false]) {
+      const en = buildHqHelp({ lang: "en", ...ALL, squad, free: true, pool: true });
+      const tr = buildHqHelp({ lang: "tr", ...ALL, squad, free: true, pool: true });
+      expect(en).not.toMatch(/no need to tag|reply YES to my message/i);
+      expect(tr).not.toMatch(/etiketlemenize gerek yok|EVET diye cevap/i);
+      expect(en).toContain("type *@* and pick *Match Time* from the list");
+      expect(tr).toContain("*@* yazıp listeden *Match Time*'ı seçin");
+      for (const out of [en, tr]) {
+        expect(out).not.toMatch(/[—–]/);
+        expect(out).not.toMatch(/\w\/\w/);
+      }
+    }
+  });
+
+  it("the DM help that points an organiser to HQ shows the tagged ask, EN and TR", () => {
+    expect(t("en").onbHelpAdminOrganisers).toContain("*@Match Time what can you do?*");
+    expect(t("tr").onbHelpAdminOrganisers).toContain("*@Match Time neler yapabilirsin?*");
   });
 });
 

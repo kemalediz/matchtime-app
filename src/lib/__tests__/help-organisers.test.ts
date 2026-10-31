@@ -330,8 +330,8 @@ describe("organiser pick in a club MatchTime still announces for", () => {
 });
 
 describe("an organiser's DM help in organisers mode", () => {
-  const SECTION_EN = `📣 Your organisers share the list and the teams. In your admin group, ask me what I can do there, in your own words (for example *what can you do?*).`;
-  const SECTION_TR = `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda orada neler yapabildiğimi kendi cümlelerinle sor (örneğin *neler yapabilirsin?*).`;
+  const SECTION_EN = `📣 Your organisers share the list and the teams. In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).`;
+  const SECTION_TR = `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda beni etiketleyip orada neler yapabildiğimi kendi cümlelerinle sor (örneğin *@Match Time neler yapabilirsin?*).`;
 
   it("bare help adds the HQ pointer before the settings link (English)", () => {
     const out = buildHelpReply(null, FNF, "en", { audience: "admin", links: LINKS, adminGroupLinked: true });

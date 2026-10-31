@@ -518,7 +518,7 @@ test("C: the code sent with a tag in the SEPARATE group links it for the setting
   expect(out).toMatchObject({ ok: true, outcome: "linked", adminGroup: { groupId: HELD.hq, orgId: HELD.org } });
   // The introduction, for a club not switched on yet: it says so.
   expect(out.replyText).toMatch(/^👋 I'm MatchTime, I'll help run \*Harbour FC\*'s .*Once I'm switched on for the club, this is what I do\./);
-  expect(out.replyText).toContain("Once I'm on, ask me here what I can do, in your own words (for example *what can you do?*).");
+  expect(out.replyText).toContain("Once I'm on, tag me in every message here: type *@* and pick *Match Time* from the list. Then ask what I can do, in your own words (for example *@Match Time what can you do?*).");
   expect(await orgRow(db, HELD.org)).toMatchObject({
     approvalStatus: "approved",
     setupStage: "setting-up",
@@ -606,7 +606,7 @@ test("C: Turkish club: the Turkish block, and the code alone, which the same rou
   expect(ok).toMatchObject({ outcome: "linked" });
   // The introduction in Turkish, for a club not switched on yet.
   expect(ok.replyText).toMatch(/^👋 Ben MatchTime\. \*Moda Spor\* .*Kulüp için açıldığımda burada şunları yaparım\./);
-  expect(ok.replyText).toContain("Açıldığımda neler yapabildiğimi burada kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).");
+  expect(ok.replyText).toContain("Açıldığımda burada her mesajda beni etiketleyin: *@* yazıp listeden *Match Time*'ı seçin. Sonra neler yapabildiğimi kendi cümlelerinizle sorun (örneğin *@Match Time neler yapabilirsin?*).");
   await expectPlayersGroupSilent(request, db, c);
 });
 

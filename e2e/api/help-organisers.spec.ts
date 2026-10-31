@@ -133,7 +133,7 @@ test("an organiser's DM bare help points at 'help' in the admin group, and keeps
     `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 ORDER BY "createdAt" DESC LIMIT 1`,
     [ADMIN],
   );
-  expect(dm?.text).toContain("In your admin group, ask me what I can do there, in your own words (for example *what can you do?*).");
+  expect(dm?.text).toContain("In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).");
   expect(dm?.text).toMatch(/Your club's settings, signed in:\nhttps?:\/\/\S+\/r\/\S+$/);
 });
 
@@ -148,7 +148,7 @@ test("HQ: an admin asking what MatchTime can do gets the list, and never reaches
   const out = await hq(request, "@Match Time what can you do here?");
   expect(out).toMatchObject({ handled: true, outcome: "hq-help" });
   expect(out.replyText).toContain("🛠️ *MatchTime in your admin group*");
-  expect(out.replyText).toContain("*Paste the whole squad list*");
+  expect(out.replyText).toContain("*Tag me and paste the whole squad list*");
   expect(out.replyText).toContain("shuffle them again");
   expect(out.replyText).toContain("send the poster");
   expect(out.replyText).toContain("pick who plays");

@@ -1473,7 +1473,7 @@ export const en = {
 
   /** An organiser's DM bare help, organisers mode with an admin group
    *  linked: where the HQ commands are. */
-  onbHelpAdminOrganisers: `📣 Your organisers share the list and the teams. In your admin group, ask me what I can do there, in your own words (for example *what can you do?*).`,
+  onbHelpAdminOrganisers: `📣 Your organisers share the list and the teams. In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).`,
 
   /** "help" in a club's admin group (admin-group-help.ts), asked in any
    *  words (the shared router's `help` route). Every line is something the
@@ -1484,28 +1484,26 @@ export const en = {
   hq_help: (p: { squad: boolean; graphics: boolean; picks: boolean; paid: boolean; free?: boolean; pool?: boolean }): string => {
     const lines = [
       `🛠️ *MatchTime in your admin group*`,
-      p.squad
-        ? `Just ask here in your own words. No need to tag me, except to make new teams, for the poster or team sheet picture, or to cancel a match or put it back on. For example:`
-        : `Just ask here in your own words. No need to tag me. For example:`,
+      `Tag me in every message here: type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough. Then ask in your own words, for example:`,
       ``,
     ];
     if (p.squad) {
-      lines.push(`📋 *Paste the whole squad list*: I show you what would change, and *YES* within 30 minutes applies it.`);
-      lines.push(`✏️ *"put Bilal in"*, *"Sam can't make it"*, *"Tom to the bench"*: changes to the squad.`);
-      lines.push(`🟥🟦 *"show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`);
-      lines.push(`↩️ Reply to one of my earlier team sheets with *"use these"*, or paste the two teams: I bring those teams back for your *YES*.`);
-      lines.push(`🔁 *"swap Sam and Alex"*, *"move Sam to the other team"*: changes to the teams.`);
-      lines.push(`✅ *YES* (or reply YES to my message): make the proposed teams final.`);
-      lines.push(`📣 *"ask the group if anyone can play"*: when a place is open, I ask in the main chat.`);
-      if (p.pool) lines.push(`🌍 *"ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
+      lines.push(`📋 *Tag me and paste the whole squad list*: I show you what would change, and *@Match Time YES* within 30 minutes applies it.`);
+      lines.push(`✏️ *"@Match Time put Bilal in"*, *"@Match Time Sam can't make it"*, *"@Match Time Tom to the bench"*: changes to the squad.`);
+      lines.push(`🟥🟦 *"@Match Time show me the teams"*: the teams as they stand. *"@Match Time make the teams"*, *"@Match Time shuffle them again"*: new teams.`);
+      lines.push(`↩️ Reply to one of my earlier team sheets with *"@Match Time use these"*, or tag me and paste the two teams: I bring those teams back for your *@Match Time YES*.`);
+      lines.push(`🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams.`);
+      lines.push(`✅ *@Match Time YES*: make the proposed teams final.`);
+      lines.push(`📣 *"@Match Time ask the group if anyone can play"*: when a place is open, I ask in the main chat.`);
+      if (p.pool) lines.push(`🌍 *"@Match Time ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
       lines.push(`❌ *"@Match Time cancel Friday"*, *"@Match Time it's back on"*: call the next match off or back on, and I tell the players' group.`);
     }
     if (p.graphics) lines.push(`🖼️ *"@Match Time send the poster"*, *"@Match Time team sheet please"*: the list or the teams as a graphic, ready to forward.`);
-    if (p.picks) lines.push(`🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`);
-    if (p.paid) lines.push(`💷 *PAID ALL*, *PAID 1 3* or *PAID NONE*: the money collector's answer to my list of payment claims.`);
-    if (p.free) lines.push(`🎁 *"Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`);
-    lines.push(``, `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *how do partner clubs work?* or *where are the settings?*`);
-    lines.push(`Ask *what can you do?* here any time to see this again.`);
+    if (p.picks) lines.push(`🙋 When I ask you to pick who plays, tag me with the numbers or names from my list, or *ALL* or *NONE* (for example *@Match Time 2 3*).`);
+    if (p.paid) lines.push(`💷 *@Match Time PAID ALL*, *@Match Time PAID 1 3* or *@Match Time PAID NONE*: the money collector's answer to my list of payment claims.`);
+    if (p.free) lines.push(`🎁 *"@Match Time Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`);
+    lines.push(``, `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *@Match Time how do partner clubs work?* or *@Match Time where are the settings?*`);
+    lines.push(`Ask *@Match Time what can you do?* here any time to see this again.`);
     return lines.join("\n");
   },
 
@@ -3227,17 +3225,17 @@ export const en = {
     else if (does.length > 2) lines.push(`I ${does.slice(0, -1).join(", ")}, and ${does[does.length - 1]}.`);
     if (p.organisersShare) lines.push(`The squad list and the teams stay here for you to share with the players.`);
     if (p.mainChatList) {
-      lines.push(p.teamsPosted ? `I post the squad list in the main chat, and the teams there once you say *YES* here.` : `I post the squad list in the main chat.`);
+      lines.push(p.teamsPosted ? `I post the squad list in the main chat, and the teams there once you say *@Match Time YES* here.` : `I post the squad list in the main chat.`);
     }
     if (p.picks) lines.push(`When a place opens and someone is waiting, I ask here who plays.`);
-    if (p.paid) lines.push(`Money collector: answer my list of payment claims here with *PAID ALL*, *PAID 1 3* or *PAID NONE*.`);
+    if (p.paid) lines.push(`Money collector: answer my list of payment claims here with *@Match Time PAID ALL*, *@Match Time PAID 1 3* or *@Match Time PAID NONE*.`);
     const relay = p.relayRatings ? `, and so does the rating notice, for you to pass on to the players` : ``;
     lines.push(`Notices meant only for the organisers come here instead of by DM${relay}.`);
     lines.push(
       ``,
       p.live
-        ? `Nothing I say here goes to the players. Ask me here any time what I can do, in your own words (for example *what can you do?*).`
-        : `Nothing I say here goes to the players. Once I'm on, ask me here what I can do, in your own words (for example *what can you do?*).`,
+        ? `Nothing I say here goes to the players. Tag me in every message here: type *@* and pick *Match Time* from the list. Ask me any time what I can do, in your own words (for example *@Match Time what can you do?*).`
+        : `Nothing I say here goes to the players. Once I'm on, tag me in every message here: type *@* and pick *Match Time* from the list. Then ask what I can do, in your own words (for example *@Match Time what can you do?*).`,
     );
     return lines.join("\n");
   },
