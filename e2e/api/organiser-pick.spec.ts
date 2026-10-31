@@ -83,6 +83,7 @@ let msgSeq = 0;
 function reply(request: APIRequestContext, from: { phone: string }, text: string, extra: Record<string, unknown> = {}) {
   return post(request, "/api/whatsapp/admin-group", {
     channel: "admin-group",
+    botMentioned: true,
     groupId: HQ,
     messageId: `e2e-op-msg-${++msgSeq}`,
     text,
@@ -235,9 +236,11 @@ test("an OUT opens one pick round, posted in the admin group; no bench offer", a
 });
 
 test("a chat message and the number of someone not in the club are ignored while the round is open", async ({ request }) => {
-  expect(await reply(request, P.hamzah, "Wasim played well last week")).toMatchObject({ ignored: "not-a-pick", replyText: null });
+  expect(await reply(request, P.hamzah, "Wasim played well last week", { botMentioned: false })).toMatchObject({ ignored: "not-a-pick", replyText: null });
   // A member of the club picks too since 2026-10-20 (admin-group-open-list-and-picks.spec.ts).
-  expect(await reply(request, { phone: "+447700940099" }, "2")).toMatchObject({ ignored: "not-an-admin", replyText: null });
+  expect(await reply(request, { phone: "+447700940099" }, "2", { botMentioned: false })).toMatchObject({ ignored: "not-an-admin", replyText: null });
+  // An untagged "2" from an admin, while the round is open (2026-10-31, "real tag pls"): not a pick.
+  expect(await reply(request, P.raihan, "2", { botMentioned: false })).toMatchObject({ ignored: "not-a-pick", replyText: null });
 });
 
 test("'2' picks the second on the list: A1 here, A2 in the group, A3 to the player", async ({ request, db }) => {
@@ -269,7 +272,7 @@ test("'2' picks the second on the list: A1 here, A2 in the group, A3 to the play
 test("a second admin's reply after the pick: E3 'Already filled'", async ({ request }) => {
   expect((await reply(request, P.hamzah, "3")).replyText).toBe("Already filled: *Wasim Wali* is in (picked by Raihan Rahman).");
   // A Pi retry of the same WhatsApp message applies nothing twice.
-  const again = { channel: "admin-group", groupId: HQ, messageId: `e2e-op-msg-${msgSeq}`, text: "3", senderPhone: digits(P.hamzah.phone) };
+  const again = { channel: "admin-group", botMentioned: true, groupId: HQ, messageId: `e2e-op-msg-${msgSeq}`, text: "3", senderPhone: digits(P.hamzah.phone) };
   expect(await post(request, "/api/whatsapp/admin-group", again)).toMatchObject({ ignored: "duplicate", replyText: null });
 });
 
@@ -460,7 +463,7 @@ test("slice 3: no pick round before the drop-out deadline; the summary IS the fi
   const r = await db.one<{ reason: string }>(`SELECT reason FROM "OrganiserPickRound" WHERE "matchId" = $1`, [M]);
   expect(r?.reason).toBe("deadline-summary");
   // NONE: the round closes and the place stays open; nothing re-asks.
-  expect((await post(request, "/api/whatsapp/admin-group", { groupId: H, messageId: "e2e-op-dl-none", text: "NONE", senderPhone: "447700941001", timestamp: new Date().toISOString() })).replyText).toBe(
+  expect((await post(request, "/api/whatsapp/admin-group", { groupId: H, botMentioned: true, messageId: "e2e-op-dl-none", text: "NONE", senderPhone: "447700941001", timestamp: new Date().toISOString() })).replyText).toBe(
     "OK, I'll leave the place open. You can still pick from the bench on the match page.",
   );
   expect((await poll(request, G, "2027-01-11T21:30:00.000Z")).filter((i) => i.kind === "admin-group-message")).toEqual([]);

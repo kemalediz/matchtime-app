@@ -13,8 +13,13 @@
  * (2026-10-20); what else changes the club stays an owner's or admin's
  * (`admin-group-understand.ts` says who can). In this order:
  *
- *   1. A REPLY TO AN OPEN PICK ROUND (MatchTime's own numbered bench list),
- *      read by the pick reader, a model, against that list (2026-10-30,
+ *   0. ONLY A REAL TAG (Kemal, 2026-10-31: "real tag pls"). A message
+ *      without the Pi's real mention flag for MatchTime is recorded in the
+ *      day's log and nothing else: no model reads it, nothing is said, no
+ *      tick (`admin-group-understand.ts` holds the gate; the pick below
+ *      checks the same flag).
+ *   1. A TAGGED REPLY TO AN OPEN PICK ROUND (MatchTime's own numbered bench
+ *      list), read by the pick reader, a model, against that list (2026-10-30,
  *      `organiser-pick-reader.ts`; the collector's PAID digest answer is
  *      the shared pipeline's since 2026-10-29). A pick is WHO PLAYS, so since 2026-10-20 (Kemal) any member of the
  *      club may send one, as an owner or admin may; someone not in the
@@ -54,6 +59,7 @@ import { recordHqMessage } from "./admin-group-log";
 import { understandAdminMessage } from "./admin-group-understand";
 import { HQ_FEE_FREE_EXPIRED, HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rules";
 import { HQ_CANCEL_NOTHING_DONE } from "./match-cancel";
+import { piMentionsBot } from "./interaction-contract";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -277,8 +283,11 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     replyText: null,
   });
 
-  // 1b. A pick from MatchTime's numbered list, by any member of the club.
-  if (round && squadActor) {
+  // 1b. A pick from MatchTime's numbered list, by any member of the club,
+  // only when it tags MatchTime (Kemal, 2026-10-31: "real tag pls"; the
+  // Pi's real mention flag, `piMentionsBot`). Untagged, even as a reply to
+  // the list, it is the organisers' own conversation, as everywhere in HQ.
+  if (round && squadActor && piMentionsBot({ botMentioned: msg.botMentioned })) {
     const outcome = await handlePickReply({
       orgId: org.id,
       door: "admin-group",

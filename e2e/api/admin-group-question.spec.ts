@@ -32,6 +32,7 @@ const MENU = "@Match Time what can you do?";
 const WEATHER = "@Match Time what's the weather like on Friday?";
 // FNF HQ, 2026-10-30 23:31 UTC: an organiser asking the other organisers.
 const MOTM = "Who got motm";
+const REFRESH = "FNF refresh needed 👀";
 const MENU_UNTAGGED = "what can you do?";
 
 /** The question extractor's raw answer. */
@@ -44,7 +45,7 @@ let seq = 0;
 async function say(request: APIRequestContext, text: string, extra: Record<string, unknown> = {}) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-agq-${++seq}`, text, senderPhone: ADMIN, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
+    data: { channel: "admin-group", botMentioned: true, groupId: HQ, messageId: `e2e-agq-${++seq}`, text, senderPhone: ADMIN, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -63,6 +64,8 @@ test.beforeAll(async ({ db }) => {
     [WEATHER]: q("other"),
     [MOTM]: q("club"),
     [MENU_UNTAGGED]: { ...q("how_it_works"), route: "help" },
+    // FNF HQ 2026-10-30 23:56 UTC: what the router and extractor would say.
+    [REFRESH]: { route: "admin_ops", facts: { action: "other", payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0, toMatchTime: true } },
   });
 });
 
@@ -124,17 +127,33 @@ test("a question nothing answers: one line, never silent", async ({ request }) =
 test.describe("an untagged question or help in HQ is the organisers' own talk (FNF HQ 2026-10-30)", () => {
   test("the incident: an organiser's untagged question, not a reply to MatchTime: silent, nothing recorded as said", async ({ request, db }) => {
     const before = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AdminGroupMessage" WHERE "fromMatchTime" = true`);
-    expect(await say(request, MOTM)).toMatchObject({ handled: false, replyText: null });
+    expect(await say(request, MOTM, { botMentioned: false })).toMatchObject({ handled: false, replyText: null });
     const after = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AdminGroupMessage" WHERE "fromMatchTime" = true`);
     expect(after?.n).toBe(before?.n);
   });
 
-  test("untagged help from an organiser: silent too", async ({ request }) => {
-    expect(await say(request, MENU_UNTAGGED)).toMatchObject({ handled: false, replyText: null });
+  // FNF HQ 2026-10-30 23:56 UTC (Kemal, 2026-10-31: "It should get quiet for
+  // HQ unless it is tagged"): "FNF refresh needed 👀", untagged, got "I can't
+  // do that from this group." The router's admin_ops reading never runs now.
+  test("the incident: 'FNF refresh needed 👀', untagged, would be admin_ops: silent, nothing recorded as said", async ({ request, db }) => {
+    const before = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AdminGroupMessage" WHERE "fromMatchTime" = true`);
+    const out = await say(request, REFRESH, { botMentioned: false });
+    expect(out).toMatchObject({ handled: false, replyText: null });
+    expect(out).not.toHaveProperty("react");
+    const after = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AdminGroupMessage" WHERE "fromMatchTime" = true`);
+    expect(after?.n).toBe(before?.n);
+    const row = await db.one<{ hqOutcome: string | null }>(`SELECT "hqOutcome" FROM "AdminGroupMessage" WHERE text = $1 ORDER BY "createdAt" DESC LIMIT 1`, [REFRESH]);
+    expect(row?.hqOutcome).toBe("silent");
   });
 
-  test("the same words as a WhatsApp reply to MatchTime's own message: answered", async ({ request }) => {
-    const out = await say(request, MOTM, { quotedText: "Score saved: Bibs 5, Non Bibs 4. Who was Man of the Match?", quotedFromMatchTime: true });
+  test("untagged help from an organiser: silent too", async ({ request }) => {
+    expect(await say(request, MENU_UNTAGGED, { botMentioned: false })).toMatchObject({ handled: false, replyText: null });
+  });
+
+  test("the same words as a WhatsApp reply to MatchTime's own message: silent untagged (2026-10-31, \"real tag pls\"), answered tagged", async ({ request }) => {
+    const quote = { quotedText: "Score saved: Bibs 5, Non Bibs 4. Who was Man of the Match?", quotedFromMatchTime: true };
+    expect(await say(request, MOTM, { ...quote, botMentioned: false })).toMatchObject({ handled: false, replyText: null });
+    const out = await say(request, MOTM, quote);
     expect(out).toMatchObject({ handled: true, outcome: "hq-answered" });
   });
 });
@@ -151,7 +170,7 @@ test.describe("a tagged question routed unsure is answered", () => {
   const sayAsPlayer = async (request: APIRequestContext, text: string) => {
     const res = await request.post("/api/whatsapp/admin-group", {
       headers: KEY,
-      data: { channel: "admin-group", groupId: HQ, messageId: `e2e-agq-u-${++seq}`, text, senderPhone: PLAYER, timestamp: String(Math.floor(Date.now() / 1000)) },
+      data: { channel: "admin-group", botMentioned: true, groupId: HQ, messageId: `e2e-agq-u-${++seq}`, text, senderPhone: PLAYER, timestamp: String(Math.floor(Date.now() / 1000)) },
     });
     expect(res.status(), await res.text()).toBe(200);
     return res.json();

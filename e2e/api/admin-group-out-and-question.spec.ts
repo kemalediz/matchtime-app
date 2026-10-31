@@ -53,11 +53,12 @@ const parts = (reply: unknown): [string, string] => {
 };
 
 let seq = 0;
-async function say(request: APIRequestContext, text: string, senderPhone = ADMIN) {
+// Tagged by default: HQ answers only the Pi's real mention flag (2026-10-31).
+async function say(request: APIRequestContext, text: string, senderPhone = ADMIN, tagged = true) {
   const messageId = `e2e-agoq-${++seq}`;
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
+    data: { channel: "admin-group", botMentioned: tagged, groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return { ...(await res.json()), messageId };
@@ -107,14 +108,18 @@ test("the incident: says Glazers is not on the list, then answers with the list,
   expect(row?.hqOutcome).toBe("squad-not-on-list+hq-answered");
 });
 
-test("the organiser's untagged instruction: the line alone, no tick (nothing was done)", async ({ request }) => {
+test("the organiser's untagged instruction (2026-10-31): silent, nothing said", async ({ request }) => {
+  expect(await say(request, UNTAGGED, ADMIN, false)).toMatchObject({ handled: false, replyText: null });
+});
+
+test("the same, tagged: the line alone, no tick (nothing was done)", async ({ request }) => {
   const out = await say(request, UNTAGGED);
   expect(out).toMatchObject({ handled: true, outcome: "squad-not-on-list", react: null });
   expect(out.replyText).toMatch(/^I can't find Glazers on the list for .+, so nothing changed\.$/);
 });
 
 test("the same from a player who is not an organiser, untagged: silence, as chatter", async ({ request }) => {
-  expect(await say(request, UNTAGGED, PLAYER)).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, UNTAGGED, PLAYER, false)).toMatchObject({ handled: false, replyText: null });
 });
 
 test("in Turkish", async ({ request, db }) => {
@@ -134,9 +139,9 @@ test("a change that lands, with the question: done, then the NEW list", async ({
   expect(await statusOf(db, U.third)).toBe("DROPPED");
 });
 
-test("a question in HQ not asked of MatchTime is the organisers' own: the change only", async ({ request, db }) => {
+// 2026-10-31 (Kemal: "real tag pls"): untagged, neither the change nor the question.
+test("a change and a question in HQ not asked of MatchTime: the organisers' own, nothing changed or said", async ({ request, db }) => {
   await db.run(`UPDATE "Attendance" SET status = 'CONFIRMED' WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
-  const out = await say(request, TOM_UNTAGGED_Q);
-  expect(out).toMatchObject({ handled: true, outcome: "squad-changed" });
-  expect(out.replyText).toMatch(/^Done: Tom Third out\.[^\n]*$/);
+  expect(await say(request, TOM_UNTAGGED_Q, ADMIN, false)).toMatchObject({ handled: false, replyText: null });
+  expect(await statusOf(db, U.third)).toBe("CONFIRMED");
 });

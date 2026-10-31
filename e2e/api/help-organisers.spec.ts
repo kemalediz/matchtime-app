@@ -55,10 +55,11 @@ async function groupHelp(request: APIRequestContext, body: string): Promise<stri
   return r.reply ?? "";
 }
 
-async function hq(request: APIRequestContext, text: string, senderPhone = ADMIN) {
+// Tagged by default: HQ answers only the Pi's real mention flag (2026-10-31).
+async function hq(request: APIRequestContext, text: string, senderPhone = ADMIN, tagged = true) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId: msgId(), text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
+    data: { channel: "admin-group", botMentioned: tagged, groupId: HQ, messageId: msgId(), text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -168,7 +169,7 @@ test("HQ: a tagged 'yardım' in a Turkish club answers in Turkish", async ({ req
 });
 
 test("HQ: a non-admin's help is ignored as before, with no reply", async ({ request }) => {
-  expect(await hq(request, "help", PLAYER)).toMatchObject({ handled: false, replyText: null });
+  expect(await hq(request, "help", PLAYER, false)).toMatchObject({ handled: false, replyText: null });
   clearPipelineStubs();
 });
 

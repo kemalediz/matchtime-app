@@ -186,12 +186,12 @@ scenarios("the organisers ask the MatchTime player pool from HQ", () => {
     pool.expectSent((await fnf.hq.say("alice", BIBS, { now: hoursBefore(fnf, 3.45), poolOpen: true })).sent, []);
 
     // After that chatter a bare YES is checked once...
-    const first = await fnf.hq.say("owner", "yes", { now: hoursBefore(fnf, 3.4), poolOpen: true });
+    const first = await fnf.hq.say("owner", "yes", { tagged: true, now: hoursBefore(fnf, 3.4), poolOpen: true });
     pool.expectSent(first.sent, [{ to: "yes.hq", channel: "hq", text: /^Is that YES to asking nearby players from the MatchTime player pool for .+\?$/ }]);
     expect(await poolAsks(pool, fnf)).toEqual([]);
 
     // ...and the YES that answers that question asks the pool.
-    const ex = await fnf.hq.say("owner", "yes", { now: hoursBefore(fnf, 3.39), poolOpen: true });
+    const ex = await fnf.hq.say("owner", "yes", { tagged: true, now: hoursBefore(fnf, 3.39), poolOpen: true });
     pool.expectSent(ex.sent, [
       { to: "yes.hq", channel: "hq", text: /^🔎 Asking nearby players from the MatchTime player pool for 1 place on / },
       { to: "eli", channel: "dm", purpose: "pool-offer" },
@@ -199,7 +199,7 @@ scenarios("the organisers ask the MatchTime player pool from HQ", () => {
     expect((await poolAsks(pool, fnf)).map((a) => a.via)).toEqual(["notice"]);
 
     // Asked: nothing waits any more, a second YES asks nothing again.
-    const again = await fnf.hq.say("owner", "yes", { now: hoursBefore(fnf, 3.3), poolOpen: true });
+    const again = await fnf.hq.say("owner", "yes", { tagged: true, now: hoursBefore(fnf, 3.3), poolOpen: true });
     expect(again.sent.filter((m) => m.purpose === "pool-offer")).toEqual([]);
     expect(await poolAsks(pool, fnf)).toHaveLength(1);
     expect(await askOf(pool, fnf)).toMatchObject({ status: "open" });
@@ -212,11 +212,11 @@ scenarios("the organisers ask the MatchTime player pool from HQ", () => {
     pool.arm(() => engineOn({ yes: { route: "approve" }, "go on then": { route: "approve" } }));
     const [notice] = (await noticePoll(pool, fnf, hoursBefore(fnf, 3.5))).filter((p) => /MatchTime pool/.test(p.text));
 
-    const player = await fnf.hq.say("pete", "yes", { now: hoursBefore(fnf, 3.4), poolOpen: true, quote: { text: notice.text } });
+    const player = await fnf.hq.say("pete", "yes", { tagged: true, now: hoursBefore(fnf, 3.4), poolOpen: true, quote: { text: notice.text } });
     pool.expectSent(player.sent, [{ to: "quote.hq", channel: "hq", text: /^Only .* can change that\.$/ }]);
     expect(await poolAsks(pool, fnf)).toEqual([]);
 
-    const ex = await fnf.hq.say("alice", "go on then", { now: hoursBefore(fnf, 3.3), poolOpen: true, quote: { text: notice.text } });
+    const ex = await fnf.hq.say("alice", "go on then", { tagged: true, now: hoursBefore(fnf, 3.3), poolOpen: true, quote: { text: notice.text } });
     expect(ex.sent.find((m) => m.to === "quote.hq")?.text).toMatch(/^🔎 Asking nearby players/);
     expect(offers(ex.sent).map((m) => m.to)).toEqual(["fay"]);
     expect((await poolAsks(pool, fnf)).map((a) => a.via)).toEqual(["notice"]);
@@ -234,7 +234,7 @@ scenarios("the organisers ask the MatchTime player pool from HQ", () => {
     expect((await noticePoll(pool, fnf, new Date(second.kickoff.getTime() - 3.9 * 3600_000))).some((p) => /MatchTime pool/.test(p.text))).toBe(true);
     await fnf.hq.say("alice", BIBS, { now: hoursBefore(fnf, 2.85), poolOpen: true });
 
-    const ex = await fnf.hq.say("owner", "yes", { now: hoursBefore(fnf, 2.8), poolOpen: true });
+    const ex = await fnf.hq.say("owner", "yes", { tagged: true, now: hoursBefore(fnf, 2.8), poolOpen: true });
     pool.expectSent(ex.sent, [
       {
         to: "two.hq",

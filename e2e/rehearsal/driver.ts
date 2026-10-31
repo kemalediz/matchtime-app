@@ -29,6 +29,7 @@ import path from "node:path";
 import type { APIRequestContext } from "@playwright/test";
 import type { TestDb } from "../helpers/test-db";
 import { E2E, REHEARSAL_CLOCK_FILE } from "../helpers/env";
+import { piBotMentioned } from "../helpers/pi-mention";
 import { setDmIntentStub, setExtractorStub, setPaymentClaimStub, setRouterStub } from "../helpers/stub";
 import type { Tick } from "./clock";
 import { formatLocal, type Scenario, type ScenarioMember, type Step } from "./scenario";
@@ -368,6 +369,8 @@ export class RehearsalDriver {
       const { result, calls } = await this.metered(() =>
         this.post("/api/whatsapp/admin-group", {
           channel: "admin-group",
+          // The Pi's mention flag, as the real Pi sets it with its rewrite.
+          botMentioned: piBotMentioned(step.body, undefined) === true,
           groupId: jid,
           messageId: waMessageId,
           text: step.body,

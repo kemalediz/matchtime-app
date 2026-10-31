@@ -53,7 +53,7 @@ async function say(request: APIRequestContext, text: string, senderPhone = ADMIN
   const at = new Date(GAME.getTime() + ++seq * 1000);
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: { ...KEY, "x-test-now": at.toISOString() },
-    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-free-${seq}`, text, senderPhone, timestamp: String(Math.floor(at.getTime() / 1000)) },
+    data: { channel: "admin-group", botMentioned: true, groupId: HQ, messageId: `e2e-free-${seq}`, text, senderPhone, timestamp: String(Math.floor(at.getTime() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();

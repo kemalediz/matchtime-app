@@ -143,6 +143,8 @@ function ask(text: string, route: string, over: Partial<Parameters<typeof unders
     org: ORG,
     messageId: "wa-9",
     text,
+    // HQ answers only a real tag (2026-10-31).
+    botMentioned: true,
     quoted: null,
     senderUserId: "u-admin",
     organiser: true,
@@ -260,9 +262,9 @@ describe("an ask that does not say where from", () => {
     expect(source.askWhichSource).not.toHaveBeenCalled();
   });
 
-  it("untagged and spoken to the others: nothing asked, nothing said", async () => {
+  it("untagged (2026-10-31): nothing asked, nothing said, whatever the extractor would say", async () => {
     source.sourcesAvailable.mockResolvedValue(BOTH);
-    expect(await ask("we need 2 players for Thursday", "ask_group", { deps: { routerModel: routeTo("ask_group"), extractorModel: unsaid({ toMatchTime: false }) } })).toBeNull();
+    expect(await ask("we need 2 players for Thursday", "ask_group", { botMentioned: false, deps: { routerModel: routeTo("ask_group"), extractorModel: unsaid({ toMatchTime: true }) } })).toBeNull();
     expect(source.askWhichSource).not.toHaveBeenCalled();
   });
 
@@ -290,7 +292,12 @@ describe("the organiser's answer to MatchTime's question", () => {
     source.sourcesAvailable.mockResolvedValue(BOTH);
   });
 
-  it("'the pool', the next message: the model reads it against the question, and the pool is asked", async () => {
+  it("'the pool', the next message, untagged: silent, nobody asked (2026-10-31, \"real tag pls\")", async () => {
+    expect(await ask("the pool", "none", { botMentioned: false, deps: { routerModel: routeTo("none"), extractorModel: from("pool") } })).toBeNull();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
+  });
+
+  it("'the pool', the next message, tagged: the model reads it against the question, and the pool is asked", async () => {
     const r = await ask("the pool", "none", { deps: { routerModel: routeTo("none"), extractorModel: from("pool") } });
     expect(r?.outcome).toBe("hq-pool-asked");
     expect(hqPool.askPoolFromWords).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", userId: "u-admin", via: "words" }));

@@ -60,19 +60,19 @@ scenarios("help about the player pool, asked in any words", () => {
     const menu = "what can you do?";
     helpOn({ [ask]: { feature: "pool", route: "help" }, [menu]: { route: "help" } });
 
-    const ex = await fnf.hq.say("owner", ask, { poolOpen: true });
+    const ex = await fnf.hq.say("owner", ask, { tagged: true, poolOpen: true });
     expect(ex.json).toMatchObject({ handled: true, outcome: "hq-help" });
     pool.expectSent(ex.sent, [{ to: "fnf.hq", channel: "hq", text: /It's on for your club/ }]);
     expect(ex.sent[0].text).toContain("*@Match Time ask the player pool for 2 players*");
     expect(ex.sent[0].text).toMatch(/\/admin\/settings#player-pool$/);
 
-    const m = await fnf.hq.say("owner", menu, { poolOpen: true });
+    const m = await fnf.hq.say("owner", menu, { tagged: true, poolOpen: true });
     expect(m.json).toMatchObject({ handled: true, outcome: "hq-help" });
     expect(m.sent[0].text).toContain("*MatchTime in your admin group*");
     expect(m.sent[0].text).toContain(`🌍 *"ask the player pool for 2 players"*`);
 
     // The platform switch off: no pool line in the menu.
-    const off = await fnf.hq.say("owner", menu, { poolOpen: false });
+    const off = await fnf.hq.say("owner", menu, { tagged: true, poolOpen: false });
     expect(off.sent[0].text).not.toContain("player pool");
     clearPipelineStubs();
   });

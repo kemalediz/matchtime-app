@@ -33,10 +33,11 @@ const UNTAGGED = "ask the group if anyone can play";
 const ADMIN_FACTS = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0, playersFrom: "", clubRef: "" };
 
 let seq = 0;
-async function say(request: APIRequestContext, text: string, senderPhone = ADMIN) {
+// Tagged by default: HQ answers only the Pi's real mention flag (2026-10-31).
+async function say(request: APIRequestContext, text: string, senderPhone = ADMIN, tagged = true) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-aga-${++seq}`, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
+    data: { channel: "admin-group", botMentioned: tagged, groupId: HQ, messageId: `e2e-aga-${++seq}`, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -145,12 +146,20 @@ test("a full squad: nothing posted, HQ hears the count, in the club's language",
 // 2026-10-22 (Kemal): nothing leaves HQ unless it is asked of MatchTime.
 test("the incident: an admin's question to a person, routed ask_group, posts nothing and says nothing", async ({ request, db }) => {
   const before = (await groupJobs(db)).length;
-  expect(await say(request, INCIDENT)).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, INCIDENT, ADMIN, false)).toMatchObject({ handled: false, replyText: null });
   expect(await groupJobs(db)).toHaveLength(before);
   expect(await dms(db)).toHaveLength(0);
 });
 
-test("untagged, spoken to MatchTime: the players' group ask is still done", async ({ request }) => {
+// 2026-10-31 (Kemal: "real tag pls"): untagged, nothing leaves HQ, whatever
+// the model would say of who it is spoken to.
+test("untagged, though spoken to MatchTime: nothing posted, nothing said", async ({ request, db }) => {
+  const before = (await groupJobs(db)).length;
+  expect(await say(request, UNTAGGED, ADMIN, false)).toMatchObject({ handled: false, replyText: null });
+  expect(await groupJobs(db)).toHaveLength(before);
+});
+
+test("the same words, tagged: the players' group ask is done", async ({ request }) => {
   const out = await say(request, UNTAGGED);
   expect(out).toMatchObject({ handled: true });
   expect(out.outcome).toMatch(/^group-ask/);

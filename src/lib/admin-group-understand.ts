@@ -68,53 +68,42 @@
  *   score                 the players' group's score handling, with HQ's
  *                         context (`admin-group-score.ts`, 2026-10-16):
  *                         anyone reports, only an organiser changes it
- *   unsure                addressed to MatchTime (an @tag, or a reply to
- *                         its own message): the attendance engine, as in
- *                         the players' group (a member of the club), then the
- *                         question answering (2026-10-18), else one line
- *                         saying it did not catch that (2026-10-16).
- *                         Otherwise nothing.
- *   none, offer           nothing: the organisers' own conversation
+ *   unsure                the attendance engine, as in the players' group
+ *                         (a member of the club), then the question
+ *                         answering (2026-10-18), else one line saying it
+ *                         did not catch that (2026-10-16)
+ *   none, offer           nothing
  *
- * WHAT LEAVES HQ (2026-10-22, Kemal): a post in the players' group
- * (ask_group), an ask to the partner clubs (ask_group, admin_ops recruit)
- * and a DM to every player (admin_ops recruit, stats_blast) are done only
- * when the message tags MatchTime, or the admin extractor says it is spoken
- * to MatchTime (`toMatchTime`). Otherwise nothing happens and nothing is
- * said (`leavesHqUnasked`). Calling a match off or on needs the tag itself.
- *
- * A WhatsApp reply to ANOTHER organiser's message, with no @tag, is the
- * organisers' own conversation whatever the route (FNF HQ, 2026-10-16
- * 23:49: "Imti Rafi AH back" between organisers was routed other_att and got
- * a tick and "I don't know AH yet"). Only approve (the safe-YES rule) and
- * the score keep their own rules for it. A squad change says something back
- * for a claim it did not apply only when the message was addressed to
- * MatchTime (`buildAdminSquadReply`), and the next game's list is not
- * changed before the rolling squad is carried over (`rollingSeedPendingAt`).
+ * ONLY A REAL TAG (Kemal, 2026-10-31: "It should get quiet for HQ unless it
+ * is tagged", then "real tag pls"). Before any of the above, a message that
+ * does not carry the Pi's real mention flag for MatchTime is the
+ * organisers' own conversation: no model reads it, nothing is done or said,
+ * no tick. A WhatsApp reply to MatchTime's own message needs the tag too
+ * (a YES, the score, Man of the Match, the pairing answer); the message it
+ * quotes is still shown as context. The model's judgement that a message is
+ * spoken to MatchTime (`toMatchTime`) no longer decides anything here. FNF
+ * HQ 2026-10-30 23:56 UTC: Raihan's untagged "FNF refresh needed 👀" got
+ * "I can't do that from this group." MatchTime's own posts in HQ (the team
+ * sheet, deadlines, asks) are sent by the scheduler, not by this door.
  *
  * The caller (`admin-group.ts`) has found the club live, claimed the
- * message id, and, for an owner or admin, tried the readers of STRUCTURED
- * data first (a PAID digest answer, a pick from MatchTime's numbered list,
- * a pasted multi-line squad list). It says whether the sender is an
- * organiser (an owner or admin) and whether they are a member of the club.
- * Anyone else in HQ (2026-10-16, Kemal: "Anyone in that group should be
- * able to ask questions") gets question, help, poster and team_sheet
+ * message id, and, for a member of the club, tried MatchTime's numbered
+ * pick list first (tagged only, the same rule). It says whether the sender
+ * is an organiser (an owner or admin) and whether they are a member of the
+ * club. Anyone else in HQ (2026-10-16, Kemal: "Anyone in that group should
+ * be able to ask questions") gets question, help, poster and team_sheet
  * exactly as an organiser does. WHO PLAYS is open to every member of the
  * club there (2026-10-20, Kemal and FNF's Raihan, after a player's "Naim is
  * out" did nothing): self_att, other_att, an HQ name list and the unsure
  * attendance try, with an organiser's standing, recorded as the sender.
- * A member pastes a whole squad list and answers the bench pick too
- * (`admin-group.ts`), and says YES to the list they pasted. approve (of
- * anything else), balancer, ask_group and admin_ops still change the club
- * and are an organiser's alone (a free place: also the money collector's).
- * Asked of MatchTime by anyone else, one line naming the club's owners and
- * admins ("Only Hamzah or Raihan can change that."), TAGGED OR NOT
- * (2026-10-20, Kemal): the route itself says the router read a request to
- * MatchTime for that, as an organiser's untagged "make the teams" is one;
- * the organisers' own chat routes none and stays silent. The exception is
- * balancer (2026-10-29, FNF HQ): players talk about the teams all the time
- * ("Akram & maj in the same team"), so for them it is the line only when
- * tagged or a reply to MatchTime. Logs carry ids and counts only.
+ * A member pastes a whole squad list and answers the bench pick too, and
+ * says YES to the list they pasted. approve (of anything else), balancer,
+ * ask_group and admin_ops still change the club and are an organiser's
+ * alone (a free place: also the money collector's). Asked of MatchTime by
+ * anyone else, one line naming the club's owners and admins ("Only Hamzah
+ * or Raihan can change that."). The next game's list is not changed before
+ * the rolling squad is carried over (`rollingSeedPendingAt`). Logs carry ids
+ * and counts only.
  */
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "./reply-context";
@@ -140,7 +129,8 @@ import { buildHqHelp, hqHelpGates } from "./admin-group-help";
 import { NOT_HERE_ID_PREFIX, hqLogSince, listAskRef, recordMatchTimeLine, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 import { hqCancelOrRestore } from "./match-cancel";
 import { WHICH_ASK_REF, decideApproval, quotedLogRow, type QuotedMessage } from "./admin-group-confirm-rules";
-import { hqAddressing, organisersContext, type PendingWithLabel } from "./admin-group-context";
+import { organisersContext, type PendingWithLabel } from "./admin-group-context";
+import { piMentionsBot } from "./interaction-contract";
 import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
 import { askPlayersGroup } from "./admin-group-ask-group";
 import { answerHqQuestion } from "./admin-group-question";
@@ -401,6 +391,33 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
   });
 }
 
+/**
+ * The message an HQ reply quotes and HQ's log for the last day, for the
+ * context every reader is shown (quoted-reply context, slice S4). The quoted
+ * message is resolved by its WhatsApp id first: MatchTime's own post (its
+ * exact words, from the send) or another organiser's message (who, from
+ * HQ's log), else what the Pi saw. The logged line it quotes is found BY ITS
+ * ID first, by its words only when the club knows nothing of the id (review
+ * of #341, findings 4 and 5); an id that resolved to an organiser's message
+ * is never relabelled MatchTime's by a text match. Context only: it never
+ * decides whether MatchTime answers (Kemal, 2026-10-31, the gate below).
+ */
+async function hqQuoteContext(p: { orgId: string; messageId: string; quoted: QuotedMessage | null; now: Date }) {
+  const [logAll, reply] = await Promise.all([
+    hqLogSince(p.orgId, new Date(p.now.getTime() - DAY_MS)),
+    quotedHqMessage(p.orgId, p.messageId, p.quoted, p.now),
+  ]);
+  const log = logAll.filter((r) => r.waMessageId !== p.messageId);
+  const quotedWords = reply?.text ?? p.quoted?.text ?? null;
+  const found = reply?.found === true;
+  const hit = p.quoted ? quotedLogRow({ ...p.quoted, text: quotedWords, found }, log) : { row: null, by: null };
+  const quotedIsMatchTime =
+    !!p.quoted && (p.quoted.fromMatchTime === true || reply?.author === null || (hit.by === "text" && hit.row?.fromMatchTime === true));
+  // What the safe-YES rule and the router read.
+  const quoted: QuotedMessage | null = p.quoted ? { ...p.quoted, text: quotedWords, fromMatchTime: quotedIsMatchTime, found } : null;
+  return { log, reply, quotedWords, hit, quotedIsMatchTime, quoted };
+}
+
 async function understandInTrace(input: UnderstandInput, seen: { reading: HqReadingTrace | null } = { reading: null }): Promise<Understood | null> {
   const { org, messageId, now } = input;
   const lang = org.language;
@@ -408,6 +425,24 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
   const weekly = org.squadMode !== "monthly";
 
   return withOrgAiBudget(org.id, async () => {
+    // ONE GATE FOR HQ (Kemal, 2026-10-31: "It should get quiet for HQ
+    // unless it is tagged", then "real tag pls"). Only the Pi's real mention
+    // flag opens it (`piMentionsBot`): not the bot's name typed as text, not
+    // a WhatsApp reply to MatchTime's own message without the tag, and never
+    // the model's reading of the words. Untagged, a message is the
+    // organisers' own conversation: nothing is read by a model, done,
+    // written or said, and no tick. FNF HQ 2026-10-30 23:56 UTC: Raihan's
+    // untagged "FNF refresh needed 👀" to the others got "I can't do that
+    // from this group." Every route below may take it that it was asked.
+    // An answer to MatchTime's own question (a YES, the score, Man of the
+    // Match, the pairing, the collector's list) needs the tag too; the
+    // message it quotes still gives the context. MatchTime's own posts here
+    // (the team sheet, deadlines, asks) are not this door's.
+    if (!piMentionsBot({ botMentioned: input.botMentioned })) {
+      console.log(`[admin-group] ${messageId}: not asked of MatchTime: silent`);
+      return null;
+    }
+    const { log, reply, quotedWords, hit, quotedIsMatchTime, quoted } = await hqQuoteContext({ orgId: org.id, messageId, quoted: input.quoted, now });
     // A MONTHLY club: the money collector answering MatchTime's list of
     // paid claims ("PAID ALL", "1 and 3 are in"), read by a model against
     // that list (`month-digest-reply.ts`). Asked only when he may confirm
@@ -444,39 +479,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         return { route: null, outcome: seeded.outcome, replyText: seeded.replyText };
       }
     }
-    const [pending, logAll, body] = await Promise.all([
-      loadPending(org.id, now, lang, input.poolEnv),
-      hqLogSince(org.id, new Date(now.getTime() - DAY_MS)),
-      nameMentions(org.id, input.text, input.mentionNames),
-    ]);
-    const log = logAll.filter((r) => r.waMessageId !== messageId);
-    // THE MESSAGE A REPLY QUOTES (quoted-reply context, slice S4), by its
-    // WhatsApp id first: MatchTime's own post (its exact words, from the
-    // send) or another organiser's message (who, from HQ's log), else what
-    // the Pi saw. Its words then find MatchTime's question in the log, so
-    // a YES quoting the teams is known by the post's own id, not by the
-    // Pi's copy of its text. Total: a failed read keeps the Pi's.
-    const reply = await quotedHqMessage(org.id, messageId, input.quoted, now);
-    const quotedWords = reply?.text ?? input.quoted?.text ?? null;
-    // The logged line it quotes, BY ITS ID first; by its words only when
-    // the club knows nothing of the id (review of #341, findings 4 and 5).
-    // An id that resolved to an organiser's message is never relabelled
-    // MatchTime's by a text match.
-    const found = reply?.found === true;
-    const hit = input.quoted ? quotedLogRow({ ...input.quoted, text: quotedWords, found }, log) : { row: null, by: null };
-    const quotedIsMatchTime =
-      !!input.quoted &&
-      (input.quoted.fromMatchTime === true || reply?.author === null || (hit.by === "text" && hit.row?.fromMatchTime === true));
-    // What the safe-YES rule, the addressing and the router read.
-    const quoted: QuotedMessage | null = input.quoted ? { ...input.quoted, text: quotedWords, fromMatchTime: quotedIsMatchTime, found } : null;
+    const [pending, body] = await Promise.all([loadPending(org.id, now, lang, input.poolEnv), nameMentions(org.id, input.text, input.mentionNames)]);
     const replyShown: QuotedGroupMessage | null = reply && quotedIsMatchTime && reply.author ? { ...reply, author: null } : reply;
-    // Addressed to MatchTime: an @tag (never the bare word, which is talk
-    // ABOUT MatchTime), or a WhatsApp reply to MatchTime's own message.
-    // A WhatsApp reply to ANOTHER organiser's message, with no @tag, is the
-    // organisers talking to each other (FNF HQ 2026-10-16 23:49, "Imti Rafi
-    // AH back" quoting an organiser about next week, routed other_att, got
-    // a tick and "I don't know AH yet"). Nothing MatchTime does from it.
-    const { tagged, addressed, toAnotherOrganiser } = hqAddressing({ text: input.text, quoted, quotedIsMatchTime, botMentioned: input.botMentioned });
     // The score MatchTime is waiting for, shown to the router as context
     // (`admin-group-score.ts`). The router reads the message with it; no
     // code decides from the words that a message is the score (2026-10-30).
@@ -582,11 +586,9 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
 
     // Someone in HQ who is not an owner or admin (2026-10-16): questions,
     // help and the graphics are theirs too; anything that changes the club
-    // beyond who plays is not. A route that asks MatchTime for such a
-    // change (approve, balancer, ask_group, admin_ops) gets one line naming
-    // who can, tagged or not (2026-10-20, Kemal: untagged it was silent),
-    // except talk about the teams (balancer), which gets it only when asked
-    // of MatchTime (2026-10-29).
+    // beyond who plays is not. A tagged message asking MatchTime for such a
+    // change (approve, balancer, ask_group, admin_ops, a recorded score)
+    // gets one line naming who can.
     // `actor` is set only for an organiser.
     const actor = input.organiser ? input.senderUserId : null;
     // Who plays is open to everyone in the club here (2026-10-20, Kemal and
@@ -598,9 +600,6 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // #301, item 8). Nothing else is.
     const feeActor = actor ?? (input.senderUserId && input.senderUserId === org.paymentHolderId ? input.senderUserId : null);
     const onlyOrganisers = async (): Promise<Understood> => said("hq-only-organisers", await onlyOrganisersLine(org.id, lang));
-    // The same line where the route alone is not a request to MatchTime (a
-    // claim about who plays, a score): only when addressed to it.
-    const notYours = async (): Promise<Understood | null> => (addressed ? onlyOrganisers() : null);
     // Who may say YES to what is waiting: an organiser to anything; the
     // collector to a free place; the member who pasted a list to that list
     // (2026-10-20: anyone who may paste confirms their own paste).
@@ -619,7 +618,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         senderUserId: input.senderUserId,
         senderName: input.senderName,
         organiser: input.organiser,
-        addressed,
+        // Past the gate: tagged, so asked of MatchTime.
+        addressed: true,
         // HQ's open "which team won?" is what MatchTime is WAITING to hear
         // there: the fact an answer needs (review of #476).
         answersWaitingQuestion: score.waiting?.kind === "which-team",
@@ -628,7 +628,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         now,
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
-      if (r === "organisers-only") return notYours();
+      if (r === "organisers-only") return onlyOrganisers();
       return r ? { route: "score", outcome: r.outcome, replyText: r.replyText } : null;
     };
     // The players' group's own question answering, for the organisers
@@ -656,11 +656,10 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // other_att and the tagged question went unanswered). The attendance
     // extractor says so (its "question" side request, the shared pipeline's
     // way of keeping a second fact); the question answering above answers it,
-    // AFTER the change so the list is the new one, in the same reply. Only
-    // when asked of MatchTime: untagged, a question in HQ is the organisers'.
+    // AFTER the change so the list is the new one, in the same reply.
     const withItsQuestion = async (change: AdminSquadChangeResult): Promise<Understood | null> => {
-      const answered = change.alsoAsks === true && addressed ? await answerQuestion() : null;
-      if (change.alsoAsks === true) console.log(`[admin-group] ${messageId}: also asks MatchTime: ${answered ? answered.outcome : addressed ? "nothing answered" : "not addressed"}`);
+      const answered = change.alsoAsks === true ? await answerQuestion() : null;
+      if (change.alsoAsks === true) console.log(`[admin-group] ${messageId}: also asks MatchTime: ${answered ? answered.outcome : "nothing answered"}`);
       if (!change.handled) return answered ? said(answered.outcome, answered.replyText) : null;
       if (!answered) return said(change.outcome, change.replyText);
       return said(`${change.outcome}+${answered.outcome}`, `${change.replyText}\n\n${answered.replyText}`);
@@ -677,7 +676,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // did; a multi-line message no longer pays for a reading before the
     // router. A failed read is "other": nothing is done.
     const readWhoPlays = async (actorId: string): Promise<HqSquadRead> => {
-      const read = await readHqSquad({ orgId: org.id, lang, messageId, text: body, senderUserId: actorId, now, quoted: input.quoted, addressed });
+      const read = await readHqSquad({ orgId: org.id, lang, messageId, text: body, senderUserId: actorId, now, quoted: input.quoted, addressed: true });
       seen.reading = readingTrace(read.reading);
       return read;
     };
@@ -711,7 +710,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         sentAt: input.sentAt,
         route: route ?? "other_att",
         reading: r,
-        addressed,
+        addressed: true,
         organiser: input.organiser,
         reply: replyShown,
       });
@@ -728,28 +727,16 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
 
     // The teams (a teams route, or a squad message the HQ squad reader read
     // as about the teams): the teams extractor, then `team-proposal.ts`.
-    //
-    // BY FACT (Kemal, 2026-10-30): a build (new teams, made or made again)
-    // only when the message is addressed to MatchTime, a tag or a reply to
-    // MatchTime (`addressed`), else nothing done and nothing said
-    // (`handleTeamCommand`). Untagged, a single change to the teams as they
-    // stand (a swap, a move, a pairing, a pasted sheet) is done only when
-    // the extractor reads it as an instruction to MatchTime (`toMatchTime`),
-    // not people talking about the teams among themselves.
+    // Tagged (the gate above), so a build or a change is asked of MatchTime.
     const teamsHere = async (): Promise<Understood | null> => {
-      // Not an organiser: the one line only when it was asked of
-      // MatchTime (2026-10-29, FNF HQ: a player's untagged "Akram & maj
-      // in the same team" and "We going with these teams right?" each
-      // got it, though nobody had asked MatchTime anything). Talk about
-      // the teams is theirs.
-      if (!actor) return notYours();
+      if (!actor) return onlyOrganisers();
       if (!weekly) return notHere();
       const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
       const extracted = await extractForRouteTraced("balancer", model, "balancer", {
         id: messageId,
         body,
         authorName: input.senderName,
-        tagged,
+        tagged: true,
         history,
         lastBotPost: lastHqPost,
         reply: replyShown,
@@ -758,10 +745,6 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       });
       if (extracted.facts.kind !== "teams") {
         console.log(`[admin-group] ${messageId}: the teams extractor gave nothing (${extracted.degradations.length} degradation(s))`);
-        return null;
-      }
-      if (!addressed && extracted.facts.action !== "show" && extracted.facts.toMatchTime !== true) {
-        console.log(`[admin-group] ${messageId}: teams ${extracted.facts.action}, not tagged and not asked of MatchTime: their conversation`);
         return null;
       }
       const command = teamCommandFromFacts(extracted.facts);
@@ -773,7 +756,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       const r = await handleTeamCommand({
         ...base(actor),
         command,
-        addressed,
+        addressed: true,
         quotedSheet: command.kind === "restore" ? await quotedSheet() : null,
       });
       // "teams-not-asked": a build nobody asked MatchTime for. Silent.
@@ -792,7 +775,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         id: messageId,
         body,
         authorName: input.senderName,
-        tagged,
+        tagged: true,
         history,
         lastBotPost: lastHqPost,
         reply: replyShown,
@@ -800,20 +783,6 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       }).catch(() => null);
       return extracted?.facts.kind === "admin" ? extracted.facts : null;
     };
-    // AN ACTION THAT LEAVES HQ (a post in the players' group, an ask to the
-    // partner clubs, a DM to every player) is done only when it is asked of
-    // MatchTime (Kemal, 2026-10-22). FNF HQ 07:22 UTC: "@Kemal can we ask
-    // Sutton group?", a question to a person, was routed ask_group and
-    // posted "We need 3 more players" in the players' group. A tag on
-    // MatchTime asks it; untagged, the model says whether the message is
-    // spoken to MatchTime (`toMatchTime`), never the words read by code. A
-    // failed read leaves nothing done. Logs carry ids only.
-    const leavesHqUnasked = (facts: AdminFacts | null): boolean => {
-      if (tagged || facts?.toMatchTime === true) return false;
-      console.log(`[admin-group] ${messageId}: ${route} not asked of MatchTime (${facts ? "spoken to others" : "not read"}): nothing leaves HQ`);
-      return true;
-    };
-
     // The MatchTime player pool (local player pool L10): asked in words
     // ("ask the pool", "find someone nearby"), for the club's next match,
     // through the match page tick's own function (`pool-ask-words.ts`).
@@ -862,17 +831,11 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // SETTING THE PITCH, OR "TRY AGAIN" AFTER A REFUSAL (2026-10-28, Kemal:
     // every admin feature by WhatsApp). Read on admin_ops and ask_group (the
     // router sends "added the venue location" to either), and for an answer
-    // to MatchTime's own list of places. Only when asked of MatchTime (a
-    // tag, the model saying it is spoken to it, or the list's answer):
-    // otherwise the organisers' own conversation. An organiser's alone.
+    // to MatchTime's own list of places. An organiser's alone.
     // "Try again" makes the organisers' stored ask again through the same
     // doors as an ask in words; nothing stored, one short line. A number
     // picked from the list is that place of the list's OWN words (`list`).
     const venueOrRetry = async (facts: AdminFacts, list: HqLogRow | null): Promise<Understood | null> => {
-      if (!list && !tagged && facts.toMatchTime !== true) {
-        console.log(`[admin-group] ${messageId}: ${facts.action} not asked of MatchTime: their conversation`);
-        return null;
-      }
       if (!actor) return onlyOrganisers();
       if (facts.action === "set_venue") {
         const listWords = list ? parseVenuePickRef(list.askRef) : null;
@@ -896,10 +859,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       return named && named.some((x) => x !== "club") ? named : null;
     };
 
-    // The safe-YES rule and the score keep their own rules for a quoted
-    // message (a YES quoting another organiser is already silent there; a
-    // message the router could not place while the score waits is read by
-    // the score handling, which says nothing unless it is the score).
+    // A message the router could not place while the score waits is read
+    // by the score handling, which says nothing unless it is the score.
     const unsureWhileScoreWaits = !!score.waiting && route === "unsure";
     // AN ANSWER TO "WHO SHALL I ASK FOR PLAYERS?" (2026-10-28), in the place
     // of one by the safe-YES rule's own tests (a reply quoting it, or the
@@ -929,7 +890,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // message the router sent elsewhere ("@Match Time added the venue
     // location" came back `none` once) is read by the admin extractor as
     // well. "Try again" or the pitch named is done; anything else carries on.
-    if (actor && tagged && route !== "admin_ops" && route !== "ask_group") {
+    if (actor && route !== "admin_ops" && route !== "ask_group") {
       const stored = await (input.deps?.latestAskForRetry ?? latestAskFromRecords)({ orgId: org.id, where: "hq", now }).catch(() => null);
       if (stored && now.getTime() - stored.at.getTime() <= RETRY_FOLLOWUP_MS && retryFactsOf(stored, now)) {
         const answer = await readAdminFacts();
@@ -941,22 +902,6 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       if (route !== "score") console.log(`[admin-group] ${messageId}: a reply to the Man of the Match question; ${route ?? "nowhere"} -> score`);
       return scoreHere();
     }
-    if (toAnotherOrganiser && route !== "approve" && route !== "score" && !unsureWhileScoreWaits) {
-      // A whole squad list pasted as a reply to another member's message
-      // is still the list (as before 2026-10-30, when it was read ahead of
-      // everything): read, and acted on only when the reader says it is the
-      // squad. A change or talk in such a reply stays their conversation.
-      if (weekly && squadActor && (route === "self_att" || route === "other_att")) {
-        const read = await readWhoPlays(squadActor);
-        if (read.reading.kind === "squad") {
-          const done = await whoPlays(squadActor, read);
-          if (done && done !== "teams") return done;
-        }
-      }
-      console.log(`[admin-group] ${messageId}: a reply to another organiser, not tagged: their conversation`);
-      return null;
-    }
-
     switch (route) {
       case "approve": {
         // Nothing is waiting for a YES, but the result is (2026-10-18 live
@@ -1065,14 +1010,9 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       }
       case "poster":
       case "team_sheet": {
-        // A POSTER ONLY WHEN ASKED OF MATCHTIME, the list poster and the
-        // team sheet alike (Kemal, 2026-10-30: "it can only be generated
-        // when they tag matchtime while asking to generate"): a tag, or a
-        // reply to MatchTime. Otherwise their chat: nothing drawn or said.
-        if (!addressed) {
-          console.log(`[admin-group] ${messageId}: ${route} not asked of MatchTime: nothing drawn`);
-          return null;
-        }
+        // The list poster and the team sheet, asked with the tag (Kemal,
+        // 2026-10-30: "it can only be generated when they tag matchtime
+        // while asking to generate"; the gate above).
         const r = await answerGraphicRequest({ orgId: org.id, lang, kind: route === "poster" ? "list" : "teams", now });
         return said(r.outcome, r.replyText);
       }
@@ -1082,20 +1022,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // (`admin-group-question.ts`). The HQ menu answers a how-it-works
         // question there, and anything it does not answer on the help
         // route (2026-10-16, FNF: "MatchTime who are the admins?" came back
-        // `help` and got the menu instead of the admins).
-        // ONLY WHEN ASKED OF MATCHTIME (FNF HQ 2026-10-30 23:31 UTC): right
-        // after MatchTime's "Who was Man of the Match?", Raihan wrote "Who
-        // got motm" to the other organisers, untagged and not a reply; the
-        // router called it a question and MatchTime posted the all-time Man
-        // of the Match table. In HQ a question or help with no tag and no
-        // reply to MatchTime is the organisers talking to each other
-        // (Kemal, 2026-10-30): nothing answered, nothing said, not even the
-        // one line. Answers to MatchTime's own waiting questions are decided
-        // above, from the quoted row or the score's waiting question.
-        if (!addressed) {
-          console.log(`[admin-group] ${messageId}: ${route} not asked of MatchTime: silent`);
-          return null;
-        }
+        // `help` and got the menu instead of the admins). Untagged ("Who
+        // got motm", FNF HQ 2026-10-30 23:31 UTC) it never reaches here.
         const r = await answerQuestion();
         if (r) return said(r.outcome, r.replyText);
         if (route === "help") return said("hq-help", hqHelp);
@@ -1106,14 +1034,13 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         return teamsHere();
       case "self_att":
       case "other_att": {
-        if (!squadActor) return notYours();
+        if (!squadActor) return onlyOrganisers();
         if (!weekly) return notHere();
         const done = await whoPlays(squadActor, await readWhoPlays(squadActor));
         if (done === "teams") return teamsHere();
         if (done) return done;
-        // Nothing to change. Asked of MatchTime, it is answered as a
-        // question if it is one, else one line rather than silence.
-        if (!addressed) return null;
+        // Nothing to change: answered as a question if it is one, else one
+        // line rather than silence.
         const answered = await answerQuestion();
         return answered ? said(answered.outcome, answered.replyText) : said("hq-not-understood", s.hq_not_understood);
       }
@@ -1128,19 +1055,13 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // router's turn is unchanged (a sentence for it there cost the free
         // places and Man of the Match answers, measured).
         //
-        // Untagged, the same extractor also says whether the message is
-        // spoken to MatchTime at all (2026-10-22, FNF HQ: "@Kemal can we ask
-        // Sutton group?" was posted in the players' group): see
-        // `leavesHqUnasked`.
-        //
         // The same extractor says whether the MatchTime player pool is
         // meant (L10: "ask the pool", "find someone nearby"), so it is read
-        // for every ask, tagged or not: one call on a rare request, and a
-        // club without the pool hears so instead of a post in its group.
+        // for every ask: one call on a rare request, and a club without the
+        // pool hears so instead of a post in its group.
         const partners = await activePartnerChoices(org.id).catch(() => []);
         const facts = await readAdminFacts();
         if (facts && (facts.action === "set_venue" || facts.action === "retry_ask")) return venueOrRetry(facts, null);
-        if (leavesHqUnasked(facts)) return null;
         // Another place named (the pool, the partners, or several): each is
         // asked. A partner club named by a club that has none stays the
         // players' group here, as before S6.
@@ -1159,14 +1080,10 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // instruction; only `fee_waiver` is done from HQ, by
         // `answerFeeFreeInHq` (fee-waiver.ts). Every other admin action
         // stays the one line. Someone who is neither an organiser nor the
-        // collector may do none of it: the line naming who can, tagged or
-        // not (2026-10-20), and the extractor is not asked.
+        // collector may do none of it: the line naming who can (2026-10-20),
+        // and the extractor is not asked.
         if (!feeActor) return onlyOrganisers();
         const facts = (await readAdminFacts()) ?? { kind: "none" as const };
-        // Asking other clubs, or DMing every player, reaches people outside
-        // HQ: only when asked of MatchTime (2026-10-22). Untagged and spoken
-        // to someone else, not even the "not from this group" line.
-        if (facts.kind === "admin" && (facts.action === "recruit" || facts.action === "stats_blast") && leavesHqUnasked(facts)) return null;
         // Another place named: the MatchTime player pool (L10, "get us a
         // player from the app"), another club's players (slice S6, "ask
         // Sutton if anyone can play"), or several ("partner clubs and the
@@ -1193,25 +1110,15 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // monthly club's cancelled-week credits come with it, 2026-10-29).
         // The one path the web page uses (`match-cancel.ts`).
         // A season break (2026-10-29): "no football in December", "we're
-        // back mid January". Tagged, and an organiser's alone, like a cancel.
+        // back mid January". An organiser's alone, like a cancel.
         if (facts.kind === "admin" && facts.action === "season_break") {
-          if (!tagged) {
-            console.log(`[admin-group] ${messageId}: season_break not tagged: their conversation`);
-            return null;
-          }
           if (!actor) return onlyOrganisers();
           const { applySeasonBreakWords } = await import("./season-break-words");
           const r = await applySeasonBreakWords({ orgId: org.id, breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [], lang, now });
           return { route, outcome: r.outcome, replyText: r.replyText };
         }
         if (facts.kind === "admin" && (facts.action === "cancel_match" || facts.action === "restore_match")) {
-          // Only when an organiser TAGS MatchTime (Kemal, 2026-10-22: "it only
-          // acts when an admin tags it"). Untagged, "storm, no game Friday" is
-          // the organisers telling each other: nothing written, nothing said.
-          if (!tagged) {
-            console.log(`[admin-group] ${messageId}: ${facts.action} not tagged: their conversation`);
-            return null;
-          }
+          // Kemal, 2026-10-22: "it only acts when an admin tags it" (the gate).
           if (!actor) return onlyOrganisers();
           const r = await hqCancelOrRestore({
             orgId: org.id,
@@ -1219,7 +1126,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
             mode: facts.action === "cancel_match" ? "cancel" : "restore",
             dayPhrase: facts.matchDay ?? null,
             pastGame: facts.pastGame === true,
-            addressed,
+            addressed: true,
             now,
           });
           return r ? said(r.outcome, r.replyText) : null;
@@ -1251,10 +1158,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
           const r = await scoreHere();
           if (r && r.outcome !== "hq-not-understood") return r;
         }
-        // Not addressed to MatchTime: the organisers' own conversation.
-        if (!addressed) return null;
-        // Addressed, and the router could not tell what it does (or its
-        // call failed): who plays, as in the players' group (a member of
+        // Tagged, and the router could not tell what it does (or its call
+        // failed): who plays, as in the players' group (a member of
         // the club), then one line rather than silence (FNF, 2026-10-16).
         if (weekly && squadActor) {
           const done = await whoPlays(squadActor, await readWhoPlays(squadActor));

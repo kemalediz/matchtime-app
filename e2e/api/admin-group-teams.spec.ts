@@ -38,11 +38,12 @@ const PLAYER = PHONE.player.replace(/^\+/, "");
 const KICKOFF = londonAt(0, 22, 0);
 
 let seq = 0;
-async function say(request: APIRequestContext, text: string, senderPhone = ADMIN) {
+// Tagged by default: HQ answers only the Pi's real mention flag (2026-10-31);
+// the untagged cases pass `tagged` false.
+async function say(request: APIRequestContext, text: string, senderPhone = ADMIN, tagged = true) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    // "@Match Time" in the body comes with the Pi's real mention flag, as live.
-    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-agt-${++seq}`, text, senderPhone, botMentioned: text.includes("@Match Time"), timestamp: String(Math.floor(Date.now() / 1000)) },
+    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-agt-${++seq}`, text, senderPhone, botMentioned: tagged, timestamp: String(Math.floor(Date.now() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -148,7 +149,7 @@ test("a non-admin's '@Match Time teams' in the admin group changes nothing: one 
 
 test("a non-admin's untagged teams talk: silent, nothing changed (2026-10-29, FNF HQ)", async ({ request, db }) => {
   const before = await sheet(db);
-  expect(await say(request, "Pat & Tom in the same team", PLAYER)).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, "Pat & Tom in the same team", PLAYER, false)).toMatchObject({ handled: false, replyText: null });
   expect(await sheet(db)).toEqual(before);
 });
 
@@ -163,7 +164,7 @@ test("'teams' shows the teams already built, without rebuilding them", async ({ 
 // 2026-10-30, Kemal: new teams only when MatchTime is asked by fact.
 test("an untagged 'reshuffle': nothing rebuilt, nothing said", async ({ request, db }) => {
   const before = await sheet(db);
-  expect(await say(request, "reshuffle")).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, "reshuffle", ADMIN, false)).toMatchObject({ handled: false, replyText: null });
   expect(await sheet(db)).toEqual(before);
 });
 
@@ -292,7 +293,7 @@ test("the second YES: 'Teams are final.', TEAMS_PUBLISHED, nothing posted in the
   const tom = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
   expect(tom?.status).toBe("CONFIRMED");
   // A second YES finds nothing waiting, and says nothing.
-  expect(await say(request, "yes")).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, "yes", ADMIN, false)).toMatchObject({ handled: false, replyText: null });
 });
 
 test("an untagged 'graphic please': nothing drawn; '@Match Time graphic please': one team sheet, asked (2026-10-30)", async ({ request, db }) => {
@@ -301,7 +302,7 @@ test("an untagged 'graphic please': nothing drawn; '@Match Time graphic please':
       `SELECT text, "pollOptions" AS opts FROM "BotJob" WHERE "orgId" = $1 AND kind = 'admin-group' AND text LIKE 'Ready to post:%teams%'`,
       [ORG_ID],
     );
-  expect(await say(request, "graphic please")).toMatchObject({ handled: false, replyText: null });
+  expect(await say(request, "graphic please", ADMIN, false)).toMatchObject({ handled: false, replyText: null });
   expect(await sheets()).toHaveLength(0);
   await say(request, "@Match Time graphic please");
   const out = await sheets();

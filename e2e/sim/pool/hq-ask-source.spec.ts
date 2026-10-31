@@ -92,7 +92,7 @@ scenarios("players asked for in HQ with no source named: MatchTime asks which", 
     expect(await partnerAsks(pool, fnf)).toEqual([]);
     expect(groupPosts(pool.sent, fnf)).toEqual([]);
 
-    const answered = await fnf.hq.say("owner", "the pool", { now: minutesAfter(t0, 2), poolOpen: true });
+    const answered = await fnf.hq.say("owner", "the pool", { tagged: true, now: minutesAfter(t0, 2), poolOpen: true });
     pool.expectSent(answered.sent, [
       { to: "src1.hq", channel: "hq", text: /^🔎 Asking nearby players from the MatchTime player pool for 1 place on .+, 20:00\./ },
       { to: "ali1", channel: "dm", purpose: "pool-offer", text: /⚽ \*FNF\* needs 1 player/ },
@@ -119,7 +119,7 @@ scenarios("players asked for in HQ with no source named: MatchTime asks which", 
     const asked = await fnf.hq.say("owner", ASK_EN, { now: t0, poolOpen: true });
     pool.expectSent(asked.sent, [{ to: "src2.hq", channel: "hq", text: QUESTION_ALL }]);
 
-    const answered = await fnf.hq.say("owner", "partners", { now: minutesAfter(t0, 1), poolOpen: true });
+    const answered = await fnf.hq.say("owner", "partners", { tagged: true, now: minutesAfter(t0, 1), poolOpen: true });
     expect(answered.json).toMatchObject({ outcome: "xask-words-asked" });
     expect(answered.sent.find((m) => m.to === "src2.hq")?.text).toMatch(/Cheam Lads/);
     expect(await partnerAsks(pool, fnf)).toEqual([{ status: "awaiting-approval", via: "hq" }]);
