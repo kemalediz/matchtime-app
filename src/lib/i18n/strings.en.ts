@@ -3095,7 +3095,7 @@ export const en = {
    *  who, one per line, and that saying the name and IN puts a player
    *  back (the example is the first name). Never in the players' group. */
   rolling_left_out_organisers: (p: { names: string[] }): string =>
-    `Left off this week's squad because they said *OUT* last week:\n${p.names.map((n) => `• ${n}`).join("\n")}\n\n` +
+    `Left off this week's squad because they said *OUT* or were taken off the list last week:\n${p.names.map((n) => `• ${n}`).join("\n")}\n\n` +
     (p.names.length === 1
       ? `To put them back, just say *${firstWord(p.names[0])} IN*.`
       : `To put any of them back, just say their name and *IN*, for example *${firstWord(p.names[0])} IN*.`),

@@ -70,7 +70,7 @@ async function row(db: TestDb, matchId: string, userId: string, status: string, 
 }
 
 let evN = 0;
-async function event(db: TestDb, matchId: string, userId: string, from: string | null, to: string, cause: string, at: string, pos: number | null) {
+async function event(db: TestDb, matchId: string, userId: string, from: string | null, to: string | null, cause: string, at: string, pos: number | null) {
   await db.run(
     `INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "fromStatus", "toStatus", "toPosition", cause, "actorKind", at)
      VALUES ($1, $2, $3, $4, $5::"AttendanceStatus", $6::"AttendanceStatus", $7, $8, 'admin', $9)`,

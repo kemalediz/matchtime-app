@@ -497,7 +497,7 @@ test.describe("an organiser puts a left-out player back from HQ (2026-10-24)", (
       [
         "📋 *Friday 9-a-side, Fri 15 Jan at 20:30*: the squad carried over from last week is posted in the group.",
         "",
-        "Left off this week's squad because they said *OUT* last week:",
+        "Left off this week's squad because they said *OUT* or were taken off the list last week:",
         "• Bob Out",
         "• Eve Away",
         "",
