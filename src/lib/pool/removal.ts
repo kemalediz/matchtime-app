@@ -11,12 +11,17 @@
  * any more"). It never says he was removed, and never why. A service
  * message about a booking he made, so it goes whatever his offer settings
  * (he could arrive for a game he no longer has). Never throws.
+ *
+ * A MEMBER'S FRIEND (friend link, 2026-10-31) gets Kemal's own words
+ * instead: the organisers took him out of this game, he stays in the pool
+ * and will keep hearing about games near him ("friend-removed").
  */
 import { db } from "../db";
 import { dayCommaTimeLabel } from "../i18n/dates";
 import { normaliseLang } from "../i18n/lang";
 import { poolSafetyCopy } from "../i18n/pool-safety";
 import { queuePlatformDm } from "../platform-jobs";
+import { friendRemovedDm } from "../friend-link/copy";
 
 export async function tellPoolGuestRemoved(args: { userId: string; matchId: string; orgId: string; now?: Date }): Promise<boolean> {
   const now = args.now ?? new Date();
@@ -30,6 +35,10 @@ export async function tellPoolGuestRemoved(args: { userId: string; matchId: stri
     // After kickoff (review of #404, 6): nothing is marked and nothing sent;
     // he stays on the no-show panel for the organisers to mark.
     if (!match || now.getTime() >= match.date.getTime()) return false;
+    // A member's friend (friend link, 2026-10-31) is told plainly, as Kemal
+    // asked: the organisers took him out, he stays in the pool.
+    const place = await db.guestPlace.findUnique({ where: { matchId_userId: { matchId: args.matchId, userId: args.userId } }, select: { friendLinkId: true } });
+    const friend = !!place?.friendLinkId;
     await db.guestPlace.updateMany({ where: { matchId: args.matchId, userId: args.userId, result: "booked" }, data: { result: "withdrawn", resultAt: now } });
     // Only the call that made him a past guest tells him (review 5).
     const left = await db.membership.updateMany({ where: { userId: args.userId, orgId: args.orgId, guestMatchId: args.matchId, leftAt: null }, data: { leftAt: now } });
@@ -44,9 +53,11 @@ export async function tellPoolGuestRemoved(args: { userId: string; matchId: stri
       const lang = normaliseLang(profile?.language ?? club.language);
       await queuePlatformDm({
         phone,
-        purpose: "pool-removed",
+        purpose: friend ? "friend-removed" : "pool-removed",
         refId: `removed:${args.matchId}:${args.userId}`,
-        text: poolSafetyCopy(lang).dm_removed({ club: club.name, day: dayCommaTimeLabel(lang, match.date) }),
+        text: friend
+          ? friendRemovedDm(lang, { club: club.name, kickoff: match.date })
+          : poolSafetyCopy(lang).dm_removed({ club: club.name, day: dayCommaTimeLabel(lang, match.date) }),
         sendAfter: null,
       });
     }
