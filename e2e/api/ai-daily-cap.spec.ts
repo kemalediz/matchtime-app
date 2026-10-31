@@ -109,15 +109,26 @@ test("at the cap: attendance is still READ by the model (up to twice the cap), b
       in: { route: "self_att", facts: selfIn() },
       out: { route: "self_att", facts: selfOut() },
       "@Match Time who is playing tuesday?": { route: "question" },
+      "who is playing then?": { route: "question" },
       "lol what a goal": { route: "none" },
     },
     { routerCostUsd: 0.003, extractorCostUsd: 0.004 },
   );
 
-  const ids = { in: msgId(), out: msgId(), ask: msgId(), banter: msgId() };
+  const ids = { in: msgId(), out: msgId(), reply: msgId(), ask: msgId(), banter: msgId() };
   const res = await postAnalyze(request, [
     { waMessageId: ids.in, body: "in", authorPhone: "447700900010", authorName: "Zara Zest" },
     { waMessageId: ids.out, body: "out", authorPhone: "447700900003", authorName: "Pat Player" },
+    // A swipe-reply to MatchTime without the real tag, sent FIRST: it is not
+    // asked of MatchTime, so the day's one line skips it (Kemal, 2026-10-31).
+    {
+      waMessageId: ids.reply,
+      body: "who is playing then?",
+      authorPhone: "447700900002",
+      authorName: "Colin Collector",
+      quotedBody: "Football 5-a-side: 4 of 5.",
+      quotedFromMatchTime: true,
+    },
     {
       waMessageId: ids.ask,
       body: "@Match Time who is playing tuesday?",
@@ -130,6 +141,7 @@ test("at the cap: attendance is still READ by the model (up to twice the cap), b
 
   expect(["CONFIRMED", "BENCH"]).toContain((await status(db, U.extra))?.status);
   expect((await status(db, U.player))?.status).not.toBe("CONFIRMED");
+  expect(find(res, ids.reply).reply).toBeNull();
   expect(find(res, ids.ask).reply).toBe(EN_LINE);
   expect(find(res, ids.banter).reply).toBeNull();
   expect(EN_LINE).not.toMatch(/[—–]/);
@@ -138,9 +150,9 @@ test("at the cap: attendance is still READ by the model (up to twice the cap), b
   // One router call and two attendance reads, booked past the cap.
   expect(after.calls - before.calls).toBe(3);
   expect(Number(after.costUsd) - Number(before.costUsd)).toBeCloseTo(0.003 + 2 * 0.004, 9);
-  // Only the tagged question was skipped because of the cap; banter is the
-  // model's own none, not a cap skip.
-  expect(after.skippedMessages - before.skippedMessages).toBe(1);
+  // The two questions were skipped because of the cap (the swipe-reply
+  // and the tagged one); banter is the model's own none, not a cap skip.
+  expect(after.skippedMessages - before.skippedMessages).toBe(2);
   expect(after.cappedAt).not.toBeNull();
   expect(after.capReplySentAt).not.toBeNull();
 

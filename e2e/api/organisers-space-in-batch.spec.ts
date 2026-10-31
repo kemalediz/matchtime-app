@@ -59,8 +59,9 @@ async function batch(
   const askId = msgId();
   const res = await postAnalyze(request, [
     { waMessageId: inId, body: IN, ...inFrom },
-    // A swipe-reply to MatchTime's call-out: the reply itself is the address.
-    { waMessageId: askId, body: spaceBody, ...askFrom, quotedBody: CALL_OUT, quotedFromMatchTime: true },
+    // A tagged reply to MatchTime's call-out (an answer needs the real tag
+    // since 2026-10-31; the reply alone is silent).
+    { waMessageId: askId, body: spaceBody, ...askFrom, botMentioned: true, quotedBody: CALL_OUT, quotedFromMatchTime: true },
   ]);
   const results = res.results as Result[];
   return {

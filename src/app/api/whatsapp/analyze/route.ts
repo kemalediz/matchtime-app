@@ -404,10 +404,6 @@ interface InboundMessage {
    *  signal. PRIMARY input to the @Match Time interaction-contract gate;
    *  `undefined` from older Pi builds is simply not a tag. */
   botMentioned?: boolean;
-  /** Set here after the router has run: the router read the message as
-   *  spoken TO MatchTime (`RoutedMessage.toBot`), which `messageTagsBot`
-   *  counts as a tag (2026-10-30, no word test on the body). */
-  routerAddressed?: boolean;
 }
 
 /** The message `m` is a WhatsApp reply to, as `loadGroupReplyContexts`
@@ -1795,22 +1791,16 @@ async function handleAnalyzeRequest(request: Request) {
         )
       : null;
   if (gate) traceRouting(gate);
-  // The router's own reading of who each message speaks to is a tag from
-  // here on (`messageTagsBot`): "MatchTime who runs this club?" with no
-  // real @-mention. P1 of the no-string-parsing sweep, 2026-10-30.
-  for (const r of gate?.routes ?? []) {
-    if (!r.toBot) continue;
-    const m = fresh.find((f) => f.waMessageId === r.messageId);
-    if (m) m.routerAddressed = true;
-  }
+  // The router's own `to_bot` reading opens nothing here (Kemal,
+  // 2026-10-31): an answer needs the real tag (`messageAddressesBot`).
   const gatedIds = new Set(gate?.skipped ?? []);
 
   // ── WHAT THE CAP COST THIS BATCH, AND THE ONE LINE IT MAY SAY ──────
   //
   // Every message the cap left unhandled (routed `none` with source
   // `capped`: the router was not asked and the floor could not read it)
-  // is counted on today's `OrgAiUsage` row. If any of them TAGS
-  // MatchTime, the first one gets today's one polite line, claimed
+  // is counted on today's `OrgAiUsage` row. If any of them really TAGS
+  // MatchTime (the Pi's mention flag), the first one gets today's one polite line, claimed
   // atomically so two racing flushes cannot both send it. Untagged ones
   // stay silent, as banter always does. `recordCapSkips` also asks for
   // the club admins' once-a-day notice (`ai-cap-notice.ts`); never to
@@ -1829,7 +1819,9 @@ async function handleAnalyzeRequest(request: Request) {
             !fastPathHandledIds.has(m.waMessageId) &&
             !lateById.has(m.waMessageId),
         )
-        .map((m) => ({ waMessageId: m.waMessageId, tagged: messageTagsBot(m) })),
+        // The real tag only (Kemal, 2026-10-31): a swipe-reply to MatchTime
+        // is not asked of it, so it gets silence, not today's line.
+        .map((m) => ({ waMessageId: m.waMessageId, tagged: piMentionsBot(m) })),
       () => claimCapReply(org.id),
     );
   }
@@ -2280,8 +2272,9 @@ async function handleAnalyzeRequest(request: Request) {
         senderUserId: s.userId,
         senderName: s.name,
         tagged: messageTagsBot(m),
-        // For an ANSWER only: a tag, or the router's own to_bot reading
-        // (review of #476). Actions read `tagged`, which is facts only.
+        // May MatchTime ANSWER it? The real tag only (Kemal, 2026-10-31):
+        // not a swipe-reply, not the name typed, not the router's to_bot.
+        // Actions read `tagged`, which is unchanged.
         addressed: messageAddressesBot(m),
         // The Pi's real mention flag, read by the bulk-DM commands and a
         // score answer that is not a reply.

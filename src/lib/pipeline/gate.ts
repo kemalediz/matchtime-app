@@ -636,6 +636,10 @@ export interface RouterStubConfig {
   /** Every router call fails, as an outage would (the batch falls back
    *  to `unsure`). For the specs of what a failed call leads to. */
   fail?: boolean;
+  /** Trimmed bodies the stubbed router reads as spoken TO MatchTime
+   *  (`to_bot: true`), as the live model does for "MatchTime who's
+   *  playing?" with no real @-mention. */
+  toBotBodies?: string[];
 }
 
 /** Read fresh on every call, like the extractor stub, so a spec can
@@ -670,9 +674,11 @@ function routerStubFromEnv(): PipelineModel | null {
       // per line — see `routeBatch`.
       const rows = [...req.user.matchAll(/^\[([^\]]+)\]\s*[^:]*:\s?(.*)$/gm)];
       // The turn carries short ids (m1, m2, ...); a spec names real ones.
+      const toBot = new Set(cfg.toBotBodies ?? []);
       const routes = rows.map((m) => ({
         id: m[1],
         route: byId[req.shortIds?.[m[1]] ?? m[1]] ?? byBody[m[2].trim()] ?? "unsure",
+        ...(toBot.has(m[2].trim()) ? { to_bot: true } : {}),
       }));
       return {
         text: JSON.stringify({ routes }),

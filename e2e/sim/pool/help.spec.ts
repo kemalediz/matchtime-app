@@ -69,7 +69,7 @@ scenarios("help about the player pool, asked in any words", () => {
     const m = await fnf.hq.say("owner", menu, { tagged: true, poolOpen: true });
     expect(m.json).toMatchObject({ handled: true, outcome: "hq-help" });
     expect(m.sent[0].text).toContain("*MatchTime in your admin group*");
-    expect(m.sent[0].text).toContain(`🌍 *"ask the player pool for 2 players"*`);
+    expect(m.sent[0].text).toContain(`🌍 *"@Match Time ask the player pool for 2 players"*`);
 
     // The platform switch off: no pool line in the menu.
     const off = await fnf.hq.say("owner", menu, { tagged: true, poolOpen: false });

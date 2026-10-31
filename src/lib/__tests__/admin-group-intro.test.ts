@@ -53,7 +53,7 @@ describe("buildAdminGroupIntro, English", () => {
         `When a place opens and someone is waiting, I ask here who plays.`,
         `Notices meant only for the organisers come here instead of by DM, and so does the rating notice, for you to pass on to the players.`,
         ``,
-        `Nothing I say here goes to the players. Ask me here any time what I can do, in your own words (for example *what can you do?*).`,
+        `Nothing I say here goes to the players. Tag me in every message here: type *@* and pick *Match Time* from the list. Ask me any time what I can do, in your own words (for example *@Match Time what can you do?*).`,
       ].join("\n"),
     );
   });
@@ -66,7 +66,7 @@ describe("buildAdminGroupIntro, English", () => {
         `I post the squad list in the main chat.`,
         `Notices meant only for the organisers come here instead of by DM.`,
         ``,
-        `Nothing I say here goes to the players. Ask me here any time what I can do, in your own words (for example *what can you do?*).`,
+        `Nothing I say here goes to the players. Tag me in every message here: type *@* and pick *Match Time* from the list. Ask me any time what I can do, in your own words (for example *@Match Time what can you do?*).`,
       ].join("\n"),
     );
   });
@@ -74,7 +74,7 @@ describe("buildAdminGroupIntro, English", () => {
   it("MatchTime announces but a teams time is set: YES posts the teams in the main chat", () => {
     const text = buildAdminGroupIntro({ ...DEFAULT_CLUB, teamsReadyTime: "09:30" });
     expect(text).toContain(`build balanced teams here at 09:30 on match day for you to check`);
-    expect(text).toContain(`I post the squad list in the main chat, and the teams there once you say *YES* here.`);
+    expect(text).toContain(`I post the squad list in the main chat, and the teams there once you say *@Match Time YES* here.`);
   });
 
   it("an explicit 'off' teams time says nothing about teams, even when the organisers announce", () => {
@@ -113,14 +113,14 @@ describe("buildAdminGroupIntro, English", () => {
   it("a monthly club: no weekly list, no teams time, the collector's PAID", () => {
     const text = buildAdminGroupIntro({ ...DEFAULT_CLUB, squadMode: "monthly", teamsReadyTime: "10:00", benchPickMode: "organiser" });
     expect(text).not.toMatch(/IN\*|squad list|balanced teams/);
-    expect(text).toContain(`Money collector: answer my list of payment claims here with *PAID ALL*, *PAID 1 3* or *PAID NONE*.`);
+    expect(text).toContain(`Money collector: answer my list of payment claims here with *@Match Time PAID ALL*, *@Match Time PAID 1 3* or *@Match Time PAID NONE*.`);
     expect(text).toContain(`When a place opens and someone is waiting, I ask here who plays.`);
   });
 
   it("a club not switched on yet (setting up): says so, and help only once it is on", () => {
     const text = buildAdminGroupIntro({ ...FNF, whatsappBotEnabled: false });
     expect(text.split("\n")[0]).toBe(`👋 I'm MatchTime, I'll help run *FNF*'s Fridays. Once I'm switched on for the club, this is what I do.`);
-    expect(text.split("\n").at(-1)).toBe(`Nothing I say here goes to the players. Once I'm on, ask me here what I can do, in your own words (for example *what can you do?*).`);
+    expect(text.split("\n").at(-1)).toBe(`Nothing I say here goes to the players. Once I'm on, tag me in every message here: type *@* and pick *Match Time* from the list. Then ask what I can do, in your own words (for example *@Match Time what can you do?*).`);
     expect(text).not.toMatch(/any time/);
   });
 
@@ -150,7 +150,7 @@ describe("buildAdminGroupIntro, Turkish", () => {
         `Bir yer açılınca ve bekleyen biri varsa, kimin oynayacağını burada sorarım.`,
         `Sadece organizatörlere yönelik bildirimler özel mesaj yerine buraya gelir; oyunculara iletmeniz için puanlama duyurusu da buraya gelir.`,
         ``,
-        `Burada yazdıklarım oyunculara gitmez. Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).`,
+        `Burada yazdıklarım oyunculara gitmez. Burada her mesajda beni etiketleyin: *@* yazıp listeden *Match Time*'ı seçin. Neler yapabildiğimi istediğiniz zaman kendi cümlelerinizle sorun (örneğin *@Match Time neler yapabilirsin?*).`,
       ].join("\n"),
     );
   });
@@ -163,19 +163,19 @@ describe("buildAdminGroupIntro, Turkish", () => {
         `Kadro listesini ana grupta ben paylaşırım.`,
         `Sadece organizatörlere yönelik bildirimler özel mesaj yerine buraya gelir.`,
         ``,
-        `Burada yazdıklarım oyunculara gitmez. Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).`,
+        `Burada yazdıklarım oyunculara gitmez. Burada her mesajda beni etiketleyin: *@* yazıp listeden *Match Time*'ı seçin. Neler yapabildiğimi istediğiniz zaman kendi cümlelerinizle sorun (örneğin *@Match Time neler yapabilirsin?*).`,
       ].join("\n"),
     );
   });
 
   it("monthly, setting up, teams posted, in Turkish", () => {
     const monthly = buildAdminGroupIntro({ ...DEFAULT_CLUB, language: "tr", squadMode: "monthly" });
-    expect(monthly).toContain(`*ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK*`);
+    expect(monthly).toContain(`*@Match Time ÖDENDİ HEPSİ*, *@Match Time ÖDENDİ 1 3* ya da *@Match Time ÖDENDİ YOK*`);
     const off = buildAdminGroupIntro({ ...FNF, language: "tr", whatsappBotEnabled: false });
     expect(off.split("\n")[0]).toBe(`👋 Ben MatchTime. *FNF* cuma maçlarını yönetmenize yardım edeceğim. Kulüp için açıldığımda burada şunları yaparım.`);
-    expect(off.split("\n").at(-1)).toBe(`Burada yazdıklarım oyunculara gitmez. Açıldığımda neler yapabildiğimi burada kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).`);
+    expect(off.split("\n").at(-1)).toBe(`Burada yazdıklarım oyunculara gitmez. Açıldığımda burada her mesajda beni etiketleyin: *@* yazıp listeden *Match Time*'ı seçin. Sonra neler yapabildiğimi kendi cümlelerinizle sorun (örneğin *@Match Time neler yapabilirsin?*).`);
     const posted = buildAdminGroupIntro({ ...DEFAULT_CLUB, language: "tr", teamsReadyTime: "09:30" });
-    expect(posted).toContain(`Kadro listesini ana grupta ben paylaşırım; burada *EVET* yazdığınızda takımları da orada paylaşırım.`);
+    expect(posted).toContain(`Kadro listesini ana grupta ben paylaşırım; burada *@Match Time EVET* yazdığınızda takımları da orada paylaşırım.`);
     expect(posted).toContain(`maç günü saat 09:30 itibarıyla`);
   });
 });
@@ -208,7 +208,7 @@ describe("the intro and the help read the same gates", () => {
       const intro = buildAdminGroupIntro(club);
       const help = buildHqHelp({ lang: "en", ...gates });
       expect(intro.includes("I ask here who plays")).toBe(help.includes("pick who plays"));
-      expect(intro.includes("*PAID ALL*")).toBe(help.includes("*PAID ALL*"));
+      expect(intro.includes("*@Match Time PAID ALL*")).toBe(help.includes("*@Match Time PAID ALL*"));
       expect(intro.includes("poster")).toBe(help.includes("poster"));
     }
   });

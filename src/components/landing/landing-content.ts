@@ -607,9 +607,9 @@ const ADMIN_GROUP: Spotlight = {
   chat: {
     caption: "In the admin group",
     lines: [
-      { from: "player", text: "what can you do?" },
+      { from: "player", text: "@Match Time what can you do?" },
       // strings.en.ts hq_help, first lines.
-      { from: "bot", text: "🛠️ MatchTime in your admin group. Just ask here in your own words. No need to tag me, except to make new teams, for the poster or team sheet picture, or to cancel a match or put it back on." },
+      { from: "bot", text: "🛠️ MatchTime in your admin group. Tag me in every message here: type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough." },
       { from: "player", text: "@Match Time cancel Friday" },
       // strings.en.ts hq_match_cancelled.
       { from: "bot", text: "Done: Friday 7-a-side, Fri 23 Oct at 20:00 is cancelled. I've told the players' group." },
@@ -1260,10 +1260,10 @@ export const HERO_DECK = {
         subtitle: "Admin group",
         kind: "admin",
         lines: [
-          { from: "self", text: "what can you do?", time: "10:01" },
+          { from: "self", text: "@Match Time what can you do?", time: "10:01" },
           {
             from: "bot",
-            text: "*MatchTime in your admin group*\nJust ask here in your own words. No need to tag me, except to make new teams, for the poster or team sheet picture, or to cancel a match or put it back on.",
+            text: "*MatchTime in your admin group*\nTag me in every message here: type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.",
             time: "10:01",
           },
           { from: "self", text: "@Match Time cancel Friday", time: "10:03" },

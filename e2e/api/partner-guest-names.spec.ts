@@ -81,7 +81,7 @@ test("the squad answer names each guest with his club, the nameless one too, and
   engineOn({ [WHO]: { route: "question", facts: question("squad") } });
   const id = msgId();
   const res = await postAnalyze(request, [
-    { waMessageId: id, body: WHO, authorPhone: "447700900003", authorName: "Pat Player", quotedBody: "Who's in?", quotedFromMatchTime: true },
+    { waMessageId: id, body: WHO, authorPhone: "447700900003", authorName: "Pat Player", botMentioned: true, quotedBody: "Who's in?", quotedFromMatchTime: true },
   ]);
   const r = (res.results as Result[]).find((x) => x.waMessageId === id)!;
   const reply = r.reply ?? "";
@@ -109,7 +109,7 @@ test("once the home club names him, every surface shows the name", async ({ requ
   engineOn({ [WHO]: { route: "question", facts: question("squad") } });
   const id = msgId();
   const res = await postAnalyze(request, [
-    { waMessageId: id, body: WHO, authorPhone: "447700900003", authorName: "Pat Player", quotedBody: "Who's in?", quotedFromMatchTime: true },
+    { waMessageId: id, body: WHO, authorPhone: "447700900003", authorName: "Pat Player", botMentioned: true, quotedBody: "Who's in?", quotedFromMatchTime: true },
   ]);
   const reply = (res.results as Result[]).find((x) => x.waMessageId === id)!.reply ?? "";
   expect(reply).toContain(`Cem Two (${CLUB})`);
