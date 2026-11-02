@@ -120,10 +120,10 @@ export const en = {
   /** A roster row whose user has no name on record. */
   unnamed: "(unnamed)",
 
-  /** /admin/players: the hint under a nameless player's name box, and the
+  /** /admin/players: the name box's placeholder for a nameless player, and the
    *  pencil button's label (2026-11-02: on mobile nobody could tell the
    *  name was editable). */
-  admin_players_add_name_hint: "Tap to add a name",
+  admin_players_name_placeholder: "Enter player name",
   admin_players_rename: "Rename",
 
   /** A team-sheet line whose holder is no longer playing and whose slot

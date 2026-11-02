@@ -52,7 +52,7 @@ type SampleArgs = {
 
 const SAMPLES: SampleArgs = {
   unnamed: null,
-  admin_players_add_name_hint: null,
+  admin_players_name_placeholder: null,
   admin_players_rename: null,
   team_sheet_open_slot: null,
   no_match_label: null,

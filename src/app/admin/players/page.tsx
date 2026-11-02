@@ -577,7 +577,10 @@ export default function PlayersPage() {
                       data-testid="player-name-input"
                       type="text"
                       defaultValue={p.name ?? ""}
-                      placeholder={adminPlayerLabel(p, lang)}
+                      // A guest keeps his "Guest from <club>" label; anyone else
+                      // with no name is asked for one (Kemal, 2026-11-02: the
+                      // phone is already on the row's meta line).
+                      placeholder={p.guestFrom ? adminPlayerLabel(p, lang) : t(lang).admin_players_name_placeholder}
                       onBlur={(e) => handleRename(p.id, e.target.value, p.name)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -631,16 +634,6 @@ export default function PlayersPage() {
                       </button>
                     )}
                   </div>
-                  {!(p.name ?? "").trim() && !p.guestFrom && (
-                    <button
-                      type="button"
-                      data-testid="player-name-hint"
-                      onClick={() => document.getElementById(`player-name-${p.id}`)?.focus()}
-                      className="mt-0.5 text-xs text-blue-600 hover:underline"
-                    >
-                      {t(lang).admin_players_add_name_hint}
-                    </button>
-                  )}
                   {/* Provisional players: Confirm / Remove live on their own
                       wrapping row so they can never crowd the name input to
                       zero width on narrow screens (2026-06-11). */}
