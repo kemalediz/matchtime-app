@@ -6,20 +6,20 @@
  * names whose join this is, bound to him and for 14 days; it came to his
  * own WhatsApp, so no code step follows. The writes are the pool's own
  * (`src/lib/pool/partner-invite.ts`): the member join, or the manage page's
- * restart. The same validator as /play (`validatePoolSignup`: the fields,
+ * restart. The same validator as /play (`validatePublicPoolSignup`: the fields,
  * 18 or over and the consent, both ticked).
  */
 import { isPoolSignupPaused } from "@/lib/pool/flags";
 import { signupGoesOnEarlyListForPage } from "@/lib/pool/flags-page";
 import { joinFromPartnerInvite, restartFromPartnerInvite } from "@/lib/pool/partner-invite";
-import { validatePoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fields";
+import { validatePublicPoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fields";
 
 export type PartnerInviteActionResult = { ok: true } | { ok: false; reason: string; errors?: PoolFieldErrors };
 
 export async function joinPartnerInviteAction(token: string, payload: unknown): Promise<PartnerInviteActionResult> {
   try {
     if (isPoolSignupPaused()) return { ok: false, reason: "paused" };
-    const valid = validatePoolSignup(payload);
+    const valid = validatePublicPoolSignup(payload);
     if (!valid.ok) return { ok: false, reason: "invalid", errors: valid.errors };
     return await joinFromPartnerInvite(String(token), valid.value, { earlyList: await signupGoesOnEarlyListForPage() });
   } catch (err) {

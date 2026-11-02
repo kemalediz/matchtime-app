@@ -151,6 +151,17 @@ export function validatePoolSignup(raw: unknown, opts: PoolFieldsOptions = {}): 
   return { ok: false, errors: { ...(fields.ok ? {} : fields.errors), ...ticks } };
 }
 
+/**
+ * The public sign-up pages (/play, the friend link /play/f, the partner
+ * invite /play/j) are English only (Kemal, 2026-11-02): no language field,
+ * no switch, and a new profile is English whatever the browser sent. An
+ * existing member's saved language is never touched (the manage page).
+ */
+export function validatePublicPoolSignup(raw: unknown, opts: PoolFieldsOptions = {}): PoolFieldsResult {
+  const r = validatePoolSignup(raw, opts);
+  return r.ok ? { ok: true, value: { ...r.value, language: "en" } } : r;
+}
+
 const CAMPAIGN_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SHARE_RE = /^[A-Za-z0-9]{4,12}$/;
 

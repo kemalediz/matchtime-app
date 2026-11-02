@@ -48,7 +48,6 @@ async function poolPlayer(request: APIRequestContext, db: TestDb, opts: { name?:
       maxMiles: 3,
       availability: [{ day: 2, from: "19:00", to: "22:00" }],
       sports: [{ sport: "football", formats: [7] }],
-      language: opts.language ?? "en",
       adult: true,
       consent: true,
     },
@@ -61,6 +60,9 @@ async function poolPlayer(request: APIRequestContext, db: TestDb, opts: { name?:
   });
   expect(await dm.json()).toMatchObject({ result: "confirmed" });
   const u = await db.one<{ id: string }>(`SELECT id FROM "User" WHERE "phoneNumber" = $1`, [`+${phone}`]);
+  // The public sign-up is English only (2026-11-02): an existing Turkish
+  // member (one who joined before) is set up as the database holds him.
+  if (opts.language === "tr") await db.run(`UPDATE "PoolProfile" SET language = 'tr' WHERE "userId" = $1`, [u!.id]);
   return { userId: u!.id, phone };
 }
 

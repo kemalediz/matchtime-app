@@ -180,7 +180,7 @@ export function ManageView({ view }: { view: PoolManageView | null }) {
         <h2 id="pool-edit" className="mb-6 text-lg font-semibold text-slate-900">
           {m.editHeading}
         </h2>
-        <PoolProfileFields value={form} onChange={setForm} copy={copy.fields} lang={lang} errors={fieldText} />
+        <PoolProfileFields value={form} onChange={setForm} copy={copy.fields} lang={lang} errors={fieldText} showLanguage />
         <button type="button" disabled={pending} onClick={save} className={`${BTN} mt-8 bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500`}>
           {pending ? m.saving : m.save}
         </button>

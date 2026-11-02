@@ -56,12 +56,16 @@ export function PoolProfileFields({
   copy,
   lang,
   errors,
+  showLanguage = false,
 }: {
   value: PoolFormValue;
   onChange: (next: PoolFormValue) => void;
   copy: PoolFieldsCopy;
   lang: Lang;
   errors: FieldErrorText;
+  /** The "Messages from MatchTime in" choice: the manage page only. A
+   *  sign-up never shows it (2026-11-02); the value stays in the form. */
+  showLanguage?: boolean;
 }) {
   const id = useId();
   const err = (k: keyof FieldErrorText) => `${id}-${k}-error`;
@@ -203,24 +207,26 @@ export function PoolProfileFields({
         <ErrorLine id={err("sports")} text={errors.sports} />
       </fieldset>
 
-      {/* Language */}
-      <div>
-        <label htmlFor={`${id}-lang`} className={LEGEND}>
-          {copy.languageLabel}
-        </label>
-        <select
-          id={`${id}-lang`}
-          className={`${INPUT} mt-2 max-w-xs`}
-          value={value.language}
-          onChange={(e) => onChange({ ...value, language: e.target.value as Lang })}
-        >
-          {LANGS.map((l) => (
-            <option key={l} value={l}>
-              {LANG_LABELS[l]}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Language: the manage page only */}
+      {showLanguage && (
+        <div>
+          <label htmlFor={`${id}-lang`} className={LEGEND}>
+            {copy.languageLabel}
+          </label>
+          <select
+            id={`${id}-lang`}
+            className={`${INPUT} mt-2 max-w-xs`}
+            value={value.language}
+            onChange={(e) => onChange({ ...value, language: e.target.value as Lang })}
+          >
+            {LANGS.map((l) => (
+              <option key={l} value={l}>
+                {LANG_LABELS[l]}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   );
 }

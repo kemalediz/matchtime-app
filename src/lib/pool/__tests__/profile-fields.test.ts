@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { POOL_SIGNUP } from "../rules";
 import { POOL_SPORT_KEYS, type LiveSports } from "../sports";
-import { normaliseDisplayName, validatePoolFields, validatePoolSignup, readSignupSource } from "../profile-fields";
+import { normaliseDisplayName, validatePoolFields, validatePoolSignup, validatePublicPoolSignup, readSignupSource } from "../profile-fields";
 
 /** Every catalogue sport and Other switched on: the rules below, apart
  *  from the live switch, hold for any sport. */
@@ -169,5 +169,18 @@ describe("readSignupSource: where the visitor came from, off the URL", () => {
     expect(readSignupSource({ c: "<script>", ref: "x" })).toEqual({ campaignCode: null, referralCode: null });
     expect(readSignupSource({})).toEqual({ campaignCode: null, referralCode: null });
     expect(readSignupSource({ c: ["a", "b"] })).toEqual({ campaignCode: null, referralCode: null });
+  });
+});
+
+describe("validatePublicPoolSignup: the public sign-up pages are English only (2026-11-02)", () => {
+  it("a new profile is English whatever the browser sent", () => {
+    for (const language of ["tr", "en", undefined, "xx"]) {
+      const r = validatePublicPoolSignup({ ...GOOD, language, adult: true, consent: true }, ALL);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.language).toBe("en");
+    }
+  });
+  it("refuses what validatePoolSignup refuses", () => {
+    expect(validatePublicPoolSignup({ ...GOOD, language: "tr" }, ALL)).toMatchObject({ ok: false, errors: { adult: "required", consent: "required" } });
   });
 });
