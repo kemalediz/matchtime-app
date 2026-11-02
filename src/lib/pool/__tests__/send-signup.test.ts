@@ -9,7 +9,7 @@ vi.mock("@vercel/analytics", () => ({
   },
 }));
 
-import { sendPoolSignup } from "../send-signup";
+import { countPoolSignup, sendPoolSignup } from "../send-signup";
 
 function fakeFetch(status: number, body: unknown): typeof fetch {
   return (async () => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })) as typeof fetch;
@@ -70,5 +70,20 @@ describe("sendPoolSignup: the /play form's POST /api/play/signup", () => {
     const r = await sendPoolSignup(BODY, fakeFetch(200, { ok: true, code: "AB12", prefill: "p", waLink: "w" }));
     expect(r.kind).toBe("ok");
     expect(track).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("countPoolSignup: the one pool_signup event, from another join door", () => {
+  beforeEach(() => {
+    track.mockReset();
+    analyticsThrows = false;
+  });
+  it("the partner pool invite's join carries its source marker, and nothing personal", () => {
+    countPoolSignup("partner-invite");
+    expect(track).toHaveBeenCalledWith("pool_signup", { source: "partner-invite" });
+  });
+  it("analytics that throws never breaks the join", () => {
+    analyticsThrows = true;
+    expect(() => countPoolSignup("partner-invite")).not.toThrow();
   });
 });

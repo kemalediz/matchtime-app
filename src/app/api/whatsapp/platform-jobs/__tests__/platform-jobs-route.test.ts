@@ -33,6 +33,11 @@ vi.mock("@/lib/pool/club-invitation", () => ({
   sweepClubInvitations: (...a: unknown[]) => inviteMock.sweepClubInvitations(...a),
 }));
 
+const partnerInviteMock = vi.hoisted(() => ({ sweepPartnerPoolInvites: vi.fn() }));
+vi.mock("@/lib/pool/partner-invite", () => ({
+  sweepPartnerPoolInvites: (...a: unknown[]) => partnerInviteMock.sweepPartnerPoolInvites(...a),
+}));
+
 const versionMock = vi.hoisted(() => ({ loadClubSetVersion: vi.fn() }));
 vi.mock("@/lib/club-set-version", () => ({ loadClubSetVersion: () => versionMock.loadClubSetVersion() }));
 
@@ -281,6 +286,14 @@ describe("POST: the group invite code (pool L8)", () => {
     const res = await GET(new Request("http://x/api/whatsapp/platform-jobs", { headers: { "x-api-key": KEY } }));
     expect(res.status).toBe(200);
     expect(inviteMock.sweepClubInvitations).toHaveBeenCalled();
+    expect(((await res.json()) as { jobs: unknown[] }).jobs).toHaveLength(2);
+  });
+
+  it("the poll runs the partner pool invites sweep, and its failure never costs the poll its jobs", async () => {
+    partnerInviteMock.sweepPartnerPoolInvites.mockRejectedValueOnce(new Error("db down"));
+    const res = await GET(new Request("http://x/api/whatsapp/platform-jobs", { headers: { "x-api-key": KEY } }));
+    expect(res.status).toBe(200);
+    expect(partnerInviteMock.sweepPartnerPoolInvites).toHaveBeenCalledWith(expect.any(Date), expect.any(Object));
     expect(((await res.json()) as { jobs: unknown[] }).jobs).toHaveLength(2);
   });
 });

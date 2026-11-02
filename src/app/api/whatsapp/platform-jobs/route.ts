@@ -43,6 +43,9 @@
  *         JOINING A CLUB'S GROUP (pool L8): the invitations sweep runs too
  *         (`sweepClubInvitations`: the after-game question, invitations the
  *         club never answered, invite code jobs that never came back).
+ *         THE PARTNER POOL INVITE (2026-11-02): so does its sweep
+ *         (`sweepPartnerPoolInvites`: the one DM to a partner club's player
+ *         after he played for another club through a partner ask).
  *
  * Polled once per scheduler tick by a Pi built with slice 3, whatever the
  * clubs' bot switches say. A Pi built before it never calls this; due-posts
@@ -56,6 +59,7 @@ import { readClubSetVersion } from "@/lib/club-set-version-read";
 import { sweepPool } from "@/lib/pool/round";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 import { onInviteCodeReported, sweepClubInvitations } from "@/lib/pool/club-invitation";
+import { sweepPartnerPoolInvites } from "@/lib/pool/partner-invite";
 
 /** The test clock (e2e only), as due-posts reads it. */
 function nowOf(request: Request): Date {
@@ -103,6 +107,11 @@ export async function GET(request: Request) {
     await sweepClubInvitations(now, poolEnv);
   } catch (err) {
     console.error("[platform-jobs] club invitations sweep failed; the next poll tries again:", err);
+  }
+  try {
+    await sweepPartnerPoolInvites(now, poolEnv);
+  } catch (err) {
+    console.error("[platform-jobs] partner pool invites sweep failed; the next poll tries again:", err);
   }
   const jobs = await claimDuePlatformJobs({ now, env: poolEnv });
   if (jobs.length > 0) {

@@ -1311,7 +1311,7 @@ export const en = {
             : `✅ It's on: your club has ${n}, and MatchTime asks them ${p.askWhen === "auto" ? "by itself on match day, or when you ask it to" : "when you ask it to"}. To change it or switch it off:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
-    const body = `Your club can team up with nearby clubs to lend each other players. When a partner club is a player short, its ask may be posted here: tap the link if you fancy a game. When we're short, their players may join our bench as guests.`;
+    const body = `Your club can team up with nearby clubs to lend each other players. When a partner club is a player short, its ask may be posted here: tap the link if you fancy a game. When we're short, their players may join our bench as guests. After you play for a partner club, MatchTime DMs you once with a link to join the player pool, if you'd like more games.`;
     const status =
       p.active === 0
         ? `❌ This club has no partner clubs yet.` + (p.audience === "group" ? ` An admin can find clubs nearby on the settings page:\n${p.url}` : ``)

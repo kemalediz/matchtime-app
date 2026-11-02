@@ -248,6 +248,15 @@ export default function PlayerGuidePage() {
         directly. If you haven&apos;t paid, you&apos;ll get a reminder.
       </p>
 
+      <h3>Played for a partner club?</h3>
+      <p>
+        If you played for another club through a partner club ask, MatchTime
+        DMs you once after the game with a link to join the MatchTime player
+        pool, so you hear about games near you when your own club isn&apos;t
+        playing. It&apos;s up to you: you can play for partner clubs without
+        joining. The link works for 14 days.
+      </p>
+
       {/* ───────────────────────────────────────────────── */}
       <h2 id="emoji-reference">9. Reactions quick reference</h2>
 

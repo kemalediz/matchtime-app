@@ -200,4 +200,8 @@ describe("memberJoinConsent", () => {
       adultConfirmedAt: now,
     });
   });
+  it("on the partner pool invite's page, the evidence says so", () => {
+    const now = new Date("2026-11-02T18:00:00Z");
+    expect(memberJoinConsent("u1", now, "partner-invite").consentEvidence).toBe(`web:u1:${now.getTime()}:partner-invite`);
+  });
 });
