@@ -257,6 +257,17 @@ export default function PlayerGuidePage() {
         joining. The link works for 14 days.
       </p>
 
+      <h3 id="player-pool">More games: the MatchTime player pool</h3>
+      <p>
+        Want to play more than your own club&apos;s games? Join the MatchTime
+        player pool at{" "}
+        <a href="https://matchtime.ai/play" className="text-blue-600 underline">matchtime.ai/play</a>,
+        or turn on <strong>Play elsewhere too</strong> on your profile. When a
+        game near you is a player short, MatchTime sends you a WhatsApp
+        message and you decide each time. It&apos;s optional: your own
+        club&apos;s games work the same whether you join or not.
+      </p>
+
       {/* ───────────────────────────────────────────────── */}
       <h2 id="emoji-reference">9. Reactions quick reference</h2>
 

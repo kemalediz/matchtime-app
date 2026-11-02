@@ -209,7 +209,7 @@ describe("decideClub: approve", () => {
     // The hello, a normal group BotJob, in the club's language, naming the organiser.
     const [hello] = created("botJob");
     expect(hello).toMatchObject({ orgId: "org-riverside", kind: "group" });
-    expect(hello.text).toContain("Ali has set me up to run this group's games.");
+    expect(hello.text).toContain("Ali has set me up to help run this group's games.");
     expect(hello.text).toContain("*In*");
     // The organiser's DM, once, on the platform channel.
     const dms = created("platformJob");
@@ -258,10 +258,10 @@ describe("decideClub: approve", () => {
     expect(created("platformJob")[0].text).toMatch(/^Güzel haber: Riverside FC artık aktif\./);
   });
 
-  it("the hello is the full feature intro: In, bench, remind me, teams, MoM, stats, fees, help", async () => {
+  it("the hello is the full feature intro: In, bench, friend, remind me, ratings, teams, MoM, profile, pool, partners, help", async () => {
     await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
     const hello = String(created("botJob")[0].text);
-    for (const f of ["*In*", "bench", "remind me", "teams", "Man of the Match", "ratings", "Stats", "Match fees", "*@Match Time help*"]) {
+    for (const f of ["*In*", "bench", "Bringing a friend", "remind me", "Ratings", "teams", "Man of the Match", "Your profile", "More games", "Partner clubs", "*@Match Time help*"]) {
       expect(hello).toContain(f);
     }
   });

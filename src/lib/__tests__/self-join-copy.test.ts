@@ -68,7 +68,8 @@ describe("sj_group_hello: the full intro for an approved group", () => {
 
     it(`${lang}: one readable WhatsApp message, no dashes, no consent or setup question`, () => {
       for (const h of [named, anon]) {
-        expect(h.length).toBeLessThan(1200);
+        // The approved welcome (Kemal, 2026-11-02) is longer than the old intro.
+        expect(h.length).toBeLessThan(2000);
         expect(h).not.toMatch(/[—–]/);
         expect(h).not.toMatch(/\*YES\*|\*EVET\*/);
         expect(h).not.toMatch(/when and where|ne zaman ve nerede/i);
@@ -81,21 +82,22 @@ describe("sj_group_hello: the full intro for an approved group", () => {
     });
   }
 
-  it("en: every feature line, and payments only as something the organiser can switch on", () => {
+  it("en: every feature line, and no fees line without pay links", () => {
     const h = en.sj_group_hello({ organiser: "Ali" });
-    expect(h).toContain("Ali has set me up to run this group's games.");
-    for (const f of ["bench", `"@Match Time remind me Thursday"`, "I'll DM you then", "teams", "Man of the Match", "ratings", "stats page"]) {
+    expect(h).toContain("Ali has set me up to help run this group's games.");
+    for (const f of ["bench", `"@Match Time remind me Thursday"`, "I'll DM you then", "teams", "Man of the Match", "ratings", "Your profile", "Bringing a friend", "More games", "Partner clubs"]) {
       expect(h).toContain(f);
     }
-    expect(h).toContain("💷 *Match fees:* your organiser can switch on card or bank pay links.");
+    // No fees line: a weekly club hears about match fees only once its pay links are on.
+    expect(h).not.toContain("💷");
   });
 
-  it("tr: every feature line, and payments only as something the organiser can switch on", () => {
+  it("tr: every feature line, and no fees line without pay links", () => {
     const h = tr.sj_group_hello({ organiser: "Ayşe" });
-    for (const f of ["Yedekler", `"@Match Time perşembe hatırlat"`, "takımlar", "Maçın oyuncusu", "puanlar", "istatistik"]) {
+    for (const f of ["Yedekler", `"@Match Time perşembe hatırlat"`, "takımlar", "Maçın oyuncusu", "puanlar", "Profiliniz", "Arkadaş getirmek", "Daha çok maç", "Partner kulüpler"]) {
       expect(h).toContain(f);
     }
-    expect(h).toContain("💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.");
+    expect(h).not.toContain("💷");
   });
 });
 

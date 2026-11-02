@@ -148,3 +148,24 @@ describe("house rules", () => {
     }
   });
 });
+
+/**
+ * THE PROFILE PAGE IN THE BARE HELP (2026-11-02). Every member has one
+ * (/profile), so the how-to block links it, naming only what the club
+ * rates, in both languages.
+ */
+describe("bare help: the player's own profile page", () => {
+  const url = "https://matchtime.ai/profile";
+  it("en: linked, with games, ratings and Man of the Match awards when both are on", () => {
+    const out = buildHelpReply(null, { ...BASE, momVoting: true, playerRating: true }, "en", { audience: "group" });
+    expect(out).toContain(`📊 Your own profile page shows your games, ratings and Man of the Match awards: ${url}`);
+  });
+  it("en: a club that rates nothing hears only games", () => {
+    const out = buildHelpReply(null, { ...BASE, momVoting: false, playerRating: false }, "en", { audience: "player" });
+    expect(out).toContain(`📊 Your own profile page shows your games: ${url}`);
+  });
+  it("tr: the same line in Turkish, with attendance off too", () => {
+    const out = buildHelpReply(null, { ...BASE, attendance: false, momVoting: true, playerRating: false }, "tr", { audience: "group" });
+    expect(out).toContain(`📊 Kendi profil sayfanız maçlarınızı ve maçın oyuncusu ödüllerinizi gösterir: ${url}`);
+  });
+});

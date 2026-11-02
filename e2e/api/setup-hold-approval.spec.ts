@@ -243,15 +243,19 @@ async function expectHeldAndSilent(request: APIRequestContext, db: TestDb, c: Cl
 
 /** What main posts in the group at an approval today (`sj_group_hello`, English, organiser "Ali"). */
 const FLAG_OFF_HELLO = [
-  "👋 Hi everyone, I'm *MatchTime*. Ali has set me up to run this group's games. Here's what I do, right here in WhatsApp:\n",
+  "👋 Hi everyone, I'm *MatchTime*. Ali has set me up to help run this group's games. Here's what I do, right here in WhatsApp:\n",
   "\n",
   "✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n",
   "🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n",
+  "👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them.\n",
   "⏰ *Remind me:* tag me and say when, in your own words (for example *\"@Match Time remind me Thursday\"*), and I'll DM you then.\n",
-  "⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.\n",
-  "⭐ *Man of the Match and ratings* after every game.\n",
-  "📊 *Stats:* ask me anything, and everyone gets their own stats page.\n",
-  "💷 *Match fees:* your organiser can switch on card or bank pay links.\n",
+  "\n",
+  "⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10. Your scores stay private and you can't rate yourself. I combine them into a form rating for each player, updated every week.\n",
+  "⚖️ *Fair teams:* I use those ratings to pick two balanced sides, so the games stay close. The more people rate, the fairer the teams.\n",
+  "🏆 *Man of the Match:* after the final whistle I post a quick vote in the group. Tap who you thought was the standout player and I'll announce the winner. Wins add up over the season.\n",
+  "📊 *Your profile:* everyone gets their own page with their games, ratings and MoM awards. Ask me any stats question too, for example *@Match Time my stats*.\n",
+  "🤝 *More games:* if you fancy playing on other nights, you can join the local MatchTime player pool and get offered spare places in nearby games. It's up to you whether to join. Here's the link to register: matchtime.ai/play\n",
+  "🌍 *Partner clubs:* when we're short, nearby partner clubs can lend us players, and you can get extra games helping them out.\n",
   "\n",
   "I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*",
 ].join("");

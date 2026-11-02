@@ -12,6 +12,7 @@ const dbMock = vi.hoisted(() => ({
   match: { findMany: vi.fn() },
   attendance: { findMany: vi.fn() },
   attendanceEvent: { findMany: vi.fn() },
+  activity: { findMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 
@@ -86,10 +87,12 @@ beforeEach(() => {
     dbMock.match.findMany,
     dbMock.attendance.findMany,
     dbMock.attendanceEvent.findMany,
+    dbMock.activity.findMany,
   ]) {
     m.mockReset();
   }
   dbMock.attendanceEvent.findMany.mockResolvedValue([]);
+  dbMock.activity.findMany.mockResolvedValue([]);
   dbMock.match.findMany.mockResolvedValue([]);
   dbMock.attendance.findMany.mockResolvedValue([]);
   dbMock.membership.findMany.mockResolvedValue([]);
@@ -101,11 +104,36 @@ beforeEach(() => {
   }));
 });
 
+// ── 2026-11-02: "help run the Monday games" ──
+describe("loadHelloInput: the game day", () => {
+  it("one weekly game day names it", async () => {
+    dbMock.activity.findMany.mockResolvedValue([{ dayOfWeek: 1 }, { dayOfWeek: 1 }]);
+    const input = await loadHelloInput("org-1");
+    expect(input.gameDay).toBe(1);
+    expect(dbMock.activity.findMany.mock.calls[0][0]).toEqual({ where: { orgId: "org-1", isActive: true }, select: { dayOfWeek: true } });
+    expect(buildGroupHello(input)).toContain("Ali has set me up to help run the Monday games.");
+  });
+
+  it("several days, or none, is no single day", async () => {
+    dbMock.activity.findMany.mockResolvedValue([{ dayOfWeek: 1 }, { dayOfWeek: 4 }]);
+    expect((await loadHelloInput("org-1")).gameDay).toBeNull();
+    dbMock.activity.findMany.mockResolvedValue([]);
+    expect((await loadHelloInput("org-1")).gameDay).toBeNull();
+  });
+
+  it("a read that fails, or a client without it, is no single day", async () => {
+    dbMock.activity.findMany.mockRejectedValue(new Error("db down"));
+    expect((await loadHelloInput("org-1")).gameDay).toBeNull();
+    const { activity: _a, ...rest } = dbMock;
+    expect((await loadHelloInput("org-1", { client: rest as unknown as HelloReadClient })).gameDay).toBeNull();
+  });
+});
+
 describe("loadHelloInput", () => {
   it("reads the hello's columns and names the person who connected the club", async () => {
     const input = await loadHelloInput("org-1");
     expect(dbMock.organisation.findUnique).toHaveBeenCalledWith({ where: { id: "org-1" }, select: HELLO_ORG_SELECT });
-    expect(input).toEqual({ organiser: "Ali", lang: "en", settings: DEFAULT_HELLO_SETTINGS, hasSquadToCarry: false });
+    expect(input).toEqual({ organiser: "Ali", lang: "en", settings: DEFAULT_HELLO_SETTINGS, hasSquadToCarry: false, gameDay: null });
     expect(dbMock.membership.findFirst).not.toHaveBeenCalled();
     // A club that signs up each week is never asked about a squad to carry.
     expect(dbMock.match.findMany).not.toHaveBeenCalled();

@@ -12,10 +12,21 @@
  *
  * THE PROMISE: on default settings, with the catch-up line left out, the
  * output equals `sj_group_hello` byte for byte, in every language
- * (`__tests__/group-hello.test.ts`). `sj_group_hello` itself is untouched.
+ * (`__tests__/group-hello.test.ts`). Change one and change the other.
  *
- * Shape: opener, blank line, one line per thing the club has on, blank
- * line, the catch-up line (weekly sign-up clubs only), blank line, closer.
+ * THE FIXED BLOCK (Kemal, 2026-11-02). Only the opening varies by club:
+ * the organiser's name, the game day ("help run the Monday games", from
+ * the club's one weekly game day; several days or none: "this group's
+ * games"), the squad lines for the club's type, and a weekly club's match
+ * fees line when its pay links are on. After them every club gets the
+ * same block, verbatim and in the same order (`sj_hello_friend`,
+ * `sj_hello_remind`, then `sj_hello_features`): no per-feature gating.
+ * A monthly club with an organiser's name then hears that the organiser
+ * posts the month's list.
+ *
+ * Shape: opener, blank line, squad lines + friend + remind, blank line,
+ * the features block, blank line, the month's list (monthly) or the
+ * catch-up line (weekly sign-up clubs only), blank line, closer.
  *
  * Days and times are written as the setup findings DM writes them
  * (`setup-learning/dm.ts`, `appliedLine`): `wd_weekday` and the stored
@@ -49,6 +60,9 @@ export interface GroupHelloSettings {
   /** `benchPickMode` is "organiser". */
   organisersPick: boolean;
   bench: boolean;
+  /** Carried for the other readers of these settings. Since 2026-11-02
+   *  the hello's features block is fixed, so the hello reads none of
+   *  reminders, teamBalancing, momVoting, playerRating or statsQa. */
   reminders: boolean;
   teamBalancing: boolean;
   momVoting: boolean;
@@ -78,6 +92,9 @@ export interface GroupHelloInput {
    *  nobody is costs a game; asking for an In that was not needed costs
    *  nothing. */
   hasSquadToCarry?: boolean;
+  /** The club's one weekly game day (0 = Sunday), or null/absent when it
+   *  has several or none: "help run this group's games". */
+  gameDay?: number | null;
 }
 
 /** What a club has before anybody changes a setting (the column defaults). */
@@ -113,9 +130,8 @@ export function buildGroupHello(input: GroupHelloInput): string {
   const monthly = c.squadMode === "monthly";
   const rolling = c.rollingSquad && !monthly;
   // ORGANISERS MODE (2026-10-15): the list and the teams are theirs to
-  // share (bot-scheduler.ts `toOrganisers`; a players' team request gets
-  // "The organisers will post the teams."), so neither "I post it here" nor
-  // "tag me and I pick balanced teams" is said.
+  // share (bot-scheduler.ts `toOrganisers`), so "I post it here" is not
+  // said and the opening says the organisers share them.
   const organisers = c.organisersAnnounce === true;
   const shareList = organisers && c.attendance && !monthly;
   const shareTeams = organisers && c.teamBalancing;
@@ -125,8 +141,7 @@ export function buildGroupHello(input: GroupHelloInput): string {
   if (c.attendance) {
     if (monthly) {
       // The weekly routine (deadline, final list, bench) and the match fee
-      // lines are left out for a monthly club: how they read beside the
-      // month's list is not decided yet.
+      // lines are left out for a monthly club.
       lines.push(s.sj_hello_monthly, s.sj_hello_monthly_join({ organisersPick: c.organisersPick }));
     } else {
       if (rolling) {
@@ -159,16 +174,16 @@ export function buildGroupHello(input: GroupHelloInput): string {
       else if (c.bench) lines.push(s.sj_hello_bench);
     }
   }
-  if (c.reminders) lines.push(s.sj_hello_remind);
   if (shareList || shareTeams) lines.push(s.sj_hello_organisers_share({ list: shareList, teams: shareTeams }));
-  else if (c.teamBalancing) lines.push(s.sj_hello_teams);
-  if (c.momVoting || c.playerRating) lines.push(s.sj_hello_mom({ mom: c.momVoting, ratings: c.playerRating }));
-  if (c.statsQa) lines.push(s.sj_hello_stats);
-  if (!monthly) lines.push(s.sj_hello_fees({ tracking: c.paymentTracking, mode: c.payLinks }));
+  if (!monthly && c.payLinks !== "off") lines.push(s.sj_hello_fees({ tracking: c.paymentTracking, mode: c.payLinks }));
+  // THE FIXED BLOCK: the same for every club.
+  lines.push(s.sj_hello_friend, s.sj_hello_remind);
 
-  const blocks = [s.sj_hello_opener({ organiser: input.organiser }), lines.join("\n")];
+  const day = typeof input.gameDay === "number" ? s.wd_weekday({ dow: input.gameDay }) || null : null;
+  const blocks = [s.sj_hello_opener({ organiser: input.organiser, day }), lines.join("\n"), s.sj_hello_features];
+  if (monthly && input.organiser) blocks.push(s.sj_hello_month_list({ organiser: input.organiser }));
   if (input.catchUp !== false && signsUpEachWeek(c)) blocks.push(s.sj_hello_catch_up);
-  blocks.push(s.sj_hello_closer({ attendance: c.attendance }));
+  blocks.push(s.sj_hello_closer);
   return blocks.join("\n\n");
 }
 

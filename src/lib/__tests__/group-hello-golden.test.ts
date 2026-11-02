@@ -23,7 +23,14 @@ const TUE_2000 = { day: 2, time: "20:00" };
 
 /** `carry` false: a rolling club MatchTime has no squad for yet (the
  *  first game). Every other case has one, so H4 to H7 are the standing form. */
-const CASES: Array<{ id: string; patch: Partial<GroupHelloSettings>; organiser?: string | null; catchUp?: boolean; carry?: boolean }> = [
+const CASES: Array<{
+  id: string;
+  patch: Partial<GroupHelloSettings>;
+  organiser?: string | null;
+  catchUp?: boolean;
+  carry?: boolean;
+  gameDay?: number | null;
+}> = [
   { id: "H1 defaults, catch-up left out (equals sj_group_hello)", patch: {}, catchUp: false },
   { id: "H2 defaults", patch: {} },
   { id: "H3 defaults, no organiser name", patch: {}, organiser: null },
@@ -73,6 +80,15 @@ const CASES: Array<{ id: string; patch: Partial<GroupHelloSettings>; organiser?:
     id: "H24 organisers share the list and teams, weekly sign-up, final list Tuesday 20:00",
     patch: { organisersAnnounce: true, listPublish: TUE_2000 },
   },
+  // ── 2026-11-02: the approved welcome, a fixed features block for every club ──
+  {
+    id: "H25 monthly squad, PAYG players, Monday games, organiser Davide (the Vets, as approved)",
+    patch: { squadMode: "monthly", paymentTracking: true },
+    organiser: "Davide",
+    gameDay: 1,
+  },
+  { id: "H26 weekly sign-up, Tuesday games, pay links card and bank with tracking", patch: { payLinks: "card-and-bank", paymentTracking: true }, gameDay: 2 },
+  { id: "H27 attendance off, squad from a pasted list", patch: { attendance: false, bench: false, squadFromList: true } },
 ];
 
 function render(lang: L): string {
@@ -85,6 +101,7 @@ function render(lang: L): string {
         lang,
         catchUp: c.catchUp,
         hasSquadToCarry: c.carry ?? true,
+        gameDay: c.gameDay ?? null,
         settings: { ...DEFAULT_HELLO_SETTINGS, ...c.patch },
       });
       return `\n### ${c.id}\n${text}\n`;
