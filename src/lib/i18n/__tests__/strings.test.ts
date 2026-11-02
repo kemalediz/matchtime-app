@@ -52,6 +52,8 @@ type SampleArgs = {
 
 const SAMPLES: SampleArgs = {
   unnamed: null,
+  admin_players_add_name_hint: null,
+  admin_players_rename: null,
   team_sheet_open_slot: null,
   no_match_label: null,
   squad_status_lead: { withBench: true, confirmed: 11, maxPlayers: 14, need: 3, matchLabel: "Fri 30 Oct, 20:30" },

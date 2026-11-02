@@ -60,3 +60,11 @@ export function e164Digits(raw: string): string | null {
   const digits = phone.replace(/^\+/, "");
   return /^\d{8,15}$/.test(digits) ? digits : null;
 }
+
+/** "+44 7700 900123" for a UK mobile; "+<digits>" for anything else.
+ *  Client-safe: this module imports nothing. */
+export function formatPhoneForDisplay(phone: string): string {
+  const d = phone.replace(/\D/g, "");
+  const uk = /^44(7\d{3})(\d{6})$/.exec(d);
+  return uk ? `+44 ${uk[1]} ${uk[2]}` : `+${d}`;
+}

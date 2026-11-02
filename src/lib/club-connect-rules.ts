@@ -123,12 +123,8 @@ export function sportForPlayersPerSide(n: number, live: LiveSports = LIVE_SPORTS
   };
 }
 
-/** "+44 7700 900123" for a UK mobile; "+<digits>" for anything else. */
-export function formatPhoneForDisplay(phone: string): string {
-  const d = phone.replace(/\D/g, "");
-  const uk = /^44(7\d{3})(\d{6})$/.exec(d);
-  return uk ? `+44 ${uk[1]} ${uk[2]}` : `+${d}`;
-}
+// Moved to the client-safe `./phone` (2026-11-02) so admin pages can use it.
+export { formatPhoneForDisplay } from "./phone";
 
 /** 00:00 London on the day `now` falls on: where "a day" starts for caps. */
 export function londonMidnight(now: Date): Date {

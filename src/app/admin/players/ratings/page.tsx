@@ -21,6 +21,8 @@ interface Player {
   name: string | null;
   /** Null for a partner club's guest: his email is never sent. */
   email: string | null;
+  /** Admin-only, null for any guest (/api/players). Labels a nameless player. */
+  phoneNumber?: string | null;
   guestFrom?: string | null;
   seedRating: number | null;
   isActive: boolean;
