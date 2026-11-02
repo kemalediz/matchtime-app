@@ -7,7 +7,6 @@
  */
 import { useState, useTransition } from "react";
 import { PoolPageShell } from "@/components/pool/pool-page-shell";
-import { useBrowserLang } from "@/lib/i18n/browser-lang";
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
 import { friendLinkCopy } from "@/lib/i18n/friend-link";
 import type { Lang } from "@/lib/i18n/lang";
@@ -15,14 +14,13 @@ import { poolPageCopy } from "@/lib/pool/page-copy";
 import { pullOutFriendLinkAction } from "../actions";
 
 export function FriendLinkHeld({ token, club, kickoffIso }: { token: string; club: string; kickoffIso: string }) {
-  const browserLang = useBrowserLang();
-  const [chosen, setChosen] = useState<Lang | null>(null);
-  const lang = chosen ?? browserLang;
+  // English only, like the sign-up (2026-11-02).
+  const lang: Lang = "en";
   const c = friendLinkCopy(lang);
   const [state, setState] = useState<"held" | "out" | "started">("held");
   const [pending, start] = useTransition();
   return (
-    <PoolPageShell lang={lang} onLang={setChosen} copy={poolPageCopy(lang)}>
+    <PoolPageShell lang={lang} copy={poolPageCopy(lang)}>
       <div data-testid="friend-link-held" data-state={state}>
         {state === "held" && (
           <>

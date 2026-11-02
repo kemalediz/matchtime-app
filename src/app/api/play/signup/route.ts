@@ -23,7 +23,7 @@ import { waMeLink } from "@/lib/club-connect-rules";
 import { poolConfirmPrefill } from "@/lib/pool/confirm-rules";
 import { isPoolSignupPaused } from "@/lib/pool/flags";
 import { poolOpenForApiRequest } from "@/lib/pool/flags-request";
-import { readSignupSource, validatePoolSignup } from "@/lib/pool/profile-fields";
+import { readSignupSource, validatePublicPoolSignup } from "@/lib/pool/profile-fields";
 import { createPoolSignup } from "@/lib/pool/signup";
 import { poolSignupStatusToken } from "@/lib/pool/signup-status-token";
 import { openFriendLink } from "@/lib/friend-link/page";
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   }
   if (!body || typeof body !== "object") return NextResponse.json({ ok: false, reason: "invalid" }, { status: 400 });
 
-  const valid = validatePoolSignup(body);
+  const valid = validatePublicPoolSignup(body);
   if (!valid.ok) return NextResponse.json({ ok: false, reason: "invalid", errors: valid.errors }, { status: 400 });
 
   const number = matchtimeWaNumber();

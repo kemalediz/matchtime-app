@@ -31,7 +31,6 @@ const UK_POINT = {
 
 process.env.AUTH_SECRET = E2E.AUTH_SECRET;
 const EN = friendLinkCopy("en");
-const TR = friendLinkCopy("tr");
 
 test.describe.configure({ mode: "serial" });
 test.beforeEach(() => resetDb());
@@ -119,16 +118,20 @@ test.describe("English", () => {
   });
 });
 
-test.describe("Turkish", () => {
+test.describe("Turkish browser (2026-11-02: the sign-up is English only)", () => {
   test.use({ locale: "tr-TR" });
 
-  test("the card and a used link in Turkish", async ({ page, db }) => {
+  test("the card and a used link in English, with no language switch or field", async ({ page, db }) => {
     const token = await seedLink(db);
     await page.goto(`/play/f/${token}`);
-    await expect(card(page)).toContainText(TR.page_invited({ member: "Pat" }));
-    await expect(card(page)).toContainText(TR.page_explain);
+    await expect(card(page)).toContainText(EN.page_invited({ member: "Pat" }));
+    await expect(card(page)).toContainText(EN.page_explain);
+    await expect(page.locator('main[lang="en"]')).toBeVisible();
+    await expect(page.getByRole("button", { name: "Türkçe" })).toHaveCount(0);
+    await expect(page.getByLabel(PLAY.fields.languageLabel)).toHaveCount(0);
     const used = await seedLink(db, { used: true });
     await page.goto(`/play/f/${used}`);
-    await expect(page.getByText(TR.page_used)).toBeVisible();
+    await expect(page.getByText(EN.page_used)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Türkçe" })).toHaveCount(0);
   });
 });

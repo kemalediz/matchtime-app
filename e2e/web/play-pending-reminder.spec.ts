@@ -20,7 +20,6 @@ import { poolPageCopy } from "@/lib/pool/page-copy";
 import { PENDING_SIGNUP_KEY } from "@/lib/pool/pending-signup";
 
 const EN = poolPageCopy("en");
-const TR = poolPageCopy("tr");
 const MOBILE = { width: 390, height: 844 };
 const UK_POINT = {
   status: "OK",
@@ -175,20 +174,17 @@ test.describe("English visitor", () => {
   });
 });
 
-test.describe("Turkish visitor", () => {
+test.describe("Turkish browser (2026-11-02: the sign-up is English only)", () => {
   test.use({ locale: "tr-TR" });
 
-  test("the confirm screen and the reminder in Turkish", async ({ page }) => {
+  test("the confirm screen and the reminder are in English", async ({ page }) => {
     await page.setViewportSize(MOBILE);
-    await signUp(page, TR, "Mehmet Y");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Henüz katılmadın: WhatsApp mesajını gönder");
-    await expect(page.getByText(TR.signup.confirmHelp)).toBeVisible();
+    await signUp(page, EN, "Mehmet Y");
+    await expect(page.getByRole("heading", { level: 1, name: EN.signup.confirmHeading })).toBeVisible();
     await page.goto("/play");
     const reminder = page.getByTestId("pool-reminder");
-    await expect(reminder.getByRole("heading", { name: "Neredeyse bitti" })).toBeVisible();
-    await expect(reminder.getByText(TR.signup.reminderLead)).toBeVisible();
-    await expect(reminder.getByRole("link", { name: TR.signup.openWhatsApp })).toBeVisible();
-    await expect(reminder.getByTestId("pool-reminder-until")).toHaveText(/^Kodun .+ tarihine kadar geçerli\.$/);
-    await page.screenshot({ path: "test-results/play-reminder-tr.png", fullPage: true });
+    await expect(reminder.getByRole("link", { name: EN.signup.openWhatsApp })).toBeVisible();
+    await expect(page.locator('main[lang="en"]')).toBeVisible();
+    await expect(page.getByRole("button", { name: "Türkçe" })).toHaveCount(0);
   });
 });

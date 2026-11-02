@@ -21,7 +21,6 @@ import { poolShareCopy } from "@/lib/i18n/pool-share";
 import { useEffect, useState } from "react";
 import { PoolProfileFields, type FieldErrorText } from "@/components/pool/pool-profile-fields";
 import { PoolPageShell } from "@/components/pool/pool-page-shell";
-import { useBrowserLang } from "@/lib/i18n/browser-lang";
 import type { Lang } from "@/lib/i18n/lang";
 import type { PoolErrorKey } from "@/lib/i18n/pool-play";
 import { defaultPoolForm, toPoolPayload, type PoolFormValue } from "@/lib/pool/form-state";
@@ -78,12 +77,11 @@ export function PlaySignup({
   /** A friend link (2026-10-31): the game shown at the top, his name filled in. */
   friend?: FriendLinkCard | null;
 }) {
-  const browserLang = useBrowserLang();
-  const [chosen, setChosen] = useState<Lang | null>(null);
-  const lang = chosen ?? browserLang;
+  // English only (Kemal, 2026-11-02): no switch, no language field; the
+  // server makes every new profile from here English whatever is sent.
+  const lang: Lang = "en";
   const copy = poolPageCopy(lang);
 
-  // The form's language follows the page's until he picks one himself.
   const [form, setForm] = useState<PoolFormValue | null>(null);
   const value = form ?? { ...defaultPoolForm(lang), name: friend?.friendName ?? "" };
   const [adult, setAdult] = useState(false);
@@ -137,9 +135,9 @@ export function PlaySignup({
   useEffect(() => {
     // A friend link starts from the member's words, never an older draft.
     if (friend) return;
-    const draft = loadSignupDraft(defaultPoolForm(browserLang));
+    const draft = loadSignupDraft(defaultPoolForm(lang));
     if (draft) setForm((f) => f ?? draft);
-    // Once, on mount: a later language change must not reload the draft.
+    // Once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
@@ -190,7 +188,7 @@ export function PlaySignup({
 
   if (confirm) {
     return (
-      <PoolPageShell lang={lang} onLang={setChosen} copy={copy}>
+      <PoolPageShell lang={lang} copy={copy}>
         <h1 className="text-2xl font-bold text-slate-900">{copy.signup.confirmHeading}</h1>
         <div className="mt-3">
           <PoolWhatsAppStep copy={copy} step={confirm} earlyList={confirm.earlyList} />
@@ -200,16 +198,7 @@ export function PlaySignup({
   }
 
   return (
-    <PoolPageShell
-      lang={lang}
-      onLang={(l) => {
-        setChosen(l);
-        // Switching the page's language switches the messages' too; he can
-        // still pick another one in the form.
-        if (form) setForm({ ...form, language: l });
-      }}
-      copy={copy}
-    >
+    <PoolPageShell lang={lang} copy={copy}>
       {pending && <PoolPendingReminder copy={copy} lang={lang} pending={pending} />}
       {expiredNote && (
         <p role="status" data-testid="pool-expired-note" className="mb-6 rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-800">

@@ -18,7 +18,6 @@ import { partnerInviteToken } from "@/lib/pool/partner-invite-token";
 process.env.AUTH_SECRET = E2E.AUTH_SECRET;
 const PLAY = poolPageCopy("en");
 const EN = partnerInviteCopy("en");
-const TR = partnerInviteCopy("tr");
 const DAY = 86_400_000;
 const UK_POINT = {
   status: "OK",
@@ -123,11 +122,23 @@ test.describe("English", () => {
   });
 });
 
-test.describe("Turkish", () => {
-  test("his club speaks Turkish: the page opens in Turkish", async ({ page, db }) => {
+test.describe("Turkish club (2026-11-02: the sign-up is English only)", () => {
+  test("his club speaks Turkish: the page still opens in English, no switch, no language field, and he joins in English", async ({ page, db }) => {
     await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id IN (SELECT "orgId" FROM "Membership" WHERE "userId" = $1 AND "guestMatchId" IS NULL)`, [U.player]);
     await page.goto(`/play/j/${partnerInviteToken(U.player, new Date())}`);
     await expect(card(page)).toHaveAttribute("data-state", "join");
-    await expect(page.getByTestId("partner-invite-you")).toHaveText(TR.page_you({ name: "Pat P", tail }));
+    await expect(page.getByTestId("partner-invite-you")).toHaveText(EN.page_you({ name: "Pat P", tail }));
+    await expect(page.locator('main[lang="en"]')).toBeVisible();
+    await expect(page.getByRole("button", { name: "Türkçe" })).toHaveCount(0);
+    await expect(page.getByLabel(PLAY.fields.languageLabel)).toHaveCount(0);
+
+    await page.getByLabel(PLAY.fields.districtLabel, { exact: true }).fill("sm1");
+    const tuesday = page.getByRole("checkbox", { name: "Tuesday", exact: true });
+    if (!(await tuesday.isChecked())) await tuesday.check();
+    await page.getByRole("checkbox", { name: PLAY.signup.adultLabel }).check();
+    await page.getByRole("checkbox", { name: PLAY.signup.consentLabel }).check();
+    await page.getByRole("button", { name: PLAY.member.join }).click();
+    await expect(card(page)).toHaveAttribute("data-state", "done");
+    expect(await db.one(`SELECT language FROM "PoolProfile" WHERE "userId" = $1`, [U.player])).toEqual({ language: "en" });
   });
 });

@@ -15,8 +15,8 @@
  *
  * The same fields component, form model and validator as /play and the
  * profile's "Play elsewhere too". Words: `pool-partner-invite.*.ts` for
- * what is new here, `pool-play.*.ts` for the rest. It opens in his club's
- * language, with the switch.
+ * what is new here, `pool-play.*.ts` for the rest. English only, with no
+ * switch and no language field (2026-11-02), whatever his club speaks.
  */
 import Link from "next/link";
 import { useState, useTransition } from "react";
@@ -41,7 +41,8 @@ const KNOWN_FAILURES: readonly PoolErrorKey[] = ["busy", "area-not-found", "paus
 type Shown = PartnerInviteView["state"] | "done" | "restarted";
 
 export function PartnerInvitePage({ token, view }: { token: string; view: PartnerInviteView }) {
-  const [lang, setLang] = useState<Lang>(view.lang);
+  // English only, like /play (2026-11-02), whatever his club speaks.
+  const lang: Lang = "en";
   const copy = poolPageCopy(lang);
   const c = partnerInviteCopy(lang);
   const [shown, setShown] = useState<Shown>(view.state);
@@ -189,7 +190,7 @@ export function PartnerInvitePage({ token, view }: { token: string; view: Partne
   }
 
   return (
-    <PoolPageShell lang={lang} onLang={setLang} copy={copy}>
+    <PoolPageShell lang={lang} copy={copy}>
       <div data-testid="partner-invite" data-state={shown}>
         {body}
       </div>

@@ -1,7 +1,7 @@
 /**
  * /play, the local player pool's sign-up (slice L2), in a real browser:
  *   - reads at phone and desktop width, no sideways scroll, no app sidebar,
- *     one h1, every field labelled, in the browser's language with a switch;
+ *     one h1, every field labelled, English only (no switch, no language field);
  *   - consent and 18+ unticked by default; football the only sport offered
  *     (LIVE_SPORTS), shown with its formats and no sport to pick, and a
  *     crafted POST with any other sport refused by the route;
@@ -21,7 +21,6 @@ import { clearGeocodeStub, setGeocodeStub } from "../helpers/geocode-stub";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 
 const EN = poolPageCopy("en");
-const TR = poolPageCopy("tr");
 const MOBILE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 900 };
 const UK_POINT = {
@@ -220,27 +219,40 @@ test.describe("English visitor", () => {
   });
 });
 
-test.describe("Turkish visitor", () => {
+test.describe("Turkish browser (2026-11-02: the sign-up is English only)", () => {
   test.use({ locale: "tr-TR" });
 
-  test("opens in Turkish, switches to English and back, and the prefill follows the language", async ({ page }) => {
+  test("opens in English, has no language switch and no language field, and the new profile is English", async ({ page, db }) => {
     await page.setViewportSize(MOBILE);
     await page.goto("/play");
-    await expect(page.getByRole("heading", { level: 1, name: TR.signup.heading })).toBeVisible();
-    await expect(page.locator('main[lang="tr"]')).toBeVisible();
-    await page.getByRole("button", { name: "English" }).click();
     await expect(page.getByRole("heading", { level: 1, name: EN.signup.heading })).toBeVisible();
-    await page.getByRole("button", { name: "Türkçe" }).click();
-    await expect(page.getByRole("button", { name: "Türkçe" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('main[lang="en"]')).toBeVisible();
+    await expect(page.getByRole("button", { name: "Türkçe" })).toHaveCount(0);
+    await expect(page.getByRole("group", { name: EN.languageSwitchLabel })).toHaveCount(0);
+    await expect(page.getByLabel(EN.fields.languageLabel)).toHaveCount(0);
+    await expect(page.getByText("Türkçe")).toHaveCount(0);
 
-    await page.getByLabel(TR.fields.nameLabel, { exact: true }).fill("Mehmet Y");
-    await page.getByLabel(TR.fields.districtLabel, { exact: true }).fill("SW19");
-    await page.getByRole("checkbox", { name: "Cuma", exact: true }).check();
-    await page.getByRole("checkbox", { name: TR.signup.adultLabel }).check();
-    await page.getByRole("checkbox", { name: TR.signup.consentLabel }).check();
-    await page.getByRole("button", { name: TR.signup.submit }).click();
-    await expect(page.getByRole("heading", { level: 1, name: TR.signup.confirmHeading })).toBeVisible();
-    await expect(page.getByTestId("pool-prefill")).toHaveText(/^Merhaba MatchTime, oynamak için kaydet\. Kod [A-Z2-9]{5}$/);
+    await page.getByLabel(EN.fields.nameLabel, { exact: true }).fill("Mehmet Y");
+    await page.getByLabel(EN.fields.districtLabel, { exact: true }).fill("SW19");
+    await page.getByRole("checkbox", { name: "Friday", exact: true }).check();
+    await page.getByRole("checkbox", { name: EN.signup.adultLabel }).check();
+    await page.getByRole("checkbox", { name: EN.signup.consentLabel }).check();
+    await page.getByRole("button", { name: EN.signup.submit }).click();
+    await expect(page.getByRole("heading", { level: 1, name: EN.signup.confirmHeading })).toBeVisible();
+    const prefill = (await page.getByTestId("pool-prefill").textContent()) ?? "";
+    const code = prefill.match(/[A-Z2-9]{5}$/)?.[0];
+    expect(code).toBeTruthy();
+    expect(await db.one(`SELECT language FROM "PoolProfile" WHERE "confirmCode" = $1`, [code])).toEqual({ language: "en" });
     expect(await overflow(page)).toBeLessThanOrEqual(0);
+  });
+
+  test("a client-sent Turkish is ignored: the profile is English", async ({ request, db }) => {
+    const res = await request.post("/api/play/signup", {
+      data: { name: "Ayse K", area: { kind: "district", district: "SM1" }, maxMiles: 3, availability: [{ day: 2, from: "19:00", to: "22:00" }], sports: [{ sport: "football", formats: [7] }], language: "tr", adult: true, consent: true },
+    });
+    expect(res.status()).toBe(200);
+    const { code, prefill } = (await res.json()) as { code: string; prefill: string };
+    expect(prefill).not.toMatch(/Merhaba/);
+    expect(await db.one(`SELECT language FROM "PoolProfile" WHERE "confirmCode" = $1`, [code])).toEqual({ language: "en" });
   });
 });
