@@ -28,6 +28,20 @@ export type PoolSignupResult =
 
 const SERVER_REASONS = ["busy", "area-not-found", "paused", "unavailable", "link-closed"] as const;
 
+/**
+ * One `pool_signup` event. `source`: a join door other than /play (the
+ * partner pool invite's page), as a fixed marker, never personal data.
+ * Analytics blocked or broken: the sign-up still stands.
+ */
+export function countPoolSignup(source?: "partner-invite"): void {
+  try {
+    if (source) track(POOL_SIGNUP_EVENT, { source });
+    else track(POOL_SIGNUP_EVENT);
+  } catch {
+    // Swallowed on purpose.
+  }
+}
+
 export async function sendPoolSignup(body: unknown, fetchImpl: typeof fetch = (input, init) => fetch(input, init)): Promise<PoolSignupResult> {
   let data: Partial<Omit<PoolSignupConfirm, "expiresAt">> & { expiresAt?: unknown; ok?: boolean; reason?: string; errors?: PoolFieldErrors };
   try {
@@ -37,11 +51,7 @@ export async function sendPoolSignup(body: unknown, fetchImpl: typeof fetch = (i
     return { kind: "error", reason: "generic" };
   }
   if (data.ok && data.code && data.waLink && data.prefill) {
-    try {
-      track(POOL_SIGNUP_EVENT);
-    } catch {
-      // Analytics blocked or broken: the sign-up still stands.
-    }
+    countPoolSignup();
     const expiresAt = typeof data.expiresAt === "string" ? Date.parse(data.expiresAt) : NaN;
     return {
       kind: "ok",

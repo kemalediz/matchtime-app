@@ -17,6 +17,7 @@ describe("redactAnalyticsUrl: no link secret or personal detail reaches Vercel W
     expect(redactAnalyticsUrl("https://matchtime.ai/r/abc.def")).toBe("https://matchtime.ai/r/[token]");
     expect(redactAnalyticsUrl("https://matchtime.ai/play/offer/tok123")).toBe("https://matchtime.ai/play/offer/[token]");
     expect(redactAnalyticsUrl("https://matchtime.ai/play/f/link.sig")).toBe("https://matchtime.ai/play/f/[token]");
+    expect(redactAnalyticsUrl("https://matchtime.ai/play/j/u1.abc.sig")).toBe("https://matchtime.ai/play/j/[token]");
     expect(redactAnalyticsUrl("https://matchtime.ai/join/XYZ")).toBe("https://matchtime.ai/join/[code]");
     expect(redactAnalyticsUrl("https://matchtime.ai/finish-setup/cs_123")).toBe("https://matchtime.ai/finish-setup/[sessionId]");
   });

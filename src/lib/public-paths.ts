@@ -54,6 +54,9 @@ export function isPublicPath(pathname: string): boolean {
     // A friend link (2026-10-31): the same, its token signed by
     // src/lib/friend-link/token.ts; opening it changes nothing.
     pathname.startsWith("/play/f/") ||
+    // A partner player's pool invite (2026-11-02): his own link, signed by
+    // src/lib/pool/partner-invite-token.ts; opening it changes nothing.
+    pathname.startsWith("/play/j/") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/cron") ||
     pathname.startsWith("/api/whatsapp") ||

@@ -1124,7 +1124,7 @@ export const tr: Strings = {
             : `✅ Açık: kulübünün ${p.active} partner kulübü var ve MatchTime onlardan ${p.askWhen === "auto" ? "maç günü kendiliğinden ya da sen isteyince" : "sen isteyince"} oyuncu ister. Değiştirmek ya da kapatmak için:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
-    const body = `Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir. Bir partner kulübün bir oyuncusu eksik olduğunda isteği buraya gelebilir: oynamak istersen bağlantıya dokun. Biz eksik kalınca da onların oyuncuları yedek listemize misafir olarak girebilir.`;
+    const body = `Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir. Bir partner kulübün bir oyuncusu eksik olduğunda isteği buraya gelebilir: oynamak istersen bağlantıya dokun. Biz eksik kalınca da onların oyuncuları yedek listemize misafir olarak girebilir. Bir partner kulüpte oynadıktan sonra MatchTime sana bir kez, daha çok maç istersen oyuncu havuzuna katılman için bir bağlantı gönderir.`;
     const status =
       p.active === 0
         ? `❌ Bu kulübün henüz partner kulübü yok.` + (p.audience === "group" ? ` Bir yönetici yakındaki kulüpleri ayarlar sayfasında bulabilir:\n${p.url}` : ``)

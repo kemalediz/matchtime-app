@@ -32,6 +32,13 @@ describe("retiredAuthRedirect", () => {
     expect(isPublicPath("/play/fixtures")).toBe(false);
   });
 
+  // The partner pool invite (2026-11-02): his own signed link, from his own WhatsApp; no session.
+  it("lets a partner player open his pool invite link, and nothing that merely starts like it", () => {
+    expect(isPublicPath("/play/j/abc.def.ghi")).toBe(true);
+    expect(isPublicPath("/play/j")).toBe(false);
+    expect(isPublicPath("/play/join")).toBe(false);
+  });
+
   // The players' page (website update, 2026-10-25): read before signing up.
   it("lets a visitor read the players' page, and nothing under it", () => {
     expect(isPublicPath("/players")).toBe(true);

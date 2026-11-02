@@ -181,18 +181,24 @@ export function memberOptInPath(args: {
   return profile ? { kind: "waiting-whatsapp" } : { kind: "join-whatsapp" };
 }
 
+/** Where a member with a number joined: his own profile page, or the
+ *  partner pool invite's page (its signed link came to his number). */
+export type MemberJoinOrigin = "profile" | "partner-invite";
+
 /**
  * The consent a member gives by ticking the box on his own profile page
  * (and "I am 18 or over"): channel "web", and what proves it is the
  * signed-in request (`web:<userId>:<ms>:profile`), as "start again" on the
- * manage page records it. Exactly the CHECK's consent fields.
+ * manage page records it; on the partner pool invite's page, his signed
+ * link (`web:<userId>:<ms>:partner-invite`). Exactly the CHECK's consent
+ * fields.
  */
-export function memberJoinConsent(userId: string, now: Date) {
+export function memberJoinConsent(userId: string, now: Date, origin: MemberJoinOrigin = "profile") {
   return {
     consentAt: now,
     consentVersion: POOL_CONSENT_VERSION,
     consentChannel: "web" as const,
-    consentEvidence: `web:${userId}:${now.getTime()}:profile`,
+    consentEvidence: `web:${userId}:${now.getTime()}:${origin}`,
     adultConfirmedAt: now,
   };
 }

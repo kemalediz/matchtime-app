@@ -25,7 +25,7 @@
 import { applyStandingPause, type StandingPauseClient } from "./standing-pause";
 import { db } from "../db";
 import { recordPoolConsent } from "./consent-record";
-import { memberJoinConsent, memberOptInPath, memberPrefill, type MemberClubFacts, type MemberOptInPath, type MemberPrefill } from "./member-prefill";
+import { memberJoinConsent, memberOptInPath, memberPrefill, type MemberClubFacts, type MemberJoinOrigin, type MemberOptInPath, type MemberPrefill } from "./member-prefill";
 import type { PoolFields } from "./profile-fields";
 import { availabilityRows, resolveArea, sportRows } from "./profile-store";
 import { POOL_SIGNUP } from "./rules";
@@ -44,7 +44,9 @@ export interface PlayElsewhereView {
 const VENUE = { select: { formattedAddress: true } } as const;
 const venueFact = (v: { formattedAddress: string | null } | null) => (v ? { address: v.formattedAddress } : null);
 
-async function memberClubs(userId: string): Promise<MemberClubFacts[]> {
+/** His clubs, as the prefill reads them (also the partner pool invite's
+ *  page, `partner-invite.ts`). */
+export async function memberClubs(userId: string): Promise<MemberClubFacts[]> {
   const rows = await db.membership.findMany({
     where: { userId, leftAt: null, guestMatchId: null },
     orderBy: { createdAt: "asc" },
@@ -115,8 +117,17 @@ export function memberAttemptKey(userId: string): string {
 
 const isUniqueViolation = (err: unknown) => (err as { code?: string } | null)?.code === "P2002";
 
-/** A member with a number joins, active at once. */
-export async function joinPoolAsMember(userId: string, fields: PoolFields, opts: { earlyList: boolean; now?: Date }): Promise<MemberJoinResult> {
+/**
+ * A member with a number joins, active at once. `origin`: where he ticked
+ * the consent, written into its evidence: his own profile page (the
+ * default), or the partner pool invite's page (`partner-invite.ts`), whose
+ * signed link came to that same number.
+ */
+export async function joinPoolAsMember(
+  userId: string,
+  fields: PoolFields,
+  opts: { earlyList: boolean; now?: Date; origin?: MemberJoinOrigin },
+): Promise<MemberJoinResult> {
   const now = opts.now ?? new Date();
   const user = await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true, poolProfile: { select: { id: true, status: true } } } });
   if (!user) return { ok: false, reason: "no-user" };
@@ -130,7 +141,7 @@ export async function joinPoolAsMember(userId: string, fields: PoolFields, opts:
   const area = await resolveArea(fields);
   await db.poolAttempt.create({ data: { kind: "signup", key, result: area.ok ? "created" : area.reason } });
   if (!area.ok) return { ok: false, reason: area.reason };
-  const consent = memberJoinConsent(userId, now);
+  const consent = memberJoinConsent(userId, now, opts.origin);
   try {
     await db.$transaction(async (tx) => {
       // A WhatsApp step he started before his account had a number.
@@ -171,7 +182,7 @@ export async function joinPoolAsMember(userId: string, fields: PoolFields, opts:
     if (isUniqueViolation(err)) return { ok: false, reason: "already-in-pool" };
     throw err;
   }
-  console.log(`[pool-member] joined from profile early=${opts.earlyList}`);
+  console.log(`[pool-member] joined from ${opts.origin ?? "profile"} early=${opts.earlyList}`);
   return { ok: true };
 }
 

@@ -54,6 +54,10 @@
  *   club-invite-link,   played with the club (pool L8). Queued only by
  *   club-invite-closed  src/lib/pool/club-invitation.ts. The LINK goes only
  *                       to a guest the club and he both said yes to.
+ *   pool-partner-invite only a number MatchTime already knows: a partner
+ *                       club's player who played for another club through a
+ *                       partner ask (2026-11-02), once ever. Queued only by
+ *                       src/lib/pool/partner-invite.ts.
  *   owner-approval,     NEVER through here. `queueOwnerDm` (owner-dm.ts)
  *   owner-ack,          is the only door to Kemal's phone.
  *   owner-setup-stuck,
@@ -144,6 +148,7 @@ export const PLATFORM_DM_PURPOSES = [
   "club-invite-ask",
   "club-invite-link",
   "club-invite-closed",
+  "pool-partner-invite",
   "friend-booked",
   "friend-not-booked",
   "friend-removed",
