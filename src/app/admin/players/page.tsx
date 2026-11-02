@@ -13,6 +13,7 @@ import {
   Tag,
   Plus,
   AlertTriangle,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -572,6 +573,8 @@ export default function PlayersPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
                     <input
+                      id={`player-name-${p.id}`}
+                      data-testid="player-name-input"
                       type="text"
                       defaultValue={p.name ?? ""}
                       placeholder={adminPlayerLabel(p, lang)}
@@ -583,9 +586,22 @@ export default function PlayersPage() {
                           (e.target as HTMLInputElement).blur();
                         }
                       }}
-                      className="font-semibold text-slate-800 bg-transparent border-0 border-b border-transparent hover:border-slate-200 focus:border-blue-500 focus:outline-none min-w-[6rem] flex-1 px-0 py-0.5 rounded-none"
-                      title="Click to rename"
+                      aria-label={t(lang).admin_players_rename}
+                      className="font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal bg-transparent border-0 border-b border-slate-300 sm:border-transparent sm:hover:border-slate-200 focus:border-blue-500 focus:outline-none min-w-[6rem] flex-1 px-0 py-0.5 rounded-none"
+                      title={t(lang).admin_players_rename}
                     />
+                    {/* The name is editable in place; the pencil says so on a
+                        phone, where there is no hover (2026-11-02). */}
+                    <button
+                      type="button"
+                      data-testid="player-name-edit"
+                      aria-label={t(lang).admin_players_rename}
+                      title={t(lang).admin_players_rename}
+                      onClick={() => document.getElementById(`player-name-${p.id}`)?.focus()}
+                      className="shrink-0 p-1 -m-1 text-slate-400 hover:text-blue-600 focus:text-blue-600 focus:outline-none"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
                     {p.leftAt && (
                       <span className="inline-flex shrink-0 px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 text-[10px] font-semibold uppercase tracking-wider">
                         Left
@@ -615,6 +631,16 @@ export default function PlayersPage() {
                       </button>
                     )}
                   </div>
+                  {!(p.name ?? "").trim() && !p.guestFrom && (
+                    <button
+                      type="button"
+                      data-testid="player-name-hint"
+                      onClick={() => document.getElementById(`player-name-${p.id}`)?.focus()}
+                      className="mt-0.5 text-xs text-blue-600 hover:underline"
+                    >
+                      {t(lang).admin_players_add_name_hint}
+                    </button>
+                  )}
                   {/* Provisional players: Confirm / Remove live on their own
                       wrapping row so they can never crowd the name input to
                       zero width on narrow screens (2026-06-11). */}
