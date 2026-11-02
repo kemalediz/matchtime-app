@@ -71,20 +71,19 @@ const MON = (s: typeof en) => `${s.wd_weekday({ dow: 1 })} 21:00`;
 
 const ROWS: Row[] = [
   {
-    name: "defaults: weekly sign-up, bench, every feature, fees as something the organiser can switch on",
+    name: "defaults: weekly sign-up, bench, the catch-up line, no fees line without pay links",
     patch: {},
     has: (s) => [
       s.sj_hello_whos_in,
       s.sj_hello_bench,
-      s.sj_hello_remind,
-      s.sj_hello_teams,
-      s.sj_hello_mom({ mom: true, ratings: true }),
-      s.sj_hello_stats,
-      s.sj_hello_fees({ tracking: false, mode: "off" }),
       s.sj_hello_catch_up,
-      s.sj_hello_closer({ attendance: true }),
+      s.sj_hello_closer,
     ],
-    hasNot: (s) => [s.sj_hello_rolling({ deadline: null }), s.sj_hello_bench_organiser, s.sj_hello_monthly],
+    hasNot: (s) => [
+      s.sj_hello_rolling({ deadline: null }),
+      s.sj_hello_bench_organiser,
+      s.sj_hello_monthly,
+    ],
   },
   {
     name: "rolling squad, no deadline: not told to say In each week, no catch-up",
@@ -194,16 +193,10 @@ const ROWS: Row[] = [
     hasNot: (s) => [s.sj_hello_bench],
   },
   {
-    name: "payment tracking on",
-    patch: { paymentTracking: true },
-    has: (s) => [s.sj_hello_fees({ tracking: true, mode: "off" })],
-    hasNot: (s) => [s.sj_hello_fees({ tracking: false, mode: "off" })],
-  },
-  {
     name: "pay links on, card and bank",
     patch: { payLinks: "card-and-bank" },
     has: (s) => [s.sj_hello_fees({ tracking: false, mode: "card-and-bank" })],
-    hasNot: (s) => [s.sj_hello_fees({ tracking: false, mode: "off" })],
+    hasNot: () => [],
   },
   {
     name: "pay links on, card only",
@@ -215,47 +208,7 @@ const ROWS: Row[] = [
     name: "payment tracking and pay links both on: one fees line that says both",
     patch: { paymentTracking: true, payLinks: "bank" },
     has: (s) => [s.sj_hello_fees({ tracking: true, mode: "bank" })],
-    hasNot: (s) => [s.sj_hello_fees({ tracking: true, mode: "off" }), s.sj_hello_fees({ tracking: false, mode: "bank" })],
-  },
-  {
-    name: "remind me off",
-    patch: { reminders: false },
-    has: (s) => [s.sj_hello_teams],
-    hasNot: (s) => [s.sj_hello_remind],
-  },
-  {
-    name: "teams off",
-    patch: { teamBalancing: false },
-    has: (s) => [s.sj_hello_remind],
-    hasNot: (s) => [s.sj_hello_teams],
-  },
-  {
-    name: "Man of the Match only",
-    patch: { playerRating: false },
-    has: (s) => [s.sj_hello_mom({ mom: true, ratings: false })],
-    hasNot: (s) => [s.sj_hello_mom({ mom: true, ratings: true })],
-  },
-  {
-    name: "ratings only",
-    patch: { momVoting: false },
-    has: (s) => [s.sj_hello_mom({ mom: false, ratings: true })],
-    hasNot: (s) => [s.sj_hello_mom({ mom: true, ratings: true })],
-  },
-  {
-    name: "Man of the Match and ratings both off",
-    patch: { momVoting: false, playerRating: false },
-    has: (s) => [s.sj_hello_stats],
-    hasNot: (s) => [
-      s.sj_hello_mom({ mom: true, ratings: true }),
-      s.sj_hello_mom({ mom: true, ratings: false }),
-      s.sj_hello_mom({ mom: false, ratings: true }),
-    ],
-  },
-  {
-    name: "stats off",
-    patch: { statsQa: false },
-    has: (s) => [s.sj_hello_teams],
-    hasNot: (s) => [s.sj_hello_stats],
+    hasNot: (s) => [s.sj_hello_fees({ tracking: false, mode: "bank" })],
   },
   {
     name: "bench off, weekly sign-up",
@@ -266,7 +219,7 @@ const ROWS: Row[] = [
   {
     name: "attendance off (a Man of the Match and ratings group): no In or Out anywhere",
     patch: { attendance: false, bench: false, dropOutDeadline: MON_2100, listPublish: TUE_2000, rollingSquad: true, organisersPick: true },
-    has: (s) => [s.sj_hello_mom({ mom: true, ratings: true }), s.sj_hello_closer({ attendance: false })],
+    has: (s) => [s.sj_hello_friend, s.sj_hello_remind],
     hasNot: (s) => [
       s.sj_hello_whos_in,
       s.sj_hello_catch_up,
@@ -275,19 +228,22 @@ const ROWS: Row[] = [
       s.sj_hello_rolling({ deadline: `${s.wd_weekday({ dow: 1 })} 21:00` }),
       s.sj_hello_deadline({ day: s.wd_weekday({ dow: 1 }), time: "21:00" }),
       s.sj_hello_list({ day: s.wd_weekday({ dow: 2 }), time: "20:00" }),
-      s.sj_hello_closer({ attendance: true }),
     ],
   },
   {
     name: "squad from a pasted list: nobody is told to say In, no catch-up",
     patch: { squadFromList: true },
-    has: (s) => [s.sj_hello_teams],
+    has: (s) => [s.sj_hello_friend],
     hasNot: (s) => [s.sj_hello_whos_in, s.sj_hello_catch_up],
   },
   {
     name: "monthly squad: the monthly lines, no weekly sign-up, no catch-up, rolling ignored",
     patch: { squadMode: "monthly", rollingSquad: true, dropOutDeadline: MON_2100, listPublish: TUE_2000, paymentTracking: true },
-    has: (s) => [s.sj_hello_monthly, s.sj_hello_monthly_join({ organisersPick: false }), s.sj_hello_teams, s.sj_hello_stats],
+    has: (s) => [
+      s.sj_hello_monthly,
+      s.sj_hello_monthly_join({ organisersPick: false }),
+      s.sj_hello_month_list({ organiser: "Ali" }),
+    ],
     hasNot: (s) => [
       s.sj_hello_whos_in,
       s.sj_hello_catch_up,
@@ -296,8 +252,7 @@ const ROWS: Row[] = [
       s.sj_hello_rolling({ deadline: `${s.wd_weekday({ dow: 1 })} 21:00` }),
       s.sj_hello_deadline({ day: s.wd_weekday({ dow: 1 }), time: "21:00" }),
       s.sj_hello_list({ day: s.wd_weekday({ dow: 2 }), time: "20:00" }),
-      s.sj_hello_fees({ tracking: true, mode: "off" }),
-      s.sj_hello_fees({ tracking: false, mode: "off" }),
+      s.sj_hello_fees({ tracking: true, mode: "card" }),
     ],
   },
   {
@@ -305,6 +260,12 @@ const ROWS: Row[] = [
     patch: { squadMode: "monthly", organisersPick: true },
     has: (s) => [s.sj_hello_monthly, s.sj_hello_monthly_join({ organisersPick: true })],
     hasNot: (s) => [s.sj_hello_monthly_join({ organisersPick: false }), s.sj_hello_bench_organiser],
+  },
+  {
+    name: "organisers mode, weekly sign-up: the organisers share the list and teams",
+    patch: { organisersAnnounce: true, listPublish: TUE_2000 },
+    has: (s) => [s.sj_hello_organisers_share({ list: true, teams: true })],
+    hasNot: (s) => [s.sj_hello_list({ day: s.wd_weekday({ dow: 2 }), time: "20:00" })],
   },
 ];
 
@@ -320,7 +281,11 @@ describe("buildGroupHello: each setting is described only when it is on", () => 
         for (const line of row.hasNot(s)) expect(said, `must not say: ${line}`).not.toContain(line);
         // Shape: an opener, the feature lines, the closer, never a blank line doubled.
         expect(out.startsWith(s.sj_hello_opener({ organiser: "Ali" }))).toBe(true);
-        expect(out.endsWith(s.sj_hello_closer({ attendance: row.patch.attendance !== false }))).toBe(true);
+        expect(out.endsWith(s.sj_hello_closer)).toBe(true);
+        // THE FIXED BLOCK, whatever the settings (Kemal, 2026-11-02).
+        expect(out).toContain(`${s.sj_hello_friend}\n${s.sj_hello_remind}\n\n${s.sj_hello_features}\n\n`);
+        // The month's list is a monthly club's line only.
+        if (row.patch.squadMode !== "monthly") expect(out).not.toContain(s.sj_hello_month_list({ organiser: "Ali" }));
         expect(out).not.toMatch(/\n\n\n/);
         expect(out).not.toMatch(/[—–]/);
         expect(out).not.toMatch(/undefined|null|\[object/);
@@ -512,9 +477,8 @@ describe("buildGroupHello: a club whose organisers share the list and teams", ()
 
   for (const lang of LANGS) {
     const s = TABLES[lang] as typeof en;
-    it(`${lang}: never offers teams on a tag, and says the organisers share the list and teams`, () => {
+    it(`${lang}: says the organisers share the list and teams`, () => {
       const out = hello(lang, FNF);
-      expect(out).not.toContain(s.sj_hello_teams);
       expect(out).toContain(s.sj_hello_organisers_share({ list: true, teams: true }));
     });
     it(`${lang}: the first game is the organisers' pick, not "say In and go on the bench"`, () => {
@@ -540,7 +504,6 @@ describe("buildGroupHello: a club whose organisers share the list and teams", ()
     it(`${lang}: a rolling club with a squad to carry keeps its standing lines`, () => {
       const out = hello(lang, FNF, { carry: true });
       expect(out).toContain(s.sj_hello_rolling({ deadline: null }));
-      expect(out).not.toContain(s.sj_hello_teams);
     });
     it(`${lang}: a rolling first-come club in organisers mode is still asked for an In (it takes a place)`, () => {
       const out = hello(lang, { organisersAnnounce: true, rollingSquad: true }, { carry: false });
@@ -550,4 +513,93 @@ describe("buildGroupHello: a club whose organisers share the list and teams", ()
       expect(hello(lang, { organisersAnnounce: false }, { catchUp: false })).toBe(s.sj_group_hello({ organiser: "Ali" }));
     });
   }
+});
+
+/**
+ * THE FIXED BLOCK AND THE OPENING (Kemal, 2026-11-02). Every club's hello
+ * carries the same features block verbatim; only the opening varies: the
+ * organiser, the game day, the squad lines, a weekly club's pay links, and
+ * for a monthly club the organiser's month's list.
+ */
+describe("buildGroupHello: the approved welcome", () => {
+  /** The welcome Kemal approved and posted in a monthly club's group
+   *  (organiser Davide, Monday games), with his later wording of the pool
+   *  line and the partner clubs line added after it. */
+  const APPROVED = [
+    "👋 Hi everyone, I'm *MatchTime*. Davide has set me up to help run the Monday games. Here's what I do, right here in WhatsApp:",
+    "",
+    "📋 *Monthly squad:* regulars sign up and pay for the whole month, and are in every game of it. Can't make one? Say *Out*.",
+    "✅ *Not a regular?* When a place is open, say *In* to take it. You pay for that game only.",
+    "👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them.",
+    `⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.`,
+    "",
+    "⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10. Your scores stay private and you can't rate yourself. I combine them into a form rating for each player, updated every week.",
+    "⚖️ *Fair teams:* I use those ratings to pick two balanced sides, so the games stay close. The more people rate, the fairer the teams.",
+    "🏆 *Man of the Match:* after the final whistle I post a quick vote in the group. Tap who you thought was the standout player and I'll announce the winner. Wins add up over the season.",
+    "📊 *Your profile:* everyone gets their own page with their games, ratings and MoM awards. Ask me any stats question too, for example *@Match Time my stats*.",
+    "🤝 *More games:* if you fancy playing on other nights, you can join the local MatchTime player pool and get offered spare places in nearby games. It's up to you whether to join. Here's the link to register: matchtime.ai/play",
+    "🌍 *Partner clubs:* when we're short, nearby partner clubs can lend us players, and you can get extra games helping them out.",
+    "",
+    "Davide will post the month's list as usual.",
+    "",
+    "I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*",
+  ].join("\n");
+
+  it("en: the monthly club on its settings reads exactly as approved", () => {
+    const out = buildGroupHello({
+      organiser: "Davide",
+      lang: "en",
+      gameDay: 1,
+      settings: { ...DEFAULT_HELLO_SETTINGS, squadMode: "monthly" },
+    });
+    expect(out).toBe(APPROVED);
+  });
+
+  it("the features block is the same whatever the club has switched off", () => {
+    for (const lang of LANGS) {
+      const s = TABLES[lang];
+      const off = hello(lang, { reminders: false, teamBalancing: false, momVoting: false, playerRating: false, statsQa: false });
+      expect(off).toBe(hello(lang));
+      expect(off).toContain(s.sj_hello_features);
+    }
+  });
+
+  it("the game day: one day names it, none falls back to this group's games", () => {
+    const named = (gameDay: number | null, organiser: string | null = "Ali") =>
+      buildGroupHello({ organiser, lang: "en", gameDay, settings: DEFAULT_HELLO_SETTINGS }).split("\n")[0];
+    expect(named(1)).toContain("Ali has set me up to help run the Monday games.");
+    expect(named(null)).toContain("Ali has set me up to help run this group's games.");
+    expect(named(5, null)).toContain("I'm here to help run the Friday games.");
+    expect(named(null, null)).toContain("I'm here to help run this group's games.");
+    const trLine = buildGroupHello({ organiser: "Ali", lang: "tr", gameDay: 1, settings: DEFAULT_HELLO_SETTINGS }).split("\n")[0];
+    expect(trLine).toContain("Ali beni Pazartesi maçlarını düzenlemeye yardım etmem için kurdu.");
+  });
+
+  it("the month's list line is a monthly club's, and only with an organiser's name", () => {
+    for (const lang of LANGS) {
+      const s = TABLES[lang];
+      expect(hello(lang, { squadMode: "monthly" })).toContain(`\n\n${s.sj_hello_month_list({ organiser: "Ali" })}\n\n`);
+      expect(hello(lang, { squadMode: "monthly" }, { organiser: null })).not.toContain(s.sj_hello_month_list({ organiser: "Ali" }));
+      expect(hello(lang)).not.toContain(s.sj_hello_month_list({ organiser: "Ali" }));
+    }
+  });
+
+  it("a weekly club's fees line sits in the opening, before the fixed block; none without pay links", () => {
+    for (const lang of LANGS) {
+      const s = TABLES[lang];
+      const out = hello(lang, { payLinks: "card", paymentTracking: true });
+      expect(out).toContain(`${s.sj_hello_fees({ tracking: true, mode: "card" })}\n${s.sj_hello_friend}`);
+      expect(hello(lang, { paymentTracking: true })).not.toMatch(/💷/);
+    }
+  });
+
+  it("the house rules hold on the fixed block", () => {
+    for (const lang of LANGS) {
+      const s = TABLES[lang];
+      for (const text of [s.sj_hello_friend, s.sj_hello_features]) {
+        expect(text).not.toMatch(/[—–]/);
+        expect(text).not.toMatch(/waiting list|bekleme listesi/i);
+      }
+    }
+  });
 });

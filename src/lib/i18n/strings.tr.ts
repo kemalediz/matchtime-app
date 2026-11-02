@@ -967,6 +967,7 @@ export const tr: Strings = {
     paymentCollection?: boolean;
     organisersAnnounce?: boolean;
     feesNudge?: boolean;
+    profileUrl?: string;
   }): string => {
     const lines: string[] = [];
     if (f.attendance) {
@@ -996,6 +997,11 @@ export const tr: Strings = {
     lines.push(`🤐 Diğer zamanlarda sessizim, sohbet ve şaka serbest, araya girmem.`);
     if (f.momVoting) lines.push(`🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.`);
     if (f.playerRating) lines.push(`⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.`);
+    if (f.profileUrl) {
+      const parts = ["maçlarınızı", ...(f.playerRating ? ["puanlarınızı"] : []), ...(f.momVoting ? ["maçın oyuncusu ödüllerinizi"] : [])];
+      const what = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} ve ${parts[parts.length - 1]}` : parts[0];
+      lines.push(`📊 Kendi profil sayfanız ${what} gösterir: ${f.profileUrl}`);
+    }
     if (f.reminders) lines.push(`⏰ Hatırlatma mı lazım? Beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.`);
     if (f.paymentCollection) lines.push(`💷 Her maçtan sonra size özelden maç ücreti için bir ödeme bağlantısı gönderirim.`);
     if (f.paymentTracking) lines.push(`💳 Kimin *ödediğini* takip ederim.`);
@@ -2052,15 +2058,18 @@ export const tr: Strings = {
 
   // ── Self-join slice 7: the decision ──
   sj_group_hello: (p) =>
-    `👋 Herkese merhaba, ben *MatchTime*. ${p.organiser ? `${p.organiser} beni bu grubun maçlarını düzenlemem için kurdu.` : "Bu grubun maçlarını düzenlemek için buradayım."} ` +
+    `👋 Herkese merhaba, ben *MatchTime*. ${p.organiser ? `${p.organiser} beni bu grubun maçlarını düzenlemeye yardım etmem için kurdu.` : "Bu grubun maçlarını düzenlemeye yardım etmek için buradayım."} ` +
     `Burada, WhatsApp'ta şunları yaparım:\n\n` +
     `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.\n` +
     `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.\n` +
-    `⏰ *Hatırlatma:* beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.\n` +
-    `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.\n` +
-    `⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.\n` +
-    `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.\n` +
-    `💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.\n\n` +
+    `👥 *Arkadaş getirmek:* bir arkadaşınızın geleceğini yazın, ona göndermeniz için size özelden bir bağlantı yollarım.\n` +
+    `⏰ *Hatırlatma:* beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.\n\n` +
+    `⭐ *Puanlar:* her maçın ertesi sabahı oynayan herkese, diğerlerini 10 üzerinden puanlaması için özelden bir bağlantı gönderirim. Puanlarınız gizli kalır ve kendinizi puanlayamazsınız. Bunları her oyuncu için her hafta güncellenen bir form puanında birleştiririm.\n` +
+    `⚖️ *Dengeli takımlar:* bu puanlarla iki dengeli takım kurarım, böylece maçlar çekişmeli geçer. Ne kadar çok kişi puan verirse takımlar o kadar dengeli olur.\n` +
+    `🏆 *Maçın oyuncusu:* maç bitince gruba kısa bir oylama gönderirim. En iyi oynayanı seçin, kazananı ben duyururum. Kazanılanlar sezon boyunca birikir.\n` +
+    `📊 *Profiliniz:* herkesin maçlarını, puanlarını ve maçın oyuncusu ödüllerini gösteren kendi sayfası olur. İstatistik sorularınızı da bana sorun, örneğin *@Match Time istatistiklerim*.\n` +
+    `🤝 *Daha çok maç:* başka akşamlarda da oynamak isterseniz yerel MatchTime oyuncu havuzuna katılıp yakındaki maçlarda boş yer teklifleri alabilirsiniz. Katılıp katılmamak size kalmış. Kayıt bağlantısı: matchtime.ai/play\n` +
+    `🌍 *Partner kulüpler:* eksik kaldığımızda yakındaki partner kulüpler bize oyuncu verebilir, siz de onlara yardım ederek fazladan maç oynayabilirsiniz.\n\n` +
     `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`,
 
   // ════ BEGIN settings-aware group hello (go-live slice S2, 2026-10-12) ════
@@ -2068,9 +2077,13 @@ export const tr: Strings = {
   // hello from. On default settings, without `sj_hello_catch_up`, the
   // result equals `sj_group_hello` above byte for byte
   // (`group-hello.test.ts` pins it): change one and you must change the other.
-  sj_hello_opener: (p) =>
-    `👋 Herkese merhaba, ben *MatchTime*. ${p.organiser ? `${p.organiser} beni bu grubun maçlarını düzenlemem için kurdu.` : "Bu grubun maçlarını düzenlemek için buradayım."} ` +
-    `Burada, WhatsApp'ta şunları yaparım:`,
+  sj_hello_opener: (p) => {
+    const games = p.day ? `${p.day} maçlarını` : "bu grubun maçlarını";
+    return (
+      `👋 Herkese merhaba, ben *MatchTime*. ${p.organiser ? `${p.organiser} beni ${games} düzenlemeye yardım etmem için kurdu.` : `${p.day ? `${p.day} maçlarını` : "Bu grubun maçlarını"} düzenlemeye yardım etmek için buradayım.`} ` +
+      `Burada, WhatsApp'ta şunları yaparım:`
+    );
+  },
   sj_hello_whos_in: `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.`,
   sj_hello_rolling: (p) =>
     `🔁 *Her hafta aynı kadro:* geçen maçta oynadıysanız bir sonrakinde de kadrodasınız. Gelemeyecekseniz${p.deadline ? ` *${p.deadline}* saatine kadar` : ""} *YOKUM* yazmanız yeter.`,
@@ -2105,28 +2118,21 @@ export const tr: Strings = {
   sj_hello_bench: `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.`,
   sj_hello_bench_organiser: `🪑 *Yedekler:* *VARIM* yazanlar yedeğe yazılır, boşalan her yere kimin gireceğini organizatörler seçer.`,
   sj_hello_remind: `⏰ *Hatırlatma:* beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.`,
-  sj_hello_teams: `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.`,
-  sj_hello_mom: (p) =>
-    p.mom && p.ratings
-      ? `⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.`
-      : p.mom
-        ? `⭐ *Maçın oyuncusu* her maçtan sonra.`
-        : `⭐ *Oyuncu puanları* her maçtan sonra.`,
-  sj_hello_stats: `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.`,
+  sj_hello_friend: `👥 *Arkadaş getirmek:* bir arkadaşınızın geleceğini yazın, ona göndermeniz için size özelden bir bağlantı yollarım.`,
+  sj_hello_features:
+    `⭐ *Puanlar:* her maçın ertesi sabahı oynayan herkese, diğerlerini 10 üzerinden puanlaması için özelden bir bağlantı gönderirim. Puanlarınız gizli kalır ve kendinizi puanlayamazsınız. Bunları her oyuncu için her hafta güncellenen bir form puanında birleştiririm.\n` +
+    `⚖️ *Dengeli takımlar:* bu puanlarla iki dengeli takım kurarım, böylece maçlar çekişmeli geçer. Ne kadar çok kişi puan verirse takımlar o kadar dengeli olur.\n` +
+    `🏆 *Maçın oyuncusu:* maç bitince gruba kısa bir oylama gönderirim. En iyi oynayanı seçin, kazananı ben duyururum. Kazanılanlar sezon boyunca birikir.\n` +
+    `📊 *Profiliniz:* herkesin maçlarını, puanlarını ve maçın oyuncusu ödüllerini gösteren kendi sayfası olur. İstatistik sorularınızı da bana sorun, örneğin *@Match Time istatistiklerim*.\n` +
+    `🤝 *Daha çok maç:* başka akşamlarda da oynamak isterseniz yerel MatchTime oyuncu havuzuna katılıp yakındaki maçlarda boş yer teklifleri alabilirsiniz. Katılıp katılmamak size kalmış. Kayıt bağlantısı: matchtime.ai/play\n` +
+    `🌍 *Partner kulüpler:* eksik kaldığımızda yakındaki partner kulüpler bize oyuncu verebilir, siz de onlara yardım ederek fazladan maç oynayabilirsiniz.`,
+  sj_hello_month_list: (p) => `${p.organiser} ayın listesini her zamanki gibi paylaşacak.`,
   sj_hello_fees: (p) => {
     const how = p.mode === "card" ? "kartla" : p.mode === "bank" ? "banka ile" : "kart ya da banka ile";
-    if (p.mode !== "off") {
-      return `💷 *Maç ücretleri:* size gönderdiğim bağlantıyla ${how} ödeyebilirsiniz.${p.tracking ? " Kimin ödediğini takip eder, ödemeyenlere hatırlatırım." : ""}`;
-    }
-    return p.tracking
-      ? `💷 *Maç ücretleri:* kimin ödediğini takip eder, ödemeyenlere hatırlatırım.`
-      : `💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.`;
+    return `💷 *Maç ücretleri:* size gönderdiğim bağlantıyla ${how} ödeyebilirsiniz.${p.tracking ? " Kimin ödediğini takip eder, ödemeyenlere hatırlatırım." : ""}`;
   },
   sj_hello_catch_up: `Sonraki maç için zaten VARIM dediniz mi? Listeye yazabilmem için bir kez daha yazın.`,
-  sj_hello_closer: (p) =>
-    p.attendance
-      ? `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`
-      : `Sohbet sırasında sessiz kalırım, sadece etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`,
+  sj_hello_closer: `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`,
   // ════ END settings-aware group hello ════
 
   // ════ BEGIN going live: replies to GO (go-live slice S4, 2026-10-12) ════

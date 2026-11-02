@@ -27,6 +27,11 @@
  * the website is not "the squad")? Every other club
  * gets `false` with no read; the builder only looks at it for a rolling
  * club.
+ *
+ * THE GAME DAY (2026-11-02). "help run the Monday games": the weekday of
+ * the club's active weekly games when they all share one, else null
+ * ("this group's games"). Read through the same client; a client without
+ * the read, or a read that fails, gives null.
  */
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "@/lib/db";
@@ -88,6 +93,26 @@ export interface HelloReadClient {
   /** Read only when a carried player has no phone. Optional so a double
    *  without it reads as "no admin added anybody". */
   attendanceEvent?: AdminAddedReadClient["attendanceEvent"];
+  /** The game day. Optional: absent reads as no single day. */
+  activity?: {
+    findMany(args: {
+      where: { orgId: string; isActive: true };
+      select: { dayOfWeek: true };
+    }): Promise<Array<{ dayOfWeek: number }>>;
+  };
+}
+
+/** The club's one weekly game day (0 = Sunday), or null for several or none. */
+export async function loadHelloGameDay(orgId: string, client: HelloReadClient): Promise<number | null> {
+  if (!client.activity) return null;
+  try {
+    const rows = await client.activity.findMany({ where: { orgId, isActive: true }, select: { dayOfWeek: true } });
+    const days = new Set(rows.map((r) => r.dayOfWeek));
+    return days.size === 1 ? [...days][0] : null;
+  } catch (err) {
+    console.error(`[group-hello] game day for ${orgId} unread:`, err instanceof Error ? err.message : "failed");
+    return null;
+  }
 }
 
 /**
@@ -189,9 +214,11 @@ export async function loadHelloInput(
   }
   const user = userId ? await client.user.findUnique({ where: { id: userId }, select: { name: true } }) : null;
   const input = helloInputFromOrg(row, user?.name ?? null);
+  const gameDay = await loadHelloGameDay(orgId, client);
   const rolling = input.settings.attendance && input.settings.rollingSquad;
   return {
     ...input,
+    gameDay,
     hasSquadToCarry: rolling ? await loadHasSquadToCarry(orgId, client, opts.now ?? new Date()) : false,
   };
 }

@@ -54,7 +54,8 @@ export function buildHowToUseMe(
   },
   lang: Lang | string = "en",
 ): string {
-  return t(lang).onbHowToUseMe(features);
+  // Every member has a profile page (2026-11-02), so the link is always given.
+  return t(lang).onbHowToUseMe({ ...features, profileUrl: appUrl("/profile") });
 }
 
 // ── Help ("@Match Time help", "how do I turn on the pool?") ─────────────

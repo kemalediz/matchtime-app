@@ -1120,6 +1120,8 @@ export const en = {
      *  fees?" pointer. False in bare help for the players' group and a
      *  player's DM (FNF, 2026-10-15): it is for an organiser. Absent: on. */
     feesNudge?: boolean;
+    /** The player's own profile page (/profile, every member). Absent: no line. */
+    profileUrl?: string;
   }): string => {
     const lines: string[] = [];
     if (f.attendance) {
@@ -1156,6 +1158,11 @@ export const en = {
     lines.push(`🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.`);
     if (f.momVoting) lines.push(`🏆 After the game I'll run a quick *Man of the Match* vote.`);
     if (f.playerRating) lines.push(`⭐ I'll DM you a one-tap *rating* link after the match.`);
+    if (f.profileUrl) {
+      const parts = ["games", ...(f.playerRating ? ["ratings"] : []), ...(f.momVoting ? ["Man of the Match awards"] : [])];
+      const what = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+      lines.push(`📊 Your own profile page shows your ${what}: ${f.profileUrl}`);
+    }
     // Reworded 2026-09-30: "and I'll nudge you" left people guessing what
     // the command was for. It is a personal DM at the time you name.
     if (f.reminders) lines.push(`⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.`);
@@ -2665,17 +2672,22 @@ export const en = {
    *  (2026-10-01: the full feature intro, modelled on `onbIntro`, without
    *  its consent and setup questions: the club is already approved).
    *  Static apart from the organiser's first name, like `onbIntro`.
-   *  Payments are only ever something the organiser CAN switch on. */
+   *  Since 2026-11-02 the welcome Kemal approved: the squad lines, then
+   *  the fixed block every club gets (`sj_hello_friend`, `sj_hello_remind`,
+   *  `sj_hello_features`). No fees line: pay links are off by default. */
   sj_group_hello: (p: { organiser: string | null }): string =>
-    `👋 Hi everyone, I'm *MatchTime*. ${p.organiser ? `${p.organiser} has set me up to run this group's games.` : "I'm here to run this group's games."} ` +
+    `👋 Hi everyone, I'm *MatchTime*. ${p.organiser ? `${p.organiser} has set me up to help run this group's games.` : "I'm here to help run this group's games."} ` +
     `Here's what I do, right here in WhatsApp:\n\n` +
     `✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n` +
     `🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n` +
-    `⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.\n` +
-    `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.\n` +
-    `⭐ *Man of the Match and ratings* after every game.\n` +
-    `📊 *Stats:* ask me anything, and everyone gets their own stats page.\n` +
-    `💷 *Match fees:* your organiser can switch on card or bank pay links.\n\n` +
+    `👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them.\n` +
+    `⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.\n\n` +
+    `⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10. Your scores stay private and you can't rate yourself. I combine them into a form rating for each player, updated every week.\n` +
+    `⚖️ *Fair teams:* I use those ratings to pick two balanced sides, so the games stay close. The more people rate, the fairer the teams.\n` +
+    `🏆 *Man of the Match:* after the final whistle I post a quick vote in the group. Tap who you thought was the standout player and I'll announce the winner. Wins add up over the season.\n` +
+    `📊 *Your profile:* everyone gets their own page with their games, ratings and MoM awards. Ask me any stats question too, for example *@Match Time my stats*.\n` +
+    `🤝 *More games:* if you fancy playing on other nights, you can join the local MatchTime player pool and get offered spare places in nearby games. It's up to you whether to join. Here's the link to register: matchtime.ai/play\n` +
+    `🌍 *Partner clubs:* when we're short, nearby partner clubs can lend us players, and you can get extra games helping them out.\n\n` +
     `I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*`,
 
   // ════ BEGIN settings-aware group hello (go-live slice S2, 2026-10-12) ════
@@ -2685,9 +2697,15 @@ export const en = {
   // composed text equals `sj_group_hello` above byte for byte
   // (`group-hello.test.ts` pins it): change one and you must change the
   // other. Deterministic, never shown to a model. No em or en dashes.
-  sj_hello_opener: (p: { organiser: string | null }): string =>
-    `👋 Hi everyone, I'm *MatchTime*. ${p.organiser ? `${p.organiser} has set me up to run this group's games.` : "I'm here to run this group's games."} ` +
-    `Here's what I do, right here in WhatsApp:`,
+  /** `day`: the club's one game day ("Monday"), or null when it has
+   *  several or none ("this group's games"). */
+  sj_hello_opener: (p: { organiser: string | null; day?: string | null }): string => {
+    const games = p.day ? `the ${p.day} games` : "this group's games";
+    return (
+      `👋 Hi everyone, I'm *MatchTime*. ${p.organiser ? `${p.organiser} has set me up to help run ${games}.` : `I'm here to help run ${games}.`} ` +
+      `Here's what I do, right here in WhatsApp:`
+    );
+  },
   /** A club that signs up each week. */
   sj_hello_whos_in: `✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.`,
   /** Rolling squad: nobody is told to say In each week. `deadline` is
@@ -2744,34 +2762,29 @@ export const en = {
   /** The organisers pick: MatchTime never fills a place by itself. */
   sj_hello_bench_organiser: `🪑 *The bench:* say *In* to go on the bench, and the organisers pick who takes each open place.`,
   sj_hello_remind: `⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.`,
-  sj_hello_teams: `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.`,
-  /** Never called with both off: the line is left out then. */
-  sj_hello_mom: (p: { mom: boolean; ratings: boolean }): string =>
-    p.mom && p.ratings
-      ? `⭐ *Man of the Match and ratings* after every game.`
-      : p.mom
-        ? `⭐ *Man of the Match* after every game.`
-        : `⭐ *Player ratings* after every game.`,
-  sj_hello_stats: `📊 *Stats:* ask me anything, and everyone gets their own stats page.`,
-  /** With nothing on, payments are only something the organiser CAN
-   *  switch on. `mode` is the pay links: off, or the ways a link can be paid. */
-  sj_hello_fees: (p: { tracking: boolean; mode: "off" | "card" | "bank" | "card-and-bank" }): string => {
+  /** The friend link (friend-link/rules.ts). Part of the FIXED block
+   *  every club's hello carries after its squad lines (Kemal, 2026-11-02). */
+  sj_hello_friend: `👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them.`,
+  /** The second paragraph of the FIXED block, the same in every club's
+   *  hello (Kemal approved the wording, 2026-11-02; no per-feature gating). */
+  sj_hello_features:
+    `⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10. Your scores stay private and you can't rate yourself. I combine them into a form rating for each player, updated every week.\n` +
+    `⚖️ *Fair teams:* I use those ratings to pick two balanced sides, so the games stay close. The more people rate, the fairer the teams.\n` +
+    `🏆 *Man of the Match:* after the final whistle I post a quick vote in the group. Tap who you thought was the standout player and I'll announce the winner. Wins add up over the season.\n` +
+    `📊 *Your profile:* everyone gets their own page with their games, ratings and MoM awards. Ask me any stats question too, for example *@Match Time my stats*.\n` +
+    `🤝 *More games:* if you fancy playing on other nights, you can join the local MatchTime player pool and get offered spare places in nearby games. It's up to you whether to join. Here's the link to register: matchtime.ai/play\n` +
+    `🌍 *Partner clubs:* when we're short, nearby partner clubs can lend us players, and you can get extra games helping them out.`,
+  /** A monthly club with an organiser's name: the month's list is theirs. */
+  sj_hello_month_list: (p: { organiser: string }): string => `${p.organiser} will post the month's list as usual.`,
+  /** A weekly club whose pay links are on. `mode`: the ways a link can be paid. */
+  sj_hello_fees: (p: { tracking: boolean; mode: "card" | "bank" | "card-and-bank" }): string => {
     const how = p.mode === "card" ? "by card" : p.mode === "bank" ? "by bank" : "by card or bank";
-    if (p.mode !== "off") {
-      return `💷 *Match fees:* you can pay ${how} through a link I send you.${p.tracking ? " I keep track of who has paid and remind anyone who hasn't." : ""}`;
-    }
-    return p.tracking
-      ? `💷 *Match fees:* I keep track of who has paid and remind anyone who hasn't.`
-      : `💷 *Match fees:* your organiser can switch on card or bank pay links.`;
+    return `💷 *Match fees:* you can pay ${how} through a link I send you.${p.tracking ? " I keep track of who has paid and remind anyone who hasn't." : ""}`;
   },
   /** Only for a club that signs up each week: MatchTime was not listening
    *  before it went live, so an earlier In is not on the list. */
   sj_hello_catch_up: `Already said In for the next game? Say it once more so I have you on the list.`,
-  /** `attendance` off: the club never says In or Out to MatchTime. */
-  sj_hello_closer: (p: { attendance: boolean }): string =>
-    p.attendance
-      ? `I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*`
-      : `I stay quiet during the banter and only reply when you tag me. Anything else, tag me: *@Match Time help*`,
+  sj_hello_closer: `I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*`,
   // ════ END settings-aware group hello ════
 
   // ════ BEGIN going live: replies to GO (go-live slice S4, 2026-10-12) ════

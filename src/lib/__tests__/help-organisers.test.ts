@@ -214,6 +214,7 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
         `🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.`,
         `🏆 After the game I'll run a quick *Man of the Match* vote.`,
         `⭐ I'll DM you a one-tap *rating* link after the match.`,
+        `📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile`,
         `⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.`,
         `💷 After each game I'll DM you a link to pay your match fee.`,
         `💳 I keep track of who's *paid*.`,
