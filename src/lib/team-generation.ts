@@ -53,6 +53,7 @@ import { formatLondon } from "./london-time";
 import { adjustRatings, type AdjusterMessage } from "./rating-adjuster";
 import { withOrgAiBudget } from "./ai-budget";
 import { computeClubRating } from "./player-rating";
+import { DEFAULT_SEED_RATING } from "./default-seed";
 import { resolveTeamLabels } from "./team-labels";
 import { loadPlayerNames } from "./player-display-name";
 import { sanitiseTeamNames } from "./message-analyzer";
@@ -141,7 +142,7 @@ export async function generateTeamsForMatch(
       id: a.userId,
       name: a.user.name ?? "Unknown",
       positions: pap?.positions ?? [],
-      rating: ratingOf.get(a.userId) ?? 5,
+      rating: ratingOf.get(a.userId) ?? DEFAULT_SEED_RATING,
       image: a.user.image,
     };
   });
@@ -334,22 +335,12 @@ async function runRatingAdjuster(args: {
  * number: `team-proposal.ts`). Same formula, same queries, as before.
  */
 export async function clubRatingsFor(orgId: string, userIds: string[]): Promise<Map<string, number>> {
-  // ONE aggregate per generation, not one per player. It is the same
-  // number for all fourteen of them, and fourteen identical aggregates
-  // per team sheet would be a bug even though each returns the right
-  // answer. Null when the club has never rated anybody.
-  const clubMean = await db.rating.aggregate({
-    _avg: { score: true },
-    where: { match: { activity: { orgId }, ...NOT_CANCELLED } },
-  });
-  const clubMeanRating = clubMean._avg.score ?? null;
-
-  // ONE query for the seeds, for the same reason. `Membership` is the
+  // ONE query for the seeds, not one per player. `Membership` is the
   // club-scoped seed since slice 1; `User.seedRating` still exists and
   // still holds the same values, but reading it here is what let one
   // club's opinion decide another club's draft. A squad member with no
-  // membership row for this org simply has no club seed and falls to
-  // the club mean, which is the right answer for a guest.
+  // membership row for this org simply has no club seed and is balanced
+  // on the default seed, 6 (`default-seed.ts`), like any unseeded member.
   const seedRows = await db.membership.findMany({
     where: { orgId, userId: { in: userIds } },
     select: { userId: true, seedRating: true },
@@ -370,11 +361,10 @@ export async function clubRatingsFor(orgId: string, userIds: string[]): Promise<
       });
       // Bayesian blend: the prior acts with weight 3, smoothly
       // dominated by peer ratings as more arrive. The prior is this
-      // club's seed, else this club's mean, else 5.0.
+      // club's seed, else the default seed (6).
       const { rating } = computeClubRating({
         clubSeedRating: clubSeedByUser.get(userId) ?? null,
         clubPeerRatings: ratings.map((r) => r.score),
-        clubMeanRating,
       });
       return [userId, rating] as const;
     }),
@@ -394,5 +384,5 @@ export async function matchRatingsFor(matchId: string, orgId: string, userIds: s
     db.ratingAdjustment.findMany({ where: { matchId, userId: { in: userIds } }, select: { userId: true, delta: true } }),
   ]);
   const delta = new Map(adjustments.map((a) => [a.userId, a.delta]));
-  return new Map(userIds.map((id) => [id, Math.max(1, Math.min(10, (base.get(id) ?? 5) + (delta.get(id) ?? 0)))]));
+  return new Map(userIds.map((id) => [id, Math.max(1, Math.min(10, (base.get(id) ?? DEFAULT_SEED_RATING) + (delta.get(id) ?? 0)))]));
 }

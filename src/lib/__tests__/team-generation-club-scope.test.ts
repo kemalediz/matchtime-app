@@ -20,9 +20,9 @@
  *      which is exactly what happened to Ehtisham (65 ratings, window
  *      truncated at 60, Lads rows pushing Sutton rows out).
  *   3. The seed comes from `Membership` for this org, not from `User`.
- *   4. The club mean is ONE aggregate per generation, not one per
- *      player. Fourteen identical aggregates per sheet is a bug even
- *      though it returns the right answer.
+ *   4. No club mean is read. Since 2026-11-02 a player with no seed
+ *      at this club is balanced on the default seed, 6, which is what
+ *      the admin's seed box shows for him.
  *
  * db, the LLM adjuster and next/cache are mocked. No DB, no network,
  * no model call.
@@ -116,7 +116,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { generateTeamsForMatch } from "@/lib/team-generation";
+import { clubRatingsFor, generateTeamsForMatch } from "@/lib/team-generation";
 
 function buildMatchRow() {
   return {
@@ -227,15 +227,18 @@ describe("the balancer's rating input is club-scoped", () => {
     expect(userFindArgs.length).toBe(0);
   });
 
-  it("the club mean is ONE aggregate per generation, not one per player", async () => {
+  it("reads no club mean: an unseeded player's prior is the default seed, 6 (Kemal, 2026-11-02)", async () => {
     await generateTeamsForMatch(MATCH_ID);
+    expect(ratingAggregateArgs.length).toBe(0);
+  });
 
-    expect(ratingAggregateArgs.length).toBe(1);
-    const where = ratingAggregateArgs[0].where as {
-      match?: { activity?: { orgId?: string } };
-    };
-    expect(where?.match?.activity?.orgId).toBe(ORG_ID);
-    expect(ratingAggregateArgs[0]._avg).toEqual({ score: true });
+  it("a player with no seed at this club is balanced on a prior of 6, not the club's average", async () => {
+    // Every player in the fixture has three 7s. "u-new" has no
+    // membership seed, so the prior is 6: (7x3 + 6x3) / 6 = 6.5. The
+    // club-mean prior this replaced gave (21 + 6.674x3) / 6 = 6.837.
+    const ratings = await clubRatingsFor(ORG_ID, ["u-new", "u-a"]);
+    expect(ratings.get("u-new")).toBeCloseTo(6.5, 10);
+    expect(ratings.get("u-a")).toBeCloseTo(8, 10);
   });
 
   it("the membership seeds are read in one query, not one per player", async () => {

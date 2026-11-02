@@ -506,6 +506,7 @@ const SAMPLES: SampleArgs = {
   rating_overall_label: null,
   rating_overall_note: null,
   rating_club_empty: null,
+  seed_default_hint: null,
   rating_seed_club_hint: null,
   rating_club_provisional: { count: 2 },
   rating_club_balance_note: null,

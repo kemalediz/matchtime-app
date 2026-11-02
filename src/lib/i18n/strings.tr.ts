@@ -1875,6 +1875,8 @@ export const tr: Strings = {
 
   rating_club_empty: "Bu kulüpte henüz puanın yok. İlk maçından sonra takım arkadaşların puan verecek.",
 
+  seed_default_hint: "Kimsenin puan vermediği bir oyuncu 6'dan, yani orta seviyeden başlar. Artırın ya da düşürün.",
+
   rating_seed_club_hint:
     "Başlangıç puanları sadece bu kulüp için geçerli. Başka bir yerde de oynayan bir oyuncunun orada ayrı bir puanı olur, buraya yazdığınız hiçbir şey onu değiştirmez.",
 
@@ -2897,7 +2899,7 @@ export const tr: Strings = {
     "Bu oyuncunun genelde oynadığı yer. MatchTime takımları kurarken her iki takıma dengeli bir karışım vermek için mevkileri kullanır. Emin değilseniz \"None\" seçin; sonra Oyuncular sayfasından ayarlayabilirsiniz.",
   info_fs_seed_title: "Başlangıç puanı",
   info_fs_seed_body:
-    "Bu oyuncu için bu kulüpteki başlangıç puanınız, 1 ile 10 arası. Oyuncular maçlardan sonra birbirine puan vermeye başlayana kadar takımlar buna göre dengelenir; sonra gerçek puanlar yavaş yavaş yerini alır. Oyuncular bunu hiç görmez.",
+    "Bu oyuncu için bu kulüpteki başlangıç puanınız, 1 ile 10 arası. Sohbette bir ipucu yoksa 6'dan, yani orta seviyeden başlar: artırın ya da düşürün. Oyuncular maçlardan sonra birbirine puan vermeye başlayana kadar takımlar buna göre dengelenir; sonra gerçek puanlar yavaş yavaş yerini alır. Oyuncular bunu hiç görmez.",
   info_fs_evidence_title: "MatchTime bunu neden tahmin etti",
   info_fs_evidence_body:
     "Tahminin dayandığı sohbet mesajı ya da özeti, böylece siz de değerlendirebilirsiniz. Bunu yalnızca yöneticiler görür.",
@@ -2933,7 +2935,7 @@ export const tr: Strings = {
     "Grupta henüz yazmamış birini ekleyin. Telefon numarasıyla MatchTime ona özel mesaj atabilir ve onu grupta tanıyabilir. Numara MatchTime'da zaten varsa, iki kez eklenmez, o oyuncu kullanılır.",
   info_pl_seed_title: "Başlangıç puanı",
   info_pl_seed_body:
-    "Bir oyuncu için bu kulüpteki başlangıç puanınız, 1 ile 10 arası. Oyuncular maçlardan sonra birbirine puan verene kadar takımlar buna göre dengelenir; sonra gerçek puanlar yavaş yavaş yerini alır. Oyuncular bunu hiç görmez ve aynı kişinin başka bir kulüpteki başlangıç puanı ayrıdır.",
+    "Bir oyuncu için bu kulüpteki başlangıç puanınız, 1 ile 10 arası. Kimsenin puan vermediği bir oyuncu 6'dan, yani orta seviyeden başlar: artırın ya da düşürün. Oyuncular maçlardan sonra birbirine puan verene kadar takımlar buna göre dengelenir; sonra gerçek puanlar yavaş yavaş yerini alır. Oyuncular bunu hiç görmez ve aynı kişinin başka bir kulüpteki başlangıç puanı ayrıdır.",
   info_pl_club_rating_title: "Kulüp puanı",
   info_pl_club_rating_body:
     "Bu kulübün oyuncularının maçlardan sonra verdiği puanların ortalaması, oyuncunun kendi sayfasında gördüğü sayının aynısı. Biri puan verene kadar Henüz puan yok yazar.",

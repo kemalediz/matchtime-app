@@ -28,6 +28,7 @@ import {
 import type { OnboardingAnalysis } from "@/lib/onboarding-analyzer";
 import { findPreset } from "@/lib/sport-presets";
 import { liveSportPresets } from "@/lib/pool/sports";
+import { SeedInput } from "@/components/seed-input";
 import {
   Upload,
   Users,
@@ -490,18 +491,10 @@ function PlayersStep(props: {
                 onChange={(e) => updatePlayer(i, { phone: e.target.value })}
                 className="h-9 px-2.5 rounded-md border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <input
-                type="number"
-                min={1}
-                max={10}
-                step={1}
-                value={p.seedRating ?? ""}
-                placeholder="1-10"
-                title="Seed rating (optional, 1-10)"
-                onChange={(e) => {
-                  const n = parseInt(e.target.value, 10);
-                  updatePlayer(i, { seedRating: isNaN(n) ? null : Math.min(10, Math.max(1, n)) });
-                }}
+              <SeedInput
+                seed={p.seedRating}
+                title="Seed rating (1-10). 6 is a medium player: move them up or down."
+                onSeedChange={(v) => updatePlayer(i, { seedRating: v })}
                 className="h-9 px-2 rounded-md border border-slate-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
@@ -722,16 +715,9 @@ function InsightsStep(props: {
                       )}
                       <div className="flex items-center gap-1.5">
                         <label className="text-xs text-slate-500">Rating</label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={10}
-                          step={1}
-                          value={rating ?? ""}
-                          onChange={(e) => {
-                            const n = parseInt(e.target.value, 10);
-                            updateRating(idx, isNaN(n) ? null : Math.min(10, Math.max(1, n)));
-                          }}
+                        <SeedInput
+                          seed={rating}
+                          onSeedChange={(v) => updateRating(idx, v)}
                           className="w-14 h-8 px-1.5 rounded-md border border-slate-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>

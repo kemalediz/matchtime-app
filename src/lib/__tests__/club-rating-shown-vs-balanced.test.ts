@@ -36,11 +36,8 @@
 import { describe, it, expect } from "vitest";
 import { computeClubRating, clubDisplayRating } from "@/lib/player-rating";
 import { t } from "@/lib/i18n/t";
+import { DEFAULT_SEED_RATING } from "@/lib/default-seed";
 
-/** Sutton Football Club's real mean, measured read-only against
- *  production on 2026-09-18 (design section 3.5). Used as the club mean
- *  throughout so the numbers below are the numbers Sutton would see. */
-const SUTTON_MEAN = 6.674;
 
 describe("the number shown is the raw mean of this club's ratings", () => {
   it("one rating: the player sees exactly what they were given", () => {
@@ -84,14 +81,13 @@ describe("the number shown is the raw mean of this club's ratings", () => {
 });
 
 describe("the balancer keeps the shrunk number, unchanged", () => {
-  it("one rating still shrinks three quarters of the way to the club mean", () => {
+  it("one rating still shrinks three quarters of the way to the prior (the default seed, 6, when unseeded)", () => {
     const b = computeClubRating({
       clubSeedRating: null,
       clubPeerRatings: [9],
-      clubMeanRating: SUTTON_MEAN,
     });
-    // (9 + 6.674 x 3) / (1 + 3)
-    expect(b.rating).toBeCloseTo((9 + SUTTON_MEAN * 3) / 4, 10);
+    // (9 + 6 x 3) / (1 + 3)
+    expect(b.rating).toBeCloseTo((9 + DEFAULT_SEED_RATING * 3) / 4, 10);
     expect(b.source).toBe("blended");
   });
 
@@ -99,9 +95,8 @@ describe("the balancer keeps the shrunk number, unchanged", () => {
     const b = computeClubRating({
       clubSeedRating: null,
       clubPeerRatings: [9, 8],
-      clubMeanRating: SUTTON_MEAN,
     });
-    expect(b.rating).toBeCloseTo((17 + SUTTON_MEAN * 3) / 5, 10);
+    expect(b.rating).toBeCloseTo((17 + DEFAULT_SEED_RATING * 3) / 5, 10);
   });
 
   it("many ratings barely move: the player's own scores dominate", () => {
@@ -109,9 +104,8 @@ describe("the balancer keeps the shrunk number, unchanged", () => {
     const b = computeClubRating({
       clubSeedRating: null,
       clubPeerRatings: scores,
-      clubMeanRating: SUTTON_MEAN,
     });
-    expect(b.rating).toBeCloseTo((90 + SUTTON_MEAN * 3) / 15, 10);
+    expect(b.rating).toBeCloseTo((90 + DEFAULT_SEED_RATING * 3) / 15, 10);
     expect(b.source).toBe("peer");
   });
 });
@@ -121,10 +115,11 @@ describe("the balancer keeps the shrunk number, unchanged", () => {
  *
  * "it says I'm 9, why am I on the weaker team" is the question this
  * change invites, and these are the two numbers behind it. One rating
- * of 9 at a club whose mean is 6.674: the player is shown 9.0 and is
- * balanced at roughly 7.3.
+ * of 9 for an unseeded player: he is shown 9.0 and is balanced at 6.75
+ * (roughly 7.3 until 2026-11-02, when the prior was Sutton's 6.674 club
+ * mean; it is the default seed, 6, now).
  */
-describe("one rating of 9 at a club averaging 6.674", () => {
+describe("one rating of 9 for an unseeded player", () => {
   const clubPeerRatings = [9];
 
   it("displays 9.0", () => {
@@ -133,15 +128,13 @@ describe("one rating of 9 at a club averaging 6.674", () => {
     expect(shown!.toFixed(1)).toBe("9.0");
   });
 
-  it("balances at roughly 7.3", () => {
+  it("balances at 6.75", () => {
     const b = computeClubRating({
       clubSeedRating: null,
       clubPeerRatings,
-      clubMeanRating: SUTTON_MEAN,
     });
-    // (9 + 20.022) / 4 = 7.2555
-    expect(b.rating).toBeCloseTo(7.2555, 4);
-    expect(b.rating.toFixed(1)).toBe("7.3");
+    // (9 + 18) / 4 = 6.75
+    expect(b.rating).toBeCloseTo(6.75, 10);
   });
 
   it("and the two are DIFFERENT, which is the decision", () => {
@@ -149,10 +142,9 @@ describe("one rating of 9 at a club averaging 6.674", () => {
     const balanced = computeClubRating({
       clubSeedRating: null,
       clubPeerRatings,
-      clubMeanRating: SUTTON_MEAN,
     }).rating;
     expect(shown).toBeGreaterThan(balanced);
-    expect(shown - balanced).toBeCloseTo(1.7445, 4);
+    expect(shown - balanced).toBeCloseTo(2.25, 10);
   });
 });
 
@@ -188,14 +180,13 @@ describe("a player with no club ratings", () => {
     expect(clubDisplayRating({ clubSeedRating: null, clubPeerRatings: [] })).toBeNull();
   });
 
-  it("but the balancer still gets the club mean out of the same inputs", () => {
+  it("but the balancer still gets a number out of the same inputs: the default seed, 6", () => {
     const b = computeClubRating({
       clubSeedRating: null,
       clubPeerRatings: [],
-      clubMeanRating: SUTTON_MEAN,
     });
-    expect(b.rating).toBeCloseTo(SUTTON_MEAN, 10);
-    expect(b.source).toBe("club-average");
+    expect(b.rating).toBe(DEFAULT_SEED_RATING);
+    expect(b.source).toBe("default-seed");
   });
 
   it("seeded but unrated: nothing to show either, because a seed is not a rating", () => {
@@ -206,7 +197,6 @@ describe("a player with no club ratings", () => {
     const b = computeClubRating({
       clubSeedRating: 7.5,
       clubPeerRatings: [],
-      clubMeanRating: SUTTON_MEAN,
     });
     expect(b.rating).toBe(7.5);
     expect(b.source).toBe("seed");
@@ -217,7 +207,7 @@ describe("a player with no club ratings", () => {
     // The balancer still reads the 3. A weak week-one guess is still the
     // best information the draft has.
     expect(
-      computeClubRating({ clubSeedRating: 3, clubPeerRatings: [], clubMeanRating: SUTTON_MEAN }).rating,
+      computeClubRating({ clubSeedRating: 3, clubPeerRatings: [] }).rating,
     ).toBe(3);
   });
 
@@ -226,10 +216,10 @@ describe("a player with no club ratings", () => {
     expect(clubDisplayRating({ clubSeedRating: -4, clubPeerRatings: [] })).toBeNull();
     // The balancer clamps it, as it always has.
     expect(
-      computeClubRating({ clubSeedRating: 99, clubPeerRatings: [], clubMeanRating: SUTTON_MEAN }).rating,
+      computeClubRating({ clubSeedRating: 99, clubPeerRatings: [] }).rating,
     ).toBe(10);
     expect(
-      computeClubRating({ clubSeedRating: -4, clubPeerRatings: [], clubMeanRating: SUTTON_MEAN }).rating,
+      computeClubRating({ clubSeedRating: -4, clubPeerRatings: [] }).rating,
     ).toBe(1);
   });
 
