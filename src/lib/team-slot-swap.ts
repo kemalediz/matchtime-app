@@ -109,20 +109,11 @@
  * cannot diverge; `__tests__/team-slot-swap.test.ts` asserts that over
  * the whole 8×8 matrix rather than trusting the reading.
  *
- * ── THE INTERACTION CONTRACT: TAG YES, ADMIN SEAT NO ─────────────────
+ * ── NO ADMIN SEAT ────────────────────────────────────────────────────
  *
- * The caller already requires an `@Match Time` tag for both swap peels
- * and that does not change. No ADMIN gate is added, and the argument is
- * the same one `interaction-contract.ts` makes for its own lines:
- *
- *   - `ADMIN_REPORTED_OUT_IS_TAG_FREE` waives a tag for an admin's
- *     third-party OUT because it RECORDS A FACT the player reported.
- *   - `registerForEntryRequiresTag` keeps the tag on BENCH because a
- *     demote "leaves the player in the squad in a worse position… it is
- *     roster surgery", and because the engine's admin-only bench guard
- *     has already spent the seat as its authorisation.
- *
- * A slot transfer is neither. Nobody's squad standing changes: the
+ * No ADMIN gate is added. The engine's admin-only bench guard exists
+ * because a demote "leaves the player in the squad in a worse position…
+ * it is roster surgery". A slot transfer is not that. Nobody's squad standing changes: the
  * donor is already not playing, the receiver is already playing. It
  * moves a `TeamAssignment` row, which is what the shipped both-
  * CONFIRMED swap has done, tag-only, since 2026-05-19. And the person

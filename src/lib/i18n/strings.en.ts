@@ -619,15 +619,6 @@ export const en = {
   reminder_past: (p: { whenLabel: string }): string =>
     `That time has already passed (${p.whenLabel}). Tell me when again and I'll set it.`,
   reminder_ack_unresolved: (p: { phrase: string }): string => `Will do 👍 I'll give you a nudge ${p.phrase}.`,
-  needs_tag_for_rest: (p: { dropped: string[]; benched: string[] }): string => {
-    const parts: string[] = [];
-    if (p.dropped.length > 0) parts.push(`taken ${joinList("en", p.dropped)} out`);
-    if (p.benched.length > 0) parts.push(`moved ${joinList("en", p.benched)} to the bench`);
-    return (
-      `One thing I've left alone: I've not ${parts.join(" or ")}. ` +
-      `That bit needs an @Match Time tag, so tag me and I'll sort it 👍`
-    );
-  },
   bench_claim_too_late: (p: { firstName: string; confirmed: number; maxPlayers: number }): string =>
     `Thanks ${p.firstName} 🙏 someone got there first, so the squad is back to ` +
     `${p.confirmed}/${p.maxPlayers}. You're still on the bench and ` +
@@ -1126,7 +1117,7 @@ export const en = {
   }): string => {
     const lines: string[] = [];
     if (f.attendance) {
-      lines.push(`✅ Say *"In"* or *"Out"* to mark your own availability, no need to tag me.`);
+      lines.push(`✅ Say *"In"* or *"Out"* to mark your own availability, or tell me a teammate can't make it (for example *Sam is out*), no need to tag me.`);
       lines.push(`🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.`);
       // The friend link (#488, 2026-10-31): friend-link/rules.ts.
       lines.push(`👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.`);
@@ -1422,7 +1413,7 @@ export const en = {
         `Nothing to set up: I'll start the vote myself once the game's done. Ask me for your MoM tally any time, in your own words (for example *@Match Time my stats*).`,
       availability:
         `⚽ *Squad & availability: how it works*\n` +
-        `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
+        `Just say *In* or *Out* in the group to mark yourself for the next game, or say a teammate can't make it (for example *Sam is out*). No need to tag me, I read it automatically.\n` +
         `I keep a live, numbered squad list. When it's full, extra players go on the *bench* in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
         `If you drop out, I can nudge the bench to step in so we're never short. Say *Out* any time and I'll sort the rest.`,
       reminders:
@@ -1460,7 +1451,7 @@ export const en = {
         `Keep an eye out for their post before the game.`,
       availability:
         `⚽ *Squad & availability: how it works*\n` +
-        `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
+        `Just say *In* or *Out* in the group to mark yourself for the next game, or say a teammate can't make it (for example *Sam is out*). No need to tag me, I read it automatically.\n` +
         `I keep track of who's in for the organisers, and they share the list with the group. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
         (p.organiserPicks
           ? `When the squad is full, say *In* to go on the bench. When a place opens, the organisers pick who plays.`
@@ -1476,7 +1467,7 @@ export const en = {
    *  organisers pick who fills a place (`benchPickMode = "organiser"`). */
   onbHelpAvailabilityOrganiserPicks:
     `⚽ *Squad & availability: how it works*\n` +
-    `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
+    `Just say *In* or *Out* in the group to mark yourself for the next game, or say a teammate can't make it (for example *Sam is out*). No need to tag me, I read it automatically.\n` +
     `I keep a live, numbered squad list. When it's full, extra players go on the *bench*. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
     `When a place opens, the organisers pick who plays from the bench. Say *Out* any time if you can't make it.`,
 

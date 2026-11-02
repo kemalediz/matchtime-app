@@ -324,9 +324,8 @@ test.describe("multi-intent: a drop and a recruit ask in one message", () => {
     const res = await grp.postBatch([
       {
         player: "owner",
-        // UNTAGGED, exactly as production was. `RECRUIT_COMMAND_IMPLIES_ADDRESSED`
-        // (PR #33) is why an admin's recruit command clears the interaction
-        // contract without a tag, and `engine.ts:317` is where that lives.
+        // UNTAGGED, exactly as production was. Attendance needs no tag
+        // (`interaction-contract.ts`, 2026-11-02).
         body: BODY,
         ...dropAndRecruit("Jake Jolly"),
       },
@@ -353,12 +352,11 @@ test.describe("multi-intent: a drop and a recruit ask in one message", () => {
     expect(res.groupPosts).toHaveLength(0);
   });
 
-  test("a non-admin cannot drop a third party by riding a recruit ask", async ({ request, db }) => {
+  test("a non-admin's drop lands, but his recruit ask sends no DMs", async ({ request, db }) => {
     const grp = await incident(request, db);
     const beforeDms = (await recruitDms(grp)).length;
-    // Same shape, but from a PLAYER. The recruit flag is ignored (not an
-    // admin), so it must NOT address the bot either — the untagged
-    // third-party OUT stays suppressed by the interaction contract.
+    // Same shape, but from a PLAYER. The drop is attendance and needs no
+    // tag (2026-11-02); the recruit side request is an admin's alone.
     const res = await grp.postBatch([
       {
         player: "pete",
@@ -367,8 +365,7 @@ test.describe("multi-intent: a drop and a recruit ask in one message", () => {
       },
     ]);
     expect(res.results).toHaveLength(1);
-    expect((await grp.attendanceOf("ivan"))?.status).toBe("CONFIRMED");
-    expect(res.results[0].reply).toBeNull();
+    expect((await grp.attendanceOf("ivan"))?.status).toBe("DROPPED");
     expect((await recruitDms(grp)).length).toBe(beforeDms);
   });
 });

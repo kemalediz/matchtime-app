@@ -362,8 +362,8 @@ describe("the recruit blast is DECIDED by the engine and RUN by the route", () =
   // now does too.
   //
   // WHAT THIS IS NOT. It is not a revert of PR #33. That fix lives on
-  // the ATTENDANCE path — `facts.sideRequests` in `handleAttendance`,
-  // via `RECRUIT_COMMAND_IMPLIES_ADDRESSED` — and is untouched: "Najib
+  // the ATTENDANCE path (`facts.sideRequests` in `handleAttendance`,
+  // which needs no tag) and is untouched: "Najib
   // is out. We need one more player." still drops Najib untagged and
   // still carries its recruit side-request, at the bounded default of
   // 5. See the 2026-09-01 block in `engine.test.ts`, which is the pin.

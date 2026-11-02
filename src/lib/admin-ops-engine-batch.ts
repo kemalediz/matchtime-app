@@ -145,7 +145,7 @@
  *
  * ⚠️ THIS PARAGRAPH SAID THE OPPOSITE UNTIL 2026-09-06. It read: "two of
  * `admin_ops`'s three actions require a tag and the third does NOT — PR
- * #33's `RECRUIT_COMMAND_IMPLIES_ADDRESSED` makes an admin's recruit
+ * #33's recruit waiver (retired 2026-11-02) makes an admin's recruit
  * command a direct instruction to MatchTime on its own". That waiver was
  * scope creep from the attendance path onto this one, and it made an
  * untagged 20-person mass DM turn on a router coin flip (measured

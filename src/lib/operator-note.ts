@@ -231,12 +231,10 @@ export interface OwnedMessage {
  *     tell". An empty extraction is that route's EXPECTED outcome, so
  *     noting it would page an admin for the router's uncertainty on
  *     every near-miss — the nagging this module's first header is about.
- *   • `other_att` is where the interaction contract lives. All three
- *     production tag refusals were `other_att` and they cannot be
- *     anything else: `engine.ts`'s `claimNeedsTag` returns false for
- *     `subject === "sender"`, so a tag is never required for a sender's
- *     own attendance. Refusing a third-party instruction is the contract
- *     WORKING.
+ *   • `other_att` is a third party's place. Its correct no-ops are
+ *     refusals with a stated reason (the admin-only bench guard, the
+ *     confidence floor, a name that is not a member), and until
+ *     2026-11-02 the missing tag; none of those is an incident.
  *
  * A route added later defaults to NOT being noted here, which is the
  * opposite of `worthNoting`'s default and deliberately so: the unowned

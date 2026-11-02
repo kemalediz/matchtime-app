@@ -1398,10 +1398,10 @@ export async function POST(request: Request) {
   //
   //   INTERACTION CONTRACT: a DM to MatchTime is inherently directed at
   //   the bot, so no "@Match Time" tag is required. The contract only
-  //   gates GROUP messages, and even there a player's OWN self-attendance
-  //   is the one tag-free action class (isSelfAttendanceVerdict /
-  //   actionRequiresTag in lib/interaction-contract.ts). This handles
-  //   exactly that class: the sender's own in/out, never a third party.
+  //   gates GROUP messages, and even there attendance is tag-free
+  //   (isAttendanceVerdict / actionRequiresTag in
+  //   lib/interaction-contract.ts). This handles the sender's own in/out
+  //   only, never a third party.
   //
   //   DM SUBSCRIPTIONS ARE DELIBERATELY *NOT* CONSULTED HERE. The sub*
   //   flags govern PROACTIVE DMs (the invite blast, bench offers, rating

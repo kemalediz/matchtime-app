@@ -195,13 +195,12 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect(await g.attendanceOf("pete")).toBeNull();
   });
 
-  test("an untagged third-party DROP registers nobody — the interaction contract holds", async ({
+  test("an untagged third-party DROP from a player is applied (2026-11-02)", async ({
     request,
     db,
   }) => {
-    // §13: "removing or moving someone who never consented stays an
-    // explicit, tagged op". The engine reuses `interaction-contract.ts`
-    // unchanged in meaning; this proves it end to end.
+    // Flipped 2026-11-02 (Kemal): attendance never needs a tag, so a
+    // player's untagged "Dan can't make it" drops Dan.
     const g = await createGroup(request, db, {
       attendance: [
         { key: "pete", status: "CONFIRMED" },
@@ -217,10 +216,10 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
       },
     });
 
-    const res = await g.postBatch([{ player: "pete", body: "Dan can't make it" }]);
+    await g.postBatch([{ player: "pete", body: "Dan can't make it" }]);
 
-    expect(await g.attendanceOf("dan")).toMatchObject({ status: "CONFIRMED" });
-    expect(res.results[0].reply).toBeNull();
+    expect(await g.attendanceOf("dan")).toMatchObject({ status: "DROPPED" });
+    expect(await g.attendanceOf("pete")).toMatchObject({ status: "CONFIRMED" });
   });
 
   test("a past-tense claim writes nothing, with no seatbelt in the path", async ({

@@ -106,8 +106,8 @@
  * differences are repeated here.
  *
  * YES, AND THE ARGUMENT IS THE INCIDENT ITSELF. A stats blast is an
- * explicit bulk-DM COMMAND. It is not a fact somebody is reporting (the
- * shape `RECRUIT_COMMAND_IMPLIES_ADDRESSED` widens the contract for),
+ * explicit bulk-DM COMMAND. It is not a fact somebody is reporting
+ * (attendance, which needs no tag),
  * it names no player and it changes no attendance — nothing is lost by
  * waiting for the sender to address the bot properly. And 2026-09-10 is
  * the proof that an untagged sentence CAN be mistaken for one: the

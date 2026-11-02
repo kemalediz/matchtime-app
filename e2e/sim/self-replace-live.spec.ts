@@ -154,9 +154,8 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 
       // bilal is a plain PLAYER and is NOT Ehtisham — he can't pick the
       // replacement. The IN must NOT promote despite the free slot.
-      // Tagged so the message reaches the promote-AUTHORISATION gate (the
-      // gate under test); without the tag the interaction contract would
-      // suppress it for a different reason.
+      // Tagged, so the only gate in play is the promote-AUTHORISATION
+      // gate under test.
       await grp.post("bilal", "@Match Time replace Ehtisham with Aydın from the bench", { tag: true });
 
       expect((await grp.attendanceOf("aydin"))?.status).toBe("BENCH");

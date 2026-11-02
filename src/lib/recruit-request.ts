@@ -77,58 +77,17 @@ export function mergeRecruitReply(
   return mergeOneReply(llmReply, recruitReply);
 }
 
-/**
- * Does an ADMIN's recruit command count as ADDRESSING MatchTime, for the
- * purposes of the @Match Time interaction-contract tag gate?
- *
- * ⚠️ THIS IS A DELIBERATE, ARGUED WIDENING OF THE CONTRACT, kept as one
- * named constant so it can be reverted on its own line without disturbing
- * the ordering fix it travels with. Set it to `false` and the gate
- * behaves exactly as it did before 2026-09-01.
- *
- * THE ARGUMENT. The contract's real question is "is this message
- * addressed to MatchTime?" The @Match Time tag is a PROXY for that, not
- * the thing itself. A recruit request is a direct operational command to
- * MatchTime — "we need one more player, can someone come forward" asks
- * MatchTime to go and find one — and MatchTime has always acted on it
- * untagged, gated on the sender being an admin rather than on a tag. On
- * 2026-09-01 it acted AND replied in the group, from an untagged message.
- * That half of the contract was already bypassed, by design, since
- * 2026-06-05.
- *
- * Having decided a message IS addressed to it, MatchTime cannot coherently
- * treat the REST of that same message as overheard banter. That is exactly
- * what produced the incident: an answer that contradicted the sentence
- * immediately before it.
- *
- * THE SCOPE, and it is narrow:
- *   - one message: the one whose verdict carries `recruitRequest`;
- *   - only when the sender is an OWNER or ADMIN, the same gate the
- *     recruit action itself has always had;
- *   - `actionRequiresTag` is NOT modified, so every other untagged
- *     third-party OUT in the group stays suppressed exactly as today.
- *
- * ⚠️ SCOPE CORRECTED 2026-09-06 — see `RECRUIT_BLAST_REQUIRES_TAG`.
- * "the one whose verdict carries `recruitRequest`" meant the recruit
- * SIDE REQUEST riding alongside an attendance change, which is what the
- * incident was. §10 step 7 part 2 later built a second, separate branch
- * — the explicit bulk-DM command on the `admin_ops` route — and read
- * THIS constant there too. That was scope creep, and it is now undone:
- * this constant governs the attendance path only.
- *
- * WHAT IT DOES NOT DO. It does not make untagged third-party OUTs
- * tag-free in general. Wasim's 10:09 message on the same day — "Najib has
- * hurt his foot unfortunately @Amir can you step in for tonight?" —
- * carries no command to MatchTime, so it stays suppressed. Whether THAT
- * should change is a separate decision and is not taken here.
- */
-export const RECRUIT_COMMAND_IMPLIES_ADDRESSED = true;
+// RETIRED 2026-11-02: `RECRUIT_COMMAND_IMPLIES_ADDRESSED`. It let the
+// attendance half of an admin's untagged recruit command through the tag
+// gate ("Najib is out. We need one more player.", 2026-09-01). Attendance
+// needs no tag at all now (`interaction-contract.ts`), so it had nothing
+// left to waive.
 
 /**
  * Must an EXPLICIT BULK-DM COMMAND carry an @Match Time tag?
  *
- * ⚠️ THIS IS THE SIBLING OF THE CONSTANT ABOVE AND IT PULLS THE OTHER
- * WAY. Read them together; reverting one must not move the other.
+ * The untagged attendance path (a drop with a recruit side request) is
+ * a different thing and needs no tag; see the note above.
  *
  * ── WHAT WAS MEASURED (2026-09-06, live router, 20 runs a phrasing) ──
  *
@@ -198,9 +157,9 @@ export const RECRUIT_COMMAND_IMPLIES_ADDRESSED = true;
  *
  * ── WHAT IT DOES NOT TOUCH ───────────────────────────────────────────
  *
- * The 2026-09-01 incident. That fix is `RECRUIT_COMMAND_IMPLIES_ADDRESSED`
- * on the ATTENDANCE path (`engine.ts:handleAttendance`, via
- * `facts.sideRequests`), and "Najib is out. We need one more player."
+ * The 2026-09-01 incident, on the ATTENDANCE path
+ * (`engine.ts:handleAttendance`, via `facts.sideRequests`): "Najib is
+ * out. We need one more player."
  * still drops Najib untagged and still carries its recruit side
  * request, which `attendance-engine-batch.ts` still reports and
  * `route.ts` still fires — at `inviteRecentPlayers`' bounded default of

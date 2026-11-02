@@ -12,7 +12,8 @@ export default function PlayerGuidePage() {
 
       <h3>The one rule: tag it for anything but In or Out</h3>
       <p>
-        MatchTime picks up <code>IN</code> and <code>OUT</code> on its own.
+        MatchTime picks up <code>IN</code> and <code>OUT</code> on its own,
+        yours or a teammate&apos;s.
         For anything else (questions, teams, stats) tag it: type @ and pick
         Match Time from the list, so it shows as{" "}
         <strong>@Match Time</strong> in your message. Typing the name or
@@ -131,9 +132,10 @@ export default function PlayerGuidePage() {
 
       <h3>Dropping someone else</h3>
       <p>
-        The organiser and admins can drop someone who&apos;s told them
-        they&apos;re out (<code>Joe can&apos;t make it tonight</code>). Anyone
-        else needs to tag it: <code>@Match Time Joe is out tonight</code>.
+        If a teammate has told you they can&apos;t make it, say so in the
+        group (<code>Joe can&apos;t make it tonight</code>), no need to tag
+        MatchTime. Moving someone to the bench is for the organiser and
+        admins.
       </p>
 
       {/* ───────────────────────────────────────────────── */}

@@ -816,7 +816,7 @@ async function handleAnalyzeRequest(request: Request) {
   // are one defect wearing six hats. `lib/pipeline/clause-peel.ts` has
   // the full roll-call and the argument.
   //
-  // THE FIX IS THE SAME MOVE `registerForEntryRequiresTag` MADE ONE
+  // THE FIX IS THE SAME MOVE the engine's attendance gate MADE ONE
   // LAYER DOWN on 2026-09-08: ask the question PER CLAUSE. A fast path
   // takes the clause it recognises; what is left carries on.
   //

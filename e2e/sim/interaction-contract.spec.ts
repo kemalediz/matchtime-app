@@ -8,7 +8,8 @@
  *  - It does NOTHING on banter / hypotheticals / past-tense / third-person
  *    chatter, EVEN when the router calls the message attendance and a
  *    live claim is sitting behind it (DB unchanged, no posts, no reacts).
- *  - It ACTS without a tag only on a player's own clear self-attendance.
+ *  - It ACTS without a tag on attendance: a player's own, and since
+ *    2026-11-02 anybody else's (add, drop, bench, replace).
  *  - It REQUIRES an @Match Time tag for questions / team ops.
  *  - The full-squad rollover never advances a casual "In" to next week.
  *
@@ -261,13 +262,12 @@ test.describe("positive controls", () => {
   });
 });
 
-// ── Tag-free third-party ADDS vs still-gated drops/swaps ──────────────
-// The behaviour change: a registerFor that ONLY adds named players ("Add
-// Rashad") passes the gate WITHOUT an @Match Time tag and registers them;
-// a registerFor that drops/benches/swaps OUT another player is still
-// suppressed when untagged. Drives the REAL analyze pipeline (LLM stubbed)
-// so the gate + write path are exercised end-to-end.
-test.describe("third-party adds tag-free; drops/swaps still tagged", () => {
+// ── Third-party attendance is tag-free (adds since the third-party-add
+// change, drops and benches since 2026-11-02). Drives the REAL analyze
+// pipeline (LLM stubbed) so the gate + write path are exercised
+// end-to-end. `e2e/sim/teammate-out-tag-free.spec.ts` carries the
+// 2026-11-02 incident itself.
+test.describe("third-party attendance is tag-free", () => {
   const mkGroup = (request: APIRequestContext, db: TestDb) =>
     createGroup(request, db, {
       maxPlayers: 14,
@@ -317,40 +317,26 @@ test.describe("third-party adds tag-free; drops/swaps still tagged", () => {
     expect(["CONFIRMED", "BENCH"]).toContain(att!.status);
   });
 
-  // ⚠️ SENDER CHANGED 2026-09-07, and the change is the point.
-  //
-  // This case used to be sent by `alice`, who is an ADMIN. It asserted
-  // that her untagged drop of Pete was suppressed, and that is no longer
-  // true: `ADMIN_REPORTED_OUT_IS_TAG_FREE` waives the tag for the
-  // OWNER/ADMIN seats, because on 2026-09-07 the owner posted
-  // "@Shahrokh🐔 Sutton Football Club is out due to unforeseen issue at
-  // work" and MatchTime did nothing while the squad read 13/14 with a
-  // player in it who was not coming.
-  //
-  // The RULE this case exists for is unchanged and is the reason the
-  // waiver is not for everybody: an ordinary member must not be able to
-  // remove a player by typing a sentence. So the sender is now `dan`, a
-  // PLAYER, and the admin's side of the same message is the test below.
-  test('untagged third-party DROP from a PLAYER ("Pete can\'t make it") is SUPPRESSED', async ({
+  // FLIPPED 2026-11-02: this case asserted the drop was SUPPRESSED. A
+  // player's untagged "Sorry, Ismayil is out" was refused that way in
+  // Sutton FC and Ismayil stayed on the list; Kemal ruled attendance
+  // never needs a tag.
+  test('untagged third-party DROP from a PLAYER ("Pete can\'t make it") takes effect', async ({
     request,
     db,
   }) => {
     const grp = (await mkGroup(request, db)).attach(request);
-    const before = await grp.confirmed();
-    expect(before).toContain("Pete Power");
+    expect(await grp.confirmed()).toContain("Pete Power");
     const r = await grp.post("dan", "Pete can't make it tonight", {
       route: "other_att",
       facts: otherFacts("Pete Power", "out"),
     });
-    // Untagged drop of another player → noise, DB untouched.
-    expect(r.intent).toBe("noise");
-    expect(r.react).toBeNull();
-    expect(r.reply).toBeNull();
-    expect(await grp.confirmed()).toContain("Pete Power");
-    expect(await grp.dropped()).not.toContain("Pete Power");
+    expect(r.react).toBe("👍");
+    expect(await grp.dropped()).toContain("Pete Power");
+    expect(await grp.confirmed()).not.toContain("Pete Power");
   });
 
-  test("the SAME untagged drop from an ADMIN takes effect (2026-09-07)", async ({
+  test("the same untagged drop from an ADMIN takes effect", async ({
     request,
     db,
   }) => {
@@ -379,8 +365,8 @@ test.describe("third-party adds tag-free; drops/swaps still tagged", () => {
 
 // ── An admin's untagged drop goes down the ORDINARY apply path ───────
 //
-// The gate is the only thing `ADMIN_REPORTED_OUT_IS_TAG_FREE` moves, so
-// everything a drop normally triggers must still happen. The one that
+// An untagged drop (an admin's since 2026-09-07, anybody's since
+// 2026-11-02) must trigger everything a drop normally triggers. The one that
 // matters to a real club is the bench-offer chain: dropping a confirmed
 // player frees a slot, and `attendance.ts:cancelAttendance` →
 // `requestBenchConfirmationOnDrop` offers it to the bench. A waived drop
@@ -439,16 +425,12 @@ test.describe("an admin's untagged drop still opens the bench offer", () => {
 //
 // MatchTime recorded NOTHING, because the tag gate was taken ONCE for
 // the whole message and the bench clause failed it. David played on in a
-// squad he had left.
-//
-// The engine unit tests pin the split. What only this file can prove is
-// that the surviving half goes down the ORDINARY apply path: a drop
-// frees a slot and `attendance.ts:cancelAttendance` →
-// `requestBenchConfirmationOnDrop` offers it to the bench. A partially
-// applied drop that skipped that would leave a club a player short with
-// somebody sitting on the bench waiting to be asked.
-test.describe("an untagged admin's [OUT + BENCH] applies the OUT, end to end", () => {
-  test("the drop lands, the demote does not, and the freed slot is offered", async ({
+// squad he had left. Since 2026-11-02 no attendance clause needs a tag;
+// what this pins is that each clause is still decided on its own, down
+// the ORDINARY apply path, and that the admin-only bench guard still
+// stops a player's bench clause.
+test.describe("an untagged [OUT + BENCH], end to end", () => {
+  test("from the owner: the drop and the demote both land, and the freed slot is offered", async ({
     request,
     db,
   }) => {
@@ -467,8 +449,7 @@ test.describe("an untagged admin's [OUT + BENCH] applies the OUT, end to end", (
     ).attach(request);
 
     // No tag anywhere: the "@" is on the PLAYERS, exactly as in the real
-    // message. Pete is the drop; Dan is the demote the owner may not
-    // make without tagging the bot.
+    // message. Pete is the drop; Dan is the demote.
     const r = await grp.post(
       "owner",
       "@Pete Power is OUT voluntarily to switch to 5aside. Either @Dan Drummer or @Felix Fox can be in the main squad and the other can go to bench",
@@ -478,19 +459,10 @@ test.describe("an untagged admin's [OUT + BENCH] applies the OUT, end to end", (
       },
     );
 
-    // THE HALF THAT APPLIES.
     expect(await grp.dropped()).toContain("Pete Power");
-    expect((await grp.counts()).confirmed).toBe(4);
-
-    // THE HALF THAT DOES NOT. A demote is roster surgery and still needs
-    // a tag from everybody, the owner included.
-    expect(await grp.confirmed()).toContain("Dan Drummer");
-    expect(await grp.bench()).not.toContain("Dan Drummer");
-
-    // AND THE OWNER IS TOLD, because a partially applied instruction he
-    // believes landed whole is §9's signature failure.
-    expect(r.reply ?? "").toMatch(/left alone/i);
-    expect(r.reply ?? "").toMatch(/Dan/);
+    expect(await grp.bench()).toContain("Dan Drummer");
+    expect((await grp.counts()).confirmed).toBe(3);
+    expect(r.reply ?? "").not.toMatch(/tag/i);
 
     // THE APPLY PATH IS THE ORDINARY ONE: the freed slot is offered to
     // the bench, and the offer is claimable.
@@ -503,7 +475,7 @@ test.describe("an untagged admin's [OUT + BENCH] applies the OUT, end to end", (
     expect(await grp.openOffers()).toHaveLength(0);
   });
 
-  test("the same message from a PLAYER applies nothing and says nothing", async ({
+  test("from a PLAYER: the drop lands, the bench stops at the admin-only bench guard", async ({
     request,
     db,
   }) => {
@@ -525,13 +497,10 @@ test.describe("an untagged admin's [OUT + BENCH] applies the OUT, end to end", (
       facts: facts([otherClaim("Pete Power", "out"), otherClaim("Dan Drummer", "bench")]),
     });
 
-    expect(await grp.confirmed()).toContain("Pete Power");
+    expect(await grp.dropped()).toContain("Pete Power");
     expect(await grp.confirmed()).toContain("Dan Drummer");
-    expect(await grp.openOffers()).toHaveLength(0);
-    // Both clauses refused, so nothing was applied and there is no turn
-    // for a refusal sentence to ride: MatchTime stays silent.
-    expect(r.reply).toBeNull();
-    expect(r.react).toBeNull();
+    expect(await grp.bench()).not.toContain("Dan Drummer");
+    expect(r.react).toBe("👍");
   });
 });
 
