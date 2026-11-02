@@ -17,6 +17,7 @@ const SECRET_SEGMENTS: ReadonlyArray<readonly [string, string]> = [
   ["/r/", "[token]"],
   ["/play/offer/", "[token]"],
   ["/play/f/", "[token]"],
+  ["/play/j/", "[token]"],
   ["/join/", "[code]"],
   ["/finish-setup/", "[sessionId]"],
 ];
