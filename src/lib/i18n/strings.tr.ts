@@ -155,7 +155,7 @@ export const tr: Strings = {
   // ── shared fragments ─────────────────────────────────────────────
 
   unnamed: "(isimsiz)",
-  admin_players_add_name_hint: "İsim eklemek için dokunun",
+  admin_players_name_placeholder: "Oyuncu adını girin",
   admin_players_rename: "Yeniden adlandır",
   team_sheet_open_slot: "(boş yer)",
   no_match_label: "bir sonraki maç",
