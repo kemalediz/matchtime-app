@@ -83,6 +83,7 @@ const FULL_NAMES: Record<string, string> = {
   nabeel: "Nabeel Ahmed",
   omar: "Omar Farooq",
   hasan: "Hasan Yilmaz",
+  ismayil: "Ismayil Huseynov",
 };
 
 export function fullName(key: string): string {

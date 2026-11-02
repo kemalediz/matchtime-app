@@ -517,15 +517,6 @@ export const tr: Strings = {
   reminder_ack_clocks: (p) => `👍 Tamam. O gece saatler ileri alınıyor, bu yüzden geçerli ilk saatte, ${p.whenLabel} sana DM atarım.`,
   reminder_past: (p) => `O saat geçti (${p.whenLabel}). Ne zaman istediğini tekrar yaz, kurayım.`,
   reminder_ack_unresolved: (p) => `Tamam 👍 ${p.phrase} sana hatırlatırım.`,
-  needs_tag_for_rest: (p) => {
-    const parts: string[] = [];
-    if (p.dropped.length > 0) parts.push(`çıkış: ${joinList("tr", p.dropped)}`);
-    if (p.benched.length > 0) parts.push(`yedek: ${joinList("tr", p.benched)}`);
-    return (
-      `Şunlara dokunmadım, ${parts.join("; ")}. ` +
-      `Bunlar için @Match Time etiketi gerekiyor, beni etiketleyin, hallederim 👍`
-    );
-  },
   bench_claim_too_late: (p) =>
     `Sağ ol ${p.firstName} 🙏 biri senden önce davrandı, kadro yine ` +
     `${p.confirmed}/${p.maxPlayers}. Yedekte kalmaya devam ediyorsun, ` +
@@ -977,7 +968,7 @@ export const tr: Strings = {
   }): string => {
     const lines: string[] = [];
     if (f.attendance) {
-      lines.push(`✅ Kendi durumunuz için *"varım"* veya *"yokum"* yazın, beni etiketlemenize gerek yok.`);
+      lines.push(`✅ Kendi durumunuz için *"varım"* veya *"yokum"* yazın, bir takım arkadaşınız gelemiyorsa onu da yazın (örneğin *Sami gelemiyor*), beni etiketlemenize gerek yok.`);
       lines.push(`🤔 Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce size özelden sorarım.`);
       lines.push(`👥 Arkadaşınızı mı getiriyorsunuz? Söylemeniz yeter (örneğin *arkadaşım Ali de geliyor*), ona göndermeniz için size özelden bir bağlantı yollarım.`);
     } else {
@@ -1206,7 +1197,7 @@ export const tr: Strings = {
         `Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. Maçın adamı sayınızı istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time istatistiklerim*).`,
       availability:
         `⚽ *Kadro ve katılım nasıl çalışır*\n` +
-        `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
+        `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter. Bir takım arkadaşınız gelemiyorsa onu da yazabilirsiniz (örneğin *Sami gelemiyor*). Beni etiketlemenize gerek yok, otomatik okurum.\n` +
         `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar sırayla *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
         `Biri çıkarsa yedekleri dürterim, böylece hiç eksik kalmayız. İstediğiniz zaman *yokum* yazın, gerisini ben hallederim.`,
       reminders:
@@ -1229,7 +1220,7 @@ export const tr: Strings = {
         `Maçtan önce onların paylaşımını takip edin.`,
       availability:
         `⚽ *Kadro ve katılım nasıl çalışır*\n` +
-        `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
+        `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter. Bir takım arkadaşınız gelemiyorsa onu da yazabilirsiniz (örneğin *Sami gelemiyor*). Beni etiketlemenize gerek yok, otomatik okurum.\n` +
         `Kimin geldiğini organizatörler için ben takip ederim, listeyi grupla onlar paylaşır. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
         (p.organiserPicks
           ? `Kadro doluysa yedeğe girmek için *varım* yazın. Bir yer açılınca kimin oynayacağını organizatörler seçer.`
@@ -1243,7 +1234,7 @@ export const tr: Strings = {
 
   onbHelpAvailabilityOrganiserPicks:
     `⚽ *Kadro ve katılım nasıl çalışır*\n` +
-    `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
+    `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter. Bir takım arkadaşınız gelemiyorsa onu da yazabilirsiniz (örneğin *Sami gelemiyor*). Beni etiketlemenize gerek yok, otomatik okurum.\n` +
     `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
     `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
 

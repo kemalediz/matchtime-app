@@ -1860,22 +1860,6 @@ export type SpeechIntent =
   /** A bench player answered an open offer and the slot had already
    *  gone. Silence there is the 2026-05-19 Karahan shape. */
   | { kind: "bench_claim_too_late"; messageId: string; userId: string }
-  /**
-   * PART of an instruction was applied and part of it needed a tag
-   * MatchTime did not get (2026-09-08, the David incident).
-   *
-   * `entries` are RESOLVED ROSTER NAMES, never the reference a model
-   * produced, and the engine only emits this beside a write it actually
-   * proposed: the sentence rides a turn MatchTime is already taking, so
-   * it adds no unprompted chatter to an untagged message. A partially
-   * applied instruction nobody is told about is §9's signature failure
-   * with the volume turned down.
-   */
-  | {
-      kind: "needs_tag_for_rest";
-      messageId: string;
-      entries: Array<{ name: string; action: "OUT" | "BENCH" }>;
-    }
   /** Something failed and the bot says so rather than going quiet. */
   | { kind: "degraded"; messageId: string; reason: string };
 

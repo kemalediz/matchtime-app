@@ -578,9 +578,11 @@ export default async function AdminGuidePage() {
 
       <h3>Does MatchTime reply to everything?</h3>
       <p>
-        No. In the players&apos; group it only acts on In, Out (and a player
-        saying a friend is coming) and on messages that tag{" "}
-        <strong>@Match Time</strong>. In your admin group it acts only on
+        No. In the players&apos; group it acts on In and Out without a tag,
+        whether a player means themselves or a teammate (and on a player saying
+        a friend is coming). You and your admins can also move a player to
+        the bench without tagging it. Anything else needs a message that
+        tags <strong>@Match Time</strong>. In your admin group it acts only on
         messages that tag it. To tag it, type @ and pick Match Time from the
         list. Typing the name or replying to MatchTime is not enough. The
         rest of the chat is left alone.

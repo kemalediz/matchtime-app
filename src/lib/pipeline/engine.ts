@@ -45,22 +45,14 @@
 import { sameWhatsAppMessage } from "../quoted-message";
 import { partnerAskToQuestion } from "../partner-volunteer-rules";
 import { canTakeFreePlace, ORGANISER_PICK_BENCH_NOTE } from "../squad-capacity";
-import {
-  actionRequiresTag,
-  registerForEntryRequiresTag,
-  type GateRegisterForEntry,
-  type GateVerdict,
-} from "../interaction-contract";
+import { actionRequiresTag } from "../interaction-contract";
 import {
   isPromoteFromBenchAuthorized,
   type PromoteRegisterEntry,
 } from "../promote-authorization";
 import { shouldAskForGuestName } from "../guest-name-ask";
 import { decideThirdPartyIn } from "../friend-link/rules";
-import {
-  RECRUIT_BLAST_REQUIRES_TAG,
-  RECRUIT_COMMAND_IMPLIES_ADDRESSED,
-} from "../recruit-request";
+import { RECRUIT_BLAST_REQUIRES_TAG } from "../recruit-request";
 import {
   STATS_BLAST_REQUIRES_TAG,
   STATS_BLAST_TAG_MUST_BE_EXPLICIT,
@@ -937,49 +929,22 @@ export function decide(input: EngineInput): EngineResult {
         return;
       }
 
-      // ── The interaction contract, unchanged in meaning (§13) ─────────
+      // ── No attendance claim needs an @Match Time tag (2026-11-02) ────
       //
-      // Including PR #33's one deliberate widening, reused rather than
-      // re-decided: an ADMIN's recruit command is a direct instruction
-      // to MatchTime, so the rest of that same message is addressed to
-      // it too. That is what the 2026-09-01 incident turned on — the bot
-      // acted on the recruit half of an untagged message and treated the
-      // drop in the sentence before it as overheard banter. Both
-      // pipelines now read the same constant, so flipping
-      // RECRUIT_COMMAND_IMPLIES_ADDRESSED reverts both together.
+      // The sender's own place or anybody else's, IN, OUT or BENCH, is
+      // acted on tagged or not (`interaction-contract.ts` states the
+      // rule). What the code still decides is WHO may do WHAT, further
+      // down: the confidence floor, the admin-only bench guard, the
+      // banter corroboration and capacity. `senderIsAdmin` is the
+      // ROSTER's answer, never the model's.
       const senderIsAdmin =
         !!msg.senderUserId && !!w.roster.find((m2) => m2.userId === msg.senderUserId)?.isAdmin;
-      const addressedByRecruit =
-        RECRUIT_COMMAND_IMPLIES_ADDRESSED &&
-        senderIsAdmin &&
-        facts.sideRequests.includes("recruit");
-      //
-      // …and the contract's SECOND deliberate widening, from 2026-09-07:
-      // an OWNER/ADMIN reporting another player OUT needs no tag either
-      // (`ADMIN_REPORTED_OUT_IS_TAG_FREE`, which carries the incident,
-      // the argument and the scope). It is passed INTO
-      // `actionRequiresTag` rather than OR-ed beside it, because it is a
-      // property of the verdict plus the seat and belongs with the rest
-      // of the policy — and because a second boolean beside the gate is
-      // how the recruit waiver leaked onto the bulk-DM path.
-      // `senderIsAdmin` is the ROSTER's answer, never the model's.
 
-      // ── Collapse to ONE claim per person, BEFORE the gate ────────────
+      // ── Collapse to ONE claim per person ─────────────────────────────
       //
-      // MOVED UP FROM BELOW ON 2026-09-08, and the move is load-bearing:
-      // the gate is now asked PER CLAIM, and a per-claim gate has to see
-      // each person's FINAL claim or it re-opens the correction-reversal
-      // the collapse exists to prevent. "Mojib is in… actually put Mojib
-      // on the bench", untagged: gating the raw list refuses the BENCH,
-      // keeps the earlier IN and registers the man the message just
-      // demoted. Collapsed first, the person carries one claim, that
-      // claim is gated, and a refusal is a refusal for that person.
-      //
-      // Nothing else moved with it. The ordering rule below (OUT before
-      // IN across distinct people) and every per-claim veto still run in
-      // their old order, on the same array; only the point at which the
-      // array is built changed. The rest of this comment is the original
-      // and still describes exactly what these six lines do.
+      // Each person carries the LAST claim this message makes about them,
+      // so "Mojib is in… actually put Mojib on the bench" is one bench
+      // claim, never an IN and a bench.
       //
       // ORDER MATTERS, and it is a DECISION, so the engine owns it: a
       // replacement frees the slot before it fills it. Found by the
@@ -1015,18 +980,15 @@ export function decide(input: EngineInput): EngineResult {
       // charged to Najib. `lib/pipeline/replacement.ts` carries the
       // whole argument and every refusal.
       //
-      // ASKED HERE, BEFORE THE GATE, because the gate's answer depends
-      // on it: the leaving half of a stated replacement is tag-free
-      // (`REPLACEMENT_OUT_IS_TAG_FREE`). Asked over `collapsed` rather
-      // than over the raw claims, for the same reason the gate is: a
+      // Asked over `collapsed` rather than over the raw claims: a
       // person's LAST claim is the one this message makes about them.
       //
       // IT CANNOT WIDEN ANYTHING ON ITS OWN. It resolves names, it
       // returns a pair, and every write below still runs the whole
       // ladder: the confidence floor, tense, the availability hold, the
       // contingency holds, identity resolution, `banterRefusal`,
-      // capacity and `applyClaim`. The one thing it changes is whether
-      // the OUT needs a tag, and the one thing it adds is the slot.
+      // capacity and `applyClaim`. The one thing it adds is the slot:
+      // the incoming player inherits the outgoing one's position.
       const memberSide = (ref: string) => {
         const r = resolvePerson(ref, w.roster);
         return r.kind === "resolved"
@@ -1044,227 +1006,6 @@ export function decide(input: EngineInput): EngineResult {
         confidenceFloor: CONFIDENCE_FLOOR,
       });
 
-      const gate = toGateVerdict(collapsed, facts, replacement);
-      const needsTag = actionRequiresTag(gate, { senderIsAdmin });
-
-      // ── THE GATE, ASKED ONCE PER CLAIM (2026-09-08) ──────────────────
-      //
-      // THE INCIDENT. Kemal posted to the live group, untagged, on match
-      // day:
-      //
-      //   "David is OUT voluntarily to switch to 5aside.
-      //
-      //    Either @Mojib Jalali or @Najib can be in the main squad and
-      //    the other can go to bench"
-      //
-      // MatchTime recorded NOTHING — "requires an @Match Time tag
-      // (interaction contract)" — and David stayed in a squad he had
-      // just left, corrected by hand twice on the day. The BENCH clause
-      // is genuinely refused (a demote needs a tag from everybody, the
-      // owner included, and that rule is NOT being reversed); the bug is
-      // that the refusal was taken for the WHOLE MESSAGE, so one clause
-      // MatchTime may not act on discarded a clean, unambiguous drop
-      // from the one person entitled to order it.
-      //
-      // So the question is asked per claim. `actionRequiresTag` is still
-      // the message-level summary and is still exactly the OR of these
-      // answers (pinned by an exhaustive test in
-      // `interaction-contract.test.ts`) — it is used below only for the
-      // "is there anything at all here I may act on?" question, which is
-      // the one it is the right answer to.
-      const claimNeedsTag = (c: Claim): boolean =>
-        // The sender's OWN attendance is the contract's first tag-free
-        // class and never needs one. Note this is a WIDENING beside the
-        // old message-level gate, which refused a sender's own IN/OUT
-        // whenever the same message also carried a third-party clause it
-        // disliked: "I'm out, and put Mojib on the bench" from an
-        // ordinary member used to lose the sender's own drop as well,
-        // and the club turned up short with his name still in the list.
-        c.subject === "sender"
-          ? false
-          : registerForEntryRequiresTag(
-              {
-                name: c.personRef,
-                action: polarityToAction(c.polarity),
-                // Reference equality against the very claim the pairing
-                // chose, so `toGateVerdict` above and this cannot
-                // disagree about which OUT was waived. The seatbelt
-                // twelve lines down is what would catch it if they did.
-                isStatedReplacement: !!replacement && c === replacement.outClaim,
-              },
-              { senderIsAdmin },
-            );
-      /** May this claim be acted on, given how the message was (or was
-       *  not) addressed to MatchTime? */
-      const permitted = (c: Claim): boolean => {
-        if (!claimNeedsTag(c)) return true;
-        if (msg.tagged) return true;
-        // PR #33's recruit waiver stands in for a tag on the rest of an
-        // admin's recruit command, and it reaches exactly as far as the
-        // OUT waiver does: NEVER a BENCH. A tag is a structural signal
-        // (the Pi's mention list); `addressedByRecruit` is an INFERENCE
-        // over model output ("this sentence asks for players"), and the
-        // bench rule's second, independent signal cannot be an
-        // inference. Before 2026-09-08 this waiver carried a bench
-        // through untagged, which contradicted the rule stated one
-        // constant away; the engine test named for it is the receipt.
-        return addressedByRecruit && c.polarity !== "bench";
-      };
-      const refusedClaims = collapsed.filter((c) => !permitted(c));
-      const ordered = collapsed.filter((c) => permitted(c));
-      // ⚠️ WHAT A REFUSED CLAIM SKIPS. Dropping it here skips every
-      // per-claim rule below for that person: the confidence floor,
-      // tense, the availability hold, both contingency holds, identity
-      // resolution, the admin-only bench guard, `banterRefusal`,
-      // capacity and `applyClaim`. Every one of those can only ever
-      // REFUSE a claim further, so skipping them cannot turn a "no" into
-      // a "yes" — the refusal is the strongest answer any of them could
-      // have reached. Two non-refusals live down there and both are
-      // accounted for: the guest-name-ask, which only ever collects an
-      // IN (never refused, see above), and `degrade()` on an ambiguous
-      // or contradictory name, which exists to explain a write that did
-      // not happen — and this claim's reason line already does that,
-      // more precisely. The third is `isPromoteFromBenchAuthorized`,
-      // computed over `targets`: a refused claim leaves it, which can
-      // only make it stricter, and the self-replace case it protects
-      // reads the SENDER's own claim, which is never refused.
-
-      // SEATBELT. `actionRequiresTag` and `claimNeedsTag` are two
-      // statements of ONE rule — the message-level answer is defined as
-      // the OR of the per-claim ones, and an exhaustive unit test pins
-      // it — so this can only fire if the contract grows a case one of
-      // them does not know about. That drift is the whole shape of the
-      // 2026-09-08 incident (a rule stated in one place, applied at the
-      // wrong granularity in another), and four seatbelts were found
-      // dead and silent on 2026-08-31, so it degrades LOUDLY rather
-      // than being a comment claiming the two agree.
-      if (needsTag !== collapsed.some((c) => claimNeedsTag(c))) {
-        degrade(
-          "interaction contract disagrees with itself: actionRequiresTag says " +
-            `${needsTag} and the per-claim rule says ${!needsTag}`,
-        );
-      }
-
-      /** Claims that are ONLY here because of the admin-OUT waiver: the
-       *  contract refuses them for anybody else and permits them for
-       *  this sender. Implies `senderIsAdmin` by construction.
-       *
-       *  Asked over the PERMITTED claims rather than over the message
-       *  (which is what `!needsTag && actionRequiresTag(gate)` did until
-       *  2026-09-08), because a message can now carry a waived drop AND
-       *  a refused demote at once — which is the incident — and the
-       *  message-level form went quiet on exactly that case. The reason
-       *  trail is the only place a wrong drop can be traced back to a
-       *  policy rather than to a model, so it has to name the waiver
-       *  whenever the waiver is what moved somebody. */
-      const waivedByAdminOut = ordered.some(
-        (c) =>
-          c.subject === "other" &&
-          !claimNeedsTag(c) &&
-          // The leaving half of a stated replacement was waived by
-          // REPLACEMENT_OUT_IS_TAG_FREE, named on its own line below.
-          // Without this the admin waiver was named too, for a sender
-          // who is not an admin (seen in the 2026-09-23 RP dry run).
-          !(replacement && c === replacement.outClaim) &&
-          // The same question with NO sender: "would anyone else have
-          // needed a tag for this?" Absence means "not an admin".
-          registerForEntryRequiresTag({
-            name: c.personRef,
-            action: polarityToAction(c.polarity),
-          }),
-      );
-
-      if (ordered.length === 0) {
-        // NOTHING in the message may be acted on. Byte-identical to the
-        // old behaviour, reason string included: silence, no reaction,
-        // DB unchanged.
-        //
-        // ⚠️ A TERMINAL BRANCH IN THIS LOOP SKIPS EVERY GUARD BELOW IT,
-        // and that has caused its own family of defects (three in two
-        // days, see the terminal-short-circuit note). This one is the
-        // OLD terminal branch moved four lines, not a new one, and here
-        // is what it skips and why each is covered:
-        //
-        //   the waiver reason lines   nothing was permitted, so no
-        //                             waiver carried anything and there
-        //                             is no policy to name.
-        //   `!state.matchId` degrade  deliberately still BELOW this, as
-        //                             it was before: an untagged message
-        //                             in a group with no active match
-        //                             should report the tag as its
-        //                             reason, not degrade over a match
-        //                             it was never going to write to.
-        //   resolution / identity     zero claims to resolve.
-        //   the guest-name-ask        it collects unnamed third-party
-        //                             INs, and an IN is tag-free for
-        //                             everyone, so `ordered` can never
-        //                             be empty while one exists.
-        //   promote authorisation,
-        //   capacity, applyClaim,
-        //   the bench-offer chain     all keyed off `targets`, which is
-        //                             empty with no claims; the loop
-        //                             below returns on `targets.length
-        //                             === 0` anyway.
-        //   `fromAffirmation` ack     unreachable: an affirmation builds
-        //                             third-party IN claims, which are
-        //                             tag-free, so it cannot arrive here.
-        //   the recruit side-request
-        //   reason line               also skipped before this change,
-        //                             by the same return one line up.
-        out.reasons.push("requires an @Match Time tag (interaction contract)");
-        return;
-      }
-
-      /** The refused half, resolved to REAL PEOPLE, for the sentence
-       *  below. Only names the roster recognises: the refusal names
-       *  players out loud, and the only names MatchTime prints are its
-       *  own roster's, never a string a model produced. A reference
-       *  that resolves to nobody had nothing to refuse anyway
-       *  (identity.ts: "not a member; nothing to drop or bench"). */
-      const refusedForSpeech: Array<{ name: string; action: "OUT" | "BENCH" }> = [];
-      for (const c of refusedClaims) {
-        const what = c.polarity === "bench" ? "moved to the bench" : "dropped";
-        out.reasons.push(
-          `"${c.personRef}" is not being ${what}: that part needs an @Match Time tag ` +
-            `(the rest of the message still applies)`,
-        );
-        const res = resolvePerson(c.personRef, w.roster);
-        if (res.kind === "resolved") {
-          refusedForSpeech.push({
-            name: res.member.name,
-            action: c.polarity === "bench" ? "BENCH" : "OUT",
-          });
-        }
-      }
-
-      if (replacement && !msg.tagged && ordered.includes(replacement.outClaim)) {
-        // Name WHICH waiver let an untagged roster change through. Same
-        // reason as the admin line below it: the reason trail is the
-        // only place a wrong drop can be traced back to a policy rather
-        // than to a model, and there are now three waivers that can
-        // carry the same message.
-        out.reasons.push(
-          `untagged, but "${replacement.inClaim.personRef}" is stated as replacing ` +
-            `${replacement.outgoing.name} and both are members, so the drop rides ` +
-            `the replacement (REPLACEMENT_OUT_IS_TAG_FREE)`,
-        );
-      }
-      if (waivedByAdminOut && !msg.tagged) {
-        // Name WHICH waiver let an untagged roster change through. The
-        // reason trail is the only place a wrong drop can be traced back
-        // to a policy rather than to a model, and there are now two
-        // waivers that can carry the same message.
-        out.reasons.push(
-          "untagged, but an admin may report another player OUT without one " +
-            "(ADMIN_REPORTED_OUT_IS_TAG_FREE)",
-        );
-      }
-      if (addressedByRecruit && !msg.tagged) {
-        out.reasons.push(
-          "untagged, but an admin's recruit command addresses MatchTime (PR #33)",
-        );
-      }
-
       if (!state.matchId) {
         degrade("no active registration match (blocked or none upcoming)", "state");
         return;
@@ -1272,15 +1013,12 @@ export function decide(input: EngineInput): EngineResult {
 
       // ── Resolve every surviving claim to a person ────────────────────
       //
-      // `ordered` is the collapsed, OUT-first, gate-permitted list built
-      // above. Everything from here down is unchanged and runs for every
-      // claim in it, whether the message was tagged, waived or partially
-      // refused — which is the property the offer chain depends on (a
-      // partially applied drop must propose the identical write, so the
-      // vacated slot is offered exactly as it always was).
+      // `collapsed` is the one-claim-per-person, OUT-first list built
+      // above, and everything from here down runs for every claim in it,
+      // tagged or not.
       const targets: Target[] = [];
       const guestAsks: Claim[] = [];
-      for (const c of ordered) {
+      for (const c of collapsed) {
         const floorExempt = isFloorExempt(c, msg.senderUserId, state.roster);
         if (c.confidence < CONFIDENCE_FLOOR) {
           if (!floorExempt) {
@@ -1871,36 +1609,6 @@ export function decide(input: EngineInput): EngineResult {
             });
           }
         }
-      }
-
-      // ── SAY WHAT WAS NOT DONE (2026-09-08) ──────────────────────────
-      //
-      // §9: "message understood, action silently not taken" is this
-      // product's signature failure, and a partially applied instruction
-      // the owner does not know was partial is that failure exactly. He
-      // watched MatchTime act on his message; every reason he has to
-      // believe the rest of it landed is now a reason to be wrong about
-      // the squad on match day.
-      //
-      // Against that, the contract is conservative about SPEAKING, and
-      // deliberately so. Both are satisfied by the same condition: the
-      // sentence only ever rides a turn MatchTime is ALREADY taking.
-      // `out.writes.length > 0` means this message changed the squad, so
-      // the status post is going out regardless and the refusal costs no
-      // extra message and no new class of unprompted chatter. When
-      // nothing was written — the whole message refused, or the
-      // permitted half turning out idempotent — MatchTime stays silent
-      // exactly as it does today, and the refusal lives in the reason
-      // trail where the operator log reads it.
-      //
-      // It names the remedy ("tag me") because the alternative is an
-      // owner who learns only that half his instruction vanished.
-      if (refusedForSpeech.length > 0 && out.writes.length > 0) {
-        speech.push({
-          kind: "needs_tag_for_rest",
-          messageId: msg.id,
-          entries: refusedForSpeech,
-        });
       }
 
       // A resolved confirmation is a conversational turn and deserves an
@@ -3131,8 +2839,8 @@ export function decide(input: EngineInput): EngineResult {
         }
         // ── AND THEY MUST TAG IT (2026-09-06) ─────────────────────────
         //
-        // This branch used to read `RECRUIT_COMMAND_IMPLIES_ADDRESSED`
-        // and waive the tag. Measured on the live router, 20 calls:
+        // This branch used to waive the tag for an admin (PR #33's
+        // recruit waiver, retired 2026-11-02). Measured on the live router, 20 calls:
         // "message everyone from the last 50 games" comes back
         // `admin_ops` 13/20, `question` 4/20, `none` 3/20. So the same
         // untagged message, in the same state, proposed a blast on 13
@@ -3151,10 +2859,9 @@ export function decide(input: EngineInput): EngineResult {
         // invariant even though the ROUTE is not — which is the only
         // determinism an LLM router can actually be held to.
         //
-        // NOT a revert of PR #33. That fix is the SIDE REQUEST on the
-        // attendance path above (`facts.sideRequests`, still gated on
-        // `RECRUIT_COMMAND_IMPLIES_ADDRESSED`, still untagged, still
-        // dropping Najib). The full argument, the measurements and the
+        // NOT the SIDE REQUEST on the attendance path above
+        // (`facts.sideRequests`): attendance needs no tag, so "Najib is
+        // out. We need one more player." still drops Najib untagged. The full argument, the measurements and the
         // rejected alternatives are on `RECRUIT_BLAST_REQUIRES_TAG`.
         //
         // A plain reason rather than `degrade()`: this IS a decision,
@@ -3757,46 +3464,6 @@ function polarityToAction(p: Claim["polarity"]): "IN" | "OUT" | "BENCH" {
 }
 
 /**
- * Build the shape `interaction-contract.ts` already understands, so the
- * tag gate is REUSED rather than reimplemented. §13: "The interaction
- * contract … moves into the engine unchanged in meaning."
- */
-export function toGateVerdict(
-  claims: Claim[],
-  facts: AttendanceFacts,
-  /** The pairing `findStatedReplacement` found, when there is one. It
-   *  marks ONE entry, the leaving half, so the contract can waive its
-   *  tag. `handleAttendance` asks the identical question per claim; the
-   *  seatbelt there compares the two answers. */
-  replacement?: { outClaim: Claim } | null,
-): GateVerdict {
-  const selfClaim = claims.find((c) => c.subject === "sender");
-  const others: GateRegisterForEntry[] = claims
-    .filter((c) => c.subject === "other")
-    .map((c) => ({
-      name: c.personRef,
-      action: polarityToAction(c.polarity),
-      isStatedReplacement: !!replacement && c === replacement.outClaim,
-    }));
-
-  let intent: string;
-  if (selfClaim) {
-    if (selfClaim.contingent) intent = "conditional_in";
-    else if (selfClaim.polarity === "out")
-      intent = facts.sideRequests.includes("recruit") ? "replacement_request" : "out";
-    else intent = "in";
-  } else {
-    intent = "in";
-  }
-
-  return {
-    intent,
-    registerAttendance: selfClaim ? polarityToAction(selfClaim.polarity) : null,
-    registerFor: others.length > 0 ? others : null,
-  };
-}
-
-/**
  * §3.2 S25 — MatchTime's own last post is a known object, so the names
  * it listed as pending can be read back out of it deterministically.
  * Anchored on the literal copy the bot composes; anything else returns
@@ -3830,12 +3497,12 @@ export function parsePendingSet(lastBotPost: string | null): string[] {
  * exempt every ADMIN, and that was safe only because an admin's
  * third-party drop necessarily carried a tag — a tag is a deliberate
  * act, and someone who typed one meant the drop however the sentence
- * reads. `ADMIN_REPORTED_OUT_IS_TAG_FREE` removes that guarantee, so
- * the exemption now hangs off THE TAG rather than off the seat.
+ * reads. An untagged admin drop (allowed since 2026-09-07, and for
+ * everybody since 2026-11-02) removes that guarantee, so the exemption
+ * now hangs off THE TAG rather than off the seat.
  * Otherwise "Shahrokh is out 😂 vote him out lads" from the owner —
  * a sentence this group genuinely sends — would take his place off him.
- * Non-admins are unaffected: they were refused with or without a tag
- * before and they still are.
+ * The same holds for a non-admin's joke drop.
  */
 function banterRefusal(
   msg: EngineMessage,

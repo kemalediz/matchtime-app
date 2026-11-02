@@ -534,10 +534,9 @@ describe("a message an owner CLAIMED and then did nothing with", () => {
     ["David is OUT voluntarily to switch to 5aide.", "Kemal Ediz"],
     ["@DÇ  is out due to unforeseen issue at work", "Kemal Ediz"],
   ])("stays silent when the interaction contract refused it (%s)", (body, who) => {
-    // All three production rows are `other_att`: a sender's OWN
-    // attendance never needs a tag (`claimNeedsTag` returns false for
-    // `subject === "sender"`), so this refusal cannot reach a self
-    // route. The contract working is not an incident.
+    // All three production rows are `other_att` and were refused for
+    // want of a tag (attendance has needed none since 2026-11-02). A
+    // stated refusal on `other_att` is never an incident.
     const note = composeOperatorNote({
       orgName: "Sutton FC",
       messages: [],

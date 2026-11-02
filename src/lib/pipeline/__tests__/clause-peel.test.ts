@@ -10,7 +10,7 @@
  *   "@Match Time swap Elvin with Raihan, and I'm out"
  *      → the swap applied, the sender stayed CONFIRMED.
  *
- * `peelClause` is the same move `registerForEntryRequiresTag` made one
+ * `peelClause` is the same move the engine's attendance gate made one
  * layer down on 2026-09-08: ask the question PER CLAUSE, not per
  * message. A fast path claims the clause it recognises; the rest of the
  * body carries on down the pipeline.

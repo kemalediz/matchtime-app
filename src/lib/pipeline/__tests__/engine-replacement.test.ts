@@ -106,14 +106,9 @@ describe("the incident: an untagged replacement from an ordinary member", () => 
     expect(statusOf(result.nextState, "mojib")).toBe("CONFIRMED");
   });
 
-  it("does not need an @Match Time tag, and says which rule let it through", () => {
+  it("does not need an @Match Time tag (attendance never does, 2026-11-02)", () => {
     const { result } = run([najibOut(), mojibIn()], { teams: TEAMS });
-    expect(result.outcomes[0].reasons.join(" ")).not.toMatch(/requires an @Match Time tag/i);
-    expect(result.outcomes[0].reasons.join(" ")).toMatch(/REPLACEMENT_OUT_IS_TAG_FREE/);
-    // Wasim is not an admin, so the admin waiver carried nothing and must
-    // not be named: the reason trail is where a wrong drop is traced back
-    // to the policy that let it through.
-    expect(result.outcomes[0].reasons.join(" ")).not.toMatch(/ADMIN_REPORTED_OUT_IS_TAG_FREE/);
+    expect(result.outcomes[0].reasons.join(" ")).not.toMatch(/@Match Time tag/i);
   });
 
   it("gives Mojib the position Najib was holding", () => {
@@ -320,21 +315,25 @@ describe("the sender may be the one leaving", () => {
   });
 });
 
-describe("a false drop is the whole danger, so: what it refuses", () => {
-  it("refuses an untagged drop when the arriving name is unknown", () => {
-    const { result } = run([
-      najibOut(),
-      claim({ subject: "other", personRef: "Zork", personNamed: true, polarity: "in", replaces: "Najib" }),
-    ]);
-    expect(statusOf(result.nextState, "najib")).toBe("CONFIRMED");
-    expect(result.outcomes[0].reasons.join(" ")).toMatch(/needs an @Match Time tag/i);
+// Since 2026-11-02 a drop needs no tag whether or not it is paired, so a
+// refused pairing leaves an ordinary drop. What still refuses the drop
+// itself is the confidence floor.
+describe("a false pairing is the danger, so: what it refuses", () => {
+  it("an unknown arriving name pairs nothing: an ordinary drop, no slot moved", () => {
+    const { result } = run(
+      [
+        najibOut(),
+        claim({ subject: "other", personRef: "Zork", personNamed: true, polarity: "in", replaces: "Najib" }),
+      ],
+      { teams: TEAMS },
+    );
+    expect(statusOf(result.nextState, "najib")).toBe("DROPPED");
+    expect(result.writes.some((w) => w.kind === "team_slot_inherit")).toBe(false);
   });
 
-  it("refuses an untagged drop when the message states no direction", () => {
-    // Two unrelated statements. Without `replaces` this is not a
-    // replacement and Najib's drop needs a tag exactly as it always has.
+  it("no stated direction pairs nothing: two ordinary statements, both applied", () => {
     const { result } = run([najibOut(), mojibIn({ replaces: "" })]);
-    expect(statusOf(result.nextState, "najib")).toBe("CONFIRMED");
+    expect(statusOf(result.nextState, "najib")).toBe("DROPPED");
     expect(statusOf(result.nextState, "mojib")).toBe("CONFIRMED");
   });
 
@@ -344,9 +343,11 @@ describe("a false drop is the whole danger, so: what it refuses", () => {
     expect(result.writes.some((w) => w.kind === "team_slot_inherit")).toBe(false);
   });
 
-  it("refuses an untagged drop when the ARRIVAL is below the floor", () => {
+  it("an ARRIVAL below the floor pairs nothing: Najib's drop stands, Mojib is not added", () => {
     const { result } = run([najibOut(), mojibIn({ confidence: 0.6 })], { teams: TEAMS });
-    expect(statusOf(result.nextState, "najib")).toBe("CONFIRMED");
+    expect(statusOf(result.nextState, "najib")).toBe("DROPPED");
+    expect(statusOf(result.nextState, "mojib")).toBe("ABSENT");
+    expect(result.writes.some((w) => w.kind === "team_slot_inherit")).toBe(false);
   });
 
   it("still refuses a drop the extractor reads as a joke (low confidence; no emoji test since 2026-10-30)", () => {
@@ -357,13 +358,13 @@ describe("a false drop is the whole danger, so: what it refuses", () => {
     expect(statusOf(result.nextState, "najib")).toBe("CONFIRMED");
   });
 
-  it("refuses when two people both claim to be replacing Najib", () => {
+  it("two people both claiming Najib's place: Najib's own drop still stands", () => {
     const { result } = run([
       najibOut(),
       mojibIn(),
       claim({ subject: "other", personRef: "Amir", personNamed: true, polarity: "in", replaces: "Najib" }),
     ]);
-    expect(statusOf(result.nextState, "najib")).toBe("CONFIRMED");
+    expect(statusOf(result.nextState, "najib")).toBe("DROPPED");
   });
 
   it("never drops on `replaces` alone, with no out claim in the message", () => {
@@ -382,7 +383,7 @@ describe("a false drop is the whole danger, so: what it refuses", () => {
     expect(result.nextState.teams.some((t) => t.userId === "u-mojib")).toBe(false);
   });
 
-  it("a tagged replacement behaves identically: the waiver adds nothing else", () => {
+  it("a tagged replacement behaves identically", () => {
     const untagged = run([najibOut(), mojibIn()], { teams: TEAMS }).result;
     const tagged = run([najibOut(), mojibIn()], { teams: TEAMS, tagged: true }).result;
     expect(attendance(tagged).map((w) => ({ id: w.userId, s: w.status }))).toEqual(
@@ -390,9 +391,9 @@ describe("a false drop is the whole danger, so: what it refuses", () => {
     );
   });
 
-  it("leaves an ordinary untagged third-party drop refused, as it is today", () => {
+  it("an ordinary untagged third-party drop from a player is applied (2026-11-02)", () => {
     const { result } = run([najibOut()]);
-    expect(statusOf(result.nextState, "najib")).toBe("CONFIRMED");
-    expect(result.outcomes[0].reasons.join(" ")).toMatch(/requires an @Match Time tag/i);
+    expect(statusOf(result.nextState, "najib")).toBe("DROPPED");
+    expect(result.outcomes[0].reasons.join(" ")).not.toMatch(/@Match Time tag/i);
   });
 });

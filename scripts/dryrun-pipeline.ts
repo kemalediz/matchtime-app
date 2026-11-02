@@ -839,8 +839,8 @@ const CASES: Case[] = [
   // ── the controls ──────────────────────────────────────────────────
   { id: "W5", who: "Kemal", body: "Shahrokh was unreal last week, best player on the pitch", confirm: ["Shahrokh"], expect: "THE BANTER CONTROL. Names a player, reports nobody out => NO write, silent. A drop here is the failure this whole change risks" },
   { id: "W5b", who: "Kemal", body: "Shahrokh is out of form at the moment", confirm: ["Shahrokh"], expect: "THE ADVERSARIAL CONTROL: contains the literal words 'Shahrokh is out' inside a sentence that means the opposite of an absence. NO write" },
-  { id: "W6", who: "Wasim", body: "@Shahrokh🐔 Sutton Football Club is out due to unforeseen issue at work", confirm: ["Shahrokh"], expect: "THE LIMIT. The same message from a NON-admin => NO write. Only Kemal holds an OWNER/ADMIN seat on this org" },
-  { id: "W7", who: "Kemal", body: "put Shahrokh on the bench", confirm: ["Shahrokh"], expect: "BENCH is NOT waived => NO write. The waiver covers removal, never a demote" },
+  { id: "W6", who: "Wasim", body: "@Shahrokh🐔 Sutton Football Club is out due to unforeseen issue at work", confirm: ["Shahrokh"], expect: "The same message from a NON-admin => DROP Shahrokh (attendance needs no tag since 2026-11-02)" },
+  { id: "W7", who: "Kemal", body: "put Shahrokh on the bench", confirm: ["Shahrokh"], expect: "BENCH Shahrokh: an admin, and a bench needs no tag since 2026-11-02" },
   { id: "W8", who: "Kemal", body: "Shahrokh is out, Rashad can take his spot", confirm: ["Shahrokh"], expect: "the SWAP shape: DROP Shahrokh and register Rashad. The OUT half is waived, the IN half was already tag-free" },
   // W9/W10 are the pair that pins the guard the waiver had to move.
   // `banterRefusal` used to exempt every ADMIN from its joke-marker
@@ -878,9 +878,9 @@ const CASES: Case[] = [
   // change makes MatchTime act on PART of a message it previously
   // ignored whole, so a false positive now costs somebody their place.
   { id: "V1", who: "Kemal", body: "David is OUT voluntarily to switch to 5aside.\n\nEither @Mojib Jalali or @Najib can be in the main squad and the other can go to bench", confirm: ["David", "Mojib"], expect: "THE 8 SEPT INCIDENT, VERBATIM. DROP David. Mojib and Najib UNCHANGED (an either/or names nobody, and a bench needs a tag). MatchTime should SAY what it left alone if it refuses a named bench" },
-  { id: "V2", who: "Kemal", body: "David is out, put Mojib on the bench", confirm: ["David", "Mojib"], expect: "the incident's shape with both clauses unambiguous: DROP David, Mojib STAYS CONFIRMED, and a sentence naming the half that needs a tag" },
+  { id: "V2", who: "Kemal", body: "David is out, put Mojib on the bench", confirm: ["David", "Mojib"], expect: "the incident's shape with both clauses unambiguous: DROP David and BENCH Mojib (no tag needed since 2026-11-02)" },
   { id: "V3", who: "Kemal", body: "David can't make it tonight. Mojib drops to the bench", confirm: ["David", "Mojib"], expect: "the same two clauses phrased naturally: DROP David, Mojib unchanged" },
-  { id: "V4", who: "Wasim", body: "David is out, put Mojib on the bench", confirm: ["David", "Mojib"], expect: "THE LIMIT. A NON-admin: NOTHING applied, and MatchTime stays silent. Both clauses are refused, so there is no turn for a refusal sentence to ride" },
+  { id: "V4", who: "Wasim", body: "David is out, put Mojib on the bench", confirm: ["David", "Mojib"], expect: "A NON-admin (2026-11-02): DROP David; Mojib STAYS CONFIRMED (only an admin may bench)" },
   { id: "V5", who: "Kemal", body: "David is out of form since he switched to 5aside. Either Mojib or Najib would walk into the main squad ahead of him", confirm: ["David", "Mojib"], expect: "THE ADVERSARIAL CONTROL. Contains the literal words 'David is out' inside a sentence about FORM, and an either/or about the squad. NO write, nobody dropped, nobody benched" },
   { id: "V6", who: "Kemal", body: "@Match Time David is out, put Mojib on the bench", tagged: true, confirm: ["David", "Mojib"], expect: "the same message TAGGED: DROP David and BENCH Mojib. The control for V2 — the tag is what the bench clause was always missing" },
 
@@ -921,11 +921,11 @@ const CASES: Case[] = [
   { id: "TR19", who: "Erdal", body: "cuma varım", history: HISTORY_TR, expect: "in for FRIDAY. OUT OF SCOPE (two-matches problem, §3 of the readiness doc). Recorded only so a change here is seen: before, IN at conf 0.55-0.6 in 6/10, wrote 2/10 to the soonest match" },
   { id: "TR20", who: "Wasim", body: "ben yokum", confirm: ["Wasim"], history: HISTORY_TR, expect: "I'm out. DROP Wasim (10/10 before)" },
   { id: "TR21", who: "Erdal", body: "Ali de geliyor", history: HISTORY_TR, expect: "relayed third-party IN: Ali is coming too. route other_att, claim other/in for 'Ali'. A write for Ali is acceptable (C8's rule); never one for Erdal" },
-  // No `confirm` on TR22: the contract holds an untagged non-admin
-  // third-party OUT whether or not Baki holds a slot, so the target adds
-  // nothing, and `forceConfirmed` refuses when the live squad is 14/14
+  // No `confirm` on TR22 (written when the contract held an untagged
+  // non-admin third-party OUT; since 2026-11-02 it drops Baki if he
+  // holds a place), and `forceConfirmed` refuses when the live squad is 14/14
   // (it was, on the evening of 2026-09-16).
-  { id: "TR22", who: "Erdal", body: "Baki gelemiyor", history: HISTORY_TR, expect: "third-party OUT: Baki can't come. route other_att, claim other/out for 'Baki'. Untagged, from a NON-admin: the contract holds it (K2), so the observable is the route and the claim, not a drop" },
+  { id: "TR22", who: "Erdal", body: "Baki gelemiyor", history: HISTORY_TR, expect: "third-party OUT: Baki can't come. route other_att, claim other/out for 'Baki'. Untagged, from a NON-admin: since 2026-11-02 attendance needs no tag, so a drop is right when Baki holds a place" },
   { id: "TR23", who: "Erdal", body: "kaç kişiyiz?", history: HISTORY_TR, expect: "how many are we? route question; untagged => SILENT (interaction contract). Must not be attendance" },
   { id: "TR24", who: "Erdal", body: "hadi be ya 😂😂", history: HISTORY_TR, expect: "banter (oh come on). route none, SILENT, no write" },
   { id: "TR25", who: "Erdal", body: "maybe", history: HISTORY_TR, expect: "ENGLISH CONTROL for the hedge: NO confirmed write, reasons say 'tentative (personal uncertainty)'. TR14-16 must match this" },
@@ -982,7 +982,7 @@ const CASES: Case[] = [
   { id: "RP4", who: "Wasim", body: "Mojib is replacing Zork", confirm: [], expect: "the leaving name is not a member. NO drop for anyone; Mojib may still be added" },
   { id: "RP5", who: "Wasim", body: "Zork is replacing Najib", confirm: ["Najib"], expect: "the ARRIVING name is not a member. NO drop for Najib (untagged, non-admin)" },
   { id: "RP6", who: "Wasim", body: "Najib is out 😂 Mojib is replacing him lads", confirm: ["Najib"], expect: "banter markers from a non-admin. NO drop for Najib" },
-  { id: "RP7", who: "Wasim", body: "Mojib is in, Najib can't make it", confirm: ["Najib"], expect: "TWO STATEMENTS, no direction stated. Mojib may be added; Najib's drop still needs a tag, so NO drop" },
+  { id: "RP7", who: "Wasim", body: "Mojib is in, Najib can't make it", confirm: ["Najib"], expect: "TWO STATEMENTS, no direction stated. Mojib may be added and Najib dropped (no tag needed since 2026-11-02), but no slot is inherited" },
   { id: "RP8", who: "Wasim", body: "I'm out, Mojib is replacing me", confirm: ["Wasim"], expect: "the SENDER is the one leaving. DROP Wasim, ADD Mojib, Mojib inheriting Wasim's slot" },
 ];
 

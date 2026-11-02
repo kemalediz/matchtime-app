@@ -17,7 +17,6 @@ import { describe, it, expect } from "vitest";
 import {
   mergeRecruitReply,
   RECRUIT_BLAST_REQUIRES_TAG,
-  RECRUIT_COMMAND_IMPLIES_ADDRESSED,
 } from "../recruit-request";
 
 describe("mergeRecruitReply — one outbound message, never two", () => {
@@ -57,37 +56,12 @@ describe("mergeRecruitReply — one outbound message, never two", () => {
   });
 });
 
-describe("RECRUIT_COMMAND_IMPLIES_ADDRESSED", () => {
-  it("is a single boolean switch, so the contract widening is revertible on one line", () => {
-    expect(typeof RECRUIT_COMMAND_IMPLIES_ADDRESSED).toBe("boolean");
-  });
-
-  it("is still ON — the 2026-09-01 incident's fix is not what changed", () => {
-    // The side-request path ("Najib is out. We need one more player.")
-    // keeps working untagged. That is the incident, and it is not the
-    // thing 2026-09-06 tightened.
-    expect(RECRUIT_COMMAND_IMPLIES_ADDRESSED).toBe(true);
-  });
-});
-
 describe("RECRUIT_BLAST_REQUIRES_TAG — the bulk command, not the side request", () => {
-  it("is a single boolean switch, revertible on one line like its sibling", () => {
+  it("is a single boolean switch, revertible on one line", () => {
     expect(typeof RECRUIT_BLAST_REQUIRES_TAG).toBe("boolean");
   });
 
   it("is ON: an explicit bulk-DM command needs an @Match Time tag", () => {
     expect(RECRUIT_BLAST_REQUIRES_TAG).toBe(true);
-  });
-
-  it("holds AT THE SAME TIME as the 2026-09-01 widening — they answer different questions", () => {
-    // One asks "may MatchTime act on the REST of a message it was
-    // clearly commanded by?" (yes, since 2026-09-01). The other asks
-    // "may an untagged message start a 20-person mass DM?" (no, since
-    // 2026-09-06). They are two constants and not one so that reverting
-    // either leaves the other where it is — and this asserts the pair
-    // that ships, which is BOTH on. Collapsing them into one switch
-    // would make the incident fix and the ban-risk backstop the same
-    // line, which is how one gets reverted by accident with the other.
-    expect([RECRUIT_COMMAND_IMPLIES_ADDRESSED, RECRUIT_BLAST_REQUIRES_TAG]).toEqual([true, true]);
   });
 });

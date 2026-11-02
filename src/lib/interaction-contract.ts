@@ -6,30 +6,25 @@
  * intent; THIS code decides whether MT may act, based on a simple,
  * predictable contract:
  *
- *   ACT WITHOUT A TAG only for a player's OWN clear self-attendance
- *   (intent in/out with registerAttendance for the SELF sender, no
- *   third-party registerFor). Plus the separate, tag-free admin
- *   squad-from-list pipeline (cron/archive driven — not handled here).
+ *   ATTENDANCE NEVER NEEDS A TAG in the players' group (Kemal,
+ *   2026-11-02): the sender's own IN, OUT or maybe, and anybody else
+ *   added, dropped, benched or replaced. The engine still decides WHO
+ *   may do WHAT (the confidence floor, the admin-only bench guard, the
+ *   banter corroboration, capacity), but never asks for a tag.
  *
- *   REQUIRE an @Match Time tag for everything else MT could DO or
- *   ANSWER: questions, team ops (generate/show), stats requests, moving/
- *   benching/replacing OTHER players, reminders, payment queries, etc.
- *   Untagged → noise: no action, no reply, no reaction, DB unchanged.
+ *   EVERYTHING ELSE MatchTime could DO or ANSWER needs an @Match Time
+ *   tag: questions, team ops (generate/show), stats requests,
+ *   reminders, payment queries, etc. Untagged, those are noise: no
+ *   action, no reply, no reaction, DB unchanged.
  *
- *   THREE NAMED EXCEPTIONS have been argued and added on top, each as
- *   one revertable constant: a third-party ADD is tag-free for anyone,
- *   an OWNER/ADMIN reporting another player OUT is tag-free for them
- *   (`ADMIN_REPORTED_OUT_IS_TAG_FREE`, 2026-09-07), and the LEAVING half
- *   of a stated, fully resolved replacement is tag-free for anyone
- *   (`REPLACEMENT_OUT_IS_TAG_FREE`, 2026-09-22). A BENCH still needs a
- *   tag from everyone, including the owner.
+ *   History, short: until 2026-11-02 a third-party OUT or BENCH needed a
+ *   tag, with named exceptions for an admin's OUT (2026-09-07) and the
+ *   leaving half of a stated replacement (2026-09-22). On 2 Nov a
+ *   player's untagged "Sorry, Ismayil is out" was refused and Ismayil
+ *   stayed on the list; Kemal ruled every attendance message tag-free.
  *
- *   AND THE QUESTION IS ASKED PER ENTRY, NOT PER MESSAGE (2026-09-08).
- *   `registerForEntryRequiresTag` is the whole rule; `actionRequiresTag`
- *   is its OR over the message and stays the message-level answer for
- *   every caller that wants one. The split exists because one refused
- *   clause used to discard every other clause in the same message: see
- *   the essay on that function for the David incident.
+ *   The admin group (HQ) is separate and acts only on a real tag
+ *   (`admin-group-understand.ts`); nothing here changes that.
  *
  * MT must be CONSERVATIVE and PREDICTABLE: act only when clearly
  * warranted, stay silent on banter.
@@ -105,16 +100,6 @@ export function piMentionsBot(msg: Partial<TagInput>): boolean {
 export interface GateRegisterForEntry {
   name: string;
   action: "IN" | "OUT" | "BENCH";
-  /**
-   * Is this OUT the leaving half of a replacement the message STATES,
-   * with both people resolved to current members?
-   *
-   * Set by `pipeline/engine.ts` from `findStatedReplacement`, never by a
-   * model and never from the text. Read by
-   * `registerForEntryRequiresTag` and by nothing else. Absent means no,
-   * so every existing caller keeps the old, stricter answer.
-   */
-  isStatedReplacement?: boolean;
 }
 
 export interface GateVerdict {
@@ -124,307 +109,37 @@ export interface GateVerdict {
 }
 
 /**
- * Is this verdict PURELY the sender's own attendance (the only tag-free
- * action class)? True when:
- *   - the intent is a self-attendance intent (in / out / conditional_in /
- *     replacement_request — a player speaking about THEIR OWN slot), AND
- *   - there is NO third-party registerFor (moving/benching/replacing
- *     someone else is a directed op that REQUIRES a tag).
+ * Is this verdict ATTENDANCE, the class that never needs a tag? True when
+ *   - the intent is an attendance intent (in / out / conditional_in /
+ *     replacement_request), OR
+ *   - it adds, drops, benches or replaces anybody else (`registerFor`).
  *
  * We deliberately DON'T require registerAttendance to be populated: a bare
  * intent:"in" whose registerAttendance the server backfills later is still
- * self-attendance. A self-attendance intent that ALSO carries a
- * registerFor for another player is a directed op → not pure self.
+ * attendance.
  */
-export function isSelfAttendanceVerdict(v: GateVerdict): boolean {
-  const SELF_ATTENDANCE_INTENTS = new Set([
+export function isAttendanceVerdict(v: GateVerdict): boolean {
+  const ATTENDANCE_INTENTS = new Set([
     "in",
     "out",
     "conditional_in",
     "replacement_request",
   ]);
-  if (!SELF_ATTENDANCE_INTENTS.has(v.intent)) return false;
-  const movesOthers = !!(v.registerFor && v.registerFor.length > 0);
-  return !movesOthers;
-}
-
-/**
- * MAY AN ORG OWNER/ADMIN REPORT ANOTHER PLAYER **OUT** WITHOUT TAGGING
- * @Match Time?
- *
- * ⚠️ A DELIBERATE, ARGUED WIDENING OF THE CONTRACT, kept as one named
- * constant so it can be reverted on its own line. Set it to `false` and
- * the gate behaves exactly as it did before 2026-09-07. It is named for
- * exactly what it permits and it permits nothing else — see THE SCOPE.
- *
- * ── THE INCIDENT (2026-09-07 21:11, Sutton FC, the live group) ───────
- *
- * Kemal posted, the day before kickoff:
- *
- *   "@Shahrokh🐔 Sutton Football Club is out due to unforeseen issue at
- *    work"
- *
- * Shahrokh was CONFIRMED at position 10. MatchTime did nothing. The
- * verdict is a third-party OUT, `actionRequiresTag` said yes, and the
- * message tags no bot — so the whole message was treated as overheard
- * chat. The squad kept reading 13/14 with a player in it who was not
- * coming; the row was corrected by hand.
- *
- * ⚠️ THE TRAP IN THE WORDING, because it confused the owner and it
- * confused the first reader of the log: that message DOES contain an
- * "@" mention — of the PLAYER. "Tagged" in this codebase means the BOT
- * was mentioned (`messageTagsBot`). A player @-mention has never been a
- * tag and still is not one. Keep that distinction crisp in anything you
- * write here.
- *
- * ── THE ARGUMENT ────────────────────────────────────────────────────
- *
- * The old rule's stated reason was "removing or moving someone who never
- * consented stays an explicit, tagged op", and that reason is still
- * exactly right FOR AN ORDINARY MEMBER: without it anyone in the group
- * can remove a player by typing a sentence, and the cost of a wrong drop
- * is somebody losing their place.
- *
- * It is not right for the OWNER. Managing the squad is what the owner
- * DOES; "X is out" from him is not overheard chat about a third party,
- * it is the roster instruction the product exists to execute. He should
- * not have to address the bot to do the one job he bought it for, and
- * on 2026-09-07 the tag requirement cost him a squad list that was wrong
- * until he went and corrected the row himself.
- *
- * This mirrors `RECRUIT_COMMAND_IMPLIES_ADDRESSED` (PR #33) in shape:
- * the tag is a PROXY for "addressed to MatchTime", not the thing itself,
- * and the seat the sender holds is the other evidence for it. It also
- * heeds that constant's lesson — a waiver reused past its intended path
- * produced the 27-person untagged mass DM fixed in `9d73716` — so this
- * is a NEW constant, read in exactly one place.
- *
- * ── THE SCOPE, and it is narrow ─────────────────────────────────────
- *
- *   WHO   OWNER/ADMIN only, and the seat is read from the MEMBERSHIP
- *         TABLE (`engineAdminIds` in the analyze route → `Member.isAdmin`
- *         → `senderIsAdmin` in the engine). NO authorisation rests on
- *         model output, here or anywhere below it.
- *   WHAT  an OUT ENTRY. An OUT alone is the incident; an OUT beside an
- *         IN is the same message with the replacement named ("Shahrokh
- *         is out, Amir can take his spot"), and the IN half has been
- *         tag-free for EVERYONE since the third-party-add change, so the
- *         pair grants nothing neither half grants alone.
- *   NOT   BENCH. Kemal asked for removal, and a demote is a different
- *         act: it leaves the player in the squad in a worse position,
- *         it is roster surgery rather than recording a fact the player
- *         reported, and the engine's separate admin-only bench guard
- *         means the seat is ALREADY spent as its authorisation there.
- *         The tag is the second, independent signal and it stays.
- *         Owning less is the safer default; this is the line.
- *
- *         ⚠️ AND IT COST A SECOND INCIDENT THE NEXT DAY, not because the
- *         line is wrong but because of where it was drawn. This waiver
- *         shipped as `entries.every(IN | OUT)`, one answer for the whole
- *         message, so a bench clause anywhere in a message refused every
- *         other clause in it: on 2026-09-08 "David is OUT … the other
- *         can go to bench" recorded NOTHING and David played on in a
- *         squad he had left. The scope above is unchanged, and it is now
- *         read per entry (`registerForEntryRequiresTag`). A refused
- *         BENCH refuses the BENCH.
- *   NOT   anything outside `registerFor`: questions, team ops,
- *         reminders, payments, the recruit blast. Those read their own
- *         gates and none of them reads this constant.
- *
- * ── WHAT ELSE HAD TO MOVE WITH IT ───────────────────────────────────
- *
- * `banterRefusal` in `pipeline/engine.ts` exempted ADMINS from its
- * joke-marker refusal. That exemption was safe only because an admin's
- * third-party drop necessarily carried a tag, and a tag is a deliberate
- * act. This waiver removes that, so the exemption was re-hung on the
- * TAG rather than on the seat. Without that change "Shahrokh is out 😂
- * vote him out lads" from the owner would have dropped him.
- */
-export const ADMIN_REPORTED_OUT_IS_TAG_FREE = true;
-
-/**
- * MAY ANYONE REPORT THE LEAVING HALF OF A STATED REPLACEMENT WITHOUT
- * TAGGING @Match Time?
- *
- * ⚠️ THE SECOND ARGUED WIDENING OF THE THIRD-PARTY RULE, and like the
- * first it is one named constant read in exactly one place. Set it to
- * `false` and the gate behaves as it did before 2026-09-22.
- *
- * ── THE INCIDENT (2026-09-22, Sutton FC, 28 minutes to kickoff) ──────
- *
- * A player posted, untagged:
- *
- *   "Hi guys, Mojib is replacing Najib on the list. We can change"
- *
- * Mojib played. Najib did not. The team sheet named Najib, the rating
- * DMs would have gone to Najib, and the match fee was about to be
- * charged to Najib. Kemal fixed the rows by hand that night.
- *
- * The router lost it first and the extractor was never told that a
- * replacement is two claims, both of which are fixed alongside this. But
- * even with both of those right, the OUT half would have been refused:
- * the sender is an ordinary member, the message tags nobody, and a
- * third-party OUT needs a tag from everyone except an admin.
- *
- * ── THE ARGUMENT ────────────────────────────────────────────────────
- *
- * The contract's own line is that a tag is required for REQUESTS and
- * free for ATTENDANCE STATEMENTS. "Najib's in" has always been free.
- * "Mojib is replacing Najib" is the same kind of sentence with two
- * people in it, and the third-party ADD half of it has been tag-free for
- * everybody since the third-party-add change. Refusing only the other
- * half leaves the squad holding a man who is not coming AND the man who
- * is, which is worse than either answer taken whole.
- *
- * It is also the direction the club's own money runs. A stale CONFIRMED
- * row is what the fee is charged against and what the rating DM is sent
- * to, so "do nothing" is not the neutral option it looks like.
- *
- * ── THE SCOPE, AND IT IS NARROWER THAN THE ADMIN WAIVER ─────────────
- *
- *   WHO   anyone. The seat is not consulted: the person who knows a
- *         replacement has arrived is usually the player who arranged it,
- *         which is the same reasoning `team-slot-swap.ts` gives for not
- *         putting an admin gate on a slot transfer.
- *   WHAT  ONE OUT, and only as the far end of an `in` claim about a
- *         DIFFERENT current member that the message says is taking this
- *         person's place. `pipeline/replacement.ts` decides that, against
- *         the roster, and refuses an unknown name, an unstated
- *         direction, two replacements at once, a claim below the
- *         confidence floor, and every claim the engine would have held
- *         anyway. No pairing, no waiver.
- *   NOT   BENCH, for the same reason the admin waiver excludes it: a
- *         demote is roster surgery, not the recording of a fact.
- *   NOT   an OUT on its own. A replacement that names nobody arriving is
- *         an ordinary third-party drop and needs a tag exactly as it
- *         does today.
- *   NOT   anything else in the message. It is one entry's answer, the
- *         2026-09-08 David incident's whole lesson.
- *
- * ── WHAT DOES NOT MOVE ──────────────────────────────────────────────
- *
- * `banterRefusal` still runs, so "Najib is out 😂 Mojib is replacing him
- * lads" from a non-admin is still refused for want of corroboration. So
- * does the confidence floor, on BOTH claims, with no exemption: the
- * self-IN exemption is about a member's own place and a third party
- * moving two other people is precisely what the floor was kept for.
- */
-export const REPLACEMENT_OUT_IS_TAG_FREE = true;
-
-/** Everything the gate is allowed to know about WHO sent the message.
- *  One field, read from the membership table, never from a model. */
-export interface GateSender {
-  /** Is the sender an org OWNER or ADMIN? Absent means NO (fail closed). */
-  senderIsAdmin?: boolean;
-}
-
-/**
- * DOES THIS ONE `registerFor` ENTRY REQUIRE AN @Match Time TAG?
- *
- * The whole third-party rule, stated once, for ONE named person and ONE
- * action. `actionRequiresTag` is the OR of this over a message.
- *
- *   IN     never. A third-party ADD has been tag-free for everyone since
- *          the third-party-add change: registering a friend somebody
- *          names in ordinary group chat is not a directed op.
- *   OUT    tag-free for an OWNER/ADMIN (`ADMIN_REPORTED_OUT_IS_TAG_FREE`,
- *          and the seat comes from the membership table, never from a
- *          model), and tag-free for ANYONE when it is the leaving half
- *          of a stated replacement (`REPLACEMENT_OUT_IS_TAG_FREE`, and
- *          `isStatedReplacement` is set by a deterministic pairing over
- *          the roster, never by a model). For anyone else it stays an
- *          explicit, tagged op, or the group can remove each other by
- *          typing a sentence.
- *   BENCH  always, from everybody, the owner included. See the NOT
- *          clause on `ADMIN_REPORTED_OUT_IS_TAG_FREE`: a demote leaves
- *          the player in the squad in a worse position, it is roster
- *          surgery rather than the recording of a fact the player
- *          reported, and the engine's admin-only bench guard has already
- *          spent the seat as ITS authorisation. The tag is the second,
- *          independent signal and it stays.
- *
- * ── WHY THIS FUNCTION EXISTS AT ALL (2026-09-08, the David incident) ─
- *
- * Kemal posted to the live group, untagged, on match day:
- *
- *   "David is OUT voluntarily to switch to 5aside.
- *
- *    Either @Mojib Jalali or @Najib can be in the main squad and the
- *    other can go to bench"
- *
- * MatchTime recorded NOTHING, reasoning "requires an @Match Time tag
- * (interaction contract)". David stayed in the squad and was corrected
- * by hand, twice, on the day.
- *
- * The BENCH exclusion was not the mistake and is not reversed here. The
- * mistake was that the rules were written as `entries.every(...)`, so
- * the answer was a property of the MESSAGE: one clause MatchTime may not
- * act on poisoned every clause it may. A clean, unambiguous "David is
- * OUT" from the one person entitled to say it was thrown away by a
- * sentence about somebody else.
- *
- * This is the fifth production incident in this repo where a compound
- * message lost half its meaning (see the terminal-short-circuit note),
- * and the shape is always the same: a decision taken for the whole
- * message when it belonged to each part. Asking the question per entry
- * is what makes that class unrepresentable here — there is no longer a
- * message-shaped answer for a caller to over-apply.
- *
- * IDENTITY IS NOT THIS FUNCTION'S BUSINESS. It reads `action` and the
- * seat, never `name`: whether a reference is a squad member, a guest or
- * nobody at all is the roster's answer and is resolved downstream.
- */
-export function registerForEntryRequiresTag(
-  entry: GateRegisterForEntry,
-  sender?: GateSender,
-): boolean {
-  if (entry.action === "IN") return false;
-  if (entry.action === "OUT") {
-    // The leaving half of a stated, fully resolved replacement. See
-    // `REPLACEMENT_OUT_IS_TAG_FREE`; the pairing that sets this flag is
-    // `pipeline/replacement.ts` and it is the only thing allowed to.
-    if (REPLACEMENT_OUT_IS_TAG_FREE && entry.isStatedReplacement === true) return false;
-    return !(ADMIN_REPORTED_OUT_IS_TAG_FREE && sender?.senderIsAdmin === true);
-  }
-  return true;
+  return ATTENDANCE_INTENTS.has(v.intent) || (v.registerFor?.length ?? 0) > 0;
 }
 
 /**
  * Does acting on this verdict REQUIRE an @Match Time tag?
  *
- * No when it's pure self-attendance (the one tag-free action class).
- * No when there's nothing to do (noise/unclear with no writes) — there's
- * no action to gate, so the tag is irrelevant; the existing noise path
- * already keeps MT silent.
- * For a third-party registerFor the answer is `registerForEntryRequiresTag`
- * OR-ed over the entries: an ADD is tag-free for anyone, an admin's OUT
- * is tag-free for them, a BENCH never is. `sender` is read for that and
- * for nothing else; it is optional and its absence means "not an admin",
- * so every existing single-argument caller keeps the old, stricter answer.
- * Yes for everything else action/answer-y: questions, team ops, reminders,
- * payment, score handling.
- *
- * ⚠️ THIS IS A MESSAGE-LEVEL ANSWER AND IT IS ONLY EVER A SUMMARY. "Does
- * anything in here need a tag?" is the right question for a caller
- * deciding whether an UNTAGGED message has anything at all it may act on.
- * It is the WRONG question for deciding what to do with each part, and
- * using it that way is the 2026-09-08 David incident: a `true` here does
- * NOT mean every entry was refused. A caller that acts per entry must ask
- * per entry.
+ * No for attendance, the sender's own or anybody else's
+ * (`isAttendanceVerdict`).
+ * No when there's nothing to do (noise/unclear with no writes): there's
+ * no action to gate, and the noise path already keeps MT silent.
+ * Yes for everything else action/answer-y: questions, team ops,
+ * reminders, payment, score handling.
  */
-export function actionRequiresTag(v: GateVerdict, sender?: GateSender): boolean {
-  if (isSelfAttendanceVerdict(v)) return false;
-
-  const entries = v.registerFor ?? [];
-  if (entries.length > 0) {
-    // ONE ANSWER PER ENTRY, OR-ed. The message needs a tag when ANY
-    // entry in it does — which is the same message-level answer this
-    // returned when the rules were written as three `every` clauses, and
-    // it is pinned as an exhaustive equivalence test. What the OR does
-    // NOT do any more is decide what happens to the entries that did not
-    // need one; that is the caller's, per entry.
-    return entries.some((e) => registerForEntryRequiresTag(e, sender));
-  }
+export function actionRequiresTag(v: GateVerdict): boolean {
+  if (isAttendanceVerdict(v)) return false;
 
   // Action/answer-y intents MT performs in the group, all of which
   // require an explicit @Match Time tag. NOTE: "score" is deliberately
