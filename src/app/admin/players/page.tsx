@@ -1,7 +1,7 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { isUnchangedSeed, seedBoxValue } from "@/lib/default-seed";
 import {
   Phone,
   Star,
@@ -144,6 +144,10 @@ export default function PlayersPage() {
     // the balancer picks up 1-point differences fine.
     const num = parseInt(value, 10);
     if (isNaN(num) || num < 1 || num > 10 || !orgId) return;
+    // The box shows 6 for a player nobody has seeded. Leaving it at 6
+    // (or tabbing through) is not a change: the seed stays unset.
+    const stored = players.find((p) => p.id === userId)?.seedRating;
+    if (isUnchangedSeed(num, stored)) return;
     try {
       await seedPlayerRating(userId, orgId, num);
       // Optimistic in-place update — keeps scroll position and focus so
@@ -533,7 +537,8 @@ export default function PlayersPage() {
             leading space in this build ("Seed ratingis", 2026-09-29). */}
         <span className="font-medium text-slate-700">Seed rating</span>{" "}is the player&apos;s
         starting skill score (1 to 10) used by the team-balancer until they&apos;ve
-        accumulated enough peer ratings from completed matches.
+        accumulated enough peer ratings from completed matches.{" "}
+        <span data-testid="seed-default-hint">{t(lang).seed_default_hint}</span>
       </p>
 
       <PlayersInfoLegend lang={lang} />
@@ -774,11 +779,11 @@ export default function PlayersPage() {
                   </label>
                   <input
                     type="number"
-                    defaultValue={p.seedRating != null ? Math.round(p.seedRating) : ""}
+                    defaultValue={seedBoxValue(p.seedRating)}
                     min={1}
                     max={10}
                     step={1}
-                    title="Seed rating (1 to 10) for this club. Used by the team-balancer until peer ratings accumulate. A player at another club keeps a separate rating there."
+                    title="Seed rating (1 to 10) for this club. A player nobody has rated starts at 6, a medium player: move them up or down. Used by the team-balancer until peer ratings accumulate. A player at another club keeps a separate rating there."
                     onBlur={(e) => e.target.value && handleSeedRating(p.id, e.target.value)}
                     className="w-20 h-10 px-2 rounded-lg border border-slate-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />

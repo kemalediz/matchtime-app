@@ -189,22 +189,22 @@ describe("provisional while the prior still outweighs the player's own scores", 
 });
 
 /**
- * Design section 4.2: `source: "club-average"` exists precisely so the
- * UI can refuse to present the club's average as if it were this
- * player's own number. A brand-new unseeded member enters the balancer
- * at the club mean, which is right for team selection and would be a
- * lie on their own dashboard.
+ * A brand-new unseeded member enters the balancer at the default seed,
+ * 6 (`default-seed.ts`, since 2026-11-02; it was the club mean before),
+ * which is right for team selection and would be a lie on their own
+ * dashboard. `source: "default-seed"` says so.
  */
 describe("a player this club has never rated is shown the empty state", () => {
-  it("unseeded and unrated: the club mean is not theirs to be shown", async () => {
+  it("unseeded and unrated: the default seed is not theirs to be shown", async () => {
     for (const other of ["u-a", "u-b", "u-c"]) for (let i = 0; i < 4; i++) push(other, ORG, 7);
     const r = await load();
-    expect(r.source).toBe("club-average");
+    expect(r.source).toBe("default-seed");
     expect(r.hasOwnNumber).toBe(false);
-    // Nothing to show: the club's average is not this player's number.
+    // Nothing to show: an assumed 6 is not this player's number.
     expect(r.rating).toBeNull();
-    // The balancer still gets a usable prior out of the same call.
-    expect(r.balancerRating).toBe(7);
+    // The balancer still gets a usable prior out of the same call: the
+    // default seed, not the club's 7 average.
+    expect(r.balancerRating).toBe(6);
   });
 
   /**
@@ -253,10 +253,10 @@ describe("a player this club has never rated is shown the empty state", () => {
 
   it("a club that has never rated anybody gives nobody a number", async () => {
     const r = await load();
-    expect(r.source).toBe("club-average");
+    expect(r.source).toBe("default-seed");
     expect(r.hasOwnNumber).toBe(false);
     expect(r.rating).toBeNull();
-    expect(r.balancerRating).toBe(5);
+    expect(r.balancerRating).toBe(6);
   });
 });
 
@@ -282,13 +282,15 @@ describe("a clubmate's club rating is reachable", () => {
 /**
  * KEMAL'S EXAMPLE, END TO END THROUGH THE LOADER.
  *
- * One rating of 9 at a club whose mean is 6.674. The player is shown
- * 9.0 because that is what his team-mates gave him; the balancer reads
- * 7.3 because one rating is not yet evidence. Both come out of the one
+ * One rating of 9 for an unseeded player at a club whose mean is about
+ * 6.7. The player is shown 9.0 because that is what his team-mates gave
+ * him; the balancer reads 6.75, (9 + 6x3) / 4, because one rating is not
+ * yet evidence. (It read 7.3 until 2026-11-02, when the prior was the
+ * club mean; it is the default seed now, whatever the club averages.) Both come out of the one
  * call, so no surface can reach for the wrong one by accident.
  */
 describe("one rating of 9 at a club whose mean is about 6.7", () => {
-  it("shows 9.0 and balances at roughly 7.3", async () => {
+  it("shows 9.0 and balances at 6.75", async () => {
     // Twenty rows from the rest of the squad, sitting where Sutton FC
     // really sits (6.674, measured against production on 2026-09-18),
     // then this player's single 9 on top.
@@ -302,8 +304,7 @@ describe("one rating of 9 at a club whose mean is about 6.7", () => {
     expect(r.rating).toBe(9);
     expect(r.rating!.toFixed(1)).toBe("9.0");
     expect(clubMean).toBeCloseTo(6.714, 3);
-    expect(r.balancerRating).toBeCloseTo((9 + clubMean * 3) / 4, 10);
-    expect(r.balancerRating.toFixed(1)).toBe("7.3");
+    expect(r.balancerRating).toBeCloseTo(6.75, 10);
     expect(r.provisional).toBe(true);
     // The two are allowed to differ, and here they must.
     expect(r.rating).toBeGreaterThan(r.balancerRating);

@@ -325,6 +325,11 @@ export default async function AdminGuidePage() {
         <li><strong>3 or 4</strong>: still learning</li>
       </ul>
       <p>
+        A player you haven&apos;t rated starts at <strong>6</strong>, a
+        medium player, so you only need to move the ones who are better or
+        still learning.
+      </p>
+      <p>
         As team-mates rate each other after games, their ratings take over
         from yours. Players never see the starting rating you gave them; they
         only see what team-mates have said.

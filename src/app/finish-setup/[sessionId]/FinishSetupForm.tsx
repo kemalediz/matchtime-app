@@ -19,6 +19,7 @@ import type {
   CapturedSchedule,
 } from "@/lib/onboarding-enrichment-reconcile";
 import { applyEnrichment } from "@/app/actions/finish-setup";
+import { SeedInput } from "@/components/seed-input";
 import { SectionInfo } from "@/components/info/section-info";
 import { confidenceBadge, displayEvidence } from "@/lib/info-copy";
 
@@ -45,13 +46,6 @@ interface RosterRow {
 const NONE = "__none__";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-function clampSeed(raw: string): number | null {
-  if (raw.trim() === "") return null;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return null;
-  return Math.max(1, Math.min(10, Math.round(n)));
-}
 
 export function FinishSetupForm({ sessionId, roster, unresolved, schedule, positions, lang = "en" }: Props) {
   const [rows, setRows] = useState<RosterRow[]>(() =>
@@ -207,19 +201,11 @@ export function FinishSetupForm({ sessionId, roster, unresolved, schedule, posit
                       </label>
                       {i === 0 && <SectionInfo k="fs_seed" lang={lang} />}
                     </div>
-                    <input
+                    <SeedInput
                       id={`seed-${i}`}
                       aria-label={`Seed rating for ${r.name}`}
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={r.seedRating ?? ""}
-                      onChange={(e) =>
-                        setRow(i, {
-                          seedRating: e.target.value === "" ? null : Number(e.target.value),
-                        })
-                      }
-                      onBlur={(e) => setRow(i, { seedRating: clampSeed(e.target.value) })}
+                      seed={r.seedRating}
+                      onSeedChange={(v) => setRow(i, { seedRating: v })}
                       className="w-full h-11 px-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>

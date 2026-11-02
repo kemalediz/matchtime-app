@@ -2412,6 +2412,11 @@ export const en = {
 
   /** Admin seed editor. The seed is one club's opinion and the editor
    *  gives no other hint of that. */
+  /** The admin seed boxes show 6 for a player nobody has seeded
+   *  (`default-seed.ts`, Kemal 2026-11-02: "so it gives the admins a
+   *  measurement for medium kind of players"). */
+  seed_default_hint: "A player nobody has rated starts at 6, a medium player. Move them up or down.",
+
   rating_seed_club_hint:
     "Seed ratings apply to this club only. A player who also turns out somewhere else keeps a separate rating there, and nothing you type here changes it.",
 
@@ -4052,7 +4057,7 @@ export const en = {
     "Where this player usually plays. MatchTime uses positions to give both teams a fair mix when it makes teams. Pick None if you're not sure; you can set it later on the Players page.",
   info_fs_seed_title: "Seed rating",
   info_fs_seed_body:
-    "Your starting score for this player at this club, from 1 to 10. Teams are balanced on it until players start rating each other after matches; then the real ratings take over bit by bit. Players never see it.",
+    "Your starting score for this player at this club, from 1 to 10. If the chat gave no clue it starts at 6, a medium player: move it up or down. Teams are balanced on it until players start rating each other after matches; then the real ratings take over bit by bit. Players never see it.",
   info_fs_evidence_title: "Why MatchTime guessed this",
   info_fs_evidence_body:
     "The message or summary from your chat that the guess is based on, so you can judge it. Only admins see it.",
@@ -4090,7 +4095,7 @@ export const en = {
     "Add someone who hasn't posted in the group yet. With a phone number MatchTime can message them privately and recognise them in the group. If the number is already on MatchTime, that player is reused rather than added twice.",
   info_pl_seed_title: "Seed rating",
   info_pl_seed_body:
-    "Your starting score for a player at this club, from 1 to 10. Teams are balanced on it until players rate each other after matches; then the real ratings take over bit by bit. Players never see it, and another club's seed for the same person is separate.",
+    "Your starting score for a player at this club, from 1 to 10. A player nobody has rated starts at 6, a medium player: move them up or down. Teams are balanced on it until players rate each other after matches; then the real ratings take over bit by bit. Players never see it, and another club's seed for the same person is separate.",
   info_pl_club_rating_title: "Club rating",
   info_pl_club_rating_body:
     "The average of the ratings this club's players have given them after matches, the same number they see on their own page. It shows Not rated yet until someone rates them.",

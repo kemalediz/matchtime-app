@@ -19,9 +19,16 @@
  * What survives is the one step the compiler cannot take: it happily
  * type-checks a schema that has the columns back. So this now guards the
  * SCHEMA, which is the only door the columns can return through, plus
- * the `DEFAULT_SEED_RATING` constant that made a new member inherit
- * somebody else's number. Both are single lines somebody could write
- * without meaning the consequence, and neither fails any other gate.
+ * the default seed being WRITTEN at membership creation, which is how
+ * the old `DEFAULT_SEED_RATING` made "143 of 143 users have a seed set"
+ * and hid who an admin had actually rated. Both are single lines
+ * somebody could write without meaning the consequence, and neither
+ * fails any other gate.
+ *
+ * Since 2026-11-02 `DEFAULT_SEED_RATING` (6) exists again, in
+ * `default-seed.ts`, as a READ-time default: an unset seed is shown and
+ * balanced as 6, and the column stays null. What must not come back is
+ * writing it.
  *
  * `Membership.seedRating` and `Membership.matchRating` are the correct
  * home and are deliberately NOT matched here. The test is about which
@@ -100,8 +107,17 @@ describe("no constant hands a new member somebody else's opinion", () => {
     expect(files.length).toBeGreaterThan(100);
   });
 
-  it("has no DEFAULT_SEED_RATING constant left", () => {
-    const offenders = files.filter((f) => /DEFAULT_SEED_RATING/.test(readFileSync(f, "utf8")));
+  it("never writes the default seed into a row: it is read as 6, stored as null", () => {
+    const offenders = files.filter((f) =>
+      /seedRating\s*:\s*(DEFAULT_SEED_RATING|effectiveSeed\()/.test(readFileSync(f, "utf8")),
+    );
     expect(offenders.map((f) => path.relative(SRC, f))).toEqual([]);
+  });
+
+  it("declares the default seed in exactly one module", () => {
+    const declarers = files.filter((f) =>
+      /(const|let|var)\s+DEFAULT_SEED_RATING\b/.test(readFileSync(f, "utf8")),
+    );
+    expect(declarers.map((f) => path.relative(SRC, f).split(path.sep).join("/"))).toEqual(["lib/default-seed.ts"]);
   });
 });

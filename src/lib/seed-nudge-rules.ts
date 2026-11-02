@@ -3,10 +3,10 @@
  * The text is seed-nudge-copy.ts; the scheduler hook is seed-nudge.ts.
  *
  * WHY. The balancer's prior for a player is this club's seed
- * (`Membership.seedRating`), else this club's mean peer rating, else 5.0
- * (`computeClubRating`, team-generation.ts). A new club has no peer
- * ratings, so a player with no seed is a 5.0, and with most players at
- * 5.0 the first week's "balanced" teams are close to random. FNF went
+ * (`Membership.seedRating`), else the default seed, 6 (`default-seed.ts`;
+ * it was the club mean, else 5.0, until 2026-11-02). A new club has no
+ * peer ratings, so a player with no seed is a 6, and with most players
+ * at 6 the first week's "balanced" teams are close to random. FNF went
  * live with 0 of 24 seeded and nobody told the organisers. Now MatchTime
  * tells them, once per club, through the admin channel.
  *

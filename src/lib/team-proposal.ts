@@ -123,6 +123,7 @@ import {
   type TeamCommand,
 } from "./team-proposal-rules";
 import { recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
+import { DEFAULT_SEED_RATING } from "./default-seed";
 
 export interface TeamProposalDeps {
   /** The shared generator. Injected in tests only. */
@@ -511,7 +512,7 @@ export async function handleTeamCommand(args: {
   const rating = async () => {
     const ids = sheet.slots.map((x) => x.userId);
     const map = await ratingsOf(deps)(match.id, sheet.orgId, ids).catch(() => new Map<string, number>());
-    return (id: string) => map.get(id) ?? 5;
+    return (id: string) => map.get(id) ?? DEFAULT_SEED_RATING;
   };
 
   let plan: { team: Map<string, SheetTeam>; moved: string[]; evenedBy: string[] };

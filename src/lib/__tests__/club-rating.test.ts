@@ -9,13 +9,11 @@
  * and the provenance of the peer scores, both of which are now
  * club-scoped:
  *
- *   prior = Membership.seedRating for THIS club
- *           ?? the mean of every rating given in THIS club
- *           ?? 5.0
+ *   prior = Membership.seedRating for THIS club ?? DEFAULT_SEED_RATING (6)
  *
- * The last of those three is the honest "this club has never rated
- * anybody" answer, and it makes every player equal so the balancer
- * falls through to position composition.
+ * Until 2026-11-02 the fallback was this club's mean rating, else 5.0.
+ * Kemal made the default seed 6, the medium player the admin's seed box
+ * now shows, and the balancer uses that same 6 (`default-seed.test.ts`).
  *
  * The isolation property itself (a rating in club A cannot move a
  * player's number in club B) is proven end to end in
@@ -48,45 +46,22 @@ function legacyGlobalRating(args: { seedRating: number | null; peerRatings: numb
   return { rating, source, peerCount };
 }
 
-/** Sutton FC's real club mean, measured read-only on 2026-09-18
- *  (design section 3.5). Used so the numbers below are the numbers the
- *  design quotes rather than a made-up pair. */
-const SUTTON_MEAN = 6.674;
-
 describe("computeClubRating", () => {
   it("peerCount 0 with a club seed returns the seed exactly", () => {
     const r = computeClubRating({
       clubSeedRating: 8,
       clubPeerRatings: [],
-      clubMeanRating: SUTTON_MEAN,
     });
     expect(r.rating).toBe(8);
     expect(r.source).toBe("seed");
     expect(r.peerCount).toBe(0);
   });
 
-  it("peerCount 0 with NO club seed falls to the club mean, not to 5.0", () => {
-    const r = computeClubRating({
-      clubSeedRating: null,
-      clubPeerRatings: [],
-      clubMeanRating: SUTTON_MEAN,
-    });
-    expect(r.rating).toBeCloseTo(SUTTON_MEAN, 10);
-    expect(r.source).toBe("club-average");
+  it("peerCount 0 with NO club seed is the default seed, 6, whatever the club rates on average", () => {
+    const r = computeClubRating({ clubSeedRating: null, clubPeerRatings: [] });
+    expect(r.rating).toBe(6);
+    expect(r.source).toBe("default-seed");
     expect(r.peerCount).toBe(0);
-  });
-
-  it("peerCount 0 with no seed and no club mean returns 5.0", () => {
-    // The Turkish club on day one: nobody seeded, nobody rated. Every
-    // player gets the same number, so the rating term is constant and
-    // the balancer falls through to composition and its hill-climb.
-    const r = computeClubRating({
-      clubSeedRating: null,
-      clubPeerRatings: [],
-      clubMeanRating: null,
-    });
-    expect(r.rating).toBe(5);
-    expect(r.source).toBe("club-average");
   });
 
   it("peerCount 1 shrinks the single score 75% toward the prior", () => {
@@ -94,7 +69,6 @@ describe("computeClubRating", () => {
     const r = computeClubRating({
       clubSeedRating: 6,
       clubPeerRatings: [9],
-      clubMeanRating: SUTTON_MEAN,
     });
     expect(r.rating).toBeCloseTo(6.75, 10);
     expect(r.source).toBe("blended");
@@ -106,7 +80,6 @@ describe("computeClubRating", () => {
     const r = computeClubRating({
       clubSeedRating: 6,
       clubPeerRatings: [9, 9],
-      clubMeanRating: SUTTON_MEAN,
     });
     expect(r.rating).toBeCloseTo(7.2, 10);
     expect(r.source).toBe("blended");
@@ -117,7 +90,6 @@ describe("computeClubRating", () => {
     const r = computeClubRating({
       clubSeedRating: 6,
       clubPeerRatings: [9, 9, 9],
-      clubMeanRating: SUTTON_MEAN,
     });
     expect(r.rating).toBeCloseTo(7.5, 10);
     expect(r.source).toBe("blended");
@@ -127,7 +99,6 @@ describe("computeClubRating", () => {
     const r = computeClubRating({
       clubSeedRating: 6,
       clubPeerRatings: Array(9).fill(7),
-      clubMeanRating: SUTTON_MEAN,
     });
     expect(r.source).toBe("peer");
     expect(r.peerCount).toBe(9);
@@ -137,39 +108,19 @@ describe("computeClubRating", () => {
     const eight = computeClubRating({
       clubSeedRating: 6,
       clubPeerRatings: Array(8).fill(7),
-      clubMeanRating: SUTTON_MEAN,
     });
     expect(eight.source).toBe("blended");
   });
 
-  it("the club mean is ignored whenever a club seed exists", () => {
-    const withMean = computeClubRating({
-      clubSeedRating: 7,
-      clubPeerRatings: [8, 8],
-      clubMeanRating: 2,
-    });
-    const withoutMean = computeClubRating({
-      clubSeedRating: 7,
-      clubPeerRatings: [8, 8],
-      clubMeanRating: null,
-    });
-    expect(withMean.rating).toBe(withoutMean.rating);
-  });
-
   it("clamps to [1, 10] for an out-of-band seed, as today", () => {
     expect(
-      computeClubRating({ clubSeedRating: 99, clubPeerRatings: [], clubMeanRating: null }).rating,
+      computeClubRating({ clubSeedRating: 99, clubPeerRatings: [] }).rating,
     ).toBe(10);
     expect(
-      computeClubRating({ clubSeedRating: -4, clubPeerRatings: [], clubMeanRating: null }).rating,
+      computeClubRating({ clubSeedRating: -4, clubPeerRatings: [] }).rating,
     ).toBe(1);
   });
 
-  it("clamps an out-of-band club mean too", () => {
-    expect(
-      computeClubRating({ clubSeedRating: null, clubPeerRatings: [], clubMeanRating: 42 }).rating,
-    ).toBe(10);
-  });
 });
 
 /**
@@ -193,9 +144,6 @@ describe("computeClubRating matches the old formula for a single-club seeded pla
       const now = computeClubRating({
         clubSeedRating: seed,
         clubPeerRatings: peers,
-        // Irrelevant: the seed wins. Deliberately absurd so a bug that
-        // consulted it would be loud.
-        clubMeanRating: 1,
       });
       expect(now.rating).toBe(old.rating);
       expect(now.peerCount).toBe(old.peerCount);
@@ -216,23 +164,19 @@ describe("the signature cannot carry another club's number", () => {
     computeClubRating({
       clubSeedRating: 6,
       clubPeerRatings: [7],
-      clubMeanRating: 6.674,
       // @ts-expect-error there is no global/all-clubs input, by design
       peerRatings: [9, 9, 9],
     });
     expect(true).toBe(true);
   });
 
-  it("the three inputs are the whole input", () => {
+  it("the two inputs are the whole input", () => {
     // A structural guard on the arity of the argument object. If a
-    // fourth key is ever added, this test is where the reviewer is
-    // asked whether it is club-scoped.
-    const args = { clubSeedRating: 6, clubPeerRatings: [7], clubMeanRating: 6.674 };
-    expect(Object.keys(args).sort()).toEqual([
-      "clubMeanRating",
-      "clubPeerRatings",
-      "clubSeedRating",
-    ]);
+    // third key is ever added, this test is where the reviewer is
+    // asked whether it is club-scoped. (The club mean was the third
+    // until 2026-11-02.)
+    const args = { clubSeedRating: 6, clubPeerRatings: [7] };
+    expect(Object.keys(args).sort()).toEqual(["clubPeerRatings", "clubSeedRating"]);
     expect(computeClubRating(args).peerCount).toBe(1);
   });
 });

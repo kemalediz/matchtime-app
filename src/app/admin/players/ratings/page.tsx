@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { seedPlayerRating } from "@/app/actions/players";
+import { isUnchangedSeed, seedBoxValue } from "@/lib/default-seed";
 import { t } from "@/lib/i18n/t";
 import { DEFAULT_LANG, type Lang } from "@/lib/i18n/lang";
 import { adminPlayerLabel, adminPlayerMatches } from "@/lib/admin-player-label";
@@ -63,7 +64,9 @@ export default function BulkRatingsPage() {
       const data: Player[] = Array.isArray(raw) ? raw : raw.players ?? [];
       setPlayers(data);
       const vs: Record<string, string> = {};
-      data.forEach((p) => (vs[p.id] = p.seedRating != null ? String(p.seedRating) : ""));
+      // A player nobody has seeded shows 6, the medium baseline
+      // (`default-seed.ts`), for the admin to move up or down.
+      data.forEach((p) => (vs[p.id] = seedBoxValue(p.seedRating)));
       setValues(vs);
     }
     setLoading(false);
@@ -98,7 +101,8 @@ export default function BulkRatingsPage() {
       return;
     }
     const existing = players.find((p) => p.id === userId)?.seedRating;
-    if (existing === num) {
+    // Leaving an unseeded player's prefilled 6 is not a change.
+    if (isUnchangedSeed(num, existing)) {
       setStates((s) => ({ ...s, [userId]: "idle" }));
       return;
     }
@@ -152,6 +156,9 @@ export default function BulkRatingsPage() {
         </div>
         <p className="text-sm text-slate-500 mt-1">
           1 to 10 scale. Autosaves 1.2s after you stop typing, or on blur.
+        </p>
+        <p className="text-sm text-slate-500 mt-1" data-testid="seed-default-hint">
+          {t(lang).seed_default_hint}
         </p>
         <p className="text-sm text-slate-500 mt-1">
           {t(lang).rating_seed_club_hint}
@@ -288,10 +295,10 @@ function InfoModal({ onClose }: { onClose: () => void }) {
             own, and neither club can see or move the other&apos;s.
           </p>
           <p>
-            <span className="font-medium text-slate-800">A blank seed is fine.</span>{" "}
-            A new member starts with no rating here at all, and the balancer
-            treats them as an average player for this club until their first
-            peer ratings arrive.
+            <span className="font-medium text-slate-800">Everyone starts at 6.</span>{" "}
+            A player you have not rated shows 6, a medium player, and the
+            balancer treats them as a 6 until their first peer ratings arrive.
+            Move anyone stronger up and anyone still learning down.
           </p>
           <p>
             <span className="font-medium text-slate-800">Peer rating:</span>{" "}

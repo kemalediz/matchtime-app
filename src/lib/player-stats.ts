@@ -900,9 +900,9 @@ export interface ClubRatingView {
    */
   rating: number | null;
   /**
-   * WHAT PICKS THE TEAMS. `computeClubRating`, unchanged: the same
-   * scores shrunk toward this club's own mean while there are only one
-   * or two of them. Always a number, because the balancer always needs
+   * WHAT PICKS THE TEAMS. `computeClubRating`: the same scores shrunk
+   * toward this club's seed (the default 6 when unseeded) while there
+   * are only one or two of them. Always a number, because the balancer always needs
    * one. It is allowed to differ from `rating` and usually does while
    * `provisional` is true; that is the decision, not a bug.
    */
@@ -936,10 +936,10 @@ export interface ClubRatingView {
  * numbers differed. For the nine Sutton FC members with Sutton Lads
  * history they differed by up to 0.613.
  *
- * Three queries, all indexed, all tiny. It is a page load, not a loop.
+ * Two queries, both indexed, both tiny. It is a page load, not a loop.
  */
 export async function loadClubRating(orgId: string, userId: string): Promise<ClubRatingView> {
-  const [ratings, membership, clubMean] = await Promise.all([
+  const [ratings, membership] = await Promise.all([
     // `take` sits NEXT TO the org filter on purpose: sixty of THIS
     // club's rows, not sixty rows from anywhere and then filtered.
     // Ehtisham has 65 ratings, so a global window truncated at 60 was
@@ -959,22 +959,17 @@ export async function loadClubRating(orgId: string, userId: string): Promise<Clu
       where: { userId_orgId: { userId, orgId } },
       select: { seedRating: true },
     }),
-    db.rating.aggregate({
-      _avg: { score: true },
-      where: { match: { activity: { orgId }, ...NOT_CANCELLED } },
-    }),
   ]);
 
   const clubSeedRating = membership?.seedRating ?? null;
   const clubPeerRatings = ratings.map((r) => r.score);
 
   // The balancer's number and the player's number, off the same rows.
-  // Note what `clubDisplayRating` is NOT handed: the club mean. It
-  // cannot shrink what it cannot see.
+  // `clubDisplayRating` is handed no prior at all: it cannot shrink
+  // toward what it cannot see.
   const { rating: balancerRating, source, peerCount } = computeClubRating({
     clubSeedRating,
     clubPeerRatings,
-    clubMeanRating: clubMean._avg.score ?? null,
   });
   const rating = clubDisplayRating({ clubSeedRating, clubPeerRatings });
 

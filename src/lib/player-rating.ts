@@ -28,33 +28,29 @@
  * Measured read-only against production, section 3.5 of
  * `MDs/club-scoped-ratings-design-2026-09-18.md`.
  *
- * So `computeClubRating` takes three club-scoped inputs and nothing
+ * So `computeClubRating` takes two club-scoped inputs (three until
+ * 2026-11-02, when the club mean went: see below) and nothing
  * else. There is deliberately no parameter through which another club's
  * number could arrive, which is the property the whole design turns on
  * and which `__tests__/club-rating-isolation.test.ts` pins end to end.
  *
  * ── THE PRIOR, WHEN THERE IS NO SEED ─────────────────────────────────
  *
- *   prior = Membership.seedRating for THIS club
- *           ?? the mean of every rating given in THIS club
- *           ?? 5.0
+ *   prior = Membership.seedRating for THIS club ?? DEFAULT_SEED_RATING (6)
  *
- * The club mean replaced a hardcoded 5.0 because 5.0 is not neutral.
- * Sutton's own mean is 6.674, so an unseeded player entering at 5.0 was
- * not being called "unknown", he was being called the worst player on
- * the pitch, and the snake draft took that literally. Clubs rate on
- * their own scales and a fixed midpoint is a guess about all of them.
+ * Since 2026-11-02 an unseeded player is a 6, the medium player Kemal
+ * chose as the default seed ("so it gives the admins a measurement for
+ * medium kind of players"), and the admin's seed box shows him as 6.
+ * The constant lives in `default-seed.ts` and nowhere else.
  *
- * The club mean is a FALLBACK, not the expected path: a new club's
- * admin is offered the seed editor at setup, so the normal case is that
- * the seed wins. The mean catches the member nobody seeded, the
- * mid-season joiner, the auto-provisioned unknown sender, the guest who
- * turned into a regular.
- *
- * The final 5.0 is the honest answer for a club with no seeds and no
- * ratings at all: every player gets the same number, the rating term is
- * constant, and the balancer falls through to position composition. It
- * is self-correcting after one match and one round of rating DMs.
+ * It replaced a two-step fallback: this club's mean peer rating, else
+ * 5.0. The club mean had replaced a hardcoded 5.0 on 2026-09-19 because
+ * 5.0 was not neutral (Sutton's mean is about 6.7, so a 5.0 was being
+ * called the worst player on the pitch). With the default at 6 the
+ * admin is shown a number and the balancer has to use that same
+ * number, or the box would say 6 while the draft used 6.25 (FNF) or
+ * 6.72 (Sutton). A club that thinks a player is better or worse than a
+ * medium player types it in, and peer ratings take over after games.
  *
  * ── TWO NUMBERS SINCE 2026-09-19, AND WHY ────────────────────────────
  *
@@ -92,38 +88,34 @@
  * without naming the club it is asking about.
  */
 
-const PRIOR_WEIGHT = 3;
-/** Only reached when a club has no seed for the player AND has never
- *  rated anybody. See the header. */
-const NO_INFORMATION_PRIOR = 5;
+import { effectiveSeed } from "./default-seed";
 
-export type ClubRatingSource = "peer" | "blended" | "seed" | "club-average";
+const PRIOR_WEIGHT = 3;
+
+export type ClubRatingSource = "peer" | "blended" | "seed" | "default-seed";
 
 export function computeClubRating(args: {
   /** `Membership.seedRating` for THIS club. Null when unseeded. */
   clubSeedRating: number | null;
   /** `Rating.score` rows from THIS club only, newest first, capped at 60. */
   clubPeerRatings: number[];
-  /** Mean of every rating given in THIS club. Null when the club has none. */
-  clubMeanRating: number | null;
 }): {
   rating: number;
   source: ClubRatingSource;
   peerCount: number;
 } {
-  const prior = args.clubSeedRating ?? args.clubMeanRating ?? NO_INFORMATION_PRIOR;
+  const prior = effectiveSeed(args.clubSeedRating);
   const peerCount = args.clubPeerRatings.length;
   const sumPeer = args.clubPeerRatings.reduce((s, r) => s + r, 0);
   const blended = (sumPeer + prior * PRIOR_WEIGHT) / (peerCount + PRIOR_WEIGHT);
   // Clamp to [1, 10] just in case anyone seeds outside the band.
   const rating = Math.max(1, Math.min(10, blended));
-  // "source" is for UI hints. It labels what dominated, and the UI
-  // needs "club-average" as its own value so an empty state can say
-  // "this club's average, waiting for your first rating" rather than
-  // presenting a club average as if it were the player's own number.
+  // "source" is for UI hints. It labels what dominated, and
+  // "default-seed" is its own value so nothing presents the assumed 6
+  // as an admin's opinion or as the player's own number.
   // Threshold: at PRIOR_WEIGHT=3, peer count >> 3 means peer dominates.
   let source: ClubRatingSource;
-  if (peerCount === 0) source = args.clubSeedRating === null ? "club-average" : "seed";
+  if (peerCount === 0) source = args.clubSeedRating == null ? "default-seed" : "seed";
   else if (peerCount >= PRIOR_WEIGHT * 3) source = "peer";
   else source = "blended";
   return { rating, source, peerCount };
