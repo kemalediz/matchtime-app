@@ -99,6 +99,8 @@ import {
   isLiveRun,
 } from "./helpers/live-llm";
 import { AnthropicMeter } from "./replay/meter";
+import { CassetteProxy } from "./scenarios/cassette-proxy";
+import { CASSETTE_ENV, cassetteDir, cassetteMode } from "./scenarios/mode";
 
 /**
  * The LLM half of the pre-flight, and the mirror image of the port
@@ -118,6 +120,19 @@ async function assertLlmSeamReady(): Promise<void> {
         `${E2E.EXTRACTOR_STUB_FILE}; ANTHROPIC_API_KEY is pinned empty, so this run cannot ` +
         `call a model or spend anything. (MT_TEST_DM_QA_STUB is set too, which makes ` +
         `dm-qa.ts answer with the scoped context itself — see e2e/helpers/stub.ts.)`,
+    );
+    return;
+  }
+  const cassette = cassetteMode();
+  if (cassette === "replay") {
+    // A club-scenario REPLAY (e2e/scenarios/): the seam is the live one (no
+    // stub file anywhere), but every answer comes from a cassette and the
+    // server holds a placeholder, not a key. Nothing is probed, nothing is
+    // spent: the run fails if a single request reaches the network.
+    assertSeamMatchesMode("live", childEnv);
+    console.log(
+      `[e2e] LLM: REPLAY — every model answer comes from the cassettes in ${cassetteDir()}; ` +
+        `the server holds no key and no call leaves this machine.`,
     );
     return;
   }
@@ -142,7 +157,7 @@ class NotActuallyLiveError extends Error {
  * is the exact shape of the false green: a passing tick over a sweep
  * that never left the machine.
  */
-function assertMeterSawTraffic(meter: AnthropicMeter, playwrightExitCode: number): void {
+function assertMeterSawTraffic(meter: { all: AnthropicMeter["all"] }, playwrightExitCode: number): void {
   const calls = meter.all;
   if (calls.length === 0) {
     const skipped = playwrightExitCode === 0;
@@ -171,6 +186,29 @@ function assertMeterSawTraffic(meter: AnthropicMeter, playwrightExitCode: number
       `${n(sum((c) => c.cacheWrite1hTokens + c.cacheWrite5mTokens))} cache-write tokens, ` +
       `$${sum((c) => c.costUsd).toFixed(4)} across ${[...new Set(calls.map((c) => c.model))].join(", ")}.`,
   );
+}
+
+/**
+ * A replay is only a replay if nothing left the machine and every request
+ * had a recorded answer. A miss means a request changed (a prompt, a
+ * schema, the facts in a context): it is listed, and the run fails.
+ */
+function assertReplayWasOffline(proxy: CassetteProxy): void {
+  const t = proxy.totals();
+  console.log(
+    `[e2e] LLM: REPLAY — ${t.hits} answer(s) served from cassettes, ${t.repeats} repeat(s), ` +
+      `${t.misses} miss(es), ${t.upstreamCalls} call(s) to the network ($0.00 spent).`,
+  );
+  if (t.upstreamCalls !== 0) throw new NotActuallyLiveError(`e2e: a replay reached the network ${t.upstreamCalls} time(s).`);
+  if (t.misses !== 0) {
+    throw new NotActuallyLiveError(
+      `e2e: the replay asked ${t.misses} model request(s) no cassette has an answer for. ` +
+        `A prompt or the context it is given changed; re-record, or read the difference:\n` +
+        t.missList
+          .map((m) => `  [${m.club ?? "no club"}] ${m.model} ${m.site}\n${m.firstDifference}`)
+          .join("\n"),
+    );
+  }
 }
 
 /**
@@ -400,7 +438,21 @@ async function runSuite(): Promise<number> {
     //   MT_E2E_NO_METER=1    → opt out (the reach assertion in the live
     //                          specs is then the only backstop).
     let meter: AnthropicMeter | null = null;
-    if (isLiveRun() && !process.env.MT_REPLAY_METER_PORT && process.env.MT_E2E_NO_METER !== "1") {
+    // A club-scenario run (e2e/scenarios/) puts its CASSETTE PROXY in the
+    // meter's place: record forwards and meters exactly as the meter does
+    // and keeps every call; replay answers every call itself, offline.
+    let cassette: CassetteProxy | null = null;
+    const cassetteRun = cassetteMode();
+    if (cassetteRun) {
+      if (!isLiveRun()) throw new E2EPreflightError(`e2e: ${CASSETTE_ENV}=${cassetteRun} needs ${LIVE_ENV_FLAG}=1 (use npm run scenarios:${cassetteRun}).`);
+      // A record run can never spend past MT_SCENARIO_COST_CAP_USD (default
+      // $2, the approval line): past it the proxy forwards nothing.
+      const capUsd = Number(process.env.MT_SCENARIO_COST_CAP_USD ?? "2");
+      cassette = new CassetteProxy({ mode: cassetteRun, dir: cassetteDir(), ...(cassetteRun === "record" ? { capUsd } : {}) });
+      const url = await cassette.listen(0);
+      process.env.MT_E2E_LIVE_METER_PORT = new URL(url).port;
+      console.log(`[e2e] LLM: cassette proxy (${cassetteRun}) at ${url}, recordings in ${cassetteDir()}.`);
+    } else if (isLiveRun() && !process.env.MT_REPLAY_METER_PORT && process.env.MT_E2E_NO_METER !== "1") {
       meter = new AnthropicMeter();
       const url = await meter.listen(0);
       process.env.MT_E2E_LIVE_METER_PORT = new URL(url).port;
@@ -412,9 +464,16 @@ async function runSuite(): Promise<number> {
     try {
       const code = await run("npx", pwArgs, { ...buildTestEnv(), MT_E2E: "1" });
       if (meter) assertMeterSawTraffic(meter, code);
+      if (cassette?.mode === "record") {
+        assertMeterSawTraffic(cassette, code);
+        const t = cassette.totals();
+        if (t.capRefusals) console.error(`[e2e] LLM: the cost cap stopped ${t.capRefusals} request(s); the recording is INCOMPLETE.`);
+      }
+      if (cassette?.mode === "replay") assertReplayWasOffline(cassette);
       return code;
     } finally {
       await meter?.close();
+      await cassette?.close();
     }
   } finally {
     if (weStartedPg) {

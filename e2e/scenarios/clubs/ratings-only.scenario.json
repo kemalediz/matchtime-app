@@ -1,0 +1,227 @@
+{
+ "version": 1,
+ "title": "Ratings only type: no attendance (featureAttendance off), Man of the Match and ratings only",
+ "timezone": "Europe/London",
+ "start": "2026-11-09 08:00",
+ "end": "2026-11-18 10:00",
+ "pollEveryMinutes": 60,
+ "skipCrons": [
+  "/api/cron/none-bucket-shadow",
+  "/api/cron/learn-setup",
+  "/api/cron/bot-health",
+  "/api/cron/billing"
+ ],
+ "club": {
+  "name": "Thursday Fives Sandbox",
+  "owner": "lee",
+  "paymentHolder": null,
+  "maxPlayers": 10,
+  "sport": {
+   "name": "Football 5-a-side",
+   "playersPerTeam": 5,
+   "teamLabels": [
+    "Reds",
+    "Blues"
+   ]
+  },
+  "activity": {
+   "day": "thursday",
+   "time": "19:00",
+   "durationMinutes": 60,
+   "venue": "Sandbox Goals",
+   "deadlineHours": 0,
+   "ratingWindowHours": 120
+  },
+  "settings": {
+   "featureAttendance": false,
+   "featureBench": false,
+   "featureTeamBalancing": false,
+   "featureReminders": false,
+   "featureMomVoting": true,
+   "featurePlayerRating": true,
+   "featureSquadFromList": true,
+   "featureBadgeAnnouncements": true,
+   "paymentTrackingEnabled": false,
+   "paymentCollectionEnabled": false,
+   "quietHoursEnabled": false,
+   "listAnnouncer": "matchtime"
+  }
+ },
+ "groups": [
+  {
+   "key": "main",
+   "subject": "Thursday Fives Sandbox",
+   "role": "players"
+  }
+ ],
+ "members": [
+  {
+   "key": "lee",
+   "name": "Lee Carter",
+   "phone": "+447700900401",
+   "role": "OWNER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "mark",
+   "name": "Mark Evans",
+   "phone": "+447700900402",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "nick",
+   "name": "Nick Burns",
+   "phone": "+447700900403",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "owen",
+   "name": "Owen Platt",
+   "phone": "+447700900404",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "paul",
+   "name": "Paul Dunn",
+   "phone": "+447700900405",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "quinn",
+   "name": "Quinn Hart",
+   "phone": "+447700900406",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "ross",
+   "name": "Ross Kemp",
+   "phone": "+447700900407",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "sean",
+   "name": "Sean Tully",
+   "phone": "+447700900408",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "tony",
+   "name": "Tony Wade",
+   "phone": "+447700900409",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "vic",
+   "name": "Vic Moss",
+   "phone": "+447700900410",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "will",
+   "name": "Will Rowe",
+   "phone": "+447700900411",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  }
+ ],
+ "steps": [
+  {
+   "at": "2026-11-09 08:00",
+   "do": "note",
+   "text": "Monday: a club that uses MatchTime for Man of the Match and ratings only (no IN list), game Thursday 19:00"
+  },
+  {
+   "at": "2026-11-09 08:00",
+   "do": "club-live",
+   "liveDaysAgo": 90
+  },
+  {
+   "at": "2026-11-09 08:02",
+   "do": "cron",
+   "path": "/api/cron/generate-matches"
+  },
+  {
+   "at": "2026-11-10 12:00",
+   "do": "message",
+   "group": "main",
+   "from": "mark",
+   "body": "in for thursday"
+  },
+  {
+   "at": "2026-11-10 12:05",
+   "do": "message",
+   "group": "main",
+   "from": "nick",
+   "body": "@Match Time how many are playing thursday?",
+   "tag": true
+  },
+  {
+   "at": "2026-11-12 17:00",
+   "do": "message",
+   "group": "main",
+   "from": "lee",
+   "body": "Thursday 5s line-up\n\nReds: Lee, Mark, Nick, Owen, Paul\nBlues: Quinn, Ross, Sean, Tony, Vic"
+  },
+  {
+   "at": "2026-11-12 20:30",
+   "do": "message",
+   "group": "main",
+   "from": "lee",
+   "body": "Reds 7 Blues 5 tonight"
+  },
+  {
+   "at": "2026-11-13 09:00",
+   "do": "rate",
+   "from": "mark",
+   "mom": "Nick"
+  },
+  {
+   "at": "2026-11-13 09:10",
+   "do": "rate",
+   "from": "ross",
+   "mom": "Nick"
+  },
+  {
+   "at": "2026-11-14 12:00",
+   "do": "rate",
+   "from": "lee",
+   "mom": "Owen"
+  },
+  {
+   "at": "2026-11-18 09:00",
+   "do": "note",
+   "text": "Wednesday: the rating window has closed"
+  }
+ ]
+}

@@ -1,0 +1,316 @@
+{
+ "version": 1,
+ "title": "Own-language club: weekly, the club's language set, mute on and off, the after-game flow switched off for one game",
+ "timezone": "Europe/London",
+ "start": "2026-11-09 08:00",
+ "end": "2026-11-14 10:00",
+ "pollEveryMinutes": 60,
+ "skipCrons": [
+  "/api/cron/none-bucket-shadow",
+  "/api/cron/learn-setup",
+  "/api/cron/bot-health",
+  "/api/cron/billing"
+ ],
+ "club": {
+  "name": "Çarşamba Halı Saha Sandbox",
+  "language": "tr",
+  "owner": "erdal",
+  "paymentHolder": null,
+  "maxPlayers": 12,
+  "sport": {
+   "name": "Football 6-a-side",
+   "playersPerTeam": 6,
+   "teamLabels": [
+    "Kırmızılar",
+    "Sarılar"
+   ]
+  },
+  "activity": {
+   "day": "wednesday",
+   "time": "21:00",
+   "durationMinutes": 60,
+   "venue": "Sandbox Halı Saha",
+   "deadlineHours": 5,
+   "ratingWindowHours": 72
+  },
+  "settings": {
+   "language": "tr",
+   "listAnnouncer": "matchtime",
+   "rollingSquadEnabled": false,
+   "paymentTrackingEnabled": false,
+   "paymentCollectionEnabled": false,
+   "quietHoursEnabled": false
+  }
+ },
+ "groups": [
+  {
+   "key": "main",
+   "subject": "Çarşamba Halı Saha Sandbox",
+   "role": "players"
+  }
+ ],
+ "members": [
+  {
+   "key": "erdal",
+   "name": "Erdal Yılmaz",
+   "phone": "+447700900501",
+   "role": "OWNER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "burak",
+   "name": "Burak Demir",
+   "phone": "+447700900502",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "can",
+   "name": "Can Aydın",
+   "phone": "+447700900503",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "deniz",
+   "name": "Deniz Kaya",
+   "phone": "+447700900504",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "emre",
+   "name": "Emre Şahin",
+   "phone": "+447700900505",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "fatih",
+   "name": "Fatih Çelik",
+   "phone": "+447700900506",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "gokhan",
+   "name": "Gökhan Arslan",
+   "phone": "+447700900507",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "hakan",
+   "name": "Hakan Koç",
+   "phone": "+447700900508",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "ilker",
+   "name": "İlker Öztürk",
+   "phone": "+447700900509",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "kaan",
+   "name": "Kaan Polat",
+   "phone": "+447700900510",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "levent",
+   "name": "Levent Acar",
+   "phone": "+447700900511",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "murat",
+   "name": "Murat Güneş",
+   "phone": "+447700900512",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "onur",
+   "name": "Onur Tekin",
+   "phone": "+447700900513",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  }
+ ],
+ "steps": [
+  {
+   "at": "2026-11-09 08:00",
+   "do": "note",
+   "text": "Monday: a weekly club spoken to in its own language, game Wednesday 21:00"
+  },
+  {
+   "at": "2026-11-09 08:00",
+   "do": "club-live",
+   "liveDaysAgo": 45
+  },
+  {
+   "at": "2026-11-09 08:02",
+   "do": "cron",
+   "path": "/api/cron/generate-matches"
+  },
+  {
+   "at": "2026-11-09 10:00",
+   "do": "message",
+   "group": "main",
+   "from": "burak",
+   "body": "varım"
+  },
+  {
+   "at": "2026-11-09 10:02",
+   "do": "message",
+   "group": "main",
+   "from": "can",
+   "body": "ben de varım"
+  },
+  {
+   "at": "2026-11-09 10:05",
+   "do": "message",
+   "group": "main",
+   "from": "deniz",
+   "body": "bu hafta yokum maalesef"
+  },
+  {
+   "at": "2026-11-09 10:06",
+   "do": "message",
+   "group": "main",
+   "from": "emre",
+   "body": "@Match Time maç kaçta?",
+   "tag": true
+  },
+  {
+   "at": "2026-11-09 10:07",
+   "do": "message",
+   "group": "main",
+   "from": "fatih",
+   "body": "varım"
+  },
+  {
+   "at": "2026-11-09 14:00",
+   "do": "note",
+   "text": "The organiser mutes MatchTime; a message while muted; unmuted in the evening"
+  },
+  {
+   "at": "2026-11-09 14:00",
+   "do": "settings",
+   "values": {
+    "whatsappBotEnabled": false
+   }
+  },
+  {
+   "at": "2026-11-09 15:00",
+   "do": "message",
+   "group": "main",
+   "from": "gokhan",
+   "body": "varım"
+  },
+  {
+   "at": "2026-11-09 19:00",
+   "do": "settings",
+   "values": {
+    "whatsappBotEnabled": true
+   }
+  },
+  {
+   "at": "2026-11-09 19:30",
+   "do": "message",
+   "group": "main",
+   "from": "hakan",
+   "body": "varım"
+  },
+  {
+   "at": "2026-11-09 19:35",
+   "do": "message",
+   "group": "main",
+   "from": "ilker",
+   "body": "ben de"
+  },
+  {
+   "at": "2026-11-10 09:00",
+   "do": "message",
+   "group": "main",
+   "from": "kaan",
+   "body": "varım"
+  },
+  {
+   "at": "2026-11-10 09:05",
+   "do": "message",
+   "group": "main",
+   "from": "levent",
+   "body": "varım"
+  },
+  {
+   "at": "2026-11-10 09:10",
+   "do": "message",
+   "group": "main",
+   "from": "murat",
+   "body": "varım abi"
+  },
+  {
+   "at": "2026-11-10 12:00",
+   "do": "note",
+   "text": "No after-game flow for this week's game (no ratings, no Man of the Match)"
+  },
+  {
+   "at": "2026-11-10 12:00",
+   "do": "match",
+   "values": {
+    "postMatchEndFlow": false
+   }
+  },
+  {
+   "at": "2026-11-11 09:00",
+   "do": "message",
+   "group": "main",
+   "from": "onur",
+   "body": "varım"
+  },
+  {
+   "at": "2026-11-11 23:00",
+   "do": "message",
+   "group": "main",
+   "from": "erdal",
+   "body": "Kırmızılar 4 - 2 Sarılar, iyi maçtı"
+  },
+  {
+   "at": "2026-11-14 09:00",
+   "do": "note",
+   "text": "Saturday: nothing after the game, by the organiser's choice"
+  }
+ ]
+}

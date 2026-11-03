@@ -1,0 +1,448 @@
+{
+ "version": 1,
+ "title": "Sutton type: weekly, Stripe pay links, collector excluded from charging",
+ "timezone": "Europe/London",
+ "start": "2026-11-09 08:00",
+ "end": "2026-11-16 10:00",
+ "pollEveryMinutes": 60,
+ "skipCrons": [
+  "/api/cron/none-bucket-shadow",
+  "/api/cron/learn-setup",
+  "/api/cron/bot-health",
+  "/api/cron/billing"
+ ],
+ "flags": {
+  "selfJoin": true,
+  "setupHold": true
+ },
+ "club": {
+  "name": "Sutton Sandbox FC",
+  "owner": "kai",
+  "paymentHolder": "colin",
+  "maxPlayers": 14,
+  "sport": {
+   "name": "Football 7-a-side",
+   "playersPerTeam": 7,
+   "teamLabels": [
+    "Bibs",
+    "Non-bibs"
+   ]
+  },
+  "activity": {
+   "day": "tuesday",
+   "time": "20:00",
+   "durationMinutes": 60,
+   "venue": "Sandbox Leisure Centre",
+   "feePerPlayer": 5,
+   "deadlineHours": 5,
+   "ratingWindowHours": 120
+  },
+  "settings": {
+   "listAnnouncer": "matchtime",
+   "rollingSquadEnabled": false,
+   "paymentTrackingEnabled": true,
+   "paymentCollectionEnabled": true,
+   "stripeConnectAccountId": "acct_sandbox_sutton",
+   "stripeChargesEnabled": true,
+   "payMethodPayByBank": false,
+   "payMethodCard": true,
+   "payMethodDirect": true,
+   "quietHoursEnabled": true,
+   "featureBadgeAnnouncements": true
+  }
+ },
+ "groups": [
+  {
+   "key": "main",
+   "subject": "Sutton Sandbox FC",
+   "role": "players"
+  }
+ ],
+ "members": [
+  {
+   "key": "kai",
+   "name": "Kai Morgan",
+   "phone": "+447700900101",
+   "role": "OWNER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "colin",
+   "name": "Colin Banks",
+   "phone": "+447700900102",
+   "role": "ADMIN",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "ash",
+   "name": "Ash Patel",
+   "phone": "+447700900103",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "ben",
+   "name": "Ben Hughes",
+   "phone": "+447700900104",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "dev",
+   "name": "Dev Shah",
+   "phone": "+447700900105",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "eli",
+   "name": "Eli Clarke",
+   "phone": "+447700900106",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "finn",
+   "name": "Finn Walsh",
+   "phone": "+447700900107",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "gaz",
+   "name": "Gaz Reid",
+   "phone": "+447700900108",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "hari",
+   "name": "Hari Nair",
+   "phone": "+447700900109",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "ian",
+   "name": "Ian Doyle",
+   "phone": "+447700900110",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "jay",
+   "name": "Jay Okoro",
+   "phone": "+447700900111",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "kit",
+   "name": "Kit Lane",
+   "phone": "+447700900112",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "leo",
+   "name": "Leo Grant",
+   "phone": "+447700900113",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "max",
+   "name": "Max Ford",
+   "phone": "+447700900114",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "ned",
+   "name": "Ned Price",
+   "phone": "+447700900115",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "ollie",
+   "name": "Ollie Shaw",
+   "phone": "+447700900116",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "pete",
+   "name": "Pete Lowe",
+   "phone": "+447700900117",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "raj",
+   "name": "Raj Mehta",
+   "phone": "+447700900118",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  }
+ ],
+ "steps": [
+  {
+   "at": "2026-11-09 08:00",
+   "do": "note",
+   "text": "Monday: a weekly club MatchTime has run for months, game Tuesday 20:00"
+  },
+  {
+   "at": "2026-11-09 08:00",
+   "do": "club-live",
+   "liveDaysAgo": 150
+  },
+  {
+   "at": "2026-11-09 08:02",
+   "do": "cron",
+   "path": "/api/cron/generate-matches"
+  },
+  {
+   "at": "2026-11-09 09:31",
+   "do": "message",
+   "group": "main",
+   "from": "ash",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-09 09:33",
+   "do": "message",
+   "group": "main",
+   "from": "ben",
+   "body": "IN 👍"
+  },
+  {
+   "at": "2026-11-09 09:36",
+   "do": "message",
+   "group": "main",
+   "from": "dev",
+   "body": "count me in"
+  },
+  {
+   "at": "2026-11-09 09:41",
+   "do": "message",
+   "group": "main",
+   "from": "eli",
+   "body": "Can't make it this week sorry"
+  },
+  {
+   "at": "2026-11-09 10:02",
+   "do": "message",
+   "group": "main",
+   "from": "finn",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-09 10:03",
+   "do": "message",
+   "group": "main",
+   "from": "gaz",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-09 10:05",
+   "do": "message",
+   "group": "main",
+   "from": "hari",
+   "body": "@Match Time what time is kickoff and where?",
+   "tag": true
+  },
+  {
+   "at": "2026-11-09 10:06",
+   "do": "message",
+   "group": "main",
+   "from": "ian",
+   "body": "haha did anyone see the game last night"
+  },
+  {
+   "at": "2026-11-09 10:07",
+   "do": "message",
+   "group": "main",
+   "from": "jay",
+   "body": "in lads"
+  },
+  {
+   "at": "2026-11-09 12:15",
+   "do": "message",
+   "group": "main",
+   "from": "kit",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-09 12:20",
+   "do": "message",
+   "group": "main",
+   "from": "leo",
+   "body": "yes in"
+  },
+  {
+   "at": "2026-11-09 13:40",
+   "do": "message",
+   "group": "main",
+   "from": "kai",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-09 18:05",
+   "do": "message",
+   "group": "main",
+   "from": "max",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-09 18:12",
+   "do": "message",
+   "group": "main",
+   "from": "ned",
+   "body": "in please"
+  },
+  {
+   "at": "2026-11-09 18:40",
+   "do": "message",
+   "group": "main",
+   "from": "ollie",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-09 19:00",
+   "do": "note",
+   "text": "14 places: Ollie makes 13, Pete 14, then Raj and Eli (changed his mind) go on the bench"
+  },
+  {
+   "at": "2026-11-09 19:05",
+   "do": "message",
+   "group": "main",
+   "from": "pete",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-09 19:20",
+   "do": "message",
+   "group": "main",
+   "from": "raj",
+   "body": "in if there's space"
+  },
+  {
+   "at": "2026-11-09 19:25",
+   "do": "message",
+   "group": "main",
+   "from": "eli",
+   "body": "actually I can make it now, in"
+  },
+  {
+   "at": "2026-11-10 09:10",
+   "do": "message",
+   "group": "main",
+   "from": "finn",
+   "body": "Sorry lads, I'm out tonight, pulled my hamstring"
+  },
+  {
+   "at": "2026-11-10 09:40",
+   "do": "message",
+   "group": "main",
+   "from": "raj",
+   "body": "yes I'll take the spot"
+  },
+  {
+   "at": "2026-11-10 21:55",
+   "do": "message",
+   "group": "main",
+   "from": "kai",
+   "body": "Bibs won 5-3 tonight, good game all"
+  },
+  {
+   "at": "2026-11-10 22:05",
+   "do": "dm",
+   "from": "colin",
+   "body": "£5 each"
+  },
+  {
+   "at": "2026-11-10 22:20",
+   "do": "dm",
+   "from": "colin",
+   "body": "yes"
+  },
+  {
+   "at": "2026-11-11 08:30",
+   "do": "dm",
+   "from": "ash",
+   "body": "paid by card just now"
+  },
+  {
+   "at": "2026-11-11 09:00",
+   "do": "rate",
+   "from": "ash",
+   "mom": "Ben"
+  },
+  {
+   "at": "2026-11-11 09:10",
+   "do": "rate",
+   "from": "dev",
+   "mom": "Ben"
+  },
+  {
+   "at": "2026-11-11 12:00",
+   "do": "rate",
+   "from": "kai",
+   "mom": "Gaz"
+  },
+  {
+   "at": "2026-11-12 19:00",
+   "do": "rate",
+   "from": "gaz",
+   "mom": "Ben"
+  },
+  {
+   "at": "2026-11-12 19:30",
+   "do": "dm",
+   "from": "jay",
+   "body": "paid"
+  },
+  {
+   "at": "2026-11-16 09:00",
+   "do": "note",
+   "text": "Monday: the rating window has closed; Man of the Match and badges"
+  }
+ ]
+}
