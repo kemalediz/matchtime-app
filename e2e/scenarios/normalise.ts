@@ -10,11 +10,15 @@
  *   ids        a known id becomes its label (a member's key, a game's local
  *              kickoff, "<club>", "<month 2026-11>"); any other database id
  *              becomes "<id>"
- *   links      host and kind kept, the token masked ("/r/<tok>")
+ *   links      kind kept, the token masked ("/r/<tok>"); the app's own
+ *              address (its port is MT_E2E_APP_PORT) becomes "<app>"
  *   times      local "YYYY-MM-DD HH:mm" in the club's zone; ISO instants
  *              lose their seconds
  *   people     a member's key ("@cal"), never a phone number
+ *   txtlog     the server's hash of a sent text (txtlog:<org>:<hash>:…)
+ *              becomes "<text …>", a hash of that text in these terms
  */
+import { hashOutboundText } from "@/lib/dispatch-claim";
 import { normaliseVolatileText } from "./cassette";
 import type { Step } from "../rehearsal/scenario";
 import { formatLocal } from "../rehearsal/scenario";
@@ -69,6 +73,36 @@ export function relabelText(text: string, labels: Map<string, string>): string {
   // clock, which runs on within a step: kept to the minute.
   t = t.replace(/(?<!\d)1[6-9]\d{11}(?!\d)/g, (ms) => String(Math.floor(Number(ms) / 60_000) * 60_000));
   return normaliseVolatileText(t);
+}
+
+/**
+ * Labels for the server's hashes of what it sent. Every group post leaves a
+ * `txtlog:<org>:<hash>:<key>` row whose hash is of the raw text
+ * (src/lib/dispatch-claim.ts, hashOutboundText), so a text holding the
+ * app's link hashes differently on another MT_E2E_APP_PORT. Each text
+ * MatchTime sent is hashed the server's way and labelled with a hash of the
+ * same text normalised: one label per distinct text, the same on any port.
+ * A poll is hashed as the server sees it, its question and options.
+ */
+export function outboundTextLabels(events: RehearsalEvent[]): Map<string, string> {
+  const labels = new Map<string, string>();
+  for (const e of events) {
+    if ((e.kind !== "out" && e.kind !== "graphic" && e.kind !== "blocked") || !e.text) continue;
+    const texts = [e.text];
+    const poll = /^📊 (.*)\n((?:○ .*(?:\n|$))+)$/.exec(e.text);
+    if (poll) texts.push([poll[1], ...poll[2].split("\n").filter(Boolean).map((o) => o.slice(2))].join("\n"));
+    for (const t of texts) labels.set(hashOutboundText(t), `<text ${hashOutboundText(normaliseVolatileText(t)).slice(0, 8)}>`);
+  }
+  return labels;
+}
+
+/**
+ * The readable <club>/transcript.md, in the same stable terms as the
+ * .transcript.json: link tokens, the app's port, ids and seconds masked, so
+ * two runs of the same branch write the same file.
+ */
+export function normaliseMarkdown(md: string, labels: Map<string, string>): string {
+  return relabelText(md, labels);
 }
 
 function channelName(c: Channel, members: Record<string, string>): string {
@@ -153,8 +187,11 @@ export function buildTranscript(input: {
     }
   });
 
+  // Sorted on the NORMALISED key: a raw key holds ids and hashes that differ
+  // per run (and per app port), which would otherwise decide the order.
   const final: Record<string, string> = {};
-  for (const k of Object.keys(input.final).sort()) final[norm(k)] = norm(input.final[k]);
+  const rows = Object.entries(input.final).map(([k, v]) => [norm(k), norm(v)] as const);
+  for (const [k, v] of rows.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) final[k] = v;
 
   return {
     version: 1,

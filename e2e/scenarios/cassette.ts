@@ -10,8 +10,10 @@
  * Requests are matched on a KEY: a hash of the fields that decide the answer
  * (model, system, messages, tools, schema, thinking, token ceiling), after
  * masking what differs from one run to the next without changing the meaning:
- * database ids the server generates, link tokens, and timestamps below the
- * minute. The key is always recomputed from the stored request when a
+ * database ids the server generates, link tokens, timestamps below the
+ * minute, and the app's own address (http://localhost:<MT_E2E_APP_PORT>,
+ * which goes into every link the server writes, becomes "<app>", so a
+ * recording made on one port replays on any other). The key is always recomputed from the stored request when a
  * cassette is loaded, so a better mask never needs a new recording.
  *
  * The same request can be asked more than once in a run (the same question
@@ -73,11 +75,20 @@ const CUID = /\bc[a-z0-9]{24}\b/g;
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 /** A link: keep the host and the first path segment (what kind of link), mask the rest. */
 const LINK = /(https?:\/\/[^\s/"'<>)]+\/[A-Za-z0-9_-]+)\/[^\s"'<>)]*/g;
+/**
+ * The app under test's origin. Its port is MT_E2E_APP_PORT, so it is noise:
+ * masked whole (scheme and port too). No word boundary before "http": a
+ * prompt quoting an earlier message holds "\\nhttp://…" (backslash, n), where
+ * there is none. Applied after LINK, whose host class stops at "<", so
+ * masking twice changes nothing.
+ */
+const APP_ORIGIN = /https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?![\w.:-])/g;
 const ISO_SECONDS = /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}):\d{2}(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?/g;
 
 export function normaliseVolatileText(s: string): string {
   return s
     .replace(LINK, "$1/<tok>")
+    .replace(APP_ORIGIN, "<app>")
     .replace(ISO_SECONDS, (_m, minute: string, zone: string | undefined) => `${minute}${zone ?? ""}`)
     .replace(UUID, "<uuid>")
     .replace(CUID, "<id>");

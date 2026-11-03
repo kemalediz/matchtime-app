@@ -68,7 +68,7 @@
      "at": "2026-11-09 08:03",
      "to": "dm @erdal",
      "kind": "out",
-     "text": "⭐ *Çarşamba günkü takımlardan önce bir şey*\n\nHenüz kimsenin seviyesini bilmiyorum, bu yüzden şimdilik her oyuncuyu aynı sayarım ve takımlar dengesiz çıkabilir.\n\nErdal: her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\nhttp://localhost:3471/r/<tok>\n\nOyuncular bu puanları hiç görmez, yalnızca takımları dengelememe yardım ederler. Henüz puanı olmayan 13 oyuncuyu puanlamak yaklaşık 4 dakika sürer.\n\nSonrasında her maçtan sonra oyuncuların birbirine verdiği puanlardan öğrenirim, yani bu yalnızca bir kez gerekir.",
+     "text": "⭐ *Çarşamba günkü takımlardan önce bir şey*\n\nHenüz kimsenin seviyesini bilmiyorum, bu yüzden şimdilik her oyuncuyu aynı sayarım ve takımlar dengesiz çıkabilir.\n\nErdal: her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n<app>/r/<tok>\n\nOyuncular bu puanları hiç görmez, yalnızca takımları dengelememe yardım ederler. Henüz puanı olmayan 13 oyuncuyu puanlamak yaklaşık 4 dakika sürer.\n\nSonrasında her maçtan sonra oyuncuların birbirine verdiği puanlardan öğrenirim, yani bu yalnızca bir kez gerekir.",
      "instruction": "dm",
      "key": "org-<club>:seed-nudge:@erdal"
     },
@@ -87,7 +87,7 @@
     "match 2026-11-11 21:00: status: (new) UPCOMING",
     "sent-notification org-<club>:seed-nudge:@erdal: (new) dm",
     "sent-notification <match 2026-11-11 21:00>:announce-match: (new) group-message",
-    "sent-notification txtlog:<club>:7c034d9c18e34561:<match 2026-11-11 21:00>:announce-match: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 7c034d9c>:<match 2026-11-11 21:00>:announce-match: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -99,7 +99,7 @@
      "at": "2026-11-09 10:00",
      "to": "dm @erdal",
      "kind": "out",
-     "text": "📍 Yakındaki kulüplerin sizi bulabilmesi için *Çarşamba Halı Saha Sandbox* kulübünün sahasını onaylayın: MatchTime'da henüz bir sahanız yok. Sahanızı buradaki listeden seçin: http://localhost:3471/r/<tok>\nSaha seçilene kadar MatchTime haftada bir hatırlatır.",
+     "text": "📍 Yakındaki kulüplerin sizi bulabilmesi için *Çarşamba Halı Saha Sandbox* kulübünün sahasını onaylayın: MatchTime'da henüz bir sahanız yok. Sahanızı buradaki listeden seçin: <app>/r/<tok>\nSaha seçilene kadar MatchTime haftada bir hatırlatır.",
      "instruction": "dm",
      "key": "botjob-<id>"
     }
@@ -354,7 +354,7 @@
      "at": "2026-11-10 18:00",
      "to": "dm @erdal",
      "kind": "out",
-     "text": "🚨 *Maç tehlikede*: yarınki *Çarşamba Halı Saha Sandbox* için yalnızca *8* kişi onayladı, oynamak için en az 10 kişi gerekiyor.\n\nMaç iptal edilip saha rezervasyonu iade edilsin mi?\n\nİptal sayfasını açmak için dokunun:\nhttp://localhost:3471/r/<tok>\n\nYa da açın: http://localhost:3471/admin/<tok><match 2026-11-11 21:00>/cancel",
+     "text": "🚨 *Maç tehlikede*: yarınki *Çarşamba Halı Saha Sandbox* için yalnızca *8* kişi onayladı, oynamak için en az 10 kişi gerekiyor.\n\nMaç iptal edilip saha rezervasyonu iade edilsin mi?\n\nİptal sayfasını açmak için dokunun:\n<app>/r/<tok>\n\nYa da açın: <app>/admin/<tok><match 2026-11-11 21:00>/cancel",
      "instruction": "dm",
      "key": "<match 2026-11-11 21:00>:cancel-nudge:@erdal"
     },
@@ -372,13 +372,13 @@
     "<match 2026-11-11 21:00>: after-game flow: (new) off",
     "sent-notification <match 2026-11-11 21:00>:evening-update:2026-11-10: (new) group-message",
     "sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794330000000: (new) roster-shown",
-    "sent-notification txtlog:<club>:ad7d5b5456d1fa63:<match 2026-11-11 21:00>:evening-update:2026-11-10: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text ad7d5b54>:<match 2026-11-11 21:00>:evening-update:2026-11-10: (new) outbound-text-log",
     "sent-notification <match 2026-11-11 21:00>:cancel-nudge:@erdal: (new) dm",
     "<match 2026-11-18 21:00>: places: (new) 12",
     "match 2026-11-18 21:00: status: (new) UPCOMING",
     "sent-notification <match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11: (new) group-message",
     "sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794384000000: (new) roster-shown",
-    "sent-notification txtlog:<club>:bacfa60e51a99053:<match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text bacfa60e>:<match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -418,9 +418,9 @@
     "match 2026-11-11 21:00: Onur Tekin: (new) CONFIRMED",
     "sent-notification <match 2026-11-11 21:00>:chase-pre-kickoff: (new) group-message",
     "sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794416400000: (new) roster-shown",
-    "sent-notification txtlog:<club>:b4ebd7153af402bc:<match 2026-11-11 21:00>:chase-pre-kickoff: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text b4ebd715>:<match 2026-11-11 21:00>:chase-pre-kickoff: (new) outbound-text-log",
     "sent-notification <match 2026-11-11 21:00>:pre-kickoff: (new) group-message",
-    "sent-notification txtlog:<club>:6fdc679e5fe5d9cc:<match 2026-11-11 21:00>:pre-kickoff: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 6fdc679e>:<match 2026-11-11 21:00>:pre-kickoff: (new) outbound-text-log",
     "match 2026-11-11 21:00: status: UPCOMING → COMPLETED"
    ],
    "errors": []
@@ -482,17 +482,17 @@
    ],
    "db": [
     "sent-notification <match 2026-11-11 21:00>:ask-score: (new) group-message",
-    "sent-notification txtlog:<club>:a3936cc6c649407e:<match 2026-11-11 21:00>:ask-score: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text a3936cc6>:<match 2026-11-11 21:00>:ask-score: (new) outbound-text-log",
     "match 2026-11-11 21:00: score: (new) 4-2",
     "sent-notification greply:<club>:wa-ownlanguage-22: (new) group-reply",
     "sent-notification <match 2026-11-18 21:00>:announce-match: (new) group-message",
-    "sent-notification txtlog:<club>:012884c42c274c32:<match 2026-11-18 21:00>:announce-match: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 012884c4>:<match 2026-11-18 21:00>:announce-match: (new) outbound-text-log",
     "sent-notification <match 2026-11-18 21:00>:evening-update:2026-11-12: (new) group-message",
     "sent-notification <match 2026-11-18 21:00>:roster-shown:<squad>:1794502800000: (new) roster-shown",
-    "sent-notification txtlog:<club>:0cbae7e53f733f76:<match 2026-11-18 21:00>:evening-update:2026-11-12: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 0cbae7e5>:<match 2026-11-18 21:00>:evening-update:2026-11-12: (new) outbound-text-log",
     "sent-notification <match 2026-11-18 21:00>:evening-update:2026-11-13: (new) group-message",
     "sent-notification <match 2026-11-18 21:00>:roster-shown:<squad>:1794589200000: (new) roster-shown",
-    "sent-notification txtlog:<club>:20c642b033b80463:<match 2026-11-18 21:00>:evening-update:2026-11-13: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 20c642b0>:<match 2026-11-18 21:00>:evening-update:2026-11-13: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -567,15 +567,15 @@
   "sent-notification greply:<club>:wa-ownlanguage-7": "group-reply",
   "sent-notification org-<club>:bot-intro": "bot-intro",
   "sent-notification org-<club>:seed-nudge:@erdal": "dm",
-  "sent-notification txtlog:<club>:012884c42c274c32:<match 2026-11-18 21:00>:announce-match": "outbound-text-log",
-  "sent-notification txtlog:<club>:0cbae7e53f733f76:<match 2026-11-18 21:00>:evening-update:2026-11-12": "outbound-text-log",
-  "sent-notification txtlog:<club>:20c642b033b80463:<match 2026-11-18 21:00>:evening-update:2026-11-13": "outbound-text-log",
-  "sent-notification txtlog:<club>:6fdc679e5fe5d9cc:<match 2026-11-11 21:00>:pre-kickoff": "outbound-text-log",
-  "sent-notification txtlog:<club>:7c034d9c18e34561:<match 2026-11-11 21:00>:announce-match": "outbound-text-log",
-  "sent-notification txtlog:<club>:a3936cc6c649407e:<match 2026-11-11 21:00>:ask-score": "outbound-text-log",
-  "sent-notification txtlog:<club>:ad7d5b5456d1fa63:<match 2026-11-11 21:00>:evening-update:2026-11-10": "outbound-text-log",
-  "sent-notification txtlog:<club>:b4ebd7153af402bc:<match 2026-11-11 21:00>:chase-pre-kickoff": "outbound-text-log",
-  "sent-notification txtlog:<club>:bacfa60e51a99053:<match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 012884c4>:<match 2026-11-18 21:00>:announce-match": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 0cbae7e5>:<match 2026-11-18 21:00>:evening-update:2026-11-12": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 20c642b0>:<match 2026-11-18 21:00>:evening-update:2026-11-13": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 6fdc679e>:<match 2026-11-11 21:00>:pre-kickoff": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 7c034d9c>:<match 2026-11-11 21:00>:announce-match": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text a3936cc6>:<match 2026-11-11 21:00>:ask-score": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text ad7d5b54>:<match 2026-11-11 21:00>:evening-update:2026-11-10": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text b4ebd715>:<match 2026-11-11 21:00>:chase-pre-kickoff": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text bacfa60e>:<match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11": "outbound-text-log",
   "user @burak": "name \"Burak Demir\"",
   "user @can": "name \"Can Aydın\"",
   "user @deniz": "name \"Deniz Kaya\"",

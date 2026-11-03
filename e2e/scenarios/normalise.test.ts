@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { RehearsalEvent } from "../rehearsal/transcript";
 import type { Step } from "../rehearsal/scenario";
-import { buildTranscript, relabelText } from "./normalise";
+import { hashOutboundText } from "@/lib/dispatch-claim";
+import { buildTranscript, normaliseMarkdown, outboundTextLabels, relabelText } from "./normalise";
 
 const at = (iso: string) => new Date(iso);
 const labels = new Map([
@@ -41,7 +42,7 @@ describe("relabelText", () => {
     expect(relabelText("u cmhx0abcdefghijklmnopqrst m cmmatch0000000000000000001 x czzzzzzzzzzzzzzzzzzzzzzzz", labels)).toBe(
       "u @cal m <match 2027-01-08 20:30> x <id>",
     );
-    expect(relabelText("https://localhost:3471/r/AbCdEf12", labels)).toBe("https://localhost:3471/r/<tok>");
+    expect(relabelText("https://localhost:3471/r/AbCdEf12", labels)).toBe("<app>/r/<tok>");
   });
 
   it("keeps an epoch-milliseconds stamp only to the minute (the server's clock drifts within a step)", () => {
@@ -76,7 +77,7 @@ describe("buildTranscript", () => {
         at: "2027-01-05 18:41",
         to: "dm @cal",
         kind: "out",
-        text: "You're in. Pay here https://localhost:3471/p/<tok> (user @cal)",
+        text: "You're in. Pay here <app>/p/<tok> (user @cal)",
         instruction: "dm",
         key: "<match 2027-01-08 20:30>:in-dm:@cal",
         mentions: ["ann"],
@@ -90,11 +91,94 @@ describe("buildTranscript", () => {
     expect(t.steps[2].errors).toEqual(["POST /api/x → 500 boom at 2027-01-06T09:01Z"]);
   });
 
-  it("is byte-identical for two runs that differ only in ids, tokens and seconds", () => {
+  it("is byte-identical for two runs that differ only in ids, tokens, seconds and the app's port", () => {
     const e2 = events();
-    e2[3] = { ...e2[3], text: "You're in. Pay here https://localhost:3471/p/Qq00Rr (user cmhx0abcdefghijklmnopqrst)" };
+    e2[3] = { ...e2[3], text: "You're in. Pay here http://localhost:3472/p/Qq00Rr (user cmhx0abcdefghijklmnopqrst)" };
     e2[6] = { ...e2[6], text: "POST /api/x → 500 boom at 2027-01-06T09:01:59.999Z" };
     const t2 = buildTranscript({ club: "fnf", title: "FNF type", mode: "replay", timezone: "Europe/London", steps, events: e2, labels, members, final: { "user @cal": "name \"Cal\"" } });
     expect(JSON.stringify(t2)).toBe(JSON.stringify(t));
+  });
+});
+
+describe("buildTranscript's final snapshot", () => {
+  it("is ordered by the normalised keys, so an id or hash that differs per run never reorders it", () => {
+    const l = new Map([["aaaaaaaa11", "<z>"], ["zzzzzzzz11", "<z>"]]);
+    const build = (final: Record<string, string>) =>
+      JSON.stringify(buildTranscript({ club: "fnf", title: "FNF type", mode: "replay", timezone: "Europe/London", steps, events: [], labels: l, members, final }).final);
+    expect(build({ "aaaaaaaa11 row": "1", "b row": "2" })).toBe(build({ "zzzzzzzz11 row": "1", "b row": "2" }));
+  });
+});
+
+describe("normaliseMarkdown (the readable <club>/transcript.md)", () => {
+  const md = (tok: string, port: number, id: string) =>
+    [
+      "# FNF type (replay)",
+      "",
+      `- 2027-01-05 18:41 [DM Cal Cooper] **MatchTime**: Rate here:`,
+      `    http://localhost:${port}/r/${tok}`,
+      `    Or open: http://localhost:${port}/admin/matches/${id}/cancel`,
+      `- 2027-01-05 18:41 database: sent-notification offer-${id}:dm:@cal: (new) dm`,
+      `    user cmhx0abcdefghijklmnopqrst at 2027-01-05T18:41:07.512Z`,
+    ].join("\n");
+
+  it("masks link tokens, the app's port, ids and seconds exactly as the .transcript.json does", () => {
+    expect(normaliseMarkdown(md("iCSqhP4Vrk", 3471, "cmw8z3eun00g4yr9k6g083lp0"), labels)).toBe(
+      [
+        "# FNF type (replay)",
+        "",
+        "- 2027-01-05 18:41 [DM Cal Cooper] **MatchTime**: Rate here:",
+        "    <app>/r/<tok>",
+        "    Or open: <app>/admin/<tok>",
+        "- 2027-01-05 18:41 database: sent-notification offer-<id>:dm:@cal: (new) dm",
+        "    user @cal at 2027-01-05T18:41Z",
+      ].join("\n"),
+    );
+  });
+
+  it("is byte-identical for two runs that differ only in link tokens, ids and the app's port", () => {
+    expect(normaliseMarkdown(md("iCSqhP4Vrk", 3471, "cmw8z3eun00g4yr9k6g083lp0"), labels)).toBe(
+      normaliseMarkdown(md("gfvVRSbFg8", 3472, "cmw8z3eun00g40k9k6g083lp0"), labels),
+    );
+  });
+});
+
+describe("outboundTextLabels (the server's txtlog:<org>:<hash of the sent text> rows)", () => {
+  // The server hashes each text it sends (src/lib/dispatch-claim.ts). A text
+  // holding the app's link hashes differently on another MT_E2E_APP_PORT,
+  // so the hash is swapped for one of the text in stable terms.
+  const sent = (text: string, port: number): RehearsalEvent => ({
+    at: at("2027-01-05T18:41:00Z"),
+    frame: 0,
+    channel: { group: "hq" },
+    kind: "out",
+    from: "matchtime",
+    text: text.replace("{app}", `http://localhost:${port}`),
+  });
+  const hq = "Rate the new players here: {app}/admin/ratings";
+  const row = (port: number) => `sent-notification txtlog:<club>:${hashOutboundText(hq.replace("{app}", `http://localhost:${port}`))}:botjob-<id>`;
+
+  it("gives a text sent on two ports the same label", () => {
+    const a = relabelText(row(3471), new Map([...labels, ...outboundTextLabels([sent(hq, 3471)])]));
+    const b = relabelText(row(3472), new Map([...labels, ...outboundTextLabels([sent(hq, 3472)])]));
+    expect(a).toMatch(/^sent-notification txtlog:<club>:<text [0-9a-f]{8}>:botjob-<id>$/);
+    expect(b).toBe(a);
+  });
+
+  it("keeps two different texts apart (rows that differ only by the hash stay two rows)", () => {
+    const other = "Teams are out: {app}/admin/teams";
+    const l = outboundTextLabels([sent(hq, 3471), sent(other, 3471)]);
+    expect(new Set(l.values()).size).toBe(2);
+  });
+
+  it("covers a poll, which the server hashes as its question and options", () => {
+    const ev = sent("📊 Man of the match?\n○ Ann\n○ Cal", 3471);
+    const l = outboundTextLabels([ev]);
+    expect(l.get(hashOutboundText("Man of the match?\nAnn\nCal"))).toMatch(/^<text [0-9a-f]{8}>$/);
+  });
+
+  it("ignores what MatchTime did not send as a text (incoming messages, reactions)", () => {
+    const incoming: RehearsalEvent = { ...sent(hq, 3471), kind: "in", from: "ann" };
+    const react: RehearsalEvent = { ...sent("✅", 3471), kind: "react" };
+    expect(outboundTextLabels([incoming, react]).size).toBe(0);
   });
 });

@@ -26,7 +26,7 @@ import { ratePage } from "../rehearsal/rate-page";
 import { parseScenario } from "../rehearsal/scenario";
 import { renderMarkdown } from "../rehearsal/transcript";
 import { cassetteMode } from "./mode";
-import { buildTranscript } from "./normalise";
+import { buildTranscript, normaliseMarkdown, outboundTextLabels } from "./normalise";
 
 const CLUBS_DIR = path.join(__dirname, "clubs");
 const mode = cassetteMode() ?? (process.env.MT_SCENARIOS_DRY === "1" ? "dry" : null);
@@ -88,6 +88,7 @@ for (const club of clubs) {
 
     const members: Record<string, string> = {};
     for (const m of scenario.members) members[m.phone.replace(/^\+/, "")] = m.key;
+    const labels = new Map([...(await driver.idLabels()), ...outboundTextLabels(result.events)]);
     const transcript = buildTranscript({
       club,
       title: scenario.title,
@@ -95,13 +96,14 @@ for (const club of clubs) {
       timezone: scenario.timezone,
       steps: scenario.steps,
       events: result.events,
-      labels: await driver.idLabels(),
+      labels,
       members,
       final: await driver.readState(),
     });
     writeFileSync(path.join(outDir, `${club}.transcript.json`), `${JSON.stringify(transcript, null, 1)}\n`);
 
-    // For people: the rehearsal's readable transcript, beside it.
+    // For people: the rehearsal's readable transcript, beside it, in the
+    // same stable terms (no link tokens, ids or port that change per run).
     const names: Record<string, string> = {};
     for (const m of scenario.members) {
       names[m.key] = m.name;
@@ -109,15 +111,18 @@ for (const club of clubs) {
     }
     writeFileSync(
       path.join(outDir, club, "transcript.md"),
-      renderMarkdown(result.events, {
-        title: `${scenario.title} (${mode})`,
-        mode: mode === "dry" ? "stubbed" : "live",
-        timezone: scenario.timezone,
-        groups: scenario.groups,
-        names,
-        organisersAnnounce: (scenario.club.settings.listAnnouncer ?? "matchtime") === "organisers",
-        sections: [],
-      }),
+      normaliseMarkdown(
+        renderMarkdown(result.events, {
+          title: `${scenario.title} (${mode})`,
+          mode: mode === "dry" ? "stubbed" : "live",
+          timezone: scenario.timezone,
+          groups: scenario.groups,
+          names,
+          organisersAnnounce: (scenario.club.settings.listAnnouncer ?? "matchtime") === "organisers",
+          sections: [],
+        }),
+        labels,
+      ),
     );
     const errors = transcript.steps.flatMap((s) => s.errors);
     const sent = transcript.steps.reduce((a, s) => a + s.out.length, 0);

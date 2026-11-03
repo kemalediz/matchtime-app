@@ -69,7 +69,7 @@
     Henüz kimsenin seviyesini bilmiyorum, bu yüzden şimdilik her oyuncuyu aynı sayarım ve takımlar dengesiz çıkabilir.
     
     Erdal: her oyuncuya 1 ile 10 arasında kabaca bir puan verin:
-    http://localhost:3471/r/7hrgLeHbqs
+    <app>/r/<tok>
     
     Oyuncular bu puanları hiç görmez, yalnızca takımları dengelememe yardım ederler. Henüz puanı olmayan 13 oyuncuyu puanlamak yaklaşık 4 dakika sürer.
     
@@ -79,10 +79,10 @@
     
     Katılmak için *VARIM* yazın. İlk 12 kişi oynar.
 - 2026-11-09 09:00 database: sent-notification <match 2026-11-11 21:00>:announce-match: (new) group-message
-    sent-notification txtlog:<club>:7c034d9c18e34561:<match 2026-11-11 21:00>:announce-match: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 7c034d9c>:<match 2026-11-11 21:00>:announce-match: (new) outbound-text-log
 - 2026-11-09 10:00 [Çarşamba Halı Saha Sandbox] **Burak Demir**: varım _(llm / in)_
 - 2026-11-09 10:00 database: botjob dm → @erdal: 📍 Yakındaki kulüplerin sizi bulabilmesi için *Çarşamba Halı Saha Sandbox* kulübünün sahas: (new) pending
-- 2026-11-09 10:00 [DM Erdal Yılmaz] **MatchTime**: 📍 Yakındaki kulüplerin sizi bulabilmesi için *Çarşamba Halı Saha Sandbox* kulübünün sahasını onaylayın: MatchTime'da henüz bir sahanız yok. Sahanızı buradaki listeden seçin: http://localhost:3471/r/XVJPHpDgd7
+- 2026-11-09 10:00 [DM Erdal Yılmaz] **MatchTime**: 📍 Yakındaki kulüplerin sizi bulabilmesi için *Çarşamba Halı Saha Sandbox* kulübünün sahasını onaylayın: MatchTime'da henüz bir sahanız yok. Sahanızı buradaki listeden seçin: <app>/r/<tok>
     Saha seçilene kadar MatchTime haftada bir hatırlatır.
 - 2026-11-09 10:00 database: botjob dm → @erdal: 📍 Yakındaki kulüplerin sizi bulabilmesi için *Çarşamba Halı Saha Sandbox* kulübünün sahas: pending → sent
 - 2026-11-09 10:02 [Çarşamba Halı Saha Sandbox] **Can Aydın**: ben de varım _(llm / in)_
@@ -161,16 +161,16 @@
     11. 🥁
     12. 🥁
 - 2026-11-10 17:00 database: sent-notification <match 2026-11-11 21:00>:evening-update:2026-11-10: (new) group-message
-    sent-notification <match 2026-11-11 21:00>:roster-shown:418759d07e0ce958:1794330000000: (new) roster-shown
-    sent-notification txtlog:<club>:ad7d5b5456d1fa63:<match 2026-11-11 21:00>:evening-update:2026-11-10: (new) outbound-text-log
+    sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794330000000: (new) roster-shown
+    sent-notification txtlog:<club>:<text ad7d5b54>:<match 2026-11-11 21:00>:evening-update:2026-11-10: (new) outbound-text-log
 - 2026-11-10 18:00 [DM Erdal Yılmaz] **MatchTime**: 🚨 *Maç tehlikede*: yarınki *Çarşamba Halı Saha Sandbox* için yalnızca *8* kişi onayladı, oynamak için en az 10 kişi gerekiyor.
     
     Maç iptal edilip saha rezervasyonu iade edilsin mi?
     
     İptal sayfasını açmak için dokunun:
-    http://localhost:3471/r/q2k47B4VQs
+    <app>/r/<tok>
     
-    Ya da açın: http://localhost:3471/admin/matches/cmw8z3eun00a9yr9koym3ox9z/cancel
+    Ya da açın: <app>/admin/<tok><match 2026-11-11 21:00>/cancel
 - 2026-11-10 18:00 database: sent-notification <match 2026-11-11 21:00>:cancel-nudge:@erdal: (new) dm
 - 2026-11-11 00:00 database: <match 2026-11-18 21:00>: places: (new) 12
     match 2026-11-18 21:00: status: (new) UPCOMING
@@ -190,8 +190,8 @@
     11. 🥁
     12. 🥁
 - 2026-11-11 08:00 database: sent-notification <match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11: (new) group-message
-    sent-notification <match 2026-11-11 21:00>:roster-shown:418759d07e0ce958:1794384000000: (new) roster-shown
-    sent-notification txtlog:<club>:bacfa60e51a99053:<match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11: (new) outbound-text-log
+    sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794384000000: (new) roster-shown
+    sent-notification txtlog:<club>:<text bacfa60e>:<match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11: (new) outbound-text-log
 - 2026-11-11 09:00 [Çarşamba Halı Saha Sandbox] **Onur Tekin**: varım _(llm / in)_
 - 2026-11-11 09:10 [Çarşamba Halı Saha Sandbox] **rehearsal**: The Pi sent 1 message(s) to analyze in one batch; 2 model call(s) under the stubs.
 - 2026-11-11 09:10 [Çarşamba Halı Saha Sandbox] MatchTime reacted ✅
@@ -214,16 +214,16 @@
     11. 🥁
     12. 🥁
 - 2026-11-11 17:00 database: sent-notification <match 2026-11-11 21:00>:chase-pre-kickoff: (new) group-message
-    sent-notification <match 2026-11-11 21:00>:roster-shown:63e6b347e4bb89f0:1794416400000: (new) roster-shown
-    sent-notification txtlog:<club>:b4ebd7153af402bc:<match 2026-11-11 21:00>:chase-pre-kickoff: (new) outbound-text-log
+    sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794416400000: (new) roster-shown
+    sent-notification txtlog:<club>:<text b4ebd715>:<match 2026-11-11 21:00>:chase-pre-kickoff: (new) outbound-text-log
 - 2026-11-11 19:00 [Çarşamba Halı Saha Sandbox] **MatchTime**: ⏰ Bugün saat *21:00*'de *Sandbox Halı Saha*'da maç var ve *3 kişi* eksiğiz. Son şans, *VARIM* yazın 🙏
 - 2026-11-11 19:00 database: sent-notification <match 2026-11-11 21:00>:pre-kickoff: (new) group-message
-    sent-notification txtlog:<club>:6fdc679e5fe5d9cc:<match 2026-11-11 21:00>:pre-kickoff: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 6fdc679e>:<match 2026-11-11 21:00>:pre-kickoff: (new) outbound-text-log
 - 2026-11-11 22:00 database: match 2026-11-11 21:00: status: UPCOMING → COMPLETED
 - 2026-11-11 23:00 [Çarşamba Halı Saha Sandbox] **Erdal Yılmaz**: Kırmızılar 4 - 2 Sarılar, iyi maçtı _(llm / score)_
 - 2026-11-11 23:00 [Çarşamba Halı Saha Sandbox] **MatchTime**: 🏁 *Çarşamba Halı Saha Sandbox*, umarım iyi geçmiştir. Skor ne oldu? Gelecek haftaki takımları dengeli kurmak için kullanacağım.
 - 2026-11-11 23:00 database: sent-notification <match 2026-11-11 21:00>:ask-score: (new) group-message
-    sent-notification txtlog:<club>:a3936cc6c649407e:<match 2026-11-11 21:00>:ask-score: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text a3936cc6>:<match 2026-11-11 21:00>:ask-score: (new) outbound-text-log
 - 2026-11-11 23:10 [Çarşamba Halı Saha Sandbox] **rehearsal**: The Pi sent 1 message(s) to analyze in one batch; 3 model call(s) under the stubs.
 - 2026-11-11 23:10 [Çarşamba Halı Saha Sandbox] MatchTime reacted 👍
 - 2026-11-11 23:10 [Çarşamba Halı Saha Sandbox] **MatchTime**: Tamam 👍 *Kırmızılar* 4 - 2 kazandı, rakip Sarılar. Kaydettim.
@@ -233,7 +233,7 @@
     
     Katılmak için *VARIM* yazın. İlk 12 kişi oynar.
 - 2026-11-12 09:00 database: sent-notification <match 2026-11-18 21:00>:announce-match: (new) group-message
-    sent-notification txtlog:<club>:012884c42c274c32:<match 2026-11-18 21:00>:announce-match: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 012884c4>:<match 2026-11-18 21:00>:announce-match: (new) outbound-text-log
 - 2026-11-12 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
 - 2026-11-12 17:00 [Çarşamba Halı Saha Sandbox] **MatchTime**: 🗓 *Çarşamba Halı Saha Sandbox* için *12 kişi* lazım. Gelebilecekler *VARIM* yazsın ⚽
     
@@ -251,8 +251,8 @@
     11. 🥁
     12. 🥁
 - 2026-11-12 17:00 database: sent-notification <match 2026-11-18 21:00>:evening-update:2026-11-12: (new) group-message
-    sent-notification <match 2026-11-18 21:00>:roster-shown:39c6bf4c818053b0:1794502800000: (new) roster-shown
-    sent-notification txtlog:<club>:0cbae7e53f733f76:<match 2026-11-18 21:00>:evening-update:2026-11-12: (new) outbound-text-log
+    sent-notification <match 2026-11-18 21:00>:roster-shown:<squad>:1794502800000: (new) roster-shown
+    sent-notification txtlog:<club>:<text 0cbae7e5>:<match 2026-11-18 21:00>:evening-update:2026-11-12: (new) outbound-text-log
 - 2026-11-13 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
 - 2026-11-13 17:00 [Çarşamba Halı Saha Sandbox] **MatchTime**: 🗓 *Çarşamba Halı Saha Sandbox* için hâlâ *12 kişi* lazım. Gelebilecekler *VARIM* yazsın ⚽
     
@@ -270,8 +270,8 @@
     11. 🥁
     12. 🥁
 - 2026-11-13 17:00 database: sent-notification <match 2026-11-18 21:00>:evening-update:2026-11-13: (new) group-message
-    sent-notification <match 2026-11-18 21:00>:roster-shown:39c6bf4c818053b0:1794589200000: (new) roster-shown
-    sent-notification txtlog:<club>:20c642b033b80463:<match 2026-11-18 21:00>:evening-update:2026-11-13: (new) outbound-text-log
+    sent-notification <match 2026-11-18 21:00>:roster-shown:<squad>:1794589200000: (new) roster-shown
+    sent-notification txtlog:<club>:<text 20c642b0>:<match 2026-11-18 21:00>:evening-update:2026-11-13: (new) outbound-text-log
 
 ### Saturday: nothing after the game, by the organiser's choice (2026-11-14 09:00)
 

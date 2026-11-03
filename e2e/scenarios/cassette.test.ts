@@ -55,13 +55,56 @@ describe("normaliseVolatileText", () => {
   it("masks cuids, uuids, link tokens and sub-minute time", () => {
     expect(normaliseVolatileText("id cmhx0abcdefghijklmnopqrst")).toBe("id <id>");
     expect(normaliseVolatileText("u 123e4567-e89b-12d3-a456-426614174000")).toBe("u <uuid>");
-    expect(normaliseVolatileText("go https://localhost:3471/r/Ab3dEf9hJk?x=1 now")).toBe("go https://localhost:3471/r/<tok> now");
+    expect(normaliseVolatileText("go https://localhost:3471/r/Ab3dEf9hJk?x=1 now")).toBe("go <app>/r/<tok> now");
     expect(normaliseVolatileText("2027-01-08T10:30:12.345Z")).toBe("2027-01-08T10:30Z");
   });
 
   it("keeps ordinary words, names and minute-level times intact", () => {
     const s = "Friday 20:30, Ann Archer is IN. Kickoff 2027-01-08 20:30.";
     expect(normaliseVolatileText(s)).toBe(s);
+  });
+});
+
+describe("the app's address (it changes with MT_E2E_APP_PORT)", () => {
+  it("becomes <app> whatever the port, host spelling or scheme", () => {
+    expect(normaliseVolatileText("http://localhost:3471/r/iCSqhP4Vrk")).toBe("<app>/r/<tok>");
+    expect(normaliseVolatileText("http://localhost:3472/r/gfvVRSbFg8")).toBe("<app>/r/<tok>");
+    expect(normaliseVolatileText("http://127.0.0.1:3999/admin/matches/cmhx0abcdefghijklmnopqrst/cancel")).toBe("<app>/admin/<tok>");
+    // A link with one path segment has no token, but its port is still masked.
+    expect(normaliseVolatileText("Or sign up here: http://localhost:3471/month.")).toBe("Or sign up here: <app>/month.");
+    expect(normaliseVolatileText("personal link:\nhttp://localhost:3472/r/XiyEAPf9P\nbye")).toBe("personal link:\n<app>/r/<tok>\nbye");
+  });
+
+  it("is masked when it follows a JSON-escaped newline (a prompt that quotes an earlier message)", () => {
+    // In the request the text holds a backslash and an n, then the link: no word boundary before "http".
+    const quoted = String.raw`"Pay Colin directly):\nhttp://localhost:3472/r/XiyEAPf9P can also pay"`;
+    expect(normaliseVolatileText(quoted)).toBe(String.raw`"Pay Colin directly):\n<app>/r/<tok> can also pay"`);
+    expect(normaliseVolatileText(String.raw`sign up:\nhttp://localhost:3471/month`)).toBe(String.raw`sign up:\n<app>/month`);
+  });
+
+  it("leaves other hosts alone", () => {
+    expect(normaliseVolatileText("https://matchtime.app/month")).toBe("https://matchtime.app/month");
+    expect(normaliseVolatileText("http://localhost.example.com:3471/month")).toBe("http://localhost.example.com:3471/month");
+  });
+
+  it("is idempotent, so a transcript normalised twice does not change", () => {
+    const once = normaliseVolatileText("go http://localhost:3471/r/Ab3dEf9hJk now");
+    expect(normaliseVolatileText(once)).toBe(once);
+  });
+
+  it("does not change a request's key: a recording made on one port replays on another", () => {
+    const on = (port: number) =>
+      req({ messages: [{ role: "user", content: `Pay Colin directly:\nhttp://localhost:${port}/r/Tok${port}x and sign up at http://localhost:${port}/month` }] });
+    expect(requestKey(on(3472))).toBe(requestKey(on(3471)));
+    const cassette = new Cassette([call(on(3471), "ok")]);
+    expect(JSON.parse(cassette.take(on(3472)).body).content[0].text).toBe("ok");
+    expect(cassette.stats()).toMatchObject({ hits: 1, misses: 0, reordered: 0 });
+  });
+
+  it("does not hide a real difference next to the address", () => {
+    const a = req({ messages: [{ role: "user", content: "sign up at http://localhost:3471/month" }] });
+    const b = req({ messages: [{ role: "user", content: "sign up at http://localhost:3472/months" }] });
+    expect(requestKey(a)).not.toBe(requestKey(b));
   });
 });
 
