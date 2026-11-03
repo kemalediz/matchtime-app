@@ -458,8 +458,14 @@ async function executeInstruction(instr: DueInstruction, groupId: string): Promi
         await sendAdminGroupGraphic(instr as typeof instr & { imageUrl: string });
         return;
       }
+      // Real tags (2026-11-03): phones (no +) the text carries as "@<phone>",
+      // sent the way group-message sends them. None (or an older server):
+      // today's plain sendText.
+      const mentions = instr.mentions ?? [];
       const msg = await withTimeout(
-        driver.sendText(instr.groupId, instr.text),
+        mentions.length > 0
+          ? driver.sendTextWithMentions(instr.groupId, instr.text, mentions)
+          : driver.sendText(instr.groupId, instr.text),
         SEND_TIMEOUT_MS,
         `admin-group send to ${instr.groupId}`,
       );

@@ -200,6 +200,27 @@ test("notices follow the setting: the admin group for a capable Pi, the owner by
   expect(oldPi.some((i) => i.kind === "admin-group-message")).toBe(false);
 });
 
+test("a queued HQ post that tags an admin: the tag rides on the post; the DM fallback names them instead (2026-11-03)", async ({ request, db }) => {
+  // What a script queues: kind "admin-group", "@<phone>" inline, the phones in `mentions`.
+  await db.run(
+    `INSERT INTO "BotJob" (id, "orgId", kind, text, "pollOptions", mentions) VALUES ('e2e-ag-tag', $1, 'admin-group', $2, ARRAY[]::text[], ARRAY[$3]::text[])`,
+    [ORG_ID, `@${COLLECTOR} can you confirm the pitch for Friday?`, COLLECTOR],
+  );
+  const withCaps = await duePosts(request, true);
+  expect(withCaps.find((i) => i.key === "botjob-e2e-ag-tag")).toEqual({
+    kind: "admin-group-message",
+    key: "botjob-e2e-ag-tag",
+    groupId: HQ,
+    text: `@${COLLECTOR} can you confirm the pitch for Friday?`,
+    mentions: [COLLECTOR],
+  });
+
+  // An older Pi: the owner by DM, where a tag would reach nobody.
+  const dm = (await duePosts(request, false)).find((i) => i.key === "botjob-e2e-ag-tag");
+  expect(dm).toMatchObject({ kind: "dm", phone: ADMIN, text: "Colin Collector can you confirm the pitch for Friday?" });
+  expect(dm).not.toHaveProperty("mentions");
+});
+
 test("a message in the admin group is acknowledged, analysed by nobody, answered by nobody", async ({ request, db }) => {
   const before = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AnalyzedMessage"`);
   const out = await post(request, "/api/whatsapp/admin-group", {

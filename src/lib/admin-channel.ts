@@ -351,7 +351,7 @@ export function adminGroupPost(args: {
  * text, so a rolled-back Pi or an unlinked group never swallows it.
  */
 export function adminGroupJobInstruction(
-  job: { id: string; text: string; pollOptions?: readonly string[] | null },
+  job: { id: string; text: string; pollOptions?: readonly string[] | null; mentions?: readonly string[] | null },
   ch: LoadedAdminChannel,
   piCaps: PiCaps,
   now: Date,
@@ -359,16 +359,35 @@ export function adminGroupJobInstruction(
   const key = `botjob-${job.id}`;
   const graphic = readGraphicJob(job.pollOptions);
   if (graphic) return graphicJobInstruction(key, job.text, graphic, ch, piCaps, now);
+  const mentions = job.mentions ?? [];
   const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, effectiveCaps(ch, piCaps));
   if (target.kind === "group") {
     if (!isAdminGroupPostHour(now, ch.quietHours)) return null;
-    return { kind: "admin-group-message", key, groupId: target.groupId, text: job.text };
+    return { kind: "admin-group-message", key, groupId: target.groupId, text: job.text, ...(mentions.length ? { mentions: [...mentions] } : {}) };
   }
   logFallback(ch.orgId, target.via);
   // One job, one key: one recipient. The owner when they are among them.
   const user = target.users.find((u) => ch.admins.some((a) => a.id === u.id && a.role === "OWNER")) ?? target.users[0];
   if (!user) return null;
-  return { kind: "dm", key, phone: bare(user.phoneNumber), text: dmWordingOf(job.pollOptions) ?? job.text, targetUser: user.id };
+  const text = dmWordingOf(job.pollOptions) ?? untagged(job.text, mentions, ch.admins);
+  return { kind: "dm", key, phone: bare(user.phoneNumber), text, targetUser: user.id };
+}
+
+/**
+ * A tagged HQ post read in a DM (2026-11-03): a tag there reaches nobody
+ * (the tagged person is not in that chat), so each tagged "@<phone>" is
+ * written as that admin's name, or as "+<phone>" for anyone else. Only the
+ * tagged phones are touched, and only whole numbers.
+ */
+function untagged(text: string, mentions: readonly string[], admins: readonly ChannelAdmin[]): string {
+  let out = text;
+  for (const phone of mentions) {
+    const digits = String(phone).replace(/\D/g, "");
+    if (!digits) continue;
+    const name = admins.find((a) => a.phoneNumber && bare(a.phoneNumber) === digits)?.name?.trim();
+    out = out.replace(new RegExp(`@${digits}(?!\\d)`, "g"), () => name || `+${digits}`);
+  }
+  return out;
 }
 
 /**

@@ -1808,6 +1808,12 @@ model BotJob {
   /// and topic, as a scheduler DM's SentNotification row does. Additive.
   matchId      String?
   aboutKey     String?
+  /// Phones (E.164 without the +) tagged as real WhatsApp mentions in a
+  /// "group" or "admin-group" post (2026-11-03). The text carries each one
+  /// inline as "@<phone>", exactly as a scheduler group-message does; the Pi
+  /// sends them with sendTextWithMentions. Empty = a plain post, as before.
+  /// Additive; default empty.
+  mentions     String[]  @default([])
 
   @@index([orgId, sentAt])
   @@index([orgId, sendAfter])
