@@ -3,8 +3,7 @@
  * (MDs/monthly-squad-plan-2026-10-05.md, 5.3, 5.4, 6.2). Made-up names.
  */
 import { describe, it, expect } from "vitest";
-import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
-import { buildPasteIgnoredAdminNotice, buildPasteNotAddedNotice, buildPasteSenderNotListDm, buildPasteSenderNotMatchedDm, buildSeedBumpedDm, buildPasteUndoDm, buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost, paygPriceLabel } from "../monthly-week-copy";
+import { buildPasteIgnoredAdminNotice, buildPasteNotAddedNotice, buildPasteSenderNotListDm, buildPasteSenderNotMatchedDm, buildSeedBumpedDm, buildPasteUndoDm, buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost, paygPriceLabel, weekListFirstNames } from "../monthly-week-copy";
 import { pasteResidual } from "@/lib/__tests__/fixtures/monthly-legacy";
 import type { WeekList } from "../monthly-week-rules";
 
@@ -24,84 +23,180 @@ const LIST: WeekList = {
   open: 1,
 };
 
-describe("buildWeekListPost", () => {
-  it("English: their format, in one message", () => {
-    expect(buildWeekListPost({ list: LIST, matchDate: MATCH, paygPricePence: 800, lang: "en" })).toBe(
+const TITLE = "Monday 7-a-side";
+
+describe("buildWeekListPost (reworded 2026-11-03: the squad first, first names, no paid marks)", () => {
+  it("English: header, squad by first name under real slot numbers, can't play, bench, pay as you go", () => {
+    expect(buildWeekListPost({ list: LIST, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang: "en" })).toBe(
       [
-        "📋 List for October: Mon 12 Oct, 20:00",
+        "📋 *Monday 7-a-side, Mon 12 Oct at 20:00*",
         "",
-        "1. Alex Carter (paid)",
-        "2. Omar Khan (PAYG)",
-        "3.",
-        "4. Jake Moss",
+        "*October squad:*",
+        "1. Alex",
+        "4. Jake",
         "",
-        "Paid but can't play",
-        "1. Sam Dean",
+        "You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.",
         "",
-        "Can't play",
-        "1. Chris Bell",
+        "*Can't play:*",
+        "1. Sam",
+        "2. Chris",
         "",
-        "Reserves",
-        "1. Zed Wait",
+        "*Bench:*",
+        "1. Zed",
         "",
-        "1 place open, £8 PAYG: say *IN* to take it.",
+        "*Pay as you go:*",
+        "2. Omar",
+        "1 place open, £8. Say *IN* to take it.",
       ].join("\n"),
     );
   });
 
   it("Turkish", () => {
-    expect(buildWeekListPost({ list: LIST, matchDate: MATCH, paygPricePence: 750, lang: "tr" })).toBe(
+    expect(buildWeekListPost({ list: LIST, matchDate: MATCH, title: TITLE, paygPricePence: 750, lang: "tr" })).toBe(
       [
-        "📋 Ekim listesi: 12 Ekim Pazartesi 20:00",
+        "📋 *Monday 7-a-side, 12 Ekim Pazartesi 20:00*",
         "",
-        "1. Alex Carter (ödedi)",
-        "2. Omar Khan (PAYG)",
-        "3.",
-        "4. Jake Moss",
+        "*Ekim kadrosu:*",
+        "1. Alex",
+        "4. Jake",
         "",
-        "Ödedi gelemiyor",
-        "1. Sam Dean",
+        "Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın, yeri açılır.",
         "",
-        "Gelemeyenler",
-        "1. Chris Bell",
+        "*Gelemeyenler:*",
+        "1. Sam",
+        "2. Chris",
         "",
-        "Yedekler",
-        "1. Zed Wait",
+        "*Yedekler:*",
+        "1. Zed",
         "",
-        "1 yer boş, maç başı £7.50 (PAYG): almak için *VARIM* yazın.",
+        "*Maç başı ödeyenler:*",
+        "2. Omar",
+        "1 yer boş, £7.50. Almak için *VARIM* yazın.",
       ].join("\n"),
     );
   });
 
-  it("a full list has no 'places open' line, and empty sections are left out", () => {
-    const full: WeekList = { ...LIST, paidCantPlay: [], cantPlay: [], reserves: [], open: 0 };
-    expect(buildWeekListPost({ list: full, matchDate: MATCH, paygPricePence: 800, lang: "en" })).toBe(
-      ["📋 List for October: Mon 12 Oct, 20:00", "", "1. Alex Carter (paid)", "2. Omar Khan (PAYG)", "3.", "4. Jake Moss"].join("\n"),
+  it("the Vets' week: thirteen regulars, one place open, exactly the approved format", () => {
+    const names = ["Davide De Sousa", "Dan Archer", "Nabz", "Steff", "Craig", "Ben", "Kerem Aksoy", "Steve", "Andrew", "Jon", "Shane Walton", "Cj - Barber Lab", "Oumesh"];
+    const list: WeekList = {
+      slots: [
+        ...names.map((name, i) => ({ slot: i + 1, userId: `u${i + 1}`, name, mark: "paid" as const })),
+        { slot: 14, userId: null, name: "", mark: null },
+      ],
+      paidCantPlay: [],
+      cantPlay: [],
+      reserves: [],
+      open: 1,
+    };
+    // Mon 9 Nov 2026, 20:30 London (GMT).
+    const nov9 = new Date("2026-11-09T20:30:00.000Z");
+    expect(buildWeekListPost({ list, matchDate: nov9, title: "Football 7-a-side", paygPricePence: 800, lang: "en" })).toBe(
+      [
+        "📋 *Football 7-a-side, Mon 9 Nov at 20:30*",
+        "",
+        "*November squad:*",
+        "1. Davide",
+        "2. Dan",
+        "3. Nabz",
+        "4. Steff",
+        "5. Craig",
+        "6. Ben",
+        "7. Kerem",
+        "8. Steve",
+        "9. Andrew",
+        "10. Jon",
+        "11. Shane",
+        "12. Cj",
+        "13. Oumesh",
+        "",
+        "You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.",
+        "",
+        "*Pay as you go:* 1 place open, £8. Say *IN* to take it.",
+      ].join("\n"),
     );
   });
 
-  it("no price set, several places, and an organiser-pick club", () => {
+  it("no paid mark and no PAYG mark anywhere, in either language", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const text = buildWeekListPost({ list: LIST, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang });
+      expect(text).not.toMatch(/\((?:paid|ödedi|PAYG)\)/i);
+      expect(text).not.toMatch(/Paid but|Ödedi gelemiyor/);
+    }
+  });
+
+  it("open places: none (full), one, two; with and without a price", () => {
+    const base: WeekList = { ...LIST, slots: LIST.slots.filter((x) => x.mark !== "payg"), paidCantPlay: [], cantPlay: [], reserves: [] };
+    const last = (list: WeekList, price: number | null, lang: "en" | "tr" = "en", organiserPicks = false) =>
+      buildWeekListPost({ list, matchDate: MATCH, title: TITLE, paygPricePence: price, organiserPicks, lang }).split("\n").pop();
+    expect(last({ ...base, open: 0 }, 800)).toBe("The squad is full.");
+    expect(last({ ...base, open: 0 }, 800, "tr")).toBe("Kadro tam.");
+    expect(last({ ...base, open: 1 }, 800)).toBe("*Pay as you go:* 1 place open, £8. Say *IN* to take it.");
+    expect(last({ ...base, open: 2 }, 800)).toBe("*Pay as you go:* 2 places open, £8. Say *IN* to take one.");
+    expect(last({ ...base, open: 1 }, null)).toBe("*Pay as you go:* 1 place open. Say *IN* to take it.");
+    expect(last({ ...base, open: 2 }, null)).toBe("*Pay as you go:* 2 places open. Say *IN* to take one.");
+    expect(last({ ...base, open: 2 }, null, "tr")).toBe("*Maç başı ödeyenler:* 2 yer boş. Almak için *VARIM* yazın.");
+  });
+
+  it("an organiser-pick club keeps its own line, in the same style", () => {
     const two: WeekList = { ...LIST, paidCantPlay: [], cantPlay: [], reserves: [], open: 2 };
-    expect(buildWeekListPost({ list: two, matchDate: MATCH, paygPricePence: null, lang: "en" }).split("\n").pop()).toBe(
-      "2 places open: say *IN* to take one.",
+    expect(buildWeekListPost({ list: two, matchDate: MATCH, title: TITLE, paygPricePence: 800, organiserPicks: true, lang: "en" }).split("\n").slice(-3)).toEqual([
+      "*Pay as you go:*",
+      "2. Omar",
+      "2 places open, £8. Say *IN* to go on the bench, and the organisers will pick who plays.",
+    ]);
+    const noPayg: WeekList = { ...two, slots: two.slots.filter((x) => x.mark !== "payg"), open: 1 };
+    expect(buildWeekListPost({ list: noPayg, matchDate: MATCH, title: TITLE, paygPricePence: null, organiserPicks: true, lang: "tr" }).split("\n").pop()).toBe(
+      "*Maç başı ödeyenler:* 1 yer boş. Yedeğe girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.",
     );
-    expect(
-      buildWeekListPost({ list: two, matchDate: MATCH, paygPricePence: 800, organiserPicks: true, lang: "en" }).split("\n").pop(),
-    ).toBe("2 places open. Say *IN* to go on the bench, and the organisers will pick who plays.");
   });
 
-  it.each(["en", "tr"] as const)("the list reader reads our own post back (%s): a member can copy it and paste it", (lang) => {
-    const read = parseMonthlyList(buildWeekListPost({ list: LIST, matchDate: MATCH, paygPricePence: 800, lang }))!;
-    expect(read.month).toEqual({ month: 10, year: null });
-    expect(read.slots.map((e) => [e.slot, e.name, e.marks.paid, e.marks.payg])).toEqual([
-      [1, "Alex Carter", true, false],
-      [2, "Omar Khan", false, true],
-      [3, "", false, false],
-      [4, "Jake Moss", false, false],
+  it("pay-as-you-go players with every place taken: listed, then the squad is full", () => {
+    const full: WeekList = { ...LIST, paidCantPlay: [], cantPlay: [], reserves: [], open: 0 };
+    expect(buildWeekListPost({ list: full, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang: "en" }).split("\n").slice(-3)).toEqual([
+      "*Pay as you go:*",
+      "2. Omar",
+      "The squad is full.",
     ]);
-    expect(read.sections.cantPlay.map((e) => e.name)).toEqual(["Sam Dean", "Chris Bell"]);
-    // Nobody under a header is ever read as a playing name.
-    expect(read.slots.some((e) => e.name === "Zed Wait")).toBe(false);
+  });
+
+  it("empty sections are left out", () => {
+    const text = buildWeekListPost({ list: { ...LIST, paidCantPlay: [], cantPlay: [], reserves: [] }, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang: "en" });
+    expect(text).not.toContain("*Can't play:*");
+    expect(text).not.toContain("*Bench:*");
+  });
+});
+
+describe("weekListFirstNames: first names, told apart when two share one", () => {
+  const names = (people: Array<[string, string | null]>, lang: "en" | "tr" = "en") =>
+    [...weekListFirstNames(people.map(([userId, name]) => ({ userId, name })), lang).values()];
+
+  it("the first word that is a name: 'Davide De Sousa' is Davide, 'Cj - Barber Lab' is Cj", () => {
+    expect(names([["a", "Davide De Sousa"], ["b", "Cj - Barber Lab"], ["c", "  Nabz  "], ["d", "⚽ Kerem Aksoy"]])).toEqual(["Davide", "Cj", "Nabz", "Kerem"]);
+  });
+
+  it("two people with one first name get a surname initial; a shared initial too, the whole name", () => {
+    expect(names([["a", "Dan Archer"], ["b", "Dan Moss"], ["c", "Steve"]])).toEqual(["Dan A", "Dan M", "Steve"]);
+    expect(names([["a", "dan Smith"], ["b", "Dan Smyth"]])).toEqual(["dan Smith", "Dan Smyth"]);
+    // Only one of them has a surname.
+    expect(names([["a", "Dan"], ["b", "Dan Moss"]])).toEqual(["Dan", "Dan M"]);
+  });
+
+  it("no usable name, or a phone number, is the club's word for unnamed, never the number", () => {
+    expect(names([["a", null], ["b", ""], ["c", "+44 7700 900123"]])).toEqual(["(unnamed)", "(unnamed)", "(unnamed)"]);
+    expect(names([["a", null]], "tr")).toEqual(["(isimsiz)"]);
+  });
+
+  it("across the whole post: a Dan on the bench and a Dan in the squad are told apart", () => {
+    const list: WeekList = {
+      slots: [{ slot: 1, userId: "a", name: "Dan Archer", mark: "paid" }],
+      paidCantPlay: [],
+      cantPlay: [],
+      reserves: [{ userId: "b", name: "Dan Moss" }],
+      open: 0,
+    };
+    const text = buildWeekListPost({ list, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang: "en" });
+    expect(text).toContain("1. Dan A\n");
+    expect(text).toContain("*Bench:*\n1. Dan M");
   });
 });
 
@@ -167,7 +262,7 @@ describe("the PAYG pool offer and the paste DMs", () => {
   it("no em or en dash anywhere, and prices read as money", () => {
     for (const lang of ["en", "tr"] as const) {
       const all = [
-        buildWeekListPost({ list: LIST, matchDate: MATCH, paygPricePence: 800, lang }),
+        buildWeekListPost({ list: LIST, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang }),
         buildPaygPoolGroupPost({ matchDate: MATCH, paygPricePence: 800, lang }),
         buildPaygPoolDm({ name: "Omar", activityName: "X", matchDate: MATCH, paygPricePence: 800, lang }),
         buildPasteUndoDm({ change: "out", actorName: "Rob", activityName: "X", matchDate: MATCH, lang }),
@@ -190,20 +285,38 @@ describe("pasteResidual: what a member typed around the list", () => {
 
   it("MatchTime's own post, copied whole and pasted back, leaves nothing: 'say IN' is never the sender's IN", () => {
     for (const lang of ["en", "tr"] as const) {
-      const own = buildWeekListPost({ list: LIST, matchDate: MATCH, paygPricePence: 800, lang });
-      expect(pasteResidual(own, { ...ctx, lang })).toBe("");
-      const organiser = buildWeekListPost({ list: LIST, matchDate: MATCH, paygPricePence: 800, organiserPicks: true, lang });
-      expect(pasteResidual(organiser, { ...ctx, lang })).toBe("");
+      for (const open of [0, 1, 2]) {
+        const list = { ...LIST, open };
+        const own = buildWeekListPost({ list, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang });
+        expect(pasteResidual(own, { ...ctx, lang }), own).toBe("");
+        const organiser = buildWeekListPost({ list, matchDate: MATCH, title: TITLE, paygPricePence: 800, organiserPicks: true, lang });
+        expect(pasteResidual(organiser, { ...ctx, lang }), organiser).toBe("");
+        const noPayg = buildWeekListPost({ list: { ...list, slots: LIST.slots.filter((x) => x.mark !== "payg") }, matchDate: MATCH, title: TITLE, paygPricePence: null, lang });
+        expect(pasteResidual(noPayg, { ...ctx, lang, paygPricePence: null }), noPayg).toBe("");
+      }
     }
   });
 
-  it("a post copied BEFORE the wording changed to 'bench' (2026-10-12) still leaves nothing", () => {
+  it("a post copied in an OLDER wording (before 2026-11-03, and before 'bench' on 2026-10-12) still leaves nothing", () => {
     // Posts in the old wording are still in the groups' histories, and a
     // member can copy one and paste it back for as long as that match is on.
-    const today = buildWeekListPost({ list: LIST, matchDate: MATCH, paygPricePence: 800, organiserPicks: true, lang: "en" });
-    const old = today.replace("to go on the bench", "to go on the waiting list");
-    expect(old).toContain("1 place open. Say *IN* to go on the waiting list, and the organisers will pick who plays.");
-    expect(pasteResidual(old, ctx)).toBe("");
+    const old = [
+      "📋 List for October: Mon 12 Oct, 20:00",
+      "",
+      "1. Alex Carter (paid)",
+      "2. Omar Khan (PAYG)",
+      "3.",
+      "",
+      "Paid but can't play",
+      "1. Sam Dean",
+      "",
+      "Reserves",
+      "1. Zed Wait",
+      "",
+    ];
+    expect(pasteResidual([...old, "1 place open, £8 PAYG: say *IN* to take it."].join("\n"), ctx)).toBe("");
+    expect(pasteResidual([...old, "1 place open. Say *IN* to go on the bench, and the organisers will pick who plays."].join("\n"), ctx)).toBe("");
+    expect(pasteResidual([...old, "1 place open. Say *IN* to go on the waiting list, and the organisers will pick who plays."].join("\n"), ctx)).toBe("");
   });
 
   it("'Can't make it' typed ABOVE the list is the sender speaking, not a header", () => {

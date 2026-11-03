@@ -352,31 +352,55 @@ export function findInMonthlyList(
 
 const WEEK_RESERVE_HEADER = /^\s*(reserves?|subs?|substitutes?|standby|stand-by)\b\s*:?\s*$/i;
 
-/** `mwk_list_open_organiser` as MatchTime posted it in English until
- *  2026-10-12. Never sent any more, only recognised. The Turkish line did
- *  not change. */
-function legacyOpenOrganiserLine(open: number): string {
-  return `${open} ${open === 1 ? "place" : "places"} open. Say *IN* to go on the waiting list, and the organisers will pick who plays.`;
+/**
+ * The week's list's own lines as MatchTime posted them before 2026-11-03
+ * (and, for the organiser line, the English before 2026-10-12, when it
+ * said "waiting list" for the bench). Never sent any more, only recognised:
+ * posts in that wording are still in the groups, and one pasted back must
+ * not reach a model as "say IN".
+ */
+function legacyWeekLines(lang: string | null, open: number, price: string | null): string[] {
+  const n = (one: string, many: string) => (open === 1 ? one : many);
+  if (lang === "tr") {
+    return [
+      "Ödedi gelemiyor",
+      "Gelemeyenler",
+      `${open} yer boş${price ? `, maç başı ${price} (PAYG)` : ""}: almak için *VARIM* yazın.`,
+      `${open} yer boş. Yedek listesine girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.`,
+    ];
+  }
+  return [
+    "Paid but can't play",
+    "Can't play",
+    `${open} ${n("place", "places")} open${price ? `, ${price} PAYG` : ""}: say *IN* to take ${n("it", "one")}.`,
+    `${open} ${n("place", "places")} open. Say *IN* to go on the bench, and the organisers will pick who plays.`,
+    `${open} ${n("place", "places")} open. Say *IN* to go on the waiting list, and the organisers will pick who plays.`,
+  ];
 }
+
+/** MatchTime's own title over the week's list: "📋 *Monday 7-a-side, Mon 9 Nov at 20:30*". */
+const WEEK_POST_TITLE = /^📋\s*\*.+\*$/u;
 
 /**
  * What a member typed AROUND the list. The list's own furniture is taken
- * out: its title, its section headers, and the "N places open" line of
- * MatchTime's own post, which a member who copies that post pastes back
- * (and which a model must never read as the sender saying IN).
+ * out: its title, its section headers, and the lines of MatchTime's own
+ * post ("You're all in", "N places open, say IN"), which a member who
+ * copies that post pastes back (and which a model must never read as the
+ * sender saying IN or OUT).
  */
 export function pasteResidual(body: string, ctx: { lang: string | null; maxPlayers: number; paygPricePence: number | null }): string {
   const s = t(ctx.lang);
-  const own = new Set<string>([s.mwk_list_cant_play_paid, s.mwk_list_cant_play, s.mwk_list_reserves]);
+  const own = new Set<string>([s.mwk_list_cant_play, s.mwk_list_bench, s.mwk_list_reserves, s.mwk_list_payg, s.mwk_list_all_in, s.mwk_list_full]);
+  for (let m = 0; m < 12; m++) own.add(s.mwk_list_squad({ month: monthNameLabel(ctx.lang, new Date(Date.UTC(2026, m, 15))) }));
   const price = paygPriceLabel(ctx.paygPricePence);
   for (let open = 1; open <= Math.max(ctx.maxPlayers, 1); open++) {
-    own.add(s.mwk_list_open({ open, price }));
-    own.add(s.mwk_list_open({ open, price: null }));
-    own.add(s.mwk_list_open_organiser({ open }));
-    // The same line as it read before 2026-10-12, when the English said
-    // "waiting list" for the bench. Posts in that wording are still in the
-    // groups, and one pasted back must not reach a model as "say IN".
-    own.add(legacyOpenOrganiserLine(open));
+    for (const pr of [price, null]) {
+      for (const line of [s.mwk_list_open({ open, price: pr }), s.mwk_list_open_organiser({ open, price: pr })]) {
+        own.add(line);
+        own.add(`${s.mwk_list_payg} ${line}`);
+      }
+      for (const line of legacyWeekLines(ctx.lang, open, pr)) own.add(line);
+    }
   }
   // A not-playing header only counts BELOW a list line, exactly as the
   // reader decides it: "Can't make it" typed above the list is the sender
@@ -390,7 +414,7 @@ export function pasteResidual(body: string, ctx: { lang: string | null; maxPlaye
     }
     const line = raw.trim();
     if (!line) continue;
-    if (isMonthListHeader(line) || WEEK_RESERVE_HEADER.test(line) || own.has(line)) continue;
+    if (isMonthListHeader(line) || WEEK_POST_TITLE.test(line) || WEEK_RESERVE_HEADER.test(line) || own.has(line)) continue;
     if (seenListLine && isCantPlayHeader(line)) continue;
     kept.push(line);
   }
@@ -641,8 +665,9 @@ function isOwnOpenLine(line: string, lang: "en" | "tr"): boolean {
   const SENTINEL = "\u0000";
   const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   for (let open = 1; open <= 30; open++) {
-    const shape = s.mwk_list_open({ open, price: SENTINEL });
-    if (new RegExp(`^${shape.split(SENTINEL).map(esc).join(".+")}$`, "iu").test(line)) return true;
+    for (const shape of [s.mwk_list_open({ open, price: SENTINEL }), `${s.mwk_list_payg} ${s.mwk_list_open({ open, price: SENTINEL })}`, legacyWeekLines(lang, open, SENTINEL)[2]]) {
+      if (new RegExp(`^${shape.split(SENTINEL).map(esc).join(".+")}$`, "iu").test(line)) return true;
+    }
   }
   return false;
 }

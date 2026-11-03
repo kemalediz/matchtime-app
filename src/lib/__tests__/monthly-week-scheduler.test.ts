@@ -295,6 +295,7 @@ function listText(m: ReturnType<typeof match>): string {
       maxPlayers: m.maxPlayers,
     }),
     matchDate: m.date,
+    title: m.activity.name,
     paygPricePence: 800,
     lang: "en",
   });
@@ -422,16 +423,17 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
     expect(posts[0]).toMatchObject({ kind: "group-message", matchId: m.id, key: `${m.id}:month-list:${weekListHash(text)}:0`, text });
     expect(text).toBe(
       [
-        "📋 List for October: Mon 12 Oct, 20:00",
+        "📋 *Monday 7-a-side, Mon 12 Oct at 20:00*",
         "",
-        "1. Alex (paid)",
-        "2. Bilal (paid)",
+        "*October squad:*",
+        "1. Alex",
+        "2. Bilal",
         "3. Chris",
-        "4. Dave (paid)",
-        "5.",
-        "6.",
+        "4. Dave",
         "",
-        "2 places open, £8 PAYG: say *IN* to take one.",
+        "You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.",
+        "",
+        "*Pay as you go:* 2 places open, £8. Say *IN* to take one.",
       ].join("\n"),
     );
   });
@@ -454,7 +456,7 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
     }
   });
 
-  it("re-posted once when it changes, with the next number, and 'Paid but can't play'", async () => {
+  it("re-posted once when it changes, with the next number, and 'Can't play'", async () => {
     const m = match();
     const before = weekListHash(listText(m));
     m.attendances[1].status = "DROPPED";
@@ -465,8 +467,8 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
     const posts = (await instructions(THU_10AM)).filter((i) => i.key.includes("month-list"));
     expect(posts).toHaveLength(1);
     expect(posts[0].key).toBe(`${m.id}:month-list:${weekListHash(listText(m))}:1`);
-    expect((posts[0] as { text: string }).text).toContain("2.\n3. Chris");
-    expect((posts[0] as { text: string }).text).toContain("Paid but can't play\n1. Bilal");
+    expect((posts[0] as { text: string }).text).toContain("1. Alex\n3. Chris");
+    expect((posts[0] as { text: string }).text).toContain("*Can't play:*\n1. Bilal");
   });
 
   it("a list that returns to an earlier state is posted again", async () => {
@@ -751,7 +753,7 @@ describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
     const out = await instructions(THU_10AM);
     const list = out.filter((i) => i.key.includes("month-list"));
     expect(list).toHaveLength(1);
-    expect((list[0] as { text: string }).text).toContain("places open, £8 PAYG: say *IN*");
+    expect((list[0] as { text: string }).text).toContain("*Pay as you go:* 3 places open, £8. Say *IN* to take one.");
     expect(poolPosts(out, m).map((i) => [i.kind, i.key])).toEqual([
       ["dm", `${m.id}:payg-pool-dm:u-omar`],
       ["dm", `${m.id}:payg-pool-dm:u-will`],
@@ -875,7 +877,7 @@ describe("MONTHLY: review fixes", () => {
     left.add("u-bilal");
     setWorld(m, { monthly: true });
     const text = ((await instructions(THU_10AM)).find((i) => i.key.includes("month-list")) as { text: string }).text;
-    expect(text).toContain("1. Alex (paid)\n2.\n3. Chris");
+    expect(text).toContain("1. Alex\n3. Chris");
     expect(text).not.toContain("Bilal");
   });
 
@@ -1233,5 +1235,70 @@ describe("PAYMENTS: the priced list, the count and the reminder DMs", () => {
     world({ shown: [{ key: `${P}declined:month-nov:u-bilal`, kind: "month-pay-declined", createdAt: at("2026-10-29T10:00:00.000Z") }] });
     const out = (await pay("2026-10-29T21:30:00.000Z")).filter((i) => i.kind === "dm").map((i) => i.key);
     expect(out).toContain(`${P}dm:month-nov:u-bilal:r1`);
+  });
+});
+
+describe("MONTHLY: WHEN the week's list goes out (Kemal, 2026-11-03: the morning after each game, and when the squad changes)", () => {
+  // The game before was Mon 12 Oct; this one is Mon 19 Oct, 20:00 London.
+  const NEXT_KICKOFF = new Date("2026-10-19T19:00:00.000Z");
+  /** Tue 13 Oct, 08:00 London: the first 08:00 after the last game ended, when the regulars are put on (`seedDueMonthlySquads`). */
+  const SEED_0800 = new Date("2026-10-13T07:00:00.000Z");
+  const at = (iso: string) => new Date(iso);
+  const listKeys = (out: Awaited<ReturnType<typeof instructions>>) => out.filter((i) => i.key.includes("month-list")).map((i) => i.key);
+
+  it("the night of the game: nothing for the next game, whose regulars are not on it yet", async () => {
+    const m = match({ id: "m-mon-19-oct", date: NEXT_KICKOFF, rollingSeededAt: null });
+    setWorld(m, { monthly: true });
+    // Mon 12 Oct, 21:45 London, after the final whistle.
+    expect(listKeys(await instructions(at("2026-10-12T20:45:00.000Z")))).toEqual([]);
+  });
+
+  it("the morning after: posted once at the start of the club's day, not in the quiet hour after the 08:00 seed", async () => {
+    const m = match({ id: "m-mon-19-oct", date: NEXT_KICKOFF, rollingSeededAt: SEED_0800 });
+    setWorld(m, { monthly: true });
+    // Tue 13 Oct, 08:30 London: seeded, but still the quiet hours.
+    expect(listKeys(await instructions(at("2026-10-13T07:30:00.000Z")))).toEqual([]);
+    // Tue 13 Oct, 09:00 London: the list, the first of this game.
+    const hash = weekListHash(listText(m));
+    expect(listKeys(await instructions(at("2026-10-13T08:00:00.000Z")))).toEqual([`${m.id}:month-list:${hash}:0`]);
+  });
+
+  it("nothing changed: not posted again that week; one change later: posted again, once", async () => {
+    const m = match({ id: "m-mon-19-oct", date: NEXT_KICKOFF, rollingSeededAt: SEED_0800 });
+    const hash = weekListHash(listText(m));
+    const morningPost = { key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: at("2026-10-13T08:00:00.000Z") };
+    setWorld(m, { monthly: true, shown: [morningPost] });
+    for (const iso of ["2026-10-13T08:31:00.000Z", "2026-10-14T12:00:00.000Z", "2026-10-17T16:05:00.000Z"]) {
+      expect(listKeys(await instructions(at(iso))), iso).toEqual([]);
+    }
+    // Wed 14 Oct: Bilal can't make it.
+    m.attendances[1].status = "DROPPED";
+    setWorld(m, { monthly: true, shown: [morningPost] });
+    expect(listKeys(await instructions(at("2026-10-14T12:00:00.000Z")))).toEqual([`${m.id}:month-list:${weekListHash(listText(m))}:1`]);
+  });
+
+  it("a member's paste or a reply that showed the same list counts: no second post that morning", async () => {
+    const m = match({ id: "m-mon-19-oct", date: NEXT_KICKOFF, rollingSeededAt: SEED_0800 });
+    const hash = weekListHash(listText(m));
+    for (const kind of ["group-message", "month-list-seen"]) {
+      setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:${hash}:0`, kind, createdAt: at("2026-10-13T07:45:00.000Z") }] });
+      expect(listKeys(await instructions(at("2026-10-13T08:00:00.000Z"))), kind).toEqual([]);
+    }
+  });
+});
+
+describe("MONTHLY: the names on the week's list", () => {
+  it("first names only, and a member with no name is shown by the name MatchTime knows him by (his alias), never '(unnamed)' or a phone", async () => {
+    const m = match();
+    (m.attendances[3].user as { name: string | null }).name = null;
+    setWorld(m, { monthly: true });
+    overrides.user = {
+      findUnique: async () => ({ name: "Sam Collector", phoneNumber: "+447700900999" }),
+      findMany: async () => REGULARS.map((n) => ({ id: `u-${n.toLowerCase()}`, name: n === "Dave" ? null : `${n} Surname` })),
+    };
+    overrides.userAlias = { findMany: async () => [{ userId: "u-dave", orgId: ORG.id, alias: "davey boy" }] };
+    const post = (await instructions(THU_10AM)).find((i) => i.key.includes("month-list")) as { text: string };
+    expect(post.text).toContain("*October squad:*\n1. Alex\n2. Bilal\n3. Chris\n4. Davey\n");
+    expect(post.text).not.toMatch(/unnamed|\+44|Surname/);
   });
 });

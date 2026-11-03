@@ -3290,15 +3290,21 @@ export const tr: Strings = {
     "Bir daimi oyuncunun bu aya getirdiği kredi, maç sayısı olarak. Örneğin geçen ay parasını ödeyip kaçırdığı bir maç için. Bir kredi bir maç düşer. Maç başı £7.50 ise bir kredi, 4 maçlık ayı £30 yerine £22.50 yapar.",
 
   // ── Aylık kadro, 5. dilim (2026-10-06): haftalık akış ────────────
-  // Başlık ve üç bölüm adı `monthly-list.ts` okuyucusunun tanıdığı
-  // sözcüklerle yazılır: üye listeyi kopyalayıp geri yapıştırabilsin.
-  mwk_list_header: (p) => `📋 ${p.month} listesi: ${p.when}`,
+  // Haftanın listesi (2026-11-03): önce kadro, ilk adlarla; daimi
+  // oyuncunun bir şey yazmasına gerek yok. "(ödedi)" işareti yok.
+  // Numaralar oyuncuların gerçek sıra numaraları; bölüm adları aylık
+  // okuyucunun tanıdığı sözcükler ("Gelemeyenler", "Yedekler").
+  mwk_list_squad: (p) => `*${p.month} kadrosu:*`,
+  mwk_list_all_in: "Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın, yeri açılır.",
   mwk_list_paid: "(ödedi)",
-  mwk_list_cant_play_paid: "Ödedi gelemiyor",
-  mwk_list_cant_play: "Gelemeyenler",
+  mwk_list_cant_play: "*Gelemeyenler:*",
+  mwk_list_bench: "*Yedekler:*",
   mwk_list_reserves: "Yedekler",
-  mwk_list_open: (p) => `${p.open} yer boş${p.price ? `, maç başı ${p.price} (PAYG)` : ""}: almak için *VARIM* yazın.`,
-  mwk_list_open_organiser: (p) => `${p.open} yer boş. Yedek listesine girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.`,
+  mwk_list_payg: "*Maç başı ödeyenler:*",
+  mwk_list_open: (p) => `${p.open} yer boş${p.price ? `, ${p.price}` : ""}. Almak için *VARIM* yazın.`,
+  mwk_list_open_organiser: (p) =>
+    `${p.open} yer boş${p.price ? `, ${p.price}` : ""}. Yedeğe girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.`,
+  mwk_list_full: "Kadro tam.",
   mwk_pool_group: (p) => `🎟 *${p.when}* maçında ${p.open} yer açık${p.price ? `, maç başı ${p.price} (PAYG)` : ""}. İlk *VARIM* yazan alır.`,
   mwk_dm_sender_not_matched: (p) =>
     `📋 Yapıştırdığın listedeki ${p.names.join(", ")} adını bir oyuncuyla eşleştiremedim, bu yüzden kimseyi eklemedim. ` +

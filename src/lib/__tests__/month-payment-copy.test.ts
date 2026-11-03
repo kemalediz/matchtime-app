@@ -143,6 +143,7 @@ describe("is it one of MatchTime's own month lists?", () => {
     const week = buildWeekListPost({
       list: { slots: [{ slot: 1, userId: "alex", name: "Alex Carter", mark: "paid" }], paidCantPlay: [], cantPlay: [], reserves: [], open: 1 },
       matchDate: kickoffs[0],
+      title: "Monday 7-a-side",
       paygPricePence: 800,
       lang: "en",
     });

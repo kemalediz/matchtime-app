@@ -65,7 +65,9 @@ const WHEN = formatInTimeZone(KICKOFF, LONDON, "EEE d MMM, HH:mm");
 const MONTH_NAME = formatInTimeZone(KICKOFF, LONDON, "MMMM");
 const MONTH_START = `${formatInTimeZone(KICKOFF, LONDON, "yyyy-MM")}-01`;
 const WEEKDAY = Number(formatInTimeZone(KICKOFF, LONDON, "i")) % 7; // 0 = Sunday
-const HEADER = `📋 List for ${MONTH_NAME}: ${WHEN}`;
+const HEADER = `📋 *Monday 7-a-side, ${formatInTimeZone(KICKOFF, LONDON, "EEE d MMM 'at' HH:mm")}*`;
+const SQUAD = `*${MONTH_NAME} squad:*`;
+const ALL_IN = "You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.";
 
 /**
  * The fixture's weekday for a club whose game was PLAYED (2026-10-30): the
@@ -349,22 +351,12 @@ test("1. the regulars are put on the week's match, once, and the list is posted 
   expect(events).toHaveLength(4);
   for (const e of events) expect(e).toEqual({ cause: "monthly-squad", actorKind: "scheduler", sourceRef: MONTH });
 
-  // THEIR format, in one message. Chris has not paid, so no mark.
+  // One message: the squad first, by first name, with no paid marks.
   const posts = listPosts(first);
   expect(posts).toHaveLength(1);
   expect(posts[0].kind).toBe("group-message");
   expect(posts[0].text).toBe(
-    [
-      HEADER,
-      "",
-      "1. Alex Carter (paid)",
-      "2. Bilal Aydin (paid)",
-      "3. Chris Bell",
-      "4. Dave Stone (paid)",
-      "5.",
-      "",
-      "1 place open, £8 PAYG: say *IN* to take it.",
-    ].join("\n"),
+    [HEADER, "", SQUAD, "1. Alex", "2. Bilal", "3. Chris", "4. Dave", "", ALL_IN, "", "*Pay as you go:* 1 place open, £8. Say *IN* to take it."].join("\n"),
   );
   // The weekly-shaped posts are not sent alongside it.
   expect(first.some((i) => i.key.includes("announce-match") || i.key.includes("evening-update"))).toBe(false);
@@ -433,16 +425,17 @@ test("2. a regular drops: paid but can't play, a credit, and the place goes to t
   const changed = [
     HEADER,
     "",
-    "1. Alex Carter (paid)",
-    "2.",
-    "3. Chris Bell",
-    "4. Dave Stone (paid)",
-    "5.",
+    SQUAD,
+    "1. Alex",
+    "3. Chris",
+    "4. Dave",
     "",
-    "Paid but can't play",
-    "1. Bilal Aydin",
+    ALL_IN,
     "",
-    "2 places open, £8 PAYG: say *IN* to take one.",
+    "*Can't play:*",
+    "1. Bilal",
+    "",
+    "*Pay as you go:* 2 places open, £8. Say *IN* to take one.",
   ].join("\n");
   const posted = listPosts(polled);
   expect(posted).toHaveLength(1);
@@ -477,16 +470,19 @@ test("3. a PAYG player takes it: the vacated slot number, the offer closed, the 
   const changed = [
     HEADER,
     "",
-    "1. Alex Carter (paid)",
-    "2. Omar Khan (PAYG)",
-    "3. Chris Bell",
-    "4. Dave Stone (paid)",
-    "5.",
+    SQUAD,
+    "1. Alex",
+    "3. Chris",
+    "4. Dave",
     "",
-    "Paid but can't play",
-    "1. Bilal Aydin",
+    ALL_IN,
     "",
-    "1 place open, £8 PAYG: say *IN* to take it.",
+    "*Can't play:*",
+    "1. Bilal",
+    "",
+    "*Pay as you go:*",
+    "2. Omar",
+    "1 place open, £8. Say *IN* to take it.",
   ].join("\n");
   expect(res).toMatchObject({ intent: "in", react: "✅", reply: null });
   const polled = await poll(request, at(12, 30));
@@ -509,16 +505,19 @@ test("asked for the squad, MatchTime answers with the month's list, not the week
     [
       HEADER,
       "",
-      "1. Alex Carter (paid)",
-      "2. Omar Khan (PAYG)",
-      "3. Chris Bell",
-      "4. Dave Stone (paid)",
-      "5.",
+      SQUAD,
+      "1. Alex",
+      "3. Chris",
+      "4. Dave",
       "",
-      "Paid but can't play",
-      "1. Bilal Aydin",
+      ALL_IN,
       "",
-      "1 place open, £8 PAYG: say *IN* to take it.",
+      "*Can't play:*",
+      "1. Bilal",
+      "",
+      "*Pay as you go:*",
+      "2. Omar",
+      "1 place open, £8. Say *IN* to take it.",
     ].join("\n"),
   );
   expect(res.reply).not.toContain("*Playing:*");
@@ -545,9 +544,9 @@ test("the 30-minute floor: a change straight after a list post waits", async ({ 
   expect(listPosts(await poll(request, at(13)))).toEqual([]);
   const later = listPosts(await poll(request, at(13, 30)));
   expect(later).toHaveLength(1);
-  // Chris has not paid: listed apart from "Paid but can't play", and the
-  // poll's sweep wrote him no credit.
-  expect(later[0].text).toContain("Paid but can't play\n1. Bilal Aydin\n\nCan't play\n1. Chris Bell");
+  // Both under "Can't play" (no paid marks on the post); Chris has not
+  // paid, so the poll's sweep wrote him no credit.
+  expect(later[0].text).toContain("*Can't play:*\n1. Bilal\n2. Chris");
   expect((await credits(db)).map((c) => c.userId)).toEqual([P.bilal.id]);
 
   // Put the back-dated row behind the real ones again.
@@ -680,7 +679,9 @@ test("7. D3: a (paid) mark on a pasted list is a claim, never a confirmation", a
   const morning = listPosts((await preview.json()).instructions as Instruction[]);
   // 09:00 on match day: the once-a-morning post, whatever else.
   expect(morning).toHaveLength(1);
-  expect(morning[0].text).toContain("3. Chris Bell (paid)");
+  // The claim is recorded (above); the post shows no paid marks.
+  expect(morning[0].text).toContain("\n3. Chris\n");
+  expect(morning[0].text).not.toContain("(paid)");
 
   // A later copy WITHOUT the mark removes nothing.
   await say(request, P.tom, listText(["Alex Carter (paid)", "Omar Khan (PAYG)", "Chris Bell", "Dave Stone (paid)", null], ["Bilal Aydin"]));
@@ -917,15 +918,15 @@ test.describe("10. guards, and Turkish", () => {
     expect(posts).toHaveLength(1);
     expect(posts[0].text).toBe(
       [
-        `📋 ${formatInTimeZone(KICKOFF, LONDON, "MMMM", { locale: trLocale })} listesi: ${formatInTimeZone(KICKOFF, LONDON, "d MMMM EEEE HH:mm", { locale: trLocale })}`,
+        `📋 *Monday 7-a-side, ${formatInTimeZone(KICKOFF, LONDON, "d MMMM EEEE HH:mm", { locale: trLocale })}*`,
         "",
-        "1. Ayşe Demir (ödedi)",
-        "2. Burak Kaya (ödedi)",
-        "3.",
-        "4.",
-        "5.",
+        `*${formatInTimeZone(KICKOFF, LONDON, "MMMM", { locale: trLocale })} kadrosu:*`,
+        "1. Ayşe",
+        "2. Burak",
         "",
-        "3 yer boş, maç başı £8 (PAYG): almak için *VARIM* yazın.",
+        "Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın, yeri açılır.",
+        "",
+        "*Maç başı ödeyenler:* 3 yer boş, £8. Almak için *VARIM* yazın.",
       ].join("\n"),
     );
   });
@@ -1019,7 +1020,7 @@ test.describe("regulars have priority at the seed", () => {
     ]);
     const list = listPosts(polled, MATCH3);
     expect(list).toHaveLength(1);
-    expect(list[0].text).toContain("1. Una Reid (paid)\n2. Vic Shaw (paid)\n\nReserves\n1. Ned Early\n2. Wes Tate");
+    expect(list[0].text).toContain("1. Una\n2. Vic\n\n" + ALL_IN + "\n\n*Bench:*\n1. Ned\n2. Wes");
 
     // A: Wes then LEAVES the group. The credit he earned is still owed to
     // him: leaving never voids one.

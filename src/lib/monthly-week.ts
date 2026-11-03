@@ -40,6 +40,7 @@ import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
 import { ROLLING_LOOKBACK_DAYS, adminNoticeSendAfter, pickSeedSource, rollingSeedDue } from "./rolling-squad-rules";
 import { loadClubQuietHours } from "./club-quiet-hours";
 import { buildSeedBumpedDm, buildWeekListPost } from "./monthly-week-copy";
+import { loadPlayerNames } from "./player-display-name";
 import { londonMonthStart, normaliseCreditRule, normaliseSquadMode, type MonthCreditRule } from "./squad-month-rules";
 import {
   SEED_NOTE_PRIORITY,
@@ -54,6 +55,7 @@ import {
   selectPaygPool,
   weekListHash,
   type PoolCandidate,
+  type WeekList,
   type WeekMember,
   type WeekRow,
   type WeekStatus,
@@ -1139,16 +1141,63 @@ export function weekListKeyPrefix(matchId: string): string {
   return `${matchId}:month-list:`;
 }
 
-/** The week's list as MatchTime would post it now, and its hash. */
-export function renderWeekList(week: MonthlyWeek): { text: string; hash: string } {
+/**
+ * The week's list as MatchTime posts it, and its hash: the one renderer the
+ * scheduler's post, a reply to "who's in?", a member's matching paste and
+ * the monthly reader all use, so the hash means the same everywhere.
+ *
+ * Names go through the squad surfaces' fallback (`loadPlayerNames`: the
+ * name, an alias here, the WhatsApp name he posted under), so a member
+ * imported with no name is not "(unnamed)" while MatchTime knows what he
+ * is called. That read fails soft: the post keeps the plain names.
+ */
+export async function weekListPostText(p: {
+  orgId: string;
+  list: WeekList;
+  matchDate: Date;
+  title: string;
+  paygPricePence: number | null;
+  organiserPicks: boolean;
+  lang: string | null;
+}): Promise<{ text: string; hash: string }> {
+  const ids = [
+    ...p.list.slots.map((x) => x.userId).filter((u): u is string => u !== null),
+    ...p.list.paidCantPlay.map((n) => n.userId),
+    ...p.list.cantPlay.map((n) => n.userId),
+    ...p.list.reserves.map((n) => n.userId),
+  ];
+  const known = ids.length > 0 ? await loadPlayerNames(p.orgId, ids, p.lang) : new Map<string, { name: string | null }>();
+  const named = <T extends { userId: string | null; name: string }>(x: T): T =>
+    x.userId && known.get(x.userId)?.name ? { ...x, name: known.get(x.userId)!.name! } : x;
+  const list: WeekList = {
+    ...p.list,
+    slots: p.list.slots.map(named),
+    paidCantPlay: p.list.paidCantPlay.map(named),
+    cantPlay: p.list.cantPlay.map(named),
+    reserves: p.list.reserves.map(named),
+  };
   const text = buildWeekListPost({
+    list,
+    matchDate: p.matchDate,
+    title: p.title,
+    paygPricePence: p.paygPricePence,
+    organiserPicks: p.organiserPicks,
+    lang: p.lang,
+  });
+  return { text, hash: weekListHash(text) };
+}
+
+/** The week's list as MatchTime would post it now, and its hash. */
+export function renderWeekList(week: MonthlyWeek): Promise<{ text: string; hash: string }> {
+  return weekListPostText({
+    orgId: week.orgId,
     list: buildWeekList({ members: week.members, rows: week.rows, maxPlayers: week.maxPlayers }),
     matchDate: week.matchDate,
+    title: week.activityName,
     paygPricePence: week.paygPricePence,
     organiserPicks: week.pickMode === "organiser",
     lang: week.language,
   });
-  return { text, hash: weekListHash(text) };
 }
 
 /**
@@ -1160,7 +1209,7 @@ export function renderWeekList(week: MonthlyWeek): { text: string; hash: string 
 export async function currentWeekListPost(matchId: string): Promise<{ text: string; hash: string } | null> {
   const week = await loadMonthlyWeek(matchId);
   if (!week || !week.seeded || week.teamsOut) return null;
-  return renderWeekList(week);
+  return await renderWeekList(week);
 }
 
 /**

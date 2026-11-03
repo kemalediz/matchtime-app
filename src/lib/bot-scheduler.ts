@@ -113,6 +113,7 @@ import {
   loadSchedulerMonths,
   monthForMatch,
   weekListKeyPrefix,
+  weekListPostText,
   weekMembers,
   type RunningMonth,
 } from "./monthly-week";
@@ -123,7 +124,7 @@ import {
   type WeekMember,
   type WeekStatus,
 } from "./monthly-week-rules";
-import { buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost } from "./monthly-week-copy";
+import { buildPaygPoolDm, buildPaygPoolGroupPost } from "./monthly-week-copy";
 import { londonMonthStart } from "./squad-month-rules";
 import {
   buildAnnounceMatchPost,
@@ -2168,11 +2169,14 @@ async function computeForMatch(
   // ── 2-monthly. The month's list (2026-10-06, slice 5 of
   //    MDs/monthly-squad-plan-2026-10-05.md, section 5.4) ──────────────
   //    For a monthly club's match in a running month, once the regulars
-  //    are on it: ONE message in the group's own format ("List for
-  //    October", numbered slots, paid marks, "Paid but can't play"),
-  //    posted when the list differs from the one the group last saw, and
-  //    once on match morning (held while the group has seen this same
-  //    list in the last three hours). `decideListPost` holds the limits: never
+  //    are on it: ONE message, the squad first by first name, then who
+  //    can't play, the bench and pay as you go (reworded 2026-11-03).
+  //    WHEN: the regulars are put on the next game from 08:00 London the
+  //    morning after the last one (`seedDueMonthlySquads`), so its list
+  //    first goes out that morning, at the club's day start. After that
+  //    it is posted when the list differs from the one the group last
+  //    saw (the squad changed), and once on match morning (held while the
+  //    group has seen this same list in the last three hours). `decideListPost` holds the limits: never
   //    within 30 minutes of the last list post, never 23:00 to 08:59
   //    London, never once the teams are out, only for the fixture's next
   //    match. "The one the group last saw" is the newest
@@ -2198,14 +2202,17 @@ async function computeForMatch(
       position: a.position,
     }));
     const weekList = buildWeekList({ members: monthly.members, rows, maxPlayers });
-    const text = buildWeekListPost({
+    // The same renderer as every other place the list is shown, so its
+    // hash matches a reply's or a member's matching paste.
+    const { text, hash } = await weekListPostText({
+      orgId: activity.orgId,
       list: weekList,
       matchDate: m.date,
+      title: activity.name,
       paygPricePence: monthly.paygPricePence,
       organiserPicks: features.benchPickMode === "organiser",
       lang,
     });
-    const hash = weekListHash(text);
     const prefix = weekListKeyPrefix(matchId);
     const shown = await db.sentNotification.findMany({
       where: { matchId, key: { startsWith: prefix } },

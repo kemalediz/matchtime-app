@@ -525,7 +525,8 @@ test("8. two days before the first game sign-up ends: the month runs, and until 
   expect(listPosts(out)).toEqual([]);
   const week = out.filter((i) => i.key.startsWith(`${games[0].id}:month-list:`));
   expect(week).toHaveLength(1);
-  expect(week[0].text!.split("\n").slice(2, 6)).toEqual(["1. Alex Carter", "2. Bilal Aydin", "3.", "4. Dan Price"]);
+  // The squad by first name under each regular's own number (slot 3 is free).
+  expect(week[0].text!.split("\n").slice(2, 6)).toEqual([`*${MONTH_NAME} squad:*`, "1. Alex", "2. Bilal", "4. Dan"]);
 
   const squad = () =>
     db.all<{ userId: string; status: string; position: number; paymentMethod: string | null }>(

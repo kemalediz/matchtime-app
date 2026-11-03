@@ -4319,55 +4319,68 @@ Orası oyuncularınızın grubu, bu yüzden yönetici grubu olamaz. Beni yöneti
 Thursday Ladies has been approved for 3 days and its organiser has not gone live. MatchTime is still silent in its group. You can take it live from the clubs page: https://matchtime.ai/admin/clubs
 
 ### MWK1 buildWeekListPost / a week with a drop, a fill-in and a place open
-📋 Ekim listesi: 12 Ekim Pazartesi 20:00
+📋 *Monday 7-a-side, 12 Ekim Pazartesi 20:00*
 
-1. Alex Carter (ödedi)
-2. Bilal Aydin (ödedi)
-3. Omar Khan (PAYG)
-4.
-5. Jake Moss
+*Ekim kadrosu:*
+1. Alex
+2. Bilal
+5. Jake
 
-Ödedi gelemiyor
-1. Sam Dean
-2. Joel Park
+Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın, yeri açılır.
 
-Gelemeyenler
-1. Chris Bell
+*Gelemeyenler:*
+1. Sam
+2. Joel
+3. Chris
 
-Yedekler
-1. Zed Wait
+*Yedekler:*
+1. Zed
 
-1 yer boş, maç başı £8 (PAYG): almak için *VARIM* yazın.
+*Maç başı ödeyenler:*
+3. Omar
+1 yer boş, £8. Almak için *VARIM* yazın.
 
 ### MWK1 buildWeekListPost / full, nobody out
-📋 Ekim listesi: 12 Ekim Pazartesi 20:00
+📋 *Monday 7-a-side, 12 Ekim Pazartesi 20:00*
 
-1. Alex Carter (ödedi)
-2. Bilal Aydin (ödedi)
-3. Omar Khan (PAYG)
-5. Jake Moss
+*Ekim kadrosu:*
+1. Alex
+2. Bilal
+5. Jake
+
+Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın, yeri açılır.
+
+*Maç başı ödeyenler:*
+3. Omar
+Kadro tam.
 
 ### MWK1 buildWeekListPost / two places, no PAYG price set
-📋 Ekim listesi: 12 Ekim Pazartesi 20:00
+📋 *Monday 7-a-side, 12 Ekim Pazartesi 20:00*
 
-1. Alex Carter (ödedi)
-2. Bilal Aydin (ödedi)
-3. Omar Khan (PAYG)
-4.
-5. Jake Moss
+*Ekim kadrosu:*
+1. Alex
+2. Bilal
+5. Jake
 
-2 yer boş: almak için *VARIM* yazın.
+Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın, yeri açılır.
+
+*Maç başı ödeyenler:*
+3. Omar
+2 yer boş. Almak için *VARIM* yazın.
 
 ### MWK1 buildWeekListPost / organisers pick
-📋 Ekim listesi: 12 Ekim Pazartesi 20:00
+📋 *Monday 7-a-side, 12 Ekim Pazartesi 20:00*
 
-1. Alex Carter (ödedi)
-2. Bilal Aydin (ödedi)
-3. Omar Khan (PAYG)
-4.
-5. Jake Moss
+*Ekim kadrosu:*
+1. Alex
+2. Bilal
+5. Jake
 
-1 yer boş. Yedek listesine girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.
+Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın, yeri açılır.
+
+*Maç başı ödeyenler:*
+3. Omar
+1 yer boş, £7.50. Yedeğe girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.
 
 ### MWK2 buildPaygPoolGroupPost / with a price
 🎟 *12 Ekim Pazartesi 20:00* maçında 1 yer açık, maç başı £8 (PAYG). İlk *VARIM* yazan alır.

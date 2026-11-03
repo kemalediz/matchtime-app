@@ -428,7 +428,7 @@ export async function handleMonthlyPaste(args: {
     if (after?.seeded) {
       const weekList = buildWeekList({ members: after.members, rows: after.rows, maxPlayers: after.maxPlayers });
       if (pasteShowsSameList({ list, week: weekList, roster })) {
-        await recordWeekListShown(matchId, renderWeekList(after).hash, "month-list-seen");
+        await recordWeekListShown(matchId, (await renderWeekList(after)).hash, "month-list-seen");
       }
     }
   } catch (err) {

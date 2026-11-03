@@ -11,7 +11,7 @@
  *     the club's PAYG players, and their hour is up;
  *   - the pool offer states the club's PAYG price (what he pays there);
  *   - a pool guest who takes the place is a PAYG player of that one game:
- *     the away regular's slot number, on the week's list as "(PAYG)", no
+ *     the away regular's slot number, under "Pay as you go" on the week's list, no
  *     month membership, no credit, no "paid by the month" mark;
  *   - an organiser's tagged ask before the week is seeded asks for the
  *     places really open, not every place of the match.
@@ -156,12 +156,13 @@ scenarios("the MatchTime player pool for a monthly club's week", () => {
     expect(await pool.db.count(`SELECT count(*) FROM "SquadCredit" WHERE "orgId" = $1 AND "userId" = $2`, [vets.group.orgId, ali.userId])).toBe(0);
     expect(await pool.db.count(`SELECT count(*) FROM "BenchSlotOffer" WHERE "matchId" = $1 AND "resolvedAt" IS NULL`, [vets.group.matchId])).toBe(0);
 
-    pool.note("the week's list shows him in slot 4 as PAYG, Felix under paid but can't play");
+    pool.note("the week's list shows him in slot 4 under pay as you go, Felix under can't play");
     const after = await schedulerPoll(pool, vets, londonOn(vets.kickoff, 0, "13:45"));
-    const list = after.instructions.find((i) => i.kind === "group-message" && /📋 List for/.test(i.text ?? ""));
-    expect(list?.text).toMatch(/\n4\. Ali Kaya \(PAYG\)\n/);
-    expect(list?.text).toMatch(/Paid but can't play\n1\. Felix Fox/);
-    expect(list?.text).not.toMatch(/places? open/);
+    const list = after.instructions.find((i) => i.kind === "group-message" && i.key?.includes(":month-list:"));
+    expect(list?.text).toMatch(/\*Pay as you go:\*\n4\. Ali\n/);
+    expect(list?.text).toMatch(/\*Can't play:\*\n1\. Felix/);
+    expect(list?.text).not.toMatch(/\d+ places? open/);
+    expect(list?.text?.split("\n").at(-1)).toBe("The squad is full.");
     // The month's sweep ran on that poll: he is still not "paid by the month".
     expect((await pool.db.one<{ paymentMethod: string | null }>(`SELECT "paymentMethod" FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [vets.group.matchId, ali.userId]))?.paymentMethod).toBeNull();
     expect(await pool.db.count(`SELECT count(*) FROM "SquadCredit" WHERE "orgId" = $1 AND "userId" = $2`, [vets.group.orgId, ali.userId])).toBe(0);

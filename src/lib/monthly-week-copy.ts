@@ -6,20 +6,18 @@
  * string table. Nothing here reads a database or calls a model, and none
  * of it is ever sent for a club on "weekly".
  *
- * The list is written the way the group writes it, so a member can copy
- * it, change a line and paste it back: `parseMonthlyList` reads this
- * exact text (the round trip is pinned in `monthly-week-copy.test.ts`).
+ * A member can copy the week's list, change a line and paste it back:
+ * the monthly reader (a model, `monthly-reader.ts`) reads it, and the
+ * numbers on it are the players' real slot numbers.
  */
-import { dayCommaTimeLabel, monthNameLabel } from "./i18n/dates";
+import { dayCommaTimeLabel, dayTimeLabel, monthNameLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
-import type { Lang } from "./i18n/lang";
-import type { WeekList, WeekName } from "./monthly-week-rules";
+import { normaliseLang, type Lang } from "./i18n/lang";
+import { normaliseName } from "./name-normalise";
+import { usableName } from "./player-name-rules";
+import type { WeekList, WeekName, WeekSlot } from "./monthly-week-rules";
 
 type LangArg = Lang | string | null | undefined;
-
-/** The group's own word for "pays per game", the same in every language,
- *  and the mark the list reader looks for. */
-const PAYG_MARK = "(PAYG)";
 
 /** 800 is "£8", 750 is "£7.50". Null when the club has set no price. */
 export function paygPriceLabel(pence: number | null | undefined): string | null {
@@ -28,57 +26,120 @@ export function paygPriceLabel(pence: number | null | undefined): string | null 
 }
 
 /**
- * The week's list, in one message (plan 5.4):
+ * The name each person goes by on the week's list: the FIRST name only
+ * ("Davide De Sousa" is "Davide", "Cj - Barber Lab" is "Cj"). When two
+ * people on the same post share a first name, each gets his surname's
+ * initial ("Dan K", "Dan M"), and his whole name when even that is shared.
+ * Somebody with no usable name is the club's word for unnamed, never a
+ * phone number (the caller has already tried `player-display-name.ts`).
+ */
+export function weekListFirstNames(people: Array<{ userId: string; name: string | null | undefined }>, lang?: LangArg): Map<string, string> {
+  const unnamed = t(lang).unnamed;
+  const fold = (x: string) => normaliseName(x);
+  const parts = new Map<string, string[]>();
+  for (const p of people) {
+    if (parts.has(p.userId)) continue;
+    const name = usableName(p.name);
+    // Words with a letter in them: "Cj - Barber Lab" is ["Cj", "Barber", "Lab"].
+    parts.set(p.userId, name ? name.split(" ").filter((w) => /\p{L}/u.test(w)) : []);
+  }
+  const first = (id: string) => parts.get(id)?.[0] ?? null;
+  const withInitial = (id: string) => {
+    const w = parts.get(id) ?? [];
+    return w.length > 1 ? `${w[0]} ${w[w.length - 1].charAt(0).toLocaleUpperCase(normaliseLang(lang) === "tr" ? "tr" : "en")}` : (w[0] ?? "");
+  };
+  const out = new Map<string, string>();
+  const ids = [...parts.keys()];
+  for (const id of ids) {
+    const f = first(id);
+    if (!f) {
+      out.set(id, unnamed);
+      continue;
+    }
+    const sharing = ids.filter((o) => first(o) !== null && fold(first(o)!) === fold(f));
+    if (sharing.length === 1) {
+      out.set(id, f);
+      continue;
+    }
+    const mine = withInitial(id);
+    const clash = sharing.filter((o) => fold(withInitial(o)) === fold(mine)).length > 1;
+    out.set(id, clash ? (parts.get(id) ?? []).join(" ") : mine);
+  }
+  return out;
+}
+
+/**
+ * The week's list, in one message (plan 5.4; reworded 2026-11-03):
  *
- *     📋 List for October: Mon 12 Oct, 20:00
+ *     📋 *Monday 7-a-side, Mon 12 Oct at 20:00*
  *
- *     1. Alex (paid)
- *     6. Omar (PAYG)
- *     10.
+ *     *October squad:*
+ *     1. Alex
+ *     4. Jake
  *
- *     Paid but can't play
+ *     You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+ *
+ *     *Can't play:*
  *     1. Sam
  *
- * A blank slot is shown blank, as the group does. "(paid)" is shown as
- * soon as it is claimed (D3); a regular who has NOT paid and is out is
- * listed under "Can't play", never under the paid header.
+ *     *Pay as you go:*
+ *     2. Omar
+ *     1 place open, £8. Say *IN* to take it.
+ *
+ * The squad is the regulars who are in, each under his own slot number
+ * (a member who copies the post and blanks a line blanks that slot). A
+ * free slot is not printed. Pay-as-you-go players who have a place are
+ * listed under "Pay as you go", with the places still open. There are no
+ * paid marks: MatchTime does not confirm a payment the organiser takes,
+ * so "can't play" is one section whether they have paid or not.
  */
 export function buildWeekListPost(p: {
   list: WeekList;
   matchDate: Date;
+  /** The fixture's name, as the club's other posts head it ("Monday 7-a-side"). */
+  title: string;
   paygPricePence: number | null | undefined;
   /** The club's organisers pick who fills a place (slice 2b). */
   organiserPicks?: boolean;
   lang?: LangArg;
 }): string {
   const s = t(p.lang);
-  const lines: string[] = [
-    s.mwk_list_header({ month: monthNameLabel(p.lang, p.matchDate), when: dayCommaTimeLabel(p.lang, p.matchDate) }),
-    "",
-  ];
-  for (const slot of p.list.slots) {
-    if (!slot.userId) {
-      lines.push(`${slot.slot}.`);
-      continue;
-    }
-    const mark = slot.mark === "paid" ? ` ${s.mwk_list_paid}` : slot.mark === "payg" ? ` ${PAYG_MARK}` : "";
-    lines.push(`${slot.slot}. ${slot.name || s.unnamed}${mark}`);
+  const cantPlay = [...p.list.paidCantPlay, ...p.list.cantPlay];
+  const placed = p.list.slots.filter((slot): slot is WeekSlot & { userId: string } => slot.userId !== null);
+  const squad = placed.filter((slot) => slot.mark !== "payg");
+  const payg = placed.filter((slot) => slot.mark === "payg");
+  const shown = weekListFirstNames([...placed, ...cantPlay, ...p.list.reserves], p.lang);
+  const nameOf = (userId: string) => shown.get(userId) ?? s.unnamed;
+  const price = paygPriceLabel(p.paygPricePence);
+
+  // The title line has no words to translate: the fixture, then the game
+  // in the club's language ("Mon 9 Nov at 20:30", "9 Kasım Pazartesi 20:30").
+  const lines: string[] = [`📋 *${p.title.trim()}, ${dayTimeLabel(p.lang, p.matchDate)}*`];
+  if (squad.length > 0) {
+    lines.push("", s.mwk_list_squad({ month: monthNameLabel(p.lang, p.matchDate) }));
+    for (const slot of squad) lines.push(`${slot.slot}. ${nameOf(slot.userId)}`);
+    lines.push("", s.mwk_list_all_in);
   }
   const section = (title: string, names: WeekName[]): void => {
     if (names.length === 0) return;
     lines.push("", title);
-    names.forEach((n, i) => lines.push(`${i + 1}. ${n.name || s.unnamed}`));
+    names.forEach((n, i) => lines.push(`${i + 1}. ${nameOf(n.userId)}`));
   };
-  section(s.mwk_list_cant_play_paid, p.list.paidCantPlay);
-  section(s.mwk_list_cant_play, p.list.cantPlay);
-  section(s.mwk_list_reserves, p.list.reserves);
-  if (p.list.open > 0) {
-    lines.push(
-      "",
-      p.organiserPicks
-        ? s.mwk_list_open_organiser({ open: p.list.open })
-        : s.mwk_list_open({ open: p.list.open, price: paygPriceLabel(p.paygPricePence) }),
-    );
+  section(s.mwk_list_cant_play, cantPlay);
+  section(s.mwk_list_bench, p.list.reserves);
+
+  const open =
+    p.list.open > 0
+      ? p.organiserPicks
+        ? s.mwk_list_open_organiser({ open: p.list.open, price })
+        : s.mwk_list_open({ open: p.list.open, price })
+      : null;
+  if (payg.length > 0) {
+    lines.push("", s.mwk_list_payg);
+    for (const slot of payg) lines.push(`${slot.slot}. ${nameOf(slot.userId)}`);
+    lines.push(open ?? s.mwk_list_full);
+  } else {
+    lines.push("", open ? `${s.mwk_list_payg} ${open}` : s.mwk_list_full);
   }
   return lines.join("\n");
 }

@@ -2265,25 +2265,27 @@ function cases(lang: Lang): Case[] {
     reserves: [{ userId: "z", name: "Zed Wait" }],
     open: 1,
   };
-  add("MWK1 buildWeekListPost / a week with a drop, a fill-in and a place open", buildWeekListPost({ list: mwkList, matchDate: mwkMatch, paygPricePence: 800, lang }));
+  add("MWK1 buildWeekListPost / a week with a drop, a fill-in and a place open", buildWeekListPost({ list: mwkList, matchDate: mwkMatch, title: "Monday 7-a-side", paygPricePence: 800, lang }));
   add(
     "MWK1 buildWeekListPost / full, nobody out",
     buildWeekListPost({
       list: { ...mwkList, slots: mwkList.slots.filter((x) => x.userId), paidCantPlay: [], cantPlay: [], reserves: [], open: 0 },
       matchDate: mwkMatch,
+      title: "Monday 7-a-side",
       paygPricePence: 800,
       lang,
     }),
   );
   add(
     "MWK1 buildWeekListPost / two places, no PAYG price set",
-    buildWeekListPost({ list: { ...mwkList, paidCantPlay: [], cantPlay: [], reserves: [], open: 2 }, matchDate: mwkMatch, paygPricePence: null, lang }),
+    buildWeekListPost({ list: { ...mwkList, paidCantPlay: [], cantPlay: [], reserves: [], open: 2 }, matchDate: mwkMatch, title: "Monday 7-a-side", paygPricePence: null, lang }),
   );
   add(
     "MWK1 buildWeekListPost / organisers pick",
     buildWeekListPost({
       list: { ...mwkList, paidCantPlay: [], cantPlay: [], reserves: [], open: 1 },
       matchDate: mwkMatch,
+      title: "Monday 7-a-side",
       paygPricePence: 750,
       organiserPicks: true,
       lang,
