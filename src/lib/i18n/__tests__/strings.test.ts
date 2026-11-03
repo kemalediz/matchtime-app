@@ -341,6 +341,7 @@ const SAMPLES: SampleArgs = {
   onbHelpForClub: { club: "Riverside FC" },
   onbHelpExplainer: { topic: "teams" },
   onbHelpOrganisersExplainer: { topic: "availability", organiserPicks: true },
+  onbHelpAvailabilityMonthly: null,
   onbHelpAvailabilityOrganiserPicks: null,
   onbHelpAdminOrganisers: null,
   onbHelpFriendLink: null,

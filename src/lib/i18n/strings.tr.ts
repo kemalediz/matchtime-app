@@ -292,7 +292,7 @@ export const tr: Strings = {
     `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\n` +
     `Ayın ücretini ödediyseniz tüm maçlardasınız, bir şey yazmanıza gerek yok.\n` +
     `Maç başı mı ödüyorsunuz (PAYG)? Boş bir yeri almak için *VARIM* yazın, sadece bu maçın ücretini ödersiniz.\n` +
-    `Misafir mi getiriyorsunuz? Onun adına yazın, örneğin *David VAR*.\n\n` +
+    `👥 Arkadaşınızı mı getiriyorsunuz? Bir arkadaşınızın geleceğini yazın, ona göndermeniz için size özelden bir bağlantı yollarım. Organizatörlerin arkadaşın adını yazması yeter (örneğin *Sam Jones geliyor*), onu ben eklerim.\n\n` +
     `Ayın listesi henüz paylaşılmadıysa ${p.organiser ?? "organizatör"} paylaşacak.`,
 
   // ── row 71: buildSquadRosterBlock ────────────────────────────────
@@ -1240,6 +1240,10 @@ export const tr: Strings = {
     `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
     `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
 
+  onbHelpAvailabilityMonthly:
+    `⚽ *Kadro ve katılım nasıl çalışır*\n` +
+    `Bu grup aylık kadroyla oynuyor. Ayın ücretini ödediyseniz ayın listesindesiniz ve tüm maçlardasınız, bir şey yazmanıza gerek yok. Bir maça gelemiyorsanız *yokum* yazın, yeriniz başkasına açılır.\n` +
+    `Maç başı mı ödüyorsunuz? Boş bir yeri almak için *varım* yazın, sadece o maçın ücretini ödersiniz.`,
   onbHelpFriendLink: `👥 Arkadaşınızı mı getiriyorsunuz? Grupta söyleyin (örneğin *arkadaşım Ali de geliyor*), beni etiketlemenize gerek yok. ✉️ ile tepki verir, ona iletmeniz için size özelden kişisel bir bağlantı gönderirim. Arkadaşınız bağlantıyı açar, bilgilerini doldurur ve WhatsApp kodunu gönderir: böylece maça girer (kadro doluysa yedeğe) ve MatchTime oyuncu havuzuna katılır. Bağlantı maç başlayana kadar geçerlidir.`,
   onbHelpFriend: (p) =>
     `👥 *Arkadaş getirmek nasıl çalışır*\n` +
