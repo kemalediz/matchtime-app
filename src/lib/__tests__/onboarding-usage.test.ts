@@ -42,8 +42,9 @@ describe("buildHowToUseMe — full-feature org", () => {
     expect(block).toMatch(/24h/i);
   });
 
-  it('explains it "stays quiet" the rest of the time', () => {
-    expect(block).toMatch(/quiet/i);
+  it("explains it does not reply to banter (it never claims to stay quiet: it posts its own updates)", () => {
+    expect(block).toMatch(/don't reply to banter/i);
+    expect(block).not.toMatch(/stay quiet/i);
   });
 
   it("mentions the enabled extras", () => {
@@ -204,7 +205,8 @@ describe("buildHelpReply — a topic that is OFF explains itself and how to swit
   it("mom off: the MoM explainer, framed as off, with the setting's name", () => {
     const r = buildHelpReply("mom", { ...ALL_ON, momVoting: false }, "en", { audience: "group", links: { topic: URL } });
     expect(r).toMatch(/isn't switched on for this group yet/);
-    expect(r).toMatch(/tally the votes/i);
+    expect(r).toMatch(/count the picks/i);
+    expect(r).not.toMatch(/quick .*vote in the group/i);
     expect(r).toMatch(/an admin turns on \*Man of the Match\* on the settings page/);
   });
 

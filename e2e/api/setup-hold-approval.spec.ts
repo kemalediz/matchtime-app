@@ -250,14 +250,14 @@ const FLAG_OFF_HELLO = [
   "👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them.\n",
   "⏰ *Remind me:* tag me and say when, in your own words (for example *\"@Match Time remind me Thursday\"*), and I'll DM you then.\n",
   "\n",
-  "⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10. Your scores stay private and you can't rate yourself. I combine them into a form rating for each player, updated every week.\n",
-  "⚖️ *Fair teams:* I use those ratings to pick two balanced sides, so the games stay close. The more people rate, the fairer the teams.\n",
-  "🏆 *Man of the Match:* after the final whistle I post a quick vote in the group. Tap who you thought was the standout player and I'll announce the winner. Wins add up over the season.\n",
+  "⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10. Your scores stay private and you can't rate yourself. I combine them into a form rating for each player, updated as the ratings come in.\n",
+  "⚖️ *Fair teams:* on match day tag me and ask, in your own words (for example *@Match Time make the teams*), and I'll pick two balanced sides from those ratings, so the games stay close. The more people rate, the fairer the teams.\n",
+  "🏆 *Man of the Match:* on the same private link, pick the standout player and I'll announce the winner in the group. Wins add up over the season.\n",
   "📊 *Your profile:* everyone gets their own page with their games, ratings and MoM awards. Ask me any stats question too, for example *@Match Time my stats*.\n",
-  "🤝 *More games:* if you fancy playing on other nights, you can join the local MatchTime player pool and get offered spare places in nearby games. It's up to you whether to join. Here's the link to register: matchtime.ai/play\n",
-  "🌍 *Partner clubs:* when we're short, nearby partner clubs can lend us players, and you can get extra games helping them out.\n",
+  "🤝 *More games (optional, Ali can switch this on):* if you fancy playing on other nights, you can join the local MatchTime player pool and get offered spare places in nearby games. It's up to you whether to join. Here's the link to register: matchtime.ai/play\n",
+  "🌍 *Partner clubs (optional, Ali can switch this on):* when we're short, nearby partner clubs can lend us players, and you can get extra games helping them out.\n",
   "\n",
-  "I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*",
+  "I don't reply to the banter, only to In, Out or a tag. Anything else, tag me: *@Match Time help*",
 ].join("");
 /** What main DMs the organiser today (`sj_dm_approved` with the club fee tip: the suite runs with billing on). */
 const FLAG_OFF_ORGANISER_DM = [

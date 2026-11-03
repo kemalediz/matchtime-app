@@ -14,15 +14,21 @@
  * output equals `sj_group_hello` byte for byte, in every language
  * (`__tests__/group-hello.test.ts`). Change one and change the other.
  *
- * THE FIXED BLOCK (Kemal, 2026-11-02). Only the opening varies by club:
- * the organiser's name, the game day ("help run the Monday games", from
- * the club's one weekly game day; several days or none: "this group's
- * games"), the squad lines for the club's type, and a weekly club's match
- * fees line when its pay links are on. After them every club gets the
- * same block, verbatim and in the same order (`sj_hello_friend`,
- * `sj_hello_remind`, then `sj_hello_features`): no per-feature gating.
- * A monthly club with an organiser's name then hears that the organiser
- * posts the month's list.
+ * THE OPENING AND THE FEATURES (Kemal, 2026-11-02; every claim true,
+ * 2026-11-03). Only the opening varies by club in shape: the organiser's
+ * name, the game day ("help run the Monday games", from the club's one
+ * weekly game day; several days or none: "this group's games"), the squad
+ * lines for the club's type, and a weekly club's match fees line when its
+ * pay links are on. After them every club hears about the SAME features in
+ * the same order (friend, remind, then ratings, teams, Man of the Match,
+ * profile, the player pool, partner clubs), and each line says what is
+ * true for THIS club's settings: a feature switched off keeps its line,
+ * marked "(optional, <organiser> can switch this on)" (`withOptionalTag`),
+ * and Man of the Match and the teams say who chooses and who shares them.
+ * The pool and partner facts are read from the database
+ * (`group-hello-load.ts`, `HelloClubFacts`); absent, they read as off,
+ * which is a brand new club. A monthly club with an organiser's name then
+ * hears that the organiser posts the month's list.
  *
  * Shape: opener, blank line, squad lines + friend + remind, blank line,
  * the features block, blank line, the month's list (monthly) or the
@@ -37,6 +43,7 @@ import { normaliseLang } from "./i18n/lang";
 import { normaliseBenchPickMode } from "./squad-capacity";
 import { normaliseSquadMode, type SquadMode } from "./squad-month-rules";
 import { organisersAnnounce } from "./list-announcer";
+import { organisersPickMom } from "./mom-chooser";
 
 /** A London weekday (0 = Sunday) and a wall-clock "HH:mm". */
 export interface HelloDayTime {
@@ -60,9 +67,8 @@ export interface GroupHelloSettings {
   /** `benchPickMode` is "organiser". */
   organisersPick: boolean;
   bench: boolean;
-  /** Carried for the other readers of these settings. Since 2026-11-02
-   *  the hello's features block is fixed, so the hello reads none of
-   *  reminders, teamBalancing, momVoting, playerRating or statsQa. */
+  /** The features (2026-11-03): each is always mentioned, and marked
+   *  optional when off (`helloFeatureLines`). */
   reminders: boolean;
   teamBalancing: boolean;
   momVoting: boolean;
@@ -73,7 +79,27 @@ export interface GroupHelloSettings {
   /** The organisers share the list and teams (`listAnnouncer`
    *  "organisers", list-announcer.ts). Absent: off, today's hello. */
   organisersAnnounce?: boolean;
+  /** `momChosenBy` "organisers" (mom-chooser.ts): no vote, the organisers
+   *  pick and MatchTime announces it. Absent: the players vote. */
+  momByOrganisers?: boolean;
 }
+
+/** What the hello needs to know beyond the club's own columns, read from
+ *  the database by `loadHelloClubFacts` (group-hello-load.ts). */
+export interface HelloClubFacts {
+  /** The player pool is open for the club: the platform switch AND the
+   *  club's `featurePlayerPool` (pool/flags.ts `poolOpenForClub`). */
+  pool: boolean;
+  /** The club asks partner clubs for players: an ACTIVE partnership with
+   *  it as the asker, and `partnerAskWhen` not "off" (`canAsk`). */
+  partnersAsk: boolean;
+  /** A partner club asks this one: an ACTIVE partnership with it as the
+   *  partner, so its players hear the partner's asks. */
+  partnersHelp: boolean;
+}
+
+/** A brand new club: no pool, no partner clubs. */
+export const NO_HELLO_CLUB_FACTS: HelloClubFacts = { pool: false, partnersAsk: false, partnersHelp: false };
 
 export interface GroupHelloInput {
   /** The organiser's first name, or null. */
@@ -95,6 +121,8 @@ export interface GroupHelloInput {
   /** The club's one weekly game day (0 = Sunday), or null/absent when it
    *  has several or none: "help run this group's games". */
   gameDay?: number | null;
+  /** The pool and partner clubs. Absent: `NO_HELLO_CLUB_FACTS`. */
+  clubFacts?: HelloClubFacts;
 }
 
 /** What a club has before anybody changes a setting (the column defaults). */
@@ -115,6 +143,7 @@ export const DEFAULT_HELLO_SETTINGS: GroupHelloSettings = {
   paymentTracking: false,
   payLinks: "off",
   organisersAnnounce: false,
+  momByOrganisers: false,
 };
 
 /** Do this club's players say In for each game? Not when last week's
@@ -122,6 +151,51 @@ export const DEFAULT_HELLO_SETTINGS: GroupHelloSettings = {
  *  pasted list, or attendance is off. */
 export function signsUpEachWeek(s: GroupHelloSettings): boolean {
   return s.attendance && !s.squadFromList && s.squadMode !== "monthly" && !s.rollingSquad;
+}
+
+/**
+ * A feature line marked optional: the tag goes inside the bold heading,
+ * before its colon ("🤝 *More games:* ..." becomes "🤝 *More games
+ * (optional, Davide can switch this on):* ..."). Every features line is
+ * written "<emoji> *<heading>:* <body>"; a line without that shape gets
+ * the tag at its end, so the mark is never lost.
+ */
+export function withOptionalTag(line: string, tag: string): string {
+  const at = line.indexOf(":*");
+  return at < 0 ? `${line}${tag}` : `${line.slice(0, at)}${tag}${line.slice(at)}`;
+}
+
+/** The features paragraph, each line true for this club's settings. */
+export function helloFeatureLines(input: GroupHelloInput): string[] {
+  const s = t(input.lang);
+  const c = input.settings;
+  const facts = input.clubFacts ?? NO_HELLO_CLUB_FACTS;
+  const tag = s.sj_hello_optional({ organiser: input.organiser });
+  const opt = (line: string, on: boolean) => (on ? line : withOptionalTag(line, tag));
+  // Rating DMs go to the confirmed players (bot-scheduler.ts 6b), which a
+  // club has only when it tracks attendance or reads a pasted squad.
+  const ratingsOn = c.playerRating && (c.attendance || c.squadFromList);
+  const organisers = c.organisersAnnounce === true;
+  const teams = organisers && c.teamBalancing ? s.sj_hello_teams_organisers : opt(s.sj_hello_teams, c.teamBalancing);
+  // The players vote on their rating link, so a players' vote needs the
+  // rating DMs; the organisers' pick does not.
+  const mom = c.momByOrganisers === true ? opt(s.sj_hello_mom_organisers, c.momVoting) : opt(s.sj_hello_mom, c.momVoting && ratingsOn);
+  const partners =
+    facts.partnersAsk && facts.partnersHelp
+      ? s.sj_hello_partners
+      : facts.partnersAsk
+        ? s.sj_hello_partners_lend
+        : facts.partnersHelp
+          ? s.sj_hello_partners_help({ organiser: input.organiser })
+          : withOptionalTag(s.sj_hello_partners, tag);
+  return [
+    opt(s.sj_hello_ratings, ratingsOn),
+    teams,
+    mom,
+    c.statsQa ? s.sj_hello_profile : s.sj_hello_profile_no_stats({ organiser: input.organiser }),
+    opt(s.sj_hello_pool, facts.pool),
+    partners,
+  ];
 }
 
 export function buildGroupHello(input: GroupHelloInput): string {
@@ -176,14 +250,17 @@ export function buildGroupHello(input: GroupHelloInput): string {
   }
   if (shareList || shareTeams) lines.push(s.sj_hello_organisers_share({ list: shareList, teams: shareTeams }));
   if (!monthly && c.payLinks !== "off") lines.push(s.sj_hello_fees({ tracking: c.paymentTracking, mode: c.payLinks }));
-  // THE FIXED BLOCK: the same for every club.
-  lines.push(s.sj_hello_friend, s.sj_hello_remind);
+  // Every club hears about the friend link and reminders; off, optional.
+  const tag = s.sj_hello_optional({ organiser: input.organiser });
+  // The friend link needs In and Out tracking (friend-link/rules.ts).
+  lines.push(c.attendance ? s.sj_hello_friend : withOptionalTag(s.sj_hello_friend, tag));
+  lines.push(c.reminders ? s.sj_hello_remind : withOptionalTag(s.sj_hello_remind, tag));
 
   const day = typeof input.gameDay === "number" ? s.wd_weekday({ dow: input.gameDay }) || null : null;
-  const blocks = [s.sj_hello_opener({ organiser: input.organiser, day }), lines.join("\n"), s.sj_hello_features];
+  const blocks = [s.sj_hello_opener({ organiser: input.organiser, day }), lines.join("\n"), helloFeatureLines(input).join("\n")];
   if (monthly && input.organiser) blocks.push(s.sj_hello_month_list({ organiser: input.organiser }));
   if (input.catchUp !== false && signsUpEachWeek(c)) blocks.push(s.sj_hello_catch_up);
-  blocks.push(s.sj_hello_closer);
+  blocks.push(c.attendance ? s.sj_hello_closer : s.sj_hello_closer_tag_only);
   return blocks.join("\n\n");
 }
 
@@ -214,6 +291,8 @@ export const HELLO_ORG_SELECT = {
   payMethodCard: true,
   payMethodPayByBank: true,
   listAnnouncer: true,
+  momChosenBy: true,
+  featurePlayerPool: true,
 } as const;
 
 export interface HelloOrgRow {
@@ -241,6 +320,10 @@ export interface HelloOrgRow {
   payMethodPayByBank: boolean;
   /** Absent (a row read before 2026-10-15): "matchtime". */
   listAnnouncer?: string | null;
+  /** Absent (a row read before 2026-10-18): "players". */
+  momChosenBy?: string | null;
+  /** The club's own pool switch; read by `loadHelloClubFacts`. Absent: off. */
+  featurePlayerPool?: boolean | null;
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -295,6 +378,7 @@ export function helloInputFromOrg(row: HelloOrgRow, organiserName: string | null
       paymentTracking: row.paymentTrackingEnabled,
       payLinks,
       organisersAnnounce: organisersAnnounce(row),
+      momByOrganisers: organisersPickMom(row),
     },
   };
 }

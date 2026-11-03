@@ -11,10 +11,14 @@ import { en } from "../i18n/strings.en";
 import { tr } from "../i18n/strings.tr";
 import {
   DEFAULT_HELLO_SETTINGS,
+  NO_HELLO_CLUB_FACTS,
   buildGroupHello,
+  helloFeatureLines,
   helloInputFromOrg,
   signsUpEachWeek,
+  withOptionalTag,
   type GroupHelloSettings,
+  type HelloClubFacts,
   type HelloOrgRow,
 } from "../group-hello";
 
@@ -38,6 +42,8 @@ const hello = (
   });
 
 const MON_2100 = { day: 1, time: "21:00" };
+/** The heading emoji of each feature line, in the order the hello says them. */
+const FEATURE_EMOJI = ["👥", "⏰", "⭐", "⚖️", "🏆", "📊", "🤝", "🌍"];
 const TUE_2000 = { day: 2, time: "20:00" };
 
 describe("buildGroupHello: default settings are today's hello, byte for byte", () => {
@@ -219,8 +225,10 @@ const ROWS: Row[] = [
   {
     name: "attendance off (a Man of the Match and ratings group): no In or Out anywhere",
     patch: { attendance: false, bench: false, dropOutDeadline: MON_2100, listPublish: TUE_2000, rollingSquad: true, organisersPick: true },
-    has: (s) => [s.sj_hello_friend, s.sj_hello_remind],
+    has: (s) => [withOptionalTag(s.sj_hello_friend, s.sj_hello_optional({ organiser: "Ali" })), s.sj_hello_remind, s.sj_hello_closer_tag_only],
     hasNot: (s) => [
+      s.sj_hello_friend,
+      s.sj_hello_closer,
       s.sj_hello_whos_in,
       s.sj_hello_catch_up,
       s.sj_hello_bench,
@@ -281,9 +289,10 @@ describe("buildGroupHello: each setting is described only when it is on", () => 
         for (const line of row.hasNot(s)) expect(said, `must not say: ${line}`).not.toContain(line);
         // Shape: an opener, the feature lines, the closer, never a blank line doubled.
         expect(out.startsWith(s.sj_hello_opener({ organiser: "Ali" }))).toBe(true);
-        expect(out.endsWith(s.sj_hello_closer)).toBe(true);
-        // THE FIXED BLOCK, whatever the settings (Kemal, 2026-11-02).
-        expect(out).toContain(`${s.sj_hello_friend}\n${s.sj_hello_remind}\n\n${s.sj_hello_features}\n\n`);
+        expect(out.endsWith(row.patch.attendance === false ? s.sj_hello_closer_tag_only : s.sj_hello_closer)).toBe(true);
+        // Every feature is mentioned once, whatever the settings (Kemal,
+        // 2026-11-02 and 2026-11-03): switched off, it is marked optional.
+        for (const head of FEATURE_EMOJI) expect(out.split(head).length - 1, head).toBe(1);
         // The month's list is a monthly club's line only.
         if (row.patch.squadMode !== "monthly") expect(out).not.toContain(s.sj_hello_month_list({ organiser: "Ali" }));
         expect(out).not.toMatch(/\n\n\n/);
@@ -522,9 +531,10 @@ describe("buildGroupHello: a club whose organisers share the list and teams", ()
  * for a monthly club the organiser's month's list.
  */
 describe("buildGroupHello: the approved welcome", () => {
-  /** The welcome Kemal approved and posted in a monthly club's group
-   *  (organiser Davide, Monday games), with his later wording of the pool
-   *  line and the partner clubs line added after it. */
+  /** The welcome Kemal approved for a monthly club's group (organiser
+   *  Davide, Monday games), with every claim made true on 2026-11-03 for
+   *  the Monday night vets' settings: no player pool and no partner club,
+   *  so both are marked optional and name Davide. */
   const APPROVED = [
     "👋 Hi everyone, I'm *MatchTime*. Davide has set me up to help run the Monday games. Here's what I do, right here in WhatsApp:",
     "",
@@ -533,19 +543,19 @@ describe("buildGroupHello: the approved welcome", () => {
     "👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them.",
     `⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.`,
     "",
-    "⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10. Your scores stay private and you can't rate yourself. I combine them into a form rating for each player, updated every week.",
-    "⚖️ *Fair teams:* I use those ratings to pick two balanced sides, so the games stay close. The more people rate, the fairer the teams.",
-    "🏆 *Man of the Match:* after the final whistle I post a quick vote in the group. Tap who you thought was the standout player and I'll announce the winner. Wins add up over the season.",
+    "⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10. Your scores stay private and you can't rate yourself. I combine them into a form rating for each player, updated as the ratings come in.",
+    "⚖️ *Fair teams:* on match day tag me and ask, in your own words (for example *@Match Time make the teams*), and I'll pick two balanced sides from those ratings, so the games stay close. The more people rate, the fairer the teams.",
+    "🏆 *Man of the Match:* on the same private link, pick the standout player and I'll announce the winner in the group. Wins add up over the season.",
     "📊 *Your profile:* everyone gets their own page with their games, ratings and MoM awards. Ask me any stats question too, for example *@Match Time my stats*.",
-    "🤝 *More games:* if you fancy playing on other nights, you can join the local MatchTime player pool and get offered spare places in nearby games. It's up to you whether to join. Here's the link to register: matchtime.ai/play",
-    "🌍 *Partner clubs:* when we're short, nearby partner clubs can lend us players, and you can get extra games helping them out.",
+    "🤝 *More games (optional, Davide can switch this on):* if you fancy playing on other nights, you can join the local MatchTime player pool and get offered spare places in nearby games. It's up to you whether to join. Here's the link to register: matchtime.ai/play",
+    "🌍 *Partner clubs (optional, Davide can switch this on):* when we're short, nearby partner clubs can lend us players, and you can get extra games helping them out.",
     "",
     "Davide will post the month's list as usual.",
     "",
-    "I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*",
+    "I don't reply to the banter, only to In, Out or a tag. Anything else, tag me: *@Match Time help*",
   ].join("\n");
 
-  it("en: the monthly club on its settings reads exactly as approved", () => {
+  it("en: the monthly club on its settings (the vets: no pool, no partners) reads exactly as approved", () => {
     const out = buildGroupHello({
       organiser: "Davide",
       lang: "en",
@@ -553,15 +563,6 @@ describe("buildGroupHello: the approved welcome", () => {
       settings: { ...DEFAULT_HELLO_SETTINGS, squadMode: "monthly" },
     });
     expect(out).toBe(APPROVED);
-  });
-
-  it("the features block is the same whatever the club has switched off", () => {
-    for (const lang of LANGS) {
-      const s = TABLES[lang];
-      const off = hello(lang, { reminders: false, teamBalancing: false, momVoting: false, playerRating: false, statsQa: false });
-      expect(off).toBe(hello(lang));
-      expect(off).toContain(s.sj_hello_features);
-    }
   });
 
   it("the game day: one day names it, none falls back to this group's games", () => {
@@ -596,10 +597,186 @@ describe("buildGroupHello: the approved welcome", () => {
   it("the house rules hold on the fixed block", () => {
     for (const lang of LANGS) {
       const s = TABLES[lang];
-      for (const text of [s.sj_hello_friend, s.sj_hello_features]) {
+      const all = { ...DEFAULT_HELLO_SETTINGS };
+      for (const text of [s.sj_hello_friend, ...helloFeatureLines({ organiser: "Ali", lang, settings: all })]) {
         expect(text).not.toMatch(/[—–]/);
         expect(text).not.toMatch(/waiting list|bekleme listesi/i);
       }
     }
   });
 });
+
+/**
+ * EVERY CLAIM TRUE FOR THE CLUB (Kemal, 2026-11-03). The welcome describes
+ * every feature, but a feature the club has switched off is marked
+ * "(optional, <organiser> can switch this on)", and each line says what
+ * MatchTime really does:
+ *
+ *   ratings      the rating DM the morning after (bot-scheduler.ts 6b); the
+ *                club rating is computed from the ratings as they arrive
+ *                (player-rating.ts), there is no weekly job
+ *   teams        built on a TAGGED ask on match day (team-ops-engine-batch.ts
+ *                `isMatchDay`; no cron builds them, bot-scheduler.ts "4.
+ *                Teams post"); organisers mode: proposed to the organisers
+ *   MoM          picked on the rating link (actions/ratings.ts
+ *                submitMoMVote) and announced by the scheduler (6e); no
+ *                group poll exists; organisers pick: announced from the pick
+ *   pool         `poolOpenForClub` (pool/flags.ts), read by the loader
+ *   partners     active partnerships, each direction (club-partnership.ts)
+ *   closer       MatchTime posts its own updates, so it never says it stays
+ *                quiet, only that it does not reply to banter
+ *
+ * The end-to-end proof of each behaviour: e2e/api/group-hello-claims.spec.ts.
+ */
+describe("buildGroupHello: every claim is true for the club's settings", () => {
+  const FACTS_ON: HelloClubFacts = { pool: true, partnersAsk: true, partnersHelp: true };
+  const say = (
+    lang: L,
+    patch: Partial<GroupHelloSettings> = {},
+    facts: HelloClubFacts = NO_HELLO_CLUB_FACTS,
+    organiser: string | null = "Davide",
+  ) => buildGroupHello({ organiser, lang, catchUp: false, settings: { ...DEFAULT_HELLO_SETTINGS, ...patch }, clubFacts: facts }).split("\n");
+  const tagged = (s: typeof en, line: string, organiser: string | null = "Davide") => withOptionalTag(line, s.sj_hello_optional({ organiser }));
+
+  for (const lang of LANGS) {
+    const s = TABLES[lang] as typeof en;
+
+    it(`${lang}: everything on: every line is the plain one, nothing is marked optional`, () => {
+      const out = say(lang, {}, FACTS_ON);
+      for (const line of [s.sj_hello_friend, s.sj_hello_remind, s.sj_hello_ratings, s.sj_hello_teams, s.sj_hello_mom, s.sj_hello_profile, s.sj_hello_pool, s.sj_hello_partners]) {
+        expect(out).toContain(line);
+      }
+      expect(out.join("\n")).not.toContain(s.sj_hello_optional({ organiser: "Davide" }));
+    });
+
+    it(`${lang}: the pool is off: its line is kept, marked optional, naming the organiser`, () => {
+      const out = say(lang, {}, { ...FACTS_ON, pool: false });
+      expect(out).toContain(tagged(s, s.sj_hello_pool));
+      expect(out).not.toContain(s.sj_hello_pool);
+    });
+
+    it(`${lang}: partner clubs, each direction as it really is`, () => {
+      expect(say(lang, {}, { ...FACTS_ON, partnersHelp: false })).toContain(s.sj_hello_partners_lend);
+      expect(say(lang, {}, { ...FACTS_ON, partnersAsk: false })).toContain(s.sj_hello_partners_help({ organiser: "Davide" }));
+      const none = say(lang, {}, { ...FACTS_ON, partnersAsk: false, partnersHelp: false });
+      expect(none).toContain(tagged(s, s.sj_hello_partners));
+      expect(none).not.toContain(s.sj_hello_partners);
+    });
+
+    it(`${lang}: no organiser name: the optional mark says "the organiser"`, () => {
+      const out = say(lang, {}, NO_HELLO_CLUB_FACTS, null).join("\n");
+      expect(out).toContain(withOptionalTag(s.sj_hello_pool, s.sj_hello_optional({ organiser: null })));
+      expect(s.sj_hello_optional({ organiser: null })).toMatch(lang === "en" ? /the organiser can switch this on/ : /organizatör açabilir/);
+    });
+
+    it(`${lang}: Man of the Match: players pick on the rating link; organisers pick; off; no ratings means no link to vote on`, () => {
+      expect(say(lang)).toContain(s.sj_hello_mom);
+      const org = say(lang, { momByOrganisers: true });
+      expect(org).toContain(s.sj_hello_mom_organisers);
+      expect(org).not.toContain(s.sj_hello_mom);
+      expect(say(lang, { momVoting: false })).toContain(tagged(s, s.sj_hello_mom));
+      expect(say(lang, { momVoting: false, momByOrganisers: true })).toContain(tagged(s, s.sj_hello_mom_organisers));
+      expect(say(lang, { playerRating: false })).toContain(tagged(s, s.sj_hello_mom));
+      // The organisers' pick needs no rating link.
+      expect(say(lang, { playerRating: false, momByOrganisers: true })).toContain(s.sj_hello_mom_organisers);
+    });
+
+    it(`${lang}: ratings: off, and a club with nobody confirmed (attendance off, no pasted squad), are optional`, () => {
+      expect(say(lang)).toContain(s.sj_hello_ratings);
+      expect(say(lang, { playerRating: false })).toContain(tagged(s, s.sj_hello_ratings));
+      expect(say(lang, { attendance: false })).toContain(tagged(s, s.sj_hello_ratings));
+      expect(say(lang, { attendance: false, squadFromList: true })).toContain(s.sj_hello_ratings);
+    });
+
+    it(`${lang}: fair teams: a tagged ask on match day; organisers mode: for the organisers; off: optional`, () => {
+      expect(say(lang)).toContain(s.sj_hello_teams);
+      const org = say(lang, { organisersAnnounce: true });
+      expect(org).toContain(s.sj_hello_teams_organisers);
+      expect(org).not.toContain(s.sj_hello_teams);
+      expect(say(lang, { teamBalancing: false })).toContain(tagged(s, s.sj_hello_teams));
+      expect(say(lang, { teamBalancing: false, organisersAnnounce: true })).toContain(tagged(s, s.sj_hello_teams));
+    });
+
+    it(`${lang}: profile always; stats questions off: said to be optional`, () => {
+      expect(say(lang)).toContain(s.sj_hello_profile);
+      const off = say(lang, { statsQa: false });
+      expect(off).toContain(s.sj_hello_profile_no_stats({ organiser: "Davide" }));
+      expect(off).not.toContain(s.sj_hello_profile);
+    });
+
+    it(`${lang}: remind me off and the friend link without attendance are optional`, () => {
+      expect(say(lang, { reminders: false })).toContain(tagged(s, s.sj_hello_remind));
+      expect(say(lang, { attendance: false })).toContain(tagged(s, s.sj_hello_friend));
+    });
+
+    it(`${lang}: the closer never says MatchTime stays quiet; without attendance it does not mention In or Out`, () => {
+      expect(say(lang).at(-1)).toBe(s.sj_hello_closer);
+      expect(say(lang, { attendance: false }).at(-1)).toBe(s.sj_hello_closer_tag_only);
+    });
+
+    it(`${lang}: every feature is mentioned in every combination of switches`, () => {
+      const flags = ["reminders", "teamBalancing", "momVoting", "playerRating", "statsQa", "attendance", "organisersAnnounce", "momByOrganisers"] as const;
+      for (let mask = 0; mask < 1 << flags.length; mask++) {
+        const patch: Partial<GroupHelloSettings> = {};
+        flags.forEach((f, i) => ((patch as Record<string, boolean>)[f] = (mask & (1 << i)) !== 0));
+        for (const facts of [NO_HELLO_CLUB_FACTS, FACTS_ON]) {
+          const out = say(lang, patch, facts).join("\n");
+          for (const head of FEATURE_EMOJI) expect(out.split(head).length - 1, `${head} ${JSON.stringify(patch)}`).toBe(1);
+          expect(out).not.toMatch(/[—–]|waiting list|bekleme listesi|undefined|null/);
+        }
+      }
+    });
+  }
+
+  it("the false claims are gone from every variant: no group vote, no weekly update, no 'stay quiet'", () => {
+    const variants = [
+      ...[en, tr].map((s) => s.sj_group_hello({ organiser: "Ali" })),
+      ...LANGS.flatMap((lang) => [say(lang, {}, FACTS_ON), say(lang, { momByOrganisers: true }), say(lang, { attendance: false })].map((l) => l.join("\n"))),
+    ];
+    for (const text of variants) {
+      expect(text).not.toMatch(/quick vote|post a .*vote in the group|updated every week|stay quiet/i);
+      expect(text).not.toMatch(/kısa bir oylama|her hafta güncellenen|sessiz kalırım/);
+    }
+  });
+
+  it("withOptionalTag puts the mark inside the bold heading, before its colon", () => {
+    expect(withOptionalTag("🤝 *More games:* join the pool", " (optional, Davide can switch this on)")).toBe(
+      "🤝 *More games (optional, Davide can switch this on):* join the pool",
+    );
+    expect(withOptionalTag("no heading here", " (x)")).toBe("no heading here (x)");
+  });
+
+  it("helloInputFromOrg reads who chooses Man of the Match", () => {
+    const row = { ...helloInputFromOrgRow(), momChosenBy: "organisers" };
+    expect(helloInputFromOrg(row, "Ali").settings.momByOrganisers).toBe(true);
+    expect(helloInputFromOrg({ ...row, momChosenBy: "players" }, "Ali").settings.momByOrganisers).toBe(false);
+    expect(helloInputFromOrg({ ...row, momChosenBy: null }, "Ali").settings.momByOrganisers).toBe(false);
+  });
+});
+
+function helloInputFromOrgRow(): HelloOrgRow {
+  return {
+    language: "en",
+    squadMode: "weekly",
+    featureAttendance: true,
+    featureBench: true,
+    featureTeamBalancing: true,
+    featureMomVoting: true,
+    featurePlayerRating: true,
+    featureReminders: true,
+    featureStatsQa: true,
+    featureSquadFromList: false,
+    rollingSquadEnabled: false,
+    benchPickMode: "first-come",
+    dropOutDeadlineDay: null,
+    dropOutDeadlineTime: null,
+    listPublishDay: null,
+    listPublishTime: null,
+    paymentTrackingEnabled: false,
+    paymentCollectionEnabled: false,
+    stripeConnectAccountId: null,
+    stripeChargesEnabled: false,
+    payMethodCard: true,
+    payMethodPayByBank: true,
+  };
+}
