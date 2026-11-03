@@ -1405,10 +1405,12 @@ export const en = {
       // club's scores count here. They do not. Lines 1, 2 and 4 are
       // untouched. See section 8.5 of
       // MDs/club-scoped-ratings-design-2026-09-18.md.
+      // 2026-11-03: the same line now says the one thing that does cross
+      // over, a joiner's starting point (src/lib/carried-seed.ts).
       ratings:
         `⭐ *Player ratings: how it works*\n` +
         `After each match I DM every player who turned out a private link. You rate the other players out of 10 (you can't rate yourself, and your scores stay private).\n` +
-        `I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never touch this one. So the more people rate, the fairer the teams.\n` +
+        `I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never change yours here. The one thing that carries over is where you start: when you join, your average from your other groups is your starting point, and this club's own scores take over from there. So the more people rate, the fairer the teams.\n` +
         `You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).`,
       teams:
         `🟥🟦 *Fair teams: how it works*\n` +
@@ -2406,7 +2408,7 @@ export const en = {
   /** The admin seed boxes show 6 for a player nobody has seeded
    *  (`default-seed.ts`, Kemal 2026-11-02: "so it gives the admins a
    *  measurement for medium kind of players"). */
-  seed_default_hint: "A player nobody has rated starts at 6, a medium player. Move them up or down.",
+  seed_default_hint: "A player nobody has rated starts at 6, a medium player. A player who joins with ratings at other MatchTime clubs starts at his average there. Move them up or down.",
 
   rating_seed_club_hint:
     "Seed ratings apply to this club only. A player who also turns out somewhere else keeps a separate rating there, and nothing you type here changes it.",
@@ -4121,7 +4123,7 @@ export const en = {
     "Add someone who hasn't posted in the group yet. With a phone number MatchTime can message them privately and recognise them in the group. If the number is already on MatchTime, that player is reused rather than added twice.",
   info_pl_seed_title: "Seed rating",
   info_pl_seed_body:
-    "Your starting score for a player at this club, from 1 to 10. A player nobody has rated starts at 6, a medium player: move them up or down. Teams are balanced on it until players rate each other after matches; then the real ratings take over bit by bit. Players never see it, and another club's seed for the same person is separate.",
+    "Your starting score for a player at this club, from 1 to 10. A player nobody has rated starts at 6, a medium player, and a player who joins with ratings at other MatchTime clubs starts at his average there: move them up or down. Teams are balanced on it until players rate each other after matches; then the real ratings take over bit by bit. Players never see it, and another club's seed for the same person is separate.",
   info_pl_club_rating_title: "Club rating",
   info_pl_club_rating_body:
     "The average of the ratings this club's players have given them after matches, the same number they see on their own page. It shows Not rated yet until someone rates them.",

@@ -1,6 +1,8 @@
 import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { normalisePhone } from "@/lib/phone";
+import { carriedSeedHook } from "@/lib/carried-seed";
+import { loadCarriedSeed, type CarriedSeedClient } from "@/lib/carried-seed-loader";
 
 /**
  * Auto-normalise `User.phoneNumber` on EVERY write through this client.
@@ -72,7 +74,62 @@ function withPhoneNormalisation(client: PrismaClient) {
   });
 }
 
-type ExtendedDb = ReturnType<typeof withPhoneNormalisation>;
+/**
+ * A player joining a club carries his seed from his other clubs
+ * (Kemal, 2026-11-03; the rule is `carried-seed.ts`).
+ *
+ * Here, on the client, because memberships are created in more than a
+ * dozen places (WhatsApp participant import, a group join, the
+ * attendance route, a sender resolved from a message, squad lists, admin
+ * add, self-join, friend link, partner and pool guests, onboarding) and
+ * a new club's owner is created nested inside `organisation.create`.
+ * One hook covers them all, and a join path added later gets it without
+ * knowing. Only CREATE payloads are touched, and only when they carry no
+ * seed: an existing row, an upsert's update branch and a seed an admin
+ * typed are never changed.
+ *
+ * Reads go through `base`, the un-extended client, so the hook never
+ * re-enters itself. Never throws (`fillCarriedSeed`): a join never fails
+ * because a seed could not be carried.
+ */
+function withCarriedSeed<C extends ReturnType<typeof withPhoneNormalisation>>(client: C, base: PrismaClient) {
+  const hook = carriedSeedHook((userId, orgId) => loadCarriedSeed(base as unknown as CarriedSeedClient, userId, orgId));
+  return client.$extends({
+    name: "carried-seed-on-join",
+    query: {
+      membership: {
+        async create({ args, query }) {
+          args.data = await hook.create(args.data);
+          return query(args);
+        },
+        async upsert({ args, query }) {
+          args.create = await hook.create(args.create);
+          return query(args);
+        },
+        async createMany({ args, query }) {
+          args.data = await hook.createMany(args.data);
+          return query(args);
+        },
+        async createManyAndReturn({ args, query }) {
+          args.data = await hook.createMany(args.data);
+          return query(args);
+        },
+      },
+      organisation: {
+        async create({ args, query }) {
+          args.data = await hook.organisationCreate(args.data);
+          return query(args);
+        },
+      },
+    },
+  });
+}
+
+function extendClient(base: PrismaClient) {
+  return withCarriedSeed(withPhoneNormalisation(base), base);
+}
+
+type ExtendedDb = ReturnType<typeof extendClient>;
 
 const globalForPrisma = globalThis as unknown as {
   prisma: ExtendedDb | undefined;
@@ -81,7 +138,7 @@ const globalForPrisma = globalThis as unknown as {
 function createPrismaClient(): ExtendedDb {
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
   const base = new PrismaClient({ adapter });
-  return withPhoneNormalisation(base);
+  return extendClient(base);
 }
 
 export const db = globalForPrisma.prisma ?? createPrismaClient();

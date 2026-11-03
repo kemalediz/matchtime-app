@@ -1185,7 +1185,7 @@ export const tr: Strings = {
       ratings:
         `⭐ *Oyuncu puanları nasıl çalışır*\n` +
         `Her maçtan sonra oynayan herkese özelden bir bağlantı gönderirim. Diğer oyunculara 10 üzerinden puan verirsiniz (kendinize veremezsiniz, puanlarınız gizli kalır).\n` +
-        `Herkesin puanlarını birleştirip bu kulüpteki her oyuncu için maçtan maça güncellenen bir form puanı çıkarırım, *dengeli takımları* bununla kurarım. Puanlar kulübün içinde kalır: başka bir grupta da oynuyorsanız oradaki puanlarınız buraya karışmaz. Ne kadar çok kişi puan verirse takımlar o kadar adil olur.\n` +
+        `Herkesin puanlarını birleştirip bu kulüpteki her oyuncu için maçtan maça güncellenen bir form puanı çıkarırım, *dengeli takımları* bununla kurarım. Puanlar kulübün içinde kalır: başka bir grupta da oynuyorsanız oradaki puanlar buradaki puanınızı değiştirmez. Taşınan tek şey başlangıç noktanız: katıldığınızda diğer gruplarınızdaki ortalamanız buradaki başlangıcınız olur, sonrasında bu kulübün kendi puanları devreye girer. Ne kadar çok kişi puan verirse takımlar o kadar adil olur.\n` +
         `Bağlantı maçın ertesi günü gelir. Puanlarınızı istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time istatistiklerim*).`,
       teams:
         `🟥🟦 *Dengeli takımlar nasıl çalışır*\n` +
@@ -1857,7 +1857,7 @@ export const tr: Strings = {
 
   rating_club_empty: "Bu kulüpte henüz puanın yok. İlk maçından sonra takım arkadaşların puan verecek.",
 
-  seed_default_hint: "Kimsenin puan vermediği bir oyuncu 6'dan, yani orta seviyeden başlar. Artırın ya da düşürün.",
+  seed_default_hint: "Kimsenin puan vermediği bir oyuncu 6'dan, yani orta seviyeden başlar. Başka MatchTime kulüplerinde puanı olan bir oyuncu katıldığında oradaki ortalamasından başlar. Artırın ya da düşürün.",
 
   rating_seed_club_hint:
     "Başlangıç puanları sadece bu kulüp için geçerli. Başka bir yerde de oynayan bir oyuncunun orada ayrı bir puanı olur, buraya yazdığınız hiçbir şey onu değiştirmez.",
@@ -2925,7 +2925,7 @@ export const tr: Strings = {
     "Grupta henüz yazmamış birini ekleyin. Telefon numarasıyla MatchTime ona özel mesaj atabilir ve onu grupta tanıyabilir. Numara MatchTime'da zaten varsa, iki kez eklenmez, o oyuncu kullanılır.",
   info_pl_seed_title: "Başlangıç puanı",
   info_pl_seed_body:
-    "Bir oyuncu için bu kulüpteki başlangıç puanınız, 1 ile 10 arası. Kimsenin puan vermediği bir oyuncu 6'dan, yani orta seviyeden başlar: artırın ya da düşürün. Oyuncular maçlardan sonra birbirine puan verene kadar takımlar buna göre dengelenir; sonra gerçek puanlar yavaş yavaş yerini alır. Oyuncular bunu hiç görmez ve aynı kişinin başka bir kulüpteki başlangıç puanı ayrıdır.",
+    "Bir oyuncu için bu kulüpteki başlangıç puanınız, 1 ile 10 arası. Kimsenin puan vermediği bir oyuncu 6'dan, yani orta seviyeden başlar; başka MatchTime kulüplerinde puanı olan bir oyuncu katıldığında oradaki ortalamasından başlar: artırın ya da düşürün. Oyuncular maçlardan sonra birbirine puan verene kadar takımlar buna göre dengelenir; sonra gerçek puanlar yavaş yavaş yerini alır. Oyuncular bunu hiç görmez ve aynı kişinin başka bir kulüpteki başlangıç puanı ayrıdır.",
   info_pl_club_rating_title: "Kulüp puanı",
   info_pl_club_rating_body:
     "Bu kulübün oyuncularının maçlardan sonra verdiği puanların ortalaması, oyuncunun kendi sayfasında gördüğü sayının aynısı. Biri puan verene kadar Henüz puan yok yazar.",

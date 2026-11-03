@@ -92,6 +92,10 @@ import { effectiveSeed } from "./default-seed";
 
 const PRIOR_WEIGHT = 3;
 
+/** The newest-60 window every club rating is taken over, shown or
+ *  balanced (player-stats.ts and team-generation.ts keep the same 60). */
+export const CLUB_RATING_WINDOW = 60;
+
 export type ClubRatingSource = "peer" | "blended" | "seed" | "default-seed";
 
 export function computeClubRating(args: {

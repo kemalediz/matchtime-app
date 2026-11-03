@@ -329,6 +329,14 @@ export default async function AdminGuidePage() {
         medium player, so you only need to move the ones who are better or
         still learning.
       </p>
+      <p id="carried-seed">
+        A player who joins with ratings at other MatchTime clubs starts at his
+        average there instead, rounded to a whole number, so a regular from
+        another group is placed sensibly from his first game. You only see
+        the number in his box, never where it came from, and you can change
+        it like any other. A starting rating you have already set is never
+        replaced.
+      </p>
       <p>
         As team-mates rate each other after games, their ratings take over
         from yours. Players never see the starting rating you gave them; they
