@@ -139,6 +139,20 @@ describe("sendTextWithMentions", () => {
     ]);
   });
 
+  it("an admin-group (HQ) post tags the person the same way: the @phone stays in the text, the JID goes on the message (2026-11-03)", async () => {
+    const sock = fakeSocket();
+    const HQ = "120363900000000001@g.us";
+    await driverWith(sock).sendTextWithMentions(HQ, "@447961809174 can you confirm the pitch?", ["447961809174"]);
+    expect(sock.sendMessage.mock.calls[0][0]).toBe(HQ);
+    expect(sock.sendMessage.mock.calls[0][1]).toEqual({
+      text: "@447961809174 can you confirm the pitch?",
+      linkPreview: null,
+      mentions: ["447961809174@s.whatsapp.net"],
+    });
+    const sent = (await sock.sendMessage.mock.results[0].value) as WAMessage;
+    expect(sent.message?.extendedTextMessage?.contextInfo?.mentionedJid).toEqual(["447961809174@s.whatsapp.net"]);
+  });
+
   it("sends a plain text, with no mentions field, when the list is empty", async () => {
     const sock = fakeSocket();
     await driverWith(sock).sendTextWithMentions(GROUP, "roster", []);

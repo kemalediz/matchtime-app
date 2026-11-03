@@ -227,6 +227,62 @@ describe("slice 2a: admin-group-message", () => {
     }
   });
 
+  it("with mentions, it is sent with sendTextWithMentions to its own group, the BARE PHONES passed, and acked (2026-11-03)", async () => {
+    const { setAdminGroups } = await import("./handlers.js");
+    setAdminGroups([{ groupId: HQ, orgId: "org-fnf" }]);
+    try {
+      const calls = await dispatch({
+        kind: "admin-group-message",
+        key: "botjob-tag",
+        groupId: HQ,
+        text: "@447961809174 can you confirm the pitch?",
+        mentions: ["447961809174"],
+      });
+      expect(calls).toEqual([["sendTextWithMentions", HQ, "@447961809174 can you confirm the pitch?", ["447961809174"]]]);
+      expect(ackInstruction).toHaveBeenCalledWith(
+        expect.objectContaining({ key: "botjob-tag", kind: "admin-group-message", waMessageId: "sent-1" }),
+      );
+    } finally {
+      setAdminGroups([]);
+    }
+  });
+
+  it("an empty mentions list is today's plain sendText", async () => {
+    const { setAdminGroups } = await import("./handlers.js");
+    setAdminGroups([{ groupId: HQ, orgId: "org-fnf" }]);
+    try {
+      const calls = await dispatch({ kind: "admin-group-message", key: "k-empty", groupId: HQ, text: "hi", mentions: [] });
+      expect(calls).toEqual([["sendText", HQ, "hi"]]);
+    } finally {
+      setAdminGroups([]);
+    }
+  });
+
+  it("a tagged send that never returns is given up on after the send timeout: not acked, not released", async () => {
+    const { setAdminGroups } = await import("./handlers.js");
+    setAdminGroups([{ groupId: HQ, orgId: "org-fnf" }]);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const driver = {
+        name: "fake",
+        sendText: async () => ({ id: { _serialized: "x" } }),
+        sendTextWithMentions: () => new Promise(() => {}),
+      } as unknown as WaDriver;
+      getDuePosts.mockResolvedValue({
+        instructions: [{ kind: "admin-group-message", key: "k-hang", groupId: HQ, text: "@4477 hi", mentions: ["4477"] }],
+      });
+      initScheduler(driver, ORGS);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(error.mock.calls.some((c) => String(c[0]).includes("k-hang"))).toBe(true);
+      expect(String(error.mock.calls.find((c) => String(c[0]).includes("k-hang"))?.[1])).toMatch(/admin-group send/);
+      expect(ackInstruction).not.toHaveBeenCalled();
+      expect(releaseInstruction).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+      setAdminGroups([]);
+    }
+  });
+
   it("a group this Pi does not know as an admin group is never sent to: the claim is released", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {

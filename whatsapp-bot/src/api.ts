@@ -133,6 +133,9 @@ export type DueInstruction =
       /** A list poster or team sheet (2026-10-14): fetch this signed PNG
        *  from our own server and post it with `text` as its caption. */
       imageUrl?: string;
+      /** Phones (no +) to tag as real WhatsApp mentions (2026-11-03); the
+       *  text carries each as "@<phone>". Absent: a plain post. */
+      mentions?: string[];
     };
 
 /**

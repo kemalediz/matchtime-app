@@ -309,6 +309,11 @@ export type DueInstruction =
       /** A list poster or team sheet (2026-10-14, graphic-job.ts): the Pi
        *  fetches this signed PNG and posts it with `text` as its caption. */
       imageUrl?: string;
+      /** Phones (no +) tagged as real WhatsApp mentions, as on
+       *  `group-message` (2026-11-03, `BotJob.mentions`): the text carries
+       *  each as "@<phone>". Absent: a plain post. A Pi built before this
+       *  ignores it and posts the text untagged. */
+      mentions?: string[];
       /** A badges post relayed to the admin group (organisers announce,
        *  2026-10-14 to 2026-10-16; nothing emits it now, badges post in the
        *  players' group): as on `group-message`. Server-side; stripped
@@ -760,6 +765,8 @@ export async function computeDuePosts(
           kind: "group-message",
           key,
           text: job.text,
+          // Real tags (2026-11-03): "@<phone>" in the text, the phones here.
+          ...(job.mentions?.length ? { mentions: [...job.mentions] } : {}),
         });
       } else if (job.kind === "admin-group") {
         // An admin notice queued for the admin group (slice 2a,
