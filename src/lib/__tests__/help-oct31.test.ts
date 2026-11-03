@@ -116,13 +116,16 @@ describe("quiet hours by tag", () => {
     expect(t("en").onbHelpSettings({ audience: "player", url })).not.toContain("quiet hours");
   });
 
-  it("the minimum players by tag (2026-11-03): an organiser's and the group's help settings name it, EN and TR; a player's does not", () => {
+  it("a game's fewest and most players, and one game's size, by tag (2026-11-03): an organiser's and the group's help settings name them, EN and TR; a player's does not", () => {
     const url = "https://mt.example/s";
-    expect(t("en").onbHelpSettings({ audience: "admin", url })).toContain("*@Match Time we can play with 12*");
-    expect(t("tr").onbHelpSettings({ audience: "admin", url })).toContain("*@Match Time 12 kişiyle de oynarız*");
-    expect(t("en").onbHelpSettings({ audience: "group", url })).toContain("*@Match Time minimum 12 players*");
-    expect(t("tr").onbHelpSettings({ audience: "group", url })).toContain("*@Match Time en az 12 kişi*");
-    expect(t("en").onbHelpSettings({ audience: "player", url })).not.toContain("minimum");
+    expect(t("en").onbHelpSettings({ audience: "admin", url })).toContain("*@Match Time we play with 12 to 16*");
+    expect(t("en").onbHelpSettings({ audience: "admin", url })).toContain("*@Match Time make it 8 a side*");
+    expect(t("tr").onbHelpSettings({ audience: "admin", url })).toContain("*@Match Time 12 ile 16 kişi arası oynuyoruz*");
+    expect(t("tr").onbHelpSettings({ audience: "admin", url })).toContain("*@Match Time 8'e 8 yapalım*");
+    expect(t("en").onbHelpSettings({ audience: "group", url })).toContain("*@Match Time we play with 12 to 16*");
+    expect(t("en").onbHelpSettings({ audience: "group", url })).toContain("*@Match Time make it 8 a side*");
+    expect(t("tr").onbHelpSettings({ audience: "group", url })).toContain("*@Match Time 12 ile 16 kişi arası oynuyoruz*");
+    expect(t("en").onbHelpSettings({ audience: "player", url })).not.toMatch(/12 to 16|a side/);
     for (const a of ["admin", "group"] as const) for (const l of ["en", "tr"] as const) expect(t(l).onbHelpSettings({ audience: a, url })).not.toMatch(/[–—]/);
   });
 });

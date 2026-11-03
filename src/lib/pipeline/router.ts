@@ -381,7 +381,7 @@ unsure      about a place, but you cannot tell who or what it does. A bare "conf
 question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), how the club is run (who the organisers are, who collects the money, the fee, when the teams come out), and how MatchTime works here (the bench, signing in, how the teams are picked). Asking how the bench or the list works asks for no place.
 balancer    asks about the TWO team line-ups (red and yellow) themselves: to see them, make them, shuffle or rename them, change them as they stand (swap two players between the teams, move a player to the other team, swap the two teams' colours) or clear them. Swapping between the teams changes nobody's place in the squad, so it is balancer, never attendance, in both groups.
 score       reports the final result of this group's own match (our team names, our colours or a bare scoreline), answers which team won or who was its Man of the Match while MatchTime is WAITING for that (a team named alone, "Yellow", "sarılar kazandı"; praise alone answers nothing), or says a recorded result is wrong ("you've got it the wrong way round", "no, 5-7 to Red", "yanlış, sarılar kazandı"). A professional scoreline somebody is watching is none.
-admin_ops   tells the bot to do something now: find new players (from the MatchTime player pool, from one partner club or all of them, from several places, or with no place named), credit a payment, set a reminder, send a link, change a setting (any of them, for example the club's pitch, its quiet hours, or the fewest players it plays a game with: "we can play with 12", "back to full teams"), call a match off (one still to come, or one that never took place) or put it back on. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
+admin_ops   tells the bot to do something now: find new players (from the MatchTime player pool, from one partner club or all of them, from several places, or with no place named), credit a payment, set a reminder, send a link, change a setting (any of them, for example the club's pitch, its quiet hours, or the fewest and most players it plays a game with: "we can play with 12", "we play 12 to 16", "back to full teams"), switch one game to a different number a side ("make it 8 aside"), call a match off (one still to come, or one that never took place) or put it back on. A yes replying to MatchTime's own offer to switch a game's size is admin_ops, whoever sends it: code checks who may. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
 none        everything else, as in question 3. A member asking another member something that settles nothing is none ("are you injured?", "which two of you can play tomorrow?"); as soon as a message STATES that somebody plays or does not, it is attendance.
 approve, poster, team_sheet, help and ask_group exist ONLY in the organisers' group; see that section.
 
@@ -482,6 +482,7 @@ Replies, read against the message they quote:
   "Bench? We do bench now?" replying to MatchTime's "the bench is open, say IN to go on the bench" -> question
   "yedek ne demek?" replying to that post -> question
   "IN" replying to that post, or to an older squad list of MatchTime's -> self_att
+  "yes" / "evet" replying to MatchTime's "We've got 16 for Monday, 2 on the bench. Shall we go 8-a-side?" -> admin_ops
   "same" / "ben de" replying to a member's "IN" -> self_att
   "he's out" replying to Ali's message -> other_att
   "no, it was 7-5 to yellow" / "hayır, 7-5 sarılar" replying to MatchTime's result -> score
@@ -518,6 +519,9 @@ Instructions to the bot:
   "@Match Time we can play with 12" -> admin_ops
   "@Match Time 12 kişiyle de oynarız" -> admin_ops
   "@Match Time back to full teams" -> admin_ops
+  "@Match Time we play 12 to 16" -> admin_ops
+  "@Match Time make it 8 aside" -> admin_ops
+  "@Match Time 6 kişilik oynayalım" -> admin_ops
   "@Match Time how many do we need to play?" -> question
 
 Chat between members, not for the bot:
@@ -529,6 +533,7 @@ Chat between members, not for the bot:
   "his chemistry with that ball is zero" -> none
   "Crazy statistics" -> none
   "wait guys sorry by mistake I enabled the tracking of squad in Match Time" -> none
+  "shall we go 8 aside next week lads?" -> none
   "hadi be ya 😂😂" -> none
   "dünkü maç efsaneydi" -> none
 

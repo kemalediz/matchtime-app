@@ -124,6 +124,7 @@ import {
 } from "./team-proposal-rules";
 import { recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 import { DEFAULT_SEED_RATING } from "./default-seed";
+import { perTeamFor, playerRange, teamsNeeded } from "./flex-format-rules";
 
 export interface TeamProposalDeps {
   /** The shared generator. Injected in tests only. */
@@ -181,6 +182,8 @@ interface MatchRow {
   date: Date;
   status: string;
   teamLabels?: string[] | null;
+  /** The match's own places (a size switch changes them). */
+  maxPlayers?: number;
 }
 
 async function activeMatches(orgId: string): Promise<MatchRow[]> {
@@ -211,6 +214,8 @@ interface Sheet {
   kickoff: string;
   venue: string;
   perTeam: number;
+  /** The fewest confirmed players the teams are made with. */
+  needed: number;
   confirmed: number;
 }
 
@@ -219,6 +224,8 @@ async function loadSheet(match: MatchRow, lang: string | null | undefined, extra
     orgId: string;
     sportId: string;
     venue: string;
+    minPlayers?: number | null;
+    maxPlayers?: number | null;
   };
   const [org, sport, rows, attendance] = await Promise.all([
     db.organisation.findUnique({ where: { id: activity.orgId } }),
@@ -260,6 +267,16 @@ async function loadSheet(match: MatchRow, lang: string | null | undefined, extra
     kickoff: formatLondon(match.date, "HH:mm"),
     venue: activity.venue,
     perTeam: sport?.playersPerTeam ?? 0,
+    // The fewest the teams are made with (2026-11-03): the game's minimum
+    // inside this match's own places, or two full sides as before. The
+    // same rule `generateTeamsForMatch` applies.
+    needed: sport
+      ? (() => {
+          const range = playerRange({ minPlayers: activity.minPlayers ?? null, maxPlayers: activity.maxPlayers ?? null, playersPerTeam: sport.playersPerTeam });
+          const perTeam = perTeamFor({ maxPlayers: match.maxPlayers ?? 0, playersPerTeam: sport.playersPerTeam, range });
+          return teamsNeeded({ places: perTeam * 2, range });
+        })()
+      : 0,
     confirmed: confirmedIds.size,
   };
 }
@@ -281,8 +298,8 @@ function teamsText(sheet: Sheet, lang: string | null | undefined, final: boolean
   });
 }
 
-/** Too few confirmed to balance: the balancer's own minimum, two full sides. */
-const neededFor = (sheet: Sheet) => sheet.perTeam * 2;
+/** Too few confirmed to balance: the game's minimum, else two full sides. */
+const neededFor = (sheet: Sheet) => sheet.needed;
 const isShort = (sheet: Sheet) => sheet.confirmed < neededFor(sheet);
 
 function shortSquadText(sheet: Sheet, lang: string | null | undefined): string {

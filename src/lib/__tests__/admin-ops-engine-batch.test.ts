@@ -130,6 +130,8 @@ function msg(o: Partial<AdminOpsBatchMessage> & { body: string }): AdminOpsBatch
     // survive the builder or the "never owned" test tests nothing.
     route: "route" in o ? o.route : "admin_ops",
     gated: o.gated ?? false,
+    ...(o.repliesToMatchTime !== undefined ? { repliesToMatchTime: o.repliesToMatchTime } : {}),
+    ...(o.reply !== undefined ? { reply: o.reply } : {}),
   };
 }
 
@@ -1354,25 +1356,26 @@ describe("quiet hours by WhatsApp", () => {
   });
 });
 
-// ── 2026-11-03 (the Vets play one down): the fewest players by tagging
-// MatchTime. An owner or admin, with the Pi's real tag, only.
+// ── 2026-11-03 (the Vets play 6, 7 or 8 a side): a game's fewest and most
+// players, and one game switched to another size, by tagging MatchTime. An
+// owner or admin only.
 
-describe("minimum players by WhatsApp", () => {
-  const SET = "@Match Time we can play with 12";
-  const MIN_FACTS = { ...BLAST_FACTS, action: "min_players", lookbackMatches: 0, playersFrom: [], clubRef: "", minPlayers: 12, fullTeams: false, toMatchTime: true };
+describe("a game's fewest and most players by WhatsApp", () => {
+  const SET = "@Match Time we play 12 to 16";
+  const RANGE_FACTS = { ...BLAST_FACTS, action: "player_numbers", lookbackMatches: 0, playersFrom: [], clubRef: "", minPlayers: 12, maxPlayers: 16, fullTeams: false, toMatchTime: true };
 
-  const outcomeOf = async (m: Partial<AdminOpsBatchMessage> = {}, facts: Record<string, unknown> = MIN_FACTS) => {
+  const outcomeOf = async (m: Partial<AdminOpsBatchMessage> = {}, facts: Record<string, unknown> = RANGE_FACTS) => {
     const { model } = stubModel({ [SET]: facts });
     const r = recorder(model, paidWorld());
-    const calls: Array<{ orgId: string; minPlayers: number | null; fullTeams: boolean; matchDay: string | null }> = [];
+    const calls: Array<{ orgId: string; minPlayers: number | null; maxPlayers: number | null; fullTeams: boolean; matchDay: string | null }> = [];
     const res = await run({
       messages: [msg({ body: SET, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true, ...m })],
       deps: {
         ...r.deps,
         onlyOrganisersLine: async () => "Only Kemal can change that.",
-        applyMinPlayersWords: async (a) => (
-          calls.push({ orgId: a.orgId, minPlayers: a.minPlayers, fullTeams: a.fullTeams, matchDay: a.matchDay }),
-          { outcome: "min-players-set", replyText: "✅ Done. *Vets 7s* goes ahead with *12* or more." }
+        applyPlayerRangeWords: async (a) => (
+          calls.push({ orgId: a.orgId, minPlayers: a.minPlayers, maxPlayers: a.maxPlayers, fullTeams: a.fullTeams, matchDay: a.matchDay }),
+          { outcome: "player-range-set", replyText: "✅ Done. *Vets 7s* is played with 12 to 16 players now." }
         ),
       },
     });
@@ -1381,9 +1384,14 @@ describe("minimum players by WhatsApp", () => {
 
   it("an organiser, tagged: set through the one core, and the reply says so (never \"can't change that\")", async () => {
     const { out, calls } = await outcomeOf();
-    expect(calls).toEqual([{ orgId: "org-1", minPlayers: 12, fullTeams: false, matchDay: null }]);
-    expect(out?.reply).toBe("✅ Done. *Vets 7s* goes ahead with *12* or more.");
-    expect(out?.intent).toBe("min-players-set");
+    expect(calls).toEqual([{ orgId: "org-1", minPlayers: 12, maxPlayers: 16, fullTeams: false, matchDay: null }]);
+    expect(out?.reply).toBe("✅ Done. *Vets 7s* is played with 12 to 16 players now.");
+    expect(out?.intent).toBe("player-range-set");
+  });
+
+  it("numbers said a side are doubled by code, not the model", async () => {
+    const { calls } = await outcomeOf({}, { ...RANGE_FACTS, minPlayers: 6, maxPlayers: 8, aSide: true });
+    expect(calls).toEqual([{ orgId: "org-1", minPlayers: 12, maxPlayers: 16, fullTeams: false, matchDay: null }]);
   });
 
   it("a player who is not an organiser: the one line naming who can, nothing changed", async () => {
@@ -1397,5 +1405,64 @@ describe("minimum players by WhatsApp", () => {
     const { out, calls } = await outcomeOf({ tagged: false, taggedExplicitly: false });
     expect(out?.reply ?? null).toBeNull();
     expect(calls).toEqual([]);
+  });
+});
+
+describe("one game switched to another size by WhatsApp", () => {
+  const SAY = "@Match Time make it 8 aside";
+  const YES = "yes";
+  const SWITCH_FACTS = { ...BLAST_FACTS, action: "switch_format", lookbackMatches: 0, playersFrom: [], clubRef: "", size: 8, aSide: true, toMatchTime: true };
+
+  const outcomeOf = async (body: string, m: Partial<AdminOpsBatchMessage> = {}, facts: Record<string, unknown> = SWITCH_FACTS) => {
+    const { model } = stubModel({ [body]: facts });
+    const r = recorder(model, paidWorld());
+    const calls: Array<{ perSide: number; matchDay: string | null; actorUserId: string; via: string }> = [];
+    const res = await run({
+      messages: [msg({ body, senderUserId: "u-kemal", senderName: fullName("kemal"), ...m })],
+      deps: {
+        ...r.deps,
+        onlyOrganisersLine: async () => "Only Kemal can change that.",
+        applySwitchFormatWords: async (a) => (
+          calls.push({ perSide: a.perSide, matchDay: a.matchDay, actorUserId: a.actorUserId, via: a.via }),
+          { outcome: "format-switched", replyText: "✅ Done: Monday is 8-a-side now, 16 places." }
+        ),
+      },
+    });
+    return { out: res.outcomes.get(`wa-${body.slice(0, 14)}`), calls };
+  };
+
+  it("an organiser, tagged: switched through the one core", async () => {
+    const { out, calls } = await outcomeOf(SAY);
+    expect(calls).toEqual([{ perSide: 8, matchDay: null, actorUserId: "u-kemal", via: "whatsapp" }]);
+    expect(out?.reply).toBe("✅ Done: Monday is 8-a-side now, 16 places.");
+    expect(out?.intent).toBe("format-switched");
+  });
+
+  it("a total is halved by code: '16 players' is 8 a side", async () => {
+    const { calls } = await outcomeOf(SAY, {}, { ...SWITCH_FACTS, size: 16, aSide: false });
+    expect(calls.map((c) => c.perSide)).toEqual([8]);
+  });
+
+  it("an organiser's yes as a reply to MatchTime's suggestion, untagged: switched", async () => {
+    const { calls } = await outcomeOf(YES, { tagged: true, taggedExplicitly: false, repliesToMatchTime: true });
+    expect(calls).toEqual([{ perSide: 8, matchDay: null, actorUserId: "u-kemal", via: "whatsapp" }]);
+  });
+
+  it("a player's yes to the suggestion: nothing switched, nothing said", async () => {
+    const { out, calls } = await outcomeOf(YES, { senderUserId: "u-zair", senderName: fullName("zair"), tagged: true, taggedExplicitly: false, repliesToMatchTime: true });
+    expect(calls).toEqual([]);
+    expect(out?.reply ?? null).toBeNull();
+  });
+
+  it("a player who tags MatchTime: the one line naming who can, nothing switched", async () => {
+    const { out, calls } = await outcomeOf(SAY, { senderUserId: "u-zair", senderName: fullName("zair") });
+    expect(calls).toEqual([]);
+    expect(out?.reply).toBe("Only Kemal can change that.");
+  });
+
+  it("an organiser's untagged yes that is not a reply to MatchTime: nothing", async () => {
+    const { out, calls } = await outcomeOf(YES, { tagged: false, taggedExplicitly: false, repliesToMatchTime: false });
+    expect(calls).toEqual([]);
+    expect(out?.reply ?? null).toBeNull();
   });
 });

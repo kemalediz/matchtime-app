@@ -183,6 +183,27 @@ export async function switchMatchFormat(matchId: string, newActivityId: string) 
 }
 
 /**
+ * Switch one match to another size inside its game's range (2026-11-03, the
+ * Vets play 6, 7 or 8 a side): the switch page's size buttons. The same core
+ * WhatsApp uses (`format-resize.ts`): the match keeps its Activity, the bench
+ * moves in or the squad above the new size goes to the bench, each told by
+ * DM, and the new list is posted.
+ */
+export async function resizeMatchFormat(matchId: string, perSide: number): Promise<{ outcome: string; message: string }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({ where: { id: matchId }, select: { activity: { select: { orgId: true } } } });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+  const { resizeMatch } = await import("@/lib/format-resize");
+  const r = await resizeMatch({ matchId, perSide, actorUserId: session.user.id, via: "web" });
+  if (r.outcome !== "format-switched" && r.outcome !== "format-unchanged") throw new Error(r.replyText);
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath(`/admin/matches/${matchId}/teams`);
+  return { outcome: r.outcome, message: r.replyText };
+}
+
+/**
  * Cancel a match entirely. Sets status=CANCELLED; scheduler gates every
  * subsequent trigger on that, so no more reminders/polls fire. Queues a
  * group-message announcing the cancellation.

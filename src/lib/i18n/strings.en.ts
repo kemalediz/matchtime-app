@@ -1390,14 +1390,14 @@ export const en = {
       return (
         `⚙️ *Your settings*\n` +
         `Every switch for your club is on one settings page, grouped in tabs. Not sure where something is? Type its name in *Find a setting* at the top and it takes you straight there:\n${p.url}\n` +
-        `Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*, or *@Match Time we can play with 12* if you'll play one or two down (I only warn you about low numbers below that).`
+        `Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*, or *@Match Time we play with 12 to 16* for the fewest and most you play with (I only warn you about low numbers below the fewest, and any one game can then be made 6, 7 or 8 a side: *@Match Time make it 8 a side*).`
       );
     }
     if (p.audience === "group") {
       return (
         `⚙️ *Settings*\n` +
         `The club's settings are on the admin page, grouped in tabs, and only admins can change them. Admins: type a setting's name in *Find a setting* at the top to jump to it:\n${p.url}\n` +
-        `Admins can change some by tagging me too, for example *@Match Time minimum 12 players* (the fewest the club plays with) or *@Match Time turn off quiet hours*.`
+        `Admins can change some by tagging me too, for example *@Match Time we play with 12 to 16* (the fewest and most the club plays with), *@Match Time make it 8 a side* (one game a different size) or *@Match Time turn off quiet hours*.`
       );
     }
     return `⚙️ *Settings*\nThe club's settings are changed by its organisers. Ask them if you'd like something changed. Your own details are on your MatchTime profile.`;
@@ -1437,6 +1437,7 @@ export const en = {
         `🟥🟦 *Fair teams: how it works*\n` +
         `On match day, anyone in the group can tag me and ask for the teams (for example *@Match Time generate the teams*) and I'll split everyone into two balanced sides using their form ratings, so games stay even.\n` +
         `I post the line-ups straight into the chat. Not happy with a pairing? Tag me and say what to change, in your own words (e.g. _"@Match Time swap Sam and Alex"_), or ask me to show the teams again any time.\n` +
+        `One short of two full sides? If the club has set the fewest it plays with, I make the teams from that number up, for example 7 against 6, balanced so the side a player down gets the stronger players.\n` +
         `Want a bit of fun? Ask me to give the teams names and I'll sort it. Just tag me and ask when you're ready.`,
       mom:
         `🏆 *Man of the Match: how it works*\n` +
@@ -1567,7 +1568,8 @@ export const en = {
     if (p.paid) lines.push(`💷 *@Match Time PAID ALL*, *@Match Time PAID 1 3* or *@Match Time PAID NONE*: the money collector's answer to my list of payment claims.`);
     if (p.free) lines.push(`🎁 *"@Match Time Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`);
     lines.push(`🌙 *"@Match Time turn on quiet hours from 23:00 to 09:00"*, *"@Match Time turn off quiet hours"*: I hold my own messages overnight, or send at any time. A new club starts with quiet hours off.`);
-    lines.push(`👥 *"@Match Time we can play with 12"*, *"@Match Time minimum 12 players"*: the fewest you play with. I only warn you about low numbers, or offer to cancel, below that. *"@Match Time back to full teams"* undoes it.`);
+    lines.push(`👥 *"@Match Time we play with 12 to 16"*, *"@Match Time we can play with 12"*: the fewest and most you play with. I only warn you about low numbers, or offer to cancel, below the fewest, and when two are waiting on the bench I suggest going up a size. *"@Match Time back to full teams"* undoes the fewest.`);
+    lines.push(`🔁 *"@Match Time make it 8 a side"*, *"@Match Time 6 a side on Monday"*: one game a different size, inside those numbers. Going up, the bench moves in; going down, the last to join go to the bench. Each is told by DM, and I post the new list.`);
     lines.push(``, `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *@Match Time how do partner clubs work?* or *@Match Time where are the settings?*`);
     lines.push(`Ask *@Match Time what can you do?* here any time to see this again.`);
     return lines.join("\n");

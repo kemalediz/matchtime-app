@@ -108,6 +108,7 @@ import { recordOpsEvent } from "./ops-alerts";
 import {
   feeAskKeys,
   isMonthlyRow,
+  loadChoseBench,
   loadPaygPool,
   loadRunningMonths,
   loadSchedulerMonths,
@@ -166,6 +167,10 @@ import { firstTeamsInstructions } from "./admin-onboarding";
 import { isBillingPaused } from "./club-billing-rules";
 import { isClubSettingUp } from "./club-setup-rules";
 import { lowNumbersBelow, minimumToPlay, type GameFormat } from "./min-players";
+import { FORMAT_UP_KEY_PREFIX, decideBenchSuggestion, formatUpKey, playerRange } from "./flex-format-rules";
+import { flexFormatCopy } from "./i18n/flex-format";
+import { joinAdminNames } from "./seed-nudge-rules";
+import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
 import { minPlayersCopy } from "./i18n/min-players";
 import { isPaymentMessageKey, paymentMessagesOnFor } from "./payment-messages";
 
@@ -2260,6 +2265,70 @@ async function computeForMatch(
     openPlaces = weekList.open;
     listGoesOutWithOpenLine = weekList.open > 0 && due !== null;
     lastListPostAt = shown.find((r) => r.kind === "group-message")?.createdAt ?? null;
+  }
+
+  // ── 2-ter. Going up a size (2026-11-03, the Vets play 6, 7 or 8 a side) ──
+  //   A game with a maximum above its places (`Activity.maxPlayers`): when
+  //   the squad is full and two are waiting on the bench (one more each
+  //   side), MatchTime suggests the next size up in the players' group and
+  //   names the organisers. Only an organiser's yes, as a reply to this
+  //   post, switches it (admin-ops-engine-batch.ts, `switch_format`).
+  //   Once per match per size (`formatUpKey`). When the bench drops below
+  //   two the keys are forgotten, so it is suggested again only after the
+  //   bench has emptied and filled again, never as people come and go
+  //   around two. A switch marks the sizes it settled (format-resize.ts),
+  //   so an organiser who went down is not asked to undo it. Held for a
+  //   monthly club until its regulars are on the match, and for a club
+  //   whose organisers announce the list (the list is theirs to tell).
+  {
+    const range = playerRange({
+      minPlayers: activity.minPlayers ?? null,
+      maxPlayers: activity.maxPlayers ?? null,
+      playersPerTeam: sport.playersPerTeam,
+    });
+    const live =
+      m.status === "UPCOMING" && now.getTime() < m.date.getTime() && !noMonthYet && (!monthly || monthly.seeded === true);
+    if (live && range.max > range.normal && !organisers) {
+      const prefix = `${matchId}${FORMAT_UP_KEY_PREFIX}`;
+      const choseBench = bench.length >= 2 ? await loadChoseBench(db, matchId) : new Set<string>();
+      const movable = bench.filter((a) => !choseBench.has(a.userId)).length;
+      const decision = decideBenchSuggestion({
+        live,
+        teamsOut: m.teamAssignments.length > 0,
+        places: maxPlayers,
+        confirmed: confirmed.length,
+        bench: movable,
+        range,
+      });
+      if (decision.kind === "rearm") {
+        const stale = [...sentKeys].filter((k) => k.startsWith(prefix));
+        if (stale.length > 0) {
+          await db.sentNotification.deleteMany({ where: { key: { in: stale } } });
+          for (const k of stale) sentKeys.delete(k);
+        }
+      } else if (decision.kind === "suggest" && !sentKeys.has(formatUpKey(matchId, decision.toPlaces))) {
+        const admins = await db.membership.findMany({
+          where: { orgId: activity.orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
+          select: { user: { select: { name: true } } },
+          orderBy: [{ role: "asc" }, { id: "asc" }],
+        });
+        const names = joinAdminNames(admins.map((a) => a.user?.name ?? null), lang);
+        if (names) {
+          out.push({
+            kind: "group-message",
+            key: formatUpKey(matchId, decision.toPlaces),
+            matchId,
+            text: flexFormatCopy(lang).suggestUp({
+              total: confirmed.length + movable,
+              bench: movable,
+              day: weekdayLabel(lang, m.date),
+              perSide: decision.toPlaces / 2,
+              admins: names,
+            }),
+          });
+        }
+      }
+    }
   }
 
   // ── 2-bis. Recruit chase-up DMs (2026-08-31) ────────────────────────

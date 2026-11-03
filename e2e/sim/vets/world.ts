@@ -283,21 +283,35 @@ export function authorOf(v: VetsClub, key: string): { name: string | null; phone
 }
 
 /** ONE message in the players' group (a flush of one), through the real analyze route. */
-export async function say(pool: PoolWorld, v: VetsClub, key: string, body: string, opts: { tag?: boolean; history?: SimHistoryEntry[] } = {}): Promise<Said> {
-  const [r] = await sayBatch(pool, v, [{ key, body, tag: opts.tag }], { history: opts.history });
+export async function say(
+  pool: PoolWorld,
+  v: VetsClub,
+  key: string,
+  body: string,
+  opts: { tag?: boolean; history?: SimHistoryEntry[]; quote?: Quote } = {},
+): Promise<Said> {
+  const [r] = await sayBatch(pool, v, [{ key, body, tag: opts.tag, quote: opts.quote }], { history: opts.history });
   return r;
 }
+
+/** A WhatsApp reply: the message it quotes, as the Pi forwards it. */
+export type Quote = { id?: string; text: string; fromMatchTime: boolean };
 
 /** A batch of group messages, as one flush of the Pi's buffer. */
 export async function sayBatch(
   pool: PoolWorld,
   v: VetsClub,
-  items: Array<{ key: string; body: string; tag?: boolean }>,
+  items: Array<{ key: string; body: string; tag?: boolean; quote?: Quote }>,
   opts: { history?: SimHistoryEntry[] } = {},
 ): Promise<Said[]> {
   for (const it of items) pool.log({ kind: "in", from: `${v.club.key}.${it.key}`, channel: "group", text: it.body });
   const r = await v.club.group.postBatch(
-    items.map((it) => ({ body: it.body, author: authorOf(v, it.key), tag: it.tag })),
+    items.map((it) => ({
+      body: it.body,
+      author: authorOf(v, it.key),
+      tag: it.tag,
+      ...(it.quote ? { quote: { id: it.quote.id ?? `quoted-${nextMsgId()}`, text: it.quote.text, fromMatchTime: it.quote.fromMatchTime } } : {}),
+    })),
     { history: opts.history },
   );
   const out: Said[] = [];

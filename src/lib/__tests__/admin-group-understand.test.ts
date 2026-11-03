@@ -26,8 +26,10 @@ const dbMock = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const quietWords = vi.hoisted(() => ({ applyQuietHoursWords: vi.fn() }));
 vi.mock("@/lib/quiet-hours-words", () => quietWords);
-const minWords = vi.hoisted(() => ({ applyMinPlayersWords: vi.fn() }));
-vi.mock("@/lib/min-players-words", () => minWords);
+const rangeWords = vi.hoisted(() => ({ applyPlayerRangeWords: vi.fn() }));
+vi.mock("@/lib/player-range-words", () => rangeWords);
+const switchWords = vi.hoisted(() => ({ applySwitchFormatWords: vi.fn() }));
+vi.mock("@/lib/format-switch-words", () => switchWords);
 const hqLog = vi.hoisted(() => ({
   hqLogSince: vi.fn(),
   recordMatchTimeQuestion: vi.fn(),
@@ -2024,32 +2026,44 @@ describe("quiet hours from HQ", () => {
   });
 });
 
-// 2026-11-03 (the Vets play one down): the fewest players by tagging
-// MatchTime in HQ, through the activities page's own save core.
-describe("minimum players from HQ", () => {
+// 2026-11-03 (the Vets play 6, 7 or 8 a side): a game's fewest and most
+// players, and one game switched to another size, by tagging MatchTime in
+// HQ, through the activities page's and the switch page's own cores.
+describe("a game's sizes from HQ", () => {
   const deps = (facts: Record<string, unknown>) => ({ routerModel: routeTo("admin_ops"), extractorModel: adminFacts(facts) });
   beforeEach(() => {
     dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
     hqLog.hqLogSince.mockResolvedValue([]);
-    minWords.applyMinPlayersWords.mockReset();
-    minWords.applyMinPlayersWords.mockResolvedValue({ outcome: "min-players-set", replyText: "✅ Done. *Vets 7s* goes ahead with *12* or more." });
+    rangeWords.applyPlayerRangeWords.mockReset();
+    rangeWords.applyPlayerRangeWords.mockResolvedValue({ outcome: "player-range-set", replyText: "✅ Done. *Vets 7s* is played with 12 to 16 players now." });
+    switchWords.applySwitchFormatWords.mockReset();
+    switchWords.applySwitchFormatWords.mockResolvedValue({ outcome: "format-switched", replyText: "✅ Done: Monday is 8-a-side now, 16 places." });
   });
 
-  it("an organiser's tagged \"we can play with 12\": set, and the reply says so", async () => {
-    const r = await ask("@Match Time we can play with 12", "admin_ops", { deps: deps({ action: "min_players", minPlayers: 12, toMatchTime: true }) });
-    expect(minWords.applyMinPlayersWords).toHaveBeenCalledWith({ orgId: "org-fnf", minPlayers: 12, fullTeams: false, matchDay: null, lang: "en" });
-    expect(r).toEqual({ route: "admin_ops", outcome: "hq-min-players-set", replyText: "✅ Done. *Vets 7s* goes ahead with *12* or more." });
+  it("an organiser's tagged \"we play 12 to 16\": set, and the reply says so", async () => {
+    const r = await ask("@Match Time we play 12 to 16", "admin_ops", { deps: deps({ action: "player_numbers", minPlayers: 12, maxPlayers: 16, toMatchTime: true }) });
+    expect(rangeWords.applyPlayerRangeWords).toHaveBeenCalledWith({ orgId: "org-fnf", minPlayers: 12, maxPlayers: 16, fullTeams: false, matchDay: null, lang: "en" });
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-player-range-set", replyText: "✅ Done. *Vets 7s* is played with 12 to 16 players now." });
   });
 
   it("back to full teams, and a day, are passed on", async () => {
-    await ask("@Match Time back to full teams on Monday", "admin_ops", { deps: deps({ action: "min_players", fullTeams: true, matchDay: "on Monday", toMatchTime: true }) });
-    expect(minWords.applyMinPlayersWords).toHaveBeenCalledWith(expect.objectContaining({ minPlayers: null, fullTeams: true, matchDay: "on Monday" }));
+    await ask("@Match Time back to full teams on Monday", "admin_ops", { deps: deps({ action: "player_numbers", fullTeams: true, matchDay: "on Monday", toMatchTime: true }) });
+    expect(rangeWords.applyPlayerRangeWords).toHaveBeenCalledWith(expect.objectContaining({ minPlayers: null, fullTeams: true, matchDay: "on Monday" }));
+  });
+
+  it("an organiser's tagged \"make it 8 aside\": switched through the one core", async () => {
+    const r = await ask("@Match Time make it 8 aside", "admin_ops", { deps: deps({ action: "switch_format", size: 8, aSide: true, toMatchTime: true }) });
+    expect(switchWords.applySwitchFormatWords).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", perSide: 8, matchDay: null, via: "hq", lang: "en" }));
+    expect(r?.outcome).toBe("hq-format-switched");
   });
 
   it("a member of HQ who is not an organiser: the one line naming who can, nothing changed", async () => {
-    const r = await ask("@Match Time we can play with 12", "admin_ops", { deps: deps({ action: "min_players", minPlayers: 12, toMatchTime: true }), organiser: false, senderUserId: "u-2" });
+    const r = await ask("@Match Time we play 12 to 16", "admin_ops", { deps: deps({ action: "player_numbers", minPlayers: 12, toMatchTime: true }), organiser: false, senderUserId: "u-2" });
     expect(r?.outcome).toBe("hq-only-organisers");
-    expect(minWords.applyMinPlayersWords).not.toHaveBeenCalled();
+    expect(rangeWords.applyPlayerRangeWords).not.toHaveBeenCalled();
+    const s = await ask("@Match Time make it 8 aside", "admin_ops", { deps: deps({ action: "switch_format", size: 8, aSide: true, toMatchTime: true }), organiser: false, senderUserId: "u-2" });
+    expect(s?.outcome).toBe("hq-only-organisers");
+    expect(switchWords.applySwitchFormatWords).not.toHaveBeenCalled();
   });
 });
 

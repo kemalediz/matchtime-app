@@ -1144,42 +1144,63 @@ describe("admin · quiet_hours (2026-10-31, MT Test: \"@Match Time turn off quie
   });
 });
 
-describe("admin · min_players (2026-11-03, the Vets play one down)", () => {
-  const BASE = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", pastGame: false, phrase: "", remindAt: "", note: "", lookbackMatches: 0, playersFrom: [], clubRef: "", venueName: "", venueChoice: 0, breakMonths: [], playMonths: [], quietOff: false, quietFrom: "", quietTo: "", minPlayers: 0, fullTeams: false, toMatchTime: true };
+describe("admin · player_numbers and switch_format (2026-11-03, the Vets play 6, 7 or 8 a side)", () => {
+  const BASE = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", pastGame: false, phrase: "", remindAt: "", note: "", lookbackMatches: 0, playersFrom: [], clubRef: "", venueName: "", venueChoice: 0, breakMonths: [], playMonths: [], quietOff: false, quietFrom: "", quietTo: "", minPlayers: 0, maxPlayers: 0, fullTeams: false, size: 0, aSide: false, toMatchTime: true };
   const of = (fields: Record<string, unknown>) => parseFacts("admin", JSON.stringify({ ...BASE, ...fields }), "wa-1").facts;
 
-  it("a number carries minPlayers; a day carries matchDay", () => {
-    expect(of({ action: "min_players", minPlayers: 12 })).toMatchObject({ kind: "admin", action: "min_players", minPlayers: 12, toMatchTime: true });
-    expect(of({ action: "min_players", minPlayers: 9, matchDay: " Thursday " })).toMatchObject({ minPlayers: 9, matchDay: "Thursday" });
+  it("player_numbers carries the numbers said, aSide and a day", () => {
+    expect(of({ action: "player_numbers", minPlayers: 12, maxPlayers: 16 })).toMatchObject({ kind: "admin", action: "player_numbers", minPlayers: 12, maxPlayers: 16, toMatchTime: true });
+    expect(of({ action: "player_numbers", minPlayers: 6, maxPlayers: 8, aSide: true, matchDay: " Thursday " })).toMatchObject({ minPlayers: 6, maxPlayers: 8, aSide: true, matchDay: "Thursday" });
   });
 
-  it("0, a fraction or a negative is no number; full teams carries fullTeams and no number", () => {
-    for (const n of [0, 12.5, -3]) expect("minPlayers" in of({ action: "min_players", minPlayers: n }), String(n)).toBe(false);
-    const full = of({ action: "min_players", minPlayers: 12, fullTeams: true });
+  it("0, a fraction or a negative is no number; full teams carries fullTeams and no minimum", () => {
+    for (const n of [0, 12.5, -3]) {
+      expect("minPlayers" in of({ action: "player_numbers", minPlayers: n }), String(n)).toBe(false);
+      expect("maxPlayers" in of({ action: "player_numbers", maxPlayers: n }), String(n)).toBe(false);
+      expect("size" in of({ action: "switch_format", size: n }), String(n)).toBe(false);
+    }
+    const full = of({ action: "player_numbers", minPlayers: 12, fullTeams: true });
     expect(full).toMatchObject({ fullTeams: true });
     expect("minPlayers" in full).toBe(false);
   });
 
+  it("switch_format carries the size, aSide and a day", () => {
+    expect(of({ action: "switch_format", size: 8, aSide: true })).toMatchObject({ action: "switch_format", size: 8, aSide: true });
+    expect(of({ action: "switch_format", size: 16, matchDay: "Monday" })).toMatchObject({ size: 16, matchDay: "Monday" });
+    expect("aSide" in of({ action: "switch_format", size: 16, aSide: false })).toBe(false);
+  });
+
   it("the fields are dropped on every other action", () => {
     for (const action of ["other", "quiet_hours", "recruit"]) {
-      const f = of({ action, minPlayers: 12, fullTeams: true });
-      for (const k of ["minPlayers", "fullTeams"]) expect(k in f, `${action} ${k}`).toBe(false);
+      const f = of({ action, minPlayers: 12, maxPlayers: 16, fullTeams: true, size: 8, aSide: true });
+      for (const k of ["minPlayers", "maxPlayers", "fullTeams", "size", "aSide"]) expect(k in f, `${action} ${k}`).toBe(false);
     }
+    expect("size" in of({ action: "player_numbers", size: 8 })).toBe(false);
+    expect("minPlayers" in of({ action: "switch_format", minPlayers: 12 })).toBe(false);
   });
 
-  it("the schema offers min_players and requires its two fields", () => {
+  it("the retired min_players is no action any more", () => {
+    expect(of({ action: "min_players", minPlayers: 12 })).toEqual({ kind: "none" });
+  });
+
+  it("the schema offers both actions and requires their fields", () => {
     const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
-    expect(schema.properties.action.enum).toContain("min_players");
-    expect(schema.required).toEqual(expect.arrayContaining(["minPlayers", "fullTeams"]));
+    expect(schema.properties.action.enum).toEqual(expect.arrayContaining(["player_numbers", "switch_format"]));
+    expect(schema.properties.action.enum).not.toContain("min_players");
+    expect(schema.required).toEqual(expect.arrayContaining(["minPlayers", "maxPlayers", "fullTeams", "size", "aSide"]));
   });
 
-  it("the prompt defines min_players and its fields once each, with EN and TR examples side by side and non-requests", () => {
+  it("the prompt defines each action and field once, with EN and TR examples side by side and non-requests", () => {
     const p = EXTRACTOR_PROMPTS.admin;
-    expect(p.split(`\n  "min_players" `).length).toBe(2);
-    for (const field of ["minPlayers", "fullTeams"]) expect(p.split(`\n  ${field} `).length, field).toBe(2);
-    expect(p).toMatch(/"@Match Time we can play with 12" \/ "@Match Time 12 kişiyle de oynarız" -> min_players, minPlayers 12/);
+    for (const action of ["player_numbers", "switch_format"]) expect(p.split(`\n  "${action}" `).length, action).toBe(2);
+    for (const field of ["minPlayers", "maxPlayers", "fullTeams", "size", "aSide"]) expect(p.split(`\n  ${field} `).length, field).toBe(2);
+    expect(p).not.toContain("min_players");
+    expect(p).toMatch(/"@Match Time we can play with 12" \/ "@Match Time 12 kişiyle de oynarız" -> player_numbers, minPlayers 12/);
+    expect(p).toMatch(/"@Match Time make it 8 aside" \/ "@Match Time 8'e 8 yapalım" -> switch_format, size 8, aSide true/);
+    expect(p).toMatch(/"yes" \/ "evet", replying to MatchTime's "We've got 16 for Monday[^\n]*-> switch_format, size 8, aSide true/);
     expect(p).toMatch(/"we're 12 tonight" \/ "bu akşam 12 kişiyiz" -> other, toMatchTime false/);
-    expect(p).not.toMatch(/[–—]/);
+    expect(p).toMatch(/"shall we go 8 aside\?"[^\n]*-> other, toMatchTime false/);
+    expect(p).not.toMatch(/[\u2013\u2014]/);
   });
 });
 

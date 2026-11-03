@@ -150,7 +150,9 @@ import { mergeOneReply } from "./pipeline/clause-peel";
 import { askWhichSource, sourcesAvailable } from "./ask-source";
 import { RETRY_FOLLOWUP_MS, latestAskFromRecords, retryFactsOf, type LatestAskForRetry } from "./refused-ask-retry";
 import { applyQuietHoursWords } from "./quiet-hours-words";
-import { applyMinPlayersWords } from "./min-players-words";
+import { applyPlayerRangeWords } from "./player-range-words";
+import { applySwitchFormatWords } from "./format-switch-words";
+import { perSideOf, playerRangeWordsOf } from "./flex-format-rules";
 import { setVenueFromWords } from "./venue-from-words";
 import { parseVenuePickRef, venueListAnswered } from "./venue-from-words-rules";
 import { recordHqVenueList } from "./venue-list-log";
@@ -1135,12 +1137,18 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
           const r = await applyQuietHoursWords({ orgId: org.id, off: facts.quietOff === true, from: facts.quietFrom ?? null, to: facts.quietTo ?? null, lang, now });
           return said(`hq-${r.outcome}`, r.replyText);
         }
-        // The fewest players a game is played with (2026-11-03, the Vets
-        // play one down), through the activities page's own save core. An
-        // organiser's alone.
-        if (facts.kind === "admin" && facts.action === "min_players") {
+        // A game's fewest and most players (2026-11-03, the Vets play 6, 7
+        // or 8 a side), through the activities page's own save core; and
+        // one game switched to another size, through the switch page's own
+        // core. An organiser's alone.
+        if (facts.kind === "admin" && facts.action === "player_numbers") {
           if (!actor) return onlyOrganisers();
-          const r = await applyMinPlayersWords({ orgId: org.id, minPlayers: facts.minPlayers ?? null, fullTeams: facts.fullTeams === true, matchDay: facts.matchDay ?? null, lang });
+          const r = await applyPlayerRangeWords({ orgId: org.id, ...playerRangeWordsOf(facts), lang });
+          return said(`hq-${r.outcome}`, r.replyText);
+        }
+        if (facts.kind === "admin" && facts.action === "switch_format") {
+          if (!actor) return onlyOrganisers();
+          const r = await applySwitchFormatWords({ orgId: org.id, perSide: perSideOf(facts), matchDay: facts.matchDay?.trim() || null, actorUserId: actor, via: "hq", lang, now });
           return said(`hq-${r.outcome}`, r.replyText);
         }
         if (facts.kind === "admin" && facts.action === "season_break") {

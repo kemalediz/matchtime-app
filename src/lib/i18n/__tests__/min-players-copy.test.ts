@@ -2,7 +2,6 @@
 import { describe, it, expect } from "vitest";
 import { minPlayersCopy } from "../min-players";
 
-const URL = "https://matchtime.ai/admin/activities";
 const render = (lang: "en" | "tr"): string[] => {
   const c = minPlayersCopy(lang);
   const nudge = { activityName: "Vets 7s", signInUrl: "https://matchtime.ai/t/abc", pageUrl: "https://matchtime.ai/admin/matches/m1/cancel" };
@@ -11,19 +10,6 @@ const render = (lang: "en" | "tr"): string[] => {
     c.lowNumbers({ ...nudge, confirmed: 11, maxPlayers: 14, switchTo: "Football 5-a-side", switchPlayers: 10, audience: "group" }),
     c.matchInTrouble({ ...nudge, confirmed: 11, minimum: 12, audience: "dm" }),
     c.matchInTrouble({ ...nudge, confirmed: 11, minimum: 12, audience: "group" }),
-    c.set({ activityName: "Vets 7s", minimum: 12, places: 14 }),
-    c.cleared({ activityName: "Vets 7s", full: 14 }),
-    c.alreadySet({ activityName: "Vets 7s", minimum: 12 }),
-    c.alreadyFull({ activityName: "Vets 7s", full: 14 }),
-    c.tooHigh({ activityName: "Vets 7s", places: 14 }),
-    c.tooLow,
-    c.noNumber({ url: URL }),
-    c.whichGame({ names: ["Monday 7s", "Thursday 5s"], url: URL }),
-    c.noGame({ url: URL }),
-    c.label,
-    c.hint({ full: 14 }),
-    c.row({ minimum: 12 }),
-    c.invalid({ places: 14 }),
   ];
 };
 

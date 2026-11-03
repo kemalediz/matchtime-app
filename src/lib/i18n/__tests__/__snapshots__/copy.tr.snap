@@ -1939,6 +1939,7 @@ If you drop out, I can nudge the bench to step in so we're never short. Say *Out
 🟥🟦 *Fair teams: how it works*
 On match day, anyone in the group can tag me and ask for the teams (for example *@Match Time generate the teams*) and I'll split everyone into two balanced sides using their form ratings, so games stay even.
 I post the line-ups straight into the chat. Not happy with a pairing? Tag me and say what to change, in your own words (e.g. _"@Match Time swap Sam and Alex"_), or ask me to show the teams again any time.
+One short of two full sides? If the club has set the fewest it plays with, I make the teams from that number up, for example 7 against 6, balanced so the side a player down gets the stronger players.
 Want a bit of fun? Ask me to give the teams names and I'll sort it. Just tag me and ask when you're ready.
 
 ✅ It's on for this club.
@@ -2352,7 +2353,7 @@ Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir.
 ⚙️ *Ayarlar*
 Kulübün ayarları yönetici sayfasında, sekmelere ayrılmış olarak durur ve yalnızca yöneticiler değiştirebilir. Yöneticiler: üstteki *Ayar bul* kutusuna bir ayarın adını yazınca doğrudan oraya gidersiniz:
 https://matchtime.ai/admin/settings
-Yöneticiler bazılarını beni etiketleyerek de değiştirebilir, örneğin *@Match Time en az 12 kişi* (kulübün oynadığı en az kişi sayısı) ya da *@Match Time sessiz saatleri kapat*.
+Yöneticiler bazılarını beni etiketleyerek de değiştirebilir, örneğin *@Match Time 12 ile 16 kişi arası oynuyoruz* (kulübün oynadığı en az ve en fazla kişi), *@Match Time 8'e 8 yapalım* (tek bir maçın formatı) ya da *@Match Time sessiz saatleri kapat*.
 
 ### R153 buildHelpReply / pool closed / admin
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*
@@ -2399,7 +2400,7 @@ https://mt.example/r/topic
 ⚙️ *Ayarların*
 Kulübünün tüm ayarları tek bir ayarlar sayfasında, sekmelere ayrılmış olarak durur. Bir şeyin nerede olduğundan emin değil misin? Üstteki *Ayar bul* kutusuna adını yaz, seni doğrudan oraya götürür:
 https://mt.example/r/topic
-Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim. Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*, ya da bir iki kişi eksik de oynuyorsanız *@Match Time 12 kişiyle de oynarız* (az oyuncu uyarısını ancak bunun altında yaparım).
+Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim. Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*, ya da en az ve en fazla kaç kişiyle oynadığınız için *@Match Time 12 ile 16 kişi arası oynuyoruz* (az oyuncu uyarısını ancak en azın altında yaparım, ve herhangi bir maç 6'ya 6, 7'ye 7 ya da 8'e 8 olabilir: *@Match Time 8'e 8 yapalım*).
 
 ### R153 buildHelpReply / pool closed / player
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*

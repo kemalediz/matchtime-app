@@ -1022,6 +1022,15 @@ model Activity {
   /// places are still the format's (Match.maxPlayers). Rules in
   /// src/lib/min-players.ts.
   minPlayers    Int?
+  /// The most players this game can be played with (2026-11-03, the Vets
+  /// play 6, 7 or 8 a side by numbers). Even, at least the format's places
+  /// (`playersPerTeam * 2`). Null keeps today's behaviour exactly: the
+  /// game is only ever its own format. With 12 and 16 here and a 7-a-side
+  /// format, an organiser may make any one match 6, 7 or 8 a side (the
+  /// match's own `Match.maxPlayers`), and MatchTime suggests going up a
+  /// size when two are waiting on the bench. Rules in
+  /// src/lib/flex-format-rules.ts.
+  maxPlayers    Int?
 
   matches         Match[]
   playerPositions PlayerActivityPosition[]
