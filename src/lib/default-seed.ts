@@ -16,6 +16,11 @@
  * The seed nudge (`seed-nudge.ts`) still counts who an admin actually
  * seeded, which only null can tell it.
  *
+ * Since 2026-11-03 one thing other than an admin does write a seed: a
+ * player joining a club with ratings at his other clubs starts at his
+ * average there (`carried-seed.ts`). The nudge counts him as seeded,
+ * which is right: the balancer has real evidence for him.
+ *
  * Before this the prior for an unseeded player was this club's mean
  * peer rating, else 5.0 (`player-rating.ts`). Both are gone: the club
  * mean disagreed with the 6 the admin is now shown, and 5.0 was the
