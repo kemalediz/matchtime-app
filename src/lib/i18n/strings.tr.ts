@@ -1161,13 +1161,14 @@ export const tr: Strings = {
       return (
         `⚙️ *Ayarların*\n` +
         `Kulübünün tüm ayarları tek bir ayarlar sayfasında, sekmelere ayrılmış olarak durur. Bir şeyin nerede olduğundan emin değil misin? Üstteki *Ayar bul* kutusuna adını yaz, seni doğrudan oraya götürür:\n${p.url}\n` +
-        `Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim. Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*.`
+        `Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim. Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*, ya da bir iki kişi eksik de oynuyorsanız *@Match Time 12 kişiyle de oynarız* (az oyuncu uyarısını ancak bunun altında yaparım).`
       );
     }
     if (p.audience === "group") {
       return (
         `⚙️ *Ayarlar*\n` +
-        `Kulübün ayarları yönetici sayfasında, sekmelere ayrılmış olarak durur ve yalnızca yöneticiler değiştirebilir. Yöneticiler: üstteki *Ayar bul* kutusuna bir ayarın adını yazınca doğrudan oraya gidersiniz:\n${p.url}`
+        `Kulübün ayarları yönetici sayfasında, sekmelere ayrılmış olarak durur ve yalnızca yöneticiler değiştirebilir. Yöneticiler: üstteki *Ayar bul* kutusuna bir ayarın adını yazınca doğrudan oraya gidersiniz:\n${p.url}\n` +
+        `Yöneticiler bazılarını beni etiketleyerek de değiştirebilir, örneğin *@Match Time en az 12 kişi* (kulübün oynadığı en az kişi sayısı) ya da *@Match Time sessiz saatleri kapat*.`
       );
     }
     return `⚙️ *Ayarlar*\nKulübün ayarlarını organizatörler değiştirir. Bir şeyin değişmesini istersen onlara söyle. Kendi bilgilerin MatchTime profilinde.`;
@@ -1283,6 +1284,7 @@ export const tr: Strings = {
     if (p.paid) lines.push(`💷 *@Match Time ÖDENDİ HEPSİ*, *@Match Time ÖDENDİ 1 3* ya da *@Match Time ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`);
     if (p.free) lines.push(`🎁 *"@Match Time Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`);
     lines.push(`🌙 *"@Match Time sessiz saatleri 23:00 ile 09:00 arası aç"*, *"@Match Time sessiz saatleri kapat"*: kendi mesajlarımı gece bekletirim ya da her saatte gönderirim. Yeni bir kulüpte sessiz saatler kapalı başlar.`);
+    lines.push(`👥 *"@Match Time 12 kişiyle de oynarız"*, *"@Match Time en az 12 kişi"*: oynadığınız en az kişi sayısı. Az oyuncu uyarısını ya da iptal önerisini ancak bunun altında yaparım. *"@Match Time yine tam takım"* bunu geri alır.`);
     lines.push(``, `ℹ️ Herhangi bir bölümün nasıl çalıştığını, nasıl açılıp kapatıldığını kendi cümlelerinizle sorun: örneğin *@Match Time partner kulüpler nasıl çalışır?* ya da *@Match Time ayarlar nerede?*`);
     lines.push(`Bunu tekrar görmek için burada istediğiniz zaman *@Match Time neler yapabilirsin?* diye sorun.`);
     return lines.join("\n");

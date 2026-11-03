@@ -70,6 +70,7 @@ import { lockClubCredits, mayConfirmPayments } from "./month-payment";
 import { lockMonth } from "./month-signup";
 import { WAITING_NOTE, monthKickoffs, nextMonthStart } from "./month-signup-rules";
 import { weekListHash } from "./monthly-week-rules";
+import { PAYMENT_FLAGS_SELECT, paymentMessagesOn } from "./payment-messages";
 import { MAX_PAID_PENCE, MAX_PER_GAME_PENCE, chargedGames, normaliseCreditRule, normaliseSquadMode, type MonthCreditRule } from "./squad-month-rules";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -889,8 +890,16 @@ async function unusedCredits(orgId: string, userIds?: string[]): Promise<Map<str
   return new Map(rows.map((r) => [r.userId, r._sum.games ?? 0]));
 }
 
+/** Whether the club tracks or collects payments: with both off nothing
+ *  about money is sent (2026-11-03, `payment-messages.ts`). */
+async function paymentsOnFor(orgId: string): Promise<boolean> {
+  return paymentMessagesOn(await db.organisation.findUnique({ where: { id: orgId }, select: PAYMENT_FLAGS_SELECT }));
+}
+
 async function tellLeaverOwed(month: CloseMonth, m: CloseMember, now: Date): Promise<void> {
   try {
+    // What a leaver who paid is owed is money: not said with payments off.
+    if (!(await paymentsOnFor(month.orgId))) return;
     if (!(await claimOnce(`${closeKeyPrefix(month.orgId)}leaver:${month.id}:${m.userId}`, "admin-notice"))) return;
     const games = (await unusedCredits(month.orgId, [m.userId])).get(m.userId) ?? 0;
     if (games === 0) return;
@@ -935,18 +944,21 @@ export async function tellMidMonthJoin(args: { orgId: string; monthId: string; u
       paidAt: true,
       paidClaimedAt: true,
       user: { select: { name: true, phoneNumber: true } },
-      month: { select: { monthStart: true, org: { select: { language: true, squadMode: true, paymentHolderId: true, ...QUIET_HOURS_SELECT } } } },
+      month: { select: { monthStart: true, org: { select: { language: true, squadMode: true, paymentHolderId: true, ...PAYMENT_FLAGS_SELECT, ...QUIET_HOURS_SELECT } } } },
     },
   });
   if (!row || row.kind !== "regular" || row.leftAt !== null || normaliseSquadMode(row.month.org.squadMode) !== "monthly") return;
+  // With payments off (2026-11-03) the player's DM, which is what to pay,
+  // is not sent, and the organisers hear the games with no amount.
+  const payments = paymentMessagesOn(row.month.org);
   // Somebody who had paid and is back keeps what they paid for: there is
   // no new amount to tell them, and the Months page shows where they stand.
   if (row.paidAt || row.paidClaimedAt) return;
   const monthStart = row.month.monthStart.toISOString().slice(0, 10);
   const lang = row.month.org.language;
-  const facts = { name: row.user.name, monthDate: monthDateOf(monthStart), games: chargedGames(row), amountDuePence: row.amountDuePence, lang };
+  const facts = { name: row.user.name, monthDate: monthDateOf(monthStart), games: chargedGames(row), amountDuePence: payments ? row.amountDuePence : null, lang };
   const phone = row.user.phoneNumber?.replace(/^\+/, "") ?? null;
-  if (phone && !args.viaPage && (await claimOnce(`${closeKeyPrefix(args.orgId)}midjoin-dm:${args.monthId}:${args.userId}`, "month-join-dm"))) {
+  if (payments && phone && !args.viaPage && (await claimOnce(`${closeKeyPrefix(args.orgId)}midjoin-dm:${args.monthId}:${args.userId}`, "month-join-dm"))) {
     const collector = row.month.org.paymentHolderId
       ? await db.user.findUnique({ where: { id: row.month.org.paymentHolderId }, select: { name: true } })
       : null;
@@ -1118,7 +1130,8 @@ export async function changeShareAfterPaid(args: {
   try {
     const day = formatLondon(now, "yyyy-MM-dd");
     const key = `${closeKeyPrefix(args.orgId)}share:${month.id}:${day}:${weekListHash(`${args.sharePence}|${args.concessionPence ?? ""}`)}`;
-    if (await claimOnce(key, "admin-notice")) {
+    // Who paid and now owes more is money: not said with payments off.
+    if ((await paymentsOnFor(args.orgId)) && (await claimOnce(key, "admin-notice"))) {
       const path = `/admin/months?month=${month.monthStart}`;
       await sendAdminNotice({
         orgId: args.orgId,
@@ -1318,11 +1331,13 @@ export async function sendDueCloseSummaries(orgId: string, now: Date = new Date(
       if (!fresh) throw new Error("the month could not be read");
       const summary = await loadMonthSummary(fresh, now);
       const path = `/admin/months?month=${fresh.monthStart}`;
+      // With payments off (2026-11-03): the games and credits, no money.
+      const payments = await paymentsOnFor(orgId);
       const res = await sendAdminNotice({
         orgId,
         now,
         nextPath: path,
-        text: (link) => buildMonthSummaryNotice({ summary, monthDate: monthDateOf(fresh.monthStart), link: link || appUrl(path), lang: fresh.language }),
+        text: (link) => buildMonthSummaryNotice({ summary, monthDate: monthDateOf(fresh.monthStart), link: link || appUrl(path), lang: fresh.language, payments }),
       });
       if (res.queued === 0) throw new Error("nobody to send it to");
       sent++;

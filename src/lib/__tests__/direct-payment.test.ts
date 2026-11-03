@@ -54,6 +54,8 @@ const MATCH = {
       payMethodPayByBank: false,
       payMethodCard: true,
       payMethodDirect: true,
+      // Direct payment is a club collecting fees (2026-11-03, payment-messages.ts).
+      paymentCollectionEnabled: true,
       paymentHolderId: "u-kemal",
     },
   },

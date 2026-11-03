@@ -133,6 +133,28 @@ export default async function AdminGuidePage() {
         yourself (see the next section).
       </p>
 
+      <h3 id="min-players">Playing one or two down</h3>
+      <p>
+        If you happily play with fewer than two full sides (say 13 for a
+        7-a-side, six against seven), set the fewest you play with. MatchTime
+        then only warns you about low numbers, and only offers to cancel, below
+        that. The places don&apos;t change: an open place is still offered to
+        players.
+      </p>
+      <ul>
+        <li>
+          In <strong>Activities</strong>, edit the game and fill in{" "}
+          <strong>Minimum players</strong>. Leave it empty for two full sides.
+        </li>
+        <li>
+          Or tag MatchTime in WhatsApp, in your admin group or the
+          players&apos; group: <code>@Match Time we can play with 12</code> or{" "}
+          <code>@Match Time minimum 12 players</code>, and{" "}
+          <code>@Match Time back to full teams</code> to undo it. Only an
+          organiser or admin can change it.
+        </li>
+      </ul>
+
       {/* ───────────────────────────────────────────────── */}
       <h2 id="schedule">3. Changing the schedule</h2>
 
@@ -577,7 +599,9 @@ export default async function AdminGuidePage() {
       </p>
       <p>
         Players pay the card or bank fee on top, so the collector receives
-        the full match fee. Collecting cash instead? Just leave payments off.
+        the full match fee. Collecting cash instead? Just leave payments off:
+        then MatchTime sends nobody anything about payments, no reminders and
+        no lists of who has paid.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
@@ -621,8 +645,10 @@ export default async function AdminGuidePage() {
           you&apos;re short and a smaller format is set up.
         </li>
         <li>
-          <strong>Cancel</strong>: the day before, around 18:00, when even the
-          smallest format can&apos;t fill.
+          <strong>Cancel</strong>: the day before, around 18:00, when numbers
+          are below the fewest you can play with: two full sides of your
+          smallest format, or the minimum you set (see{" "}
+          <a href="#min-players">Playing one or two down</a>).
         </li>
       </ul>
       <p>

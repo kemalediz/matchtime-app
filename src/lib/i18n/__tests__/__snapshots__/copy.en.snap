@@ -2337,6 +2337,7 @@ Your club can team up with nearby clubs to lend each other players. When a partn
 ⚙️ *Settings*
 The club's settings are on the admin page, grouped in tabs, and only admins can change them. Admins: type a setting's name in *Find a setting* at the top to jump to it:
 https://matchtime.ai/admin/settings
+Admins can change some by tagging me too, for example *@Match Time minimum 12 players* (the fewest the club plays with) or *@Match Time turn off quiet hours*.
 
 ### R153 buildHelpReply / pool closed / admin
 🌍 *The MatchTime player pool: how it works*
@@ -2383,7 +2384,7 @@ https://mt.example/r/topic
 ⚙️ *Your settings*
 Every switch for your club is on one settings page, grouped in tabs. Not sure where something is? Type its name in *Find a setting* at the top and it takes you straight there:
 https://mt.example/r/topic
-Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*.
+Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*, or *@Match Time we can play with 12* if you'll play one or two down (I only warn you about low numbers below that).
 
 ### R153 buildHelpReply / pool closed / player
 🌍 *The MatchTime player pool: how it works*

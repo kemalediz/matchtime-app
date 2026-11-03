@@ -1353,3 +1353,49 @@ describe("quiet hours by WhatsApp", () => {
     expect(res.degradations.join("\n")).toMatch(/quiet_hours threw \(db down\)/);
   });
 });
+
+// ── 2026-11-03 (the Vets play one down): the fewest players by tagging
+// MatchTime. An owner or admin, with the Pi's real tag, only.
+
+describe("minimum players by WhatsApp", () => {
+  const SET = "@Match Time we can play with 12";
+  const MIN_FACTS = { ...BLAST_FACTS, action: "min_players", lookbackMatches: 0, playersFrom: [], clubRef: "", minPlayers: 12, fullTeams: false, toMatchTime: true };
+
+  const outcomeOf = async (m: Partial<AdminOpsBatchMessage> = {}, facts: Record<string, unknown> = MIN_FACTS) => {
+    const { model } = stubModel({ [SET]: facts });
+    const r = recorder(model, paidWorld());
+    const calls: Array<{ orgId: string; minPlayers: number | null; fullTeams: boolean; matchDay: string | null }> = [];
+    const res = await run({
+      messages: [msg({ body: SET, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true, ...m })],
+      deps: {
+        ...r.deps,
+        onlyOrganisersLine: async () => "Only Kemal can change that.",
+        applyMinPlayersWords: async (a) => (
+          calls.push({ orgId: a.orgId, minPlayers: a.minPlayers, fullTeams: a.fullTeams, matchDay: a.matchDay }),
+          { outcome: "min-players-set", replyText: "✅ Done. *Vets 7s* goes ahead with *12* or more." }
+        ),
+      },
+    });
+    return { out: res.outcomes.get(`wa-${SET.slice(0, 14)}`), calls };
+  };
+
+  it("an organiser, tagged: set through the one core, and the reply says so (never \"can't change that\")", async () => {
+    const { out, calls } = await outcomeOf();
+    expect(calls).toEqual([{ orgId: "org-1", minPlayers: 12, fullTeams: false, matchDay: null }]);
+    expect(out?.reply).toBe("✅ Done. *Vets 7s* goes ahead with *12* or more.");
+    expect(out?.intent).toBe("min-players-set");
+  });
+
+  it("a player who is not an organiser: the one line naming who can, nothing changed", async () => {
+    const { out, calls } = await outcomeOf({ senderUserId: "u-zair", senderName: fullName("zair") });
+    expect(out?.reply).toBe("Only Kemal can change that.");
+    expect(out?.intent).toBe("organisers_only");
+    expect(calls).toEqual([]);
+  });
+
+  it("untagged (no Pi mention flag): nothing changed, nothing said", async () => {
+    const { out, calls } = await outcomeOf({ tagged: false, taggedExplicitly: false });
+    expect(out?.reply ?? null).toBeNull();
+    expect(calls).toEqual([]);
+  });
+});

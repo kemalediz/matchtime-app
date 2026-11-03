@@ -1015,6 +1015,14 @@ model Activity {
   /// divides by who played, instead of a fixed per-player fee.
   feeSplitTotal Boolean @default(false)
 
+  /// The fewest players this game is played with (2026-11-03, the Vets
+  /// play one down, 6 v 7). Null keeps the default: two full sides of the
+  /// club's smallest format of this sport. Decides only when MatchTime
+  /// calls the numbers short ("Low numbers", "Match in trouble"); the
+  /// places are still the format's (Match.maxPlayers). Rules in
+  /// src/lib/min-players.ts.
+  minPlayers    Int?
+
   matches         Match[]
   playerPositions PlayerActivityPosition[]
   blockBookings   BlockBooking[]

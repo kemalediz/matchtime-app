@@ -21,6 +21,7 @@
  * (`applyCheckoutEvent`) marks a player paid.
  * `__tests__/paid-claim-never-sets-paid-at.test.ts` holds that line.
  */
+import { PAYMENT_FLAGS_SELECT, paymentMessagesOn } from "./payment-messages";
 import { db } from "./db";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { ALREADY_PAID_REASON, payBlockedReason } from "./payment-outcome";
@@ -55,6 +56,7 @@ async function loadPayRows(userId: string, matchId: string) {
               payMethodCard: true,
               payMethodDirect: true,
               paymentHolderId: true,
+              ...PAYMENT_FLAGS_SELECT,
               ...QUIET_HOURS_SELECT,
             },
           },
@@ -181,7 +183,9 @@ export async function markDirectPaymentPending(input: {
   }
 
   let collectorNotified = false;
-  if (org.paymentHolderId && !alreadyPending) {
+  // Recorded, and the collector not told, while the club neither tracks
+  // nor collects payments (2026-11-03, `payment-messages.ts`).
+  if (org.paymentHolderId && !alreadyPending && paymentMessagesOn(org)) {
     const me = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
     const holder = await db.user.findUnique({
       where: { id: org.paymentHolderId },

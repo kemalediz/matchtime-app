@@ -111,9 +111,11 @@ describe("buildAdminGroupIntro, English", () => {
   });
 
   it("a monthly club: no weekly list, no teams time, the collector's PAID", () => {
-    const text = buildAdminGroupIntro({ ...DEFAULT_CLUB, squadMode: "monthly", teamsReadyTime: "10:00", benchPickMode: "organiser" });
+    const text = buildAdminGroupIntro({ ...DEFAULT_CLUB, squadMode: "monthly", teamsReadyTime: "10:00", benchPickMode: "organiser", paymentTrackingEnabled: true });
     expect(text).not.toMatch(/IN\*|squad list|balanced teams/);
     expect(text).toContain(`Money collector: answer my list of payment claims here with *@Match Time PAID ALL*, *@Match Time PAID 1 3* or *@Match Time PAID NONE*.`);
+    // Payments off (the Vets, 2026-11-03): nothing about payments.
+    expect(buildAdminGroupIntro({ ...DEFAULT_CLUB, squadMode: "monthly", benchPickMode: "organiser" })).not.toMatch(/PAID|payment/);
     expect(text).toContain(`When a place opens and someone is waiting, I ask here who plays.`);
   });
 
@@ -169,7 +171,7 @@ describe("buildAdminGroupIntro, Turkish", () => {
   });
 
   it("monthly, setting up, teams posted, in Turkish", () => {
-    const monthly = buildAdminGroupIntro({ ...DEFAULT_CLUB, language: "tr", squadMode: "monthly" });
+    const monthly = buildAdminGroupIntro({ ...DEFAULT_CLUB, language: "tr", squadMode: "monthly", paymentTrackingEnabled: true });
     expect(monthly).toContain(`*@Match Time ÖDENDİ HEPSİ*, *@Match Time ÖDENDİ 1 3* ya da *@Match Time ÖDENDİ YOK*`);
     const off = buildAdminGroupIntro({ ...FNF, language: "tr", whatsappBotEnabled: false });
     expect(off.split("\n")[0]).toBe(`👋 Ben MatchTime. *FNF* cuma maçlarını yönetmenize yardım edeceğim. Kulüp için açıldığımda burada şunları yaparım.`);
@@ -184,7 +186,9 @@ describe("the intro and the help read the same gates", () => {
   it("hqHelpGates is what the HQ help is built from", () => {
     expect(hqHelpGates(FNF)).toEqual({ squad: true, graphics: true, picks: true, paid: false, free: false, pool: false });
     expect(hqHelpGates(DEFAULT_CLUB)).toEqual({ squad: true, graphics: true, picks: false, paid: false, free: false, pool: false });
-    expect(hqHelpGates({ squadMode: "monthly", benchPickMode: "organiser" })).toEqual({ squad: false, graphics: true, picks: true, paid: true, free: false, pool: false });
+    expect(hqHelpGates({ squadMode: "monthly", benchPickMode: "organiser", paymentTrackingEnabled: true })).toEqual({ squad: false, graphics: true, picks: true, paid: true, free: true, pool: false });
+    // Payments off (2026-11-03): no PAID line.
+    expect(hqHelpGates({ squadMode: "monthly", benchPickMode: "organiser" })).toEqual({ squad: false, graphics: true, picks: true, paid: false, free: false, pool: false });
     // The pool line (2026-10-28): a weekly club, the club's flag AND the
     // platform switch as the request resolved it. The intro passes no env.
     const OPEN = { MT_POOL_OPEN: "1" };

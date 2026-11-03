@@ -66,8 +66,8 @@ async function person(db: TestDb, p: Person, org: string, role = "PLAYER") {
 async function club(db: TestDb, o: typeof A, owner: Person, share: number | null) {
   await db.run(
     `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled", "squadMode", "paygPricePence",
-                                 "adminChannelMode", language, "updatedAt")
-     VALUES ($1, 'Vets MNF', $1, $2, $3, true, 'monthly', 800, 'each-admin', 'en', now())`,
+                                 "adminChannelMode", language, "paymentTrackingEnabled", "updatedAt")
+     VALUES ($1, 'Vets MNF', $1, $2, $3, true, 'monthly', 800, 'each-admin', 'en', true, now())`,
     [o.org, `${o.org}-invite`, o.group],
   );
   await db.run(

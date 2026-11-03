@@ -146,6 +146,14 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * Paid check: scripts/live-check-quiet-hours.ts, then one pass of the
  * admin extractor's suites.
  */
+/*
+ * And on 2026-11-03 (the Vets play one down, Kemal: every admin feature by
+ * WhatsApp too): one action, `min_players`, beside quiet hours with the
+ * other club settings, its two fields (`minPlayers`, `fullTeams`) once in
+ * the field list, `matchDay` widened to it, and one example group, EN and
+ * TR side by side, with a count of who is coming and a question as
+ * "other". Sizes and the paid check are in the PR.
+ */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: HAIKU_CALL,
   question: HAIKU_CALL,
@@ -639,6 +647,7 @@ THE ACTION, exactly one. A question, an opinion or a discussion about whether to
   "set_venue" tell MatchTime where the club plays: name its pitch or venue, or pick one of the places MatchTime listed. Asking where the game is, or talking about a pitch, is "other".
   "retry_ask" try MatchTime's last request again, or say that what stopped it is now done or fixed, naming nothing new ("done, try again", "added the venue location"). A message that names the place is "set_venue"; one that asks for something again in full ("now ask the pool") is that action.
   "quiet_hours" switch the club's quiet hours (the night hours MatchTime holds its own messages in) off or on, or set when they start or end. Asking about them, or talking about them, is "other".
+  "min_players" set the fewest players the club will play a game with, so MatchTime warns about low numbers only below it ("we can play with 12", "minimum 12 players"), or go back to needing two full sides. Saying how many are coming, or asking how many are needed, is "other".
   "fee_waiver" give named players a free place, so they owe nothing for a game, or take one back. "Free" as in able to play ("I'm free Tuesday") is not this.
   "bulk_payment" someone paid for several players.
   "reminder" MatchTime is to remind the sender, at a time.
@@ -654,7 +663,7 @@ THE FIELDS. Fill toMatchTime always and the others for the action; every other f
     "everywhere" or "wherever you can" ("her yerden", "nereden olursa") is all three. An answer to MatchTime's own question about where to look (MATCHTIME'S LAST POST, or the message replied to) is recruit from the places it picks, however short: "both" is the two places the question offers (of three, the partner clubs and the pool), "all" is every place it offers, and a yes to a question offering one place is that place.
   lookbackMatches (recruit from the club): how many recent matches to draw the club's own players from ("the last 5 matches" is 5, "the last couple of games" is 2); 0 when no number is named.
   clubRef (recruit from partners): the other club's name as written, without a Turkish case ending ("Sutton'a" is "Sutton"); "" when no club is named.
-  matchDay (cancel_match, restore_match, fee_waiver): the day named for the game, as written ("tonight", "next Friday", "cuma", "last Tuesday"); "" when none or only "this week".
+  matchDay (cancel_match, restore_match, fee_waiver, min_players): the day named for the game, as written ("tonight", "next Friday", "cuma", "last Tuesday"); "" when none or only "this week".
   pastGame (cancel_match, restore_match): true when the game meant has already been, or should have been, played: it says the game didn't happen or did happen after all, or names a game gone by ("last Tuesday's", "the last match", "yesterday", "dün", "geçen hafta").
   breakMonths (season_break): each month with no football, as "YYYY-MM", the next such month from NOW ("December" in October 2026 is "2026-12"; "December and January" is both).
   playMonths (season_break): each month the football is on or back in, as "YYYY-MM" the same way.
@@ -663,6 +672,8 @@ THE FIELDS. Fill toMatchTime always and the others for the action; every other f
   quietOff (quiet_hours): true when it switches quiet hours off, so MatchTime posts at any hour; false when it switches them on or sets their times.
   quietFrom (quiet_hours): when they start, as a 24-hour London time "HH:MM" ("10pm" is "22:00", "gece 11" is "23:00"); "" when not said.
   quietTo (quiet_hours): when they end, the same way ("8am" is "08:00", "sabah 9" is "09:00"); "" when not said.
+  minPlayers (min_players): the fewest players said, as a number ("12", "on iki" is 12; "one down" of the 14 places is 13); 0 when none is said or it goes back to full sides.
+  fullTeams (min_players): true when it goes back to needing two full sides ("back to full teams", "yine tam takım").
   coveredRefs (fee_waiver, bulk_payment): the people the action is about, one entry each, as written: those given or losing the free place, or those paid for. "he" or "him" is the person named, else the author of the quoted message.
   undo (fee_waiver): true when it takes a free place back.
   payerRef (bulk_payment): who paid, as written.
@@ -737,6 +748,14 @@ The club's quiet hours:
   "@Match Time don't post before 7am" / "@Match Time sabah 7'den önce mesaj atma" -> quiet_hours, quietTo "07:00"
   "@Match Time are quiet hours on?" / "@Match Time sessiz saatler açık mı?" -> other
   "the quiet hours held my message again" / "sessiz saatler yine mesajımı bekletti" -> other, toMatchTime false
+The fewest players a game is played with:
+  "@Match Time we can play with 12" / "@Match Time 12 kişiyle de oynarız" -> min_players, minPlayers 12
+  "@Match Time minimum 12 players" / "@Match Time en az 12 kişi" -> min_players, minPlayers 12
+  "@Match Time we're fine with 13, one down is ok" / "@Match Time 13 kişi de olur, bir eksik oynarız" -> min_players, minPlayers 13
+  "@Match Time minimum 9 on Thursday" / "@Match Time perşembe en az 9 kişi" -> min_players, minPlayers 9, matchDay "on Thursday" / "perşembe"
+  "@Match Time back to full teams" / "@Match Time yine tam takım" -> min_players, fullTeams true
+  "@Match Time how many do we need?" / "@Match Time kaç kişi lazım?" -> other
+  "we're 12 tonight" / "bu akşam 12 kişiyiz" -> other, toMatchTime false
 Free places and payments:
   "Bilal washed the bibs, he's free this week" -> fee_waiver, coveredRefs ["Bilal"]
   "put Bilal down as free on Friday" / "Ali ve Can cuma günü ödemesin" -> fee_waiver, coveredRefs ["Bilal"] / ["Ali","Can"], matchDay "on Friday" / "cuma günü"
@@ -953,7 +972,7 @@ const ADMIN_SCHEMA = {
   properties: {
     action: {
       type: "string",
-      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "other"],
+      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "min_players", "other"],
     },
     // season_break (2026-10-29): the months with no football, and the
     // months it is back in, each "YYYY-MM".
@@ -988,11 +1007,15 @@ const ADMIN_SCHEMA = {
     quietOff: { type: "boolean" },
     quietFrom: { type: "string" },
     quietTo: { type: "string" },
+    // min_players (2026-11-03): the fewest players said (0: none), and
+    // back to two full sides.
+    minPlayers: { type: "number" },
+    fullTeams: { type: "boolean" },
     // Who the message is spoken to (2026-10-22): MatchTime, or a person or
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "minPlayers", "fullTeams", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1306,7 +1329,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "other"].includes(action)) {
+      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "min_players", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1321,7 +1344,7 @@ export function parseFacts(
           ? { coveredRefs: raw.coveredRefs.map(str).filter(Boolean) }
           : {}),
         ...(action === "fee_waiver" && raw.undo === true ? { undo: true } : {}),
-        ...(["fee_waiver", "cancel_match", "restore_match"].includes(action) && typeof raw.matchDay === "string" && raw.matchDay.trim()
+        ...(["fee_waiver", "cancel_match", "restore_match", "min_players"].includes(action) && typeof raw.matchDay === "string" && raw.matchDay.trim()
           ? { matchDay: raw.matchDay.trim() }
           : {}),
         ...(["cancel_match", "restore_match"].includes(action) && raw.pastGame === true ? { pastGame: true } : {}),
@@ -1362,6 +1385,12 @@ export function parseFacts(
         ...(action === "quiet_hours" && raw.quietOff === true ? { quietOff: true as const } : {}),
         ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietFrom === "string" && raw.quietFrom.trim() ? { quietFrom: raw.quietFrom.trim() } : {}),
         ...(action === "quiet_hours" && raw.quietOff !== true && typeof raw.quietTo === "string" && raw.quietTo.trim() ? { quietTo: raw.quietTo.trim() } : {}),
+        // min_players (2026-11-03): back to full sides only when true, and
+        // then no number; a whole number from 1, checked by the save core.
+        ...(action === "min_players" && raw.fullTeams === true ? { fullTeams: true as const } : {}),
+        ...(action === "min_players" && raw.fullTeams !== true && typeof raw.minPlayers === "number" && Number.isInteger(raw.minPlayers) && raw.minPlayers > 0
+          ? { minPlayers: raw.minPlayers }
+          : {}),
         // season_break (2026-10-29): only well-formed "YYYY-MM" months.
         ...(action === "season_break" ? { breakMonths: monthKeysOf(raw.breakMonths), playMonths: monthKeysOf(raw.playMonths) } : {}),
         // Only a clear true: a missing or false value keeps HQ's outward

@@ -108,12 +108,22 @@ describe("quiet hours by tag", () => {
   it("an organiser's help settings names it, EN and TR; a player's does not", () => {
     const url = "https://mt.example/s";
     expect(t("en").onbHelpSettings({ audience: "admin", url })).toContain(
-      `Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*.`,
+      `Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*,`,
     );
     expect(t("tr").onbHelpSettings({ audience: "admin", url })).toContain(
-      `Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*.`,
+      `Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*,`,
     );
     expect(t("en").onbHelpSettings({ audience: "player", url })).not.toContain("quiet hours");
+  });
+
+  it("the minimum players by tag (2026-11-03): an organiser's and the group's help settings name it, EN and TR; a player's does not", () => {
+    const url = "https://mt.example/s";
+    expect(t("en").onbHelpSettings({ audience: "admin", url })).toContain("*@Match Time we can play with 12*");
+    expect(t("tr").onbHelpSettings({ audience: "admin", url })).toContain("*@Match Time 12 kişiyle de oynarız*");
+    expect(t("en").onbHelpSettings({ audience: "group", url })).toContain("*@Match Time minimum 12 players*");
+    expect(t("tr").onbHelpSettings({ audience: "group", url })).toContain("*@Match Time en az 12 kişi*");
+    expect(t("en").onbHelpSettings({ audience: "player", url })).not.toContain("minimum");
+    for (const a of ["admin", "group"] as const) for (const l of ["en", "tr"] as const) expect(t(l).onbHelpSettings({ audience: a, url })).not.toMatch(/[–—]/);
   });
 });
 

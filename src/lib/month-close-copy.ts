@@ -40,13 +40,27 @@ const timesNames = (people: Array<{ name: string; games: number }>): string =>
  *     Credits carried to a later month: 9 games (Sam x2, Rob).
  *     Credits used this month: 10 games.
  */
-export function buildMonthSummaryLines(p: { summary: MonthSummary; monthDate: Date; lang?: LangArg }): string[] {
+export function buildMonthSummaryLines(p: {
+  summary: MonthSummary;
+  monthDate: Date;
+  lang?: LangArg;
+  /** False when the club neither tracks nor collects payments
+   *  (`payment-messages.ts`, 2026-11-03): the games and the credits only,
+   *  no line about money. Absent: true, as before. */
+  payments?: boolean;
+}): string[] {
   const s = t(p.lang);
   const x = p.summary;
+  const head = s.mcl_sum_head({ month: monthNameLabel(p.lang, p.monthDate), games: x.gamesPlayed });
+  const credits = [
+    x.carried.games > 0 ? s.mcl_sum_carried({ games: x.carried.games, names: timesNames(x.carried.people) }) : s.mcl_sum_carried_none,
+    s.mcl_sum_used({ games: x.creditsUsed }),
+  ];
+  if (p.payments === false) return [head, ...credits];
   const money = (rows: Array<{ name: string; pence: number | null }>): string =>
     rows.map((r) => (r.pence != null ? `${r.name} ${pounds(r.pence)}` : r.name)).join(", ");
   const out: string[] = [
-    s.mcl_sum_head({ month: monthNameLabel(p.lang, p.monthDate), games: x.gamesPlayed }),
+    head,
     s.mcl_sum_regulars({ count: x.regulars, confirmed: x.confirmed.count, total: pounds(x.confirmed.totalPence) }),
   ];
   if (x.claimed.length > 0) out.push(s.mcl_sum_claimed({ count: x.claimed.length, names: money(x.claimed) }));
@@ -74,13 +88,12 @@ export function buildMonthSummaryLines(p: { summary: MonthSummary; monthDate: Da
       }),
     );
   }
-  out.push(x.carried.games > 0 ? s.mcl_sum_carried({ games: x.carried.games, names: timesNames(x.carried.people) }) : s.mcl_sum_carried_none);
-  out.push(s.mcl_sum_used({ games: x.creditsUsed }));
+  out.push(...credits);
   return out;
 }
 
 /** The summary as one admin notice, with the page link when there is one. */
-export function buildMonthSummaryNotice(p: { summary: MonthSummary; monthDate: Date; link: string; lang?: LangArg }): string {
+export function buildMonthSummaryNotice(p: { summary: MonthSummary; monthDate: Date; link: string; lang?: LangArg; payments?: boolean }): string {
   const lines = buildMonthSummaryLines(p);
   if (p.link) lines.push(t(p.lang).mcl_sum_page({ link: p.link }));
   return lines.join("\n");

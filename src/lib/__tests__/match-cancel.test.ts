@@ -228,7 +228,8 @@ describe("a past game marked as not played", () => {
     date: TUE,
     redScore: null,
     yellowScore: null,
-    activity: { orgId: "sutton", name: "Tuesday 5-a-side", org: { language: lang, squadMode } },
+    // Sutton FC collects payments (the "N had paid" line needs it, 2026-11-03).
+    activity: { orgId: "sutton", name: "Tuesday 5-a-side", org: { language: lang, squadMode, paymentCollectionEnabled: true } },
     ...over,
   });
 
@@ -274,6 +275,16 @@ describe("a past game marked as not played", () => {
     const r = await cancelMatchById("tue", { now: WED });
     expect(r.kind === "not-played" && r.paidCount).toBe(4);
     expect(dbMock.attendance.findMany).toHaveBeenCalledWith({ where: { matchId: "tue", paidAt: { not: null } }, select: { paymentMethod: true } });
+  });
+
+  it("payments off (neither tracked nor collected, 2026-11-03): nobody is counted as paid, so no money line is said", async () => {
+    const off = past();
+    off.activity.org = { language: "en", squadMode: "weekly", paymentCollectionEnabled: false };
+    dbMock.match.findUnique.mockResolvedValue(off);
+    dbMock.attendance.findMany.mockResolvedValue([{ paymentMethod: "card" }]);
+    dbMock.paymentCredit.findMany.mockResolvedValue([{ count: 2 }]);
+    const r = await cancelMatchById("tue", { now: WED });
+    expect(r.kind === "not-played" && r.paidCount).toBe(0);
   });
 
   it("the after-game 'join the club?' questions not yet answered are withdrawn and their queued DMs cancelled; guests' results LEFT AS THEY ARE (review of #437, 2)", async () => {
@@ -375,7 +386,7 @@ describe("the doors, for a past game", () => {
   const TUE = new Date("2026-10-27T21:15:00Z");
   const WED = new Date("2026-10-28T10:00:00Z");
   const NEXT = new Date("2026-11-03T21:15:00Z");
-  const past = { id: "tue", status: "COMPLETED", date: TUE, redScore: null, yellowScore: null, activity: { orgId: "sutton", name: "Tuesday 5-a-side", org: { language: "en", squadMode: "weekly" } } };
+  const past = { id: "tue", status: "COMPLETED", date: TUE, redScore: null, yellowScore: null, activity: { orgId: "sutton", name: "Tuesday 5-a-side", org: { language: "en", squadMode: "weekly", paymentCollectionEnabled: true } } };
 
   it("HQ: 'Tuesday's game didn't happen' marks the past Tuesday, replies to the organiser, posts the ratings line", async () => {
     dbMock.match.findMany.mockResolvedValue([{ id: "tue", date: TUE, status: "COMPLETED" }, { id: "next", date: NEXT, status: "UPCOMING" }]);
@@ -444,7 +455,7 @@ describe("review of #437: the doors, again", () => {
   const TUE = new Date("2026-10-27T21:15:00Z");
   const WED = new Date("2026-10-28T10:00:00Z");
   const NEXT = new Date("2026-11-03T21:15:00Z");
-  const past = { id: "tue", status: "COMPLETED", date: TUE, redScore: null, yellowScore: null, activity: { orgId: "sutton", name: "Tuesday 5-a-side", org: { language: "en", squadMode: "weekly" } } };
+  const past = { id: "tue", status: "COMPLETED", date: TUE, redScore: null, yellowScore: null, activity: { orgId: "sutton", name: "Tuesday 5-a-side", org: { language: "en", squadMode: "weekly", paymentCollectionEnabled: true } } };
   const list = [{ id: "tue", date: TUE, status: "COMPLETED", redScore: null, yellowScore: null }, { id: "next", date: NEXT, status: "UPCOMING", redScore: null, yellowScore: null }];
 
   it("1: 'the last match didn't happen' said twice: the second says 'already', the game before is never touched", async () => {

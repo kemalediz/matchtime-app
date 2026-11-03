@@ -6,6 +6,7 @@ import { Plus, Zap, X } from "lucide-react";
 import {
   createActivity,
   updateActivity,
+  setActivityMinPlayers,
   generateMatchesForActivity,
 } from "@/app/actions/activities";
 import { DAYS_OF_WEEK } from "@/lib/constants";
@@ -20,6 +21,8 @@ import { t } from "@/lib/i18n/t";
 import { activityFeeText, parseActivityFee } from "@/lib/activity-fee";
 import { FEE_EDIT_PARAM } from "@/lib/setup-learning/suggestion-action";
 import { activityTimingsPatch, type ActivityTimings } from "@/lib/activity-timings";
+import { checkMinPlayers, parseMinPlayersInput } from "@/lib/min-players";
+import { minPlayersCopy } from "@/lib/i18n/min-players";
 
 interface Sport {
   id: string;
@@ -49,6 +52,8 @@ interface Activity {
   feePerPlayer: number | null;
   /** The pitch cost is split between who played: no fixed fee. */
   feeSplitTotal: boolean;
+  /** The fewest players the game is played with; null: two full sides. */
+  minPlayers: number | null;
   createdAt: string;
 }
 
@@ -58,6 +63,7 @@ const PENDING_RELOADS = 12;
 export default function ActivitiesPage() {
   const lang = useOrgLang();
   const s = t(lang);
+  const mp = minPlayersCopy(lang);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [sports, setSports] = useState<Sport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,6 +101,11 @@ export default function ActivitiesPage() {
   const [eDuration, setEDuration] = useState("60");
   const [eDeadline, setEDeadline] = useState("5");
   const [eTimingsWas, setETimingsWas] = useState<ActivityTimings>({ matchDurationMins: 60, deadlineHours: 5 });
+  // The fewest players, as typed and as stored (2026-11-03). Sent only
+  // when changed.
+  const [eMin, setEMin] = useState("");
+  const [eMinWas, setEMinWas] = useState("");
+  const [ePlaces, setEPlaces] = useState(0);
   const [eSaving, setESaving] = useState(false);
   // The setup reading's fee suggestion links here with `?edit=fee`
   // (setup-learning/suggestion-action.ts): the weekly game's edit form
@@ -200,6 +211,9 @@ export default function ActivitiesPage() {
     setEDuration(String(a.matchDurationMins));
     setEDeadline(String(a.deadlineHours));
     setETimingsWas({ matchDurationMins: a.matchDurationMins, deadlineHours: a.deadlineHours });
+    setEMin(a.minPlayers != null ? String(a.minPlayers) : "");
+    setEMinWas(a.minPlayers != null ? String(a.minPlayers) : "");
+    setEPlaces(a.sport.playersPerTeam * 2);
     setFocusFee(false);
   }
 
@@ -210,6 +224,9 @@ export default function ActivitiesPage() {
     if (feeChanged && !parseActivityFee(eFee).ok) return toast.error(s.act_fee_invalid);
     const timings = activityTimingsPatch({ matchDurationMins: eDuration, deadlineHours: eDeadline }, eTimingsWas);
     if (!timings.ok) return toast.error(timings.field === "matchDurationMins" ? s.act_duration_invalid : s.act_deadline_invalid);
+    const minChanged = eMin.trim() !== eMinWas;
+    const min = parseMinPlayersInput(eMin);
+    if (minChanged && (!min.ok || !checkMinPlayers(min.value, ePlaces).ok)) return toast.error(mp.invalid({ places: ePlaces }));
     setESaving(true);
     try {
       await updateActivity(editId, {
@@ -221,6 +238,7 @@ export default function ActivitiesPage() {
         ...(feeChanged ? { feePerPlayer: eFee } : {}),
         ...timings.patch,
       });
+      if (minChanged && min.ok) await setActivityMinPlayers(editId, min.value);
       toast.success("Activity updated");
       setEditId(null);
       reloadAfterSave();
@@ -286,6 +304,7 @@ export default function ActivitiesPage() {
                   {!a.feeSplitTotal && activityFeeText(a.feePerPlayer) && (
                     <span data-testid="activity-fee-row"> · {s.act_fee_row({ fee: activityFeeText(a.feePerPlayer) })}</span>
                   )}
+                  {a.minPlayers != null && <span data-testid="activity-min-players-row"> · {mp.row({ minimum: a.minPlayers })}</span>}
                 </p>
                 <VenueConfirmLine activityId={a.id} location={a.venueLocation} lang={lang} onChanged={loadActivities} />
                 <p className="flex flex-wrap items-center gap-1 text-xs text-slate-400 mt-0.5">
@@ -444,7 +463,9 @@ export default function ActivitiesPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
           onClick={() => setEditId(null)}
         >
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+          {/* Scrolls when the form is taller than the screen (a phone, or the
+              minimum-players box added 2026-11-03): Save stays reachable. */}
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-full overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <h3 className="font-semibold text-slate-800">Edit activity</h3>
               <button onClick={() => setEditId(null)} className="text-slate-400 hover:text-slate-600">
@@ -538,6 +559,26 @@ export default function ActivitiesPage() {
                 </div>
                 <p id="activity-timings-hint" data-testid="activity-timings-hint" className="mt-1 text-xs text-slate-400">
                   {s.act_timings_hint}
+                </p>
+              </div>
+              <div>
+                <label htmlFor="activity-min-players" className="block text-sm font-medium text-slate-700 mb-1.5">
+                  {mp.label}
+                </label>
+                {/* No min or max here: a changed value is checked on save. */}
+                <input
+                  id="activity-min-players"
+                  data-testid="activity-min-players"
+                  type="number"
+                  inputMode="numeric"
+                  value={eMin}
+                  onChange={(e) => setEMin(e.target.value)}
+                  placeholder={String(ePlaces)}
+                  aria-describedby="activity-min-players-hint"
+                  className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p id="activity-min-players-hint" data-testid="activity-min-players-hint" className="mt-1 text-xs text-slate-400">
+                  {mp.hint({ full: ePlaces })}
                 </p>
               </div>
               <div>

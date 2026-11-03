@@ -1120,6 +1120,9 @@ describe("PAYMENTS: the priced list, the count and the reminder DMs", () => {
         approvalStatus: "approved",
         dormantAt: clubDormant ? new Date("2026-10-01T00:00:00.000Z") : null,
         billingStatus: "exempt",
+        // The club tracks payments: with both flags off nothing here is sent
+        // (2026-11-03, payments-off-scheduler.test.ts).
+        paymentTrackingEnabled: true,
       }),
     };
     overrides.user = {
@@ -1138,6 +1141,26 @@ describe("PAYMENTS: the priced list, the count and the reminder DMs", () => {
     const out = await instructions(at("2026-10-29T21:30:00.000Z"));
     expect(signupReads).not.toHaveBeenCalled();
     expect(out.some((i) => i.key.includes(":mpy:"))).toBe(false);
+  });
+
+  it("PAYMENTS OFF (the Vets, 2026-11-03): neither tracked nor collected, so the priced list, the count and every reminder DM are not sent", async () => {
+    world();
+    features.paymentTracking = false;
+    features.paymentCollection = false;
+    try {
+      for (const iso of ["2026-10-27T12:30:00.000Z", "2026-10-29T21:30:00.000Z", "2026-10-30T10:00:00.000Z", "2026-11-01T10:00:00.000Z"]) {
+        const out = await instructions(at(iso));
+        expect(out.filter((i) => i.key.includes(":mpy:")), iso).toEqual([]);
+        // The monthly announcement (Kemal's wording, 3 Nov) says who is in
+        // ("Paid for the month? You're in every game"): attendance, not a
+        // payment message, so it stays.
+        const money = out.filter((i) => !i.key.endsWith(":announce-match") && "text" in i && /£|paid|pay /i.test(String((i as { text?: string }).text ?? "")));
+        expect(money, iso).toEqual([]);
+      }
+    } finally {
+      features.paymentTracking = true;
+      features.paymentCollection = true;
+    }
   });
 
   it("the priced list is posted once per price: amounts, the pay-by date, the club's own instructions", async () => {

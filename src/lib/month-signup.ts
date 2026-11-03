@@ -27,6 +27,7 @@
  * calls a model. A month a club started part-way through (plan 4.5) has
  * no sign-up: it is "running" from the start and never read as "open".
  */
+import { PAYMENT_FLAGS_SELECT, paymentMessagesOn } from "./payment-messages";
 import { db } from "./db";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { sendAdminNotice } from "./admin-channel";
@@ -1293,7 +1294,10 @@ export async function askToJoinMonth(p: { month: SignupMonth; userId: string; no
   const user = await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } });
   const phone = user?.phoneNumber?.replace(/^\+/, "");
   if (!phone) return false;
-  const price = month.sharePerGamePence != null ? `£${((month.sharePerGamePence * left) / 100).toFixed(2)}` : null;
+  // No price while the club neither tracks nor collects payments
+  // (2026-11-03, `payment-messages.ts`): the ask is for the games only.
+  const flags = await db.organisation.findUnique({ where: { id: month.orgId }, select: PAYMENT_FLAGS_SELECT });
+  const price = month.sharePerGamePence != null && paymentMessagesOn(flags) ? `£${((month.sharePerGamePence * left) / 100).toFixed(2)}` : null;
   const text = t(month.language).msu_dm_join_ask({ month: monthNameLabel(month.language, month.firstKickoff), games: left, price });
   try {
     await db.sentNotification.create({ data: { key: monthJoinAskKey(month.orgId, month.id, userId), kind: MONTH_JOIN_ASK_KIND, targetUser: userId, text } });

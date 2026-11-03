@@ -33,6 +33,7 @@
  * once (`resolvedAt` NULL in the WHERE), and a Pi retry of the same HQ
  * message finds its proposal by message id.
  */
+import { PAYMENT_FLAGS_SELECT, paymentMessagesOn } from "./payment-messages";
 import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf, type QuietHoursRow } from "./message-hours";
 import { db } from "./db";
 import { t } from "./i18n/t";
@@ -73,7 +74,7 @@ export async function waiveMatchFee(input: {
     select: {
       date: true,
       paymentLinksReleasedAt: true,
-      activity: { select: { orgId: true, org: { select: { paymentHolderId: true, language: true, ...QUIET_HOURS_SELECT } } } },
+      activity: { select: { orgId: true, org: { select: { paymentHolderId: true, language: true, ...PAYMENT_FLAGS_SELECT, ...QUIET_HOURS_SELECT } } } },
     },
   });
   if (!match) return "not-in-squad";
@@ -94,7 +95,8 @@ export async function waiveMatchFee(input: {
   });
   if (res.count > 0) {
     // Their pay link is already out: tell them, once, that they owe nothing.
-    if (match.paymentLinksReleasedAt) {
+    // Never with the club's payments off (2026-11-03, `payment-messages.ts`).
+    if (match.paymentLinksReleasedAt && paymentMessagesOn(match.activity.org)) {
       const user = await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } });
       if (user?.phoneNumber) {
         await db.botJob.create({

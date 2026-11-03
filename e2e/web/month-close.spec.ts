@@ -184,8 +184,8 @@ test.beforeAll(async () => {
   const db = testDb();
   await db.run(
     `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled", "squadMode", "paygPricePence",
-                                 "adminChannelMode", language, "updatedAt")
-     VALUES ($1, 'Vets MNF', $1, $2, $3, true, 'monthly', 800, 'each-admin', 'en', now())`,
+                                 "adminChannelMode", language, "paymentTrackingEnabled", "updatedAt")
+     VALUES ($1, 'Vets MNF', $1, $2, $3, true, 'monthly', 800, 'each-admin', 'en', true, now())`,
     [ORG, `${ORG}-invite`, GROUP],
   );
   await db.run(

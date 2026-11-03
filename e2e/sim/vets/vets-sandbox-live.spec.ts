@@ -1181,4 +1181,112 @@ scenario.describe("the Vets sandbox", () => {
       expect.soft(r.sent.some((m) => m.channel === "dm" && m.to === "vets.shane" && /Only an organiser/.test(m.text)), "Shane told").toBe(true);
     });
   });
+
+  // ── O ──────────────────────────────────────────────────────────────
+  // The Vets play one down (6 v 7). With their minimum (12), 13 of 14 the
+  // day before is no "Match in trouble"; 11 of 14 is. (2026-11-03)
+  scenario("O. minimum players 12: 13 of 14 the day before, no 'Match in trouble' and no 'Low numbers'; 11 of 14, the owner is warned with the minimum", async ({ pool, db }) => {
+    const v = await vetsClub(pool, "vets", { month: "running", played: { keys: LIST_KEYS } });
+    await db.run(`UPDATE "Activity" SET "minPlayers" = 12 WHERE "orgId" = $1`, [v.orgId]);
+    // The poll after 08:00 the morning after the last game seeds the week.
+    await schedulerPoll(pool, v, new Date());
+    const confirmed = () => db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND status = 'CONFIRMED'`, [v.matchId]);
+    expect(await confirmed()).toBe(13);
+    const dayBefore = londonDay(new Date(v.kickoff.getTime() - 24 * 3_600_000));
+    const nudgesAt = async (time: string, claim: boolean) => {
+      const { instructions, sent } = await schedulerPoll(pool, v, london(dayBefore, time), { claim });
+      const all = [...instructions.map((i) => ({ key: i.key ?? "", text: i.text ?? "" })), ...sent.map((m) => ({ key: "", text: m.text }))];
+      return all.filter((i) => /cancel-nudge|switch-nudge/.test(i.key) || /Match in trouble|Low numbers/.test(i.text));
+    };
+    expect(await nudgesAt("10:05", false), "13 of 14 at 10:00").toEqual([]);
+    expect(await nudgesAt("18:05", false), "13 of 14 at 18:00").toEqual([]);
+
+    // Two regulars can't make it: 11 of 14, below their minimum.
+    for (const k of ["steve", "jon"]) {
+      await db.run(
+        `WITH a AS (UPDATE "Attendance" SET status = 'DROPPED' WHERE "matchId" = $1 AND "userId" = $2 RETURNING "matchId", "userId", position)
+         INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "fromStatus", "toStatus", "toPosition", cause, "actorKind")
+         SELECT $4, "matchId", "userId", $3, 'CONFIRMED', 'DROPPED', position, 'test-fixture', 'system' FROM a`,
+        [v.matchId, v.userId(k), v.orgId, `sim-vets-o-${k}-out-${v.orgId}`],
+      );
+    }
+    expect(await confirmed()).toBe(11);
+    const warned = await nudgesAt("18:05", true);
+    console.log(`[vets O] 11 of 14, minimum 12, Sunday 18:05:\n${warned.map((w) => `  ${w.key}: ${w.text}`).join("\n")}`);
+    expect(warned.length, "the owner's 'Match in trouble'").toBeGreaterThan(0);
+    expect(warned[0].text).toContain("only *11* confirmed for *Football 7-a-side* tomorrow, below the minimum to play (12)");
+    expect(warned[0].text).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  // ── P ──────────────────────────────────────────────────────────────
+  // Payment tracking and collection off (the Vets): nothing about payments
+  // is sent to anyone, all week, though the month is priced and five say
+  // they have paid. Kemal: "no need to DM anybody about payment reminders".
+  scenario("P. payments off: a priced month with five paid claims, polled every hour for a week, sends nothing about payments; a 'paid' DM is recorded and answered with nothing", async ({ pool, db }) => {
+    const v = await vetsClub(pool, "vets", { month: "running", played: { keys: LIST_KEYS } });
+    await db.run(
+      `UPDATE "SquadMonth" SET "sharePerGamePence" = 750, "pricedAt" = now() - interval '1 day', "listOpenedAt" = now() - interval '2 days',
+         "payByAt" = now() + interval '2 days' WHERE id = $1`,
+      [v.monthId],
+    );
+    await db.run(`UPDATE "SquadMonthMember" SET "paidAt" = NULL, "amountDuePence" = 3000 WHERE "monthId" = $1`, [v.monthId]);
+    await db.run(
+      `UPDATE "SquadMonthMember" SET "paidClaimedAt" = now() - interval '3 hours', "paidClaimSource" = 'dm'
+        WHERE "monthId" = $1 AND "userId" = ANY($2::text[])`,
+      [v.monthId, ["nabz", "craig", "dan", "ben", "kerem"].map((k) => v.userId(k))],
+    );
+    const PAYMENT = /💷|say they.ve paid|PAID ALL|PAID NONE|pay by|still to pay|to pay|you say you have paid|set the price|unpaid|pay link|match fee|owe/i;
+    const KEYS = /:mpy:|:payment-|:unpaid-|:fee-ask|:pay-chase/;
+    const seen: Array<{ at: string; key: string; to: string; text: string }> = [];
+    const start = Date.now();
+    for (let h = 0; h <= 7 * 24; h++) {
+      const now = new Date(start + h * 3_600_000);
+      const { instructions, sent } = await schedulerPoll(pool, v, now);
+      const at = formatInTimeZone(now, LONDON, "EEE d MMM HH:mm");
+      for (const i of instructions) seen.push({ at, key: i.key ?? "", to: i.phone ?? i.kind, text: i.text ?? "" });
+      for (const m of sent) seen.push({ at, key: "", to: m.to, text: m.text });
+    }
+    // The week's list says what an open place costs ("1 place open, £8"):
+    // that is the game, not a payment message, and it stays.
+    const payment = seen.filter((m) => KEYS.test(m.key) || (PAYMENT.test(m.text) && !/:month-list:|:announce-match/.test(m.key)));
+    console.log(`[vets P] ${seen.length} message(s) in a week; about payments: ${payment.length}\n${payment.map((m) => `  ${m.at} ${m.key} to ${m.to}: ${m.text.slice(0, 160).replace(/\n/g, " | ")}`).join("\n")}`);
+    expect(payment, "payment messages with tracking off").toEqual([]);
+    // No digest was even recorded for the collector to answer.
+    expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key LIKE $1`, [`org-${v.orgId}:mpy:%`])).toBe(0);
+
+    if (LIVE) {
+      // A regular DMs "paid": the claim is recorded, and nothing is sent back.
+      const paid = await v.club.member("steff").dm("Paid mate, sent it to Davide this morning");
+      console.log(`[vets P] steff's "paid" DM: ${JSON.stringify({ json: paid.json, sent: paid.sent })}`);
+      expect(paid.sent.filter((m) => PAYMENT.test(m.text) || /paid|noted/i.test(m.text)), "a reply about the payment").toEqual([]);
+      const claim = await db.all<{ paidClaimedAt: Date | null; paidAt: Date | null }>(
+        `SELECT "paidClaimedAt", "paidAt" FROM "SquadMonthMember" WHERE "monthId" = $1 AND "userId" = $2`,
+        [v.monthId, v.userId("steff")],
+      );
+      console.log(`[vets P] steff's row: ${JSON.stringify(claim)}`);
+      expect(claim[0].paidAt).toBeNull();
+    }
+  });
+
+  // ── Q ──────────────────────────────────────────────────────────────
+  // Davide sets the minimum by tagging MatchTime (Kemal: every admin
+  // feature by WhatsApp too), through the real router and admin extractor.
+  scenario("Q. '@Match Time we can play with 12' from Davide sets the game's minimum; a player's is refused; 'back to full teams' undoes it", async ({ pool, db }) => {
+    liveOnly();
+    const v = await vetsClub(pool, "vets", { month: "running", played: { keys: LIST_KEYS } });
+    const minOf = async () => ((await db.all<{ m: number | null }>(`SELECT "minPlayers" AS m FROM "Activity" WHERE "orgId" = $1`, [v.orgId]))[0]?.m ?? null);
+
+    const set = await say(pool, v, "davide", "@Match Time we can play with 12", { tag: true });
+    console.log(`[vets Q] Davide's minimum: ${JSON.stringify({ reply: set.reply, intent: set.intent, handledBy: set.handledBy })}`);
+    expect(await minOf()).toBe(12);
+    expect(set.reply).toContain("goes ahead with *12* or more");
+
+    const player = await say(pool, v, "kerem", "@Match Time minimum 10 players", { tag: true });
+    console.log(`[vets Q] a player's minimum: ${JSON.stringify({ reply: player.reply, intent: player.intent })}`);
+    expect(await minOf()).toBe(12);
+
+    const back = await say(pool, v, "davide", "@Match Time back to full teams please", { tag: true });
+    console.log(`[vets Q] back to full teams: ${JSON.stringify({ reply: back.reply, intent: back.intent })}`);
+    expect(await minOf()).toBeNull();
+  });
 });
