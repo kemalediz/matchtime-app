@@ -32,10 +32,30 @@
  * the club's active weekly games when they all share one, else null
  * ("this group's games"). Read through the same client; a client without
  * the read, or a read that fails, gives null.
+ *
+ * THE POOL AND PARTNER CLUBS (2026-11-03, `loadHelloClubFacts`). Whether
+ * the player pool is open for the club (the platform switch, the
+ * `PlatformSetting` row "pool-offers" with the env override, AND the
+ * club's `featurePlayerPool`: `poolOpenForClub`), whether it asks partner
+ * clubs (an ACTIVE `ClubPartnership` with it as the asker, and
+ * its ask setting not "off", read through `loadPartnerAskSettings`, the
+ * one reader of it), and whether a partner asks it (an ACTIVE
+ * one with it as the partner). Facts from rows, never words. Any read
+ * that is missing or fails reads as off: the hello then marks the line
+ * optional, which is never a false promise.
  */
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "@/lib/db";
-import { HELLO_ORG_SELECT, helloInputFromOrg, type GroupHelloInput, type HelloOrgRow } from "./group-hello";
+import {
+  HELLO_ORG_SELECT,
+  NO_HELLO_CLUB_FACTS,
+  helloInputFromOrg,
+  type GroupHelloInput,
+  type HelloClubFacts,
+  type HelloOrgRow,
+} from "./group-hello";
+import { poolOpenForClub, poolPlatformOpen } from "./pool/flags";
+import { POOL_PLATFORM_KEY } from "./pool/platform-switch";
 import {
   ROLLING_LOOKBACK_DAYS,
   carrySourcesAt,
@@ -93,6 +113,14 @@ export interface HelloReadClient {
   /** Read only when a carried player has no phone. Optional so a double
    *  without it reads as "no admin added anybody". */
   attendanceEvent?: AdminAddedReadClient["attendanceEvent"];
+  /** The partner clubs. Optional: absent reads as none. */
+  clubPartnership?: {
+    count(args: { where: { askerOrgId: string; status: "active" } | { partnerOrgId: string; status: "active" } }): Promise<number>;
+  };
+  /** The pool's platform switch. Optional: absent reads as closed. */
+  platformSetting?: {
+    findUnique(args: { where: { key: string }; select: { on: true } }): Promise<{ on: boolean } | null>;
+  };
   /** The game day. Optional: absent reads as no single day. */
   activity?: {
     findMany(args: {
@@ -112,6 +140,36 @@ export async function loadHelloGameDay(orgId: string, client: HelloReadClient): 
   } catch (err) {
     console.error(`[group-hello] game day for ${orgId} unread:`, err instanceof Error ? err.message : "failed");
     return null;
+  }
+}
+
+type Env = Record<string, string | undefined>;
+
+/** The pool and partner facts the hello's lines are built from. */
+export async function loadHelloClubFacts(
+  orgId: string,
+  row: Pick<HelloOrgRow, "featurePlayerPool">,
+  client: HelloReadClient,
+  env: Env = process.env,
+): Promise<HelloClubFacts> {
+  try {
+    const [platform, asks, helps] = await Promise.all([
+      client.platformSetting ? client.platformSetting.findUnique({ where: { key: POOL_PLATFORM_KEY }, select: { on: true } }) : null,
+      client.clubPartnership ? client.clubPartnership.count({ where: { askerOrgId: orgId, status: "active" } }) : 0,
+      client.clubPartnership ? client.clubPartnership.count({ where: { partnerOrgId: orgId, status: "active" } }) : 0,
+    ]);
+    // The ask setting has one reader (club-partnership.ts); it is read only
+    // when there is a partner to ask. Loaded here only, so the hello's
+    // callers do not pull the partner code in with it.
+    const askWhen = asks > 0 ? ((await (await import("./club-partnership")).loadPartnerAskSettings(orgId))?.when ?? "off") : "off";
+    return {
+      pool: poolOpenForClub({ featurePlayerPool: row.featurePlayerPool === true }, poolPlatformOpen(platform?.on === true, env)),
+      partnersAsk: asks > 0 && askWhen !== "off",
+      partnersHelp: helps > 0,
+    };
+  } catch (err) {
+    console.error(`[group-hello] club facts for ${orgId} unread:`, err instanceof Error ? err.message : "failed");
+    return NO_HELLO_CLUB_FACTS;
   }
 }
 
@@ -221,7 +279,7 @@ export async function loadHasSquadToCarry(orgId: string, client: HelloReadClient
 
 export async function loadHelloInput(
   orgId: string,
-  opts: { organiserUserId?: string | null; client?: HelloReadClient; now?: Date } = {},
+  opts: { organiserUserId?: string | null; client?: HelloReadClient; now?: Date; env?: Env } = {},
 ): Promise<GroupHelloInput> {
   const client = opts.client ?? (db as unknown as HelloReadClient);
   const row = await client.organisation.findUnique({ where: { id: orgId }, select: HELLO_ORG_SELECT });
@@ -229,10 +287,12 @@ export async function loadHelloInput(
 
   const input = helloInputFromOrg(row, await loadOrganiserName(orgId, { organiserUserId: opts.organiserUserId, client }));
   const gameDay = await loadHelloGameDay(orgId, client);
+  const clubFacts = await loadHelloClubFacts(orgId, row, client, opts.env);
   const rolling = input.settings.attendance && input.settings.rollingSquad;
   return {
     ...input,
     gameDay,
+    clubFacts,
     hasSquadToCarry: rolling ? await loadHasSquadToCarry(orgId, client, opts.now ?? new Date()) : false,
   };
 }

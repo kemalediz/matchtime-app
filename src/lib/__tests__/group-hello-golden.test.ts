@@ -15,7 +15,7 @@
  * what the reviewer reads.
  */
 import { describe, expect, it } from "vitest";
-import { DEFAULT_HELLO_SETTINGS, buildGroupHello, type GroupHelloSettings } from "../group-hello";
+import { DEFAULT_HELLO_SETTINGS, buildGroupHello, type GroupHelloSettings, type HelloClubFacts } from "../group-hello";
 
 type L = "en" | "tr";
 const MON_2100 = { day: 1, time: "21:00" };
@@ -30,6 +30,7 @@ const CASES: Array<{
   catchUp?: boolean;
   carry?: boolean;
   gameDay?: number | null;
+  facts?: HelloClubFacts;
 }> = [
   { id: "H1 defaults, catch-up left out (equals sj_group_hello)", patch: {}, catchUp: false },
   { id: "H2 defaults", patch: {} },
@@ -89,6 +90,22 @@ const CASES: Array<{
   },
   { id: "H26 weekly sign-up, Tuesday games, pay links card and bank with tracking", patch: { payLinks: "card-and-bank", paymentTracking: true }, gameDay: 2 },
   { id: "H27 attendance off, squad from a pasted list", patch: { attendance: false, bench: false, squadFromList: true } },
+  // ── 2026-11-03: every claim true for the club ──
+  {
+    id: "H28 monthly squad, Monday games, organiser Davide, pool and partner clubs both ways on",
+    patch: { squadMode: "monthly", paymentTracking: true },
+    organiser: "Davide",
+    gameDay: 1,
+    facts: { pool: true, partnersAsk: true, partnersHelp: true },
+  },
+  { id: "H29 organisers pick Man of the Match", patch: { momByOrganisers: true } },
+  { id: "H30 partner clubs: we ask, nobody asks us", patch: {}, facts: { pool: true, partnersAsk: true, partnersHelp: false } },
+  { id: "H31 partner clubs: a partner asks us, we do not ask", patch: {}, facts: { pool: false, partnersAsk: false, partnersHelp: true } },
+  {
+    id: "H32 everything switched off but attendance, no organiser name",
+    patch: { teamBalancing: false, momVoting: false, playerRating: false, reminders: false, statsQa: false },
+    organiser: null,
+  },
 ];
 
 function render(lang: L): string {
@@ -103,6 +120,7 @@ function render(lang: L): string {
         hasSquadToCarry: c.carry ?? true,
         gameDay: c.gameDay ?? null,
         settings: { ...DEFAULT_HELLO_SETTINGS, ...c.patch },
+        clubFacts: c.facts,
       });
       return `\n### ${c.id}\n${text}\n`;
     }).join("")

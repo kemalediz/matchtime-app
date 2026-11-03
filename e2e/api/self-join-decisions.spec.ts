@@ -254,7 +254,7 @@ test("the whole flow: connect DM, add, pending, APPROVE by DM, hello first, orga
   const groupPosts = instructions.filter((i: { kind: string }) => i.kind === "group-message" || i.kind === "group-poll");
   expect(groupPosts).toHaveLength(1);
   expect(groupPosts[0].text).toBe(hello("en")({ organiser: "Ali" }));
-  expect(groupPosts[0].text).toContain("Ali has set me up to run this group's games.");
+  expect(groupPosts[0].text).toContain("Ali has set me up to help run this group's games.");
   expect(instructions[0]).toBe(groupPosts[0]);
   // One introduction, not two: the approval claimed the scheduler's
   // one-time intro, although the club has an active activity.

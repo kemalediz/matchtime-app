@@ -13,11 +13,17 @@ const dbMock = vi.hoisted(() => ({
   attendance: { findMany: vi.fn() },
   attendanceEvent: { findMany: vi.fn() },
   activity: { findMany: vi.fn() },
+  clubPartnership: { count: vi.fn() },
+  platformSetting: { findUnique: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
+const askSettings = vi.hoisted(() => ({ loadPartnerAskSettings: vi.fn() }));
+vi.mock("../club-partnership", () => askSettings);
+const askWhen = (when: string | null) =>
+  askSettings.loadPartnerAskSettings.mockResolvedValue(when === null ? null : { when, time: null, cutoffHours: 2 });
 
 import { loadHelloInput, type HelloReadClient } from "../group-hello-load";
-import { DEFAULT_HELLO_SETTINGS, HELLO_ORG_SELECT, buildGroupHello, type HelloOrgRow } from "../group-hello";
+import { DEFAULT_HELLO_SETTINGS, HELLO_ORG_SELECT, NO_HELLO_CLUB_FACTS, buildGroupHello, type HelloOrgRow } from "../group-hello";
 import { en } from "../i18n/strings.en";
 import { tr } from "../i18n/strings.tr";
 
@@ -88,9 +94,15 @@ beforeEach(() => {
     dbMock.attendance.findMany,
     dbMock.attendanceEvent.findMany,
     dbMock.activity.findMany,
+    dbMock.clubPartnership.count,
+    dbMock.platformSetting.findUnique,
   ]) {
     m.mockReset();
   }
+  dbMock.clubPartnership.count.mockResolvedValue(0);
+  askSettings.loadPartnerAskSettings.mockReset();
+  askWhen("off");
+  dbMock.platformSetting.findUnique.mockResolvedValue({ on: true });
   dbMock.attendanceEvent.findMany.mockResolvedValue([]);
   dbMock.activity.findMany.mockResolvedValue([]);
   dbMock.match.findMany.mockResolvedValue([]);
@@ -133,7 +145,14 @@ describe("loadHelloInput", () => {
   it("reads the hello's columns and names the person who connected the club", async () => {
     const input = await loadHelloInput("org-1");
     expect(dbMock.organisation.findUnique).toHaveBeenCalledWith({ where: { id: "org-1" }, select: HELLO_ORG_SELECT });
-    expect(input).toEqual({ organiser: "Ali", lang: "en", settings: DEFAULT_HELLO_SETTINGS, hasSquadToCarry: false, gameDay: null });
+    expect(input).toEqual({
+      organiser: "Ali",
+      lang: "en",
+      settings: DEFAULT_HELLO_SETTINGS,
+      hasSquadToCarry: false,
+      gameDay: null,
+      clubFacts: NO_HELLO_CLUB_FACTS,
+    });
     expect(dbMock.membership.findFirst).not.toHaveBeenCalled();
     // A club that signs up each week is never asked about a squad to carry.
     expect(dbMock.match.findMany).not.toHaveBeenCalled();
@@ -316,5 +335,76 @@ describe("loadHelloInput", () => {
     expect(tx.match.findMany).toHaveBeenCalledTimes(1);
     expect(dbMock.match.findMany).not.toHaveBeenCalled();
     expect(dbMock.organisation.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+// ── 2026-11-03: the pool and partner clubs, from rows ──
+describe("loadHelloInput: the pool and partner clubs", () => {
+  const partners = (asks: number, helps: number) =>
+    dbMock.clubPartnership.count.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+      "askerOrgId" in where ? asks : helps,
+    );
+
+  it("the vets: pool switch off, no partnership: both read as off, and the hello marks both optional", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ ...ROW, squadMode: "monthly", featurePlayerPool: false });
+    const input = await loadHelloInput("org-1");
+    expect(input.clubFacts).toEqual({ pool: false, partnersAsk: false, partnersHelp: false });
+    const out = buildGroupHello(input);
+    expect(out).toContain("🤝 *More games (optional, Ali can switch this on):*");
+    expect(out).toContain("🌍 *Partner clubs (optional, Ali can switch this on):*");
+    // Only ACTIVE partnerships count, each direction read on its own.
+    expect(dbMock.clubPartnership.count.mock.calls.map((c) => c[0])).toEqual([
+      { where: { askerOrgId: "org-1", status: "active" } },
+      { where: { partnerOrgId: "org-1", status: "active" } },
+    ]);
+  });
+
+  it("the pool is open only with the platform switch AND the club's own switch", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ ...ROW, featurePlayerPool: true });
+    expect((await loadHelloInput("org-1")).clubFacts?.pool).toBe(true);
+    dbMock.platformSetting.findUnique.mockResolvedValue({ on: false });
+    expect((await loadHelloInput("org-1")).clubFacts?.pool).toBe(false);
+    dbMock.platformSetting.findUnique.mockResolvedValue(null);
+    expect((await loadHelloInput("org-1")).clubFacts?.pool).toBe(false);
+    dbMock.platformSetting.findUnique.mockResolvedValue({ on: true });
+    expect((await loadHelloInput("org-1", { env: { POOL_OFFERS_ENABLED: "0" } })).clubFacts?.pool).toBe(false);
+    dbMock.organisation.findUnique.mockResolvedValue({ ...ROW, featurePlayerPool: false });
+    expect((await loadHelloInput("org-1")).clubFacts?.pool).toBe(false);
+    expect(dbMock.platformSetting.findUnique).toHaveBeenCalledWith({ where: { key: "pool-offers" }, select: { on: true } });
+  });
+
+  it("asking partners needs an active partnership AND the ask setting on; being asked needs one the other way", async () => {
+    askWhen("on-request");
+    partners(1, 0);
+    expect((await loadHelloInput("org-1")).clubFacts).toMatchObject({ partnersAsk: true, partnersHelp: false });
+    expect(askSettings.loadPartnerAskSettings).toHaveBeenCalledWith("org-1");
+    askWhen("off");
+    expect((await loadHelloInput("org-1")).clubFacts).toMatchObject({ partnersAsk: false });
+    askWhen(null);
+    expect((await loadHelloInput("org-1")).clubFacts).toMatchObject({ partnersAsk: false });
+    askWhen("auto");
+    partners(0, 2);
+    expect((await loadHelloInput("org-1")).clubFacts).toMatchObject({ partnersAsk: false, partnersHelp: true });
+    partners(1, 1);
+    const both = await loadHelloInput("org-1");
+    expect(both.clubFacts).toEqual({ pool: false, partnersAsk: true, partnersHelp: true });
+    expect(buildGroupHello(both)).toContain(en.sj_hello_partners);
+  });
+
+  it("a read that fails, or a client without the reads, is a club with neither: never a false promise", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ ...ROW, featurePlayerPool: true });
+    askWhen("auto");
+    dbMock.clubPartnership.count.mockRejectedValue(new Error("db down"));
+    expect((await loadHelloInput("org-1")).clubFacts).toEqual(NO_HELLO_CLUB_FACTS);
+    const { clubPartnership: _c, platformSetting: _p, ...rest } = dbMock;
+    expect((await loadHelloInput("org-1", { client: rest as unknown as HelloReadClient })).clubFacts).toEqual(NO_HELLO_CLUB_FACTS);
+  });
+
+  it("who chooses Man of the Match comes from the row", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ ...ROW, momChosenBy: "organisers" });
+    const input = await loadHelloInput("org-1");
+    expect(input.settings.momByOrganisers).toBe(true);
+    expect(buildGroupHello(input)).toContain(en.sj_hello_mom_organisers);
+    expect(buildGroupHello({ ...input, lang: "tr" })).toContain(tr.sj_hello_mom_organisers);
   });
 });

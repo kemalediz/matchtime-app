@@ -68,8 +68,11 @@ describe("sj_group_hello: the full intro for an approved group", () => {
 
     it(`${lang}: one readable WhatsApp message, no dashes, no consent or setup question`, () => {
       for (const h of [named, anon]) {
-        // The approved welcome (Kemal, 2026-11-02) is longer than the old intro.
-        expect(h.length).toBeLessThan(2000);
+        // The approved welcome (Kemal, 2026-11-02) is longer than the old
+        // intro, and since 2026-11-03 marks the pool and partner clubs as
+        // optional for a new club, naming who can switch them on, and the
+        // friend line says how an organiser adds a friend.
+        expect(h.length).toBeLessThan(2200);
         expect(h).not.toMatch(/[—–]/);
         expect(h).not.toMatch(/\*YES\*|\*EVET\*/);
         expect(h).not.toMatch(/when and where|ne zaman ve nerede/i);
@@ -85,6 +88,8 @@ describe("sj_group_hello: the full intro for an approved group", () => {
   it("en: every feature line, and no fees line without pay links", () => {
     const h = en.sj_group_hello({ organiser: "Ali" });
     expect(h).toContain("Ali has set me up to help run this group's games.");
+    expect(h).toContain("(optional, Ali can switch this on)");
+    expect(h).not.toMatch(/quick vote|updated every week|stay quiet/);
     for (const f of ["bench", `"@Match Time remind me Thursday"`, "I'll DM you then", "teams", "Man of the Match", "ratings", "Your profile", "Bringing a friend", "More games", "Partner clubs"]) {
       expect(h).toContain(f);
     }
