@@ -3579,13 +3579,28 @@ model PoolConsentRecord {
 model PoolCampaign {
   /// Lowercase letters, digits and hyphens ("li-kemal", "lf-sutton-goals").
   code      String   @id
-  /// "linkedin" | "leaflet" | "club" | "other".
+  /// "linkedin" | "leaflet" | "facebook" | "nextdoor" | "club" | "other".
   source    String
   label     String
   /// The club whose share post this is, for source "club".
   orgId     String?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
+}
+
+/// Visits to /play, per bucket and London day (2026-11-03,
+/// src/lib/pool/visits.ts). `code` is a campaign code, or "_direct" (/play
+/// with no live code) or "_referral" (a friend's ?ref= link): the same
+/// buckets as the sign-ups, so the owner page compares like for like. No
+/// foreign key (the two reserved buckets are not campaigns). Nothing about
+/// the person: no address, no user agent, only the count. Link preview
+/// fetchers are never counted.
+model PoolCampaignVisit {
+  code  String
+  day   DateTime @db.Date
+  count Int      @default(0)
+
+  @@id([code, day])
 }
 
 /// A member vouched for a friend for ONE match (friend link, 2026-10-31,

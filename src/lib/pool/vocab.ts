@@ -117,8 +117,8 @@ export type PoolReportBy = PoolBlockBy;
  *  survive a stop (slice L7), and a review can be asked for them. */
 export const POOL_MATCHTIME_PAUSE_REASONS = ["no-shows", "reports", "admin"] as const satisfies readonly PoolPauseReason[];
 
-/** A campaign code's channel (G1). */
-export const POOL_CAMPAIGN_SOURCES = ["linkedin", "leaflet", "club", "other"] as const;
+/** A campaign code's channel (G1; Facebook and Nextdoor groups, 2026-11-03). */
+export const POOL_CAMPAIGN_SOURCES = ["linkedin", "leaflet", "facebook", "nextdoor", "club", "other"] as const;
 export type PoolCampaignSource = (typeof POOL_CAMPAIGN_SOURCES)[number];
 
 // ── Guests (club side: partner and pool alike) ─────────────────────────

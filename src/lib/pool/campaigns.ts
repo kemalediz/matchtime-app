@@ -15,6 +15,7 @@ import { appBaseUrl } from "../app-url";
 import { db } from "../db";
 import { clubShareCampaignCode, clubShareCampaignLabel } from "./club-share-rules";
 import { campaignSignupCounts, poolCampaignUrl, validateCampaignInput, type CampaignInputErrors } from "./growth-rules";
+import { POOL_VISIT_DIRECT, POOL_VISIT_REFERRAL, poolVisitTotals } from "./visit-rules";
 
 export interface PoolCampaignRow {
   code: string;
@@ -23,14 +24,34 @@ export interface PoolCampaignRow {
   active: boolean;
   createdAt: Date;
   url: string;
-  waiting: number;
-  confirmed: number;
 }
 
-export async function listPoolCampaigns(): Promise<PoolCampaignRow[]> {
-  const [campaigns, grouped] = await Promise.all([
+/** One way in's numbers: visits to /play (counted since 2026-11-03, link
+ *  preview fetchers never), sign-ups started (the form sent: waiting and
+ *  confirmed together), confirmed on WhatsApp, and still waiting. */
+export interface PoolWayInNumbers {
+  visits: number;
+  started: number;
+  confirmed: number;
+  waiting: number;
+}
+
+const numbers = (visits: number | undefined, s: { waiting: number; confirmed: number } | undefined): PoolWayInNumbers => {
+  const waiting = s?.waiting ?? 0;
+  const confirmed = s?.confirmed ?? 0;
+  return { visits: visits ?? 0, started: waiting + confirmed, confirmed, waiting };
+};
+
+async function visitTotals(): Promise<Map<string, number>> {
+  const rows = await db.poolCampaignVisit.groupBy({ by: ["code"], _sum: { count: true } });
+  return poolVisitTotals(rows.map((r) => ({ code: r.code, count: r._sum.count })));
+}
+
+export async function listPoolCampaigns(): Promise<Array<PoolCampaignRow & PoolWayInNumbers>> {
+  const [campaigns, grouped, visits] = await Promise.all([
     db.poolCampaign.findMany({ orderBy: { createdAt: "desc" } }),
     db.poolProfile.groupBy({ by: ["sourceCode", "status"], where: { source: "campaign" }, _count: { _all: true } }),
+    visitTotals(),
   ]);
   const counts = campaignSignupCounts(grouped.map((g) => ({ sourceCode: g.sourceCode, status: g.status, count: g._count._all })));
   const base = appBaseUrl();
@@ -41,8 +62,26 @@ export async function listPoolCampaigns(): Promise<PoolCampaignRow[]> {
     active: c.active,
     createdAt: c.createdAt,
     url: poolCampaignUrl(base, c.code),
-    ...(counts.get(c.code) ?? { waiting: 0, confirmed: 0 }),
+    ...numbers(visits.get(c.code), counts.get(c.code)),
   }));
+}
+
+/**
+ * The ways in with no campaign code, compared the same way: plain /play
+ * (direct visits against the "web" sign-ups, which include a switched-off
+ * or unknown code) and a friend's link (referral visits against the
+ * "referral" sign-ups).
+ */
+export async function poolWaysInWithoutCode(): Promise<{ direct: PoolWayInNumbers; referral: PoolWayInNumbers }> {
+  const [grouped, visits] = await Promise.all([
+    db.poolProfile.groupBy({ by: ["source", "status"], where: { source: { in: ["web", "referral"] } }, _count: { _all: true } }),
+    visitTotals(),
+  ]);
+  const counts = campaignSignupCounts(grouped.map((g) => ({ sourceCode: g.source, status: g.status, count: g._count._all })));
+  return {
+    direct: numbers(visits.get(POOL_VISIT_DIRECT), counts.get("web")),
+    referral: numbers(visits.get(POOL_VISIT_REFERRAL), counts.get("referral")),
+  };
 }
 
 export type CreateCampaignResult = { ok: true; code: string } | { ok: false; errors: CampaignInputErrors } | { ok: false; reason: "taken" };
