@@ -90,7 +90,7 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     seedable,
     members,
     months: monthBlocks,
-    week: liveWeek ? { game: formatLondon(liveWeek.matchDate, "EEE d MMM yyyy, HH:mm"), text: renderWeekList(liveWeek).text } : null,
+    week: liveWeek ? { game: formatLondon(liveWeek.matchDate, "EEE d MMM yyyy, HH:mm"), text: (await renderWeekList(liveWeek)).text } : null,
   };
 }
 

@@ -395,6 +395,14 @@ export default async function AdminGuidePage() {
         knows them by that name from then on, on the rate page and the team
         sheet too. Reply yes and the month starts.
       </p>
+      <p>
+        Once the month is running, MatchTime posts the week&apos;s list in the
+        group the morning after each game, for the next one, again whenever
+        the squad changes, and once on match morning. It lists the squad by first name, tells the
+        regulars they are in with no need to say anything, then shows who
+        can&apos;t play, the bench, and the pay as you go places still open
+        with your price.
+      </p>
 
       {/* ───────────────────────────────────────────────── */}
       <h2 id="match-lifecycle">5. What happens each week</h2>

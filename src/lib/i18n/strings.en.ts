@@ -4576,26 +4576,42 @@ export const en = {
 
   // ── Monthly squad, slice 5 (2026-10-06): the weekly flow ─────────
   // MDs/monthly-squad-plan-2026-10-05.md, sections 5.3, 5.4 and 6.2.
-  // Only ever sent for a club on "monthly" with a running month. The
-  // list is written the way the group writes it, so a member can copy
-  // it, change a line and paste it back, and `monthly-list.ts` reads it:
-  // the header and the three section titles are in that reader's
-  // vocabulary and must stay in it (`monthly-week-copy.test.ts` pins the
-  // round trip). No em or en dashes, in either language.
-  /** `month` is the month's name, `when` the match ("Mon 12 Oct, 20:00"). */
-  mwk_list_header: (p: { month: string; when: string }): string => `📋 List for ${p.month}: ${p.when}`,
-  /** After a regular who has paid, or says so (decision D3). */
+  // Only ever sent for a club on "monthly" with a running month.
+  //
+  // THE WEEK'S LIST (reworded 2026-11-03, Kemal): the squad first, by
+  // first name, with the one thing a regular needs to know (he is in and
+  // need say nothing), then who can't play, the bench, and pay as you go
+  // last. No "(paid)" marks: MatchTime does not confirm a payment the
+  // organiser collects. Members still copy it, edit it and paste it back:
+  // the numbers are the players' real slot numbers, and the section
+  // titles are words the monthly reader knows ("Can't play", "Bench").
+  // The title line ("📋 *Monday 7-a-side, Mon 9 Nov at 20:30*") has no
+  // words of its own and is put together in `monthly-week-copy.ts`.
+  // No em or en dashes, in either language.
+  /** Over the regulars playing this week. `month` is the month's name. */
+  mwk_list_squad: (p: { month: string }): string => `*${p.month} squad:*`,
+  /** Under the squad: a regular need not answer. */
+  mwk_list_all_in: "You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.",
+  /** After a regular who has paid, or says so (decision D3). The month's
+   *  sign-up list and the priced list still show it; the week's list no
+   *  longer does. */
   mwk_list_paid: "(paid)",
-  mwk_list_cant_play_paid: "Paid but can't play",
-  /** Regulars who are out and have NOT paid: never listed as paid. */
-  mwk_list_cant_play: "Can't play",
+  /** Over the regulars who are out this week, paid or not. */
+  mwk_list_cant_play: "*Can't play:*",
+  /** Over the players on the bench for this game. */
+  mwk_list_bench: "*Bench:*",
+  /** The month's queue for a regular place on the sign-up post. */
   mwk_list_reserves: "Reserves",
-  /** Under the list while places are free. `price` is "£8", or null. */
+  /** Over the pay-as-you-go players and the places still open. */
+  mwk_list_payg: "*Pay as you go:*",
+  /** The places still free. `price` is "£8", or null. */
   mwk_list_open: (p: { open: number; price: string | null }): string =>
-    `${p.open} ${p.open === 1 ? "place" : "places"} open${p.price ? `, ${p.price} PAYG` : ""}: say *IN* to take ${p.open === 1 ? "it" : "one"}.`,
+    `${p.open} ${p.open === 1 ? "place" : "places"} open${p.price ? `, ${p.price}` : ""}. Say *IN* to take ${p.open === 1 ? "it" : "one"}.`,
   /** The same, for a club whose organisers pick who fills a place. */
-  mwk_list_open_organiser: (p: { open: number }): string =>
-    `${p.open} ${p.open === 1 ? "place" : "places"} open. Say *IN* to go on the bench, and the organisers will pick who plays.`,
+  mwk_list_open_organiser: (p: { open: number; price: string | null }): string =>
+    `${p.open} ${p.open === 1 ? "place" : "places"} open${p.price ? `, ${p.price}` : ""}. Say *IN* to go on the bench, and the organisers will pick who plays.`,
+  /** No place is free. */
+  mwk_list_full: "The squad is full.",
   /** A place opened and nobody is waiting: one line in the group. */
   mwk_pool_group: (p: { open: number; when: string; price: string | null }): string =>
     `🎟 ${p.open} ${p.open === 1 ? "place" : "places"} open for *${p.when}*${p.price ? `, ${p.price} PAYG` : ""}. ` +

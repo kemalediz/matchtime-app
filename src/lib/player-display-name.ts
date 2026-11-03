@@ -32,16 +32,12 @@ import { db } from "./db";
 import { guestSourceOf, partnerHomeClubOf } from "./guest-membership";
 import { t } from "./i18n/t";
 import { normaliseLang, type Lang } from "./i18n/lang";
+import { usableName } from "./player-name-rules";
 
-const RAW_PHONE = /(?:\+\d[\d\s().-]{8,}\d)|(?:\b0\d{9,10}\b)|(?:\b\d{11,}\b)/;
-
-/** The name as printed: whitespace collapsed and trimmed, or null when it
- *  is empty, has no letter, or is a phone number. */
-export function usableName(raw: string | null | undefined): string | null {
-  const v = (raw ?? "").replace(/\s+/g, " ").trim();
-  if (!v || RAW_PHONE.test(v) || !/\p{L}/u.test(v)) return null;
-  return v;
-}
+// Pure, and on its own so the copy builders can use it without a database
+// client behind them (`player-name-rules.ts`). Re-exported for the callers
+// that already import it from here.
+export { usableName };
 
 function capitalise(alias: string, lang?: Lang | string | null): string {
   const locale = normaliseLang(lang) === "tr" ? "tr" : "en";

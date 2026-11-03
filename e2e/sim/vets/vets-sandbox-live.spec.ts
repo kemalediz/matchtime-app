@@ -46,6 +46,25 @@ import {
 } from "./world";
 
 const COST_FILE = path.join(REPO_ROOT, ".e2e", "vets-sandbox-cost.jsonl");
+
+/**
+ * The week's list in the format Kemal approved on 2026-11-03: the title,
+ * the month's squad by first name under real slot numbers, the "you're all
+ * in" line, then pay as you go. No paid marks, no phone, nobody unnamed.
+ */
+function expectWeekListShape(text: string, kickoff: Date, squadSize: number, open: number): void {
+  const lines = text.split("\n");
+  expect(lines[0]).toBe(`📋 *Football 7-a-side, ${formatInTimeZone(kickoff, LONDON, "EEE d MMM 'at' HH:mm")}*`);
+  expect(lines[2]).toBe(`*${formatInTimeZone(kickoff, LONDON, "MMMM")} squad:*`);
+  const squad = lines.slice(3, 3 + squadSize);
+  expect(squad, "the squad, one first name a line").toHaveLength(squadSize);
+  for (const l of squad) expect(l).toMatch(/^\d{1,2}\. \p{L}+$/u);
+  expect(lines[3 + squadSize]).toBe("");
+  expect(lines[4 + squadSize]).toBe("You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.");
+  expect(lines.at(-1)).toBe(`*Pay as you go:* ${open} ${open === 1 ? "place" : "places"} open, £8. Say *IN* to take ${open === 1 ? "it" : "one"}.`);
+  expect(text).not.toMatch(/\((?:paid|PAYG)\)|unnamed|\+44|\d{10}/i);
+  expect(text).not.toMatch(/[\u2013\u2014]/);
+}
 let before: MeterReading | null = null;
 
 // Each scenario builds its own club, so one failing does not stop the rest
@@ -244,8 +263,13 @@ scenario.describe("the Vets sandbox", () => {
     expect(month!.played).toBeGreaterThanOrEqual(1);
     expect(month!.played).toBeLessThan(month!.scheduled);
 
-    // The next scheduler poll seeds the regulars onto Monday's match.
-    await schedulerPoll(pool, v, new Date());
+    // The next scheduler poll seeds the regulars onto Monday's match, and
+    // posts the week's list: the squad first, by first name, no paid marks.
+    const seedPoll = await schedulerPoll(pool, v, new Date());
+    const weekPost = seedPoll.instructions.filter((i) => i.key?.startsWith(`${v.matchId}:month-list:`));
+    console.log(`[vets C] the week's list:\n${weekPost[0]?.text}`);
+    expect(weekPost, "the week's list, once").toHaveLength(1);
+    expectWeekListShape(weekPost[0].text ?? "", v.kickoff, 13, 1);
     const seeded = await db.all<{ userId: string; name: string | null; status: string; position: number }>(
       `SELECT a."userId", u.name, a.status, a.position FROM "Attendance" a JOIN "User" u ON u.id = a."userId" WHERE a."matchId" = $1 ORDER BY a.position`,
       [v.matchId],
@@ -640,6 +664,60 @@ scenario.describe("the Vets sandbox", () => {
     expect(hello).toContain("Davide will post the month's list as usual.");
     expect(hello.trimEnd().endsWith("I don't reply to the banter, only to In, Out or a tag. Anything else, tag me: *@Match Time help*")).toBe(true);
     expect(hello).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  // ── N ──────────────────────────────────────────────────────────────
+  // The week's list (Kemal, 2026-11-03): posted the morning after the last
+  // game for the next one, the squad first by first name with no paid
+  // marks, and again only when the squad changes. No model call: also
+  // runs stubbed.
+  scenario("N. the week's list: the morning after the last game, the squad first by first name, no paid marks; again only when the squad changes", async ({ pool, db }) => {
+    const v = await vetsClub(pool, "vets", { month: "running", played: { keys: LIST_KEYS } });
+    // Their names, as the participant sweep and Davide's "who is who" gave
+    // them in scenario C.
+    const sweep = await pool.request.post("/api/whatsapp/sync-participants", {
+      headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+      data: { groupId: v.club.group.groupId, participants: [...v.members.keys()].map((k) => ({ phone: v.phone(k), pushname: authorOf(v, k).name })) },
+    });
+    expect(sweep.status(), await sweep.text()).toBe(200);
+    for (const k of ["craig", "ben", "andrew", "oumesh"]) {
+      await db.run(`UPDATE "User" SET name = $2 WHERE id = $1`, [v.userId(k), k.charAt(0).toUpperCase() + k.slice(1)]);
+    }
+    const listOf = (out: { instructions: Instruction[] }) => out.instructions.filter((i) => i.key?.startsWith(`${v.matchId}:month-list:`));
+
+    // The night of the last game: the regulars are not on the next one yet, nothing is posted.
+    const lastKick = lastMondayKickoff(new Date());
+    const night = await schedulerPoll(pool, v, new Date(lastKick.getTime() + 75 * 60_000), { claim: false });
+    expect(listOf(night), "nothing the night of the game").toEqual([]);
+
+    // From 08:00 the morning after (this club has quiet hours off): the list.
+    const morning = london(londonDay(new Date(lastKick.getTime() + 24 * 3_600_000)), "08:00");
+    const t0 = new Date(Math.max(Date.now(), morning.getTime()) + 60_000);
+    const first = listOf(await schedulerPoll(pool, v, t0));
+    console.log(`[vets N] the week's list at ${formatInTimeZone(t0, LONDON, "EEE d MMM HH:mm")}:\n${first[0]?.text}`);
+    expect(first).toHaveLength(1);
+    const text = first[0].text ?? "";
+    expectWeekListShape(text, v.kickoff, 13, 1);
+    const squad = text.split("\n").filter((l) => /^\d+\. /.test(l));
+    expect(squad).toEqual(["Davide", "Nabz", "Steff", "Craig", "Dan", "Ben", "Kerem", "Steve", "Andrew", "Jon", "Shane", "CJ", "Oumesh"].map((n, i) => `${i + 1}. ${n}`));
+
+    // Nothing changed: not posted again.
+    expect(listOf(await schedulerPoll(pool, v, new Date(t0.getTime() + 31 * 60_000)))).toEqual([]);
+
+    // Steve can't make it (as an OUT would leave his row): the list again, once.
+    await db.run(
+      `WITH a AS (UPDATE "Attendance" SET status = 'DROPPED' WHERE "matchId" = $1 AND "userId" = $2 RETURNING "matchId", "userId", position)
+       INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "fromStatus", "toStatus", "toPosition", cause, "actorKind")
+       SELECT $4, "matchId", "userId", $3, 'CONFIRMED', 'DROPPED', position, 'test-fixture', 'system' FROM a`,
+      [v.matchId, v.userId("steve"), v.orgId, `sim-vets-n-steve-out-${v.orgId}`],
+    );
+    const changed = listOf(await schedulerPoll(pool, v, new Date(t0.getTime() + 62 * 60_000)));
+    console.log(`[vets N] after Steve's out:\n${changed[0]?.text}`);
+    expect(changed).toHaveLength(1);
+    expectWeekListShape(changed[0].text ?? "", v.kickoff, 12, 2);
+    expect(changed[0].text).toContain("\n\n*Can't play:*\n1. Steve\n");
+    expect(changed[0].text).not.toMatch(/^8\. /m);
+    expect(listOf(await schedulerPoll(pool, v, new Date(t0.getTime() + 93 * 60_000)))).toEqual([]);
   });
 
   // ── M ──────────────────────────────────────────────────────────────
