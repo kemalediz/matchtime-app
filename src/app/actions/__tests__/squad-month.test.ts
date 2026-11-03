@@ -331,7 +331,7 @@ describe("readMonthList: a pasted list becomes a draft, and writes nothing", () 
       { userId: "u-omar", name: "Omar One", listName: "Omar", kind: "payg", tier: "standard", slot: 3, paid: "none", paidAmountPence: null, gamesCommitted: null },
       { userId: "u-sam", name: "Sam Hill", listName: "Sammy", kind: "regular", tier: "standard", slot: null, paid: "claimed", paidAmountPence: null, gamesCommitted: null },
     ]);
-    expect(res.unmatched).toEqual([{ slot: 5, name: "Zed", kind: "regular", reason: "unknown", candidates: [] }]);
+    expect(res.unmatched).toMatchObject([{ slot: 5, name: "Zed", kind: "regular", reason: "unknown", candidates: [] }]);
     expect(aliasFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { orgId: "org-vets" } }));
   });
 

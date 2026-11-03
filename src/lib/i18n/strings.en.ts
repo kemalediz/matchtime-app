@@ -1507,6 +1507,10 @@ export const en = {
     (p.fees ? `\n💷 Your friend pays the match fee like any guest, after the game (in a monthly club, as a pay as you go player).` : ""),
   /** The same, for an organiser: his own add is direct (friend link D1). */
   onbHelpFriendLinkOrganiser: `When an organiser adds someone, they go straight on the list.`,
+  /** "help availability" for an organiser of a club on a monthly squad
+   *  (2026-11-03): the month starts from the list he posts, and names on it
+   *  MatchTime cannot match are matched by him, in his words or on the page. */
+  onbHelpMonthListOrganiser: `📋 *Monthly squad:* post the month's list in the group as you always do and I'll DM you what I read. If a name on it matches nobody I know, I show you the members I have no name for, by phone, and you tell me who is who in your own words (for example _"Craig is 3"_) or pick them on the months page. Reply yes and the month starts.`,
 
   /** An organiser's DM bare help, organisers mode with an admin group
    *  linked: where the HQ commands are. */
@@ -4625,15 +4629,37 @@ export const en = {
   /** To an organiser who posted the coming month's list in the PLAYERS'
    *  group before that month was started: the draft, and how to start it.
    *  MatchTime says nothing in the group. */
-  mwk_dm_seed_from_group: (p: { month: string; count: number; names: string; unknown: string | null; link: string; hq: boolean }): string =>
+  mwk_dm_seed_from_group: (p: {
+    month: string;
+    count: number;
+    names: string;
+    unknown: string | null;
+    link: string;
+    hq: boolean;
+    /** Names on his list that matched nobody, and the club's members with
+     *  no name yet, numbered, by phone (2026-11-03: this DM goes to the
+     *  organiser only). He says who is who in his own words, or on the page. */
+    match?: { names: string; members: string[]; example: string } | null;
+  }): string =>
     [
       `📋 I read the list you posted in the group for ${p.month}: ${p.count} ${p.count === 1 ? "player" : "players"} (${p.names}).`,
-      ...(p.unknown ? [`Not known to me yet: ${p.unknown}. Add them as players, or start without them.`] : []),
+      ...(p.match
+        ? [
+            `I couldn't match these names on your list to anyone: ${p.match.names}.`,
+            `These members have no name with me yet:`,
+            ...p.match.members,
+            `Tell me who is who in your own words, for example "${p.match.example}", or pick them on the months page: ${p.link}`,
+          ]
+        : p.unknown
+          ? [`Not known to me yet: ${p.unknown}. Add them as players, or start without them.`]
+          : []),
       p.hq
-        ? `To start ${p.month} with them, say *@Match Time YES* in the organisers' group, or check and start it here: ${p.link}`
-        : `To start ${p.month} with them, check and start it here: ${p.link}`,
+        ? `To start ${p.month} with them, reply *yes* here or say *@Match Time YES* in the organisers' group, or check and start it here: ${p.link}`
+        : `To start ${p.month} with them, reply *yes* here, or check and start it here: ${p.link}`,
       `I've said nothing in the group.`,
     ].join("\n"),
+  /** The example in the DM above: a name on his list and a member's number. */
+  mwk_dm_seed_match_example: (p: { name: string; n: number }): string => `${p.name} is ${p.n}`,
   /** To a member of the month whose numbered list was not read as the squad list. */
   mwk_dm_sender_not_list: (p: { month: string }): string =>
     `📋 I couldn't read the list you posted as the squad list for ${p.month}, so I changed nothing. ` +
@@ -4726,6 +4752,16 @@ export const en = {
   mth_act_payg: "Move to PAYG",
   mth_act_remove: "Remove for the month",
   mth_act_error: "That could not be saved. Reload the page and try again.",
+  /** /admin/months, above the months (2026-11-03): the names on the
+   *  organiser's list that matched nobody, each with a picker of the
+   *  members MatchTime has no name for (by phone: organisers only). */
+  mth_match_title: (p: { month: string }): string => `Who is who on your ${p.month} list`,
+  mth_match_lead:
+    "I couldn't match these names on the list you posted to anyone. Pick who each one is: they go on the month with what the list says, and I'll know them by that name from now on.",
+  mth_match_pick: "Choose a member",
+  mth_match_save: "Save",
+  mth_match_none: "Nobody left without a name. Add them as players, or start the month without them.",
+  mth_match_then: "When you're done, reply \"yes\" to my WhatsApp message to start the month.",
   mth_add_label: "Add a player",
   mth_add_regular: "Add as regular",
   mth_add_payg: "Add as PAYG",

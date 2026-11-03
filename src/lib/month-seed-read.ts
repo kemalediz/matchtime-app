@@ -120,6 +120,10 @@ export async function proposeMonthSeedPaste(args: {
   /** The list as the monthly reader already read it (players' group).
    *  Omitted: the text is read here. */
   list?: MonthlyList;
+  /** The players' group's door (2026-11-03): when this organiser's open
+   *  draft for the month was read from the very same list, it is kept as
+   *  it is (with any correction he made) and nothing new is proposed. */
+  keepSameList?: boolean;
 }): Promise<MonthSeedReply | null> {
   const { orgId, now } = args;
   // THE LIST'S OWN MONTH PICKS WHICH (2026-11-03): this month, started
@@ -145,7 +149,29 @@ export async function proposeMonthSeedPaste(args: {
     gamesCommitted: r.gamesCommitted,
     listName: r.listName,
   }));
-  const data: MonthSeedProposalData = { activityId: target.activity.id, games: target.games, gamesPlayed: target.gamesPlayed, rows };
+  // The names it could not match stay with the draft, with what each line
+  // says, so the organiser can say who they are (`month-seed-match.ts`).
+  const { seedReadKey, unmatchedEntries } = await import("./month-seed-match-rules");
+  const readKey = seedReadKey(rows, read.unmatched);
+  const data: MonthSeedProposalData = {
+    activityId: target.activity.id,
+    games: target.games,
+    gamesPlayed: target.gamesPlayed,
+    rows,
+    ...(read.unmatched.length > 0 ? { unmatched: unmatchedEntries(read.unmatched) } : {}),
+    readKey,
+  };
+  if (args.keepSameList) {
+    const open = await db.adminSquadProposal.findMany({
+      where: { orgId, resolvedAt: null, expiresAt: { gt: now }, monthStart: target.monthStart, proposedByUserId: args.organiserUserId },
+      select: { id: true, monthSeed: true },
+    });
+    const same = open.find((p) => (p.monthSeed as unknown as MonthSeedProposalData | null)?.readKey === readKey);
+    if (same) {
+      console.log(`[month-seed-hq] ${args.messageId}: the same list as open proposal ${same.id} for ${orgId}: kept, nothing new proposed`);
+      return { outcome: "month-seed-same", replyText: "" };
+    }
+  }
   try {
     await db.adminSquadProposal.updateMany({ where: { orgId, resolvedAt: null }, data: { resolvedAt: now, outcome: "superseded" } });
     await db.adminSquadProposal.create({

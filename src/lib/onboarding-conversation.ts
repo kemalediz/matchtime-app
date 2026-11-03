@@ -126,7 +126,9 @@ export type HelpFeatures = {
   partners?: HelpClubFacts["partners"];
   /** The club plays as a monthly squad (`Organisation.squadMode =
    *  "monthly"`, 2026-11-03): the month's regulars are in every game and
-   *  only a pay as you go player says IN. A missing value reads as off. */
+   *  only a pay as you go player says IN. An organiser's "help
+   *  availability" also says how a month starts from his list. A missing
+   *  value reads as off. */
   monthly?: boolean;
 };
 
@@ -380,7 +382,7 @@ export function buildHelpReply(
     // organiser's add stays direct (D1).
     const explainer =
       topic === "availability"
-        ? `${base}\n${s.onbHelpFriendLink}${admin ? ` ${s.onbHelpFriendLinkOrganiser}` : ""}`
+        ? `${base}\n${s.onbHelpFriendLink}${admin ? ` ${s.onbHelpFriendLinkOrganiser}` : ""}${admin && features.monthly ? `\n\n${s.onbHelpMonthListOrganiser}` : ""}`
         : base;
     if (topicIsOn(topic, features)) {
       return `${explainer}\n\n${s.onbHelpOnStatus({ audience: ctx.audience, url: topicUrl })}`;

@@ -19,6 +19,8 @@ const users: Array<{ id: string; name: string | null }> = [];
 const mems: Array<{ userId: string; orgId: string; guestFromOrgId: string | null; guestMatchId?: string | null; guestVia?: string | null }> = [];
 const aliases: Array<{ userId: string; orgId: string; alias: string; createdAt: Date }> = [];
 const orgs: Array<{ id: string; name: string }> = [];
+/** What the analyze route stored for each post: who, the WhatsApp name, when. */
+const posts: Array<{ orgId: string; authorUserId: string; authorName: string | null; createdAt: Date }> = [];
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -37,6 +39,12 @@ vi.mock("@/lib/db", () => ({
     },
     organisation: {
       findMany: async ({ where }: { where: { id: { in: string[] } } }) => orgs.filter((o) => where.id.in.includes(o.id)),
+    },
+    analyzedMessage: {
+      findMany: async ({ where }: { where: { orgId: string; authorUserId: { in: string[] } } }) =>
+        posts
+          .filter((p) => p.orgId === where.orgId && where.authorUserId.in.includes(p.authorUserId) && p.authorName !== null)
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
     },
   },
 }));
@@ -162,5 +170,34 @@ describe("loadPlayerNames fails soft", () => {
     expect(err).toHaveBeenCalled();
     spy.mockRestore();
     err.mockRestore();
+  });
+});
+
+describe("the WhatsApp name a nameless member posts under (2026-11-03, Vets sandbox)", () => {
+  const ORG = "org-vets";
+  beforeEach(() => {
+    users.length = 0;
+    mems.length = 0;
+    aliases.length = 0;
+    posts.length = 0;
+  });
+  it("resolvePlayerName: after the aliases, the name WhatsApp showed on his posts", () => {
+    expect(resolvePlayerName({ name: null, aliasesHere: [], seenAs: "Steve" })).toBe("Steve");
+    expect(resolvePlayerName({ name: null, aliasesHere: ["stevie"], seenAs: "Steve" })).toBe("Stevie");
+    expect(resolvePlayerName({ name: null, seenAs: "+44 7700 900123" })).toBeNull();
+  });
+  it("loadPlayerNames: the newest usable WhatsApp name of his posts here, never a number", async () => {
+    users.push({ id: "u-steve", name: null }, { id: "u-anon", name: null }, { id: "u-shane", name: "Shane Walton" });
+    for (const id of ["u-steve", "u-anon", "u-shane"]) mems.push({ userId: id, orgId: ORG, guestFromOrgId: null });
+    posts.push(
+      { orgId: ORG, authorUserId: "u-steve", authorName: "Stevie old", createdAt: new Date("2026-11-01T10:00:00Z") },
+      { orgId: ORG, authorUserId: "u-steve", authorName: "Steve", createdAt: new Date("2026-11-02T10:00:00Z") },
+      { orgId: "other-club", authorUserId: "u-anon", authorName: "Elsewhere", createdAt: new Date("2026-11-02T10:00:00Z") },
+      { orgId: ORG, authorUserId: "u-anon", authorName: "447700900555", createdAt: new Date("2026-11-02T10:00:00Z") },
+    );
+    const names = await loadPlayerNames(ORG, ["u-steve", "u-anon", "u-shane"], "en");
+    expect(names.get("u-steve")).toEqual({ name: "Steve", display: "Steve" });
+    expect(names.get("u-anon")).toEqual({ name: null, display: en.unnamed });
+    expect(names.get("u-shane")?.name).toBe("Shane Walton");
   });
 });

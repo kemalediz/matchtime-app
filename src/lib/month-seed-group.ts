@@ -16,7 +16,7 @@
  * to start, a list for another month) returns false and the caller goes on.
  */
 import { db } from "./db";
-import { t } from "./i18n/t";
+import type { MonthSeedProposalData } from "./month-seed-hq";
 import { loadClubQuietHours } from "./club-quiet-hours";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
 import type { MonthlyReading } from "./monthly-reader-prompt";
@@ -54,18 +54,37 @@ export async function proposeMonthSeedFromGroup(args: {
     text: "",
     now,
     list: args.reading.list,
+    keepSameList: true,
   });
+  // The very list his open draft was read from (a second message of the
+  // same flush read as it, or the list posted again): that draft and its
+  // DM stand, so he is not sent the same DM twice (2026-11-03).
+  if (res?.outcome === "month-seed-same") {
+    console.log(`[month-seed-group] ${args.waMessageId}: the same list is already waiting for his answer: no second DM`);
+    return true;
+  }
   if (!res || res.outcome !== "month-seed-proposed" || !res.proposal) return false;
   const phone = admin.user.phoneNumber?.replace(/^\+/, "");
   // The draft waits for his answer by DM (`month-seed-reply.ts`) for a day,
   // not the half hour an answer in HQ gets.
   const proposal = await db.adminSquadProposal.findFirst({
     where: { orgId: args.orgId, waMessageId: args.waMessageId, resolvedAt: null },
-    select: { id: true },
+    select: { id: true, monthStart: true, monthSeed: true },
   });
-  if (!proposal) return false;
-  await db.adminSquadProposal.update({ where: { id: proposal.id }, data: { expiresAt: new Date(now.getTime() + MONTH_SEED_DM_TTL_MS) } });
-  const text = t(org.language).mwk_dm_seed_from_group({ ...res.proposal, hq: !!org.adminGroupId });
+  if (!proposal?.monthStart || !proposal.monthSeed) return false;
+  // The draft, with who is who to be said for any name it could not match
+  // (`month-seed-match.ts`); the nameless members are kept as the DM
+  // numbers them, so his "Craig is 3" is read against what he saw.
+  const { seedDmText } = await import("./month-seed-match");
+  const data = proposal.monthSeed as unknown as MonthSeedProposalData;
+  const { text, nameless } = await seedDmText({ orgId: args.orgId, lang: org.language, monthStart: proposal.monthStart, data, hq: !!org.adminGroupId });
+  await db.adminSquadProposal.update({
+    where: { id: proposal.id },
+    data: {
+      expiresAt: new Date(now.getTime() + MONTH_SEED_DM_TTL_MS),
+      ...(nameless.length > 0 ? { monthSeed: { ...data, nameless } as unknown as object } : {}),
+    },
+  });
   try {
     // The offer, with its words: what his DM answer is read against.
     await db.sentNotification.create({ data: { key: `org-${args.orgId}:month-seed-dm:${proposal.id}`, kind: MONTH_SEED_DM_KIND, text, targetUser: args.senderUserId } });

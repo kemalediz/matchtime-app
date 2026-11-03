@@ -22,7 +22,7 @@ vi.mock("@/lib/db", () => ({
 const loadPartnerAskSettings = vi.fn();
 vi.mock("@/lib/club-partnership", () => ({ loadPartnerAskSettings: (...a: unknown[]) => loadPartnerAskSettings(...a) }));
 
-import { buildHelpReply, helpPagesNeeded, type HelpFeatures, type HelpTopic } from "@/lib/onboarding-conversation";
+import { buildHelpReply, helpFeaturesFrom, helpPagesNeeded, type HelpFeatures, type HelpTopic } from "@/lib/onboarding-conversation";
 import { HELP_TOPIC_ANCHOR, SETTINGS_ANCHORS, helpTopicSettingsPath, settingsAnchorPath } from "@/lib/help-links";
 import { HELP_CLUB_FACTS_OFF, loadHelpClubFacts } from "@/lib/help-club-facts";
 import { HELP_FEATURES } from "@/lib/pipeline/types";
@@ -263,5 +263,25 @@ describe("loadHelpClubFacts", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await loadHelpClubFacts("o1", OPEN)).toEqual(HELP_CLUB_FACTS_OFF);
     spy.mockRestore();
+  });
+});
+
+describe("help availability for an organiser of a monthly club (2026-11-03)", () => {
+  it("says the month starts from his list and how he matches names it cannot, in English and Turkish", () => {
+    const monthly = { ...BASE, monthly: true };
+    const en = buildHelpReply("availability", monthly, "en", { audience: "admin" });
+    expect(en).toContain("*Monthly squad:*");
+    expect(en).toContain(`_"Craig is 3"_`);
+    expect(en).toContain("months page");
+    expect(buildHelpReply("availability", monthly, "tr", { audience: "admin" })).toContain("*Aylık kadro:*");
+  });
+  it("not for the players' group, nor for a weekly club", () => {
+    expect(buildHelpReply("availability", { ...BASE, monthly: true }, "en", { audience: "group" })).not.toContain("Monthly squad");
+    expect(buildHelpReply("availability", BASE, "en", { audience: "admin" })).not.toContain("Monthly squad");
+  });
+  it("helpFeaturesFrom reads the squad mode", () => {
+    const f = { attendance: true, teamBalancing: true, momVoting: true, playerRating: true, statsQa: true, reminders: true, bench: true, paymentTracking: false, paymentCollection: false };
+    expect(helpFeaturesFrom({ ...f, squadMode: "monthly" }).monthly).toBe(true);
+    expect(helpFeaturesFrom({ ...f, squadMode: "weekly" }).monthly).toBe(false);
   });
 });
