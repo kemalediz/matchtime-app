@@ -60,6 +60,14 @@ describe("loadClubRatingsByClub", () => {
   });
 });
 
+describe("the source club's sharing setting is not consulted (Kemal, 2026-11-03: always carry)", () => {
+  it("a client with no organisation reads at all still carries, so the setting cannot gate it", async () => {
+    const { client } = clientWith([row("u", "private-club", "s1", 7)]);
+    expect("organisation" in client).toBe(false);
+    expect(await loadCarriedSeed(client, "u", "vets")).toEqual({ seed: 7, fromOrgIds: ["private-club"] });
+  });
+});
+
 describe("otherClubs and loadCarriedSeed", () => {
   it("the club being joined is never an 'other club'", () => {
     const all = [
