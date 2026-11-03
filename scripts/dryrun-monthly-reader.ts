@@ -239,6 +239,15 @@ const CASES: Case[] = [
   C("not a sign-up: are we off tonight", "Are we off for tonight?", "Ben", OCT19, "2026-10-27T03:28:00Z", none),
   C("not a sign-up: out for today", "Sorry I’m out for today I’m too rough", "CJ", OCT5, "2026-10-06T03:15:00Z", none),
   C("not a list: plain IN", "IN", "Andrew", OCT19, "2026-10-18T18:00:00Z", none),
+  // The Vets sandbox, 2026-11-03: the organiser's guest IN was read as HIS
+  // sign-up. Somebody else's IN or OUT is never the sender's own.
+  C("organiser's guest IN is not his sign-up", "David Aksoy is IN", "Davide", NOV_WEEK3, "2026-11-10T12:20:00Z", none, [
+    { author: "Steve", body: "Out this week lads sorry, work" },
+  ]),
+  C("somebody else out for the month is not the sender's", "Lucas is out for November", "Dean", NOV_SIGNUP, "2026-10-27T12:00:00Z", none),
+  C("count me in (own sign-up, the month from the chat)", "count me in", "Ollie", NOV_SIGNUP, "2026-10-27T12:00:00Z", signup("in", 11, null), [
+    { author: "Davide De Souza", body: "Who's in for November lads?" },
+  ]),
   C("paid with an amount (Nov)", NOV_HALF.replace("10. Kemal", "10. Kemal (paid £37.50)"), "Kemal", NOV_SIGNUP, "2026-10-29T10:00:00Z", line(/Kemal/, (e) => e.marks.paid && e.marks.paidAmountPence === 3750, "paid 3750")),
   // ── Turkish equivalents ──
   C("TR: sadece 3 hafta", "Kasım listesi\n1. Davide\n2. Steff\n3. Erdal sadece 3 hafta", "Erdal", NOV_SIGNUP, "2026-10-28T10:00:00Z", all(isList(11, "month"), line(/Erdal/, (e) => e.facts?.games === 3 && e.facts.memberId === id("Erdal"), "games 3"))),
@@ -247,6 +256,7 @@ const CASES: Case[] = [
   C("TR: ödedi gelemiyor bölümü", "Ekim listesi\n1. Davide\n2. Shane\n\nÖdedi gelemiyor\n1. Volkan", "Volkan", OCT19, "2026-10-19T12:00:00Z", (r) => (r.kind === "list" && r.list.sections.cantPlay.some((e) => e.facts?.memberId === id("Volkan")) ? null : "Volkan not in can't play")),
   C("TR: misafir (Emre'nin oğlu)", "Ekim listesi\n1. Davide\n2. Shane\n3. Emre\n4. Emre'nin oğlu Can", "Emre", OCT19, "2026-10-19T12:00:00Z", line(/Can/, (e) => !!e.facts?.guest && e.facts.hostUserId === id("Emre"), "Emre's guest")),
   C("TR: Kasım bana uyar", "Kasım bana uyar", "Burak", NOV_SIGNUP, "2026-10-27T12:00:00Z", signup("in", 11, null)),
+  C("TR: somebody else's month is not the sender's", "Burak da Kasım'da var", "Volkan", NOV_SIGNUP, "2026-10-27T12:00:00Z", none),
   C("TR: son hafta hariç", "Kasım varım son hafta hariç", "Volkan", NOV_SIGNUP, "2026-10-27T12:00:00Z", signup("in", 11, 4)),
 ];
 

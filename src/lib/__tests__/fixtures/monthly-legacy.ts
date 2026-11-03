@@ -654,11 +654,12 @@ function isOwnOpenLine(line: string, lang: "en" | "tr"): boolean {
  * Member refs are left empty: production then matches the clean name.
  */
 export function legacyReaderAnswer(body: string, quotedBody?: string | null): Record<string, unknown> {
-  const none = { kind: "none", month: 0, gameDay: 0, listOf: "", lines: [], residual: "", choice: "", signupMonth: 0, days: [], games: 0 };
+  const none = { kind: "none", month: 0, gameDay: 0, listOf: "", lines: [], residual: "", choice: "", signupMonth: 0, signupFor: "", days: [], games: 0 };
   const quotedMonth = quotedSignupMonth(quotedBody ?? null);
   const ask = readSignupMessage(body, { quoted: quotedMonth !== null });
   const askMonth = ask ? (ask.month ?? quotedMonth) : null;
-  if (ask && askMonth) return { ...none, kind: "signup", choice: ask.choice, signupMonth: askMonth, days: ask.days };
+  // The old code read only the sender's own sign-ups.
+  if (ask && askMonth) return { ...none, kind: "signup", choice: ask.choice, signupMonth: askMonth, signupFor: "sender", days: ask.days };
   const list = parseMonthlyList(body);
   if (!list) return none;
   const line = (section: string) => (e: MonthlyListEntry) => ({

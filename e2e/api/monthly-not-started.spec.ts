@@ -135,7 +135,7 @@ test("2. the organiser's list for THIS month, already under way, starts it part-
   // As the reader may read it with no month to compare against: the week's.
   setMonthlyReaderStub({
     bodies: {
-      [body]: { kind: "list", month: curNumber, gameDay: 0, listOf: "week", lines: [ln(1, "Davide"), ln(2, "Steff", { games: 4 }), ln(3, "CJ")], residual: "", choice: "", signupMonth: 0, days: [], games: 0 },
+      [body]: { kind: "list", month: curNumber, gameDay: 0, listOf: "week", lines: [ln(1, "Davide"), ln(2, "Steff", { games: 4 }), ln(3, "CJ")], residual: "", choice: "", signupMonth: 0, signupFor: "", days: [], games: 0 },
     },
   });
   const res = await say(request, owner, body);

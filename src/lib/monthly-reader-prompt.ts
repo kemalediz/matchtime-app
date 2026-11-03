@@ -84,48 +84,57 @@ type ReaderEntry = MonthlyListEntry;
 
 // ── The prompt ────────────────────────────────────────────────────────
 
-export const MONTHLY_READER_SYSTEM = `You read one message from a football club's WhatsApp group for MatchTime, the club's bot. The club runs on a list for each month: regulars sign up and pay for the month, others pay as they go (PAYG) for single games, and each week they play from that list. People change it by copying the latest list, editing it and pasting it back, and they also just say things in the chat. They never keep to one format.
+export const MONTHLY_READER_SYSTEM = `You read one message from a football club's WhatsApp group for MatchTime, the club's bot. The club runs on a list for each month: regulars sign up and pay for the month, others pay as they go (PAYG) for single games, and each week they play from that list. People change the list by copying the latest one, editing it and pasting it back, and they also just say things in the chat. They never keep to one format.
 
 THE CONTEXT comes first, and it does most of the work:
-- NOW, the date and time at the club.
+- NOW: the date and time at the club.
 - MEMBERS: everybody in the club, each with a ref (p1, p2 ...), any nicknames, and who is an organiser. Every name on a list is one of these people or somebody they brought.
 - MONTHS: the months open or under way, their games, and each month's list as MatchTime has it.
 - THE WEEK'S LIST: the next game's list as MatchTime has it.
-- RECENT CHAT and the message replied to, if any.
-Then THE MESSAGE and who sent it. Read it as a member of the group would, with all of that in mind. Messages are English or Turkish, often mixed, misspelt, with emoji.
+- RECENT CHAT, and the message replied to if any.
+Then who sent THE MESSAGE, and the message itself. Read it as a member of the group would, with all of that in mind. Messages are English or Turkish, often mixed, misspelt, with emoji.
 
 kind: what THE MESSAGE is.
+- "signup": somebody joins a month, leaves it, or will play it pay-as-you-go, in any words: "IN FOR NOVEMBER", "November good for me", "I can play most weeks in November", "Kasım varım", "Kasım'da yokum", "PAYG for November 9th", or a bare "IN" replying to MatchTime's own month sign-up list.
 - "list": the club's list for a game or for a month, pasted or typed, even a short one ("List for November 1. Davide 2."). A numbered list of something else (kit, teams, votes, who owes money) is not.
-- "signup": the sender joins a month, leaves it, or will play it pay-as-you-go, in any words: "IN FOR NOVEMBER", "November good for me", "I can play most weeks in November", "Kasım varım", "Kasım'da yokum", "PAYG for November 9th", or a bare "IN" replying to MatchTime's own month sign-up list. Not a sign-up: a plain "IN" or "out" for this week's game, a question, a maybe that depends on something ("if my knee is ok"), somebody else's plans.
-- "none": anything else.
+- "none": anything else, including a plain "IN" or "out" for this week's game (the sender's or anybody else's), a question, and a maybe that depends on something ("if my knee is ok").
 
-FOR A LIST.
+A SIGN-UP.
+- signupFor: whose sign-up it is. "sender" when the sender speaks for themselves ("I'm in for November", "count me in", "Kasım varım"). "other" when it is about anybody else, named or not, whoever sends it, an organiser included. MatchTime signs up only the sender from a sign-up.
+- choice: "in" (a regular for the month), "out" (not playing the month), "payg" (single games).
+- signupMonth: the month (1 to 12), from the message, the chat or the list it replies to.
+- days: the days named for PAYG. games: the games committed when fewer than all ("except the last week" of five is 4), else 0.
+
+A LIST.
 - month: the month it is for (1 to 12); 0 when nothing says.
-- listOf: "month" when it is the month's list (who is on the month: the sign-up list, its paid marks, MatchTime's own month or priced list, or somebody adding themselves to join the month), "week" when it is who plays one game (it follows THE WEEK'S LIST, names a game's date, or has edits for one game such as a blanked line or a name moved under can't play). During sign-up a list for the coming month is the month's list. In a month under way the group re-pastes "List for <month>" for each game: that is the week's list unless it is plainly the month's sign-up list again.
+- listOf: "month" for the month's list (who is on the month: the sign-up list, its paid marks, MatchTime's own month or priced list, or somebody adding themselves to join the month); "week" for who plays one game (it follows THE WEEK'S LIST, names a game's date, or has edits for one game such as a blanked line or a name moved under can't play). During sign-up a list for the coming month is the month's list. In a month under way the group re-pastes "List for <month>" for each game: that is the week's list unless it is plainly the month's sign-up list again.
 - gameDay: for a week's list, the day of the month of the game it is for; 0 otherwise. A group often re-pastes an old list under its old title for the next game ("List for 12 October" pasted on the 19th after "List for today?"): when the titled game is past, gameDay is the next game's day.
 - residual: what the sender typed around the list in their own words, copied exactly ("can't make it lads"); "" when nothing. The title, part headers and MatchTime's own lines (places open, price, footer) are not residual.
 - lines: every line of the list in order, blank numbered lines too. For each:
-  section: "playing" for the main list; "cant_play" under a part like "Paid but can't play", "Can't play", "Out", "Injured", "Gelemeyenler", "Ödedi gelemiyor"; "reserves" under "Reserves", "Subs", "Yedekler"; "other" under any other part.
+  section: "playing" for the main list; "cant_play" under a part such as "Paid but can't play", "Can't play", "Out", "Injured", "Gelemeyenler", "Ödedi gelemiyor"; "reserves" under "Reserves", "Subs", "Yedekler"; "other" under any other part.
   slot: the number written; 0 when none. name: the person's name only, as written, without notes, brackets or emoji ("YorDan😁 (paid 22.50)" is "YorDan"); "" for a blank line.
-  WHO IT IS. Match the name against MEMBERS: their name, first name, nickname, or an obvious spelling of one ("smiler" is the member known as Smiler; "Dan" is Jordan Daniels if he goes by Dan). Then member is that ref, and guest is false.
-  If the name is NOBODY on MEMBERS, and not a nickname or spelling of one, it is a GUEST: guest is true and member is "". So is a line that says somebody is brought along ("Jon extra" is an extra player Jon brings, not Jon; "David (my son)"; "Ali'nin arkadaşı"); keep the name as written. host: the ref of who brought them, when the line or the chat says ("Jon extra" is Jon's); otherwise whoever added the line, which for a new line on THE MESSAGE is the sender ("sender"); "" only when you cannot tell. Only call a listed name a member when it really is one: two members it could be is member "" and guest false.
+  member and guest, WHO IT IS. Match the name against MEMBERS: their name, first name, nickname, or an obvious spelling of one ("smiler" is the member known as Smiler; "Dan" is Jordan Daniels if he goes by Dan). Then member is that ref and guest is false. A name that is NOBODY on MEMBERS, and not a nickname or spelling of one, is a GUEST: guest true, member "". So is a line that says somebody is brought along ("Jon extra" is an extra player Jon brings, not Jon; "David (my son)"; "Ali'nin arkadaşı"); keep the name as written. Call a listed name a member only when it really is one: a name two members could be is member "" and guest false.
+  host: for a guest, the ref of who brought them when the line or the chat says ("Jon extra" is Jon's); otherwise whoever added the line, which for a new line on THE MESSAGE is the sender ("sender"); "" only when you cannot tell.
   games: the month's games the person commits to, when the line says ("4 only" is 4; "except the last week" of a five-game month is 4); 0 otherwise.
   payg: true for pay-per-game ("(PAYG)", "PAYG 5th only"); paygDays: the days named for it ([5] for "5th only"), else [].
-  paid: true when the line says they have paid ("paid", "(Paid £22.50)", "ödedi"; "not paid" is false); paidPence: the amount with it in pence (2250), else 0.
+  paid: true when the line says they have paid ("paid", "(Paid £22.50)", "ödedi"; "not paid" is false); paidPence: the amount with it, in pence (2250), else 0.
   concession: true for a reduced rate ("pensioners rate", "OAP", "emekli"). newbie: true when it says they are new ("newbie", "first time", "yeni").
-
-FOR A SIGN-UP. choice: "in" (a regular for the month), "out" (not playing the month), "payg" (single games). signupMonth: the month (1 to 12), from the message, the chat or the list it replies to. days: the days named for PAYG. games: the games committed when fewer than all ("except the last week" of five is 4), else 0.
 
 Fields that do not apply: "", 0, false or [].
 
-Examples (English | Turkish):
+Examples (English | Turkish).
+Sign-ups:
+- "November good for me", "I'm in for November except the last week" | "Kasım bana uyar", "Kasım varım son hafta hariç": signup in, month 11, signupFor "sender"; games 4 for the second when November has five games.
+- From Dean, "Lucas is out for November", "my son is in for November" | "Ali de Kasım'da var": signup, signupFor "other".
+- From Dean, "Luca Rossi is IN" | "Can bu hafta var": none, a plain IN for this week (and somebody else's).
+Lists:
 - "List for November\\n1. Davide\\n7. smiler 4 only" | "Kasım listesi\\n1. Erdal\\n2. Mehmet sadece 3 hafta": list, month 11, listOf month; smiler is the member Smiler, games 4 | Mehmet games 3.
 - "8. Andrew (PAYG 5th only)\\n4. Steff (paid pensioners rate)" | "8. Burak (PAYG sadece 9'u)\\n4. Kemal (ödedi emekli)": Andrew payg, paygDays [5]; Steff paid, concession | Burak payg [9]; Kemal paid, concession.
 - From Dean, "15. David (PAYG)\\n16. Luca" with a David among the members and no Luca | "16. Can" with no Can: David is that member; Luca is a guest, host "sender" | Can a guest, host "sender".
 - "13. Jon extra" | "13. Emre'nin oğlu Can": a guest, host Jon's ref | a guest, host Emre's ref.
 - "Paid but can't play\\n1. Serg" | "Ödedi gelemiyor\\n1. Volkan": section cant_play.
 - "List for 12 October" re-pasted on 19 October, the 12th played | "12 Ekim listesi" 19 Ekim'de: listOf week, gameDay 19.
-- "November good for me", "I'm in for November except the last week" | "Kasım bana uyar", "Kasım varım son hafta hariç": signup in, month 11; games 4 for the second when November has five games.
+Neither:
 - "Are we off tonight?" | "bu akşam maç var mı?": none.
 
 Output STRICT JSON only, no markdown, no fences.`;
@@ -164,10 +173,11 @@ export const MONTHLY_READER_SCHEMA = {
     residual: { type: "string" },
     choice: { type: "string", enum: ["in", "out", "payg", ""] },
     signupMonth: { type: "integer" },
+    signupFor: { type: "string", enum: ["sender", "other", ""] },
     days: { type: "array", items: { type: "integer" } },
     games: { type: "integer" },
   },
-  required: ["kind", "month", "gameDay", "listOf", "lines", "residual", "choice", "signupMonth", "days", "games"],
+  required: ["kind", "month", "gameDay", "listOf", "lines", "residual", "choice", "signupMonth", "signupFor", "days", "games"],
   additionalProperties: false,
 } as const;
 
@@ -227,6 +237,11 @@ export function parseMonthlyReading(raw: unknown, input: MonthlyReaderInput, ctx
   };
 
   if (o.kind === "signup") {
+    // A sign-up is acted on as the SENDER's own (month-signup.ts), so one
+    // for anybody else, or that does not say whose it is, is none: the
+    // message goes on to the router like any other (the Vets sandbox,
+    // 2026-11-03: the organiser's "David Aksoy is IN" was applied to him).
+    if (o.signupFor !== "sender") return NONE("a sign-up that is not the sender's own");
     const choice = o.choice === "in" || o.choice === "out" || o.choice === "payg" ? o.choice : null;
     const month = int(o.signupMonth, 1, 12);
     if (!choice || !month) return NONE("signup without a choice or a month");
