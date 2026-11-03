@@ -62,6 +62,7 @@ const answer = (over: Record<string, unknown>) => ({
   residual: "",
   choice: "",
   signupMonth: 0,
+  signupFor: "",
   days: [],
   games: 0,
   ...over,
@@ -152,13 +153,34 @@ describe("the answer, checked against the context", () => {
   });
 
   it("a sign-up in any words, with the games committed", () => {
-    expect(parseMonthlyReading(answer({ kind: "signup", lines: [], choice: "in", signupMonth: 11, games: 4 }), input("I'm in for November except the last week"), CTX)).toEqual({
+    expect(parseMonthlyReading(answer({ kind: "signup", lines: [], choice: "in", signupMonth: 11, signupFor: "sender", games: 4 }), input("I'm in for November except the last week"), CTX)).toEqual({
       kind: "signup",
       choice: "in",
       month: 11,
       days: [],
       games: 4,
     });
+  });
+
+  // The Vets sandbox, 2026-11-03: the organiser's "David Aksoy is IN" (a
+  // guest) was read as a sign-up and applied to HIM ("already regular"),
+  // so the guest was never added. The model knew it was somebody else and
+  // had nowhere to say so. A sign-up is the sender's own, or it is none.
+  it("a sign-up is only ever the sender's own: one for somebody else, or that does not say, is none", () => {
+    const signup = (signupFor: unknown) => answer({ kind: "signup", choice: "in", signupMonth: 11, signupFor });
+    const davide = input("David Aksoy is IN", { sender: { userId: "u-davide", name: "Davide De Souza", organiser: true } });
+    expect(parseMonthlyReading(signup("other"), davide, CTX).kind).toBe("none");
+    expect(parseMonthlyReading(signup(""), davide, CTX).kind).toBe("none");
+    expect(parseMonthlyReading(signup(undefined), davide, CTX).kind).toBe("none");
+    expect(parseMonthlyReading(signup("p1"), davide, CTX).kind).toBe("none");
+    expect(parseMonthlyReading(signup("sender"), input("IN FOR NOVEMBER"), CTX)).toMatchObject({ kind: "signup", choice: "in", month: 11 });
+    // An out for somebody else never takes the sender off the month either.
+    expect(parseMonthlyReading(answer({ kind: "signup", choice: "out", signupMonth: 11, signupFor: "other" }), input("Lucas is out for November"), CTX).kind).toBe("none");
+  });
+
+  it("the schema asks whose sign-up it is, from a closed set", () => {
+    expect(MONTHLY_READER_SCHEMA.required).toContain("signupFor");
+    expect(MONTHLY_READER_SCHEMA.properties.signupFor).toEqual({ type: "string", enum: ["sender", "other", ""] });
   });
 
   it("anything it cannot trust is none", () => {
@@ -180,7 +202,7 @@ describe("readMonthlyMessage", () => {
 
   it("one call, read into a reading", async () => {
     const r = await readMonthlyMessage(input("November good for me"), CTX, {
-      model: fake(JSON.stringify(answer({ kind: "signup", choice: "in", signupMonth: 11 }))),
+      model: fake(JSON.stringify(answer({ kind: "signup", choice: "in", signupMonth: 11, signupFor: "sender" }))),
     });
     expect(r).toMatchObject({ kind: "signup", choice: "in", month: 11, games: null });
   });

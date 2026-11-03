@@ -99,6 +99,7 @@ const listAnswer = (lines: unknown[], over: Record<string, unknown> = {}) => ({
   residual: "",
   choice: "",
   signupMonth: 0,
+  signupFor: "",
   days: [],
   games: 0,
   ...over,
@@ -215,7 +216,7 @@ test("B3: somebody not on the running month adds himself to the MONTH's list: he
   setMonthlyReaderStub({
     bodies: {
       [body]: listAnswer([line(1, "Alex"), line(2, "Bilal"), line(3, "Chris"), line(4, "Will")], { listOf: "month" }),
-      "yes please": { ...listAnswer([]), kind: "signup", choice: "in", signupMonth: MONTH_NUMBER },
+      "yes please": { ...listAnswer([]), kind: "signup", choice: "in", signupMonth: MONTH_NUMBER, signupFor: "sender" },
     },
   });
   const res = await say(request, P.will, body);
@@ -231,7 +232,7 @@ test("B3: somebody not on the running month adds himself to the MONTH's list: he
 
 test("B4: 'in for <month> except the last week' joins the month with the games committed", async ({ request, db }) => {
   const body = `I'm in for ${MONTH_NAME} except the last week`;
-  setMonthlyReaderStub({ bodies: { [body]: { ...listAnswer([]), kind: "signup", choice: "in", signupMonth: MONTH_NUMBER, games: 2 } } });
+  setMonthlyReaderStub({ bodies: { [body]: { ...listAnswer([]), kind: "signup", choice: "in", signupMonth: MONTH_NUMBER, signupFor: "sender", games: 2 } } });
   const res = await say(request, P.tom, body);
   expect(res).toMatchObject({ handledBy: "fast-path", intent: "month_signup", react: "✅" });
   expect(await monthRow(db, P.tom)).toMatchObject({ kind: "regular", gamesCommitted: 2 });

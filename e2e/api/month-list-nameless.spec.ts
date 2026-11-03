@@ -59,7 +59,7 @@ const ln = (slot: number, name: string, over: Record<string, unknown> = {}) => (
 });
 /** As the reader reads the list: Davide is the member it knows; the rest it cannot place. */
 const READING = {
-  kind: "list", month: NEXT_NUMBER, gameDay: 0, listOf: "month", residual: "", choice: "", signupMonth: 0, days: [], games: 0,
+  kind: "list", month: NEXT_NUMBER, gameDay: 0, listOf: "month", residual: "", choice: "", signupMonth: 0, signupFor: "", days: [], games: 0,
   lines: [ln(1, "Davide", { member: "p1" }), ln(2, "Nabz", { games: 3 }), ln(3, "Craig"), ln(4, "steff")],
 };
 
