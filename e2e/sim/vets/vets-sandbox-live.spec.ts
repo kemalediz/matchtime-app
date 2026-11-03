@@ -26,6 +26,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { scenario, liveOnly, expect, LIVE } from "../pool/fixtures";
 import { resetDb, signInAs } from "../../fixtures";
 import { E2E, E2E_BASE_URL, REPO_ROOT } from "../../helpers/env";
+import type { TestDb } from "../../helpers/test-db";
 import {
   LIST_KEYS,
   LONDON,
@@ -801,5 +802,271 @@ scenario.describe("the Vets sandbox", () => {
     await expect(page.getByTestId(`player-row-${newUser!.id}`).locator('input[type="number"]')).toHaveValue("6");
     await expect(page.getByText("Wednesday Wanderers Sandbox")).toHaveCount(0);
     await expect(page.getByText("Friday Five Sandbox")).toHaveCount(0);
+  });
+
+  // ── N: a new name on the month's list, re-posted in a running month ──
+  // Kemal, 2026-11-03: Davide collects the money himself (payments off) and
+  // re-posts the month's paid list with a new line, "14. Tom (paid)". The
+  // INTENDED behaviour these assert (Kemal's question): the new player is
+  // a regular of the month for the games left, is on the next match's
+  // squad, and the group sees him on the week's list; nothing else is said
+  // in the group (a ✅ on a paste that changed something, plan 6.2).
+  //
+  // What the design as BUILT says instead (MDs/monthly-squad-plan-2026-10-05.md,
+  // slice 5 "Changed after review"): "A paste never creates a player and
+  // never guesses one ... a club player who is not on the month's list is
+  // not registered, and the organisers (or the admin who pasted it) get one
+  // note a day"; from the first kick-off "only the organiser changes the
+  // month", on the Months page (slice 3/6 as built). A name matching nobody
+  // is a GUEST for that one game (B2, `reconcileMonthPaste`). So N1 to N3
+  // and N5 are marked `scenario.fail`: they fail on purpose until Kemal
+  // decides whether an organiser's re-posted list may add a regular. N4
+  // (a player's list) is the design and passes; N6 is a defect found on the
+  // way (regulars with no name are read as guests).
+  scenario.describe("N. a running month's list re-posted with a new name", () => {
+    /** The first names the month's list uses for the nameless regulars. */
+    const LIST_FIRST_NAMES: Record<string, string> = {
+      nabz: "Nabz",
+      steff: "Steff",
+      craig: "Craig",
+      dan: "Dan",
+      ben: "Ben",
+      steve: "Steve",
+      andrew: "Andrew",
+      jon: "Jon",
+      oumesh: "Oumesh",
+    };
+    /**
+     * The running month, last Monday played, the 13 regulars seeded on the
+     * next match. `named` (default): the regulars carry the names the month's
+     * start gave them, as in production after scenario C's flow (the sweep
+     * names a member from his WhatsApp name, Davide's "Craig is 3" names the
+     * rest). Members NOT on the month (Luca, p11 to p20) stay nameless.
+     */
+    const runningWeek = async (pool: Parameters<typeof vetsClub>[0], db: TestDb, opts: { named?: boolean } = {}) => {
+      // The month's games left must be in the same month as last Monday's.
+      scenario.skip(formatInTimeZone(lastMondayKickoff(), LONDON, "MM") !== formatInTimeZone(new Date(), LONDON, "MM"), "needs a Monday already played this month");
+      const v = await vetsClub(pool, "vets", { month: "running", played: { keys: LIST_KEYS } });
+      if (opts.named !== false) {
+        for (const [k, name] of Object.entries(LIST_FIRST_NAMES)) await db.run(`UPDATE "User" SET name = $2 WHERE id = $1`, [v.userId(k), name]);
+      }
+      await schedulerPoll(pool, v, new Date());
+      const n = await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND status = 'CONFIRMED'`, [v.matchId]);
+      expect(n, "the 13 regulars seeded").toBe(13);
+      return v;
+    };
+    /** The month's Mondays from the next kickoff on (the games left). */
+    const gamesLeft = (kickoff: Date): number => {
+      let n = 0;
+      for (let t = kickoff.getTime(); formatInTimeZone(new Date(t), LONDON, "MM") === formatInTimeZone(kickoff, LONDON, "MM"); t += 7 * 86_400_000) n++;
+      return n;
+    };
+    const monthNameOf = (v: { kickoff: Date }) => formatInTimeZone(v.kickoff, LONDON, "MMMM");
+    const withLine = (text: string, line: string) => `${text}\n${line}`;
+
+    /** Everything the bot did with one paste, printed for the report. */
+    const report = async (db: TestDb, tag: string, r: Awaited<ReturnType<typeof say>>) => {
+      console.log(
+        `[vets ${tag}] ${JSON.stringify({ react: r.react, reply: r.reply, intent: r.intent, handledBy: r.handledBy })}\n` +
+          `  as recorded: ${JSON.stringify(await analyzed(db, r.waMessageId))}\n` +
+          r.sent.map((m) => `  -> ${m.channel} ${m.to}: ${m.text}`).join("\n"),
+      );
+    };
+
+    /** The INTENDED outcome for the player the paste adds: a regular for the games left, on the match, on the list the group sees. */
+    const expectNewRegular = async (
+      pool: Parameters<typeof vetsClub>[0],
+      db: TestDb,
+      v: Awaited<ReturnType<typeof vetsClub>>,
+      tag: string,
+      userId: string | null,
+      listName: RegExp,
+      pastedAt: Date,
+    ) => {
+      expect.soft(userId, "the player the paste names").toBeTruthy();
+      const mm = userId
+        ? await db.one<{ kind: string; leftAt: Date | null; gamesCovered: number; source: string | null }>(
+            `SELECT kind, "leftAt", "gamesCovered", source FROM "SquadMonthMember" WHERE "monthId" = $1 AND "userId" = $2`,
+            [v.monthId, userId],
+          )
+        : null;
+      const att = userId
+        ? await db.one<{ status: string; position: number | null }>(`SELECT status, position FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [v.matchId, userId])
+        : null;
+      console.log(`[vets ${tag}] month row: ${JSON.stringify(mm)}; attendance: ${JSON.stringify(att)}`);
+      expect.soft(mm?.kind, "a regular of the month").toBe("regular");
+      expect.soft(mm?.leftAt ?? null, "still on the month").toBeNull();
+      expect.soft(mm?.gamesCovered, "for the games left").toBe(gamesLeft(v.kickoff));
+      expect.soft(att?.status, "on the next match's squad").toBe("CONFIRMED");
+      // The week's list the group sees: MatchTime's next list post (past the
+      // 30-minute floor) shows him, or his own paste was the list as it now is.
+      const later = await schedulerPoll(pool, v, new Date(Date.now() + 35 * 60_000));
+      const post = later.instructions.find((i) => i.kind === "group-message" && (i.key ?? "").includes(":month-list:"));
+      const seen = await db.one<{ kind: string; createdAt: Date }>(
+        `SELECT kind, "createdAt" FROM "SentNotification" WHERE "matchId" = $1 AND key LIKE $2 ORDER BY "createdAt" DESC LIMIT 1`,
+        [v.matchId, `${v.matchId}:month-list:%`],
+      );
+      console.log(`[vets ${tag}] the week's list after: ${post ? `posted:\n${post.text}` : `not posted; newest list row ${JSON.stringify(seen)}`}`);
+      if (post) expect.soft(post.text ?? "", "the list post shows him").toMatch(listName);
+      else expect.soft(seen?.kind === "month-list-seen" && seen.createdAt.getTime() >= pastedAt.getTime(), "his paste counted as the list shown").toBe(true);
+    };
+
+    // N1 = variant a
+    scenario.fail("N1. Davide re-posts the list with '14. Tom (paid)', Tom a named club member not on the month: Tom becomes a regular and is on Monday's squad", async ({ pool, db }) => {
+      // FAILS AT HEAD (traced, live run 2026-11-03): the month-seed door
+      // refuses (the month is started: month-signup-rules.ts:103 drops it from
+      // the targets, month-seed-read.ts:140 returns null); the sign-up door
+      // too (month-signup.ts:1075-1084, a late join is the SENDER joining
+      // only, and Davide is on the month); so the week's reconcile reads it,
+      // and monthly-week-rules.ts:871-875 ("a club player who is not on the
+      // month comes in only when he is the sender") makes Tom notAdded
+      // "not-in-month". Observed: no ✅, nothing in the group, and Davide DMed
+      // (monthly-paste.ts:404-413) "Davide Russo pasted the list for Mon 9 Nov,
+      // 20:30 with Tom on it. I could not match that to a player on this
+      // month's list, so I added nobody. A player can say *IN* in the group
+      // themselves, or you can add them on the match page."
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const at = new Date();
+      const r = await say(pool, v, "davide", withLine(monthListText(monthNameOf(v)), "14. Tom (paid)"));
+      await report(db, "N1", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      expect.soft(r.react, "a ✅ on a paste that changed something").toBe("✅");
+      await expectNewRegular(pool, db, v, "N1", v.userId("tom"), /\bTom\b/, at);
+    });
+
+    // N2 = variant b
+    scenario.fail("N2. '14. Luca (paid)', Luca a nameless member (imported by phone, no name yet): that member becomes the regular (or Davide is asked by DM who Luca is), and no second Luca is created", async ({ pool, db }) => {
+      // FAILS AT HEAD (traced): the monthly reader is shown only NAMED
+      // members (monthly-reader.ts:61-62, `.filter((m) => m.user.name)`), so
+      // "Luca" is nobody to it and is read as a GUEST (monthly-reader-prompt.ts:116);
+      // reconcileMonthPaste turns a guest line into a new player
+      // (monthly-week-rules.ts:849-855), created by monthly-paste.ts:260
+      // (`createProvisionalByName`): a second "Luca", on this one game only,
+      // never a regular, and nobody asks Davide who he is. Observed: a new
+      // "Luca" on the match, the list post "14. Luca (PAYG)", Davide DMed
+      // "I've added Luca to Mon 9 Nov, 20:30 as your guest, paying as they go".
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const at = new Date();
+      const r = await say(pool, v, "davide", withLine(monthListText(monthNameOf(v)), "14. Luca (paid)"));
+      await report(db, "N2", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      const lucas = await db.all<{ id: string }>(
+        `SELECT u.id FROM "User" u JOIN "Membership" m ON m."userId" = u.id WHERE m."orgId" = $1 AND lower(u.name) = 'luca'`,
+        [v.orgId],
+      );
+      console.log(`[vets N2] users named Luca at the club: ${JSON.stringify(lucas)} (the nameless member is ${v.userId("luca")})`);
+      expect.soft(lucas.filter((u) => u.id !== v.userId("luca")), "no second Luca created").toEqual([]);
+      // Either he is matched (the member becomes the regular), or Davide is
+      // asked who Luca is, by DM, with the nameless members by phone (as the
+      // month-seed DM does, month-seed-match.ts).
+      const asked = r.sent.some((m) => m.channel === "dm" && m.to === "vets.davide" && /Luca/.test(m.text) && /\+44 \d{4} \d{6}/.test(m.text));
+      if (!asked) await expectNewRegular(pool, db, v, "N2", v.userId("luca"), /\bLuca\b/, at);
+    });
+
+    // N3 = variant c
+    scenario.fail("N3. '14. Zak (paid)', Zak nobody at the club: Zak is added as a new named player and a regular of the month", async ({ pool, db }) => {
+      // FAILS AT HEAD on "regular" (traced, live run 2026-11-03; the new
+      // player, CONFIRMED at 14 and the list post "14. Zak (PAYG)" pass): Zak is read as a guest and
+      // created (monthly-week-rules.ts:849-855, monthly-paste.ts:254-276) for
+      // THIS game only, paying as he goes; Davide gets "added Zak ... as your
+      // guest, paying as they go" by DM (monthly-paste.ts:353-362). No
+      // SquadMonthMember row is written. Whether an organiser's new line in
+      // a running month is a regular or a one-game guest is undecided.
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const at = new Date();
+      const r = await say(pool, v, "davide", withLine(monthListText(monthNameOf(v)), "14. Zak (paid)"));
+      await report(db, "N3", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      const zaks = await db.all<{ id: string }>(
+        `SELECT u.id FROM "User" u JOIN "Membership" m ON m."userId" = u.id WHERE m."orgId" = $1 AND lower(u.name) = 'zak'`,
+        [v.orgId],
+      );
+      console.log(`[vets N3] users named Zak at the club: ${JSON.stringify(zaks)}`);
+      expect.soft(zaks, "one new player, Zak").toHaveLength(1);
+      await expectNewRegular(pool, db, v, "N3", zaks[0]?.id ?? null, /\bZak\b/, at);
+    });
+
+    // N5 = variant e
+    scenario.fail("N5. Davide's re-post adds '14. Tom (paid)' and moves Steve under 'Paid but can't play': Steve is out this week (told by DM), Tom is a regular and in", async ({ pool, db }) => {
+      // Steve's half is the design (plan 6.2, D4) and passes: DROPPED, his
+      // "moved you to 'Paid but can't play' ... Reply *IN*" DM, ✅, and the
+      // next list post shows him under "Paid but can't play". Tom's half
+      // FAILS AT HEAD for the N1 reason (monthly-week-rules.ts:871-875):
+      // Davide gets the "added nobody" DM and slot 14 stays open.
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const at = new Date();
+      const base = monthListText(monthNameOf(v)).replace(/\n8\. [^\n]*Steve[^\n]*/, "");
+      expect(base).not.toMatch(/Steve/);
+      const r = await say(pool, v, "davide", `${base}\n14. Tom (paid)\n\nPaid but can't play\nSteve (paid)`);
+      await report(db, "N5", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      expect.soft(r.react, "a ✅ on a paste that changed something").toBe("✅");
+      const steve = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [v.matchId, v.userId("steve")]);
+      console.log(`[vets N5] Steve: ${JSON.stringify(steve)}`);
+      expect.soft(steve?.status, "Steve out this week").toBe("DROPPED");
+      expect.soft(
+        r.sent.some((m) => m.channel === "dm" && m.to === "vets.steve" && /Paid but can't play/.test(m.text)),
+        "Steve told, with the undo",
+      ).toBe(true);
+      await expectNewRegular(pool, db, v, "N5", v.userId("tom"), /\bTom\b/, at);
+    });
+
+    // N4 = variant d
+    scenario("N4. a regular (Shane), not the organiser, posts the same list with '14. Tom (paid)': nobody is added; Davide is told by DM, and so is Shane; nothing in the group", async ({ pool, db }) => {
+      // The design (plan 6.2 D4 as narrowed in slice 5's review, and
+      // "only the organiser changes the month"): a player adds only himself.
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const r = await say(pool, v, "shane", withLine(monthListText(monthNameOf(v)), "14. Tom (paid)"));
+      await report(db, "N4", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      expect.soft(r.react, "no ✅: nothing changed").toBeNull();
+      const mm = await db.one(`SELECT kind FROM "SquadMonthMember" WHERE "monthId" = $1 AND "userId" = $2`, [v.monthId, v.userId("tom")]);
+      expect.soft(mm, "Tom not on the month").toBeNull();
+      const att = await db.one(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [v.matchId, v.userId("tom")]);
+      expect.soft(att, "Tom not on the match").toBeNull();
+      expect.soft(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND status = 'CONFIRMED'`, [v.matchId]), "the squad unchanged").toBe(13);
+      const dms = r.sent.filter((m) => m.channel === "dm");
+      expect.soft(dms.some((m) => m.to === "vets.davide" && /Tom/.test(m.text)), "the organiser told").toBe(true);
+      expect.soft(dms.some((m) => m.to === "vets.shane" && /Tom/.test(m.text)), "the sender told").toBe(true);
+    });
+
+    // N6: found by the first run of N1 to N5 (2026-11-03), on regulars with no name.
+    scenario.fail("N6. a running month whose regulars have no name yet: Davide re-posts the month's list unchanged, and nobody is created, nobody added, nothing said", async ({ pool, db }) => {
+      // FAILS AT HEAD (traced, live run 2026-11-03): the monthly reader is
+      // shown only NAMED members (monthly-reader.ts:61-62), so "Nabz",
+      // "steff", "Craig"... are nobody to it and come back as GUESTS
+      // (monthly-reader-prompt.ts:116). A guest is looked up only by name
+      // among the week's people (month-signup-rules.ts:383-387), and these
+      // have none, so reconcileMonthPaste makes the first one a new player
+      // for the one open place and refuses the rest (monthly-week-rules.ts:849-857).
+      // Observed: a second "Nabz" created and CONFIRMED (14 on the match), a ✅,
+      // and Davide DMed "I've added Nabz ... as your guest" and "One list can
+      // only add a few new players, so I didn't add steff, Craig, Dan, Ben,
+      // Steve, Andrew, Jon, Oumesh". Steve under "Paid but can't play" is not
+      // taken off either (N5's first run: his line resolves to nobody).
+      liveOnly();
+      const v = await runningWeek(pool, db, { named: false });
+      const r = await say(pool, v, "davide", monthListText(monthNameOf(v)));
+      await report(db, "N6", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent, "nothing sent at all").toEqual([]);
+      expect.soft(r.react, "no ✅: nothing changed").toBeNull();
+      expect.soft(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND status = 'CONFIRMED'`, [v.matchId]), "the squad unchanged").toBe(13);
+      const created = await db.all<{ name: string }>(
+        `SELECT u.name FROM "User" u JOIN "Membership" m ON m."userId" = u.id WHERE m."orgId" = $1 AND u.email LIKE 'provisional+%'`,
+        [v.orgId],
+      );
+      expect.soft(created, "no player created").toEqual([]);
+    });
   });
 });
