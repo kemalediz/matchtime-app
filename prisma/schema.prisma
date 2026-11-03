@@ -2530,6 +2530,15 @@ model UserMerge {
   /// is an admin of this org linking their player to the existing account
   /// of a person who plays at another club (src/lib/cross-club-link.ts).
   reason         String?
+  /// What a person merge moved (2026-11-03, src/lib/user-merge.ts): the
+  /// per-table counts, every conflict and how it was settled, and every
+  /// row written. Set on merges with reason "duplicate-person-merge" only.
+  /// Hand-applied migration 20261103120000_user_merge_detail. @ignore: the
+  /// client never selects it, so every existing `db.userMerge.*` call works
+  /// before the column exists; written only with raw SQL in user-merge.ts,
+  /// inside the merge's own transaction (a missing column fails the merge,
+  /// it never half-writes one).
+  detail         Json?    @ignore
 
   @@index([oldUserId])
 }
