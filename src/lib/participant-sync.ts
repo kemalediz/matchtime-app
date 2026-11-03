@@ -15,6 +15,11 @@
  *     provisional members BEFORE creating; NEVER overwrites existing
  *     User.name/phoneNumber (a name match holding a different number is
  *     treated as a different person, see adoptPhoneIfUnset).
+ *   - A member known by phone whose name is EMPTY takes the WhatsApp name
+ *     the Pi sends (2026-11-03, Vets MNF: 20 of 27 imported nameless, so
+ *     the month's list matched 4 of 13). Only while it is still empty, and
+ *     only a real name (`usableWhatsAppName`: never a number shown as a
+ *     name). A new user is named the same way.
  *   - Membership upsert as PLAYER; restores soft-removed (leftAt) rows;
  *     always stamps lastSeenInGroupAt.
  *   - Stamps `Organisation.lastParticipantSweepAt` when the roster was
@@ -26,6 +31,7 @@
 import { db } from "./db";
 import { findExistingOrgMember } from "./resolve-player";
 import { linkJoinerToPlaceholder } from "./placeholder-link";
+import { usableWhatsAppName } from "./resolve-sender";
 import {
   snapshotPhone,
   parseParticipantSnapshot,
@@ -72,6 +78,21 @@ async function adoptPhoneIfUnset(userId: string, phone: string): Promise<boolean
   }
 }
 
+/**
+ * Give a nameless member the WhatsApp name the Pi knows, ONLY while his
+ * name is still empty (the write is conditional on it), so a name an
+ * organiser or the member set in between is never replaced. Best effort:
+ * a failure leaves him nameless and the sweep goes on.
+ */
+async function nameIfNameless(userId: string, name: string): Promise<void> {
+  try {
+    const { count } = await db.user.updateMany({ where: { id: userId, name: null }, data: { name } });
+    if (count === 1) console.log(`[participant-sync] named ${userId} "${name}" from WhatsApp`);
+  } catch (err) {
+    console.error(`[participant-sync] naming ${userId} failed:`, err instanceof Error ? err.message : "failed");
+  }
+}
+
 /** Upsert Users + Memberships for a participant list into an org. */
 export async function importParticipants(
   orgId: string,
@@ -90,6 +111,8 @@ export async function importParticipants(
       continue;
     }
     const pushname = p.pushname?.trim() || null;
+    // The name a user may be GIVEN: never a phone number or @lid digits.
+    const waName = usableWhatsAppName(pushname);
 
     let user = await db.user.findUnique({
       where: { phoneNumber: phone },
@@ -128,7 +151,7 @@ export async function importParticipants(
           .slice(0, 32) || "player";
       user = await db.user.create({
         data: {
-          name: pushname,
+          name: waName,
           phoneNumber: phone,
           email: `wa-sync+${slug}-${Date.now().toString(36)}@matchtime.local`,
           isActive: true,
@@ -139,6 +162,7 @@ export async function importParticipants(
       added += 1;
     } else {
       alreadyKnown += 1;
+      if (!user.name && waName) await nameIfNameless(user.id, waName);
     }
 
     // Upsert active Membership. If the user was previously soft-removed

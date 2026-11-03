@@ -26,6 +26,7 @@ import { monthNameLabel } from "./i18n/dates";
 import { monthSetupCopy } from "./i18n/month-setup";
 import { nextMonthStart, seedTargets } from "./month-signup-rules";
 import { startMonth } from "./squad-month";
+import type { NamelessRef, SeedUnmatchedEntry } from "./month-seed-match-rules";
 import { gamesPlayedBy, londonMonthStart, monthFixtureDates, monthStartToDate, normaliseSquadMode, type SeedRowInput } from "./squad-month-rules";
 
 /** As long as a weekly pasted list waits for its YES. */
@@ -39,10 +40,22 @@ export interface MonthSeedProposalData {
    *  before 2026-11-03. The YES counts them again at its own time. */
   gamesPlayed?: number;
   rows: SeedRowInput[];
+  /** Names on the list that matched nobody, with what each line says, so
+   *  the organiser can say who they are (2026-11-03, `month-seed-match.ts`).
+   *  Absent on a proposal stored before then. */
+  unmatched?: SeedUnmatchedEntry[];
+  /** The members with no name as numbered in the DM he was last sent, so
+   *  "Craig is 3" means the member he saw as 3. */
+  nameless?: NamelessRef[];
+  /** What the list was read as (`seedReadKey`): the same list read again
+   *  is not offered again. */
+  readKey?: string;
 }
 
 export interface MonthSeedReply {
-  outcome: "month-seed-proposed" | "month-seed-applied" | "month-seed-failed";
+  /** "month-seed-same": this very list is already waiting for his answer
+   *  (`keepSameList`); nothing was written and nothing is to be sent. */
+  outcome: "month-seed-proposed" | "month-seed-same" | "month-seed-applied" | "month-seed-failed";
   replyText: string;
   /** Why a YES did not start the month. */
   error?: string;

@@ -36,6 +36,7 @@ import {
 } from "./group-copy";
 import { planSwap, type SwapCandidate } from "./team-slot-swap";
 import { t } from "./i18n/t";
+import { loadPlayerNames } from "./player-display-name";
 
 /** The slice of the teams extractor's facts this module reads. */
 export interface PlayersSwapFacts {
@@ -90,7 +91,7 @@ async function loadMatch(orgId: string) {
  * and a holder who is no longer CONFIRMED shown as an open slot
  * (2026-09-29, `teamSheetNames`).
  */
-async function honestSheetNames(matchId: string, lang: string | null | undefined): Promise<{ red: string[]; yellow: string[] }> {
+export async function teamSheetNamesFor(matchId: string, orgId: string, lang: string | null | undefined): Promise<{ red: string[]; yellow: string[] }> {
   const [rows, playing] = await Promise.all([
     db.teamAssignment.findMany({
       where: { matchId },
@@ -99,8 +100,11 @@ async function honestSheetNames(matchId: string, lang: string | null | undefined
     }),
     db.attendance.findMany({ where: { matchId, status: "CONFIRMED" }, select: { userId: true } }),
   ]);
+  // The printed name (player-display-name.ts): an alias or the WhatsApp
+  // name he posts under for a member with no name (2026-11-03).
+  const shown = await loadPlayerNames(orgId, rows.map((r) => r.userId), lang);
   return teamSheetNames(
-    rows.map((r) => ({ userId: r.userId, team: r.team, name: r.user.name })),
+    rows.map((r) => ({ userId: r.userId, team: r.team, name: shown.get(r.userId)?.display ?? r.user.name })),
     new Set(playing.map((p) => p.userId)),
     lang,
   );
@@ -128,7 +132,7 @@ export async function applyPlayersGroupSwap(args: {
     if (!match) return { kind: "unsupported", logReason: "swap: no upcoming match" };
   }
   const labels = resolveTeamLabels(match!, match!.activity.org, match!.activity.sport, lang);
-  const sheet = async () => buildTeamSheet({ redLabel: labels[0], yellowLabel: labels[1], ...(await honestSheetNames(match!.id, lang)) });
+  const sheet = async () => buildTeamSheet({ redLabel: labels[0], yellowLabel: labels[1], ...(await teamSheetNamesFor(match!.id, args.orgId, lang)) });
 
   if (shape.kind === "swap-sides") {
     // Flip every assignment in one transaction: same players, sides swapped.

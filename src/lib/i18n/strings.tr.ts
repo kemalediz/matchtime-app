@@ -1252,6 +1252,7 @@ export const tr: Strings = {
     `Arkadaşınız gelemezse bana WhatsApp'tan yazarak ya da sayfasındaki düğmeye basarak yerini geri verebilir.` +
     (p.fees ? `\n💷 Arkadaşınız maç ücretini her misafir gibi maçtan sonra öder (aylık kulüplerde maç başı ödeyen oyuncu olarak).` : ""),
   onbHelpFriendLinkOrganiser: `Bir organizatör birini eklediğinde doğrudan listeye girer.`,
+  onbHelpMonthListOrganiser: `📋 *Aylık kadro:* ayın listesini her zamanki gibi grupta paylaş, okuduğumu sana DM ile gönderirim. Listede tanımadığım bir isim varsa, adını bilmediğim üyeleri telefonlarıyla gösteririm; kim kimdir kendi sözlerinle söyle (örneğin _"Craig 3 numara"_) ya da aylar sayfasında seç. Evet yazınca ay başlar.`,
 
   onbHelpAdminOrganisers: `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda beni etiketleyip orada neler yapabildiğimi kendi cümlelerinle sor (örneğin *@Match Time neler yapabilirsin?*).`,
 
@@ -3319,12 +3320,22 @@ export const tr: Strings = {
   mwk_dm_seed_from_group: (p) =>
     [
       `📋 Grupta paylaştığın ${p.month} listesini okudum: ${p.count} oyuncu (${p.names}).`,
-      ...(p.unknown ? [`Henüz tanımadığım isimler: ${p.unknown}. Onları oyuncu olarak ekle ya da onlarsız başlat.`] : []),
+      ...(p.match
+        ? [
+            `Listendeki şu isimleri kimseyle eşleştiremedim: ${p.match.names}.`,
+            `Bu üyelerin bende henüz adı yok:`,
+            ...p.match.members,
+            `Kim kimdir kendi sözlerinle yaz, örneğin "${p.match.example}", ya da aylar sayfasında seç: ${p.link}`,
+          ]
+        : p.unknown
+          ? [`Henüz tanımadığım isimler: ${p.unknown}. Onları oyuncu olarak ekle ya da onlarsız başlat.`]
+          : []),
       p.hq
-        ? `${p.month} ayını onlarla başlatmak için organizatör grubunda *@Match Time EVET* yaz ya da buradan kontrol edip başlat: ${p.link}`
-        : `${p.month} ayını onlarla başlatmak için buradan kontrol edip başlat: ${p.link}`,
+        ? `${p.month} ayını onlarla başlatmak için buraya *evet* yaz ya da organizatör grubunda *@Match Time EVET* yaz ya da buradan kontrol edip başlat: ${p.link}`
+        : `${p.month} ayını onlarla başlatmak için buraya *evet* yaz ya da buradan kontrol edip başlat: ${p.link}`,
       `Grupta bir şey yazmadım.`,
     ].join("\n"),
+  mwk_dm_seed_match_example: (p) => `${p.name} ${p.n} numara`,
   mwk_dm_sender_not_list: (p) =>
     `📋 Gönderdiğin listeyi ${p.month} kadro listesi olarak okuyamadım, bu yüzden bir şey değiştirmedim. ` +
     `Kadro listesiyse başlık satırıyla yapıştır ("${p.month} listesi").`,
@@ -3389,6 +3400,13 @@ export const tr: Strings = {
   mth_act_payg: "PAYG'ye al",
   mth_act_remove: "Bu ay için çıkar",
   mth_act_error: "Kaydedilemedi. Sayfayı yenileyip yeniden deneyin.",
+  mth_match_title: (p) => `${p.month} listende kim kimdir`,
+  mth_match_lead:
+    "Paylaştığın listedeki bu isimleri kimseyle eşleştiremedim. Her birinin kim olduğunu seç: listede yazdığı gibi aya eklenirler ve bundan sonra onları bu isimle tanırım.",
+  mth_match_pick: "Bir üye seç",
+  mth_match_save: "Kaydet",
+  mth_match_none: "Adı olmayan kimse kalmadı. Onları oyuncu olarak ekle ya da ayı onlarsız başlat.",
+  mth_match_then: "Bitirince ayı başlatmak için WhatsApp mesajıma \"evet\" yaz.",
   mth_add_label: "Oyuncu ekle",
   mth_add_regular: "Daimi olarak ekle",
   mth_add_payg: "PAYG olarak ekle",

@@ -203,7 +203,7 @@ async function startComingMonth(args: {
  * already has that alias (it is left with them).
  * Best effort: a failure here never undoes the month that was started.
  */
-async function saveListAliases(orgId: string, aliases: Array<{ userId: string; alias: string }>): Promise<void> {
+export async function saveListAliases(orgId: string, aliases: Array<{ userId: string; alias: string }>): Promise<void> {
   if (aliases.length === 0) return;
   try {
     const key = (s: string) => s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");

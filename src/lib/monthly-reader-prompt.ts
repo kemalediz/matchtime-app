@@ -283,6 +283,14 @@ export function parseMonthlyReading(raw: unknown, input: MonthlyReaderInput, ctx
     else slots.push(entry);
   }
   if (slots.length + cantPlay.length + reserves.length + other.length === 0) return NONE("a list with no lines");
+  // A list is THE MESSAGE's own lines. Its names are written as they are
+  // in it ("as written"), so a list none of whose names is in the message
+  // was read from the chat around it: the Vets sandbox, 2026-11-03, read
+  // "November monthly squad" as the list posted just after it in the same
+  // flush, and the organiser was sent the start-the-month DM twice.
+  const named = [...slots, ...cantPlay, ...reserves, ...other].filter((e) => e.name);
+  const body = fold(input.body);
+  if (named.length > 0 && !named.some((e) => body.includes(fold(e.name)))) return NONE("a list not in the message (read from the chat)");
 
   // The residual goes on to the rest of the pipeline. It must be words of
   // the message itself: anything else is dropped, never passed on.

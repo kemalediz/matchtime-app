@@ -20,7 +20,42 @@ const MEMBERS = ["Davide De Souza", "Steff", "Craig", "Ben", "Steve", "Jon", "Sa
 const DRAFT = MEMBERS.slice(0, 6).map((m) => ({ ref: m.ref, name: m.name.split(" ")[0], kind: "regular" as const, games: null }));
 const ASKED = (lang: "en" | "tr") =>
   t(lang).mwk_dm_seed_from_group({ month: lang === "en" ? "November" : "Kasım", count: 6, names: "Davide, Steff, Craig, Ben, Steve, Jon", unknown: null, link: "https://matchtime.app/admin/months", hq: false });
-const CASES: Array<{ text: string; lang: "en" | "tr"; want: string }> = [
+/** 2026-11-03: names on his list nobody matched, and members with no name,
+ *  numbered as the DM shows them (`month-seed-match.ts`). */
+const UNMATCHED = [
+  { ref: "u1", name: "Craig" },
+  { ref: "u2", name: "Oumesh" },
+];
+const NAMELESS = [
+  { ref: "n1", n: 1, userId: "u-n1" },
+  { ref: "n2", n: 2, userId: "u-n2" },
+  { ref: "n3", n: 3, userId: "u-n3" },
+];
+const MATCH_MEMBERS = MEMBERS.filter((m) => m.name !== "Craig");
+const MATCH_DRAFT = DRAFT.filter((d) => d.name !== "Craig");
+const ASKED_MATCH = (lang: "en" | "tr") =>
+  t(lang).mwk_dm_seed_from_group({
+    month: lang === "en" ? "November" : "Kasım",
+    count: 5,
+    names: "Davide, Steff, Ben, Steve, Jon",
+    unknown: null,
+    match: {
+      names: "Craig, Oumesh",
+      members: ["1. +44 7700 900101", "2. +44 7700 900102", "3. +44 7700 900103"],
+      example: t(lang).mwk_dm_seed_match_example({ name: "Craig", n: 1 }),
+    },
+    link: "https://matchtime.app/admin/months",
+    hq: false,
+  });
+const CASES: Array<{ text: string; lang: "en" | "tr"; want: string; match?: boolean }> = [
+  // Who is who (2026-11-03): the draft has two names nobody matched.
+  { text: "Craig is 3, Oumesh is 1", lang: "en", want: "change:match:u-n3:u1,match:u-n1:u2", match: true },
+  { text: "craig's the second one", lang: "en", want: "change:match:u-n2:u1", match: true },
+  { text: "Craig 3 numara, Oumesh 1", lang: "tr", want: "change:match:u-n3:u1,match:u-n1:u2", match: true },
+  { text: "yes go ahead", lang: "en", want: "yes", match: true },
+  { text: "Craig is number 9", lang: "en", want: "other", match: true },
+  { text: "Oumesh is 2 and Ben is PAYG", lang: "en", want: "change:match:u-n2:u2,payg:u4", match: true },
+  // The cases from #465, unchanged.
   { text: "yes", lang: "en", want: "yes" },
   { text: "looks good, go ahead 👍", lang: "en", want: "yes" },
   { text: "evet başlat", lang: "tr", want: "yes" },
@@ -33,7 +68,12 @@ const CASES: Array<{ text: string; lang: "en" | "tr"; want: string }> = [
   { text: "paid my £37.50", lang: "en", want: "other" },
 ];
 const show = (r: SeedReply) =>
-  r.kind === "change" ? `change:${r.changes.map((c) => (c.action === "games" ? `games:${c.userId}:${c.games}` : `${c.action}:${c.userId}`)).sort().join(",")}` : r.kind;
+  r.kind === "change"
+    ? `change:${r.changes
+        .map((c) => (c.action === "games" ? `games:${c.userId}:${c.games}` : c.action === "match" ? `match:${c.userId}:${c.listed}` : `${c.action}:${c.userId}`))
+        .sort()
+        .join(",")}`
+    : r.kind;
 
 async function main() {
   const inner = anthropicModel({ apiKey: spendDevApiKeyOrExit("dryrun-month-seed-reply") });
@@ -52,7 +92,14 @@ async function main() {
   let pass = 0;
   const only = process.env.ONLY;
   for (const c of only ? CASES.filter((x) => x.text.includes(only)) : CASES) {
-    const got = show(await readSeedReply({ draft: DRAFT, members: MEMBERS, asked: ASKED(c.lang), text: c.text }, { model }));
+    const got = show(
+      await readSeedReply(
+        c.match
+          ? { draft: MATCH_DRAFT, members: MATCH_MEMBERS, unmatched: UNMATCHED, nameless: NAMELESS, asked: ASKED_MATCH(c.lang), text: c.text }
+          : { draft: DRAFT, members: MEMBERS, asked: ASKED(c.lang), text: c.text },
+        { model },
+      ),
+    );
     const want = c.want.startsWith("change:") ? `change:${c.want.slice(7).split(",").sort().join(",")}` : c.want;
     const ok = got === want;
     if (ok) pass++;

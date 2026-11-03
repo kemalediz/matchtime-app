@@ -33,7 +33,8 @@ const roster = ctx.members.map((m) => ({ userId: m.userId, name: m.name, aliases
 const members = [member("u-org", "Davide", 1), member("u-joe", "Joe", 2), member("u-ann", "Ann", 3)];
 const rows: WeekRow[] = members.map((m, i) => ({ userId: m.userId, name: m.name, status: "CONFIRMED", position: i + 1 }));
 const reconcile = (raw: unknown, over: { senderUserId?: string; senderIsAdmin?: boolean; maxPlayers?: number } = {}) => {
-  const r = parseMonthlyReading(raw, input("list", over.senderUserId ?? "u-joe"), ctx);
+  const names = ((raw as { lines?: Array<{ slot?: number; name?: string }> }).lines ?? []).map((l) => `${l.slot ?? ""}. ${l.name ?? ""}`).join("\n");
+  const r = parseMonthlyReading(raw, input(`List\n${names}`, over.senderUserId ?? "u-joe"), ctx);
   if (r.kind !== "list") throw new Error("not list");
   return reconcileMonthPaste({
     list: r.list,
@@ -65,7 +66,7 @@ describe("review of #465", () => {
     const out = reconcile({ kind: "list", month: 10, listOf: "week", lines: [{ slot: 4, name: "Clubby", member: "p4", guest: true }] });
     expect(out.actions).toEqual([]);
     expect(out.notAdded).toEqual([{ name: "Clubby", reason: "not-in-month" }]);
-    const r = parseMonthlyReading({ kind: "list", month: 10, lines: [{ slot: 4, name: "Clubby", member: "p4", guest: true }] }, input("x"), ctx);
+    const r = parseMonthlyReading({ kind: "list", month: 10, lines: [{ slot: 4, name: "Clubby", member: "p4", guest: true }] }, input("4. Clubby"), ctx);
     expect(r.kind === "list" && r.list.slots[0].facts?.guest).toBe(false);
   });
 
@@ -84,7 +85,7 @@ describe("review of #465", () => {
   });
 
   it("refs: unknown or another club's refs are no member", () => {
-    const r = parseMonthlyReading({ kind: "list", month: 10, lines: [{ slot: 1, name: "X", member: "p99" }, { slot: 2, name: "Y", member: "u-other-club" }] }, input("x"), ctx);
+    const r = parseMonthlyReading({ kind: "list", month: 10, lines: [{ slot: 1, name: "X", member: "p99" }, { slot: 2, name: "Y", member: "u-other-club" }] }, input("1. X\n2. Y"), ctx);
     expect(r.kind === "list" && r.list.slots.map((s) => s.facts?.memberId)).toEqual([null, null]);
   });
 

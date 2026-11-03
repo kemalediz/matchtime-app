@@ -10,7 +10,11 @@
  *   1. `User.name`;
  *   2. this club's `UserAlias` (oldest first);
  *   3. for a partner guest, his HOME club's `UserAlias`;
- *   4. nothing: `resolvePlayerName` is null and the display line is the
+ *   4. the WhatsApp name he posted under in this club's group, the newest
+ *      (`AnalyzedMessage.authorName`, 2026-11-03: Vets members imported
+ *      with no name were "(unnamed)" on the rate page though MatchTime had
+ *      read their posts);
+ *   5. nothing: `resolvePlayerName` is null and the display line is the
  *      group's own word for "unnamed" (`s.unnamed`, EN and TR).
  * A partner guest's line then gets " (Home club)" appended; a pool guest's
  * (local player pool, L5a, no home club) gets " (MatchTime player pool)".
@@ -56,6 +60,8 @@ export interface PlayerNameFacts {
   /** For a partner guest: his home club's name; for a pool guest, the
    *  "MatchTime player pool" label. Absent for a member. */
   guestClubName?: string | null;
+  /** The WhatsApp name on his newest post in this club's group. */
+  seenAs?: string | null;
 }
 
 /** The best real name MatchTime holds, or null when it holds none. */
@@ -66,7 +72,7 @@ export function resolvePlayerName(f: PlayerNameFacts, lang?: Lang | string | nul
     const v = usableName(a);
     if (v) return capitalise(v, lang);
   }
-  return null;
+  return usableName(f.seenAs);
 }
 
 /** The squad-list line: the name (or `s.unnamed`), plus " (Club)" for a guest. */
@@ -137,6 +143,23 @@ async function loadPlayerNamesOrThrow(
       : Promise.resolve([] as Array<{ id: string; name: string }>),
   ]);
   const clubName = new Map(homes.map((o) => [o.id, o.name]));
+  // Only for those still without a name or an alias here: the WhatsApp
+  // name of their newest post in this club (indexed by club and author).
+  const aliasedHere = new Set(aliases.filter((a) => a.orgId === orgId && usableName(a.alias)).map((a) => a.userId));
+  const unnamed = users.filter((u) => !usableName(u.name) && !aliasedHere.has(u.id)).map((u) => u.id);
+  const seenAs = new Map<string, string>();
+  if (unnamed.length > 0) {
+    const seen = await db.analyzedMessage.findMany({
+      where: { orgId, authorUserId: { in: unnamed }, authorName: { not: null } },
+      orderBy: { createdAt: "desc" },
+      take: Math.min(500, unnamed.length * 20),
+      select: { authorUserId: true, authorName: true },
+    });
+    for (const r of seen) {
+      const v = usableName(r.authorName);
+      if (r.authorUserId && v && !seenAs.has(r.authorUserId)) seenAs.set(r.authorUserId, v);
+    }
+  }
 
   for (const u of users) {
     const home = homeOf.get(u.id) ?? null;
@@ -145,6 +168,7 @@ async function loadPlayerNamesOrThrow(
       aliasesHere: aliases.filter((a) => a.userId === u.id && a.orgId === orgId).map((a) => a.alias),
       aliasesHome: home ? aliases.filter((a) => a.userId === u.id && a.orgId === home).map((a) => a.alias) : [],
       guestClubName: home ? (clubName.get(home) ?? null) : poolGuests.has(u.id) ? t(lang).gst_source_pool : null,
+      seenAs: seenAs.get(u.id) ?? null,
     };
     out.set(u.id, { name: resolvePlayerName(facts, lang), display: playerDisplayName(facts, lang) });
   }

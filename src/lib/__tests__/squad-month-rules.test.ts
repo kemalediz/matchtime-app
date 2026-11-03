@@ -455,7 +455,7 @@ describe("draftSeedFromList: the slice 1 reader's output becomes a draft the org
 
   it("a name that fits nobody, or more than one player, is left for the organiser", () => {
     const d = draftSeedFromList(LIST, ROSTER, { month: 10 });
-    expect(d.unmatched).toEqual([
+    expect(d.unmatched).toMatchObject([
       { slot: 5, name: "Omar", kind: "payg", reason: "ambiguous", candidates: ["u-omar", "u-omar2"] },
       { slot: 7, name: "Zed", kind: "regular", reason: "unknown", candidates: [] },
     ]);

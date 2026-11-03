@@ -509,6 +509,13 @@ export interface SeedDraftUnmatched {
   kind: MemberKind;
   reason: "unknown" | "ambiguous";
   candidates: string[];
+  /** What the line says, kept so the organiser can match the name to a
+   *  member later and the line keeps its paid mark and "4 only"
+   *  (2026-11-03, `month-seed-match.ts`). */
+  tier: MemberTier;
+  paid: SeedPaid;
+  paidAmountPence: number | null;
+  gamesCommitted: number | null;
 }
 
 /** A name folded for matching: `normaliseName`, then emoji and punctuation out. */
@@ -559,9 +566,17 @@ export function draftSeedFromList(
     if (key === "") return;
     const kind: MemberKind = e.marks?.payg && where === "slots" ? "payg" : "regular";
     const written = where === "slots" && typeof e.slot === "number" ? e.slot : null;
+    const saysPaid = kind === "regular" && (e.marks?.paid === true || where === "cantPlay");
+    const facts = {
+      kind,
+      tier: (kind === "regular" && e.marks?.tier === "concession" ? "concession" : "standard") as MemberTier,
+      paid: (saysPaid ? "claimed" : "none") as SeedPaid,
+      paidAmountPence: saysPaid ? (e.marks?.paidAmountPence ?? null) : null,
+      gamesCommitted: kind === "regular" && typeof e.marks?.gamesCommitted === "number" ? e.marks.gamesCommitted : null,
+    };
     const found = candidatesFor(key, keyed);
     if (found.length !== 1) {
-      unmatched.push({ slot: written, name: e.name.trim(), kind, reason: found.length === 0 ? "unknown" : "ambiguous", candidates: found });
+      unmatched.push({ slot: written, name: e.name.trim(), reason: found.length === 0 ? "unknown" : "ambiguous", candidates: found, ...facts });
       return;
     }
     const userId = found[0];
@@ -570,17 +585,12 @@ export function draftSeedFromList(
     // A number written twice is kept for the first line only.
     const slot = written !== null && !slots.has(written) ? written : null;
     if (slot !== null) slots.add(slot);
-    const saysPaid = kind === "regular" && (e.marks?.paid === true || where === "cantPlay");
     rows.push({
       userId,
       name: nameOf.get(userId) ?? "",
       listName: e.name.trim(),
-      kind,
-      tier: kind === "regular" && e.marks?.tier === "concession" ? "concession" : "standard",
+      ...facts,
       slot,
-      paid: saysPaid ? "claimed" : "none",
-      paidAmountPence: saysPaid ? (e.marks?.paidAmountPence ?? null) : null,
-      gamesCommitted: kind === "regular" && typeof e.marks?.gamesCommitted === "number" ? e.marks.gamesCommitted : null,
     });
   };
 

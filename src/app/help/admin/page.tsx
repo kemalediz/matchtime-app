@@ -380,6 +380,22 @@ export default async function AdminGuidePage() {
         join the pool too, to get games elsewhere.
       </p>
 
+      <h3 id="monthly-list">Monthly squad: starting the month from your list</h3>
+      <p>
+        If your club runs a monthly squad, post the month&apos;s list in the
+        group as you always do. MatchTime says nothing in the group and DMs
+        you what it read. Players who joined the group before MatchTime
+        often have no name with it yet, only a phone number, so a name on
+        your list may match nobody. The DM then lists those names and the
+        members it has no name for, numbered and shown by phone (only to
+        you). Tell it who is who in your own words, for example
+        &quot;Craig is 3&quot;, or pick each one on the{" "}
+        <strong>Months</strong> page. They go on the month with what your
+        list says (paid, &quot;4 only&quot;, pay as you go), and MatchTime
+        knows them by that name from then on, on the rate page and the team
+        sheet too. Reply yes and the month starts.
+      </p>
+
       {/* ───────────────────────────────────────────────── */}
       <h2 id="match-lifecycle">5. What happens each week</h2>
 

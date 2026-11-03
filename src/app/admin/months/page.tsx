@@ -24,6 +24,8 @@ import { monthFeeShare } from "@/lib/month-payment-rules";
 import { StartMonthForm } from "./start-month-form";
 import { MemberGamesForm } from "./games-form";
 import { SeasonBreakForm } from "./season-break-form";
+import { SeedMatchRow } from "./seed-match-form";
+import { loadSeedMatchView } from "@/lib/month-seed-match";
 import { monthSetupCopy } from "@/lib/i18n/month-setup";
 import { SEASON_BREAK_AHEAD_MONTHS, isBreakMonth } from "@/lib/squad-month-rules";
 
@@ -84,6 +86,9 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
   const nextFixtures = past || nextOff ? [] : (await loadMonthPage(orgId, now, nextStart)).fixtures;
   const thisOff = !past && isBreakMonth(current.seasonBreakMonths, data.monthStart);
   const c = monthSetupCopy(lang);
+  // 2026-11-03: the names on the organiser's posted list that matched
+  // nobody, to say who is who (`month-seed-match.ts`).
+  const seedMatch = past ? null : await loadSeedMatchView(orgId, now);
   // The months the season break form offers: this one and the next eleven.
   const breakChoices = Array.from({ length: SEASON_BREAK_AHEAD_MONTHS }, (_, i) => {
     const d = monthStartToDate(current.monthStart);
@@ -404,6 +409,21 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
           </p>
         )}
       </div>
+
+      {seedMatch && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2" data-testid="seed-match-card">
+          <h3 className="text-sm font-semibold text-slate-800">
+            {s.mth_match_title({ month: monthYearLabel(lang, new Date(`${seedMatch.monthStart}T12:00:00.000Z`)) })}
+          </h3>
+          <p className="text-sm text-slate-600">{s.mth_match_lead}</p>
+          <ul className="divide-y divide-amber-100">
+            {seedMatch.names.map((n) => (
+              <SeedMatchRow key={n.ref} orgId={orgId} proposalId={seedMatch.proposalId} lang={lang} ref_={n.ref} name={n.name} options={n.options} />
+            ))}
+          </ul>
+          <p className="text-sm text-slate-600">{s.mth_match_then}</p>
+        </section>
+      )}
 
       {data.fixtures.length === 0 && (
         <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500" data-testid="months-no-fixture">

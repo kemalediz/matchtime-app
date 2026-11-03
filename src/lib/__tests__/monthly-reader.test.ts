@@ -112,7 +112,7 @@ describe("the answer, checked against the context", () => {
           line({ section: "cant_play", slot: 1, name: "Lucas", member: "p4" }),
         ],
       }),
-      input("x"),
+      input("List for November\n1. Davide\n7. smiler 4 only\n8. Andrew (PAYG 5th only)\n4. Steff (paid £22.50 pensioners rate)\n9.\nCan't play\n1. Lucas"),
       CTX,
     );
     if (r.kind !== "list") throw new Error(r.kind);
@@ -135,7 +135,7 @@ describe("the answer, checked against the context", () => {
           line({ slot: 16, name: "Luca", member: "p99", guest: true }),
         ],
       }),
-      input("x"),
+      input("13. Jon extra\n16. Luca"),
       CTX,
     );
     if (r.kind !== "list") throw new Error(r.kind);
@@ -352,5 +352,16 @@ describe("the collector's answer to the paid-claims list (month-digest-reply)", 
   it("the turn shows each list he was sent, then his message", () => {
     const turn = buildDigestReplyUserTurn([{ month: 11, monthName: "November", lines: [{ slot: 1, name: "Alex" }, { slot: 3, name: "Steff" }] }], "1 and 3 are in");
     expect(turn).toBe("THE LIST FOR NOVEMBER (month 11):\n  1. Alex\n  3. Steff\n\nHIS MESSAGE:\n1 and 3 are in");
+  });
+});
+
+describe("a list is the message's own lines (2026-11-03, the Vets sandbox's double DM)", () => {
+  it("a list none of whose names is in the message was read from the chat around it: none", () => {
+    const fromChat = answer({ listOf: "month", lines: [line({ slot: 1, name: "Davide", member: "p1" }), line({ slot: 2, name: "Nabz" })] });
+    expect(parseMonthlyReading(fromChat, input("November monthly squad"), CTX)).toEqual({ kind: "none", why: "a list not in the message (read from the chat)" });
+  });
+  it("the list itself is read, with WhatsApp's invisible marks and any case", () => {
+    const r = parseMonthlyReading(answer({ listOf: "month", lines: [line({ slot: 2, name: "Nabz" })] }), input("MNF November\n\n2. \u2060NABZ ( paid 4 only )"), CTX);
+    expect(r.kind).toBe("list");
   });
 });

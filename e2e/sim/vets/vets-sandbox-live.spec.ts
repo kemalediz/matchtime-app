@@ -170,6 +170,18 @@ scenario.describe("the Vets sandbox", () => {
     // The incident's own date: the month's first Monday played, games left.
     scenario.skip(now.getTime() < firstMonday.getTime() || formatInTimeZone(now, LONDON, "MM") !== formatInTimeZone(new Date(now.getTime() + 7 * 86_400_000), LONDON, "MM"), "needs a day after this month's first Monday with a Monday still to come");
     const v = await vetsClub(pool, "vets", { month: "none" });
+    // The Pi's participant sweep at its start: the WhatsApp names it knows
+    // (pushnames) go with each member, and a nameless member takes his
+    // (2026-11-03). Craig, Ben, Andrew and Oumesh have none.
+    const sweep = await pool.request.post("/api/whatsapp/sync-participants", {
+      headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+      data: { groupId: v.club.group.groupId, participants: [...v.members.keys()].map((k) => ({ phone: v.phone(k), pushname: authorOf(v, k).name })) },
+    });
+    expect(sweep.status(), await sweep.text()).toBe(200);
+    const stillNameless = ["craig", "ben", "andrew", "oumesh"];
+    for (const k of ["nabz", "steff", "dan", "steve", "jon"]) {
+      expect((await db.one<{ name: string | null }>(`SELECT name FROM "User" WHERE id = $1`, [v.userId(k)]))?.name, k).toBe(authorOf(v, k).name);
+    }
 
     // 3 Nov 09:14: Davide's two messages, one flush.
     const [title, list] = await sayBatch(pool, v, [
@@ -188,12 +200,34 @@ scenario.describe("the Vets sandbox", () => {
     expect.soft(dm, "ONE start-the-month DM").toHaveLength(1);
     console.log(`[vets C] the start-the-month DM:\n${dm[0].text}`);
     expect(dm[0].text).toContain(`I read the list you posted in the group for ${monthName}`);
-    const proposal = await db.one<{ monthStart: string; monthSeed: { gamesPlayed: number; rows: Array<{ userId: string | null; name?: string }> } }>(
+    const proposal = await db.one<{
+      monthStart: string;
+      monthSeed: { gamesPlayed: number; rows: Array<{ userId: string | null; name?: string }>; unmatched?: Array<{ ref: string; name: string }>; nameless?: Array<{ n: number; userId: string }> };
+    }>(
       `SELECT "monthStart", "monthSeed" FROM "AdminSquadProposal" WHERE "orgId" = $1 AND "resolvedAt" IS NULL ORDER BY "createdAt" DESC LIMIT 1`,
       [v.orgId],
     );
     console.log(`[vets C] proposal: ${JSON.stringify(proposal)}`);
     expect(proposal?.monthStart).toBe(`${formatInTimeZone(now, LONDON, "yyyy-MM")}-01`);
+    // The four with no WhatsApp name are the names it could not match, and
+    // the DM numbers the nameless members, by phone, for him to say who is who.
+    expect(proposal?.monthSeed.unmatched?.map((u) => u.name.toLowerCase()).sort()).toEqual([...stillNameless].sort());
+    expect(dm[0].text).toContain("I couldn't match these names on your list to anyone");
+    const numberOf = (k: string) => proposal?.monthSeed.nameless?.find((m) => m.userId === v.userId(k))?.n;
+    for (const k of stillNameless) {
+      expect(numberOf(k), k).toBeTruthy();
+      expect(dm[0].text).toContain(`${numberOf(k)}. +44 ${v.phone(k).slice(2, 6)} ${v.phone(k).slice(6)}`);
+    }
+
+    // Who is who, in his own words, by DM: the reply reader (the model).
+    const who = await v.club.member("davide").dm(`Craig is ${numberOf("craig")}, Ben ${numberOf("ben")}, Andrew is number ${numberOf("andrew")} and Oumesh ${numberOf("oumesh")}`);
+    console.log(`[vets C] who is who: ${JSON.stringify(who.json)}\n${who.sent.map((m) => `  -> ${m.to}: ${m.text}`).join("\n")}`);
+    expect(who.json).toMatchObject({ handled: "month-seed-changed" });
+    for (const k of stillNameless) {
+      const u = await db.one<{ name: string | null }>(`SELECT name FROM "User" WHERE id = $1`, [v.userId(k)]);
+      expect(u?.name?.toLowerCase(), k).toBe(k);
+    }
+    expect(who.sent.at(-1)?.text ?? "").toContain("13 players");
 
     // His answer, in his own words, by DM.
     const yes = await v.club.member("davide").dm("Yes go ahead mate");
