@@ -121,7 +121,7 @@ test("1. an IN before the month's list exists writes nothing and says nothing", 
   expect(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1`, [MATCH_ID])).toBe(0);
   expect(await db.count(`SELECT COUNT(*) FROM "AttendanceEvent" WHERE "matchId" = $1`, [MATCH_ID])).toBe(0);
   const rows = await db.all<{ reasoning: string }>(`SELECT reasoning FROM "AnalyzedMessage" WHERE "orgId" = $1`, [ORG]);
-  expect(rows.every((r) => r.reasoning.includes("no running month")), JSON.stringify(rows)).toBe(true);
+  expect(rows.every((r) => r.reasoning.includes("no month for this game yet")), JSON.stringify(rows)).toBe(true);
   // Nothing queued for anybody, organisers included.
   expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1`, [ORG])).toBe(0);
 });
@@ -163,4 +163,49 @@ test("2. the organiser's list for THIS month, already under way, starts it part-
   expect(month?.partWay).toBe(true);
   expect(month?.played).toBeGreaterThanOrEqual(1);
   expect(month!.played).toBeLessThan(month!.scheduled);
+});
+
+test("3. a match whose month is in SIGN-UP behaves exactly as before: the IN is the engine's, written as on main", async ({ request, db }) => {
+  // Review of #502: only a month with no row at all holds an IN back.
+  const ORG3 = "e2e-mns-org3";
+  const GROUP3 = "e2e-monthly-not-started-3@g.us";
+  const match3 = "e2e-mns-match3";
+  const p3 = { id: "e2e-mns3-pat", name: "Pat Signup", phone: "+447700932101" };
+  await db.run(
+    `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled", "squadMode", "paygPricePence", "adminChannelMode", language, "updatedAt")
+     VALUES ($1, 'Vets Sign-up', $1, $2, $3, true, 'monthly', 800, 'each-admin', 'en', now())`,
+    [ORG3, `${ORG3}-invite`, GROUP3],
+  );
+  await db.run(`INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "updatedAt") VALUES ('e2e-mns-sport3', $1, 'Football', 7, ARRAY['GK'], ARRAY['A','B'], now())`, [ORG3]);
+  await db.run(
+    `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "deadlineHours", "updatedAt") VALUES ('e2e-mns-act3', $1, 'e2e-mns-sport3', 'Football 7-a-side', $2, '23:59', 'Goals', 5, now())`,
+    [ORG3, KICKOFF.getUTCDay()],
+  );
+  await db.run(`INSERT INTO "User" (id, email, name, "phoneNumber", "updatedAt") VALUES ($1, $2, $3, $4, now())`, [p3.id, `${p3.id}@e2e.test`, p3.name, p3.phone]);
+  await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ($1, $2, $3, 'PLAYER'::"MemberRole")`, [`mem-${p3.id}`, p3.id, ORG3]);
+  await db.run(
+    `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt") VALUES ($1, 'e2e-mns-act3', $2, 14, 'UPCOMING', $3, now())`,
+    [match3, KICKOFF.toISOString(), new Date(KICKOFF.getTime() - 5 * 3600_000).toISOString()],
+  );
+  const kickoffMonth = `${formatInTimeZone(KICKOFF, LONDON, "yyyy-MM")}-01`;
+  await db.run(
+    `INSERT INTO "SquadMonth" (id, "orgId", "activityId", "monthStart", status, "gamesScheduled", "gamesPlayedBeforeStart", "listOpenedAt", "createdAt", "updatedAt")
+     VALUES ('e2e-mns-month3', $1, 'e2e-mns-act3', $2::date, 'open', 4, 0, now(), now(), now())`,
+    [ORG3, kickoffMonth],
+  );
+  setMonthlyReaderStub({ bodies: {} });
+  const waMessageId = `e2e-mns3-${Date.now()}`;
+  const res = await request.post("/api/whatsapp/analyze", {
+    headers: KEY,
+    data: { groupId: GROUP3, messages: [{ waMessageId, body: "IN", authorPhone: digits(p3.phone), authorName: p3.name, timestamp: new Date().toISOString() }] },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  const row = await db.one<{ handledBy: string; action: string | null; reasoning: string }>(
+    `SELECT "handledBy", action, reasoning FROM "AnalyzedMessage" WHERE "waMessageId" = $1`,
+    [waMessageId],
+  );
+  expect(row?.reasoning).not.toContain("no month for this game yet");
+  // What main does with it (checked against origin/main on 2026-11-03).
+  expect(row).toMatchObject({ handledBy: "attendance-engine", action: "IN" });
+  expect(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [match3, p3.id])).toBe(1);
 });

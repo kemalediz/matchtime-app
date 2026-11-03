@@ -2056,14 +2056,14 @@ async function handleAnalyzeRequest(request: Request) {
   // What every owner reports about the silences it chose, for the
   // "never met with silence" pass at the foot of this handler.
   const silence = newSilenceFacts();
-  // A monthly club with no running month for the registration match: the
-  // squad starts from the month's list, so no IN is written before it
-  // (Kemal, 2026-11-03). A fact from the database (`loadMonthlyWeek`).
+  // A monthly club with NO month at all (any status) for the registration
+  // match's month: the squad starts from the month's list, so no IN is
+  // written before it (Kemal, 2026-11-03; narrowed on review of #502).
   let monthNotStarted = false;
   if (org.squadMode === "monthly" && activeMatchForReply) {
     try {
-      const { loadMonthlyWeek } = await import("@/lib/monthly-week");
-      monthNotStarted = (await loadMonthlyWeek(activeMatchForReply.id)) === null;
+      const { monthNotStartedFor } = await import("@/lib/month-not-started");
+      monthNotStarted = await monthNotStartedFor(activeMatchForReply.id);
     } catch (err) {
       // Unknown is not "not started": the engine runs as before.
       console.error(`[analyze] monthly week for ${activeMatchForReply.id} failed to load:`, err);
@@ -3122,7 +3122,7 @@ async function handleAnalyzeRequest(request: Request) {
     // ── A MONTHLY CLUB WHOSE MONTH IS NOT STARTED (2026-11-03) ───────
     //
     // Vets: three INs this morning became weekly confirmations on a club
-    // that had no November list. Kemal: the squad starts from the posted
+    // that had no November month at all. Kemal: the squad starts from the posted
     // monthly list. The engine set these aside (`monthNotStarted`): one
     // row, nothing written, nothing said, no operator note (nothing went
     // wrong). Whether the sender should get a DM is Kemal's call, pending.
@@ -3135,7 +3135,7 @@ async function handleAnalyzeRequest(request: Request) {
         intent: "noise",
         action: "none",
         confidence: 1,
-        reasoning: `monthly club, no running month for this game yet: route=${gateRouteById.get(msg.waMessageId) ?? "(none returned)"}; nothing written, no reply (the squad starts from the month's list)`,
+        reasoning: `monthly club, no month for this game yet: route=${gateRouteById.get(msg.waMessageId) ?? "(none returned)"}; nothing written, no reply (the squad starts from the month's list)`,
         authorUserId: sender.userId,
         authorName: msg.authorName ?? null,
       });

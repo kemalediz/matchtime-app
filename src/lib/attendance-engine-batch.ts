@@ -540,8 +540,9 @@ export async function runAttendanceEngineBatch(args: {
    */
   pastedListIds?: ReadonlySet<string>;
   /**
-   * A MONTHLY CLUB WHOSE MONTH IS NOT STARTED (2026-11-03, Vets): no
-   * running month covers the registration match. Kemal: the squad starts
+   * A MONTHLY CLUB WHOSE MONTH IS NOT STARTED (2026-11-03, Vets): the
+   * registration match's month has no SquadMonth at all, in any status
+   * (`month-not-started.ts`). Kemal: the squad starts
    * from the posted monthly list, and nobody joins by saying IN before it
    * exists. The engine then owns nothing on this club's own match (a reply
    * to a partner club's ask still counts), and each message it set aside is
