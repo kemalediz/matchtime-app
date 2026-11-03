@@ -52,6 +52,8 @@ const INTRO_SELECT = {
   featureAttendance: true,
   featureMomVoting: true,
   featurePlayerRating: true,
+  paymentTrackingEnabled: true,
+  paymentCollectionEnabled: true,
   adminGroupId: true,
   adminChannelMode: true,
 } as const;

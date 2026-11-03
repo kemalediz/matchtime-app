@@ -165,6 +165,9 @@ import { seedNudgeInstructions } from "./seed-nudge";
 import { firstTeamsInstructions } from "./admin-onboarding";
 import { isBillingPaused } from "./club-billing-rules";
 import { isClubSettingUp } from "./club-setup-rules";
+import { lowNumbersBelow, minimumToPlay, type GameFormat } from "./min-players";
+import { minPlayersCopy } from "./i18n/min-players";
+import { isPaymentMessageKey, paymentMessagesOnFor } from "./payment-messages";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -202,28 +205,33 @@ async function findSmallerSameSportActivity(
   );
 }
 
-/** Smallest `playersPerTeam` for any activity in this org with the same
- *  sport family as the current activity. Used to decide the cancellation
- *  threshold — e.g. if Football 5-a-side exists, the min viable roster is
- *  10; if only 7-a-side exists, it's 14. */
-async function findSmallestSameSportPpt(
+/** The fewest players the club can play this game with, in any of its
+ *  formats of the same sport family (`minimumToPlay`, min-players.ts):
+ *  each format's own minimum (`Activity.minPlayers`), or two full sides
+ *  when none is set. With no minimum set anywhere this is two full sides
+ *  of the smallest format, as it always was: if Football 5-a-side exists,
+ *  10; if only 7-a-side exists, 14. The Vets (2026-11-03) play 7-a-side
+ *  with 12 or 13 and set their own. */
+async function findMinimumToPlay(
   orgId: string,
   currentSportId: string,
-  currentPpt: number,
+  own: GameFormat,
 ): Promise<number> {
   const currentSport = await db.sport.findUnique({
     where: { id: currentSportId },
     select: { name: true },
   });
-  if (!currentSport) return currentPpt;
+  if (!currentSport) return minimumToPlay(own, []);
   const family = currentSport.name.split(" ")[0];
   const acts = await db.activity.findMany({
     where: { orgId },
-    include: { sport: { select: { name: true, playersPerTeam: true } } },
+    select: { minPlayers: true, sport: { select: { name: true, playersPerTeam: true } } },
   });
-  const matching = acts.filter((a) => a.sport.name.split(" ")[0] === family);
-  if (matching.length === 0) return currentPpt;
-  return Math.min(...matching.map((a) => a.sport.playersPerTeam));
+  const matching = acts.filter((a) => a.sport?.name.split(" ")[0] === family);
+  return minimumToPlay(
+    own,
+    matching.map((a) => ({ minPlayers: a.minPlayers ?? null, playersPerTeam: a.sport.playersPerTeam })),
+  );
 }
 
 // ────────────────────────────── Instructions ──────────────────────────────
@@ -1029,9 +1037,11 @@ export async function computeDuePosts(
     // who has not paid. Keys are `org-<id>:mpy:`; each is claimed when it
     // is handed out, so none is sent twice. Bank transfer only: nothing
     // here is a pay link. A club on "weekly" never reaches this.
+    // Not at all while the club neither tracks nor collects payments
+    // (2026-11-03, `payment-messages.ts`): the Vets were DMed about it daily.
     try {
       const { monthPaymentPosts } = await import("./month-payment");
-      out.push(...(await monthPaymentPosts(org.id, now, liveMonths, features.quietHours)));
+      if (paymentMessagesOnFor(features)) out.push(...(await monthPaymentPosts(org.id, now, liveMonths, features.quietHours)));
     } catch (err) {
       console.error(`[scheduler] org ${org.id}: the month's payment posts could not be computed on this poll:`, err);
     }
@@ -1050,18 +1060,23 @@ export async function computeDuePosts(
       !month && signupMonths.length > 0
         ? (signupMonths.find((x) => x.monthStart === londonMonthStart(m.date) && isSameRecurringFixture(x.fixture, m.activity)) ?? null)
         : null;
+    // The pay as you go price stays in the week's list and the pool's
+    // offer whatever the payment flags (2026-11-03): it is what an open
+    // place costs, a fact of the game a player decides on, not a payment
+    // message. Pool and friend-link offers say it the same way.
+    const paygPricePence = org.paygPricePence ?? null;
     const monthly: MonthlyMatchContext | null = month
       ? {
           monthId: month.id,
           seeded: m.rollingSeededAt != null && m.rollingSeededAt.getTime() >= month.createdAt.getTime(),
           members: weekMembers(month, m.id),
-          paygPricePence: org.paygPricePence ?? null,
+          paygPricePence,
         }
       : signupMonth
-        ? { monthId: signupMonth.id, seeded: false, signup: true, members: [], paygPricePence: org.paygPricePence ?? null }
+        ? { monthId: signupMonth.id, seeded: false, signup: true, members: [], paygPricePence }
         : heldMonths.some((h) => h.monthStart === londonMonthStart(m.date) && isSameRecurringFixture(h.fixture, m.activity))
           ? // Held, not started: treated as in sign-up, so nothing weekly goes out.
-            { monthId: "", seeded: false, signup: true, members: [], paygPricePence: org.paygPricePence ?? null }
+            { monthId: "", seeded: false, signup: true, members: [], paygPricePence }
           : null;
     await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly, cancelledHolds, opts.poolEnv);
   }
@@ -1141,9 +1156,13 @@ export async function computeDuePosts(
   //   reviewable transform. The key → feature mapping (and which keys
   //   are never gated) lives in `due-key-feature.ts`, shared with the
   //   payment-claim classifier's "last message" context.
+  const paymentsOn = paymentMessagesOnFor(features);
   const gated = out.filter((instr) => {
     // The bench-prompt kind is bench regardless of key shape.
     if (instr.kind === "bench-prompt" && !features.bench) return false;
+    // Nothing about payments while the club neither tracks nor collects
+    // them (2026-11-03, `payment-messages.ts`), whatever section made it.
+    if (!paymentsOn && isPaymentMessageKey(instr.key)) return false;
     const f = featureForDueKey(instr.key);
     return f === null ? true : features[f];
   });
@@ -2673,12 +2692,15 @@ async function computeForMatch(
     //         One DM per admin so each has their own magic link. Idempotency
     //         is keyed per-admin (":userId" suffix) — first admin to act
     //         resolves the situation; other admins can ignore their DM.
+    // Below the organiser's own minimum when one is set (`minPlayers`,
+    // 2026-11-03: the Vets play one down), below the places otherwise.
+    const ownMinimum = activity.minPlayers ?? null;
     if (
       isDayBefore &&
       hour >= 10 &&
       hour < 11 &&
       m.status === "UPCOMING" &&
-      confirmed.length < maxPlayers
+      confirmed.length < lowNumbersBelow({ minPlayers: ownMinimum, maxPlayers })
     ) {
       const candidate = await findSmallerSameSportActivity(
         activity.orgId,
@@ -2701,14 +2723,16 @@ async function computeForMatch(
             notice: {
               nextPath: `/admin/matches/${matchId}/switch-format`,
               text: (signInUrl, audience) =>
-                audience === "dm"
-                  ? `⚠️ *Low numbers*: ${confirmed.length}/${maxPlayers} confirmed for *${activity.name}* tomorrow.\n\n` +
-                    `Switch to *${candidate.sport.name}* (${candidate.sport.playersPerTeam * 2} players) before the deadline?\n\n` +
-                    `Tap to open the admin panel (auto signs you in):\n${signInUrl}\n\n` +
-                    `Or open: ${appUrl(`/admin/matches/${matchId}/switch-format`)}`
-                  : `⚠️ *Low numbers*: ${confirmed.length}/${maxPlayers} confirmed for *${activity.name}* tomorrow.\n\n` +
-                    `Switch to *${candidate.sport.name}* (${candidate.sport.playersPerTeam * 2} players) before the deadline?\n\n` +
-                    `Open the switch page:\n${signInUrl}`,
+                minPlayersCopy(lang).lowNumbers({
+                  confirmed: confirmed.length,
+                  maxPlayers,
+                  activityName: activity.name,
+                  switchTo: candidate.sport.name,
+                  switchPlayers: candidate.sport.playersPerTeam * 2,
+                  signInUrl,
+                  pageUrl: appUrl(`/admin/matches/${matchId}/switch-format`),
+                  audience,
+                }),
             },
           })),
         );
@@ -2723,12 +2747,10 @@ async function computeForMatch(
       hour < 19 &&
       m.status === "UPCOMING"
     ) {
-      const smallestPpt = await findSmallestSameSportPpt(
-        activity.orgId,
-        activity.sportId,
-        sport.playersPerTeam,
-      );
-      const minViable = smallestPpt * 2;
+      const minViable = await findMinimumToPlay(activity.orgId, activity.sportId, {
+        minPlayers: activity.minPlayers ?? null,
+        playersPerTeam: sport.playersPerTeam,
+      });
       const channel = confirmed.length < minViable ? await admin.getChannel() : null;
       if (channel) {
         // Same door, same keys (`…:cancel-nudge:<adminId>`), and "Tap to
@@ -2744,14 +2766,14 @@ async function computeForMatch(
             notice: {
               nextPath: `/admin/matches/${matchId}/cancel`,
               text: (signInUrl, audience) =>
-                audience === "dm"
-                  ? `🚨 *Match in trouble*: only *${confirmed.length}* confirmed for *${activity.name}* tomorrow, below the minimum to play (${minViable}).\n\n` +
-                    `Cancel and refund the booking?\n\n` +
-                    `Tap to open the cancel page:\n${signInUrl}\n\n` +
-                    `Or open: ${appUrl(`/admin/matches/${matchId}/cancel`)}`
-                  : `🚨 *Match in trouble*: only *${confirmed.length}* confirmed for *${activity.name}* tomorrow, below the minimum to play (${minViable}).\n\n` +
-                    `Cancel and refund the booking?\n\n` +
-                    `Open the cancel page:\n${signInUrl}`,
+                minPlayersCopy(lang).matchInTrouble({
+                  confirmed: confirmed.length,
+                  minimum: minViable,
+                  activityName: activity.name,
+                  signInUrl,
+                  pageUrl: appUrl(`/admin/matches/${matchId}/cancel`),
+                  audience,
+                }),
             },
           })),
         );

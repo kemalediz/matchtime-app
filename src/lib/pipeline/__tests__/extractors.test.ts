@@ -1144,6 +1144,45 @@ describe("admin · quiet_hours (2026-10-31, MT Test: \"@Match Time turn off quie
   });
 });
 
+describe("admin · min_players (2026-11-03, the Vets play one down)", () => {
+  const BASE = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", pastGame: false, phrase: "", remindAt: "", note: "", lookbackMatches: 0, playersFrom: [], clubRef: "", venueName: "", venueChoice: 0, breakMonths: [], playMonths: [], quietOff: false, quietFrom: "", quietTo: "", minPlayers: 0, fullTeams: false, toMatchTime: true };
+  const of = (fields: Record<string, unknown>) => parseFacts("admin", JSON.stringify({ ...BASE, ...fields }), "wa-1").facts;
+
+  it("a number carries minPlayers; a day carries matchDay", () => {
+    expect(of({ action: "min_players", minPlayers: 12 })).toMatchObject({ kind: "admin", action: "min_players", minPlayers: 12, toMatchTime: true });
+    expect(of({ action: "min_players", minPlayers: 9, matchDay: " Thursday " })).toMatchObject({ minPlayers: 9, matchDay: "Thursday" });
+  });
+
+  it("0, a fraction or a negative is no number; full teams carries fullTeams and no number", () => {
+    for (const n of [0, 12.5, -3]) expect("minPlayers" in of({ action: "min_players", minPlayers: n }), String(n)).toBe(false);
+    const full = of({ action: "min_players", minPlayers: 12, fullTeams: true });
+    expect(full).toMatchObject({ fullTeams: true });
+    expect("minPlayers" in full).toBe(false);
+  });
+
+  it("the fields are dropped on every other action", () => {
+    for (const action of ["other", "quiet_hours", "recruit"]) {
+      const f = of({ action, minPlayers: 12, fullTeams: true });
+      for (const k of ["minPlayers", "fullTeams"]) expect(k in f, `${action} ${k}`).toBe(false);
+    }
+  });
+
+  it("the schema offers min_players and requires its two fields", () => {
+    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    expect(schema.properties.action.enum).toContain("min_players");
+    expect(schema.required).toEqual(expect.arrayContaining(["minPlayers", "fullTeams"]));
+  });
+
+  it("the prompt defines min_players and its fields once each, with EN and TR examples side by side and non-requests", () => {
+    const p = EXTRACTOR_PROMPTS.admin;
+    expect(p.split(`\n  "min_players" `).length).toBe(2);
+    for (const field of ["minPlayers", "fullTeams"]) expect(p.split(`\n  ${field} `).length, field).toBe(2);
+    expect(p).toMatch(/"@Match Time we can play with 12" \/ "@Match Time 12 kişiyle de oynarız" -> min_players, minPlayers 12/);
+    expect(p).toMatch(/"we're 12 tonight" \/ "bu akşam 12 kişiyiz" -> other, toMatchTime false/);
+    expect(p).not.toMatch(/[–—]/);
+  });
+});
+
 // ── 2026-10-30, FNF HQ: an earlier set of teams back, a pasted sheet, and
 //    whether the message is an instruction to MatchTime at all ─────────
 describe("teams: restore, set, sides and toMatchTime (2026-10-30)", () => {

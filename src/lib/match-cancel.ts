@@ -34,6 +34,7 @@
  * feature works by tagging MatchTime): its cancelled-week credits are
  * written on cancel and taken back on restore by month-close's reconcile.
  */
+import { PAYMENT_FLAGS_SELECT, paymentMessagesOn } from "./payment-messages";
 import { db } from "./db";
 import { buildMatchCancelledAnnouncement } from "./group-copy";
 import { dayMonthShortLabel, dayTimeLabel, weekdayLabel } from "./i18n/dates";
@@ -205,12 +206,17 @@ async function stopAfterGame(matchId: string, now: Date): Promise<{ droppedJobs:
     await cancelQueuedPlatformDms({ purposes: ["club-invite-ask"], refIds: ids, reason: "the game did not happen", now });
     await db.clubInvitation.updateMany({ where: { id: { in: ids }, status: "open" }, data: { status: "withdrawn", closedAt: now } });
   }
-  const [rateLinks, paidRows, credits] = await Promise.all([
+  const [rateLinks, paidRows, credits, flags] = await Promise.all([
     db.sentNotification.count({ where: { matchId, OR: [{ key: { startsWith: `${matchId}:rate-dm:` } }, { key: `${matchId}:rate-promo` }] } }),
     db.attendance.findMany({ where: { matchId, paidAt: { not: null } }, select: { paymentMethod: true } }),
     db.paymentCredit.findMany({ where: { matchId }, select: { count: true } }),
+    db.match.findUnique({ where: { id: matchId }, select: { activity: { select: { org: { select: PAYMENT_FLAGS_SELECT } } } } }),
   ]);
-  const paidCount = paidRows.filter((a) => !isMonthlyRow(a)).length + credits.reduce((n, c) => n + c.count, 0);
+  // "N had paid: refund or credit them" is a payment message: with the
+  // club's payments off (2026-11-03, `payment-messages.ts`) it counts none.
+  const paidCount = !paymentMessagesOn(flags?.activity?.org)
+    ? 0
+    : paidRows.filter((a) => !isMonthlyRow(a)).length + credits.reduce((n, c) => n + c.count, 0);
   return { droppedJobs: dropped.count, ratingLinksSent: rateLinks > 0, paidCount };
 }
 

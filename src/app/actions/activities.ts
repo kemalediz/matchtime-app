@@ -12,6 +12,8 @@ import { scheduleVenuePickResolve, scheduleVenueResolve } from "@/lib/venue-loca
 import { CLEARED_VENUE_LINK } from "@/lib/venue-location-rules";
 import { parseVenuePick } from "@/lib/venue-suggest-rules";
 import { assertSportOfferedForGame } from "@/lib/club-sport-offer";
+import { saveMinPlayers } from "@/lib/min-players-save";
+import { minPlayersCopy } from "@/lib/i18n/min-players";
 
 /** What a form sends for a picked place. Anything else on it is dropped. */
 type VenuePickInput = { placeId: string; sessionToken?: string | null };
@@ -112,6 +114,23 @@ export async function updateActivity(
   }
 
   revalidatePath("/admin/activities");
+}
+
+/**
+ * The fewest players this game is played with (2026-11-03), from the edit
+ * form's box: a whole number from 2 to the places, or empty for two full
+ * sides. The same save core WhatsApp uses (`min-players-save.ts`).
+ */
+export async function setActivityMinPlayers(activityId: string, value: number | null) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const activity = await db.activity.findUnique({ where: { id: activityId }, select: { orgId: true, org: { select: { language: true } } } });
+  if (!activity) throw new Error("Activity not found");
+  await requireOrgAdmin(session.user.id, activity.orgId);
+  const r = await saveMinPlayers({ activityId, value });
+  if (!r.ok) throw new Error(minPlayersCopy(activity.org?.language).invalid({ places: r.places }));
+  revalidatePath("/admin/activities");
+  return { value: r.value };
 }
 
 export async function deleteActivity(activityId: string) {

@@ -91,6 +91,7 @@ import { loadLiveMonths, lockMonth, type SignupMonth } from "./month-signup";
 import { WAITING_NOTE, buildSignupList, isDaytime, SIGNUP_REPOST_FLOOR_MS } from "./month-signup-rules";
 import { weekListHash } from "./monthly-week-rules";
 import { normalisePhone } from "./phone";
+import { PAYMENT_FLAGS_SELECT, paymentMessagesOn } from "./payment-messages";
 import { chargedGames, normaliseSquadMode } from "./squad-month-rules";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -544,7 +545,7 @@ export async function handlePlayerPaidDm(input: {
       monthId: true,
       amountDuePence: true,
       paidClaimedAt: true,
-      month: { select: { orgId: true, monthStart: true, org: { select: { language: true, paymentHolderId: true } } } },
+      month: { select: { orgId: true, monthStart: true, org: { select: { language: true, paymentHolderId: true, ...PAYMENT_FLAGS_SELECT } } } },
     },
     take: 2,
   });
@@ -589,6 +590,9 @@ export async function handlePlayerPaidDm(input: {
   // (`claimMonthPaid`): it goes on a new digest before it can be confirmed.
   const claimed = await claimMonthPaid({ monthId: row.monthId, userId: input.userId, source: "dm", amountPence: read.amountPence, now });
 
+  // Recorded, and nothing said, while the club neither tracks nor
+  // collects payments (2026-11-03, `payment-messages.ts`).
+  if (!paymentMessagesOn(row.month.org)) return { handled: "month-paid-claim", monthId: row.monthId, claimed };
   const day = formatLondon(now, "yyyy-MM-dd");
   if (await claimOnce(`${paymentKeyPrefix(orgId)}claim-ack:${row.monthId}:${input.userId}:${day}`, "month-pay-dm")) {
     const collector = collectorRow;
@@ -954,7 +958,11 @@ export async function handleCollectorPaidDm(input: {
   const res = await handleCollectorPaidReply({ text: input.text, waMessageId: input.waMessageId, senderUserIds: users.map((u) => u.id), read: input.read, answering: input.answering, now: input.now });
   if (!res) return null;
   const phone = users[0].phoneNumber?.replace(/^\+/, "");
-  if (res.replyText && phone) await db.botJob.create({ data: { orgId: res.orgId, kind: "dm", phone, text: res.replyText, ...REPLY_PRIORITY } });
+  // Applied, and nothing said, while the club neither tracks nor collects
+  // payments (2026-11-03). No digest goes out then, so this is reached only
+  // by a list sent before the switch.
+  const say = res.replyText && phone && paymentMessagesOn(await db.organisation.findUnique({ where: { id: res.orgId }, select: PAYMENT_FLAGS_SELECT }));
+  if (say) await db.botJob.create({ data: { orgId: res.orgId, kind: "dm", phone: phone!, text: res.replyText, ...REPLY_PRIORITY } });
   return { handled: res.handled };
 }
 
@@ -988,6 +996,7 @@ export async function sweepMonthPayments(
         billingPlan: true,
         billingPricePence: true,
         paymentHolderId: true,
+        ...PAYMENT_FLAGS_SELECT,
         ...SETUP_STAGE_SELECT,
         ...QUIET_HOURS_SELECT,
       },
@@ -997,6 +1006,10 @@ export async function sweepMonthPayments(
     // club that is still setting up cannot reach it today. Should a cron
     // ever call it, such a club is skipped here too.
     if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org) || isClubSettingUp(org)) return;
+    // A club that neither tracks nor collects payments is told nothing
+    // about them (2026-11-03, the Vets: a daily "13 say they've paid"
+    // DM to the collector): no price ask, no digest, no summary.
+    if (!paymentMessagesOn(org)) return;
     const months = preloaded ?? (await loadLiveMonths(orgId, now));
     for (const month of months) {
       await priceAsk(month, org, now);
@@ -1149,9 +1162,12 @@ export async function monthPaymentPosts(
   // is reminded of nothing, whoever called.
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { paymentHolderId: true, paymentInstructions: true, squadMode: true, approvalStatus: true, dormantAt: true, billingStatus: true },
+    select: { paymentHolderId: true, paymentInstructions: true, squadMode: true, approvalStatus: true, dormantAt: true, billingStatus: true, ...PAYMENT_FLAGS_SELECT },
   });
   if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org)) return [];
+  // Nothing about payments while the club neither tracks nor collects them
+  // (2026-11-03). The scheduler checks first; this holds for any caller.
+  if (!paymentMessagesOn(org)) return [];
   const collector = org?.paymentHolderId ? await db.user.findUnique({ where: { id: org.paymentHolderId }, select: { name: true } }) : null;
   const out: PaymentInstruction[] = [];
 

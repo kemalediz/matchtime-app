@@ -778,6 +778,7 @@ export interface AdminFacts {
     | "set_venue"
     | "retry_ask"
     | "quiet_hours"
+    | "min_players"
     | "other";
   /** bulk_payment */
   payerRef?: string;
@@ -786,7 +787,7 @@ export interface AdminFacts {
   coveredRefs?: string[];
   /** fee_waiver: true when the message takes a free place back. */
   undo?: boolean;
-  /** fee_waiver, cancel_match, restore_match: the day named for the game, verbatim ("next Friday").
+  /** fee_waiver, cancel_match, restore_match, min_players: the day named for the game, verbatim ("next Friday").
    *  Resolved by code (`fee-waiver-rules.ts` `readDayHint`), never the model. */
   matchDay?: string;
   /** cancel_match, restore_match (2026-10-28): the game meant has already
@@ -869,6 +870,13 @@ export interface AdminFacts {
    * untagged action that leaves HQ needs it (`admin-group-understand.ts`).
    */
   toMatchTime?: boolean;
+  /** min_players (2026-11-03, the Vets play one down): the fewest players
+   *  said ("we can play with 12"). Absent when none was said. Checked by
+   *  code (`checkMinPlayers`, min-players.ts), never trusted as a value. */
+  minPlayers?: number;
+  /** min_players: back to two full sides ("back to full teams"). Set only
+   *  when true. */
+  fullTeams?: true;
   /** season_break (2026-10-29): months with no football, "YYYY-MM". */
   breakMonths?: string[];
   /** season_break: months the football is on or back in, "YYYY-MM". */

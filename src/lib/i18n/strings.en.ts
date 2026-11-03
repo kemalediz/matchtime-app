@@ -1370,13 +1370,14 @@ export const en = {
       return (
         `⚙️ *Your settings*\n` +
         `Every switch for your club is on one settings page, grouped in tabs. Not sure where something is? Type its name in *Find a setting* at the top and it takes you straight there:\n${p.url}\n` +
-        `Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*.`
+        `Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*, or *@Match Time we can play with 12* if you'll play one or two down (I only warn you about low numbers below that).`
       );
     }
     if (p.audience === "group") {
       return (
         `⚙️ *Settings*\n` +
-        `The club's settings are on the admin page, grouped in tabs, and only admins can change them. Admins: type a setting's name in *Find a setting* at the top to jump to it:\n${p.url}`
+        `The club's settings are on the admin page, grouped in tabs, and only admins can change them. Admins: type a setting's name in *Find a setting* at the top to jump to it:\n${p.url}\n` +
+        `Admins can change some by tagging me too, for example *@Match Time minimum 12 players* (the fewest the club plays with) or *@Match Time turn off quiet hours*.`
       );
     }
     return `⚙️ *Settings*\nThe club's settings are changed by its organisers. Ask them if you'd like something changed. Your own details are on your MatchTime profile.`;
@@ -1546,6 +1547,7 @@ export const en = {
     if (p.paid) lines.push(`💷 *@Match Time PAID ALL*, *@Match Time PAID 1 3* or *@Match Time PAID NONE*: the money collector's answer to my list of payment claims.`);
     if (p.free) lines.push(`🎁 *"@Match Time Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`);
     lines.push(`🌙 *"@Match Time turn on quiet hours from 23:00 to 09:00"*, *"@Match Time turn off quiet hours"*: I hold my own messages overnight, or send at any time. A new club starts with quiet hours off.`);
+    lines.push(`👥 *"@Match Time we can play with 12"*, *"@Match Time minimum 12 players"*: the fewest you play with. I only warn you about low numbers, or offer to cancel, below that. *"@Match Time back to full teams"* undoes it.`);
     lines.push(``, `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *@Match Time how do partner clubs work?* or *@Match Time where are the settings?*`);
     lines.push(`Ask *@Match Time what can you do?* here any time to see this again.`);
     return lines.join("\n");

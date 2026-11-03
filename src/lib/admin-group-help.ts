@@ -48,6 +48,7 @@
  * the squad and team lines for a live weekly club, the graphics for a live
  * club, the pick line for organiser pick, PAID for a monthly club.
  */
+import { paymentMessagesOn } from "./payment-messages";
 import { t } from "./i18n/t";
 import { poolOffersOpenForClub } from "./pool/flags";
 import { organisersAnnounce } from "./list-announcer";
@@ -103,7 +104,9 @@ export function hqHelpGates(
     squad: !monthly,
     graphics: true,
     picks: org.benchPickMode === "organiser",
-    paid: monthly,
+    // The collector's PAID reply: a monthly club that tracks or collects
+    // payments (2026-11-03: with both off nothing about payments is said).
+    paid: monthly && paymentMessagesOn(org),
     // Free places (2026-10-16): only where the club takes match fees.
     free: org.paymentCollectionEnabled === true || org.paymentTrackingEnabled === true,
     // The pool (2026-10-28): asked in words from HQ by a weekly club only
@@ -126,6 +129,10 @@ export interface AdminGroupIntroClub {
   featureAttendance?: boolean | null;
   featureMomVoting?: boolean | null;
   featurePlayerRating?: boolean | null;
+  /** The payment flags (2026-11-03): with both off the intro says nothing
+   *  about payments (`payment-messages.ts`). */
+  paymentTrackingEnabled?: boolean | null;
+  paymentCollectionEnabled?: boolean | null;
   /** `Activity.dayOfWeek` of each active activity (0 = Sunday). */
   activityDays: number[];
 }

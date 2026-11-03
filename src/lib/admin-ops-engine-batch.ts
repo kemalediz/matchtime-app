@@ -367,6 +367,15 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     lang: string | null;
     now: Date;
   }) => Promise<{ outcome: string; replyText: string }>;
+  /** "We can play with 12" (2026-11-03). Defaults to `min-players-words.ts`,
+   *  the activities page's own save core; injected so tests need no database. */
+  applyMinPlayersWords?: (a: {
+    orgId: string;
+    minPlayers: number | null;
+    fullTeams: boolean;
+    matchDay: string | null;
+    lang: string | null;
+  }) => Promise<{ outcome: string; replyText: string }>;
 }
 
 function empty(degradations: string[] = []): AdminOpsBatchResult {
@@ -566,6 +575,8 @@ export async function runAdminOpsBatch(args: {
   const breakAsks = new Map<string, { breakMonths: string[]; playMonths: string[] }>();
   /** quiet_hours (2026-10-31): an organiser's quiet hours off, on, or new times. */
   const quietAsks = new Map<string, { off: boolean; from: string | null; to: string | null }>();
+  /** min_players (2026-11-03): an organiser's fewest players, or full sides again. */
+  const minAsks = new Map<string, { minPlayers: number | null; fullTeams: boolean; matchDay: string | null }>();
   /** "Try again" with nothing stored to repeat: one short line. */
   const nothingToRetry = new Set<string>();
   /** "Try again" acted on as the stored ask (for the reasoning row). */
@@ -619,7 +630,8 @@ export async function runAdminOpsBatch(args: {
     // explicit tag and from an organiser, as the pitch is.
     // Quiet hours (2026-10-31, MT Test: "@Match Time turn off quiet hours
     // now" got "I can't change that by message"): the same gates.
-    if (facts.action === "season_break" || facts.action === "quiet_hours") {
+    // Minimum players (2026-11-03, the Vets play one down): the same gates.
+    if (facts.action === "season_break" || facts.action === "quiet_hours" || facts.action === "min_players") {
       if (!(m.tagged && (m.taggedExplicitly === true))) {
         hand(`${facts.action} without an explicit MatchTime tag`);
         continue;
@@ -630,6 +642,8 @@ export async function runAdminOpsBatch(args: {
       }
       if (facts.action === "quiet_hours") {
         quietAsks.set(m.waMessageId, { off: facts.quietOff === true, from: facts.quietFrom ?? null, to: facts.quietTo ?? null });
+      } else if (facts.action === "min_players") {
+        minAsks.set(m.waMessageId, { minPlayers: facts.minPlayers ?? null, fullTeams: facts.fullTeams === true, matchDay: facts.matchDay ?? null });
       } else {
         breakAsks.set(m.waMessageId, { breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [] });
       }
@@ -887,6 +901,18 @@ export async function runAdminOpsBatch(args: {
       console.error(`[admin-ops-engine] ${id}: quiet_hours threw:`, err);
       degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: quiet_hours threw (${detail}); nothing was said`);
       cancelOutcomes.push(replyOnly(id, null, "noise", `quiet_hours threw (${detail}); the write FAILED and nothing was said`, true));
+    }
+  }
+  for (const [id, ask] of minAsks) {
+    try {
+      const apply = deps.applyMinPlayersWords ?? (async (a) => (await import("./min-players-words")).applyMinPlayersWords(a));
+      const r = await apply({ orgId, ...ask, lang: state.features.language });
+      cancelOutcomes.push(replyOnly(id, r.replyText, r.outcome, `min_players by an organiser: ${r.outcome}`));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[admin-ops-engine] ${id}: min_players threw:`, err);
+      degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: min_players threw (${detail}); nothing was said`);
+      cancelOutcomes.push(replyOnly(id, null, "noise", `min_players threw (${detail}); the write FAILED and nothing was said`, true));
     }
   }
   for (const id of nothingToRetry) {

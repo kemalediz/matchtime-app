@@ -98,7 +98,7 @@ describe("a claim never writes paidAt", () => {
         monthId: "m",
         amountDuePence: 3750,
         paidClaimedAt: null,
-        month: { orgId: "org", monthStart: new Date("2026-11-01T00:00:00.000Z"), org: { language: "en", paymentHolderId: "sam" } },
+        month: { orgId: "org", monthStart: new Date("2026-11-01T00:00:00.000Z"), org: { language: "en", paymentHolderId: "sam", paymentTrackingEnabled: true } },
       },
     ]);
     returns.set("attendance.count", () => 0);
@@ -114,6 +114,28 @@ describe("a claim never writes paidAt", () => {
     const dm = (w[2].args as { data: { text: string } }).data.text;
     expect(dm).toContain("you say you have paid £37.50 for November");
     expect(dm).toContain("Sam will confirm when it arrives");
+  });
+
+  it("payment tracking off (the Vets, 2026-11-03): the claim is recorded, and nothing is sent", async () => {
+    returns.set("squadMonthMember.findMany", () => [
+      {
+        monthId: "m",
+        amountDuePence: 3750,
+        paidClaimedAt: null,
+        month: {
+          orgId: "org",
+          monthStart: new Date("2026-11-01T00:00:00.000Z"),
+          org: { language: "en", paymentHolderId: "sam", paymentTrackingEnabled: false, paymentCollectionEnabled: false },
+        },
+      },
+    ]);
+    returns.set("attendance.count", () => 0);
+    returns.set("squadMonthMember.updateMany", () => ({ count: 1 }));
+    returns.set("sentNotification.create", () => ({}));
+    returns.set("user.findUnique", () => ({ name: "Sam Collector" }));
+    const res = await handlePlayerPaidDm({ userId: "u", userName: "Alex Carter", text: "paid £37.50", replyPhone: "447700900002" });
+    expect(res).toEqual({ handled: "month-paid-claim", monthId: "m", claimed: true });
+    expect(writes().map((c) => `${c.model}.${c.method}`)).toEqual(["squadMonthMember.updateMany"]);
   });
 
   it("not a claim (the model says so), two months to pay for, or a per-match fee owed: nothing is read as a month claim, nothing is written", async () => {

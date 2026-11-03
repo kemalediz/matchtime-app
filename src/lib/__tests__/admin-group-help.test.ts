@@ -34,6 +34,7 @@ describe("buildHqHelp, English", () => {
         `🖼️ *"@Match Time send the poster"*, *"@Match Time team sheet please"*: the list or the teams as a graphic, ready to forward.`,
         `🙋 When I ask you to pick who plays, tag me with the numbers or names from my list, or *ALL* or *NONE* (for example *@Match Time 2 3*).`,
         `🌙 *"@Match Time turn on quiet hours from 23:00 to 09:00"*, *"@Match Time turn off quiet hours"*: I hold my own messages overnight, or send at any time. A new club starts with quiet hours off.`,
+        `👥 *"@Match Time we can play with 12"*, *"@Match Time minimum 12 players"*: the fewest you play with. I only warn you about low numbers, or offer to cancel, below that. *"@Match Time back to full teams"* undoes it.`,
         ``,
         `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *@Match Time how do partner clubs work?* or *@Match Time where are the settings?*`,
         `Ask *@Match Time what can you do?* here any time to see this again.`,
@@ -75,6 +76,7 @@ describe("buildHqHelp, Turkish", () => {
         `🙋 Kimin oynayacağını seçmenizi istediğimde beni etiketleyip listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın (örneğin *@Match Time 2 3*).`,
         `💷 *@Match Time ÖDENDİ HEPSİ*, *@Match Time ÖDENDİ 1 3* ya da *@Match Time ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`,
         `🌙 *"@Match Time sessiz saatleri 23:00 ile 09:00 arası aç"*, *"@Match Time sessiz saatleri kapat"*: kendi mesajlarımı gece bekletirim ya da her saatte gönderirim. Yeni bir kulüpte sessiz saatler kapalı başlar.`,
+        `👥 *"@Match Time 12 kişiyle de oynarız"*, *"@Match Time en az 12 kişi"*: oynadığınız en az kişi sayısı. Az oyuncu uyarısını ya da iptal önerisini ancak bunun altında yaparım. *"@Match Time yine tam takım"* bunu geri alır.`,
         ``,
         `ℹ️ Herhangi bir bölümün nasıl çalıştığını, nasıl açılıp kapatıldığını kendi cümlelerinizle sorun: örneğin *@Match Time partner kulüpler nasıl çalışır?* ya da *@Match Time ayarlar nerede?*`,
         `Bunu tekrar görmek için burada istediğiniz zaman *@Match Time neler yapabilirsin?* diye sorun.`,
@@ -109,6 +111,14 @@ describe("free places (2026-10-16)", () => {
       `🎁 *"@Match Time Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`,
     );
     expect(buildHqHelp({ lang: "en", ...ALL })).not.toContain("free place");
+  });
+
+  it("the collector's PAID line: a monthly club that tracks or collects payments only (2026-11-03)", () => {
+    const gates = (o: Parameters<typeof hqHelpGates>[0]) => hqHelpGates(o);
+    expect(gates({ squadMode: "monthly" }).paid).toBe(false);
+    expect(gates({ squadMode: "monthly", paymentTrackingEnabled: true }).paid).toBe(true);
+    expect(gates({ squadMode: "monthly", paymentCollectionEnabled: true }).paid).toBe(true);
+    expect(gates({ squadMode: "weekly", paymentTrackingEnabled: true }).paid).toBe(false);
   });
 });
 
