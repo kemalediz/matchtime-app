@@ -32,6 +32,16 @@ describe("retiredAuthRedirect", () => {
     expect(isPublicPath("/play/fixtures")).toBe(false);
   });
 
+  // A shared /play link's picture (2026-11-03): Facebook, Nextdoor, WhatsApp
+  // and X fetch it with no session. It 307-redirected to /login, so the
+  // preview had no picture.
+  it("lets a link preview fetcher load /play's picture, and nothing that merely starts like it", () => {
+    expect(isPublicPath("/play/opengraph-image")).toBe(true);
+    expect(isPublicPath("/play/twitter-image")).toBe(true);
+    expect(isPublicPath("/play/opengraph-imagex")).toBe(false);
+    expect(isPublicPath("/play/manage/opengraph-image")).toBe(false);
+  });
+
   // The partner pool invite (2026-11-02): his own signed link, from his own WhatsApp; no session.
   it("lets a partner player open his pool invite link, and nothing that merely starts like it", () => {
     expect(isPublicPath("/play/j/abc.def.ghi")).toBe(true);

@@ -61,6 +61,7 @@ const ENUM_CHECKS: string[] = [
 ];
 
 const SOURCE_CHECK = nullOrIn("source", V.POOL_PROFILE_SOURCES);
+const CAMPAIGN_SOURCE_CHECK = inList("source", V.POOL_CAMPAIGN_SOURCES);
 const FRIEND_MIGRATION = "prisma/migrations/20261101090000_friend_link/migration.sql";
 
 describe("the friend link migration (2026-10-31)", () => {
@@ -100,7 +101,9 @@ describe("the CHECKs carry the TypeScript's values", () => {
       // The profile source list grew after L1 (the friend link, 2026-10-31):
       // the L1 migration carries the list as it was then, and the friend
       // link migration the current one (pinned below).
-      const checks = file === MIGRATION ? ENUM_CHECKS.filter((c) => c !== SOURCE_CHECK) : ENUM_CHECKS;
+      // So did the campaign sources (Facebook and Nextdoor, 2026-11-03),
+      // pinned by the campaign visits migration below.
+      const checks = file === MIGRATION ? ENUM_CHECKS.filter((c) => c !== SOURCE_CHECK && c !== CAMPAIGN_SOURCE_CHECK) : ENUM_CHECKS;
       for (const c of checks) expect(sql, c).toContain(c);
     });
     it(`${file}: the postcode district`, () => {
@@ -272,5 +275,46 @@ describe("slice L7's migration (no-shows, reviews, blocks kept after deletion, r
     expect(sql).toMatch(/^\s*COMMIT;\s*$/m);
     expect(sql).not.toMatch(/^\s*SET\s+(?!LOCAL)/im);
     expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
+  });
+});
+
+describe("the campaign visits migration (2026-11-03)", () => {
+  const VISITS = "prisma/migrations/20261104120000_pool_campaign_visits/migration.sql";
+  const sql = code(read(VISITS));
+  const VISIT_CODE_CHECK = `CHECK ("code" IN ('_direct', '_referral') OR ("code" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length("code") <= 32))`;
+
+  it("carries the current campaign source list, as the CHECK file does", () => {
+    for (const f of [VISITS, CHECKS]) expect(code(read(f)), f).toContain(CAMPAIGN_SOURCE_CHECK);
+  });
+  it("the visit row's CHECKs: a campaign code or a reserved bucket, and a count that is never negative", () => {
+    for (const f of [VISITS, CHECKS]) {
+      expect(code(read(f)), f).toContain(VISIT_CODE_CHECK);
+      expect(code(read(f)), f).toContain(`CHECK ("count" >= 0)`);
+    }
+  });
+  it("keeps nothing about a person: the table is the bucket, the day and the count", () => {
+    const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS "PoolCampaignVisit"'));
+    const cols = table.slice(0, table.indexOf(");"));
+    expect(cols).toMatch(/"code" TEXT NOT NULL/);
+    expect(cols).toMatch(/"day" DATE NOT NULL/);
+    expect(cols).toMatch(/"count" INTEGER NOT NULL DEFAULT 0/);
+    expect(cols).toMatch(/PRIMARY KEY \("code", "day"\)/);
+    expect(cols).not.toMatch(/ip|agent|user/i);
+  });
+  it("is additive, idempotent and one transaction with no session-level SET", () => {
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+    const dropped = [...sql.matchAll(/DROP CONSTRAINT IF EXISTS "([^"]+)"/g)].map((m) => m[1]);
+    const added = new Set([...sql.matchAll(/ADD CONSTRAINT "([^"]+)"/g)].map((m) => m[1]));
+    for (const name of dropped) expect(added.has(name), name).toBe(true);
+    expect(sql).not.toMatch(/CREATE TABLE (?!IF NOT EXISTS)/);
+    expect(sql).not.toMatch(/CREATE (UNIQUE )?INDEX (?!IF NOT EXISTS)/);
+    expect(sql).toMatch(/^\s*BEGIN;/m);
+    expect(sql).toMatch(/^\s*SET LOCAL lock_timeout = '5s';/m);
+    expect(sql).toMatch(/^\s*COMMIT;\s*$/m);
+    expect(sql).not.toMatch(/^\s*SET\s+(?!LOCAL)/im);
+    expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
+  });
+  it("the schema has the model", () => {
+    expect(read("prisma/schema.prisma")).toMatch(/model PoolCampaignVisit \{[^}]*@@id\(\[code, day\]\)/);
   });
 });

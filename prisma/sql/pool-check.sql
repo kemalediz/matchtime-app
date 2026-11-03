@@ -194,10 +194,18 @@ ALTER TABLE "PoolBlock" ADD CONSTRAINT "PoolBlock_by_check"
 -- PoolCampaign
 ALTER TABLE "PoolCampaign" DROP CONSTRAINT IF EXISTS "PoolCampaign_source_check";
 ALTER TABLE "PoolCampaign" ADD CONSTRAINT "PoolCampaign_source_check"
-  CHECK ("source" IN ('linkedin', 'leaflet', 'club', 'other'));
+  CHECK ("source" IN ('linkedin', 'leaflet', 'facebook', 'nextdoor', 'club', 'other'));
 ALTER TABLE "PoolCampaign" DROP CONSTRAINT IF EXISTS "PoolCampaign_code_check";
 ALTER TABLE "PoolCampaign" ADD CONSTRAINT "PoolCampaign_code_check"
   CHECK ("code" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length("code") <= 32);
+
+-- PoolCampaignVisit (2026-11-03)
+ALTER TABLE "PoolCampaignVisit" DROP CONSTRAINT IF EXISTS "PoolCampaignVisit_code_check";
+ALTER TABLE "PoolCampaignVisit" ADD CONSTRAINT "PoolCampaignVisit_code_check"
+  CHECK ("code" IN ('_direct', '_referral') OR ("code" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length("code") <= 32));
+ALTER TABLE "PoolCampaignVisit" DROP CONSTRAINT IF EXISTS "PoolCampaignVisit_count_check";
+ALTER TABLE "PoolCampaignVisit" ADD CONSTRAINT "PoolCampaignVisit_count_check"
+  CHECK ("count" >= 0);
 
 -- GuestPlace
 ALTER TABLE "GuestPlace" DROP CONSTRAINT IF EXISTS "GuestPlace_source_check";

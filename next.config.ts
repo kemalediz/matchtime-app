@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
     "/api/graphics/*": ["./assets/fonts/**/*"],
     // The Posters card's previews (2026-10-14) draw the same graphics.
     "/api/org/graphics/*": ["./assets/fonts/**/*"],
+    // A shared /play link's picture (2026-11-03): the fonts and the icon.
+    "/play/opengraph-image": ["./assets/fonts/**/*", "./brand/matchtime-icon-192.png"],
+    "/play/twitter-image": ["./assets/fonts/**/*", "./brand/matchtime-icon-192.png"],
   },
 };
 

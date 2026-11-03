@@ -43,6 +43,10 @@ export function isPublicPath(pathname: string): boolean {
     // and no session fills it in, and the form posts to /api/play/. The
     // manage page (/play/manage) is NOT public: it needs his session.
     pathname === POOL_PLAY_PATH ||
+    // The picture under a shared /play link (2026-11-03), fetched by link
+    // preview crawlers with no session (src/app/play/opengraph-image.tsx).
+    pathname === `${POOL_PLAY_PATH}/opengraph-image` ||
+    pathname === `${POOL_PLAY_PATH}/twitter-image` ||
     pathname.startsWith(POOL_API_PREFIX) ||
     pathname.startsWith("/join/") ||
     pathname.startsWith("/r/") || // magic-link landing page does its own sign-in

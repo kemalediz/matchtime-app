@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { isSuperadmin } from "@/lib/org";
 import { formatLondon } from "@/lib/london-time";
-import { listPoolCampaigns } from "@/lib/pool/campaigns";
+import { listPoolCampaigns, poolWaysInWithoutCode, type PoolWayInNumbers } from "@/lib/pool/campaigns";
 import { POOL_CAMPAIGN_CODE_MAX, POOL_CAMPAIGN_LABEL_MAX, POOL_CAMPAIGN_OWNER_SOURCES } from "@/lib/pool/growth-rules";
 import { CampaignActiveToggle, CampaignCopyLink, NewCampaignForm } from "./campaign-controls";
 
@@ -10,8 +10,11 @@ import { CampaignActiveToggle, CampaignCopyLink, NewCampaignForm } from "./campa
  * /admin/pool/campaigns: the platform owner's source codes for the player
  * pool (slice G1, plan 11.1). Each code ("linkedin-kemal",
  * "leaflet-sutton-oct") gives a `/play?src=CODE` link and a QR code (PNG
- * and SVG), and the page counts the sign-ups each brought: still waiting
- * for their WhatsApp message, and confirmed. Counts only, no names.
+ * and SVG), and the page counts, per code, the visits to /play (since
+ * 2026-11-03; link preview fetchers never count) next to the sign-ups it
+ * brought: started, confirmed, still waiting for their WhatsApp message.
+ * The same numbers for plain /play and for friends' links. Counts only,
+ * no names.
  *
  * OWNER ONLY: 404 to anybody who is not `User.isSuperadmin`, as
  * /admin/health. The actions check again (`app/actions/pool-campaigns.ts`)
@@ -19,13 +22,42 @@ import { CampaignActiveToggle, CampaignCopyLink, NewCampaignForm } from "./campa
  */
 export const dynamic = "force-dynamic";
 
-const SOURCE_LABEL: Record<string, string> = { linkedin: "LinkedIn", leaflet: "Leaflet", club: "Club share post", other: "Other" };
+const SOURCE_LABEL: Record<string, string> = {
+  linkedin: "LinkedIn",
+  leaflet: "Leaflet",
+  facebook: "Facebook",
+  nextdoor: "Nextdoor",
+  club: "Club share post",
+  other: "Other",
+};
+
+/** One way in's numbers, left to right as the funnel runs. */
+function WayInNumbers({ n, testid }: { n: PoolWayInNumbers; testid: string }) {
+  const cells: Array<[string, number, string]> = [
+    ["Visits", n.visits, "visits"],
+    ["Sign-ups started", n.started, "started"],
+    ["Confirmed on WhatsApp", n.confirmed, "confirmed"],
+    ["Started, not confirmed yet", n.waiting, "waiting"],
+  ];
+  return (
+    <dl className="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+      {cells.map(([label, value, key]) => (
+        <div key={key}>
+          <dt className="text-slate-500">{label}</dt>
+          <dd className="text-lg font-semibold text-slate-900" data-testid={`${testid}-${key}`}>
+            {value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 export default async function PoolCampaignsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   if (!(await isSuperadmin(session.user.id))) notFound();
-  const campaigns = await listPoolCampaigns();
+  const [campaigns, withoutCode] = await Promise.all([listPoolCampaigns(), poolWaysInWithoutCode()]);
 
   return (
     <div className="space-y-8">
@@ -34,6 +66,9 @@ export default async function PoolCampaignsPage() {
         <p className="mt-1 max-w-2xl text-sm text-slate-600">
           One code per place you share the pool: a LinkedIn post, a leaflet run, a poster. Each gets its own link and QR code, so each brings its own numbers.
           A friend&apos;s personal link counts as a referral, not here.
+        </p>
+        <p className="mt-1 max-w-2xl text-sm text-slate-600">
+          A visit is someone opening the link in a browser, once per visit. Link previews (Facebook, Nextdoor, WhatsApp, X) never count. Visits before November 2026 were not counted.
         </p>
       </div>
 
@@ -63,20 +98,7 @@ export default async function PoolCampaignsPage() {
               <p className="mt-2 break-all font-mono text-sm text-slate-800" data-testid="campaign-url">
                 {c.url}
               </p>
-              <dl className="mt-3 flex flex-wrap gap-6 text-sm">
-                <div>
-                  <dt className="text-slate-500">Confirmed on WhatsApp</dt>
-                  <dd className="text-lg font-semibold text-slate-900" data-testid="campaign-confirmed">
-                    {c.confirmed}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">Started, not confirmed yet</dt>
-                  <dd className="text-lg font-semibold text-slate-900" data-testid="campaign-waiting">
-                    {c.waiting}
-                  </dd>
-                </div>
-              </dl>
+              <WayInNumbers n={c} testid="campaign" />
               <div className="mt-3 flex flex-wrap gap-3 text-sm">
                 <CampaignCopyLink url={c.url} />
                 <a href={`/admin/pool/campaigns/${encodeURIComponent(c.code)}/qr?format=png`} download className="font-semibold text-blue-700 underline">
@@ -91,6 +113,22 @@ export default async function PoolCampaignsPage() {
           ))}
         </ul>
       )}
+
+      <section aria-labelledby="without-code" className="space-y-4">
+        <h3 id="without-code" className="text-base font-semibold text-slate-900">
+          Without a code
+        </h3>
+        <div data-testid="way-in-direct" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="font-semibold text-slate-900">Plain /play link</p>
+          <p className="text-sm text-slate-600">No code, or a code that does not exist or is switched off. Its sign-ups count as the web.</p>
+          <WayInNumbers n={withoutCode.direct} testid="direct" />
+        </div>
+        <div data-testid="way-in-referral" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="font-semibold text-slate-900">Friends&apos; links</p>
+          <p className="text-sm text-slate-600">A player&apos;s own link from Bring a friend.</p>
+          <WayInNumbers n={withoutCode.referral} testid="referral" />
+        </div>
+      </section>
     </div>
   );
 }
