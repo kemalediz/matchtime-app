@@ -288,6 +288,13 @@ export const tr: Strings = {
   announce_match: (p) =>
     `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\nKatılmak için *VARIM* yazın. İlk ${p.maxPlayers} kişi oynar.`,
 
+  announce_match_monthly: (p) =>
+    `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\n` +
+    `Ayın ücretini ödediyseniz tüm maçlardasınız, bir şey yazmanıza gerek yok.\n` +
+    `Maç başı mı ödüyorsunuz (PAYG)? Boş bir yeri almak için *VARIM* yazın, sadece bu maçın ücretini ödersiniz.\n` +
+    `Misafir mi getiriyorsunuz? Onun adına yazın, örneğin *David VAR*.\n\n` +
+    `Ayın listesi henüz paylaşılmadıysa ${p.organiser ?? "organizatör"} paylaşacak.`,
+
   // ── row 71: buildSquadRosterBlock ────────────────────────────────
 
   roster_confirmed_header: (p) => `*Onaylananlar (${p.confirmed}/${p.maxPlayers}):*`,

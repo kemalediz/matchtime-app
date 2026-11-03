@@ -322,6 +322,17 @@ export const en = {
   announce_match: (p: { activityName: string; dateLabel: string; venue: string; maxPlayers: number }): string =>
     `📅 *${p.activityName}*: *${p.dateLabel}* at ${p.venue}.\n\nSay *IN* to join. First ${p.maxPlayers} confirmed play.`,
 
+  /** Row 68m: the announcement of a club on "monthly" with no month in
+   *  MatchTime yet (the Vets incident, 3 Nov 2026). The regulars paid for
+   *  the month, so nobody is asked to sign up; only a pay as you go player
+   *  or a guest says IN. `organiser` is a first name, or null. */
+  announce_match_monthly: (p: { activityName: string; dateLabel: string; venue: string; organiser: string | null }): string =>
+    `📅 *${p.activityName}*: *${p.dateLabel}* at ${p.venue}.\n\n` +
+    `Paid for the month? You're in every game, no need to say anything.\n` +
+    `Pay as you go? Say *IN* to take an open place, and you pay for this game only.\n` +
+    `Bringing a guest? Say it for them, for example *David is IN*.\n\n` +
+    `${p.organiser ?? "The organiser"} will post the month's list if it isn't up yet.`,
+
   // ── row 71: buildSquadRosterBlock (scheduler-copy.ts) ────────────
 
   roster_confirmed_header: (p: { confirmed: number; maxPlayers: number }): string =>
