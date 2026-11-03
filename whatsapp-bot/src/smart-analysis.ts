@@ -311,6 +311,13 @@ const historyByGroup = new Map<string, AnalyzeInboundHistory[]>();
 const bufferByGroup = new Map<string, Pending[]>();
 const nextKickoffMsByGroup = new Map<string, number | null>();
 const inFlightFlush = new Set<string>(); // prevent two flushes running in parallel per group
+/**
+ * Groups owed an immediate flush that arrived while one was running (Vets
+ * MNF, 2026-11-03): a tagged question landed during the tick's flush, the
+ * guard above turned its flush away, and it waited ten minutes for the next
+ * tick. The running flush, when it ends, flushes again for these.
+ */
+const reflushAfterInFlight = new Set<string>();
 let flushTimer: NodeJS.Timeout | null = null;
 let sharedDriver: WaDriver | null = null;
 
@@ -524,6 +531,12 @@ export async function enqueueForAnalysis(driver: WaDriver, msg: InboundMessage):
   if (reason) {
     console.log(`[smart] ${reason} flush for ${groupId} (${arr.length} pending)`);
     // flushGroup's inFlightFlush guard prevents double-running per group.
+    // When it turns this one away, the running flush flushes again as soon
+    // as it ends (`reflushAfterInFlight`), not at the next tick.
+    if (inFlightFlush.has(groupId)) {
+      reflushAfterInFlight.add(groupId);
+      console.log(`[smart] ${reason} flush for ${groupId} waits for the running flush; it flushes again when that ends`);
+    }
     await flushGroup(driver, groupId);
   }
 }
@@ -1012,6 +1025,10 @@ async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
     reportFailedReacts(groupId, failedReacts, reactAttempts, failureReasons);
   } finally {
     inFlightFlush.delete(groupId);
+    if (reflushAfterInFlight.delete(groupId) && (bufferByGroup.get(groupId)?.length ?? 0) > 0) {
+      console.log(`[smart] flushing ${groupId} again now: a tagged message came in during the last flush`);
+      void flushGroup(driver, groupId).catch((err) => console.error("[smart] re-flush failed:", err));
+    }
   }
 }
 
@@ -1355,6 +1372,7 @@ export function _test_reset(): void {
   bufferByGroup.clear();
   nextKickoffMsByGroup.clear();
   inFlightFlush.clear();
+  reflushAfterInFlight.clear();
   sharedDriver = null;
   degradedCapabilities.clear();
   // Reset EVERY counter by rebuilding from the canonical shape, so a

@@ -16,6 +16,7 @@ const base: TaggedSilenceInput = {
   refused: false,
   readFailed: false,
   answeredBySquadPost: false,
+  monthNotStarted: false,
   route: "offer",
   result: { reply: null, react: null, intent: "noise", handledBy: "llm" },
 };
@@ -76,6 +77,12 @@ describe("taggedSilence", () => {
   // told "I didn't catch what you'd like me to do".
   it("does not fire on a permission refusal: that silence is designed", () => {
     expect(taggedSilence(w({ refused: true }))).toBe(false);
+  });
+
+  // Vets, 2026-11-03: a monthly club's month is not started yet, so an IN
+  // writes nothing and, for now, says nothing (coordinator's ruling).
+  it("does not fire on an attendance message held back because the month is not started", () => {
+    expect(taggedSilence(w({ monthNotStarted: true, route: "self_att", result: { handledBy: "ignored" } }))).toBe(false);
   });
 
   // e2e/sim/attendance-engine-overload.spec.ts:158: the extractor failed (529)

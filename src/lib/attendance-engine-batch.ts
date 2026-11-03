@@ -539,6 +539,17 @@ export async function runAttendanceEngineBatch(args: {
    * (`clampPastedListFacts`). Absent: no message is a list.
    */
   pastedListIds?: ReadonlySet<string>;
+  /**
+   * A MONTHLY CLUB WHOSE MONTH IS NOT STARTED (2026-11-03, Vets): no
+   * running month covers the registration match. Kemal: the squad starts
+   * from the posted monthly list, and nobody joins by saying IN before it
+   * exists. The engine then owns nothing on this club's own match (a reply
+   * to a partner club's ask still counts), and each message it set aside is
+   * reported in `silence.monthNotStarted` so the route records it without
+   * an operator note or the not-understood line. A fact the route reads
+   * from the database, never the words.
+   */
+  monthNotStarted?: boolean;
   deps: EngineBatchDeps;
   /** Where this batch reports the silences it chose (`tagged-silence.ts`),
    *  so the route does not call them "not understood". Absent: unreported. */
@@ -581,8 +592,15 @@ export async function runAttendanceEngineBatch(args: {
   const isPartnerReply = (m: EngineBatchMessage) =>
     !!m.quoted && quotedPartnerAsk({ quoted: m.quoted } as EngineMessage, state) !== null;
   const partnerReplies = candidates.filter(isPartnerReply);
+  const monthNotStarted = args.monthNotStarted === true;
+  if (monthNotStarted) {
+    for (const m of candidates) if (!isPartnerReply(m)) args.silence?.monthNotStarted.add(m.waMessageId);
+  }
   const ownMatchBlocked =
-    !state.features.attendance || !state.matchId || (expectedMatchId !== null && state.matchId !== expectedMatchId);
+    monthNotStarted ||
+    !state.features.attendance ||
+    !state.matchId ||
+    (expectedMatchId !== null && state.matchId !== expectedMatchId);
 
   // ── The carve-outs, all in the "own nothing" direction ─────────────
   if (ownMatchBlocked && partnerReplies.length === 0) {

@@ -1358,6 +1358,9 @@ async function handleAnalyzeRequest(request: Request) {
   //   and the message goes on to the router as any other. Section 4 never
   //   registers names from a message the reader looked at.
   const monthlyReadings = new Map<string, MonthlyReading>();
+  /** A running month covers the next match (the reader was shown its
+   *  week). False for a monthly club whose month is not started yet. */
+  let monthlyWeekLive = false;
   if (monthSignup) {
     const reader = await import("@/lib/monthly-reader");
     const ctx = await reader
@@ -1367,6 +1370,7 @@ async function handleAnalyzeRequest(request: Request) {
         return null;
       });
     if (ctx) {
+      monthlyWeekLive = ctx.week !== null;
       const chat = await groupChatHistory({
         orgId: org.id,
         groupId: body.groupId,
@@ -1380,8 +1384,12 @@ async function handleAnalyzeRequest(request: Request) {
           stored: seenMap.has(m.waMessageId),
         })),
       }).catch(() => []);
-      for (const m of fresh) {
-        if (fastPathHandledIds.has(m.waMessageId)) continue;
+      // IN PARALLEL, a few at a time (2026-11-03): one call per message
+      // made a 22-message Vets batch wait ~55 s before the router. Each
+      // message is still claimed before its own call, and each reading is
+      // stored by its id, so the order they finish in changes nothing.
+      const toRead = fresh.filter((m) => !fastPathHandledIds.has(m.waMessageId));
+      const readOne = async (m: InboundMessage): Promise<void> => {
         const sender = senderById.get(m.waMessageId)!;
         // CLAIMED BEFORE THE MODEL IS ASKED (review of #465): a Pi retry of
         // this message, arriving while the first is still being handled,
@@ -1394,7 +1402,7 @@ async function handleAnalyzeRequest(request: Request) {
           if ((err as { code?: unknown })?.code === "P2002") {
             console.log(`[analyze] ${m.waMessageId}: already read for the month (a retry): not read again`);
             monthlyNotSquadList.add(m.waMessageId);
-            continue;
+            return;
           }
           throw err;
         }
@@ -1418,7 +1426,14 @@ async function handleAnalyzeRequest(request: Request) {
           ctx,
         );
         monthlyReadings.set(m.waMessageId, reading);
-      }
+      };
+      const MONTHLY_READ_CONCURRENCY = 6;
+      let nextRead = 0;
+      await Promise.all(
+        Array.from({ length: Math.min(MONTHLY_READ_CONCURRENCY, toRead.length) }, async () => {
+          while (nextRead < toRead.length) await readOne(toRead[nextRead++]);
+        }),
+      );
     }
   }
   const listReadingOf = (m: InboundMessage) => {
@@ -1498,10 +1513,14 @@ async function handleAnalyzeRequest(request: Request) {
       if (fastPathHandledIds.has(m.waMessageId)) continue;
       const reading = listReadingOf(m);
       if (!reading) continue;
-      // An ORGANISER's list for the coming month, before that month is
-      // started: the draft goes to him by DM, with where to say YES (agent
-      // A's seed flow). Nothing is said in the group.
-      if (reading.listOf === "month") {
+      // An ORGANISER's list for a month that is not started yet: the coming
+      // month, or this one already under way (started part-way,
+      // 2026-11-03): the draft goes to him by DM, with where to say YES
+      // (agent A's seed flow). Nothing is said in the group. With no
+      // running month there is no week to read a "week" list against, so
+      // any list of his is tried (Vets, 3 Nov: "MNF November" on the day
+      // after November's first Monday).
+      if (reading.listOf === "month" || !monthlyWeekLive) {
         const sender = senderById.get(m.waMessageId)!;
         let proposed = false;
         try {
@@ -2037,10 +2056,24 @@ async function handleAnalyzeRequest(request: Request) {
   // What every owner reports about the silences it chose, for the
   // "never met with silence" pass at the foot of this handler.
   const silence = newSilenceFacts();
+  // A monthly club with no running month for the registration match: the
+  // squad starts from the month's list, so no IN is written before it
+  // (Kemal, 2026-11-03). A fact from the database (`loadMonthlyWeek`).
+  let monthNotStarted = false;
+  if (org.squadMode === "monthly" && activeMatchForReply) {
+    try {
+      const { loadMonthlyWeek } = await import("@/lib/monthly-week");
+      monthNotStarted = (await loadMonthlyWeek(activeMatchForReply.id)) === null;
+    } catch (err) {
+      // Unknown is not "not started": the engine runs as before.
+      console.error(`[analyze] monthly week for ${activeMatchForReply.id} failed to load:`, err);
+    }
+  }
   const engineBatch =
     fresh.length > 0
       ? await runAttendanceEngineBatch({
           silence,
+          monthNotStarted,
           orgId: org.id,
           now: new Date(),
           expectedMatchId: activeMatchForReply?.id ?? null,
@@ -3086,6 +3119,29 @@ async function handleAnalyzeRequest(request: Request) {
       });
       continue;
     }
+    // ── A MONTHLY CLUB WHOSE MONTH IS NOT STARTED (2026-11-03) ───────
+    //
+    // Vets: three INs this morning became weekly confirmations on a club
+    // that had no November list. Kemal: the squad starts from the posted
+    // monthly list. The engine set these aside (`monthNotStarted`): one
+    // row, nothing written, nothing said, no operator note (nothing went
+    // wrong). Whether the sender should get a DM is Kemal's call, pending.
+    if (silence.monthNotStarted.has(msg.waMessageId)) {
+      await recordAnalysis({
+        orgId: org.id,
+        groupId: body.groupId,
+        msg,
+        handledBy: "ignored",
+        intent: "noise",
+        action: "none",
+        confidence: 1,
+        reasoning: `monthly club, no running month for this game yet: route=${gateRouteById.get(msg.waMessageId) ?? "(none returned)"}; nothing written, no reply (the squad starts from the month's list)`,
+        authorUserId: sender.userId,
+        authorName: msg.authorName ?? null,
+      });
+      results.push({ waMessageId: msg.waMessageId, handledBy: "ignored", intent: "noise", react: null, reply: null });
+      continue;
+    }
     if (cappedIds.has(msg.waMessageId)) {
       const capReply =
         capReplyMessageId === msg.waMessageId ? strings(org.language).ai_daily_cap_reached() : null;
@@ -4092,6 +4148,7 @@ async function handleAnalyzeRequest(request: Request) {
       refused: silence.refused.has(m.waMessageId),
       readFailed: silence.readFailed.has(m.waMessageId),
       answeredBySquadPost: silence.squadPostAnswers.has(m.waMessageId) && squadPostWentOut,
+      monthNotStarted: silence.monthNotStarted.has(m.waMessageId),
       route: gateRouteById.get(m.waMessageId),
       result: { reply: r.reply ?? null, react: r.react ?? null, intent: r.intent ?? "noise", handledBy: r.handledBy },
     });
