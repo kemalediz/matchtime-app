@@ -577,6 +577,25 @@ const SQUAD_SHAPED_TOPICS: ReadonlySet<string> = new Set(["squad", "count"]);
 const SQUAD_POST_ANSWERS: ReadonlySet<string> = new Set(["squad", "count", "bench", "person_status"]);
 
 /**
+ * THE ONLY TOPICS ANY OTHER TRAFFIC STILL HOLDS BACK (Vets sandbox,
+ * 2026-11-03): the squad post's topics this module does not answer itself.
+ * Beside an IN, "who's on the bench?" and "is Zair in?" are answered by the
+ * batch's squad post, by name, when it goes out (`SQUAD_POST_ANSWERS`), so
+ * an answer here would say it twice.
+ *
+ * Every other topic waits only for a writer that has NOT landed
+ * (`batchCarriesAnUnsettledWriter`). It used to wait for any other traffic,
+ * which was silence plus an operator note; since `tagged-silence.ts`
+ * (2026-10-29) it is the not-understood line, and "@Match Time what happens
+ * if 14 don't confirm?" (`options`) beside the morning's INs got "I didn't
+ * catch what you'd like me to do" in 3 of 4 live runs. Attendance writes
+ * land before this module loads its state, so they cannot contradict it.
+ */
+const WAITS_FOR_THE_SQUAD_POST: ReadonlySet<string> = new Set(
+  [...SQUAD_POST_ANSWERS].filter((t) => !SQUAD_SHAPED_TOPICS.has(t)),
+);
+
+/**
  * Prefix on every degradation this module reports.
  *
  * ⚠️ LOG-ONLY TODAY, and saying so matters: step 6's equivalent
@@ -836,6 +855,14 @@ export async function runAnswerBatch(args: {
   /** Where this batch reports the silences it chose (`tagged-silence.ts`),
    *  so the route does not call them "not understood". Absent: unreported. */
   silence?: SilenceFacts;
+  /**
+   * A MONTHLY CLUB WHOSE MONTH IS NOT STARTED (`month-not-started.ts`, the
+   * same fact the attendance engine is given). The squad starts from the
+   * month's list, so a count of whoever said IN is not the squad: an
+   * `options` question ("what if 14 don't confirm?") is answered with how
+   * the monthly squad works instead (Vets sandbox, 2026-11-03). Absent: false.
+   */
+  monthNotStarted?: boolean;
 }): Promise<AnswerBatchResult> {
   const { orgId, now, history, expectedMatchId, enabled, deps } = args;
   const alsoAsks: ReadonlySet<string> = args.alsoAsks ?? new Set<string>();
@@ -1122,6 +1149,18 @@ export async function runAnswerBatch(args: {
   }
   clarificationFor = new Map([...clarificationFor].filter(([id]) => !notClarifications.has(id)));
 
+  // ── `options` IN A MONTHLY CLUB WITH NO MONTH (2026-11-03) ──────────
+  // "We're 0 of 14, need 14 more" counts whoever said IN, which before the
+  // month exists is nobody by design (#501 holds every post that counts it).
+  // The question is about what happens when places are not filled, and the
+  // true answer here is how the monthly squad works: the availability help,
+  // for this club's settings. A fact from the database, not the words.
+  if (args.monthNotStarted === true) {
+    for (const [id, f] of factsById) {
+      if (f.kind === "question" && f.topic === "options") factsById.set(id, { ...f, topic: "how_it_works", feature: "availability" });
+    }
+  }
+
   // ── Ownership, part 2: shapes only visible after extraction ────────
   //
   // Each rejection below used to be "the analyzer answers this one",
@@ -1243,6 +1282,10 @@ export async function runAnswerBatch(args: {
       if (squadBlock !== null) continue;
       // ── THE MIXED-BATCH HAND-BACK, AND ITS ONE CARVE-OUT ──────────
       //
+      // SINCE 2026-11-03 the carve-out below covers every topic but
+      // `bench` and `person_status` (`WAITS_FOR_THE_SQUAD_POST`, which
+      // says why); the history that follows is why it began with two.
+      //
       // For every topic but two: an answer here is composed from a
       // snapshot that another owner's writes may land after, and "Yes,
       // Idris has a slot for Tue 21:30" beside Idris's own "sorry lads
@@ -1267,7 +1310,7 @@ export async function runAnswerBatch(args: {
       // write, no send and no state mutation — there are none in this
       // loop (see the `continue`s note above it) — and the reason is
       // already on `degradations` before it runs.
-      if (SQUAD_SHAPED_TOPICS.has(facts.topic) ? unsettledTraffic : otherTraffic) {
+      if (WAITS_FOR_THE_SQUAD_POST.has(facts.topic) ? otherTraffic : unsettledTraffic) {
         hand(
           `the batch also carries messages this step does not own, which may change the ` +
             `squad after this answer is composed (S36, and the pre-write snapshot)`,

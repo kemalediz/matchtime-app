@@ -524,7 +524,10 @@ describe("a shape the composer cannot answer well is answered by nobody", () => 
   it.each([
     ["bench", { topic: "bench", personRef: "", statedCount: -1 }],
     ["person_status", { topic: "person_status", personRef: "Zair", statedCount: -1 }],
-    ["phones", { topic: "phones", personRef: "", statedCount: -1 }],
+    // `phones` LEFT THIS LIST on 2026-11-03 (Vets sandbox): a hand-back now
+    // ends in the not-understood line, not silence, and attendance writes
+    // have landed. Only the two the batch's squad post answers by name stay
+    // (`WAITS_FOR_THE_SQUAD_POST`); see answer-batch-mixed-batch.test.ts.
   ])(
     "hands back a %s question too when the batch may also change the squad",
     async (_topic, facts) => {

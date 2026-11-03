@@ -2644,7 +2644,16 @@ async function computeForMatch(
   //       nudges, not gates.
   {
     const hour = londonHour(now);
-    const isDayBefore = hoursUntilMatch >= 12 && hoursUntilMatch <= 36;
+    // A MONTHLY CLUB WHOSE REGULARS ARE NOT ON THE MATCH YET (Vets sandbox,
+    // 2026-11-03): no month (`noMonthYet`), a month in sign-up or held, or a
+    // running month not yet seeded onto this game. Both nudges count the
+    // squad on the match, and there that count is only whoever said IN, so
+    // "Match in trouble: only 0 confirmed" went to the owner on the Sunday
+    // of a club that plays from the month's list. Held until the regulars
+    // are on it; from then the count is theirs and the nudge is true.
+    const regularsNotOnYet =
+      noMonthYet || (monthly !== null && (monthly.signup === true || !monthly.seeded));
+    const isDayBefore = hoursUntilMatch >= 12 && hoursUntilMatch <= 36 && !regularsNotOnYet;
 
     // 10:00 — switch-to-smaller-format nudge
     //         One DM per admin so each has their own magic link. Idempotency

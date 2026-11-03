@@ -116,6 +116,26 @@ function nearMiss(a: string, b: string): boolean {
   return a.startsWith(b) || b.startsWith(a);
 }
 
+/**
+ * Does the rest of the reference (its surname) contradict the member's?
+ *
+ * Vets sandbox, 2026-11-03: "David Aksoy is IN", a guest, was read as
+ * Davide Russo by the near miss on "David" and changed nothing. A near miss
+ * is a guess that a FIRST name was misspelt; a surname that is plainly a
+ * different one ("Aksoy" against "Russo") says it is somebody else. So it
+ * contradicts when both sides have one and no word of the reference's
+ * agrees with a word of the member's (the same word, or one starting the
+ * other: "R" and "Rahim" agree with "Rahimi"). A member with no surname on
+ * record, or a reference without one, cannot contradict. Used only by the
+ * near miss: an exact first name still resolves as before.
+ */
+function surnameContradicts(ref: string, memberName: string): boolean {
+  const refRest = norm(ref).split(" ").slice(1).filter((w) => /[a-z]/.test(w));
+  const memberRest = norm(memberName).split(" ").slice(1).filter((w) => /[a-z]/.test(w));
+  if (refRest.length === 0 || memberRest.length === 0) return false;
+  return !refRest.some((r) => memberRest.some((m) => m.startsWith(r) || r.startsWith(m)));
+}
+
 
 /**
  * THE CLUB'S MEMBERS A MESSAGE NAMES, from the club's records (2026-10-24).
@@ -222,8 +242,9 @@ export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome 
   if (byToken.length === 1) return { kind: "resolved", member: byToken[0] };
   if (byToken.length > 1) return { kind: "ambiguous", candidates: byToken };
 
-  // 4. Near miss on the first name.
-  const near = roster.filter((m) => nearMiss(firstToken(m.name), tFirst));
+  // 4. Near miss on the first name, unless the surname says it is
+  //    somebody else ("David Aksoy" is not Davide Russo).
+  const near = roster.filter((m) => nearMiss(firstToken(m.name), tFirst) && !surnameContradicts(target, m.name));
   if (near.length === 1) return { kind: "resolved", member: near[0] };
   if (near.length > 1) return { kind: "ambiguous", candidates: near };
 

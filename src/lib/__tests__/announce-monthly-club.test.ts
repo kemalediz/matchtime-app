@@ -64,6 +64,16 @@ const features: Record<string, unknown> = {
 };
 vi.mock("@/lib/org-features", () => ({ getOrgFeatures: async () => ({ ...features }) }));
 vi.mock("@/lib/message-analyzer", () => ({ composeChaseText: async () => null }));
+// The owner's day-before nudges go through the admin channel. Off unless a
+// test turns it on, so every other case here is unchanged.
+const adminChannel = { on: false };
+vi.mock("@/lib/admin-channel", async (orig) => ({
+  ...(await orig<typeof import("@/lib/admin-channel")>()),
+  loadAdminChannel: async () => (adminChannel.on ? { orgId: "org-vets" } : null),
+  adminNoticeInstructions: async (a: { key: (who: string) => string; matchId?: string; notice: { text: (url: string, audience: string) => string } }) => [
+    { kind: "dm", key: a.key("u-owner"), matchId: a.matchId, targetUser: "u-owner", phone: "447700900999", text: a.notice.text("https://x/t", "dm") },
+  ],
+}));
 
 import { computeDuePosts } from "@/lib/bot-scheduler";
 import { t } from "@/lib/i18n/t";
@@ -186,6 +196,7 @@ const announce = (out: Awaited<ReturnType<typeof run>>) => out.find((i) => i.key
 
 beforeEach(() => {
   for (const k of Object.keys(overrides)) delete overrides[k];
+  adminChannel.on = false;
   features.squadMode = "monthly";
   features.language = "en";
 });
@@ -214,6 +225,14 @@ describe("a monthly club's announcement (the Vets incident, 3 Nov 2026)", () => 
     expect(a!.text).toContain("Pay as you go");
   });
 
+  it("a guest: a player says a friend is coming and gets a link; an organiser just says the name (the welcome's friend line)", async () => {
+    const a = announce(await run());
+    expect(a!.text).not.toContain("Say it for them");
+    expect(a!.text).not.toContain("*David is IN*");
+    expect(a!.text).toContain("Bringing a friend? Say a friend is coming and I'll DM you a link to send them.");
+    expect(a!.text).toContain("Organisers can just say the friend's name (for example *Sam Jones is in*)");
+  });
+
   it("with no organiser to name, the line still reads", async () => {
     const a = announce(await run({ organiserName: null }));
     expect(a!.text).toContain("The organiser will post the month's list");
@@ -227,6 +246,8 @@ describe("a monthly club's announcement (the Vets incident, 3 Nov 2026)", () => 
     expect(a).toBeDefined();
     expect(a!.text).not.toContain("İlk 14 kişi oynar");
     expect(a!.text).toContain("VARIM");
+    expect(a!.text).not.toContain("*David VAR*");
+    expect(a!.text).toContain("Organizatörlerin arkadaşın adını yazması yeter");
   });
 
   it("A RUNNING MONTH NOT YET SEEDED: nothing (the week's list is the announcement once the regulars are on)", async () => {
@@ -308,5 +329,66 @@ describe("a monthly club with no month yet: no other weekly post asks the regula
     const m = match({ attendances: Array.from({ length: 14 }, (_, i) => att(`P${i}`, i)) });
     const out = await run({ matches: [m], now: THU_5PM });
     expect(out.some((i) => i.key.startsWith(`${m.id}:evening-update:`))).toBe(false);
+  });
+});
+
+// Vets sandbox, 3 Nov 2026 (scenario A): Sunday 18:00 the owner got
+// "🚨 Match in trouble: only 0 confirmed ... Cancel and refund the booking?"
+// for a monthly club with no month. The 0 is only whoever said IN, which in
+// a monthly club before its month is nobody by design. The day-before nudges
+// count the squad on the match, so they wait until the month's regulars are
+// on it; once they are, the count is the regulars' and the nudge is true.
+describe("the owner's day-before nudges in a monthly club", () => {
+  /** Sun 8 Nov 18:05 London (GMT): the cancel nudge's hour. */
+  const SUN_6PM = new Date("2026-11-08T18:05:00.000Z");
+  const cancelKey = (id: string) => `${id}:cancel-nudge:u-owner`;
+  const regulars = (n: number) => Array.from({ length: n }, (_, i) => att(`Regular ${i}`, i));
+
+  it("REGRESSION GUARD, weekly: 0 confirmed on Sunday 18:00 still nudges the owner to cancel", async () => {
+    features.squadMode = "weekly";
+    adminChannel.on = true;
+    const out = await run({ now: SUN_6PM });
+    expect(out.some((i) => i.key === cancelKey("m-mon-9-nov"))).toBe(true);
+  });
+
+  it("THE SANDBOX FAILURE: monthly, no month, 0 confirmed: no 'Match in trouble' DM", async () => {
+    adminChannel.on = true;
+    const out = await run({ now: SUN_6PM });
+    expect(out.some((i) => i.key === cancelKey("m-mon-9-nov"))).toBe(false);
+    expect(out.some((i) => "text" in i && String((i as { text: string }).text).includes("Match in trouble"))).toBe(false);
+  });
+
+  it("monthly, no month, a couple of pay as you go INs: still nothing (the count is not the squad)", async () => {
+    adminChannel.on = true;
+    const out = await run({ matches: [match({ attendances: regulars(2) })], now: SUN_6PM });
+    expect(out.some((i) => i.key === cancelKey("m-mon-9-nov"))).toBe(false);
+  });
+
+  it("a held month (waiting for the organiser's list): nothing", async () => {
+    adminChannel.on = true;
+    const out = await run({ heldKey: true, now: SUN_6PM });
+    expect(out.some((i) => i.key === cancelKey("m-mon-9-nov"))).toBe(false);
+  });
+
+  it("a running month not yet seeded: nothing (the regulars are not on the match yet)", async () => {
+    adminChannel.on = true;
+    const out = await run({ running: true, now: SUN_6PM });
+    expect(out.some((i) => i.key === cancelKey("m-mon-9-nov"))).toBe(false);
+  });
+
+  it("a running month, seeded, 13 regulars of 14: the nudge counts the regulars", async () => {
+    adminChannel.on = true;
+    const m = match({ attendances: regulars(13), rollingSeededAt: new Date("2026-11-03T08:05:00.000Z") });
+    const out = await run({ running: true, matches: [m], now: SUN_6PM });
+    const dm = out.find((i) => i.key === cancelKey(m.id)) as { text: string } | undefined;
+    expect(dm).toBeDefined();
+    expect(dm!.text).toContain("only *13* confirmed");
+  });
+
+  it("a running month, seeded, all 14 regulars: no nudge", async () => {
+    adminChannel.on = true;
+    const m = match({ attendances: regulars(14), rollingSeededAt: new Date("2026-11-03T08:05:00.000Z") });
+    const out = await run({ running: true, matches: [m], now: SUN_6PM });
+    expect(out.some((i) => i.key === cancelKey(m.id))).toBe(false);
   });
 });

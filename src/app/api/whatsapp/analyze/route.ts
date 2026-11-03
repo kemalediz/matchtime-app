@@ -2361,6 +2361,9 @@ async function handleAnalyzeRequest(request: Request) {
     fresh.length > 0
       ? await runAnswerBatch({
           silence,
+          // The same fact the attendance engine was given above: an
+          // `options` question is then answered with how the month works.
+          monthNotStarted,
           orgId: org.id,
           now,
           messages: ownerBase,

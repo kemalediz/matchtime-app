@@ -330,7 +330,7 @@ export const en = {
     `📅 *${p.activityName}*: *${p.dateLabel}* at ${p.venue}.\n\n` +
     `Paid for the month? You're in every game, no need to say anything.\n` +
     `Pay as you go? Say *IN* to take an open place, and you pay for this game only.\n` +
-    `Bringing a guest? Say it for them, for example *David is IN*.\n\n` +
+    `👥 Bringing a friend? Say a friend is coming and I'll DM you a link to send them. Organisers can just say the friend's name (for example *Sam Jones is in*) and I'll add them.\n\n` +
     `${p.organiser ?? "The organiser"} will post the month's list if it isn't up yet.`,
 
   // ── row 71: buildSquadRosterBlock (scheduler-copy.ts) ────────────
@@ -1481,6 +1481,15 @@ export const en = {
     `Just say *In* or *Out* in the group to mark yourself for the next game, or say a teammate can't make it (for example *Sam is out*). No need to tag me, I read it automatically.\n` +
     `I keep a live, numbered squad list. When it's full, extra players go on the *bench*. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
     `When a place opens, the organisers pick who plays from the bench. Say *Out* any time if you can't make it.`,
+
+  /** "help availability" for a club on "monthly" (Vets sandbox,
+   *  2026-11-03): the month's regulars are seeded onto every game
+   *  (monthly-week.ts), a regular's Out frees the place, and a pay as you go
+   *  player's IN takes an open one for that game only. */
+  onbHelpAvailabilityMonthly:
+    `⚽ *Squad & availability: how it works*\n` +
+    `This group plays as a monthly squad. Paid for the month? You're on the month's list and in every game, no need to say anything. Can't make one? Say *Out* and your place opens for someone else.\n` +
+    `Pay as you go? Say *In* to take an open place, and you pay for that game only.`,
 
   /** "help availability" (2026-10-31): the friend link (#488), as
    *  friend-link/rules.ts and friend-link.en.ts do it. Appended to every

@@ -124,6 +124,10 @@ export type HelpFeatures = {
   pool?: HelpClubFacts["pool"];
   /** Partner clubs (2026-10-28, help-club-facts.ts). Missing: none. */
   partners?: HelpClubFacts["partners"];
+  /** The club plays as a monthly squad (`Organisation.squadMode =
+   *  "monthly"`, 2026-11-03): the month's regulars are in every game and
+   *  only a pay as you go player says IN. A missing value reads as off. */
+  monthly?: boolean;
 };
 
 /** The help builder's view of a club's live flags. One mapping, so every
@@ -142,6 +146,7 @@ export function helpFeaturesFrom(
     paymentCollection: boolean;
     listAnnouncer?: string | null;
     benchPickMode?: string | null;
+    squadMode?: string | null;
   },
   club?: HelpClubFacts,
 ): HelpFeatures {
@@ -157,6 +162,7 @@ export function helpFeaturesFrom(
     paymentCollection: f.paymentCollection,
     organisersAnnounce: organisersAnnounce(f),
     organiserPicks: f.benchPickMode === "organiser",
+    monthly: f.squadMode === "monthly",
     ...(club ? { pool: club.pool, partners: club.partners } : {}),
   };
 }
@@ -359,12 +365,16 @@ export function buildHelpReply(
     if (organisers && topic === "teams") {
       return s.onbHelpOrganisersExplainer({ topic, organiserPicks: picks }) + adminTail(s.onbHelpAdminSettings({ url: topicUrl }));
     }
+    // A monthly squad (2026-11-03): the month's regulars are in every game,
+    // so the weekly "say In or Out for the next game" is not how it works.
     const base =
       organisers && (topic === "availability" || topic === "reminders")
         ? s.onbHelpOrganisersExplainer({ topic, organiserPicks: picks })
-        : topic === "availability" && picks
-          ? s.onbHelpAvailabilityOrganiserPicks
-          : s.onbHelpExplainer({ topic });
+        : topic === "availability" && features.monthly === true
+          ? s.onbHelpAvailabilityMonthly
+          : topic === "availability" && picks
+            ? s.onbHelpAvailabilityOrganiserPicks
+            : s.onbHelpExplainer({ topic });
     // The friend link (#488, 2026-10-31) is part of saying who plays: a
     // player's friend joins by his own link (friend-link/rules.ts); an
     // organiser's add stays direct (D1).

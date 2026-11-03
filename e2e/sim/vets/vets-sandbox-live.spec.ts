@@ -90,6 +90,11 @@ scenario.describe("the Vets sandbox", () => {
     // No chase of any kind: no "need N more", no roster, no squad count.
     const chase = group.filter((i) => /chase|roster|squad|need|more players|places? (left|open)|\d+\/14/i.test(`${i.key ?? ""} ${i.text ?? ""}`) && !announce.includes(i));
     expect(chase, "chase posts").toEqual([]);
+    // Nor the owner's day-before nudges: "Match in trouble: only 0
+    // confirmed ... Cancel and refund the booking?" on the Sunday counted
+    // whoever said IN, which before the month exists is nobody by design.
+    const nudges = all.filter((i) => /cancel-nudge|switch-nudge/.test(i.key ?? "") || /Match in trouble|Low numbers/.test(i.text ?? ""));
+    expect(nudges, "the owner's day-before nudges").toEqual([]);
   });
 
   // ── B ──────────────────────────────────────────────────────────────
@@ -299,12 +304,17 @@ scenario.describe("the Vets sandbox", () => {
     expect(q.reply, JSON.stringify(q)).toBeTruthy();
     expect(q.intent).not.toBe("not_understood");
     expect(replies.join("\n")).not.toMatch(/didn't catch that|did not catch that|not sure what you mean/i);
+    // Answered the monthly way: never the weekly "say In or Out for the
+    // next game" explainer, never a count of whoever said IN.
+    expect(q.reply).not.toContain("Just say *In* or *Out* in the group to mark yourself for the next game");
+    expect(q.reply).not.toMatch(/We're \d+ of 14/);
+    expect(q.reply).toContain("monthly squad");
     // And the INs before the month exists still write nothing.
     expect(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1`, [v.matchId])).toBe(0);
   });
 
   // ── E ──────────────────────────────────────────────────────────────
-  scenario("E. a running month: a pay-as-you-go IN takes the open place, a regular's OUT frees one, and 'David Aksoy is IN' puts a guest in", async ({ pool, db }) => {
+  scenario("E. a running month: a pay-as-you-go IN takes the open place, a regular's OUT frees one, a player's 'David Aksoy is IN' gets him the friend link, the organiser's puts the guest in", async ({ pool, db }) => {
     liveOnly();
     const v = await vetsClub(pool, "vets", { month: "running", played: { keys: LIST_KEYS } });
     // The poll after 08:00 the morning after the last game seeds the week.
@@ -331,13 +341,27 @@ scenario.describe("the Vets sandbox", () => {
     expect(afterOut).toHaveLength(13);
     expect(afterOut.map((r) => r.userId)).not.toContain(v.userId("steve"));
 
-    // Kerem (a regular, not an organiser) puts his son in, as the chat was told.
-    const guest = await say(pool, v, "kerem", "David Aksoy is IN");
-    console.log(`[vets E] guest IN: ${JSON.stringify({ react: guest.react, reply: guest.reply, intent: guest.intent, handledBy: guest.handledBy, sent: guest.sent })}`);
-    console.log(`[vets E] guest IN, as recorded: ${JSON.stringify(await analyzed(db, guest.waMessageId))}`);
+    // Kerem (a regular, not an organiser) puts his son in, as the chat was
+    // told. "David" is not Davide (the near miss no longer swallows a
+    // different surname), so David Aksoy is a new person: from a player
+    // that is the friend link by DM, and nobody is added (friend link D1).
+    const viaPlayer = await say(pool, v, "kerem", "David Aksoy is IN");
+    console.log(`[vets E] player's guest IN: ${JSON.stringify({ react: viaPlayer.react, reply: viaPlayer.reply, intent: viaPlayer.intent, handledBy: viaPlayer.handledBy, sent: viaPlayer.sent })}`);
+    console.log(`[vets E] player's guest IN, as recorded: ${JSON.stringify(await analyzed(db, viaPlayer.waMessageId))}`);
+    expect(viaPlayer.react).toBe("✉️");
+    const dms = viaPlayer.sent.filter((m) => m.channel === "dm");
+    expect(dms.map((m) => m.to)).toEqual(["vets.kerem"]);
+    expect(dms[0].text).toMatch(/David Aksoy/);
+    expect(await confirmed()).toHaveLength(13);
+
+    // The organiser says the same: the guest goes straight on the list.
+    const guest = await say(pool, v, "davide", "David Aksoy is IN");
+    console.log(`[vets E] organiser's guest IN: ${JSON.stringify({ react: guest.react, reply: guest.reply, intent: guest.intent, handledBy: guest.handledBy, sent: guest.sent })}`);
+    console.log(`[vets E] organiser's guest IN, as recorded: ${JSON.stringify(await analyzed(db, guest.waMessageId))}`);
     const afterGuest = await confirmed();
     console.log(`[vets E] confirmed after the guest: ${JSON.stringify(afterGuest.map((r) => [r.position, r.name]))}`);
     expect(afterGuest.some((r) => r.name === "David Aksoy"), "David Aksoy confirmed").toBe(true);
+    expect(afterGuest.map((r) => r.userId)).toContain(v.userId("davide"));
     expect(afterGuest).toHaveLength(14);
   });
 
