@@ -110,6 +110,17 @@ vi.mock("@/lib/match-cancel", () => matchCancel);
 const monthSeedRead = vi.hoisted(() => ({ proposeMonthSeedPaste: vi.fn(async () => null as unknown) }));
 vi.mock("@/lib/month-seed-read", () => monthSeedRead);
 vi.mock("../month-seed-read", () => monthSeedRead);
+// The monthly reader's one reading of a tagged message (2026-11-03): a list
+// (the seed draft) or somebody to be put on a month. "none" by default.
+const monthlyReader = vi.hoisted(() => ({
+  loadMonthlyReaderContext: vi.fn(async () => ({ orgId: "org-fnf", members: [{ ref: "p1", userId: "u-admin", name: "Admin", aliases: [], organiser: true }], months: [], week: null })),
+  readMonthlyMessage: vi.fn(async () => ({ kind: "none", why: "test" }) as unknown),
+}));
+vi.mock("@/lib/monthly-reader", () => monthlyReader);
+vi.mock("../monthly-reader", () => monthlyReader);
+const monthNewcomers = vi.hoisted(() => ({ applyMonthAdd: vi.fn(async () => ({ outcome: "month-add-done", replyText: "✅ Tom is on the November list", changed: true }) as unknown) }));
+vi.mock("@/lib/month-newcomers", () => monthNewcomers);
+vi.mock("../month-newcomers", () => monthNewcomers);
 // The collector's answer to the paid-claims list (2026-10-29), read by a
 // model inside this door. Null: not such an answer.
 const monthPayment = vi.hoisted(() => ({ handleCollectorPaidReply: vi.fn(async () => null as unknown) }));
@@ -2111,9 +2122,12 @@ describe("try again, and set the pitch, from HQ", () => {
 // the router; its proposal is the reply.
 describe("a monthly club's coming-month list, read inside the door", () => {
   it("an organiser's paste is offered to start the coming month, and its proposal is the reply", async () => {
+    const list = { month: { month: 11, year: null }, slots: [], sections: { cantPlay: [], reserves: [], other: [] } };
+    monthlyReader.readMonthlyMessage.mockResolvedValueOnce({ kind: "list", list, gameDay: null, listOf: "month", residual: "" });
     monthSeedRead.proposeMonthSeedPaste.mockResolvedValueOnce({ outcome: "month-seed-proposed", replyText: "📋 I read your list for November" });
     const r = await ask("List for November\n1. A\n2. B", "none", { org: { ...ORG, squadMode: "monthly" } });
-    expect(monthSeedRead.proposeMonthSeedPaste).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", text: "List for November\n1. A\n2. B" }));
+    // Read ONCE here; the draft is made from that reading.
+    expect(monthSeedRead.proposeMonthSeedPaste).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", text: "List for November\n1. A\n2. B", list }));
     expect(r).toEqual({ route: null, outcome: "month-seed-proposed", replyText: "📋 I read your list for November" });
     expect(requests).toEqual([]);
   });
@@ -2128,6 +2142,21 @@ describe("a monthly club's coming-month list, read inside the door", () => {
     monthSeedRead.proposeMonthSeedPaste.mockClear();
     await ask("List for November\n1. A\n2. B", "none");
     expect(monthSeedRead.proposeMonthSeedPaste).not.toHaveBeenCalled();
+  });
+
+  it("'@Match Time add Tom to the November list, he's paid' (2026-11-03): the add is applied here and its answer is the reply, before the router", async () => {
+    const add = { kind: "add", month: 11, choice: "in", days: [], games: null, person: { memberId: "u-tom", name: "Tom" }, paid: true, paidPence: null };
+    monthlyReader.readMonthlyMessage.mockResolvedValueOnce(add);
+    const r = await ask("@Match Time add Tom to the November list, he's paid", "other_att", { org: { ...ORG, squadMode: "monthly" } });
+    expect(monthNewcomers.applyMonthAdd).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", reading: add }));
+    expect(r).toEqual({ route: null, outcome: "month-add-done", replyText: "✅ Tom is on the November list" });
+    expect(requests).toEqual([]);
+  });
+
+  it("a weekly club's 'add Tom' is never read for a month", async () => {
+    monthlyReader.readMonthlyMessage.mockClear();
+    await ask("@Match Time add Tom to the list", "other_att");
+    expect(monthlyReader.readMonthlyMessage).not.toHaveBeenCalled();
   });
 });
 

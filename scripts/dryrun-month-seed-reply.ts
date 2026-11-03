@@ -47,7 +47,29 @@ const ASKED_MATCH = (lang: "en" | "tr") =>
     link: "https://matchtime.app/admin/months",
     hq: false,
   });
-const CASES: Array<{ text: string; lang: "en" | "tr"; want: string; match?: boolean }> = [
+/** 2026-11-03: a RUNNING month. Davide put Zak (a new player now) and Luca
+ *  (could be a member with no name, not added) on it, and was asked who
+ *  they are (`month-newcomers.ts`): the same reader, no draft, the names as
+ *  "not matched". Zak is a named member now (the new player). */
+const NEWCOMER_MEMBERS = [...MEMBERS, { ref: "p8", userId: "u-zak-new", name: "Zak", aliases: [] }];
+const NEWCOMER_UNMATCHED = [
+  { ref: "u1", name: "Zak" },
+  { ref: "u2", name: "Luca" },
+];
+const ASKED_NEWCOMERS = (lang: "en" | "tr") =>
+  t(lang).mwk_dm_newcomers_ask({
+    month: lang === "en" ? "November" : "Kasım",
+    added: ["Zak"],
+    waiting: ["Luca"],
+    members: ["1. +44 7700 900101 (WhatsApp: Luca)", "2. +44 7700 900102", "3. +44 7700 900103"],
+    example: t(lang).mwk_dm_seed_match_example({ name: "Zak", n: 1 }),
+  });
+const CASES: Array<{ text: string; lang: "en" | "tr"; want: string; match?: boolean; newcomers?: boolean }> = [
+  // A running month's newcomers (2026-11-03): only "match" is acted on.
+  { text: "Zak is 3", lang: "en", want: "change:match:u-n3:u1", newcomers: true },
+  { text: "Zak is 2 and Luca is number 1", lang: "en", want: "change:match:u-n2:u1,match:u-n1:u2", newcomers: true },
+  { text: "Zak 2 numara, Luca 1", lang: "tr", want: "change:match:u-n2:u1,match:u-n1:u2", newcomers: true },
+  { text: "Luca is the first one", lang: "en", want: "change:match:u-n1:u2", newcomers: true },
   // Who is who (2026-11-03): the draft has two names nobody matched.
   { text: "Craig is 3, Oumesh is 1", lang: "en", want: "change:match:u-n3:u1,match:u-n1:u2", match: true },
   { text: "craig's the second one", lang: "en", want: "change:match:u-n2:u1", match: true },
@@ -94,9 +116,11 @@ async function main() {
   for (const c of only ? CASES.filter((x) => x.text.includes(only)) : CASES) {
     const got = show(
       await readSeedReply(
-        c.match
-          ? { draft: MATCH_DRAFT, members: MATCH_MEMBERS, unmatched: UNMATCHED, nameless: NAMELESS, asked: ASKED_MATCH(c.lang), text: c.text }
-          : { draft: DRAFT, members: MEMBERS, asked: ASKED(c.lang), text: c.text },
+        c.newcomers
+          ? { draft: [], members: NEWCOMER_MEMBERS, unmatched: NEWCOMER_UNMATCHED, nameless: NAMELESS, asked: ASKED_NEWCOMERS(c.lang), text: c.text }
+          : c.match
+            ? { draft: MATCH_DRAFT, members: MATCH_MEMBERS, unmatched: UNMATCHED, nameless: NAMELESS, asked: ASKED_MATCH(c.lang), text: c.text }
+            : { draft: DRAFT, members: MEMBERS, asked: ASKED(c.lang), text: c.text },
         { model },
       ),
     );

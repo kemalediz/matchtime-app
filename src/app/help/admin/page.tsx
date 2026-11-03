@@ -395,6 +395,28 @@ export default async function AdminGuidePage() {
         knows them by that name from then on, on the rate page and the team
         sheet too. Reply yes and the month starts.
       </p>
+      <h3 id="monthly-add">Monthly squad: adding a regular in the middle of the month</h3>
+      <p>
+        To add somebody to a month that is already running, post the
+        month&apos;s list in the group again with his name on it (for example{" "}
+        <code>14. Tom (paid)</code>), or tag MatchTime in the group, in the
+        organisers&apos; group or by DM, in your own words, for example{" "}
+        <code>@Match Time add Tom to the November list, he&apos;s paid</code>.
+        He becomes a regular of the month for the games that are left, as
+        &quot;Add a player&quot; on the <strong>Months</strong> page does,
+        with what you wrote (paid, &quot;4 only&quot;, pay as you go), and he
+        is on the next game&apos;s squad. Only an organiser can add somebody
+        this way: a player who tries is told to ask an organiser.
+      </p>
+      <p>
+        If MatchTime doesn&apos;t know the name, it adds him as a new player
+        with no phone number and DMs you the members it has no name for,
+        numbered and shown by phone (only to you). Tell it which one he is,
+        for example &quot;Zak is 3&quot;, and the two become one player with
+        that member&apos;s number. If the name could be one of those members
+        (he posts under that name in the group), MatchTime adds nobody until
+        you say which one he is.
+      </p>
       <p>
         Once the month is running, MatchTime posts the week&apos;s list in the
         group the morning after each game, for the next one, again whenever

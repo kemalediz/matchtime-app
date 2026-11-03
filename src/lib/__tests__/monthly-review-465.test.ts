@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { parseMonthlyReading, type MonthlyReaderContext, type MonthlyReaderInput } from "@/lib/monthly-reader-prompt";
+import { MAX_NEW_PLAYERS_PER_PASTE } from "@/lib/month-newcomer-rules";
 import { MAX_GUESTS_PER_PASTE, reconcileMonthPaste, type WeekMember, type WeekRow } from "@/lib/monthly-week-rules";
 import { readMonthlyMessage } from "@/lib/monthly-reader";
 import { answersOpenDigest, decideCollectorReply, DIGEST_ANSWER_WINDOW_MS } from "@/lib/month-payment-rules";
@@ -79,9 +80,15 @@ describe("review of #465", () => {
     // With one open place, one.
     const tight = reconcile({ kind: "list", month: 10, listOf: "week", lines }, { maxPlayers: 4 });
     expect(tight.actions.filter((a) => a.kind === "guest")).toHaveLength(1);
-    // An organiser: up to the squad size (its open places).
-    const org = reconcile({ kind: "list", month: 10, listOf: "week", lines }, { senderUserId: "u-org", senderIsAdmin: true });
+    // An organiser's guests somebody BRINGS: up to the squad size (its open places).
+    const brought = lines.map((l) => ({ ...l, host: "sender" }));
+    const org = reconcile({ kind: "list", month: 10, listOf: "week", lines: brought }, { senderUserId: "u-org", senderIsAdmin: true });
     expect(org.actions.filter((a) => a.kind === "guest")).toHaveLength(14 - 3);
+    // An organiser's plain new names (nobody brings them) are new players of
+    // the month (2026-11-03), a few per paste; the rest are refused.
+    const fresh = reconcile({ kind: "list", month: 10, listOf: "week", lines }, { senderUserId: "u-org", senderIsAdmin: true });
+    expect(fresh.actions.filter((a) => a.kind === "new")).toHaveLength(MAX_NEW_PLAYERS_PER_PASTE);
+    expect(fresh.actions.filter((a) => a.kind === "guest")).toHaveLength(0);
   });
 
   it("refs: unknown or another club's refs are no member", () => {

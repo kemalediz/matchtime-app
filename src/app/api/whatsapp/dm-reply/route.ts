@@ -794,6 +794,25 @@ export async function POST(request: Request) {
     const joined = await handleMonthJoinDmReply({ userId: user.id, text, waMessageId, answering, now: new Date() });
     if (joined) return NextResponse.json({ ok: true, ...joined });
 
+    // ── An organiser saying who a name on his month is (2026-11-03) ──────
+    //   He put somebody MatchTime does not know by name on a running month
+    //   (his re-posted list, or "add Zak to the November list") and was
+    //   DMed the club's members with no name, numbered (`month-newcomers.ts`).
+    //   While that is open and it is the message he answers, his reply
+    //   ("Zak is 3") is read by the month-seed reply reader: a new player is
+    //   folded into that member (the user-merge tool), or the member joins.
+    //   One indexed query for everybody else.
+    const { handleMonthAddDm, handleNewcomerDmReply } = await import("@/lib/month-newcomers");
+    const newcomers = await handleNewcomerDmReply({ userId: user.id, text, replyPhone, waMessageId, answering, now: new Date() });
+    if (newcomers) return NextResponse.json({ ok: true, ...newcomers });
+
+    // ── An organiser asking by DM for somebody to go on a month ─────────
+    //   "add Tom to the November list, he's paid": read by the monthly
+    //   reader as the groups read it; only an "add" acts, anything else
+    //   goes on below. Asked only for an organiser of one monthly club.
+    const added = await handleMonthAddDm({ userId: user.id, text, authorName: user.name ?? null, replyPhone, waMessageId, now: new Date() });
+    if (added) return NextResponse.json({ ok: true, ...added });
+
   }
 
   // ── Player payment claim: "Paid" (2026-09-23) ────────────────────────

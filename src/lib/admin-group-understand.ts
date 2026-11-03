@@ -472,12 +472,27 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // list. Read by the monthly reader (the one model step every group's
     // monthly list goes through, `month-seed-read.ts`); null for anything
     // else, which goes on to the router below.
-    if (!weekly && input.organiser && input.senderUserId) {
-      const { proposeMonthSeedPaste } = await import("./month-seed-read");
-      const seeded = await proposeMonthSeedPaste({ orgId: org.id, lang, messageId, organiserUserId: input.senderUserId, text: input.text, now });
-      if (seeded) {
-        await recordMatchTimeQuestion({ orgId: org.id, askRef: listAskRef(messageId), text: seeded.replyText, now });
-        return { route: null, outcome: seeded.outcome, replyText: seeded.replyText };
+    //
+    // The same reading also says when the message asks for somebody ELSE
+    // to be put on a month (2026-11-03: "@Match Time add Tom to the
+    // November list, he's paid", "Tom'u Kasım listesine ekle, ödedi"): an
+    // organiser's is applied as his re-posted list's new line is
+    // (`month-newcomers.ts`), anybody else's adds nobody and is answered so.
+    if (!weekly && input.senderUserId) {
+      const reading = await readHqMonthly({ orgId: org.id, senderUserId: input.senderUserId, text: input.text, now });
+      if (reading?.kind === "add") {
+        const { applyMonthAdd } = await import("./month-newcomers");
+        const r = await applyMonthAdd({ orgId: org.id, reading, senderUserId: input.senderUserId, sourceRef: messageId, now });
+        console.log(`[admin-group] ${messageId}: somebody put on the month: ${r.outcome}`);
+        return { route: null, outcome: r.outcome, replyText: r.replyText };
+      }
+      if (input.organiser && reading?.kind === "list") {
+        const { proposeMonthSeedPaste } = await import("./month-seed-read");
+        const seeded = await proposeMonthSeedPaste({ orgId: org.id, lang, messageId, organiserUserId: input.senderUserId, text: input.text, now, list: reading.list });
+        if (seeded) {
+          await recordMatchTimeQuestion({ orgId: org.id, askRef: listAskRef(messageId), text: seeded.replyText, now });
+          return { route: null, outcome: seeded.outcome, replyText: seeded.replyText };
+        }
       }
     }
     const [pending, body] = await Promise.all([loadPending(org.id, now, lang, input.poolEnv), nameMentions(org.id, input.text, input.mentionNames)]);
@@ -1187,4 +1202,29 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         return null;
     }
   });
+}
+
+/**
+ * A monthly club's tagged HQ message, read ONCE by the monthly reader (the
+ * one model step every group's monthly message goes through): a list for
+ * the seed draft, or somebody to be put on a month. Null when nothing is
+ * read (no live or coming month, the daily cap, a failed call).
+ */
+async function readHqMonthly(p: { orgId: string; senderUserId: string; text: string; now: Date }) {
+  if (!p.text.trim()) return null;
+  try {
+    const { loadMonthlyReaderContext, readMonthlyMessage } = await import("./monthly-reader");
+    const { withOrgAiBudget } = await import("./ai-budget");
+    return await withOrgAiBudget(p.orgId, async () => {
+      const ctx = await loadMonthlyReaderContext({ orgId: p.orgId, matchId: null, now: p.now });
+      const me = ctx.members.find((m) => m.userId === p.senderUserId);
+      return readMonthlyMessage(
+        { body: p.text, sender: { userId: p.senderUserId, name: me?.name || null, organiser: me?.organiser ?? false }, history: [], reply: null, now: p.now },
+        ctx,
+      );
+    });
+  } catch (err) {
+    console.error(`[admin-group] the monthly reading for ${p.orgId} failed:`, err instanceof Error ? err.message : "failed");
+    return null;
+  }
 }

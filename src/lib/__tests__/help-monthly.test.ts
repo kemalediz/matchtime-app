@@ -53,6 +53,18 @@ describe("help availability for a monthly club", () => {
     expect(text).toContain("When an organiser adds someone, they go straight on the list.");
   });
 
+  it("an organiser is told how to add a regular in the middle of the month, in English and Turkish (2026-11-03)", () => {
+    const en = buildHelpReply("availability", MONTHLY, "en", { audience: "admin", links: { topic: "https://x/t" } });
+    expect(en).toContain("*Adding a regular mid-month:*");
+    expect(en).toContain("@Match Time add Tom to the November list, he's paid");
+    const tr = buildHelpReply("availability", MONTHLY, "tr", { audience: "admin", links: { topic: "https://x/t" } });
+    expect(tr).toContain("*Ay ortasında düzenli oyuncu eklemek:*");
+    expect(tr).toContain("Tom'u Kasım listesine ekle, ödedi");
+    expect(`${en}${tr}`).not.toMatch(DASH);
+    // A player is not told how to do it.
+    expect(buildHelpReply("availability", MONTHLY, "en")).not.toContain("Adding a regular mid-month");
+  });
+
   it("REGRESSION GUARD: a weekly club keeps the weekly explainer", () => {
     expect(buildHelpReply("availability", BASE, "en")).toContain("Just say *In* or *Out* in the group to mark yourself for the next game");
   });

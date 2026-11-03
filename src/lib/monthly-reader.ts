@@ -33,8 +33,11 @@ export type { MonthlyReading, MonthlyReaderContext, MonthlyReaderInput } from ".
 /** Pinned. Exported for the dry run. */
 export const MONTHLY_READER_CALL: ModelCall = HAIKU_CALL;
 const LABEL = "monthly-reader";
-/** A long list is about 30 lines of a dozen fields, with Haiku's thinking. */
-const MAX_TOKENS = 4_096;
+/** A long list is about 30 lines of a dozen fields, with Haiku's thinking.
+ *  4,096 was cut off on Vets' 21-line October list (2026-11-03 dry run: the
+ *  thinking and the answer used all of it, and a cut-off answer is "none").
+ *  Only what is used is billed. Exported for the test. */
+export const MONTHLY_READER_MAX_TOKENS = 8_192;
 
 /**
  * The club's context for the reader, once per batch, for a club on
@@ -58,15 +61,29 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
     }),
     db.userAlias.findMany({ where: { orgId: args.orgId }, select: { userId: true, alias: true } }),
   ]);
-  const members: ReaderMember[] = memberships
-    .filter((m) => m.user.name)
-    .map((m, i) => ({
-      ref: `p${i + 1}`,
-      userId: m.user.id,
-      name: m.user.name as string,
-      aliases: aliases.filter((a) => a.userId === m.user.id).map((a) => a.alias),
-      organiser: m.role === "OWNER" || m.role === "ADMIN",
-    }));
+  // EVERY member, those with no name too (2026-11-03, Vets MNF: 20 of 27
+  // were imported by phone, so the month's own regulars were nobody to the
+  // reader and came back as guests). A member known by an alias only is
+  // shown under it; one with neither is "no name yet", with the facts that
+  // can tie a name to him: the WhatsApp name he posts under, and his number
+  // on a live month's list. Never his phone.
+  const { loadSeenAs, resolvePlayerName } = await import("./player-display-name");
+  const aliasesOf = (id: string) => aliases.filter((a) => a.userId === id).map((a) => a.alias);
+  const knownName = (m: (typeof memberships)[number]) => resolvePlayerName({ name: m.user.name, aliasesHere: aliasesOf(m.user.id) });
+  const nameless = memberships.filter((m) => !knownName(m)).map((m) => m.user.id);
+  const seenAs = await loadSeenAs(args.orgId, nameless).catch(() => new Map<string, string>());
+  const onList = new Map<string, Array<{ month: string; slot: number | null }>>();
+  for (const mo of months) {
+    const label = formatLondon(mo.kickoffs[0] ?? mo.firstKickoff, "MMMM yyyy");
+    for (const x of mo.members) if (!x.out && x.slot != null) onList.set(x.userId, [...(onList.get(x.userId) ?? []), { month: label, slot: x.slot }]);
+  }
+  const members: ReaderMember[] = memberships.map((m, i) => {
+    const name = knownName(m);
+    const base = { ref: `p${i + 1}`, userId: m.user.id, organiser: m.role === "OWNER" || m.role === "ADMIN" };
+    return name
+      ? { ...base, name, aliases: aliasesOf(m.user.id) }
+      : { ...base, name: "", aliases: [], nameless: true, seenAs: seenAs.get(m.user.id) ?? null, onList: onList.get(m.user.id) ?? [] };
+  });
 
   const day = (d: Date) => formatLondon(d, "EEE d MMM");
   const monthBlocks = months.map((m) => {
@@ -172,7 +189,7 @@ export async function readMonthlyMessage(
         ...MONTHLY_READER_CALL,
         system: MONTHLY_READER_SYSTEM,
         user: buildMonthlyReaderUserTurn(input, ctx),
-        maxTokens: MAX_TOKENS,
+        maxTokens: MONTHLY_READER_MAX_TOKENS,
         schema: MONTHLY_READER_SCHEMA as unknown as Record<string, unknown>,
         label: LABEL,
       });
@@ -189,7 +206,9 @@ export async function readMonthlyMessage(
         ? ` month=${reading.list.month?.month ?? "-"} game=${reading.gameDay ?? "-"} of=${reading.listOf} lines=${reading.list.slots.length}+${reading.list.sections.cantPlay.length}`
         : reading.kind === "signup"
           ? ` choice=${reading.choice} month=${reading.month} games=${reading.games ?? "-"}`
-          : ` why=${reading.why}`),
+          : reading.kind === "add"
+            ? ` add choice=${reading.choice} month=${reading.month} member=${reading.person.memberId ?? "-"} games=${reading.games ?? "-"} paid=${reading.paid}`
+            : ` why=${reading.why}`),
   );
   return reading;
 }

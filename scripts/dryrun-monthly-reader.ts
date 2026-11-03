@@ -157,6 +157,39 @@ const NOV_HALF = `List for November
 10. Kemal
 11. ⁠Jon`;
 
+// ── 2026-11-03: the Vets cast, members with no name included ──
+// Davide (organiser), Tom and Shane named; Nabz and Steff with no name, at 2
+// and 3 on the running November list; Luca with no name, posting as "Luca";
+// two more with no name and nothing known of them.
+const VETS: ReaderMember[] = [
+  { ref: "p1", userId: "u-davide", name: "Davide Russo", aliases: [], organiser: true },
+  { ref: "p2", userId: "u-shane", name: "Shane Walton", aliases: [], organiser: false },
+  { ref: "p3", userId: "u-tom", name: "Tom Hale", aliases: [], organiser: false },
+  { ref: "p4", userId: "u-nabz", name: "", aliases: [], organiser: false, nameless: true, seenAs: null, onList: [{ month: "November 2026", slot: 2 }] },
+  { ref: "p5", userId: "u-steff", name: "", aliases: [], organiser: false, nameless: true, seenAs: null, onList: [{ month: "November 2026", slot: 3 }] },
+  { ref: "p6", userId: "u-luca", name: "", aliases: [], organiser: false, nameless: true, seenAs: "Luca", onList: [] },
+  { ref: "p7", userId: "u-anon1", name: "", aliases: [], organiser: false, nameless: true, seenAs: null, onList: [] },
+  { ref: "p8", userId: "u-anon2", name: "", aliases: [], organiser: false, nameless: true, seenAs: null, onList: [] },
+];
+const VETS_NOV = `  November 2026 (month 11): under way. 5 games: Mon 2 Nov (played), Mon 9 Nov, Mon 16 Nov, Mon 23 Nov, Mon 30 Nov; 4 still to play.
+  Its list as MatchTime has it:
+    📋 List for November (5 Mondays: 2, 9, 16, 23, 30)
+    1. Davide Russo
+    2. (unnamed)
+    3. (unnamed)
+    4. Shane Walton`;
+const VETS_CTX: MonthlyReaderContext = {
+  orgId: "org-vets-dry",
+  members: VETS,
+  months: [VETS_NOV],
+  week: { game: "Mon 9 Nov 2026, 20:30", text: "📋 Football 7-a-side, Mon 9 Nov at 20:30\n\nNovember squad:\n1. Davide\n2. (unnamed)\n3. (unnamed)\n4. Shane" },
+};
+const VETS_LIST = "MNF November \n\n1. Davide (paid)\n2. ⁠Nabz ( paid 4 only ) \n3. ⁠steff ( paid full )\n4. Shane (Paid)";
+const vetsFrom = (ref: string) => {
+  const m = VETS.find((x) => x.ref === ref)!;
+  return { userId: m.userId, name: m.name || null, organiser: m.organiser };
+};
+
 type Check = (r: MonthlyReading) => string | null;
 const slot = (r: MonthlyReading, name: RegExp): MonthlyListEntry | undefined =>
   r.kind === "list" ? [...r.list.slots, ...r.list.sections.cantPlay].find((e) => name.test(e.name)) : undefined;
@@ -179,6 +212,21 @@ const member = (name: RegExp, first: string) => line(name, (e) => e.facts?.membe
 const signup = (choice: string, month: number, games: number | null): Check => (r) =>
   r.kind !== "signup" ? `kind ${r.kind}` : r.choice !== choice || r.month !== month || r.games !== games ? `got ${r.choice} ${r.month} games ${r.games}` : null;
 const none: Check = (r) => (r.kind === "none" ? null : `kind ${r.kind}`);
+/** Somebody else put on a month: who (a member's id, or nobody and the name), and what. */
+const addOf = (month: number, who: { memberId: string | null; name?: RegExp }, want: { paid?: boolean; games?: number | null } = {}): Check => (r) =>
+  r.kind !== "add"
+    ? `kind ${r.kind}`
+    : r.month !== month
+      ? `month ${r.month}`
+      : r.person.memberId !== who.memberId
+        ? `member ${r.person.memberId}`
+        : who.name && !who.name.test(r.person.name)
+          ? `name ${r.person.name}`
+          : want.paid !== undefined && r.paid !== want.paid
+            ? `paid ${r.paid}`
+            : want.games !== undefined && r.games !== want.games
+              ? `games ${r.games}`
+              : null;
 const anyOf = (...checks: Check[]): Check => (r) => (checks.some((c) => c(r) === null) ? null : checks.map((c) => c(r)).join(" | "));
 
 const from = (first: string) => {
@@ -197,6 +245,13 @@ const C = (name: string, body: string, sender: string, c: MonthlyReaderContext, 
   name,
   input: { body, sender: from(sender), history, reply: null, now: at(now) },
   ctx: c,
+  check,
+});
+
+const V = (name: string, body: string, senderRef: string, check: Check): Case => ({
+  name,
+  input: { body, sender: vetsFrom(senderRef), history: [], reply: null, now: at("2026-11-05T12:00:00Z") },
+  ctx: VETS_CTX,
   check,
 });
 
@@ -256,8 +311,23 @@ const CASES: Case[] = [
   C("TR: ödedi gelemiyor bölümü", "Ekim listesi\n1. Davide\n2. Shane\n\nÖdedi gelemiyor\n1. Volkan", "Volkan", OCT19, "2026-10-19T12:00:00Z", (r) => (r.kind === "list" && r.list.sections.cantPlay.some((e) => e.facts?.memberId === id("Volkan")) ? null : "Volkan not in can't play")),
   C("TR: misafir (Emre'nin oğlu)", "Ekim listesi\n1. Davide\n2. Shane\n3. Emre\n4. Emre'nin oğlu Can", "Emre", OCT19, "2026-10-19T12:00:00Z", line(/Can/, (e) => !!e.facts?.guest && e.facts.hostUserId === id("Emre"), "Emre's guest")),
   C("TR: Kasım bana uyar", "Kasım bana uyar", "Burak", NOV_SIGNUP, "2026-10-27T12:00:00Z", signup("in", 11, null)),
-  C("TR: somebody else's month is not the sender's", "Burak da Kasım'da var", "Volkan", NOV_SIGNUP, "2026-10-27T12:00:00Z", none),
+  // 2026-11-03: somebody else IN for a month is read as an ADD (who it is);
+  // the sender's own sign-up it never is. Code acts only on an organiser's.
+  C("TR: somebody else's month is an add for him, never the sender's", "Burak da Kasım'da var", "Volkan", NOV_SIGNUP, "2026-10-27T12:00:00Z", anyOf(none, addOf(11, { memberId: id("Burak") }))),
   C("TR: son hafta hariç", "Kasım varım son hafta hariç", "Volkan", NOV_SIGNUP, "2026-10-27T12:00:00Z", signup("in", 11, 4)),
+  // ── 2026-11-03: members with no name, and an organiser's adds ──
+  V("N6: the unchanged list, nameless regulars tied by their number", VETS_LIST, "p1", all(isList(11), member(/Nabz/, "nabz"), member(/steff/i, "steff"), line(/Nabz/, (e) => e.facts?.games === 4, "games 4"))),
+  V("N2: a nameless member by his WhatsApp name", `${VETS_LIST}\n14. Luca (paid)`, "p1", all(isList(11), member(/Luca/, "luca"))),
+  V("N3: a name that is nobody, nobody brings him: a guest with no host", `${VETS_LIST}\n14. Zak (paid)`, "p1", line(/Zak/, (e) => !!e.facts?.guest && e.facts.memberId === null && e.facts.hostUserId === null && e.marks.paid, "guest, no host, paid")),
+  V("N1: a named club member not on the month", `${VETS_LIST}\n14. Tom (paid)`, "p1", all(isList(11), member(/Tom/, "tom"))),
+  V("a nameless member with nothing tied to him is never picked", `${VETS_LIST}\n14. Ozzy`, "p1", line(/Ozzy/, (e) => e.facts?.memberId === null, "nobody")),
+  V("N9: '@Match Time add Tom to the November list, he's paid'", "@Match Time add Tom to the November list, he's paid", "p1", addOf(11, { memberId: "u-tom" }, { paid: true })),
+  V("N9 TR: 'Tom'u Kasım listesine ekle, ödedi'", "@Match Time Tom'u Kasım listesine ekle, ödedi", "p1", addOf(11, { memberId: "u-tom" }, { paid: true })),
+  V("N10: add a name that is nobody, 2 games", "@Match Time add Zak to the November list, 2 games", "p1", addOf(11, { memberId: null, name: /^Zak$/ }, { games: 2 })),
+  V("N10 TR: 'Zak'ı Kasım listesine ekle, 2 hafta'", "@Match Time Zak'ı Kasım listesine ekle, 2 hafta", "p1", addOf(11, { memberId: null, name: /^Zak$/ }, { games: 2 })),
+  V("add a nameless member by his WhatsApp name", "@Match Time put Luca on the November list please", "p1", addOf(11, { memberId: "u-luca" })),
+  V("N12: a player asks the same (the reading says who; code refuses)", "@Match Time add Tom to the November list, he's paid", "p2", addOf(11, { memberId: "u-tom" })),
+  V("the organiser's 'Tom is IN' is this week's, not a month add", "Tom is IN", "p1", none),
 ];
 
 async function main() {

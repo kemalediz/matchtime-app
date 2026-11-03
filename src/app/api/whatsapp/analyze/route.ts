@@ -1606,6 +1606,34 @@ async function handleAnalyzeRequest(request: Request) {
       // the sign-up list, with its month in the title or without.
       if (!monthlyNotSquadList.has(m.waMessageId) && (await trySignupPaste(m, false))) continue;
       const reading = monthlyReadings.get(m.waMessageId);
+      // SOMEBODY ELSE PUT ON A MONTH, asked of MatchTime with a tag (Kemal,
+      // 2026-11-03: "@Match Time add Tom to the November list, he's paid",
+      // "Tom'u Kasım listesine ekle, ödedi"). The reader says who; only an
+      // organiser's is acted on (`month-newcomers.ts`), the same way his
+      // re-posted list's new line is. Anybody else is told by DM and
+      // nothing is added, here or for the week. The group hears nothing:
+      // a ✅ when the month changed.
+      if (reading?.kind === "add" && messageTagsBot(m)) {
+        const sender = senderById.get(m.waMessageId)!;
+        if (!sender.userId) continue;
+        let res: Awaited<ReturnType<typeof import("@/lib/month-newcomers").applyMonthAdd>> | null = null;
+        try {
+          const { applyMonthAdd } = await import("@/lib/month-newcomers");
+          res = await applyMonthAdd({ orgId: org.id, reading, senderUserId: sender.userId, sourceRef: m.waMessageId, tellRefused: true, tellOrganiser: true });
+        } catch (err) {
+          console.error(`[analyze] month add ${m.waMessageId} failed:`, err);
+        }
+        if (!res) continue;
+        await claimFastPath(m, null, {
+          handledBy: "fast-path",
+          intent: "month_add",
+          action: res.changed ? "month-add:joined" : "none",
+          reasoning: `somebody put on the month by a tagged request, read by the monthly reader: ${res.outcome}`,
+          react: res.changed ? "✅" : null,
+          reply: null,
+        });
+        continue;
+      }
       if (reading?.kind !== "signup") continue;
       const sender = senderById.get(m.waMessageId)!;
       let res: Awaited<ReturnType<typeof monthSignup.handleSignupMessage>> = null;
