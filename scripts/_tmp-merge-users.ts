@@ -49,7 +49,10 @@ function printPlan(plan: MergePlan, snap: MergeSnapshot | null) {
     if (o.kind === "delete") console.log(`  DELETE ${o.table} ${o.id}: ${o.why}`);
     else if (o.kind === "update") console.log(`  UPDATE ${o.table} ${o.id} set ${fmt(o.set)}: ${o.why}`);
     else if (o.kind === "create") console.log(`  CREATE ${o.table} ${fmt(o.data)}: ${o.why}`);
-    else console.log(`  APPEND attendanceEvent ${fmt(o.transition)}: ${o.why}`);
+    else if (o.kind === "copyEvent") {
+      const d = o.data;
+      console.log(`  INHERIT attendanceEvent ${o.fromEventId} (${d.matchId} ${d.fromStatus}->${d.toStatus} ${d.cause} at ${d.at.toISOString()})`);
+    } else console.log(`  APPEND attendanceEvent ${fmt(o.transition)}: ${o.why}`);
   }
   console.log(`\nCONFLICTS (${plan.conflicts.length}):`);
   for (const c of plan.conflicts) console.log(`  ${c.table} ${c.rowId}: ${c.rule}`);

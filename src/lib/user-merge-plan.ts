@@ -31,10 +31,26 @@
  *     (the record with the real history) and deletes the source's, except
  *     where a rule below says otherwise. Every collision is reported.
  *   - "AttendanceEvent" is append-only (a database trigger refuses UPDATE
- *     and DELETE). Its rows are never touched: each moved or dropped
- *     attendance gets NEW events (source loses the place, target gains
- *     it), exactly as `mergePlayersCore` does. The old events keep the
- *     source id and the UserMerge row maps it.
+ *     and DELETE). Its rows are never touched. Readers derive state from
+ *     the CURRENT user's events (squad-reclaim's newest DROPPED, the
+ *     month's chose-bench note and out-at time, organiser-pick drops,
+ *     rolling-squad intents, admin-added), so the target INHERITS the
+ *     source's history: every source event is appended again for the
+ *     target with its original time, cause, actor, sourceRef and note.
+ *     Every reader then sees for the target exactly what it saw for the
+ *     source. Two exceptions: "rolling-squad" events are not copied (the
+ *     scheduler COUNTS them per match, and a copy would count the same
+ *     carry twice; no per-player reader uses them), and a match where
+ *     the TARGET has a place keeps the target's own history (plus the
+ *     merge's transition when the two rows are combined). The source gets one "player-merge" event closing each
+ *     place it loses ("player-merge" is ignored as a statement).
+ *   - Money is never deleted: two payment records on one match or one
+ *     month's list, or a source with a checkout still in flight (the
+ *     Stripe webhook finds the row by the SOURCE id), stop the merge.
+ *   - Elo stays consistent: when both have played Elo at the same club the
+ *     merge stops (the kept number and the re-pointed match deltas would
+ *     disagree). JSON naming both people stops it too (two entries for one
+ *     person, or one key overwriting the other).
  *   - Idempotent: planning over an already-merged state yields no ops.
  */
 import { higherRole, isMemberRole } from "./role-change-rules";
@@ -81,6 +97,32 @@ export interface MembershipRow {
   guestFromOrgId: string | null;
   guestMatchId: string | null;
   guestVia: string | null;
+  /** Per-category DM subscriptions (true = receives). Absent = true. */
+  subMatchInviteDm?: boolean;
+  subBenchOfferDm?: boolean;
+  subTentativeDm?: boolean;
+  subRatingDm?: boolean;
+  subReminderDm?: boolean;
+}
+
+export const SUB_FLAGS = ["subMatchInviteDm", "subBenchOfferDm", "subTentativeDm", "subRatingDm", "subReminderDm"] as const;
+
+/** One row of the append-only log, as read for the source. */
+export interface AttendanceEventRow {
+  id: string;
+  matchId: string;
+  userId: string;
+  orgId: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  fromPosition: number | null;
+  toPosition: number | null;
+  cause: string;
+  actorKind: string;
+  actorUserId: string | null;
+  sourceRef: string | null;
+  note: string | null;
+  at: Date;
 }
 
 export interface AttendanceRow {
@@ -119,12 +161,16 @@ export interface MergeSnapshot {
   source: UserFacts;
   target: UserFacts;
   /** UserMerge rows whose oldUserId is the source. */
-  priorMerges: Array<{ survivorUserId: string; reason: string | null }>;
+  priorMerges: Array<{ survivorUserId: string; reason: string | null; createdAt?: Date }>;
   memberships: MembershipRow[];
   /** UserAlias rows at the source's clubs whose alias is one this merge
    *  would add (so a collision with another person is visible). */
   aliasesInSourceOrgs: Array<{ id: string; orgId: string; userId: string; alias: string }>;
+  /** The source's rows and the target's rows on every match the source
+   *  has a row or an event on. */
   attendance: AttendanceRow[];
+  /** Every AttendanceEvent whose userId is the source. */
+  sourceEvents: AttendanceEventRow[];
   teamAssignments: Array<U & { matchId: string }>;
   ratings: Array<{ id: string; matchId: string; raterId: string; playerId: string }>;
   momVotes: Array<{ id: string; matchId: string; voterId: string; playerId: string }>;
@@ -137,7 +183,7 @@ export interface MergeSnapshot {
   tentatives: Array<U & { matchId: string }>;
   pendingBench: Array<U & { matchId: string }>;
   badges: Array<U & { orgId: string; badgeKey: string }>;
-  squadMembers: Array<U & { monthId: string; paidAt: Date | null; paidClaimedAt: Date | null }>;
+  squadMembers: Array<U & { monthId: string; paidAt: Date | null; paidClaimedAt: Date | null; stripeSessionId?: string | null }>;
   squadCredits: Array<U & { orgId: string; earnedMatchId: string | null; voidedAt: Date | null }>;
   poolProfiles: Array<U & { status: string }>;
   poolOffers: Array<U & { matchId: string }>;
@@ -148,6 +194,13 @@ export interface MergeSnapshot {
   sentNotifications: Array<{ id: string; key: string; targetUser: string | null }>;
   /** Keys that already exist among the source rows' rewritten keys. */
   occupiedNotificationKeys: string[];
+  /** BillingNotice rows whose cycleKey names the source ("payer-changed"
+   *  uses the payer's userId), and the `${orgId}|${kind}|${cycleKey}` keys
+   *  their rewrite would land on that already exist. */
+  billingNotices: Array<{ id: string; orgId: string; kind: string; cycleKey: string }>;
+  occupiedBillingKeys: string[];
+  /** The club of every match whose `eloApplied` names the source. */
+  eloMatchOrgs: Record<string, string>;
   /** Plain "who / which ids" references (USER_REF_COLUMNS). */
   refs: RefRow[];
 }
@@ -176,6 +229,7 @@ export function emptyMergeSnapshot(
     memberships: [],
     aliasesInSourceOrgs: [],
     attendance: [],
+    sourceEvents: [],
     teamAssignments: [],
     ratings: [],
     momVotes: [],
@@ -195,6 +249,9 @@ export function emptyMergeSnapshot(
     clubInvitations: [],
     sentNotifications: [],
     occupiedNotificationKeys: [],
+    billingNotices: [],
+    occupiedBillingKeys: [],
+    eloMatchOrgs: {},
     refs: [],
   };
 }
@@ -292,6 +349,7 @@ export const SPECIAL_COLUMNS: string[] = [
   "ClubInvitation.userId",
   "SentNotification.key",
   "SentNotification.targetUser",
+  "BillingNotice.cycleKey",
 ];
 
 /** Columns deliberately left as they are, and why. */
@@ -383,7 +441,10 @@ export type MergeOp =
   | { kind: "delete"; table: string; id: string; why: string }
   | { kind: "update"; table: string; id: string; set: Record<string, unknown>; why: string }
   | { kind: "create"; table: "userAlias" | "roleChange"; data: Record<string, unknown>; why: string }
-  | { kind: "event"; transition: AttendanceTransitionPlan; why: string };
+  | { kind: "event"; transition: AttendanceTransitionPlan; why: string }
+  /** The source's own event, appended again for the target with its
+   *  original time, cause, actor, sourceRef and note. */
+  | { kind: "copyEvent"; fromEventId: string; data: Omit<AttendanceEventRow, "id">; why: string };
 
 export interface MergeConflict {
   table: string;
@@ -445,6 +506,45 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
   if (src.phoneNumber && tgt.phoneNumber && src.phoneNumber !== tgt.phoneNumber) {
     blockers.push(`both users have a phone number (${src.phoneNumber} and ${tgt.phoneNumber}): which one is his is a human decision`);
   }
+  // ── Money: never delete a payment, never strand a checkout ──
+  const paidEvidence = (r: AttendanceRow) => !!(r.paidAt || r.directPendingAt || r.stripeSessionId);
+  for (const a of snap.attendance.filter((r) => r.userId === S)) {
+    if (a.stripeSessionId && !a.paidAt) {
+      blockers.push(`source has a Stripe checkout in flight on match ${a.matchId} (session ${a.stripeSessionId}, not paid): the webhook finds the row by the source id; merge after it settles`);
+    }
+    const t = snap.attendance.find((r) => r.userId === T && r.matchId === a.matchId);
+    if (t && paidEvidence(a) && paidEvidence(t)) {
+      blockers.push(`both have a payment record on match ${a.matchId} (source ${a.paidAt ? "paid" : "pending"}, target ${t.paidAt ? "paid" : "pending"}): which one stands, or a refund, is a human decision`);
+    }
+  }
+  for (const r of snap.squadMembers.filter((x) => x.userId === S)) {
+    if (r.stripeSessionId && !r.paidAt) blockers.push(`source has a Stripe checkout in flight for month list ${r.monthId}: merge after it settles`);
+    const t = snap.squadMembers.find((x) => x.userId === T && x.monthId === r.monthId);
+    if (t && (r.paidAt || r.paidClaimedAt) && (t.paidAt || t.paidClaimedAt)) {
+      blockers.push(`both have a payment (paid or claimed) on month list ${r.monthId}: which one stands, or a refund, is a human decision`);
+    }
+  }
+
+  // ── Elo: one club's number and its match deltas must agree ──
+  for (const sm of snap.memberships.filter((r) => r.userId === S)) {
+    const tm = snap.memberships.find((r) => r.userId === T && r.orgId === sm.orgId);
+    if (!tm || tm.matchRating === ELO_DEFAULT) continue;
+    const srcPlayedHere =
+      sm.matchRating !== ELO_DEFAULT ||
+      snap.refs.some((r) => r.table === "match" && r.column === "eloApplied" && snap.eloMatchOrgs[r.id] === sm.orgId);
+    if (srcPlayedHere) {
+      blockers.push(`both have played Elo at club ${sm.orgId} (source ${sm.matchRating}, target ${tm.matchRating}): keeping one number while re-pointing the other's match deltas would make a later score correction move the wrong amount`);
+    }
+  }
+
+  // ── JSON naming both people: no silent combine ──
+  const names = (v: unknown, id: string): boolean => JSON.stringify(v ?? null).split(/[":]/).includes(id);
+  for (const r of snap.refs.filter((x) => x.kind === "json")) {
+    if (names(r.value, S) && names(r.value, T)) {
+      blockers.push(`${r.table}.${r.column} ${r.id} names both users: rewriting would give one person two entries (or one key would overwrite the other)`);
+    }
+  }
+
   if (blockers.length > 0) return blank(blockers);
 
   const ops: MergeOp[] = [];
@@ -487,6 +587,11 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
       seedRating: tm.seedRating ?? sm.seedRating,
       matchRating: tm.matchRating === ELO_DEFAULT && sm.matchRating !== ELO_DEFAULT ? sm.matchRating : tm.matchRating,
     };
+    // A DM opt-out on either row wins: he said no to it as one of them.
+    for (const f of SUB_FLAGS) {
+      const kept = (tm[f] ?? true) && (sm[f] ?? true);
+      if (kept !== (tm[f] ?? true)) set[f] = kept;
+    }
     if (!staysGuest && isGuest(tm)) Object.assign(set, { guestFromOrgId: null, guestMatchId: null, guestVia: null });
     upd("membership", tm.id, set, "combined with the source's membership at the same club");
     del("membership", sm.id, "combined into the target's membership at the same club");
@@ -530,13 +635,55 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
   const hasPay = (r: AttendanceRow) => !!(r.paidAt || r.directPendingAt || r.stripeSessionId);
   const events: MergeOp[] = [];
   const ev = (t: AttendanceTransitionPlan, why: string) => events.push({ kind: "event", transition: t, why });
+  const byTime = (a: AttendanceEventRow, b: AttendanceEventRow) => a.at.getTime() - b.at.getTime() || a.id.localeCompare(b.id);
+  const srcEvents = [...snap.sourceEvents].sort(byTime);
+  // Matches where the target holds a row keep the target's own history:
+  // interleaving the source's would make the target's fold disagree with
+  // his row.
+  const targetOn = new Set(snap.attendance.filter((r) => r.userId === T).map((r) => r.matchId));
+  // The target inherits the source's history (see the header): every
+  // source event, except rolling-squad carries and matches where the
+  // target has a place, appended again for the target, original time kept.
+  const copies: MergeOp[] = [];
+  const lastCopied = new Map<string, AttendanceEventRow>();
+  // A re-run inherits only what the source logged after the earlier merge.
+  const inheritedUpTo = Math.max(
+    -Infinity,
+    ...snap.priorMerges.filter((p) => p.survivorUserId === T && p.reason === USER_MERGE_REASON && p.createdAt).map((p) => p.createdAt!.getTime()),
+  );
+  for (const e of srcEvents) {
+    if (e.cause === "rolling-squad" || targetOn.has(e.matchId)) continue;
+    if (e.at.getTime() <= inheritedUpTo) continue;
+    if (e.sourceRef === `merge:${S}->${T}`) continue; // this merge's own closing events
+    const { id: _id, ...rest } = e;
+    void _id;
+    copies.push({
+      kind: "copyEvent",
+      fromEventId: e.id,
+      data: { ...rest, userId: T, actorUserId: m(e.actorUserId), sourceRef: e.sourceRef === null ? null : rewriteIdSegments(e.sourceRef, S, T) },
+      why: "the source's history, inherited by the target",
+    });
+    lastCopied.set(e.matchId, e);
+  }
+  const lastSrcEvent = (matchId: string, toStatus: string) =>
+    [...srcEvents].reverse().find((e) => e.matchId === matchId && e.toStatus === toStatus) ?? null;
   for (const a of snap.attendance.filter((r) => r.userId === S)) {
     const t = snap.attendance.find((r) => r.userId === T && r.matchId === a.matchId);
     const lose = { matchId: a.matchId, userId: S, orgId: a.orgId, fromStatus: a.status, toStatus: null, fromPosition: a.position, toPosition: null };
     if (!t) {
       upd("attendance", a.id, { userId: T }, "squad place moves to the target");
       ev(lose, "duplicate user merged; this squad place moved to the survivor");
-      ev({ matchId: a.matchId, userId: T, orgId: a.orgId, fromStatus: null, toStatus: a.status, fromPosition: null, toPosition: a.position }, `squad place inherited from merged-away user ${S}`);
+      // The inherited history already ends where the row is: nothing to
+      // add. A row the log never saw (written before the log, or by a
+      // writer that skipped it) gets one event so the target's fold ends
+      // at the row's status, as the source's would have.
+      const last = lastCopied.get(a.matchId) ?? null;
+      if (!last || last.toStatus !== a.status) {
+        ev(
+          { matchId: a.matchId, userId: T, orgId: a.orgId, fromStatus: last?.toStatus ?? null, toStatus: a.status, fromPosition: last?.toPosition ?? null, toPosition: a.position },
+          `squad place inherited from merged-away user ${S}`,
+        );
+      }
       continue;
     }
     clash("attendance", a.id, "both have a place in this match: the higher status wins (CONFIRMED > BENCH > DROPPED, tie to the target); a payment or free place is never lost");
@@ -550,9 +697,13 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
     }
     if (Object.keys(set).length > 0) upd("attendance", t.id, set, "combined with the source's place in the same match");
     if (srcWins) {
+      // The note of the source's own move to this status travels (it says,
+      // e.g., that he ASKED for the bench, which the month reads).
+      const srcMove = lastSrcEvent(a.matchId, a.status);
+      const why = `collision resolved in favour of the merged-away row (${a.status} beats ${t.status})`;
       ev(
         { matchId: a.matchId, userId: T, orgId: a.orgId, fromStatus: t.status, toStatus: a.status, fromPosition: t.position, toPosition: a.position },
-        `collision resolved in favour of the merged-away row (${a.status} beats ${t.status})`,
+        srcMove?.note ? `${srcMove.note} (${why})` : why,
       );
     }
     del("attendance", a.id, "duplicate place deleted; the target already held one in this match");
@@ -697,6 +848,21 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
     if (Object.keys(set).length > 0) upd("sentNotification", n.id, set, "dedupe marker now names the target");
   }
 
+  // ── BillingNotice: (orgId, kind, cycleKey) unique; cycleKey can be a userId ──
+  const occupiedBilling = new Set(snap.occupiedBillingKeys);
+  for (const b of [...snap.billingNotices].sort((x, y) => x.id.localeCompare(y.id))) {
+    const key = rewriteIdSegments(b.cycleKey, S, T);
+    if (key === b.cycleKey) continue;
+    const k = `${b.orgId}|${b.kind}|${key}`;
+    if (occupiedBilling.has(k)) {
+      del("billingNotice", b.id, "the target already has this billing notice");
+      clash("billingNotice", b.id, `notice ${b.kind} for the target already recorded: the source's deleted`);
+      continue;
+    }
+    occupiedBilling.add(k);
+    upd("billingNotice", b.id, { cycleKey: key }, "billing notice key now names the target");
+  }
+
   // ── Plain references ──
   for (const r of snap.refs) {
     let next: unknown = r.value;
@@ -729,7 +895,7 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
   const updates = [...merged.values()];
   const userUpdates = updates.filter((o) => o.table === "user").sort((a, b) => Number(b.id === S) - Number(a.id === S));
   const otherUpdates = updates.filter((o) => o.table !== "user");
-  const finalOps: MergeOp[] = [...deletes, ...userUpdates, ...otherUpdates, ...creates, ...events];
+  const finalOps: MergeOp[] = [...deletes, ...userUpdates, ...otherUpdates, ...creates, ...copies, ...events];
 
   // One per club the source was in; a source with no club still gets one
   // (orgId "", as `mergePlayersCore` does) so the chain is never broken.
@@ -744,8 +910,8 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
 export function summarisePlan(plan: MergePlan): Record<string, Record<string, number>> {
   const out: Record<string, Record<string, number>> = {};
   for (const o of plan.ops) {
-    const table = o.kind === "event" ? "attendanceEvent" : o.table;
-    const kind = o.kind === "event" ? "append" : o.kind;
+    const table = o.kind === "event" || o.kind === "copyEvent" ? "attendanceEvent" : o.table;
+    const kind = o.kind === "event" ? "append" : o.kind === "copyEvent" ? "inherit" : o.kind;
     out[table] ??= {};
     out[table][kind] = (out[table][kind] ?? 0) + 1;
   }

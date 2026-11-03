@@ -32,6 +32,7 @@ async function main() {
   const { applyUserMerge, dryRunUserMerge } = await import("@/lib/user-merge");
   const { recordAttendanceEvent } = await import("@/lib/attendance-events");
   const { USER_MERGE_REASON } = await import("@/lib/user-merge-plan");
+  const { loadReclaimUserIds } = await import("@/lib/squad-reclaim");
 
   let n = 0;
   const ok = (label: string) => {
@@ -76,8 +77,25 @@ async function main() {
     data: { orgId: ORG_ID, matchId: MATCH.pay, waMessageId: `${P}-fee`, proposedByUserId: U.admin, userIds: [src, U.player], expiresAt: new Date(Date.now() + 3600_000) },
   });
 
+  // History on a match where the source no longer holds a row (removed):
+  // still inherited, and only once across re-runs.
+  await place(src, MATCH.pay, "CONFIRMED", 9);
+  await db.$transaction(async (tx) => {
+    await tx.attendance.delete({ where: { matchId_userId: { matchId: MATCH.pay, userId: src } } });
+    await recordAttendanceEvent(
+      tx,
+      { matchId: MATCH.pay, userId: src, orgId: ORG_ID, fromStatus: "CONFIRMED", toStatus: null, fromPosition: 9, toPosition: null },
+      { cause: "admin-squad-edit", actorKind: "admin", actorUserId: U.admin },
+    );
+  });
+
   const before = await count();
   const srcEventsBefore = await db.attendanceEvent.count({ where: { userId: src } });
+  const historyOf = async (userId: string) =>
+    (await db.attendanceEvent.findMany({ where: { userId, cause: { notIn: ["player-merge", "rolling-squad"] } }, orderBy: [{ at: "asc" }, { id: "asc" }] })).map(
+      (e) => ({ matchId: e.matchId, orgId: e.orgId, fromStatus: e.fromStatus, toStatus: e.toStatus, fromPosition: e.fromPosition, toPosition: e.toPosition, cause: e.cause, actorKind: e.actorKind, sourceRef: e.sourceRef, note: e.note, at: e.at.toISOString() }),
+    );
+  const srcHistory = await historyOf(src);
 
   // Dry run: plans, writes nothing.
   const dry = await dryRunUserMerge(db, src, tgt);
@@ -115,8 +133,9 @@ async function main() {
   assert.equal(await db.attendance.count({ where: { userId: src } }), 0);
   assert.equal(await db.attendance.count({ where: { userId: tgt, matchId: { in: [MATCH.upcoming, MATCH.rate] } } }), 2);
   assert.equal(await db.attendanceEvent.count({ where: { userId: src } }), srcEventsBefore + 2, "old events kept, one 'lost the place' per match appended");
-  assert.equal(await db.attendanceEvent.count({ where: { userId: tgt, cause: "player-merge" } }), 2);
-  ok("attendance moved; the append-only log kept its rows and gained the merge events (coverage gate armed)");
+  assert.deepEqual(await historyOf(tgt), srcHistory, "the target's history is the source's, event for event, original times kept");
+  assert.equal(await db.attendanceEvent.count({ where: { userId: tgt, cause: "player-merge" } }), 0, "history already ends at the rows: no extra event");
+  ok("attendance moved; the target inherited the source's history; the old events stay (coverage gate armed)");
 
   assert.equal(await db.rating.count({ where: { OR: [{ raterId: src }, { playerId: src }] } }), 0);
   assert.equal(await db.rating.count({ where: { matchId: MATCH.rate, raterId: tgt, playerId: U.player } }), 1);
@@ -140,6 +159,44 @@ async function main() {
   assert.ok(again.ok && again.noop, "second run is a no-op");
   assert.deepEqual(await count(), mid, "and wrote nothing");
   ok("a second run is a no-op");
+
+  // ── Reclaim: a moved DROPPED place is still reclaimable ──
+  {
+    const s4 = `${P}-src4`;
+    const t4 = `${P}-tgt4`;
+    await db.user.create({ data: { id: s4, name: "Reclaimer", email: `${P}-s4@placeholder.matchtime` } });
+    await db.user.create({ data: { id: t4, name: "Reclaimer Real", email: `${P}-t4@placeholder.matchtime`, phoneNumber: "+447700900994" } });
+    await db.membership.create({ data: { userId: s4, orgId: ORG_ID } });
+    await place(s4, MATCH.upcoming, "CONFIRMED", 9);
+    await db.$transaction(async (tx) => {
+      await tx.attendance.update({ where: { matchId_userId: { matchId: MATCH.upcoming, userId: s4 } }, data: { status: "DROPPED" } });
+      await recordAttendanceEvent(
+        tx,
+        { matchId: MATCH.upcoming, userId: s4, orgId: ORG_ID, fromStatus: "CONFIRMED", toStatus: "DROPPED", fromPosition: 9, toPosition: 9 },
+        { cause: "self-attendance", actorKind: "player", actorUserId: s4 },
+      );
+    });
+    assert.deepEqual(await loadReclaimUserIds(MATCH.upcoming, [s4]), [s4], "fixture: reclaimable before the merge");
+    const r4 = await applyUserMerge(db, s4, t4);
+    assert.ok(r4.ok && !r4.noop);
+    assert.deepEqual(await loadReclaimUserIds(MATCH.upcoming, [t4]), [t4]);
+    ok("squad-reclaim: the target can reclaim the place the source dropped");
+  }
+
+  // ── A checkout in flight: refused ──
+  {
+    const s5 = `${P}-src5`;
+    await db.user.create({ data: { id: s5, name: "Paying", email: `${P}-s5@placeholder.matchtime` } });
+    await db.membership.create({ data: { userId: s5, orgId: ORG_ID } });
+    await place(s5, MATCH.rate, "CONFIRMED", 11);
+    await db.attendance.update({ where: { matchId_userId: { matchId: MATCH.rate, userId: s5 } }, data: { stripeSessionId: "cs_test_open" } });
+    const b = await count();
+    const r5 = await applyUserMerge(db, s5, tgt);
+    assert.equal(r5.ok, false);
+    assert.match(r5.plan.blockers.join(), /checkout in flight/);
+    assert.deepEqual(await count(), b);
+    ok("a source with a Stripe checkout in flight is refused, nothing written");
+  }
 
   // ── Both in the same club ──
   const s2 = `${P}-src2`;

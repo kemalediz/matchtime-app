@@ -174,15 +174,48 @@ describe("Membership: club-scoped data stays at its club", () => {
     expect(find(both(7, 5), "membership", "mS")).toMatchObject({ kind: "delete" });
   });
 
-  it("both in the same club: target's Elo wins unless it is the untouched 1000", () => {
+  it("both in the same club: the target's untouched 1000 takes the source's Elo; the target's played Elo with no source Elo stays", () => {
     const both = (tElo: number, sElo: number) =>
-      (find(
-        plan(snap({ memberships: [mem({ id: "mS", userId: S, orgId: FNF, matchRating: sElo }), mem({ id: "mT", userId: T, orgId: FNF, matchRating: tElo })] })),
-        "membership",
-        "mT",
-      ) as { set: { matchRating: number } }).set.matchRating;
-    expect(both(1050, 980)).toBe(1050);
-    expect(both(1000, 980)).toBe(980);
+      plan(snap({ memberships: [mem({ id: "mS", userId: S, orgId: FNF, matchRating: sElo }), mem({ id: "mT", userId: T, orgId: FNF, matchRating: tElo })] }));
+    expect(find(both(1000, 980), "membership", "mT").set.matchRating).toBe(980);
+    expect(find(both(1050, 1000), "membership", "mT").set.matchRating).toBe(1050);
+  });
+
+  it("both in the same club with played Elo on both sides: refused (kept number and re-pointed deltas would disagree)", () => {
+    const p = plan(snap({ memberships: [mem({ id: "mS", userId: S, orgId: FNF, matchRating: 980 }), mem({ id: "mT", userId: T, orgId: FNF, matchRating: 1050 })] }));
+    expect(p.blockers.join()).toMatch(/Elo/);
+    // A source at exactly 1000 whose match deltas at this club net to zero is still "played".
+    const netZero = plan(
+      snap({
+        memberships: [mem({ id: "mS", userId: S, orgId: FNF, matchRating: 1000 }), mem({ id: "mT", userId: T, orgId: FNF, matchRating: 1050 })],
+        refs: [{ table: "match", column: "eloApplied", kind: "json", id: "m1", value: { applied: { deltas: [{ userId: S, delta: 0 }] } } }],
+        eloMatchOrgs: { m1: FNF },
+      }),
+    );
+    expect(netZero.blockers.join()).toMatch(/Elo/);
+    // Deltas at ANOTHER club do not block a same-club combine here.
+    const elsewhere = plan(
+      snap({
+        memberships: [mem({ id: "mS", userId: S, orgId: FNF, matchRating: 1000 }), mem({ id: "mT", userId: T, orgId: FNF, matchRating: 1050 })],
+        refs: [{ table: "match", column: "eloApplied", kind: "json", id: "m1", value: { applied: { deltas: [{ userId: S, delta: 4 }] } } }],
+        eloMatchOrgs: { m1: "org_vets" },
+      }),
+    );
+    expect(elsewhere.blockers).toEqual([]);
+  });
+
+  it("both in the same club: a DM opt-out on either row wins", () => {
+    const p = plan(
+      snap({
+        memberships: [
+          mem({ id: "mS", userId: S, orgId: FNF, subRatingDm: false, subMatchInviteDm: true }),
+          mem({ id: "mT", userId: T, orgId: FNF, subRatingDm: true, subMatchInviteDm: false }),
+        ],
+      }),
+    );
+    const set = find(p, "membership", "mT").set;
+    expect(set.subRatingDm).toBe(false);
+    expect(set.subMatchInviteDm).toBeUndefined(); // already off on the target
   });
 
   it("both in the same club: the higher role wins and the raise is logged", () => {
@@ -272,9 +305,109 @@ describe("Attendance: moves with its events, never rewriting the append-only log
     expect(find(p, "attendance", "aS")).toMatchObject({ kind: "delete" });
   });
 
+  it("collision, source won with BENCH: the note of his own bench move travels (the month reads 'explicit bench request')", () => {
+    const p = plan(
+      snap({
+        attendance: [att({ id: "aS", userId: S, matchId: "m1", status: "BENCH" }), att({ id: "aT", userId: T, matchId: "m1", status: "DROPPED" })],
+        sourceEvents: [
+          { id: "e1", matchId: "m1", userId: S, orgId: FNF, fromStatus: null, toStatus: "BENCH", fromPosition: null, toPosition: 1, cause: "registration", actorKind: "player", actorUserId: S, sourceRef: null, note: "explicit bench request", at: new Date("2026-10-30") },
+        ],
+      }),
+    );
+    const t = p.ops.find((o) => o.kind === "event" && o.transition.userId === T);
+    expect(t && t.kind === "event" ? t.why : "").toMatch(/^explicit bench request/);
+    // Where the target has a place, his own history stands: no copies.
+    expect(p.ops.some((o) => o.kind === "copyEvent")).toBe(false);
+  });
+
   it("someone else's row paid for by the source now says paid by the target", () => {
     const p = plan(snap({ refs: [{ table: "attendance", column: "paidViaUserId", kind: "scalar", id: "aX", value: S }] }));
     expect(find(p, "attendance", "aX")).toMatchObject({ kind: "update", set: { paidViaUserId: T } });
+  });
+});
+
+describe("the event log: the target inherits the source's history", () => {
+  const ev = (over: Record<string, unknown>) => ({
+    id: "e",
+    matchId: "m1",
+    userId: S,
+    orgId: FNF,
+    fromStatus: null,
+    toStatus: "CONFIRMED",
+    fromPosition: null,
+    toPosition: 1,
+    cause: "registration",
+    actorKind: "player",
+    actorUserId: S,
+    sourceRef: `admin:${S}`,
+    note: "after the drop-out deadline",
+    at: new Date("2026-10-30T10:00:00Z"),
+    ...over,
+  }) as MergeSnapshot["sourceEvents"][number];
+
+  it("every source event is appended for the target with its time, cause, actor (mapped), sourceRef and note", () => {
+    const p = plan(snap({ attendance: [att({ id: "a1", userId: S, matchId: "m1", status: "CONFIRMED", position: 1 })], sourceEvents: [ev({ id: "e1" })] }));
+    const copy = p.ops.find((o) => o.kind === "copyEvent");
+    expect(copy).toMatchObject({
+      kind: "copyEvent",
+      fromEventId: "e1",
+      data: { userId: T, matchId: "m1", cause: "registration", actorKind: "player", actorUserId: T, note: "after the drop-out deadline", sourceRef: `admin:${T}`, at: new Date("2026-10-30T10:00:00Z") },
+    });
+    // The copied history already ends at the row: no extra gain event.
+    expect(p.ops.filter((o) => o.kind === "event" && o.transition.userId === T)).toEqual([]);
+    // The source's place is closed with one player-merge event.
+    expect(p.ops.filter((o) => o.kind === "event" && o.transition.userId === S)).toHaveLength(1);
+  });
+
+  it("rolling-squad carries are not copied (the scheduler counts them per match)", () => {
+    const p = plan(snap({ attendance: [att({ id: "a1", userId: S, matchId: "m1" })], sourceEvents: [ev({ id: "e1", cause: "rolling-squad", actorKind: "scheduler" })] }));
+    expect(p.ops.some((o) => o.kind === "copyEvent")).toBe(false);
+    // So the row gets a gain event to keep the target's fold right.
+    expect(p.ops.some((o) => o.kind === "event" && o.transition.userId === T && o.transition.toStatus === "CONFIRMED")).toBe(true);
+  });
+
+  it("history on a match where the source no longer has a row is still inherited; where the target has a row it is not", () => {
+    const p = plan(
+      snap({
+        attendance: [att({ id: "t9", userId: T, matchId: "m9" })],
+        sourceEvents: [ev({ id: "e1", matchId: "m8", toStatus: null, fromStatus: "CONFIRMED" }), ev({ id: "e2", matchId: "m9" })],
+      }),
+    );
+    expect(p.ops.filter((o) => o.kind === "copyEvent").map((o) => (o as { fromEventId: string }).fromEventId)).toEqual(["e1"]);
+  });
+});
+
+describe("money and checkouts", () => {
+  it("a source month row with a checkout in flight is refused", () => {
+    const p = plan(snap({ squadMembers: [{ id: "s1", monthId: "mo1", userId: S, paidAt: null, paidClaimedAt: null, stripeSessionId: "cs_1" }] }));
+    expect(p.blockers.join()).toMatch(/checkout in flight/);
+  });
+  it("two month rows with a payment CLAIM each are refused (a claim is money he says he sent)", () => {
+    const p = plan(
+      snap({
+        squadMembers: [
+          { id: "s1", monthId: "mo1", userId: S, paidAt: null, paidClaimedAt: new Date() },
+          { id: "t1", monthId: "mo1", userId: T, paidAt: new Date(), paidClaimedAt: null },
+        ],
+      }),
+    );
+    expect(p.blockers.join()).toMatch(/month list/);
+  });
+});
+
+describe("BillingNotice: a cycleKey that is the user id", () => {
+  it("is rewritten; when the target already has that notice, the source's goes", () => {
+    const p = plan(
+      snap({
+        billingNotices: [
+          { id: "b1", orgId: FNF, kind: "payer-changed", cycleKey: S },
+          { id: "b2", orgId: "org_vets", kind: "payer-changed", cycleKey: S },
+        ],
+        occupiedBillingKeys: [`org_vets|payer-changed|${T}`],
+      }),
+    );
+    expect(find(p, "billingNotice", "b1")).toMatchObject({ kind: "update", set: { cycleKey: T } });
+    expect(find(p, "billingNotice", "b2")).toMatchObject({ kind: "delete" });
   });
 });
 
@@ -497,6 +630,27 @@ describe("ordering and idempotency", () => {
     expect(p.noop).toBe(true);
     expect(p.ops).toEqual([]);
     expect(p.tombstoneOrgIds).toEqual([]);
+  });
+
+  it("a re-run does not inherit the same history twice (events up to the earlier merge were already copied)", () => {
+    const e = (id: string, at: string) =>
+      ({ id, matchId: "m8", userId: S, orgId: FNF, fromStatus: null, toStatus: "CONFIRMED", fromPosition: null, toPosition: 1, cause: "self-attendance", actorKind: "player", actorUserId: S, sourceRef: null, note: null, at: new Date(at) }) as MergeSnapshot["sourceEvents"][number];
+    const p = plan(
+      snap({
+        source: { isActive: false } as never,
+        priorMerges: [{ survivorUserId: T, reason: USER_MERGE_REASON, createdAt: new Date("2026-11-03T10:00:00Z") }],
+        sourceEvents: [e("old", "2026-11-01T10:00:00Z"), e("new", "2026-11-03T11:00:00Z")],
+      }),
+    );
+    expect(p.ops.filter((o) => o.kind === "copyEvent").map((o) => (o as { fromEventId: string }).fromEventId)).toEqual(["new"]);
+    const done = plan(
+      snap({
+        source: { isActive: false } as never,
+        priorMerges: [{ survivorUserId: T, reason: USER_MERGE_REASON, createdAt: new Date("2026-11-03T12:00:00Z") }],
+        sourceEvents: [e("old", "2026-11-01T10:00:00Z"), e("new", "2026-11-03T11:00:00Z")],
+      }),
+    );
+    expect(done.noop).toBe(true);
   });
 
   it("an already-merged source with rows that appeared since: they move, no second tombstone, no re-deactivation", () => {

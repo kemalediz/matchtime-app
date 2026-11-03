@@ -92,7 +92,7 @@ export async function loadMergeSnapshot(tx: Tx, S: string, T: string): Promise<M
   const snap = emptyMergeSnapshot(source, target);
   if (S === T) return snap;
 
-  snap.priorMerges = await tx.userMerge.findMany({ where: { oldUserId: S }, select: { survivorUserId: true, reason: true } });
+  snap.priorMerges = await tx.userMerge.findMany({ where: { oldUserId: S }, select: { survivorUserId: true, reason: true, createdAt: true } });
 
   snap.memberships = await tx.membership.findMany({
     where: { userId: { in: [S, T] } },
@@ -110,6 +110,11 @@ export async function loadMergeSnapshot(tx: Tx, S: string, T: string): Promise<M
       guestFromOrgId: true,
       guestMatchId: true,
       guestVia: true,
+      subMatchInviteDm: true,
+      subBenchOfferDm: true,
+      subTentativeDm: true,
+      subRatingDm: true,
+      subReminderDm: true,
     },
   });
   const srcOrgs = [...new Set(snap.memberships.filter((r) => r.userId === S).map((r) => r.orgId))];
@@ -140,8 +145,31 @@ export async function loadMergeSnapshot(tx: Tx, S: string, T: string): Promise<M
     feeWaivedByUserId: true,
     match: { select: { activity: { select: { orgId: true } } } },
   };
+  snap.sourceEvents = await tx.attendanceEvent.findMany({
+    where: { userId: S },
+    select: {
+      id: true,
+      matchId: true,
+      userId: true,
+      orgId: true,
+      fromStatus: true,
+      toStatus: true,
+      fromPosition: true,
+      toPosition: true,
+      cause: true,
+      actorKind: true,
+      actorUserId: true,
+      sourceRef: true,
+      note: true,
+      at: true,
+    },
+  });
   const srcAtt = await tx.attendance.findMany({ where: { userId: S }, select: attSelect });
-  const attMatchIds = srcAtt.map((a: { matchId: string }) => a.matchId);
+  // The target's rows on every match the source has a row OR an event on:
+  // the planner keeps the target's own history wherever he has a place.
+  const attMatchIds = [
+    ...new Set([...srcAtt.map((a: { matchId: string }) => a.matchId), ...snap.sourceEvents.map((e) => e.matchId)]),
+  ];
   const tgtAtt = attMatchIds.length ? await tx.attendance.findMany({ where: { userId: T, matchId: { in: attMatchIds } }, select: attSelect }) : [];
   snap.attendance = [...srcAtt, ...tgtAtt].map(({ match, ...a }: { match: { activity: { orgId: string } | null } | null }) => ({
     ...(a as object),
@@ -178,7 +206,11 @@ export async function loadMergeSnapshot(tx: Tx, S: string, T: string): Promise<M
   snap.tentatives = (await pair(tx, "tentativeAvailability", S, T, "matchId", {})) as MergeSnapshot["tentatives"];
   snap.pendingBench = (await pair(tx, "pendingBenchConfirmation", S, T, "matchId", {})) as MergeSnapshot["pendingBench"];
   snap.badges = (await pair(tx, "badgeAnnouncement", S, T, "orgId", { badgeKey: true })) as MergeSnapshot["badges"];
-  snap.squadMembers = (await pair(tx, "squadMonthMember", S, T, "monthId", { paidAt: true, paidClaimedAt: true })) as MergeSnapshot["squadMembers"];
+  snap.squadMembers = (await pair(tx, "squadMonthMember", S, T, "monthId", {
+    paidAt: true,
+    paidClaimedAt: true,
+    stripeSessionId: true,
+  })) as MergeSnapshot["squadMembers"];
   snap.squadCredits = (await pair(tx, "squadCredit", S, T, "orgId", { earnedMatchId: true, voidedAt: true })) as MergeSnapshot["squadCredits"];
   snap.poolProfiles = await tx.poolProfile.findMany({ where: { userId: { in: [S, T] } }, select: { id: true, userId: true, status: true } });
   snap.poolOffers = (await pair(tx, "poolOffer", S, T, "matchId", {})) as MergeSnapshot["poolOffers"];
@@ -193,6 +225,19 @@ export async function loadMergeSnapshot(tx: Tx, S: string, T: string): Promise<M
   const rewritten = snap.sentNotifications.map((n) => rewriteIdSegments(n.key, S, T)).filter((k, i) => k !== snap.sentNotifications[i].key);
   snap.occupiedNotificationKeys = rewritten.length
     ? (await tx.sentNotification.findMany({ where: { key: { in: rewritten } }, select: { key: true } })).map((r: { key: string }) => r.key)
+    : [];
+
+  snap.billingNotices = await tx.billingNotice.findMany({
+    where: { cycleKey: { contains: S } },
+    select: { id: true, orgId: true, kind: true, cycleKey: true },
+  });
+  const billingTargets = snap.billingNotices
+    .map((b) => ({ orgId: b.orgId, kind: b.kind, cycleKey: rewriteIdSegments(b.cycleKey, S, T) }))
+    .filter((b, i) => b.cycleKey !== snap.billingNotices[i].cycleKey);
+  snap.occupiedBillingKeys = billingTargets.length
+    ? (await tx.billingNotice.findMany({ where: { OR: billingTargets }, select: { orgId: true, kind: true, cycleKey: true } })).map(
+        (b: { orgId: string; kind: string; cycleKey: string }) => `${b.orgId}|${b.kind}|${b.cycleKey}`,
+      )
     : [];
 
   const refs: RefRow[] = [];
@@ -212,6 +257,14 @@ export async function loadMergeSnapshot(tx: Tx, S: string, T: string): Promise<M
     for (const r of rows) refs.push({ table, column: c.column, kind: c.kind, id: String(r[pk]), value: r[c.column] });
   }
   snap.refs = refs;
+  const eloMatchIds = refs.filter((r) => r.table === "match" && r.column === "eloApplied").map((r) => r.id);
+  if (eloMatchIds.length) {
+    const ms: Array<{ id: string; activity: { orgId: string } | null }> = await tx.match.findMany({
+      where: { id: { in: eloMatchIds } },
+      select: { id: true, activity: { select: { orgId: true } } },
+    });
+    for (const x of ms) if (x.activity) snap.eloMatchOrgs[x.id] = x.activity.orgId;
+  }
   return snap;
 }
 
@@ -254,6 +307,7 @@ export async function applyMergePlan(tx: Tx, plan: MergePlan, opts: ApplyUserMer
     else if (o.kind === "update") await tx[o.table].update({ where: { [pkOf(o.table)]: o.id }, data: o.set });
     else if (o.kind === "create" && o.table === "roleChange") await recordRoleChange(tx, { ...(o.data as object), actorUserId: opts.actorUserId ?? null } as never);
     else if (o.kind === "create") await tx[o.table].create({ data: o.data });
+    else if (o.kind === "copyEvent") await tx.attendanceEvent.create({ data: o.data });
     else if (o.kind === "event") {
       await recordAttendanceEvent(tx, o.transition as never, {
         cause: "player-merge",
