@@ -70,8 +70,9 @@ describe("sj_group_hello: the full intro for an approved group", () => {
       for (const h of [named, anon]) {
         // The approved welcome (Kemal, 2026-11-02) is longer than the old
         // intro, and since 2026-11-03 marks the pool and partner clubs as
-        // optional for a new club, naming who can switch them on.
-        expect(h.length).toBeLessThan(2100);
+        // optional for a new club, naming who can switch them on, and the
+        // friend line says how an organiser adds a friend.
+        expect(h.length).toBeLessThan(2200);
         expect(h).not.toMatch(/[—–]/);
         expect(h).not.toMatch(/\*YES\*|\*EVET\*/);
         expect(h).not.toMatch(/when and where|ne zaman ve nerede/i);

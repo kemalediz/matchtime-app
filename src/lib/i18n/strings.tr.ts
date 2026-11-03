@@ -835,19 +835,6 @@ export const tr: Strings = {
   // is needed. No dashes, no time-of-day greetings. The owner reviews
   // this block; nothing here has been reviewed yet.
 
-  onbIntro: (): string =>
-    `👋 Merhaba, ben *MatchTime*. Futbol gruplarının haftalık işlerini burada, WhatsApp'ta üstlenirim:\n\n` +
-    `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.\n` +
-    `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.\n` +
-    `📣 *Hatırlatma:* oyuncu mu eksik? Gruba hatırlatırım, kadro dolunca dururum.\n` +
-    `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.\n` +
-    `⭐ *Puanlar ve maçın oyuncusu* her maçtan sonra.\n` +
-    `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.\n` +
-    `💷 *Maç ücretleri:* isterseniz kart ya da banka ile ödeme bağlantıları.\n\n` +
-    `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm.\n\n` +
-    `*Bu grubu ben yöneteyim mi?* Organizatör kimse *EVET* yazsın, iki kısa soru soracağım. ` +
-    `İstemiyorsanız beni görmezden gelin, sessiz kalırım. 🤐`,
-
   onbAdminQuestion: (): string =>
     `Bu grubu başka kim yönetiyor? İsim ve numara yaz (veya @etiketle), ` +
     `birkaç kişiyi virgülle ayırabilirsin. Tek sen isen *sadece ben* yaz.`,
@@ -1797,18 +1784,6 @@ export const tr: Strings = {
   // ── the legacy "@Match Time setup" flow (Phase 3c) ──
   // Group-facing: plural register ("yazın"), as the group-add flow.
 
-  onb_legacy_intro:
-    `👋 Merhaba, ben *MatchTime*, futbol grubunuzun otomatik organizatörü. ` +
-    `Haftalık işleri ben üstlenirim, siz sadece gelip oynarsınız.\n\n` +
-    `Neler yaparım:\n` +
-    `⚽ *Katılım*, oyuncular buraya "varım" ya da "yokum" yazar; kadro listesini güncel tutarım, eksik kalınca hatırlatırım\n` +
-    `⚖️ *Dengeli takımlar*, gerçek oyuncu puanlarına göre her hafta dengeli iki takım\n` +
-    `🪑 *Akıllı yedek listesi*, kadro dolu mu? Açılan yeri bütün yedeklere sorarım, ilk sahiplenen oynar. Geç gördü diye kimse yerini kaybetmez\n` +
-    `🏆 *Maçın adamı ve puanlar*, maçtan sonra kısa bir oylama ve tek dokunuşla puanlama linki, uygulama indirmeye gerek yok\n` +
-    `⏰ *Hatırlatmalar ve istatistikler*, maçtan önce herkese hatırlatırım, "geçen hafta maçın adamı kim oldu?" gibi sorulara cevap veririm\n\n` +
-    `Tablo yok, kovalamaca yok, organizasyon derdi yok. ⚡\n\n` +
-    `Hadi kuralım, yaklaşık bir dakika sürer:`,
-
   onb_legacy_question: (p) =>
     ({
       name: "👋 MatchTime'ı bu grup için kuralım! Önce şu: kulübünüzün ya da grubunuzun adı ne olsun? (örn. *Cuma Futbolu*)",
@@ -2071,7 +2046,7 @@ export const tr: Strings = {
     `Burada, WhatsApp'ta şunları yaparım:\n\n` +
     `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.\n` +
     `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.\n` +
-    `👥 *Arkadaş getirmek:* bir arkadaşınızın geleceğini yazın, ona göndermeniz için size özelden bir bağlantı yollarım.\n` +
+    `👥 *Arkadaş getirmek:* bir arkadaşınızın geleceğini yazın, ona göndermeniz için size özelden bir bağlantı yollarım. Organizatörlerin arkadaşın adını yazması yeter (örneğin *Sam Jones geliyor*), onu ben eklerim.\n` +
     `⏰ *Hatırlatma:* beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.\n\n` +
     `⭐ *Puanlar:* her maçın ertesi sabahı oynayan herkese, diğerlerini 10 üzerinden puanlaması için özelden bir bağlantı gönderirim. Puanlarınız gizli kalır ve kendinizi puanlayamazsınız. Bunları her oyuncu için, puanlar geldikçe güncellenen bir form puanında birleştiririm.\n` +
     `⚖️ *Dengeli takımlar:* maç günü beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*), bu puanlarla iki dengeli takım kurarım, böylece maçlar çekişmeli geçer. Ne kadar çok kişi puan verirse takımlar o kadar dengeli olur.\n` +
@@ -2127,7 +2102,7 @@ export const tr: Strings = {
   sj_hello_bench: `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.`,
   sj_hello_bench_organiser: `🪑 *Yedekler:* *VARIM* yazanlar yedeğe yazılır, boşalan her yere kimin gireceğini organizatörler seçer.`,
   sj_hello_remind: `⏰ *Hatırlatma:* beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.`,
-  sj_hello_friend: `👥 *Arkadaş getirmek:* bir arkadaşınızın geleceğini yazın, ona göndermeniz için size özelden bir bağlantı yollarım.`,
+  sj_hello_friend: `👥 *Arkadaş getirmek:* bir arkadaşınızın geleceğini yazın, ona göndermeniz için size özelden bir bağlantı yollarım. Organizatörlerin arkadaşın adını yazması yeter (örneğin *Sam Jones geliyor*), onu ben eklerim.`,
   sj_hello_optional: (p) => ` (isteğe bağlı, ${p.organiser ?? "organizatör"} açabilir)`,
   sj_hello_ratings: `⭐ *Puanlar:* her maçın ertesi sabahı oynayan herkese, diğerlerini 10 üzerinden puanlaması için özelden bir bağlantı gönderirim. Puanlarınız gizli kalır ve kendinizi puanlayamazsınız. Bunları her oyuncu için, puanlar geldikçe güncellenen bir form puanında birleştiririm.`,
   sj_hello_teams: `⚖️ *Dengeli takımlar:* maç günü beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*), bu puanlarla iki dengeli takım kurarım, böylece maçlar çekişmeli geçer. Ne kadar çok kişi puan verirse takımlar o kadar dengeli olur.`,

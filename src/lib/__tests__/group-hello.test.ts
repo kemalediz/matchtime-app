@@ -540,7 +540,7 @@ describe("buildGroupHello: the approved welcome", () => {
     "",
     "📋 *Monthly squad:* regulars sign up and pay for the whole month, and are in every game of it. Can't make one? Say *Out*.",
     "✅ *Not a regular?* When a place is open, say *In* to take it. You pay for that game only.",
-    "👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them.",
+    "👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them. Organisers can just say the friend's name (for example *Sam Jones is in*) and I'll add them.",
     `⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.`,
     "",
     "⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10. Your scores stay private and you can't rate yourself. I combine them into a form rating for each player, updated as the ratings come in.",
@@ -780,3 +780,47 @@ function helloInputFromOrgRow(): HelloOrgRow {
     payMethodPayByBank: true,
   };
 }
+
+/**
+ * THE FRIEND LINE AND THE DEAD INTROS (Kemal, 2026-11-03).
+ *
+ * A player saying a friend is coming gets a link by DM; an ORGANISER (an
+ * owner or admin) saying a named friend is in has him added straight away
+ * (friend-link/rules.ts `decideThirdPartyIn`, D1: "an organiser adds a
+ * guest directly"; e2e/api/group-hello-claims.spec.ts "Organiser's guest").
+ * The welcome says both.
+ *
+ * The two older intros (`onbIntro`, the in-group setup's first post, and
+ * `onb_legacy_intro`, the "@Match Time setup" flow's) lost their last
+ * caller when the in-group setup was deleted (#472), so they are removed
+ * rather than kept as copy nothing can send.
+ */
+describe("the friend line, and no unsendable intro left carrying the old claims", () => {
+  for (const lang of LANGS) {
+    const s = TABLES[lang];
+    it(`${lang}: the friend line says players get a link and organisers just name the friend`, () => {
+      expect(s.sj_hello_friend).toMatch(lang === "en" ? /DM you a link.*Organisers can just say the friend's name.*I'll add them/ : /bağlantı yollarım.*Organizatörlerin.*adını yazması yeter.*eklerim/);
+      expect(s.sj_hello_friend).toMatch(lang === "en" ? /for example \*Sam Jones is in\*/ : /örneğin \*Sam Jones geliyor\*/);
+      expect(s.sj_hello_friend).not.toMatch(/[—–]|\s\/\s/);
+      expect(hello(lang).split("\n")).toContain(s.sj_hello_friend);
+    });
+  }
+
+  it("the dead intros are gone from both tables", () => {
+    for (const s of [en, tr] as Array<Record<string, unknown>>) {
+      expect(s).not.toHaveProperty("onbIntro");
+      expect(s).not.toHaveProperty("onb_legacy_intro");
+    }
+  });
+
+  it("no fixed string in either table promises a group vote or staying quiet during the banter", () => {
+    for (const s of [en, tr] as Array<Record<string, unknown>>) {
+      for (const [k, v] of Object.entries(s)) {
+        const text = typeof v === "string" ? v : typeof v === "function" && v.length === 0 ? String((v as () => unknown)()) : null;
+        if (text === null) continue;
+        expect(text, k).not.toMatch(/quick (post-match )?vote|stay quiet during the banter|quiet the rest of the time/i);
+        expect(text, k).not.toMatch(/kısa bir oylama|Sohbet sırasında sessiz kalırım|Diğer zamanlarda sessizim/);
+      }
+    }
+  });
+});

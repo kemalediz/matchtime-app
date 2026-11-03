@@ -247,7 +247,7 @@ const FLAG_OFF_HELLO = [
   "\n",
   "✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n",
   "🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n",
-  "👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them.\n",
+  "👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them. Organisers can just say the friend's name (for example *Sam Jones is in*) and I'll add them.\n",
   "⏰ *Remind me:* tag me and say when, in your own words (for example *\"@Match Time remind me Thursday\"*), and I'll DM you then.\n",
   "\n",
   "⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10. Your scores stay private and you can't rate yourself. I combine them into a form rating for each player, updated as the ratings come in.\n",

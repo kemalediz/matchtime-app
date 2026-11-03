@@ -291,7 +291,6 @@ const SAMPLES: SampleArgs = {
   // ── onboarding (self-setup), merged from main (#94) ──
   //   Zero-argument entries take `null`; the enum-like arguments
   //   (`key`, `englishLabel`, `dow`, `topic`) are branched on, not printed.
-  onbIntro: null,
   onbAdminQuestion: null,
   onbConsentAck: { adminCaptured: true, adminQuestion: "ADMINQUESTION" },
   onbAdminsAck: { added: 2, detailsQuestion: "DETAILSQUESTION" },
@@ -492,7 +491,6 @@ const SAMPLES: SampleArgs = {
   dm_survey_clarify: { firstName: "Sait", orgName: "Sutton FC" },
   dm_survey_confirm: { category: "maybe", firstName: "Sait" },
   dm_survey_invite: { firstName: "Sait", orgName: "Sutton FC" },
-  onb_legacy_intro: null,
   onb_legacy_question: { field: "side", groupName: "Tuesday Ballers FC" },
   onb_legacy_menu: { lead: "LEADLINE", items: [{ label: "LABELONE", blurb: "BLURBONE" }] },
   onb_legacy_feature_blurb: { key: "bench", englishBlurb: "Standby list" },

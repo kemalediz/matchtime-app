@@ -980,23 +980,6 @@ export const en = {
   // rewritten on purpose on 2026-09-17 (the 1,300-character pitch became
   // one line and one question).
 
-  /** The first thing the bot says in a group it was just added to. One
-   *  line on what it is, one question. The consent keyword is load
-   *  bearing: parseBundleReply reads it. */
-  onbIntro: (): string =>
-    `👋 Hi, I'm *MatchTime*. I take care of the weekly admin for football groups, right here in WhatsApp:\n\n` +
-    `✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n` +
-    `🪑 *The bench:* once you're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n` +
-    `📣 *Chasing:* short of players? I remind the group, and stop once you're full.\n` +
-    `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.\n` +
-    `⭐ *Ratings and Man of the Match* after every game.\n` +
-    `📊 *Stats:* ask me anything, and everyone gets their own stats page.\n` +
-    `💷 *Match fees:* card or bank pay links, if you want them.\n\n` +
-    `I stay quiet during the banter and only reply to In, Out or a tag.\n\n` +
-    `*Want me to run this group?* Whoever organises it, reply *YES* and I'll ask two quick questions. ` +
-    `Not for you? Ignore me and I'll stay quiet. 🤐`,
-
-  /** The admins question, asked right after consent. */
   onbAdminQuestion: (): string =>
     `Who else helps run this group? Reply with their name + number (or @mention). ` +
     `you can list a few, separated by commas. Or say *just me* if it's only you.`,
@@ -2300,18 +2283,6 @@ export const en = {
   // ── the legacy "@Match Time setup" flow (Phase 3c) ──
   // Group-facing, so the Turkish is in the group's plural register.
 
-  onb_legacy_intro:
-    `👋 *Hey, I'm MatchTime*, the automatic organiser for your football group. ` +
-    `I take the weekly admin off your hands so you can just turn up and play.\n\n` +
-    `Here's what I do:\n` +
-    `⚽ *Attendance:* players just say "in" or "out" right here; I keep the squad list live and chase the stragglers\n` +
-    `⚖️ *Fair teams:* auto-balanced sides every week from real player ratings\n` +
-    `🪑 *Smart bench:* squad full? I offer the spot to the whole bench, first to claim it plays. Nobody's ever dropped for being asleep\n` +
-    `🏆 *Man of the Match & ratings:* a quick post-match vote and a one-tap rating link, no app to install\n` +
-    `⏰ *Reminders & stats:* "@MatchTime remind me Thursday", or ask me "who got MoM last week?"\n\n` +
-    `No spreadsheets, no chasing, no admin headaches. ⚡\n\n` +
-    `Let's get you set up, it takes about a minute:`,
-
   /** The seven setup questions; `groupName` is only printed by "side". */
   onb_legacy_question: (p: {
     field: "name" | "side" | "day" | "time" | "venue" | "recurrence" | "date";
@@ -2700,7 +2671,7 @@ export const en = {
     `Here's what I do, right here in WhatsApp:\n\n` +
     `✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n` +
     `🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n` +
-    `👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them.\n` +
+    `👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them. Organisers can just say the friend's name (for example *Sam Jones is in*) and I'll add them.\n` +
     `⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.\n\n` +
     `⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10. Your scores stay private and you can't rate yourself. I combine them into a form rating for each player, updated as the ratings come in.\n` +
     `⚖️ *Fair teams:* on match day tag me and ask, in your own words (for example *@Match Time make the teams*), and I'll pick two balanced sides from those ratings, so the games stay close. The more people rate, the fairer the teams.\n` +
@@ -2784,7 +2755,7 @@ export const en = {
   sj_hello_remind: `⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.`,
   /** The friend link (friend-link/rules.ts). Part of the FIXED block
    *  every club's hello carries after its squad lines (Kemal, 2026-11-02). */
-  sj_hello_friend: `👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them.`,
+  sj_hello_friend: `👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them. Organisers can just say the friend's name (for example *Sam Jones is in*) and I'll add them.`,
   // ── The features paragraph (2026-11-03: every claim true for the club) ──
   // Each feature is always mentioned. One the club has switched off keeps
   // its line, marked with `sj_hello_optional` inside the bold heading
