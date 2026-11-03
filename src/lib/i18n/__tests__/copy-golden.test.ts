@@ -936,6 +936,8 @@ function cases(lang: Lang): Case[] {
 
   // ── 1.1 group-copy.ts ───────────────────────────────────────────────
   add("R3 buildRatePromoPost", buildRatePromoPost({ activityName: "Tuesday 7-a-side", matchDateLabel: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", lang }));
+  add("R3b buildRatePromoPost / a club's first, players vote MoM", buildRatePromoPost({ activityName: "Tuesday 7-a-side", matchDateLabel: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", lang, firstTime: { mvpLabel: "Man of the Match", momVote: true } }));
+  add("R3b buildRatePromoPost / a club's first, organisers choose MoM", buildRatePromoPost({ activityName: "Tuesday 7-a-side", matchDateLabel: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", lang, firstTime: { mvpLabel: "Man of the Match", momVote: false } }));
   add("R4 buildMatchDayChaseFallback", buildMatchDayChaseFallback({ need: 3, activityName: "Tuesday 7-a-side", lang }));
   const truth = { confirmed: ["Kemal Ediz", "Elvin Aliyev"], bench: ["Erdal Ozkan"], maxPlayers: 14 };
   add("R1 composeSquadStateReply / marker with a lead", composeSquadStateReply("Cheers Sait, noted. [SQUAD]", truth, lang).text);

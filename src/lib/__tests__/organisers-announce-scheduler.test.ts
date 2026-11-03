@@ -597,6 +597,9 @@ const GEAR_KEY = (m: { id: string }) => `${m.id}:football-gear-reminder`;
 const PROMO_KEY = (m: { id: string }) => `${m.id}:rate-promo`;
 const BADGES_KEY = (m: { id: string }) => `${m.id}:badges`;
 const RATE_DM_KEYS = (m: { id: string }) => NAMES.map((_, i) => `${m.id}:rate-dm:u${i}`);
+/** A rating notice for an earlier match: the club has had one before, so
+ *  this one is the short post (rate-promo-first.test.ts has the first). */
+const EARLIER_PROMO = "m-fri-2-oct:rate-promo";
 const GEAR_TEXT = (lang: string) => buildGearReminder({ timeLabel: "20:30", venue: "Powerleague", lang });
 const PROMO_TEXT = buildRatePromoPost({ activityName: "FNF", matchDateLabel: "Fri 9 Oct", lang: "en" });
 const LEDGER = [{ userId: "u0", badgeKey: "first-game", matchId: "m-fri-9-oct" }];
@@ -620,10 +623,10 @@ describe("the default (MatchTime announces): the three posts stay in the players
 
   it("the rating notice", async () => {
     const m = completed();
-    setWorld([m], { sent: RATE_DM_KEYS(m) });
+    setWorld([m], { sent: [...RATE_DM_KEYS(m), EARLIER_PROMO] });
     const before = await instructions(SAT_0905);
     features.listAnnouncer = "matchtime";
-    setWorld([m], { sent: RATE_DM_KEYS(m) });
+    setWorld([m], { sent: [...RATE_DM_KEYS(m), EARLIER_PROMO] });
     const after = await instructions(SAT_0905);
     expect(after).toEqual(before);
     expect(byKey(after, PROMO_KEY(m))).toEqual({ kind: "group-message", key: PROMO_KEY(m), matchId: m.id, text: PROMO_TEXT });
@@ -702,7 +705,7 @@ describe('"The organisers": the rating notice goes to the admins, the badges pos
 
   it("once every rating DM is out, the notice goes to the admin group, not the players' group", async () => {
     const m = completed();
-    setWorld([m], { sent: RATE_DM_KEYS(m) });
+    setWorld([m], { sent: [...RATE_DM_KEYS(m), EARLIER_PROMO] });
     const out = await instructions(SAT_0905);
     expect(byKey(out, PROMO_KEY(m))).toEqual({
       kind: "admin-group-message",
@@ -717,10 +720,24 @@ describe('"The organisers": the rating notice goes to the admins, the badges pos
   it("the rating notice, in Turkish", async () => {
     features.language = "tr";
     const m = completed({ language: "tr" });
-    setWorld([m], { sent: RATE_DM_KEYS(m) });
+    setWorld([m], { sent: [...RATE_DM_KEYS(m), EARLIER_PROMO] });
     const text = byKey(await instructions(SAT_0905), PROMO_KEY(m))?.text ?? "";
     expect(text.startsWith("📋 Organizatörler için, oyuncu grubuna gönderilmedi:\n\n🎯 ")).toBe(true);
     expect(text).toContain("puanlama linkini DM'den gönderdim");
+  });
+
+  it("a club's FIRST rating notice is relayed to the admins in its long form, without the MoM sentence when they choose MoM", async () => {
+    features.momChosenBy = "organisers";
+    const m = completed();
+    setWorld([m], { sent: RATE_DM_KEYS(m) });
+    const text = byKey(await instructions(SAT_0905), PROMO_KEY(m))?.text ?? "";
+    expect(text).toBe(
+      buildOrganiserRelay(
+        buildRatePromoPost({ activityName: "FNF", matchDateLabel: "Fri 9 Oct", lang: "en", firstTime: { mvpLabel: "Man of the Match", momVote: false } }),
+        "en",
+      ),
+    );
+    expect(text).toContain("Why rate?");
   });
 
   it("the rating notice already sent to the admin group: nothing again", async () => {
