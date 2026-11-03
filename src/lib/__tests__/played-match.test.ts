@@ -21,6 +21,7 @@ const SRC = path.resolve(__dirname, "../..");
 const NOT_ABOUT_PLAY = new Set([
   "app/actions/players.ts", // counts before deleting a placeholder player
   "lib/merge-players-core.ts", // moves every row of a merged player
+  "lib/user-merge.ts", // folds a duplicate User: moves every rating and vote, a cancelled match's too
   "lib/cross-club-link.ts", // counts rows in other clubs before linking
   "lib/wipe-org.ts", // counts before wiping a club
 ]);
