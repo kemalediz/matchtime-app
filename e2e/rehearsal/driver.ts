@@ -95,6 +95,7 @@ export class RehearsalDriver {
   private seq = 0;
   private connectCode: string | null = null;
   private clubSettingsApplied = false;
+  private membershipSeq = 0;
   private templateApplied = false;
   private aiCalls = 0;
   private routerRequests = 0;
@@ -120,6 +121,9 @@ export class RehearsalDriver {
       /** Club scenarios: snapshot everything the A/B compares (months,
        *  payments, aliases, merges, bot jobs, sent notifications). */
       wideSnapshot?: boolean;
+      /** Club scenarios: put the rows the server reads WITHOUT an order
+       *  back in primary-key order after every tick (reorderRows). */
+      stableRowOrder?: boolean;
     },
   ) {
     this.nonce = opts.nonce ?? Date.now().toString(36);
@@ -293,6 +297,7 @@ export class RehearsalDriver {
           this.error(`${tick.kind}${tick.kind === "step" ? ` ${tick.step.do}` : ""}: ${(err as Error).stack ?? String(err)}`);
         }
         if (tick.kind !== "cron") await this.recordDbChanges();
+        if (this.opts.stableRowOrder) await this.reorderRows().catch((err) => this.error(`reorder rows: ${(err as Error).message}`));
       }
     } finally {
       this.restoreClock();
@@ -580,10 +585,15 @@ export class RehearsalDriver {
     const existing = await this.db.one<{ id: string }>(`SELECT id FROM "User" WHERE "phoneNumber" = $1`, [m.phone]);
     if (existing) return existing.id;
     const id = `reh-u-${this.nonce}-${m.key}`;
+    // One second apart, in scenario order: people join at different times,
+    // and a list the server orders by createdAt must not depend on how
+    // Postgres breaks a tie (a replay would then read members in another
+    // order than the recording did).
+    const order = this.scenario.members.findIndex((x) => x.key === m.key);
     await this.db.run(
       `INSERT INTO "User" (id, name, email, "phoneNumber", onboarded, "isActive", "createdAt", "updatedAt")
        VALUES ($1, $2, $3, $4, true, true, $5, $5)`,
-      [id, m.nameless ? null : m.name, `reh-${m.key}-${this.nonce}@e2e-test.invalid`, m.phone, this.simIso()],
+      [id, m.nameless ? null : m.name, `reh-${m.key}-${this.nonce}@e2e-test.invalid`, m.phone, this.simIso(-(this.scenario.members.length - order) * 1000)],
     );
     return id;
   }
@@ -592,11 +602,12 @@ export class RehearsalDriver {
     const row = await this.db.one<{ id: string }>(`SELECT id FROM "Membership" WHERE "userId" = $1 AND "orgId" = $2`, [userId, this.orgId]);
     if (row) await this.db.run(`UPDATE "Membership" SET role = $2 WHERE id = $1`, [row.id, role]);
     else
-      await this.db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ($1, $2, $3, $4)`, [
+      await this.db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role, "createdAt") VALUES ($1, $2, $3, $4, $5)`, [
         `reh-mem-${this.nonce}-${userId}`,
         userId,
         this.orgId,
         role,
+        this.simIso(++this.membershipSeq),
       ]);
   }
 
@@ -708,17 +719,22 @@ export class RehearsalDriver {
         `${hq ? `, admin group "${hq.subject}" linked` : ""}. Written to the database directly.`,
     );
     await this.settings({});
+    // The members as the club's history left them: imported from the
+    // member list (phone only, no name) or named by the organiser.
+    for (const m of this.scenario.members) {
+      if (m.role === "NONE" || !m.groups.includes(players.key)) continue;
+      const uid = await this.ensureUser(m);
+      await this.ensureMembership(uid, m.role);
+      await this.db.run(`UPDATE "User" SET name = $2 WHERE id = $1`, [uid, m.nameless ? null : m.name]);
+    }
+    // Then the Pi's member sweep at its start, through the real route: a
+    // nameless member takes the WhatsApp name it shows, as in production.
     await this.refreshOrgs();
     const res = await this.post("/api/whatsapp/sync-participants", {
       groupId: this.jid.get(players.key),
       participants: this.participants(players.key).filter((p) => this.byPhone.get(p.phone)?.role !== "NONE"),
     });
     this.info(`The Pi reads the players' group members: ${JSON.stringify(res ?? {}).slice(0, 300)}`, { group: players.key });
-    // The names the organiser gave them on the website (or none).
-    for (const m of this.scenario.members) {
-      if (m.role === "NONE" || !m.groups.includes(players.key)) continue;
-      await this.db.run(`UPDATE "User" SET name = $2 WHERE "phoneNumber" = $1`, [m.phone, m.nameless ? null : m.name]);
-    }
   }
 
   /** The next game's own switches (club scenarios), set by the organiser. */
@@ -904,7 +920,10 @@ export class RehearsalDriver {
   private async instruction(ins: Record<string, unknown>, playersKey: string): Promise<void> {
     const kind = String(ins.kind);
     const text = typeof ins.text === "string" ? ins.text : "";
-    const mentions = Array.isArray(ins.mentions) ? (ins.mentions as unknown[]).map((p) => this.byPhone.get(bare(String(p)))?.key ?? `+${bare(String(p))}`) : [];
+    // Who the Pi tags for real: `mentions` on a group message or DM; the
+    // bench offer tags the one `phone` it names.
+    const tagged = Array.isArray(ins.mentions) ? (ins.mentions as unknown[]) : kind === "bench-prompt" && ins.phone ? [ins.phone] : [];
+    const mentions = tagged.map((p) => this.byPhone.get(bare(String(p)))?.key ?? `+${bare(String(p))}`);
     const meta: Record<string, unknown> = { instruction: kind, key: ins.key, ...(mentions.length ? { mentions } : {}) };
     switch (kind) {
       case "group-message":
@@ -1166,6 +1185,30 @@ export class RehearsalDriver {
       [this.orgId, `%${this.orgId}%`],
     );
     for (const n of notes) out[`sent-notification ${relabel(n.key)}`] = n.kind;
+  }
+
+  /**
+   * Some server reads have no ORDER BY (the HQ squad reader's members,
+   * hq-squad-reader.ts), so the order the model is shown follows Postgres's
+   * physical row order, which moves whenever a row is updated and so
+   * depends on timing. In this throwaway test database only, CLUSTER puts
+   * each such table back in primary-key order after every tick, so the
+   * same scenario shows the model the same order on every run.
+   */
+  private clusterIndexes: Array<{ table: string; index: string }> | null = null;
+  private async reorderRows(): Promise<void> {
+    if (!this.clusterIndexes) {
+      this.clusterIndexes = [];
+      for (const table of ["Membership", "User", "UserAlias", "Attendance", "SquadMonthMember", "TeamAssignment"]) {
+        const row = await this.db.one<{ index: string }>(
+          `SELECT i.relname AS index FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid JOIN pg_class t ON t.oid = x.indrelid
+           WHERE t.relname = $1 AND x.indisprimary`,
+          [table],
+        );
+        if (row) this.clusterIndexes.push({ table, index: row.index });
+      }
+    }
+    for (const c of this.clusterIndexes) await this.db.run(`CLUSTER "${c.table}" USING "${c.index}"`);
   }
 
   private async recordDbChanges(): Promise<void> {

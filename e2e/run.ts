@@ -197,6 +197,7 @@ function assertReplayWasOffline(proxy: CassetteProxy): void {
   const t = proxy.totals();
   console.log(
     `[e2e] LLM: REPLAY — ${t.hits} answer(s) served from cassettes, ${t.repeats} repeat(s), ` +
+      `${t.reordered} matched only after ignoring line order, ` +
       `${t.misses} miss(es), ${t.upstreamCalls} call(s) to the network ($0.00 spent).`,
   );
   if (t.upstreamCalls !== 0) throw new NotActuallyLiveError(`e2e: a replay reached the network ${t.upstreamCalls} time(s).`);

@@ -126,6 +126,29 @@ export function requestKey(body: unknown): string {
   return sha(stableStringify(normaliseRequest(body))).slice(0, 32);
 }
 
+function sortLines(v: unknown): unknown {
+  if (typeof v === "string") return v.split("\n").sort().join("\n");
+  if (Array.isArray(v)) return v.map(sortLines);
+  if (v && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) out[k] = sortLines(x);
+    return out;
+  }
+  return v;
+}
+
+/**
+ * The key with every text's lines sorted: the same words in another order.
+ * The server under test sometimes lists rows that share a timestamp (an HQ
+ * message and MatchTime's reply to it are both written with the request's
+ * "now") in whatever order Postgres returns them, which can differ between
+ * a record run and a replay. Matching on this key is a fallback, counted
+ * and listed as "reordered", never a silent hit.
+ */
+export function looseRequestKey(body: unknown): string {
+  return sha(stableStringify(sortLines(normaliseRequest(body)))).slice(0, 32);
+}
+
 function siteOf(body: unknown): string {
   const sys = (body as { system?: unknown })?.system;
   const text = typeof sys === "string" ? sys : Array.isArray(sys) ? sys.map((s) => (s as { text?: string })?.text ?? "").join(" ") : "";
@@ -149,11 +172,16 @@ export interface CassetteStats {
   recorded: number;
   hits: number;
   repeats: number;
+  /** Served after matching on the line-order-blind key (looseRequestKey). */
+  reordered: number;
   misses: number;
 }
 
 export class Cassette {
   private readonly byKey = new Map<string, RecordedCall[]>();
+  private readonly byLooseKey = new Map<string, RecordedCall[]>();
+  private readonly servedLoose = new Map<string, number>();
+  private readonly reorderedCalls: Array<{ key: string; site: string }> = [];
   private readonly served = new Map<string, number>();
   private readonly normalised: Array<{ key: string; model: string; site: string; text: string }> = [];
   private readonly misses: CassetteMiss[] = [];
@@ -166,6 +194,8 @@ export class Cassette {
       const list = this.byKey.get(key) ?? [];
       list.push(c);
       this.byKey.set(key, list);
+      const loose = looseRequestKey(c.request);
+      this.byLooseKey.set(loose, [...(this.byLooseKey.get(loose) ?? []), c]);
       if (list.length === 1)
         this.normalised.push({ key, model: modelOf(c.request), site: siteOf(c.request), text: stableStringify(normaliseRequest(c.request)) });
     }
@@ -179,6 +209,14 @@ export class Cassette {
     const key = requestKey(request);
     const list = this.byKey.get(key);
     if (!list) {
+      const loose = looseRequestKey(request);
+      const same = this.byLooseKey.get(loose);
+      if (same) {
+        const n = this.servedLoose.get(loose) ?? 0;
+        this.servedLoose.set(loose, n + 1);
+        this.reorderedCalls.push({ key, site: siteOf(request) });
+        return same[Math.min(n, same.length - 1)];
+      }
       const miss = this.describeMiss(request, key);
       this.misses.push(miss);
       throw new CassetteMissError(miss);
@@ -217,7 +255,11 @@ export class Cassette {
   }
 
   stats(): CassetteStats {
-    return { recorded: this.recorded, hits: this.hits, repeats: this.repeats, misses: this.misses.length };
+    return { recorded: this.recorded, hits: this.hits, repeats: this.repeats, reordered: this.reorderedCalls.length, misses: this.misses.length };
+  }
+
+  reorderedList(): Array<{ key: string; site: string }> {
+    return [...this.reorderedCalls];
   }
 
   missList(): CassetteMiss[] {

@@ -16,6 +16,7 @@
  * every run, so each request draws the same numbers whatever ran before it.
  * With the variable unset this file does nothing.
  */
+/* eslint-disable @typescript-eslint/no-require-imports -- a CommonJS preload for node --require */
 "use strict";
 
 const http = require("node:http");

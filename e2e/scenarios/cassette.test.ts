@@ -111,6 +111,21 @@ describe("Cassette", () => {
     expect(c.missList()).toHaveLength(1);
   });
 
+  it("serves a request whose only difference is the ORDER of its lines, and reports it as reordered, not as a hit", () => {
+    const recorded = req({ messages: [{ role: "user", content: "RECENT:\n  MatchTime: Adding Nabil\n  Hamzah: updated list\nNOW: Tue" }] });
+    const asked = req({ messages: [{ role: "user", content: "RECENT:\n  Hamzah: updated list\n  MatchTime: Adding Nabil\nNOW: Tue" }] });
+    const c = new Cassette([call(recorded, "ok")]);
+    expect(JSON.parse(c.take(asked).body).content[0].text).toBe("ok");
+    expect(c.stats()).toMatchObject({ hits: 0, reordered: 1, misses: 0 });
+    expect(c.reorderedList()[0].site).toContain("front door");
+  });
+
+  it("still misses when a line's words changed, whatever the order", () => {
+    const recorded = req({ messages: [{ role: "user", content: "A\nB" }] });
+    const c = new Cassette([call(recorded, "ok")]);
+    expect(() => c.take(req({ messages: [{ role: "user", content: "B\nA!" }] }))).toThrow(CassetteMissError);
+  });
+
   it("re-keys from the stored request when loaded, so a better normaliser needs no re-recording", () => {
     const packed = packCassette({ club: "x", calls: [call(req(), "a")], meter: { calls: 1, costUsd: 0.01 } });
     const stored = JSON.parse(JSON.stringify(packed));

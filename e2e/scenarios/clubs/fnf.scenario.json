@@ -30,7 +30,8 @@
    "durationMinutes": 90,
    "venue": "Sandbox Harris Pitch",
    "deadlineHours": 24,
-   "ratingWindowHours": 72
+   "ratingWindowHours": 72,
+   "minPlayers": 12
   },
   "settings": {
    "listAnnouncer": "organisers",
@@ -253,6 +254,13 @@
    "body": "@Match Time this week's squad for Friday\n1. Hamzah\n2. Raihan\n3. Uncle Najib\n4. Imti\n5. Zak\n6. Omar\n7. Yusuf\n8. Adam\n9. Sami\n10. Tariq"
   },
   {
+   "at": "2026-11-16 10:02",
+   "do": "message",
+   "group": "hq",
+   "from": "hamzah",
+   "body": "@Match Time YES"
+  },
+  {
    "at": "2026-11-16 10:04",
    "do": "message",
    "group": "hq",
@@ -312,6 +320,13 @@
    "group": "hq",
    "from": "hamzah",
    "body": "@Match Time updated list for Friday\n1. Hamzah\n2. Raihan\n3. Uncle Najib\n4. Imti\n5. Zak\n6. Omar\n7. Yusuf\n8. Adam\n9. Sami\n10. Nabil\n11. Idris\n12. Kareem"
+  },
+  {
+   "at": "2026-11-17 09:02",
+   "do": "message",
+   "group": "hq",
+   "from": "hamzah",
+   "body": "@Match Time YES"
   },
   {
    "at": "2026-11-17 18:00",

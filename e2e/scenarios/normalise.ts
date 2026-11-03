@@ -62,6 +62,12 @@ export function relabelText(text: string, labels: Map<string, string>): string {
   let t = text;
   const ids = [...labels.keys()].filter((id) => id.length >= 8).sort((a, b) => b.length - a.length);
   for (const id of ids) if (t.includes(id)) t = t.split(id).join(labels.get(id)!);
+  // A squad fingerprint hashes the members' user ids (roster-shown.ts), which
+  // are new every run: the squad itself is in the snapshot, the hash is noise.
+  t = t.replace(/(:(?:roster-shown|month-list):)[0-9a-f]{16}\b/g, "$1<squad>");
+  // An epoch-milliseconds stamp in a key (2020 to 2033) is the server's
+  // clock, which runs on within a step: kept to the minute.
+  t = t.replace(/(?<!\d)1[6-9]\d{11}(?!\d)/g, (ms) => String(Math.floor(Number(ms) / 60_000) * 60_000));
   return normaliseVolatileText(t);
 }
 

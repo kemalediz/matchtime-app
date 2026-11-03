@@ -31,7 +31,8 @@
    "durationMinutes": 60,
    "venue": "Sandbox Halı Saha",
    "deadlineHours": 5,
-   "ratingWindowHours": 72
+   "ratingWindowHours": 72,
+   "minPlayers": 10
   },
   "settings": {
    "language": "tr",

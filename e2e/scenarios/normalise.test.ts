@@ -43,6 +43,20 @@ describe("relabelText", () => {
     );
     expect(relabelText("https://localhost:3471/r/AbCdEf12", labels)).toBe("https://localhost:3471/r/<tok>");
   });
+
+  it("keeps an epoch-milliseconds stamp only to the minute (the server's clock drifts within a step)", () => {
+    expect(relabelText("org-x:provisional-review:admin-group:p1794823324308", labels)).toBe(relabelText("org-x:provisional-review:admin-group:p1794823320125", labels));
+    expect(relabelText("k:1794243600000", labels)).toBe("k:1794243600000");
+    expect(relabelText("count 12345", labels)).toBe("count 12345");
+  });
+
+  it("masks a squad fingerprint (a hash of user ids, new every run) but keeps the rest of the key", () => {
+    expect(relabelText("cmmatch0000000000000000001:roster-shown:dd4d3b712b07c862:1794243600000", labels)).toBe(
+      "<match 2027-01-08 20:30>:roster-shown:<squad>:1794243600000",
+    );
+    expect(relabelText("x:month-list:0123456789abcdef:2", labels)).toBe("x:month-list:<squad>:2");
+    expect(relabelText("txtlog:<club>:976f148cb3b6dca2:x", labels)).toBe("txtlog:<club>:976f148cb3b6dca2:x");
+  });
 });
 
 describe("buildTranscript", () => {

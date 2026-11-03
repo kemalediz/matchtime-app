@@ -4,6 +4,7 @@
  * --require entries in NODE_OPTIONS do not survive Next's own handling of
  * the variable for its child process). Test-only, never in production.
  */
+/* eslint-disable @typescript-eslint/no-require-imports -- a CommonJS preload for node --require */
 "use strict";
 
 require("../rehearsal/clock-shim.cjs");

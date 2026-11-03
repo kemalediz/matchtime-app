@@ -49,6 +49,7 @@ export class CassetteProxy {
   private readonly allMisses: Array<CassetteMiss & { club: string | null }> = [];
   private replayHits = 0;
   private replayRepeats = 0;
+  private replayReordered = 0;
 
   private capRefusals = 0;
 
@@ -82,6 +83,7 @@ export class CassetteProxy {
     misses: number;
     hits: number;
     repeats: number;
+    reordered: number;
     capRefusals: number;
     costUsd: number;
     missList: Array<CassetteMiss & { club: string | null }>;
@@ -91,6 +93,7 @@ export class CassetteProxy {
       misses: this.allMisses.length,
       hits: this.replayHits,
       repeats: this.replayRepeats,
+      reordered: this.replayReordered,
       capRefusals: this.capRefusals,
       costUsd: this.all.reduce((a, c) => a + c.costUsd, 0),
       missList: [...this.allMisses],
@@ -134,7 +137,10 @@ export class CassetteProxy {
       return { club, mode: "record", calls: this.recording.length, meter };
     }
     const s = this.cassette!.stats();
-    return { club, mode: "replay", ...s, upstreamCalls: this.upstreamCalls, missList: this.cassette!.missList() };
+    this.replayReordered += s.reordered;
+    this.replayHits += s.hits;
+    this.replayRepeats += s.repeats;
+    return { club, mode: "replay", ...s, upstreamCalls: this.upstreamCalls, missList: this.cassette!.missList(), reorderedList: this.cassette!.reorderedList() };
   }
 
   private meterReading(): Record<string, unknown> {
@@ -176,9 +182,6 @@ export class CassetteProxy {
       }
       try {
         const hit = this.cassette.take(body);
-        const s = this.cassette.stats();
-        this.replayHits = s.hits;
-        this.replayRepeats = s.repeats;
         res.writeHead(hit.status, { "content-type": "application/json", connection: "close" });
         res.end(hit.body);
       } catch (err) {

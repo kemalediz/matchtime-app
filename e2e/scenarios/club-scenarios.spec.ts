@@ -75,6 +75,7 @@ for (const club of clubs) {
       rate: ratePage(browser),
       nonce: club.replace(/[^a-z0-9]/g, ""),
       wideSnapshot: true,
+      stableRowOrder: true,
     });
     const started = Date.now();
     let result;

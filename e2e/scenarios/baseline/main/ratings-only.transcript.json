@@ -1,0 +1,576 @@
+{
+ "version": 1,
+ "club": "ratings-only",
+ "title": "Ratings only type: no attendance (featureAttendance off), Man of the Match and ratings only",
+ "mode": "replay",
+ "steps": [
+  {
+   "seq": -1,
+   "step": "before the first step",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 0,
+   "step": "2026-11-09 08:00 note: Monday: a club that uses MatchTime for Man of the Match and ratings only (no IN list), game Thursday 19:00",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 1,
+   "step": "2026-11-09 08:00 club-live (90 days)",
+   "out": [],
+   "handled": [],
+   "db": [
+    "club: approval: (new) approved",
+    "club: members: (new) 11",
+    "club: muted: (new) no",
+    "club: stage: (new) live, bot on",
+    "member Lee Carter: (new) OWNER",
+    "member Mark Evans: (new) PLAYER",
+    "member Nick Burns: (new) PLAYER",
+    "member Owen Platt: (new) PLAYER",
+    "member Paul Dunn: (new) PLAYER",
+    "member Quinn Hart: (new) PLAYER",
+    "member Ross Kemp: (new) PLAYER",
+    "member Sean Tully: (new) PLAYER",
+    "member Tony Wade: (new) PLAYER",
+    "member Vic Moss: (new) PLAYER",
+    "member Will Rowe: (new) PLAYER",
+    "sent-notification org-<club>:bot-intro: (new) bot-intro",
+    "user @lee: (new) name \"Lee Carter\"",
+    "user @mark: (new) name \"Mark Evans\"",
+    "user @nick: (new) name \"Nick Burns\"",
+    "user @owen: (new) name \"Owen Platt\"",
+    "user @paul: (new) name \"Paul Dunn\"",
+    "user @quinn: (new) name \"Quinn Hart\"",
+    "user @ross: (new) name \"Ross Kemp\"",
+    "user @sean: (new) name \"Sean Tully\"",
+    "user @tony: (new) name \"Tony Wade\"",
+    "user @vic: (new) name \"Vic Moss\"",
+    "user @will: (new) name \"Will Rowe\""
+   ],
+   "errors": []
+  },
+  {
+   "seq": 2,
+   "step": "2026-11-09 08:02 cron /api/cron/generate-matches",
+   "out": [
+    {
+     "at": "2026-11-09 10:00",
+     "to": "dm @lee",
+     "kind": "out",
+     "text": "📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    }
+   ],
+   "handled": [],
+   "db": [
+    "<match 2026-11-12 19:00>: places: (new) 10",
+    "match 2026-11-12 19:00: status: (new) UPCOMING",
+    "botjob dm → @lee: 📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no: (new) sent"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 3,
+   "step": "2026-11-10 12:00 main @mark: \"in for thursday\"",
+   "out": [],
+   "handled": [
+    "@mark in main: \"in for thursday\" → ignored / noise"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 4,
+   "step": "2026-11-10 12:05 main @nick [tag]: \"@Match Time how many are playing thursday?\"",
+   "out": [
+    {
+     "at": "2026-11-10 12:10",
+     "to": "group main",
+     "kind": "out",
+     "text": "I didn't catch what you'd like me to do. Type *@Match Time help* to see what I can do.",
+     "via": "analyze reply",
+     "replyTo": "@nick: @Match Time how many are playing thursday?"
+    }
+   ],
+   "handled": [
+    "@nick in main: \"@Match Time how many are playing thursday?\" → fast-path / not_understood"
+   ],
+   "db": [
+    "sent-notification greply:<club>:wa-ratingsonly-3: (new) group-reply",
+    "<match 2026-11-19 19:00>: places: (new) 10",
+    "match 2026-11-19 19:00: status: (new) UPCOMING"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 5,
+   "step": "2026-11-12 17:00 main @lee: \"Thursday 5s tonight\\n\\n1. Lee\\n2. Mark\\n3. Nick\\n4. Owen\\n5. Paul\\n6. Quinn\\n7. Ross\\n8. Sean\\n9. Tony\\n10. Vic\"",
+   "out": [],
+   "handled": [
+    "@lee in main: \"Thursday 5s tonight\\n\\n1. Lee\\n2. Mark\\n3. Nick\\n4. Owen\\n5. Paul\\n6. Quinn\\n7. Ross\\n8. Sean\\n9. Tony\\n10. Vic\" → fast-path / pasted_roster"
+   ],
+   "db": [
+    "<match 2026-11-12 19:00>: attendance @lee: (new) CONFIRMED #1",
+    "<match 2026-11-12 19:00>: attendance @mark: (new) CONFIRMED #2",
+    "<match 2026-11-12 19:00>: attendance @nick: (new) CONFIRMED #3",
+    "<match 2026-11-12 19:00>: attendance @owen: (new) CONFIRMED #4",
+    "<match 2026-11-12 19:00>: attendance @paul: (new) CONFIRMED #5",
+    "<match 2026-11-12 19:00>: attendance @quinn: (new) CONFIRMED #6",
+    "<match 2026-11-12 19:00>: attendance @ross: (new) CONFIRMED #7",
+    "<match 2026-11-12 19:00>: attendance @sean: (new) CONFIRMED #8",
+    "<match 2026-11-12 19:00>: attendance @tony: (new) CONFIRMED #9",
+    "<match 2026-11-12 19:00>: attendance @vic: (new) CONFIRMED #10",
+    "alias \"lee\": (new) @lee (auto-detect)",
+    "match 2026-11-12 19:00: Lee Carter: (new) CONFIRMED",
+    "match 2026-11-12 19:00: Mark Evans: (new) CONFIRMED",
+    "match 2026-11-12 19:00: Nick Burns: (new) CONFIRMED",
+    "match 2026-11-12 19:00: Owen Platt: (new) CONFIRMED",
+    "match 2026-11-12 19:00: Paul Dunn: (new) CONFIRMED",
+    "match 2026-11-12 19:00: Quinn Hart: (new) CONFIRMED",
+    "match 2026-11-12 19:00: Ross Kemp: (new) CONFIRMED",
+    "match 2026-11-12 19:00: Sean Tully: (new) CONFIRMED",
+    "match 2026-11-12 19:00: Tony Wade: (new) CONFIRMED",
+    "match 2026-11-12 19:00: Vic Moss: (new) CONFIRMED",
+    "match 2026-11-12 19:00: status: UPCOMING → COMPLETED"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 6,
+   "step": "2026-11-12 20:30 main @lee: \"Reds 7 Blues 5 tonight\"",
+   "out": [
+    {
+     "at": "2026-11-12 20:40",
+     "to": "group main",
+     "kind": "react",
+     "text": "👍",
+     "replyTo": "@lee: Reds 7 Blues 5 tonight"
+    },
+    {
+     "at": "2026-11-12 20:40",
+     "to": "group main",
+     "kind": "out",
+     "text": "Got it 👍 *Reds* won 7 - 5 against Blues. Recorded.",
+     "via": "analyze reply",
+     "replyTo": "@lee: Reds 7 Blues 5 tonight"
+    },
+    {
+     "at": "2026-11-13 08:00",
+     "to": "dm @lee",
+     "kind": "out",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-dm:@lee"
+    },
+    {
+     "at": "2026-11-13 08:00",
+     "to": "dm @mark",
+     "kind": "out",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-dm:@mark"
+    },
+    {
+     "at": "2026-11-13 08:00",
+     "to": "dm @nick",
+     "kind": "out",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-dm:@nick"
+    },
+    {
+     "at": "2026-11-13 08:00",
+     "to": "dm @owen",
+     "kind": "out",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-dm:@owen"
+    },
+    {
+     "at": "2026-11-13 08:00",
+     "to": "dm @paul",
+     "kind": "out",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-dm:@paul"
+    },
+    {
+     "at": "2026-11-13 08:00",
+     "to": "dm @quinn",
+     "kind": "out",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-dm:@quinn"
+    },
+    {
+     "at": "2026-11-13 08:00",
+     "to": "dm @ross",
+     "kind": "out",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-dm:@ross"
+    },
+    {
+     "at": "2026-11-13 08:00",
+     "to": "dm @sean",
+     "kind": "out",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-dm:@sean"
+    },
+    {
+     "at": "2026-11-13 08:00",
+     "to": "dm @tony",
+     "kind": "out",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-dm:@tony"
+    },
+    {
+     "at": "2026-11-13 08:00",
+     "to": "dm @vic",
+     "kind": "out",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-dm:@vic"
+    }
+   ],
+   "handled": [
+    "@lee in main: \"Reds 7 Blues 5 tonight\" → llm / score"
+   ],
+   "db": [
+    "match 2026-11-12 19:00: score: (new) 7-5",
+    "sent-notification greply:<club>:wa-ratingsonly-6: (new) group-reply",
+    "sent-notification <match 2026-11-12 19:00>:rate-dm:@lee: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-dm:@mark: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-dm:@nick: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-dm:@owen: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-dm:@paul: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-dm:@quinn: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-dm:@ross: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-dm:@sean: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-dm:@tony: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-dm:@vic: (new) dm"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 7,
+   "step": "2026-11-13 09:00 rate @mark MoM /Nick/",
+   "out": [
+    {
+     "at": "2026-11-13 09:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🎯 Just DM'd every player from the *Thursday Fives Sandbox* on Thu 12 Nov a personal rating link. The more ratings we get, the better-balanced the teams get next week. Check your DMs from me 👇",
+     "instruction": "group-message",
+     "key": "<match 2026-11-12 19:00>:rate-promo"
+    }
+   ],
+   "handled": [
+    "@mark in dm @mark: \"(opens the rating link and submits, Man of the Match: /Nick/)\" → rating page: submitted (default scores; Man of the Match: N Nick Burns)"
+   ],
+   "db": [
+    "<match 2026-11-12 19:00>: MoM votes for @nick: (new) 1",
+    "match 2026-11-12 19:00: MoM votes: (new) 1",
+    "match 2026-11-12 19:00: ratings: (new) 9",
+    "sent-notification <match 2026-11-12 19:00>:rate-promo: (new) group-message",
+    "sent-notification txtlog:<club>:c9e1cc38b900fe0b:<match 2026-11-12 19:00>:rate-promo: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 8,
+   "step": "2026-11-13 09:10 rate @ross MoM /Nick/",
+   "out": [],
+   "handled": [
+    "@ross in dm @ross: \"(opens the rating link and submits, Man of the Match: /Nick/)\" → rating page: submitted (default scores; Man of the Match: N Nick Burns)"
+   ],
+   "db": [
+    "<match 2026-11-12 19:00>: MoM votes for @nick: 1 → 2",
+    "match 2026-11-12 19:00: MoM votes: 1 → 2",
+    "match 2026-11-12 19:00: ratings: 9 → 18"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 9,
+   "step": "2026-11-14 12:00 rate @lee MoM /Owen/",
+   "out": [
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @nick",
+     "kind": "out",
+     "text": "Hey Nick 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@nick:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @owen",
+     "kind": "out",
+     "text": "Hey Owen 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@owen:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @paul",
+     "kind": "out",
+     "text": "Hey Paul 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@paul:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @quinn",
+     "kind": "out",
+     "text": "Hey Quinn 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@quinn:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @sean",
+     "kind": "out",
+     "text": "Hey Sean 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@sean:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @tony",
+     "kind": "out",
+     "text": "Hey Tony 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@tony:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @vic",
+     "kind": "out",
+     "text": "Hey Vic 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@vic:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🏅 *New badges this week*\n\n👟 *On the board*: welcome *Lee Carter*, *Mark Evans*, *Nick Burns*, *Owen Platt*, *Paul Dunn*, *Quinn Hart*, *Ross Kemp*, *Sean Tully*, *Tony Wade* and *Vic Moss*, first games for the club! 🎉\n\nWell played all! 👏\n📊 See your own stats and badges any time: tap the stats link in my rating DM after each match.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-12 19:00>:badges"
+    },
+    {
+     "at": "2026-11-16 10:00",
+     "to": "dm @lee",
+     "kind": "out",
+     "text": "📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-16 18:00",
+     "to": "dm @nick",
+     "kind": "out",
+     "text": "Last reminder, Nick 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@nick:2026-11-16"
+    },
+    {
+     "at": "2026-11-16 18:00",
+     "to": "dm @owen",
+     "kind": "out",
+     "text": "Last reminder, Owen 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@owen:2026-11-16"
+    },
+    {
+     "at": "2026-11-16 18:00",
+     "to": "dm @paul",
+     "kind": "out",
+     "text": "Last reminder, Paul 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@paul:2026-11-16"
+    },
+    {
+     "at": "2026-11-16 18:00",
+     "to": "dm @quinn",
+     "kind": "out",
+     "text": "Last reminder, Quinn 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@quinn:2026-11-16"
+    },
+    {
+     "at": "2026-11-16 18:00",
+     "to": "dm @sean",
+     "kind": "out",
+     "text": "Last reminder, Sean 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@sean:2026-11-16"
+    },
+    {
+     "at": "2026-11-16 18:00",
+     "to": "dm @tony",
+     "kind": "out",
+     "text": "Last reminder, Tony 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@tony:2026-11-16"
+    },
+    {
+     "at": "2026-11-16 18:00",
+     "to": "dm @vic",
+     "kind": "out",
+     "text": "Last reminder, Vic 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-12 19:00>:rate-reminder:@vic:2026-11-16"
+    },
+    {
+     "at": "2026-11-17 19:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🏆 *Man of the Match: Thursday Fives Sandbox*\n\nCongrats *Nick Burns* (2/3 votes) 🎉\n\nVotes:\n• Nick Burns (2)\n• Owen Platt (1)",
+     "instruction": "group-message",
+     "key": "<match 2026-11-12 19:00>:mom-announcement"
+    }
+   ],
+   "handled": [
+    "@lee in dm @lee: \"(opens the rating link and submits, Man of the Match: /Owen/)\" → rating page: submitted (default scores; Man of the Match: O Owen Platt)"
+   ],
+   "db": [
+    "<match 2026-11-12 19:00>: MoM votes for @owen: (new) 1",
+    "match 2026-11-12 19:00: MoM votes: 2 → 3",
+    "match 2026-11-12 19:00: ratings: 18 → 27",
+    "sent-notification <match 2026-11-12 19:00>:badges: (new) group-message",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@nick:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@owen:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@paul:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@quinn:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@sean:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@tony:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@vic:2026-11-14: (new) dm",
+    "sent-notification txtlog:<club>:28672f2ab5abd6fa:<match 2026-11-12 19:00>:badges: (new) outbound-text-log",
+    "botjob dm → @lee: 📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no (#2): (new) sent",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@nick:2026-11-16: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@owen:2026-11-16: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@paul:2026-11-16: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@quinn:2026-11-16: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@sean:2026-11-16: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@tony:2026-11-16: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:rate-reminder:@vic:2026-11-16: (new) dm",
+    "sent-notification <match 2026-11-12 19:00>:mom-announcement: (new) group-message",
+    "sent-notification txtlog:<club>:350fd739205fe645:<match 2026-11-12 19:00>:mom-announcement: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 10,
+   "step": "2026-11-18 09:00 note: Wednesday: the rating window has closed",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  }
+ ],
+ "final": {
+  "<match 2026-11-12 19:00>: MoM votes for @nick": "2",
+  "<match 2026-11-12 19:00>: MoM votes for @owen": "1",
+  "<match 2026-11-12 19:00>: attendance @lee": "CONFIRMED #1",
+  "<match 2026-11-12 19:00>: attendance @mark": "CONFIRMED #2",
+  "<match 2026-11-12 19:00>: attendance @nick": "CONFIRMED #3",
+  "<match 2026-11-12 19:00>: attendance @owen": "CONFIRMED #4",
+  "<match 2026-11-12 19:00>: attendance @paul": "CONFIRMED #5",
+  "<match 2026-11-12 19:00>: attendance @quinn": "CONFIRMED #6",
+  "<match 2026-11-12 19:00>: attendance @ross": "CONFIRMED #7",
+  "<match 2026-11-12 19:00>: attendance @sean": "CONFIRMED #8",
+  "<match 2026-11-12 19:00>: attendance @tony": "CONFIRMED #9",
+  "<match 2026-11-12 19:00>: attendance @vic": "CONFIRMED #10",
+  "<match 2026-11-12 19:00>: places": "10",
+  "<match 2026-11-19 19:00>: places": "10",
+  "alias \"lee\"": "@lee (auto-detect)",
+  "botjob dm → @lee: 📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no": "sent",
+  "botjob dm → @lee: 📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no (#2)": "sent",
+  "club: approval": "approved",
+  "club: members": "11",
+  "club: muted": "no",
+  "club: stage": "live, bot on",
+  "match 2026-11-12 19:00: Lee Carter": "CONFIRMED",
+  "match 2026-11-12 19:00: Mark Evans": "CONFIRMED",
+  "match 2026-11-12 19:00: MoM votes": "3",
+  "match 2026-11-12 19:00: Nick Burns": "CONFIRMED",
+  "match 2026-11-12 19:00: Owen Platt": "CONFIRMED",
+  "match 2026-11-12 19:00: Paul Dunn": "CONFIRMED",
+  "match 2026-11-12 19:00: Quinn Hart": "CONFIRMED",
+  "match 2026-11-12 19:00: Ross Kemp": "CONFIRMED",
+  "match 2026-11-12 19:00: Sean Tully": "CONFIRMED",
+  "match 2026-11-12 19:00: Tony Wade": "CONFIRMED",
+  "match 2026-11-12 19:00: Vic Moss": "CONFIRMED",
+  "match 2026-11-12 19:00: ratings": "27",
+  "match 2026-11-12 19:00: score": "7-5",
+  "match 2026-11-12 19:00: status": "COMPLETED",
+  "match 2026-11-19 19:00: status": "UPCOMING",
+  "member Lee Carter": "OWNER",
+  "member Mark Evans": "PLAYER",
+  "member Nick Burns": "PLAYER",
+  "member Owen Platt": "PLAYER",
+  "member Paul Dunn": "PLAYER",
+  "member Quinn Hart": "PLAYER",
+  "member Ross Kemp": "PLAYER",
+  "member Sean Tully": "PLAYER",
+  "member Tony Wade": "PLAYER",
+  "member Vic Moss": "PLAYER",
+  "member Will Rowe": "PLAYER",
+  "sent-notification <match 2026-11-12 19:00>:badges": "group-message",
+  "sent-notification <match 2026-11-12 19:00>:mom-announcement": "group-message",
+  "sent-notification <match 2026-11-12 19:00>:rate-dm:@lee": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-dm:@mark": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-dm:@nick": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-dm:@owen": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-dm:@paul": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-dm:@quinn": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-dm:@ross": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-dm:@sean": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-dm:@tony": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-dm:@vic": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-promo": "group-message",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@nick:2026-11-14": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@nick:2026-11-16": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@owen:2026-11-14": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@owen:2026-11-16": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@paul:2026-11-14": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@paul:2026-11-16": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@quinn:2026-11-14": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@quinn:2026-11-16": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@sean:2026-11-14": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@sean:2026-11-16": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@tony:2026-11-14": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@tony:2026-11-16": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@vic:2026-11-14": "dm",
+  "sent-notification <match 2026-11-12 19:00>:rate-reminder:@vic:2026-11-16": "dm",
+  "sent-notification greply:<club>:wa-ratingsonly-3": "group-reply",
+  "sent-notification greply:<club>:wa-ratingsonly-6": "group-reply",
+  "sent-notification org-<club>:bot-intro": "bot-intro",
+  "sent-notification txtlog:<club>:28672f2ab5abd6fa:<match 2026-11-12 19:00>:badges": "outbound-text-log",
+  "sent-notification txtlog:<club>:350fd739205fe645:<match 2026-11-12 19:00>:mom-announcement": "outbound-text-log",
+  "sent-notification txtlog:<club>:c9e1cc38b900fe0b:<match 2026-11-12 19:00>:rate-promo": "outbound-text-log",
+  "user @lee": "name \"Lee Carter\"",
+  "user @mark": "name \"Mark Evans\"",
+  "user @nick": "name \"Nick Burns\"",
+  "user @owen": "name \"Owen Platt\"",
+  "user @paul": "name \"Paul Dunn\"",
+  "user @quinn": "name \"Quinn Hart\"",
+  "user @ross": "name \"Ross Kemp\"",
+  "user @sean": "name \"Sean Tully\"",
+  "user @tony": "name \"Tony Wade\"",
+  "user @vic": "name \"Vic Moss\"",
+  "user @will": "name \"Will Rowe\""
+ }
+}
