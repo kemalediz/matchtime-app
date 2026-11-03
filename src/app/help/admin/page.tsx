@@ -133,25 +133,67 @@ export default async function AdminGuidePage() {
         yourself (see the next section).
       </p>
 
-      <h3 id="min-players">Playing one or two down</h3>
+      <h3 id="min-players">How many you play with: 6, 7 or 8 a side</h3>
       <p>
-        If you happily play with fewer than two full sides (say 13 for a
-        7-a-side, six against seven), set the fewest you play with. MatchTime
-        then only warns you about low numbers, and only offers to cancel, below
-        that. The places don&apos;t change: an open place is still offered to
-        players.
+        If your numbers change from week to week (say you play 7-a-side, but
+        6-a-side when it&apos;s quiet and 8-a-side when lots turn up), set the
+        fewest and the most players you play with. Both are even numbers, so
+        the two sides are the same size. With 12 to 16 players you can play
+        6, 7 or 8 a side.
       </p>
       <ul>
         <li>
           In <strong>Activities</strong>, edit the game and fill in{" "}
-          <strong>Minimum players</strong>. Leave it empty for two full sides.
+          <strong>Minimum players</strong> and <strong>Maximum players</strong>.
+          The form shows what they allow. Leave both empty for the game&apos;s
+          own size only.
         </li>
         <li>
           Or tag MatchTime in WhatsApp, in your admin group or the
-          players&apos; group: <code>@Match Time we can play with 12</code> or{" "}
-          <code>@Match Time minimum 12 players</code>, and{" "}
-          <code>@Match Time back to full teams</code> to undo it. Only an
-          organiser or admin can change it.
+          players&apos; group: <code>@Match Time we play with 12 to 16</code>,{" "}
+          <code>@Match Time we can play with 12</code>, and{" "}
+          <code>@Match Time back to full teams</code> to undo the minimum.
+          Only an organiser or admin can change it.
+        </li>
+        <li>
+          Below the minimum MatchTime warns you about low numbers and offers to
+          cancel; above it, it doesn&apos;t. With a minimum set, the teams are
+          made from that number up, one side a player short if needed (7
+          against 6), balanced so the short side gets the stronger players.
+        </li>
+      </ul>
+
+      <h3 id="switch-size">Making one game bigger or smaller</h3>
+      <p>
+        Any organiser can switch one game to another size inside those
+        numbers, at any time before kick-off, whatever the squad count:
+      </p>
+      <ul>
+        <li>
+          Tag MatchTime: <code>@Match Time make it 8 a side</code> or{" "}
+          <code>@Match Time 6 a side on Monday</code>. Or open the match,
+          press <strong>Switch format</strong> and pick a size.
+        </li>
+        <li>
+          Going up, the bench moves into the new places in bench order. Each
+          of them gets a DM that they&apos;re in (and can reply OUT), and pays
+          as they go for that game.
+        </li>
+        <li>
+          Going down, the squad above the new size goes to the bench, the last
+          to join first. In a monthly squad, pay as you go players go before
+          any regular. Each is told by DM.
+        </li>
+        <li>
+          MatchTime then posts the new list. Teams already made are cleared, so
+          make them again.
+        </li>
+        <li>
+          When the squad is full and two are waiting on the bench, MatchTime
+          suggests going up a size in the players&apos; group and names the
+          organisers. Only an organiser&apos;s <strong>yes</strong>, as a reply
+          to that message, switches it. It asks once for each size, and again
+          only if the bench empties and fills up again.
         </li>
       </ul>
 
@@ -648,7 +690,7 @@ export default async function AdminGuidePage() {
           <strong>Cancel</strong>: the day before, around 18:00, when numbers
           are below the fewest you can play with: two full sides of your
           smallest format, or the minimum you set (see{" "}
-          <a href="#min-players">Playing one or two down</a>).
+          <a href="#min-players">How many you play with</a>).
         </li>
       </ul>
       <p>

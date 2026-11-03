@@ -6,7 +6,7 @@ import { Plus, Zap, X } from "lucide-react";
 import {
   createActivity,
   updateActivity,
-  setActivityMinPlayers,
+  setActivityPlayerRange,
   generateMatchesForActivity,
 } from "@/app/actions/activities";
 import { DAYS_OF_WEEK } from "@/lib/constants";
@@ -21,8 +21,9 @@ import { t } from "@/lib/i18n/t";
 import { activityFeeText, parseActivityFee } from "@/lib/activity-fee";
 import { FEE_EDIT_PARAM } from "@/lib/setup-learning/suggestion-action";
 import { activityTimingsPatch, type ActivityTimings } from "@/lib/activity-timings";
-import { checkMinPlayers, parseMinPlayersInput } from "@/lib/min-players";
-import { minPlayersCopy } from "@/lib/i18n/min-players";
+import { parsePlayersInput } from "@/lib/min-players";
+import { PLAYERS_CEILING, checkPlayerRange, playerRange, sidesInRange } from "@/lib/flex-format-rules";
+import { flexFormatCopy, type RangeRefusal } from "@/lib/i18n/flex-format";
 
 interface Sport {
   id: string;
@@ -54,6 +55,8 @@ interface Activity {
   feeSplitTotal: boolean;
   /** The fewest players the game is played with; null: two full sides. */
   minPlayers: number | null;
+  /** The most players the game is played with; null: its own places. */
+  maxPlayers: number | null;
   createdAt: string;
 }
 
@@ -63,7 +66,7 @@ const PENDING_RELOADS = 12;
 export default function ActivitiesPage() {
   const lang = useOrgLang();
   const s = t(lang);
-  const mp = minPlayersCopy(lang);
+  const ff = flexFormatCopy(lang);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [sports, setSports] = useState<Sport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,7 +108,23 @@ export default function ActivitiesPage() {
   // when changed.
   const [eMin, setEMin] = useState("");
   const [eMinWas, setEMinWas] = useState("");
+  // And the most players (2026-11-03): the two boxes make the game's range.
+  const [eMax, setEMax] = useState("");
+  const [eMaxWas, setEMaxWas] = useState("");
   const [ePlaces, setEPlaces] = useState(0);
+  // What the two boxes allow, as typed: "With 12 to 16 players you can
+  // play 6, 7 or 8 a side." Nothing while either box is not a valid even
+  // number (the save says why).
+  const rangeAllows = (() => {
+    if (!ePlaces) return null;
+    const min = parsePlayersInput(eMin);
+    const max = parsePlayersInput(eMax);
+    if (!min.ok || !max.ok) return null;
+    const checked = checkPlayerRange({ min: min.value, max: max.value, normal: ePlaces });
+    if (!checked.ok) return null;
+    const r = playerRange({ minPlayers: checked.min, maxPlayers: checked.max, playersPerTeam: ePlaces / 2 });
+    return ff.allows({ min: r.min, max: r.max, sides: sidesInRange(r) });
+  })();
   const [eSaving, setESaving] = useState(false);
   // The setup reading's fee suggestion links here with `?edit=fee`
   // (setup-learning/suggestion-action.ts): the weekly game's edit form
@@ -213,8 +232,17 @@ export default function ActivitiesPage() {
     setETimingsWas({ matchDurationMins: a.matchDurationMins, deadlineHours: a.deadlineHours });
     setEMin(a.minPlayers != null ? String(a.minPlayers) : "");
     setEMinWas(a.minPlayers != null ? String(a.minPlayers) : "");
+    setEMax(a.maxPlayers != null ? String(a.maxPlayers) : "");
+    setEMaxWas(a.maxPlayers != null ? String(a.maxPlayers) : "");
     setEPlaces(a.sport.playersPerTeam * 2);
     setFocusFee(false);
+  }
+
+  /** A refusal in the club's language, for the two player boxes. */
+  function rangeError(error: RangeRefusal, field: "min" | "max"): string {
+    const a = activities.find((x) => x.id === editId);
+    if (error === "not-a-number") return ff.pageInvalid;
+    return ff.rangeRefused({ error, field, activityName: a?.name ?? eName, places: ePlaces, ceiling: PLAYERS_CEILING, url: "" });
   }
 
   async function handleEdit(e: React.FormEvent) {
@@ -224,9 +252,19 @@ export default function ActivitiesPage() {
     if (feeChanged && !parseActivityFee(eFee).ok) return toast.error(s.act_fee_invalid);
     const timings = activityTimingsPatch({ matchDurationMins: eDuration, deadlineHours: eDeadline }, eTimingsWas);
     if (!timings.ok) return toast.error(timings.field === "matchDurationMins" ? s.act_duration_invalid : s.act_deadline_invalid);
+    // The range (2026-11-03): only a changed box is checked and sent, so a
+    // minimum saved before minimums were even never blocks the rest.
     const minChanged = eMin.trim() !== eMinWas;
-    const min = parseMinPlayersInput(eMin);
-    if (minChanged && (!min.ok || !checkMinPlayers(min.value, ePlaces).ok)) return toast.error(mp.invalid({ places: ePlaces }));
+    const maxChanged = eMax.trim() !== eMaxWas;
+    const min = parsePlayersInput(eMin);
+    const max = parsePlayersInput(eMax);
+    if ((minChanged && !min.ok) || (maxChanged && !max.ok)) return toast.error(rangeError("not-a-number", minChanged && !min.ok ? "min" : "max"));
+    const checked = checkPlayerRange({
+      min: minChanged && min.ok ? min.value : null,
+      max: maxChanged && max.ok ? max.value : null,
+      normal: ePlaces,
+    });
+    if (!checked.ok) return toast.error(rangeError(checked.error, checked.field));
     setESaving(true);
     try {
       await updateActivity(editId, {
@@ -238,7 +276,12 @@ export default function ActivitiesPage() {
         ...(feeChanged ? { feePerPlayer: eFee } : {}),
         ...timings.patch,
       });
-      if (minChanged && min.ok) await setActivityMinPlayers(editId, min.value);
+      if ((minChanged && min.ok) || (maxChanged && max.ok)) {
+        await setActivityPlayerRange(editId, {
+          ...(minChanged && min.ok ? { min: min.value } : {}),
+          ...(maxChanged && max.ok ? { max: max.value } : {}),
+        });
+      }
       toast.success("Activity updated");
       setEditId(null);
       reloadAfterSave();
@@ -304,7 +347,12 @@ export default function ActivitiesPage() {
                   {!a.feeSplitTotal && activityFeeText(a.feePerPlayer) && (
                     <span data-testid="activity-fee-row"> · {s.act_fee_row({ fee: activityFeeText(a.feePerPlayer) })}</span>
                   )}
-                  {a.minPlayers != null && <span data-testid="activity-min-players-row"> · {mp.row({ minimum: a.minPlayers })}</span>}
+                  {(a.minPlayers != null || a.maxPlayers != null) && (
+                    <span data-testid="activity-player-range-row">
+                      {" "}
+                      · {ff.row({ sides: sidesInRange(playerRange({ minPlayers: a.minPlayers, maxPlayers: a.maxPlayers, playersPerTeam: a.sport.playersPerTeam })) })}
+                    </span>
+                  )}
                 </p>
                 <VenueConfirmLine activityId={a.id} location={a.venueLocation} lang={lang} onChanged={loadActivities} />
                 <p className="flex flex-wrap items-center gap-1 text-xs text-slate-400 mt-0.5">
@@ -561,25 +609,56 @@ export default function ActivitiesPage() {
                   {s.act_timings_hint}
                 </p>
               </div>
-              <div>
-                <label htmlFor="activity-min-players" className="block text-sm font-medium text-slate-700 mb-1.5">
-                  {mp.label}
-                </label>
-                {/* No min or max here: a changed value is checked on save. */}
-                <input
-                  id="activity-min-players"
-                  data-testid="activity-min-players"
-                  type="number"
-                  inputMode="numeric"
-                  value={eMin}
-                  onChange={(e) => setEMin(e.target.value)}
-                  placeholder={String(ePlaces)}
-                  aria-describedby="activity-min-players-hint"
-                  className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p id="activity-min-players-hint" data-testid="activity-min-players-hint" className="mt-1 text-xs text-slate-400">
-                  {mp.hint({ full: ePlaces })}
-                </p>
+              {/* The game's range (2026-11-03): the fewest and the most
+                  players, even numbers, and the sizes they allow. */}
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="activity-min-players" className="block text-sm font-medium text-slate-700 mb-1.5">
+                    {ff.minLabel}
+                  </label>
+                  {/* No min or max here: a changed value is checked on save. */}
+                  <input
+                    id="activity-min-players"
+                    data-testid="activity-min-players"
+                    type="number"
+                    inputMode="numeric"
+                    step={2}
+                    value={eMin}
+                    onChange={(e) => setEMin(e.target.value)}
+                    placeholder={String(ePlaces)}
+                    aria-describedby="activity-min-players-hint"
+                    className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p id="activity-min-players-hint" data-testid="activity-min-players-hint" className="mt-1 text-xs text-slate-400">
+                    {ff.minHint({ full: ePlaces })}
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="activity-max-players" className="block text-sm font-medium text-slate-700 mb-1.5">
+                    {ff.maxLabel}
+                  </label>
+                  {/* No min or max here: a changed value is checked on save. */}
+                  <input
+                    id="activity-max-players"
+                    data-testid="activity-max-players"
+                    type="number"
+                    inputMode="numeric"
+                    step={2}
+                    value={eMax}
+                    onChange={(e) => setEMax(e.target.value)}
+                    placeholder={String(ePlaces)}
+                    aria-describedby="activity-max-players-hint"
+                    className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p id="activity-max-players-hint" data-testid="activity-max-players-hint" className="mt-1 text-xs text-slate-400">
+                    {ff.maxHint({ full: ePlaces })}
+                  </p>
+                </div>
+                {rangeAllows && (
+                  <p data-testid="activity-player-range-allows" className="text-sm text-slate-600">
+                    {rangeAllows}
+                  </p>
+                )}
               </div>
               <div>
                 <label htmlFor="activity-fee" className="block text-sm font-medium text-slate-700 mb-1.5">

@@ -361,7 +361,7 @@ async function lockWeek(tx: Tx, matchId: string): Promise<void> {
  * attendance log can: `registerAttendance` notes an explicit request on the
  * event. A player counts when their LATEST move to the bench was one.
  */
-async function loadChoseBench(client: Pick<Tx, "attendanceEvent">, matchId: string): Promise<Set<string>> {
+export async function loadChoseBench(client: Pick<Tx, "attendanceEvent">, matchId: string): Promise<Set<string>> {
   const moves = await client.attendanceEvent.findMany({
     where: { matchId, toStatus: "BENCH" },
     select: { userId: true, note: true },

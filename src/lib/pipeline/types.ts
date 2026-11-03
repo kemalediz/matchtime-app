@@ -778,7 +778,8 @@ export interface AdminFacts {
     | "set_venue"
     | "retry_ask"
     | "quiet_hours"
-    | "min_players"
+    | "player_numbers"
+    | "switch_format"
     | "other";
   /** bulk_payment */
   payerRef?: string;
@@ -787,7 +788,7 @@ export interface AdminFacts {
   coveredRefs?: string[];
   /** fee_waiver: true when the message takes a free place back. */
   undo?: boolean;
-  /** fee_waiver, cancel_match, restore_match, min_players: the day named for the game, verbatim ("next Friday").
+  /** fee_waiver, cancel_match, restore_match, player_numbers, switch_format: the day named for the game, verbatim ("next Friday").
    *  Resolved by code (`fee-waiver-rules.ts` `readDayHint`), never the model. */
   matchDay?: string;
   /** cancel_match, restore_match (2026-10-28): the game meant has already
@@ -870,13 +871,22 @@ export interface AdminFacts {
    * untagged action that leaves HQ needs it (`admin-group-understand.ts`).
    */
   toMatchTime?: boolean;
-  /** min_players (2026-11-03, the Vets play one down): the fewest players
-   *  said ("we can play with 12"). Absent when none was said. Checked by
-   *  code (`checkMinPlayers`, min-players.ts), never trusted as a value. */
+  /** player_numbers (2026-11-03, the Vets play 6, 7 or 8 a side): the
+   *  fewest players said ("we can play with 12"), as written: a side when
+   *  `aSide`. Absent when none was said. Checked by code
+   *  (`checkPlayerRange`, flex-format-rules.ts), never trusted as a value. */
   minPlayers?: number;
-  /** min_players: back to two full sides ("back to full teams"). Set only
-   *  when true. */
+  /** player_numbers: the most players said ("up to 16"), as written. */
+  maxPlayers?: number;
+  /** player_numbers: back to two full sides ("back to full teams"). Set
+   *  only when true. */
   fullTeams?: true;
+  /** switch_format: the number said for one game ("8 aside" 8, "16
+   *  players" 16), or the size MatchTime's own offer names. */
+  size?: number;
+  /** player_numbers, switch_format: the numbers count ONE side, so code
+   *  doubles them. Set only when true. */
+  aSide?: true;
   /** season_break (2026-10-29): months with no football, "YYYY-MM". */
   breakMonths?: string[];
   /** season_break: months the football is on or back in, "YYYY-MM". */

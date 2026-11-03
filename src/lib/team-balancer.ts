@@ -32,38 +32,55 @@ export interface BalanceOptions {
    *  pathway and by the admin "swap X to RED" UI. Hill-climb skips
    *  swaps that would move a pinned player off their team. */
   pinnedToTeam?: Record<string, "RED" | "YELLOW">;
+  /** The fewest players to make teams with (2026-11-03, the Vets play 6
+   *  against 7): from this many up to `perTeam * 2`, the sides are as even
+   *  in number as the count allows (13 is 7 and 6), balanced on TOTAL
+   *  rating, so the side one short gets the stronger players. Absent: two
+   *  full sides, exactly as before. The caller decides it
+   *  (`teamsNeeded`, flex-format-rules.ts). */
+  minPlayers?: number;
 }
 
 export function balanceTeams(opts: BalanceOptions): TeamResult {
   const { players, perTeam, strategy, composition, pinnedToTeam } = opts;
 
-  if (players.length < perTeam * 2) {
-    throw new Error(`Need at least ${perTeam * 2} players, got ${players.length}`);
+  const needed = Math.max(2, Math.min(opts.minPlayers ?? perTeam * 2, perTeam * 2));
+  if (players.length < needed) {
+    throw new Error(`Need at least ${needed} players, got ${players.length}`);
   }
+  // The sides: `perTeam` each for a full squad (as always); for fewer, the
+  // odd one on red (13 is 7 and 6).
+  const n = Math.min(players.length, perTeam * 2);
+  const sides: Sides = { red: Math.ceil(n / 2), yellow: Math.floor(n / 2) };
 
   if (strategy === "position-aware" && composition) {
-    return balancePositionAware(players, perTeam, composition, pinnedToTeam ?? {});
+    return balancePositionAware(players.slice(0, n), sides, composition, pinnedToTeam ?? {});
   }
   // "rating-only" and (for now) "role-quota" fall through to rating-only.
-  return balanceRatingOnly(players, perTeam, pinnedToTeam ?? {});
+  return balanceRatingOnly(players.slice(0, n), sides, pinnedToTeam ?? {});
+}
+
+/** How many players each side takes. */
+interface Sides {
+  red: number;
+  yellow: number;
 }
 
 // ─────────────────────────── rating-only ───────────────────────────
 
 function balanceRatingOnly(
-  players: PlayerWithRating[],
-  perTeam: number,
+  selected: PlayerWithRating[],
+  sides: Sides,
   pinnedToTeam: Record<string, "RED" | "YELLOW">,
 ): TeamResult {
-  const selected = players.slice(0, perTeam * 2);
 
   const red: PlayerWithRating[] = [];
   const yellow: PlayerWithRating[] = [];
 
-  // Step 1: place pinned players first, capped at perTeam per side.
+  // Step 1: place pinned players first, capped at each side's size.
   for (const p of selected) {
-    if (pinnedToTeam[p.id] === "RED" && red.length < perTeam) red.push(p);
-    else if (pinnedToTeam[p.id] === "YELLOW" && yellow.length < perTeam) yellow.push(p);
+    if (pinnedToTeam[p.id] === "RED" && red.length < sides.red) red.push(p);
+    else if (pinnedToTeam[p.id] === "YELLOW" && yellow.length < sides.yellow) yellow.push(p);
   }
 
   // Step 2: snake-draft remaining (rating-desc) into whichever team
@@ -73,11 +90,15 @@ function balanceRatingOnly(
     .sort((a, b) => b.rating - a.rating);
 
   for (const player of remaining) {
-    if (red.length >= perTeam) yellow.push(player);
-    else if (yellow.length >= perTeam) red.push(player);
+    if (red.length >= sides.red) yellow.push(player);
+    else if (yellow.length >= sides.yellow) red.push(player);
     else if (teamRating(red) <= teamRating(yellow)) red.push(player);
     else yellow.push(player);
   }
+  // Uneven sides (2026-11-03): the greedy draft leaves the extra player's
+  // whole rating on the bigger side. One pass of pairwise swaps that narrow
+  // the gap in total, which is all an exhaustive search would add here.
+  if (sides.red !== sides.yellow) improveBySwaps(red, yellow, pinnedToTeam);
 
   return {
     red,
@@ -89,12 +110,11 @@ function balanceRatingOnly(
 // ─────────────────────────── position-aware ───────────────────────────
 
 function balancePositionAware(
-  players: PlayerWithRating[],
-  perTeam: number,
+  selected: PlayerWithRating[],
+  sides: Sides,
   composition: Record<string, number>,
   pinnedToTeam: Record<string, "RED" | "YELLOW">,
 ): TeamResult {
-  const selected = players.slice(0, perTeam * 2);
   const positionKeys = Object.keys(composition);
 
   const red: PlayerWithRating[] = [];
@@ -108,12 +128,12 @@ function balancePositionAware(
   for (const p of selected) {
     const pin = pinnedToTeam[p.id];
     if (!pin) continue;
-    if (pin === "RED" && red.length < perTeam) {
+    if (pin === "RED" && red.length < sides.red) {
       red.push(p);
       const pos = pickPositionFor(p, redNeeds, positionKeys);
       assigned.set(p.id, pos);
       redNeeds[pos] = Math.max(0, (redNeeds[pos] ?? 0) - 1);
-    } else if (pin === "YELLOW" && yellow.length < perTeam) {
+    } else if (pin === "YELLOW" && yellow.length < sides.yellow) {
       yellow.push(p);
       const pos = pickPositionFor(p, yellowNeeds, positionKeys);
       assigned.set(p.id, pos);
@@ -128,8 +148,8 @@ function balancePositionAware(
 
   for (const p of sorted) {
     let team: "red" | "yellow";
-    if (red.length >= perTeam) team = "yellow";
-    else if (yellow.length >= perTeam) team = "red";
+    if (red.length >= sides.red) team = "yellow";
+    else if (yellow.length >= sides.yellow) team = "red";
     else if (teamRating(red) <= teamRating(yellow)) team = "red";
     else team = "yellow";
 
@@ -184,6 +204,32 @@ function balancePositionAware(
     yellow,
     ratingDiff: Math.abs(teamRating(red) - teamRating(yellow)),
   };
+}
+
+/**
+ * Swap pairs between the sides while a swap narrows the gap in total
+ * rating. Pinned players never move. Sizes never change (a swap is one for
+ * one). Deterministic, so the same squad gives the same teams.
+ */
+function improveBySwaps(
+  red: PlayerWithRating[],
+  yellow: PlayerWithRating[],
+  pinnedToTeam: Record<string, "RED" | "YELLOW">,
+): void {
+  for (let pass = 0; pass < 50; pass++) {
+    const gap = teamRating(red) - teamRating(yellow);
+    let best: { ri: number; yi: number; gap: number } | null = null;
+    for (let ri = 0; ri < red.length; ri++) {
+      if (pinnedToTeam[red[ri].id]) continue;
+      for (let yi = 0; yi < yellow.length; yi++) {
+        if (pinnedToTeam[yellow[yi].id]) continue;
+        const next = Math.abs(gap - 2 * (red[ri].rating - yellow[yi].rating));
+        if (next < Math.abs(gap) - 1e-9 && (!best || next < best.gap)) best = { ri, yi, gap: next };
+      }
+    }
+    if (!best) return;
+    [red[best.ri], yellow[best.yi]] = [yellow[best.yi], red[best.ri]];
+  }
 }
 
 function pickPositionFor(

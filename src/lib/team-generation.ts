@@ -57,6 +57,7 @@ import { DEFAULT_SEED_RATING } from "./default-seed";
 import { resolveTeamLabels } from "./team-labels";
 import { loadPlayerNames } from "./player-display-name";
 import { sanitiseTeamNames } from "./message-analyzer";
+import { perTeamFor, playerRange, teamsNeeded } from "./flex-format-rules";
 
 export type GenerateTeamsResult =
   | { ok: true; groupPost: string; matchId: string }
@@ -116,11 +117,22 @@ export async function generateTeamsForMatch(
   }
 
   const sport = match.activity.sport;
-  const perTeam = sport.playersPerTeam;
-  if (match.attendances.length < perTeam * 2) {
+  // THE MATCH'S OWN SIZE (2026-11-03): a match switched to 8-a-side inside
+  // its game's range has 16 places and makes 8 a side, whatever the
+  // format's playersPerTeam. And with a minimum set the teams are made from
+  // it up, the sides as even as the count allows (13 is 7 against 6). With
+  // neither set this is two full sides of the format, as before.
+  const range = playerRange({
+    minPlayers: match.activity.minPlayers ?? null,
+    maxPlayers: match.activity.maxPlayers ?? null,
+    playersPerTeam: sport.playersPerTeam,
+  });
+  const perTeam = perTeamFor({ maxPlayers: match.maxPlayers, playersPerTeam: sport.playersPerTeam });
+  const needed = teamsNeeded({ places: perTeam * 2, range });
+  if (match.attendances.length < needed) {
     return {
       ok: false,
-      reason: teamGenReasonNotEnough({ confirmed: match.attendances.length, needed: perTeam * 2, lang }),
+      reason: teamGenReasonNotEnough({ confirmed: match.attendances.length, needed, lang }),
     };
   }
 
@@ -192,6 +204,7 @@ export async function generateTeamsForMatch(
     strategy: sport.balancingStrategy as BalancingStrategy,
     composition: composition ?? undefined,
     pinnedToTeam: opts.pinnedToTeam,
+    minPlayers: needed,
   });
 
   await db.teamAssignment.deleteMany({ where: { matchId } });

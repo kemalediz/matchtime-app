@@ -55,6 +55,8 @@ export function featureForDueKey(key: string): DueKeyFeature | null {
   if (seg.startsWith("month-list")) return "attendance";
   // So is the month's sign-up list (slice 3).
   if (seg.startsWith("msu:list")) return "attendance";
+  // The suggestion to go up a size (2026-11-03) is about the squad.
+  if (seg.startsWith("format-up")) return "attendance";
   if (seg.startsWith("bench-prompt")) return "bench";
   if (seg.startsWith("mom-")) return "momVoting";
   if (seg.startsWith("badges")) return "badgeAnnouncements";

@@ -1,8 +1,7 @@
 /**
  * The fewest players a game is played with (2026-11-03, `min-players.ts`):
- * the organiser's day-before nudges that use it, what MatchTime says when
- * an organiser sets it by tagging it in WhatsApp ("@Match Time we can play
- * with 12", "@Match Time 12 kişiyle de oynarız"), and the web form's words.
+ * the organiser's day-before nudges that use it. Setting it (WhatsApp and
+ * the web form) is in `flex-format.ts`, with the most players.
  *
  * One object per language, typed by `MinPlayersCopy`, so a line missing in
  * either language is a `tsc` error. House rules (unit tested in
@@ -39,27 +38,8 @@ export interface MinPlayersCopy {
     audience: NudgeAudience;
   }) => string;
 
-  // ── WhatsApp, an organiser setting it ──
-  /** Set. `places` is the game's places, which do not change. */
-  set: (p: { activityName: string; minimum: number; places: number }) => string;
-  /** Back to two full sides. */
-  cleared: (p: { activityName: string; full: number }) => string;
-  alreadySet: (p: { activityName: string; minimum: number }) => string;
-  alreadyFull: (p: { activityName: string; full: number }) => string;
-  tooHigh: (p: { activityName: string; places: number }) => string;
-  tooLow: string;
-  noNumber: (p: { url: string }) => string;
-  /** Several weekly games and no day said. */
-  whichGame: (p: { names: string[]; url: string }) => string;
-  noGame: (p: { url: string }) => string;
-
-  // ── The web form ──
-  label: string;
-  /** Under the box. `full` is two full sides of this game. */
-  hint: (p: { full: number }) => string;
-  /** The list row, only when a minimum is set. */
-  row: (p: { minimum: number }) => string;
-  invalid: (p: { places: number }) => string;
+  // The setting itself (WhatsApp and the activities page) moved to
+  // `flex-format.ts` with the maximum (2026-11-03).
 }
 
 const BY_LANG: Record<Lang, MinPlayersCopy> = { en: MIN_PLAYERS_EN, tr: MIN_PLAYERS_TR };

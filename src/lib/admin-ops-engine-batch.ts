@@ -220,6 +220,8 @@ import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
 import { adminVenueCopy } from "./i18n/admin-venue";
 import { latestAskFromRecords, retryFactsOf, type LatestAskForRetry } from "./refused-ask-retry";
 import type { VenueFromWordsResult } from "./venue-from-words";
+import { perSideOf, playerRangeWordsOf } from "./flex-format-rules";
+import type { PlayerRangeWords } from "./player-range-words";
 
 export { ADMIN_OPS_APPLY_DEGRADED_PREFIX, ADMIN_OPS_HANDLED_BY };
 
@@ -238,6 +240,10 @@ export interface AdminOpsBatchMessage {
    *  the bulk-DM commands. Omitted → the engine derives it from the body.
    *  See `EngineMessage.taggedExplicitly` and `lib/stats-blast.ts`. */
   taggedExplicitly?: boolean;
+  /** A WhatsApp reply quoting MatchTime's own post (the Pi's fact). An
+   *  organiser's yes to MatchTime's offer to switch a game's size is acted
+   *  on with it, as a reply (2026-11-03). */
+  repliesToMatchTime?: boolean;
   /** From the router. `undefined` when it never mentioned this id. */
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then this never sees it. */
@@ -367,15 +373,31 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     lang: string | null;
     now: Date;
   }) => Promise<{ outcome: string; replyText: string }>;
-  /** "We can play with 12" (2026-11-03). Defaults to `min-players-words.ts`,
+  /** "We play 12 to 16" (2026-11-03). Defaults to `player-range-words.ts`,
    *  the activities page's own save core; injected so tests need no database. */
-  applyMinPlayersWords?: (a: {
+  applyPlayerRangeWords?: (a: {
     orgId: string;
     minPlayers: number | null;
+    maxPlayers: number | null;
     fullTeams: boolean;
     matchDay: string | null;
     lang: string | null;
   }) => Promise<{ outcome: string; replyText: string }>;
+  /** "Make it 8 aside", or an organiser's yes to MatchTime's offer
+   *  (2026-11-03). Defaults to `format-switch-words.ts`, the switch page's
+   *  own core; injected so tests need no database. */
+  applySwitchFormatWords?: (a: {
+    orgId: string;
+    perSide: number;
+    matchDay: string | null;
+    actorUserId: string;
+    via: string;
+    lang: string | null;
+    now: Date;
+    /** The quoted post, when the message replies to MatchTime's own. */
+    quotedId: string | null;
+    explicit: boolean;
+  }) => Promise<{ outcome: string; replyText: string | null }>;
 }
 
 function empty(degradations: string[] = []): AdminOpsBatchResult {
@@ -575,8 +597,10 @@ export async function runAdminOpsBatch(args: {
   const breakAsks = new Map<string, { breakMonths: string[]; playMonths: string[] }>();
   /** quiet_hours (2026-10-31): an organiser's quiet hours off, on, or new times. */
   const quietAsks = new Map<string, { off: boolean; from: string | null; to: string | null }>();
-  /** min_players (2026-11-03): an organiser's fewest players, or full sides again. */
-  const minAsks = new Map<string, { minPlayers: number | null; fullTeams: boolean; matchDay: string | null }>();
+  /** player_numbers (2026-11-03): an organiser's fewest and most players. */
+  const rangeAsks = new Map<string, PlayerRangeWords>();
+  /** switch_format (2026-11-03): an organiser's one game to another size. */
+  const switchAsks = new Map<string, { perSide: number; matchDay: string | null; actorUserId: string; quotedId: string | null; explicit: boolean }>();
   /** "Try again" with nothing stored to repeat: one short line. */
   const nothingToRetry = new Set<string>();
   /** "Try again" acted on as the stored ask (for the reasoning row). */
@@ -630,8 +654,9 @@ export async function runAdminOpsBatch(args: {
     // explicit tag and from an organiser, as the pitch is.
     // Quiet hours (2026-10-31, MT Test: "@Match Time turn off quiet hours
     // now" got "I can't change that by message"): the same gates.
-    // Minimum players (2026-11-03, the Vets play one down): the same gates.
-    if (facts.action === "season_break" || facts.action === "quiet_hours" || facts.action === "min_players") {
+    // A game's fewest and most players (2026-11-03, the Vets play 6, 7 or 8
+    // a side): the same gates.
+    if (facts.action === "season_break" || facts.action === "quiet_hours" || facts.action === "player_numbers") {
       if (!(m.tagged && (m.taggedExplicitly === true))) {
         hand(`${facts.action} without an explicit MatchTime tag`);
         continue;
@@ -642,11 +667,33 @@ export async function runAdminOpsBatch(args: {
       }
       if (facts.action === "quiet_hours") {
         quietAsks.set(m.waMessageId, { off: facts.quietOff === true, from: facts.quietFrom ?? null, to: facts.quietTo ?? null });
-      } else if (facts.action === "min_players") {
-        minAsks.set(m.waMessageId, { minPlayers: facts.minPlayers ?? null, fullTeams: facts.fullTeams === true, matchDay: facts.matchDay ?? null });
+      } else if (facts.action === "player_numbers") {
+        rangeAsks.set(m.waMessageId, playerRangeWordsOf(facts));
       } else {
         breakAsks.set(m.waMessageId, { breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [] });
       }
+      continue;
+    }
+
+    // One game to another size (2026-11-03): an organiser's, with an
+    // explicit tag, or as a reply to MatchTime's own post. A reply is acted
+    // on only when the post it quotes is one of MatchTime's suggestions to
+    // go up a size, and then for THAT match and size (review of #517,
+    // `format-switch-words.ts`). Anybody else's yes is the players talking:
+    // nothing done, nothing said. A tagged player hears who can.
+    if (facts.action === "switch_format") {
+      const organiser = state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin);
+      const explicit = m.tagged && m.taggedExplicitly === true;
+      const quotedId = m.quoted?.fromMatchTime === true || m.repliesToMatchTime === true ? (m.quoted?.id ?? null) : null;
+      if (!explicit && !(organiser && quotedId)) {
+        hand(`switch_format without an explicit MatchTime tag${organiser ? " or a reply to MatchTime's suggestion" : " from someone who is not an organiser"}`);
+        continue;
+      }
+      if (!organiser) {
+        recruitNotOrganiser.set(m.waMessageId, facts.action);
+        continue;
+      }
+      switchAsks.set(m.waMessageId, { perSide: perSideOf(facts), matchDay: facts.matchDay?.trim() || null, actorUserId: m.senderUserId!, quotedId, explicit });
       continue;
     }
 
@@ -903,16 +950,28 @@ export async function runAdminOpsBatch(args: {
       cancelOutcomes.push(replyOnly(id, null, "noise", `quiet_hours threw (${detail}); the write FAILED and nothing was said`, true));
     }
   }
-  for (const [id, ask] of minAsks) {
+  for (const [id, ask] of rangeAsks) {
     try {
-      const apply = deps.applyMinPlayersWords ?? (async (a) => (await import("./min-players-words")).applyMinPlayersWords(a));
+      const apply = deps.applyPlayerRangeWords ?? (async (a) => (await import("./player-range-words")).applyPlayerRangeWords(a));
       const r = await apply({ orgId, ...ask, lang: state.features.language });
-      cancelOutcomes.push(replyOnly(id, r.replyText, r.outcome, `min_players by an organiser: ${r.outcome}`));
+      cancelOutcomes.push(replyOnly(id, r.replyText, r.outcome, `player_numbers by an organiser: ${r.outcome}`));
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      console.error(`[admin-ops-engine] ${id}: min_players threw:`, err);
-      degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: min_players threw (${detail}); nothing was said`);
-      cancelOutcomes.push(replyOnly(id, null, "noise", `min_players threw (${detail}); the write FAILED and nothing was said`, true));
+      console.error(`[admin-ops-engine] ${id}: player_numbers threw:`, err);
+      degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: player_numbers threw (${detail}); nothing was said`);
+      cancelOutcomes.push(replyOnly(id, null, "noise", `player_numbers threw (${detail}); the write FAILED and nothing was said`, true));
+    }
+  }
+  for (const [id, ask] of switchAsks) {
+    try {
+      const apply = deps.applySwitchFormatWords ?? (async (a) => (await import("./format-switch-words")).applySwitchFormatWords(a));
+      const r = await apply({ orgId, ...ask, via: "whatsapp", lang: state.features.language, now });
+      cancelOutcomes.push(replyOnly(id, r.replyText, r.outcome, `switch_format by an organiser: ${r.outcome}`));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[admin-ops-engine] ${id}: switch_format threw:`, err);
+      degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: switch_format threw (${detail}); nothing was said`);
+      cancelOutcomes.push(replyOnly(id, null, "noise", `switch_format threw (${detail}); the write FAILED and nothing was said`, true));
     }
   }
   for (const id of nothingToRetry) {

@@ -45,24 +45,11 @@ export function lowNumbersBelow(g: { minPlayers: number | null; maxPlayers: numb
   return Math.min(g.maxPlayers, g.minPlayers ?? g.maxPlayers);
 }
 
-export const MIN_PLAYERS_FLOOR = 2;
-
-export type MinPlayersCheck =
-  | { ok: true; value: number | null }
-  | { ok: false; error: "not-a-number" | "too-low" | "too-high" };
-
-/** A minimum the web page or WhatsApp may save: null, or 2 up to the places. */
-export function checkMinPlayers(value: unknown, maxPlayers: number): MinPlayersCheck {
-  if (value === null) return { ok: true, value: null };
-  if (typeof value !== "number" || !Number.isInteger(value)) return { ok: false, error: "not-a-number" };
-  if (value < MIN_PLAYERS_FLOOR) return { ok: false, error: "too-low" };
-  if (value > maxPlayers) return { ok: false, error: "too-high" };
-  return { ok: true, value };
-}
-
-/** What the activities page's box sent: "" is none (two full sides), a
- *  whole number is that number, anything else is refused before saving. */
-export function parseMinPlayersInput(text: string): { ok: true; value: number | null } | { ok: false } {
+/** What one of the activities page's player boxes sent (2026-11-03: the
+ *  fewest and the most): "" is none (the game's own places), a whole
+ *  number is that number, anything else is refused before saving. The
+ *  range itself is checked by `checkPlayerRange` (flex-format-rules.ts). */
+export function parsePlayersInput(text: string): { ok: true; value: number | null } | { ok: false } {
   const v = text.trim();
   if (v === "") return { ok: true, value: null };
   if (!/^\d{1,3}$/.test(v)) return { ok: false };

@@ -12,8 +12,11 @@ import { scheduleVenuePickResolve, scheduleVenueResolve } from "@/lib/venue-loca
 import { CLEARED_VENUE_LINK } from "@/lib/venue-location-rules";
 import { parseVenuePick } from "@/lib/venue-suggest-rules";
 import { assertSportOfferedForGame } from "@/lib/club-sport-offer";
-import { saveMinPlayers } from "@/lib/min-players-save";
-import { minPlayersCopy } from "@/lib/i18n/min-players";
+import { savePlayerRange } from "@/lib/player-range-save";
+import { appUrl } from "@/lib/app-url";
+import { weekdayLabel } from "@/lib/i18n/dates";
+import { normaliseLang } from "@/lib/i18n/lang";
+import { flexFormatCopy } from "@/lib/i18n/flex-format";
 
 /** What a form sends for a picked place. Anything else on it is dropped. */
 type VenuePickInput = { placeId: string; sessionToken?: string | null };
@@ -117,20 +120,37 @@ export async function updateActivity(
 }
 
 /**
- * The fewest players this game is played with (2026-11-03), from the edit
- * form's box: a whole number from 2 to the places, or empty for two full
- * sides. The same save core WhatsApp uses (`min-players-save.ts`).
+ * The fewest and the most players this game is played with (2026-11-03),
+ * from the edit form's two boxes: even numbers, the minimum from 2 to the
+ * places and the maximum from the places up, or empty for the game's own
+ * format. A box not changed is not sent (`undefined`). The same save core
+ * WhatsApp uses (`player-range-save.ts`).
  */
-export async function setActivityMinPlayers(activityId: string, value: number | null) {
+export async function setActivityPlayerRange(activityId: string, range: { min?: number | null; max?: number | null }) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
   const activity = await db.activity.findUnique({ where: { id: activityId }, select: { orgId: true, org: { select: { language: true } } } });
   if (!activity) throw new Error("Activity not found");
   await requireOrgAdmin(session.user.id, activity.orgId);
-  const r = await saveMinPlayers({ activityId, value });
-  if (!r.ok) throw new Error(minPlayersCopy(activity.org?.language).invalid({ places: r.places }));
+  const r = await savePlayerRange({ activityId, ...range });
+  if (!r.ok && r.error === "switched-match") {
+    const lang = normaliseLang(activity.org?.language);
+    throw new Error(flexFormatCopy(lang).rangeBlocked({ activityName: r.activityName, day: weekdayLabel(lang, r.matchDate), perSide: r.perSide, backTo: r.backTo }));
+  }
+  if (!r.ok) {
+    throw new Error(
+      flexFormatCopy(activity.org?.language).rangeRefused({
+        error: r.error === "not-found" ? "not-a-number" : r.error,
+        field: r.field,
+        activityName: r.activityName,
+        places: r.places,
+        ceiling: r.ceiling,
+        url: appUrl("/admin/activities"),
+      }),
+    );
+  }
   revalidatePath("/admin/activities");
-  return { value: r.value };
+  return { minPlayers: r.minPlayers, maxPlayers: r.maxPlayers };
 }
 
 export async function deleteActivity(activityId: string) {

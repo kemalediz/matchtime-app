@@ -44,6 +44,7 @@ import {
   vetsClub,
   type Instruction,
   type MeterReading,
+  type VetsClub,
 } from "./world";
 
 const COST_FILE = path.join(REPO_ROOT, ".e2e", "vets-sandbox-cost.jsonl");
@@ -1296,7 +1297,7 @@ scenario.describe("the Vets sandbox", () => {
     const set = await say(pool, v, "davide", "@Match Time we can play with 12", { tag: true });
     console.log(`[vets Q] Davide's minimum: ${JSON.stringify({ reply: set.reply, intent: set.intent, handledBy: set.handledBy })}`);
     expect(await minOf()).toBe(12);
-    expect(set.reply).toContain("goes ahead with *12* or more");
+    expect(set.reply).toContain("is played 6 or 7 a side now (12 to 14)");
 
     const player = await say(pool, v, "kerem", "@Match Time minimum 10 players", { tag: true });
     console.log(`[vets Q] a player's minimum: ${JSON.stringify({ reply: player.reply, intent: player.intent })}`);
@@ -1305,5 +1306,149 @@ scenario.describe("the Vets sandbox", () => {
     const back = await say(pool, v, "davide", "@Match Time back to full teams please", { tag: true });
     console.log(`[vets Q] back to full teams: ${JSON.stringify({ reply: back.reply, intent: back.intent })}`);
     expect(await minOf()).toBeNull();
+    expect(back.reply).toContain("7-a-side only again");
+  });
+
+  // ── R to U: 6, 7 or 8 a side (2026-11-03, Kemal) ──────────────────────
+  const rangeOf = async (db: TestDb, orgId: string) =>
+    (await db.all<{ min: number | null; max: number | null }>(`SELECT "minPlayers" AS min, "maxPlayers" AS max FROM "Activity" WHERE "orgId" = $1`, [orgId]))[0];
+  const placesOf = async (db: TestDb, matchId: string) =>
+    (await db.all<{ m: number }>(`SELECT "maxPlayers" AS m FROM "Match" WHERE id = $1`, [matchId]))[0]?.m;
+  const statusOf = async (db: TestDb, v: VetsClub, key: string) =>
+    (await db.all<{ s: string }>(`SELECT status AS s FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [v.matchId, v.userId(key)]))[0]?.s ?? null;
+  /** The running month seeded on Monday's match: 13 regulars in 14 places. */
+  const seededWeek = async (pool: Parameters<typeof vetsClub>[0], db: TestDb, range: { min: number; max: number } | null) => {
+    const v = await vetsClub(pool, "vets", { month: "running", played: { keys: LIST_KEYS } });
+    if (range) await db.run(`UPDATE "Activity" SET "minPlayers" = $2, "maxPlayers" = $3 WHERE "orgId" = $1`, [v.orgId, range.min, range.max]);
+    await schedulerPoll(pool, v, new Date());
+    expect(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND status = 'CONFIRMED'`, [v.matchId])).toBe(13);
+    return v;
+  };
+
+  scenario("R. '@Match Time we play 12 to 16' from Davide sets the range (6, 7 or 8 a side); an odd minimum is refused (even only); a player's is refused", async ({ pool, db }) => {
+    liveOnly();
+    const v = await vetsClub(pool, "vets", { month: "running", played: { keys: LIST_KEYS } });
+    const set = await say(pool, v, "davide", "@Match Time we play 12 to 16", { tag: true });
+    console.log(`[vets R] the range: ${JSON.stringify({ reply: set.reply, intent: set.intent })}`);
+    expect(await rangeOf(db, v.orgId)).toEqual({ min: 12, max: 16 });
+    expect(set.reply).toContain("6, 7 or 8 a side");
+    expect(set.reply).not.toMatch(/[\u2013\u2014]/);
+
+    const odd = await say(pool, v, "davide", "@Match Time minimum 13 players", { tag: true });
+    console.log(`[vets R] odd: ${JSON.stringify({ reply: odd.reply, intent: odd.intent })}`);
+    expect(odd.reply).toContain("even number");
+    expect(await rangeOf(db, v.orgId)).toEqual({ min: 12, max: 16 });
+
+    const player = await say(pool, v, "kerem", "@Match Time we can play up to 18", { tag: true });
+    console.log(`[vets R] a player's: ${JSON.stringify({ reply: player.reply, intent: player.intent })}`);
+    expect(await rangeOf(db, v.orgId)).toEqual({ min: 12, max: 16 });
+  });
+
+  scenario("S. the bench reaches 2: MatchTime suggests 8-a-side naming Davide; a player's yes does nothing; Davide's yes switches it, the bench moves in with DMs, the new list posts", async ({ pool, db }) => {
+    liveOnly();
+    const v = await seededWeek(pool, db, { min: 12, max: 16 });
+    // The 14th place, then two more: the squad is full and two wait.
+    expect((await say(pool, v, "p12", "IN")).react).toBe("✅");
+    await say(pool, v, "p15", "IN");
+    const noSuggestion = (await schedulerPoll(pool, v, new Date())).instructions.filter((i) => (i.key ?? "").includes(":format-up:"));
+    expect(noSuggestion, "one on the bench: no suggestion yet").toEqual([]);
+    await say(pool, v, "p18", "IN");
+    expect(await statusOf(db, v, "p15")).toBe("BENCH");
+    expect(await statusOf(db, v, "p18")).toBe("BENCH");
+    const polled = await schedulerPoll(pool, v, new Date());
+    const ups = polled.instructions.filter((i) => (i.key ?? "").includes(":format-up:"));
+    console.log(`[vets S] the suggestion: ${JSON.stringify(ups)}`);
+    expect(ups).toHaveLength(1);
+    expect(ups[0].text).toMatch(/^We've got 16 for \w+, 2 on the bench\. Shall we go 8-a-side\? Davide, reply \*yes\* to this message and I'll switch it\.$/);
+    // Once per size: the next poll says nothing.
+    expect((await schedulerPoll(pool, v, new Date())).instructions.filter((i) => (i.key ?? "").includes(":format-up:"))).toEqual([]);
+    // The Pi acks the post with its WhatsApp id; a reply quotes that id.
+    const ack = await pool.request.post("/api/whatsapp/ack", {
+      headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+      data: { key: ups[0].key, kind: "group-message", matchId: v.matchId, waMessageId: `true_${v.club.group.groupId}_3EB0VETSUGGEST` },
+    });
+    expect(ack.status()).toBe(200);
+    const quote = { id: "3EB0VETSUGGEST", text: ups[0].text!, fromMatchTime: true };
+
+    // A player's own IN as a reply to it is his IN, as ever (review of #517).
+    const playersIn = await say(pool, v, "p20", "yes I'm in", { quote });
+    console.log(`[vets S] a player's 'yes I'm in': ${JSON.stringify({ react: playersIn.react, reply: playersIn.reply, intent: playersIn.intent, handledBy: playersIn.handledBy })}`);
+    expect(await statusOf(db, v, "p20"), "his IN is recorded: the bench, the squad being full").toBe("BENCH");
+    expect(await placesOf(db, v.matchId)).toBe(14);
+
+    const playersYes = await say(pool, v, "kerem", "yes", { quote });
+    console.log(`[vets S] a player's yes: ${JSON.stringify({ reply: playersYes.reply, intent: playersYes.intent, handledBy: playersYes.handledBy, sent: playersYes.sent })}`);
+    expect(await placesOf(db, v.matchId)).toBe(14);
+    expect(playersYes.sent.filter((m) => /8-a-side/.test(m.text))).toEqual([]);
+
+    const yes = await say(pool, v, "davide", "yes", { quote });
+    console.log(`[vets S] Davide's yes: ${JSON.stringify({ reply: yes.reply, intent: yes.intent, handledBy: yes.handledBy })}\n${yes.sent.map((m) => `  -> ${m.to}: ${m.text}`).join("\n")}`);
+    console.log(`[vets S] as recorded: ${JSON.stringify(await analyzed(db, yes.waMessageId))}`);
+    expect(await placesOf(db, v.matchId)).toBe(16);
+    expect(await statusOf(db, v, "p15")).toBe("CONFIRMED");
+    expect(await statusOf(db, v, "p18")).toBe("CONFIRMED");
+    expect(yes.reply).toMatch(/is 8-a-side now, 16 places\. In from the bench: /);
+    const dms = yes.sent.filter((m) => m.channel === "dm");
+    expect(dms.map((m) => m.to).sort()).toEqual(["vets.p15", "vets.p18"]);
+    for (const d of dms) expect(d.text).toMatch(/^We're going 8-a-side on \w+, you're in\. Can't make it after all\? Reply OUT\.$/);
+    const list = yes.sent.filter((m) => m.channel === "group" && m.text.startsWith("📋"));
+    expect(list, "the new week's list").toHaveLength(1);
+    expect(list[0].text).toMatch(/\n16\. /);
+    expect(list[0].text).not.toMatch(/[\u2013\u2014]/);
+    expect(await statusOf(db, v, "p20"), "the third on the bench stays there").toBe("BENCH");
+
+    // A second yes to the same post changes nothing.
+    const again = await say(pool, v, "davide", "yes", { quote });
+    console.log(`[vets S] Davide's second yes: ${JSON.stringify({ reply: again.reply, intent: again.intent })}`);
+    expect(await placesOf(db, v.matchId)).toBe(16);
+    expect(again.sent.filter((m) => m.channel === "dm")).toEqual([]);
+  });
+
+  scenario("T. Davide switches down: '@Match Time 6 kişilik oynayalım' makes it 12; the pay as you go player is benched before any regular, each told by DM; 9 a side is refused", async ({ pool, db }) => {
+    liveOnly();
+    const v = await seededWeek(pool, db, { min: 12, max: 16 });
+    expect((await say(pool, v, "p12", "IN")).react).toBe("✅");
+
+    const nine = await say(pool, v, "davide", "@Match Time make it 9 a side", { tag: true });
+    console.log(`[vets T] 9 a side: ${JSON.stringify({ reply: nine.reply, intent: nine.intent })}`);
+    expect(nine.reply).toContain("6, 7 or 8 a side");
+    expect(await placesOf(db, v.matchId)).toBe(14);
+
+    const down = await say(pool, v, "davide", "@Match Time 6 kişilik oynayalım", { tag: true });
+    console.log(`[vets T] down: ${JSON.stringify({ reply: down.reply, intent: down.intent, handledBy: down.handledBy })}\n${down.sent.map((m) => `  -> ${m.to}: ${m.text}`).join("\n")}`);
+    expect(await placesOf(db, v.matchId)).toBe(12);
+    expect(await statusOf(db, v, "p12"), "the pay as you go player goes first").toBe("BENCH");
+    const benched = await db.all<{ userId: string }>(`SELECT "userId" FROM "Attendance" WHERE "matchId" = $1 AND status = 'BENCH'`, [v.matchId]);
+    expect(benched).toHaveLength(2);
+    expect(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND status = 'CONFIRMED'`, [v.matchId])).toBe(12);
+    const dms = down.sent.filter((m) => m.channel === "dm");
+    expect(dms).toHaveLength(2);
+    for (const d of dms) expect(d.text).toMatch(/^We're going 6-a-side on \w+, so the squad is down to 12 and you're on the bench for now\.$/);
+    // No suggestion to undo it, though two are on the bench now.
+    expect((await schedulerPoll(pool, v, new Date())).instructions.filter((i) => (i.key ?? "").includes(":format-up:"))).toEqual([]);
+  });
+
+  scenario("U. teams for 13 with a minimum of 12: '@Match Time make the teams' makes 7 against 6, balanced by rating", async ({ pool, db }) => {
+    liveOnly();
+    const tonight = london(londonDay(new Date()), "20:30");
+    scenario.skip(tonight.getTime() - Date.now() < 30 * 60_000, "needs a run before 20:00 London");
+    const ratings: Record<string, number> = { davide: 7, nabz: 8, steff: 6, craig: 5, dan: 9, ben: 4, kerem: 6, steve: 7, andrew: 5, jon: 8, shane: 6, cj: 7, oumesh: 3 };
+    const v = await vetsClub(pool, "vets", { month: "running", kickoff: tonight, seedRatings: ratings });
+    await db.run(`UPDATE "Activity" SET "minPlayers" = 12, "maxPlayers" = 16 WHERE "orgId" = $1`, [v.orgId]);
+    await schedulerPoll(pool, v, new Date());
+    expect(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND status = 'CONFIRMED'`, [v.matchId])).toBe(13);
+
+    const r = await say(pool, v, "davide", "@Match Time make the teams", { tag: true });
+    console.log(`[vets U] ${JSON.stringify({ react: r.react, intent: r.intent, handledBy: r.handledBy })}\n${r.reply}`);
+    const sheet = await db.all<{ userId: string; team: string }>(`SELECT "userId", team FROM "TeamAssignment" WHERE "matchId" = $1`, [v.matchId]);
+    expect(sheet).toHaveLength(13);
+    const red = sheet.filter((s) => s.team === "RED");
+    const yellow = sheet.filter((s) => s.team === "YELLOW");
+    expect([red.length, yellow.length].sort()).toEqual([6, 7]);
+    const keyOf = (uid: string) => v.club.group.keyOf(uid);
+    const sum = (xs: typeof sheet) => xs.reduce((a, s) => a + (ratings[keyOf(s.userId)] ?? 6), 0);
+    console.log(`[vets U] RED ${sum(red)} (${red.length}) v YELLOW ${sum(yellow)} (${yellow.length})`);
+    expect(Math.abs(sum(red) - sum(yellow))).toBeLessThanOrEqual(3);
+    expect(r.reply ?? "").not.toMatch(/not enough|aren't enough/i);
   });
 });
