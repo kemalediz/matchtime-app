@@ -131,10 +131,55 @@ export class AnthropicMeter implements CallMeter {
     return span;
   }
 
+  /**
+   * A one-shot "this answer was cut off" for the next call whose request
+   * body contains `marker` (the Vets sandbox, 2026-11-03). The upstream
+   * answer is real and billed; only its `stop_reason` is rewritten to
+   * `max_tokens`, which is exactly what the pipeline sees when a long
+   * batch runs out of room. Armed over `POST /__meter/truncate-next`.
+   */
+  private truncateNext: { marker: string; minMessages: number } | null = null;
+  /** How many answers the arming above has cut off. */
+  private truncated = 0;
+
+  /**
+   * Harness control, never forwarded upstream:
+   *   GET  /__meter                 → { calls, costUsd, truncated, byModel }
+   *   POST /__meter/truncate-next   → body { marker, minMessages? }
+   * Lets a spec read the calls and cost of ONE scenario (read before and
+   * after) and force a cut-off on the live path without a seam in src/.
+   */
+  private async control(req: IncomingMessage, res: ServerResponse, body: Buffer): Promise<void> {
+    if (req.method === "POST" && req.url === "/__meter/truncate-next") {
+      const b = JSON.parse(body.toString() || "{}") as { marker?: string; minMessages?: number };
+      this.truncateNext = b.marker ? { marker: b.marker, minMessages: b.minMessages ?? 0 } : null;
+      res.writeHead(200, { "content-type": "application/json", connection: "close" });
+      res.end(JSON.stringify({ armed: !!this.truncateNext }));
+      return;
+    }
+    const byModel: Record<string, { calls: number; costUsd: number }> = {};
+    for (const c of this.all) {
+      const m = (byModel[c.model] ??= { calls: 0, costUsd: 0 });
+      m.calls++;
+      m.costUsd += c.costUsd;
+    }
+    res.writeHead(200, { "content-type": "application/json", connection: "close" });
+    res.end(
+      JSON.stringify({
+        calls: this.all.length,
+        costUsd: this.all.reduce((a, c) => a + c.costUsd, 0),
+        truncated: this.truncated,
+        armed: !!this.truncateNext,
+        byModel,
+      }),
+    );
+  }
+
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk as Buffer);
     const body = Buffer.concat(chunks);
+    if ((req.url ?? "").startsWith("/__meter")) return this.control(req, res, body);
 
     const headers: Record<string, string> = {};
     for (const [k, v] of Object.entries(req.headers)) {
@@ -155,7 +200,23 @@ export class AnthropicMeter implements CallMeter {
       return;
     }
     const ms = Date.now() - started;
-    const text = await upstream.text();
+    let text = await upstream.text();
+    const arm = this.truncateNext;
+    if (arm && upstream.ok && body.includes(arm.marker)) {
+      // The router numbers its messages "[m1]", "[m2]", ...: how many this call carries.
+      const messageLines = new Set(body.toString().match(/\[m\d+\]/g) ?? []).size;
+      if (messageLines >= arm.minMessages) {
+        try {
+          const parsed = JSON.parse(text) as Record<string, unknown>;
+          parsed.stop_reason = "max_tokens";
+          text = JSON.stringify(parsed);
+          this.truncateNext = null;
+          this.truncated++;
+        } catch {
+          // Not JSON: leave it alone and stay armed.
+        }
+      }
+    }
 
     try {
       const parsed = JSON.parse(text) as { model?: string; usage?: Usage };
