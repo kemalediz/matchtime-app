@@ -24,9 +24,9 @@
 import { db } from "./db";
 import { monthNameLabel } from "./i18n/dates";
 import { monthSetupCopy } from "./i18n/month-setup";
-import { firstKickoffOf, nextMonthStart } from "./month-signup-rules";
+import { nextMonthStart, seedTargets } from "./month-signup-rules";
 import { startMonth } from "./squad-month";
-import { isBreakMonth, londonMonthStart, monthFixtureDates, monthStartToDate, normaliseSquadMode, type SeedRowInput } from "./squad-month-rules";
+import { gamesPlayedBy, londonMonthStart, monthFixtureDates, monthStartToDate, normaliseSquadMode, type SeedRowInput } from "./squad-month-rules";
 
 /** As long as a weekly pasted list waits for its YES. */
 export const SEED_PROPOSAL_TTL_MS = 30 * 60 * 1000;
@@ -34,6 +34,10 @@ export const SEED_PROPOSAL_TTL_MS = 30 * 60 * 1000;
 export interface MonthSeedProposalData {
   activityId: string;
   games: number;
+  /** Games already played when the list was read (a month started
+   *  part-way). Absent on a proposal for a coming month, and on one stored
+   *  before 2026-11-03. The YES counts them again at its own time. */
+  gamesPlayed?: number;
   rows: SeedRowInput[];
 }
 
@@ -48,25 +52,31 @@ export interface MonthSeedReply {
 }
 
 
-/** The coming month a pasted list may start, for this club: the next
- *  month, or this one while its first game is still to come. */
-export async function comingMonth(orgId: string, now: Date) {
+/**
+ * The months a pasted list may start, for this club, in the order they are
+ * tried: THIS month (its first game still to come, or already under way and
+ * never started: started part-way, 2026-11-03), then the next. Empty for a
+ * club not on "monthly" or with more than one fixture.
+ */
+export async function seedableMonths(orgId: string, now: Date) {
   const org = await db.organisation.findUnique({ where: { id: orgId }, select: { squadMode: true, seasonBreakMonths: true } });
-  if (!org || normaliseSquadMode(org.squadMode) !== "monthly") return null;
+  if (!org || normaliseSquadMode(org.squadMode) !== "monthly") return [];
   const activities = await db.activity.findMany({ where: { orgId, isActive: true }, select: { id: true, dayOfWeek: true, time: true } });
   // One fixture only: with two, which one the list is for is the page's question.
-  if (activities.length !== 1) return null;
+  if (activities.length !== 1) return [];
   const a = activities[0];
   const current = londonMonthStart(now);
-  for (const monthStart of [current, nextMonthStart(current)]) {
-    if (isBreakMonth(org.seasonBreakMonths, monthStart)) continue;
-    const first = firstKickoffOf(monthStart, a.dayOfWeek, a.time);
-    if (!first || first.getTime() <= now.getTime()) continue;
-    const exists = await db.squadMonth.findFirst({ where: { orgId, monthStart: monthStartToDate(monthStart) }, select: { id: true } });
-    if (exists) continue;
-    return { activity: a, monthStart, first, games: monthFixtureDates(monthStart, a.dayOfWeek).length };
-  }
-  return null;
+  const months = await db.squadMonth.findMany({
+    where: { orgId, monthStart: { in: [monthStartToDate(current), monthStartToDate(nextMonthStart(current))] } },
+    select: { monthStart: true },
+  });
+  const started = new Set(months.map((m) => m.monthStart.toISOString().slice(0, 10)));
+  return seedTargets({ now, dayOfWeek: a.dayOfWeek, time: a.time, breakMonths: org.seasonBreakMonths, started }).map((t) => ({ activity: a, ...t }));
+}
+
+/** The first month a pasted list could start, or null. */
+export async function comingMonth(orgId: string, now: Date) {
+  return (await seedableMonths(orgId, now))[0] ?? null;
 }
 
 /**
@@ -90,10 +100,16 @@ export async function applyMonthSeedYes(args: {
     select: { id: true },
   });
   if (!admin || !data || !Array.isArray(data.rows)) return { outcome: "month-seed-failed", replyText: c.hq_seed_failed({ month, key: "failed" }) };
+  // A month under way: the games played by NOW, the YES's own time (a game
+  // may have been played since the list was read). A coming month: none.
+  const activity = await db.activity.findFirst({ where: { id: data.activityId, orgId: args.orgId }, select: { dayOfWeek: true, time: true } });
+  const gamesPlayed = activity
+    ? gamesPlayedBy(monthFixtureDates(args.proposal.monthStart, activity.dayOfWeek), activity.time, args.now)
+    : (data.gamesPlayed ?? 0);
   const res = await startMonth(
     args.orgId,
     args.senderUserId,
-    { activityId: data.activityId, gamesScheduled: data.games, gamesPlayed: 0, source: "seed-list", rows: data.rows },
+    { activityId: data.activityId, gamesScheduled: data.games, gamesPlayed, source: "seed-list", rows: data.rows },
     args.now,
     { monthStart: args.proposal.monthStart },
   );

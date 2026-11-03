@@ -22,7 +22,7 @@ import { appUrl } from "./app-url";
 import { monthNameLabel } from "./i18n/dates";
 import { monthSetupCopy } from "./i18n/month-setup";
 import type { MonthlyList, MonthlyListEntry } from "./monthly-list";
-import { comingMonth, SEED_PROPOSAL_TTL_MS, type MonthSeedProposalData, type MonthSeedReply } from "./month-seed-hq";
+import { seedableMonths, SEED_PROPOSAL_TTL_MS, type MonthSeedProposalData, type MonthSeedReply } from "./month-seed-hq";
 import { draftSeedFromList, londonMonthStart, normaliseSquadMode, type SeedDraftRow, type SeedDraftUnmatched, type SeedRowInput } from "./squad-month-rules";
 
 /** Far longer than any group's list; a paste beyond it is not one. */
@@ -52,7 +52,7 @@ export async function readListForSeed(
     senderUserId?: string | null;
   } = {},
 ): Promise<
-  | { ok: true; rows: SeedDraftRow[]; unmatched: SeedDraftUnmatched[]; monthMismatch: boolean; headed: boolean }
+  | { ok: true; rows: SeedDraftRow[]; unmatched: SeedDraftUnmatched[]; monthMismatch: boolean; headed: boolean; list: MonthlyList }
   | { ok: false; error: ReadListError }
 > {
   const org = await db.organisation.findUnique({ where: { id: orgId }, select: { squadMode: true } });
@@ -101,7 +101,7 @@ export async function readListForSeed(
   // The list's own wording stays what the organiser sees beside each name.
   const listNameOf = new Map([...list.slots, ...list.sections.cantPlay].filter((e) => e.facts?.memberId).map((e) => [e.facts!.memberId!, e.name]));
   const rows = draft.rows.map((r) => (listNameOf.has(r.userId) ? { ...r, listName: listNameOf.get(r.userId)! } : r));
-  return { ok: true, rows, unmatched: draft.unmatched, monthMismatch: draft.monthMismatch, headed: list.month != null };
+  return { ok: true, rows, unmatched: draft.unmatched, monthMismatch: draft.monthMismatch, headed: list.month != null, list };
 }
 
 /**
@@ -122,9 +122,17 @@ export async function proposeMonthSeedPaste(args: {
   list?: MonthlyList;
 }): Promise<MonthSeedReply | null> {
   const { orgId, now } = args;
-  const target = await comingMonth(orgId, now);
-  if (!target) return null;
-  const read = await readListForSeed(orgId, args.text, now, target.monthStart, { list: args.list, senderUserId: args.organiserUserId });
+  // THE LIST'S OWN MONTH PICKS WHICH (2026-11-03): this month, started
+  // part-way when it is already under way, or the next. The text is read
+  // once; the second month is tried on the same reading.
+  const targets = await seedableMonths(orgId, now);
+  if (targets.length === 0) return null;
+  let target = targets[0];
+  let read = await readListForSeed(orgId, args.text, now, target.monthStart, { list: args.list, senderUserId: args.organiserUserId });
+  if (read.ok && read.monthMismatch && targets[1]) {
+    target = targets[1];
+    read = await readListForSeed(orgId, args.text, now, target.monthStart, { list: read.list, senderUserId: args.organiserUserId });
+  }
   if (!read.ok || !read.headed || read.monthMismatch || read.rows.length === 0) return null;
 
   const rows: SeedRowInput[] = read.rows.map((r) => ({
@@ -137,7 +145,7 @@ export async function proposeMonthSeedPaste(args: {
     gamesCommitted: r.gamesCommitted,
     listName: r.listName,
   }));
-  const data: MonthSeedProposalData = { activityId: target.activity.id, games: target.games, rows };
+  const data: MonthSeedProposalData = { activityId: target.activity.id, games: target.games, gamesPlayed: target.gamesPlayed, rows };
   try {
     await db.adminSquadProposal.updateMany({ where: { orgId, resolvedAt: null }, data: { resolvedAt: now, outcome: "superseded" } });
     await db.adminSquadProposal.create({

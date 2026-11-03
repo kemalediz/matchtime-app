@@ -25,7 +25,7 @@
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { inMessageHours, type QuietHours } from "./message-hours";
 import { type MonthlyList, type MonthlyListEntry } from "./monthly-list";
-import { candidatesFor, monthFixtureDates, monthStartToDate, nameKey } from "./squad-month-rules";
+import { candidatesFor, gamesPlayedBy, isBreakMonth, londonMonthStart, monthFixtureDates, monthStartToDate, nameKey } from "./squad-month-rules";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -69,6 +69,46 @@ export function monthKickoffs(monthStart: string, dayOfWeek: number, time: strin
 export function firstKickoffOf(monthStart: string, dayOfWeek: number, time: string): Date | null {
   const first = monthKickoffs(monthStart, dayOfWeek, time)[0];
   return first && !Number.isNaN(first.getTime()) ? first : null;
+}
+
+/** A month an organiser's posted list may start. */
+export interface SeedTarget {
+  /** "2026-11-01". */
+  monthStart: string;
+  /** The month's first kick-off (past for a month under way). */
+  first: Date;
+  /** The month's games, the ones already played included. */
+  games: number;
+  /** Games already played: 0 for a month whose first game is still to come. */
+  gamesPlayed: number;
+}
+
+/**
+ * PURE. The months a list may start, in the order they are tried: THIS
+ * month (still to come, or already under way with a game left to play:
+ * "start part-way", plan 4.5, 2026-11-03), then the next. A month already
+ * started, a break month, or one with every game played is not offered.
+ */
+export function seedTargets(args: {
+  now: Date;
+  dayOfWeek: number;
+  time: string;
+  breakMonths: readonly string[] | null | undefined;
+  /** Month starts ("2026-11-01") this fixture has a month for already. */
+  started: ReadonlySet<string>;
+}): SeedTarget[] {
+  const current = londonMonthStart(args.now);
+  const out: SeedTarget[] = [];
+  for (const monthStart of [current, nextMonthStart(current)]) {
+    if (args.started.has(monthStart) || isBreakMonth(args.breakMonths, monthStart)) continue;
+    const first = firstKickoffOf(monthStart, args.dayOfWeek, args.time);
+    if (!first) continue;
+    const dates = monthFixtureDates(monthStart, args.dayOfWeek);
+    const gamesPlayed = first.getTime() > args.now.getTime() ? 0 : gamesPlayedBy(dates, args.time, args.now);
+    if (gamesPlayed >= dates.length) continue;
+    out.push({ monthStart, first, games: dates.length, gamesPlayed });
+  }
+  return out;
 }
 
 /** N London calendar days before the first game, at 10:00 London. */

@@ -25,6 +25,7 @@ import {
   MIN_CACHEABLE_TOKENS,
   ROUTER_MODEL,
   estimateTokens,
+  TruncatedResponseError,
   type PipelineModel,
   type ModelResponse,
 } from "../llm";
@@ -487,6 +488,71 @@ describe("routeBatch", () => {
     const out = await routeBatch(model, msgs);
     expect(out.routes.map((r) => r.route)).toEqual(["unsure", "unsure"]);
     expect(out.degradations[0].detail).toMatch(/router timeout/);
+  });
+
+  // Vets MNF, 2026-11-03: a 22-message batch (a 12-minute wait) cut the
+  // router's answer off at max_tokens and the whole batch fell back to the
+  // attendance extractor, so "@Match Time what happens if 14 don't
+  // confirm?" got "I didn't catch that". A cut-off answer is now asked
+  // again in halves; only a single message that still does not fit falls back.
+  describe("an answer cut off at max_tokens", () => {
+    const batchOf = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `wa-${i + 1}`, authorName: "Shane", body: `message ${i + 1}` }));
+    /** Answers every message `self_att`, unless the batch is longer than `fits`. */
+    const cutOffAbove = (fits: number) => {
+      const sizes: number[] = [];
+      const model: PipelineModel = {
+        name: "cut-off",
+        async complete(req): Promise<ModelResponse> {
+          const ids = [...req.user.matchAll(/\[(m\d+)\]/g)].map((x) => x[1]);
+          const n = new Set(ids).size;
+          sizes.push(n);
+          if (n > fits) throw new TruncatedResponseError("router", req.maxTokens);
+          return {
+            text: JSON.stringify({ routes: [...new Set(ids)].map((id) => ({ id, route: "self_att", to_bot: false, pasted_list: false })) }),
+            stopReason: "end_turn",
+            usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 0, cacheWriteTokens: 0 },
+            costUsd: 0.001,
+            ms: 5,
+          };
+        },
+      };
+      return { model, sizes };
+    };
+
+    it("asks again in halves, so every message keeps the model's route", async () => {
+      const { model, sizes } = cutOffAbove(8);
+      const out = await routeBatch(model, batchOf(22), { floor: false });
+      expect(out.routes).toHaveLength(22);
+      expect(out.routes.every((r) => r.route === "self_att" && r.source !== "fallback")).toBe(true);
+      expect(out.routes.map((r) => r.messageId)).toEqual(batchOf(22).map((m) => m.id));
+      // 22 cut off, 11 + 11 cut off, then 6 + 5 + 6 + 5 answered.
+      expect(sizes.slice().sort((a, b) => a - b)).toEqual([5, 5, 6, 6, 11, 11, 22]);
+      expect(out.degradations.some((d) => /cut off/.test(d.detail))).toBe(true);
+      expect(out.usage?.costUsd).toBeCloseTo(0.004);
+    });
+
+    it("a single message that is still cut off falls back to the extractor, as before", async () => {
+      const { model } = cutOffAbove(0);
+      const out = await routeBatch(model, batchOf(2), { floor: false });
+      expect(out.routes.map((r) => [r.route, r.source])).toEqual([
+        ["unsure", "fallback"],
+        ["unsure", "fallback"],
+      ]);
+    });
+
+    it("any other failure still falls back for the whole batch, with no retry", async () => {
+      let calls = 0;
+      const model: PipelineModel = {
+        name: "broken",
+        async complete() {
+          calls++;
+          throw new Error("529 Overloaded");
+        },
+      };
+      const out = await routeBatch(model, batchOf(4), { floor: false });
+      expect(calls).toBe(1);
+      expect(out.routes.every((r) => r.source === "fallback")).toBe(true);
+    });
   });
 
   it("caps max_tokens well below the SDK's non-streaming limit", async () => {

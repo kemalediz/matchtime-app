@@ -335,6 +335,47 @@ describe("every failure owns nothing — which since §10 step 8 means silence +
     expect(d.registered).toEqual([]);
   });
 
+  it("a monthly club whose month is not started: an IN writes nothing, and the silence is reported (Vets, 2026-11-03)", async () => {
+    // Kemal: the squad STARTS from the posted monthly list; nobody joins
+    // by saying IN before it exists. No reply either (for now).
+    const d = deps();
+    const silence = newSilenceFacts();
+    const r = await runAttendanceEngineBatch({
+      orgId: "org-1",
+      now: new Date("2026-09-03T12:00:00Z"),
+      messages: [msg(), msg({ waMessageId: "wa-2", route: "other_att", body: "Dan is in" })],
+      history: [],
+      expectedMatchId: "match-1",
+      enabled: true,
+      monthNotStarted: true,
+      deps: d,
+      silence,
+    });
+    expect(r.ownedIds.size).toBe(0);
+    expect(d.registered).toEqual([]);
+    expect(d.cancelled).toEqual([]);
+    expect([...silence.monthNotStarted].sort()).toEqual(["wa-1", "wa-2"]);
+  });
+
+  it("the same IN in a monthly club WITH its month running is written as before", async () => {
+    const d = deps();
+    const silence = newSilenceFacts();
+    const r = await runAttendanceEngineBatch({
+      orgId: "org-1",
+      now: new Date("2026-09-03T12:00:00Z"),
+      messages: [msg()],
+      history: [],
+      expectedMatchId: "match-1",
+      enabled: true,
+      monthNotStarted: false,
+      deps: d,
+      silence,
+    });
+    expect([...r.ownedIds]).toEqual(["wa-1"]);
+    expect(d.registered).toEqual(["u-pete"]);
+    expect(silence.monthNotStarted.size).toBe(0);
+  });
+
   it("attendance is off for the org", async () => {
     const d = deps({
       loadState: async () =>

@@ -36,15 +36,20 @@ import type { Route } from "./pipeline/types";
  *                     place) held back because a neighbour changed the
  *                     squad; the batch's squad post answers it, when one
  *                     goes out.
+ *   monthNotStarted   an attendance message in a monthly club whose month
+ *                     is not started: the squad starts from the posted
+ *                     list, so nothing is written (Vets, 2026-11-03), and
+ *                     for now nothing is said.
  */
 export interface SilenceFacts {
   refused: Set<string>;
   readFailed: Set<string>;
   squadPostAnswers: Set<string>;
+  monthNotStarted: Set<string>;
 }
 
 export function newSilenceFacts(): SilenceFacts {
-  return { refused: new Set(), readFailed: new Set(), squadPostAnswers: new Set() };
+  return { refused: new Set(), readFailed: new Set(), squadPostAnswers: new Set(), monthNotStarted: new Set() };
 }
 
 /** The intents a result carries when nothing was written, queued or said. */
@@ -72,6 +77,8 @@ export interface TaggedSilenceInput {
   /** A squad question held back because a neighbour in the batch changed
    *  the squad, and the batch's squad post, which answers it, went out. */
   answeredBySquadPost: boolean;
+  /** Held back on purpose: a monthly club's month is not started yet. */
+  monthNotStarted: boolean;
   /** The router's answer; `undefined` when it gave none. */
   route: Route | undefined;
   /** The message's one result, after every pass of the batch. */
@@ -81,7 +88,7 @@ export interface TaggedSilenceInput {
 export function taggedSilence(i: TaggedSilenceInput): boolean {
   if (!i.taggedExplicitly || !i.senderKnown) return false;
   if (i.late || i.capped || i.gated) return false;
-  if (i.refused || i.readFailed || i.answeredBySquadPost) return false;
+  if (i.refused || i.readFailed || i.answeredBySquadPost || i.monthNotStarted) return false;
   // Banter and thanks: the router said so, and silence is the answer.
   // No route at all is a router failure, which the operator note reports.
   if (i.route === undefined || i.route === "none") return false;

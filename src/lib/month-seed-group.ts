@@ -34,7 +34,9 @@ export async function proposeMonthSeedFromGroup(args: {
   now?: Date;
 }): Promise<boolean> {
   const now = args.now ?? new Date();
-  if (!args.senderUserId || !args.reading.list.month || args.reading.listOf !== "month") return false;
+  // The caller decides whether the list may be the month's (any list, while
+  // no month covers the next game); the list must still name its month.
+  if (!args.senderUserId || !args.reading.list.month) return false;
   const [admin, org] = await Promise.all([
     db.membership.findFirst({
       where: { orgId: args.orgId, userId: args.senderUserId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, guestMatchId: null },

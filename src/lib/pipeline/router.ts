@@ -83,6 +83,7 @@ import {
   degradation,
   extractJson,
   ROUTER_MODEL,
+  TruncatedResponseError,
   type ModelRequest,
   type PipelineModel,
 } from "./llm";
@@ -1030,6 +1031,40 @@ async function routeBatchInner(
   } catch (err) {
     if (isAiBudgetExceeded(err)) {
       return cappedRoutes(messages, "the club is past twice its daily AI cap");
+    }
+    // AN ANSWER CUT OFF AT max_tokens (Vets MNF, 2026-11-03): a long batch
+    // (22 messages after a 12-minute wait) needs more room than one call
+    // has, and the whole batch fell back to the extractor, a tagged
+    // question included. Asked again in two halves, each routed (and
+    // halved again) on its own; the same request otherwise, so only this
+    // failure behaves differently. A single message that still does not
+    // fit falls back below, as before.
+    if (err instanceof TruncatedResponseError && messages.length > 1) {
+      const mid = Math.ceil(messages.length / 2);
+      const halfOpts: RouteBatchOptions = { ...opts, capped: atCap };
+      const [a, b] = await Promise.all([
+        routeBatchInner(model, messages.slice(0, mid), halfOpts),
+        routeBatchInner(model, messages.slice(mid), halfOpts),
+      ]);
+      const usages = [a.usage, b.usage].filter((u): u is NonNullable<RouterResult["usage"]> => !!u);
+      return {
+        routes: [...a.routes, ...b.routes],
+        degradations: [
+          degradation("router", null, `router answer for ${messages.length} messages was cut off at max_tokens; asked again in halves of ${mid} and ${messages.length - mid}`),
+          ...a.degradations,
+          ...b.degradations,
+        ],
+        ...(usages.length > 0
+          ? {
+              usage: {
+                costUsd: usages.some((u) => u.costUsd === null) ? null : usages.reduce((t, u) => t + (u.costUsd ?? 0), 0),
+                ms: Math.max(...usages.map((u) => u.ms)),
+                inputTokens: usages.reduce((t, u) => t + u.inputTokens, 0),
+                outputTokens: usages.reduce((t, u) => t + u.outputTokens, 0),
+              },
+            }
+          : {}),
+      };
     }
     // §11.4: on router failure, route EVERYTHING to the attendance
     // extractor. Expensive, correct, and self-limiting because batches
