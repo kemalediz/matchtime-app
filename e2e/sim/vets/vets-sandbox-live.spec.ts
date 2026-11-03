@@ -24,7 +24,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import path from "node:path";
 import { formatInTimeZone } from "date-fns-tz";
 import { scenario, liveOnly, expect, LIVE } from "../pool/fixtures";
-import { resetDb } from "../../fixtures";
+import { resetDb, signInAs } from "../../fixtures";
 import { E2E, E2E_BASE_URL, REPO_ROOT } from "../../helpers/env";
 import {
   LIST_KEYS,
@@ -454,8 +454,7 @@ scenario.describe("the Vets sandbox", () => {
     console.log(`[vets H] after the whistle: ${JSON.stringify(whistle.map((i) => [i.kind, i.key, (i.text ?? "").slice(0, 120)]))}`);
     // Recorded, not asserted: the scheduler has no MoM poll at all at HEAD
     // (only the payment poll, off for a running month), so the vote is on
-    // the rating link. The live welcome's "a quick vote in the group" is the
-    // in-flight welcome rewrite's to correct (pending below).
+    // the rating link, which is what the hello now says (scenario L).
     pool.note(`after the whistle, group polls: ${whistle.filter((i) => i.kind === "group-poll").length}`);
 
     // The morning after (the match was last Monday 20:30): polls from 06:00 to 12:00.
@@ -573,11 +572,156 @@ scenario.describe("the Vets sandbox", () => {
     expect(dms[0].text).toMatch(/https?:\/\/\S+/);
   });
 
-  // ── In flight on other branches: enabled once merged ──────────────
-  // The rewritten welcome: only true claims, with the optional lines (pool,
-  // partner clubs, payments) left out when the feature is off at the club.
-  scenario.fixme("pending: the rewritten welcome makes only true claims, the lines for features that are off left out (in flight on another branch)", async () => {});
-  // A player who joins with ratings at other MatchTime clubs carries a seed
-  // from them, instead of the default 6.
-  scenario.fixme("pending: a joining player's seed is carried from his other clubs (in flight on another branch)", async () => {});
+  // ── L ──────────────────────────────────────────────────────────────
+  // The group hello (#504, group-hello.ts): built from the club's own
+  // settings at the go-live instant, every claim true for the Vets.
+  scenario("L. Davide says GO: the hello the group gets at go-live is the true one for a monthly, players'-MoM, pool-off, partners-off club", async ({ pool, db }) => {
+    liveOnly();
+    const v = await vetsClub(pool, "vets", { month: "none" });
+    // The club as it stood before its GO: approved, setting up, bot off,
+    // connected by Davide, and no introduction claimed yet.
+    await db.run(
+      `UPDATE "Organisation" SET "setupStage" = 'setting-up', "whatsappBotEnabled" = false, "liveAt" = NULL, "liveBy" = NULL,
+         "approvalStatus" = 'approved', "approvedAt" = now() - interval '4 hours' WHERE id = $1`,
+      [v.orgId],
+    );
+    await db.run(`DELETE FROM "SentNotification" WHERE key = $1`, [`org-${v.orgId}:bot-intro`]);
+    await db.run(
+      `INSERT INTO "ClubConnect" (id, "orgId", "userId", phone, code, status, "expiresAt", "groupId", "groupSubject", "linkedAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, 'VTSX', 'closed', now() + interval '1 hour', $5, 'Vets MNF Sandbox', now() - interval '5 hours', now())`,
+      [`sim-vets-cc-${v.orgId}`, v.orgId, v.userId("davide"), v.phone("davide"), v.club.group.groupId],
+    );
+
+    // His GO, in his own words, by DM: the one DM reader (the model) reads it.
+    const go = await v.club.member("davide").dm("GO");
+    console.log(`[vets L] GO: ${JSON.stringify(go.json)}\n${go.sent.map((m) => `  -> ${m.channel} ${m.to}: ${m.text.slice(0, 200).replace(/\n/g, " | ")}`).join("\n")}`);
+    expect(go.json).toMatchObject({ handled: "setup-go", outcome: "went-live", orgId: v.orgId });
+    const org = await db.one<{ setupStage: string; whatsappBotEnabled: boolean; liveAt: Date | null }>(
+      `SELECT "setupStage", "whatsappBotEnabled", "liveAt" FROM "Organisation" WHERE id = $1`,
+      [v.orgId],
+    );
+    expect(org).toMatchObject({ setupStage: "live", whatsappBotEnabled: true });
+    expect(org?.liveAt).toBeTruthy();
+
+    // The real post the go-live path queued: ONE group job, the hello.
+    const jobs = await db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group' AND "sentAt" IS NULL`, [v.orgId]);
+    expect(jobs, "one group post at go-live").toHaveLength(1);
+    const hello = jobs[0].text;
+    console.log(`[vets L] the hello:\n${hello}`);
+    expect(go.sent.filter((m) => m.channel === "group").map((m) => m.text)).toEqual([hello]);
+    // The go-live claimed the scheduler's older intro, so the group hears one hello.
+    expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key = $1`, [`org-${v.orgId}:bot-intro`])).toBe(1);
+
+    // The opening: the organiser and the club's one game day.
+    expect(hello).toContain("👋 Hi everyone, I'm *MatchTime*. Davide has set me up to help run the Monday games.");
+    // A monthly club: the monthly squad lines, never the weekly routine.
+    expect(hello).toContain("📋 *Monthly squad:* regulars sign up and pay for the whole month, and are in every game of it. Can't make one? Say *Out*.");
+    expect(hello).toContain("✅ *Not a regular?* When a place is open, say *In* to take it. You pay for that game only.");
+    expect(hello).not.toContain("*Who's in:*");
+    expect(hello).not.toContain("*Drop-out deadline:*");
+    expect(hello).not.toContain("*Final list:*");
+    expect(hello).not.toContain("*The bench:*");
+    expect(hello).not.toContain("*Match fees:*");
+    expect(hello).not.toContain("Already said In for the next game?");
+    // The friend line, with the organiser's way of putting a guest in.
+    expect(hello).toContain("👥 *Bringing a friend:* say a friend is coming and I'll DM you a link to send them. Organisers can just say the friend's name (for example *Sam Jones is in*) and I'll add them.");
+    expect(hello).toContain("⏰ *Remind me:*");
+    // Ratings, updated as they come in; teams on a tag on match day.
+    expect(hello).toContain("⭐ *Ratings:* the morning after each game I DM everyone who played a private link to rate the others out of 10.");
+    expect(hello).toContain("updated as the ratings come in.");
+    expect(hello).toContain("⚖️ *Fair teams:* on match day tag me and ask, in your own words (for example *@Match Time make the teams*)");
+    // Man of the Match: the players pick on the rating link; the winner in the group.
+    expect(hello).toContain("🏆 *Man of the Match:* on the same private link, pick the standout player and I'll announce the winner in the group.");
+    expect(hello).not.toMatch(/quick vote in the group/i);
+    // The pool and partner clubs are off here: each line kept, marked optional.
+    expect(hello).toContain("🤝 *More games (optional, Davide can switch this on):*");
+    expect(hello).toContain("🌍 *Partner clubs (optional, Davide can switch this on):*");
+    // The month's list is the organiser's, and the closer.
+    expect(hello).toContain("Davide will post the month's list as usual.");
+    expect(hello.trimEnd().endsWith("I don't reply to the banter, only to In, Out or a tag. Anything else, tag me: *@Match Time help*")).toBe(true);
+    expect(hello).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  // ── M ──────────────────────────────────────────────────────────────
+  // The carried seed (#503, carried-seed.ts via the db.ts hook): a player
+  // rated at other MatchTime clubs joins with the games-weighted average
+  // of his club ratings there; one rated nowhere stays unseeded (6 shown).
+  scenario("M. a player rated at two other clubs joins through the participant sync: his seed is the games-weighted average there; a player rated nowhere stays unseeded and shows 6", async ({ pool, db, page }) => {
+    liveOnly();
+    const v = await vetsClub(pool, "vets", { month: "none" });
+    const tag = v.orgId;
+    const RATED = { id: `sim-vets-rated-${tag}`, name: "Rafa Rated", phone: "447700800501" };
+    const NEW = { name: "Una Unrated", phone: "447700800502" };
+    const RATER = `sim-vets-rater-${tag}`;
+    await db.run(`INSERT INTO "User" (id, name, email, "phoneNumber", onboarded, "isActive", "updatedAt") VALUES ($1, $2, $3, $4, true, true, now())`, [
+      RATED.id,
+      RATED.name,
+      `${RATED.id}@e2e-test.invalid`,
+      `+${RATED.phone}`,
+    ]);
+    await db.run(`INSERT INTO "User" (id, name, email, onboarded, "isActive", "updatedAt") VALUES ($1, 'Rex Rater', $2, true, true, now())`, [RATER, `${RATER}@e2e-test.invalid`]);
+    // Two other clubs: Wednesday rated him 8 in each of three games, Friday
+    // 4 in one. Weighted by games: (8 x 3 + 4 x 1) / 4 = 7. A plain mean of
+    // the two club ratings would be 6, so the weighting is what is proven.
+    const day = 86_400_000;
+    for (const [club, name, scores] of [
+      [`sim-vets-wed-${tag}`, "Wednesday Wanderers Sandbox", [8, 8, 8]],
+      [`sim-vets-fri-${tag}`, "Friday Five Sandbox", [4]],
+    ] as const) {
+      await db.run(
+        `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "approvalStatus", "createdAt", "updatedAt") VALUES ($1, $2, $1, $3, 'approved', now(), now())`,
+        [club, name, `${club}-invite`],
+      );
+      await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ($1, $2, $3, 'PLAYER')`, [`${club}-m`, RATED.id, club]);
+      await db.run(
+        `INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "updatedAt") VALUES ($1, $2, 'Football', 5, '{}', '{}', now())`,
+        [`${club}-sport`, club],
+      );
+      await db.run(
+        `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "updatedAt") VALUES ($1, $2, $3, 'Weekly 5s', 3, '20:00', 'Pitch', now())`,
+        [`${club}-act`, club, `${club}-sport`],
+      );
+      for (const [i, score] of scores.entries()) {
+        const match = `${club}-match-${i}`;
+        const date = new Date(Date.now() - (i + 2) * 7 * day);
+        await db.run(
+          `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt") VALUES ($1, $2, $3, 10, 'COMPLETED', $3, now())`,
+          [match, `${club}-act`, date],
+        );
+        await db.run(`INSERT INTO "Rating" (id, "matchId", "raterId", "playerId", score) VALUES ($1, $2, $3, $4, $5)`, [`${match}-r`, match, RATER, RATED.id, score]);
+      }
+    }
+
+    // The Pi's participant sweep sees the two new members in the group.
+    const sweep = await pool.request.post("/api/whatsapp/sync-participants", {
+      headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+      data: { groupId: v.club.group.groupId, participants: [{ phone: RATED.phone, pushname: "Rafa" }, { phone: NEW.phone, pushname: NEW.name }] },
+    });
+    expect(sweep.status(), await sweep.text()).toBe(200);
+    console.log(`[vets M] the sweep: ${await sweep.text()}`);
+    const seedHere = (userId: string) =>
+      db.one<{ seedRating: number | null }>(`SELECT "seedRating" FROM "Membership" WHERE "userId" = $1 AND "orgId" = $2`, [userId, v.orgId]);
+    const newUser = await db.one<{ id: string }>(`SELECT id FROM "User" WHERE "phoneNumber" = $1`, [`+${NEW.phone}`]);
+    expect(newUser, "the unrated joiner was created").not.toBeNull();
+    const rated = await seedHere(RATED.id);
+    const unrated = await seedHere(newUser!.id);
+    console.log(`[vets M] seeds here: ${RATED.name} ${rated?.seedRating}, ${NEW.name} ${unrated?.seedRating}`);
+    expect(rated, "his membership here").not.toBeNull();
+    expect(rated!.seedRating).toBe(7);
+    expect(unrated, "her membership here").not.toBeNull();
+    expect(unrated!.seedRating).toBeNull();
+    // His rows at the other clubs are untouched.
+    expect(await db.count(`SELECT COUNT(*) FROM "Membership" WHERE "userId" = $1 AND "orgId" <> $2 AND "seedRating" IS NOT NULL`, [RATED.id, v.orgId])).toBe(0);
+
+    // Davide's admin players page: the Seed box shows 7 and 6, and never
+    // names the clubs the seed came from.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await signInAs(page, v.userId("davide"), "/admin/players");
+    const row = page.getByTestId(`player-row-${RATED.id}`);
+    await expect(row).toBeVisible({ timeout: 60_000 });
+    await expect(row.locator('input[type="number"]')).toHaveValue("7");
+    await expect(page.getByTestId(`player-row-${newUser!.id}`).locator('input[type="number"]')).toHaveValue("6");
+    await expect(page.getByText("Wednesday Wanderers Sandbox")).toHaveCount(0);
+    await expect(page.getByText("Friday Five Sandbox")).toHaveCount(0);
+  });
 });
