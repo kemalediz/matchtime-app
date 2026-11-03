@@ -672,8 +672,42 @@ export function buildRatePromoPost(args: {
   activityName: string;
   matchDateLabel: string;
   lang?: Lang | string | null;
+  /** The club's FIRST rating post (`isFirstRatePromo`): the long one,
+   *  which says what the ratings are for (Kemal, 2026-11-03). `momVote`
+   *  false when the organisers choose MoM: the MoM sentence is dropped.
+   *  Absent: today's short post, byte for byte. */
+  firstTime?: { mvpLabel: string; momVote: boolean };
 }): string {
+  if (args.firstTime) {
+    return t(args.lang).rate_promo_first({
+      activityName: args.activityName,
+      matchDateLabel: args.matchDateLabel,
+      mvpLabel: args.firstTime.mvpLabel,
+      momVote: args.firstTime.momVote,
+    });
+  }
   return t(args.lang).rate_promo({ activityName: args.activityName, matchDateLabel: args.matchDateLabel });
+}
+
+/**
+ * A rating post's SentNotification key: `<matchId>:rate-promo` in the
+ * group or the organisers' admin group, `<matchId>:rate-promo:<adminId>`
+ * when relayed to an organiser by DM.
+ */
+export function isRatePromoKey(key: string): boolean {
+  return /:rate-promo(?::|$)/.test(key);
+}
+
+/**
+ * Has this club never had a rating post? `keys` is the club's sent
+ * history (every SentNotification key of its matches, plus anything
+ * already queued this poll). True only when none of them is a rating
+ * post, so once a club has had one it gets the short post for ever; a
+ * mute writes nothing, so it cannot make a club "first" again.
+ */
+export function isFirstRatePromo(keys: Iterable<string>): boolean {
+  for (const k of keys) if (isRatePromoKey(k)) return false;
+  return true;
 }
 
 /**

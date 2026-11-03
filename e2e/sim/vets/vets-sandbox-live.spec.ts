@@ -461,7 +461,7 @@ scenario.describe("the Vets sandbox", () => {
   });
 
   // ── H ──────────────────────────────────────────────────────────────
-  scenario("H. after a game: rating DMs the morning after to the confirmed players with phones; a rating through the real page (1 to 10, self refused); MoM picked on the link; the winner announced in the group", async ({ pool, db, page }) => {
+  scenario("H. after a game: rating DMs the morning after to the confirmed players with phones, then the club's first rating post explaining why; a rating through the real page (1 to 10, self refused); MoM picked on the link; the winner announced in the group", async ({ pool, db, page }) => {
     liveOnly();
     const v = await vetsClub(pool, "vets", { month: "running", played: { keys: [...LIST_KEYS.slice(0, 13), "p12"] } });
     const played = v.playedMatchId!;
@@ -485,16 +485,33 @@ scenario.describe("the Vets sandbox", () => {
     // The morning after (the match was last Monday 20:30): polls from 06:00 to 12:00.
     const morning = londonDay(new Date(lastMondayKickoff().getTime() + 86_400_000));
     const rateDms: Array<{ at: string; to: string; text: string }> = [];
+    const promos: Array<{ at: string; text: string }> = [];
     for (const hhmm of ["06:00", "07:00", "07:30", "08:00", "08:30", "09:00", "10:00", "11:00", "12:00"]) {
       const at = london(morning, hhmm);
       const { instructions } = await schedulerPoll(pool, v, at);
       for (const i of instructions.filter((x) => x.kind === "dm" && /rate|rating/i.test(`${x.key ?? ""} ${x.text ?? ""}`))) rateDms.push({ at: hhmm, to: i.phone ?? i.targetUser ?? "?", text: i.text ?? "" });
+      for (const i of instructions.filter((x) => x.kind === "group-message" && /:rate-promo$/.test(x.key ?? ""))) promos.push({ at: hhmm, text: i.text ?? "" });
     }
     console.log(`[vets H] rating DMs: ${rateDms.length} at ${[...new Set(rateDms.map((d) => d.at))].join(", ")}\n  first: ${rateDms[0]?.text}`);
     expect(rateDms).toHaveLength(confirmedWithPhone);
     expect(Number(rateDms[0].at.slice(0, 2))).toBeGreaterThanOrEqual(8);
     const phones = new Set(rateDms.map((d) => d.to));
     for (const k of [...LIST_KEYS, "p12"]) expect(phones.has(v.phone(k)), k).toBe(true);
+
+    // The group post after the DMs: the Vets have never had one, so it is
+    // the FIRST one, which says what the ratings are for (Kemal,
+    // 2026-11-03). Players vote MoM at the Vets, so the MoM sentence stays.
+    // "The players", not "everyone": David Aksoy has no number, no DM.
+    console.log(`[vets H] the group post after the DMs: ${JSON.stringify(promos)}`);
+    expect(promos).toHaveLength(1);
+    expect(promos[0].at > rateDms.at(-1)!.at, "after the last DM").toBe(true);
+    const [{ name: activityName }] = await db.all<{ name: string }>(`SELECT a.name FROM "Match" m JOIN "Activity" a ON a.id = m."activityId" WHERE m.id = $1`, [played]);
+    expect(promos[0].text).toBe(
+      `🎯 I've just DM'd the players from the *${activityName}* on ${formatInTimeZone(lastMondayKickoff(), LONDON, "EEE d MMM")} a private link to rate the others out of 10.\n\n` +
+        "*Why rate?* I use the ratings to pick two balanced teams, so the games stay close and nobody ends up on the losing side every week. " +
+        "Your scores are private: nobody sees who rated what, and you can't rate yourself. The same link is where you pick Man of the Match.\n\n" +
+        "It takes about a minute, and the more of you rate, the fairer the teams. Check your DMs from me 👇",
+    );
 
     // Shane opens his link.
     const shaneDm = rateDms.find((d) => d.to === v.phone("shane"))!;
@@ -543,7 +560,7 @@ scenario.describe("the Vets sandbox", () => {
       const day = londonDay(new Date(lastMondayKickoff().getTime() + d * 86_400_000));
       for (const hhmm of ["10:00", "15:30", "20:00"]) {
         const { instructions } = await schedulerPoll(pool, v, london(day, hhmm));
-        posts.push(...instructions.filter((i) => (i.kind === "group-message" || i.kind === "group-poll") && /Man of the Match/i.test(i.text ?? "")).map((i) => ({ ...i, at: `${day} ${hhmm}` })));
+        posts.push(...instructions.filter((i) => (i.kind === "group-message" || i.kind === "group-poll") && !/:rate-promo$/.test(i.key ?? "") && /Man of the Match/i.test(i.text ?? "")).map((i) => ({ ...i, at: `${day} ${hhmm}` })));
       }
     }
     console.log(`[vets H] MoM posts: ${JSON.stringify(posts.map((p) => [p.at, p.kind, p.text]))}`);

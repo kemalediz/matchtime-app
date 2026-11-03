@@ -84,6 +84,7 @@ const SAMPLES: SampleArgs = {
   bench_offer_context_fixture: { activityName: "Tuesday 7-a-side", day: "DAYLABEL" },
   bench_offer_context_fixture_plain: { activityName: "Tuesday 7-a-side", day: "DAYLABEL" },
   rate_promo: { activityName: "Tuesday 7-a-side", matchDateLabel: "Tue 15 Sep" },
+  rate_promo_first: { activityName: "Tuesday 7-a-side", matchDateLabel: "Tue 15 Sep", mvpLabel: "MVPLABEL", momVote: true },
   match_day_chase_fallback: { need: 3, activityName: "Tuesday 7-a-side" },
   slot_opened: { outFirstNames: ["Wasim"], confirmed: 13, maxPlayers: 14, kickoffLabel: "Tue 21:30", open: 1 },
   announce_match: { activityName: "Tuesday 7-a-side", dateLabel: "Tuesday 8 September at 21:30", venue: "Goals North Cheam", maxPlayers: 14 },

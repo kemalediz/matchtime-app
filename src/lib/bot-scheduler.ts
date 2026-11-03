@@ -77,7 +77,7 @@ import {
   buildSquadCompleteBenchInvite,
 } from "./bench-offer-copy";
 import { leadOffer, untoldOffers, type OfferStamp } from "./bench-offer-batch";
-import { buildRatePromoPost, buildMatchDayChaseFallback, teamSheetNames } from "./group-copy";
+import { buildRatePromoPost, buildMatchDayChaseFallback, isFirstRatePromo, isRatePromoKey, teamSheetNames } from "./group-copy";
 import { dayCommaTimeLabel, dayLabel, dayTimeLabel, longDayTimeLabel, weekdayLabel, weekdayTimeLabel } from "./i18n/dates";
 import {
   dropOutDeadlineFor,
@@ -3461,10 +3461,20 @@ async function computeForMatch(
           // "Morning all" at 16:05 on 2026-09-16 after an outage.
           // Copy lives in group-copy.ts so it can be tested without
           // Prisma.
+          // THE FIRST ONE EXPLAINS ITSELF (Kemal, 2026-11-03): a club that
+          // has never had this post (no rating post key on any of its
+          // matches, nor one already queued this poll) is told what the
+          // ratings are for. Only when MatchTime picks the club's teams,
+          // since that is the reason it gives; every later post is short.
+          const firstTime =
+            features.teamBalancing &&
+            isFirstRatePromo(sentKeys) &&
+            !out.some((i) => isRatePromoKey(i.key ?? ""));
           const text = buildRatePromoPost({
             activityName: activity.name,
             matchDateLabel: dayLabel(lang, m.date),
             lang,
+            ...(firstTime ? { firstTime: { mvpLabel: sport.mvpLabel, momVote: !momByOrganisers } } : {}),
           });
           // Organisers announce (Kemal, 2026-10-14): the notice goes to
           // the admins; the players still got their DMs above.

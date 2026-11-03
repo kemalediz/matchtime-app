@@ -263,6 +263,18 @@ export const tr: Strings = {
     `puanlama linkini DM'den gönderdim. Ne kadar çok puan gelirse gelecek haftaki ` +
     `takımlar o kadar dengeli olur. DM'lerinize bakın 👇`,
 
+  // ── row 3b: buildRatePromoPost, a club's first ──────────────────────
+
+  rate_promo_first: (p) =>
+    `🎯 ${p.matchDateLabel} tarihindeki *${p.activityName}* maçının oyuncularına, ` +
+    `diğerlerine 10 üzerinden puan vermeleri için DM'den özel bir link gönderdim.\n\n` +
+    `*Neden puan veriyoruz?* Puanları iki dengeli takım kurmak için kullanıyorum; böylece ` +
+    `maçlar çekişmeli geçer ve kimse her hafta kaybeden tarafta kalmaz. Puanlarınız gizli: ` +
+    `kimin kime kaç puan verdiğini kimse görmez ve kendinize puan veremezsiniz.` +
+    (p.momVote ? ` ${p.mvpLabel} seçimi de aynı linkten yapılıyor.` : "") +
+    `\n\nYaklaşık bir dakika sürer; ne kadar çok kişi puan verirse takımlar o kadar adil olur. ` +
+    `DM'lerinize bakın 👇`,
+
   // ── row 4: buildMatchDayChaseFallback ────────────────────────────
 
   match_day_chase_fallback: (p) =>

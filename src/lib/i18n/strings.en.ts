@@ -295,6 +295,26 @@ export const en = {
     `a personal rating link. The more ratings we get, the better-balanced the ` +
     `teams get next week. Check your DMs from me 👇`,
 
+  // ── row 3b: buildRatePromoPost, the FIRST one a club ever gets ─────
+  //   (Kemal, 2026-11-03.) Says what the ratings are for. Each claim is
+  //   backed by the code: two teams balanced from the ratings
+  //   (team-generation.ts, team-balancer.ts; the scheduler only sends this
+  //   when the club has team generation on), scores of 1 to 10
+  //   (rate/page.tsx), nobody shown who rated what (raters appear only as
+  //   "has rated" counts), self-ratings refused (actions/ratings.ts), and
+  //   the MoM vote on the same page, a sentence dropped when the
+  //   organisers choose MoM (`momVote: false`). "The players", never
+  //   "everyone": a player with no number gets no DM.
+  rate_promo_first: (p: { activityName: string; matchDateLabel: string; mvpLabel: string; momVote: boolean }): string =>
+    `🎯 I've just DM'd the players from the *${p.activityName}* on ${p.matchDateLabel} ` +
+    `a private link to rate the others out of 10.\n\n` +
+    `*Why rate?* I use the ratings to pick two balanced teams, so the games stay close ` +
+    `and nobody ends up on the losing side every week. Your scores are private: nobody ` +
+    `sees who rated what, and you can't rate yourself.` +
+    (p.momVote ? ` The same link is where you pick ${p.mvpLabel}.` : "") +
+    `\n\nIt takes about a minute, and the more of you rate, the fairer the teams. ` +
+    `Check your DMs from me 👇`,
+
   // ── row 4: buildMatchDayChaseFallback (group-copy.ts) ────────────
 
   match_day_chase_fallback: (p: { need: number; activityName: string }): string =>
