@@ -395,14 +395,19 @@ describe("WEEKLY: a club on weekly mode is untouched on every branch slice 5 cha
     expect((await instructions(THU_10AM)).some((i) => i.key.startsWith("offer-"))).toBe(false);
   });
 
-  it("a monthly club's match with NO running month behaves as weekly too", async () => {
+  it("a monthly club's match with NO running month gets no list and no weekly 17:00 post either", async () => {
     // The month is for a Monday fixture at "Goals"; this match is elsewhere.
+    // Until 2026-11-03 such a match ran the weekly way, 17:00 roster and
+    // chase included. Kemal, 2026-11-03: in a monthly club the squad starts
+    // from the posted monthly list and IN is only for pay as you go players
+    // or a named guest, so a post counting whoever said IN and asking for
+    // more would ask the paid-up regulars to say IN.
     const m = weekly();
     m.activity.venue = "Powerleague";
     setWorld(m, { monthly: true });
     const out = await instructions(THU_5PM);
     expect(out.some((i) => i.key.includes("month-list"))).toBe(false);
-    expect(out.some((i) => i.key.startsWith(`${m.id}:evening-update:`))).toBe(true);
+    expect(out.some((i) => i.key.startsWith(`${m.id}:evening-update:`))).toBe(false);
   });
 });
 
@@ -681,12 +686,16 @@ describe("WEEKLY DEADLINE POSTS: not beside the month's list (found by the manua
     expect((await instructions(WED_UNPAID)).some((i) => i.key === `${m.id}:unpaid-group`)).toBe(false);
   });
 
-  it("MONTHLY, a game from before the month started here: the weekly posts, as for the poll and the fee", async () => {
+  it("MONTHLY, a game from before the month started here: no weekly roster posts (2026-11-03), unlike the poll and the fee", async () => {
+    // Until 2026-11-03 this game got the drop-out reminder and "List
+    // published" with the weekly roster. A monthly club's squad is the
+    // organiser's posted list, so a roster of whoever said IN is not it
+    // (announce-monthly-club.test.ts has the reasoning).
     monthStartedAt = new Date("2026-10-13T09:00:00.000Z");
     const m = withDeadlines(match({ attendances: weeklyRows(), rollingSeededAt: null }));
     setWorld(m, { monthly: true });
-    expect((await instructions(SUN_REMINDER)).filter((i) => i.key === `${m.id}:dropout-reminder`)).toHaveLength(1);
-    expect((await instructions(MON_PUBLISH)).filter((i) => i.key === `${m.id}:list-published`)).toHaveLength(1);
+    expect((await instructions(SUN_REMINDER)).some((i) => i.key === `${m.id}:dropout-reminder`)).toBe(false);
+    expect((await instructions(MON_PUBLISH)).some((i) => i.key === `${m.id}:list-published`)).toBe(false);
   });
 });
 
@@ -947,12 +956,18 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
     expect(res!.instructions.filter((i) => i.key.startsWith(PREFIX))).toHaveLength(1);
   });
 
-  it("MONTHLY, no month in sign-up: one read, no list, and the announcement as before", async () => {
+  it("MONTHLY, no month for the match: one read, no list, and the MONTHLY announcement, never the weekly one", async () => {
     const m = novMatch();
     setWorld(m, { monthly: true });
     const out = await instructions(TUE_0930);
     expect(signupReads).toHaveBeenCalledTimes(1);
     expect(out.some((i) => i.key.includes(":msu:"))).toBe(false);
+    // The Vets incident (3 Nov 2026): the regulars paid for the month and
+    // are never asked to sign up again.
+    const a = out.find((i) => i.key === `${m.id}:announce-match`) as { text: string } | undefined;
+    expect(a).toBeDefined();
+    expect(a!.text).not.toContain("Say *IN* to join");
+    expect(a!.text).toContain("Paid for the month?");
   });
 
   it("MONTHLY, sign-up open: the list is posted once, under its own key, with the regulars carried over", async () => {

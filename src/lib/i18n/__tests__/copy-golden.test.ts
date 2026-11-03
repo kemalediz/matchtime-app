@@ -365,6 +365,7 @@ import {
 } from "../../group-copy";
 import {
   buildAnnounceMatchPost,
+  buildAnnounceMonthlyMatchPost,
   buildAskScorePost,
   buildBenchOfferContext,
   buildBotIntro,
@@ -954,6 +955,8 @@ function cases(lang: Lang): Case[] {
   const named = (names: Array<string | null>) => names.map((name) => ({ name }));
   const [redLabel, yellowLabel] = lang === "tr" ? ["Kırmızı", "Sarı"] : ["Red", "Yellow"];
   add("R68 buildAnnounceMatchPost", buildAnnounceMatchPost({ activityName: "Tuesday 7-a-side", dateLabel: lang === "tr" ? "8 Eylül Salı 21:30" : "Tuesday 8 September at 21:30", venue: "Goals North Cheam", maxPlayers: 14, lang }));
+  add("R68m buildAnnounceMonthlyMatchPost", buildAnnounceMonthlyMatchPost({ activityName: "Monday 7-a-side", dateLabel: lang === "tr" ? "9 Kasım Pazartesi 20:30" : "Monday 9 November at 20:30", venue: "Oaks Park", organiser: "Davide", lang }));
+  add("R68m buildAnnounceMonthlyMatchPost (no organiser)", buildAnnounceMonthlyMatchPost({ activityName: "Monday 7-a-side", dateLabel: lang === "tr" ? "9 Kasım Pazartesi 20:30" : "Monday 9 November at 20:30", venue: "Oaks Park", organiser: null, lang }));
   add("R71 buildSquadRosterBlock / empty", buildSquadRosterBlock({ confirmed: [], bench: [], maxPlayers: 14, lang }));
   add("R71 buildSquadRosterBlock / short, no bench", buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 11)), bench: [], maxPlayers: 14, lang }));
   add("R71 buildSquadRosterBlock / short with bench and an unnamed row", buildSquadRosterBlock({ confirmed: named([...fourteenNames.slice(0, 10), null]), bench: named(["Erdal Ozkan", "Amir Ahmadi"]), maxPlayers: 14, lang }));

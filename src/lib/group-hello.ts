@@ -252,7 +252,9 @@ function pair(day: number | null, time: string | null): HelloDayTime | null {
   return okDay && typeof time === "string" && TIME_RE.test(time) ? { day: day as number, time } : null;
 }
 
-function firstName(name: string | null | undefined): string | null {
+/** The first word of a stored name: how the hello (and the monthly
+ *  announcement) name the organiser. */
+export function firstName(name: string | null | undefined): string | null {
   const first = (name ?? "").trim().split(/\s+/)[0];
   return first ? first : null;
 }

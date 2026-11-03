@@ -48,6 +48,23 @@ export function buildAnnounceMatchPost(
 }
 
 /**
+ * Row 68m: the announcement of a club on "monthly" whose month MatchTime
+ * does not hold yet (no SquadMonth). Never the weekly "Say IN to join,
+ * first N play": the regulars paid for the month and are in every game.
+ * `organiser` is the first name the group hello uses, or null.
+ */
+export function buildAnnounceMonthlyMatchPost(
+  args: {
+    activityName: string;
+    dateLabel: string;
+    venue: string;
+    organiser: string | null;
+  } & WithLang,
+): string {
+  return t(args.lang).announce_match_monthly(args);
+}
+
+/**
  * Row 71: the numbered "Confirmed (N/M):" + "Bench (N):" block inside
  * the daily 17:00 announcement. Goal: every day at 5pm, every player
  * can scan the message and see their own name on the list, which

@@ -127,6 +127,7 @@ import { buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost } from "./mo
 import { londonMonthStart } from "./squad-month-rules";
 import {
   buildAnnounceMatchPost,
+  buildAnnounceMonthlyMatchPost,
   buildAskScoreHqPost,
   buildAskScorePost,
   buildBenchOfferContext,
@@ -1324,6 +1325,18 @@ async function computeForMatch(
   const matchId = m.id;
   const activity = m.activity;
   const sport = activity.sport;
+  /**
+   * A club on "monthly" whose month MatchTime does not hold yet (no
+   * SquadMonth for this match; the Vets group, 3 Nov 2026). The squad
+   * starts from the organiser's posted list and IN is only for a pay as
+   * you go player or a named guest taking an open place (Kemal,
+   * 2026-11-03), so the confirmed count is only whoever happened to say
+   * IN. Every weekly post that counts that squad and asks for more is
+   * held back: the 17:00 post, the match-day and pre-kickoff chases, the
+   * drop-out reminder and the published list. The announcement has its
+   * own monthly copy. Always false for a weekly club.
+   */
+  const noMonthYet = !monthly && features.squadMode === "monthly";
   // THE GROUP'S LANGUAGE (`Organisation.language`), once per match. Read
   // defensively: the unit-test fixtures build `activity.org` by hand and
   // some omit it; Prisma always selects it. Unknown or missing is English,
@@ -1663,14 +1676,46 @@ async function computeForMatch(
       inAnnounceWindow &&
       isNextUpcoming &&
       squadEmpty &&
-      // MONTHLY SQUAD (slice 3): not for a match of a month in sign-up.
-      // "Say IN to join, first 14 play" beside the month's list would ask
-      // the regulars to sign up twice. Undefined for every weekly club.
-      !monthly?.signup
+      // MONTHLY SQUAD: a match of a month MatchTime holds (in sign-up,
+      // held for the organiser, or running) is never announced here. In
+      // sign-up the month's list is the announcement; held, nothing goes
+      // out until the organiser starts it; running, the week's list
+      // (block 2-monthly) is posted once the regulars are seeded. Before
+      // this gate also held for a running month (2026-11-03), a running
+      // month's match that was not seeded yet got the weekly "Say IN to
+      // join". Null for every weekly club.
+      !monthly
     ) {
+      // A club on "monthly" with no month yet (the Vets group, 3 Nov
+      // 2026: no SquadMonth row, and the weekly "Say IN to join. First 14
+      // confirmed play." went out). The regulars paid for the month and
+      // are in every game, so its own announcement: only pay as you go
+      // players and guests say IN, and the organiser posts the list.
       // The organisers announce: they are told the list is open instead.
       if (organisers) await toOrganisers(key, "announce");
-      else out.push({
+      else if (noMonthYet) {
+        let organiser: string | null = null;
+        try {
+          const { loadOrganiserName } = await import("./group-hello-load");
+          const { firstName } = await import("./group-hello");
+          organiser = firstName(await loadOrganiserName(activity.orgId));
+        } catch (err) {
+          // The line reads without a name; the post is not lost for it.
+          console.error(`[scheduler] match ${matchId}: the organiser's name could not be read:`, err);
+        }
+        out.push({
+          kind: "group-message",
+          key,
+          matchId,
+          text: buildAnnounceMonthlyMatchPost({
+            activityName: activity.name,
+            dateLabel: longDayTimeLabel(lang, m.date),
+            venue: activity.venue,
+            organiser,
+            lang,
+          }),
+        });
+      } else out.push({
         kind: "group-message",
         key,
         matchId,
@@ -1862,7 +1907,7 @@ async function computeForMatch(
           })(),
           lang,
         });
-      } else if (monthly) {
+      } else if (monthly || noMonthYet) {
         // MONTHLY SQUAD (slice 5): the squad is the month's list, posted
         // in the group's own format when it changes and on match morning
         // (block 2-monthly below). The daily 17:00 roster, chase and
@@ -2035,8 +2080,9 @@ async function computeForMatch(
   //    morning), so a club that kept its weekly deadlines when it went
   //    monthly would get two differently shaped lists. The same reason
   //    the 17:00 post and "Squad complete" do not fire. `monthly` is null
-  //    for every match of a weekly club.
-  if (!monthly) {
+  //    for every match of a weekly club. Nor for a monthly club with no
+  //    month yet (`noMonthYet`): its roster is not the month's squad.
+  if (!monthly && !noMonthYet) {
     const isLive = m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED";
     const weekly = weeklyDeadlinesFor(m.date, activity.org);
     const reminderKey = `${matchId}:dropout-reminder`;
@@ -2726,7 +2772,10 @@ async function computeForMatch(
         // The organisers announce: the short squad goes to them. (An admin
         // GROUP's hours start at 09:00, so there it waits for the 3h chase.)
         if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
-        else {
+        else if (noMonthYet) {
+          // A monthly club with no month yet: "N more needed" would ask
+          // the paid-up regulars to say IN.
+        } else {
           const chase = await chaseText(
             "match-day-morning",
             // No "Morning all": the slot is 8-9am but the post can land
@@ -2749,7 +2798,9 @@ async function computeForMatch(
         hoursUntilMatch >= 3
       ) {
         if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
-        else {
+        else if (noMonthYet) {
+          // As the morning chase above.
+        } else {
           const chase = await chaseText("chase-pre-kickoff", () =>
             buildChasePreKickoffFallback({
               need,
@@ -2780,7 +2831,9 @@ async function computeForMatch(
       (m.status === "TEAMS_PUBLISHED" || m.status === "TEAMS_GENERATED" || m.status === "UPCOMING")
     ) {
       if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
-      else {
+      else if (noMonthYet) {
+        // As the chases above.
+      } else {
         const chase = await chaseText("pre-kickoff-short", () =>
           buildPreKickoffShortFallback({
             timeLabel: format(m.date, "HH:mm"),

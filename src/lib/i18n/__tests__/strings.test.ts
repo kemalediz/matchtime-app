@@ -87,6 +87,7 @@ const SAMPLES: SampleArgs = {
   match_day_chase_fallback: { need: 3, activityName: "Tuesday 7-a-side" },
   slot_opened: { outFirstNames: ["Wasim"], confirmed: 13, maxPlayers: 14, kickoffLabel: "Tue 21:30", open: 1 },
   announce_match: { activityName: "Tuesday 7-a-side", dateLabel: "Tuesday 8 September at 21:30", venue: "Goals North Cheam", maxPlayers: 14 },
+  announce_match_monthly: { activityName: "Monday 7-a-side", dateLabel: "Monday 9 November at 20:30", venue: "Oaks Park", organiser: "Davide" },
   roster_confirmed_header: { confirmed: 11, maxPlayers: 14 },
   roster_nobody_yet: null,
   squad_full_evening_lead: { activityName: "Tuesday 7-a-side", confirmed: 14, maxPlayers: 14 },

@@ -116,6 +116,38 @@ export async function loadHelloGameDay(orgId: string, client: HelloReadClient): 
 }
 
 /**
+ * The organiser the group hello names, as a full name, or null: the given
+ * user, else the most recently linked club connect, else the club's first
+ * OWNER. Also read by the monthly announcement (bot-scheduler.ts), so both
+ * posts name the same person.
+ */
+export async function loadOrganiserName(
+  orgId: string,
+  opts: { organiserUserId?: string | null; client?: Pick<HelloReadClient, "clubConnect" | "membership" | "user"> } = {},
+): Promise<string | null> {
+  const client = opts.client ?? (db as unknown as HelloReadClient);
+  let userId = opts.organiserUserId ?? null;
+  if (!userId) {
+    const link = await client.clubConnect.findFirst({
+      where: { orgId, linkedAt: { not: null } },
+      orderBy: { linkedAt: "desc" },
+      select: { userId: true },
+    });
+    userId = link?.userId ?? null;
+  }
+  if (!userId) {
+    const owner = await client.membership.findFirst({
+      where: { orgId, role: "OWNER", leftAt: null, ...ORDINARY_MEMBER_WHERE },
+      orderBy: { id: "asc" },
+      select: { userId: true },
+    });
+    userId = owner?.userId ?? null;
+  }
+  const user = userId ? await client.user.findUnique({ where: { id: userId }, select: { name: true } }) : null;
+  return user?.name ?? null;
+}
+
+/**
  * Would the rolling seeding put a SUBSTANTIAL squad on this club's next
  * game: at least half of its places (`Match.maxPlayers`)? The matches are
  * the ones `seedDueRollingSquads` reads (this club, not historical, live
@@ -195,25 +227,7 @@ export async function loadHelloInput(
   const row = await client.organisation.findUnique({ where: { id: orgId }, select: HELLO_ORG_SELECT });
   if (!row) throw new Error(`loadHelloInput: organisation ${orgId} not found`);
 
-  let userId = opts.organiserUserId ?? null;
-  if (!userId) {
-    const link = await client.clubConnect.findFirst({
-      where: { orgId, linkedAt: { not: null } },
-      orderBy: { linkedAt: "desc" },
-      select: { userId: true },
-    });
-    userId = link?.userId ?? null;
-  }
-  if (!userId) {
-    const owner = await client.membership.findFirst({
-      where: { orgId, role: "OWNER", leftAt: null, ...ORDINARY_MEMBER_WHERE },
-      orderBy: { id: "asc" },
-      select: { userId: true },
-    });
-    userId = owner?.userId ?? null;
-  }
-  const user = userId ? await client.user.findUnique({ where: { id: userId }, select: { name: true } }) : null;
-  const input = helloInputFromOrg(row, user?.name ?? null);
+  const input = helloInputFromOrg(row, await loadOrganiserName(orgId, { organiserUserId: opts.organiserUserId, client }));
   const gameDay = await loadHelloGameDay(orgId, client);
   const rolling = input.settings.attendance && input.settings.rollingSquad;
   return {
