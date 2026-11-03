@@ -1362,7 +1362,19 @@ scenario.describe("the Vets sandbox", () => {
     expect(ups[0].text).toMatch(/^We've got 16 for \w+, 2 on the bench\. Shall we go 8-a-side\? Davide, reply \*yes\* to this message and I'll switch it\.$/);
     // Once per size: the next poll says nothing.
     expect((await schedulerPoll(pool, v, new Date())).instructions.filter((i) => (i.key ?? "").includes(":format-up:"))).toEqual([]);
-    const quote = { text: ups[0].text!, fromMatchTime: true };
+    // The Pi acks the post with its WhatsApp id; a reply quotes that id.
+    const ack = await pool.request.post("/api/whatsapp/ack", {
+      headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+      data: { key: ups[0].key, kind: "group-message", matchId: v.matchId, waMessageId: `true_${v.club.group.groupId}_3EB0VETSUGGEST` },
+    });
+    expect(ack.status()).toBe(200);
+    const quote = { id: "3EB0VETSUGGEST", text: ups[0].text!, fromMatchTime: true };
+
+    // A player's own IN as a reply to it is his IN, as ever (review of #517).
+    const playersIn = await say(pool, v, "p20", "yes I'm in", { quote });
+    console.log(`[vets S] a player's 'yes I'm in': ${JSON.stringify({ react: playersIn.react, reply: playersIn.reply, intent: playersIn.intent, handledBy: playersIn.handledBy })}`);
+    expect(await statusOf(db, v, "p20"), "his IN is recorded: the bench, the squad being full").toBe("BENCH");
+    expect(await placesOf(db, v.matchId)).toBe(14);
 
     const playersYes = await say(pool, v, "kerem", "yes", { quote });
     console.log(`[vets S] a player's yes: ${JSON.stringify({ reply: playersYes.reply, intent: playersYes.intent, handledBy: playersYes.handledBy, sent: playersYes.sent })}`);
@@ -1383,6 +1395,13 @@ scenario.describe("the Vets sandbox", () => {
     expect(list, "the new week's list").toHaveLength(1);
     expect(list[0].text).toMatch(/\n16\. /);
     expect(list[0].text).not.toMatch(/[\u2013\u2014]/);
+    expect(await statusOf(db, v, "p20"), "the third on the bench stays there").toBe("BENCH");
+
+    // A second yes to the same post changes nothing.
+    const again = await say(pool, v, "davide", "yes", { quote });
+    console.log(`[vets S] Davide's second yes: ${JSON.stringify({ reply: again.reply, intent: again.intent })}`);
+    expect(await placesOf(db, v.matchId)).toBe(16);
+    expect(again.sent.filter((m) => m.channel === "dm")).toEqual([]);
   });
 
   scenario("T. Davide switches down: '@Match Time 6 kişilik oynayalım' makes it 12; the pay as you go player is benched before any regular, each told by DM; 9 a side is refused", async ({ pool, db }) => {

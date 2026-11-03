@@ -6,6 +6,10 @@
 import { describe, expect, it } from "vitest";
 import {
   FORMAT_UP_KEY_PREFIX,
+  formatUpRearmKey,
+  formatUpSettledKey,
+  parseFormatUpKey,
+  planFormatUp,
   PLAYERS_CEILING,
   checkPlayerRange,
   decideBenchSuggestion,
@@ -111,9 +115,13 @@ describe("decideBenchSuggestion", () => {
     expect(decideBenchSuggestion({ ...base, teamsOut: true })).toEqual({ kind: "none" });
     expect(decideBenchSuggestion({ ...base, live: false })).toEqual({ kind: "none" });
   });
-  it("the key is per match and per size", () => {
-    expect(formatUpKey("m1", 16)).toBe("m1:format-up:16");
-    expect(formatUpKey("m1", 16).startsWith(`m1${FORMAT_UP_KEY_PREFIX}`)).toBe(true);
+  it("the keys: settled, one suggestion per episode, the re-arm marker; all under one prefix", () => {
+    expect(formatUpSettledKey("m1", 16)).toBe("m1:format-up:16");
+    expect(formatUpKey("m1", 16, 0)).toBe("m1:format-up:16:e0");
+    expect(formatUpRearmKey("m1", 1)).toBe("m1:format-up-rearm:1");
+    for (const k of [formatUpSettledKey("m1", 16), formatUpKey("m1", 16, 2), formatUpRearmKey("m1", 1)]) expect(k.startsWith(`m1${FORMAT_UP_KEY_PREFIX}`)).toBe(true);
+    expect(parseFormatUpKey("m1:format-up:16:e2")).toEqual({ matchId: "m1", places: 16, episode: 2 });
+    expect(parseFormatUpKey("m1:format-up:16")).toBeNull();
   });
 });
 
@@ -196,13 +204,11 @@ describe("teams: how many make them, and the two sides", () => {
     expect(teamSides(14, 7)).toEqual({ red: 7, yellow: 7 });
     expect(teamSides(17, 8)).toEqual({ red: 8, yellow: 8 });
   });
-  it("the players a side come from the match's own places, when its range allows them", () => {
-    const range = playerRange(VETS);
-    expect(perTeamFor({ maxPlayers: 16, playersPerTeam: 7, range })).toBe(8);
-    expect(perTeamFor({ maxPlayers: 12, playersPerTeam: 7, range })).toBe(6);
+  it("the players a side come from the match's own places, whatever the range says now", () => {
+    expect(perTeamFor({ maxPlayers: 16, playersPerTeam: 7 })).toBe(8);
+    expect(perTeamFor({ maxPlayers: 12, playersPerTeam: 7 })).toBe(6);
     expect(perTeamFor({ maxPlayers: 14, playersPerTeam: 7 })).toBe(7);
-    // Outside the range, odd, or nonsense: the format's own, as before.
-    expect(perTeamFor({ maxPlayers: 16, playersPerTeam: 7 })).toBe(7);
+    // Odd or nonsense: the format's own, as before (a fixture's 5).
     expect(perTeamFor({ maxPlayers: 5, playersPerTeam: 5 })).toBe(5);
     expect(perTeamFor({ maxPlayers: 0, playersPerTeam: 7 })).toBe(7);
   });
@@ -221,5 +227,31 @@ describe("the admin extractor's facts as numbers (the model never doubles)", () 
     expect(perSideOf({ size: 16 })).toBe(8);
     expect(perSideOf({ size: 15 })).toBe(0);
     expect(perSideOf({})).toBe(0);
+  });
+});
+
+describe("planFormatUp: once per size per episode, re-armed by the bench emptying, never against a settled size", () => {
+  const suggest = { kind: "suggest" as const, toPlaces: 16 };
+  const rearm = { kind: "rearm" as const };
+  it("the first suggestion is episode 0", () => {
+    expect(planFormatUp({ matchId: "m", keys: new Set(), decision: suggest })).toEqual({ kind: "suggest", key: "m:format-up:16:e0", toPlaces: 16 });
+  });
+  it("suggested already in this episode: nothing", () => {
+    expect(planFormatUp({ matchId: "m", keys: new Set(["m:format-up:16:e0"]), decision: suggest })).toEqual({ kind: "none" });
+  });
+  it("the bench drops below two after a suggestion: re-arm once; with nothing suggested, nothing", () => {
+    expect(planFormatUp({ matchId: "m", keys: new Set(["m:format-up:16:e0"]), decision: rearm })).toEqual({ kind: "rearm", key: "m:format-up-rearm:1" });
+    expect(planFormatUp({ matchId: "m", keys: new Set(["m:format-up:16:e0", "m:format-up-rearm:1"]), decision: rearm })).toEqual({ kind: "none" });
+    expect(planFormatUp({ matchId: "m", keys: new Set(), decision: rearm })).toEqual({ kind: "none" });
+  });
+  it("after a re-arm the same size can be suggested again, in the next episode", () => {
+    expect(planFormatUp({ matchId: "m", keys: new Set(["m:format-up:16:e0", "m:format-up-rearm:1"]), decision: suggest })).toEqual({
+      kind: "suggest",
+      key: "m:format-up:16:e1",
+      toPlaces: 16,
+    });
+  });
+  it("a size an organiser switched through is never suggested again, re-arm or not", () => {
+    expect(planFormatUp({ matchId: "m", keys: new Set(["m:format-up:16", "m:format-up-rearm:3"]), decision: suggest })).toEqual({ kind: "none" });
   });
 });

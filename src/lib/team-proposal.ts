@@ -273,7 +273,7 @@ async function loadSheet(match: MatchRow, lang: string | null | undefined, extra
     needed: sport
       ? (() => {
           const range = playerRange({ minPlayers: activity.minPlayers ?? null, maxPlayers: activity.maxPlayers ?? null, playersPerTeam: sport.playersPerTeam });
-          const perTeam = perTeamFor({ maxPlayers: match.maxPlayers ?? 0, playersPerTeam: sport.playersPerTeam, range });
+          const perTeam = perTeamFor({ maxPlayers: match.maxPlayers ?? 0, playersPerTeam: sport.playersPerTeam });
           return teamsNeeded({ places: perTeam * 2, range });
         })()
       : 0,

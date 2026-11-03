@@ -105,13 +105,73 @@ export function nextSizeUp(places: number, r: PlayerRange): number | null {
 }
 
 // ── The bench suggestion ──────────────────────────────────────────────
+//
+// THREE KINDS OF KEY, all under `<matchId>:format-up`, all kept for good
+// (review of #517: a re-arm must not forget what an organiser settled, nor
+// the suggestion's own row, which a reply to it is resolved by):
+//   `<matchId>:format-up:<places>`            SETTLED: a switch passed
+//                                              through this size; never
+//                                              suggested again for the match
+//   `<matchId>:format-up:<places>:e<n>`       one suggestion, in episode n
+//   `<matchId>:format-up-rearm:<n>`           the bench dropped below two
+//                                              after a suggestion of episode
+//                                              n - 1: episode n begins
 
-/** Every suggestion's key starts `<matchId>` then this. */
-export const FORMAT_UP_KEY_PREFIX = ":format-up:";
+/** Every format-up key of a match starts with this. */
+export const FORMAT_UP_KEY_PREFIX = ":format-up";
 
-/** One suggestion per match per size: `<matchId>:format-up:<places>`. */
-export function formatUpKey(matchId: string, places: number): string {
-  return `${matchId}${FORMAT_UP_KEY_PREFIX}${places}`;
+/** A size a switch passed through: never suggested again for the match. */
+export function formatUpSettledKey(matchId: string, places: number): string {
+  return `${matchId}:format-up:${places}`;
+}
+
+/** One suggestion of a size, in one episode. */
+export function formatUpKey(matchId: string, places: number, episode: number): string {
+  return `${matchId}:format-up:${places}:e${episode}`;
+}
+
+/** The marker that begins episode `episode`. */
+export function formatUpRearmKey(matchId: string, episode: number): string {
+  return `${matchId}:format-up-rearm:${episode}`;
+}
+
+/** A suggestion's key, read back: its match, size and episode. */
+export function parseFormatUpKey(key: string): { matchId: string; places: number; episode: number } | null {
+  const m = /^(.+):format-up:(\d+):e(\d+)$/.exec(key);
+  return m ? { matchId: m[1], places: Number(m[2]), episode: Number(m[3]) } : null;
+}
+
+/** The match's current episode: the newest re-arm marker, 0 with none. */
+export function formatUpEpisode(keys: Iterable<string>, matchId: string): number {
+  let n = 0;
+  const prefix = `${matchId}:format-up-rearm:`;
+  for (const k of keys) if (k.startsWith(prefix)) n = Math.max(n, Number(k.slice(prefix.length)) || 0);
+  return n;
+}
+
+/**
+ * The scheduler's whole decision for one poll, from the keys it holds:
+ *   "suggest"  post `formatUpKey(matchId, toPlaces, episode)`;
+ *   "rearm"    write `formatUpRearmKey(matchId, episode + 1)`: the bench is
+ *              below two and this episode had a suggestion;
+ *   "none".
+ */
+export function planFormatUp(p: {
+  matchId: string;
+  keys: ReadonlySet<string>;
+  decision: BenchSuggestion;
+}): { kind: "suggest"; key: string; toPlaces: number } | { kind: "rearm"; key: string } | { kind: "none" } {
+  const episode = formatUpEpisode(p.keys, p.matchId);
+  if (p.decision.kind === "rearm") {
+    const suffix = `:e${episode}`;
+    const suggested = [...p.keys].some((k) => k.startsWith(`${p.matchId}:format-up:`) && k.endsWith(suffix));
+    return suggested ? { kind: "rearm", key: formatUpRearmKey(p.matchId, episode + 1) } : { kind: "none" };
+  }
+  if (p.decision.kind !== "suggest") return { kind: "none" };
+  const to = p.decision.toPlaces;
+  if (p.keys.has(formatUpSettledKey(p.matchId, to))) return { kind: "none" };
+  const key = formatUpKey(p.matchId, to, episode);
+  return p.keys.has(key) ? { kind: "none" } : { kind: "suggest", key, toPlaces: to };
 }
 
 export type BenchSuggestion = { kind: "suggest"; toPlaces: number } | { kind: "rearm" } | { kind: "none" };
@@ -199,15 +259,15 @@ export function planResize(p: { rows: ResizeRow[]; newPlaces: number }): { promo
 // ── The teams ─────────────────────────────────────────────────────────
 
 /**
- * Players a side of one match: its own places halved, when they are a size
- * its game's range allows (a match switched to 8-a-side has 16 places).
- * Anything else is the format's own players a side, as before: every
- * production match has `maxPlayers = playersPerTeam * 2` (87 of 87 on
- * 2026-11-03), and a test fixture's odd 5 must not become 2 a side.
+ * Players a side of one match: its OWN places halved, whatever its game's
+ * range says now (review of #517: a match switched to 8-a-side whose
+ * range was then narrowed is still a 16-place match, and its 16 confirmed
+ * all play). Every production match has even places (`playersPerTeam * 2`,
+ * 87 of 87 on 2026-11-03); anything else (a test fixture's odd 5) is the
+ * format's own players a side, as before.
  */
-export function perTeamFor(m: { maxPlayers: number; playersPerTeam: number; range?: PlayerRange }): number {
-  const r = m.range ?? playerRange({ minPlayers: null, maxPlayers: null, playersPerTeam: m.playersPerTeam });
-  return sideAllowed(m.maxPlayers / 2, r) ? m.maxPlayers / 2 : m.playersPerTeam;
+export function perTeamFor(m: { maxPlayers: number; playersPerTeam: number }): number {
+  return Number.isInteger(m.maxPlayers) && m.maxPlayers >= 2 && m.maxPlayers % 2 === 0 ? m.maxPlayers / 2 : m.playersPerTeam;
 }
 
 /**

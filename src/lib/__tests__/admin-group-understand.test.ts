@@ -2053,7 +2053,7 @@ describe("a game's sizes from HQ", () => {
 
   it("an organiser's tagged \"make it 8 aside\": switched through the one core", async () => {
     const r = await ask("@Match Time make it 8 aside", "admin_ops", { deps: deps({ action: "switch_format", size: 8, aSide: true, toMatchTime: true }) });
-    expect(switchWords.applySwitchFormatWords).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", perSide: 8, matchDay: null, via: "hq", lang: "en" }));
+    expect(switchWords.applySwitchFormatWords).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", perSide: 8, matchDay: null, via: "hq", lang: "en", explicit: true }));
     expect(r?.outcome).toBe("hq-format-switched");
   });
 

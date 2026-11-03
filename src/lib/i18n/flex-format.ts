@@ -44,7 +44,16 @@ export interface FlexFormatCopy {
   row: (p: { sides: number[] }) => string;
 
   // ── Switching one match ──
-  switched: (p: { day: string; perSide: number; places: number; promoted: string[]; demoted: string[]; teamsCleared: boolean }) => string;
+  /** `pickOpen`: an organiser-pick club's places now open (nobody moved
+   *  in; the pick round asks the organisers). 0 otherwise. */
+  switched: (p: { day: string; perSide: number; places: number; promoted: string[]; demoted: string[]; teamsCleared: boolean; pickOpen?: number }) => string;
+  /** Switched to another of the club's formats (its own Activity and
+   *  kickoff): the announcement goes to the group itself. */
+  activitySwitched: (p: { day: string; perSide: number; places: number }) => string;
+  /** An organiser's yes to a suggestion that no longer holds. */
+  suggestionStale: (p: { day: string; perSide: number }) => string;
+  /** A range that would leave out a match already switched. */
+  rangeBlocked: (p: { activityName: string; day: string; perSide: number; backTo: number }) => string;
   alreadyThat: (p: { day: string; perSide: number }) => string;
   notAllowed: (p: { activityName: string; perSide: number; sides: number[]; url: string }) => string;
   noRange: (p: { activityName: string; perSide: number; url: string }) => string;

@@ -314,3 +314,25 @@ describe("the 10:00 'Low numbers' switch nudge uses the game's minimum", () => {
     expect(out.some((i) => i.key === switchKey(m.id))).toBe(true);
   });
 });
+
+// REVIEW OF #517 (uncommitted, failing): a match switched UP inside its
+// range keeps the day-before "Low numbers" nudge keyed on the match's new
+// places. A game with only a maximum set (16) and no minimum, switched to
+// 8-a-side, with 14 in (two full 7-a-side teams), must not be told it is
+// short and offered the 5-a-side.
+describe("review #517: a switched-up match is not 'low numbers' at the format's own places", () => {
+  beforeEach(() => {
+    features.squadMode = "weekly";
+  });
+  it("max 16, no minimum, match at 16 places, 14 confirmed: no 'Low numbers' switch nudge", async () => {
+    const base = vetsGame(14, null);
+    const m = { ...base, maxPlayers: 16, activity: { ...(base.activity as object), maxPlayers: 16 } };
+    const f = [
+      { name: "Football 7-a-side", ppt: 7, minPlayers: null },
+      { name: "Football 5-a-side", ppt: 5, minPlayers: null },
+    ];
+    const out = await runWith(m, SUN_10AM, f);
+    const dm = out.find((i) => i.key === switchKey(m.id)) as { text: string } | undefined;
+    expect(dm?.text).toBeUndefined();
+  });
+});

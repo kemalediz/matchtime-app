@@ -56,7 +56,12 @@ export const FLEX_FORMAT_EN: FlexFormatCopy = {
     `✅ Done: ${p.day} is ${side(p.perSide)} now, ${p.places} places.` +
     (p.promoted.length ? ` In from the bench: ${names(p.promoted)}.` : ``) +
     (p.demoted.length ? ` On the bench now: ${names(p.demoted)}.` : ``) +
-    (p.teamsCleared ? ` The teams are cleared, so tag me to make them again.` : ``),
+    (p.teamsCleared ? ` The teams are cleared, so tag me to make them again.` : ``) +
+    (p.pickOpen ? ` ${p.pickOpen === 1 ? "1 place is" : `${p.pickOpen} places are`} open, so I'll ask you who comes in from the bench.` : ``),
+  activitySwitched: (p) => `✅ Done: ${p.day} is ${side(p.perSide)} now, ${p.places} places. I've posted the new list.`,
+  suggestionStale: (p) => `The numbers have changed since I asked, so ${p.day} stays as it is. Tag me if you still want ${side(p.perSide)}.`,
+  rangeBlocked: (p) =>
+    `${p.day}'s game is ${side(p.perSide)} now, so those numbers would leave it out. Switch it back first, for example *@Match Time make it ${p.backTo} a side*, then change them.`,
   alreadyThat: (p) => `${p.day} is already ${side(p.perSide)}.`,
   notAllowed: (p) =>
     `*${p.activityName}* is played ${sides(p.sides)}, so I can't make it ${side(p.perSide)}. You can change the fewest and most players here: ${p.url}`,

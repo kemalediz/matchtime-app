@@ -20,6 +20,8 @@ import { appUrl } from "./app-url";
 import { readDayHint } from "./fee-waiver-rules";
 import { savePlayerRange } from "./player-range-save";
 import { flexFormatCopy } from "./i18n/flex-format";
+import { weekdayLabel } from "./i18n/dates";
+import { normaliseLang } from "./i18n/lang";
 
 export interface PlayerRangeWords {
   /** The fewest said, or null when none was. */
@@ -86,6 +88,12 @@ export async function applyPlayerRangeWords(p: PlayerRangeWords & { orgId: strin
     ...(p.maxPlayers !== null ? { max: p.maxPlayers } : {}),
   });
   if (!r.ok) {
+    if (r.error === "switched-match") {
+      return {
+        outcome: "player-range-refused",
+        replyText: c.rangeBlocked({ activityName: r.activityName, day: weekdayLabel(normaliseLang(p.lang), r.matchDate), perSide: r.perSide, backTo: r.backTo }),
+      };
+    }
     return {
       outcome: "player-range-refused",
       replyText: c.rangeRefused({ error: r.error === "not-found" ? "not-a-number" : r.error, field: r.field, activityName: r.activityName, places: r.places, ceiling: r.ceiling, url }),

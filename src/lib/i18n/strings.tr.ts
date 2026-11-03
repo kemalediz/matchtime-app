@@ -1173,7 +1173,7 @@ export const tr: Strings = {
       return (
         `⚙️ *Ayarların*\n` +
         `Kulübünün tüm ayarları tek bir ayarlar sayfasında, sekmelere ayrılmış olarak durur. Bir şeyin nerede olduğundan emin değil misin? Üstteki *Ayar bul* kutusuna adını yaz, seni doğrudan oraya götürür:\n${p.url}\n` +
-        `Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim. Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*, ya da en az ve en fazla kaç kişiyle oynadığınız için *@Match Time 12 ile 16 kişi arası oynuyoruz* (az oyuncu uyarısını ancak en azın altında yaparım, ve herhangi bir maç 6'ya 6, 7'ye 7 ya da 8'e 8 olabilir: *@Match Time 8'e 8 yapalım*).`
+        `Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim. Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*, ya da en az ve en fazla kaç kişiyle oynadığınız için *@Match Time 12 ile 16 kişi arası oynuyoruz* (az oyuncu uyarısını ancak en azın altında yaparım, ve herhangi bir maç bu sayılar içinde büyütülüp küçültülebilir, örneğin *@Match Time 8'e 8 yapalım*).`
       );
     }
     if (p.audience === "group") {

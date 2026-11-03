@@ -67,7 +67,7 @@ function got(f: AdminFacts | null): string {
 }
 /** A day is matched loosely: "min8@thursday" is met by "min8@on thursday". */
 const matches = (want: string, g: string) =>
-  want === "not" ? g.startsWith("not") : want.includes("@") ? g.split("@")[0] === want.split("@")[0] && g.includes(want.split("@")[1]) : want === g;
+  want === "any" ? true : want === "not" ? g.startsWith("not") : want.includes("@") ? g.split("@")[0] === want.split("@")[0] && g.includes(want.split("@")[1]) : want === g;
 
 interface Case {
   text: string;
@@ -113,6 +113,10 @@ const CASES: Case[] = [
   { text: "yes", where: "PG", quoted: SUGGESTION, want: "side8", dayFromQuote: true, why: "DAVIDE'S YES (in the prompt)" },
   { text: "evet", where: "PG", quoted: SUGGESTION, want: "side8", dayFromQuote: true, why: "TR yes (in the prompt)" },
   { text: "yes go for it", where: "PG", quoted: SUGGESTION, want: "side8", dayFromQuote: true, why: "yes in other words, held out" },
+  // ── A player's own place, as a reply to the suggestion: attendance (review of #517) ──
+  { text: "yes I'm in", where: "PG", quoted: SUGGESTION, want: "any", why: "IN as a reply to the suggestion (in the prompt): self_att", route: ["self_att", "unsure"] },
+  { text: "count me in for 8 a side", where: "PG", quoted: SUGGESTION, want: "any", why: "IN in other words, held out: self_att", route: ["self_att", "unsure", "offer"] },
+  { text: "evet ben de varım", where: "PG", quoted: SUGGESTION, want: "any", why: "TR IN as a reply, held out", route: ["self_att", "unsure"] },
   // ── Talk, not asked of MatchTime ──
   { text: "shall we go 8 aside next week lads?", where: "PG", want: "not", why: "a question to the others (router none)", route: ["none"] },
   { text: "8'e 8 mi oynasak?", where: "PG", want: "not", why: "TR question to the others", route: ["none"] },
@@ -143,7 +147,9 @@ async function main() {
     });
     const g = got(ex.facts.kind === "admin" ? ex.facts : null);
     const extractorOk = matches(c.want, g) || (c.dayFromQuote === true && g === `${c.want}@monday`);
-    const reached = c.route ? c.route.includes(route ?? "") || (route === "admin_ops" && extractorOk) : c.want === "not" ? true : route === "admin_ops";
+    const reached = c.route
+      ? c.route.includes(route ?? "") || (c.want !== "any" && route === "admin_ops" && extractorOk)
+      : c.want === "not" ? true : route === "admin_ops";
     if (extractorOk && reached) pass++;
     if (!extractorOk) exMiss++;
     if (!reached) routeMiss++;

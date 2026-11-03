@@ -394,7 +394,10 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     via: string;
     lang: string | null;
     now: Date;
-  }) => Promise<{ outcome: string; replyText: string }>;
+    /** The quoted post, when the message replies to MatchTime's own. */
+    quotedId: string | null;
+    explicit: boolean;
+  }) => Promise<{ outcome: string; replyText: string | null }>;
 }
 
 function empty(degradations: string[] = []): AdminOpsBatchResult {
@@ -597,7 +600,7 @@ export async function runAdminOpsBatch(args: {
   /** player_numbers (2026-11-03): an organiser's fewest and most players. */
   const rangeAsks = new Map<string, PlayerRangeWords>();
   /** switch_format (2026-11-03): an organiser's one game to another size. */
-  const switchAsks = new Map<string, { perSide: number; matchDay: string | null; actorUserId: string }>();
+  const switchAsks = new Map<string, { perSide: number; matchDay: string | null; actorUserId: string; quotedId: string | null; explicit: boolean }>();
   /** "Try again" with nothing stored to repeat: one short line. */
   const nothingToRetry = new Set<string>();
   /** "Try again" acted on as the stored ask (for the reasoning row). */
@@ -673,22 +676,24 @@ export async function runAdminOpsBatch(args: {
     }
 
     // One game to another size (2026-11-03): an organiser's, with an
-    // explicit tag, or as a reply to MatchTime's own post (his yes to the
-    // suggestion to go up a size: "Davide, reply yes to this message").
-    // Anybody else's yes is the players talking: nothing done, nothing
-    // said. A tagged player hears who can.
+    // explicit tag, or as a reply to MatchTime's own post. A reply is acted
+    // on only when the post it quotes is one of MatchTime's suggestions to
+    // go up a size, and then for THAT match and size (review of #517,
+    // `format-switch-words.ts`). Anybody else's yes is the players talking:
+    // nothing done, nothing said. A tagged player hears who can.
     if (facts.action === "switch_format") {
       const organiser = state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin);
       const explicit = m.tagged && m.taggedExplicitly === true;
-      if (!explicit && !(organiser && m.repliesToMatchTime === true)) {
-        hand(`switch_format without an explicit MatchTime tag${organiser ? "" : " from someone who is not an organiser"}`);
+      const quotedId = m.quoted?.fromMatchTime === true || m.repliesToMatchTime === true ? (m.quoted?.id ?? null) : null;
+      if (!explicit && !(organiser && quotedId)) {
+        hand(`switch_format without an explicit MatchTime tag${organiser ? " or a reply to MatchTime's suggestion" : " from someone who is not an organiser"}`);
         continue;
       }
       if (!organiser) {
         recruitNotOrganiser.set(m.waMessageId, facts.action);
         continue;
       }
-      switchAsks.set(m.waMessageId, { perSide: perSideOf(facts), matchDay: facts.matchDay?.trim() || null, actorUserId: m.senderUserId! });
+      switchAsks.set(m.waMessageId, { perSide: perSideOf(facts), matchDay: facts.matchDay?.trim() || null, actorUserId: m.senderUserId!, quotedId, explicit });
       continue;
     }
 

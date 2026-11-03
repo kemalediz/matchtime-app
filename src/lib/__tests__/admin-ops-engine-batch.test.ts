@@ -132,6 +132,7 @@ function msg(o: Partial<AdminOpsBatchMessage> & { body: string }): AdminOpsBatch
     gated: o.gated ?? false,
     ...(o.repliesToMatchTime !== undefined ? { repliesToMatchTime: o.repliesToMatchTime } : {}),
     ...(o.reply !== undefined ? { reply: o.reply } : {}),
+    ...(o.quoted !== undefined ? { quoted: o.quoted } : {}),
   };
 }
 
@@ -1416,14 +1417,14 @@ describe("one game switched to another size by WhatsApp", () => {
   const outcomeOf = async (body: string, m: Partial<AdminOpsBatchMessage> = {}, facts: Record<string, unknown> = SWITCH_FACTS) => {
     const { model } = stubModel({ [body]: facts });
     const r = recorder(model, paidWorld());
-    const calls: Array<{ perSide: number; matchDay: string | null; actorUserId: string; via: string }> = [];
+    const calls: Array<{ perSide: number; matchDay: string | null; actorUserId: string; via: string; quotedId: string | null; explicit: boolean }> = [];
     const res = await run({
       messages: [msg({ body, senderUserId: "u-kemal", senderName: fullName("kemal"), ...m })],
       deps: {
         ...r.deps,
         onlyOrganisersLine: async () => "Only Kemal can change that.",
         applySwitchFormatWords: async (a) => (
-          calls.push({ perSide: a.perSide, matchDay: a.matchDay, actorUserId: a.actorUserId, via: a.via }),
+          calls.push({ perSide: a.perSide, matchDay: a.matchDay, actorUserId: a.actorUserId, via: a.via, quotedId: a.quotedId, explicit: a.explicit }),
           { outcome: "format-switched", replyText: "✅ Done: Monday is 8-a-side now, 16 places." }
         ),
       },
@@ -1433,7 +1434,7 @@ describe("one game switched to another size by WhatsApp", () => {
 
   it("an organiser, tagged: switched through the one core", async () => {
     const { out, calls } = await outcomeOf(SAY);
-    expect(calls).toEqual([{ perSide: 8, matchDay: null, actorUserId: "u-kemal", via: "whatsapp" }]);
+    expect(calls).toEqual([{ perSide: 8, matchDay: null, actorUserId: "u-kemal", via: "whatsapp", quotedId: null, explicit: true }]);
     expect(out?.reply).toBe("✅ Done: Monday is 8-a-side now, 16 places.");
     expect(out?.intent).toBe("format-switched");
   });
@@ -1443,13 +1444,28 @@ describe("one game switched to another size by WhatsApp", () => {
     expect(calls.map((c) => c.perSide)).toEqual([8]);
   });
 
-  it("an organiser's yes as a reply to MatchTime's suggestion, untagged: switched", async () => {
+  it("an organiser's yes as a reply to MatchTime's post, untagged: handed on with the quoted post, which decides", async () => {
+    const { calls } = await outcomeOf(YES, { tagged: true, taggedExplicitly: false, repliesToMatchTime: true, quoted: { id: "3EB0SUGGEST", fromMatchTime: true } });
+    expect(calls).toEqual([{ perSide: 8, matchDay: null, actorUserId: "u-kemal", via: "whatsapp", quotedId: "3EB0SUGGEST", explicit: false }]);
+  });
+
+  it("an organiser's untagged yes that quotes no post id (an old Pi): nothing", async () => {
     const { calls } = await outcomeOf(YES, { tagged: true, taggedExplicitly: false, repliesToMatchTime: true });
-    expect(calls).toEqual([{ perSide: 8, matchDay: null, actorUserId: "u-kemal", via: "whatsapp" }]);
+    expect(calls).toEqual([]);
+  });
+
+  it("the core said nothing (not a suggestion): nothing said", async () => {
+    const { model } = stubModel({ [YES]: SWITCH_FACTS });
+    const r = recorder(model, paidWorld());
+    const res = await run({
+      messages: [msg({ body: YES, senderUserId: "u-kemal", senderName: fullName("kemal"), tagged: true, taggedExplicitly: false, repliesToMatchTime: true, quoted: { id: "x", fromMatchTime: true } })],
+      deps: { ...r.deps, applySwitchFormatWords: async () => ({ outcome: "format-not-a-suggestion", replyText: null }) },
+    });
+    expect(res.outcomes.get(`wa-${YES.slice(0, 14)}`)?.reply ?? null).toBeNull();
   });
 
   it("a player's yes to the suggestion: nothing switched, nothing said", async () => {
-    const { out, calls } = await outcomeOf(YES, { senderUserId: "u-zair", senderName: fullName("zair"), tagged: true, taggedExplicitly: false, repliesToMatchTime: true });
+    const { out, calls } = await outcomeOf(YES, { senderUserId: "u-zair", senderName: fullName("zair"), tagged: true, taggedExplicitly: false, repliesToMatchTime: true, quoted: { id: "3EB0SUGGEST", fromMatchTime: true } });
     expect(calls).toEqual([]);
     expect(out?.reply ?? null).toBeNull();
   });

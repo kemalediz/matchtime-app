@@ -8,24 +8,38 @@
  * NO AUTHORISATION LIVES HERE. Every caller checks the sender is an owner or
  * admin first, as for every admin action.
  *
- * WHAT IT DOES, in one transaction under the week's lock (the same advisory
- * key the monthly slot writer takes, so a monthly fill-in cannot take a
- * slot halfway through):
+ * CONCURRENCY (review of #517). One transaction that takes, in this order,
+ * the per-match slot lock every bench path takes (`team-slots:`) and the
+ * week's lock the monthly slot writer takes (`monthly-week:`); no path
+ * takes them the other way round. Under them it locks the Match row and the
+ * squad's Attendance rows (`FOR UPDATE`), so an IN or OUT already writing a
+ * row is waited for and read as it committed, and one arriving later waits
+ * for the switch. The size is re-read under the lock: a second switch to
+ * the same size does nothing (idempotent, one list post). Each move is a
+ * conditional write on the status it was read with.
+ *
+ * WHAT IT DOES:
  *   - `Match.maxPlayers` becomes the new places. The match stays on its own
  *     Activity: no second match, no new kickoff (see flex-format-rules.ts
  *     for why this is not `switchMatchFormat`).
  *   - UP: the bench moves in, in bench order (`planResize`), except a player
  *     who asked to be on the bench. Each gets a DM that he is in, and pays as
  *     he goes (for a monthly club, the PAYG price, named only when the club
- *     takes payments).
+ *     takes payments). A club whose organisers pick from the bench
+ *     (`benchPickMode = "organiser"`) moves nobody: the places open, and the
+ *     organiser pick round asks them who comes in, as for any open place.
  *   - DOWN: the squad above the new size goes to the bench, the last to join
  *     first, a monthly club's regulars after every non-regular. Each is told
  *     by DM.
  *   - Line-ups already made are cleared (they were for the old size).
- *   - Open bench offers beyond the places now free are closed.
- * Then the new list is posted: the month's week list for a monthly club,
- * the roster for a weekly one, to the organisers instead when the club's
- * organisers announce the list (`list-announcer.ts`).
+ *   - Open bench offers and bench asks for places that no longer exist are
+ *     closed; every size passed through is settled for the suggestion.
+ * Then the new list is posted, held through the club's quiet hours: the
+ * month's week list for a monthly club (nothing until its regulars are on
+ * the match), the roster for a weekly one (with the "squad shown" marker,
+ * and the squad-full claim when it is full now), to the organisers instead
+ * when they announce the list. The moved players' slot reactions are
+ * refreshed.
  */
 import { db } from "./db";
 import { appUrl } from "./app-url";
@@ -41,7 +55,8 @@ import { organisersAnnounce } from "./list-announcer";
 import { buildOrganiserRelay } from "./organisers-list-copy";
 import { sendAdminNotice } from "./admin-channel";
 import { loadPlayerNames } from "./player-display-name";
-import { formatUpKey, planResize, playerRange, sideAllowed, sidesInRange, type ResizeRow } from "./flex-format-rules";
+import { ROSTER_SHOWN_KIND, rosterShownKey, squadFingerprint } from "./roster-shown";
+import { formatUpSettledKey, planResize, playerRange, sideAllowed, sidesInRange, type ResizeRow } from "./flex-format-rules";
 
 export type ResizeOutcome =
   | "format-switched"
@@ -96,6 +111,7 @@ export async function resizeMatch(p: {
               paygPricePence: true,
               paymentTrackingEnabled: true,
               paymentCollectionEnabled: true,
+              benchPickMode: true,
             },
           },
         },
@@ -114,6 +130,7 @@ export async function resizeMatch(p: {
   const sides = sidesInRange(range);
   const day = weekdayLabel(lang, match.date);
   if (!(p.perSide > 0)) return none("format-no-size", c.noSize);
+  if (p.perSide * 2 === match.maxPlayers) return none("format-unchanged", c.alreadyThat({ day, perSide: p.perSide }));
   if (sides.length <= 1) return none("format-no-range", c.noRange({ activityName: activity.name, perSide: activity.sport.playersPerTeam, url }));
   if (!sideAllowed(p.perSide, range)) return none("format-not-allowed", c.notAllowed({ activityName: activity.name, perSide: p.perSide, sides, url }));
   const newPlaces = p.perSide * 2;
@@ -126,22 +143,31 @@ export async function resizeMatch(p: {
   const week = monthly ? await loadMonthlyWeek(match.id) : null;
   const regulars = new Set((week?.members ?? []).filter((m) => m.kind === "regular" && !m.extra && !m.left).map((m) => m.userId));
 
+  const organiserPick = activity.org?.benchPickMode === "organiser";
+
+  type Row = { id: string; userId: string; status: "CONFIRMED" | "BENCH"; position: number; respondedAt: Date };
   const moved = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`team-slots:${match.id}`}))`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`monthly-week:${match.id}`}))`;
-    // The places as they are under the lock: a second switch racing this
-    // one has either finished (and this one recuts from its result) or waits.
-    const was = (await tx.match.findUnique({ where: { id: match.id }, select: { maxPlayers: true } }))?.maxPlayers ?? match.maxPlayers;
-    const rows = await tx.attendance.findMany({
-      where: { matchId: match.id, status: { in: ["CONFIRMED", "BENCH"] } },
-      select: { id: true, userId: true, status: true, position: true, respondedAt: true },
-    });
+    // The size and the squad as they are under the locks.
+    const [cur] = await tx.$queryRaw<Array<{ maxPlayers: number; status: string; date: Date }>>`
+      SELECT "maxPlayers", status::text AS status, date FROM "Match" WHERE id = ${match.id} FOR UPDATE`;
+    if (!cur) return { kind: "gone" as const };
+    if (!(LIVE as readonly string[]).includes(cur.status) || cur.date.getTime() <= now.getTime()) return { kind: "gone" as const };
+    const was = cur.maxPlayers;
+    if (was === newPlaces) return { kind: "same" as const };
+    const rows = await tx.$queryRaw<Row[]>`
+      SELECT id, "userId", status::text AS status, position, "respondedAt"
+        FROM "Attendance"
+       WHERE "matchId" = ${match.id} AND status IN ('CONFIRMED', 'BENCH')
+       FOR UPDATE`;
     const choseBench = rows.some((r) => r.status === "BENCH") ? await loadChoseBench(tx, match.id) : new Set<string>();
     const plan = planResize({
       newPlaces,
       rows: rows.map(
         (r): ResizeRow => ({
           userId: r.userId,
-          status: r.status as ResizeRow["status"],
+          status: r.status,
           position: r.position,
           joinedAt: r.respondedAt.getTime(),
           choseBench: choseBench.has(r.userId),
@@ -149,6 +175,8 @@ export async function resizeMatch(p: {
         }),
       ),
     });
+    // Organiser pick: going up opens the places and moves nobody.
+    const promoteWanted = organiserPick ? [] : plan.promote;
     await tx.match.update({ where: { id: match.id }, data: { maxPlayers: newPlaces } });
     const context = (note: string) => ({
       cause: "format-switch" as const,
@@ -157,13 +185,18 @@ export async function resizeMatch(p: {
       sourceRef: `${p.via}:resize:${was}-${newPlaces}`,
       note,
     });
-    for (const [ids, to, note] of [
-      [plan.promote, "CONFIRMED", `moved in from the bench: the match went up to ${newPlaces} places`],
-      [plan.demote, "BENCH", `moved to the bench: the match went down to ${newPlaces} places`],
+    const done = { promote: [] as string[], demote: [] as string[] };
+    for (const [ids, to, note, into] of [
+      [promoteWanted, "CONFIRMED", `moved in from the bench: the match went up to ${newPlaces} places`, done.promote],
+      [plan.demote, "BENCH", `moved to the bench: the match went down to ${newPlaces} places`, done.demote],
     ] as const) {
       for (const userId of ids) {
         const row = rows.find((r) => r.userId === userId)!;
-        await tx.attendance.update({ where: { id: row.id }, data: { status: to } });
+        // Conditional on the status it was read with (the row is locked, so
+        // this is belt and braces): a changed row is left as it is.
+        const { count } = await tx.attendance.updateMany({ where: { id: row.id, status: row.status }, data: { status: to } });
+        if (count === 0) continue;
+        into.push(userId);
         await recordAttendanceEvent(
           tx,
           { matchId: match.id, userId, orgId: activity.orgId, fromStatus: row.status, toStatus: to, fromPosition: row.position, toPosition: row.position },
@@ -177,7 +210,7 @@ export async function resizeMatch(p: {
       await tx.match.updateMany({ where: { id: match.id, status: { in: ["TEAMS_GENERATED", "TEAMS_PUBLISHED"] } }, data: { status: "UPCOMING" } });
     }
     // Offers and bench asks for places that no longer exist are closed.
-    const confirmedAfter = rows.filter((r) => r.status === "CONFIRMED").length + plan.promote.length - plan.demote.length;
+    const confirmedAfter = rows.filter((r) => r.status === "CONFIRMED").length + done.promote.length - done.demote.length;
     const free = Math.max(0, newPlaces - confirmedAfter);
     const open = await tx.benchSlotOffer.findMany({ where: { matchId: match.id, resolvedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true } });
     const surplus = open.slice(free).map((o) => o.id);
@@ -185,23 +218,26 @@ export async function resizeMatch(p: {
       await tx.benchSlotOffer.updateMany({ where: { id: { in: surplus }, resolvedAt: null }, data: { resolvedAt: now, outcome: "closed-format-switch" } });
     }
     await tx.pendingBenchConfirmation.updateMany({
-      where: { matchId: match.id, resolvedAt: null, ...(free === 0 ? {} : { userId: { in: plan.promote } }) },
+      where: { matchId: match.id, resolvedAt: null, ...(free === 0 ? {} : { userId: { in: done.promote } }) },
       data: { resolvedAt: now, outcome: "format-switch" },
     });
     // The suggestion is never made for a size an organiser has just
     // decided against, nor again for the size just chosen: each size from
-    // the new one up to the old is marked as suggested.
+    // the new one up to the old is settled, for good.
     const lo = Math.min(newPlaces, was);
     const hi = Math.max(newPlaces, was);
     for (let places = lo + 2; places <= hi; places += 2) {
-      const key = formatUpKey(match.id, places);
+      const key = formatUpSettledKey(match.id, places);
       await tx.sentNotification.upsert({ where: { key }, create: { key, kind: "format-up-settled", matchId: match.id }, update: {} });
     }
-    return { promote: plan.promote, demote: plan.demote, teamsCleared: teamsCleared > 0, was };
+    return { kind: "switched" as const, ...done, teamsCleared: teamsCleared > 0, was, free, confirmedAfter };
   });
 
+  if (moved.kind === "gone") return none("format-too-late", c.tooLate);
+  if (moved.kind === "same") return none("format-unchanged", c.alreadyThat({ day, perSide: p.perSide }));
+
   console.log(
-    `[format-resize] org=${activity.orgId} match=${match.id} ${moved.was} -> ${newPlaces} places by ${p.via}; in ${moved.promote.length}, benched ${moved.demote.length}${moved.teamsCleared ? ", teams cleared" : ""}`,
+    `[format-resize] org=${activity.orgId} match=${match.id} ${moved.was} -> ${newPlaces} places by ${p.via}; in ${moved.promote.length}, benched ${moved.demote.length}${moved.teamsCleared ? ", teams cleared" : ""}${organiserPick ? ", organisers pick" : ""}`,
   );
 
   // A monthly club: a player moved in takes a slot number, then the month's
@@ -241,21 +277,91 @@ export async function resizeMatch(p: {
   }
   for (const userId of moved.demote) await dm(userId, c.dmBench({ day, perSide: p.perSide, places: newPlaces }), "bench");
 
+  // The moved players' slot reactions on their IN messages.
+  if (moved.promote.length + moved.demote.length > 0) {
+    const { queueSlotEmojiRefresh } = await import("./bot-scheduler");
+    await queueSlotEmojiRefresh(match.id).catch((err) => console.error(`[format-resize] slot reactions for ${match.id} failed:`, err));
+  }
+
   // The new list.
   // Print-only names (player-display-name.ts never throws).
   const names = await loadPlayerNames(activity.orgId, [...moved.promote, ...moved.demote], lang);
   const nameOf = (id: string) => names.get(id)?.display ?? "?";
-  await postNewList({ matchId: match.id, orgId: activity.orgId, day, perSide: p.perSide, places: newPlaces, lang, listAnnouncer: activity.org?.listAnnouncer ?? null, monthly: week !== null, renderWeekList, recordWeekListShown, loadMonthlyWeek });
+  await postNewList({
+    matchId: match.id,
+    orgId: activity.orgId,
+    day,
+    perSide: p.perSide,
+    places: newPlaces,
+    lang,
+    listAnnouncer: activity.org?.listAnnouncer ?? null,
+    monthly,
+    sendAfter,
+    now,
+    renderWeekList,
+    recordWeekListShown,
+    loadMonthlyWeek,
+  });
 
   return {
     outcome: "format-switched",
-    replyText: c.switched({ day, perSide: p.perSide, places: newPlaces, promoted: moved.promote.map(nameOf), demoted: moved.demote.map(nameOf), teamsCleared: moved.teamsCleared }),
+    replyText: c.switched({
+      day,
+      perSide: p.perSide,
+      places: newPlaces,
+      promoted: moved.promote.map(nameOf),
+      demoted: moved.demote.map(nameOf),
+      teamsCleared: moved.teamsCleared,
+      pickOpen: organiserPick ? moved.free : 0,
+    }),
     promoted: moved.promote,
     demoted: moved.demote,
   };
 }
 
-/** The list after a switch: the month's week list, or the weekly roster. */
+/**
+ * What a switch to `perSide` would move, for the switch page's preview: the
+ * same plan as the switch itself (a player who chose the bench is not
+ * moved in; an organiser-pick club moves nobody in; monthly regulars are
+ * benched last). Counts only; nothing is written.
+ */
+export async function previewResize(matchId: string, perSide: number): Promise<{ promote: number; demote: number }> {
+  const match = await db.match.findUnique({
+    where: { id: matchId },
+    select: {
+      activity: { select: { org: { select: { squadMode: true, benchPickMode: true } } } },
+      attendances: { where: { status: { in: ["CONFIRMED", "BENCH"] } }, select: { userId: true, status: true, position: true, respondedAt: true } },
+    },
+  });
+  if (!match || !(perSide > 0)) return { promote: 0, demote: 0 };
+  const { loadMonthlyWeek, loadChoseBench } = await import("./monthly-week");
+  const week = match.activity.org?.squadMode === "monthly" ? await loadMonthlyWeek(matchId) : null;
+  const regulars = new Set((week?.members ?? []).filter((m) => m.kind === "regular" && !m.extra && !m.left).map((m) => m.userId));
+  const chose = match.attendances.some((a) => a.status === "BENCH") ? await loadChoseBench(db, matchId) : new Set<string>();
+  const plan = planResize({
+    newPlaces: perSide * 2,
+    rows: match.attendances.map((a) => ({
+      userId: a.userId,
+      status: a.status as "CONFIRMED" | "BENCH",
+      position: a.position,
+      joinedAt: a.respondedAt.getTime(),
+      choseBench: chose.has(a.userId),
+      regular: regulars.has(a.userId),
+    })),
+  });
+  return { promote: match.activity.org?.benchPickMode === "organiser" ? 0 : plan.promote.length, demote: plan.demote.length };
+}
+
+/**
+ * The list after a switch, held through the club's quiet hours (as the DMs
+ * are). A monthly club: the month's week list once its regulars are on the
+ * match, and nothing before (its list is the month's, and goes out when
+ * they are). A weekly club: the roster, with the marker the chases read so
+ * the same squad is not listed again inside three hours; and the
+ * `squad-locked` claim set when the squad is full now (so the "Squad
+ * complete" post does not repeat this list) or cleared when it is not (so
+ * the next fill is announced), as the rolling squad's seed does.
+ */
 async function postNewList(a: {
   matchId: string;
   orgId: string;
@@ -265,18 +371,22 @@ async function postNewList(a: {
   lang: "en" | "tr";
   listAnnouncer: string | null;
   monthly: boolean;
+  sendAfter: Date | null;
+  now: Date;
   renderWeekList: typeof import("./monthly-week").renderWeekList;
   recordWeekListShown: typeof import("./monthly-week").recordWeekListShown;
   loadMonthlyWeek: typeof import("./monthly-week").loadMonthlyWeek;
 }): Promise<void> {
   const c = flexFormatCopy(a.lang);
   let text: string;
-  let shownHash: string | null = null;
-  const week = a.monthly ? await a.loadMonthlyWeek(a.matchId) : null;
-  if (week && week.seeded) {
+  let after: (() => Promise<void>) | null = null;
+  if (a.monthly) {
+    const week = await a.loadMonthlyWeek(a.matchId);
+    if (!week || !week.seeded) return;
     const r = await a.renderWeekList(week);
     text = r.text;
-    shownHash = r.hash;
+    // The group has seen this list: the scheduler does not post it again.
+    after = () => a.recordWeekListShown(a.matchId, r.hash, "group-message");
   } else {
     const rows = await db.attendance.findMany({
       where: { matchId: a.matchId, status: { in: ["CONFIRMED", "BENCH"] } },
@@ -292,12 +402,22 @@ async function postNewList(a: {
       `${c.rosterPlaying({ confirmed: playing.length, places: a.places })}\n` +
       (playing.length ? playing.map((r, i) => `${i + 1}. ${label(r)}`).join("\n") : c.rosterNobody) +
       (bench.length ? `\n\n${c.rosterBench}\n` + bench.map((r, i) => `${i + 1}. ${label(r)}`).join("\n") : "");
+    const lockedKey = `${a.matchId}:squad-locked`;
+    const full = playing.length >= a.places;
+    const fingerprint = squadFingerprint({ confirmedUserIds: playing.map((r) => r.userId), benchUserIds: bench.map((r) => r.userId), maxPlayers: a.places });
+    after = async () => {
+      if (full) {
+        await db.sentNotification.upsert({ where: { key: lockedKey }, create: { key: lockedKey, kind: "group-message", matchId: a.matchId }, update: {} });
+      } else {
+        await db.sentNotification.deleteMany({ where: { key: lockedKey } });
+      }
+      await db.sentNotification.create({ data: { key: rosterShownKey(a.matchId, fingerprint, a.now), kind: ROSTER_SHOWN_KIND, matchId: a.matchId } });
+    };
   }
   if (organisersAnnounce({ listAnnouncer: a.listAnnouncer })) {
     await sendAdminNotice({ orgId: a.orgId, text: buildOrganiserRelay(text, a.lang) });
     return;
   }
-  await db.botJob.create({ data: { orgId: a.orgId, kind: "group", text, matchId: a.matchId } });
-  // The group has seen this list: the scheduler does not post it again.
-  if (shownHash) await a.recordWeekListShown(a.matchId, shownHash, "group-message");
+  await db.botJob.create({ data: { orgId: a.orgId, kind: "group", text, matchId: a.matchId, ...(a.sendAfter ? { sendAfter: a.sendAfter } : {}) } });
+  await after?.().catch((err) => console.error(`[format-resize] list bookkeeping for ${a.matchId} failed:`, err));
 }

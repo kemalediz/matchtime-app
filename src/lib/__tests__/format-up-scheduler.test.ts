@@ -64,7 +64,8 @@ const KICKOFF = new Date("2026-11-09T20:30:00.000Z");
 /** Thu 5 Nov 2026, 14:00 London: an ordinary afternoon poll. */
 const NOW = new Date("2026-11-05T14:00:00.000Z");
 const MATCH_ID = "m-mon-9-nov";
-const UP_KEY = `${MATCH_ID}:format-up:16`;
+const UP_KEY = `${MATCH_ID}:format-up:16:e0`;
+const SETTLED = `${MATCH_ID}:format-up:16`;
 
 function att(i: number, status = "CONFIRMED") {
   return {
@@ -116,6 +117,7 @@ function game(p: { confirmed: number; bench: number; maxPlayers?: number; actMax
 }
 
 let deleted: string[][] = [];
+let marked: string[] = [];
 
 async function run(m: unknown, opts: { sent?: string[]; choseBench?: string[] } = {}) {
   overrides.organisation = { findFirst: async () => ORG, findUnique: async () => ORG };
@@ -129,6 +131,10 @@ async function run(m: unknown, opts: { sent?: string[]; choseBench?: string[] } 
     deleteMany: async (args: unknown) => {
       deleted.push(((args as { where: { key: { in: string[] } } }).where.key.in));
       return { count: 1 };
+    },
+    upsert: async (args: unknown) => {
+      marked.push((args as { where: { key: string } }).where.key);
+      return {};
     },
   };
   overrides.attendanceEvent = {
@@ -150,6 +156,7 @@ const ups = (out: Array<{ kind: string; key?: string; text?: string }>) => out.f
 beforeEach(() => {
   for (const k of Object.keys(overrides)) delete overrides[k];
   deleted = [];
+  marked = [];
 });
 
 describe("the suggestion to go up a size", () => {
@@ -173,9 +180,22 @@ describe("the suggestion to go up a size", () => {
     expect(deleted).toEqual([]);
   });
 
-  it("the bench drops below two: the suggestion is forgotten, so it can come again", async () => {
+  it("the bench drops below two: a re-arm marker starts the next episode; nothing is deleted", async () => {
     expect(ups(await run(game({ confirmed: 14, bench: 1 }), { sent: [UP_KEY] }))).toEqual([]);
-    expect(deleted).toEqual([[UP_KEY]]);
+    expect(deleted).toEqual([]);
+    expect(marked).toEqual([`${MATCH_ID}:format-up-rearm:1`]);
+  });
+
+  it("after the re-arm, two on the bench again: suggested again, in episode 1", async () => {
+    const out = ups(await run(game({ confirmed: 14, bench: 2 }), { sent: [UP_KEY, `${MATCH_ID}:format-up-rearm:1`] }));
+    expect(out.map((i) => i.key)).toEqual([`${MATCH_ID}:format-up:16:e1`]);
+  });
+
+  it("a size an organiser switched through (settled) is never suggested, and survives the bench emptying", async () => {
+    expect(ups(await run(game({ confirmed: 14, bench: 2 }), { sent: [SETTLED] }))).toEqual([]);
+    expect(ups(await run(game({ confirmed: 14, bench: 0 }), { sent: [SETTLED] }))).toEqual([]);
+    expect(deleted).toEqual([]);
+    expect(marked).toEqual([]);
   });
 
   it("a bench player who asked to be on the bench does not count", async () => {

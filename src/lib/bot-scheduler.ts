@@ -167,7 +167,7 @@ import { firstTeamsInstructions } from "./admin-onboarding";
 import { isBillingPaused } from "./club-billing-rules";
 import { isClubSettingUp } from "./club-setup-rules";
 import { lowNumbersBelow, minimumToPlay, type GameFormat } from "./min-players";
-import { FORMAT_UP_KEY_PREFIX, decideBenchSuggestion, formatUpKey, playerRange } from "./flex-format-rules";
+import { decideBenchSuggestion, planFormatUp, playerRange } from "./flex-format-rules";
 import { flexFormatCopy } from "./i18n/flex-format";
 import { joinAdminNames } from "./seed-nudge-rules";
 import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
@@ -2273,11 +2273,12 @@ async function computeForMatch(
   //   side), MatchTime suggests the next size up in the players' group and
   //   names the organisers. Only an organiser's yes, as a reply to this
   //   post, switches it (admin-ops-engine-batch.ts, `switch_format`).
-  //   Once per match per size (`formatUpKey`). When the bench drops below
-  //   two the keys are forgotten, so it is suggested again only after the
-  //   bench has emptied and filled again, never as people come and go
-  //   around two. A switch marks the sizes it settled (format-resize.ts),
-  //   so an organiser who went down is not asked to undo it. Held for a
+  //   Once per match per size per episode (`planFormatUp`): when the bench
+  //   drops below two after a suggestion a re-arm marker starts the next
+  //   episode, so it is suggested again only after the bench has emptied
+  //   and filled again, never as people come and go around two. A switch
+  //   marks the sizes it passed through as settled (format-resize.ts), for
+  //   good, so an organiser who went down is never asked to undo it. Held for a
   //   monthly club until its regulars are on the match, and for a club
   //   whose organisers announce the list (the list is theirs to tell).
   {
@@ -2289,7 +2290,6 @@ async function computeForMatch(
     const live =
       m.status === "UPCOMING" && now.getTime() < m.date.getTime() && !noMonthYet && (!monthly || monthly.seeded === true);
     if (live && range.max > range.normal && !organisers) {
-      const prefix = `${matchId}${FORMAT_UP_KEY_PREFIX}`;
       const choseBench = bench.length >= 2 ? await loadChoseBench(db, matchId) : new Set<string>();
       const movable = bench.filter((a) => !choseBench.has(a.userId)).length;
       const decision = decideBenchSuggestion({
@@ -2300,13 +2300,13 @@ async function computeForMatch(
         bench: movable,
         range,
       });
-      if (decision.kind === "rearm") {
-        const stale = [...sentKeys].filter((k) => k.startsWith(prefix));
-        if (stale.length > 0) {
-          await db.sentNotification.deleteMany({ where: { key: { in: stale } } });
-          for (const k of stale) sentKeys.delete(k);
-        }
-      } else if (decision.kind === "suggest" && !sentKeys.has(formatUpKey(matchId, decision.toPlaces))) {
+      const plan = planFormatUp({ matchId, keys: sentKeys, decision });
+      if (plan.kind === "rearm") {
+        // A marker, never a delete: what an organiser settled, and the
+        // suggestion a reply is resolved by, are kept (review of #517).
+        await db.sentNotification.upsert({ where: { key: plan.key }, create: { key: plan.key, kind: "format-up-rearm", matchId }, update: {} });
+        sentKeys.add(plan.key);
+      } else if (plan.kind === "suggest") {
         const admins = await db.membership.findMany({
           where: { orgId: activity.orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
           select: { user: { select: { name: true } } },
@@ -2316,13 +2316,13 @@ async function computeForMatch(
         if (names) {
           out.push({
             kind: "group-message",
-            key: formatUpKey(matchId, decision.toPlaces),
+            key: plan.key,
             matchId,
             text: flexFormatCopy(lang).suggestUp({
               total: confirmed.length + movable,
               bench: movable,
               day: weekdayLabel(lang, m.date),
-              perSide: decision.toPlaces / 2,
+              perSide: plan.toPlaces / 2,
               admins: names,
             }),
           });
@@ -2769,7 +2769,10 @@ async function computeForMatch(
       hour >= 10 &&
       hour < 11 &&
       m.status === "UPCOMING" &&
-      confirmed.length < lowNumbersBelow({ minPlayers: ownMinimum, maxPlayers })
+      // Against the game's OWN format when no minimum is set (review of
+      // #517): a match switched up to 16 with 14 in is two full 7-a-side
+      // teams, not short.
+      confirmed.length < lowNumbersBelow({ minPlayers: ownMinimum, maxPlayers: Math.min(maxPlayers, sport.playersPerTeam * 2) })
     ) {
       const candidate = await findSmallerSameSportActivity(
         activity.orgId,

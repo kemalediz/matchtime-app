@@ -14,6 +14,8 @@ import { parseVenuePick } from "@/lib/venue-suggest-rules";
 import { assertSportOfferedForGame } from "@/lib/club-sport-offer";
 import { savePlayerRange } from "@/lib/player-range-save";
 import { appUrl } from "@/lib/app-url";
+import { weekdayLabel } from "@/lib/i18n/dates";
+import { normaliseLang } from "@/lib/i18n/lang";
 import { flexFormatCopy } from "@/lib/i18n/flex-format";
 
 /** What a form sends for a picked place. Anything else on it is dropped. */
@@ -131,6 +133,10 @@ export async function setActivityPlayerRange(activityId: string, range: { min?: 
   if (!activity) throw new Error("Activity not found");
   await requireOrgAdmin(session.user.id, activity.orgId);
   const r = await savePlayerRange({ activityId, ...range });
+  if (!r.ok && r.error === "switched-match") {
+    const lang = normaliseLang(activity.org?.language);
+    throw new Error(flexFormatCopy(lang).rangeBlocked({ activityName: r.activityName, day: weekdayLabel(lang, r.matchDate), perSide: r.perSide, backTo: r.backTo }));
+  }
   if (!r.ok) {
     throw new Error(
       flexFormatCopy(activity.org?.language).rangeRefused({

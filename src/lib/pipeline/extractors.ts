@@ -682,7 +682,7 @@ THE FIELDS. Fill toMatchTime always and the others for the action; every other f
   quietOff (quiet_hours): true when it switches quiet hours off, so MatchTime posts at any hour; false when it switches them on or sets their times.
   quietFrom (quiet_hours): when they start, as a 24-hour London time "HH:MM" ("10pm" is "22:00", "gece 11" is "23:00"); "" when not said.
   quietTo (quiet_hours): when they end, the same way ("8am" is "08:00", "sabah 9" is "09:00"); "" when not said.
-  minPlayers (player_numbers): the fewest players said, as written ("12", "on iki" is 12; "one down" of the 14 places is 13); 0 when none is said or it goes back to full sides.
+  minPlayers (player_numbers): the fewest players said, as written ("12", "on iki" is 12); 0 when no number is said or it goes back to full sides.
   maxPlayers (player_numbers): the most players said, as written ("up to 16" is 16, "en fazla 8'e 8" is 8); 0 when none is said.
   fullTeams (player_numbers): true when it goes back to needing two full sides ("back to full teams", "yine tam takım").
   size (switch_format): the number of players said for that game, as written ("8 aside" is 8, "16 players" is 16); for a yes to MatchTime's offer, the number a side the offer names; 0 when none is said.
@@ -764,7 +764,7 @@ The club's quiet hours:
 How many players a game is played with, every week:
   "@Match Time we can play with 12" / "@Match Time 12 kişiyle de oynarız" -> player_numbers, minPlayers 12
   "@Match Time minimum 12 players" / "@Match Time en az 12 kişi" -> player_numbers, minPlayers 12
-  "@Match Time we're fine with 13, one down is ok" / "@Match Time 13 kişi de olur, bir eksik oynarız" -> player_numbers, minPlayers 13
+  "@Match Time we're fine with 12, two down is ok" / "@Match Time 12 kişi de olur, iki eksik oynarız" -> player_numbers, minPlayers 12
   "@Match Time we play 12 to 16" / "@Match Time 12 ile 16 kişi arası oynuyoruz" -> player_numbers, minPlayers 12, maxPlayers 16
   "@Match Time 6 to 8 a side" / "@Match Time 6'ya 6 ile 8'e 8 arası" -> player_numbers, minPlayers 6, maxPlayers 8, aSide true
   "@Match Time minimum 8 on Thursday" / "@Match Time perşembe en az 8 kişi" -> player_numbers, minPlayers 8, matchDay "on Thursday" / "perşembe"

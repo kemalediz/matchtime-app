@@ -4,9 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   games: [] as Array<{ id: string; name: string; dayOfWeek: number; minPlayers: number | null; maxPlayers: number | null; ppt: number }>,
   updates: [] as Array<{ id: string; minPlayers: number | null; maxPlayers: number | null }>,
+  /** Matches still to come, as `savePlayerRange` reads them (already switched ones). */
+  matches: [] as Array<{ date: Date; maxPlayers: number }>,
 }));
 vi.mock("@/lib/db", () => ({
   db: {
+    match: { findMany: vi.fn(async () => state.matches) },
     activity: {
       findMany: vi.fn(async () => state.games.map((g) => ({ id: g.id, name: g.name, dayOfWeek: g.dayOfWeek }))),
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
@@ -31,6 +34,7 @@ const ask = (over: Ask = {}) =>
 beforeEach(() => {
   state.games = [{ ...VETS }];
   state.updates = [];
+  state.matches = [];
 });
 
 describe("pickGame", () => {
@@ -113,5 +117,19 @@ describe("applyPlayerRangeWords", () => {
   it("no game yet", async () => {
     state.games = [];
     expect((await ask()).outcome).toBe("player-range-no-game");
+  });
+  it("REVIEW #517: a match switched to 8-a-side still to come: clearing the maximum is refused, nothing written", async () => {
+    state.games = [{ ...VETS, minPlayers: 12, maxPlayers: 16 }];
+    state.matches = [{ date: new Date("2026-11-09T20:30:00Z"), maxPlayers: 16 }];
+    const r = await ask({ minPlayers: null, maxPlayers: 14 });
+    expect(state.updates).toEqual([]);
+    expect(r.outcome).toBe("player-range-refused");
+    expect(r.replyText).toBe("Monday's game is 8-a-side now, so those numbers would leave it out. Switch it back first, for example *@Match Time make it 7 a side*, then change them.");
+  });
+  it("widening, or a change that keeps the switched match inside, is saved", async () => {
+    state.games = [{ ...VETS, minPlayers: 12, maxPlayers: 16 }];
+    state.matches = [{ date: new Date("2026-11-09T20:30:00Z"), maxPlayers: 16 }];
+    await ask({ minPlayers: 10, maxPlayers: null });
+    expect(state.updates).toEqual([{ id: "vets-mon", minPlayers: 10, maxPlayers: 16 }]);
   });
 });

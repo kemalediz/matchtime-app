@@ -1148,8 +1148,9 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         }
         if (facts.kind === "admin" && facts.action === "switch_format") {
           if (!actor) return onlyOrganisers();
-          const r = await applySwitchFormatWords({ orgId: org.id, perSide: perSideOf(facts), matchDay: facts.matchDay?.trim() || null, actorUserId: actor, via: "hq", lang, now });
-          return said(`hq-${r.outcome}`, r.replyText);
+          // HQ acts on a real tag only; the suggestion is the players' group's.
+          const r = await applySwitchFormatWords({ orgId: org.id, perSide: perSideOf(facts), matchDay: facts.matchDay?.trim() || null, actorUserId: actor, via: "hq", lang, now, explicit: true });
+          return r.replyText ? said(`hq-${r.outcome}`, r.replyText) : null;
         }
         if (facts.kind === "admin" && facts.action === "season_break") {
           if (!actor) return onlyOrganisers();

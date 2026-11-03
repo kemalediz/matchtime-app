@@ -7,8 +7,8 @@ import { ArrowLeft, ArrowRightLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { SectionInfo } from "@/components/info/section-info";
 import { useOrgLang } from "@/components/info/org-lang";
-import { resizeMatchFormat, switchMatchFormat } from "@/app/actions/matches";
-import { planResize, playerRange, sidesInRange } from "@/lib/flex-format-rules";
+import { previewResizeFormat, resizeMatchFormat, switchMatchFormat } from "@/app/actions/matches";
+import { playerRange, sidesInRange } from "@/lib/flex-format-rules";
 import { flexFormatCopy } from "@/lib/i18n/flex-format";
 
 interface Sport {
@@ -49,6 +49,18 @@ export default function SwitchFormatPage() {
   const [submitting, setSubmitting] = useState(false);
   // A size inside the game's range (2026-11-03): players a side, 0 for none.
   const [perSide, setPerSide] = useState(0);
+  // What the pick would move, from the server (the switch's own plan).
+  const [preview, setPreview] = useState<{ promote: number; demote: number } | null>(null);
+  useEffect(() => {
+    if (!perSide) return;
+    let live = true;
+    previewResizeFormat(matchId, perSide)
+      .then((p) => live && setPreview(p))
+      .catch(() => live && setPreview(null));
+    return () => {
+      live = false;
+    };
+  }, [matchId, perSide]);
   const ff = flexFormatCopy(lang);
 
   useEffect(() => {
@@ -119,15 +131,6 @@ export default function SwitchFormatPage() {
     playersPerTeam: match.activity.sport.playersPerTeam,
   });
   const sizes = sidesInRange(range);
-  const preview =
-    perSide > 0
-      ? planResize({
-          newPlaces: perSide * 2,
-          rows: match.attendances
-            .filter((a) => a.status === "CONFIRMED" || a.status === "BENCH")
-            .map((a, i) => ({ userId: String(i), status: a.status as "CONFIRMED" | "BENCH", position: a.position ?? i, joinedAt: i })),
-        })
-      : null;
 
   return (
     <div className="space-y-6">
@@ -178,10 +181,10 @@ export default function SwitchFormatPage() {
                 </button>
               ))}
             </div>
-            {preview && (preview.promote.length > 0 || preview.demote.length > 0) && (
+            {perSide > 0 && preview && (preview.promote > 0 || preview.demote > 0) && (
               <div data-testid="switch-size-preview" className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
-                {preview.promote.length > 0 && <p>{ff.pageWillPromote({ count: preview.promote.length })}</p>}
-                {preview.demote.length > 0 && <p>{ff.pageWillBench({ count: preview.demote.length })}</p>}
+                {preview.promote > 0 && <p>{ff.pageWillPromote({ count: preview.promote })}</p>}
+                {preview.demote > 0 && <p>{ff.pageWillBench({ count: preview.demote })}</p>}
               </div>
             )}
             <button

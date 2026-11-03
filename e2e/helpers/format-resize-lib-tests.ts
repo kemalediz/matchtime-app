@@ -26,6 +26,7 @@ async function main() {
   process.env.DATABASE_URL = url;
 
   const { resizeMatch } = await import("@/lib/format-resize");
+  const { applySwitchFormatWords } = await import("@/lib/format-switch-words");
   const { EXPLICIT_BENCH_NOTE } = await import("@/lib/attendance-events");
   const { db } = await import("@/lib/db");
 
@@ -170,6 +171,98 @@ async function main() {
       assert.equal((await db.match.findUnique({ where: { id: MATCH } }))?.status, "UPCOMING");
     }
     ok("teams out: cleared and back to UPCOMING; a player who asked for the bench is not moved in");
+
+    // ── The list's bookkeeping: squad-locked when full, the roster marker ──
+    await seed();
+    await db.activity.update({ where: { id: ACTIVITY_ID }, data: { minPlayers: 8, maxPlayers: 12 } });
+    await db.sentNotification.create({ data: { key: `${MATCH}:squad-locked`, kind: "group-message", matchId: MATCH } });
+    {
+      // 10 in at 10 places, 2 on the bench: up to 12 moves both in, full again.
+      await resizeMatch({ matchId: MATCH, perSide: 6, ...actor });
+      assert.ok(await db.sentNotification.findUnique({ where: { key: `${MATCH}:squad-locked` } }), "full: the squad-complete claim is held");
+      assert.equal(await db.sentNotification.count({ where: { matchId: MATCH, kind: "roster-shown" } }), 1, "the roster marker");
+      // Down to 8: 4 benched, still full: claim held. Back up to 10 with 12: full again.
+      // Up with nobody to move in leaves places open: the claim is cleared.
+      await db.attendance.updateMany({ where: { matchId: MATCH, status: "BENCH" }, data: { status: "DROPPED" } });
+      await db.attendance.updateMany({ where: { matchId: MATCH, userId: users[0].id }, data: { status: "DROPPED" } });
+      await resizeMatch({ matchId: MATCH, perSide: 4, ...actor });
+      await resizeMatch({ matchId: MATCH, perSide: 6, ...actor });
+      assert.equal(await db.sentNotification.findUnique({ where: { key: `${MATCH}:squad-locked` } }), null, "places open: the next fill is announced");
+    }
+    ok("the list's bookkeeping: the squad-complete claim follows fullness, the roster marker is written");
+
+    // ── Organiser pick: going up opens the places, nobody moved in ──
+    await seed();
+    await db.activity.update({ where: { id: ACTIVITY_ID }, data: { minPlayers: 8, maxPlayers: 12 } });
+    const pickWas = (await db.organisation.findUnique({ where: { id: ORG_ID }, select: { benchPickMode: true } }))?.benchPickMode ?? null;
+    await db.organisation.update({ where: { id: ORG_ID }, data: { benchPickMode: "organiser" } });
+    try {
+      const r = await resizeMatch({ matchId: MATCH, perSide: 6, ...actor });
+      assert.equal(r.outcome, "format-switched", r.replyText);
+      assert.deepEqual(r.promoted, []);
+      assert.equal(await statusOf(11), "BENCH");
+      assert.equal(await statusOf(12), "BENCH");
+      assert.match(r.replyText, /2 places are open, so I'll ask you who comes in from the bench\./);
+      assert.equal((await jobs()).filter((j) => j.kind === "dm").length, 0, "nobody DMed: nobody moved");
+    } finally {
+      await db.organisation.update({ where: { id: ORG_ID }, data: { benchPickMode: pickWas ?? "first-come" } });
+    }
+    ok("organiser pick: going up opens the places and leaves the pick to the organisers");
+
+    // ── The organiser's yes: THE suggested match and size, only while it holds ──
+    {
+      await seed();
+      const LATER = MATCH;
+      // An earlier game of the club, the one "the next game" would pick.
+      await seed();
+      const EARLIER = MATCH;
+      await db.match.update({ where: { id: EARLIER }, data: { date: new Date(kickoff.getTime() - 2 * 86_400_000) } });
+      await db.activity.update({ where: { id: ACTIVITY_ID }, data: { minPlayers: 8, maxPlayers: 12 } });
+      await db.sentNotification.create({ data: { key: `${LATER}:format-up:12:e0`, kind: "group-message", matchId: LATER, waStanzaId: "3EB0SUGGEST1" } });
+      const yes = (quotedId: string, explicit = false) =>
+        applySwitchFormatWords({ orgId: ORG_ID, perSide: 0, matchDay: null, actorUserId: U.admin, via: "lib-test", lang: "en", now: new Date(), quotedId, explicit });
+
+      // The bench drops to one first: the suggestion no longer holds.
+      await db.attendance.updateMany({ where: { matchId: LATER, userId: users[10].id }, data: { status: "DROPPED" } });
+      const stale = await yes("3EB0SUGGEST1");
+      assert.equal(stale.outcome, "format-suggestion-stale", JSON.stringify(stale));
+      assert.match(stale.replyText ?? "", /The numbers have changed since I asked/);
+      assert.equal((await db.match.findUnique({ where: { id: LATER } }))?.maxPlayers, 10);
+
+      // Back on the bench: the yes switches THAT match (not the earlier one), to the suggested 12.
+      await db.attendance.updateMany({ where: { matchId: LATER, userId: users[10].id }, data: { status: "BENCH" } });
+      const r = await yes("true_group_3EB0SUGGEST1");
+      assert.equal(r.outcome, "format-switched", JSON.stringify(r));
+      assert.equal((await db.match.findUnique({ where: { id: LATER } }))?.maxPlayers, 12);
+      assert.equal((await db.match.findUnique({ where: { id: EARLIER } }))?.maxPlayers, 10, "the earlier game is untouched");
+
+      // A reply to another post of MatchTime's, untagged: nothing said or done.
+      const other = await yes("3EB0OTHERPOST");
+      assert.deepEqual(other, { outcome: "format-not-a-suggestion", replyText: null });
+    }
+    ok("an organiser's yes: the suggested match and size only, a stale suggestion refused in words, another post ignored");
+
+    // ── No range, another of the club's formats has the size: that switch ──
+    {
+      await seed();
+      const SPORT7 = `${P}-sport-7`;
+      const ACT7 = `${P}-act-7`;
+      await db.sport.upsert({ where: { id: SPORT7 }, create: { id: SPORT7, orgId: ORG_ID, name: "Football 7-a-side", playersPerTeam: 7, positions: ["GK"], teamLabels: ["Red", "Yellow"] }, update: {} });
+      const base = await db.activity.findUnique({ where: { id: ACTIVITY_ID }, select: { dayOfWeek: true, venue: true, time: true } });
+      await db.activity.upsert({
+        where: { id: ACT7 },
+        create: { id: ACT7, orgId: ORG_ID, sportId: SPORT7, name: "Football 7-a-side", dayOfWeek: base!.dayOfWeek, time: base!.time, venue: base!.venue, isActive: false },
+        update: {},
+      });
+      const r = await applySwitchFormatWords({ orgId: ORG_ID, perSide: 7, matchDay: null, actorUserId: U.admin, via: "lib-test", lang: "en", now: new Date(), explicit: true });
+      assert.equal(r.outcome, "format-switched-activity", JSON.stringify(r));
+      const next = await db.match.findFirst({ where: { activity: { orgId: ORG_ID }, date: { gt: new Date() }, status: "UPCOMING", isHistorical: false }, orderBy: { date: "asc" } });
+      assert.equal(next?.activityId, ACT7, "the next game is now on the club's 7-a-side game");
+      assert.equal(next?.maxPlayers, 14);
+      await db.match.update({ where: { id: next!.id }, data: { activityId: ACTIVITY_ID, maxPlayers: next!.id === MATCH ? 10 : next!.maxPlayers } });
+      await db.activity.delete({ where: { id: ACT7 } });
+    }
+    ok("no range: 'switch to 7 a side' goes through the club's own 7-a-side game, as the switch page does");
 
     // ── A game that has started: refused ──
     await db.match.update({ where: { id: MATCH }, data: { date: new Date(Date.now() - 60_000) } });

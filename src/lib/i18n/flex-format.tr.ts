@@ -67,7 +67,12 @@ export const FLEX_FORMAT_TR: FlexFormatCopy = {
     `✅ Tamam: ${p.day} artık ${side(p.perSide)}, ${p.places} yer.` +
     (p.promoted.length ? ` Yedekten kadroya girenler: ${names(p.promoted)}.` : ``) +
     (p.demoted.length ? ` Artık yedekte: ${names(p.demoted)}.` : ``) +
-    (p.teamsCleared ? ` Takımlar silindi, yeniden kurmak için beni etiketleyin.` : ``),
+    (p.teamsCleared ? ` Takımlar silindi, yeniden kurmak için beni etiketleyin.` : ``) +
+    (p.pickOpen ? ` ${p.pickOpen} yer açıldı, yedekten kimin gireceğini size soracağım.` : ``),
+  activitySwitched: (p) => `✅ Tamam: ${p.day} artık ${side(p.perSide)}, ${p.places} yer. Yeni listeyi gruba attım.`,
+  suggestionStale: (p) => `Sorduğumdan beri sayılar değişti, ${p.day} olduğu gibi kalıyor. Hâlâ ${side(p.perSide)} isterseniz beni etiketleyin.`,
+  rangeBlocked: (p) =>
+    `${p.day} maçı artık ${side(p.perSide)}, bu sayılar onu dışarıda bırakır. Önce geri alın, örneğin *@Match Time ${side(p.backTo)} yapalım*, sonra değiştirin.`,
   alreadyThat: (p) => `${p.day} zaten ${side(p.perSide)}.`,
   notAllowed: (p) =>
     `*${p.activityName}* ${sides(p.sides)} oynanıyor, ${side(p.perSide)} yapamam. En az ve en fazla oyuncu sayısını buradan değiştirebilirsiniz: ${p.url}`,

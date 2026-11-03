@@ -127,7 +127,7 @@ export async function generateTeamsForMatch(
     maxPlayers: match.activity.maxPlayers ?? null,
     playersPerTeam: sport.playersPerTeam,
   });
-  const perTeam = perTeamFor({ maxPlayers: match.maxPlayers, playersPerTeam: sport.playersPerTeam, range });
+  const perTeam = perTeamFor({ maxPlayers: match.maxPlayers, playersPerTeam: sport.playersPerTeam });
   const needed = teamsNeeded({ places: perTeam * 2, range });
   if (match.attendances.length < needed) {
     return {

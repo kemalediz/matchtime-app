@@ -1390,7 +1390,7 @@ export const en = {
       return (
         `⚙️ *Your settings*\n` +
         `Every switch for your club is on one settings page, grouped in tabs. Not sure where something is? Type its name in *Find a setting* at the top and it takes you straight there:\n${p.url}\n` +
-        `Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*, or *@Match Time we play with 12 to 16* for the fewest and most you play with (I only warn you about low numbers below the fewest, and any one game can then be made 6, 7 or 8 a side: *@Match Time make it 8 a side*).`
+        `Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*, or *@Match Time we play with 12 to 16* for the fewest and most you play with (I only warn you about low numbers below the fewest, and any one game can then be made bigger or smaller inside them, for example *@Match Time make it 8 a side*).`
       );
     }
     if (p.audience === "group") {
