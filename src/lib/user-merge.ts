@@ -25,6 +25,7 @@ type Tx = any;
 
 import { recordAttendanceEvent, type AttendanceActorKind } from "./attendance-events";
 import { recordRoleChange } from "./role-change";
+import { loadPoolMergeRows } from "./pool/user-merge";
 import {
   aliasNorm,
   delegateOf,
@@ -212,9 +213,8 @@ export async function loadMergeSnapshot(tx: Tx, S: string, T: string): Promise<M
     stripeSessionId: true,
   })) as MergeSnapshot["squadMembers"];
   snap.squadCredits = (await pair(tx, "squadCredit", S, T, "orgId", { earnedMatchId: true, voidedAt: true })) as MergeSnapshot["squadCredits"];
-  snap.poolProfiles = await tx.poolProfile.findMany({ where: { userId: { in: [S, T] } }, select: { id: true, userId: true, status: true } });
-  snap.poolOffers = (await pair(tx, "poolOffer", S, T, "matchId", {})) as MergeSnapshot["poolOffers"];
-  snap.poolBlocks = (await pair(tx, "poolBlock", S, T, "orgId", { by: true })) as MergeSnapshot["poolBlocks"];
+  // The pool's tables are read only by the pool's own code.
+  Object.assign(snap, await loadPoolMergeRows(tx, S, T, pair));
   snap.guestPlaces = (await pair(tx, "guestPlace", S, T, "matchId", {})) as MergeSnapshot["guestPlaces"];
   snap.clubInvitations = (await pair(tx, "clubInvitation", S, T, "orgId", { status: true })) as MergeSnapshot["clubInvitations"];
 

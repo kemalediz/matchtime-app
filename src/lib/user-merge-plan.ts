@@ -55,6 +55,14 @@
  */
 import { higherRole, isMemberRole } from "./role-change-rules";
 import { isPlaceholderEmail } from "./cross-club-link-rules";
+import { CLEAR_GUEST_MARKS, isGuestMembership } from "./guest-membership";
+import {
+  emptyPoolMergeRows,
+  planPoolProfile,
+  planPoolRekeys,
+  POOL_USER_REF_COLUMNS,
+  type PoolMergeRows,
+} from "./pool/user-merge";
 
 export const USER_MERGE_REASON = "duplicate-person-merge";
 const ELO_DEFAULT = 1000;
@@ -157,7 +165,9 @@ export interface RefRow {
   value: unknown;
 }
 
-export interface MergeSnapshot {
+/** The pool's rows (`poolProfiles`, `poolOffers`, `poolBlocks`) are read
+ *  and planned by the pool's own module, `src/lib/pool/user-merge.ts`. */
+export interface MergeSnapshot extends PoolMergeRows {
   source: UserFacts;
   target: UserFacts;
   /** UserMerge rows whose oldUserId is the source. */
@@ -185,9 +195,6 @@ export interface MergeSnapshot {
   badges: Array<U & { orgId: string; badgeKey: string }>;
   squadMembers: Array<U & { monthId: string; paidAt: Date | null; paidClaimedAt: Date | null; stripeSessionId?: string | null }>;
   squadCredits: Array<U & { orgId: string; earnedMatchId: string | null; voidedAt: Date | null }>;
-  poolProfiles: Array<U & { status: string }>;
-  poolOffers: Array<U & { matchId: string }>;
-  poolBlocks: Array<U & { orgId: string; by: string }>;
   guestPlaces: Array<U & { matchId: string }>;
   clubInvitations: Array<U & { orgId: string; status: string }>;
   /** Rows whose key or targetUser names the source. */
@@ -242,9 +249,7 @@ export function emptyMergeSnapshot(
     badges: [],
     squadMembers: [],
     squadCredits: [],
-    poolProfiles: [],
-    poolOffers: [],
-    poolBlocks: [],
+    ...emptyPoolMergeRows(),
     guestPlaces: [],
     clubInvitations: [],
     sentNotifications: [],
@@ -312,11 +317,7 @@ export const USER_REF_COLUMNS: RefColumn[] = [
   ...sc("SquadCredit", "voidedById", "createdById"),
   ...sc("PlatformSetting", "updatedById"),
   ...sc("ClubGraphicsChoice", "updatedById"),
-  ...sc("PoolProfile", "referrerUserId"),
-  ...sc("PoolAsk", "approvedByUserId"),
-  ...sc("PoolAskRetry", "askedByUserId"),
-  ...sc("PoolBlock", "byUserId"),
-  ...sc("PoolReport", "userId", "byUserId", "reviewedBy"),
+  ...POOL_USER_REF_COLUMNS,
   ...sc("FriendLink", "issuedByUserId", "usedByUserId"),
   ...sc("GuestPlace", "resultById"),
   ...sc("ClubInvitation", "invitedByUserId", "clubYesById", "declinedBy"),
@@ -571,8 +572,7 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
       continue;
     }
     clash("membership", sm.id, "both are members of this club: rows combined onto the target's, source's deleted");
-    const isGuest = (r: MembershipRow) => !!(r.guestFromOrgId || r.guestMatchId || r.guestVia);
-    const staysGuest = isGuest(tm) && isGuest(sm);
+    const staysGuest = isGuestMembership(tm) && isGuestMembership(sm);
     const tRole = tm.role;
     const role = !staysGuest && isMemberRole(tm.role) && isMemberRole(sm.role) ? higherRole(tm.role, sm.role) : tm.role;
     const leftAt = tm.leftAt === null || sm.leftAt === null ? null : tm.leftAt > sm.leftAt ? tm.leftAt : sm.leftAt;
@@ -592,7 +592,7 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
       const kept = (tm[f] ?? true) && (sm[f] ?? true);
       if (kept !== (tm[f] ?? true)) set[f] = kept;
     }
-    if (!staysGuest && isGuest(tm)) Object.assign(set, { guestFromOrgId: null, guestMatchId: null, guestVia: null });
+    if (!staysGuest && isGuestMembership(tm)) Object.assign(set, CLEAR_GUEST_MARKS);
     upd("membership", tm.id, set, "combined with the source's membership at the same club");
     del("membership", sm.id, "combined into the target's membership at the same club");
     if (role !== tRole) {
@@ -760,8 +760,7 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
   rekey("tentativeAvailability", snap.tentatives, ["userId"], (r) => `${r.matchId}:${r.userId}`, { rule: keepTarget });
   rekey("pendingBenchConfirmation", snap.pendingBench, ["userId"], (r) => `${r.matchId}:${r.userId}`, { rule: keepTarget });
   rekey("badgeAnnouncement", snap.badges, ["userId"], (r) => `${r.orgId}:${r.userId}:${r.badgeKey}`, { rule: "badge already announced for the target: kept" });
-  rekey("poolOffer", snap.poolOffers, ["userId"], (r) => `${r.matchId}:${r.userId}`, { rule: keepTarget });
-  rekey("poolBlock", snap.poolBlocks, ["userId"], (r) => `${r.orgId}:${r.userId}:${r.by}`, { rule: keepTarget });
+  planPoolRekeys(snap, rekey, keepTarget);
   rekey("guestPlace", snap.guestPlaces, ["userId"], (r) => `${r.matchId}:${r.userId}`, { rule: keepTarget });
 
   // ── RosterSurveyResponse: the newer reply wins ──
@@ -809,14 +808,8 @@ export function planUserMerge(snap: MergeSnapshot, opts: { now: Date }): MergePl
     upd("squadCredit", r.id, { userId: T }, "moves to the target");
   }
 
-  // ── PoolProfile: one per user ──
-  const sp = snap.poolProfiles.find((x) => x.userId === S);
-  const tp = snap.poolProfiles.find((x) => x.userId === T);
-  if (sp && !tp) upd("poolProfile", sp.id, { userId: T }, "moves to the target");
-  if (sp && tp) {
-    clash("poolProfile", sp.id, "both have a pool profile: the target's is kept; the source's is stopped and stays on the deactivated source");
-    if (sp.status !== "stopped") upd("poolProfile", sp.id, { status: "stopped", stoppedAt: now }, "duplicate pool profile stopped");
-  }
+  // ── PoolProfile: one per user (the pool's own module) ──
+  planPoolProfile(snap, { S, T, now }, { upd, clash });
 
   // ── ClubInvitation: one OPEN per (club, user) ──
   const openTarget = new Set(snap.clubInvitations.filter((r) => r.userId === T && r.status === "open").map((r) => r.orgId));

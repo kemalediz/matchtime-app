@@ -36,6 +36,10 @@ export const ORDINARY_MEMBER_WHERE = { guestMatchId: null } as const;
 /** Prisma `where` fragment: any guest membership (partner or pool, current or past). */
 export const GUEST_MEMBER_WHERE = { guestMatchId: { not: null } } as const;
 
+/** Prisma `data` fragment: clears every guest mark, so the row becomes an
+ *  ordinary membership. All three columns together, so the CHECK holds. */
+export const CLEAR_GUEST_MARKS = { guestFromOrgId: null, guestMatchId: null, guestVia: null } as const;
+
 export type GuestMarks = {
   guestMatchId?: string | null;
   guestFromOrgId?: string | null;
