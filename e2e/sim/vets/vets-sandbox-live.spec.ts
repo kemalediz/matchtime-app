@@ -26,6 +26,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { scenario, liveOnly, expect, LIVE } from "../pool/fixtures";
 import { resetDb, signInAs } from "../../fixtures";
 import { E2E, E2E_BASE_URL, REPO_ROOT } from "../../helpers/env";
+import type { TestDb } from "../../helpers/test-db";
 import {
   LIST_KEYS,
   LONDON,
@@ -801,5 +802,383 @@ scenario.describe("the Vets sandbox", () => {
     await expect(page.getByTestId(`player-row-${newUser!.id}`).locator('input[type="number"]')).toHaveValue("6");
     await expect(page.getByText("Wednesday Wanderers Sandbox")).toHaveCount(0);
     await expect(page.getByText("Friday Five Sandbox")).toHaveCount(0);
+  });
+
+  // ── N: a new name on the month's list, re-posted in a running month ──
+  // Kemal, 2026-11-03: Davide collects the money himself (payments off) and,
+  // in a running month, re-posts the month's paid list with a new line
+  // ("14. Tom (paid)") or tags MatchTime ("@Match Time add Tom to the
+  // November list, he's paid"). Approved behaviour (`month-newcomers.ts`):
+  // the person becomes a REGULAR of the month for the games left, as
+  // /admin/months "Add a player, Regular" makes him one, "says paid" as
+  // written, and is on the next match's squad; the group hears nothing but
+  // a ✅. A name MatchTime does not know by name is a new player with no
+  // phone (or, when it could be a member with no name yet, nobody is added),
+  // and Davide gets ONE DM numbering the members with no name, by phone, to
+  // say who it is ("Zak is 3"). A player's re-post or request adds nobody.
+  scenario.describe("N. a running month's list re-posted with a new name", () => {
+    /** The first names the month's list uses for the nameless regulars. */
+    const LIST_FIRST_NAMES: Record<string, string> = {
+      nabz: "Nabz",
+      steff: "Steff",
+      craig: "Craig",
+      dan: "Dan",
+      ben: "Ben",
+      steve: "Steve",
+      andrew: "Andrew",
+      jon: "Jon",
+      oumesh: "Oumesh",
+    };
+    /**
+     * The running month, last Monday played, the 13 regulars seeded on the
+     * next match. `named` (default): the regulars carry the names the month's
+     * start gave them, as in production after scenario C's flow (the sweep
+     * names a member from his WhatsApp name, Davide's "Craig is 3" names the
+     * rest). Members NOT on the month (Luca, p11 to p20) stay nameless.
+     */
+    const runningWeek = async (pool: Parameters<typeof vetsClub>[0], db: TestDb, opts: { named?: boolean } = {}) => {
+      // The month's games left must be in the same month as last Monday's.
+      scenario.skip(formatInTimeZone(lastMondayKickoff(), LONDON, "MM") !== formatInTimeZone(new Date(), LONDON, "MM"), "needs a Monday already played this month");
+      const v = await vetsClub(pool, "vets", { month: "running", played: { keys: LIST_KEYS } });
+      if (opts.named !== false) {
+        for (const [k, name] of Object.entries(LIST_FIRST_NAMES)) await db.run(`UPDATE "User" SET name = $2 WHERE id = $1`, [v.userId(k), name]);
+      }
+      await schedulerPoll(pool, v, new Date());
+      const n = await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND status = 'CONFIRMED'`, [v.matchId]);
+      expect(n, "the 13 regulars seeded").toBe(13);
+      return v;
+    };
+    /** The month's Mondays from the next kickoff on (the games left). */
+    const gamesLeft = (kickoff: Date): number => {
+      let n = 0;
+      for (let t = kickoff.getTime(); formatInTimeZone(new Date(t), LONDON, "MM") === formatInTimeZone(kickoff, LONDON, "MM"); t += 7 * 86_400_000) n++;
+      return n;
+    };
+    const monthNameOf = (v: { kickoff: Date }) => formatInTimeZone(v.kickoff, LONDON, "MMMM");
+    const withLine = (text: string, line: string) => `${text}\n${line}`;
+    /** Luca posted in the group last week under his WhatsApp name "Luca"
+     *  (the row the analyze route writes for every post). */
+    const lucaPostedAsLuca = (db: TestDb, v: Awaited<ReturnType<typeof vetsClub>>) =>
+      db.run(
+        `INSERT INTO "AnalyzedMessage" (id, "waMessageId", "orgId", "groupId", "authorUserId", "authorName", body, "handledBy", "createdAt")
+         VALUES ($1, $1, $2, $3, $4, 'Luca', 'Evening lads', 'router', now() - interval '6 days')`,
+        [`sim-vets-luca-${Date.now()}`, v.orgId, v.club.group.groupId, v.userId("luca")],
+      );
+    /** The open "who is this?" question MatchTime stored with its DM to Davide. */
+    const openQuestion = async (db: TestDb, v: Awaited<ReturnType<typeof vetsClub>>) => {
+      const row = await db.one<{ text: string }>(
+        `SELECT text FROM "SentNotification" WHERE kind = 'month-newcomers-ask' AND "targetUser" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+        [v.userId("davide")],
+      );
+      return row ? (JSON.parse(row.text) as { dm: string; names: Array<{ ref: string; name: string; userId: string | null }>; nameless: Array<{ n: number; userId: string }> }) : null;
+    };
+    /** The month's row and the next match's place for one player. */
+    const placeOf = async (db: TestDb, v: Awaited<ReturnType<typeof vetsClub>>, userId: string) => ({
+      month: await db.one<{ kind: string; leftAt: Date | null; gamesCovered: number; gamesCommitted: number | null; paidClaimedAt: Date | null }>(
+        `SELECT kind, "leftAt", "gamesCovered", "gamesCommitted", "paidClaimedAt" FROM "SquadMonthMember" WHERE "monthId" = $1 AND "userId" = $2`,
+        [v.monthId, userId],
+      ),
+      match: await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [v.matchId, userId]),
+    });
+
+    /** Everything the bot did with one paste, printed for the report. */
+    const report = async (db: TestDb, tag: string, r: Awaited<ReturnType<typeof say>>) => {
+      console.log(
+        `[vets ${tag}] ${JSON.stringify({ react: r.react, reply: r.reply, intent: r.intent, handledBy: r.handledBy })}\n` +
+          `  as recorded: ${JSON.stringify(await analyzed(db, r.waMessageId))}\n` +
+          r.sent.map((m) => `  -> ${m.channel} ${m.to}: ${m.text}`).join("\n"),
+      );
+    };
+
+    /** The INTENDED outcome for the player the paste adds: a regular for the games left, on the match, on the list the group sees. */
+    const expectNewRegular = async (
+      pool: Parameters<typeof vetsClub>[0],
+      db: TestDb,
+      v: Awaited<ReturnType<typeof vetsClub>>,
+      tag: string,
+      userId: string | null,
+      listName: RegExp,
+      pastedAt: Date,
+    ) => {
+      expect.soft(userId, "the player the paste names").toBeTruthy();
+      const mm = userId
+        ? await db.one<{ kind: string; leftAt: Date | null; gamesCovered: number; source: string | null }>(
+            `SELECT kind, "leftAt", "gamesCovered", source FROM "SquadMonthMember" WHERE "monthId" = $1 AND "userId" = $2`,
+            [v.monthId, userId],
+          )
+        : null;
+      const att = userId
+        ? await db.one<{ status: string; position: number | null }>(`SELECT status, position FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [v.matchId, userId])
+        : null;
+      console.log(`[vets ${tag}] month row: ${JSON.stringify(mm)}; attendance: ${JSON.stringify(att)}`);
+      expect.soft(mm?.kind, "a regular of the month").toBe("regular");
+      expect.soft(mm?.leftAt ?? null, "still on the month").toBeNull();
+      expect.soft(mm?.gamesCovered, "for the games left").toBe(gamesLeft(v.kickoff));
+      expect.soft(att?.status, "on the next match's squad").toBe("CONFIRMED");
+      // The week's list the group sees: MatchTime's next list post (past the
+      // 30-minute floor) shows him, or his own paste was the list as it now is.
+      const later = await schedulerPoll(pool, v, new Date(Date.now() + 35 * 60_000));
+      const post = later.instructions.find((i) => i.kind === "group-message" && (i.key ?? "").includes(":month-list:"));
+      const seen = await db.one<{ kind: string; createdAt: Date }>(
+        `SELECT kind, "createdAt" FROM "SentNotification" WHERE "matchId" = $1 AND key LIKE $2 ORDER BY "createdAt" DESC LIMIT 1`,
+        [v.matchId, `${v.matchId}:month-list:%`],
+      );
+      console.log(`[vets ${tag}] the week's list after: ${post ? `posted:\n${post.text}` : `not posted; newest list row ${JSON.stringify(seen)}`}`);
+      if (post) expect.soft(post.text ?? "", "the list post shows him").toMatch(listName);
+      else expect.soft(seen?.kind === "month-list-seen" && seen.createdAt.getTime() >= pastedAt.getTime(), "his paste counted as the list shown").toBe(true);
+    };
+
+    // N1 = variant a
+    scenario("N1. Davide re-posts the list with '14. Tom (paid)', Tom a named club member not on the month: Tom becomes a regular and is on Monday's squad", async ({ pool, db }) => {
+      // Before 2026-11-03 (traced): the week's reconcile made Tom notAdded
+      // "not-in-month" and Davide was DMed "I added nobody". Now an
+      // organiser's line for a named club member is a "join"
+      // (monthly-week-rules.ts), applied by `joinMonthAsOrganiser`.
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const at = new Date();
+      const r = await say(pool, v, "davide", withLine(monthListText(monthNameOf(v)), "14. Tom (paid)"));
+      await report(db, "N1", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      expect.soft(r.react, "a ✅ on a paste that changed something").toBe("✅");
+      await expectNewRegular(pool, db, v, "N1", v.userId("tom"), /\bTom\b/, at);
+    });
+
+    // N2 = variant b
+    scenario("N2. '14. Luca (paid)', Luca a nameless member (imported by phone, no name yet) who posts as 'Luca': Davide is asked by DM who Luca is, and no second Luca is created", async ({ pool, db }) => {
+      // Before 2026-11-03 (traced): the reader saw only NAMED members, so
+      // "Luca" was a guest and a second "Luca" was created for one game.
+      // Now the reader sees members with no name, with the facts that can
+      // tie a name to one: Luca posted in the group last week as "Luca"
+      // (his AnalyzedMessage row, written here as the route writes it). He
+      // COULD be the one, so nobody is added and Davide is asked (N8 answers).
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      await lucaPostedAsLuca(db, v);
+      const at = new Date();
+      const r = await say(pool, v, "davide", withLine(monthListText(monthNameOf(v)), "14. Luca (paid)"));
+      await report(db, "N2", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      const lucas = await db.all<{ id: string }>(
+        `SELECT u.id FROM "User" u JOIN "Membership" m ON m."userId" = u.id WHERE m."orgId" = $1 AND lower(u.name) = 'luca'`,
+        [v.orgId],
+      );
+      console.log(`[vets N2] users named Luca at the club: ${JSON.stringify(lucas)} (the nameless member is ${v.userId("luca")})`);
+      expect.soft(lucas.filter((u) => u.id !== v.userId("luca")), "no second Luca created").toEqual([]);
+      // Either he is matched (the member becomes the regular), or Davide is
+      // asked who Luca is, by DM, with the nameless members by phone (as the
+      // month-seed DM does, month-seed-match.ts).
+      const asked = r.sent.some((m) => m.channel === "dm" && m.to === "vets.davide" && /Luca/.test(m.text) && /\+44 \d{4} \d{6}/.test(m.text));
+      expect.soft(asked, "Davide asked who Luca is, with the members with no name by phone").toBe(true);
+      void at;
+    });
+
+    // N3 = variant c
+    scenario("N3. '14. Zak (paid)', Zak nobody at the club: Zak is added as a new named player and a regular of the month", async ({ pool, db }) => {
+      // Before 2026-11-03 (traced): Zak was a one-game PAYG guest with no
+      // month row. Now an organiser's line for nobody (nobody brings him) is
+      // a "new" player of the month, and Davide is asked by DM whether Zak
+      // is one of the members with no name (N7 answers it).
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const at = new Date();
+      const r = await say(pool, v, "davide", withLine(monthListText(monthNameOf(v)), "14. Zak (paid)"));
+      await report(db, "N3", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      const zaks = await db.all<{ id: string }>(
+        `SELECT u.id FROM "User" u JOIN "Membership" m ON m."userId" = u.id WHERE m."orgId" = $1 AND lower(u.name) = 'zak'`,
+        [v.orgId],
+      );
+      console.log(`[vets N3] users named Zak at the club: ${JSON.stringify(zaks)}`);
+      expect.soft(zaks, "one new player, Zak").toHaveLength(1);
+      await expectNewRegular(pool, db, v, "N3", zaks[0]?.id ?? null, /\bZak\b/, at);
+    });
+
+    // N5 = variant e
+    scenario("N5. Davide's re-post adds '14. Tom (paid)' and moves Steve under 'Paid but can't play': Steve is out this week (told by DM), Tom is a regular and in", async ({ pool, db }) => {
+      // Steve's half is the design (plan 6.2, D4): DROPPED, his "moved you
+      // to 'Paid but can't play' ... Reply *IN*" DM, a ✅. Tom's half is N1's.
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const at = new Date();
+      const base = monthListText(monthNameOf(v)).replace(/\n8\. [^\n]*Steve[^\n]*/, "");
+      expect(base).not.toMatch(/Steve/);
+      const r = await say(pool, v, "davide", `${base}\n14. Tom (paid)\n\nPaid but can't play\nSteve (paid)`);
+      await report(db, "N5", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      expect.soft(r.react, "a ✅ on a paste that changed something").toBe("✅");
+      const steve = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [v.matchId, v.userId("steve")]);
+      console.log(`[vets N5] Steve: ${JSON.stringify(steve)}`);
+      expect.soft(steve?.status, "Steve out this week").toBe("DROPPED");
+      expect.soft(
+        r.sent.some((m) => m.channel === "dm" && m.to === "vets.steve" && /Paid but can't play/.test(m.text)),
+        "Steve told, with the undo",
+      ).toBe(true);
+      await expectNewRegular(pool, db, v, "N5", v.userId("tom"), /\bTom\b/, at);
+    });
+
+    // N4 = variant d
+    scenario("N4. a regular (Shane), not the organiser, posts the same list with '14. Tom (paid)': nobody is added; Davide is told by DM, and so is Shane; nothing in the group", async ({ pool, db }) => {
+      // The design (plan 6.2 D4 as narrowed in slice 5's review, and
+      // "only the organiser changes the month"): a player adds only himself.
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const r = await say(pool, v, "shane", withLine(monthListText(monthNameOf(v)), "14. Tom (paid)"));
+      await report(db, "N4", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      expect.soft(r.react, "no ✅: nothing changed").toBeNull();
+      const mm = await db.one(`SELECT kind FROM "SquadMonthMember" WHERE "monthId" = $1 AND "userId" = $2`, [v.monthId, v.userId("tom")]);
+      expect.soft(mm, "Tom not on the month").toBeNull();
+      const att = await db.one(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [v.matchId, v.userId("tom")]);
+      expect.soft(att, "Tom not on the match").toBeNull();
+      expect.soft(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND status = 'CONFIRMED'`, [v.matchId]), "the squad unchanged").toBe(13);
+      const dms = r.sent.filter((m) => m.channel === "dm");
+      expect.soft(dms.some((m) => m.to === "vets.davide" && /Tom/.test(m.text)), "the organiser told").toBe(true);
+      expect.soft(dms.some((m) => m.to === "vets.shane" && /Tom/.test(m.text)), "the sender told").toBe(true);
+    });
+
+    // N6: found by the first run of N1 to N5 (2026-11-03), on regulars with no name.
+    scenario("N6. a running month whose regulars have no name yet: Davide re-posts the month's list unchanged, and nobody is created, nobody added, nothing said", async ({ pool, db }) => {
+      // Before 2026-11-03 (traced): the reader saw only NAMED members, so
+      // the nameless regulars came back as guests, a second "Nabz" was
+      // created and Davide was DMed about the rest. Now each member with no
+      // name is shown with his number on the November list, and the reader
+      // ties "2. Nabz" to the member at 2: the unchanged list is restated.
+      liveOnly();
+      const v = await runningWeek(pool, db, { named: false });
+      const r = await say(pool, v, "davide", monthListText(monthNameOf(v)));
+      await report(db, "N6", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent, "nothing sent at all").toEqual([]);
+      expect.soft(r.react, "no ✅: nothing changed").toBeNull();
+      expect.soft(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND status = 'CONFIRMED'`, [v.matchId]), "the squad unchanged").toBe(13);
+      const created = await db.all<{ name: string }>(
+        `SELECT u.name FROM "User" u JOIN "Membership" m ON m."userId" = u.id WHERE m."orgId" = $1 AND u.email LIKE 'provisional+%'`,
+        [v.orgId],
+      );
+      expect.soft(created, "no player created").toEqual([]);
+    });
+
+    // N7: Davide answers N3's DM. The new Zak is folded into the member.
+    scenario("N7. Davide answers the who-is-this DM 'Zak is <n>': the new Zak is folded into that member (his phone kept), who is the regular, on the squad and named Zak; one Zak left", async ({ pool, db }) => {
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const r = await say(pool, v, "davide", withLine(monthListText(monthNameOf(v)), "14. Zak (paid)"));
+      await report(db, "N7", r);
+      const q = await openQuestion(db, v);
+      console.log(`[vets N7] the question: ${JSON.stringify(q)}`);
+      expect(q?.names.map((x) => x.name), "asked about Zak").toEqual(["Zak"]);
+      const newZak = q!.names[0].userId!;
+      const n = q!.nameless.find((x) => x.userId === v.userId("p11"))?.n;
+      expect(n, "p11 numbered in the DM").toBeTruthy();
+      expect(r.sent.at(-1)?.text ?? "", "the who-is-this DM is Davide's newest").toContain(`${n}. +44 ${v.phone("p11").slice(2, 6)} ${v.phone("p11").slice(6)}`);
+      const who = await v.club.member("davide").dm(`Zak is ${n}`);
+      console.log(`[vets N7] his answer: ${JSON.stringify(who.json)}\n${who.sent.map((m) => `  -> ${m.to}: ${m.text}`).join("\n")}`);
+      expect(who.json).toMatchObject({ handled: "month-newcomers-matched", matched: 1 });
+      const member = await db.one<{ name: string | null; phoneNumber: string | null; isActive: boolean }>(`SELECT name, "phoneNumber", "isActive" FROM "User" WHERE id = $1`, [v.userId("p11")]);
+      const gone = await db.one<{ isActive: boolean; phoneNumber: string | null }>(`SELECT "isActive", "phoneNumber" FROM "User" WHERE id = $1`, [newZak]);
+      expect.soft(member, "the member is Zak, phone kept").toMatchObject({ name: "Zak", isActive: true, phoneNumber: `+${v.phone("p11")}` });
+      expect.soft(gone?.isActive, "the provisional Zak is folded away").toBe(false);
+      const p = await placeOf(db, v, v.userId("p11"));
+      expect.soft(p.month?.kind, "the member is the regular").toBe("regular");
+      expect.soft(p.month?.paidClaimedAt, "says paid").toBeTruthy();
+      expect.soft(p.match?.status, "on the next match").toBe("CONFIRMED");
+      expect.soft((await placeOf(db, v, newZak)).month, "no month row left for the provisional Zak").toBeNull();
+      const zaks = await db.count(
+        `SELECT COUNT(*) FROM "User" u JOIN "Membership" m ON m."userId" = u.id WHERE m."orgId" = $1 AND lower(u.name) = 'zak' AND u."isActive" AND m."leftAt" IS NULL`,
+        [v.orgId],
+      );
+      expect.soft(zaks, "one Zak").toBe(1);
+      expect.soft(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND status = 'CONFIRMED'`, [v.matchId]), "14 on the match, once each").toBe(14);
+    });
+
+    // N8: Davide answers N2's DM. Nobody was added for Luca: the member joins.
+    scenario("N8. Davide answers the who-is-this DM 'Luca is <n>': that member joins as the regular, says paid, on the squad, named Luca; nobody created", async ({ pool, db }) => {
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      await lucaPostedAsLuca(db, v);
+      const r = await say(pool, v, "davide", withLine(monthListText(monthNameOf(v)), "14. Luca (paid)"));
+      await report(db, "N8", r);
+      const q = await openQuestion(db, v);
+      console.log(`[vets N8] the question: ${JSON.stringify(q)}`);
+      expect(q?.names, "asked about Luca, nobody added").toEqual([expect.objectContaining({ name: "Luca", userId: null })]);
+      const n = q!.nameless.find((x) => x.userId === v.userId("luca"))?.n;
+      expect(n).toBeTruthy();
+      const who = await v.club.member("davide").dm(`Luca is number ${n}`);
+      console.log(`[vets N8] his answer: ${JSON.stringify(who.json)}\n${who.sent.map((m) => `  -> ${m.to}: ${m.text}`).join("\n")}`);
+      expect(who.json).toMatchObject({ handled: "month-newcomers-matched", matched: 1 });
+      const p = await placeOf(db, v, v.userId("luca"));
+      expect.soft(p.month?.kind, "a regular").toBe("regular");
+      expect.soft(p.month?.paidClaimedAt, "says paid").toBeTruthy();
+      expect.soft(p.match?.status, "on the next match").toBe("CONFIRMED");
+      expect.soft((await db.one<{ name: string | null }>(`SELECT name FROM "User" WHERE id = $1`, [v.userId("luca")]))?.name, "named Luca").toBe("Luca");
+      expect.soft(await db.count(`SELECT COUNT(*) FROM "User" u JOIN "Membership" m ON m."userId" = u.id WHERE m."orgId" = $1 AND u.email LIKE 'provisional+%'`, [v.orgId]), "nobody created").toBe(0);
+    });
+
+    // N9 to N12: the same by a tagged request, not a re-posted list.
+    scenario("N9. Davide in the players' group: '@Match Time add Tom to the <month> list, he's paid': Tom is a regular for the games left, says paid, on the squad; a ✅ and nothing said", async ({ pool, db }) => {
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const at = new Date();
+      const r = await say(pool, v, "davide", `@Match Time add Tom to the ${monthNameOf(v)} list, he's paid`, { tag: true });
+      await report(db, "N9", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      expect.soft(r.react, "a ✅").toBe("✅");
+      expect.soft((await placeOf(db, v, v.userId("tom"))).month?.paidClaimedAt, "says paid").toBeTruthy();
+      await expectNewRegular(pool, db, v, "N9", v.userId("tom"), /\bTom\b/, at);
+    });
+
+    scenario("N10. Davide in the organisers' group (HQ): '@Match Time add Zak to the <month> list, 2 games': a new player Zak, a regular for 2 games; HQ is answered; the numbered members only by DM", async ({ pool, db }) => {
+      liveOnly();
+      scenario.skip(formatInTimeZone(lastMondayKickoff(), LONDON, "MM") !== formatInTimeZone(new Date(), LONDON, "MM"), "needs a Monday already played this month");
+      const v = await vetsClub(pool, "vets", { month: "running", played: { keys: LIST_KEYS }, hq: true });
+      for (const [k, name] of Object.entries(LIST_FIRST_NAMES)) await db.run(`UPDATE "User" SET name = $2 WHERE id = $1`, [v.userId(k), name]);
+      await schedulerPoll(pool, v, new Date());
+      const r = await v.club.hq.say("davide", `@Match Time add Zak to the ${monthNameOf(v)} list, 2 games`, { tag: true });
+      console.log(`[vets N10] HQ: ${JSON.stringify(r.json)}\n${r.sent.map((m) => `  -> ${m.channel} ${m.to}: ${m.text}`).join("\n")}`);
+      const hq = r.sent.filter((m) => m.channel === "hq");
+      expect.soft(hq.map((m) => m.text).join("\n"), "HQ told Zak is on the list").toMatch(/Zak is on the .* list as a regular/);
+      expect.soft(hq.map((m) => m.text).join("\n"), "no phone number in HQ").not.toMatch(/\+44/);
+      expect.soft(r.sent.filter((m) => m.channel === "group"), "nothing in the players' group").toEqual([]);
+      expect.soft(r.sent.some((m) => m.channel === "dm" && m.to === "vets.davide" && /\+44 \d{4} \d{6}/.test(m.text)), "the members with no name, by DM to Davide").toBe(true);
+      const zak = await db.one<{ id: string }>(`SELECT u.id FROM "User" u JOIN "Membership" m ON m."userId" = u.id WHERE m."orgId" = $1 AND lower(u.name) = 'zak'`, [v.orgId]);
+      const p = zak ? await placeOf(db, v, zak.id) : { month: null, match: null };
+      expect.soft(p.month?.kind, "a regular").toBe("regular");
+      expect.soft(p.month?.gamesCommitted, "2 games").toBe(2);
+      expect.soft(p.match?.status, "on the next match").toBe("CONFIRMED");
+    });
+
+    scenario("N11. Davide by DM: 'add Tom to the <month> list, he's paid': Tom is a regular, says paid, on the squad; the answer is his DM", async ({ pool, db }) => {
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const r = await v.club.member("davide").dm(`add Tom to the ${monthNameOf(v)} list, he's paid`);
+      console.log(`[vets N11] DM: ${JSON.stringify(r.json)}\n${r.sent.map((m) => `  -> ${m.channel} ${m.to}: ${m.text}`).join("\n")}`);
+      expect.soft(r.json).toMatchObject({ handled: "month-add-done" });
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing in any group").toEqual([]);
+      expect.soft(r.sent.find((m) => m.to === "vets.davide")?.text ?? "", "his answer").toMatch(/Tom is on the .* list as a regular/);
+      const p = await placeOf(db, v, v.userId("tom"));
+      expect.soft(p.month?.kind, "a regular").toBe("regular");
+      expect.soft(p.month?.paidClaimedAt, "says paid").toBeTruthy();
+      expect.soft(p.match?.status, "on the next match").toBe("CONFIRMED");
+    });
+
+    scenario("N12. Shane (a player, not an organiser): '@Match Time add Tom to the <month> list, he's paid': nobody is added to the month or the week; Shane is told by DM; nothing in the group", async ({ pool, db }) => {
+      liveOnly();
+      const v = await runningWeek(pool, db);
+      const r = await say(pool, v, "shane", `@Match Time add Tom to the ${monthNameOf(v)} list, he's paid`, { tag: true });
+      await report(db, "N12", r);
+      expect.soft(r.reply, "nothing said in the group").toBeNull();
+      expect.soft(r.sent.filter((m) => m.channel !== "dm"), "nothing posted in the group").toEqual([]);
+      const p = await placeOf(db, v, v.userId("tom"));
+      expect.soft(p.month, "Tom not on the month").toBeNull();
+      expect.soft(p.match, "Tom not on the match").toBeNull();
+      expect.soft(r.sent.some((m) => m.channel === "dm" && m.to === "vets.shane" && /Only an organiser/.test(m.text)), "Shane told").toBe(true);
+    });
   });
 });

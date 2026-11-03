@@ -18,6 +18,7 @@ import { inMessageHours, messageHoursDayStart, type QuietHours } from "./message
 import { type MonthlyList, type MonthlyListEntry } from "./monthly-list";
 import { nameKey, type MonthCreditRule } from "./squad-month-rules";
 import { entryResolver } from "./month-signup-rules";
+import { isNamedMember, MAX_NEW_PLAYERS_PER_PASTE, newcomerLineOf, type NewcomerLine } from "./month-newcomer-rules";
 
 export type WeekPaid = "none" | "claimed" | "confirmed";
 export type WeekStatus = "CONFIRMED" | "BENCH" | "DROPPED";
@@ -656,7 +657,20 @@ export type PasteAction =
    *  "David (my son)"), as the monthly reader read it: they play this week
    *  as a PAYG guest of `hostUserId`. The caller adds them the way a typed
    *  "David, my son, is IN" is added. */
-  | { kind: "guest"; name: string; hostUserId: string | null; slot: number | null };
+  | { kind: "guest"; name: string; hostUserId: string | null; slot: number | null }
+  /** AN ORGANISER'S new line in a running month (Kemal, 2026-11-03): a
+   *  club member known by name who is not on the month. He joins it as a
+   *  regular for the games left (PAYG when the line says), as "Add a
+   *  player, Regular" on /admin/months does (`month-newcomers.ts`). */
+  | { kind: "join"; userId: string; name: string; slot: number | null; line: NewcomerLine }
+  /** An organiser's new line that is nobody of the club, and nobody brings
+   *  him: a new player with no phone, who joins the month. The organiser is
+   *  then asked whether he is a member with no name yet. */
+  | { kind: "new"; name: string; slot: number | null; line: NewcomerLine }
+  /** An organiser's new line the reader matched to a member with NO name
+   *  yet (his WhatsApp name, or his number on the list): he could be the
+   *  one, so nobody is added, and the organiser is asked who it is. */
+  | { kind: "ask"; name: string; slot: number | null; candidateUserId: string | null; line: NewcomerLine };
 
 /** A non-organiser's paste adds at most this many guests, and never more
  *  than the week's open places (review of #465). An organiser may fill
@@ -804,6 +818,7 @@ export function reconcileMonthPaste(args: {
   const openPlaces = Math.max(0, args.maxPlayers - rows.filter((r) => r.status === "CONFIRMED").length);
   const guestCap = senderIsAdmin ? openPlaces : Math.min(openPlaces, MAX_GUESTS_PER_PASTE);
   let guestsAdded = 0;
+  let newPlayers = 0;
   const guestsRefused: string[] = [];
   const gamesOf = (e: MonthlyListEntry, userId: string): void => {
     const g = e.facts?.games ?? null;
@@ -846,6 +861,16 @@ export function reconcileMonthPaste(args: {
       if (e === selfLine && senderUserId) {
         handled.add(senderUserId);
         actions.push({ kind: "in", userId: senderUserId, name: e.name, self: true, slot: e.slot });
+      } else if (e.facts?.guest && senderIsAdmin && !e.facts.hostUserId) {
+        // An organiser's new line for somebody who is nobody of the club
+        // and whom nobody brings: a new player of the month (Kemal,
+        // 2026-11-03). A few per paste; more is likely a misread.
+        if (newPlayers < MAX_NEW_PLAYERS_PER_PASTE) {
+          newPlayers++;
+          actions.push({ kind: "new", name: e.name, slot: e.slot, line: newcomerLineOf(e) });
+        } else {
+          guestsRefused.push(e.name);
+        }
       } else if (e.facts?.guest && senderIsClubPlayer) {
         // B2: a member's guest. Nobody of the club (the reader matched
         // nobody), so a new player, brought by the host: up to the cap.
@@ -872,7 +897,17 @@ export function reconcileMonthPaste(args: {
       // A club player who is not on the month comes in only when he is
       // the sender (a member ref is never a guest, review of #465).
       if (self || memberOf.has(userId)) actions.push({ kind: "in", userId, name: e.name, self, slot: e.slot });
-      else notAdded.push({ name: e.name, reason: "not-in-month" });
+      // An ORGANISER's line brings him onto the month (Kemal, 2026-11-03):
+      // a member known by name joins; one with no name yet the reader
+      // matched could be him, and the organiser is asked first.
+      else if (senderIsAdmin) {
+        const line = newcomerLineOf(e);
+        actions.push(
+          isNamedMember(args.roster.find((m) => m.userId === userId))
+            ? { kind: "join", userId, name: e.name, slot: e.slot, line }
+            : { kind: "ask", name: e.name, slot: e.slot, candidateUserId: userId, line },
+        );
+      } else notAdded.push({ name: e.name, reason: "not-in-month" });
     }
     claimIfNew(e, userId);
     gamesOf(e, userId);
@@ -917,7 +952,9 @@ export function reconcileMonthPaste(args: {
     return {
       actions: actions.filter((a) => {
         if (a.kind === "paid-claim") return true;
-        if (a.kind === "guest" || !a.self || args.selfBeforeSeed === false) return false;
+        // An organiser's new line waits for the seed, like a guest.
+        if (a.kind === "guest" || a.kind === "join" || a.kind === "new" || a.kind === "ask") return false;
+        if (!a.self || args.selfBeforeSeed === false) return false;
         // A regular who is not away is put in by the seed anyway.
         const m = memberOf.get(a.userId);
         return !(a.kind === "in" && m?.kind === "regular" && !m.absent);

@@ -1252,7 +1252,9 @@ export const tr: Strings = {
     `Arkadaşınız gelemezse bana WhatsApp'tan yazarak ya da sayfasındaki düğmeye basarak yerini geri verebilir.` +
     (p.fees ? `\n💷 Arkadaşınız maç ücretini her misafir gibi maçtan sonra öder (aylık kulüplerde maç başı ödeyen oyuncu olarak).` : ""),
   onbHelpFriendLinkOrganiser: `Bir organizatör birini eklediğinde doğrudan listeye girer.`,
-  onbHelpMonthListOrganiser: `📋 *Aylık kadro:* ayın listesini her zamanki gibi grupta paylaş, okuduğumu sana DM ile gönderirim. Listede tanımadığım bir isim varsa, adını bilmediğim üyeleri telefonlarıyla gösteririm; kim kimdir kendi sözlerinle söyle (örneğin _"Craig 3 numara"_) ya da aylar sayfasında seç. Evet yazınca ay başlar.`,
+  onbHelpMonthListOrganiser:
+    `📋 *Aylık kadro:* ayın listesini her zamanki gibi grupta paylaş, okuduğumu sana DM ile gönderirim. Listede tanımadığım bir isim varsa, adını bilmediğim üyeleri telefonlarıyla gösteririm; kim kimdir kendi sözlerinle söyle (örneğin _"Craig 3 numara"_) ya da aylar sayfasında seç. Evet yazınca ay başlar.\n\n` +
+    `*Ay ortasında düzenli oyuncu eklemek:* listeyi yeni isimle yeniden paylaş ya da beni etiketle (örneğin _"@Match Time Tom'u Kasım listesine ekle, ödedi"_). Kalan maçlar için aya ve bir sonraki maçın kadrosuna girer. İsmi tanımıyorsam, hangisi olduğunu söylemen için adını bilmediğim üyeleri sana DM ile gönderirim.`,
 
   onbHelpAdminOrganisers: `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda beni etiketleyip orada neler yapabildiğimi kendi cümlelerinle sor (örneğin *@Match Time neler yapabilirsin?*).`,
 
@@ -3342,6 +3344,37 @@ export const tr: Strings = {
       `Grupta bir şey yazmadım.`,
     ].join("\n"),
   mwk_dm_seed_match_example: (p) => `${p.name} ${p.n} numara`,
+  mwk_dm_newcomers_ask: (p) => {
+    const one = p.added.length + p.waiting.length === 1;
+    const who = one ? [...p.added, ...p.waiting][0] : "Bunlardan biri";
+    return [
+      `📋 ${p.month} listenden:`,
+      ...(p.added.length > 0
+        ? [`${p.added.join(", ")} artık listede, ${p.added.length === 1 ? "yeni oyuncu" : "yeni oyuncular"} olarak; henüz telefon numarası yok.`]
+        : []),
+      ...(p.waiting.length > 0 ? [`${p.waiting.join(", ")} kim, anlayamadım, bu yüzden henüz eklemedim.`] : []),
+      `${who} aşağıdaki üyelerden biriyse hangisi olduğunu yaz, örneğin "${p.example}":`,
+      ...p.members,
+      `Grupta bir şey yazmadım.`,
+    ].join("\n");
+  },
+  mwk_dm_newcomer_is: (p) => `${p.name}, ${p.phone} numaralı üye`,
+  mwk_dm_newcomers_done: (p) =>
+    [
+      ...(p.done.length > 0 ? [`✅ Teşekkürler. ${p.done.join("; ")}.`] : []),
+      ...(p.failed.length > 0 ? [`${p.failed.join(", ")} adını söylediğin üyeyle birleştiremedim. Oyuncular sayfasından yapabilirsin: ${p.link}`] : []),
+    ].join("\n"),
+  mwk_month_add_done: (p) =>
+    p.payg
+      ? `✅ ${p.name}, ${p.month} listesine maç başı ödeyen olarak eklendi.`
+      : `✅ ${p.name}, kalan ${p.games} maç için ${p.month} listesine düzenli oyuncu olarak eklendi${p.paid ? ", ödedi olarak işaretlendi" : ""}.`,
+  mwk_month_add_waiting: (p) =>
+    `${p.name} kim, anlayamadım, bu yüzden henüz ${p.month} listesinde değil. Hangi üye olduğunu söylemen için sana özelden mesaj attım.`,
+  mwk_month_add_asked: (p) => `${p.name} henüz adını bilmediğim bir üyeyse, hangisi olduğunu söylemen için sana özelden mesaj attım.`,
+  mwk_month_add_already: (p) => `${p.name} zaten ${p.month} listesinde.`,
+  mwk_month_add_no_month: (p) => `Ekleyebileceğim bir ${p.month} listesi yok.`,
+  mwk_month_add_unclear: (p) => `${p.name} hangi üye, anlayamadım, bu yüzden kimseyi eklemedim. Aylar sayfasından ekleyebilirsin.`,
+  mwk_month_add_not_organiser: (p) => `📋 ${p.month} listesine yalnızca bir organizatör birini ekleyebilir, bu yüzden kimseyi eklemedim. Bir organizatöre sor.`,
   mwk_dm_sender_not_list: (p) =>
     `📋 Gönderdiğin listeyi ${p.month} kadro listesi olarak okuyamadım, bu yüzden bir şey değiştirmedim. ` +
     `Kadro listesiyse başlık satırıyla yapıştır ("${p.month} listesi").`,

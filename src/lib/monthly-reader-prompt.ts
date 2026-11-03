@@ -36,6 +36,13 @@ export interface ReaderMember {
   aliases: string[];
   /** An owner or admin of the club. */
   organiser: boolean;
+  /** No name and no alias here (2026-11-03): a member imported from the
+   *  group by phone. `name` is "" and the facts below are what is known. */
+  nameless?: boolean;
+  /** For a nameless member: the WhatsApp name he posts under here. */
+  seenAs?: string | null;
+  /** For a nameless member: his number on a live month's list. */
+  onList?: Array<{ month: string; slot: number | null }>;
 }
 
 /** The club's context, loaded once per batch (`loadMonthlyReaderContext`). */
@@ -78,32 +85,50 @@ export type MonthlyReading =
       /** What the sender typed around the list, word for word. */
       residual: string;
     }
-  | { kind: "signup"; choice: SignupChoice; month: number; days: number[]; games: number | null };
+  | { kind: "signup"; choice: SignupChoice; month: number; days: number[]; games: number | null }
+  /** Somebody ELSE to be put on a month (2026-11-03: "@Match Time add Tom
+   *  to the November list, he's paid"). Only an organiser's is acted on
+   *  (`month-newcomers.ts`); the reading says who, never whether he may. */
+  | {
+      kind: "add";
+      month: number;
+      choice: "in" | "payg";
+      days: number[];
+      games: number | null;
+      /** The member it is, or null for a name that is nobody; `name` as written. */
+      person: { memberId: string | null; name: string };
+      paid: boolean;
+      paidPence: number | null;
+    };
 
 type ReaderEntry = MonthlyListEntry;
 
 // ── The prompt ────────────────────────────────────────────────────────
 
-export const MONTHLY_READER_SYSTEM = `You read one message from a football club's WhatsApp group for MatchTime, the club's bot. The club runs on a list for each month: regulars sign up and pay for the month, others pay as they go (PAYG) for single games, and each week they play from that list. People change the list by copying the latest one, editing it and pasting it back, and they also just say things in the chat. They never keep to one format.
+export const MONTHLY_READER_SYSTEM = `You read one message from a football club's WhatsApp group for MatchTime, the club's bot. The club runs on a list for each month: regulars sign up and pay for the month, others pay as they go (PAYG) for single games, and each week they play from that list. People change the list by copying the latest one, editing it and pasting it back, and they also just say things in the chat. They never keep to one format. Messages are English or Turkish, often mixed, misspelt, with emoji.
 
 THE CONTEXT comes first, and it does most of the work:
 - NOW: the date and time at the club.
-- MEMBERS: everybody in the club, each with a ref (p1, p2 ...), any nicknames, and who is an organiser. Every name on a list is one of these people or somebody they brought.
+- MEMBERS: everybody in the club, each with a ref (p1, p2 ...). A member MatchTime knows by name has his name, any nicknames, and whether he is an organiser. A member shown as "no name yet" was added from the group by his phone number; beside him is what MatchTime does know of him: the WhatsApp name he posts under, and his number on a month's list.
 - MONTHS: the months open or under way, their games, and each month's list as MatchTime has it.
 - THE WEEK'S LIST: the next game's list as MatchTime has it.
 - RECENT CHAT, and the message replied to if any.
-Then who sent THE MESSAGE, and the message itself. Read it as a member of the group would, with all of that in mind. Messages are English or Turkish, often mixed, misspelt, with emoji.
+Then who sent THE MESSAGE, and the message itself. Read it as a member of the group would, with all of that in mind.
+
+WHO A NAME IS, for a list line and a sign-up alike. Match the name against MEMBERS: a member's name, first name or nickname, or an obvious spelling of one ("smiler" is the member known as Smiler; "Dan" is Jordan Daniels if he goes by Dan). A member with no name yet is that name only when a fact beside him points to him: he posts under that WhatsApp name, or he holds that number on the month's list and the line sits at that number ("2. Nabz" when he is number 2). Never pick a member with no name yet for a name nothing ties to him. A name two members could be is nobody in particular. A name that is nobody on MEMBERS is not a member.
 
 kind: what THE MESSAGE is.
-- "signup": somebody joins a month, leaves it, or will play it pay-as-you-go, in any words: "IN FOR NOVEMBER", "November good for me", "I can play most weeks in November", "Kasım varım", "Kasım'da yokum", "PAYG for November 9th", or a bare "IN" replying to MatchTime's own month sign-up list.
+- "signup": somebody joins a month, leaves it, or plays it pay-as-you-go, in any words: "IN FOR NOVEMBER", "November good for me", "I can play most weeks in November", "Kasım varım", "Kasım'da yokum", "PAYG for November 9th", a bare "IN" replying to MatchTime's own month sign-up list, or somebody asking for another person to be put on a month's list ("add Tom to the November list, he's paid", "Tom'u Kasım listesine ekle").
 - "list": the club's list for a game or for a month, pasted or typed, even a short one ("List for November 1. Davide 2."). A numbered list of something else (kit, teams, votes, who owes money) is not.
 - "none": anything else, including a plain "IN" or "out" for this week's game (the sender's or anybody else's), a question, and a maybe that depends on something ("if my knee is ok").
 
 A SIGN-UP.
-- signupFor: whose sign-up it is. "sender" when the sender speaks for themselves ("I'm in for November", "count me in", "Kasım varım"). "other" when it is about anybody else, named or not, whoever sends it, an organiser included. MatchTime signs up only the sender from a sign-up.
+- signupFor: "sender" when the sender speaks for themselves ("I'm in for November", "count me in", "Kasım varım"); "other" when it is about anybody else, named or not, whoever sends it, an organiser included ("add Tom to the November list", "Lucas is out for November", "my son is in for November").
+- signupWho and signupName, for "other": who it is. signupWho is his ref when the name is a member (WHO A NAME IS), else "". signupName is his name as written ("Tom"), or "" when the message names nobody ("my son").
 - choice: "in" (a regular for the month), "out" (not playing the month), "payg" (single games).
 - signupMonth: the month (1 to 12), from the message, the chat or the list it replies to.
-- days: the days named for PAYG. games: the games committed when fewer than all ("except the last week" of five is 4), else 0.
+- days: the days named for PAYG. games: the games committed when fewer than all ("except the last week" of five is 4; "4 games" is 4), else 0.
+- signupPaid: true when the message says that person has paid ("he's paid", "ödedi"); signupPaidPence: the amount with it, in pence (3000 for £30), else 0.
 
 A LIST.
 - month: the month it is for (1 to 12); 0 when nothing says.
@@ -113,8 +138,9 @@ A LIST.
 - lines: every line of the list in order, blank numbered lines too. For each:
   section: "playing" for the main list; "cant_play" under a part such as "Paid but can't play", "Can't play", "Out", "Injured", "Gelemeyenler", "Ödedi gelemiyor"; "reserves" under "Reserves", "Subs", "Yedekler"; "other" under any other part.
   slot: the number written; 0 when none. name: the person's name only, as written, without notes, brackets or emoji ("YorDan😁 (paid 22.50)" is "YorDan"); "" for a blank line.
-  member and guest, WHO IT IS. Match the name against MEMBERS: their name, first name, nickname, or an obvious spelling of one ("smiler" is the member known as Smiler; "Dan" is Jordan Daniels if he goes by Dan). Then member is that ref and guest is false. A name that is NOBODY on MEMBERS, and not a nickname or spelling of one, is a GUEST: guest true, member "". So is a line that says somebody is brought along ("Jon extra" is an extra player Jon brings, not Jon; "David (my son)"; "Ali'nin arkadaşı"); keep the name as written. Call a listed name a member only when it really is one: a name two members could be is member "" and guest false.
-  host: for a guest, the ref of who brought them when the line or the chat says ("Jon extra" is Jon's); otherwise whoever added the line, which for a new line on THE MESSAGE is the sender ("sender"); "" only when you cannot tell.
+  member: the ref of the member the line is (WHO A NAME IS); "" when it is nobody, or a name two members could be.
+  guest: true when the line is somebody who is not a member: a name that is nobody on MEMBERS, or somebody brought along ("Jon extra" is an extra player Jon brings, not Jon; "David (my son)"; "Ali'nin arkadaşı"). Keep the name as written. A line that is a member is never a guest.
+  host: for a guest, the ref of the member who brings him when the line or the chat says so ("Jon extra" is Jon's; "David (my son)" from the sender is "sender"); "" when nothing says anybody brings him, as for a plain new name.
   games: the month's games the person commits to, when the line says ("4 only" is 4; "except the last week" of a five-game month is 4); 0 otherwise.
   payg: true for pay-per-game ("(PAYG)", "PAYG 5th only"); paygDays: the days named for it ([5] for "5th only"), else [].
   paid: true when the line says they have paid ("paid", "(Paid £22.50)", "ödedi"; "not paid" is false); paidPence: the amount with it, in pence (2250), else 0.
@@ -122,16 +148,22 @@ A LIST.
 
 Fields that do not apply: "", 0, false or [].
 
-Examples (English | Turkish).
+Examples (English | Turkish), grouped by what they teach.
+Who a name is:
+- MEMBERS has p9 with no name yet, WhatsApp name "Luca": "14. Luca (paid)" | "14. Luca (ödedi)": member p9.
+- MEMBERS has p12 with no name yet, number 2 on the November list: "2. Nabz (paid 4 only)" at number 2 | "2. Nabz (ödedi, 4 hafta)": member p12, games 4.
+- From Dean, "15. David (PAYG)\\n16. Luca", with a David among the members and nothing tying Luca to anybody | "16. Can", with no Can: David is that member, payg; Luca a guest, host "" | Can a guest, host "".
+- "13. Jon extra" | "13. Emre'nin oğlu Can": a guest, host Jon's ref | a guest, host Emre's ref.
+- From Kemal, "4. David (my son)" | "4. Oğlum Can": a guest, host "sender".
 Sign-ups:
 - "November good for me", "I'm in for November except the last week" | "Kasım bana uyar", "Kasım varım son hafta hariç": signup in, month 11, signupFor "sender"; games 4 for the second when November has five games.
+- "@Match Time add Tom to the November list, he's paid" | "@Match Time Tom'u Kasım listesine ekle, ödedi": signup in, month 11, signupFor "other", signupWho Tom's ref, signupName "Tom", signupPaid true.
+- "put Zak on November, 4 games" with no Zak among the members | "Zak'ı Kasım'a ekle, 4 hafta": signup in, signupFor "other", signupWho "", signupName "Zak", games 4.
 - From Dean, "Lucas is out for November", "my son is in for November" | "Ali de Kasım'da var": signup, signupFor "other".
 - From Dean, "Luca Rossi is IN" | "Can bu hafta var": none, a plain IN for this week (and somebody else's).
 Lists:
 - "List for November\\n1. Davide\\n7. smiler 4 only" | "Kasım listesi\\n1. Erdal\\n2. Mehmet sadece 3 hafta": list, month 11, listOf month; smiler is the member Smiler, games 4 | Mehmet games 3.
 - "8. Andrew (PAYG 5th only)\\n4. Steff (paid pensioners rate)" | "8. Burak (PAYG sadece 9'u)\\n4. Kemal (ödedi emekli)": Andrew payg, paygDays [5]; Steff paid, concession | Burak payg [9]; Kemal paid, concession.
-- From Dean, "15. David (PAYG)\\n16. Luca" with a David among the members and no Luca | "16. Can" with no Can: David is that member; Luca is a guest, host "sender" | Can a guest, host "sender".
-- "13. Jon extra" | "13. Emre'nin oğlu Can": a guest, host Jon's ref | a guest, host Emre's ref.
 - "Paid but can't play\\n1. Serg" | "Ödedi gelemiyor\\n1. Volkan": section cant_play.
 - "List for 12 October" re-pasted on 19 October, the 12th played | "12 Ekim listesi" 19 Ekim'de: listOf week, gameDay 19.
 Neither:
@@ -174,16 +206,27 @@ export const MONTHLY_READER_SCHEMA = {
     choice: { type: "string", enum: ["in", "out", "payg", ""] },
     signupMonth: { type: "integer" },
     signupFor: { type: "string", enum: ["sender", "other", ""] },
+    signupWho: { type: "string" },
+    signupName: { type: "string" },
+    signupPaid: { type: "boolean" },
+    signupPaidPence: { type: "integer" },
     days: { type: "array", items: { type: "integer" } },
     games: { type: "integer" },
   },
-  required: ["kind", "month", "gameDay", "listOf", "lines", "residual", "choice", "signupMonth", "signupFor", "days", "games"],
+  required: ["kind", "month", "gameDay", "listOf", "lines", "residual", "choice", "signupMonth", "signupFor", "signupWho", "signupName", "signupPaid", "signupPaidPence", "days", "games"],
   additionalProperties: false,
 } as const;
 
 // ── The user turn ─────────────────────────────────────────────────────
 
 function memberLine(m: ReaderMember): string {
+  if (m.nameless) {
+    const facts = [
+      ...(m.seenAs ? [`WhatsApp name "${m.seenAs}"`] : []),
+      ...(m.onList ?? []).filter((x) => x.slot != null).map((x) => `number ${x.slot} on the ${x.month} list`),
+    ];
+    return `  ${m.ref}: no name yet${facts.length > 0 ? ` (${facts.join("; ")})` : ""}${m.organiser ? ", organiser" : ""}`;
+  }
   const aka = m.aliases.filter((a) => a && a.toLowerCase() !== m.name.toLowerCase());
   return `  ${m.ref}: ${m.name}${aka.length > 0 ? ` (also: ${aka.join(", ")})` : ""}${m.organiser ? ", organiser" : ""}`;
 }
@@ -222,6 +265,36 @@ const fold = (s: string) =>
   s.normalize("NFKD").replace(/[̀-ͯ​-‏⁠﻿]/g, "").toLocaleLowerCase("tr").replace(/\s+/g, " ").trim();
 
 /**
+ * Somebody else to be put on a month, checked: a month, "in" or PAYG (an
+ * out for somebody else is the organiser's page or list), and a person who
+ * is a member it was shown or a name in the message itself.
+ */
+function readAdd(o: Record<string, unknown>, input: MonthlyReaderInput, ctx: MonthlyReaderContext, byRef: Map<string, string>): MonthlyReading {
+  const choice = o.choice === "in" || o.choice === "payg" ? o.choice : null;
+  const month = int(o.signupMonth, 1, 12);
+  if (!choice || !month) return NONE("a sign-up that is not the sender's own");
+  const memberId = byRef.get(str(o.signupWho)) ?? null;
+  if (memberId && memberId === input.sender.userId) return NONE("a sign-up for somebody else that names the sender");
+  const written = str(o.signupName).slice(0, 60);
+  if (written && !fold(input.body).includes(fold(written))) return NONE("an add for a name not in the message");
+  const member = memberId ? ctx.members.find((m) => m.userId === memberId) : undefined;
+  const name = written || member?.name || "";
+  if (!memberId && !name) return NONE("a sign-up that is not the sender's own");
+  const paid = choice === "in" && bool(o.signupPaid);
+  const days = Array.isArray(o.days) ? [...new Set(o.days.map((d) => int(d, 1, 31)).filter((d): d is number => d !== null))] : [];
+  return {
+    kind: "add",
+    month,
+    choice,
+    days: choice === "payg" ? days : [],
+    games: choice === "in" ? int(o.games, 1, 31) : null,
+    person: { memberId, name },
+    paid,
+    paidPence: paid ? int(o.signupPaidPence, 1, 100_000) : null,
+  };
+}
+
+/**
  * PURE. The model's JSON, checked against the context it was given. Never
  * throws: anything it cannot trust is left out, and an unreadable answer
  * is "none".
@@ -241,6 +314,7 @@ export function parseMonthlyReading(raw: unknown, input: MonthlyReaderInput, ctx
     // for anybody else, or that does not say whose it is, is none: the
     // message goes on to the router like any other (the Vets sandbox,
     // 2026-11-03: the organiser's "David Aksoy is IN" was applied to him).
+    if (o.signupFor === "other") return readAdd(o, input, ctx, byRef);
     if (o.signupFor !== "sender") return NONE("a sign-up that is not the sender's own");
     const choice = o.choice === "in" || o.choice === "out" || o.choice === "payg" ? o.choice : null;
     const month = int(o.signupMonth, 1, 12);

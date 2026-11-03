@@ -35,6 +35,8 @@ import { loadClubQuietHours } from "./club-quiet-hours";
 import { formatLondon } from "./london-time";
 import type { MonthlyReading } from "./monthly-reader-prompt";
 import { createProvisionalByName } from "./resolve-sender";
+import { askWhoTheyAre, createNewcomer, joinMonthAsOrganiser } from "./month-newcomers";
+import type { NewcomerLine } from "./month-newcomer-rules";
 import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek } from "./monthly-week";
 import {
   buildPasteGuestsAddedDm,
@@ -100,9 +102,12 @@ async function claimOnce(key: string, kind: string, matchId: string | null): Pro
 /**
  * Apply a member's pasted list to this week's match.
  *
- * NEVER creates a player and never guesses one: names are matched by the
- * pure resolver in `reconcileMonthPaste` (whole name, a known alias, the
- * leading name) and by nothing else. The analyze route's own resolver,
+ * Never guesses a player: names are matched by the reader's member refs
+ * and the pure resolver in `reconcileMonthPaste` (whole name, a known
+ * alias, the leading name) and by nothing else. A player is created only
+ * for a guest a member brings, and for an ORGANISER's new line that is
+ * nobody of the club (2026-11-03): a new player of the month, about whom
+ * the organiser is then asked (`month-newcomers.ts`). The analyze route's own resolver,
  * which matches by prefix and provisions a new member for a name it does
  * not know, is deliberately not reachable from here: it turned "Kit for
  * Monday / 1. Bibs / 2. Two balls" into players (review, 2026-10-06).
@@ -249,8 +254,37 @@ export async function handleMonthlyPaste(args: {
   const applied: string[] = [];
   const failures: string[] = [];
   const guestsAdded: string[] = [];
+  /** Names on an organiser's re-post MatchTime does not know by name: he is
+   *  asked who they are, in one DM, after everything else (2026-11-03). */
+  const toAsk: Array<{ name: string; userId: string | null; line: NewcomerLine }> = [];
+  const weekDay = Number(formatLondon(week.matchDate, "d"));
   for (const a of outcome.actions) {
     try {
+      if (a.kind === "join" || a.kind === "new") {
+        // AN ORGANISER'S NEW LINE in a running month (Kemal, 2026-11-03):
+        // the person joins the month for the games left, as the months
+        // page's "Add a player, Regular" does, and is put on this match.
+        // A name that is nobody is a new player with no phone first.
+        const userId = a.kind === "join" ? a.userId : await createNewcomer(orgId, a.name);
+        if (!userId || !sender.userId) {
+          failures.push(a.name);
+          continue;
+        }
+        const j = await joinMonthAsOrganiser({ orgId, monthId: week.monthId, userId, line: a.line, organiserUserId: sender.userId, weekDay, now });
+        if (!j.ok) {
+          failures.push(a.name);
+          continue;
+        }
+        if (j.changed) applied.push(`${a.kind === "new" ? "new-" : ""}${j.outcome}:${a.name}`);
+        if (a.kind === "new") toAsk.push({ name: a.name, userId, line: a.line });
+        continue;
+      }
+      if (a.kind === "ask") {
+        // He could be a member with no name yet: nobody is added on one
+        // reading. The organiser says who it is.
+        toAsk.push({ name: a.name, userId: null, line: a.line });
+        continue;
+      }
       if (a.kind === "guest") {
         // B2: somebody who is not a member yet, written in by a member. The
         // reader matched nobody of the club, so this is the same creation a
@@ -420,6 +454,13 @@ export async function handleMonthlyPaste(args: {
     }
   }
 
+  // LAST of his DMs, so it is the one his reply answers: who the names
+  // MatchTime does not know by name are, numbered by phone, to him only.
+  if (toAsk.length > 0 && sender.userId) {
+    const asked = await askWhoTheyAre({ orgId, monthId: week.monthId, organiserUserId: sender.userId, sourceRef: args.waMessageId, names: toAsk, now });
+    if (asked) applied.push(`asked-who:${toAsk.map((n) => n.name).join("|")}`);
+  }
+
   // The group has just seen this list: when it is the list as MatchTime
   // now has it, record that, so the scheduler does not post it straight
   // back (plan 5.4: "no re-post after a member's paste that matches").
@@ -436,7 +477,8 @@ export async function handleMonthlyPaste(args: {
   }
 
   return {
-    changed: applied.length > 0,
+    // Asking who somebody is changes nothing yet.
+    changed: applied.some((x) => !x.startsWith("asked-who:")),
     applied,
     ignored: outcome.ignored,
     notAdded: outcome.notAdded,

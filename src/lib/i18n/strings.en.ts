@@ -1510,7 +1510,9 @@ export const en = {
   /** "help availability" for an organiser of a club on a monthly squad
    *  (2026-11-03): the month starts from the list he posts, and names on it
    *  MatchTime cannot match are matched by him, in his words or on the page. */
-  onbHelpMonthListOrganiser: `📋 *Monthly squad:* post the month's list in the group as you always do and I'll DM you what I read. If a name on it matches nobody I know, I show you the members I have no name for, by phone, and you tell me who is who in your own words (for example _"Craig is 3"_) or pick them on the months page. Reply yes and the month starts.`,
+  onbHelpMonthListOrganiser:
+    `📋 *Monthly squad:* post the month's list in the group as you always do and I'll DM you what I read. If a name on it matches nobody I know, I show you the members I have no name for, by phone, and you tell me who is who in your own words (for example _"Craig is 3"_) or pick them on the months page. Reply yes and the month starts.\n\n` +
+    `*Adding a regular mid-month:* post the list again with the new name on it, or tag me (for example _"@Match Time add Tom to the November list, he's paid"_). He goes on the month for the games left and on the next game's squad. If I don't know the name, I DM you the members I have no name for so you can tell me which one he is.`,
 
   /** An organiser's DM bare help, organisers mode with an admin group
    *  linked: where the HQ commands are. */
@@ -4676,6 +4678,50 @@ export const en = {
     ].join("\n"),
   /** The example in the DM above: a name on his list and a member's number. */
   mwk_dm_seed_match_example: (p: { name: string; n: number }): string => `${p.name} is ${p.n}`,
+  /** To an ORGANISER who put names on a running month (his re-posted list,
+   *  or "@Match Time add Zak to the November list") that are nobody MatchTime
+   *  knows by name (2026-11-03). `added`: new players put on the month now;
+   *  `waiting`: names that could be a member with no name yet, not added.
+   *  The club's members with no name, numbered, by phone: to him only. */
+  mwk_dm_newcomers_ask: (p: { month: string; added: string[]; waiting: string[]; members: string[]; example: string }): string => {
+    const one = p.added.length + p.waiting.length === 1;
+    const who = one ? [...p.added, ...p.waiting][0] : "one of them";
+    return [
+      `📋 From your ${p.month} list:`,
+      ...(p.added.length > 0
+        ? [`${p.added.join(", ")} ${p.added.length === 1 ? "is on it now as a new player" : "are on it now as new players"}, with no phone number yet.`]
+        : []),
+      ...(p.waiting.length > 0 ? [`I couldn't tell who ${p.waiting.join(", ")} ${p.waiting.length === 1 ? "is" : "are"}, so I haven't added them yet.`] : []),
+      `If ${who} is one of these members, tell me which, for example "${p.example}":`,
+      ...p.members,
+      `I've said nothing in the group.`,
+    ].join("\n");
+  },
+  /** One name the organiser matched: who it is now. */
+  mwk_dm_newcomer_is: (p: { name: string; phone: string }): string => `${p.name} is the member on ${p.phone}`,
+  /** His "Zak is 3" applied. `failed`: names that could not be put together. */
+  mwk_dm_newcomers_done: (p: { done: string[]; failed: string[]; link: string }): string =>
+    [
+      ...(p.done.length > 0 ? [`✅ Thanks. ${p.done.join("; ")}.`] : []),
+      ...(p.failed.length > 0 ? [`I couldn't put ${p.failed.join(", ")} together with the member you said. You can do it on the players page: ${p.link}`] : []),
+    ].join("\n"),
+  /** An organiser's tagged request put somebody on a month (2026-11-03). */
+  mwk_month_add_done: (p: { name: string; month: string; games: number; paid: boolean; payg: boolean }): string =>
+    p.payg
+      ? `✅ ${p.name} is on the ${p.month} list, paying as they go.`
+      : `✅ ${p.name} is on the ${p.month} list as a regular for the ${p.games} ${p.games === 1 ? "game" : "games"} left${p.paid ? ", marked as says paid" : ""}.`,
+  /** The name could be a member with no name yet: nobody added, he is asked by DM. */
+  mwk_month_add_waiting: (p: { name: string; month: string }): string =>
+    `I couldn't tell who ${p.name} is, so they are not on the ${p.month} list yet. I've sent you a DM to say which member they are.`,
+  /** A new player was made for the name: he is asked by DM whether it is a member with no name yet. */
+  mwk_month_add_asked: (p: { name: string }): string => `If ${p.name} is a member I have no name for yet, I've sent you a DM to say which.`,
+  mwk_month_add_already: (p: { name: string; month: string }): string => `${p.name} is already on the ${p.month} list.`,
+  mwk_month_add_no_month: (p: { month: string }): string => `There is no ${p.month} list I can add to.`,
+  /** Two members it could be, or nothing to go on. */
+  mwk_month_add_unclear: (p: { name: string }): string => `I couldn't tell which member ${p.name} is, so I added nobody. You can add them on the months page.`,
+  /** To a player (not an organiser) who asked for somebody to be put on a month. */
+  mwk_month_add_not_organiser: (p: { month: string }): string =>
+    `📋 Only an organiser can put somebody on the ${p.month} list, so I added nobody. Ask an organiser.`,
   /** To a member of the month whose numbered list was not read as the squad list. */
   mwk_dm_sender_not_list: (p: { month: string }): string =>
     `📋 I couldn't read the list you posted as the squad list for ${p.month}, so I changed nothing. ` +

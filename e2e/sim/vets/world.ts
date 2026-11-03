@@ -135,6 +135,9 @@ export interface VetsClubOpts {
   played?: { keys: string[]; teams?: Record<string, "RED" | "YELLOW">; redScore?: number; yellowScore?: number };
   /** Seed ratings (Membership.seedRating) by key; everybody else unseeded. */
   seedRatings?: Record<string, number>;
+  /** An organisers' group (HQ) linked, as a club that has one. The real
+   *  Vets has none (one-person admin channel). */
+  hq?: boolean;
 }
 
 export interface VetsClub {
@@ -159,6 +162,7 @@ export async function vetsClub(pool: PoolWorld, key: string, opts: VetsClubOpts 
     name: "Monday Night Vets Sandbox",
     maxPlayers: 14,
     players: VETS_MEMBERS.map(({ key: k, name, role }) => ({ key: k, name, role })),
+    hq: opts.hq === true,
     upcomingMatch: { hoursFromNow: (kickoff.getTime() - now.getTime()) / 3_600_000, deadlineHoursBeforeKickoff: 5 },
     ...(played
       ? {
@@ -200,6 +204,7 @@ export async function vetsClub(pool: PoolWorld, key: string, opts: VetsClubOpts 
      WHERE id = $1`,
     [g.sportId],
   );
+  if (opts.hq) await pool.db.run(`UPDATE "Organisation" SET "adminChannelMode" = 'admin-group' WHERE id = $1`, [orgId]);
   // The welcome went out when the club went live (production has the
   // `bot-intro` claim from that moment), so the scheduler's old intro
   // never fires here either.

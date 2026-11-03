@@ -378,7 +378,7 @@ export async function settleMemberAmount(monthId: string, userId: string, now: D
 
 // ── "Says paid" and "confirmed" (plan 4.3, D3) ─────────────────────────
 
-export type PaidClaimSource = "list" | "dm" | "page" | "other-player";
+export type PaidClaimSource = "list" | "dm" | "page" | "other-player" | "organiser";
 
 /**
  * Record that a regular SAYS they have paid. A claim: `paidAt` is not

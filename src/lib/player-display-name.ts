@@ -78,6 +78,28 @@ export function playerDisplayName(f: PlayerNameFacts, lang?: Lang | string | nul
   return club ? `${base} (${club})` : base;
 }
 
+/**
+ * The WhatsApp name each of `userIds` posted under in this club's group,
+ * the newest (`AnalyzedMessage.authorName`, indexed by club and author).
+ * A fact about what he calls himself, never a confirmed name: for members
+ * MatchTime has no name for. Missing from the map: never seen posting.
+ */
+export async function loadSeenAs(orgId: string, userIds: readonly string[]): Promise<Map<string, string>> {
+  const seenAs = new Map<string, string>();
+  if (userIds.length === 0) return seenAs;
+  const seen = await db.analyzedMessage.findMany({
+    where: { orgId, authorUserId: { in: [...userIds] }, authorName: { not: null } },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(500, userIds.length * 20),
+    select: { authorUserId: true, authorName: true },
+  });
+  for (const r of seen) {
+    const v = usableName(r.authorName);
+    if (r.authorUserId && v && !seenAs.has(r.authorUserId)) seenAs.set(r.authorUserId, v);
+  }
+  return seenAs;
+}
+
 export interface PlayerNames {
   name: string | null;
   display: string;
@@ -143,19 +165,7 @@ async function loadPlayerNamesOrThrow(
   // name of their newest post in this club (indexed by club and author).
   const aliasedHere = new Set(aliases.filter((a) => a.orgId === orgId && usableName(a.alias)).map((a) => a.userId));
   const unnamed = users.filter((u) => !usableName(u.name) && !aliasedHere.has(u.id)).map((u) => u.id);
-  const seenAs = new Map<string, string>();
-  if (unnamed.length > 0) {
-    const seen = await db.analyzedMessage.findMany({
-      where: { orgId, authorUserId: { in: unnamed }, authorName: { not: null } },
-      orderBy: { createdAt: "desc" },
-      take: Math.min(500, unnamed.length * 20),
-      select: { authorUserId: true, authorName: true },
-    });
-    for (const r of seen) {
-      const v = usableName(r.authorName);
-      if (r.authorUserId && v && !seenAs.has(r.authorUserId)) seenAs.set(r.authorUserId, v);
-    }
-  }
+  const seenAs = await loadSeenAs(orgId, unnamed);
 
   for (const u of users) {
     const home = homeOf.get(u.id) ?? null;
