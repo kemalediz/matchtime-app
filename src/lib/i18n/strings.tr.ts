@@ -803,7 +803,7 @@ export const tr: Strings = {
   intro_opener: "👋 Herkese merhaba, MatchTime botu bu grupta aktif.",
   intro_what_i_do: "Yaptıklarım:",
   intro_attendance: `🗓  *Katılım*, buraya "VARIM" / "YOKUM" yazın (ya da uygulamadan işaretleyin), sizi kadroya ekler ya da çıkarırım. Onay için mesajınıza ✅ koyarım, ayrıca mesaj atmam.`,
-  intro_daily: `🗒  *Günlük hatırlatma*, kadro dolana kadar her gün 17:00'de kadro listesini yeniden paylaşırım, kaç kişi eksik hep birlikte görürüz.`,
+  intro_daily: `🗒  *Günlük hatırlatma*, boş yer oldukça ya da yedekte 3 kişiden az varken her gün 17:00'de listeyi yeniden paylaşırım, ne eksik hep birlikte görürüz.`,
   intro_teams: `⚽  *Takımlar*, beni etiketleyip kendi cümlelerinizle isteyin (örneğin "@Match Time takımları kur"), dengeli takımları paylaşırım. İtirazı olan neyin değişeceğini aynı şekilde yazsın (örneğin "@Match Time Ali ile Can'ı değiştir"), admin onaylar.`,
   intro_rating_bit: "her maçtan sonra herkese puanlama linkini DM'den gönderirim (kayıt yok, tıklamanız yeterli)",
   intro_mom_bit: "maçın adamını puanlama bağlantınızdan seçin, herkes oy verince (en geç maçtan 5 gün sonra) kazananı gruba açıklarım",

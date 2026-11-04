@@ -1386,3 +1386,100 @@ test.describe("a ✅ reaction on the PAYG fee question is the collector's yes", 
     expect(await dmsTo(db, s.org, s.T.pay)).toHaveLength(0);
   });
 });
+
+test.describe("the daily 17:00 post is the month's list (2026-11-04)", () => {
+  // Kemal, 2026-11-04: one rule for the 17:00 post, every club. A running
+  // month gets it as the month's list (never a weekly-shaped roster), with
+  // the open place for pay as you go players; once full, the bench ask
+  // while the bench is under 3; with 3 on the bench it stops, and a drop
+  // from the bench brings it back. The real due-posts route claims it and
+  // records it as the list the group last saw.
+  const ORG5 = "e2e-mw9-org";
+  const GROUP5 = "e2e-monthly-daily@g.us";
+  const MATCH5 = "e2e-mw9-match";
+  const ACT5 = "e2e-mw9-act";
+  const D = {
+    amy: { id: "e2e-mw9-amy", name: "Amy Cole", phone: "+447700925001" },
+    ben: { id: "e2e-mw9-ben", name: "Ben Hart", phone: "+447700925002" },
+    cal: { id: "e2e-mw9-cal", name: "Cal Moss", phone: "+447700925003" },
+    dan: { id: "e2e-mw9-dan", name: "Dan Webb", phone: "+447700925004" },
+    eli: { id: "e2e-mw9-eli", name: "Eli Ford", phone: "+447700925005" },
+    fay: { id: "e2e-mw9-fay", name: "Fay Lund", phone: "+447700925006" },
+    gus: { id: "e2e-mw9-gus", name: "Gus Pike", phone: "+447700925007" },
+    hal: { id: "e2e-mw9-hal", name: "Hal Rowe", phone: "+447700925008" },
+  } as const;
+  const evening = (out: Instruction[]) => out.filter((i) => i.key.startsWith(`${MATCH5}:evening-update:`));
+  const listRows = (db: TestDb) =>
+    db.all<{ key: string; kind: string }>(
+      `SELECT key, kind FROM "SentNotification" WHERE "matchId" = $1 AND key LIKE $2 ORDER BY "createdAt"`,
+      [MATCH5, `${MATCH5}:month-list:%`],
+    );
+  const INVITE =
+    "🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.";
+
+  test("places open, then full with 3 on the bench (stopped), then a bencher drops (back, with the bench ask)", async ({ request, db }) => {
+    await club(db, { org: ORG5, group: GROUP5, act: ACT5, sport: "e2e-mw9-sport", name: "Daily Vets" });
+    await person(db, ORG5, D.amy, "OWNER");
+    for (const p of [D.ben, D.cal, D.dan, D.eli, D.fay, D.gus, D.hal]) await person(db, ORG5, p);
+    // Five places, four regulars: one place open (the Vets' 13 of 14, scaled down).
+    await fixture(db, MATCH5, ACT5, KICKOFF, "UPCOMING");
+    await month(db, { id: "e2e-mw9-month", org: ORG5, act: ACT5 }, [
+      { p: D.amy, slot: 1, paid: true },
+      { p: D.ben, slot: 2, paid: true },
+      { p: D.cal, slot: 3, paid: true },
+      { p: D.dan, slot: 4, paid: true },
+    ]);
+
+    // 10:00: the regulars are put on, and the list goes out as before.
+    const morning = await poll(request, at(10), GROUP5);
+    expect(listPosts(morning, MATCH5)).toHaveLength(1);
+    expect(evening(morning)).toEqual([]);
+
+    // 17:05: the daily post, the month's list with the open place.
+    const five = await poll(request, at(17, 5), GROUP5);
+    const LIST = [HEADER, "", SQUAD, "1. Amy", "2. Ben", "3. Cal", "4. Dan", "", ALL_IN, "", "*Pay as you go:* 1 place open, £8. Say *IN* to take it."].join("\n");
+    expect(evening(five).map((i) => [i.kind, i.text])).toEqual([["group-message", LIST]]);
+    // One list in the poll, and the marker never reaches the Pi.
+    expect(listPosts(five, MATCH5)).toEqual([]);
+    expect(five.some((i) => "weekListShown" in i)).toBe(false);
+    // Claimed, and recorded as the list the group last saw (same hash).
+    expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key = $1`, [evening(five)[0].key])).toBe(1);
+    const seen = await listRows(db);
+    expect(seen).toHaveLength(2);
+    expect(seen[1].kind).toBe("group-message");
+    expect(seen[1].key.split(":")[2]).toBe(seen[0].key.split(":")[2]);
+
+    // Once a day, and the list post does not repeat it.
+    const later = await poll(request, at(17, 45), GROUP5);
+    expect(evening(later)).toEqual([]);
+    expect(listPosts(later, MATCH5)).toEqual([]);
+
+    // The next day: a pay as you go player took the place, and three are on
+    // the bench. The squad is covered: no daily post. (The changed list
+    // still goes out as a list post, as any change does.)
+    await attend(db, ORG5, MATCH5, D.eli.id, "CONFIRMED", 5);
+    await attend(db, ORG5, MATCH5, D.fay.id, "BENCH", 1);
+    await attend(db, ORG5, MATCH5, D.gus.id, "BENCH", 2);
+    await attend(db, ORG5, MATCH5, D.hal.id, "BENCH", 3);
+    const stopped = await poll(request, londonAt(2, 17, 5), GROUP5);
+    expect(evening(stopped)).toEqual([]);
+    expect(listPosts(stopped, MATCH5)).toHaveLength(1);
+
+    // Hal comes off the bench: two left, so the daily post is back, after
+    // the list's 30-minute floor, with the bench ask.
+    await db.run(
+      `WITH a AS (UPDATE "Attendance" SET status = 'DROPPED' WHERE "matchId" = $1 AND "userId" = $2 RETURNING "matchId", "userId", position)
+       INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "fromStatus", "toStatus", "toPosition", cause, "actorKind")
+       SELECT 'e2e-mw9-ev-hal-out', "matchId", "userId", $3, 'BENCH', 'DROPPED', position, 'test-fixture', 'system' FROM a`,
+      [MATCH5, D.hal.id, ORG5],
+    );
+    const back = await poll(request, londonAt(2, 17, 40), GROUP5);
+    const [post] = evening(back);
+    expect(post?.kind).toBe("group-message");
+    expect(post.text).toContain("*Bench:*\n1. Fay\n2. Gus");
+    expect(post.text).not.toContain("Hal");
+    expect(post.text).toContain("*Pay as you go:*\n5. Eli\nThe squad is full.");
+    expect(post.text!.endsWith(`\n\n${INVITE}`)).toBe(true);
+    expect(listPosts(back, MATCH5)).toEqual([]);
+  });
+});

@@ -343,6 +343,19 @@ describe('"The organisers": the squad posts go to the admin group', () => {
     expect(groupPosts(out)).toHaveLength(0);
   });
 
+  it("17:00, squad full with 3 or more on the bench (2026-11-04): the admins get nothing either, the same stop", async () => {
+    const full = NAMES.map((n, i) => player(n, i));
+    const bench = ["Ali", "Bora", "Cem"].map((n, i) => player(n, 10 + i, "BENCH"));
+    const m = match(NO_DEADLINES, { maxPlayers: 4, attendances: [...full, ...bench] });
+    setWorld([m]);
+    const out = await instructions(MON_1705);
+    expect(out.filter((i) => i.key.includes("evening-update"))).toHaveLength(0);
+    // Two on the bench: still thin, the admins get the squad.
+    const m2 = match(NO_DEADLINES, { maxPlayers: 4, attendances: [...full, ...bench.slice(0, 2)] });
+    setWorld([m2]);
+    expect(byKey(await instructions(MON_1705), `${m2.id}:evening-update:2026-10-05`)?.kind).toBe("admin-group-message");
+  });
+
   it("17:00, already sent to the admin group: nothing again", async () => {
     const m = match(NO_DEADLINES);
     setWorld([m], { sent: [`${m.id}:evening-update:2026-10-05`] });

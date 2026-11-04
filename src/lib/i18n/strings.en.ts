@@ -947,7 +947,10 @@ export const en = {
   intro_opener: "👋 Hi all, MatchTime bot is live for this group.",
   intro_what_i_do: "Here's what I do:",
   intro_attendance: `🗓  *Attendance*: Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with ✅ to confirm, no extra messages from me.`,
-  intro_daily: `🗒  *Daily reminders*: Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.`,
+  /** CHANGED 2026-11-04 with the one 17:00 rule (daily-update-rules.ts):
+   *  the post goes out while places are open or the bench has fewer than
+   *  `BENCH_THIN_BELOW` (3), and stops once both are covered. */
+  intro_daily: `🗒  *Daily reminders*: Every day at 5pm, while there are places to fill or fewer than 3 on the bench, I'll repost the list so we all see what's needed.`,
   intro_teams: `⚽  *Teams*: Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I post auto-balanced sides. Objections? Tell me what to change the same way (for example "@Match Time swap Sam with Alex") and an admin will apply it.`,
   intro_rating_bit: "I DM everyone a rating link after each match (no sign-up, just tap)",
   intro_mom_bit: "pick Man of the Match on your rating link, winner announced in the group once everyone's voted (or 5 days after the match at the latest)",

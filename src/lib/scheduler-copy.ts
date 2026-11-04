@@ -113,9 +113,13 @@ export function buildSquadRosterBlock(
  * there is no time left to recruit, and one bencher is one message away
  * from being none. Sutton FC kicked off 14 of 14 with an empty bench on
  * 2026-09-14, and on 2026-09-16 the owner had to ask the group for
- * benchers himself. Three is enough cover for the ordinary week, and
- * once it is reached the post goes back to listing the squad and saying
- * nothing else, because the group already gets too many bot messages.
+ * benchers himself. Three is enough cover for the ordinary week.
+ *
+ * Once it is reached the daily post STOPS (Kemal, 2026-11-04: a full
+ * squad with three or more on the bench is too much noise). Until then it
+ * went on listing the squad with no ask. The rule, for every club, weekly
+ * and monthly, is `decideDailyUpdate` (daily-update-rules.ts); it reads
+ * this constant and nothing else does the counting.
  */
 export const BENCH_THIN_BELOW = 3;
 
@@ -145,7 +149,10 @@ export const BENCH_THIN_BELOW = 3;
  *                 it needs no new words in any language.
  *   `benchInvite` `buildSquadCompleteBenchInvite()` when the org's bench
  *                 feature is on, else null. Printed only while the
- *                 bench is below `BENCH_THIN_BELOW`.
+ *                 bench is below `BENCH_THIN_BELOW`. Since 2026-11-04 the
+ *                 scheduler only sends this post while the bench is
+ *                 below it (`decideDailyUpdate`); the guard here stays
+ *                 so the builder cannot be made to say something false.
  *
  * The caller appends the unpaid tail after all of this, unchanged.
  */

@@ -121,11 +121,13 @@ import {
 import {
   buildWeekList,
   decideListPost,
+  LIST_REPOST_FLOOR_MS,
   weekListHash,
   type WeekMember,
   type WeekStatus,
 } from "./monthly-week-rules";
-import { buildPaygPoolDm, buildPaygPoolGroupPost } from "./monthly-week-copy";
+import { buildMonthlyDailyPost, buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost } from "./monthly-week-copy";
+import { decideDailyUpdate, type DailySquad, type DailyUpdate } from "./daily-update-rules";
 import { londonMonthStart } from "./squad-month-rules";
 import {
   buildAnnounceMatchPost,
@@ -259,6 +261,12 @@ export type DueInstruction =
        *  so the next scheduled post does not list the same squad again.
        *  Server-side; stripped before the Pi sees it. */
       rosterShown?: { fingerprint: string };
+      /** Set when this post carries a running month's list (the daily
+       *  17:00 post, 2026-11-04): /api/whatsapp/due-posts records it as
+       *  the list the group last saw (`recordWeekListShown`) when it hands
+       *  the post out, so the list post does not repeat it. Server-side;
+       *  stripped before the Pi sees it. */
+      weekListShown?: { hash: string };
     }
   | {
       kind: "group-poll";
@@ -1795,15 +1803,23 @@ async function computeForMatch(
   }
 
   // ── 2. Daily 17:00 evening update ────────────────────────────────────
-  //     One post per day at 17:00, content varies by state:
+  //     One post per day at 17:00. WHETHER it is due and WHICH post it is
+  //     comes from ONE pure rule, `decideDailyUpdate`
+  //     (daily-update-rules.ts, Kemal 2026-11-04), read by the organisers'
+  //     path and the players' group path alike, weekly and monthly:
   //       2-pre.     Match day, teams generated: the two line-ups
-  //       2-pre-alt. Match day, squad full, no teams: roster + nudge
-  //       2a.        Squad short (need > 0): chase + unpaid tail
-  //       2b.        Squad full: the roster, the bench, an ask for more
-  //                  benchers while the bench is under
-  //                  `BENCH_THIN_BELOW`, + unpaid tail
-  //     Exclusive branches via if/else-if so we never fire two 17:00
-  //     group posts in the same day.
+  //       2-pre-alt. Match day, weekly squad full, no teams: roster + nudge
+  //       2a.        Places open: chase + unpaid tail
+  //       2b.        Squad full, bench under `BENCH_THIN_BELOW`: the
+  //                  roster, the bench, an ask for benchers, + unpaid tail
+  //       2b-stop.   Squad full, bench of 3 or more: no squad post (the
+  //                  unpaid tail alone, if any)
+  //       2-monthly. A running month: the month's list, posted by block
+  //                  2-monthly below on this same key
+  //     One shared key, so we never fire two 17:00 posts in the same day.
+  /** A running month's daily post is due (2026-11-04): its key and whether
+   *  it carries the bench ask. Posted by block 2-monthly. */
+  let monthlyDaily: { key: string; benchAsk: boolean } | null = null;
   {
     const dayKey = londonDateKey(now);
     const isEvening = londonHour(now) >= 17 && londonHour(now) < 18;
@@ -1846,43 +1862,63 @@ async function computeForMatch(
     // both settings, so Sutton FC's 17:00 post is untouched.
     const weeklyRhythmQuietDay = hasWeeklyRhythm(activity.org) && dayKey !== londonDateKey(m.date);
 
-    // THE ORGANISERS ANNOUNCE (2026-10-14, see `toOrganisers`): the same
-    // gates and the same branches as the post below, but the squad goes to
-    // the admin channel and nothing goes to the players' group:
-    //   2-pre      match day, teams out: NOTHING. No team sheet is ever
-    //              posted in the players' group in this mode, and the
-    //              team review in the admin group is its own feature.
-    //   2-monthly  nothing, as below.
-    //   2-pre-alt, 2a, 2b: the admins get the squad, with the unpaid count
-    //              where the group post would have carried the tail. 2b's
-    //              squad-complete skip holds: that post went to them too.
-    if (organisers && isEvening && isPrematch && isNextUpcoming && !weeklyRhythmQuietDay && !sentKeys.has(eveningKey)) {
-      const matchDayKey = londonDateKey(m.date);
-      const isMatchDay = dayKey === matchDayKey;
-      const teamsReady = m.teamAssignments.length > 0;
-      const skipUnpaidChase =
-        isMatchDay || dayKey === londonDateKey(new Date(m.date.getTime() - 24 * 60 * 60 * 1000));
-      let due = false;
-      if (isMatchDay && teamsReady) {
-        // 2-pre: no team sheet anywhere from here.
-      } else if (monthly) {
-        // 2-monthly: the month's list.
-      } else if (isMatchDay && need === 0) due = true;
-      else if (beforeDeadline && need > 0) due = true;
-      else if (beforeDeadline && need === 0) {
+    // THE ONE RULE (2026-11-04). Read once, in the 17:00 hour, for a match
+    // still to be played that is the fixture's next, and only while today's
+    // post is unsent. Everything below acts on its answer.
+    let daily: DailyUpdate | null = null;
+    if (isEvening && isPrematch && isNextUpcoming && !sentKeys.has(eveningKey)) {
+      const isMatchDay = dayKey === londonDateKey(m.date);
+      const squad: DailySquad =
+        monthly?.seeded && !monthly.signup ? "month" : monthly || noMonthYet ? "no-month" : "weekly";
+      // `announceSquadFullIfJustFilled` (squad-announce.ts) posts the
+      // "Squad complete" line-up on its own `<matchId>:squad-locked` claim.
+      // Read only when a weekly squad is full: it is the only case the rule
+      // looks at it.
+      let squadLockedToday = false;
+      if (squad === "weekly" && need === 0) {
         const squadLocked = await db.sentNotification.findFirst({
           where: { key: `${matchId}:squad-locked` },
           select: { createdAt: true },
         });
-        due = !(squadLocked != null && londonDateKey(squadLocked.createdAt) === dayKey);
+        squadLockedToday = squadLocked != null && londonDateKey(squadLocked.createdAt) === dayKey;
       }
-      if (due) {
-        const unpaidTail = skipUnpaidChase ? null : await buildUnpaidTail(activity.id, lang);
-        await toOrganisers(eveningKey, "evening", { unpaid: unpaidTail?.unpaid ?? null });
-      }
+      daily = decideDailyUpdate({
+        audience: organisers ? "organisers" : "group",
+        squad,
+        isMatchDay,
+        teamsOut: m.teamAssignments.length > 0,
+        weeklyRhythmDay: weeklyRhythmQuietDay,
+        beforeDeadline,
+        open: need,
+        bench: bench.length,
+        squadLockedToday,
+      });
     }
 
-    if (!organisers && isEvening && isPrematch && isNextUpcoming && !weeklyRhythmQuietDay && !sentKeys.has(eveningKey)) {
+    // THE ORGANISERS ANNOUNCE (2026-10-14, see `toOrganisers`): the same
+    // rule as the post below, but the squad goes to the admin channel and
+    // nothing goes to the players' group. The rule already says nothing on
+    // match day with the teams out (no team sheet is ever posted in the
+    // players' group in this mode, and the team review in the admin group
+    // is its own feature), for a monthly club (its squad is the month's
+    // list), the day the squad-complete post went to them, and once the
+    // bench is covered. Any other post is the admins' squad, with the
+    // unpaid count where the group post would have carried the tail.
+    if (organisers && daily?.post) {
+      const isMatchDay = dayKey === londonDateKey(m.date);
+      const skipUnpaidChase =
+        isMatchDay || dayKey === londonDateKey(new Date(m.date.getTime() - 24 * 60 * 60 * 1000));
+      const unpaidTail = skipUnpaidChase ? null : await buildUnpaidTail(activity.id, lang);
+      await toOrganisers(eveningKey, "evening", { unpaid: unpaidTail?.unpaid ?? null });
+    }
+
+    // MONTHLY SQUAD: a running month's post is the month's list. It is
+    // built in block 2-monthly, which holds the list, its hash and the
+    // limits on posting it; this only hands it the key and the bench ask.
+    if (!organisers && daily?.post === "month-list") monthlyDaily = { key: eveningKey, benchAsk: daily.benchAsk };
+
+    if (!organisers && daily?.post && daily.post !== "month-list") {
+      const post = daily.post;
       // Stop the unpaid-chase tail once we're in the final day before
       // kickoff. Whoever has paid has paid; ~5 reminders (Wed → Sun for
       // a Tue match) is enough. From the day-before-match onward, drop
@@ -1942,7 +1978,7 @@ async function computeForMatch(
       /** Set by a branch whose text carries the roster. */
       let showsRoster = false;
 
-      if (isMatchDay && teamsReady) {
+      if (post === "line-ups") {
         // 2-pre. Match day with teams generated → SHOW THE TEAM
         // LINEUPS instead of the squad roster. By 17:00 on match day
         // people already know the squad is locked; what they actually
@@ -1971,13 +2007,7 @@ async function computeForMatch(
           })(),
           lang,
         });
-      } else if (monthly || noMonthYet) {
-        // MONTHLY SQUAD (slice 5): the squad is the month's list, posted
-        // in the group's own format when it changes and on match morning
-        // (block 2-monthly below). The daily 17:00 roster, chase and
-        // full-squad post would be a second, differently shaped list, so
-        // none of them fires. The match-day line-ups above still do.
-      } else if (isMatchDay && need === 0 && !teamsReady) {
+      } else if (post === "match-day-locked") {
         // 2-pre-alt. Match day, full squad, but teams haven't been
         // generated yet (LLM @-mention or admin button hasn't fired).
         // Show the roster AND nudge somebody to trigger team
@@ -1992,7 +2022,7 @@ async function computeForMatch(
           rosterBlock: showsRoster ? rosterBlock : null,
           lang,
         });
-      } else if (beforeDeadline && need > 0) {
+      } else if (post === "chase") {
         // ⚠️ THE ONE ROSTER THAT STILL GOES OUT WITH A SHEET ON THE
         // TABLE, and it is a deliberate exception to the 2026-09-15
         // rule ("no point listing all the 14 players after the teams
@@ -2033,9 +2063,9 @@ async function computeForMatch(
         const body = rollingDeadlineLine ? `${chase.text}\n\n${rollingDeadlineLine}` : chase.text;
         text = unpaidTail ? `${body}\n\n${unpaidTail.text}` : body;
         mentions = unpaidTail?.mentions;
-      } else if (beforeDeadline && need === 0) {
-        // 2b. SQUAD FULL — list it anyway, and keep the INs flowing
-        // onto the bench.
+      } else if (post === "squad-full") {
+        // 2b. SQUAD FULL, BENCH THIN: list it anyway, and keep the INs
+        // flowing onto the bench.
         //
         // This branch used to post the unpaid tail ALONE when the org
         // tracked payments, and NOTHING at all otherwise: "anyone who
@@ -2046,7 +2076,7 @@ async function computeForMatch(
         // listing the benchers and asking for more bench people if
         // there are less than 3 players on the bench".
         //
-        // ⚠️ THIS REVERSES A 2026-05-03 DECISION, deliberately. A daily
+        // ⚠️ THIS REVERSED A 2026-05-03 DECISION, deliberately. A daily
         // "🗓 full squad, ready to go ⚽" plus roster used to fire here
         // and Kemal called it spam, so it was deleted and the branch
         // went quiet. What he asked for on 2026-09-17 is not that post
@@ -2056,13 +2086,27 @@ async function computeForMatch(
         // ever reads as noise again, the fix is the same as last time:
         // delete the branch, do not water down the ask.
         //
+        // ⚠️ AND IT WAS PARTLY REVERSED AGAIN, 2026-11-04, exactly that
+        // way. Until then a full squad with 3 or more on the bench still
+        // got this post every day, the roster and the bench with no ask
+        // (the ask stopped at `BENCH_THIN_BELOW`). Kemal: once the squad
+        // is full and the bench has 3 or more, the daily post STOPS, it is
+        // too much noise. The bench ask is kept as it was. So the post
+        // now only goes out while it is asking for something: places
+        // (2a) or benchers (here). `decideDailyUpdate` sends a covered
+        // bench to "unpaid-only" below, which is what this branch sent
+        // before 2026-09-17, and the post comes back on its own the day a
+        // drop opens a place or the bench falls under 3. One rule for
+        // every club: the organisers' copy and a monthly club's list
+        // stop the same way (daily-update-rules.ts).
+        //
         // This is the SCHEDULED post and nothing else. It is not the
         // per-IN roster spam PR #63 removed (the roster is demand-driven
         // on the reply path) and it is not #78's "a drop opened a slot"
         // message. It fires at most once a day, on the shared
         // `eveningKey`, like every other branch here.
         //
-        // WHY THE `squad-locked` CHECK: `announceSquadFullIfJustFilled`
+        // WHY THE `squad-locked` CHECK (in the rule): `announceSquadFullIfJustFilled`
         // (squad-announce.ts) posts the "Squad complete" line-up the
         // moment the last IN lands, from the attendance write path, on
         // its own `<matchId>:squad-locked` claim and its own BotJob.
@@ -2070,45 +2114,40 @@ async function computeForMatch(
         // would read the same roster and the same bench invite twice
         // inside the hour. Almost always it fired days ago and this post
         // is the daily reminder the owner asked for; when it fired
-        // TODAY, the squad half is skipped and only the unpaid tail (if
-        // any) goes out, which is exactly what this branch did before.
-        // The claim is cleared on a confirmed drop, so a squad that
-        // empties and refills re-announces and this stays in step.
-        const squadLocked = await db.sentNotification.findFirst({
-          where: { key: `${matchId}:squad-locked` },
-          select: { createdAt: true },
+        // TODAY, the rule answers "unpaid-only": the squad half is
+        // skipped and only the unpaid tail (if any) goes out. The claim
+        // is cleared on a confirmed drop, so a squad that empties and
+        // refills re-announces and this stays in step.
+        showsRoster = !(await rosterJustShown());
+        const squadPost = buildSquadFullEveningPost({
+          activityName: activity.name,
+          confirmedCount: confirmed.length,
+          maxPlayers,
+          rosterBlock: showsRoster ? rosterBlock : null,
+          benchCount: bench.length,
+          // The approved words, shared with the squad-complete post so
+          // the promise cannot drift. Only with the bench feature on:
+          // without it the bench-slot offer never fires, so "I tag the
+          // bench here" would be false.
+          benchInvite: features.bench
+            ? buildSquadCompleteBenchInvite({ lang, organiser: features.benchPickMode === "organiser" })
+            : null,
+          lang,
         });
-        const announcedToday =
-          squadLocked != null && londonDateKey(squadLocked.createdAt) === dayKey;
-
-        if (!announcedToday) {
-          showsRoster = !(await rosterJustShown());
-          const squadPost = buildSquadFullEveningPost({
-            activityName: activity.name,
-            confirmedCount: confirmed.length,
-            maxPlayers,
-            rosterBlock: showsRoster ? rosterBlock : null,
-            benchCount: bench.length,
-            // The approved words, shared with the squad-complete post so
-            // the promise cannot drift. Only with the bench feature on:
-            // without it the bench-slot offer never fires, so "I tag the
-            // bench here" would be false.
-            benchInvite: features.bench
-              ? buildSquadCompleteBenchInvite({ lang, organiser: features.benchPickMode === "organiser" })
-              : null,
-            lang,
-          });
-          const body = rollingDeadlineLine ? `${squadPost}\n\n${rollingDeadlineLine}` : squadPost;
-          text = unpaidTail ? `${body}\n\n${unpaidTail.text}` : body;
-          mentions = unpaidTail?.mentions;
-        } else if (unpaidTail) {
-          text = unpaidTail.text;
-          mentions = unpaidTail.mentions;
-        }
+        const body = rollingDeadlineLine ? `${squadPost}\n\n${rollingDeadlineLine}` : squadPost;
+        text = unpaidTail ? `${body}\n\n${unpaidTail.text}` : body;
+        mentions = unpaidTail?.mentions;
+      } else if (post === "unpaid-only" && unpaidTail) {
+        // 2b-stop. Full, and either the "Squad complete" post went out
+        // today or the bench is covered (3 or more): no squad post. The
+        // unpaid tail alone, when there is one; otherwise nothing.
+        text = unpaidTail.text;
+        mentions = unpaidTail.mentions;
       }
-      // else: the deadline has passed and the match has not happened
-      // yet — leave the key un-sent so a later tick in the same window
-      // can still fire if state changes (e.g. someone drops out).
+      // No text (a stop with no unpaid tail): the key is left un-sent, so
+      // a later tick in the same window still fires if things change (a
+      // drop opens a place, the bench falls under 3). So does every case
+      // the rule answered with nothing (after the deadline, for one).
 
       if (text) {
         out.push({
@@ -2143,7 +2182,8 @@ async function computeForMatch(
   //    month's game is the month's list (block 2-monthly, and on match
   //    morning), so a club that kept its weekly deadlines when it went
   //    monthly would get two differently shaped lists. The same reason
-  //    the 17:00 post and "Squad complete" do not fire. `monthly` is null
+  //    "Squad complete" does not fire, and the 17:00 post is the month's
+  //    list itself (2026-11-04). `monthly` is null
   //    for every match of a weekly club. Nor for a monthly club with no
   //    month yet (`noMonthYet`): its roster is not the month's squad.
   if (!monthly && !noMonthYet) {
@@ -2276,27 +2316,72 @@ async function computeForMatch(
       orderBy: { createdAt: "desc" },
     });
     const lastShownHash = shown[0] ? shown[0].key.slice(prefix.length).split(":")[0] : null;
-    const due = decideListPost({
-      now,
-      matchDate: m.date,
-      hash,
-      lastShownHash,
-      lastPostAt: shown.find((r) => r.kind === "group-message")?.createdAt ?? null,
-      live: true,
-      nextUpcoming: isNextUpcomingForPosting(siblingMatches, m),
-      teamsOut: m.teamAssignments.length > 0,
-      // The rule the weekly roster got in PR #204, on the list's own rows:
-      // the same list is not shown twice inside three hours, so a "who's
-      // in?" answered at 08:30 is not followed by the same list at 09:00.
-      sameListShownRecently: lastShownHash === hash && shownInQuietWindow(shown[0]?.createdAt, now),
-      quiet: features.quietHours,
-    });
-    if (due) {
-      out.push({ kind: "group-message", key: `${prefix}${hash}:${shown.length}`, matchId, text });
+    const lastPostAt = shown.find((r) => r.kind === "group-message")?.createdAt ?? null;
+    // The rule the weekly roster got in PR #204, on the list's own rows:
+    // the same list is not shown twice inside three hours, so a "who's
+    // in?" answered at 08:30 is not followed by the same list at 09:00.
+    const sameListShownRecently = lastShownHash === hash && shownInQuietWindow(shown[0]?.createdAt, now);
+    let posted = false;
+    if (monthlyDaily) {
+      // THE DAILY 17:00 POST (2026-11-04, block 2 and daily-update-rules.ts):
+      // the month's list, in place of this poll's list post, so the group
+      // never gets two lists at once. It keeps the list's own 30-minute
+      // floor: a list posted at 16:50 holds it (the key stays unsent) until
+      // 17:20. When the group saw this same list in the last three hours,
+      // the names are not listed again: the title and the places line only,
+      // as the weekly post drops its roster then. Then the bench ask, when
+      // the squad is full and the bench is thin (only with the bench
+      // feature on: without it no bench is ever tagged, so the promise
+      // would be false). Fixed text, never the composer.
+      const floorHeld = lastPostAt != null && now.getTime() - lastPostAt.getTime() < LIST_REPOST_FLOOR_MS;
+      if (!floorHeld) {
+        const organiserPicks = features.benchPickMode === "organiser";
+        const listPost = sameListShownRecently
+          ? buildWeekListPost({
+              list: weekList,
+              matchDate: m.date,
+              title: activity.name,
+              paygPricePence: monthly.paygPricePence,
+              organiserPicks,
+              compact: true,
+              lang,
+            })
+          : text;
+        out.push({
+          kind: "group-message",
+          key: monthlyDaily.key,
+          matchId,
+          text: buildMonthlyDailyPost({
+            listPost,
+            benchInvite:
+              monthlyDaily.benchAsk && features.bench ? buildSquadCompleteBenchInvite({ lang, organiser: organiserPicks }) : null,
+          }),
+          // The full list is the list the group last saw from here on.
+          ...(sameListShownRecently ? {} : { weekListShown: { hash } }),
+        });
+        posted = true;
+      }
+    } else {
+      const due = decideListPost({
+        now,
+        matchDate: m.date,
+        hash,
+        lastShownHash,
+        lastPostAt,
+        live: true,
+        nextUpcoming: isNextUpcomingForPosting(siblingMatches, m),
+        teamsOut: m.teamAssignments.length > 0,
+        sameListShownRecently,
+        quiet: features.quietHours,
+      });
+      if (due) {
+        out.push({ kind: "group-message", key: `${prefix}${hash}:${shown.length}`, matchId, text });
+        posted = true;
+      }
     }
     openPlaces = weekList.open;
-    listGoesOutWithOpenLine = weekList.open > 0 && due !== null;
-    lastListPostAt = shown.find((r) => r.kind === "group-message")?.createdAt ?? null;
+    listGoesOutWithOpenLine = weekList.open > 0 && posted;
+    lastListPostAt = lastPostAt;
   }
 
   // ── 2-ter. Going up a size (2026-11-03, the Vets play 6, 7 or 8 a side) ──

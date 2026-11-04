@@ -197,7 +197,9 @@ export default function PlayerGuidePage() {
       <ul>
         <li>
           <strong>Daily update at 17:00.</strong> The squad so far, and a call
-          for players if you&apos;re short.
+          for players if you&apos;re short. Once the squad is full it asks
+          for people to go on the bench, and it stops once there are 3 on
+          the bench.
         </li>
         <li>
           <strong>Extra calls if you&apos;re short</strong> on match morning

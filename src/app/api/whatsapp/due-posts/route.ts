@@ -71,7 +71,7 @@ import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
 import { piSendsQuotedIds } from "@/lib/quoted-message";
 import { sweepAutoPartnerAsks, sweepPartnerAsks } from "@/lib/partner-ask";
-import { sweepMonthlyWeeks } from "@/lib/monthly-week";
+import { recordWeekListShown, sweepMonthlyWeeks } from "@/lib/monthly-week";
 import { sweepMonthSignups } from "@/lib/month-signup";
 import { sweepMonthPayments } from "@/lib/month-payment";
 import { sweepMonthClose } from "@/lib/month-close";
@@ -233,6 +233,23 @@ async function recordRosterShown(instr: Claimable, now: Date): Promise<void> {
     });
   } catch (err) {
     console.error(`[due-posts] could not record the roster as shown for ${instr.key}:`, err);
+  }
+}
+
+/**
+ * The daily 17:00 post of a running month carries the month's list
+ * (2026-11-04, `weekListShown`): once claimed it is the list the group last
+ * saw, so the list post does not post it again. Best effort, like the
+ * roster marker: a failure costs a repeated list at worst, never the post.
+ */
+async function recordMonthListShown(instr: Claimable): Promise<void> {
+  const mark = (instr as { weekListShown?: { hash?: unknown } }).weekListShown;
+  const matchId = (instr as { matchId?: unknown }).matchId;
+  if (!mark || typeof mark.hash !== "string" || typeof matchId !== "string") return;
+  try {
+    await recordWeekListShown(matchId, mark.hash, "group-message");
+  } catch (err) {
+    console.error(`[due-posts] could not record the month's list as shown for ${instr.key}:`, err);
   }
 }
 
@@ -480,6 +497,7 @@ export async function GET(request: Request) {
         },
       });
       await recordRosterShown(instr, now);
+      await recordMonthListShown(instr);
       await recordHqQuestion(org.id, instr, now);
     },
     onBreak: ({ count, cap }) => {

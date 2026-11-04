@@ -101,9 +101,17 @@ export function buildWeekListPost(p: {
   paygPricePence: number | null | undefined;
   /** The club's organisers pick who fills a place (slice 2b). */
   organiserPicks?: boolean;
+  /** The daily 17:00 post when the group saw this same list in the last
+   *  three hours (2026-11-04): the title line and the places line only, so
+   *  the names are not listed twice inside the hour. Never hashed. */
+  compact?: boolean;
   lang?: LangArg;
 }): string {
   const s = t(p.lang);
+  if (p.compact) {
+    const open = weekListOpenLine(p.list.open, paygPriceLabel(p.paygPricePence), p.organiserPicks === true, p.lang);
+    return [weekListTitleLine(p.title, p.matchDate, p.lang), "", open ? `${s.mwk_list_payg} ${open}` : s.mwk_list_full].join("\n");
+  }
   const cantPlay = [...p.list.paidCantPlay, ...p.list.cantPlay];
   const placed = p.list.slots.filter((slot): slot is WeekSlot & { userId: string } => slot.userId !== null);
   const squad = placed.filter((slot) => slot.mark !== "payg");
@@ -114,7 +122,7 @@ export function buildWeekListPost(p: {
 
   // The title line has no words to translate: the fixture, then the game
   // in the club's language ("Mon 9 Nov at 20:30", "9 Kasım Pazartesi 20:30").
-  const lines: string[] = [`📋 *${p.title.trim()}, ${dayTimeLabel(p.lang, p.matchDate)}*`];
+  const lines: string[] = [weekListTitleLine(p.title, p.matchDate, p.lang)];
   if (squad.length > 0) {
     lines.push("", s.mwk_list_squad({ month: monthNameLabel(p.lang, p.matchDate) }));
     for (const slot of squad) lines.push(`${slot.slot}. ${nameOf(slot.userId)}`);
@@ -128,12 +136,7 @@ export function buildWeekListPost(p: {
   section(s.mwk_list_cant_play, cantPlay);
   section(s.mwk_list_bench, p.list.reserves);
 
-  const open =
-    p.list.open > 0
-      ? p.organiserPicks
-        ? s.mwk_list_open_organiser({ open: p.list.open, price })
-        : s.mwk_list_open({ open: p.list.open, price })
-      : null;
+  const open = weekListOpenLine(p.list.open, price, p.organiserPicks === true, p.lang);
   if (payg.length > 0) {
     lines.push("", s.mwk_list_payg);
     for (const slot of payg) lines.push(`${slot.slot}. ${nameOf(slot.userId)}`);
@@ -142,6 +145,32 @@ export function buildWeekListPost(p: {
     lines.push("", open ? `${s.mwk_list_payg} ${open}` : s.mwk_list_full);
   }
   return lines.join("\n");
+}
+
+/** The list's title line: the fixture, then the game in the club's
+ *  language ("Mon 9 Nov at 20:30", "9 Kasım Pazartesi 20:30"). */
+function weekListTitleLine(title: string, matchDate: Date, lang: LangArg): string {
+  return `📋 *${title.trim()}, ${dayTimeLabel(lang, matchDate)}*`;
+}
+
+/** "1 place open, £8. Say *IN* to take it.", or null when none is open. */
+function weekListOpenLine(open: number, price: string | null, organiserPicks: boolean, lang: LangArg): string | null {
+  if (open <= 0) return null;
+  const s = t(lang);
+  return organiserPicks ? s.mwk_list_open_organiser({ open, price }) : s.mwk_list_open({ open, price });
+}
+
+/**
+ * The daily 17:00 post of a running month (2026-11-04): the month's list
+ * as the group knows it (`buildWeekListPost`, or its compact form when the
+ * group saw the same list in the last three hours), then the bench ask
+ * when the squad is full and the bench is thin. Whether it is due at all,
+ * and whether the ask belongs on it, is `decideDailyUpdate`'s call
+ * (daily-update-rules.ts); `benchInvite` is
+ * `buildSquadCompleteBenchInvite`, the same words as every other bench ask.
+ */
+export function buildMonthlyDailyPost(p: { listPost: string; benchInvite: string | null }): string {
+  return p.benchInvite ? `${p.listPost}\n\n${p.benchInvite}` : p.listPost;
 }
 
 /** A place opened and nobody is waiting: the one group line (plan 5.3). */

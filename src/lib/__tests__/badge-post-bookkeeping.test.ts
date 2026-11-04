@@ -36,6 +36,13 @@ describe("withoutServerBookkeeping", () => {
     }
   });
 
+  it("strips the month's-list marker of a monthly club's daily post (2026-11-04)", () => {
+    const i: DueInstruction = { kind: "group-message", key: "m1:evening-update:2026-11-07", text: "x", weekListShown: { hash: "h" } };
+    const out = withoutServerBookkeeping(i);
+    expect("weekListShown" in out).toBe(false);
+    expect(out).toEqual({ kind: "group-message", key: "m1:evening-update:2026-11-07", text: "x" });
+  });
+
   it("leaves an instruction without bookkeeping as it was", () => {
     const i: DueInstruction = { kind: "dm", key: "k", phone: "44", text: "x" };
     expect(withoutServerBookkeeping(i)).toBe(i);

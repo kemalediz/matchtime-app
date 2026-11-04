@@ -11,7 +11,8 @@
  *           17:00 post, the composed chase, the payment poll, the fee
  *           question with the whole squad as headcount, the pay chase to
  *           everyone unpaid, and no PAYG offer for a drop with no bench.
- *   MONTHLY the list post and its limits, no 17:00 roster, no composer,
+ *   MONTHLY the list post and its limits, the 17:00 post as the month's list
+ *           (2026-11-04, never a weekly roster), no composer,
  *           no payment poll, no pay link chase for a regular, the PAYG
  *           pool offer, and the PAYG fee to confirm.
  */
@@ -70,6 +71,7 @@ import { computeDuePosts } from "@/lib/bot-scheduler";
 import { buildWeekList, weekListHash, type WeekMember } from "@/lib/monthly-week-rules";
 import { buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost } from "@/lib/monthly-week-copy";
 import { buildFeeAskDm, buildFeeConfirmPrompt } from "@/lib/dm-copy";
+import { buildSquadCompleteBenchInvite } from "@/lib/bench-offer-copy";
 
 const GROUP = "group-vets@g.us";
 const ORG = { id: "org-vets", whatsappGroupId: GROUP, whatsappBotEnabled: true, paygPricePence: 800 };
@@ -573,14 +575,126 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
   });
 });
 
-describe("MONTHLY: what a running month switches off (plan 5.4, 5.6)", () => {
-  it("no 17:00 roster or chase, and the model is not asked", async () => {
+describe("MONTHLY: the daily 17:00 post is the month's list (2026-11-04)", () => {
+  // Kemal, 2026-11-04: one rule for every club. A monthly club gets the
+  // daily post too, as the month's list in the group's own format (never a
+  // second, weekly-shaped list), with the open places for pay as you go
+  // players and, once full, the bench ask while the bench is below 3.
+  const EVENING = "m-mon-12-oct:evening-update:2026-10-08";
+  const evening = (out: Awaited<ReturnType<typeof instructions>>) =>
+    out.filter((i) => i.key.startsWith("m-mon-12-oct:evening-update:")) as Array<{ key: string; text: string; weekListShown?: { hash: string } }>;
+  const payg = (name: string, i: number, over: Record<string, unknown> = {}) => att(name, i, { paymentMethod: null, ...over });
+  const full = (benchers: string[]) =>
+    match({
+      attendances: [
+        ...REGULARS.map((n, i) => att(n, i)),
+        payg("Omar", 4),
+        payg("Will", 5),
+        ...benchers.map((n, i) => payg(n, 6 + i, { status: "BENCH" })),
+      ],
+    });
+  const invite = buildSquadCompleteBenchInvite({ lang: "en" });
+
+  it("places open: the month's list with its open places, once, fixed text, the model never asked", async () => {
+    const m = match();
+    setWorld(m, { monthly: true });
+    const out = await instructions(THU_5PM);
+    const posts = evening(out);
+    expect(posts).toHaveLength(1);
+    expect(posts[0].key).toBe(EVENING);
+    expect(posts[0].text).toBe(listText(m));
+    expect(posts[0].text).toContain("*Pay as you go:* 2 places open, £8. Say *IN* to take one.");
+    expect(posts[0].text).not.toContain(invite);
+    // It is the list the group sees, so it is recorded as shown.
+    expect(posts[0].weekListShown).toEqual({ hash: weekListHash(listText(m)) });
+    // One list in the poll: the daily post takes the place of the list post.
+    expect(out.filter((i) => i.key.includes("month-list"))).toEqual([]);
+    expect(composeChaseText).not.toHaveBeenCalled();
+  });
+
+  it("the list changed since the group last saw it: still ONE list, the daily post", async () => {
+    const m = match();
+    setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:old0000000000000:0`, kind: "group-message", createdAt: new Date("2026-10-07T09:00:00.000Z") }] });
+    const out = await instructions(THU_5PM);
+    expect(evening(out)).toHaveLength(1);
+    expect(out.filter((i) => i.key.includes("month-list"))).toEqual([]);
+  });
+
+  it("full, empty bench: the list and the bench ask", async () => {
+    const m = full([]);
+    setWorld(m, { monthly: true });
+    const posts = evening(await instructions(THU_5PM));
+    expect(posts.map((p) => p.text)).toEqual([`${listText(m)}\n\n${invite}`]);
+    expect(posts[0].text).toContain("The squad is full.");
+  });
+
+  it("full, 2 on the bench: the list (with the bench) and the ask", async () => {
+    const m = full(["Zed", "Yusuf"]);
+    setWorld(m, { monthly: true });
+    const [post] = evening(await instructions(THU_5PM));
+    expect(post.text).toContain("*Bench:*\n1. Zed\n2. Yusuf");
+    expect(post.text.endsWith(invite)).toBe(true);
+  });
+
+  it("full, 3 on the bench: no daily post", async () => {
+    const m = full(["Zed", "Yusuf", "Xavi"]);
+    setWorld(m, { monthly: true });
+    expect(evening(await instructions(THU_5PM))).toEqual([]);
+  });
+
+  it("a drop after stopping: back the same evening, with the open place", async () => {
+    const m = full(["Zed", "Yusuf", "Xavi"]);
+    m.attendances[1].status = "DROPPED";
+    setWorld(m, { monthly: true });
+    const [post] = evening(await instructions(THU_5PM));
+    expect(post.text).toBe(listText(m));
+    expect(post.text).toContain("1 place open, £8. Say *IN* to take it.");
+  });
+
+  it("with the bench feature off, full: the list without the ask", async () => {
+    const m = full([]);
+    setWorld(m, { monthly: true });
+    features.bench = false;
+    try {
+      expect(evening(await instructions(THU_5PM)).map((p) => p.text)).toEqual([listText(m)]);
+    } finally {
+      features.bench = true;
+    }
+  });
+
+  it("the same list seen in the last three hours: the title and the places line, no names again", async () => {
+    const m = match();
+    const hash = weekListHash(listText(m));
+    setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date(THU_5PM.getTime() - 90 * 60_000) }] });
+    const [post] = evening(await instructions(THU_5PM));
+    expect(post.text).toBe(["📋 *Monday 7-a-side, Mon 12 Oct at 20:00*", "", "*Pay as you go:* 2 places open, £8. Say *IN* to take one."].join("\n"));
+    expect(post.weekListShown).toBeUndefined();
+  });
+
+  it("held while a list post went out in the last 30 minutes (the list's own floor), and the model is not asked", async () => {
     const m = match();
     setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:x:0`, kind: "group-message", createdAt: new Date(THU_5PM.getTime() - 60_000) }] });
     const out = await instructions(THU_5PM);
-    expect(out.some((i) => i.key.startsWith(`${m.id}:evening-update:`))).toBe(false);
+    expect(evening(out)).toEqual([]);
+    expect(out.some((i) => i.key.includes("month-list"))).toBe(false);
     expect(composeChaseText).not.toHaveBeenCalled();
   });
+
+  it("once a day: already sent, nothing again", async () => {
+    const m = match();
+    setWorld(m, { monthly: true, sent: [EVENING] });
+    expect(evening(await instructions(THU_5PM))).toEqual([]);
+  });
+
+  it("not before the regulars are on the match", async () => {
+    const m = match({ rollingSeededAt: null });
+    setWorld(m, { monthly: true });
+    expect(evening(await instructions(THU_5PM))).toEqual([]);
+  });
+
+});
+
+describe("MONTHLY: what a running month switches off (plan 5.4, 5.6)", () => {
 
   it("no payment poll when the match ends", async () => {
     const m = match();

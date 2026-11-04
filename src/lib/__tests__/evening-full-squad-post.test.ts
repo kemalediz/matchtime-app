@@ -214,17 +214,32 @@ describe("the full-squad 17:00 post", () => {
     expect(text).toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
   });
 
-  it(`stops asking at the floor: ${BENCH_THIN_BELOW} on the bench is enough cover`, async () => {
-    const text = await evening({ matches: [match({ attendances: squad(14, 3) })] });
-    expect(text).toContain("*Bench (3):*");
-    expect(text).toContain("3. Najib Ahmadi");
-    expect(text).not.toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
+  it(`STOPS at the floor (2026-11-04): ${BENCH_THIN_BELOW} on the bench, no daily post at all`, async () => {
+    // Kemal, 2026-11-04: a full squad with three or more on the bench is
+    // too much noise. Sutton FC does not track payments, so nothing is
+    // left: no squad post, no unpaid tail.
+    expect(await evening({ matches: [match({ attendances: squad(14, 3) })] })).toBeNull();
   });
 
-  it("a bench above the floor still gets its list, never the ask", async () => {
-    const text = await evening({ matches: [match({ attendances: squad(14, 4) })] });
+  it("a bench above the floor: still nothing", async () => {
+    expect(await evening({ matches: [match({ attendances: squad(14, 4) })] })).toBeNull();
+  });
+
+  it("it comes back on its own: a drop after stopping opens a place, and the chase goes out", async () => {
+    const text = await evening({ matches: [match({ attendances: squad(13, 4) })] });
+    expect(text).toContain("need *1 more*");
     expect(text).toContain("*Bench (4):*");
-    expect(text).not.toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
+  });
+
+  it("and when the bench falls back below the floor, the squad post and the ask return", async () => {
+    const text = await evening({ matches: [match({ attendances: squad(14, 2) })] });
+    expect(text).toContain("*Confirmed (14/14):*");
+    expect(text).toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
+  });
+
+  it("the match-day 'make the teams' nudge is not stopped by a full bench", async () => {
+    const text = await evening({ now: new Date("2026-09-22T16:10:00.000Z"), matches: [match({ attendances: squad(14, 4) })] });
+    expect(text).toContain("Squad is locked.");
   });
 
   it("the ask is gated on the org's bench feature: off means squad and bench only", async () => {

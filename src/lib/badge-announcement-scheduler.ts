@@ -183,10 +183,11 @@ export function badgeLedgerOf(instr: unknown): BadgeLedgerRow[] | null {
  * badges post goes in the players' group, but any kind is still handled.)
  */
 export function withoutServerBookkeeping<T extends object>(instr: T): T {
-  if (!("badgeLedger" in instr || "rosterShown" in instr)) return instr;
-  const rest = { ...instr } as T & { badgeLedger?: unknown; rosterShown?: unknown };
+  if (!("badgeLedger" in instr || "rosterShown" in instr || "weekListShown" in instr)) return instr;
+  const rest = { ...instr } as T & { badgeLedger?: unknown; rosterShown?: unknown; weekListShown?: unknown };
   delete rest.badgeLedger;
   delete rest.rosterShown;
+  delete rest.weekListShown;
   return rest;
 }
 

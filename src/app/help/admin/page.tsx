@@ -508,7 +508,12 @@ export default async function AdminGuidePage() {
         </li>
         <li>
           <strong>Every day at 17:00</strong> MatchTime posts the squad so far,
-          with a call for players if you&apos;re short.
+          with a call for players if you&apos;re short. Once the squad is
+          full it keeps posting the squad and the bench, and asks for
+          benchers, until there are 3 on the bench. Then it stops, and
+          starts again by itself if someone drops out or the bench falls
+          below 3. A monthly squad gets the month&apos;s list, with the
+          places open for pay as you go players.
         </li>
         <li>
           If a confirmed player drops and there&apos;s a bench, the bench is
