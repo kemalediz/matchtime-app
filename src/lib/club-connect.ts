@@ -10,7 +10,9 @@
  * only inside the signed-in organiser's own club page, after the club
  * exists (the status card and the wa.me link). Signed-out pages, the
  * sitemap and every JS bundle never carry it
- * (`e2e/web/self-join-organiser.spec.ts`).
+ * (`e2e/web/self-join-organiser.spec.ts`). The official Cloud API number
+ * `WA_CLOUD_NUMBER` follows the same rule and is read here too
+ * (`waNumberFor`, WhatsApp Cloud API plan PR C1).
  *
  * ── CODES ──────────────────────────────────────────────────────────────
  * One live code per club (a second tap reuses it), 60 minutes each, 3
@@ -29,11 +31,28 @@ import {
   londonMidnight,
   type ConnectRow,
 } from "./club-connect-rules";
+import type { SendChannel } from "./send-channel";
+
+const digitsOrNull = (value: string | undefined): string | null => {
+  const digits = (value ?? "").replace(/\D/g, "");
+  return /^[1-9]\d{7,14}$/.test(digits) ? digits : null;
+};
 
 /** The MatchTime WhatsApp number, digits only, or null when not set. */
 export function matchtimeWaNumber(env: Record<string, string | undefined> = process.env): string | null {
-  const digits = (env.MATCHTIME_WA_NUMBER ?? "").replace(/\D/g, "");
-  return /^[1-9]\d{7,14}$/.test(digits) ? digits : null;
+  return digitsOrNull(env.MATCHTIME_WA_NUMBER);
+}
+
+/**
+ * The number for a channel `send-channel.ts` decided (Cloud API plan, PR
+ * C1, section 5.1): "baileys" is the club number above, "cloud" the
+ * official number `WA_CLOUD_NUMBER`, read here so the server only rule
+ * covers both (`wa-number-server-only.test.ts`). An unset or invalid
+ * official number is null, never the club number: a stranger is never
+ * silently put back on the club number.
+ */
+export function waNumberFor(channel: SendChannel, env: Record<string, string | undefined> = process.env): string | null {
+  return channel === "cloud" ? digitsOrNull(env.WA_CLOUD_NUMBER) : matchtimeWaNumber(env);
 }
 
 /** Statuses whose code still points at something: a new code must not

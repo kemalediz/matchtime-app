@@ -81,3 +81,26 @@ describe("the /play sign-up is the one public API answer that carries the number
     expect(callers.filter((r) => r.startsWith("app/play/") || r.startsWith("components/pool/"))).toEqual([]);
   });
 });
+
+describe("the official number (WA_CLOUD_NUMBER) follows the same rule (Cloud API plan, PR C1)", () => {
+  // The Cloud API number is MatchTime's too (plan section 5.1): read in the
+  // same server only file, never through NEXT_PUBLIC_, never forwarded.
+  it("exactly one source file reads it: src/lib/club-connect.ts", () => {
+    const readers = FILES.filter((f) => readFileSync(f, "utf8").includes("WA_CLOUD_NUMBER"));
+    expect(readers.map((f) => path.relative(SRC, f))).toEqual([path.relative(SRC, READER)]);
+  });
+
+  it("no NEXT_PUBLIC_ variant exists anywhere in src or the Next config", () => {
+    const offenders = [...FILES, path.join(ROOT, "next.config.ts")].filter((f) => /NEXT_PUBLIC_[A-Z_]*WA_CLOUD/.test(readFileSync(f, "utf8")));
+    expect(offenders).toEqual([]);
+  });
+
+  it("next.config does not forward it to the browser", () => {
+    expect(readFileSync(path.join(ROOT, "next.config.ts"), "utf8")).not.toContain("WA_CLOUD_NUMBER");
+  });
+
+  it("no pool page or component asks for a number by channel (the page renders no number)", () => {
+    const callers = FILES.filter((f) => f !== READER && /\bwaNumberFor\s*\(/.test(readFileSync(f, "utf8"))).map((f) => path.relative(SRC, f));
+    expect(callers.filter((r) => r.startsWith("app/play/") || r.startsWith("components/pool/"))).toEqual([]);
+  });
+});
