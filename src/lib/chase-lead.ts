@@ -177,19 +177,6 @@ export function chaseFallbackLead(f: ChaseFacts): string {
   }
 }
 
-/** A lead that calls the squad short (K1: never at or above the game's
- *  minimum), and one that warns of a call-off (only when the server says
- *  the match is at risk). MatchTime's OWN line is checked here, never a
- *  player's message. */
-const SAYS_SHORT: Record<Lang, RegExp> = {
-  en: /\bshort\b/i,
-  tr: /(?<!\p{L})eksi(?:ğiz|k|ğimiz)(?!\p{L})/iu,
-};
-const SAYS_CALL_OFF: Record<Lang, RegExp> = {
-  en: /\bcall(?:ed|ing)?\s+(?:it|this|the\s+(?:match|game|fixture))\s+off\b|\bcancel\w*/i,
-  tr: /iptal|ertele/iu,
-};
-
 /** Every number the lead may say: the counts, the kickoff's time and
  *  date, the days to go, and digits in the match's own name or venue. */
 function allowedNumbers(f: ChaseFacts): Set<number> {
@@ -220,8 +207,6 @@ export function acceptChaseLead(raw: string, f: ChaseFacts): string | null {
     knownNames: [],
   };
   if (contradictsSquadState(lead, truth, f.lang)) return null;
-  if (!f.short && SAYS_SHORT[f.lang].test(lead)) return null;
-  if (!f.atRisk && SAYS_CALL_OFF[f.lang].test(lead)) return null;
   const allowed = allowedNumbers(f);
   // A UTC slip ("20:30" for a 21:30 kickoff) is corrected, not rejected.
   const cleaned = applyHouseStyle(enforceProximity(lead, f.kickoff, f.lang, f.now), f.lang);

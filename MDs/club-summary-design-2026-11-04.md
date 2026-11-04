@@ -1082,17 +1082,21 @@ is not "places open").
   the minimum, today's copy ("8 short", "need 8 more"); at or above it, new copy that says the
   places left ("6 places left", "1 place left"; Turkish "6 kişilik yer kaldı"), for the 17:00
   update, the match-day morning, the 3 to 4 hour and the last call, in the fixed lines and in
-  what the model is told. A model line that says "short" (Turkish "eksiğiz", "eksik") when there
-  are enough to play is not posted; the fixed line goes out.
+  what the model is told.
 - (b) `computeChaseRisk` needs `short`: at or above the minimum nothing is at risk, so the model is
-  told "At risk: no" and never writes "we'll have to call it off". A model line that warns of a
-  call-off the server did not decide is not posted either. The format-switch line on the chase
+  told "At risk: no" and never writes "we'll have to call it off". The format-switch line on the chase
   ("If we don't find 6 more, we could switch to...") is added only while the squad is short.
 - (c) The web's squad bar (dashboard and match list) was blue from 75% of the places, a third
   "low" (D1). It is now green when full, blue when the game is on, amber while it is short. For
   a club with no minimum that makes 11 to 13 of 14 amber where it was blue.
 - The recruit chase-up DM's gate was called `squadShort` and meant "a place is open"; it is
   `placeOpen` now, with the same value.
+
+No word check on the model's line: the CONTEXT facts and the prompt carry K1 (review of #529;
+the analyzer redesign of 2026-08-31 removed that kind of correction layer). If a deterministic net
+is ever wanted, it should be structural, not text matching: the model writes only the ask and
+code renders the numbers sentence ("6 places left" or "8 short", and the call-off line only
+when at risk) from the facts, as it already renders the squad list. Not built.
 
 **What the composer is sent.** One new fact line, `Enough to play: yes|no`, between the squad and
 "At risk". The system prompt was rewritten as a whole: a "Where the squad stands" block states
@@ -1113,7 +1117,9 @@ facts, side by side for a 12 of 18 game with a minimum of 12 and a 10 of 18 one,
 - The 18:00 "Match in trouble" offer keeps `fewestAnyFormat` (the lowest minimum of any format of
   the sport), D1's third meaning, deliberately: it asks whether the game can be played at all.
 
-**Proof.** Paid, all on `ANTHROPIC_API_KEY_DEV`, about 108 calls and $0.021 in all:
+**Proof.** Paid, all on `ANTHROPIC_API_KEY_DEV`, about 124 calls and $0.023 in all (including
+a second pass of the live script after the review removed the word check: 16 of 16, 16 calls,
+$0.0018):
 `scripts/chase-at-risk-live.ts` (the 12 scenarios plus 4 at or above a minimum, English and
 Turkish) 16 of 16, 16 calls, $0.0022; `e2e/sim/chase-composer-live.spec.ts` (the real scheduler
 route, plus two K1 cases, both languages) 8 of 8, 8 calls, $0.0010 (its roster check still expected

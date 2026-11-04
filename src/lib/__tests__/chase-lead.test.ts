@@ -228,35 +228,6 @@ describe("acceptChaseLead: a lead that breaks a fact is not posted", () => {
   it("corrects a UTC kickoff time to London's", () => {
     expect(acceptChaseLead("Kickoff 20:30, need 8 more.", facts())).toBe("Kickoff 21:30, need 8 more.");
   });
-
-  // K1 (2026-11-04): the model is told the game is on; a line that still
-  // calls the squad short, or warns of a call-off the server did not
-  // decide, is not posted (the fixed line goes out instead).
-  it("K1: rejects 'short' when there are enough to play, keeps 'places left'", () => {
-    const on = facts({ confirmed: 12, maxPlayers: 18, bench: 0, short: false });
-    expect(acceptChaseLead("Still *6 short* for Tuesday, say *IN* 🙏", on)).toBeNull();
-    expect(acceptChaseLead("We're short, say *IN* 🙏", on)).toBeNull();
-    expect(acceptChaseLead("🗓 *Tuesday 7-a-side* is on, *6 places left*. Say *IN* to grab one ⚽", on)).not.toBeNull();
-  });
-
-  it("K1: the same in Turkish", () => {
-    const on = facts({ lang: "tr", activityName: "Salı Halısaha", confirmed: 12, maxPlayers: 18, bench: 0, short: false });
-    expect(acceptChaseLead("Salı maçı için hâlâ *6 kişi* eksiğiz, *VARIM* yazın 🙏", on)).toBeNull();
-    expect(acceptChaseLead("🗓 *Salı Halısaha* maçı var, *6 kişilik yer* kaldı. *VARIM* yazın ⚽", on)).not.toBeNull();
-  });
-
-  it("below the minimum 'short' is today's wording and stays", () => {
-    expect(acceptChaseLead("Still *8 short* for Tuesday, say *IN* 🙏", facts())).not.toBeNull();
-  });
-
-  it("rejects a call-off warning the server did not decide", () => {
-    const warn = "Still *8 short*. If we can't get the numbers we'll have to call it off 🙏";
-    expect(acceptChaseLead(warn, facts())).toBeNull();
-    expect(acceptChaseLead(warn, facts({ atRisk: true }))).not.toBeNull();
-    expect(
-      acceptChaseLead("Salı için *8 kişi* eksiğiz, tamamlayamazsak maçı iptal etmek zorunda kalırız 🙏", facts({ lang: "tr", activityName: "Salı Halısaha" })),
-    ).toBeNull();
-  });
 });
 
 describe("the format-switch line is the server's, and only when it applies", () => {
