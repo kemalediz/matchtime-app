@@ -1,6 +1,8 @@
 # One summary of the club: design and migration plan ("step 2")
 
-**4 November 2026. Design only: no product code changes in this branch.**
+**4 November 2026. Design only: no product code changes in this branch.** Slice A0 was
+built on `refactor/club-summary-a0` the same day; where the build differs from this plan,
+section 3.7 says how and why, and the sections it touches point there.
 
 Every claim below was read in the code on `origin/main` at `321559be`. Citations are
 `file:line` against that commit. Nothing was run against a model and nothing was spent
@@ -379,8 +381,8 @@ the final score ask, tests `isAdminGroupPostHour(args.now)` with the default win
 |---|---|---|
 | `types.ts` | the `ClubSummary` type, nothing else | no (client components, `compose.ts` and the Playwright worker can import it) |
 | `derive.ts` | one pure function per derived fact (`monthPhaseFor`, `matchNumbers`, `paymentFacts`, `feeFacts`, `pickNextMatch`, `sortRoster`), each the single definition | no |
-| `load.ts` | `loadClubSummary(orgId, now, client = db)`: the only I/O, a fixed set of reads, then the derive functions | yes |
-| `scope.ts` | `summaryScope(now)`: memoises one summary per club for one request or one scheduler poll | no (takes the loader as an argument) |
+| `load.ts` | `loadClubSummary(orgId, now, { members })`: the only I/O, a fixed set of reads, then the derive functions (as built: no `client` argument, see 3.7) | yes |
+| `scope.ts` | `summaryScope(now, loader)`: memoises one summary per club for one request or one scheduler poll | no (takes the loader as an argument) |
 
 The existing pure rule modules stay where they are and become the derive functions'
 building blocks: `min-players.ts`, `flex-format-rules.ts`, `payment-messages.ts`,
@@ -549,6 +551,10 @@ Every field is a fact a person could check on the admin screens. Two rules keep 
 way: no field may be a function, and no field may name an action (`should*`, `skip*`,
 `send*`, `allow*`). Section 3.6 makes both a test.
 
+**As built (A0), the shape above changed in eight places**, each because Phase A must not
+pick a winner between today's disagreeing rules, or because the code said otherwise.
+Section 3.7 lists them; `src/lib/club-summary/types.ts` is the authority.
+
 ### 3.3 How it is built, and what it costs
 
 `loadClubSummary` makes a fixed set of reads, in parallel where they do not depend on each
@@ -561,6 +567,9 @@ other:
 | 3. `match.findMany` over the scheduler's window, with attendance counts by status and the team assignment count | matches, nextMatchId, lastPlayedMatchId | `getMatchesForScheduler`, `findRegistrationMatch`, `load-state.ts:45` and `:157`, five other registration-match queries |
 | 4. monthly clubs only: `squadMonth.findMany` for this and next London month, with member paid counts, and the "held" `SentNotification` keys | each match's `month` | `loadSchedulerMonths`, `loadLiveMonths`, the held read at `bot-scheduler.ts:1009-1025`, `monthNotStartedFor` |
 | 5. `membership.findMany` plus `loadPlayerNames` plus one `userAlias.findMany` | members | `load-state.ts:82-108` and 22 other alias reads |
+
+(As built, read 1 cannot carry the switches or the collector's name: see 3.7, items 1
+and 2. The count is 5 to 8.)
 
 **Five to seven indexed queries per summary**, independent of how many consumers then
 read it. For comparison, one analyze batch today runs `loadSquadState` (about 16 to 20
@@ -628,6 +637,94 @@ Three guard tests, in the style of `__tests__/payment-messages-guard.test.ts`:
 3. **One derive per fact**: `monthPhaseFor`, `matchNumbers` and `pickNextMatch` are the
    only places that compute what they compute; a grep test fails on a second
    `confirmed.length < maxPlayers` or a second `squadMonth.findFirst` outside writers.
+   (As built: a ratchet too, since 15 files compute places, 7 look a month row up and 7
+   feed the registration selector today; see 3.7, item 9.)
+
+### 3.7 As built in slice A0, and where it differs from this plan
+
+Built on `refactor/club-summary-a0` (PR against `refactor/club-summary`), on top of
+`origin/main` `19c75141` (#519 and #520 included). No consumer reads it yet. $0: no model,
+no key.
+
+**The reads (pinned by `__tests__/load.test.ts` per club shape):**
+
+| shape | reads |
+|---|---|
+| weekly, no collector, no members (FNF as the scheduler would load it) | 5 |
+| weekly with a collector (Sutton) | 6 |
+| monthly with a collector (the Vets) | 8 |
+| `{ members: true }` | plus 1 roster read, `loadPlayerNames`' own 3 to 5, and `withAliases`' 1 |
+
+The five always made: the Organisation row, `getOrgFeatures`, every Activity with its
+sport, the scheduler's match window, the last-played candidates. Then the collector's name
+when one is set, and for a monthly club the SquadMonth rows and the held keys.
+
+**Where it differs, and why:**
+
+1. **The switches are a read of their own.** `fromRow` and the select in `org-features.ts`
+   are private, and A0 changes no file outside `src/lib/club-summary/`. So `features` is
+   `getOrgFeatures(orgId)` itself, in parallel with the club row: identical by
+   construction, one read more. Exporting the two (A1 or A2) folds it into read 1.
+2. **The collector's name is a read of its own.** `paymentHolderId` has no relation to
+   `User`, so it cannot ride on read 1; it is `loadClubSnapshot`'s `user.findUnique`, only
+   when a collector is set.
+3. **"Short" is #519's, not `belowMinimum`.** #519 settled the scheduler's "short" in
+   `squad-short.ts` (below the minimum, else two full sides of the format, never above
+   the places). `MatchFacts` has `placesOpen`, `shortBelow` and `short` from it, plus
+   `fewestAnyFormat` for the 18:00 "Match in trouble" test. All three of D1's meanings are
+   readable; none is new.
+4. **No `smallerFormats` field (D12).** Today's three rules disagree on active-only versus
+   all games and on order, and A0 must not pick one. `games` holds every Activity, active
+   and inactive, with `active` and `sport.family`, so each rule can be re-expressed from it.
+   B1 adds the one rule.
+5. **The month is split into two levels.** `squad.months` holds the club's SquadMonth rows
+   (regulars, paid, start, status), and each match's `month` holds only how that match
+   relates to them. Per match there are seven facts, not the plan's phase alone, because
+   today's consumers read different things (D5):
+   - `phase`: the row of the match's FIXTURE (venue and weekday) by its status (open is
+     "signup"), else "held" for a held key, else "none";
+   - `listOpened`, `held`, `beforeStart` (a game before a part-way start), `seeded`;
+   - `rowForOwnActivity`: `monthNotStartedFor`'s key (any row for the match's own
+     activity), which differs from the fixture's after a format switch.
+6. **The plan's A1 mapping was wrong about "priced".** The scheduler treats a month as in
+   sign-up only when it is "open" AND its list has opened (`signupListPosts` filters
+   `m.open && m.listOpenedAt`); a priced month, or an open one before its list opens, gives
+   `noMonthYet`, unless a held key exists. The exact mapping, from the facts, is written
+   out and tested in `__tests__/derive.test.ts` ("today's scheduler mapping"); A1 moves it
+   into the scheduler. The text of A1 below is corrected.
+7. **Roster order is #520's, not "display name, then id".** Section 6 asked C2 to adopt
+   whatever the HQ PR chose; #520 chose membership `createdAt`, then id. The summary uses
+   that. Aliases are sorted.
+8. **Smaller differences.** `lifecycle` carries the predicates (`approved`, `settingUp`,
+   `billingPaused`, `operational`, `dormant`, `botOn`), not the stored `approvalStatus`,
+   `setupStage` or `billingStatus`: the existing source guards for those three columns
+   (`club-approval-source-guard`, `club-setup-source-guard`, `club-billing-source-guard`)
+   keep every reader on the predicates, and the summary obeys them (the stage is selected
+   through `SETUP_STAGE_SELECT`);
+   `teamsReady` is `effectiveTeamsReadyTime`; `collectionLive` (D4's
+   `isPaymentCollectionLive`) is computed in `load.ts` because its module imports the
+   database client; the fee is `matchFee`, `pendingConfirm` and `linksReleased` on the
+   match and `perPlayer`, `splitTotal` on the game, with no combined fee (D9 is B5's);
+   `nextForPosting` is `{ withHold, withoutHold }` (D7, K5); `month.regulars` counts the
+   month's rows not marked left, and does not check the WhatsApp group (that needs the
+   membership read `RunningMonth.left` makes); `lastPlayedMatchId` is its own read, because
+   `loadSquadState`'s rule has no date floor and includes historical matches.
+9. **The "one derive" guard is a ratchet**, like the source guard: today's count per file
+   is pinned and may only fall. A guard that failed on a second occurrence would fail on
+   day one.
+10. **Two minor disagreements the plan did not list.** `formatMinimum` (min-players.ts) does
+    not clamp the minimum to the places and `playerRange` (flex-format-rules.ts) does; they
+    differ only for a minimum above the places, which the range rules refuse to save. Both
+    are on `GameFacts` (`fewestToPlay`, `range.min`). And the loader's windows mirror two
+    scheduler constants (`POST_MATCH_LOOKBACK_DAYS`, the unexported
+    `CANCELLED_HOLD_LOOKBACK_MS`) and one of `monthly-week.ts`; `__tests__/load-windows.test.ts`
+    reads both files and fails if they drift. A1 should export them and import them here.
+11. **No Playwright spec of its own kind.** Playwright's worker cannot load the Prisma 7
+    client, so the "API spec" is `e2e/api/club-summary.spec.ts`, which runs
+    `e2e/helpers/club-summary-lib-tests.ts` under tsx against the embedded Postgres, as
+    `format-resize.spec.ts` does. The five club shapes are built as fixtures in
+    `__tests__/fixtures.ts`: the scenario harness lives on `sandbox/club-scenarios`, not on
+    main. (The plan's own-language club is replaced by a muted club with its own minimum.)
 
 ---
 
@@ -679,7 +776,7 @@ changes in them.
   attendance off, the Vets monthly with £8 pay as you go and 12 to 16 players). The month
   phase gets a table test over every `SquadMonth.status`, a held key, no row, a closed
   month with a game still to play, and a month started part way. One Playwright API spec
-  loads the summary for each seeded shape (no model, $0).
+  loads the summary for each seeded shape (no model, $0). (As built: see 3.7, item 11.)
 - Model input: none.
 
 **A1. The scheduler reads the summary.** After the concurrent scheduler PR (section 6) is
@@ -690,9 +787,10 @@ merged, not before.
   `due-posts/route.ts` (its preloaded months become the scope's summary),
   `deadline-summary.ts`, `unpaid-list.ts`, `team-proposal.ts:746`.
 - Behaviour: none. `monthly` and `noMonthYet` are re-expressed from
-  `match.month.phase` with exactly today's mapping (running, or closed with only played
-  games, gives the month; sign-up, priced or held gives the sign-up shape; anything else
-  is `noMonthYet`). The disagreements stay; they are now two mappings of one fact, in
+  `match.month` with exactly today's mapping (running, or closed lately with only played
+  games, and not before a part-way start, gives the month; an open month whose list has
+  opened, or a held key, gives the sign-up shape; anything else, a priced month included,
+  is `noMonthYet`; corrected in A0, see 3.7 item 6). The disagreements stay; they are now two mappings of one fact, in
   one place, which is what B2 then resolves.
 - Tests: a characterisation test written FIRST on main: `computeDuePosts` over the five
   shapes at twenty instants each (the scenario clocks), keys and texts snapshotted. The
