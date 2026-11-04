@@ -2679,34 +2679,13 @@ exports[`the scheduler's decisions, per club shape (must not change in A1) > com
   "2026-11-02T10:05:00.000Z": [],
   "2026-11-02T17:05:00.000Z": [],
   "2026-11-02T18:05:00.000Z": [],
-  "2026-11-02T21:30:00.000Z": [
-    {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-  ],
+  "2026-11-02T21:30:00.000Z": [],
   "2026-11-03T10:05:00.000Z": [
     {
       "key": "m-vets-2nov:ask-score",
       "kind": "group-message",
       "matchId": "m-vets-2nov",
       "text": "🏁 *Monday Night Football*: hope it was a good one. What was the final score? I'll use it to keep next week's teams balanced.",
-    },
-    {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
     },
     {
       "key": "m-vets-2nov:rate-dm:u-org-new-r1",
@@ -2969,16 +2948,6 @@ https://mt.test/l/x",
       "text": "🏁 *Monday Night Football*: hope it was a good one. What was the final score? I'll use it to keep next week's teams balanced.",
     },
     {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-    {
       "key": "m-vets-2nov:rate-dm:u-org-new-r1",
       "kind": "dm",
       "matchId": "m-vets-2nov",
@@ -3239,16 +3208,6 @@ https://mt.test/l/x",
       "text": "🏁 *Monday Night Football*: hope it was a good one. What was the final score? I'll use it to keep next week's teams balanced.",
     },
     {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-    {
       "key": "m-vets-2nov:rate-dm:u-org-new-r1",
       "kind": "dm",
       "matchId": "m-vets-2nov",
@@ -3503,16 +3462,6 @@ https://mt.test/l/x",
   ],
   "2026-11-03T23:00:00.000Z": [
     {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-    {
       "key": "m-vets-2nov:rate-dm:u-org-new-r1",
       "kind": "dm",
       "matchId": "m-vets-2nov",
@@ -3765,42 +3714,10 @@ Link expires in 5 days.
 https://mt.test/l/x",
     },
   ],
-  "2026-11-04T09:05:00.000Z": [
-    {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-  ],
-  "2026-11-04T12:00:00.000Z": [
-    {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-  ],
+  "2026-11-04T09:05:00.000Z": [],
+  "2026-11-04T12:00:00.000Z": [],
   "2026-11-04T18:05:00.000Z": [
     {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-    {
       "badgeLedger": [
         {
           "badgeKey": "first-game",
@@ -3884,42 +3801,10 @@ Well played all! 👏
 📊 See your own stats and badges any time: tap the stats link in my rating DM after each match.",
     },
   ],
-  "2026-11-05T10:05:00.000Z": [
-    {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-  ],
-  "2026-11-05T17:05:00.000Z": [
-    {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-  ],
+  "2026-11-05T10:05:00.000Z": [],
+  "2026-11-05T17:05:00.000Z": [],
   "2026-11-05T18:05:00.000Z": [
     {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-    {
       "badgeLedger": [
         {
           "badgeKey": "first-game",
@@ -4003,42 +3888,10 @@ Well played all! 👏
 📊 See your own stats and badges any time: tap the stats link in my rating DM after each match.",
     },
   ],
-  "2026-11-06T10:05:00.000Z": [
-    {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-  ],
-  "2026-11-06T16:30:00.000Z": [
-    {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-  ],
+  "2026-11-06T10:05:00.000Z": [],
+  "2026-11-06T16:30:00.000Z": [],
   "2026-11-06T18:05:00.000Z": [
     {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-    {
       "badgeLedger": [
         {
           "badgeKey": "first-game",
@@ -4122,54 +3975,10 @@ Well played all! 👏
 📊 See your own stats and badges any time: tap the stats link in my rating DM after each match.",
     },
   ],
-  "2026-11-08T10:05:00.000Z": [
-    {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-  ],
-  "2026-11-08T18:05:00.000Z": [
-    {
-      "key": "m-vets-2nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-2nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-  ],
-  "2026-11-13T10:05:00.000Z": [
-    {
-      "key": "m-vets-9nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-9nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-  ],
-  "2026-11-15T17:05:00.000Z": [
-    {
-      "key": "m-vets-9nov:payment-poll",
-      "kind": "group-poll",
-      "matchId": "m-vets-9nov",
-      "options": [
-        "Red",
-        "Yellow",
-      ],
-      "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-    },
-  ],
+  "2026-11-08T10:05:00.000Z": [],
+  "2026-11-08T18:05:00.000Z": [],
+  "2026-11-13T10:05:00.000Z": [],
+  "2026-11-15T17:05:00.000Z": [],
   "2026-11-16T10:05:00.000Z": [],
   "2026-12-03T10:05:00.000Z": [],
   "2026-12-06T17:05:00.000Z": [],
@@ -11330,12 +11139,6 @@ Here's what I do:
 Questions? Tag me here, for example *@Match Time help*. Let's go.",
     },
     {
-      "key": "m-vets-7dec:pre-kickoff",
-      "kind": "group-message",
-      "matchId": "m-vets-7dec",
-      "text": "⏰ Tonight *20:00* at *Vets Ground* · 0/14. *Still need 14*, last chance to jump in. 🙏",
-    },
-    {
       "key": "m-vets-7dec:football-gear-reminder",
       "kind": "group-message",
       "matchId": "m-vets-7dec",
@@ -14417,18 +14220,7 @@ exports[`the scheduler's decisions, per club shape (must not change in A1) > the
     "status": 200,
   },
   "2026-11-02T21:30:00.000Z": {
-    "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-    ],
+    "instructions": [],
     "queued": [],
     "status": 200,
   },
@@ -14439,16 +14231,6 @@ exports[`the scheduler's decisions, per club shape (must not change in A1) > the
         "kind": "group-message",
         "matchId": "m-vets-2nov",
         "text": "🏁 *Monday Night Football*: hope it was a good one. What was the final score? I'll use it to keep next week's teams balanced.",
-      },
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
       },
       {
         "key": "m-vets-2nov:rate-dm:u-org-new-r1",
@@ -14715,16 +14497,6 @@ https://mt.test/l/x",
         "text": "🏁 *Monday Night Football*: hope it was a good one. What was the final score? I'll use it to keep next week's teams balanced.",
       },
       {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-      {
         "key": "m-vets-2nov:rate-dm:u-org-new-r1",
         "kind": "dm",
         "matchId": "m-vets-2nov",
@@ -14989,16 +14761,6 @@ https://mt.test/l/x",
         "text": "🏁 *Monday Night Football*: hope it was a good one. What was the final score? I'll use it to keep next week's teams balanced.",
       },
       {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-      {
         "key": "m-vets-2nov:rate-dm:u-org-new-r1",
         "kind": "dm",
         "matchId": "m-vets-2nov",
@@ -15257,16 +15019,6 @@ https://mt.test/l/x",
   "2026-11-03T23:00:00.000Z": {
     "instructions": [
       {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-      {
         "key": "m-vets-2nov:rate-dm:u-org-new-r1",
         "kind": "dm",
         "matchId": "m-vets-2nov",
@@ -15523,49 +15275,17 @@ https://mt.test/l/x",
     "status": 200,
   },
   "2026-11-04T09:05:00.000Z": {
-    "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-    ],
+    "instructions": [],
     "queued": [],
     "status": 200,
   },
   "2026-11-04T12:00:00.000Z": {
-    "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-    ],
+    "instructions": [],
     "queued": [],
     "status": 200,
   },
   "2026-11-04T18:05:00.000Z": {
     "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
       {
         "key": "m-vets-2nov:badges",
         "kind": "group-message",
@@ -15582,49 +15302,17 @@ Well played all! 👏
     "status": 200,
   },
   "2026-11-05T10:05:00.000Z": {
-    "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-    ],
+    "instructions": [],
     "queued": [],
     "status": 200,
   },
   "2026-11-05T17:05:00.000Z": {
-    "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-    ],
+    "instructions": [],
     "queued": [],
     "status": 200,
   },
   "2026-11-05T18:05:00.000Z": {
     "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
       {
         "key": "m-vets-2nov:badges",
         "kind": "group-message",
@@ -15641,49 +15329,17 @@ Well played all! 👏
     "status": 200,
   },
   "2026-11-06T10:05:00.000Z": {
-    "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-    ],
+    "instructions": [],
     "queued": [],
     "status": 200,
   },
   "2026-11-06T16:30:00.000Z": {
-    "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-    ],
+    "instructions": [],
     "queued": [],
     "status": 200,
   },
   "2026-11-06T18:05:00.000Z": {
     "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
       {
         "key": "m-vets-2nov:badges",
         "kind": "group-message",
@@ -15700,66 +15356,22 @@ Well played all! 👏
     "status": 200,
   },
   "2026-11-08T10:05:00.000Z": {
-    "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-    ],
+    "instructions": [],
     "queued": [],
     "status": 200,
   },
   "2026-11-08T18:05:00.000Z": {
-    "instructions": [
-      {
-        "key": "m-vets-2nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-2nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-    ],
+    "instructions": [],
     "queued": [],
     "status": 200,
   },
   "2026-11-13T10:05:00.000Z": {
-    "instructions": [
-      {
-        "key": "m-vets-9nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-9nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-    ],
+    "instructions": [],
     "queued": [],
     "status": 200,
   },
   "2026-11-15T17:05:00.000Z": {
-    "instructions": [
-      {
-        "key": "m-vets-9nov:payment-poll",
-        "kind": "group-poll",
-        "matchId": "m-vets-9nov",
-        "options": [
-          "Red",
-          "Yellow",
-        ],
-        "question": "💳 Payments for *Monday Night Football*: tick when you've paid",
-      },
-    ],
+    "instructions": [],
     "queued": [],
     "status": 200,
   },
@@ -22658,12 +22270,6 @@ Here's what I do:
 📊  *Stats*: Tag me and ask things like "@Match Time who got MoM last week?" or "@Match Time who's our most consistent player?"
 
 Questions? Tag me here, for example *@Match Time help*. Let's go.",
-      },
-      {
-        "key": "m-vets-7dec:pre-kickoff",
-        "kind": "group-message",
-        "matchId": "m-vets-7dec",
-        "text": "⏰ Tonight *20:00* at *Vets Ground* · 0/14. *Still need 14*, last chance to jump in. 🙏",
       },
       {
         "key": "m-vets-7dec:football-gear-reminder",

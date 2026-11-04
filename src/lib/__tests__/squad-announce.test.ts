@@ -120,6 +120,32 @@ describe("announceSquadFullIfJustFilled: bench feature OFF", () => {
   });
 });
 
+// Club summary B2 (D2d): "Squad complete" was held back only for a match of
+// a RUNNING month (`loadMonthlyWeek`); a monthly club with no month yet, or
+// a month in sign-up or held, got the weekly fourteen-name roster the
+// scheduler holds back. A weekly post never reaches a monthly club.
+describe("announceSquadFullIfJustFilled: a monthly club", () => {
+  const withMode = (squadMode: string) => {
+    const r = matchRow();
+    return { ...r, activity: { ...r.activity, org: { language: "en", squadMode } } };
+  };
+
+  it("with no month yet: no weekly roster, and the key is not claimed", async () => {
+    matchFindUnique.mockResolvedValue(withMode("monthly"));
+    getOrgFeatures.mockResolvedValue(features(true));
+    await announceSquadFullIfJustFilled("m1");
+    expect(botJobCreate).not.toHaveBeenCalled();
+    expect(sentCreate).not.toHaveBeenCalled();
+  });
+
+  it("REGRESSION GUARD: a weekly club still gets it", async () => {
+    matchFindUnique.mockResolvedValue(withMode("weekly"));
+    getOrgFeatures.mockResolvedValue(features(false));
+    await announceSquadFullIfJustFilled("m1");
+    expect(await postedText()).toBe(TODAY);
+  });
+});
+
 describe("announceSquadFullIfJustFilled: bench feature ON", () => {
   it("ends with the bench invitation, in the SAME message", async () => {
     matchFindUnique.mockResolvedValue(matchRow());

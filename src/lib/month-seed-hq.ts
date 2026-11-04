@@ -26,6 +26,7 @@ import { monthNameLabel } from "./i18n/dates";
 import { monthSetupCopy } from "./i18n/month-setup";
 import { nextMonthStart, seedTargets } from "./month-signup-rules";
 import { startMonth } from "./squad-month";
+import { monthPhaseOfGame } from "./club-summary/derive";
 import type { NamelessRef, SeedUnmatchedEntry } from "./month-seed-match-rules";
 import { gamesPlayedBy, londonMonthStart, monthFixtureDates, monthStartToDate, normaliseSquadMode, type SeedRowInput } from "./squad-month-rules";
 
@@ -79,11 +80,22 @@ export async function seedableMonths(orgId: string, now: Date) {
   if (activities.length !== 1) return [];
   const a = activities[0];
   const current = londonMonthStart(now);
-  const months = await db.squadMonth.findMany({
-    where: { orgId, monthStart: { in: [monthStartToDate(current), monthStartToDate(nextMonthStart(current))] } },
-    select: { monthStart: true },
+  const candidates = [current, nextMonthStart(current)];
+  const rows = await db.squadMonth.findMany({
+    where: { orgId, activityId: a.id, monthStart: { in: candidates.map(monthStartToDate) } },
+    select: { id: true, activityId: true, status: true, monthStart: true },
   });
-  const started = new Set(months.map((m) => m.monthStart.toISOString().slice(0, 10)));
+  // The one month phase (club summary B2): a month this game has a row for
+  // (in sign-up, running or closed) is not started again from a list; one
+  // with no month yet, or held for its organiser, may be. The game's own
+  // Activity, never another club month of the same London month (D5).
+  const months = rows.map((m) => ({ ...m, monthStart: m.monthStart.toISOString().slice(0, 10) }));
+  const started = new Set(
+    candidates.filter((monthStart) => {
+      const { phase } = monthPhaseOfGame({ orgId, activityId: a.id, monthStart, months, heldKeys: [] });
+      return phase !== "none" && phase !== "held";
+    }),
+  );
   return seedTargets({ now, dayOfWeek: a.dayOfWeek, time: a.time, breakMonths: org.seasonBreakMonths, started }).map((t) => ({ activity: a, ...t }));
 }
 

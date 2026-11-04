@@ -20,6 +20,13 @@
  *     counted like any other file; a slice that moves a reader off lowers it.
  *   - registration: `selectRegistrationMatch(` fed by a query of its own
  *     (D7). `pickNextMatch`.
+ *   - fixture: `isSameRecurringFixture(`, the venue and weekday key (D5,
+ *     slice B2). A game's month is matched by its Activity (`monthPhaseFor`,
+ *     `monthForMatch`), never by this key; the files listed use it for what
+ *     it is for: the slot dedupe and the posting rule's fixture, the rolling
+ *     squad's carry-over, and the month's calendar of games (its sign-up
+ *     list, the commitment states, the close), which a month is opened
+ *     with one per fixture.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -31,6 +38,7 @@ const PATTERNS: Record<string, RegExp> = {
   places: /confirmed(?:\.length)?\s*<\s*(?:m\.)?maxPlayers|maxPlayers\s*-\s*confirmed|Math\.max\(0,\s*[\w.]*maxPlayers\s*-/g,
   monthRow: /squadMonth\.findFirst\(/g,
   registration: /\bselectRegistrationMatch\(/g,
+  fixture: /\bisSameRecurringFixture\(/g,
 };
 
 /** Today's counts. Only ever lowered. */
@@ -48,7 +56,6 @@ const TODAY: Record<string, Record<string, number>> = {
     "app/actions/squad-month.ts": 1,
     "app/admin/months/page.tsx": 1,
     "lib/month-close.ts": 1,
-    "lib/month-not-started.ts": 1,
     "lib/month-payment.ts": 3,
     "lib/squad-month.ts": 1,
   },
@@ -63,6 +70,21 @@ const TODAY: Record<string, Record<string, number>> = {
     "lib/dm-registration-target.ts": 1,
     "lib/pipeline/load-state.ts": 1,
     "lib/team-proposal.ts": 1,
+  },
+  fixture: {
+    // B2 (2026-11-04): the month phase, `monthForMatch` and the monthly seed's
+    // target match a game to its month by its Activity, so monthly-week.ts
+    // and the summary are off this list. Left: the definition, the posting
+    // rule, the ghost-match dedupe's fixture and the rolling carry-over
+    // (not months), and the month's calendar (3.18, "Left").
+    "lib/match-slot.ts": 2,
+    "lib/next-upcoming-match.ts": 1,
+    "lib/bot-scheduler.ts": 1,
+    "lib/rolling-squad.ts": 2,
+    "lib/rolling-squad-rules.ts": 4,
+    "lib/month-signup.ts": 2,
+    "lib/month-member-commitment.ts": 1,
+    "lib/month-close.ts": 1,
   },
 };
 

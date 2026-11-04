@@ -49,7 +49,6 @@ import { totalPlayersFor } from "../format-switch";
 import { squadNumbers, type SquadNumbers } from "../squad-short";
 import { selectRegistrationMatch } from "../registration-match-select";
 import { isNextUpcomingForPosting, type SchedulerMatch } from "../next-upcoming-match";
-import { isSameRecurringFixture } from "../match-slot";
 
 // ── The raw rows (what load.ts selects) ────────────────────────────────
 
@@ -332,34 +331,29 @@ export function matchNumbers(p: { places: number; confirmed: number; minPlayers:
 
 const monthStartOf = (d: Date) => d.toISOString().slice(0, 10);
 
-export function monthFacts(months: MonthRow[], activities: ActivityRow[]): MonthFacts[] {
-  return months.flatMap((m) => {
-    const a = activities.find((x) => x.id === m.activityId);
-    if (!a) return [];
+export function monthFacts(months: MonthRow[]): MonthFacts[] {
+  return months.map((m) => {
     const monthStart = monthStartOf(m.monthStart);
     const regulars = m.members.filter((r) => r.kind !== "payg");
-    return [
-      {
-        id: m.id,
-        activityId: m.activityId,
-        fixture: { venue: a.venue, dayOfWeek: a.dayOfWeek },
-        monthStart,
-        status: m.status,
-        listOpenedAt: iso(m.listOpenedAt),
-        pricedAt: iso(m.pricedAt),
-        closedAt: iso(m.closedAt),
-        createdAt: m.createdAt.toISOString(),
-        // `RunningMonth.startsAt` (monthly-week.ts `loadMonthsWhere`).
-        startsAt: (m.startedMidMonthAt ?? londonDateTimeToUtc(monthStart, "00:00")).toISOString(),
-        startedPartWay: m.startedMidMonthAt !== null,
-        regulars: regulars.length,
-        // `RunningMonth.paid`: paidAt is confirmed, else paidClaimedAt is claimed.
-        paid: {
-          confirmed: regulars.filter((r) => r.paidAt).length,
-          claimed: regulars.filter((r) => !r.paidAt && r.paidClaimedAt).length,
-        },
+    return {
+      id: m.id,
+      activityId: m.activityId,
+      monthStart,
+      status: m.status,
+      listOpenedAt: iso(m.listOpenedAt),
+      pricedAt: iso(m.pricedAt),
+      closedAt: iso(m.closedAt),
+      createdAt: m.createdAt.toISOString(),
+      // `RunningMonth.startsAt` (monthly-week.ts `loadMonthsWhere`).
+      startsAt: (m.startedMidMonthAt ?? londonDateTimeToUtc(monthStart, "00:00")).toISOString(),
+      startedPartWay: m.startedMidMonthAt !== null,
+      regulars: regulars.length,
+      // `RunningMonth.paid`: paidAt is confirmed, else paidClaimedAt is claimed.
+      paid: {
+        confirmed: regulars.filter((r) => r.paidAt).length,
+        claimed: regulars.filter((r) => !r.paidAt && r.paidClaimedAt).length,
       },
-    ];
+    };
   });
 }
 
@@ -375,45 +369,58 @@ export function parseHeldKey(orgId: string, key: string): { monthStart: string; 
   return { monthStart: key.slice(prefix.length, prefix.length + 10), activityId: key.slice(prefix.length + 11) };
 }
 
-const PHASE_OF_STATUS: Record<string, MonthPhase> = { open: "signup", priced: "priced", running: "running", closed: "closed" };
-/** With two rows for one fixture and month, the one furthest on. */
-const PHASE_RANK: Record<MonthPhase, number> = { running: 4, closed: 3, signup: 2, priced: 1, held: 0, none: 0 };
+/** A stored status as a phase: "priced" is a month in sign-up (B2, K8 b). */
+const PHASE_OF_STATUS: Record<string, MonthPhase> = { open: "signup", priced: "signup", running: "running", closed: "closed" };
 
-/** "Is this a month's game, and where is that month" for one match. */
+/**
+ * THE MONTH OF ONE GAME AND LONDON MONTH (slice B2): the SquadMonth row of
+ * that Activity and month (at most one: the table's unique key), else
+ * "held" for a held key of that Activity and month, else "none". The
+ * month-level half of `monthPhaseFor`, for a door that asks about a month
+ * rather than a match (the seed door: may a list start this month?).
+ */
+export function monthPhaseOfGame(p: {
+  orgId: string;
+  activityId: string;
+  /** "YYYY-MM-01". */
+  monthStart: string;
+  months: ReadonlyArray<Pick<MonthFacts, "id" | "activityId" | "monthStart" | "status">>;
+  heldKeys: readonly string[];
+}): { phase: MonthPhase; monthId: string | null } {
+  const row = p.months.find((m) => m.activityId === p.activityId && m.monthStart === p.monthStart) ?? null;
+  const phase = row ? PHASE_OF_STATUS[row.status] : undefined;
+  if (row && phase) return { phase, monthId: row.id };
+  const held = p.heldKeys.some((k) => {
+    const h = parseHeldKey(p.orgId, k);
+    return h !== null && h.monthStart === p.monthStart && h.activityId === p.activityId;
+  });
+  return { phase: held ? "held" : "none", monthId: null };
+}
+
+/**
+ * THE MONTH PHASE OF ONE MATCH (slice B2): its game's month
+ * (`monthPhaseOfGame` of the match's own Activity and the London month of
+ * its kickoff), except that a game dated before a part-way start is a game
+ * of no month ("none"). See `MonthPhase` (types.ts) for each phase.
+ */
 export function monthPhaseFor(p: {
   orgId: string;
   match: Pick<MatchRow, "activityId" | "date" | "rollingSeededAt">;
   months: MonthFacts[];
-  activities: ActivityRow[];
-  heldKeys: string[];
+  heldKeys: readonly string[];
 }): MatchMonthFacts {
-  const own = p.activities.find((a) => a.id === p.match.activityId);
-  const fixture = own ? { orgId: p.orgId, venue: own.venue, dayOfWeek: own.dayOfWeek } : null;
   const monthStart = londonMonthStart(p.match.date);
-  const sameFixture = (venue: string, dayOfWeek: number) => fixture !== null && isSameRecurringFixture(fixture, { orgId: p.orgId, venue, dayOfWeek });
-
-  const rows = p.months
-    .filter((m) => m.monthStart === monthStart && sameFixture(m.fixture.venue, m.fixture.dayOfWeek) && PHASE_OF_STATUS[m.status])
-    .sort((a, b) => PHASE_RANK[PHASE_OF_STATUS[b.status]] - PHASE_RANK[PHASE_OF_STATUS[a.status]]);
-  const row = rows[0] ?? null;
-
-  const held = p.heldKeys.some((k) => {
-    const h = parseHeldKey(p.orgId, k);
-    if (!h || h.monthStart !== monthStart) return false;
-    const a = p.activities.find((x) => x.id === h.activityId);
-    return !!a && sameFixture(a.venue, a.dayOfWeek);
-  });
-
+  const game = monthPhaseOfGame({ orgId: p.orgId, activityId: p.match.activityId, monthStart, months: p.months, heldKeys: p.heldKeys });
+  const row = game.monthId ? (p.months.find((m) => m.id === game.monthId) ?? null) : null;
+  const beforeStart = row !== null && p.match.date.getTime() < new Date(row.startsAt).getTime();
+  const counted = row !== null && !beforeStart;
   return {
     monthStart,
-    phase: row ? PHASE_OF_STATUS[row.status] : held ? "held" : "none",
-    monthId: row?.id ?? null,
-    listOpened: row?.listOpenedAt != null,
-    held,
-    beforeStart: row ? p.match.date.getTime() < new Date(row.startsAt).getTime() : false,
+    phase: beforeStart ? "none" : game.phase,
+    monthId: counted ? row.id : null,
+    beforeStart,
     // bot-scheduler.ts and monthly-week.ts, inline: seeded after the month was made.
-    seeded: !!row && p.match.rollingSeededAt != null && p.match.rollingSeededAt.getTime() >= new Date(row.createdAt).getTime(),
-    rowForOwnActivity: p.months.some((m) => m.monthStart === monthStart && m.activityId === p.match.activityId),
+    seeded: counted && p.match.rollingSeededAt != null && p.match.rollingSeededAt.getTime() >= new Date(row.createdAt).getTime(),
   };
 }
 
@@ -476,7 +483,7 @@ export function sortRoster(m: MemberRows): MembersFacts {
 
 export function buildClubSummary(rows: ClubRows, now: Date): ClubSummary {
   const { org } = rows;
-  const squad = squadFacts(org, normaliseSquadMode(org.squadMode) === "monthly" ? monthFacts(rows.months, rows.activities) : []);
+  const squad = squadFacts(org, normaliseSquadMode(org.squadMode) === "monthly" ? monthFacts(rows.months) : []);
   const games = gameFacts(rows.activities);
   const picked = pickNextMatch({ orgId: org.id, matches: rows.matches, activities: rows.activities, now });
 
@@ -489,11 +496,12 @@ export function buildClubSummary(rows: ClubRows, now: Date): ClubSummary {
       const deadlines = weeklyDeadlinesFor(m.date, org);
       const month =
         squad.mode === "monthly"
-          ? monthPhaseFor({ orgId: org.id, match: m, months: squad.months, activities: rows.activities, heldKeys: rows.heldKeys })
+          ? monthPhaseFor({ orgId: org.id, match: m, months: squad.months, heldKeys: rows.heldKeys })
           : null;
-      // A week of a running month (`loadMonthlyWeek`: the fixture's running
-      // month, not before its start) charges the club's PAYG price.
-      const paygWeek = month !== null && month.phase === "running" && !month.beforeStart;
+      // A week of a running month (`loadMonthlyWeek`: the game's running
+      // month; a game before a part-way start is of no month) charges the
+      // club's PAYG price.
+      const paygWeek = month !== null && month.phase === "running";
       return {
         id: m.id,
         activityId: m.activityId,

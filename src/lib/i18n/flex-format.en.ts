@@ -69,6 +69,8 @@ export const FLEX_FORMAT_EN: FlexFormatCopy = {
     `*${p.activityName}* is only ${side(p.perSide)}. To play other sizes, set the fewest and most players, for example *@Match Time we play with 12 to 16*, or here: ${p.url}`,
   noSize: `How many a side? For example *@Match Time make it 8 a side*.`,
   noMatch: `There's no game coming up to change.`,
+  monthlyKeepsGame: (p) =>
+    `*${p.activityName}* runs as a monthly squad, so its games stay on it and I can't move one to another of your games. You can change a game's size inside it instead, for example *@Match Time make it 8 a side* (if it has only one size, set the fewest and most players first).`,
   tooLate: `That game has already started, so its size stays as it is.`,
 
   suggestUp: (p) =>

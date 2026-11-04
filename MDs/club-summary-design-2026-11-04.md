@@ -691,7 +691,8 @@ when one is set, and for a monthly club the SquadMonth rows and the held keys.
    `m.open && m.listOpenedAt`); a priced month, or an open one before its list opens, gives
    `noMonthYet`, unless a held key exists. The exact mapping, from the facts, is written
    out and tested in `__tests__/derive.test.ts` ("today's scheduler mapping"); A1 moves it
-   into the scheduler. The text of A1 below is corrected.
+   into the scheduler. The text of A1 below is corrected. (Slice B2 replaces both the facts
+   and the mapping with one phase, matched by the game's Activity: section 3.18.)
 7. **Roster order is #520's, not "display name, then id".** Section 6 asked C2 to adopt
    whatever the HQ PR chose; #520 chose membership `createdAt`, then id. The summary uses
    that. Aliases are sorted.
@@ -1546,6 +1547,159 @@ cassette was recorded.
   already read it (blind to setting up, as its doc says); inside the drain they only run for a club
   that speaks.
 
+### 3.18 As built in slice B2 (one month phase for every consumer)
+
+Built on `refactor/club-summary-b2` (PR against `refactor/club-summary`). Decision K8 (the main
+session's principle, on Kemal's delegation, 2026-11-04): a month is matched to a game by the game's
+Activity, never by venue and weekday; one phase function; where today's consumers disagree, the
+behaviour the Vets actually need wins: a list posted mid-month starts the month (#502), and a weekly
+post never reaches a monthly club. Each choice is a K8 entry below. No prompt and no CONTEXT template
+changes (below).
+
+**One phase, defined once.** `MonthPhase` (club-summary/types.ts) is the phase of ONE game:
+
+| phase | when |
+|---|---|
+| `none` | no SquadMonth row for the game's own Activity and the London month of its kickoff, and no held key; or a game dated before the month was started part-way (`beforeStart`: the month began after it, so it was a game of no month) |
+| `held` | no row, and a held key of that Activity and month (MatchTime waits for the organiser's list) |
+| `signup` | the row is `open` (its list opened or not yet) or `priced` (a stored status no writer sets: pricing is `pricedAt` on an open month) |
+| `running` | the row is running and the game is on or after its start |
+| `closed` | the row is closed |
+
+`monthPhaseFor` (derive.ts) is the only function that computes it; `monthPhaseOfGame` is its
+month-level half (one Activity and London month, no match), for the seed door. The game's month is the
+row of the table's unique key (`orgId, activityId, monthStart`), so there is at most one and the old
+"two rows of one fixture, the one furthest on" rank is gone. `MatchMonthFacts` lost `listOpened`,
+`held` and `rowForOwnActivity` (each was one of today's disagreeing values) and `MonthFacts` its
+`fixture`.
+
+**What a consumer does with it, decided once** (`monthly-gates.ts`, pure):
+- `monthFlowOf({ mode, month, stillToPlay })`: `weekly` (a weekly club), `month` (a running month, or a
+  played game of a closed one), `month-pending` (a monthly club's game whose month is not under way:
+  none, held, sign-up, or a closed month's game still to play; also a monthly club's match with no month
+  fact at all, never weekly);
+- `monthNotStartedOf({ mode, month })`: the players' group IN hold (#502), phase `none` or `held`.
+
+A door with no summary reads the same function through `loadMatchMonth(matchId)` (month-phase.ts:
+the match, its game's month row by the unique key, the held key of that game and month), which
+replaces `monthNotStartedFor` (month-not-started.ts, deleted, off both ratchets). `monthForMatch`
+(monthly-week.ts: `loadMonthlyWeek`, the hourly sweep) and the monthly seed's target match match by
+`RunningMonth.activityId` too.
+
+**The consumers, each with a failing test first** (`monthly-gates.test.ts`, `month-phase.test.ts`,
+`month-pending-scheduler.test.ts`, `activity-format-switch-monthly.test.ts`, and a case in each of
+`deadline-summary`, `unpaid-list`, `squad-announce`, `month-seed-under-way`; each red on the base
+branch where behaviour changes):
+
+| consumer | before | after |
+|---|---|---|
+| the scheduler's month shape (`schedulerMonthShape`, deleted) | four shapes from the facts plus two windows: a priced month, or an open one before its list opened, was "no month yet" (A1's note in 3.7); held and sign-up were treated as sign-up | `monthFlowOf` per match; `monthly` (the month context) only for the flow `month`, `monthPending` for every other match of a monthly club |
+| the announcement | no month: the monthly copy (#501); priced or open before its list: the same monthly copy | no month: unchanged; any month that exists (sign-up, priced or not yet listed) or is held: nothing (K8 b) |
+| the organisers' 17:00 post (D2a) | skipped a running month only, so a monthly club with no month got the weekly squad | skipped for every monthly club's game |
+| the match-day chases and the 2h last call | a held or sign-up month's game got the players' group chase; with the organisers announcing, a no-month game got the chase notice | nothing on either side for a game whose month is not under way (K8 c) |
+| the payment poll, the unpaid group reminder (D2c) | `!monthly`: a monthly club's game with no month got both | weekly clubs only (K8 f for a game before a part-way start) |
+| the fee ask to the collector | a no-month game got the weekly "how much per player?" | not for a game whose month is not under way (K8 d) |
+| the recruit chase-up DM | read no squad mode | not for a game whose month is not under way (K8 e) |
+| the admin deadline summary (D2b) | read no squad mode | weekly clubs only, as the scheduler's own deadline posts |
+| the organisers' unpaid list (`unpaid-list.ts`) | a no-month game's players listed as owing | not for a game whose month was not under way; a running month's game keeps its list (its pay as you go players) |
+| "Squad complete" (D2d) | held back only with a running month (`loadMonthlyWeek`) | never for a monthly club (`monthFlowOf`, no read) |
+| the players' group IN hold (analyze route) | `!rowForOwnActivity` from the summary, `monthNotStartedFor` without one | `monthNotStartedOf` of the phase, through `loadMatchMonth` without a summary; the same values |
+| `monthForMatch`, `loadMonthlyWeek`, the sweep, the monthly seed's target | the same venue and weekday | the same Activity (K8 a) |
+| the seed door (`seedableMonths`, D5) | any SquadMonth of the club in the London month counted as started | only the game's own month (`monthPhaseOfGame`: sign-up, running or closed); none or held may be started from a list |
+| the monthly reader's "started" (D5) | recomputed inline | `hasStarted` (`monthStarted`'s rule); byte for byte the same CONTEXT |
+| a switch to another of the club's games (`switchMatchToActivity`, the web switch page and "@Match Time switch to 5 a side") | re-pointed the match's Activity for any club | refused for a monthly club with one plain line, EN and TR (`monthlyKeepsGame`), nothing written; the size switch inside the game (#517) is untouched (K8 a) |
+
+**K8, the choices** (what the Vets need; a weekly post never reaches a monthly club):
+
+- a. **A game's month is its Activity's.** The venue and weekday key existed because a switch to
+  another Activity re-points a match; with the activity key such a switch would take a month's game
+  out of its month (no list, its regulars' INs held, every post held). So a monthly club's game is
+  never moved to another of its games: "*Vets 7s* runs as a monthly squad, so its games stay on it
+  and I can't move one to another of your games. You can change a game's size inside it instead,
+  for example *@Match Time make it 8 a side* (if it has only one size, set the fewest and most
+  players first)." (TR: "*Vets 7s* aylık kadroyla oynanıyor, bu yüzden maçları onda kalıyor ve birini
+  başka bir maçınıza taşıyamam. Bunun yerine maçın kişi sayısını değiştirebilirsiniz, örneğin
+  *@Match Time 8'e 8 oynayalım* (tek bir boyutu varsa önce en az ve en fazla oyuncu sayısını
+  ayarlayın).") The format switch mid-month the plan asked to test is the size switch, which keeps the
+  Activity, so the month stays (derive test).
+- b. **A month that exists is in sign-up until it runs.** A priced month, or an open one before its
+  list opened, was "no month yet" to the scheduler and got the monthly announcement ("the organiser
+  will post the month's list"); it is in sign-up now, like an open month with its list: the month's
+  list is the announcement. Neither state is written by today's code (rows are created open with
+  `listOpenedAt`, or running; nothing writes "priced"), so no club moves.
+- c. **No chase, on either side, before the month is under way.** A held or sign-up month's game got
+  the players' group chases with the fixed text, and with the organisers announcing a no-month game got
+  the chase notice; "N more needed" counts whoever said IN, not the squad.
+- d. **No fee ask for a game whose month is not under way.** Its players are the month's regulars
+  (playing off the list) and whoever said IN. No monthly club collects through MatchTime today (the
+  Vets have both payment flags off, B5 named the same), so nothing moves in production. If one ever
+  does, a no-month game's pay as you go players and guests could get the running month's PAYG fee ask;
+  not built.
+- e. **No recruit chase-up DM for a game whose month is not under way**: "we still need N" counts
+  whoever said IN.
+- f. **A game before a part-way start is a game of no month.** Slice 5's review pinned the weekly
+  payment poll and fee ask for it ("its poll, its fee question and its chase are the weekly ones");
+  it now gets what a monthly club's no-month game gets: nothing weekly. Its money is moot in
+  production for the same reason as d. The test is rewritten with a weekly guard
+  (`monthly-week-scheduler.test.ts`).
+- g. **The scheduler's two month windows are gone.** A month in sign-up counted only for this London
+  month or the next, and a closed month only for 14 days after its close. The summary's match window
+  (live matches, ten days of played ones) already bounds both; a game two months out exists only once
+  its list opened.
+
+**#535 on main** (one daily 17:00 rule for every club, monthly clubs posting the month's list) is not
+ported. Its rule reads `monthly?.seeded && !monthly.signup ? "month" : monthly || noMonthYet ?
+"no-month" : "weekly"`; on this branch `monthly` is the month flow only and `monthPending` replaces
+both `noMonthYet` and `monthly.signup`, so the rebase is `monthly?.seeded ? "month" : monthly ||
+monthPending ? "no-month" : "weekly"` and its organisers' branch reads `monthPending` where it read
+`noMonthYet`. The facts it needs (a running month with its regulars on, no month yet) are the phase
+and `seeded`.
+
+**What a model is shown: nothing changes.** No prompt and no CONTEXT template changed. The monthly
+reader's "started" is the same value through `hasStarted`. A post that is no longer sent could change
+`lastBotPost` for the next extractor call of that club (4.4); none of the five scenario clubs sends
+one of the removed posts in its scripted weeks (below), so no model input moved. $0, no key used.
+
+**Characterisation, only the intended B2 change** (every entry):
+- A1, `vets-signup` (computeDuePosts and the poll): the 2h last call for Mon 7 Dec, a game of December
+  in sign-up, is gone (K8 c).
+- A1, `self-join` (computeDuePosts and the poll; monthly, tracking on, a priced month): the weekly
+  payment polls for Mon 2 and Mon 9 Nov are gone (D2c, K8 b).
+- A2, A3, A4: unchanged. The fake world now answers SquadMonth's one compound key
+  (`orgId_activityId_monthStart`), which `loadMatchMonth` reads on the analyze fallback.
+- The copy golden gained `B2 monthlyKeepsGame` per language and changed none.
+- `partner-offer-line.test.ts` (a source pin) reads the new branch order (pending first).
+
+**The replay.** Free: the five clubs replayed from their cassettes on the final code with 0 misses
+and 0 upstream calls (FNF 38 of 38, own-language 25, ratings only 30, Sutton 52, the Vets 53; FNF's
+two "reordered" balancer requests are the row-order matches B3 named), and `baseline/b2` against
+`baseline/b4` is identical for all five (`scenarios:compare`, exit 0). Section 4.4 expected the Vets
+to change; they do not, because the Vets' script starts on 10 November with no month and both
+payment flags off: before the list is posted at 12:00 the only scheduled post due is the
+announcement, which keeps its monthly copy, and the removed posts (the payment poll, the fee ask,
+the chases of a month not under way, the organisers' side) never fall due in its week. Nothing was
+recorded; no paid call was made. The B2 differences are pinned by the unit tests and the A1
+characterisation above instead.
+
+**Left, and why.**
+- **The month's calendar of games** (the sign-up list's games, `loadCommitmentStates`, month-close's
+  games and leaver credits, the month opener's "one month per fixture") stays on the venue and weekday
+  key. It is the calendar a month is opened with, shared with the ghost-match slot dedupe, and moving
+  it is a change inside money writers. With a monthly club's game never moved to another Activity
+  (K8 a) and a month's games created on its own Activity, the two keys pick the same games; they
+  could differ only for a monthly club with two formats of one fixture whose weekly generator made the
+  week's match on the other format first. No such club exists. The fixture ratchet
+  (`one-derive-guard.test.ts`, `isSameRecurringFixture(` per file) keeps every other file off it.
+- **The players' group squad post swap (D2e)** stays a text comparison: it is the content of a reply,
+  and it already follows the phase through `currentWeekListPost` (`loadMonthlyWeek`, the activity
+  key). A no-month club's "who's in?" is answered with whoever is in, as today.
+- **The monthly reader's MONTHS block** still sees open, priced or running months of this and next
+  month: widening it is model input (C1).
+- **The bench offers and pay as you go pool offers** of a no-month game read the open places, not a
+  weekly roster; not in D2.
+- **The help and the web guide** are unchanged: the refusal is a one-line answer to an organiser who
+  asks for something a monthly club does not do, not a feature.
+
 ---
 
 ## 4. Migration, in slices
@@ -1687,7 +1841,8 @@ choice, the slice waits for Kemal (the K decisions in section 4.5).
   so it is the wording and "at risk" that move, not whether it chases; `smallerFormats`
   (D12) was left for a slice of its own.
 
-**B2. One month phase.** (D2a to D2e, D5)
+**B2. One month phase.** (D2a to D2e, D5) As built: section 3.18 (the phase names, the gate's
+name and the activity key differ from the plan below; K8 lists every choice).
 - The summary carries the phase, not the decision. The slice adds one pure rule next to
   it, `monthly-gates.ts`: `flowOf(squadMode, phase)` returns `"weekly"` (a weekly club),
   `"month-pending"` (monthly, phase none, held, sign-up or priced: nothing that counts the
@@ -1839,6 +1994,7 @@ right.
 | K6 | With team generation off, should the website's Generate teams, the teams page and the HQ team commands refuse too? | after B7 | the settings card says on purpose that the web button still works and that Teams ready is separate; B7 left them (3.15) **Decided by the main session, 2026-11-04, on Kemal's delegation: with automatic teams off, the organiser's own Generate teams on the web and the HQ "make the teams" keep working, as the settings card promises.** |
 | K5 | Is "today" the London day for the next match, and do the deadline posts and the month's list honour a cancelled match's day like the announcement does? | B4 | UTC in the selector, London in the posting rule; two posts skip the hold. **Decided by Kemal, 2026-11-04 (the main session's recommendation): "today" is always the London day; and every post that holds on a cancelled match's day (the announcement already does) does the same, the deadline posts and the month's list included. Where consumers genuinely ask a different question ("the match being registered for", "the fixture's next match to post about", "the last match played"), each is its own named fact in the summary, defined once.** Built in B4 (section 3.16). |
 | K7 | Where today's senders disagree on "is this club served" (D10, D15), which wins? | B6 | the mute switch alone, it plus the billing pause, `servingClubWhere`, `isClubOperational`, that plus setting up, two DM club picks; dormancy read by none of the doors a message leaves by; the HQ score ask on the default window. **Decided by the main session, 2026-11-04, on Kemal's delegation: one rule, `club-voice.ts`: silent (not approved, setting up, dormant, paused) sends nothing on any door, reads no DM and drops its queue on the way back; muted holds everything MatchTime sends on its own (posts, notices, queued DMs) until the unmute, still reads and answers its members' DMs as on main (the reply waits too), and HQ answers only its open pick round; quiet hours are the club's own on every door and hold, never drop. The eight choices are listed in section 3.17 (b revised in the review of #536).** Built in B6 (section 3.17). |
+| K8 | "Has this game's month started", and what a monthly club's game gets before it (D2, D5) | B2 | five definitions: venue and weekday in the scheduler, activity id in the IN hold, any month of the club at the seed door, an inline "started" in the reader, running months only in `loadMonthlyWeek`; a priced month, or an open one before its list, "no month yet" to the scheduler; the organisers' 17:00 post, the payment poll, the unpaid reminder and list, the fee ask, the recruit chase, the deadline summary and "Squad complete" each reaching some monthly games. **Decided by the main session, 2026-11-04, on Kemal's delegation: a month is matched to a game by the game's Activity, never by venue and weekday; one phase function (`monthPhaseFor`: none, held, sign-up, running, closed), turned into what a consumer does in one place (`monthly-gates.ts`); a list posted mid-month starts the month (#502) and a weekly post never reaches a monthly club. The seven choices are listed in section 3.18 (a monthly club's game is never moved to another of its games; a month that exists is in sign-up until it runs; no chase, fee ask or recruit chase before the month is under way; a game before a part-way start is a game of no month; the scheduler's two month windows go).** Built in B2 (section 3.18). |
 
 ### 4.6 Phase C: readers, only where the evidence asks for it
 

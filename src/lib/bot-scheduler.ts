@@ -172,9 +172,9 @@ import { minPlayersCopy } from "./i18n/min-players";
 import { isPaymentMessageKey, paymentMessagesOnFor } from "./payment-messages";
 import { MOM_ANNOUNCE_MAX_AGE_DAYS, schedulerMatchWhere } from "./scheduler-windows";
 import { normaliseSquadMode } from "./squad-month-rules";
-import { schedulerMonthShape } from "./scheduler-month-shape";
+import { monthFlowOf, stillToPlay } from "./monthly-gates";
 import { CLUB_ORG_SELECT, loadClubSummary } from "./club-summary/load";
-import type { ClubSummary } from "./club-summary/types";
+import type { ClubSummary, MonthPhase } from "./club-summary/types";
 import { clubSpeaks } from "./club-voice";
 
 // All user-facing times in bot-posted messages are Europe/London wall
@@ -1019,9 +1019,9 @@ export async function computeDuePosts(
   // (`decideSignupListPost`). Its keys are `org-<id>:msu:list:`, never the
   // weekly list's `<matchId>:month-list:`. A club on "weekly" makes no
   // query here. A failure costs this one post, never the poll.
-  // Which months a match belongs to (running, in sign-up, held for its
-  // organiser) is the summary's (`MatchFacts.month`, club summary A1),
-  // mapped onto today's three shapes per match below (`schedulerMonthShape`).
+  // Which month a match belongs to, and where that month is, is the
+  // summary's phase (`MatchFacts.month`), turned into the match's flow by
+  // `monthFlowOf` (monthly-gates.ts, club summary B2) per match below.
   if (features.squadMode === "monthly") {
     // The club's live months: the sweep's, else ONE read here for both
     // the sign-up list and the payment posts.
@@ -1055,28 +1055,27 @@ export async function computeDuePosts(
     if (!facts && features.squadMode === "monthly") {
       console.warn(`[scheduler] org ${org.id}: match ${m.id} is not in the club's summary; treated as a game of no month on this poll`);
     }
-    const shape = schedulerMonthShape({ facts: facts?.month ?? null, months: club.squad.months, match: m, now });
+    const monthFact = facts?.month ?? null;
+    const flow = monthFlowOf({ mode: features.squadMode, month: monthFact, stillToPlay: stillToPlay(m, now) });
     // The month's members as this match sees them, for a game of a
     // running (or lately closed) month: content, not a club fact, so from
     // the month's own rows (`runningMonths`).
-    const month = shape.kind === "month" ? (runningMonths.find((r) => r.id === shape.monthId) ?? null) : null;
-    if (shape.kind === "month" && !month) {
-      console.warn(`[scheduler] org ${org.id}: month ${shape.monthId} of match ${m.id} was not read with the running months; no week's list on this poll`);
+    const month = flow === "month" && monthFact?.monthId ? (runningMonths.find((r) => r.id === monthFact.monthId) ?? null) : null;
+    if (flow === "month" && !month) {
+      console.warn(`[scheduler] org ${org.id}: month ${monthFact?.monthId ?? "?"} of match ${m.id} was not read with the running months; held as a month not under way on this poll`);
     }
     // The pay as you go price stays in the week's list and the pool's
     // offer whatever the payment flags (2026-11-03): it is what an open
     // place costs, a fact of the game a player decides on, not a payment
     // message. Pool and friend-link offers say it the same way.
     const paygPricePence = club.squad.paygPricePence;
+    // Only a game of a month under way has a month context. Every other
+    // match of a monthly club is pending (`monthPending` below): no
+    // weekly post reaches it, whatever its phase.
     const monthly: MonthlyMatchContext | null = month
-      ? { monthId: month.id, seeded: shape.kind === "month" && shape.seeded, members: weekMembers(month, m.id), paygPricePence }
-      : shape.kind === "signup"
-        ? { monthId: shape.monthId, seeded: false, signup: true, members: [], paygPricePence }
-        : shape.kind === "held"
-          ? // Held, not started: treated as in sign-up, so nothing weekly goes out.
-            { monthId: "", seeded: false, signup: true, members: [], paygPricePence }
-          : null;
-    await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly, cancelledHolds, opts.poolEnv, club);
+      ? { monthId: month.id, seeded: monthFact?.seeded === true, members: weekMembers(month, m.id), paygPricePence }
+      : null;
+    await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly, cancelledHolds, opts.poolEnv, club, monthFact?.phase ?? null);
   }
 
   // ── "Rate your players before the first teams" (2026-10-15) ─────────
@@ -1220,16 +1219,14 @@ async function withReplyPriorityJobs(orgId: string, now: Date, base: BotJob[]): 
 type MatchWithIncludes = Awaited<ReturnType<typeof getMatchesForScheduler>>[number];
 
 /**
- * A match of a club on "monthly" that belongs to a RUNNING month (slice 5,
- * MDs/monthly-squad-plan-2026-10-05.md section 5). Null for every match
- * of a weekly club, and for a monthly club's match with no running month:
- * `computeForMatch` then does exactly what it did before monthly mode.
+ * A match of a club on "monthly" whose month is under way: the flow
+ * "month" (`monthFlowOf`, monthly-gates.ts: a running month, or a played
+ * game of a closed one). Null for every match of a weekly club, and for a
+ * monthly club's match whose month is not under way (`monthPending` in
+ * `computeForMatch`).
  */
 interface MonthlyMatchContext {
   monthId: string;
-  /** The month is still in sign-up (slice 3): its list is the sign-up
-   *  list, and the cold "say IN" announcement must not go out beside it. */
-  signup?: boolean;
   /** The month's regulars have been put onto this match. */
   seeded: boolean;
   members: WeekMember[];
@@ -1322,6 +1319,9 @@ async function computeForMatch(
   /** The club's summary (club summary A1): the 18:00 nudge's fewest
    *  players to play, over every format of the game's sport. */
   club?: ClubSummary,
+  /** This match's month phase (the summary's `MatchFacts.month.phase`,
+   *  club summary B2); null for a weekly club. */
+  monthPhase: MonthPhase | null = null,
 ) {
   /**
    * The composed chase, or null for the static copy: a rolling-squad or
@@ -1359,17 +1359,19 @@ async function computeForMatch(
   const activity = m.activity;
   const sport = activity.sport;
   /**
-   * A club on "monthly" whose month MatchTime does not hold yet (no
-   * SquadMonth for this match; the Vets group, 3 Nov 2026). The squad
-   * starts from the organiser's posted list and IN is only for a pay as
-   * you go player or a named guest taking an open place (Kemal,
-   * 2026-11-03), so the confirmed count is only whoever happened to say
-   * IN. Every weekly post that counts that squad and asks for more is
-   * held back: the 17:00 post, the match-day and pre-kickoff chases, the
-   * drop-out reminder and the published list. The announcement has its
-   * own monthly copy. Always false for a weekly club.
+   * A MONTHLY CLUB'S GAME WHOSE MONTH IS NOT UNDER WAY (club summary B2,
+   * `monthFlowOf` "month-pending"): no month yet (the Vets group, 3 Nov
+   * 2026), held for its organiser, in sign-up, or a closed month's game
+   * still to play. The squad starts from the organiser's posted list and IN
+   * is only for a pay as you go player or a named guest taking an open place
+   * (Kemal, 2026-11-03), so the confirmed count is only whoever happened to
+   * say IN. A weekly post never reaches it, on the players' group or the
+   * organisers' side: no 17:00 post, chase, deadline post, payment poll,
+   * unpaid reminder, fee ask or recruit chase. A game with no month yet
+   * gets the announcement's own monthly copy; held or in sign-up, none (the
+   * month's list is the announcement). Always false for a weekly club.
    */
-  const noMonthYet = !monthly && features.squadMode === "monthly";
+  const monthPending = !monthly && features.squadMode === "monthly";
   // THE GROUP'S LANGUAGE (`Organisation.language`), once per match. Read
   // defensively: the unit-test fixtures build `activity.org` by hand and
   // some omit it; Prisma always selects it. Unknown or missing is English,
@@ -1745,8 +1747,11 @@ async function computeForMatch(
       // (block 2-monthly) is posted once the regulars are seeded. Before
       // this gate also held for a running month (2026-11-03), a running
       // month's match that was not seeded yet got the weekly "Say IN to
-      // join". Null for every weekly club.
-      !monthly
+      // join". Only a game with no month at all gets the monthly copy
+      // below (club summary B2: a month in sign-up, priced or not yet
+      // listed, is in sign-up, K8 b). Null for every weekly club.
+      !monthly &&
+      !(monthPending && monthPhase !== "none")
     ) {
       // A club on "monthly" with no month yet (the Vets group, 3 Nov
       // 2026: no SquadMonth row, and the weekly "Say IN to join. First 14
@@ -1755,7 +1760,7 @@ async function computeForMatch(
       // players and guests say IN, and the organiser posts the list.
       // The organisers announce: they are told the list is open instead.
       if (organisers) await toOrganisers(key, "announce");
-      else if (noMonthYet) {
+      else if (monthPending) {
         let organiser: string | null = null;
         try {
           const { loadOrganiserName } = await import("./group-hello-load");
@@ -1848,7 +1853,8 @@ async function computeForMatch(
     //   2-pre      match day, teams out: NOTHING. No team sheet is ever
     //              posted in the players' group in this mode, and the
     //              team review in the admin group is its own feature.
-    //   2-monthly  nothing, as below.
+    //   2-monthly  nothing, as below, for every game of a monthly club
+    //              (club summary B2, D2a: a month not under way too).
     //   2-pre-alt, 2a, 2b: the admins get the squad, with the unpaid count
     //              where the group post would have carried the tail. 2b's
     //              squad-complete skip holds: that post went to them too.
@@ -1861,8 +1867,8 @@ async function computeForMatch(
       let due = false;
       if (isMatchDay && teamsReady) {
         // 2-pre: no team sheet anywhere from here.
-      } else if (monthly) {
-        // 2-monthly: the month's list.
+      } else if (monthly || monthPending) {
+        // 2-monthly: the month's list, or a month not under way.
       } else if (isMatchDay && need === 0) due = true;
       else if (beforeDeadline && need > 0) due = true;
       else if (beforeDeadline && need === 0) {
@@ -1967,7 +1973,7 @@ async function computeForMatch(
           })(),
           lang,
         });
-      } else if (monthly || noMonthYet) {
+      } else if (monthly || monthPending) {
         // MONTHLY SQUAD (slice 5): the squad is the month's list, posted
         // in the group's own format when it changes and on match morning
         // (block 2-monthly below). The daily 17:00 roster, chase and
@@ -2143,9 +2149,10 @@ async function computeForMatch(
   //    morning), so a club that kept its weekly deadlines when it went
   //    monthly would get two differently shaped lists. The same reason
   //    the 17:00 post and "Squad complete" do not fire. `monthly` is null
-  //    for every match of a weekly club. Nor for a monthly club with no
-  //    month yet (`noMonthYet`): its roster is not the month's squad.
-  if (!monthly && !noMonthYet) {
+  //    for every match of a weekly club. Nor for a monthly club's game
+  //    whose month is not under way (`monthPending`): its roster is not
+  //    the month's squad.
+  if (!monthly && !monthPending) {
     const isLive = m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED";
     const weekly = weeklyDeadlinesFor(m.date, activity.org);
     const reminderKey = `${matchId}:dropout-reminder`;
@@ -2319,7 +2326,7 @@ async function computeForMatch(
       playersPerTeam: sport.playersPerTeam,
     });
     const live =
-      m.status === "UPCOMING" && now.getTime() < m.date.getTime() && !noMonthYet && (!monthly || monthly.seeded === true);
+      m.status === "UPCOMING" && now.getTime() < m.date.getTime() && !monthPending && (!monthly || monthly.seeded === true);
     if (live && range.max > range.normal && !organisers) {
       const choseBench = bench.length >= 2 ? await loadChoseBench(db, matchId) : new Set<string>();
       const movable = bench.filter((a) => !choseBench.has(a.userId)).length;
@@ -2405,8 +2412,10 @@ async function computeForMatch(
       now,
     });
     // The players are chased while a place is open (`need`, squad-short.ts),
-    // at or above the game's minimum too (K1, 2026-11-04).
-    const placeOpen = need > 0;
+    // at or above the game's minimum too (K1, 2026-11-04). Never for a
+    // monthly club's game whose month is not under way (club summary B2,
+    // K8 e): "we still need N" counts whoever said IN, not the squad.
+    const placeOpen = need > 0 && !monthPending;
     // Cheap pre-filter: the three cheap booleans and the clock gate all
     // have to hold before we spend a query. This block therefore costs
     // nothing on the overwhelmingly common tick.
@@ -2780,14 +2789,14 @@ async function computeForMatch(
   {
     const hour = londonHour(now);
     // A MONTHLY CLUB WHOSE REGULARS ARE NOT ON THE MATCH YET (Vets sandbox,
-    // 2026-11-03): no month (`noMonthYet`), a month in sign-up or held, or a
-    // running month not yet seeded onto this game. Both nudges count the
+    // 2026-11-03): a month not under way (`monthPending`: no month, in
+    // sign-up or held), or a running month not yet seeded onto this game. Both nudges count the
     // squad on the match, and there that count is only whoever said IN, so
     // "Match in trouble: only 0 confirmed" went to the owner on the Sunday
     // of a club that plays from the month's list. Held until the regulars
     // are on it; from then the count is theirs and the nudge is true.
     const regularsNotOnYet =
-      noMonthYet || (monthly !== null && (monthly.signup === true || !monthly.seeded));
+      monthPending || (monthly !== null && !monthly.seeded);
     const isDayBefore = hoursUntilMatch >= 12 && hoursUntilMatch <= 36 && !regularsNotOnYet;
 
     // 10:00 — switch-to-smaller-format nudge
@@ -2925,13 +2934,15 @@ async function computeForMatch(
         // different marker).
         !recruitAckRecently(await loadQuietRows(), { matchId, need, now })
       ) {
+        // A monthly club's game whose month is not under way, on either
+        // side (club summary B2, K8 c): "N more needed" would ask the
+        // paid-up regulars to say IN, and the count is not the squad.
         // The organisers announce: the short squad goes to them. (An admin
         // GROUP's hours start at 09:00, so there it waits for the 3h chase.)
-        if (organisers) {
+        if (monthPending) {
+          // Nothing.
+        } else if (organisers) {
           if (isShort) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
-        } else if (noMonthYet) {
-          // A monthly club with no month yet: "N more needed" would ask
-          // the paid-up regulars to say IN.
         } else {
           const chase = await chaseText(
             "match-day-morning",
@@ -2955,10 +2966,10 @@ async function computeForMatch(
         hoursUntilMatch <= 4 &&
         hoursUntilMatch >= 3
       ) {
-        if (organisers) {
-          if (isShort) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
-        } else if (noMonthYet) {
+        if (monthPending) {
           // As the morning chase above.
+        } else if (organisers) {
+          if (isShort) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
         } else {
           const chase = await chaseText("chase-pre-kickoff", key, () =>
             buildChasePreKickoffFallback({
@@ -2990,10 +3001,10 @@ async function computeForMatch(
       (m.status === "TEAMS_PUBLISHED" || m.status === "TEAMS_GENERATED" || m.status === "UPCOMING")
     ) {
       // The organisers' notice only while the squad is short (see 4c).
-      if (organisers) {
-        if (isShort) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
-      } else if (noMonthYet) {
+      if (monthPending) {
         // As the chases above.
+      } else if (organisers) {
+        if (isShort) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
       } else {
         const chase = await chaseText("pre-kickoff-short", key, () =>
           buildPreKickoffShortFallback({
@@ -3090,8 +3101,10 @@ async function computeForMatch(
   //        can opt out while things stabilise.
   //        MONTHLY SQUAD (slice 5, plan 5.6): not for a match of a
   //        running month. The poll asks everybody who played to pay, and
-  //        the regulars have paid for the month.
-  if (m.postMatchEndFlow !== false && !monthly) {
+  //        the regulars have paid for the month. Nor for a monthly club's
+  //        game whose month is not under way (club summary B2, D2c): a
+  //        weekly post never reaches a monthly club.
+  if (m.postMatchEndFlow !== false && !monthly && !monthPending) {
     const endedAt = new Date(m.date.getTime() + activity.matchDurationMins * 60 * 1000);
     const key = `${matchId}:payment-poll`;
     if (
@@ -3134,10 +3147,12 @@ async function computeForMatch(
   //    send people to "the payment poll", and a month's game has none
   //    (6a above). Its per-game players have their pay link and the daily
   //    pay chase, and the organisers their unpaid list (`unpaid-list.ts`).
+  //    Nor for a game whose month is not under way (club summary B2, D2c).
   {
     const key = `${matchId}:unpaid-group`;
     if (
       !monthly &&
+      !monthPending &&
       m.status === "COMPLETED" &&
       m.postMatchEndFlow !== false &&
       activity.org?.paymentTrackingEnabled &&
@@ -3190,8 +3205,12 @@ async function computeForMatch(
     : null;
   const freePlaces = confirmed.filter((a) => isFeeWaived(a) && !a.paidAt && !isMonthlyRow(a)).length;
   const paygFeeToConfirm = monthly && monthly.paygPricePence != null ? monthly.paygPricePence / 100 : null;
+  //    A monthly club's game whose month is not under way gets no fee ask
+  //    (club summary B2, K8 d): its players are the month's regulars and
+  //    whoever said IN, not a weekly squad that owes a per-game fee.
   if (
     m.postMatchEndFlow !== false &&
+    !monthPending &&
     activity.org?.paymentCollectionEnabled &&
     activity.org.paymentHolderId &&
     m.feePerPlayer == null &&

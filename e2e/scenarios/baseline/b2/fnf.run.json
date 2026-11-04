@@ -1,0 +1,30 @@
+{
+ "club": "fnf",
+ "mode": "replay",
+ "ticks": 1458,
+ "steps": 32,
+ "sent": 66,
+ "errors": 0,
+ "seconds": 105,
+ "model": {
+  "club": "fnf",
+  "mode": "replay",
+  "recorded": 38,
+  "hits": 36,
+  "repeats": 0,
+  "reordered": 2,
+  "misses": 0,
+  "upstreamCalls": 0,
+  "missList": [],
+  "reorderedList": [
+   {
+    "key": "740f9a245e1a73c7f5f3a495608c678b",
+    "site": "You help balance the teams for one match. MatchTime splits the confirmed players into two "
+   },
+   {
+    "key": "740f9a245e1a73c7f5f3a495608c678b",
+    "site": "You help balance the teams for one match. MatchTime splits the confirmed players into two "
+   }
+  ]
+ }
+}

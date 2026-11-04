@@ -38,6 +38,7 @@ const render = (lang: "en" | "tr"): string[] => {
     c.noSize,
     c.noMatch,
     c.tooLate,
+    c.monthlyKeepsGame({ activityName: "Vets 7s" }),
     c.suggestUp({ total: 16, bench: 2, day, perSide: 8, admins: "Davide" }),
     c.dmIn({ day, perSide: 8, price: null }),
     c.dmIn({ day, perSide: 8, price: "£8" }),

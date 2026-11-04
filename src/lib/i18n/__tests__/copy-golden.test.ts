@@ -472,6 +472,7 @@ import { formatRatingProgressReply } from "../../rating-progress-answer";
 import { buildMomAnnouncement } from "../../mom-announcement";
 import { buildBadgeAnnouncementPost } from "../../badge-announcements";
 import { buildFormatSwitchFacts } from "../../format-switch";
+import { flexFormatCopy } from "../flex-format";
 import { renderKickoffMoveLine } from "../../format-switch-time";
 import { buildOutOfBandAttendanceLine } from "../../out-of-band-attendance";
 import { planUnresolvedNudge } from "../../unresolved-nudge";
@@ -1069,6 +1070,7 @@ function cases(lang: Lang): Case[] {
   add("B7 web_ratings_off", t(lang).web_ratings_off({ club: "Thursday Ratings" }));
   // Club summary B6: the match page's ask, for a club MatchTime does not speak for.
   add("B6 xask_round_club_quiet", t(lang).xask_round_club_quiet);
+  add("B2 monthlyKeepsGame / a monthly club's game is not moved to another game", flexFormatCopy(lang).monthlyKeepsGame({ activityName: "Vets 7s" }));
 
   // ── 1.1 bench-offer-copy.ts, row 49 (extracted from bench-confirmation.ts 2026-09-17)
   add("R49 buildBenchClaimAnnouncement / team and replaced player", buildBenchClaimAnnouncement({ claimerName: "Erdal Ozkan", droppedName: "Sait Demir", teamLabel: redLabel, confirmedCount: 14, maxPlayers: 14, lang }));

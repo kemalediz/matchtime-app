@@ -24,6 +24,8 @@ import { sendAdminNotice } from "./admin-channel";
 import { normaliseLang } from "./i18n/lang";
 import { loadPlayerNames } from "./player-display-name";
 import { placesOpen } from "./squad-short";
+import { monthFlowOf } from "./monthly-gates";
+import { normaliseSquadMode } from "./squad-month-rules";
 
 export async function announceSquadFullIfJustFilled(
   matchId: string,
@@ -72,11 +74,11 @@ export async function announceSquadFullIfJustFilled(
   // month reads its squad from the month's list, which is posted (and
   // re-posted when it changes) by the scheduler. A second, differently
   // shaped roster the moment the last place is taken would be the noise
-  // that list replaces. A weekly club makes no query here.
-  if (m.activity.org?.squadMode === "monthly") {
-    const { loadMonthlyWeek } = await import("./monthly-week");
-    if (await loadMonthlyWeek(matchId).catch(() => null)) return;
-  }
+  // that list replaces. Club summary B2 (D2d): the same for a monthly
+  // club's game whose month is not under way (no month yet, held, in
+  // sign-up): before the month the count is not the squad. Only a weekly
+  // club's game is ever "weekly" (`monthFlowOf`), so this needs no read.
+  if (monthFlowOf({ mode: normaliseSquadMode(m.activity.org?.squadMode), month: null, stillToPlay: true }) !== "weekly") return;
 
   const key = `${matchId}:squad-locked`;
   // Atomic claim of the announcement — first writer wins.
