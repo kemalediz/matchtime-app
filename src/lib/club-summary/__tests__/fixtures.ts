@@ -63,6 +63,7 @@ export function orgRow(over: Partial<OrgRow> & { id: string; name: string }): Or
     rollingSquadEnabled: false,
     paygPricePence: null,
     monthCreditRule: "any-miss",
+    teamLabels: [],
     ...over,
   };
 }

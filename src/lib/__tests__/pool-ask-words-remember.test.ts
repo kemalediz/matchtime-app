@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const dbMock = vi.hoisted(() => ({ match: { findUnique: vi.fn() }, organisation: { findUnique: vi.fn() } }));
 vi.mock("../db", () => ({ db: dbMock }));
 vi.mock("../admin-group-log", () => ({ hqQuestionsSince: vi.fn() }));
-const squad = vi.hoisted(() => ({ loadSquadState: vi.fn() }));
+const squad = vi.hoisted(() => ({ loadSquadMatchId: vi.fn() }));
 vi.mock("../pipeline/load-state", () => squad);
 const round = vi.hoisted(() => ({ requestPoolAsk: vi.fn(), placesOpenOf: vi.fn() }));
 vi.mock("../pool/round", () => round);
@@ -29,7 +29,7 @@ beforeEach(() => {
   dbMock.match.findUnique.mockResolvedValue({ id: "m1", date: new Date("2026-10-30T19:00:00Z"), activity: { venueRef: null } });
   // What the refusal's reply reads (`refusalContext`): the club's name, its pool switch and its cut-off.
   dbMock.organisation.findUnique.mockResolvedValue({ name: "MT Test", featurePlayerPool: true, partnerAskCutoffHours: null });
-  squad.loadSquadState.mockResolvedValue({ matchId: "m1" });
+  squad.loadSquadMatchId.mockResolvedValue("m1");
   round.placesOpenOf.mockResolvedValue(2);
   round.requestPoolAsk.mockResolvedValue({ ok: false, refusal: "no-venue" });
 });

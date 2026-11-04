@@ -42,6 +42,11 @@ export interface ClubSummary {
   /** The switches, exactly as `getOrgFeatures` returns them (it IS that call). */
   features: OrgFeatures;
 
+  /** `Organisation.teamLabels` as stored: the club's own names for the two
+   *  sides, a slot "" or missing falling back to the sport's, then the
+   *  language's default (`resolveTeamLabels`, team-labels.ts). */
+  teamLabels: string[];
+
   routine: RoutineFacts;
   payments: PaymentFacts;
   squad: SquadFacts;
@@ -164,7 +169,7 @@ export interface PaymentFacts {
   collectionLive: boolean;
   /** `availablePayMethods` (payments.ts): the ways a player can actually pay. */
   methods: { payByBank: boolean; card: boolean; direct: boolean };
-  /** `paymentHolderId` and that user's `User.name` (as `loadClubSnapshot`). */
+  /** `paymentHolderId` and that user's `User.name` (the club answer's collector, `clubSnapshotOf`). */
   collector: { userId: string; name: string | null } | null;
   /** `paymentInstructions` as stored (not trimmed: `directPayInstructions`
    *  decides when and how it is shown). */

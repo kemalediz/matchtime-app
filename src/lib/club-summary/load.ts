@@ -28,6 +28,8 @@
  * caller has already read IN THIS REQUEST:
  *   - `org`: the club's row, read with `CLUB_ORG_SELECT` (the poll finds
  *     the club by its WhatsApp group with it), so read 1 is not repeated;
+ *   - `features` with `org` (slice A2, the analyze route): the switches of
+ *     that same row, `orgFeaturesFromRow` over it, so read 2 is not either;
  *   - `keep`: the switches, the collector's name, the games and the
  *     last-played candidates of an earlier summary of the same poll, which
  *     the writes since cannot have changed (the month sweeps write months,
@@ -38,7 +40,7 @@
  * No cache here: `scope.ts` memoises a summary for one request or one poll.
  */
 import { db } from "../db";
-import { getOrgFeatures } from "../org-features";
+import { getOrgFeatures, type OrgFeatures } from "../org-features";
 import { SETUP_STAGE_SELECT } from "../club-setup-rules";
 import { isPaymentCollectionLive } from "../payments-live-announce";
 import { loadPlayerNames } from "../player-display-name";
@@ -96,6 +98,7 @@ export const CLUB_ORG_SELECT = {
   rollingSquadEnabled: true,
   paygPricePence: true,
   monthCreditRule: true,
+  teamLabels: true,
 } as const;
 
 export interface LoadClubOptions {
@@ -103,6 +106,11 @@ export interface LoadClubOptions {
   members?: boolean;
   /** The club's row, already read in this request with `CLUB_ORG_SELECT`. */
   org?: OrgRow | null;
+  /** The switches of that same row (`orgFeaturesFromRow` over it, read with
+   *  `ORG_FEATURES_SELECT` too): the analyze route reads both in the one
+   *  query that finds the club by its group, so read 2 is not repeated.
+   *  Only with `org`, and only for that club. */
+  features?: OrgFeatures;
   /** An earlier summary's rows of this club in this request that the
    *  writes since cannot have changed (see the header). */
   keep?: Pick<ClubRows, "features" | "collectorName" | "activities" | "lastPlayed">;
@@ -118,7 +126,7 @@ export async function loadClubRows(orgId: string, now: Date, opts: LoadClubOptio
   const given = opts.org && opts.org.id === orgId ? opts.org : null;
   const [org, features] = await Promise.all([
     given ? Promise.resolve(given) : db.organisation.findUnique({ where: { id: orgId }, select: CLUB_ORG_SELECT }),
-    opts.keep ? Promise.resolve(opts.keep.features) : getOrgFeatures(orgId),
+    opts.keep ? Promise.resolve(opts.keep.features) : given && opts.features ? Promise.resolve(opts.features) : getOrgFeatures(orgId),
   ]);
   if (!org) return null;
 
