@@ -79,7 +79,9 @@
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { onboardingUserKey, withOrgAiBudget } from "@/lib/ai-budget";
 import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
-import { IN_LIVE_STAGE_CLUB_WHERE, settingUpClubsReason } from "@/lib/club-setup";
+import { settingUpClubsReason } from "@/lib/club-setup";
+import { inServedClubWhere } from "@/lib/club-voice";
+import { dmClubsSilence } from "@/lib/club-voice-db";
 import { scheduleSetupAfterApproval } from "@/lib/club-setup-schedule";
 import { setupHoldEnabledForApiRequest } from "@/lib/setup-hold-flag";
 import { handleGoDm, handleSettingUpDm } from "@/lib/setup-go-dm";
@@ -637,8 +639,9 @@ export async function POST(request: Request) {
   //   The rail reads the sender's CURRENT memberships (a live club the
   //   person has left does not shield them). A sender who also belongs to
   //   a live club is not caught; for them every club pick below spreads
-  //   `IN_LIVE_STAGE_CLUB_WHERE`, so a setting-up club does not exist for
-  //   club selection and they are handled for their live club only. With
+  //   `inServedClubWhere()` (club-voice.ts, B6), so a setting-up club does
+  //   not exist for club selection and they are handled for their live club
+  //   only. With
   //   no club setting up, the rail is one read that answers null for
   //   everybody and the picks below are unchanged.
   if (allClubsSettingUp) {
@@ -662,6 +665,22 @@ export async function POST(request: Request) {
       console.log(`[dm-reply] sender ${user.id} belongs only to clubs that are still setting up; ignoring`);
     }
     return NextResponse.json({ ok: true, ...out });
+  }
+
+  // ── The one rule, third rail (club summary B6, `club-voice.ts`) ────────
+  //   A sender whose every current club is one MatchTime does not serve
+  //   (dormant, or a mix of the reasons above) goes no further: no model
+  //   call, nothing queued. A muted club IS served (K7 b, the main
+  //   session's review of #536): its members are read and answered as
+  //   before, the reply waiting at the drain for the unmute. A sender in a
+  //   served club is handled; every club pick below takes only such a club
+  //   (`inServedClubWhere()`).
+  {
+    const silence = await dmClubsSilence(user.id);
+    if (silence) {
+      console.log(`[dm-reply] sender ${user.id} belongs only to clubs MatchTime does not serve (${silence}); ignoring`);
+      return NextResponse.json({ ok: true, ignored: silence });
+    }
   }
 
   // ── The partner club's ask by DM (2026-10-21), found by its code above ──
@@ -720,7 +739,7 @@ export async function POST(request: Request) {
     // DM is addressed by phone). Its language is the language the command
     // is read in (English words are always read) and the ack is written in.
     const subMem = await db.membership.findFirst({
-      where: { userId: user.id, leftAt: null, ...IN_LIVE_STAGE_CLUB_WHERE },
+      where: { userId: user.id, leftAt: null, ...inServedClubWhere() },
       select: { orgId: true, org: { select: { language: true } } },
     });
     // Someone in no club (a pool player) reads it in his pool language (L6.11).
@@ -1243,7 +1262,7 @@ export async function POST(request: Request) {
             // Never a club that is still setting up: the classifier is paid
             // from the first id here, and recruit and rating progress act on
             // one of them.
-            ...IN_LIVE_STAGE_CLUB_WHERE,
+            ...inServedClubWhere(),
             ...(su ? {} : { role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE }),
           },
           select: { orgId: true },

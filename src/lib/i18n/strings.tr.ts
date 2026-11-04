@@ -4313,6 +4313,7 @@ export const tr: Strings = {
   xask_round_count_hint: "Bu sayı seçtiğiniz tüm kulüpler için toplamdır, her kulüp için ayrı değil.",
   xask_round_button: (p) => `${p.places} oyuncu iste`,
   xask_round_none_ticked: "En az bir partner kulüp seçin.",
+  xask_round_club_quiet: "MatchTime şu an kulübünüz için mesaj göndermiyor, bu yüzden kimseye sorulmadı.",
   xask_round_status: (p) => `${p.wanted} oyuncu isteniyor: şu ana kadar ${p.placed} bulundu`,
   xask_round_cancel: "Bu isteği iptal et",
   xask_round_cancelled_toast: "İstek iptal edildi. Partner kulüplere haber verildi.",

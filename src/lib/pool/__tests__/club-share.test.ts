@@ -157,7 +157,8 @@ describe("sendClubShare", () => {
   });
 
   it("no players' group, or the bot off for it: nothing claimed, so it can be sent once it is", async () => {
-    for (const org of [{ ...ORG, whatsappGroupId: null }, { ...ORG, whatsappBotEnabled: false }]) {
+    // A dormant club with its bot on too (club summary B6, club-voice.ts).
+    for (const org of [{ ...ORG, whatsappGroupId: null }, { ...ORG, whatsappBotEnabled: false }, { ...ORG, dormantAt: new Date("2026-10-01T00:00:00Z") }]) {
       state.org = org;
       expect(await sendClubShare("org1", NOON, OPEN)).toEqual({ ok: false, reason: "no-group" });
     }

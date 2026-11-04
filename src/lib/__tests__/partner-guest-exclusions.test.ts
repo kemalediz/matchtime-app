@@ -88,7 +88,8 @@ describe("the readers that leave a guest out", () => {
     expect(src("seed-nudge.ts")).toMatch(/const members = all\.filter\(\(m\) => !isGuestMembership\(m\)\)/);
   });
   it("a cold DM never lands on a club he is only a guest of", () => {
-    expect(src("dm-registration-target.ts")).toMatch(/where: \{ userId, leftAt: null, \.\.\.ORDINARY_MEMBER_WHERE, \.\.\.IN_LIVE_STAGE_CLUB_WHERE \}/);
+    // The club pick is the one rule's since B6 (`inServedClubWhere`, club-voice.ts).
+    expect(src("dm-registration-target.ts")).toMatch(/where: \{ userId, leftAt: null, \.\.\.ORDINARY_MEMBER_WHERE, \.\.\.inServedClubWhere\(\) \}/);
   });
   it("the club's leaderboard skips a guest's ratings", () => {
     // One rule for every season table since review L3: the ranked roster.

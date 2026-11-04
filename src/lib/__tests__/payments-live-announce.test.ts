@@ -175,6 +175,10 @@ describe("announcePaymentsLiveIfJustLive", () => {
     expect((await announcePaymentsLiveIfJustLive(ORG, { wasLive: false })).announced).toBe(false);
     orgFindUnique.mockResolvedValue(org({ whatsappBotEnabled: false }));
     expect((await announcePaymentsLiveIfJustLive(ORG, { wasLive: false })).announced).toBe(false);
+    // The one rule (club summary B6, club-voice.ts): a dormant club with its
+    // bot on is not spoken for either, so the key is kept for its return.
+    orgFindUnique.mockResolvedValue(org({ dormantAt: new Date("2026-10-01T00:00:00Z") }));
+    expect((await announcePaymentsLiveIfJustLive(ORG, { wasLive: false })).announced).toBe(false);
     expect(sentCreate).not.toHaveBeenCalled();
     expect(botJobCreate).not.toHaveBeenCalled();
   });

@@ -30,6 +30,7 @@ import { optedOutOfDms, planPoolAdmission, poolOfferCancelFailReason, type PoolJ
 import { poolOffersOpenForClub, poolSwitchUnread } from "./flags";
 import { OPEN_MATCH_STATUSES } from "./matching-rules";
 import { offerExpiresAt } from "./waves";
+import { VOICE_SELECT, clubVoice, voiceFactsOfRow } from "../club-voice";
 
 type Env = Record<string, string | undefined>;
 
@@ -76,7 +77,7 @@ export async function admitPoolOfferJobs(jobIds: readonly string[], opts: { now:
             outcome: true,
             expiresAt: true,
             platformJobId: true,
-            ask: { select: { status: true, org: { select: { featurePlayerPool: true } }, match: { select: { date: true, status: true, isHistorical: true } } } },
+            ask: { select: { status: true, org: { select: { featurePlayerPool: true, ...VOICE_SELECT } }, match: { select: { date: true, status: true, isHistorical: true } } } },
           },
         });
         const userIds = [...new Set(offers.map((o) => o.userId))];
@@ -128,6 +129,7 @@ export async function admitPoolOfferJobs(jobIds: readonly string[], opts: { now:
             userId: o.userId,
             orgId: o.orgId,
             clubOpen: poolOffersOpenForClub(o.ask.org, env),
+            clubVoice: clubVoice(voiceFactsOfRow(o.ask.org)).state,
             profileActive: active.has(o.userId),
             dmOptedOut: optedOut.has(o.userId),
             offerOpen: o.outcome === null,

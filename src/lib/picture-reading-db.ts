@@ -9,7 +9,7 @@
  */
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
-import { servingClubWhere } from "./club-approval";
+import { speakingClubWhere } from "./club-voice";
 import { resolveSenderUserIds } from "./admin-group-link";
 import { withOrgAiBudget } from "./ai-budget";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
@@ -25,9 +25,10 @@ export function prismaPictureDeps(model: PipelineModel = anthropicModel()): Pict
   return {
     async findClub(groupId) {
       return db.organisation.findFirst({
-        // The club's live players' group. A club setting up, muted or
-        // paused has its bot off or is not serving: nothing is read.
-        where: { whatsappGroupId: groupId, whatsappBotEnabled: true, ...servingClubWhere() },
+        // The club's live players' group, by the one rule (club summary
+        // B6, `club-voice.ts`): a club setting up, muted, paused or
+        // dormant (new in B6) is not spoken for, so nothing is read.
+        where: { whatsappGroupId: groupId, ...speakingClubWhere() },
         select: { id: true },
       });
     },

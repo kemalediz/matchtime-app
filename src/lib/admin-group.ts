@@ -54,7 +54,7 @@ import { db } from "./db";
 import { resolveSenderUserIds } from "./admin-group-link";
 import { handlePickReply } from "./organiser-pick";
 import { PICK_RACE_WINDOW_MS } from "./organiser-pick-rules";
-import { isBillingPaused } from "./club-billing-rules";
+import { clubVoice, voiceFactsOfRow } from "./club-voice";
 import { recordHqMessage } from "./admin-group-log";
 import { understandAdminMessage } from "./admin-group-understand";
 import { HQ_FEE_FREE_EXPIRED, HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rules";
@@ -91,7 +91,7 @@ export type AdminGroupMessageResult =
   | { handled: false; ignored: "not-an-admin-group"; replyText: null }
   | {
       handled: false;
-      ignored: "no-open-pick" | "not-an-admin" | "not-a-pick" | "duplicate" | "club-billing-paused";
+      ignored: "no-open-pick" | "not-an-admin" | "not-a-pick" | "duplicate" | "club-billing-paused" | "club-dormant" | "club-not-served";
       orgId: string;
       replyText: null;
     }
@@ -180,15 +180,22 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   // and nothing is read or written for it. Never while BILLING_ENABLED is
   // off. (The Pi should not forward from a paused club's admin group at
   // all: it is listed silent. This is the server's own refusal.)
-  if (club ? club.lifecycle.billingPaused : isBillingPaused(org)) {
-    return { handled: false, ignored: "club-billing-paused", orgId: org.id, replyText: null };
+  // THE ONE RULE (club summary B6, `club-voice.ts`): a club MatchTime does
+  // not serve (dormant, which B6 adds, unapproved, setting up) is answered
+  // nothing in the same way, and nothing is read or written for it.
+  const voice = clubVoice(club ? club.lifecycle : voiceFactsOfRow(org));
+  if (voice.state === "silent") {
+    const ignored = voice.because === "billing-paused" ? "club-billing-paused" : voice.because === "dormant" ? "club-dormant" : "club-not-served";
+    return { handled: false, ignored, orgId: org.id, replyText: null };
   }
 
   // 1a. MONTHLY SQUAD: the collector answering the claims digest is read
   // by a model (2026-10-29), so it is the door's question now
   // (`admin-group-understand.ts`), not a reader in front of it.
 
-  const live = club ? club.lifecycle.botOn : org.whatsappBotEnabled === true;
+  // Muted: the rule's one HQ exemption, the club's own open pick round
+  // (below), and nothing else.
+  const live = voice.state === "on";
 
   const round = await db.organiserPickRound.findFirst({
     where: {

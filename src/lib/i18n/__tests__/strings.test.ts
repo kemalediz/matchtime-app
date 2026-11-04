@@ -1989,6 +1989,7 @@ const SAMPLES: SampleArgs = {
   xask_round_count_hint: null,
   xask_round_button: { places: 7 },
   xask_round_none_ticked: null,
+  xask_round_club_quiet: null,
   xask_round_status: { wanted: 7, placed: 5 },
   xask_round_cancel: null,
   xask_round_cancelled_toast: null,

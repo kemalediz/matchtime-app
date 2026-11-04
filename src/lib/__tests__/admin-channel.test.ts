@@ -155,6 +155,38 @@ describe("sendAdminNotice: the other two channels", () => {
     expect(jobs().every((j) => !("aboutKey" in j))).toBe(true);
   });
 
+  // The one rule (club summary B6, club-voice.ts): a notice for a club
+  // MatchTime does not serve would never go out (the drain refuses it) and
+  // is dropped when the club comes back, so it is not queued at all. A
+  // muted club's is queued and waits for the unmute, as before.
+  it.each([
+    ["dormant", { dormantAt: new Date("2026-09-01T00:00:00Z"), whatsappBotEnabled: true }],
+    ["waiting for approval", { approvalStatus: "pending", whatsappBotEnabled: false }],
+    ["setting up", { approvalStatus: "approved", setupStage: "setting-up", whatsappBotEnabled: false }],
+  ])("a club that is %s: nothing queued, on any channel", async (_label, over) => {
+    for (const mode of [{}, { adminChannelMode: "admin-group", adminGroupId: GROUP }]) {
+      dbMock.organisation.findUnique.mockResolvedValue(org({ ...mode, ...over }));
+      expect(await sendAdminNotice({ orgId: ORG, holdOvernight: false, ...NOTICE })).toEqual({ channel: "none", queued: 0 });
+    }
+    expect(jobs()).toEqual([]);
+  });
+  it("a club paused for the club fee (billing on): nothing queued", async () => {
+    const before = process.env.BILLING_ENABLED;
+    process.env.BILLING_ENABLED = "1";
+    try {
+      dbMock.organisation.findUnique.mockResolvedValue(org({ billingStatus: "paused", whatsappBotEnabled: true }));
+      expect(await sendAdminNotice({ orgId: ORG, holdOvernight: false, ...NOTICE })).toEqual({ channel: "none", queued: 0 });
+      expect(jobs()).toEqual([]);
+    } finally {
+      if (before === undefined) delete process.env.BILLING_ENABLED;
+      else process.env.BILLING_ENABLED = before;
+    }
+  });
+  it("a muted club: queued as before (it waits for the unmute)", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue(org({ whatsappBotEnabled: false }));
+    expect((await sendAdminNotice({ orgId: ORG, holdOvernight: false, ...NOTICE })).queued).toBe(3);
+  });
+
   it("an unknown club queues nothing", async () => {
     dbMock.organisation.findUnique.mockResolvedValue(null);
     expect(await sendAdminNotice({ orgId: ORG, holdOvernight: false, ...NOTICE })).toEqual({ channel: "none", queued: 0 });
