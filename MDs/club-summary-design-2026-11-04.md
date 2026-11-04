@@ -956,6 +956,103 @@ fewer for every shape (Sutton 12 to 11 and 17 to 16, FNF 17 to 16, the Vets 15 t
 ratings only 14 to 13, muted 17 to 16); every other page the same (pay 3 to 4, collect 2 to 4, month
 2 weekly or 8 monthly, month collect 2 or 21, admin months 4 or 20, settings 6, Teams ready 3).
 
+### 3.12 As built in slice B3 (one payments rule on every door)
+
+Built on `refactor/club-summary-b3` (PR against `refactor/club-summary`). Decision K2 (Kemal,
+2026-11-04, the main session's recommendation): ONE rule for "payments are on for this club", the
+existing `paymentMessagesOn` (tracking OR collection), which the summary exposes as
+`payments.messagesOn`; every door follows it the same way. Narrower gates stay where they are
+deliberate and name the rail they need: the poll path still needs tracking (`poll-vote`, the unpaid
+group reminder), pay links, fee asks and pay chases still need collection, and a match's "does
+MatchTime know who paid" (`matchHasPaymentSource`) is still the poll or released links.
+
+**The doors (D3), each with a failing test first.**
+- The credit command ("@Match Time Amir paid for 4"): `pipeline/engine.ts` and
+  `admin-ops-engine-batch.ts` refused it unless TRACKING was on; both now read
+  `paymentMessagesOnFor(state.features)`, and `SquadState.features` carries `paymentCollection`
+  (from the summary's switches). So Sutton FC (collection on, tracking off) can credit. It is still
+  an admin's alone, read in the players' group; HQ still answers "not done from HQ" (unchanged).
+- The help's payments topic (players' group, HQ and DMs, one builder): on only with COLLECTION; now
+  on by the rule. A club on the old poll alone gets its own explainer (`onbHelpPaymentsTracking`,
+  EN and TR: the poll, the unnamed count, "who still owes"), never naming the hidden setting; an
+  organiser's "help payments" also says how to record a payment made for others
+  (`onbHelpPaymentsCreditOrganiser`). The bare help lists payments for such a club, labelled
+  "payments" ("ödemeler"), as the settings card and the explainer call it, by one label builder
+  (`paymentsByPollOnly`, used for the explainer and both topic lists; review of #528). A club that
+  collects, or has payments off, keeps "match fees".
+- The settings page's Payments line: "Not collecting match fees" whenever collection was off; now
+  off only by the rule, and a poll-only club reads "Keeping track of who has paid" (TR "Kimin
+  ödediği takip ediliyor"). The tracking switch stays hidden (2026-10-16); see below.
+- `/month`: offered "I've paid" (and `sayMonthPaid` recorded it) with both flags off, and showed what
+  a regular owes, the pay-by line, the instructions and the paid state. With payments off the page
+  now says nothing about payments (the money block is gone, `facts.payments.messagesOn`, the row as
+  fallback) and the action records nothing; the month itself (the list, the games, the days away)
+  stays. Review of #528: the amount and the pay-by line follow the button.
+- `/pay`: read neither flag; with payments off it now says "Nothing to pay here" (EN and TR) and
+  shows no method, and `resolvePayContext` refuses every pay action with `PAYMENTS_OFF_REASON` (the
+  "Paid" DM never reaches it with them off: it reads only matches of a club that collects).
+- `/collect`: with payments off the "send the fee to release the pay links" hint is replaced by
+  "Payments are off for this club" (EN and TR). The match page's "Payments · who's paid" link: shown
+  with collection only, now by the rule (a poll-only club sees who ticked).
+- The monthly paid-claim DM reader (`handlePlayerPaidDm`): the model was asked first and the gate
+  read after; the gate now runs BEFORE the model, so with payments off no model is called, nothing
+  is recorded, and the DM goes on to the next handler as any DM does.
+- DM payment answers (`decideMyPayments`, `loadMyPayments`), the group's "who has not paid"
+  (`decidePaymentSnapshot`), the free place (`fee-waiver.ts`, `hqHelpGates`), the friend link and
+  pool offer fees: each restated the rule inline; each now calls it. No value changes.
+
+**"A card can be taken" (D4), one rule.** `isPaymentCollectionLive` (collection on, a connected
+account, charges enabled) moved into the pure `payments.ts` (re-exported by
+`payments-live-announce.ts`), so the summary's `collectionLive` is derived (`paymentFacts`), not
+handed in by the loader, and `ClubRowFacts` carries it. `availablePayMethods` offers card and Pay by
+Bank on it (it read `stripeChargesEnabled` alone), the group hello calls it (it restated it), and the
+pay action checks it (it read the account and charges). `PAY_METHOD_SELECT` gained
+`paymentCollectionEnabled` and `stripeConnectAccountId`. In production charges imply an account
+(both are cleared together), so the only club that moves is one with collection OFF and a Stripe
+account left over: no card or bank button on `/pay` (it has payments off or the poll only, so no
+pay link is ever sent to it). The e2e seed had charges enabled with no account; it now has a
+placeholder account (STRIPE_SECRET_KEY stays unset in e2e). The method labels are unchanged.
+
+**A guard.** `__tests__/payments-one-rule.test.ts` fails on a file that combines the two payment
+flags, or the account and charges, outside `payment-messages.ts` and `payments.ts` (one named
+narrower rule, `matchHasPaymentSource`, is listed with its reason).
+
+**Model input: none changes.** The DM question answerer's YOUR PAYMENTS block already followed the
+rule (an inline OR), and its ways to pay are unchanged for every shape (Sutton has an account);
+`__tests__/my-payments-one-flag.test.ts` pinned the block for collection only (EN and TR dates),
+tracking only and both off, and the group's payment answer for the same three, FIRST on the old code,
+and it is unchanged. The help and the pay pages are fixed copy, not model input. The monthly claim
+reader makes FEWER calls (none with payments off). No scenario club has exactly one flag on (the
+sandbox Sutton has both), and no scenario step asks for help or says "paid" by DM on a payments-off
+club, so the five replays run with 0 misses and the transcripts are identical to `baseline/main`
+(`scenarios:compare`: all five "identical"; no new cassette, no `baseline/b3`). FNF's replay matched
+two team-balancer requests by the loose key ("reordered": the same lines in another order, the row
+order of D13, the same site `baseline/main-before-519-520` shows five times); B3 sends the balancer
+nothing new. $0: no model, no key.
+
+**Characterisation snapshots updated, only for B3** (every entry):
+- A2 `loadSquadState` (10 entries, every shape and instant): the new `features.paymentCollection`
+  (true for Sutton and Sutton in Turkish, false elsewhere). No model request, write or reply moved.
+- A3 `dm-reply: muted` (the tracking-only shape): the organiser's bare help lists payments and no
+  longer calls it switched off.
+- A4 `pay > fnf`, `pay > ratings`, `pay > vets` (both flags off): every `/pay` load says "Nothing to
+  pay here" and every `/collect` load shows the payments-off notice; `match > muted`,
+  `match > vets-instr` (tracking on): the "Payments · who's paid" link.
+- The copy golden (EN, TR) and the Turkish onboarding review: "help payments" for a club with
+  tracking only, and the bare help's topic list (the payments line, then its label "payments"
+  after the review of #528; A3 `dm-reply: muted` the same label line). `help-before-organisers.json`: the two all-on
+  organiser "help payments" entries (EN, TR) gain the credit line.
+- A1 (scheduler) and the club-summary tests: unchanged, except the summary fixtures no longer hand in
+  `collectionLive`.
+
+**Left, and why.**
+- The credit command is still not done from HQ ("not done from HQ"), as before B3.
+
+**Open items.**
+- The tracking switch stays hidden on the settings page, as decided on 2026-10-16 (the main
+  session's review of #528 keeps it). So a poll-only club reads "Keeping track of who has paid" with
+  no switch on the page to turn it off; it would need the ⓘ entry and a change to that decision.
+
 ---
 
 ## 4. Migration, in slices
@@ -1231,7 +1328,7 @@ right.
 | id | question | slice | today |
 |---|---|---|---|
 | K1 | Does the chase still ask for the 14th player when 13 is above the club's minimum? Does "At risk" mean below the minimum or below the places? | B1 | the chases count places, the day-before nudges count the minimum |
-| K2 | With exactly one payment flag on, which messages go out: the HQ credit command, the help's payments topic, the settings page's "Payments" line? | B3 | three different answers |
+| K2 | With exactly one payment flag on, which messages go out: the HQ credit command, the help's payments topic, the settings page's "Payments" line? | B3 | three different answers. **Decided 2026-11-04** (Kemal accepted the recommendation): ONE rule, the existing `paymentMessagesOn` (tracking OR collection), exposed by the summary as `payments.messagesOn`, followed the same way on every door; "a card can be taken" is one rule too, `isPaymentCollectionLive`. Built in B3 (section 3.12). |
 | K3 | Before the collector confirms a fee, does MatchTime tell a player the game's usual fee, or "not set yet"? | B5 | the DM answer says the game's fee, the pay page says not set |
 | K4 | On a club with attendance off, may a player still tap IN on the website? | B7 | yes on the web, no in WhatsApp |
 | K5 | Is "today" the London day for the next match, and do the deadline posts and the month's list honour a cancelled match's day like the announcement does? | B4 | UTC in the selector, London in the posting rule; two posts skip the hold |

@@ -31,8 +31,8 @@ vi.mock("../magic-link", () => ({ signMagicLinkToken: () => "token", MAGIC_LINK_
 
 import { releaseMatchPayments } from "../payment-flow";
 
-const FNF_SWITCHES = { payMethodPayByBank: false, payMethodCard: false, payMethodDirect: true, stripeChargesEnabled: false };
-const LIVE_SWITCHES = { payMethodPayByBank: true, payMethodCard: true, payMethodDirect: true, stripeChargesEnabled: true };
+const FNF_SWITCHES = { payMethodPayByBank: false, payMethodCard: false, payMethodDirect: true, paymentCollectionEnabled: true, stripeConnectAccountId: null, stripeChargesEnabled: false };
+const LIVE_SWITCHES = { payMethodPayByBank: true, payMethodCard: true, payMethodDirect: true, paymentCollectionEnabled: true, stripeConnectAccountId: "acct_1", stripeChargesEnabled: true };
 
 function att(id: string, name: string, phone: string) {
   return { userId: id, status: "CONFIRMED", paymentMethod: null, paidAt: null, user: { id, name, phoneNumber: phone } };

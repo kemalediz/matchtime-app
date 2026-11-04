@@ -10,6 +10,7 @@ import { t } from "@/lib/i18n/t";
 import { MatchContextHeader } from "@/components/match/match-context-header";
 import { resolveTeamLabels } from "@/lib/team-labels";
 import { CLUB_ROW_SELECT, clubRowFactsOf } from "@/lib/club-row-facts";
+import { paymentMessagesOn } from "@/lib/payment-messages";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,8 @@ export default async function CollectPage({
   const club = clubRowFactsOf(org, "collect");
   // The collector collects — they don't pay themselves, so don't list them.
   const collectorId = club ? (club.payments.collector?.userId ?? null) : org.paymentHolderId;
+  // Payments on by the one rule (decision K2, club summary B3).
+  const paymentsOn = club ? club.payments.messagesOn : paymentMessagesOn(org);
   const clubTeamLabels = club ? { teamLabels: club.teamLabels } : org;
   const rows = match.attendances
     .filter((a) => a.userId !== collectorId)
@@ -128,7 +131,14 @@ export default async function CollectPage({
           </div>
         </div>
 
-        {base == null && (
+        {/* Payments off (decision K2): no pay links will go out, so the
+            "send the fee" hint below would be untrue. */}
+        {!paymentsOn && (
+          <div className="mb-4 rounded-lg bg-slate-100 border border-slate-200 px-4 py-3 text-sm text-slate-700" data-testid="collect-payments-off">
+            {words.collect_payments_off}
+          </div>
+        )}
+        {paymentsOn && base == null && (
           <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
             No fee set yet. Reply to MatchTime in WhatsApp with the amount per
             player to send everyone their pay link.

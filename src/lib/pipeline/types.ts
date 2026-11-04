@@ -1124,6 +1124,11 @@ export interface SquadState {
   features: {
     attendance: boolean;
     paymentTracking: boolean;
+    /** `paymentCollectionEnabled` (club summary B3). With `paymentTracking`
+     *  it is the one rule for "payments are on" (`paymentMessagesOnFor`,
+     *  decision K2), which the credit command reads. Optional so every
+     *  state fixture that predates it keeps its shape; absent means off. */
+    paymentCollection?: boolean;
     statsQa: boolean;
     /** The per-org gate `route.ts:3113-3121` maps `reminder_request`
      *  onto. A MoM-and-ratings-only org has it off, and MatchTime must

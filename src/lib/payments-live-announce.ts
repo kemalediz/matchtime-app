@@ -30,19 +30,14 @@
 import { db } from "@/lib/db";
 import { t } from "@/lib/i18n/t";
 import { normaliseLang, type Lang } from "@/lib/i18n/lang";
+import { isPaymentCollectionLive } from "./payments";
+
+/** Can this club actually be charged right now? The one rule lives in the
+ *  pure payments.ts (club summary B3); re-exported for this module's
+ *  callers. */
+export { isPaymentCollectionLive, type PaymentLiveFields } from "./payments";
 
 export const PAYMENTS_LIVE_KIND = "payments-live";
-
-export interface PaymentLiveFields {
-  paymentCollectionEnabled: boolean;
-  stripeConnectAccountId: string | null;
-  stripeChargesEnabled: boolean;
-}
-
-/** Can this club actually be charged right now? */
-export function isPaymentCollectionLive(org: PaymentLiveFields | null | undefined): boolean {
-  return !!org && org.paymentCollectionEnabled && !!org.stripeConnectAccountId && org.stripeChargesEnabled;
-}
 
 /** The ledger key: one announcement per org per connected account. */
 export function paymentsLiveKey(orgId: string, accountId: string): string {

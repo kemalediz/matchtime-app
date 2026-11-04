@@ -59,6 +59,7 @@ Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
    • *@Match Time yardım puanlama*, oyuncu puanları
    • *@Match Time yardım rozetler*, rozetler ve nasıl kazanılır
    • *@Match Time yardım hatırlatma*, hatırlatmalar
+   • *@Match Time yardım ödeme*, ödemeler
    • *@Match Time yardım program*, program ve rezervasyonlar
    • *@Match Time yardım ayarlar*, ayarların yeri
 
@@ -140,16 +141,12 @@ Hepsi otomatik olur, kimseyi tek tek aramanıza gerek kalmaz.
 ✅ Bu kulüpte açık.
 
 ### help / payments
-ℹ️ Bu özellik bu grupta henüz açık değil, ama nasıl çalıştığı şöyle.
+💳 *Ödemeler nasıl çalışır*
+Her maçta kimin ödediğini takip ediyorum. Maçtan sonra gruba bir ödeme anketi atarım: ödediyseniz takımınızı işaretleyin.
+Henüz ödemeyenler, isimleri verilmeden, gruptaki sonraki bir mesajda sayılır.
+Son durumu istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time kim ödemedi?*).
 
-💷 *Maç ücretleri nasıl çalışır*
-Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra oynayan herkese payını kartla veya bankadan ödemesi için özelden bir bağlantı gönderirim. Para doğrudan parayı toplayan kişinin banka hesabına gider.
-Ödemeyenlere her gün bir hatırlatma gönderirim, kimse arkadaşının peşinden para için koşmak zorunda kalmaz.
-Nakit ya da havaleyle mi ödendi? Oyuncu bana *"ödedim"* yazar, ben de parayı toplayan kişiden paranın geldiğini onaylamasını isterim.
-
-🔧 Açmak için bir yönetici ayarlar sayfasında *Maç ücreti toplama* ayarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika):
-https://matchtime.ai/admin/settings#payments
-Yöneticiler: bana özelden *yardım ödeme* yazın, sizi doğrudan giriş yapmış olarak açan bir bağlantı göndereyim.
+✅ Bu kulüpte açık.
 
 ### help / topic switched off
 ℹ️ Bu özellik bu grupta henüz açık değil, ama nasıl çalıştığı şöyle.

@@ -15,12 +15,34 @@
 
 export type PayMethod = "pay_by_bank" | "card" | "direct";
 
+/** The org fields that say whether a card can be taken. */
+export interface PaymentLiveFields {
+  paymentCollectionEnabled: boolean;
+  stripeConnectAccountId: string | null;
+  stripeChargesEnabled: boolean;
+}
+
+/**
+ * CAN THIS CLUB TAKE A CARD RIGHT NOW: THE ONE RULE (club summary B3, plan
+ * D4). Collection switched on, a connected Stripe account, and that account
+ * able to take charges (`stripeChargesEnabled`, written from the account by
+ * `refreshCollectorStatus`, cleared with it by `resetCollectorConnect`).
+ * The same test is "can Pay by Bank be taken": both are Stripe rails.
+ *
+ * Before B3 it was spelled four ways (the payments live announcement, the
+ * group hello inline, `availablePayMethods` on `stripeChargesEnabled`
+ * alone, the pay action on the account and charges). Every one of them now
+ * calls this; `__tests__/payments-one-rule.test.ts` fails on a fifth.
+ */
+export function isPaymentCollectionLive(org: PaymentLiveFields | null | undefined): boolean {
+  return !!org && org.paymentCollectionEnabled && !!org.stripeConnectAccountId && org.stripeChargesEnabled;
+}
+
 /** The org fields that decide which ways a player can pay. */
-export interface PayMethodSwitches {
+export interface PayMethodSwitches extends PaymentLiveFields {
   payMethodPayByBank: boolean;
   payMethodCard: boolean;
   payMethodDirect: boolean;
-  stripeChargesEnabled: boolean;
 }
 
 /** The org fields `availablePayMethods` reads, as a Prisma select. */
@@ -28,6 +50,8 @@ export const PAY_METHOD_SELECT = {
   payMethodPayByBank: true,
   payMethodCard: true,
   payMethodDirect: true,
+  paymentCollectionEnabled: true,
+  stripeConnectAccountId: true,
   stripeChargesEnabled: true,
 } as const;
 
@@ -38,16 +62,15 @@ export const PAY_METHOD_SELECT = {
  * sent" ack name exactly these (FNF, 2026-10-16: the DM promised bank,
  * card and Apple Pay to a club whose page offered only "pay directly").
  *
- * Card and Pay by Bank need the club switch AND the collector's
- * connected Stripe account able to take charges (`stripeChargesEnabled`,
- * written from the account by `refreshCollectorStatus`, cleared with the
- * account by `resetCollectorConnect`); this is the test the pay page has
- * always applied. Paying the collector directly needs only its switch.
+ * Card and Pay by Bank need the club switch AND a card can be taken
+ * (`isPaymentCollectionLive`: collection on, a connected account able to
+ * take charges). Paying the collector directly needs only its switch.
  */
 export function availablePayMethods(org: PayMethodSwitches): PayMethod[] {
   const out: PayMethod[] = [];
-  if (org.payMethodPayByBank && org.stripeChargesEnabled) out.push("pay_by_bank");
-  if (org.payMethodCard && org.stripeChargesEnabled) out.push("card");
+  const live = isPaymentCollectionLive(org);
+  if (org.payMethodPayByBank && live) out.push("pay_by_bank");
+  if (org.payMethodCard && live) out.push("card");
   if (org.payMethodDirect) out.push("direct");
   return out;
 }

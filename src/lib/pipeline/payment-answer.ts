@@ -78,6 +78,7 @@
  * Naming names — which nothing here can do — would be the part that
  * needed an admin, and a DM to send it in.
  */
+import { paymentMessagesOnFor } from "../payment-messages";
 
 /** The org and match facts this decision needs, and nothing else. */
 export interface PaymentTruthInput {
@@ -148,7 +149,8 @@ export function matchHasPaymentSource(input: {
 export function decidePaymentSnapshot(input: PaymentTruthInput): PaymentSnapshot {
   // (1) ORG LEVEL. Neither path exists, so there is no `paidAt` to read
   // and an empty unpaid list would be a claim rather than an absence.
-  if (!input.paymentTracking && !input.paymentCollection) return { kind: "not_tracked" };
+  // The one rule for "payments are on" (decision K2, club summary B3).
+  if (!paymentMessagesOnFor(input)) return { kind: "not_tracked" };
 
   // (2) THE MATCH. `COMPLETED && !isHistorical` is exactly the selector
   // `buildUnpaidTail` uses for the chase and `admin-ops-engine-batch.ts`

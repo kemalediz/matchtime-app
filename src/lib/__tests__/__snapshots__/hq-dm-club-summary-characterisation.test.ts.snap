@@ -781,6 +781,7 @@ how does the bench work?",
    • *@Match Time help ratings*: player ratings
    • *@Match Time help badges*: badges and how to earn them
    • *@Match Time help reminders*: reminders
+   • *@Match Time help payments*: payments
    • *@Match Time help schedule*: schedule & bookings
    • *@Match Time help settings*: where your settings are
 
@@ -801,7 +802,7 @@ how does the bench work?",
 
 Type *"@Match Time help"* any time to see this again.
 
-🔧 Switched off for your club: match fees, partner clubs. Ask me about one and I'll show you how to switch it on.
+🔧 Switched off for your club: partner clubs. Ask me about one and I'll show you how to switch it on.
 
 ⚙️ Your club's settings, signed in:
 https://matchtime.ai/r/<code>",

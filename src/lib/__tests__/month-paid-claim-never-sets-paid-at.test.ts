@@ -41,8 +41,13 @@ vi.mock("@/lib/db", () => {
 
 // What the payment DM step's model says (2026-10-29: the month "paid" is
 // read by it, not by fixed words): a plain claim for "paid ...", else not.
+// Counted (club summary B3): with payments off the model is never asked.
+const classifier = vi.hoisted(() => ({ calls: 0 }));
 vi.mock("@/lib/payment-claim-classifier", () => ({
-  classifyPaymentClaimDetailed: async (text: string) => ({ intent: /^paid\b/i.test(text) && !text.includes("?") ? "paid" : "other", confidence: 1, reasoning: "" }),
+  classifyPaymentClaimDetailed: async (text: string) => {
+    classifier.calls += 1;
+    return { intent: /^paid\b/i.test(text) && !text.includes("?") ? "paid" : "other", confidence: 1, reasoning: "" };
+  },
 }));
 vi.mock("@/lib/ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Promise<unknown>) => fn() }));
 
@@ -55,6 +60,7 @@ const mentionsPaidAt = (v: unknown): boolean => JSON.stringify(v ?? null).includ
 beforeEach(() => {
   calls.length = 0;
   returns.clear();
+  classifier.calls = 0;
 });
 
 describe("a claim never writes paidAt", () => {
@@ -114,9 +120,10 @@ describe("a claim never writes paidAt", () => {
     const dm = (w[2].args as { data: { text: string } }).data.text;
     expect(dm).toContain("you say you have paid £37.50 for November");
     expect(dm).toContain("Sam will confirm when it arrives");
+    expect(classifier.calls).toBe(1);
   });
 
-  it("payment tracking off (the Vets, 2026-11-03): the claim is recorded, and nothing is sent", async () => {
+  it("payments off (the Vets; decision K2, club summary B3): the model is never asked, nothing is written, and the DM goes on", async () => {
     returns.set("squadMonthMember.findMany", () => [
       {
         monthId: "m",
@@ -134,8 +141,10 @@ describe("a claim never writes paidAt", () => {
     returns.set("sentNotification.create", () => ({}));
     returns.set("user.findUnique", () => ({ name: "Sam Collector" }));
     const res = await handlePlayerPaidDm({ userId: "u", userName: "Alex Carter", text: "paid £37.50", replyPhone: "447700900002" });
-    expect(res).toEqual({ handled: "month-paid-claim", monthId: "m", claimed: true });
-    expect(writes().map((c) => `${c.model}.${c.method}`)).toEqual(["squadMonthMember.updateMany"]);
+    // Not a month claim: the DM goes on to the next handler, as any DM does.
+    expect(res).toBeNull();
+    expect(classifier.calls).toBe(0);
+    expect(writes()).toEqual([]);
   });
 
   it("not a claim (the model says so), two months to pay for, or a per-match fee owed: nothing is read as a month claim, nothing is written", async () => {

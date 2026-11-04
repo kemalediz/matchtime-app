@@ -35,7 +35,7 @@ vi.mock("@/lib/short-link", () => ({
 }));
 
 import { markDirectPaymentPending } from "@/lib/direct-payment";
-import { ALREADY_PAID_REASON } from "@/lib/payment-outcome";
+import { ALREADY_PAID_REASON, PAYMENTS_OFF_REASON } from "@/lib/payment-outcome";
 
 const MATCH = {
   id: "m1",
@@ -228,5 +228,27 @@ describe("the collector's notice respects the club's quiet hours (2026-10-21)", 
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("payments off for the club (decision K2, club summary B3)", () => {
+  it("no payment starts: nothing written, the collector not told, the pay page's reason returned", async () => {
+    matchFindUnique.mockResolvedValue({
+      ...MATCH,
+      activity: { ...MATCH.activity, org: { ...MATCH.activity.org, paymentCollectionEnabled: false, paymentTrackingEnabled: false } },
+    });
+    const r = await markDirectPaymentPending({ userId: "u-abid", matchId: "m1", quantity: 1, via: "pay-page" });
+    expect(r).toEqual({ ok: false, reason: PAYMENTS_OFF_REASON });
+    expect(attendanceUpdateMany).not.toHaveBeenCalled();
+    expect(botJobCreate).not.toHaveBeenCalled();
+  });
+
+  it("tracking only is payments on: the payment starts as before", async () => {
+    matchFindUnique.mockResolvedValue({
+      ...MATCH,
+      activity: { ...MATCH.activity, org: { ...MATCH.activity.org, paymentCollectionEnabled: false, paymentTrackingEnabled: true } },
+    });
+    const r = await markDirectPaymentPending({ userId: "u-abid", matchId: "m1", quantity: 1, via: "pay-page" });
+    expect(r.ok).toBe(true);
   });
 });

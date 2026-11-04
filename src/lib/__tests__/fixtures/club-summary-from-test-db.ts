@@ -159,7 +159,7 @@ export async function loadClubRows(orgId: string, now: Date, opts: LoadClubOptio
     months = [...byId.values()];
     heldKeys = (((await db.sentNotification.findMany({ where: { key: { startsWith: `org-${orgId}:msu:held:` } }, select: { key: true } })) ?? []) as Raw[]).map((h) => String(h.key));
   }
-  return { org, features, collectorName: null, collectionLive: false, activities, matches, lastPlayed: [], months, heldKeys, members: null };
+  return { org, features, collectorName: null, activities, matches, lastPlayed: [], months, heldKeys, members: null };
 }
 
 export async function loadClubSummary(orgId: string, now: Date, opts: LoadClubOptions = {}): Promise<ClubSummary | null> {

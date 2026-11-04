@@ -307,12 +307,20 @@ describe("S21 · a bulk payment credit", () => {
     expect([...res.outcomes.values()][0].reply).toBeNull();
   });
 
-  it("hands the message back when payment tracking is off for the org", async () => {
+  it("hands the message back when payments are off for the club (both flags off)", async () => {
     const { model } = stubModel({ [PAY]: PAY_FACTS });
-    const r = recorder(model, paidWorld({ features: { paymentTracking: false } }));
+    const r = recorder(model, paidWorld({ features: { paymentTracking: false, paymentCollection: false } }));
     const res = await run({ messages: [msg({ body: PAY })], deps: r.deps });
     expect(res.ownedIds.size).toBe(0);
-    expect(res.degradations.join(" ")).toMatch(/payment tracking is off/);
+    expect(res.degradations.join(" ")).toMatch(/payments are off for this club/);
+  });
+
+  it("credits on a club that collects match fees and does not track (Sutton FC; decision K2, club summary B3)", async () => {
+    const { model } = stubModel({ [PAY]: PAY_FACTS });
+    const r = recorder(model, paidWorld({ features: { paymentTracking: false, paymentCollection: true } }));
+    await run({ messages: [msg({ body: PAY })], deps: r.deps });
+    expect(r.credits).toHaveLength(1);
+    expect(r.credits[0].count).toBe(4);
   });
 
   it("hands the message back when the last match played was never COMPLETED", async () => {

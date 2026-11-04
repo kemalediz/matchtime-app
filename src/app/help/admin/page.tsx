@@ -643,7 +643,19 @@ export default async function AdminGuidePage() {
         Players pay the card or bank fee on top, so the collector receives
         the full match fee. Collecting cash instead? Just leave payments off:
         then MatchTime sends nobody anything about payments, no reminders and
-        no lists of who has paid.
+        no lists of who has paid, the pay pages say there is nothing to pay,
+        and a monthly squad&apos;s page shows no amounts and no &quot;I&apos;ve
+        paid&quot; button.
+      </p>
+      <p>
+        Someone paid for others? Tag MatchTime in the players&apos; group and
+        say who paid for whom, in your own words (for example{" "}
+        <code>@Match Time Amir paid for Sam and Alex</code>), and it records
+        it. Only an organiser can do this, and only while payments are on.
+        Clubs that still use the older payment poll (players tick their team
+        once they&apos;ve paid) also count as payments on, and{" "}
+        <code>@Match Time help payments</code> explains what MatchTime does
+        for your club.
       </p>
 
       {/* ───────────────────────────────────────────────── */}

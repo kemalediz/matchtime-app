@@ -44,6 +44,7 @@ import { normaliseBenchPickMode } from "./squad-capacity";
 import { normaliseSquadMode, type SquadMode } from "./squad-month-rules";
 import { organisersAnnounce } from "./list-announcer";
 import { organisersPickMom } from "./mom-chooser";
+import { isPaymentCollectionLive } from "./payments";
 
 /** A London weekday (0 = Sunday) and a wall-clock "HH:mm". */
 export interface HelloDayTime {
@@ -345,10 +346,10 @@ export function firstName(name: string | null | undefined): string | null {
 /** `organiserName` is the organiser's full name as stored, or null. */
 export function helloInputFromOrg(row: HelloOrgRow, organiserName: string | null | undefined): GroupHelloInput {
   const squadMode = normaliseSquadMode(row.squadMode);
-  // Pay links go out only when the club can actually be charged: the
-  // rule of `isPaymentCollectionLive` (payments-live-announce.ts), and at
-  // least one of the two link methods switched on.
-  const chargeable = row.paymentCollectionEnabled && !!row.stripeConnectAccountId && row.stripeChargesEnabled;
+  // Pay links go out only when the club can actually be charged
+  // (`isPaymentCollectionLive`, the one rule, payments.ts), and at least
+  // one of the two link methods switched on.
+  const chargeable = isPaymentCollectionLive(row);
   const payLinks: HelloPayLinks = !chargeable
     ? "off"
     : row.payMethodCard && row.payMethodPayByBank
