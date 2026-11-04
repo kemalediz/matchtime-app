@@ -1422,7 +1422,10 @@ Unit tests: A1, A2 and A4 characterisations unchanged; A3 changed in four entrie
 `2026-11-07 invite` and the Vets `2026-11-13 invite`: no blast, the one-line refusal naming the
 unfinished game, and one model call fewer, since the DM no longer falls through to the question
 reader); the golden copy gained R62b in each language and changed none. The review change is no
-model input (the code's reply after the existing intent) and its replay was free.
+model input (the code's reply after the existing intent) and its replay was free. Rebased onto B6
+(#536): the doc merged with both sections kept (3.16 here, 3.17 B6's) and both decision rows (K5,
+K7); A1, A2 and A4 equal B6's, A3 differs from B6's in the four entries above only; `baseline/b4`
+re-made on the rebased code: 0 misses, identical to `baseline/b6` for all five clubs.
 
 ### 3.17 As built in slice B6 (one rule for "may MatchTime send this club anything now, and what")
 
