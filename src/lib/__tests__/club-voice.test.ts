@@ -7,7 +7,7 @@
  * what `clubVoice` says for every combination of the facts.
  */
 import { describe, expect, it } from "vitest";
-import { clubVoice, servedClubWhere, speakingClubWhere, type ClubVoiceFacts } from "../club-voice";
+import { clubVoice, inServedClubWhere, servedClubWhere, speakingClubWhere, type ClubVoiceFacts } from "../club-voice";
 import { buildClubSummary } from "../club-summary/derive";
 import { NOW, SHAPES } from "../club-summary/__tests__/fixtures";
 
@@ -102,5 +102,12 @@ describe("with BILLING_ENABLED off a paused column means nothing, as everywhere 
   it("a 'paused' row with the flag off is served", () => {
     const row: Row = { approvalStatus: "approved", setupStage: "live", dormantAt: null, billingStatus: "paused", whatsappBotEnabled: true };
     expect(matches(speakingClubWhere({}), row)).toBe(true);
+  });
+});
+
+describe("the DM door's club pick (K7 b, the main session's review of #536)", () => {
+  it("a membership query takes a served club, muted or not: what is served, under org", () => {
+    expect(inServedClubWhere({ BILLING_ENABLED: "1" })).toEqual({ org: servedClubWhere({ BILLING_ENABLED: "1" }) });
+    expect("whatsappBotEnabled" in inServedClubWhere().org).toBe(false);
   });
 });

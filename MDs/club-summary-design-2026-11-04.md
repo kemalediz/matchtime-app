@@ -1330,12 +1330,12 @@ so this is not an LLM change: $0, no key used.
 | state | when | what MatchTime sends the club |
 |---|---|---|
 | silent | not approved, setting up, dormant, or paused for the club fee (in that order of reasons) | nothing, on any door: no post, no reply, no DM to a member, no notice to the organisers. What is already queued waits at the drain and is dropped when the club comes back (`dropQueuedMessages`). MatchTime's own messages about the club (owner approval DMs, setup DMs, billing DMs) are the platform's voice and go on the platform channel, as before. |
-| muted | the mute switch off on a club that is otherwise served | nothing in the players' group, nothing by DM; in HQ only the club's own open organiser pick round. What is queued waits for the unmute and then goes. Writes are not messages: fixtures, seeding and the rolling squad carry on (org-lifecycle.ts). |
+| muted | the mute switch off on a club that is otherwise served (Kemal's engineering switch, flipped on a live club for an hour of work) | nothing MatchTime sends on its own: no players' group post, no scheduled post, no notice, no queued DM goes out; it all waits for the unmute and then goes. A member's DM is still read and answered as on main (the reply is a queued DM, so it waits too). In HQ only the club's own open organiser pick round. Writes are not messages: fixtures, seeding and the rolling squad carry on (org-lifecycle.ts). |
 | on | everything else | everything, at the club's quiet hours |
 
 `clubVoice(facts)` returns the state (and the reason when silent), `clubSpeaks` is `state === "on"`,
 `servedClubWhere()` and `speakingClubWhere()` are the Prisma fragments (on or muted; on), and
-`inSpeakingClubWhere()` the same for a membership query. `__tests__/club-voice.test.ts` checks the
+`inServedClubWhere()` the served clubs for a membership query (the DM door's club pick). `__tests__/club-voice.test.ts` checks the
 fragments say exactly what `clubVoice` says for all 48 combinations of the five stored columns, with
 `BILLING_ENABLED` on, and that a paused column means nothing with it off. `voiceFactsOfRow` is the
 same facts from a club's row (the fail-soft path, the admin channel, the pool's offers); a row read
@@ -1355,7 +1355,7 @@ runs the real routes over the A3 fake world with a recording model; each case wa
 | the players' group (`analyze`) | bot on and not paused | `speakingClubWhere()`: a dormant club's batch is ignored before any model |
 | the picture reader (a model reads an organiser's picture) | bot on and `servingClubWhere()` | `speakingClubWhere()` |
 | HQ (`admin-group.ts`) | the billing pause only; a dormant club was answered in full | `clubVoice`: silent is ignored ("club-dormant", "club-billing-paused" as before, "club-not-served"); muted keeps the pick round (K7 d) |
-| the DMs (`dm-reply`) | the approval and billing rail (all clubs), then the setting-up rail; no handler read the mute switch or dormancy, so a muted club's member got a model read and a reply that waited for the unmute | a third rail, `dmClubsSilence` (club-voice-db.ts): a sender whose every current club does not speak is ignored before any model, nothing queued ("club-muted", "club-dormant", "club-not-served"). The four club picks (the question answer, the cold IN, an organiser's instruction, the subscription ack) take only a club that speaks (`inSpeakingClubWhere()`, was `IN_LIVE_STAGE_CLUB_WHERE`) |
+| the DMs (`dm-reply`) | the approval and billing rail (all clubs), then the setting-up rail; no handler read dormancy, so a dormant club's member was read and answered | a third rail, `dmClubsSilence` (club-voice-db.ts): a sender whose every current club is silent is ignored before any model, nothing queued ("club-dormant", "club-not-served"). A muted club is served, so its members are read and answered as on main. The four club picks (the question answer, the cold IN, an organiser's instruction, the subscription ack) take only a served club (`inServedClubWhere()`, was `IN_LIVE_STAGE_CLUB_WHERE`) |
 | the organisers' notices (`sendAdminNotice`, the one way organisers are told something: the sweeps, the partner asks, join and leave, the web's actions) | queued for any club; never released while it was paused, unapproved or setting up, dropped on resume or go-live, and released for a dormant one | not queued for a silent club (one log line). A muted club's is queued and waits, as before |
 | the score ask in HQ (`adminGroupPost`, D15) | the default window, whatever the club chose | the club's own quiet hours; held, asked again on the next poll inside its 24 hours, never dropped |
 | the player pool's offers (`admitPoolOfferJobs`, every pool DM on a club's behalf, from any door) | the pool's own switches only | a silent club's offer is cancelled ("club-silent"), a muted club's held |
@@ -1369,10 +1369,12 @@ runs the real routes over the A3 fake world with a recording model; each case wa
   reminder already treated a dormant club as not served (`isClubOperational`: "may MatchTime act for
   this club on its own initiative?"); the drain, the players' group, HQ, the DMs and the picture
   reader did not. Dormancy still never touches the mute switch or stops a write (actions/org.ts).
-- b. **A muted club's members get nothing by DM**, as its players' group already reads nothing of
-  theirs. Before, the model read the DM and the reply waited for the unmute. This includes an
-  opt-out and a volunteer for a partner club's ask sent by DM, exactly as the billing rail already
-  treated a member of only paused clubs. A member of one club that speaks is handled for it.
+- b. **A muted club's members are still read and answered by DM, as on main** (decided by the main
+  session in its review of #536, on Kemal's delegation; the first build ignored them). Mute is Kemal's
+  engineering switch (prisma/schema.prisma), flipped on a live club for an hour of work, and dropping
+  a DM would lose a real action: a "paid" claim, an OUT, a rating or a pool reply. The reply is a
+  queued DM, so it waits at the drain for the unmute, like everything else MatchTime sends (c). A
+  silent club's members are ignored before any model, as a paused club's already were.
 - c. **Mute holds, it does not drop.** What is queued for a muted club waits and goes on the unmute
   (kept: `sendAdminNotice` documents it, and the switch is used for an hour of maintenance on a live
   club). Silence drops on the way back (billing resume, go-live, and now the wake from dormancy).
@@ -1390,26 +1392,24 @@ runs the real routes over the A3 fake world with a recording model; each case wa
   channel (kept, the setup hold's design).
 
 **What a model is shown: nothing changes.** No prompt and no CONTEXT template changed. Every club
-shape of the A1 to A4 characterisations sends the same model requests except the muted club's seven
-DMs, which no longer reach a model at all (fewer calls). The DM club picks differ only for a person
-in a club that speaks and one that does not; the DM answerer is then given exactly what a member of
-the speaking club alone is given, an input every existing suite already covers. The DM reader's club
+shape of the A1 to A4 characterisations sends the same model requests, the muted club's DMs
+included. The DM club picks differ only for a person in a served club and a silent one; the DM
+answerer is then given exactly what a member of the served club alone is given, an input every
+existing suite already covers. The DM reader's club
 list (`dm-reader.ts`, `APPROVED_CLUB_WHERE`) is untouched, so its input is the same for everyone. So
 no paid run: $0.
 
-**Characterisation, updated only for B6** (every entry): A3 `dm-reply: muted` (the seven DMs of the
-muted club: `ignored: "club-muted"`, no model request, nothing written; before, each was read by
-the question extractor, seven calls, and the two help questions each queued a reply that waited for
-the unmute, one with a sign-in link). A1, A2 and A4 unchanged. The copy golden gained one entry per
+**Characterisation: A1 to A4 unchanged.** (The first build changed A3 `dm-reply: muted`, the muted
+club's DMs ignored; with K7 b reversed it is back to its main behaviour, byte for byte.) The copy golden gained one entry per
 language (`B6 xask_round_club_quiet`) and changed none. Source pins updated for the new club pick:
-`partner-guest-exclusions`, `partner-guest-not-a-member` (`inSpeakingClubWhere()` beside
+`partner-guest-exclusions`, `partner-guest-not-a-member` (`inServedClubWhere()` beside
 `ORDINARY_MEMBER_WHERE`).
 
 **The replay.** Free: the five clubs replayed from their cassettes on the final code with
 0 misses and 0 upstream calls (FNF 38 of 38 hits, own-language 25, ratings only 30, Sutton 52, the
 Vets 53), and `baseline/b6` against `baseline/b5` is identical for all five (`scenarios:compare`,
 exit 0). None of the five is dormant, paused or setting up, and the own-language club's mute and
-unmute in its script sends no DM and asks nothing of HQ while muted, so no step changes. No new
+unmute in its script asks nothing of HQ while muted, so no step changes. No new
 cassette was recorded.
 
 **Left, and why.**
@@ -1657,8 +1657,8 @@ choice, the slice waits for Kemal (the K decisions in section 4.5).
   setting up (`dm-intent.ts:383-386`, from `dm-reader.ts:46-62`). Only a person in a
   setting-up or paused club sees a different list; none in the five clubs.
 - As built (K7 decided): section 3.17. One rule, `club-voice.ts` (on, muted, silent), read at the
-  drain, the players' group, HQ, the DMs, the organisers' notices, the pool's offers and the web's
-  ask. The DM reader's club list was left as it was, so no model input changes; the web "Generate
+  drain, the players' group, HQ, the DMs (silent clubs only), the organisers' notices, the pool's
+  offers and the web's ask. The DM reader's club list was left as it was, so no model input changes; the web "Generate
   match" is a write, not a message, and stays as it is.
 
 **B7. Every door honours the switches.** (D8, D11, D13)
@@ -1722,7 +1722,7 @@ right.
 | K4 | On a club with attendance off, may a player still tap IN on the website? | B7 | yes on the web, no in WhatsApp. **Decided by Kemal, 2026-11-04 (the main session's recommendation): no. Players cannot tap IN or OUT on the website either; the match page explains the club doesn't take sign-ups through MatchTime. The same principle for every switch the plan found ignored on some door: if WhatsApp refuses it with the switch off, the web and DMs refuse it too, with a short plain explanation.** Built in B7 (section 3.15). |
 | K6 | With team generation off, should the website's Generate teams, the teams page and the HQ team commands refuse too? | after B7 | the settings card says on purpose that the web button still works and that Teams ready is separate; B7 left them (3.15) **Decided by the main session, 2026-11-04, on Kemal's delegation: with automatic teams off, the organiser's own Generate teams on the web and the HQ "make the teams" keep working, as the settings card promises.** |
 | K5 | Is "today" the London day for the next match, and do the deadline posts and the month's list honour a cancelled match's day like the announcement does? | B4 | UTC in the selector, London in the posting rule; two posts skip the hold |
-| K7 | Where today's senders disagree on "is this club served" (D10, D15), which wins? | B6 | the mute switch alone, it plus the billing pause, `servingClubWhere`, `isClubOperational`, that plus setting up, two DM club picks; dormancy read by none of the doors a message leaves by; the HQ score ask on the default window. **Decided by the main session, 2026-11-04, on Kemal's delegation: one rule, `club-voice.ts`: silent (not approved, setting up, dormant, paused) sends nothing on any door and drops its queue on the way back; muted sends nothing in the players' group or by DM, HQ answers only its open pick round, and its queue waits for the unmute; quiet hours are the club's own on every door and hold, never drop. The eight choices are listed in section 3.17.** Built in B6 (section 3.17). |
+| K7 | Where today's senders disagree on "is this club served" (D10, D15), which wins? | B6 | the mute switch alone, it plus the billing pause, `servingClubWhere`, `isClubOperational`, that plus setting up, two DM club picks; dormancy read by none of the doors a message leaves by; the HQ score ask on the default window. **Decided by the main session, 2026-11-04, on Kemal's delegation: one rule, `club-voice.ts`: silent (not approved, setting up, dormant, paused) sends nothing on any door, reads no DM and drops its queue on the way back; muted holds everything MatchTime sends on its own (posts, notices, queued DMs) until the unmute, still reads and answers its members' DMs as on main (the reply waits too), and HQ answers only its open pick round; quiet hours are the club's own on every door and hold, never drop. The eight choices are listed in section 3.17 (b revised in the review of #536).** Built in B6 (section 3.17). |
 
 ### 4.6 Phase C: readers, only where the evidence asks for it
 

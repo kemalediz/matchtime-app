@@ -5,8 +5,9 @@
  * The real routes over the A3 fake world (fixtures/hq-dm-world.ts), with a
  * recording model (no network, no key): a club that is DORMANT with its bot
  * left on (dormancy never touches the mute switch, actions/org.ts) must get
- * nothing on any door, before any model is asked; a MUTED club's members
- * get nothing by DM either, as its players' group already does.
+ * nothing on any door, before any model is asked. A MUTED club's members
+ * are still read and answered by DM (mute holds what MatchTime sends on its
+ * own; K7 b, the main session's review of #536).
  *
  * Each case was red on the code before B6 (the door read the mute switch,
  * or the billing pause, but never dormancy; the DM door read none of them).
@@ -182,10 +183,15 @@ describe("the DM door", () => {
     expect(modelCalls).toEqual([]);
     expect(writesOf().filter((w) => w.startsWith("botJob"))).toEqual([]);
   });
-  it("a member of a muted club only: ignored, as the club's players' group is", async () => {
-    const out = await dm(mutedRoster, "u-mu-p", "what time is kick off?");
-    expect(out).toMatchObject({ ok: true, ignored: "club-muted" });
-    expect(modelCalls).toEqual([]);
+  // K7 b, reversed by the main session's review of #536: mute is the
+  // engineering switch, so a muted club's member is read and answered as
+  // on main (the reply is a queued DM, held by the drain until the unmute).
+  // (The full answer, the help reply queued, is pinned by the A3
+  // characterisation's `dm-reply: muted`, which B6 leaves as on main.)
+  it("a member of a muted club only: read as before the slice, never ignored by the rule", async () => {
+    const out = await dm(mutedRoster, "u-mu-o", "how does the bench work?");
+    expect(["club-muted", "club-dormant", "club-not-served"]).not.toContain(out.ignored);
+    expect(modelCalls).toContain("extractor:question");
   });
   it("control: a member of a club that speaks is read", async () => {
     const out = await dm(ON, "u-zed", "what time is kick off?");

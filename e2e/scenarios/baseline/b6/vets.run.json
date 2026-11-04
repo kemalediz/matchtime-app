@@ -5,7 +5,7 @@
  "steps": 32,
  "sent": 83,
  "errors": 0,
- "seconds": 167,
+ "seconds": 156,
  "model": {
   "club": "vets",
   "mode": "replay",

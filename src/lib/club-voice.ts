@@ -20,12 +20,15 @@
  *            DMs, a setting-up club's setup DMs, billing DMs) are not the
  *            club's voice: they go on the platform channel.
  *   muted    the mute switch (`whatsappBotEnabled` off) on a club that is
- *            otherwise served. The players' group hears nothing; the one
- *            exemption that exists is HQ answering its own open organiser
- *            pick round (admin-group.ts). What is queued (an admin notice,
- *            a DM reply) WAITS for the unmute and then goes: an hour of
- *            maintenance must not cost the club its messages. Writes are
- *            not messages: fixtures, seeding and the rolling squad carry on
+ *            otherwise served: Kemal's engineering switch, flipped on a live
+ *            club for an hour of work. Nothing MatchTime sends on its own
+ *            goes out (the players' group, scheduled posts, notices, queued
+ *            DMs): it WAITS for the unmute and then goes. A member's DM is
+ *            still read and answered as before (its reply is a queued DM,
+ *            so it waits too): dropping it would lose a real action, a
+ *            "paid", an OUT, a rating or a pool reply. HQ answers only its
+ *            own open organiser pick round (admin-group.ts). Writes are not
+ *            messages: fixtures, seeding and the rolling squad carry on
  *            (org-lifecycle.ts says why).
  *   on       everything, at the hours below.
  *
@@ -118,12 +121,13 @@ export function speakingClubWhere(env: Record<string, string | undefined> = proc
 }
 
 /**
- * The same, for a MEMBERSHIP query: the DM door's one club pick. Every DM
- * handler that picks a club from a person's memberships spreads it (it was
- * `IN_LIVE_STAGE_CLUB_WHERE`, which kept out only a setting-up club), so a
- * member of a club that speaks and one that does not is handled for the
- * one that speaks.
+ * The served clubs, for a MEMBERSHIP query: the DM door's one club pick.
+ * Every DM handler that picks a club from a person's memberships spreads it
+ * (it was `IN_LIVE_STAGE_CLUB_WHERE`, which kept out only a setting-up
+ * club), so a member of a served club and a silent one is handled for the
+ * served one. A muted club is served: its members are read and answered as
+ * before (K7 b, the main session's review of #536).
  */
-export function inSpeakingClubWhere(env: Record<string, string | undefined> = process.env) {
-  return { org: speakingClubWhere(env) };
+export function inServedClubWhere(env: Record<string, string | undefined> = process.env) {
+  return { org: servedClubWhere(env) };
 }

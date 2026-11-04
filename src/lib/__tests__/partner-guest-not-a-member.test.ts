@@ -21,8 +21,8 @@ describe("current guests are left out", () => {
     ["src/lib/org.ts", /membership\.leftAt === null && !isGuestMembership\(membership\)/],
     ["src/app/actions/org.ts", /membership\.leftAt !== null \|\| isGuestMembership\(membership\)/],
     ["src/app/api/memberships/route.ts", /leftAt: null, \.\.\.ORDINARY_MEMBER_WHERE \}/],
-    // The club pick is the one rule's since B6 (`inSpeakingClubWhere`, club-voice.ts).
-    ["src/lib/dm-qa.ts", /leftAt: null, \.\.\.ORDINARY_MEMBER_WHERE, \.\.\.inSpeakingClubWhere\(\)/],
+    // The club pick is the one rule's since B6 (`inServedClubWhere`, club-voice.ts).
+    ["src/lib/dm-qa.ts", /leftAt: null, \.\.\.ORDINARY_MEMBER_WHERE, \.\.\.inServedClubWhere\(\)/],
     ["src/lib/squad-month.ts", /leftAt: null, \.\.\.ORDINARY_MEMBER_WHERE, user: \{ isActive: true \}/],
     ["src/lib/month-signup.ts", /leftAt: null, \.\.\.ORDINARY_MEMBER_WHERE, user: \{ isActive: true \}/],
     ["src/lib/monthly-week.ts", /leftAt: null, \.\.\.ORDINARY_MEMBER_WHERE, user: \{ isActive: true \}/],

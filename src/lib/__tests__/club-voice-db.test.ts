@@ -19,7 +19,7 @@ const clubs = (...orgs: Array<Record<string, unknown>>) => dbMock.membership.fin
 
 beforeEach(() => vi.clearAllMocks());
 
-describe("dmClubsSilence: is every one of the sender's clubs one MatchTime does not speak for?", () => {
+describe("dmClubsSilence: is every one of the sender's clubs one MatchTime does not serve?", () => {
   it("no club at all (a pool player): carry on", async () => {
     clubs();
     expect(await dmClubsSilence("u1")).toBeNull();
@@ -28,11 +28,13 @@ describe("dmClubsSilence: is every one of the sender's clubs one MatchTime does 
     clubs(DORMANT, ON, MUTED);
     expect(await dmClubsSilence("u1")).toBeNull();
   });
-  it("muted only, or muted and dormant: club-muted", async () => {
+  // K7 b, reversed by the main session's review of #536: mute is not a
+  // reason to ignore a DM. A muted club is served; only a silent one is not.
+  it("muted only, or muted and dormant: carry on (a muted club's member is read as on main)", async () => {
     clubs(MUTED);
-    expect(await dmClubsSilence("u1")).toBe("club-muted");
+    expect(await dmClubsSilence("u1")).toBeNull();
     clubs(DORMANT, MUTED);
-    expect(await dmClubsSilence("u1")).toBe("club-muted");
+    expect(await dmClubsSilence("u1")).toBeNull();
   });
   it("dormant only: club-dormant", async () => {
     clubs(DORMANT, DORMANT);
