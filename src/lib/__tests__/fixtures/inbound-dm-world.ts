@@ -403,7 +403,7 @@ export function phoneOf(rows: ClubRows, userId: string): string {
   return m.user.phoneNumber;
 }
 
-export interface HqDmWorld extends AnalyzeWorld {}
+export type HqDmWorld = AnalyzeWorld;
 
 export function hqDmWorld(rows: ClubRows): HqDmWorld {
   const w = analyzeWorld(rows);
