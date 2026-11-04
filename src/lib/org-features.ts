@@ -132,7 +132,15 @@ const ALL_OFF: OrgFeatures = {
   gearReminder: false,
 };
 
-function fromRow(row: {
+/**
+ * The switches of one club's row, read with `ORG_FEATURES_SELECT`. What
+ * `getOrgFeatures` returns for a row it found. Exported (club summary,
+ * slice A2) so a caller that reads the club's row anyway, the analyze
+ * route finding the club by its group, selects these columns in that one
+ * query instead of reading the row a second time: one rule, so the two
+ * can never differ.
+ */
+export function orgFeaturesFromRow(row: {
   whatsappBotEnabled: boolean;
   featureAttendance: boolean;
   featureBench: boolean;
@@ -184,7 +192,8 @@ function fromRow(row: {
   };
 }
 
-const SELECT = {
+/** The Organisation columns the switches are built from (`orgFeaturesFromRow`). */
+export const ORG_FEATURES_SELECT = {
   whatsappBotEnabled: true,
   featureAttendance: true,
   featureBench: true,
@@ -210,9 +219,9 @@ const SELECT = {
 export async function getOrgFeatures(orgId: string): Promise<OrgFeatures> {
   const row = await db.organisation.findUnique({
     where: { id: orgId },
-    select: SELECT,
+    select: ORG_FEATURES_SELECT,
   });
-  return row ? fromRow(row) : { ...ALL_OFF };
+  return row ? orgFeaturesFromRow(row) : { ...ALL_OFF };
 }
 
 /** Resolve features from the WhatsApp group id (the bot's usual key).
@@ -222,10 +231,10 @@ export async function getOrgFeaturesByGroup(
 ): Promise<{ orgId: string; features: OrgFeatures } | null> {
   const row = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId },
-    select: { id: true, ...SELECT },
+    select: { id: true, ...ORG_FEATURES_SELECT },
   });
   if (!row) return null;
-  return { orgId: row.id, features: fromRow(row) };
+  return { orgId: row.id, features: orgFeaturesFromRow(row) };
 }
 
 // FEATURE_META + FeatureKey/ToggleableKey are re-exported at the top

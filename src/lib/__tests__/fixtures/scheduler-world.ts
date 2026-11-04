@@ -265,9 +265,19 @@ function many(rows: Row[], args: Record<string, unknown> = {}): Row[] {
   return out;
 }
 
-/** The fake `db`: logs every call into `calls`. */
-export function fakeSchedulerDb(world: SchedulerWorld, calls: Call[]) {
+/** The fake `db`: logs every call into `calls`. `extra`: more tables, by
+ *  model name (the analyze path's characterisation reads more of them). */
+export function fakeSchedulerDb(
+  world: SchedulerWorld,
+  calls: Call[],
+  extra: Record<string, Row[]> = {},
+  /** "per-model": a created row's id counts that model's creates, so it
+   *  does not move when the number of reads before it does. */
+  createIds: "call-count" | "per-model" = "call-count",
+) {
+  const created = new Map<string, number>();
   const tables: Record<string, Row[]> = {
+    ...extra,
     organisation: [world.org],
     activity: world.activities,
     sport: world.sports,
@@ -305,8 +315,11 @@ export function fakeSchedulerDb(world: SchedulerWorld, calls: Call[]) {
       case "deleteMany":
       case "createMany":
         return { count: 0 };
-      case "create":
-        return { id: `new-${model}-${calls.length}`, ...((args.data as Row) ?? {}) };
+      case "create": {
+        const n = createIds === "per-model" ? (created.get(model) ?? 0) + 1 : calls.length;
+        created.set(model, n);
+        return { id: `new-${model}-${n}`, ...((args.data as Row) ?? {}) };
+      }
       default:
         return {};
     }

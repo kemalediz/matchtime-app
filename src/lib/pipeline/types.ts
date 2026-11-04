@@ -1224,7 +1224,7 @@ export interface SquadState {
   /**
    * THE CLUB'S SETUP (2026-10-16), for a `club` question in the admin
    * group. Loaded by `answer-batch.ts` only when one survived ownership
-   * (`loadClubSnapshot`). Optional; absent means NOT LOADED.
+   * (`clubSnapshotOf` from the club summary, else `loadClubSnapshot`). Optional; absent means NOT LOADED.
    */
   club?: ClubSnapshot | null;
 }

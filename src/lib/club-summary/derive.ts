@@ -94,6 +94,8 @@ export interface OrgRow extends SetupStageColumns {
   rollingSquadEnabled: boolean;
   paygPricePence: number | null;
   monthCreditRule: string;
+  /** The club's own names for the two sides, as stored. */
+  teamLabels: string[];
 }
 
 export interface ActivityRow {
@@ -496,6 +498,8 @@ export function buildClubSummary(rows: ClubRows, now: Date): ClubSummary {
       hq: { groupId: org.adminGroupId, channelMode: org.adminChannelMode, channelUserId: org.adminChannelUserId },
     },
     features: rows.features,
+    // A row read by an older select (a test's partial world) has none: [].
+    teamLabels: [...(org.teamLabels ?? [])],
     routine: routineFacts(org),
     payments: paymentFacts(org, { collectorName: rows.collectorName, collectionLive: rows.collectionLive }),
     squad,

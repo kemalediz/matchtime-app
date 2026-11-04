@@ -29,7 +29,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { loadPartnerAskSettings } from "./club-partnership";
 import { requestPartnerAsk } from "./partner-ask";
-import { loadSquadState } from "./pipeline/load-state";
+import { loadSquadMatchId } from "./pipeline/load-state";
 import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "./club-partnership-rules";
 import type { PartnerAskVia } from "./partner-ask-rules";
 import {
@@ -115,7 +115,7 @@ export async function askPartnersFromWords(args: {
     console.log(`[partner-ask-words] ${orgId}: nothing asked (${resolved.kind}, ${partners.length} partner(s))`);
     return { outcome: `xask-words-${resolved.kind}`, replyText: resolutionReply(lang, resolved, settingsLink), asked: 0 };
   }
-  const matchId = args.matchId !== undefined ? args.matchId : (await loadSquadState(orgId, now)).matchId;
+  const matchId = args.matchId !== undefined ? args.matchId : (await loadSquadMatchId(orgId, now));
   if (!matchId) return { outcome: "xask-words-no-game", replyText: t(lang).recruit_no_match, asked: 0 };
 
   // P4 (2026-10-22): the asks of one request are one round. Asking in
