@@ -1,9 +1,13 @@
 "use client";
 
 /**
- * The /play sign-up (slice L2): the fields (the shared PoolProfileFields),
- * the two ticks (18 or over; consent, unticked by default, with the policy
- * link), then the last step, which opens WhatsApp with the confirm message.
+ * The /play sign-up (slice L2; SHORT since 2026-11-04): his name, postcode
+ * area and the days he can play (`PoolShortFields`, `short-form.ts`), the
+ * two ticks (18 or over; consent, unticked by default, with the policy
+ * link; both legal requirements, so both stay), then the last step, which
+ * opens WhatsApp with the confirm message. Hours, formats and level are
+ * asked on WhatsApp after he joins (`details-rules.ts`); until then the
+ * short form's defaults stand.
  * The browser runs the same validator the server does, so errors show at
  * once; the server's answer is the truth. No wording here (page-copy.ts).
  * What he types is kept as a draft in this tab (signup-draft.ts) until the
@@ -19,13 +23,13 @@
  */
 import { poolShareCopy } from "@/lib/i18n/pool-share";
 import { useEffect, useState } from "react";
-import { PoolProfileFields, type FieldErrorText } from "@/components/pool/pool-profile-fields";
+import { PoolShortFields, type ShortFieldErrorText } from "@/components/pool/pool-short-fields";
 import { PoolPageShell } from "@/components/pool/pool-page-shell";
 import type { Lang } from "@/lib/i18n/lang";
 import type { PoolErrorKey } from "@/lib/i18n/pool-play";
-import { defaultPoolForm, toPoolPayload, type PoolFormValue } from "@/lib/pool/form-state";
 import { fieldErrorKeys, poolPageCopy } from "@/lib/pool/page-copy";
 import { validatePoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fields";
+import { emptyShortForm, expandShortSignup, toShortPayload, type ShortFormValue } from "@/lib/pool/short-form";
 import { PolicyLink } from "@/components/policy-link";
 import { clearSignupDraft, loadSignupDraft, saveSignupDraft } from "@/lib/pool/signup-draft";
 import { sendPoolSignup, type PoolSignupConfirm } from "@/lib/pool/send-signup";
@@ -82,8 +86,8 @@ export function PlaySignup({
   const lang: Lang = "en";
   const copy = poolPageCopy(lang);
 
-  const [form, setForm] = useState<PoolFormValue | null>(null);
-  const value = form ?? { ...defaultPoolForm(lang), name: friend?.friendName ?? "" };
+  const [form, setForm] = useState<ShortFormValue | null>(null);
+  const value = form ?? emptyShortForm(friend?.friendName ?? "");
   const [adult, setAdult] = useState(false);
   const [consent, setConsent] = useState(false);
   const [errors, setErrors] = useState<PoolFieldErrors>({});
@@ -135,7 +139,7 @@ export function PlaySignup({
   useEffect(() => {
     // A friend link starts from the member's words, never an older draft.
     if (friend) return;
-    const draft = loadSignupDraft(defaultPoolForm(lang));
+    const draft = loadSignupDraft(emptyShortForm());
     if (draft) setForm((f) => f ?? draft);
     // Once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,21 +149,24 @@ export function PlaySignup({
   }, [form, confirm]);
 
   const keys = fieldErrorKeys(errors);
-  const fieldText: FieldErrorText = Object.fromEntries(
-    (["name", "area", "maxMiles", "availability", "sports"] as const).filter((k) => keys[k]).map((k) => [k, copy.errors[keys[k]!]]),
-  );
+  const fieldText: ShortFieldErrorText = {
+    ...(keys.name ? { name: copy.errors[keys.name] } : {}),
+    ...(keys.area ? { area: copy.errors[keys.area] } : {}),
+    ...(errors.availability ? { days: errors.availability === "none" ? copy.signup.daysNone : copy.signup.daysBad } : {}),
+  };
   const hasErrors = Object.keys(errors).length > 0 || formError !== null;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const body = {
-      ...toPoolPayload(value),
+      ...toShortPayload(value),
       adult,
       consent,
       source: { c: source.campaignCode ?? undefined, ref: source.referralCode ?? undefined },
       ...(friend ? { friendToken: friend.token } : {}),
     };
-    const local = validatePoolSignup(body);
+    // The same expansion and validator as the server (`validatePublicPoolSignup`).
+    const local = validatePoolSignup(expandShortSignup(body));
     setFormError(null);
     if (!local.ok) {
       setErrors(local.errors);
@@ -230,7 +237,7 @@ export function PlaySignup({
               {formError ? copy.errors[formError] : copy.errorSummary}
             </p>
           )}
-          <PoolProfileFields value={value} onChange={setForm} copy={copy.fields} lang={lang} errors={fieldText} />
+          <PoolShortFields value={value} onChange={setForm} copy={copy} errors={fieldText} />
 
           <div className="space-y-4 border-t border-slate-200 pt-6">
             <Tick checked={adult} onChange={setAdult} label={copy.signup.adultLabel} error={keys.adult ? copy.errors.adult : undefined} />

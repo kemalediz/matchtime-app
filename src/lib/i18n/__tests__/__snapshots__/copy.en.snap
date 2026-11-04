@@ -2313,12 +2313,14 @@ Badges are worked out from all finished games at this club.
 ### R153 buildHelpReply / pool closed / group
 🌍 *The MatchTime player pool: how it works*
 Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.
+In the pool? Tell me the times you can play and the formats you play by private message, in your own words (for example *Tuesdays after 7, 5 or 7-a-side*), or change them on your pool page.
 
 ⏳ The pool isn't open yet: sign up now and you're on the early list.
 
 ### R153 buildHelpReply / pool off / group
 🌍 *The MatchTime player pool: how it works*
 Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.
+In the pool? Tell me the times you can play and the formats you play by private message, in your own words (for example *Tuesdays after 7, 5 or 7-a-side*), or change them on your pool page.
 
 This club doesn't ask the pool for players. An admin can switch it on with *Player pool* on the settings page:
 https://matchtime.ai/admin/settings#player-pool
@@ -2326,6 +2328,7 @@ https://matchtime.ai/admin/settings#player-pool
 ### R153 buildHelpReply / pool on / group
 🌍 *The MatchTime player pool: how it works*
 Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.
+In the pool? Tell me the times you can play and the formats you play by private message, in your own words (for example *Tuesdays after 7, 5 or 7-a-side*), or change them on your pool page.
 
 ✅ This club also asks the pool when it's short.
 
@@ -2404,18 +2407,21 @@ Or ask me about any part (for example *@Match Time how do I turn on reminders?*)
 ### R153 buildHelpReply / pool closed / player
 🌍 *The MatchTime player pool: how it works*
 Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.
+In the pool? Tell me the times you can play and the formats you play by private message, in your own words (for example *Tuesdays after 7, 5 or 7-a-side*), or change them on your pool page.
 
 ⏳ The pool isn't open yet: sign up now and you're on the early list.
 
 ### R153 buildHelpReply / pool off / player
 🌍 *The MatchTime player pool: how it works*
 Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.
+In the pool? Tell me the times you can play and the formats you play by private message, in your own words (for example *Tuesdays after 7, 5 or 7-a-side*), or change them on your pool page.
 
 This club doesn't ask the pool for players.
 
 ### R153 buildHelpReply / pool on / player
 🌍 *The MatchTime player pool: how it works*
 Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.
+In the pool? Tell me the times you can play and the formats you play by private message, in your own words (for example *Tuesdays after 7, 5 or 7-a-side*), or change them on your pool page.
 
 ✅ This club also asks the pool when it's short.
 

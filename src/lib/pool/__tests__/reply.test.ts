@@ -19,7 +19,7 @@ const dbMock = vi.hoisted(() => ({
   sentNotification: { create: vi.fn() },
 }));
 vi.mock("../../db", () => ({ db: dbMock }));
-vi.mock("../../ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Promise<unknown>) => fn() }));
+vi.mock("../../ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Promise<unknown>) => fn(), onboardingUserKey: (id: string) => `onboarding-user:${id}` }));
 const queue = vi.hoisted(() => ({ queuePlatformDm: vi.fn() }));
 vi.mock("../../platform-jobs", () => queue);
 vi.mock("../links", () => ({ buildPoolManageLink: async () => "https://m/r/x" }));
@@ -29,6 +29,8 @@ const writers = vi.hoisted(() => ({ acceptOffer: vi.fn(), declineOffer: vi.fn(),
 vi.mock("../accept", () => writers);
 const manage = vi.hoisted(() => ({ applyManageAction: vi.fn() }));
 vi.mock("../manage", () => manage);
+const details = vi.hoisted(() => ({ loadDetailsAsk: vi.fn(), saveDetailsFromWords: vi.fn(), claimDetailsReask: vi.fn() }));
+vi.mock("../details", async (orig) => ({ ...(await orig<typeof import("../details")>()), ...details }));
 vi.mock("../offer-facts", () => ({
   loadMatchOfferFacts: async () => ({
     club: "Newer FC",
@@ -93,16 +95,27 @@ beforeEach(() => {
   writers.acceptOffer.mockResolvedValue("in");
   writers.declineOffer.mockResolvedValue("declined");
   manage.applyManageAction.mockResolvedValue({ ok: true });
+  details.loadDetailsAsk.mockResolvedValue(null);
+  details.saveDetailsFromWords.mockResolvedValue(null);
+  details.claimDetailsReask.mockResolvedValue(true);
   reading("neither");
 });
 
 const fromHim = { userId: "ali", phone: HIS, now: NOW, waMessageId: "wamid-1" };
 
 describe("what is loaded, and when the reader is asked", () => {
-  it("nothing delivered: null, and no model", async () => {
+  it("a club member with nothing delivered and no question about his times: null, and no model", async () => {
     dbMock.poolOffer.findMany.mockResolvedValue([]);
+    dbMock.membership.findFirst.mockResolvedValue({ org: { name: "Sutton FC" } });
     expect(await answerPoolOfferReply({ ...fromHim, text: "yes" })).toBeNull();
     expect(reader.readPoolReply).not.toHaveBeenCalled();
+  });
+  it("someone in no club with nothing delivered is read for his times and formats; a neither is silence", async () => {
+    dbMock.poolOffer.findMany.mockResolvedValue([]);
+    expect(await answerPoolOfferReply({ ...fromHim, text: "thanks!" })).toBeNull();
+    expect(reader.readPoolReply).toHaveBeenCalledTimes(1);
+    expect(reader.readPoolReply.mock.calls[0][1]).toMatchObject({ offers: [], quotedIndex: null });
+    expect(queue.queuePlatformDm).not.toHaveBeenCalled();
   });
   it("no pool profile: null, and no model", async () => {
     dbMock.poolProfile.findUnique.mockResolvedValue(null);
@@ -112,6 +125,7 @@ describe("what is loaded, and when the reader is asked", () => {
   it("an offer that went to another number is not his to answer from this one", async () => {
     dbMock.platformJob.findMany.mockResolvedValue([{ id: "j-new", waMessageId: "wa-new", text: "x", phone: "447700900999" }]);
     dbMock.poolOffer.findMany.mockResolvedValue([newOffer]);
+    dbMock.membership.findFirst.mockResolvedValue({ org: { name: "Sutton FC" } });
     expect(await answerPoolOfferReply({ ...fromHim, text: "yes" })).toBeNull();
     expect(reader.readPoolReply).not.toHaveBeenCalled();
   });
@@ -201,5 +215,105 @@ describe("proof by his number works for any country", () => {
     reading("accept");
     expect(await answerPoolOfferReply({ userId: "can", phone: "905321112233", text: "varım", now: NOW })).toBe("pool-reply-accept");
     expect(writers.acceptOffer).toHaveBeenCalled();
+  });
+});
+
+describe("his times and formats, in his own words (2026-11-04)", () => {
+  const SAID = { hours: [{ day: 2, from: "19:00", to: "24:00" }], notDays: [], formats: [5, 7], anyFormat: false, level: null };
+  const SAVED = { days: [{ day: 2, any: false, ranges: [{ from: "19:00", to: "24:00" }] }, { day: 6, any: true, ranges: [] }], formats: [5, 7] };
+  const said = (confidence = 0.95) => reader.readPoolReply.mockResolvedValue({ intent: "details", confidence, reasoning: "t", details: SAID });
+  const profileRow = {
+    id: "prof-1",
+    status: "active",
+    language: "en",
+    user: { phoneNumber: `+${HIS}` },
+    availability: [
+      { day: 2, fromMin: 0, toMin: 1440 },
+      { day: 6, fromMin: 0, toMin: 1440 },
+    ],
+    sports: [{ sport: "football", otherName: "", formats: [], level: null, levelText: null }],
+  };
+  const ASK = { sentAt: new Date(NOW.getTime() - 3600_000), text: "So I only send games that suit you: what times can you play on Tuesday and Saturday?", quoted: false };
+
+  beforeEach(() => {
+    dbMock.poolProfile.findUnique.mockResolvedValue(profileRow);
+    dbMock.poolOffer.findMany.mockResolvedValue([]);
+    details.loadDetailsAsk.mockResolvedValue(ASK);
+    details.saveDetailsFromWords.mockResolvedValue(SAVED);
+  });
+
+  it("the reader is shown his profile and MatchTime's question, then his answer is saved and he is told what was saved", async () => {
+    said();
+    expect(await answerPoolOfferReply({ ...fromHim, text: "weekday evenings after 7, 5 or 7 a side" })).toBe("pool-details-saved");
+    expect(details.loadDetailsAsk).toHaveBeenCalledWith("prof-1", HIS, null, true);
+    expect(reader.readPoolReply.mock.calls[0][1]).toMatchObject({
+      offers: [],
+      detailsAsk: { sentAt: ASK.sentAt, text: ASK.text },
+      quotedAsk: false,
+      profile: { days: [{ day: 2, any: true }, { day: 6, any: true }], formats: [], level: null },
+    });
+    expect(details.saveDetailsFromWords).toHaveBeenCalledWith("ali", SAID, NOW);
+    expect(texts()).toHaveLength(1);
+    expect(texts()[0]).toMatch(/^✅ Got it, saved: Tuesday from 19:00 and Saturday any time\. Formats: 5 and 7-a-side\./);
+    expect(queue.queuePlatformDm.mock.calls[0][0]).toMatchObject({ phone: HIS, purpose: "pool-reply" });
+  });
+
+  it("a club member is read only while he answers the question, and saved the same way", async () => {
+    dbMock.membership.findFirst.mockResolvedValue({ org: { name: "Sutton FC" } });
+    said();
+    expect(await answerPoolOfferReply({ ...fromHim, text: "Tue and Thu from 8" })).toBe("pool-details-saved");
+    expect(reader.readPoolReply.mock.calls[0][1]).toMatchObject({ ownClub: "Sutton FC" });
+  });
+
+  it("a club member's DM after his club wrote to him is his club's: no model", async () => {
+    dbMock.membership.findFirst.mockResolvedValue({ org: { name: "Sutton FC" } });
+    dbMock.botJob.count.mockResolvedValue(1);
+    expect(await answerPoolOfferReply({ ...fromHim, text: "Tue and Thu from 8" })).toBeNull();
+    expect(reader.readPoolReply).not.toHaveBeenCalled();
+  });
+
+  it("from a number that is not his: nothing changed, nothing said", async () => {
+    said();
+    expect(await answerPoolOfferReply({ ...fromHim, phone: "447700900222", text: "after 7" })).toBeNull();
+    expect(details.saveDetailsFromWords).not.toHaveBeenCalled();
+    expect(queue.queuePlatformDm).not.toHaveBeenCalled();
+  });
+
+  it("a stopped profile is never read", async () => {
+    dbMock.poolProfile.findUnique.mockResolvedValue({ ...profileRow, status: "stopped" });
+    expect(await answerPoolOfferReply({ ...fromHim, text: "after 7" })).toBeNull();
+    expect(reader.readPoolReply).not.toHaveBeenCalled();
+  });
+
+  it("a save the validator refused says nothing (never a false 'saved')", async () => {
+    said();
+    details.saveDetailsFromWords.mockResolvedValue(null);
+    expect(await answerPoolOfferReply({ ...fromHim, text: "after 7" })).toBeNull();
+    expect(queue.queuePlatformDm).not.toHaveBeenCalled();
+  });
+
+  it("unsure: asked once what he meant, then silence", async () => {
+    said(0.5);
+    expect(await answerPoolOfferReply({ ...fromHim, text: "erm the usual" })).toBe("pool-details-reask");
+    expect(texts()[0]).toMatch(/^Sorry, I didn't quite get that\. Which times can you play/);
+    details.claimDetailsReask.mockResolvedValue(false);
+    expect(await answerPoolOfferReply({ ...fromHim, text: "erm the usual again" })).toBeNull();
+    expect(texts()).toHaveLength(1);
+    expect(details.saveDetailsFromWords).not.toHaveBeenCalled();
+  });
+
+  it("a reply that ignores the question changes nothing and says nothing", async () => {
+    reading("neither");
+    expect(await answerPoolOfferReply({ ...fromHim, text: "cool, cheers" })).toBeNull();
+    expect(details.saveDetailsFromWords).not.toHaveBeenCalled();
+    expect(queue.queuePlatformDm).not.toHaveBeenCalled();
+  });
+
+  it("a swipe-reply to the question is shown as one", async () => {
+    details.loadDetailsAsk.mockResolvedValue({ ...ASK, quoted: true });
+    said();
+    await answerPoolOfferReply({ ...fromHim, text: "after 7", quotedId: "wa-ask" });
+    expect(details.loadDetailsAsk).toHaveBeenCalledWith("prof-1", HIS, "wa-ask", true);
+    expect(reader.readPoolReply.mock.calls[0][1]).toMatchObject({ quotedAsk: true });
   });
 });

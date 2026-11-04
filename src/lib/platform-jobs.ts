@@ -29,6 +29,11 @@
  *   pool-welcome        only a number MatchTime already knows: the person
  *                       whose own message just confirmed his sign-up (his
  *                       User exists by then).
+ *   pool-details-ask    only a number MatchTime already knows: an ACTIVE
+ *                       pool player with consent who never answered the
+ *                       welcome's question about his times and formats;
+ *                       once per profile ever, queued only by the daily
+ *                       job in src/lib/pool/details.ts (2026-11-04).
  *   connect-reply,      only a number MatchTime already knows (a User with
  *   organiser-decision, that phone: a verified sign-up or a club member).
  *   billing,
@@ -139,6 +144,7 @@ export const PLATFORM_DM_PURPOSES = [
   "setup-removed",
   "setup-owner-live",
   "pool-welcome",
+  "pool-details-ask",
   "pool-code-reply",
   "pool-offer",
   "pool-placed",
@@ -353,6 +359,9 @@ export const CANCELLABLE_DM_PURPOSES = [
   "setup-reminder",
   "setup-removed",
   "pool-offer",
+  // His times and formats (2026-11-04): the later question waits for its
+  // hour; he paused, stopped or deleted meanwhile.
+  "pool-details-ask",
   // Pool L8 (review of #406): a link replaced or removed, a consent withdrawn.
   "club-invite-ask",
   "club-invite-link",

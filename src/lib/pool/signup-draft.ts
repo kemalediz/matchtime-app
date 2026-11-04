@@ -7,51 +7,27 @@
  * write is wrapped, a blocked or empty store just means a fresh form, and a
  * sent sign-up clears it. What comes back is read defensively, field by
  * field, onto a fresh form; the validator still runs on send.
+ *
+ * The short form (2026-11-04, `short-form.ts`): his name, postcode area and
+ * days. The key is new (v2), so a draft of the long form is not read.
  */
-import { isLang } from "../i18n/lang";
-import type { PoolFormValue, SportState } from "./form-state";
+import { toggleShortDay, type ShortFormValue } from "./short-form";
 
-export const SIGNUP_DRAFT_KEY = "mt.pool.signupDraft.v1";
+export const SIGNUP_DRAFT_KEY = "mt.pool.signupDraft.v2";
 
 const MAX_NAME = 200;
 const MAX_DISTRICT = 40;
-const MAX_TEXT = 200;
 
-export function encodeSignupDraft(v: PoolFormValue): string {
-  const { name, district, maxMiles, days, sports, other, language } = v;
-  return JSON.stringify({ v: 1, form: { name, district, maxMiles, days, sports, other, language } });
+export function encodeSignupDraft(v: ShortFormValue): string {
+  const { name, district, days } = v;
+  return JSON.stringify({ v: 2, form: { name, district, days } });
 }
 
 const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
 const str = (x: unknown, max: number, fallback: string) => (typeof x === "string" ? x.slice(0, max) : fallback);
 
-function sport(x: unknown, base: SportState): SportState {
-  if (!isObj(x)) return base;
-  return {
-    on: typeof x.on === "boolean" ? x.on : base.on,
-    formats: Array.isArray(x.formats) ? x.formats.filter((n): n is number => typeof n === "number" && Number.isInteger(n)).slice(0, 20) : base.formats,
-    level: (typeof x.level === "string" ? x.level.slice(0, 40) : base.level) as SportState["level"],
-    levelText: str(x.levelText, MAX_TEXT, base.levelText),
-  };
-}
-
-function days(x: unknown): PoolFormValue["days"] {
-  if (!isObj(x)) return {};
-  const out: PoolFormValue["days"] = {};
-  for (const [k, ranges] of Object.entries(x)) {
-    const day = Number(k);
-    if (!Number.isInteger(day) || day < 0 || day > 6 || !Array.isArray(ranges)) continue;
-    const ok = ranges
-      .filter((r): r is { from: string; to: string } => isObj(r) && typeof r.from === "string" && typeof r.to === "string")
-      .slice(0, 10)
-      .map((r) => ({ from: r.from.slice(0, 5), to: r.to.slice(0, 5) }));
-    if (ok.length) out[day] = ok;
-  }
-  return out;
-}
-
 /** The draft onto `base` (a fresh form), or null when there is none. */
-export function decodeSignupDraft(raw: string | null, base: PoolFormValue): PoolFormValue | null {
+export function decodeSignupDraft(raw: string | null, base: ShortFormValue): ShortFormValue | null {
   if (!raw) return null;
   let parsed: unknown;
   try {
@@ -59,26 +35,19 @@ export function decodeSignupDraft(raw: string | null, base: PoolFormValue): Pool
   } catch {
     return null;
   }
-  if (!isObj(parsed) || parsed.v !== 1 || !isObj(parsed.form)) return null;
+  if (!isObj(parsed) || parsed.v !== 2 || !isObj(parsed.form)) return null;
   const f = parsed.form;
-  const sports = Object.fromEntries(
-    Object.entries(base.sports).map(([k, b]) => [k, sport(isObj(f.sports) ? f.sports[k] : undefined, b)]),
-  ) as PoolFormValue["sports"];
-  const other = isObj(f.other) ? { ...sport(f.other, base.other), name: str(f.other.name, MAX_TEXT, base.other.name) } : base.other;
-  return {
-    name: str(f.name, MAX_NAME, base.name),
-    district: str(f.district, MAX_DISTRICT, base.district),
-    maxMiles: typeof f.maxMiles === "number" && Number.isFinite(f.maxMiles) ? f.maxMiles : base.maxMiles,
-    days: days(f.days),
-    sports,
-    other,
-    language: isLang(f.language) ? f.language : base.language,
-  };
+  let v: ShortFormValue = { name: str(f.name, MAX_NAME, base.name), district: str(f.district, MAX_DISTRICT, base.district), days: [] };
+  const days = Array.isArray(f.days) ? f.days : [];
+  for (const d of days) {
+    if (typeof d === "number" && Number.isInteger(d) && d >= 0 && d <= 6 && !v.days.includes(d)) v = toggleShortDay(v, d);
+  }
+  return v;
 }
 
 // ── The browser's store (never required to work) ───────────────────────
 
-export function loadSignupDraft(base: PoolFormValue): PoolFormValue | null {
+export function loadSignupDraft(base: ShortFormValue): ShortFormValue | null {
   try {
     return decodeSignupDraft(window.sessionStorage.getItem(SIGNUP_DRAFT_KEY), base);
   } catch {
@@ -86,7 +55,7 @@ export function loadSignupDraft(base: PoolFormValue): PoolFormValue | null {
   }
 }
 
-export function saveSignupDraft(v: PoolFormValue): void {
+export function saveSignupDraft(v: ShortFormValue): void {
   try {
     window.sessionStorage.setItem(SIGNUP_DRAFT_KEY, encodeSignupDraft(v));
   } catch {

@@ -1373,7 +1373,7 @@ export const en = {
           : `✅ It's on for your club. Ask me in your club's WhatsApp group (for example *@Match Time ask the player pool for 2 players*), or turn on *${p.autoLabel}*. To switch it off, turn off *${p.poolLabel}*:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
-    const body = `Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.`;
+    const body = `Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.\nIn the pool? Tell me the times you can play and the formats you play by private message, in your own words (for example *Tuesdays after 7, 5 or 7-a-side*), or change them on your pool page.`;
     const status = on
       ? `✅ This club also asks the pool when it's short.`
       : !p.platformOpen
@@ -6207,10 +6207,13 @@ export const en = {
   // it is read by src/lib/pool/confirm-rules.ts. Then MatchTime's replies to
   // that message (src/lib/pool/copy.ts passes the limits from rules.ts).
   pool_confirm_prefill: (p: { code: string }): string => `Hi MatchTime, sign me up to play. Code ${p.code}`,
-  pool_dm_welcome: (p: { name: string | null; perWeek: number; manageLink: string; privacyLink: string }): string =>
-    `✅ ${p.name ? `Thanks ${p.name}, you're` : "You're"} in the MatchTime player pool. When a club near you needs a player at a time you can play, I'll message you here with the game, and you decide. At most ${p.perWeek} a week.\n\nStay safe: play at public venues, and tell us here about any problem.\n\nPause, change your details or delete them any time: ${p.manageLink}\nPrivacy: ${p.privacyLink}`,
-  pool_dm_welcome_early: (p: { name: string | null; perWeek: number; manageLink: string; privacyLink: string }): string =>
-    `✅ ${p.name ? `Thanks ${p.name}, you're` : "You're"} on the early sign-up list for the MatchTime player pool. The pool is not open near you yet, so I won't message you about games until it is. Then it's at most ${p.perWeek} a week.\n\nStay safe: play at public venues, and tell us here about any problem.\n\nChange your details or delete them any time: ${p.manageLink}\nPrivacy: ${p.privacyLink}`,
+  // `details` (2026-11-04): the question about his times and formats
+  // (src/lib/pool/copy.ts poolDetailsQuestion), when the short /play form
+  // left them to MatchTime to ask.
+  pool_dm_welcome: (p: { name: string | null; perWeek: number; manageLink: string; privacyLink: string; details?: string | null }): string =>
+    `✅ ${p.name ? `Thanks ${p.name}, you're` : "You're"} in the MatchTime player pool. When a club near you needs a player at a time you can play, I'll message you here with the game, and you decide. At most ${p.perWeek} a week.${p.details ? `\n\n${p.details}` : ""}\n\nStay safe: play at public venues, and tell us here about any problem.\n\nPause, change your details or delete them any time: ${p.manageLink}\nPrivacy: ${p.privacyLink}`,
+  pool_dm_welcome_early: (p: { name: string | null; perWeek: number; manageLink: string; privacyLink: string; details?: string | null }): string =>
+    `✅ ${p.name ? `Thanks ${p.name}, you're` : "You're"} on the early sign-up list for the MatchTime player pool. The pool is not open near you yet, so I won't message you about games until it is. Then it's at most ${p.perWeek} a week.${p.details ? `\n\n${p.details}` : ""}\n\nStay safe: play at public venues, and tell us here about any problem.\n\nChange your details or delete them any time: ${p.manageLink}\nPrivacy: ${p.privacyLink}`,
   pool_dm_already: (p: { manageLink: string }): string =>
     `You're already in the MatchTime player pool. To change your details, pause or stop: ${p.manageLink}`,
   pool_dm_already_stopped: (p: { manageLink: string }): string =>

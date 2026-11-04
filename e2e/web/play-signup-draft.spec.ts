@@ -49,16 +49,15 @@ async function fillSome(page: Page) {
   await name(page).fill("Kemal E");
   await district(page).fill("SM1");
   await page.getByRole("checkbox", { name: "Tuesday", exact: true }).check();
-  await page.getByLabel(EN.fields.toLabel("Tuesday")).selectOption("22:00");
-  await page.getByRole("checkbox", { name: "7-a-side" }).check();
+  await page.getByRole("checkbox", { name: "Saturday", exact: true }).check();
 }
 
 async function expectFilled(page: Page) {
   await expect(name(page)).toHaveValue("Kemal E");
   await expect(district(page)).toHaveValue("SM1");
   await expect(page.getByRole("checkbox", { name: "Tuesday", exact: true })).toBeChecked();
-  await expect(page.getByLabel(EN.fields.toLabel("Tuesday"))).toHaveValue("22:00");
-  await expect(page.getByRole("checkbox", { name: "7-a-side" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Saturday", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Monday", exact: true })).not.toBeChecked();
 }
 
 test("the name field is on a phone's first screen", async ({ page }) => {

@@ -46,7 +46,6 @@ async function signUp(page: Page, c = EN, name = "Ali Kaya") {
   await page.getByLabel(c.fields.nameLabel, { exact: true }).fill(name);
   await page.getByLabel(c.fields.districtLabel, { exact: true }).fill("SM1");
   await page.getByRole("checkbox", { name: c.fields.dayNames[2], exact: true }).check();
-  if (c === EN) await page.getByRole("checkbox", { name: "7-a-side" }).check();
   await page.getByRole("checkbox", { name: c.signup.adultLabel }).check();
   await page.getByRole("checkbox", { name: c.signup.consentLabel }).check();
   await page.getByRole("button", { name: c.signup.submit }).click();

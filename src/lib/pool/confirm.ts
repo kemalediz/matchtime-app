@@ -61,7 +61,8 @@ import {
   type SenderProfile,
 } from "./confirm-rules";
 import { recordPoolConsent } from "./consent-record";
-import { poolAlreadyText, poolClaimWaitText, poolCodeReplyText, poolWelcomeText } from "./copy";
+import { poolAlreadyText, poolClaimWaitText, poolCodeReplyText, poolDetailsQuestion, poolWelcomeText } from "./copy";
+import { detailsQuestionDays } from "./details";
 import { isPoolSignupPaused } from "./flags";
 import { settlePoolReferral } from "./growth";
 import { buildPoolManageLink } from "./links";
@@ -214,15 +215,20 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
   }
 }
 
-/** The ONE welcome to the number a sign-up was confirmed for. */
+/** The ONE welcome to the number a sign-up was confirmed for. While his
+ *  profile holds only the short form's days, it asks his times and formats
+ *  (2026-11-04, `details.ts`). */
 export async function queuePoolWelcome(
   p: { id: string; userId: string; displayName: string; language: string; earlyList: boolean },
   phone: string,
 ): Promise<boolean> {
-  const text = poolWelcomeText(normaliseLang(p.language), {
+  const lang = normaliseLang(p.language);
+  const askDays = await detailsQuestionDays(p.id);
+  const text = poolWelcomeText(lang, {
     displayName: p.displayName,
     earlyList: p.earlyList,
     manageLink: await buildPoolManageLink(p.userId),
+    details: askDays ? poolDetailsQuestion(lang, askDays) : null,
   });
   return queueOnce(phone, text, "pool-welcome", `pool-welcome:${p.id}`);
 }

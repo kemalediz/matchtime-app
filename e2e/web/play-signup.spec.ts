@@ -2,9 +2,9 @@
  * /play, the local player pool's sign-up (slice L2), in a real browser:
  *   - reads at phone and desktop width, no sideways scroll, no app sidebar,
  *     one h1, every field labelled, English only (no switch, no language field);
- *   - consent and 18+ unticked by default; football the only sport offered
- *     (LIVE_SPORTS), shown with its formats and no sport to pick, and a
- *     crafted POST with any other sport refused by the route;
+ *   - the SHORT form (2026-11-04): name, postcode area, days, and the two
+ *     ticks, unticked by default; no travel, hours, sports or formats on the
+ *     page; a crafted POST with a sport that is not offered refused;
  *   - validation names every wrong field, accessibly, and sends nothing;
  *   - the full flow: fill in, continue, the wa.me link carries the prefilled
  *     message, the person sends it (the Pi's real route), the profile goes
@@ -45,13 +45,11 @@ test.afterAll(() => clearGeocodeStub());
 
 const overflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
+/** The short form (2026-11-04): name, postcode area, days, the two ticks. */
 async function fillValid(page: Page, name = "Ali Kaya") {
   await page.getByLabel(EN.fields.nameLabel, { exact: true }).fill(name);
   await page.getByLabel(EN.fields.districtLabel, { exact: true }).fill("sm1");
   await page.getByRole("checkbox", { name: "Tuesday", exact: true }).check();
-  await page.getByLabel(EN.fields.fromLabel("Tuesday")).selectOption("19:00");
-  await page.getByLabel(EN.fields.toLabel("Tuesday")).selectOption("22:00");
-  await page.getByRole("checkbox", { name: "7-a-side" }).check();
   await page.getByRole("checkbox", { name: EN.signup.adultLabel }).check();
   await page.getByRole("checkbox", { name: EN.signup.consentLabel }).check();
 }
@@ -68,21 +66,16 @@ test.describe("English visitor", () => {
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
       await expect(page.locator('main[lang="en"]')).toBeVisible();
       await expect(page.getByLabel(EN.fields.nameLabel, { exact: true })).toBeVisible();
-      await expect(page.getByRole("group", { name: EN.fields.travelLegend })).toBeVisible();
-      await expect(page.getByRole("radio", { name: "3 miles" })).toBeChecked();
-      // Football only (LIVE_SPORTS): no sport to tick, just its formats.
-      const sports = page.getByTestId("pool-sports");
-      await expect(sports.getByText("Football", { exact: true })).toBeVisible();
-      await expect(page.getByRole("checkbox", { name: "Football", exact: true })).toHaveCount(0);
-      await expect(page.getByText(EN.fields.sportsHintOne)).toBeVisible();
-      for (const n of [5, 7, 8, 9, 11]) await expect(sports.getByRole("checkbox", { name: `${n}-a-side`, exact: true })).toBeVisible();
-      for (const other of ["Basketball", "Tennis", "Padel", "Badminton", "Squash", "Table tennis", "Snooker", "Billiards", "Pool", "Other"]) {
-        await expect(sports.getByText(other, { exact: true })).toHaveCount(0);
-      }
+      await expect(page.getByLabel(EN.fields.districtLabel, { exact: true })).toBeVisible();
+      await expect(page.getByRole("group", { name: EN.signup.daysLegend })).toBeVisible();
+      // The short form (2026-11-04): no travel, hours, sports, formats or level.
+      await expect(page.getByRole("radio")).toHaveCount(0);
+      await expect(page.getByRole("combobox")).toHaveCount(0);
+      await expect(page.getByTestId("pool-sports")).toHaveCount(0);
+      await expect(page.getByRole("checkbox", { name: "7-a-side" })).toHaveCount(0);
       await expect(page.getByRole("checkbox", { name: EN.signup.adultLabel })).not.toBeChecked();
       await expect(page.getByRole("checkbox", { name: EN.signup.consentLabel })).not.toBeChecked();
       await expect(page.getByRole("link", { name: EN.signup.consentPolicy })).toHaveAttribute("href", "/privacy");
-      await expect(page.getByRole("group", { name: EN.fields.formatsLegend("Football") })).toBeVisible();
       expect(await overflow(page)).toBeLessThanOrEqual(0);
       await page.waitForLoadState("networkidle");
       await expect(page.getByRole("link", { name: /^matches$/i })).toHaveCount(0);
@@ -123,20 +116,11 @@ test.describe("English visitor", () => {
     await expect(page.locator("main").getByRole("alert")).toHaveText(EN.errorSummary);
     await expect(page.getByText(EN.errors.name)).toBeVisible();
     await expect(page.getByText(EN.errors["area-district"])).toBeVisible();
-    await expect(page.getByText(EN.errors["availability-none"])).toBeVisible();
+    await expect(page.getByText(EN.signup.daysNone)).toBeVisible();
     await expect(page.getByText(EN.errors.adult)).toBeVisible();
     await expect(page.getByText(EN.errors.consent)).toBeVisible();
     await expect(page.getByLabel(EN.fields.nameLabel, { exact: true })).toHaveAttribute("aria-invalid", "true");
     expect(await db.count(`SELECT count(*) FROM "PoolProfile"`)).toBe(before);
-  });
-
-  test("a time that ends before it starts is refused next to the days", async ({ page }) => {
-    await page.goto("/play");
-    await fillValid(page);
-    await page.getByLabel(EN.fields.fromLabel("Tuesday")).selectOption("22:00");
-    await page.getByLabel(EN.fields.toLabel("Tuesday")).selectOption("19:00");
-    await page.getByRole("button", { name: EN.signup.submit }).click();
-    await expect(page.getByText(EN.errors["availability-bad-range"])).toBeVisible();
   });
 
   test("the full flow: fill in, open WhatsApp, send the message, the profile is live and he is welcomed once", async ({ page, db, request }) => {
@@ -144,7 +128,6 @@ test.describe("English visitor", () => {
     await db.run(`INSERT INTO "PoolCampaign" (code, source, label) VALUES ('li-kemal', 'linkedin', 'post') ON CONFLICT DO NOTHING`);
     await fillValid(page);
     await page.getByRole("checkbox", { name: "Saturday", exact: true }).check();
-    await page.getByRole("button", { name: EN.fields.addRange("Saturday") }).click();
     await page.getByRole("button", { name: EN.signup.submit }).click();
 
     await expect(page.getByRole("heading", { level: 1, name: EN.signup.confirmHeading })).toBeVisible();
@@ -167,9 +150,10 @@ test.describe("English visitor", () => {
       `SELECT a.day, a."fromMin", a."toMin" FROM "PoolAvailability" a JOIN "PoolProfile" p ON p.id = a."profileId" WHERE p."confirmCode" = $1 ORDER BY a.day, a."fromMin"`,
       [code],
     );
+    // The short form's default: any hour of each chosen day.
     expect(ranges).toEqual([
-      { day: 2, fromMin: 19 * 60, toMin: 22 * 60 },
-      { day: 6, fromMin: 18 * 60, toMin: 24 * 60 },
+      { day: 2, fromMin: 0, toMin: 24 * 60 },
+      { day: 6, fromMin: 0, toMin: 24 * 60 },
     ]);
 
     // He sends it from his own WhatsApp: the Pi forwards it to the real route.
@@ -185,14 +169,14 @@ test.describe("English visitor", () => {
     );
     expect(live).toMatchObject({ status: "active", consentChannel: "whatsapp" });
     expect(await db.count(`SELECT count(*) FROM "PlatformJob" WHERE purpose = 'pool-welcome' AND phone = $1`, [phone])).toBe(1);
+    const welcome = (await db.one<{ text: string }>(`SELECT text FROM "PlatformJob" WHERE purpose = 'pool-welcome' AND phone = $1`, [phone]))!;
+    expect(welcome.text).toContain("what times can you play on Tuesday and Saturday?");
   });
 
   test("a postcode area is the only way: no pitch choice on the page, and a crafted POST with chosen pitches is refused", async ({ page, request, db }) => {
     await page.goto("/play");
-    const area = page.getByRole("group", { name: EN.fields.areaLegend });
-    await expect(area).toBeVisible();
-    await expect(area.getByLabel(EN.fields.districtLabel, { exact: true })).toBeVisible();
-    await expect(area.getByRole("radio")).toHaveCount(0);
+    await expect(page.getByLabel(EN.fields.districtLabel, { exact: true })).toBeVisible();
+    await expect(page.getByRole("radio")).toHaveCount(0);
     await expect(page.getByRole("searchbox")).toHaveCount(0);
     await expect(page.getByText(/pitches I choose/i)).toHaveCount(0);
 

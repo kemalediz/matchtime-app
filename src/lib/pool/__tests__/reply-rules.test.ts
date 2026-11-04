@@ -163,3 +163,37 @@ describe("replyAction: what is done with the reading", () => {
     expect(replyAction({ scope: one("taken"), reading: sure("decline"), ...off })).toEqual({ kind: "pull-out", offerId: "o" });
   });
 });
+
+describe("replyAction: his times and formats (details, 2026-11-04)", () => {
+  const none: ReplyScope = { kind: "none" };
+  const inScope = { inScope: true, canSave: true };
+
+  it("a sure answer from his own number saves, with or without an offer in scope", () => {
+    expect(replyAction({ scope: none, reading: sure("details"), ...ok, details: inScope })).toEqual({ kind: "details" });
+    expect(replyAction({ scope: one("open"), reading: sure("details"), ...ok, details: { inScope: false, canSave: true } })).toEqual({ kind: "details" });
+    expect(replyAction({ scope: none, reading: sure("details"), ...ok, profileActive: false, details: inScope })).toEqual({ kind: "details" });
+  });
+
+  it("nothing is read as his answer outside the conversation: no offer and not in scope carries on", () => {
+    expect(replyAction({ scope: none, reading: sure("details"), ...ok, inAClub: true, details: { inScope: false, canSave: true } })).toEqual({ kind: "carry-on" });
+    expect(replyAction({ scope: none, reading: sure("details"), ...ok })).toEqual({ kind: "carry-on" });
+  });
+
+  it("never for a profile that cannot be saved (stopped), and never unproved", () => {
+    expect(replyAction({ scope: none, reading: sure("details"), ...ok, details: { inScope: true, canSave: false } })).toEqual({ kind: "carry-on" });
+    expect(replyAction({ scope: none, reading: sure("details"), ...ok, proved: false, details: inScope })).toEqual({ kind: "carry-on" });
+    expect(replyAction({ scope: one("open"), reading: sure("details"), ...ok, proved: false, details: inScope })).toEqual({ kind: "fallback", offerId: "o" });
+  });
+
+  it("unsure: someone in no club is asked once more; a club member's DM carries on", () => {
+    expect(replyAction({ scope: none, reading: unsure("details"), ...ok, details: inScope })).toEqual({ kind: "details-reask" });
+    expect(replyAction({ scope: one("open"), reading: unsure("details"), ...ok, details: inScope })).toEqual({ kind: "details-reask" });
+    expect(replyAction({ scope: none, reading: unsure("details"), ...ok, inAClub: true, details: inScope })).toEqual({ kind: "carry-on" });
+  });
+
+  it("anything else with no offer in scope carries on (a thanks to the question is silence)", () => {
+    for (const i of ["accept", "decline", "question", "neither"] as const) {
+      expect(replyAction({ scope: none, reading: sure(i), ...ok, details: inScope })).toEqual({ kind: "carry-on" });
+    }
+  });
+});

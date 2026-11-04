@@ -100,6 +100,12 @@ export interface PoolPlayCopy {
     earlyNote: string;
     openNote: string;
     howItWorks: readonly string[];
+    /** The short form's days (2026-11-04): days only, no hours; MatchTime
+     *  asks the times and formats on WhatsApp. */
+    daysLegend: string;
+    daysHint: string;
+    daysNone: string;
+    daysBad: string;
     adultLabel: string;
     consentLabel: string;
     consentPolicy: string;

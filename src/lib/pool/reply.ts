@@ -22,6 +22,14 @@
  * (`proved`). A sender known only by display name, or a LID without his
  * number, changes nothing: he gets the tap link, whose page proves him.
  *
+ * HIS TIMES AND FORMATS (2026-11-04, `details-rules.ts`): the short /play
+ * form asks only his days, and MatchTime asks the rest on WhatsApp. The
+ * same reader reads his answer ("details") against MatchTime's question and
+ * his profile; it is saved through the manage page's validator and writer
+ * (`details.ts`) and he is told exactly what was saved. Read whenever he
+ * is in no club, or, for a club member, only while he answers the question
+ * (as the offers' state prior does). Unsure: asked once what he meant.
+ *
  * Every line is in his pool language, ends with his manage link (but the
  * stop and switched-off lines, which ARE about it), and is rate-limited by
  * a `SentNotification` key: today's line and the re-ask once per offer,
@@ -30,7 +38,11 @@
  * someone in no club that is silence).
  */
 import { db } from "../db";
-import { withOrgAiBudget } from "../ai-budget";
+import { onboardingUserKey, withOrgAiBudget } from "../ai-budget";
+import { poolDetailsReaskText, poolDetailsSavedText } from "./copy";
+import { claimDetailsReask, detailsFieldsOf, loadDetailsAsk, saveDetailsFromWords } from "./details";
+import { detailsInScope, detailsSummary, hoursPending } from "./details-rules";
+import { DEFAULT_POOL_SPORT } from "./sports";
 import { appUrl } from "../app-url";
 import { ORDINARY_MEMBER_WHERE } from "../guest-membership";
 import { normaliseLang, type Lang } from "../i18n/lang";
@@ -56,7 +68,7 @@ import {
   poolReplyWhichText,
 } from "./offer-copy";
 import { poolOfferPath } from "./offer-token";
-import { readPoolReply, type PoolReplyReading } from "./reply-reader";
+import { readPoolReply, type PoolReplyContext, type PoolReplyReading } from "./reply-reader";
 import {
   offerReplyState,
   POOL_REPLY_FACTS_PER_OFFER,
@@ -81,6 +93,8 @@ export type PoolReplyAnswer =
   | "pool-reply-reask"
   | "pool-reply-which"
   | "pool-reply-profile-off"
+  | "pool-details-saved"
+  | "pool-details-reask"
   | null;
 
 export interface PoolReplyInput {
@@ -114,35 +128,64 @@ export async function answerPoolOfferReply(args: PoolReplyInput): Promise<PoolRe
   try {
     const profile = await db.poolProfile.findUnique({
       where: { userId: args.userId },
-      select: { status: true, language: true, user: { select: { phoneNumber: true } } },
+      select: {
+        id: true,
+        status: true,
+        language: true,
+        user: { select: { phoneNumber: true } },
+        availability: { select: { day: true, fromMin: true, toMin: true } },
+        sports: { select: { sport: true, otherName: true, formats: true, level: true, levelText: true }, orderBy: { id: "asc" } },
+      },
     });
     const his = digitsOf(profile?.user?.phoneNumber);
     if (!profile || !his) return null;
+    const quotedId = args.quotedId ?? null;
 
-    const offers = await loadReplyOffers(args.userId, his, args.quotedId ?? null, now);
-    if (offers.length === 0) return null;
-
+    const offers = await loadReplyOffers(args.userId, his, quotedId, now);
     const own = await db.membership.findFirst({
       where: { userId: args.userId, leftAt: null, ...ORDINARY_MEMBER_WHERE },
       select: { org: { select: { name: true } } },
     });
     const inAClub = !!own;
     const newestLive = offers.find((o) => o.state !== "ended");
-    const clubDmSinceOffer =
-      inAClub && !!newestLive && (await db.botJob.count({ where: { kind: "dm", phone: his, sentAt: { gt: newestLive.sentAt } } })) > 0;
-
+    const clubDmSince = async (at: Date) => (await db.botJob.count({ where: { kind: "dm", phone: his, sentAt: { gt: at } } })) > 0;
+    const clubDmSinceOffer = inAClub && !!newestLive && (await clubDmSince(newestLive.sentAt));
     const scope = replyScope({ offers, inAClub, clubDmSinceOffer });
-    if (scope.kind === "none") return null;
-    const inScope = scope.kind === "one" ? [scope.offer as LoadedReplyOffer] : (scope.offers as LoadedReplyOffer[]);
 
-    const reading = await readReply(args.text ?? "", inScope, own?.org.name ?? null, now);
+    // His times and formats (2026-11-04): MatchTime's question, and whether
+    // this DM may be his answer (`details-rules.ts` `detailsInScope`).
+    const availability = profile.availability ?? [];
+    const ask = await loadDetailsAsk(profile.id, his, quotedId, hoursPending(availability));
+    const clubDmSinceAsk = inAClub && !!ask && !ask.quoted && (await clubDmSince(ask.sentAt));
+    const detailsIn = detailsInScope({ inAClub, profileStatus: profile.status, ask, clubDmSinceAsk, now });
+    if (scope.kind === "none" && !detailsIn) return null;
+    const inScope = scope.kind === "none" ? [] : scope.kind === "one" ? [scope.offer as LoadedReplyOffer] : (scope.offers as LoadedReplyOffer[]);
+
+    const fields = detailsFieldsOf({ availability, sports: profile.sports ?? [] });
+    const football = fields.sports.find((s) => s.sport === DEFAULT_POOL_SPORT);
+    const reading = await readReply(args.text ?? "", inScope, own?.org.name ?? null, now, {
+      userId: args.userId,
+      profile: { ...detailsSummary(fields), level: football?.level ?? null },
+      ask,
+    });
     const proved = [args.phone, args.senderAltPhone].some((p) => digitsOf(p) === his);
-    const action = replyAction({ scope, reading, inAClub, proved, profileActive: profile.status === "active" });
+    const canSave = profile.status === "active" || profile.status === "paused";
+    const action = replyAction({ scope, reading, inAClub, proved, profileActive: profile.status === "active", details: { inScope: detailsIn, canSave } });
     console.log(
-      `[pool] ${args.userId}: reply read ${reading.intent} (${reading.confidence.toFixed(2)}) over ${inScope.length} offer(s): ${action.kind}${proved ? "" : " (not proved)"}`,
+      `[pool] ${args.userId}: reply read ${reading.intent} (${reading.confidence.toFixed(2)}) over ${inScope.length} offer(s)${ask ? " and the times question" : ""}: ${action.kind}${proved ? "" : " (not proved)"}`,
     );
     const lang = normaliseLang(profile.language);
-    const answer = await act(action, { userId: args.userId, phone: his, lang, offers, now, env: args.env, waMessageId: args.waMessageId ?? null });
+    const answer = await act(action, {
+      userId: args.userId,
+      profileId: profile.id,
+      phone: his,
+      lang,
+      offers,
+      now,
+      env: args.env,
+      waMessageId: args.waMessageId ?? null,
+      reading,
+    });
     if (answer) await db.poolProfile.updateMany({ where: { userId: args.userId }, data: { lastActiveAt: now } });
     return answer;
   } catch (err) {
@@ -271,10 +314,32 @@ async function loadOfferRows(userId: string, his: string, quotedId: string | nul
   return out;
 }
 
-async function readReply(text: string, offers: LoadedReplyOffer[], ownClub: string | null, now: Date): Promise<PoolReplyReading> {
+async function readReply(
+  text: string,
+  offers: LoadedReplyOffer[],
+  ownClub: string | null,
+  now: Date,
+  d: { userId: string; profile: PoolReplyContext["profile"]; ask: { sentAt: Date; text: string; quoted: boolean } | null },
+): Promise<PoolReplyReading> {
   const quotedIndex = offers.findIndex((o) => o.quoted);
-  const ctx = { now, ownClub, quotedIndex: quotedIndex >= 0 ? quotedIndex : null, offers: offers.map((o) => ({ state: o.state, sentAt: o.sentAt, text: o.text })) };
-  return withOrgAiBudget(offers[0].orgId, () => readPoolReply(text, ctx)).catch(() => ({ intent: "neither" as const, confidence: 0, reasoning: "budget" }));
+  const ctx: PoolReplyContext = {
+    now,
+    ownClub,
+    quotedIndex: quotedIndex >= 0 ? quotedIndex : null,
+    offers: offers.map((o) => ({ state: o.state, sentAt: o.sentAt, text: o.text })),
+    profile: d.profile,
+    detailsAsk: d.ask ? { sentAt: d.ask.sentAt, text: d.ask.text } : null,
+    quotedAsk: !!d.ask?.quoted,
+  };
+  // An offer's club pays for a reply about its offer; his own words about
+  // his times are his (the pre-club allowance, as an organiser's setup is).
+  const budgetKey = offers[0]?.orgId ?? onboardingUserKey(d.userId);
+  return withOrgAiBudget(budgetKey, () => readPoolReply(text, ctx)).catch(() => ({
+    intent: "neither" as const,
+    confidence: 0,
+    reasoning: "budget",
+    details: { hours: [], notDays: [], formats: [], anyFormat: false, level: null },
+  }));
 }
 
 /** Claim a rate-limit key; false when it was claimed already. */
@@ -289,6 +354,9 @@ async function once(key: string): Promise<boolean> {
 
 interface ActCtx {
   userId: string;
+  profileId: string;
+  /** What the reader said (his times and formats for "details"). */
+  reading: PoolReplyReading;
   phone: string;
   lang: Lang;
   offers: LoadedReplyOffer[];
@@ -375,6 +443,19 @@ async function act(action: ReplyAction, c: ActCtx): Promise<PoolReplyAnswer> {
       if (!(await once(`pool-reply:${action.offerId}:profile-off`))) return null;
       await send(poolReplyProfileOffText(c.lang, await manage()), action.offerId);
       return "pool-reply-profile-off";
+    }
+    case "details": {
+      // His times and formats: through the manage page's validator and
+      // writer; he is told exactly what is saved, or nothing at all.
+      const saved = await saveDetailsFromWords(c.userId, c.reading.details, c.now);
+      if (!saved) return null;
+      await send(poolDetailsSavedText(c.lang, saved, await manage()), null);
+      return "pool-details-saved";
+    }
+    case "details-reask": {
+      if (!(await claimDetailsReask(c.profileId))) return null;
+      await send(poolDetailsReaskText(c.lang, await manage()), null);
+      return "pool-details-reask";
     }
   }
 }

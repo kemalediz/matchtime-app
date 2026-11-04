@@ -49,9 +49,11 @@
  *   8. COLD self-attendance fallback    (2026-08-31 — a player replying
  *      "IN"/"OUT" to a recruit DM with nothing more specific to attribute
  *      it to; registers against the active match)
- *   8b. a reply in words to a pool offer (local player pool L5a, L6: only
- *      for a sender with a delivered offer; the L6 reader, then the tap
- *      link's own writers; see lib/pool/reply.ts)
+ *   8b. a pool player's DM in words (local player pool L5a, L6; since
+ *      2026-11-04 also his times and formats): for a sender with a
+ *      delivered offer, or answering MatchTime's question about his times
+ *      (anyone in no club, any time); the pool's one DM reader, then the
+ *      tap link's own writers or the manage page's; see lib/pool/reply.ts)
  *   9. help, read by the shared question extractor (2026-10-28: "help",
  *      "how do I turn on the player pool?", "havuz nasıl açılır"; the
  *      group's own builder, for the sender's club; see lib/dm-help.ts),
