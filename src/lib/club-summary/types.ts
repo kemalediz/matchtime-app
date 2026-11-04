@@ -78,6 +78,29 @@ export interface ClubSummary {
   members: MembersFacts | null;
 }
 
+/**
+ * THE SUMMARY'S FACTS OF THE CLUB'S ROW ALONE (slice A3). Everything of a
+ * `ClubSummary` that its read 1 (the Organisation row, `CLUB_ORG_SELECT`)
+ * and the switches (`ORG_FEATURES_SELECT` on the same row) say, built by
+ * the same derive functions (`clubRowFacts`, derive.ts), and nothing that
+ * needs another read: no games, matches, months, roster, collector's name
+ * or `collectionLive` (its module reads the database).
+ *
+ * For a door that finds the club by its row anyway (the admin group, by
+ * its group; a DM, through the sender's memberships) and whose consumers
+ * need only these facts: they cost no read, where the whole summary costs
+ * three to six more (plan 3.10). Each field equals the same field of the
+ * club's `ClubSummary` (`__tests__/row-facts.test.ts`), except `payments`,
+ * which carries the collector's id only.
+ */
+export type ClubRowFacts = Pick<ClubSummary, "orgId" | "name" | "language" | "lifecycle" | "groups" | "features" | "teamLabels" | "routine"> & {
+  squad: Omit<SquadFacts, "months">;
+  payments: Omit<PaymentFacts, "collector" | "collectionLive"> & {
+    /** `paymentHolderId`; the name needs a read of its own. */
+    collector: { userId: string } | null;
+  };
+};
+
 export interface LifecycleFacts {
   /** `whatsappBotEnabled`: the mute switch. */
   botOn: boolean;

@@ -814,6 +814,73 @@ the squad post's match read (content and model input, not in A2's list).
 **Edges named.** The summary's match window has no historical match; the old route's query did
 (a historical match is a backfilled played one, never live).
 
+### 3.10 As built in slice A3 (the admin group and the DMs read the summary's facts of the club's row)
+
+Built on `refactor/club-summary-a3` (PR against `refactor/club-summary`). No value changes: the
+characterisation (`src/lib/__tests__/hq-dm-club-summary-characterisation.test.ts`: the real
+`POST /api/whatsapp/admin-group` and `POST /api/whatsapp/dm-reply` over a fake world, six club
+shapes each given an admin group, fifteen HQ messages and seven DMs at one or two instants, every
+model request, write and response snapshotted) was written first and green on the old code, and
+the five club replays come out identical. $0: no model, no key.
+
+**Why the row facts, not the whole summary.** Measured first: the same fake counts every read.
+With the club's row and switches handed in, the whole summary still reads the games, the match
+window and the last played candidates (3), the collector's name (4) and, monthly, the months and
+held keys (6). An HQ message or a DM uses one or two club facts, and every one of them except
+"which match", the collector's name and a match's fee is on the club's row, which both doors read
+anyway: the HQ door finds the club by its group, a DM handler reaches it through the sender's
+memberships. Loading the whole summary there would have put the reads of a squad question, the
+teams, the poster, a paste, a score or an ask up by 1 to 3. So A3 adds the summary's facts of the
+row alone (additive, `club-summary/types.ts` and `derive.ts`):
+
+- `ClubRowFacts`: `orgId`, `name`, `language`, `lifecycle`, `groups`, `features`, `teamLabels`,
+  `routine`, `squad` without `months`, `payments` without `collectionLive` and with the
+  collector's id only. Built by `clubRowFacts(org, features)` from the same derive functions
+  `buildClubSummary` runs; `__tests__/row-facts.test.ts` checks every field equals the whole
+  summary's, for every shape.
+- `src/lib/club-row-facts.ts` (outside the summary's folder): `CLUB_ROW_SELECT`
+  (`CLUB_ORG_SELECT` plus `ORG_FEATURES_SELECT`) and `clubRowFactsOf(row)`, fail-soft.
+
+**What moved.**
+- `admin-group.ts`: the club is found by its group with `CLUB_ROW_SELECT` (plus
+  `featurePlayerPool`) in its one query; the billing pause and the mute switch are the row
+  facts' `lifecycle`; the row facts go to `understandAdminMessage` (`club`) and from there to every
+  owner that read them again: the question (`admin-group-question.ts`: the squad state, the answer
+  batch's switches, the payment snapshot, the club answer), the score, the squad change and the ask
+  for a player (each one's squad state), the teams (`team-proposal.ts`, the announcer) and the HQ
+  squad reader's team names (`hq-squad-reader.ts`). Off the source ratchet: `lib/admin-group.ts`.
+- `pipeline/load-state.ts`: `loadSquadState` and `loadPaymentSnapshot` take the slice they read
+  (`SquadStateClub`: a `ClubSummary` or a `ClubRowFacts`); `loadClubSnapshot` takes `club` (who
+  collects, "Teams ready"), so it no longer reads the row for them. The collector's name and the
+  match's fee are still read there.
+- `dm-registration-target.ts` (the cold DM IN) and `dm-help.ts`: the switches from the club row
+  their membership read already joins (`CLUB_ROW_SELECT`), not a read per club.
+
+**Fail-soft.** Row facts that cannot be built are logged once ("the club summary could not be
+read") and come back null; each owner then reads its own facts, as before A3. The
+characterisation makes `clubRowFacts` and `loadClubSummary` throw and checks every shape, instant,
+HQ message and DM gives the same response, model requests and writes (one log per HQ message, at
+most one per DM handler).
+
+**Left, and why.**
+- "Which match": `commandMatch` (`team-proposal.ts`), `nextGraphicMatch` (`match-graphics.ts`), the
+  paste's `registrationMatch` (`admin-group-paste.ts`) and the DM target's selector. Each needs the
+  summary's match window (3 reads or more) to replace one or two of its own; they already run the
+  same selector over the same live matches (the summary's window only drops historical matches,
+  as A2 named). B4 is where "which match" becomes one fact.
+- The HQ squad reader's members, aliases, squad and teams: content and model input. The summary's
+  roster costs five to seven reads, and its aliases are sorted where the reader shows them in the
+  database's order (a change of model input, C2).
+- The HQ introduction (`admin-group-intro.ts`): sent once per link, two reads; its row read is the
+  same one read either way and the weekdays need the games.
+- `hqHelpGates` and the HQ pipeline's own row reads (`admin-group-help.ts`,
+  `admin-group-understand.ts`): they read the row the door read with the summary's select;
+  renaming their inputs to the facts would save no read, so both stay on the ratchet.
+- `dm-reply/route.ts`: one-column reads (the club's name for the bench offer and the tentative
+  follow-up, the collector's club, the language for the recruit and partner replies). No club row
+  is at hand there, and the whole summary would cost more than each.
+- `loadClubSummary` is therefore not called on the HQ or DM paths at all.
+
 ---
 
 ## 4. Migration, in slices

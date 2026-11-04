@@ -55,6 +55,7 @@ import { timeLabel, weekdayLabel } from "./i18n/dates";
 import type { HqSquadChange } from "./hq-squad-reader-prompt";
 import { loadSquadCount } from "./squad-count";
 import type { Route, SquadState } from "./pipeline/types";
+import type { ClubRowFacts } from "./club-summary/types";
 import {
   buildAdminSquadReply,
   hqChangeFacts,
@@ -67,6 +68,9 @@ import {
 
 export interface AdminSquadChangeInput {
   orgId: string;
+  /** The club summary's facts of the club's row (slice A3): the squad
+   *  state takes the switches and team names from them. */
+  club?: ClubRowFacts | null;
   lang: string | null | undefined;
   messageId: string;
   text: string;
@@ -165,7 +169,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
     // engine itself picks, as it loads the squad.
     let notSetAt = null as Date | null;
     const loadState: NonNullable<Parameters<typeof runAttendanceEngineBatch>[0]["deps"]["loadState"]> = async (o, n) => {
-      const loaded = await loadSquadState(o, n);
+      const loaded = await loadSquadState(o, n, { summary: input.club });
       // HQ GIVES THE SENDER AN ORGANISER'S STANDING FOR WHO PLAYS
       // (2026-10-20, Kemal and FNF's Raihan): anyone in the club may put
       // someone in, take them out, bench them or bring them off the bench

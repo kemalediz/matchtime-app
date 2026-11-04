@@ -13,6 +13,7 @@
  */
 import type { OrgFeatures } from "../org-features";
 import type {
+  ClubRowFacts,
   ClubSummary,
   GameFacts,
   LifecycleFacts,
@@ -245,6 +246,37 @@ export function squadFacts(org: OrgRow, months: MonthFacts[]): SquadFacts {
     months,
   };
 }
+
+/**
+ * The summary's facts of the club's row alone (`ClubRowFacts`, slice A3):
+ * the same derive functions `buildClubSummary` runs on the same row, with
+ * the switches of that row, and no other read. `features` is
+ * `orgFeaturesFromRow` of the row the caller read with
+ * `ORG_FEATURES_SELECT`, exactly what `getOrgFeatures` would return.
+ */
+export function clubRowFacts(org: OrgRow, features: OrgFeatures): ClubRowFacts {
+  const { months: _months, ...squad } = squadFacts(org, []);
+  const { collector, collectionLive: _live, ...payments } = paymentFacts(org, { collectorName: null, collectionLive: false });
+  return {
+    orgId: org.id,
+    name: org.name,
+    language: normaliseLang(org.language),
+    lifecycle: lifecycleFacts(org),
+    groups: groupFacts(org),
+    features,
+    teamLabels: teamLabelsOf(org),
+    routine: routineFacts(org),
+    squad,
+    payments: { ...payments, collector: collector ? { userId: collector.userId } : null },
+  };
+}
+
+function groupFacts(org: OrgRow): ClubSummary["groups"] {
+  return { playersGroupId: org.whatsappGroupId, hq: { groupId: org.adminGroupId, channelMode: org.adminChannelMode, channelUserId: org.adminChannelUserId } };
+}
+
+// A row read by an older select (a test's partial world) has none: [].
+const teamLabelsOf = (org: OrgRow): string[] => [...(org.teamLabels ?? [])];
 
 // ── Games ──────────────────────────────────────────────────────────────
 

@@ -45,9 +45,10 @@ import { db } from "@/lib/db";
 import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
 import { normalisePhone } from "@/lib/phone";
 import { getOrgFeatures } from "@/lib/org-features";
+import { CLUB_ROW_SELECT, clubRowFactsOf, type ClubRow } from "@/lib/club-row-facts";
 import { buildAdminLink } from "@/lib/admin-link";
 import { APPROVED_CLUB_WHERE } from "@/lib/club-approval-state";
-import { SETUP_STAGE_SELECT, preferLiveClubs } from "@/lib/club-setup-rules";
+import { preferLiveClubs } from "@/lib/club-setup-rules";
 import { t } from "@/lib/i18n/t";
 import { queuePlatformDm } from "@/lib/platform-jobs";
 import { helpAdminPagePath, helpPagesNeeded, type HelpAdminPage, type HelpAudience, type HelpTopic } from "@/lib/onboarding-conversation";
@@ -97,7 +98,8 @@ export async function readDmHelp(args: {
 type HelpMembership = {
   orgId: string;
   role: "OWNER" | "ADMIN" | "PLAYER";
-  org: { id: string; name: string; language: string; adminGroupId?: string | null };
+  /** The club's row as the club summary reads it (`CLUB_ROW_SELECT`, slice A3). */
+  org: ClubRow;
 };
 
 const runs = (m: HelpMembership) => m.role === "OWNER" || m.role === "ADMIN";
@@ -112,7 +114,10 @@ export async function pickDmHelpClub(
   const memberships = preferLiveClubs(
     (await db.membership.findMany({
       where: { userId, leftAt: null, org: APPROVED_CLUB_WHERE },
-      select: { orgId: true, role: true, org: { select: { id: true, name: true, language: true, adminGroupId: true, ...SETUP_STAGE_SELECT } } },
+      // The club's row as the club summary reads it (`CLUB_ROW_SELECT`: the
+      // name, language, admin group and setup stage this needs, and the
+      // switches the answer is built with; club summary, slice A3).
+      select: { orgId: true, role: true, org: { select: CLUB_ROW_SELECT } },
       orderBy: { createdAt: "asc" },
     })) as Array<HelpMembership & { org: { approvalStatus: string } }>,
     (m) => m.org,
@@ -182,7 +187,9 @@ export async function handleDmHelp(args: {
     }
   }
 
-  const features = await getOrgFeatures(membership.orgId);
+  // The switches: the club summary's facts of the row read above (slice
+  // A3), so it is not read again; `getOrgFeatures` if they cannot be built.
+  const features = clubRowFactsOf(membership.org, "dm-help")?.features ?? (await getOrgFeatures(membership.orgId));
   const lang = features.language;
   // An organisers-mode club's organiser is pointed at the "help" in their
   // admin group (2026-10-15), only when there is one to type it in.

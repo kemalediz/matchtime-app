@@ -41,6 +41,7 @@
  */
 import { db } from "./db";
 import { loadSquadState } from "./pipeline/load-state";
+import type { ClubRowFacts } from "./club-summary/types";
 import { formatLondon } from "./london-time";
 import { t } from "./i18n/t";
 import { buildGroupAskPost, decideGroupAsk, openingFingerprint, type GroupAskStep } from "./admin-group-ask-group-rules";
@@ -64,10 +65,13 @@ export async function askPlayersGroup(args: {
   lang: string | null | undefined;
   messageId: string;
   now: Date;
+  /** The club summary's facts of the club's row (slice A3): the squad
+   *  state takes the switches and team names from them. */
+  club?: ClubRowFacts | null;
 }): Promise<GroupAskResult> {
   const { orgId, messageId, now } = args;
   const s = t(args.lang);
-  const state = await loadSquadState(orgId, now);
+  const state = await loadSquadState(orgId, now, { summary: args.club });
   if (!state.matchId) return { outcome: "group-ask-no-match", replyText: s.recruit_no_match };
   // A club that does not keep a squad in MatchTime has no count to ask for.
   if (!state.features.attendance || state.maxPlayers <= 0) return { outcome: "hq-not-here", replyText: s.hq_not_here };

@@ -25,6 +25,7 @@ import type { QuotedGroupMessage } from "./reply-context";
 import { runAnswerBatch, type AnswerBatchDeps } from "./pipeline/answer-batch";
 import { enabledStepSevenRoutes } from "./pipeline/route-flags";
 import type { SquadState } from "./pipeline/types";
+import type { ClubRowFacts } from "./club-summary/types";
 
 export interface HqQuestionInput {
   orgId: string;
@@ -49,6 +50,10 @@ export interface HqQuestionInput {
   hqHelp: string;
   /** The pool switch as the request read it, for the pool's help. */
   poolEnv?: Record<string, string | undefined>;
+  /** The club summary's facts of the club's row (slice A3): the switches,
+   *  team names, payment switches, collector and "Teams ready" are taken
+   *  from them, not read again. Absent: each is read, as before. */
+  club?: ClubRowFacts | null;
   deps?: Pick<AnswerBatchDeps, "model" | "loadFeatures" | "loadClub"> & {
     loadState?: (orgId: string, now: Date) => Promise<SquadState>;
   };
@@ -57,11 +62,12 @@ export interface HqQuestionInput {
 export async function answerHqQuestion(input: HqQuestionInput): Promise<{ outcome: string; replyText: string } | null> {
   const { orgId, messageId, now } = input;
   const deps = input.deps ?? {};
+  const club = input.club && input.club.orgId === orgId ? input.club : null;
   let state: SquadState;
   try {
     state = deps.loadState
       ? await deps.loadState(orgId, now)
-      : await (await import("./pipeline/load-state")).loadSquadState(orgId, now);
+      : await (await import("./pipeline/load-state")).loadSquadState(orgId, now, { summary: club });
   } catch (err) {
     console.error(`[admin-group] ${messageId}: question state load failed:`, err);
     return null;
@@ -92,8 +98,19 @@ export async function answerHqQuestion(input: HqQuestionInput): Promise<{ outcom
     audience: "organisers",
     deps: {
       ...(deps.model ? { model: deps.model } : {}),
-      ...(deps.loadFeatures ? { loadFeatures: deps.loadFeatures } : {}),
-      ...(deps.loadClub ? { loadClub: deps.loadClub } : {}),
+      // The club's facts from the summary's row facts (slice A3), where a
+      // test injects none: the switches as they are; the payment switches
+      // and collector, and the collector and "Teams ready" of the club
+      // answer, without reading the club's row again.
+      ...(deps.loadFeatures ? { loadFeatures: deps.loadFeatures } : club ? { loadFeatures: async () => club.features } : {}),
+      ...(deps.loadClub
+        ? { loadClub: deps.loadClub }
+        : club
+          ? { loadClub: async (o: string, matchId: string | null) => (await import("./pipeline/load-state")).loadClubSnapshot(o, matchId, { club }) }
+          : {}),
+      ...(club
+        ? { loadPayments: async (o: string, cm: SquadState["completedMatch"]) => (await import("./pipeline/load-state")).loadPaymentSnapshot(o, cm, { summary: club }) }
+        : {}),
       loadState: async () => state,
       // The menu for MatchTime as a whole; one part's help, for the
       // organisers, with public links (a group), for a part.

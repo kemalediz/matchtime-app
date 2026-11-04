@@ -24,6 +24,7 @@ import { formatLondon } from "./london-time";
 import { rosterLabels } from "./group-chat-history";
 import { hqLogSince } from "./admin-group-log";
 import { resolveTeamLabels } from "./team-labels";
+import type { ClubRowFacts } from "./club-summary/types";
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "./pipeline/llm";
 import {
   buildHqSquadReaderUserTurn,
@@ -55,6 +56,9 @@ export async function loadHqSquadReaderContext(args: {
   orgId: string;
   match: { id: string; date: Date; maxPlayers: number; activityId?: string | null; teamLabels?: string[] | null } | null;
   lang: string | null | undefined;
+  /** The club summary's facts of the club's row (slice A3): the club's own
+   *  team names, so its row is not read again. */
+  club?: Pick<ClubRowFacts, "orgId" | "teamLabels"> | null;
 }): Promise<HqSquadReaderContext> {
   const { orgId, match } = args;
   const [memberships, aliases, attendance, slots, proposal] = await Promise.all([
@@ -90,7 +94,7 @@ export async function loadHqSquadReaderContext(args: {
   };
   let teams: HqSquadReaderContext["teams"] = null;
   if (match && (slots ?? []).length > 0) {
-    const labels = await teamLabelsOf(match, orgId, args.lang);
+    const labels = await teamLabelsOf(match, orgId, args.lang, args.club);
     teams = {
       state: proposal?.state === "approved" ? "final" : "proposed",
       sides: [
@@ -112,11 +116,12 @@ async function teamLabelsOf(
   match: { activityId?: string | null; teamLabels?: string[] | null },
   orgId: string,
   lang: string | null | undefined,
+  club?: Pick<ClubRowFacts, "orgId" | "teamLabels"> | null,
 ): Promise<[string, string]> {
   try {
     const activity = match.activityId ? await db.activity.findUnique({ where: { id: match.activityId }, select: { sportId: true } }) : null;
     const [org, sport] = await Promise.all([
-      db.organisation.findUnique({ where: { id: orgId } }),
+      club && club.orgId === orgId ? Promise.resolve({ teamLabels: club.teamLabels }) : db.organisation.findUnique({ where: { id: orgId } }),
       activity ? db.sport.findUnique({ where: { id: activity.sportId } }) : Promise.resolve(null),
     ]);
     return resolveTeamLabels(match as never, org as never, sport as never, lang);
