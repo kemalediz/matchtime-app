@@ -28,7 +28,8 @@ import { totalPlayersFor } from "../format-switch";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "../guest-name-ask";
 import { decidePaymentSnapshot, type PaymentSnapshot } from "./payment-answer";
 import type { RatingProgress } from "../rating-progress-answer";
-import type { ClubSnapshot, PartnerAskView, SquadState } from "./types";
+import type { PartnerAskView, SquadState } from "./types";
+import type { ClubSummary } from "../club-summary/types";
 import { gamesOverlap } from "../partner-ask-rules";
 import { loadPlayerNames } from "../player-display-name";
 
@@ -36,14 +37,32 @@ import { loadPlayerNames } from "../player-display-name";
  *  "previous match still in flight" guard can see the whole picture. */
 const LOOKBACK_DAYS = 30;
 
-export async function loadSquadState(
-  orgId: string,
-  now: Date = new Date(),
-): Promise<SquadState> {
-  const features = await getOrgFeatures(orgId);
+/**
+ * THE CLUB FACTS THE SQUAD STATE TAKES FROM THE CLUB SUMMARY (slice A2).
+ *
+ * `summary`: the club's summary, read once for the request
+ * (`club-summary/scope.ts`; the analyze route passes it to every owner). The
+ * switches (`features`) and the club's own team names (`teamLabels`) are
+ * then taken from it, not read again: nothing an analyze request writes
+ * changes either. A summary of another club is ignored.
+ *
+ * Without one (the admin group and the DM paths, until slice A3 gives them
+ * a summary) both are read here, as before. Everything else this function
+ * reads is the squad's content, and it reads it itself in either case: the
+ * matches of the last 30 days (its own registration rule, D7, and the
+ * cancelled match it mentions), the roster in the database's order (D13,
+ * slice C2), the club's active games in the database's order (the options
+ * answer's order, D12), the rows, offers, teams and the last match played
+ * with its scores and teams.
+ */
+export interface SquadStateOptions {
+  summary?: ClubSummary | null;
+}
 
+/** The 30-day match window the squad state reads. */
+async function loadSquadMatches(orgId: string, now: Date) {
   const since = new Date(now.getTime() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-  const matches = await db.match.findMany({
+  return db.match.findMany({
     where: { activity: { orgId }, date: { gte: since } },
     select: {
       id: true,
@@ -60,22 +79,48 @@ export async function loadSquadState(
     },
     orderBy: { date: "asc" },
   });
+}
 
-  // Which match a write lands on is a PURE decision and it already has a
-  // module (§13: "the pure-function core … the engine is built out of
-  // these, not beside them"). The 2026-06-18 rollover incident — casual
-  // "In"s landing on next week's empty match while this week was full —
-  // is fixed here, once, for every path.
+// Which match a write lands on is a PURE decision and it already has a
+// module (§13: "the pure-function core … the engine is built out of
+// these, not beside them"). The 2026-06-18 rollover incident — casual
+// "In"s landing on next week's empty match while this week was full —
+// is fixed here, once, for every path.
+function registrationMatchOf<T extends { id: string; date: Date; status: string }>(matches: T[], now: Date): T | null {
   const active = selectRegistrationMatch(
     matches.map((m) => ({ id: m.id, date: m.date, status: m.status })),
     now,
   );
-  const match = active ? matches.find((m) => m.id === active.id)! : null;
+  return active ? matches.find((m) => m.id === active.id)! : null;
+}
 
-  const org = await db.organisation.findUnique({
-    where: { id: orgId },
-    select: { teamLabels: true },
-  });
+/**
+ * `loadSquadState(orgId, now).matchId`, and nothing else: the same read
+ * and the same rule, in one query instead of the whole state. For a caller
+ * that needs only which match the squad state is about (the pool and
+ * partner-club asks in words).
+ */
+export async function loadSquadMatchId(orgId: string, now: Date = new Date()): Promise<string | null> {
+  return registrationMatchOf(await loadSquadMatches(orgId, now), now)?.id ?? null;
+}
+
+export async function loadSquadState(
+  orgId: string,
+  now: Date = new Date(),
+  opts: SquadStateOptions = {},
+): Promise<SquadState> {
+  const club = opts.summary && opts.summary.orgId === orgId ? opts.summary : null;
+  const features = club ? club.features : await getOrgFeatures(orgId);
+
+  const matches = await loadSquadMatches(orgId, now);
+  const match = registrationMatchOf(matches, now);
+
+  const org = club
+    ? { teamLabels: club.teamLabels }
+    : await db.organisation.findUnique({
+        where: { id: orgId },
+        select: { teamLabels: true },
+      });
 
   const memberships = await db.membership.findMany({
     where: { orgId, leftAt: null },
@@ -436,15 +481,25 @@ export async function loadRatingProgressSnapshot(
 export async function loadPaymentSnapshot(
   orgId: string,
   completedMatch: SquadState["completedMatch"],
+  opts: SquadStateOptions = {},
 ): Promise<PaymentSnapshot> {
-  const org = await db.organisation.findUnique({
-    where: { id: orgId },
-    select: {
-      paymentTrackingEnabled: true,
-      paymentCollectionEnabled: true,
-      paymentHolderId: true,
-    },
-  });
+  // The two payment switches and the collector: from the request's club
+  // summary when there is one (slice A2), else read here as before.
+  const club = opts.summary && opts.summary.orgId === orgId ? opts.summary : null;
+  const org = club
+    ? {
+        paymentTrackingEnabled: club.payments.tracking,
+        paymentCollectionEnabled: club.payments.collection,
+        paymentHolderId: club.payments.collector?.userId ?? null,
+      }
+    : await db.organisation.findUnique({
+        where: { id: orgId },
+        select: {
+          paymentTrackingEnabled: true,
+          paymentCollectionEnabled: true,
+          paymentHolderId: true,
+        },
+      });
   if (!org) {
     // An org row that cannot be found is the `ALL_OFF` case
     // `getOrgFeatures` already falls back to. "Not tracked" is the
@@ -563,42 +618,4 @@ async function loadGuestElsewhere(orgId: string, kickoff: Date, now: Date): Prom
   } catch {
     return {};
   }
-}
-
-/**
- * THE FIFTH TARGETED EXTRA READ — the club's setup, and only when asked
- * (2026-10-16, FNF HQ: "MatchTime who are the admins?").
- *
- * Read for a `club` question in the admin group, the same shape as the
- * payment read above: once, after extraction, passed down as data. The
- * admins themselves are already on the roster (`isAdmin`, OWNER or
- * ADMIN); this adds the money collector, the fee of the upcoming match
- * (`matchId`, its own fee, else its game's) and "Teams ready" as the
- * proposal scheduler reads it (`effectiveTeamsReadyTime`), so the answer
- * and the scheduler cannot disagree.
- */
-export async function loadClubSnapshot(orgId: string, matchId: string | null): Promise<ClubSnapshot> {
-  const [{ effectiveTeamsReadyTime }, { organisersAnnounce }] = await Promise.all([
-    import("../team-proposal-rules"),
-    import("../list-announcer"),
-  ]);
-  const org = await db.organisation.findUnique({
-    where: { id: orgId },
-    select: { paymentHolderId: true, teamsReadyTime: true, listAnnouncer: true },
-  });
-  const collector = org?.paymentHolderId
-    ? await db.user.findUnique({ where: { id: org.paymentHolderId }, select: { name: true } })
-    : null;
-  const match = matchId
-    ? await db.match.findUnique({
-        where: { id: matchId },
-        select: { feePerPlayer: true, activity: { select: { feePerPlayer: true, feeSplitTotal: true } } },
-      })
-    : null;
-  return {
-    collectorName: collector?.name ?? null,
-    feePerPlayer: match?.feePerPlayer ?? match?.activity.feePerPlayer ?? null,
-    feeSplitTotal: match?.activity.feeSplitTotal ?? false,
-    teamsReady: effectiveTeamsReadyTime(org?.teamsReadyTime, organisersAnnounce(org)),
-  };
 }

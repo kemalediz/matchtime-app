@@ -22,7 +22,7 @@ const settingsMock = vi.hoisted(() => ({ loadPartnerAskSettings: vi.fn() }));
 vi.mock("../club-partnership", () => settingsMock);
 const askMock = vi.hoisted(() => ({ requestPartnerAsk: vi.fn() }));
 vi.mock("../partner-ask", () => askMock);
-const stateMock = vi.hoisted(() => ({ loadSquadState: vi.fn() }));
+const stateMock = vi.hoisted(() => ({ loadSquadMatchId: vi.fn() }));
 vi.mock("../pipeline/load-state", () => stateMock);
 
 import { askPartnersFromDmText, askPartnersFromWords, partnerClubsForRouter } from "../partner-ask-words";
@@ -39,7 +39,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   dbMock.clubPartnership.findMany.mockResolvedValue(ROWS);
   settingsMock.loadPartnerAskSettings.mockResolvedValue({ when: "on-request", time: null, cutoffHours: 4 });
-  stateMock.loadSquadState.mockResolvedValue({ matchId: "m1" });
+  stateMock.loadSquadMatchId.mockResolvedValue("m1");
   askMock.requestPartnerAsk.mockImplementation(async (a: { partnershipId: string }) =>
     a.partnershipId === "p-sutton"
       ? { ok: true, askId: "x1", status: "awaiting-approval", partnerName: "Sutton FC" }
@@ -85,7 +85,7 @@ describe("askPartnersFromWords", () => {
 
   it("the match the players' group already knows is used as is", async () => {
     await askPartnersFromWords({ ...base, via: "group", clubRef: null, matchId: "m9" });
-    expect(stateMock.loadSquadState).not.toHaveBeenCalled();
+    expect(stateMock.loadSquadMatchId).not.toHaveBeenCalled();
     expect(askMock.requestPartnerAsk.mock.calls[0][0]).toMatchObject({ matchId: "m9", via: "group" });
   });
 
@@ -113,7 +113,7 @@ describe("askPartnersFromWords", () => {
   });
 
   it("no upcoming game: one plain reply, nothing asked", async () => {
-    stateMock.loadSquadState.mockResolvedValue({ matchId: null });
+    stateMock.loadSquadMatchId.mockResolvedValue(null);
     const r = await askPartnersFromWords({ ...base, clubRef: null });
     expect(askMock.requestPartnerAsk).not.toHaveBeenCalled();
     expect(r.outcome).toBe("xask-words-no-game");

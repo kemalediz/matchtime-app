@@ -48,7 +48,7 @@ import { appUrl } from "./app-url";
 import type { PendingWithLabel } from "./admin-group-context";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
-import { loadSquadState } from "./pipeline/load-state";
+import { loadSquadMatchId } from "./pipeline/load-state";
 import { openPartnerRoundOf } from "./pool/auto-ask";
 import { poolAutoRound } from "./pool/auto-ask-rules";
 import { poolHqAskReply, type PoolRefusalContext } from "./pool/offer-copy";
@@ -81,7 +81,7 @@ export async function askPoolFromWords(args: {
   remember?: { askMessageId: string | null };
 }): Promise<{ outcome: PoolHqOutcome; replyText: string }> {
   const { orgId, lang, now } = args;
-  const matchId = args.matchId ?? (await loadSquadState(orgId, now)).matchId;
+  const matchId = args.matchId ?? (await loadSquadMatchId(orgId, now));
   const match = matchId
     ? await db.match.findUnique({ where: { id: matchId }, select: { id: true, date: true, activity: { select: { venueRef: { select: { name: true } } } } } })
     : null;

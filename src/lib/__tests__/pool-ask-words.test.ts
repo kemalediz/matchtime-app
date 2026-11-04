@@ -11,7 +11,7 @@ const dbMock = vi.hoisted(() => ({ match: { findUnique: vi.fn() }, organisation:
 vi.mock("../db", () => ({ db: dbMock }));
 const log = vi.hoisted(() => ({ hqQuestionsSince: vi.fn() }));
 vi.mock("../admin-group-log", () => log);
-const squad = vi.hoisted(() => ({ loadSquadState: vi.fn() }));
+const squad = vi.hoisted(() => ({ loadSquadMatchId: vi.fn() }));
 vi.mock("../pipeline/load-state", () => squad);
 const round = vi.hoisted(() => ({ requestPoolAsk: vi.fn(), placesOpenOf: vi.fn() }));
 vi.mock("../pool/round", () => round);
@@ -33,7 +33,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   dbMock.match.findUnique.mockResolvedValue({ id: "m1", date: KICKOFF });
   dbMock.organisation.findUnique.mockResolvedValue({ name: "MT Test", featurePlayerPool: true, partnerAskCutoffHours: null });
-  squad.loadSquadState.mockResolvedValue({ matchId: "m1" });
+  squad.loadSquadMatchId.mockResolvedValue("m1");
   round.placesOpenOf.mockResolvedValue(2);
   autoAsk.openPartnerRoundOf.mockResolvedValue(null);
   round.requestPoolAsk.mockResolvedValue({ ok: true, askId: "a1", waveSent: true });
@@ -50,7 +50,7 @@ describe("asking the pool from HQ", () => {
 
   it("a YES to the notice: that notice's match, via notice", async () => {
     await askPoolFromWords({ orgId: "o1", matchId: "m1", userId: "u-owner", via: "notice", lang: "en", now: NOW, env: ENV });
-    expect(squad.loadSquadState).not.toHaveBeenCalled();
+    expect(squad.loadSquadMatchId).not.toHaveBeenCalled();
     expect(round.requestPoolAsk).toHaveBeenCalledWith(expect.objectContaining({ matchId: "m1", via: "notice" }));
   });
 
@@ -112,7 +112,7 @@ describe("asking the pool from HQ", () => {
   });
 
   it("no upcoming match: the recruit line, the pool never asked", async () => {
-    squad.loadSquadState.mockResolvedValue({ matchId: null });
+    squad.loadSquadMatchId.mockResolvedValue(null);
     const r = await askPoolFromWords({ orgId: "o1", userId: "u-owner", via: "words", lang: "en", now: NOW, env: ENV });
     expect(round.requestPoolAsk).not.toHaveBeenCalled();
     expect(r.outcome).toBe("hq-pool-no-match");

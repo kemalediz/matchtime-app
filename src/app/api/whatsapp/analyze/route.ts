@@ -168,7 +168,11 @@ import {
 import { ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
 import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
 import { moveNamedSlot } from "@/lib/team-slot-fill";
-import { getOrgFeatures } from "@/lib/org-features";
+import { ORG_FEATURES_SELECT, orgFeaturesFromRow } from "@/lib/org-features";
+import { CLUB_ORG_SELECT, loadClubSummary } from "@/lib/club-summary/load";
+import { summaryScope } from "@/lib/club-summary/scope";
+import { loadPaymentSnapshot, loadSquadState } from "@/lib/pipeline/load-state";
+import { clubSnapshotOf } from "@/lib/pipeline/club-snapshot";
 import { organisersAnnounce } from "@/lib/list-announcer";
 import { appendAfterComposition, joinAlsoAnswered } from "@/lib/also-asks-reply";
 import { organisersGroupReply, passesOrganisersNet } from "@/lib/organisers-list-copy";
@@ -311,7 +315,6 @@ import { resolveTeamLabels } from "@/lib/team-labels";
 // byte what the loader produced before the string tables existed.
 import { dayCommaTimeLabel, dayLabel, kickoffLabel } from "@/lib/i18n/dates";
 import { CANCELLED_NOTICE_LOOKBACK_MS, SAME_FIXTURE_MS, cancelledMatchToMention } from "@/lib/cancelled-match-notice";
-import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { messageAddressesBot, messageTagsBot, piMentionsBot } from "@/lib/interaction-contract";
 import { newSilenceFacts, taggedSilence } from "@/lib/tagged-silence";
 import { offerCalloffIfCalled } from "@/lib/calloff-offer";
@@ -488,12 +491,12 @@ async function handleAnalyzeRequest(request: Request) {
   // it. `billingQuietWhere()` is empty while BILLING_ENABLED is off.
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: body.groupId, whatsappBotEnabled: true, ...billingQuietWhere() },
-    // `language`: the squad post composed from the rows below speaks
-    // the group's language (Phase 2 of the multi-language design).
-    // `squadMode` (monthly squad, slice 5): read once here so a club on
-    // "weekly" never runs a monthly query below.
-    // `listAnnouncer` (2026-10-14): whether the squad may be posted here.
-    select: { id: true, name: true, language: true, squadMode: true, listAnnouncer: true },
+    // The club summary's row (`CLUB_ORG_SELECT`, its read 1) and the
+    // switches (`ORG_FEATURES_SELECT`), in this one query (club summary,
+    // slice A2): the summary below is built from this row, and the
+    // switches are `orgFeaturesFromRow` of it, what `getOrgFeatures` would
+    // read again. `language`: the squad post speaks the group's language.
+    select: { ...CLUB_ORG_SELECT, ...ORG_FEATURES_SELECT },
   });
   if (!org) {
     // A silent group (a club waiting for approval, rejected or suspended,
@@ -509,6 +512,7 @@ async function handleAnalyzeRequest(request: Request) {
     return NextResponse.json({ ok: true, ignored, results: [] });
   }
   const organisersMode = organisersAnnounce(org);
+  const features = orgFeaturesFromRow(org);
   bindAiBudgetKey(org.id);
 
   // Name every @-mention the roster can vouch for BEFORE anything reads a
@@ -538,7 +542,7 @@ async function handleAnalyzeRequest(request: Request) {
   //   squad-extraction cron has data to read. STILL no per-batch LLM
   //   call. The archive write is idempotent on waMessageId (unique).
   {
-    const f = await getOrgFeatures(org.id);
+    const f = features;
     // Squad-from-list orgs ALWAYS archive inbound messages so the
     // squad-extraction cron has raw data to diff — INDEPENDENT of whether
     // the per-batch analyzer also runs below.
@@ -1259,7 +1263,23 @@ async function handleAnalyzeRequest(request: Request) {
   // filter, so once tonight's deadline passed it silently drifted to next
   // week's match — the reply/reconciliation passes then described a
   // different match than the one the write touched.
-  const activeMatchForReply = await findRegistrationMatch(org.id);
+  //
+  // THE CLUB SUMMARY (slice A2, MDs/club-summary-design-2026-11-04.md):
+  // one per request, read HERE, after the deterministic peels above (the
+  // venue words write the club's games). Built from the row and switches
+  // the club was found with, so it reads only the games, the matches and,
+  // for a monthly club, the months. Every owner below takes its switches
+  // and team names from it (`clubState`); the registration match is its
+  // `nextMatchId` (`selectRegistrationMatch` over every live match, the
+  // rule this route always used); the month check is its match's month.
+  const clubScope = summaryScope(new Date(), (id, at, opts) =>
+    loadClubSummary(id, at, id === org.id ? { ...opts, org, features } : opts),
+  );
+  const club = await clubScope.get(org.id);
+  if (!club) throw new Error(`[analyze] club ${org.id}: no summary`);
+  const clubState = (o: string, at: Date) => loadSquadState(o, at, { summary: club });
+  const clubFeatures = async () => club.features;
+  const activeMatchForReply = club.nextMatchId ? { id: club.nextMatchId } : null;
   const nextMatchForReply = activeMatchForReply
     ? await db.match.findFirst({
         where: { id: activeMatchForReply.id },
@@ -1297,7 +1317,7 @@ async function handleAnalyzeRequest(request: Request) {
   //   applied here first, reconciled BY NAME and member
   //   (`lib/monthly-paste.ts`).
   //
-  //   ONLY for `squadMode === "monthly"`: a weekly club (Sutton FC, and
+  //   ONLY for a club on "monthly" (`squad.mode`): a weekly club (Sutton FC, and
   //   every club before this) skips the whole block with no query, and
   //   section 4 sees its pastes exactly as before.
   //   `handleMonthlyPaste` returns null when there is no running month for
@@ -1326,7 +1346,7 @@ async function handleAnalyzeRequest(request: Request) {
   // ── 3b-bis. THE MONTH'S SIGN-UP (slice 3, 2026-10-06) ────────────────
   //
   //   Plan sections 4.1 and 6.2. Same place, same guards, same club gate
-  //   as 3b (`squadMode === "monthly"` only; a weekly club runs none of
+  //   as 3b (a club on "monthly" only; a weekly club runs none of
   //   it and makes no query), and no model:
   //     - a pasted list that is the list of a month people can still join
   //       ("List for November", pasted in October) is read by name
@@ -1338,7 +1358,7 @@ async function handleAnalyzeRequest(request: Request) {
   //       "Kasım varım": the whole message, in a fixed vocabulary. A
   //       plain "IN" is this week's game, exactly as before.
   //   It says nothing in the group: a ✅ on a message that was read.
-  const monthSignup = org.squadMode === "monthly" ? await import("@/lib/month-signup") : null;
+  const monthSignup = club.squad.mode === "monthly" ? await import("@/lib/month-signup") : null;
   //
   // ── 3a-ter. THE MONTHLY READER (2026-10-29) ─────────────────────────
   //
@@ -1444,7 +1464,7 @@ async function handleAnalyzeRequest(request: Request) {
   // ── 3b-bis. THE MONTH'S SIGN-UP (slice 3, 2026-10-06) ────────────────
   //
   //   Plan sections 4.1 and 6.2. Same place, same guards, same club gate
-  //   as 3b (`squadMode === "monthly"` only; a weekly club runs none of
+  //   as 3b (a club on "monthly" only; a weekly club runs none of
   //   it and makes no query), acting on the monthly reader's reading:
   //     - a list that is the list of a month people can still join
   //       ("List for November", pasted in October) is applied by name
@@ -1548,7 +1568,7 @@ async function handleAnalyzeRequest(request: Request) {
       await trySignupPaste(m, false, reading.listOf === "month" ? {} : { newcomerOnly: true });
     }
   }
-  if (org.squadMode === "monthly" && nextMatchForReply) {
+  if (club.squad.mode === "monthly" && nextMatchForReply) {
     const { handleMonthlyPaste } = await import("@/lib/monthly-paste");
     for (const m of fresh) {
       if (fastPathHandledIds.has(m.waMessageId) || monthlyNotSquadList.has(m.waMessageId)) continue;
@@ -1931,7 +1951,7 @@ async function handleAnalyzeRequest(request: Request) {
       reply: string | null;
     }
   >();
-  if (org.squadMode !== "monthly" && nextMatchForReply && !aiCapped) {
+  if (club.squad.mode !== "monthly" && nextMatchForReply && !aiCapped) {
     // Only a message the router flagged as a pasted squad list is read.
     const listCandidates = fresh.filter((m) => {
       const sender = senderById.get(m.waMessageId);
@@ -2088,14 +2108,11 @@ async function handleAnalyzeRequest(request: Request) {
   // match's month: the squad starts from the month's list, so no IN is
   // written before it (Kemal, 2026-11-03; narrowed on review of #502).
   let monthNotStarted = false;
-  if (org.squadMode === "monthly" && activeMatchForReply) {
-    try {
-      const { monthNotStartedFor } = await import("@/lib/month-not-started");
-      monthNotStarted = await monthNotStartedFor(activeMatchForReply.id);
-    } catch (err) {
-      // Unknown is not "not started": the engine runs as before.
-      console.error(`[analyze] monthly week for ${activeMatchForReply.id} failed to load:`, err);
-    }
+  // `monthNotStartedFor`'s fact, from the summary: no SquadMonth row, in
+  // any status, for the match's own game and London month.
+  if (club.squad.mode === "monthly" && activeMatchForReply) {
+    const month = club.matches.find((m) => m.id === activeMatchForReply.id)?.month;
+    monthNotStarted = month ? !month.rowForOwnActivity : false;
   }
   const engineBatch =
     fresh.length > 0
@@ -2153,6 +2170,7 @@ async function handleAnalyzeRequest(request: Request) {
           // flag, with the squad reader's "squad" answer (both facts).
           pastedListIds: new Set([...listIds, ...pastedRosterIds]),
           deps: {
+            loadState: clubState,
             // At the daily AI cap a bare IN/OUT is decided from the
             // floor's facts, with no extractor call.
             aiCapped,
@@ -2401,7 +2419,12 @@ async function handleAnalyzeRequest(request: Request) {
           // nothing rather than answer about a different match.
           expectedMatchId: activeMatchForReply?.id ?? null,
           enabled: stepSevenEnabled,
-          deps: {},
+          deps: {
+            loadState: clubState,
+            loadFeatures: clubFeatures,
+            loadPayments: (o, cm) => loadPaymentSnapshot(o, cm, { summary: club }),
+            loadClub: async (_o, matchId) => clubSnapshotOf(club, matchId),
+          },
           clarifications: statsClarifications,
           ...(alsoAsksIds.size > 0 ? { alsoAsks: alsoAsksIds } : {}),
           // The help's pool answer reads the switch as this request does,
@@ -2419,7 +2442,7 @@ async function handleAnalyzeRequest(request: Request) {
           messages: ownerBase,
           history: ownerHistory,
           enabled: stepSevenEnabled,
-          deps: buildScoreApplyDeps(),
+          deps: { ...buildScoreApplyDeps(), loadState: clubState },
         })
       : null;
 
@@ -2434,6 +2457,7 @@ async function handleAnalyzeRequest(request: Request) {
           enabled: stepSevenEnabled,
           deps: {
             ...buildAdminOpsApplyDeps({ orgId: org.id }),
+            loadState: clubState,
             // The per-category opt-out (`Membership.subReminderDm`), which
             // `route.ts:3959` read one row at a time. Loaded once per
             // batch here; the engine does the rest.
@@ -2469,7 +2493,7 @@ async function handleAnalyzeRequest(request: Request) {
           messages: ownerBase,
           history: ownerHistory,
           enabled: stepSevenEnabled,
-          deps: buildTeamOpsApplyDeps({ orgId: org.id }),
+          deps: { ...buildTeamOpsApplyDeps({ orgId: org.id }), loadState: clubState, loadFeatures: clubFeatures },
           // The team half of a message the attendance engine owns
           // ("swap X with Y, and I'm out"): the engine's signal, a fact.
           alsoTeams: new Set(
@@ -3295,16 +3319,12 @@ async function handleAnalyzeRequest(request: Request) {
           // attendance. `attendance-engine-batch.ts` DISOWNS those
           // messages when the feature is off (it returns `empty()`), so
           // without this they would arrive here looking like a failure.
-          // This IS an extra `findUnique` — `getOrgFeatures` does no
-          // caching, and I checked rather than assumed, having just
-          // spent a whole pass deleting comments that asserted things
-          // nobody had verified. It is affordable precisely here: the
-          // superset above has already said there is something to send,
-          // and the block already does a `membership.findMany` plus one
-          // `botJob.findFirst` per admin.
+          // The switches the club was found with (no read of its own
+          // since the club summary, slice A2; nothing this request writes
+          // changes the attendance switch).
           // See `operator-note.ts`'s header — the claim that the caller
           // filtered these out was false until 2026-09-06.
-          features: { attendance: (await getOrgFeatures(org.id)).attendance },
+          features: { attendance: features.attendance },
         });
         // ⚠️ AND THE FEATURE FILTER CAN STILL EMPTY IT. The superset
         // says only that something MIGHT be worth sending; an
@@ -3621,7 +3641,7 @@ async function handleAnalyzeRequest(request: Request) {
         // same replies are recognised by `composeSquadStateReply`, and a
         // lead it keeps is kept. A weekly club makes no query here.
         const monthlyList =
-          org.squadMode === "monthly" && sheetRows.length === 0
+          club.squad.mode === "monthly" && sheetRows.length === 0
             ? await (await import("@/lib/monthly-week")).currentWeekListPost(nextMatchForReply.id).catch(() => null)
             : null;
         const weeklyPost = monthlyList ? composeSquadStateReply(SQUAD_POST_MARKER, truth, org.language).text : null;
@@ -4095,7 +4115,7 @@ async function handleAnalyzeRequest(request: Request) {
   });
 
   // ── The organisers announce the list (2026-10-14) ───────────────────
-  //   `Organisation.listAnnouncer = "organisers"` (list-announcer.ts): the
+  //   A club whose organisers announce (list-announcer.ts): the
   //   players' group never gets the squad from MatchTime. The composer
   //   already says nothing about it in this mode and the batch's squad
   //   marker is never attached (above); this is the net under every path
@@ -4535,52 +4555,6 @@ async function loadKnownLids(orgId: string): Promise<KnownLid[]> {
 // `pipeline/compose.ts` from the projected position, so the emoji and
 // the row it claims to describe are produced by the same pass and
 // cannot disagree.
-
-/**
- * Pick the right match for an attendance/bench mutation.
- *
- * Two evolutions of this rule:
- * - 2026-05-06: dropped the `attendanceDeadline > now` filter (was
- *   causing post-deadline cascade to NEXT WEEK silently). Now we
- *   only consider matches with date >= startOfToday.
- * - 2026-05-06 (later): block registrations while the most recent
- *   scheduled match hasn't been COMPLETED yet. Use case: yesterday's
- *   match has ended (~22:30) but the cron hasn't flipped its status
- *   to COMPLETED yet (~01:00 the next morning). During that window
- *   a player saying "in" should NOT silently register for next
- *   week's match — they're almost certainly still talking about
- *   yesterday's match. Registration only opens once the current
- *   match is COMPLETED.
- *
- * Rule:
- *   1. If any non-COMPLETED non-CANCELLED match has date < today,
- *      return null. The current scheduled match is in flight.
- *   2. Otherwise return the soonest non-completed match where
- *      date >= today.
- */
-/**
- * The ACTIVE registration match — the single match every attendance WRITE
- * lands on. Delegates the date/state decision to the pure, unit-tested
- * `selectRegistrationMatch` so the rule (soonest upcoming, regardless of
- * fullness or attendanceDeadline; blocked while a previous match is still
- * in flight) is one source of truth shared with the LLM-context + reply
- * selectors below. Fixes the 2026-06-18 Sutton Lads rollover bug where a
- * FULL this-week match let casual "In"s land on next week's empty match.
- */
-async function findRegistrationMatch(orgId: string) {
-  // Load every non-completed match for the org (always a small set — the
-  // cron completes finished matches). The pure selector then decides the
-  // active match and the in-flight block deterministically.
-  const candidates = await db.match.findMany({
-    where: {
-      activity: { orgId },
-      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-    },
-    orderBy: { date: "asc" },
-  });
-  const picked = selectRegistrationMatch(candidates);
-  return picked ?? null;
-}
 
 // ── `executeVerdict` IS DELETED (§10 step 8) ─────────────────────────
 //

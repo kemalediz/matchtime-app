@@ -92,7 +92,8 @@ vi.mock("@/lib/pipeline/llm", async (orig) => {
 });
 
 import { POST } from "@/app/api/whatsapp/analyze/route";
-import { loadSquadState } from "@/lib/pipeline/load-state";
+import { loadSquadMatchId, loadSquadState } from "@/lib/pipeline/load-state";
+import { loadClubSummary } from "@/lib/club-summary/load";
 
 const d = (iso: string) => new Date(iso);
 
@@ -220,7 +221,14 @@ describe("the analyze path, per club shape (must not change in A2)", () => {
         calls.length = 0;
         state.db = fakeAnalyzeDb(analyzeWorld(SHAPES[name].rows), calls);
         vi.setSystemTime(now);
-        out[now.toISOString()] = stable(await loadSquadState(SHAPES[name].rows.org.id, now));
+        const orgId = SHAPES[name].rows.org.id;
+        // As the analyze path calls it since A2 (with the request's club
+        // summary), and as the admin group and DMs still do (without).
+        const summary = await loadClubSummary(orgId, now);
+        const withSummary = stable(await loadSquadState(orgId, now, { summary }));
+        expect(stable(await loadSquadState(orgId, now))).toEqual(withSummary);
+        expect(await loadSquadMatchId(orgId, now)).toBe(withSummary.matchId);
+        out[now.toISOString()] = withSummary;
       }
       expect(out).toMatchSnapshot();
     });
