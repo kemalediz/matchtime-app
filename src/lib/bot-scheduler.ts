@@ -177,6 +177,7 @@ import { normaliseSquadMode } from "./squad-month-rules";
 import { schedulerMonthShape } from "./scheduler-month-shape";
 import { CLUB_ORG_SELECT, loadClubSummary } from "./club-summary/load";
 import type { ClubSummary } from "./club-summary/types";
+import { clubSpeaks } from "./club-voice";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -599,7 +600,10 @@ export async function computeDuePosts(
     if (err instanceof MonthlyClubUnreadable) return monthsUnreadable(err.orgId, groupId, err.cause, now);
     throw err;
   }
-  if (!club || !club.lifecycle.botOn) return null;
+  // The one rule (club summary B6, `club-voice.ts`): a club MatchTime does
+  // not speak for (muted, dormant, billing-paused, unapproved, setting up)
+  // has no posts, whoever calls.
+  if (!club || !clubSpeaks(club.lifecycle)) return null;
   // A summary handed in is of the club whose group this is.
   if (opts.club !== undefined && club.groups.playersGroupId !== groupId) return null;
   const org = { id: club.orgId };

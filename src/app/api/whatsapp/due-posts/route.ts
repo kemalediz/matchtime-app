@@ -65,7 +65,7 @@ import { badgeLedgerOf, claimBadgePost, withoutServerBookkeeping } from "@/lib/b
 import { recordScheduledHqQuestion } from "@/lib/admin-group-log";
 import { ROSTER_SHOWN_KIND, rosterShownKey } from "@/lib/roster-shown";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
-import { billingQuietWhere } from "@/lib/club-billing-rules";
+import { speakingClubWhere } from "@/lib/club-voice";
 import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
 import { CLUB_ORG_SELECT, loadClubRows } from "@/lib/club-summary/load";
 import { buildClubSummary } from "@/lib/club-summary/derive";
@@ -270,15 +270,19 @@ export async function GET(request: Request) {
   // Find the org first so we can run the bench-confirmation sweep scoped to
   // it. This has to happen before compute so the new prompt that replaces
   // the expired one gets posted in this same cycle.
-  // Club fee billing (B1, plan 4.3 point 4): a billing-paused club is
-  // refused here too, so a stale Pi that still polls gets a 404 and never
-  // a post. `billingQuietWhere()` is empty while BILLING_ENABLED is off.
+  // THE DRAIN (club summary B6, `club-voice.ts`): every scheduled post and
+  // every queued message of every sender (the players' group, HQ, DMs, the
+  // sweeps, the web's actions) leaves by this poll, so the one rule is read
+  // here: only a club MatchTime speaks for is polled. A muted,
+  // billing-paused (B1, plan 4.3 point 4), dormant (new in B6), unapproved
+  // or setting-up club gets a 404 and never a post; what it has queued
+  // waits (a billing resume, a go-live and a wake from dormancy drop it).
   // The club's row, read once (club summary A1): with the summary's own
   // columns (`CLUB_ORG_SELECT`, which carries `approvedAt` and `liveAt`: a
   // club that was approved and held is "new" from the day it went live, cap
   // 8 below, `newClubDmCap`), so the summary below does not read it again.
   const org = await db.organisation.findFirst({
-    where: { whatsappGroupId: groupId, whatsappBotEnabled: true, ...billingQuietWhere() },
+    where: { whatsappGroupId: groupId, ...speakingClubWhere() },
     select: CLUB_ORG_SELECT,
   });
   if (!org) {

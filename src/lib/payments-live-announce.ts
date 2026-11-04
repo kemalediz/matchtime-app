@@ -28,6 +28,7 @@
  * caused it.
  */
 import { db } from "@/lib/db";
+import { VOICE_SELECT, clubSpeaks, voiceFactsOfRow } from "./club-voice";
 import { t } from "@/lib/i18n/t";
 import { normaliseLang, type Lang } from "@/lib/i18n/lang";
 import { isPaymentCollectionLive } from "./payments";
@@ -92,7 +93,7 @@ export async function announcePaymentsLiveIfJustLive(
         id: true,
         language: true,
         whatsappGroupId: true,
-        whatsappBotEnabled: true,
+        ...VOICE_SELECT,
         paymentCollectionEnabled: true,
         stripeConnectAccountId: true,
         stripeChargesEnabled: true,
@@ -109,7 +110,9 @@ export async function announcePaymentsLiveIfJustLive(
     // turn comes at go-live: `goLiveClub` (club-setup.ts) claims this key
     // in the go-live transaction, because the group hello states the pay
     // links, or queues this announcement after the hello when it does not.
-    if (!org.whatsappGroupId || !org.whatsappBotEnabled) return { announced: false, reason: "no-group" };
+    // By the one rule (club summary B6, `club-voice.ts`): a muted, dormant
+    // or paused club is not spoken for either, and keeps its key too.
+    if (!org.whatsappGroupId || !clubSpeaks(voiceFactsOfRow(org))) return { announced: false, reason: "no-group" };
 
     try {
       await db.sentNotification.create({

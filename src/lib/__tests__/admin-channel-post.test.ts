@@ -41,6 +41,21 @@ describe("adminGroupPost", () => {
     expect(post(ch(), { adminGroup: true }, NIGHT)).toEqual({ to: "admin-group", instruction: null });
   });
 
+  // D15 (club summary B6): the score ask read the default window, where
+  // every other HQ post reads the club's own quiet hours.
+  it("a club with quiet hours off: posted at 23:30 London, as its other HQ posts are", () => {
+    expect(post(ch({}, { quietHours: { enabled: false, from: "23:00", to: "09:00" } }), { adminGroup: true }, NIGHT).to).toBe("admin-group");
+    expect(post(ch({}, { quietHours: { enabled: false, from: "23:00", to: "09:00" } }), { adminGroup: true }, NIGHT)).toMatchObject({
+      instruction: { kind: "admin-group-message", key: "m1:ask-score" },
+    });
+  });
+  it("a club quiet from 11:00 to 14:00: held at noon London (until they end), never dropped", () => {
+    expect(post(ch({}, { quietHours: { enabled: true, from: "11:00", to: "14:00" } }), { adminGroup: true }, NOON)).toEqual({
+      to: "admin-group",
+      instruction: null,
+    });
+  });
+
   it.each([
     ["no admin channel", null, { adminGroup: true }],
     ["each-admin mode", ch({ mode: "each-admin" }), { adminGroup: true }],

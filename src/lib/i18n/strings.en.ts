@@ -5975,6 +5975,7 @@ export const en = {
   xask_round_count_hint: "The number is for all the clubs you tick together, not for each club.",
   xask_round_button: (p: { places: number }) => `Ask for ${p.places === 1 ? "1 player" : `${p.places} players`}`,
   xask_round_none_ticked: "Tick at least one partner club.",
+  xask_round_club_quiet: "MatchTime isn't sending messages for your club right now, so nobody was asked.",
   xask_round_status: (p: { wanted: number; placed: number }) =>
     `Asking for ${p.wanted === 1 ? "1 player" : `${p.wanted} players`}: ${p.placed} found so far`,
   xask_round_cancel: "Cancel this ask",

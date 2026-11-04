@@ -22,6 +22,7 @@
  * (`app/actions/pool-club-share.ts`).
  */
 import { db } from "../db";
+import { VOICE_SELECT, clubSpeaks, voiceFactsOfRow, type VoiceRow } from "../club-voice";
 import { longDayTimeLabel } from "../i18n/dates";
 import { normaliseLang, type Lang } from "../i18n/lang";
 import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf } from "../message-hours";
@@ -35,12 +36,14 @@ const ORG_SELECT = {
   language: true,
   featurePlayerPool: true,
   whatsappGroupId: true,
-  whatsappBotEnabled: true,
+  ...VOICE_SELECT,
   ...QUIET_HOURS_SELECT,
 } as const;
 
 const isUniqueViolation = (err: unknown) => (err as { code?: string } | null)?.code === "P2002";
-const hasGroup = (org: { whatsappGroupId: string | null; whatsappBotEnabled: boolean }) => !!org.whatsappGroupId && org.whatsappBotEnabled;
+/** A players' group MatchTime speaks in, by the one rule (club summary B6,
+ *  `club-voice.ts`): not a muted, dormant or paused club's. */
+const hasGroup = (org: { whatsappGroupId: string | null } & VoiceRow) => !!org.whatsappGroupId && clubSpeaks(voiceFactsOfRow(org));
 
 export interface ClubShareCard {
   /** queued: tapped, its post not out yet (held by quiet hours, or about

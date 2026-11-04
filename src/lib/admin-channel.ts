@@ -46,6 +46,7 @@ import {
 } from "./admin-channel-rules";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
 import { QUIET_HOURS_SELECT, quietHoursOf, type QuietHours } from "./message-hours";
+import { VOICE_SELECT, clubVoice, voiceFactsOfRow, type ClubVoice } from "./club-voice";
 import type { DueInstruction } from "./bot-scheduler";
 import { isGroupPostable } from "./group-postability-store";
 import { graphicUrl, readGraphicJob, type GraphicJob } from "./graphic-job";
@@ -123,6 +124,9 @@ export interface LoadedAdminChannel {
   /** The club's quiet hours (2026-10-16). Absent (a hand-built channel):
    *  the default, ON 23:00 to 09:00. */
   quietHours?: QuietHours;
+  /** The one rule (club summary B6, `club-voice.ts`). Absent (a hand-built
+   *  channel): as before, nothing refused here. */
+  voice?: ClubVoice;
 }
 
 /** What the Pi can do, narrowed by whether MatchTime can post in the admin group. */
@@ -161,6 +165,7 @@ export async function loadAdminChannel(orgId: string): Promise<LoadedAdminChanne
       adminChannelUserId: true,
       adminGroupId: true,
       ...QUIET_HOURS_SELECT,
+      ...VOICE_SELECT,
     },
   });
   if (!org) return null;
@@ -176,6 +181,7 @@ export async function loadAdminChannel(orgId: string): Promise<LoadedAdminChanne
     admins: await loadChannelAdmins(org.id),
     adminGroupPostable: await isGroupPostable(org.adminGroupId),
     quietHours: quietHoursOf(org),
+    voice: clubVoice(voiceFactsOfRow(org)),
   };
 }
 
@@ -224,6 +230,14 @@ export async function sendAdminNotice(
   const client: AdminNoticeClient = req.client ?? (db as unknown as AdminNoticeClient);
   const ch = await loadAdminChannel(orgId);
   if (!ch) return { channel: "none", queued: 0 };
+  // The one rule (club summary B6, `club-voice.ts`): a club MatchTime does
+  // not serve (dormant, paused for the club fee, unapproved, setting up)
+  // is told nothing; its notice would never go out and would be dropped
+  // when it comes back. A muted club's is queued and waits for the unmute.
+  if (ch.voice?.state === "silent") {
+    console.log(`[admin-channel] org ${orgId}: not queued, MatchTime does not serve the club (${ch.voice.because})`);
+    return { channel: "none", queued: 0 };
+  }
   // Held until the club's quiet hours end (none held with them off).
   const sendAfter = req.holdOvernight === false ? null : adminNoticeSendAfter(now, ch.quietHours);
 
@@ -316,7 +330,7 @@ export async function adminNoticeInstructions(args: {
  * caller's own post, never a DM. Used by the "what was the final score?"
  * ask (2026-10-16): the organisers report the score in HQ. In the group it
  * keeps the caller's key, so it is never posted twice, and waits for the
- * group's posting hours (`instruction` null until then).
+ * club's quiet hours to end (`instruction` null until then).
  */
 export function adminGroupPost(args: {
   channel: LoadedAdminChannel | null;
@@ -330,7 +344,10 @@ export function adminGroupPost(args: {
   if (!ch) return { to: "elsewhere" };
   const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, effectiveCaps(ch, args.piCaps));
   if (target.kind !== "group") return { to: "elsewhere" };
-  if (!isAdminGroupPostHour(args.now)) return { to: "admin-group", instruction: null };
+  // The club's own quiet hours, as every other HQ post (D15, club summary
+  // B6): held until they end, never dropped (the caller asks again on the
+  // next poll, inside its own 24 hour window).
+  if (!isAdminGroupPostHour(args.now, ch.quietHours)) return { to: "admin-group", instruction: null };
   return {
     to: "admin-group",
     instruction: {

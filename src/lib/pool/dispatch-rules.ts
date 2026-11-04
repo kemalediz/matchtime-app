@@ -50,9 +50,13 @@ export interface PoolJobView {
   gameOpen: boolean;
   /** His OTHER offers that reached him or are on their way (claimed). */
   ledger: OfferLedgerEntry[];
+  /** The asking club's voice (club summary B6, `club-voice.ts`): the offer
+   *  is sent on its behalf. "silent" cancels it, "muted" holds it. Absent:
+   *  "on", as before. */
+  clubVoice?: "on" | "muted" | "silent";
 }
 
-export type AdmissionCancelReason = "switched-off" | "profile-off" | "opted-out" | "closed" | PlayerCapRefusal;
+export type AdmissionCancelReason = "switched-off" | "club-silent" | "profile-off" | "opted-out" | "closed" | PlayerCapRefusal;
 
 /**
  * HAS HE OPTED OUT OF MATCHTIME DMs? (decision L6.10, the manager, 2026-10-24:
@@ -104,6 +108,10 @@ export function planPoolAdmission(jobs: readonly PoolJobView[], busy: readonly D
       cancel("switched-off");
       continue;
     }
+    if (j.clubVoice === "silent") {
+      cancel("club-silent");
+      continue;
+    }
     if (!j.profileActive) {
       cancel("profile-off");
       continue;
@@ -122,7 +130,7 @@ export function planPoolAdmission(jobs: readonly PoolJobView[], busy: readonly D
       cancel(refusal);
       continue;
     }
-    if (room <= 0 || plan.admit.length >= limit) {
+    if (j.clubVoice === "muted" || room <= 0 || plan.admit.length >= limit) {
       plan.hold.push(j.jobId);
       continue;
     }

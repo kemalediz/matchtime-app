@@ -146,3 +146,24 @@ describe("optedOutOfDms", () => {
     expect(optedOutOfDms({ memberships: [all(false, null)], poolConsentAt: NOW })).toBe(true);
   });
 });
+
+// The one rule (club summary B6, club-voice.ts): a pool offer is sent on
+// the asking club's behalf, so it goes only while MatchTime speaks for the
+// club. Before B6 the pool read only its own switches.
+describe("the asking club's voice", () => {
+  it("a club MatchTime does not serve (dormant, paused, unapproved, setting up): the offer is cancelled, never sent", () => {
+    const j = job({ clubVoice: "silent" });
+    const plan = planPoolAdmission([j], [], NOW, 5);
+    expect(plan.cancel).toEqual([{ jobId: j.jobId, offerId: j.offerId, reason: "club-silent" }]);
+    expect(plan.admit).toEqual([]);
+  });
+  it("a muted club: held (it waits for the unmute, if the ask is still open), never cancelled", () => {
+    const j = job({ clubVoice: "muted" });
+    const plan = planPoolAdmission([j], [], NOW, 5);
+    expect(plan.hold).toEqual([j.jobId]);
+    expect(plan.cancel).toEqual([]);
+  });
+  it("a club that speaks, or a view without the fact: as before", () => {
+    expect(planPoolAdmission([job({ clubVoice: "on" }), job()], [], NOW, 5).admit).toHaveLength(2);
+  });
+});

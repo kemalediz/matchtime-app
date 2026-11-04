@@ -271,6 +271,13 @@ export async function reactivateOrganisation(orgId: string) {
 
   if (org.dormantAt === null) return; // already live — nothing to undo
 
+  // No catch-up (club summary B6, `club-voice.ts`): what was queued while
+  // the club slept is not sent now, as after a billing resume or a
+  // go-live. Before the wake, so no poll in between can send it.
+  const { dropQueuedMessages } = await import("@/lib/club-voice-db");
+  const dropped = await dropQueuedMessages(db, orgId, new Date());
+  if (dropped > 0) console.log(`[org] ${orgId} woke from dormancy; ${dropped} message(s) queued while dormant dropped`);
+
   await db.organisation.update({
     where: { id: orgId },
     data: { dormantAt: null },
