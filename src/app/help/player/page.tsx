@@ -271,7 +271,7 @@ export default function PlayerGuidePage() {
         Signing up asks only your name, your postcode area and the days you
         can play. MatchTime then asks you on WhatsApp which times suit you on
         those days and which formats you play. Just reply in your own words,
-        for example <code>weekday evenings after 7, 5 or 7-a-side</code>, and
+        for example <code>weekday evenings after 7pm, 5-a-side or 7-a-side</code>, and
         it tells you what it saved. Until you say, any time on your days and
         any format count as fine. Want to change them later? Message
         MatchTime the same way at any time (<code>I can do Thursdays from 8
