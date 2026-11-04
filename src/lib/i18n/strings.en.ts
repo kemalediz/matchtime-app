@@ -3723,6 +3723,15 @@ export const en = {
       : p.organiser
         ? "You're on the bench. The organisers pick who plays 🙏"
         : "The squad's full, so you're on the bench. I'll message you if a spot opens 🙏",
+  // ── Every door honours the switches (club summary, slice B7; decision K4,
+  //    Kemal 2026-11-04). What WhatsApp refuses with a switch off, the website
+  //    and the DMs refuse too, with one short plain line. ──
+  /** The match page and the IN or OUT actions, attendance off: no button. */
+  web_attendance_off: (p: { club: string }): string =>
+    `${p.club} doesn't take sign-ups through MatchTime, so there's no IN or OUT for this game here.`,
+  /** The rate page and the rating action, player ratings off. */
+  web_ratings_off: (p: { club: string }): string =>
+    `${p.club} doesn't use player ratings in MatchTime, so there's nothing to rate here.`,
 
   // ── UNP1 (2026-10-01): U1 of MDs/friday-group-features-plan-2026-09-30.md
   //    (2.12), the organisers' unpaid list, 10:00 two days after the

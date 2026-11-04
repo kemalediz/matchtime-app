@@ -99,6 +99,9 @@ export default async function MatchDetailPage({
         rollingSquadEnabled: club.squad.rolling,
         benchPickMode: club.routine.benchPickMode,
         squadMode: club.squad.mode,
+        // The switches every door honours (club summary, slice B7).
+        attendance: club.features.attendance,
+        playerRating: club.features.playerRating,
       }
     : {
         teamLabels: org.teamLabels,
@@ -108,6 +111,8 @@ export default async function MatchDetailPage({
         rollingSquadEnabled: org.rollingSquadEnabled,
         benchPickMode: org.benchPickMode,
         squadMode: org.squadMode,
+        attendance: org.featureAttendance,
+        playerRating: org.featurePlayerRating,
       };
 
   const sport = match.activity.sport;
@@ -296,7 +301,10 @@ export default async function MatchDetailPage({
   const ratingWindowEnd = new Date(
     match.date.getTime() + match.activity.ratingWindowHours * 60 * 60 * 1000,
   );
+  // Player ratings off (club summary, slice B7): no rate button, as no
+  // rating DM goes out; the rate page and its action refuse too.
   const canRate =
+    orgPay.playerRating &&
     match.status === "COMPLETED" &&
     new Date() < ratingWindowEnd &&
     myAttendance?.status === "CONFIRMED";
@@ -510,8 +518,16 @@ export default async function MatchDetailPage({
         </section>
       )}
 
+      {/* Attendance off (decision K4, club summary B7): the club does not
+          take sign-ups through MatchTime, on the website as in WhatsApp. */}
+      {match.status === "UPCOMING" && !orgPay.attendance && (
+        <p data-testid="attendance-off" className="text-sm text-slate-600">
+          {t(match.activity.org.language).web_attendance_off({ club: match.activity.org.name })}
+        </p>
+      )}
+
       {/* Attend button */}
-      {match.status === "UPCOMING" && (
+      {match.status === "UPCOMING" && orgPay.attendance && (
         <div className="flex items-center gap-4 flex-wrap">
           <AttendButton
             matchId={matchId}

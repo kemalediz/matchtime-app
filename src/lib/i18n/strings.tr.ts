@@ -2652,6 +2652,8 @@ export const tr: Strings = {
       : p.organiser
         ? "Seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer 🙏"
         : "Kadro dolu, o yüzden seni yedeğe yazdım. Bir yer açılınca sana haber veririm 🙏",
+  web_attendance_off: (p) => `${p.club} kayıtları MatchTime üzerinden almıyor, bu yüzden bu maç için burada VARIM ya da YOKUM yok.`,
+  web_ratings_off: (p) => `${p.club} MatchTime'da oyuncu puanlamasını kullanmıyor, bu yüzden burada puanlanacak bir şey yok.`,
 
   // ── UNP1 (2026-10-01): yöneticilere ödemeyenler listesi ──
   unpaid_list_admin: (p) =>

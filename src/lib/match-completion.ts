@@ -42,7 +42,9 @@ export async function completeFinishedMatches(now: Date = new Date()): Promise<{
       activity: { org: servingClubWhere() },
     },
     include: {
-      activity: true,
+      // The rating switch (club summary, slice B7): no "rate your
+      // teammates" email while the club has player ratings off.
+      activity: { include: { org: { select: { featurePlayerRating: true } } } },
       attendances: {
         where: { status: "CONFIRMED" },
         include: { user: { select: { email: true, name: true } } },
@@ -95,7 +97,7 @@ export async function completeFinishedMatches(now: Date = new Date()): Promise<{
       name: a.user.name,
     }));
 
-    sendRatingEmails(
+    if (match.activity.org?.featurePlayerRating !== false) sendRatingEmails(
       match.id,
       match.activity.name,
       formatLondon(match.date, "EEEE, d MMMM yyyy"),

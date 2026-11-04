@@ -304,7 +304,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         { name: ON.en, text: "MatchTime keeps the squad from IN and OUT and posts the updates above." },
         {
           name: OFF.en,
-          text: "MatchTime records no IN or OUT and posts no squad updates, chases or reminders. The rolling squad post, the drop-out reminder, the published list and the monthly lists are squad posts, so they stop too.",
+          text: "MatchTime records no IN or OUT and posts no squad updates, chases or reminders. The rolling squad post, the drop-out reminder, the published list and the monthly lists are squad posts, so they stop too. Players cannot say IN or OUT on the website either: the match page says the club doesn't take sign-ups through MatchTime.",
         },
       ],
       newClubs: "On.",
@@ -324,7 +324,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         { name: ON.tr, text: "MatchTime kadroyu VARIM ve YOKUM mesajlarından tutar ve yukarıdaki güncellemeleri paylaşır." },
         {
           name: OFF.tr,
-          text: "MatchTime VARIM ya da YOKUM kaydetmez; kadro güncellemesi, oyuncu arama ya da hatırlatma paylaşmaz. Kadro devam eder mesajı, son çıkış hatırlatması, yayınlanan liste ve aylık listeler de kadro mesajı olduğu için onlar da durur.",
+          text: "MatchTime VARIM ya da YOKUM kaydetmez; kadro güncellemesi, oyuncu arama ya da hatırlatma paylaşmaz. Kadro devam eder mesajı, son çıkış hatırlatması, yayınlanan liste ve aylık listeler de kadro mesajı olduğu için onlar da durur. Oyuncular web sitesinde de VARIM ya da YOKUM diyemez: maç sayfası, kulübün kayıtları MatchTime üzerinden almadığını söyler.",
         },
       ],
       newClubs: "Açık.",
@@ -347,7 +347,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         { name: ON.en, text: "MatchTime tells the bench in the group when a place opens." },
         {
           name: OFF.en,
-          text: "No bench messages in the group. The bench still fills up, and anyone who says IN while a place is free still takes it.",
+          text: "No bench messages, in the group or by DM. The bench still fills up, and anyone who says IN while a place is free still takes it.",
         },
       ],
       newClubs: "On.",
@@ -368,7 +368,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         { name: ON.tr, text: "Bir yer açılınca MatchTime grupta yedeklere haber verir." },
         {
           name: OFF.tr,
-          text: "Grupta yedek listesi mesajı yok. Yedek listesi yine dolar ve yer boşken VARIM diyen yine yeri alır.",
+          text: "Ne grupta ne de özel mesajla yedek listesi mesajı yok. Yedek listesi yine dolar ve yer boşken VARIM diyen yine yeri alır.",
         },
       ],
       newClubs: "Açık.",
@@ -515,7 +515,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       example: "🏆 *Tuesday 7-a-side*, Tue 20 Oct\n\nRate your teammates and pick Man of the Match. Takes about a minute.\n\nYour personal link: …",
       choices: [
         { name: ON.en, text: "Rating links, reminders and the group note are sent after each match." },
-        { name: OFF.en, text: "No rating links. Club ratings stop changing, and nobody gets the Man of the Match vote." },
+        { name: OFF.en, text: "No rating links. Club ratings stop changing, and nobody gets the Man of the Match vote. The website takes no ratings either, even on a link sent before." },
       ],
       newClubs: "On.",
       suits: "Most clubs. It is what keeps the teams fair over time.",
@@ -535,7 +535,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       example: "🏆 *Salı 7'li maç*, Salı 20 Eki\n\nTakım arkadaşlarına puan ver ve Man of the Match'i seç. Yaklaşık bir dakika sürer.\n\nKişisel bağlantın: …",
       choices: [
         { name: ON.tr, text: "Her maçtan sonra puanlama bağlantıları, hatırlatmalar ve grup notu gönderilir." },
-        { name: OFF.tr, text: "Puanlama bağlantısı gitmez. Kulüp puanları değişmez ve kimse Man of the Match oyu veremez." },
+        { name: OFF.tr, text: "Puanlama bağlantısı gitmez. Kulüp puanları değişmez ve kimse Man of the Match oyu veremez. Web sitesi de, daha önce gönderilmiş bir bağlantıdan bile, puan almaz." },
       ],
       newClubs: "Açık.",
       suits: "Çoğu kulüp. Takımları zaman içinde dengeli tutan budur.",
@@ -585,7 +585,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       choices: [
         { name: ON.en, text: "MatchTime answers history questions that tag it." },
-        { name: OFF.en, text: "Those questions get no answer. Each player's own stats page, linked from the rating message, still works." },
+        { name: OFF.en, text: "Those questions get no answer, in the group or by DM: asked by DM, MatchTime says stats are switched off for the club. Each player's own stats page, linked from the rating message, still works." },
       ],
       newClubs: "On.",
       suits: "Clubs that like a bit of banter about records.",
@@ -597,7 +597,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       choices: [
         { name: ON.tr, text: "MatchTime kendisini etiketleyen geçmiş sorularını cevaplar." },
-        { name: OFF.tr, text: "Bu sorulara cevap verilmez. Puanlama mesajındaki bağlantıyla açılan kişisel istatistik sayfası yine çalışır." },
+        { name: OFF.tr, text: "Bu sorulara ne grupta ne de özel mesajda cevap verilmez: özel mesajla sorulunca MatchTime, kulüpte istatistiklerin kapalı olduğunu söyler. Puanlama mesajındaki bağlantıyla açılan kişisel istatistik sayfası yine çalışır." },
       ],
       newClubs: "Açık.",
       suits: "Rekorlar üzerine biraz şakalaşmayı seven kulüpler.",

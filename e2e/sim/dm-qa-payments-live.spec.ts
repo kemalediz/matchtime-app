@@ -86,5 +86,15 @@ for (const lang of ["en", "tr"] as const) {
       const a = await ask(request, db, PHONE.player, Q.other);
       expect(othersPayLeak(a, lang, ["Riley"])).toBe(false);
     });
+
+    // Club summary, slice B7: stats answers off. The players' group answers
+    // no stats question, so the DM says they are switched off, and still
+    // answers about money.
+    test(`stats answers off: "${lang === "en" ? "how are my stats looking?" : "istatistiklerim nasıl?"}"`, async ({ request, db }) => {
+      test.setTimeout(120_000);
+      await db.run(`UPDATE "Organisation" SET "featureStatsQa" = false WHERE id = $1`, [ORG_ID]);
+      const a = await ask(request, db, PHONE.player, lang === "en" ? "how are my stats looking?" : "istatistiklerim nasıl?");
+      expect(a).toMatch(lang === "en" ? /switched off|turned off/i : /kapal|kapat/i);
+    });
   });
 }

@@ -1215,20 +1215,7 @@ exports[`the web pages, per club shape (characterisation) > match > ratings 1`] 
 <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-medium capitalize bg-slate-100 text-slate-600">upcoming</span>
 </div>
 </div>
-<div class="flex items-center gap-4 flex-wrap">
-<button class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm transition-colors disabled:opacity-60 active:scale-95">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check w-4 h-4" aria-hidden="true">
-<path d="M20 6 9 17l-5-5">
-</path>
-</svg>I&#x27;m in!</button>
-<p class="text-sm text-slate-500 flex items-center gap-1.5">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clock w-4 h-4" aria-hidden="true">
-<circle cx="12" cy="12" r="10">
-</circle>
-<path d="M12 6v6l4 2">
-</path>
-</svg>Deadline: Thu 5 Nov, 14:00</p>
-</div>
+<p data-testid="attendance-off" class="text-sm text-slate-600">Thursday Ratings doesn&#x27;t take sign-ups through MatchTime, so there&#x27;s no IN or OUT for this game here.</p>
 <section data-testid="attendance-section" class="bg-white rounded-xl border border-slate-200 shadow-sm">
 <div class="px-6 py-4 border-b border-slate-100">
 <h2 class="text-lg font-semibold text-slate-800">Attendance</h2>
@@ -1289,20 +1276,7 @@ exports[`the web pages, per club shape (characterisation) > match > ratings 1`] 
 <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-medium capitalize bg-slate-100 text-slate-600">upcoming</span>
 </div>
 </div>
-<div class="flex items-center gap-4 flex-wrap">
-<button class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm transition-colors disabled:opacity-60 active:scale-95">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check w-4 h-4" aria-hidden="true">
-<path d="M20 6 9 17l-5-5">
-</path>
-</svg>I&#x27;m in!</button>
-<p class="text-sm text-slate-500 flex items-center gap-1.5">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clock w-4 h-4" aria-hidden="true">
-<circle cx="12" cy="12" r="10">
-</circle>
-<path d="M12 6v6l4 2">
-</path>
-</svg>Deadline: Thu 5 Nov, 14:00</p>
-</div>
+<p data-testid="attendance-off" class="text-sm text-slate-600">Thursday Ratings doesn&#x27;t take sign-ups through MatchTime, so there&#x27;s no IN or OUT for this game here.</p>
 <section data-testid="attendance-section" class="bg-white rounded-xl border border-slate-200 shadow-sm">
 <div class="px-6 py-4 border-b border-slate-100">
 <h2 class="text-lg font-semibold text-slate-800">Attendance</h2>

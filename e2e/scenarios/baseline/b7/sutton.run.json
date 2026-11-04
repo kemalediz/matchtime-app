@@ -1,0 +1,21 @@
+{
+ "club": "sutton",
+ "mode": "replay",
+ "ticks": 1302,
+ "steps": 35,
+ "sent": 177,
+ "errors": 0,
+ "seconds": 92,
+ "model": {
+  "club": "sutton",
+  "mode": "replay",
+  "recorded": 52,
+  "hits": 52,
+  "repeats": 0,
+  "reordered": 0,
+  "misses": 0,
+  "upstreamCalls": 0,
+  "missList": [],
+  "reorderedList": []
+ }
+}

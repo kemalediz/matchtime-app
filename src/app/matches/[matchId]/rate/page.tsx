@@ -42,6 +42,9 @@ export default function RatePlayersPage() {
   // A game marked as not played (2026-10-28): its rating link opens to one
   // line, in the club's language, and nothing to rate.
   const [cancelledLang, setCancelledLang] = useState<string | null>(null);
+  // Player ratings off for the club (club summary, slice B7): one line in the
+  // club's language, and nothing to rate.
+  const [ratingsOff, setRatingsOff] = useState<{ lang: string; club: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -51,6 +54,11 @@ export default function RatePlayersPage() {
       const data = await res.json();
       if (data.status === "CANCELLED") {
         setCancelledLang(data.activity?.org?.language ?? "en");
+        setLoading(false);
+        return;
+      }
+      if (data.ratingsOff === true) {
+        setRatingsOff({ lang: data.activity?.org?.language ?? "en", club: data.activity?.org?.name ?? "" });
         setLoading(false);
         return;
       }
@@ -106,6 +114,16 @@ export default function RatePlayersPage() {
   if (loading) {
     return (
       <div className="p-10 text-center text-slate-400">Loading players…</div>
+    );
+  }
+
+  if (ratingsOff !== null) {
+    return (
+      <div className="p-6 sm:p-10 max-w-2xl mx-auto space-y-4 text-center">
+        <p data-testid="rate-off" className="text-base text-slate-700">
+          {t(ratingsOff.lang).web_ratings_off({ club: ratingsOff.club })}
+        </p>
+      </div>
     );
   }
 

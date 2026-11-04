@@ -1052,6 +1052,9 @@ function cases(lang: Lang): Case[] {
   add("R75 buildPreKickoffShortFallback / at or above the minimum (K1)", buildPreKickoffShortFallback({ timeLabel: "21:30", venue: "Goals North Cheam", confirmed: 12, maxPlayers: 14, need: 2, short: false, lang }));
   add("R76 buildGearReminder", buildGearReminder({ timeLabel: "21:30", venue: "Goals North Cheam", lang }));
   add("R77 buildAskScorePost", buildAskScorePost({ activityName: "Tuesday 7-a-side", lang }));
+  // Club summary B7 (K4): the website refuses what WhatsApp refuses with the switch off.
+  add("B7 web_attendance_off (K4)", t(lang).web_attendance_off({ club: "Thursday Ratings" }));
+  add("B7 web_ratings_off", t(lang).web_ratings_off({ club: "Thursday Ratings" }));
 
   // ── 1.1 bench-offer-copy.ts, row 49 (extracted from bench-confirmation.ts 2026-09-17)
   add("R49 buildBenchClaimAnnouncement / team and replaced player", buildBenchClaimAnnouncement({ claimerName: "Erdal Ozkan", droppedName: "Sait Demir", teamLabel: redLabel, confirmedCount: 14, maxPlayers: 14, lang }));
