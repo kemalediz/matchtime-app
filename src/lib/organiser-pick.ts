@@ -76,9 +76,8 @@ import {
 } from "./organiser-pick-rules";
 import { NOT_CANCELLED } from "@/lib/played-match";
 import { hqLogSince } from "./admin-group-log";
-import { loadPlayerNames, usableName } from "./player-display-name";
-import { adminPlayerLabel } from "./admin-player-label";
-import { isPlaceholderEmail } from "./cross-club-link-rules";
+import { usableName } from "./player-display-name";
+import { loadOrganiserNames } from "./organiser-names";
 import { readPickReply, type PickReaderContext, type PickReaderInput, type PickReaderPerson } from "./organiser-pick-reader";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
@@ -188,64 +187,6 @@ export async function loadPickListRows(
   });
 }
 
-/** Both labels for a player in a pick message (2026-11-04). */
-interface PickName {
-  /** For the organisers (the pick list, the admin group, their DMs): the
-   *  name MatchTime knows him by, else his phone, else the club's word for
-   *  "unnamed" (`adminPlayerLabel`, as on the admin roster). */
-  admin: string;
-  /** For the players' group (A2): the name, else the word for "unnamed".
-   *  A phone number is never a name there (`player-display-name.ts`). */
-  plain: string;
-}
-
-/**
- * THE NAME A PICK MESSAGE SHOWS (2026-11-04). FNF sandbox replay: a
- * bencher imported with no name was "3. ? (no position, new)" on the
- * organisers' list, from a hard-coded "?", while the squad post called him
- * "(unnamed)". Now the shared readers decide: the best name MatchTime holds
- * (`loadPlayerNames`: his name, an alias, the WhatsApp name he posts
- * under), and for the organisers only, his phone when there is no name
- * (the stored one, or the one a WhatsApp-imported placeholder email
- * carries; never a real email). A guest's phone is never shown (D7): his
- * club is beside his line instead. Never throws: a failed read leaves the
- * plain `User.name` or the word for "unnamed".
- */
-async function loadPickNames(orgId: string, lang: string | null | undefined, userIds: string[]): Promise<Map<string, PickName>> {
-  const out = new Map<string, PickName>();
-  const ids = [...new Set(userIds)];
-  if (ids.length === 0) return out;
-  const unnamed = t(lang).unnamed;
-  const [users, guests, shown] = await Promise.all([
-    Promise.resolve()
-      .then(() => db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, phoneNumber: true, email: true } }))
-      .catch(() => [] as Array<{ id: string; name: string | null; phoneNumber: string | null; email: string | null }>),
-    Promise.resolve()
-      .then(() => db.membership.findMany({ where: { orgId, userId: { in: ids }, ...GUEST_MEMBER_WHERE }, select: { userId: true } }))
-      .catch(() => [] as Array<{ userId: string }>),
-    loadPlayerNames(orgId, ids, lang),
-  ]);
-  const guestIds = new Set((guests ?? []).map((g) => g.userId));
-  for (const u of users ?? []) {
-    const name = shown.get(u.id)?.name ?? usableName(u.name);
-    const guest = guestIds.has(u.id);
-    out.set(u.id, {
-      admin: adminPlayerLabel(
-        {
-          name,
-          // Only a placeholder email, for the phone it encodes: a real
-          // address is never put in a WhatsApp message.
-          email: !guest && isPlaceholderEmail(u.email) ? u.email : null,
-          phoneNumber: guest ? null : u.phoneNumber,
-        },
-        lang,
-      ),
-      plain: name ?? unnamed,
-    });
-  }
-  return out;
-}
-
 interface MatchWorld {
   id: string;
   orgId: string;
@@ -309,9 +250,9 @@ async function loadMatchWorld(matchId: string, opts: { names?: boolean } = {}): 
   return opts.names === false ? world : withPickNames(world);
 }
 
-/** The squad and the waiting list under the organisers' labels (`loadPickNames`). */
+/** The squad and the waiting list under the organisers' labels (`loadOrganiserNames`). */
 async function withPickNames(world: MatchWorld): Promise<MatchWorld> {
-  const labels = await loadPickNames(world.orgId, world.lang, [...world.confirmed, ...world.waiting].map((c) => c.userId));
+  const labels = await loadOrganiserNames(world.orgId, world.lang, [...world.confirmed, ...world.waiting].map((c) => c.userId));
   const label = (c: PickCandidate): PickCandidate => ({ userId: c.userId, name: labels.get(c.userId)?.admin ?? c.name });
   return { ...world, confirmed: world.confirmed.map(label), waiting: world.waiting.map(label) };
 }
@@ -558,9 +499,9 @@ async function closeRound(roundId: string, outcome: string, now: Date): Promise<
   return res.count > 0;
 }
 
-/** The organisers' label for each of `userIds` (`loadPickNames`). */
+/** The organisers' label for each of `userIds` (`loadOrganiserNames`). */
 async function namesOf(orgId: string, lang: string | null | undefined, userIds: string[]): Promise<Map<string, string>> {
-  const labels = await loadPickNames(orgId, lang, userIds);
+  const labels = await loadOrganiserNames(orgId, lang, userIds);
   return new Map([...labels].map(([id, n]) => [id, n.admin]));
 }
 
@@ -616,7 +557,7 @@ async function runFallback(
 
 export interface AppliedPick {
   userId: string;
-  /** The organisers' label (`loadPickNames`): a phone when he has no name. */
+  /** The organisers' label (`loadOrganiserNames`): a phone when he has no name. */
   name: string;
   /** Whose place they took: the holder of the team slot actually inherited
    *  when teams exist, else the round's next unfilled drop, else null. */
@@ -772,7 +713,7 @@ export async function applyOrganiserPick(args: {
   const sheetExists = (await db.teamAssignment.count({ where: { matchId: args.matchId } })) > 0;
   const stillOut = new Set(res.rows.filter((r) => r.status === "DROPPED").map((r) => r.userId));
   const openDrops = (res.round?.vacatedByUserIds ?? []).filter((id) => stillOut.has(id)).slice(res.round?.pickedUserIds.length ?? 0);
-  const names = await loadPickNames(orgId, lang, [...res.applied, ...res.moves.map((mv) => mv.fromUserId), ...openDrops]);
+  const names = await loadOrganiserNames(orgId, lang, [...res.applied, ...res.moves.map((mv) => mv.fromUserId), ...openDrops]);
   const unnamed = t(lang).unnamed;
   const applied: AppliedPick[] = res.applied.map((userId, i) => {
     const move = res.moves.find((mv) => mv.toUserId === userId) ?? null;

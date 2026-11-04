@@ -12,6 +12,8 @@ import { isLateDrop } from "./rolling-squad-rules";
 import { sendAdminNotice } from "./admin-channel";
 import { buildLateDropAdminNotice } from "./dm-copy";
 import { loadSquadCount } from "./squad-count";
+import { loadOrganiserNames } from "./organiser-names";
+import { t } from "./i18n/t";
 import { dayTimeLabel, timeLabel, weekdayTimeLabel } from "./i18n/dates";
 import { canTakeFreePlace, normaliseBenchPickMode, ORGANISER_PICK_BENCH_NOTE } from "./squad-capacity";
 import { loadReclaimUserIds } from "./squad-reclaim";
@@ -651,14 +653,15 @@ async function notifyLateDrop(p: {
   sentAt: Date;
   lang: string | null | undefined;
 }): Promise<void> {
-  const [user, squad] = await Promise.all([
-    db.user.findUnique({ where: { id: p.userId }, select: { name: true } }),
-    loadSquadCount(p.matchId),
+  // The organisers' label (`organiser-names.ts`), never "?".
+  const [names, squad] = await Promise.all([
+    loadOrganiserNames(p.orgId, p.lang, [p.userId]),
+    loadSquadCount(p.matchId, p.lang),
   ]);
   await sendAdminNotice({
     orgId: p.orgId,
     text: buildLateDropAdminNotice({
-      name: user?.name ?? "?",
+      name: names.get(p.userId)?.admin ?? t(p.lang).unnamed,
       activityName: p.activityName,
       whenLabel: dayTimeLabel(p.lang, p.matchDate),
       time: timeLabel(p.sentAt),
