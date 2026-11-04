@@ -37,14 +37,15 @@ const uses = (src: string) => (stripComments(src).match(/\.\.\.REPLY_PRIORITY\b/
 
 /** File → how many BotJob creates in it are conversational replies. */
 const MARKED: Record<string, number> = {
-  // Every reply the dm-reply route queues itself: the bench-offer
+  // Every reply the DM pipeline queues itself (the dm-reply route's body,
+  // moved into `handleInboundDm` by Cloud API plan C3): the bench-offer
   // clarification and ack, the DM-subscription ack, the tentative re-ask
   // and ack, the collector's fee-reply answer, the admin-command answer,
   // the scoped Q&A answer, the roster-survey clarification and
   // confirmation. (The recruit BLAST the admin command triggers is
   // queued by recruit.ts, unmarked.) And the owner's answer to the
   // partner-club pairing notice (2026-10-21).
-  "app/api/whatsapp/dm-reply/route.ts": 11,
+  "lib/inbound-dm.ts": 11,
   // The stats link a player asked for. (The stats BLAST to every member
   // stays unmarked; "DM me <question>" was deleted 2026-10-30.)
   "app/api/whatsapp/analyze/route.ts": 1,

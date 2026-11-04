@@ -1,0 +1,1875 @@
+/**
+ * THE ONE DM PIPELINE (`handleInboundDm`). Every incoming 1-1 DM is
+ * handled here, whichever WhatsApp number it came in on: the Pi forwards
+ * it to POST /api/whatsapp/dm-reply, a thin adapter over this function,
+ * and the Cloud API webhook will call the same function (Cloud API plan
+ * C3, MDs/whatsapp-cloud-api-plan-2026-11-04.md section 5.3; Kemal's
+ * rule: one architecture, no parallel code paths). Moved out of the
+ * route as it was, with no change in behaviour
+ * (`__tests__/inbound-dm-characterisation.test.ts` pins it). The server
+ * figures out what to do with it.
+ *
+ * HANDLER ORDER IS THE CONTRACT. The most SPECIFIC pending prompt wins,
+ * and the general fallback runs last:
+ *
+ *   0.  local player pool confirm code  ("Hi MatchTime, sign me up to play.
+ *      Code K7QP", slice L2, 2026-10-24; a /play sign-up confirmed by the
+ *      person's own message, usually a stranger's; deterministic, no model;
+ *      never the self-join connect message; a DM with no code, or with a
+ *      code that names nothing in other words, falls through untouched.
+ *      See lib/pool/confirm.ts)
+ *   0a. self-join owner decision        ("APPROVE 7KQ2" / "REJECT 7KQ2" from a
+ *      number in SELF_JOIN_APPROVER_PHONES; only while SELF_JOIN_ENABLED is
+ *      on; deterministic, no model; a command with a ref from anybody else
+ *      is swallowed, anything that is not a command falls through. See
+ *      handleApproverDm in lib/club-approval.ts)
+ *   0b. self-join connect DM            ("Connect Riverside FC, code 7KQ2";
+ *      only while SELF_JOIN_ENABLED is on; deterministic, no model; a DM
+ *      with no code, or a code that names no connect request, falls
+ *      through untouched. See lib/connect-dm.ts)
+ *   0b-go. GO                           (2026-10-12, go-live slice S4: "GO",
+ *      "GO LIVE", "BAŞLA" from a current owner or admin of a club that is
+ *      approved but still setting up; takes the club live; outside the
+ *      self-join flag; the sender is checked first, then the one DM read
+ *      (2026-10-30, it was a word list) must say GO at 90%; anything else
+ *      falls through untouched. See lib/setup-go-dm.ts, handleGoDm)
+ *   0c. organiser pick reply           (2026-10-01, slice 2b: an owner or
+ *      admin, resolved BY PHONE ONLY, answering a pick round they were
+ *      asked on: "2", "Wasim", "NONE", "YES"; deterministic, no model; a DM
+ *      that is not a pick reply falls through untouched. See
+ *      lib/organiser-pick.ts, handleOrganiserPickDm)
+ *   1. bench-slot offer reply           (an open BenchSlotOffer; yes or no
+ *      read by the match-availability model since 2026-10-30)
+ *   2. DM subscription command          ("stop messaging me about ratings";
+ *      the one DM read since 2026-10-30, see lib/dm-reader.ts)
+ *   3. player payment claim             (2026-09-23: "Paid" from a player
+ *      who owes a released fee; the pay page's settle-directly, see
+ *      lib/payment-claim.ts)
+ *   4. tentative-availability follow-up (an open TentativeAvailability)
+ *   5. money-collector fee reply        (a match awaiting its fee)
+ *   6. admin recruit blast / rating progress  (admin-gated, and
+ *      MODEL-classified since 2026-09-11 — the two regexes that
+ *      used to select it are deleted; see lib/dm-intent.ts); since
+ *      2026-10-29 also the platform owner's intro messages (owner-gated
+ *      in code, lib/owner-intro.ts)
+ *   7. roster check-in survey           (an open RosterSurveyDM)
+ *   8. COLD self-attendance fallback    (2026-08-31 — a player replying
+ *      "IN"/"OUT" to a recruit DM with nothing more specific to attribute
+ *      it to; registers against the active match)
+ *   8b. a pool player's DM in words (local player pool L5a, L6; since
+ *      2026-11-04 also his times and formats): for a sender with a
+ *      delivered offer, or answering MatchTime's question about his times
+ *      (anyone in no club, any time); the pool's one DM reader, then the
+ *      tap link's own writers or the manage page's; see lib/pool/reply.ts)
+ *   9. help, read by the shared question extractor (2026-10-28: "help",
+ *      "how do I turn on the player pool?", "havuz nasıl açılır"; the
+ *      group's own builder, for the sender's club; see lib/dm-help.ts;
+ *      help about payments from a player with a fee still open gives way
+ *      to the Q&A, which has his pay link, 2026-11-04),
+ *      then scoped Q&A when the one DM read says it is a question, else
+ *      ignore
+ *
+ * Adding a handler means slotting it by SPECIFICITY, never in front of a
+ * prompt that knows which question is being answered.
+ *
+ * Flow for roster surveys:
+ *   1. Resolve sender phone → User.
+ *   2. Find any open RosterSurvey for any of the user's orgs that
+ *      has a matching RosterSurveyDM row (i.e. they actually got
+ *      DM'd a check-in question).
+ *   3. Classify the reply via Claude (in / maybe / out / unclear).
+ *   4. If clear → upsert RosterSurveyResponse + queue a confirmation
+ *      DM via BotJob.
+ *      If unclear → no response stored; queue a clarification DM
+ *      that re-anchors the question on the survey.
+ *   5. Return 200 either way (we always ACK so the bot doesn't
+ *      retry).
+ *
+ * If no active survey applies, the DM is silently ignored.
+ */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
+import { onboardingUserKey, withOrgAiBudget } from "@/lib/ai-budget";
+import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
+import { IN_LIVE_STAGE_CLUB_WHERE, settingUpClubsReason } from "@/lib/club-setup";
+import { scheduleSetupAfterApproval } from "@/lib/club-setup-schedule";
+import { setupHoldEnabledForApiRequest } from "@/lib/setup-hold-flag";
+import { handleGoDm, handleSettingUpDm } from "@/lib/setup-go-dm";
+import { setupLearningEnabledForRequest } from "@/lib/setup-learning/flag";
+import { setupLearningTestSeam } from "@/lib/setup-learning/test-seam";
+import { billingEnabledForApiRequest } from "@/lib/billing-flag";
+import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
+import { handleConnectDm } from "@/lib/connect-dm";
+import { handlePoolConfirmDm } from "@/lib/pool/confirm";
+import { answerPoolOfferReply } from "@/lib/pool/reply";
+import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
+import { dmOptOutStopsPool, poolLanguageOf, stopPoolOnDmOptOut } from "@/lib/pool/dm-optout";
+import { handleOrganiserPickDm } from "@/lib/organiser-pick";
+import { handleCollectorPaidDm, handlePlayerPaidDm } from "@/lib/month-payment";
+import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
+import { NextResponse } from "next/server";
+import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
+import { db } from "@/lib/db";
+import { loadDmReplyContext, logDmQuote, parseDmQuote, quoteForClubs, quoteForMatch, type QuotedBotMessage } from "@/lib/reply-context";
+import { normalisePhone } from "@/lib/phone";
+import { classifyRosterReply } from "@/lib/roster-survey-classifier";
+import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
+import { answerScopedQuestion, pickQaOrgAndQuote } from "@/lib/dm-qa";
+import { handleCollectorFeeReply } from "@/lib/payment-flow";
+import { feeConfirmAboutKey } from "@/lib/fee-confirm-reaction";
+import { setDmSubscriptions } from "@/lib/notification-prefs";
+import {
+  subscriptionCommandOf,
+  dmSubPatchForCommand,
+  dmSubAckMessage,
+} from "@/lib/dm-subscriptions";
+import { createDmReader } from "@/lib/dm-reader";
+import { registerAttendance, cancelAttendance } from "@/lib/attendance";
+import { resolveTentative } from "@/lib/tentative-store";
+import { buildTentativeFollowupAck } from "@/lib/tentative-followup";
+import { classifyMatchAvailability } from "@/lib/match-availability-classifier";
+import { loadMatchAvailabilityFacts } from "@/lib/match-availability-context";
+import { resolveDmSelfAttendance } from "@/lib/dm-self-attendance";
+import { findDmRegistrationTarget } from "@/lib/dm-registration-target";
+import {
+  askAboutOpenPartnerAsk,
+  findAskByRef,
+  handleCodedPartnerAskDm,
+  handleGuestDmOut,
+  handleVolunteerNameReply,
+} from "@/lib/partner-guest-dm";
+import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
+import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
+import { dayCommaTimeLabel } from "@/lib/i18n/dates";
+import { LANGS } from "@/lib/i18n/lang";
+import {
+  buildAdminRecruitDmReply,
+  buildBenchDmAck,
+  buildBenchDmUnclear,
+  buildRosterSurveyClarification,
+  buildRosterSurveyConfirmation,
+  buildTentativeReask,
+  rosterSurveyClarificationProbe,
+} from "@/lib/dm-copy";
+
+/** The WhatsApp number a DM came in on: the club number the Pi runs
+ *  (Baileys), or MatchTime's official number (the Cloud API). A fact the
+ *  pipeline carries for choosing where an answer goes; today nothing reads
+ *  it, and every DM is handled the same whichever it is. */
+export type DmChannel = "baileys" | "cloud";
+
+/** A DM as the Pi forwards it: the JSON body of POST
+ *  /api/whatsapp/dm-reply. The Cloud API webhook builds the same shape
+ *  from Meta's payload. Read as it arrives, nothing validated beyond the
+ *  text and the message id (a 400 without either). */
+export interface InboundDm {
+  /** The sender's number, digits, when the envelope had one. */
+  phone?: string;
+  /** The message's text. */
+  body?: string;
+  /** The message's WhatsApp id. */
+  waMessageId?: string;
+  /** The sender's WhatsApp display name. */
+  authorName?: string;
+  /** The sender's WhatsApp LID, when the envelope carried one. */
+  senderLid?: string;
+  /** The phone on the envelope's alternate address, when there was one. */
+  senderAltPhone?: string;
+  /** When it was sent, unix seconds as a string. */
+  timestamp?: string;
+  /** A swipe-reply's quoted message: its id, text, and whether it was
+   *  MatchTime's (`parseDmQuote`, reply-context.ts). */
+  quotedMessageId?: string;
+  quotedText?: string;
+  quotedFromMatchTime?: boolean;
+}
+
+export interface InboundDmContext {
+  channel: DmChannel;
+  /** The HTTP request the DM arrived on: its test-seam headers (honoured
+   *  only under MT_TEST_MODE=1) set the flags and the clock, and the
+   *  work after an approval is scheduled on it. */
+  request: Request;
+}
+
+/** Handle one DM: the pipeline that was the body of POST
+ *  /api/whatsapp/dm-reply. Answers what the Pi is handed (always 200 once
+ *  the DM has a text and an id, so the bot never retries). */
+export async function handleInboundDm(body: InboundDm, ctx: InboundDmContext): Promise<Response> {
+  const { request } = ctx;
+  const { phone, body: text, waMessageId, authorName, senderLid, senderAltPhone } = body as {
+    phone?: string;
+    body?: string;
+    waMessageId?: string;
+    authorName?: string;
+    /** The sender's WhatsApp LID, when the envelope carried one. Sent by a
+     *  Pi built with self-join slice 5; absent from an older one. */
+    senderLid?: string;
+    /** The phone on the envelope's alternate address, when there was one. */
+    senderAltPhone?: string;
+  };
+  if (!text || !waMessageId) {
+    return NextResponse.json({ error: "body, waMessageId required" }, { status: 400 });
+  }
+
+  // ── Quoted-reply context (slices S1 and S2, 2026-10-20) ────────────────
+  //   A swipe-reply carries the quoted message's id, text, and whether it
+  //   was MatchTime's (`quotedMessageId`, `quotedText`, `quotedFromMatchTime`;
+  //   an older Pi sends none). Resolved ONCE to the MatchTime DM it answers
+  //   and logged (ids, topic, match, resolved yes/no; never text). The
+  //   payment-claim and match-availability classifiers below read it as
+  //   their whole chat context (`loadDmReplyContext`). Total: a failed read
+  //   is logged and the DM carries on as a non-reply.
+  const quoted = await logDmQuote(db, { body, waMessageId, phones: [phone, senderAltPhone] });
+  // Which of MatchTime's messages this DM answers (review of #465): the one
+  // quoted, else MatchTime's newest DM to him. The steps that wait for an
+  // answer act only when it is their message (`dm-answering.ts`).
+  const { answeringOnce } = await import("@/lib/dm-answering");
+  const answering = answeringOnce(quoted?.text ?? parseDmQuote(body)?.text ?? null, [phone, senderAltPhone]);
+
+  // ── THE ONE DM READ (2026-10-30, no string parsing) ───────────────────
+  //   What the message asks MatchTime to do (`dm-intent.ts`): GO, stop or
+  //   start its messages, an organiser's instruction, a question, or none
+  //   of these. Read by the model, once, the first time a step below asks
+  //   (`dm-reader.ts` memoises it), against the sender's clubs and what
+  //   MatchTime said to them. It replaced the GO, STOP and "is this a
+  //   question" word lists. Each step still gates on facts before acting.
+  const reader = createDmReader({
+    text,
+    quoted,
+    senderName: authorName ?? null,
+    phone: async (userId) =>
+      (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+      (await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+      null,
+  });
+
+  // ── Local player pool: the /play confirm code (slice L2, 2026-10-24) ──
+  //   "Hi MatchTime, sign me up to play. Code K7QP" (Turkish: "Merhaba
+  //   MatchTime, oynamak için kaydet. Kod K7QP"), the message the /play form
+  //   opens. FIRST, ahead of the sender lookup: the sender is usually a
+  //   stranger with no User yet, and nothing below may answer this DM with a
+  //   model. A token lookup, deterministic. It never takes the self-join
+  //   connect message ("Connect ..., code ..."), and a DM with no code, or a
+  //   code that names no sign-up in words that are not the confirm message,
+  //   comes back null and carries on exactly as before. See lib/pool/confirm.ts.
+  {
+    const pool = await handlePoolConfirmDm({ text, phone, senderAltPhone, waMessageId });
+    if (pool) return NextResponse.json({ ok: true, ...pool });
+  }
+
+  // ── Self-join: the owner's decision (slice 7), then the connect DM (slice 5) ──
+  //   The organiser's prefilled "Connect Riverside FC, code 7KQ2" (Turkish:
+  //   "... kulübünü bağla, kod 7KQ2"). FIRST, ahead of the bench reply and
+  //   the sender lookup: the organiser of a draft club may be known only by
+  //   the LID on the envelope. Off with the flag: then not even called.
+  //   Since 2026-10-30 (no string parsing) both consult the one DM reader,
+  //   and only AFTER their facts: the owner's number for a decision, an
+  //   open request on the sender's phone for the wrong-code reply. A code
+  //   that names a request is still handled with no model at all.
+  if (selfJoinEnabledForApiRequest(request)) {
+    // The owner's approve or reject (slice 7) comes first of all: it is the
+    // most specific thing a DM can be. Nobody else's DM is read here.
+    const decision = await handleApproverDm({
+      text,
+      phone,
+      senderAltPhone,
+      waMessageId,
+      read: reader.read,
+      quotedText: quoted?.text ?? parseDmQuote(body)?.text ?? null,
+      setupHold: setupHoldEnabledForApiRequest(request),
+      // The approval is stamped on the same clock as the run that follows
+      // it (`scheduleSetupAfterApproval` reads the same seam), so the
+      // reading's 2-hour cap is measured on one clock. Only under
+      // MT_TEST_MODE=1 is this ever set (`x-test-now`); in production it is
+      // undefined and the approval uses the real clock, as before.
+      now: setupLearningTestSeam(request).now,
+    });
+    // Go-live slice S3: an approval that HELD the club. Its chat reading
+    // and its organiser's setup DM run AFTER this response (`after()`),
+    // never inline: the Pi is awaiting it. The learn-setup cron retries.
+    if (decision?.heldOrgId) scheduleSetupAfterApproval(decision.heldOrgId, request);
+    if (decision) return NextResponse.json({ ok: true, ...decision });
+    const connect = await handleConnectDm({ text, phone, senderAltPhone, senderLid, waMessageId, read: reader.read });
+    if (connect) return NextResponse.json({ ok: true, ...connect });
+  }
+
+  // ── GO: the organiser of a club that is setting up takes it live ───────
+  //   (go-live slice S4, 2026-10-12.) OUTSIDE the self-join flag, so a
+  //   club already setting up can still go live with the flag off, and
+  //   ahead of every handler below. It engages only for a current owner or
+  //   admin, known by phone or a server-stored LID, of a club that is
+  //   setting up, or that has been through setting up and is live (they
+  //   are told "already live"); only then is the DM read, by the one DM
+  //   reader (2026-10-30: it was a GO word list), and only a confident GO
+  //   acts. For everybody else it returns null with no model call, and the
+  //   DM carries on exactly as before. See lib/setup-go-dm.ts.
+  {
+    const go = await handleGoDm({
+      text,
+      phone,
+      senderAltPhone,
+      senderLid,
+      waMessageId,
+      learningEnabled: setupLearningEnabledForRequest(request),
+      billingEnabled: billingEnabledForApiRequest(request),
+      read: reader.read,
+    });
+    if (go) return NextResponse.json({ ok: true, ...go });
+  }
+
+  // ── A partner club's ask, answered by DM (2026-10-21) ───────────────────
+  //   The ask posted in a partner group carries a tap-to-DM link prefilled
+  //   "IN (ref K7Q2)": the code MatchTime issued for that ask. Looked up
+  //   ONCE here (one query, only when the text has a code after "ref"), so
+  //   nothing below can mistake the volunteer's DM for something else: an
+  //   organiser's pick, a bench-offer YES, or an IN for his own club's game.
+  //   It is handled after the silence rails, below.
+  const codedAsk = await findAskByRef(text).catch((err: unknown) => {
+    console.error("[dm-reply] ask code lookup failed:", err instanceof Error ? err.message : "failed");
+    return null;
+  });
+
+  // ── Organiser pick (slice 2b): an admin answering a pick round ─────────
+  //   Before the bench reply and every model call (the admin-commands
+  //   classifier, Q&A), so a pick costs nothing. Engages only for a sender
+  //   who, by phone, was asked on an open round; returns null otherwise and
+  //   the DM carries on exactly as before.
+  if (!codedAsk) {
+    const pick = await handleOrganiserPickDm({
+      phone,
+      senderAltPhone,
+      text,
+      waMessageId,
+      timestamp: typeof (body as { timestamp?: unknown }).timestamp === "string"
+        ? ((body as { timestamp?: string }).timestamp as string)
+        : null,
+    });
+    if (pick) return NextResponse.json({ ok: true, ...pick });
+  }
+
+  // ── Monthly squad (slice 4): the collector answers the claims digest ───
+  //   "PAID ALL", "1 and 3 are in", "ÖDENDİ HİÇBİRİ", in any words, read
+  //   by a model against the list he was sent (`month-digest-reply.ts`,
+  //   2026-10-29; it was a fixed phrase). The model is asked only when the
+  //   sender may confirm payments and a list is out for him; for anybody
+  //   else this costs two indexed queries and the DM carries on as before.
+  {
+    const { readDigestReply } = await import("@/lib/month-digest-reply");
+    const paid = await handleCollectorPaidDm({ phone, senderAltPhone, text, waMessageId, answering, read: (shown, t) => readDigestReply(shown, t) });
+    if (paid) return NextResponse.json({ ok: true, ...paid });
+  }
+
+  // ── Bench-confirmation DM reply ──────────────────────────────────
+  //   Added 2026-05-18 (Kemal): when a slot opens we now DM the
+  //   bencher as well as tagging them in the group, because benchers
+  //   mute/skip the group thinking they're not playing. The DM asks
+  //   for a TEXT reply (YES/NO) — handle it here, BEFORE the roster
+  //   logic, with its own sender resolution scoped to users who
+  //   actually have an open PendingBenchConfirmation. The in-group
+  //   👍/👎 reaction path still works in parallel; resolveBenchConfirmation
+  //   is idempotent so a double-answer (DM + reaction) is safe.
+  {
+    // Candidate set = bench players of any match with an OPEN offer.
+    // Club fee billing (B1): an offer of a club paused for the club fee is
+    // not answerable (nothing claimed, no reply); the DM then meets the
+    // billing rail below. Empty fragment while BILLING_ENABLED is off.
+    const openOffers = await db.benchSlotOffer.findMany({
+      where: { resolvedAt: null, ...billingQuietMatchWhere() },
+      select: { matchId: true },
+    });
+    if (openOffers.length > 0 && !codedAsk) {
+      const matchIds = [...new Set(openOffers.map((o) => o.matchId))];
+      const benchAtt = await db.attendance.findMany({
+        where: { matchId: { in: matchIds }, status: "BENCH" },
+        select: {
+          matchId: true,
+          user: { select: { id: true, name: true, phoneNumber: true } },
+        },
+      });
+      let claimant: { id: string; matchId: string } | null = null;
+
+      // 1. Phone match within the bench set.
+      if (!claimant && phone && phone.trim().length > 0) {
+        const n = normalisePhone(phone);
+        if (n) {
+          const hit = benchAtt.find(
+            (a) => a.user.phoneNumber && normalisePhone(a.user.phoneNumber) === n,
+          );
+          if (hit) claimant = { id: hit.user.id, matchId: hit.matchId };
+        }
+      }
+      // 2. @lid pushname, uniquely matched within the bench set.
+      if (!claimant && authorName && authorName.trim().length >= 2) {
+        const nm = (s: string) =>
+          s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        const pn = nm(authorName);
+        const pf = pn.split(/\s+/).filter(Boolean)[0] ?? "";
+        const eq = benchAtt.filter((a) => a.user.name && nm(a.user.name) === pn);
+        let pick = eq.length === 1 ? eq[0] : null;
+        if (!pick) {
+          const fz = benchAtt.filter((a) => {
+            if (!a.user.name) return false;
+            const df = nm(a.user.name).split(/\s+/).filter(Boolean)[0] ?? "";
+            return (
+              df === pf ||
+              (df.length >= 3 && pf.length >= 2 && df.startsWith(pf)) ||
+              (pf.length >= 3 && df.length >= 2 && pf.startsWith(df))
+            );
+          });
+          if (fz.length === 1) pick = fz[0];
+        }
+        if (pick) claimant = { id: pick.user.id, matchId: pick.matchId };
+      }
+
+      if (claimant) {
+        // The offered match's org decides the language of the DM we send
+        // back.
+        const matchOrg = await db.match.findUnique({
+          where: { id: claimant.matchId },
+          select: { date: true, activity: { select: { orgId: true, org: { select: { language: true } } } } },
+        });
+        const orgId = matchOrg?.activity.orgId ?? null;
+        // The day the replies name: "tonight" only on match day (London).
+        const offerMatchDate = matchOrg?.date ?? new Date();
+        const replyNow = new Date();
+        const benchLang = matchOrg?.activity.org.language;
+        const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+        // Yes or no to the offer, read by the match-availability model
+        // against the offer MatchTime sent him (2026-10-30: it was a word
+        // list). "in" takes the place, "out" declines it; anything else,
+        // a failed call or the AI cap included, gets the one clarification.
+        const benchFacts = await loadMatchAvailabilityFacts({
+          userId: claimant.id,
+          matchId: claimant.matchId,
+          phone:
+            phoneNoPlus ??
+            (await db.user.findUnique({ where: { id: claimant.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+            null,
+          quoted: quoteForMatch(quoted, claimant.matchId),
+        });
+        const benchClub = orgId ? await db.organisation.findUnique({ where: { id: orgId }, select: { name: true } }) : null;
+        const benchMatch = await db.match.findUnique({ where: { id: claimant.matchId }, select: { activity: { select: { name: true } } } });
+        const benchVerdict = orgId
+          ? await withOrgAiBudget(orgId, () =>
+              classifyMatchAvailability(text, {
+                ...benchFacts,
+                clubName: benchClub?.name ?? null,
+                matchName: benchMatch?.activity.name ?? null,
+                matchWhen: dayCommaTimeLabel(benchLang, offerMatchDate),
+              }),
+            )
+          : null;
+        const isYes = benchVerdict?.decision === "in";
+        const isNo = benchVerdict?.decision === "out";
+
+        if (!isYes && !isNo) {
+          // One gentle clarification (this is a single reply to one
+          // inbound DM — NOT a loop; no spam risk).
+          if (orgId && phoneNoPlus) {
+            await db.botJob.create({
+              data: {
+                orgId,
+                kind: "dm",
+                phone: phoneNoPlus,
+                text: buildBenchDmUnclear(benchLang, offerMatchDate, replyNow),
+                ...REPLY_PRIORITY,
+              },
+            });
+          }
+          return NextResponse.json({ ok: true, handled: "bench-dm-unclear" });
+        }
+
+        const result = await resolveBenchConfirmation({
+          matchId: claimant.matchId,
+          userId: claimant.id,
+          decision: isYes,
+        });
+        // Personal DM ack (group announcement is posted by the lib).
+        if (orgId && phoneNoPlus) {
+          const ack = buildBenchDmAck(
+            !isYes
+              ? "declined"
+              : result.kind === "confirmed"
+                ? "confirmed"
+                : result.kind === "ignored"
+                  ? "taken"
+                  : "other",
+            benchLang,
+            offerMatchDate,
+            replyNow,
+          );
+          await db.botJob.create({
+            data: { orgId, kind: "dm", phone: phoneNoPlus, text: ack, ...REPLY_PRIORITY },
+          });
+        }
+        return NextResponse.json({
+          ok: true,
+          handled: "bench-dm",
+          decision: isYes ? "yes" : "no",
+          result: result.kind,
+        });
+      }
+    }
+  }
+
+  // Try phone first (most accurate). Falls through to pushname-based
+  // resolution when phone is empty or doesn't match any User —
+  // happens when WhatsApp's @lid privacy mode hides the sender's
+  // real phone from the chat ID.
+  let user: {
+    id: string;
+    name: string | null;
+    memberships: { orgId: string }[];
+  } | null = null;
+
+  if (phone && phone.trim().length > 0) {
+    const normalised = normalisePhone(phone);
+    if (normalised) {
+      user = await db.user.findUnique({
+        where: { phoneNumber: normalised },
+        select: { id: true, name: true, memberships: { select: { orgId: true } } },
+      });
+    }
+  }
+
+  if (!user && authorName && authorName.trim().length >= 2) {
+    // Pushname can sometimes be the user's WhatsApp-display phone
+    // ("+44 7887 275188") rather than a real name. If it parses as
+    // a phone, try the phone path before falling through to name
+    // fuzzy-matching.
+    const digitsOnly = authorName.replace(/[^\d]/g, "");
+    if (digitsOnly.length >= 10) {
+      const normalised = normalisePhone(`+${digitsOnly}`);
+      if (normalised) {
+        const phoneUser = await db.user.findUnique({
+          where: { phoneNumber: normalised },
+          select: { id: true, name: true, memberships: { select: { orgId: true } } },
+        });
+        if (phoneUser) user = phoneUser;
+      }
+    }
+  }
+
+  if (!user && authorName && authorName.trim().length >= 2) {
+    // Pushname-based fallback. Scope to users who currently have an
+    // OPEN RosterSurveyDM so we're not guessing across the whole
+    // user base. Three layered strategies, each decisive only when
+    // exactly one candidate matches:
+    //   1. Exact normalized equality
+    //   2. Substring containment in either direction (so "Mehmet Unal
+    //      Sutton Football" pushname resolves to DB "Mehmet Unal", and
+    //      DB "Aykut Arsoy" resolves to pushname "Aykut Arsoy Sutton
+    //      Football"). Requires ≥ 2 tokens on the matching side so
+    //      one-word names don't latch onto every pushname.
+    //   3. First-name fuzzy with relaxed prefix.
+    const norm = (s: string) =>
+      s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const pushNorm = norm(authorName);
+    const pushFirst = pushNorm.split(/\s+/).filter(Boolean)[0] ?? "";
+
+    const candidates = await db.rosterSurveyDM.findMany({
+      where: { survey: { status: "open" } },
+      include: { user: { select: { id: true, name: true, memberships: { select: { orgId: true } } } } },
+    });
+
+    const equals = candidates.filter(
+      (c) => c.user.name && norm(c.user.name) === pushNorm,
+    );
+    let pick = equals.length === 1 ? equals[0] : null;
+    if (!pick) {
+      const bySubstring = candidates.filter((c) => {
+        if (!c.user.name) return false;
+        const dbNorm = norm(c.user.name);
+        const dbTokens = dbNorm.split(/\s+/).filter(Boolean).length;
+        const pushTokens = pushNorm.split(/\s+/).filter(Boolean).length;
+        if (dbTokens >= 2 && pushNorm.includes(dbNorm)) return true;
+        if (pushTokens >= 2 && dbNorm.includes(pushNorm)) return true;
+        return false;
+      });
+      if (bySubstring.length === 1) pick = bySubstring[0];
+    }
+    if (!pick) {
+      const byFirst = candidates.filter((c) => {
+        if (!c.user.name) return false;
+        const dbFirst = norm(c.user.name).split(/\s+/).filter(Boolean)[0] ?? "";
+        return (
+          dbFirst === pushFirst ||
+          (dbFirst.length >= 3 && pushFirst.length >= 2 && dbFirst.startsWith(pushFirst)) ||
+          (pushFirst.length >= 3 && dbFirst.length >= 2 && pushFirst.startsWith(dbFirst))
+        );
+      });
+      if (byFirst.length === 1) pick = byFirst[0];
+    }
+    if (pick) {
+      user = pick.user;
+    }
+  }
+
+  // REMOVED 2026-08-31 — the @lid "pushname matches a money collector"
+  // fallback. It resolved an otherwise-UNKNOWN DM sender to the org's
+  // money collector on a first-name pushname match, and pushname is
+  // attacker-controlled: anyone who knows the bot's number could set
+  // their WhatsApp display name to the collector's first name, DM an
+  // amount, confirm it, and blast a pay link at the whole squad for a fee
+  // they chose. Sutton's collector is "Kemal" — a single common first
+  // name — so the bar was that low.
+  //
+  // Nothing may promote an unverified sender to fee-setting authority.
+  // `Organisation.paymentHolderId` stays the source of truth for WHO the
+  // collector is (handleCollectorFeeReply already scopes on it); what was
+  // broken was WHO WE THINK IS TEXTING. Identity must come from the
+  // phone number, which the bot recovers for @lid DMs via `Contact.number`
+  // (whatsapp-bot fix, 2026-06-09). If that ever regresses, collector fee
+  // DMs go unanswered — loudly, in the log below — rather than being
+  // answerable by a stranger.
+
+  if (!user) {
+    if (authorName && authorName.trim().length >= 2) {
+      console.warn(
+        `[dm-reply] unresolved sender (no phone match) pushname="${authorName}" — ignoring. ` +
+          `If this is a real member, the bot failed to forward their number (Contact.number).`,
+      );
+    }
+    return NextResponse.json({ ok: true, ignored: "unknown-sender" });
+  }
+
+  // ── Silence rails (self-join slice 1, 2026-09-29) ──────────────────────
+  //   A sender whose every club is waiting for approval (or was rejected
+  //   or suspended) gets nothing from here on: no model call, no reply.
+  //   The deterministic connect handler at the top of this route is the
+  //   only thing that answers such an organiser. Every club that
+  //   predates self-join is approved, so a Sutton FC member is untouched.
+  //   Club fee billing (B1, plan 4.3 point 7): the same rail now also
+  //   catches a sender whose every approved club is paused for the club
+  //   fee ("club-billing-paused"). With BILLING_ENABLED off this is
+  //   exactly the approval rail: the same query and the same answer.
+  const notServing = await nonServingClubsReason(user.memberships.map((m) => m.orgId));
+  if (notServing === "club-not-approved") {
+    console.log(`[dm-reply] sender ${user.id} belongs only to unapproved clubs; ignoring`);
+    return NextResponse.json({ ok: true, ignored: "club-not-approved" });
+  }
+  if (notServing === "club-billing-paused") {
+    console.log(`[dm-reply] sender ${user.id} belongs only to clubs paused for the club fee; ignoring`);
+    return NextResponse.json({ ok: true, ignored: "club-billing-paused" });
+  }
+
+  // ── Help by DM: see step 9 (2026-10-28) ──────────────────────────────
+  //   Help was read here by a regex, ahead of the handlers below. It is now
+  //   read by the shared question extractor, so it sits where a DM that no
+  //   handler knows reaches the scoped Q&A (below), never in front of a
+  //   handler that knows which question is being answered.
+  const allClubsSettingUp = (await settingUpClubsReason(user.id)) === "club-setting-up";
+
+  // ── Approved but setting up (go-live slices S1 and S4, 2026-10-12) ─────
+  //   A sender whose every served club is approved but still SETTING UP
+  //   (waiting for its organiser's GO) goes no further: no handler below
+  //   runs, the model paths among them (payment claim, admin commands,
+  //   Q&A). Such a club is approved, so the rail above lets it through;
+  //   this is the second rail.
+  //
+  //   What such a sender gets is decided in `handleSettingUpDm`
+  //   (lib/setup-go-dm.ts), all of it deterministic and all of it on the
+  //   PLATFORM channel, because the club's own channel is not dispatched
+  //   while its bot is off:
+  //     - a current owner or admin asking for help gets the help;
+  //     - a current owner or admin saying anything else is told that the
+  //       message was not recognised, and how to go live (reply GO, or the
+  //       Go live button, with the settings page's address), up to a cap
+  //       per number that only a flood or an auto-reply loop reaches;
+  //     - a plain member, or a sender known only by display name, gets
+  //       nothing at all.
+  //   GO itself never reaches here: it is handled at the top of the route.
+  //
+  //   The rail reads the sender's CURRENT memberships (a live club the
+  //   person has left does not shield them). A sender who also belongs to
+  //   a live club is not caught; for them every club pick below spreads
+  //   `IN_LIVE_STAGE_CLUB_WHERE`, so a setting-up club does not exist for
+  //   club selection and they are handled for their live club only. With
+  //   no club setting up, the rail is one read that answers null for
+  //   everybody and the picks below are unchanged.
+  if (allClubsSettingUp) {
+    const out = await handleSettingUpDm({
+      userId: user.id,
+      text,
+      phone,
+      senderAltPhone,
+      senderLid,
+      waMessageId,
+      // An organiser asking for help is answered with it. Read by the
+      // shared question extractor, under the pre-club allowance (the
+      // club's own is $0 while it sets up).
+      readHelp: async () => {
+        const { readDmHelp } = await import("@/lib/dm-help");
+        return withOrgAiBudget(onboardingUserKey(user.id), () => readDmHelp({ text, authorName: user.name, now: new Date() }));
+      },
+      poolEnv: () => poolEnvForApiRequest(request),
+    });
+    if ("ignored" in out) {
+      console.log(`[dm-reply] sender ${user.id} belongs only to clubs that are still setting up; ignoring`);
+    }
+    return NextResponse.json({ ok: true, ...out });
+  }
+
+  // ── The partner club's ask by DM (2026-10-21), found by its code above ──
+  //   IN or OUT is the DM resolver's call on his words with the code taken
+  //   out; `handlePartnerVolunteer` (the one writer onto another club's
+  //   match) does the rest and answers him by DM. See partner-guest-dm.ts.
+  if (codedAsk) {
+    const coded = await handleCodedPartnerAskDm({
+      askId: codedAsk.askId,
+      userId: user.id,
+      userName: user.name,
+      text,
+      replyPhone: phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null,
+      waMessageId,
+    });
+    return NextResponse.json({ ok: true, ...coded });
+  }
+
+  // ── A nameless volunteer's reply to "what name should I list you
+  //    under?" (2026-10-22) ─────────────────────────────────────────────
+  //   One read, and only a person asked in the last 12 hours is caught:
+  //   his DM is the name, then the volunteer writer runs. Everyone else
+  //   carries on exactly as before. See partner-guest-dm.ts.
+  {
+    const named = await handleVolunteerNameReply({
+      userId: user.id,
+      text,
+      replyPhone: phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null,
+      waMessageId,
+    }).catch((err: unknown) => {
+      console.error("[dm-reply] volunteer name reply failed:", err instanceof Error ? err.message : "failed");
+      return null;
+    });
+    if (named) return NextResponse.json({ ok: true, ...named });
+  }
+
+  // ── DM subscription preferences (2026-06-11; per-category
+  //    2026-07-17) ──────────────────────────────────────────────────────
+  //   A player can text the bot to opt out of proactive DMs — either a
+  //   single category ("stop messaging me about ratings") or everything
+  //   except payment ("do not message me on any topic but payment", "only
+  //   payment please"). Payment DMs have NO flag and are never silenced.
+  //   Read by the one DM reader (2026-10-30: it was a keyword parser),
+  //   against what MatchTime last sent them, so "stop" answering a fee
+  //   question is not an opt-out. Run BEFORE the collector-fee and Q&A
+  //   branches so it can't be swallowed:
+  //   the Q&A fallthrough only composes prose and writes nothing, which is
+  //   exactly the gap that once let a player keep getting DMs after asking
+  //   us to stop.
+  //
+  //   GOLDEN RULE: only ack AFTER the DB write succeeds. If the write
+  //   touched 0 rows / threw, we do NOT claim they're unsubscribed — fall
+  //   through silently rather than lie.
+  {
+    // Any active org the player belongs to works as the BotJob owner (the
+    // DM is addressed by phone). Its language is the language the command
+    // is read in (English words are always read) and the ack is written in.
+    const subMem = await db.membership.findFirst({
+      where: { userId: user.id, leftAt: null, ...IN_LIVE_STAGE_CLUB_WHERE },
+      select: { orgId: true, org: { select: { language: true } } },
+    });
+    // Someone in no club (a pool player) reads it in his pool language (L6.11).
+    const subLang = subMem ? subMem.org.language : await poolLanguageOf(user.id);
+    const cmd = subscriptionCommandOf((await reader.read(user.id)).intent);
+    if (cmd) {
+      let written = false;
+      try {
+        const res = await setDmSubscriptions(user.id, dmSubPatchForCommand(cmd));
+        written = res.count > 0;
+      } catch (err) {
+        console.error("[dm-reply] setDmSubscriptions failed:", err);
+      }
+
+      if (written) {
+        const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+        const u = await db.user.findUnique({
+          where: { id: user.id },
+          select: { phoneNumber: true },
+        });
+        const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
+        if (replyPhone && subMem) {
+          await db.botJob.create({
+            data: { orgId: subMem.orgId, kind: "dm", phone: replyPhone, text: dmSubAckMessage(cmd, subLang), ...REPLY_PRIORITY },
+          });
+        }
+      }
+      // Local player pool (decision L6.11): the general opt-out withdraws his
+      // pool consent too, through the manage page's Stop. He hears the reply
+      // above when it was sent (a club member); otherwise one pool line.
+      const pool = dmOptOutStopsPool(cmd)
+        ? await stopPoolOnDmOptOut({ userId: user.id, waMessageId, fromPhones: [phone, senderAltPhone], sendLine: !(written && subMem) })
+        : { stopped: false };
+      if (written || pool.stopped) return NextResponse.json({ ok: true, handled: "dm-subscription", cmd, ...(pool.stopped ? { poolStopped: true } : {}) });
+      // Write didn't land — don't lie. Fall through to normal handling.
+    }
+  }
+
+  // ── An organiser answering "Sounds like Monday is off" (2026-10-29) ────
+  //   An organiser called the next game off in the players' group without
+  //   a tag, and MatchTime DM'd him once to reply *cancel*
+  //   (`calloff-offer.ts`). While that offer is open, his DM is read by the
+  //   model: a yes runs the one cancel core (`cancelMatchById`), a no leaves
+  //   the game on, anything else carries on to the handlers below. One
+  //   indexed query for everybody else, and no model call.
+  {
+    const { handleCalloffDmReply } = await import("@/lib/calloff-offer");
+    const replyPhone =
+      (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+      (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+      null;
+    const calloff = await handleCalloffDmReply({ userId: user.id, text, replyPhone, now: new Date() });
+    if (calloff) return NextResponse.json({ ok: true, ...calloff });
+
+    // ── An organiser answering the coming month's draft (2026-10-29) ─────
+    //   He posted the coming month's list in the players' group and was
+    //   DMed the draft (`month-seed-group.ts`). While it is open, his DM is
+    //   read by the model against it (`month-seed-reply.ts`): a yes starts
+    //   the month as the admin group's YES does, a no leaves it, a
+    //   correction changes the draft and sends it again; anything else goes
+    //   on below. One indexed query for everybody else, and no model call.
+    const { handleMonthSeedDmReply } = await import("@/lib/month-seed-reply");
+    const seed = await handleMonthSeedDmReply({ userId: user.id, text, replyPhone, waMessageId, answering, now: new Date() });
+    if (seed) return NextResponse.json({ ok: true, ...seed });
+
+    // ── A player confirming he joins a month under way (review of #465) ──
+    //   MatchTime asked "Join <month> for the N games left?" (`askToJoinMonth`);
+    //   while that is open and it is the message he answers, his reply is
+    //   read by the monthly reader (`month-join-dm.ts`).
+    const { handleMonthJoinDmReply } = await import("@/lib/month-join-dm");
+    const joined = await handleMonthJoinDmReply({ userId: user.id, text, waMessageId, answering, now: new Date() });
+    if (joined) return NextResponse.json({ ok: true, ...joined });
+
+    // ── An organiser saying who a name on his month is (2026-11-03) ──────
+    //   He put somebody MatchTime does not know by name on a running month
+    //   (his re-posted list, or "add Zak to the November list") and was
+    //   DMed the club's members with no name, numbered (`month-newcomers.ts`).
+    //   While that is open and it is the message he answers, his reply
+    //   ("Zak is 3") is read by the month-seed reply reader: a new player is
+    //   folded into that member (the user-merge tool), or the member joins.
+    //   One indexed query for everybody else.
+    const { handleMonthAddDm, handleNewcomerDmReply } = await import("@/lib/month-newcomers");
+    const newcomers = await handleNewcomerDmReply({ userId: user.id, text, replyPhone, waMessageId, answering, now: new Date() });
+    if (newcomers) return NextResponse.json({ ok: true, ...newcomers });
+
+    // ── An organiser asking by DM for somebody to go on a month ─────────
+    //   "add Tom to the November list, he's paid": read by the monthly
+    //   reader as the groups read it; only an "add" acts, anything else
+    //   goes on below. Asked only for an organiser of one monthly club.
+    const added = await handleMonthAddDm({ userId: user.id, text, authorName: user.name ?? null, replyPhone, waMessageId, now: new Date() });
+    if (added) return NextResponse.json({ ok: true, ...added });
+
+  }
+
+  // ── Player payment claim: "Paid" (2026-09-23) ────────────────────────
+  //   A player who owes a released match fee DMs "Paid" / "sent it" /
+  //   "ödedim" instead of using the pay link. It does EXACTLY what the pay
+  //   page's "Pay the collector directly" button does (one shared
+  //   function, lib/direct-payment.ts): a PENDING state and a DM to the
+  //   collector to confirm. It NEVER marks anyone paid.
+  //
+  //   PLACEMENT. Ahead of the tentative follow-up and the roster survey on
+  //   purpose: both of those answer anything they cannot read with a
+  //   re-ask, so a "Paid" that reached them was swallowed exactly the way
+  //   Abid Kazmi's was. It costs nothing for everyone else: the model is
+  //   asked ONLY when the sender currently owes a released fee (one
+  //   indexed query first), and any verdict but a claim falls through to
+  //   the handlers below unchanged. The bench-offer reply stays first; it
+  //   resolves its own sender and owns the DM while an offer is open.
+  // MONTHLY SQUAD (slice 4): a regular who owes for the MONTH says he has
+  //   paid, in any words, read by the payment DM step's model (2026-10-29;
+  //   it was a fixed vocabulary). Engages only for somebody with exactly
+  //   one month to pay for and no released per-match fee (checked before
+  //   any model call); anybody else falls straight through to the
+  //   per-match claim below, unchanged. It records a CLAIM ("says paid"):
+  //   only the collector confirms.
+  {
+    const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+    const monthClaim = await handlePlayerPaidDm({
+      userId: user.id,
+      userName: user.name,
+      text,
+      loadReplyContext: () => loadDmReplyContext(db, { userId: user.id, phone: phoneNoPlus, quoted }),
+      replyPhone:
+        phoneNoPlus ??
+        (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+        null,
+    });
+    if (monthClaim) return NextResponse.json({ ok: true, ...monthClaim });
+  }
+
+  {
+    const { handlePaymentClaimDm } = await import("@/lib/payment-claim");
+    const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+    const replyPhone =
+      phoneNoPlus ??
+      (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(
+        /^\+/,
+        "",
+      ) ??
+      null;
+    const claim = await handlePaymentClaimDm({
+      userId: user.id,
+      userName: user.name,
+      text,
+      waMessageId,
+      replyPhone,
+      quoted,
+    });
+    if (claim.handled) {
+      return NextResponse.json({ ok: true, ...claim });
+    }
+  }
+
+  // Where DMs to this player are queued (digits, no "+"): the sender's
+  // phone, or the stored one for an @lid sender. For the classifier's
+  // chat context (MatchTime's recent DMs to them).
+  const sender = user;
+  const dmPhone = async (): Promise<string | null> =>
+    (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+    (await db.user.findUnique({ where: { id: sender.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+    null;
+
+  // ── Tentative-availability follow-up reply (IN/OUT) ─────────────────
+  //   The bot DMs a player who was a MAYBE ~24h before kickoff asking for
+  //   a firm IN/OUT. Their reply lands here. If they have an OPEN
+  //   (unresolved) tentative row, classify IN/OUT, write attendance via
+  //   the same lib the group path uses (against the deterministic active
+  //   match), and resolve the tentative so no duplicate follow-ups fire.
+  //   Runs BEFORE fee/recruit/survey so a firm "IN"/"OUT" isn't misread.
+  {
+    const openTentatives = await db.tentativeAvailability.findMany({
+      where: { userId: user.id, resolvedAt: null },
+      include: {
+        match: {
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            activity: {
+              select: {
+                orgId: true,
+                name: true,
+                org: { select: { language: true, benchPickMode: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    // Only chase-able matches (not completed/cancelled), soonest first.
+    const active = openTentatives
+      .filter(
+        (t) =>
+          t.match.status === "UPCOMING" ||
+          t.match.status === "TEAMS_GENERATED" ||
+          t.match.status === "TEAMS_PUBLISHED",
+      )
+      .sort((a, b) => a.match.date.getTime() - b.match.date.getTime());
+
+    if (active.length > 0) {
+      // The soonest match's org decides the language of the fast path and
+      // of every DM below (the follow-up was written in it).
+      // The match this reply is about: the one whose follow-up (or other
+      // DM) it swipe-replies to, when that is one of his open maybes;
+      // otherwise the soonest, as before. Every read and write below uses
+      // THIS row, so a reply is never applied to a different match than
+      // the one it answers (review of #336).
+      const chosen = (quoted?.matchId ? active.find((t) => t.match.id === quoted.matchId) : undefined) ?? active[0];
+      const tentLang = chosen.match.activity.org.language;
+      // IN or OUT, read by the model against the follow-up (2026-10-30:
+      // the free word-list fast path in front of it is deleted).
+      let isIn = false;
+      let isOut = false;
+      {
+        const row0 = chosen;
+        const org0 = await db.organisation.findUnique({
+          where: { id: row0.match.activity.orgId },
+          select: { name: true },
+        });
+        // What MatchTime last said to them (normally the follow-up asking
+        // for a firm IN/OUT, so a bare "yes"/"👍" IS an answer) and where
+        // they stand for the match.
+        const facts = await loadMatchAvailabilityFacts({
+          userId: user.id,
+          matchId: row0.match.id,
+          phone: await dmPhone(),
+          quoted: quoteForMatch(quoted, row0.match.id),
+        });
+        // Spent from the match's club (the daily AI cap, lib/ai-budget.ts).
+        const verdict = await withOrgAiBudget(row0.match.activity.orgId, () => classifyMatchAvailability(text ?? "", {
+          ...facts,
+          playerName: user.name,
+          clubName: org0?.name ?? null,
+          matchName: row0.match.activity.name,
+          matchWhen: dayCommaTimeLabel(tentLang, row0.match.date),
+        }));
+        if (verdict.decision === "in") isIn = true;
+        else if (verdict.decision === "out") isOut = true;
+      }
+
+      // Genuinely unclear reply → one gentle re-ask, scoped to the chosen match.
+      if (!isIn && !isOut) {
+        const row = chosen;
+        const replyPhone = (await db.user.findUnique({
+          where: { id: user.id },
+          select: { phoneNumber: true },
+        }))?.phoneNumber?.replace(/^\+/, "") ?? null;
+        if (replyPhone) {
+          await db.botJob.create({
+            data: {
+              orgId: row.match.activity.orgId,
+              kind: "dm",
+              phone: replyPhone,
+              text: buildTentativeReask(tentLang),
+              ...REPLY_PRIORITY,
+            },
+          });
+        }
+        return NextResponse.json({ ok: true, handled: "tentative-followup-unclear" });
+      }
+
+      const row = chosen;
+      // Capture the PRIOR state so the group announcement below can tell a
+      // real change from an idempotent repeat.
+      const priorRow = await db.attendance.findUnique({
+        where: { matchId_userId: { matchId: row.match.id, userId: user.id } },
+        select: { status: true },
+      });
+      const priorStatus =
+        priorRow?.status === "CONFIRMED" || priorRow?.status === "BENCH" || priorRow?.status === "DROPPED"
+          ? priorRow.status
+          : null;
+      let newStatus: "CONFIRMED" | "BENCH" | "DROPPED" | null = null;
+      // The honest-ack rule: a write that THREW must never be acked as if
+      // it landed. Only a genuine exception counts: an OUT from a player
+      // with no row is a legitimate no-op, not a failure.
+      let writeFailed = false;
+      try {
+        if (isIn) {
+          const res = await registerAttendance(user.id, row.match.id, {
+            promoteFromBench: true,
+            // Answering the tentative follow-up DM. Their own claim,
+            // out of band — the group never saw it, which is why
+            // announceOutOfBandAttendance runs below.
+            event: {
+              cause: "self-attendance",
+              actorKind: "player",
+              actorUserId: user.id,
+              sourceRef: "dm:tentative-followup",
+            },
+          });
+          newStatus = res.status === "BENCH" ? "BENCH" : "CONFIRMED";
+        } else {
+          // Only cancel if they actually have a CONFIRMED/BENCH row —
+          // a tentative player usually has none, in which case OUT is a
+          // no-op (cancelAttendance throws "Not attending" otherwise).
+          if (priorStatus === "CONFIRMED" || priorStatus === "BENCH") {
+            await cancelAttendance(user.id, row.match.id, {
+              cause: "self-attendance",
+              actorKind: "player",
+              actorUserId: user.id,
+              sourceRef: "dm:tentative-followup",
+            });
+            newStatus = "DROPPED";
+          }
+        }
+      } catch (err) {
+        writeFailed = true;
+        console.error("[dm-reply] tentative IN/OUT attendance write failed:", err);
+      }
+      // Tell the GROUP — this registration happened out of band, so nobody
+      // else can see it. No-op repeats and rate-capped bursts are filtered
+      // inside the announcer.
+      await announceOutOfBandAttendance({
+        matchId: row.match.id,
+        userId: user.id,
+        before: priorStatus,
+        after: newStatus,
+        source: "dm",
+      }).catch((err) => console.error("[dm-reply] tentative group announce failed:", err));
+      await resolveTentative({ matchId: row.match.id, userId: user.id }).catch(() => {});
+
+      const replyPhone = (await db.user.findUnique({
+        where: { id: user.id },
+        select: { phoneNumber: true },
+      }))?.phoneNumber?.replace(/^\+/, "") ?? null;
+      if (replyPhone) {
+        await db.botJob.create({
+          data: {
+            orgId: row.match.activity.orgId,
+            kind: "dm",
+            phone: replyPhone,
+            // Built from the STATUS the write left, never from the answer
+            // alone: an IN can land on the bench (FNF, 2026-10-16).
+            text: buildTentativeFollowupAck({
+              decision: isIn ? "in" : "out",
+              failed: writeFailed,
+              status: newStatus,
+              organiser: row.match.activity.org.benchPickMode === "organiser",
+              matchName: row.match.activity.name,
+              matchWhen: dayCommaTimeLabel(tentLang, row.match.date),
+              lang: tentLang,
+            }),
+            ...REPLY_PRIORITY,
+          },
+        });
+      }
+      return NextResponse.json({
+        ok: true,
+        handled: "tentative-followup",
+        decision: isIn ? "in" : "out",
+        status: newStatus,
+        failed: writeFailed,
+      });
+    }
+  }
+
+  // ── A club owner answers the partner-club pairing notice (2026-10-21) ──
+  //   "Club owner: reply *1* to accept or *2* to decline" (Kemal: "whatsapp
+  //   reply like pressing 1 or 2 should also do the same job"). The fee
+  //   confirm's pattern (lib/pairing-reply.ts): a swipe-reply finds the
+  //   notice by its id and acts on that pairing and club only; an unquoted
+  //   reply is read against MatchTime's recent DMs, and with two pairings
+  //   waiting it asks which. The model reads the reply; the write is
+  //   `actOnPartnership` (owner only). Ahead of the fee capture so a "1"
+  //   quoting the notice is never read as a £1 fee. Engages only for a
+  //   sender whose phone was sent a pairing notice (one read otherwise, no
+  //   model); null means the DM carries on exactly as before.
+  {
+    const { handlePairingReplyDm } = await import("@/lib/pairing-reply");
+    const replyPhone = await dmPhone();
+    const pairing = await handlePairingReplyDm({ userId: user.id, text, quoted, phone: replyPhone });
+    if (pairing) {
+      if (replyPhone) {
+        await db.botJob.create({ data: { orgId: pairing.orgId, kind: "dm", phone: replyPhone, text: pairing.reply, ...REPLY_PRIORITY } });
+      }
+      return NextResponse.json({ ok: true, handled: pairing.handled, outcome: pairing.outcome });
+    }
+  }
+
+  // ── Money-collector fee capture (2026-06-04) ────────────────────────
+  //   If this sender is a money collector for a payment-collecting org
+  //   with a just-played match awaiting its fee, their DM ("£8 each" /
+  //   "✅") sets/confirms the fee and releases the per-player pay links.
+  //   Takes priority over survey/Q&A so the amount isn't misread as a
+  //   check-in answer or a question. Returns null when it's not a fee
+  //   interaction → falls through unchanged.
+  {
+    // A swipe-reply to one match's fee question acts on that match; the
+    // model reads the chat context (quoted-reply context S3).
+    // `now`: the quiet hours hold of the pay links. Only the e2e suite's
+    // `x-test-now` (MT_TEST_MODE=1) sets it; in production it is the real clock.
+    const feeResult = await handleCollectorFeeReply(user.id, text, {
+      quoted,
+      phone: await dmPhone(),
+      now: setupLearningTestSeam(request).now,
+    });
+    if (feeResult) {
+      const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+      const u = await db.user.findUnique({
+        where: { id: user.id },
+        select: { phoneNumber: true },
+      });
+      const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
+      // Queued under the MATCH's club (review of #339): a collector of two
+      // clubs used to get every ack under whichever club came first.
+      const orgId =
+        feeResult.orgId ??
+        (await db.organisation.findFirst({
+          where: { paymentHolderId: user.id, paymentCollectionEnabled: true },
+          select: { id: true },
+        }))?.id ??
+        null;
+      if (replyPhone && orgId) {
+        await db.botJob.create({
+          data: {
+            orgId,
+            kind: "dm",
+            phone: replyPhone,
+            text: feeResult.reply,
+            // The confirm question names its match, so a swipe-reply to it
+            // ("✅") resolves to that match and reads as the fee question
+            // (review of #339, H2 and H3).
+            ...(feeResult.matchId ? { matchId: feeResult.matchId } : {}),
+            ...(feeResult.asked && feeResult.matchId ? { aboutKey: feeConfirmAboutKey(feeResult.matchId) } : {}),
+            ...REPLY_PRIORITY,
+          },
+        });
+      }
+      return NextResponse.json({ ok: true, handled: "collector-fee", released: feeResult.released });
+    }
+  }
+
+  // ── An organiser of a monthly club setting a season break by DM ───────
+  //   "no football in December", "we're back mid January" (2026-10-29,
+  //   every admin feature by WhatsApp). Read by the shared admin extractor
+  //   (`season-break-dm.ts`); only a season_break reading acts. Placed after
+  //   every step that knows which question a DM answers, so the extractor
+  //   is asked only for a DM nothing earlier took (review of #465), and only
+  //   for an owner or admin of a monthly club.
+  {
+    const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+    const replyPhone =
+      phoneNoPlus ??
+      (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+      null;
+    const { handleSeasonBreakDm } = await import("@/lib/season-break-dm");
+    const seasonBreak = await handleSeasonBreakDm({ userId: user.id, text, authorName: user.name ?? null, replyPhone, now: new Date() });
+    if (seasonBreak) return NextResponse.json({ ok: true, ...seasonBreak });
+  }
+
+  // ── ADMIN COMMANDS BY DM — ONE MODEL CALL, TWO ACTIONS ─────────────
+  //
+  //   ⚰️ WHAT WAS HERE UNTIL 2026-09-11: two regexes, one per handler.
+  //
+  //     looksLikeRecruitRequest         a recruit verb ADJACENT to a
+  //                                     people noun, OR a shortage
+  //                                     phrase — with `inviteRecentPlayers`
+  //                                     behind it, a mass DM to 13-27
+  //                                     real people.
+  //     looksLikeRatingProgressRequest  (a rating word) AND (a progress
+  //                                     word), anywhere in the body.
+  //
+  //   The first one's own doc comment said what it was: deprecated for
+  //   group messages since 2026-09-01, when it matched the SECOND
+  //   sentence of "Najib is out. We need one more player.", the fast
+  //   path peeled the whole message off the batch, the third-party OUT
+  //   was never analysed, and MatchTime told the owner his squad was
+  //   full one line after he said a player was out. It kept ONE caller,
+  //   this one, "the next conversion, not this PR's". This is that
+  //   conversion, and both regexes are now deleted outright.
+  //
+  //   On 2026-09-10 the same family — three keyword tests ANDed — read
+  //   an owner's reminder to his players as a bulk-DM command and queued
+  //   69 personal stats-link DMs. `recruit-lookback.ts` names the stake:
+  //   the bot runs on an UNOFFICIAL WhatsApp client, and a mass DM risks
+  //   the account, which takes the whole product down.
+  //
+  //   ── THE REPLACEMENT IS `lib/stats-blast.ts`'s SPLIT ──────────────
+  //   The model says only "this looks like the ask". Every gate and the
+  //   action stay in code: the admin/superadmin membership lookup, the
+  //   upcoming-match and completed-match lookups, the blast itself and
+  //   the words describing it. A classifier that fails — no key, an
+  //   overload, unparseable output, an intent outside the enum, a
+  //   confidence below the floor — yields `other`, which DMs nobody.
+  //
+  //   ── PLACEMENT IS UNCHANGED, AND THE MODEL CALL IS NOT PAID FOR ON
+  //      EVERY DM. Still behind every handler that knows WHICH question
+  //      is being answered (bench offer, subscription command, payment
+  //      claim, tentative follow-up, collector fee) and ahead of the roster
+  //      survey, the cold self-attendance fallback and scoped Q&A. And
+  //      `adminOrgIds` runs BEFORE the classifier: a club has one or two
+  //      admins and dozens of players, so the overwhelming majority of
+  //      DMs reach the model never.
+  //
+  //      WHAT THAT COSTS, STATED: those two indexed reads (the
+  //      superadmin flag and the memberships) now run on every DM that
+  //      gets this far, where before they ran only behind a regex
+  //      match. Two primary-key lookups against a DM volume of a few a
+  //      day, in exchange for never testing a mass-DM trigger with a
+  //      pattern again. See `lib/dm-intent.ts`.
+  {
+    const { runDmAdminIntent } = await import("@/lib/dm-intent");
+    const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+    let dmAdminOrgIds: string[] = [];
+    // The club the quoted message's match belongs to (quoted-reply context
+    // S3): a swipe-reply about one of this admin's clubs acts on that club;
+    // a quote about another club's match is dropped (`quoteForClubs`).
+    // Read only once the sender is known to be an admin.
+    let adminQuote: { quoted: QuotedBotMessage | null; orgId: string | null } = { quoted: null, orgId: null };
+    const outcome = await runDmAdminIntent({
+      adminOrgIds: async () => {
+        const { isSuperadmin } = await import("@/lib/org");
+        const su = await isSuperadmin(user.id);
+        const mems = await db.membership.findMany({
+          where: {
+            userId: user.id,
+            leftAt: null,
+            // Never a club that is still setting up: the classifier is paid
+            // from the first id here, and recruit and rating progress act on
+            // one of them.
+            ...IN_LIVE_STAGE_CLUB_WHERE,
+            ...(su ? {} : { role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE }),
+          },
+          select: { orgId: true },
+        });
+        dmAdminOrgIds = mems.map((mem) => mem.orgId).sort();
+        return dmAdminOrgIds;
+      },
+      // Spent from the first club this admin runs (the daily AI cap,
+      // lib/ai-budget.ts): which club the DM is about is only known
+      // after it is classified. `runDmAdminIntent` reads the org ids
+      // first, so the list is filled by the time this runs.
+      classify: async () => {
+        const quotedOrgId = quoted?.matchId
+          ? ((await db.match.findUnique({ where: { id: quoted.matchId }, select: { activity: { select: { orgId: true } } } }))
+              ?.activity.orgId ?? null)
+          : null;
+        // The club the quote picks, for which club the action is on.
+        adminQuote = quoteForClubs(quoted, quotedOrgId, dmAdminOrgIds);
+        // The intent, and the intro categories the model listed (only
+        // `intro_messages` carries any): the DM's one read, made by now in
+        // the subscription step (`dm-reader.ts`), shown this admin's clubs,
+        // their partner clubs and what MatchTime said to him.
+        const c = await reader.read(user.id);
+        return { intent: c.intent, intro: c.intro };
+      },
+      // The quoted club first, when the quote named one of this admin's.
+      orgWithUpcomingMatch: async (orgIds) => {
+        const startToday = new Date();
+        startToday.setUTCHours(0, 0, 0, 0);
+        const upcoming = async (ids: string[]) =>
+          (
+            await db.match.findFirst({
+              where: {
+                activity: { orgId: { in: ids } },
+                isHistorical: false,
+                status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+                date: { gte: startToday },
+              },
+              orderBy: { date: "asc" },
+              select: { activity: { select: { orgId: true } } },
+            })
+          )?.activity.orgId ?? null;
+        return (adminQuote.orgId ? await upcoming([adminQuote.orgId]) : null) ?? upcoming(orgIds);
+      },
+      // The org whose most-recently-played match is the freshest; the
+      // quoted club first.
+      orgWithCompletedMatch: async (orgIds) => {
+        const completed = async (ids: string[]) =>
+          (
+            await db.match.findFirst({
+              where: { activity: { orgId: { in: ids } }, isHistorical: false, status: "COMPLETED" },
+              orderBy: { date: "desc" },
+              select: { activity: { select: { orgId: true } } },
+            })
+          )?.activity.orgId ?? null;
+        return (adminQuote.orgId ? await completed([adminQuote.orgId]) : null) ?? completed(orgIds);
+      },
+      invite: async (orgId) => {
+        const { inviteRecentPlayers } = await import("@/lib/recruit");
+        const r = await inviteRecentPlayers(orgId);
+        // Composed from what ACTUALLY landed, never from what was asked
+        // for — the same rule the group blast follows. A `reason` on an
+        // ok result means the CAPACITY GUARD stopped the blast (the
+        // bench invitation or the "already full" refusal, decided in
+        // `recruit.ts`); the group reply and this one are two renderings
+        // of ONE RecruitResult and must not disagree about the squad.
+        // In the language of the org the blast was for.
+        const { getOrgFeatures } = await import("@/lib/org-features");
+        const reply = buildAdminRecruitDmReply(r, (await getOrgFeatures(orgId)).language);
+        return { reply, invited: r.invited ?? 0 };
+      },
+      ratingProgress: async (orgId) => {
+        const { loadRatingProgress, formatRatingProgressReply } = await import(
+          "@/lib/rating-progress"
+        );
+        return formatRatingProgressReply(await loadRatingProgress(orgId));
+      },
+      // Ask the club's partner clubs for a player (slice S6): the shared
+      // admin extractor reads the club named, then the shared door asks.
+      askPartners: async (orgId) => {
+        const { askPartnersFromDmText } = await import("@/lib/partner-ask-words");
+        const { getOrgFeatures } = await import("@/lib/org-features");
+        return withOrgAiBudget(orgId, async () =>
+          askPartnersFromDmText({
+            orgId,
+            userId: user.id,
+            text,
+            senderName: authorName ?? null,
+            lang: (await getOrgFeatures(orgId)).language,
+            now: new Date(),
+          }),
+        );
+      },
+      // The platform owner (the self-join approver, by the envelope's
+      // phone) and his intro messages (2026-10-29). Anybody else's ask is
+      // not handled here and carries on below as before.
+      isOwner: async () => {
+        const { isPlatformOwnerSender } = await import("@/lib/owner-intro");
+        return isPlatformOwnerSender({ phone, senderAltPhone });
+      },
+      sendIntro: async (categories) => {
+        const { sendOwnerIntroMessages } = await import("@/lib/owner-intro");
+        await sendOwnerIntroMessages({ categories, waMessageId });
+      },
+      reply: async ({ orgId, text: replyText }) => {
+        const u = await db.user.findUnique({
+          where: { id: user.id },
+          select: { phoneNumber: true },
+        });
+        const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
+        if (!replyPhone) return;
+        await db.botJob.create({
+          data: { orgId, kind: "dm", phone: replyPhone, text: replyText, ...REPLY_PRIORITY },
+        });
+      },
+    });
+    if (outcome.handled === "recruit-dm") {
+      return NextResponse.json({ ok: true, handled: "recruit-dm", invited: outcome.invited });
+    }
+    if (outcome.handled === "rating-progress-dm") {
+      return NextResponse.json({ ok: true, handled: "rating-progress-dm" });
+    }
+    if (outcome.handled === "partner-ask-dm") {
+      return NextResponse.json({ ok: true, handled: "partner-ask-dm" });
+    }
+    if (outcome.handled === "owner-intro-dm") {
+      return NextResponse.json({ ok: true, handled: "owner-intro-dm", categories: outcome.categories });
+    }
+    // Not an admin, not one of the two asks, or nothing to act on →
+    // fall through, exactly as an unmatched regex did.
+  }
+
+  // Find an active RosterSurveyDM for this user. There SHOULD be at
+  // most one open survey per (user, org) at a time. If multiple
+  // exist, pick the most recent.
+  // Stale-survey guard: a roster check-in only owns DM replies for a
+  // bounded window. A survey left "open" for weeks (Kemal 2026-05-19:
+  // two surveys from late April were still capturing every DM and
+  // spamming clarifications a month later) must NOT keep hijacking
+  // DMs. 14 days is well past any real check-in.
+  const SURVEY_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+  const dm = await db.rosterSurveyDM.findFirst({
+    where: {
+      userId: user.id,
+      survey: {
+        status: "open",
+        createdAt: { gte: new Date(Date.now() - SURVEY_MAX_AGE_MS) },
+      },
+    },
+    include: {
+      survey: { include: { org: { select: { id: true, name: true, language: true } } } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  // ── COLD self-attendance fallback (2026-08-31) ──────────────────────
+  //   THE GAP THIS CLOSES: the recruit blast DMs a player about the next
+  //   match. Plenty of players — especially the older, less technical
+  //   half of a club — reply "IN" to the DM and consider themselves
+  //   signed up. (The invite now explicitly asks for exactly that; see
+  //   buildRecruitInviteDm.) That reply matched none of the
+  //   specific pending prompts above, so it was silently dropped: the
+  //   player believed they had a spot and NOTHING was recorded. Same
+  //   silent-failure class as the duplicate-send incident.
+  //
+  //   PLACEMENT IS LOAD-BEARING. Every more-specific handler runs FIRST
+  //   and still wins outright: bench offer, DM subscription command,
+  //   tentative follow-up, collector fee, admin recruit, admin rating
+  //   progress, and the roster survey (`dm`, resolved just above and
+  //   passed in as `hasPendingPrompt`). Those know WHICH question is
+  //   being answered; this fallback does not, so it goes last.
+  //
+  //   INTERACTION CONTRACT: a DM to MatchTime is inherently directed at
+  //   the bot, so no "@Match Time" tag is required. The contract only
+  //   gates GROUP messages, and even there attendance is tag-free
+  //   (isAttendanceVerdict / actionRequiresTag in
+  //   lib/interaction-contract.ts). This handles the sender's own in/out
+  //   only, never a third party.
+  //
+  //   DM SUBSCRIPTIONS ARE DELIBERATELY *NOT* CONSULTED HERE. The sub*
+  //   flags govern PROACTIVE DMs (the invite blast, bench offers, rating
+  //   nudges). This is a REPLY to a message the player just sent us. A
+  //   player who muted match invites and then messages "IN" must still be
+  //   registered and must still be told it worked — silently ignoring a
+  //   human who addressed us directly is precisely the lie the
+  //   subscription feature was built to stop (lib/dm-subscriptions.ts).
+  {
+    // Only worth asking the model when there is actually something to
+    // register against: an active match on an attendance-tracking org,
+    // chosen by the SAME selector the group path uses.
+    // A GUEST'S "OUT" (cross-club ask, review H4): while he has a live
+    // place in a partner club's match, a DM OUT asks which game first and
+    // acts only on the answer, so it never drops him from his own game.
+    if (!dm) {
+      const guestOut = await handleGuestDmOut({
+        userId: user.id,
+        userName: user.name,
+        text,
+        replyPhone:
+          (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+          (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+          null,
+        quoted,
+      }).catch((err: unknown) => {
+        console.error("[dm-reply] guest DM OUT failed:", err instanceof Error ? err.message : "failed");
+        return null;
+      });
+      if (guestOut) return NextResponse.json({ ok: true, ...guestOut });
+    }
+    // A swipe-reply naming an eligible match registers for THAT match.
+    const target = !dm ? await findDmRegistrationTarget(user.id, { quotedMatchId: quoted?.matchId }) : null;
+    if (target) {
+      // What MatchTime last said to them (an invite to this match unlocks a
+      // bare "yes"/"👍"; a rating DM does not) and where they stand for it.
+      const facts = await loadMatchAvailabilityFacts({
+        userId: user.id,
+        matchId: target.matchId,
+        phone: await dmPhone(),
+        // A quote about another match never steers this one.
+        quoted: quoteForMatch(quoted, target.matchId),
+      });
+      // Spent from the match's club (the daily AI cap). At the cap the
+      // model is refused, which reads as "unclear": nothing is written.
+      const resolution = await withOrgAiBudget(target.orgId, () => resolveDmSelfAttendance({
+        text,
+        hasPendingPrompt: !!dm,
+        context: {
+          ...facts,
+          playerName: user.name,
+          clubName: target.clubName,
+          matchName: target.matchName,
+          matchWhen: target.matchWhen,
+        },
+      }));
+
+      // A private IN with no ask code while a partner club's ask to his club
+      // is open (2026-10-21): one plain question with the ask's link and
+      // nothing written, on D5b's state rule. Asked once; then his IN is
+      // his own game's.
+      if (resolution.decision === "in") {
+        const asked = await askAboutOpenPartnerAsk({
+          userId: user.id,
+          replyPhone: await dmPhone(),
+          own: { matchId: target.matchId, clubName: target.clubName },
+          decision: resolution.decision,
+        }).catch((err: unknown) => {
+          console.error("[dm-reply] partner ask question failed:", err instanceof Error ? err.message : "failed");
+          return false;
+        });
+        if (asked) return NextResponse.json({ ok: true, handled: "xask-dm-which-in" });
+      }
+
+      if (resolution.decision) {
+        // The write + personal ack + group announcement all live in
+        // lib/out-of-band-self-attendance.ts, shared verbatim with the
+        // 👍-on-the-invite reaction path (api/whatsapp/reaction). One
+        // implementation, so capacity rules, the honest-ack golden rule
+        // and the group line can never drift between the two.
+        const replyPhone =
+          (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+          (
+            await db.user.findUnique({
+              where: { id: user.id },
+              select: { phoneNumber: true },
+            })
+          )?.phoneNumber?.replace(/^\+/, "") ??
+          null;
+
+        const applied = await applyOutOfBandSelfAttendance({
+          userId: user.id,
+          matchId: target.matchId,
+          orgId: target.orgId,
+          decision: resolution.decision,
+          matchName: target.matchName,
+          matchWhen: target.matchWhen,
+          // The match's org language, resolved with the target.
+          lang: target.lang,
+          source: "dm",
+          replyPhone,
+        });
+
+        return NextResponse.json({
+          ok: true,
+          handled: "dm-self-attendance",
+          decision: resolution.decision,
+          via: resolution.via,
+          status: applied.status,
+          matchId: target.matchId,
+        });
+      }
+    }
+    // No game of his own to register for, but a partner club's ask to his
+    // club is open: the resolver reads his DM against the ask's game, and an
+    // IN gets the one plain question with the link (2026-10-21).
+    if (!dm && !target) {
+      const asked = await askAboutOpenPartnerAsk({
+        userId: user.id,
+        userName: user.name,
+        text,
+        replyPhone: phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null,
+        own: null,
+      }).catch((err: unknown) => {
+        console.error("[dm-reply] partner ask question failed:", err instanceof Error ? err.message : "failed");
+        return false;
+      });
+      if (asked) return NextResponse.json({ ok: true, handled: "xask-dm-which-in" });
+    }
+  }
+
+  if (!dm) {
+    // ── A reply in words to a pool offer (local player pool L5a, L6) ──
+    //   Only for someone whose pool offer REACHED him (the state prior, no
+    //   model otherwise). The L6 reader reads his words against the offer:
+    //   accept, decline, stop, question or neither, through the tap link's
+    //   own writers; below the floor one re-ask; "neither" keeps L5a's one
+    //   line. A club member's plain DM is read only with exactly one live
+    //   offer and no club DM since, and an unsure or "neither" reading
+    //   carries on to the Q&A below (never swallowed). See lib/pool/reply.ts.
+    const poolReply = await answerPoolOfferReply({
+      userId: user.id,
+      text,
+      quotedId: parseDmQuote(body)?.id ?? null,
+      phone,
+      senderAltPhone,
+      waMessageId,
+      env: await poolEnvForApiRequest(request),
+    });
+    if (poolReply) return NextResponse.json({ ok: true, handled: poolReply });
+
+    // ── Help (2026-10-28) ────────────────────────────────────────────
+    //   "help", "how do I turn on the player pool?", "havuz nasıl açılır":
+    //   the shared question extractor says whether this DM asks how
+    //   MatchTime works and about what (the reader the players' group and
+    //   the admin group use), and the group's own builder answers it for
+    //   the sender's club, worded for an organiser or a player. One call,
+    //   under that club's daily AI cap. Anything else carries on to the
+    //   scoped Q&A, unchanged.
+    //
+    //   Help about payments from a player with a fee of his own still open
+    //   ("how do I pay?" while he owes, 2026-11-04) gives way to the scoped
+    //   Q&A, which answers with his fee and his pay link
+    //   (`helpGivesWayToOwnFee`): the facts decide, not his words. Only
+    //   when the DM's one read says it is a question, so it is never left
+    //   unanswered.
+    const qa = await pickQaOrgAndQuote(user.id, quoted);
+    {
+      const { handleDmHelp, helpGivesWayForOwnFee, pickDmHelpClub, readDmHelp } = await import("@/lib/dm-help");
+      const club = await pickDmHelpClub(user.id);
+      const req = club
+        ? await withOrgAiBudget(club.membership.orgId, () => readDmHelp({ text, authorName: user.name, now: new Date() }))
+        : null;
+      const ownFee =
+        !!req &&
+        !!qa.orgId &&
+        (await helpGivesWayForOwnFee(req, { userId: user.id, orgId: qa.orgId })) &&
+        (await reader.read(user.id)).intent === "question";
+      if (req && !ownFee) {
+        const help = await handleDmHelp({ userId: user.id, req, envelopePhone: phone, poolEnv: () => poolEnvForApiRequest(request) });
+        if (help) return NextResponse.json({ ok: true, ...help });
+      }
+    }
+
+    // ── Scoped Q&A (2026-06-01) ──────────────────────────────────────
+    //   No open survey to answer → if this resolved member is asking a
+    //   question, treat it as a private match Q&A. Strictly scoped to
+    //   their group's football (see dm-qa.ts — the LLM only ever sees
+    //   safe, group-public data + the asker's own stats, never contact
+    //   details or other groups). Reply via a DM BotJob the Pi sends.
+    // Whether it IS a question is the DM's one read (2026-10-30: it was a
+    // "?" and question-word gate, with a Turkish word list beside it).
+    // A swipe-reply about one of his clubs' matches is a question about
+    // that club, and is read against the quoted message; a quote about
+    // another club's match is dropped (quoted-reply context S3). The club
+    // and the quote are picked above, before the help.
+    const qaOrgId = qa.orgId;
+    if ((await reader.read(user.id)).intent === "question") {
+      const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+      // Fall back to the user's stored phone for @lid senders.
+      const u = await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } });
+      const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
+      const orgId = qaOrgId;
+      if (!orgId || !replyPhone) {
+        return NextResponse.json({ ok: true, ignored: "qa-no-org-or-phone" });
+      }
+      // Per-user abuse/cost cap: max 10 outbound DMs to this phone in the
+      // last rolling hour (covers QA + any other DM). Bounds LLM spend
+      // and stops a runaway back-and-forth.
+      const recentDms = await db.botJob.count({
+        where: {
+          orgId,
+          kind: "dm",
+          phone: replyPhone,
+          createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) },
+        },
+      });
+      if (recentDms >= 10) {
+        return NextResponse.json({ ok: true, ignored: "qa-rate-limited" });
+      }
+      // Admin gate for the 📵 phone-presence flags (data-quality
+      // question "who has no number on record?"). Only OWNER/ADMIN of
+      // the resolved org (or a superadmin) gets the flags in their
+      // context; non-admins get the existing flag-free context, so
+      // there is literally nothing for them to extract. Mirrors the
+      // recruit-DM / rating-progress-DM admin-resolution pattern above.
+      const { isSuperadmin } = await import("@/lib/org");
+      const su = await isSuperadmin(user.id);
+      const includePhoneFlags =
+        su ||
+        (await db.membership.count({
+          where: { userId: user.id, orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
+        })) > 0;
+      const result = await answerScopedQuestion({
+        userId: user.id,
+        orgId,
+        question: text,
+        askerName: user.name,
+        includePhoneFlags,
+        quoted: qa.quoted,
+        phone: replyPhone,
+      });
+      if (result) {
+        await db.botJob.create({
+          data: { orgId, kind: "dm", phone: replyPhone, text: result.answer, ...REPLY_PRIORITY },
+        });
+        return NextResponse.json({ ok: true, handled: "dm-qa" });
+      }
+    }
+    return NextResponse.json({ ok: true, ignored: "no-open-survey" });
+  }
+
+  // What MatchTime said to them (quoted-reply context S3): the message
+  // they swipe-replied to, or else its recent DMs to them. The check-in is
+  // about no match, so a quote is never dropped here: a swipe-reply to a
+  // pay link or an invite is exactly what tells the model a bare "yes" is
+  // not an answer to the check-in.
+  const surveyReplyContext = await loadDmReplyContext(db, { userId: user.id, phone: await dmPhone(), quoted });
+  const classification = await withOrgAiBudget(dm.survey.org.id, () =>
+    classifyRosterReply(text, {
+      playerName: user.name,
+      clubName: dm.survey.org.name,
+      checkInSentAt: dm.sentAt ?? dm.createdAt,
+      replyContext: surveyReplyContext,
+    }),
+  );
+
+  // The survey's org decides the language of both replies below.
+  const surveyLang = dm.survey.org.language;
+  // Null when there is no name: each language says its own thing instead.
+  const firstName = user.name?.split(/\s+/)[0] ?? null;
+  // Resolve a phone for the outbound confirmation/clarification DM.
+  // Prefer the User's stored phoneNumber (canonical) over whatever
+  // came in on the request — the request may have been an @lid DM
+  // with no phone at all. If the user has no phone on file we just
+  // can't DM them back; we still save the response and return.
+  const userPhone = await db.user.findUnique({
+    where: { id: user.id },
+    select: { phoneNumber: true },
+  });
+  const phoneNoPlus = userPhone?.phoneNumber?.replace(/^\+/, "") ?? null;
+
+  if (classification.category === "unclear") {
+    // ONE clarification per person per survey — full stop. The old
+    // code re-sent it on EVERY unclear reply with no cap, so an
+    // annoyed "are you stupid" / "I already replied" each triggered
+    // another identical DM → the spiral Kemal saw 2026-05-19
+    // (6+ identical DMs, player threatening the bot). After the first
+    // clarification we go silent; admins read raw replies on the
+    // dashboard anyway, so nothing is lost.
+    const priorClarif = await db.botJob.count({
+      where: {
+        orgId: dm.survey.org.id,
+        phone: phoneNoPlus ?? "__none__",
+        // Either language's opening counts: a clarification sent before
+        // the org's language changed must still suppress the next one.
+        OR: LANGS.map((l) => ({ text: { startsWith: rosterSurveyClarificationProbe(firstName, l) } })),
+      },
+    });
+    if (priorClarif > 0) {
+      // Already clarified once — stay silent. Don't feed the loop.
+      return NextResponse.json({
+        ok: true,
+        action: "clarification-suppressed-already-sent",
+        classification,
+      });
+    }
+    const clarification = buildRosterSurveyClarification({
+      firstName,
+      orgName: dm.survey.org.name,
+      lang: surveyLang,
+    });
+    if (phoneNoPlus) {
+      await db.botJob.create({
+        data: {
+          orgId: dm.survey.org.id,
+          kind: "dm",
+          phone: phoneNoPlus,
+          text: clarification,
+          ...REPLY_PRIORITY,
+        },
+      });
+    } else {
+      console.warn(
+        `[dm-reply] no phone on file for user ${user.id}; clarification not sent`,
+      );
+    }
+    return NextResponse.json({
+      ok: true,
+      action: "clarification-sent",
+      classification,
+    });
+  }
+
+  // Save (or upsert — latest reply wins, but admin overrides stick).
+  // Don't overwrite a response the admin manually set.
+  const existing = await db.rosterSurveyResponse.findUnique({
+    where: { surveyId_userId: { surveyId: dm.surveyId, userId: user.id } },
+  });
+  if (existing?.adminOverride) {
+    return NextResponse.json({
+      ok: true,
+      ignored: "admin-override-locked",
+      classification,
+    });
+  }
+  // Idempotency gate for the confirmation DM: only queue an outbound
+  // DM if this is a NEW response or if the classification CHANGED
+  // since last time. Re-replays of an already-recorded reply (e.g.
+  // the recovery walk re-forwarding the same message) shouldn't
+  // double-DM the player.
+  const isNewOrChanged =
+    !existing || existing.response !== classification.category;
+
+  await db.rosterSurveyResponse.upsert({
+    where: { surveyId_userId: { surveyId: dm.surveyId, userId: user.id } },
+    create: {
+      surveyId: dm.surveyId,
+      userId: user.id,
+      response: classification.category,
+      rawReply: text,
+    },
+    update: {
+      response: classification.category,
+      rawReply: text,
+      classifiedAt: new Date(),
+    },
+  });
+
+  // Confirmation DM. Tone matches what we drafted with Kemal.
+  const confirmation = buildRosterSurveyConfirmation({
+    category: classification.category,
+    firstName,
+    lang: surveyLang,
+  });
+  if (!isNewOrChanged) {
+    return NextResponse.json({
+      ok: true,
+      action: "recorded-no-redm",
+      category: classification.category,
+      confidence: classification.confidence,
+    });
+  }
+  if (phoneNoPlus) {
+    await db.botJob.create({
+      data: {
+        orgId: dm.survey.org.id,
+        kind: "dm",
+        phone: phoneNoPlus,
+        text: confirmation,
+        ...REPLY_PRIORITY,
+      },
+    });
+  } else {
+    console.warn(
+      `[dm-reply] no phone on file for user ${user.id}; confirmation not sent (response saved)`,
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    action: "recorded",
+    category: classification.category,
+    confidence: classification.confidence,
+  });
+}

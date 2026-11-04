@@ -77,6 +77,8 @@ describe("the files that act on a DM do not read its words", () => {
 
   it.each([
     "src/app/api/whatsapp/dm-reply/route.ts",
+    // The DM pipeline, moved out of the route (Cloud API plan C3).
+    "src/lib/inbound-dm.ts",
     "src/lib/setup-go-dm.ts",
     "src/lib/dm-reader.ts",
     "src/lib/dm-self-attendance.ts",
