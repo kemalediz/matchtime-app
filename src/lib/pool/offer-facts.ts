@@ -10,17 +10,20 @@
  *   (`sports.ts`), play style, club size (live ordinary members, guests
  *   never counted) and how often it played in the last 8 weeks, fee.
  *
- * FEE. The match's per-player fee, else, in a week of a running month, the
- * club's PAYG price (what a guest is charged there), else the activity's
- * (unless the fee is a total split between the players). "Free" only when the club takes no
- * fee at all: no per-player fee, no split total, and neither payment
- * collection nor tracking on. Anything else unknown: the line is left out.
+ * FEE. The match's one fee fact (fee-fact.ts, slice B5): its confirmed fee,
+ * else, in a week of a running month, the club's PAYG price (what a guest is
+ * charged there), else the activity's (unless the fee is a total split
+ * between the players). For a club that collects, a fee the collector has
+ * not confirmed yet is said as the usual one, not confirmed yet (K3).
+ * "Free" only when the club takes no fee at all: no per-player fee, no split
+ * total, and neither payment collection nor tracking on. Anything else
+ * unknown: the line is left out.
  */
 import { db } from "../db";
 import { feeLabel } from "../partner-ask";
 import { guestPaygPence } from "../monthly-week-asks";
-import { guestFeePounds } from "../monthly-week-asks-rules";
-import { paymentMessagesOn } from "../payment-messages";
+import { feeFact } from "../fee-fact";
+import { collectsMatchFees, paymentMessagesOn } from "../payment-messages";
 import { venueMapUrl } from "../venue-location-rules";
 import type { PoolFee, PoolOfferFacts } from "./offer-copy";
 import { poolSportOfClubSport } from "./sports";
@@ -35,13 +38,23 @@ export function poolFeeOf(m: {
   activityFee: number | null;
   feeSplitTotal: boolean;
   paymentsOn: boolean;
+  /** The club collects match fees (`collectsMatchFees`): its collector
+   *  confirms each match's fee, so until then the usual one is said as
+   *  not confirmed yet (slice B5, K3). */
+  collection: boolean;
   /** The club's PAYG price, in a week of a running month only: a pool
    *  guest there pays per game like any PAYG player. */
   monthlyPaygPence?: number | null;
 }): PoolFee {
-  const perPlayer = guestFeePounds({ matchFee: m.matchFee, activityFee: m.activityFee, feeSplitTotal: m.feeSplitTotal, monthlyPaygPence: m.monthlyPaygPence ?? null });
-  const label = feeLabel(perPlayer);
-  if (label) return { kind: "amount", amount: label };
+  const fee = feeFact({
+    matchFee: m.matchFee,
+    gameFee: m.activityFee,
+    splitTotal: m.feeSplitTotal,
+    paygPence: m.monthlyPaygPence ?? null,
+    collection: m.collection,
+  });
+  const label = feeLabel(fee.amount);
+  if (label) return fee.notConfirmedYet ? { kind: "amount", amount: label, notConfirmedYet: true } : { kind: "amount", amount: label };
   if (m.feeSplitTotal || m.paymentsOn) return null;
   return { kind: "free" };
 }
@@ -100,6 +113,7 @@ export async function loadMatchOfferFacts(matchId: string, now: Date = new Date(
       activityFee: a.feePerPlayer,
       feeSplitTotal: a.feeSplitTotal,
       paymentsOn: paymentMessagesOn(a.org),
+      collection: collectsMatchFees(a.org),
       monthlyPaygPence,
     }),
   };

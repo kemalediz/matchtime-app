@@ -39,6 +39,7 @@ import fs from "node:fs";
 import { DM_QA_CALL, DM_QA_MAX_TOKENS, composeScopedAnswer, formatScopedContext, type ScopedContextInput } from "../src/lib/dm-qa.ts";
 import { decideMyPayments, type MyPaymentRow, type MyPaymentsInput } from "../src/lib/my-payments-rules.ts";
 import { HAIKU_MODEL } from "../src/lib/models.ts";
+import { feeFact } from "../src/lib/fee-fact.ts";
 import { buildPayChaseDm, buildRatingDm } from "../src/lib/dm-copy.ts";
 import { noReplyContext, type ContextMessage, type ReplyContext } from "../src/lib/reply-context.ts";
 import { SONNET_DM_QA_ARM, meter, type DryRunArm } from "./dm-dryrun-meter.ts";
@@ -140,7 +141,7 @@ const PAYMENTS_INPUT: MyPaymentsInput = {
     stripeChargesEnabled: true,
   },
   collectorName: "Erdal Özkan",
-  upcomingFee: 6,
+  upcomingFee: feeFact({ matchFee: null, gameFee: 6, splitTotal: false, paygPence: null, collection: true }),
   rows: [PAY_ROW({}), PAY_ROW({ matchId: "m1", date: new Date("2026-09-04T20:00:00.000Z"), paidAt: new Date("2026-09-05T09:00:00.000Z") })],
 };
 const PAY_LINK = "https://mt.example/s/pay";

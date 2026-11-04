@@ -27,6 +27,7 @@ import type { ListAnnouncer } from "../list-announcer";
 import type { MomChooser } from "../mom-chooser";
 import type { BenchPickFallback, BenchPickMode } from "../squad-capacity";
 import type { MonthCreditRule, SquadMode } from "../squad-month-rules";
+import type { FeeFact } from "../fee-fact";
 
 export interface ClubSummary {
   orgId: string;
@@ -310,6 +311,13 @@ export interface MatchFacts {
     pendingConfirm: number | null;
     /** `Match.paymentLinksReleasedAt` set (read by payment-answer.ts). */
     linksReleased: boolean;
+    /** THE fee a player is told (slice B5, decision K3): `feeFact`
+     *  (fee-fact.ts) of `matchFee`, the club's PAYG price in a week of a
+     *  running month (`squad.paygPricePence`, this match's `month`), and
+     *  the game's `fee`. Before the collector confirms, a club that
+     *  collects says the usual amount is not confirmed yet. Only a
+     *  confirmed fee is charged (`chargeableFee`). */
+    forPlayers: FeeFact;
   };
   /** `isNextUpcomingForPosting` (next-upcoming-match.ts). `withHold` passes
    *  the clock, so a cancelled match earlier in the fixture holds this one

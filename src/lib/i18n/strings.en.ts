@@ -429,12 +429,30 @@ export const en = {
   /** The club's setup (2026-10-16, `QuestionTopic.club`), in either group.
    *  `admins` is already joined; `fee` is "6" or "6.50", null when none is
    *  set; `teamsReady` is "HH:MM" or "off". The teams line names the
-   *  setting for the organisers and says it plainly to the players. */
-  answer_club: (p: { admins: string; collector: string | null; fee: string | null; feeSplit: boolean; teamsReady: string; forOrganisers: boolean }): string =>
+   *  setting for the organisers and says it plainly to the players.
+   *  The fee is the match's one fee fact (fee-fact.ts, slice B5): `feePayg`
+   *  when it is the pay as you go price of a month's game, and
+   *  `feeNotConfirmedYet` while the collector has yet to confirm it (K3). */
+  answer_club: (p: {
+    admins: string;
+    collector: string | null;
+    fee: string | null;
+    feeSplit: boolean;
+    feePayg: boolean;
+    feeNotConfirmedYet: boolean;
+    teamsReady: string;
+    forOrganisers: boolean;
+  }): string =>
     [
       `👥 Admins: ${p.admins || "none"}`,
       `💷 Money collector: ${p.collector ?? "not set"}`,
-      `💷 Match fee: ${p.fee !== null ? `£${p.fee} a player` : p.feeSplit ? "the pitch cost split between who played" : "not set"}`,
+      `💷 Match fee: ${
+        p.fee !== null
+          ? ((amount) => (p.feeNotConfirmedYet ? `usually ${amount}, not confirmed yet` : amount))(`£${p.fee} a player${p.feePayg ? " (pay as you go)" : ""}`)
+          : p.feeSplit
+            ? "the pitch cost split between who played"
+            : "not set"
+      }`,
       p.forOrganisers
         ? `⚽ Teams ready: ${p.teamsReady === "off" ? "off" : `${p.teamsReady} on match day`}`
         : `⚽ Teams: ${p.teamsReady === "off" ? "sorted by the organisers before the game" : `worked out at ${p.teamsReady} on match day`}`,
@@ -1497,6 +1515,7 @@ export const en = {
       payments:
         `💷 *Match fees: how it works*\n` +
         `After each game I ask the money collector for the fee per player, then DM everyone who played a private link to pay their share. Card and Pay by Bank payments go straight to the money collector's bank.\n` +
+        `Ask me the fee before the money collector has confirmed it and I'll tell you the usual one and say it isn't confirmed yet. Nobody is asked to pay until it is.\n` +
         `Anyone who hasn't paid, and hasn't chosen to pay the money collector directly, gets the link again each day, for up to 6 days after the match.\n` +
         `To see the latest, ask me in your own words (for example *@Match Time who still owes?*).`,
     })[p.topic],
@@ -2130,6 +2149,15 @@ export const en = {
   pay_off_title: `Nothing to pay here`,
   pay_off_body: (p: { firstName: string; club: string }): string =>
     `${p.firstName}, ${p.club} doesn't take payments through MatchTime. Speak to the organiser about paying.`,
+  // ── /pay before the match's fee is confirmed (club summary B5, K3) ──
+  /** No fee known at all (the text the page had before B5). */
+  pay_no_fee_title: `No fee set yet`,
+  pay_no_fee_body: (p: { activityName: string }): string => `The organiser hasn't set the fee for ${p.activityName} yet. Check back shortly.`,
+  /** The usual fee, before the collector confirms it. Nothing can be paid
+   *  until then: only a confirmed fee is charged. */
+  pay_fee_not_confirmed_title: `Fee not confirmed yet`,
+  pay_fee_not_confirmed_body: (p: { activityName: string; amount: string; payg: boolean; collector: string | null }): string =>
+    `The usual fee for ${p.activityName} is ${p.amount} a player${p.payg ? " (pay as you go)" : ""}, but ${p.collector ?? "the organiser"} hasn't confirmed this match's fee yet. You can pay here once it's confirmed.`,
   /** /collect while payments are off: in place of the "send the fee" hint. */
   collect_payments_off: `Payments are off for this club, so MatchTime sends no pay links or reminders. An organiser can switch on Collect match fees in Settings.`,
 
@@ -5799,6 +5827,9 @@ export const en = {
   },
   /** The DM the post's link opens with: the IN word and the ask's code. */
   xask_dm_prefill: (p: { ref: string }) => `IN (ref ${p.ref})`,
+  /** The ask's fee before the asking club's collector confirms it (slice
+   *  B5, K3), in the bracket after the format: "usually £6, not confirmed yet". */
+  xask_fee_not_confirmed: (p: { amount: string }) => `usually ${p.amount}, not confirmed yet`,
   xask_approval_notice: (p: {
     asker: string;
     places: number;

@@ -362,7 +362,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: FNF
 
@@ -677,7 +677,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: FNF
 
@@ -1219,7 +1219,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Thursday Ratings
 
@@ -2328,7 +2328,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Sutton FC
 
@@ -2350,7 +2350,7 @@ YOUR STATS:
 YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - Money collector: Kemal
 - Ways to pay: pay by bank, card, pay Kemal directly
-- Usual match fee: £6 per player
+- Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector confirms it after the game.
 - No played matches of yours to pay for.
 
 ## Recent History
@@ -3454,7 +3454,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Sutton FC
 
@@ -3476,7 +3476,7 @@ YOUR STATS:
 YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - Money collector: Kemal
 - Ways to pay: pay by bank, card, pay Kemal directly
-- Usual match fee: £6 per player
+- Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector confirms it after the game.
 - No played matches of yours to pay for.
 
 ## Recent History
@@ -4585,7 +4585,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Sutton FC
 
@@ -4611,7 +4611,7 @@ YOUR STATS:
 YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - Money collector: Kemal
 - Ways to pay: pay by bank, card, pay Kemal directly
-- Usual match fee: £6 per player
+- Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector confirms it after the game.
 - No played matches of yours to pay for.
 
 ## Recent History
@@ -5361,7 +5361,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Vets MNF
 
@@ -6563,7 +6563,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Vets MNF
 
@@ -13808,7 +13808,7 @@ THE MESSAGE (from Kemal, who tagged the bot):
       "replyKey": "hqreply:org-sutton:wa-hq-sutton-club",
       "replyText": "👥 Admins: Kemal
 💷 Money collector: Kemal
-💷 Match fee: £6 a player
+💷 Match fee: usually £6 a player, not confirmed yet
 ⚽ Teams ready: off",
     },
     "status": 200,
@@ -13905,7 +13905,7 @@ THE MESSAGE (from Kemal, who tagged the bot):
             "kind": "admin-group-reply",
             "text": "👥 Admins: Kemal
 💷 Money collector: Kemal
-💷 Match fee: £6 a player
+💷 Match fee: usually £6 a player, not confirmed yet
 ⚽ Teams ready: off",
           },
         },
@@ -16927,7 +16927,7 @@ THE MESSAGE (from Kemal, who tagged the bot):
       "replyKey": "hqreply:org-sutton:wa-hq-sutton-club",
       "replyText": "👥 Admins: Kemal
 💷 Money collector: Kemal
-💷 Match fee: £6 a player
+💷 Match fee: usually £6 a player, not confirmed yet
 ⚽ Teams ready: off",
     },
     "status": 200,
@@ -17024,7 +17024,7 @@ THE MESSAGE (from Kemal, who tagged the bot):
             "kind": "admin-group-reply",
             "text": "👥 Admins: Kemal
 💷 Money collector: Kemal
-💷 Match fee: £6 a player
+💷 Match fee: usually £6 a player, not confirmed yet
 ⚽ Teams ready: off",
           },
         },
@@ -20015,7 +20015,7 @@ THE MESSAGE (from Kemal, who tagged the bot):
       "replyKey": "hqreply:org-sutton:wa-hq-sutton-tr-club",
       "replyText": "👥 Yöneticiler: Kemal
 💷 Parayı toplayan: Kemal
-💷 Maç ücreti: kişi başı £6
+💷 Maç ücreti: genelde kişi başı £6, henüz kesinleşmedi
 ⚽ Takımlar hazır: kapalı",
     },
     "status": 200,
@@ -20112,7 +20112,7 @@ THE MESSAGE (from Kemal, who tagged the bot):
             "kind": "admin-group-reply",
             "text": "👥 Yöneticiler: Kemal
 💷 Parayı toplayan: Kemal
-💷 Maç ücreti: kişi başı £6
+💷 Maç ücreti: genelde kişi başı £6, henüz kesinleşmedi
 ⚽ Takımlar hazır: kapalı",
           },
         },
@@ -23212,7 +23212,7 @@ THE MESSAGE (from Davide, who tagged the bot):
       "replyKey": "hqreply:org-vets:wa-hq-vets-club",
       "replyText": "👥 Admins: Davide
 💷 Money collector: Davide
-💷 Match fee: not set
+💷 Match fee: £8 a player (pay as you go)
 ⚽ Teams ready: off",
     },
     "status": 200,
@@ -23309,7 +23309,7 @@ THE MESSAGE (from Davide, who tagged the bot):
             "kind": "admin-group-reply",
             "text": "👥 Admins: Davide
 💷 Money collector: Davide
-💷 Match fee: not set
+💷 Match fee: £8 a player (pay as you go)
 ⚽ Teams ready: off",
           },
         },

@@ -111,3 +111,24 @@ test("already-paid player sees the settled state, no pay buttons", async ({ page
   await expect(page.getByText(/You're all paid/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Pay by Bank/ })).toHaveCount(0);
 });
+
+// Club summary B5, decision K3: before the collector confirms the match's
+// fee, the page says the game's usual fee and that it is not confirmed yet,
+// with no way to pay (only a confirmed fee is ever charged).
+test("before the fee is confirmed: the usual fee, not confirmed yet, and no pay buttons", async ({ page, db }) => {
+  const was = await db.one<{ fee: number | null; activityId: string }>(`SELECT "feePerPlayer" AS fee, "activityId" FROM "Match" WHERE id = $1`, [MATCH.pay]);
+  const game = await db.one<{ fee: number | null }>(`SELECT "feePerPlayer" AS fee FROM "Activity" WHERE id = $1`, [was!.activityId]);
+  await db.run(`UPDATE "Match" SET "feePerPlayer" = NULL WHERE id = $1`, [MATCH.pay]);
+  await db.run(`UPDATE "Activity" SET "feePerPlayer" = 6 WHERE id = $1`, [was!.activityId]);
+  try {
+    await signInAs(page, U.player, `/pay/${MATCH.pay}`);
+    await page.waitForURL(`**/pay/${MATCH.pay}`);
+    await expect(page.getByTestId("pay-fee-not-confirmed")).toBeVisible();
+    await expect(page.getByText("Fee not confirmed yet")).toBeVisible();
+    await expect(page.getByText(/The usual fee for .* is £6 a player, but .* hasn't confirmed this match's fee yet/)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Pay by Bank|Card, Apple or Google Pay|directly/ })).toHaveCount(0);
+  } finally {
+    await db.run(`UPDATE "Match" SET "feePerPlayer" = $2 WHERE id = $1`, [MATCH.pay, was!.fee]);
+    await db.run(`UPDATE "Activity" SET "feePerPlayer" = $2 WHERE id = $1`, [was!.activityId, game?.fee ?? null]);
+  }
+});

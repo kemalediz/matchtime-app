@@ -647,6 +647,13 @@ export default async function AdminGuidePage() {
         pay the collector directly, and the collector confirms it.
       </p>
       <p>
+        The game&apos;s usual fee (on <strong>Activities</strong>) is only a
+        guide: after each game MatchTime asks the collector to confirm that
+        match&apos;s fee, and only a confirmed fee is ever charged. Until then,
+        a player who asks the fee, in WhatsApp or on the pay page, is told the
+        usual one and that it isn&apos;t confirmed yet.
+      </p>
+      <p>
         Players pay the card or bank fee on top, so the collector receives
         the full match fee. Collecting cash instead? Just leave payments off:
         then MatchTime sends nobody anything about payments, no reminders and

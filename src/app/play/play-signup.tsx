@@ -41,6 +41,7 @@ import { PoolPendingReminder } from "@/components/pool/pool-pending-reminder";
 import { PoolWhatsAppStep } from "@/components/pool/pool-whatsapp-step";
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
 import { friendLinkCopy } from "@/lib/i18n/friend-link";
+import { friendPageFeeLine } from "@/lib/friend-link/copy";
 import type { PoolFee } from "@/lib/pool/offer-copy";
 
 type Confirm = PoolSignupConfirm;
@@ -255,8 +256,7 @@ export function PlaySignup({
 
 function FriendCard({ friend, lang }: { friend: FriendLinkCard; lang: Lang }) {
   const c = friendLinkCopy(lang);
-  const fee =
-    friend.fee?.kind === "amount" ? (friend.monthly ? c.page_fee_payg({ amount: friend.fee.amount }) : c.page_fee({ amount: friend.fee.amount })) : friend.fee?.kind === "free" ? c.page_free : null;
+  const fee = friendPageFeeLine(lang, friend.fee, friend.monthly);
   return (
     <section data-testid="friend-link-card" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-slate-900">
       <p className="text-sm font-semibold text-emerald-800">{c.page_invited({ member: friend.member })}</p>

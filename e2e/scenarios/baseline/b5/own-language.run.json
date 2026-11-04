@@ -1,0 +1,21 @@
+{
+ "club": "own-language",
+ "mode": "replay",
+ "ticks": 924,
+ "steps": 22,
+ "sent": 24,
+ "errors": 0,
+ "seconds": 60,
+ "model": {
+  "club": "own-language",
+  "mode": "replay",
+  "recorded": 25,
+  "hits": 25,
+  "repeats": 0,
+  "reordered": 0,
+  "misses": 0,
+  "upstreamCalls": 0,
+  "missList": [],
+  "reorderedList": []
+ }
+}
