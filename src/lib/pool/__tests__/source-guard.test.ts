@@ -150,8 +150,11 @@ describe("the reply that may go to a number no User has (slice L2)", () => {
   // "pool-code-reply" is, with "otp", the only platform DM that skips the
   // known-number rule, because it only ever answers the number that just
   // sent a /play code. One queuer, which rate-limits it.
+  // lib/send-channel.ts (Cloud API plan, PR C1) only CLASSIFIES it (an
+  // answer, sent back where he wrote); it has type imports only, so it can
+  // never queue anything (send-channel-source-guard.test.ts).
   it("is queued only by the confirm handler", () => {
     const users = FILES.filter((f) => /["']pool-code-reply["']/.test(f.code)).map((f) => f.rel);
-    expect(users.sort()).toEqual(["lib/platform-jobs.ts", "lib/pool/confirm.ts"]);
+    expect(users.sort()).toEqual(["lib/platform-jobs.ts", "lib/pool/confirm.ts", "lib/send-channel.ts"]);
   });
 });

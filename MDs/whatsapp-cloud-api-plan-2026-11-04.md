@@ -359,8 +359,11 @@ channelFor({ purpose, replyTo, env }) -> "baileys" | "cloud"
   pool purposes are on; self-join and partner asks keep the club number. The server only rule of
   `wa-number-server-only.test.ts` covers both numbers.
 - **No automatic fallback to Baileys** for first contact purposes when the official number fails:
-  falling back would put strangers back on the risky number. Codes may fall back only behind
-  `CLOUD_OTP_FALLBACK_BAILEYS` (off; question for you, section 6).
+  falling back would put strangers back on the risky number. Codes, and only codes, fall back to
+  the club number (decided, section 6 item 5): `fallbackWhenCloudDown("otp")` answers `baileys`,
+  every other purpose `null`. With the master flag off nothing is on the official number, so
+  there is nothing to fall back from, and the separate `CLOUD_OTP_FALLBACK_BAILEYS` flag is
+  dropped.
 
 ### 5.2 The inbound webhook
 
@@ -476,8 +479,8 @@ Example: a Sutton FC member who also joined the pool.
 
 ### 5.8 Flags, all off by default
 
-`CLOUD_API_ENABLED` (master), `CLOUD_API_PURPOSES` (each flow), `CLOUD_OTP_FALLBACK_BAILEYS`,
-`CLOUD_DAILY_UNIQUE_CAP`. With the master off, every function returns what it returns today and
+`CLOUD_API_ENABLED` (master), `CLOUD_API_PURPOSES` (each flow), `CLOUD_DAILY_UNIQUE_CAP`
+(`CLOUD_OTP_FALLBACK_BAILEYS` is dropped: the code fallback is decided, see 5.1). With the master off, every function returns what it returns today and
 the webhook only answers the handshake.
 
 ### 5.9 Testing at $0
@@ -519,25 +522,31 @@ the webhook only answers the handshake.
 Adversarial second reviews on C5 (security), C7a (login) and C7c (messages to strangers). Each
 switch on is one flag, flipped by you or on your go, one flow at a time, with a watched first day.
 
-## 6. Risks and questions for you
+## 6. Risks and decisions
 
-1. **Pool offers: utility or marketing?** We submit as utility; Meta may approve it as marketing
-   (about 3 times the price, and marketing must move to the Marketing Messages API before
-   13 October 2027). Fine either way at our volumes. Do you accept marketing if Meta decides so?
-2. **What if Meta rejects a template?** We can edit and resubmit, make a new one, or ask for a
-   review (category reviews within 60 days). While a template is missing that flow stays on the
-   club number (its flag stays off). Nothing breaks.
-3. **Display name "MatchTime".** It should pass because matchtime.ai carries the brand and names
-   Cressoft Consultancy Limited, but Meta reviews it only when the limit rises (UNVERIFIED item 5).
-   If refused: "MatchTime by Cressoft"? Your preference?
-4. **Login codes: authentication template (£0.0159 each, one step) or the free reverse flow (he
-   sends us the code)?** My recommendation: the template; it is the familiar flow and costs pennies.
-5. **Codes when the official number is down: fall back to the club number?** Off by default. My
-   recommendation: allow it for codes only, since the person asked for the code.
-6. **Partner asks: keep on the club number?** (3.6). My recommendation: yes.
-7. **Partner pool invite: keep on the club number, move as marketing, or drop?** (3.8). My
-   recommendation: keep.
-8. **The switch over message to today's 9 pool players** (5.4): send it, yes or no, on the day?
+Decided on 4 Nov 2026 by the main session (Kemal delegated the open questions). Built into PR C1
+(`src/lib/send-channel.ts`) where they are code.
+
+1. **Pool offers: utility or marketing? Decided: submit as utility.** If Meta approves or
+   re-categorises them as marketing (about 3 times the price, and marketing must move to the
+   Marketing Messages API before 13 October 2027), that is accepted at today's volumes. Before
+   volumes grow past about $2 a month of offer spend, the main session tells Kemal the cost.
+2. **A rejected template. Decided: its flow stays on the club number until Meta approves it.**
+   The purpose stays out of `CLOUD_API_PURPOSES` until then; we edit and resubmit, make a new one,
+   or ask for a review (category reviews within 60 days). Nothing breaks.
+3. **Display name. Decided: "MatchTime", with "MatchTime by Cressoft" as the fallback** if Meta
+   refuses it. It should pass because matchtime.ai carries the brand and names Cressoft
+   Consultancy Limited, but Meta reviews it only when the limit rises (UNVERIFIED item 5).
+4. **Login and sign-up codes. Decided: Meta's authentication template (`mt_code`)**, not the
+   reverse flow. £0.0159 each, the familiar one step flow.
+5. **Codes when the official number is down. Decided: fall back to the club number, codes only**,
+   since the person asked for the code. Nothing else ever falls back (`fallbackWhenCloudDown`).
+6. **Partner asks. Decided: stay on the club number** (3.6). `partner-ask` links are pinned to the
+   club number in `waLinkChannelFor`.
+7. **The one-off pool invite to a partner club's player. Decided: stays on the club number**
+   (3.8). `pool-partner-invite` is a club number purpose in `channelFor`.
+8. **The "save our official number" DM to today's pool players** (5.4). **Decided: it needs
+   Kemal's go on the day it is sent**, since it queues messages.
 9. **Business verification documents.** Meta's list for UK companies is UNVERIFIED; have the
    Companies House certificate and a bank statement for the registered office ready.
 10. **Quality and limits.** Until verified, 250 people a day outside a window. Blocks marked
@@ -552,6 +561,29 @@ switch on is one flag, flipped by you or on your go, one flow at a time, with a 
     today's volume this is irrelevant; in the busy scenario it adds about £8 a month.
 13. **Usernames**: a small share of people may arrive with no phone number (5.4). Handled, not
     solved; worth watching once usernames spread.
+
+### 6.1 The channel table as built in PR C1
+
+With `CLOUD_API_ENABLED` off (the default) every row is the club number. With it on:
+
+| Purpose or link | Class | Channel |
+| --- | --- | --- |
+| `otp` | first contact | official when listed; falls back to the club number if the official one is down |
+| `pool-welcome` | first contact and answer | where he wrote; with no message (joined on the web), official when listed |
+| `pool-details-ask`, `pool-offer`, `pool-placed`, `pool-paused`, `pool-removed` | first contact | official when listed |
+| `club-invite-ask`, `club-invite-link`, `club-invite-closed` | first contact | official when listed |
+| `friend-removed`, `friend-out` | first contact | official when listed |
+| `pool-code-reply`, `pool-reply`, `friend-booked`, `friend-not-booked`, `setup-reply` | answer | where he wrote; club number when that is not known |
+| `connect-reply`, `organiser-decision`, `billing`, `setup-*` (learned, ask, admin code, reminder, removed, owner live), `pool-partner-invite`, every `owner-*` | club number | always the club number |
+| Every BotJob (club DMs, HQ, group posts) | not asked | always the club number |
+| wa.me links `pool-signup`, `friend-signup`, `member-pool-join` | pool door | official when `pool-welcome` is listed |
+| wa.me links `club-connect`, `partner-ask` | club door | always the club number |
+
+`waNumberFor(channel)` gives the digits: `MATCHTIME_WA_NUMBER` for the club number,
+`WA_CLOUD_NUMBER` for the official one (null when unset, never the club number). Nothing calls
+these yet: PR C2 makes `queuePlatformDm` call `channelFor` once and store the answer on the job,
+and PR C7b moves the wa.me link sites onto `waNumberFor(waLinkChannelFor(...))` (updating the
+allowlists in `send-channel-source-guard.test.ts` and `wa-number-server-only.test.ts`).
 
 ## 7. What was run
 
