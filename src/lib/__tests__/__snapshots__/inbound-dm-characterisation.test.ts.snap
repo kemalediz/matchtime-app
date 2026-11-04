@@ -407,6 +407,7 @@ how do I pay?",
             "priority": 1,
             "text": "💷 *Match fees: how it works*
 After each game I ask the money collector for the fee per player, then DM everyone who played a private link to pay their share. Card and Pay by Bank payments go straight to the money collector's bank.
+Ask me the fee before the money collector has confirmed it and I'll tell you the usual one and say it isn't confirmed yet. Nobody is asked to pay until it is.
 Anyone who hasn't paid, and hasn't chosen to pay the money collector directly, gets the link again each day, for up to 6 days after the match.
 To see the latest, ask me in your own words (for example *@Match Time who still owes?*).
 
@@ -1948,7 +1949,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Sutton FC
 
@@ -1970,7 +1971,7 @@ YOUR STATS:
 YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - Money collector: Kemal
 - Ways to pay: pay by bank, card, pay Kemal directly
-- Usual match fee: £6 per player
+- Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector confirms it after the game.
 - No played matches of yours to pay for.
 
 ## Recent History
@@ -2088,7 +2089,7 @@ how many have we got?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Sutton FC
 
@@ -3864,7 +3865,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: FNF
 
@@ -3983,7 +3984,7 @@ how many have we got?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: FNF
 
@@ -4871,23 +4872,27 @@ invite players for the next game",
         "schema": "595b6027472d37cb",
         "system": "7bd89b9d64dc5b6c",
       },
-      {
-        "label": "extractor:question",
-        "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
-        "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
-
-THE MESSAGE (from Rafi, who tagged the bot):
-invite players for the next game",
-      },
     ],
     "response": {
-      "ignored": "no-open-survey",
+      "handled": "recruit-dm",
+      "invited": 0,
       "ok": true,
     },
     "status": 200,
-    "writes": [],
+    "writes": [
+      {
+        "args": {
+          "data": {
+            "kind": "dm",
+            "orgId": "org-fnf",
+            "phone": "447700900312",
+            "priority": 1,
+            "text": "There's no upcoming match to invite players to yet: the game on Fri 6 Nov hasn't been finished. Once its score is in or it's closed, I can invite players for the next one.",
+          },
+        },
+        "call": "botJob.create",
+      },
+    ],
   },
   "2026-11-07T10:00:00.000Z lid-only": {
     "fetches": [],
@@ -5278,17 +5283,11 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: FNF
 
-UPCOMING MATCH:
-- Friday Night Football on Fri 6 Nov at 20:00 (UK time)
-- Venue: Powerleague
-- Squad: 12/14 confirmed, 1 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13
+UPCOMING MATCH: none scheduled right now.
 
 YOUR STATS:
 - Games played: 0/0 (0% attendance)
@@ -5371,17 +5370,11 @@ how many have we got?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: FNF
 
-UPCOMING MATCH:
-- Friday Night Football on Fri 6 Nov at 20:00 (UK time)
-- Venue: Powerleague
-- Squad: 12/14 confirmed, 1 on the bench
-- You are currently: not signed up
-- Confirmed players: Player 1, Player 2, Player 3, Player 4, Player 5, Player 6, Player 7, Player 8, Player 9, Player 10, Player 11, Player 12
-- Bench: Player 13
+UPCOMING MATCH: none scheduled right now.
 
 YOUR STATS:
 - Games played: 0/0 (0% attendance)
@@ -5769,6 +5762,7 @@ how does the bench work?",
    • *@Match Time help ratings*: player ratings
    • *@Match Time help badges*: badges and how to earn them
    • *@Match Time help reminders*: reminders
+   • *@Match Time help payments*: payments
    • *@Match Time help schedule*: schedule & bookings
    • *@Match Time help settings*: where your settings are
 
@@ -5789,7 +5783,7 @@ how does the bench work?",
 
 Type *"@Match Time help"* any time to see this again.
 
-🔧 Switched off for your club: match fees, partner clubs. Ask me about one and I'll show you how to switch it on.
+🔧 Switched off for your club: partner clubs. Ask me about one and I'll show you how to switch it on.
 
 ⚙️ Your club's settings, signed in:
 https://matchtime.ai/r/<code>",
@@ -5829,14 +5823,12 @@ how do I pay?",
             "orgId": "org-muted",
             "phone": "447700900311",
             "priority": 1,
-            "text": "ℹ️ This isn't switched on for this group yet, but here's how it works.
+            "text": "💳 *Payments: how it works*
+I keep track of who has paid for each game. After the game I post a payment poll in the group: tick your team once you've paid.
+Anyone still unpaid is counted, never named, in a later post in the group.
+To see the latest, ask me in your own words (for example *@Match Time who still owes?*).
 
-💷 *Match fees: how it works*
-After each game I ask your money collector for the fee per player, then DM everyone who played a link to pay their share, by card or bank. The money goes straight to the money collector's bank.
-I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
-Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
-
-🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.",
+✅ It's on for this club.",
           },
         },
         "call": "botJob.create",
@@ -7066,7 +7058,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Thursday Ratings
 
@@ -7158,7 +7150,7 @@ how many have we got?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Thursday Ratings
 
@@ -7809,6 +7801,7 @@ how do I pay?",
             "priority": 1,
             "text": "💷 *Match fees: how it works*
 After each game I ask the money collector for the fee per player, then DM everyone who played a private link to pay their share. Card and Pay by Bank payments go straight to the money collector's bank.
+Ask me the fee before the money collector has confirmed it and I'll tell you the usual one and say it isn't confirmed yet. Nobody is asked to pay until it is.
 Anyone who hasn't paid, and hasn't chosen to pay the money collector directly, gets the link again each day, for up to 6 days after the match.
 To see the latest, ask me in your own words (for example *@Match Time who still owes?*).
 
@@ -9350,7 +9343,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Sutton FC
 
@@ -9372,7 +9365,7 @@ YOUR STATS:
 YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - Money collector: Kemal
 - Ways to pay: pay by bank, card, pay Kemal directly
-- Usual match fee: £6 per player
+- Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector confirms it after the game.
 - No played matches of yours to pay for.
 
 ## Recent History
@@ -9490,7 +9483,7 @@ how many have we got?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Sutton FC
 
@@ -10349,6 +10342,7 @@ how do I pay?",
             "priority": 1,
             "text": "💷 *Match fees: how it works*
 After each game I ask the money collector for the fee per player, then DM everyone who played a private link to pay their share. Card and Pay by Bank payments go straight to the money collector's bank.
+Ask me the fee before the money collector has confirmed it and I'll tell you the usual one and say it isn't confirmed yet. Nobody is asked to pay until it is.
 Anyone who hasn't paid, and hasn't chosen to pay the money collector directly, gets the link again each day, for up to 6 days after the match.
 To see the latest, ask me in your own words (for example *@Match Time who still owes?*).
 
@@ -11890,7 +11884,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Sutton FC
 
@@ -11912,7 +11906,7 @@ YOUR STATS:
 YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - Money collector: Kemal
 - Ways to pay: pay by bank, card, pay Kemal directly
-- Usual match fee: £6 per player
+- Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector confirms it after the game.
 - No played matches of yours to pay for.
 
 ## Recent History
@@ -12030,7 +12024,7 @@ how many have we got?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Sutton FC
 
@@ -12894,6 +12888,7 @@ how do I pay?",
             "priority": 1,
             "text": "💷 *Maç ücretleri nasıl çalışır*
 Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra oynayan herkese payını ödemesi için özelden bir bağlantı gönderirim. Kartla ve bankadan yapılan ödemeler doğrudan parayı toplayan kişinin banka hesabına gider.
+Parayı toplayan kişi ücreti kesinleştirmeden sorarsanız genelde ödenen ücreti söylerim ve henüz kesinleşmediğini belirtirim. Ücret kesinleşmeden kimseden ödeme istenmez.
 Henüz ödemeyenlere, parayı toplayan kişiye doğrudan ödemeyi seçmedilerse, bağlantıyı maçtan sonra 6 güne kadar her gün yeniden gönderirim.
 Son durumu istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time kim ödemedi?*).
 
@@ -14435,7 +14430,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Sutton FC
 
@@ -14461,7 +14456,7 @@ YOUR STATS:
 YOUR PAYMENTS (this player's own; you know nothing about anyone else's payments):
 - Money collector: Kemal
 - Ways to pay: pay by bank, card, pay Kemal directly
-- Usual match fee: £6 per player
+- Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector confirms it after the game.
 - No played matches of yours to pay for.
 
 ## Recent History
@@ -14590,7 +14585,7 @@ how many have we got?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Sutton FC
 
@@ -16772,7 +16767,7 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Vets MNF
 
@@ -16973,7 +16968,7 @@ how many have we got?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Vets MNF
 
@@ -18095,7 +18090,7 @@ invite players for the next game",
     ],
     "response": {
       "handled": "recruit-dm",
-      "invited": 14,
+      "invited": 0,
       "ok": true,
     },
     "status": 200,
@@ -18103,683 +18098,11 @@ invite players for the next game",
       {
         "args": {
           "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXIxIiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy0xNm5vdiIsImlhdCI6MTc5NDU3MTIwMCwiZXhwIjoxNzk0NzQ0MDAwfQ.pn-aqQrvcBYSSqRrOmBH8_lCbSunoC40kqiankEEGpA",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r1",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r1",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-1",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r1",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXIyIiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy0xNm5vdiIsImlhdCI6MTc5NDU3MTIwMCwiZXhwIjoxNzk0NzQ0MDAwfQ.STxMvOhj7gZHwsBC0EWmLDY2L5OxU7EpxeOF4xkEPIM",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r2",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r2",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-2",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r2",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXIzIiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy0xNm5vdiIsImlhdCI6MTc5NDU3MTIwMCwiZXhwIjoxNzk0NzQ0MDAwfQ.JIODTgaiuSi_kGYykgPAJDHtHc_tYVg9K1G0NMA22Sk",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r3",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r3",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-3",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r3",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXI0IiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy0xNm5vdiIsImlhdCI6MTc5NDU3MTIwMCwiZXhwIjoxNzk0NzQ0MDAwfQ.Umn2VB3SlsYFqZ10uds9AAruD9RCKfib5lIqIIBp8as",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r4",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r4",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-4",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r4",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXI1IiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy0xNm5vdiIsImlhdCI6MTc5NDU3MTIwMCwiZXhwIjoxNzk0NzQ0MDAwfQ.7mxQtD9R16RhrN-llmOnypkvSjZ3-6Zmlp0K6QO6xdw",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r5",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r5",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-5",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r5",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXI2IiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy0xNm5vdiIsImlhdCI6MTc5NDU3MTIwMCwiZXhwIjoxNzk0NzQ0MDAwfQ.a1Rz-gG7rpBtPZkWYxVdwqMAAkL39BmcZirnHsBaBP8",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r6",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r6",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-6",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r6",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXI3IiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy0xNm5vdiIsImlhdCI6MTc5NDU3MTIwMCwiZXhwIjoxNzk0NzQ0MDAwfQ.yNOZMPgzveQh77NVHmWrtg22dwAZWxMPy-QeHDQ1K8w",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r7",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r7",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-7",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r7",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXI4IiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy0xNm5vdiIsImlhdCI6MTc5NDU3MTIwMCwiZXhwIjoxNzk0NzQ0MDAwfQ.2tBLzGvtOJ9xJ6BBoocbwiT-nd3B6cU1O4yGUQCGNLY",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r8",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r8",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-8",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r8",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXI5IiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy0xNm5vdiIsImlhdCI6MTc5NDU3MTIwMCwiZXhwIjoxNzk0NzQ0MDAwfQ.qnxl1XRswfgGLllQ4Pv1dDzecN1OKxEpwnmZ7bDwgFU",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r9",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r9",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-9",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r9",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXIxMCIsInB1cnBvc2UiOiJzaWduLWluIiwibmV4dFBhdGgiOiIvbWF0Y2hlcy9tLXZldHMtMTZub3YiLCJpYXQiOjE3OTQ1NzEyMDAsImV4cCI6MTc5NDc0NDAwMH0.kyK76oTk0Ea9RhgzruFtn4rWTV-KLmqTKQQ2khJ0aIk",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r10",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r10",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-10",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r10",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXIxMSIsInB1cnBvc2UiOiJzaWduLWluIiwibmV4dFBhdGgiOiIvbWF0Y2hlcy9tLXZldHMtMTZub3YiLCJpYXQiOjE3OTQ1NzEyMDAsImV4cCI6MTc5NDc0NDAwMH0.AwBKRLJ7BPPxY99MwVDpNh67xcMVt2OpdzDaaRX8T0s",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r11",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r11",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-11",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r11",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXIxMiIsInB1cnBvc2UiOiJzaWduLWluIiwibmV4dFBhdGgiOiIvbWF0Y2hlcy9tLXZldHMtMTZub3YiLCJpYXQiOjE3OTQ1NzEyMDAsImV4cCI6MTc5NDc0NDAwMH0.eMIxPeaTJcRovHMe_WMFiC2erVKzejmgIBFkdSuQvbw",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r12",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r12",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-12",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r12",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXIxMyIsInB1cnBvc2UiOiJzaWduLWluIiwibmV4dFBhdGgiOiIvbWF0Y2hlcy9tLXZldHMtMTZub3YiLCJpYXQiOjE3OTQ1NzEyMDAsImV4cCI6MTc5NDc0NDAwMH0.pfqLc9WDnEyAysN30fxcUoM10bMosW-5bZ_VN1WdgQo",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100015",
-            "text": "👋 Regular, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r13",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r13",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-13",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r13",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-15T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW0tdmV0cy0ybm92LTEzIiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy0xNm5vdiIsImlhdCI6MTc5NDU3MTIwMCwiZXhwIjoxNzk0NzQ0MDAwfQ.IinT-Id3XXbP0szQinlEf9dXWnQS4K7Ca0lbk146LBY",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-vets",
-            "phone": "44770100016",
-            "text": "👋 Player, we're putting the squad together for *Monday Night Football* on Mon 16 Nov, 20:00. 14 spots left.
-
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
-
-Prefer the app? https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-m-vets-2nov-13",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-m-vets-2nov-13",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "recruit-dm-job:new-botJob-14",
-            "kind": "recruit-dm-link",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-m-vets-2nov-13",
-          },
-        },
-        "call": "sentNotification.create",
-      },
-      {
-        "args": {
-          "data": {
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "447700900310",
             "priority": 1,
-            "text": "📣 Done, DM'd 14 recent players who hadn't replied, asking them to fill *Monday Night Football* on Mon 16 Nov, 20:00 (14 spots left). I'll add anyone who taps in. 🙏",
+            "text": "There's no upcoming match to invite players to yet: the game on Mon 9 Nov hasn't been finished. Once its score is in or it's closed, I can invite players for the next one.",
           },
         },
         "call": "botJob.create",
@@ -19376,16 +18699,11 @@ what time is kick off?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Vets MNF
 
-UPCOMING MATCH:
-- Monday Night Football on Mon 9 Nov at 20:00 (UK time)
-- Venue: Vets Ground
-- Squad: 13/14 confirmed, 0 on the bench
-- You are currently: not signed up
-- Confirmed players: Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13
+UPCOMING MATCH: none scheduled right now.
 
 YOUR STATS:
 - Games played: 1/1 (100% attendance)
@@ -19551,16 +18869,11 @@ how many have we got?",
         "label": "dm-qa",
         "model": "claude-haiku-5-5",
         "schema": "74234e98afe7498f",
-        "system": "43b0f38b124dc975",
+        "system": "3f26110c7b9072f1",
         "user": "CONTEXT (everything you may use; nothing else exists for you):
 GROUP: Vets MNF
 
-UPCOMING MATCH:
-- Monday Night Football on Mon 9 Nov at 20:00 (UK time)
-- Venue: Vets Ground
-- Squad: 13/14 confirmed, 0 on the bench
-- You are currently: not signed up
-- Confirmed players: Regular 1, Regular 2, Regular 3, Regular 4, Regular 5, Regular 6, Regular 7, Regular 8, Regular 9, Regular 10, Regular 11, Regular 12, Regular 13
+UPCOMING MATCH: none scheduled right now.
 
 YOUR STATS:
 - Games played: 1/1 (100% attendance)
