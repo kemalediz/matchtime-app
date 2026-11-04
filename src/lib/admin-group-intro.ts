@@ -52,6 +52,10 @@ const INTRO_SELECT = {
   featureAttendance: true,
   featureMomVoting: true,
   featurePlayerRating: true,
+  // The one club description (club summary, slice B7).
+  featureSquadFromList: true,
+  rollingSquadEnabled: true,
+  momChosenBy: true,
   paymentTrackingEnabled: true,
   paymentCollectionEnabled: true,
   adminGroupId: true,

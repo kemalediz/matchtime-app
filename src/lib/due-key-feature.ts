@@ -101,3 +101,23 @@ export function topicOfDueKey(key: string): DueKeyTopic | null {
   if (seg.startsWith("fee-ask") || seg.startsWith("fee-confirm")) return "feeQuestion";
   return featureForDueKey(key);
 }
+
+/**
+ * Keys the feature gate needs beyond `featureForDueKey` (club summary, slice
+ * B7). Kept apart from it on purpose: `topicOfDueKey` reads that function,
+ * and the topic is part of what a DM classifier is shown (reply-context.ts),
+ * so classifying these there would change model input.
+ *
+ *   bench       a bench offer: the group post (`offer-<id>`) and each
+ *               bencher's DM (`offer-<id>:dm:<userId>`). The group post was
+ *               gated by its kind only, so with bench off the DM still went
+ *               out (plan D8).
+ *   attendance  the tentative follow-up DM ("can you play?"), which asks
+ *               for an IN or an OUT the club does not take with attendance
+ *               off.
+ */
+export function gateFeatureOfKey(key: string): "bench" | "attendance" | null {
+  if (key.startsWith("offer-")) return "bench";
+  if (key.includes(":tentative-followup:")) return "attendance";
+  return null;
+}

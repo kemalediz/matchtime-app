@@ -263,7 +263,7 @@ describe("attendMatch — degraded participant sweep", () => {
             select: {
               orgId: true,
               // benchPickMode rides along for the toast (2026-10-16).
-              org: { select: { name: true, lastParticipantSweepAt: true, benchPickMode: true } },
+              org: { select: { name: true, language: true, featureAttendance: true, lastParticipantSweepAt: true, benchPickMode: true } },
             },
           },
         },

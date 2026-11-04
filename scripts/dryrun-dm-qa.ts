@@ -15,6 +15,7 @@
  *   ARM=sonnet ...                                                    # the new prompt on Sonnet 5
  *   ARM=old OLD_PROMPT_FILE=<file> ...                                # the live prompt before 2026-10-20 money
  *   SET=pay REPEAT=1 npx tsx ... scripts/dryrun-dm-qa.ts              # the asker's own money, and others' declined
+ *   SET=statsoff REPEAT=1 npx tsx ... scripts/dryrun-dm-qa.ts         # a club with stats answers off (club summary B7)
  *
  * `SET=s3` (quoted-reply context, 2026-10-20) asks short questions
  * swipe-replied to a MatchTime DM ("what time?" to the invite), with the
@@ -263,6 +264,27 @@ const PAY_TR: Q[] = [
   { q: "kimler ödemedi?" },
 ];
 
+/**
+ * SET=statsoff (club summary, slice B7): the club has stats answers off, so
+ * the loader hands in no stats and no history and the CONTEXT says they are
+ * switched off. A stats, results or Man of the Match question is answered
+ * with that, plainly; the match itself is still answered.
+ */
+const STATS_OFF_EN: Q[] = [
+  { q: "how are my stats looking?", mustContainAny: ["switched off", "turned off"], mustNot: /7\.2/ },
+  { q: "who got man of the match last week", mustContainAny: ["switched off", "turned off"], mustNot: /Mehmet Yılmaz/ },
+  { q: "who won last week?", mustContainAny: ["switched off", "turned off"], mustNot: /2 ?- ?2|draw/i },
+  { q: "when's the match", mustContainAny: ["18 Sep", "21:00"] },
+];
+const STATS_OFF_TR: Q[] = [
+  { q: "benim istatistiklerim nasıl?", mustContainAny: ["kapalı", "kapattı"], mustNot: /7[.,]2/ },
+  { q: "geçen hafta maçın adamı kim oldu", mustContainAny: ["kapalı", "kapattı"], mustNot: /sendin|Mehmet Yılmaz/ },
+  { q: "geçen hafta kim kazandı?", mustContainAny: ["kapalı", "kapattı"], mustNot: /2 ?- ?2|berabere/i },
+  { q: "maç ne zaman", mustContainAny: ["18 Eylül", "21:00"] },
+];
+const statsOffContext = (lang: "en" | "tr") =>
+  formatScopedContext({ ...fixtureFor(PAYMENTS_INPUT), stats: null, history: null, statsOff: true }, lang);
+
 /** Anything that looks like markup or a tool call the model invented. */
 const FAKE_MARKUP = /<\/?[a-z_]+[\s>:]|\bUser\s*:/i;
 
@@ -292,10 +314,18 @@ async function main() {
   // MatchTime actually costs (MDs/llm-spend-september-2026.md).
   spendDevApiKeyOrExit("scripts/dryrun-dm-qa.ts");
   const m = meter("scripts/dryrun-dm-qa.ts", ARM, MAX_USD);
-  const set = process.env.SET === "s3" ? "s3" : process.env.SET === "pay" ? "pay" : "main";
+  const set = process.env.SET === "s3" ? "s3" : process.env.SET === "pay" ? "pay" : process.env.SET === "statsoff" ? "statsoff" : "main";
   const questions =
-    set === "s3" ? (LANG === "tr" ? S3_TR : S3_EN) : set === "pay" ? (LANG === "tr" ? PAY_TR : PAY_EN) : LANG === "tr" ? QUESTIONS_TR : QUESTIONS_EN;
-  const context = LANG === "tr" ? CONTEXT_TR : CONTEXT_EN;
+    set === "s3"
+      ? (LANG === "tr" ? S3_TR : S3_EN)
+      : set === "pay"
+        ? (LANG === "tr" ? PAY_TR : PAY_EN)
+        : set === "statsoff"
+          ? (LANG === "tr" ? STATS_OFF_TR : STATS_OFF_EN)
+          : LANG === "tr"
+            ? QUESTIONS_TR
+            : QUESTIONS_EN;
+  const context = set === "statsoff" ? statsOffContext(LANG) : LANG === "tr" ? CONTEXT_TR : CONTEXT_EN;
   const pendingContext = contextFor(LANG, PENDING_INPUT);
   const latencies: number[] = [];
 

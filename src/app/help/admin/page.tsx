@@ -56,7 +56,11 @@ export default async function AdminGuidePage() {
       </ul>
       <p>
         Don&apos;t like it? Remove it from the group. You can also switch
-        individual features off in <strong>Settings</strong>.
+        individual features off in <strong>Settings</strong>. With attendance
+        tracking off, players can&apos;t say IN or OUT on the match page
+        either; with player ratings off, the rating page takes nothing; with
+        stats answers off, a stats question by DM gets no stats. Each
+        setting&apos;s ⓘ says exactly what it stops.
       </p>
 
       <h3 id="club-fee">Club fee</h3>

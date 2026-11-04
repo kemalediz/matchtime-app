@@ -67,6 +67,14 @@ export default function PlayerGuidePage() {
         new names on the end and they&apos;re signed up.
       </p>
 
+      <h3>On the website</h3>
+      <p>
+        The match page has an <strong>I&apos;m in</strong> button too. If your
+        club keeps its list another way and doesn&apos;t take sign-ups
+        through MatchTime, there&apos;s no IN or OUT on the website either,
+        and the match page says so.
+      </p>
+
       {/* ───────────────────────────────────────────────── */}
       <h2 id="friend">2. Bringing a friend</h2>
 
@@ -230,7 +238,9 @@ export default function PlayerGuidePage() {
         From <strong>08:00 the next morning</strong>, everyone who played gets
         a personal link by DM. Tap it and you&apos;re signed in, no password.
         Rate the other players from 1 to 10 and pick your Man of the Match.
-        It takes about a minute, and the link works for 5 days.
+        It takes about a minute, and the link works for 5 days. If your club
+        has player ratings switched off, no link comes and the rating page
+        says there&apos;s nothing to rate.
       </p>
       <p>
         If you haven&apos;t rated yet you get a friendly nudge at 18:00 each

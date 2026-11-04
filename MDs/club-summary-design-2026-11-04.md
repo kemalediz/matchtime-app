@@ -1133,6 +1133,91 @@ below the minimum, which the model words differently with the same meaning, and 
 rows. Unit tests: the A1 to A4 characterisations are unchanged; the golden copy gained five entries
 per language (the "places left" lines) and changed none.
 
+### 3.15 As built in slice B7 (every door honours the switches)
+
+Built on `refactor/club-summary-b7` (PR against `refactor/club-summary`), after Kemal's decision
+K4 (section 4.5). Phase B: it changes behaviour on purpose, and one model input (the DM answer's
+CONTEXT for a club with stats answers off), so that part is an LLM change.
+
+**The principle (K4, Kemal 2026-11-04, the main session's recommendation).** What WhatsApp refuses
+with a switch off, the website and the DMs refuse too, with one short plain line. Where a switch's
+own settings card (ⓘ) says on purpose that another door keeps working, that card is the decision
+and B7 leaves it (below, "Left").
+
+**The inventory.** Three read-only passes over every switch and every door (players' group, HQ,
+DMs, web pages and actions, scheduled jobs). The players' group is the reference: it refuses IN and
+OUT with attendance off (`engine.ts`, `attendance-engine-batch.ts`), a stats question with stats
+answers off, a build with team generation off, a reminder with reminders off, all silently.
+
+**Doors changed, each with a failing test first** (`src/lib/__tests__/switches-every-door.test.ts`,
+`src/app/__tests__/switches-every-door-web.test.ts`, `match-completion-conditional.test.ts`; each
+red on the old code, then green):
+
+| switch | door | before | after |
+|---|---|---|---|
+| attendance (K4) | the match page | "I'm in!" on every upcoming match | no button; one line: "<club> doesn't take sign-ups through MatchTime, so there's no IN or OUT for this game here." (EN and TR, `web_attendance_off`) |
+| attendance (K4) | `attendMatch`, `dropFromMatch` | wrote the row | refuse with the same line, write nothing |
+| attendance | the tentative follow-up DM ("can you play?") | unclassified, sent with attendance off | dropped by the scheduler's gate |
+| bench | the bench offer's DM to each bencher | its key (`offer-<id>:dm:<user>`) matched no feature, so it went out with bench off (D8) | dropped by the scheduler's gate, like the group post |
+| player ratings | the match page | rate button with ratings off | no rate button |
+| player ratings | the rate page, `submitRatings`, the MoM vote cast there | took ratings and votes | "<club> doesn't use player ratings in MatchTime, so there's nothing to rate here." (EN and TR, `web_ratings_off`); both actions save nothing, even from a link sent before |
+| player ratings | the "rate your teammates" email (match completion, first score) | sent | not sent |
+| stats answers | a DM question (`dm-qa.ts`) | answered from the player's stats and the club's results | no stats and no history are loaded; the CONTEXT says they are switched off, and the answer says so (below) |
+| (D11) | the HQ introduction | ratings claimed whenever the switch was on; "I keep track of IN and OUT" for a weekly club with a pasted squad | one pure description, `club-description.ts` (`describeClub`), read by the hello and the introduction: ratings only when the rating DMs reach someone (attendance or a pasted squad), the players' MoM only with ratings, IN and OUT only when MatchTime reads them |
+
+The scheduler's extra gate is `gateFeatureOfKey` (`due-key-feature.ts`), read by `featureGateAllows`.
+It is deliberately not part of `featureForDueKey`: `topicOfDueKey` reads that, and the topic is
+what a DM classifier is shown about a past message (`reply-context.ts`), so classifying the two keys
+there would have changed model input. A test pins that the topics are unchanged.
+
+**What the DM answer is sent (LLM change).** The system prompt is not changed. For a club with
+stats answers off only, the CONTEXT drops YOUR STATS and the Recent History block and gains one line:
+"STATS AND RESULTS: switched off by this club's organisers. For this club MatchTime gives no stats,
+ratings, form, match results, scores, Man of the Match winners or leaderboards, and when asked for
+one it tells the player the organisers have switched them off." For every other club the CONTEXT is
+byte for byte the same (unit test; no scenario club has stats answers off). The line was reworded
+twice in the paid check: the first wording gave a correct but vague "I can't share that" to two
+Turkish questions. Old and new, with the answers: the PR's side-by-side page.
+
+**Proof.** Paid, all on `ANTHROPIC_API_KEY_DEV`, 76 calls, about $0.013:
+`scripts/dryrun-dm-qa.ts SET=statsoff` (new set: stats, MoM, results and the match, EN and TR), 20
+calls over three wordings, $0.0041, final wording 8 of 8 with nothing leaked;
+`e2e/sim/dm-qa-payments-live.spec.ts` (the real dm-reply route, plus a new stats-off case per
+language) 26 + 10 + 10 + 10 calls, $0.0093: the new case 2 of 2, "has Riley paid?" 2 of 2, the
+money cases 4 of 4, and "how do I pay?" failed in both languages because the help reader took it
+(`handled: "dm-help"`) before the DM answer; B7 changes no file on that path and its cause is not
+traced here. The five club replays: free, 0 misses, and the transcripts are identical to
+`baseline/b1` (`baseline/b7`); section 4.4's expected re-record does not arise, because no scenario
+club has stats answers off, no scripted step taps IN on the website, and the ratings-only club
+rates with its ratings on. Characterisation: A4 `match > ratings` (attendance off) is the one changed
+entry, the IN button replaced by the line; A1, A2 and A3 unchanged. The golden copy gained the two
+new lines per language and changed none. One existing test changed on purpose:
+`admin-group-intro.test.ts` (FNF with ratings off and the players voting no longer claims Man of the
+Match in HQ, as the hello already did not).
+
+**Left, and why.**
+- **Team generation off.** Its settings card says on purpose that "the Generate teams button on a
+  match page on the website still works", and that Teams ready (the HQ proposal) is a separate
+  setting. So the web button, the teams page and the HQ team commands still build teams with the
+  switch off. If K4's principle should reach them too, that is Kemal's call (K6, below).
+- **Man of the Match off.** Its card says "Players can still vote on the rating page, and the votes
+  still count in stats and badges." Kept: the vote is closed only with ratings off.
+- **Reminders.** The players' group is the only door that takes one and it checks the switch; a
+  reminder queued before the switch was turned off still sends (a plain BotJob, nothing marks it as
+  a reminder).
+- **Writes that build a squad of record** with attendance off: an organiser adding a player on the
+  web, the HQ pasted list, a pasted list in the players' group, the rolling squad's seeding. Ratings
+  and MoM go to the match's squad, so these are how an attendance-off club gets one (the attendance
+  card says so). The legacy `/api/whatsapp/attendance` route, which the Pi no longer calls, is left
+  for the cleanup in 5.2.
+- **The players' group answering results and rating progress with stats answers off**: that is the
+  reference door itself, not a door that disagrees with it.
+- **Mute, billing pause and dormancy** on DM handlers, the web pool and partner asks and the
+  platform's pool DMs: "is this club served" is B6.
+- **Pool and partner switches**: every door the inventory found goes through the one rule of each
+  (`poolOffersOpenForClub`, `canAsk`); nothing to align switch-wise.
+- **Order of names (D13)**: C2.
+
 ---
 
 ## 4. Migration, in slices
@@ -1364,6 +1449,8 @@ choice, the slice waits for Kemal (the K decisions in section 4.5).
   The group hello and the HQ intro describe the club from one pure description of the
   summary, so they cannot disagree about ratings or lists.
 - Decision K4 for the web IN button on a club with attendance off.
+- As built (K4 decided): section 3.15. The DM stats line is an LLM change (CONTEXT only); team
+  generation and Man of the Match were left as their settings cards describe them.
 - Model input: none changes; a DM question on a club with stats off is not sent to the
   model any more, which removes calls. An unused recorded answer is not a miss.
 
@@ -1413,7 +1500,8 @@ right.
 | K1 | Does the chase still ask for the 14th player when 13 is above the club's minimum? Does "At risk" mean below the minimum or below the places? | B1 | the chases count places, the day-before nudges count the minimum. **Decided by Kemal, 2026-11-04 (the main session's recommendation): at or above the game's minimum the game is ON. (a) The players' chases still ask for the open places while any is open, but never say "short" or "N short": they say the places left ("3 places left"); below the minimum they keep today's "short" wording. (b) "At risk", and any "we'll have to call it off", only below the minimum. (c) Every other "short" and "places open" reads the summary's `squad-short.ts` facts: one definition, no copies.** Built in B1 (section 3.13). |
 | K2 | With exactly one payment flag on, which messages go out: the HQ credit command, the help's payments topic, the settings page's "Payments" line? | B3 | three different answers. **Decided 2026-11-04** (Kemal accepted the recommendation): ONE rule, the existing `paymentMessagesOn` (tracking OR collection), exposed by the summary as `payments.messagesOn`, followed the same way on every door; "a card can be taken" is one rule too, `isPaymentCollectionLive`. Built in B3 (section 3.12). |
 | K3 | Before the collector confirms a fee, does MatchTime tell a player the game's usual fee, or "not set yet"? | B5 | the DM answer says the game's fee, the pay page says not set |
-| K4 | On a club with attendance off, may a player still tap IN on the website? | B7 | yes on the web, no in WhatsApp |
+| K4 | On a club with attendance off, may a player still tap IN on the website? | B7 | yes on the web, no in WhatsApp. **Decided by Kemal, 2026-11-04 (the main session's recommendation): no. Players cannot tap IN or OUT on the website either; the match page explains the club doesn't take sign-ups through MatchTime. The same principle for every switch the plan found ignored on some door: if WhatsApp refuses it with the switch off, the web and DMs refuse it too, with a short plain explanation.** Built in B7 (section 3.15). |
+| K6 | With team generation off, should the website's Generate teams, the teams page and the HQ team commands refuse too? | after B7 | the settings card says on purpose that the web button still works and that Teams ready is separate; B7 left them (3.15) |
 | K5 | Is "today" the London day for the next match, and do the deadline posts and the month's list honour a cancelled match's day like the announcement does? | B4 | UTC in the selector, London in the posting rule; two posts skip the hold |
 
 ### 4.6 Phase C: readers, only where the evidence asks for it

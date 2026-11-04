@@ -32,6 +32,20 @@ describe("completeFinishedMatches", () => {
     expect(dbMock.match.update).not.toHaveBeenCalled();
   });
 
+  it("player ratings off (club summary, slice B7): completed, but no 'rate your teammates' email", async () => {
+    dbMock.match.updateMany.mockResolvedValue({ count: 1 });
+    dbMock.match.findMany.mockResolvedValue([{ ...row, activity: { ...row.activity, org: { featurePlayerRating: false } } }]);
+    expect(await completeFinishedMatches(NOW)).toEqual({ completed: 1 });
+    expect(email.sendRatingEmails).not.toHaveBeenCalled();
+  });
+
+  it("player ratings on: the email goes, as before", async () => {
+    dbMock.match.updateMany.mockResolvedValue({ count: 1 });
+    dbMock.match.findMany.mockResolvedValue([{ ...row, activity: { ...row.activity, org: { featurePlayerRating: true } } }]);
+    await completeFinishedMatches(NOW);
+    expect(email.sendRatingEmails).toHaveBeenCalledTimes(1);
+  });
+
   it("cancelled in between: not completed, no Elo, no rating emails", async () => {
     dbMock.match.updateMany.mockResolvedValue({ count: 0 });
     expect(await completeFinishedMatches(NOW)).toEqual({ completed: 0 });

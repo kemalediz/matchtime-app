@@ -53,6 +53,8 @@ import { t } from "./i18n/t";
 import { poolOffersOpenForClub } from "./pool/flags";
 import { organisersAnnounce } from "./list-announcer";
 import { effectiveTeamsReadyTime } from "./team-proposal-rules";
+import { describeClub } from "./club-description";
+import { organisersPickMom } from "./mom-chooser";
 
 /** The HQ command list, in the club's language. */
 export function buildHqHelp(p: {
@@ -129,6 +131,12 @@ export interface AdminGroupIntroClub {
   featureAttendance?: boolean | null;
   featureMomVoting?: boolean | null;
   featurePlayerRating?: boolean | null;
+  /** The squad comes from a pasted list, the squad is carried over, who picks
+   *  Man of the Match (club summary, slice B7: the one club description the
+   *  players' group hello reads too). Absent: off, the players vote. */
+  featureSquadFromList?: boolean | null;
+  rollingSquadEnabled?: boolean | null;
+  momChosenBy?: string | null;
   /** The payment flags (2026-11-03): with both off the intro says nothing
    *  about payments (`payment-messages.ts`). */
   paymentTrackingEnabled?: boolean | null;
@@ -177,12 +185,22 @@ export function buildAdminGroupIntro(club: AdminGroupIntroClub): string {
   const gates = hqHelpGates(club);
   const weekly = club.squadMode !== "monthly";
   const organisers = organisersAnnounce(club);
-  const attendance = club.featureAttendance !== false;
-  const ratings = club.featurePlayerRating !== false;
+  // What MatchTime does for the club, from the one description the players'
+  // group hello reads too (club-description.ts, club summary B7; plan D11).
+  const d = describeClub({
+    attendance: club.featureAttendance !== false,
+    squadFromList: club.featureSquadFromList === true,
+    rollingSquad: club.rollingSquadEnabled === true,
+    monthly: club.squadMode === "monthly",
+    playerRating: club.featurePlayerRating !== false,
+    momVoting: club.featureMomVoting !== false,
+    momByOrganisers: organisersPickMom(club),
+  });
+  const ratings = d.ratings;
   const days = [...new Set(club.activityDays)];
   const time = effectiveTeamsReadyTime(club.teamsReadyTime, organisers);
   const teamsAt = weekly && time !== "off" ? time : null;
-  const lists = weekly && attendance;
+  const lists = d.readsInAndOut;
   return t(club.language).admin_group_intro({
     club: club.name,
     live: club.whatsappBotEnabled === true,
@@ -190,7 +208,7 @@ export function buildAdminGroupIntro(club: AdminGroupIntroClub): string {
     tracks: lists,
     teamsAt,
     graphics: gates.graphics,
-    mom: club.featureMomVoting !== false,
+    mom: d.mom,
     ratings,
     organisersShare: lists && organisers,
     mainChatList: lists && !organisers,

@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { ratingSchema, momVoteSchema } from "@/lib/validations";
 import { revalidatePath } from "next/cache";
 import { organisersPickMom } from "@/lib/mom-chooser";
+import { t } from "@/lib/i18n/t";
 
 export async function submitRatings(matchId: string, formData: { ratings: { playerId: string; score: number }[] }) {
   const session = await auth();
@@ -14,9 +15,14 @@ export async function submitRatings(matchId: string, formData: { ratings: { play
 
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: true },
+    include: { activity: { include: { org: { select: { name: true, language: true, featurePlayerRating: true } } } } },
   });
   if (!match) throw new Error("Match not found");
+  // Player ratings off (club summary, slice B7): no rating DM goes out, and
+  // a link sent before the switch was turned off saves nothing either.
+  if (match.activity.org.featurePlayerRating === false) {
+    throw new Error(t(match.activity.org.language).web_ratings_off({ club: match.activity.org.name }));
+  }
   if (match.status !== "COMPLETED") throw new Error("Match not completed yet");
 
   // Check rating window
@@ -172,7 +178,7 @@ export async function submitMoMVote(matchId: string, formData: { playerId: strin
 
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { include: { org: { select: { momChosenBy: true } } } } },
+    include: { activity: { include: { org: { select: { momChosenBy: true, featurePlayerRating: true } } } } },
   });
   if (!match) throw new Error("Match not found");
   if (match.status !== "COMPLETED") throw new Error("Match not completed yet");
@@ -182,6 +188,11 @@ export async function submitMoMVote(matchId: string, formData: { playerId: strin
   if (organisersPickMom({ momChosenBy: match.activity.org.momChosenBy })) {
     return { saved: false as const };
   }
+  // Player ratings off (club summary, slice B7): the vote is cast on the
+  // rating page, which takes nothing with ratings off. Nothing is written.
+  // (Man of the Match off alone keeps the vote: its settings card says the
+  // votes still count in stats and badges.)
+  if (match.activity.org.featurePlayerRating === false) return { saved: false as const };
 
   const windowEnd = new Date(match.date.getTime() + match.activity.ratingWindowHours * 60 * 60 * 1000);
   if (new Date() > windowEnd) throw new Error("Rating window has closed");

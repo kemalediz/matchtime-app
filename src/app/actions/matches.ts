@@ -218,14 +218,15 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
     const updated = await db.match.findUnique({
       where: { id: matchId },
       include: {
-        activity: true,
+        // The rating switch (club summary, slice B7): no rating email with ratings off.
+        activity: { include: { org: { select: { featurePlayerRating: true } } } },
         attendances: {
           where: { status: "CONFIRMED" },
           include: { user: { select: { email: true, name: true } } },
         },
       },
     });
-    if (updated) {
+    if (updated && updated.activity.org?.featurePlayerRating !== false) {
       const players = updated.attendances.map((a) => ({
         email: a.user.email,
         name: a.user.name,
