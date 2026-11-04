@@ -295,7 +295,8 @@ describe("help schedule (2026-09-30)", () => {
     expect(r).toMatch(/\*Edit\*.*\*Save changes\*/);
     expect(r).toMatch(/\*New block booking\*/);
     expect(r).toMatch(/\*Preview dates\*/);
-    expect(r).toMatch(/\*Bulk cancel \/ restore\*/);
+    expect(r).toMatch(/\*Cancel or restore several matches\*/);
+    expect(r).not.toMatch(/bulk cancel/i);
     expect(r).toMatch(/\*Find matches\*/);
     expect(r).toMatch(/\*Switch format\*.*\*Confirm switch\*/);
     expect(r).toMatch(/group isn't told/i);

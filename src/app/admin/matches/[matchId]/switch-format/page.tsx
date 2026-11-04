@@ -94,7 +94,7 @@ export default function SwitchFormatPage() {
     setSubmitting(true);
     try {
       await switchMatchFormat(matchId, targetId);
-      toast.success("Match switched. Bot will announce in the group.");
+      toast.success("Match switched. MatchTime will announce it in the group.");
       router.push(`/matches/${matchId}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to switch");
@@ -236,7 +236,7 @@ export default function SwitchFormatPage() {
                     • {Math.min(confirmedCount, newMax)} player{Math.min(confirmedCount, newMax) === 1 ? "" : "s"} stay confirmed
                     {willBench > 0 && ` · ${willBench} move to bench`}
                   </li>
-                  <li>• Bot posts the new lineup in the group</li>
+                  <li>• MatchTime posts the new lineup in the group</li>
                   <li>• Player positions auto-transfer (same sport)</li>
                 </ul>
               </div>

@@ -1258,7 +1258,7 @@ export const en = {
       `Schedule changes are made on the admin page, not by message. Each takes a few taps.\n\n` +
       `1️⃣ *Weekly game (day, kick-off time, venue):* on *Activities*, tap *Edit* on the game, change it, then *Save changes*. Only future matches change. The group isn't told.\n${p.activities}\n\n` +
       `2️⃣ *Block booking for the season:* on *Block bookings*, tap *New block booking*, pick the start date and an end date or a number of matches, tap *Preview dates*, then *Create block*. The group isn't told.\n${p.blockBookings}\n\n` +
-      `3️⃣ *Cancel one week (or a run of dates):* on *Block bookings*, tap *Bulk cancel / restore*, set *From* and *To* to the date, tap *Find matches*, tick *Announce to the group* if you want me to post it, then confirm. Restoring works the same way.\n${p.bulk}\n\n` +
+      `3️⃣ *Cancel one week (or a run of dates):* on *Block bookings*, tap *Cancel or restore several matches*, set *From* and *To* to the date, tap *Find matches*, tick *Announce to the group* if you want me to post it, then confirm. Restoring works the same way.\n${p.bulk}\n\n` +
       `4️⃣ *Switch one match to another format:* open the match from your match list, tap *Switch format*, pick the format, then *Confirm switch*. ${switchTold}\n${p.matches}\n\n` +
       `One week's kick-off time can't be moved on its own yet: change the weekly game instead, for the weeks ahead.` +
       (p.audience === "group"

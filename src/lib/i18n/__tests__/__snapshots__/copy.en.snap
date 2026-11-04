@@ -2062,7 +2062,7 @@ https://matchtime.ai/admin/activities
 2️⃣ *Block booking for the season:* on *Block bookings*, tap *New block booking*, pick the start date and an end date or a number of matches, tap *Preview dates*, then *Create block*. The group isn't told.
 https://matchtime.ai/admin/block-bookings
 
-3️⃣ *Cancel one week (or a run of dates):* on *Block bookings*, tap *Bulk cancel / restore*, set *From* and *To* to the date, tap *Find matches*, tick *Announce to the group* if you want me to post it, then confirm. Restoring works the same way.
+3️⃣ *Cancel one week (or a run of dates):* on *Block bookings*, tap *Cancel or restore several matches*, set *From* and *To* to the date, tap *Find matches*, tick *Announce to the group* if you want me to post it, then confirm. Restoring works the same way.
 https://matchtime.ai/admin/matches/bulk
 
 4️⃣ *Switch one match to another format:* open the match from your match list, tap *Switch format*, pick the format, then *Confirm switch*. I post the new line-up in the group.
@@ -2103,7 +2103,7 @@ https://mt.example/r/activities
 2️⃣ *Block booking for the season:* on *Block bookings*, tap *New block booking*, pick the start date and an end date or a number of matches, tap *Preview dates*, then *Create block*. The group isn't told.
 https://mt.example/r/blocks
 
-3️⃣ *Cancel one week (or a run of dates):* on *Block bookings*, tap *Bulk cancel / restore*, set *From* and *To* to the date, tap *Find matches*, tick *Announce to the group* if you want me to post it, then confirm. Restoring works the same way.
+3️⃣ *Cancel one week (or a run of dates):* on *Block bookings*, tap *Cancel or restore several matches*, set *From* and *To* to the date, tap *Find matches*, tick *Announce to the group* if you want me to post it, then confirm. Restoring works the same way.
 https://mt.example/r/bulk
 
 4️⃣ *Switch one match to another format:* open the match from your match list, tap *Switch format*, pick the format, then *Confirm switch*. I post the new line-up in the group.

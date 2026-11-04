@@ -21,12 +21,17 @@ const PAGES: Array<[string, string[]]> = [
   ["src/app/admin/health/page.tsx", ["What MatchTime has flagged", "No club has MatchTime switched on.", "MatchTime last reported", "MatchTime has not reported yet."]],
   ["src/app/admin/unresolved/page.tsx", ["messages MatchTime received but couldn", "MatchTime hit an error writing these", "MatchTime&apos;s WhatsApp connection"]],
   ["src/app/admin/organisations/dormancy-button.tsx", ["MatchTime for a live club", "switch MatchTime off in settings"]],
+  ["src/app/admin/matches/[matchId]/cancel/page.tsx", ["Match cancelled. MatchTime will announce it in the group.", "MatchTime stops posting reminders, polls, and DMs for this match", "MatchTime posts a cancellation announcement in the group"]],
+  ["src/app/admin/matches/[matchId]/switch-format/page.tsx", ["Match switched. MatchTime will announce it in the group.", "MatchTime posts the new lineup in the group"]],
+  ["src/app/admin/block-bookings/new/new-block-form.tsx", ["MatchTime will only ever announce the"]],
+  ["src/app/admin/players/ratings/page.tsx", ["Edit seed ratings"]],
+  ["src/app/admin/players/phones/page.tsx", ["Edit phone numbers"]],
 ];
 
 describe("admin pages: MatchTime, never the bot", () => {
   it.each(PAGES)("%s says MatchTime", (file, phrases) => {
     const copy = copyOf(read(file));
-    expect(copy).not.toMatch(/WhatsApp bot|\bthe bot\b|\bBot last\b|\bbot&apos;s\b/i);
+    expect(copy).not.toMatch(/WhatsApp bot|\bthe bot\b|\bBot (last|will|stops|posts)\b|\bbot&apos;s\b|\bBulk edit\b/i);
     for (const p of phrases) expect(copy, p).toContain(p);
   });
 });

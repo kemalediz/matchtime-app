@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { t } from "@/lib/i18n/t";
 
 /**
  * The organiser guide's schedule section (/help/admin#schedule) is a
@@ -91,6 +92,17 @@ describe("organiser guide: schedule section", () => {
     expect(SCHEDULE).toContain("Match switched");
     expect(SCHEDULE).toContain("Schedule update");
     expect(SCHEDULE).toMatch(/Nothing is posted/);
+  });
+
+  it("the WhatsApp schedule help names the same button as the guide, in both languages (2026-11-04)", () => {
+    const button = "Cancel or restore several matches";
+    expect(SCHEDULE).toContain(`<strong>${button}</strong>`);
+    expect(read(BLOCKS)).toContain(button);
+    for (const lang of ["en", "tr"] as const) {
+      const help = t(lang).onbHelpSchedule({ audience: "admin", activities: "a", blockBookings: "b", bulk: "c", matches: "d" });
+      expect(help, lang).toContain(`*${button}*`);
+      expect(help, lang).not.toMatch(/bulk/i);
+    }
   });
 
   it("never says bulk to an organiser (Kemal, 2026-11-04)", () => {

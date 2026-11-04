@@ -144,7 +144,7 @@ export default function BulkRatingsPage() {
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
             <Star className="w-5 h-5 text-slate-500" />
-            Bulk edit seed ratings
+            Edit seed ratings
           </h2>
           <button
             onClick={() => setInfoOpen(true)}

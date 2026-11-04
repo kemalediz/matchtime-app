@@ -1076,7 +1076,7 @@ export const tr: Strings = {
       `Program değişiklikleri mesajla değil, yönetici sayfasından yapılır, her biri birkaç dokunuş sürer. Sayfa İngilizce, düğme adları aşağıdaki gibi.\n\n` +
       `1️⃣ *Haftalık maç (gün, başlama saati, saha):* *Activities* › maçta *Edit* › *Save changes*. Yalnızca ileriki maçlar değişir, gruba bir şey yazılmaz.\n${p.activities}\n\n` +
       `2️⃣ *Sezonluk blok rezervasyon:* *Block bookings* › *New block booking* › başlangıç tarihi ile bitiş tarihi ya da maç sayısı › *Preview dates* › *Create block*. Gruba bir şey yazılmaz.\n${p.blockBookings}\n\n` +
-      `3️⃣ *Bir haftayı (ya da birkaç tarihi) iptal etmek:* *Block bookings* › *Bulk cancel / restore* › *From* ve *To* alanlarına o tarih › *Find matches* › gruba duyurmamı istiyorsanız *Announce to the group* › onay. Geri almak da aynı şekilde.\n${p.bulk}\n\n` +
+      `3️⃣ *Bir haftayı (ya da birkaç tarihi) iptal etmek:* *Block bookings* › *Cancel or restore several matches* › *From* ve *To* alanlarına o tarih › *Find matches* › gruba duyurmamı istiyorsanız *Announce to the group* › onay. Geri almak da aynı şekilde.\n${p.bulk}\n\n` +
       `4️⃣ *Bir maçı başka bir formata çevirmek:* maç listesinden maçı aç › *Switch format* › formatı seç › *Confirm switch*. ${switchTold}\n${p.matches}\n\n` +
       `Tek bir haftanın başlama saati henüz ayrıca değiştirilemiyor: ileriki haftalar için haftalık maçı değiştirmek gerekiyor.` +
       (p.audience === "group"

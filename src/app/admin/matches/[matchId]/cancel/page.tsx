@@ -38,7 +38,7 @@ export default function CancelMatchPage() {
       const r = await cancelMatch(matchId);
       // A game that already kicked off is marked as not played instead: no
       // announcement, and the reply says so (2026-10-28).
-      toast.success(r?.message ?? "Match cancelled. Bot will announce in the group.");
+      toast.success(r?.message ?? "Match cancelled. MatchTime will announce it in the group.");
       router.push(`/matches`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to cancel");
@@ -82,8 +82,8 @@ export default function CancelMatchPage() {
           <p className="font-medium">What this does</p>
           <ul className="mt-2 space-y-1 text-red-800">
             <li>• Match status → <b>CANCELLED</b></li>
-            <li>• Bot stops posting reminders, polls, and DMs for this match</li>
-            <li>• Bot posts a cancellation announcement in the group</li>
+            <li>• MatchTime stops posting reminders, polls, and DMs for this match</li>
+            <li>• MatchTime posts a cancellation announcement in the group</li>
             <li>• No scoring, no rating, no MoM announcement for this week</li>
           </ul>
         </div>
