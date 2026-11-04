@@ -265,9 +265,13 @@ export function clubRowFacts(org: OrgRow, features: OrgFeatures): ClubRowFacts {
     groups: groupFacts(org),
     features,
     teamLabels: teamLabelsOf(org),
-    routine: routineFacts(org),
+    routine: { ...routineFacts(org), teamsReadyChosen: org.teamsReadyTime != null },
     squad,
-    payments: { ...payments, collector: collector ? { userId: collector.userId } : null },
+    payments: {
+      ...payments,
+      collector: collector ? { userId: collector.userId } : null,
+      switches: { payByBank: org.payMethodPayByBank, card: org.payMethodCard, direct: org.payMethodDirect },
+    },
   };
 }
 

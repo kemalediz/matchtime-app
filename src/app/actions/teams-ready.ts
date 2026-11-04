@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import { effectiveTeamsReadyTime, normaliseTeamsReadyTime } from "@/lib/team-proposal-rules";
 import { organisersAnnounce } from "@/lib/list-announcer";
 import { revalidatePath } from "next/cache";
+import { readClubFacts } from "@/lib/web-club-facts";
 
 async function requireAdminOf(orgId: string): Promise<void> {
   const session = await auth();
@@ -34,6 +35,18 @@ export interface TeamsReadyStatus {
 
 export async function getTeamsReady(orgId: string): Promise<TeamsReadyStatus | null> {
   await requireAdminOf(orgId);
+  // The club's facts (club summary, slice A4), one read.
+  const club = await readClubFacts(orgId, "teams-ready");
+  if (club !== "unreadable") {
+    if (!club) return null;
+    return {
+      value: club.routine.teamsReady,
+      isDefault: !club.routine.teamsReadyChosen,
+      adminGroupLinked: !!club.groups.hq.groupId,
+      weekly: club.squad.mode !== "monthly",
+    };
+  }
+  // They could not be read: today's read.
   const org = await db.organisation.findUnique({
     where: { id: orgId },
     select: { teamsReadyTime: true, listAnnouncer: true, adminGroupId: true, squadMode: true },

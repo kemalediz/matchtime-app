@@ -74,6 +74,26 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined, revalidateTag: () => undefined, unstable_cache: (f: unknown) => f }));
 
+/** While on, the club's facts cannot be built or read (slice A4's
+ *  fail-soft test below); `tries` counts the attempts. Off for every other
+ *  test. */
+const factsDown = { on: false, tries: 0 };
+vi.mock("@/lib/club-summary/facts", async (orig) => {
+  const actual = await orig<typeof import("@/lib/club-summary/facts")>();
+  const down = () => {
+    factsDown.tries += 1;
+    return new Error("club facts down (test)");
+  };
+  return {
+    ...actual,
+    clubFactsFromRow: (...args: Parameters<typeof actual.clubFactsFromRow>) => {
+      if (factsDown.on) throw down();
+      return actual.clubFactsFromRow(...args);
+    },
+    loadClubFacts: (...args: Parameters<typeof actual.loadClubFacts>) => (factsDown.on ? Promise.reject(down()) : actual.loadClubFacts(...args)),
+  };
+});
+
 import PayPage from "@/app/pay/[matchId]/page";
 import CollectPage from "@/app/collect/[matchId]/page";
 import MonthPage from "@/app/month/page";
@@ -132,7 +152,7 @@ function worldOf(name: string): WebWorld {
 
 // ── Loading a page ─────────────────────────────────────────────────────
 
-function useWorld(name: string, viewer: string | null): WebWorld {
+function enterWorld(name: string, viewer: string | null): WebWorld {
   const w = worldOf(name);
   calls.length = 0;
   state.db = fakeWebDb(w, calls);
@@ -198,7 +218,7 @@ function loadsOf(name: string): Array<{ group: string; label: string; viewer: st
 }
 
 async function runLoad(name: string, load: { viewer: string | null; run: () => Promise<unknown> }) {
-  useWorld(name, load.viewer);
+  enterWorld(name, load.viewer);
   const text = await outcome(load.run);
   return { text, reads: readCount(calls) };
 }
@@ -221,6 +241,50 @@ describe("the web pages, per club shape (characterisation)", () => {
       });
     });
   }
+});
+
+describe("fail-soft: with the club's facts unreadable, every page loads as before", () => {
+  it.each(Object.keys(WEB_SHAPES))("%s", async (name) => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      for (const load of loadsOf(name)) {
+        const normal = (await runLoad(name, load)).text;
+        errors.mockClear();
+        factsDown.on = true;
+        factsDown.tries = 0;
+        let down: string;
+        try {
+          down = (await runLoad(name, load)).text;
+        } finally {
+          factsDown.on = false;
+        }
+        expect(down, load.label).toBe(normal);
+        // Each attempt is logged once, by `[club-facts]`, and nothing else
+        // is: one per page or action (the collect page also runs the
+        // collector check, its own attempt).
+        const logged = errors.mock.calls.filter((c) => String(c[0]).startsWith("[club-facts]"));
+        expect(logged, load.label).toHaveLength(factsDown.tries);
+        expect(factsDown.tries, load.label).toBeLessThanOrEqual(load.label.startsWith("collect ") ? 2 : 1);
+      }
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("the switch is live: a page that reads the club's facts tried, and logged it", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const load = loadsOf("sutton").find((l) => l.label === "match m-sutton-10nov as admin")!;
+      factsDown.on = true;
+      factsDown.tries = 0;
+      await runLoad("sutton", load);
+      expect(factsDown.tries).toBe(1);
+      expect(errors.mock.calls.filter((c) => String(c[0]).startsWith("[club-facts] match: club org-sutton"))).toHaveLength(1);
+    } finally {
+      factsDown.on = false;
+      errors.mockRestore();
+    }
+  });
 });
 
 describe("reads per page load (reported, not pinned here)", () => {

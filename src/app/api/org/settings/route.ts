@@ -14,6 +14,9 @@ import { loadClubSetupView } from "@/lib/club-setup";
 import { normaliseListAnnouncer } from "@/lib/list-announcer";
 import { normaliseMomChooser } from "@/lib/mom-chooser";
 import { NextResponse } from "next/server";
+import type { Organisation } from "@/generated/prisma/client";
+import type { ClubFacts } from "@/lib/club-summary/types";
+import { pageClubFacts } from "@/lib/web-club-facts";
 
 export async function GET() {
   const session = await auth();
@@ -61,6 +64,11 @@ export async function GET() {
   });
   const defaultTeamLabels = resolveTeamLabels(null, null, firstSport, org.language);
 
+  // The club's facts (club summary, slice A4), else, when they cannot be
+  // built, today's reads of the same row.
+  const club = pageClubFacts(org, "org-settings");
+  const f = club ? settingsFactsOf(club) : settingsFactsOfRow(org);
+
   const publicView = {
     id: org.id,
     name: org.name,
@@ -68,27 +76,12 @@ export async function GET() {
     memberCount: org._count.memberships,
     // Team-name override (raw — empty array / empty strings mean
     // "use the defaults") + the defaults themselves for placeholders.
-    teamLabels: org.teamLabels,
+    teamLabels: f.teamLabels,
     defaultTeamLabels,
     // The language the bot speaks to this group in (Phase 0 of the
     // multi-language design: read-and-round-trip only, no consumer yet).
     language: normaliseLang(org.language),
-    features: {
-      attendance: org.featureAttendance,
-      bench: org.featureBench,
-      teamBalancing: org.featureTeamBalancing,
-      momVoting: org.featureMomVoting,
-      playerRating: org.featurePlayerRating,
-      reminders: org.featureReminders,
-      statsQa: org.featureStatsQa,
-      paymentTracking: org.paymentTrackingEnabled,
-      paymentCollection: org.paymentCollectionEnabled,
-      payByBank: org.payMethodPayByBank,
-      payCard: org.payMethodCard,
-      payDirect: org.payMethodDirect,
-      badgeAnnouncements: org.featureBadgeAnnouncements,
-      gearReminder: org.featureGearReminder,
-    },
+    features: f.features,
   };
   if (!isAdmin) return NextResponse.json(publicView);
 
@@ -124,29 +117,104 @@ export async function GET() {
     // The name can be changed only while the club is a draft.
     nameEditable: org.approvalStatus === "draft",
     inviteCode: org.inviteCode,
-    whatsappGroupId: org.whatsappGroupId,
-    whatsappBotEnabled: org.whatsappBotEnabled,
+    whatsappGroupId: f.whatsappGroupId,
+    whatsappBotEnabled: f.whatsappBotEnabled,
     // Stripe Connect status — drives the "connect bank" button.
-    stripeConnected: !!org.stripeConnectAccountId,
-    stripeChargesEnabled: org.stripeChargesEnabled,
+    stripeConnected: f.stripeConnected,
+    stripeChargesEnabled: f.stripeChargesEnabled,
     // Money collector picker.
-    paymentHolderId: org.paymentHolderId,
+    paymentHolderId: f.paymentHolderId,
     members: members.map((m) => ({ id: m.user.id, name: m.user.name })),
     // "Weekly routine" (2026-09-30). Slices 2 and 3 add their settings here.
-    weeklyRoutine: {
-      rollingSquad: org.rollingSquadEnabled,
-      ...weeklyDeadlinesView(org),
-      // Slice 2b: who fills an open place, and the fallback.
-      benchPickMode: normaliseBenchPickMode(org.benchPickMode),
-      benchPickFallback: normaliseBenchPickFallback(org.benchPickFallback),
-      // 2026-10-14: who announces the list and teams.
-      listAnnouncer: normaliseListAnnouncer(org.listAnnouncer),
-      // 2026-10-18: who chooses Man of the Match.
-      momChosenBy: normaliseMomChooser(org.momChosenBy),
-    },
+    weeklyRoutine: f.weeklyRoutine,
     billing,
     // "Monthly squad" (2026-10-05, slice 2). "weekly" for every club that
     // has not switched it on, so the section shows its one switch only.
+    monthlySquad: f.monthlySquad,
+  });
+}
+
+/** What the settings page shows of the club's facts, from the club summary
+ *  (slice A4). Same shape and key order as `settingsFactsOfRow`. */
+function settingsFactsOf(c: ClubFacts) {
+  return {
+    teamLabels: c.teamLabels,
+    features: {
+      attendance: c.features.attendance,
+      bench: c.features.bench,
+      teamBalancing: c.features.teamBalancing,
+      momVoting: c.features.momVoting,
+      playerRating: c.features.playerRating,
+      reminders: c.features.reminders,
+      statsQa: c.features.statsQa,
+      paymentTracking: c.payments.tracking,
+      paymentCollection: c.payments.collection,
+      payByBank: c.payments.switches.payByBank,
+      payCard: c.payments.switches.card,
+      payDirect: c.payments.switches.direct,
+      badgeAnnouncements: c.features.badgeAnnouncements,
+      gearReminder: c.features.gearReminder,
+    },
+    whatsappGroupId: c.groups.playersGroupId,
+    whatsappBotEnabled: c.lifecycle.botOn,
+    stripeConnected: c.payments.stripe.accountConnected,
+    stripeChargesEnabled: c.payments.stripe.chargesEnabled,
+    paymentHolderId: c.payments.collector?.userId ?? null,
+    weeklyRoutine: {
+      rollingSquad: c.squad.rolling,
+      ...weeklyDeadlinesView(c.routine.weeklyDeadlineSettings),
+      // Slice 2b: who fills an open place, and the fallback.
+      benchPickMode: c.routine.benchPickMode,
+      benchPickFallback: c.routine.benchPickFallback,
+      // 2026-10-14: who announces the list and teams.
+      listAnnouncer: c.routine.listAnnouncer,
+      // 2026-10-18: who chooses Man of the Match.
+      momChosenBy: c.routine.momChosenBy,
+    },
+    monthlySquad: {
+      squadMode: c.squad.mode,
+      paygPricePence: c.squad.paygPricePence,
+      monthListOpensDaysBefore: c.routine.monthListOpensDaysBefore,
+      monthCreditRule: c.squad.creditRule,
+      paymentInstructions: c.payments.instructions,
+    },
+  };
+}
+
+/** The same, as read before slice A4: the fallback when the club's facts
+ *  cannot be built. */
+function settingsFactsOfRow(org: Organisation): ReturnType<typeof settingsFactsOf> {
+  return {
+    teamLabels: org.teamLabels,
+    features: {
+      attendance: org.featureAttendance,
+      bench: org.featureBench,
+      teamBalancing: org.featureTeamBalancing,
+      momVoting: org.featureMomVoting,
+      playerRating: org.featurePlayerRating,
+      reminders: org.featureReminders,
+      statsQa: org.featureStatsQa,
+      paymentTracking: org.paymentTrackingEnabled,
+      paymentCollection: org.paymentCollectionEnabled,
+      payByBank: org.payMethodPayByBank,
+      payCard: org.payMethodCard,
+      payDirect: org.payMethodDirect,
+      badgeAnnouncements: org.featureBadgeAnnouncements,
+      gearReminder: org.featureGearReminder,
+    },
+    whatsappGroupId: org.whatsappGroupId,
+    whatsappBotEnabled: org.whatsappBotEnabled,
+    stripeConnected: !!org.stripeConnectAccountId,
+    stripeChargesEnabled: org.stripeChargesEnabled,
+    paymentHolderId: org.paymentHolderId,
+    weeklyRoutine: {
+      rollingSquad: org.rollingSquadEnabled,
+      ...weeklyDeadlinesView(org),
+      benchPickMode: normaliseBenchPickMode(org.benchPickMode),
+      benchPickFallback: normaliseBenchPickFallback(org.benchPickFallback),
+      listAnnouncer: normaliseListAnnouncer(org.listAnnouncer),
+      momChosenBy: normaliseMomChooser(org.momChosenBy),
+    },
     monthlySquad: {
       squadMode: normaliseSquadMode(org.squadMode),
       paygPricePence: org.paygPricePence,
@@ -154,5 +222,5 @@ export async function GET() {
       monthCreditRule: normaliseCreditRule(org.monthCreditRule),
       paymentInstructions: org.paymentInstructions,
     },
-  });
+  };
 }

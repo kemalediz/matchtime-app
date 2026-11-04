@@ -1,7 +1,9 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { availablePayMethods, directPayInstructions, priceMethods, gbp, PAY_METHOD_SELECT, type PayMethodSwitches } from "@/lib/payments";
+import { availablePayMethods, directPayInstructions, priceMethods, gbp, type PayMethodSwitches } from "@/lib/payments";
+import { CLUB_FACTS_SELECT } from "@/lib/club-summary/facts";
+import { pageClubFacts } from "@/lib/web-club-facts";
 import { t } from "@/lib/i18n/t";
 import { payCollectorName } from "@/lib/direct-payment";
 import { PayOptions } from "@/components/pay/pay-options";
@@ -27,18 +29,10 @@ export default async function PayPage({
       activity: {
         select: {
           name: true,
-          org: {
-            select: {
-              name: true,
-              paymentHolderId: true,
-              ...PAY_METHOD_SELECT,
-              // The club's own words on paying the collector directly
-              // (2026-10-16), shown under the buttons when direct is one.
-              paymentInstructions: true,
-              squadMode: true,
-              language: true,
-            },
-          },
+          // The club's row, for its facts (club summary, slice A4): the
+          // collector, the pay methods, the club's own words on paying the
+          // collector directly (2026-10-16), the squad mode.
+          org: { select: CLUB_FACTS_SELECT },
         },
       },
     },
@@ -52,10 +46,36 @@ export default async function PayPage({
 
   const me = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
   const first = me?.name?.split(" ")[0] ?? "there";
-  const org = match.activity.org;
+  const row = match.activity.org;
+  // The club's facts (club summary, slice A4), else, when they cannot be
+  // built, today's reads of the same row.
+  const club = pageClubFacts(row, "pay");
+  const org: PayClub = club
+    ? {
+        name: row.name,
+        language: row.language,
+        collectorId: club.payments.collector?.userId ?? null,
+        payMethodPayByBank: club.payments.switches.payByBank,
+        payMethodCard: club.payments.switches.card,
+        payMethodDirect: club.payments.switches.direct,
+        stripeChargesEnabled: club.payments.stripe.chargesEnabled,
+        paymentInstructions: club.payments.instructions,
+        squadMode: club.squad.mode,
+      }
+    : {
+        name: row.name,
+        language: row.language,
+        collectorId: row.paymentHolderId,
+        payMethodPayByBank: row.payMethodPayByBank,
+        payMethodCard: row.payMethodCard,
+        payMethodDirect: row.payMethodDirect,
+        stripeChargesEnabled: row.stripeChargesEnabled,
+        paymentInstructions: row.paymentInstructions,
+        squadMode: row.squadMode,
+      };
   // "Pay Raihan directly", as the pay link DM says. "the organiser" when
   // no collector name is on record.
-  const collector = (await payCollectorName(org.paymentHolderId))?.split(" ")[0] ?? null;
+  const collector = (await payCollectorName(org.collectorId))?.split(" ")[0] ?? null;
   const collectorLabel = collector ?? "the organiser";
 
   // Monthly squad (slice 5): a regular's place is paid for by the month.
@@ -157,6 +177,18 @@ export default async function PayPage({
   );
 }
 
+/** What this page reads of the club: the pay method switches with
+ *  `stripeChargesEnabled` (the input of `availablePayMethods`), the club's
+ *  payment instructions and squad mode (`directPayInstructions`), the
+ *  collector, the name and the language. */
+type PayClub = PayMethodSwitches & {
+  name: string;
+  language: string | null;
+  collectorId: string | null;
+  paymentInstructions: string | null;
+  squadMode: string | null;
+};
+
 function Methods({
   matchId,
   base,
@@ -165,7 +197,7 @@ function Methods({
 }: {
   matchId: string;
   base: number;
-  org: PayMethodSwitches & { paymentInstructions: string | null; squadMode: string | null; language: string | null };
+  org: PayClub;
   collector: string | null;
 }) {
   // The one availability rule, shared with the pay link DM and the chase

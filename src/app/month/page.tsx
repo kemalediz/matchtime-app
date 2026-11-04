@@ -12,6 +12,7 @@ import { loadAwayView, loadMonthMoney } from "@/lib/month-close";
 import { mayConfirmPayments } from "@/lib/month-payment";
 import { mayJoinStartedMonth } from "@/lib/month-signup-rules";
 import { chargedGames, normaliseSquadMode } from "@/lib/squad-month-rules";
+import { pageClubFacts } from "@/lib/web-club-facts";
 import { MyGamesCard } from "./games-card";
 import { AwayWeeksCard } from "./away-card";
 import { MonthSignupCard } from "./signup-card";
@@ -52,7 +53,13 @@ export default async function MonthPage({ searchParams }: { searchParams: Promis
     ? await db.membership.findFirst({ where: { userId: session.user.id, orgId: club, leftAt: null }, include: { org: true } })
     : await getUserOrg(session.user.id);
   if (!membership) redirect("/");
-  if (normaliseSquadMode(membership.org.squadMode) !== "monthly") notFound();
+  // The club's facts (club summary, slice A4), else, when they cannot be
+  // built, today's reads of the same row.
+  const facts = pageClubFacts(membership.org, "month");
+  const monthly = facts ? facts.squad.mode === "monthly" : normaliseSquadMode(membership.org.squadMode) === "monthly";
+  if (!monthly) notFound();
+  const collectorId = facts ? (facts.payments.collector?.userId ?? null) : membership.org.paymentHolderId;
+  const paymentInstructions = facts ? facts.payments.instructions : membership.org.paymentInstructions;
   const myClubs = await db.membership.findMany({
     where: { userId: session.user.id, leftAt: null, org: { squadMode: "monthly" } },
     select: { orgId: true, org: { select: { name: true } } },
@@ -64,9 +71,7 @@ export default async function MonthPage({ searchParams }: { searchParams: Promis
   const s = t(lang);
   const now = new Date();
   const months = await loadLiveMonths(membership.orgId, now);
-  const collector = membership.org.paymentHolderId
-    ? await db.user.findUnique({ where: { id: membership.org.paymentHolderId }, select: { name: true } })
-    : null;
+  const collector = collectorId ? await db.user.findUnique({ where: { id: collectorId }, select: { name: true } }) : null;
   const collectorFirst = collector?.name?.trim().split(/\s+/)[0] || null;
   const userId = session.user.id;
   // Slice 6: what a share changed after payments leaves me owing or owed,
@@ -149,7 +154,7 @@ export default async function MonthPage({ searchParams }: { searchParams: Promis
                           ? s.mmp_due({ amount: pounds(me.amountDuePence), games: chargedGames(me), credits: me.creditsApplied })
                           : s.mmp_not_priced,
                       payBy: m.payByAt && me.amountDuePence != null ? s.mmp_payby({ when: dayCommaTimeLabel(lang, m.payByAt), collector: collectorFirst }) : null,
-                      instructions: me.amountDuePence != null ? membership.org.paymentInstructions : null,
+                      instructions: me.amountDuePence != null ? paymentInstructions : null,
                       paid: me.paid,
                       canClaim: me.paid === "none" && (me.amountDuePence ?? 0) > 0,
                       balance: balance > 0 ? s.mmp_bal_owes({ amount: pounds(balance) }) : balance < 0 ? s.mmp_bal_back({ amount: pounds(-balance) }) : null,
