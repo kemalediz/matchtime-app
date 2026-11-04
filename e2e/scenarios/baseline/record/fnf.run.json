@@ -3,7 +3,7 @@
  "mode": "record",
  "ticks": 1458,
  "steps": 32,
- "sent": 69,
+ "sent": 66,
  "errors": 0,
  "seconds": 160,
  "model": {
@@ -12,11 +12,11 @@
   "calls": 38,
   "meter": {
    "calls": 38,
-   "costUsd": 0.006553190000000001,
+   "costUsd": 0.012574430000000003,
    "byModel": {
     "claude-haiku-5-5": {
      "calls": 38,
-     "costUsd": 0.006553190000000001
+     "costUsd": 0.012574430000000003
     }
    }
   }

@@ -75,7 +75,7 @@
     user @will: (new) name "Will Rowe"
 - 2026-11-09 08:02 database: <match 2026-11-12 19:00>: places: (new) 10
     match 2026-11-12 19:00: status: (new) UPCOMING
-- 2026-11-09 10:00 [DM Lee Carter] **MatchTime**: 📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/0TyICVkqVC
+- 2026-11-09 10:00 [DM Lee Carter] **MatchTime**: 📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>
     MatchTime reminds you once a week until a venue is set.
 - 2026-11-09 10:00 database: botjob dm → @lee: 📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no: (new) sent
 - 2026-11-09 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
@@ -135,111 +135,111 @@
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/SSoW8JQAl7
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/9y2ojY04Nm
+    <app>/r/<tok>
 - 2026-11-13 08:00 [DM Mark Evans] **MatchTime**: 🏆 *Thursday Fives Sandbox*, Thu 12 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/UkIoud2uyj
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/Fw3YCrubUf
+    <app>/r/<tok>
 - 2026-11-13 08:00 [DM Nick Burns] **MatchTime**: 🏆 *Thursday Fives Sandbox*, Thu 12 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/9bJxVPSz4u
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/GRY6O20YLB
+    <app>/r/<tok>
 - 2026-11-13 08:00 [DM Owen Platt] **MatchTime**: 🏆 *Thursday Fives Sandbox*, Thu 12 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/Cisv0LrcZw
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/TLYWU5k0zj
+    <app>/r/<tok>
 - 2026-11-13 08:00 [DM Paul Dunn] **MatchTime**: 🏆 *Thursday Fives Sandbox*, Thu 12 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/uKwVxAv6RI
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/nMvfJQJUek
+    <app>/r/<tok>
 - 2026-11-13 08:00 [DM Quinn Hart] **MatchTime**: 🏆 *Thursday Fives Sandbox*, Thu 12 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/u59zZaMEH3
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/qlqBVCL6qS
+    <app>/r/<tok>
 - 2026-11-13 08:00 [DM Ross Kemp] **MatchTime**: 🏆 *Thursday Fives Sandbox*, Thu 12 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/OlXCxH4jOM
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/q3f7ycHg1E
+    <app>/r/<tok>
 - 2026-11-13 08:00 [DM Sean Tully] **MatchTime**: 🏆 *Thursday Fives Sandbox*, Thu 12 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/ZoIFFiX7uJ
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/uLcCoHSTyg
+    <app>/r/<tok>
 - 2026-11-13 08:00 [DM Tony Wade] **MatchTime**: 🏆 *Thursday Fives Sandbox*, Thu 12 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/VSFt9mpYda
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/dnZgJPQYOU
+    <app>/r/<tok>
 - 2026-11-13 08:00 [DM Vic Moss] **MatchTime**: 🏆 *Thursday Fives Sandbox*, Thu 12 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/nOBRT4sfHK
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/3cjmhR4lNF
+    <app>/r/<tok>
 - 2026-11-13 08:00 database: sent-notification <match 2026-11-12 19:00>:rate-dm:@lee: (new) dm
     sent-notification <match 2026-11-12 19:00>:rate-dm:@mark: (new) dm
     sent-notification <match 2026-11-12 19:00>:rate-dm:@nick: (new) dm
@@ -256,7 +256,7 @@
     match 2026-11-12 19:00: ratings: (new) 9
 - 2026-11-13 09:00 [Thursday Fives Sandbox] **MatchTime**: 🎯 Just DM'd every player from the *Thursday Fives Sandbox* on Thu 12 Nov a personal rating link. The more ratings we get, the better-balanced the teams get next week. Check your DMs from me 👇
 - 2026-11-13 09:00 database: sent-notification <match 2026-11-12 19:00>:rate-promo: (new) group-message
-    sent-notification txtlog:<club>:c9e1cc38b900fe0b:<match 2026-11-12 19:00>:rate-promo: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text c9e1cc38>:<match 2026-11-12 19:00>:rate-promo: (new) outbound-text-log
 - 2026-11-13 09:10 [DM Ross Kemp] **Ross Kemp**: (opens the rating link and submits, Man of the Match: /Nick/) _(rating page: submitted (default scores; Man of the Match: N Nick Burns))_
 - 2026-11-13 09:10 database: <match 2026-11-12 19:00>: MoM votes for @nick: 1 → 2
     match 2026-11-12 19:00: MoM votes: 1 → 2
@@ -270,31 +270,31 @@
 - 2026-11-14 18:00 [DM Nick Burns] **MatchTime**: Hey Nick 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/M5l5nqENBj
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Owen Platt] **MatchTime**: Hey Owen 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/JEoW6dtSJY
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Paul Dunn] **MatchTime**: Hey Paul 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/5DeZZQrvG4
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Quinn Hart] **MatchTime**: Hey Quinn 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/siGD878OdM
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Sean Tully] **MatchTime**: Hey Sean 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/p7lCMjkfG8
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Tony Wade] **MatchTime**: Hey Tony 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/HDCk2xZx4H
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Vic Moss] **MatchTime**: Hey Vic 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/QtRrMz3kz4
+    <app>/r/<tok>
 - 2026-11-14 18:00 [Thursday Fives Sandbox] **MatchTime**: 🏅 *New badges this week*
     
     👟 *On the board*: welcome *Lee Carter*, *Mark Evans*, *Nick Burns*, *Owen Platt*, *Paul Dunn*, *Quinn Hart*, *Ross Kemp*, *Sean Tully*, *Tony Wade* and *Vic Moss*, first games for the club! 🎉
@@ -309,40 +309,40 @@
     sent-notification <match 2026-11-12 19:00>:rate-reminder:@sean:2026-11-14: (new) dm
     sent-notification <match 2026-11-12 19:00>:rate-reminder:@tony:2026-11-14: (new) dm
     sent-notification <match 2026-11-12 19:00>:rate-reminder:@vic:2026-11-14: (new) dm
-    sent-notification txtlog:<club>:28672f2ab5abd6fa:<match 2026-11-12 19:00>:badges: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 28672f2a>:<match 2026-11-12 19:00>:badges: (new) outbound-text-log
 - 2026-11-15 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
-- 2026-11-16 10:00 [DM Lee Carter] **MatchTime**: 📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/I2huGvqRr8
+- 2026-11-16 10:00 [DM Lee Carter] **MatchTime**: 📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>
     MatchTime reminds you once a week until a venue is set.
 - 2026-11-16 10:00 database: botjob dm → @lee: 📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no (#2): (new) sent
 - 2026-11-16 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
 - 2026-11-16 18:00 [DM Nick Burns] **MatchTime**: Last reminder, Nick 🔔 Ratings for *Thursday Fives Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/wgIm2q7lVa
+    <app>/r/<tok>
 - 2026-11-16 18:00 [DM Owen Platt] **MatchTime**: Last reminder, Owen 🔔 Ratings for *Thursday Fives Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/EJj2CG7VCt
+    <app>/r/<tok>
 - 2026-11-16 18:00 [DM Paul Dunn] **MatchTime**: Last reminder, Paul 🔔 Ratings for *Thursday Fives Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/R2pCKjmHPx
+    <app>/r/<tok>
 - 2026-11-16 18:00 [DM Quinn Hart] **MatchTime**: Last reminder, Quinn 🔔 Ratings for *Thursday Fives Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/mCs0lKNkGr
+    <app>/r/<tok>
 - 2026-11-16 18:00 [DM Sean Tully] **MatchTime**: Last reminder, Sean 🔔 Ratings for *Thursday Fives Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/dRDChQAkZj
+    <app>/r/<tok>
 - 2026-11-16 18:00 [DM Tony Wade] **MatchTime**: Last reminder, Tony 🔔 Ratings for *Thursday Fives Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/ClQXjeG3u9
+    <app>/r/<tok>
 - 2026-11-16 18:00 [DM Vic Moss] **MatchTime**: Last reminder, Vic 🔔 Ratings for *Thursday Fives Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/FzaIRYw2vz
+    <app>/r/<tok>
 - 2026-11-16 18:00 database: sent-notification <match 2026-11-12 19:00>:rate-reminder:@nick:2026-11-16: (new) dm
     sent-notification <match 2026-11-12 19:00>:rate-reminder:@owen:2026-11-16: (new) dm
     sent-notification <match 2026-11-12 19:00>:rate-reminder:@paul:2026-11-16: (new) dm
@@ -359,7 +359,7 @@
     • Nick Burns (2)
     • Owen Platt (1)
 - 2026-11-17 19:00 database: sent-notification <match 2026-11-12 19:00>:mom-announcement: (new) group-message
-    sent-notification txtlog:<club>:350fd739205fe645:<match 2026-11-12 19:00>:mom-announcement: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 350fd739>:<match 2026-11-12 19:00>:mom-announcement: (new) outbound-text-log
 
 ### Wednesday: the rating window has closed (2026-11-18 09:00)
 

@@ -79,7 +79,7 @@
      "at": "2026-11-16 08:03",
      "to": "group hq",
      "kind": "out",
-     "text": "⭐ *One thing before Friday's teams*\n\nI don't know anyone's level yet, so for now I'd treat every player the same and the teams could come out lopsided.\n\nHamzah or Raihan: give each player a rough rating from 1 to 10 here:\nhttp://localhost:3471/admin/<tok>\n\nPlayers never see these, they only help me balance the sides. Rating the 18 players with no rating yet takes about 5 minutes.\n\nAfter that I learn from the ratings players give each other after every game, so this is only needed once.",
+     "text": "⭐ *One thing before Friday's teams*\n\nI don't know anyone's level yet, so for now I'd treat every player the same and the teams could come out lopsided.\n\nHamzah or Raihan: give each player a rough rating from 1 to 10 here:\n<app>/admin/<tok>\n\nPlayers never see these, they only help me balance the sides. Rating the 18 players with no rating yet takes about 5 minutes.\n\nAfter that I learn from the ratings players give each other after every game, so this is only needed once.",
      "instruction": "admin-group-message",
      "key": "org-<club>:seed-nudge:admin-group"
     },
@@ -97,9 +97,9 @@
     "<match 2026-11-20 20:30>: places: (new) 18",
     "match 2026-11-20 20:30: status: (new) UPCOMING",
     "sent-notification org-<club>:seed-nudge:admin-group: (new) admin-group-message",
-    "sent-notification txtlog:<club>:5219d5de6c8c33b7:org-<club>:seed-nudge:admin-group: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 25a3ce0f>:org-<club>:seed-nudge:admin-group: (new) outbound-text-log",
     "sent-notification <match 2026-11-20 20:30>:announce-match: (new) admin-group-message",
-    "sent-notification txtlog:<club>:c22dfc18408192ab:<match 2026-11-20 20:30>:announce-match: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text c22dfc18>:<match 2026-11-20 20:30>:announce-match: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -119,7 +119,7 @@
      "at": "2026-11-16 10:00",
      "to": "group hq",
      "kind": "out",
-     "text": "📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/admin/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "text": "📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/admin/<tok>\nMatchTime reminds you once a week until a venue is set.",
      "instruction": "admin-group-message",
      "key": "botjob-<id>"
     }
@@ -131,7 +131,7 @@
     "botjob admin-group → group: 📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no v: (new) pending",
     "sent-notification hqreply:<club>:wa-fnf-3: (new) admin-group-reply",
     "botjob admin-group → group: 📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no v: pending → sent",
-    "sent-notification txtlog:<club>:8d8014d379ec512f:botjob-<id>: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text b3a71db4>:botjob-<id>: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -151,7 +151,7 @@
      "at": "2026-11-16 10:03",
      "to": "group hq",
      "kind": "out",
-     "text": "✨ *New players to review*: 1 person was added automatically.\n\nAdded by name, from a list or someone else's message: Imti\n\nReview them and set phone, position and rating, or remove them:\nhttp://localhost:3471/admin/<tok>",
+     "text": "✨ *New players to review*: 1 person was added automatically.\n\nAdded by name, from a list or someone else's message: Imti\n\nReview them and set phone, position and rating, or remove them:\n<app>/admin/<tok>",
      "instruction": "admin-group-message",
      "key": "org-<club>:provisional-review:admin-group:p1794823320000"
     },
@@ -194,8 +194,8 @@
     "user <user Imti, no phone>: (new) name \"Imti\", no phone",
     "sent-notification org-<club>:first-teams:admin-group: (new) admin-group-message",
     "sent-notification org-<club>:provisional-review:admin-group:p1794823320000: (new) admin-group-message",
-    "sent-notification txtlog:<club>:16b343c2ab7a5c92:org-<club>:first-teams:admin-group: (new) outbound-text-log",
-    "sent-notification txtlog:<club>:fd27d12405057a5b:org-<club>:provisional-review:admin-group:p1794823320000: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 16b343c2>:org-<club>:first-teams:admin-group: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 7e68959e>:org-<club>:provisional-review:admin-group:p1794823320000: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -302,7 +302,7 @@
      "at": "2026-11-16 12:11",
      "to": "group hq",
      "kind": "out",
-     "text": "There are 8 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 10/18.\n\nBench:\n1. Idris Bello (no position, new)\n2. Kareem Saleh (no position, new)\n3. ? (no position, new)\n4. Bilal (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.\nIf nobody picks by Tuesday 12:11, the place stays open.",
+     "text": "There are 8 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 10/18.\n\nBench:\n1. Idris Bello (no position, new)\n2. Kareem Saleh (no position, new)\n3. +44 7700 900216 (no position, new)\n4. Bilal (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.\nIf nobody picks by Tuesday 12:11, the place stays open.",
      "instruction": "admin-group-message",
      "key": "botjob-<id>"
     },
@@ -329,9 +329,9 @@
     "match 2026-11-20 20:30: Kareem Saleh: (new) BENCH",
     "botjob admin-group → group: There are 8 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 10/18. Benc: (new) sent",
     "sent-notification pick-open:<match 2026-11-20 20:30>:first: (new) admin-notice",
-    "sent-notification txtlog:<club>:6b1273c377ada7fa:botjob-<id>: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text a1157dc2>:botjob-<id>: (new) outbound-text-log",
     "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-16: (new) admin-group-message",
-    "sent-notification txtlog:<club>:11c3273d1ddead51:<match 2026-11-20 20:30>:evening-update:2026-11-16: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 11c3273d>:<match 2026-11-20 20:30>:evening-update:2026-11-16: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -416,7 +416,7 @@
      "at": "2026-11-17 13:00",
      "to": "group hq",
      "kind": "out",
-     "text": "Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 2 on the bench (? and Bilal).",
+     "text": "Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 2 on the bench (+44 7700 900216 and Bilal).",
      "instruction": "admin-group-message",
      "key": "botjob-<id>"
     },
@@ -443,9 +443,9 @@
     "match 2026-11-20 20:30: Tariq Aziz: CONFIRMED → DROPPED",
     "sent-notification hqreply:<club>:wa-fnf-21: (new) admin-group-reply",
     "botjob admin-group → group: Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 2 on the b: (new) sent",
-    "sent-notification txtlog:<club>:368c5555ac7b8f5e:botjob-<id>: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 8944551a>:botjob-<id>: (new) outbound-text-log",
     "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-17: (new) admin-group-message",
-    "sent-notification txtlog:<club>:e864b1fca9fd55c0:<match 2026-11-20 20:30>:evening-update:2026-11-17: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text e864b1fc>:<match 2026-11-20 20:30>:evening-update:2026-11-17: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -502,7 +502,7 @@
      "at": "2026-11-17 18:11",
      "to": "group hq",
      "kind": "out",
-     "text": "There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18.\n\nBench:\n1. ? (no position, new)\n2. Bilal (no position, new)\n3. Rami Nasser (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.\nIf nobody picks by Wednesday 18:11, the place stays open.",
+     "text": "There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18.\n\nBench:\n1. +44 7700 900216 (no position, new)\n2. Bilal (no position, new)\n3. Rami Nasser (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.\nIf nobody picks by Wednesday 18:11, the place stays open.",
      "instruction": "admin-group-message",
      "key": "botjob-<id>"
     }
@@ -516,7 +516,7 @@
     "sent-notification greply:<club>:wa-fnf-26: (new) group-reply",
     "botjob admin-group → group: There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18. Benc: (new) sent",
     "sent-notification pick-open:<match 2026-11-20 20:30>:<id>: (new) admin-notice",
-    "sent-notification txtlog:<club>:7e506da44c7051ca:botjob-<id>: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 9a103df0>:botjob-<id>: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -562,7 +562,7 @@
      "at": "2026-11-18 19:00",
      "to": "group hq",
      "kind": "out",
-     "text": "Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 3 on the bench (?, Bilal and Rami Nasser).",
+     "text": "Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 3 on the bench (+44 7700 900216, Bilal and Rami Nasser).",
      "instruction": "admin-group-message",
      "key": "botjob-<id>"
     },
@@ -581,11 +581,11 @@
    "db": [
     "sent-notification hqreply:<club>:wa-fnf-32: (new) admin-group-reply",
     "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-18: (new) admin-group-message",
-    "sent-notification txtlog:<club>:77d8e541608c1925:<match 2026-11-20 20:30>:evening-update:2026-11-18: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 77d8e541>:<match 2026-11-20 20:30>:evening-update:2026-11-18: (new) outbound-text-log",
     "botjob admin-group → group: Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 3 on the b: (new) sent",
-    "sent-notification txtlog:<club>:418d4dc22f03c178:botjob-<id>: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 08d8039d>:botjob-<id>: (new) outbound-text-log",
     "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-19: (new) admin-group-message",
-    "sent-notification txtlog:<club>:77d8e541608c1925:<match 2026-11-20 20:30>:evening-update:2026-11-19: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 77d8e541>:<match 2026-11-20 20:30>:evening-update:2026-11-19: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -604,7 +604,7 @@
      "at": "2026-11-19 19:11",
      "to": "group hq",
      "kind": "out",
-     "text": "There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18.\n\nBench:\n1. ? (no position, new)\n2. Bilal (no position, new)\n3. Rami Nasser (no position, new)\n4. ? (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.\nIf nobody picks by Friday 16:30, the place stays open.",
+     "text": "There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18.\n\nBench:\n1. +44 7700 900216 (no position, new)\n2. Bilal (no position, new)\n3. Rami Nasser (no position, new)\n4. +44 7700 900217 (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.\nIf nobody picks by Friday 16:30, the place stays open.",
      "instruction": "admin-group-message",
      "key": "botjob-<id>"
     }
@@ -616,7 +616,7 @@
     "<match 2026-11-20 20:30>: attendance @anon2: (new) BENCH #19",
     "botjob admin-group → group: There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18. Benc (#2): (new) sent",
     "sent-notification pick-open:<match 2026-11-20 20:30>:<id>: (new) admin-notice",
-    "sent-notification txtlog:<club>:f220390c0a2cafa9:botjob-<id>: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 68ea5b3f>:botjob-<id>: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -635,17 +635,9 @@
      "at": "2026-11-19 21:00",
      "to": "group hq",
      "kind": "out",
-     "text": "The bench for *Friday Night Sandbox* (Fri 20 Nov at 20:30) has changed. 6 places open, squad 12/18.\n\nBench:\n1. ? (no position, new)\n2. Bilal (no position, new)\n3. Rami Nasser (no position, new)\n4. ? (no position, new)\n5. Hadi Mansour (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.",
+     "text": "The bench for *Friday Night Sandbox* (Fri 20 Nov at 20:30) has changed. 6 places open, squad 12/18.\n\nBench:\n1. +44 7700 900216 (no position, new)\n2. Bilal (no position, new)\n3. Rami Nasser (no position, new)\n4. +44 7700 900217 (no position, new)\n5. Hadi Mansour (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.",
      "instruction": "admin-group-message",
      "key": "botjob-<id>"
-    },
-    {
-     "at": "2026-11-20 08:00",
-     "to": "group hq",
-     "kind": "out",
-     "text": "📋 *Squad for Friday Night Sandbox, Fri 20 Nov at 20:30*: 12 of 18 in, 6 spaces.\nKickoff is getting close and the squad is still short.\n\n*Confirmed (12/18):*\n1. Hamzah Ali\n2. Raihan Khan\n3. Najib Rahman\n4. Zak Ahmed\n5. Omar Farooq\n6. Yusuf Malik\n7. Adam Hussain\n8. Sami Iqbal\n9. Imti\n10. Nabil Haddad\n11. Idris Bello\n12. Kareem Saleh\n\n*Bench (5):*\n1. (unnamed)\n2. Bilal\n3. Rami Nasser\n4. (unnamed)\n5. Hadi Mansour\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
-     "instruction": "admin-group-message",
-     "key": "<match 2026-11-20 20:30>:chase-match-day-morning:2026-11-20"
     },
     {
      "at": "2026-11-20 10:00",
@@ -664,11 +656,9 @@
     "match 2026-11-20 20:30: Hadi Mansour: (new) BENCH",
     "botjob admin-group → group: The bench for *Friday Night Sandbox* (Fri 20 Nov at 20:30) has changed. 6 places open, squ: (new) sent",
     "sent-notification pick-open:<match 2026-11-20 20:30>:<id>: (new) admin-notice",
-    "sent-notification txtlog:<club>:f66e7ec210455b35:botjob-<id>: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 333d62ff>:botjob-<id>: (new) outbound-text-log",
     "<match 2026-11-27 20:30>: places: (new) 18",
     "match 2026-11-27 20:30: status: (new) UPCOMING",
-    "sent-notification <match 2026-11-20 20:30>:chase-match-day-morning:2026-11-20: (new) admin-group-message",
-    "sent-notification txtlog:<club>:06126d8c0a251b56:<match 2026-11-20 20:30>:chase-match-day-morning:2026-11-20: (new) outbound-text-log",
     "<match 2026-11-20 20:30>: team of <user Imti, no phone>: (new) RED",
     "<match 2026-11-20 20:30>: team of @adam: (new) RED",
     "<match 2026-11-20 20:30>: team of @hamzah: (new) RED",
@@ -696,7 +686,7 @@
     "match 2026-11-20 20:30: team Yusuf Malik: (new) YELLOW",
     "match 2026-11-20 20:30: team Zak Ahmed: (new) YELLOW",
     "sent-notification team-proposal:auto:<match 2026-11-20 20:30>: (new) admin-notice",
-    "sent-notification txtlog:<club>:8b556daecd9eeac2:botjob-<id>: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 8b556dae>:botjob-<id>: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -725,7 +715,7 @@
     "@hamzah in hq: \"@Match Time make teams\" → admin-group: teams-built, 4 model call(s)"
    ],
    "db": [
-    "sent-notification hqreply:<club>:wa-fnf-43: (new) admin-group-reply"
+    "sent-notification hqreply:<club>:wa-fnf-42: (new) admin-group-reply"
    ],
    "errors": []
   },
@@ -750,28 +740,12 @@
      "key": "botjob-<id>"
     },
     {
-     "at": "2026-11-20 17:00",
-     "to": "group hq",
-     "kind": "out",
-     "text": "📋 *Squad for Friday Night Sandbox, Fri 20 Nov at 20:30*: 12 of 18 in, 6 spaces.\nKickoff is getting close and the squad is still short.\n\n*Confirmed (12/18):*\n1. Hamzah Ali\n2. Raihan Khan\n3. Najib Rahman\n4. Zak Ahmed\n5. Omar Farooq\n6. Yusuf Malik\n7. Adam Hussain\n8. Sami Iqbal\n9. Imti\n10. Nabil Haddad\n11. Idris Bello\n12. Kareem Saleh\n\n*Bench (5):*\n1. (unnamed)\n2. Bilal\n3. Rami Nasser\n4. (unnamed)\n5. Hadi Mansour\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
-     "instruction": "admin-group-message",
-     "key": "<match 2026-11-20 20:30>:chase-pre-kickoff"
-    },
-    {
      "at": "2026-11-20 19:00",
      "to": "group hq",
      "kind": "out",
      "text": "⏰ The teams for 20:30 aren't final yet. Tag me and ask to see them, in your own words (for example *@Match Time show me the teams*), then say *@Match Time YES*.",
      "instruction": "admin-group-message",
      "key": "botjob-<id>"
-    },
-    {
-     "at": "2026-11-20 19:00",
-     "to": "group hq",
-     "kind": "out",
-     "text": "📋 *Squad for Friday Night Sandbox, Fri 20 Nov at 20:30*: 12 of 18 in, 6 spaces.\nKickoff is getting close and the squad is still short.\n\n*Confirmed (12/18):*\n1. Hamzah Ali\n2. Raihan Khan\n3. Najib Rahman\n4. Zak Ahmed\n5. Omar Farooq\n6. Yusuf Malik\n7. Adam Hussain\n8. Sami Iqbal\n9. Imti\n10. Nabil Haddad\n11. Idris Bello\n12. Kareem Saleh\n\n*Bench (5):*\n1. (unnamed)\n2. Bilal\n3. Rami Nasser\n4. (unnamed)\n5. Hadi Mansour\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
-     "instruction": "admin-group-message",
-     "key": "<match 2026-11-20 20:30>:pre-kickoff"
     }
    ],
    "handled": [
@@ -782,15 +756,11 @@
     "<match 2026-11-20 20:30>: team of @zak: YELLOW → RED",
     "match 2026-11-20 20:30: team Omar Farooq: RED → YELLOW",
     "match 2026-11-20 20:30: team Zak Ahmed: YELLOW → RED",
-    "sent-notification hqreply:<club>:wa-fnf-45: (new) admin-group-reply",
+    "sent-notification hqreply:<club>:wa-fnf-44: (new) admin-group-reply",
     "botjob admin-group → group: Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 5 on the b: (new) sent",
-    "sent-notification <match 2026-11-20 20:30>:chase-pre-kickoff: (new) admin-group-message",
-    "sent-notification txtlog:<club>:06126d8c0a251b56:<match 2026-11-20 20:30>:chase-pre-kickoff: (new) outbound-text-log",
-    "sent-notification txtlog:<club>:b8faab29c6890f93:botjob-<id>: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text b8faab29>:botjob-<id>: (new) outbound-text-log",
     "botjob admin-group → group: ⏰ The teams for 20:30 aren't final yet. Tag me and ask to see them, in your own words (for: (new) sent",
-    "sent-notification <match 2026-11-20 20:30>:pre-kickoff: (new) admin-group-message",
-    "sent-notification txtlog:<club>:06126d8c0a251b56:<match 2026-11-20 20:30>:pre-kickoff: (new) outbound-text-log",
-    "sent-notification txtlog:<club>:f04c5ba073dcd517:botjob-<id>: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text f04c5ba0>:botjob-<id>: (new) outbound-text-log",
     "match 2026-11-20 20:30: status: TEAMS_GENERATED → COMPLETED"
    ],
    "errors": []
@@ -818,7 +788,7 @@
      "at": "2026-11-21 08:00",
      "to": "dm @hamzah",
      "kind": "out",
-     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-dm:@hamzah"
     },
@@ -826,7 +796,7 @@
      "at": "2026-11-21 08:00",
      "to": "dm @raihan",
      "kind": "out",
-     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-dm:@raihan"
     },
@@ -834,7 +804,7 @@
      "at": "2026-11-21 08:00",
      "to": "dm @najib",
      "kind": "out",
-     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-dm:@najib"
     },
@@ -842,7 +812,7 @@
      "at": "2026-11-21 08:00",
      "to": "dm @zak",
      "kind": "out",
-     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-dm:@zak"
     },
@@ -850,7 +820,7 @@
      "at": "2026-11-21 08:00",
      "to": "dm @omar",
      "kind": "out",
-     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-dm:@omar"
     },
@@ -858,7 +828,7 @@
      "at": "2026-11-21 08:00",
      "to": "dm @yusuf",
      "kind": "out",
-     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-dm:@yusuf"
     },
@@ -866,7 +836,7 @@
      "at": "2026-11-21 08:00",
      "to": "dm @adam",
      "kind": "out",
-     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-dm:@adam"
     },
@@ -874,7 +844,7 @@
      "at": "2026-11-21 08:00",
      "to": "dm @sami",
      "kind": "out",
-     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-dm:@sami"
     },
@@ -882,7 +852,7 @@
      "at": "2026-11-21 08:00",
      "to": "dm @nabil",
      "kind": "out",
-     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-dm:@nabil"
     },
@@ -890,7 +860,7 @@
      "at": "2026-11-21 08:00",
      "to": "dm @idris",
      "kind": "out",
-     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-dm:@idris"
     },
@@ -898,7 +868,7 @@
      "at": "2026-11-21 08:00",
      "to": "dm @kareem",
      "kind": "out",
-     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-dm:@kareem"
     },
@@ -924,7 +894,7 @@
    ],
    "db": [
     "match 2026-11-20 20:30: score: (new) 6-4",
-    "sent-notification greply:<club>:wa-fnf-51: (new) group-reply",
+    "sent-notification greply:<club>:wa-fnf-48: (new) group-reply",
     "<match 2026-11-27 20:30>: attendance <user Imti, no phone>: (new) CONFIRMED #9",
     "<match 2026-11-27 20:30>: attendance @adam: (new) CONFIRMED #7",
     "<match 2026-11-27 20:30>: attendance @hamzah: (new) CONFIRMED #1",
@@ -962,8 +932,8 @@
     "sent-notification <match 2026-11-20 20:30>:rate-dm:@zak: (new) dm",
     "sent-notification <match 2026-11-20 20:30>:rate-promo: (new) admin-group-message",
     "sent-notification <match 2026-11-27 20:30>:rolling-announce: (new) admin-group-message",
-    "sent-notification txtlog:<club>:4dfaa66c92ad6db7:<match 2026-11-27 20:30>:rolling-announce: (new) outbound-text-log",
-    "sent-notification txtlog:<club>:d93b2bf52829b596:<match 2026-11-20 20:30>:rate-promo: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 4dfaa66c>:<match 2026-11-27 20:30>:rolling-announce: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text d93b2bf5>:<match 2026-11-20 20:30>:rate-promo: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -1010,9 +980,9 @@
     "match 2026-11-20 20:30: MoM votes: 1 → 2",
     "match 2026-11-20 20:30: ratings: 11 → 22",
     "sent-notification <match 2026-11-27 20:30>:evening-update:2026-11-21: (new) admin-group-message",
-    "sent-notification txtlog:<club>:16b9d2aadd66353d:<match 2026-11-27 20:30>:evening-update:2026-11-21: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-21: (new) outbound-text-log",
     "sent-notification <match 2026-11-27 20:30>:evening-update:2026-11-22: (new) admin-group-message",
-    "sent-notification txtlog:<club>:16b9d2aadd66353d:<match 2026-11-27 20:30>:evening-update:2026-11-22: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-22: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -1024,7 +994,7 @@
      "at": "2026-11-22 18:00",
      "to": "dm @raihan",
      "kind": "out",
-     "text": "Hey Raihan 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Raihan 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-reminder:@raihan:2026-11-22"
     },
@@ -1032,7 +1002,7 @@
      "at": "2026-11-22 18:00",
      "to": "dm @najib",
      "kind": "out",
-     "text": "Hey Najib 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Najib 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-reminder:@najib:2026-11-22"
     },
@@ -1040,7 +1010,7 @@
      "at": "2026-11-22 18:00",
      "to": "dm @omar",
      "kind": "out",
-     "text": "Hey Omar 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Omar 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-reminder:@omar:2026-11-22"
     },
@@ -1048,7 +1018,7 @@
      "at": "2026-11-22 18:00",
      "to": "dm @yusuf",
      "kind": "out",
-     "text": "Hey Yusuf 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Yusuf 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-reminder:@yusuf:2026-11-22"
     },
@@ -1056,7 +1026,7 @@
      "at": "2026-11-22 18:00",
      "to": "dm @adam",
      "kind": "out",
-     "text": "Hey Adam 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Adam 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-reminder:@adam:2026-11-22"
     },
@@ -1064,7 +1034,7 @@
      "at": "2026-11-22 18:00",
      "to": "dm @sami",
      "kind": "out",
-     "text": "Hey Sami 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Sami 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-reminder:@sami:2026-11-22"
     },
@@ -1072,7 +1042,7 @@
      "at": "2026-11-22 18:00",
      "to": "dm @nabil",
      "kind": "out",
-     "text": "Hey Nabil 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Nabil 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-reminder:@nabil:2026-11-22"
     },
@@ -1080,7 +1050,7 @@
      "at": "2026-11-22 18:00",
      "to": "dm @kareem",
      "kind": "out",
-     "text": "Hey Kareem 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Kareem 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-20 20:30>:rate-reminder:@kareem:2026-11-22"
     },
@@ -1096,7 +1066,7 @@
      "at": "2026-11-23 10:00",
      "to": "group hq",
      "kind": "out",
-     "text": "📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/admin/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "text": "📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/admin/<tok>\nMatchTime reminds you once a week until a venue is set.",
      "instruction": "admin-group-message",
      "key": "botjob-<id>"
     },
@@ -1125,11 +1095,11 @@
     "sent-notification <match 2026-11-20 20:30>:rate-reminder:@raihan:2026-11-22: (new) dm",
     "sent-notification <match 2026-11-20 20:30>:rate-reminder:@sami:2026-11-22: (new) dm",
     "sent-notification <match 2026-11-20 20:30>:rate-reminder:@yusuf:2026-11-22: (new) dm",
-    "sent-notification txtlog:<club>:9d3c982ddbd943a7:<match 2026-11-20 20:30>:badges: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 9d3c982d>:<match 2026-11-20 20:30>:badges: (new) outbound-text-log",
     "botjob admin-group → group: 📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no v (#2): (new) sent",
-    "sent-notification txtlog:<club>:8d8014d379ec512f:botjob-<id>: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text b3a71db4>:botjob-<id>: (new) outbound-text-log",
     "sent-notification <match 2026-11-27 20:30>:evening-update:2026-11-23: (new) admin-group-message",
-    "sent-notification txtlog:<club>:16b9d2aadd66353d:<match 2026-11-27 20:30>:evening-update:2026-11-23: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-23: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -1272,13 +1242,10 @@
   "member Zak Ahmed": "PLAYER",
   "sent-notification <match 2026-11-20 20:30>:announce-match": "admin-group-message",
   "sent-notification <match 2026-11-20 20:30>:badges": "group-message",
-  "sent-notification <match 2026-11-20 20:30>:chase-match-day-morning:2026-11-20": "admin-group-message",
-  "sent-notification <match 2026-11-20 20:30>:chase-pre-kickoff": "admin-group-message",
   "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-16": "admin-group-message",
   "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-17": "admin-group-message",
   "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-18": "admin-group-message",
   "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-19": "admin-group-message",
-  "sent-notification <match 2026-11-20 20:30>:pre-kickoff": "admin-group-message",
   "sent-notification <match 2026-11-20 20:30>:rate-dm:@adam": "dm",
   "sent-notification <match 2026-11-20 20:30>:rate-dm:@hamzah": "dm",
   "sent-notification <match 2026-11-20 20:30>:rate-dm:@idris": "dm",
@@ -1304,13 +1271,13 @@
   "sent-notification <match 2026-11-27 20:30>:evening-update:2026-11-23": "admin-group-message",
   "sent-notification <match 2026-11-27 20:30>:rolling-announce": "admin-group-message",
   "sent-notification greply:<club>:wa-fnf-26": "group-reply",
-  "sent-notification greply:<club>:wa-fnf-51": "group-reply",
+  "sent-notification greply:<club>:wa-fnf-48": "group-reply",
   "sent-notification hqreply:<club>:wa-fnf-19": "admin-group-reply",
   "sent-notification hqreply:<club>:wa-fnf-21": "admin-group-reply",
   "sent-notification hqreply:<club>:wa-fnf-3": "admin-group-reply",
   "sent-notification hqreply:<club>:wa-fnf-32": "admin-group-reply",
-  "sent-notification hqreply:<club>:wa-fnf-43": "admin-group-reply",
-  "sent-notification hqreply:<club>:wa-fnf-45": "admin-group-reply",
+  "sent-notification hqreply:<club>:wa-fnf-42": "admin-group-reply",
+  "sent-notification hqreply:<club>:wa-fnf-44": "admin-group-reply",
   "sent-notification hqreply:<club>:wa-fnf-6": "admin-group-reply",
   "sent-notification org-<club>:bot-intro": "bot-intro",
   "sent-notification org-<club>:first-teams:admin-group": "admin-group-message",
@@ -1319,33 +1286,30 @@
   "sent-notification pick-open:<match 2026-11-20 20:30>:<id>": "admin-notice",
   "sent-notification pick-open:<match 2026-11-20 20:30>:first": "admin-notice",
   "sent-notification team-proposal:auto:<match 2026-11-20 20:30>": "admin-notice",
-  "sent-notification txtlog:<club>:06126d8c0a251b56:<match 2026-11-20 20:30>:chase-match-day-morning:2026-11-20": "outbound-text-log",
-  "sent-notification txtlog:<club>:06126d8c0a251b56:<match 2026-11-20 20:30>:chase-pre-kickoff": "outbound-text-log",
-  "sent-notification txtlog:<club>:06126d8c0a251b56:<match 2026-11-20 20:30>:pre-kickoff": "outbound-text-log",
-  "sent-notification txtlog:<club>:11c3273d1ddead51:<match 2026-11-20 20:30>:evening-update:2026-11-16": "outbound-text-log",
-  "sent-notification txtlog:<club>:16b343c2ab7a5c92:org-<club>:first-teams:admin-group": "outbound-text-log",
-  "sent-notification txtlog:<club>:16b9d2aadd66353d:<match 2026-11-27 20:30>:evening-update:2026-11-21": "outbound-text-log",
-  "sent-notification txtlog:<club>:16b9d2aadd66353d:<match 2026-11-27 20:30>:evening-update:2026-11-22": "outbound-text-log",
-  "sent-notification txtlog:<club>:16b9d2aadd66353d:<match 2026-11-27 20:30>:evening-update:2026-11-23": "outbound-text-log",
-  "sent-notification txtlog:<club>:368c5555ac7b8f5e:botjob-<id>": "outbound-text-log",
-  "sent-notification txtlog:<club>:418d4dc22f03c178:botjob-<id>": "outbound-text-log",
-  "sent-notification txtlog:<club>:4dfaa66c92ad6db7:<match 2026-11-27 20:30>:rolling-announce": "outbound-text-log",
-  "sent-notification txtlog:<club>:5219d5de6c8c33b7:org-<club>:seed-nudge:admin-group": "outbound-text-log",
-  "sent-notification txtlog:<club>:6b1273c377ada7fa:botjob-<id>": "outbound-text-log",
-  "sent-notification txtlog:<club>:77d8e541608c1925:<match 2026-11-20 20:30>:evening-update:2026-11-18": "outbound-text-log",
-  "sent-notification txtlog:<club>:77d8e541608c1925:<match 2026-11-20 20:30>:evening-update:2026-11-19": "outbound-text-log",
-  "sent-notification txtlog:<club>:7e506da44c7051ca:botjob-<id>": "outbound-text-log",
-  "sent-notification txtlog:<club>:8b556daecd9eeac2:botjob-<id>": "outbound-text-log",
-  "sent-notification txtlog:<club>:8d8014d379ec512f:botjob-<id>": "outbound-text-log",
-  "sent-notification txtlog:<club>:9d3c982ddbd943a7:<match 2026-11-20 20:30>:badges": "outbound-text-log",
-  "sent-notification txtlog:<club>:b8faab29c6890f93:botjob-<id>": "outbound-text-log",
-  "sent-notification txtlog:<club>:c22dfc18408192ab:<match 2026-11-20 20:30>:announce-match": "outbound-text-log",
-  "sent-notification txtlog:<club>:d93b2bf52829b596:<match 2026-11-20 20:30>:rate-promo": "outbound-text-log",
-  "sent-notification txtlog:<club>:e864b1fca9fd55c0:<match 2026-11-20 20:30>:evening-update:2026-11-17": "outbound-text-log",
-  "sent-notification txtlog:<club>:f04c5ba073dcd517:botjob-<id>": "outbound-text-log",
-  "sent-notification txtlog:<club>:f220390c0a2cafa9:botjob-<id>": "outbound-text-log",
-  "sent-notification txtlog:<club>:f66e7ec210455b35:botjob-<id>": "outbound-text-log",
-  "sent-notification txtlog:<club>:fd27d12405057a5b:org-<club>:provisional-review:admin-group:p1794823320000": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 08d8039d>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 11c3273d>:<match 2026-11-20 20:30>:evening-update:2026-11-16": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 16b343c2>:org-<club>:first-teams:admin-group": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-21": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-22": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-23": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 25a3ce0f>:org-<club>:seed-nudge:admin-group": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 333d62ff>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 4dfaa66c>:<match 2026-11-27 20:30>:rolling-announce": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 68ea5b3f>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 77d8e541>:<match 2026-11-20 20:30>:evening-update:2026-11-18": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 77d8e541>:<match 2026-11-20 20:30>:evening-update:2026-11-19": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 7e68959e>:org-<club>:provisional-review:admin-group:p1794823320000": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 8944551a>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 8b556dae>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 9a103df0>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 9d3c982d>:<match 2026-11-20 20:30>:badges": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text a1157dc2>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text b3a71db4>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text b8faab29>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text c22dfc18>:<match 2026-11-20 20:30>:announce-match": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text d93b2bf5>:<match 2026-11-20 20:30>:rate-promo": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text e864b1fc>:<match 2026-11-20 20:30>:evening-update:2026-11-17": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text f04c5ba0>:botjob-<id>": "outbound-text-log",
   "user <user Imti, no phone>": "name \"Imti\", no phone",
   "user @adam": "name \"Adam Hussain\"",
   "user @anon1": "name (none)",

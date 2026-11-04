@@ -12,11 +12,11 @@
   "calls": 53,
   "meter": {
    "calls": 53,
-   "costUsd": 0.012947650000000007,
+   "costUsd": 0.013423499999999998,
    "byModel": {
     "claude-haiku-5-5": {
      "calls": 53,
-     "costUsd": 0.012947650000000007
+     "costUsd": 0.013423499999999998
     }
    }
   }

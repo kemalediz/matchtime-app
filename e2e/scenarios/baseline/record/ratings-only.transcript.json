@@ -64,7 +64,7 @@
      "at": "2026-11-09 10:00",
      "to": "dm @lee",
      "kind": "out",
-     "text": "📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "text": "📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
      "instruction": "dm",
      "key": "botjob-<id>"
     }
@@ -166,7 +166,7 @@
      "at": "2026-11-13 08:00",
      "to": "dm @lee",
      "kind": "out",
-     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-dm:@lee"
     },
@@ -174,7 +174,7 @@
      "at": "2026-11-13 08:00",
      "to": "dm @mark",
      "kind": "out",
-     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-dm:@mark"
     },
@@ -182,7 +182,7 @@
      "at": "2026-11-13 08:00",
      "to": "dm @nick",
      "kind": "out",
-     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-dm:@nick"
     },
@@ -190,7 +190,7 @@
      "at": "2026-11-13 08:00",
      "to": "dm @owen",
      "kind": "out",
-     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-dm:@owen"
     },
@@ -198,7 +198,7 @@
      "at": "2026-11-13 08:00",
      "to": "dm @paul",
      "kind": "out",
-     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-dm:@paul"
     },
@@ -206,7 +206,7 @@
      "at": "2026-11-13 08:00",
      "to": "dm @quinn",
      "kind": "out",
-     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-dm:@quinn"
     },
@@ -214,7 +214,7 @@
      "at": "2026-11-13 08:00",
      "to": "dm @ross",
      "kind": "out",
-     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-dm:@ross"
     },
@@ -222,7 +222,7 @@
      "at": "2026-11-13 08:00",
      "to": "dm @sean",
      "kind": "out",
-     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-dm:@sean"
     },
@@ -230,7 +230,7 @@
      "at": "2026-11-13 08:00",
      "to": "dm @tony",
      "kind": "out",
-     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-dm:@tony"
     },
@@ -238,7 +238,7 @@
      "at": "2026-11-13 08:00",
      "to": "dm @vic",
      "kind": "out",
-     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Thursday Fives Sandbox*, Thu 12 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-dm:@vic"
     }
@@ -283,7 +283,7 @@
     "match 2026-11-12 19:00: MoM votes: (new) 1",
     "match 2026-11-12 19:00: ratings: (new) 9",
     "sent-notification <match 2026-11-12 19:00>:rate-promo: (new) group-message",
-    "sent-notification txtlog:<club>:c9e1cc38b900fe0b:<match 2026-11-12 19:00>:rate-promo: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text c9e1cc38>:<match 2026-11-12 19:00>:rate-promo: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -309,7 +309,7 @@
      "at": "2026-11-14 18:00",
      "to": "dm @nick",
      "kind": "out",
-     "text": "Hey Nick 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Nick 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@nick:2026-11-14"
     },
@@ -317,7 +317,7 @@
      "at": "2026-11-14 18:00",
      "to": "dm @owen",
      "kind": "out",
-     "text": "Hey Owen 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Owen 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@owen:2026-11-14"
     },
@@ -325,7 +325,7 @@
      "at": "2026-11-14 18:00",
      "to": "dm @paul",
      "kind": "out",
-     "text": "Hey Paul 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Paul 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@paul:2026-11-14"
     },
@@ -333,7 +333,7 @@
      "at": "2026-11-14 18:00",
      "to": "dm @quinn",
      "kind": "out",
-     "text": "Hey Quinn 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Quinn 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@quinn:2026-11-14"
     },
@@ -341,7 +341,7 @@
      "at": "2026-11-14 18:00",
      "to": "dm @sean",
      "kind": "out",
-     "text": "Hey Sean 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Sean 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@sean:2026-11-14"
     },
@@ -349,7 +349,7 @@
      "at": "2026-11-14 18:00",
      "to": "dm @tony",
      "kind": "out",
-     "text": "Hey Tony 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Tony 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@tony:2026-11-14"
     },
@@ -357,7 +357,7 @@
      "at": "2026-11-14 18:00",
      "to": "dm @vic",
      "kind": "out",
-     "text": "Hey Vic 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Vic 👋 Friendly nudge, you haven't rated *Thursday Fives Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@vic:2026-11-14"
     },
@@ -373,7 +373,7 @@
      "at": "2026-11-16 10:00",
      "to": "dm @lee",
      "kind": "out",
-     "text": "📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "text": "📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
      "instruction": "dm",
      "key": "botjob-<id>"
     },
@@ -381,7 +381,7 @@
      "at": "2026-11-16 18:00",
      "to": "dm @nick",
      "kind": "out",
-     "text": "Last reminder, Nick 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Nick 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@nick:2026-11-16"
     },
@@ -389,7 +389,7 @@
      "at": "2026-11-16 18:00",
      "to": "dm @owen",
      "kind": "out",
-     "text": "Last reminder, Owen 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Owen 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@owen:2026-11-16"
     },
@@ -397,7 +397,7 @@
      "at": "2026-11-16 18:00",
      "to": "dm @paul",
      "kind": "out",
-     "text": "Last reminder, Paul 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Paul 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@paul:2026-11-16"
     },
@@ -405,7 +405,7 @@
      "at": "2026-11-16 18:00",
      "to": "dm @quinn",
      "kind": "out",
-     "text": "Last reminder, Quinn 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Quinn 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@quinn:2026-11-16"
     },
@@ -413,7 +413,7 @@
      "at": "2026-11-16 18:00",
      "to": "dm @sean",
      "kind": "out",
-     "text": "Last reminder, Sean 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Sean 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@sean:2026-11-16"
     },
@@ -421,7 +421,7 @@
      "at": "2026-11-16 18:00",
      "to": "dm @tony",
      "kind": "out",
-     "text": "Last reminder, Tony 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Tony 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@tony:2026-11-16"
     },
@@ -429,7 +429,7 @@
      "at": "2026-11-16 18:00",
      "to": "dm @vic",
      "kind": "out",
-     "text": "Last reminder, Vic 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Vic 🔔 Ratings for *Thursday Fives Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-12 19:00>:rate-reminder:@vic:2026-11-16"
     },
@@ -457,7 +457,7 @@
     "sent-notification <match 2026-11-12 19:00>:rate-reminder:@sean:2026-11-14: (new) dm",
     "sent-notification <match 2026-11-12 19:00>:rate-reminder:@tony:2026-11-14: (new) dm",
     "sent-notification <match 2026-11-12 19:00>:rate-reminder:@vic:2026-11-14: (new) dm",
-    "sent-notification txtlog:<club>:28672f2ab5abd6fa:<match 2026-11-12 19:00>:badges: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 28672f2a>:<match 2026-11-12 19:00>:badges: (new) outbound-text-log",
     "botjob dm → @lee: 📍 Confirm *Thursday Fives Sandbox*'s venue so nearby clubs can find you: MatchTime has no (#2): (new) sent",
     "sent-notification <match 2026-11-12 19:00>:rate-reminder:@nick:2026-11-16: (new) dm",
     "sent-notification <match 2026-11-12 19:00>:rate-reminder:@owen:2026-11-16: (new) dm",
@@ -467,7 +467,7 @@
     "sent-notification <match 2026-11-12 19:00>:rate-reminder:@tony:2026-11-16: (new) dm",
     "sent-notification <match 2026-11-12 19:00>:rate-reminder:@vic:2026-11-16: (new) dm",
     "sent-notification <match 2026-11-12 19:00>:mom-announcement: (new) group-message",
-    "sent-notification txtlog:<club>:350fd739205fe645:<match 2026-11-12 19:00>:mom-announcement: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 350fd739>:<match 2026-11-12 19:00>:mom-announcement: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -558,9 +558,9 @@
   "sent-notification greply:<club>:wa-ratingsonly-3": "group-reply",
   "sent-notification greply:<club>:wa-ratingsonly-6": "group-reply",
   "sent-notification org-<club>:bot-intro": "bot-intro",
-  "sent-notification txtlog:<club>:28672f2ab5abd6fa:<match 2026-11-12 19:00>:badges": "outbound-text-log",
-  "sent-notification txtlog:<club>:350fd739205fe645:<match 2026-11-12 19:00>:mom-announcement": "outbound-text-log",
-  "sent-notification txtlog:<club>:c9e1cc38b900fe0b:<match 2026-11-12 19:00>:rate-promo": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 28672f2a>:<match 2026-11-12 19:00>:badges": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 350fd739>:<match 2026-11-12 19:00>:mom-announcement": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text c9e1cc38>:<match 2026-11-12 19:00>:rate-promo": "outbound-text-log",
   "user @lee": "name \"Lee Carter\"",
   "user @mark": "name \"Mark Evans\"",
   "user @nick": "name \"Nick Burns\"",

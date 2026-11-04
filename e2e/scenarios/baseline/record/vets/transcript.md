@@ -111,11 +111,11 @@
 - 2026-11-10 09:00 database: sent-notification <match 2026-11-16 20:30>:announce-match: (new) group-message
     sent-notification org-<club>:monthly-close-sweep:2026-11-10T08: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-10T09: (new) monthly-sweep
-    sent-notification txtlog:<club>:c3b41338b3512129:<match 2026-11-16 20:30>:announce-match: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text c3b41338>:<match 2026-11-16 20:30>:announce-match: (new) outbound-text-log
 - 2026-11-10 09:30 [Monday Night Vets Sandbox] **Gus Moore**: in for monday _(ignored / noise)_
 - 2026-11-10 09:40 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 1 message(s) to analyze in one batch; 2 model call(s) under the stubs.
 - 2026-11-10 09:40 database: sent-notification monthly-read:<club>:wa-vets-2: (new) monthly-read
-- 2026-11-10 10:00 [DM Davide Russo] **MatchTime**: 📍 Confirm *Monday Night Vets Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/XiyEAPf9P8
+- 2026-11-10 10:00 [DM Davide Russo] **MatchTime**: 📍 Confirm *Monday Night Vets Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>
     MatchTime reminds you once a week until a venue is set.
 - 2026-11-10 10:00 database: botjob dm → @davide: 📍 Confirm *Monday Night Vets Sandbox*'s venue so nearby clubs can find you: MatchTime has: (new) sent
     sent-notification org-<club>:monthly-close-sweep:2026-11-10T09: monthly-sweep → (gone)
@@ -144,11 +144,11 @@
     11. Shane (Paid)
     12. CJ (Paid)
     13. Oumesh (paid 4) _(fast-path / month_seed_list)_
-- 2026-11-10 12:10 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 4 model call(s) under the stubs.
+- 2026-11-10 12:10 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 5 model call(s) under the stubs.
 - 2026-11-10 12:10 database: botjob dm → @davide: 📋 I read the list you posted in the group for November: 8 players (Davide, steff, Dan, Ke: (new) pending
     sent-notification monthly-read:<club>:wa-vets-4: (new) monthly-read
     sent-notification monthly-read:<club>:wa-vets-5: (new) monthly-read
-    sent-notification org-<club>:month-seed-dm:cmwaneenu00ua0k9km5dthbwc: (new) month-seed-dm
+    sent-notification org-<club>:month-seed-dm:<id>: (new) month-seed-dm
 - 2026-11-10 12:11 [DM Davide Russo] **MatchTime**: 📋 I read the list you posted in the group for November: 8 players (Davide, steff, Dan, Kerem, Steve, Jon, Shane, CJ).
     I couldn't match these names on your list to anyone: Smiler, Craig, Ben, Andrew, Oumesh.
     These members have no name with me yet:
@@ -156,8 +156,8 @@
     2. +44 7700 900312
     3. +44 7700 900314
     4. +44 7700 900316
-    Tell me who is who in your own words, for example "Smiler is 1", or pick them on the months page: http://localhost:3471/admin/months
-    To start November with them, reply *yes* here, or check and start it here: http://localhost:3471/admin/months
+    Tell me who is who in your own words, for example "Smiler is 1", or pick them on the months page: <app>/admin/<tok>
+    To start November with them, reply *yes* here, or check and start it here: <app>/admin/<tok>
     I've said nothing in the group.
 - 2026-11-10 12:11 database: botjob dm → @davide: 📋 I read the list you posted in the group for November: 8 players (Davide, steff, Dan, Ke: pending → sent
 - 2026-11-10 12:30 [DM Davide Russo] **Davide Russo**: Yes go ahead mate _(dm-reply: month-seed-started)_
@@ -209,8 +209,8 @@
     You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
     
     *Pay as you go:* 6 places open, £8. Say *IN* to take one.
-- 2026-11-10 12:31 database: sent-notification <match 2026-11-16 20:30>:month-list:db9f5e134b393f9c:0: (new) group-message
-    sent-notification txtlog:<club>:1e87942f05a3a90c:<match 2026-11-16 20:30>:month-list:db9f5e134b393f9c:0: (new) outbound-text-log
+- 2026-11-10 12:31 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:0: (new) group-message
+    sent-notification txtlog:<club>:<text 1e87942f>:<match 2026-11-16 20:30>:month-list:<squad>:0: (new) outbound-text-log
 - 2026-11-10 13:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-10T12: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-10T13: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-10T12: monthly-sweep → (gone)
@@ -258,8 +258,8 @@
     *Pay as you go:*
     2. Nabz
     5 places open, £8. Say *IN* to take one.
-- 2026-11-10 18:11 database: sent-notification <match 2026-11-16 20:30>:month-list:da5c7d98143bedfe:1: (new) group-message
-    sent-notification txtlog:<club>:3ca1bb891cfd8c19:<match 2026-11-16 20:30>:month-list:da5c7d98143bedfe:1: (new) outbound-text-log
+- 2026-11-10 18:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:1: (new) group-message
+    sent-notification txtlog:<club>:<text 3ca1bb89>:<match 2026-11-16 20:30>:month-list:<squad>:1: (new) outbound-text-log
 - 2026-11-10 19:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-10T18: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-10T19: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-10T18: monthly-sweep → (gone)
@@ -352,11 +352,11 @@
     *Pay as you go:*
     4. Nabz
     4 places open, £8. Say *IN* to take one.
-- 2026-11-11 10:11 database: sent-notification <match 2026-11-16 20:30>:month-list:dd4110a308cd9a0b:2: (new) group-message
-    sent-notification txtlog:<club>:616f72a9559737e9:<match 2026-11-16 20:30>:month-list:dd4110a308cd9a0b:2: (new) outbound-text-log
+- 2026-11-11 10:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:2: (new) group-message
+    sent-notification txtlog:<club>:<text 616f72a9>:<match 2026-11-16 20:30>:month-list:<squad>:2: (new) outbound-text-log
 - 2026-11-11 10:30 [Monday Night Vets Sandbox] **x**: IN _(llm / in)_
-- 2026-11-11 10:31 [Monday Night Vets Sandbox] **x**: can I play monday? happy to pay the £8 _(llm / noise)_
-- 2026-11-11 10:40 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 5 model call(s) under the stubs.
+- 2026-11-11 10:31 [Monday Night Vets Sandbox] **x**: can I play monday? happy to pay the £8 _(ignored / noise)_
+- 2026-11-11 10:40 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 4 model call(s) under the stubs.
 - 2026-11-11 10:40 [Monday Night Vets Sandbox] MatchTime reacted ✅
 - 2026-11-11 10:40 database: <match 2026-11-16 20:30>: attendance @mo: (new) CONFIRMED #6
     match 2026-11-16 20:30: Mo: (new) CONFIRMED
@@ -381,12 +381,12 @@
     4. Nabz
     6. Mo
     3 places open, £8. Say *IN* to take one.
-- 2026-11-11 11:00 database: sent-notification <match 2026-11-16 20:30>:month-list:e45ef7721122c84f:3: (new) group-message
+- 2026-11-11 11:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:3: (new) group-message
     sent-notification org-<club>:monthly-close-sweep:2026-11-11T10: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-11T11: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-11T10: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-11T11: (new) monthly-sweep
-    sent-notification txtlog:<club>:b249b01babf344cf:<match 2026-11-16 20:30>:month-list:e45ef7721122c84f:3: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:month-list:<squad>:3: (new) outbound-text-log
 - 2026-11-11 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
 - 2026-11-11 12:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-11T11: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-11T12: (new) monthly-sweep
@@ -548,8 +548,8 @@
     4. Nabz
     6. Mo
     4 places open, £8. Say *IN* to take one.
-- 2026-11-12 18:11 database: sent-notification <match 2026-11-16 20:30>:month-list:279581a60e2743a9:4: (new) group-message
-    sent-notification txtlog:<club>:e157607b489e02e7:<match 2026-11-16 20:30>:month-list:279581a60e2743a9:4: (new) outbound-text-log
+- 2026-11-12 18:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:4: (new) group-message
+    sent-notification txtlog:<club>:<text e157607b>:<match 2026-11-16 20:30>:month-list:<squad>:4: (new) outbound-text-log
 - 2026-11-12 18:15 [Monday Night Vets Sandbox] **x**: out sorry _(llm / noise)_
 - 2026-11-12 18:20 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 5 model call(s) under the stubs.
 - 2026-11-12 18:20 [Monday Night Vets Sandbox] MatchTime reacted 👋
@@ -580,12 +580,12 @@
     4. Nabz
     6. Mo
     5 places open, £8. Say *IN* to take one.
-- 2026-11-12 19:00 database: sent-notification <match 2026-11-16 20:30>:month-list:abd484b23ba64396:5: (new) group-message
+- 2026-11-12 19:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:5: (new) group-message
     sent-notification org-<club>:monthly-close-sweep:2026-11-12T18: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-12T19: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-12T18: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-12T19: (new) monthly-sweep
-    sent-notification txtlog:<club>:175250761b777a8a:<match 2026-11-16 20:30>:month-list:abd484b23ba64396:5: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 17525076>:<match 2026-11-16 20:30>:month-list:<squad>:5: (new) outbound-text-log
 - 2026-11-12 20:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-12T19: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-12T20: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-12T19: monthly-sweep → (gone)
@@ -683,8 +683,8 @@
     6. Mo
     8. Luca
     4 places open, £8. Say *IN* to take one.
-- 2026-11-13 12:11 database: sent-notification <match 2026-11-16 20:30>:month-list:d748b1b51d30cb7c:6: (new) group-message
-    sent-notification txtlog:<club>:f735c9f33335865c:<match 2026-11-16 20:30>:month-list:d748b1b51d30cb7c:6: (new) outbound-text-log
+- 2026-11-13 12:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:6: (new) group-message
+    sent-notification txtlog:<club>:<text f735c9f3>:<match 2026-11-16 20:30>:month-list:<squad>:6: (new) outbound-text-log
 - 2026-11-13 12:30 [Monday Night Vets Sandbox] **x**: actually I can play now, in _(llm / in)_
 - 2026-11-13 12:40 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 1 message(s) to analyze in one batch; 3 model call(s) under the stubs.
 - 2026-11-13 12:40 [Monday Night Vets Sandbox] MatchTime reacted ✅
@@ -713,12 +713,12 @@
     6. Mo
     9. Luca
     3 places open, £8. Say *IN* to take one.
-- 2026-11-13 13:00 database: sent-notification <match 2026-11-16 20:30>:month-list:e89eaacd2704a127:7: (new) group-message
+- 2026-11-13 13:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:7: (new) group-message
     sent-notification org-<club>:monthly-close-sweep:2026-11-13T12: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-13T13: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-13T12: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-13T13: (new) monthly-sweep
-    sent-notification txtlog:<club>:a8dab7ee552fec11:<match 2026-11-16 20:30>:month-list:e89eaacd2704a127:7: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:month-list:<squad>:7: (new) outbound-text-log
 - 2026-11-13 14:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-13T13: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-13T14: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-13T13: monthly-sweep → (gone)
@@ -836,8 +836,8 @@
     9. Luca
     10. Gus
     2 places open, £8. Say *IN* to take one.
-- 2026-11-14 11:11 database: sent-notification <match 2026-11-16 20:30>:month-list:0a95e1e857451092:8: (new) group-message
-    sent-notification txtlog:<club>:80b946df0c6c3d1e:<match 2026-11-16 20:30>:month-list:0a95e1e857451092:8: (new) outbound-text-log
+- 2026-11-14 11:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:8: (new) group-message
+    sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:month-list:<squad>:8: (new) outbound-text-log
 - 2026-11-14 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
 - 2026-11-14 12:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-14T11: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-14T12: (new) monthly-sweep
@@ -971,8 +971,8 @@
     13. Rob
     14. (unnamed)
     The squad is full.
-- 2026-11-15 10:11 database: sent-notification <match 2026-11-16 20:30>:month-list:7a89b16727359089:9: (new) group-message
-    sent-notification txtlog:<club>:8e92796b40457e4d:<match 2026-11-16 20:30>:month-list:7a89b16727359089:9: (new) outbound-text-log
+- 2026-11-15 10:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:9: (new) group-message
+    sent-notification txtlog:<club>:<text 8e92796b>:<match 2026-11-16 20:30>:month-list:<squad>:9: (new) outbound-text-log
 - 2026-11-15 10:15 [Monday Night Vets Sandbox] **x**: in _(llm / in)_
 - 2026-11-15 10:20 [Monday Night Vets Sandbox] **Shane Walton**: @Match Time are we 8 a side then? _(llm / question)_
 - 2026-11-15 10:20 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 5 model call(s) under the stubs.
@@ -986,7 +986,7 @@
     sent-notification monthly-read:<club>:wa-vets-33: (new) monthly-read
 - 2026-11-15 10:21 [Monday Night Vets Sandbox] **MatchTime**: We've got 16 for Monday, 2 on the bench. Shall we go 8-a-side? Davide, reply *yes* to this message and I'll switch it.
 - 2026-11-15 10:21 database: sent-notification <match 2026-11-16 20:30>:format-up:16:e0: (new) group-message
-    sent-notification txtlog:<club>:696d1d31d99f6193:<match 2026-11-16 20:30>:format-up:16:e0: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 696d1d31>:<match 2026-11-16 20:30>:format-up:16:e0: (new) outbound-text-log
 - 2026-11-15 10:30 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 1 message(s) to analyze in one batch; 3 model call(s) under the stubs.
 - 2026-11-15 10:30 [Monday Night Vets Sandbox] **MatchTime**: ⚽ Mon 20:30 at Sandbox Park School field.
 - 2026-11-15 10:30 database: sent-notification greply:<club>:wa-vets-34: (new) group-reply
@@ -1017,12 +1017,12 @@
     13. Rob
     14. (unnamed)
     The squad is full.
-- 2026-11-15 11:00 database: sent-notification <match 2026-11-16 20:30>:month-list:316a36a314c14900:10: (new) group-message
+- 2026-11-15 11:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:10: (new) group-message
     sent-notification org-<club>:monthly-close-sweep:2026-11-15T10: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-15T11: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-15T10: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-15T11: (new) monthly-sweep
-    sent-notification txtlog:<club>:d73d6882e765b097:<match 2026-11-16 20:30>:month-list:316a36a314c14900:10: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:10: (new) outbound-text-log
 - 2026-11-15 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
 - 2026-11-15 12:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-15T11: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-15T12: (new) monthly-sweep
@@ -1136,12 +1136,12 @@
     13. Rob
     14. (unnamed)
     The squad is full.
-- 2026-11-16 09:00 database: sent-notification <match 2026-11-16 20:30>:month-list:316a36a314c14900:11: (new) group-message
+- 2026-11-16 09:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:11: (new) group-message
     sent-notification org-<club>:monthly-close-sweep:2026-11-16T08: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-16T09: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-16T08: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-16T09: (new) monthly-sweep
-    sent-notification txtlog:<club>:d73d6882e765b097:<match 2026-11-16 20:30>:month-list:316a36a314c14900:11: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:11: (new) outbound-text-log
 - 2026-11-16 10:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-16T09: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-16T10: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-16T09: monthly-sweep → (gone)
@@ -1244,155 +1244,155 @@
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/6XOZc3U3eZ
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/CcGqQ48Gms
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM x] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/TQeIUk2a1h
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/jyxWNzdTwX
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM x] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/nySoC0aNQ8
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/RfHD3XtpWK
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM Tom Hale] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/MQ3arGdAC1
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/UnKZyl1LOm
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM x] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/dGSZ2zFBI8
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/2dBjzql2je
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM x] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/UDUGRVD3iF
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/AfX0ABewMM
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM Kerem Aksoy] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/K3VPty3Cd4
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/jF1jTI16A
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM x] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/UnWEiPBQpg
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/wRMYcVz6bg
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM x] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/3gHL5Zjag
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/h3b1wkc5fx
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM Gus Moore] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/3FyaVMutJw
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/hYW0DZIXeh
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM Shane Walton] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/fxmB2GZPw4
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/yBdHga8nko
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM CJ Barlow] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/k8Orh6Kn6E
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/rKVSol0n4V
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM Rob Finch] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/CUKih91gGD
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/TUj9ElznAo
+    <app>/r/<tok>
 - 2026-11-17 08:00 [DM x] **MatchTime**: 🏆 *Monday Night Vets Sandbox*, Mon 16 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/GhoCaI2uiY
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/hY5xcAMf2D
+    <app>/r/<tok>
 - 2026-11-17 08:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 23 Nov at 20:30*
     
     *November squad:*
@@ -1459,7 +1459,7 @@
     sent-notification <match 2026-11-16 20:30>:rate-dm:@steff: (new) dm
     sent-notification <match 2026-11-16 20:30>:rate-dm:@steve: (new) dm
     sent-notification <match 2026-11-16 20:30>:rate-dm:@tom: (new) dm
-    sent-notification <match 2026-11-23 20:30>:month-list:deb22a2f63ec06b3:0: (new) group-message
+    sent-notification <match 2026-11-23 20:30>:month-list:<squad>:0: (new) group-message
     sent-notification <match 2026-11-23 20:30>:payg-pool-dm:@andrew: (new) dm
     sent-notification <match 2026-11-23 20:30>:payg-pool-dm:@gus: (new) dm
     sent-notification <match 2026-11-23 20:30>:payg-pool-dm:@luca: (new) dm
@@ -1470,7 +1470,7 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-17T08: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-17T07: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-17T08: (new) monthly-sweep
-    sent-notification txtlog:<club>:2f34ccf7277e6753:<match 2026-11-23 20:30>:month-list:deb22a2f63ec06b3:0: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:month-list:<squad>:0: (new) outbound-text-log
 - 2026-11-17 09:00 [DM Kerem Aksoy] **Kerem Aksoy**: (opens the rating link and submits, Man of the Match: /Shane/) _(rating page: submitted (default scores; Man of the Match: S Shane Walton))_
 - 2026-11-17 09:00 database: <match 2026-11-16 20:30>: MoM votes for @shane: (new) 1
     match 2026-11-16 20:30: MoM votes: (new) 1
@@ -1485,12 +1485,12 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-17T09: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-17T08: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-17T09: (new) monthly-sweep
-    sent-notification txtlog:<club>:b0b801a9cea5de7b:<match 2026-11-16 20:30>:rate-promo: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text b0b801a9>:<match 2026-11-16 20:30>:rate-promo: (new) outbound-text-log
 - 2026-11-17 09:10 [DM Davide Russo] **Davide Russo**: (opens the rating link and submits, Man of the Match: /Shane/) _(rating page: submitted (default scores; Man of the Match: S Shane Walton))_
 - 2026-11-17 09:10 database: <match 2026-11-16 20:30>: MoM votes for @shane: 1 → 2
     match 2026-11-16 20:30: MoM votes: 1 → 2
     match 2026-11-16 20:30: ratings: 13 → 26
-- 2026-11-17 10:00 [DM Davide Russo] **MatchTime**: 📍 Confirm *Monday Night Vets Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/H58w6QSfZu
+- 2026-11-17 10:00 [DM Davide Russo] **MatchTime**: 📍 Confirm *Monday Night Vets Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>
     MatchTime reminds you once a week until a venue is set.
 - 2026-11-17 10:00 database: botjob dm → @davide: 📍 Confirm *Monday Night Vets Sandbox*'s venue so nearby clubs can find you: MatchTime has (#2): (new) sent
     sent-notification org-<club>:monthly-close-sweep:2026-11-17T09: monthly-sweep → (gone)
@@ -1626,51 +1626,51 @@
 - 2026-11-18 18:00 [DM x] **MatchTime**: Hey Nabz 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/n1cTuYDrPs
+    <app>/r/<tok>
 - 2026-11-18 18:00 [DM x] **MatchTime**: Hey Steff 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/Nk4qPHuUV9
+    <app>/r/<tok>
 - 2026-11-18 18:00 [DM Tom Hale] **MatchTime**: Hey Tom 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/OMY7ermLZg
+    <app>/r/<tok>
 - 2026-11-18 18:00 [DM x] **MatchTime**: Hey Dan 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/Xos3QrhlmV
+    <app>/r/<tok>
 - 2026-11-18 18:00 [DM x] **MatchTime**: Hey Mo 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/qan97uu94o
+    <app>/r/<tok>
 - 2026-11-18 18:00 [DM x] **MatchTime**: Hey Luca 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/Z6kCNmcyt4
+    <app>/r/<tok>
 - 2026-11-18 18:00 [DM x] **MatchTime**: Hey Steve 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/ZK4OwaS7hy
+    <app>/r/<tok>
 - 2026-11-18 18:00 [DM Gus Moore] **MatchTime**: Hey Gus 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/MjCGIjRqKJ
+    <app>/r/<tok>
 - 2026-11-18 18:00 [DM Shane Walton] **MatchTime**: Hey Shane 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/8kI0MhaIZi
+    <app>/r/<tok>
 - 2026-11-18 18:00 [DM CJ Barlow] **MatchTime**: Hey CJ 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/pW6pbydCY
+    <app>/r/<tok>
 - 2026-11-18 18:00 [DM Rob Finch] **MatchTime**: Hey Rob 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/LUlIlW7Sa7
+    <app>/r/<tok>
 - 2026-11-18 18:00 [DM x] **MatchTime**: Hey mate 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/2wGG3g95n8
+    <app>/r/<tok>
 - 2026-11-18 18:00 [Monday Night Vets Sandbox] **MatchTime**: 🏅 *New badges this week*
     
     👟 *On the board*: welcome *CJ Barlow*, *Dan*, *Davide Russo*, *Gus Moore*, *Kerem Aksoy*, *Luca*, *Mo*, *Nabz*, *Rob Finch*, *Shane Walton*, *Steff*, *Steve* and *Tom Hale*, first games for the club! 🎉
@@ -1694,7 +1694,7 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-18T18: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-18T17: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-18T18: (new) monthly-sweep
-    sent-notification txtlog:<club>:11d81f941bf34146:<match 2026-11-16 20:30>:badges: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 11d81f94>:<match 2026-11-16 20:30>:badges: (new) outbound-text-log
 - 2026-11-18 19:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-18T18: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-18T19: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-18T18: monthly-sweep → (gone)
@@ -1892,47 +1892,47 @@
 - 2026-11-20 18:00 [DM x] **MatchTime**: Last reminder, Nabz 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/pW9AXJa5iD
+    <app>/r/<tok>
 - 2026-11-20 18:00 [DM x] **MatchTime**: Last reminder, Steff 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/YY5jdaKt1k
+    <app>/r/<tok>
 - 2026-11-20 18:00 [DM Tom Hale] **MatchTime**: Last reminder, Tom 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/SaZ7x3pi6I
+    <app>/r/<tok>
 - 2026-11-20 18:00 [DM x] **MatchTime**: Last reminder, Dan 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/urMQfsZ1MM
+    <app>/r/<tok>
 - 2026-11-20 18:00 [DM x] **MatchTime**: Last reminder, Mo 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/F91bQT3O0s
+    <app>/r/<tok>
 - 2026-11-20 18:00 [DM x] **MatchTime**: Last reminder, Luca 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/h0ztBGwtnW
+    <app>/r/<tok>
 - 2026-11-20 18:00 [DM x] **MatchTime**: Last reminder, Steve 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/KdxVt4k8xU
+    <app>/r/<tok>
 - 2026-11-20 18:00 [DM Gus Moore] **MatchTime**: Last reminder, Gus 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/39lqgHCvKN
+    <app>/r/<tok>
 - 2026-11-20 18:00 [DM Shane Walton] **MatchTime**: Last reminder, Shane 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/KXAGvuKx24
+    <app>/r/<tok>
 - 2026-11-20 18:00 [DM Rob Finch] **MatchTime**: Last reminder, Rob 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/vT8ZtQgmbw
+    <app>/r/<tok>
 - 2026-11-20 18:00 [DM x] **MatchTime**: Last reminder, mate 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/MhR2Tyb6Lq
+    <app>/r/<tok>
 - 2026-11-20 18:00 database: sent-notification <match 2026-11-16 20:30>:rate-reminder:@andrew:2026-11-20: (new) dm
     sent-notification <match 2026-11-16 20:30>:rate-reminder:@dan:2026-11-20: (new) dm
     sent-notification <match 2026-11-16 20:30>:rate-reminder:@gus:2026-11-20: (new) dm

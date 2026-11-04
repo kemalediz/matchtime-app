@@ -93,7 +93,7 @@
     "sent-notification <match 2026-11-16 20:30>:announce-match: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-10T08: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-10T09: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:c3b41338b3512129:<match 2026-11-16 20:30>:announce-match: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text c3b41338>:<match 2026-11-16 20:30>:announce-match: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -105,7 +105,7 @@
      "at": "2026-11-10 10:00",
      "to": "dm @davide",
      "kind": "out",
-     "text": "📍 Confirm *Monday Night Vets Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "text": "📍 Confirm *Monday Night Vets Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
      "instruction": "dm",
      "key": "botjob-<id>"
     }
@@ -152,7 +152,7 @@
      "at": "2026-11-10 12:11",
      "to": "dm @davide",
      "kind": "out",
-     "text": "📋 I read the list you posted in the group for November: 8 players (Davide, steff, Dan, Kerem, Steve, Jon, Shane, CJ).\nI couldn't match these names on your list to anyone: Smiler, Craig, Ben, Andrew, Oumesh.\nThese members have no name with me yet:\n1. +44 7700 900310\n2. +44 7700 900312\n3. +44 7700 900314\n4. +44 7700 900316\nTell me who is who in your own words, for example \"Smiler is 1\", or pick them on the months page: http://localhost:3471/admin/<tok>\nTo start November with them, reply *yes* here, or check and start it here: http://localhost:3471/admin/<tok>\nI've said nothing in the group.",
+     "text": "📋 I read the list you posted in the group for November: 8 players (Davide, steff, Dan, Kerem, Steve, Jon, Shane, CJ).\nI couldn't match these names on your list to anyone: Smiler, Craig, Ben, Andrew, Oumesh.\nThese members have no name with me yet:\n1. +44 7700 900310\n2. +44 7700 900312\n3. +44 7700 900314\n4. +44 7700 900316\nTell me who is who in your own words, for example \"Smiler is 1\", or pick them on the months page: <app>/admin/<tok>\nTo start November with them, reply *yes* here, or check and start it here: <app>/admin/<tok>\nI've said nothing in the group.",
      "instruction": "dm",
      "key": "botjob-<id>"
     }
@@ -227,7 +227,7 @@
     "sent-notification org-<club>:month-seed-dm-reply:dm-vets-7: (new) month-seed-dm-reply",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-10T12: (new) monthly-sweep",
     "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:0: (new) group-message",
-    "sent-notification txtlog:<club>:1e87942f05a3a90c:<match 2026-11-16 20:30>:month-list:<squad>:0: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 1e87942f>:<match 2026-11-16 20:30>:month-list:<squad>:0: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-10T12: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-10T13: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-10T12: monthly-sweep → (gone)",
@@ -283,7 +283,7 @@
     "match 2026-11-16 20:30: Nabz: (new) CONFIRMED",
     "sent-notification monthly-read:<club>:wa-vets-10: (new) monthly-read",
     "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:1: (new) group-message",
-    "sent-notification txtlog:<club>:3ca1bb891cfd8c19:<match 2026-11-16 20:30>:month-list:<squad>:1: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 3ca1bb89>:<match 2026-11-16 20:30>:month-list:<squad>:1: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-10T18: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-10T19: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-10T18: monthly-sweep → (gone)",
@@ -388,7 +388,7 @@
     "match 2026-11-16 20:30: Tom Hale: (new) CONFIRMED",
     "sent-notification monthly-read:<club>:wa-vets-12: (new) monthly-read",
     "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:2: (new) group-message",
-    "sent-notification txtlog:<club>:616f72a9559737e9:<match 2026-11-16 20:30>:month-list:<squad>:2: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 616f72a9>:<match 2026-11-16 20:30>:month-list:<squad>:2: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -423,7 +423,7 @@
     }
    ],
    "handled": [
-    "@rich in main: \"can I play monday? happy to pay the £8\" → llm / noise"
+    "@rich in main: \"can I play monday? happy to pay the £8\" → ignored / noise"
    ],
    "db": [
     "<match 2026-11-16 20:30>: attendance @mo: (new) CONFIRMED #6",
@@ -435,7 +435,7 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T11: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-11T10: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-11T11: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:b249b01babf344cf:<match 2026-11-16 20:30>:month-list:<squad>:3: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:month-list:<squad>:3: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T11: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T12: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-11T11: monthly-sweep → (gone)",
@@ -639,7 +639,7 @@
     "sent-notification monthly-read:<club>:wa-vets-17: (new) monthly-read",
     "sent-notification monthly-read:<club>:wa-vets-18: (new) monthly-read",
     "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:4: (new) group-message",
-    "sent-notification txtlog:<club>:e157607b489e02e7:<match 2026-11-16 20:30>:month-list:<squad>:4: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text e157607b>:<match 2026-11-16 20:30>:month-list:<squad>:4: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -694,7 +694,7 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-12T19: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-12T18: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-12T19: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:175250761b777a8a:<match 2026-11-16 20:30>:month-list:<squad>:5: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 17525076>:<match 2026-11-16 20:30>:month-list:<squad>:5: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-12T19: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-12T20: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-12T19: monthly-sweep → (gone)",
@@ -794,7 +794,7 @@
     "match 2026-11-16 20:30: Luca: (new) CONFIRMED",
     "sent-notification monthly-read:<club>:wa-vets-23: (new) monthly-read",
     "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:6: (new) group-message",
-    "sent-notification txtlog:<club>:f735c9f33335865c:<match 2026-11-16 20:30>:month-list:<squad>:6: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text f735c9f3>:<match 2026-11-16 20:30>:month-list:<squad>:6: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -830,7 +830,7 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T13: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T12: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T13: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:a8dab7ee552fec11:<match 2026-11-16 20:30>:month-list:<squad>:7: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:month-list:<squad>:7: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T13: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T14: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T13: monthly-sweep → (gone)",
@@ -950,7 +950,7 @@
     "match 2026-11-16 20:30: Gus Moore: (new) CONFIRMED",
     "sent-notification monthly-read:<club>:wa-vets-27: (new) monthly-read",
     "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:8: (new) group-message",
-    "sent-notification txtlog:<club>:80b946df0c6c3d1e:<match 2026-11-16 20:30>:month-list:<squad>:8: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:month-list:<squad>:8: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-14T11: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-14T12: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-14T11: monthly-sweep → (gone)",
@@ -1113,7 +1113,7 @@
     "sent-notification monthly-read:<club>:wa-vets-29: (new) monthly-read",
     "sent-notification monthly-read:<club>:wa-vets-30: (new) monthly-read",
     "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:9: (new) group-message",
-    "sent-notification txtlog:<club>:8e92796b40457e4d:<match 2026-11-16 20:30>:month-list:<squad>:9: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 8e92796b>:<match 2026-11-16 20:30>:month-list:<squad>:9: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -1189,7 +1189,7 @@
     "sent-notification monthly-read:<club>:wa-vets-31: (new) monthly-read",
     "sent-notification monthly-read:<club>:wa-vets-33: (new) monthly-read",
     "sent-notification <match 2026-11-16 20:30>:format-up:16:e0: (new) group-message",
-    "sent-notification txtlog:<club>:696d1d31d99f6193:<match 2026-11-16 20:30>:format-up:16:e0: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 696d1d31>:<match 2026-11-16 20:30>:format-up:16:e0: (new) outbound-text-log",
     "sent-notification greply:<club>:wa-vets-34: (new) group-reply",
     "sent-notification monthly-read:<club>:wa-vets-34: (new) monthly-read",
     "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:10: (new) group-message",
@@ -1197,7 +1197,7 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T11: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-15T10: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-15T11: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:d73d6882e765b097:<match 2026-11-16 20:30>:month-list:<squad>:10: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:10: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T11: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T12: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-15T11: monthly-sweep → (gone)",
@@ -1289,7 +1289,7 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-16T09: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-16T08: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-16T09: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:d73d6882e765b097:<match 2026-11-16 20:30>:month-list:<squad>:11: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:11: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-16T09: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-16T10: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-16T09: monthly-sweep → (gone)",
@@ -1364,7 +1364,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @davide",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@davide"
     },
@@ -1372,7 +1372,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @nabz",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@nabz"
     },
@@ -1380,7 +1380,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @steff",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@steff"
     },
@@ -1388,7 +1388,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @tom",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@tom"
     },
@@ -1396,7 +1396,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @dan",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@dan"
     },
@@ -1404,7 +1404,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @mo",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@mo"
     },
@@ -1412,7 +1412,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @kerem",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@kerem"
     },
@@ -1420,7 +1420,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @luca",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@luca"
     },
@@ -1428,7 +1428,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @steve",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@steve"
     },
@@ -1436,7 +1436,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @gus",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@gus"
     },
@@ -1444,7 +1444,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @shane",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@shane"
     },
@@ -1452,7 +1452,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @cj",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@cj"
     },
@@ -1460,7 +1460,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @rob",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@rob"
     },
@@ -1468,7 +1468,7 @@
      "at": "2026-11-17 08:00",
      "to": "dm @andrew",
      "kind": "out",
-     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\nhttp://localhost:3471/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\nhttp://localhost:3471/r/<tok>",
+     "text": "🏆 *Monday Night Vets Sandbox*, Mon 16 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-dm:@andrew"
     },
@@ -1620,7 +1620,7 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-17T08: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-17T07: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-17T08: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:2f34ccf7277e6753:<match 2026-11-23 20:30>:month-list:<squad>:0: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:month-list:<squad>:0: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -1649,7 +1649,7 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-17T09: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-17T08: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-17T09: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:b0b801a9cea5de7b:<match 2026-11-16 20:30>:rate-promo: (new) outbound-text-log"
+    "sent-notification txtlog:<club>:<text b0b801a9>:<match 2026-11-16 20:30>:rate-promo: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -1661,7 +1661,7 @@
      "at": "2026-11-17 10:00",
      "to": "dm @davide",
      "kind": "out",
-     "text": "📍 Confirm *Monday Night Vets Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "text": "📍 Confirm *Monday Night Vets Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
      "instruction": "dm",
      "key": "botjob-<id>"
     },
@@ -1669,7 +1669,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @nabz",
      "kind": "out",
-     "text": "Hey Nabz 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Nabz 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@nabz:2026-11-18"
     },
@@ -1677,7 +1677,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @steff",
      "kind": "out",
-     "text": "Hey Steff 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Steff 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@steff:2026-11-18"
     },
@@ -1685,7 +1685,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @tom",
      "kind": "out",
-     "text": "Hey Tom 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Tom 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@tom:2026-11-18"
     },
@@ -1693,7 +1693,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @dan",
      "kind": "out",
-     "text": "Hey Dan 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Dan 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@dan:2026-11-18"
     },
@@ -1701,7 +1701,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @mo",
      "kind": "out",
-     "text": "Hey Mo 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Mo 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@mo:2026-11-18"
     },
@@ -1709,7 +1709,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @luca",
      "kind": "out",
-     "text": "Hey Luca 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Luca 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@luca:2026-11-18"
     },
@@ -1717,7 +1717,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @steve",
      "kind": "out",
-     "text": "Hey Steve 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Steve 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@steve:2026-11-18"
     },
@@ -1725,7 +1725,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @gus",
      "kind": "out",
-     "text": "Hey Gus 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Gus 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@gus:2026-11-18"
     },
@@ -1733,7 +1733,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @shane",
      "kind": "out",
-     "text": "Hey Shane 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Shane 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@shane:2026-11-18"
     },
@@ -1741,7 +1741,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @cj",
      "kind": "out",
-     "text": "Hey CJ 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey CJ 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@cj:2026-11-18"
     },
@@ -1749,7 +1749,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @rob",
      "kind": "out",
-     "text": "Hey Rob 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey Rob 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@rob:2026-11-18"
     },
@@ -1757,7 +1757,7 @@
      "at": "2026-11-18 18:00",
      "to": "dm @andrew",
      "kind": "out",
-     "text": "Hey mate 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\nhttp://localhost:3471/r/<tok>",
+     "text": "Hey mate 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@andrew:2026-11-18"
     },
@@ -1923,7 +1923,7 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-18T18: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-18T17: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-18T18: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:11d81f941bf34146:<match 2026-11-16 20:30>:badges: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 11d81f94>:<match 2026-11-16 20:30>:badges: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-18T18: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-18T19: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-18T18: monthly-sweep → (gone)",
@@ -1939,7 +1939,7 @@
      "at": "2026-11-20 18:00",
      "to": "dm @nabz",
      "kind": "out",
-     "text": "Last reminder, Nabz 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Nabz 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@nabz:2026-11-20"
     },
@@ -1947,7 +1947,7 @@
      "at": "2026-11-20 18:00",
      "to": "dm @steff",
      "kind": "out",
-     "text": "Last reminder, Steff 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Steff 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@steff:2026-11-20"
     },
@@ -1955,7 +1955,7 @@
      "at": "2026-11-20 18:00",
      "to": "dm @tom",
      "kind": "out",
-     "text": "Last reminder, Tom 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Tom 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@tom:2026-11-20"
     },
@@ -1963,7 +1963,7 @@
      "at": "2026-11-20 18:00",
      "to": "dm @dan",
      "kind": "out",
-     "text": "Last reminder, Dan 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Dan 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@dan:2026-11-20"
     },
@@ -1971,7 +1971,7 @@
      "at": "2026-11-20 18:00",
      "to": "dm @mo",
      "kind": "out",
-     "text": "Last reminder, Mo 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Mo 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@mo:2026-11-20"
     },
@@ -1979,7 +1979,7 @@
      "at": "2026-11-20 18:00",
      "to": "dm @luca",
      "kind": "out",
-     "text": "Last reminder, Luca 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Luca 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@luca:2026-11-20"
     },
@@ -1987,7 +1987,7 @@
      "at": "2026-11-20 18:00",
      "to": "dm @steve",
      "kind": "out",
-     "text": "Last reminder, Steve 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Steve 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@steve:2026-11-20"
     },
@@ -1995,7 +1995,7 @@
      "at": "2026-11-20 18:00",
      "to": "dm @gus",
      "kind": "out",
-     "text": "Last reminder, Gus 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Gus 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@gus:2026-11-20"
     },
@@ -2003,7 +2003,7 @@
      "at": "2026-11-20 18:00",
      "to": "dm @shane",
      "kind": "out",
-     "text": "Last reminder, Shane 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Shane 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@shane:2026-11-20"
     },
@@ -2011,7 +2011,7 @@
      "at": "2026-11-20 18:00",
      "to": "dm @rob",
      "kind": "out",
-     "text": "Last reminder, Rob 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, Rob 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@rob:2026-11-20"
     },
@@ -2019,7 +2019,7 @@
      "at": "2026-11-20 18:00",
      "to": "dm @andrew",
      "kind": "out",
-     "text": "Last reminder, mate 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\nhttp://localhost:3471/r/<tok>",
+     "text": "Last reminder, mate 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@andrew:2026-11-20"
     }
@@ -2506,18 +2506,18 @@
   "sent-notification <match 2026-11-16 20:30>:announce-match": "group-message",
   "sent-notification <match 2026-11-16 20:30>:badges": "group-message",
   "sent-notification <match 2026-11-16 20:30>:format-up:16:e0": "group-message",
-  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:8": "group-message",
-  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:4": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:0": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:1": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:10": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:11": "group-message",
-  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:9": "group-message",
-  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:5": "group-message",
-  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:6": "group-message",
-  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:1": "group-message",
-  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:0": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:2": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:3": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:4": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:5": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:6": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:7": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:8": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:9": "group-message",
   "sent-notification <match 2026-11-16 20:30>:rate-dm:@andrew": "dm",
   "sent-notification <match 2026-11-16 20:30>:rate-dm:@cj": "dm",
   "sent-notification <match 2026-11-16 20:30>:rate-dm:@dan": "dm",
@@ -2590,23 +2590,23 @@
   "sent-notification org-<club>:month-seed-dm:<id>": "month-seed-dm",
   "sent-notification org-<club>:monthly-close-sweep:2026-11-22T10": "monthly-sweep",
   "sent-notification org-<club>:monthly-played-sweep:2026-11-22T10": "monthly-sweep",
-  "sent-notification txtlog:<club>:11d81f941bf34146:<match 2026-11-16 20:30>:badges": "outbound-text-log",
-  "sent-notification txtlog:<club>:175250761b777a8a:<match 2026-11-16 20:30>:month-list:<squad>:5": "outbound-text-log",
-  "sent-notification txtlog:<club>:1e87942f05a3a90c:<match 2026-11-16 20:30>:month-list:<squad>:0": "outbound-text-log",
-  "sent-notification txtlog:<club>:2f34ccf7277e6753:<match 2026-11-23 20:30>:month-list:<squad>:0": "outbound-text-log",
-  "sent-notification txtlog:<club>:3ca1bb891cfd8c19:<match 2026-11-16 20:30>:month-list:<squad>:1": "outbound-text-log",
-  "sent-notification txtlog:<club>:616f72a9559737e9:<match 2026-11-16 20:30>:month-list:<squad>:2": "outbound-text-log",
-  "sent-notification txtlog:<club>:696d1d31d99f6193:<match 2026-11-16 20:30>:format-up:16:e0": "outbound-text-log",
-  "sent-notification txtlog:<club>:80b946df0c6c3d1e:<match 2026-11-16 20:30>:month-list:<squad>:8": "outbound-text-log",
-  "sent-notification txtlog:<club>:8e92796b40457e4d:<match 2026-11-16 20:30>:month-list:<squad>:9": "outbound-text-log",
-  "sent-notification txtlog:<club>:a8dab7ee552fec11:<match 2026-11-16 20:30>:month-list:<squad>:7": "outbound-text-log",
-  "sent-notification txtlog:<club>:b0b801a9cea5de7b:<match 2026-11-16 20:30>:rate-promo": "outbound-text-log",
-  "sent-notification txtlog:<club>:b249b01babf344cf:<match 2026-11-16 20:30>:month-list:<squad>:3": "outbound-text-log",
-  "sent-notification txtlog:<club>:c3b41338b3512129:<match 2026-11-16 20:30>:announce-match": "outbound-text-log",
-  "sent-notification txtlog:<club>:d73d6882e765b097:<match 2026-11-16 20:30>:month-list:<squad>:10": "outbound-text-log",
-  "sent-notification txtlog:<club>:d73d6882e765b097:<match 2026-11-16 20:30>:month-list:<squad>:11": "outbound-text-log",
-  "sent-notification txtlog:<club>:e157607b489e02e7:<match 2026-11-16 20:30>:month-list:<squad>:4": "outbound-text-log",
-  "sent-notification txtlog:<club>:f735c9f33335865c:<match 2026-11-16 20:30>:month-list:<squad>:6": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 11d81f94>:<match 2026-11-16 20:30>:badges": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 17525076>:<match 2026-11-16 20:30>:month-list:<squad>:5": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 1e87942f>:<match 2026-11-16 20:30>:month-list:<squad>:0": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:month-list:<squad>:0": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 3ca1bb89>:<match 2026-11-16 20:30>:month-list:<squad>:1": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 616f72a9>:<match 2026-11-16 20:30>:month-list:<squad>:2": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 696d1d31>:<match 2026-11-16 20:30>:format-up:16:e0": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:month-list:<squad>:8": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 8e92796b>:<match 2026-11-16 20:30>:month-list:<squad>:9": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:month-list:<squad>:7": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text b0b801a9>:<match 2026-11-16 20:30>:rate-promo": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:month-list:<squad>:3": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text c3b41338>:<match 2026-11-16 20:30>:announce-match": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:10": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:11": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text e157607b>:<match 2026-11-16 20:30>:month-list:<squad>:4": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text f735c9f3>:<match 2026-11-16 20:30>:month-list:<squad>:6": "outbound-text-log",
   "user @andrew": "name (none)",
   "user @ben": "name (none)",
   "user @cj": "name \"CJ Barlow\"",

@@ -103,14 +103,14 @@
     I don't know anyone's level yet, so for now I'd treat every player the same and the teams could come out lopsided.
     
     Kai or Colin: give each player a rough rating from 1 to 10 here:
-    http://localhost:3471/r/AcCAxrHCXl
+    <app>/r/<tok>
     
     Players never see these, they only help me balance the sides. Rating the 18 players with no rating yet takes about 5 minutes.
     
     After that I learn from the ratings players give each other after every game, so this is only needed once.
 - 2026-11-09 09:00 database: sent-notification <match 2026-11-10 20:00>:announce-match: (new) group-message
     sent-notification org-<club>:seed-nudge:@kai: (new) dm
-    sent-notification txtlog:<club>:590fb46b5c9aac6f:<match 2026-11-10 20:00>:announce-match: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 590fb46b>:<match 2026-11-10 20:00>:announce-match: (new) outbound-text-log
 - 2026-11-09 09:31 [Sutton Sandbox FC] **Ash Patel**: in _(llm / in)_
 - 2026-11-09 09:33 [Sutton Sandbox FC] **Ben Hughes**: IN 👍 _(llm / in)_
 - 2026-11-09 09:36 [Sutton Sandbox FC] **Dev Shah**: count me in _(llm / in)_
@@ -126,7 +126,7 @@
     match 2026-11-10 20:00: Dev Shah: (new) CONFIRMED
 - 2026-11-09 09:41 [Sutton Sandbox FC] **Eli Clarke**: Can't make it this week sorry _(llm / noise)_
 - 2026-11-09 09:50 [Sutton Sandbox FC] **rehearsal**: The Pi sent 1 message(s) to analyze in one batch; 2 model call(s) under the stubs.
-- 2026-11-09 10:00 [DM Kai Morgan] **MatchTime**: 📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/cHWHxzjbEs
+- 2026-11-09 10:00 [DM Kai Morgan] **MatchTime**: 📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>
     MatchTime reminds you once a week until a venue is set.
 - 2026-11-09 10:00 database: botjob dm → @kai: 📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venu: (new) sent
 - 2026-11-09 10:02 [Sutton Sandbox FC] **Finn Walsh**: in _(llm / in)_
@@ -166,7 +166,7 @@
     <match 2026-11-10 20:00>: attendance @kai: (new) CONFIRMED #9
     match 2026-11-10 20:00: Colin Banks: (new) CONFIRMED
     match 2026-11-10 20:00: Kai Morgan: (new) CONFIRMED
-- 2026-11-09 17:00 [Sutton Sandbox FC] **MatchTime**: ⚠️ *Sutton Sandbox FC* is still *4 short* for tomorrow, Tuesday at 20:00. If we can't get the numbers we'll have to call it off, so say *IN* if you can make it 🙏
+- 2026-11-09 17:00 [Sutton Sandbox FC] **MatchTime**: ⚠️ *Sutton Sandbox FC* is still *4 short* for tomorrow. If we can't get the numbers we'll have to call it off, so say *IN* if you can make it 🙏
     
     *Playing tomorrow:*
     1. Ash Patel
@@ -184,16 +184,16 @@
     13. 🥁
     14. 🥁
 - 2026-11-09 17:00 database: sent-notification <match 2026-11-10 20:00>:evening-update:2026-11-09: (new) group-message
-    sent-notification <match 2026-11-10 20:00>:roster-shown:18dd7fcc4608325e:1794243600000: (new) roster-shown
-    sent-notification txtlog:<club>:eac404c2699b4db2:<match 2026-11-10 20:00>:evening-update:2026-11-09: (new) outbound-text-log
+    sent-notification <match 2026-11-10 20:00>:roster-shown:<squad>:1794243600000: (new) roster-shown
+    sent-notification txtlog:<club>:<text cd773718>:<match 2026-11-10 20:00>:evening-update:2026-11-09: (new) outbound-text-log
 - 2026-11-09 18:00 [DM Kai Morgan] **MatchTime**: 🚨 *Match in trouble*: only *10* confirmed for *Sutton Sandbox FC* tomorrow, below the minimum to play (14).
     
     Cancel and refund the booking?
     
     Tap to open the cancel page:
-    http://localhost:3471/r/XADH8MIek0
+    <app>/r/<tok>
     
-    Or open: http://localhost:3471/admin/matches/cmw8z3eun00g40k9k6g083lp0/cancel
+    Or open: <app>/admin/<tok><match 2026-11-10 20:00>/cancel
 - 2026-11-09 18:00 database: sent-notification <match 2026-11-10 20:00>:cancel-nudge:@kai: (new) dm
 - 2026-11-09 18:05 [Sutton Sandbox FC] **Max Ford**: in _(llm / in)_
 - 2026-11-09 18:10 [Sutton Sandbox FC] **rehearsal**: The Pi sent 1 message(s) to analyze in one batch; 2 model call(s) under the stubs.
@@ -242,7 +242,7 @@
     
     🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.
 - 2026-11-09 19:11 database: botjob group → group: ✅ *Squad complete (14/14)* for *Sutton Sandbox FC* on Tue 10 Nov 20:00 🙌 *Playing:* 1. As: pending → sent
-    sent-notification txtlog:<club>:e56e275f0aa589c5:botjob-cmw9myjcb00ht0k9kndc6hxhp: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text e56e275f>:botjob-<id>: (new) outbound-text-log
 - 2026-11-09 19:20 [Sutton Sandbox FC] **Raj Mehta**: in if there's space _(llm / in)_
 - 2026-11-09 19:25 [Sutton Sandbox FC] **Eli Clarke**: actually I can make it now, in _(llm / in)_
 - 2026-11-09 19:30 [Sutton Sandbox FC] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 3 model call(s) under the stubs.
@@ -286,10 +286,10 @@
 - 2026-11-10 09:21 [DM Eli Clarke] **MatchTime**: 👋 Hi Eli, a slot just opened for Sutton Sandbox FC tonight and you're on the bench.
     
     Want it? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. No timeout, and if you're not free no worries, you stay on the bench. 🙏
-- 2026-11-10 09:21 database: sent-notification offer-cmwahbn1f00i60k9kgcyuba7h: (new) bench-prompt
-    sent-notification offer-cmwahbn1f00i60k9kgcyuba7h:dm:@eli: (new) dm
-    sent-notification offer-cmwahbn1f00i60k9kgcyuba7h:dm:@raj: (new) dm
-    sent-notification txtlog:<club>:1d14457dffe14a55:offer-cmwahbn1f00i60k9kgcyuba7h: (new) outbound-text-log
+- 2026-11-10 09:21 database: sent-notification offer-<id>: (new) bench-prompt
+    sent-notification offer-<id>:dm:@eli: (new) dm
+    sent-notification offer-<id>:dm:@raj: (new) dm
+    sent-notification txtlog:<club>:<text 1d14457d>:offer-<id>: (new) outbound-text-log
 - 2026-11-10 09:40 [Sutton Sandbox FC] **Raj Mehta**: yes I'll take the spot _(llm / in)_
 - 2026-11-10 09:50 [Sutton Sandbox FC] **rehearsal**: The Pi sent 1 message(s) to analyze in one batch; 2 model call(s) under the stubs.
 - 2026-11-10 09:50 [Sutton Sandbox FC] MatchTime reacted ✅
@@ -322,7 +322,7 @@
     
     🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.
 - 2026-11-10 09:51 database: botjob group → group: ✅ *Squad complete (14/14)* for *Sutton Sandbox FC* on Tue 10 Nov 20:00 🙌 *Playing:* 1. As (#2): pending → sent
-    sent-notification txtlog:<club>:509bf0451c8623b3:botjob-cmwaieako00jc0k9k319ip247: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 509bf045>:botjob-<id>: (new) outbound-text-log
 - 2026-11-10 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
 - 2026-11-10 17:00 [Sutton Sandbox FC] **MatchTime**: ⚽ *Tonight at 20:00*: *Sutton Sandbox FC* at Sandbox Leisure Centre
     
@@ -347,8 +347,8 @@
     *Bench (1):*
     1. Eli Clarke
 - 2026-11-10 17:00 database: sent-notification <match 2026-11-10 20:00>:evening-update:2026-11-10: (new) group-message
-    sent-notification <match 2026-11-10 20:00>:roster-shown:716cf1e6eddb1ded:1794330000000: (new) roster-shown
-    sent-notification txtlog:<club>:2a3d3c7171502b9c:<match 2026-11-10 20:00>:evening-update:2026-11-10: (new) outbound-text-log
+    sent-notification <match 2026-11-10 20:00>:roster-shown:<squad>:1794330000000: (new) roster-shown
+    sent-notification txtlog:<club>:<text 2a3d3c71>:<match 2026-11-10 20:00>:evening-update:2026-11-10: (new) outbound-text-log
 - 2026-11-10 21:00 [Sutton Sandbox FC] **MatchTime**: 📊 💳 Payments for *Sutton Sandbox FC*: tick when you've paid
     ○ Bibs
     ○ Non-bibs
@@ -358,7 +358,7 @@
 - 2026-11-10 21:00 database: match 2026-11-10 20:00: status: UPCOMING → COMPLETED
     sent-notification <match 2026-11-10 20:00>:fee-ask: (new) dm
     sent-notification <match 2026-11-10 20:00>:payment-poll: (new) group-poll
-    sent-notification txtlog:<club>:9e2a664a3fcde8bf:<match 2026-11-10 20:00>:payment-poll: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 9e2a664a>:<match 2026-11-10 20:00>:payment-poll: (new) outbound-text-log
 - 2026-11-10 21:55 [Sutton Sandbox FC] **Kai Morgan**: Bibs won 5-3 tonight, good game all _(llm / score)_
 - 2026-11-10 22:00 [Sutton Sandbox FC] **rehearsal**: The Pi sent 1 message(s) to analyze in one batch; 3 model call(s) under the stubs.
 - 2026-11-10 22:00 [Sutton Sandbox FC] MatchTime reacted 👍
@@ -374,79 +374,79 @@
 - 2026-11-10 22:20 [DM Ash Patel] **MatchTime**: 💷 Ash, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/SWCelIwVXk
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Ben Hughes] **MatchTime**: 💷 Ben, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/aIX8UBzWVz
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Dev Shah] **MatchTime**: 💷 Dev, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/DPwFSMiQzA
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Gaz Reid] **MatchTime**: 💷 Gaz, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/jat7FyFnZU
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Jay Okoro] **MatchTime**: 💷 Jay, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/LMUCMDxc4G
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Kit Lane] **MatchTime**: 💷 Kit, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/n11PLDRr8N
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Leo Grant] **MatchTime**: 💷 Leo, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/DBM3XzadHC
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Kai Morgan] **MatchTime**: 💷 Kai, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/ttYjZUc7g
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Max Ford] **MatchTime**: 💷 Max, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/dd1gheeMzb
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Ned Price] **MatchTime**: 💷 Ned, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/Gzqg4n9cE
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Ollie Shaw] **MatchTime**: 💷 Ollie, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/50y0J65r3U
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Pete Lowe] **MatchTime**: 💷 Pete, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/510cMIAAuW
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Raj Mehta] **MatchTime**: 💷 Raj, match fee for *Sutton Sandbox FC* is *£5*.
     
     Tap to pay (card, Apple or Google Pay, or pay Colin directly):
-    http://localhost:3471/r/Mbba6GjHuY
+    <app>/r/<tok>
     
     You can also pay for anyone you brought along.
 - 2026-11-10 22:20 [DM Colin Banks] **MatchTime**: ✅ Done, sent 13 pay links at *£5* each for *Sutton Sandbox FC* on Tue 10 Nov. Players can pay by card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.
@@ -471,155 +471,155 @@
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/7ZblsK4HEO
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/WGU5X3KR1M
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Ben Hughes] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/fWo7IcxVw
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/xT8pM6Z1Yp
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Dev Shah] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/QN2Qb1DZWl
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/1u1M6awuQ0
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Gaz Reid] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/uERcmGB25J
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/I14QuAkbyc
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Jay Okoro] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/BZFosyMsRj
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/aUXjTlbzjv
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Kit Lane] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/0PMEz1ojVA
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/pdQHp3jJuB
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Leo Grant] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/9FuT2VcU1M
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/2pa2ifjqRt
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Kai Morgan] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/Dnggs97ny4
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/I2IJrM56Lk
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Colin Banks] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/X2VDwUdRlD
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/p787QmQgRo
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Max Ford] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/q3xVoc7NBN
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/4IPyXsq9vF
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Ned Price] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/SfDp1E6e1m
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/sHbfKjnF4o
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Ollie Shaw] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/i2Ff4C77Ac
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/6fAwIFAxKR
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Pete Lowe] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/e7uqCu97O0
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/RXbclZ1qvz
+    <app>/r/<tok>
 - 2026-11-11 08:00 [DM Raj Mehta] **MatchTime**: 🏆 *Sutton Sandbox FC*, Tue 10 Nov
     
     Rate your teammates and pick Man of the Match. Takes ~1 minute.
     
     Your personal link:
-    http://localhost:3471/r/TDPMiHbnho
+    <app>/r/<tok>
     
     Link expires in 5 days.
     
     📊 Your season stats (ratings, MoM, badges, share card), any time:
-    http://localhost:3471/r/UJv8SrsZnz
+    <app>/r/<tok>
 - 2026-11-11 08:00 database: sent-notification <match 2026-11-10 20:00>:rate-dm:@ash: (new) dm
     sent-notification <match 2026-11-10 20:00>:rate-dm:@ben: (new) dm
     sent-notification <match 2026-11-10 20:00>:rate-dm:@colin: (new) dm
@@ -646,7 +646,7 @@
     botjob dm → @colin: 💸 *Ash Patel* says they've paid you directly for *Sutton Sandbox FC*: *£5*. Mark it paid : (new) pending
     sent-notification <match 2026-11-10 20:00>:rate-promo: (new) group-message
     sent-notification paid-claim:dm-sutton-69: (new) paid-claim
-    sent-notification txtlog:<club>:32daf708afc79682:<match 2026-11-10 20:00>:rate-promo: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 32daf708>:<match 2026-11-10 20:00>:rate-promo: (new) outbound-text-log
 - 2026-11-11 09:00 [DM Ash Patel] **Ash Patel**: (opens the rating link and submits, Man of the Match: /Ben/) _(rating page: submitted (default scores; Man of the Match: B Ben Hughes))_
 - 2026-11-11 09:00 database: <match 2026-11-10 20:00>: MoM votes for @ben: (new) 1
     match 2026-11-10 20:00: MoM votes: (new) 1
@@ -654,13 +654,13 @@
 - 2026-11-11 09:00 [DM Colin Banks] **MatchTime**: 💸 *Ash Patel* says they've paid you directly for *Sutton Sandbox FC*: *£5*.
     
     Mark it paid once it lands:
-    http://localhost:3471/r/yueJVA9Nj8
+    <app>/r/<tok>
 - 2026-11-11 09:00 [Sutton Sandbox FC] **MatchTime**: 📅 *Sutton Sandbox FC*: *Tuesday 17 November at 20:00* at Sandbox Leisure Centre.
     
     Say *IN* to join. First 14 confirmed play.
 - 2026-11-11 09:00 database: botjob dm → @colin: 💸 *Ash Patel* says they've paid you directly for *Sutton Sandbox FC*: *£5*. Mark it paid : pending → sent
     sent-notification <match 2026-11-17 20:00>:announce-match: (new) group-message
-    sent-notification txtlog:<club>:09a0e506fc5e0049:<match 2026-11-17 20:00>:announce-match: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 09a0e506>:<match 2026-11-17 20:00>:announce-match: (new) outbound-text-log
 - 2026-11-11 09:10 [DM Dev Shah] **Dev Shah**: (opens the rating link and submits, Man of the Match: /Ben/) _(rating page: submitted (default scores; Man of the Match: B Ben Hughes))_
 - 2026-11-11 09:10 database: <match 2026-11-10 20:00>: MoM votes for @ben: 1 → 2
     match 2026-11-10 20:00: MoM votes: 1 → 2
@@ -670,7 +670,7 @@
 - 2026-11-11 12:00 database: <match 2026-11-10 20:00>: MoM votes for @gaz: (new) 1
     match 2026-11-10 20:00: MoM votes: 2 → 3
     match 2026-11-10 20:00: ratings: 26 → 39
-- 2026-11-11 17:00 [Sutton Sandbox FC] **MatchTime**: 🗓 *Sutton Sandbox FC* needs *14 more* for Tuesday 17 November. Say *IN* if you can play ⚽
+- 2026-11-11 17:00 [Sutton Sandbox FC] **MatchTime**: 🗓 *Sutton Sandbox FC* on Tuesday 17 November needs *14 players* to get going. Say *IN* if you can play ⚽
     
     *Playing Tue 17 Nov:*
     1. 🥁
@@ -688,58 +688,58 @@
     13. 🥁
     14. 🥁
 - 2026-11-11 17:00 database: sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-11: (new) group-message
-    sent-notification <match 2026-11-17 20:00>:roster-shown:50e3e1e5d84d5026:1794416400000: (new) roster-shown
-    sent-notification txtlog:<club>:f82bd653bffbcc3d:<match 2026-11-17 20:00>:evening-update:2026-11-11: (new) outbound-text-log
+    sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794416400000: (new) roster-shown
+    sent-notification txtlog:<club>:<text dfbfba4e>:<match 2026-11-17 20:00>:evening-update:2026-11-11: (new) outbound-text-log
 - 2026-11-11 18:00 [DM Ben Hughes] **MatchTime**: 💷 Quick one Ben: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/R58Zt5S89X
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Dev Shah] **MatchTime**: 💷 Quick one Dev: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/RVRsrxCbhR
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Gaz Reid] **MatchTime**: 💷 Quick one Gaz: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/uNXe81jI5G
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Jay Okoro] **MatchTime**: 💷 Quick one Jay: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/rNZlEL2pwg
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Kit Lane] **MatchTime**: 💷 Quick one Kit: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/mKYgPksmok
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Leo Grant] **MatchTime**: 💷 Quick one Leo: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/xSVA8qtI54
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Kai Morgan] **MatchTime**: 💷 Quick one Kai: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/G7NQKf2iad
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Max Ford] **MatchTime**: 💷 Quick one Max: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/jgsSkvdONw
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Ned Price] **MatchTime**: 💷 Quick one Ned: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/oxh6vTRqvG
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Ollie Shaw] **MatchTime**: 💷 Quick one Ollie: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/jOl9w4Xs63
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Pete Lowe] **MatchTime**: 💷 Quick one Pete: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/gzG0DJ9jM6
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Raj Mehta] **MatchTime**: 💷 Quick one Raj: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/ZMXP7GDKGI
+    <app>/r/<tok>
 - 2026-11-11 18:00 [DM Colin Banks] **MatchTime**: 🤝 1 player said they'd pay you directly for *Sutton Sandbox FC*. Tick off whoever's settled up:
-    http://localhost:3471/r/nyY9kGCv35
+    <app>/r/<tok>
 - 2026-11-11 18:00 database: sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-11: (new) dm
     sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-11: (new) dm
     sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-11: (new) dm
@@ -754,7 +754,7 @@
     sent-notification <match 2026-11-10 20:00>:pay-chase:@pete:2026-11-11: (new) dm
     sent-notification <match 2026-11-10 20:00>:pay-chase:@raj:2026-11-11: (new) dm
 - 2026-11-12 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
-- 2026-11-12 17:00 [Sutton Sandbox FC] **MatchTime**: 🗓 *Sutton Sandbox FC* on *Tuesday 17 November* needs *14 more* players. Say *IN* if you can play ⚽
+- 2026-11-12 17:00 [Sutton Sandbox FC] **MatchTime**: 🗓 *Sutton Sandbox FC* needs *14 more* for Tuesday 17 November. Say *IN* if you can play ⚽
     
     *Playing Tue 17 Nov:*
     1. 🥁
@@ -772,102 +772,102 @@
     13. 🥁
     14. 🥁
 - 2026-11-12 17:00 database: sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-12: (new) group-message
-    sent-notification <match 2026-11-17 20:00>:roster-shown:50e3e1e5d84d5026:1794502800000: (new) roster-shown
-    sent-notification txtlog:<club>:4a8cdd2a527270a8:<match 2026-11-17 20:00>:evening-update:2026-11-12: (new) outbound-text-log
+    sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794502800000: (new) roster-shown
+    sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-12: (new) outbound-text-log
 - 2026-11-12 18:00 [DM Ben Hughes] **MatchTime**: 💷 Ben, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/xuParZTeJ4
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Dev Shah] **MatchTime**: 💷 Dev, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/yvTVNFjc4
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Gaz Reid] **MatchTime**: 💷 Gaz, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/36mQbw58mc
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Jay Okoro] **MatchTime**: 💷 Jay, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/jy9MDK6zGA
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Kit Lane] **MatchTime**: 💷 Kit, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/BrQi7D1t1v
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Leo Grant] **MatchTime**: 💷 Leo, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/TZzcYyLsLz
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Kai Morgan] **MatchTime**: 💷 Kai, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/y5wyzyxBPY
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Max Ford] **MatchTime**: 💷 Max, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/F4QaoKY2bY
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Ned Price] **MatchTime**: 💷 Ned, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/yCypzMtD4w
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Ollie Shaw] **MatchTime**: 💷 Ollie, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/ixvtp1sULv
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Pete Lowe] **MatchTime**: 💷 Pete, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/Zi6TrkVBl4
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Raj Mehta] **MatchTime**: 💷 Raj, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/fPLuhgB1Mr
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Colin Banks] **MatchTime**: 🤝 1 player said they'd pay you directly for *Sutton Sandbox FC*. Tick off whoever's settled up:
-    http://localhost:3471/r/ZicTT55pVT
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Ben Hughes] **MatchTime**: Hey Ben 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/0jmVEhHU8
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Gaz Reid] **MatchTime**: Hey Gaz 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/W5iyDUecCY
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Jay Okoro] **MatchTime**: Hey Jay 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/H1QVgP72fK
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Kit Lane] **MatchTime**: Hey Kit 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/KGCskk3Itx
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Leo Grant] **MatchTime**: Hey Leo 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/6hRuL9ivmZ
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Colin Banks] **MatchTime**: Hey Colin 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/Te2UZi547K
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Max Ford] **MatchTime**: Hey Max 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/qYJVmBsb0
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Ned Price] **MatchTime**: Hey Ned 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/eNj0iF5j15
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Ollie Shaw] **MatchTime**: Hey Ollie 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/vmFVEbRirA
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Pete Lowe] **MatchTime**: Hey Pete 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/D6UhAR4k1n
+    <app>/r/<tok>
 - 2026-11-12 18:00 [DM Raj Mehta] **MatchTime**: Hey Raj 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
-    http://localhost:3471/r/YrAD8sXVZD
+    <app>/r/<tok>
 - 2026-11-12 18:00 [Sutton Sandbox FC] **MatchTime**: 🏅 *New badges this week*
     
     👟 *On the board*: welcome *Ash Patel*, *Ben Hughes*, *Colin Banks*, *Dev Shah*, *Gaz Reid*, *Jay Okoro*, *Kai Morgan*, *Kit Lane*, *Leo Grant*, *Max Ford*, *Ned Price*, *Ollie Shaw*, *Pete Lowe* and *Raj Mehta*, first games for the club! 🎉
@@ -899,7 +899,7 @@
     sent-notification <match 2026-11-10 20:00>:rate-reminder:@ollie:2026-11-12: (new) dm
     sent-notification <match 2026-11-10 20:00>:rate-reminder:@pete:2026-11-12: (new) dm
     sent-notification <match 2026-11-10 20:00>:rate-reminder:@raj:2026-11-12: (new) dm
-    sent-notification txtlog:<club>:98de0c19b79fbbc4:<match 2026-11-10 20:00>:badges: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 98de0c19>:<match 2026-11-10 20:00>:badges: (new) outbound-text-log
 - 2026-11-12 19:00 [DM Gaz Reid] **Gaz Reid**: (opens the rating link and submits, Man of the Match: /Ben/) _(rating page: submitted (default scores; Man of the Match: B Ben Hughes))_
 - 2026-11-12 19:00 database: <match 2026-11-10 20:00>: MoM votes for @ben: 2 → 3
     match 2026-11-10 20:00: MoM votes: 3 → 4
@@ -908,7 +908,7 @@
 - 2026-11-12 19:30 [DM Colin Banks] **MatchTime**: 💸 *Jay Okoro* says they've paid you directly for *Sutton Sandbox FC*: *£5*.
     
     Mark it paid once it lands:
-    http://localhost:3471/r/S0T92uR5Ko
+    <app>/r/<tok>
 - 2026-11-12 19:30 [DM Jay Okoro] **MatchTime**: Thanks Jay, I've told Colin you've paid *£5* for *Sutton Sandbox FC*. Colin will confirm once it lands 👍
 - 2026-11-12 19:30 [DM Jay Okoro] MatchTime reacted ✅ (changed)
 - 2026-11-12 19:30 database: botjob dm → @colin: 💸 *Jay Okoro* says they've paid you directly for *Sutton Sandbox FC*: *£5*. Mark it paid : (new) sent
@@ -933,54 +933,54 @@
     13. 🥁
     14. 🥁
 - 2026-11-13 17:00 database: sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-13: (new) group-message
-    sent-notification <match 2026-11-17 20:00>:roster-shown:50e3e1e5d84d5026:1794589200000: (new) roster-shown
-    sent-notification txtlog:<club>:f82bd653bffbcc3d:<match 2026-11-17 20:00>:evening-update:2026-11-13: (new) outbound-text-log
+    sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794589200000: (new) roster-shown
+    sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-13: (new) outbound-text-log
 - 2026-11-13 18:00 [DM Ben Hughes] **MatchTime**: 💷 Ben, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/IOqzV03O7M
+    <app>/r/<tok>
 - 2026-11-13 18:00 [DM Dev Shah] **MatchTime**: 💷 Dev, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/3y5s95Z59E
+    <app>/r/<tok>
 - 2026-11-13 18:00 [DM Gaz Reid] **MatchTime**: 💷 Gaz, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/G9vzQGhYRQ
+    <app>/r/<tok>
 - 2026-11-13 18:00 [DM Kit Lane] **MatchTime**: 💷 Kit, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/YdepvHJNIu
+    <app>/r/<tok>
 - 2026-11-13 18:00 [DM Leo Grant] **MatchTime**: 💷 Leo, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/PYlasP8CsJ
+    <app>/r/<tok>
 - 2026-11-13 18:00 [DM Kai Morgan] **MatchTime**: 💷 Kai, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/wKuZiwLoVp
+    <app>/r/<tok>
 - 2026-11-13 18:00 [DM Max Ford] **MatchTime**: 💷 Max, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/37XGCTgOLC
+    <app>/r/<tok>
 - 2026-11-13 18:00 [DM Ned Price] **MatchTime**: 💷 Ned, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/9KRrQPzOTN
+    <app>/r/<tok>
 - 2026-11-13 18:00 [DM Ollie Shaw] **MatchTime**: 💷 Ollie, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/CUxXJlGB9E
+    <app>/r/<tok>
 - 2026-11-13 18:00 [DM Pete Lowe] **MatchTime**: 💷 Pete, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/2sKduqeh3P
+    <app>/r/<tok>
 - 2026-11-13 18:00 [DM Raj Mehta] **MatchTime**: 💷 Raj, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/XcGTZKlken
+    <app>/r/<tok>
 - 2026-11-13 18:00 [DM Colin Banks] **MatchTime**: 🤝 2 players said they'd pay you directly for *Sutton Sandbox FC*. Tick off whoever's settled up:
-    http://localhost:3471/r/naHCk8b1bQ
+    <app>/r/<tok>
 - 2026-11-13 18:00 database: sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-13: (new) dm
     sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-13: (new) dm
     sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-13: (new) dm
@@ -1012,94 +1012,94 @@
     13. 🥁
     14. 🥁
 - 2026-11-14 17:00 database: sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-14: (new) group-message
-    sent-notification <match 2026-11-17 20:00>:roster-shown:50e3e1e5d84d5026:1794675600000: (new) roster-shown
-    sent-notification txtlog:<club>:f82bd653bffbcc3d:<match 2026-11-17 20:00>:evening-update:2026-11-14: (new) outbound-text-log
+    sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794675600000: (new) roster-shown
+    sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-14: (new) outbound-text-log
 - 2026-11-14 18:00 [DM Ben Hughes] **MatchTime**: 💷 Ben, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/96FB0Ogxgs
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Dev Shah] **MatchTime**: 💷 Dev, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/azZhvE0OvQ
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Gaz Reid] **MatchTime**: 💷 Gaz, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/rnqYoo3Bmg
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Kit Lane] **MatchTime**: 💷 Kit, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/79HDgoxl7W
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Leo Grant] **MatchTime**: 💷 Leo, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/0CGLgRme0T
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Kai Morgan] **MatchTime**: 💷 Kai, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/MWvdoStlDO
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Max Ford] **MatchTime**: 💷 Max, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/muNYnKpd2a
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Ned Price] **MatchTime**: 💷 Ned, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/Pic1sF3OP5
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Ollie Shaw] **MatchTime**: 💷 Ollie, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/fM26KpoQjw
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Pete Lowe] **MatchTime**: 💷 Pete, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/Ja399SM89Q
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Raj Mehta] **MatchTime**: 💷 Raj, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/OLFtUTNeLB
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Colin Banks] **MatchTime**: 🤝 2 players said they'd pay you directly for *Sutton Sandbox FC*. Tick off whoever's settled up:
-    http://localhost:3471/r/WNYoCVkscr
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Ben Hughes] **MatchTime**: Last reminder, Ben 🔔 Ratings for *Sutton Sandbox FC* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/ilRPuVuwq0
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Jay Okoro] **MatchTime**: Last reminder, Jay 🔔 Ratings for *Sutton Sandbox FC* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/UQkvznQHUw
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Kit Lane] **MatchTime**: Last reminder, Kit 🔔 Ratings for *Sutton Sandbox FC* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/3TOhTgkrlB
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Leo Grant] **MatchTime**: Last reminder, Leo 🔔 Ratings for *Sutton Sandbox FC* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/sjJ4j046vw
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Colin Banks] **MatchTime**: Last reminder, Colin 🔔 Ratings for *Sutton Sandbox FC* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/tw95gVeoXm
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Max Ford] **MatchTime**: Last reminder, Max 🔔 Ratings for *Sutton Sandbox FC* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/6rbvXPZPcM
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Ned Price] **MatchTime**: Last reminder, Ned 🔔 Ratings for *Sutton Sandbox FC* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/4QKj4Ffg9E
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Ollie Shaw] **MatchTime**: Last reminder, Ollie 🔔 Ratings for *Sutton Sandbox FC* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/iSA22fEtU0
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Pete Lowe] **MatchTime**: Last reminder, Pete 🔔 Ratings for *Sutton Sandbox FC* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/ha5NeCKNOA
+    <app>/r/<tok>
 - 2026-11-14 18:00 [DM Raj Mehta] **MatchTime**: Last reminder, Raj 🔔 Ratings for *Sutton Sandbox FC* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
-    http://localhost:3471/r/q7nqkA4x0e
+    <app>/r/<tok>
 - 2026-11-14 18:00 database: sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-14: (new) dm
     sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-14: (new) dm
     sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-14: (new) dm
@@ -1123,7 +1123,7 @@
     sent-notification <match 2026-11-10 20:00>:rate-reminder:@pete:2026-11-14: (new) dm
     sent-notification <match 2026-11-10 20:00>:rate-reminder:@raj:2026-11-14: (new) dm
 - 2026-11-15 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
-- 2026-11-15 17:00 [Sutton Sandbox FC] **MatchTime**: 🗓 *Sutton Sandbox FC* needs *14 more* for Tuesday. Say *IN* if you can play ⚽
+- 2026-11-15 17:00 [Sutton Sandbox FC] **MatchTime**: 🗓 *Sutton Sandbox FC* needs *14 more* for Tuesday 17 November. Say *IN* if you can play ⚽
     
     *Playing Tue 17 Nov:*
     1. 🥁
@@ -1141,54 +1141,54 @@
     13. 🥁
     14. 🥁
 - 2026-11-15 17:00 database: sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-15: (new) group-message
-    sent-notification <match 2026-11-17 20:00>:roster-shown:50e3e1e5d84d5026:1794762000000: (new) roster-shown
-    sent-notification txtlog:<club>:6d3b9a9a502b00eb:<match 2026-11-17 20:00>:evening-update:2026-11-15: (new) outbound-text-log
+    sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794762000000: (new) roster-shown
+    sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-15: (new) outbound-text-log
 - 2026-11-15 18:00 [DM Ben Hughes] **MatchTime**: 💷 Ben, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/tob65OfHzb
+    <app>/r/<tok>
 - 2026-11-15 18:00 [DM Dev Shah] **MatchTime**: 💷 Dev, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/IpOd5M5qFg
+    <app>/r/<tok>
 - 2026-11-15 18:00 [DM Gaz Reid] **MatchTime**: 💷 Gaz, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/RLScrjer8n
+    <app>/r/<tok>
 - 2026-11-15 18:00 [DM Kit Lane] **MatchTime**: 💷 Kit, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/wwXLIkqBYz
+    <app>/r/<tok>
 - 2026-11-15 18:00 [DM Leo Grant] **MatchTime**: 💷 Leo, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/CvCnY7a6va
+    <app>/r/<tok>
 - 2026-11-15 18:00 [DM Kai Morgan] **MatchTime**: 💷 Kai, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/ElDYyYwFLv
+    <app>/r/<tok>
 - 2026-11-15 18:00 [DM Max Ford] **MatchTime**: 💷 Max, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/D0OT6QreVF
+    <app>/r/<tok>
 - 2026-11-15 18:00 [DM Ned Price] **MatchTime**: 💷 Ned, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/SclUV29hM
+    <app>/r/<tok>
 - 2026-11-15 18:00 [DM Ollie Shaw] **MatchTime**: 💷 Ollie, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/cnFwIO9CE
+    <app>/r/<tok>
 - 2026-11-15 18:00 [DM Pete Lowe] **MatchTime**: 💷 Pete, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/XsI2Wpqiyc
+    <app>/r/<tok>
 - 2026-11-15 18:00 [DM Raj Mehta] **MatchTime**: 💷 Raj, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:
-    http://localhost:3471/r/ezv6ZaLs9y
+    <app>/r/<tok>
 - 2026-11-15 18:00 [DM Colin Banks] **MatchTime**: 🤝 2 players said they'd pay you directly for *Sutton Sandbox FC*. Tick off whoever's settled up:
-    http://localhost:3471/r/LzUQtCytPn
+    <app>/r/<tok>
 - 2026-11-15 18:00 database: sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-15: (new) dm
     sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-15: (new) dm
     sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-15: (new) dm
@@ -1209,10 +1209,10 @@
     • Ben Hughes (3)
     • Gaz Reid (1)
 - 2026-11-15 20:00 database: sent-notification <match 2026-11-10 20:00>:mom-announcement: (new) group-message
-    sent-notification txtlog:<club>:c801f556e06f0041:<match 2026-11-10 20:00>:mom-announcement: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text c801f556>:<match 2026-11-10 20:00>:mom-announcement: (new) outbound-text-log
 
 ### Monday: the rating window has closed; Man of the Match and badges (2026-11-16 09:00)
 
-- 2026-11-16 10:00 [DM Kai Morgan] **MatchTime**: 📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: http://localhost:3471/r/XVgFypMqHg
+- 2026-11-16 10:00 [DM Kai Morgan] **MatchTime**: 📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>
     MatchTime reminds you once a week until a venue is set.
 - 2026-11-16 10:00 database: botjob dm → @kai: 📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venu (#2): (new) sent
