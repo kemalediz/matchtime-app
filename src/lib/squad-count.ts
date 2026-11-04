@@ -4,8 +4,17 @@
  * how many are confirmed, the places, who is on the bench (in bench
  * order, leaving out anyone who has left the club, as the organisers'
  * pick list does) and the club's bench pick mode. No model.
+ *
+ * Every count line is read by the organisers only (the HQ "Done" and
+ * pasted-list replies, the late drop-out notice), so a bencher is shown
+ * under the organisers' label (`organiser-names.ts`): the best name
+ * MatchTime holds, else his phone, else the club's word for "unnamed".
+ * Never "?" (sandbox club replay, 2026-11-04: "2 on the bench (? and
+ * Bilal) ... (for example ?)").
  */
 import { db } from "./db";
+import { t } from "./i18n/t";
+import { loadOrganiserNames } from "./organiser-names";
 
 export interface SquadCount {
   confirmed: number;
@@ -14,16 +23,17 @@ export interface SquadCount {
   benchPickMode: string | null;
 }
 
-export async function loadSquadCount(matchId: string): Promise<SquadCount> {
+/** `lang`: the language the line is written in; the club's when absent. */
+export async function loadSquadCount(matchId: string, lang?: string | null): Promise<SquadCount> {
   const m = await db.match.findUnique({
     where: { id: matchId },
     select: {
       maxPlayers: true,
-      activity: { select: { orgId: true, org: { select: { benchPickMode: true } } } },
+      activity: { select: { orgId: true, org: { select: { benchPickMode: true, language: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         orderBy: { position: "asc" },
-        select: { userId: true, status: true, user: { select: { name: true } } },
+        select: { userId: true, status: true },
       },
     },
   });
@@ -39,10 +49,14 @@ export async function loadSquadCount(matchId: string): Promise<SquadCount> {
         ).map((x) => x.userId),
       )
     : new Set<string>();
+  const benchIds = benchRows.filter((a) => !left.has(a.userId)).map((a) => a.userId);
+  const lineLang = lang ?? m.activity.org?.language ?? null;
+  const labels = await loadOrganiserNames(m.activity.orgId, lineLang, benchIds);
+  const unnamed = t(lineLang).unnamed;
   return {
     confirmed: m.attendances.filter((a) => a.status === "CONFIRMED").length,
     maxPlayers: m.maxPlayers,
-    bench: benchRows.filter((a) => !left.has(a.userId)).map((a) => a.user.name ?? "?"),
+    bench: benchIds.map((id) => labels.get(id)?.admin ?? unnamed),
     benchPickMode: m.activity.org?.benchPickMode ?? null,
   };
 }

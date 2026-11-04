@@ -33,6 +33,8 @@
  * counts only.
  */
 import { db } from "./db";
+import { t } from "./i18n/t";
+import { loadOrganiserNames } from "./organiser-names";
 import { cancelAttendance, registerAttendance } from "./attendance";
 import type { AttendanceEventContext } from "./attendance-events";
 import { selectRegistrationMatch } from "./registration-match-select";
@@ -86,10 +88,11 @@ async function currentSquad(matchId: string): Promise<Array<{ userId: string; st
   ).map((r) => ({ userId: r.userId, status: r.status as SquadStatus }));
 }
 
-async function namesOf(ids: string[]): Promise<Map<string, string>> {
-  if (ids.length === 0) return new Map();
-  const users = await db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
-  return new Map(users.map((u) => [u.id, u.name ?? "?"]));
+/** HQ is read by organisers: each player under the organisers' label
+ *  (`organiser-names.ts`), never "?" for a member with no name. */
+async function namesOf(orgId: string, lang: string | null | undefined, ids: string[]): Promise<Map<string, string>> {
+  const labels = await loadOrganiserNames(orgId, lang, ids);
+  return new Map([...labels].map(([id, l]) => [id, l.admin]));
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -237,13 +240,13 @@ export async function proposeSquadPaste(args: HqSquadReadArgs & { read?: HqSquad
   }
   const diff = gate.diff;
 
-  const nameOf = await namesOf([
+  const nameOf = await namesOf(orgId, args.lang, [
     ...diff.add.flatMap((r) => ("userId" in r ? [r.userId] : [])),
     ...diff.toBench.flatMap((r) => ("userId" in r ? [r.userId] : [])),
     ...diff.remove.map((r) => r.userId),
     ...gate.held,
   ]);
-  const label = (r: SquadRef) => ("userId" in r ? (nameOf.get(r.userId) ?? "?") : r.newName);
+  const label = (r: SquadRef) => ("userId" in r ? (nameOf.get(r.userId) ?? t(args.lang).unnamed) : r.newName);
   const newNames = [...diff.add, ...diff.toBench].flatMap((r) => ("newName" in r ? [r.newName] : []));
   const replyText = buildPasteProposalReply({
     lang: args.lang,
@@ -255,7 +258,7 @@ export async function proposeSquadPaste(args: HqSquadReadArgs & { read?: HqSquad
     cannotAdd,
     listed: playing.length,
     maxPlayers: match.maxPlayers,
-    kept: gate.held.map((id) => nameOf.get(id) ?? "?"),
+    kept: gate.held.map((id) => nameOf.get(id) ?? t(args.lang).unnamed),
   });
 
   if (diff.same) {
@@ -425,11 +428,13 @@ export async function answerSquadPasteYes(args: {
   }
 
   const nameOf = await namesOf(
+    orgId,
+    args.lang,
     [...changes, ...failed].flatMap((c) => (c.userId && !c.name ? [c.userId] : [])),
   );
   const display = (c: { userId: string | null; name: string | null }) =>
-    c.name ?? (c.userId ? nameOf.get(c.userId) : null) ?? "?";
-  const squad = await loadSquadCount(matchId);
+    c.name ?? (c.userId ? nameOf.get(c.userId) : null) ?? t(args.lang).unnamed;
+  const squad = await loadSquadCount(matchId, args.lang);
   const confirmed = squad.confirmed;
   console.log(
     `[admin-group] ${args.messageId}: list ${proposal.id} applied on match ${matchId}: ` +

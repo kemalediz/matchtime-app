@@ -169,6 +169,24 @@ describe("proposeSquadPaste", () => {
     expect(modelCalls[0].user.trim().endsWith("5. Naim")).toBe(true);
   });
 
+  // Sandbox club replay 2026-11-04: a member imported with no name was "?"
+  // in the HQ reply. HQ is read by organisers: his phone, else "(unnamed)".
+  it("a member with no name is his phone in the proposal, else the word for unnamed, never '?'", async () => {
+    const nameless = (phoneNumber: string | null) =>
+      dbMock.user.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+        people
+          .filter(([id]) => where.id.in.includes(id))
+          .map(([id, name]) => (id === "u-clarence" ? { id, name: null, phoneNumber, email: null } : { id, name })),
+      );
+    nameless("+447700900123");
+    const r = (await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } })) as PasteReply | null;
+    expect(r?.replyText).toContain("Removing: Shehryar Khan, +44 7700 900123.");
+    nameless(null);
+    const r2 = (await proposeSquadPaste({ ...base, text: LIST, deps: { model: LIST_READ() } })) as PasteReply | null;
+    expect(r2?.replyText).toContain("Removing: Shehryar Khan, (unnamed).");
+    expect(`${r?.replyText} ${r2?.replyText}`).not.toContain("?");
+  });
+
   it("the reader leaves off two players but does not say they are out: nobody is taken out, and it says so", async () => {
     const m = reader("squad", [{ name: "Bilal", member: "p2" }, { name: "Ali", member: "p4" }, { name: "Tom", member: "p5" }, { name: "Sam", member: "p6" }]);
     const r = (await proposeSquadPaste({ ...base, text: "1. Bilal\n2. Ali\n3. Tom\n4. Sam", deps: { model: m } })) as PasteReply | null;

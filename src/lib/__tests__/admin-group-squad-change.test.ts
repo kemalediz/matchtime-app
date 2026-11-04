@@ -199,7 +199,7 @@ describe("handleAdminSquadChange", () => {
       replyText:
         'Done: Shehryar out. 17 of 18, 1 on the bench (Uncle Najib). A place is free. Just tell me who should come in from the bench, in your own words (for example Uncle Najib).',
     });
-    expect(squadCount.loadSquadCount).toHaveBeenCalledWith(MATCH_ID);
+    expect(squadCount.loadSquadCount).toHaveBeenCalledWith(MATCH_ID, "en");
     expect(squadCount.loadSquadCount.mock.invocationCallOrder[0]).toBeGreaterThan(att.cancelAttendance.mock.invocationCallOrder[0]);
   });
 
@@ -358,6 +358,38 @@ describe("handleAdminSquadChange", () => {
       outcome: "squad-change-failed",
       replyText: "I couldn't change Shehryar. Please check the match page. 17 of 18.",
     });
+  });
+
+  // Sandbox club replay 2026-11-04: a member imported with no name was "?"
+  // in the HQ reply. HQ is read by organisers: his phone, else "(unnamed)".
+  it("a member with no name is his phone in the HQ reply, never '?'", async () => {
+    routed("other_att");
+    statuses.set("u-shehryar", "CONFIRMED");
+    dbMock.user.findMany.mockResolvedValue([{ id: "u-shehryar", name: null, phoneNumber: "+447700900123", email: null }]);
+    engineDoes(async (a) => {
+      await a.deps.cancelAttendance("u-shehryar", MATCH_ID, { cause: "admin-message", actorKind: "admin", actorUserId: "u-admin", sourceRef: "wa-1" });
+    });
+    const r = await handleAdminSquadChange({ ...input, route });
+    expect(r).toMatchObject({ replyText: "Done: +44 7700 900123 out. 17 of 18." });
+  });
+
+  it("a member with no name and no phone is the club's word for unnamed, in English and Turkish", async () => {
+    routed("other_att");
+    statuses.set("u-shehryar", "CONFIRMED");
+    dbMock.user.findMany.mockResolvedValue([{ id: "u-shehryar", name: null, phoneNumber: null, email: null }]);
+    engineDoes(async (a) => {
+      await a.deps.cancelAttendance("u-shehryar", MATCH_ID, { cause: "admin-message", actorKind: "admin", actorUserId: "u-admin", sourceRef: "wa-1" });
+    });
+    const reply = async (lang: string) => {
+      const r = await handleAdminSquadChange({ ...input, route, lang });
+      return r.handled ? r.replyText : "";
+    };
+    const en = await reply("en");
+    expect(en).toContain("(unnamed) out");
+    statuses.set("u-shehryar", "CONFIRMED");
+    const tr = await reply("tr");
+    expect(tr).toContain("(isimsiz)");
+    expect(`${en} ${tr}`).not.toContain("?");
   });
 
   it("engine maybes are still recorded for the 24h chase if the engine ever returns one", async () => {

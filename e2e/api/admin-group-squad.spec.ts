@@ -358,6 +358,24 @@ test.describe("organiser pick: a place opens with someone on the bench", () => {
     );
     await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
   });
+
+  // Sandbox club replay 2026-11-04: a bencher imported with no name was
+  // "1 on the bench (?) ... (for example ?)". HQ is read by organisers: he
+  // is his phone there, as on the pick list.
+  test("a bencher with no name is his phone in the count and the hint, never '?'", async ({ request, db }) => {
+    await db.run(`UPDATE "User" SET name = NULL WHERE id = $1`, [U.third]);
+    await db.run(`DELETE FROM "UserAlias" WHERE "userId" = $1`, [U.third]);
+    await db.run(`UPDATE "AnalyzedMessage" SET "authorName" = NULL WHERE "authorUserId" = $1`, [U.third]);
+    engineOn({ "Colin out": { route: "other_att", reading: changeReading([["Colin Collector", "out"]]) } });
+    const out = await say(request, "Colin out");
+    expect(out).toMatchObject({
+      handled: true,
+      outcome: "squad-changed",
+      replyText:
+        'Done: Colin Collector out. 2 of 4, 1 on the bench (+44 7700 900008). 2 places are free. Just tell me who should come in from the bench, in your own words (for example +44 7700 900008).',
+    });
+    await db.run(`UPDATE "User" SET name = 'Tom Third' WHERE id = $1`, [U.third]);
+  });
 });
 
 // FNF HQ 2026-10-24 11:30-11:43 UTC. "Glazers in" added a brand-new,

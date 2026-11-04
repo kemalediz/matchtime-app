@@ -54,6 +54,8 @@ import { rollingSeedPendingAt } from "./rolling-squad";
 import { timeLabel, weekdayLabel } from "./i18n/dates";
 import type { HqSquadChange } from "./hq-squad-reader-prompt";
 import { loadSquadCount } from "./squad-count";
+import { loadOrganiserNames } from "./organiser-names";
+import { t } from "./i18n/t";
 import type { Route, SquadState } from "./pipeline/types";
 import {
   buildAdminSquadReply,
@@ -279,20 +281,21 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
     // No claim read at all still goes to the reply: addressed and routed
     // other_att, it says it could not tell who (`buildAdminSquadReply`).
     const ids = [...new Set([...moved.map((m) => m.userId), ...maybeIds])];
-    const users = ids.length
-      ? await db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
-      : [];
-    const nameOf = new Map(users.map((u) => [u.id, u.name ?? "?"]));
+    // HQ is read by organisers: the organisers' label (`organiser-names.ts`),
+    // never "?" for a member with no name.
+    const labels = await loadOrganiserNames(orgId, input.lang, ids);
+    const unnamed = t(input.lang).unnamed;
+    const nameOf = (userId: string) => labels.get(userId)?.admin ?? unnamed;
     const kindOf = (to: Status): SquadChangeKind => (to === "CONFIRMED" ? "in" : to === "BENCH" ? "bench" : "out");
     // The last move per player is what stands.
     const last = new Map<string, Status>();
     for (const m of moved) last.set(m.userId, m.to);
     const changes = [
-      ...[...last.entries()].map(([userId, to]) => ({ kind: kindOf(to), name: nameOf.get(userId) ?? "?" })),
-      ...maybeIds.map((userId) => ({ kind: "maybe" as const, name: nameOf.get(userId) ?? "?" })),
+      ...[...last.entries()].map(([userId, to]) => ({ kind: kindOf(to), name: nameOf(userId) })),
+      ...maybeIds.map((userId) => ({ kind: "maybe" as const, name: nameOf(userId) })),
     ];
     const failed = [...new Set(outcome.failures.map((f) => f.who ?? input.senderName ?? "?"))];
-    const squad = await loadSquadCount(matchId);
+    const squad = await loadSquadCount(matchId, input.lang);
     const confirmed = squad.confirmed;
     const reply = buildAdminSquadReply({
       lang: input.lang,

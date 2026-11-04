@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
     rows: [] as Array<{ id: string; matchId: string; userId: string; status: string; position: number }>,
     events: [] as Array<Record<string, unknown>>,
     notices: [] as Array<{ orgId: string; text: string }>,
+    user: { name: "Wasim Ali" as string | null, phoneNumber: "+447700900321" as string | null, email: null as string | null },
   },
 }));
 
@@ -37,7 +38,12 @@ vi.mock("../db", () => {
         activity: { orgId: "org1", name: "Friday 9-a-side", org: { rollingSquadEnabled: h.state.rolling, language: "en", ...h.state.club } },
       }),
     },
-    user: { findUnique: async () => ({ name: "Wasim Ali" }) },
+    user: {
+      findUnique: async () => ({ name: h.state.user.name }),
+      // The organisers' label (`organiser-names.ts`) reads the user rows.
+      findMany: async ({ where }: { where: { id: { in: string[] } } }) =>
+        where.id.in.includes("wasim") ? [{ id: "wasim", ...h.state.user }] : [],
+    },
     attendance: {
       findUnique: async ({ where }: { where: { matchId_userId: { userId: string } } }) => {
         const r = rows().find((x) => x.userId === where.matchId_userId.userId);
@@ -96,6 +102,7 @@ beforeEach(() => {
   ];
   h.state.events = [];
   h.state.notices = [];
+  h.state.user = { name: "Wasim Ali", phoneNumber: "+447700900321", email: null };
 });
 
 describe("late drop-out, rolling club", () => {
@@ -112,6 +119,14 @@ describe("late drop-out, rolling club", () => {
         now: expect.any(Date),
       },
     ]);
+  });
+
+  it("a player with no name is his phone in the notice, never '?' (organisers only)", async () => {
+    h.state.user = { name: null, phoneNumber: "+447700900321", email: null };
+    await cancelAttendance("wasim", "m1", SELF, { occurredAt: new Date("2026-10-09T15:05:00.000Z") });
+    expect(h.state.notices).toHaveLength(1);
+    expect(h.state.notices[0].text).toContain("Late drop-out: *+44 7700 900321* said OUT");
+    expect(h.state.notices[0].text).not.toContain("?");
   });
 
   it("sent before the deadline, delivered after: on time", async () => {
