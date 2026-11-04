@@ -31,8 +31,8 @@ import { normaliseAdminChannelMode } from "./admin-channel-rules";
 import { buildUnpaidListAdminNotice } from "./dm-copy";
 import { dayTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
-import { isClubOperational } from "./club-approval-state";
 import { summariseUnpaid, unpaidFollowUpDue, UNPAID_FOLLOW_UP_RETRY_DAYS } from "./unpaid-rules";
+import type { ClubSummary } from "./club-summary/types";
 
 export function unpaidListKey(matchId: string): string {
   return `${matchId}:unpaid-list`;
@@ -40,23 +40,17 @@ export function unpaidListKey(matchId: string): string {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export async function sendDueUnpaidLists(orgId: string, now: Date = new Date()): Promise<{ sent: number }> {
-  const org = await db.organisation.findUnique({
-    where: { id: orgId },
-    select: {
-      id: true,
-      language: true,
-      approvalStatus: true,
-      dormantAt: true,
-      billingStatus: true,
-      adminChannelMode: true,
-      paymentTrackingEnabled: true,
-      paymentHolderId: true,
-    },
-  });
-  if (!org || !org.paymentTrackingEnabled) return { sent: 0 };
-  if (normaliseAdminChannelMode(org.adminChannelMode) === "each-admin") return { sent: 0 };
-  if (!isClubOperational(org)) return { sent: 0 };
+/**
+ * The club's facts (tracking, the admin channel, operational, the
+ * collector, the language) come from its summary (club summary A1): the
+ * poll's one summary of the club. Null (the club could not be read):
+ * nothing.
+ */
+export async function sendDueUnpaidLists(club: ClubSummary | null, now: Date = new Date()): Promise<{ sent: number }> {
+  if (!club || !club.payments.tracking) return { sent: 0 };
+  if (normaliseAdminChannelMode(club.groups.hq.channelMode) === "each-admin") return { sent: 0 };
+  if (!club.lifecycle.operational) return { sent: 0 };
+  const orgId = club.orgId;
 
   // Only a match whose follow-up window can still be open: two days to the
   // first try, the retry days, and one day of slack.
@@ -80,7 +74,7 @@ export async function sendDueUnpaidLists(orgId: string, now: Date = new Date()):
     orderBy: { date: "asc" },
   });
 
-  const s = t(org.language);
+  const s = t(club.language);
   let sent = 0;
   for (const m of matches) {
     if (!unpaidFollowUpDue(now, m.date)) continue;
@@ -91,7 +85,7 @@ export async function sendDueUnpaidLists(orgId: string, now: Date = new Date()):
         .filter((a) => a.paymentMethod !== "monthly")
         .sort((a, b) => a.position - b.position)
         .map((a) => ({ userId: a.userId, paidAt: a.paidAt, feeWaivedAt: a.feeWaivedAt, name: a.user.name })),
-      payerId: org.paymentHolderId ?? null,
+      payerId: club.payments.collector?.userId ?? null,
       creditCount: (m.paymentCredits ?? []).reduce((sum, c) => sum + c.count, 0),
     });
     if (!summary) continue;
@@ -109,11 +103,11 @@ export async function sendDueUnpaidLists(orgId: string, now: Date = new Date()):
         now,
         text: buildUnpaidListAdminNotice({
           activityName: m.activity.name,
-          whenLabel: dayTimeLabel(org.language, m.date),
+          whenLabel: dayTimeLabel(club.language, m.date),
           names: summary.unpaidNames.map((n) => n ?? s.unnamed),
           paid: summary.paid,
           n: summary.n,
-          lang: org.language,
+          lang: club.language,
         }),
       });
       sent++;

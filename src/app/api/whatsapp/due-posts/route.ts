@@ -67,6 +67,8 @@ import { ROSTER_SHOWN_KIND, rosterShownKey } from "@/lib/roster-shown";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
 import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
+import { CLUB_ORG_SELECT, loadClubRows } from "@/lib/club-summary/load";
+import { buildClubSummary } from "@/lib/club-summary/derive";
 import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
 import { piSendsQuotedIds } from "@/lib/quoted-message";
@@ -254,11 +256,13 @@ export async function GET(request: Request) {
   // Club fee billing (B1, plan 4.3 point 4): a billing-paused club is
   // refused here too, so a stale Pi that still polls gets a 404 and never
   // a post. `billingQuietWhere()` is empty while BILLING_ENABLED is off.
+  // The club's row, read once (club summary A1): with the summary's own
+  // columns (`CLUB_ORG_SELECT`, which carries `approvedAt` and `liveAt`: a
+  // club that was approved and held is "new" from the day it went live, cap
+  // 8 below, `newClubDmCap`), so the summary below does not read it again.
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true, ...billingQuietWhere() },
-    // `liveAt`: a club that was approved and held is "new" from the day it
-    // went live (cap 8 below, `newClubDmCap`).
-    select: { id: true, approvedAt: true, liveAt: true },
+    select: CLUB_ORG_SELECT,
   });
   if (!org) {
     return NextResponse.json({ error: "Organisation not found / bot disabled" }, { status: 404 });
@@ -311,9 +315,24 @@ export async function GET(request: Request) {
   // Never throws.
   if (!previewOnly) await sweepAutoPartnerAsks(org.id, nowOverride ?? new Date(), { poolEnv: await poolEnvForApiRequest(request) });
 
+  // ONE SUMMARY OF THE CLUB FOR THE POLL (club summary A1,
+  // MDs/club-summary-design-2026-11-04.md 3.4 and 4.2): the drop-out
+  // summary, the unpaid list, the month sweeps' "is this club monthly" and
+  // the posts all read the club's facts from it. Read here, after the
+  // organiser pick and partner sweeps (they move people), before anything
+  // that reads it. A failure costs nothing it would not have cost before:
+  // each job below then works as if the club had not been read
+  // (`computeDuePosts` reads it itself).
+  const clubNow = nowOverride ?? new Date();
+  let clubRows = await loadClubRows(org.id, clubNow, { org }).catch((err: unknown) => {
+    console.error(`[due-posts] org ${org.id}: the club summary could not be read on this poll:`, err);
+    return null;
+  });
+  let club = clubRows ? buildClubSummary(clubRows, clubNow) : null;
+
   if (!previewOnly) {
     try {
-      await sendDueDeadlineSummaries(org.id, nowOverride ?? new Date());
+      await sendDueDeadlineSummaries(club, nowOverride ?? new Date());
     } catch (err) {
       console.error(`[due-posts] org ${org.id}: deadline summary failed:`, err);
     }
@@ -326,7 +345,7 @@ export async function GET(request: Request) {
   // own try/catch so it can never cost the group its posts.
   if (!previewOnly) {
     try {
-      await sendDueUnpaidLists(org.id, nowOverride ?? new Date());
+      await sendDueUnpaidLists(club, nowOverride ?? new Date());
     } catch (err) {
       console.error(`[due-posts] org ${org.id}: unpaid list failed:`, err);
     }
@@ -347,7 +366,12 @@ export async function GET(request: Request) {
   // is seeded in this same poll. A club on "weekly" returns after one
   // read. A side effect, so never in preview mode; it never throws.
   let liveMonths: Awaited<ReturnType<typeof sweepMonthSignups>> = null;
-  if (!previewOnly) {
+  // The month sweeps run for a monthly club only: each returns at once for
+  // a weekly one (after a read of the club's row of its own), so a club the
+  // summary says is weekly is not swept at all. A club that could not be
+  // read is swept as before.
+  const monthSweeps = !previewOnly && (!club || club.squad.mode === "monthly");
+  if (monthSweeps) {
     liveMonths = await sweepMonthSignups(org.id, nowOverride ?? new Date());
     // Slice 4: the "set the price" notice, the collector's daily digest of
     // "says paid" claims, and the summary after the pay-by date. The same
@@ -355,7 +379,7 @@ export async function GET(request: Request) {
     // works on the months the sign-up sweep has just read.
     await sweepMonthPayments(org.id, nowOverride ?? new Date(), liveMonths);
   }
-  if (!previewOnly) {
+  if (monthSweeps) {
     try {
       runningMonths = await sweepMonthlyWeeks(org.id, nowOverride ?? new Date());
     } catch (err) {
@@ -375,6 +399,24 @@ export async function GET(request: Request) {
     const closedNow = await sweepMonthClose(org.id, nowOverride ?? new Date());
     // A month that has just closed must not reach the posts as a live one.
     if (closedNow.length > 0) liveMonths = liveMonths.filter((m) => !closedNow.includes(m.id));
+  }
+
+  // The month sweeps write months, matches and attendance (a list opened, a
+  // sign-up ended, the regulars put on a game, a month closed), so after
+  // them the summary's matches and months are read again (plan 3.4: "after
+  // a write, the summary is stale"). The club's row, its switches, its
+  // collector, its games and its last match played are kept: no sweep
+  // writes them (a sweep makes only matches still to be played).
+  if (monthSweeps && clubRows) {
+    const kept = clubRows;
+    clubRows = await loadClubRows(org.id, clubNow, {
+      org: kept.org,
+      keep: { features: kept.features, collectorName: kept.collectorName, activities: kept.activities, lastPlayed: kept.lastPlayed },
+    }).catch((err: unknown) => {
+      console.error(`[due-posts] org ${org.id}: the club summary could not be read again after the month sweeps:`, err);
+      return null;
+    });
+    club = clubRows ? buildClubSummary(clubRows, clubNow) : null;
   }
 
   // Slice 2a: what this Pi can do. Only a Pi that says "admin-group" is
@@ -400,6 +442,8 @@ export async function GET(request: Request) {
   const result = await computeDuePosts(groupId, nowOverride, piCaps, runningMonths, liveMonths, {
     replyPriority,
     poolEnv: await poolEnvForApiRequest(request),
+    // Not read (null): `computeDuePosts` reads it itself.
+    ...(club ? { club } : {}),
   });
   if (!result) {
     return NextResponse.json({ instructions: previewOnly ? [] : await bridgePlatformDmsForLegacyPi(request) });

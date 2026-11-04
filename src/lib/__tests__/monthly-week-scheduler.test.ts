@@ -27,6 +27,8 @@ function defaultFor(method: string) {
   return async () => ({});
 }
 
+// The scheduler reads its club facts from the club summary (A1): the summary of this test's own world.
+vi.mock("@/lib/club-summary/load", () => import("./fixtures/club-summary-from-test-db"));
 vi.mock("@/lib/db", () => ({
   db: new Proxy(
     {},
@@ -213,7 +215,12 @@ function setWorld(
   monthReads.mockClear();
   signupReads.mockClear();
   overrides.organisation = {
-    findFirst: async () => ({ ...ORG, paygPricePence: opts.paygPricePence === undefined ? 800 : opts.paygPricePence }),
+    // The club's row says what its switches say (club summary A1 reads it).
+    findFirst: async () => ({
+      ...ORG,
+      paygPricePence: opts.paygPricePence === undefined ? 800 : opts.paygPricePence,
+      ...(opts.monthly ? { squadMode: "monthly" } : {}),
+    }),
   };
   overrides.opsAlert = {
     findFirst: async () => null,
@@ -275,6 +282,13 @@ function setWorld(
   };
   overrides.user = { findUnique: async () => ({ name: "Sam Collector", phoneNumber: "+447700900999" }) };
   overrides.activity = { count: async () => 0 };
+}
+
+/** The club's summary as the due-posts poll reads it before the posts
+ *  (club summary A1), so a test can count the reads the posts make. */
+async function pollClub(now: Date) {
+  const { loadClubSummary } = await import("@/lib/club-summary/load");
+  return loadClubSummary(ORG.id, now, { org: (await overrides.organisation.findFirst()) as never });
 }
 
 async function instructions(now: Date) {
@@ -863,8 +877,11 @@ describe("MONTHLY: round 2 of the review", () => {
     setWorld(m, { monthly: true });
     const { loadRunningMonths } = await import("@/lib/monthly-week");
     const months = await loadRunningMonths(ORG.id);
+    // As the poll hands them over: the sweep's months and the club's summary
+    // (club summary A1), both read before the posts are computed.
+    const club = await pollClub(THU_10AM);
     monthReads.mockClear();
-    const res = await computeDuePosts(GROUP, THU_10AM, { adminGroup: false }, months);
+    const res = await computeDuePosts(GROUP, THU_10AM, { adminGroup: false }, months, null, { club });
     expect(monthReads).not.toHaveBeenCalled();
     expect(res!.instructions.some((i) => i.key.includes("month-list"))).toBe(true);
   });
@@ -952,8 +969,9 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
     setWorld(m, { monthly: true, signupMonth: signupMonth() });
     const { loadLiveMonths } = await import("@/lib/month-signup");
     const live = await loadLiveMonths(ORG.id, TUE_0930);
+    const club = await pollClub(TUE_0930);
     signupReads.mockClear();
-    const res = await computeDuePosts(GROUP, TUE_0930, { adminGroup: false }, null, live);
+    const res = await computeDuePosts(GROUP, TUE_0930, { adminGroup: false }, null, live, { club });
     expect(signupReads).not.toHaveBeenCalled();
     expect(res!.instructions.filter((i) => i.key.startsWith(PREFIX))).toHaveLength(1);
   });
@@ -961,7 +979,10 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
   it("MONTHLY, no month for the match: one read, no list, and the MONTHLY announcement, never the weekly one", async () => {
     const m = novMatch();
     setWorld(m, { monthly: true });
-    const out = await instructions(TUE_0930);
+    // The club's summary is the poll's (club summary A1), read before.
+    const club = await pollClub(TUE_0930);
+    signupReads.mockClear();
+    const out = (await computeDuePosts(GROUP, TUE_0930, undefined, null, null, { club }))?.instructions ?? [];
     expect(signupReads).toHaveBeenCalledTimes(1);
     expect(out.some((i) => i.key.includes(":msu:"))).toBe(false);
     // The Vets incident (3 Nov 2026): the regulars paid for the month and

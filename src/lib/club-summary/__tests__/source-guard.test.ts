@@ -142,7 +142,6 @@ const TODAY = new Set<string>([
   "lib/team-generation.ts",
   "lib/team-proposal-rules.ts",
   "lib/team-proposal.ts",
-  "lib/unpaid-list.ts",
   "lib/user-merge-plan.ts",
 ]);
 

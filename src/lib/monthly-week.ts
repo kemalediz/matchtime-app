@@ -29,6 +29,7 @@
  * A club on "weekly" (Sutton FC and every club before this) is refused by
  * `loadMonthlyWeek` before anything is written.
  */
+import { closedLatelyWhere } from "./scheduler-windows";
 import { db } from "./db";
 import { loadCommitmentStates } from "./month-member-commitment";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
@@ -112,10 +113,9 @@ export interface RunningMonth {
   closed?: boolean;
 }
 
-/** How long after a month is closed the scheduler still needs to know its
- *  played games were a month's (no payment poll, no "how much each?" to
- *  the collector). Longer than the scheduler looks back at a played match. */
-const CLOSED_MONTH_GATE_DAYS = 14;
+// How long after a month is closed the scheduler still needs to know its
+// played games were a month's: `CLOSED_MONTH_GATE_DAYS` (14 days) and its
+// `where`, in scheduler-windows.ts, where the club summary reads them too.
 
 /**
  * Slice 6: a club's running months AND the ones closed in the last two
@@ -127,7 +127,7 @@ export async function loadSchedulerMonths(orgId: string, now: Date = new Date())
   return loadMonthsWhere(orgId, { OR: [{ status: "running" }, closedLately(now)] });
 }
 
-const closedLately = (now: Date) => ({ status: "closed", closedAt: { gte: new Date(now.getTime() - CLOSED_MONTH_GATE_DAYS * DAY_MS) } });
+const closedLately = closedLatelyWhere;
 
 /**
  * Every RUNNING month of a club, members included. Read only.

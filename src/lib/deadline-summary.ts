@@ -21,7 +21,8 @@
  * after its own deadline (2026-10-15, `madeAfterDropOutDeadline`). The
  * first line names the deadline and the kick-off, each for what it is. A club without the setting
  * (Sutton FC), a club that is not operational (not approved or dormant)
- * and a club with the attendance feature off get nothing.
+ * and a club with the attendance feature off get nothing: each read from
+ * the club's summary (club summary A1), not from a query of its own.
  *
  * With organiser pick (slice 2b) and something to pick (a free place and
  * somebody waiting), this summary IS the first pick round:
@@ -36,11 +37,9 @@ import { sendAdminNotice } from "./admin-channel";
 import { buildDeadlineSummaryAdminNotice } from "./dm-copy";
 import { dayTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
-import { isClubOperational } from "./club-approval-state";
-import { getOrgFeatures } from "./org-features";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { deadlineSummaryDue, madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
-import { QUIET_HOURS_SELECT, quietHoursOf } from "./message-hours";
+import type { ClubSummary } from "./club-summary/types";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
@@ -48,25 +47,18 @@ export function deadlineSummaryKey(matchId: string): string {
   return `${matchId}:deadline-summary`;
 }
 
-export async function sendDueDeadlineSummaries(orgId: string, now: Date = new Date()): Promise<{ sent: number }> {
-  const org = await db.organisation.findUnique({
-    where: { id: orgId },
-    select: {
-      id: true,
-      language: true,
-      approvalStatus: true,
-      dormantAt: true,
-      billingStatus: true,
-      dropOutDeadlineDay: true,
-      dropOutDeadlineTime: true,
-      listPublishDay: true,
-      listPublishTime: true,
-      ...QUIET_HOURS_SELECT,
-    },
-  });
-  if (!org || org.dropOutDeadlineDay == null || org.dropOutDeadlineTime == null) return { sent: 0 };
-  if (!isClubOperational(org)) return { sent: 0 };
-  if (!(await getOrgFeatures(orgId)).attendance) return { sent: 0 };
+/**
+ * The club's facts come from its summary (club summary A1): the poll's one
+ * summary of the club, read before this runs. Null (the club could not be
+ * read): nothing.
+ */
+export async function sendDueDeadlineSummaries(club: ClubSummary | null, now: Date = new Date()): Promise<{ sent: number }> {
+  if (!club) return { sent: 0 };
+  const orgId = club.orgId;
+  const deadlines = club.routine.weeklyDeadlineSettings;
+  if (deadlines.dropOutDeadlineDay == null || deadlines.dropOutDeadlineTime == null) return { sent: 0 };
+  if (!club.lifecycle.operational) return { sent: 0 };
+  if (!club.features.attendance) return { sent: 0 };
 
   // Every live match, past kickoff or not: the next-upcoming gate needs
   // this week's match even when next week's is the one being looked at.
@@ -79,11 +71,11 @@ export async function sendDueDeadlineSummaries(orgId: string, now: Date = new Da
     orderBy: { date: "asc" },
   });
 
-  const s = t(org.language);
+  const s = t(club.language);
   let sent = 0;
   for (const m of matches) {
-    const { dropOut } = weeklyDeadlinesFor(m.date, org);
-    if (!dropOut || !deadlineSummaryDue(now, dropOut, m.date, quietHoursOf(org))) continue;
+    const { dropOut } = weeklyDeadlinesFor(m.date, deadlines);
+    if (!dropOut || !deadlineSummaryDue(now, dropOut, m.date, club.routine.quietHours)) continue;
     // A game made after its own deadline (a club that went live late in
     // the week, 2026-10-15): nobody could drop out of it, nothing to sum up.
     if (madeAfterDropOutDeadline(m.createdAt, dropOut)) continue;
@@ -110,15 +102,15 @@ export async function sendDueDeadlineSummaries(orgId: string, now: Date = new Da
         now,
         text: buildDeadlineSummaryAdminNotice({
           activityName: m.activity.name,
-          whenLabel: dayTimeLabel(org.language, m.date),
-          deadlineLabel: dayTimeLabel(org.language, dropOut),
+          whenLabel: dayTimeLabel(club.language, m.date),
+          deadlineLabel: dayTimeLabel(club.language, dropOut),
           confirmed: confirmed.length,
           maxPlayers: m.maxPlayers,
           out: named(byPosition.filter((a) => a.status === "DROPPED")),
           maybe: named(confirmed.filter((a) => maybeIds.has(a.userId))),
           waiting: named(byPosition.filter((a) => a.status === "BENCH")),
           open: Math.max(0, m.maxPlayers - confirmed.length),
-          lang: org.language,
+          lang: club.language,
         }),
       });
       sent++;

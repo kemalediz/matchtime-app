@@ -135,6 +135,8 @@ import {
   teamProposalJobs,
   type TeamProposalDeps,
 } from "../team-proposal";
+import { clubSummaryOf } from "./fixtures/club-summary-of";
+import { activity } from "../club-summary/__tests__/fixtures";
 import type { TeamCommand } from "../team-proposal-rules";
 
 const ORG = "org-fnf";
@@ -503,8 +505,14 @@ describe("one question at a time", () => {
 });
 
 const orgRow = () => store.tables.organisation[0] as Row & { id: string; language: string };
-const tick = (now: Date, deps = quiet) =>
-  teamProposalJobs({ org: orgRow() as unknown as Parameters<typeof teamProposalJobs>[0]["org"], now, deps });
+/** The club as its summary describes it (club summary A1): the summary of
+ *  the club row and the games this test seeds, read at each tick. */
+const clubNow = (now: Date) =>
+  clubSummaryOf(orgRow(), {
+    activities: store.tables.activity.filter((a) => a.orgId === ORG).map((a) => activity({ id: String(a.id), sport: { name: "Football", playersPerTeam: 2 } })),
+    now,
+  });
+const tick = (now: Date, deps = quiet) => teamProposalJobs({ club: clubNow(now), now, deps });
 
 describe("the scheduled proposal ('Teams ready')", () => {
   it("before the ready time: nothing", async () => {

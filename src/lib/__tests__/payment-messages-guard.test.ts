@@ -27,8 +27,10 @@ const SRC = path.resolve(__dirname, "../..");
 const PAYMENT_BUILDER =
   /\b(build(?:Fee(?:AskDm|ConfirmPrompt|CancelledAck|ReleasedAck)|PayChaseDm|PayLinkDm|PaidClaimAck(?:Dm)?|PaidForOthersReply|PricedListPost|PriceAskNotice|PayBySummary|GroupPayReminder|PayReminderDm|ClaimsDigest|UnpaidListAdminNotice|UnpaidGroupReminder|UnpaidTail(?:Text)?|PaymentPollQuestion|DirectPayCollector(?:Notice|Nudge)|LeaverNotice|ShareChangeNotice|MidMonthJoinDm|MonthSummaryNotice|PaymentsLiveAnnouncement)|claimsDigestMessage|dm_free_place|not_played_paid|dm_direct_pay_notice|mpy_[a-z_]+)\(/;
 
-/** Reading either flag, or the gate itself. */
-const READS_FLAGS = /paymentMessagesOn(?:For)?\(|paymentCollectionEnabled|paymentTrackingEnabled|isPaymentCollectionLive\(/;
+/** Reading either flag, or the gate itself: from the club's row, or from
+ *  the club summary (`summary.payments`, club summary A1), which carries
+ *  the same flags and gates. */
+const READS_FLAGS = /paymentMessagesOn(?:For)?\(|paymentCollectionEnabled|paymentTrackingEnabled|isPaymentCollectionLive\(|\.payments\.(?:tracking|collection|messagesOn|collectionLive)\b/;
 
 /** Files that only build the words (copy), never send them. */
 const COPY_ONLY = new Set([
