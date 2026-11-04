@@ -71,6 +71,7 @@ import { GET as listPlayers } from "@/app/api/players/route";
 import { GET as getPlayer } from "@/app/api/players/[playerId]/route";
 import { GET as getMatch } from "@/app/api/matches/[matchId]/route";
 import { GET as getOrgSettings } from "@/app/api/org/settings/route";
+import { orgRow } from "@/lib/club-summary/__tests__/fixtures";
 
 const CLUB = "org-sutton";
 const OTHER_CLUB = "org-elsewhere";
@@ -352,7 +353,13 @@ describe("GET /api/matches/:id", () => {
 // ─── GET /api/org/settings ───────────────────────────────────────────
 
 describe("GET /api/org/settings", () => {
+  // A whole club row, as Prisma returns it (the route builds the club's
+  // facts from it, club summary slice A4), with this test's values on top.
   const org = {
+    ...orgRow({ id: CLUB, name: "Sutton FC" }),
+    featureBadgeAnnouncements: true,
+    featureGearReminder: false,
+    featureSquadFromList: false,
     id: CLUB,
     name: "Sutton FC",
     slug: "sutton",

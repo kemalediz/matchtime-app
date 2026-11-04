@@ -42,6 +42,7 @@ import { notPlayedDoor } from "@/lib/match-cancel-rules";
 import { notPlayedGameLabel } from "@/lib/match-cancel";
 import { notPlayedKey } from "@/lib/match-cancel-keys";
 import { NotPlayedButton } from "@/components/match/not-played-button";
+import { CLUB_ROW_SELECT, clubRowFactsOf } from "@/lib/club-row-facts";
 
 export default async function MatchDetailPage({
   params,
@@ -59,7 +60,9 @@ export default async function MatchDetailPage({
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true, org: { select: { name: true, teamLabels: true, language: true, momChosenBy: true, featurePlayerPool: true } } } },
+      // The club's row, for its facts (club summary, slice A4), and the pool
+      // switch (not a summary fact).
+      activity: { include: { sport: true, org: { select: { ...CLUB_ROW_SELECT, featurePlayerPool: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -81,8 +84,33 @@ export default async function MatchDetailPage({
   });
   if (!match) redirect("/matches");
 
+  // The club's facts this page decides on (club summary, slice A4), else,
+  // when they cannot be built, today's reads of the same row (until A4 the
+  // payment, squad and routine columns were a second read of the club).
+  const org = match.activity.org;
+  const club = clubRowFactsOf(org, "match");
+  const orgPay = club
+    ? {
+        teamLabels: club.teamLabels,
+        momChosenBy: club.routine.momChosenBy,
+        paymentCollectionEnabled: club.payments.collection,
+        paymentHolderId: club.payments.collector?.userId ?? null,
+        rollingSquadEnabled: club.squad.rolling,
+        benchPickMode: club.routine.benchPickMode,
+        squadMode: club.squad.mode,
+      }
+    : {
+        teamLabels: org.teamLabels,
+        momChosenBy: org.momChosenBy,
+        paymentCollectionEnabled: org.paymentCollectionEnabled,
+        paymentHolderId: org.paymentHolderId,
+        rollingSquadEnabled: org.rollingSquadEnabled,
+        benchPickMode: org.benchPickMode,
+        squadMode: org.squadMode,
+      };
+
   const sport = match.activity.sport;
-  const [redLabel, yellowLabel] = resolveTeamLabels(match, match.activity.org, sport, match.activity.org.language);
+  const [redLabel, yellowLabel] = resolveTeamLabels(match, orgPay, sport, match.activity.org.language);
 
   // Per-activity positions for the players in this match
   const positionsFor = (u: { activityPositions: { activityId: string; positions: string[] }[] }) =>
@@ -94,21 +122,13 @@ export default async function MatchDetailPage({
 
   const isAdmin = await isOrgAdmin(session.user.id, match.activity.orgId);
 
-  // Payments dashboard link — shown to an org admin OR the money collector
-  // when the org collects fees. Lets them open /collect/<match> on demand
-  // to see who's paid (instead of only via the post-match DM link).
-  const orgPay = await db.organisation.findUnique({
-    where: { id: match.activity.orgId },
-    select: { paymentCollectionEnabled: true, paymentHolderId: true, rollingSquadEnabled: true, benchPickMode: true, squadMode: true },
-  });
-
   // MONTHLY SQUAD (slice 6, plan 9.2): for a match of a running month the
   // page shows the month's list for this game: who is a regular (and has
   // paid), who pays per game, and who has paid but can't play. A club on
   // "weekly" (Sutton FC and every club before this) makes no query here
   // and renders exactly what it did.
   const monthlyWeek =
-    orgPay?.squadMode === "monthly"
+    orgPay.squadMode === "monthly"
       ? await import("@/lib/monthly-week").then((m) => m.loadMonthlyWeek(matchId)).catch(() => null)
       : null;
   const monthList = monthlyWeek ? buildWeekList({ members: monthlyWeek.members, rows: monthlyWeek.rows, maxPlayers: monthlyWeek.maxPlayers }) : null;
@@ -117,7 +137,7 @@ export default async function MatchDetailPage({
   // Organiser pick (slice 2b, plan 2.13): admins of such a club see the
   // waiting list with position and club rating (the number players see,
   // never the seed), and can reorder it and bring someone in.
-  const organiserPicks = isAdmin && orgPay?.benchPickMode === "organiser";
+  const organiserPicks = isAdmin && orgPay.benchPickMode === "organiser";
   const waitingRows = organiserPicks
     ? await (async () => {
         const bench = match.attendances.filter((a) => a.status === "BENCH");
@@ -144,9 +164,12 @@ export default async function MatchDetailPage({
   // MatchTime, or back from a break). `findCarryOverSource` returns null
   // whenever the button does not apply.
   const carryOverSource =
-    isAdmin && orgPay?.rollingSquadEnabled ? await findCarryOverSource(matchId) : null;
+    isAdmin && orgPay.rollingSquadEnabled ? await findCarryOverSource(matchId) : null;
+  // Payments dashboard link — shown to an org admin OR the money collector
+  // when the org collects fees. Lets them open /collect/<match> on demand
+  // to see who's paid (instead of only via the post-match DM link).
   const canSeePayments =
-    !!orgPay?.paymentCollectionEnabled &&
+    !!orgPay.paymentCollectionEnabled &&
     (isAdmin || orgPay.paymentHolderId === session.user.id);
 
   // Existing org members not already in this match — for the admin
@@ -314,7 +337,7 @@ export default async function MatchDetailPage({
   const momConfirmedCount = match.attendances.filter((a) => a.status === "CONFIRMED").length;
   // The organisers pick Man of the Match in this club (mom-chooser.ts): a
   // name, never a vote count.
-  const momPicked = organisersPickMom({ momChosenBy: match.activity.org.momChosenBy });
+  const momPicked = organisersPickMom({ momChosenBy: orgPay.momChosenBy });
 
   const statusLabel = match.status.replace(/_/g, " ").toLowerCase();
   const statusPill =
