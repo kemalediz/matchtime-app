@@ -189,3 +189,52 @@ describe("parseScenario", () => {
     expect(rate?.do === "rate" && rate.mom).toBe("Bob");
   });
 });
+
+describe("club scenario extensions (e2e/scenarios/)", () => {
+  it("reads a club that is already live, and how long it has been", () => {
+    const raw = base();
+    (raw.steps as unknown[]).push({ at: "2027-01-04 09:00", do: "club-live", liveDaysAgo: 90 });
+    const s = parseScenario(raw);
+    const step = s.steps.find((x) => x.do === "club-live");
+    expect(step).toMatchObject({ do: "club-live", liveDaysAgo: 90 });
+    raw.steps = [{ at: "2027-01-04 09:00", do: "club-live" }];
+    expect(parseScenario(raw).steps[0]).toMatchObject({ do: "club-live", liveDaysAgo: 60 });
+  });
+
+  it("reads a game's own settings for the next game, and refuses one it does not know", () => {
+    const raw = base();
+    raw.steps = [{ at: "2027-01-04 09:00", do: "match", values: { postMatchEndFlow: false, maxPlayers: 10 } }];
+    expect(parseScenario(raw).steps[0]).toMatchObject({ do: "match", values: { postMatchEndFlow: false, maxPlayers: 10 } });
+    raw.steps = [{ at: "2027-01-04 09:00", do: "match", values: { status: "CANCELLED" } }];
+    expect(() => parseScenario(raw)).toThrow(/unknown match setting "status"/);
+  });
+
+  it("reads the fixture's fewest and most players, fee and windows", () => {
+    const raw = base();
+    (raw.club as Record<string, unknown>).activity = {
+      day: "monday",
+      time: "20:30",
+      minPlayers: 12,
+      maxPlayers: 16,
+      feePerPlayer: 8,
+      ratingWindowHours: 120,
+      deadlineHours: 5,
+    };
+    expect(parseScenario(raw).club.activity).toMatchObject({ minPlayers: 12, maxPlayers: 16, feePerPlayer: 8, ratingWindowHours: 120, deadlineHours: 5 });
+  });
+
+  it("knows the settings the five club shapes need", () => {
+    const raw = base();
+    (raw.club as Record<string, unknown>).settings = {
+      paygPricePence: 800,
+      monthCreditRule: "any-miss",
+      momChosenBy: "players",
+      whatsappBotEnabled: true,
+      stripeConnectAccountId: "acct_sandbox",
+      stripeChargesEnabled: true,
+      payMethodPayByBank: false,
+      quietHoursEnabled: false,
+    };
+    expect(parseScenario(raw).club.settings).toMatchObject({ paygPricePence: 800, stripeConnectAccountId: "acct_sandbox" });
+  });
+});

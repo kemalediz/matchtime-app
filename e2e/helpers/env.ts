@@ -8,6 +8,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { APP_PORT_ENV, DB_PORT_ENV, resolvePorts } from "./ports";
 import { requireDevApiKey } from "./dev-api-key";
+import { REPLAY_PLACEHOLDER_KEY, cassetteMode } from "../scenarios/mode";
 
 // All entry points (npm scripts, the Playwright runner and its workers)
 // run with cwd = repo root. Verified rather than assumed — this file is
@@ -413,7 +414,13 @@ export function buildTestEnv(): Record<string, string> {
     // It refuses rather than falling back. A live run with no dev key
     // stops here, loudly, instead of quietly spending the production
     // key and hiding the cost of running MatchTime all over again.
-    env.ANTHROPIC_API_KEY = requireDevApiKey("a LIVE e2e run (MT_SIM_LIVE_LLM=1)");
+    //
+    // A club-scenario REPLAY (e2e/scenarios/) is the one exception, and it
+    // goes the other way: every answer comes from a recorded cassette, so
+    // the server is given no key at all, only a placeholder that could
+    // never be billed. A replay must be provably free.
+    env.ANTHROPIC_API_KEY =
+      cassetteMode() === "replay" ? REPLAY_PLACEHOLDER_KEY : requireDevApiKey("a LIVE e2e run (MT_SIM_LIVE_LLM=1)");
     env.MT_SIM_LIVE_LLM = "1";
     // The pipeline's remaining flags, forwarded ONLY on a live run.
     //
@@ -491,11 +498,18 @@ export function buildTestEnv(): Record<string, string> {
 export const REHEARSAL_CLOCK_FILE = path.join(REPO_ROOT, ".e2e", "rehearsal-clock.json");
 
 export function rehearsalServerEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
-  if (!env.MT_REHEARSAL_SCENARIO) return {};
-  const shim = path.join(REPO_ROOT, "e2e", "rehearsal", "clock-shim.cjs");
+  // A club-scenario run (e2e/scenarios/) is a rehearsal too, and it also
+  // needs Math.random repeatable (the team balancer shuffles), or two runs
+  // of the same club make different teams and a replay misses.
+  const scenarios = !!env.MT_SCENARIO_CASSETTE || env.MT_SCENARIOS_DRY === "1";
+  if (!env.MT_REHEARSAL_SCENARIO && !scenarios) return {};
+  const shim = scenarios
+    ? path.join(REPO_ROOT, "e2e", "scenarios", "server-shims.cjs")
+    : path.join(REPO_ROOT, "e2e", "rehearsal", "clock-shim.cjs");
   const existing = env.NODE_OPTIONS ? `${env.NODE_OPTIONS} ` : "";
   return {
     NODE_OPTIONS: `${existing}--require ${JSON.stringify(shim)}`,
     MT_REHEARSAL_CLOCK_FILE: REHEARSAL_CLOCK_FILE,
+    ...(scenarios ? { MT_SCENARIO_RANDOM_SEED: "matchtime-club-scenarios-v1" } : {}),
   };
 }

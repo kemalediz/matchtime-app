@@ -37,7 +37,11 @@
     "replay:router-regressions": "tsx e2e/replay/router-regressions-live.ts",
     "replay:router-attendance": "tsx e2e/replay/router-attendance-live.ts",
     "test:replay": "tsx e2e/run.ts sim/history-replay.spec.ts",
-    "test:replay:live": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/history-replay-live.spec.ts"
+    "test:replay:live": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/history-replay-live.spec.ts",
+    "scenarios:record": "MT_SIM_LIVE_LLM=1 MT_SCENARIO_CASSETTE=record tsx e2e/run.ts e2e/scenarios/club-scenarios.spec.ts",
+    "scenarios:replay": "MT_SIM_LIVE_LLM=1 MT_SCENARIO_CASSETTE=replay tsx e2e/run.ts e2e/scenarios/club-scenarios.spec.ts",
+    "scenarios:dry": "MT_SCENARIOS_DRY=1 tsx e2e/run.ts e2e/scenarios/club-scenarios.spec.ts",
+    "scenarios:compare": "tsx e2e/scenarios/compare-cli.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

@@ -1,0 +1,468 @@
+{
+ "version": 1,
+ "title": "Vets type: monthly paid squad plus pay as you go at £8, payments off, 12 to 16 players, the month's list posted mid-month",
+ "timezone": "Europe/London",
+ "start": "2026-11-10 08:00",
+ "end": "2026-11-22 10:00",
+ "pollEveryMinutes": 60,
+ "skipCrons": [
+  "/api/cron/none-bucket-shadow",
+  "/api/cron/learn-setup",
+  "/api/cron/bot-health",
+  "/api/cron/billing"
+ ],
+ "club": {
+  "name": "Monday Night Vets Sandbox",
+  "owner": "davide",
+  "paymentHolder": "davide",
+  "maxPlayers": 14,
+  "sport": {
+   "name": "Football 7-a-side",
+   "playersPerTeam": 7,
+   "teamLabels": [
+    "Whites",
+    "Colours"
+   ]
+  },
+  "activity": {
+   "day": "monday",
+   "time": "20:30",
+   "durationMinutes": 60,
+   "venue": "Sandbox Park School field",
+   "deadlineHours": 5,
+   "ratingWindowHours": 120,
+   "minPlayers": 12,
+   "maxPlayers": 16
+  },
+  "settings": {
+   "squadMode": "monthly",
+   "rollingSquadEnabled": false,
+   "paygPricePence": 800,
+   "paymentTrackingEnabled": false,
+   "paymentCollectionEnabled": false,
+   "momChosenBy": "players",
+   "monthCreditRule": "any-miss",
+   "monthListOpensDaysBefore": 7,
+   "listAnnouncer": "matchtime",
+   "benchPickMode": "first-come",
+   "benchPickFallback": "bench-offer",
+   "quietHoursEnabled": false,
+   "featureBadgeAnnouncements": true,
+   "featureGearReminder": false,
+   "featurePlayerPool": false,
+   "partnerAskWhen": "off"
+  }
+ },
+ "groups": [
+  {
+   "key": "main",
+   "subject": "Monday Night Vets Sandbox",
+   "role": "players"
+  }
+ ],
+ "members": [
+  {
+   "key": "davide",
+   "name": "Davide Russo",
+   "phone": "+447700900301",
+   "role": "OWNER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "shane",
+   "name": "Shane Walton",
+   "phone": "+447700900302",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "kerem",
+   "name": "Kerem Aksoy",
+   "phone": "+447700900303",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "cj",
+   "name": "CJ Barlow",
+   "phone": "+447700900304",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "tom",
+   "name": "Tom Hale",
+   "phone": "+447700900305",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "rob",
+   "name": "Rob Finch",
+   "phone": "+447700900306",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "gus",
+   "name": "Gus Moore",
+   "phone": "+447700900307",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "nabz",
+   "name": "x",
+   "phone": "+447700900308",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": "Nabz"
+  },
+  {
+   "key": "steff",
+   "name": "x",
+   "phone": "+447700900309",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": "Steff"
+  },
+  {
+   "key": "craig",
+   "name": "x",
+   "phone": "+447700900310",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": null
+  },
+  {
+   "key": "dan",
+   "name": "x",
+   "phone": "+447700900311",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": "Dan"
+  },
+  {
+   "key": "ben",
+   "name": "x",
+   "phone": "+447700900312",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": null
+  },
+  {
+   "key": "steve",
+   "name": "x",
+   "phone": "+447700900313",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": "Steve"
+  },
+  {
+   "key": "andrew",
+   "name": "x",
+   "phone": "+447700900314",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": null
+  },
+  {
+   "key": "jon",
+   "name": "x",
+   "phone": "+447700900315",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": "Jon"
+  },
+  {
+   "key": "oumesh",
+   "name": "x",
+   "phone": "+447700900316",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": null
+  },
+  {
+   "key": "luca",
+   "name": "x",
+   "phone": "+447700900317",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": "Luca"
+  },
+  {
+   "key": "mo",
+   "name": "x",
+   "phone": "+447700900318",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": "Mo"
+  },
+  {
+   "key": "rich",
+   "name": "x",
+   "phone": "+447700900319",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": "Rich"
+  }
+ ],
+ "steps": [
+  {
+   "at": "2026-11-10 08:00",
+   "do": "note",
+   "text": "Tuesday 10 Nov: a monthly club, November not started yet (no month), next game Monday 16 Nov 20:30"
+  },
+  {
+   "at": "2026-11-10 08:00",
+   "do": "club-live",
+   "liveDaysAgo": 40
+  },
+  {
+   "at": "2026-11-10 08:02",
+   "do": "cron",
+   "path": "/api/cron/generate-matches"
+  },
+  {
+   "at": "2026-11-10 09:30",
+   "do": "message",
+   "group": "main",
+   "from": "gus",
+   "body": "in for monday"
+  },
+  {
+   "at": "2026-11-10 12:00",
+   "do": "note",
+   "text": "The organiser posts November's list mid-month (Nabz is on it as Smiler)"
+  },
+  {
+   "at": "2026-11-10 12:00",
+   "do": "message",
+   "group": "main",
+   "from": "davide",
+   "body": "November monthly squad"
+  },
+  {
+   "at": "2026-11-10 12:01",
+   "do": "message",
+   "group": "main",
+   "from": "davide",
+   "body": "MNF November \n\n1. Davide (paid)\n2. Smiler ( paid 4 only )\n3. steff ( paid full )\n4. Craig (paid 4)\n5. Dan (full)\n6. Ben (full fat)\n7. Kerem (paid)\n8. Steve (paid)\n9. Andrew (paid)\n10. Jon (paid)\n11. Shane (Paid)\n12. CJ (Paid)\n13. Oumesh (paid 4)"
+  },
+  {
+   "at": "2026-11-10 12:30",
+   "do": "dm",
+   "from": "davide",
+   "body": "Yes go ahead mate"
+  },
+  {
+   "at": "2026-11-10 18:00",
+   "do": "message",
+   "group": "main",
+   "from": "nabz",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-11 10:00",
+   "do": "note",
+   "text": "Wednesday: a mid-month addition by the organiser, and a pay-as-you-go player"
+  },
+  {
+   "at": "2026-11-11 10:00",
+   "do": "message",
+   "group": "main",
+   "from": "davide",
+   "body": "@Match Time add Tom to the November list, he's paid",
+   "tag": true
+  },
+  {
+   "at": "2026-11-11 10:30",
+   "do": "message",
+   "group": "main",
+   "from": "mo",
+   "body": "IN"
+  },
+  {
+   "at": "2026-11-11 10:31",
+   "do": "message",
+   "group": "main",
+   "from": "rich",
+   "body": "can I play monday? happy to pay the £8"
+  },
+  {
+   "at": "2026-11-12 18:00",
+   "do": "note",
+   "text": "Thursday: numbers fall below the minimum of 12, then back to it and above"
+  },
+  {
+   "at": "2026-11-12 18:00",
+   "do": "message",
+   "group": "main",
+   "from": "steve",
+   "body": "Out this week lads sorry, work"
+  },
+  {
+   "at": "2026-11-12 18:05",
+   "do": "message",
+   "group": "main",
+   "from": "andrew",
+   "body": "can't make monday"
+  },
+  {
+   "at": "2026-11-12 18:10",
+   "do": "message",
+   "group": "main",
+   "from": "jon",
+   "body": "out monday, away"
+  },
+  {
+   "at": "2026-11-12 18:15",
+   "do": "message",
+   "group": "main",
+   "from": "craig",
+   "body": "out sorry"
+  },
+  {
+   "at": "2026-11-13 12:00",
+   "do": "message",
+   "group": "main",
+   "from": "luca",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-13 12:30",
+   "do": "message",
+   "group": "main",
+   "from": "steve",
+   "body": "actually I can play now, in"
+  },
+  {
+   "at": "2026-11-14 11:00",
+   "do": "message",
+   "group": "main",
+   "from": "gus",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-15 10:00",
+   "do": "note",
+   "text": "Sunday: 16 want to play on 14 places, the bench reaches 2, room to go up a size"
+  },
+  {
+   "at": "2026-11-15 10:00",
+   "do": "message",
+   "group": "main",
+   "from": "rob",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-15 10:05",
+   "do": "message",
+   "group": "main",
+   "from": "andrew",
+   "body": "I can make it after all, in"
+  },
+  {
+   "at": "2026-11-15 10:10",
+   "do": "message",
+   "group": "main",
+   "from": "jon",
+   "body": "back in"
+  },
+  {
+   "at": "2026-11-15 10:15",
+   "do": "message",
+   "group": "main",
+   "from": "craig",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-15 10:20",
+   "do": "message",
+   "group": "main",
+   "from": "shane",
+   "body": "@Match Time are we 8 a side then?",
+   "tag": true
+  },
+  {
+   "at": "2026-11-16 22:00",
+   "do": "message",
+   "group": "main",
+   "from": "davide",
+   "body": "Whites 4 Colours 2 tonight, well played"
+  },
+  {
+   "at": "2026-11-17 09:00",
+   "do": "rate",
+   "from": "kerem",
+   "mom": "Shane"
+  },
+  {
+   "at": "2026-11-17 09:10",
+   "do": "rate",
+   "from": "davide",
+   "mom": "Shane"
+  },
+  {
+   "at": "2026-11-18 20:00",
+   "do": "rate",
+   "from": "cj",
+   "mom": "Kerem"
+  },
+  {
+   "at": "2026-11-22 09:00",
+   "do": "note",
+   "text": "Sunday: the rating window has closed"
+  }
+ ]
+}

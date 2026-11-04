@@ -1,0 +1,2340 @@
+{
+ "version": 1,
+ "club": "sutton",
+ "title": "Sutton type: weekly, Stripe pay links, collector excluded from charging",
+ "mode": "replay",
+ "steps": [
+  {
+   "seq": -1,
+   "step": "before the first step",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 0,
+   "step": "2026-11-09 08:00 note: Monday: a weekly club MatchTime has run for months, game Tuesday 20:00",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 1,
+   "step": "2026-11-09 08:00 club-live (150 days)",
+   "out": [],
+   "handled": [],
+   "db": [
+    "club: approval: (new) approved",
+    "club: members: (new) 18",
+    "club: muted: (new) no",
+    "club: stage: (new) live, bot on",
+    "member Ash Patel: (new) PLAYER",
+    "member Ben Hughes: (new) PLAYER",
+    "member Colin Banks: (new) ADMIN",
+    "member Dev Shah: (new) PLAYER",
+    "member Eli Clarke: (new) PLAYER",
+    "member Finn Walsh: (new) PLAYER",
+    "member Gaz Reid: (new) PLAYER",
+    "member Hari Nair: (new) PLAYER",
+    "member Ian Doyle: (new) PLAYER",
+    "member Jay Okoro: (new) PLAYER",
+    "member Kai Morgan: (new) OWNER",
+    "member Kit Lane: (new) PLAYER",
+    "member Leo Grant: (new) PLAYER",
+    "member Max Ford: (new) PLAYER",
+    "member Ned Price: (new) PLAYER",
+    "member Ollie Shaw: (new) PLAYER",
+    "member Pete Lowe: (new) PLAYER",
+    "member Raj Mehta: (new) PLAYER",
+    "sent-notification org-<club>:bot-intro: (new) bot-intro",
+    "user @ash: (new) name \"Ash Patel\"",
+    "user @ben: (new) name \"Ben Hughes\"",
+    "user @colin: (new) name \"Colin Banks\"",
+    "user @dev: (new) name \"Dev Shah\"",
+    "user @eli: (new) name \"Eli Clarke\"",
+    "user @finn: (new) name \"Finn Walsh\"",
+    "user @gaz: (new) name \"Gaz Reid\"",
+    "user @hari: (new) name \"Hari Nair\"",
+    "user @ian: (new) name \"Ian Doyle\"",
+    "user @jay: (new) name \"Jay Okoro\"",
+    "user @kai: (new) name \"Kai Morgan\"",
+    "user @kit: (new) name \"Kit Lane\"",
+    "user @leo: (new) name \"Leo Grant\"",
+    "user @max: (new) name \"Max Ford\"",
+    "user @ned: (new) name \"Ned Price\"",
+    "user @ollie: (new) name \"Ollie Shaw\"",
+    "user @pete: (new) name \"Pete Lowe\"",
+    "user @raj: (new) name \"Raj Mehta\""
+   ],
+   "errors": []
+  },
+  {
+   "seq": 2,
+   "step": "2026-11-09 08:02 cron /api/cron/generate-matches",
+   "out": [
+    {
+     "at": "2026-11-09 09:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📅 *Sutton Sandbox FC*: *Tuesday 10 November at 20:00* at Sandbox Leisure Centre.\n\nSay *IN* to join. First 14 confirmed play.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-10 20:00>:announce-match"
+    },
+    {
+     "at": "2026-11-09 09:00",
+     "to": "dm @kai",
+     "kind": "out",
+     "text": "⭐ *One thing before Tuesday's teams*\n\nI don't know anyone's level yet, so for now I'd treat every player the same and the teams could come out lopsided.\n\nKai or Colin: give each player a rough rating from 1 to 10 here:\n<app>/r/<tok>\n\nPlayers never see these, they only help me balance the sides. Rating the 18 players with no rating yet takes about 5 minutes.\n\nAfter that I learn from the ratings players give each other after every game, so this is only needed once.",
+     "instruction": "dm",
+     "key": "org-<club>:seed-nudge:@kai"
+    }
+   ],
+   "handled": [],
+   "db": [
+    "<match 2026-11-10 20:00>: places: (new) 14",
+    "match 2026-11-10 20:00: status: (new) UPCOMING",
+    "sent-notification <match 2026-11-10 20:00>:announce-match: (new) group-message",
+    "sent-notification org-<club>:seed-nudge:@kai: (new) dm",
+    "sent-notification txtlog:<club>:<text 590fb46b>:<match 2026-11-10 20:00>:announce-match: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 3,
+   "step": "2026-11-09 09:31 main @ash: \"in\"",
+   "out": [],
+   "handled": [
+    "@ash in main: \"in\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 4,
+   "step": "2026-11-09 09:33 main @ben: \"IN 👍\"",
+   "out": [],
+   "handled": [
+    "@ben in main: \"IN 👍\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 5,
+   "step": "2026-11-09 09:36 main @dev: \"count me in\"",
+   "out": [
+    {
+     "at": "2026-11-09 09:40",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@ash: in"
+    },
+    {
+     "at": "2026-11-09 09:40",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@ben: IN 👍"
+    },
+    {
+     "at": "2026-11-09 09:40",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@dev: count me in"
+    }
+   ],
+   "handled": [
+    "@dev in main: \"count me in\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: attendance @ash: (new) CONFIRMED #1",
+    "<match 2026-11-10 20:00>: attendance @ben: (new) CONFIRMED #2",
+    "<match 2026-11-10 20:00>: attendance @dev: (new) CONFIRMED #3",
+    "match 2026-11-10 20:00: Ash Patel: (new) CONFIRMED",
+    "match 2026-11-10 20:00: Ben Hughes: (new) CONFIRMED",
+    "match 2026-11-10 20:00: Dev Shah: (new) CONFIRMED"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 6,
+   "step": "2026-11-09 09:41 main @eli: \"Can't make it this week sorry\"",
+   "out": [
+    {
+     "at": "2026-11-09 10:00",
+     "to": "dm @kai",
+     "kind": "out",
+     "text": "📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    }
+   ],
+   "handled": [
+    "@eli in main: \"Can't make it this week sorry\" → llm / noise"
+   ],
+   "db": [
+    "botjob dm → @kai: 📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venu: (new) sent"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 7,
+   "step": "2026-11-09 10:02 main @finn: \"in\"",
+   "out": [],
+   "handled": [
+    "@finn in main: \"in\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 8,
+   "step": "2026-11-09 10:03 main @gaz: \"in\"",
+   "out": [],
+   "handled": [
+    "@gaz in main: \"in\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 9,
+   "step": "2026-11-09 10:05 main @hari [tag]: \"@Match Time what time is kickoff and where?\"",
+   "out": [],
+   "handled": [
+    "@hari in main: \"@Match Time what time is kickoff and where?\" → llm / question"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 10,
+   "step": "2026-11-09 10:06 main @ian: \"haha did anyone see the game last night\"",
+   "out": [],
+   "handled": [
+    "@ian in main: \"haha did anyone see the game last night\" → ignored / noise"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 11,
+   "step": "2026-11-09 10:07 main @jay: \"in lads\"",
+   "out": [
+    {
+     "at": "2026-11-09 10:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@finn: in"
+    },
+    {
+     "at": "2026-11-09 10:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@gaz: in"
+    },
+    {
+     "at": "2026-11-09 10:10",
+     "to": "group main",
+     "kind": "out",
+     "text": "⚽ Tue 20:00 at Sandbox Leisure Centre.",
+     "via": "analyze reply",
+     "replyTo": "@hari: @Match Time what time is kickoff and where?"
+    },
+    {
+     "at": "2026-11-09 10:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@jay: in lads"
+    }
+   ],
+   "handled": [
+    "@jay in main: \"in lads\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: attendance @finn: (new) CONFIRMED #4",
+    "<match 2026-11-10 20:00>: attendance @gaz: (new) CONFIRMED #5",
+    "<match 2026-11-10 20:00>: attendance @jay: (new) CONFIRMED #6",
+    "match 2026-11-10 20:00: Finn Walsh: (new) CONFIRMED",
+    "match 2026-11-10 20:00: Gaz Reid: (new) CONFIRMED",
+    "match 2026-11-10 20:00: Jay Okoro: (new) CONFIRMED",
+    "sent-notification greply:<club>:wa-sutton-10: (new) group-reply"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 12,
+   "step": "2026-11-09 12:15 main @kit: \"in\"",
+   "out": [],
+   "handled": [
+    "@kit in main: \"in\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 13,
+   "step": "2026-11-09 12:20 main @leo: \"yes in\"",
+   "out": [
+    {
+     "at": "2026-11-09 12:20",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@kit: in"
+    },
+    {
+     "at": "2026-11-09 12:30",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@leo: yes in"
+    }
+   ],
+   "handled": [
+    "@leo in main: \"yes in\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: attendance @kit: (new) CONFIRMED #7",
+    "match 2026-11-10 20:00: Kit Lane: (new) CONFIRMED",
+    "<match 2026-11-10 20:00>: attendance @leo: (new) CONFIRMED #8",
+    "match 2026-11-10 20:00: Leo Grant: (new) CONFIRMED"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 14,
+   "step": "2026-11-09 13:40 main @kai: \"in\"",
+   "out": [],
+   "handled": [
+    "@kai in main: \"in\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 15,
+   "step": "2026-11-09 13:45 main @colin: \"in\"",
+   "out": [
+    {
+     "at": "2026-11-09 13:50",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@kai: in"
+    },
+    {
+     "at": "2026-11-09 13:50",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@colin: in"
+    },
+    {
+     "at": "2026-11-09 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "⚠️ *Sutton Sandbox FC* is still *4 short* for tomorrow. If we can't get the numbers we'll have to call it off, so say *IN* if you can make it 🙏\n\n*Playing tomorrow:*\n1. Ash Patel\n2. Ben Hughes\n3. Dev Shah\n4. Finn Walsh\n5. Gaz Reid\n6. Jay Okoro\n7. Kit Lane\n8. Leo Grant\n9. Kai Morgan\n10. Colin Banks\n11. 🥁\n12. 🥁\n13. 🥁\n14. 🥁",
+     "instruction": "group-message",
+     "key": "<match 2026-11-10 20:00>:evening-update:2026-11-09"
+    },
+    {
+     "at": "2026-11-09 18:00",
+     "to": "dm @kai",
+     "kind": "out",
+     "text": "🚨 *Match in trouble*: only *10* confirmed for *Sutton Sandbox FC* tomorrow, below the minimum to play (14).\n\nCancel and refund the booking?\n\nTap to open the cancel page:\n<app>/r/<tok>\n\nOr open: <app>/admin/<tok><match 2026-11-10 20:00>/cancel",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:cancel-nudge:@kai"
+    }
+   ],
+   "handled": [
+    "@colin in main: \"in\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: attendance @colin: (new) CONFIRMED #10",
+    "<match 2026-11-10 20:00>: attendance @kai: (new) CONFIRMED #9",
+    "match 2026-11-10 20:00: Colin Banks: (new) CONFIRMED",
+    "match 2026-11-10 20:00: Kai Morgan: (new) CONFIRMED",
+    "sent-notification <match 2026-11-10 20:00>:evening-update:2026-11-09: (new) group-message",
+    "sent-notification <match 2026-11-10 20:00>:roster-shown:<squad>:1794243600000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text cd773718>:<match 2026-11-10 20:00>:evening-update:2026-11-09: (new) outbound-text-log",
+    "sent-notification <match 2026-11-10 20:00>:cancel-nudge:@kai: (new) dm"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 16,
+   "step": "2026-11-09 18:05 main @max: \"in\"",
+   "out": [
+    {
+     "at": "2026-11-09 18:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@max: in"
+    }
+   ],
+   "handled": [
+    "@max in main: \"in\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: attendance @max: (new) CONFIRMED #11",
+    "match 2026-11-10 20:00: Max Ford: (new) CONFIRMED"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 17,
+   "step": "2026-11-09 18:12 main @ned: \"in please\"",
+   "out": [
+    {
+     "at": "2026-11-09 18:20",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@ned: in please"
+    }
+   ],
+   "handled": [
+    "@ned in main: \"in please\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: attendance @ned: (new) CONFIRMED #12",
+    "match 2026-11-10 20:00: Ned Price: (new) CONFIRMED"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 18,
+   "step": "2026-11-09 18:40 main @ollie: \"in\"",
+   "out": [
+    {
+     "at": "2026-11-09 18:50",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@ollie: in"
+    }
+   ],
+   "handled": [
+    "@ollie in main: \"in\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: attendance @ollie: (new) CONFIRMED #13",
+    "match 2026-11-10 20:00: Ollie Shaw: (new) CONFIRMED"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 19,
+   "step": "2026-11-09 19:00 note: 14 places: Ollie makes 13, Pete 14, then Raj and Eli (changed his mind) go on the bench",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 20,
+   "step": "2026-11-09 19:05 main @pete: \"in\"",
+   "out": [
+    {
+     "at": "2026-11-09 19:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@pete: in"
+    },
+    {
+     "at": "2026-11-09 19:11",
+     "to": "group main",
+     "kind": "out",
+     "text": "✅ *Squad complete (14/14)* for *Sutton Sandbox FC* on Tue 10 Nov 20:00 🙌\n\n*Playing:*\n1. Ash Patel\n2. Ben Hughes\n3. Dev Shah\n4. Finn Walsh\n5. Gaz Reid\n6. Jay Okoro\n7. Kit Lane\n8. Leo Grant\n9. Kai Morgan\n10. Colin Banks\n11. Max Ford\n12. Ned Price\n13. Ollie Shaw\n14. Pete Lowe\n\nSee you all there ⚽\n\n🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.",
+     "instruction": "group-message",
+     "key": "botjob-<id>"
+    }
+   ],
+   "handled": [
+    "@pete in main: \"in\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: attendance @pete: (new) CONFIRMED #14",
+    "botjob group → group: ✅ *Squad complete (14/14)* for *Sutton Sandbox FC* on Tue 10 Nov 20:00 🙌 *Playing:* 1. As: (new) pending",
+    "match 2026-11-10 20:00: Pete Lowe: (new) CONFIRMED",
+    "sent-notification <match 2026-11-10 20:00>:squad-locked: (new) group-message",
+    "botjob group → group: ✅ *Squad complete (14/14)* for *Sutton Sandbox FC* on Tue 10 Nov 20:00 🙌 *Playing:* 1. As: pending → sent",
+    "sent-notification txtlog:<club>:<text e56e275f>:botjob-<id>: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 21,
+   "step": "2026-11-09 19:20 main @raj: \"in if there's space\"",
+   "out": [],
+   "handled": [
+    "@raj in main: \"in if there's space\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 22,
+   "step": "2026-11-09 19:25 main @eli: \"actually I can make it now, in\"",
+   "out": [
+    {
+     "at": "2026-11-09 19:30",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑",
+     "replyTo": "@raj: in if there's space"
+    },
+    {
+     "at": "2026-11-09 19:30",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑",
+     "replyTo": "@eli: actually I can make it now, in"
+    }
+   ],
+   "handled": [
+    "@eli in main: \"actually I can make it now, in\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: attendance @eli: (new) BENCH #16",
+    "<match 2026-11-10 20:00>: attendance @raj: (new) BENCH #15",
+    "match 2026-11-10 20:00: Eli Clarke: (new) BENCH",
+    "match 2026-11-10 20:00: Raj Mehta: (new) BENCH",
+    "<match 2026-11-17 20:00>: places: (new) 14",
+    "match 2026-11-17 20:00: status: (new) UPCOMING"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 23,
+   "step": "2026-11-10 09:10 main @finn: \"Sorry lads, I'm out tonight, pulled my hamstring\"",
+   "out": [
+    {
+     "at": "2026-11-10 09:20",
+     "to": "group main",
+     "kind": "react",
+     "text": "👋",
+     "replyTo": "@finn: Sorry lads, I'm out tonight, pulled my hamstring"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@ash: in"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@ben: IN 👍"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@dev: count me in"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@gaz: in"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@jay: in lads"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@kit: in"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@leo: yes in"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@kai: in"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@colin: in"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@max: in"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@ned: in please"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@ollie: in"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@pete: in"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑 (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@raj: in if there's space"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑 (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@eli: actually I can make it now, in"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "group main",
+     "kind": "out",
+     "text": "🎟 A slot just opened for *Sutton Sandbox FC* tonight. *First to claim it plays.*\n\n@447700900118 @447700900106\n\nJust reply *IN* here to take it. No rush and no timeout, whoever is free first gets it and everyone else stays on the bench. 🙏",
+     "instruction": "bench-prompt",
+     "key": "offer-<id>",
+     "mentions": [
+      "raj"
+     ]
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "dm @raj",
+     "kind": "out",
+     "text": "👋 Hi Raj, a slot just opened for Sutton Sandbox FC tonight and you're on the bench.\n\nWant it? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. No timeout, and if you're not free no worries, you stay on the bench. 🙏",
+     "instruction": "dm",
+     "key": "offer-<id>:dm:@raj"
+    },
+    {
+     "at": "2026-11-10 09:21",
+     "to": "dm @eli",
+     "kind": "out",
+     "text": "👋 Hi Eli, a slot just opened for Sutton Sandbox FC tonight and you're on the bench.\n\nWant it? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. No timeout, and if you're not free no worries, you stay on the bench. 🙏",
+     "instruction": "dm",
+     "key": "offer-<id>:dm:@eli"
+    }
+   ],
+   "handled": [
+    "@finn in main: \"Sorry lads, I'm out tonight, pulled my hamstring\" → llm / out"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: attendance @finn: CONFIRMED #4 → DROPPED #4",
+    "match 2026-11-10 20:00: Finn Walsh: CONFIRMED → DROPPED",
+    "sent-notification <match 2026-11-10 20:00>:squad-locked: group-message → (gone)",
+    "sent-notification offer-<id>: (new) bench-prompt",
+    "sent-notification offer-<id>:dm:@eli: (new) dm",
+    "sent-notification offer-<id>:dm:@raj: (new) dm",
+    "sent-notification txtlog:<club>:<text 1d14457d>:offer-<id>: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 24,
+   "step": "2026-11-10 09:40 main @raj: \"yes I'll take the spot\"",
+   "out": [
+    {
+     "at": "2026-11-10 09:50",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@raj: yes I'll take the spot"
+    },
+    {
+     "at": "2026-11-10 09:51",
+     "to": "group main",
+     "kind": "out",
+     "text": "✅ *Squad complete (14/14)* for *Sutton Sandbox FC* on Tue 10 Nov 20:00 🙌\n\n*Playing:*\n1. Ash Patel\n2. Ben Hughes\n3. Dev Shah\n4. Gaz Reid\n5. Jay Okoro\n6. Kit Lane\n7. Leo Grant\n8. Kai Morgan\n9. Colin Banks\n10. Max Ford\n11. Ned Price\n12. Ollie Shaw\n13. Pete Lowe\n14. Raj Mehta\n\n*Bench (1):*\n1. Eli Clarke\n\nSee you all there ⚽\n\n🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.",
+     "instruction": "group-message",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "⚽ *Tonight at 20:00*: *Sutton Sandbox FC* at Sandbox Leisure Centre\n\nSquad is locked. To lock in tonight's lineup, tag me and ask for the teams in your own words (for example *@Match Time generate the teams*) 👇\n\n*Confirmed (14/14):*\n1. Ash Patel\n2. Ben Hughes\n3. Dev Shah\n4. Gaz Reid\n5. Jay Okoro\n6. Kit Lane\n7. Leo Grant\n8. Kai Morgan\n9. Colin Banks\n10. Max Ford\n11. Ned Price\n12. Ollie Shaw\n13. Pete Lowe\n14. Raj Mehta\n\n*Bench (1):*\n1. Eli Clarke",
+     "instruction": "group-message",
+     "key": "<match 2026-11-10 20:00>:evening-update:2026-11-10"
+    },
+    {
+     "at": "2026-11-10 21:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📊 💳 Payments for *Sutton Sandbox FC*: tick when you've paid\n○ Bibs\n○ Non-bibs",
+     "instruction": "group-poll",
+     "key": "<match 2026-11-10 20:00>:payment-poll"
+    },
+    {
+     "at": "2026-11-10 21:00",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "💷 Colin, how much should each player pay for *Sutton Sandbox FC* (14 played)?\n\nJust reply with the amount, e.g. \"£8 each\" or \"£80 total to split\". I'll confirm, then send everyone their pay link.",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:fee-ask"
+    }
+   ],
+   "handled": [
+    "@raj in main: \"yes I'll take the spot\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: attendance @raj: BENCH #15 → CONFIRMED #17",
+    "botjob group → group: ✅ *Squad complete (14/14)* for *Sutton Sandbox FC* on Tue 10 Nov 20:00 🙌 *Playing:* 1. As (#2): (new) pending",
+    "match 2026-11-10 20:00: Raj Mehta: BENCH → CONFIRMED",
+    "sent-notification <match 2026-11-10 20:00>:squad-locked: (new) group-message",
+    "botjob group → group: ✅ *Squad complete (14/14)* for *Sutton Sandbox FC* on Tue 10 Nov 20:00 🙌 *Playing:* 1. As (#2): pending → sent",
+    "sent-notification txtlog:<club>:<text 509bf045>:botjob-<id>: (new) outbound-text-log",
+    "sent-notification <match 2026-11-10 20:00>:evening-update:2026-11-10: (new) group-message",
+    "sent-notification <match 2026-11-10 20:00>:roster-shown:<squad>:1794330000000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text 2a3d3c71>:<match 2026-11-10 20:00>:evening-update:2026-11-10: (new) outbound-text-log",
+    "match 2026-11-10 20:00: status: UPCOMING → COMPLETED",
+    "sent-notification <match 2026-11-10 20:00>:fee-ask: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:payment-poll: (new) group-poll",
+    "sent-notification txtlog:<club>:<text 9e2a664a>:<match 2026-11-10 20:00>:payment-poll: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 25,
+   "step": "2026-11-10 21:55 main @kai: \"Bibs won 5-3 tonight, good game all\"",
+   "out": [
+    {
+     "at": "2026-11-10 22:00",
+     "to": "group main",
+     "kind": "react",
+     "text": "👍",
+     "replyTo": "@kai: Bibs won 5-3 tonight, good game all"
+    },
+    {
+     "at": "2026-11-10 22:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "Got it 👍 *Bibs* won 5 - 3 against Non-bibs. Recorded.",
+     "via": "analyze reply",
+     "replyTo": "@kai: Bibs won 5-3 tonight, good game all"
+    }
+   ],
+   "handled": [
+    "@kai in main: \"Bibs won 5-3 tonight, good game all\" → llm / score"
+   ],
+   "db": [
+    "match 2026-11-10 20:00: score: (new) 5-3",
+    "sent-notification greply:<club>:wa-sutton-36: (new) group-reply"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 26,
+   "step": "2026-11-10 22:05 dm @colin: \"£5 each\"",
+   "out": [
+    {
+     "at": "2026-11-10 22:05",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "Got it: *£5* per player for *Sutton Sandbox FC*, 13 players to charge.\n\nReply *✅* (or \"yes\") to send everyone their pay link, or send a different amount to change it.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    }
+   ],
+   "handled": [
+    "@colin in dm @colin: \"£5 each\" → dm-reply: collector-fee"
+   ],
+   "db": [
+    "botjob dm → @colin: Got it: *£5* per player for *Sutton Sandbox FC*, 13 players to charge. Reply *✅* (or \"yes\": (new) sent"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 27,
+   "step": "2026-11-10 22:20 dm @colin: \"yes\"",
+   "out": [
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @ash",
+     "kind": "out",
+     "text": "💷 Ash, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @ben",
+     "kind": "out",
+     "text": "💷 Ben, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @dev",
+     "kind": "out",
+     "text": "💷 Dev, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @gaz",
+     "kind": "out",
+     "text": "💷 Gaz, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @jay",
+     "kind": "out",
+     "text": "💷 Jay, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @kit",
+     "kind": "out",
+     "text": "💷 Kit, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @leo",
+     "kind": "out",
+     "text": "💷 Leo, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @kai",
+     "kind": "out",
+     "text": "💷 Kai, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @max",
+     "kind": "out",
+     "text": "💷 Max, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @ned",
+     "kind": "out",
+     "text": "💷 Ned, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @ollie",
+     "kind": "out",
+     "text": "💷 Ollie, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @pete",
+     "kind": "out",
+     "text": "💷 Pete, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @raj",
+     "kind": "out",
+     "text": "💷 Raj, match fee for *Sutton Sandbox FC* is *£5*.\n\nTap to pay (card, Apple or Google Pay, or pay Colin directly):\n<app>/r/<tok>\n\nYou can also pay for anyone you brought along.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-10 22:20",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "✅ Done, sent 13 pay links at *£5* each for *Sutton Sandbox FC* on Tue 10 Nov. Players can pay by card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @ash",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@ash"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @ben",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@ben"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @dev",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@dev"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @gaz",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@gaz"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @jay",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@jay"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @kit",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@kit"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @leo",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@leo"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @kai",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@kai"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@colin"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @max",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@max"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @ned",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@ned"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @ollie",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@ollie"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @pete",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@pete"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "dm @raj",
+     "kind": "out",
+     "text": "🏆 *Sutton Sandbox FC*, Tue 10 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-dm:@raj"
+    }
+   ],
+   "handled": [
+    "@colin in dm @colin: \"yes\" → dm-reply: collector-fee"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: fee: (new) 5",
+    "<match 2026-11-10 20:00>: pay links released: (new) yes",
+    "botjob dm → @ash: 💷 Ash, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, : (new) sent",
+    "botjob dm → @ben: 💷 Ben, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, : (new) sent",
+    "botjob dm → @colin: ✅ Done, sent 13 pay links at *£5* each for *Sutton Sandbox FC* on Tue 10 Nov. Players can : (new) sent",
+    "botjob dm → @dev: 💷 Dev, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, : (new) sent",
+    "botjob dm → @gaz: 💷 Gaz, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, : (new) sent",
+    "botjob dm → @jay: 💷 Jay, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, : (new) sent",
+    "botjob dm → @kai: 💷 Kai, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, : (new) sent",
+    "botjob dm → @kit: 💷 Kit, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, : (new) sent",
+    "botjob dm → @leo: 💷 Leo, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, : (new) sent",
+    "botjob dm → @max: 💷 Max, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, : (new) sent",
+    "botjob dm → @ned: 💷 Ned, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, : (new) sent",
+    "botjob dm → @ollie: 💷 Ollie, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay: (new) sent",
+    "botjob dm → @pete: 💷 Pete, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay,: (new) sent",
+    "botjob dm → @raj: 💷 Raj, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, : (new) sent",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@ash: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@ben: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@colin: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@dev: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@gaz: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@jay: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@kai: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@kit: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@leo: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@max: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@ned: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@ollie: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@pete: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-dm:@raj: (new) dm"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 28,
+   "step": "2026-11-11 08:30 dm @ash: \"paid by card just now\"",
+   "out": [
+    {
+     "at": "2026-11-11 08:30",
+     "to": "dm @ash",
+     "kind": "out",
+     "text": "Thanks Ash, I've told Colin you've paid *£5* for *Sutton Sandbox FC*. Colin will confirm once it lands 👍",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-11 08:30",
+     "to": "dm @ash",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@ash: paid by card just now"
+    },
+    {
+     "at": "2026-11-11 08:30",
+     "to": "group main",
+     "kind": "out",
+     "text": "🎯 I've just DM'd the players from the *Sutton Sandbox FC* on Tue 10 Nov a private link to rate the others out of 10.\n\n*Why rate?* I use the ratings to pick two balanced teams, so the games stay close and nobody ends up on the losing side every week. Your scores are private: nobody sees who rated what, and you can't rate yourself. The same link is where you pick Man of the Match.\n\nIt takes about a minute, and the more of you rate, the fairer the teams. Check your DMs from me 👇",
+     "instruction": "group-message",
+     "key": "<match 2026-11-10 20:00>:rate-promo"
+    }
+   ],
+   "handled": [
+    "@ash in dm @ash: \"paid by card just now\" → dm-reply: paid-claim"
+   ],
+   "db": [
+    "botjob dm → @ash: Thanks Ash, I've told Colin you've paid *£5* for *Sutton Sandbox FC*. Colin will confirm o: (new) sent",
+    "botjob dm → @colin: 💸 *Ash Patel* says they've paid you directly for *Sutton Sandbox FC*: *£5*. Mark it paid : (new) pending",
+    "sent-notification <match 2026-11-10 20:00>:rate-promo: (new) group-message",
+    "sent-notification paid-claim:dm-sutton-69: (new) paid-claim",
+    "sent-notification txtlog:<club>:<text 32daf708>:<match 2026-11-10 20:00>:rate-promo: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 29,
+   "step": "2026-11-11 09:00 rate @ash MoM /Ben/",
+   "out": [
+    {
+     "at": "2026-11-11 09:00",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "💸 *Ash Patel* says they've paid you directly for *Sutton Sandbox FC*: *£5*.\n\nMark it paid once it lands:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-11 09:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📅 *Sutton Sandbox FC*: *Tuesday 17 November at 20:00* at Sandbox Leisure Centre.\n\nSay *IN* to join. First 14 confirmed play.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-17 20:00>:announce-match"
+    }
+   ],
+   "handled": [
+    "@ash in dm @ash: \"(opens the rating link and submits, Man of the Match: /Ben/)\" → rating page: submitted (default scores; Man of the Match: B Ben Hughes)"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: MoM votes for @ben: (new) 1",
+    "match 2026-11-10 20:00: MoM votes: (new) 1",
+    "match 2026-11-10 20:00: ratings: (new) 13",
+    "botjob dm → @colin: 💸 *Ash Patel* says they've paid you directly for *Sutton Sandbox FC*: *£5*. Mark it paid : pending → sent",
+    "sent-notification <match 2026-11-17 20:00>:announce-match: (new) group-message",
+    "sent-notification txtlog:<club>:<text 09a0e506>:<match 2026-11-17 20:00>:announce-match: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 30,
+   "step": "2026-11-11 09:10 rate @dev MoM /Ben/",
+   "out": [],
+   "handled": [
+    "@dev in dm @dev: \"(opens the rating link and submits, Man of the Match: /Ben/)\" → rating page: submitted (default scores; Man of the Match: B Ben Hughes)"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: MoM votes for @ben: 1 → 2",
+    "match 2026-11-10 20:00: MoM votes: 1 → 2",
+    "match 2026-11-10 20:00: ratings: 13 → 26"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 31,
+   "step": "2026-11-11 12:00 rate @kai MoM /Gaz/",
+   "out": [
+    {
+     "at": "2026-11-11 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🗓 *Sutton Sandbox FC* on Tuesday 17 November needs *14 players* to get going. Say *IN* if you can play ⚽\n\n*Playing Tue 17 Nov:*\n1. 🥁\n2. 🥁\n3. 🥁\n4. 🥁\n5. 🥁\n6. 🥁\n7. 🥁\n8. 🥁\n9. 🥁\n10. 🥁\n11. 🥁\n12. 🥁\n13. 🥁\n14. 🥁",
+     "instruction": "group-message",
+     "key": "<match 2026-11-17 20:00>:evening-update:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @ben",
+     "kind": "out",
+     "text": "💷 Quick one Ben: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ben:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @dev",
+     "kind": "out",
+     "text": "💷 Quick one Dev: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@dev:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @gaz",
+     "kind": "out",
+     "text": "💷 Quick one Gaz: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @jay",
+     "kind": "out",
+     "text": "💷 Quick one Jay: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@jay:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @kit",
+     "kind": "out",
+     "text": "💷 Quick one Kit: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@kit:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @leo",
+     "kind": "out",
+     "text": "💷 Quick one Leo: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@leo:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @kai",
+     "kind": "out",
+     "text": "💷 Quick one Kai: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@kai:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @max",
+     "kind": "out",
+     "text": "💷 Quick one Max: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@max:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @ned",
+     "kind": "out",
+     "text": "💷 Quick one Ned: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ned:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @ollie",
+     "kind": "out",
+     "text": "💷 Quick one Ollie: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @pete",
+     "kind": "out",
+     "text": "💷 Quick one Pete: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@pete:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @raj",
+     "kind": "out",
+     "text": "💷 Quick one Raj: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@raj:2026-11-11"
+    },
+    {
+     "at": "2026-11-11 18:00",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "🤝 1 player said they'd pay you directly for *Sutton Sandbox FC*. Tick off whoever's settled up:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase-collector:2026-11-11"
+    },
+    {
+     "at": "2026-11-12 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🗓 *Sutton Sandbox FC* needs *14 more* for Tuesday 17 November. Say *IN* if you can play ⚽\n\n*Playing Tue 17 Nov:*\n1. 🥁\n2. 🥁\n3. 🥁\n4. 🥁\n5. 🥁\n6. 🥁\n7. 🥁\n8. 🥁\n9. 🥁\n10. 🥁\n11. 🥁\n12. 🥁\n13. 🥁\n14. 🥁",
+     "instruction": "group-message",
+     "key": "<match 2026-11-17 20:00>:evening-update:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @ben",
+     "kind": "out",
+     "text": "💷 Ben, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ben:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @dev",
+     "kind": "out",
+     "text": "💷 Dev, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@dev:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @gaz",
+     "kind": "out",
+     "text": "💷 Gaz, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @jay",
+     "kind": "out",
+     "text": "💷 Jay, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@jay:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @kit",
+     "kind": "out",
+     "text": "💷 Kit, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@kit:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @leo",
+     "kind": "out",
+     "text": "💷 Leo, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@leo:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @kai",
+     "kind": "out",
+     "text": "💷 Kai, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@kai:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @max",
+     "kind": "out",
+     "text": "💷 Max, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@max:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @ned",
+     "kind": "out",
+     "text": "💷 Ned, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ned:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @ollie",
+     "kind": "out",
+     "text": "💷 Ollie, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @pete",
+     "kind": "out",
+     "text": "💷 Pete, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@pete:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @raj",
+     "kind": "out",
+     "text": "💷 Raj, gentle nudge: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@raj:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "🤝 1 player said they'd pay you directly for *Sutton Sandbox FC*. Tick off whoever's settled up:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase-collector:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @ben",
+     "kind": "out",
+     "text": "Hey Ben 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@ben:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @gaz",
+     "kind": "out",
+     "text": "Hey Gaz 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@gaz:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @jay",
+     "kind": "out",
+     "text": "Hey Jay 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@jay:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @kit",
+     "kind": "out",
+     "text": "Hey Kit 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@kit:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @leo",
+     "kind": "out",
+     "text": "Hey Leo 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@leo:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "Hey Colin 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@colin:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @max",
+     "kind": "out",
+     "text": "Hey Max 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@max:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @ned",
+     "kind": "out",
+     "text": "Hey Ned 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@ned:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @ollie",
+     "kind": "out",
+     "text": "Hey Ollie 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@ollie:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @pete",
+     "kind": "out",
+     "text": "Hey Pete 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@pete:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "dm @raj",
+     "kind": "out",
+     "text": "Hey Raj 👋 Friendly nudge, you haven't rated *Sutton Sandbox FC* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@raj:2026-11-12"
+    },
+    {
+     "at": "2026-11-12 18:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🏅 *New badges this week*\n\n👟 *On the board*: welcome *Ash Patel*, *Ben Hughes*, *Colin Banks*, *Dev Shah*, *Gaz Reid*, *Jay Okoro*, *Kai Morgan*, *Kit Lane*, *Leo Grant*, *Max Ford*, *Ned Price*, *Ollie Shaw*, *Pete Lowe* and *Raj Mehta*, first games for the club! 🎉\n\nWell played all! 👏\n📊 See your own stats and badges any time: tap the stats link in my rating DM after each match.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-10 20:00>:badges"
+    }
+   ],
+   "handled": [
+    "@kai in dm @kai: \"(opens the rating link and submits, Man of the Match: /Gaz/)\" → rating page: submitted (default scores; Man of the Match: G Gaz Reid)"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: MoM votes for @gaz: (new) 1",
+    "match 2026-11-10 20:00: MoM votes: 2 → 3",
+    "match 2026-11-10 20:00: ratings: 26 → 39",
+    "sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-11: (new) group-message",
+    "sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794416400000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text dfbfba4e>:<match 2026-11-17 20:00>:evening-update:2026-11-11: (new) outbound-text-log",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@jay:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@kai:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@kit:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@leo:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@max:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ned:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@pete:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@raj:2026-11-11: (new) dm",
+    "sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-12: (new) group-message",
+    "sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794502800000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-12: (new) outbound-text-log",
+    "sent-notification <match 2026-11-10 20:00>:badges: (new) group-message",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@jay:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@kai:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@kit:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@leo:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@max:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ned:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@pete:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@raj:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ben:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@colin:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@gaz:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@jay:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@kit:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@leo:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@max:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ned:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ollie:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@pete:2026-11-12: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@raj:2026-11-12: (new) dm",
+    "sent-notification txtlog:<club>:<text 98de0c19>:<match 2026-11-10 20:00>:badges: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 32,
+   "step": "2026-11-12 19:00 rate @gaz MoM /Ben/",
+   "out": [],
+   "handled": [
+    "@gaz in dm @gaz: \"(opens the rating link and submits, Man of the Match: /Ben/)\" → rating page: submitted (default scores; Man of the Match: B Ben Hughes)"
+   ],
+   "db": [
+    "<match 2026-11-10 20:00>: MoM votes for @ben: 2 → 3",
+    "match 2026-11-10 20:00: MoM votes: 3 → 4",
+    "match 2026-11-10 20:00: ratings: 39 → 52"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 33,
+   "step": "2026-11-12 19:30 dm @jay: \"paid\"",
+   "out": [
+    {
+     "at": "2026-11-12 19:30",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "💸 *Jay Okoro* says they've paid you directly for *Sutton Sandbox FC*: *£5*.\n\nMark it paid once it lands:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-12 19:30",
+     "to": "dm @jay",
+     "kind": "out",
+     "text": "Thanks Jay, I've told Colin you've paid *£5* for *Sutton Sandbox FC*. Colin will confirm once it lands 👍",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-12 19:30",
+     "to": "dm @jay",
+     "kind": "react",
+     "text": "✅ (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@jay: paid"
+    },
+    {
+     "at": "2026-11-13 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🗓 *Sutton Sandbox FC* needs *14 more* for Tuesday 17 November. Say *IN* if you can play ⚽\n\n*Playing Tue 17 Nov:*\n1. 🥁\n2. 🥁\n3. 🥁\n4. 🥁\n5. 🥁\n6. 🥁\n7. 🥁\n8. 🥁\n9. 🥁\n10. 🥁\n11. 🥁\n12. 🥁\n13. 🥁\n14. 🥁",
+     "instruction": "group-message",
+     "key": "<match 2026-11-17 20:00>:evening-update:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @ben",
+     "kind": "out",
+     "text": "💷 Ben, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ben:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @dev",
+     "kind": "out",
+     "text": "💷 Dev, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@dev:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @gaz",
+     "kind": "out",
+     "text": "💷 Gaz, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @kit",
+     "kind": "out",
+     "text": "💷 Kit, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@kit:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @leo",
+     "kind": "out",
+     "text": "💷 Leo, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@leo:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @kai",
+     "kind": "out",
+     "text": "💷 Kai, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@kai:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @max",
+     "kind": "out",
+     "text": "💷 Max, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@max:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @ned",
+     "kind": "out",
+     "text": "💷 Ned, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ned:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @ollie",
+     "kind": "out",
+     "text": "💷 Ollie, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @pete",
+     "kind": "out",
+     "text": "💷 Pete, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@pete:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @raj",
+     "kind": "out",
+     "text": "💷 Raj, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@raj:2026-11-13"
+    },
+    {
+     "at": "2026-11-13 18:00",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "🤝 2 players said they'd pay you directly for *Sutton Sandbox FC*. Tick off whoever's settled up:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase-collector:2026-11-13"
+    },
+    {
+     "at": "2026-11-14 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🗓 *Sutton Sandbox FC* needs *14 more* for Tuesday 17 November. Say *IN* if you can play ⚽\n\n*Playing Tue 17 Nov:*\n1. 🥁\n2. 🥁\n3. 🥁\n4. 🥁\n5. 🥁\n6. 🥁\n7. 🥁\n8. 🥁\n9. 🥁\n10. 🥁\n11. 🥁\n12. 🥁\n13. 🥁\n14. 🥁",
+     "instruction": "group-message",
+     "key": "<match 2026-11-17 20:00>:evening-update:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @ben",
+     "kind": "out",
+     "text": "💷 Ben, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ben:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @dev",
+     "kind": "out",
+     "text": "💷 Dev, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@dev:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @gaz",
+     "kind": "out",
+     "text": "💷 Gaz, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @kit",
+     "kind": "out",
+     "text": "💷 Kit, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@kit:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @leo",
+     "kind": "out",
+     "text": "💷 Leo, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@leo:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @kai",
+     "kind": "out",
+     "text": "💷 Kai, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@kai:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @max",
+     "kind": "out",
+     "text": "💷 Max, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@max:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @ned",
+     "kind": "out",
+     "text": "💷 Ned, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ned:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @ollie",
+     "kind": "out",
+     "text": "💷 Ollie, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @pete",
+     "kind": "out",
+     "text": "💷 Pete, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@pete:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @raj",
+     "kind": "out",
+     "text": "💷 Raj, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@raj:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "🤝 2 players said they'd pay you directly for *Sutton Sandbox FC*. Tick off whoever's settled up:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase-collector:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @ben",
+     "kind": "out",
+     "text": "Last reminder, Ben 🔔 Ratings for *Sutton Sandbox FC* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@ben:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @jay",
+     "kind": "out",
+     "text": "Last reminder, Jay 🔔 Ratings for *Sutton Sandbox FC* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@jay:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @kit",
+     "kind": "out",
+     "text": "Last reminder, Kit 🔔 Ratings for *Sutton Sandbox FC* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@kit:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @leo",
+     "kind": "out",
+     "text": "Last reminder, Leo 🔔 Ratings for *Sutton Sandbox FC* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@leo:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "Last reminder, Colin 🔔 Ratings for *Sutton Sandbox FC* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@colin:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @max",
+     "kind": "out",
+     "text": "Last reminder, Max 🔔 Ratings for *Sutton Sandbox FC* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@max:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @ned",
+     "kind": "out",
+     "text": "Last reminder, Ned 🔔 Ratings for *Sutton Sandbox FC* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@ned:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @ollie",
+     "kind": "out",
+     "text": "Last reminder, Ollie 🔔 Ratings for *Sutton Sandbox FC* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@ollie:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @pete",
+     "kind": "out",
+     "text": "Last reminder, Pete 🔔 Ratings for *Sutton Sandbox FC* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@pete:2026-11-14"
+    },
+    {
+     "at": "2026-11-14 18:00",
+     "to": "dm @raj",
+     "kind": "out",
+     "text": "Last reminder, Raj 🔔 Ratings for *Sutton Sandbox FC* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:rate-reminder:@raj:2026-11-14"
+    },
+    {
+     "at": "2026-11-15 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🗓 *Sutton Sandbox FC* needs *14 more* for Tuesday 17 November. Say *IN* if you can play ⚽\n\n*Playing Tue 17 Nov:*\n1. 🥁\n2. 🥁\n3. 🥁\n4. 🥁\n5. 🥁\n6. 🥁\n7. 🥁\n8. 🥁\n9. 🥁\n10. 🥁\n11. 🥁\n12. 🥁\n13. 🥁\n14. 🥁",
+     "instruction": "group-message",
+     "key": "<match 2026-11-17 20:00>:evening-update:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @ben",
+     "kind": "out",
+     "text": "💷 Ben, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ben:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @dev",
+     "kind": "out",
+     "text": "💷 Dev, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@dev:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @gaz",
+     "kind": "out",
+     "text": "💷 Gaz, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @kit",
+     "kind": "out",
+     "text": "💷 Kit, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@kit:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @leo",
+     "kind": "out",
+     "text": "💷 Leo, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@leo:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @kai",
+     "kind": "out",
+     "text": "💷 Kai, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@kai:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @max",
+     "kind": "out",
+     "text": "💷 Max, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@max:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @ned",
+     "kind": "out",
+     "text": "💷 Ned, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ned:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @ollie",
+     "kind": "out",
+     "text": "💷 Ollie, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @pete",
+     "kind": "out",
+     "text": "💷 Pete, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@pete:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @raj",
+     "kind": "out",
+     "text": "💷 Raj, still owed: your *£5* for *Sutton Sandbox FC* is still outstanding.\n\nPay by card, Apple or Google Pay, or pay Colin directly:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase:@raj:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 18:00",
+     "to": "dm @colin",
+     "kind": "out",
+     "text": "🤝 2 players said they'd pay you directly for *Sutton Sandbox FC*. Tick off whoever's settled up:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-10 20:00>:pay-chase-collector:2026-11-15"
+    },
+    {
+     "at": "2026-11-15 20:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🏆 *Man of the Match: Sutton Sandbox FC*\n\nCongrats *Ben Hughes* (3/4 votes) 🎉\n\nVotes:\n• Ben Hughes (3)\n• Gaz Reid (1)",
+     "instruction": "group-message",
+     "key": "<match 2026-11-10 20:00>:mom-announcement"
+    }
+   ],
+   "handled": [
+    "@jay in dm @jay: \"paid\" → dm-reply: paid-claim"
+   ],
+   "db": [
+    "botjob dm → @colin: 💸 *Jay Okoro* says they've paid you directly for *Sutton Sandbox FC*: *£5*. Mark it paid : (new) sent",
+    "botjob dm → @jay: Thanks Jay, I've told Colin you've paid *£5* for *Sutton Sandbox FC*. Colin will confirm o: (new) sent",
+    "sent-notification paid-claim:dm-sutton-114: (new) paid-claim",
+    "sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-13: (new) group-message",
+    "sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794589200000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-13: (new) outbound-text-log",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@kai:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@kit:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@leo:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@max:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ned:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@pete:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@raj:2026-11-13: (new) dm",
+    "sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-14: (new) group-message",
+    "sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794675600000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-14: (new) outbound-text-log",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@kai:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@kit:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@leo:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@max:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ned:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@pete:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@raj:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ben:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@colin:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@jay:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@kit:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@leo:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@max:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ned:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ollie:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@pete:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:rate-reminder:@raj:2026-11-14: (new) dm",
+    "sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-15: (new) group-message",
+    "sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794762000000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-15: (new) outbound-text-log",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@kai:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@kit:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@leo:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@max:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ned:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@pete:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:pay-chase:@raj:2026-11-15: (new) dm",
+    "sent-notification <match 2026-11-10 20:00>:mom-announcement: (new) group-message",
+    "sent-notification txtlog:<club>:<text c801f556>:<match 2026-11-10 20:00>:mom-announcement: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 34,
+   "step": "2026-11-16 09:00 note: Monday: the rating window has closed; Man of the Match and badges",
+   "out": [
+    {
+     "at": "2026-11-16 10:00",
+     "to": "dm @kai",
+     "kind": "out",
+     "text": "📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    }
+   ],
+   "handled": [],
+   "db": [
+    "botjob dm → @kai: 📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venu (#2): (new) sent"
+   ],
+   "errors": []
+  }
+ ],
+ "final": {
+  "<match 2026-11-10 20:00>: MoM votes for @ben": "3",
+  "<match 2026-11-10 20:00>: MoM votes for @gaz": "1",
+  "<match 2026-11-10 20:00>: attendance @ash": "CONFIRMED #1",
+  "<match 2026-11-10 20:00>: attendance @ben": "CONFIRMED #2",
+  "<match 2026-11-10 20:00>: attendance @colin": "CONFIRMED #10",
+  "<match 2026-11-10 20:00>: attendance @dev": "CONFIRMED #3",
+  "<match 2026-11-10 20:00>: attendance @eli": "BENCH #16",
+  "<match 2026-11-10 20:00>: attendance @finn": "DROPPED #4",
+  "<match 2026-11-10 20:00>: attendance @gaz": "CONFIRMED #5",
+  "<match 2026-11-10 20:00>: attendance @jay": "CONFIRMED #6",
+  "<match 2026-11-10 20:00>: attendance @kai": "CONFIRMED #9",
+  "<match 2026-11-10 20:00>: attendance @kit": "CONFIRMED #7",
+  "<match 2026-11-10 20:00>: attendance @leo": "CONFIRMED #8",
+  "<match 2026-11-10 20:00>: attendance @max": "CONFIRMED #11",
+  "<match 2026-11-10 20:00>: attendance @ned": "CONFIRMED #12",
+  "<match 2026-11-10 20:00>: attendance @ollie": "CONFIRMED #13",
+  "<match 2026-11-10 20:00>: attendance @pete": "CONFIRMED #14",
+  "<match 2026-11-10 20:00>: attendance @raj": "CONFIRMED #17",
+  "<match 2026-11-10 20:00>: fee": "5",
+  "<match 2026-11-10 20:00>: pay links released": "yes",
+  "<match 2026-11-10 20:00>: places": "14",
+  "<match 2026-11-17 20:00>: places": "14",
+  "botjob dm → @ash: Thanks Ash, I've told Colin you've paid *£5* for *Sutton Sandbox FC*. Colin will confirm o": "sent",
+  "botjob dm → @ash: 💷 Ash, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, ": "sent",
+  "botjob dm → @ben: 💷 Ben, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, ": "sent",
+  "botjob dm → @colin: Got it: *£5* per player for *Sutton Sandbox FC*, 13 players to charge. Reply *✅* (or \"yes\"": "sent",
+  "botjob dm → @colin: ✅ Done, sent 13 pay links at *£5* each for *Sutton Sandbox FC* on Tue 10 Nov. Players can ": "sent",
+  "botjob dm → @colin: 💸 *Ash Patel* says they've paid you directly for *Sutton Sandbox FC*: *£5*. Mark it paid ": "sent",
+  "botjob dm → @colin: 💸 *Jay Okoro* says they've paid you directly for *Sutton Sandbox FC*: *£5*. Mark it paid ": "sent",
+  "botjob dm → @dev: 💷 Dev, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, ": "sent",
+  "botjob dm → @gaz: 💷 Gaz, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, ": "sent",
+  "botjob dm → @jay: Thanks Jay, I've told Colin you've paid *£5* for *Sutton Sandbox FC*. Colin will confirm o": "sent",
+  "botjob dm → @jay: 💷 Jay, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, ": "sent",
+  "botjob dm → @kai: 💷 Kai, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, ": "sent",
+  "botjob dm → @kai: 📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venu": "sent",
+  "botjob dm → @kai: 📍 Confirm *Sutton Sandbox FC*'s venue so nearby clubs can find you: MatchTime has no venu (#2)": "sent",
+  "botjob dm → @kit: 💷 Kit, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, ": "sent",
+  "botjob dm → @leo: 💷 Leo, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, ": "sent",
+  "botjob dm → @max: 💷 Max, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, ": "sent",
+  "botjob dm → @ned: 💷 Ned, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, ": "sent",
+  "botjob dm → @ollie: 💷 Ollie, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay": "sent",
+  "botjob dm → @pete: 💷 Pete, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay,": "sent",
+  "botjob dm → @raj: 💷 Raj, match fee for *Sutton Sandbox FC* is *£5*. Tap to pay (card, Apple or Google Pay, ": "sent",
+  "botjob group → group: ✅ *Squad complete (14/14)* for *Sutton Sandbox FC* on Tue 10 Nov 20:00 🙌 *Playing:* 1. As": "sent",
+  "botjob group → group: ✅ *Squad complete (14/14)* for *Sutton Sandbox FC* on Tue 10 Nov 20:00 🙌 *Playing:* 1. As (#2)": "sent",
+  "club: approval": "approved",
+  "club: members": "18",
+  "club: muted": "no",
+  "club: stage": "live, bot on",
+  "match 2026-11-10 20:00: Ash Patel": "CONFIRMED",
+  "match 2026-11-10 20:00: Ben Hughes": "CONFIRMED",
+  "match 2026-11-10 20:00: Colin Banks": "CONFIRMED",
+  "match 2026-11-10 20:00: Dev Shah": "CONFIRMED",
+  "match 2026-11-10 20:00: Eli Clarke": "BENCH",
+  "match 2026-11-10 20:00: Finn Walsh": "DROPPED",
+  "match 2026-11-10 20:00: Gaz Reid": "CONFIRMED",
+  "match 2026-11-10 20:00: Jay Okoro": "CONFIRMED",
+  "match 2026-11-10 20:00: Kai Morgan": "CONFIRMED",
+  "match 2026-11-10 20:00: Kit Lane": "CONFIRMED",
+  "match 2026-11-10 20:00: Leo Grant": "CONFIRMED",
+  "match 2026-11-10 20:00: Max Ford": "CONFIRMED",
+  "match 2026-11-10 20:00: MoM votes": "4",
+  "match 2026-11-10 20:00: Ned Price": "CONFIRMED",
+  "match 2026-11-10 20:00: Ollie Shaw": "CONFIRMED",
+  "match 2026-11-10 20:00: Pete Lowe": "CONFIRMED",
+  "match 2026-11-10 20:00: Raj Mehta": "CONFIRMED",
+  "match 2026-11-10 20:00: ratings": "52",
+  "match 2026-11-10 20:00: score": "5-3",
+  "match 2026-11-10 20:00: status": "COMPLETED",
+  "match 2026-11-17 20:00: status": "UPCOMING",
+  "member Ash Patel": "PLAYER",
+  "member Ben Hughes": "PLAYER",
+  "member Colin Banks": "ADMIN",
+  "member Dev Shah": "PLAYER",
+  "member Eli Clarke": "PLAYER",
+  "member Finn Walsh": "PLAYER",
+  "member Gaz Reid": "PLAYER",
+  "member Hari Nair": "PLAYER",
+  "member Ian Doyle": "PLAYER",
+  "member Jay Okoro": "PLAYER",
+  "member Kai Morgan": "OWNER",
+  "member Kit Lane": "PLAYER",
+  "member Leo Grant": "PLAYER",
+  "member Max Ford": "PLAYER",
+  "member Ned Price": "PLAYER",
+  "member Ollie Shaw": "PLAYER",
+  "member Pete Lowe": "PLAYER",
+  "member Raj Mehta": "PLAYER",
+  "sent-notification <match 2026-11-10 20:00>:announce-match": "group-message",
+  "sent-notification <match 2026-11-10 20:00>:badges": "group-message",
+  "sent-notification <match 2026-11-10 20:00>:cancel-nudge:@kai": "dm",
+  "sent-notification <match 2026-11-10 20:00>:evening-update:2026-11-09": "group-message",
+  "sent-notification <match 2026-11-10 20:00>:evening-update:2026-11-10": "group-message",
+  "sent-notification <match 2026-11-10 20:00>:fee-ask": "dm",
+  "sent-notification <match 2026-11-10 20:00>:mom-announcement": "group-message",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase-collector:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ben:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@dev:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@gaz:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@jay:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@jay:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@kai:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@kai:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@kai:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@kai:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@kai:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@kit:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@kit:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@kit:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@kit:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@kit:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@leo:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@leo:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@leo:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@leo:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@leo:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@max:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@max:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@max:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@max:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@max:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ned:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ned:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ned:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ned:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ned:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@ollie:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@pete:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@pete:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@pete:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@pete:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@pete:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@raj:2026-11-11": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@raj:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@raj:2026-11-13": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@raj:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:pay-chase:@raj:2026-11-15": "dm",
+  "sent-notification <match 2026-11-10 20:00>:payment-poll": "group-poll",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@ash": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@ben": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@colin": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@dev": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@gaz": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@jay": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@kai": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@kit": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@leo": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@max": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@ned": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@ollie": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@pete": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-dm:@raj": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-promo": "group-message",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ben:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ben:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@colin:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@colin:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@gaz:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@jay:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@jay:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@kit:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@kit:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@leo:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@leo:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@max:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@max:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ned:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ned:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ollie:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@ollie:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@pete:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@pete:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@raj:2026-11-12": "dm",
+  "sent-notification <match 2026-11-10 20:00>:rate-reminder:@raj:2026-11-14": "dm",
+  "sent-notification <match 2026-11-10 20:00>:roster-shown:<squad>:1794243600000": "roster-shown",
+  "sent-notification <match 2026-11-10 20:00>:roster-shown:<squad>:1794330000000": "roster-shown",
+  "sent-notification <match 2026-11-10 20:00>:squad-locked": "group-message",
+  "sent-notification <match 2026-11-17 20:00>:announce-match": "group-message",
+  "sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-11": "group-message",
+  "sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-12": "group-message",
+  "sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-13": "group-message",
+  "sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-14": "group-message",
+  "sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-15": "group-message",
+  "sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794416400000": "roster-shown",
+  "sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794502800000": "roster-shown",
+  "sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794589200000": "roster-shown",
+  "sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794675600000": "roster-shown",
+  "sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794762000000": "roster-shown",
+  "sent-notification greply:<club>:wa-sutton-10": "group-reply",
+  "sent-notification greply:<club>:wa-sutton-36": "group-reply",
+  "sent-notification offer-<id>": "bench-prompt",
+  "sent-notification offer-<id>:dm:@eli": "dm",
+  "sent-notification offer-<id>:dm:@raj": "dm",
+  "sent-notification org-<club>:bot-intro": "bot-intro",
+  "sent-notification org-<club>:seed-nudge:@kai": "dm",
+  "sent-notification paid-claim:dm-sutton-114": "paid-claim",
+  "sent-notification paid-claim:dm-sutton-69": "paid-claim",
+  "sent-notification txtlog:<club>:<text 09a0e506>:<match 2026-11-17 20:00>:announce-match": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 1d14457d>:offer-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 2a3d3c71>:<match 2026-11-10 20:00>:evening-update:2026-11-10": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 32daf708>:<match 2026-11-10 20:00>:rate-promo": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 509bf045>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 590fb46b>:<match 2026-11-10 20:00>:announce-match": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 98de0c19>:<match 2026-11-10 20:00>:badges": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 9e2a664a>:<match 2026-11-10 20:00>:payment-poll": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text c801f556>:<match 2026-11-10 20:00>:mom-announcement": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text cd773718>:<match 2026-11-10 20:00>:evening-update:2026-11-09": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text dfbfba4e>:<match 2026-11-17 20:00>:evening-update:2026-11-11": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text e56e275f>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-12": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-13": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-14": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text f82bd653>:<match 2026-11-17 20:00>:evening-update:2026-11-15": "outbound-text-log",
+  "user @ash": "name \"Ash Patel\"",
+  "user @ben": "name \"Ben Hughes\"",
+  "user @colin": "name \"Colin Banks\"",
+  "user @dev": "name \"Dev Shah\"",
+  "user @eli": "name \"Eli Clarke\"",
+  "user @finn": "name \"Finn Walsh\"",
+  "user @gaz": "name \"Gaz Reid\"",
+  "user @hari": "name \"Hari Nair\"",
+  "user @ian": "name \"Ian Doyle\"",
+  "user @jay": "name \"Jay Okoro\"",
+  "user @kai": "name \"Kai Morgan\"",
+  "user @kit": "name \"Kit Lane\"",
+  "user @leo": "name \"Leo Grant\"",
+  "user @max": "name \"Max Ford\"",
+  "user @ned": "name \"Ned Price\"",
+  "user @ollie": "name \"Ollie Shaw\"",
+  "user @pete": "name \"Pete Lowe\"",
+  "user @raj": "name \"Raj Mehta\""
+ }
+}

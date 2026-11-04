@@ -1,0 +1,42 @@
+{
+ "club": "fnf",
+ "mode": "replay",
+ "ticks": 1458,
+ "steps": 32,
+ "sent": 69,
+ "errors": 0,
+ "seconds": 98,
+ "model": {
+  "club": "fnf",
+  "mode": "replay",
+  "recorded": 38,
+  "hits": 33,
+  "repeats": 0,
+  "reordered": 5,
+  "misses": 0,
+  "upstreamCalls": 0,
+  "missList": [],
+  "reorderedList": [
+   {
+    "key": "cbe439c5ebe720b233dc4a8aaa44a5ab",
+    "site": "You help balance the teams for one match. MatchTime splits the confirmed players into two "
+   },
+   {
+    "key": "cbe439c5ebe720b233dc4a8aaa44a5ab",
+    "site": "You help balance the teams for one match. MatchTime splits the confirmed players into two "
+   },
+   {
+    "key": "754471b36c6c260c2febaf1d0e906d4a",
+    "site": "You read one message sent to MatchTime, a football club's WhatsApp bot. A place is open in"
+   },
+   {
+    "key": "af56847c624ab51107b6de8cdf1c4fff",
+    "site": "You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: "
+   },
+   {
+    "key": "e25f68fdf9dc99dbb10bd161ebdb1b1c",
+    "site": "You read ONE message about the club's two team line-ups and report what it asks for. You n"
+   }
+  ]
+ }
+}
