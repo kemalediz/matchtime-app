@@ -98,7 +98,7 @@ describe("shouldChaseRecruit passes the club's quiet hours", () => {
     now: AT_2330,
     invitedAt: new Date(AT_2330.getTime() - 2 * DAY),
     hasResponded: false,
-    squadShort: true,
+    placeOpen: true,
     matchLive: true,
     subscribed: true,
     alreadyChased: false,

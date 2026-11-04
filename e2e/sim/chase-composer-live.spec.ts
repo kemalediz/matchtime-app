@@ -10,11 +10,14 @@
  * against the database rows:
  *
  *   - the squad list in the post is exactly the rows (names, order,
- *     count, bench), rendered by `buildSquadRosterBlock`;
+ *     count, bench, a drum per open place), rendered by
+ *     `buildChaseRosterBlock` (the chase's own list since 2026-10-20);
  *   - every number in the opening line is a fact of the match;
  *   - the line came from the model (not the fixed fallback), is in the
  *     club's language, carries the call-off warning exactly when the
- *     match is at risk, and has no dash.
+ *     match is at risk, and has no dash;
+ *   - K1 (2026-11-04): at or above the game's minimum the line never
+ *     calls the squad short and never warns of a call-off.
  *
  * Once each (Kemal's cheap test plan). Opt-in: only runs when
  * MT_SIM_LIVE_LLM=1, on the developer key.
@@ -25,8 +28,7 @@ import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { ORG_ID, MATCH, londonAt } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { buildSquadRosterBlock } from "../../src/lib/scheduler-copy";
-import { chaseFallbackLead, type ChaseKind } from "../../src/lib/chase-lead";
+import { buildChaseRosterBlock, chaseFallbackLead, type ChaseKind } from "../../src/lib/chase-lead";
 
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 
@@ -62,6 +64,7 @@ async function squadRows(db: TestDb) {
 }
 
 const CALL_OFF = { en: /call(?:ed|ing)?\s+(?:it|this|the\s+(?:match|game))\s+off|game's off|cancel/i, tr: /iptal/i };
+const SAYS_SHORT = { en: /\bshort\b/i, tr: /eksi(?:ğiz|k|ğimiz)/iu };
 const ENGLISH_WORDS = /(?<!\p{L})(?:the|we|need|squad|more|still|say|tonight|tomorrow|kickoff)(?!\p{L})/iu;
 
 (LIVE ? test.describe : test.describe.skip)("scheduled chase LIVE (real model, real scheduler route)", () => {
@@ -71,13 +74,19 @@ const ENGLISH_WORDS = /(?<!\p{L})(?:the|we|need|squad|more|still|say|tonight|tom
   for (const lang of ["en", "tr"] as const) {
     for (const c of [
       // 17:00 the day before, 4 of 10 confirmed (need 6, about 27h out): at risk.
-      { name: "17:00 update, at risk", kind: "daily-in-list" as ChaseKind, maxPlayers: 10, now: () => londonAt(1, 17, 5), key: ":evening-update:", atRisk: true },
+      { name: "17:00 update, at risk", kind: "daily-in-list" as ChaseKind, maxPlayers: 10, minPlayers: null, now: () => londonAt(1, 17, 5), key: ":evening-update:", short: true, atRisk: true },
       // 18:45 on match day, 4 of 5 (need 1): the last call before the 20:00 kickoff.
-      { name: "last call", kind: "pre-kickoff-short" as ChaseKind, maxPlayers: 5, now: () => londonAt(2, 18, 45), key: ":pre-kickoff", atRisk: false },
+      { name: "last call", kind: "pre-kickoff-short" as ChaseKind, maxPlayers: 5, minPlayers: null, now: () => londonAt(2, 18, 45), key: ":pre-kickoff", short: true, atRisk: false },
+      // K1 (2026-11-04): the same 4 of 10 the day before, but the game is
+      // played with 4: it is on, so "places left" and no call-off.
+      { name: "17:00 update, game on (K1)", kind: "daily-in-list" as ChaseKind, maxPlayers: 10, minPlayers: 4, now: () => londonAt(1, 17, 5), key: ":evening-update:", short: false, atRisk: false },
+      // K1: 4 of 5 at the last call with a minimum of 4: "1 place left".
+      { name: "last call, game on (K1)", kind: "pre-kickoff-short" as ChaseKind, maxPlayers: 5, minPlayers: 4, now: () => londonAt(2, 18, 45), key: ":pre-kickoff", short: false, atRisk: false },
     ]) {
       test(`${lang}: ${c.name}: the post matches the database`, async ({ request, db }) => {
         await db.run(`UPDATE "Organisation" SET language = $1 WHERE id = $2`, [lang, ORG_ID]);
         await db.run(`UPDATE "Match" SET "maxPlayers" = $1 WHERE id = $2`, [c.maxPlayers, MATCH.upcoming]);
+        await db.run(`UPDATE "Activity" SET "minPlayers" = $1 WHERE id = (SELECT "activityId" FROM "Match" WHERE id = $2)`, [c.minPlayers, MATCH.upcoming]);
         const now = c.now();
         const post = (await duePostsAt(request, now)).find((i) => i.kind === "group-message" && i.key?.includes(c.key));
         expect(post, `no ${c.key} post`).toBeDefined();
@@ -86,7 +95,7 @@ const ENGLISH_WORDS = /(?<!\p{L})(?:the|we|need|squad|more|still|say|tonight|tom
 
         // The squad list is the rows, rendered by code.
         const sq = await squadRows(db);
-        const roster = buildSquadRosterBlock({ confirmed: sq.confirmed, bench: sq.bench, maxPlayers: sq.maxPlayers, lang });
+        const roster = buildChaseRosterBlock({ confirmed: sq.confirmed, bench: sq.bench, maxPlayers: sq.maxPlayers, kickoff: new Date(sq.date), now, lang });
         expect(text).toContain(roster);
 
         // The opening line: everything above the list.
@@ -102,11 +111,14 @@ const ENGLISH_WORDS = /(?<!\p{L})(?:the|we|need|squad|more|still|say|tonight|tom
           confirmed: sq.confirmed.length,
           maxPlayers: sq.maxPlayers,
           bench: sq.bench.length,
+          short: c.short,
           atRisk: c.atRisk,
         });
         expect(lead, "the model's line was not posted (the fixed one went out)").not.toBe(fallback);
         expect(lead).not.toMatch(/[—–]/);
         expect(CALL_OFF[lang].test(lead), `call-off warning ${c.atRisk ? "missing" : "where none belongs"}`).toBe(c.atRisk);
+        // K1: at or above the game's minimum the game is on, never "short".
+        if (!c.short) expect(lead, "says short although the game is on").not.toMatch(SAYS_SHORT[lang]);
 
         const need = sq.maxPlayers - sq.confirmed.length;
         const hm = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hour12: false }).format(kickoff);

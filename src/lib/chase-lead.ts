@@ -38,12 +38,13 @@ import { computeProximity, enforceProximity, londonTimeLabel } from "./proximity
 import { buildFormatSwitchFacts, type SmallerFormat } from "./format-switch";
 import { buildSlotRosterBlock, contradictsSquadState, displaysSquadState } from "./group-copy";
 import type { NamedRow } from "./scheduler-copy";
+import { placesOpen } from "./squad-short";
 
 export type ChaseKind =
-  | "daily-in-list" // the 17:00 squad update while the squad is short
+  | "daily-in-list" // the 17:00 squad update while places are open
   | "match-day-morning" // match day, morning
   | "chase-pre-kickoff" // 3 to 4 hours before kickoff
-  | "pre-kickoff-short"; // about 2 hours before kickoff, still short
+  | "pre-kickoff-short"; // about 2 hours before kickoff, places still open
 
 /** What code knows about the post, and all the model is told. */
 export interface ChaseFacts {
@@ -56,7 +57,12 @@ export interface ChaseFacts {
   confirmed: number;
   maxPlayers: number;
   bench: number;
-  /** `computeChaseRisk`'s verdict, daily post only. */
+  /** `squadNumbers(...).short` (squad-short.ts): below the game's minimum.
+   *  K1 (Kemal, 2026-11-04): at or above it the game is on, so the line
+   *  says the places left, never "short". */
+  short: boolean;
+  /** `computeChaseRisk`'s verdict, daily post only. Never true unless
+   *  `short` (K1). */
   atRisk: boolean;
 }
 
@@ -65,7 +71,7 @@ export const MAX_LEAD_CHARS = 280;
 
 export const CHASE_LEAD_SYSTEM = `You write the opening line of a post that MatchTime, the bot that runs a sports club's WhatsApp group, sends on a schedule while the next match still has places to fill. Under your line MatchTime adds the squad list itself, with the count and every name, so your line never lists players.
 
-The context gives you the facts: the language, which post this is, the match, the kickoff, the squad and whether the match is at risk. Your line says where things stand and asks for what is needed, in the group's own casual voice. Keep it friendly and short, and word it a little differently each time.
+The context gives you the facts: the language, which post this is, the match, the kickoff, the squad, whether there are already enough players for the game to go ahead, and whether the match is at risk. Your line says where things stand and asks for what is needed, in the group's own casual voice. Keep it friendly and short, and word it a little differently each time.
 
 The posts:
 - daily: the regular squad update in the days before the match.
@@ -73,7 +79,10 @@ The posts:
 - before-kickoff: 3 to 4 hours before kickoff, a sharper call. Give the kickoff time.
 - last-call: about 2 hours before kickoff, the last chance. Give the kickoff time and the venue.
 
-At risk: when the context says "At risk: yes", push a bit harder and say once, plainly, that the game will have to be called off if we cannot find the numbers. That is the group's call, never yours: write "we'll have to call it off", never "I will cancel", and blame nobody. When it says "At risk: no", never mention calling the game off.
+Where the squad stands:
+- "Enough to play: yes": the game is on. Ask for the open places as places left ("3 places left", "1 place left"), and never say the squad is short.
+- "Enough to play: no": the squad is short. Say how many places are still to fill ("3 short", "3 more").
+- "At risk: yes" (it only comes with "Enough to play: no"): push a bit harder and say once, plainly, that the game will have to be called off if we cannot find the numbers. That is the group's call, never yours: write "we'll have to call it off", never "I will cancel", and blame nobody. With "At risk: no", never mention calling the game off.
 
 For every line:
 - Every number and every day comes from the context; never work one out yourself. Say "tonight", "today" or "tomorrow" only when the kickoff line says today or tomorrow; otherwise name the day.
@@ -84,6 +93,7 @@ For every line:
 - Write in the context's language. In English, players join by saying *IN*. In Turkish, speak to the group in the plural, warm and informal (no "abi", no "beyler"); players join by writing *VARIM*.
 
 Examples, with other facts (copy the shape, not the words):
+Enough to play: no
 daily, 3 places open, kickoff on Thursday:
   English: 🗓 *Thursday 6-a-side* needs *3 more* for Thursday. Say *IN* if you can play ⚽
   Turkish: 🗓 Perşembe *Halı Saha* için *3 kişi* daha lazım. Gelebilecekler *VARIM* yazsın ⚽
@@ -93,6 +103,13 @@ daily, at risk, 5 places open, kickoff tomorrow:
 last-call, 1 place open, kickoff 20:00 at Riverside:
   English: ⏰ *20:00* at *Riverside* and we're *1 short*. Last chance, say *IN* 🙏
   Turkish: ⏰ Maç *20:00*'de *Riverside*'da, *1 kişi* eksiğiz. Son şans, *VARIM* yazın 🙏
+Enough to play: yes
+daily, 2 places open, kickoff on Thursday:
+  English: 🗓 *Thursday 6-a-side* is on for Thursday, *2 places left*. Say *IN* to grab one ⚽
+  Turkish: 🗓 Perşembe *Halı Saha* maçı var, *2 kişilik yer* kaldı. Kapmak isteyen *VARIM* yazsın ⚽
+last-call, 1 place open, kickoff 20:00 at Riverside:
+  English: ⏰ *20:00* at *Riverside*, *1 place left*. Last chance to grab it, say *IN* 🙏
+  Turkish: ⏰ Maç *20:00*'de *Riverside*'da, *1 kişilik yer* kaldı. Son şans, *VARIM* yazın 🙏
 
 Return the line as "lead".`;
 
@@ -114,7 +131,7 @@ const POST_NAME: Record<ChaseKind, string> = {
 const LANGUAGE_NAME: Record<Lang, string> = { en: "English", tr: "Turkish" };
 
 function need(f: ChaseFacts): number {
-  return Math.max(0, f.maxPlayers - f.confirmed);
+  return placesOpen(f.maxPlayers, f.confirmed);
 }
 
 /** The facts, one per line. The kickoff is written the way the group's
@@ -128,24 +145,35 @@ export function chaseLeadUserTurn(f: ChaseFacts): string {
     `Match: ${f.activityName}, at ${f.venue}`,
     `Kickoff: ${longDayTimeLabel(f.lang, f.kickoff)} (${when})`,
     `Squad: ${f.confirmed} of ${f.maxPlayers} confirmed, ${need(f)} places open, ${f.bench} on the bench`,
+    `Enough to play: ${f.short ? "no" : "yes"}`,
     `At risk: ${f.atRisk ? "yes" : "no"}`,
   ].join("\n");
 }
 
 /** The fixed lead of each kind: the copy the scheduler has always sent
- *  when the model was not available. */
+ *  when the model was not available. At or above the game's minimum
+ *  (K1, 2026-11-04) each kind says the places left instead. */
 export function chaseFallbackLead(f: ChaseFacts): string {
   const s = t(f.lang);
   const timeLabel = londonTimeLabel(f.kickoff);
+  const open = need(f);
   switch (f.kind) {
     case "daily-in-list":
-      return s.daily_in_list_fallback_lead({ activityName: f.activityName, need: need(f) });
+      return f.short
+        ? s.daily_in_list_fallback_lead({ activityName: f.activityName, need: open })
+        : s.daily_in_list_places_left_lead({ activityName: f.activityName, open });
     case "match-day-morning":
-      return s.match_day_chase_fallback({ need: need(f), activityName: f.activityName });
+      return f.short
+        ? s.match_day_chase_fallback({ need: open, activityName: f.activityName })
+        : s.match_day_chase_places_left({ open, activityName: f.activityName });
     case "chase-pre-kickoff":
-      return s.chase_pre_kickoff_fallback({ need: need(f), activityName: f.activityName, timeLabel });
+      return f.short
+        ? s.chase_pre_kickoff_fallback({ need: open, activityName: f.activityName, timeLabel })
+        : s.chase_pre_kickoff_places_left({ open, activityName: f.activityName, timeLabel });
     case "pre-kickoff-short":
-      return s.pre_kickoff_short_fallback({ timeLabel, venue: f.venue, confirmed: f.confirmed, maxPlayers: f.maxPlayers, need: need(f) });
+      return f.short
+        ? s.pre_kickoff_short_fallback({ timeLabel, venue: f.venue, confirmed: f.confirmed, maxPlayers: f.maxPlayers, need: open })
+        : s.pre_kickoff_places_left({ timeLabel, venue: f.venue, open });
   }
 }
 
@@ -186,16 +214,19 @@ export function acceptChaseLead(raw: string, f: ChaseFacts): string | null {
   return cleaned;
 }
 
-/** The server's format-switch line: when the squad is short, kickoff is
- *  within 24 hours and a smaller format would be filled. */
+/** The server's format-switch line: when the squad is short (below the
+ *  game's minimum, squad-short.ts; K1: at or above it the game is on),
+ *  kickoff is within 24 hours and a smaller format would be filled. */
 export function chaseSwitchLine(args: {
   confirmedNames: readonly string[];
   maxPlayers: number;
+  /** `squadNumbers(...).short`. */
+  short: boolean;
   alternatives: readonly SmallerFormat[];
   lang: Lang | string | null | undefined;
   hoursToKickoff: number;
 }): string | null {
-  if (args.hoursToKickoff > 24 || args.confirmedNames.length >= args.maxPlayers) return null;
+  if (args.hoursToKickoff > 24 || !args.short) return null;
   const facts = buildFormatSwitchFacts({
     confirmedNames: args.confirmedNames,
     currentMaxPlayers: args.maxPlayers,

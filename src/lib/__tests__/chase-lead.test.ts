@@ -41,6 +41,7 @@ function facts(over: Partial<ChaseFacts> = {}): ChaseFacts {
     confirmed: 6,
     maxPlayers: 14,
     bench: 1,
+    short: true,
     atRisk: false,
     ...over,
   };
@@ -82,7 +83,27 @@ describe("the user turn states the facts, and only the facts", () => {
     expect(u).toContain("Match: Tuesday 7-a-side, at Sim Arena");
     expect(u).toContain("Kickoff: Tuesday 8 September at 21:30 (in 3 days)");
     expect(u).toContain("Squad: 6 of 14 confirmed, 8 places open, 1 on the bench");
+    expect(u).toContain("Enough to play: no");
     expect(u).toContain("At risk: no");
+  });
+
+  it("K1: at or above the game's minimum the facts say there are enough to play", () => {
+    const u = chaseLeadUserTurn(facts({ confirmed: 12, maxPlayers: 18, bench: 0, short: false }));
+    expect(u).toContain("Squad: 12 of 18 confirmed, 6 places open, 0 on the bench");
+    expect(u).toContain("Enough to play: yes");
+    expect(u).toContain("At risk: no");
+  });
+
+  it("the facts come in a fixed order, one per line", () => {
+    expect(chaseLeadUserTurn(facts()).split("\n").map((l) => l.split(":")[0])).toEqual([
+      "Language",
+      "Post",
+      "Match",
+      "Kickoff",
+      "Squad",
+      "Enough to play",
+      "At risk",
+    ]);
   });
 
   it("Turkish: the kickoff written the Turkish way", () => {
@@ -129,6 +150,39 @@ describe("the fallback lead is the fixed copy of each kind", () => {
   it("Turkish", () => {
     expect(chaseFallbackLead(facts({ lang: "tr" }))).toBe(
       t("tr").daily_in_list_fallback_lead({ activityName: "Tuesday 7-a-side", need: 8 }),
+    );
+  });
+
+  it("K1: at or above the minimum, every kind says the places left, never short (English)", () => {
+    const on = { short: false, confirmed: 12, maxPlayers: 18, bench: 0 };
+    const leads = [
+      chaseFallbackLead(facts(on)),
+      chaseFallbackLead(facts({ ...on, kind: "match-day-morning" })),
+      chaseFallbackLead(facts({ ...on, kind: "chase-pre-kickoff" })),
+      chaseFallbackLead(facts({ ...on, kind: "pre-kickoff-short" })),
+    ];
+    for (const l of leads) {
+      expect(l).toContain("6 places left");
+      expect(l).not.toMatch(/short|need/i);
+      expect(l).not.toMatch(/[—–/]/);
+    }
+    expect(chaseFallbackLead(facts({ ...on, confirmed: 17 }))).toContain("1 place left");
+  });
+
+  it("K1: the same in Turkish", () => {
+    const on = { lang: "tr" as const, short: false, confirmed: 12, maxPlayers: 18, bench: 0 };
+    for (const kind of ["daily-in-list", "match-day-morning", "chase-pre-kickoff", "pre-kickoff-short"] as const) {
+      const l = chaseFallbackLead(facts({ ...on, kind }));
+      expect(l).toContain("6 kişilik yer");
+      expect(l).not.toMatch(/eksi|lazım/i);
+      expect(l).not.toMatch(/[—–/]/);
+    }
+  });
+
+  it("below the minimum the fixed copy is today's", () => {
+    const s = t("en");
+    expect(chaseFallbackLead(facts({ kind: "match-day-morning", short: true }))).toBe(
+      s.match_day_chase_fallback({ need: 8, activityName: "Tuesday 7-a-side" }),
     );
   });
 
@@ -181,20 +235,25 @@ describe("the format-switch line is the server's, and only when it applies", () 
   const five = [{ sportName: "Football 5-a-side", totalPlayers: 10 }];
 
   it("short, within 24 hours and viable: the proposal line", () => {
-    const line = chaseSwitchLine({ confirmedNames, maxPlayers: 14, alternatives: five, lang: "en", hoursToKickoff: 20 });
+    const line = chaseSwitchLine({ confirmedNames, maxPlayers: 14, short: true, alternatives: five, lang: "en", hoursToKickoff: 20 });
     expect(line).toMatch(/^If we don't find 4 more, we could switch to 5-a-side \(10 players\)/);
   });
 
   it("further out than 24 hours: nothing", () => {
-    expect(chaseSwitchLine({ confirmedNames, maxPlayers: 14, alternatives: five, lang: "en", hoursToKickoff: 30 })).toBeNull();
+    expect(chaseSwitchLine({ confirmedNames, maxPlayers: 14, short: true, alternatives: five, lang: "en", hoursToKickoff: 30 })).toBeNull();
   });
 
   it("not viable (the smaller format is not filled either): nothing", () => {
-    expect(chaseSwitchLine({ confirmedNames: confirmedNames.slice(0, 6), maxPlayers: 14, alternatives: five, lang: "en", hoursToKickoff: 20 })).toBeNull();
+    expect(chaseSwitchLine({ confirmedNames: confirmedNames.slice(0, 6), maxPlayers: 14, short: true, alternatives: five, lang: "en", hoursToKickoff: 20 })).toBeNull();
   });
 
   it("no smaller format: nothing", () => {
-    expect(chaseSwitchLine({ confirmedNames, maxPlayers: 14, alternatives: [], lang: "en", hoursToKickoff: 20 })).toBeNull();
+    expect(chaseSwitchLine({ confirmedNames, maxPlayers: 14, short: true, alternatives: [], lang: "en", hoursToKickoff: 20 })).toBeNull();
+  });
+
+  it("K1: not short (at or above the game's minimum): nothing, the game is on", () => {
+    expect(chaseSwitchLine({ confirmedNames, maxPlayers: 14, short: false, alternatives: five, lang: "en", hoursToKickoff: 20 })).toBeNull();
+    expect(chaseSwitchLine({ confirmedNames, maxPlayers: 14, short: true, alternatives: five, lang: "en", hoursToKickoff: 20 })).not.toBeNull();
   });
 });
 

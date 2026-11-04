@@ -31,7 +31,7 @@
  *
  * ── IT COSTS REAL MONEY ──────────────────────────────────────────────
  * Every compose is a real model call on ANTHROPIC_API_KEY_DEV, the
- * developer's key. It refuses to run without one. One pass is 12 calls.
+ * developer's key. It refuses to run without one. One pass is 16 calls.
  *
  * ── HOW TO RUN ───────────────────────────────────────────────────────
  *   DATABASE_URL=postgresql://none@127.0.0.1:1/none \
@@ -50,6 +50,7 @@ import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { ARMS, armModel } from "../e2e/helpers/arm-model.ts";
 import { composeChaseFromMatch, type ChaseComposeMatch, type ChaseKind } from "../src/lib/message-analyzer.ts";
 import { computeChaseRisk } from "../src/lib/chase-risk.ts";
+import { squadNumbers } from "../src/lib/squad-short.ts";
 import { buildFormatSwitchFacts } from "../src/lib/format-switch.ts";
 
 const EN_NAMES = [
@@ -101,6 +102,8 @@ interface Scenario {
   confirmed: number;
   bench?: number;
   maxPlayers?: number;
+  /** `Activity.minPlayers`: the fewest the game is played with (K1). */
+  minPlayers?: number;
   alternatives?: Array<{ sportName: string; totalPlayers: number }>;
   /** What the SERVER decides. Asserted before any call. */
   expectAtRisk: boolean;
@@ -121,7 +124,19 @@ const SCENARIOS: Scenario[] = [
   { id: "TR-HEALTHY", what: "Turkish daily, 9/14 with 1 on the bench, in 4 days", club: TR, kind: "daily-in-list", kickoff: londonAt(4, 21), confirmed: 9, bench: 1, expectAtRisk: false },
   { id: "TR-MORNING", what: "Turkish match-day morning, 12/14, kickoff 21:00 today", club: TR, kind: "match-day-morning", kickoff: londonAt(0, 21), confirmed: 12, expectAtRisk: false },
   { id: "TR-LAST-CALL", what: "Turkish, about 2h before, 13/14, 6-a-side viable", club: TR, kind: "pre-kickoff-short", kickoff: soon(1.5), confirmed: 13, alternatives: SIX, expectAtRisk: false },
+  // K1 (Kemal, 2026-11-04): at or above the game's minimum the game is on.
+  // 10 of 14 tomorrow was "at risk" (4 places open); with a minimum of 10
+  // it is not, and no line calls the squad short.
+  { id: "ON-DAILY", what: "daily, 10/14 with a minimum of 10, tomorrow 21:00: on, not at risk", club: EN, kind: "daily-in-list", kickoff: londonAt(1, 21), confirmed: 10, minPlayers: 10, alternatives: FIVE, expectAtRisk: false },
+  { id: "ON-LAST-CALL", what: "about 2h before, 13/14 with a minimum of 12: 1 place left", club: EN, kind: "pre-kickoff-short", kickoff: soon(1.5), confirmed: 13, minPlayers: 12, alternatives: SIX, expectAtRisk: false },
+  { id: "TR-ON-DAILY", what: "Turkish daily, 10/14 with a minimum of 10, tomorrow 21:00", club: TR, kind: "daily-in-list", kickoff: londonAt(1, 21), confirmed: 10, minPlayers: 10, expectAtRisk: false },
+  { id: "TR-ON-LAST-CALL", what: "Turkish, about 2h before, 13/14 with a minimum of 12", club: TR, kind: "pre-kickoff-short", kickoff: soon(1.5), confirmed: 13, minPlayers: 12, alternatives: SIX, expectAtRisk: false },
 ];
+
+/** squad-short.ts's numbers for a scenario (a 7-a-side, 14 places). */
+function numbersFor(s: Scenario) {
+  return squadNumbers({ places: s.maxPlayers ?? 14, confirmed: s.confirmed, minPlayers: s.minPlayers ?? null, playersPerTeam: 7 });
+}
 
 function matchFor(s: Scenario): ChaseComposeMatch {
   const bench = s.bench ?? 0;
@@ -147,6 +162,8 @@ const BOT_CANCELS = {
   en: /\bI(?:'ll| will| am| have to| may have to| might have to|'m)?\s+(?:going to\s+)?cancel\w*/i,
   tr: /iptal\s+ed(?:iyorum|eceğim|erim)/i,
 };
+/** The squad called short (K1: never at or above the minimum). */
+const SAYS_SHORT = { en: /\bshort\b/i, tr: /eksi(?:ğiz|k|ğimiz)/iu };
 const BLAME = /\b(?:let(?:ting)?\s+(?:us|the\s+lads|everyone)\s+down|no thanks to|blame|because\s+\w+\s+(?:bailed|dropped out|pulled out))\b/i;
 const SEND_STAMP = /\b(?:\d{1,2}(?::\d\d)?\s?(?:am|pm)\s+update|\d{1,2}:\d\d\s+update|(?:quick\s+)?(?:morning|evening|afternoon)\s+update)\b/i;
 const GREETING = {
@@ -196,6 +213,8 @@ function judge(s: Scenario, text: string, proposal: string | null, switchExpecte
   const warned = CALL_OFF[lang].test(lead);
   if (warned !== s.expectAtRisk) problems.push(s.expectAtRisk ? "no call-off warning although at risk" : "call-off warning although not at risk");
   if (BOT_CANCELS[lang].test(text)) problems.push("MatchTime says it will cancel");
+  // K1: at or above the game's minimum, never "short".
+  if (!numbersFor(s).short && SAYS_SHORT[lang].test(lead)) problems.push("says short although the game is on (K1)");
   if (BLAME.test(text)) problems.push("blames someone");
 
   // squad
@@ -267,11 +286,11 @@ function rejudge(): void {
     const s = SCENARIOS.find((x) => x.id === r.id)!;
     const match = matchFor(s);
     const confirmedNames = match.attendances.filter((a) => a.status === "CONFIRMED").map((a) => a.user.name ?? "?");
-    const risk = computeChaseRisk({ kickoff: match.date, confirmedCount: confirmedNames.length, maxPlayers: match.maxPlayers, now: NOW });
+    const risk = computeChaseRisk({ kickoff: match.date, confirmedCount: confirmedNames.length, maxPlayers: match.maxPlayers, short: numbersFor(s).short, now: NOW });
     const proposal =
       buildFormatSwitchFacts({ confirmedNames, currentMaxPlayers: match.maxPlayers, alternatives: s.alternatives ?? [], lang: s.club.lang }).find((f) => f.proposal)
         ?.proposal ?? null;
-    const v = r.text ? judge(s, r.text as string, proposal, proposal !== null && risk.need > 0 && risk.hoursToKickoff <= 24) : { ok: false, problems: ["no post (null)"], warned: false, leadChars: 0 };
+    const v = r.text ? judge(s, r.text as string, proposal, proposal !== null && numbersFor(s).short && risk.hoursToKickoff <= 24) : { ok: false, problems: ["no post (null)"], warned: false, leadChars: 0 };
     const kept = ((r.problems as string[] | undefined) ?? []).filter((p) => p.startsWith("model lead rejected"));
     const problems = [...v.problems, ...kept];
     r.problems = problems;
@@ -320,7 +339,7 @@ async function run(): Promise<void> {
     if (only && !only.includes(s.id)) continue;
     const match = matchFor(s);
     const confirmedNames = match.attendances.filter((a) => a.status === "CONFIRMED").map((a) => a.user.name ?? "?");
-    const risk = computeChaseRisk({ kickoff: match.date, confirmedCount: confirmedNames.length, maxPlayers: match.maxPlayers });
+    const risk = computeChaseRisk({ kickoff: match.date, confirmedCount: confirmedNames.length, maxPlayers: match.maxPlayers, short: numbersFor(s).short });
     log(`\n${"═".repeat(72)}\n${s.id}: ${s.what}\nserver verdict: atRisk=${risk.atRisk} (need ${risk.need}, ${risk.hoursToKickoff.toFixed(1)}h out)\n${"═".repeat(72)}`);
     if (risk.atRisk !== s.expectAtRisk) {
       log(`  ❌ the ARITHMETIC is wrong before a single call was made`);
@@ -330,14 +349,14 @@ async function run(): Promise<void> {
     const proposal =
       buildFormatSwitchFacts({ confirmedNames, currentMaxPlayers: match.maxPlayers, alternatives: s.alternatives ?? [], lang: s.club.lang }).find((f) => f.proposal)
         ?.proposal ?? null;
-    const switchExpected = proposal !== null && risk.need > 0 && risk.hoursToKickoff <= 24;
+    const switchExpected = proposal !== null && numbersFor(s).short && risk.hoursToKickoff <= 24;
 
     for (let n = 0; n < runs; n++) {
       const before = usages.length;
       const rawBefore = metered?.calls.length ?? 0;
       const t0 = Date.now();
       const out = await composeChaseFromMatch(
-        { kind: s.kind, match, alternatives: s.alternatives, lang: s.club.lang, logLabel: `live-check ${s.id}` },
+        { kind: s.kind, match, alternatives: s.alternatives, lang: s.club.lang, shortBelow: numbersFor(s).shortBelow, logLabel: `live-check ${s.id}` },
         deps,
       );
       const ms = Date.now() - t0;

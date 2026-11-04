@@ -67,6 +67,7 @@ import { joinList } from "../i18n/text";
 import { activityFeeText } from "../activity-fee";
 import { benchClause } from "../squad-count-line";
 import type { EngineResult, SquadState } from "./types";
+import { placesOpen } from "../squad-short";
 
 export interface Utterance {
   /** The message this answers, or null for the batch-level squad post. */
@@ -270,7 +271,7 @@ export function compose(result: EngineResult): ComposedOutput {
         utterances.push({
           messageId: sp.messageId,
           text: s.oa_space_answer({
-            open: Math.max(0, state.maxPlayers - confirmed.length),
+            open: placesOpen(state.maxPlayers, confirmed.length),
             kickoffLabel: state.kickoffLabel,
             organisersPick: state.features.benchPickMode === "organiser",
           }),
@@ -362,7 +363,7 @@ export function compose(result: EngineResult): ComposedOutput {
       }
 
       case "answer_count": {
-        const need = Math.max(0, state.maxPlayers - confirmed.length);
+        const need = placesOpen(state.maxPlayers, confirmed.length);
         utterances.push({
           messageId: sp.messageId,
           text: s.answer_count({
@@ -702,7 +703,7 @@ export function compose(result: EngineResult): ComposedOutput {
         // to. That is why this topic was refused for months. "8 of 14"
         // says the same thing to a human and carries no slash.
         // `__tests__/answer-batch.test.ts` section 6 pins it.
-        const need = Math.max(0, state.maxPlayers - confirmed.length);
+        const need = placesOpen(state.maxPlayers, confirmed.length);
         const facts = buildFormatSwitchFacts({
           confirmedNames: confirmed,
           currentMaxPlayers: state.maxPlayers,
@@ -905,7 +906,7 @@ export function compose(result: EngineResult): ComposedOutput {
         // and the engine keeps the two apart (`vacancies[].wentOut`) so
         // this cannot say otherwise. With nobody out, the sentence just
         // leads with the count.
-        const open = Math.max(0, state.maxPlayers - confirmed.length);
+        const open = placesOpen(state.maxPlayers, confirmed.length);
         if (open === 0) {
           // The projection says a slot opened and the state in hand says
           // it is full. Unreachable from `decide` (the engine computes

@@ -23,6 +23,7 @@ import { buildOrganiserListUpdate } from "./organisers-list-copy";
 import { sendAdminNotice } from "./admin-channel";
 import { normaliseLang } from "./i18n/lang";
 import { loadPlayerNames } from "./player-display-name";
+import { placesOpen } from "./squad-short";
 
 export async function announceSquadFullIfJustFilled(
   matchId: string,
@@ -43,7 +44,7 @@ export async function announceSquadFullIfJustFilled(
   if (!m) return;
   const confirmed = m.attendances.filter((a) => a.status === "CONFIRMED");
   const bench = m.attendances.filter((a) => a.status === "BENCH");
-  if (confirmed.length < m.maxPlayers) return;
+  if (placesOpen(m.maxPlayers, confirmed.length) > 0) return;
 
   // ── ONCE THE TEAMS ARE OUT, THE ROSTER IS NOT THE NEWS ─────────────
   //

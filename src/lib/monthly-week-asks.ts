@@ -21,6 +21,7 @@ import { db } from "./db";
 import { loadMonthlyWeek, loadPaygPool, weekListKeyPrefix, type MonthlyWeek } from "./monthly-week";
 import { clubFillsFirst, monthlyPlacesOpen } from "./monthly-week-asks-rules";
 import { normaliseSquadMode } from "./squad-month-rules";
+import { placesOpen } from "./squad-short";
 
 /** The monthly week of this match, or null without reading the match's
  *  rows when its club is on "weekly". */
@@ -38,7 +39,7 @@ export async function askPlacesOpen(matchId: string): Promise<number> {
   if (!found) return 0;
   if (found.week) return monthlyPlacesOpen(found.week);
   const confirmed = await db.attendance.count({ where: { matchId, status: "CONFIRMED" } });
-  return Math.max(0, found.maxPlayers - confirmed);
+  return placesOpen(found.maxPlayers, confirmed);
 }
 
 /** The club's PAYG price (pence) when this match is a week of a running

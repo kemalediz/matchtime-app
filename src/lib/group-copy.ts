@@ -26,6 +26,7 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { GUARD_VOCAB, type ClaimedStatus, type GuardVocab } from "./i18n/guard-vocab";
 import type { SwapRefusal } from "./team-slot-swap";
 import { VENUE_WORDS_OUTCOMES } from "./venue-from-words-rules";
+import { placesOpen } from "./squad-short";
 
 /**
  * Deterministic, server-composed squad+bench status post. Used for EVERY
@@ -50,7 +51,7 @@ export function composeSquadStatusPost(args: {
 }): string {
   const { confirmed, bench, maxPlayers } = args;
   const s = t(args.lang);
-  const need = Math.max(0, maxPlayers - confirmed.length);
+  const need = placesOpen(maxPlayers, confirmed.length);
   const lead = s.squad_status_lead({
     withBench: bench.length > 0,
     confirmed: confirmed.length,
@@ -486,7 +487,7 @@ export function contradictsSquadState(
     if (Number(m[1]) !== truth.confirmed.length) return true;
   }
   // "need 2 more" / "need *2 more*" against the real shortfall.
-  const need = Math.max(0, truth.maxPlayers - truth.confirmed.length);
+  const need = placesOpen(truth.maxPlayers, truth.confirmed.length);
   // Number words in the group's language; `toLocaleLowerCase("tr")` so
   // a Turkish "Üç" folds to "üç" and never to "üc" or "üç" with a dot.
   const lower = (raw: string) => raw.toLocaleLowerCase(normaliseLang(lang) === "tr" ? "tr" : "en");
@@ -717,10 +718,16 @@ export function isFirstRatePromo(keys: Iterable<string>): boolean {
  */
 export function buildMatchDayChaseFallback(args: {
   need: number;
+  /** Below the game's minimum (squad-short.ts). False: the game is on, so
+   *  the post says the places left, never "short" (K1, 2026-11-04). */
+  short: boolean;
   activityName: string;
   lang?: Lang | string | null;
 }): string {
-  return t(args.lang).match_day_chase_fallback({ need: args.need, activityName: args.activityName });
+  const s = t(args.lang);
+  return args.short
+    ? s.match_day_chase_fallback({ need: args.need, activityName: args.activityName })
+    : s.match_day_chase_places_left({ open: args.need, activityName: args.activityName });
 }
 
 // ── Extracted verbatim on 2026-09-17 (Phase 2 slice 2) so the golden ──

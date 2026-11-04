@@ -64,9 +64,10 @@ export default function HelpLandingPage() {
           offered the spot and the first to claim it plays.
         </li>
         <li>
-          <strong>Chases when short, stops when full.</strong> It asks the
-          group for players at set points before kickoff, and goes quiet once
-          the squad is full.
+          <strong>Asks for players until the squad is full.</strong> It asks
+          the group at set points before kickoff while places are open, and
+          goes quiet once the squad is full. Once there are enough to play, it
+          says how many places are left rather than that you&apos;re short.
         </li>
         <li>
           <strong>Balances the teams when asked.</strong> Tag it with{" "}

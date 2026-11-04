@@ -116,8 +116,9 @@ export interface ShouldChaseRecruitInput {
   /** Did they answer in ANY way, by ANY route? See
    *  `hasRespondedToRecruit` in bot-scheduler.ts for the signal set. */
   hasResponded: boolean;
-  /** Is the squad STILL short (open slots > 0)? */
-  squadShort: boolean;
+  /** Is a place still open (`placesOpen > 0`, squad-short.ts)? The
+   *  players are asked while one is, at or above the minimum too (K1). */
+  placeOpen: boolean;
   /** Is the match still joinable — upcoming, not cancelled, deadline not
    *  passed? Derive with {@link isMatchChaseable}. */
   matchLive: boolean;
@@ -139,7 +140,7 @@ export function shouldChaseRecruit(input: ShouldChaseRecruitInput): boolean {
     invitedAt,
     now,
     hasResponded,
-    squadShort,
+    placeOpen,
     matchLive,
     subscribed,
     alreadyChased,
@@ -159,7 +160,7 @@ export function shouldChaseRecruit(input: ShouldChaseRecruitInput): boolean {
 
   // Nothing to chase about.
   if (!matchLive) return false;
-  if (!squadShort) return false;
+  if (!placeOpen) return false;
 
   // No invite on record → nothing to follow up. Chasing someone we never
   // asked would be the bot inventing a conversation.

@@ -15,6 +15,13 @@
  * its format (review of #517). With no minimum set and the format's own
  * places this is `confirmed < maxPlayers`, exactly as before.
  *
+ * K1 (Kemal, 2026-11-04, club summary B1): at or above the minimum the
+ * game is ON. The players' chases still ask for the open places
+ * (`placesOpen`) while any is open, but say "places left", never "short";
+ * "at risk" (chase-risk.ts) and the format-switch line need `short`. Every
+ * "short" and "places open" in the code reads this file (`squadNumbers`,
+ * which the club summary's `matchNumbers` returns).
+ *
  * NOT this definition:
  *  - the players' chase for open places, which still asks while any place
  *    is open (the places stay the format's, min-players.ts);
@@ -43,5 +50,57 @@ export function shortBelow(g: SquadShortGame): number {
 }
 
 export function isSquadShort(confirmed: number, g: SquadShortGame): boolean {
-  return confirmed < shortBelow(g);
+  return squadNumbersAt({ places: g.maxPlayers, confirmed, shortBelow: shortBelow(g) }).short;
+}
+
+/**
+ * THE PLACES STILL OPEN (club summary B1, 2026-11-04): the match's places
+ * less its confirmed players, never negative. A bad capacity is no places,
+ * so a broken row can never make MatchTime ask for players. The one
+ * definition of "places open": every post, answer, DM and page that counts
+ * them calls this (the one-derive guard keeps it so).
+ */
+export function placesOpen(places: number, confirmed: number): number {
+  const p = Number.isFinite(places) ? places : 0;
+  const c = Number.isFinite(confirmed) ? confirmed : 0;
+  return Math.max(0, p - c);
+}
+
+export interface SquadNumbers {
+  /** `placesOpen`: what the players' chases ask to fill. */
+  placesOpen: number;
+  /** `shortBelow`. */
+  shortBelow: number;
+  /** `isSquadShort`: below the game's minimum. The only meaning of
+   *  "short", and of "at risk" being possible (K1, Kemal 2026-11-04: at
+   *  or above the minimum the game is on). */
+  short: boolean;
+}
+
+/** A match's numbers: places open and short, from one rule. The club
+ *  summary's `matchNumbers` is this. */
+export function squadNumbers(p: {
+  places: number;
+  confirmed: number;
+  minPlayers: number | null;
+  playersPerTeam: number;
+}): SquadNumbers {
+  const g = { minPlayers: p.minPlayers, maxPlayers: p.places, playersPerTeam: p.playersPerTeam };
+  return squadNumbersAt({ places: p.places, confirmed: p.confirmed, shortBelow: shortBelow(g) });
+}
+
+/** The same numbers when the game's threshold is already known (a
+ *  caller handed `shortBelow` by the scheduler, which read the game). */
+export function squadNumbersAt(p: { places: number; confirmed: number; shortBelow: number }): SquadNumbers {
+  return { placesOpen: placesOpen(p.places, p.confirmed), shortBelow: p.shortBelow, short: p.confirmed < p.shortBelow };
+}
+
+/** A match row as the web pages read it (the match, its game and the
+ *  game's sport): its numbers by the one rule, so a page never works out
+ *  the game's minimum itself. */
+export function matchSquadNumbers(
+  m: { maxPlayers: number; activity: { minPlayers: number | null; sport: { playersPerTeam: number } } },
+  confirmed: number,
+): SquadNumbers {
+  return squadNumbers({ places: m.maxPlayers, confirmed, minPlayers: m.activity.minPlayers, playersPerTeam: m.activity.sport.playersPerTeam });
 }

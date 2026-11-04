@@ -26,6 +26,7 @@
  *                      PAYG price in a monthly week, else as before.
  */
 import type { WeekMember, WeekRow } from "./monthly-week-rules";
+import { placesOpen } from "./squad-short";
 
 const MIN_MS = 60_000;
 
@@ -40,12 +41,13 @@ export const CLUB_PAYG_UNTOLD_MAX_MINS = 120;
 
 export function monthlyPlacesOpen(w: { members: WeekMember[]; rows: WeekRow[]; maxPlayers: number; seeded: boolean }): number {
   const confirmed = w.rows.filter((r) => r.status === "CONFIRMED").length;
-  if (w.seeded) return Math.max(0, w.maxPlayers - confirmed);
+  if (w.seeded) return placesOpen(w.maxPlayers, confirmed);
   const hasRow = new Set(w.rows.map((r) => r.userId));
   const expected = w.members.filter(
     (m) => !m.left && !hasRow.has(m.userId) && (m.kind === "regular" ? !m.absent : m.paygDated),
   ).length;
-  return Math.max(0, w.maxPlayers - confirmed - expected);
+  // The regulars still to be put in hold their places.
+  return placesOpen(w.maxPlayers, confirmed + expected);
 }
 
 export function clubFillsFirst(i: {
