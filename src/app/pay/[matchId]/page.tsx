@@ -2,8 +2,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { availablePayMethods, directPayInstructions, priceMethods, gbp, type PayMethodSwitches } from "@/lib/payments";
-import { CLUB_FACTS_SELECT } from "@/lib/club-summary/facts";
-import { pageClubFacts } from "@/lib/web-club-facts";
+import { CLUB_ROW_SELECT, clubRowFactsOf } from "@/lib/club-row-facts";
 import { t } from "@/lib/i18n/t";
 import { payCollectorName } from "@/lib/direct-payment";
 import { PayOptions } from "@/components/pay/pay-options";
@@ -32,7 +31,7 @@ export default async function PayPage({
           // The club's row, for its facts (club summary, slice A4): the
           // collector, the pay methods, the club's own words on paying the
           // collector directly (2026-10-16), the squad mode.
-          org: { select: CLUB_FACTS_SELECT },
+          org: { select: CLUB_ROW_SELECT },
         },
       },
     },
@@ -49,7 +48,7 @@ export default async function PayPage({
   const row = match.activity.org;
   // The club's facts (club summary, slice A4), else, when they cannot be
   // built, today's reads of the same row.
-  const club = pageClubFacts(row, "pay");
+  const club = clubRowFactsOf(row, "pay");
   const org: PayClub = club
     ? {
         name: row.name,

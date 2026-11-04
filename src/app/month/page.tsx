@@ -12,7 +12,7 @@ import { loadAwayView, loadMonthMoney } from "@/lib/month-close";
 import { mayConfirmPayments } from "@/lib/month-payment";
 import { mayJoinStartedMonth } from "@/lib/month-signup-rules";
 import { chargedGames, normaliseSquadMode } from "@/lib/squad-month-rules";
-import { pageClubFacts } from "@/lib/web-club-facts";
+import { clubRowFactsOf } from "@/lib/club-row-facts";
 import { MyGamesCard } from "./games-card";
 import { AwayWeeksCard } from "./away-card";
 import { MonthSignupCard } from "./signup-card";
@@ -55,7 +55,7 @@ export default async function MonthPage({ searchParams }: { searchParams: Promis
   if (!membership) redirect("/");
   // The club's facts (club summary, slice A4), else, when they cannot be
   // built, today's reads of the same row.
-  const facts = pageClubFacts(membership.org, "month");
+  const facts = clubRowFactsOf(membership.org, "month");
   const monthly = facts ? facts.squad.mode === "monthly" : normaliseSquadMode(membership.org.squadMode) === "monthly";
   if (!monthly) notFound();
   const collectorId = facts ? (facts.payments.collector?.userId ?? null) : membership.org.paymentHolderId;

@@ -15,8 +15,8 @@ import { normaliseListAnnouncer } from "@/lib/list-announcer";
 import { normaliseMomChooser } from "@/lib/mom-chooser";
 import { NextResponse } from "next/server";
 import type { Organisation } from "@/generated/prisma/client";
-import type { ClubFacts } from "@/lib/club-summary/types";
-import { pageClubFacts } from "@/lib/web-club-facts";
+import type { ClubRowFacts } from "@/lib/club-summary/types";
+import { clubRowFactsOf } from "@/lib/club-row-facts";
 
 export async function GET() {
   const session = await auth();
@@ -66,7 +66,7 @@ export async function GET() {
 
   // The club's facts (club summary, slice A4), else, when they cannot be
   // built, today's reads of the same row.
-  const club = pageClubFacts(org, "org-settings");
+  const club = clubRowFactsOf(org, "org-settings");
   const f = club ? settingsFactsOf(club) : settingsFactsOfRow(org);
 
   const publicView = {
@@ -136,7 +136,7 @@ export async function GET() {
 
 /** What the settings page shows of the club's facts, from the club summary
  *  (slice A4). Same shape and key order as `settingsFactsOfRow`. */
-function settingsFactsOf(c: ClubFacts) {
+function settingsFactsOf(c: ClubRowFacts) {
   return {
     teamLabels: c.teamLabels,
     features: {

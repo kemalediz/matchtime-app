@@ -9,8 +9,7 @@ import { collectRowState } from "@/lib/fee-waiver-rules";
 import { t } from "@/lib/i18n/t";
 import { MatchContextHeader } from "@/components/match/match-context-header";
 import { resolveTeamLabels } from "@/lib/team-labels";
-import { CLUB_FACTS_SELECT } from "@/lib/club-summary/facts";
-import { pageClubFacts } from "@/lib/web-club-facts";
+import { CLUB_ROW_SELECT, clubRowFactsOf } from "@/lib/club-row-facts";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +43,7 @@ export default async function CollectPage({
           venue: true,
           sport: { select: { name: true, teamLabels: true } },
           // The club's row, for its facts (club summary, slice A4).
-          org: { select: CLUB_FACTS_SELECT },
+          org: { select: CLUB_ROW_SELECT },
         },
       },
       attendances: {
@@ -59,7 +58,7 @@ export default async function CollectPage({
   // The club's facts (club summary, slice A4), else, when they cannot be
   // built, today's reads of the same row.
   const org = match.activity.org;
-  const club = pageClubFacts(org, "collect");
+  const club = clubRowFactsOf(org, "collect");
   // The collector collects — they don't pay themselves, so don't list them.
   const collectorId = club ? (club.payments.collector?.userId ?? null) : org.paymentHolderId;
   const clubTeamLabels = club ? { teamLabels: club.teamLabels } : org;

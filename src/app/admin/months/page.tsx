@@ -15,7 +15,7 @@ import { pounds } from "@/lib/month-payment-copy";
 import { monthStartToDate } from "@/lib/squad-month-rules";
 import { RefundForm, ShareChangeForm } from "./money-forms";
 import { normaliseSquadMode } from "@/lib/squad-month-rules";
-import { pageClubFacts } from "@/lib/web-club-facts";
+import { clubRowFactsOf } from "@/lib/club-row-facts";
 import { AddMember, MemberActions } from "./member-actions";
 import { PaidButton, PriceForm } from "./price-form";
 import { planPricePence } from "@/lib/club-billing-rules";
@@ -65,7 +65,7 @@ export default async function MonthsPage({ searchParams }: { searchParams: Promi
   if (!(await isOrgAdmin(session.user.id, membership.orgId))) redirect("/");
   // The club's facts (club summary, slice A4), else, when they cannot be
   // built, today's read of the same row.
-  const facts = pageClubFacts(membership.org, "admin-months");
+  const facts = clubRowFactsOf(membership.org, "admin-months");
   if ((facts ? facts.squad.mode : normaliseSquadMode(membership.org.squadMode)) !== "monthly") notFound();
 
   const lang = membership.org.language;

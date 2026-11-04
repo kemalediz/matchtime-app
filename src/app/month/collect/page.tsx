@@ -11,7 +11,7 @@ import { pounds } from "@/lib/month-payment-copy";
 import { nextMonthStart, previousMonthStart } from "@/lib/month-signup-rules";
 import { loadMonthPage, type MonthFixtureView, type MonthMemberView } from "@/lib/squad-month";
 import { normaliseSquadMode } from "@/lib/squad-month-rules";
-import { pageClubFacts } from "@/lib/web-club-facts";
+import { clubRowFactsOf } from "@/lib/club-row-facts";
 import { RefundForm } from "@/app/admin/months/money-forms";
 import { PaidButton } from "@/app/admin/months/price-form";
 
@@ -40,7 +40,7 @@ export default async function CollectPage({ searchParams }: { searchParams: Prom
   if (!membership) redirect("/");
   // The club's facts (club summary, slice A4), else, when they cannot be
   // built, today's read of the same row.
-  const facts = pageClubFacts(membership.org, "month-collect");
+  const facts = clubRowFactsOf(membership.org, "month-collect");
   if ((facts ? facts.squad.mode : normaliseSquadMode(membership.org.squadMode)) !== "monthly") notFound();
   const orgId = membership.orgId;
   if (!(await mayConfirmPayments(orgId, session.user.id))) notFound();

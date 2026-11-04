@@ -42,8 +42,7 @@ import { notPlayedDoor } from "@/lib/match-cancel-rules";
 import { notPlayedGameLabel } from "@/lib/match-cancel";
 import { notPlayedKey } from "@/lib/match-cancel-keys";
 import { NotPlayedButton } from "@/components/match/not-played-button";
-import { CLUB_FACTS_SELECT } from "@/lib/club-summary/facts";
-import { pageClubFacts } from "@/lib/web-club-facts";
+import { CLUB_ROW_SELECT, clubRowFactsOf } from "@/lib/club-row-facts";
 
 export default async function MatchDetailPage({
   params,
@@ -63,7 +62,7 @@ export default async function MatchDetailPage({
     include: {
       // The club's row, for its facts (club summary, slice A4), and the pool
       // switch (not a summary fact).
-      activity: { include: { sport: true, org: { select: { ...CLUB_FACTS_SELECT, featurePlayerPool: true } } } },
+      activity: { include: { sport: true, org: { select: { ...CLUB_ROW_SELECT, featurePlayerPool: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -89,7 +88,7 @@ export default async function MatchDetailPage({
   // when they cannot be built, today's reads of the same row (until A4 the
   // payment, squad and routine columns were a second read of the club).
   const org = match.activity.org;
-  const club = pageClubFacts(org, "match");
+  const club = clubRowFactsOf(org, "match");
   const orgPay = club
     ? {
         teamLabels: club.teamLabels,

@@ -74,25 +74,26 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined, revalidateTag: () => undefined, unstable_cache: (f: unknown) => f }));
 
-/** While on, the club's facts cannot be built or read (slice A4's
- *  fail-soft test below); `tries` counts the attempts. Off for every other
- *  test. */
+/** While on, the club's row facts cannot be built (slice A4's fail-soft
+ *  test below): `clubRowFacts`, which both `clubRowFactsOf` and
+ *  `loadClubRowFacts` build them with, throws; `tries` counts the attempts.
+ *  Off for every other test. */
 const factsDown = { on: false, tries: 0 };
-vi.mock("@/lib/club-summary/facts", async (orig) => {
-  const actual = await orig<typeof import("@/lib/club-summary/facts")>();
-  const down = () => {
-    factsDown.tries += 1;
-    return new Error("club facts down (test)");
-  };
+vi.mock("@/lib/club-summary/derive", async (orig) => {
+  const actual = await orig<typeof import("@/lib/club-summary/derive")>();
   return {
     ...actual,
-    clubFactsFromRow: (...args: Parameters<typeof actual.clubFactsFromRow>) => {
-      if (factsDown.on) throw down();
-      return actual.clubFactsFromRow(...args);
+    clubRowFacts: (...args: Parameters<typeof actual.clubRowFacts>) => {
+      if (factsDown.on) {
+        factsDown.tries += 1;
+        throw new Error("club facts down (test)");
+      }
+      return actual.clubRowFacts(...args);
     },
-    loadClubFacts: (...args: Parameters<typeof actual.loadClubFacts>) => (factsDown.on ? Promise.reject(down()) : actual.loadClubFacts(...args)),
   };
 });
+/** The fail-soft log line (club-row-facts.ts). */
+const UNREADABLE = "the club summary could not be read";
 
 import PayPage from "@/app/pay/[matchId]/page";
 import CollectPage from "@/app/collect/[matchId]/page";
@@ -259,10 +260,10 @@ describe("fail-soft: with the club's facts unreadable, every page loads as befor
           factsDown.on = false;
         }
         expect(down, load.label).toBe(normal);
-        // Each attempt is logged once, by `[club-facts]`, and nothing else
+        // Each attempt is logged once (club-row-facts.ts), and nothing else
         // is: one per page or action (the collect page also runs the
         // collector check, its own attempt).
-        const logged = errors.mock.calls.filter((c) => String(c[0]).startsWith("[club-facts]"));
+        const logged = errors.mock.calls.filter((c) => String(c[0]).includes(UNREADABLE));
         expect(logged, load.label).toHaveLength(factsDown.tries);
         expect(factsDown.tries, load.label).toBeLessThanOrEqual(load.label.startsWith("collect ") ? 2 : 1);
       }
@@ -279,7 +280,7 @@ describe("fail-soft: with the club's facts unreadable, every page loads as befor
       factsDown.tries = 0;
       await runLoad("sutton", load);
       expect(factsDown.tries).toBe(1);
-      expect(errors.mock.calls.filter((c) => String(c[0]).startsWith("[club-facts] match: club org-sutton"))).toHaveLength(1);
+      expect(errors.mock.calls.filter((c) => String(c[0]).startsWith("[match] org org-sutton: " + UNREADABLE))).toHaveLength(1);
     } finally {
       factsDown.on = false;
       errors.mockRestore();
