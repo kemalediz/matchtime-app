@@ -22,13 +22,28 @@ export interface LoadedMyPayments {
   payLinks: Record<string, string>;
 }
 
-export async function loadMyPayments(args: {
+export interface MyPaymentsArgs {
   orgId: string;
   userId: string;
   /** The upcoming match's fee (or its format's usual one), or null. */
   upcomingFee: number | null;
   now?: Date;
-}): Promise<LoadedMyPayments | null> {
+}
+
+/** His own payments with their pay links, for the DM Q&A's CONTEXT. */
+export async function loadMyPayments(args: MyPaymentsArgs): Promise<LoadedMyPayments | null> {
+  const payments = await readMyPayments(args);
+  if (!payments) return null;
+  const payLinks: Record<string, string> = {};
+  for (const matchId of payableMatchIds(payments)) {
+    payLinks[matchId] = await buildPayLinkUrl(args.userId, matchId);
+  }
+  return { payments, payLinks };
+}
+
+/** His own payments, read only: no pay link is minted (2026-11-04, for
+ *  the DM help's "has he a fee to settle?", dm-reply/route.ts). */
+export async function readMyPayments(args: MyPaymentsArgs): Promise<MyPayments | null> {
   const org = await db.organisation.findUnique({
     where: { id: args.orgId },
     select: {
@@ -76,7 +91,7 @@ export async function loadMyPayments(args: {
           take: MY_PAYMENTS_MAX_MATCHES,
         })
       : [];
-  const payments = decideMyPayments({
+  return decideMyPayments({
     userId: args.userId,
     org,
     collectorName: tracked && !isCollector ? await payCollectorName(org.paymentHolderId).catch(() => null) : null,
@@ -93,9 +108,4 @@ export async function loadMyPayments(args: {
       directPendingAt: r.directPendingAt,
     })),
   });
-  const payLinks: Record<string, string> = {};
-  for (const matchId of payableMatchIds(payments)) {
-    payLinks[matchId] = await buildPayLinkUrl(args.userId, matchId);
-  }
-  return { payments, payLinks };
 }

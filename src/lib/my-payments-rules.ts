@@ -153,6 +153,14 @@ export function payableMatchIds(p: MyPayments): string[] {
   return p.kind === "tracked" ? p.lines.filter((l) => l.state === "owed").map((l) => l.matchId) : [];
 }
 
+/** Has he a fee of his own still open: owed, or settling with the
+ *  collector and not yet confirmed (2026-11-04). "How do I pay?" from him
+ *  is about that fee, so the DM help gives way to the DM Q&A, which has his
+ *  pay link (`helpGivesWayToOwnFee`, dm-help.ts). */
+export function hasFeeToSettle(p: MyPayments): boolean {
+  return p.kind === "tracked" && p.lines.some((l) => l.state === "owed" || l.state === "pending_collector");
+}
+
 const METHOD_WORDS: Record<PayMethod, (collector: string) => string> = {
   pay_by_bank: () => "pay by bank",
   card: () => "card",
