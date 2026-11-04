@@ -42,7 +42,7 @@ beforeEach(() => {
             outcome: null,
             expiresAt: new Date(NOW.getTime() + 6 * 3600_000),
             platformJobId: "j1",
-            ask: { status: "open", org: { featurePlayerPool: true }, match: { date: KICKOFF, status: "UPCOMING", isHistorical: false } },
+            ask: { status: "open", org: { featurePlayerPool: true, whatsappBotEnabled: true }, match: { date: KICKOFF, status: "UPCOMING", isHistorical: false } },
           },
         ]
       : [],

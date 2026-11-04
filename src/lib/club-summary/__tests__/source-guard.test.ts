@@ -48,7 +48,6 @@ const TODAY = new Set<string>([
   "app/admin/settings/page.tsx",
   "app/api/org/settings/route.ts",
   "app/api/whatsapp/analyze/route.ts",
-  "app/api/whatsapp/dm-reply/route.ts",
   "app/api/whatsapp/poll-vote/route.ts",
   "app/collect/[matchId]/page.tsx",
   "app/matches/[matchId]/page.tsx",
@@ -87,6 +86,9 @@ const TODAY = new Set<string>([
   "lib/generate-upcoming-matches.ts",
   "lib/group-hello.ts",
   "lib/i18n/strings.en.ts",
+  // The DM pipeline, moved verbatim out of app/api/whatsapp/dm-reply/route.ts
+  // by #540 (Cloud API C3): the same reads, in their new file.
+  "lib/inbound-dm.ts",
   "lib/list-announcer-store.ts",
   "lib/list-announcer.ts",
   "lib/match-cancel.ts",
