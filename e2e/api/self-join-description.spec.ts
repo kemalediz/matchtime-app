@@ -18,6 +18,7 @@
  */
 import { test, expect, resetDb } from "../fixtures";
 import { E2E, REPO_ROOT } from "../helpers/env";
+import { addOwnerDecisionRead } from "../helpers/stub";
 import { testDb, type TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 import { execFile } from "node:child_process";
@@ -242,6 +243,9 @@ test("removed and added back WITH a description: the relink stores what this add
 test("rejected: the description is deleted with the chat", async ({ request, db }) => {
   // Give the request chat as well, so both are seen to go.
   await db.run(`UPDATE "ClubConnect" SET "capturedHistory" = $2::jsonb WHERE id = $1`, [REQ, JSON.stringify(chat("in"))]);
+  // The owner's decision is the DM reader's read since #480 (2026-10-30, no
+  // string parsing): the spec says what the model reads "REJECT <ref>" as.
+  addOwnerDecisionRead("REJECT 7KD2", "reject", "7KD2");
   const res = await request.post("/api/whatsapp/dm-reply", {
     headers: ON,
     data: { phone: E2E.APPROVER_PHONE, body: "REJECT 7KD2", waMessageId: `e2e-sjd-reject-${Date.now()}` },

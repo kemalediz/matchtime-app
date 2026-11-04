@@ -14,6 +14,10 @@
  * and the team slot kept), the DM says "joined" with one line about the
  * link, and "rejoined" is reserved for a membership that had left.
  *
+ * Since the friend link (#488, 2026-10-31) only an organiser's "X in" for
+ * someone not on the roster adds him directly (D1); a player's gets a
+ * friend link. So the third-party messages here are the organiser's.
+ *
  * Also pinned: the third-party registration still never reaches into
  * another club by name (privacy), still reuses a FORMER member of this
  * club, ambiguous cases are suggested and never merged, and the
@@ -128,8 +132,11 @@ let placeholderId = "";
 test("07:57 'Hamzah in': a phoneless placeholder is made; the other club's Hamzah is NOT matched by name", async ({ request, db }) => {
   const body = "Hamzah in";
   engineOn({ [body]: { route: "other_att", facts: otherFacts("Hamzah", "in") } });
+  // Sent by an ORGANISER: since the friend link (#488, D1, 2026-10-31) only
+  // an organiser's "X in" for a new name adds him directly; a player's gets
+  // a friend link and nobody is added (e2e/sim/friend-link/).
   await postAnalyze(request, [
-    { waMessageId: msgId(), body, authorPhone: PHONE.player.replace(/^\+/, ""), authorName: "Pat Player" },
+    { waMessageId: msgId(), body, authorPhone: PHONE.admin.replace(/^\+/, ""), authorName: "Alex Admin" },
   ]);
 
   const rows = await orgUsersNamed(db, "Hamzah");
@@ -187,8 +194,10 @@ test("22:51 the real Hamzah is added: ONE Hamzah, attendance and team slot kept,
 test("third-party 'Kieran Left in' reuses the FORMER member of this club and restores him", async ({ request, db }) => {
   const body = "Kieran Left in";
   engineOn({ [body]: { route: "other_att", facts: otherFacts("Kieran Left", "in") } });
+  // An organiser again (#488, D1): a former member is not on the roster, so a
+  // player's "Kieran Left in" gets a friend link and restores nobody.
   await postAnalyze(request, [
-    { waMessageId: msgId(), body, authorPhone: PHONE.player.replace(/^\+/, ""), authorName: "Pat Player" },
+    { waMessageId: msgId(), body, authorPhone: PHONE.admin.replace(/^\+/, ""), authorName: "Alex Admin" },
   ]);
   expect(await orgUsersNamed(db, "Kieran Left")).toEqual([{ id: KIERAN.id, phoneNumber: KIERAN.phone }]);
   const mem = await db.one<{ leftAt: Date | null }>(

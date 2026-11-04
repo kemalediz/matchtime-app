@@ -226,10 +226,9 @@ test.describe("/play with codes", () => {
     await page.goto("/play?src=li-kemal-g1");
     await page.getByLabel(EN.fields.nameLabel, { exact: true }).fill("Lin Kedin");
     await page.getByLabel(EN.fields.districtLabel, { exact: true }).fill("sm1");
+    // The short form since #531 (2026-11-04): name, area, days and the two
+    // ticks; the hours and formats are asked on WhatsApp afterwards.
     await page.getByRole("checkbox", { name: "Tuesday", exact: true }).check();
-    await page.getByLabel(EN.fields.fromLabel("Tuesday")).selectOption("19:00");
-    await page.getByLabel(EN.fields.toLabel("Tuesday")).selectOption("22:00");
-    await page.getByRole("checkbox", { name: "7-a-side" }).check();
     await page.getByRole("checkbox", { name: EN.signup.adultLabel }).check();
     await page.getByRole("checkbox", { name: EN.signup.consentLabel }).check();
     await page.getByRole("button", { name: EN.signup.submit }).click();

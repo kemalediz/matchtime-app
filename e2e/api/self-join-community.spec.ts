@@ -23,6 +23,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { test, expect, resetDb } from "../fixtures";
 import { E2E, E2E_DB_URL, REPO_ROOT } from "../helpers/env";
+import { addOwnerDecisionRead } from "../helpers/stub";
 import { testDb, type TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -287,6 +288,9 @@ test("the main chat's history bundle arrives AFTER the add: it lands on the requ
 });
 
 test("the owner approves: the club gets the main chat", async ({ request, db }) => {
+  // The owner's decision is the DM reader's read since #480 (2026-10-30, no
+  // string parsing): the spec says what the model reads "APPROVE <ref>" as.
+  addOwnerDecisionRead(`APPROVE ${W1.code}`, "approve", W1.code);
   const res = await request.post("/api/whatsapp/dm-reply", {
     headers: ON,
     data: { phone: E2E.APPROVER_PHONE, body: `APPROVE ${W1.code}`, waMessageId: `e2e-cmty-approve-${Date.now()}` },
