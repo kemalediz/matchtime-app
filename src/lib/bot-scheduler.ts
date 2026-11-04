@@ -1812,8 +1812,10 @@ async function computeForMatch(
   //       2a.        Places open: chase + unpaid tail
   //       2b.        Squad full, bench under `BENCH_THIN_BELOW`: the
   //                  roster, the bench, an ask for benchers, + unpaid tail
-  //       2b-stop.   Squad full, bench of 3 or more: no squad post (the
-  //                  unpaid tail alone, if any)
+  //       2b-stop.   Squad full, bench of 3 or more: NOTHING, not even the
+  //                  unpaid tail (the rule answers no post at all)
+  //       2b-locked. "Squad complete" went out today, bench thin: the
+  //                  unpaid tail alone, if any
   //       2-monthly. A running month: the month's list, posted by block
   //                  2-monthly below on this same key
   //     One shared key, so we never fire two 17:00 posts in the same day.
@@ -2093,10 +2095,12 @@ async function computeForMatch(
         // is full and the bench has 3 or more, the daily post STOPS, it is
         // too much noise. The bench ask is kept as it was. So the post
         // now only goes out while it is asking for something: places
-        // (2a) or benchers (here). `decideDailyUpdate` sends a covered
-        // bench to "unpaid-only" below, which is what this branch sent
-        // before 2026-09-17, and the post comes back on its own the day a
-        // drop opens a place or the bench falls under 3. One rule for
+        // (2a) or benchers (here). For a covered bench `decideDailyUpdate`
+        // answers no post at all: the players' group gets NOTHING that
+        // evening, not even the unpaid tail on its own (main session
+        // review of #535, on "too much noise": payment chasing already
+        // happens by DM). The post comes back on its own the day a drop
+        // opens a place or the bench falls under 3. One rule for
         // every club: the organisers' copy and a monthly club's list
         // stop the same way (daily-update-rules.ts).
         //
@@ -2138,9 +2142,10 @@ async function computeForMatch(
         text = unpaidTail ? `${body}\n\n${unpaidTail.text}` : body;
         mentions = unpaidTail?.mentions;
       } else if (post === "unpaid-only" && unpaidTail) {
-        // 2b-stop. Full, and either the "Squad complete" post went out
-        // today or the bench is covered (3 or more): no squad post. The
-        // unpaid tail alone, when there is one; otherwise nothing.
+        // 2b-locked. Full, the "Squad complete" post went out today, and
+        // the bench is still thin: no second roster. The unpaid tail
+        // alone, when there is one; otherwise nothing. (A covered bench
+        // never gets here: the rule answers no post at all.)
         text = unpaidTail.text;
         mentions = unpaidTail.mentions;
       }

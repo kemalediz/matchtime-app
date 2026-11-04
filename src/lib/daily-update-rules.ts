@@ -21,18 +21,19 @@
  *   - match day, a weekly squad full and no teams: the "make the teams"
  *     nudge. It is not the squad-and-bench reminder this rule stops, and it
  *     goes out once, on match day;
- *   - the "Squad complete" post went out today (`<matchId>:squad-locked`):
- *     no second roster that day, only the unpaid tail (weekly group);
+ *   - the "Squad complete" post went out today (`<matchId>:squad-locked`)
+ *     and the bench is still thin: no second roster that day, only the
+ *     unpaid tail (weekly group);
  *   - a monthly club's match with no list to show (no month yet, a month in
  *     sign-up or held, or the regulars not on the game yet): nothing;
  *   - after the attendance deadline: nothing.
  *
- * WHAT "STOPS" LEAVES BEHIND. On a weekly club's players' group the unpaid
- * tail can still go out on its own, which is exactly what this branch did
- * before 2026-09-17 (the 2b comment in bot-scheduler.ts: "if it ever reads as
- * noise again, the fix is the same as last time"). A club that does not
- * track payments (Sutton FC) hears nothing. A monthly club's post never has
- * an unpaid tail: its regulars pay for the month, not the game.
+ * A STOP IS NOTHING. Full with 3 or more on the bench, the players' group
+ * gets nothing that evening, not even the unpaid tail on its own (main
+ * session review of #535, on Kemal's "too much noise": payment chasing
+ * already happens by DM). It wins over the "Squad complete" exception. A
+ * monthly club's post never has an unpaid tail anyway: its regulars pay for
+ * the month, not the game.
  *
  * Pure: facts in, a decision out. The caller reads the rows; nothing here
  * touches the database, a model or the clock.
@@ -89,8 +90,9 @@ export type DailyUpdate =
   | { post: "squad-full" }
   /** The month's list. `benchAsk`: the squad is full and the bench is thin. */
   | { post: "month-list"; benchAsk: boolean }
-  /** No squad post today; the unpaid tail goes out alone if there is one. */
-  | { post: "unpaid-only"; why: "bench-covered" | "squad-locked-today" }
+  /** "Squad complete" went out today and the bench is thin: no second
+   *  roster; the unpaid tail goes out alone if there is one. */
+  | { post: "unpaid-only"; why: "squad-locked-today" }
   | { post: null; why: DailySkip };
 
 /** Enough cover behind a full squad: the daily post stops. */
@@ -114,17 +116,14 @@ export function decideDailyUpdate(f: DailyUpdateFacts): DailyUpdate {
 
   if (f.open > 0) return f.squad === "month" ? { post: "month-list", benchAsk: false } : { post: "chase" };
 
-  // The squad is full.
-  if (f.squad === "month") {
-    // No "Squad complete" post is ever sent for a month (squad-announce.ts),
-    // so its claim (which the monthly seed can write) silences nothing.
-    return benchCovered(f.bench) ? { post: null, why: "bench-covered" } : { post: "month-list", benchAsk: true };
-  }
+  // The squad is full. A covered bench is a STOP for everyone: nothing at
+  // all, not even the unpaid tail on its own (payment chasing is by DM).
+  if (benchCovered(f.bench)) return { post: null, why: "bench-covered" };
+  // No "Squad complete" post is ever sent for a month (squad-announce.ts),
+  // so its claim (which the monthly seed can write) silences nothing.
+  if (f.squad === "month") return { post: "month-list", benchAsk: true };
   if (f.squadLockedToday) {
     return organisers ? { post: null, why: "squad-locked-today" } : { post: "unpaid-only", why: "squad-locked-today" };
-  }
-  if (benchCovered(f.bench)) {
-    return organisers ? { post: null, why: "bench-covered" } : { post: "unpaid-only", why: "bench-covered" };
   }
   return { post: "squad-full" };
 }

@@ -43,20 +43,21 @@ describe("WEEKLY, players' group", () => {
     ["full, bench 0", { bench: 0 }, { post: "squad-full" }],
     ["full, bench 1", { bench: 1 }, { post: "squad-full" }],
     ["full, bench 2", { bench: 2 }, { post: "squad-full" }],
-    // The 2026-11-04 decision: three or more on the bench, no squad post.
-    // What is left is the unpaid tail on its own, which is exactly what
-    // this branch sent before 2026-09-17 (nothing for a club that does
-    // not track payments, such as Sutton FC).
-    ["full, bench 3", { bench: 3 }, { post: "unpaid-only", why: "bench-covered" }],
-    ["full, bench 4", { bench: 4 }, { post: "unpaid-only", why: "bench-covered" }],
+    // The 2026-11-04 decision: three or more on the bench, the post STOPS.
+    // NOTHING goes to the players' group that evening, not even the unpaid
+    // tail on its own (main session review of #535: payment chasing
+    // already happens by DM).
+    ["full, bench 3", { bench: 3 }, { post: null, why: "bench-covered" }],
+    ["full, bench 4", { bench: 4 }, { post: null, why: "bench-covered" }],
     ["full, the bench falls back to 2", { bench: 2 }, { post: "squad-full" }],
   ] as const)("%s", (_label, over, want) => {
     expect(decide(over)).toEqual(want);
   });
 
-  it("the 'Squad complete' post sent today: only the unpaid tail, whatever the bench", () => {
+  it("the 'Squad complete' post sent today: only the unpaid tail while the bench is thin; a covered bench is still a stop", () => {
     expect(decide({ squadLockedToday: true, bench: 0 })).toEqual({ post: "unpaid-only", why: "squad-locked-today" });
-    expect(decide({ squadLockedToday: true, bench: 5 })).toEqual({ post: "unpaid-only", why: "squad-locked-today" });
+    expect(decide({ squadLockedToday: true, bench: 2 })).toEqual({ post: "unpaid-only", why: "squad-locked-today" });
+    expect(decide({ squadLockedToday: true, bench: 5 })).toEqual({ post: null, why: "bench-covered" });
     // A place open again: the claim was cleared by the drop, but even a
     // stale one never silences the chase.
     expect(decide({ squadLockedToday: true, open: 1 })).toEqual({ post: "chase" });
