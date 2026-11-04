@@ -8,7 +8,8 @@
  *   - a fetcher's GET, and a fetcher calling the beacon, count no visit;
  *   - a person's visit counts once per tab session, under the live code,
  *     and plain /play counts as direct;
- *   - the owner's source codes page shows visits next to sign-ups.
+ *   - the owner's source codes page shows the opened step next to the
+ *     sign-ups all time (the other steps: pool-funnel-steps.spec.ts).
  * No model anywhere: $0.
  */
 import type { APIRequestContext } from "@playwright/test";
@@ -41,7 +42,8 @@ async function headTags(request: APIRequestContext, path: string, ua = FACEBOOK)
   return tags;
 }
 
-const visits = async (db: TestDb, code: string) => Number((await db.one<{ n: string | null }>(`SELECT sum(count)::text AS n FROM "PoolCampaignVisit" WHERE code = $1`, [code]))?.n ?? 0);
+const visits = async (db: TestDb, code: string) =>
+  Number((await db.one<{ n: string | null }>(`SELECT sum(count)::text AS n FROM "PoolCampaignVisit" WHERE code = $1 AND step = 'opened'`, [code]))?.n ?? 0);
 
 test.describe("the preview a fetcher reads", () => {
   test("/play: the player's card in the head, og:url /play, canonical /play", async ({ request }) => {
@@ -126,7 +128,7 @@ test.describe("visits", () => {
 });
 
 test.describe("the owner's numbers", () => {
-  test("visits next to sign-ups, per code and without a code; Facebook and Nextdoor to pick", async ({ page, db }) => {
+  test("opened next to the sign-ups all time, per code and without a code; Facebook and Nextdoor to pick", async ({ page, db }) => {
     await db.run(`UPDATE "User" SET "isSuperadmin" = true WHERE id = $1`, [U.admin]);
     await db.run(`DELETE FROM "PoolProfile" WHERE "sourceCode" = $1`, [CODE]);
     await db.run(
@@ -136,12 +138,10 @@ test.describe("the owner's numbers", () => {
     );
     await signInAs(page, U.admin, "/admin/pool/campaigns");
     const row = page.locator(`[data-testid="campaign-row"][data-code="${CODE}"]`);
-    await expect(row.getByTestId("campaign-visits")).toHaveText("1", { timeout: 30_000 });
-    await expect(row.getByTestId("campaign-started")).toHaveText("1");
-    await expect(row.getByTestId("campaign-confirmed")).toHaveText("0");
-    await expect(row.getByTestId("campaign-waiting")).toHaveText("1");
-    await expect(page.getByTestId("way-in-direct").getByTestId("direct-visits")).toHaveText("2");
-    await expect(page.getByTestId("way-in-referral").getByTestId("referral-visits")).toHaveText("0");
+    await expect(row.getByTestId("campaign-opened")).toHaveText("1", { timeout: 30_000 });
+    await expect(row.getByTestId("campaign-alltime")).toHaveText("All time: 1 sign-up, 0 confirmed, 1 still waiting.");
+    await expect(page.getByTestId("way-in-direct").getByTestId("direct-opened")).toHaveText("2");
+    await expect(page.getByTestId("way-in-referral").getByTestId("referral-opened")).toHaveText("0");
     await expect(page.getByLabel("Where it is shared").locator("option")).toHaveText(["LinkedIn", "Leaflet", "Facebook", "Nextdoor", "Other"]);
 
     await page.getByLabel("Code", { exact: true }).fill("fb-cheam-e2e");

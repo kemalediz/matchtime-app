@@ -182,8 +182,8 @@ test.describe("the owner's source codes", () => {
       await page.reload();
       const row = page.locator(`[data-testid="campaign-row"][data-code="${codeName}"]`);
       await expect(row.getByTestId("campaign-url")).toHaveText(new RegExp(`/play\\?src=${codeName}$`));
-      await expect(row.getByTestId("campaign-confirmed")).toHaveText("2");
-      await expect(row.getByTestId("campaign-waiting")).toHaveText("1");
+      // Rows written straight to the table: no funnel step was counted, the sign-ups show all time.
+      await expect(row.getByTestId("campaign-alltime")).toHaveText("All time: 3 sign-ups, 2 confirmed, 1 still waiting.");
       await expect(row).not.toContainText("Someone");
 
       // QR downloads: a real PNG and a real SVG, named after the code.

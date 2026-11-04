@@ -7,7 +7,7 @@ import { poolPageCopy } from "@/lib/pool/page-copy";
 import { readSignupSource } from "@/lib/pool/profile-fields";
 import { poolPlaySharePath, poolShareMetadata } from "@/lib/pool/share-meta";
 import { PlaySignup } from "./play-signup";
-import { PoolVisitBeacon } from "./visit-beacon";
+import { PoolFunnelBeacon } from "./funnel-beacon";
 
 /**
  * /play: join the local player pool (slice L2). Public, no session data,
@@ -18,8 +18,9 @@ import { PoolVisitBeacon } from "./visit-beacon";
  * with the form.
  *
  * Its link preview (2026-11-03) is the player's, with og:url the link it
- * was opened with (`share-meta.ts`), and each visit is counted per code by
- * the beacon (`visit-beacon.tsx`).
+ * was opened with (`share-meta.ts`). Each visit, and the first touch of the
+ * form, is counted per code by the beacon wrapped round the form
+ * (`funnel-beacon.tsx`).
  */
 const en = poolPageCopy("en");
 
@@ -38,9 +39,8 @@ export default async function PlayPage({ searchParams }: Search) {
   const source = readSignupSource(await searchParams);
   const invitedBy = await poolInvitedByName(source.referralCode).catch(() => null);
   return (
-    <>
-      <PoolVisitBeacon src={source.campaignCode} refCode={source.referralCode} />
+    <PoolFunnelBeacon src={source.campaignCode} refCode={source.referralCode}>
       <PlaySignup source={source} paused={isPoolSignupPaused()} invitedBy={invitedBy} earlyList={await signupGoesOnEarlyListForPage()} />
-    </>
+    </PoolFunnelBeacon>
   );
 }
