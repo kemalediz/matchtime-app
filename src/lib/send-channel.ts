@@ -43,7 +43,10 @@
  */
 import type { OwnerDmPurpose, PlatformDmPurpose } from "./platform-jobs";
 
-export type SendChannel = "baileys" | "cloud";
+/** The two numbers. Also the values `PlatformJob.channel` and
+ *  `WaInbound.channel` may hold (their CHECKs, PR C2). */
+export const SEND_CHANNELS = ["baileys", "cloud"] as const;
+export type SendChannel = (typeof SEND_CHANNELS)[number];
 export type ChannelPurpose = PlatformDmPurpose | OwnerDmPurpose;
 type Env = Record<string, string | undefined>;
 

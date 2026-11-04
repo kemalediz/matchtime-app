@@ -2922,9 +2922,94 @@ model PlatformJob {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  // ── WhatsApp Cloud API plan, PR C2 (MDs/whatsapp-cloud-api-plan-
+  //    2026-11-04.md sections 5.1 and 5.5). ──
+  /// Which number sends it: "baileys" (the club number, the Pi) | "cloud"
+  /// (the official number, the Cloud dispatcher). Decided ONCE, by
+  /// `channelFor` in `queuePlatformDm`; every other writer (owner DMs,
+  /// leave-group, invite-code) takes the default. The Pi's claim only ever
+  /// takes "baileys". CHECK: prisma/sql/cloud-api-check.sql.
+  channel        String    @default("baileys")
+  /// A cloud job sent outside his 24 hour window goes as this Meta
+  /// template (PR C6). Both or neither (CHECK).
+  templateName   String?
+  templateLang   String?
+  /// The template's variables (PR C6). Only with a template (CHECK).
+  templateParams Json?
+  /// Meta's status webhook (PR C5): reached his phone, and was read.
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  /// Meta's error code on a failed cloud send or status (e.g. 131047).
+  errorCode      Int?
+
   @@index([status, sendAfter])
   @@index([purpose, refId])
   @@index([kind, groupId])
+  /// The status webhook and the quote lookup find a job by its wamid.
+  @@index([waMessageId])
+}
+
+/// ONE ROW PER INBOUND WHATSAPP MESSAGE (Cloud API plan, PR C2; plan 5.2).
+/// Meta retries a webhook for up to 7 days, so a message is written once,
+/// keyed by its channel and message id: a duplicate writes nothing. The
+/// webhook answers 200 at once and processes in `after()`; a sweep picks up
+/// a row never processed, so a crash midway is retried, never lost and
+/// never doubled. Also where "the channel he last wrote on" (`replyTo` of
+/// `channelFor`) and "is his 24 hour window open" are read.
+/// CHECKs: prisma/sql/cloud-api-check.sql.
+model WaInbound {
+  id          String    @id @default(cuid())
+  /// "baileys" | "cloud": the number he wrote to.
+  channel     String
+  /// The message id on that channel (a Cloud wamid, or the Baileys id).
+  wamid       String
+  /// Digits, no "+". Null only for a sender Meta names by user id alone.
+  phone       String?
+  /// Meta's `user_id` (business scoped user id), when given.
+  waUserId    String?
+  /// The parsed message the pipeline needs to process it again (text,
+  /// sender name, quoted id, timestamp). Never logged.
+  payload     Json?
+  receivedAt  DateTime  @default(now())
+  /// Set once the pipeline has handled it; null = the sweep retries it.
+  processedAt DateTime?
+  /// Processing attempts, so a message that always fails stops being retried.
+  attempts    Int       @default(0)
+  /// What processing did, safe to show on the owner page (no text).
+  result      String?   @db.Text
+
+  @@unique([channel, wamid])
+  @@index([processedAt, receivedAt])
+  @@index([phone, channel, receivedAt])
+}
+
+/// ONE ROW PER META TEMPLATE AND LANGUAGE (Cloud API plan, PR C2; plan 5.6).
+/// Written by the template status and category webhooks and by
+/// scripts/cloud-templates.ts; read by the owner dashboard and by the Cloud
+/// dispatcher, which stops using a template that is not APPROVED.
+/// CHECKs: prisma/sql/cloud-api-check.sql.
+model CloudTemplateStatus {
+  /// Meta's template name: lowercase letters, digits and underscores.
+  name             String
+  /// Meta's language code: "en", "en_GB", "tr".
+  language         String
+  /// Meta's id for this template and language.
+  metaTemplateId   String?
+  /// Meta's status as it spells it: APPROVED, PENDING, REJECTED, PAUSED,
+  /// DISABLED, ... Not a closed list (src/lib/cloud-api/vocab.ts).
+  status           String
+  /// UTILITY | MARKETING | AUTHENTICATION.
+  category         String?
+  /// The category before Meta re-categorised it, for the dashboard.
+  previousCategory String?
+  /// Meta's quality rating: GREEN, YELLOW, RED, UNKNOWN.
+  qualityScore     String?
+  /// Why it was rejected or paused, as Meta said it.
+  reason           String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@id([name, language])
 }
 
 /// A platform-wide switch the platform owner flips on /admin/clubs, read on

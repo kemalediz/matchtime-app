@@ -102,6 +102,7 @@ import { e164Digits } from "./phone";
 import { APPROVED_CLUB_WHERE } from "./club-approval-state";
 import { POOL_OFFER_PURPOSE, admitPoolOfferJobs, onPoolOfferJobFailed, onPoolOfferJobSent } from "./pool/dispatch";
 import { poolEnvForApiRequest } from "./pool/switch-env";
+import { channelFor, type SendChannel } from "./send-channel";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────
 
@@ -190,6 +191,9 @@ export const INVITE_CODE_PURPOSE = "invite-code" as const;
 
 export type PlatformJobKind = "dm" | "leave-group" | "invite-code";
 export type PlatformJobStatus = "queued" | "claimed" | "sent" | "failed" | "unconfirmed";
+
+/** Whose jobs the Pi claims: the club number's, always (Cloud API PR C2). */
+const PI_CHANNEL: SendChannel = "baileys";
 
 /** Jobs handed to the Pi per poll. It sends what its DM pacing allows and
  *  releases the rest, as it does for due-posts. */
@@ -306,6 +310,14 @@ export type PlatformDmClient = {
  * command). Dispatch is oldest first by `createdAt`, and two rows created
  * in one transaction would otherwise share the database's transaction
  * timestamp. Absent, the database default, exactly as before.
+ *
+ * `replyTo` (WhatsApp Cloud API plan, PR C2): the channel he last wrote
+ * on, when this DM answers his own message. The job's channel is decided
+ * HERE, once, by `channelFor` (src/lib/send-channel.ts), and stored on the
+ * job: "baileys" is the Pi's (the club number), "cloud" the Cloud
+ * dispatcher's (the official number). With CLOUD_API_ENABLED off, the
+ * default, it is always "baileys", the column's own default, so the Pi
+ * sees exactly the jobs it saw before.
  */
 export async function queuePlatformDm(args: {
   phone: string;
@@ -315,6 +327,7 @@ export async function queuePlatformDm(args: {
   sendAfter?: Date | null;
   client?: PlatformDmClient;
   createdAt?: Date;
+  replyTo?: SendChannel | null;
 }): Promise<{ id: string }> {
   const client = args.client ?? (db as unknown as PlatformDmClient);
   const purpose = args.purpose as string;
@@ -335,6 +348,8 @@ export async function queuePlatformDm(args: {
     if (!known) throw new PlatformDmRefused(`${purpose}: no MatchTime user has this number`, "number-not-known");
   }
 
+  // The one decision of which number sends it (send-channel-source-guard).
+  const channel = channelFor({ purpose, replyTo: args.replyTo ?? null });
   const row = await client.platformJob.create({
     data: {
       kind: "dm",
@@ -345,6 +360,7 @@ export async function queuePlatformDm(args: {
       status: "queued",
       sendAfter: args.sendAfter ?? null,
       ...(args.createdAt ? { createdAt: args.createdAt } : {}),
+      channel,
     },
   });
   return { id: row.id };
@@ -601,12 +617,27 @@ export function planPlatformDispatch(
  * Claim and return the jobs due now. `kinds` narrows what is handed out:
  * the due-posts bridge asks for "dm" only, because a Pi built before slice
  * 3 cannot leave a group.
+ *
+ * `channel` (WhatsApp Cloud API plan, PR C2): whose jobs these are. Absent,
+ * "baileys", the Pi's: both of the Pi's doors (GET /api/whatsapp/platform-
+ * jobs and the due-posts bridge) call this without it, so a job stored for
+ * the official number is never read, claimed or failed for the Pi. Every
+ * read and every compare-and-set below names the channel. The Cloud
+ * dispatcher (PR C4) is to call this same function with "cloud", so the
+ * pool offer admission stays in one place.
  */
 export async function claimDuePlatformJobs(
-  opts: { now?: Date; limit?: number; kinds?: PlatformJobKind[]; env?: Record<string, string | undefined> } = {},
+  opts: {
+    now?: Date;
+    limit?: number;
+    kinds?: PlatformJobKind[];
+    env?: Record<string, string | undefined>;
+    channel?: SendChannel;
+  } = {},
 ): Promise<PlatformJobInstruction[]> {
   const now = opts.now ?? new Date();
   const kinds = opts.kinds ?? ["dm", "leave-group", "invite-code"];
+  const channel: SendChannel = opts.channel ?? PI_CHANNEL;
   // ── Two reads, so a sign-up code can never be starved (PR #234 review,
   //    fix 1c) ──
   // One read of "the 50 oldest", ranked afterwards, hid a new code behind
@@ -616,6 +647,7 @@ export async function claimDuePlatformJobs(
   // class oldest first, and the batch limit is applied there as before.
   const due = {
     status: "queued",
+    channel,
     kind: { in: kinds },
     OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
   };
@@ -639,7 +671,7 @@ export async function claimDuePlatformJobs(
   // (second review of #400, item 4); its offer ends cancelled.
   const poolRows = poolAll.filter((r) => r.phone && r.text);
   for (const r of poolAll.filter((x) => !x.phone || !x.text)) {
-    await db.platformJob.updateMany({ where: { id: r.id, status: "queued" }, data: { status: "failed", failedAt: now, failReason: "malformed: a pool offer with no phone or no text" } });
+    await db.platformJob.updateMany({ where: { id: r.id, status: "queued", channel }, data: { status: "failed", failedAt: now, failReason: "malformed: a pool offer with no phone or no text" } });
     await onPoolOfferJobFailed(r.id, now);
   }
   // A small reserved share (one of the poll's places) for pool offers, so a
@@ -680,7 +712,7 @@ export async function claimDuePlatformJobs(
   for (const r of plan.refuse) {
     console.warn(`[platform-jobs] job ${r.id} not dispatched: ${r.reason}`);
     await db.platformJob.updateMany({
-      where: { id: r.id, status: "queued" },
+      where: { id: r.id, status: "queued", channel },
       data: { status: "failed", failedAt: now, failReason: r.reason.slice(0, FAIL_REASON_MAX) },
     });
   }
@@ -690,7 +722,7 @@ export async function claimDuePlatformJobs(
     // The claim. updateMany on status = queued is the compare-and-set: the
     // loser of a race sees count 0 and does not dispatch.
     const { count } = await db.platformJob.updateMany({
-      where: { id: job.id, status: "queued" },
+      where: { id: job.id, status: "queued", channel },
       data: { status: "claimed", claimedAt: now },
     });
     if (count === 1) out.push(job.instruction);
@@ -699,7 +731,7 @@ export async function claimDuePlatformJobs(
   if (poolRows.length > 0 && room > 0) {
     const { claimed } = await admitPoolOfferJobs(
       poolRows.map((r) => r.id),
-      { now, limit: room, env: opts.env },
+      { now, limit: room, env: opts.env, channel },
     );
     for (const r of poolRows) {
       if (claimed.has(r.id) && r.phone && r.text) out.push({ id: r.id, kind: "dm", phone: r.phone, text: r.text, purpose: r.purpose });

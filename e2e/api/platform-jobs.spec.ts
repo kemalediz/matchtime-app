@@ -214,3 +214,131 @@ test.describe("a sign-up code is never starved by a backlog", () => {
     await db.run(`DELETE FROM "PlatformJob" WHERE id LIKE 'e2e-pj-backlog-%'`);
   });
 });
+
+// WhatsApp Cloud API plan, PR C2 (MDs/whatsapp-cloud-api-plan-2026-11-04.md
+// sections 5.2 and 5.5). Every job says which number sends it, and the Pi
+// only ever claims the club number's ("baileys"). Nothing writes a "cloud"
+// job yet (the flags are off), so these rows are written by hand, as the
+// Cloud dispatcher's future jobs would be.
+test.describe("the Pi never claims a job stored for the official number (Cloud API C2)", () => {
+  async function queueCloudDm(purpose = "otp"): Promise<string> {
+    const id = `e2e-pj-cloud-${Date.now()}-${++n}`;
+    await testDb().run(
+      `INSERT INTO "PlatformJob" (id, kind, phone, text, purpose, status, channel, "createdAt", "updatedAt")
+       VALUES ($1, 'dm', '447700900953', 'Your verification code: *654321*', $2, 'queued', 'cloud', now(), now())`,
+      [id, purpose],
+    );
+    return id;
+  }
+
+  test("a row written without a channel (the code live today) is a club number job, and is handed out", async ({ request }) => {
+    const id = await queueDm();
+    expect((await testDb().one<{ channel: string }>(`SELECT channel FROM "PlatformJob" WHERE id = $1`, [id]))?.channel).toBe("baileys");
+    expect((await pollPlatform(request)).map((j) => j.id)).toEqual([id]);
+  });
+
+  test("/platform-jobs hands out the club number's job and leaves the official number's queued", async ({ request }) => {
+    const cloud = await queueCloudDm();
+    const pi = await queueDm();
+    expect((await pollPlatform(request)).map((j) => j.id)).toEqual([pi]);
+    expect(await pollPlatform(request)).toEqual([]);
+    const row = await statusOf(cloud);
+    expect(row?.status).toBe("queued");
+    expect(row?.failReason).toBeNull();
+  });
+
+  test("the due-posts bridge (a Pi built before slice 3) never carries it either", async ({ request }) => {
+    const cloud = await queueCloudDm();
+    const instructions = await duePosts(request);
+    expect(instructions.filter((i) => i.key === `platform-${cloud}`)).toEqual([]);
+    expect((await statusOf(cloud))?.status).toBe("queued");
+  });
+
+  test("an expired code stored for the official number is not failed by the Pi's poll (not its job)", async ({ request }) => {
+    const cloud = await queueCloudDm();
+    await testDb().run(`UPDATE "PlatformJob" SET "createdAt" = now() - interval '1 hour' WHERE id = $1`, [cloud]);
+    await pollPlatform(request);
+    const row = await statusOf(cloud);
+    expect(row?.status).toBe("queued");
+    expect(row?.failedAt).toBeNull();
+  });
+});
+
+test.describe("the Cloud API CHECKs (PR C2)", () => {
+  test("a job's channel is one of the two numbers", async () => {
+    await expect(
+      testDb().run(
+        `INSERT INTO "PlatformJob" (id, kind, phone, text, purpose, status, channel, "createdAt", "updatedAt")
+         VALUES ('e2e-pj-bad-channel', 'dm', '447700900954', 'x', 'otp', 'queued', 'sms', now(), now())`,
+      ),
+    ).rejects.toThrow(/PlatformJob_channel_check/);
+  });
+
+  test("a template has its name and its language together, and parameters only with a template", async () => {
+    await expect(
+      testDb().run(
+        `INSERT INTO "PlatformJob" (id, kind, phone, text, purpose, status, channel, "templateName", "createdAt", "updatedAt")
+         VALUES ('e2e-pj-bad-tpl', 'dm', '447700900954', 'x', 'otp', 'queued', 'cloud', 'mt_code', now(), now())`,
+      ),
+    ).rejects.toThrow(/PlatformJob_template_check/);
+    await expect(
+      testDb().run(
+        `INSERT INTO "PlatformJob" (id, kind, phone, text, purpose, status, channel, "templateParams", "createdAt", "updatedAt")
+         VALUES ('e2e-pj-bad-params', 'dm', '447700900954', 'x', 'otp', 'queued', 'cloud', '["1"]', now(), now())`,
+      ),
+    ).rejects.toThrow(/PlatformJob_templateParams_check/);
+  });
+
+  test("an inbound message is written once per channel and message id, and names its sender", async () => {
+    const db = testDb();
+    try {
+      await db.run(`INSERT INTO "WaInbound" (id, channel, wamid, phone) VALUES ('e2e-in-1', 'cloud', 'wamid.E2E1', '447700900955')`);
+      await expect(
+        db.run(`INSERT INTO "WaInbound" (id, channel, wamid, phone) VALUES ('e2e-in-2', 'cloud', 'wamid.E2E1', '447700900955')`),
+      ).rejects.toThrow(/WaInbound_channel_wamid_key/);
+      // The same id on the other number is another message.
+      await db.run(`INSERT INTO "WaInbound" (id, channel, wamid, phone) VALUES ('e2e-in-3', 'baileys', 'wamid.E2E1', '447700900955')`);
+      // Meta may name a sender by user id alone.
+      await db.run(`INSERT INTO "WaInbound" (id, channel, wamid, "waUserId") VALUES ('e2e-in-4', 'cloud', 'wamid.E2E4', 'GB.123')`);
+      await expect(db.run(`INSERT INTO "WaInbound" (id, channel, wamid) VALUES ('e2e-in-5', 'cloud', 'wamid.E2E5')`)).rejects.toThrow(
+        /WaInbound_sender_check/,
+      );
+      await expect(
+        db.run(`INSERT INTO "WaInbound" (id, channel, wamid, phone) VALUES ('e2e-in-6', 'cloud', 'wamid.E2E6', '+447700900955')`),
+      ).rejects.toThrow(/WaInbound_phone_check/);
+      await expect(
+        db.run(`INSERT INTO "WaInbound" (id, channel, wamid, phone) VALUES ('e2e-in-7', 'telegram', 'wamid.E2E7', '447700900955')`),
+      ).rejects.toThrow(/WaInbound_channel_check/);
+      const row = await db.one<{ attempts: number; processedAt: Date | null }>(`SELECT attempts, "processedAt" FROM "WaInbound" WHERE id = 'e2e-in-1'`);
+      expect(row).toEqual({ attempts: 0, processedAt: null });
+    } finally {
+      await db.run(`DELETE FROM "WaInbound" WHERE id LIKE 'e2e-in-%'`);
+    }
+  });
+
+  test("a template status keeps Meta's spellings and one of its three categories", async () => {
+    const db = testDb();
+    try {
+      await db.run(
+        `INSERT INTO "CloudTemplateStatus" (name, language, status, category, "updatedAt") VALUES ('mt_code', 'en_GB', 'APPROVED', 'AUTHENTICATION', now())`,
+      );
+      // A status Meta adds later is still recorded.
+      await db.run(`INSERT INTO "CloudTemplateStatus" (name, language, status, "updatedAt") VALUES ('mt_code', 'tr', 'SOME_NEW_STATUS', now())`);
+      await expect(
+        db.run(`INSERT INTO "CloudTemplateStatus" (name, language, status, category, "updatedAt") VALUES ('mt_offer', 'en', 'APPROVED', 'SERVICE', now())`),
+      ).rejects.toThrow(/CloudTemplateStatus_category_check/);
+      await expect(
+        db.run(`INSERT INTO "CloudTemplateStatus" (name, language, status, "updatedAt") VALUES ('MT Offer', 'en', 'APPROVED', now())`),
+      ).rejects.toThrow(/CloudTemplateStatus_name_check/);
+      await expect(
+        db.run(`INSERT INTO "CloudTemplateStatus" (name, language, status, "updatedAt") VALUES ($1, 'en', 'APPROVED', now())`, ["a".repeat(513)]),
+      ).rejects.toThrow(/CloudTemplateStatus_name_check/);
+      await db.run(`INSERT INTO "CloudTemplateStatus" (name, language, status, "updatedAt") VALUES ($1, 'en', 'APPROVED', now())`, ["a".repeat(512)]);
+      await expect(
+        db.run(`INSERT INTO "CloudTemplateStatus" (name, language, status, "updatedAt") VALUES ('mt_offer', 'English', 'APPROVED', now())`),
+      ).rejects.toThrow(/CloudTemplateStatus_language_check/);
+    } finally {
+      await db.run(`DELETE FROM "CloudTemplateStatus"`);
+    }
+  });
+});

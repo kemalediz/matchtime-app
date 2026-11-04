@@ -48,6 +48,7 @@ const FILES = walk(SRC);
 const code = (f: string) => stripComments(readFileSync(f, "utf8"));
 const CHANNEL_MODULE = "lib/send-channel.ts";
 const NUMBER_READER = "lib/club-connect.ts";
+const PLATFORM_JOBS = "lib/platform-jobs.ts";
 
 const SEND_CHANNEL_IMPORT = /from\s+["'](?:@\/lib\/send-channel|\.{1,2}\/(?:[\w-]+\/)*send-channel)["']|import\(\s*["'][^"']*send-channel["']\s*\)/;
 
@@ -56,10 +57,12 @@ const CHANNEL_CALLERS = new Set<string>([
   // waNumberFor lives here, next to the club number's reader, and asks
   // nothing: it turns a decided channel into digits.
   NUMBER_READER,
+  // PR C2: queuePlatformDm asks once and stores the answer on the job.
+  PLATFORM_JOBS,
 ]);
 
 /** Files that may import send-channel (types included). Extend deliberately. */
-const CHANNEL_IMPORTERS = new Set<string>([NUMBER_READER]);
+const CHANNEL_IMPORTERS = new Set<string>([NUMBER_READER, PLATFORM_JOBS]);
 
 describe("the flags are read in one place", () => {
   it("only send-channel.ts reads CLOUD_API_ENABLED or CLOUD_API_PURPOSES", () => {
@@ -128,5 +131,29 @@ describe("a BotJob never asks for a channel", () => {
     const writers = FILES.filter((f) => /botJob\s*\.\s*(create|createMany|upsert)\s*\(/.test(code(f)));
     expect(writers.length).toBeGreaterThan(3);
     expect(writers.filter((f) => SEND_CHANNEL_IMPORT.test(code(f))).map(rel)).toEqual([]);
+  });
+});
+
+describe("a PlatformJob's channel is decided once, in queuePlatformDm (PR C2)", () => {
+  const src = code(path.join(SRC, PLATFORM_JOBS));
+
+  it("platform-jobs.ts calls channelFor exactly once, and nothing else from send-channel", () => {
+    expect(src.match(/\bchannelFor\s*\(/g) ?? []).toHaveLength(1);
+    expect(src).not.toMatch(/\b(waLinkChannelFor|waNumberFor|fallbackWhenCloudDown)\s*\(/);
+  });
+
+  it("that one call is inside queuePlatformDm, and its answer is what the job stores", () => {
+    const start = src.indexOf("export async function queuePlatformDm(");
+    const end = src.indexOf("\nexport ", start + 1);
+    expect(start).toBeGreaterThan(-1);
+    const body = src.slice(start, end);
+    expect(body).toMatch(/\bchannelFor\s*\(/);
+    expect(body).toMatch(/\bchannel,/);
+  });
+
+  it("every other PlatformJob writer leaves channel to the column default (baileys)", () => {
+    const writers = FILES.filter((f) => /platformJob\s*\.\s*(create|createMany|upsert)\s*\(/.test(code(f))).map(rel);
+    expect(writers.sort()).toEqual(["lib/owner-dm.ts", PLATFORM_JOBS].sort());
+    expect(code(path.join(SRC, "lib/owner-dm.ts"))).not.toMatch(/\bchannel\b/);
   });
 });
