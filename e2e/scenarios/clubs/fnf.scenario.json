@@ -1,0 +1,443 @@
+{
+ "version": 1,
+ "title": "FNF type: weekly, organisers announce, HQ acts only on a real tag, payments off, nameless and phone-less players, an Uncle Najib alias",
+ "timezone": "Europe/London",
+ "start": "2026-11-16 08:00",
+ "end": "2026-11-24 10:00",
+ "pollEveryMinutes": 60,
+ "skipCrons": [
+  "/api/cron/none-bucket-shadow",
+  "/api/cron/learn-setup",
+  "/api/cron/bot-health",
+  "/api/cron/billing"
+ ],
+ "club": {
+  "name": "Friday Night Sandbox",
+  "owner": "hamzah",
+  "paymentHolder": "raihan",
+  "maxPlayers": 18,
+  "sport": {
+   "name": "Football 9-a-side",
+   "playersPerTeam": 9,
+   "teamLabels": [
+    "Bibs",
+    "Non bibs"
+   ]
+  },
+  "activity": {
+   "day": "friday",
+   "time": "20:30",
+   "durationMinutes": 90,
+   "venue": "Sandbox Harris Pitch",
+   "deadlineHours": 24,
+   "ratingWindowHours": 72,
+   "minPlayers": 12
+  },
+  "settings": {
+   "listAnnouncer": "organisers",
+   "benchPickMode": "organiser",
+   "benchPickFallback": "leave-empty",
+   "rollingSquadEnabled": true,
+   "teamsReadyTime": "10:00",
+   "paymentTrackingEnabled": false,
+   "paymentCollectionEnabled": false,
+   "quietHoursEnabled": false,
+   "featureGearReminder": false
+  }
+ },
+ "groups": [
+  {
+   "key": "main",
+   "subject": "Friday Night Sandbox",
+   "role": "players"
+  },
+  {
+   "key": "hq",
+   "subject": "FNS HQ",
+   "role": "admin"
+  }
+ ],
+ "members": [
+  {
+   "key": "hamzah",
+   "name": "Hamzah Ali",
+   "phone": "+447700900201",
+   "role": "OWNER",
+   "groups": [
+    "main",
+    "hq"
+   ]
+  },
+  {
+   "key": "raihan",
+   "name": "Raihan Khan",
+   "phone": "+447700900202",
+   "role": "ADMIN",
+   "groups": [
+    "main",
+    "hq"
+   ]
+  },
+  {
+   "key": "najib",
+   "name": "Najib Rahman",
+   "phone": "+447700900203",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "pushname": "Najib"
+  },
+  {
+   "key": "zak",
+   "name": "Zak Ahmed",
+   "phone": "+447700900204",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "omar",
+   "name": "Omar Farooq",
+   "phone": "+447700900205",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "yusuf",
+   "name": "Yusuf Malik",
+   "phone": "+447700900206",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "adam",
+   "name": "Adam Hussain",
+   "phone": "+447700900207",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "sami",
+   "name": "Sami Iqbal",
+   "phone": "+447700900208",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "tariq",
+   "name": "Tariq Aziz",
+   "phone": "+447700900209",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "idris",
+   "name": "Idris Bello",
+   "phone": "+447700900210",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "kareem",
+   "name": "Kareem Saleh",
+   "phone": "+447700900211",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "faisal",
+   "name": "Faisal Mirza",
+   "phone": "+447700900212",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "nabil",
+   "name": "Nabil Haddad",
+   "phone": "+447700900213",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "rami",
+   "name": "Rami Nasser",
+   "phone": "+447700900214",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  },
+  {
+   "key": "bilal",
+   "name": "x",
+   "phone": "+447700900215",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": "Bilal"
+  },
+  {
+   "key": "anon1",
+   "name": "x",
+   "phone": "+447700900216",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": null
+  },
+  {
+   "key": "anon2",
+   "name": "x",
+   "phone": "+447700900217",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ],
+   "nameless": true,
+   "pushname": null
+  },
+  {
+   "key": "hadi",
+   "name": "Hadi Mansour",
+   "phone": "+447700900218",
+   "role": "PLAYER",
+   "groups": [
+    "main"
+   ]
+  }
+ ],
+ "steps": [
+  {
+   "at": "2026-11-16 08:00",
+   "do": "note",
+   "text": "Monday: an organiser-run weekly club with an admin group (HQ), payments off, game Friday 20:30"
+  },
+  {
+   "at": "2026-11-16 08:00",
+   "do": "club-live",
+   "liveDaysAgo": 30
+  },
+  {
+   "at": "2026-11-16 08:02",
+   "do": "cron",
+   "path": "/api/cron/generate-matches"
+  },
+  {
+   "at": "2026-11-16 10:00",
+   "do": "message",
+   "group": "hq",
+   "from": "hamzah",
+   "body": "@Match Time this week's squad for Friday\n1. Hamzah\n2. Raihan\n3. Uncle Najib\n4. Imti\n5. Zak\n6. Omar\n7. Yusuf\n8. Adam\n9. Sami\n10. Tariq"
+  },
+  {
+   "at": "2026-11-16 10:02",
+   "do": "message",
+   "group": "hq",
+   "from": "hamzah",
+   "body": "@Match Time YES"
+  },
+  {
+   "at": "2026-11-16 10:04",
+   "do": "message",
+   "group": "hq",
+   "from": "raihan",
+   "body": "looks good, I'll post it in the main chat later"
+  },
+  {
+   "at": "2026-11-16 12:01",
+   "do": "message",
+   "group": "main",
+   "from": "idris",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-16 12:02",
+   "do": "message",
+   "group": "main",
+   "from": "kareem",
+   "body": "IN"
+  },
+  {
+   "at": "2026-11-16 12:03",
+   "do": "message",
+   "group": "main",
+   "from": "anon1",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-16 12:04",
+   "do": "message",
+   "group": "main",
+   "from": "bilal",
+   "body": "in for friday"
+  },
+  {
+   "at": "2026-11-16 12:05",
+   "do": "message",
+   "group": "main",
+   "from": "faisal",
+   "body": "out this week lads"
+  },
+  {
+   "at": "2026-11-16 12:06",
+   "do": "message",
+   "group": "main",
+   "from": "najib",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-17 09:00",
+   "do": "note",
+   "text": "Tuesday: the list re-posted in HQ with a change (Tariq off, Nabil, Idris, Kareem on)"
+  },
+  {
+   "at": "2026-11-17 09:00",
+   "do": "message",
+   "group": "hq",
+   "from": "hamzah",
+   "body": "@Match Time updated list for Friday\n1. Hamzah\n2. Raihan\n3. Uncle Najib\n4. Imti\n5. Zak\n6. Omar\n7. Yusuf\n8. Adam\n9. Sami\n10. Nabil\n11. Idris\n12. Kareem"
+  },
+  {
+   "at": "2026-11-17 09:02",
+   "do": "message",
+   "group": "hq",
+   "from": "hamzah",
+   "body": "@Match Time YES"
+  },
+  {
+   "at": "2026-11-17 18:00",
+   "do": "message",
+   "group": "main",
+   "from": "rami",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-17 18:01",
+   "do": "message",
+   "group": "main",
+   "from": "sami",
+   "body": "@Match Time who's playing friday?",
+   "tag": true
+  },
+  {
+   "at": "2026-11-17 18:02",
+   "do": "message",
+   "group": "main",
+   "from": "zak",
+   "body": "rami you're late again lol"
+  },
+  {
+   "at": "2026-11-17 18:03",
+   "do": "message",
+   "group": "main",
+   "from": "raihan",
+   "body": "Uncle Najib is in by the way"
+  },
+  {
+   "at": "2026-11-18 11:00",
+   "do": "note",
+   "text": "Wednesday: an admin request in HQ without a real tag, then with one"
+  },
+  {
+   "at": "2026-11-18 11:00",
+   "do": "message",
+   "group": "hq",
+   "from": "raihan",
+   "body": "matchtime can you make teams for friday"
+  },
+  {
+   "at": "2026-11-18 11:05",
+   "do": "message",
+   "group": "hq",
+   "from": "raihan",
+   "body": "@Match Time how many have we got for Friday?"
+  },
+  {
+   "at": "2026-11-19 19:00",
+   "do": "message",
+   "group": "main",
+   "from": "anon2",
+   "body": "in"
+  },
+  {
+   "at": "2026-11-19 19:30",
+   "do": "message",
+   "group": "main",
+   "from": "hadi",
+   "body": "can I get in?"
+  },
+  {
+   "at": "2026-11-20 10:30",
+   "do": "note",
+   "text": "Friday: teams in HQ"
+  },
+  {
+   "at": "2026-11-20 10:30",
+   "do": "message",
+   "group": "hq",
+   "from": "hamzah",
+   "body": "@Match Time make teams"
+  },
+  {
+   "at": "2026-11-20 10:40",
+   "do": "message",
+   "group": "hq",
+   "from": "hamzah",
+   "body": "@Match Time swap Zak with Omar"
+  },
+  {
+   "at": "2026-11-20 22:20",
+   "do": "message",
+   "group": "main",
+   "from": "hamzah",
+   "body": "Full time: Bibs 6 - 4 Non bibs. Good game boys"
+  },
+  {
+   "at": "2026-11-21 10:00",
+   "do": "rate",
+   "from": "zak",
+   "mom": "Omar"
+  },
+  {
+   "at": "2026-11-21 10:10",
+   "do": "rate",
+   "from": "idris",
+   "mom": "Omar"
+  },
+  {
+   "at": "2026-11-22 18:00",
+   "do": "rate",
+   "from": "hamzah",
+   "mom": "Kareem"
+  },
+  {
+   "at": "2026-11-24 09:00",
+   "do": "note",
+   "text": "Tuesday: the rating window has closed"
+  }
+ ]
+}

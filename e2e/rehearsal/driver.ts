@@ -78,7 +78,9 @@ export class RehearsalDriver {
   readonly graphics: string[] = [];
   orgId: string | null = null;
 
-  private readonly nonce = Date.now().toString(36);
+  private readonly nonce: string;
+  /** The scenario step being played (its seq); -1 before the first. */
+  private frame = -1;
   private readonly jid = new Map<string, string>();
   private readonly keyOfJid = new Map<string, string>();
   private readonly byKey = new Map<string, ScenarioMember>();
@@ -93,6 +95,7 @@ export class RehearsalDriver {
   private seq = 0;
   private connectCode: string | null = null;
   private clubSettingsApplied = false;
+  private membershipSeq = 0;
   private templateApplied = false;
   private aiCalls = 0;
   private routerRequests = 0;
@@ -111,8 +114,19 @@ export class RehearsalDriver {
       live: boolean;
       /** Open a rating link as that person and submit the page. */
       rate?: (linkPath: string, mom: string | undefined) => Promise<string>;
+      /** Fixed run id (club scenarios): every id the runner makes is then
+       *  the same from one run to the next, which a replay needs. Default:
+       *  the clock, as before. */
+      nonce?: string;
+      /** Club scenarios: snapshot everything the A/B compares (months,
+       *  payments, aliases, merges, bot jobs, sent notifications). */
+      wideSnapshot?: boolean;
+      /** Club scenarios: put the rows the server reads WITHOUT an order
+       *  back in primary-key order after every tick (reorderRows). */
+      stableRowOrder?: boolean;
     },
   ) {
+    this.nonce = opts.nonce ?? Date.now().toString(36);
     this.now = scenario.start;
     scenario.groups.forEach((g, i) => {
       // A WhatsApp-shaped group id, unique per run.
@@ -151,7 +165,7 @@ export class RehearsalDriver {
   // ── Events ──────────────────────────────────────────────────────────
 
   private push(e: Omit<RehearsalEvent, "at"> & { at?: Date }): number {
-    this.events.push({ at: e.at ?? this.now, ...e });
+    this.events.push({ at: e.at ?? this.now, frame: this.frame, ...e });
     return this.events.length - 1;
   }
 
@@ -273,6 +287,7 @@ export class RehearsalDriver {
     try {
       for (const tick of ticks) {
         await this.setClock(tick.at);
+        if (tick.kind === "step" && tick.step.seq >= 0) this.frame = tick.step.seq;
         try {
           if (tick.kind === "step") await this.step(tick.step);
           else if (tick.kind === "flush") await this.flush(tick.stepSeqs);
@@ -282,6 +297,7 @@ export class RehearsalDriver {
           this.error(`${tick.kind}${tick.kind === "step" ? ` ${tick.step.do}` : ""}: ${(err as Error).stack ?? String(err)}`);
         }
         if (tick.kind !== "cron") await this.recordDbChanges();
+        if (this.opts.stableRowOrder) await this.reorderRows().catch((err) => this.error(`reorder rows: ${(err as Error).message}`));
       }
     } finally {
       this.restoreClock();
@@ -329,6 +345,10 @@ export class RehearsalDriver {
         return this.poll();
       case "cron":
         return this.cron(step.path);
+      case "club-live":
+        return this.clubLive(step.liveDaysAgo);
+      case "match":
+        return this.matchSettings(step.values);
     }
   }
 
@@ -565,10 +585,15 @@ export class RehearsalDriver {
     const existing = await this.db.one<{ id: string }>(`SELECT id FROM "User" WHERE "phoneNumber" = $1`, [m.phone]);
     if (existing) return existing.id;
     const id = `reh-u-${this.nonce}-${m.key}`;
+    // One second apart, in scenario order: people join at different times,
+    // and a list the server orders by createdAt must not depend on how
+    // Postgres breaks a tie (a replay would then read members in another
+    // order than the recording did).
+    const order = this.scenario.members.findIndex((x) => x.key === m.key);
     await this.db.run(
       `INSERT INTO "User" (id, name, email, "phoneNumber", onboarded, "isActive", "createdAt", "updatedAt")
        VALUES ($1, $2, $3, $4, true, true, $5, $5)`,
-      [id, m.name, `reh-${m.key}-${this.nonce}@e2e-test.invalid`, m.phone, this.simIso()],
+      [id, m.nameless ? null : m.name, `reh-${m.key}-${this.nonce}@e2e-test.invalid`, m.phone, this.simIso(-(this.scenario.members.length - order) * 1000)],
     );
     return id;
   }
@@ -577,11 +602,12 @@ export class RehearsalDriver {
     const row = await this.db.one<{ id: string }>(`SELECT id FROM "Membership" WHERE "userId" = $1 AND "orgId" = $2`, [userId, this.orgId]);
     if (row) await this.db.run(`UPDATE "Membership" SET role = $2 WHERE id = $1`, [row.id, role]);
     else
-      await this.db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ($1, $2, $3, $4)`, [
+      await this.db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role, "createdAt") VALUES ($1, $2, $3, $4, $5)`, [
         `reh-mem-${this.nonce}-${userId}`,
         userId,
         this.orgId,
         role,
+        this.simIso(++this.membershipSeq),
       ]);
   }
 
@@ -596,17 +622,7 @@ export class RehearsalDriver {
       [this.orgId, c.name, `${this.orgId}-invite`, c.language, this.simIso()],
     );
     await this.ensureMembership(ownerId, "OWNER");
-    const sportId = `reh-sport-${this.nonce}`;
-    await this.db.run(
-      `INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, ARRAY['GK','DEF','MID','FWD'], $5, $6, $6)`,
-      [sportId, this.orgId, c.sport.name, c.sport.playersPerTeam, c.sport.teamLabels, this.simIso()],
-    );
-    await this.db.run(
-      `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "matchDurationMins", "deadlineHours", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9, $9)`,
-      [`reh-act-${this.nonce}`, this.orgId, sportId, c.name, c.activity.dayOfWeek, c.activity.time, c.activity.venue, c.activity.durationMinutes, this.simIso()],
-    );
+    await this.createSportAndActivity();
     this.connectCode = (Number.parseInt(this.nonce, 36) % 46656).toString(36).toUpperCase().padStart(3, "X") + "Q";
     await this.db.run(
       `INSERT INTO "ClubConnect" (id, "orgId", "userId", phone, code, status, "issuedAt", "expiresAt", "dmAt", "dmPhone", "dmLid", "dmPhoneMatched", "addWindowEndsAt", "updatedAt")
@@ -627,6 +643,119 @@ export class RehearsalDriver {
       `STAND-IN (website): ${owner.name} registers "${c.name}" on the website (schedule ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][c.activity.dayOfWeek]} ${c.activity.time}, ${c.activity.venue}, ${c.sport.name}) and sends the connect DM. Written to the database directly.`,
     );
     this.push({ channel: this.dmChannel(owner.phone), kind: "in", from: owner.key, text: `(connect DM with code ${this.connectCode}, stood in for)` });
+  }
+
+  /** The club's sport and its one fixture, as the website makes them. */
+  private async createSportAndActivity(): Promise<void> {
+    const c = this.scenario.club;
+    const sportId = `reh-sport-${this.nonce}`;
+    await this.db.run(
+      `INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, ARRAY['GK','DEF','MID','FWD'], $5, $6, $6)`,
+      [sportId, this.orgId, c.sport.name, c.sport.playersPerTeam, c.sport.teamLabels, this.simIso()],
+    );
+    const a = c.activity;
+    await this.db.run(
+      `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "matchDurationMins", "deadlineHours",
+                               "ratingWindowHours", "minPlayers", "maxPlayers", "feePerPlayer", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)`,
+      [
+        `reh-act-${this.nonce}`,
+        this.orgId,
+        sportId,
+        c.name,
+        a.dayOfWeek,
+        a.time,
+        a.venue,
+        a.durationMinutes,
+        a.deadlineHours ?? 0,
+        a.ratingWindowHours ?? 120,
+        a.minPlayers ?? null,
+        a.maxPlayers ?? null,
+        a.feePerPlayer ?? null,
+        this.simIso(),
+      ],
+    );
+  }
+
+  /**
+   * A club MatchTime has already run for a while (club scenarios): the
+   * sign-up, approval, group link and go-live all done `liveDaysAgo` days
+   * before the scenario starts, the welcome already sent, and the players'
+   * group members read by the Pi (sync-participants, the real route).
+   * Stands in for the website and the onboarding DMs; labelled as such.
+   */
+  private async clubLive(liveDaysAgo: number): Promise<void> {
+    const c = this.scenario.club;
+    const owner = this.ownerMember();
+    this.orgId = `reh-org-${this.nonce}`;
+    const players = this.scenario.groups.find((g) => g.role === "players")!;
+    const hq = this.scenario.groups.find((g) => g.role === "admin" && g.matchtime);
+    const liveAt = this.simIso(-liveDaysAgo * 86_400_000);
+    const ownerId = await this.ensureUser(owner);
+    await this.db.run(
+      `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "approvalStatus", "approvedAt", "approvalDecidedAt", "setupStage", "liveAt",
+                                   "whatsappGroupId", "whatsappBotEnabled", language, "createdAt", "updatedAt")
+       VALUES ($1, $2, $1, $3, 'approved', $4, $4, 'live', $4, $5, true, $6, $4, $4)`,
+      [this.orgId, c.name, `${this.orgId}-invite`, liveAt, this.jid.get(players.key), c.language],
+    );
+    await this.ensureMembership(ownerId, "OWNER");
+    await this.createSportAndActivity();
+    if (hq) {
+      await this.db.run(
+        `UPDATE "Organisation" SET "adminGroupId" = $2, "adminGroupSubject" = $3, "adminGroupLinkedAt" = $4, "adminGroupLinkedByUserId" = $5,
+                "adminChannelMode" = 'admin-group' WHERE id = $1`,
+        [this.orgId, this.jid.get(hq.key), hq.subject, liveAt, ownerId],
+      );
+    }
+    // The welcome went out when the club went live.
+    await this.db.run(`INSERT INTO "SentNotification" (id, key, kind, "createdAt") VALUES ($1, $2, 'bot-intro', $3)`, [
+      `reh-intro-${this.nonce}`,
+      `org-${this.orgId}:bot-intro`,
+      liveAt,
+    ]);
+    this.info(
+      `STAND-IN (club already live): "${c.name}" has been live ${liveDaysAgo} days` +
+        `${hq ? `, admin group "${hq.subject}" linked` : ""}. Written to the database directly.`,
+    );
+    await this.settings({});
+    // The members as the club's history left them: imported from the
+    // member list (phone only, no name) or named by the organiser.
+    for (const m of this.scenario.members) {
+      if (m.role === "NONE" || !m.groups.includes(players.key)) continue;
+      const uid = await this.ensureUser(m);
+      await this.ensureMembership(uid, m.role);
+      await this.db.run(`UPDATE "User" SET name = $2 WHERE id = $1`, [uid, m.nameless ? null : m.name]);
+    }
+    // Then the Pi's member sweep at its start, through the real route: a
+    // nameless member takes the WhatsApp name it shows, as in production.
+    await this.refreshOrgs();
+    const res = await this.post("/api/whatsapp/sync-participants", {
+      groupId: this.jid.get(players.key),
+      participants: this.participants(players.key).filter((p) => this.byPhone.get(p.phone)?.role !== "NONE"),
+    });
+    this.info(`The Pi reads the players' group members: ${JSON.stringify(res ?? {}).slice(0, 300)}`, { group: players.key });
+  }
+
+  /** The next game's own switches (club scenarios), set by the organiser. */
+  private async matchSettings(values: Record<string, number | boolean | null>): Promise<void> {
+    if (!this.orgId) throw new Error("match before the club exists");
+    const next = await this.db.one<{ id: string; date: string }>(
+      `SELECT m.id, to_char(m.date, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS date FROM "Match" m JOIN "Activity" a ON a.id = m."activityId"
+       WHERE a."orgId" = $1 AND m.status = 'UPCOMING' AND m.date > $2 ORDER BY m.date LIMIT 1`,
+      [this.orgId, this.simIso()],
+    );
+    if (!next) {
+      this.error("match: there is no upcoming game to set");
+      return;
+    }
+    for (const [k, v] of Object.entries(values)) await this.db.run(`UPDATE "Match" SET "${k}" = $2 WHERE id = $1`, [next.id, v]);
+    this.info(
+      `STAND-IN (game settings): the game on ${formatLocal(new Date(next.date), this.scenario.timezone)} gets ` +
+        Object.entries(values)
+          .map(([k, v]) => `${k} = ${JSON.stringify(v)}`)
+          .join(", "),
+    );
   }
 
   private participants(groupKey: string): Array<{ phone: string; pushname: string | null }> {
@@ -791,7 +920,11 @@ export class RehearsalDriver {
   private async instruction(ins: Record<string, unknown>, playersKey: string): Promise<void> {
     const kind = String(ins.kind);
     const text = typeof ins.text === "string" ? ins.text : "";
-    const meta = { instruction: kind, key: ins.key };
+    // Who the Pi tags for real: `mentions` on a group message or DM; the
+    // bench offer tags the one `phone` it names.
+    const tagged = Array.isArray(ins.mentions) ? (ins.mentions as unknown[]) : kind === "bench-prompt" && ins.phone ? [ins.phone] : [];
+    const mentions = tagged.map((p) => this.byPhone.get(bare(String(p)))?.key ?? `+${bare(String(p))}`);
+    const meta: Record<string, unknown> = { instruction: kind, key: ins.key, ...(mentions.length ? { mentions } : {}) };
     switch (kind) {
       case "group-message":
       case "bench-prompt": {
@@ -935,7 +1068,147 @@ export class RehearsalDriver {
       const ratings = await this.db.count(`SELECT count(*) FROM "Rating" WHERE "matchId" = $1`, [mt.id]);
       if (ratings) out[`${label}: ratings`] = String(ratings);
     }
+    if (this.opts.wideSnapshot) await this.readWideState(out);
     return out;
+  }
+
+  /**
+   * Every id this club's rows carry, with a label that is the same from one
+   * run to the next (club scenarios normalise ids in text with it): a
+   * scenario member's key, a game's local kickoff, the club, its months.
+   */
+  async idLabels(): Promise<Map<string, string>> {
+    const labels = new Map<string, string>();
+    if (!this.orgId) return labels;
+    labels.set(this.orgId, "<club>");
+    const users = await this.db.all<{ id: string; name: string | null; phone: string | null }>(
+      `SELECT id, name, "phoneNumber" AS phone FROM "User"`,
+    );
+    for (const u of users) {
+      const m = u.phone ? this.byPhone.get(bare(u.phone)) : undefined;
+      labels.set(u.id, m ? `@${m.key}` : `<user ${u.name ?? "(no name)"}${u.phone ? "" : ", no phone"}>`);
+    }
+    const matches = await this.db.all<{ id: string; date: string }>(
+      `SELECT m.id, to_char(m.date, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS date FROM "Match" m JOIN "Activity" a ON a.id = m."activityId" WHERE a."orgId" = $1`,
+      [this.orgId],
+    );
+    for (const m of matches) labels.set(m.id, `<match ${formatLocal(new Date(m.date), this.scenario.timezone)}>`);
+    const months = await this.db.all<{ id: string; month: string }>(
+      `SELECT id, to_char("monthStart", 'YYYY-MM') AS month FROM "SquadMonth" WHERE "orgId" = $1`,
+      [this.orgId],
+    );
+    for (const m of months) labels.set(m.id, `<month ${m.month}>`);
+    return labels;
+  }
+
+  /** Club scenarios: the rest of what a club's life writes. */
+  private async readWideState(out: Record<string, string>): Promise<void> {
+    const labels = await this.idLabels();
+    const who = (id: string | null | undefined) => (id ? (labels.get(id) ?? "<unknown user>") : "nobody");
+    const relabel = (text: string) => {
+      let t = text;
+      for (const [id, l] of labels) if (id.length >= 8 && t.includes(id)) t = t.split(id).join(l);
+      return t;
+    };
+    const org = await this.db.one<Record<string, unknown>>(
+      `SELECT "whatsappBotEnabled", "squadMode", "paymentTrackingEnabled", "paymentCollectionEnabled", language FROM "Organisation" WHERE id = $1`,
+      [this.orgId],
+    );
+    if (org) out["club: muted"] = org.whatsappBotEnabled ? "no" : "yes";
+    const matches = await this.db.all<{ id: string; max: number; flow: boolean; fee: number | null; released: boolean }>(
+      `SELECT m.id, m."maxPlayers" AS max, m."postMatchEndFlow" AS flow, m."feePerPlayer" AS fee, (m."paymentLinksReleasedAt" IS NOT NULL) AS released
+       FROM "Match" m JOIN "Activity" a ON a.id = m."activityId" WHERE a."orgId" = $1`,
+      [this.orgId],
+    );
+    for (const m of matches) {
+      const l = labels.get(m.id) ?? m.id;
+      out[`${l}: places`] = String(m.max);
+      if (!m.flow) out[`${l}: after-game flow`] = "off";
+      if (m.fee !== null) out[`${l}: fee`] = String(m.fee);
+      if (m.released) out[`${l}: pay links released`] = "yes";
+      const pos = await this.db.all<{ userId: string; status: string; position: number }>(
+        `SELECT "userId", status::text AS status, position FROM "Attendance" WHERE "matchId" = $1 ORDER BY position`,
+        [m.id],
+      );
+      for (const a of pos) out[`${l}: attendance ${who(a.userId)}`] = `${a.status} #${a.position}`;
+      const team = await this.db.all<{ userId: string; team: string }>(`SELECT "userId", team::text AS team FROM "TeamAssignment" WHERE "matchId" = $1`, [m.id]);
+      for (const t of team) out[`${l}: team of ${who(t.userId)}`] = t.team;
+      const votes = await this.db.all<{ playerId: string; n: number }>(
+        `SELECT "playerId", count(*)::int AS n FROM "MoMVote" WHERE "matchId" = $1 GROUP BY "playerId"`,
+        [m.id],
+      );
+      for (const v of votes) out[`${l}: MoM votes for ${who(v.playerId)}`] = String(v.n);
+      const credits = await this.db.all<{ payerUserId: string; count: number }>(`SELECT "payerUserId", count FROM "PaymentCredit" WHERE "matchId" = $1`, [m.id]);
+      for (const c of credits) out[`${l}: payment credit ${who(c.payerUserId)}`] = String(c.count);
+    }
+    const months = await this.db.all<{ id: string; status: string; scheduled: number; before: number }>(
+      `SELECT id, status, "gamesScheduled" AS scheduled, "gamesPlayedBeforeStart" AS before FROM "SquadMonth" WHERE "orgId" = $1`,
+      [this.orgId],
+    );
+    for (const mo of months) {
+      const l = labels.get(mo.id) ?? mo.id;
+      out[`${l}: status`] = `${mo.status}, ${mo.scheduled} game(s), ${mo.before} before start`;
+      const mem = await this.db.all<{ userId: string; kind: string; slot: number | null; covered: number; paid: boolean; left: boolean; source: string }>(
+        `SELECT "userId", kind, slot, "gamesCovered" AS covered, ("paidAt" IS NOT NULL) AS paid, ("leftAt" IS NOT NULL) AS left, source
+         FROM "SquadMonthMember" WHERE "monthId" = $1`,
+        [mo.id],
+      );
+      for (const x of mem)
+        out[`${l}: member ${who(x.userId)}`] = `${x.kind}${x.slot !== null ? ` slot ${x.slot}` : ""}, ${x.covered} covered${x.paid ? ", paid" : ""}${x.left ? ", left" : ""} (${x.source})`;
+    }
+    const aliases = await this.db.all<{ alias: string; userId: string; source: string }>(`SELECT alias, "userId", source FROM "UserAlias" WHERE "orgId" = $1`, [this.orgId]);
+    for (const a of aliases) out[`alias "${a.alias}"`] = `${who(a.userId)} (${a.source})`;
+    const merges = await this.db.all<{ oldUserId: string; survivorUserId: string }>(`SELECT "oldUserId", "survivorUserId" FROM "UserMerge" WHERE "orgId" = $1`, [this.orgId]);
+    for (const mg of merges) out[`merge ${who(mg.oldUserId)}`] = `into ${who(mg.survivorUserId)}`;
+    const users = await this.db.all<{ id: string; name: string | null; phone: string | null }>(
+      `SELECT u.id, u.name, u."phoneNumber" AS phone FROM "Membership" m JOIN "User" u ON u.id = m."userId" WHERE m."orgId" = $1`,
+      [this.orgId],
+    );
+    for (const u of users) out[`user ${who(u.id)}`] = `name ${u.name === null ? "(none)" : JSON.stringify(u.name)}${u.phone ? "" : ", no phone"}`;
+    const jobs = await this.db.all<{ kind: string; phone: string | null; text: string; sent: boolean; about: string | null; mentions: string[] }>(
+      `SELECT kind, phone, text, ("sentAt" IS NOT NULL) AS sent, "aboutKey" AS about, mentions FROM "BotJob" WHERE "orgId" = $1 ORDER BY "createdAt", text`,
+      [this.orgId],
+    );
+    const seen = new Map<string, number>();
+    for (const j of jobs) {
+      const to = j.phone ? (this.byPhone.get(bare(j.phone)) ? `@${this.byPhone.get(bare(j.phone))!.key}` : `+${bare(j.phone)}`) : "group";
+      const head = relabel(j.text).replace(/\s+/g, " ").slice(0, 90);
+      const base = `botjob ${j.kind} → ${to}: ${head}`;
+      const n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      const mentions = (j.mentions ?? []).map((p) => this.byPhone.get(bare(p))?.key ?? p);
+      out[n > 1 ? `${base} (#${n})` : base] = `${j.sent ? "sent" : "pending"}${mentions.length ? `, tags ${mentions.join(" ")}` : ""}`;
+    }
+    const notes = await this.db.all<{ key: string; kind: string }>(
+      `SELECT s.key, s.kind FROM "SentNotification" s LEFT JOIN "Match" m ON m.id = s."matchId" LEFT JOIN "Activity" a ON a.id = m."activityId"
+       WHERE a."orgId" = $1 OR s.key LIKE $2`,
+      [this.orgId, `%${this.orgId}%`],
+    );
+    for (const n of notes) out[`sent-notification ${relabel(n.key)}`] = n.kind;
+  }
+
+  /**
+   * Some server reads have no ORDER BY (the HQ squad reader's members,
+   * hq-squad-reader.ts), so the order the model is shown follows Postgres's
+   * physical row order, which moves whenever a row is updated and so
+   * depends on timing. In this throwaway test database only, CLUSTER puts
+   * each such table back in primary-key order after every tick, so the
+   * same scenario shows the model the same order on every run.
+   */
+  private clusterIndexes: Array<{ table: string; index: string }> | null = null;
+  private async reorderRows(): Promise<void> {
+    if (!this.clusterIndexes) {
+      this.clusterIndexes = [];
+      for (const table of ["Membership", "User", "UserAlias", "Attendance", "SquadMonthMember", "TeamAssignment"]) {
+        const row = await this.db.one<{ index: string }>(
+          `SELECT i.relname AS index FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid JOIN pg_class t ON t.oid = x.indrelid
+           WHERE t.relname = $1 AND x.indisprimary`,
+          [table],
+        );
+        if (row) this.clusterIndexes.push({ table, index: row.index });
+      }
+    }
+    for (const c of this.clusterIndexes) await this.db.run(`CLUSTER "${c.table}" USING "${c.index}"`);
   }
 
   private async recordDbChanges(): Promise<void> {
