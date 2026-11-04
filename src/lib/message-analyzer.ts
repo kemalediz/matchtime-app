@@ -67,6 +67,7 @@ import {
   type ChaseKind,
 } from "./chase-lead";
 import type { SmallerFormat } from "./format-switch";
+import { findNextMatch } from "./next-match";
 
 export type { ChaseKind } from "./chase-lead";
 
@@ -235,7 +236,7 @@ export async function composeChaseText(input: {
   groupId: string;
   kind: ChaseKind;
   /** The match being chased. The scheduler always passes it; without it
-   *  (the production dry run) the next match with an open deadline. */
+   *  (the production dry run) the club's next match (`next-match.ts`). */
   matchId?: string;
   /** The scheduler's clock (the e2e suite pins it); the wall clock when absent. */
   now?: Date;
@@ -256,14 +257,17 @@ export async function composeChaseText(input: {
   });
   if (!org) return null;
 
+  // Without a match id (the production dry run only): the club's next match
+  // (`next-match.ts`, club summary B4), where an IN lands. Before B4 the
+  // first live match whose sign-up deadline was still ahead, which the
+  // selector's own header says is not a gate.
+  const matchId =
+    input.matchId ??
+    (await findNextMatch(org.id, now, (where) => db.match.findMany({ where, orderBy: { date: "asc" }, select: { id: true, date: true, status: true } })))?.id;
+  if (!matchId) return null;
+
   const match = await db.match.findFirst({
-    where: input.matchId
-      ? { id: input.matchId, activity: { orgId: org.id } }
-      : {
-          activity: { orgId: org.id },
-          status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-          attendanceDeadline: { gt: now },
-        },
+    where: { id: matchId, activity: { orgId: org.id } },
     include: {
       activity: {
         select: { name: true, venue: true, sport: { select: { name: true, playersPerTeam: true } } },

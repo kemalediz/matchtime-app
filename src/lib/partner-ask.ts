@@ -38,6 +38,7 @@ import { isClubSettingUp, SETUP_STAGE_SELECT } from "./club-setup-rules";
 import { isGroupPostable } from "./group-postability-store";
 import { londonMidnight } from "./club-connect-rules";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
+import { postingMatchWhere } from "./scheduler-windows";
 import { loadPartnerAskSettings } from "./club-partnership";
 import { retirePastGuests, standDownVolunteers, tellGuestsMoved } from "./partner-guest";
 import { matchtimeWaNumber } from "./club-connect";
@@ -175,9 +176,12 @@ export async function placesOpen(matchId: string): Promise<number> {
   return askPlacesOpen(matchId);
 }
 
+/** The posting rule, on the matches it reads (`postingMatchWhere`, club
+ *  summary B4): before B4 this read every match of the last two days, so a
+ *  live match left over from before then did not hold the next one. */
 async function isNextMatch(orgId: string, match: AskMatch, now: Date): Promise<boolean> {
   const candidates = await db.match.findMany({
-    where: { activity: { orgId }, isHistorical: false, date: { gte: new Date(now.getTime() - 2 * 24 * 3600_000) } },
+    where: postingMatchWhere(orgId, now),
     select: { id: true, date: true, status: true, activityId: true, isHistorical: true, activity: { select: { orgId: true, venue: true, dayOfWeek: true } } },
   });
   return isNextUpcomingForPosting(candidates, match, now);

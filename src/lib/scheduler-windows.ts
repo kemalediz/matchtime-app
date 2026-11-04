@@ -71,6 +71,27 @@ export function schedulerMatchWhere(orgId: string, now: Date) {
   };
 }
 
+/**
+ * The matches the POSTING RULE reads (`isNextUpcomingForPosting`,
+ * next-upcoming-match.ts) for a post made outside the scheduler's poll (the
+ * organiser pick, the admin deadline summary, the partner-club ask): every
+ * live match of any date, and the CANCELLED ones of the last 24 hours, whose
+ * London day may still hold the fixture's next match (club summary, slice
+ * B4, decision K5). Never a historical match. `schedulerMatchWhere` less the
+ * completed matches, which the rule never reads. A caller iterates the live
+ * ones only; the cancelled ones are there to hold.
+ */
+export function postingMatchWhere(orgId: string, now: Date) {
+  return {
+    activity: { orgId },
+    isHistorical: false,
+    OR: [
+      { status: { in: ["UPCOMING" as const, "TEAMS_GENERATED" as const, "TEAMS_PUBLISHED" as const] } },
+      { status: "CANCELLED" as const, date: { gte: new Date(now.getTime() - CANCELLED_HOLD_LOOKBACK_MS) } },
+    ],
+  };
+}
+
 /** A month closed in the last `CLOSED_MONTH_GATE_DAYS` (the `where` part). */
 export function closedLatelyWhere(now: Date) {
   return { status: "closed", closedAt: { gte: new Date(now.getTime() - CLOSED_MONTH_GATE_DAYS * DAY_MS) } };

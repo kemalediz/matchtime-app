@@ -38,6 +38,7 @@ import { buildDeadlineSummaryAdminNotice } from "./dm-copy";
 import { dayTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
+import { postingMatchWhere } from "./scheduler-windows";
 import { deadlineSummaryDue, madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
 import type { ClubSummary } from "./club-summary/types";
 import { placesOpen } from "./squad-short";
@@ -61,10 +62,13 @@ export async function sendDueDeadlineSummaries(club: ClubSummary | null, now: Da
   if (!club.lifecycle.operational) return { sent: 0 };
   if (!club.features.attendance) return { sent: 0 };
 
-  // Every live match, past kickoff or not: the next-upcoming gate needs
-  // this week's match even when next week's is the one being looked at.
+  // The posting rule's matches (`postingMatchWhere`): every live match, past
+  // kickoff or not (the gate needs this week's match even when next week's is
+  // the one being looked at), and the cancelled ones whose London day may
+  // still hold the fixture's next match (club summary B4, decision K5). Only
+  // the live ones are summed up.
   const matches = await db.match.findMany({
-    where: { activity: { orgId }, isHistorical: false, status: { in: [...LIVE] } },
+    where: postingMatchWhere(orgId, now),
     include: {
       activity: { select: { orgId: true, name: true, venue: true, dayOfWeek: true } },
       attendances: { select: { userId: true, status: true, position: true, user: { select: { name: true } } } },
@@ -75,12 +79,13 @@ export async function sendDueDeadlineSummaries(club: ClubSummary | null, now: Da
   const s = t(club.language);
   let sent = 0;
   for (const m of matches) {
+    if (!(LIVE as readonly string[]).includes(m.status)) continue;
     const { dropOut } = weeklyDeadlinesFor(m.date, deadlines);
     if (!dropOut || !deadlineSummaryDue(now, dropOut, m.date, club.routine.quietHours)) continue;
     // A game made after its own deadline (a club that went live late in
     // the week, 2026-10-15): nobody could drop out of it, nothing to sum up.
     if (madeAfterDropOutDeadline(m.createdAt, dropOut)) continue;
-    if (!isNextUpcomingForPosting(matches, m)) continue;
+    if (!isNextUpcomingForPosting(matches, m, now)) continue;
 
     const key = deadlineSummaryKey(m.id);
     try {

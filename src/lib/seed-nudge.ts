@@ -32,6 +32,7 @@ import { NOT_CANCELLED } from "@/lib/played-match";
 export const SEED_RATINGS_PATH = "/admin/players/ratings";
 
 interface SchedulerMatch {
+  id: string;
   date: Date;
   status: string;
   attendances: ReadonlyArray<{ userId: string; status: string }>;
@@ -85,6 +86,9 @@ export async function seedNudgeInstructions(args: {
   features: { teamBalancing: boolean; squadMode: string; playerRating: boolean; language: string; quietHours?: QuietHours };
   /** The scheduler's loaded matches (date ascending, no cancelled ones). */
   matches: ReadonlyArray<SchedulerMatch>;
+  /** THE club's next match (the club summary's `nextMatchId`, club summary
+   *  B4): the nudge is about it, if it has not kicked off. */
+  nextMatchId: string | null;
   sentKeys: ReadonlySet<string>;
   now: Date;
   piCaps: PiCaps;
@@ -92,10 +96,10 @@ export async function seedNudgeInstructions(args: {
 }): Promise<DueInstruction[]> {
   const { org, features, now } = args;
   try {
-    const next =
-      args.matches
-        .filter((m) => m.status !== "COMPLETED" && m.status !== "CANCELLED" && m.date.getTime() > now.getTime())
-        .sort((a, b) => a.date.getTime() - b.date.getTime())[0] ?? null;
+    // The club's next match (B4; before it the soonest live match not yet
+    // kicked off, so with last week's game still live it asked to seed for
+    // next week's). One already kicked off is "no-match" in the precheck.
+    const next = args.nextMatchId ? (args.matches.find((m) => m.id === args.nextMatchId) ?? null) : null;
     const base = {
       now,
       live: org.live,

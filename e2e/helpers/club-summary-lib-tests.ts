@@ -176,9 +176,9 @@ async function main() {
     assert.deepEqual([weekly.payments.collectionLive, weekly.payments.methods.card, weekly.payments.collector], [true, true, null]);
     assert.equal(weekly.nextMatchId, `${WEEKLY}-m-next`);
     const nextWeek = weekly.matches.find((m) => m.id === `${WEEKLY}-m-next`)!;
-    assert.deepEqual(nextWeek.nextForPosting, { withHold: false, withoutHold: true }, "today's cancelled match holds the announcement only");
+    assert.equal(nextWeek.nextForPosting, false, "today's cancelled match holds every post about next week (K5)");
     assert.ok(weekly.matches.every((m) => m.month === null));
-    ok("weekly: Stripe live, the cancelled-day hold kept as both values");
+    ok("weekly: Stripe live, the cancelled-day hold on every post (B4, K5)");
 
     // ── The scope reads each club once per request ──────────────────────
     const scope = summaryScope(NOW, loadClubSummary);

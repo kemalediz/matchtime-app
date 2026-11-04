@@ -94,7 +94,8 @@ vi.mock("@/lib/db", () => ({
     organisation: { findFirst: async () => ORG, findUnique: async () => ORG },
     $queryRaw: async () => [{ ok: 1 }],
     $executeRaw: async () => 1,
-    match: { findFirst: async () => MATCH },
+    // `findMany`: the DM answer's next match (`next-match.ts`, club summary B4).
+    match: { findFirst: async () => MATCH, findMany: async () => [MATCH] },
     activity: { findMany: async () => [] },
     benchSlotOffer: { findMany: async () => [] },
     // `null` short-circuits loadPlayerSeasonStats, so the scoped DM

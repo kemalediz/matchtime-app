@@ -173,7 +173,7 @@ import { CLUB_ORG_SELECT, loadClubSummary } from "@/lib/club-summary/load";
 import { summaryScope } from "@/lib/club-summary/scope";
 import { loadPaymentSnapshot, loadSquadState } from "@/lib/pipeline/load-state";
 import { clubSnapshotOf } from "@/lib/pipeline/club-snapshot";
-import { selectRegistrationMatch } from "@/lib/registration-match-select";
+import { findNextMatch } from "@/lib/next-match";
 import { organisersAnnounce } from "@/lib/list-announcer";
 import { appendAfterComposition, joinAlsoAnswered } from "@/lib/also-asks-reply";
 import { organisersGroupReply, passesOrganisersNet } from "@/lib/organisers-list-copy";
@@ -4584,15 +4584,8 @@ async function loadKnownLids(orgId: string): Promise<KnownLid[]> {
  * otherwise `summary.nextMatchId`, the same rule over the same matches.
  */
 async function findRegistrationMatch(orgId: string) {
-  const candidates = await db.match.findMany({
-    where: {
-      activity: { orgId },
-      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-    },
-    orderBy: { date: "asc" },
-  });
-  const picked = selectRegistrationMatch(candidates);
-  return picked ?? null;
+  // The club's next match (`next-match.ts`, club summary B4).
+  return findNextMatch(orgId, new Date(), (where) => db.match.findMany({ where, orderBy: { date: "asc" } }));
 }
 
 // ── `executeVerdict` IS DELETED (§10 step 8) ─────────────────────────

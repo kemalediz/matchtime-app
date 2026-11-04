@@ -134,3 +134,47 @@ describe("eligibleRegistrationMatch", () => {
     expect(eligibleRegistrationMatch([m("tue", "2026-10-20T19:00:00Z")], "other", NOW)).toBeNull();
   });
 });
+
+/**
+ * "TODAY" IS THE LONDON DAY (club summary, slice B4, decision K5).
+ *
+ * Before B4 the selector started the day at UTC midnight, while the posting
+ * rule (next-upcoming-match.ts) used the London day. In winter (GMT) the two
+ * agree; in summer (BST, UTC+1) they disagree between 00:00 and 01:00 London,
+ * and for a match kicking off between 00:00 and 01:00 London.
+ */
+describe("today is the London day (K5)", () => {
+  const bst = (day: string, time: string) => new Date(`${day}T${time}:00.000+01:00`);
+
+  it("00:30 BST: last night's match, still live, is yesterday's, so it blocks; it is not 'today's match'", () => {
+    // 00:30 BST on Wed 15 Jul is 23:30 UTC on Tue 14 Jul: UTC midnight
+    // still called Tuesday "today".
+    const now = bst("2026-07-15", "00:30");
+    const matches: SelectableMatch[] = [
+      { id: "last-night", date: bst("2026-07-14", "21:30"), status: "UPCOMING" },
+      { id: "next-week", date: bst("2026-07-21", "21:30"), status: "UPCOMING" },
+    ];
+    expect(selectRegistrationMatch(matches, now)).toBeNull();
+    expect(eligibleRegistrationMatch(matches, "next-week", now)).toBeNull();
+  });
+
+  it("a match kicking off at 00:15 London is today's match all that London day, not yesterday's", () => {
+    // 00:15 BST on Wed 15 Jul is 23:15 UTC on Tue 14 Jul.
+    const tonight = { id: "midnight-game", date: bst("2026-07-15", "00:15"), status: "UPCOMING" };
+    const now = bst("2026-07-15", "12:00");
+    expect(selectRegistrationMatch([tonight], now)?.id).toBe("midnight-game");
+    expect(eligibleRegistrationMatch([tonight], "midnight-game", now)?.id).toBe("midnight-game");
+  });
+
+  it("in winter (GMT) nothing changes: London midnight is UTC midnight", () => {
+    const gmt = (day: string, time: string) => new Date(`${day}T${time}:00.000Z`);
+    const now = gmt("2026-11-11", "00:30");
+    const matches: SelectableMatch[] = [
+      { id: "last-night", date: gmt("2026-11-10", "21:30"), status: "UPCOMING" },
+      { id: "next-week", date: gmt("2026-11-17", "21:30"), status: "UPCOMING" },
+    ];
+    expect(selectRegistrationMatch(matches, now)).toBeNull();
+    const completed = [{ ...matches[0], status: "COMPLETED" }, matches[1]];
+    expect(selectRegistrationMatch(completed, now)?.id).toBe("next-week");
+  });
+});

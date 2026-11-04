@@ -137,7 +137,7 @@ async function request(
   vi.setSystemTime(new Date(KICKOFF.getTime() - world.hoursOut * 3600_000));
   captured.length = 0;
   vi.spyOn(console, "error").mockImplementation(() => {});
-  await composeChaseText({ groupId: "g1", kind, shortBelow: world.shortBelow });
+  await composeChaseText({ groupId: "g1", kind, matchId: MATCH.id, shortBelow: world.shortBelow });
   expect(create, `composeChaseText(${kind}) issued no request`).toHaveBeenCalled();
   return captured[0];
 }

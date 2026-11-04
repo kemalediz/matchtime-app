@@ -849,6 +849,10 @@ export const en = {
   // ── rows 61, 62: the recruit refusals (recruit.ts) ─────────────────
 
   recruit_no_match: "There's no upcoming match to invite players to.",
+  /** No next match because the last game is still not finished (club
+   *  summary B4): the selector holds every later match until it is. */
+  recruit_no_match_unfinished: (p: { when: string }): string =>
+    `There's no upcoming match to invite players to yet: the game on ${p.when} hasn't been finished. Once its score is in or it's closed, I can invite players for the next one.`,
   recruit_full_squad: (p: { matchName: string }): string =>
     `The squad for *${p.matchName}* is already full, so there are no open spots to recruit for.`,
 

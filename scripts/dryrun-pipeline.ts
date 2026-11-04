@@ -150,6 +150,7 @@ import { t as strings } from "../src/lib/i18n/t.ts";
 import { normaliseLang } from "../src/lib/i18n/lang.ts";
 import { contradictsSquadState, type SquadTruth } from "../src/lib/group-copy.ts";
 import { db } from "../src/lib/db.ts";
+import { findNextMatch } from "../src/lib/next-match.ts";
 import type { AttendanceRow, Member, Route, SquadState } from "../src/lib/pipeline/types.ts";
 
 /** Sutton FC. Overridable so the harness is not welded to one customer. */
@@ -1465,29 +1466,29 @@ async function runChases(groupId: string): Promise<void> {
   const repeat = Math.max(1, Number(process.env.REPEAT ?? 1));
 
   // The kickoff the header is computed against: the same match
-  // `composeChaseText` reads (the next one with an open deadline).
+  // `composeChaseText` reads (the club's next match, next-match.ts).
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId },
     select: { id: true },
   });
   const match = org
-    ? await db.match.findFirst({
-        where: {
-          activity: { orgId: org.id },
-          status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-          attendanceDeadline: { gt: new Date() },
-        },
-        orderBy: { date: "asc" },
-        select: {
-          date: true,
-          maxPlayers: true,
-          attendances: {
-            where: { status: { in: ["CONFIRMED", "BENCH"] } },
-            orderBy: { position: "asc" },
-            select: { status: true, user: { select: { name: true } } },
+    ? await findNextMatch(org.id, new Date(), (where) =>
+        db.match.findMany({
+          where,
+          orderBy: { date: "asc" },
+          select: {
+            id: true,
+            status: true,
+            date: true,
+            maxPlayers: true,
+            attendances: {
+              where: { status: { in: ["CONFIRMED", "BENCH"] } },
+              orderBy: { position: "asc" },
+              select: { status: true, user: { select: { name: true } } },
+            },
           },
-        },
-      })
+        }),
+      )
     : null;
   // THE SAME GUARD THE ANALYZE PATH APPLIES (`composeSquadStateReply`),
   // read-only here: a chase that states a count, a shortfall, a full

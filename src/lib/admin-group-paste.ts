@@ -37,7 +37,7 @@ import { t } from "./i18n/t";
 import { loadOrganiserNames } from "./organiser-names";
 import { cancelAttendance, registerAttendance } from "./attendance";
 import type { AttendanceEventContext } from "./attendance-events";
-import { selectRegistrationMatch } from "./registration-match-select";
+import { findNextMatch } from "./next-match";
 import { resolveOrProvisionByName } from "./resolve-or-provision-name";
 import { isDeliberateNameProvisionable } from "./resolve-sender";
 import { adminGroupSourceRef } from "./admin-added";
@@ -73,14 +73,10 @@ export interface PasteReply {
  *  late" line rather than silence. */
 const EXPIRED_ANSWER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/** The club's next match, picked against the caller's `now` (the same
- *  instant the rest of the paste uses), never the wall clock. */
+/** The club's next match (`next-match.ts`), picked against the caller's
+ *  `now` (the same instant the rest of the paste uses), never the wall clock. */
 async function registrationMatch(orgId: string, now: Date) {
-  const candidates = await db.match.findMany({
-    where: { activity: { orgId }, status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] } },
-    orderBy: { date: "asc" },
-  });
-  return selectRegistrationMatch(candidates, now) ?? null;
+  return findNextMatch(orgId, now, (where) => db.match.findMany({ where, orderBy: { date: "asc" } }));
 }
 
 async function currentSquad(matchId: string): Promise<Array<{ userId: string; status: SquadStatus }>> {

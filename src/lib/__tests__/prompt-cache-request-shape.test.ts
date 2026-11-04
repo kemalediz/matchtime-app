@@ -164,7 +164,7 @@ afterEach(() => {
 describe("composeChaseText cache breakpoints", () => {
   it("puts no clock-derived value in any cached block", async () => {
     RESPONSE_TEXT = "Need 10 more for Tuesday.";
-    await composeChaseText({ groupId: "g1", kind: "daily-in-list" });
+    await composeChaseText({ groupId: "g1", kind: "daily-in-list", matchId: MATCH.id });
     expect(create).toHaveBeenCalledTimes(1);
     const cached = cachedUserTexts(captured[0]).join("\n");
     for (const v of VOLATILE) expect(cached, `cached block must not contain "${v}"`).not.toContain(v);
@@ -174,7 +174,7 @@ describe("composeChaseText cache breakpoints", () => {
     // Since 2026-10-20 the facts are the whole user turn (chase-lead.ts),
     // which is never cached; the system prompt is the only cached block.
     RESPONSE_TEXT = "Need 10 more for Tuesday.";
-    await composeChaseText({ groupId: "g1", kind: "daily-in-list" });
+    await composeChaseText({ groupId: "g1", kind: "daily-in-list", matchId: MATCH.id });
     const fresh = freshTexts(captured[0]).join("\n");
     expect(fresh).toMatch(/^Kickoff: .* \((?:today|tomorrow|in \d+ days)\)$/m);
     expect(cachedTexts(captured[0])).toHaveLength(1);
@@ -182,9 +182,9 @@ describe("composeChaseText cache breakpoints", () => {
 
   it("sends a byte-identical cached prefix 20 minutes later", async () => {
     RESPONSE_TEXT = "Need 10 more for Tuesday.";
-    await composeChaseText({ groupId: "g1", kind: "daily-in-list" });
+    await composeChaseText({ groupId: "g1", kind: "daily-in-list", matchId: MATCH.id });
     vi.setSystemTime(new Date("2026-08-31T12:20:00.000Z"));
-    await composeChaseText({ groupId: "g1", kind: "daily-in-list" });
+    await composeChaseText({ groupId: "g1", kind: "daily-in-list", matchId: MATCH.id });
     expect(cachedTexts(captured[1])).toEqual(cachedTexts(captured[0]));
   });
 });

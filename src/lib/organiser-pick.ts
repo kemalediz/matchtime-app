@@ -47,6 +47,7 @@ import { isClubOperational } from "./club-approval-state";
 import { billingQuietWhere, isBillingPaused } from "./club-billing-rules";
 import { getOrgFeatures } from "./org-features";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
+import { postingMatchWhere } from "./scheduler-windows";
 import { madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
 import { QUIET_HOURS_SELECT, quietHoursOf } from "./message-hours";
 import { summariseClubDisplayRatings } from "./player-rating";
@@ -300,8 +301,11 @@ export async function sweepOrganiserPicks(orgId: string, now: Date = new Date())
   if (!isClubOperational(org)) return out;
   if (!(await getOrgFeatures(orgId)).attendance) return out;
 
-  const matches = await db.match.findMany({
-    where: { activity: { orgId }, isHistorical: false, status: { in: [...LIVE] } },
+  // The posting rule's matches (`postingMatchWhere`): the live ones, swept
+  // below, and the cancelled ones whose London day may still hold the
+  // fixture's next match (club summary B4, decision K5), never swept.
+  const loaded = await db.match.findMany({
+    where: postingMatchWhere(orgId, now),
     select: {
       id: true,
       date: true,
@@ -313,10 +317,11 @@ export async function sweepOrganiserPicks(orgId: string, now: Date = new Date())
     },
     orderBy: { date: "asc" },
   });
+  const live = loaded.filter((m) => (LIVE as readonly string[]).includes(m.status));
 
-  for (const m of matches) {
+  for (const m of live) {
     try {
-      await sweepOneMatch(org, m, matches, now, out);
+      await sweepOneMatch(org, m, loaded, now, out);
     } catch (err) {
       console.error(`[organiser-pick] org ${orgId} match ${m.id}: sweep failed:`, err);
     }
@@ -360,7 +365,7 @@ async function sweepOneMatch(
     return;
   }
 
-  if (!isNextUpcomingForPosting(all, m)) return;
+  if (!isNextUpcomingForPosting(all, m, now)) return;
 
   const reference = open ?? lastClosed;
   const drops = await dropsSince(m.id, reference?.createdAt ?? new Date(0));

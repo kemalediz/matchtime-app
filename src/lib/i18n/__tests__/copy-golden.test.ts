@@ -330,6 +330,11 @@
  *     confirmed and with no fee at all, the partner ask's fee). No existing
  *     case changed: a confirmed or unset fee reads as before.
  *
+ *   - 2026-11-04, club summary slice B4 (one next match, decision K5): ADDED
+ *     "R62b": the recruit blast's refusal when the last game is still not
+ *     finished (no next match by the one rule). R62, the plain refusal, is
+ *     unchanged.
+ *
  *   - A deliberate CHANGE across the whole English document (2026-10-06,
  *     Kemal: "remove long dashes"). Every em and en dash used as
  *     punctuation in the English table was rewritten as a comma, a
@@ -424,6 +429,7 @@ import {
   buildTeamSheet,
   buildTeamSwapReply,
   recruitNoMatchRefusal,
+  recruitNoMatchUnfinishedRefusal,
   teamGenReasonNotEnough,
   teamGenReasonNotFound,
   teamGenReasonStatus,
@@ -1110,6 +1116,7 @@ function cases(lang: Lang): Case[] {
   add("R131h buildSwapRefusedReply / no slot to move", buildSwapRefusedReply({ a: "David", b: "Elvin Aliyev", why: { reason: "no-slot-to-move", name: "Elvin Aliyev" }, lang }));
   add("R61 buildRecruitFullSquadRefusal", buildRecruitFullSquadRefusal({ matchName: "Tuesday 7-a-side", lang }));
   add("R62 RECRUIT_NO_MATCH_REFUSAL", recruitNoMatchRefusal(lang));
+  add("R62b recruitNoMatchUnfinishedRefusal / last game not finished (B4)", recruitNoMatchUnfinishedRefusal({ when: lang === "tr" ? "3 Kasım Salı" : "Tue 3 Nov", lang }));
   add("R60 RATING_PROGRESS_NO_MATCH_REASON", t(lang).rating_progress_no_match);
   add("R66 balancer reasons / not found", teamGenReasonNotFound(lang));
   add("R66 balancer reasons / completed", teamGenReasonStatus("COMPLETED", lang));

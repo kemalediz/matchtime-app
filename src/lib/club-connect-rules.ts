@@ -13,7 +13,7 @@ import { t } from "./i18n/t";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import type { SportPreset } from "./sport-presets";
 import { LIVE_SPORTS, livePresetForSide, type LiveSports } from "./pool/sports";
-import { londonDateTimeToUtc, formatLondon } from "./london-time";
+import { londonDayStart } from "./london-time";
 import { VENUE_MIN_LENGTH } from "./activity-update";
 
 // ── The numbers (section 7) ─────────────────────────────────────────────
@@ -126,9 +126,10 @@ export function sportForPlayersPerSide(n: number, live: LiveSports = LIVE_SPORTS
 // Moved to the client-safe `./phone` (2026-11-02) so admin pages can use it.
 export { formatPhoneForDisplay } from "./phone";
 
-/** 00:00 London on the day `now` falls on: where "a day" starts for caps. */
+/** 00:00 London on the day `now` falls on: where "a day" starts for caps.
+ *  The same day as the next match's (`londonDayStart`, london-time.ts). */
 export function londonMidnight(now: Date): Date {
-  return londonDateTimeToUtc(formatLondon(now, "yyyy-MM-dd"), "00:00");
+  return londonDayStart(now);
 }
 
 // ── The status card ─────────────────────────────────────────────────────

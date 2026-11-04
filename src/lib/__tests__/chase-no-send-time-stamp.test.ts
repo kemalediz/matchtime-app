@@ -121,7 +121,7 @@ function composePrompt(args: CreateArgs): string {
 async function request(kind: ChaseKind): Promise<CreateArgs> {
   captured.length = 0;
   vi.spyOn(console, "error").mockImplementation(() => {});
-  await composeChaseText({ groupId: "g1", kind });
+  await composeChaseText({ groupId: "g1", kind, matchId: MATCH.id });
   expect(create, `composeChaseText(${kind}) issued no request`).toHaveBeenCalled();
   return captured[0];
 }

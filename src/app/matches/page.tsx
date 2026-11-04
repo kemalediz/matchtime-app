@@ -12,6 +12,7 @@ import { t } from "@/lib/i18n/t";
 import { ResultScore } from "@/components/match/result-score";
 import { matchSquadNumbers } from "@/lib/squad-short";
 import { squadBarColor } from "@/lib/squad-bar";
+import { upcomingMatchesWhere } from "@/lib/next-match";
 
 // IMPORTANT: every user-facing time on this page is rendered in London
 // wall-clock via formatLondon. Plain date-fns format() uses the runtime's
@@ -37,8 +38,11 @@ export default async function MatchesPage() {
 
   const orgId = membership.orgId;
 
+  // The club's live matches from today, London (`upcomingMatchesWhere`, club
+  // summary B4): the first is the club's next match; a cancelled game is not
+  // upcoming, and today's stays listed until it is completed.
   const upcomingMatches = await db.match.findMany({
-    where: { activity: { orgId }, date: { gte: new Date() } },
+    where: upcomingMatchesWhere(orgId, new Date()),
     orderBy: { date: "asc" },
     include: {
       activity: { include: { sport: true } },

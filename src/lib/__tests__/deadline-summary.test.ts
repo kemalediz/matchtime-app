@@ -218,6 +218,17 @@ describe("the deadline summary", () => {
     expect(h.state.claimed.has("m-next:deadline-summary")).toBe(false);
   });
 
+  it("K5 (club summary B4): held on the day of an earlier game of the fixture that was cancelled; the cancelled game gets none", async () => {
+    const cancelled = fridayMatch({ id: "m-cancelled", status: "CANCELLED", date: new Date("2026-10-05T19:30:00.000Z"), attendances: [] });
+    h.state.matches = [cancelled, fridayMatch()];
+    // Mon 5 Oct 21:05: the deadline passed, but the cancelled game's London day is not over.
+    expect((await sendDueDeadlineSummaries(club(), MON_2105)).sent).toBe(0);
+    expect(h.state.claimed.size).toBe(0);
+    // Tue 6 Oct 09:05: the cancelled day is over, the summary goes out, for the live game only.
+    expect((await sendDueDeadlineSummaries(club(), new Date("2026-10-06T08:05:00.000Z"))).sent).toBe(1);
+    expect([...h.state.claimed]).toEqual(["m-fri:deadline-summary"]);
+  });
+
   it("a club without the setting (Sutton) gets nothing", async () => {
     h.state.org = { ...h.state.org!, dropOutDeadlineDay: null, dropOutDeadlineTime: null };
     expect((await sendDueDeadlineSummaries(club(), MON_2105)).sent).toBe(0);

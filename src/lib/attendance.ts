@@ -17,6 +17,8 @@ import { t } from "./i18n/t";
 import { dayTimeLabel, timeLabel, weekdayTimeLabel } from "./i18n/dates";
 import { canTakeFreePlace, normaliseBenchPickMode, ORGANISER_PICK_BENCH_NOTE } from "./squad-capacity";
 import { loadReclaimUserIds } from "./squad-reclaim";
+import { londonDayStart } from "./london-time";
+import { inFlightWhere } from "./next-match";
 
 /**
  * Why a caller is asking for BENCH.
@@ -151,19 +153,14 @@ export async function registerAttendance(
   // cron. Without this guard, the same race that bit the WhatsApp
   // analyzer (Kemal/Izzet/Baki silently registered for the May 12
   // match minutes after the May 5 match-day deadline) would happen
-  // again via the UI. Mirrors the rule in
-  // analyze/route.ts:findRegistrationMatch.
+  // again via the UI. The selector's own block (`selectRegistrationMatch`)
+  // as a query (`inFlightWhere`, next-match.ts), with "today" the London day
+  // (club summary B4, decision K5; before B4 UTC midnight).
   {
-    const todayStart = new Date();
-    todayStart.setUTCHours(0, 0, 0, 0);
-    if (match.date >= todayStart) {
+    const now = new Date();
+    if (match.date >= londonDayStart(now)) {
       const inFlight = await db.match.findFirst({
-        where: {
-          activity: { orgId: match.activity.orgId },
-          status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-          date: { lt: todayStart },
-          id: { not: matchId },
-        },
+        where: inFlightWhere(match.activity.orgId, now, matchId),
         select: { id: true, date: true },
       });
       if (inFlight) {
