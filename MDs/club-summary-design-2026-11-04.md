@@ -881,6 +881,81 @@ most one per DM handler).
   is at hand there, and the whole summary would cost more than each.
 - `loadClubSummary` is therefore not called on the HQ or DM paths at all.
 
+### 3.11 As built in slice A4 (the web pages and actions read the same row facts)
+
+Built on `refactor/club-summary-a4` (PR against `refactor/club-summary`, rebased onto A3). No value
+changes: the web characterisation (`src/app/__tests__/web-club-summary-characterisation.test.ts`:
+the pay, collect, month, month collect, admin months and match pages, `GET /api/org/settings`,
+`getTeamsReady` and `requireMatchCollectorOrAdmin`, over nine club shapes (the five fixtures, Sutton
+in Turkish, and three variants that switch on what the five leave off), as the organiser, a player
+and the collector, the HTML, JSON, redirect or 404 of each load snapshotted) was written first and
+green on the old pages, on A2 and again on A3, and the slice leaves it untouched. $0: no model, no
+key.
+
+**One type for every door.** For the same reason as A3 (3.10), measured on the pages: each keeps its
+own match rule in Phase A (D7: the dashboard's instant, the match list's no-status filter, the match
+page's in-flight block), so the whole summary would add four to seven reads per load for games,
+matches and months no page uses. So the web pages read A3's `ClubRowFacts`, from the club row each
+already reads (`CLUB_ROW_SELECT` rides on its match or membership query). A4 was built in parallel
+with its own near-identical type; on review the two were made one, A3's name and shape kept, and
+the web's two extra facts of the row added to it (additive, every A3 caller and its snapshot
+unchanged):
+- `payments.switches`: the pay method switches as stored (`methods` is what a player can use);
+  the settings page shows the switches, and `/pay` feeds them to `availablePayMethods`.
+- `routine.teamsReadyChosen`: an organiser has set Teams ready (`getTeamsReady`'s "default").
+
+`__tests__/row-facts.test.ts` is the one equality test for both slices: every field equals the
+whole summary's for every shape, and the two extras are the row's columns. `club-row-facts.ts`
+gains `loadClubRowFacts(orgId, where)`: the same facts in one read, for a server action given only
+the club's id (`getTeamsReady`), fail-soft like `clubRowFactsOf`.
+
+**What moved.**
+- `/pay/[matchId]`: the collector, the pay method switches and charges (into
+  `availablePayMethods`), the instructions and squad mode (into `directPayInstructions`).
+- `/collect/[matchId]` and `requireMatchCollectorOrAdmin`: the collector; the club's team names.
+- `/month`: the monthly gate, the collector, the instructions. `/month/collect`, `/admin/months`:
+  the monthly gate.
+- `/matches/[matchId]`: the team names, the MoM chooser, collection and the collector (the payments
+  link), the rolling squad (carry over), the bench pick mode (organiser picks), the squad mode (the
+  month's list). Its second club read (`orgPay`) is gone: those columns ride on the match query.
+- `GET /api/org/settings`: every club fact it returns (the switches, payment flags and pay method
+  switches, the players' group, the mute switch, Stripe, the collector, the weekly routine, the
+  monthly squad settings, the team names), through `settingsFactsOf`, same keys and order.
+- `getTeamsReady`: `routine.teamsReady`, `teamsReadyChosen`, `groups.hq.groupId`, `squad.mode`, in
+  one read (`loadClubRowFacts`).
+
+**Fail-soft.** If the facts cannot be built or read, one log line ("the club summary could not be
+read") for that build and the page runs today's reads of the same row (each page keeps them side
+by side with the new source, so Phase B deletes one side). A test makes `clubRowFacts` throw for
+every shape, viewer and load and checks the same output and one log line per attempt (the collect
+page makes two: the page and the collector check). Two existing tests (`api-privacy`,
+`teams-ready`) handed in a partial club row, which sent them down the fallback; they now hand in a
+whole row. (A probe that turns the fallback into a throw found one more, outside A4:
+`club-billing-replies.test.ts` reaches the admin group with a partial row.)
+
+**Left, and why.**
+- `app/page.tsx` (dashboard) and `matches/page.tsx`: their only club facts are the name and the
+  language; their next match and the "low" colour are their own rules (D7, D1), which Phase A keeps.
+- `admin/settings/page.tsx`: a client component with no reads; its facts come from the settings
+  route and the server actions.
+- The language and the club's name stay raw reads of the row on every page (F9 agrees, as A2 left
+  them); `nameEditable` (`approvalStatus === "draft"`: the summary has no draft predicate), billing on
+  `/admin/months`, `featurePlayerPool` on the match page, and `/month`'s list of the player's other
+  monthly clubs (a filter over other clubs) are not summary facts.
+- `payByMethod`'s guards read `resolvePayContext`'s row (direct-payment.ts, shared with the DM "Paid"
+  path); the Connect actions read `stripeConnectAccountId` to call Stripe and write.
+- `admin/layout.tsx`'s Months link: the same monthly gate as `/admin/months`, but not on A4's list.
+- Every disagreement stays (Phase A): `/month` offers "I've paid" with both payment flags off and
+  `/pay` reads neither (D3), the pay page's "No fee set yet" against the DM's game fee (D9, K3), the
+  web IN with attendance off (D8, K4).
+- The source ratchet does not tighten: every A4 file keeps today's read as its fallback, so it still
+  names the columns (as A2's route).
+
+**Reads per page load** (the fake world, real code paths, as the organiser): the match page one
+fewer for every shape (Sutton 12 to 11 and 17 to 16, FNF 17 to 16, the Vets 15 to 14 and 17 to 16,
+ratings only 14 to 13, muted 17 to 16); every other page the same (pay 3 to 4, collect 2 to 4, month
+2 weekly or 8 monthly, month collect 2 or 21, admin months 4 or 20, settings 6, Teams ready 3).
+
 ---
 
 ## 4. Migration, in slices
@@ -991,6 +1066,8 @@ merged, not before.
 - Tests: the existing `e2e/web` specs; one new web spec per page group that renders it for
   a monthly club and a weekly club ($0).
 - Model input: none.
+- As built: the pages read A3's row facts (`ClubRowFacts`) from the row they already read, not the
+  whole summary, and the dashboard and the match list did not move (section 3.11).
 
 ### 4.3 Phase B: one definition per fact
 
