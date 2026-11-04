@@ -49,7 +49,8 @@ vi.mock("@/lib/help-club-facts", async (orig) => ({
   loadHelpClubFacts: (...a: unknown[]) => loadHelpClubFacts(...a),
 }));
 
-import { readDmHelp, handleDmHelp } from "@/lib/dm-help";
+import { readDmHelp, handleDmHelp, helpGivesWayToOwnFee } from "@/lib/dm-help";
+import type { MyPayments } from "@/lib/my-payments-rules";
 import { buildHelpReply } from "@/lib/onboarding-conversation";
 import { HELP_CLUB_FACTS_OFF } from "@/lib/help-club-facts";
 import type { PipelineModel } from "@/lib/pipeline/llm";
@@ -127,6 +128,38 @@ describe("readDmHelp: the question extractor reads it (2026-10-28)", () => {
     const m = questionModel({ topic: "how_it_works" });
     expect(await read("   ", m)).toBeNull();
     expect(m.calls).toBe(0);
+  });
+});
+
+describe("helpGivesWayToOwnFee: 'how do I pay?' from a player who owes (2026-11-04)", () => {
+  // The live suite dm-qa-payments-live caught it: the help reader reads
+  // "how do I pay?" as help about payments, which is right, and the help
+  // answered with how fees work and no link, ahead of the DM Q&A that has
+  // HIS fee and HIS pay link. The facts decide, never his words.
+  const tracked = (state: "owed" | "pending_collector" | "paid"): MyPayments => ({
+    kind: "tracked",
+    collectorName: "Colin",
+    methods: ["card"],
+    instructions: null,
+    upcomingFee: 8,
+    lines: [{ matchId: "m1", activityName: "Tuesday 5s", date: new Date("2026-11-03T19:00:00Z"), state, fee: state === "paid" ? null : 8 }],
+  });
+
+  it("help about payments, and he has a fee to settle: the DM Q&A answers", () => {
+    expect(helpGivesWayToOwnFee({ topic: "payments" }, tracked("owed"))).toBe(true);
+    expect(helpGivesWayToOwnFee({ topic: "payments" }, tracked("pending_collector"))).toBe(true);
+  });
+
+  it("nothing of his to settle, or no payments read: the help answers", () => {
+    expect(helpGivesWayToOwnFee({ topic: "payments" }, tracked("paid"))).toBe(false);
+    expect(helpGivesWayToOwnFee({ topic: "payments" }, { kind: "collector" })).toBe(false);
+    expect(helpGivesWayToOwnFee({ topic: "payments" }, { kind: "not_tracked" })).toBe(false);
+    expect(helpGivesWayToOwnFee({ topic: "payments" }, null)).toBe(false);
+  });
+
+  it("help about anything else, or bare help: the help answers, owed or not", () => {
+    expect(helpGivesWayToOwnFee({ topic: null }, tracked("owed"))).toBe(false);
+    expect(helpGivesWayToOwnFee({ topic: "teams" }, tracked("owed"))).toBe(false);
   });
 });
 

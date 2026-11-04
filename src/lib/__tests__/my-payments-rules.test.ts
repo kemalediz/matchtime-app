@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   decideMyPayments,
   formatMyPaymentsBlock,
+  hasFeeToSettle,
   payableMatchIds,
   MY_PAYMENTS_MAX_MATCHES,
   type MyPaymentRow,
@@ -112,6 +113,37 @@ describe("decideMyPayments", () => {
   it("names only the ways the club takes payment (availablePayMethods)", () => {
     const p = only(decideMyPayments(input({ org: { ...ORG, stripeChargesEnabled: false } })));
     expect(p.methods).toEqual(["direct"]);
+  });
+});
+
+describe("hasFeeToSettle: a fee of his own still open (2026-11-04)", () => {
+  // "how do I pay?" from a player who owes is about HIS fee, not how fees
+  // work: the DM help gives way to the DM Q&A, which has his pay link.
+  const settle = (r: Partial<MyPaymentRow>) => hasFeeToSettle(decideMyPayments(input({ rows: [row(r)] })));
+
+  it("owed, or settling with the collector unconfirmed: yes", () => {
+    expect(settle({})).toBe(true);
+    expect(settle({ directPendingAt: new Date() })).toBe(true);
+  });
+
+  it("paid, free, monthly or no fee yet: no", () => {
+    expect(settle({ paidAt: new Date() })).toBe(false);
+    expect(settle({ feeWaivedAt: new Date() })).toBe(false);
+    expect(settle({ paymentMethod: "monthly" })).toBe(false);
+    expect(settle({ fee: null, paymentLinksReleasedAt: null })).toBe(false);
+  });
+
+  it("no matches, the collector, or a club that tracks nothing: no", () => {
+    expect(hasFeeToSettle(decideMyPayments(input({ rows: [] })))).toBe(false);
+    expect(hasFeeToSettle(decideMyPayments(input({ userId: "u-collector" })))).toBe(false);
+    expect(
+      hasFeeToSettle(decideMyPayments(input({ org: { ...ORG, paymentCollectionEnabled: false, paymentTrackingEnabled: false } }))),
+    ).toBe(false);
+  });
+
+  it("one open fee among settled ones is enough", () => {
+    const rows = [row({ matchId: "m-a", paidAt: new Date() }), row({ matchId: "m-b", date: FRI_4 })];
+    expect(hasFeeToSettle(decideMyPayments(input({ rows })))).toBe(true);
   });
 });
 

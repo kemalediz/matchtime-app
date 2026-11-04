@@ -13,15 +13,21 @@
  */
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
-import { PHONE, NAME } from "../helpers/constants";
+import { PHONE, NAME, ORG_ID } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { clearPaymentClaimStub } from "../helpers/stub";
+import type { TestDb } from "../helpers/test-db";
+import { addDmIntentBodies, clearDmIntentStub, clearExtractorStub, clearPaymentClaimStub, helpOn } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
 
 test.beforeEach(() => {
   resetDb();
   clearPaymentClaimStub();
+});
+
+test.afterAll(() => {
+  clearExtractorStub();
+  clearDmIntentStub();
 });
 
 let n = 0;
@@ -74,4 +80,43 @@ test("a player who paid sees it recorded, with no pay link", async ({ request, d
   );
   expect(answer?.text).toContain("paid: payment received and recorded. Nothing to pay.");
   expect(answer?.text).not.toContain("Pay link");
+});
+
+// "How do I pay?" (2026-11-04). The help reader reads it as help about
+// payments (what the live model returned, dm-qa-payments-live), which is
+// right for anyone with nothing to pay. A player who OWES is asking about
+// his own fee: the help gives way and the DM Q&A answers with his pay
+// link. The facts decide (his open fee), never his words.
+const HOW = { en: "how do I pay?", tr: "nasıl ödeyebilirim?" } as const;
+
+function readHowAsPaymentsHelp() {
+  helpOn({ [HOW.en]: { feature: "payments" }, [HOW.tr]: { feature: "payments" } });
+  addDmIntentBodies({ [HOW.en]: "question", [HOW.tr]: "question" });
+}
+
+const lastDmTo = (db: TestDb, phone: string) =>
+  db.one<{ text: string }>(`SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 ORDER BY "createdAt" DESC LIMIT 1`, [
+    digits(phone),
+  ]);
+
+for (const lang of ["en", "tr"] as const) {
+  test(`a player who owes asking how to pay (${lang}) gets his own fee and pay link, not the fees explainer`, async ({
+    request,
+    db,
+  }) => {
+    readHowAsPaymentsHelp();
+    if (lang === "tr") await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
+    const json = await postDm(request, PHONE.player, HOW[lang]);
+    const sent = await lastDmTo(db, PHONE.player);
+    expect(json.handled, `reply sent: ${JSON.stringify(sent?.text)}`).toBe("dm-qa");
+    expect(sent?.text).toMatch(/^\[scoped-qa-stub\]/);
+    expect(sent?.text).toMatch(/: owes £8, not paid yet\. Pay link: https?:\/\/\S+/);
+  });
+}
+
+test("a player with nothing to pay asking how to pay still gets the fees explainer", async ({ request, db }) => {
+  readHowAsPaymentsHelp();
+  const json = await postDm(request, PHONE.rater, HOW.en);
+  expect(json).toMatchObject({ handled: "dm-help", topic: "payments", audience: "player" });
+  expect((await lastDmTo(db, PHONE.rater))?.text).toContain("Match fees: how it works");
 });

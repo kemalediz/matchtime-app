@@ -56,7 +56,9 @@
  *      tap link's own writers or the manage page's; see lib/pool/reply.ts)
  *   9. help, read by the shared question extractor (2026-10-28: "help",
  *      "how do I turn on the player pool?", "havuz nasıl açılır"; the
- *      group's own builder, for the sender's club; see lib/dm-help.ts),
+ *      group's own builder, for the sender's club; see lib/dm-help.ts;
+ *      help about payments from a player with a fee still open gives way
+ *      to the Q&A, which has his pay link, 2026-11-04),
  *      then scoped Q&A when the one DM read says it is a question, else
  *      ignore
  *
@@ -1582,13 +1584,26 @@ export async function POST(request: Request) {
     //   the sender's club, worded for an organiser or a player. One call,
     //   under that club's daily AI cap. Anything else carries on to the
     //   scoped Q&A, unchanged.
+    //
+    //   Help about payments from a player with a fee of his own still open
+    //   ("how do I pay?" while he owes, 2026-11-04) gives way to the scoped
+    //   Q&A, which answers with his fee and his pay link
+    //   (`helpGivesWayToOwnFee`): the facts decide, not his words. Only
+    //   when the DM's one read says it is a question, so it is never left
+    //   unanswered.
+    const qa = await pickQaOrgAndQuote(user.id, quoted);
     {
-      const { handleDmHelp, pickDmHelpClub, readDmHelp } = await import("@/lib/dm-help");
+      const { handleDmHelp, helpGivesWayForOwnFee, pickDmHelpClub, readDmHelp } = await import("@/lib/dm-help");
       const club = await pickDmHelpClub(user.id);
       const req = club
         ? await withOrgAiBudget(club.membership.orgId, () => readDmHelp({ text, authorName: user.name, now: new Date() }))
         : null;
-      if (req) {
+      const ownFee =
+        !!req &&
+        !!qa.orgId &&
+        (await helpGivesWayForOwnFee(req, { userId: user.id, orgId: qa.orgId })) &&
+        (await reader.read(user.id)).intent === "question";
+      if (req && !ownFee) {
         const help = await handleDmHelp({ userId: user.id, req, envelopePhone: phone, poolEnv: () => poolEnvForApiRequest(request) });
         if (help) return NextResponse.json({ ok: true, ...help });
       }
@@ -1604,8 +1619,8 @@ export async function POST(request: Request) {
     // "?" and question-word gate, with a Turkish word list beside it).
     // A swipe-reply about one of his clubs' matches is a question about
     // that club, and is read against the quoted message; a quote about
-    // another club's match is dropped (quoted-reply context S3).
-    const qa = await pickQaOrgAndQuote(user.id, quoted);
+    // another club's match is dropped (quoted-reply context S3). The club
+    // and the quote are picked above, before the help.
     const qaOrgId = qa.orgId;
     if ((await reader.read(user.id)).intent === "question") {
       const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;

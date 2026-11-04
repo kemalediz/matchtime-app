@@ -56,6 +56,8 @@ import { extractForRoute } from "@/lib/pipeline/extractors";
 import { extractorStubFromEnv } from "@/lib/pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "@/lib/pipeline/llm";
 import type { HelpRequest } from "@/lib/pipeline/types";
+import { hasFeeToSettle, type MyPayments } from "@/lib/my-payments-rules";
+import { readMyPayments } from "@/lib/my-payments";
 
 type Env = Record<string, string | undefined>;
 
@@ -92,6 +94,30 @@ export async function readDmHelp(args: {
     console.error("[dm-help] help read failed:", err instanceof Error ? err.message : "failed");
     return null;
   }
+}
+
+/**
+ * Does the help give way to the DM Q&A (2026-11-04)? "How do I pay?" is
+ * help about payments, and the help explains how fees work, with no link.
+ * For a player with a fee of his own still open that is the wrong answer:
+ * he is asking how to pay THAT, and the DM Q&A has his fee and his pay
+ * link (`my-payments-rules.ts`). The facts decide, never his words: help
+ * about payments, and he has a fee to settle.
+ */
+export function helpGivesWayToOwnFee(req: HelpRequest, payments: MyPayments | null): boolean {
+  return req.topic === "payments" && !!payments && hasFeeToSettle(payments);
+}
+
+/** `helpGivesWayToOwnFee` against his payments in the club the DM Q&A
+ *  would answer for. Reads them only for help about payments, mints no pay
+ *  link, and a failed read leaves the answer to the help. */
+export async function helpGivesWayForOwnFee(req: HelpRequest, args: { userId: string; orgId: string }): Promise<boolean> {
+  if (req.topic !== "payments") return false;
+  const payments = await readMyPayments({ orgId: args.orgId, userId: args.userId, upcomingFee: null }).catch((err) => {
+    console.error(`[dm-help] own payments read failed for org=${args.orgId}; the help answers:`, err);
+    return null;
+  });
+  return helpGivesWayToOwnFee(req, payments);
 }
 
 type HelpMembership = {
