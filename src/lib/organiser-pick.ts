@@ -76,6 +76,9 @@ import {
 } from "./organiser-pick-rules";
 import { NOT_CANCELLED } from "@/lib/played-match";
 import { hqLogSince } from "./admin-group-log";
+import { loadPlayerNames, usableName } from "./player-display-name";
+import { adminPlayerLabel } from "./admin-player-label";
+import { isPlaceholderEmail } from "./cross-club-link-rules";
 import { readPickReply, type PickReaderContext, type PickReaderInput, type PickReaderPerson } from "./organiser-pick-reader";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
@@ -185,8 +188,68 @@ export async function loadPickListRows(
   });
 }
 
+/** Both labels for a player in a pick message (2026-11-04). */
+interface PickName {
+  /** For the organisers (the pick list, the admin group, their DMs): the
+   *  name MatchTime knows him by, else his phone, else the club's word for
+   *  "unnamed" (`adminPlayerLabel`, as on the admin roster). */
+  admin: string;
+  /** For the players' group (A2): the name, else the word for "unnamed".
+   *  A phone number is never a name there (`player-display-name.ts`). */
+  plain: string;
+}
+
+/**
+ * THE NAME A PICK MESSAGE SHOWS (2026-11-04). FNF sandbox replay: a
+ * bencher imported with no name was "3. ? (no position, new)" on the
+ * organisers' list, from a hard-coded "?", while the squad post called him
+ * "(unnamed)". Now the shared readers decide: the best name MatchTime holds
+ * (`loadPlayerNames`: his name, an alias, the WhatsApp name he posts
+ * under), and for the organisers only, his phone when there is no name
+ * (the stored one, or the one a WhatsApp-imported placeholder email
+ * carries; never a real email). A guest's phone is never shown (D7): his
+ * club is beside his line instead. Never throws: a failed read leaves the
+ * plain `User.name` or the word for "unnamed".
+ */
+async function loadPickNames(orgId: string, lang: string | null | undefined, userIds: string[]): Promise<Map<string, PickName>> {
+  const out = new Map<string, PickName>();
+  const ids = [...new Set(userIds)];
+  if (ids.length === 0) return out;
+  const unnamed = t(lang).unnamed;
+  const [users, guests, shown] = await Promise.all([
+    Promise.resolve()
+      .then(() => db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, phoneNumber: true, email: true } }))
+      .catch(() => [] as Array<{ id: string; name: string | null; phoneNumber: string | null; email: string | null }>),
+    Promise.resolve()
+      .then(() => db.membership.findMany({ where: { orgId, userId: { in: ids }, ...GUEST_MEMBER_WHERE }, select: { userId: true } }))
+      .catch(() => [] as Array<{ userId: string }>),
+    loadPlayerNames(orgId, ids, lang),
+  ]);
+  const guestIds = new Set((guests ?? []).map((g) => g.userId));
+  for (const u of users ?? []) {
+    const name = shown.get(u.id)?.name ?? usableName(u.name);
+    const guest = guestIds.has(u.id);
+    out.set(u.id, {
+      admin: adminPlayerLabel(
+        {
+          name,
+          // Only a placeholder email, for the phone it encodes: a real
+          // address is never put in a WhatsApp message.
+          email: !guest && isPlaceholderEmail(u.email) ? u.email : null,
+          phoneNumber: guest ? null : u.phoneNumber,
+        },
+        lang,
+      ),
+      plain: name ?? unnamed,
+    });
+  }
+  return out;
+}
+
 interface MatchWorld {
   id: string;
+  orgId: string;
+  lang: string | null;
   date: Date;
   maxPlayers: number;
   activityId: string;
@@ -198,8 +261,10 @@ interface MatchWorld {
 }
 
 /** The squad as it stands: confirmed and the waiting list (BENCH rows of
- *  members who have not left), both in position order. */
-async function loadMatchWorld(matchId: string): Promise<MatchWorld | null> {
+ *  members who have not left), both in position order. `names: false`
+ *  (the sweep, on every poll) leaves the plain `User.name`; whatever is
+ *  then said to anyone is labelled first (`withPickNames`). */
+async function loadMatchWorld(matchId: string, opts: { names?: boolean } = {}): Promise<MatchWorld | null> {
   const m = await db.match.findUnique({
     where: { id: matchId },
     select: {
@@ -207,7 +272,7 @@ async function loadMatchWorld(matchId: string): Promise<MatchWorld | null> {
       date: true,
       maxPlayers: true,
       activityId: true,
-      activity: { select: { name: true, venue: true, orgId: true } },
+      activity: { select: { name: true, venue: true, orgId: true, org: { select: { language: true } } } },
       attendances: {
         orderBy: { position: "asc" },
         select: { userId: true, status: true, user: { select: { name: true } } },
@@ -215,6 +280,7 @@ async function loadMatchWorld(matchId: string): Promise<MatchWorld | null> {
     },
   });
   if (!m) return null;
+  const lang = m.activity.org?.language ?? null;
   const left = new Set(
     (
       await db.membership.findMany({
@@ -223,9 +289,14 @@ async function loadMatchWorld(matchId: string): Promise<MatchWorld | null> {
       })
     ).map((x) => x.userId),
   );
-  const named = (a: (typeof m.attendances)[number]): PickCandidate => ({ userId: a.userId, name: a.user.name ?? "?" });
-  return {
+  const named = (a: (typeof m.attendances)[number]): PickCandidate => ({
+    userId: a.userId,
+    name: usableName(a.user.name) ?? t(lang).unnamed,
+  });
+  const world: MatchWorld = {
     id: m.id,
+    orgId: m.activity.orgId,
+    lang,
     date: m.date,
     maxPlayers: m.maxPlayers,
     activityId: m.activityId,
@@ -235,6 +306,14 @@ async function loadMatchWorld(matchId: string): Promise<MatchWorld | null> {
     waiting: m.attendances.filter((a) => a.status === "BENCH" && !left.has(a.userId)).map(named),
     dropped: m.attendances.filter((a) => a.status === "DROPPED").map((a) => a.userId),
   };
+  return opts.names === false ? world : withPickNames(world);
+}
+
+/** The squad and the waiting list under the organisers' labels (`loadPickNames`). */
+async function withPickNames(world: MatchWorld): Promise<MatchWorld> {
+  const labels = await loadPickNames(world.orgId, world.lang, [...world.confirmed, ...world.waiting].map((c) => c.userId));
+  const label = (c: PickCandidate): PickCandidate => ({ userId: c.userId, name: labels.get(c.userId)?.admin ?? c.name });
+  return { ...world, confirmed: world.confirmed.map(label), waiting: world.waiting.map(label) };
 }
 
 /** CONFIRMED to DROPPED moves on the match since `since`, oldest first,
@@ -324,7 +403,7 @@ async function sweepOneMatch(
     return;
   }
 
-  const world = await loadMatchWorld(m.id);
+  const world = await loadMatchWorld(m.id, { names: false });
   if (!world) return;
   const openPlaces = Math.max(0, world.maxPlayers - world.confirmed.length);
 
@@ -334,7 +413,7 @@ async function sweepOneMatch(
     return;
   }
   if (open && now.getTime() >= open.fallbackAt.getTime()) {
-    await runFallback(org, open, world, openPlaces, now);
+    await runFallback(org, open, await withPickNames(world), openPlaces, now);
     out.fallbacks++;
     return;
   }
@@ -448,14 +527,14 @@ async function sweepOneMatch(
   });
   out.opened++;
 
-  const names = await namesOf(announcedIds);
-  const rows = await loadPickListRows(org.id, world.activityId, world.waiting);
+  const names = await namesOf(org.id, org.language, announcedIds);
+  const rows = await loadPickListRows(org.id, world.activityId, (await withPickNames(world)).waiting);
   const fallback = normaliseBenchPickFallback(org.benchPickFallback);
   const message = (audience: "dm" | "group") =>
     buildPickMessage({
       lang: org.language,
       reason,
-      droppedNames: announcedIds.map((id) => names.get(id) ?? "?"),
+      droppedNames: announcedIds.map((id) => names.get(id) ?? t(org.language).unnamed),
       late: announcedIds.length > 0 && announcedLate.length === announcedIds.length,
       activityName: world.activityName,
       whenLabel: dayTimeLabel(org.language, m.date),
@@ -479,10 +558,10 @@ async function closeRound(roundId: string, outcome: string, now: Date): Promise<
   return res.count > 0;
 }
 
-async function namesOf(userIds: string[]): Promise<Map<string, string>> {
-  if (userIds.length === 0) return new Map();
-  const users = await db.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } });
-  return new Map(users.map((u) => [u.id, u.name ?? "?"]));
+/** The organisers' label for each of `userIds` (`loadPickNames`). */
+async function namesOf(orgId: string, lang: string | null | undefined, userIds: string[]): Promise<Map<string, string>> {
+  const labels = await loadPickNames(orgId, lang, userIds);
+  return new Map([...labels].map(([id, n]) => [id, n.admin]));
 }
 
 /**
@@ -537,10 +616,15 @@ async function runFallback(
 
 export interface AppliedPick {
   userId: string;
+  /** The organisers' label (`loadPickNames`): a phone when he has no name. */
   name: string;
   /** Whose place they took: the holder of the team slot actually inherited
    *  when teams exist, else the round's next unfilled drop, else null. */
   replacedName: string | null;
+  /** The same two for the players' group (A2): never a phone. Absent on
+   *  results built before 2026-11-04: `name` and `replacedName` then. */
+  groupName?: string;
+  groupReplacedName?: string | null;
   team: "RED" | "YELLOW" | null;
 }
 
@@ -579,10 +663,11 @@ export async function applyOrganiserPick(args: {
   const now = args.now ?? new Date();
   const match = await db.match.findUnique({
     where: { id: args.matchId },
-    select: { id: true, maxPlayers: true, activity: { select: { orgId: true } } },
+    select: { id: true, maxPlayers: true, activity: { select: { orgId: true, org: { select: { language: true } } } } },
   });
   if (!match) throw new Error("Match not found");
   const orgId = match.activity.orgId;
+  const lang = match.activity.org?.language ?? null;
   const sourceRef = args.roundId ?? "admin:web";
 
   const res = await db.$transaction(async (tx) => {
@@ -687,14 +772,18 @@ export async function applyOrganiserPick(args: {
   const sheetExists = (await db.teamAssignment.count({ where: { matchId: args.matchId } })) > 0;
   const stillOut = new Set(res.rows.filter((r) => r.status === "DROPPED").map((r) => r.userId));
   const openDrops = (res.round?.vacatedByUserIds ?? []).filter((id) => stillOut.has(id)).slice(res.round?.pickedUserIds.length ?? 0);
-  const names = await namesOf([...res.applied, ...res.moves.map((mv) => mv.fromUserId), ...openDrops]);
+  const names = await loadPickNames(orgId, lang, [...res.applied, ...res.moves.map((mv) => mv.fromUserId), ...openDrops]);
+  const unnamed = t(lang).unnamed;
   const applied: AppliedPick[] = res.applied.map((userId, i) => {
     const move = res.moves.find((mv) => mv.toUserId === userId) ?? null;
     const replacedId = move ? move.fromUserId : sheetExists ? null : (openDrops[i] ?? null);
+    const replaced = replacedId ? (names.get(replacedId) ?? null) : null;
     return {
       userId,
-      name: names.get(userId) ?? "?",
-      replacedName: replacedId ? (names.get(replacedId) ?? null) : null,
+      name: names.get(userId)?.admin ?? unnamed,
+      replacedName: replaced?.admin ?? null,
+      groupName: names.get(userId)?.plain ?? unnamed,
+      groupReplacedName: replaced?.plain ?? null,
       team: move ? (move.team as "RED" | "YELLOW") : null,
     };
   });
@@ -768,8 +857,8 @@ export async function announcePickToGroupAndPlayers(matchId: string, result: App
           orgId: org.id,
           kind: "group",
           text: s.pick_group_post({
-            name: a.name,
-            replacedName: a.replacedName,
+            name: a.groupName ?? a.name,
+            replacedName: a.groupName !== undefined ? (a.groupReplacedName ?? null) : a.replacedName,
             team: a.team ? (a.team === "RED" ? labels[0] : labels[1]) : null,
             confirmed: confirmedNow,
             maxPlayers: m.maxPlayers,
@@ -820,11 +909,14 @@ export interface PickReplyOutcome {
 
 const NOT_OURS: PickReplyOutcome = { handled: false, replyText: null };
 
-/** The club members a name or a tag can mean, active only. */
+/** The club members a name or a tag can mean, active only, in a stable
+ *  order (oldest membership first, the id breaking a tie, as the other
+ *  member readers): the pick reader's refs are numbered in it. */
 async function loadClubMembers(orgId: string): Promise<Array<PickCandidate & { phone: string | null }>> {
   const rows = await db.membership.findMany({
     where: { orgId, leftAt: null },
     select: { user: { select: { id: true, name: true, phoneNumber: true } } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
   return rows.filter((r) => !!r.user.name).map((r) => ({ userId: r.user.id, name: r.user.name as string, phone: r.user.phoneNumber }));
 }
@@ -922,8 +1014,8 @@ export async function handlePickReply(input: PickReplyInput): Promise<PickReplyO
   const world = await loadMatchWorld(round.matchId);
   if (!world) return NOT_OURS;
   const members = await loadClubMembers(org.id);
-  const listNames = await namesOf(round.listUserIds);
-  const list: PickCandidate[] = round.listUserIds.map((id) => ({ userId: id, name: listNames.get(id) ?? "?" }));
+  const listNames = await namesOf(org.id, org.language, round.listUserIds);
+  const list: PickCandidate[] = round.listUserIds.map((id) => ({ userId: id, name: listNames.get(id) ?? s.unnamed }));
   const listed = new Set(round.listUserIds);
   const confirmedIds = new Set(world.confirmed.map((c) => c.userId));
   const pendingFresh =
@@ -946,11 +1038,11 @@ export async function handlePickReply(input: PickReplyInput): Promise<PickReplyO
   const otherPeople = others.map(person);
   const pendingUser = found.open && pendingFresh ? round.pendingConfirmUserId! : null;
   const pending = pendingUser
-    ? (refs.get(pendingUser) ?? person({ userId: pendingUser, name: members.find((mm) => mm.userId === pendingUser)?.name ?? "?" }))
+    ? (refs.get(pendingUser) ?? person({ userId: pendingUser, name: members.find((mm) => mm.userId === pendingUser)?.name ?? s.unnamed }))
     : null;
   const tags = (await resolvePickTags(input.mentionNames, members)).map((tg) => ({
     digits: tg.digits,
-    ref: tg.userId ? person({ userId: tg.userId, name: members.find((mm) => mm.userId === tg.userId)?.name ?? "?" }).ref : null,
+    ref: tg.userId ? person({ userId: tg.userId, name: members.find((mm) => mm.userId === tg.userId)?.name ?? s.unnamed }).ref : null,
     whatsappName: tg.whatsappName,
   }));
   const readerCtx: PickReaderContext = {
@@ -1040,7 +1132,7 @@ export async function handlePickReply(input: PickReplyInput): Promise<PickReplyO
   } else if (result.noPlaceFor.length > 0) {
     lines.push(await alreadyFilledText(org.language, await refreshRound(round.id), world));
   }
-  const nameOf = (id: string) => members.find((mm) => mm.userId === id)?.name ?? listNames.get(id) ?? "?";
+  const nameOf = (id: string) => members.find((mm) => mm.userId === id)?.name ?? listNames.get(id) ?? s.unnamed;
   for (const id of result.alreadyIn) lines.push(s.pick_already_in({ name: nameOf(id) }));
   const notListed = result.notOnWaitingList.filter((id) => members.some((mm) => mm.userId === id));
   if (notListed.length > 0) {
@@ -1080,8 +1172,8 @@ async function alreadyFilledText(
   const s = t(lang);
   const lastPicked = round.pickedUserIds[round.pickedUserIds.length - 1] ?? null;
   if (lastPicked && round.lastPickedByUserId) {
-    const names = await namesOf([lastPicked, round.lastPickedByUserId]);
-    return s.pick_already_filled({ name: names.get(lastPicked) ?? "?", pickerName: names.get(round.lastPickedByUserId) ?? "?" });
+    const names = await namesOf(world.orgId, lang, [lastPicked, round.lastPickedByUserId]);
+    return s.pick_already_filled({ name: names.get(lastPicked) ?? s.unnamed, pickerName: names.get(round.lastPickedByUserId) ?? s.unnamed });
   }
   const confirmed = await db.attendance.count({ where: { matchId: world.id, status: "CONFIRMED" } });
   return s.pick_already_filled_full({ confirmed, maxPlayers: world.maxPlayers });

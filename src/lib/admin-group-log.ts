@@ -27,6 +27,19 @@ export const GROUP_QUESTION_ID_PREFIX = "mt:group:";
 export const GROUP_LINE_ID_PREFIX = "group:";
 const NOT_GROUP_ROWS = { NOT: [{ waMessageId: { startsWith: GROUP_QUESTION_ID_PREFIX } }, { waMessageId: { startsWith: GROUP_LINE_ID_PREFIX } }] };
 
+/**
+ * THE ORDER EVERY READER GETS THE ROWS IN, oldest first (2026-11-04).
+ * A message and MatchTime's reply to it are written with ONE `now` (the
+ * message by `admin-group.ts`, the reply further down the same request),
+ * so `createdAt` alone left the two in whatever order Postgres returned
+ * them, and the recent messages could show the reply before the message
+ * it answers (FNF sandbox replay). At one instant a member's message comes
+ * before MatchTime's line: MatchTime only ever speaks to what it has
+ * already read. The id settles anything still tied, so the order never
+ * depends on the database. No timestamp is moved to get there.
+ */
+const LOG_ORDER = [{ createdAt: "asc" as const }, { fromMatchTime: "asc" as const }, { id: "asc" as const }];
+
 export const teamsAskRef = (matchId: string): string => `teams:${matchId}`;
 export const listAskRef = (pasteMessageId: string): string => `list:${pasteMessageId}`;
 
@@ -170,7 +183,7 @@ export async function recordMatchTimeLine(args: { orgId: string; idPrefix: strin
 export async function hqQuestionsSince(orgId: string, prefix: string, since: Date): Promise<Array<{ askRef: string; createdAt: Date }>> {
   const rows = await db.adminGroupMessage.findMany({
     where: { orgId, fromMatchTime: true, askRef: { startsWith: prefix }, createdAt: { gte: since }, ...NOT_GROUP_ROWS },
-    orderBy: { createdAt: "asc" },
+    orderBy: LOG_ORDER,
     select: { askRef: true, createdAt: true },
   });
   return (rows ?? []).flatMap((r) => (r.askRef ? [{ askRef: r.askRef, createdAt: r.createdAt }] : []));
@@ -230,7 +243,7 @@ export async function groupLogSince(orgId: string, since: Date): Promise<HqLogRo
       createdAt: { gte: since },
       OR: [{ waMessageId: { startsWith: GROUP_QUESTION_ID_PREFIX } }, { waMessageId: { startsWith: GROUP_LINE_ID_PREFIX } }],
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: LOG_ORDER,
     select: { waMessageId: true, waStanzaId: true, fromMatchTime: true, senderUserId: true, text: true, askRef: true, createdAt: true },
   })) ?? []) as HqLogRow[];
 }
@@ -239,7 +252,7 @@ export async function groupLogSince(orgId: string, since: Date): Promise<HqLogRo
 export async function hqLogSince(orgId: string, since: Date): Promise<HqLogRow[]> {
   return (await db.adminGroupMessage.findMany({
     where: { orgId, createdAt: { gte: since }, ...NOT_GROUP_ROWS },
-    orderBy: { createdAt: "asc" },
+    orderBy: LOG_ORDER,
     select: { waMessageId: true, waStanzaId: true, fromMatchTime: true, senderUserId: true, text: true, askRef: true, createdAt: true },
   })) as HqLogRow[];
 }
