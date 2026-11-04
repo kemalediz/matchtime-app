@@ -58,7 +58,14 @@ export async function loadHqSquadReaderContext(args: {
 }): Promise<HqSquadReaderContext> {
   const { orgId, match } = args;
   const [memberships, aliases, attendance, slots, proposal] = await Promise.all([
-    db.membership.findMany({ where: { orgId, leftAt: null }, select: { user: { select: { id: true, name: true } } } }),
+    // A stable order (2026-11-04): the refs below are numbered in it, so
+    // the same club is "p3: Rafi" on every message. Oldest membership
+    // first, the id breaking a tie, as the other member readers.
+    db.membership.findMany({
+      where: { orgId, leftAt: null },
+      select: { user: { select: { id: true, name: true } } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    }),
     db.userAlias.findMany({ where: { orgId }, select: { userId: true, alias: true } }),
     match ? db.attendance.findMany({ where: { matchId: match.id }, select: { userId: true, status: true }, orderBy: { position: "asc" } }) : Promise.resolve([]),
     match ? db.teamAssignment.findMany({ where: { matchId: match.id }, orderBy: { id: "asc" }, select: { userId: true, team: true } }) : Promise.resolve([]),

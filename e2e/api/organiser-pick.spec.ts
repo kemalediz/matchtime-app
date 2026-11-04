@@ -568,3 +568,60 @@ test("nobody picks with SEVERAL places open: one offer per waiting player, annou
   const after = await poll(request, G, "2027-01-14T12:50:00.000Z");
   expect(after.filter((i) => i.kind === "bench-prompt" || /just opened/.test(i.text ?? ""))).toEqual([]);
 });
+
+test("a bencher with no name is listed by his phone, never '?' (2026-11-04, FNF sandbox replay)", async ({ request, db }) => {
+  const O = "e2e-op-anon-org";
+  const G = "e2e-op-anon-group@g.us";
+  const H = "120363777000000035@g.us";
+  const M = "e2e-op-anon-match";
+  await db.run(
+    `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled", "benchPickMode",
+       "adminChannelMode", "adminGroupId", "updatedAt")
+     VALUES ($1, 'Anon FNF', 'e2e-op-anon', 'e2e-op-anon-invite', $2, true, 'organiser', 'admin-group', $3, now())`,
+    [O, G, H],
+  );
+  await db.run(
+    `INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "updatedAt")
+     VALUES ('e2e-op-anon-sport', $1, 'Football 1-a-side', 1, ARRAY['GK'], ARRAY['Red','Yellow'], now())`,
+    [O],
+  );
+  await db.run(
+    `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "deadlineHours", "updatedAt")
+     VALUES ('e2e-op-anon-act', $1, 'e2e-op-anon-sport', 'Friday 1-a-side', 5, '20:30', 'Goals', 1, now())`,
+    [O],
+  );
+  // Two imported with no name: one with a phone, one with neither.
+  const people = [
+    ["e2e-op-anon-owner", "Olly Owner", "+447700943501", "OWNER"],
+    ["e2e-op-anon-a", "Ann Able", "+447700943502", "PLAYER"],
+    ["e2e-op-anon-x", null, "+447700943503", "PLAYER"],
+    ["e2e-op-anon-y", null, null, "PLAYER"],
+  ] as const;
+  for (const [id, name, phone, role] of people) {
+    await db.run(`INSERT INTO "User" (id, email, name, "phoneNumber", "updatedAt") VALUES ($1, $2, $3, $4, now())`, [id, `${id}@e2e.test`, name, phone]);
+    await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ($1, $2, $3, $4)`, [`${id}-mem`, id, O, role]);
+  }
+  await db.run(
+    `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt")
+     VALUES ($1, 'e2e-op-anon-act', $2, 2, 'UPCOMING', $3, now())`,
+    [M, KICKOFF.toISOString(), new Date(KICKOFF.getTime() - 3600_000).toISOString()],
+  );
+  const rows = [
+    ["e2e-op-anon-owner", "CONFIRMED"],
+    ["e2e-op-anon-a", "CONFIRMED"],
+    ["e2e-op-anon-x", "BENCH"],
+    ["e2e-op-anon-y", "BENCH"],
+  ] as const;
+  for (const [i, [userId, status]] of rows.entries()) {
+    await db.run(
+      `INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt") VALUES ($1, $2, $3, $4::"AttendanceStatus", $5, now())`,
+      [`${userId}-att`, M, userId, status, i + 1],
+    );
+  }
+  await post(request, "/api/whatsapp/attendance", { phoneNumber: "447700943502", action: "OUT", groupId: G });
+
+  const posts = (await poll(request, G, WED_NOON)).filter((i) => i.kind === "admin-group-message");
+  expect(posts).toHaveLength(1);
+  expect(posts[0].text).toContain(["Bench:", "1. +44 7700 943503 (no position, new)", "2. (unnamed) (no position, new)"].join("\n"));
+  expect(posts[0].text).not.toMatch(/\d\. \? \(/);
+});
