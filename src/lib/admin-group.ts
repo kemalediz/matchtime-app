@@ -60,6 +60,7 @@ import { understandAdminMessage } from "./admin-group-understand";
 import { HQ_FEE_FREE_EXPIRED, HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rules";
 import { HQ_CANCEL_NOTHING_DONE } from "./match-cancel";
 import { piMentionsBot } from "./interaction-contract";
+import { CLUB_ROW_SELECT, clubRowFactsOf } from "./club-row-facts";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -160,38 +161,34 @@ function parseTimestamp(ts: string | null | undefined): Date | null {
 
 export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<AdminGroupMessageResult> {
   const now = msg.now ?? new Date();
+  // The club, found by its admin group in ONE query that reads the club
+  // summary's row and switches (`CLUB_ROW_SELECT`; club summary, slice A3).
+  // Everything below takes the club's facts from that row: the summary's
+  // facts of it (`clubRowFactsOf`, the summary's own derive functions, no
+  // further read), handed to every owner that used to read its switches,
+  // team names, payment switches, collector or announcer again. Should they
+  // fail to build, it is logged once and each owner reads its own, as
+  // before (fail-soft). `featurePlayerPool`: the HQ help's pool line
+  // (admin-group-help.ts `hqHelpGates`).
   const org = await db.organisation.findFirst({
     where: { adminGroupId: msg.groupId },
-    select: {
-      id: true,
-      billingStatus: true,
-      whatsappBotEnabled: true,
-      squadMode: true,
-      language: true,
-      benchPickMode: true,
-      // The HQ help's free-place line (admin-group-help.ts `hqHelpGates`).
-      paymentCollectionEnabled: true,
-      paymentTrackingEnabled: true,
-      // The money collector may ask for, and say YES to, a free place.
-      paymentHolderId: true,
-      // Who chooses Man of the Match (mom-chooser.ts): asked with the score.
-      momChosenBy: true,
-      // The HQ help's pool line (admin-group-help.ts `hqHelpGates`).
-      featurePlayerPool: true,
-    },
+    select: { ...CLUB_ROW_SELECT, featurePlayerPool: true },
   });
   if (!org) return { handled: false, ignored: "not-an-admin-group", replyText: null };
+  const club = clubRowFactsOf(org, "admin-group");
   // Club fee billing (B1): a club paused for the club fee answers nothing,
   // and nothing is read or written for it. Never while BILLING_ENABLED is
   // off. (The Pi should not forward from a paused club's admin group at
   // all: it is listed silent. This is the server's own refusal.)
-  if (isBillingPaused(org)) return { handled: false, ignored: "club-billing-paused", orgId: org.id, replyText: null };
+  if (club ? club.lifecycle.billingPaused : isBillingPaused(org)) {
+    return { handled: false, ignored: "club-billing-paused", orgId: org.id, replyText: null };
+  }
 
   // 1a. MONTHLY SQUAD: the collector answering the claims digest is read
   // by a model (2026-10-29), so it is the door's question now
   // (`admin-group-understand.ts`), not a reader in front of it.
 
-  const live = org.whatsappBotEnabled === true;
+  const live = club ? club.lifecycle.botOn : org.whatsappBotEnabled === true;
 
   const round = await db.organiserPickRound.findFirst({
     where: {
@@ -249,6 +246,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     const sender = senderUserId ? await db.user.findUnique({ where: { id: senderUserId }, select: { name: true } }) : null;
     return understandAdminMessage({
       org,
+      club,
       messageId,
       text: msg.text,
       botMentioned: msg.botMentioned === true,

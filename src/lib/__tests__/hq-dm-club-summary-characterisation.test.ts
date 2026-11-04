@@ -99,7 +99,9 @@ vi.mock("@/lib/pipeline/llm", async (orig) => {
   };
 });
 
-/** While on, every club summary read fails: the fail-soft test below. */
+/** While on, every club summary read fails, and so does every building of
+ *  the summary's facts of a club's row (`clubRowFacts`, what the HQ door
+ *  and the DM handlers read since A3): the fail-soft test below. */
 const summaryDown = { on: false };
 vi.mock("@/lib/club-summary/load", async (orig) => {
   const actual = await orig<typeof import("@/lib/club-summary/load")>();
@@ -107,6 +109,16 @@ vi.mock("@/lib/club-summary/load", async (orig) => {
     ...actual,
     loadClubSummary: (...args: Parameters<typeof actual.loadClubSummary>) =>
       summaryDown.on ? Promise.reject(new Error("club summary down (test)")) : actual.loadClubSummary(...args),
+  };
+});
+vi.mock("@/lib/club-summary/derive", async (orig) => {
+  const actual = await orig<typeof import("@/lib/club-summary/derive")>();
+  return {
+    ...actual,
+    clubRowFacts: (...args: Parameters<typeof actual.clubRowFacts>) => {
+      if (summaryDown.on) throw new Error("club summary down (test)");
+      return actual.clubRowFacts(...args);
+    },
   };
 });
 
@@ -392,7 +404,10 @@ describe("the DMs, per club shape (must not change in A3)", () => {
  * exactly as the code before A3 did, each consumer reading its fact itself.
  * Every shape, instant and request: the same response, model requests and
  * writes as with the summary, which the snapshots above pin as the old
- * code's. The error is logged at most once per request.
+ * code's. The error is logged once per HQ message (the door builds the row
+ * facts once, for every message) and once per DM handler that reads a
+ * club's row facts (the cold IN's match and the help: at most two; each
+ * club here has one membership per sender).
  */
 describe("the club summary cannot be read (HQ and DMs still run as before A3)", () => {
   for (const name of Object.keys(SHAPES)) {
@@ -416,11 +431,45 @@ describe("the club summary cannot be read (HQ and DMs still run as before A3)", 
             }
             expect(down, `${now.toISOString()} ${label}`).toEqual(normal);
             const logged = errors.mock.calls.filter((c) => String(c[0]).includes("club summary could not be read"));
-            expect(logged.length, `${now.toISOString()} ${label}`).toBeLessThanOrEqual(1);
+            if (label.startsWith("hq ")) expect(logged.length, `${now.toISOString()} ${label}`).toBe(1);
+            else expect(logged.length, `${now.toISOString()} ${label}`).toBeLessThanOrEqual(2);
           }
         }
       } finally {
         errors.mockRestore();
+      }
+    });
+  }
+});
+
+/**
+ * The loaders the HQ owners call take the summary's facts of the club's row
+ * (`clubRowFacts`, what the door builds since A3) exactly as they take the
+ * whole summary: with them or without, the same squad state, payment
+ * snapshot and club answer, on every shape and instant, and fewer reads.
+ */
+describe("the HQ owners' loaders, with the row facts and without (one answer)", () => {
+  for (const name of Object.keys(SHAPES)) {
+    it(`loadSquadState, loadPaymentSnapshot, loadClubSnapshot: ${name}`, async () => {
+      const { loadSquadState, loadPaymentSnapshot, loadClubSnapshot } = await import("@/lib/pipeline/load-state");
+      const { clubRowFacts } = await import("@/lib/club-summary/derive");
+      const { orgFeaturesFromRow } = await import("@/lib/org-features");
+      for (const now of SHAPES[name].instants) {
+        fresh(name, now);
+        const world = hqDmWorld(SHAPES[name].rows);
+        const row = world.org as unknown as Parameters<typeof clubRowFacts>[0] & Parameters<typeof orgFeaturesFromRow>[0];
+        const facts = clubRowFacts(row, orgFeaturesFromRow(row));
+        const orgId = facts.orgId;
+        const before = calls.length;
+        const plain = stable(await loadSquadState(orgId, now));
+        const plainReads = calls.length - before;
+        const mid = calls.length;
+        expect(stable(await loadSquadState(orgId, now, { summary: facts })), `${now.toISOString()} state`).toEqual(plain);
+        expect(calls.length - mid, `${now.toISOString()} state reads`).toBeLessThan(plainReads);
+        expect(await loadPaymentSnapshot(orgId, plain.completedMatch, { summary: facts })).toEqual(await loadPaymentSnapshot(orgId, plain.completedMatch));
+        for (const matchId of [plain.matchId, null]) {
+          expect(await loadClubSnapshot(orgId, matchId, { club: facts }), `${now.toISOString()} club ${matchId}`).toEqual(await loadClubSnapshot(orgId, matchId));
+        }
       }
     });
   }

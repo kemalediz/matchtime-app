@@ -30,8 +30,21 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+// The club's switches. Since the club summary (slice A3) they are the
+// summary's facts of the club row the membership read joined
+// (`orgFeaturesFromRow` of it); `getOrgFeatures` is read only when those
+// cannot be built. `setFeatures` gives both the same switches.
 const getOrgFeatures = vi.fn();
-vi.mock("@/lib/org-features", () => ({ getOrgFeatures: (...a: unknown[]) => getOrgFeatures(...a) }));
+let rowFeatures: Record<string, unknown> = {};
+vi.mock("@/lib/org-features", async (orig) => ({
+  ...(await orig<typeof import("@/lib/org-features")>()),
+  getOrgFeatures: (...a: unknown[]) => getOrgFeatures(...a),
+  orgFeaturesFromRow: () => rowFeatures,
+}));
+function setFeatures(f: Record<string, unknown>) {
+  rowFeatures = f;
+  getOrgFeatures.mockResolvedValue(f);
+}
 
 const buildAdminLink = vi.fn();
 vi.mock("@/lib/admin-link", async (orig) => ({
@@ -52,6 +65,7 @@ vi.mock("@/lib/help-club-facts", async (orig) => ({
 import { readDmHelp, handleDmHelp } from "@/lib/dm-help";
 import { buildHelpReply } from "@/lib/onboarding-conversation";
 import { HELP_CLUB_FACTS_OFF } from "@/lib/help-club-facts";
+import { orgRow } from "@/lib/club-summary/__tests__/fixtures";
 import type { PipelineModel } from "@/lib/pipeline/llm";
 import type { HelpRequest } from "@/lib/pipeline/types";
 
@@ -71,13 +85,13 @@ const FEATS_PAY_OFF = {
 };
 
 function mem(orgId: string, role: "OWNER" | "ADMIN" | "PLAYER", name = orgId, language = "en") {
-  return { orgId, role, org: { id: orgId, name, language } };
+  return { orgId, role, org: orgRow({ id: orgId, name, language }) };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   userFindUnique.mockResolvedValue({ phoneNumber: "+447700900001" });
-  getOrgFeatures.mockResolvedValue(FEATS_PAY_OFF);
+  setFeatures(FEATS_PAY_OFF);
   matchFindFirst.mockResolvedValue(null);
   loadHelpClubFacts.mockResolvedValue(HELP_CLUB_FACTS_OFF);
   buildAdminLink.mockImplementation(async ({ nextPath }: { nextPath: string }) => `https://mt.example/r/${nextPath.replace(/\W+/g, "-")}`);
@@ -166,6 +180,30 @@ describe("handleDmHelp", () => {
     );
   });
 
+  // Club summary, slice A3: the switches are the summary's facts of the club
+  // row the membership read already joined, so the club is not read again;
+  // facts that cannot be built (a row missing its columns) fall back to the
+  // read, with the same answer.
+  it("the switches come from the club row the membership read joined, not a second read", async () => {
+    membershipFindMany.mockResolvedValue([mem("org-mt", "OWNER", "MT Test")]);
+    await handleDmHelp(args("help payments"));
+    expect(getOrgFeatures).not.toHaveBeenCalled();
+    expect(membershipFindMany.mock.calls[0][0].select.org.select).toMatchObject({ featureAttendance: true, squadMode: true });
+  });
+
+  it("a club row the summary's facts cannot be built from: the switches are read, the same help goes out", async () => {
+    membershipFindMany.mockResolvedValue([{ orgId: "org-mt", role: "OWNER", org: { id: "org-mt", name: "MT Test", language: "en" } }]);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const out = await handleDmHelp(args("help payments"));
+      expect(out).toMatchObject({ handled: "dm-help", topic: "payments", orgId: "org-mt", audience: "admin" });
+      expect(getOrgFeatures).toHaveBeenCalledWith("org-mt");
+      expect(errors.mock.calls.filter((c) => String(c[0]).includes("club summary could not be read"))).toHaveLength(1);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   // Item 4: the help says "tag me" and "say In or Out", and the group of a
   // club that is setting up is one MatchTime is not listening to yet.
   it("deliver: 'platform' (a club that is setting up): the SAME help, under one paragraph saying nothing below works until GO; nothing on the club's channel", async () => {
@@ -188,7 +226,7 @@ describe("handleDmHelp", () => {
   });
 
   it("that paragraph is in the club's language (Turkish: BAŞLA), and still a prefix, not a replacement", async () => {
-    getOrgFeatures.mockResolvedValue({ ...FEATS_PAY_OFF, language: "tr" });
+    setFeatures({ ...FEATS_PAY_OFF, language: "tr" });
     membershipFindMany.mockResolvedValue([mem("org-tr", "OWNER", "Kıyı SK", "tr")]);
     await handleDmHelp({ ...args("yardım"), deliver: "platform" });
     const text = queuePlatformDm.mock.calls[0][0].text as string;
@@ -223,8 +261,8 @@ describe("handleDmHelp", () => {
     const POINTER = "In your admin group, tag me and ask what I can do there, in your own words (for example *@Match Time what can you do?*).";
 
     it("an organiser's bare help points at the admin group's commands, and keeps the settings link", async () => {
-      getOrgFeatures.mockResolvedValue(FNF);
-      membershipFindMany.mockResolvedValue([{ ...mem("org-fnf", "OWNER", "FNF"), org: { id: "org-fnf", name: "FNF", language: "en", adminGroupId: "hq@g.us" } }]);
+      setFeatures(FNF);
+      membershipFindMany.mockResolvedValue([{ ...mem("org-fnf", "OWNER", "FNF"), org: orgRow({ id: "org-fnf", name: "FNF", language: "en", adminGroupId: "hq@g.us" }) }]);
       await handleDmHelp(args("help"));
       const text = botJobCreate.mock.calls[0][0].data.text as string;
       expect(text).toContain(POINTER);
@@ -233,15 +271,15 @@ describe("handleDmHelp", () => {
     });
 
     it("no admin group linked: no pointer to one", async () => {
-      getOrgFeatures.mockResolvedValue(FNF);
+      setFeatures(FNF);
       membershipFindMany.mockResolvedValue([mem("org-fnf", "OWNER", "FNF")]);
       await handleDmHelp(args("help"));
       expect(botJobCreate.mock.calls[0][0].data.text).not.toContain(POINTER);
     });
 
     it("a player's DM help never gets it, and says the organisers share the teams", async () => {
-      getOrgFeatures.mockResolvedValue(FNF);
-      membershipFindMany.mockResolvedValue([{ ...mem("org-fnf", "PLAYER", "FNF"), org: { id: "org-fnf", name: "FNF", language: "en", adminGroupId: "hq@g.us" } }]);
+      setFeatures(FNF);
+      membershipFindMany.mockResolvedValue([{ ...mem("org-fnf", "PLAYER", "FNF"), org: orgRow({ id: "org-fnf", name: "FNF", language: "en", adminGroupId: "hq@g.us" }) }]);
       await handleDmHelp(args("help teams"));
       const text = botJobCreate.mock.calls[0][0].data.text as string;
       expect(text).not.toContain(POINTER);
@@ -269,7 +307,7 @@ describe("handleDmHelp", () => {
 
   it("the club's language decides the reply's language", async () => {
     membershipFindMany.mockResolvedValue([mem("org-tr", "PLAYER", "Cuma", "tr")]);
-    getOrgFeatures.mockResolvedValue({ ...FEATS_PAY_OFF, language: "tr" });
+    setFeatures({ ...FEATS_PAY_OFF, language: "tr" });
     await handleDmHelp(args("yardım ödeme"));
     expect(botJobCreate.mock.calls[0][0].data.text).toContain("Maç ücretleri nasıl çalışır");
   });
@@ -282,8 +320,8 @@ describe("handleDmHelp", () => {
   });
 
   it("review fix 2: runs a club that is still SETTING UP and plays in a live one: the answer is for the LIVE club", async () => {
-    const held = { ...mem("org-held", "OWNER", "Harbour FC"), org: { id: "org-held", name: "Harbour FC", language: "en", approvalStatus: "approved", setupStage: "setting-up" } };
-    const liveClub = { ...mem("org-a", "PLAYER", "Sutton FC"), org: { id: "org-a", name: "Sutton FC", language: "en", approvalStatus: "approved", setupStage: "live" } };
+    const held = { ...mem("org-held", "OWNER", "Harbour FC"), org: orgRow({ id: "org-held", name: "Harbour FC", language: "en", approvalStatus: "approved", setupStage: "setting-up" }) };
+    const liveClub = { ...mem("org-a", "PLAYER", "Sutton FC"), org: orgRow({ id: "org-a", name: "Sutton FC", language: "en", approvalStatus: "approved", setupStage: "live" }) };
     membershipFindMany.mockResolvedValue([held, liveClub]);
     const out = await handleDmHelp(args("help"));
     expect(out).toMatchObject({ orgId: "org-a", audience: "player" });
@@ -294,7 +332,7 @@ describe("handleDmHelp", () => {
 
   it("review fix 2: someone whose ONLY club is setting up still gets the help for it (slice S4 delivers it)", async () => {
     membershipFindMany.mockResolvedValue([
-      { ...mem("org-held", "OWNER", "Harbour FC"), org: { id: "org-held", name: "Harbour FC", language: "en", approvalStatus: "approved", setupStage: "setting-up" } },
+      { ...mem("org-held", "OWNER", "Harbour FC"), org: orgRow({ id: "org-held", name: "Harbour FC", language: "en", approvalStatus: "approved", setupStage: "setting-up" }) },
     ]);
     expect(await handleDmHelp(args("help"))).toMatchObject({ orgId: "org-held", audience: "admin" });
   });

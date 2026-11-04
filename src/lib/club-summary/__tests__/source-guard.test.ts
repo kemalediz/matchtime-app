@@ -62,7 +62,6 @@ const TODAY = new Set<string>([
   "lib/admin-group-help.ts",
   "lib/admin-group-intro.ts",
   "lib/admin-group-understand.ts",
-  "lib/admin-group.ts",
   "lib/admin-onboarding-rules.ts",
   "lib/admin-onboarding.ts",
   "lib/admin-ops-engine-batch.ts",

@@ -55,6 +55,7 @@ import { SCORE_CORRECTION_WINDOW_MS } from "./pipeline/score-window";
 import { db } from "./db";
 import type { PipelineModel } from "./pipeline/llm";
 import type { SquadState } from "./pipeline/types";
+import type { ClubRowFacts } from "./club-summary/types";
 import { recordMatchTimeQuestion } from "./admin-group-log";
 import type { ScoreWaiting } from "./admin-group-context";
 import { organisersPickMom } from "./mom-chooser";
@@ -82,6 +83,9 @@ export interface HqScoreInput {
   /** The message it is a WhatsApp reply to (slice S4), as resolved. */
   reply?: QuotedGroupMessage | null;
   now: Date;
+  /** The club summary's facts of the club's row (slice A3): the squad
+   *  state takes the switches and team names from them. */
+  club?: ClubRowFacts | null;
   /** Injected in tests only. */
   deps?: {
     model?: PipelineModel;
@@ -108,7 +112,7 @@ export async function answerHqScore(input: HqScoreInput): Promise<HqScoreResult>
 
   const state = input.deps?.loadState
     ? await input.deps.loadState(orgId, now)
-    : await (await import("./pipeline/load-state")).loadSquadState(orgId, now);
+    : await (await import("./pipeline/load-state")).loadSquadState(orgId, now, { summary: input.club });
   const played = state.completedMatch;
   if (!played) return speaks ? { outcome: "hq-score-no-match", replyText: s.hq_score_no_match } : null;
   const recorded = played.redScore !== null && played.yellowScore !== null;

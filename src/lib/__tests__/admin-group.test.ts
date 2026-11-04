@@ -34,10 +34,27 @@ const understand = vi.hoisted(() => ({ understandAdminMessage: vi.fn() }));
 vi.mock("@/lib/admin-group-understand", () => understand);
 
 import { handleAdminGroupMessage } from "../admin-group";
+import { orgRow } from "../club-summary/__tests__/fixtures";
+import { clubRowFacts } from "../club-summary/derive";
+import { orgFeaturesFromRow } from "../org-features";
 
 const HQ = "120363777000000001@g.us";
 const NOW = new Date("2026-10-14T12:00:00Z");
-const LIVE_ORG = { id: "org-fnf", billingStatus: null, whatsappBotEnabled: true, squadMode: "weekly", language: "en", benchPickMode: null };
+/** The club's row as the door reads it (`CLUB_ROW_SELECT`, club summary A3). */
+const LIVE_ORG = {
+  ...orgRow({ id: "org-fnf", name: "FNF", billingStatus: null as unknown as string }),
+  featureAttendance: true,
+  featureBench: true,
+  featureTeamBalancing: true,
+  featureMomVoting: true,
+  featurePlayerRating: true,
+  featureReminders: true,
+  featureStatsQa: true,
+  featureSquadFromList: false,
+  featureBadgeAnnouncements: true,
+  featureGearReminder: true,
+  featurePlayerPool: false,
+};
 const msg = (text: string, over: Record<string, unknown> = {}) => ({
   groupId: HQ,
   messageId: "wa-1",
@@ -68,6 +85,10 @@ describe("everything that is not structured data goes through the shared pipelin
     expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "graphic-queued", replyText: null, react: "✅" });
     expect(understand.understandAdminMessage).toHaveBeenCalledWith({
       org: LIVE_ORG,
+      // The club summary's facts of that same row (slice A3): what every
+      // owner takes its switches, team names, payment switches, collector
+      // and announcer from.
+      club: clubRowFacts(LIVE_ORG, orgFeaturesFromRow(LIVE_ORG)),
       messageId: "wa-1",
       text: "can you do the poster for this week",
       botMentioned: false,
@@ -80,6 +101,26 @@ describe("everything that is not structured data goes through the shared pipelin
       sentAt: new Date(1760443200 * 1000),
       now: NOW,
     });
+  });
+
+  it("the club is found by its group with the summary's row and switches, in one query", async () => {
+    await handleAdminGroupMessage(msg("@Match Time what can you do?", { botMentioned: true }));
+    expect(dbMock.organisation.findFirst).toHaveBeenCalledTimes(1);
+    expect(dbMock.organisation.findFirst.mock.calls[0][0].select).toMatchObject({ paymentHolderId: true, listAnnouncer: true, teamLabels: true, featureAttendance: true, featurePlayerPool: true });
+  });
+
+  it("FAIL-SOFT: a row the summary's facts cannot be built from still goes to the pipeline, with no facts (each owner reads its own), logged once", async () => {
+    dbMock.organisation.findFirst.mockResolvedValue({ id: "org-fnf", billingStatus: null, whatsappBotEnabled: true, squadMode: "weekly", language: "en", benchPickMode: null });
+    understand.understandAdminMessage.mockResolvedValue({ route: "poster", outcome: "graphic-queued", replyText: null });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await handleAdminGroupMessage(msg("@Match Time poster", { botMentioned: true }));
+      expect(r).toMatchObject({ handled: true, outcome: "graphic-queued" });
+      expect(understand.understandAdminMessage).toHaveBeenCalledWith(expect.objectContaining({ club: null }));
+      expect(errors.mock.calls.filter((c) => String(c[0]).includes("club summary could not be read"))).toHaveLength(1);
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it("the organisers' own conversation: ignored, no reply", async () => {
