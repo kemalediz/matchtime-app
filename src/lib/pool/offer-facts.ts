@@ -20,6 +20,7 @@ import { db } from "../db";
 import { feeLabel } from "../partner-ask";
 import { guestPaygPence } from "../monthly-week-asks";
 import { guestFeePounds } from "../monthly-week-asks-rules";
+import { paymentMessagesOn } from "../payment-messages";
 import { venueMapUrl } from "../venue-location-rules";
 import type { PoolFee, PoolOfferFacts } from "./offer-copy";
 import { poolSportOfClubSport } from "./sports";
@@ -98,7 +99,7 @@ export async function loadMatchOfferFacts(matchId: string, now: Date = new Date(
       matchFee: match.feePerPlayer,
       activityFee: a.feePerPlayer,
       feeSplitTotal: a.feeSplitTotal,
-      paymentsOn: a.org.paymentCollectionEnabled || a.org.paymentTrackingEnabled,
+      paymentsOn: paymentMessagesOn(a.org),
       monthlyPaygPence,
     }),
   };

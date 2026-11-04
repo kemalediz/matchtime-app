@@ -57,6 +57,8 @@ export interface SettingsNavCopy {
     paymentsOff: string;
     paymentsBank: string;
     paymentsNoBank: string;
+    /** Payments on by the old payment poll alone (decision K2). */
+    paymentsTracking: string;
     partnersNone: string;
     partners: (n: number) => string;
     partnerRequests: (n: number) => string;

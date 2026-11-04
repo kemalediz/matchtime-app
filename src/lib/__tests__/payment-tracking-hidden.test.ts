@@ -54,7 +54,12 @@ describe("the setting is hidden", () => {
     // Each switch is placed in its card through the offered list (2026-10-28).
     expect(page).toMatch(/OFFERED_FEATURE_META\.find\(/);
     expect(page).not.toMatch(/\bFEATURE_META\.map\(/);
-    expect(page).not.toMatch(/paymentTracking/);
+    // No switch for it. The page reads it once, for the Payments line: a
+    // club on the old poll alone has payments on (decision K2, club
+    // summary B3, payments-one-rule.test.ts).
+    expect(page).not.toMatch(/featureRow\("paymentTracking"\)/);
+    expect(page.match(/paymentTracking/g)).toEqual(["paymentTracking"]);
+    expect(page).toMatch(/paymentsSummary\(org\.language, \{ tracking: feature\("paymentTracking"\)/);
   });
 
   it("there is no ⓘ explanation for it, and the fee collection one does not mention it", () => {
@@ -93,10 +98,21 @@ describe("help payments is about collecting match fees", () => {
     expect(tr).toContain("*Maç ücreti toplama* ayarını aç");
   });
 
-  it("a club with only the old tracking flag on is shown how fee collection works and how to switch it on", () => {
-    const r = buildHelpReply("payments", { ...OFF, paymentTracking: true }, "en", { audience: "group", links: { settings: "https://mt/s" } });
-    expect(r).toContain("isn't switched on for this group yet");
-    expect(r).toContain("*Collect match fees*");
+  // Decision K2 (club summary B3): payments are on with either flag, so a
+  // club with only the old tracking flag is told payments are on and what
+  // MatchTime does for it, still without naming the hidden setting.
+  it("a club with only the old tracking flag on is told payments are on, and what the poll does", () => {
+    for (const lang of LANGS) {
+      for (const audience of ["group", "admin", "player"] as const) {
+        const r = buildHelpReply("payments", { ...OFF, paymentTracking: true }, lang, { audience, links: { settings: "https://mt/s" } });
+        expect(r, `${lang} ${audience}`).not.toMatch(NAMES_IT);
+        expect(r, `${lang} ${audience}`).not.toContain(lang === "en" ? "isn't switched on" : "henüz açık değil");
+      }
+    }
+    const en = buildHelpReply("payments", { ...OFF, paymentTracking: true }, "en", { audience: "group" });
+    expect(en).toContain("*Payments: how it works*");
+    expect(en).toContain("payment poll");
+    expect(en).toContain("It's on for this club.");
   });
 });
 

@@ -22,12 +22,16 @@ const FNF: PayMethodSwitches = {
   payMethodPayByBank: false,
   payMethodCard: false,
   payMethodDirect: true,
+  paymentCollectionEnabled: true,
+  stripeConnectAccountId: null,
   stripeChargesEnabled: false,
 };
 const ALL_LIVE: PayMethodSwitches = {
   payMethodPayByBank: true,
   payMethodCard: true,
   payMethodDirect: true,
+  paymentCollectionEnabled: true,
+  stripeConnectAccountId: "acct_1",
   stripeChargesEnabled: true,
 };
 /** Card and bank switched on, but the collector's Stripe account is not

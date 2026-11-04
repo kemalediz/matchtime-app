@@ -60,8 +60,8 @@ test("card/bank click reaches the Stripe boundary (external — not driven)", as
   await signInAs(page, U.player, `/pay/${MATCH.pay}`);
   await page.waitForURL(`**/pay/${MATCH.pay}`);
 
-  // The test org has stripeChargesEnabled but no Connect account and the
-  // server runs with STRIPE_SECRET_KEY unset — the server action must
+  // The test org has a placeholder Connect account and the server runs
+  // with STRIPE_SECRET_KEY unset — the server action must
   // fail loudly AT the Stripe boundary, surfaced as a toast, never a
   // silent success or a crash.
   await page.getByRole("button", { name: /Card, Apple or Google Pay/ }).click();

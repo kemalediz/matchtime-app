@@ -9,6 +9,7 @@
 import { db } from "../db";
 import { guestPaygPence } from "../monthly-week-asks";
 import { poolFeeOf } from "../pool/offer-facts";
+import { paymentMessagesOn } from "../payment-messages";
 import type { PoolFee } from "../pool/offer-copy";
 
 export interface FriendMatchFacts {
@@ -65,7 +66,7 @@ export async function loadFriendMatchFacts(matchId: string): Promise<FriendMatch
       matchFee: m.feePerPlayer,
       activityFee: a.feePerPlayer,
       feeSplitTotal: a.feeSplitTotal,
-      paymentsOn: a.org.paymentCollectionEnabled || a.org.paymentTrackingEnabled,
+      paymentsOn: paymentMessagesOn(a.org),
       monthlyPaygPence,
     }),
     monthly: monthlyPaygPence != null && m.feePerPlayer == null,

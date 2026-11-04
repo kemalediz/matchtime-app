@@ -175,9 +175,9 @@ export async function proposeFeeFreeInHq(input: HqFeeFreeInput): Promise<HqReply
 
   const org = await db.organisation.findUnique({
     where: { id: input.orgId },
-    select: { paymentCollectionEnabled: true, paymentTrackingEnabled: true, paymentHolderId: true },
+    select: { ...PAYMENT_FLAGS_SELECT, paymentHolderId: true },
   });
-  if (!org?.paymentCollectionEnabled && !org?.paymentTrackingEnabled) return none(s.hq_fee_free_no_payments);
+  if (!org || !paymentMessagesOn(org)) return none(s.hq_fee_free_no_payments);
   const collectorId = org.paymentHolderId ?? null;
 
   const matches = await db.match.findMany({

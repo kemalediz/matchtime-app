@@ -29,7 +29,6 @@ export function clubSummaryOf(
       org,
       features: { ...featuresFor(org), ...opts.features },
       collectorName: null,
-      collectionLive: false,
       activities: opts.activities ?? [],
       matches: [],
       lastPlayed: [],

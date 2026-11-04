@@ -975,7 +975,7 @@ export default function SettingsPage() {
             id="payments"
             title={settingsNavCopy(navLang).titles.payments}
             icon={Wallet}
-            summary={paymentsSummary(org.language, { collecting: feature("paymentCollection"), bankConnected })}
+            summary={paymentsSummary(org.language, { tracking: feature("paymentTracking"), collecting: feature("paymentCollection"), bankConnected })}
           >
             <div className={rows}>
               {featureRow("paymentCollection")}

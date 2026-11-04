@@ -1278,6 +1278,23 @@ export const en = {
     `I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.\n` +
     `Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.`,
 
+  /** "help payments" for a club whose payments are on by the old payment
+   *  poll alone (no fee collection; decision K2, club summary B3). Each
+   *  line is what the poll path does (bot-scheduler.ts, the poll and the
+   *  unpaid count; payment-answer.ts, "who still owes"). Never names the
+   *  hidden setting (payment-tracking-hidden.test.ts). */
+  onbHelpPaymentsTracking:
+    `💳 *Payments: how it works*\n` +
+    `I keep track of who has paid for each game. After the game I post a payment poll in the group: tick your team once you've paid.\n` +
+    `Anyone still unpaid is counted, never named, in a later post in the group.\n` +
+    `To see the latest, ask me in your own words (for example *@Match Time who still owes?*).`,
+
+  /** "help payments" for an organiser while payments are on (decision K2):
+   *  the credit command (pipeline/engine.ts `bulk_payment`), an admin's
+   *  alone, read by the model from the players' group. */
+  onbHelpPaymentsCreditOrganiser:
+    `Someone paid for others? Tag me in the players' group and say who paid for whom, in your own words (for example *@Match Time Amir paid for Sam and Alex*), and I'll record it.`,
+
   /** How to switch an off topic on, worded for who asked (rewritten
    *  2026-10-28). `url` goes straight to the setting's card
    *  (help-links.ts): the public URL in a group, the admin's signed-in link
@@ -2088,6 +2105,14 @@ export const en = {
   collect_marked_free: `Marked as a free place`,
   collect_unmarked_free: `Free place removed`,
   collect_free_count: (p: { count: number }): string => `${p.count} free`,
+
+  // ── Payments off for the club (decision K2, club summary B3) ──
+  /** /pay while the club neither tracks nor collects payments. */
+  pay_off_title: `Nothing to pay here`,
+  pay_off_body: (p: { firstName: string; club: string }): string =>
+    `${p.firstName}, ${p.club} doesn't take payments through MatchTime. Speak to the organiser about paying.`,
+  /** /collect while payments are off: in place of the "send the fee" hint. */
+  collect_payments_off: `Payments are off for this club, so MatchTime sends no pay links or reminders. An organiser can switch on Collect match fees in Settings.`,
 
   /** Row 96: the collector's ack once the links went out. `bank`, `card`
    *  and `direct` are `availablePayMethods(org)`: it names only those

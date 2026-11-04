@@ -42,7 +42,6 @@
 import { db } from "../db";
 import { getOrgFeatures, type OrgFeatures } from "../org-features";
 import { SETUP_STAGE_SELECT } from "../club-setup-rules";
-import { isPaymentCollectionLive } from "../payments-live-announce";
 import { loadPlayerNames } from "../player-display-name";
 import { withAliases } from "../member-aliases";
 import { normaliseLang } from "../i18n/lang";
@@ -196,7 +195,6 @@ export async function loadClubRows(orgId: string, now: Date, opts: LoadClubOptio
     org,
     features,
     collectorName,
-    collectionLive: isPaymentCollectionLive(org),
     activities,
     matches,
     lastPlayed,

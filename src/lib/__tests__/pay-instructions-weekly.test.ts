@@ -14,8 +14,8 @@ import { directPayInstructions, type PayMethodSwitches } from "../payments";
 import { buildPayChaseDm, buildPayLinkDm } from "../dm-copy";
 import { settingInfo } from "../settings-info";
 
-const FNF: PayMethodSwitches = { payMethodPayByBank: false, payMethodCard: false, payMethodDirect: true, stripeChargesEnabled: false };
-const CARD_ONLY: PayMethodSwitches = { payMethodPayByBank: false, payMethodCard: true, payMethodDirect: false, stripeChargesEnabled: true };
+const FNF: PayMethodSwitches = { payMethodPayByBank: false, payMethodCard: false, payMethodDirect: true, paymentCollectionEnabled: true, stripeConnectAccountId: null, stripeChargesEnabled: false };
+const CARD_ONLY: PayMethodSwitches = { payMethodPayByBank: false, payMethodCard: true, payMethodDirect: false, paymentCollectionEnabled: true, stripeConnectAccountId: "acct_1", stripeChargesEnabled: true };
 const TEXT = "Sort code 12-34-56, account 12345678.\nReference: your name";
 
 const link = (methods: ("pay_by_bank" | "card" | "direct")[], lang: "en" | "tr", instructions: string | null) =>

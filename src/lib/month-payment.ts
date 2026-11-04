@@ -551,6 +551,10 @@ export async function handlePlayerPaidDm(input: {
   });
   // No month to pay for, or two: not ours to guess.
   if (owed.length !== 1) return null;
+  // Payments off for the club (decision K2, club summary B3): checked
+  // BEFORE the model, so none is asked. Not a month claim, so the DM goes
+  // on to the next handler, as any DM does; nothing is recorded.
+  if (!paymentMessagesOn(owed[0].month.org)) return null;
   const perMatch = await db.attendance.count({
     where: {
       userId: input.userId,
@@ -590,9 +594,6 @@ export async function handlePlayerPaidDm(input: {
   // (`claimMonthPaid`): it goes on a new digest before it can be confirmed.
   const claimed = await claimMonthPaid({ monthId: row.monthId, userId: input.userId, source: "dm", amountPence: read.amountPence, now });
 
-  // Recorded, and nothing said, while the club neither tracks nor
-  // collects payments (2026-11-03, `payment-messages.ts`).
-  if (!paymentMessagesOn(row.month.org)) return { handled: "month-paid-claim", monthId: row.monthId, claimed };
   const day = formatLondon(now, "yyyy-MM-dd");
   if (await claimOnce(`${paymentKeyPrefix(orgId)}claim-ack:${row.monthId}:${input.userId}:${day}`, "month-pay-dm")) {
     const collector = collectorRow;

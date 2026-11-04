@@ -1886,6 +1886,7 @@ Type *"@Match Time help"* any time to see this again.
    • *@Match Time help ratings*: player ratings
    • *@Match Time help badges*: badges and how to earn them
    • *@Match Time help reminders*: reminders
+   • *@Match Time help payments*: match fees
    • *@Match Time help schedule*: schedule & bookings
    • *@Match Time help settings*: where your settings are
 
@@ -1968,16 +1969,12 @@ It all happens automatically, so you don't need to chase anyone yourself.
 ✅ It's on for this club.
 
 ### R142 buildHelpReply / payments
-ℹ️ This isn't switched on for this group yet, but here's how it works.
+💳 *Payments: how it works*
+I keep track of who has paid for each game. After the game I post a payment poll in the group: tick your team once you've paid.
+Anyone still unpaid is counted, never named, in a later post in the group.
+To see the latest, ask me in your own words (for example *@Match Time who still owes?*).
 
-💷 *Match fees: how it works*
-After each game I ask your money collector for the fee per player, then DM everyone who played a link to pay their share, by card or bank. The money goes straight to the money collector's bank.
-I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
-Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
-
-🔧 To switch it on, an admin turns on *Collect match fees* on the settings page, picks the money collector, then connects their bank with Stripe once (about 2 minutes):
-https://matchtime.ai/admin/settings#payments
-Admins: DM me *help payments* and I'll send you a link that signs you straight in.
+✅ It's on for this club.
 
 ### R143 buildHelpReply / topic switched off
 ℹ️ This isn't switched on for this group yet, but here's how it works.
@@ -2135,14 +2132,13 @@ Nothing to set up: the link comes by itself once the game's done. Ask me for you
 🗓️ Match days, kick-off times, cancellations and block bookings are set by your organiser on the admin page. Ask them if something needs changing.
 
 ### R148 buildHelpReply / payments on / admin
-ℹ️ This isn't switched on for this group yet, but here's how it works.
+💳 *Payments: how it works*
+I keep track of who has paid for each game. After the game I post a payment poll in the group: tick your team once you've paid.
+Anyone still unpaid is counted, never named, in a later post in the group.
+To see the latest, ask me in your own words (for example *@Match Time who still owes?*).
+Someone paid for others? Tag me in the players' group and say who paid for whom, in your own words (for example *@Match Time Amir paid for Sam and Alex*), and I'll record it.
 
-💷 *Match fees: how it works*
-After each game I ask your money collector for the fee per player, then DM everyone who played a link to pay their share, by card or bank. The money goes straight to the money collector's bank.
-I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
-Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
-
-🔧 To switch it on, turn on *Collect match fees*, pick the money collector, then connect their bank with Stripe once (about 2 minutes):
+✅ It's on for your club. To switch it off or change how it works:
 https://mt.example/r/topic
 
 ### R148 buildHelpReply / bare / admin
@@ -2154,6 +2150,7 @@ https://mt.example/r/topic
    • *@Match Time help ratings*: player ratings
    • *@Match Time help badges*: badges and how to earn them
    • *@Match Time help reminders*: reminders
+   • *@Match Time help payments*: match fees
    • *@Match Time help schedule*: schedule & bookings
    • *@Match Time help settings*: where your settings are
 
@@ -2174,7 +2171,7 @@ https://mt.example/r/topic
 
 Type *"@Match Time help"* any time to see this again.
 
-🔧 Switched off for your club: match fees, partner clubs. Ask me about one and I'll show you how to switch it on.
+🔧 Switched off for your club: partner clubs. Ask me about one and I'll show you how to switch it on.
 
 ⚙️ Your club's settings, signed in:
 https://mt.example/r/settings
@@ -2450,6 +2447,7 @@ The club's settings are changed by its organisers. Ask them if you'd like someth
    • *@Match Time help ratings*: player ratings
    • *@Match Time help badges*: badges and how to earn them
    • *@Match Time help reminders*: reminders
+   • *@Match Time help payments*: match fees
    • *@Match Time help partners*: partner clubs
    • *@Match Time help pool*: the player pool
    • *@Match Time help schedule*: schedule & bookings
@@ -2481,6 +2479,7 @@ Type *"@Match Time help"* any time to see this again.
    • *@Match Time help ratings*: player ratings
    • *@Match Time help badges*: badges and how to earn them
    • *@Match Time help reminders*: reminders
+   • *@Match Time help payments*: match fees
    • *@Match Time help schedule*: schedule & bookings
    • *@Match Time help settings*: where your settings are
 
@@ -2501,7 +2500,7 @@ Type *"@Match Time help"* any time to see this again.
 
 Type *"@Match Time help"* any time to see this again.
 
-🔧 Switched off for your club: match fees, partner clubs, the player pool. Ask me about one and I'll show you how to switch it on.
+🔧 Switched off for your club: partner clubs, the player pool. Ask me about one and I'll show you how to switch it on.
 
 ⚙️ Your club's settings, signed in:
 https://mt.example/r/settings

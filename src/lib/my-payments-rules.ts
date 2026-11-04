@@ -27,6 +27,7 @@
 import { owesMatchFee, isFeeWaived } from "./fee-waiver-rules";
 import { availablePayMethods, directPayInstructions, gbp, type PayMethod, type PayMethodSwitches } from "./payments";
 import { matchHasPaymentSource } from "./pipeline/payment-answer";
+import { paymentMessagesOn } from "./payment-messages";
 import { dayTimeLabel } from "./i18n/dates";
 import type { Lang } from "./i18n/lang";
 
@@ -112,7 +113,7 @@ export interface MyPaymentsInput {
 
 export function decideMyPayments(input: MyPaymentsInput): MyPayments {
   const { org } = input;
-  if (!org.paymentTrackingEnabled && !org.paymentCollectionEnabled) return { kind: "not_tracked" };
+  if (!paymentMessagesOn(org)) return { kind: "not_tracked" };
   if (org.paymentHolderId && org.paymentHolderId === input.userId) return { kind: "collector" };
 
   const lines = [...input.rows]

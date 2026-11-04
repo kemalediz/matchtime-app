@@ -6,6 +6,7 @@
  */
 import { FEATURE_META, type ToggleableKey } from "./org-features-meta";
 import { settingsNavCopy } from "./i18n/settings-nav";
+import { paymentMessagesOnFor } from "./payment-messages";
 import { t } from "./i18n/t";
 import { LANG_LABELS, normaliseLang, type Lang } from "./i18n/lang";
 
@@ -93,9 +94,13 @@ export function inviteLinkSummary(lang: L): string {
   return settingsNavCopy(lang).summary.inviteLink;
 }
 
-export function paymentsSummary(lang: L, a: { collecting: boolean; bankConnected: boolean }): string {
+/** The Payments line: off only when payments are off by the one rule
+ *  (`paymentMessagesOnFor`, decision K2, club summary B3). A club on the
+ *  old payment poll alone is told it is on. */
+export function paymentsSummary(lang: L, a: { tracking: boolean; collecting: boolean; bankConnected: boolean }): string {
   const c = settingsNavCopy(lang).summary;
-  if (!a.collecting) return c.paymentsOff;
+  if (!paymentMessagesOnFor({ paymentTracking: a.tracking, paymentCollection: a.collecting })) return c.paymentsOff;
+  if (!a.collecting) return c.paymentsTracking;
   return a.bankConnected ? c.paymentsBank : c.paymentsNoBank;
 }
 

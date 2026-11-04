@@ -23,7 +23,7 @@ import {
   accountChargesEnabled,
   createCheckoutSession,
 } from "@/lib/stripe";
-import { totalForMethod, platformFeePence, type PayMethod } from "@/lib/payments";
+import { isPaymentCollectionLive, totalForMethod, platformFeePence, type PayMethod } from "@/lib/payments";
 import { markDirectPaymentPending, resolvePayContext } from "@/lib/direct-payment";
 import { unwaiveMatchFee, waiveMatchFee } from "@/lib/fee-waiver";
 import { formatLondon } from "@/lib/london-time";
@@ -201,7 +201,8 @@ export async function payByMethod(
 
   if (method === "card" && !org.payMethodCard) throw new Error("Card payments are off");
   if (method === "pay_by_bank" && !org.payMethodPayByBank) throw new Error("Pay by Bank is off");
-  if (!org.stripeConnectAccountId || !org.stripeChargesEnabled) {
+  // A card can be taken: the one rule (payments.ts, club summary B3).
+  if (!isPaymentCollectionLive(org) || !org.stripeConnectAccountId) {
     throw new Error("The organiser hasn't finished connecting their bank yet");
   }
 

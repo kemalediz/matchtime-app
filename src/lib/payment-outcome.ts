@@ -91,6 +91,11 @@ export const ALREADY_PAID_REASON = "You're already paid for this match, nothing 
 export const FREE_PLACE_REASON =
   "You're on a free place for this match, so there's nothing to pay. Paying for a guest? Settle it with the money collector directly.";
 
+/** A club with payments off (`paymentMessagesOn`, decision K2): an old
+ *  pay link, or a pay page opened by hand. */
+export const PAYMENTS_OFF_REASON =
+  "This club doesn't take payments through MatchTime, so there's nothing to pay here. Speak to the organiser about paying.";
+
 /** A monthly club's regular opening a per-match pay link. */
 export const MONTHLY_PLACE_REASON =
   "Your place in this match is paid for by the month, so there's nothing to pay here. Speak to the organiser if that's not right.";

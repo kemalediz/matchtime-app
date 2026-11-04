@@ -75,7 +75,7 @@ describe("lifecycle", () => {
 
 describe("payments", () => {
   it("Sutton: collection on and live, tracking off, Kemal collects, every method", () => {
-    expect(paymentFacts(SUTTON.org, { collectorName: "Kemal", collectionLive: true })).toEqual({
+    expect(paymentFacts(SUTTON.org, { collectorName: "Kemal" })).toEqual({
       tracking: false,
       collection: true,
       messagesOn: true,
@@ -88,18 +88,18 @@ describe("payments", () => {
   });
 
   it("FNF and the Vets: both flags off, so no payment message; the Vets still name Davide", () => {
-    expect(paymentFacts(FNF.org, { collectorName: null, collectionLive: false })).toMatchObject({ messagesOn: false, collector: null });
-    const vets = paymentFacts(VETS.org, { collectorName: "Davide", collectionLive: false });
+    expect(paymentFacts(FNF.org, { collectorName: null })).toMatchObject({ messagesOn: false, collector: null });
+    const vets = paymentFacts(VETS.org, { collectorName: "Davide" });
     expect(vets).toMatchObject({ tracking: false, collection: false, messagesOn: false, collector: { userId: "u-davide", name: "Davide" } });
     // No Stripe account: a card or Pay by Bank cannot be taken; direct can.
     expect(vets.methods).toEqual({ payByBank: false, card: false, direct: true });
   });
 
   it("tracking only is payments on (the outer gate), not collection (D3 keeps both facts)", () => {
-    const f = paymentFacts(MUTED.org, { collectorName: null, collectionLive: false });
+    const f = paymentFacts(MUTED.org, { collectorName: null });
     expect(f).toMatchObject({ tracking: true, collection: false, messagesOn: true });
     for (const shape of Object.values(SHAPES)) {
-      expect(paymentFacts(shape.org, { collectorName: null, collectionLive: false }).messagesOn).toBe(paymentMessagesOn(shape.org));
+      expect(paymentFacts(shape.org, { collectorName: null }).messagesOn).toBe(paymentMessagesOn(shape.org));
     }
   });
 });

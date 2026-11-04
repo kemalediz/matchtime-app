@@ -16,6 +16,7 @@ import { SETTINGS_PATH, helpTopicSettingsPath } from "./help-links";
 import { settingInfo, type SettingInfoKey } from "./settings-info";
 import type { Lang } from "./i18n/lang";
 import { organisersAnnounce } from "./list-announcer";
+import { paymentMessagesOnFor } from "./payment-messages";
 
 /**
  * The feature-aware "how to use me" usage block, printed by "@Match Time
@@ -255,12 +256,11 @@ function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
   if (topic === "friend") return features.attendance === true;
   if (topic === "pool") return poolOn(features);
   if (topic === "partners") return partnersOn(features);
-  // Payments are on when the club collects match fees. Payment tracking
-  // (the old payment poll) is hidden for now (2026-10-16): a club that
-  // still has only that flag is shown how fee collection works and how to
-  // switch it on, which is true of it, rather than an explainer of a
-  // setting nobody can find.
-  if (topic === "payments") return features.paymentCollection === true;
+  // Payments are on by the one rule (decision K2, club summary B3): the
+  // club collects match fees OR still tracks who has paid with the old
+  // payment poll (hidden since 2026-10-16, so only an older club has it).
+  // The explainer then says what MatchTime does for that club.
+  if (topic === "payments") return paymentMessagesOnFor(features);
   return features[HELP_TOPIC_FEATURE[topic]] === true;
 }
 
@@ -376,14 +376,21 @@ export function buildHelpReply(
           ? s.onbHelpAvailabilityMonthly
           : topic === "availability" && picks
             ? s.onbHelpAvailabilityOrganiserPicks
-            : s.onbHelpExplainer({ topic });
+            : topic === "payments" && features.paymentCollection !== true
+              ? // Payments on by the old payment poll alone (decision K2):
+                // what that club gets, not fee collection it does not have.
+                s.onbHelpPaymentsTracking
+              : s.onbHelpExplainer({ topic });
     // The friend link (#488, 2026-10-31) is part of saying who plays: a
     // player's friend joins by his own link (friend-link/rules.ts); an
-    // organiser's add stays direct (D1).
+    // organiser's add stays direct (D1). An organiser's "help payments"
+    // also says how to record a payment made for others (decision K2).
     const explainer =
       topic === "availability"
         ? `${base}\n${s.onbHelpFriendLink}${admin ? ` ${s.onbHelpFriendLinkOrganiser}` : ""}${admin && features.monthly ? `\n\n${s.onbHelpMonthListOrganiser}` : ""}`
-        : base;
+        : topic === "payments" && admin
+          ? `${base}\n${s.onbHelpPaymentsCreditOrganiser}`
+          : base;
     if (topicIsOn(topic, features)) {
       return `${explainer}\n\n${s.onbHelpOnStatus({ audience: ctx.audience, url: topicUrl })}`;
     }
