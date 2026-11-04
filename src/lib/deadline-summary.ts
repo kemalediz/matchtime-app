@@ -40,6 +40,7 @@ import { t } from "./i18n/t";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { deadlineSummaryDue, madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
 import type { ClubSummary } from "./club-summary/types";
+import { placesOpen } from "./squad-short";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
@@ -109,7 +110,7 @@ export async function sendDueDeadlineSummaries(club: ClubSummary | null, now: Da
           out: named(byPosition.filter((a) => a.status === "DROPPED")),
           maybe: named(confirmed.filter((a) => maybeIds.has(a.userId))),
           waiting: named(byPosition.filter((a) => a.status === "BENCH")),
-          open: Math.max(0, m.maxPlayers - confirmed.length),
+          open: placesOpen(m.maxPlayers, confirmed.length),
           lang: club.language,
         }),
       });

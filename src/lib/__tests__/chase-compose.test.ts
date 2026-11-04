@@ -171,6 +171,7 @@ describe("what the model is asked", () => {
         confirmed: 6,
         maxPlayers: 14,
         bench: 1,
+        short: true,
         atRisk: false,
       }),
     );
@@ -199,6 +200,7 @@ describe("a line that cannot be posted is replaced by the fixed one", () => {
     confirmed: 6,
     maxPlayers: 14,
     bench: 1,
+    short: true,
     atRisk: false,
   });
 

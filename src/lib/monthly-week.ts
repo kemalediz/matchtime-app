@@ -43,6 +43,7 @@ import { loadClubQuietHours } from "./club-quiet-hours";
 import { buildSeedBumpedDm, buildWeekListPost } from "./monthly-week-copy";
 import { loadPlayerNames } from "./player-display-name";
 import { londonMonthStart, normaliseCreditRule, normaliseSquadMode, type MonthCreditRule } from "./squad-month-rules";
+import { placesOpen } from "./squad-short";
 import {
   SEED_NOTE_PRIORITY,
   SEED_NOTE_PROMOTED,
@@ -656,7 +657,7 @@ export async function takeMonthlySlot(matchId: string, userId: string): Promise<
       orderBy: { createdAt: "asc" },
       select: { id: true, replacingUserId: true },
     });
-    const placesFree = Math.max(0, week.maxPlayers - rows.filter((r) => r.status === "CONFIRMED").length);
+    const placesFree = placesOpen(week.maxPlayers, rows.filter((r) => r.status === "CONFIRMED").length);
     const rank = (o: { replacingUserId: string | null }): number =>
       decision.vacatedByUserId && o.replacingUserId === decision.vacatedByUserId ? 0 : o.replacingUserId === null ? 1 : 2;
     const surplus = [...openOffers].sort((a, b) => rank(a) - rank(b)).slice(0, Math.max(0, openOffers.length - placesFree));

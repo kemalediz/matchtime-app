@@ -16,7 +16,7 @@
  *    and then dropped by the feature gate: 15 calls in the replayed week,
  *    none sent. The gate is read before the composer now.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 type Overrides = Record<string, Record<string, (...a: unknown[]) => unknown>>;
 const overrides: Overrides = {};
@@ -336,12 +336,53 @@ describe("1b. the players' chase for the open places is unchanged", () => {
     expect(byKey(out, `${m.id}:chase-pre-kickoff`)?.kind).toBe("group-message");
   });
 
+  it("K1: the composer is handed the game's 'short below', so it is told the game is on", async () => {
+    const m = fnfGame(12, 12);
+    setWorld([m]);
+    await instructions(FRI_1700);
+    expect(composeChaseText).toHaveBeenCalledWith(expect.objectContaining({ kind: "chase-pre-kickoff", shortBelow: 12 }));
+  });
+
   it("MatchTime announces, minimum 12, 12 of 18: the 2h last call still goes to the players' group", async () => {
     const m = fnfGame(12, 12);
     setWorld([m]);
     const out = await instructions(FRI_1830);
     expect(byKey(out, `${m.id}:pre-kickoff`)?.kind).toBe("group-message");
   });
+});
+
+describe("1c. K1 (2026-11-04): the players' fixed chase says the places left at or above the minimum", () => {
+  beforeEach(() => {
+    features.listAnnouncer = "matchtime";
+    // The model is not there: the scheduler's fixed copy goes out.
+    composeChaseText.mockImplementation(async () => null as unknown as string);
+  });
+  afterEach(() => {
+    composeChaseText.mockImplementation(async () => "MODEL TEXT");
+  });
+
+  const CASES: Array<[string, Date, string]> = [
+    ["the 08:00 match-day chase", FRI_0805, "chase-match-day-morning:2026-10-09"],
+    ["the 3h chase", FRI_1700, "chase-pre-kickoff"],
+    ["the 2h last call", FRI_1830, "pre-kickoff"],
+  ];
+  for (const [label, now, suffix] of CASES) {
+    it(`minimum 12, 12 of 18, ${label}: "6 places left", never short`, async () => {
+      const m = fnfGame(12, 12);
+      setWorld([m]);
+      const text = byKey(await instructions(now), `${m.id}:${suffix}`)?.text ?? "";
+      expect(text).toContain("6 places left");
+      expect(text).not.toMatch(/short|still need/i);
+    });
+
+    it(`minimum 12, 11 of 18, ${label}: below the minimum, today's wording`, async () => {
+      const m = fnfGame(11, 12);
+      setWorld([m]);
+      const text = byKey(await instructions(now), `${m.id}:${suffix}`)?.text ?? "";
+      expect(text).toMatch(/7 short|Still need 7/);
+      expect(text).not.toContain("places left");
+    });
+  }
 });
 
 describe("2. no model call for a chase the feature gate drops", () => {

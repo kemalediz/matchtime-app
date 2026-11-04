@@ -157,7 +157,10 @@ export default async function AdminGuidePage() {
         </li>
         <li>
           Below the minimum MatchTime warns you about low numbers and offers to
-          cancel; above it, it doesn&apos;t. With a minimum set, the teams are
+          cancel; at or above it, it doesn&apos;t, because the game is on. The
+          calls in the players&apos; group still ask for the places left until
+          the squad is full, but they never say you&apos;re short or that the
+          game may be called off. With a minimum set, the teams are
           made from that number up, one side a player short if needed (7
           against 6), balanced so the short side gets the stronger players.
         </li>

@@ -948,7 +948,9 @@ function cases(lang: Lang): Case[] {
   add("R3 buildRatePromoPost", buildRatePromoPost({ activityName: "Tuesday 7-a-side", matchDateLabel: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", lang }));
   add("R3b buildRatePromoPost / a club's first, players vote MoM", buildRatePromoPost({ activityName: "Tuesday 7-a-side", matchDateLabel: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", lang, firstTime: { mvpLabel: "Man of the Match", momVote: true } }));
   add("R3b buildRatePromoPost / a club's first, organisers choose MoM", buildRatePromoPost({ activityName: "Tuesday 7-a-side", matchDateLabel: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", lang, firstTime: { mvpLabel: "Man of the Match", momVote: false } }));
-  add("R4 buildMatchDayChaseFallback", buildMatchDayChaseFallback({ need: 3, activityName: "Tuesday 7-a-side", lang }));
+  add("R4 buildMatchDayChaseFallback", buildMatchDayChaseFallback({ need: 3, short: true, activityName: "Tuesday 7-a-side", lang }));
+  add("R4 buildMatchDayChaseFallback / at or above the minimum (K1)", buildMatchDayChaseFallback({ need: 3, short: false, activityName: "Tuesday 7-a-side", lang }));
+  add("R4 buildMatchDayChaseFallback / at or above the minimum, one place (K1)", buildMatchDayChaseFallback({ need: 1, short: false, activityName: "Tuesday 7-a-side", lang }));
   const truth = { confirmed: ["Kemal Ediz", "Elvin Aliyev"], bench: ["Erdal Ozkan"], maxPlayers: 14 };
   add("R1 composeSquadStateReply / marker with a lead", composeSquadStateReply("Cheers Sait, noted. [SQUAD]", truth, lang).text);
   add("R1 composeSquadStateReply / model roster replaced", composeSquadStateReply("*Playing:*\n1. Kemal\n2. Elvin\n3. Sait", truth, lang).text);
@@ -1009,8 +1011,9 @@ function cases(lang: Lang): Case[] {
   }
   const fullRoster = buildSquadRosterBlock({ confirmed: named(fourteenNames), bench: named(["Najib Ahmadi"]), maxPlayers: 14, lang });
   add("R70 buildMatchDayLockedPost", buildMatchDayLockedPost({ activityName: "Tuesday 7-a-side", venue: "Goals North Cheam", timeLabel: "21:30", rosterBlock: fullRoster, lang }));
-  add("R72 buildDailyInListFallback", buildDailyInListFallback({ activityName: "Tuesday 7-a-side", need: 3, rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 11)), bench: named(["Erdal Ozkan"]), maxPlayers: 14, lang }), lang }));
-  add("R72 buildDailyInListFallback / one more", buildDailyInListFallback({ activityName: "Tuesday 7-a-side", need: 1, rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 13)), bench: [], maxPlayers: 14, lang }), lang }));
+  add("R72 buildDailyInListFallback", buildDailyInListFallback({ activityName: "Tuesday 7-a-side", need: 3, short: true, rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 11)), bench: named(["Erdal Ozkan"]), maxPlayers: 14, lang }), lang }));
+  add("R72 buildDailyInListFallback / one more", buildDailyInListFallback({ activityName: "Tuesday 7-a-side", need: 1, short: true, rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 13)), bench: [], maxPlayers: 14, lang }), lang }));
+  add("R72 buildDailyInListFallback / at or above the minimum (K1)", buildDailyInListFallback({ activityName: "Tuesday 7-a-side", need: 1, short: false, rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 13)), bench: [], maxPlayers: 14, lang }), lang }));
   add("R73 buildUnpaidTailText / one", buildUnpaidTailText(1, lang));
   add("R73 buildUnpaidTailText / four", buildUnpaidTailText(4, lang));
   // Row 81's "tonight" belongs to match day only (2026-10-03). The
@@ -1043,8 +1046,10 @@ function cases(lang: Lang): Case[] {
   add("R67 buildBotIntro / everything on", buildBotIntro(INTRO_ALL, buildBenchIntroLine({ lang }), lang));
   add("R67 buildBotIntro / attendance only", buildBotIntro(INTRO_MIN, buildBenchIntroLine({ lang }), lang));
   add("R67 buildBotIntro / ratings and MoM only", buildBotIntro(INTRO_RATINGS, buildBenchIntroLine({ lang }), lang));
-  add("R74 buildChasePreKickoffFallback", buildChasePreKickoffFallback({ need: 2, activityName: "Tuesday 7-a-side", timeLabel: "21:30", lang }));
-  add("R75 buildPreKickoffShortFallback", buildPreKickoffShortFallback({ timeLabel: "21:30", venue: "Goals North Cheam", confirmed: 12, maxPlayers: 14, need: 2, lang }));
+  add("R74 buildChasePreKickoffFallback", buildChasePreKickoffFallback({ need: 2, short: true, activityName: "Tuesday 7-a-side", timeLabel: "21:30", lang }));
+  add("R74 buildChasePreKickoffFallback / at or above the minimum (K1)", buildChasePreKickoffFallback({ need: 2, short: false, activityName: "Tuesday 7-a-side", timeLabel: "21:30", lang }));
+  add("R75 buildPreKickoffShortFallback", buildPreKickoffShortFallback({ timeLabel: "21:30", venue: "Goals North Cheam", confirmed: 12, maxPlayers: 14, need: 2, short: true, lang }));
+  add("R75 buildPreKickoffShortFallback / at or above the minimum (K1)", buildPreKickoffShortFallback({ timeLabel: "21:30", venue: "Goals North Cheam", confirmed: 12, maxPlayers: 14, need: 2, short: false, lang }));
   add("R76 buildGearReminder", buildGearReminder({ timeLabel: "21:30", venue: "Goals North Cheam", lang }));
   add("R77 buildAskScorePost", buildAskScorePost({ activityName: "Tuesday 7-a-side", lang }));
 

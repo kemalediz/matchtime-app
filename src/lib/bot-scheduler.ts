@@ -165,7 +165,7 @@ import { buildOrganiserListUpdate, buildOrganiserRelay, buildRollingLeftOutNotic
 import { seedNudgeInstructions } from "./seed-nudge";
 import { firstTeamsInstructions } from "./admin-onboarding";
 import { minimumToPlay } from "./min-players";
-import { isSquadShort } from "./squad-short";
+import { squadNumbers } from "./squad-short";
 import { decideBenchSuggestion, planFormatUp, playerRange } from "./flex-format-rules";
 import { flexFormatCopy } from "./i18n/flex-format";
 import { joinAdminNames } from "./seed-nudge-rules";
@@ -1340,7 +1340,7 @@ async function computeForMatch(
     // MONTHLY SQUAD (slice 5): the same argument for a month's regulars.
     if (monthly) return null;
     try {
-      const text = await composeChaseText({ groupId, kind, matchId: m.id, now, withRoster });
+      const text = await composeChaseText({ groupId, kind, matchId: m.id, now, withRoster, shortBelow: gameShortBelow });
       if (text && text.trim().length > 0) return text;
       console.error(
         `[scheduler] DEGRADED: composeChaseText found nothing to chase for ` +
@@ -1387,17 +1387,19 @@ async function computeForMatch(
     .filter((a) => a.status === "BENCH")
     .sort((a, b) => a.position - b.position);
   const maxPlayers = m.maxPlayers;
-  const need = Math.max(0, maxPlayers - confirmed.length);
   /**
-   * THE SQUAD IS SHORT (2026-11-04, squad-short.ts): below the game's own
-   * minimum, or two full sides of its format when none is set. Every
-   * "short" said to the organisers reads this: the 10:00 "Low numbers"
-   * offer and the chase notices to the admin channel. `need` stays the
-   * open places, which the players' chases still ask to fill.
+   * THE MATCH'S NUMBERS (squad-short.ts, the club summary's one rule, B1):
+   * `need` is the places still open, which the players' chases ask to fill
+   * while any is open. `isShort` is below the game's own minimum, or two
+   * full sides of its format when none is set: every "short" reads it (the
+   * 10:00 "Low numbers" offer, the chase notices to the admin channel, the
+   * players' chase wording and "at risk"). K1 (Kemal, 2026-11-04): at or
+   * above the minimum the game is on, so the players hear "places left".
    */
-  const isShort = isSquadShort(confirmed.length, {
+  const { placesOpen: need, short: isShort, shortBelow: gameShortBelow } = squadNumbers({
+    places: maxPlayers,
+    confirmed: confirmed.length,
     minPlayers: activity.minPlayers ?? null,
-    maxPlayers,
     playersPerTeam: sport.playersPerTeam,
   });
 
@@ -2030,6 +2032,7 @@ async function computeForMatch(
           return buildDailyInListFallback({
             activityName: activity.name,
             need,
+            short: isShort,
             rosterBlock: buildSquadRosterBlock({
               confirmed: confirmed.map((a) => a.user),
               bench: bench.map((a) => a.user),
@@ -2474,11 +2477,13 @@ async function computeForMatch(
       attendanceDeadline: m.attendanceDeadline,
       now,
     });
-    const squadShort = need > 0;
+    // The players are chased while a place is open (`need`, squad-short.ts),
+    // at or above the game's minimum too (K1, 2026-11-04).
+    const placeOpen = need > 0;
     // Cheap pre-filter: the three cheap booleans and the clock gate all
     // have to hold before we spend a query. This block therefore costs
     // nothing on the overwhelmingly common tick.
-    if (matchLive && squadShort && isSociableChaseHour(now, features.quietHours)) {
+    if (matchLive && placeOpen && isSociableChaseHour(now, features.quietHours)) {
       const invites = await db.sentNotification.findMany({
         where: { matchId, kind: "recruit-dm", targetUser: { not: null } },
         select: { targetUser: true, createdAt: true },
@@ -2587,7 +2592,7 @@ async function computeForMatch(
             invitedAt: invitedAtByUser.get(u.id) ?? null,
             now,
             hasResponded: responded.has(u.id),
-            squadShort,
+            placeOpen,
             matchLive,
             subscribed: !optedOut.has(u.id),
             alreadyChased: sentKeys.has(key),
@@ -2968,8 +2973,7 @@ async function computeForMatch(
   //       minimum of 12 is on and hears nothing. Its key is not claimed,
   //       so a drop below the minimum later in the window still sends it.
   {
-    const placesOpen = confirmed.length < maxPlayers;
-    const need = maxPlayers - confirmed.length;
+    const placesOpen = need > 0;
     const inLive = m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED";
 
     // Chase A: morning of match day, 8-9am London.
@@ -3007,7 +3011,7 @@ async function computeForMatch(
             key,
             // No "Morning all": the slot is 8-9am but the post can land
             // late (see buildMatchDayChaseFallback's docblock).
-            () => buildMatchDayChaseFallback({ need, activityName: activity.name, lang }),
+            () => buildMatchDayChaseFallback({ need, short: isShort, activityName: activity.name, lang }),
           );
           out.push({ kind: "group-message", key, matchId, ...chase });
         }
@@ -3032,6 +3036,7 @@ async function computeForMatch(
           const chase = await chaseText("chase-pre-kickoff", key, () =>
             buildChasePreKickoffFallback({
               need,
+              short: isShort,
               activityName: activity.name,
               timeLabel: format(m.date, "HH:mm"),
               lang,
@@ -3050,7 +3055,6 @@ async function computeForMatch(
   //       short 2h before kickoff, as a last call.
   {
     const key = `${matchId}:pre-kickoff`;
-    const need = maxPlayers - confirmed.length;
     if (
       !sentKeys.has(key) &&
       need > 0 &&
@@ -3071,6 +3075,7 @@ async function computeForMatch(
             confirmed: confirmed.length,
             maxPlayers,
             need,
+            short: isShort,
             lang,
           }),
         );

@@ -48,6 +48,7 @@ import { firstWord, joinList } from "./text";
 import { firstMonthsFree } from "./free-period";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey, BadgeNumbers } from "../badge-rules";
+import { placesOpen } from "../squad-short";
 
 /** The tables whose answer says it cannot be cut to a period. */
 type UncutTable = "elo" | "team_of_season" | "mr_reliable" | "chemistry" | "generic";
@@ -113,6 +114,10 @@ function organiserAskTail(open: number): string {
 /** How to make a real tag (#482, #487, 2026-10-31), the one sentence the
  *  HQ notices end with. */
 const en_tagHow = "To tag me, type *@* and pick *Match Time* from the list.";
+
+/** "1 place left", "3 places left": the chases at or above the game's
+ *  minimum (K1, 2026-11-04). */
+const en_placesLeft = (n: number): string => `${n} ${n === 1 ? "place" : "places"} left`;
 
 export const en = {
   // ── shared fragments ─────────────────────────────────────────────
@@ -319,6 +324,11 @@ export const en = {
 
   match_day_chase_fallback: (p: { need: number; activityName: string }): string =>
     `☀️ Still *${p.need} short* for tonight's *${p.activityName}*. Any takers? 👀`,
+  /** K1 (Kemal, 2026-11-04): at or above the game's minimum the game is
+   *  on, so the chase says the places left, never "short". The same for
+   *  the three kinds below (`*_places_left`). */
+  match_day_chase_places_left: (p: { open: number; activityName: string }): string =>
+    `☀️ *${en_placesLeft(p.open)}* for tonight's *${p.activityName}*. Any takers? 👀`,
 
   // ── row 39: slot_opened (compose.ts) ─────────────────────────────
   //   "13 of 14", never "13/14", and "slot", never "spot": both are
@@ -381,6 +391,8 @@ export const en = {
 
   daily_in_list_fallback_lead: (p: { activityName: string; need: number }): string =>
     `🗓 *${p.activityName}*: need *${p.need} more*.`,
+  daily_in_list_places_left_lead: (p: { activityName: string; open: number }): string =>
+    `🗓 *${p.activityName}* is on: *${en_placesLeft(p.open)}*.`,
 
   // ── row 73: buildUnpaidTailText (scheduler-copy.ts) ──────────────
 
@@ -966,6 +978,10 @@ export const en = {
     `⏳ Still *${p.need} short* for *${p.activityName}* at ${p.timeLabel}. Anyone free tonight?`,
   pre_kickoff_short_fallback: (p: { timeLabel: string; venue: string; confirmed: number; maxPlayers: number; need: number }): string =>
     `⏰ Tonight *${p.timeLabel}* at *${p.venue}* · ${p.confirmed}/${p.maxPlayers}. *Still need ${p.need}*, last chance to jump in. 🙏`,
+  chase_pre_kickoff_places_left: (p: { open: number; activityName: string; timeLabel: string }): string =>
+    `⏳ *${en_placesLeft(p.open)}* for *${p.activityName}* at ${p.timeLabel}. Anyone free tonight?`,
+  pre_kickoff_places_left: (p: { timeLabel: string; venue: string; open: number }): string =>
+    `⏰ Tonight *${p.timeLabel}* at *${p.venue}*: *${en_placesLeft(p.open)}*, last chance to jump in 🙏`,
   gear_reminder: (p: { timeLabel: string; venue: string }): string =>
     `⚽ *${p.timeLabel} at ${p.venue}*, see you there!\n\n` +
     `Quick reminder: if you've got them, please bring your *goalie gloves*, a *ball*, and *spare bibs*.`,
@@ -5287,7 +5303,7 @@ export const en = {
   //   channel instead of the players' group (organisers-list-copy.ts).
   /** The admin list update's first line. "of", never a slash. */
   oa_header: (p: { activityName: string; whenLabel: string; confirmed: number; maxPlayers: number }): string => {
-    const open = Math.max(0, p.maxPlayers - p.confirmed);
+    const open = placesOpen(p.maxPlayers, p.confirmed);
     const tail = open === 0 ? "full" : `${open} ${open === 1 ? "space" : "spaces"}`;
     return `📋 *Squad for ${p.activityName}, ${p.whenLabel}*: ${p.confirmed} of ${p.maxPlayers} in, ${tail}.`;
   },

@@ -51,6 +51,7 @@
 import { db } from "./db";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { computeChaseRisk } from "./chase-risk";
+import { squadNumbersAt } from "./squad-short";
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "@/lib/pipeline/llm";
 import { withOrgAiBudget } from "./ai-budget";
 import {
@@ -244,6 +245,9 @@ export async function composeChaseText(input: {
   /** HARNESS ONLY (`scripts/dryrun-pipeline.ts LANG=tr`): compose in this
    *  language instead of the org's column. Production never passes it. */
   langOverride?: Lang | string | null;
+  /** The game's "short below" (squad-short.ts), as the scheduler read it.
+   *  See `composeChaseFromMatch`. */
+  shortBelow?: number;
 }): Promise<string | null> {
   const now = input.now ?? new Date();
   const org = await db.organisation.findFirst({
@@ -301,6 +305,7 @@ export async function composeChaseText(input: {
       lang: normaliseLang(input.langOverride ?? org.language),
       now,
       withRoster: input.withRoster,
+      shortBelow: input.shortBelow,
       logLabel: `group=${input.groupId}`,
     }),
   );
@@ -322,6 +327,11 @@ export async function composeChaseFromMatch(
     now?: Date;
     /** Default true. */
     withRoster?: boolean;
+    /** The game's "short below" (`squadNumbers(...).shortBelow`,
+     *  squad-short.ts): below it the squad is short. The scheduler always
+     *  passes it; absent (a harness), the match's places, so the squad is
+     *  short while a place is open, as with no minimum set. */
+    shortBelow?: number;
     /** Identifies the caller in the log lines. */
     logLabel?: string;
   },
@@ -332,7 +342,21 @@ export async function composeChaseFromMatch(
   const lang = normaliseLang(input.lang);
   const confirmed = match.attendances.filter((a) => a.status === "CONFIRMED").map((a) => a.user);
   const bench = match.attendances.filter((a) => a.status === "BENCH").map((a) => a.user);
-  const risk = computeChaseRisk({ kickoff: match.date, confirmedCount: confirmed.length, maxPlayers: match.maxPlayers, now });
+  // "Short" and "places open" are squad-short.ts's, the club summary's one
+  // rule (B1). K1 (Kemal, 2026-11-04): at or above the game's minimum the
+  // game is on, so the line says the places left and nothing is at risk.
+  const numbers = squadNumbersAt({
+    places: match.maxPlayers,
+    confirmed: confirmed.length,
+    shortBelow: input.shortBelow ?? match.maxPlayers,
+  });
+  const risk = computeChaseRisk({
+    kickoff: match.date,
+    confirmedCount: confirmed.length,
+    maxPlayers: match.maxPlayers,
+    short: numbers.short,
+    now,
+  });
 
   const facts: ChaseFacts = {
     kind: input.kind,
@@ -344,6 +368,7 @@ export async function composeChaseFromMatch(
     confirmed: confirmed.length,
     maxPlayers: match.maxPlayers,
     bench: bench.length,
+    short: numbers.short,
     // The 17:00 update is the only post that escalates: the pre-kickoff
     // posts carry their own urgency, and a second warning reads as panic.
     // The server decides (chase-risk.ts); the model is told.
@@ -380,6 +405,7 @@ export async function composeChaseFromMatch(
   const switchLine = chaseSwitchLine({
     confirmedNames: confirmed.map((u) => u.name ?? "?"),
     maxPlayers: match.maxPlayers,
+    short: numbers.short,
     alternatives: input.alternatives ?? [],
     lang,
     hoursToKickoff: risk.hoursToKickoff,

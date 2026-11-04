@@ -82,6 +82,7 @@ import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
 import { resolveScoreResult, resolveTeamRef, resolveWinnerSide, type TeamSide } from "./score-teams";
 import { planStatsQuestion } from "./stats-answer";
 import { periodKey } from "./stats-period";
+import { placesOpen } from "../squad-short";
 import type {
   AttendanceFacts,
   AttendanceRow,
@@ -3639,8 +3640,8 @@ function applyClaim(args: {
   const confirmed = confirmedCount(w);
   // WHO MAY TAKE A FREE PLACE (slice 2b): the one shared rule. For a
   // first-come club (every club until it chooses otherwise, Sutton FC
-  // included) this is exactly `confirmed < maxPlayers`.
-  const hasRoom = confirmed < state.maxPlayers;
+  // included) this is exactly "a place is open" (`placesOpen`, squad-short.ts).
+  const hasRoom = placesOpen(state.maxPlayers, confirmed) > 0;
   const squadHasRoom = canTakeFreePlace({
     confirmed,
     maxPlayers: state.maxPlayers,

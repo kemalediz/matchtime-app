@@ -294,7 +294,9 @@ export interface MatchFacts {
    *  scheduler tells the organisers is "short" (the 10:00 offer, the chase
    *  notices). */
   shortBelow: number;
-  /** `isSquadShort` (squad-short.ts): `confirmed < shortBelow`. */
+  /** `isSquadShort` (squad-short.ts): `confirmed < shortBelow`. The only
+   *  meaning of "short" (B1, K1 2026-11-04): at or above it the game is on,
+   *  the players' chases say "places left", and nothing is "at risk". */
   short: boolean;
   /** The match's game's `fewestAnyFormat`: the 18:00 "Match in trouble"
    *  test is `confirmed < fewestAnyFormat` (D1's third meaning). */

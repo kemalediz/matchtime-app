@@ -19,6 +19,7 @@ import { type MonthlyList, type MonthlyListEntry } from "./monthly-list";
 import { nameKey, type MonthCreditRule } from "./squad-month-rules";
 import { entryResolver } from "./month-signup-rules";
 import { isNamedMember, MAX_NEW_PLAYERS_PER_PASTE, newcomerLineOf, type NewcomerLine } from "./month-newcomer-rules";
+import { placesOpen } from "./squad-short";
 
 export type WeekPaid = "none" | "claimed" | "confirmed";
 export type WeekStatus = "CONFIRMED" | "BENCH" | "DROPPED";
@@ -321,7 +322,7 @@ export function buildWeekList(args: { members: WeekMember[]; rows: WeekRow[]; ma
     .map((r) => ({ userId: r.userId, name: r.name }));
 
   const confirmedCount = rows.filter((r) => r.status === "CONFIRMED").length;
-  return { slots, paidCantPlay, cantPlay, reserves, open: Math.max(0, maxPlayers - confirmedCount) };
+  return { slots, paidCantPlay, cantPlay, reserves, open: placesOpen(maxPlayers, confirmedCount) };
 }
 
 /** A regular is out this week: they dropped, or said beforehand they are away. */
@@ -815,7 +816,7 @@ export function reconcileMonthPaste(args: {
   const handled = new Set<string>();
   const senderIsClubPlayer = !!senderUserId && args.roster.some((m) => m.userId === senderUserId);
   // Guests: never more than the open places; a non-organiser at most the cap.
-  const openPlaces = Math.max(0, args.maxPlayers - rows.filter((r) => r.status === "CONFIRMED").length);
+  const openPlaces = placesOpen(args.maxPlayers, rows.filter((r) => r.status === "CONFIRMED").length);
   const guestCap = senderIsAdmin ? openPlaces : Math.min(openPlaces, MAX_GUESTS_PER_PASTE);
   let guestsAdded = 0;
   let newPlayers = 0;

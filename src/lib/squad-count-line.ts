@@ -21,6 +21,7 @@
  */
 import { t } from "./i18n/t";
 import { normaliseBenchPickMode } from "./squad-capacity";
+import { placesOpen } from "./squad-short";
 
 /** Up to this many bench names are listed; past it, the count alone. */
 export const BENCH_NAMES_SHOWN = 3;
@@ -52,7 +53,7 @@ export function buildBenchPickHint(p: {
   bench: readonly string[];
   benchPickMode: string | null | undefined;
 }): string | null {
-  const open = p.maxPlayers - p.confirmed;
+  const open = placesOpen(p.maxPlayers, p.confirmed);
   if (normaliseBenchPickMode(p.benchPickMode) !== "organiser" || open <= 0 || p.bench.length === 0) return null;
   return t(p.lang).sq_pick_hint({ open, name: p.bench[0] });
 }

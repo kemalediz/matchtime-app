@@ -22,6 +22,7 @@ import type { Lang } from "./i18n/lang";
 import { getOrgFeatures } from "./org-features";
 import { recruitDmLinkKey, RECRUIT_DM_LINK_KIND } from "./recruit-reaction";
 import { resolveLookbackMatches } from "./recruit-lookback";
+import { placesOpen } from "./squad-short";
 
 /**
  * The lookback window, its ceiling and the clamp now live in
@@ -310,7 +311,7 @@ export async function inviteRecentPlayers(
   // fills the squad, so open slots = maxPlayers − confirmed. `need` is kept
   // for DISPLAY copy (suppressed for ratings-only orgs) so the visible
   // "N spots left" behaviour is unchanged.
-  const openSlots = Math.max(0, next.maxPlayers - confirmedCount);
+  const openSlots = placesOpen(next.maxPlayers, confirmedCount);
   const need = attendanceOn ? openSlots : 0;
 
   // Needed both by the capacity-guard early return and the normal return

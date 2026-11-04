@@ -79,6 +79,7 @@ describe("the kickoff handed to the model is written once, day and time apart", 
       confirmed: 6,
       maxPlayers: 14,
       bench: 0,
+      short: true,
       atRisk: false,
     });
 

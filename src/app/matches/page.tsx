@@ -10,6 +10,8 @@ import { formatLondon } from "@/lib/london-time";
 import { getMomSummaries } from "@/lib/mom";
 import { t } from "@/lib/i18n/t";
 import { ResultScore } from "@/components/match/result-score";
+import { matchSquadNumbers } from "@/lib/squad-short";
+import { squadBarColor } from "@/lib/squad-bar";
 
 // IMPORTANT: every user-facing time on this page is rendered in London
 // wall-clock via formatLondon. Plain date-fns format() uses the runtime's
@@ -70,12 +72,9 @@ export default async function MatchesPage() {
     const bench = m.attendances.filter((a) => a.status === "BENCH").length;
     const myStatus = myAttMap.get(m.id) ?? null;
     const pct = Math.min(100, Math.round((confirmed / m.maxPlayers) * 100));
-    const barColor =
-      confirmed >= m.maxPlayers
-        ? "bg-green-500"
-        : confirmed >= m.maxPlayers * 0.75
-        ? "bg-blue-600"
-        : "bg-amber-500";
+    // Green when full, blue when the game is on (at or above its minimum),
+    // amber while it is short: the one rule (squad-short.ts, B1, K1).
+    const barColor = squadBarColor(matchSquadNumbers(m, confirmed));
 
     const borderColor =
       myStatus === "CONFIRMED"

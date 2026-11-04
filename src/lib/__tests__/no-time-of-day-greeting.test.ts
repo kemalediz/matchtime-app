@@ -76,6 +76,7 @@ describe("the rating-promo group post carries no time of day", () => {
 describe("the match-day chase fallback carries no time of day", () => {
   const text = buildMatchDayChaseFallback({
     need: 3,
+    short: true,
     activityName: "Tuesday 7-a-side",
   });
 
@@ -94,7 +95,7 @@ describe("the match-day chase fallback carries no time of day", () => {
   });
 
   it("pluralises nothing it should not (one short is still 'short')", () => {
-    expect(buildMatchDayChaseFallback({ need: 1, activityName: "X" })).toContain("*1 short*");
+    expect(buildMatchDayChaseFallback({ need: 1, short: true, activityName: "X" })).toContain("*1 short*");
   });
 });
 

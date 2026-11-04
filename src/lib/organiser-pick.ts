@@ -79,6 +79,7 @@ import { hqLogSince } from "./admin-group-log";
 import { usableName } from "./player-display-name";
 import { loadOrganiserNames } from "./organiser-names";
 import { readPickReply, type PickReaderContext, type PickReaderInput, type PickReaderPerson } from "./organiser-pick-reader";
+import { placesOpen } from "./squad-short";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 const CLUB_RATING_WINDOW = 60;
@@ -346,7 +347,7 @@ async function sweepOneMatch(
 
   const world = await loadMatchWorld(m.id, { names: false });
   if (!world) return;
-  const openPlaces = Math.max(0, world.maxPlayers - world.confirmed.length);
+  const openPlaces = placesOpen(world.maxPlayers, world.confirmed.length);
 
   if (open && openPlaces === 0) {
     await closeRound(open.id, "filled", now);

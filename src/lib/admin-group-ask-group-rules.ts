@@ -29,6 +29,7 @@ import { createHash } from "node:crypto";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import type { BenchPickMode } from "./squad-capacity";
+import { placesOpen } from "./squad-short";
 
 export interface GroupAskStep {
   step: "post" | "told";
@@ -42,7 +43,7 @@ export type GroupAskDecision =
   | { kind: "already"; open: number; round: number; askedAt: Date };
 
 export function decideGroupAsk(p: { confirmed: number; maxPlayers: number; history: GroupAskStep[] }): GroupAskDecision {
-  const open = Math.max(0, p.maxPlayers - p.confirmed);
+  const open = placesOpen(p.maxPlayers, p.confirmed);
   if (open === 0) return { kind: "full" };
   const latest = [...p.history].sort((a, b) => b.round - a.round || (a.step === b.step ? 0 : a.step === "told" ? -1 : 1))[0];
   if (!latest) return { kind: "post", open, round: 1 };

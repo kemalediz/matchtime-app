@@ -26,6 +26,8 @@ import { ResultScore } from "@/components/match/result-score";
 import { connectFocusFor } from "@/lib/connect-focus-server";
 import { CONNECT_FOCUS_HOME } from "@/lib/connect-focus";
 import { NOT_CANCELLED } from "@/lib/played-match";
+import { matchSquadNumbers } from "@/lib/squad-short";
+import { squadBarColor } from "@/lib/squad-bar";
 
 function getGreeting(hour: number): string {
   if (hour < 5) return "Good night";
@@ -177,17 +179,16 @@ export default async function DashboardPage() {
 
   const confirmedCount = nextMatch?.attendances.filter((a) => a.status === "CONFIRMED").length ?? 0;
   const benchCount = nextMatch?.attendances.filter((a) => a.status === "BENCH").length ?? 0;
-  const slotsRemaining = nextMatch ? Math.max(0, nextMatch.maxPlayers - confirmedCount) : 0;
+  // Places open and short: the one rule (squad-short.ts, club summary B1).
+  const numbers = nextMatch ? matchSquadNumbers(nextMatch, confirmedCount) : null;
+  const slotsRemaining = numbers?.placesOpen ?? 0;
   const deadlinePassed = nextMatch ? isBefore(nextMatch.attendanceDeadline, new Date()) : false;
   const progressPct = nextMatch
     ? Math.min(100, Math.round((confirmedCount / nextMatch.maxPlayers) * 100))
     : 0;
-  const progressColor =
-    nextMatch && confirmedCount >= nextMatch.maxPlayers
-      ? "bg-green-500"
-      : nextMatch && confirmedCount >= nextMatch.maxPlayers * 0.75
-      ? "bg-blue-600"
-      : "bg-amber-500";
+  // Green when full, blue when the game is on (at or above its minimum),
+  // amber while it is short (K1, 2026-11-04).
+  const progressColor = numbers ? squadBarColor(numbers) : "bg-amber-500";
 
   const greeting = getGreeting(new Date().getHours());
   const firstName = (user.name ?? "").split(" ")[0];
