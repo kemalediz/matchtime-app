@@ -70,9 +70,10 @@ scenarios("a friend's share link", () => {
     expect(await pool.pendingByCode(form.code!)).toMatchObject({ source: "referral", sourceCode: code });
     const ex = await bea.dm(form.prefill!);
 
-    pool.expectSent(ex.sent, [{ to: "bea", channel: "dm", purpose: "pool-welcome", text: /^✅ Teşekkürler Bea/ }]);
+    // Her request says Turkish, but the public sign-up is English only (#496).
+    pool.expectSent(ex.sent, [{ to: "bea", channel: "dm", purpose: "pool-welcome", text: /^✅ Thanks Bea/ }]);
     const aliUser = await pool.userOf(ali);
-    expect(await pool.profileOf(bea)).toMatchObject({ status: "active", source: "referral", sourceCode: code, referrerUserId: aliUser!.id, referralCountedAt: null });
+    expect(await pool.profileOf(bea)).toMatchObject({ status: "active", language: "en", source: "referral", sourceCode: code, referrerUserId: aliUser!.id, referralCountedAt: null });
     pool.expectNoLeaks([...ali.phoneVariants(), "Ali Kaya"], { to: ["bea"] });
   });
 

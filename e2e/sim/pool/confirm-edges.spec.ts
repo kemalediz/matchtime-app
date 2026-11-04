@@ -31,12 +31,14 @@ scenarios("confirming a sign-up: the edges", () => {
 
   scenario("an expired code: told to sign up again, the sign-up stays waiting, no user", async ({ pool }) => {
     const ali = await pool.stranger("ali2");
+    // The request still says Turkish; the sign-up is English (#496), and the
+    // reply follows the sign-up's language.
     const form = await pool.signUp({ language: "tr" });
     await pool.db.run(`UPDATE "PoolProfile" SET "confirmCodeExpiresAt" = "createdAt" - interval '1 hour' WHERE "confirmCode" = $1`, [form.code]);
 
     const ex = await ali.dm(form.prefill!);
 
-    pool.expectSent(ex.sent, [{ to: "ali2", purpose: "pool-code-reply", text: /^Bu kayıt kodunun süresi doldu/ }]);
+    pool.expectSent(ex.sent, [{ to: "ali2", purpose: "pool-code-reply", text: /^That sign-up code has expired\. Please sign up again here and send the new message: \S+\/play$/ }]);
     expect(ex.json).toMatchObject({ result: "expired" });
     expect(await pool.pendingByCode(form.code!)).toMatchObject({ status: "pending-verify", userId: null });
     expect(await pool.userOf(ali)).toBeNull();

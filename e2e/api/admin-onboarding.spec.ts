@@ -124,7 +124,14 @@ test("GO: the admins get 'Getting <club> ready' once, in the admin group, and th
   const ready = all.filter((j) => j.kind === "admin-group");
   expect(hello).toHaveLength(1);
   expect(hello[0].text).toContain("📣 *List and teams:* the organisers share the squad list and the teams with you.");
-  expect(hello[0].text).not.toContain("Fair teams");
+  // Since the approved welcome (#499, #504) every club hears about fair
+  // teams; in organisers mode the line says the organisers share them, and
+  // the players are never offered "tag me and I'll make the teams" (#282).
+  expect(hello[0].text).toContain(
+    "⚖️ *Fair teams:* I pick two balanced sides from those ratings for the organisers, who share them with you. The more people rate, the fairer the teams.",
+  );
+  expect(hello[0].text).not.toContain("make the teams");
+  expect(hello[0].text).not.toContain("on match day tag me and ask");
   expect(hello[0].text).not.toContain("I'll put you on the bench and the organisers pick who plays");
 
   expect(ready).toHaveLength(1);

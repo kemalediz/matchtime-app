@@ -4,7 +4,7 @@
  * {state} and nothing else; a guessed or forged token learns nothing and
  * never reaches the database; checks are capped per requesting address.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({ poolProfile: { findUnique: vi.fn() } }));
 vi.mock("../../db", () => ({ db: dbMock }));
@@ -95,6 +95,16 @@ describe("the cap per requesting address", () => {
 });
 
 describe("the route answers {state} and nothing else", () => {
+  // The route reads the wall clock, so the clock is pinned to NOW. The
+  // fixture's code runs out at LATER (2 Nov 2026); without the pin the
+  // "waiting" case began failing on that real date, the code having expired.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it("waiting", async () => {
     const res = await POST(req({ token: poolSignupStatusToken("prof1", "ABCDE"), code: "ABCDE" }));
     expect(res.status).toBe(200);
@@ -112,6 +122,11 @@ describe("the route answers {state} and nothing else", () => {
       expect(await res.json()).toEqual({ state: "gone" });
     }
     expect(dbMock.poolProfile.findUnique).not.toHaveBeenCalled();
+  });
+  it("the same request once the code has run out: gone, by the route's own clock", async () => {
+    vi.setSystemTime(new Date(LATER.getTime() + 1));
+    const res = await POST(req({ token: poolSignupStatusToken("prof1", "ABCDE"), code: "ABCDE" }));
+    expect(await res.json()).toEqual({ state: "gone" });
   });
   it("over the cap: 429 with no state", async () => {
     for (let i = 0; i < POOL_SIGNUP_STATUS.perIpPerHour; i++) await POST(req({ token: "g", code: "ABCDE" }, "7.7.7.7"));
