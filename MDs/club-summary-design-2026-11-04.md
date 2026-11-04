@@ -1053,6 +1053,80 @@ nothing new. $0: no model, no key.
   session's review of #528 keeps it). So a poll-only club reads "Keeping track of who has paid" with
   no switch on the page to turn it off; it would need the ⓘ entry and a change to that decision.
 
+### 3.13 As built in slice B1 ("short" and "places open", one meaning each)
+
+Built on `refactor/club-summary-b1` (PR against `refactor/club-summary`), after Kemal's decision
+K1 (section 4.5). This is a Phase B slice: it changes behaviour on purpose, and it changes what
+the chase composer is sent, so it is an LLM change under the repo rules.
+
+**One definition.** `squad-short.ts` holds both facts and nothing else computes them:
+- `placesOpen(places, confirmed)`: the places not yet taken, never negative;
+- `squadNumbers({ places, confirmed, minPlayers, playersPerTeam })`: `placesOpen`, `shortBelow`
+  and `short` (below the game's minimum, else two full sides of its format, #519's rule). The
+  summary's `matchNumbers` IS this function now; `squadNumbersAt` takes a threshold already read
+  (the composer, handed it by the scheduler) and `matchSquadNumbers` a match row with its game
+  (the two web pages, which keep their own match query as A4 left them).
+
+Every "places open" in the code calls `placesOpen` (the scheduler's `need`, the four reply
+composers in `pipeline/compose.ts`, the squad post and the reply guard in `group-copy.ts`, the
+rolling and list-published tails, the pick hint, the unnamed-guest ask, the recruit DM, the
+deadline summary, "Squad complete", the engine's free-place test, the monthly week, its asks and
+its list, the rolling seed, the organiser pick, the HQ group ask, the admin list header in both
+languages, and `/api/whatsapp/status`). The one-derive guard's `places` pattern now also catches
+`Math.max(0, <x>.maxPlayers - ...)`, and its list is down to the definition's own comment and the
+monthly seed's allocation (places less the regulars already in and the players it keeps, which
+is not "places open").
+
+**K1 as code.**
+- (a) The players' chases still ask while a place is open. Their wording follows `short`: below
+  the minimum, today's copy ("8 short", "need 8 more"); at or above it, new copy that says the
+  places left ("6 places left", "1 place left"; Turkish "6 kişilik yer kaldı"), for the 17:00
+  update, the match-day morning, the 3 to 4 hour and the last call, in the fixed lines and in
+  what the model is told. A model line that says "short" (Turkish "eksiğiz", "eksik") when there
+  are enough to play is not posted; the fixed line goes out.
+- (b) `computeChaseRisk` needs `short`: at or above the minimum nothing is at risk, so the model is
+  told "At risk: no" and never writes "we'll have to call it off". A model line that warns of a
+  call-off the server did not decide is not posted either. The format-switch line on the chase
+  ("If we don't find 6 more, we could switch to...") is added only while the squad is short.
+- (c) The web's squad bar (dashboard and match list) was blue from 75% of the places, a third
+  "low" (D1). It is now green when full, blue when the game is on, amber while it is short. For
+  a club with no minimum that makes 11 to 13 of 14 amber where it was blue.
+- The recruit chase-up DM's gate was called `squadShort` and meant "a place is open"; it is
+  `placeOpen` now, with the same value.
+
+**What the composer is sent.** One new fact line, `Enough to play: yes|no`, between the squad and
+"At risk". The system prompt was rewritten as a whole: a "Where the squad stands" block states
+the two squad facts and the at-risk rule once, and the examples are grouped by what they teach
+(not enough to play, enough to play), English and Turkish side by side. 2,871 characters before,
+3,730 after (about 1,100 to 1,430 tokens), above the cache floor. The old and new prompt and
+facts, side by side for a 12 of 18 game with a minimum of 12 and a 10 of 18 one, are in the PR.
+
+**Left, and why.**
+- D12 (`smallerFormats`, three rules): not part of "short" or "places open", and moving it
+  changes the 10:00 switch offer's tie-break by row order (A1 named it). A slice of its own.
+- "Teams one short" (`team-proposal.ts`) is the balancer's need, a different fact (plan 4.3).
+- The "is the squad full" tests (`confirmed >= maxPlayers` in the attendance writers, the
+  organiser pick, the bench upgrade, the tentative follow-up) are capacity checks inside writes,
+  not counts of places open; they stay.
+- The players' group answers ("how many are we?", the options answer) still say "need N more";
+  K1 is about the chases.
+- The 18:00 "Match in trouble" offer keeps `fewestAnyFormat` (the lowest minimum of any format of
+  the sport), D1's third meaning, deliberately: it asks whether the game can be played at all.
+
+**Proof.** Paid, all on `ANTHROPIC_API_KEY_DEV`, about 108 calls and $0.021 in all:
+`scripts/chase-at-risk-live.ts` (the 12 scenarios plus 4 at or above a minimum, English and
+Turkish) 16 of 16, 16 calls, $0.0022; `e2e/sim/chase-composer-live.spec.ts` (the real scheduler
+route, plus two K1 cases, both languages) 8 of 8, 8 calls, $0.0010 (its roster check still expected
+the list the chase stopped using on 2026-10-20, fixed here). The club replay was run free first:
+FNF, the Vets and ratings-only came out identical to `baseline/main`, because none of them sends a
+players' chase at or above its minimum in its scripted week (FNF's organisers announce, the Vets are
+monthly); Sutton and the Turkish club missed only their chase-composer calls, so only those two were
+re-recorded (77 calls, $0.0169). `baseline/b1` is the replay of all five on the new cassettes (zero
+misses); against `baseline/main` the only differences are seven chase posts of those two clubs, all
+below the minimum, which the model words differently with the same meaning, and their text-log
+rows. Unit tests: the A1 to A4 characterisations are unchanged; the golden copy gained five entries
+per language (the "places left" lines) and changed none.
+
 ---
 
 ## 4. Migration, in slices
@@ -1190,6 +1264,9 @@ choice, the slice waits for Kemal (the K decisions in section 4.5).
   the Vets: an LLM change (side by side, paid chase-composer check, Vets re-record).
 - Tests: unit tests on `matchNumbers` and `smallerFormats`; the Vets scenario at 13 of 14
   the day before, which today chases and after this does not (if K1 says so).
+- As built (K1 decided): section 3.13. The chase still asks while a place is open (K1 a),
+  so it is the wording and "at risk" that move, not whether it chases; `smallerFormats`
+  (D12) was left for a slice of its own.
 
 **B2. One month phase.** (D2a to D2e, D5)
 - The summary carries the phase, not the decision. The slice adds one pure rule next to
@@ -1327,7 +1404,7 @@ right.
 
 | id | question | slice | today |
 |---|---|---|---|
-| K1 | Does the chase still ask for the 14th player when 13 is above the club's minimum? Does "At risk" mean below the minimum or below the places? | B1 | the chases count places, the day-before nudges count the minimum |
+| K1 | Does the chase still ask for the 14th player when 13 is above the club's minimum? Does "At risk" mean below the minimum or below the places? | B1 | the chases count places, the day-before nudges count the minimum. **Decided by Kemal, 2026-11-04 (the main session's recommendation): at or above the game's minimum the game is ON. (a) The players' chases still ask for the open places while any is open, but never say "short" or "N short": they say the places left ("3 places left"); below the minimum they keep today's "short" wording. (b) "At risk", and any "we'll have to call it off", only below the minimum. (c) Every other "short" and "places open" reads the summary's `squad-short.ts` facts: one definition, no copies.** Built in B1 (section 3.13). |
 | K2 | With exactly one payment flag on, which messages go out: the HQ credit command, the help's payments topic, the settings page's "Payments" line? | B3 | three different answers. **Decided 2026-11-04** (Kemal accepted the recommendation): ONE rule, the existing `paymentMessagesOn` (tracking OR collection), exposed by the summary as `payments.messagesOn`, followed the same way on every door; "a card can be taken" is one rule too, `isPaymentCollectionLive`. Built in B3 (section 3.12). |
 | K3 | Before the collector confirms a fee, does MatchTime tell a player the game's usual fee, or "not set yet"? | B5 | the DM answer says the game's fee, the pay page says not set |
 | K4 | On a club with attendance off, may a player still tap IN on the website? | B7 | yes on the web, no in WhatsApp |

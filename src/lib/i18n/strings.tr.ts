@@ -78,6 +78,7 @@ import { firstMonthsFree } from "./free-period";
 import { totalOnTenPounds } from "../payments";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey } from "../badge-rules";
+import { placesOpen } from "../squad-short";
 
 const UNIT_TR = { day: "gün", week: "hafta", month: "ay", year: "yıl" } as const;
 
@@ -279,6 +280,8 @@ export const tr: Strings = {
 
   match_day_chase_fallback: (p) =>
     `☀️ Bu akşamki *${p.activityName}* için hâlâ *${p.need} kişi* eksiğiz. Gelebilecek var mı? 👀`,
+  match_day_chase_places_left: (p) =>
+    `☀️ Bu akşamki *${p.activityName}* için *${p.open} kişilik yer* kaldı. Gelebilecek var mı? 👀`,
 
   // ── row 39: slot_opened ──────────────────────────────────────────
   //   No "13/14" and no "yer" count in a shape the guards misread: the
@@ -331,6 +334,7 @@ export const tr: Strings = {
   // ── row 72: buildDailyInListFallback ─────────────────────────────
 
   daily_in_list_fallback_lead: (p) => `🗓 *${p.activityName}*, *${p.need} kişi daha* lazım.`,
+  daily_in_list_places_left_lead: (p) => `🗓 *${p.activityName}* maçı var, *${p.open} kişilik yer* kaldı.`,
 
   // ── row 73: buildUnpaidTailText ──────────────────────────────────
 
@@ -819,6 +823,10 @@ export const tr: Strings = {
     `⏳ *${p.activityName}* (${p.timeLabel}) için hâlâ *${p.need} kişi* eksiğiz. Bu akşam müsait olan var mı?`,
   pre_kickoff_short_fallback: (p) =>
     `⏰ Bu akşam *${p.timeLabel}*, *${p.venue}* · ${p.confirmed}/${p.maxPlayers}, *hâlâ ${p.need} kişi lazım*, katılmak için son şans. 🙏`,
+  chase_pre_kickoff_places_left: (p) =>
+    `⏳ *${p.activityName}* (${p.timeLabel}) için *${p.open} kişilik yer* kaldı. Bu akşam müsait olan var mı?`,
+  pre_kickoff_places_left: (p) =>
+    `⏰ Bu akşam *${p.timeLabel}*, *${p.venue}*: *${p.open} kişilik yer* kaldı, katılmak için son şans 🙏`,
   gear_reminder: (p) =>
     `⚽ *${p.timeLabel}, ${p.venue}*, orada görüşürüz!\n\n` +
     `Küçük bir hatırlatma: varsa *kaleci eldiveni*, *top* ve *yedek yelek* getirin.`,
@@ -3804,7 +3812,7 @@ export const tr: Strings = {
     `MatchTime artık ${p.club} yönetici grubunda${p.group ? ` ("${p.group}")` : ""} mesaj gönderemiyor: orada yalnızca yöneticiler mesaj gönderebiliyor. ` +
     `MatchTime orada grup yöneticisi yapılana ya da bu ayar kapatılana kadar yönetici mesajları size DM olarak gelecek.`,
   oa_header: (p) => {
-    const open = Math.max(0, p.maxPlayers - p.confirmed);
+    const open = placesOpen(p.maxPlayers, p.confirmed);
     const tail = open === 0 ? "kadro tam" : `${open} yer boş`;
     return `📋 *${p.activityName} kadrosu, ${p.whenLabel}*: ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişi var, ${tail}.`;
   },

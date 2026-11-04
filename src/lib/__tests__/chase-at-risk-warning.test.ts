@@ -131,13 +131,13 @@ function cachedTexts(args: CreateArgs): string[] {
 /** Fire one chase in a given world and return what went on the wire. */
 async function request(
   kind: ChaseKind,
-  world: { confirmed: number; hoursOut: number },
+  world: { confirmed: number; hoursOut: number; shortBelow?: number },
 ): Promise<CreateArgs> {
   MATCH.attendances = squad(world.confirmed);
   vi.setSystemTime(new Date(KICKOFF.getTime() - world.hoursOut * 3600_000));
   captured.length = 0;
   vi.spyOn(console, "error").mockImplementation(() => {});
-  await composeChaseText({ groupId: "g1", kind });
+  await composeChaseText({ groupId: "g1", kind, shortBelow: world.shortBelow });
   expect(create, `composeChaseText(${kind}) issued no request`).toHaveBeenCalled();
   return captured[0];
 }
@@ -194,12 +194,15 @@ describe("computeChaseRisk — the server, not the model, decides", () => {
     { what: "48h out, need 3", hoursOut: 48, confirmed: 11, maxPlayers: 14, atRisk: false },
   ];
 
+  // No minimum set: the squad is short exactly while a place is open
+  // (squad-short.ts), so these rows are the thresholds as approved.
   for (const row of TABLE) {
     it(`${row.what} → ${row.atRisk ? "AT RISK" : "not at risk"}`, () => {
       const risk = computeChaseRisk({
         kickoff: at(row.hoursOut),
         confirmedCount: row.confirmed,
         maxPlayers: row.maxPlayers,
+        short: row.confirmed < row.maxPlayers,
         now: NOW,
       });
       expect(risk.atRisk).toBe(row.atRisk);
@@ -212,6 +215,7 @@ describe("computeChaseRisk — the server, not the model, decides", () => {
       kickoff: at(2),
       confirmedCount: 20,
       maxPlayers: 14,
+      short: false,
       now: NOW,
     });
     expect(risk.need).toBe(0);
@@ -224,9 +228,24 @@ describe("computeChaseRisk — the server, not the model, decides", () => {
       kickoff: at(24),
       confirmedCount: 6,
       maxPlayers: 14,
+      short: true,
     });
     expect(risk.atRisk).toBe(true);
     expect(risk.hoursToKickoff).toBeCloseTo(24, 5);
+  });
+
+  // K1 (Kemal, 2026-11-04): at or above the game's minimum the game is
+  // on, so it is never at risk, however many places are still open.
+  it("K1: 12 of 18 with a minimum of 12, 24h out, 6 places open: on, not at risk", () => {
+    const risk = computeChaseRisk({ kickoff: at(24), confirmedCount: 12, maxPlayers: 18, short: false, now: NOW });
+    expect(risk.need).toBe(6);
+    expect(risk.atRisk).toBe(false);
+  });
+
+  it("K1: 10 of 18 with a minimum of 12, 24h out: short, and at risk", () => {
+    const risk = computeChaseRisk({ kickoff: at(24), confirmedCount: 10, maxPlayers: 18, short: true, now: NOW });
+    expect(risk.need).toBe(8);
+    expect(risk.atRisk).toBe(true);
   });
 });
 
@@ -281,6 +300,35 @@ describe("a healthy squad is told it is not at risk", () => {
     // The kickoff line's "(in N days)" may move a day across the 48h line;
     // the verdict must be the only other difference.
     expect(changed.filter((l) => !l.startsWith("Kickoff:"))).toEqual(["At risk: no"]);
+  });
+});
+
+describe("K1: at or above the game's minimum the composer is told the game is on", () => {
+  // The scheduler hands the composer the game's "short below"
+  // (squad-short.ts): a game of 18 places played with 12 is short below 12.
+  afterEach(() => {
+    MATCH.maxPlayers = 14;
+  });
+
+  it("12 of 18 with a minimum of 12, 24h out: enough to play, not at risk", async () => {
+    MATCH.maxPlayers = 18;
+    const prompt = composePrompt(await request("daily-in-list", { confirmed: 12, hoursOut: 24, shortBelow: 12 }));
+    expect(prompt).toContain("Squad: 12 of 18 confirmed, 6 places open, 0 on the bench");
+    expect(prompt).toContain("Enough to play: yes");
+    expect(prompt).toContain("At risk: no");
+  });
+
+  it("10 of 18 with a minimum of 12, 24h out: not enough to play, at risk", async () => {
+    MATCH.maxPlayers = 18;
+    const prompt = composePrompt(await request("daily-in-list", { confirmed: 10, hoursOut: 24, shortBelow: 12 }));
+    expect(prompt).toContain("Enough to play: no");
+    expect(prompt).toContain("At risk: yes");
+  });
+
+  it("no minimum set: short while a place is open, exactly as before", async () => {
+    expect(composePrompt(await request("daily-in-list", { ...AT_RISK, shortBelow: 14 }))).toContain("Enough to play: no");
+    // A caller that passes none (a harness): the match's places.
+    expect(composePrompt(await request("daily-in-list", AT_RISK))).toContain("Enough to play: no");
   });
 });
 

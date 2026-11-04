@@ -53,6 +53,7 @@
 
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
+import { placesOpen } from "./squad-short";
 
 // ── The gate ───────────────────────────────────────────────────────────
 
@@ -102,7 +103,7 @@ export function shouldAskForGuestName(input: GuestAskInput): GuestAskDecision {
   // UNPROMPTED, not to stonewall someone who asked.
   if (input.tagged) return { ask: true, reason: "tagged unnamed-guest offer" };
 
-  const room = Math.max(0, input.maxPlayers - input.confirmedCount);
+  const room = placesOpen(input.maxPlayers, input.confirmedCount);
   if (room <= 0)
     return {
       ask: false,

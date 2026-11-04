@@ -11,9 +11,10 @@
  *     here (or delete the file's entry), so the ratchet only tightens.
  *
  * The patterns, mechanical on purpose (a comment counts too):
- *   - places: `confirmed < maxPlayers` and `maxPlayers - confirmed` in any
- *     spelling (`confirmed.length`, `m.maxPlayers`): places open, or the
- *     places used as "short" (D1). `matchNumbers`.
+ *   - places: `confirmed < maxPlayers`, `maxPlayers - confirmed` and
+ *     `Math.max(0, <x>.maxPlayers - ...)` in any spelling (`confirmed.length`,
+ *     `m.maxPlayers`): places open, or the places used as "short" (D1).
+ *     `matchNumbers` / `squadNumbers` / `placesOpen` (squad-short.ts, B1).
  *   - monthRow: `squadMonth.findFirst(`: one month row looked up on its own
  *     (D5). `monthPhaseFor`. Writers reading a row inside their own write are
  *     counted like any other file; a slice that moves a reader off lowers it.
@@ -27,7 +28,7 @@ import { describe, expect, it } from "vitest";
 const SRC = path.resolve(__dirname, "../../..");
 
 const PATTERNS: Record<string, RegExp> = {
-  places: /confirmed(?:\.length)?\s*<\s*(?:m\.)?maxPlayers|maxPlayers\s*-\s*confirmed/g,
+  places: /confirmed(?:\.length)?\s*<\s*(?:m\.)?maxPlayers|maxPlayers\s*-\s*confirmed|Math\.max\(0,\s*[\w.]*maxPlayers\s*-/g,
   monthRow: /squadMonth\.findFirst\(/g,
   registration: /\bselectRegistrationMatch\(/g,
 };
@@ -35,20 +36,11 @@ const PATTERNS: Record<string, RegExp> = {
 /** Today's counts. Only ever lowered. */
 const TODAY: Record<string, Record<string, number>> = {
   places: {
-    "app/api/whatsapp/status/route.ts": 1,
-    "app/page.tsx": 1,
-    "lib/bot-scheduler.ts": 4,
-    "lib/chase-risk.ts": 1,
-    "lib/deadline-summary.ts": 1,
-    "lib/group-copy.ts": 1,
-    "lib/monthly-week-asks-rules.ts": 2,
-    "lib/monthly-week-asks.ts": 1,
-    "lib/monthly-week-rules.ts": 1,
-    "lib/pipeline/compose.ts": 4,
-    "lib/pipeline/engine.ts": 1,
-    "lib/recruit.ts": 1,
-    "lib/rolling-squad-rules.ts": 1,
-    "lib/squad-announce.ts": 1,
+    // B1 (2026-11-04): every "places open" calls `placesOpen` and every
+    // "short" `squadNumbers` (squad-short.ts). Left: the definition's own
+    // comment, and the monthly seed's allocation (places less the regulars
+    // already in and the players it keeps), which is not "places open".
+    "lib/monthly-week-rules.ts": 3,
     "lib/squad-short.ts": 1,
   },
   monthRow: {

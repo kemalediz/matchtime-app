@@ -23,9 +23,15 @@
  * the answer, the prompt is handed the answer, and the prompt is told in
  * as many words never to do the counting itself.
  *
- * THE THRESHOLDS (approved by Kemal, 2026-09-06)
- * ----------------------------------------------
- *   atRisk = hoursToKickoff <= 48 && need >= 4
+ * THE THRESHOLDS (approved by Kemal, 2026-09-06; K1 2026-11-04)
+ * -------------------------------------------------------------
+ *   atRisk = short && hoursToKickoff <= 48 && need >= 4
+ *
+ * `short` is squad-short.ts's: below the game's own minimum. K1 (Kemal,
+ * 2026-11-04): at or above the minimum the game is on, so it is never at
+ * risk and no "we'll have to call it off" is said, however many places
+ * are still open. With no minimum set, short is "a place is open", so the
+ * 2026-09-06 thresholds are unchanged for those clubs.
  *
  * `need` is the shortfall to `Match.maxPlayers` — the TOTAL across both
  * teams, the "places open" the chase's facts state (chase-lead.ts).
@@ -35,6 +41,8 @@
  * Applies to the 17:00 `daily-in-list` chase only. The pre-kickoff kinds
  * already carry their own urgency; doubling it up would read as panic.
  */
+
+import { placesOpen } from "./squad-short";
 
 /** Kickoff is this close, in hours, before "at risk" is even possible. */
 export const AT_RISK_HOURS_TO_KICKOFF = 48;
@@ -49,6 +57,8 @@ export interface ChaseRiskInput {
   confirmedCount: number;
   /** `Match.maxPlayers` — the total across BOTH teams. */
   maxPlayers: number;
+  /** `squadNumbers(...).short` (squad-short.ts): below the game's minimum. */
+  short: boolean;
   /** Defaults to the wall clock. Injectable so tests need no fake timers. */
   now?: Date;
 }
@@ -69,8 +79,9 @@ export function computeChaseRisk(args: ChaseRiskInput): ChaseRisk {
   // stay quiet), never over-report it into a false alarm.
   const maxPlayers = Number.isFinite(args.maxPlayers) ? Math.max(0, args.maxPlayers) : 0;
   const confirmed = Number.isFinite(args.confirmedCount) ? Math.max(0, args.confirmedCount) : 0;
-  const need = Math.max(0, maxPlayers - confirmed);
+  const need = placesOpen(maxPlayers, confirmed);
   const atRisk =
+    args.short &&
     Number.isFinite(hoursToKickoff) &&
     hoursToKickoff <= AT_RISK_HOURS_TO_KICKOFF &&
     need >= AT_RISK_MIN_NEEDED;

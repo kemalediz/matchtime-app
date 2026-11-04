@@ -45,7 +45,7 @@ import { londonDateTimeToUtc } from "../london-time";
 import { formatMinimum, minimumToPlay } from "../min-players";
 import { playerRange } from "../flex-format-rules";
 import { totalPlayersFor } from "../format-switch";
-import { isSquadShort, shortBelow } from "../squad-short";
+import { squadNumbers, type SquadNumbers } from "../squad-short";
 import { selectRegistrationMatch } from "../registration-match-select";
 import { isNextUpcomingForPosting, type SchedulerMatch } from "../next-upcoming-match";
 import { isSameRecurringFixture } from "../match-slot";
@@ -323,17 +323,8 @@ export function gameFacts(activities: ActivityRow[]): GameFacts[] {
  * Places open and "short", two facts (D1). `placesOpen` is the scheduler's
  * `need`; `shortBelow` and `short` are squad-short.ts's.
  */
-export function matchNumbers(p: { places: number; confirmed: number; minPlayers: number | null; playersPerTeam: number }): {
-  placesOpen: number;
-  shortBelow: number;
-  short: boolean;
-} {
-  const g = { minPlayers: p.minPlayers, maxPlayers: p.places, playersPerTeam: p.playersPerTeam };
-  return {
-    placesOpen: Math.max(0, p.places - p.confirmed),
-    shortBelow: shortBelow(g),
-    short: isSquadShort(p.confirmed, g),
-  };
+export function matchNumbers(p: { places: number; confirmed: number; minPlayers: number | null; playersPerTeam: number }): SquadNumbers {
+  return squadNumbers(p);
 }
 
 // ── Months ─────────────────────────────────────────────────────────────

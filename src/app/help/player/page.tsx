@@ -197,12 +197,14 @@ export default function PlayerGuidePage() {
       <ul>
         <li>
           <strong>Daily update at 17:00.</strong> The squad so far, and a call
-          for players if you&apos;re short.
+          for players while places are open.
         </li>
         <li>
-          <strong>Extra calls if you&apos;re short</strong> on match morning
+          <strong>Extra calls while places are open</strong> on match morning
           and in the last few hours before kickoff. Once the squad is full
-          they stop.
+          they stop. If the club plays with fewer than a full squad and there
+          are already enough, the game is on and the calls say how many places
+          are left; you only hear that the squad is short below that number.
         </li>
         <li>
           <strong>About 2 hours before kickoff</strong>: a reminder

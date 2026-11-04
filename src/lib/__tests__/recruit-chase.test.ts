@@ -44,7 +44,7 @@ function base(): ShouldChaseRecruitInput {
     invitedAt: new Date(NOON.getTime() - 3 * HOUR),
     now: NOON,
     hasResponded: false,
-    squadShort: true,
+    placeOpen: true,
     matchLive: true,
     subscribed: true,
     alreadyChased: false,
@@ -93,7 +93,7 @@ describe("shouldChaseRecruit", () => {
   });
 
   it("does NOT chase once the squad has filled", () => {
-    expect(shouldChaseRecruit({ ...base(), squadShort: false })).toBe(false);
+    expect(shouldChaseRecruit({ ...base(), placeOpen: false })).toBe(false);
   });
 
   it("does NOT chase when the match is no longer live", () => {
@@ -120,7 +120,7 @@ describe("shouldChaseRecruit", () => {
       shouldChaseRecruit({
         ...base(),
         hasResponded: true,
-        squadShort: false,
+        placeOpen: false,
         subscribed: false,
         alreadyChased: true,
       }),

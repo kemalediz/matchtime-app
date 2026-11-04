@@ -1,0 +1,21 @@
+{
+ "club": "vets",
+ "mode": "replay",
+ "ticks": 2160,
+ "steps": 32,
+ "sent": 83,
+ "errors": 0,
+ "seconds": 157,
+ "model": {
+  "club": "vets",
+  "mode": "replay",
+  "recorded": 53,
+  "hits": 53,
+  "repeats": 0,
+  "reordered": 0,
+  "misses": 0,
+  "upstreamCalls": 0,
+  "missList": [],
+  "reorderedList": []
+ }
+}

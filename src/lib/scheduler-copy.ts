@@ -19,6 +19,7 @@
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import { dayUnlessToday } from "./i18n/dates";
+import { placesOpen } from "./squad-short";
 
 /** A player as the scheduler sees one: the name may be missing. */
 export interface NamedRow {
@@ -253,10 +254,17 @@ export function buildDailyInListFallback(
   args: {
     activityName: string;
     need: number;
+    /** Below the game's minimum (squad-short.ts). False: the game is on,
+     *  so the lead says the places left (K1, 2026-11-04). */
+    short: boolean;
     rosterBlock: string;
   } & WithLang,
 ): string {
-  return `${t(args.lang).daily_in_list_fallback_lead({ activityName: args.activityName, need: args.need })}\n\n` + args.rosterBlock;
+  const s = t(args.lang);
+  const lead = args.short
+    ? s.daily_in_list_fallback_lead({ activityName: args.activityName, need: args.need })
+    : s.daily_in_list_places_left_lead({ activityName: args.activityName, open: args.need });
+  return `${lead}\n\n` + args.rosterBlock;
 }
 
 /**
@@ -386,18 +394,25 @@ export function buildBotIntro(f: IntroFeatures, benchLine: string, lang?: Lang |
   return lines.join("\n");
 }
 
-/** Row 74: the 3-4h-before-kickoff chase, static fallback. */
+/** Row 74: the 3-4h-before-kickoff chase, static fallback. At or above
+ *  the game's minimum (`short` false) it says the places left (K1). */
 export function buildChasePreKickoffFallback(
   args: {
     need: number;
+    short: boolean;
     activityName: string;
     timeLabel: string;
   } & WithLang,
 ): string {
-  return t(args.lang).chase_pre_kickoff_fallback(args);
+  const s = t(args.lang);
+  return args.short
+    ? s.chase_pre_kickoff_fallback({ need: args.need, activityName: args.activityName, timeLabel: args.timeLabel })
+    : s.chase_pre_kickoff_places_left({ open: args.need, activityName: args.activityName, timeLabel: args.timeLabel });
 }
 
-/** Row 75: the 0.5-2h-before-kickoff last-chance plea, static fallback. */
+/** Row 75: the 0.5-2h-before-kickoff last-chance plea, static fallback.
+ *  At or above the game's minimum (`short` false) it says the places
+ *  left (K1). */
 export function buildPreKickoffShortFallback(
   args: {
     timeLabel: string;
@@ -405,9 +420,19 @@ export function buildPreKickoffShortFallback(
     confirmed: number;
     maxPlayers: number;
     need: number;
+    short: boolean;
   } & WithLang,
 ): string {
-  return t(args.lang).pre_kickoff_short_fallback(args);
+  const s = t(args.lang);
+  return args.short
+    ? s.pre_kickoff_short_fallback({
+        timeLabel: args.timeLabel,
+        venue: args.venue,
+        confirmed: args.confirmed,
+        maxPlayers: args.maxPlayers,
+        need: args.need,
+      })
+    : s.pre_kickoff_places_left({ timeLabel: args.timeLabel, venue: args.venue, open: args.need });
 }
 
 /** Row 76: the football gear reminder, 1.5-2h before kickoff. */
@@ -466,7 +491,7 @@ export function buildRollingAnnouncePost(
   if (args.bench.length > 0) {
     lines.push(``, s.rolling_waiting_header({ count: args.bench.length }), ...numbered(args.bench, s.unnamed));
   }
-  const open = Math.max(0, args.maxPlayers - args.confirmed.length);
+  const open = placesOpen(args.maxPlayers, args.confirmed.length);
   const tail =
     open === 0
       ? s.rolling_tail_full
@@ -539,7 +564,7 @@ export function buildListPublishedPost(
     lines.push(``, s.rolling_waiting_header({ count: args.bench.length }), ...numbered(args.bench, s.unnamed));
   }
   lines.push(``);
-  const open = Math.max(0, args.maxPlayers - args.confirmed.length);
+  const open = placesOpen(args.maxPlayers, args.confirmed.length);
   if (open > 0) lines.push(s.list_published_open({ open }));
   lines.push(s.list_published_footer);
   return lines.join("\n");

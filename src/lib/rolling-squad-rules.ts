@@ -16,6 +16,7 @@ import { guestSourceOf } from "@/lib/guest-membership";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { messageHoursSendAfter, type QuietHours } from "./message-hours";
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
+import { placesOpen } from "./squad-short";
 
 /** How far back "last week" may be (decision D1). A cancelled week is
  *  skipped and the one before it used; a longer gap (a summer break)
@@ -327,7 +328,7 @@ export function decideSeed(args: {
 }): SeedDecision[] {
   const onTarget = new Set(args.targetRows.map((r) => r.userId));
   const confirmedOnTarget = args.targetRows.filter((r) => r.status === "CONFIRMED").length;
-  let room = Math.max(0, args.maxPlayers - confirmedOnTarget);
+  let room = placesOpen(args.maxPlayers, confirmedOnTarget);
   const carried = args.sourceRows
     .filter((r) => carryOverExclusion(r) === null && !onTarget.has(r.userId))
     .sort((a, b) => a.position - b.position || a.userId.localeCompare(b.userId));

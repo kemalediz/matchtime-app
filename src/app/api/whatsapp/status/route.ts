@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { formatLondon } from "@/lib/london-time";
+import { placesOpen } from "@/lib/squad-short";
 
 export async function GET(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
       status: nextMatch.status,
       confirmed: confirmed.length,
       max: nextMatch.maxPlayers,
-      remaining: Math.max(0, nextMatch.maxPlayers - confirmed.length),
+      remaining: placesOpen(nextMatch.maxPlayers, confirmed.length),
       deadlinePassed: now > nextMatch.attendanceDeadline,
       confirmedPlayers: confirmed.map((a) => a.user.name),
       benchPlayers: bench.map((a) => a.user.name),
