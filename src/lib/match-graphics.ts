@@ -19,7 +19,7 @@ import { db } from "./db";
 import { formatLondon } from "./london-time";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { resolveTeamLabels } from "./team-labels";
-import { selectRegistrationMatch } from "./registration-match-select";
+import { findNextMatch } from "./next-match";
 import { displayNames } from "./match-graphics-layout";
 import { loadPlayerNames } from "./player-display-name";
 import type { GraphicTarget } from "./graphic-token";
@@ -69,12 +69,10 @@ export type GraphicData = ListPosterData | TeamSheetData;
  * registration match, the same one the squad commands write to.
  */
 export async function nextGraphicMatch(orgId: string, now: Date): Promise<string | null> {
-  const candidates = await db.match.findMany({
-    where: { activity: { orgId }, status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] } },
-    select: { id: true, date: true, status: true },
-    orderBy: { date: "asc" },
-  });
-  return selectRegistrationMatch(candidates, now)?.id ?? null;
+  const next = await findNextMatch(orgId, now, (where) =>
+    db.match.findMany({ where, select: { id: true, date: true, status: true }, orderBy: { date: "asc" } }),
+  );
+  return next?.id ?? null;
 }
 
 /** The graphic's data, or null: no such match at this club, or (teams) no teams yet. */

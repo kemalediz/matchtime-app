@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const membershipFindMany = vi.fn();
 const matchFindFirst = vi.fn();
 const matchFindMany = vi.fn();
+let liveMatches: unknown[] | null = null;
 const sentFindUnique = vi.fn();
 const sentCreate = vi.fn();
 const botJobCreate = vi.fn();
@@ -27,7 +28,13 @@ vi.mock("@/lib/db", () => ({
   db: {
     match: {
       findFirst: (...a: unknown[]) => matchFindFirst(...a),
-      findMany: (...a: unknown[]) => matchFindMany(...a),
+      // The club's next match (`next-match.ts`, club summary B4) reads the
+      // live candidates: `liveMatches` when a test sets it, else the one
+      // match `matchFindFirst` gives. Every other read is the completed ones.
+      findMany: async (...a: unknown[]) =>
+        (a[0] as { where?: { status?: { in?: unknown } } })?.where?.status?.in
+          ? (liveMatches ?? [await matchFindFirst(...a)].filter(Boolean).map((m) => ({ status: "UPCOMING", ...m })))
+          : matchFindMany(...a),
     },
     membership: { findMany: (...a: unknown[]) => membershipFindMany(...a) },
     sentNotification: {
@@ -42,7 +49,10 @@ vi.mock("@/lib/magic-link", () => ({
   MAGIC_LINK_TTL: { actionNudge: 1 },
 }));
 vi.mock("@/lib/short-link", () => ({ buildShortMagicLinkUrl: async () => "https://s/x" }));
-vi.mock("@/lib/london-time", () => ({ formatLondon: () => "Tue 1 Sep, 20:00" }));
+vi.mock("@/lib/london-time", async (orig) => ({
+  ...(await orig<typeof import("@/lib/london-time")>()),
+  formatLondon: () => "Tue 1 Sep, 20:00",
+}));
 vi.mock("@/lib/org-features", () => ({ getOrgFeatures: async () => ({ attendance: true }) }));
 
 import {
@@ -51,6 +61,8 @@ import {
   RECRUIT_LOOKBACK_MAX,
   resolveLookbackMatches,
 } from "@/lib/recruit";
+import { recruitNoMatchRefusal, recruitNoMatchUnfinishedRefusal } from "@/lib/group-copy";
+import { dayLabel } from "@/lib/i18n/dates";
 
 const ORG = "org-1";
 
@@ -62,6 +74,10 @@ function takeUsed(): number {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The morning of the next match (Tue 1 Sep 2026, kickoff 20:00 London).
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T09:00:00Z"));
+  liveMatches = null;
   matchFindFirst.mockResolvedValue({
     id: "match-next",
     date: new Date("2026-09-01T19:00:00Z"),
@@ -167,5 +183,37 @@ describe("inviteRecentPlayers lookback wiring", () => {
     const wide = await inviteRecentPlayers(ORG);
     expect(wide.invited).toBe(5);
     expect(wide.invitedNames).toEqual(["Alpha", "Bravo", "Charlie", "Delta", "Echo"]);
+  });
+});
+
+/**
+ * THE BLAST INVITES TO THE CLUB'S NEXT MATCH (club summary, slice B4, D7):
+ * the one an IN lands on (`next-match.ts`). Before B4 it took the soonest
+ * live match from UTC midnight on, so with last week's match still live it
+ * invited everyone to next week's, where their IN would then be refused.
+ */
+describe("inviteRecentPlayers: the club's next match", () => {
+  const stuck = { id: "match-stuck", date: new Date("2026-08-25T19:00:00Z"), status: "UPCOMING", maxPlayers: 14, activity: { name: "Tuesday Footy" }, attendances: [] };
+  const next = { id: "match-next", date: new Date("2026-09-01T19:00:00Z"), status: "UPCOMING", maxPlayers: 14, activity: { name: "Tuesday Footy" }, attendances: [] };
+
+  it("reads the next match through the club's live candidates, not a query of its own", async () => {
+    liveMatches = [next];
+    const r = await inviteRecentPlayers(ORG);
+    expect(r.ok).toBe(true);
+    expect(matchFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("with last week's match still live, nobody is invited to next week's: the refusal names the unfinished game", async () => {
+    liveMatches = [stuck, next];
+    const r = await inviteRecentPlayers(ORG);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe(recruitNoMatchUnfinishedRefusal({ when: dayLabel("en", stuck.date), lang: "en" }));
+    expect(botJobCreate).not.toHaveBeenCalled();
+  });
+
+  it("no live match at all: the plain no-match refusal", async () => {
+    liveMatches = [];
+    const r = await inviteRecentPlayers(ORG);
+    expect(r).toEqual({ ok: false, reason: recruitNoMatchRefusal("en") });
   });
 });

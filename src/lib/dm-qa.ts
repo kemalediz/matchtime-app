@@ -33,6 +33,7 @@ import { applyHouseStyle } from "./house-style";
 import { anthropicModel, HAIKU_CALL, TruncatedResponseError, type ModelCall } from "@/lib/pipeline/llm";
 import { loadMyPayments, type LoadedMyPayments } from "./my-payments";
 import { formatMyPaymentsBlock } from "./my-payments-rules";
+import { findNextMatch } from "./next-match";
 import { isAiBudgetExceeded, withOrgAiBudget } from "@/lib/ai-budget";
 import {
   loadDmReplyContext,
@@ -183,25 +184,26 @@ async function buildScopedContext(
   if (!org) return "(no data)";
   const statsOff = org.featureStatsQa === false;
 
-  // Upcoming match — date/venue/squad NAMES only (no contact info), and
-  // whether THIS player is currently in/out/bench.
-  const match = await db.match.findFirst({
-    where: {
-      activity: { orgId },
-      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-    },
-    orderBy: { date: "asc" },
-    include: {
-      activity: { select: { name: true, venue: true, feePerPlayer: true, feeSplitTotal: true } },
-      attendances: {
-        // phoneNumber selected ONLY to derive a boolean flag when the
-        // asker is an admin (includePhoneFlags). The raw value never
-        // enters context or any reply — only the 📵 flag does.
-        include: { user: { select: { id: true, name: true, phoneNumber: true } } },
-        orderBy: { position: "asc" },
+  // The club's next match (`next-match.ts`, club summary B4): the one an IN
+  // lands on, so a match left live from an earlier week is not described as
+  // upcoming. Date/venue/squad NAMES only (no contact info), and whether THIS
+  // player is currently in/out/bench.
+  const match = await findNextMatch(orgId, new Date(), (where) =>
+    db.match.findMany({
+      where,
+      orderBy: { date: "asc" },
+      include: {
+        activity: { select: { name: true, venue: true, feePerPlayer: true, feeSplitTotal: true } },
+        attendances: {
+          // phoneNumber selected ONLY to derive a boolean flag when the
+          // asker is an admin (includePhoneFlags). The raw value never
+          // enters context or any reply — only the 📵 flag does.
+          include: { user: { select: { id: true, name: true, phoneNumber: true } } },
+          orderBy: { position: "asc" },
+        },
       },
-    },
-  });
+    }),
+  );
   let matchInput: ScopedContextInput["match"] = null;
   if (match) {
     const confirmed = match.attendances.filter((a) => a.status === "CONFIRMED");

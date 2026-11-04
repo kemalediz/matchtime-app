@@ -132,6 +132,7 @@ import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
 import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
 import { LANGS } from "@/lib/i18n/lang";
+import { findNextMatchPerClub } from "@/lib/next-match";
 import {
   buildAdminRecruitDmReply,
   buildBenchDmAck,
@@ -1289,22 +1290,22 @@ export async function POST(request: Request) {
         return { intent: c.intent, intro: c.intro };
       },
       // The quoted club first, when the quote named one of this admin's.
+      // A club "with an upcoming match" has a next match (`next-match.ts`,
+      // club summary B4): the one an IN lands on, per club, in one read; of
+      // those, the soonest. Before B4 the soonest live match from UTC midnight
+      // on, so a club with last week's match still live counted, and the
+      // action then found no match to act on.
       orgWithUpcomingMatch: async (orgIds) => {
-        const startToday = new Date();
-        startToday.setUTCHours(0, 0, 0, 0);
-        const upcoming = async (ids: string[]) =>
-          (
-            await db.match.findFirst({
-              where: {
-                activity: { orgId: { in: ids } },
-                isHistorical: false,
-                status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-                date: { gte: startToday },
-              },
+        const upcoming = async (ids: string[]) => {
+          const picks = await findNextMatchPerClub(ids, new Date(), (where) =>
+            db.match.findMany({
+              where,
               orderBy: { date: "asc" },
-              select: { activity: { select: { orgId: true } } },
-            })
-          )?.activity.orgId ?? null;
+              select: { id: true, date: true, status: true, activity: { select: { orgId: true } } },
+            }),
+          );
+          return [...picks.values()].sort((a, b) => a.date.getTime() - b.date.getTime())[0]?.activity.orgId ?? null;
+        };
         return (adminQuote.orgId ? await upcoming([adminQuote.orgId]) : null) ?? upcoming(orgIds);
       },
       // The org whose most-recently-played match is the freshest; the

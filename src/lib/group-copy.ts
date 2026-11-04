@@ -900,6 +900,12 @@ export function recruitNoMatchRefusal(lang?: Lang | string | null): string {
   return t(lang).recruit_no_match;
 }
 
+/** Row 62b (club summary B4): no next match because the last game (`when`,
+ *  its day) is still not finished, so every later match is held. */
+export function recruitNoMatchUnfinishedRefusal(args: { when: string; lang?: Lang | string | null }): string {
+  return t(args.lang).recruit_no_match_unfinished({ when: args.when });
+}
+
 /** Row 61: `inviteRecentPlayers` into a full squad with the bench feature off. */
 export function buildRecruitFullSquadRefusal(args: { matchName: string; lang?: Lang | string | null }): string {
   return t(args.lang).recruit_full_squad({ matchName: args.matchName });

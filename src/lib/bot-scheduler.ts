@@ -976,9 +976,10 @@ export async function computeDuePosts(
   // The query also returns CANCELLED matches whose London day may not be
   // over yet. They are split off here, so `matches` is exactly the list it
   // always was and nothing that reads it ever sees a cancelled match. The
-  // cancelled ones have a single reader: the next-upcoming gate of the
-  // announcement and the 17:00 post, which holds next week's posts until
-  // the cancelled game's day is over (see next-upcoming-match.ts, rule 3).
+  // cancelled ones have a single reader: the posting rule of each match
+  // (`nextForPosting` in `computeForMatch`), which holds every post about
+  // next week's match until the cancelled game's day is over (see
+  // next-upcoming-match.ts, rule 3; club summary B4, decision K5).
   const loaded = await getMatchesForScheduler(org.id, now);
   const matches = loaded.filter((x) => x.status !== "CANCELLED");
   const cancelledHolds = loaded.filter((x) => x.status === "CANCELLED");
@@ -1113,6 +1114,7 @@ export async function computeDuePosts(
         org: { id: org.id, live: !club.lifecycle.settingUp, liveAt: club.lifecycle.liveAt ? new Date(club.lifecycle.liveAt) : null },
         features,
         matches,
+        nextMatchId: club.nextMatchId,
         sentKeys,
         now,
         piCaps,
@@ -1312,7 +1314,7 @@ async function computeForMatch(
   /** Monthly squad, slice 5. Null: a weekly club, or no running month. */
   monthly: MonthlyMatchContext | null = null,
   /** CANCELLED matches of the club whose day may not be over. Read ONLY by
-   *  the next-upcoming gate of the announcement and the 17:00 post. */
+   *  the posting rule (`nextForPosting`), for the cancelled-day hold. */
   cancelledHolds: MatchWithIncludes[] = [],
   /** The pool switch as the due-posts request read it (local player pool
    *  L5a): the short-squad notice's pool line. */
@@ -1378,6 +1380,17 @@ async function computeForMatch(
 
   // Cancelled matches never trigger anything further. Short-circuit.
   if (m.status === "CANCELLED") return;
+
+  /**
+   * THE POSTING RULE, ONCE PER MATCH (club summary, slice B4, decision K5):
+   * is this the fixture's next match to post about (`isNextUpcomingForPosting`,
+   * the summary's `MatchFacts.nextForPosting`)? Read by EVERY post about the
+   * next match below: the announcement, the 17:00 post, the drop-out reminder,
+   * the published list and the month's list. Each holds while an earlier
+   * game of the fixture was cancelled and its London day is not over (Kemal,
+   * 2026-11-04: before B4 only the first two did).
+   */
+  const nextForPosting = isNextUpcomingForPosting([...siblingMatches, ...cancelledHolds], m, now);
 
   const confirmed = m.attendances
     .filter((a) => a.status === "CONFIRMED")
@@ -1621,11 +1634,8 @@ async function computeForMatch(
     // while an earlier CANCELLED match of the fixture has not had its
     // London day yet (2026-10-13: the week after a cancelled game is
     // announced the morning after that game's day, as after a played one).
-    // Pure, unit-tested.
-    const isNextUpcoming =
-      m.status === "UPCOMING" && hoursUntilMatch > 24
-        ? isNextUpcomingForPosting([...siblingMatches, ...cancelledHolds], m, now)
-        : false;
+    // `nextForPosting`, above.
+    const isNextUpcoming = m.status === "UPCOMING" && hoursUntilMatch > 24 && nextForPosting;
 
     // "Non-empty" means CONFIRMED, deliberately — not "confirmed or
     // bench". The announcement's only ask is "Say IN to join. First N
@@ -1815,9 +1825,7 @@ async function computeForMatch(
     // 14" chase at 17:00 the same day as today's actual match. The same
     // goes for the day of a CANCELLED match: next week's 17:00 post
     // starts the day after it (the cancelled-day hold, 2026-10-13).
-    const isNextUpcoming = isPrematch
-      ? isNextUpcomingForPosting([...siblingMatches, ...cancelledHolds], m, now)
-      : false;
+    const isNextUpcoming = isPrematch && nextForPosting;
 
     // Single shared key for the entire 17:00 evening slot. Whichever
     // branch fires first claims today; subsequent ticks see this key in
@@ -2124,8 +2132,10 @@ async function computeForMatch(
   //    here: it goes through `sendAdminNotice` from the due-posts route
   //    (`deadline-summary.ts`), because computing posts must stay free
   //    of side effects (preview mode relies on it).
-  //    Both use the next-upcoming gate, so next week's match never posts
-  //    while this week's is still live. A club without the settings
+  //    Both use the posting rule (`nextForPosting`), so next week's match
+  //    never posts while this week's is still live, nor on the day of an
+  //    earlier game of the fixture that was cancelled (K5, club summary
+  //    B4: before B4 these two ignored the hold). A club without the settings
   //    (Sutton FC) resolves both to null and gets neither.
   //    MONTHLY SQUAD (2026-10-06): not for a match of a month (running or
   //    in sign-up). Both posts carry the weekly roster, and the squad of a
@@ -2156,7 +2166,7 @@ async function computeForMatch(
       !sentKeys.has(listKey) &&
       m.teamAssignments.length === 0 &&
       listPublishDue(now, weekly.listPublish, m.date, features.quietHours);
-    if (isLive && (reminderDue || listDue) && isNextUpcomingForPosting(siblingMatches, m)) {
+    if (isLive && (reminderDue || listDue) && nextForPosting) {
       if (reminderDue && organisers) {
         // The organisers announce: the squad and the deadline go to them.
         await toOrganisers(reminderKey, "dropout-reminder", { dropOutTime: format(weekly.dropOut!, "HH:mm") });
@@ -2272,7 +2282,7 @@ async function computeForMatch(
       lastShownHash,
       lastPostAt: shown.find((r) => r.kind === "group-message")?.createdAt ?? null,
       live: true,
-      nextUpcoming: isNextUpcomingForPosting(siblingMatches, m),
+      nextUpcoming: nextForPosting,
       teamsOut: m.teamAssignments.length > 0,
       // The rule the weekly roster got in PR #204, on the list's own rows:
       // the same list is not shown twice inside three hours, so a "who's

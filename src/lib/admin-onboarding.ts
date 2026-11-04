@@ -21,7 +21,7 @@ import { db } from "./db";
 import { adminNoticeInstructions, loadAdminChannel, sendAdminNotice, type LoadedAdminChannel } from "./admin-channel";
 import type { PiCaps } from "./admin-channel-rules";
 import type { DueInstruction } from "./bot-scheduler";
-import { selectRegistrationMatch } from "./registration-match-select";
+import { findNextMatch } from "./next-match";
 import { seedNudgeAlreadySent, seedPoolUnseeded } from "./seed-nudge-rules";
 import { loadSeedState, SEED_RATINGS_PATH } from "./seed-nudge";
 import {
@@ -39,8 +39,6 @@ import {
 
 /** Where the money collector is picked (the Payments card). */
 export const GETTING_READY_SETTINGS_PATH = "/admin/settings";
-
-const LIVE_MATCH_STATUSES: Array<"UPCOMING" | "TEAMS_GENERATED" | "TEAMS_PUBLISHED"> = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"];
 
 /** Does a notice queued now for this club land in its admin group? The same
  *  test `sendAdminNotice` makes. */
@@ -76,15 +74,13 @@ export async function queueGettingReady(orgId: string, now: Date = new Date()): 
     if (!club || !channel) return { status: "no-club" };
     const audience = routesToGroup(channel) ? "group" : "dm";
 
-    const [matches, activities] = await Promise.all([
-      db.match.findMany({
-        where: { activity: { orgId }, status: { in: LIVE_MATCH_STATUSES } },
-        orderBy: { date: "asc" },
-        select: { id: true, date: true, status: true },
-      }),
+    const [next, activities] = await Promise.all([
+      // The club's next match (`next-match.ts`, club summary B4).
+      findNextMatch(orgId, now, async (where) =>
+        (await db.match.findMany({ where, orderBy: { date: "asc" }, select: { id: true, date: true, status: true } })) ?? [],
+      ),
       db.activity.findMany({ where: { orgId, isActive: true }, select: { dayOfWeek: true } }),
     ]);
-    const next = selectRegistrationMatch(matches ?? [], now);
     const input = {
       club,
       nextMatchDate: next?.date ?? null,

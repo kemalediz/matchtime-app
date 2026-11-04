@@ -16,6 +16,7 @@
  *   ARM=old OLD_PROMPT_FILE=<file> ...                                # the live prompt before 2026-10-20 money
  *   SET=pay REPEAT=1 npx tsx ... scripts/dryrun-dm-qa.ts              # the asker's own money, and others' declined
  *   SET=statsoff REPEAT=1 npx tsx ... scripts/dryrun-dm-qa.ts         # a club with stats answers off (club summary B7)
+ *   SET=nomatch REPEAT=1 npx tsx ... scripts/dryrun-dm-qa.ts          # no next match: last week's still live (club summary B4)
  *
  * `SET=s3` (quoted-reply context, 2026-10-20) asks short questions
  * swipe-replied to a MatchTime DM ("what time?" to the invite), with the
@@ -286,6 +287,27 @@ const STATS_OFF_TR: Q[] = [
 const statsOffContext = (lang: "en" | "tr") =>
   formatScopedContext({ ...fixtureFor(PAYMENTS_INPUT), stats: null, history: null, statsOff: true }, lang);
 
+/**
+ * SET=nomatch (club summary, slice B4): the club's next match is the one an
+ * IN lands on (`next-match.ts`), so while last week's game is still live (the
+ * completion cron missed it) the club has none, and the CONTEXT says "UPCOMING
+ * MATCH: none scheduled right now." with no upcoming fee line. Before B4 the
+ * DM answer described last week's game as upcoming. A correct answer says no
+ * game is scheduled and invents none; the asker's own money is still answered.
+ */
+const NO_MATCH_EN: Q[] = [
+  { q: "when's the next game?", mustContainAny: ["no ", "not ", "isn't", "nothing"], mustNot: /18 Sep|Sim Arena/ },
+  { q: "am I playing this week?", mustContainAny: ["no ", "not ", "isn't", "nothing"], mustNot: /18 Sep|Sim Arena/ },
+  { q: "how much do I owe?", mustContainAny: ["£6"], mustNot: /18 Sep|Sim Arena/ },
+];
+const NO_MATCH_TR: Q[] = [
+  { q: "sonraki maç ne zaman?", mustContainAny: ["yok", "değil", "henüz"], mustNot: /18 Eylül|Sim Arena/ },
+  { q: "bu hafta oynuyor muyum?", mustContainAny: ["yok", "değil", "henüz"], mustNot: /18 Eylül|Sim Arena/ },
+  { q: "ne kadar borcum var?", mustContainAny: ["£6", "6 £"], mustNot: /18 Eylül|Sim Arena/ },
+];
+const noMatchContext = (lang: "en" | "tr") =>
+  formatScopedContext({ ...fixtureFor({ ...PAYMENTS_INPUT, upcomingFee: null }), match: null }, lang);
+
 /** Anything that looks like markup or a tool call the model invented. */
 const FAKE_MARKUP = /<\/?[a-z_]+[\s>:]|\bUser\s*:/i;
 
@@ -315,7 +337,8 @@ async function main() {
   // MatchTime actually costs (MDs/llm-spend-september-2026.md).
   spendDevApiKeyOrExit("scripts/dryrun-dm-qa.ts");
   const m = meter("scripts/dryrun-dm-qa.ts", ARM, MAX_USD);
-  const set = process.env.SET === "s3" ? "s3" : process.env.SET === "pay" ? "pay" : process.env.SET === "statsoff" ? "statsoff" : "main";
+  const SETS = ["s3", "pay", "statsoff", "nomatch"] as const;
+  const set = (SETS as readonly string[]).includes(process.env.SET ?? "") ? (process.env.SET as (typeof SETS)[number]) : "main";
   const questions =
     set === "s3"
       ? (LANG === "tr" ? S3_TR : S3_EN)
@@ -323,10 +346,13 @@ async function main() {
         ? (LANG === "tr" ? PAY_TR : PAY_EN)
         : set === "statsoff"
           ? (LANG === "tr" ? STATS_OFF_TR : STATS_OFF_EN)
-          : LANG === "tr"
-            ? QUESTIONS_TR
-            : QUESTIONS_EN;
-  const context = set === "statsoff" ? statsOffContext(LANG) : LANG === "tr" ? CONTEXT_TR : CONTEXT_EN;
+          : set === "nomatch"
+            ? (LANG === "tr" ? NO_MATCH_TR : NO_MATCH_EN)
+            : LANG === "tr"
+              ? QUESTIONS_TR
+              : QUESTIONS_EN;
+  const context =
+    set === "statsoff" ? statsOffContext(LANG) : set === "nomatch" ? noMatchContext(LANG) : LANG === "tr" ? CONTEXT_TR : CONTEXT_EN;
   const pendingContext = contextFor(LANG, PENDING_INPUT);
   const latencies: number[] = [];
 

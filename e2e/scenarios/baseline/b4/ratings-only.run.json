@@ -1,0 +1,21 @@
+{
+ "club": "ratings-only",
+ "mode": "replay",
+ "ticks": 1597,
+ "steps": 11,
+ "sent": 32,
+ "errors": 0,
+ "seconds": 105,
+ "model": {
+  "club": "ratings-only",
+  "mode": "replay",
+  "recorded": 30,
+  "hits": 30,
+  "repeats": 0,
+  "reordered": 0,
+  "misses": 0,
+  "upstreamCalls": 0,
+  "missList": [],
+  "reorderedList": []
+ }
+}

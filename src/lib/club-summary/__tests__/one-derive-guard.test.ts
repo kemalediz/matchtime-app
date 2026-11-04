@@ -53,11 +53,14 @@ const TODAY: Record<string, Record<string, number>> = {
     "lib/squad-month.ts": 1,
   },
   registration: {
-    "app/api/whatsapp/analyze/route.ts": 1,
-    "lib/admin-group-paste.ts": 1,
-    "lib/admin-onboarding.ts": 1,
+    // B4 (2026-11-04): a door with no summary reads the club's next match
+    // through `next-match.ts` (the candidates' one `where` and the selector);
+    // the analyze fallback, the paste, the first-teams notice and the poster
+    // moved onto it. Left: the DM IN target (its quoted pick reads the same
+    // candidates), the squad state's 30-day window and the HQ team commands
+    // (the club's games' live matches, the same set).
+    "lib/next-match.ts": 2,
     "lib/dm-registration-target.ts": 1,
-    "lib/match-graphics.ts": 1,
     "lib/pipeline/load-state.ts": 1,
     "lib/team-proposal.ts": 1,
   },

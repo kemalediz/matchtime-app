@@ -18,7 +18,7 @@ import { TeamDisplay } from "@/components/match/team-display";
 import { isOrgAdmin } from "@/lib/org";
 import { resolveTeamLabels } from "@/lib/team-labels";
 import { format } from "date-fns";
-import { formatLondon } from "@/lib/london-time";
+import { formatLondon, londonDayStart } from "@/lib/london-time";
 import { Calendar, MapPin, Clock, Star, ChevronRight } from "lucide-react";
 import { t } from "@/lib/i18n/t";
 import { canEnterScore, hasScore, scoreEntryAction, shouldOpenScorePanel, SCORE_PANEL_PARAM } from "@/lib/score-entry";
@@ -44,6 +44,7 @@ import { notPlayedKey } from "@/lib/match-cancel-keys";
 import { NotPlayedButton } from "@/components/match/not-played-button";
 import { CLUB_ROW_SELECT, clubRowFactsOf } from "@/lib/club-row-facts";
 import { paymentMessagesOn } from "@/lib/payment-messages";
+import { inFlightWhere } from "@/lib/next-match";
 
 export default async function MatchDetailPage({
   params,
@@ -275,19 +276,14 @@ export default async function MatchDetailPage({
 
   // Block "I'm in" on a future match while a previous scheduled
   // match in the same org is still in flight (not yet COMPLETED).
-  // Mirrors the server-side guard in src/lib/attendance.ts so the
-  // button is greyed out instead of throwing on click.
-  const todayStart = new Date();
-  todayStart.setUTCHours(0, 0, 0, 0);
+  // The server-side guard's own query (`inFlightWhere`, next-match.ts, as
+  // src/lib/attendance.ts reads it), so the button is greyed out instead of
+  // throwing on click. "Today" is the London day (club summary B4, K5).
+  const now = new Date();
   const blockedByPriorMatch =
-    match.date >= todayStart &&
+    match.date >= londonDayStart(now) &&
     !!(await db.match.findFirst({
-      where: {
-        activity: { orgId: match.activity.orgId },
-        status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-        date: { lt: todayStart },
-        id: { not: matchId },
-      },
+      where: inFlightWhere(match.activity.orgId, now, matchId),
       select: { id: true },
     }));
 

@@ -46,6 +46,10 @@ import {
 
 const at = (iso: string): Date => new Date(iso);
 
+/** A clock for the cases with no cancelled match: the rule reads it only
+ *  for the cancelled-day hold, so any instant gives the same answer. */
+const LIVE_ONLY_CLOCK = at("2026-06-01T12:00:00Z");
+
 /** Sutton FC's Tuesday fixture: shared by both format activities. */
 const TUE_SLOT = { orgId: "sutton-fc", venue: "Goals North Cheam", dayOfWeek: 2 };
 
@@ -61,7 +65,7 @@ const m = (over: Partial<SchedulerMatch> & { id: string }): SchedulerMatch => ({
 describe("isNextUpcomingForPosting", () => {
   it("single match is next-upcoming", () => {
     const a = m({ id: "a" });
-    expect(isNextUpcomingForPosting([a], a)).toBe(true);
+    expect(isNextUpcomingForPosting([a], a, LIVE_ONLY_CLOCK)).toBe(true);
   });
 
   it("THE 2026-07-14 REGRESSION: after a format switch, this week's match (other activity, same fixture) suppresses next week's", () => {
@@ -81,24 +85,24 @@ describe("isNextUpcomingForPosting", () => {
       date: at("2026-07-21T20:30:00Z"),
     });
     const all = [thisWeek, nextWeek];
-    expect(isNextUpcomingForPosting(all, thisWeek)).toBe(true);
-    expect(isNextUpcomingForPosting(all, nextWeek)).toBe(false);
+    expect(isNextUpcomingForPosting(all, thisWeek, LIVE_ONLY_CLOCK)).toBe(true);
+    expect(isNextUpcomingForPosting(all, nextWeek, LIVE_ONLY_CLOCK)).toBe(false);
   });
 
   it("this week's match wins; next week's same-activity match is NOT next-upcoming", () => {
     const thisWeek = m({ id: "this", date: at("2026-06-30T19:30:00Z") });
     const nextWeek = m({ id: "next", date: at("2026-07-07T19:30:00Z") });
     const all = [thisWeek, nextWeek];
-    expect(isNextUpcomingForPosting(all, thisWeek)).toBe(true);
-    expect(isNextUpcomingForPosting(all, nextWeek)).toBe(false);
+    expect(isNextUpcomingForPosting(all, thisWeek, LIVE_ONLY_CLOCK)).toBe(true);
+    expect(isNextUpcomingForPosting(all, nextWeek, LIVE_ONLY_CLOCK)).toBe(false);
   });
 
   it("THE BUG (2026-06-27): two co-timed matches (different activities, same timestamp) — only the lower id fires", () => {
     const real = m({ id: "aaa-5aside", activityId: "tuesday-5aside" });
     const ghost = m({ id: "zzz-7aside", activityId: "tuesday-7aside" });
     const all = [real, ghost];
-    expect(isNextUpcomingForPosting(all, real)).toBe(true); // lower id
-    expect(isNextUpcomingForPosting(all, ghost)).toBe(false); // co-timed, higher id → suppressed
+    expect(isNextUpcomingForPosting(all, real, LIVE_ONLY_CLOCK)).toBe(true); // lower id
+    expect(isNextUpcomingForPosting(all, ghost, LIVE_ONLY_CLOCK)).toBe(false); // co-timed, higher id → suppressed
   });
 
   it("preserves multi-activity orgs: a different weekday is a different fixture — an earlier Tuesday does NOT suppress a later Thursday", () => {
@@ -115,8 +119,8 @@ describe("isNextUpcomingForPosting", () => {
       activity: { ...TUE_SLOT, dayOfWeek: 4 },
     });
     const all = [tue, thu];
-    expect(isNextUpcomingForPosting(all, tue)).toBe(true);
-    expect(isNextUpcomingForPosting(all, thu)).toBe(true);
+    expect(isNextUpcomingForPosting(all, tue, LIVE_ONLY_CLOCK)).toBe(true);
+    expect(isNextUpcomingForPosting(all, thu, LIVE_ONLY_CLOCK)).toBe(true);
   });
 
   it("preserves multi-activity orgs: a different venue on the SAME weekday is a different fixture", () => {
@@ -132,8 +136,8 @@ describe("isNextUpcomingForPosting", () => {
       activity: { ...TUE_SLOT, venue: "PowerLeague Wimbledon" },
     });
     const all = [cheam, wimbledon];
-    expect(isNextUpcomingForPosting(all, cheam)).toBe(true);
-    expect(isNextUpcomingForPosting(all, wimbledon)).toBe(true);
+    expect(isNextUpcomingForPosting(all, cheam, LIVE_ONLY_CLOCK)).toBe(true);
+    expect(isNextUpcomingForPosting(all, wimbledon, LIVE_ONLY_CLOCK)).toBe(true);
   });
 
   it("falls back to activityId comparison when slot fields are absent", () => {
@@ -148,15 +152,15 @@ describe("isNextUpcomingForPosting", () => {
       date: at("2026-07-02T19:30:00Z"),
     });
     const all = [thisWeek, nextWeek, otherAct];
-    expect(isNextUpcomingForPosting(all, thisWeek)).toBe(true);
-    expect(isNextUpcomingForPosting(all, nextWeek)).toBe(false); // same activityId, earlier live match
-    expect(isNextUpcomingForPosting(all, otherAct)).toBe(true); // different activityId → independent
+    expect(isNextUpcomingForPosting(all, thisWeek, LIVE_ONLY_CLOCK)).toBe(true);
+    expect(isNextUpcomingForPosting(all, nextWeek, LIVE_ONLY_CLOCK)).toBe(false); // same activityId, earlier live match
+    expect(isNextUpcomingForPosting(all, otherAct, LIVE_ONLY_CLOCK)).toBe(true); // different activityId → independent
   });
 
   it("same activityId always suppresses, even when only one side carries slot fields", () => {
     const thisWeek = m({ id: "this", activity: undefined, date: at("2026-06-30T19:30:00Z") });
     const nextWeek = m({ id: "next", date: at("2026-07-07T19:30:00Z") });
-    expect(isNextUpcomingForPosting([thisWeek, nextWeek], nextWeek)).toBe(false);
+    expect(isNextUpcomingForPosting([thisWeek, nextWeek], nextWeek, LIVE_ONLY_CLOCK)).toBe(false);
   });
 
   it("ignores historical and completed/cancelled matches", () => {
@@ -167,7 +171,7 @@ describe("isNextUpcomingForPosting", () => {
     const all = [target, historical, completed, cancelled];
     // Even though hist/done/cxl have lower ids and same timestamp, they
     // don't count as live blockers → target still fires.
-    expect(isNextUpcomingForPosting(all, target)).toBe(true);
+    expect(isNextUpcomingForPosting(all, target, LIVE_ONLY_CLOCK)).toBe(true);
   });
 
   it("historical/completed/cancelled matches on the same fixture don't block next week's match either", () => {
@@ -178,13 +182,13 @@ describe("isNextUpcomingForPosting", () => {
       status: "COMPLETED",
     });
     const nextWeek = m({ id: "next", date: at("2026-07-21T20:30:00Z") });
-    expect(isNextUpcomingForPosting([lastWeekDone, nextWeek], nextWeek)).toBe(true);
+    expect(isNextUpcomingForPosting([lastWeekDone, nextWeek], nextWeek, LIVE_ONLY_CLOCK)).toBe(true);
   });
 
   it("treats TEAMS_GENERATED / TEAMS_PUBLISHED as live blockers", () => {
     const earlier = m({ id: "earlier", date: at("2026-06-23T19:30:00Z"), status: "TEAMS_PUBLISHED" });
     const target = m({ id: "target", date: at("2026-06-30T19:30:00Z") });
-    expect(isNextUpcomingForPosting([earlier, target], target)).toBe(false);
+    expect(isNextUpcomingForPosting([earlier, target], target, LIVE_ONLY_CLOCK)).toBe(false);
   });
 
   it("after the 2026-09-08 kickoff fix, a switched match is no longer CO-TIMED with a ghost — the earlier-in-fixture rule decides, not the id tie-break", () => {
@@ -206,8 +210,8 @@ describe("isNextUpcomingForPosting", () => {
       date: at("2026-09-08T20:30:00Z"), // 21:30 BST
     });
     const all = [real, ghost];
-    expect(isNextUpcomingForPosting(all, real)).toBe(true);
-    expect(isNextUpcomingForPosting(all, ghost)).toBe(false);
+    expect(isNextUpcomingForPosting(all, real, LIVE_ONLY_CLOCK)).toBe(true);
+    expect(isNextUpcomingForPosting(all, ghost, LIVE_ONLY_CLOCK)).toBe(false);
   });
 
   it("the 2026-07-14 rollover guard still holds once this week's match has moved 15 minutes", () => {
@@ -225,8 +229,8 @@ describe("isNextUpcomingForPosting", () => {
       date: at("2026-09-15T20:30:00Z"),
     });
     const all = [thisWeek, nextWeek];
-    expect(isNextUpcomingForPosting(all, thisWeek)).toBe(true);
-    expect(isNextUpcomingForPosting(all, nextWeek)).toBe(false);
+    expect(isNextUpcomingForPosting(all, thisWeek, LIVE_ONLY_CLOCK)).toBe(true);
+    expect(isNextUpcomingForPosting(all, nextWeek, LIVE_ONLY_CLOCK)).toBe(false);
   });
 });
 
@@ -317,11 +321,15 @@ describe("isNextUpcomingForPosting: a cancelled match holds next week's posts un
     expect(isNextUpcomingForPosting([hist, upcoming20], upcoming20, at("2026-10-13T08:00:00Z"))).toBe(true);
   });
 
-  it("the hold is opt-in: without a clock the gate ignores cancelled matches, as it always did", () => {
-    // The callers tied to the next match's own clock (weekly deadlines,
-    // the month's list, the organiser pick, the deadline summary) pass no
-    // clock and are not held.
-    expect(isNextUpcomingForPosting([cancelled13, upcoming20], upcoming20)).toBe(true);
+  it("K5 (club summary B4): one rule for every post, so the clock is required and the hold always applies", () => {
+    // Before B4 the hold was opt-in and the weekly deadline posts, the
+    // month's list, the organiser pick and the deadline summary passed no
+    // clock, so on the cancelled day they still posted next week's match.
+    // A type check only (`tsc`), never run: the clock is not optional any more.
+    // @ts-expect-error the clock is required
+    const withoutClock = () => isNextUpcomingForPosting([cancelled13, upcoming20], upcoming20);
+    expect(typeof withoutClock).toBe("function");
+    expect(isNextUpcomingForPosting([cancelled13, upcoming20], upcoming20, at("2026-10-13T08:00:00Z"))).toBe(false);
   });
 
   it("a live earlier match still suppresses with a clock, whatever the time", () => {

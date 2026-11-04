@@ -300,30 +300,46 @@ function blockAsSchedulerMatches(
   }));
 }
 
+/** A clock for a block with no cancelled match: the rule reads it only for
+ *  the cancelled-day hold, so any instant gives the same answer. */
+const LIVE_ONLY_CLOCK = new Date("2026-01-01T12:00:00.000Z");
+/** 12 hours after a 21:30 kickoff: 09:30 London the next day, after the
+ *  cancelled-day hold of that match is over. */
+const morningAfter = (m: SchedulerMatch) => new Date(m.date.getTime() + 12 * 60 * 60 * 1000);
+
 describe("posting horizon over a 10-match block (isNextUpcomingForPosting)", () => {
   it("with 10 future matches, ONLY the soonest is postable; the other 9 are suppressed", () => {
     const ms = blockAsSchedulerMatches();
-    expect(isNextUpcomingForPosting(ms, ms[0])).toBe(true);
+    expect(isNextUpcomingForPosting(ms, ms[0], LIVE_ONLY_CLOCK)).toBe(true);
     for (let i = 1; i < 10; i++) {
-      expect(isNextUpcomingForPosting(ms, ms[i])).toBe(false);
+      expect(isNextUpcomingForPosting(ms, ms[i], LIVE_ONLY_CLOCK)).toBe(false);
     }
   });
 
   it("when the soonest is COMPLETED, the next becomes postable (and only it)", () => {
     const ms = blockAsSchedulerMatches({ 0: "COMPLETED" });
-    expect(isNextUpcomingForPosting(ms, ms[0])).toBe(false); // completed itself never posts
-    expect(isNextUpcomingForPosting(ms, ms[1])).toBe(true);
+    expect(isNextUpcomingForPosting(ms, ms[0], LIVE_ONLY_CLOCK)).toBe(false); // completed itself never posts
+    expect(isNextUpcomingForPosting(ms, ms[1], LIVE_ONLY_CLOCK)).toBe(true);
     for (let i = 2; i < 10; i++) {
-      expect(isNextUpcomingForPosting(ms, ms[i])).toBe(false);
+      expect(isNextUpcomingForPosting(ms, ms[i], LIVE_ONLY_CLOCK)).toBe(false);
     }
   });
 
-  it("when the soonest is CANCELLED, the next becomes postable (and only it)", () => {
+  it("when the soonest is CANCELLED, the next becomes postable (and only it) once its day is over", () => {
     const ms = blockAsSchedulerMatches({ 0: "CANCELLED" });
-    expect(isNextUpcomingForPosting(ms, ms[0])).toBe(false);
-    expect(isNextUpcomingForPosting(ms, ms[1])).toBe(true);
+    const after = morningAfter(ms[0]);
+    expect(isNextUpcomingForPosting(ms, ms[0], after)).toBe(false);
+    expect(isNextUpcomingForPosting(ms, ms[1], after)).toBe(true);
     for (let i = 2; i < 10; i++) {
-      expect(isNextUpcomingForPosting(ms, ms[i])).toBe(false);
+      expect(isNextUpcomingForPosting(ms, ms[i], after)).toBe(false);
+    }
+  });
+
+  it("K5: on the cancelled game's own day nothing of the block posts, the next one included", () => {
+    const ms = blockAsSchedulerMatches({ 0: "CANCELLED" });
+    const sameDay = new Date(ms[0].date.getTime() - 60 * 60 * 1000);
+    for (let i = 0; i < 10; i++) {
+      expect(isNextUpcomingForPosting(ms, ms[i], sameDay)).toBe(false);
     }
   });
 
@@ -334,24 +350,25 @@ describe("posting horizon over a 10-match block (isNextUpcomingForPosting)", () 
       2: "CANCELLED",
       3: "CANCELLED",
     });
+    const after = morningAfter(ms[3]);
     for (const i of [0, 1, 2, 3]) {
-      expect(isNextUpcomingForPosting(ms, ms[i])).toBe(false);
+      expect(isNextUpcomingForPosting(ms, ms[i], after)).toBe(false);
     }
-    expect(isNextUpcomingForPosting(ms, ms[4])).toBe(true);
+    expect(isNextUpcomingForPosting(ms, ms[4], after)).toBe(true);
     for (let i = 5; i < 10; i++) {
-      expect(isNextUpcomingForPosting(ms, ms[i])).toBe(false);
+      expect(isNextUpcomingForPosting(ms, ms[i], after)).toBe(false);
     }
   });
 
   it("cancelled matches NEVER become postable, even with nothing earlier", () => {
     const ms = blockAsSchedulerMatches({ 0: "CANCELLED" });
-    expect(isNextUpcomingForPosting([ms[0]], ms[0])).toBe(false);
-    expect(isNextUpcomingForPosting(ms, ms[0])).toBe(false);
+    expect(isNextUpcomingForPosting([ms[0]], ms[0], LIVE_ONLY_CLOCK)).toBe(false);
+    expect(isNextUpcomingForPosting(ms, ms[0], LIVE_ONLY_CLOCK)).toBe(false);
   });
 
   it("a live earlier match in TEAMS_PUBLISHED still suppresses the rest of the block", () => {
     const ms = blockAsSchedulerMatches({ 0: "TEAMS_PUBLISHED" });
-    expect(isNextUpcomingForPosting(ms, ms[1])).toBe(false);
+    expect(isNextUpcomingForPosting(ms, ms[1], LIVE_ONLY_CLOCK)).toBe(false);
   });
 });
 

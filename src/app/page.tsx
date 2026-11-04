@@ -28,6 +28,7 @@ import { CONNECT_FOCUS_HOME } from "@/lib/connect-focus";
 import { NOT_CANCELLED } from "@/lib/played-match";
 import { matchSquadNumbers } from "@/lib/squad-short";
 import { squadBarColor } from "@/lib/squad-bar";
+import { findNextMatch } from "@/lib/next-match";
 
 function getGreeting(hour: number): string {
   if (hour < 5) return "Good night";
@@ -89,18 +90,21 @@ export default async function DashboardPage() {
       )?.positions ?? []
     : [];
 
-  const nextMatch = await db.match.findFirst({
-    where: {
-      activity: { orgId },
-      date: { gte: new Date() },
-      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-    },
-    orderBy: { date: "asc" },
-    include: {
-      activity: { include: { sport: true } },
-      attendances: { where: { status: { in: ["CONFIRMED", "BENCH"] } } },
-    },
-  });
+  // The club's next match (`next-match.ts`, club summary B4): where an IN
+  // lands, the same match the WhatsApp group and the DMs describe. Before B4
+  // the first live match after this instant, so after kickoff it moved on to
+  // next week's, and with last week's still live it offered an IN the server
+  // then refused.
+  const nextMatch = await findNextMatch(orgId, new Date(), (where) =>
+    db.match.findMany({
+      where,
+      orderBy: { date: "asc" },
+      include: {
+        activity: { include: { sport: true } },
+        attendances: { where: { status: { in: ["CONFIRMED", "BENCH"] } } },
+      },
+    }),
+  );
 
   const myAttendance = nextMatch
     ? await db.attendance.findUnique({

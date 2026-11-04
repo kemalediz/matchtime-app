@@ -32,8 +32,8 @@
  *      matches ANYWHERE in the org, only the one with the lowest `id` is
  *      treated as next-upcoming; the rest are suppressed.
  *
- *   3. Cancelled-day hold (2026-10-13, Sutton FC), only when the caller
- *      passes `now`: a CANCELLED match strictly earlier in the same
+ *   3. Cancelled-day hold (2026-10-13, Sutton FC): a CANCELLED match
+ *      strictly earlier in the same
  *      fixture keeps suppressing this one until the cancelled match's own
  *      London calendar day is over. From London midnight after that day
  *      it suppresses nothing. So the weekly rhythm is the same whether
@@ -47,11 +47,21 @@
  *      The hold starts when the match is cancelled, not on its day (a
  *      game cancelled on Monday holds Monday evening too), and it chains
  *      by itself: with 13 and 20 Oct cancelled, 27 Oct waits for 21 Oct.
- *      It is opt-in because it belongs to the posts that open a new week
- *      for the group, the announcement and the 17:00 squad post. Callers
- *      tied to the match's own clock (weekly deadlines, the month's list,
- *      the organiser pick, the deadline summary) pass no `now` and are
- *      never held by a cancelled match.
+ *
+ *      It holds EVERY post about the next match, not only the two that
+ *      open a new week (club summary, slice B4, decision K5, Kemal
+ *      2026-11-04): the announcement, the 17:00 post, the weekly deadline
+ *      posts and the admin deadline summary, the month's list, the
+ *      organiser pick and the partner-club ask. Before B4 the hold was
+ *      opt-in and the last five never passed a clock, so on a cancelled
+ *      game's day the group could still get next week's list or deadline
+ *      reminder. `now` is therefore required: there is one posting rule.
+ *      A held post is not queued: each is re-tested on every poll, and
+ *      one whose own window closes inside the hold is not sent.
+ *
+ *      To hold, the caller's list must contain the cancelled matches
+ *      whose day may not be over (`postingMatchWhere`,
+ *      scheduler-windows.ts, loads exactly the matches this rule reads).
  *
  * Note the deliberate asymmetry: the "strictly earlier" suppression (1 and
  * 3) is scoped to the SAME fixture (so a separate Thursday game, or a
@@ -121,13 +131,12 @@ const isCancelledDayHold = (m: SchedulerMatch, now: Date): boolean =>
  *                 cancelled rows: completed and historical ones never
  *                 block, and a cancelled one blocks only under rule 3.
  * @param target   The match currently being evaluated.
- * @param now      Pass the clock to apply the cancelled-day hold (rule 3).
- *                 Omit it and cancelled matches block nothing.
+ * @param now      The clock, for the cancelled-day hold (rule 3).
  */
 export function isNextUpcomingForPosting(
   matches: SchedulerMatch[],
   target: SchedulerMatch,
-  now?: Date,
+  now: Date,
 ): boolean {
   if (!isLive(target)) return false;
 
@@ -139,7 +148,7 @@ export function isNextUpcomingForPosting(
     //     same fixture, through the `sameFixture` test below, and only
     //     until its London day is over. It never takes part in the
     //     co-timed tie-break.
-    const cancelledHold = now !== undefined && isCancelledDayHold(other, now);
+    const cancelledHold = isCancelledDayHold(other, now);
     if (!isLive(other) && !cancelledHold) return false;
 
     // (1) Strictly earlier match in the SAME recurring fixture (rollover

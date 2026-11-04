@@ -327,18 +327,33 @@ describe("pickNextMatch", () => {
     expect(pickNextMatch({ orgId: "o", matches: ms, activities: [A], now: NOW }).nextMatchId).toBeNull();
   });
 
-  it("a cancelled match today holds the fixture's next match for the announcement only (both values kept)", () => {
+  it("K5 (B4): a cancelled match today holds the fixture's next match for every post, so the fact is one value", () => {
     const now = at("2026-11-10T12:00:00Z");
     const ms = [
       match({ id: "cancelled", activityId: "a", date: at("2026-11-10T21:30:00Z"), maxPlayers: 14, status: "CANCELLED" }),
       match({ id: "next", activityId: "a", date: at("2026-11-17T21:30:00Z"), maxPlayers: 14 }),
     ];
     const r = pickNextMatch({ orgId: "o", matches: ms, activities: [A], now });
-    expect(r.nextForPosting.get("next")).toEqual({ withHold: false, withoutHold: true });
-    expect(r.nextForPosting.get("cancelled")).toEqual({ withHold: false, withoutHold: false });
+    expect(r.nextForPosting.get("next")).toBe(false);
+    expect(r.nextForPosting.get("cancelled")).toBe(false);
     const asScheduler = ms.map((m) => ({ id: m.id, activityId: m.activityId, date: m.date, status: m.status, activity: { orgId: "o", venue: "V", dayOfWeek: 2 } }));
     expect(isNextUpcomingForPosting(asScheduler, asScheduler[1], now)).toBe(false);
-    expect(isNextUpcomingForPosting(asScheduler, asScheduler[1])).toBe(true);
+    // The morning after the cancelled day, the next match is the one to post about.
+    expect(pickNextMatch({ orgId: "o", matches: ms, activities: [A], now: at("2026-11-11T09:00:00Z") }).nextForPosting.get("next")).toBe(true);
+    // Not where an IN lands: the cancelled match never blocks registering.
+    expect(r.nextMatchId).toBe("next");
+  });
+
+  it("K5 (B4): 'today' is the London day: at 00:30 BST last night's live match is yesterday's and blocks", () => {
+    const summer = activity({ id: "s", venue: "V", dayOfWeek: 2, sport: { name: "Football 7-a-side", playersPerTeam: 7 } });
+    const ms = [
+      match({ id: "last-night", activityId: "s", date: at("2026-07-14T20:30:00Z"), maxPlayers: 14 }),
+      match({ id: "next-week", activityId: "s", date: at("2026-07-21T20:30:00Z"), maxPlayers: 14 }),
+    ];
+    // 00:30 BST on Wed 15 Jul = 23:30 UTC on Tue 14 Jul.
+    expect(pickNextMatch({ orgId: "o", matches: ms, activities: [summer], now: at("2026-07-14T23:30:00Z") }).nextMatchId).toBeNull();
+    // 23:30 BST on Tue 14 Jul: still Tuesday in London, last night's match is today's.
+    expect(pickNextMatch({ orgId: "o", matches: ms, activities: [summer], now: at("2026-07-14T22:30:00Z") }).nextMatchId).toBe("last-night");
   });
 
   it("the rollover guard works across a format switch (same venue and weekday)", () => {
@@ -348,8 +363,8 @@ describe("pickNextMatch", () => {
       match({ id: "next-week", activityId: "a", date: at("2026-11-17T21:30:00Z"), maxPlayers: 14 }),
     ];
     const r = pickNextMatch({ orgId: "o", matches: ms, activities: [A, FIVE], now: NOW });
-    expect(r.nextForPosting.get("this-week")!.withHold).toBe(true);
-    expect(r.nextForPosting.get("next-week")!.withHold).toBe(false);
+    expect(r.nextForPosting.get("this-week")).toBe(true);
+    expect(r.nextForPosting.get("next-week")).toBe(false);
   });
 });
 
@@ -414,7 +429,7 @@ describe("buildClubSummary over the five shapes", () => {
     const s = buildClubSummary(SUTTON, NOW);
     expect(s.nextMatchId).toBe("m-sutton-10nov");
     const next = s.matches.find((m) => m.id === "m-sutton-10nov")!;
-    expect(next).toMatchObject({ places: 14, confirmed: 12, bench: 2, placesOpen: 2, short: true, fewestAnyFormat: 10, teamsMade: false, fee: { matchFee: null, pendingConfirm: null, linksReleased: false }, nextForPosting: { withHold: true, withoutHold: true } });
+    expect(next).toMatchObject({ places: 14, confirmed: 12, bench: 2, placesOpen: 2, short: true, fewestAnyFormat: 10, teamsMade: false, fee: { matchFee: null, pendingConfirm: null, linksReleased: false }, nextForPosting: true });
     expect(s.matches.find((m) => m.id === "m-sutton-3nov")!.teamsMade).toBe(true);
     expect(s.lastPlayedMatchId).toBe("m-sutton-3nov");
     expect(s.groups.playersGroupId).toBe("org-sutton@g.us");
