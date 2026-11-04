@@ -32,6 +32,7 @@ import { testDb, type TestDb } from "../helpers/test-db";
 import { londonDateTimeToUtc } from "@/lib/london-time";
 import { monthKickoffs, nextMonthStart } from "@/lib/month-signup-rules";
 import { londonMonthStart } from "@/lib/squad-month-rules";
+import { pounds } from "@/lib/month-payment-copy";
 import { setPaymentClaimStub } from "../helpers/stub";
 
 test.describe.configure({ mode: "serial" });
@@ -150,7 +151,10 @@ test("1. a regular of a month started part-way DMs \"paid\": says paid, never pa
 
   const acks = await dms(db, A.org, P.carl);
   expect(acks).toHaveLength(1);
-  expect(acks[0].text).toContain("£" + ((SHARE * N) / 100).toFixed(2));
+  // The month's amount, as every month DM writes money (`pounds`, since
+  // #203): "£37.50", but "£30" for whole pounds. The game count is next
+  // month's Mondays, so a fixed "£30.00" passed only in five-Monday months.
+  expect(acks[0].text).toContain(`you say you have paid ${pounds(SHARE * N)} for `);
 
   // Saying it again changes nothing and is not answered twice in a day.
   const again = await dm(request, P.carl, "I've paid");

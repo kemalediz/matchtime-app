@@ -153,10 +153,15 @@ async function person(db: TestDb, p: { id: string; name: string; phone: string }
 }
 
 async function club(db: TestDb, o: { org: string; group: string; act: string; sport: string; dayOfWeek: number }) {
+  // Vets MNF is an existing club, so its quiet hours are ON (23:00 to 09:00):
+  // since #486 (2026-10-31) only a NEW club starts with them off, the way the
+  // fixture club in seed.ts keeps them on. Test 5's "not before 09:00" is
+  // that window; with them off the close is due from 08:00, the seed hour
+  // (monthCloseDue, quiet-hours-gates.test.ts).
   await db.run(
     `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled", "squadMode", "paygPricePence",
-                                 "adminChannelMode", language, "paymentTrackingEnabled", "updatedAt")
-     VALUES ($1, 'Vets MNF', $1, $2, $3, true, 'monthly', 800, 'each-admin', 'en', true, now())`,
+                                 "adminChannelMode", language, "paymentTrackingEnabled", "quietHoursEnabled", "updatedAt")
+     VALUES ($1, 'Vets MNF', $1, $2, $3, true, 'monthly', 800, 'each-admin', 'en', true, true, now())`,
     [o.org, `${o.org}-invite`, o.group],
   );
   await db.run(
