@@ -17,6 +17,7 @@ import { runAnswerBatch, type AnswerBatchMessage } from "../answer-batch";
 import type { OrgFeatures } from "../../org-features";
 import type { ClubSnapshot, Route, SquadState } from "../types";
 import { NOW, fullName, world } from "./helpers";
+import { NO_FEE, feeFact } from "../../fee-fact";
 
 const FEATURES = {
   botEnabled: true,
@@ -33,7 +34,8 @@ const FEATURES = {
   language: "en",
 } as OrgFeatures;
 
-const CLUB: ClubSnapshot = { collectorName: "Elvin Aliyev", feePerPlayer: 6.5, feeSplitTotal: false, teamsReady: "10:00" };
+const CONFIRMED_6_50 = { amount: 6.5, source: "match" as const, confirmed: true, notConfirmedYet: false, splitTotal: false };
+const CLUB: ClubSnapshot = { collectorName: "Elvin Aliyev", fee: CONFIRMED_6_50, teamsReady: "10:00" };
 
 function stubModel(topic: string): PipelineModel {
   return {
@@ -120,7 +122,7 @@ describe("a club question, asked by the organisers", () => {
   it("says what is not set rather than leaving it out, and a split fee as a split", async () => {
     const { reply } = await ask("club", {
       audience: "organisers",
-      club: { collectorName: null, feePerPlayer: null, feeSplitTotal: true, teamsReady: "off" },
+      club: { collectorName: null, fee: { ...NO_FEE, splitTotal: true }, teamsReady: "off" },
     });
     expect(reply).toContain("💷 Money collector: not set");
     expect(reply).toContain("💷 Match fee: the pitch cost split between who played");
@@ -128,8 +130,27 @@ describe("a club question, asked by the organisers", () => {
   });
 
   it("no fee and no split: not set", async () => {
-    const { reply } = await ask("club", { audience: "organisers", club: { ...CLUB, feePerPlayer: null } });
+    const { reply } = await ask("club", { audience: "organisers", club: { ...CLUB, fee: NO_FEE } });
     expect(reply).toContain("💷 Match fee: not set");
+  });
+
+  // Decision K3 (club summary B5): before the collector confirms the
+  // match's fee, the usual fee is said with "not confirmed yet".
+  it("before the collector confirms: the usual fee, not confirmed yet (EN and TR)", async () => {
+    const usual = feeFact({ matchFee: null, gameFee: 6, splitTotal: false, paygPence: null, collection: true });
+    const en = await ask("club", { audience: "organisers", club: { ...CLUB, fee: usual } });
+    expect(en.reply).toContain("💷 Match fee: usually £6 a player, not confirmed yet");
+    const tr = await ask("club", { audience: "organisers", lang: "tr", club: { ...CLUB, fee: usual } });
+    expect(tr.reply).toContain("💷 Maç ücreti: genelde kişi başı £6, henüz kesinleşmedi");
+  });
+
+  it("a club that does not collect states its usual fee as it is; a month's game says pay as you go", async () => {
+    const usual = feeFact({ matchFee: null, gameFee: 6, splitTotal: false, paygPence: null, collection: false });
+    expect((await ask("club", { audience: "organisers", club: { ...CLUB, fee: usual } })).reply).toContain("💷 Match fee: £6 a player\n");
+    const payg = feeFact({ matchFee: null, gameFee: null, splitTotal: false, paygPence: 800, collection: false });
+    expect((await ask("club", { audience: "organisers", club: { ...CLUB, fee: payg } })).reply).toContain("💷 Match fee: £8 a player (pay as you go)");
+    const tr = await ask("club", { audience: "organisers", lang: "tr", club: { ...CLUB, fee: payg } });
+    expect(tr.reply).toContain("💷 Maç ücreti: kişi başı £8 (maç başı ödeme)");
   });
 
   it("in Turkish", async () => {

@@ -37,6 +37,14 @@ export function paymentMessagesOn(org: PaymentFlags | null | undefined): boolean
 }
 
 /** The scheduler's `OrgFeatures` spelling of the same two flags. */
+/** The club collects match fees through MatchTime: its collector confirms
+ *  each match's fee (`feeFact`'s `collection`, fee-fact.ts, slice B5).
+ *  Narrower than `paymentMessagesOn` on purpose: the poll alone confirms
+ *  no fee. */
+export function collectsMatchFees(org: PaymentFlags | null | undefined): boolean {
+  return org?.paymentCollectionEnabled === true;
+}
+
 export function paymentMessagesOnFor(features: { paymentTracking?: boolean; paymentCollection?: boolean }): boolean {
   return paymentMessagesOn({ paymentTrackingEnabled: features.paymentTracking, paymentCollectionEnabled: features.paymentCollection });
 }

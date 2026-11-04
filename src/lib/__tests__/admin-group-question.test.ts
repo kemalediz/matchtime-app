@@ -47,7 +47,7 @@ function ask(topic: string, over: { lastBotPost?: string | null; calls?: ModelRe
       model: extractor(topic, over.calls),
       loadState: async () => organisersAnnounce,
       loadFeatures: async () => FEATURES,
-      loadClub: async () => ({ collectorName: "Elvin Aliyev", feePerPlayer: 5, feeSplitTotal: false, teamsReady: "10:00" }),
+      loadClub: async () => ({ collectorName: "Elvin Aliyev", fee: { amount: 5, source: "match" as const, confirmed: true, notConfirmedYet: false, splitTotal: false }, teamsReady: "10:00" }),
     },
   });
 }

@@ -31,6 +31,9 @@ import type { RatingProgress } from "../rating-progress-answer";
 import type { ClubSnapshot, PartnerAskView, SquadState } from "./types";
 import type { ClubRowFacts, ClubSummary } from "../club-summary/types";
 import { gamesOverlap } from "../partner-ask-rules";
+import { NO_FEE, feeFact } from "../fee-fact";
+import { PAYMENT_FLAGS_SELECT, collectsMatchFees } from "../payment-messages";
+import { normaliseSquadMode } from "../squad-month-rules";
 import { loadPlayerNames } from "../player-display-name";
 
 /** Statuses `selectRegistrationMatch` considers, plus COMPLETED so the
@@ -658,7 +661,7 @@ async function loadGuestElsewhere(orgId: string, kickoff: Date, now: Date): Prom
 export async function loadClubSnapshot(
   orgId: string,
   matchId: string | null,
-  opts: { club?: Pick<ClubRowFacts, "orgId" | "payments" | "routine"> | null } = {},
+  opts: { club?: Pick<ClubRowFacts, "orgId" | "payments" | "routine" | "squad"> | null } = {},
 ): Promise<ClubSnapshot> {
   const known = opts.club && opts.club.orgId === orgId ? opts.club : null;
   const [{ effectiveTeamsReadyTime }, { organisersAnnounce }] = await Promise.all([
@@ -669,7 +672,7 @@ export async function loadClubSnapshot(
     ? null
     : await db.organisation.findUnique({
         where: { id: orgId },
-        select: { paymentHolderId: true, teamsReadyTime: true, listAnnouncer: true },
+        select: { paymentHolderId: true, teamsReadyTime: true, listAnnouncer: true, squadMode: true, ...PAYMENT_FLAGS_SELECT },
       });
   const collectorId = known ? (known.payments.collector?.userId ?? null) : org?.paymentHolderId;
   const collector = collectorId ? await db.user.findUnique({ where: { id: collectorId }, select: { name: true } }) : null;
@@ -679,10 +682,23 @@ export async function loadClubSnapshot(
         select: { feePerPlayer: true, activity: { select: { feePerPlayer: true, feeSplitTotal: true } } },
       })
     : null;
+  // The one fee fact (slice B5, K3), as the summary's `fee.forPlayers`: the
+  // PAYG price only in a week of a running month, read only for a monthly
+  // club whose match has no confirmed fee.
+  const monthly = known ? known.squad.mode === "monthly" : normaliseSquadMode(org?.squadMode) === "monthly";
+  const paygPence =
+    match && matchId && match.feePerPlayer == null && monthly ? await (await import("../monthly-week-asks")).guestPaygPence(matchId) : null;
   return {
     collectorName: collector?.name ?? null,
-    feePerPlayer: match?.feePerPlayer ?? match?.activity.feePerPlayer ?? null,
-    feeSplitTotal: match?.activity.feeSplitTotal ?? false,
+    fee: match
+      ? feeFact({
+          matchFee: match.feePerPlayer,
+          gameFee: match.activity.feePerPlayer,
+          splitTotal: match.activity.feeSplitTotal,
+          paygPence,
+          collection: known ? known.payments.collection : collectsMatchFees(org),
+        })
+      : NO_FEE,
     teamsReady: known ? known.routine.teamsReady : effectiveTeamsReadyTime(org?.teamsReadyTime, organisersAnnounce(org)),
   };
 }

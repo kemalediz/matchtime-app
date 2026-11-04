@@ -155,7 +155,7 @@ describe("helpGivesWayToOwnFee: 'how do I pay?' from a player who owes (2026-11-
     collectorName: "Colin",
     methods: ["card"],
     instructions: null,
-    upcomingFee: 8,
+    upcomingFee: null,
     lines: [{ matchId: "m1", activityName: "Tuesday 5s", date: new Date("2026-11-03T19:00:00Z"), state, fee: state === "paid" ? null : 8 }],
   });
 

@@ -60,6 +60,23 @@ test("a player asking what he owes is shown his own unpaid fee, his pay link and
   expect(ctx.match(/owes £|paid: payment received/g) ?? []).toHaveLength(1);
 });
 
+// Club summary B5, decision K3: the upcoming match has no fee confirmed by
+// the collector yet, so the model is told the game's usual fee AND that it is
+// not confirmed yet (before B5: "Usual match fee: £8 per player").
+test("the upcoming match's fee is the usual one, marked not confirmed yet", async ({ request, db }) => {
+  // What the DM reader reads it as (live: a question; the live spec proves it).
+  addDmIntentBodies({ "how much is the next game?": "question" });
+  const json = await postDm(request, PHONE.player, "how much is the next game?");
+  expect(json.handled).toBe("dm-qa");
+  const answer = await db.one<{ text: string }>(
+    `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 AND text LIKE '[scoped-qa-stub]%' ORDER BY "createdAt" DESC LIMIT 1`,
+    [digits(PHONE.player)],
+  );
+  const ctx = answer?.text ?? "";
+  expect(ctx).toContain("- Upcoming match's fee: not confirmed yet. The usual fee is £8 per player; the money collector confirms it after the game.");
+  expect(ctx).not.toContain("Usual match fee");
+});
+
 test("the collector is told he has nothing to pay", async ({ request, db }) => {
   const json = await postDm(request, PHONE.collector, "how much do I owe?");
   expect(json.handled).toBe("dm-qa");

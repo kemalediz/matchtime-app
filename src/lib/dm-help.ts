@@ -114,7 +114,7 @@ export function helpGivesWayToOwnFee(req: HelpRequest, payments: MyPayments | nu
  *  link, and a failed read leaves the answer to the help. */
 export async function helpGivesWayForOwnFee(req: HelpRequest, args: { userId: string; orgId: string }): Promise<boolean> {
   if (req.topic !== "payments") return false;
-  const payments = await readMyPayments({ orgId: args.orgId, userId: args.userId, upcomingFee: null }).catch((err) => {
+  const payments = await readMyPayments({ orgId: args.orgId, userId: args.userId, upcoming: null }).catch((err) => {
     console.error(`[dm-help] own payments read failed for org=${args.orgId}; the help answers:`, err);
     return null;
   });

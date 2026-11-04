@@ -367,7 +367,13 @@ export const tr: Strings = {
     [
       `👥 Yöneticiler: ${p.admins || "yok"}`,
       `💷 Parayı toplayan: ${p.collector ?? "ayarlanmadı"}`,
-      `💷 Maç ücreti: ${p.fee !== null ? `kişi başı £${p.fee}` : p.feeSplit ? "saha ücreti oynayanlar arasında bölünür" : "ayarlanmadı"}`,
+      `💷 Maç ücreti: ${
+        p.fee !== null
+          ? ((amount) => (p.feeNotConfirmedYet ? `genelde ${amount}, henüz kesinleşmedi` : amount))(`kişi başı £${p.fee}${p.feePayg ? " (maç başı ödeme)" : ""}`)
+          : p.feeSplit
+            ? "saha ücreti oynayanlar arasında bölünür"
+            : "ayarlanmadı"
+      }`,
       p.forOrganisers
         ? `⚽ Takımlar hazır: ${p.teamsReady === "off" ? "kapalı" : `maç günü ${p.teamsReady}`}`
         : p.teamsReady === "off" ? "⚽ Takımlar: maçtan önce organizatörler ayarlıyor" : `⚽ Takımların kurulduğu saat: maç günü ${p.teamsReady}`,
@@ -1240,6 +1246,7 @@ export const tr: Strings = {
       payments:
         `💷 *Maç ücretleri nasıl çalışır*\n` +
         `Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra oynayan herkese payını ödemesi için özelden bir bağlantı gönderirim. Kartla ve bankadan yapılan ödemeler doğrudan parayı toplayan kişinin banka hesabına gider.\n` +
+        `Parayı toplayan kişi ücreti kesinleştirmeden sorarsanız genelde ödenen ücreti söylerim ve henüz kesinleşmediğini belirtirim. Ücret kesinleşmeden kimseden ödeme istenmez.\n` +
         `Henüz ödemeyenlere, parayı toplayan kişiye doğrudan ödemeyi seçmedilerse, bağlantıyı maçtan sonra 6 güne kadar her gün yeniden gönderirim.\n` +
         `Son durumu istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time kim ödemedi?*).`,
     })[p.topic],
@@ -1676,6 +1683,11 @@ export const tr: Strings = {
 
   pay_off_title: `Burada ödenecek bir şey yok`,
   pay_off_body: (p) => `${p.firstName}, ${p.club} ödemeleri MatchTime üzerinden almıyor. Ödeme için organizatörle konuş.`,
+  pay_no_fee_title: `Ücret henüz belirlenmedi`,
+  pay_no_fee_body: (p) => `Organizatör ${p.activityName} için ücreti henüz belirlemedi. Biraz sonra tekrar bak.`,
+  pay_fee_not_confirmed_title: `Ücret henüz kesinleşmedi`,
+  pay_fee_not_confirmed_body: (p) =>
+    `${p.activityName} için genelde kişi başı ${p.amount}${p.payg ? " (maç başı ödeme)" : ""} ödeniyor, ama ${p.collector ?? "organizatör"} bu maçın ücretini henüz kesinleştirmedi. Kesinleşince buradan ödeyebilirsin.`,
   collect_payments_off: `Bu kulüpte ödemeler kapalı, MatchTime ödeme bağlantısı ya da hatırlatma göndermiyor. Bir organizatör Ayarlar'dan Maç ücreti toplama ayarını açabilir.`,
 
   // Rows 96, 95, 89 name only `availablePayMethods(org)` (FNF,
@@ -4197,6 +4209,7 @@ export const tr: Strings = {
     );
   },
   xask_dm_prefill: (p) => `VARIM (ref ${p.ref})`,
+  xask_fee_not_confirmed: (p) => `genelde ${p.amount}, henüz kesinleşmedi`,
   xask_approval_notice: (p) => {
     const extras = [p.format, p.fee].filter(Boolean).join(", ");
     const who = p.places === 1 ? "oyuncularınızdan birinin" : `oyuncularınızdan ${p.places} kişinin`;

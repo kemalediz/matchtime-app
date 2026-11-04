@@ -145,6 +145,13 @@ describe("after he says yes", () => {
     expect(text).toContain(`Give the place back here: ${LINKS.tapLink}`);
     expect(text).toContain(LINKS.manageLink);
   });
+  it("before the collector confirms: the usual fee, not confirmed yet, in the offer and after yes (B5, K3), EN and TR", () => {
+    const usual = { kind: "amount" as const, amount: "£6", notConfirmedYet: true };
+    expect(poolOfferLines("en", { ...FACTS, fee: usual })).toContain("💷 Match fee usually £6, not confirmed yet");
+    expect(poolOfferLines("tr", { ...FACTS, fee: usual })).toContain("💷 Maç ücreti genelde £6, henüz kesinleşmedi");
+    expect(poolPlacedText("en", { ...placed, bench: false, fee: usual })).toContain("The match fee is usually £6, not confirmed yet. You'll get a pay link after the game.");
+    expect(poolPlacedText("tr", { ...placed, bench: false, fee: usual })).toContain("Maç ücreti genelde £6, henüz kesinleşmedi. Maçtan sonra ödeme bağlantısı gelecek.");
+  });
   it("bench (organiser-pick club): 'bench', never a waiting list; TR 'yedek'", () => {
     expect(poolPlacedText("en", { ...placed, bench: true })).toMatch(/on the bench for \*FNF\*/);
     expect(poolPlacedText("tr", { ...placed, bench: true })).toMatch(/yedektesin/);

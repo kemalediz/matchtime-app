@@ -261,6 +261,11 @@ export default function PlayerGuidePage() {
         be card, Apple Pay, Google Pay, pay by bank or paying the collector
         directly. If you haven&apos;t paid, you&apos;ll get a reminder.
       </p>
+      <p>
+        The money collector confirms each game&apos;s fee after it is played.
+        Ask MatchTime the fee before then and it tells you the usual one and
+        says it isn&apos;t confirmed yet; nobody is asked to pay until it is.
+      </p>
 
       <h3>Played for a partner club?</h3>
       <p>

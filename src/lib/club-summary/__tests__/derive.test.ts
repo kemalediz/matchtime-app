@@ -420,6 +420,33 @@ describe("buildClubSummary over the five shapes", () => {
     expect(s.groups.playersGroupId).toBe("org-sutton@g.us");
   });
 
+  it("one fee fact per match (B5, K3): the confirmed fee, else the usual one marked not confirmed yet where the club collects", () => {
+    const sutton = buildClubSummary(SUTTON, NOW);
+    // Sutton collects: the game's usual £6 until the collector confirms.
+    expect(sutton.matches.find((m) => m.id === "m-sutton-10nov")!.fee.forPlayers).toEqual({
+      amount: 6,
+      source: "game",
+      confirmed: false,
+      notConfirmedYet: true,
+      splitTotal: false,
+    });
+    expect(sutton.matches.find((m) => m.id === "m-sutton-3nov")!.fee.forPlayers).toMatchObject({ amount: 6, source: "match", confirmed: true, notConfirmedYet: false });
+    // The Vets: a week of the running month is the PAYG price; December has
+    // no month yet, and the game has no fee; payments are off, so nothing is
+    // waiting for a confirmation.
+    const vets = buildClubSummary(VETS, NOW);
+    expect(vets.matches.find((m) => m.id === "m-vets-9nov")!.fee.forPlayers).toEqual({
+      amount: 8,
+      source: "payg",
+      confirmed: false,
+      notConfirmedYet: false,
+      splitTotal: false,
+    });
+    expect(vets.matches.find((m) => m.id === "m-vets-7dec")!.fee.forPlayers).toMatchObject({ amount: null, source: null });
+    // FNF: no fee anywhere.
+    expect(buildClubSummary(FNF, NOW).matches[0].fee.forPlayers).toMatchObject({ amount: null, source: null, notConfirmedYet: false });
+  });
+
   it("FNF: HQ linked, organisers announce, nobody short at 12 of 14", () => {
     const s = buildClubSummary(FNF, NOW);
     expect(s.groups.hq).toEqual({ groupId: "hq-fnf@g.us", channelMode: "admin-group", channelUserId: null });

@@ -3,7 +3,6 @@ import {
   CLUB_PAYG_FIRST_MINS,
   CLUB_PAYG_UNTOLD_MAX_MINS,
   clubFillsFirst,
-  guestFeePounds,
   monthlyPlacesOpen,
 } from "../monthly-week-asks-rules";
 import type { WeekMember, WeekRow } from "../monthly-week-rules";
@@ -116,21 +115,5 @@ describe("clubFillsFirst: the automatic ask waits while the club's own players h
 
   it("somebody on the club's bench: held (the bench offer runs first)", () => {
     expect(clubFillsFirst({ ...base, benchCount: 1 })).toBe(true);
-  });
-});
-
-describe("guestFeePounds: what a pool or partner guest is told he pays", () => {
-  it("a monthly week: the club's PAYG price, which is what he is charged after the game", () => {
-    expect(guestFeePounds({ matchFee: null, activityFee: 7.5, feeSplitTotal: false, monthlyPaygPence: 800 })).toBe(8);
-    expect(guestFeePounds({ matchFee: null, activityFee: null, feeSplitTotal: true, monthlyPaygPence: 750 })).toBe(7.5);
-  });
-
-  it("a fee already set on the match wins", () => {
-    expect(guestFeePounds({ matchFee: 9, activityFee: null, feeSplitTotal: false, monthlyPaygPence: 800 })).toBe(9);
-  });
-
-  it("a weekly club, or a monthly week with no PAYG price: exactly as before", () => {
-    expect(guestFeePounds({ matchFee: null, activityFee: 6, feeSplitTotal: false, monthlyPaygPence: null })).toBe(6);
-    expect(guestFeePounds({ matchFee: null, activityFee: 6, feeSplitTotal: true, monthlyPaygPence: null })).toBeNull();
   });
 });

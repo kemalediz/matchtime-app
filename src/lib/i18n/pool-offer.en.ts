@@ -29,6 +29,8 @@ export const poolOfferEn = {
     `A group of ${p.members} players, ${p.games} ${plural(p.games, "game", "games")} in the last 8 weeks`,
   club_size: (p: { members: number }) => `A group of ${p.members} players`,
   fee: (p: { amount: string }) => `💷 ${p.amount} match fee`,
+  /** The usual fee before the collector confirms it (slice B5, K3). */
+  fee_not_confirmed: (p: { amount: string }) => `💷 Match fee usually ${p.amount}, not confirmed yet`,
   free: "💷 Free, no match fee",
   offer_cta: (p: { link: string }) => `Would you like the place? Reply here, or tap to answer: ${p.link}`,
   footer: (p: { link: string }) => `You get these because you joined the MatchTime player pool. Stop or change them: ${p.link}`,
@@ -38,6 +40,7 @@ export const poolOfferEn = {
   placed_bench: (p: { club: string; day: string; venue: string }) =>
     `📝 You're on the bench for *${p.club}*, ${p.day}, ${p.venue}. The organisers pick from the bench, and you'll hear if you play.`,
   placed_fee: (p: { amount: string }) => `The match fee is ${p.amount}. You'll get a pay link after the game.`,
+  placed_fee_not_confirmed: (p: { amount: string }) => `The match fee is usually ${p.amount}, not confirmed yet. You'll get a pay link after the game.`,
   placed_pull_out: (p: { link: string }) => `Can't make it after all? Give the place back here: ${p.link}`,
 
   // ── Replies in words (L6: the reader; one line each) ──────────────────

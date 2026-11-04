@@ -7,7 +7,10 @@
  */
 import { db } from "./db";
 import { PAY_METHOD_SELECT } from "./payments";
-import { paymentMessagesOn } from "./payment-messages";
+import { collectsMatchFees, paymentMessagesOn, type PaymentFlags } from "./payment-messages";
+import { feeFact, type FeeFact } from "./fee-fact";
+import { guestPaygPence } from "./monthly-week-asks";
+import { normaliseSquadMode } from "./squad-month-rules";
 import { payCollectorName } from "./direct-payment";
 import { buildPayLinkUrl } from "./pay-link";
 import {
@@ -23,11 +26,32 @@ export interface LoadedMyPayments {
   payLinks: Record<string, string>;
 }
 
+/** The upcoming match's amounts, as `dm-qa.ts` reads them with the match. */
+export interface UpcomingFeeRow {
+  matchId: string;
+  /** `Match.feePerPlayer`: the collector's confirmed fee, or null. */
+  matchFee: number | null;
+  /** `Activity.feePerPlayer` and `Activity.feeSplitTotal`. */
+  gameFee: number | null;
+  splitTotal: boolean;
+}
+
+/** The match's one fee fact (fee-fact.ts). The PAYG price is read only
+ *  where it can be the answer: a club that collects (the only one whose
+ *  block shows the fee), on a monthly squad, with no confirmed fee yet. */
+async function upcomingFeeFact(u: UpcomingFeeRow, org: { squadMode: string | null } & PaymentFlags): Promise<FeeFact> {
+  const collection = collectsMatchFees(org);
+  const paygPence = collection && u.matchFee == null && normaliseSquadMode(org.squadMode) === "monthly" ? await guestPaygPence(u.matchId) : null;
+  return feeFact({ matchFee: u.matchFee, gameFee: u.gameFee, splitTotal: u.splitTotal, paygPence, collection });
+}
+
 export interface MyPaymentsArgs {
   orgId: string;
   userId: string;
-  /** The upcoming match's fee (or its format's usual one), or null. */
-  upcomingFee: number | null;
+  /** The upcoming match's fee amounts, as read with the match, or null
+   *  without one. Made into its one fee fact here (slice B5, K3), where the
+   *  club's payment switches and squad mode are read anyway. */
+  upcoming: UpcomingFeeRow | null;
   now?: Date;
 }
 
@@ -96,7 +120,7 @@ export async function readMyPayments(args: MyPaymentsArgs): Promise<MyPayments |
     userId: args.userId,
     org,
     collectorName: tracked && !isCollector ? await payCollectorName(org.paymentHolderId).catch(() => null) : null,
-    upcomingFee: args.upcomingFee,
+    upcomingFee: args.upcoming ? await upcomingFeeFact(args.upcoming, org) : null,
     rows: rows.map((r) => ({
       matchId: r.match.id,
       activityName: r.match.activity.name,

@@ -3,7 +3,7 @@
  * languages, so a reviewer sees what people will read.
  */
 import { describe, expect, it } from "vitest";
-import { friendBookedDm, friendGroupLine, friendGroupOutLine, friendNotBookedDm, friendOutDm, friendRemovedDm, memberLinkDm } from "../copy";
+import { friendBookedDm, friendPageFeeLine, friendGroupLine, friendGroupOutLine, friendNotBookedDm, friendOutDm, friendRemovedDm, memberLinkDm } from "../copy";
 
 const kickoff = new Date("2026-11-02T20:00:00Z"); // 20:00 London (GMT)
 
@@ -45,6 +45,23 @@ describe("friendBookedDm", () => {
     expect(friendBookedDm("tr", { ...base, monthly: true, fee: { kind: "amount", amount: "£7" }, newToPool: false })).toBe(
       "*Sutton FC* ile 2 Kasım Pazartesi 20:00, Goals Sutton maçındasın. Seni Shane getirdi.\nÜcret: maç başı ödeyen oyuncu olarak £7, maçtan sonra senden istenecek.\nGelemiyor musun? Yerini buradan geri ver: https://m.ai/p\n\nAyarların: https://m.ai/s",
     );
+  });
+  it("before the collector confirms: the usual fee, not confirmed yet (B5, K3), weekly and pay as you go, EN and TR", () => {
+    const usual = { kind: "amount", amount: "£6", notConfirmedYet: true } as const;
+    expect(friendBookedDm("en", { ...base, fee: usual })).toContain("\nFee: usually £6, not confirmed yet, asked of you after the game.\n");
+    expect(friendBookedDm("en", { ...base, monthly: true, fee: usual })).toContain("\nFee: usually £6 as a pay as you go player, not confirmed yet, asked of you after the game.\n");
+    expect(friendBookedDm("tr", { ...base, fee: usual })).toContain("\nÜcret: genelde £6, henüz kesinleşmedi, maçtan sonra senden istenecek.\n");
+    expect(friendBookedDm("tr", { ...base, monthly: true, fee: usual })).toContain("\nÜcret: maç başı ödeyen oyuncu olarak genelde £6, henüz kesinleşmedi, maçtan sonra senden istenecek.\n");
+  });
+  it("the link page's fee line follows the same fact (B5, K3)", () => {
+    const usual = { kind: "amount", amount: "£6", notConfirmedYet: true } as const;
+    expect(friendPageFeeLine("en", { kind: "amount", amount: "£6" }, false)).toBe("Fee: £6");
+    expect(friendPageFeeLine("en", usual, false)).toBe("Fee: usually £6, not confirmed yet");
+    expect(friendPageFeeLine("en", usual, true)).toBe("Fee: usually £6, pay as you go, not confirmed yet");
+    expect(friendPageFeeLine("tr", usual, false)).toBe("Ücret: genelde £6, henüz kesinleşmedi");
+    expect(friendPageFeeLine("tr", usual, true)).toBe("Ücret: maç başı genelde £6, henüz kesinleşmedi");
+    expect(friendPageFeeLine("en", { kind: "free" }, false)).toBe("Free");
+    expect(friendPageFeeLine("en", null, false)).toBeNull();
   });
   it("bench, and bench in an organiser-pick club; no fee line when unknown or free", () => {
     expect(friendBookedDm("en", { ...base, status: "bench", fee: null })).toContain("You're on the bench for *Sutton FC*");

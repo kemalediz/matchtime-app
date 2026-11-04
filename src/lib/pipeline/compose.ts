@@ -437,8 +437,12 @@ export function compose(result: EngineResult): ComposedOutput {
           text: s.answer_club({
             admins: joinList(lang, state.roster.filter((m) => m.isAdmin && m.name).map((m) => m.name)),
             collector: club.collectorName,
-            fee: club.feePerPlayer !== null ? activityFeeText(club.feePerPlayer) : null,
-            feeSplit: club.feeSplitTotal,
+            // The one fee fact (slice B5, K3): the usual fee says it is not
+            // confirmed yet until the collector confirms it.
+            fee: club.fee.amount !== null ? activityFeeText(club.fee.amount) : null,
+            feeSplit: club.fee.splitTotal,
+            feePayg: club.fee.source === "payg",
+            feeNotConfirmedYet: club.fee.notConfirmedYet,
             teamsReady: club.teamsReady,
             forOrganisers: club.forOrganisers === true,
           }),

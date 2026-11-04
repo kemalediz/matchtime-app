@@ -33,6 +33,7 @@ import type { RatingProgress } from "../rating-progress-answer";
 // Same rule again: `i18n/lang.ts` is client-safe and Prisma-free by
 // design (the admin settings page imports it). See `SquadState.features`.
 import type { Lang } from "../i18n/lang";
+import type { FeeFact } from "../fee-fact";
 
 export type { PaymentSnapshot, RatingProgress };
 
@@ -1238,10 +1239,12 @@ export interface SquadState {
 export interface ClubSnapshot {
   /** The money collector's name (`Organisation.paymentHolderId`), or null when none is set. */
   collectorName: string | null;
-  /** The per-player fee of the upcoming match (its own, else its game's), or null. */
-  feePerPlayer: number | null;
-  /** The collector enters the pitch total and it is split between who played. */
-  feeSplitTotal: boolean;
+  /** The upcoming match's one fee fact (fee-fact.ts, slice B5, decision
+   *  K3): its confirmed fee, else the usual one (the PAYG price in a week of
+   *  a running month, else the game's unless it splits the total), marked
+   *  not confirmed yet while a collecting club's collector has to confirm
+   *  it. No match: no amount. */
+  fee: FeeFact;
   /** "Teams ready" as `effectiveTeamsReadyTime` reads it: "HH:MM" or "off". */
   teamsReady: string;
   /** Set by `answer-batch.ts`, never by the loader: the answer is for the

@@ -44,7 +44,8 @@ import { matchtimeWaNumber } from "./club-connect";
 import { askDmLink, askDmPrefill, askRefCode } from "./partner-ask-ref";
 import { loadRoundFill, type RoundFill } from "./partner-ask-round";
 import { askPlacesOpen, clubFillsFirstFor, guestPaygPence } from "./monthly-week-asks";
-import { guestFeePounds } from "./monthly-week-asks-rules";
+import { feeFact } from "./fee-fact";
+import { PAYMENT_FLAGS_SELECT, collectsMatchFees, type PaymentFlags } from "./payment-messages";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import {
@@ -106,6 +107,8 @@ const MATCH_SELECT = {
       feePerPlayer: true,
       feeSplitTotal: true,
       sport: { select: { playersPerTeam: true } },
+      // Whether the club collects: its collector confirms the fee (B5, K3).
+      org: { select: PAYMENT_FLAGS_SELECT },
     },
   },
 } as const;
@@ -125,6 +128,8 @@ type AskMatch = {
     feePerPlayer: number | null;
     feeSplitTotal: boolean;
     sport: { playersPerTeam: number } | null;
+    /** Absent in an older read: the fee is stated as it is. */
+    org?: PaymentFlags | null;
   };
 };
 
@@ -139,23 +144,27 @@ export interface AskFacts {
 }
 
 /** The facts as the partner club is shown them. The fee is what a guest
- *  pays: in a week of a running month, the club's PAYG price
- *  (`guestFeePounds`), as a PAYG player is charged after the game. */
+ *  pays, the match's one fee fact (fee-fact.ts, slice B5): in a week of a
+ *  running month, the club's PAYG price, as a PAYG player is charged after
+ *  the game; said as not confirmed yet while the asking club's collector
+ *  has to confirm it (K3). */
 async function factsFor(match: AskMatch, askerName: string, places: number, lang: string | null): Promise<AskFacts> {
   const perSide = match.activity.sport?.playersPerTeam;
-  const fee = guestFeePounds({
+  const fee = feeFact({
     matchFee: match.feePerPlayer,
-    activityFee: match.activity.feePerPlayer,
-    feeSplitTotal: match.activity.feeSplitTotal,
-    monthlyPaygPence: await guestPaygPence(match.id),
+    gameFee: match.activity.feePerPlayer,
+    splitTotal: match.activity.feeSplitTotal,
+    paygPence: await guestPaygPence(match.id),
+    collection: collectsMatchFees(match.activity.org),
   });
+  const label = feeLabel(fee.amount);
   return {
     asker: askerName,
     places,
     day: dayCommaTimeLabel(lang, match.date),
     venue: match.activity.venue,
     format: perSide ? t(lang).sj_per_side_option({ perSide }) : null,
-    fee: feeLabel(fee),
+    fee: label && fee.notConfirmedYet ? t(lang).xask_fee_not_confirmed({ amount: label }) : label,
   };
 }
 

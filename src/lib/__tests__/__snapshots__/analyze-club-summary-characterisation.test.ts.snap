@@ -3194,7 +3194,7 @@ THE MESSAGE (from Zed, who tagged the bot):
           "reasoning": "answer-engine (question): club question answered from the roster and the club's settings (loaded)",
           "reply": "👥 Admins: Kemal
 💷 Money collector: Kemal
-💷 Match fee: £6 a player
+💷 Match fee: usually £6 a player, not confirmed yet
 ⚽ Teams: sorted by the organisers before the game",
           "replyKey": "greply:org-sutton:wa-sutton-club",
           "waMessageId": "wa-sutton-club",
@@ -3258,7 +3258,7 @@ THE MESSAGE (from Zed, who tagged the bot):
             "matchId": "m-sutton-10nov",
             "text": "👥 Admins: Kemal
 💷 Money collector: Kemal
-💷 Match fee: £6 a player
+💷 Match fee: usually £6 a player, not confirmed yet
 ⚽ Teams: sorted by the organisers before the game",
           },
         },
@@ -4215,7 +4215,7 @@ THE MESSAGE (from Zed, who tagged the bot):
           "reasoning": "answer-engine (question): club question answered from the roster and the club's settings (loaded)",
           "reply": "👥 Admins: Kemal
 💷 Money collector: Kemal
-💷 Match fee: £6 a player
+💷 Match fee: usually £6 a player, not confirmed yet
 ⚽ Teams: sorted by the organisers before the game",
           "replyKey": "greply:org-sutton:wa-sutton-club",
           "waMessageId": "wa-sutton-club",
@@ -4279,7 +4279,7 @@ THE MESSAGE (from Zed, who tagged the bot):
             "matchId": "m-sutton-10nov",
             "text": "👥 Admins: Kemal
 💷 Money collector: Kemal
-💷 Match fee: £6 a player
+💷 Match fee: usually £6 a player, not confirmed yet
 ⚽ Teams: sorted by the organisers before the game",
           },
         },
@@ -5229,7 +5229,7 @@ THE MESSAGE (from Zed, who tagged the bot):
           "reasoning": "answer-engine (question): club question answered from the roster and the club's settings (loaded)",
           "reply": "👥 Yöneticiler: Kemal
 💷 Parayı toplayan: Kemal
-💷 Maç ücreti: kişi başı £6
+💷 Maç ücreti: genelde kişi başı £6, henüz kesinleşmedi
 ⚽ Takımlar: maçtan önce organizatörler ayarlıyor",
           "replyKey": "greply:org-sutton:wa-sutton-tr-club",
           "waMessageId": "wa-sutton-tr-club",
@@ -5293,7 +5293,7 @@ THE MESSAGE (from Zed, who tagged the bot):
             "matchId": "m-sutton-10nov",
             "text": "👥 Yöneticiler: Kemal
 💷 Parayı toplayan: Kemal
-💷 Maç ücreti: kişi başı £6
+💷 Maç ücreti: genelde kişi başı £6, henüz kesinleşmedi
 ⚽ Takımlar: maçtan önce organizatörler ayarlıyor",
           },
         },
@@ -6255,7 +6255,7 @@ THE MESSAGE (from Nabz, who tagged the bot):
           "reasoning": "answer-engine (question): club question answered from the roster and the club's settings (loaded)",
           "reply": "👥 Admins: Davide
 💷 Money collector: Davide
-💷 Match fee: not set
+💷 Match fee: £8 a player (pay as you go)
 ⚽ Teams: sorted by the organisers before the game",
           "replyKey": "greply:org-vets:wa-vets-club",
           "waMessageId": "wa-vets-club",
@@ -6328,7 +6328,7 @@ THE MESSAGE (from Nabz, who tagged the bot):
             "matchId": "m-vets-9nov",
             "text": "👥 Admins: Davide
 💷 Money collector: Davide
-💷 Match fee: not set
+💷 Match fee: £8 a player (pay as you go)
 ⚽ Teams: sorted by the organisers before the game",
           },
         },

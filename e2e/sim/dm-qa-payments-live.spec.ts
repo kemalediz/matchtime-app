@@ -15,6 +15,7 @@
  *   - "did you get my payment?" Riley: recorded, no link
  *   - "how do I pay?"         Pat: his pay link
  *   - "has Riley paid?"       Pat: nothing about Riley's payment
+ *   - "how much is the next game?" Pat: the usual £8, not confirmed yet (B5, K3)
  *
  *   MT_SIM_LIVE_LLM=1 npx tsx e2e/run.ts sim/dm-qa-payments-live.spec.ts
  */
@@ -49,8 +50,8 @@ async function ask(request: APIRequestContext, db: TestDb, phone: string, body: 
 for (const lang of ["en", "tr"] as const) {
   const Q =
     lang === "en"
-      ? { owe: "how much do I owe?", got: "did you get my payment?", how: "how do I pay?", other: "has Riley paid?" }
-      : { owe: "ne kadar borcum var?", got: "ödememi aldınız mı?", how: "nasıl ödeyebilirim?", other: "Riley ödedi mi?" };
+      ? { owe: "how much do I owe?", got: "did you get my payment?", how: "how do I pay?", other: "has Riley paid?", next: "how much is the next game?" }
+      : { owe: "ne kadar borcum var?", got: "ödememi aldınız mı?", how: "nasıl ödeyebilirim?", other: "Riley ödedi mi?", next: "bir sonraki maç kaç para?" };
 
   (LIVE ? test.describe : test.describe.skip)(`DM Q&A payments LIVE, ${lang} (real Anthropic model)`, () => {
     test.describe.configure({ mode: "serial" });
@@ -72,12 +73,25 @@ for (const lang of ["en", "tr"] as const) {
       expect(a).not.toMatch(URL_RE);
       expect(a).toMatch(lang === "en" ? /paid|recorded/i : /ödendi|ödemiş|ödedin|kayıtl|alındı|ödemen/i);
       expect(othersPayLeak(a, lang, ["Pat", "Gary"])).toBe(false);
+      // B5, K3: the upcoming match's fee is given when asked, not added here.
+      expect(a).not.toMatch(lang === "en" ? /usual fee|not (yet )?confirmed|isn't confirmed/i : /genelde|kesinleşme/i);
     });
 
     test(`how to pay: "${Q.how}"`, async ({ request, db }) => {
       test.setTimeout(120_000);
       const a = await ask(request, db, PHONE.player, Q.how);
       expect(a).toMatch(URL_RE);
+      expect(othersPayLeak(a, lang, ["Riley", "Gary"])).toBe(false);
+    });
+
+    // Club summary B5, decision K3: the upcoming match's fee is not
+    // confirmed by the collector yet, so the answer gives the usual £8 AND
+    // says it is not confirmed yet.
+    test(`the next game's fee before the collector confirms it: "${Q.next}"`, async ({ request, db }) => {
+      test.setTimeout(120_000);
+      const a = await ask(request, db, PHONE.player, Q.next);
+      expect(a).toMatch(/£\s?8|8\s?£/);
+      expect(a).toMatch(lang === "en" ? /not (yet )?(been )?confirmed|isn't confirmed|unconfirmed|to be confirmed/i : /kesinleşme|kesinleşmedi|onaylanmadı|teyit edilmedi/i);
       expect(othersPayLeak(a, lang, ["Riley", "Gary"])).toBe(false);
     });
 

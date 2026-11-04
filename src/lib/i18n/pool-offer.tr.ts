@@ -20,6 +20,7 @@ export const poolOfferTr: PoolOfferStrings = {
   club_games: (p) => `${p.members} kişilik bir grup, son 8 haftada ${p.games} maç`,
   club_size: (p) => `${p.members} kişilik bir grup`,
   fee: (p) => `💷 Maç ücreti ${p.amount}`,
+  fee_not_confirmed: (p) => `💷 Maç ücreti genelde ${p.amount}, henüz kesinleşmedi`,
   free: "💷 Ücretsiz, maç ücreti yok",
   offer_cta: (p) => `Yeri ister misin? Buradan cevap ver ya da bağlantıya dokun: ${p.link}`,
   footer: (p) => `Bu mesajları MatchTime oyuncu havuzuna katıldığın için alıyorsun. Durdur ya da değiştir: ${p.link}`,
@@ -28,6 +29,7 @@ export const poolOfferTr: PoolOfferStrings = {
   placed_bench: (p) =>
     `📝 *${p.club}* maçında yedektesin: ${p.day}, ${p.venue}. Organizatörler yedekten seçiyor, oynarsan haber vereceğim.`,
   placed_fee: (p) => `Maç ücreti ${p.amount}. Maçtan sonra ödeme bağlantısı gelecek.`,
+  placed_fee_not_confirmed: (p) => `Maç ücreti genelde ${p.amount}, henüz kesinleşmedi. Maçtan sonra ödeme bağlantısı gelecek.`,
   placed_pull_out: (p) => `Gelemeyecek misin? Yeri buradan geri bırak: ${p.link}`,
 
   reply_tap: (p) => `Teklife cevap vermek için bağlantıya dokun: ${p.link}`,
