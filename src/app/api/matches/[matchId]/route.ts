@@ -18,7 +18,7 @@ export async function GET(
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true, org: { select: { teamLabels: true, language: true, momChosenBy: true } } } },
+      activity: { include: { sport: true, org: { select: { name: true, teamLabels: true, language: true, momChosenBy: true, featurePlayerRating: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -96,7 +96,10 @@ export async function GET(
   });
   // The organisers pick Man of the Match in this club (mom-chooser.ts):
   // the rate page offers no vote, and their pick is not anyone's vote.
-  const momVote = !organisersPickMom({ momChosenBy: match.activity.org.momChosenBy });
+  // Player ratings off (club summary, slice B7): the rate page says so and
+  // offers nothing to rate or vote on; the rating actions refuse the same way.
+  const ratingsOff = match.activity.org.featurePlayerRating === false;
+  const momVote = !ratingsOff && !organisersPickMom({ momChosenBy: match.activity.org.momChosenBy });
   const existingMoMVote = momVote
     ? await db.moMVote.findUnique({
         where: { matchId_voterId: { matchId, voterId: session.user.id } },
@@ -113,6 +116,7 @@ export async function GET(
     existingRatings,
     existingMoMVote,
     momVote,
+    ratingsOff,
     // Resolved display labels for the two team slots (per-match override →
     // org override → sport labels → "Red"/"Yellow"). [0] = RED, [1] = YELLOW.
     // NOTE: this overwrites the raw `match.teamLabels` scalar spread from

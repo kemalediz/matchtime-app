@@ -38,6 +38,7 @@
  * (`setup-learning/dm.ts`, `appliedLine`): `wd_weekday` and the stored
  * "HH:mm", so "Monday 21:00" reads the same in both places.
  */
+import { describeClub } from "./club-description";
 import { t } from "./i18n/t";
 import { normaliseLang } from "./i18n/lang";
 import { normaliseBenchPickMode } from "./squad-capacity";
@@ -151,7 +152,21 @@ export const DEFAULT_HELLO_SETTINGS: GroupHelloSettings = {
  *  squad is carried over, the month's regulars are, the squad comes from a
  *  pasted list, or attendance is off. */
 export function signsUpEachWeek(s: GroupHelloSettings): boolean {
-  return s.attendance && !s.squadFromList && s.squadMode !== "monthly" && !s.rollingSquad;
+  return describeHello(s).signsUpEachWeek;
+}
+
+/** The hello's settings as the one club description (club-description.ts),
+ *  which the admin group's introduction reads too (club summary, B7). */
+function describeHello(c: GroupHelloSettings) {
+  return describeClub({
+    attendance: c.attendance,
+    squadFromList: c.squadFromList,
+    rollingSquad: c.rollingSquad,
+    monthly: c.squadMode === "monthly",
+    playerRating: c.playerRating,
+    momVoting: c.momVoting,
+    momByOrganisers: c.momByOrganisers === true,
+  });
 }
 
 /**
@@ -173,14 +188,14 @@ export function helloFeatureLines(input: GroupHelloInput): string[] {
   const facts = input.clubFacts ?? NO_HELLO_CLUB_FACTS;
   const tag = s.sj_hello_optional({ organiser: input.organiser });
   const opt = (line: string, on: boolean) => (on ? line : withOptionalTag(line, tag));
-  // Rating DMs go to the confirmed players (bot-scheduler.ts 6b), which a
-  // club has only when it tracks attendance or reads a pasted squad.
-  const ratingsOn = c.playerRating && (c.attendance || c.squadFromList);
+  // Ratings and Man of the Match from the one club description
+  // (club-description.ts): rating DMs reach a club's confirmed players, and
+  // a players' vote needs them; the organisers' pick does not.
+  const d = describeHello(c);
+  const ratingsOn = d.ratings;
   const organisers = c.organisersAnnounce === true;
   const teams = organisers && c.teamBalancing ? s.sj_hello_teams_organisers : opt(s.sj_hello_teams, c.teamBalancing);
-  // The players vote on their rating link, so a players' vote needs the
-  // rating DMs; the organisers' pick does not.
-  const mom = c.momByOrganisers === true ? opt(s.sj_hello_mom_organisers, c.momVoting) : opt(s.sj_hello_mom, c.momVoting && ratingsOn);
+  const mom = c.momByOrganisers === true ? opt(s.sj_hello_mom_organisers, d.mom) : opt(s.sj_hello_mom, d.mom);
   const partners =
     facts.partnersAsk && facts.partnersHelp
       ? s.sj_hello_partners

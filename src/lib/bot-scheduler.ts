@@ -30,7 +30,7 @@ import {
 import type { PiCaps } from "./admin-channel-rules";
 import { readGraphicJob } from "./graphic-job";
 import type { OrgFeatures } from "./org-features";
-import { featureForDueKey } from "./due-key-feature";
+import { featureForDueKey, gateFeatureOfKey } from "./due-key-feature";
 import { formatLondon } from "./london-time";
 import {
   DEFAULT_RATING_WINDOW_HOURS,
@@ -1170,6 +1170,9 @@ export async function computeDuePosts(
 export function featureGateAllows(features: OrgFeatures, instr: { kind: string; key: string }): boolean {
   // The bench-prompt kind is bench regardless of key shape.
   if (instr.kind === "bench-prompt" && !features.bench) return false;
+  // The bench offer's DMs and the tentative follow-up (club summary, B7).
+  const extra = gateFeatureOfKey(instr.key);
+  if (extra !== null && !features[extra]) return false;
   // Nothing about payments while the club neither tracks nor collects
   // them (2026-11-03, `payment-messages.ts`), whatever section made it.
   const paymentsOn = paymentMessagesOnFor(features);

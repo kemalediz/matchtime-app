@@ -169,9 +169,13 @@ async function buildScopedContext(
 ): Promise<string> {
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { id: true, name: true },
+    // `featureStatsQa` (club summary, slice B7): with stats answers off the
+    // players' group answers no stats question, so the DM answer has none
+    // to give either (`statsOff` below).
+    select: { id: true, name: true, featureStatsQa: true },
   });
   if (!org) return "(no data)";
+  const statsOff = org.featureStatsQa === false;
 
   // Upcoming match — date/venue/squad NAMES only (no contact info), and
   // whether THIS player is currently in/out/bench.
@@ -216,9 +220,9 @@ async function buildScopedContext(
   }
 
   // The asker's OWN stats (their data — safe to share with them).
-  const mineStats = await loadPlayerSeasonStats(orgId, userId);
+  const mineStats = statsOff ? null : await loadPlayerSeasonStats(orgId, userId);
   // Public group history — results, MoM, leaderboards (no contact info).
-  const history = await loadRecentHistory(orgId);
+  const history = statsOff ? null : await loadRecentHistory(orgId);
   // The asker's OWN payments (2026-10-20): his own rows only, so no other
   // player's payment is in the context to leak (`my-payments.ts`).
   // A failed read costs the payments block, never the answer.
@@ -251,6 +255,7 @@ async function buildScopedContext(
         : null,
       history: history ?? null,
       payments,
+      ...(statsOff ? { statsOff: true } : {}),
     },
     lang,
   );
@@ -287,6 +292,10 @@ export interface ScopedContextInput {
   /** The asker's own payments and pay links (`loadMyPayments`). Absent or
    *  null: no payments block, the context exactly as before. */
   payments?: LoadedMyPayments | null;
+  /** The club has stats answers switched off (`featureStatsQa`, club
+   *  summary slice B7): no stats or history block, and one line saying so,
+   *  so the answer says it plainly. Absent: the context exactly as before. */
+  statsOff?: boolean;
 }
 
 /**
@@ -350,6 +359,13 @@ export function formatScopedContext(input: ScopedContextInput, lang: Lang = "en"
   if (input.history) {
     lines.push("");
     lines.push(formatRecentHistoryBlock(input.history, lang));
+  }
+
+  if (input.statsOff) {
+    lines.push("");
+    lines.push(
+      "STATS AND RESULTS: switched off by this club's organisers. For this club MatchTime gives no stats, ratings, form, match results, scores, Man of the Match winners or leaderboards, and when asked for one it tells the player the organisers have switched them off.",
+    );
   }
 
   return lines.join("\n");

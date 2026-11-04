@@ -11,6 +11,13 @@ import {
 } from "@/lib/group-membership-gate";
 import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
 import { revalidatePath } from "next/cache";
+import { t } from "@/lib/i18n/t";
+
+/** The one line a player hears when his club takes no sign-ups through
+ *  MatchTime (decision K4): thrown, so the button's toast shows it. */
+function refuseWithAttendanceOff(org: { name: string; language: string | null; featureAttendance: boolean }): void {
+  if (org.featureAttendance === false) throw new Error(t(org.language).web_attendance_off({ club: org.name }));
+}
 
 export async function attendMatch(matchId: string) {
   const session = await auth();
@@ -31,12 +38,16 @@ export async function attendMatch(matchId: string) {
           // anyway, so the degraded path now costs one query FEWER than
           // the `MAX(Membership.lastSeenInGroupAt)` aggregate it replaces,
           // and the healthy path still costs nothing extra.
-          org: { select: { name: true, lastParticipantSweepAt: true, benchPickMode: true } },
+          org: { select: { name: true, language: true, featureAttendance: true, lastParticipantSweepAt: true, benchPickMode: true } },
         },
       },
     },
   });
   if (!match) throw new Error("Match not found");
+  // Attendance off (decision K4, club summary B7): the club does not take
+  // sign-ups through MatchTime, so the website takes no IN either, as the
+  // players' group takes none. Nothing is written.
+  refuseWithAttendanceOff(match.activity.org);
 
   const membership = await db.membership.findUnique({
     where: { userId_orgId: { userId: session.user.id, orgId: match.activity.orgId } },
@@ -152,6 +163,13 @@ export async function attendMatch(matchId: string) {
 export async function dropFromMatch(matchId: string) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({
+    where: { id: matchId },
+    select: { activity: { select: { org: { select: { name: true, language: true, featureAttendance: true } } } } },
+  });
+  if (!match) throw new Error("Match not found");
+  // Attendance off (K4, B7): no OUT on the website either.
+  refuseWithAttendanceOff(match.activity.org);
 
   await cancelAttendance(session.user.id, matchId, {
     cause: "self-attendance",

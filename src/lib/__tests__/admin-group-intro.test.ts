@@ -97,7 +97,11 @@ describe("buildAdminGroupIntro, English", () => {
   });
 
   it("MoM alone, ratings alone; the rating notice is relayed only with ratings on", () => {
-    expect(buildAdminGroupIntro({ ...FNF, featurePlayerRating: false })).toContain(`run Man of the Match after the game.`);
+    // Club summary B7 (D11), as the players' group hello says it: with
+    // ratings off the players have no rating link to vote on, so MoM runs
+    // only when the organisers pick it.
+    expect(buildAdminGroupIntro({ ...FNF, featurePlayerRating: false, momChosenBy: "organisers" })).toContain(`run Man of the Match after the game.`);
+    expect(buildAdminGroupIntro({ ...FNF, featurePlayerRating: false, momChosenBy: "players" })).not.toContain(`Man of the Match`);
     expect(buildAdminGroupIntro({ ...FNF, featureMomVoting: false })).toContain(`run player ratings after the game.`);
     expect(buildAdminGroupIntro({ ...FNF, featurePlayerRating: false })).toContain(`Notices meant only for the organisers come here instead of by DM.`);
   });
