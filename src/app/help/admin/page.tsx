@@ -643,8 +643,9 @@ export default async function AdminGuidePage() {
         Players pay the card or bank fee on top, so the collector receives
         the full match fee. Collecting cash instead? Just leave payments off:
         then MatchTime sends nobody anything about payments, no reminders and
-        no lists of who has paid, the pay pages say there is nothing to pay
-        and there is no &quot;I&apos;ve paid&quot; button.
+        no lists of who has paid, the pay pages say there is nothing to pay,
+        and a monthly squad&apos;s page shows no amounts and no &quot;I&apos;ve
+        paid&quot; button.
       </p>
       <p>
         Someone paid for others? Tag MatchTime in the players&apos; group and

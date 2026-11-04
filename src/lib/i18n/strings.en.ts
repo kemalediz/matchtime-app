@@ -1209,8 +1209,11 @@ export const en = {
   onbHelpTopicWord: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
     p.topic,
 
-  /** Human label for each topic, used in the bare-help topic menu. */
-  onbHelpTopicLabel: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
+  /** Human label for each topic, used in the bare-help topic menu.
+   *  `pollOnly`: payments are on by the old payment poll alone (decision
+   *  K2, club summary B3), so the topic is "payments", as the settings
+   *  card and the explainer call it, not match fees it does not take. */
+  onbHelpTopicLabel: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings"; pollOnly?: boolean }): string =>
     ({
       schedule: "schedule & bookings",
       badges: "badges and how to earn them",
@@ -1220,7 +1223,7 @@ export const en = {
       mom: "Man of the Match",
       ratings: "player ratings",
       reminders: "reminders",
-      payments: "match fees",
+      payments: p.pollOnly ? "payments" : "match fees",
       partners: "partner clubs",
       pool: "the player pool",
       settings: "where your settings are",

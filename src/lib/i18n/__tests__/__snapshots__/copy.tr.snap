@@ -1887,7 +1887,7 @@ Type *"@Match Time help"* any time to see this again.
    • *@Match Time help ratings*: player ratings
    • *@Match Time help badges*: badges and how to earn them
    • *@Match Time help reminders*: reminders
-   • *@Match Time help payments*: match fees
+   • *@Match Time help payments*: payments
    • *@Match Time help schedule*: schedule & bookings
    • *@Match Time help settings*: where your settings are
 
@@ -2151,7 +2151,7 @@ https://mt.example/r/topic
    • *@Match Time yardım puanlama*, oyuncu puanları
    • *@Match Time yardım rozetler*, rozetler ve nasıl kazanılır
    • *@Match Time yardım hatırlatma*, hatırlatmalar
-   • *@Match Time yardım ödeme*, maç ücretleri
+   • *@Match Time yardım ödeme*, ödemeler
    • *@Match Time yardım program*, program ve rezervasyonlar
    • *@Match Time yardım ayarlar*, ayarların yeri
 
@@ -2448,7 +2448,7 @@ Kulübün ayarlarını organizatörler değiştirir. Bir şeyin değişmesini is
    • *@Match Time yardım puanlama*, oyuncu puanları
    • *@Match Time yardım rozetler*, rozetler ve nasıl kazanılır
    • *@Match Time yardım hatırlatma*, hatırlatmalar
-   • *@Match Time yardım ödeme*, maç ücretleri
+   • *@Match Time yardım ödeme*, ödemeler
    • *@Match Time yardım partner*, partner kulüpler
    • *@Match Time yardım havuz*, oyuncu havuzu
    • *@Match Time yardım program*, program ve rezervasyonlar
@@ -2480,7 +2480,7 @@ Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
    • *@Match Time yardım puanlama*, oyuncu puanları
    • *@Match Time yardım rozetler*, rozetler ve nasıl kazanılır
    • *@Match Time yardım hatırlatma*, hatırlatmalar
-   • *@Match Time yardım ödeme*, maç ücretleri
+   • *@Match Time yardım ödeme*, ödemeler
    • *@Match Time yardım program*, program ve rezervasyonlar
    • *@Match Time yardım ayarlar*, ayarların yeri
 

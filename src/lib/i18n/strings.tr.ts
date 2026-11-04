@@ -1037,7 +1037,7 @@ export const tr: Strings = {
       settings: "ayarlar",
     })[p.topic],
 
-  onbHelpTopicLabel: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
+  onbHelpTopicLabel: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings"; pollOnly?: boolean }): string =>
     ({
       availability: "kadro ve katılım",
       friend: "arkadaş getirmek",
@@ -1045,7 +1045,7 @@ export const tr: Strings = {
       mom: "maçın adamı",
       ratings: "oyuncu puanları",
       reminders: "hatırlatmalar",
-      payments: "maç ücretleri",
+      payments: p.pollOnly ? "ödemeler" : "maç ücretleri",
       schedule: "program ve rezervasyonlar",
       badges: "rozetler ve nasıl kazanılır",
       partners: "partner kulüpler",

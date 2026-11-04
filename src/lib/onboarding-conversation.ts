@@ -264,6 +264,13 @@ function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
   return features[HELP_TOPIC_FEATURE[topic]] === true;
 }
 
+/** Payments are on by the old payment poll alone: on by the one rule
+ *  (decision K2), with no fee collection. The topic's explainer and its
+ *  label then describe the poll, not match fees. */
+function paymentsByPollOnly(features: HelpFeatures): boolean {
+  return paymentMessagesOnFor(features) && features.paymentCollection !== true;
+}
+
 /** Can an organiser switch this topic on from the settings page now? The
  *  pool cannot while the platform switch is off (its card is hidden). */
 function switchableOff(topic: HelpTopic, features: HelpFeatures): boolean {
@@ -376,7 +383,7 @@ export function buildHelpReply(
           ? s.onbHelpAvailabilityMonthly
           : topic === "availability" && picks
             ? s.onbHelpAvailabilityOrganiserPicks
-            : topic === "payments" && features.paymentCollection !== true
+            : topic === "payments" && paymentsByPollOnly(features)
               ? // Payments on by the old payment poll alone (decision K2):
                 // what that club gets, not fee collection it does not have.
                 s.onbHelpPaymentsTracking
@@ -406,15 +413,16 @@ export function buildHelpReply(
   }
 
   // Bare help: the topics that apply here, then the how-to block.
+  // One label builder for both lists: the payments topic is named by what
+  // the club has (decision K2).
+  const label = (tp: HelpTopic) => s.onbHelpTopicLabel({ topic: tp, pollOnly: tp === "payments" && paymentsByPollOnly(features) });
   const enabled = HELP_TOPIC_ORDER.filter((tp) => topicIsOn(tp, features));
-  const topicLines = enabled.map((tp) =>
-    s.onbHelpTopicLine({ word: s.onbHelpTopicWord({ topic: tp }), label: s.onbHelpTopicLabel({ topic: tp }) }),
-  );
+  const topicLines = enabled.map((tp) => s.onbHelpTopicLine({ word: s.onbHelpTopicWord({ topic: tp }), label: label(tp) }));
   const head = s.onbHelpHead();
   const list = topicLines.length > 0 ? `\n${topicLines.join("\n")}` : "";
   // An organiser also hears what is switched off, each of which explains
   // how to switch it on when asked about (2026-10-28).
-  const off = HELP_TOPIC_ORDER.filter((tp) => switchableOff(tp, features)).map((tp) => s.onbHelpTopicLabel({ topic: tp }));
+  const off = HELP_TOPIC_ORDER.filter((tp) => switchableOff(tp, features)).map(label);
   const offLine = off.length > 0 ? adminTail(s.onbHelpOffTopics({ labels: off })) : "";
   const hqPointer = organisers && ctx.adminGroupLinked === true ? adminTail(s.onbHelpAdminOrganisers) : "";
   // The "Want to collect match fees?" pointer is for an organiser; in the

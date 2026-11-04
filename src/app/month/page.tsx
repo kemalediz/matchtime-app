@@ -62,7 +62,9 @@ export default async function MonthPage({ searchParams }: { searchParams: Promis
   const collectorId = facts ? (facts.payments.collector?.userId ?? null) : membership.org.paymentHolderId;
   const paymentInstructions = facts ? facts.payments.instructions : membership.org.paymentInstructions;
   // Payments on by the one rule (decision K2, club summary B3): with them
-  // off there is no "I've paid" to press (the action refuses it too).
+  // off the page says nothing about payments, no amount owed, pay-by line,
+  // instructions, paid state or "I've paid" (the action refuses it too).
+  // The month itself (the list, the games, the days away) stays.
   const paymentsOn = facts ? facts.payments.messagesOn : paymentMessagesOn(membership.org);
   const myClubs = await db.membership.findMany({
     where: { userId: session.user.id, leftAt: null, org: { squadMode: "monthly" } },
@@ -151,7 +153,7 @@ export default async function MonthPage({ searchParams }: { searchParams: Promis
                   : null
               }
               money={
-                me && outcome === "regular"
+                paymentsOn && me && outcome === "regular"
                   ? {
                       due:
                         me.amountDuePence != null
@@ -160,7 +162,7 @@ export default async function MonthPage({ searchParams }: { searchParams: Promis
                       payBy: m.payByAt && me.amountDuePence != null ? s.mmp_payby({ when: dayCommaTimeLabel(lang, m.payByAt), collector: collectorFirst }) : null,
                       instructions: me.amountDuePence != null ? paymentInstructions : null,
                       paid: me.paid,
-                      canClaim: paymentsOn && me.paid === "none" && (me.amountDuePence ?? 0) > 0,
+                      canClaim: me.paid === "none" && (me.amountDuePence ?? 0) > 0,
                       balance: balance > 0 ? s.mmp_bal_owes({ amount: pounds(balance) }) : balance < 0 ? s.mmp_bal_back({ amount: pounds(-balance) }) : null,
                     }
                   : null

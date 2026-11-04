@@ -976,12 +976,18 @@ MatchTime know who paid" (`matchHasPaymentSource`) is still the poll or released
   on by the rule. A club on the old poll alone gets its own explainer (`onbHelpPaymentsTracking`,
   EN and TR: the poll, the unnamed count, "who still owes"), never naming the hidden setting; an
   organiser's "help payments" also says how to record a payment made for others
-  (`onbHelpPaymentsCreditOrganiser`). The bare help lists payments for such a club.
+  (`onbHelpPaymentsCreditOrganiser`). The bare help lists payments for such a club, labelled
+  "payments" ("ödemeler"), as the settings card and the explainer call it, by one label builder
+  (`paymentsByPollOnly`, used for the explainer and both topic lists; review of #528). A club that
+  collects, or has payments off, keeps "match fees".
 - The settings page's Payments line: "Not collecting match fees" whenever collection was off; now
   off only by the rule, and a poll-only club reads "Keeping track of who has paid" (TR "Kimin
   ödediği takip ediliyor"). The tracking switch stays hidden (2026-10-16); see below.
-- `/month`'s "I've paid" button and `sayMonthPaid`: offered and recorded with both flags off; now
-  only while payments are on (`facts.payments.messagesOn`, the row as fallback).
+- `/month`: offered "I've paid" (and `sayMonthPaid` recorded it) with both flags off, and showed what
+  a regular owes, the pay-by line, the instructions and the paid state. With payments off the page
+  now says nothing about payments (the money block is gone, `facts.payments.messagesOn`, the row as
+  fallback) and the action records nothing; the month itself (the list, the games, the days away)
+  stays. Review of #528: the amount and the pay-by line follow the button.
 - `/pay`: read neither flag; with payments off it now says "Nothing to pay here" (EN and TR) and
   shows no method, and `resolvePayContext` refuses every pay action with `PAYMENTS_OFF_REASON` (the
   "Paid" DM never reaches it with them off: it reads only matches of a club that collects).
@@ -1033,19 +1039,19 @@ nothing new. $0: no model, no key.
   pay here" and every `/collect` load shows the payments-off notice; `match > muted`,
   `match > vets-instr` (tracking on): the "Payments · who's paid" link.
 - The copy golden (EN, TR) and the Turkish onboarding review: "help payments" for a club with
-  tracking only, and the bare help's topic list. `help-before-organisers.json`: the two all-on
+  tracking only, and the bare help's topic list (the payments line, then its label "payments"
+  after the review of #528; A3 `dm-reply: muted` the same label line). `help-before-organisers.json`: the two all-on
   organiser "help payments" entries (EN, TR) gain the credit line.
 - A1 (scheduler) and the club-summary tests: unchanged, except the summary fixtures no longer hand in
   `collectionLive`.
 
 **Left, and why.**
-- The tracking switch is still hidden on the settings page (2026-10-16), so a poll-only club reads
-  "Keeping track of who has paid" with no switch to turn it off there. Showing the switch while it is
-  on needs an ⓘ entry and a reversal of part of that decision: Kemal's call, not B3's.
 - The credit command is still not done from HQ ("not done from HQ"), as before B3.
-- `/month` still shows what a regular owes and the pay-by line with payments off (only the button
-  went); the month's money on the page is the organiser's list, not a message.
-- The bare help still labels the payments topic "match fees" for a poll-only club.
+
+**Open items.**
+- The tracking switch stays hidden on the settings page, as decided on 2026-10-16 (the main
+  session's review of #528 keeps it). So a poll-only club reads "Keeping track of who has paid" with
+  no switch on the page to turn it off; it would need the ⓘ entry and a change to that decision.
 
 ---
 

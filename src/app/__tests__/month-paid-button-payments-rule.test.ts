@@ -48,7 +48,7 @@ vi.mock("@/lib/month-signup", async (orig) => ({
       firstKickoff: KICKOFF,
       startedMidMonth: false,
       matches: [],
-      payByAt: null,
+      payByAt: new Date("2026-12-01T18:00:00.000Z"),
       members: [
         { userId: "u-regular", kind: "regular", out: false, waiting: false, slot: 1, paid: "none", amountDuePence: 3000, creditsApplied: 0, gamesCovered: 4, gamesCommitted: null, paygMatchIds: [] },
       ],
@@ -87,6 +87,13 @@ describe("/month: 'I've paid'", () => {
     const html = await page();
     expect(html).toContain("month-page");
     expect(html).not.toContain('data-testid="month-paid"');
+    // Nothing about payments (K2): no amount owed, no pay-by line, no
+    // instructions, no paid state; the month itself stays.
+    expect(html).not.toContain('data-testid="month-money"');
+    expect(html).not.toContain('data-testid="month-due"');
+    expect(html).not.toContain('data-testid="month-payby"');
+    expect(html).not.toContain("£30");
+    expect(html).toContain("December");
     expect(await sayMonthPaid("sm-dec")).toEqual({ ok: false });
     expect(state.claims).toBe(0);
   });
@@ -98,7 +105,11 @@ describe("/month: 'I've paid'", () => {
     ]) {
       state.org = VETS(flags);
       state.claims = 0;
-      expect(await page()).toContain('data-testid="month-paid"');
+      const html = await page();
+      expect(html).toContain('data-testid="month-paid"');
+      expect(html).toContain('data-testid="month-due"');
+      expect(html).toContain('data-testid="month-payby"');
+      expect(html).toContain("£30");
       expect(await sayMonthPaid("sm-dec")).toEqual({ ok: true });
       expect(state.claims).toBe(1);
     }

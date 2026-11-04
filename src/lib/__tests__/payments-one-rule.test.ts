@@ -189,6 +189,18 @@ describe("help payments follows the rule", () => {
       expect(buildHelpReply(null, FEATURES, lang, { audience: "group" })).not.toContain(`*@Match Time ${word}*:`);
     });
 
+    it(`${lang}: the bare help labels the topic by what the club has, from one label builder`, () => {
+      const line = (f: HelpFeatures) => buildHelpReply(null, f, lang, { audience: "group" }).split("\n").find((l) => l.includes(lang === "en" ? "help payments*" : "yardım ödeme*"));
+      // Tracking only: "payments", as the settings card and the explainer
+      // title call it (decision K2); never "match fees", which it does not take.
+      expect(line(TRACKING_ONLY)).toBe(lang === "en" ? "   • *@Match Time help payments*: payments" : "   • *@Match Time yardım ödeme*, ödemeler");
+      // Collecting: match fees, as before.
+      expect(line(COLLECTION_ONLY)).toBe(lang === "en" ? "   • *@Match Time help payments*: match fees" : "   • *@Match Time yardım ödeme*, maç ücretleri");
+      // Both off, for an organiser: what switching it on gives, match fees.
+      const off = buildHelpReply(null, FEATURES, lang, { audience: "admin", links: { settings: "https://mt/s" } });
+      expect(off).toContain(lang === "en" ? "match fees" : "maç ücretleri");
+    });
+
     it(`${lang}: an organiser hears how to record a payment made for others, with either flag`, () => {
       for (const f of [TRACKING_ONLY, COLLECTION_ONLY]) {
         const admin = buildHelpReply("payments", f, lang, { audience: "admin", links: { topic: "https://mt/s" } });
