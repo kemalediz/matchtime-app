@@ -95,7 +95,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
 import { uniqueByWaMessageId } from "@/lib/analyze-batch";
-import { billingQuietWhere } from "@/lib/club-billing-rules";
+import { speakingClubWhere } from "@/lib/club-voice";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "@/lib/magic-link";
 import { buildShortMagicLinkUrl } from "@/lib/short-link";
 // §10 step 8: `analyzeBatch`, `AnalysisVerdict` and `BatchInputMessage`
@@ -487,11 +487,13 @@ async function handleAnalyzeRequest(request: Request) {
   // setup ("@MatchTime set up") was deleted on 2026-10-30; new clubs join
   // through self-join (lib/group-add.ts).
 
-  // Club fee billing (B1, plan 4.3 point 4): a billing-paused club's batch
-  // is ignored here, before any model call, even if a stale Pi forwarded
-  // it. `billingQuietWhere()` is empty while BILLING_ENABLED is off.
+  // THE ONE RULE (club summary B6, `club-voice.ts`): only a club MatchTime
+  // speaks for is read here, before any model call, even if a stale Pi
+  // forwarded the batch: not a muted, billing-paused (B1, plan 4.3 point
+  // 4), dormant, unapproved or setting-up club. Dormancy is new in B6: it
+  // never touches the mute switch, so a dormant club's group was read.
   const org = await db.organisation.findFirst({
-    where: { whatsappGroupId: body.groupId, whatsappBotEnabled: true, ...billingQuietWhere() },
+    where: { whatsappGroupId: body.groupId, ...speakingClubWhere() },
     // The club summary's row (`CLUB_ORG_SELECT`, its read 1) and the
     // switches (`ORG_FEATURES_SELECT`), in this one query (club summary,
     // slice A2): the summary below is built from this row, and the

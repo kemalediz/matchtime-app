@@ -735,219 +735,63 @@ Answer per your rules.",
 exports[`the DMs, per club shape (must not change in A3) > POST /api/whatsapp/dm-reply: muted 1`] = `
 {
   "2026-11-04T12:00:00.000Z help": {
-    "model": [
-      {
-        "label": "extractor:question",
-        "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
-        "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
-
-THE MESSAGE (from Owen, who tagged the bot):
-how does the bench work?",
-      },
-    ],
+    "model": [],
     "response": {
-      "audience": "admin",
-      "handled": "dm-help",
+      "ignored": "club-muted",
       "ok": true,
-      "orgId": "org-muted",
-      "topic": null,
     },
     "status": 200,
-    "writes": [
-      {
-        "args": {
-          "data": {
-            "code": "<code>",
-            "expiresAt": "2026-11-06T12:00:00.000Z",
-            "token": "eyJ1c2VySWQiOiJ1LW11LW8iLCJwdXJwb3NlIjoic2lnbi1pbiIsIm5leHRQYXRoIjoiL2FkbWluL3NldHRpbmdzIiwib3JnSWQiOiJvcmctbXV0ZWQiLCJpYXQiOjE3OTM3OTM2MDAsImV4cCI6MTc5Mzk2NjQwMH0.hreUAZ3MNoIgV6MTYSA8qToHHEKKvsfTpzuvrCUsd0U",
-          },
-        },
-        "call": "shortLink.create",
-      },
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-muted",
-            "phone": "447700900310",
-            "priority": 1,
-            "text": "ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:
-   • *@Match Time help availability*: squad & availability
-   • *@Match Time help friend*: bringing a friend
-   • *@Match Time help teams*: fair teams
-   • *@Match Time help mom*: Man of the Match
-   • *@Match Time help ratings*: player ratings
-   • *@Match Time help badges*: badges and how to earn them
-   • *@Match Time help reminders*: reminders
-   • *@Match Time help payments*: payments
-   • *@Match Time help schedule*: schedule & bookings
-   • *@Match Time help settings*: where your settings are
-
-✅ Say *"In"* or *"Out"* to mark your own availability, or tell me a teammate can't make it (for example *Sam is out*), no need to tag me.
-🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.
-👥 Bringing a friend? Just say so (for example *my friend Ali is coming*) and I'll DM you a link to send them.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • see who's in / how many we've got
-   • make / show the teams
-   • who won last week? / past stats
-👉 To tag me, type *@* and pick *Match Time* from the list. Typing my name or replying to my message is not enough.
-🤐 I don't reply to banter and jokes, so they're safe: I won't butt in.
-🏆 After each game I announce the *Man of the Match* in the group.
-⭐ I'll DM you a one-tap *rating* link after the match.
-📊 Your own profile page shows your games, ratings and Man of the Match awards: https://matchtime.ai/profile
-⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
-💳 I keep track of who's *paid*.
-
-Type *"@Match Time help"* any time to see this again.
-
-🔧 Switched off for your club: partner clubs. Ask me about one and I'll show you how to switch it on.
-
-⚙️ Your club's settings, signed in:
-https://matchtime.ai/r/<code>",
-          },
-        },
-        "call": "botJob.create",
-      },
-    ],
+    "writes": [],
   },
   "2026-11-04T12:00:00.000Z help-player": {
-    "model": [
-      {
-        "label": "extractor:question",
-        "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
-        "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
-
-THE MESSAGE (from Pete, who tagged the bot):
-how do ratings work?",
-      },
-    ],
+    "model": [],
     "response": {
-      "audience": "player",
-      "handled": "dm-help",
+      "ignored": "club-muted",
       "ok": true,
-      "orgId": "org-muted",
-      "topic": "ratings",
     },
     "status": 200,
-    "writes": [
-      {
-        "args": {
-          "data": {
-            "kind": "dm",
-            "orgId": "org-muted",
-            "phone": "447700900311",
-            "priority": 1,
-            "text": "⭐ *Player ratings: how it works*
-After each match I DM every player who turned out a private link. You rate the other players out of 10 (you can't rate yourself, and your scores stay private).
-I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never change yours here. The one thing that carries over is where you start: when you join, your average from your other groups is your starting point, and this club's own scores take over from there. So the more people rate, the fairer the teams.
-You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
-
-✅ It's on for this club.",
-          },
-        },
-        "call": "botJob.create",
-      },
-    ],
+    "writes": [],
   },
   "2026-11-04T12:00:00.000Z in": {
-    "model": [
-      {
-        "label": "extractor:question",
-        "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
-        "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
-
-THE MESSAGE (from Pete, who tagged the bot):
-IN",
-      },
-    ],
+    "model": [],
     "response": {
-      "ignored": "no-open-survey",
+      "ignored": "club-muted",
       "ok": true,
     },
     "status": 200,
     "writes": [],
   },
   "2026-11-04T12:00:00.000Z invite": {
-    "model": [
-      {
-        "label": "extractor:question",
-        "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
-        "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
-
-THE MESSAGE (from Owen, who tagged the bot):
-invite players for the next game",
-      },
-    ],
+    "model": [],
     "response": {
-      "ignored": "no-open-survey",
+      "ignored": "club-muted",
       "ok": true,
     },
     "status": 200,
     "writes": [],
   },
   "2026-11-04T12:00:00.000Z paid": {
-    "model": [
-      {
-        "label": "extractor:question",
-        "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
-        "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
-
-THE MESSAGE (from Pete, who tagged the bot):
-paid",
-      },
-    ],
+    "model": [],
     "response": {
-      "ignored": "no-open-survey",
+      "ignored": "club-muted",
       "ok": true,
     },
     "status": 200,
     "writes": [],
   },
   "2026-11-04T12:00:00.000Z partners": {
-    "model": [
-      {
-        "label": "extractor:question",
-        "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
-        "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
-
-THE MESSAGE (from Owen, who tagged the bot):
-ask our partner clubs for a player",
-      },
-    ],
+    "model": [],
     "response": {
-      "ignored": "no-open-survey",
+      "ignored": "club-muted",
       "ok": true,
     },
     "status": 200,
     "writes": [],
   },
   "2026-11-04T12:00:00.000Z question": {
-    "model": [
-      {
-        "label": "extractor:question",
-        "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
-        "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
-
-THE MESSAGE (from Pete, who tagged the bot):
-what time is kick off?",
-      },
-    ],
+    "model": [],
     "response": {
-      "ignored": "no-open-survey",
+      "ignored": "club-muted",
       "ok": true,
     },
     "status": 200,

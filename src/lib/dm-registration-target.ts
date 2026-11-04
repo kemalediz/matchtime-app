@@ -13,7 +13,7 @@
  */
 import { db } from "./db";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
-import { IN_LIVE_STAGE_CLUB_WHERE } from "./club-setup-rules";
+import { inSpeakingClubWhere } from "./club-voice";
 import { getOrgFeatures } from "./org-features";
 import { CLUB_ROW_SELECT, clubRowFactsOf } from "./club-row-facts";
 import { eligibleRegistrationMatch, selectRegistrationMatch } from "./registration-match-select";
@@ -52,7 +52,7 @@ export async function findDmRegistrationTarget(
     // Not a club he is only a guest of (cross-club ask, S4): a DM IN for
     // his own Tuesday must never land on the partner's Friday. To drop
     // out of the partner's game he replies OUT to its ask in his group.
-    where: { userId, leftAt: null, ...ORDINARY_MEMBER_WHERE, ...IN_LIVE_STAGE_CLUB_WHERE },
+    where: { userId, leftAt: null, ...ORDINARY_MEMBER_WHERE, ...inSpeakingClubWhere() },
     // The club's row as the club summary reads it (`CLUB_ROW_SELECT`; club
     // summary, slice A3): its switches are the summary's facts of this row
     // (`clubRowFactsOf`), so the row is not read again per club. Should they

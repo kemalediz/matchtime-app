@@ -28,6 +28,7 @@
  */
 import type { MatchStatus } from "@/generated/prisma/enums";
 import { db } from "./db";
+import { dropQueuedMessages, type QueueClient } from "./club-voice-db";
 import { PlatformDmRefused, queuePlatformDm } from "./platform-jobs";
 import {
   RESUME_QUIET_LOOKBACK_DAYS,
@@ -413,15 +414,9 @@ async function resumeClubTx(
 ): Promise<{ droppedJobs: number; quietedMatches: number }> {
   await tx.clubBilling.updateMany({ where: { orgId }, data: { resumedAt: now } });
 
-  const dropped = await tx.botJob.updateMany({
-    where: {
-      orgId,
-      sentAt: null,
-      createdAt: { lt: now },
-      OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
-    },
-    data: { sentAt: now },
-  });
+  // The one "no catch-up" (club summary B6, club-voice-db.ts), shared with
+  // the wake from dormancy.
+  const dropped = { count: await dropQueuedMessages(tx as unknown as QueueClient, orgId, now) };
 
   const since = new Date(now.getTime() - RESUME_QUIET_LOOKBACK_DAYS * DAY_MS);
   const stale = await tx.match.findMany({

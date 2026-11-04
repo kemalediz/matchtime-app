@@ -56,6 +56,7 @@ export async function requestPartnerRoundAction(
   const ids = Array.isArray(partnershipIds) ? partnershipIds.filter((x): x is string => typeof x === "string") : [];
   if (ids.length === 0 && pool !== true) return { ok: false, message: s.xask_round_none_ticked };
   const r = await requestAskRound({ orgId, matchId, partnershipIds: ids, pool: pool === true, places: Number(places), userId, poolEnv: await poolEnvForRequest() });
+  if (r.clubQuiet) return { ok: false, message: s.xask_round_club_quiet };
   revalidatePath(`/matches/${matchId}`);
   const parts: string[] = [];
   let asked = 0;

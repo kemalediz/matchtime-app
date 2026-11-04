@@ -24,15 +24,26 @@ const orgFindUnique = vi.fn();
 const orgUpdate = vi.fn();
 const membershipFindUnique = vi.fn();
 const isSuperadminMock = vi.fn();
+const botJobUpdateMany = vi.fn();
+const order: string[] = [];
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }));
 vi.mock("@/lib/db", () => ({
   db: {
     organisation: {
       findUnique: (...a: unknown[]) => orgFindUnique(...a),
-      update: (...a: unknown[]) => orgUpdate(...a),
+      update: (...a: unknown[]) => {
+        order.push("wake");
+        return orgUpdate(...a);
+      },
     },
     membership: { findUnique: (...a: unknown[]) => membershipFindUnique(...a) },
+    botJob: {
+      updateMany: (...a: unknown[]) => {
+        order.push("drop");
+        return botJobUpdateMany(...a);
+      },
+    },
   },
 }));
 vi.mock("@/lib/org", () => ({
@@ -55,6 +66,8 @@ beforeEach(() => {
   authMock.mockResolvedValue({ user: { id: "u1" } });
   orgFindUnique.mockResolvedValue(LIVE);
   orgUpdate.mockResolvedValue({});
+  botJobUpdateMany.mockResolvedValue({ count: 0 });
+  order.length = 0;
   isSuperadminMock.mockResolvedValue(false);
   membershipFindUnique.mockResolvedValue({ role: "OWNER", leftAt: null });
 });
@@ -147,5 +160,22 @@ describe("reactivateOrganisation", () => {
     const { reactivateOrganisation } = await actions();
     await reactivateOrganisation("org1");
     expect(orgUpdate).not.toHaveBeenCalled();
+    expect(botJobUpdateMany).not.toHaveBeenCalled();
+  });
+
+  // The one rule (club summary B6, club-voice.ts): a dormant club gets
+  // nothing, and what was queued for it while it slept is not sent when it
+  // wakes (no catch-up, as a billing resume and a go-live). Dropped BEFORE
+  // the wake, so no poll in between can send it.
+  it("drops what was queued while it slept, before it wakes; a reminder set for later is kept", async () => {
+    orgFindUnique.mockResolvedValue(ALREADY);
+    botJobUpdateMany.mockResolvedValue({ count: 3 });
+    const { reactivateOrganisation } = await actions();
+    await reactivateOrganisation("org1");
+    expect(order).toEqual(["drop", "wake"]);
+    const where = botJobUpdateMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ orgId: "org1", sentAt: null });
+    expect(where.OR).toEqual([{ sendAfter: null }, { sendAfter: { lte: expect.any(Date) } }]);
+    expect(botJobUpdateMany.mock.calls[0][0].data).toEqual({ sentAt: expect.any(Date) });
   });
 });

@@ -8,8 +8,10 @@
  * exactly what the organiser ticked, now (Kemal, 2026-10-29; only the
  * automatic ask waits, `round-rules.ts` `poolWaitsForPartners`).
  */
+import { db } from "../db";
 import { requestPartnerRound, type RoundResult } from "../partner-ask";
 import { requestPoolAsk, type PoolAskResult } from "./round";
+import { VOICE_SELECT, clubSpeaks, voiceFactsOfRow } from "../club-voice";
 
 type Env = Record<string, string | undefined>;
 
@@ -22,8 +24,14 @@ export async function requestAskRound(args: {
   userId: string;
   now?: Date;
   poolEnv?: Env;
-}): Promise<{ partner: RoundResult | null; pool: PoolAskResult | null }> {
+}): Promise<{ partner: RoundResult | null; pool: PoolAskResult | null; clubQuiet?: true }> {
   const now = args.now ?? new Date();
+  // The one rule (club summary B6, `club-voice.ts`): partner clubs and the
+  // pool are asked on the club's behalf and answer back to it, so only a
+  // club MatchTime speaks for asks anyone (not a muted, dormant, paused,
+  // unapproved or setting-up one). The press is told why.
+  const club = await db.organisation.findUnique({ where: { id: args.orgId }, select: VOICE_SELECT });
+  if (!club || !clubSpeaks(voiceFactsOfRow(club))) return { partner: null, pool: null, clubQuiet: true };
   const partner =
     args.partnershipIds.length > 0
       ? await requestPartnerRound({
