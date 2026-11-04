@@ -35,6 +35,14 @@
  *   go-live           `from` DMs "GO".
  *   pi-poll           an extra poll of due posts at this instant.
  *   cron              fire one cron route at this instant.
+ *   club-live         (club scenarios) the club already exists and has been
+ *                     live `liveDaysAgo` days: club, groups, admins and the
+ *                     players' group members are in place, as on a club
+ *                     MatchTime has run for a while. Stands in for the
+ *                     whole sign-up, approval and go-live.
+ *   match             (club scenarios) set the NEXT game's own columns
+ *                     (`values`, MATCH_SETTINGS keys), as the organiser's
+ *                     per-game switches would.
  *   note              a heading in the transcript.
  */
 
@@ -117,6 +125,9 @@ export interface ScenarioMember {
   phone: string;
   /** NONE: in the groups but not a member of the club in MatchTime. */
   role: MemberRole;
+  /** Club scenarios: MatchTime holds no name for them (imported from the
+   *  member list, phone only), whatever WhatsApp shows. */
+  nameless?: boolean;
   groups: string[];
 }
 
@@ -147,6 +158,28 @@ export const SETTINGS: Record<string, "string" | "boolean" | "int" | "string|nul
   benchPickFallback: "string",
   squadMode: "string",
   paymentInstructions: "string|null",
+  // Club scenarios (e2e/scenarios/): the five club shapes.
+  paygPricePence: "int|null",
+  monthCreditRule: "string",
+  monthListOpensDaysBefore: "int",
+  momChosenBy: "string",
+  whatsappBotEnabled: "boolean",
+  quietHoursEnabled: "boolean",
+  stripeConnectAccountId: "string|null",
+  stripeChargesEnabled: "boolean",
+  payMethodPayByBank: "boolean",
+  payMethodCard: "boolean",
+  payMethodDirect: "boolean",
+  featurePlayerPool: "boolean",
+  partnerAskWhen: "string",
+};
+
+/** A game's own columns a `match` step may set on the next game (stand-in
+ *  for the organiser's per-game switches). */
+export const MATCH_SETTINGS: Record<string, "boolean" | "int" | "number|null"> = {
+  postMatchEndFlow: "boolean",
+  maxPlayers: "int",
+  feePerPlayer: "number|null",
 };
 
 export interface ScenarioClub {
@@ -156,7 +189,18 @@ export interface ScenarioClub {
   paymentHolder: string | null;
   maxPlayers: number;
   sport: { name: string; playersPerTeam: number; teamLabels: [string, string] };
-  activity: { dayOfWeek: number; time: string; durationMinutes: number; venue: string };
+  activity: {
+    dayOfWeek: number;
+    time: string;
+    durationMinutes: number;
+    venue: string;
+    /** Optional fixture columns (null: the column default). */
+    minPlayers?: number | null;
+    maxPlayers?: number | null;
+    feePerPlayer?: number | null;
+    ratingWindowHours?: number | null;
+    deadlineHours?: number | null;
+  };
   settings: Record<string, string | number | boolean | null>;
   /** Template image + layout JSON for the club's own graphics, as file
    *  paths relative to the scenario file. Optional. */
@@ -196,6 +240,8 @@ export type Step = StepBase &
     | { do: "link-admin-group"; group: string; by: string }
     | { do: "go-live"; from: string }
     | { do: "pi-poll" }
+    | { do: "club-live"; liveDaysAgo: number }
+    | { do: "match"; values: Record<string, number | boolean | null> }
     | { do: "cron"; path: string }
     | { do: "note"; text: string }
   );
@@ -241,6 +287,8 @@ const STEP_KINDS = new Set([
   "pi-poll",
   "cron",
   "note",
+  "club-live",
+  "match",
 ]);
 
 type Obj = Record<string, unknown>;
@@ -275,6 +323,32 @@ function parseSettings(raw: unknown, where: string): Record<string, string | num
       (typeof v === "number" && Number.isInteger(v) && type.startsWith("int"));
     if (!ok) throw new ScenarioError(`${where}: setting "${k}" must be ${type}`);
     out[k] = v as string | number | boolean | null;
+  }
+  return out;
+}
+
+function optionalActivityNumbers(a: Obj): Partial<ScenarioClub["activity"]> {
+  const out: Record<string, number | null> = {};
+  for (const k of ["minPlayers", "maxPlayers", "feePerPlayer", "ratingWindowHours", "deadlineHours"] as const) {
+    if (a[k] === undefined) continue;
+    if (a[k] !== null && (typeof a[k] !== "number" || !Number.isFinite(a[k]))) throw new ScenarioError(`club.activity: "${k}" must be a number or null`);
+    out[k] = a[k] as number | null;
+  }
+  return out;
+}
+
+function parseMatchSettings(raw: unknown, where: string): Record<string, number | boolean | null> {
+  if (!isObj(raw)) throw new ScenarioError(`${where}: values must be an object`);
+  const out: Record<string, number | boolean | null> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const type = MATCH_SETTINGS[k];
+    if (!type) throw new ScenarioError(`${where}: unknown match setting "${k}" (known: ${Object.keys(MATCH_SETTINGS).join(", ")})`);
+    const ok =
+      (type === "boolean" && typeof v === "boolean") ||
+      (type === "int" && typeof v === "number" && Number.isInteger(v)) ||
+      (type === "number|null" && (v === null || (typeof v === "number" && Number.isFinite(v))));
+    if (!ok) throw new ScenarioError(`${where}: match setting "${k}" must be ${type}`);
+    out[k] = v as number | boolean | null;
   }
   return out;
 }
@@ -335,7 +409,15 @@ export function parseScenario(raw: unknown): Scenario {
     const gs = Array.isArray(m.groups) ? (m.groups as unknown[]).map(String) : [];
     for (const g of gs) if (!groupKeys.has(g)) throw new ScenarioError(`${where}: unknown group "${g}"`);
     const name = str(m, "name", where);
-    return { key: str(m, "key", where), name, pushname: m.pushname === null ? null : (optStr(m, "pushname", where) ?? name), phone, role: role as MemberRole, groups: gs };
+    return {
+      key: str(m, "key", where),
+      name,
+      pushname: m.pushname === null ? null : (optStr(m, "pushname", where) ?? name),
+      phone,
+      role: role as MemberRole,
+      groups: gs,
+      ...(m.nameless === true ? { nameless: true } : {}),
+    };
   });
   const memberKeys = new Map<string, ScenarioMember>();
   const phones = new Set<string>();
@@ -377,6 +459,7 @@ export function parseScenario(raw: unknown): Scenario {
       time: str(c.activity, "time", "club.activity"),
       durationMinutes: num(c.activity, "durationMinutes", "club.activity", 90),
       venue: optStr(c.activity, "venue", "club.activity") ?? "TBC",
+      ...optionalActivityNumbers(c.activity),
     },
     settings: parseSettings(c.settings, "club"),
     graphicsTemplate:
@@ -458,6 +541,10 @@ export function parseScenario(raw: unknown): Scenario {
         return { ...b, do: "go-live", from: member(s.from, where) };
       case "cron":
         return { ...b, do: "cron", path: str(s, "path", where) };
+      case "club-live":
+        return { ...b, do: "club-live", liveDaysAgo: num(s, "liveDaysAgo", where, 60) };
+      case "match":
+        return { ...b, do: "match", values: parseMatchSettings(s.values, where) };
       case "note":
         return { ...b, do: "note", text: str(s, "text", where) };
     }

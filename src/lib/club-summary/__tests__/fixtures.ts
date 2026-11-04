@@ -28,6 +28,7 @@ export function orgRow(over: Partial<OrgRow> & { id: string; name: string }): Or
     whatsappGroupId: `${over.id}@g.us`,
     whatsappBotEnabled: true,
     dormantAt: null,
+    approvedAt: null,
     approvalStatus: "approved",
     setupStage: "live",
     billingStatus: "exempt",

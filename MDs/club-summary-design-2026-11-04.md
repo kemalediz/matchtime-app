@@ -726,6 +726,49 @@ when one is set, and for a monthly club the SquadMonth rows and the held keys.
     `__tests__/fixtures.ts`: the scenario harness lives on `sandbox/club-scenarios`, not on
     main. (The plan's own-language club is replaced by a muted club with its own minimum.)
 
+### 3.8 As built in slice A1 (the scheduler reads the summary)
+
+Built on `refactor/club-summary-a1` (PR against `refactor/club-summary`), with the club
+scenario harness merged in from `sandbox/club-scenarios`. No value changes: the scheduler's
+characterisation (`src/lib/__tests__/scheduler-club-summary-characterisation.test.ts`, eight
+club shapes at 26 instants, written first and green on the old code) and the five club replays
+come out identical. $0: no model, no key.
+
+**What moved onto the summary.**
+- `due-posts/route.ts` reads the club ONCE per poll, after the organiser pick and partner
+  sweeps, with the club's row found by its group in the same query (`CLUB_ORG_SELECT`, so the
+  summary does not read it again). The drop-out deadline summary (`deadline-summary.ts`), the
+  unpaid list (`unpaid-list.ts`), the month sweeps' "is this club monthly" and
+  `computeDuePosts` all read it. The month sweeps write months, matches and attendance, so
+  after them a monthly club's summary is read again, keeping the rows no sweep writes (the row,
+  the switches, the collector, the games, the last match played): 3 reads (plan 3.4).
+- `computeDuePosts`: the club row (`:564`), `getOrgFeatures` (both reads), the bot intro's
+  active-game count, the held-month read and its activity read, `paygPricePence`, the
+  setting-up, billing, admin group, Teams ready and announcer facts for the first-teams and seed
+  notices, and the 18:00 "Match in trouble" minimum (`findMinimumToPlay`, now
+  `GameFacts.fewestAnyFormat`). The month shape per match is `schedulerMonthShape`
+  (`scheduler-month-shape.ts`): A0's "today's scheduler mapping", plus the two windows the old
+  reads had (a closed month counts for 14 days after its close; a month in sign-up only this
+  London month or the next). The week's member list still comes from the running months'
+  rows: it is content, not a club fact.
+- `teamProposalJobs` (`team-proposal.ts:746`) takes the summary; its match-day read takes the
+  games from it (one read fewer for an HQ club).
+- The windows have one definition: `scheduler-windows.ts` (`MOM_ANNOUNCE_MAX_AGE_DAYS`,
+  `POST_MATCH_LOOKBACK_DAYS`, `CANCELLED_HOLD_LOOKBACK_MS`, `CLOSED_MONTH_GATE_DAYS`, and the
+  match window's `where`), read by the scheduler, `monthly-week.ts` and the loader.
+- The summary gained one fact: `lifecycle.approvedAt` (the bot intro's self-join check).
+
+**Left, and why.** `findSmallerSameSportActivity` (the 10:00 switch offer) keeps its own read:
+it breaks a tie between two smaller formats by the database's row order, which the summary's
+games (oldest first) cannot reproduce, and D12 is B1's. The per-match `activity.org` include
+and every count, roster and team read stay: they are the content of the posts, and A1 changes
+no model input. The month sweeps keep their own read of the club's row (they are not in A1).
+
+**Cases the old code left to row order.** Two month rows of one fixture and one London month
+(the month list keeps one per fixture), and a month in sign-up with no game left on its
+calendar: the summary's rank decides where the old `find` took the first row. Neither occurs in
+a club MatchTime runs.
+
 ---
 
 ## 4. Migration, in slices

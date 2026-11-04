@@ -1,0 +1,24 @@
+{
+ "club": "fnf",
+ "mode": "record",
+ "ticks": 1458,
+ "steps": 32,
+ "sent": 66,
+ "errors": 0,
+ "seconds": 160,
+ "model": {
+  "club": "fnf",
+  "mode": "record",
+  "calls": 38,
+  "meter": {
+   "calls": 38,
+   "costUsd": 0.012574430000000003,
+   "byModel": {
+    "claude-haiku-5-5": {
+     "calls": 38,
+     "costUsd": 0.012574430000000003
+    }
+   }
+  }
+ }
+}

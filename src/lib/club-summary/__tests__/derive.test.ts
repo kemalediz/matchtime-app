@@ -4,6 +4,7 @@
  * and each one must equal what today's rule function says for the same
  * input, so the summary never becomes a second version of a rule.
  */
+import { schedulerMonthShape } from "../../scheduler-month-shape";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildClubSummary,
@@ -40,7 +41,13 @@ describe("lifecycle", () => {
       billingPaused: false,
       operational: true,
       liveAt: null,
+      approvedAt: null,
     });
+  });
+
+  it("a self-join club's approval instant is a fact of its own (slice A1: the bot intro reads it)", () => {
+    const at = new Date("2026-10-01T10:00:00Z");
+    expect(lifecycleFacts({ ...SUTTON.org, approvedAt: at }).approvedAt).toBe(at.toISOString());
   });
 
   it("the mute switch is its own fact: a muted club is still operational (isClubOperational is blind to it)", () => {
@@ -276,23 +283,15 @@ describe("monthPhaseFor", () => {
   });
 
   /**
-   * The facts are enough to re-express TODAY's scheduler mapping
-   * (bot-scheduler.ts `computeDuePosts`, the block before `computeForMatch`)
-   * with no second read, which is what slice A1 needs. This is that mapping,
-   * written out from the code, kept in the test until A1 moves it.
-   *   - "month": a running or closed-lately month of the fixture, the game
-   *     not before its start, and a closed month only for a game not still
-   *     to be played;
-   *   - "signup": an open month whose list has opened, else a held key;
-   *   - null: neither (`noMonthYet` for a monthly club).
+   * The facts are enough to re-express TODAY's scheduler mapping with no
+   * second read: since slice A1 that mapping is `schedulerMonthShape`
+   * (scheduler-month-shape.ts), which `computeDuePosts` calls. Here its
+   * three shapes are read as A0 wrote them out ("held" is treated as in
+   * sign-up by the scheduler).
    */
-  function schedulerShape(f: ReturnType<typeof phase>, m: ReturnType<typeof game>, closedAt: Date | null, now: Date): "month" | "signup" | null {
-    const stillToPlay = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"].includes(m.status) && m.date.getTime() > now.getTime();
-    const closedLately = closedAt !== null && closedAt.getTime() >= now.getTime() - 14 * 86_400_000;
-    if (!f.beforeStart && (f.phase === "running" || (f.phase === "closed" && closedLately && !stillToPlay))) return "month";
-    if (f.phase === "signup" && f.listOpened) return "signup";
-    if (f.held) return "signup";
-    return null;
+  function schedulerShape(f: ReturnType<typeof phase>, m: ReturnType<typeof game>, rows: ReturnType<typeof nov>[], now: Date): "month" | "signup" | null {
+    const shape = schedulerMonthShape({ facts: f, months: monthFacts(rows, acts), match: m, now });
+    return shape.kind === "month" ? "month" : shape.kind === "none" ? null : "signup";
   }
   const shapeRows: Array<[string, ReturnType<typeof game>, ReturnType<typeof nov>[], string[], "month" | "signup" | null]> = [
     ["running: the month", game(), [nov()], [], "month"],
@@ -307,8 +306,7 @@ describe("monthPhaseFor", () => {
     ["no row: noMonthYet", game(), [], [], null],
   ];
   it.each(shapeRows)("today's scheduler mapping from the facts: %s", (_, m, monthRows, held, want) => {
-    const closedAt = monthRows.find((r) => r.status === "closed")?.closedAt ?? null;
-    expect(schedulerShape(phase(m, monthRows, held), m, closedAt, NOW)).toBe(want);
+    expect(schedulerShape(phase(m, monthRows, held), m, monthRows, NOW)).toBe(want);
   });
 });
 

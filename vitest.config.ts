@@ -15,6 +15,8 @@
  *     sampler and the resume ledger.
  *   - `e2e/rehearsal/**\/*.test.ts` — the club rehearsal's pure half:
  *     the scenario parser, the clock driver, the transcript.
+ *   - `e2e/scenarios/**\/*.test.ts`: the club scenarios' record/replay
+ *     cassette, the transcript normaliser and the compare tool.
  *   - `e2e/sim/pool/**\/*.test.ts`: the pool scenario DSL's pure half:
  *     who was sent what, the expectation matcher, the leak finder.
  * Every file runs behind `e2e/helpers/unit-model-guard.setup.ts`: no
@@ -36,6 +38,7 @@ export default defineConfig({
       "e2e/helpers/**/*.test.ts",
       "e2e/replay/**/*.test.ts",
       "e2e/rehearsal/**/*.test.ts",
+      "e2e/scenarios/**/*.test.ts",
       "e2e/sim/pool/**/*.test.ts",
     ],
     environment: "node",

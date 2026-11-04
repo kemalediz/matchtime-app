@@ -59,6 +59,11 @@ vi.mock("../admin-channel", () => ({
 }));
 
 const { sendDueUnpaidLists, unpaidListKey } = await import("../unpaid-list");
+const { clubSummaryOf } = await import("./fixtures/club-summary-of");
+
+/** The club as its summary describes it (club summary A1): the summary of
+ *  the club row this test sets. */
+const club = () => (h.state.org ? clubSummaryOf(h.state.org as { id: string }) : null);
 const { buildUnpaidListAdminNotice } = await import("../dm-copy");
 const { dayTimeLabel } = await import("../i18n/dates");
 const { t } = await import("../i18n/t");
@@ -112,7 +117,7 @@ beforeEach(() => {
 
 describe("the admin unpaid list (U1)", () => {
   it("10:05 two days after: one notice naming the unpaid, holder left out, through the admin channel", async () => {
-    const res = await sendDueUnpaidLists("org-fnf", SUN_1005);
+    const res = await sendDueUnpaidLists(club(), SUN_1005);
     expect(res).toEqual({ sent: 1 });
     expect(h.state.notices).toHaveLength(1);
     expect(h.state.notices[0].orgId).toBe("org-fnf");
@@ -124,7 +129,7 @@ describe("the admin unpaid list (U1)", () => {
   });
 
   it("only COMPLETED, post-match-flow matches are loaded", async () => {
-    await sendDueUnpaidLists("org-fnf", SUN_1005);
+    await sendDueUnpaidLists(club(), SUN_1005);
     expect(h.state.matchWhere).toMatchObject({
       activity: { orgId: "org-fnf" },
       status: "COMPLETED",
@@ -138,9 +143,9 @@ describe("the admin unpaid list (U1)", () => {
     try {
       h.state.org = { ...h.state.org, billingStatus: "paused" };
       process.env.BILLING_ENABLED = "1";
-      expect(await sendDueUnpaidLists("org-fnf", SUN_1005)).toEqual({ sent: 0 });
+      expect(await sendDueUnpaidLists(club(), SUN_1005)).toEqual({ sent: 0 });
       delete process.env.BILLING_ENABLED;
-      expect(await sendDueUnpaidLists("org-fnf", SUN_1005)).toEqual({ sent: 1 });
+      expect(await sendDueUnpaidLists(club(), SUN_1005)).toEqual({ sent: 1 });
     } finally {
       if (saved === undefined) delete process.env.BILLING_ENABLED;
       else process.env.BILLING_ENABLED = saved;
@@ -152,48 +157,48 @@ describe("the admin unpaid list (U1)", () => {
     // club-billing test asserts resumeClub writes postMatchEndFlow = false
     // for every match completed in the last RESUME_QUIET_LOOKBACK_DAYS
     // (>= this file's own window); here, such a match is never loaded.
-    await sendDueUnpaidLists("org-fnf", SUN_1005);
+    await sendDueUnpaidLists(club(), SUN_1005);
     expect((h.state.matchWhere as { postMatchEndFlow: unknown }).postMatchEndFlow).toBe(true);
   });
 
   it("not before 10:00", async () => {
-    expect(await sendDueUnpaidLists("org-fnf", SUN_0955)).toEqual({ sent: 0 });
+    expect(await sendDueUnpaidLists(club(), SUN_0955)).toEqual({ sent: 0 });
     expect(h.state.notices).toEqual([]);
   });
 
   it("once: a later poll finds the claim and sends nothing", async () => {
-    await sendDueUnpaidLists("org-fnf", SUN_1005);
-    await sendDueUnpaidLists("org-fnf", new Date(SUN_1005.getTime() + 10 * 60_000));
+    await sendDueUnpaidLists(club(), SUN_1005);
+    await sendDueUnpaidLists(club(), new Date(SUN_1005.getTime() + 10 * 60_000));
     expect(h.state.notices).toHaveLength(1);
   });
 
   it("an admin group club gets it too", async () => {
     h.state.org = { ...h.state.org, adminChannelMode: "admin-group" };
-    expect(await sendDueUnpaidLists("org-fnf", SUN_1005)).toEqual({ sent: 1 });
+    expect(await sendDueUnpaidLists(club(), SUN_1005)).toEqual({ sent: 1 });
   });
 
   it("a club on each-admin (Sutton FC) gets nothing new", async () => {
     h.state.org = { ...h.state.org, adminChannelMode: "each-admin" };
-    expect(await sendDueUnpaidLists("org-fnf", SUN_1005)).toEqual({ sent: 0 });
+    expect(await sendDueUnpaidLists(club(), SUN_1005)).toEqual({ sent: 0 });
     expect(h.state.notices).toEqual([]);
     expect(h.state.claimed.size).toBe(0);
   });
 
   it("payment tracking off: nothing", async () => {
     h.state.org = { ...h.state.org, paymentTrackingEnabled: false };
-    expect(await sendDueUnpaidLists("org-fnf", SUN_1005)).toEqual({ sent: 0 });
+    expect(await sendDueUnpaidLists(club(), SUN_1005)).toEqual({ sent: 0 });
   });
 
   it("a club that is not operational (dormant) gets nothing", async () => {
     h.state.org = { ...h.state.org, dormantAt: new Date("2027-01-01T00:00:00.000Z") };
-    expect(await sendDueUnpaidLists("org-fnf", SUN_1005)).toEqual({ sent: 0 });
+    expect(await sendDueUnpaidLists(club(), SUN_1005)).toEqual({ sent: 0 });
   });
 
   it("everyone paid: nothing, and no claim", async () => {
     h.state.matches = [
       completedMatch({ attendances: [att("u2", "Raihan", true, 1), att("u3", "Wasim", true, 2)] }),
     ];
-    expect(await sendDueUnpaidLists("org-fnf", SUN_1005)).toEqual({ sent: 0 });
+    expect(await sendDueUnpaidLists(club(), SUN_1005)).toEqual({ sent: 0 });
     expect(h.state.claimed.size).toBe(0);
   });
 
@@ -201,12 +206,12 @@ describe("the admin unpaid list (U1)", () => {
     h.state.matches = [
       completedMatch({ attendances: [att("u2", "Raihan", false, 1), att("u3", "Wasim", false, 2)] }),
     ];
-    expect(await sendDueUnpaidLists("org-fnf", SUN_1005)).toEqual({ sent: 0 });
+    expect(await sendDueUnpaidLists(club(), SUN_1005)).toEqual({ sent: 0 });
   });
 
   it("credits come off the count, exactly as the group tail", async () => {
     h.state.matches = [completedMatch({ paymentCredits: [{ count: 1 }] })];
-    await sendDueUnpaidLists("org-fnf", SUN_1005);
+    await sendDueUnpaidLists(club(), SUN_1005);
     expect(h.state.notices[0].text).toBe(
       "💷 Unpaid for *Friday 9-a-side* (Fri 15 Jan at 20:30): Wasim, (unnamed). 3 of 4 paid.",
     );
@@ -214,7 +219,7 @@ describe("the admin unpaid list (U1)", () => {
 
   it("Turkish club: the Turkish notice", async () => {
     h.state.org = { ...h.state.org, language: "tr" };
-    await sendDueUnpaidLists("org-fnf", SUN_1005);
+    await sendDueUnpaidLists(club(), SUN_1005);
     expect(h.state.notices[0].text).toBe(
       buildUnpaidListAdminNotice({
         activityName: "Friday 9-a-side",
@@ -231,7 +236,7 @@ describe("the admin unpaid list (U1)", () => {
 
   it("a failed send releases the claim so the next poll retries", async () => {
     h.state.noticeFails = true;
-    expect(await sendDueUnpaidLists("org-fnf", SUN_1005)).toEqual({ sent: 0 });
+    expect(await sendDueUnpaidLists(club(), SUN_1005)).toEqual({ sent: 0 });
     expect(h.state.claimsDeleted).toEqual(["m-fri:unpaid-list"]);
     expect(h.state.claimed.size).toBe(0);
   });

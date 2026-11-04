@@ -121,6 +121,43 @@ describe("query count, pinned per shape", () => {
     expect(reads().filter((r) => r === "userAlias.findMany")).toHaveLength(2);
   });
 
+  it("slice A1: the club's row handed in (the poll found the club by its group with CLUB_ORG_SELECT) is not read again", async () => {
+    world = SUTTON;
+    const { loadClubSummary, CLUB_ORG_SELECT } = await import("../load");
+    expect(CLUB_ORG_SELECT).toMatchObject({ id: true, approvedAt: true, liveAt: true, squadMode: true, paygPricePence: true });
+    const handedIn = (await load(SUTTON))!;
+    calls.length = 0;
+    const s = await loadClubSummary(SUTTON.org.id, NOW, { org: SUTTON.org });
+    // getOrgFeatures still reads its own select; the club's row is not read.
+    expect(calls.filter((c) => c.model === "organisation")).toHaveLength(1);
+    expect(calls.filter((c) => c.model === "organisation" && (c.args.select as Record<string, unknown>)?.paygPricePence)).toHaveLength(0);
+    // The switches, the collector, the games, the match window, the last played.
+    expect(calls).toHaveLength(5);
+    expect(s).toEqual(handedIn);
+  });
+
+  it("slice A1: a row of ANOTHER club handed in is ignored, and the right one read", async () => {
+    world = SUTTON;
+    const { loadClubSummary } = await import("../load");
+    const s = await loadClubSummary(SUTTON.org.id, NOW, { org: FNF.org });
+    expect(s!.orgId).toBe("org-sutton");
+    expect(s!.name).toBe("Sutton FC");
+  });
+
+  it("slice A1: re-read after the month sweeps' writes, keeping the rows they cannot change: the matches, the months and the held keys only (3 reads for the Vets)", async () => {
+    world = VETS;
+    const { loadClubSummary } = await import("../load");
+    const full = (await load(VETS))!;
+    calls.length = 0;
+    const again = await loadClubSummary(VETS.org.id, NOW, {
+      org: VETS.org,
+      keep: { features: VETS.features, collectorName: VETS.collectorName, activities: VETS.activities, lastPlayed: VETS.lastPlayed },
+    });
+    expect(reads().sort()).toEqual(["match.findMany", "sentNotification.findMany", "squadMonth.findMany"]);
+    expect(calls.find((c) => c.model === "match")!.args.take).toBeUndefined();
+    expect(again).toEqual(full);
+  });
+
   it("a nameless member costs loadPlayerNames one more read (his WhatsApp name)", async () => {
     await load(FNF, { members: true });
     expect(reads()).toContain("analyzedMessage.findMany");
@@ -132,7 +169,7 @@ describe("query count, pinned per shape", () => {
 describe("what it reads", () => {
   it("the match window is the scheduler's: live of any date, completed in the lookback, cancelled in the last 24 hours, never historical", async () => {
     await load(SUTTON);
-    const { POST_MATCH_LOOKBACK_DAYS } = await import("../load");
+    const { POST_MATCH_LOOKBACK_DAYS } = await import("../../scheduler-windows");
     const window = calls.find((c) => c.model === "match" && c.method === "findMany" && c.args.take === undefined)!;
     const where = window.args.where as { activity: { orgId: string }; isHistorical: boolean; OR: Array<{ status: unknown; date?: { gte: Date } }> };
     expect(where.activity).toEqual({ orgId: "org-sutton" });

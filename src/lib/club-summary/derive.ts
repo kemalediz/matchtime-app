@@ -60,6 +60,7 @@ export interface OrgRow extends SetupStageColumns {
   whatsappGroupId: string | null;
   whatsappBotEnabled: boolean;
   dormantAt: Date | null;
+  approvedAt: Date | null;
   approvalStatus: string;
   billingStatus: string;
   liveAt: Date | null;
@@ -195,6 +196,7 @@ export function lifecycleFacts(org: OrgRow): LifecycleFacts {
     billingPaused: isBillingPaused(org),
     operational: isClubOperational(org),
     liveAt: iso(org.liveAt),
+    approvedAt: iso(org.approvedAt),
   };
 }
 

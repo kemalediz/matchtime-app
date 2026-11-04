@@ -33,6 +33,9 @@ export interface RehearsalEvent {
   /** Index (in the event list) of the message this answers or reacts to. */
   replyTo?: number;
   meta?: Record<string, unknown>;
+  /** Club scenarios: the scenario step (its `seq`) this happened under,
+   *  i.e. the latest step played at or before it; -1 before the first. */
+  frame?: number;
 }
 
 export interface SummaryContext {
