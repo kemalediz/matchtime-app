@@ -14,6 +14,10 @@
 import { describe, expect, it } from "vitest";
 import { decideMyPayments, formatMyPaymentsBlock, type MyPaymentsOrg, type MyPaymentRow } from "../my-payments-rules";
 import { decidePaymentSnapshot } from "../pipeline/payment-answer";
+import { feeFact } from "../fee-fact";
+
+/** The game's usual £6, before the collector confirms (slice B5, K3). */
+const USUAL_6 = feeFact({ matchFee: null, gameFee: 6, splitTotal: false, paygPence: null, collection: true });
 
 const BASE = {
   payMethodPayByBank: false,
@@ -38,7 +42,7 @@ const ROWS: MyPaymentRow[] = [
 ];
 
 function block(org: MyPaymentsOrg, lang: "en" | "tr") {
-  const p = decideMyPayments({ userId: "u-amir", org, collectorName: "Colin Banks", upcomingFee: 6, rows: ROWS });
+  const p = decideMyPayments({ userId: "u-amir", org, collectorName: "Colin Banks", upcomingFee: USUAL_6, rows: ROWS });
   return formatMyPaymentsBlock(p, lang, { m3: "https://mt/p/abc" });
 }
 
@@ -49,7 +53,7 @@ describe("the YOUR PAYMENTS block for a club with one flag on", () => {
       - Money collector: Colin Banks
       - Ways to pay: card, pay Colin Banks directly
       - The club's payment instructions (quote them exactly): Cash to Colin on the night
-      - Usual match fee: £6 per player
+      - Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector confirms it after the game.
       - Tuesday 7-a-side, Tue 3 Nov at 21:30: owes £6, not paid yet. Pay link: https://mt/p/abc
       - Tuesday 7-a-side, Tue 27 Oct at 21:30: no fee set yet. Nothing to pay for now.
       - Tuesday 7-a-side, Tue 20 Oct at 22:30: paid: payment received and recorded. Nothing to pay."
@@ -61,7 +65,7 @@ describe("the YOUR PAYMENTS block for a club with one flag on", () => {
       - Money collector: Colin Banks
       - Ways to pay: card, pay Colin Banks directly
       - The club's payment instructions (quote them exactly): Cash to Colin on the night
-      - Usual match fee: £6 per player
+      - Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector confirms it after the game.
       - Tuesday 7-a-side, 3 Kasım Salı 21:30: owes £6, not paid yet. Pay link: https://mt/p/abc
       - Tuesday 7-a-side, 27 Ekim Salı 21:30: no fee set yet. Nothing to pay for now.
       - Tuesday 7-a-side, 20 Ekim Salı 22:30: paid: payment received and recorded. Nothing to pay."

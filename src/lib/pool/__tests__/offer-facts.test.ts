@@ -16,20 +16,25 @@ import { loadMatchOfferFacts, poolFeeOf } from "../offer-facts";
 
 describe("poolFeeOf", () => {
   it("the match's fee, else the activity's", () => {
-    expect(poolFeeOf({ matchFee: 7, activityFee: 6, feeSplitTotal: false, paymentsOn: true })).toEqual({ kind: "amount", amount: "£7" });
-    expect(poolFeeOf({ matchFee: null, activityFee: 6, feeSplitTotal: false, paymentsOn: true })).toEqual({ kind: "amount", amount: "£6" });
+    expect(poolFeeOf({ matchFee: 7, activityFee: 6, feeSplitTotal: false, paymentsOn: true, collection: false })).toEqual({ kind: "amount", amount: "£7" });
+    expect(poolFeeOf({ matchFee: null, activityFee: 6, feeSplitTotal: false, paymentsOn: true, collection: false })).toEqual({ kind: "amount", amount: "£6" });
   });
   it("a monthly club's week: the club's PAYG price (a pool guest pays per game there), unless the match has its own fee", () => {
-    expect(poolFeeOf({ matchFee: null, activityFee: 6, feeSplitTotal: false, paymentsOn: true, monthlyPaygPence: 800 })).toEqual({ kind: "amount", amount: "£8" });
-    expect(poolFeeOf({ matchFee: null, activityFee: 60, feeSplitTotal: true, paymentsOn: true, monthlyPaygPence: 800 })).toEqual({ kind: "amount", amount: "£8" });
-    expect(poolFeeOf({ matchFee: 7, activityFee: 6, feeSplitTotal: false, paymentsOn: true, monthlyPaygPence: 800 })).toEqual({ kind: "amount", amount: "£7" });
+    expect(poolFeeOf({ matchFee: null, activityFee: 6, feeSplitTotal: false, paymentsOn: true, collection: false, monthlyPaygPence: 800 })).toEqual({ kind: "amount", amount: "£8" });
+    expect(poolFeeOf({ matchFee: null, activityFee: 60, feeSplitTotal: true, paymentsOn: true, collection: false, monthlyPaygPence: 800 })).toEqual({ kind: "amount", amount: "£8" });
+    expect(poolFeeOf({ matchFee: 7, activityFee: 6, feeSplitTotal: false, paymentsOn: true, collection: false, monthlyPaygPence: 800 })).toEqual({ kind: "amount", amount: "£7" });
+  });
+  it("a club that collects: before the collector confirms, the usual fee is marked not confirmed yet (B5, K3)", () => {
+    expect(poolFeeOf({ matchFee: null, activityFee: 6, feeSplitTotal: false, paymentsOn: true, collection: true })).toEqual({ kind: "amount", amount: "£6", notConfirmedYet: true });
+    expect(poolFeeOf({ matchFee: null, activityFee: 6, feeSplitTotal: false, paymentsOn: true, collection: true, monthlyPaygPence: 800 })).toEqual({ kind: "amount", amount: "£8", notConfirmedYet: true });
+    expect(poolFeeOf({ matchFee: 7, activityFee: 6, feeSplitTotal: false, paymentsOn: true, collection: true })).toEqual({ kind: "amount", amount: "£7" });
   });
   it("a split total is not a per-player fee: unknown, the line is left out", () => {
-    expect(poolFeeOf({ matchFee: null, activityFee: 60, feeSplitTotal: true, paymentsOn: false })).toBeNull();
+    expect(poolFeeOf({ matchFee: null, activityFee: 60, feeSplitTotal: true, paymentsOn: false, collection: false })).toBeNull();
   });
   it("free only when there is no fee and payments are off", () => {
-    expect(poolFeeOf({ matchFee: null, activityFee: null, feeSplitTotal: false, paymentsOn: false })).toEqual({ kind: "free" });
-    expect(poolFeeOf({ matchFee: null, activityFee: null, feeSplitTotal: false, paymentsOn: true })).toBeNull();
+    expect(poolFeeOf({ matchFee: null, activityFee: null, feeSplitTotal: false, paymentsOn: false, collection: false })).toEqual({ kind: "free" });
+    expect(poolFeeOf({ matchFee: null, activityFee: null, feeSplitTotal: false, paymentsOn: true, collection: false })).toBeNull();
   });
 });
 
@@ -65,7 +70,8 @@ describe("loadMatchOfferFacts", () => {
       playStyle: "casual",
       members: 30,
       gamesLast8Weeks: 8,
-      fee: { kind: "amount", amount: "£6" },
+      // FNF here collects and the match has no confirmed fee yet (B5, K3).
+      fee: { kind: "amount", amount: "£6", notConfirmedYet: true },
       durationMins: 60,
     });
     expect(f?.mapUrl).toContain("query=51.37%2C-0.23");

@@ -39,6 +39,22 @@ export function memberNoPhoneLine(lang: Lang, p: { member: string }): string {
 export type FriendPlace = "in" | "bench";
 
 /** The friend's DM once he is booked. */
+/** The friend link page's fee line, or null when the fee is unknown. The
+ *  usual fee says it is not confirmed yet (slice B5, K3). */
+export function friendPageFeeLine(lang: Lang, fee: PoolFee, monthly: boolean): string | null {
+  const c = friendLinkCopy(lang);
+  if (!fee) return null;
+  if (fee.kind === "free") return c.page_free;
+  const line = fee.notConfirmedYet
+    ? monthly
+      ? c.page_fee_payg_not_confirmed
+      : c.page_fee_not_confirmed
+    : monthly
+      ? c.page_fee_payg
+      : c.page_fee;
+  return line({ amount: fee.amount });
+}
+
 export function friendBookedDm(
   lang: Lang,
   p: {
@@ -59,7 +75,17 @@ export function friendBookedDm(
   const c = friendLinkCopy(lang);
   const game = { club: p.club, day: dayCommaTimeLabel(lang, p.kickoff), venue: p.venue, member: firstName(p.member) };
   const head = p.status === "in" ? c.booked_in(game) : p.organiserPicks ? c.booked_bench_pick(game) : c.booked_bench(game);
-  const fee = p.fee?.kind === "amount" ? (p.monthly ? c.booked_fee_payg({ amount: p.fee.amount }) : c.booked_fee({ amount: p.fee.amount })) : null;
+  // The usual fee says it is not confirmed yet (slice B5, K3).
+  const fee =
+    p.fee?.kind === "amount"
+      ? (p.fee.notConfirmedYet
+          ? p.monthly
+            ? c.booked_fee_payg_not_confirmed
+            : c.booked_fee_not_confirmed
+          : p.monthly
+            ? c.booked_fee_payg
+            : c.booked_fee)({ amount: p.fee.amount })
+      : null;
   return [[head, fee, c.booked_pull_out({ link: p.pullOutLink })].filter(Boolean).join("\n"), p.newToPool ? c.booked_pool : null, c.footer({ link: p.manageLink })]
     .filter(Boolean)
     .join("\n\n");

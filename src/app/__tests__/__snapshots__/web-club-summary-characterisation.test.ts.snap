@@ -11061,9 +11061,9 @@ exports[`the web pages, per club shape (characterisation) > pay > sutton 1`] = `
 </div>",
   "pay last match, not in the squad": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center">
-<h1 class="text-xl font-bold text-slate-900">No fee set yet</h1>
-<p class="text-sm text-slate-500 mt-2">The organiser hasn&#x27;t set the fee for Tuesday 7-a-side yet. Check back shortly.</p>
+<div class="text-center" data-testid="pay-fee-not-confirmed">
+<h1 class="text-xl font-bold text-slate-900">Fee not confirmed yet</h1>
+<p class="text-sm text-slate-500 mt-2">The usual fee for Tuesday 7-a-side is £6 a player, but Kemal hasn&#x27;t confirmed this match&#x27;s fee yet. You can pay here once it&#x27;s confirmed.</p>
 </div>
 </div>
 </div>",
@@ -11658,9 +11658,9 @@ exports[`the web pages, per club shape (characterisation) > pay > sutton-tr 1`] 
 </div>",
   "pay last match, not in the squad": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center">
-<h1 class="text-xl font-bold text-slate-900">No fee set yet</h1>
-<p class="text-sm text-slate-500 mt-2">The organiser hasn&#x27;t set the fee for Tuesday 7-a-side yet. Check back shortly.</p>
+<div class="text-center" data-testid="pay-fee-not-confirmed">
+<h1 class="text-xl font-bold text-slate-900">Ücret henüz kesinleşmedi</h1>
+<p class="text-sm text-slate-500 mt-2">Tuesday 7-a-side için genelde kişi başı £6 ödeniyor, ama Kemal bu maçın ücretini henüz kesinleştirmedi. Kesinleşince buradan ödeyebilirsin.</p>
 </div>
 </div>
 </div>",
@@ -12509,9 +12509,9 @@ exports[`the web pages, per club shape (characterisation) > pay > sutton-zed 1`]
 </div>",
   "pay last match, not in the squad": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center">
-<h1 class="text-xl font-bold text-slate-900">No fee set yet</h1>
-<p class="text-sm text-slate-500 mt-2">The organiser hasn&#x27;t set the fee for Tuesday 7-a-side yet. Check back shortly.</p>
+<div class="text-center" data-testid="pay-fee-not-confirmed">
+<h1 class="text-xl font-bold text-slate-900">Fee not confirmed yet</h1>
+<p class="text-sm text-slate-500 mt-2">The usual fee for Tuesday 7-a-side is £6 a player, but Zed hasn&#x27;t confirmed this match&#x27;s fee yet. You can pay here once it&#x27;s confirmed.</p>
 </div>
 </div>
 </div>",

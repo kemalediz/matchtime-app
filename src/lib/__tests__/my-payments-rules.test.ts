@@ -12,6 +12,10 @@ import {
   type MyPaymentsInput,
   type MyPaymentsOrg,
 } from "../my-payments-rules";
+import { feeFact, type FeeFact, type FeeInputs } from "../fee-fact";
+
+/** The game's usual £6 for a club that collects, before the collector confirms. */
+const USUAL_6 = feeFact({ matchFee: null, gameFee: 6, splitTotal: false, paygPence: null, collection: true });
 
 const ORG: MyPaymentsOrg = {
   paymentTrackingEnabled: false,
@@ -47,7 +51,7 @@ const input = (over: Partial<MyPaymentsInput> = {}): MyPaymentsInput => ({
   userId: "u-me",
   org: ORG,
   collectorName: "Erdal Özkan",
-  upcomingFee: 6,
+  upcomingFee: USUAL_6,
   rows: [row()],
   ...over,
 });
@@ -125,7 +129,7 @@ describe("formatMyPaymentsBlock", () => {
         "- Money collector: Erdal Özkan",
         "- Ways to pay: pay by bank, card, pay Erdal Özkan directly",
         "- The club's payment instructions (quote them exactly): Bank: Monzo, sort code 04-00-04, account 12345678",
-        "- Usual match fee: £6 per player",
+        "- Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector confirms it after the game.",
         "- Cuma Maçı, Fri 11 Sep at 21:00: owes £6, not paid yet. Pay link: https://mt.example/s/pay",
         "- Cuma Maçı, Fri 4 Sep at 21:00: paid: payment received and recorded. Nothing to pay.",
       ].join("\n"),
@@ -146,6 +150,49 @@ describe("formatMyPaymentsBlock", () => {
   it("not tracked and collector are one line each", () => {
     expect(formatMyPaymentsBlock({ kind: "not_tracked" }, "en")).toContain("does not run payments through MatchTime");
     expect(formatMyPaymentsBlock({ kind: "collector" }, "en")).toContain("You collect this club's match fees");
+  });
+
+  // Decision K3 (club summary B5): the upcoming match's ONE fee fact. Before
+  // B5 the line said "Usual match fee" whatever it was: the match's own
+  // confirmed fee or the game's default, and a split game's total.
+  describe("the upcoming match's fee (K3)", () => {
+    const fee = (over: Partial<FeeInputs>) => feeFact({ matchFee: null, gameFee: null, splitTotal: false, paygPence: null, collection: true, ...over });
+    const line = (upcomingFee: FeeFact | null) =>
+      formatMyPaymentsBlock(decideMyPayments(input({ upcomingFee })), "en")
+        .split("\n")
+        .filter((l) => l.startsWith("- Upcoming match's fee"));
+
+    it("confirmed by the collector: the amount, said as confirmed", () => {
+      expect(line(fee({ matchFee: 7, gameFee: 6 }))).toEqual(["- Upcoming match's fee: £7 per player, confirmed by the money collector."]);
+    });
+
+    it("not confirmed yet: the usual fee, marked as not confirmed yet", () => {
+      expect(line(fee({ gameFee: 6 }))).toEqual([
+        "- Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector confirms it after the game.",
+      ]);
+    });
+
+    it("a week of a running month: the pay as you go price, not confirmed yet", () => {
+      expect(line(fee({ gameFee: 6, paygPence: 800 }))).toEqual([
+        "- Upcoming match's fee: not confirmed yet. The usual fee is £8 per player, the pay as you go price (regulars pay for the month instead); the money collector confirms it after the game.",
+      ]);
+    });
+
+    it("a split game: no per-player amount until the collector enters the total", () => {
+      expect(line(fee({ gameFee: 80, splitTotal: true }))).toEqual([
+        "- Upcoming match's fee: the pitch cost split between who played; the money collector sets it after the game.",
+      ]);
+    });
+
+    it("no fee, or no upcoming match: no line", () => {
+      expect(line(fee({}))).toEqual([]);
+      expect(line(null)).toEqual([]);
+    });
+
+    it("a club that does not collect gets no fee line (unchanged)", () => {
+      const p = decideMyPayments(input({ org: { ...ORG, paymentCollectionEnabled: false, paymentTrackingEnabled: true }, upcomingFee: fee({ gameFee: 6, collection: false }) }));
+      expect(formatMyPaymentsBlock(p, "en")).not.toContain("fee:");
+    });
   });
 
   it("no collector on record reads 'the organiser'", () => {

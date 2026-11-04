@@ -23,6 +23,8 @@ export const friendLinkEn = {
   page_invited: (p: { member: string }) => `${p.member} invited you to play`,
   page_fee: (p: { amount: string }) => `Fee: ${p.amount}`,
   page_fee_payg: (p: { amount: string }) => `Fee: ${p.amount}, pay as you go`,
+  page_fee_not_confirmed: (p: { amount: string }) => `Fee: usually ${p.amount}, not confirmed yet`,
+  page_fee_payg_not_confirmed: (p: { amount: string }) => `Fee: usually ${p.amount}, pay as you go, not confirmed yet`,
   page_free: "Free",
   page_explain: "Fill in your details, then send the WhatsApp code to take your place. This link works until kick-off.",
   page_used: "This link has already been used.",
@@ -41,6 +43,9 @@ export const friendLinkEn = {
     `You're on the bench for *${p.club}* on ${p.day}${p.venue ? ` at ${p.venue}` : ""}. ${p.member} brought you in. The organisers pick who plays from the bench.`,
   booked_fee: (p: { amount: string }) => `Fee: ${p.amount}, asked of you after the game.`,
   booked_fee_payg: (p: { amount: string }) => `Fee: ${p.amount} as a pay as you go player, asked of you after the game.`,
+  /** The usual fee before the collector confirms it (slice B5, K3). */
+  booked_fee_not_confirmed: (p: { amount: string }) => `Fee: usually ${p.amount}, not confirmed yet, asked of you after the game.`,
+  booked_fee_payg_not_confirmed: (p: { amount: string }) => `Fee: usually ${p.amount} as a pay as you go player, not confirmed yet, asked of you after the game.`,
   booked_pull_out: (p: { link: string }) => `Can't make it? Give your place back here: ${p.link}`,
   booked_pool: "You're now in the MatchTime player pool too, so you'll hear about other games near you.",
   not_booked_pool: "You're in the MatchTime player pool now, so you'll hear about games near you.",

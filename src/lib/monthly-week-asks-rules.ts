@@ -21,9 +21,9 @@
  *                      PAYG players were told of the newest open place. An organiser who
  *                      asks in words or on the page is never held: that ask
  *                      goes now (Kemal, 2026-10-29, `round-rules.ts`).
- *   guestFeePounds     the fee a pool offer and a partner ask state: the
- *                      match's own fee when one is set, else the club's
- *                      PAYG price in a monthly week, else as before.
+ *
+ * The fee a pool offer and a partner ask state is the match's one fee fact
+ * (fee-fact.ts, club summary slice B5), which replaced `guestFeePounds`.
  */
 import type { WeekMember, WeekRow } from "./monthly-week-rules";
 import { placesOpen } from "./squad-short";
@@ -76,16 +76,4 @@ export function clubFillsFirst(i: {
     return now < i.newestOpenOfferAt.getTime() + CLUB_PAYG_UNTOLD_MAX_MINS * MIN_MS;
   }
   return now < i.clubToldAt.getTime() + CLUB_PAYG_FIRST_MINS * MIN_MS;
-}
-
-export function guestFeePounds(f: {
-  matchFee: number | null;
-  activityFee: number | null;
-  feeSplitTotal: boolean;
-  /** The club's PAYG price, in a week of a running month only. */
-  monthlyPaygPence: number | null;
-}): number | null {
-  if (f.matchFee != null) return f.matchFee;
-  if (f.monthlyPaygPence != null) return f.monthlyPaygPence / 100;
-  return f.feeSplitTotal ? null : f.activityFee;
 }

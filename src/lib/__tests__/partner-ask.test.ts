@@ -122,6 +122,13 @@ describe("requestPartnerAsk", () => {
     expect(logMock.recordMatchTimeQuestion).not.toHaveBeenCalled();
   });
 
+  it("an asking club that collects: the usual fee is said as not confirmed yet (B5, K3)", async () => {
+    dbMock.match.findUnique.mockResolvedValue({ ...MATCH, activity: { ...MATCH.activity, org: { paymentTrackingEnabled: false, paymentCollectionEnabled: true } } });
+    await request();
+    const dm = noticeMock.sendAdminNotice.mock.calls[0][0].text("https://L", "dm");
+    expect(dm).toContain("Goals Sutton (9-a-side, usually £8, not confirmed yet)");
+  });
+
   it("the partner uses an admin group: the question is logged with the ask's ref for the safe-YES rule", async () => {
     noticeMock.sendAdminNotice.mockResolvedValue({ channel: "admin-group", queued: 1 });
     await request();

@@ -38,6 +38,7 @@ import { normaliseListAnnouncer, organisersAnnounce } from "../list-announcer";
 import { normaliseMomChooser } from "../mom-chooser";
 import { normaliseBenchPickFallback, normaliseBenchPickMode } from "../squad-capacity";
 import { effectiveTeamsReadyTime } from "../team-proposal-rules";
+import { feeFact } from "../fee-fact";
 import { quietHoursOf } from "../message-hours";
 import { hasWeeklyRhythm, weeklyDeadlinesFor } from "../weekly-deadlines";
 import { londonMonthStart, normaliseCreditRule, normaliseSquadMode } from "../squad-month-rules";
@@ -488,6 +489,13 @@ export function buildClubSummary(rows: ClubRows, now: Date): ClubSummary {
       const ppt = game?.sport.playersPerTeam ?? Math.floor(m.maxPlayers / 2);
       const confirmed = m.attendances.filter((a) => a.status === "CONFIRMED").length;
       const deadlines = weeklyDeadlinesFor(m.date, org);
+      const month =
+        squad.mode === "monthly"
+          ? monthPhaseFor({ orgId: org.id, match: m, months: squad.months, activities: rows.activities, heldKeys: rows.heldKeys })
+          : null;
+      // A week of a running month (`loadMonthlyWeek`: the fixture's running
+      // month, not before its start) charges the club's PAYG price.
+      const paygWeek = month !== null && month.phase === "running" && !month.beforeStart;
       return {
         id: m.id,
         activityId: m.activityId,
@@ -500,14 +508,22 @@ export function buildClubSummary(rows: ClubRows, now: Date): ClubSummary {
         ...matchNumbers({ places: m.maxPlayers, confirmed, minPlayers: game?.minPlayers ?? null, playersPerTeam: ppt }),
         fewestAnyFormat: game?.fewestAnyFormat ?? ppt * 2,
         teamsMade: m._count.teamAssignments > 0,
-        fee: { matchFee: m.feePerPlayer ?? null, pendingConfirm: m.feePendingConfirm ?? null, linksReleased: m.paymentLinksReleasedAt !== null },
+        fee: {
+          matchFee: m.feePerPlayer ?? null,
+          pendingConfirm: m.feePendingConfirm ?? null,
+          linksReleased: m.paymentLinksReleasedAt !== null,
+          forPlayers: feeFact({
+            matchFee: m.feePerPlayer ?? null,
+            gameFee: game?.fee.perPlayer ?? null,
+            splitTotal: game?.fee.splitTotal ?? false,
+            paygPence: paygWeek ? squad.paygPricePence : null,
+            collection: org.paymentCollectionEnabled === true,
+          }),
+        },
         nextForPosting: picked.nextForPosting.get(m.id) ?? { withHold: false, withoutHold: false },
         weeklyDeadlines: { dropOut: iso(deadlines.dropOut), listPublish: iso(deadlines.listPublish) },
         attendanceDeadline: m.attendanceDeadline.toISOString(),
-        month:
-          squad.mode === "monthly"
-            ? monthPhaseFor({ orgId: org.id, match: m, months: squad.months, activities: rows.activities, heldKeys: rows.heldKeys })
-            : null,
+        month,
       };
     });
 

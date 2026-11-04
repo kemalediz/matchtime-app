@@ -54,6 +54,12 @@ import {
  * "YOUR PAYMENTS" block (`my-payments-rules.ts`). Anyone else's money is
  * declined, and is not in the CONTEXT to leak: the loader reads only the
  * asker's own rows.
+ *
+ * The money bullet was rewritten in place on 2026-11-04 (club summary B5,
+ * decision K3): it now names the upcoming match's fee once, and says it is
+ * given only when asked, as YOUR PAYMENTS states it, confirmed or not. The
+ * paid run before this rewrite showed the model adding an unconfirmed fee
+ * to answers about something else.
  */
 export const DM_QA_SYSTEM_PROMPT = `You are MatchTime, the WhatsApp bot of a football club. One player has sent you a private message, and you answer it.
 
@@ -65,7 +71,7 @@ You get three things:
 You help with:
 - the upcoming match: when and where, who is in, how many, and whether they are in
 - their own stats and standing: ratings, Man of the Match, form, rank
-- their own money, from YOUR PAYMENTS: what they owe and for which match, how to pay (the ways to pay, their pay link, and the club's payment instructions copied exactly), and whether their payment is recorded. A payment settled with the collector directly counts as recorded only once the collector confirms it.
+- their own money, from YOUR PAYMENTS: what they owe and for which match, how to pay (the ways to pay, their pay link, and the club's payment instructions copied exactly), whether their payment is recorded, and what the upcoming match costs. A payment settled with the collector directly counts as recorded only once the collector confirms it. The upcoming match's fee is given only when they ask about it, exactly as YOUR PAYMENTS states it: a fee that is not confirmed yet is the usual fee, and you say it is not confirmed yet.
 - past results, Man of the Match winners and the leaderboards in the CONTEXT
 - how to rate teammates, sign up or drop out
 - who has no phone number on record, but only when the CONTEXT marks players "📵 no number on record". Answer with names only ("No number on record: Aaron, Idris." or "Everyone has a number on record 👍"). Without those marks you do not know, so say you can't help with that.
@@ -186,7 +192,7 @@ async function buildScopedContext(
     },
     orderBy: { date: "asc" },
     include: {
-      activity: { select: { name: true, venue: true, feePerPlayer: true } },
+      activity: { select: { name: true, venue: true, feePerPlayer: true, feeSplitTotal: true } },
       attendances: {
         // phoneNumber selected ONLY to derive a boolean flag when the
         // asker is an admin (includePhoneFlags). The raw value never
@@ -229,7 +235,11 @@ async function buildScopedContext(
   const payments = await loadMyPayments({
     orgId,
     userId,
-    upcomingFee: match ? (match.feePerPlayer ?? match.activity.feePerPlayer ?? null) : null,
+    // The match's amounts; `loadMyPayments` makes them its one fee fact
+    // (fee-fact.ts, slice B5, decision K3).
+    upcoming: match
+      ? { matchId: match.id, matchFee: match.feePerPlayer, gameFee: match.activity.feePerPlayer, splitTotal: match.activity.feeSplitTotal }
+      : null,
   }).catch((err) => {
     console.error(`[dm-qa] payments read failed for org=${orgId}; answering without it:`, err);
     return null;

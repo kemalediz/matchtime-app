@@ -1133,6 +1133,102 @@ below the minimum, which the model words differently with the same meaning, and 
 rows. Unit tests: the A1 to A4 characterisations are unchanged; the golden copy gained five entries
 per language (the "places left" lines) and changed none.
 
+### 3.14 As built in slice B5 (one fee)
+
+Built on `refactor/club-summary-b5` (PR against `refactor/club-summary`), after Kemal's decision
+K3 (section 4.5). A Phase B slice: it changes what players are told on purpose, and it changes
+what the DM answerer is sent, so it is an LLM change under the repo rules.
+
+**One definition.** `fee-fact.ts` (pure) is the only rule for "the fee a player is told":
+`feeFact({ matchFee, gameFee, splitTotal, paygPence, collection })` returns `amount`, `source`
+(`match`, `payg` or `game`), `confirmed`, `notConfirmedYet` and `splitTotal`.
+- `matchFee` (`Match.feePerPlayer`) is what the collector confirmed; it always wins and is the
+  only `confirmed` fee. `chargeableFee` returns it and nothing else.
+- Otherwise the usual fee: the club's PAYG price in a week of a running month (the amount
+  `stagePaygFee` asks the collector to confirm), else the game's fee unless the game splits the
+  total (a split game has no per-player amount until the collector enters the total).
+- `notConfirmedYet` is the usual fee of a club that collects (`collectsMatchFees`, a new named
+  helper in `payment-messages.ts`): only there does a collector confirm each match's fee. A
+  club that does not collect has no confirmation step, so its usual fee is stated as it is.
+The summary's `MatchFacts.fee.forPlayers` is this fact (the PAYG price when the match's
+`month` is running and the kickoff is not before its start, `loadMonthlyWeek`'s rule), and
+`ClubSnapshot.fee` is it too. `guestFeePounds` (the guest doors' rule) is deleted.
+
+**The doors (D9), each with a failing test first.**
+- The DM answer (`dm-qa.ts`, `my-payments.ts`, `my-payments-rules.ts`): it told the model
+  "Usual match fee: £6 per player" from `match ?? game`, confirmed or not, and a split game's
+  total as a per-player fee. It now sends the fact (model input, below).
+- The club answer in the players' group and HQ (`answer_club`, from `clubSnapshotOf` or
+  `loadClubSnapshot`): "Match fee: £6 a player" whatever its source. Now "usually £6 a player,
+  not confirmed yet" before the collector confirms, "£8 a player (pay as you go)" for a month's
+  game, "the pitch cost split between who played" for a split game (it said the total as a
+  per-player fee before). `loadClubSnapshot` reads the PAYG price only for a monthly club with
+  no confirmed fee, so the two sources agree (the A2 characterisation checks it).
+- The pay page: "No fee set yet" whenever the match had no fee. Now, with a usual fee, "Fee not
+  confirmed yet ... The usual fee for X is £6 a player, but Kemal hasn't confirmed this match's
+  fee yet. You can pay here once it's confirmed", with no pay buttons; with no fee at all, the
+  old text (now in the string table, EN and TR). Charging is unchanged: the buttons, the direct
+  pay path (`direct-payment.ts`) and pay links read only the match's confirmed fee.
+- The pool offer and the placed DM, the friend link DM and page, the partner ask: the same
+  fact; a usual fee of a club that collects reads "usually £6, not confirmed yet" (EN and TR, one
+  string per template so each sentence still reads).
+- Help: the "help payments" explainer for a club that collects gains one line (EN, TR: ask the
+  fee before it is confirmed and you get the usual one, marked; nobody is asked to pay until it
+  is); the web guide says the same on `/help/player` (Paying) and `/help/admin` (Payments).
+
+**What the DM answerer is sent.** One CONTEXT line in YOUR PAYMENTS, rewritten in place, and the
+system prompt's money bullet, rewritten in place after the first paid run (the model added the
+unconfirmed fee to answers about something else; the bullet now names the upcoming fee once and
+says it is given when asked, as YOUR PAYMENTS states it, confirmed or not; 2,805 to 3,022
+characters). Before: `- Usual match fee: £6 per player`. After, by state:
+`- Upcoming match's fee: £7 per player, confirmed by the money collector.`;
+`- Upcoming match's fee: not confirmed yet. The usual fee is £6 per player; the money collector
+confirms it after the game.`; the PAYG variant ("£8 per player, the pay as you go price
+(regulars pay for the month instead)"); a split game ("the pitch cost split between who
+played; the money collector sets it after the game."). The line is shown, as before, only for a
+club that collects. The side by side page is in the PR.
+
+**A guard.** `src/lib/__tests__/fee-one-rule.test.ts` fails on a file that falls back from one
+fee to another inline outside `fee-fact.ts` (`feePerPlayer ?? ...feePerPlayer`, `matchFee ??`,
+`match fee else PAYG`), with one named narrower rule (`month-close.ts`: the month's close lists
+what each PAYG player owes, a summary for the collector, not a charge), and checks that each
+door imports the rule.
+
+**Left, and why.**
+- The club's own PAYG lines in a monthly week (the PAYG pool DMs and group line, "£8. Say IN to
+  take one", `bot-scheduler.ts` section 3) state the club's PAYG price as its price list. No
+  club that runs a monthly squad collects through MatchTime today (the Vets have payments off),
+  so they and the pool offer cannot disagree in production; if one ever does, those lines are
+  the next to read `feeFact`.
+- The collector's own fee question and confirm (`bot-scheduler.ts`, `payment-flow.ts`) are the
+  confirmation itself, not a door that tells a player.
+- A fee pending the collector's yes (`feePendingConfirm`) is not told to players: it is what the
+  collector typed, not yet confirmed.
+- `/collect` is the collector's page and shows the match's fee as set.
+- The pay page reads the PAYG price only for a club that collects (as the DM answer does); a
+  monthly club on the old poll alone would see the game's usual fee there. No such club exists.
+
+**Proof.** Paid, all on `ANTHROPIC_API_KEY_DEV`, 103 calls, about $0.023:
+`e2e/sim/dm-qa-payments-live.spec.ts` with the CONTEXT change alone (26 calls, $0.0047): the fee
+answer was right, but the unconfirmed fee was added to unrelated answers, hence the bullet rewrite;
+the same spec after it (38 calls, $0.0067) 8 of 8 in English and Turkish, the fee given only when
+asked ("The fee for Fri 6 Nov at 20:00 isn't confirmed yet. The usual fee is £8 per player").
+Its "how do I pay?" case is routed to the payments help topic by the DM reader, on the base branch
+too (checked, 8 calls, $0.0007), so it is not B5's and was left out of the second run.
+`scripts/dryrun-dm-qa.ts` on Haiku, once per set (main TR and EN, s3, pay; 23 calls, $0.0093): all
+clean. `e2e/sim/dm-context-live.spec.ts` 3 of 3 (8 calls, $0.0013). The club replay is free: all
+five clubs hit every cassette (0 misses), so nothing was re-recorded; `baseline/b5` against
+`baseline/b1` is identical for all five, because no scripted week asks the fee, sends a guest
+offer or opens the pay page before a fee is confirmed. Unit tests: the A2 to A4
+characterisations changed only on the fee line (listed in the PR), A1 is unchanged; the copy golden
+gained seven B5 cases per language and changed none.
+
+Rebased onto B7 (#532): `dm-qa.ts` merged cleanly (B7's stats-off facts and B5's fee line and
+money bullet both kept). `dm-qa-payments-live` once on the merged code: 10 of 10 (B7's stats-off
+case included), 48 calls, $0.0075. `baseline/b5` re-made on the merged code: 0 misses, identical
+to `baseline/b7` for all five clubs. The A3 DM entries also pin the prompt's hash, which the
+money bullet changes (8 entries, `43b0f38b` to `3f26110c`).
+
 ### 3.15 As built in slice B7 (every door honours the switches)
 
 Built on `refactor/club-summary-b7` (PR against `refactor/club-summary`), after Kemal's decision
@@ -1499,9 +1595,9 @@ right.
 |---|---|---|---|
 | K1 | Does the chase still ask for the 14th player when 13 is above the club's minimum? Does "At risk" mean below the minimum or below the places? | B1 | the chases count places, the day-before nudges count the minimum. **Decided by Kemal, 2026-11-04 (the main session's recommendation): at or above the game's minimum the game is ON. (a) The players' chases still ask for the open places while any is open, but never say "short" or "N short": they say the places left ("3 places left"); below the minimum they keep today's "short" wording. (b) "At risk", and any "we'll have to call it off", only below the minimum. (c) Every other "short" and "places open" reads the summary's `squad-short.ts` facts: one definition, no copies.** Built in B1 (section 3.13). |
 | K2 | With exactly one payment flag on, which messages go out: the HQ credit command, the help's payments topic, the settings page's "Payments" line? | B3 | three different answers. **Decided 2026-11-04** (Kemal accepted the recommendation): ONE rule, the existing `paymentMessagesOn` (tracking OR collection), exposed by the summary as `payments.messagesOn`, followed the same way on every door; "a card can be taken" is one rule too, `isPaymentCollectionLive`. Built in B3 (section 3.12). |
-| K3 | Before the collector confirms a fee, does MatchTime tell a player the game's usual fee, or "not set yet"? | B5 | the DM answer says the game's fee, the pay page says not set |
+| K3 | Before the collector confirms a fee, does MatchTime tell a player the game's usual fee, or "not set yet"? | B5 | the DM answer says the game's fee, the pay page says not set. **Decided by Kemal, 2026-11-04 (the main session's recommendation): before the collector confirms a match's fee, a player who asks, on any door (DM answer, group or HQ answer, pay page, offers and asks), is told the game's usual fee marked as not confirmed yet ("usually £8, not confirmed yet"); once confirmed, the confirmed fee. Pay links and charging use only a confirmed fee. The summary exposes ONE fee fact (amount, confirmed or not, source) and every door reads it.** Built in B5 (section 3.14). |
 | K4 | On a club with attendance off, may a player still tap IN on the website? | B7 | yes on the web, no in WhatsApp. **Decided by Kemal, 2026-11-04 (the main session's recommendation): no. Players cannot tap IN or OUT on the website either; the match page explains the club doesn't take sign-ups through MatchTime. The same principle for every switch the plan found ignored on some door: if WhatsApp refuses it with the switch off, the web and DMs refuse it too, with a short plain explanation.** Built in B7 (section 3.15). |
-| K6 | With team generation off, should the website's Generate teams, the teams page and the HQ team commands refuse too? | after B7 | the settings card says on purpose that the web button still works and that Teams ready is separate; B7 left them (3.15) |
+| K6 | With team generation off, should the website's Generate teams, the teams page and the HQ team commands refuse too? | after B7 | the settings card says on purpose that the web button still works and that Teams ready is separate; B7 left them (3.15) **Decided by the main session, 2026-11-04, on Kemal's delegation: with automatic teams off, the organiser's own Generate teams on the web and the HQ "make the teams" keep working, as the settings card promises.** |
 | K5 | Is "today" the London day for the next match, and do the deadline posts and the month's list honour a cancelled match's day like the announcement does? | B4 | UTC in the selector, London in the posting rule; two posts skip the hold |
 
 ### 4.6 Phase C: readers, only where the evidence asks for it

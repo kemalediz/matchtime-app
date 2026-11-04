@@ -30,6 +30,7 @@ import { matchHasPaymentSource } from "./pipeline/payment-answer";
 import { paymentMessagesOn } from "./payment-messages";
 import { dayTimeLabel } from "./i18n/dates";
 import type { Lang } from "./i18n/lang";
+import type { FeeFact } from "./fee-fact";
 
 /** How many of the asker's matches the CONTEXT lists, newest first. */
 export const MY_PAYMENTS_MAX_MATCHES = 3;
@@ -97,8 +98,9 @@ export type MyPayments =
       collectorName: string | null;
       methods: PayMethod[];
       instructions: string | null;
-      /** The usual fee for the upcoming match's format, or null. */
-      upcomingFee: number | null;
+      /** The upcoming match's one fee fact (fee-fact.ts, slice B5, K3), or
+       *  null without a match or when the club does not collect. */
+      upcomingFee: FeeFact | null;
       lines: MyPaymentLine[];
     };
 
@@ -107,7 +109,8 @@ export interface MyPaymentsInput {
   userId: string;
   org: MyPaymentsOrg;
   collectorName: string | null;
-  upcomingFee: number | null;
+  /** The upcoming match's fee fact (`feeFact`), or null without a match. */
+  upcomingFee: FeeFact | null;
   rows: MyPaymentRow[];
 }
 
@@ -180,7 +183,8 @@ export function formatMyPaymentsBlock(p: MyPayments, lang: Lang, payLinks: Recor
     lines.push(`- Ways to pay: ${p.methods.map((m) => METHOD_WORDS[m](collector)).join(", ")}`);
   }
   if (p.instructions) lines.push(`- The club's payment instructions (quote them exactly): ${p.instructions}`);
-  if (p.upcomingFee !== null) lines.push(`- Usual match fee: ${gbp(p.upcomingFee)} per player`);
+  const fee = upcomingFeeLine(p.upcomingFee);
+  if (fee) lines.push(fee);
   if (p.lines.length === 0) {
     lines.push("- No played matches of yours to pay for.");
   }
@@ -189,6 +193,24 @@ export function formatMyPaymentsBlock(p: MyPayments, lang: Lang, payLinks: Recor
     lines.push(`- ${match}: ${stateWords(l, collector, payLinks[l.matchId])}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * The upcoming match's fee, one line, from its one fee fact (slice B5,
+ * decision K3). The model is told whether the collector has confirmed it,
+ * so a "how much is it?" before the game is answered with the usual fee
+ * AND that it is not confirmed yet; nothing else in the block changes.
+ * A club that collects is the only one with this line (`decideMyPayments`).
+ */
+function upcomingFeeLine(f: FeeFact | null): string | null {
+  if (!f) return null;
+  const head = "- Upcoming match's fee:";
+  if (f.amount === null) {
+    return f.splitTotal ? `${head} the pitch cost split between who played; the money collector sets it after the game.` : null;
+  }
+  if (f.confirmed) return `${head} ${gbp(f.amount)} per player, confirmed by the money collector.`;
+  const price = f.source === "payg" ? `${gbp(f.amount)} per player, the pay as you go price (regulars pay for the month instead)` : `${gbp(f.amount)} per player`;
+  return `${head} not confirmed yet. The usual fee is ${price}; the money collector confirms it after the game.`;
 }
 
 function stateWords(l: MyPaymentLine, collector: string, link: string | undefined): string {

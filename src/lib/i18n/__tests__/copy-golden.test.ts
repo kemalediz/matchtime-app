@@ -315,6 +315,12 @@
  *     availability; an organiser's list of what is switched off names
  *     "bringing a friend" when attendance is off. No other line changed.
  *
+ *   - 2026-11-04, club summary slice B5 (one fee, decision K3): ADDED the
+ *     "B5" cases (the club answer's fee line for a usual fee not confirmed
+ *     yet and for the pay as you go price, the pay page before the fee is
+ *     confirmed and with no fee at all, the partner ask's fee). No existing
+ *     case changed: a confirmed or unset fee reads as before.
+ *
  *   - A deliberate CHANGE across the whole English document (2026-10-06,
  *     Kemal: "remove long dashes"). Every em and en dash used as
  *     punctuation in the English table was rewritten as a comma, a
@@ -953,6 +959,16 @@ function cases(lang: Lang): Case[] {
   add("R43 buildSquadCompletePost / bench of two, invite", buildSquadCompletePost({ maxPlayers: 14, activityName: "Tuesday 7-a-side", kickoffLabel: squadCompleteWhen, confirmed: fourteenNames, bench: ["Erdal Ozkan", "Amir Ahmadi"], benchInvite: buildSquadCompleteBenchInvite({ lang }), lang }));
   add("R186 payments_live_announcement / every method", t(lang).payments_live_announcement({ collector: "Kemal", card: true, bank: true, direct: true }));
   add("R186 payments_live_announcement / card only, no collector", t(lang).payments_live_announcement({ collector: null, card: true, bank: false, direct: false }));
+  // Club summary B5, decision K3: the one fee fact, said where a player
+  // asks. NEW copy; the confirmed and unset wordings are unchanged.
+  const clubAnswer = { admins: "Kemal Ediz", collector: "Colin", feeSplit: false, teamsReady: "10:00", forOrganisers: false };
+  add("B5 answer_club / usual fee, not confirmed yet (K3)", t(lang).answer_club({ ...clubAnswer, fee: "6", feePayg: false, feeNotConfirmedYet: true }));
+  add("B5 answer_club / pay as you go price, not confirmed yet (K3)", t(lang).answer_club({ ...clubAnswer, fee: "8", feePayg: true, feeNotConfirmedYet: true }));
+  add("B5 answer_club / pay as you go price, club does not collect", t(lang).answer_club({ ...clubAnswer, fee: "8", feePayg: true, feeNotConfirmedYet: false }));
+  add("B5 pay page / usual fee, not confirmed yet (K3)", `${t(lang).pay_fee_not_confirmed_title}\n${t(lang).pay_fee_not_confirmed_body({ activityName: "Tuesday 7-a-side", amount: "£6", payg: false, collector: "Colin" })}`);
+  add("B5 pay page / pay as you go, no collector name (K3)", `${t(lang).pay_fee_not_confirmed_title}\n${t(lang).pay_fee_not_confirmed_body({ activityName: "Monday Night Football", amount: "£8", payg: true, collector: null })}`);
+  add("B5 pay page / no fee at all", `${t(lang).pay_no_fee_title}\n${t(lang).pay_no_fee_body({ activityName: "Tuesday 7-a-side" })}`);
+  add("B5 partner ask fee / not confirmed yet (K3)", t(lang).xask_fee_not_confirmed({ amount: "£6" }));
   add("R43 buildSquadCompletePost / unnamed row", buildSquadCompletePost({ maxPlayers: 3, activityName: "Thursday 5-a-side", kickoffLabel: lang === "tr" ? "24 Eylül Perşembe 20:00" : "Thu 24 Sept 20:00", confirmed: ["Kemal Ediz", null, "Sait Demir"], bench: [null], benchInvite: null, lang }));
 
   // ── 1.2 scheduler-copy.ts (extracted from bot-scheduler.ts 2026-09-17)

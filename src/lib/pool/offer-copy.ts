@@ -25,7 +25,11 @@ import type { OfferPageState } from "./accept-rules";
 import type { TurnUpRecord } from "./turn-up";
 import type { PlayStyle } from "./vocab";
 
-export type PoolFee = { kind: "free" } | { kind: "amount"; amount: string } | null;
+/** The fee a guest is told: "free", an amount, or null (unknown). The amount
+ *  is the match's one fee fact (fee-fact.ts, slice B5); `notConfirmedYet`
+ *  when it is the usual fee of a club whose collector has yet to confirm it
+ *  (decision K3), absent when it is stated as it is. */
+export type PoolFee = { kind: "free" } | { kind: "amount"; amount: string; notConfirmedYet?: boolean } | null;
 
 export interface PoolOfferFacts {
   club: string;
@@ -94,7 +98,8 @@ export function clubLineOf(lang: Lang, members: number, games: number): string |
 function feeLineOf(lang: Lang, fee: PoolFee): string | null {
   const c = poolCopy(lang);
   if (!fee) return null;
-  return fee.kind === "free" ? c.free : c.fee({ amount: fee.amount });
+  if (fee.kind === "free") return c.free;
+  return fee.notConfirmedYet ? c.fee_not_confirmed({ amount: fee.amount }) : c.fee({ amount: fee.amount });
 }
 
 /** The offer's fact lines, as the DM and the offer page both show them. */
@@ -131,7 +136,7 @@ export function poolPlacedText(
   const game = { club: p.club, day: longDayTimeLabel(lang, p.kickoff), venue: p.venueName };
   const lines = [
     p.bench ? c.placed_bench(game) : c.placed_in(game),
-    p.fee?.kind === "amount" ? c.placed_fee({ amount: p.fee.amount }) : null,
+    p.fee?.kind === "amount" ? (p.fee.notConfirmedYet ? c.placed_fee_not_confirmed : c.placed_fee)({ amount: p.fee.amount }) : null,
     c.placed_pull_out({ link: p.offerLink }),
   ].filter((x): x is string => !!x);
   return [lines.join("\n"), c.footer({ link: p.manageLink })].join("\n\n");

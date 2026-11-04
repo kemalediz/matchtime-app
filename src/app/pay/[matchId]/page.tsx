@@ -7,6 +7,9 @@ import { t } from "@/lib/i18n/t";
 import { payCollectorName } from "@/lib/direct-payment";
 import { PayOptions } from "@/components/pay/pay-options";
 import { paymentMessagesOn } from "@/lib/payment-messages";
+import { feeFact } from "@/lib/fee-fact";
+import { guestPaygPence } from "@/lib/monthly-week-asks";
+import { normaliseSquadMode } from "@/lib/squad-month-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +32,10 @@ export default async function PayPage({
       activity: {
         select: {
           name: true,
+          // The game's usual fee, said before the collector confirms the
+          // match's (slice B5, K3).
+          feePerPlayer: true,
+          feeSplitTotal: true,
           // The club's row, for its facts (club summary, slice A4): the
           // collector, the pay methods, the club's own words on paying the
           // collector directly (2026-10-16), the squad mode.
@@ -171,14 +178,36 @@ export default async function PayPage({
     );
   }
 
+  // The match's one fee fact (fee-fact.ts, slice B5, decision K3). Only a
+  // confirmed fee is ever paid here; before the collector confirms it the
+  // page says the usual fee and that it is not confirmed yet.
   if (match.feePerPlayer == null) {
+    const w = t(org.language);
+    const fee = feeFact({
+      matchFee: null,
+      gameFee: match.activity.feePerPlayer,
+      splitTotal: match.activity.feeSplitTotal,
+      // The PAYG price only where it can apply: a monthly club that collects.
+      paygPence: org.paymentCollectionEnabled && normaliseSquadMode(org.squadMode) === "monthly" ? await guestPaygPence(matchId) : null,
+      collection: org.paymentCollectionEnabled,
+    });
+    if (fee.amount !== null) {
+      return (
+        <Shell>
+          <div className="text-center" data-testid="pay-fee-not-confirmed">
+            <h1 className="text-xl font-bold text-slate-900">{w.pay_fee_not_confirmed_title}</h1>
+            <p className="text-sm text-slate-500 mt-2">
+              {w.pay_fee_not_confirmed_body({ activityName: match.activity.name, amount: gbp(fee.amount), payg: fee.source === "payg", collector })}
+            </p>
+          </div>
+        </Shell>
+      );
+    }
     return (
       <Shell>
         <div className="text-center">
-          <h1 className="text-xl font-bold text-slate-900">No fee set yet</h1>
-          <p className="text-sm text-slate-500 mt-2">
-            The organiser hasn&apos;t set the fee for {match.activity.name} yet. Check back shortly.
-          </p>
+          <h1 className="text-xl font-bold text-slate-900">{w.pay_no_fee_title}</h1>
+          <p className="text-sm text-slate-500 mt-2">{w.pay_no_fee_body({ activityName: match.activity.name })}</p>
         </div>
       </Shell>
     );

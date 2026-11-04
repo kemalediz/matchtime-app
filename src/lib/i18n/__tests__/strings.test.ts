@@ -105,7 +105,7 @@ const SAMPLES: SampleArgs = {
   fallback_player: null,
   answer_count: { stated: true, confirmed: 11, maxPlayers: 14, kickoffLabel: "Tue 21:30", need: 3, bench: ", 1 on the bench (Ben)" },
   answer_fixture: { kickoffLabel: "Tue 21:30", venue: "Goals North Cheam" },
-  answer_club: { admins: "Hamzah ve Raihan", collector: "Hamzah", fee: "5", feeSplit: false, teamsReady: "10:00", forOrganisers: false },
+  answer_club: { admins: "Hamzah ve Raihan", collector: "Hamzah", fee: "5", feeSplit: false, feePayg: false, feeNotConfirmedYet: true, teamsReady: "10:00", forOrganisers: false },
   answer_score_no_match: null,
   answer_score_no_score: { kickoffLabel: "Tue 21:30" },
   answer_score_result: { kickoffLabel: "Tue 21:30", redLabel: "Kırmızı", red: 4, yellow: 2, yellowLabel: "Sarı", winnerLabel: "Kırmızı" },
@@ -484,6 +484,10 @@ const SAMPLES: SampleArgs = {
   collect_free_count: { count: 2 },
   pay_off_title: null,
   pay_off_body: { firstName: "Amira", club: "Sutton Sandbox FC" },
+  pay_no_fee_title: null,
+  pay_no_fee_body: { activityName: "Tuesday 7-a-side" },
+  pay_fee_not_confirmed_title: null,
+  pay_fee_not_confirmed_body: { activityName: "Tuesday 7-a-side", amount: "£6", payg: false, collector: "Colin" },
   collect_payments_off: null,
   dm_fee_released: { released: 13, fee: "£8.50", matchName: "Tuesday 7-a-side", bank: true, card: true, direct: true },
   dm_fee_cancelled: null,
@@ -1921,6 +1925,7 @@ const SAMPLES: SampleArgs = {
   // partner-guest-dm-volunteer.test.ts.
   xask_post: { asker: "FNFCLUB", places: 7, day: "DAYLABEL", venue: "VENUEX", format: "FORMATX", fee: "£9", link: null, prefill: "PREFILLX" },
   xask_dm_prefill: { ref: "REFX" },
+  xask_fee_not_confirmed: { amount: "£6" },
   xask_approval_notice: {
     asker: "FNFCLUB",
     places: 7,

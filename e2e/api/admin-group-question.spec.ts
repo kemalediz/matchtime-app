@@ -77,11 +77,13 @@ test.afterAll(() => {
   resetDb();
 });
 
+// The seeded club collects and the upcoming match has no confirmed fee:
+// the game's usual £8, not confirmed yet (club summary B5, decision K3).
 test("the incident: who are the admins, routed help, is answered from the club", async ({ request }) => {
   expect(await say(request, ADMINS)).toMatchObject({
     handled: true,
     outcome: "hq-answered",
-    replyText: "👥 Admins: Alex Admin\n💷 Money collector: Colin Collector\n💷 Match fee: £8 a player\n⚽ Teams ready: 10:00 on match day",
+    replyText: "👥 Admins: Alex Admin\n💷 Money collector: Colin Collector\n💷 Match fee: usually £8 a player, not confirmed yet\n⚽ Teams ready: 10:00 on match day",
   });
 });
 
@@ -92,7 +94,7 @@ test("in Turkish", async ({ request, db }) => {
   expect(out).toMatchObject({
     handled: true,
     outcome: "hq-answered",
-    replyText: "👥 Yöneticiler: Alex Admin\n💷 Parayı toplayan: Colin Collector\n💷 Maç ücreti: kişi başı £8\n⚽ Takımlar hazır: maç günü 10:00",
+    replyText: "👥 Yöneticiler: Alex Admin\n💷 Parayı toplayan: Colin Collector\n💷 Maç ücreti: genelde kişi başı £8, henüz kesinleşmedi\n⚽ Takımlar hazır: maç günü 10:00",
   });
 });
 
@@ -230,7 +232,7 @@ test.describe("the players' group asks the same club questions", () => {
   });
 
   test("how much do we pay each, and when do the teams come out: answered, in plain words", async ({ request }) => {
-    const expected = "👥 Admins: Alex Admin\n💷 Money collector: Colin Collector\n💷 Match fee: £8 a player\n⚽ Teams: worked out at 10:00 on match day";
+    const expected = "👥 Admins: Alex Admin\n💷 Money collector: Colin Collector\n💷 Match fee: usually £8 a player, not confirmed yet\n⚽ Teams: worked out at 10:00 on match day";
     for (const body of [FEE_Q, TEAMS_Q]) {
       const r = await ask(request, body);
       expect(r.reply).toBe(expected);
@@ -242,6 +244,6 @@ test.describe("the players' group asks the same club questions", () => {
     await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
     const r = await ask(request, FEE_TR);
     await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
-    expect(r.reply).toBe("👥 Yöneticiler: Alex Admin\n💷 Parayı toplayan: Colin Collector\n💷 Maç ücreti: kişi başı £8\n⚽ Takımların kurulduğu saat: maç günü 10:00");
+    expect(r.reply).toBe("👥 Yöneticiler: Alex Admin\n💷 Parayı toplayan: Colin Collector\n💷 Maç ücreti: genelde kişi başı £8, henüz kesinleşmedi\n⚽ Takımların kurulduğu saat: maç günü 10:00");
   });
 });
