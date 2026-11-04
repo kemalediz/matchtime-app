@@ -769,6 +769,46 @@ no model input. The month sweeps keep their own read of the club's row (they are
 calendar: the summary's rank decides where the old `find` took the first row. Neither occurs in
 a club MatchTime runs.
 
+### 3.9 As built in slice A2 (the analyze route and `loadSquadState` read the summary)
+
+Built on `refactor/club-summary-a2` (PR against `refactor/club-summary`). No value changes: the
+analyze path's characterisation (`src/lib/__tests__/analyze-club-summary-characterisation.test.ts`:
+the real route over a fake world, six club shapes, an IN and five tagged requests at one to three
+instants, every model request, write and reply snapshotted) was written first and green on the
+old code, and the five club replays come out identical. $0: no model, no key.
+
+**What moved onto the summary.**
+- The route finds the club with `CLUB_ORG_SELECT` plus `ORG_FEATURES_SELECT` in its one query;
+  the switches are `orgFeaturesFromRow` of that row (`org-features.ts` exports both, so
+  `getOrgFeatures` and the route share one rule). Both of the route's `getOrgFeatures` reads go.
+- One summary per request (`summaryScope`), read where the registration match used to be picked,
+  so after the venue words' writes. Built from that row and switches, so it reads only the games,
+  the match window, the last played candidates, the collector's name and, monthly, the months.
+  `findRegistrationMatch` is deleted: the match is `nextMatchId` (the same selector over every
+  live match). The month check is `!month.rowForOwnActivity` (`monthNotStartedFor`'s fact). The
+  four monthly tests read `squad.mode`.
+- `loadSquadState(orgId, now, { summary })`: the switches and the new `teamLabels` fact come
+  from the summary. Every players' group owner gets that loader; answer and team ops the
+  switches; the payment answer the payment switches and collector (`loadPaymentSnapshot`).
+- `loadClubSnapshot` is deleted: `clubSnapshotOf(summary, matchId)` (pure, `pipeline/club-snapshot.ts`).
+- The pool and partner asks in words read only `loadSquadMatchId` (the squad state's own match
+  read and rule, one query instead of the whole state).
+
+**Left, and why.** `loadSquadState` keeps its own 30-day match read and rule (D7), its roster in
+database order (D13, C2), its active games in database order for the options answer (D12, as
+A1 left `findSmallerSameSportActivity`) and the last match played with scores and teams; without a
+summary (admin group, DMs) it reads the switches and team names itself until A3. The route keeps
+its admin-id read (it excludes guests, the summary's roster does not, and members would cost the
+roster reads), `organisersAnnounce(org)` on the row (needed before the summary is read), the raw
+`org.language` reads (F9 agrees already), and the monthly reader's context, the mention names and
+the squad post's match read (content and model input, not in A2's list).
+
+**Edges named.** The summary's match window has no historical match; the old route's query did
+(a historical match is a backfilled played one, never live). A failed read of the summary's games,
+window or months now fails the request, where `monthNotStartedFor` caught its own failure. An
+admin group `club` question, with no summary handed in until A3, reads a whole summary (5 to 8
+reads) where `loadClubSnapshot` read 1 to 3.
+
 ---
 
 ## 4. Migration, in slices
