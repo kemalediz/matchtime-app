@@ -17,7 +17,7 @@
  *
  * db is mocked. No network, no model.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
   platformJob: {
@@ -42,6 +42,7 @@ import {
   PLATFORM_JOBS_CAPABLE_HEADER,
   bridgePlatformDmsForLegacyPi,
   OTP_DM_TTL_MS,
+  PLATFORM_DM_PURPOSES,
   PlatformDmRefused,
   claimDuePlatformJobs,
   parsePlatformJobKey,
@@ -276,7 +277,7 @@ describe("claimDuePlatformJobs: claim-on-dispatch", () => {
     const out = await claimDuePlatformJobs({ now: NOW });
     expect(out).toEqual([{ id: "a", kind: "dm", phone: "447700900123", text: "hello", purpose: "connect-reply" }]);
     expect(dbMock.platformJob.updateMany).toHaveBeenCalledWith({
-      where: { id: "a", status: "queued" },
+      where: { id: "a", status: "queued", channel: "baileys" },
       data: { status: "claimed", claimedAt: NOW },
     });
   });
@@ -286,6 +287,7 @@ describe("claimDuePlatformJobs: claim-on-dispatch", () => {
     await claimDuePlatformJobs({ now: NOW, kinds: ["dm"] });
     const due = {
       status: "queued",
+      channel: "baileys",
       kind: { in: ["dm"] },
       OR: [{ sendAfter: null }, { sendAfter: { lte: NOW } }],
     };
@@ -337,7 +339,7 @@ describe("claimDuePlatformJobs: claim-on-dispatch", () => {
     const out = await claimDuePlatformJobs({ now: NOW });
     expect(out).toEqual([]);
     expect(dbMock.platformJob.updateMany).toHaveBeenCalledWith({
-      where: { id: "leave", status: "queued" },
+      where: { id: "leave", status: "queued", channel: "baileys" },
       data: expect.objectContaining({ status: "failed", failedAt: NOW, failReason: expect.any(String) }),
     });
   });
@@ -497,5 +499,120 @@ describe("club invite DMs can be cancelled (pool L8 review, M2/M3)", () => {
     (dbMock as unknown as { $queryRaw: ReturnType<typeof vi.fn> }).$queryRaw = vi.fn(async () => [{ status: "failed", purpose: "club-invite-link" }]);
     const r = await cancelQueuedPlatformDms({ purposes: ["club-invite-link", "club-invite-ask", "club-invite-closed"], refIds: ["inv1"], reason: "link replaced" });
     expect(r.cancelled).toBe(1);
+  });
+});
+
+// ── WhatsApp Cloud API plan, PR C2 (MDs/whatsapp-cloud-api-plan-2026-11-04.md
+//    sections 5.1 and 5.5). `queuePlatformDm` asks `channelFor` once and
+//    stores the answer on the job; the Pi's claim only ever takes "baileys".
+//    With the flags off (the default) every job is "baileys", exactly the
+//    value the new column defaults to, so nothing the Pi sees changes. ──
+
+const CLOUD_FLAGS = ["CLOUD_API_ENABLED", "CLOUD_API_PURPOSES"] as const;
+
+describe("queuePlatformDm stores the channel channelFor decided (Cloud API C2)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  function clearFlags() {
+    for (const k of CLOUD_FLAGS) vi.stubEnv(k, undefined as unknown as string);
+  }
+
+  it("flags off: every platform purpose is queued on the club number (baileys)", async () => {
+    clearFlags();
+    dbMock.user.findFirst.mockResolvedValue({ id: "u1" });
+    for (const purpose of PLATFORM_DM_PURPOSES) {
+      await queuePlatformDm({ phone: "447700900123", text: "x", purpose });
+      expect(dbMock.platformJob.create.mock.calls.at(-1)![0].data.channel).toBe("baileys");
+    }
+    expect(dbMock.platformJob.create).toHaveBeenCalledTimes(PLATFORM_DM_PURPOSES.length);
+  });
+
+  it("master off: purposes listed and a known reply channel change nothing", async () => {
+    vi.stubEnv("CLOUD_API_ENABLED", "0");
+    vi.stubEnv("CLOUD_API_PURPOSES", "otp,pool-offer,pool-welcome");
+    dbMock.user.findFirst.mockResolvedValue({ id: "u1" });
+    await queuePlatformDm({ phone: "447700900123", text: "x", purpose: "otp" });
+    await queuePlatformDm({ phone: "447700900123", text: "x", purpose: "pool-reply", replyTo: "cloud" });
+    expect(dbMock.platformJob.create.mock.calls.map((c) => c[0].data.channel)).toEqual(["baileys", "baileys"]);
+  });
+
+  it("flags off: the row is the one written before C2 plus channel baileys, nothing else", async () => {
+    clearFlags();
+    await queuePlatformDm({ phone: "+44 7700 900123", text: "code 1", purpose: "otp", refId: "r1" });
+    expect(dbMock.platformJob.create.mock.calls[0][0]).toEqual({
+      data: { kind: "dm", phone: "447700900123", text: "code 1", purpose: "otp", refId: "r1", status: "queued", sendAfter: null, channel: "baileys" },
+    });
+  });
+
+  it("master on and the purpose listed: the job is stored for the official number", async () => {
+    vi.stubEnv("CLOUD_API_ENABLED", "1");
+    vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+    await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp" });
+    expect(dbMock.platformJob.create.mock.calls[0][0].data.channel).toBe("cloud");
+  });
+
+  it("master on: an answer goes back on the channel he wrote on; a club number purpose never moves", async () => {
+    vi.stubEnv("CLOUD_API_ENABLED", "1");
+    vi.stubEnv("CLOUD_API_PURPOSES", "otp,pool-offer");
+    dbMock.user.findFirst.mockResolvedValue({ id: "u1" });
+    await queuePlatformDm({ phone: "447700900123", text: "x", purpose: "pool-reply", replyTo: "cloud" });
+    await queuePlatformDm({ phone: "447700900123", text: "x", purpose: "pool-reply", replyTo: "baileys" });
+    await queuePlatformDm({ phone: "447700900123", text: "x", purpose: "pool-reply" });
+    await queuePlatformDm({ phone: "447700900123", text: "x", purpose: "billing", replyTo: "cloud" });
+    expect(dbMock.platformJob.create.mock.calls.map((c) => c[0].data.channel)).toEqual(["cloud", "baileys", "baileys", "baileys"]);
+  });
+
+  it("a refused DM is refused before any channel is stored", async () => {
+    vi.stubEnv("CLOUD_API_ENABLED", "1");
+    vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+    await expect(queuePlatformDm({ phone: "12", text: "x", purpose: "otp" })).rejects.toBeInstanceOf(PlatformDmRefused);
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("the Pi only ever claims club number jobs (Cloud API C2)", () => {
+  it("both due reads filter channel baileys by default", async () => {
+    dbMock.platformJob.findMany.mockResolvedValue([]);
+    await claimDuePlatformJobs({ now: NOW });
+    expect(dbMock.platformJob.findMany).toHaveBeenCalledTimes(2);
+    for (const call of dbMock.platformJob.findMany.mock.calls) expect(call[0].where.channel).toBe("baileys");
+  });
+
+  it("the compare-and-set claim names channel baileys too", async () => {
+    dbMock.platformJob.findMany.mockResolvedValue([job({ id: "a" })]);
+    await claimDuePlatformJobs({ now: NOW });
+    const claim = dbMock.platformJob.updateMany.mock.calls.find((c) => c[0].data.status === "claimed");
+    expect(claim![0].where).toEqual({ id: "a", status: "queued", channel: "baileys" });
+  });
+
+  it("a cloud job in the table is never handed to the Pi", async () => {
+    // A stand-in table that honours the channel and purpose filters, as Postgres does.
+    const rows = [job({ id: "pi", channel: "baileys" }), job({ id: "meta", channel: "cloud", purpose: "otp" })] as Array<
+      ReturnType<typeof job> & { channel: string }
+    >;
+    dbMock.platformJob.findMany.mockImplementation(async (args: { where: { channel?: string; purpose?: string | { not: string } } }) =>
+      rows
+        .filter((r) => (args.where.channel ? r.channel === args.where.channel : true))
+        .filter((r) => {
+          const p = args.where.purpose;
+          return typeof p === "string" ? r.purpose === p : p ? r.purpose !== p.not : true;
+        }),
+    );
+    const out = await claimDuePlatformJobs({ now: NOW });
+    expect(out.map((j) => j.id)).toEqual(["pi"]);
+  });
+
+  it("pool offers are admitted for the same channel only", async () => {
+    poolDispatch.admitPoolOfferJobs.mockResolvedValue({ skip: new Set(), claimed: new Set() });
+    dbMock.platformJob.findMany.mockResolvedValue([job({ id: "po", purpose: "pool-offer", text: "offer" })]);
+    await claimDuePlatformJobs({ now: NOW });
+    expect(poolDispatch.admitPoolOfferJobs).toHaveBeenCalledWith(["po"], expect.objectContaining({ channel: "baileys" }));
+  });
+
+  it("the due-posts bridge (a Pi built before slice 3) claims club number jobs only", async () => {
+    dbMock.platformJob.findMany.mockResolvedValue([]);
+    await bridgePlatformDmsForLegacyPi(new Request("http://x/api/whatsapp/due-posts?groupId=g"), NOW);
+    expect(dbMock.platformJob.findMany).toHaveBeenCalled();
+    for (const call of dbMock.platformJob.findMany.mock.calls) expect(call[0].where.channel).toBe("baileys");
   });
 });

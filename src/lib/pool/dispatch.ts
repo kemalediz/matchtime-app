@@ -51,11 +51,22 @@ export interface PoolAdmissionResult {
   claimed: Set<string>;
 }
 
-export async function admitPoolOfferJobs(jobIds: readonly string[], opts: { now: Date; limit: number; env?: Env }): Promise<PoolAdmissionResult> {
+/**
+ * `channel` (WhatsApp Cloud API plan, PR C2): the claimer's channel, named
+ * in the compare-and-set, so an offer is only ever claimed for the number
+ * it was stored for. Absent, any channel, exactly as before. The platform
+ * count (`busyJobs`) is deliberately NOT narrowed: his caps count offers
+ * on both numbers.
+ */
+export async function admitPoolOfferJobs(
+  jobIds: readonly string[],
+  opts: { now: Date; limit: number; env?: Env; channel?: "baileys" | "cloud" },
+): Promise<PoolAdmissionResult> {
   const skip = new Set<string>();
   const claimed = new Set<string>();
   if (jobIds.length === 0) return { skip, claimed };
   const { now, limit, env } = opts;
+  const sameChannel = opts.channel ? { channel: opts.channel } : {};
   // The platform switch could not be read this poll: hold every offer
   // (left queued, sent nothing), never cancel it as if switched off.
   if (poolSwitchUnread(env)) {
@@ -149,7 +160,7 @@ export async function admitPoolOfferJobs(jobIds: readonly string[], opts: { now:
 
         const plan = planPoolAdmission(views, busy, now, limit);
         for (const jobId of plan.admit) {
-          const { count } = await tx.platformJob.updateMany({ where: { id: jobId, status: "queued" }, data: { status: "claimed", claimedAt: now } });
+          const { count } = await tx.platformJob.updateMany({ where: { id: jobId, status: "queued", ...sameChannel }, data: { status: "claimed", claimedAt: now } });
           if (count === 1) claimed.add(jobId);
           else skip.add(jobId);
         }

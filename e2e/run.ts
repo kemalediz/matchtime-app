@@ -382,6 +382,11 @@ async function runSuite(): Promise<number> {
     // and person. After the partner file, which owns the guest CHECK.
     console.log("[e2e] arming the player-pool CHECK constraints…");
     await applySql(path.join(REPO_ROOT, "prisma", "sql", "pool-check.sql"));
+    // And the WhatsApp Cloud API tables' (PR C2, 2026-11-04): a job's and
+    // an inbound message's channel is one of the two numbers, a template
+    // has its name and language together, Meta's spellings and categories.
+    console.log("[e2e] arming the Cloud API CHECK constraints…");
+    await applySql(path.join(REPO_ROOT, "prisma", "sql", "cloud-api-check.sql"));
 
     console.log("[e2e] seeding fixture world…");
     const seedCode = await run("npx", ["tsx", "e2e/helpers/seed-cli.ts"], {

@@ -182,6 +182,7 @@ GO",
       {
         "args": {
           "data": {
+            "channel": "baileys",
             "kind": "dm",
             "phone": "447700900310",
             "purpose": "setup-reply",
@@ -2776,6 +2777,7 @@ GO",
       {
         "args": {
           "data": {
+            "channel": "baileys",
             "kind": "dm",
             "phone": "447700900312",
             "purpose": "setup-reply",
@@ -4546,6 +4548,7 @@ GO",
       {
         "args": {
           "data": {
+            "channel": "baileys",
             "kind": "dm",
             "phone": "447700900312",
             "purpose": "setup-reply",
@@ -6335,6 +6338,7 @@ GO",
       {
         "args": {
           "data": {
+            "channel": "baileys",
             "kind": "dm",
             "phone": "447700900310",
             "purpose": "setup-reply",
@@ -7580,6 +7584,7 @@ GO",
       {
         "args": {
           "data": {
+            "channel": "baileys",
             "kind": "dm",
             "phone": "447700900310",
             "purpose": "setup-reply",
@@ -10119,6 +10124,7 @@ GO",
       {
         "args": {
           "data": {
+            "channel": "baileys",
             "kind": "dm",
             "phone": "447700900310",
             "purpose": "setup-reply",
@@ -12663,6 +12669,7 @@ GO",
       {
         "args": {
           "data": {
+            "channel": "baileys",
             "kind": "dm",
             "phone": "447700900310",
             "purpose": "setup-reply",
@@ -15237,6 +15244,7 @@ GO",
       {
         "args": {
           "data": {
+            "channel": "baileys",
             "kind": "dm",
             "phone": "447700900310",
             "purpose": "setup-reply",
@@ -17632,6 +17640,7 @@ GO",
       {
         "args": {
           "data": {
+            "channel": "baileys",
             "kind": "dm",
             "phone": "447700900310",
             "purpose": "setup-reply",

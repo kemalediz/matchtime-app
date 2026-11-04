@@ -386,6 +386,10 @@ export const UNTOUCHED_COLUMNS: Record<string, string> = {
   "ClubSetupLearning.kept": "club settings, no user ids",
   "ClubGraphicsTemplate.layout": "no user ids",
   "ClubGraphicsTemplate.sharedLayout": "no user ids",
+  // WhatsApp Cloud API, PR C2: keyed by phone, like the rest of PlatformJob.
+  "PlatformJob.templateParams": "a Meta template's variables (text), no user ids",
+  "WaInbound.payload": "the inbound message as parsed (text, sender name, quoted id), keyed by phone, no user ids",
+  "WaInbound.waUserId": "Meta's business scoped user id, not a MatchTime User id",
 };
 
 export const delegateOf = (model: string): string => model.charAt(0).toLowerCase() + model.slice(1);
