@@ -18,6 +18,8 @@
  */
 import { db } from "../db";
 import { withdrawInvitationsForConsent } from "./club-invitation";
+import { cancelQueuedPlatformDms } from "../platform-jobs";
+import { DETAILS_ASK_PURPOSE, detailsAskRefId } from "./details-rules";
 import { normaliseLang, type Lang } from "../i18n/lang";
 import { recordPoolConsent } from "./consent-record";
 import { canEraseUser, manageTransition, type ManageAction, type ManageRefusal } from "./manage-rules";
@@ -185,6 +187,9 @@ export async function applyManageAction(
   });
   // A stop withdraws consent: his club invitations close, silently (L8.14).
   if (done.ok && action === "stop") await withdrawInvitations(userId, now);
+  // Paused or stopped: the later question about his times and formats, if
+  // it still waits for its hour, is taken back (2026-11-04).
+  if (done.ok && (action === "stop" || action === "pause")) await takeBackDetailsAsk(p.id, action, now);
   return done;
 }
 
@@ -193,6 +198,14 @@ async function withdrawInvitations(userId: string, now: Date): Promise<void> {
     await withdrawInvitationsForConsent(userId, now);
   } catch (err) {
     console.error("[pool-manage] withdrawing club invitations failed:", err instanceof Error ? err.message : "failed");
+  }
+}
+
+async function takeBackDetailsAsk(profileId: string, why: string, now: Date): Promise<void> {
+  try {
+    await cancelQueuedPlatformDms({ purposes: [DETAILS_ASK_PURPOSE], refIds: [detailsAskRefId(profileId)], reason: `he chose ${why}`, now });
+  } catch (err) {
+    console.error("[pool-manage] taking back the times question failed:", err instanceof Error ? err.message : "failed");
   }
 }
 
@@ -217,6 +230,7 @@ export async function deletePoolProfile(userId: string, now: Date = new Date()):
   // kept one must not keep them open (L8.14).
   const has = await db.poolProfile.findUnique({ where: { userId }, select: { id: true } });
   if (has) await withdrawInvitations(userId, now);
+  if (has) await takeBackDetailsAsk(has.id, "delete", now);
   return db.$transaction(async (tx) => {
     const { count } = await tx.poolProfile.deleteMany({ where: { userId } });
     if (count === 0) return { ok: false as const, reason: "no-profile" as const };

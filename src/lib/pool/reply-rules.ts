@@ -29,10 +29,14 @@
  *                    the DM is his own message, which is the proof the tap
  *                    link's page asks for, review of #400 M2); unproved,
  *                    the tap-the-link line, whose page proves him.
+ *                    "details" (2026-11-04, his times and formats) is
+ *                    `detailsAction`'s: saved only from his own number.
  */
 
-export type PoolReplyIntent = "accept" | "decline" | "stop" | "question" | "neither";
-export const POOL_REPLY_INTENTS: readonly PoolReplyIntent[] = ["accept", "decline", "stop", "question", "neither"];
+/** "details" (2026-11-04): he tells MatchTime his times or formats
+ *  (`details-rules.ts`), answering its question or at any time. */
+export type PoolReplyIntent = "accept" | "decline" | "stop" | "question" | "details" | "neither";
+export const POOL_REPLY_INTENTS: readonly PoolReplyIntent[] = ["accept", "decline", "stop", "question", "details", "neither"];
 
 /** Below this the reading changes nothing (the pairing reply's floor). */
 export const POOL_REPLY_MIN_CONFIDENCE = 0.8;
@@ -105,7 +109,34 @@ export type ReplyAction =
   | { kind: "facts"; offerId: string }
   | { kind: "reask"; offerId: string }
   | { kind: "which"; offerIds: string[] }
-  | { kind: "profile-off"; offerId: string };
+  | { kind: "profile-off"; offerId: string }
+  /** Save his times and formats (`details-rules.ts` `applyDetails`). */
+  | { kind: "details" }
+  /** Ask once what times and formats he meant. */
+  | { kind: "details-reask" };
+
+/**
+ * His times and formats (2026-11-04). A sure "details" from his own number
+ * is saved whenever the DM was read at all: it was in scope, or it was read
+ * against his offers (his words are plainly about the pool then). Unsure:
+ * someone in no club is asked once more; a club member's DM carries on to
+ * his club's handlers. Null: not a details reading, the offer rules decide.
+ */
+function detailsAction(a: {
+  scope: ReplyScope;
+  reading: ReplyReading;
+  inAClub: boolean;
+  proved: boolean;
+  details?: { inScope: boolean; canSave: boolean };
+}): ReplyAction | null {
+  if (a.reading.intent !== "details") return null;
+  const read = !!a.details?.inScope || a.scope.kind !== "none";
+  const fallback: ReplyAction =
+    a.scope.kind === "none" ? { kind: "carry-on" } : { kind: "fallback", offerId: a.scope.kind === "one" ? a.scope.offer.id : a.scope.offers[0].id };
+  if (!read || !a.details?.canSave) return { kind: "carry-on" };
+  if (a.reading.confidence >= POOL_REPLY_MIN_CONFIDENCE) return a.proved ? { kind: "details" } : fallback;
+  return a.inAClub ? { kind: "carry-on" } : { kind: "details-reask" };
+}
 
 export function replyAction(a: {
   scope: ReplyScope;
@@ -116,7 +147,12 @@ export function replyAction(a: {
   proved: boolean;
   /** His pool profile is active (not paused, not stopped). */
   profileActive: boolean;
+  /** His times and formats: may this DM be about them (`detailsInScope`),
+   *  and may his profile be changed (active or paused). */
+  details?: { inScope: boolean; canSave: boolean };
 }): ReplyAction {
+  const details = detailsAction(a);
+  if (details) return details;
   const { scope, reading } = a;
   if (scope.kind === "none") return { kind: "carry-on" };
   const target = scope.kind === "one" ? scope.offer : scope.offers[0];

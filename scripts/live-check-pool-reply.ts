@@ -25,6 +25,8 @@ import { londonDateTimeToUtc } from "../src/lib/london-time.ts";
 import { poolOfferText, poolPlacedText, type PoolOfferFacts } from "../src/lib/pool/offer-copy.ts";
 import { readPoolReply, type PoolReplyContext } from "../src/lib/pool/reply-reader.ts";
 import { POOL_REPLY_MIN_CONFIDENCE, type OfferReplyState, type PoolReplyIntent } from "../src/lib/pool/reply-rules.ts";
+import { applyDetails, detailsSummary, type DetailsFields } from "../src/lib/pool/details-rules.ts";
+import { poolDetailsQuestion, poolWelcomeText } from "../src/lib/pool/copy.ts";
 
 loadEnv();
 const MAX_USD = 1;
@@ -153,6 +155,61 @@ const CASES: Case[] = [
   { text: "is it still on?", state: "ended", quoted: true, want: "question", alt: ["neither"], why: "ended: asking" },
 ];
 
+// ── His times and formats (2026-11-04): answering the welcome's question ──
+// The short form's profile: Tuesday and Saturday, any time, any format.
+const SHORT_PROFILE: DetailsFields = {
+  availability: [
+    { day: 2, from: "00:00", to: "24:00" },
+    { day: 6, from: "00:00", to: "24:00" },
+  ],
+  sports: [{ sport: "football", otherName: "", formats: [], level: null, levelText: null }],
+};
+const profileOf = (f: DetailsFields) => ({ ...detailsSummary(f), level: null });
+const welcomeAsk = (lang: "en" | "tr") =>
+  poolWelcomeText(lang, { displayName: "Sam S", earlyList: false, manageLink: LINKS.manageLink, details: poolDetailsQuestion(lang, [2, 6]) });
+
+interface DetailsCase {
+  text: string;
+  lang?: "en" | "tr";
+  /** "details" and what is saved, or "neither" (nothing saved). */
+  want: "details" | "neither";
+  /** The saved availability and football formats, after `applyDetails`. */
+  saved?: { availability: DetailsFields["availability"]; formats: number[] };
+  why: string;
+}
+const tueSat = (tue: [string, string], sat: [string, string] = ["00:00", "24:00"]) => [
+  { day: 2, from: tue[0], to: tue[1] },
+  { day: 6, from: sat[0], to: sat[1] },
+];
+const DETAILS_CASES: DetailsCase[] = [
+  { text: "weekday evenings after 7", want: "details", saved: { availability: tueSat(["19:00", "24:00"]), formats: [] }, why: "weekday evenings: Tuesday only, Saturday kept" },
+  {
+    text: "Tue and Thu from 8",
+    want: "details",
+    saved: { availability: [{ day: 2, from: "20:00", to: "24:00" }, { day: 4, from: "20:00", to: "24:00" }, { day: 6, from: "00:00", to: "24:00" }], formats: [] },
+    why: "a named new day",
+  },
+  { text: "any", want: "details", saved: { availability: tueSat(["00:00", "24:00"]), formats: [] }, why: "any: the defaults stand" },
+  { text: "5 or 7 a side", want: "details", saved: { availability: tueSat(["00:00", "24:00"]), formats: [5, 7] }, why: "formats only" },
+  { text: "only 11s", want: "details", saved: { availability: tueSat(["00:00", "24:00"]), formats: [11] }, why: "one format, slang" },
+  { text: "cool, cheers, see you on the pitch", want: "neither", why: "ignores the question" },
+  {
+    text: "hafta içi akşam 8'den sonra, 7 kişilik",
+    lang: "tr",
+    want: "details",
+    saved: { availability: tueSat(["20:00", "24:00"]), formats: [7] },
+    why: "TR weekday evenings and a format",
+  },
+  { text: "Saturday mornings 9 to 12, tuesdays after work. 5s", want: "details", saved: { availability: [{ day: 2, from: "18:00", to: "24:00" }, { day: 6, from: "09:00", to: "12:00" }], formats: [5] }, why: "two days, after work" },
+];
+
+/** "after work" is fair from 17:00 to 19:00; a start within an hour of the expected one passes. */
+function closeEnough(got: DetailsFields["availability"], want: DetailsFields["availability"]): boolean {
+  if (got.length !== want.length) return false;
+  const mins = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+  return got.every((g, i) => g.day === want[i].day && Math.abs(mins(g.from) - mins(want[i].from)) <= 60 && g.to === want[i].to);
+}
+
 const HARMFUL: ReadonlySet<PoolReplyIntent> = new Set(["accept", "decline", "stop"]);
 
 async function main() {
@@ -168,6 +225,10 @@ async function main() {
       ownClub: c.club ?? null,
       quotedIndex: c.quoted ? 0 : null,
       offers: [{ state, sentAt: new Date(NOW.getTime() - 40 * 60_000), text: state === "taken" ? `${offerText(lang)}\n\n(then, after his yes)\n${placedText(lang)}` : offerText(lang) }],
+      // A profile that has answered already: the offer is the conversation.
+      profile: profileOf({ ...SHORT_PROFILE, availability: [{ day: 5, from: "19:00", to: "23:00" }], sports: [{ ...SHORT_PROFILE.sports[0], formats: [5, 7] }] }),
+      detailsAsk: null,
+      quotedAsk: false,
     };
     const r = await readPoolReply(c.text, ctx, { model });
     const sure = r.intent !== "neither" && r.confidence >= POOL_REPLY_MIN_CONFIDENCE;
@@ -180,6 +241,34 @@ async function main() {
       `${ok ? "PASS" : bad ? "FAIL (harmful)" : "FAIL"}  ${JSON.stringify(c.text)}  ${r.intent} ${r.confidence.toFixed(2)}  ` +
         `(${c.why}; want ${c.want}${c.alt ? ` or ${c.alt.join("/")}` : ""}${c.club ? `; club ${c.club}` : ""}${state !== "open" ? `; ${state}` : ""})  ${r.reasoning}`,
     );
+  }
+  console.log(`\n== His times and formats: ${DETAILS_CASES.length} answers to the welcome's question, each once ==\n`);
+  for (const c of DETAILS_CASES) {
+    const lang = c.lang ?? "en";
+    const ctx: PoolReplyContext = {
+      now: NOW,
+      ownClub: null,
+      quotedIndex: null,
+      offers: [],
+      profile: profileOf(SHORT_PROFILE),
+      detailsAsk: { sentAt: new Date(NOW.getTime() - 20 * 60_000), text: welcomeAsk(lang) },
+      quotedAsk: false,
+    };
+    const r = await readPoolReply(c.text, ctx, { model });
+    const sure = r.intent !== "neither" && r.confidence >= POOL_REPLY_MIN_CONFIDENCE;
+    const acted = sure ? r.intent : "neither";
+    let ok = acted === c.want;
+    let savedLine = "";
+    if (ok && c.want === "details" && c.saved) {
+      const next = applyDetails(SHORT_PROFILE, r.details) ?? SHORT_PROFILE;
+      const formats = next.sports[0].formats;
+      savedLine = ` saved ${JSON.stringify(next.availability.map((a) => `${a.day} ${a.from}-${a.to}`))} formats ${JSON.stringify(formats)}`;
+      ok = closeEnough(next.availability, c.saved.availability) && formats.join() === c.saved.formats.join();
+    }
+    const bad = !ok && sure && HARMFUL.has(r.intent);
+    ok ? pass++ : fail++;
+    if (bad) harmful++;
+    console.log(`${ok ? "PASS" : bad ? "FAIL (harmful)" : "FAIL"}  ${JSON.stringify(c.text)}  ${r.intent} ${r.confidence.toFixed(2)}${savedLine}  (${c.why})  ${r.reasoning}`);
   }
   console.log(`\n${pass} passed, ${fail} failed (${harmful} harmful). Model calls: ${calls}. Cost: $${usd.toFixed(4)} (dev key).`);
   process.exit(fail > 0 ? 1 : 0);

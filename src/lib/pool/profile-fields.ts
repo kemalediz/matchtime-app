@@ -11,6 +11,7 @@
  * say it next to the field.
  */
 import { normaliseLang, type Lang } from "../i18n/lang";
+import { expandShortSignup } from "./short-form";
 import { LIVE_SPORTS, isLiveSport, normaliseSportChoice, sportChoiceKey, type LiveSports, type PoolSportChoice, type SportChoiceError } from "./sports";
 import {
   POOL_SIGNUP,
@@ -156,9 +157,11 @@ export function validatePoolSignup(raw: unknown, opts: PoolFieldsOptions = {}): 
  * invite /play/j) are English only (Kemal, 2026-11-02): no language field,
  * no switch, and a new profile is English whatever the browser sent. An
  * existing member's saved language is never touched (the manage page).
+ * The short /play form (2026-11-04) sends name, area and days only; its
+ * defaults are filled in first (`short-form.ts`), the same in the browser.
  */
 export function validatePublicPoolSignup(raw: unknown, opts: PoolFieldsOptions = {}): PoolFieldsResult {
-  const r = validatePoolSignup(raw, opts);
+  const r = validatePoolSignup(expandShortSignup(raw), opts);
   return r.ok ? { ok: true, value: { ...r.value, language: "en" } } : r;
 }
 

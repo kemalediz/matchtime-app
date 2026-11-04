@@ -267,6 +267,17 @@ export default function PlayerGuidePage() {
         message and you decide each time. It&apos;s optional: your own
         club&apos;s games work the same whether you join or not.
       </p>
+      <p>
+        Signing up asks only your name, your postcode area and the days you
+        can play. MatchTime then asks you on WhatsApp which times suit you on
+        those days and which formats you play. Just reply in your own words,
+        for example <code>weekday evenings after 7pm, 5-a-side or 7-a-side</code>, and
+        it tells you what it saved. Until you say, any time on your days and
+        any format count as fine. Want to change them later? Message
+        MatchTime the same way at any time (<code>I can do Thursdays from 8
+        now</code>, <code>only 11-a-side please</code>), or edit them on your
+        pool page, which opens from the link in any pool message.
+      </p>
 
       {/* ───────────────────────────────────────────────── */}
       <h2 id="emoji-reference">9. Reactions quick reference</h2>

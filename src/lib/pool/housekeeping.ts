@@ -10,17 +10,24 @@
  */
 import { db } from "../db";
 import { attemptPurgeBefore } from "./confirm-rules";
+import { sweepPoolDetailsAsks } from "./details";
 import { pendingSignupPurgeBefore } from "./rules";
 import { purgeSafetyRecords } from "./safety";
 
 export async function poolHousekeeping(
   now: Date = new Date(),
-): Promise<{ pendingDeleted: number; attemptsDeleted: number; blocksDeleted: number; reportsDeleted: number }> {
+): Promise<{ pendingDeleted: number; attemptsDeleted: number; blocksDeleted: number; reportsDeleted: number; detailsAsked: number }> {
   const pending = await db.poolProfile.deleteMany({ where: { status: "pending-verify", createdAt: { lt: pendingSignupPurgeBefore(now) } } });
   const attempts = await db.poolAttempt.deleteMany({ where: { createdAt: { lt: attemptPurgeBefore(now) } } });
   const safety = await purgeSafetyRecords(now);
+  // 2026-11-04: the ONE later question about his times and formats, to
+  // whoever never answered the welcome's (`details.ts`). Never fails the rest.
+  const detailsAsked = await sweepPoolDetailsAsks(now).catch((err: unknown) => {
+    console.error("[pool-housekeeping] times question sweep failed:", err instanceof Error ? err.message : "failed");
+    return 0;
+  });
   if (pending.count || attempts.count || safety.blocks || safety.reports) {
     console.log(`[pool-housekeeping] pending=${pending.count} attempts=${attempts.count} blocks=${safety.blocks} reports=${safety.reports}`);
   }
-  return { pendingDeleted: pending.count, attemptsDeleted: attempts.count, blocksDeleted: safety.blocks, reportsDeleted: safety.reports };
+  return { pendingDeleted: pending.count, attemptsDeleted: attempts.count, blocksDeleted: safety.blocks, reportsDeleted: safety.reports, detailsAsked };
 }

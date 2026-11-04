@@ -1158,7 +1158,7 @@ export const tr: Strings = {
           : `✅ Kulübünde açık. Kulübünün WhatsApp grubunda benden iste (örneğin *@Match Time havuzdan 2 oyuncu iste*) ya da *${p.autoLabel}* ayarını aç. Kapatmak için *${p.poolLabel}* ayarını kapat:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
-    const body = `Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.`;
+    const body = `Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.\nHavuzdaysan, oynayabileceğin saatleri ve oynadığın formatları bana özelden kendi cümlelerinle yaz (örneğin *salı akşam 7'den sonra, 5 ya da 7 kişilik*), ya da havuz sayfandan değiştir.`;
     const status = on
       ? `✅ Bu kulüp eksik kalınca havuza da sorar.`
       : !p.platformOpen
@@ -4536,9 +4536,9 @@ export const tr: Strings = {
   // ── Local player pool: confirming a /play sign-up (slice L2, 2026-10-24) ──
   pool_confirm_prefill: (p) => `Merhaba MatchTime, oynamak için kaydet. Kod ${p.code}`,
   pool_dm_welcome: (p) =>
-    `✅ ${p.name ? `Teşekkürler ${p.name}, ` : ""}MatchTime oyuncu havuzuna katıldın. Yakınındaki bir kulübün, oynayabileceğin bir saatte oyuncuya ihtiyacı olduğunda maçı sana buradan yazacağım, karar senin. Haftada en fazla ${p.perWeek} kez.\n\nGüvende kal: halka açık sahalarda oyna, bir sorun olursa bize buradan yaz.\n\nİstediğin zaman duraklatabilir, bilgilerini değiştirebilir ya da silebilirsin: ${p.manageLink}\nGizlilik: ${p.privacyLink}`,
+    `✅ ${p.name ? `Teşekkürler ${p.name}, ` : ""}MatchTime oyuncu havuzuna katıldın. Yakınındaki bir kulübün, oynayabileceğin bir saatte oyuncuya ihtiyacı olduğunda maçı sana buradan yazacağım, karar senin. Haftada en fazla ${p.perWeek} kez.${p.details ? `\n\n${p.details}` : ""}\n\nGüvende kal: halka açık sahalarda oyna, bir sorun olursa bize buradan yaz.\n\nİstediğin zaman duraklatabilir, bilgilerini değiştirebilir ya da silebilirsin: ${p.manageLink}\nGizlilik: ${p.privacyLink}`,
   pool_dm_welcome_early: (p) =>
-    `✅ ${p.name ? `Teşekkürler ${p.name}, ` : ""}MatchTime oyuncu havuzunun erken kayıt listesine katıldın. Havuz henüz senin bölgende açık değil, açılana kadar sana maç için yazmayacağım. Açıldığında haftada en fazla ${p.perWeek} kez.\n\nGüvende kal: halka açık sahalarda oyna, bir sorun olursa bize buradan yaz.\n\nBilgilerini istediğin zaman değiştirebilir ya da silebilirsin: ${p.manageLink}\nGizlilik: ${p.privacyLink}`,
+    `✅ ${p.name ? `Teşekkürler ${p.name}, ` : ""}MatchTime oyuncu havuzunun erken kayıt listesine katıldın. Havuz henüz senin bölgende açık değil, açılana kadar sana maç için yazmayacağım. Açıldığında haftada en fazla ${p.perWeek} kez.${p.details ? `\n\n${p.details}` : ""}\n\nGüvende kal: halka açık sahalarda oyna, bir sorun olursa bize buradan yaz.\n\nBilgilerini istediğin zaman değiştirebilir ya da silebilirsin: ${p.manageLink}\nGizlilik: ${p.privacyLink}`,
   pool_dm_already: (p) =>
     `Zaten MatchTime oyuncu havuzundasın. Bilgilerini değiştirmek, duraklatmak ya da durdurmak için: ${p.manageLink}`,
   pool_dm_already_stopped: (p) =>

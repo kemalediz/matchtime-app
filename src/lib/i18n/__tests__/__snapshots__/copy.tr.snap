@@ -2314,12 +2314,14 @@ Rozetler bu kulüpteki tüm biten maçlardan hesaplanır.
 ### R153 buildHelpReply / pool closed / group
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*
 Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.
+Havuzdaysan, oynayabileceğin saatleri ve oynadığın formatları bana özelden kendi cümlelerinle yaz (örneğin *salı akşam 7'den sonra, 5 ya da 7 kişilik*), ya da havuz sayfandan değiştir.
 
 ⏳ Havuz henüz açılmadı: şimdi kaydolursan erken kayıt listesine girersin.
 
 ### R153 buildHelpReply / pool off / group
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*
 Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.
+Havuzdaysan, oynayabileceğin saatleri ve oynadığın formatları bana özelden kendi cümlelerinle yaz (örneğin *salı akşam 7'den sonra, 5 ya da 7 kişilik*), ya da havuz sayfandan değiştir.
 
 Bu kulüp havuzdan oyuncu istemiyor. Bir yönetici bunu ayarlar sayfasında *Oyuncu havuzu* ile kulüp için açabilir:
 https://matchtime.ai/admin/settings#player-pool
@@ -2327,6 +2329,7 @@ https://matchtime.ai/admin/settings#player-pool
 ### R153 buildHelpReply / pool on / group
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*
 Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.
+Havuzdaysan, oynayabileceğin saatleri ve oynadığın formatları bana özelden kendi cümlelerinle yaz (örneğin *salı akşam 7'den sonra, 5 ya da 7 kişilik*), ya da havuz sayfandan değiştir.
 
 ✅ Bu kulüp eksik kalınca havuza da sorar.
 
@@ -2405,18 +2408,21 @@ Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları n
 ### R153 buildHelpReply / pool closed / player
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*
 Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.
+Havuzdaysan, oynayabileceğin saatleri ve oynadığın formatları bana özelden kendi cümlelerinle yaz (örneğin *salı akşam 7'den sonra, 5 ya da 7 kişilik*), ya da havuz sayfandan değiştir.
 
 ⏳ Havuz henüz açılmadı: şimdi kaydolursan erken kayıt listesine girersin.
 
 ### R153 buildHelpReply / pool off / player
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*
 Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.
+Havuzdaysan, oynayabileceğin saatleri ve oynadığın formatları bana özelden kendi cümlelerinle yaz (örneğin *salı akşam 7'den sonra, 5 ya da 7 kişilik*), ya da havuz sayfandan değiştir.
 
 Bu kulüp havuzdan oyuncu istemiyor.
 
 ### R153 buildHelpReply / pool on / player
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*
 Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.
+Havuzdaysan, oynayabileceğin saatleri ve oynadığın formatları bana özelden kendi cümlelerinle yaz (örneğin *salı akşam 7'den sonra, 5 ya da 7 kişilik*), ya da havuz sayfandan değiştir.
 
 ✅ Bu kulüp eksik kalınca havuza da sorar.
 
