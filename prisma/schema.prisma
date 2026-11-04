@@ -3588,19 +3588,23 @@ model PoolCampaign {
   createdAt DateTime @default(now())
 }
 
-/// Visits to /play, per bucket and London day (2026-11-03,
-/// src/lib/pool/visits.ts). `code` is a campaign code, or "_direct" (/play
-/// with no live code) or "_referral" (a friend's ?ref= link): the same
-/// buckets as the sign-ups, so the owner page compares like for like. No
-/// foreign key (the two reserved buckets are not campaigns). Nothing about
-/// the person: no address, no user agent, only the count. Link preview
-/// fetchers are never counted.
+/// The /play sign-up funnel, per bucket, London day and step (visits
+/// 2026-11-03, every step 2026-11-04, src/lib/pool/visits.ts). `step` is
+/// "opened", "started" (the page's beacon), "sent" (the waiting sign-up
+/// made) or "confirmed" (his WhatsApp message made it active); rows from
+/// before the steps are "opened". `code` is a campaign code, or "_direct"
+/// (/play with no live code) or "_referral" (a friend's ?ref= link): the
+/// same buckets as the sign-ups, so the owner page compares like for like.
+/// No foreign key (the two reserved buckets are not campaigns). Nothing
+/// about the person: no id, no address, no user agent, only the count. Link
+/// preview fetchers are never counted.
 model PoolCampaignVisit {
   code  String
   day   DateTime @db.Date
+  step  String   @default("opened")
   count Int      @default(0)
 
-  @@id([code, day])
+  @@id([code, day, step])
 }
 
 /// A member vouched for a friend for ONE match (friend link, 2026-10-31,

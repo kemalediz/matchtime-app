@@ -206,6 +206,10 @@ ALTER TABLE "PoolCampaignVisit" ADD CONSTRAINT "PoolCampaignVisit_code_check"
 ALTER TABLE "PoolCampaignVisit" DROP CONSTRAINT IF EXISTS "PoolCampaignVisit_count_check";
 ALTER TABLE "PoolCampaignVisit" ADD CONSTRAINT "PoolCampaignVisit_count_check"
   CHECK ("count" >= 0);
+-- Its step (2026-11-04): src/lib/pool/visit-rules.ts POOL_FUNNEL_STEPS
+ALTER TABLE "PoolCampaignVisit" DROP CONSTRAINT IF EXISTS "PoolCampaignVisit_step_check";
+ALTER TABLE "PoolCampaignVisit" ADD CONSTRAINT "PoolCampaignVisit_step_check"
+  CHECK ("step" IN ('opened', 'started', 'sent', 'confirmed'));
 
 -- GuestPlace
 ALTER TABLE "GuestPlace" DROP CONSTRAINT IF EXISTS "GuestPlace_source_check";

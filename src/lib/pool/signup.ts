@@ -28,6 +28,7 @@ import type { PoolFields } from "./profile-fields";
 import { availabilityRows, resolveArea, sportRows } from "./profile-store";
 import { POOL_SIGNUP } from "./rules";
 import type { PoolProfileSource, PoolSignupAttemptResult } from "./vocab";
+import { recordPoolSignupSent } from "./visits";
 
 export type PoolSignupResult =
   | { ok: true; id: string; code: string; expiresAt: Date; earlyList: boolean }
@@ -97,6 +98,7 @@ export async function createPoolSignup(args: {
         select: { id: true },
       });
       console.log(`[pool-signup] waiting sign-up created early=${args.earlyList} source=${source.source}`);
+      await recordPoolSignupSent(source, now); // the funnel's "sent" step (visits.ts); never throws
       return { ok: true, id: row.id, code, expiresAt, earlyList: args.earlyList };
     } catch (err) {
       // Another waiting sign-up holds this code: draw again. (His user id

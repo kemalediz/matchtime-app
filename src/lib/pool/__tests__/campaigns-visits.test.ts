@@ -1,8 +1,10 @@
 /**
- * The owner's source codes page numbers (2026-11-03): per code, visits next
- * to the sign-ups it brought, and the same for the ways in without a code
- * (plain /play, a friend's link), so "clicked and gave up" and "never
- * clicked" can be told apart. Counts only.
+ * The owner's source codes page numbers (visits 2026-11-03, the funnel
+ * 2026-11-04): per code, and for the ways in without a code (plain /play, a
+ * friend's link), the four steps of the sign-up counted in the chosen
+ * period (opened, started, sent, confirmed), so the step people stop at
+ * shows. Next to them, all time, the sign-ups the code brought (from the
+ * profiles, as before). Counts only.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,6 +22,7 @@ import { listPoolCampaigns, poolWaysInWithoutCode } from "../campaigns";
 import { POOL_VISIT_DIRECT, POOL_VISIT_REFERRAL } from "../visit-rules";
 
 const CREATED = new Date("2026-11-03T10:00:00Z");
+const FROM = "2026-10-29";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -40,30 +43,37 @@ beforeEach(() => {
         ],
   );
   dbMock.db.poolCampaignVisit.groupBy.mockResolvedValue([
-    { code: "fb-sutton", _sum: { count: 40 } },
-    { code: POOL_VISIT_DIRECT, _sum: { count: 764 } },
-    { code: POOL_VISIT_REFERRAL, _sum: { count: 9 } },
+    { code: "fb-sutton", step: "opened", _sum: { count: 40 } },
+    { code: "fb-sutton", step: "started", _sum: { count: 12 } },
+    { code: "fb-sutton", step: "sent", _sum: { count: 3 } },
+    { code: "fb-sutton", step: "confirmed", _sum: { count: 1 } },
+    { code: POOL_VISIT_DIRECT, step: "opened", _sum: { count: 24 } },
+    { code: POOL_VISIT_DIRECT, step: "started", _sum: { count: 6 } },
+    { code: POOL_VISIT_REFERRAL, step: "opened", _sum: { count: 9 } },
   ]);
 });
 
+const since = { where: { day: { gte: new Date(`${FROM}T00:00:00Z`) } } };
+
 describe("listPoolCampaigns", () => {
-  it("each code: visits, sign-ups started (waiting and confirmed together), confirmed, still waiting", async () => {
-    const rows = await listPoolCampaigns();
-    expect(rows.map(({ code, visits, started, confirmed, waiting }) => ({ code, visits, started, confirmed, waiting }))).toEqual([
-      { code: "fb-sutton", visits: 40, started: 3, confirmed: 1, waiting: 2 },
-      { code: "nd-cheam", visits: 0, started: 0, confirmed: 0, waiting: 0 },
+  it("each code: the four steps in the period, and its sign-ups all time", async () => {
+    const rows = await listPoolCampaigns(FROM);
+    expect(rows.map(({ code, funnel, allTime }) => ({ code, funnel, allTime }))).toEqual([
+      { code: "fb-sutton", funnel: { opened: 40, started: 12, sent: 3, confirmed: 1 }, allTime: { signups: 3, confirmed: 1, waiting: 2 } },
+      { code: "nd-cheam", funnel: { opened: 0, started: 0, sent: 0, confirmed: 0 }, allTime: { signups: 0, confirmed: 0, waiting: 0 } },
     ]);
     expect(rows[0].url).toBe("https://matchtime.ai/play?src=fb-sutton");
-    expect(dbMock.db.poolCampaignVisit.groupBy).toHaveBeenCalledWith({ by: ["code"], _sum: { count: true } });
+    expect(dbMock.db.poolCampaignVisit.groupBy).toHaveBeenCalledWith({ by: ["code", "step"], ...since, _sum: { count: true } });
   });
 });
 
 describe("poolWaysInWithoutCode", () => {
-  it("plain /play (direct visits, web sign-ups) and a friend's link (referral visits, referral sign-ups)", async () => {
-    expect(await poolWaysInWithoutCode()).toEqual({
-      direct: { visits: 764, started: 5, confirmed: 4, waiting: 1 },
-      referral: { visits: 9, started: 2, confirmed: 2, waiting: 0 },
+  it("plain /play (direct steps, web sign-ups) and a friend's link (referral steps, referral sign-ups)", async () => {
+    expect(await poolWaysInWithoutCode(FROM)).toEqual({
+      direct: { funnel: { opened: 24, started: 6, sent: 0, confirmed: 0 }, allTime: { signups: 5, confirmed: 4, waiting: 1 } },
+      referral: { funnel: { opened: 9, started: 0, sent: 0, confirmed: 0 }, allTime: { signups: 2, confirmed: 2, waiting: 0 } },
     });
     expect(dbMock.db.poolProfile.groupBy).toHaveBeenCalledWith({ by: ["source", "status"], where: { source: { in: ["web", "referral"] } }, _count: { _all: true } });
+    expect(dbMock.db.poolCampaignVisit.groupBy).toHaveBeenCalledWith({ by: ["code", "step"], ...since, _sum: { count: true } });
   });
 });

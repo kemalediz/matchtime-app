@@ -1,22 +1,23 @@
 /**
- * Recording a visit to /play (2026-11-03), the thin I/O half: a fetcher
- * writes nothing, a person adds one to his bucket's day with ONE atomic
- * upsert, and a failure is logged and swallowed (a visit must never break
- * or slow the page). Nothing about the person is stored: no address, no
- * user agent, only the bucket, the day and the count.
+ * Recording the /play sign-up funnel (visits 2026-11-03, every step
+ * 2026-11-04), the thin I/O half: a fetcher writes nothing, each step adds
+ * one to its bucket's day with ONE atomic upsert, and a failure is logged
+ * and swallowed (a count must never break or slow the page, the sign-up or
+ * the confirm). Nothing about the person is stored: no address, no user
+ * agent, no id, only the bucket, the day, the step and the count.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
   db: {
     poolCampaign: { findFirst: vi.fn() },
+    poolProfile: { findUnique: vi.fn() },
     $executeRaw: vi.fn(),
-    poolCampaignVisit: { findMany: vi.fn() },
   },
 }));
 vi.mock("../../db", () => dbMock);
 
-import { recordPoolVisit } from "../visits";
+import { recordPoolSignupConfirmed, recordPoolSignupSent, recordPoolVisit } from "../visits";
 import { POOL_VISIT_DIRECT, POOL_VISIT_REFERRAL } from "../visit-rules";
 
 const PERSON = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
@@ -27,28 +28,35 @@ function upsertValues(): unknown[] {
   expect(dbMock.db.$executeRaw).toHaveBeenCalledTimes(1);
   const [strings, ...values] = dbMock.db.$executeRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
   const sql = strings.join("?");
-  expect(sql).toMatch(/INSERT INTO "PoolCampaignVisit"/);
-  expect(sql).toMatch(/ON CONFLICT \("code", "day"\) DO UPDATE SET "count" = "PoolCampaignVisit"\."count" \+ 1/);
+  expect(sql).toMatch(/INSERT INTO "PoolCampaignVisit" \("code", "day", "step", "count"\)/);
+  expect(sql).toMatch(/ON CONFLICT \("code", "day", "step"\) DO UPDATE SET "count" = "PoolCampaignVisit"\."count" \+ 1/);
   return values;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   dbMock.db.poolCampaign.findFirst.mockResolvedValue({ code: "fb-sutton" });
+  dbMock.db.poolProfile.findUnique.mockResolvedValue({ userId: "u-friend" });
   dbMock.db.$executeRaw.mockResolvedValue(1);
 });
 
-describe("recordPoolVisit", () => {
-  it("a person on a live campaign's link: one more for that code today", async () => {
+describe("recordPoolVisit: the page's steps, opened and started", () => {
+  it("a person on a live campaign's link: one more opened for that code today", async () => {
     expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW })).toBe("fb-sutton");
     expect(dbMock.db.poolCampaign.findFirst).toHaveBeenCalledWith({ where: { code: "fb-sutton", active: true }, select: { code: true } });
-    expect(upsertValues()).toEqual(["fb-sutton", "2026-11-03"]);
+    expect(upsertValues()).toEqual(["fb-sutton", "2026-11-03", "opened"]);
   });
 
-  it("plain /play: direct, and no campaign lookup", async () => {
+  it("started counts under the same bucket, on its own step", async () => {
+    expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW, step: "started" })).toBe("fb-sutton");
+    expect(upsertValues()).toEqual(["fb-sutton", "2026-11-03", "started"]);
+  });
+
+  it("plain /play: direct, and no lookup at all", async () => {
     expect(await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: PERSON, now: NOW })).toBe(POOL_VISIT_DIRECT);
     expect(dbMock.db.poolCampaign.findFirst).not.toHaveBeenCalled();
-    expect(upsertValues()).toEqual([POOL_VISIT_DIRECT, "2026-11-03"]);
+    expect(dbMock.db.poolProfile.findUnique).not.toHaveBeenCalled();
+    expect(upsertValues()).toEqual([POOL_VISIT_DIRECT, "2026-11-03", "opened"]);
   });
 
   it("a switched-off or unknown code: direct", async () => {
@@ -56,19 +64,25 @@ describe("recordPoolVisit", () => {
     expect(await recordPoolVisit({ source: { campaignCode: "old", referralCode: null }, userAgent: PERSON, now: NOW })).toBe(POOL_VISIT_DIRECT);
   });
 
-  it("a friend's link: referral", async () => {
+  it("a friend's link: referral, when the share code is a confirmed player's (as the sign-up checks)", async () => {
     expect(await recordPoolVisit({ source: { campaignCode: null, referralCode: "AB12cd" }, userAgent: PERSON, now: NOW })).toBe(POOL_VISIT_REFERRAL);
+    expect(dbMock.db.poolProfile.findUnique).toHaveBeenCalledWith({ where: { shareCode: "AB12cd" }, select: { userId: true } });
+  });
+
+  it("a share code nobody holds falls through to the live campaign, as the sign-up does", async () => {
+    dbMock.db.poolProfile.findUnique.mockResolvedValue(null);
+    expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: "zzzzzz" }, userAgent: PERSON, now: NOW })).toBe("fb-sutton");
   });
 
   it("a link preview fetcher writes nothing at all", async () => {
     for (const ua of ["facebookexternalhit/1.1", "WhatsApp/2.23.20.0 A", "Twitterbot/1.0", null]) {
-      expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: ua, now: NOW })).toBeNull();
+      expect(await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: ua, now: NOW, step: "started" })).toBeNull();
     }
     expect(dbMock.db.poolCampaign.findFirst).not.toHaveBeenCalled();
     expect(dbMock.db.$executeRaw).not.toHaveBeenCalled();
   });
 
-  it("stores nothing about the person: only the bucket and the day are bound", async () => {
+  it("stores nothing about the person: only the bucket, the day and the step are bound", async () => {
     await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW });
     expect(JSON.stringify(upsertValues())).not.toContain("iPhone");
   });
@@ -80,7 +94,52 @@ describe("recordPoolVisit", () => {
     dbMock.db.poolCampaign.findFirst.mockRejectedValue(new Error("pool down"));
     await expect(recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW })).resolves.toBeNull();
     expect(warn).toHaveBeenCalledTimes(2);
-    expect(String(warn.mock.calls[0][0])).toContain("[pool-visit]");
+    expect(String(warn.mock.calls[0][0])).toContain("[pool-funnel]");
+    warn.mockRestore();
+  });
+});
+
+describe("recordPoolSignupSent: the form sent, a waiting sign-up made", () => {
+  it("under the sign-up's own attribution, on its London day", async () => {
+    expect(await recordPoolSignupSent({ source: "campaign", sourceCode: "fb-sutton" }, NOW)).toBe("fb-sutton");
+    expect(upsertValues()).toEqual(["fb-sutton", "2026-11-03", "sent"]);
+  });
+  it("the web is direct, a friend's share link is referral", async () => {
+    expect(await recordPoolSignupSent({ source: "web", sourceCode: null }, NOW)).toBe(POOL_VISIT_DIRECT);
+    expect(await recordPoolSignupSent({ source: "referral", sourceCode: "AB12cd" }, NOW)).toBe(POOL_VISIT_REFERRAL);
+  });
+  it("a friend link for one game, or a member's own profile, is not a /play sign-up: nothing written", async () => {
+    expect(await recordPoolSignupSent({ source: "friend", sourceCode: null }, NOW)).toBeNull();
+    expect(await recordPoolSignupSent({ source: "profile", sourceCode: null }, NOW)).toBeNull();
+    expect(dbMock.db.$executeRaw).not.toHaveBeenCalled();
+  });
+  it("a database error is logged and swallowed: the sign-up goes on", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    dbMock.db.$executeRaw.mockRejectedValue(new Error("pool down"));
+    await expect(recordPoolSignupSent({ source: "web", sourceCode: null }, NOW)).resolves.toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+});
+
+describe("recordPoolSignupConfirmed: the WhatsApp message sent, the profile active", () => {
+  it("reads the profile's attribution and counts it once on the London day", async () => {
+    dbMock.db.poolProfile.findUnique.mockResolvedValue({ source: "campaign", sourceCode: "fb-sutton" });
+    expect(await recordPoolSignupConfirmed("p1", NOW)).toBe("fb-sutton");
+    expect(dbMock.db.poolProfile.findUnique).toHaveBeenCalledWith({ where: { id: "p1" }, select: { source: true, sourceCode: true } });
+    expect(upsertValues()).toEqual(["fb-sutton", "2026-11-03", "confirmed"]);
+  });
+  it("a friend link's sign-up, or a profile that is gone, writes nothing", async () => {
+    dbMock.db.poolProfile.findUnique.mockResolvedValueOnce({ source: "friend", sourceCode: null }).mockResolvedValueOnce(null);
+    expect(await recordPoolSignupConfirmed("p1", NOW)).toBeNull();
+    expect(await recordPoolSignupConfirmed("p2", NOW)).toBeNull();
+    expect(dbMock.db.$executeRaw).not.toHaveBeenCalled();
+  });
+  it("a database error is logged and swallowed: the welcome still goes", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    dbMock.db.poolProfile.findUnique.mockRejectedValue(new Error("pool down"));
+    await expect(recordPoolSignupConfirmed("p1", NOW)).resolves.toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
   });
 });

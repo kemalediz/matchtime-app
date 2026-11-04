@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { POOL_SPORTS, POOL_SPORT_KEYS, OTHER_SPORT, SPORT_LEVELS } from "../sports";
 import { POOL_CONFIRM_CODE_ALPHABET, POOL_CONFIRM_CODE_LENGTH, POOL_TRAVEL_MILES, POSTCODE_DISTRICT_RE } from "../rules";
 import * as V from "../vocab";
+import { POOL_FUNNEL_STEPS } from "../visit-rules";
 
 const ROOT = join(__dirname, "..", "..", "..", "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -314,7 +315,42 @@ describe("the campaign visits migration (2026-11-03)", () => {
     expect(sql).not.toMatch(/^\s*SET\s+(?!LOCAL)/im);
     expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
   });
-  it("the schema has the model", () => {
-    expect(read("prisma/schema.prisma")).toMatch(/model PoolCampaignVisit \{[^}]*@@id\(\[code, day\]\)/);
+  it("the schema has the model (keyed per step too since the funnel steps migration below)", () => {
+    expect(read("prisma/schema.prisma")).toMatch(/model PoolCampaignVisit \{[^}]*@@id\(\[code, day, step\]\)/);
+  });
+});
+
+describe("the funnel steps migration (2026-11-04)", () => {
+  const STEPS = "prisma/migrations/20261104180000_pool_funnel_steps/migration.sql";
+  const sql = code(read(STEPS));
+  const STEP_CHECK = inList("step", POOL_FUNNEL_STEPS);
+
+  it("adds the step column, every existing row an opened visit", () => {
+    expect(sql).toContain(`ALTER TABLE "PoolCampaignVisit" ADD COLUMN IF NOT EXISTS "step" TEXT NOT NULL DEFAULT 'opened';`);
+  });
+  it("the step CHECK carries exactly the four steps, in the migration and the CHECK file alike", () => {
+    expect(STEP_CHECK).toBe(`CHECK ("step" IN ('opened', 'started', 'sent', 'confirmed'))`);
+    for (const f of [STEPS, CHECKS]) expect(code(read(f)), f).toContain(STEP_CHECK);
+  });
+  it("one row per code, day and step", () => {
+    expect(sql).toContain(`ALTER TABLE "PoolCampaignVisit" ADD CONSTRAINT "PoolCampaignVisit_pkey" PRIMARY KEY ("code", "day", "step");`);
+  });
+  it("keeps nothing about a person: no column but the step is added", () => {
+    expect([...sql.matchAll(/ADD COLUMN IF NOT EXISTS "([^"]+)"/g)].map((m) => m[1])).toEqual(["step"]);
+  });
+  it("is additive, idempotent and one transaction with no session-level SET and no data written", () => {
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+    const dropped = [...sql.matchAll(/DROP CONSTRAINT IF EXISTS "([^"]+)"/g)].map((m) => m[1]);
+    const added = new Set([...sql.matchAll(/ADD CONSTRAINT "([^"]+)"/g)].map((m) => m[1]));
+    for (const name of dropped) expect(added.has(name), name).toBe(true);
+    expect(sql).not.toMatch(/ADD COLUMN (?!IF NOT EXISTS)/);
+    expect(sql).toMatch(/^\s*BEGIN;/m);
+    expect(sql).toMatch(/^\s*SET LOCAL lock_timeout = '5s';/m);
+    expect(sql).toMatch(/^\s*COMMIT;\s*$/m);
+    expect(sql).not.toMatch(/^\s*SET\s+(?!LOCAL)/im);
+    expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
+  });
+  it("the schema has the step, defaulting to opened", () => {
+    expect(read("prisma/schema.prisma")).toMatch(/model PoolCampaignVisit \{[^}]*step\s+String\s+@default\("opened"\)/);
   });
 });

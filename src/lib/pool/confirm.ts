@@ -67,6 +67,7 @@ import { settlePoolReferral } from "./growth";
 import { buildPoolManageLink } from "./links";
 import { POOL_CONSENT_VERSION } from "./rules";
 import type { PoolConfirmAttemptResult } from "./vocab";
+import { recordPoolSignupConfirmed } from "./visits";
 
 export interface PoolConfirmInput {
   text: string;
@@ -202,6 +203,7 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
     const text = poolClaimWaitText(normaliseLang(confirmed.language));
     return out("claim-recorded", await queueOnce(phone!, text, "pool-code-reply", `pool-claim:${confirmed.id}`));
   }
+  await recordPoolSignupConfirmed(confirmed.id, now); // the funnel's "confirmed" step (visits.ts); never throws
   if (row!.friendLinkId) {
     // His welcome is the booking's DM, which says he joined the pool too.
     // A failed booking is retried by his next code message (retryFriendBooking).
