@@ -24,6 +24,17 @@
  * `loadPlayerNames` (two to five reads of its own) and `withAliases` (one).
  * The scheduler does not need names for most jobs, so it is off by default.
  *
+ * Two ways to read less (slice A1, the due-posts poll), each for rows the
+ * caller has already read IN THIS REQUEST:
+ *   - `org`: the club's row, read with `CLUB_ORG_SELECT` (the poll finds
+ *     the club by its WhatsApp group with it), so read 1 is not repeated;
+ *   - `keep`: the switches, the collector's name, the games and the
+ *     last-played candidates of an earlier summary of the same poll, which
+ *     the writes since cannot have changed (the month sweeps write months,
+ *     attendance and matches still to be played, never the club's row, its
+ *     switches, its collector, its games or a match already played). Only
+ *     the matches, the months and the held keys are read again.
+ *
  * No cache here: `scope.ts` memoises a summary for one request or one poll.
  */
 import { db } from "../db";
@@ -35,31 +46,23 @@ import { withAliases } from "../member-aliases";
 import { normaliseLang } from "../i18n/lang";
 import { londonMonthStart, monthStartToDate, normaliseSquadMode } from "../squad-month-rules";
 import { nextMonthStart } from "../month-signup-rules";
-import { buildClubSummary, type MemberRows } from "./derive";
+import { closedLatelyWhere, schedulerMatchWhere } from "../scheduler-windows";
+import { buildClubSummary, type ClubRows, type MemberRows, type OrgRow } from "./derive";
 import type { ClubSummary } from "./types";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /**
- * The scheduler's windows. Mirrors of bot-scheduler.ts's
- * `POST_MATCH_LOOKBACK_DAYS` (`MOM_ANNOUNCE_MAX_AGE_DAYS + 1`) and
- * `CANCELLED_HOLD_LOOKBACK_MS`, kept here so this module does not import
- * the scheduler; `__tests__/load-windows.test.ts` fails if they drift. A1
- * makes the scheduler read these instead.
+ * The Organisation columns the summary reads: its read 1. Exported so a
+ * caller that must find the club itself (the due-posts poll, by its
+ * WhatsApp group) reads them in that one query and hands the row in.
  */
-export const POST_MATCH_LOOKBACK_DAYS = 10;
-export const CANCELLED_HOLD_LOOKBACK_MS = DAY_MS;
-/** monthly-week.ts `CLOSED_MONTH_GATE_DAYS`: how long a closed month still
- *  answers for its played games (`loadSchedulerMonths`). */
-export const CLOSED_MONTH_GATE_DAYS = 14;
-
-const ORG_SELECT = {
+export const CLUB_ORG_SELECT = {
   id: true,
   name: true,
   language: true,
   whatsappGroupId: true,
   whatsappBotEnabled: true,
   dormantAt: true,
+  approvedAt: true,
   ...SETUP_STAGE_SELECT,
   billingStatus: true,
   liveAt: true,
@@ -95,18 +98,37 @@ const ORG_SELECT = {
   monthCreditRule: true,
 } as const;
 
-const LIVE_STATUSES = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
+export interface LoadClubOptions {
+  /** With the roster (`members`); off by default. */
+  members?: boolean;
+  /** The club's row, already read in this request with `CLUB_ORG_SELECT`. */
+  org?: OrgRow | null;
+  /** An earlier summary's rows of this club in this request that the
+   *  writes since cannot have changed (see the header). */
+  keep?: Pick<ClubRows, "features" | "collectorName" | "activities" | "lastPlayed">;
+}
 
-export async function loadClubSummary(orgId: string, now: Date, opts: { members?: boolean } = {}): Promise<ClubSummary | null> {
+export async function loadClubSummary(orgId: string, now: Date, opts: LoadClubOptions = {}): Promise<ClubSummary | null> {
+  const rows = await loadClubRows(orgId, now, opts);
+  return rows ? buildClubSummary(rows, now) : null;
+}
+
+/** The rows `buildClubSummary` is built from, as read now. */
+export async function loadClubRows(orgId: string, now: Date, opts: LoadClubOptions = {}): Promise<ClubRows | null> {
+  const given = opts.org && opts.org.id === orgId ? opts.org : null;
   const [org, features] = await Promise.all([
-    db.organisation.findUnique({ where: { id: orgId }, select: ORG_SELECT }),
-    getOrgFeatures(orgId),
+    given ? Promise.resolve(given) : db.organisation.findUnique({ where: { id: orgId }, select: CLUB_ORG_SELECT }),
+    opts.keep ? Promise.resolve(opts.keep.features) : getOrgFeatures(orgId),
   ]);
   if (!org) return null;
 
-  const [collector, activities, matches, lastPlayed] = await Promise.all([
-    org.paymentHolderId ? db.user.findUnique({ where: { id: org.paymentHolderId }, select: { name: true } }) : Promise.resolve(null),
-    db.activity.findMany({
+  const [collectorName, activities, matches, lastPlayed] = await Promise.all([
+    opts.keep
+      ? Promise.resolve(opts.keep.collectorName)
+      : org.paymentHolderId
+        ? db.user.findUnique({ where: { id: org.paymentHolderId }, select: { name: true } }).then((u) => u?.name ?? null)
+        : Promise.resolve(null),
+    opts.keep ? Promise.resolve(opts.keep.activities) : db.activity.findMany({
       where: { orgId },
       select: {
         id: true,
@@ -125,17 +147,9 @@ export async function loadClubSummary(orgId: string, now: Date, opts: { members?
       },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     }),
-    // getMatchesForScheduler's where (bot-scheduler.ts).
+    // The scheduler's own `where` (scheduler-windows.ts, getMatchesForScheduler's).
     db.match.findMany({
-      where: {
-        activity: { orgId },
-        isHistorical: false,
-        OR: [
-          { status: { in: [...LIVE_STATUSES] } },
-          { status: "COMPLETED", date: { gte: new Date(now.getTime() - POST_MATCH_LOOKBACK_DAYS * DAY_MS) } },
-          { status: "CANCELLED", date: { gte: new Date(now.getTime() - CANCELLED_HOLD_LOOKBACK_MS) } },
-        ],
-      },
+      where: schedulerMatchWhere(orgId, now),
       select: {
         id: true,
         activityId: true,
@@ -153,7 +167,7 @@ export async function loadClubSummary(orgId: string, now: Date, opts: { members?
       orderBy: { date: "asc" },
     }),
     // loadSquadState's "last match actually played" read (pipeline/load-state.ts).
-    db.match.findMany({
+    opts.keep ? Promise.resolve(opts.keep.lastPlayed) : db.match.findMany({
       where: { activity: { orgId }, status: { in: ["TEAMS_GENERATED", "TEAMS_PUBLISHED", "COMPLETED"] }, date: { lte: now } },
       select: { id: true, date: true, activity: { select: { matchDurationMins: true } } },
       orderBy: { date: "desc" },
@@ -170,21 +184,18 @@ export async function loadClubSummary(orgId: string, now: Date, opts: { members?
     opts.members ? loadMembers(orgId, org.language) : Promise.resolve(null),
   ]);
 
-  return buildClubSummary(
-    {
-      org,
-      features,
-      collectorName: collector?.name ?? null,
-      collectionLive: isPaymentCollectionLive(org),
-      activities,
-      matches,
-      lastPlayed,
-      months,
-      heldKeys: held.map((h) => h.key),
-      members,
-    },
-    now,
-  );
+  return {
+    org,
+    features,
+    collectorName,
+    collectionLive: isPaymentCollectionLive(org),
+    activities,
+    matches,
+    lastPlayed,
+    months,
+    heldKeys: held.map((h) => h.key),
+    members,
+  };
 }
 
 /**
@@ -203,7 +214,7 @@ async function loadMonths(orgId: string, now: Date, matchDates: Date[]) {
       orgId,
       OR: [
         { status: "running" },
-        { status: "closed", closedAt: { gte: new Date(now.getTime() - CLOSED_MONTH_GATE_DAYS * DAY_MS) } },
+        closedLatelyWhere(now),
         { monthStart: { in: starts.map(monthStartToDate) } },
       ],
     },

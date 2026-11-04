@@ -94,6 +94,9 @@ export interface LifecycleFacts {
   operational: boolean;
   /** `liveAt`, ISO, or null. */
   liveAt: string | null;
+  /** `approvedAt`, ISO, or null: when the club was approved through
+   *  self-join. Null for a club that predates it (Sutton FC). */
+  approvedAt: string | null;
 }
 
 export interface GroupFacts {

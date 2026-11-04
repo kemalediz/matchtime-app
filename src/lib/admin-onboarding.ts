@@ -22,8 +22,6 @@ import { adminNoticeInstructions, loadAdminChannel, sendAdminNotice, type Loaded
 import type { PiCaps } from "./admin-channel-rules";
 import type { DueInstruction } from "./bot-scheduler";
 import { selectRegistrationMatch } from "./registration-match-select";
-import { organisersAnnounce } from "./list-announcer";
-import { effectiveTeamsReadyTime } from "./team-proposal-rules";
 import { seedNudgeAlreadySent, seedPoolUnseeded } from "./seed-nudge-rules";
 import { loadSeedState, SEED_RATINGS_PATH } from "./seed-nudge";
 import {
@@ -142,12 +140,15 @@ interface SchedulerMatch {
  * (its delivery key already counts as that nudge on every later one).
  */
 export async function firstTeamsInstructions(args: {
+  /** The club's facts, from its summary (club summary A1): `readyTime` is
+   *  `effectiveTeamsReadyTime` and `organisers` is `organisersAnnounce`,
+   *  as the summary's `routine` holds them. */
   org: {
     id: string;
     live: boolean;
     adminGroupId: string | null;
-    teamsReadyTime: string | null;
-    listAnnouncer: string | null;
+    readyTime: string;
+    organisers: boolean;
     billingPaused: boolean;
   };
   features: { squadMode: string; attendance: boolean; teamBalancing: boolean; language: string };
@@ -160,8 +161,7 @@ export async function firstTeamsInstructions(args: {
   const none = { instructions: [], withSeed: false };
   const { org, features, now } = args;
   try {
-    const organisers = organisersAnnounce(org);
-    const readyTime = effectiveTeamsReadyTime(org.teamsReadyTime, organisers);
+    const { organisers, readyTime } = org;
     const next =
       args.matches
         .filter((m) => m.status !== "COMPLETED" && m.status !== "CANCELLED" && m.date.getTime() > now.getTime())

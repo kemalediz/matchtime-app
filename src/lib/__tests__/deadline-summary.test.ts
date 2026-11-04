@@ -61,6 +61,11 @@ vi.mock("../org-features", () => ({
 }));
 
 const { sendDueDeadlineSummaries } = await import("../deadline-summary");
+const { clubSummaryOf } = await import("./fixtures/club-summary-of");
+
+/** The club as its summary describes it (club summary A1): the summary
+ *  of the club row and the attendance switch this test sets. */
+const club = () => (h.state.org ? clubSummaryOf(h.state.org as { id: string }, { features: { attendance: h.state.attendanceFeature } }) : null);
 const { buildDeadlineSummaryAdminNotice } = await import("../dm-copy");
 
 /** Fri 9 Oct 2026 20:30 London. Deadline Mon 5 Oct 21:00 London = 20:00 UTC. */
@@ -117,7 +122,7 @@ describe("the deadline summary", () => {
       { matchId: "m-fri", userId: "u4", resolvedAt: null }, // bench: not listed
       { matchId: "m-fri", userId: "u1", resolvedAt: new Date() }, // resolved: not listed
     ];
-    const res = await sendDueDeadlineSummaries("org-fnf", MON_2105);
+    const res = await sendDueDeadlineSummaries(club(), MON_2105);
     expect(res.sent).toBe(1);
     expect(h.state.claimed.has("m-fri:deadline-summary")).toBe(true);
     expect(h.state.notices).toEqual([
@@ -141,14 +146,14 @@ describe("the deadline summary", () => {
   });
 
   it("the first line names the deadline AND the kick-off, each for what it is (2026-10-15, FNF)", async () => {
-    await sendDueDeadlineSummaries("org-fnf", MON_2105);
+    await sendDueDeadlineSummaries(club(), MON_2105);
     expect(h.state.notices[0].text.split("\n")[0]).toBe(
       "Drop-out deadline (Mon 5 Oct at 21:00) passed for *Friday 9-a-side*, kick-off Fri 9 Oct at 20:30. Squad 2/18.",
     );
     h.state.claimed = new Set();
     h.state.notices = [];
     h.state.org = { ...h.state.org!, language: "tr" };
-    await sendDueDeadlineSummaries("org-fnf", MON_2105);
+    await sendDueDeadlineSummaries(club(), MON_2105);
     expect(h.state.notices[0].text.split("\n")[0]).toBe(
       "*Friday 9-a-side* için son çıkış saati (5 Ekim Pazartesi 21:00) geçti, maç 9 Ekim Cuma 20:30. Kadro 2/18.",
     );
@@ -163,7 +168,7 @@ describe("the deadline summary", () => {
     // Thu 15 Oct 2026 20:30 BST = 19:30 UTC; kickoff Fri 16 Oct 20:30 BST.
     const fnf = fridayMatch({ id: "m-fnf", date: new Date("2026-10-16T19:30:00.000Z"), createdAt: new Date("2026-10-15T21:17:00.000Z"), attendances: [] });
     h.state.matches = [fnf];
-    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-15T21:18:00.000Z"))).sent).toBe(0);
+    expect((await sendDueDeadlineSummaries(club(), new Date("2026-10-15T21:18:00.000Z"))).sent).toBe(0);
     expect(h.state.notices).toEqual([]);
     expect(h.state.claimed.size).toBe(0);
   });
@@ -173,33 +178,33 @@ describe("the deadline summary", () => {
     h.state.matches = [
       fridayMatch({ id: "m-fnf", date: new Date("2026-10-16T19:30:00.000Z"), createdAt: new Date("2026-10-10T00:00:00.000Z") }),
     ];
-    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-15T21:18:00.000Z"))).sent).toBe(1);
+    expect((await sendDueDeadlineSummaries(club(), new Date("2026-10-15T21:18:00.000Z"))).sent).toBe(1);
   });
 
   it("only once: a second tick finds the claim taken", async () => {
-    await sendDueDeadlineSummaries("org-fnf", MON_2105);
-    await sendDueDeadlineSummaries("org-fnf", new Date(MON_2105.getTime() + 5 * 60 * 1000));
+    await sendDueDeadlineSummaries(club(), MON_2105);
+    await sendDueDeadlineSummaries(club(), new Date(MON_2105.getTime() + 5 * 60 * 1000));
     expect(h.state.notices).toHaveLength(1);
   });
 
   it("not before the deadline", async () => {
-    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-05T19:55:00.000Z"))).sent).toBe(0);
+    expect((await sendDueDeadlineSummaries(club(), new Date("2026-10-05T19:55:00.000Z"))).sent).toBe(0);
     expect(h.state.claimed.size).toBe(0);
   });
 
   it("a tick after 23:00 waits for 09:00", async () => {
-    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-05T22:05:00.000Z"))).sent).toBe(0); // 23:05 BST
-    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-06T07:05:00.000Z"))).sent).toBe(0); // 08:05 BST
-    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-06T08:05:00.000Z"))).sent).toBe(1); // 09:05 BST
+    expect((await sendDueDeadlineSummaries(club(), new Date("2026-10-05T22:05:00.000Z"))).sent).toBe(0); // 23:05 BST
+    expect((await sendDueDeadlineSummaries(club(), new Date("2026-10-06T07:05:00.000Z"))).sent).toBe(0); // 08:05 BST
+    expect((await sendDueDeadlineSummaries(club(), new Date("2026-10-06T08:05:00.000Z"))).sent).toBe(1); // 09:05 BST
   });
 
   it("a tick at 22:05, held under the old 22:00 rule, sends", async () => {
-    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-05T21:05:00.000Z"))).sent).toBe(1);
+    expect((await sendDueDeadlineSummaries(club(), new Date("2026-10-05T21:05:00.000Z"))).sent).toBe(1);
   });
 
   it("the Turkish club gets the Turkish summary", async () => {
     h.state.org = { ...h.state.org!, language: "tr" };
-    await sendDueDeadlineSummaries("org-fnf", MON_2105);
+    await sendDueDeadlineSummaries(club(), MON_2105);
     expect(h.state.notices[0].text).toContain("için son çıkış saati (5 Ekim Pazartesi 21:00) geçti, maç 9 Ekim Cuma 20:30. Kadro 2/18.");
   });
 
@@ -209,31 +214,31 @@ describe("the deadline summary", () => {
       fridayMatch({ id: "m-next", date: new Date("2026-10-13T19:30:00.000Z"), activity: { orgId: "org-fnf", name: "Tue", venue: "Powerleague", dayOfWeek: 5 } }),
     ];
     // Mon 12 Oct 21:05: m-next's deadline passed, but m-this is still live.
-    await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-12T20:05:00.000Z"));
+    await sendDueDeadlineSummaries(club(), new Date("2026-10-12T20:05:00.000Z"));
     expect(h.state.claimed.has("m-next:deadline-summary")).toBe(false);
   });
 
   it("a club without the setting (Sutton) gets nothing", async () => {
     h.state.org = { ...h.state.org!, dropOutDeadlineDay: null, dropOutDeadlineTime: null };
-    expect((await sendDueDeadlineSummaries("org-fnf", MON_2105)).sent).toBe(0);
+    expect((await sendDueDeadlineSummaries(club(), MON_2105)).sent).toBe(0);
     expect(h.state.notices).toEqual([]);
   });
 
   it("a club that is not operational, or has attendance off, gets nothing", async () => {
     h.state.org = { ...h.state.org!, dormantAt: new Date() };
-    expect((await sendDueDeadlineSummaries("org-fnf", MON_2105)).sent).toBe(0);
+    expect((await sendDueDeadlineSummaries(club(), MON_2105)).sent).toBe(0);
     h.state.org = { ...h.state.org!, dormantAt: null, approvalStatus: "pending" };
-    expect((await sendDueDeadlineSummaries("org-fnf", MON_2105)).sent).toBe(0);
+    expect((await sendDueDeadlineSummaries(club(), MON_2105)).sent).toBe(0);
     h.state.org = { ...h.state.org!, approvalStatus: "approved" };
     h.state.attendanceFeature = false;
-    expect((await sendDueDeadlineSummaries("org-fnf", MON_2105)).sent).toBe(0);
+    expect((await sendDueDeadlineSummaries(club(), MON_2105)).sent).toBe(0);
   });
 
   it("if the notice cannot be queued, the claim is released so the next tick tries again", async () => {
     h.state.noticeFails = true;
-    expect((await sendDueDeadlineSummaries("org-fnf", MON_2105)).sent).toBe(0);
+    expect((await sendDueDeadlineSummaries(club(), MON_2105)).sent).toBe(0);
     expect(h.state.claimsDeleted).toEqual(["m-fri:deadline-summary"]);
     h.state.noticeFails = false;
-    expect((await sendDueDeadlineSummaries("org-fnf", MON_2105)).sent).toBe(1);
+    expect((await sendDueDeadlineSummaries(club(), MON_2105)).sent).toBe(1);
   });
 });

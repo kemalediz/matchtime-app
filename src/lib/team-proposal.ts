@@ -92,8 +92,7 @@ import { resolveTeamLabels } from "./team-labels";
 import { formatLondon } from "./london-time";
 import { selectRegistrationMatch } from "./registration-match-select";
 import { lockTeamSlots, type SlotFillTx } from "./team-slot-fill";
-import { isBillingPaused } from "./club-billing-rules";
-import { organisersAnnounce } from "./list-announcer";
+import type { ClubSummary } from "./club-summary/types";
 import { loadOrganisersAnnounce } from "./list-announcer-store";
 import { t } from "./i18n/t";
 import { dayLabel } from "./i18n/dates";
@@ -110,7 +109,6 @@ import {
   diffSheets,
   isProposalDue,
   isReminderDue,
-  effectiveTeamsReadyTime,
   planTeamChange,
   resolveSheetName,
   resolveSwap,
@@ -188,9 +186,14 @@ interface MatchRow {
 
 async function activeMatches(orgId: string): Promise<MatchRow[]> {
   const activities = await db.activity.findMany({ where: { orgId }, select: { id: true } });
-  if (activities.length === 0) return [];
+  return activeMatchesOf(activities.map((a) => a.id));
+}
+
+/** The live matches of these games (every game of one club), oldest first. */
+async function activeMatchesOf(activityIds: string[]): Promise<MatchRow[]> {
+  if (activityIds.length === 0) return [];
   return (await db.match.findMany({
-    where: { activityId: { in: activities.map((a) => a.id) }, status: { in: ACTIVE } },
+    where: { activityId: { in: activityIds }, status: { in: ACTIVE } },
     orderBy: { date: "asc" },
   })) as unknown as MatchRow[];
 }
@@ -707,22 +710,13 @@ export async function answerTeamsYes(args: {
 
 // ── The due-posts poll ────────────────────────────────────────────────
 
-export interface TeamProposalOrg {
-  id: string;
-  language: string | null;
-  adminGroupId: string | null;
-  squadMode?: string | null;
-  teamsReadyTime?: string | null;
-  listAnnouncer?: string | null;
-  billingStatus?: string | null;
-  whatsappBotEnabled?: boolean | null;
-}
-
-/** Today's (London) game still to kick off, the soonest. */
-async function matchDayMatch(orgId: string, now: Date): Promise<MatchRow | null> {
+/** Today's (London) game still to kick off, the soonest. Among the live
+ *  matches of every game of the club (`activeMatches`, its games taken
+ *  from the summary instead of a read of their own, club summary A1). */
+async function matchDayMatch(club: ClubSummary, now: Date): Promise<MatchRow | null> {
   const today = formatLondon(now, "yyyy-MM-dd");
   return (
-    (await activeMatches(orgId)).find(
+    (await activeMatchesOf(club.games.map((g) => g.activityId))).find(
       (m) => m.date.getTime() > now.getTime() && formatLondon(m.date, "yyyy-MM-dd") === today,
     ) ?? null
   );
@@ -741,19 +735,20 @@ async function queueAdminGroup(orgId: string, text: string, matchId?: string): P
  * proposal, the kickoff-minus-2-hours reminder, a change notice after
  * approval. Returns how many it queued. Never posts in the players' group.
  */
-export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; deps?: TeamProposalDeps }): Promise<number> {
-  const { org, now, deps } = args;
-  if (!org.adminGroupId || org.squadMode === "monthly" || org.whatsappBotEnabled === false || isBillingPaused(org)) return 0;
-  const match = await matchDayMatch(org.id, now);
+export async function teamProposalJobs(args: { club: ClubSummary; now: Date; deps?: TeamProposalDeps }): Promise<number> {
+  const { club, now, deps } = args;
+  if (!club.groups.hq.groupId || club.squad.mode === "monthly" || !club.lifecycle.botOn || club.lifecycle.billingPaused) return 0;
+  const match = await matchDayMatch(club, now);
   if (!match) return 0;
-  const lang = org.language;
-  const announce = deps?.announce ? await deps.announce({ id: org.id }) : organisersAnnounce(org);
+  const lang = club.language;
+  const organisers = club.routine.listAnnouncer === "organisers";
+  const announce = deps?.announce ? await deps.announce({ id: club.orgId }) : organisers;
   const row = (await db.adminTeamProposal.findUnique({ where: { matchId: match.id } })) as ProposalRow | null;
 
   // 1. "Teams ready".
   if (!row) {
     if (match.status === "TEAMS_PUBLISHED") return 0;
-    if (!isProposalDue({ now, kickoff: match.date, readyTime: effectiveTeamsReadyTime(org.teamsReadyTime, organisersAnnounce(org)) })) return 0;
+    if (!isProposalDue({ now, kickoff: match.date, readyTime: club.routine.teamsReady })) return 0;
     const sheet = await loadSheet(match, lang);
     // The balancer's own minimum: two full sides (`generateTeamsForMatch`).
     // Short at the ready time: the admin group is told once per match (the
@@ -765,8 +760,8 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
       } catch {
         return 0;
       }
-      await queueAdminGroup(org.id, shortSquadText(sheet, lang), match.id);
-      console.log(`[team-proposal] org ${org.id}: squad short for teams on match ${match.id} (${sheet.confirmed} of ${neededFor(sheet)})`);
+      await queueAdminGroup(club.orgId, shortSquadText(sheet, lang), match.id);
+      console.log(`[team-proposal] org ${club.orgId}: squad short for teams on match ${match.id} (${sheet.confirmed} of ${neededFor(sheet)})`);
       return 1;
     }
     const key = `team-proposal:auto:${match.id}`;
@@ -781,13 +776,13 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
       if (!res.ok) {
         // Not this time; the next poll tries again.
         await db.sentNotification.deleteMany({ where: { key } });
-        console.log(`[team-proposal] org ${org.id}: teams not built on match ${match.id}`);
+        console.log(`[team-proposal] org ${club.orgId}: teams not built on match ${match.id}`);
         return 0;
       }
       ready = await loadSheet(match, lang);
     }
-    await queueAdminGroup(org.id, await propose(ready, lang, now, announce), match.id);
-    console.log(`[team-proposal] org ${org.id}: proposed teams on match ${match.id} (${ready.slots.length} on the teams)`);
+    await queueAdminGroup(club.orgId, await propose(ready, lang, now, announce), match.id);
+    console.log(`[team-proposal] org ${club.orgId}: proposed teams on match ${match.id} (${ready.slots.length} on the teams)`);
     return 1;
   }
 
@@ -797,9 +792,9 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
     const claimed = await db.adminTeamProposal.updateMany({ where: { id: row.id, remindedAt: null }, data: { remindedAt: now } });
     if (claimed.count === 0) return 0;
     const reminder = buildReminderText(lang, match.date);
-    await queueAdminGroup(org.id, reminder, match.id);
-    await recordMatchTimeQuestion({ orgId: org.id, askRef: teamsAskRef(match.id), text: reminder, now });
-    console.log(`[team-proposal] org ${org.id}: reminder on match ${match.id}`);
+    await queueAdminGroup(club.orgId, reminder, match.id);
+    await recordMatchTimeQuestion({ orgId: club.orgId, askRef: teamsAskRef(match.id), text: reminder, now });
+    console.log(`[team-proposal] org ${club.orgId}: reminder on match ${match.id}`);
     return 1;
   }
 
@@ -822,9 +817,9 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
       : { kind: c.kind, team: label(c.team), name: name(c.userId) },
   );
   const finalTeams = teamsText(sheet, lang, true, announce);
-  await queueAdminGroup(org.id, buildChangeNotice({ lang, items, teamsText: finalTeams }), match.id);
+  await queueAdminGroup(club.orgId, buildChangeNotice({ lang, items, teamsText: finalTeams }), match.id);
   await keepSheet(sheet, finalTeams, now);
-  console.log(`[team-proposal] org ${org.id}: ${changes.length} team change(s) told on match ${match.id}`);
+  console.log(`[team-proposal] org ${club.orgId}: ${changes.length} team change(s) told on match ${match.id}`);
   return 1;
 }
 

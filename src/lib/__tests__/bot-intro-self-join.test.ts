@@ -22,6 +22,8 @@ function defaultFor(method: string) {
   return async () => ({});
 }
 
+// The scheduler reads its club facts from the club summary (A1): the summary of this test's own world.
+vi.mock("@/lib/club-summary/load", () => import("./fixtures/club-summary-from-test-db"));
 vi.mock("@/lib/db", () => ({
   db: new Proxy(
     {},

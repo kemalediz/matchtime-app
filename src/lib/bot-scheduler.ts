@@ -29,7 +29,7 @@ import {
 } from "./admin-channel";
 import type { PiCaps } from "./admin-channel-rules";
 import { readGraphicJob } from "./graphic-job";
-import { getOrgFeatures, type OrgFeatures } from "./org-features";
+import type { OrgFeatures } from "./org-features";
 import { featureForDueKey } from "./due-key-feature";
 import { formatLondon } from "./london-time";
 import {
@@ -112,7 +112,6 @@ import {
   loadPaygPool,
   loadRunningMonths,
   loadSchedulerMonths,
-  monthForMatch,
   weekListKeyPrefix,
   weekListPostText,
   weekMembers,
@@ -126,7 +125,6 @@ import {
   type WeekStatus,
 } from "./monthly-week-rules";
 import { buildPaygPoolDm, buildPaygPoolGroupPost } from "./monthly-week-copy";
-import { londonMonthStart } from "./squad-month-rules";
 import {
   buildAnnounceMatchPost,
   buildAnnounceMonthlyMatchPost,
@@ -164,9 +162,7 @@ import {
 import { buildOrganiserListUpdate, buildOrganiserRelay, buildRollingLeftOutNotice, type OrganiserListReason } from "./organisers-list-copy";
 import { seedNudgeInstructions } from "./seed-nudge";
 import { firstTeamsInstructions } from "./admin-onboarding";
-import { isBillingPaused } from "./club-billing-rules";
-import { isClubSettingUp } from "./club-setup-rules";
-import { minimumToPlay, type GameFormat } from "./min-players";
+import { minimumToPlay } from "./min-players";
 import { isSquadShort } from "./squad-short";
 import { decideBenchSuggestion, planFormatUp, playerRange } from "./flex-format-rules";
 import { flexFormatCopy } from "./i18n/flex-format";
@@ -174,6 +170,11 @@ import { joinAdminNames } from "./seed-nudge-rules";
 import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
 import { minPlayersCopy } from "./i18n/min-players";
 import { isPaymentMessageKey, paymentMessagesOnFor } from "./payment-messages";
+import { MOM_ANNOUNCE_MAX_AGE_DAYS, schedulerMatchWhere } from "./scheduler-windows";
+import { normaliseSquadMode } from "./squad-month-rules";
+import { schedulerMonthShape } from "./scheduler-month-shape";
+import { CLUB_ORG_SELECT, loadClubSummary } from "./club-summary/load";
+import type { ClubSummary } from "./club-summary/types";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -208,35 +209,6 @@ async function findSmallerSameSportActivity(
     acts
       .filter((a) => a.sport.name.split(" ")[0] === family && a.sport.playersPerTeam < currentPpt)
       .sort((a, b) => a.sport.playersPerTeam - b.sport.playersPerTeam)[0] ?? null
-  );
-}
-
-/** The fewest players the club can play this game with, in any of its
- *  formats of the same sport family (`minimumToPlay`, min-players.ts):
- *  each format's own minimum (`Activity.minPlayers`), or two full sides
- *  when none is set. With no minimum set anywhere this is two full sides
- *  of the smallest format, as it always was: if Football 5-a-side exists,
- *  10; if only 7-a-side exists, 14. The Vets (2026-11-03) play 7-a-side
- *  with 12 or 13 and set their own. */
-async function findMinimumToPlay(
-  orgId: string,
-  currentSportId: string,
-  own: GameFormat,
-): Promise<number> {
-  const currentSport = await db.sport.findUnique({
-    where: { id: currentSportId },
-    select: { name: true },
-  });
-  if (!currentSport) return minimumToPlay(own, []);
-  const family = currentSport.name.split(" ")[0];
-  const acts = await db.activity.findMany({
-    where: { orgId },
-    select: { minPlayers: true, sport: { select: { name: true, playersPerTeam: true } } },
-  });
-  const matching = acts.filter((a) => a.sport?.name.split(" ")[0] === family);
-  return minimumToPlay(
-    own,
-    matching.map((a) => ({ minPlayers: a.minPlayers ?? null, playersPerTeam: a.sport.playersPerTeam })),
   );
 }
 
@@ -380,21 +352,9 @@ export const MOM_BACKSTOP_TO_HOUR = 21;
 /** Civil hours for the EARLY trigger, 09:00 up to 20:59. Unchanged. */
 const MOM_EARLY_FROM_HOUR = 9;
 const MOM_EARLY_TO_HOUR = 21;
-/**
- * Hard stop for a MoM announcement, in days after kickoff.
- *
- * Why 9. It has to be comfortably more than `MOM_BACKSTOP_DAYS` or the
- * backstop gets no second chance at all, which is the bug this constant
- * exists to close; 9 leaves four clear days of retry after the first
- * backstop afternoon, against a real outage of 46 hours. It cannot be
- * open ended either: a fortnight-old result is not news, and the club
- * plays weekly so the group would read it as this week's match. The
- * common weekly case is handled more precisely by the next-fixture stop
- * in section 6e (we go quiet as soon as the following fixture has been
- * played, usually day 7); this cap is the outer bound for a club whose
- * next fixture is further off or not scheduled at all.
- */
-export const MOM_ANNOUNCE_MAX_AGE_DAYS = 9;
+// `MOM_ANNOUNCE_MAX_AGE_DAYS`, the hard stop for a MoM announcement (9
+// days after kickoff, and why), lives in scheduler-windows.ts with the
+// lookback below: one definition, read by the club summary's loader too.
 /**
  * Deadline for the match-end money flow (the payment poll, the
  * collector's fee ask, the daily pay chase), in days after kickoff.
@@ -407,12 +367,12 @@ export const MOM_ANNOUNCE_MAX_AGE_DAYS = 9;
  * a product decision, not a side effect of a scheduling fix.
  */
 export const POST_MATCH_END_FLOW_MAX_AGE_DAYS = 6;
-/**
- * How far back `getMatchesForScheduler` loads COMPLETED matches. One day
- * of slack past the longest deadline above, so a match is still in hand
- * for the whole life of its last piece of work.
- */
-export const POST_MATCH_LOOKBACK_DAYS = MOM_ANNOUNCE_MAX_AGE_DAYS + 1;
+// `POST_MATCH_LOOKBACK_DAYS` (= MOM_ANNOUNCE_MAX_AGE_DAYS + 1), how far back
+// `getMatchesForScheduler` loads COMPLETED matches, and the cancelled-day
+// hold's `CANCELLED_HOLD_LOOKBACK_MS` are in scheduler-windows.ts too
+// (club summary A1): the summary loads the same matches with the same
+// `where` (`schedulerMatchWhere`).
+export { MOM_ANNOUNCE_MAX_AGE_DAYS, POST_MATCH_LOOKBACK_DAYS } from "./scheduler-windows";
 
 // ────────────────────────────── Time helpers ──────────────────────────────
 
@@ -539,6 +499,60 @@ function botIntroMessage(f: OrgFeatures): string {
 
 // ─────────────────────────── Main entry point ─────────────────────────────
 
+/**
+ * The club whose players' group this is, as one summary (club summary A1),
+ * for a caller that has not read it already (the due-posts poll has). The
+ * club is found by its group with the bot on, as the scheduler always
+ * found it, in the one query that is also the summary's own read of the
+ * club's row.
+ */
+async function loadSchedulerClub(groupId: string, now: Date): Promise<ClubSummary | null> {
+  const org = await db.organisation.findFirst({
+    where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
+    select: CLUB_ORG_SELECT,
+  });
+  if (!org) return null;
+  try {
+    return await loadClubSummary(org.id, now, { org });
+  } catch (err) {
+    // A monthly club whose month cannot be read gets no posts on this poll
+    // (see `monthsUnreadable`); any other failure is thrown, as before.
+    if (normaliseSquadMode(org.squadMode) === "monthly") throw new MonthlyClubUnreadable(org.id, err);
+    throw err;
+  }
+}
+
+class MonthlyClubUnreadable extends Error {
+  constructor(
+    readonly orgId: string,
+    readonly cause: unknown,
+  ) {
+    super(`the monthly club ${orgId} could not be read`);
+  }
+}
+
+/**
+ * A monthly club whose months cannot be read gets NO posts on this poll
+ * rather than its weekly-shaped ones (a payment poll to the regulars, a
+ * roster beside the list): the next poll retries, and the failure is
+ * recorded on /admin/health. The poll never throws for it.
+ */
+async function monthsUnreadable(orgId: string, groupId: string, err: unknown, now: Date): Promise<DuePostsResult> {
+  console.error(`[scheduler] org ${orgId}: the running months could not be read; no posts on this poll:`, err);
+  await recordOpsEvent({
+    orgId,
+    kind: "monthly-squad",
+    severity: "warning",
+    title: "Monthly squad: the month could not be read",
+    detail: `Scheduled posts were skipped for one poll because the club's running month could not be loaded: ${String(
+      (err as Error)?.message ?? err,
+    ).slice(0, 300)}`,
+    dedupeKey: `months-unreadable:${formatLondon(now, "yyyy-MM-dd")}`,
+    now,
+  });
+  return { instructions: [], waGroupId: groupId, orgId };
+}
+
 export async function computeDuePosts(
   groupId: string,
   /** TEST-ONLY clock override — the e2e suite passes a fixed instant
@@ -558,15 +572,30 @@ export async function computeDuePosts(
   preloadedLiveMonths: import("./month-signup").SignupMonth[] | null = null,
   /** `replyPriority`: DM_REPLY_PRIORITY_ENABLED as the due-posts route
    *  read it (src/lib/dm-reply-priority.ts). Off or omitted: today's
-   *  BotJob query and today's order, exactly. */
-  opts: { replyPriority?: boolean; poolEnv?: Record<string, string | undefined> } = {},
+   *  BotJob query and today's order, exactly.
+   *  `club`: the club's summary as the due-posts poll has just read it
+   *  (club summary A1). Omitted: read here, for the club whose players'
+   *  group this is. */
+  opts: { replyPriority?: boolean; poolEnv?: Record<string, string | undefined>; club?: ClubSummary | null } = {},
 ): Promise<DuePostsResult | null> {
-  const org = await db.organisation.findFirst({
-    where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
-  });
-  if (!org) return null;
-
   const now = nowOverride ?? new Date();
+  // THE CLUB'S FACTS, ONE SUMMARY PER POLL (club summary A1,
+  // MDs/club-summary-design-2026-11-04.md 4.2). Everything this poll knows
+  // about the club (its row, its switches, its games, each match's month)
+  // is read from it, not worked out here; a club whose bot is off has no
+  // posts, as before.
+  let club: ClubSummary | null;
+  try {
+    club = opts.club !== undefined ? opts.club : await loadSchedulerClub(groupId, now);
+  } catch (err) {
+    if (err instanceof MonthlyClubUnreadable) return monthsUnreadable(err.orgId, groupId, err.cause, now);
+    throw err;
+  }
+  if (!club || !club.lifecycle.botOn) return null;
+  // A summary handed in is of the club whose group this is.
+  if (opts.club !== undefined && club.groups.playersGroupId !== groupId) return null;
+  const org = { id: club.orgId };
+  const features = club.features;
   const out: DueInstruction[] = [];
   // `botjob-<id>` keys of queued replies (dm-reply-priority.ts). Filled
   // only when `opts.replyPriority` is on.
@@ -608,15 +637,12 @@ export async function computeDuePosts(
   // that predates self-join (Sutton FC) is exactly as it was.
   {
     const introKey = `org-${org.id}:bot-intro`;
-    if (!org.approvedAt && !sentKeys.has(introKey)) {
-      const hasActiveActivity = await db.activity.count({
-        where: { orgId: org.id, isActive: true },
-      });
-      if (hasActiveActivity > 0) {
+    if (!club.lifecycle.approvedAt && !sentKeys.has(introKey)) {
+      if (club.games.some((g) => g.active)) {
         out.push({
           kind: "group-message",
           key: introKey,
-          text: botIntroMessage(await getOrgFeatures(org.id)),
+          text: botIntroMessage(features),
         });
       }
     }
@@ -710,7 +736,7 @@ export async function computeDuePosts(
   // Teams proposed in the admin group ("Teams ready", team-proposal.ts):
   // queues admin-group BotJobs only, emitted by the loop just below.
   await (await import("./team-proposal"))
-    .teamProposalJobs({ org, now })
+    .teamProposalJobs({ club, now })
     .catch((err) => console.error(`[team-proposal] org ${org.id}:`, err instanceof Error ? err.message : "failed"));
 
   // ── Ad-hoc admin-queued BotJobs (test DMs, one-off messages) ────────
@@ -942,7 +968,6 @@ export async function computeDuePosts(
   // rating reminders, the money flow) can still be due on it. The length
   // of this lookback is not free-standing: see the deadline block near
   // the top of this file for the invariant it has to satisfy.
-  const windowStart = new Date(now.getTime() - POST_MATCH_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   //
   // The query also returns CANCELLED matches whose London day may not be
   // over yet. They are split off here, so `matches` is exactly the list it
@@ -950,18 +975,16 @@ export async function computeDuePosts(
   // cancelled ones have a single reader: the next-upcoming gate of the
   // announcement and the 17:00 post, which holds next week's posts until
   // the cancelled game's day is over (see next-upcoming-match.ts, rule 3).
-  const loaded = await getMatchesForScheduler(org.id, windowStart, now);
+  const loaded = await getMatchesForScheduler(org.id, now);
   const matches = loaded.filter((x) => x.status !== "CANCELLED");
   const cancelledHolds = loaded.filter((x) => x.status === "CANCELLED");
 
-  // Read ONCE, before the per-match loop, and used twice: the 17:00
-  // full-squad post needs `features.bench` while it composes (a post
-  // that promises to tag the bench where the scheduler never posts a
-  // bench tag would be a lie, and the post-compute filter below can
-  // only drop a whole instruction, not a paragraph of one), and the
-  // filter itself needs the same object. Moved up from the filter on
-  // 2026-09-17; it is a pure read either way, so nothing else changes.
-  const features = await getOrgFeatures(org.id);
+  // The switches (`features`) are the summary's, read once for the whole
+  // poll (club summary A1): the 17:00 full-squad post needs
+  // `features.bench` while it composes (a post that promises to tag the
+  // bench where the scheduler never posts a bench tag would be a lie, and
+  // the post-compute filter below can only drop a whole instruction, not a
+  // paragraph of one), and the filter itself needs the same object.
 
   // MONTHLY SQUAD (slice 5, 2026-10-06): a club on "monthly" reads its
   // running months once per poll. A club on "weekly" (Sutton FC, and every
@@ -980,19 +1003,7 @@ export async function computeDuePosts(
       // outlive the close the morning after it.
       runningMonths = preloadedMonths ?? (await loadSchedulerMonths(org.id, now));
     } catch (err) {
-      console.error(`[scheduler] org ${org.id}: the running months could not be read; no posts on this poll:`, err);
-      await recordOpsEvent({
-        orgId: org.id,
-        kind: "monthly-squad",
-        severity: "warning",
-        title: "Monthly squad: the month could not be read",
-        detail: `Scheduled posts were skipped for one poll because the club's running month could not be loaded: ${String(
-          (err as Error)?.message ?? err,
-        ).slice(0, 300)}`,
-        dedupeKey: `months-unreadable:${formatLondon(now, "yyyy-MM-dd")}`,
-        now,
-      });
-      return { instructions: [], waGroupId: groupId, orgId: org.id };
+      return monthsUnreadable(org.id, groupId, err, now);
     }
   }
 
@@ -1003,29 +1014,10 @@ export async function computeDuePosts(
   // (`decideSignupListPost`). Its keys are `org-<id>:msu:list:`, never the
   // weekly list's `<matchId>:month-list:`. A club on "weekly" makes no
   // query here. A failure costs this one post, never the poll.
-  let signupMonths: Array<{ id: string; monthStart: string; fixture: { orgId: string; venue: string; dayOfWeek: number } }> = [];
-  // PR #464 review: a month MatchTime HELD for its organiser (a club's first
-  // monthly month, `tellMonthHeld`) and nobody has started. Its games are
-  // not run the weekly way beside the group's own list. "YYYY-MM-01".
-  let heldMonths: Array<{ monthStart: string; fixture: { orgId: string; venue: string; dayOfWeek: number } }> = [];
+  // Which months a match belongs to (running, in sign-up, held for its
+  // organiser) is the summary's (`MatchFacts.month`, club summary A1),
+  // mapped onto today's three shapes per match below (`schedulerMonthShape`).
   if (features.squadMode === "monthly") {
-    try {
-      const { signupKeyPrefix } = await import("./month-signup");
-      const prefix = `${signupKeyPrefix(org.id)}held:`;
-      const held = (await db.sentNotification.findMany({ where: { key: { startsWith: prefix } }, select: { key: true } })).map((h) => ({
-        monthStart: h.key.slice(prefix.length, prefix.length + 10),
-        activityId: h.key.slice(prefix.length + 11),
-      }));
-      // By FIXTURE (the key's activity, PR #464 review round 2): a club with
-      // two weekly games holds only the one whose month waits.
-      const acts = held.length === 0 ? [] : await db.activity.findMany({ where: { orgId: org.id, id: { in: held.map((h) => h.activityId) } }, select: { id: true, venue: true, dayOfWeek: true } });
-      heldMonths = held.flatMap((h) => {
-        const a = acts.find((x) => x.id === h.activityId);
-        return a ? [{ monthStart: h.monthStart, fixture: { orgId: org.id, venue: a.venue, dayOfWeek: a.dayOfWeek } }] : [];
-      });
-    } catch (err) {
-      console.error(`[scheduler] org ${org.id}: the held months could not be read on this poll:`, err);
-    }
     // The club's live months: the sweep's, else ONE read here for both
     // the sign-up list and the payment posts.
     let liveMonths = preloadedLiveMonths;
@@ -1033,7 +1025,6 @@ export async function computeDuePosts(
       const { signupListPosts, loadLiveMonths } = await import("./month-signup");
       liveMonths ??= await loadLiveMonths(org.id, now);
       const signup = await signupListPosts(org.id, now, liveMonths, features.quietHours);
-      signupMonths = signup.months;
       for (const p of signup.posts) out.push({ kind: "group-message", key: p.key, text: p.text });
     } catch (err) {
       console.error(`[scheduler] org ${org.id}: the sign-up list could not be computed on this poll:`, err);
@@ -1053,38 +1044,34 @@ export async function computeDuePosts(
     }
   }
 
+  const factsOf = new Map(club.matches.map((f) => [f.id, f] as const));
   for (const m of matches) {
-    const found = runningMonths.length > 0 ? monthForMatch(runningMonths, m) : null;
-    // A CLOSED month (slice 6) still answers for its played games, so they
-    // get no payment poll after the close. It is never the month of a game
-    // still to be played: nothing in the weekly flow runs for it any more.
-    const month = found?.closed && (m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED") && m.date.getTime() > now.getTime() ? null : found;
-    // A match of a month still in SIGN-UP (slice 3): no regulars are on it
-    // yet and no week's list is posted, but it is a monthly match all the
-    // same, so it is not announced or chased the weekly way.
-    const signupMonth =
-      !month && signupMonths.length > 0
-        ? (signupMonths.find((x) => x.monthStart === londonMonthStart(m.date) && isSameRecurringFixture(x.fixture, m.activity)) ?? null)
-        : null;
+    const facts = factsOf.get(m.id) ?? null;
+    if (!facts && features.squadMode === "monthly") {
+      console.warn(`[scheduler] org ${org.id}: match ${m.id} is not in the club's summary; treated as a game of no month on this poll`);
+    }
+    const shape = schedulerMonthShape({ facts: facts?.month ?? null, months: club.squad.months, match: m, now });
+    // The month's members as this match sees them, for a game of a
+    // running (or lately closed) month: content, not a club fact, so from
+    // the month's own rows (`runningMonths`).
+    const month = shape.kind === "month" ? (runningMonths.find((r) => r.id === shape.monthId) ?? null) : null;
+    if (shape.kind === "month" && !month) {
+      console.warn(`[scheduler] org ${org.id}: month ${shape.monthId} of match ${m.id} was not read with the running months; no week's list on this poll`);
+    }
     // The pay as you go price stays in the week's list and the pool's
     // offer whatever the payment flags (2026-11-03): it is what an open
     // place costs, a fact of the game a player decides on, not a payment
     // message. Pool and friend-link offers say it the same way.
-    const paygPricePence = org.paygPricePence ?? null;
+    const paygPricePence = club.squad.paygPricePence;
     const monthly: MonthlyMatchContext | null = month
-      ? {
-          monthId: month.id,
-          seeded: m.rollingSeededAt != null && m.rollingSeededAt.getTime() >= month.createdAt.getTime(),
-          members: weekMembers(month, m.id),
-          paygPricePence,
-        }
-      : signupMonth
-        ? { monthId: signupMonth.id, seeded: false, signup: true, members: [], paygPricePence }
-        : heldMonths.some((h) => h.monthStart === londonMonthStart(m.date) && isSameRecurringFixture(h.fixture, m.activity))
+      ? { monthId: month.id, seeded: shape.kind === "month" && shape.seeded, members: weekMembers(month, m.id), paygPricePence }
+      : shape.kind === "signup"
+        ? { monthId: shape.monthId, seeded: false, signup: true, members: [], paygPricePence }
+        : shape.kind === "held"
           ? // Held, not started: treated as in sign-up, so nothing weekly goes out.
             { monthId: "", seeded: false, signup: true, members: [], paygPricePence }
           : null;
-    await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly, cancelledHolds, opts.poolEnv);
+    await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly, cancelledHolds, opts.poolEnv, club);
   }
 
   // ── "Rate your players before the first teams" (2026-10-15) ─────────
@@ -1102,11 +1089,11 @@ export async function computeDuePosts(
   const firstTeams = await firstTeamsInstructions({
     org: {
       id: org.id,
-      live: !isClubSettingUp(org),
-      adminGroupId: org.adminGroupId ?? null,
-      teamsReadyTime: org.teamsReadyTime ?? null,
-      listAnnouncer: org.listAnnouncer ?? null,
-      billingPaused: isBillingPaused(org),
+      live: !club.lifecycle.settingUp,
+      adminGroupId: club.groups.hq.groupId,
+      readyTime: club.routine.teamsReady,
+      organisers: club.routine.listAnnouncer === "organisers",
+      billingPaused: club.lifecycle.billingPaused,
     },
     features,
     matches,
@@ -1119,7 +1106,7 @@ export async function computeDuePosts(
   if (!firstTeams.withSeed) {
     out.push(
       ...(await seedNudgeInstructions({
-        org: { id: org.id, live: !isClubSettingUp(org), liveAt: org.liveAt },
+        org: { id: org.id, live: !club.lifecycle.settingUp, liveAt: club.lifecycle.liveAt ? new Date(club.lifecycle.liveAt) : null },
         features,
         matches,
         sentKeys,
@@ -1251,26 +1238,15 @@ interface AdminNoticeContext {
 }
 
 /**
- * How far back a CANCELLED match is loaded. Its only use is the
- * cancelled-day hold, which ends at London midnight after its kickoff
- * day, always less than 24 hours after kickoff. The pure gate decides the
- * exact moment; this only has to be wide enough.
+ * The scheduler's matches: `schedulerMatchWhere` (scheduler-windows.ts),
+ * every live match, the COMPLETED ones of the last
+ * `POST_MATCH_LOOKBACK_DAYS`, and the CANCELLED ones of the last 24 hours,
+ * which the caller splits off before anything else reads the list (the
+ * cancelled-day hold only). The club summary reads the same `where`.
  */
-const CANCELLED_HOLD_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-
-async function getMatchesForScheduler(orgId: string, windowStart: Date, now: Date) {
+async function getMatchesForScheduler(orgId: string, now: Date) {
   return db.match.findMany({
-    where: {
-      activity: { orgId },
-      isHistorical: false,
-      OR: [
-        { status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] } },
-        { status: "COMPLETED", date: { gte: windowStart } },
-        // For the cancelled-day hold ONLY. The caller splits these rows
-        // off before anything else reads the list.
-        { status: "CANCELLED", date: { gte: new Date(now.getTime() - CANCELLED_HOLD_LOOKBACK_MS) } },
-      ],
-    },
+    where: schedulerMatchWhere(orgId, now),
     include: {
       activity: {
         include: {
@@ -1334,6 +1310,9 @@ async function computeForMatch(
   /** The pool switch as the due-posts request read it (local player pool
    *  L5a): the short-squad notice's pool line. */
   poolEnv?: Record<string, string | undefined>,
+  /** The club's summary (club summary A1): the 18:00 nudge's fewest
+   *  players to play, over every format of the game's sport. */
+  club?: ClubSummary,
 ) {
   /**
    * The composed chase, or null for the static copy: a rolling-squad or
@@ -2850,10 +2829,12 @@ async function computeForMatch(
       hour < 19 &&
       m.status === "UPCOMING"
     ) {
-      const minViable = await findMinimumToPlay(activity.orgId, activity.sportId, {
-        minPlayers: activity.minPlayers ?? null,
-        playersPerTeam: sport.playersPerTeam,
-      });
+      // The fewest players any format of this game's sport plays with
+      // (`GameFacts.fewestAnyFormat`, `minimumToPlay` over the club's games
+      // of the same sport family, active or not).
+      const minViable =
+        club?.games.find((g) => g.activityId === activity.id)?.fewestAnyFormat ??
+        minimumToPlay({ minPlayers: activity.minPlayers ?? null, playersPerTeam: sport.playersPerTeam }, []);
       const channel = confirmed.length < minViable ? await admin.getChannel() : null;
       if (channel) {
         // Same door, same keys (`…:cancel-nudge:<adminId>`), and "Tap to
