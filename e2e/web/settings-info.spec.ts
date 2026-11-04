@@ -206,7 +206,7 @@ test("a Turkish club reads every popup in Turkish", async ({ page, db }) => {
   // The page's own headings are Turkish too, tab by tab (the tabs and the
   // card titles the layout made are checked in settings-tabs.spec.ts).
   const headings: Array<[import("@/lib/settings-anchors").SettingsTab, string[]]> = [
-    ["club", ["Genel", "Bot dili", "WhatsApp botu"]],
+    ["club", ["Genel", "Dil", "MatchTime grubunuzda"]],
     ["matches", ["Haftalık düzen", "Hatırlatmalar", "Takımlar", "Takım adları", "Aylık kadro"]],
     ["players", ["Yoklama", "Yedekler", "Puanlar ve istatistikler", "Maçın adamı", "Davet bağlantısı"]],
     ["payments", ["Ödemeler"]],

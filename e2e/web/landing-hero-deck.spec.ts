@@ -170,7 +170,7 @@ test("the headline's full stops sit against their words: no space in the text, a
     const pull = await line.locator("[data-stop]").evaluate((el) => parseFloat(getComputedStyle(el).marginLeft));
     expect(pull).toBeLessThan(0);
   }
-  await expect(page.locator("#hero h1")).toHaveText("Your players WhatsApp.MatchTime runs the game.");
+  await expect(page.locator("#hero h1")).toHaveText("Your players chat.MatchTime runs the game.");
 });
 
 test("phone: the pool section is compact, the offer and all four steps within about 1.5 screens after its headline", async ({ page }) => {

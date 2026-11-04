@@ -62,7 +62,7 @@ for (const width of [320, 390, 1280]) {
 test("the home page says football, and its sports chips are football's formats", async ({ page }) => {
   await page.goto("/");
   // The hero says football on the first screen: its pill (the headline,
-  // "Your players WhatsApp. MatchTime runs the game.", names no sport).
+  // "Your players chat. MatchTime runs the game.", names no sport).
   expect(HERO.pill).toMatch(/football/i);
   const pill = page.locator("#hero").getByText(HERO.pill, { exact: true });
   await expect(pill).toBeVisible();

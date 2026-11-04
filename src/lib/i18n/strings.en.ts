@@ -1258,7 +1258,7 @@ export const en = {
       `Schedule changes are made on the admin page, not by message. Each takes a few taps.\n\n` +
       `1️⃣ *Weekly game (day, kick-off time, venue):* on *Activities*, tap *Edit* on the game, change it, then *Save changes*. Only future matches change. The group isn't told.\n${p.activities}\n\n` +
       `2️⃣ *Block booking for the season:* on *Block bookings*, tap *New block booking*, pick the start date and an end date or a number of matches, tap *Preview dates*, then *Create block*. The group isn't told.\n${p.blockBookings}\n\n` +
-      `3️⃣ *Cancel one week (or a run of dates):* on *Block bookings*, tap *Bulk cancel / restore*, set *From* and *To* to the date, tap *Find matches*, tick *Announce to the group* if you want me to post it, then confirm. Restoring works the same way.\n${p.bulk}\n\n` +
+      `3️⃣ *Cancel one week (or a run of dates):* on *Block bookings*, tap *Cancel or restore several matches*, set *From* and *To* to the date, tap *Find matches*, tick *Announce to the group* if you want me to post it, then confirm. Restoring works the same way.\n${p.bulk}\n\n` +
       `4️⃣ *Switch one match to another format:* open the match from your match list, tap *Switch format*, pick the format, then *Confirm switch*. ${switchTold}\n${p.matches}\n\n` +
       `One week's kick-off time can't be moved on its own yet: change the weekly game instead, for the weeks ahead.` +
       (p.audience === "group"
@@ -2992,13 +2992,13 @@ export const en = {
   sj_card_setting_up: (p: { group: string | null }): string =>
     `MatchTime is in ${p.group ? `"${p.group}"` : "your WhatsApp group"} and is staying quiet until you go live.`,
   sj_card_setting_up_link: `Check your settings and go live`,
-  /** The WhatsApp bot section's popup while the club is setting up. */
-  info_st_whatsapp_setup_title: "WhatsApp bot",
+  /** The MatchTime in your group section's popup while the club is setting up. */
+  info_st_whatsapp_setup_title: "MatchTime in your group",
   info_st_whatsapp_setup_body:
     "MatchTime is approved and linked to your WhatsApp group. It stays quiet there until an owner or admin of the club presses Go live at the top of this page, or replies GO to MatchTime on WhatsApp.\n\n" +
     "Nothing is wrong: it is waiting for you.",
   /** The same popup once MatchTime has been removed from the group. */
-  info_st_whatsapp_removed_title: "WhatsApp bot",
+  info_st_whatsapp_removed_title: "MatchTime in your group",
   info_st_whatsapp_removed_body:
     "MatchTime is approved, but it was removed from your WhatsApp group before going live, so it cannot start there.\n\n" +
     "Add MatchTime back to the group. Then an owner or admin of the club presses Go live at the top of this page, or replies GO to MatchTime on WhatsApp.",
@@ -4187,7 +4187,7 @@ export const en = {
   info_st_invite_title: "Invite link",
   info_st_invite_body:
     "Send this link to someone so they can join your club on the MatchTime website. People who post in your WhatsApp group are added by themselves, so most players don't need it.",
-  info_st_features_title: "Bot features",
+  info_st_features_title: "Features",
   info_st_features_body:
     "Each switch turns one part of MatchTime on or off for your club, so you run only what you want. Changes can take a few minutes to reach the group.",
   info_st_weekly_title: "Weekly routine",
@@ -4197,7 +4197,7 @@ export const en = {
   info_st_billing_body:
     "What MatchTime costs your club. Each month only the games played are charged, never more than the monthly maximum, the morning after the month ends.\n\n" +
     "The money collector looks after the card on the billing page; with no money collector, the owner is asked. Other admins can see it but not change the card.",
-  info_st_whatsapp_title: "WhatsApp bot",
+  info_st_whatsapp_title: "MatchTime in your group",
   info_st_whatsapp_body:
     "Whether MatchTime is switched on for your WhatsApp group, and which group it is linked to. This is managed by MatchTime and can't be changed here.",
 
@@ -4226,14 +4226,14 @@ export const en = {
   info_bb_page_body:
     "A block booking matches how you book the pitch: a run of weekly games paid up front, for example 10 Tuesdays. It creates all those matches at once. MatchTime still only posts about the next match.\n\n" +
     "Cancel remaining cancels the block's future matches without posting in the group. Restore cancelled brings them back, also silently. Delete block removes the empty future matches; played matches and anything with data are kept.",
-  info_bulk_page_title: "Bulk cancel or restore",
+  info_bulk_page_title: "Cancel or restore several matches",
   info_bulk_page_body:
     "For holidays and mistakes. Pick the dates, check the list, then confirm. Cancelling posts nothing in the group unless you tick the announce box. Restoring is always silent.",
 
   // /admin/matches/[matchId]
   info_cancel_title: "Cancel match",
   info_cancel_body:
-    "Use this when a match won't happen. MatchTime posts one cancellation message in the group and nothing else for this match: no reminders, no ratings, no Man of the Match. A cancelled match can be brought back from Bulk cancel or restore.",
+    "Use this when a match won't happen. MatchTime posts one cancellation message in the group and nothing else for this match: no reminders, no ratings, no Man of the Match. A cancelled match can be brought back from Cancel or restore several matches.",
   info_switch_title: "Switch format",
   info_switch_body:
     "Use this when the format changes for one week, for example 7-a-side to 5-a-side. The match moves to the other activity, anyone over the new size goes to the bench, and MatchTime posts the new line-up in the group. Only activities of the same sport with a different size are offered.",
@@ -5446,7 +5446,7 @@ export const en = {
   st_team_names_saved: (p: { first: string; second: string }): string => `Teams will be called ${p.first} and ${p.second}`,
   st_team_names_reset: "Back to the default team names",
   st_team_names_failed: "Couldn't save team names",
-  st_language_title: "Bot language",
+  st_language_title: "Language",
   st_language_lead: "The language MatchTime speaks in this group: its posts in the group, its private messages to players and admins, and the posters.",
   st_language_saved: (p: { language: string }): string => `MatchTime will speak ${p.language} in this group`,
   st_language_failed: "Couldn't save the language",
@@ -5454,9 +5454,9 @@ export const en = {
   st_invite_lead: "Share this link with players to join your organisation.",
   st_copy: "Copy",
   st_invite_copied: "Invite link copied!",
-  st_features_title: "Bot features",
+  st_features_title: "Features",
   st_features_lead:
-    "Turn individual capabilities on or off. A group can run just the bits it wants, e.g. only Man of the Match and player ratings. Changes take effect on the bot's next cycle.",
+    "Turn individual capabilities on or off. A group can run just the bits it wants, e.g. only Man of the Match and player ratings. Changes take effect shortly.",
   st_switch_enable: "Click to enable",
   st_switch_disable: "Click to disable",
   st_feature_on: (p: { label: string }): string => `${p.label} is on`,
@@ -5493,11 +5493,11 @@ export const en = {
   st_bank_refresh_failed: "Couldn't refresh",
   st_bank_open_failed: "Couldn't open the bank dashboard",
   st_bank_reset_failed: "Couldn't reset",
-  st_wa_title: "WhatsApp bot",
+  st_wa_title: "MatchTime in your group",
   st_wa_enabled: "Enabled",
   st_wa_disabled: "Disabled",
   st_wa_group_id: "WhatsApp group ID",
-  st_wa_managed: "Bot configuration is managed server-side. Contact your administrator to enable or reconfigure.",
+  st_wa_managed: "MatchTime manages these settings. Contact your administrator to enable or reconfigure.",
   // ─── Partner clubs (cross-club ask, slice S1, 2026-10-16) ───────────
   // MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.1 and 3.2.
   // The settings section and the notice when the platform owner pairs two

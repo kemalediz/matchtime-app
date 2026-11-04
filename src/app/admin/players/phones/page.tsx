@@ -153,7 +153,7 @@ export default function BulkPhonesPage() {
         </Link>
         <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
           <Phone className="w-5 h-5 text-slate-500" />
-          Bulk edit phone numbers
+          Edit phone numbers
         </h2>
         <p className="text-sm text-slate-500 mt-1">
           {withPhone} of {players.length} players have a phone number.

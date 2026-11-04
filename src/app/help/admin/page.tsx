@@ -259,7 +259,7 @@ export default async function AdminGuidePage() {
         for any match, booked in a block or not.
       </p>
       <ol>
-        <li>On the <strong>Block bookings</strong> tab, press <strong>Bulk cancel / restore</strong>.</li>
+        <li>On the <strong>Block bookings</strong> tab, press <strong>Cancel or restore several matches</strong>.</li>
         <li>
           Set From and To (both dates included), choose{" "}
           <strong>Cancel matches</strong> or{" "}
@@ -306,7 +306,7 @@ export default async function AdminGuidePage() {
       </p>
       <p>
         Before sign-ups close, the match page has no teams button. To cancel
-        then, use Bulk cancel / restore with the same date in From and To.
+        then, use Cancel or restore several matches with the same date in From and To.
       </p>
 
       <h3>Switch one match to a smaller format</h3>

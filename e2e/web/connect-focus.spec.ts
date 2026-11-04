@@ -201,7 +201,7 @@ test("signing out, then in again with WhatsApp, lands on the panel", async ({ pa
   await flag(context, true);
   await page.goto("/login");
   await page.getByLabel("Phone number").fill(ORGANISER_PHONE);
-  await page.getByRole("button", { name: "Sign in with WhatsApp" }).click();
+  await page.getByRole("button", { name: "Get a sign-in code on WhatsApp" }).click();
   await expect(page.getByLabel("6 digit code")).toBeVisible();
   const otp = await testDb().one<{ code: string }>(
     `SELECT code FROM "PhoneOtp" WHERE phone = $1 AND "usedAt" IS NULL ORDER BY "createdAt" DESC LIMIT 1`,

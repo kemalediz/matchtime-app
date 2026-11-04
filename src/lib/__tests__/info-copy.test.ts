@@ -70,6 +70,16 @@ describe("info popup copy", () => {
   it("bulk cancel copy says cancelling is silent unless announced", () => {
     expect(infoCopy("en", "bulk_page").paragraphs.join(" ")).toMatch(/posts nothing in the group unless you tick the announce box/);
   });
+
+  it("the cancel or restore popups never say bulk, in either language (Kemal, 2026-11-04)", () => {
+    expect(en.info_bulk_page_title).toBe("Cancel or restore several matches");
+    expect(tr.info_bulk_page_title).toBe("Birkaç maçı iptal etme ya da geri alma");
+    expect(en.info_cancel_body).toContain("brought back from Cancel or restore several matches.");
+    expect(tr.info_cancel_body).toContain('"Cancel or restore several matches" sayfasından');
+    for (const s of [en.info_bulk_page_title, en.info_cancel_body, tr.info_bulk_page_title, tr.info_cancel_body]) {
+      expect(s).not.toMatch(/\bbulk\b|\btoplu\b/i);
+    }
+  });
 });
 
 describe("finish-setup confidence badge", () => {

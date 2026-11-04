@@ -214,7 +214,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
   },
   language: {
     en: {
-      title: "Bot language",
+      title: "Language",
       what: [
         "The language MatchTime writes in for your club: its posts in the WhatsApp group, its private messages to players and admins, and the posters.",
         "It changes words, not times. Every time MatchTime uses is London time.",
@@ -230,7 +230,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
     },
     tr: {
-      title: "Bot dili",
+      title: "Dil",
       what: [
         "MatchTime'ın kulübünüz için yazdığı dil: WhatsApp grubundaki mesajları, oyunculara ve yöneticilere özel mesajları ve afişler.",
         "Saatleri değil, kelimeleri değiştirir. MatchTime'ın kullandığı tüm saatler Londra saatidir.",

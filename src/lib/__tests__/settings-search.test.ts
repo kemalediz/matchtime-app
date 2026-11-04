@@ -44,6 +44,18 @@ describe("searchSettings", () => {
     expect(ids("admin group")[0]).toBe("admin-group");
   });
 
+  it("the old 'bot' titles still find their cards (2026-11-04 rename)", () => {
+    expect(ids("bot language")[0]).toBe("bot-language");
+    expect(ids("bot dili")[0]).toBe("bot-language");
+    expect(ids("language")[0]).toBe("bot-language");
+    expect(ids("dil", "tr")[0]).toBe("bot-language");
+    expect(ids("whatsapp bot")[0]).toBe("whatsapp");
+    expect(ids("whatsapp botu")[0]).toBe("whatsapp");
+    expect(ids("whatsapp")).toContain("whatsapp");
+    expect(searchSettings("whatsapp bot", "en")[0].title).toBe("MatchTime in your group");
+    expect(searchSettings("bot dili", "tr")[0].title).toBe("Dil");
+  });
+
   it("Turkish letters typed without their marks still match, and case does not matter", () => {
     expect(ids("SESSIZ SAATLER")).toContain("quiet-hours");
     expect(ids("odemeler")).toContain("payments");

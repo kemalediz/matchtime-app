@@ -115,9 +115,9 @@ function LoginForm() {
   }
 
   const inputClass =
-    "w-full h-11 px-3 rounded-lg border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent";
-  const whatsappButtonClass =
-    "w-full h-12 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2";
+    "w-full h-11 px-3 rounded-lg border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent";
+  const primaryButtonClass =
+    "w-full h-12 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2";
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6 bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
@@ -191,7 +191,7 @@ function LoginForm() {
             <button
               type="submit"
               disabled={busy || phone.replace(/\D/g, "").length < 10}
-              className={whatsappButtonClass}
+              className={primaryButtonClass}
             >
               {busy ? (
                 <>
@@ -199,7 +199,7 @@ function LoginForm() {
                   Sending code…
                 </>
               ) : (
-                "Sign in with WhatsApp"
+                "Get a sign-in code on WhatsApp"
               )}
             </button>
           </form>
@@ -226,14 +226,14 @@ function LoginForm() {
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="123456"
-              className="w-full h-14 px-3 rounded-lg border-2 border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500 text-center text-2xl tracking-[0.5em] font-mono"
+              className="w-full h-14 px-3 rounded-lg border-2 border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-2xl tracking-[0.5em] font-mono"
             />
 
             {error && (
               <div role="alert" className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
             )}
 
-            <button type="submit" disabled={busy || code.length !== 6} className={whatsappButtonClass}>
+            <button type="submit" disabled={busy || code.length !== 6} className={primaryButtonClass}>
               {busy ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />

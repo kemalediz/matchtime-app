@@ -292,7 +292,7 @@ export function NewBlockForm({ activities }: { activities: ActivityOption[] }) {
 
           <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600">
             Creating this block generates {newCount} new matches and posts{" "}
-            <b>nothing</b> to the group. The bot will only ever announce the
+            <b>nothing</b> to the group. MatchTime will only ever announce the
             next match that&apos;s on (not cancelled, previous one finished).
           </div>
 

@@ -98,7 +98,7 @@ export default function UnresolvedPage() {
           Unresolved messages ({groups.length})
         </h2>
         <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-          These are join / drop messages the bot received but couldn&apos;t match to a
+          These are join or drop messages MatchTime received but couldn&apos;t match to a
           player, usually a WhatsApp display name that&apos;s ambiguous or new
           (e.g. &quot;ba&quot; could be Baki <em>or</em> Başar). Nothing was changed for
           these. Link each name to the right player: that creates a permanent
@@ -114,7 +114,7 @@ export default function UnresolvedPage() {
             Changes that didn&apos;t save ({failed.length})
           </h3>
           <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-            The bot hit an error writing these to the squad. It told the player in the
+            MatchTime hit an error writing these to the squad. It told the player in the
             group that nothing landed, so they may have asked again. Check the roster
             below is right and set it by hand if it isn&apos;t.
           </p>
@@ -197,7 +197,7 @@ export default function UnresolvedPage() {
                   These arrived with no name and no number, so MatchTime couldn&apos;t tell
                   who sent them and didn&apos;t change the squad. There&apos;s nothing to
                   link here: ask the player to send it again, or add them on the Players
-                  page. Repeats of this usually mean the bot&apos;s WhatsApp connection
+                  page. Repeats of this usually mean MatchTime&apos;s WhatsApp connection
                   needs attention.
                 </div>
               ) : (

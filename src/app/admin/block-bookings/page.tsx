@@ -56,7 +56,7 @@ export default async function BlockBookingsPage() {
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
           >
             <ListChecks className="w-4 h-4" />
-            Bulk cancel / restore
+            Cancel or restore several matches
           </Link>
           <Link
             href="/admin/block-bookings/new"

@@ -103,7 +103,7 @@ export default async function HealthPage() {
       <div>
         <h2 className="text-lg font-semibold text-slate-800">Health</h2>
         <p className="text-sm text-slate-500 mt-1">
-          What the WhatsApp bot and the message pipeline have flagged in the last {WINDOW_DAYS}{" "}
+          What MatchTime has flagged in the last {WINDOW_DAYS}{" "}
           days, across every club. Only you can see this page, and none of it is sent to your
           phone or inbox.
         </p>
@@ -117,7 +117,7 @@ export default async function HealthPage() {
           <SectionInfo k="health_status" lang={lang} />
         </div>
         {summary.length === 0 ? (
-          <p className="text-sm text-slate-500">No club has the WhatsApp bot switched on.</p>
+          <p className="text-sm text-slate-500">No club has MatchTime switched on.</p>
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2">
             {summary.map((c) => (
@@ -136,8 +136,8 @@ export default async function HealthPage() {
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
                   {c.heartbeat
-                    ? `Bot last reported ${formatDistanceToNow(c.heartbeat, { addSuffix: true })}.`
-                    : "The bot has not reported yet."}
+                    ? `MatchTime last reported ${formatDistanceToNow(c.heartbeat, { addSuffix: true })}.`
+                    : "MatchTime has not reported yet."}
                 </p>
                 {c.open.length > 0 && (
                   <ul className="mt-2 space-y-1 text-sm text-slate-700">
