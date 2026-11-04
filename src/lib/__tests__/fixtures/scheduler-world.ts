@@ -299,11 +299,15 @@ export function fakeSchedulerDb(
       case "findUnique":
       case "findUniqueOrThrow": {
         if (!rows) return null;
-        const where = (args.where ?? {}) as Row;
-        // Compound unique keys (matchId_userId and the like) are not
-        // modelled: nothing unique is found.
+        let where = (args.where ?? {}) as Row;
+        // One compound key is modelled: a game's month (SquadMonth's
+        // orgId_activityId_monthStart, read by month-phase.ts, club summary
+        // B2), the same row the summary's month read finds.
+        if (model === "squadMonth" && where.orgId_activityId_monthStart) where = where.orgId_activityId_monthStart as Row;
+        // Every other compound unique key (matchId_userId and the like) is
+        // not modelled: nothing unique is found.
         if (Object.values(where).some((v) => v && typeof v === "object" && !(v instanceof Date))) return null;
-        return many(rows, args)[0] ?? null;
+        return many(rows, { ...args, where })[0] ?? null;
       }
       case "count":
         return rows ? many(rows, { where: args.where }).length : 0;

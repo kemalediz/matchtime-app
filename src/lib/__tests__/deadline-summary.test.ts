@@ -245,6 +245,12 @@ describe("the deadline summary", () => {
     expect((await sendDueDeadlineSummaries(club(), MON_2105)).sent).toBe(0);
   });
 
+  it("club summary B2 (D2b): a monthly club that kept its weekly deadlines gets none, as the scheduler's own deadline posts", async () => {
+    h.state.org = { ...h.state.org!, squadMode: "monthly" };
+    expect((await sendDueDeadlineSummaries(club(), MON_2105)).sent).toBe(0);
+    expect(h.state.claimed.size).toBe(0);
+  });
+
   it("if the notice cannot be queued, the claim is released so the next tick tries again", async () => {
     h.state.noticeFails = true;
     expect((await sendDueDeadlineSummaries(club(), MON_2105)).sent).toBe(0);

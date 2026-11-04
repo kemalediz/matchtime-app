@@ -46,7 +46,7 @@ export const MONTHLY_READER_MAX_TOKENS = 8_192;
  */
 export async function loadMonthlyReaderContext(args: { orgId: string; matchId: string | null; now?: Date }): Promise<MonthlyReaderContext> {
   const now = args.now ?? new Date();
-  const { loadLiveMonths, renderSignupList } = await import("./month-signup");
+  const { hasStarted, loadLiveMonths, renderSignupList } = await import("./month-signup");
   const { loadMonthlyWeek, renderWeekList } = await import("./monthly-week");
   const months = await loadLiveMonths(args.orgId, now);
   const week = args.matchId ? await loadMonthlyWeek(args.matchId) : null;
@@ -88,7 +88,8 @@ export async function loadMonthlyReaderContext(args: { orgId: string; matchId: s
   const day = (d: Date) => formatLondon(d, "EEE d MMM");
   const monthBlocks = months.map((m) => {
     const label = formatLondon(m.kickoffs[0] ?? m.firstKickoff, "MMMM yyyy");
-    const started = m.startedMidMonth || now.getTime() >= m.firstKickoff.getTime();
+    // `monthStarted`'s rule, the one definition (club summary B2, D5).
+    const started = hasStarted(m, now);
     const state = m.open ? "sign-up open" : started ? "under way" : "sign-up closed, not started yet";
     const games = m.kickoffs.map((k) => `${day(k)}${k.getTime() < now.getTime() ? " (played)" : ""}`);
     const left = m.kickoffs.filter((k) => k.getTime() > now.getTime()).length;

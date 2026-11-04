@@ -80,6 +80,8 @@ export const FLEX_FORMAT_TR: FlexFormatCopy = {
     `*${p.activityName}* yalnızca ${side(p.perSide)}. Başka formatlarda oynamak için en az ve en fazla oyuncu sayısını ayarlayın, örneğin *@Match Time 12 ile 16 kişi arası oynuyoruz*, ya da buradan: ${p.url}`,
   noSize: `Kaçar kişi? Örneğin *@Match Time 8'e 8 oynayalım*.`,
   noMatch: `Değiştirilecek yaklaşan bir maç yok.`,
+  monthlyKeepsGame: (p) =>
+    `*${p.activityName}* aylık kadroyla oynanıyor, bu yüzden maçları onda kalıyor ve birini başka bir maçınıza taşıyamam. Bunun yerine maçın kişi sayısını değiştirebilirsiniz, örneğin *@Match Time 8'e 8 oynayalım* (tek bir boyutu varsa önce en az ve en fazla oyuncu sayısını ayarlayın).`,
   tooLate: `O maç başladı, formatı olduğu gibi kalıyor.`,
 
   suggestUp: (p) =>

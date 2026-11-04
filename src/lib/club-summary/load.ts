@@ -209,8 +209,9 @@ export async function loadClubRows(orgId: string, now: Date, opts: LoadClubOptio
  *   - running, and closed in the last two weeks (`loadSchedulerMonths`);
  *   - any status, for the London month of every loaded match and for this
  *     and next month (`loadLiveMonths`' open, priced or running of this and
- *     next month; `monthNotStartedFor`'s any-status row for a match's month;
- *     the seed door's any month of this or next month).
+ *     next month; the phase of a match's own game and London month, any
+ *     status, `monthPhaseFor`; the seed door's months of this and next
+ *     month).
  */
 async function loadMonths(orgId: string, now: Date, matchDates: Date[]) {
   const current = londonMonthStart(now);

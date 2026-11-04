@@ -37,7 +37,7 @@ import { EXPLICIT_BENCH_NOTE, recordAttendanceEvent } from "./attendance-events"
 import { isClubOperational, servingClubWhere } from "./club-approval-state";
 import { LIVE_STAGE_WHERE } from "./club-setup-rules";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
-import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
+import type { RecurringFixtureKey } from "./match-slot";
 import { ROLLING_LOOKBACK_DAYS, adminNoticeSendAfter, pickSeedSource, rollingSeedDue } from "./rolling-squad-rules";
 import { loadClubQuietHours } from "./club-quiet-hours";
 import { buildSeedBumpedDm, buildWeekListPost } from "./monthly-week-copy";
@@ -91,6 +91,12 @@ export interface RunningMonth {
    *  before a mid-month start keeps its per-match payments, earns no
    *  credit and changes no post. */
   startsAt: Date;
+  /** The game the month is of. A match is this month's when it is of this
+   *  Activity (club summary B2), never another at the same venue and
+   *  weekday. */
+  activityId: string;
+  /** Its game's venue and weekday: the month's calendar (the commitment
+   *  states, month-close) and the slot dedupe read it, not the phase. */
   fixture: RecurringFixtureKey;
   members: Array<{
     userId: string;
@@ -147,6 +153,7 @@ async function loadMonthsWhere(orgId: string, where: MonthStatusWhere): Promise<
     where: { orgId, ...where },
     select: {
       id: true,
+      activityId: true,
       status: true,
       monthStart: true,
       createdAt: true,
@@ -209,6 +216,7 @@ async function loadMonthsWhere(orgId: string, where: MonthStatusWhere): Promise<
     monthStart: m.monthStart.toISOString().slice(0, 10),
     createdAt: m.createdAt,
     startsAt: m.startedMidMonthAt ?? londonDateTimeToUtc(m.monthStart.toISOString().slice(0, 10), "00:00"),
+    activityId: m.activityId,
     fixture: m.activity,
     ...(m.status === "closed" ? { closed: true } : {}),
     members: m.members.map((r) => ({
@@ -225,21 +233,21 @@ async function loadMonthsWhere(orgId: string, where: MonthStatusWhere): Promise<
   }));
 }
 
-/** The running month a match belongs to: the same weekly fixture (not the
- *  same Activity: a format switch re-points a match), the London month
- *  the match is played in, and NOT a game dated before the month was
- *  started here (`startsAt`). */
+/** The running month a match belongs to: the month of the match's OWN game
+ *  (its Activity) and the London month it is played in, and NOT a game
+ *  dated before the month was started here (`startsAt`). The club
+ *  summary's phase rule (`monthPhaseFor`, slice B2): a game is matched to
+ *  its month by its Activity, never by venue and weekday. A size switch
+ *  keeps a match on its Activity (format-resize.ts); a switch to another
+ *  Activity is refused for a month's game (activity-format-switch.ts). */
 export function monthForMatch(
   months: RunningMonth[],
-  match: { date: Date; activity: RecurringFixtureKey },
+  match: { date: Date; activityId: string },
 ): RunningMonth | null {
   const monthStart = londonMonthStart(match.date);
   return (
     months.find(
-      (m) =>
-        m.monthStart === monthStart &&
-        match.date.getTime() >= m.startsAt.getTime() &&
-        isSameRecurringFixture(m.fixture, match.activity),
+      (m) => m.monthStart === monthStart && match.date.getTime() >= m.startsAt.getTime() && m.activityId === match.activityId,
     ) ?? null
   );
 }
@@ -304,6 +312,7 @@ export async function loadMonthlyWeek(
       status: true,
       maxPlayers: true,
       rollingSeededAt: true,
+      activityId: true,
       activity: {
         select: {
           orgId: true,
@@ -561,6 +570,7 @@ export async function seedDueMonthlySquads(
         status: true,
         isHistorical: true,
         rollingSeededAt: true,
+        activityId: true,
         activity: { select: { orgId: true, venue: true, dayOfWeek: true, matchDurationMins: true } },
       },
       orderBy: { date: "asc" },
@@ -568,7 +578,8 @@ export async function seedDueMonthlySquads(
 
     for (const month of months) {
       const target = matches.find(
-        (m) => (LIVE as readonly string[]).includes(m.status) && isSameRecurringFixture(m.activity, month.fixture),
+        // The month's own game (club summary B2: by its Activity).
+        (m) => (LIVE as readonly string[]).includes(m.status) && m.activityId === month.activityId,
       );
       if (!target || target.date.getTime() <= now.getTime()) continue;
       if (londonMonthStart(target.date) !== month.monthStart) continue;
@@ -1084,7 +1095,7 @@ export async function sweepMonthlyWeeks(orgId: string, now: Date = new Date()): 
       isHistorical: false,
       OR: [{ status: { in: [...LIVE] } }, ...(sweepPlayed ? [{ status: "COMPLETED" as const, date: { gte: since } }] : [])],
     },
-    select: { id: true, date: true, status: true, activity: { select: { orgId: true, venue: true, dayOfWeek: true } } },
+    select: { id: true, date: true, status: true, activityId: true },
   });
   for (const m of matches) {
     if (!monthForMatch(months, m)) continue;

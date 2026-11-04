@@ -1279,7 +1279,8 @@ async function handleAnalyzeRequest(request: Request) {
   // FAIL-SOFT (review of #524): a summary that cannot be read never drops
   // the batch. It is logged once and the request runs as it did before the
   // summary: the registration match from `findRegistrationMatch`, the
-  // month check from `monthNotStartedFor`, and every owner reading its own
+  // month check from `loadMatchMonth` (the same phase function), and every
+  // owner reading its own
   // switches, state and club setup (each loader's own fallback).
   const clubScope = summaryScope(new Date(), (id, at, opts) =>
     loadClubSummary(id, at, id === org.id ? { ...opts, org, features } : opts),
@@ -2116,20 +2117,22 @@ async function handleAnalyzeRequest(request: Request) {
   // What every owner reports about the silences it chose, for the
   // "never met with silence" pass at the foot of this handler.
   const silence = newSilenceFacts();
-  // A monthly club with NO month at all (any status) for the registration
-  // match's month: the squad starts from the month's list, so no IN is
-  // written before it (Kemal, 2026-11-03; narrowed on review of #502).
+  // A monthly club whose registration match has no month yet, or one held
+  // for its organiser: the squad starts from the month's list, so no IN is
+  // written before it (Kemal, 2026-11-03; narrowed on review of #502). The
+  // one month phase (club summary B2): the summary's `MatchFacts.month`,
+  // read through `monthNotStartedOf` (monthly-gates.ts). Without a summary,
+  // the same phase function through `loadMatchMonth` (month-phase.ts).
   let monthNotStarted = false;
-  // `monthNotStartedFor`'s fact, from the summary: no SquadMonth row, in
-  // any status, for the match's own game and London month. Without a
-  // summary, `monthNotStartedFor` itself, as before.
   if (monthlyClub && activeMatchForReply && club) {
-    const month = club.matches.find((m) => m.id === activeMatchForReply.id)?.month;
-    monthNotStarted = month ? !month.rowForOwnActivity : false;
+    const month = club.matches.find((m) => m.id === activeMatchForReply.id)?.month ?? null;
+    const { monthNotStartedOf } = await import("@/lib/monthly-gates");
+    monthNotStarted = monthNotStartedOf({ mode: club.squad.mode, month });
   } else if (monthlyClub && activeMatchForReply) {
     try {
-      const { monthNotStartedFor } = await import("@/lib/month-not-started");
-      monthNotStarted = await monthNotStartedFor(activeMatchForReply.id);
+      const [{ loadMatchMonth }, { monthNotStartedOf }] = await Promise.all([import("@/lib/month-phase"), import("@/lib/monthly-gates")]);
+      const found = await loadMatchMonth(activeMatchForReply.id);
+      monthNotStarted = found ? monthNotStartedOf(found) : false;
     } catch (err) {
       // Unknown is not "not started": the engine runs as before.
       console.error(`[analyze] monthly week for ${activeMatchForReply.id} failed to load:`, err);

@@ -82,10 +82,23 @@ describe("the month a posted list starts", () => {
   });
 
   it("a list for a month already started proposes nothing", async () => {
-    dbMock.squadMonth.findMany.mockResolvedValue([{ monthStart: new Date("2026-11-01T00:00:00Z") }]);
+    dbMock.squadMonth.findMany.mockResolvedValue([{ id: "sm", activityId: "act", status: "running", monthStart: new Date("2026-11-01T00:00:00Z") }]);
     const res = await proposeMonthSeedPaste({ orgId: ORG, lang: "en", messageId: "wa3", organiserUserId: DAVIDE, text: "", now: NOW, list: listFor(11) });
     expect(res).toBeNull();
     expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
+  });
+
+  it("club summary B2 (D5): another game's month (a former Activity) does not count as this game's; the list is proposed", async () => {
+    dbMock.squadMonth.findMany.mockResolvedValue([{ id: "sm-old", activityId: "act-old", status: "running", monthStart: new Date("2026-11-01T00:00:00Z") }]);
+    const res = await proposeMonthSeedPaste({ orgId: ORG, lang: "en", messageId: "wa4", organiserUserId: DAVIDE, text: "", now: NOW, list: listFor(11) });
+    expect(res?.outcome).toBe("month-seed-proposed");
+    expect(dbMock.adminSquadProposal.create.mock.calls[0][0].data.monthStart).toBe("2026-11-01");
+  });
+
+  it("club summary B2: a month held for its organiser is still one a list may start", async () => {
+    dbMock.squadMonth.findMany.mockResolvedValue([]);
+    const c = await comingMonth(ORG, NOW);
+    expect(c?.monthStart).toBe("2026-11-01");
   });
 
   it("comingMonth is the first month a list could start: this month part-way when it was never started", async () => {

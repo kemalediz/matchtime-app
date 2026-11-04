@@ -21,8 +21,9 @@
  * after its own deadline (2026-10-15, `madeAfterDropOutDeadline`). The
  * first line names the deadline and the kick-off, each for what it is. A club without the setting
  * (Sutton FC), a club that is not operational (not approved or dormant)
- * and a club with the attendance feature off get nothing: each read from
- * the club's summary (club summary A1), not from a query of its own.
+ * a club with the attendance feature off and a monthly club's game (club
+ * summary B2: `monthFlowOf`) get nothing: each read from the club's summary
+ * (club summary A1), not from a query of its own.
  *
  * With organiser pick (slice 2b) and something to pick (a free place and
  * somebody waiting), this summary IS the first pick round:
@@ -42,6 +43,7 @@ import { postingMatchWhere } from "./scheduler-windows";
 import { deadlineSummaryDue, madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
 import type { ClubSummary } from "./club-summary/types";
 import { placesOpen } from "./squad-short";
+import { monthFlowOf, stillToPlay } from "./monthly-gates";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
@@ -86,6 +88,12 @@ export async function sendDueDeadlineSummaries(club: ClubSummary | null, now: Da
     // the week, 2026-10-15): nobody could drop out of it, nothing to sum up.
     if (madeAfterDropOutDeadline(m.createdAt, dropOut)) continue;
     if (!isNextUpcomingForPosting(matches, m, now)) continue;
+    // A weekly-shaped list of the squad: never for a monthly club's game
+    // (club summary B2, D2b), the reason the scheduler's own deadline posts
+    // skip it: the squad of a month's game is the month's list, and before
+    // the month the count is not the squad.
+    const month = club.matches.find((f) => f.id === m.id)?.month ?? null;
+    if (monthFlowOf({ mode: club.squad.mode, month, stillToPlay: stillToPlay(m, now) }) !== "weekly") continue;
 
     const key = deadlineSummaryKey(m.id);
     try {

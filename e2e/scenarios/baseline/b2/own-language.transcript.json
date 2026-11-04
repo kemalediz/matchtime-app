@@ -1,0 +1,593 @@
+{
+ "version": 1,
+ "club": "own-language",
+ "title": "Own-language club: weekly, the club's language set, mute on and off, the after-game flow switched off for one game",
+ "mode": "replay",
+ "steps": [
+  {
+   "seq": -1,
+   "step": "before the first step",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 0,
+   "step": "2026-11-09 08:00 note: Monday: a weekly club spoken to in its own language, game Wednesday 21:00",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 1,
+   "step": "2026-11-09 08:00 club-live (45 days)",
+   "out": [],
+   "handled": [],
+   "db": [
+    "club: approval: (new) approved",
+    "club: members: (new) 13",
+    "club: muted: (new) no",
+    "club: stage: (new) live, bot on",
+    "member Burak Demir: (new) PLAYER",
+    "member Can Aydın: (new) PLAYER",
+    "member Deniz Kaya: (new) PLAYER",
+    "member Emre Şahin: (new) PLAYER",
+    "member Erdal Yılmaz: (new) OWNER",
+    "member Fatih Çelik: (new) PLAYER",
+    "member Gökhan Arslan: (new) PLAYER",
+    "member Hakan Koç: (new) PLAYER",
+    "member Kaan Polat: (new) PLAYER",
+    "member Levent Acar: (new) PLAYER",
+    "member Murat Güneş: (new) PLAYER",
+    "member Onur Tekin: (new) PLAYER",
+    "member İlker Öztürk: (new) PLAYER",
+    "sent-notification org-<club>:bot-intro: (new) bot-intro",
+    "user @burak: (new) name \"Burak Demir\"",
+    "user @can: (new) name \"Can Aydın\"",
+    "user @deniz: (new) name \"Deniz Kaya\"",
+    "user @emre: (new) name \"Emre Şahin\"",
+    "user @erdal: (new) name \"Erdal Yılmaz\"",
+    "user @fatih: (new) name \"Fatih Çelik\"",
+    "user @gokhan: (new) name \"Gökhan Arslan\"",
+    "user @hakan: (new) name \"Hakan Koç\"",
+    "user @ilker: (new) name \"İlker Öztürk\"",
+    "user @kaan: (new) name \"Kaan Polat\"",
+    "user @levent: (new) name \"Levent Acar\"",
+    "user @murat: (new) name \"Murat Güneş\"",
+    "user @onur: (new) name \"Onur Tekin\""
+   ],
+   "errors": []
+  },
+  {
+   "seq": 2,
+   "step": "2026-11-09 08:02 cron /api/cron/generate-matches",
+   "out": [
+    {
+     "at": "2026-11-09 08:03",
+     "to": "dm @erdal",
+     "kind": "out",
+     "text": "⭐ *Çarşamba günkü takımlardan önce bir şey*\n\nHenüz kimsenin seviyesini bilmiyorum, bu yüzden şimdilik her oyuncuyu aynı sayarım ve takımlar dengesiz çıkabilir.\n\nErdal: her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n<app>/r/<tok>\n\nOyuncular bu puanları hiç görmez, yalnızca takımları dengelememe yardım ederler. Henüz puanı olmayan 13 oyuncuyu puanlamak yaklaşık 4 dakika sürer.\n\nSonrasında her maçtan sonra oyuncuların birbirine verdiği puanlardan öğrenirim, yani bu yalnızca bir kez gerekir.",
+     "instruction": "dm",
+     "key": "org-<club>:seed-nudge:@erdal"
+    },
+    {
+     "at": "2026-11-09 09:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📅 *Çarşamba Halı Saha Sandbox*, *11 Kasım Çarşamba 21:00*, Sandbox Halı Saha.\n\nKatılmak için *VARIM* yazın. İlk 12 kişi oynar.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-11 21:00>:announce-match"
+    }
+   ],
+   "handled": [],
+   "db": [
+    "<match 2026-11-11 21:00>: places: (new) 12",
+    "match 2026-11-11 21:00: status: (new) UPCOMING",
+    "sent-notification org-<club>:seed-nudge:@erdal: (new) dm",
+    "sent-notification <match 2026-11-11 21:00>:announce-match: (new) group-message",
+    "sent-notification txtlog:<club>:<text 7c034d9c>:<match 2026-11-11 21:00>:announce-match: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 3,
+   "step": "2026-11-09 10:00 main @burak: \"varım\"",
+   "out": [
+    {
+     "at": "2026-11-09 10:00",
+     "to": "dm @erdal",
+     "kind": "out",
+     "text": "📍 Yakındaki kulüplerin sizi bulabilmesi için *Çarşamba Halı Saha Sandbox* kulübünün sahasını onaylayın: MatchTime'da henüz bir sahanız yok. Sahanızı buradaki listeden seçin: <app>/r/<tok>\nSaha seçilene kadar MatchTime haftada bir hatırlatır.",
+     "instruction": "dm",
+     "key": "botjob-<id>"
+    }
+   ],
+   "handled": [
+    "@burak in main: \"varım\" → llm / in"
+   ],
+   "db": [
+    "botjob dm → @erdal: 📍 Yakındaki kulüplerin sizi bulabilmesi için *Çarşamba Halı Saha Sandbox* kulübünün sahas: (new) pending",
+    "botjob dm → @erdal: 📍 Yakındaki kulüplerin sizi bulabilmesi için *Çarşamba Halı Saha Sandbox* kulübünün sahas: pending → sent"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 4,
+   "step": "2026-11-09 10:02 main @can: \"ben de varım\"",
+   "out": [],
+   "handled": [
+    "@can in main: \"ben de varım\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 5,
+   "step": "2026-11-09 10:05 main @deniz: \"bu hafta yokum maalesef\"",
+   "out": [],
+   "handled": [
+    "@deniz in main: \"bu hafta yokum maalesef\" → llm / noise"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 6,
+   "step": "2026-11-09 10:06 main @emre [tag]: \"@Match Time maç kaçta?\"",
+   "out": [],
+   "handled": [
+    "@emre in main: \"@Match Time maç kaçta?\" → llm / question"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 7,
+   "step": "2026-11-09 10:07 main @fatih: \"varım\"",
+   "out": [
+    {
+     "at": "2026-11-09 10:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@burak: varım"
+    },
+    {
+     "at": "2026-11-09 10:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@can: ben de varım"
+    },
+    {
+     "at": "2026-11-09 10:10",
+     "to": "group main",
+     "kind": "out",
+     "text": "⚽ Çarşamba 21:00, Sandbox Halı Saha.",
+     "via": "analyze reply",
+     "replyTo": "@emre: @Match Time maç kaçta?"
+    },
+    {
+     "at": "2026-11-09 10:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@fatih: varım"
+    }
+   ],
+   "handled": [
+    "@fatih in main: \"varım\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-11 21:00>: attendance @burak: (new) CONFIRMED #1",
+    "<match 2026-11-11 21:00>: attendance @can: (new) CONFIRMED #2",
+    "<match 2026-11-11 21:00>: attendance @fatih: (new) CONFIRMED #3",
+    "match 2026-11-11 21:00: Burak Demir: (new) CONFIRMED",
+    "match 2026-11-11 21:00: Can Aydın: (new) CONFIRMED",
+    "match 2026-11-11 21:00: Fatih Çelik: (new) CONFIRMED",
+    "sent-notification greply:<club>:wa-ownlanguage-7: (new) group-reply"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 8,
+   "step": "2026-11-09 14:00 note: The organiser mutes MatchTime; a message while muted; unmuted in the evening",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 9,
+   "step": "2026-11-09 14:00 settings {\"whatsappBotEnabled\":false}",
+   "out": [],
+   "handled": [],
+   "db": [
+    "club: muted: no → yes",
+    "club: stage: live, bot on → live, bot off"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 10,
+   "step": "2026-11-09 15:00 main @gokhan: \"varım\"",
+   "out": [],
+   "handled": [
+    "@gokhan in main: \"varım\" → not seen (MatchTime is in the group but does not read it (not live, not linked))"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 11,
+   "step": "2026-11-09 19:00 settings {\"whatsappBotEnabled\":true}",
+   "out": [],
+   "handled": [],
+   "db": [
+    "club: muted: yes → no",
+    "club: stage: live, bot off → live, bot on"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 12,
+   "step": "2026-11-09 19:30 main @hakan: \"varım\"",
+   "out": [],
+   "handled": [
+    "@hakan in main: \"varım\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 13,
+   "step": "2026-11-09 19:35 main @ilker: \"ben de\"",
+   "out": [
+    {
+     "at": "2026-11-09 19:40",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@hakan: varım"
+    },
+    {
+     "at": "2026-11-09 19:40",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@ilker: ben de"
+    }
+   ],
+   "handled": [
+    "@ilker in main: \"ben de\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-11 21:00>: attendance @hakan: (new) CONFIRMED #4",
+    "<match 2026-11-11 21:00>: attendance @ilker: (new) CONFIRMED #5",
+    "match 2026-11-11 21:00: Hakan Koç: (new) CONFIRMED",
+    "match 2026-11-11 21:00: İlker Öztürk: (new) CONFIRMED"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 14,
+   "step": "2026-11-10 09:00 main @kaan: \"varım\"",
+   "out": [],
+   "handled": [
+    "@kaan in main: \"varım\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 15,
+   "step": "2026-11-10 09:05 main @levent: \"varım\"",
+   "out": [],
+   "handled": [
+    "@levent in main: \"varım\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 16,
+   "step": "2026-11-10 09:10 main @murat: \"varım abi\"",
+   "out": [
+    {
+     "at": "2026-11-10 09:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@kaan: varım"
+    },
+    {
+     "at": "2026-11-10 09:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@levent: varım"
+    },
+    {
+     "at": "2026-11-10 09:20",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@murat: varım abi"
+    }
+   ],
+   "handled": [
+    "@murat in main: \"varım abi\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-11 21:00>: attendance @kaan: (new) CONFIRMED #6",
+    "<match 2026-11-11 21:00>: attendance @levent: (new) CONFIRMED #7",
+    "match 2026-11-11 21:00: Kaan Polat: (new) CONFIRMED",
+    "match 2026-11-11 21:00: Levent Acar: (new) CONFIRMED",
+    "<match 2026-11-11 21:00>: attendance @murat: (new) CONFIRMED #8",
+    "match 2026-11-11 21:00: Murat Güneş: (new) CONFIRMED"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 17,
+   "step": "2026-11-10 12:00 note: No after-game flow for this week's game (no ratings, no Man of the Match)",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 18,
+   "step": "2026-11-10 12:00 match {\"postMatchEndFlow\":false}",
+   "out": [
+    {
+     "at": "2026-11-10 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "⚠️ *Çarşamba Halı Saha Sandbox* için yarınki maça hâlâ *4 kişi* eksiğiz. Sayıyı tamamlayamazsak maçı iptal etmek zorunda kalırız, gelebilenler *VARIM* yazsın 🙏\n\n*Yarın oynayanlar:*\n1. Burak Demir\n2. Can Aydın\n3. Fatih Çelik\n4. Hakan Koç\n5. İlker Öztürk\n6. Kaan Polat\n7. Levent Acar\n8. Murat Güneş\n9. 🥁\n10. 🥁\n11. 🥁\n12. 🥁",
+     "instruction": "group-message",
+     "key": "<match 2026-11-11 21:00>:evening-update:2026-11-10"
+    },
+    {
+     "at": "2026-11-10 18:00",
+     "to": "dm @erdal",
+     "kind": "out",
+     "text": "🚨 *Maç tehlikede*: yarınki *Çarşamba Halı Saha Sandbox* için yalnızca *8* kişi onayladı, oynamak için en az 10 kişi gerekiyor.\n\nMaç iptal edilip saha rezervasyonu iade edilsin mi?\n\nİptal sayfasını açmak için dokunun:\n<app>/r/<tok>\n\nYa da açın: <app>/admin/<tok><match 2026-11-11 21:00>/cancel",
+     "instruction": "dm",
+     "key": "<match 2026-11-11 21:00>:cancel-nudge:@erdal"
+    },
+    {
+     "at": "2026-11-11 08:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🗓 Bugünkü *Çarşamba Halı Saha Sandbox* maçı için *4 kişi* daha lazım. Gelebilecekler *VARIM* yazsın ⚽\n\n*Bu akşam oynayanlar:*\n1. Burak Demir\n2. Can Aydın\n3. Fatih Çelik\n4. Hakan Koç\n5. İlker Öztürk\n6. Kaan Polat\n7. Levent Acar\n8. Murat Güneş\n9. 🥁\n10. 🥁\n11. 🥁\n12. 🥁",
+     "instruction": "group-message",
+     "key": "<match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11"
+    }
+   ],
+   "handled": [],
+   "db": [
+    "<match 2026-11-11 21:00>: after-game flow: (new) off",
+    "sent-notification <match 2026-11-11 21:00>:evening-update:2026-11-10: (new) group-message",
+    "sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794330000000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text 86a59565>:<match 2026-11-11 21:00>:evening-update:2026-11-10: (new) outbound-text-log",
+    "sent-notification <match 2026-11-11 21:00>:cancel-nudge:@erdal: (new) dm",
+    "<match 2026-11-18 21:00>: places: (new) 12",
+    "match 2026-11-18 21:00: status: (new) UPCOMING",
+    "sent-notification <match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11: (new) group-message",
+    "sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794384000000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text 0b356473>:<match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 19,
+   "step": "2026-11-11 09:00 main @onur: \"varım\"",
+   "out": [
+    {
+     "at": "2026-11-11 09:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@onur: varım"
+    },
+    {
+     "at": "2026-11-11 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "⚽ Bugün saat *21:00*'de *Çarşamba Halı Saha Sandbox* maçı var ve *3 kişi* daha lazım. Gelebilecekler *VARIM* yazsın 🙏\n\n*Bu akşam oynayanlar:*\n1. Burak Demir\n2. Can Aydın\n3. Fatih Çelik\n4. Hakan Koç\n5. İlker Öztürk\n6. Kaan Polat\n7. Levent Acar\n8. Murat Güneş\n9. Onur Tekin\n10. 🥁\n11. 🥁\n12. 🥁",
+     "instruction": "group-message",
+     "key": "<match 2026-11-11 21:00>:chase-pre-kickoff"
+    },
+    {
+     "at": "2026-11-11 19:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "⏰ Bugün saat *21:00*'de *Sandbox Halı Saha*'da maç var, *3 kişi* eksiğiz. Son çağrı, gelebilen *VARIM* yazsın 🙏",
+     "instruction": "group-message",
+     "key": "<match 2026-11-11 21:00>:pre-kickoff"
+    }
+   ],
+   "handled": [
+    "@onur in main: \"varım\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-11 21:00>: attendance @onur: (new) CONFIRMED #9",
+    "match 2026-11-11 21:00: Onur Tekin: (new) CONFIRMED",
+    "sent-notification <match 2026-11-11 21:00>:chase-pre-kickoff: (new) group-message",
+    "sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794416400000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text 4447e643>:<match 2026-11-11 21:00>:chase-pre-kickoff: (new) outbound-text-log",
+    "sent-notification <match 2026-11-11 21:00>:pre-kickoff: (new) group-message",
+    "sent-notification txtlog:<club>:<text abba5055>:<match 2026-11-11 21:00>:pre-kickoff: (new) outbound-text-log",
+    "match 2026-11-11 21:00: status: UPCOMING → COMPLETED"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 20,
+   "step": "2026-11-11 23:00 main @erdal: \"Kırmızılar 4 - 2 Sarılar, iyi maçtı\"",
+   "out": [
+    {
+     "at": "2026-11-11 23:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🏁 *Çarşamba Halı Saha Sandbox*, umarım iyi geçmiştir. Skor ne oldu? Gelecek haftaki takımları dengeli kurmak için kullanacağım.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-11 21:00>:ask-score"
+    },
+    {
+     "at": "2026-11-11 23:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "👍",
+     "replyTo": "@erdal: Kırmızılar 4 - 2 Sarılar, iyi maçtı"
+    },
+    {
+     "at": "2026-11-11 23:10",
+     "to": "group main",
+     "kind": "out",
+     "text": "Tamam 👍 *Kırmızılar* 4 - 2 kazandı, rakip Sarılar. Kaydettim.",
+     "via": "analyze reply",
+     "replyTo": "@erdal: Kırmızılar 4 - 2 Sarılar, iyi maçtı"
+    },
+    {
+     "at": "2026-11-12 09:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📅 *Çarşamba Halı Saha Sandbox*, *18 Kasım Çarşamba 21:00*, Sandbox Halı Saha.\n\nKatılmak için *VARIM* yazın. İlk 12 kişi oynar.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-18 21:00>:announce-match"
+    },
+    {
+     "at": "2026-11-12 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🗓 *Çarşamba Halı Saha Sandbox* için hâlâ *12 kişi* lazım. Gelebilecekler *VARIM* yazsın ⚽\n\n*18 Kasım Çarşamba oynayanlar:*\n1. 🥁\n2. 🥁\n3. 🥁\n4. 🥁\n5. 🥁\n6. 🥁\n7. 🥁\n8. 🥁\n9. 🥁\n10. 🥁\n11. 🥁\n12. 🥁",
+     "instruction": "group-message",
+     "key": "<match 2026-11-18 21:00>:evening-update:2026-11-12"
+    },
+    {
+     "at": "2026-11-13 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🗓 *Çarşamba Halı Saha Sandbox* için *12 kişi* daha lazım. Gelebilecekler *VARIM* yazsın ⚽\n\n*18 Kasım Çarşamba oynayanlar:*\n1. 🥁\n2. 🥁\n3. 🥁\n4. 🥁\n5. 🥁\n6. 🥁\n7. 🥁\n8. 🥁\n9. 🥁\n10. 🥁\n11. 🥁\n12. 🥁",
+     "instruction": "group-message",
+     "key": "<match 2026-11-18 21:00>:evening-update:2026-11-13"
+    }
+   ],
+   "handled": [
+    "@erdal in main: \"Kırmızılar 4 - 2 Sarılar, iyi maçtı\" → llm / score"
+   ],
+   "db": [
+    "sent-notification <match 2026-11-11 21:00>:ask-score: (new) group-message",
+    "sent-notification txtlog:<club>:<text a3936cc6>:<match 2026-11-11 21:00>:ask-score: (new) outbound-text-log",
+    "match 2026-11-11 21:00: score: (new) 4-2",
+    "sent-notification greply:<club>:wa-ownlanguage-22: (new) group-reply",
+    "sent-notification <match 2026-11-18 21:00>:announce-match: (new) group-message",
+    "sent-notification txtlog:<club>:<text 012884c4>:<match 2026-11-18 21:00>:announce-match: (new) outbound-text-log",
+    "sent-notification <match 2026-11-18 21:00>:evening-update:2026-11-12: (new) group-message",
+    "sent-notification <match 2026-11-18 21:00>:roster-shown:<squad>:1794502800000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text 20c642b0>:<match 2026-11-18 21:00>:evening-update:2026-11-12: (new) outbound-text-log",
+    "sent-notification <match 2026-11-18 21:00>:evening-update:2026-11-13: (new) group-message",
+    "sent-notification <match 2026-11-18 21:00>:roster-shown:<squad>:1794589200000: (new) roster-shown",
+    "sent-notification txtlog:<club>:<text 8c79872e>:<match 2026-11-18 21:00>:evening-update:2026-11-13: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 21,
+   "step": "2026-11-14 09:00 note: Saturday: nothing after the game, by the organiser's choice",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  }
+ ],
+ "final": {
+  "<match 2026-11-11 21:00>: after-game flow": "off",
+  "<match 2026-11-11 21:00>: attendance @burak": "CONFIRMED #1",
+  "<match 2026-11-11 21:00>: attendance @can": "CONFIRMED #2",
+  "<match 2026-11-11 21:00>: attendance @fatih": "CONFIRMED #3",
+  "<match 2026-11-11 21:00>: attendance @hakan": "CONFIRMED #4",
+  "<match 2026-11-11 21:00>: attendance @ilker": "CONFIRMED #5",
+  "<match 2026-11-11 21:00>: attendance @kaan": "CONFIRMED #6",
+  "<match 2026-11-11 21:00>: attendance @levent": "CONFIRMED #7",
+  "<match 2026-11-11 21:00>: attendance @murat": "CONFIRMED #8",
+  "<match 2026-11-11 21:00>: attendance @onur": "CONFIRMED #9",
+  "<match 2026-11-11 21:00>: places": "12",
+  "<match 2026-11-18 21:00>: places": "12",
+  "botjob dm → @erdal: 📍 Yakındaki kulüplerin sizi bulabilmesi için *Çarşamba Halı Saha Sandbox* kulübünün sahas": "sent",
+  "club: approval": "approved",
+  "club: members": "13",
+  "club: muted": "no",
+  "club: stage": "live, bot on",
+  "match 2026-11-11 21:00: Burak Demir": "CONFIRMED",
+  "match 2026-11-11 21:00: Can Aydın": "CONFIRMED",
+  "match 2026-11-11 21:00: Fatih Çelik": "CONFIRMED",
+  "match 2026-11-11 21:00: Hakan Koç": "CONFIRMED",
+  "match 2026-11-11 21:00: Kaan Polat": "CONFIRMED",
+  "match 2026-11-11 21:00: Levent Acar": "CONFIRMED",
+  "match 2026-11-11 21:00: Murat Güneş": "CONFIRMED",
+  "match 2026-11-11 21:00: Onur Tekin": "CONFIRMED",
+  "match 2026-11-11 21:00: score": "4-2",
+  "match 2026-11-11 21:00: status": "COMPLETED",
+  "match 2026-11-11 21:00: İlker Öztürk": "CONFIRMED",
+  "match 2026-11-18 21:00: status": "UPCOMING",
+  "member Burak Demir": "PLAYER",
+  "member Can Aydın": "PLAYER",
+  "member Deniz Kaya": "PLAYER",
+  "member Emre Şahin": "PLAYER",
+  "member Erdal Yılmaz": "OWNER",
+  "member Fatih Çelik": "PLAYER",
+  "member Gökhan Arslan": "PLAYER",
+  "member Hakan Koç": "PLAYER",
+  "member Kaan Polat": "PLAYER",
+  "member Levent Acar": "PLAYER",
+  "member Murat Güneş": "PLAYER",
+  "member Onur Tekin": "PLAYER",
+  "member İlker Öztürk": "PLAYER",
+  "sent-notification <match 2026-11-11 21:00>:announce-match": "group-message",
+  "sent-notification <match 2026-11-11 21:00>:ask-score": "group-message",
+  "sent-notification <match 2026-11-11 21:00>:cancel-nudge:@erdal": "dm",
+  "sent-notification <match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11": "group-message",
+  "sent-notification <match 2026-11-11 21:00>:chase-pre-kickoff": "group-message",
+  "sent-notification <match 2026-11-11 21:00>:evening-update:2026-11-10": "group-message",
+  "sent-notification <match 2026-11-11 21:00>:pre-kickoff": "group-message",
+  "sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794330000000": "roster-shown",
+  "sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794384000000": "roster-shown",
+  "sent-notification <match 2026-11-11 21:00>:roster-shown:<squad>:1794416400000": "roster-shown",
+  "sent-notification <match 2026-11-18 21:00>:announce-match": "group-message",
+  "sent-notification <match 2026-11-18 21:00>:evening-update:2026-11-12": "group-message",
+  "sent-notification <match 2026-11-18 21:00>:evening-update:2026-11-13": "group-message",
+  "sent-notification <match 2026-11-18 21:00>:roster-shown:<squad>:1794502800000": "roster-shown",
+  "sent-notification <match 2026-11-18 21:00>:roster-shown:<squad>:1794589200000": "roster-shown",
+  "sent-notification greply:<club>:wa-ownlanguage-22": "group-reply",
+  "sent-notification greply:<club>:wa-ownlanguage-7": "group-reply",
+  "sent-notification org-<club>:bot-intro": "bot-intro",
+  "sent-notification org-<club>:seed-nudge:@erdal": "dm",
+  "sent-notification txtlog:<club>:<text 012884c4>:<match 2026-11-18 21:00>:announce-match": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 0b356473>:<match 2026-11-11 21:00>:chase-match-day-morning:2026-11-11": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 20c642b0>:<match 2026-11-18 21:00>:evening-update:2026-11-12": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 4447e643>:<match 2026-11-11 21:00>:chase-pre-kickoff": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 7c034d9c>:<match 2026-11-11 21:00>:announce-match": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 86a59565>:<match 2026-11-11 21:00>:evening-update:2026-11-10": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 8c79872e>:<match 2026-11-18 21:00>:evening-update:2026-11-13": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text a3936cc6>:<match 2026-11-11 21:00>:ask-score": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text abba5055>:<match 2026-11-11 21:00>:pre-kickoff": "outbound-text-log",
+  "user @burak": "name \"Burak Demir\"",
+  "user @can": "name \"Can Aydın\"",
+  "user @deniz": "name \"Deniz Kaya\"",
+  "user @emre": "name \"Emre Şahin\"",
+  "user @erdal": "name \"Erdal Yılmaz\"",
+  "user @fatih": "name \"Fatih Çelik\"",
+  "user @gokhan": "name \"Gökhan Arslan\"",
+  "user @hakan": "name \"Hakan Koç\"",
+  "user @ilker": "name \"İlker Öztürk\"",
+  "user @kaan": "name \"Kaan Polat\"",
+  "user @levent": "name \"Levent Acar\"",
+  "user @murat": "name \"Murat Güneş\"",
+  "user @onur": "name \"Onur Tekin\""
+ }
+}

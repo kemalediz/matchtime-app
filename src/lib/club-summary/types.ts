@@ -344,54 +344,54 @@ export interface MatchFacts {
 }
 
 /**
- * Where a SquadMonth row is in its life, as stored: "open" is "signup",
- * the others are their own status. "held" is a month MatchTime holds for
- * its organiser (a `SentNotification` key, not a row) with no row yet;
- * "none" is neither.
+ * THE MONTH PHASE OF ONE GAME (slice B2): where the month of this game is.
+ * The one definition every consumer reads: `monthPhaseFor` (derive.ts),
+ * and for a door with no summary the same function through
+ * `loadMatchMonth` (month-phase.ts). The game's month is the SquadMonth row
+ * of the game's OWN Activity and the London month of its kickoff (the
+ * table's unique key), never another Activity at the same venue and
+ * weekday.
+ *
+ *   "none"     no month for this game: no row and no held key (a monthly
+ *              club whose list was never posted, the Vets on 3 November),
+ *              or a game dated before the month was started part-way (the
+ *              month began after it, so it was a game of no month).
+ *   "held"     no row yet, and MatchTime holds the month for its organiser
+ *              (a held `SentNotification` key: "start it from your list").
+ *   "signup"   the row is in sign-up: "open" (its list opened or not yet),
+ *              or "priced" (a stored status no writer sets today: pricing
+ *              is `pricedAt` on an open month). A month that exists and has
+ *              not started.
+ *   "running"  the row is running and the game is on or after its start.
+ *   "closed"   the row is closed.
+ *
+ * The phase is a fact. What a consumer does with it is decided next to it,
+ * once, in monthly-gates.ts (`monthFlowOf`, `holdsInBeforeMonth`).
  */
-export type MonthPhase = "none" | "held" | "signup" | "priced" | "running" | "closed";
+export type MonthPhase = "none" | "held" | "signup" | "running" | "closed";
 
 export interface MatchMonthFacts {
   /** The London month the kickoff falls in (`londonMonthStart`), "YYYY-MM-01". */
   monthStart: string;
-  /**
-   * The month of this match's FIXTURE (same venue and weekday,
-   * `isSameRecurringFixture`, the scheduler's key since a format switch
-   * re-points a match to another Activity), by its row's status. With two
-   * rows for one fixture (two formats, one month each), the one furthest
-   * on: running, closed, open, priced.
-   */
+  /** See `MonthPhase`. */
   phase: MonthPhase;
-  /** That row's id, or null for "none" and "held". */
+  /** The game's month row's id for "signup", "running" and "closed"; null
+   *  for "none" and "held". */
   monthId: string | null;
-  /** That row's `listOpenedAt` is set. The scheduler treats an "open" month
-   *  as in sign-up only once its list has opened (`signupListPosts`). */
-  listOpened: boolean;
-  /** A held key exists for this month and fixture, whatever the row says
-   *  (the scheduler reads the two separately). */
-  held: boolean;
-  /** The kickoff is before the month's start here (`startedMidMonthAt`, else
-   *  the London 1st): `monthForMatch` does not count it as the month's. */
+  /** The game's month row exists but the game is dated before its start
+   *  (`startedMidMonthAt`, else the London 1st), so its phase is "none". */
   beforeStart: boolean;
   /** The month's regulars have been put on this match:
    *  `rollingSeededAt >= month.createdAt` of that row (bot-scheduler.ts,
-   *  monthly-week.ts). The scheduler reads it only for a running or closed
-   *  month; for a month in sign-up it passes false. */
+   *  monthly-week.ts). Read only for a running or closed month. */
   seeded: boolean;
-  /**
-   * `monthNotStartedFor`'s key (month-not-started.ts, the players' group IN
-   * hold): a SquadMonth row exists, in any status, for this match's OWN
-   * activity and London month. Differs from `phase !== "none"` after a
-   * format switch (D5); both are today's values.
-   */
-  rowForOwnActivity: boolean;
 }
 
 export interface MonthFacts {
   id: string;
+  /** The game the month is of: a match is this month's when it is of this
+   *  Activity and London month (slice B2), never by venue and weekday. */
   activityId: string;
-  /** The fixture of its activity (venue and weekday). */
-  fixture: { venue: string; dayOfWeek: number };
   /** "YYYY-MM-01". */
   monthStart: string;
   /** As stored: "open", "priced", "running", "closed". */
