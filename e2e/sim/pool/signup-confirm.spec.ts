@@ -54,17 +54,21 @@ scenarios("signing up on /play and confirming on WhatsApp", () => {
     pool.expectNoLeaks(fnf.secrets(), { to: ["ali"] });
   });
 
-  scenario("happy path, Turkish, pool open: the welcome is in Turkish and not the early list", async ({ pool }) => {
+  // The public sign-up pages are English only (Kemal, 2026-11-02, #496): a
+  // request that still says Turkish makes an English profile, so the prefill
+  // and the welcome are English. A member can switch on his manage page.
+  scenario("pool open, the request says Turkish: the profile, prefill and welcome are English (#496), not the early list", async ({ pool }) => {
     const mehmet = await pool.stranger("mehmet", { name: "Mehmet" });
 
     const form = await pool.signUp({ name: "Mehmet Yılmaz", language: "tr", sports: [{ sport: "football", formats: [5, 7], level: "advanced" }] }, { poolOpen: true });
     expect(form).toMatchObject({ ok: true, earlyList: false });
-    expect(form.prefill).toBe(`Merhaba MatchTime, oynamak için kaydet. Kod ${form.code}`);
+    expect(form.prefill).toBe(`Hi MatchTime, sign me up to play. Code ${form.code}`);
+    expect(await pool.pendingByCode(form.code!)).toMatchObject({ status: "pending-verify", language: "en" });
 
     const ex = await mehmet.dm(form.prefill!);
 
-    pool.expectSent(ex.sent, [{ to: "mehmet", purpose: "pool-welcome", text: /^✅ Teşekkürler Mehmet, MatchTime oyuncu havuzuna katıldın/ }]);
-    expect(await pool.profileOf(mehmet)).toMatchObject({ status: "active", language: "tr", earlyList: false });
+    pool.expectSent(ex.sent, [{ to: "mehmet", purpose: "pool-welcome", text: /^✅ Thanks Mehmet, you're in the MatchTime player pool/ }]);
+    expect(await pool.profileOf(mehmet)).toMatchObject({ status: "active", language: "en", earlyList: false });
     const sports = await pool.db.all<{ sport: string; level: string | null; formats: number[] }>(
       `SELECT s.sport, s.level, s.formats FROM "PoolSport" s JOIN "PoolProfile" p ON p.id = s."profileId" JOIN "User" u ON u.id = p."userId" WHERE u."phoneNumber" = $1 ORDER BY s.sport`,
       [mehmet.phone],

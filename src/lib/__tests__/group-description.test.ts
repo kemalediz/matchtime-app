@@ -448,30 +448,45 @@ const TIMED_INPUTS: Array<[name: string, input: string]> = [
   ["the review's bypasses, repeated", fill("No 1:12-34-56 sort 12,34,56 acc 1234\n5678 GB29/NWBK/6016 12.34 56.78 £1234 5678 ")],
 ];
 
+/**
+ * How the time grows with the text, not how long it takes: a fixed budget in
+ * milliseconds failed whenever the full suite loaded the machine. The small
+ * text is run `factor` times per sample so each sample does the same work as
+ * one run of the big text, and the samples ALTERNATE, so a busy machine
+ * slows both alike. The fastest sample of each is kept (load only adds time).
+ * Linear work gives a ratio near 1; quadratic work gives `factor`.
+ */
+function growth(small: string, big: string, factor: number, samples = 9): number {
+  maskGroupDescription(small); // warm up both
+  maskGroupDescription(big);
+  let bestSmall = Infinity;
+  let bestBig = Infinity;
+  for (let i = 0; i < samples; i++) {
+    let started = performance.now();
+    for (let k = 0; k < factor; k++) maskGroupDescription(small);
+    bestSmall = Math.min(bestSmall, performance.now() - started);
+    started = performance.now();
+    maskGroupDescription(big);
+    bestBig = Math.min(bestBig, performance.now() - started);
+  }
+  // A floor of a few microseconds so a timer that reads 0 cannot divide by 0.
+  return bestBig / Math.max(bestSmall, 0.005);
+}
+
 describe("linear time", () => {
-  it.each(TIMED_INPUTS)("%s: 4,096 characters in under 20 ms", (_name, input) => {
+  it.each(TIMED_INPUTS)("%s: 4,096 characters take about 16 times as long as 256, not 256 times", (_name, input) => {
     expect(input.length).toBe(GROUP_DESCRIPTION_MAX_CHARS);
-    maskGroupDescription(input); // once to warm up
-    let best = Infinity;
-    for (let run = 0; run < 3; run++) {
-      const started = performance.now();
-      maskGroupDescription(input);
-      best = Math.min(best, performance.now() - started);
-    }
-    expect(best).toBeLessThan(20);
+    // 16 times the text: linear is about 1 here, quadratic about 16. Under 4
+    // leaves room for noise and still catches anything near quadratic.
+    expect(growth(input.slice(0, 256), input, 16)).toBeLessThan(4);
   });
 
   it("ten times the text takes about ten times as long, not a hundred", () => {
-    const time = (s: string) => {
-      maskGroupDescription(s);
-      const started = performance.now();
-      for (let run = 0; run < 5; run++) maskGroupDescription(s);
-      return (performance.now() - started) / 5;
-    };
     for (const unit of ["\u200b", "1 ", "1:", "12.34 ", "&#49;", "a@", "a.bc/"]) {
-      const small = time(unit.repeat(4000 / unit.length));
-      const big = time(unit.repeat(40000 / unit.length));
-      expect(big, unit).toBeLessThan(Math.max(40, small * 40));
+      const small = unit.repeat(4000 / unit.length);
+      const big = unit.repeat(40000 / unit.length);
+      // Linear is about 1, quadratic about 10.
+      expect(growth(small, big, 10), unit).toBeLessThan(4);
     }
   });
 });

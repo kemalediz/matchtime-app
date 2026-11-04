@@ -281,7 +281,7 @@ test.describe("the organiser of a club that is setting up", () => {
       expect(btn.y - (clubLine.y + clubLine.height)).toBeLessThan(16);
     }
     const preview = page.getByTestId("go-live-preview");
-    await expect(preview).toContainText("Hi everyone, I'm MatchTime. Hana has set me up to run this group's games.");
+    await expect(preview).toContainText("Hi everyone, I'm MatchTime. Hana has set me up to help run this group's games.");
     await expect(preview.locator("strong", { hasText: "Who's in:" })).toBeVisible();
     await expect(preview).not.toContainText("*");
     await expect(preview).toContainText("👋");
