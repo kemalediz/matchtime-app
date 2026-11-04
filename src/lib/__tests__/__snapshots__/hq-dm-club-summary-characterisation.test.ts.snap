@@ -575,23 +575,27 @@ IN",
         "model": "claude-haiku-5-5",
         "raw": true,
       },
-      {
-        "label": "extractor:question",
-        "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
-        "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
-
-THE MESSAGE (from Rafi, who tagged the bot):
-invite players for the next game",
-      },
     ],
     "response": {
-      "ignored": "no-open-survey",
+      "handled": "recruit-dm",
+      "invited": 0,
       "ok": true,
     },
     "status": 200,
-    "writes": [],
+    "writes": [
+      {
+        "args": {
+          "data": {
+            "kind": "dm",
+            "orgId": "org-fnf",
+            "phone": "447700900312",
+            "priority": 1,
+            "text": "There's no upcoming match to invite players to yet: the game on Fri 6 Nov hasn't been finished. Once its score is in or it's closed, I can invite players for the next one.",
+          },
+        },
+        "call": "botJob.create",
+      },
+    ],
   },
   "2026-11-07T10:00:00.000Z paid": {
     "model": [
@@ -5714,23 +5718,27 @@ invite players for the next game",
 THE MESSAGE (from Davide, who tagged the bot):
 invite players for the next game",
       },
-      {
-        "label": "extractor:question",
-        "model": "claude-haiku-5-5",
-        "schema": "3326dfac6034fccd",
-        "system": "332f6f65c72ee273",
-        "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
-
-THE MESSAGE (from Davide, who tagged the bot):
-invite players for the next game",
-      },
     ],
     "response": {
-      "ignored": "no-open-survey",
+      "handled": "recruit-dm",
+      "invited": 0,
       "ok": true,
     },
     "status": 200,
-    "writes": [],
+    "writes": [
+      {
+        "args": {
+          "data": {
+            "kind": "dm",
+            "orgId": "org-vets",
+            "phone": "447700900310",
+            "priority": 1,
+            "text": "There's no upcoming match to invite players to yet: the game on Mon 9 Nov hasn't been finished. Once its score is in or it's closed, I can invite players for the next one.",
+          },
+        },
+        "call": "botJob.create",
+      },
+    ],
   },
   "2026-11-13T12:00:00.000Z paid": {
     "model": [

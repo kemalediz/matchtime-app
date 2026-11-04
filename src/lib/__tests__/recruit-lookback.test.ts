@@ -61,6 +61,8 @@ import {
   RECRUIT_LOOKBACK_MAX,
   resolveLookbackMatches,
 } from "@/lib/recruit";
+import { recruitNoMatchRefusal, recruitNoMatchUnfinishedRefusal } from "@/lib/group-copy";
+import { dayLabel } from "@/lib/i18n/dates";
 
 const ORG = "org-1";
 
@@ -201,10 +203,17 @@ describe("inviteRecentPlayers: the club's next match", () => {
     expect(matchFindFirst).not.toHaveBeenCalled();
   });
 
-  it("with last week's match still live, nobody is invited to next week's: the no-match refusal", async () => {
+  it("with last week's match still live, nobody is invited to next week's: the refusal names the unfinished game", async () => {
     liveMatches = [stuck, next];
     const r = await inviteRecentPlayers(ORG);
     expect(r.ok).toBe(false);
+    expect(r.reason).toBe(recruitNoMatchUnfinishedRefusal({ when: dayLabel("en", stuck.date), lang: "en" }));
     expect(botJobCreate).not.toHaveBeenCalled();
+  });
+
+  it("no live match at all: the plain no-match refusal", async () => {
+    liveMatches = [];
+    const r = await inviteRecentPlayers(ORG);
+    expect(r).toEqual({ ok: false, reason: recruitNoMatchRefusal("en") });
   });
 });

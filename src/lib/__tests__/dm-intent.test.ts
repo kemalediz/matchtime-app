@@ -108,11 +108,24 @@ describe("NOBODY IS DM'd when the model says this is not the ask", () => {
     expect(r.calls.invited).toEqual([]);
   });
 
-  it("refuses the blast when there is no upcoming match to recruit for", async () => {
-    const r = recorder({ ...says("recruit_blast"), orgWithUpcomingMatch: async () => null });
+  it("no next match to recruit for (club summary B4): the admin is told so in one line, nobody is invited", async () => {
+    // Before B4 the DM fell through unanswered. The blast's own refusal
+    // (`inviteRecentPlayers`: none, or the unfinished last game) is the reply.
+    const refusal = "There's no upcoming match to invite players to yet: the game on Tue 3 Nov hasn't been finished.";
+    const invited: string[] = [];
+    const r = recorder({
+      ...says("recruit_blast"),
+      adminOrgIds: async () => ["org-sutton", "org-other"],
+      orgWithUpcomingMatch: async () => null,
+      invite: async (orgId) => {
+        invited.push(orgId);
+        return { reply: refusal, invited: 0 };
+      },
+    });
     const out = await runDmAdminIntent(r.deps);
-    expect(out.handled).toBeNull();
-    expect(r.calls.invited).toEqual([]);
+    expect(out).toEqual({ handled: "recruit-dm", orgId: "org-sutton", invited: 0 });
+    expect(invited).toEqual(["org-sutton"]);
+    expect(r.calls.replies).toEqual([{ orgId: "org-sutton", text: refusal }]);
   });
 
   it("refuses the progress read when the club has not played yet", async () => {

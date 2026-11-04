@@ -8,7 +8,7 @@
  * same matches (`club-summary/__tests__/derive.test.ts`).
  */
 import { describe, it, expect, vi } from "vitest";
-import { findNextMatch, findNextMatchPerClub, inFlightWhere, nextMatchWhere, upcomingMatchesWhere } from "@/lib/next-match";
+import { findNextMatch, findNextMatchOrUnfinished, findNextMatchPerClub, inFlightWhere, nextMatchWhere, upcomingMatchesWhere } from "@/lib/next-match";
 
 const bst = (day: string, time: string) => new Date(`${day}T${time}:00.000+01:00`);
 const row = (id: string, date: Date, status = "UPCOMING", orgId = "club") => ({ id, date, status, activity: { orgId } });
@@ -44,6 +44,29 @@ describe("findNextMatch", () => {
   it("keeps the loader's own row shape", async () => {
     const load = async () => [{ ...row("tonight", bst("2026-07-14", "21:30")), maxPlayers: 14 }];
     expect((await findNextMatch("club", bst("2026-07-14", "12:00"), load))?.maxPlayers).toBe(14);
+  });
+});
+
+describe("findNextMatchOrUnfinished: why there is none", () => {
+  it("with a next match: it, and no unfinished game", async () => {
+    const load = async () => [row("tonight", bst("2026-07-14", "21:30"))];
+    const r = await findNextMatchOrUnfinished("club", bst("2026-07-14", "12:00"), load);
+    expect([r.next?.id, r.unfinished]).toEqual(["tonight", null]);
+  });
+
+  it("blocked: no next match, and the latest live game dated before today, from the same read", async () => {
+    const load = vi.fn(async () => [
+      row("older-stuck", bst("2026-06-30", "21:30")),
+      row("stuck", bst("2026-07-07", "21:30")),
+      row("next-week", bst("2026-07-21", "21:30")),
+    ]);
+    const r = await findNextMatchOrUnfinished("club", bst("2026-07-14", "12:00"), load);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect([r.next, r.unfinished?.id]).toEqual([null, "stuck"]);
+  });
+
+  it("no live match at all: neither", async () => {
+    expect(await findNextMatchOrUnfinished("club", new Date(), async () => [])).toEqual({ next: null, unfinished: null });
   });
 });
 

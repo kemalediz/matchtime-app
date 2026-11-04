@@ -48,7 +48,28 @@ export async function findNextMatch<T extends SelectableMatch>(
   now: Date,
   load: (where: ReturnType<typeof nextMatchWhere<string>>) => Promise<T[]>,
 ): Promise<T | null> {
-  return selectRegistrationMatch(await load(nextMatchWhere(orgId)), now);
+  return (await findNextMatchOrUnfinished(orgId, now, load)).next;
+}
+
+/**
+ * The club's next match and, when there is none because the last game is
+ * still not finished, that game: the latest live match dated before the
+ * London day of `now`, from the same read. Lets a door say why there is no
+ * match (the recruit blast's refusal) without a query of its own.
+ */
+export async function findNextMatchOrUnfinished<T extends SelectableMatch>(
+  orgId: string,
+  now: Date,
+  load: (where: ReturnType<typeof nextMatchWhere<string>>) => Promise<T[]>,
+): Promise<{ next: T | null; unfinished: T | null }> {
+  const rows = await load(nextMatchWhere(orgId));
+  const next = selectRegistrationMatch(rows, now);
+  if (next) return { next, unfinished: null };
+  const today = londonDayStart(now);
+  const before = rows
+    .filter((r) => (LIVE_MATCH_STATUSES as readonly string[]).includes(r.status) && r.date < today)
+    .sort((a, b) => b.date.getTime() - a.date.getTime());
+  return { next: null, unfinished: before[0] ?? null };
 }
 
 /** The next match of each of several clubs, in one read: the same rule per

@@ -705,6 +705,8 @@ export const tr: Strings = {
   // ── rows 61, 62: the recruit refusals ──────────────────────────────
 
   recruit_no_match: "Oyuncu davet edilecek yaklaşan bir maç yok.",
+  recruit_no_match_unfinished: (p) =>
+    `Oyuncu davet edilecek yaklaşan bir maç henüz yok: ${p.when} maçı henüz bitirilmedi. Skoru girildiğinde ya da maç kapatıldığında bir sonraki maç için oyuncu davet edebilirim.`,
   recruit_full_squad: (p) => `*${p.matchName}* kadrosu zaten dolu, davet edecek açık yer yok.`,
 
   // ── row 63: buildBulkCancelAnnouncement ────────────────────────────

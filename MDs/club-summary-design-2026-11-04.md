@@ -1363,7 +1363,8 @@ that London day's match all day (before B4 it counted as the day before, so it b
 |---|---|---|
 | the DM answer (`dm-qa.ts`) | the earliest live match, no date floor: a match left live from last week was "UPCOMING MATCH" | the club's next match; in that edge "UPCOMING MATCH: none scheduled right now.", as an IN would be refused (model input, below) |
 | the recruit blast (`recruit.ts`, the HQ and DM "invite players") | the soonest live match from UTC midnight: with last week's game live it invited everyone to next week's, where their IN was then refused | the club's next match; in that edge the no-match refusal |
-| which of an admin's clubs a DM acts on (`dm-reply` `orgWithUpcomingMatch`) | the soonest live match from UTC midnight across his clubs | each club's next match, in one read, the soonest of those; a club whose last game is still live has none, so "invite players" falls through as `dm-intent.ts` already does for "no upcoming match" |
+| which of an admin's clubs a DM acts on (`dm-reply` `orgWithUpcomingMatch`) | the soonest live match from UTC midnight across his clubs | each club's next match, in one read, the soonest of those |
+| an admin's "invite players" with no next match (DM; the group and HQ print the same refusal) | the DM fell through unanswered; the group and HQ said "There's no upcoming match to invite players to." | one plain line on every door (main session's review of #537, on Kemal's delegation): when the last game is still not finished, "There's no upcoming match to invite players to yet: the game on Tue 3 Nov hasn't been finished. Once its score is in or it's closed, I can invite players for the next one." (EN and TR, `recruit_no_match_unfinished`, golden R62b), else today's plain refusal; the DM now replies with it for the club with a next match, else the admin's first club. The unfinished game comes from the same candidate read (`findNextMatchOrUnfinished`) |
 | the dashboard (`app/page.tsx`) | the first live match after this instant: after kickoff it jumped to next week's, and with last week's game live it offered an IN the server refused | the club's next match |
 | the match list (`matches/page.tsx`) | every match from this instant, any status: a cancelled game was listed as upcoming, and today's game left both lists at kickoff until the cron completed it | `upcomingMatchesWhere`: live matches from today, London |
 | the in-flight block (`attendance.ts`, `matches/[matchId]/page.tsx`) | its own query, UTC midnight | `inFlightWhere` |
@@ -1387,9 +1388,6 @@ remain (below).
 - Which club a DM question is about (`dm-qa.ts` `mostRecentOrg`, the club with the most recent
   match) and the admin's "rating progress" club (`orgWithCompletedMatch`): club choices, not the
   next match.
-- An admin's "invite players" DM while the last game is still live now gets no reply (it falls
-  through, as for any club with no upcoming match). Answering "there is no match to invite for
-  yet" instead would be a product choice; `dm-intent.ts` falls through on purpose.
 - Mute, billing pause, dormancy and quiet hours (B6): not touched.
 
 **What the DM answerer is sent (LLM change).** No prompt and no CONTEXT template changes: the
@@ -1419,9 +1417,12 @@ fee included. The club replay is free: all five clubs hit every cassette (0 miss
 "reordered" balancer requests are the row-order matches B3 named), so nothing was re-recorded;
 `baseline/b4` against `baseline/b5` is identical for all five, because the scenario clocks are in
 GMT, no scripted week cancels a game or sets weekly deadlines, and no match is left uncompleted.
-Unit tests: A1, A2 and A4 characterisations unchanged; A3 changed in three entries, all the edge
-(FNF `2026-11-07 question`, the Vets `2026-11-13 question`: UPCOMING MATCH none scheduled; the Vets
-`2026-11-13 invite`: no blast, falls through); the golden copy unchanged (no copy changed).
+Unit tests: A1, A2 and A4 characterisations unchanged; A3 changed in four entries, all the edge
+(FNF `2026-11-07 question`, the Vets `2026-11-13 question`: UPCOMING MATCH none scheduled; FNF
+`2026-11-07 invite` and the Vets `2026-11-13 invite`: no blast, the one-line refusal naming the
+unfinished game, and one model call fewer, since the DM no longer falls through to the question
+reader); the golden copy gained R62b in each language and changed none. The review change is no
+model input (the code's reply after the existing intent) and its replay was free.
 
 ### 3.17 As built in slice B6 (one rule for "may MatchTime send this club anything now, and what")
 

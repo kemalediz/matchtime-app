@@ -1491,6 +1491,9 @@ The squad for *Tuesday 7-a-side* is already full, so there are no open spots to 
 ### R62 RECRUIT_NO_MATCH_REFUSAL
 There's no upcoming match to invite players to.
 
+### R62b recruitNoMatchUnfinishedRefusal / last game not finished (B4)
+There's no upcoming match to invite players to yet: the game on Tue 3 Nov hasn't been finished. Once its score is in or it's closed, I can invite players for the next one.
+
 ### R60 RATING_PROGRESS_NO_MATCH_REASON
 There's no recent completed match to check yet.
 

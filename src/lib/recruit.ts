@@ -12,18 +12,18 @@
  */
 import { GUEST_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
-import { recruitNoMatchRefusal, buildRecruitFullSquadRefusal } from "./group-copy";
+import { recruitNoMatchRefusal, recruitNoMatchUnfinishedRefusal, buildRecruitFullSquadRefusal } from "./group-copy";
 import { buildFullSquadBenchInvite } from "./bench-offer-copy";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
-import { dayCommaTimeLabel } from "./i18n/dates";
+import { dayCommaTimeLabel, dayLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import { getOrgFeatures } from "./org-features";
 import { recruitDmLinkKey, RECRUIT_DM_LINK_KIND } from "./recruit-reaction";
 import { resolveLookbackMatches } from "./recruit-lookback";
 import { placesOpen } from "./squad-short";
-import { findNextMatch } from "./next-match";
+import { findNextMatchOrUnfinished } from "./next-match";
 
 /**
  * The lookback window, its ceiling and the clamp now live in
@@ -277,7 +277,7 @@ export async function inviteRecentPlayers(
   // 1. The club's next match (`next-match.ts`, club summary B4): the one an
   //    IN lands on. Before B4, the soonest live match from UTC midnight on,
   //    so with last week's match still live it invited to next week's.
-  const next = await findNextMatch(orgId, new Date(), (where) =>
+  const { next, unfinished } = await findNextMatchOrUnfinished(orgId, new Date(), (where) =>
     db.match.findMany({
       where,
       orderBy: { date: "asc" },
@@ -291,7 +291,17 @@ export async function inviteRecentPlayers(
       },
     }),
   );
-  if (!next) return { ok: false, reason: recruitNoMatchRefusal(features.language) };
+  // No next match: say why when the code knows (the last game is still not
+  // finished, so every later match is held), else the plain refusal. Every
+  // door that asks for the blast (group, HQ, DM) prints this reason.
+  if (!next) {
+    return {
+      ok: false,
+      reason: unfinished
+        ? recruitNoMatchUnfinishedRefusal({ when: dayLabel(features.language, unfinished.date), lang: features.language })
+        : recruitNoMatchRefusal(features.language),
+    };
+  }
 
   // Anyone with ANY attendance row has already responded (in / bench /
   // explicitly out) — don't pester them. We only invite recent players

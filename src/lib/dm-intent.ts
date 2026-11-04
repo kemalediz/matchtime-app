@@ -587,10 +587,11 @@ export async function runDmAdminIntent(deps: DmAdminIntentDeps): Promise<DmAdmin
   if (orgIds.length === 0) return NOT_HANDLED;
 
   if (intent === "recruit_blast") {
-    const orgId = await deps.orgWithUpcomingMatch(orgIds);
-    // No upcoming match → nothing to recruit for. Falls through rather
-    // than answering, exactly as the deleted handler did.
-    if (!orgId) return NOT_HANDLED;
+    // The club with a next match, else the admin's first club: with no
+    // next match the blast invites nobody and its refusal (none, or the
+    // last game still not finished) is the reply, as in the group and HQ.
+    // Before club summary B4 the DM fell through unanswered.
+    const orgId = (await deps.orgWithUpcomingMatch(orgIds)) ?? orgIds[0];
     const r = await deps.invite(orgId);
     await deps.reply({ orgId, text: r.reply });
     return { handled: "recruit-dm", orgId, invited: r.invited };
