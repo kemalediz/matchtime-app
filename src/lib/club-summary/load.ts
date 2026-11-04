@@ -28,6 +28,7 @@
  */
 import { db } from "../db";
 import { getOrgFeatures } from "../org-features";
+import { SETUP_STAGE_SELECT } from "../club-setup-rules";
 import { isPaymentCollectionLive } from "../payments-live-announce";
 import { loadPlayerNames } from "../player-display-name";
 import { withAliases } from "../member-aliases";
@@ -59,8 +60,7 @@ const ORG_SELECT = {
   whatsappGroupId: true,
   whatsappBotEnabled: true,
   dormantAt: true,
-  approvalStatus: true,
-  setupStage: true,
+  ...SETUP_STAGE_SELECT,
   billingStatus: true,
   liveAt: true,
   adminGroupId: true,

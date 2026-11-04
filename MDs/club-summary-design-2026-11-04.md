@@ -695,7 +695,12 @@ when one is set, and for a monthly club the SquadMonth rows and the held keys.
 7. **Roster order is #520's, not "display name, then id".** Section 6 asked C2 to adopt
    whatever the HQ PR chose; #520 chose membership `createdAt`, then id. The summary uses
    that. Aliases are sorted.
-8. **Smaller differences.** `approvalStatus` is the stored string (there is no normaliser);
+8. **Smaller differences.** `lifecycle` carries the predicates (`approved`, `settingUp`,
+   `billingPaused`, `operational`, `dormant`, `botOn`), not the stored `approvalStatus`,
+   `setupStage` or `billingStatus`: the existing source guards for those three columns
+   (`club-approval-source-guard`, `club-setup-source-guard`, `club-billing-source-guard`)
+   keep every reader on the predicates, and the summary obeys them (the stage is selected
+   through `SETUP_STAGE_SELECT`);
    `teamsReady` is `effectiveTeamsReadyTime`; `collectionLive` (D4's
    `isPaymentCollectionLive`) is computed in `load.ts` because its module imports the
    database client; the fee is `matchFee`, `pendingConfirm` and `linksReleased` on the

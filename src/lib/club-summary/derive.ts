@@ -30,7 +30,7 @@ import { normaliseLang } from "../i18n/lang";
 import { isOrgDormant } from "../org-lifecycle";
 import { isClubApproved, isClubOperational } from "../club-approval-state";
 import { isBillingPaused } from "../club-billing-rules";
-import { isClubSettingUp } from "../club-setup-rules";
+import { isClubSettingUp, type SetupStageColumns } from "../club-setup-rules";
 import { paymentMessagesOn } from "../payment-messages";
 import { availablePayMethods } from "../payments";
 import { normaliseListAnnouncer, organisersAnnounce } from "../list-announcer";
@@ -51,8 +51,9 @@ import { isSameRecurringFixture } from "../match-slot";
 
 // ── The raw rows (what load.ts selects) ────────────────────────────────
 
-/** The Organisation columns the summary reads. */
-export interface OrgRow {
+/** The Organisation columns the summary reads (the setup stage through
+ *  `SetupStageColumns`, the only way club-setup-rules.ts lets it be read). */
+export interface OrgRow extends SetupStageColumns {
   id: string;
   name: string;
   language: string;
@@ -60,7 +61,6 @@ export interface OrgRow {
   whatsappBotEnabled: boolean;
   dormantAt: Date | null;
   approvalStatus: string;
-  setupStage: string;
   billingStatus: string;
   liveAt: Date | null;
   adminGroupId: string | null;
@@ -190,11 +190,8 @@ export function lifecycleFacts(org: OrgRow): LifecycleFacts {
   return {
     botOn: org.whatsappBotEnabled,
     dormant: isOrgDormant(org),
-    approvalStatus: org.approvalStatus,
     approved: isClubApproved(org),
-    setupStage: org.setupStage,
     settingUp: isClubSettingUp(org),
-    billingStatus: org.billingStatus,
     billingPaused: isBillingPaused(org),
     operational: isClubOperational(org),
     liveAt: iso(org.liveAt),

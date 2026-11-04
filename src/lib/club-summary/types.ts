@@ -78,16 +78,13 @@ export interface LifecycleFacts {
   botOn: boolean;
   /** `isOrgDormant` (org-lifecycle.ts): `dormantAt` set. */
   dormant: boolean;
-  /** `approvalStatus` as stored ("draft", "pending", "approved", ...). */
-  approvalStatus: string;
-  /** `isClubApproved` (club-approval-state.ts). */
+  /** `isClubApproved` (club-approval-state.ts). The stored approval, setup
+   *  and billing columns are not carried raw: their own source guards
+   *  (club-approval, club-setup, club-billing) keep every reader on these
+   *  predicates. */
   approved: boolean;
-  /** `setupStage` as stored ("live" or "setting-up"). */
-  setupStage: string;
   /** `isClubSettingUp` (club-setup-rules.ts). */
   settingUp: boolean;
-  /** `billingStatus` as stored. */
-  billingStatus: string;
   /** `isBillingPaused` (club-billing-rules.ts): only while BILLING_ENABLED is on. */
   billingPaused: boolean;
   /** `isClubOperational` (club-approval-state.ts): approved, not dormant, not

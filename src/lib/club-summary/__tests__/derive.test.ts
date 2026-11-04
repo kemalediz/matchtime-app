@@ -35,11 +35,8 @@ describe("lifecycle", () => {
     expect(lifecycleFacts(SUTTON.org)).toEqual({
       botOn: true,
       dormant: false,
-      approvalStatus: "approved",
       approved: true,
-      setupStage: "live",
       settingUp: false,
-      billingStatus: "exempt",
       billingPaused: false,
       operational: true,
       liveAt: null,
