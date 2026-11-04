@@ -166,7 +166,8 @@ import { seedNudgeInstructions } from "./seed-nudge";
 import { firstTeamsInstructions } from "./admin-onboarding";
 import { isBillingPaused } from "./club-billing-rules";
 import { isClubSettingUp } from "./club-setup-rules";
-import { lowNumbersBelow, minimumToPlay, type GameFormat } from "./min-players";
+import { minimumToPlay, type GameFormat } from "./min-players";
+import { isSquadShort } from "./squad-short";
 import { decideBenchSuggestion, planFormatUp, playerRange } from "./flex-format-rules";
 import { flexFormatCopy } from "./i18n/flex-format";
 import { joinAdminNames } from "./seed-nudge-rules";
@@ -1161,21 +1162,33 @@ export async function computeDuePosts(
   //   reviewable transform. The key → feature mapping (and which keys
   //   are never gated) lives in `due-key-feature.ts`, shared with the
   //   payment-claim classifier's "last message" context.
-  const paymentsOn = paymentMessagesOnFor(features);
-  const gated = out.filter((instr) => {
-    // The bench-prompt kind is bench regardless of key shape.
-    if (instr.kind === "bench-prompt" && !features.bench) return false;
-    // Nothing about payments while the club neither tracks nor collects
-    // them (2026-11-03, `payment-messages.ts`), whatever section made it.
-    if (!paymentsOn && isPaymentMessageKey(instr.key)) return false;
-    const f = featureForDueKey(instr.key);
-    return f === null ? true : features[f];
-  });
+  //   The same rule is read BEFORE the chase composer's model call
+  //   (`chaseText`), so a post this gate would drop costs no call.
+  const gated = out.filter((instr) => featureGateAllows(features, instr));
 
   // Conversational replies take the first DM slots (dm-reply-priority.ts).
   // Off: `gated` exactly as before.
   const instructions = opts.replyPriority ? prioritiseReplyDms(gated, replyKeys) : gated;
   return { instructions, waGroupId: groupId, orgId: org.id };
+}
+
+/**
+ * THE PER-ORG FEATURE GATE, one definition. False for an instruction whose
+ * capability is switched off for the club: it is never sent. Read by the
+ * filter at the end of `computeDuePosts` and, before the model is asked
+ * for a chase's opening line, by `chaseText` (2026-11-04: a ratings-only
+ * club with attendance off paid 15 composer calls in a week for chases
+ * this gate then dropped).
+ */
+export function featureGateAllows(features: OrgFeatures, instr: { kind: string; key: string }): boolean {
+  // The bench-prompt kind is bench regardless of key shape.
+  if (instr.kind === "bench-prompt" && !features.bench) return false;
+  // Nothing about payments while the club neither tracks nor collects
+  // them (2026-11-03, `payment-messages.ts`), whatever section made it.
+  const paymentsOn = paymentMessagesOnFor(features);
+  if (!paymentsOn && isPaymentMessageKey(instr.key)) return false;
+  const f = featureForDueKey(instr.key);
+  return f === null ? true : features[f];
 }
 
 /**
@@ -1388,6 +1401,18 @@ async function computeForMatch(
     .sort((a, b) => a.position - b.position);
   const maxPlayers = m.maxPlayers;
   const need = Math.max(0, maxPlayers - confirmed.length);
+  /**
+   * THE SQUAD IS SHORT (2026-11-04, squad-short.ts): below the game's own
+   * minimum, or two full sides of its format when none is set. Every
+   * "short" said to the organisers reads this: the 10:00 "Low numbers"
+   * offer and the chase notices to the admin channel. `need` stays the
+   * open places, which the players' chases still ask to fill.
+   */
+  const isShort = isSquadShort(confirmed.length, {
+    minPlayers: activity.minPlayers ?? null,
+    maxPlayers,
+    playersPerTeam: sport.playersPerTeam,
+  });
 
   // ── THE SAME SQUAD IS NOT LISTED TWICE (2026-10-06) ──────────────────
   //   Sutton FC, Tue 6 Oct: the analyze reply posted the squad at 07:28
@@ -1426,11 +1451,18 @@ async function computeForMatch(
    * exact squad. The composed post is built with or without the list
    * (the composer renders it from the rows); the static copy, which may
    * carry one, has it cut out.
+   *
+   * `key` is the players' group post it will go out as. A post the
+   * feature gate will drop (`featureGateAllows`: attendance off, a
+   * ratings-only club) gets the static copy with no model call and no
+   * read, and is dropped at the gate as before (2026-11-04).
    */
   async function chaseText(
     kind: ChaseKind,
+    key: string,
     staticFallback: () => string,
   ): Promise<{ text: string; rosterShown?: { fingerprint: string } }> {
+    if (!featureGateAllows(features, { kind: "group-message", key })) return { text: staticFallback() };
     const withRoster = !(await rosterJustShown());
     const composed = await composeChase(kind, withRoster);
     if (composed) return withRoster ? { text: composed, rosterShown: rosterMark } : { text: composed };
@@ -1979,7 +2011,7 @@ async function computeForMatch(
         // roster block is appended here. Since 2026-10-20 the composed
         // list is rendered from the rows like the reply path's (§10 step
         // 4); the model writes only the opening line.
-        const chase = await chaseText("daily-in-list", () => {
+        const chase = await chaseText("daily-in-list", eveningKey, () => {
           // Static fallback mirrors the LLM template — count + roster
           // INCLUDING the bench (bench shows in every squad display,
           // all orgs — Kemal 2026-06-12). buildSquadRosterBlock already
@@ -2763,7 +2795,6 @@ async function computeForMatch(
     //         resolves the situation; other admins can ignore their DM.
     // Below the organiser's own minimum when one is set (`minPlayers`,
     // 2026-11-03: the Vets play one down), below the places otherwise.
-    const ownMinimum = activity.minPlayers ?? null;
     if (
       isDayBefore &&
       hour >= 10 &&
@@ -2771,8 +2802,8 @@ async function computeForMatch(
       m.status === "UPCOMING" &&
       // Against the game's OWN format when no minimum is set (review of
       // #517): a match switched up to 16 with 14 in is two full 7-a-side
-      // teams, not short.
-      confirmed.length < lowNumbersBelow({ minPlayers: ownMinimum, maxPlayers: Math.min(maxPlayers, sport.playersPerTeam * 2) })
+      // teams, not short. The one definition of "short" (squad-short.ts).
+      isShort
     ) {
       const candidate = await findSmallerSameSportActivity(
         activity.orgId,
@@ -2859,8 +2890,14 @@ async function computeForMatch(
   //       ask doesn't go stale. Each chase has its own idempotency key.
   //       Chases run on UPCOMING matches only; once the squad is full
   //       again they naturally stop firing.
+  //       TWO QUESTIONS (2026-11-04). The players' group is asked while a
+  //       place is open (`placesOpen`, unchanged). The organisers' notice
+  //       says "the squad is still short", so it goes only while the squad
+  //       IS short (`isShort`, squad-short.ts): FNF at 12 of 18 with a
+  //       minimum of 12 is on and hears nothing. Its key is not claimed,
+  //       so a drop below the minimum later in the window still sends it.
   {
-    const short = confirmed.length < maxPlayers;
+    const placesOpen = confirmed.length < maxPlayers;
     const need = maxPlayers - confirmed.length;
     const inLive = m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED";
 
@@ -2874,7 +2911,7 @@ async function computeForMatch(
       const key = `${matchId}:chase-match-day-morning:${dayKey}`;
       if (
         !sentKeys.has(key) &&
-        short &&
+        placesOpen &&
         inLive &&
         isMatchDay &&
         inMorningWindow &&
@@ -2888,13 +2925,15 @@ async function computeForMatch(
       ) {
         // The organisers announce: the short squad goes to them. (An admin
         // GROUP's hours start at 09:00, so there it waits for the 3h chase.)
-        if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
-        else if (noMonthYet) {
+        if (organisers) {
+          if (isShort) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
+        } else if (noMonthYet) {
           // A monthly club with no month yet: "N more needed" would ask
           // the paid-up regulars to say IN.
         } else {
           const chase = await chaseText(
             "match-day-morning",
+            key,
             // No "Morning all": the slot is 8-9am but the post can land
             // late (see buildMatchDayChaseFallback's docblock).
             () => buildMatchDayChaseFallback({ need, activityName: activity.name, lang }),
@@ -2909,16 +2948,17 @@ async function computeForMatch(
       const key = `${matchId}:chase-pre-kickoff`;
       if (
         !sentKeys.has(key) &&
-        short &&
+        placesOpen &&
         inLive &&
         hoursUntilMatch <= 4 &&
         hoursUntilMatch >= 3
       ) {
-        if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
-        else if (noMonthYet) {
+        if (organisers) {
+          if (isShort) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
+        } else if (noMonthYet) {
           // As the morning chase above.
         } else {
-          const chase = await chaseText("chase-pre-kickoff", () =>
+          const chase = await chaseText("chase-pre-kickoff", key, () =>
             buildChasePreKickoffFallback({
               need,
               activityName: activity.name,
@@ -2947,11 +2987,13 @@ async function computeForMatch(
       hoursUntilMatch > 0.5 &&
       (m.status === "TEAMS_PUBLISHED" || m.status === "TEAMS_GENERATED" || m.status === "UPCOMING")
     ) {
-      if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
-      else if (noMonthYet) {
+      // The organisers' notice only while the squad is short (see 4c).
+      if (organisers) {
+        if (isShort) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
+      } else if (noMonthYet) {
         // As the chases above.
       } else {
-        const chase = await chaseText("pre-kickoff-short", () =>
+        const chase = await chaseText("pre-kickoff-short", key, () =>
           buildPreKickoffShortFallback({
             timeLabel: format(m.date, "HH:mm"),
             venue: activity.venue,

@@ -36,9 +36,15 @@ describe("the scheduler adds it only on the organisers' short-squad notices", ()
     const calls = src.match(/partnerOffer: await partnerOffer\(\)/g) ?? [];
     expect(calls).toHaveLength(3);
     expect(src.match(/poolBand: await poolBand\(\)/g) ?? []).toHaveLength(3);
-    for (const line of src.split("\n").filter((l) => l.includes("partnerOffer: await partnerOffer()"))) {
-      // The pool's band rides on the same organiser-only calls (L5a).
-      expect(line).toMatch(/if \(organisers\) await toOrganisers\(key, "chase", \{ partnerOffer: await partnerOffer\(\), poolBand: await poolBand\(\) \}\);/);
-    }
+    const lines = src.split("\n");
+    lines.forEach((line, i) => {
+      if (!line.includes("partnerOffer: await partnerOffer()")) return;
+      // The pool's band rides on the same organiser-only calls (L5a), and
+      // since 2026-11-04 only while the squad is short (squad-short.ts):
+      // inside the organisers' branch, never a players' group post.
+      expect(line).toMatch(/^\s*if \(isShort\) await toOrganisers\(key, "chase", \{ partnerOffer: await partnerOffer\(\), poolBand: await poolBand\(\) \}\);$/);
+      expect(lines[i - 1]).toMatch(/^\s*if \(organisers\) \{$/);
+      expect(lines[i + 1]).toMatch(/^\s*\} else if \(noMonthYet\) \{$/);
+    });
   });
 });
