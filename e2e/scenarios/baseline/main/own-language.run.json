@@ -5,7 +5,7 @@
  "steps": 22,
  "sent": 24,
  "errors": 0,
- "seconds": 59,
+ "seconds": 64,
  "model": {
   "club": "own-language",
   "mode": "replay",

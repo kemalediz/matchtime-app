@@ -670,7 +670,7 @@
 - 2026-11-11 12:00 database: <match 2026-11-10 20:00>: MoM votes for @gaz: (new) 1
     match 2026-11-10 20:00: MoM votes: 2 → 3
     match 2026-11-10 20:00: ratings: 26 → 39
-- 2026-11-11 17:00 [Sutton Sandbox FC] **MatchTime**: 🗓 *Sutton Sandbox FC* on Tuesday 17 November needs *14 players* to get going. Say *IN* if you can play ⚽
+- 2026-11-11 17:00 [Sutton Sandbox FC] **MatchTime**: 🗓 *Sutton Sandbox FC* needs *14 players* for Tuesday 17 November. Say *IN* if you can play ⚽
     
     *Playing Tue 17 Nov:*
     1. 🥁
@@ -689,7 +689,7 @@
     14. 🥁
 - 2026-11-11 17:00 database: sent-notification <match 2026-11-17 20:00>:evening-update:2026-11-11: (new) group-message
     sent-notification <match 2026-11-17 20:00>:roster-shown:<squad>:1794416400000: (new) roster-shown
-    sent-notification txtlog:<club>:<text dfbfba4e>:<match 2026-11-17 20:00>:evening-update:2026-11-11: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 2a374a8d>:<match 2026-11-17 20:00>:evening-update:2026-11-11: (new) outbound-text-log
 - 2026-11-11 18:00 [DM Ben Hughes] **MatchTime**: 💷 Quick one Ben: your *£5* for *Sutton Sandbox FC* is still outstanding.
     
     Pay by card, Apple or Google Pay, or pay Colin directly:

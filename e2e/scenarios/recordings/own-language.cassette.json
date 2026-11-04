@@ -3,11 +3,11 @@
  "club": "own-language",
  "meter": {
   "calls": 25,
-  "costUsd": 0.0039201900000000005,
+  "costUsd": 0.0040971900000000006,
   "byModel": {
    "claude-haiku-5-5": {
     "calls": 25,
-    "costUsd": 0.0039201900000000005
+    "costUsd": 0.0040971900000000006
    }
   }
  },
@@ -108,7 +108,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnkKcsFXY7sigmdPEy7\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m2\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m3\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m4\\\",\\\"route\\\":\\\"question\\\",\\\"to_bot\\\":true,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m5\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":130,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":163,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWha8JFbBkuK68uuJrX\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSwwgKEAgTGAI4AUIIdGhpbmtpbmcSDBHxBoplNyKp+rlwsBoMnwIU8zFB28oqLDHAIjCPRKZ7VmQ4Vd39RDx6rKij1rVQlra5wjYoD51X/24o7PsgzQJ3LgoEgf+558ffISMq4AeSBiAajg/q13z2b7LHjP5mCRNLeFOkG1siIIOcQB6HT1Wjkc6NtuJ+mir0sp7cws6mgUfbaNx2lGSAUGnBqkqETcfbvDqnfaKJ+8aoChgiENbHAYGKaIetGLW44KjZtHsRVu/5Ao8zUBCX/7nWku6zfHUR1J86LKf6AS0ykWK5FXumx1CHINwcMr7aMnV00CunGssZbkPE6xz8+Xm/a7zUkG+L8ISJIM4L9p6uRkH18v90JI1vfWZf9Y+7J5Pv79NwAfSKilJ6xNLG/2tWrZIvmpX0ePuA7HHM51+uurNZNQzUqejg+4tPtRbCMpp2XETQM8vT5hDzkCnSy2vNJY6e2UgLqwrKlDasTwFDE46z2TnmTZTiVNPln19gvBMIqiyiySORsDlhO/qAUgmhJyQIwAg+E/vrzztO0xWDb3U8KDLJ6ZxMHf+5ZnnI2T+1kAOYf/mXRBMr7vicXtUBgn/WbaQB8AwHYrBFbeaSsIUhXZIPUVLWPAbwPLOZrKiDfNBoF0G46fRtOxE0z4xgngItC09/q0lmomGTc9ZSSkkGxPSwJgdH3P/StWA4CXOamSyt5JWzWJl4Htfoiwnzzfuyml7VgYXGr9RSK05bYD2KDP3bkRtBNZM631SgY8ryfRuGE9/QdvQAfI2W8zsZ1SXaCU5r59ptT8cOlPu4/ZFFzxRcZbS5uBZw9NOJha+h5+8ACUY0jsLmgCFHZTRxO0bXIrPTZdzVA720GrR+Ilfgmn9+r5cEJvtQsspNYTlDkqElrJ9fvvLYQykJiVMmeTZoW/AIS+RyngdquHyFEWKM0git9vCXivHpHbDJhGyOjONu/nsDKnilItCqlU62y2sMAM2RhWg8Xxdl0RtvrqL5ZQMeY9C3SAr6ZG/v89yMpDRB4VapWrwL1YNc/5wsXst7J0n4q9gESY1nuzjSHBrcYn+X17xo/FYRf8h7SXLU61Bqx6tjeQt6TROMZ2qq/uy24NzMbq4USnWv5SAmYOg4WTL9sEJe4c9G5O2U2A6hh8e6T9l5ry9gRKimw/9kp8Hue2kapGY9ZLHkg6G0x7JISDA/CiKwDj3UjJAX16qMlfnc9V4rTxjuX1XQvD/zVeW+QTEqPXr8a5ziz7HZjHltT3CeFj3onE9jVWw2lGloIlsqD54Wv3l3iIExRSIRoQ8oK1qtoc5eVCol0AWETS9j2ZYj9I5JmSHJvcxEpo45p7NdYs09jtiakLA1Yv4lyHae1mYwxJPioWf24mvEu0b6HIu32fUuXv2Pusrt7KCKZAFhiK6J7ovS9zzVcw8EkPfK8gQA4TnopXgFzM33h6Lc9RgB\"},{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m2\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m3\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m4\\\",\\\"route\\\":\\\"question\\\",\\\"to_bot\\\":true,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m5\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":130,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":349,\"output_tokens_details\":{\"thinking_tokens\":186},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "af70855c0d15283b87ac929d3f4b1d66",
@@ -256,155 +256,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnkR8WEq57wVskFJAYp\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":144,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
-  },
-  {
-   "key": "9284922244e8b5c3254a50715fcc16da",
-   "model": "claude-haiku-5-5",
-   "site": "You read ONE message from a football club's WhatsApp group and report what it says about w",
-   "status": 200,
-   "request": {
-    "model": "claude-haiku-5-5",
-    "max_tokens": 2048,
-    "system": [
-     {
-      "type": "text",
-      "text": "\u0000blob:ef6f3f5461097e8836001ae1",
-      "cache_control": {
-       "type": "ephemeral",
-       "ttl": "1h"
-      }
-     }
-    ],
-    "messages": [
-     {
-      "role": "user",
-      "content": "RECENT CHAT (context only, never extract from it):\n  Burak Demir: varım\n  Deniz Kaya: bu hafta yokum maalesef\n  Emre Şahin: @Match Time maç kaçta?\n  Fatih Çelik: varım\nNOW: Monday 9 November 2026, 10:10 (club time, London)\n\nTHE MESSAGE (from Can Aydın):\nben de varım"
-     }
-    ],
-    "output_config": {
-     "format": {
-      "type": "json_schema",
-      "schema": {
-       "type": "object",
-       "properties": {
-        "claims": {
-         "type": "array",
-         "items": {
-          "type": "object",
-          "properties": {
-           "subject": {
-            "type": "string",
-            "enum": [
-             "sender",
-             "other"
-            ]
-           },
-           "personRef": {
-            "type": "string"
-           },
-           "personKind": {
-            "type": "string",
-            "enum": [
-             "named",
-             "relation",
-             "group",
-             "placeholder"
-            ]
-           },
-           "benchAsked": {
-            "type": "boolean"
-           },
-           "polarity": {
-            "type": "string",
-            "enum": [
-             "in",
-             "out",
-             "bench"
-            ]
-           },
-           "contingent": {
-            "type": "boolean"
-           },
-           "conditionOn": {
-            "type": "string",
-            "enum": [
-             "squad",
-             "self",
-             "none"
-            ]
-           },
-           "tense": {
-            "type": "string",
-            "enum": [
-             "present",
-             "future",
-             "past",
-             "hypothetical"
-            ]
-           },
-           "reported": {
-            "type": "boolean"
-           },
-           "replaces": {
-            "type": "string"
-           },
-           "confidence": {
-            "type": "number"
-           }
-          },
-          "required": [
-           "subject",
-           "personRef",
-           "personKind",
-           "benchAsked",
-           "polarity",
-           "contingent",
-           "conditionOn",
-           "tense",
-           "reported",
-           "replaces",
-           "confidence"
-          ],
-          "additionalProperties": false
-         }
-        },
-        "affirmation": {
-         "type": "string",
-         "enum": [
-          "yes",
-          "no",
-          "none"
-         ]
-        },
-        "sideRequests": {
-         "type": "array",
-         "items": {
-          "type": "string",
-          "enum": [
-           "recruit",
-           "chase",
-           "question",
-           "teams"
-          ]
-         }
-        }
-       },
-       "required": [
-        "claims",
-        "affirmation",
-        "sideRequests"
-       ],
-       "additionalProperties": false
-      }
-     },
-     "effort": "medium"
-    },
-    "thinking": {
-     "type": "adaptive"
-    }
-   },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnkYWGGnjVxVU7ntrKt\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":144,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWhivdWVT4tBfg2RivR\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":144,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "e0d5c2ef67873022677845e6d1745fca",
@@ -552,7 +404,155 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnkYrbpwejAYAHiKjmQ\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.97}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":144,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWhqpcQwnwufYNGbUTp\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":144,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+  },
+  {
+   "key": "9284922244e8b5c3254a50715fcc16da",
+   "model": "claude-haiku-5-5",
+   "site": "You read ONE message from a football club's WhatsApp group and report what it says about w",
+   "status": 200,
+   "request": {
+    "model": "claude-haiku-5-5",
+    "max_tokens": 2048,
+    "system": [
+     {
+      "type": "text",
+      "text": "\u0000blob:ef6f3f5461097e8836001ae1",
+      "cache_control": {
+       "type": "ephemeral",
+       "ttl": "1h"
+      }
+     }
+    ],
+    "messages": [
+     {
+      "role": "user",
+      "content": "RECENT CHAT (context only, never extract from it):\n  Burak Demir: varım\n  Deniz Kaya: bu hafta yokum maalesef\n  Emre Şahin: @Match Time maç kaçta?\n  Fatih Çelik: varım\nNOW: Monday 9 November 2026, 10:10 (club time, London)\n\nTHE MESSAGE (from Can Aydın):\nben de varım"
+     }
+    ],
+    "output_config": {
+     "format": {
+      "type": "json_schema",
+      "schema": {
+       "type": "object",
+       "properties": {
+        "claims": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "subject": {
+            "type": "string",
+            "enum": [
+             "sender",
+             "other"
+            ]
+           },
+           "personRef": {
+            "type": "string"
+           },
+           "personKind": {
+            "type": "string",
+            "enum": [
+             "named",
+             "relation",
+             "group",
+             "placeholder"
+            ]
+           },
+           "benchAsked": {
+            "type": "boolean"
+           },
+           "polarity": {
+            "type": "string",
+            "enum": [
+             "in",
+             "out",
+             "bench"
+            ]
+           },
+           "contingent": {
+            "type": "boolean"
+           },
+           "conditionOn": {
+            "type": "string",
+            "enum": [
+             "squad",
+             "self",
+             "none"
+            ]
+           },
+           "tense": {
+            "type": "string",
+            "enum": [
+             "present",
+             "future",
+             "past",
+             "hypothetical"
+            ]
+           },
+           "reported": {
+            "type": "boolean"
+           },
+           "replaces": {
+            "type": "string"
+           },
+           "confidence": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "subject",
+           "personRef",
+           "personKind",
+           "benchAsked",
+           "polarity",
+           "contingent",
+           "conditionOn",
+           "tense",
+           "reported",
+           "replaces",
+           "confidence"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "affirmation": {
+         "type": "string",
+         "enum": [
+          "yes",
+          "no",
+          "none"
+         ]
+        },
+        "sideRequests": {
+         "type": "array",
+         "items": {
+          "type": "string",
+          "enum": [
+           "recruit",
+           "chase",
+           "question",
+           "teams"
+          ]
+         }
+        }
+       },
+       "required": [
+        "claims",
+        "affirmation",
+        "sideRequests"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "effort": "medium"
+    },
+    "thinking": {
+     "type": "adaptive"
+    }
+   },
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWhqVGpkCTe4FS1hWbN\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":144,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "f97f67752634c021b6fd33a565563004",
@@ -700,7 +700,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnkYx3b1UH7bSUSzJKf\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"out\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"future\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":144,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWhqzYLU9r3YXESm4xq\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"out\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"future\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":144,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "5b80f2611240a07574618eb6726dc581",
@@ -865,7 +865,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnkecN3yBjPX59jszVV\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"topic\\\":\\\"fixture\\\",\\\"personRef\\\":\\\"\\\",\\\"statedCount\\\":-1,\\\"table\\\":\\\"none\\\",\\\"listSize\\\":-1,\\\"listEnd\\\":\\\"top\\\",\\\"period\\\":\\\"none\\\",\\\"periodCount\\\":-1,\\\"periodUnit\\\":\\\"none\\\",\\\"feature\\\":\\\"none\\\",\\\"badge\\\":\\\"none\\\",\\\"answersClarification\\\":false}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":152,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6180,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":91,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWhxgsP1xx4WfQcxKDf\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"topic\\\":\\\"fixture\\\",\\\"personRef\\\":\\\"\\\",\\\"statedCount\\\":-1,\\\"table\\\":\\\"none\\\",\\\"listSize\\\":-1,\\\"listEnd\\\":\\\"top\\\",\\\"period\\\":\\\"none\\\",\\\"periodCount\\\":-1,\\\"periodUnit\\\":\\\"none\\\",\\\"feature\\\":\\\"none\\\",\\\"badge\\\":\\\"none\\\",\\\"answersClarification\\\":false}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":152,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6180,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":91,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "edd79da07f3ebb3b7ba8ad0fda8101ab",
@@ -955,7 +955,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnmA7eTfScHhnRF6Dpd\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m2\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":64,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":72,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWiTKJNgeqjt4DB6Kcb\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m2\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":64,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":72,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "7feb9e5657abfcbf22ddc4be82205169",
@@ -1103,7 +1103,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnmF9G3QUM9GX7mVraM\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":170,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWiX4Hec2BkrkfzHWin\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.97}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":170,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "f5883a8cb0c38825bf8919036614cf06",
@@ -1251,7 +1251,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnmL5RJW8uDd5EL4nsW\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.5}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":170,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWidisiut3h55i1ogDH\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSmAsKEAgTGAI4AUIIdGhpbmtpbmcSDOCd2pSHY06kD4wzVhoMjxgWJNRmixnneyL/IjCrkM94hIGrEwZcvi+dRrI5vw40p1eX/6iy1ACOKuVv0DeL+uGr3w1UQxNJhobY0vwqtQrgFm5J0Qu2NvlCI6B9hERxdIgWFMq4iCk8IktrlfiiribXpZ4z5qP8XSMYuJqrL0XMJRczlsfGRqinGyCdmtqgydQwjWEeO9ua23Y0cn517KH+/o0wQQ2M61B1vnumdYt0uR37MDqxc7jvacw/MY9DRvfhYg3Fn6BhdIu+9a47YNwtb+K/COUCAwuE3KIzBOzoEFbSb51BrCkKvVkyTfyVCXfrr9Nk6peuKXZ5heIhZEQelOAAHNf9PoJVlJBaNDCOqyqfzTZL9oGH6YaRM6zj5NvrardkjCBaAYMGWLGev90/9xEu3JikVudiQpPIZhnqZPlHgN34F3Ey1aidGw4W4ztf0jAyhmMpzkDr8u44I0VHzk4SIFgg1EAE3f/aqczM92dCQtUgwfhGXibDVGGMtyyFEbROiPqdOwSBHaleLxPiooT5yRhIaw8bJuvgyHKVCVT6BW8ui7lMHe6+R2NLVeV6wJTHw6Ve2Lr1239bZ2DcQdgeGqQSiyk2H5tSmuPKjdxW6o6pSyrcsPDRBs7c9S2tw+zZF89ZD9IbDVnSluQ3qqjfsZBHcXFbQvRptP5l9VJwtSf0otT4ThBnoIZ+4/TQueHi+0o2ISxtrNGpjbjQxUHvgfknCiKP8PgcXHy8FzNaDZQfUS1RSgVyB8B3KbvuHCgb6pcfvrVT5dkqogKqip+jRnDrv4Eo5E1Q+NWfRKxoWvHupz3roZS9m0XQO3s1ySISde5A5Jouwv4eftx1qJ9ATKt8MhpMk0Zs/osIJcadXXmyUoW0Pptn/fmTiPfwUN9PqBWdAQO7NxIa+aDJtzmivofGM4U2wb4FYUU+HpwTxqq4hS2i3jpMV371Vq26CS85edBtGDcDvQr/s0RDIkdl6yQXxnmBU+g3+e65uGXFUYKmt17dCClbAcKltuvXzwte2yzxa7brirxhki6FF3Dh+qSk+VQuEFSfZksitqeK4B+x/R5wrqYLP7hi9RVP2NmfGCIQZtVePWHZp8qCHEnVdIJWhS/1S/20UAA6CDBYsQ894M510gFggIM8GQIpWGM7VhoOpw5LLcxcqjoXWHgj5Fm/ie+CtoJ/dDrVRRt+RYrS2EaMngFlO+mqQsK1aUEv4VGu37Vrhnh0h9/JwqOAoumLql2HHqNPLH0/yBSGP6amHFIsPhL/ay50+mB689GEtfApVTcY3CjG757oiaO2QMzKR5yfYYN9JVYSTh/aGxu2HAaKYtIWBkLSUfa9QVRE4WoECWghxCuUlk2C6TdWdt+Wo4Ro978HtfCBy2/PUjUOOmdu3epKuDpWqOBGHRYbKuDqwfB82mdjoCihiN6Sq36oyVIjE8PVTNTubFSU6Us+mPKlm042fVkTOjxDVoCrTA5OWld+Y5Bd9jgbl2TeiH99330FDVWLO0qNumyodlCq1LHsWfmz3C75H72Mk+BK2xIGnn46ZfUkVPN739u8ToWrRagB6mp3HFPCOtX11gCoCB3sAIG43gCgZqbTNmkh8E4lwX6a2puSnvftC8dBsExIno3MI1spyi4ApOoLRDtRl3hYdh9LBPfYyvIyXnl9gpTPHD0GSZCxEUQc1zMj71XuGoDBNpfRbbHOQmI3/Xmj2Xq13NzXb0mJj0FHh2nIJ5mNtB0yDlmpca8KGEfHjRLY5bJ6MazzBAAZ1ed8zheSbngiWd0oXshQhI97b+dCO3A9eMfcJS0ACMAwleP157BA9wSYPuBC+UsJkllUYPgPFziLhItgmmz8IU249L6FL/EVaCEBOmZ8CH55E2vTGAE=\"},{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.8}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":170,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":414,\"output_tokens_details\":{\"thinking_tokens\":307},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "937a5bf5c2b45eeceb14b9a3e112482e",
@@ -1341,7 +1341,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnmucHn1AnzLGUnnevu\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m2\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":63,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":72,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWjQerJePZB2KuW3uPt\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false},{\\\"id\\\":\\\"m2\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":63,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":72,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "6e378b2ac8e90a350540a70b634fcb3c",
@@ -1489,7 +1489,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011Cghnn2MrFu642RSLDKa7a\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.97}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":195,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWjX5Joa9ShMeBtqrDZ\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.97}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":195,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "c71da42b594516285f2fae57e1d69641",
@@ -1637,7 +1637,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011Cghnn8ukCBm5iTQ15A5JZ\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"future\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":195,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWjcvHKLoC1jMQjXXrJ\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":195,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "6cac6b6fbbd691cda9de565702e1bde7",
@@ -1727,7 +1727,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnnHShhmy8f1zakBTB8\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":51,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":41,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWjku1FkrjEcjrPLoHX\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":51,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":41,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "22b8053aac5f61e25828fdded25b9c9b",
@@ -1875,7 +1875,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnnMEfPaCgmDfhJYo88\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"group\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":198,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWjpHtoHywN8sTr7Mwe\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.97}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":198,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "ca66d8afa0972cf2a62e0d46b4fa083b",
@@ -1923,7 +1923,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnnjT8odA1SZbszVcbe\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSrg0KEAgTGAI4AUIIdGhpbmtpbmcSDE2og4i1OySp0bGNgRoMiu2qBQ95nlH5CY4LIjAr8sep27/p84oNR0T+aRHoTlWC2ftBPnhXRiI1QcYmOrZ2G5rAYXPd9En2tdGtweIqywz9/xfJqQfKwgi2uEsxdjlyaFAgg1U33xCfiJ28u/3dzGQMdTaYJY7rWsW6RLkYjZULBdsmSIfgyjpQkdIg3lKqx2OG7EMBmj9yOuzViXz8VUJr5cRzSZjxZOs+AiE/mBj3fCKpfHbX7V3v/NmJJ/CB0aEs6fYImJTNlhcSkPUMvWw1Ucjz5OZnziGIuvjGXcZD1yQaNy9m1O+dr/3PRctljW5Y1Osj574ELNB1o6doROzgLXX08ly3j+sf727GrlJ6Jku/+4ybg/uBq8i/QqUSI3CNDWFlb32Voxz0N6fh3Uzd6/ozN76jOBtXt/te2GLHcVtZDXwU6CKFnftnOIUJXI9uHs9yOThfXgk3lGj2XyZyi0PDf3Kci+m0xOgnNL9Ov9gKnT551PHCAV/jsKmqscbFoitiFj0HvXisLi9GPMfqD/WJsEK7jdHLUJdCz2DnbdIPxAhRnngCjCmA8zFcsMFIlgvs2L/NEtdC98YqhBcubaXzNrMgT6EMAbwOckn84TGFvxGFLXjE+N6CTK//oUvmTi0osB5H0sTMvBNIwElFSP1LaLVzPoPPmnLK9xPQ2BWDK6Xqos99FkDXw+ZYppAQydFOXCHqGTU6BCcJ3+elHXoqANw9wyNfl9VtP1xFvQfwVvX/dNKBDfWRd2lSeQCcvYPnk6TgHmEs45VuyP42JfxvSGbCt8MbQZUfJkgdDh0SA5O7ZbAfulO/FmYgeMPpJuBBh01TdxjZEWAjqbJ339DZzvDrQy7dDeNoX5qw6rRWMBT9FaRwrasqD1VFgCqJlKvJTh5GzKKi4FJgAYQeEWXUoXjnRvCnSvibjkl/tCa/j0QObBaRNpBkRybP9v7gDSSbFCVPXGPx3fG6330zie7alKMqZBW8ECe1CXqFw7mLwn5dIUuuzChia4Bt8Z4YYc5jsE/tZNDN/wiweOvkD6aok7HlaaxsPol3qG/9njGOQMF4MFEATIP5fttsrnkidIgnIq9HicpzMl1eIK4adluipnoayn72lWMMsd4FzRq/d3T/MW0KqBrtmho6jy3D7FiEr9ecTM+KDjKR7BWAhsSbxhQ3r20upp+zWsjeMozMEU0s4W8+2A0B1OoxamDEKY4o7+1YyuKwYhGeld2i2u1Ls/Ja/4sc0dBl5sW6RqD30ZpfhoXMWSHSwRpYFV9mrwAuoOKSpLYrDc0Y95oc7dP/NkBtqEMzJe9f37ykeSUmVYpDqzBD1WEnOJUThN04e63Q2XG+Gciojy98kuIpetijN6cd8DWNOw12VIIO6VhHqrxt1DqsIvfQ9GxYikEUH1y9HMZ0NVpQSgQcD1BrT0DrGM73cQDxbfQCe00IW51kbf22+hhMAGVBqi53HtjBwE4c5bRrQaIwAa8hyuVLsDtP4Jvmyp4xKs5tifRkI9og2fy4RMZIyL+jiXBV/8JDv4Mez/0Ii4kD6oeFojxDzTUO0Tdhr2ZoBCvxvKNC8kEzXAuOyQt4YodrMmA3deac2Ks/1Mibdk0R/8LsVbz1UTYZ7c4g/BJlq2iTfddi44Rkram+Eo6x9Q7GlQMGSGhgDVs7kpO+aP9w6m8NmhCWgUV4JT8mmAr5bG3qO1ukM9ZRnFAhc7gCrn+MdLAoUkvNtPyDMTelYv0nYJOqRgxhOg8SYu7vtLbAW+F40yqzSJiW6EL5aLGMziRq9nmKROWY7YI27ArJzic++OJeo5RVHh4vACKoP/O5cAikbOrtL4oQ9tKXJLylZbnn6DdFYlel4/yJfx0WScAwjZpq0P0pDr6tjPES4Lx0EXSLko2w6T4nrU+BKnE7h56Ovw50RHBNNfREhXbmgenq8FXnHoa4XCSOUm3aY/S/ThhmHep8cM3YcUohUySXd1BJ8Zm+RhZqyMvSPAyupDe+DvIfPufexOt+/3AJY9AGqhjDmCNJh97/wdy7fVOsfrAeicKn+W04DL4vvYtCRzrITJ5X3IFhG5iYYjgIjWF8GzappdygqAcJo4l2pqwCamJe5q9i3aLbsDcpP4LKrCBPoHB0VbEnSNACsc16eTh1mglbUh/0W8XSctxdbggeYYJeusJ9Sa+5lj5/gnwzQN2O3VC7LNiy3eqzDU3u8Go5VFVWvdbpj23RGLrvnGkHdNcOHRIOXyLDLgh+0x9C66AYAQ==\"},{\"type\":\"text\",\"text\":\"{\\\"lead\\\": \\\"⚠️ *Çarşamba Halı Saha Sandbox* için hâlâ *4 kişi* eksiğiz. Yarın 21:00'de sayıyı tamamlayamazsak maçı iptal etmek zorunda kalırız, gelebilen *VARIM* yazsın 🙏\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":122,\"cache_creation_input_tokens\":1319,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":1319},\"output_tokens\":669,\"output_tokens_details\":{\"thinking_tokens\":554},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWkCiHPdsz7RuhaMbto\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSygkKEAgTGAI4AUIIdGhpbmtpbmcSDE7a08mmZ5ZdUrD2fhoM/X+rIdN9Crf1As/dIjDC6ImHX7X4hM4IsTz910iw1Ne+AFh5RzfsXomkrKqouCUbB3NonSZWtqsAJxuDc9Eq5wganZCJj7Cih20463jZkjII5PqdiDVvxNhJNM0B2q8tEljyGLz/wL6UoIFbOdvi95Doas1Q/QjjMzzZZZNCGXc5hYhbLTHF2DwM1St8IGW9LW0Ihk7nsHNU2TkD/WJ+J0STNYbz51L6VEjABOot0uaXaj0AnVI1hMeFOxy9w71lmkKFCJX9iVyUf6Z38c4KlLJ9/bepFi6AtWSF8d/cfJ1zyDjaSC4VxvZzCRj90TbJovnqpBGu7L5ovHrhFUOBe8v5aEk0HHvWNbe7lqMAmbTbaaJctGmbyMN42wm6g6Y7YiA8+37GksYchDAjoqvJQj1CgQbDUMlvJF7fkXh8G9vVSUGnHQsFpcgkEP1u1h+WhR2bNVrOah3/RJfgySutIkJWa1jyyPyRPKK8yOpSBxVaFGYbPn3winKd+krQuwUsSMWaytKw6tkowK1/YIxN865zzX3cgPsYW/9LoMj0t1A1aaIGXJtensaUtNaKPgff1txIef8pUlQ9wFLxB5kd7YNj6lVJsXmIETzqCVg1EoYsWfxX7Xd9kZ2OS6H0fXsgDGXRhg/Mnvf70nO2e5IY+kffI037WhRvEFu3cUu84MYlallXxLT9hXVSI72CYoRNXHACX+3OzpAso5jHSFo7iBT3Q1M2gDKX28kwom5tfqETARqz+J2bmK3YZKG06g/cSOqruDjbZumHBRMUOHe1Lni1U30Y6ac7BfjeUWbEs1U8NUwcYeOFGE8ZcvMdgPruVXTq4Y8su+CvwiRk++pnrAdWNqgfZYmpk1qZsKE5B7oBDt63C5aNMd78ko7Z+Ph8dTMXwH6TizARe3toA1jpDWNi8V/s2qLAFHfk6H2U6Z1coC/E6MdAD9otVVMv28rcOjeyyi2v9VHjG4CI6TQeQYkejFrVMFa/ojEVR7V7cCLj1dQhVySpsjTvYPwM3jAFm4qGgC4NaF7yZlhferOjLze21C+1UbZxKfwzzwYQ2iT/9YigObvMu4jSalpEZcNyCGz8olVjIarbj+VMJK2pyXID/2pnvbsmbHmGEklLe+Kp+DJumx9+VCiMU09grDWUDh2o2R9rLmEdXDGjtzZsJgNSbUSlZwa2z+ix54RW2cACPsG3mIVW4mRFieL1nB8Njovwl/eu5p0Z8LttP5ajnE12KWjUmyw1fUqZT3dFY1BayLd/H3Sk5nMBD1PKSMpQvbMOvSp1BpifzUBpJB1ZWh57Dz0sB1jV7kVMen7LX6tUEmmBkALT6lMdAD5eKexi3rNd4fmgnbXn3Tt+TsydR7LnvtysW8z1aeg0OUfwbzsSdAbHSuzNAL4XsFNZ40NcXPe1Mh148CL2EAJ/EY8G2LbUGoH14ChKcwxPWSffos8JzJT15ICgYeomQdUHeNK0gwgDdT1N9c7PbMuak9iWnYXAD2ofS4VJxYACa+S1L4frpF3x5jMLcRfOXMtBC0tiPM/qLkQ9eJX+iYHvWN489Ay6YXlhYzBJGaqhsmsyRFA/YLg11fZNNBgB\"},{\"type\":\"text\",\"text\":\"{\\\"lead\\\": \\\"⚠️ Yarınki *Çarşamba Halı Saha Sandbox* maçına *4 kişi* eksiğiz. Sayıyı tamamlayamazsak maçı iptal etmek zorunda kalırız, gelebilenler *VARIM* yazsın 🙏\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":122,\"cache_creation_input_tokens\":1319,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":1319},\"output_tokens\":411,\"output_tokens_details\":{\"thinking_tokens\":302},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "60bf0b1e83d82410ceb4215a4aaa192a",
@@ -1971,7 +1971,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnoVKr9ercMnTYrhidg\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQS/wgKEAgTGAI4AUIIdGhpbmtpbmcSDNh+ubZkP1zEKzIJrxoMeV2Wxu/Hmu+6hWMrIjBWNatLnkl6CDoNmQLApwemWc8QOslPT9kg5KJ/AANzCgsNaInINhu5c0j59eBw3X0qnAhf9Dhq//+Ue9aTDDCekGfLTtYN8qLsLy3qIArbBKp8gOakzhE2F2d3+Op2zDTMyb+dgo2ue+ucW26ys/EHM0penfx+5tcQzvoTAxvSDeAaCv7Ylnh7psx5etQhGwrvfs4LATrVPBzdmoK9skjuEGgQIOswAt1gpmKpIHhdSX65PyxkI45ve0mbqtnXM5HN+MJJomIcTk9UNFvdkmkvDOi+SEDxtadJu6/dQaUgVnIdENBUol2SlAtkFaAnhuYDAHseRVVbcF6SYL6CYB4AI9DT6hPJflXsT8jdIFmAC8LFAR5MNk3g8E3QwEZgIvJLE5SPA4Vgd73jZFRnd2dZbvhqDh3OuKG6QogEeUykzQon/koVWvXUA5jzP3Xg3h8eGGObFqMMA9TWAz+XSCQRBuAmaizyQP+YOCPfzN553jwAEocXrtmSFMSufjIWAXTHgLqujXs1/3UMz8qCMvKzyi2FYeEIy31NK9uBIXAkV0dPT+EXeHnTUHiLZfsuzMja2QnHswK0EgzJTfqtGlTwt+jmCUcA7pEMeCE9ebbb2oiOlPnyH0ahSVYmbt2Q5C5yNjbv/6xzEWZNDYAx6EWhDIyZ6HRnwy7G4ELdJTJmWY9OkoobzOV3yUvwzi3Gpwcy9rF+w3eu5H+p80fxqokDMefAfg7XtpOeqtw5z+tz+q856YnWfTXuxAWuhoQsD/MInpWSAs1D5FmJoi7jQQHIbnW30QT9F4Bn7VrxVRaY31bHQW0wWbdSMGPe8bX4DB8RpkApl0kTALSM0Q1tdmQ+zTWi2Wr1Xjup7fqrbYL8RgfqicxAY2oyDn2AYbyTCkVSBKLwbvW+OH85ixjLl1oAxFNtnLBGeRYYmV9Z4cd/SI6CN0zJrGnqBwru0LQwO/p+WTmDH64xOf6UFcnTKloFenr3pDH7avjg8ShhsoYYP1Cf+SnIjXFFewxGV5MsDdPNUEObkIg+4rgQrO8sS3fYKBSUmgku+baOrx4l+jCnVR73i/pItTelsgPyeK3RrYmtp6wQZ6OMjAc09+hOPbKMB7pDv/JBNZ7/s7QiHt1vDDfGNAO0o4Yt0e39ul0Hx7zEUNSrFiY+cBjMg/Zq5b+/7XwjoZnPBO/0ijjW+Ga7hsEMFiZC3wYMAChxJmYyHoFdIYZ/rw+3MGbtX8pN4ZoL6nRf6FTGjTObGH5rC4Q0zD1HibNh4F3ilZHfuak8pzYBrauiLEWVJ/pU7xuEvefO5ASufrxoH1nsDAm+o2/RcnlYhQrEw+P9qULSTyGYCYrjcM22CKgagOlaDgzWMbo28LfWSSj8j1FyS+SyYf0jEHC6MBCGxCOGYB/B7uqNhQ6e3nIEwp91/9u4NYqLj1TlEkX7Ga3bhl8f0CMg/3hzYnKobzXW6o1i9+57Jxp9UhgB\"},{\"type\":\"text\",\"text\":\"{\\\"lead\\\": \\\"🗓 Bugün *Çarşamba Halı Saha Sandbox* var ve *4 yerimiz* açık. Gelebilecekler *VARIM* yazsın ⚽\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":118,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":1319,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":336,\"output_tokens_details\":{\"thinking_tokens\":262},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWktHYJ71aC6BpfJr6o\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"lead\\\": \\\"🗓 Bugünkü *Çarşamba Halı Saha Sandbox* maçı için *4 kişi* daha lazım. Saat *21:00*'de Sandbox Halı Saha'da buluşuyoruz, gelebilecekler *VARIM* yazsın ⚽\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":118,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":1319,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":109,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "e0b0b220e81dcd46ea9da91cbea84dba",
@@ -2061,7 +2061,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnogqPn7GVnXb916vtR\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":49,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":41,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWm1GUFXHk7RoNQaKQP\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"self_att\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":49,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":41,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "30a0d33498a5ccbf86b66565ff6c4229",
@@ -2209,7 +2209,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011Cghnom5dfnVkfCRBDvGkR\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":196,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWm5SW5TvY6UBVvJUXo\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"claims\\\":[{\\\"subject\\\":\\\"sender\\\",\\\"personRef\\\":\\\"\\\",\\\"personKind\\\":\\\"named\\\",\\\"benchAsked\\\":false,\\\"polarity\\\":\\\"in\\\",\\\"contingent\\\":false,\\\"conditionOn\\\":\\\"none\\\",\\\"tense\\\":\\\"present\\\",\\\"reported\\\":false,\\\"replaces\\\":\\\"\\\",\\\"confidence\\\":0.95}],\\\"affirmation\\\":\\\"none\\\",\\\"sideRequests\\\":[]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":196,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":6728,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":107,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "979f4efd976dc9ba73ed4b91779f4fc9",
@@ -2257,7 +2257,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnpAWYae3EjQh3Db3Nv\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"lead\\\": \\\"⏰ Bugün saat *21:00*'de maç var ve *3 kişi* eksiğiz. Gelebilecekler *VARIM* yazsın ⚽\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":121,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":1319,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":68,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWmURrm8xL2EeqgpcNw\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSmgoKEAgTGAI4AUIIdGhpbmtpbmcSDFnrXSKABQJK6YxmyBoM/MMXS8G2oCKjFut/IjBhazkS3Yn1B6wMd+OXanBVqFEfwKjkDfVJXJVa7KcZpw+wgK4FhqF3sdawQNPDwZMqtwnI94n5NzrgYHcOiFORqoQ0qcS1MqwK1RdkhCh1NHuVY4/1HtBEOtiarTGWGsWiFrkx4e32nPST2SDkfX6BjM7o3bWKeGpRdlkW5g4Qa+eaao/oWlWPPXhkXC/wzMx5c810Dr+pudsbq3CH/g8mR+8vlyjzsRcq3ifAygvAtinVWit1JKLES8SVTaffEASrED7iyk3qGIn7N5BAHPVRKCuf3hqQAHzGgw21dSo4fn3sgBxgj9AhdfaQdhW37b/jLP6v3ZNtOYlT1r8SAYDi6bdPqmCyiD9nA52Uht6Jq6aj32owpCEz/YbeOs41aBZPyjTrgsYCez6Ng6u+tlkoOky2xARMFNjQHEAVTnfogT27+GMJqWpA2UfHVqPDMgnAWmPiFBk8wEs3NlTD7tZLRoigjwFQV0WVWxCYDUiH1LUXt/vtnSkMmFzzebYPox/ERWf8QkKOQ4RF93zbe6ZdqAdhtBqHz8rzwR05l2/e9oPe1eJMVhxsYXIElBTtCzODWWZJhnXcMnGD15Y/YEQb7RXAicNHwAq4pY8jxV+2Ph0dzL1cpLA4wE5xME/nWqhuB12+USXWYLOhpKCRpo3ZGH6ITGQzcHp8w0ACxEuqgrbq4PVywcfskDfPD1NMxa7wQ6j4fMAjphAgHcxyBQiXR4iUcsS2iVzz4rMN8DNbHMXFr6tVDGn46Q4WO94P+e4YNWhpQZdbwrxWakvwzN3zM2hr8qcoLgTBAlX1tpaVLA6pXca6LlGd5reFuhsvkZGjKhWXo+JTuHpX/xc7yU2Rylwvap/s6OIjBJJ865fQrN35sIKtgGSV+023qKXxcdT0EPElzNMSKxzrr7HJvJlxJt8fT3dwJqmZi0Lo3HVMBBqbhPKFdT1fCrFHj9i/PgnAyY6ofeqRRUqMAolwksi+ixPokFDP79pw1eBiOmY98/v/HRXUvzibTNfAeCix0D/fTGZIPvSBGp1R20kJo+hhzF3djnjrQODVDwsp4DXQAZCspvbwiY1doMfPZDwGHSlvwEHXV7MYhRXm3cvJ1Ajo0OFOdfCd2PSHM2TGK0LJxPrtE5iUncfts3aN6l/MS5TYxxCYOOajaf99MseSTE4Ni5nN3dQ4o9VgR829NqUHhyD6Zhqdc4vTVhkWYeHAiz506IEL8QhYsaPgnf+ifc+WFI34xkKNwu54g/5e93TLRnR9fhvqPBwELhvZ4+4Ut0kcsj55UZmrDt+BPb2O177BkkpEcrUh7D26AbglqlDCyodDcq7Jto8hthcK5VoSW1pTr5LcCftIGCQua2MMVvlsnWNohd0SvVYdjxTUOQgaOQr4w3l8oKJuelmJW5dcTNpVeTNorLkQHUeqhgAvQwxYIeqGdQNJ60B3Qps7llMzcrL6tH9zr2ULuuD2yU83I6UPT0leYS3DUpJbBM0Gi7r9I4CYstO1/WjVHnYgVCH7kvwHHm6kZ2YdIEqSOXQLgpcz2PioUttVcyZaBe4BrS6n/5+0wEoedqqf+qpUSM0XKoQwOUGV/hLrhjMiExdhxyJ+jTrSfQ+Xfql1CAUTrO/AVQWDI/g5D8Ju7kjZqfM7sd1/a4Z3fKDy5b+fFmY4gCkM2j0BNloC0lwPGAE=\"},{\"type\":\"text\",\"text\":\"{\\\"lead\\\": \\\"⚡ Bugün saat *21:00*'de *Çarşamba Halı Saha Sandbox* maçı var ve *3 kişi* eksiğimiz. Gelebilecekler *VARIM* yazsın ⚽\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":121,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":1319,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":414,\"output_tokens_details\":{\"thinking_tokens\":325},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "9ffef67629e16ab2fa53c4604bfa3529",
@@ -2305,7 +2305,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnpLcFcc4NC8SedsUE7\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSmQkKEAgTGAI4AUIIdGhpbmtpbmcSDHbZ+Eyn355d+gT7thoMRoCFoa2Dw0tSbDfGIjBMk6ngkKCQZ2YVQuhy1WYdP+RLuny2GFz8uChhxJQsVnAkND0Jaxi2GYBWNAh8AZwqtgiypiCVs3emWlfynm0FzycAqssvLy9b5qrUrueEAvXyORIsexc0QVdcWFNOVVoL2+zOcVLNEmcF7Qg/WG1wVw4O9dRDNm7wZOErylcJk/b2cwbcOw2QPklScw+IpNVH+6HHE/0iweWKnuNc/MrWoh1WPv5hyXvWaQQ3StvgR1U0ln88JkCifmBhhio9ZpkNpHHSndPCvMP5SEKHdx6WXmTq70PmDktFOiwMKpQq9Ul5nHjU+6+gYCGPXTtjmo8rshRBD1w+yXkQztN4qrLx49+sPwAETFcf3LPeggobOwAv/tA3FX+3sCfGxgKOzXJ3nEGYSo5yje9bCHXf6BkPwTYgozepAFe/hyyJojVogoacP7+NHCR4mJSLlMLZXwWJvOiGZp+hqRJwSoXoxuxkfprniLXu4hz4fQ/BgtLkCXPWzstMBMaq9HAIJ4nS63gZ7uMFbiG40QqZKbJcBCLxi8esAqO/b7dj+xwnXmLJuiCG9AX3nEZ2ev9wcYPS7MTWmzRf1EV858ptIX7+q+yt37jpt+R0hY9DTuXF//7ZwXI64nIxp10/dRW7nmz2qzvcyoMdBrIJJPPUHpU9NNixbdegYoQAa7V20H+dpKzMkSOpYyMa+S8lBZZK5IHYGTbdkF2NXfniHtoFpTALv86fYcimGJ47No474pX7qgJZ/zHN9latyVvECM1Yrbf94rvDUrt2BsN7xleLMpSuagz9/cdkSrXChmHaX6k6XOmdE03/0xme24ZhT2v9iYPaUi973XwzuTPFE+Ef7fv7aFE2kKAFMwFQxBQueeNk+UzIgh+sXkJPODNm5VD02ZnVLb2Aee0WGMoyehKOT/eUaFRrkMicvSeZ/2LJ7hcy9QsRYVL7bLHhTM6ERjAAMn/+MbkculyZ5/4Jt7vKbnl5X2ZMsXaMj48byLUtU4hkLKFw8q6bAVXPRk3UiUC+fW8lM174UgdH1N8f2o+m9qSgUcgm9vKoksmGdGm/xekisel1JQU7UmCxHAwNOUFQIo3YcF2fSoA8ilOvXv6NsXj+d2cdqtwBg25FVjdTvtPtctHB0cDf3Sz5e6Q2KoKeL/uAQJfS1Q8ZAPEGtcEM1n5ueJiEU5nfKlKz7eqOFzgW2oQyZmKWapNZERZsISVOL5HoSWnTnW8g036WU0dyVcp+j3kgY2Lvy3x0VjLAg8qrfQW+1g9bFNinJ02FQUxCPb8CrqxaFdmMD7hb9NSRZiZIlWm9yF7RTzv52/ySer578vNQV7kYxCjP5yFjNZ54tsTlov0KW2Wz+ZgD/y5hh6dOzueQ/yywPQGusIbr5dEFuz5w4B1JouFDfJ8wKbiV9jMWVqT4yoHwqfo05LTR2iDvMiPBo7Rad7X5s+6YzZHsYpNzMZ3KgZm/3zQJxdh11ZM3ksTCAg8jOJs6SLpIkzhlezDfuBv3kORN2/0uGAE=\"},{\"type\":\"text\",\"text\":\"{\\\"lead\\\": \\\"⏰ Bugün *21:00*'de *Sandbox Halı Saha*'da maç var, *3 kişi* eksiğiz. Son şans, *VARIM* yazın 🙏\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":118,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":1319,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":357,\"output_tokens_details\":{\"thinking_tokens\":281},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWmmm9hBcjvhcjENqGk\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSpQoKEAgTGAI4AUIIdGhpbmtpbmcSDOCyKUCh/cIoSKm9CxoMIaHAAlF1y1vWOaJsIjB0klJO7odhSi9UZyxNxBe9kCNUj2sUE27Hi7uXmeNP60f9+GKCPn9t8evCflBrA48qwgm4qUbiegtG+W4ZEYchB9HrOlt03TpS/TpmTowgiSKDCLojbdgfJGHQeFc3VS/umnIePeMJRWHC0hJuqE8+zFHcqqyrmrS5vuh2GBYQMXK8TOfNOj7k6wDdQ59K0eqSbwjqNVZOlXczIQn30MN7/Bb0L/0NpEV/o12xYjrfaoaWhUR3hfWGljpb3TsI7ICZVsvnPQC5Ez7BN7UNYeqGshUlAs9ATW/JVWWbwljlBYrv+SSfhudJD0Q+CY3Opl6JcEcTYp/an9F0hwexyl12z7nIlQ5LTNX1cllqlDiQyfUqB6Xj7Rtrwox0+RU9ziSVfpg5Hi+fUIe/POAXTK60Nhq4Wlla8q2clCZ+uLU7Fh4e8BUYtiydWnn9WTeShJxJJrIYJVwENmgenu5NrzOz0VIJrQeXj3K49mnXjkYVUEklFowvusTW3KdTmqiWCxQvcKzAFJwLnwDCOwfa81FDgVf5Bd3Yi4OZCgEu+rSaXwlAZdFvLnaXFv4fGw/uFIcOMrpW/ZYnIm0flkpXUmN+i37seKI0PkRX/WpjVe7M8xRFvOOiiDnZmfAxHsJiYiYNkC4aJPrgwnV0GLQIuPo0GSoI9U92TEFSCoK2arHE91Q2B/4U6Yw0QzD3nmdJEVh/IT1mMhXDu9WdsV97yWHnCL2geEG8ZZrN6U/UvssyzC4H4bplU24GK/KeJ8eUbRjYGb8oHIE3l+jy4q/2kP0a3NKkZT3oGoNmQasRyz9lXhkHttkhT7ekFI+Lj7yqYEoRM01FtNkTkUHDWY89p38iNVuUxr4fDV2pF2kl27eGtfcOMUeWpJT/dhrHzgD13ztwvSanBwwTrTBwR14VFW3fXFzSh86NFIJ0flqjCxoUTTlhwrVfk9GhJq2FoCP2alD22gGD3k1hLxDYq5FIiC0S4kbuQw0IxjEpGFIHfnE1Vf2PL30WrHKEbYqa3BEN+XtDK+8LbS7XZNF4dBgeagNbWaSJqdOSpTYKReFdOa07o7c8Zoz3zXbNxbHvSZ/tzjVnLsm0t9hTQsrZPcU7VTTzkWVF8sXPIDB1qkii/P7x3OF027jSmvOYFzF0/bpGGNrQpKggkAhznaC22IvPSUv812vuTxF86BcQqFxRDf0FjYhg/bsZHstyIk2xxQCaGZ/b9tWs8+e2YoIPjbUNIq5222mfNoZFrB1oo8dpCovsl8HNCnQebIIIcMeOsSAm5uR3Xf2HU0DteYbIqmGIPqsF7d0DtsduZjKVk3G+MEFO6rEJASM0Mr7SWUjaXgaUZHfWn0aw1crQO1EU9E2hJ9LMj2nlS2ktOnZoubd6BV2xrEPFkcmmNLWoY0C+zvyt6bO0kM9hYvq19ZQwNegT91Yea87/5ykKf6Vegnc5slJ0Qp+lYokNIbUxfb1NIb7pjAJRZn8jg1FjqWYzHkdjIOcQmWooWtliAfVJ9Ot9cQT++qSBc/qzbwS582NOfuD9UNypmCkYyqHqNUzz/OYTQnheBfwUYFRpT6R0J9ikR1zMwFJqk8GluDkxgv0/IyaVP9Zwpoy2Gqy8luBdcSZOa0IHFpPGMTXGp58bDTM60iyo9I8i72xgjA9FZQWf0nHZz1/GWkj2lrj76M6r2WFvs8twE5Ud514YAQ==\"},{\"type\":\"text\",\"text\":\"{\\\"lead\\\": \\\"⏰ Bugün saat *21:00*'de *Sandbox Halı Saha*'da maç var, *3 kişi* eksiğiz. Son şans, *VARIM* yazın 🙏\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":118,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":1319,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":428,\"output_tokens_details\":{\"thinking_tokens\":350},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "d1847996440afc7bd35fb7e747dcd986",
@@ -2395,7 +2395,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnpfYJ5GEyfDkbgBvta\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSjgYKEAgTGAI4AUIIdGhpbmtpbmcSDK/57j9sDMlgZgEuNRoM+HxGooJcu/A8Sb99IjAfelZTjKWI0WS8l/4dhdIKsrmZm44GhlxnC8rSSFoCMesjMSLRJaf2gTbQhIViYjcqqwWe+7ddM6W5lewetiztBhDul/AT+wZbj2Nx3GAb3axaq6wQi93dRfd1mx8O4aySIzJGYtWJDUIElAGrRNroNcnwd1Lw4M8d5qxnftjDp386sQSlpRpTaw7uDwcs4BusD1fWBoSWTAKV3kvlyCFpWwWm5NAye0HzuwMV92yn1euoc7yLmr30yRh7H2+dvD+xw+y8hKsbuqMROLRFng9F311lTCdq64YZ7AzQR6d0s+zsiBFG02S2u/lfwuN7hltpIoO4qzPWlroMOI+kuikJdRbP7sderIMdpBxZui/VAt93AUikeYQL1EWiclxbYEjll2nbQ8XYEVoGgCly8x2dqNn4osesUQGSHwxMfPcCvl4qFPHv5oG8KkNFVaDqSijjtucdwL3+51OU6Q3SqwXqtxbCHLlHc0A2LqT5P2O5tE+N1ZqtcWN4RTgIncQFPEwFX+TcoYXK+xmeJdCiALB9BDD0Hoh9xe0Nj7CJWELw/d9aUKzq4/VTw/sH+rp7YfdjWGTv4VTXTX8BYZwPnUXv1F2UtD4bCHiUlVXswH8QyeTn0s5ln6mEVyONlFOz889Z34PaPzj4u4a8umTofWAyEOW9BAU2ktd0t5LNLC6Ko9qnYP+9PG+OdUywTdPb283fiKhhsDZUybXyGGj9aiUGJUSeor85YKOiyv4KCApmUj28HpXDjVQGZhbVy232q7W5VubMjQxo9QBR2nQJ2mDK7N2lz3JoeAkzZzlY5etqrKw1uDYi+YCL5C+08WRsd/oyvYvdQOmFHwxXLYXbhj2QYtW7nzFVni8Hyz8ml7ic/CC4Y3TdlcA5yjgJh7bICicKPz830w6fnjtAR5xavPP8vRC7rtxJoTxfDsfvSoiSgyvf9u9GtjhAVJjrAuVEKLyEijW5U8Mu5iGnAnoJ4BgB\"},{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"score\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":77,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":115,\"output_tokens_details\":{\"thinking_tokens\":76},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWn7z56UYDBQr9PEWoq\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSrAYKEAgTGAI4AUIIdGhpbmtpbmcSDKbPMuFoNsHePLPC9BoMB+cCpnpD1/BpaBnbIjCm9Wtz/bU1HRdmeVlns/j9tlVp6RoB5Cy6q6Alzx3hhkEjqYlhoHppB2EGB5Hp1cIqyQX60w1iX2MEP7AeUXa7x6/5RHuBmVhZmVJVqWcrYUumg2lMbs9YfG8jfo288GzKcMSzuh/E3bINEd25qc6W2ynSyWpbvZGyLuhkpuKPWyOMHyQxniMvkjcVDXnZgdpkUa+MNxOi80iO7z4Gxhae0K9omCeED/+zbtQr2ZEY4mCNd3qjkBb7cnFpIrHbIdyw7eONMayJsJaudgYpZFpZORfgprdD4kFGs0/DzX9bGcryXP4uIxsEq33RjvMu3PLPLxXpPxg5xTU2UWeBraQ4bAuhpTlGU3F+GuQiUol6D2RrCx4WNB/r5r0ed3simsEeisIio1HOeqSiPcd62YnF6VlEp8XG7vGwkUJZMeXnvCj3Kn9/qAsEZZLA3sYXM6yuVZ5BmWQn92zMCVuKEdOIv8O2mgsVhlZkHCZ8q9ovWMMmKB7UfVDJtAwC018vA40SL6hRes7sUvm/TTbnDDklKA0Cdy/JrtFPz4eVqQ807bSlFEWAAlWKoR+LeBEzjA5Ml+tmwrzqpicWrZXbnClooj0NhIWJ0uRRnNnj06hqrrAjPSihqmtCDCyzvYTeA14bZqGFSu6cKnGOtDpiWo/JNWthr4U1IwTILNcWuqtmb8Ok4wYQzheXNNFscGUz4CcuP3E9uhZ16U+vZWtfld0MT7tGGqIcu1HjQpG7/qOAlnPGHjDVfmzqDsFy5HKA5tH2jvJ0bk7lkwrkkgEApe1vtFAElbGI33oJE7SiZNSrSklJ4cQGbcHRwTBZTnvRpoC/82s0tePV1TaS3Ph+QL84P6mxCZP+35X4R1tSVBKaHkBIuNu3m0wuD6JzRA/wErBkGXVayWlhCgGVQACGYBfR1vHc2fK0KAneRmXTP+yq9fugxnAIscRQ2RO4+x5vQ6t/WnCptqYeox9WcRRW1+sPMzOv4J7XgPlT18wiksAJJ6+uEkj+RFJ0W4WkoxgB\"},{\"type\":\"text\",\"text\":\"{\\\"routes\\\":[{\\\"id\\\":\\\"m1\\\",\\\"route\\\":\\\"score\\\",\\\"to_bot\\\":false,\\\"pasted_list\\\":false}]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":77,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":8178,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":134,\"output_tokens_details\":{\"thinking_tokens\":95},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "ba532e1d1722f9489e8cac821661d106",
@@ -2483,7 +2483,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnpmFqA71knMyD7Pvg8\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"hasScore\\\":true,\\\"first\\\":4,\\\"second\\\":2,\\\"firstTeam\\\":\\\"Kırmızılar\\\",\\\"secondTeam\\\":\\\"Sarılar\\\",\\\"winner\\\":\\\"\\\",\\\"loser\\\":\\\"\\\",\\\"momRef\\\":\\\"\\\",\\\"correction\\\":false,\\\"swapped\\\":false,\\\"otherGame\\\":false}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":213,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":2366,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":86,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWnES2SgPbGZyTXHbSw\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"hasScore\\\":true,\\\"first\\\":4,\\\"second\\\":2,\\\"firstTeam\\\":\\\"Kırmızılar\\\",\\\"secondTeam\\\":\\\"Sarılar\\\",\\\"winner\\\":\\\"\\\",\\\"loser\\\":\\\"\\\",\\\"momRef\\\":\\\"\\\",\\\"correction\\\":false,\\\"swapped\\\":false,\\\"otherGame\\\":false}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":213,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":2366,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":86,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "934b61ef140e24213034a070a1bb4e78",
@@ -2512,7 +2512,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnpssCP8A7rDGw9Rz2Y\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"calloff\\\": false, \\\"confidence\\\": 0.98}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":1065,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":20,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWnLX968g8he8Cm2eTF\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"calloff\\\": false, \\\"confidence\\\": 0.99}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":1065,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":20,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "6bef313bda7ee038db22c2840a04fcd2",
@@ -2560,7 +2560,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnqZsWPUfVJZpfUivqj\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSiQkKEAgTGAI4AUIIdGhpbmtpbmcSDLL4Ppi9dU1xhuUlvxoMbBexDriyMv6RWyacIjBEdz3JCL+T0n/7G7Ogwd3L+DNKaXjm5TcPcLAJHNDBTTPFK/Ks/dSC5IoDqZgHxbwqpggmkTuGk+/D91oMcNv1D6RMWNItLl9FUH0sF5ebm/yB74SSJAbsesTOa0TsNPUlFjClZ8Lk5iNsD8idEaZPtS9hL5x3wnso9gVblV5+DfnuqBfKvxWrnfrg9xoWTBA21FrTUVYYoeuYx6HaJ9orZNtl/sWXXrFupY0tOW2hV+dAWca5QemgOLpB9TYpB+3nFr0sbCEmDaBVXJEPCjTf6Nn5mXEdBcab3j8hdJAzwrPuKmeQMdAxzzyw7r0r/odJuRYnUJ1p53FkqqUNL3817c7ztHufGWUscy2ARdlszn/a8D+y2+LTziCQNJFPvjKc3fdBKVyHKGbQipraFw4qAYoWZsH37AaqMk0AloLuOWLdPnWHx7jQIXQaHXR9+G+BXTPGEf8dg3AIjqsmEHoKVQbOsLXyBxF5M1+upv0zJT3s4mWoG5rw8r3RD6R1j75V5AMiPLXwBGmxeW+ap2NfUYFoGFngPHxj4XjxN7sX+0TYlGeW1uSE0DfebE5ZqhwYYURu2LCFd4qVyP0qvR6jyFEvDhxLf10mad85TFjnAa3kW9g5Q/K/4bMUzcri/bUmJD0UuS2FsRr4bMl4RKw3gQlawUcKeP/9KFnIcSNJn3cWINbL16VQ3GMVAW6lhQhUQmq77sB+39b2s/Rptt3QYyE/ika6Begk54myE0cAJ0Y9ecligcZSboQGpzhjdasI7OVU14OCMj9dol8xhGpVsjG5Gqspq1J9SPkzxulNCIY5xzlHT2p4ys+Sgx3DRbWKt9+kAjUQjS/RhTug02zugb3ysfovi8HgYcN8MvzruOHaq44Bv4V4qty7mFZytJIyfHnrr+htOKfexqY2Q8z3XEW0DXkNLJzKTBo9N7KcVm+uC7ZJq9fvhj92RsgYYq/mzPG9A+ljdQc4jyipIDH2frGjMCYAWCQip3obYBKAHQH9ugQ8IcKOQEKGwS73WJGKGacR6lBmcb6x8AzdMmdoWnGkTvpjBz0P85HtXLACx6JD/TNHonj+Oj6MTc6wdbxc/IKyltMZHTysENFjtwOBGl5g/W3JTJKquEiANSNeFUgLocg7MowbKylLebqtXDBQBk3Vk25P2BE0uoNneFPn9kSyzS4n5FYphJUTJlJO3+ErEB9mKBUUfNTUdLdKDVO4S4DuhzSZug5erGVID3w2epWAgcIKwBjPeQmghHSocSUzPXaQ/opycAGKfkoxw9bbcrsNWeMiR+AFeYzyilXs6o1XSR9TWA3xA/JIkLiUJC+8xRHZYlWlBY5bUiElMN9S0CEJG9obBrv6VptwJBdjf0DKe0jsp1ycjhp/zqbq5ZXKqJewCGVwBf/a/JWdvte7Z+z45PLjqVtBJqBb5Fpqm1RlJnVbTTFbzi3PFW7FzFwm1L+YWCdxfNP4II1fSx12O29P7lMTAfUYAQ==\"},{\"type\":\"text\",\"text\":\"{\\\"lead\\\": \\\"🗓 Çarşamba *Çarşamba Halı Saha Sandbox* için *12 yer* hâlâ boş. Gelebilecekler *VARIM* yazsın ⚽\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":121,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":1319,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":346,\"output_tokens_details\":{\"thinking_tokens\":270},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWo4uZcmymXMYZRagkE\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"lead\\\": \\\"🗓 Çarşamba *Halı Saha Sandbox* maçı için *12 kişi* lazım. Gelebilecekler *VARIM* yazsın ⚽\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":121,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":1319,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":70,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   },
   {
    "key": "7e69f08823da048542ea6d160b7bf769",
@@ -2608,7 +2608,7 @@
      "type": "adaptive"
     }
    },
-   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CghnrbWG6Hk87ZvatZqHy\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSiQgKEAgTGAI4AUIIdGhpbmtpbmcSDFv10QQcdhk6hW256xoMYjsoDKN4E2a1+ysPIjBsbufGyhMWtSyB70xxnJ+ZuaKUkrflYMdG8EpJyCokDs9iUG/MKIyN3bspKqF4z2wqpgcSSn/iNOj5DVDaY2TQj8TmA+FWb/ldMVEel1qAryq8MJ0Hz6adFuoj49fNlHcPrx6s6YyVKjpqNVhKmxxbpl8C5K1/eWP1L1pJME3dseRgmWBy9NkMecOODmy04gV0XOZ1xkiqnDoPUpIJhEgd6+3ERt03q/FCWcpmdilhsnEbC6lt8IEA6Q+4COhoRs37xnpmS/dqqN/n7mqvPjxvkig4ki1DwWa1MD/H4vvWJKe7HcnKYJiW82GESCqHj/hlW9N9eLiYphLLawngM3UUGZG3foDvuvMt6UflOOYIWDXfama7jdYIuLWXOtOHr2AzbH5knZs6IeoaVdonXddGUDsaQIDomvWASjyW39H2NQNNTh2Ax8eaIzjWtiErIr0szQrMhhfSFvWCcQto6ujHzDDLRsrslwdUg53yzBvL1mR2S/oydvKlbObNO5Z6MTk/w3iT3oAlLKgKnl08oA5g1OJPCHBQCRwBuT8QMTbuRwnArj8mN/prTk3Vn3oOaV49a68xkHKuXjSTT6sIKms+sWembzhjTLI3H5K/cNnxhp0Ky6AXSKLsP2RDCFjpMbBbkfrhbh4TN6Fd8xgRm94YVNYQWDS3WFRBRYvKQAsr3QMIQU8EFqcH6Oju4kolLJ60rNA5ijQc46IO51HzGeo0CLDUtsl7g4zSP+e5CL1+OA5s6KRfXL/qaLYz7fwo1h18aLThbqm+KfgkXGtkT2+YvHo1ZYcgNXoOlli7qq+bky26/bXiBpewlpkT3L7690y5Bz6792jVaolluOkRFfwY6AgtWB7R7RyA6HY/IhTB8bERk+hIU6sxZ4QB2dIKdtSuSQPKA0vAa/bUMrfew61iV5prAwuFh4i3/56U6wBls6FW0c9e1lYFWnxWinNVy6ApepyDwUDj6ZohtkceP+sryy/cwALZcYeDOfmMRMfLGZHVMzppjCojAjiZoFCNLZjmOOM+LuqJSZov3NEd4WHxrgewgpYmV63pjdxya5BI8/xqD8lySK7A25Rht+DyfHfDPEBAK6LfKLUj9l8cFjn8Y1ZXeXCbKcKx/p2WfYNIdkzmVDyZUVaq/XQHVbpFZQVLMxmUn1ho3hSUZ0+PUyeAgZ5KOe6lxIBSnT7Vn0M5BERLVINRhIJmabDAlLir32pACt4vxoL4qFUa3cqpi+hlsw5GlU623hjZH4yCifIv9k12/o6Arv9L+tuRsOIHfE+/cR3ig1f9sBHVJjN1VyY++XKRFG53NvXWGAE=\"},{\"type\":\"text\",\"text\":\"{\\\"lead\\\":\\\"🗓 *Çarşamba Halı Saha Sandbox* için *12 kişi* lazım. Gelebilecekler *VARIM* yazsın ⚽\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":121,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":1319,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":279,\"output_tokens_details\":{\"thinking_tokens\":212},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
+   "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011CgiWp21xMUMhGSPb5Eueu\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQS0woKEAgTGAI4AUIIdGhpbmtpbmcSDA2bF6ZXvmF72fcUMxoMYPy4NvSnZYvSl4uTIjA3CFeT2BpBCcQNTUWGJwUs9zL8dIEsVJTXsi/olDUlS/t5us0A7B8/MtkLsH//BQ8q8AmQN/CFVpsnlT2ZOuxyMvK8jslJEZuD98IU+FO9ljj5nMYiV2UBmvgMew4keaHyxfCj/Thpv8cHDCwjdiaLRQmycCHcHbs9HRFliBOtR15WaPD6rTqDkGAZm6zlcumOIKGnV5EbQZ3kINOJT+GsVPuneSbATrD9cP+0sW4kppwlrU3NENXwV8xYFl3YXWr9jGZlGMa5UVdmkl3ZlXZoflbiJIaz2KNErIr+asl6E0HdzsRY4KDey1uLJ4yFjfG2AmuN6YUJQmCp2CKMRvF6S+6rewqkfaNs+9B8KsAKZpJRUaMjAxmhJnHDdrXaH1ftTP9pdeKevNDqluq9frqT6bSQBNcYDWGBRW6K8rBJckbY7TDZTQ0qX/BXEgk3pUfeEvY7vcgy2RvWk/gRwwAq9fC3iioy4PlE59jmxFWOHANFFhQOOgtTII0Dm6qyfJzrggAObY/imFUxHvOI4hR6jQPK6peCvEOjiDkkwMg3dJFZfFj+YdPm8UZzEZpDgB6b9tNFihcvQC4y2gWS0TqAp2HzCmMJplrOXLt3vx/ZSy3rSr2svw8ZPCN8QXbNpTcnUgj8Y6ThSj3mIVRoH+5MtQMlZsztK5HPGPR2jn3EYcV+V6/UxQvuqy6HDDST2FJkLebWQq+q7h6TEJMgO8TbUzC9I9Akq1UcjOruZwoh/7SHJV+p4Th6ziC+EvIBjk5j5XyiJZqYe22gCjTdYcmpOWUk16CEYsLpJ31uObYAYIJUNYrDklDeoac1K5GILhqm9U3R8We/JpBb3n453ZSsquZ5gQodHJ7Ze8o58yF2AnXdsoBOQHqVXmah2dSeP3MFVADWRR4BalEiFoPslik/1qwP41afQ8+Zc1X3h4VJkFKejn/PTSnpwrFo0lym2wh2h2K0KNZmdZGRjEr8Z4FznlRnAtiZxLHcJ0D9EibmphcnyzD8ZqyYEhgLgiR4uwTz4mXy356mzKO8bT5P4549AQbbR6bmDJayX9iv0htDAAGII5kw5MIHKVQGrA5sgP6NREj5H1hW1tp0oOWiqco2qtVH5NfwO77EL0w4xq2r/9gkBMg5iIZdkz5vL+cLk4nJSSUbnhOOzEYpy0sDUdYteCL7i9eOWwiNNzPBZcGb+CYxhVDW0SkibRHWLPta0wpV2tT2bE9df+56mZ0FEAtvzuPcKlbaWLlDWsEFtsS1q8sRLA7q/sKtVIjfI7LII/xgNss1DHyedA4ZmafX2cZldyxRHCi7MFC4SLrnlkPU71Fgvg+Ge2AwIxUfiu1nBs+OWVGlBlLZjT9RwMdqJSmZVMdHRLYU09DpvrK8H+T2bDYKe1Aw82JTYfA071A3OvvAoB/oX2OnS/8tIbniRWUdZ0jzWGQfzykMjuhllOvweAVslr43AQQilKg+VXdsGarjI/X5xC43kOG0q5NBsC1ahn699we6mYqwDuKqFMySjCxHhfrFbRFCmXdn3ysZBqlUq4GTXsqUmQGHlW2VmetyJu4xG269YJ7413veXjaREwsaaqNKU++SqCSKvdrQse2L9DtyL4XXiD46Zf0w32iajjp2pljKZ0X1Pq+00vDJdTvqSuk0DUIorrJMbGIKKK/NLDBKQJQiV+JsMk3z9xhx2YMSqZFlpnOpW+lNLOf8fUBLsGOxu4gKck3w6sX0F65zQocaGDYMNmhxvdZgVGgkCa9EGAE=\"},{\"type\":\"text\",\"text\":\"{\\\"lead\\\":\\\"🗓 *Çarşamba Halı Saha Sandbox* maçına hâlâ *12 kişi* lazım, 18 Kasım Çarşamba günü. Gelebilecekler *VARIM* yazsın ⚽\\\"}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":121,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":1319,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":465,\"output_tokens_details\":{\"thinking_tokens\":375},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null}"
   }
  ]
 }

@@ -258,7 +258,7 @@
 - 2026-11-17 09:00 [FNS HQ] **MatchTime**: Adding: Nabil Haddad, Idris Bello, Kareem Saleh. Removing: Tariq Aziz. Say *@Match Time YES* to apply.
 - 2026-11-17 09:00 database: sent-notification hqreply:<club>:wa-fnf-19: (new) admin-group-reply
 - 2026-11-17 09:02 [FNS HQ] **Hamzah Ali**: @Match Time YES _(admin-group: paste-applied, 2 model call(s))_
-- 2026-11-17 09:02 [FNS HQ] **MatchTime**: Done: Tariq Aziz out, Nabil Haddad in, Idris Bello in, Kareem Saleh in. 12 of 18, 2 on the bench (? and Bilal). 6 places are free. Just tell me who should come in from the bench, in your own words (for example ?).
+- 2026-11-17 09:02 [FNS HQ] **MatchTime**: Done: Tariq Aziz out, Nabil Haddad in, Idris Bello in, Kareem Saleh in. 12 of 18, 2 on the bench (+44 7700 900216 and Bilal). 6 places are free. Just tell me who should come in from the bench, in your own words (for example +44 7700 900216).
 - 2026-11-17 09:02 database: <match 2026-11-20 20:30>: attendance @idris: BENCH #11 → CONFIRMED #16
     <match 2026-11-20 20:30>: attendance @kareem: BENCH #12 → CONFIRMED #17
     <match 2026-11-20 20:30>: attendance @nabil: (new) CONFIRMED #15
