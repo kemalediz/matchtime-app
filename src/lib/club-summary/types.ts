@@ -87,17 +87,29 @@ export interface ClubSummary {
  * or `collectionLive` (its module reads the database).
  *
  * For a door that finds the club by its row anyway (the admin group, by
- * its group; a DM, through the sender's memberships) and whose consumers
- * need only these facts: they cost no read, where the whole summary costs
- * three to six more (plan 3.10). Each field equals the same field of the
- * club's `ClubSummary` (`__tests__/row-facts.test.ts`), except `payments`,
- * which carries the collector's id only.
+ * its group; a DM, through the sender's memberships; a web page, on its
+ * own match or membership query, slice A4) and whose consumers need only
+ * these facts: they cost no read, where the whole summary costs three to
+ * seven more (plan 3.10). Each field equals the same field of the club's
+ * `ClubSummary` (`__tests__/row-facts.test.ts`), except `payments`, which
+ * carries the collector's id only, and two facts of the row the whole
+ * summary does not carry yet (slice A4, the web pages read them):
+ * `payments.switches` and `routine.teamsReadyChosen`.
  */
-export type ClubRowFacts = Pick<ClubSummary, "orgId" | "name" | "language" | "lifecycle" | "groups" | "features" | "teamLabels" | "routine"> & {
+export type ClubRowFacts = Pick<ClubSummary, "orgId" | "name" | "language" | "lifecycle" | "groups" | "features" | "teamLabels"> & {
+  routine: RoutineFacts & {
+    /** `teamsReadyTime` set by an organiser (a time or "off"). False:
+     *  `teamsReady` is the default for who announces (/admin/settings). */
+    teamsReadyChosen: boolean;
+  };
   squad: Omit<SquadFacts, "months">;
   payments: Omit<PaymentFacts, "collector" | "collectionLive"> & {
     /** `paymentHolderId`; the name needs a read of its own. */
     collector: { userId: string } | null;
+    /** The pay method switches as stored (`payMethodPayByBank`,
+     *  `payMethodCard`, `payMethodDirect`): what the settings page shows.
+     *  `methods` is what a player can actually use. */
+    switches: { payByBank: boolean; card: boolean; direct: boolean };
   };
 };
 

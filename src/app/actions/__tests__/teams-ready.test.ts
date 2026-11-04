@@ -15,12 +15,32 @@ const dbMock = vi.hoisted(() => ({ organisation: { findUnique: vi.fn(), update: 
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 
 import { getTeamsReady, setTeamsReady } from "../teams-ready";
+import { orgRow } from "@/lib/club-summary/__tests__/fixtures";
+
+/** A whole club row, as Prisma returns it (the action reads the club's
+ *  facts from it, club summary slice A4), with the test's columns on top. */
+function clubRow(over: Record<string, unknown>) {
+  return {
+    ...orgRow({ id: "org-1", name: "Club" }),
+    featureAttendance: true,
+    featureBench: true,
+    featureTeamBalancing: true,
+    featureMomVoting: true,
+    featurePlayerRating: true,
+    featureReminders: true,
+    featureStatsQa: true,
+    featureSquadFromList: false,
+    featureBadgeAnnouncements: true,
+    featureGearReminder: true,
+    ...over,
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
   authMock.auth.mockResolvedValue({ user: { id: "u-admin" } });
   orgMock.requireOrgAdmin.mockResolvedValue(undefined);
-  dbMock.organisation.findUnique.mockResolvedValue({ teamsReadyTime: "10:00", adminGroupId: "hq@g.us", squadMode: "weekly" });
+  dbMock.organisation.findUnique.mockResolvedValue(clubRow({ teamsReadyTime: "10:00", adminGroupId: "hq@g.us", squadMode: "weekly" }));
   dbMock.organisation.update.mockResolvedValue({});
 });
 
@@ -31,9 +51,9 @@ describe("Teams ready", () => {
   });
 
   it("not set: 10:00 when the organisers announce, Off when MatchTime does", async () => {
-    dbMock.organisation.findUnique.mockResolvedValue({ teamsReadyTime: null, listAnnouncer: "organisers", adminGroupId: "hq@g.us", squadMode: "weekly" });
+    dbMock.organisation.findUnique.mockResolvedValue(clubRow({ teamsReadyTime: null, listAnnouncer: "organisers", adminGroupId: "hq@g.us", squadMode: "weekly" }));
     expect(await getTeamsReady("org-1")).toMatchObject({ value: "10:00", isDefault: true });
-    dbMock.organisation.findUnique.mockResolvedValue({ teamsReadyTime: null, listAnnouncer: "matchtime", adminGroupId: "hq@g.us", squadMode: "weekly" });
+    dbMock.organisation.findUnique.mockResolvedValue(clubRow({ teamsReadyTime: null, listAnnouncer: "matchtime", adminGroupId: "hq@g.us", squadMode: "weekly" }));
     expect(await getTeamsReady("org-1")).toMatchObject({ value: "off", isDefault: true });
   });
 

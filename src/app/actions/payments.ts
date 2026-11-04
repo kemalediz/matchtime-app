@@ -28,6 +28,7 @@ import { markDirectPaymentPending, resolvePayContext } from "@/lib/direct-paymen
 import { unwaiveMatchFee, waiveMatchFee } from "@/lib/fee-waiver";
 import { formatLondon } from "@/lib/london-time";
 import { announcePaymentsLiveIfJustLive, readPaymentLiveState } from "@/lib/payments-live-announce";
+import { CLUB_ROW_SELECT, clubRowFactsOf } from "@/lib/club-row-facts";
 
 // ── Connect onboarding (money collector links their bank) ────────────
 
@@ -295,11 +296,15 @@ export async function undoFeeWaived(matchId: string, userId: string): Promise<{ 
 export async function requireMatchCollectorOrAdmin(userId: string, matchId: string): Promise<string> {
   const match = await db.match.findUnique({
     where: { id: matchId },
-    select: { activity: { select: { org: { select: { id: true, paymentHolderId: true } } } } },
+    select: { activity: { select: { org: { select: CLUB_ROW_SELECT } } } },
   });
   if (!match) throw new Error("Match not found");
   const org = match.activity.org;
-  if (org.paymentHolderId === userId) return org.id; // collector
+  // Who collects: the club's facts (club summary, slice A4), else, when they
+  // cannot be built, today's read of the same row.
+  const club = clubRowFactsOf(org, "requireMatchCollectorOrAdmin");
+  const collectorId = club ? (club.payments.collector?.userId ?? null) : org.paymentHolderId;
+  if (collectorId === userId) return org.id; // collector
   await requireOrgAdmin(userId, org.id); // else must be an admin (throws otherwise)
   return org.id;
 }

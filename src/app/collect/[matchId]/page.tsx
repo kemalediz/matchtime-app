@@ -9,6 +9,7 @@ import { collectRowState } from "@/lib/fee-waiver-rules";
 import { t } from "@/lib/i18n/t";
 import { MatchContextHeader } from "@/components/match/match-context-header";
 import { resolveTeamLabels } from "@/lib/team-labels";
+import { CLUB_ROW_SELECT, clubRowFactsOf } from "@/lib/club-row-facts";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,8 @@ export default async function CollectPage({
           name: true,
           venue: true,
           sport: { select: { name: true, teamLabels: true } },
-          org: { select: { name: true, paymentHolderId: true, language: true, teamLabels: true } },
+          // The club's row, for its facts (club summary, slice A4).
+          org: { select: CLUB_ROW_SELECT },
         },
       },
       attendances: {
@@ -53,8 +55,13 @@ export default async function CollectPage({
   });
   if (!match) redirect("/");
 
+  // The club's facts (club summary, slice A4), else, when they cannot be
+  // built, today's reads of the same row.
+  const org = match.activity.org;
+  const club = clubRowFactsOf(org, "collect");
   // The collector collects — they don't pay themselves, so don't list them.
-  const collectorId = match.activity.org.paymentHolderId;
+  const collectorId = club ? (club.payments.collector?.userId ?? null) : org.paymentHolderId;
+  const clubTeamLabels = club ? { teamLabels: club.teamLabels } : org;
   const rows = match.attendances
     .filter((a) => a.userId !== collectorId)
     // Monthly squad (slice 5): a regular's place is paid for by the month.
@@ -85,7 +92,7 @@ export default async function CollectPage({
   const collected = owing.reduce((s, r) => s + (r.paid ? r.amount ?? 0 : 0), 0);
   const base = match.feePerPlayer;
   const words = t(match.activity.org.language);
-  const teamLabels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
+  const teamLabels = resolveTeamLabels(match, clubTeamLabels, match.activity.sport, match.activity.org.language);
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8">
