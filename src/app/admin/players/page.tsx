@@ -351,7 +351,7 @@ export default function PlayersPage() {
 
   async function handleRemoveAlias(userId: string, alias: string) {
     if (!orgId) return;
-    if (!confirm(`Remove alias "${alias}"? Next time the bot sees that pushname, it'll fall back to fuzzy matching.`)) return;
+    if (!confirm(`Remove alias "${alias}"? Next time MatchTime sees that pushname, it'll fall back to fuzzy matching.`)) return;
     try {
       await removePlayerAlias(userId, orgId, alias);
       setPlayers((prev) =>
@@ -526,7 +526,7 @@ export default function PlayersPage() {
           </div>
           <p className="mt-2 text-xs text-slate-500">
             Adding a phone is recommended: it links them across groups and lets
-            the bot recognise them automatically. If that number already exists
+            MatchTime recognise them automatically. If that number already exists
             anywhere, we&apos;ll reuse it instead of creating a duplicate.
           </p>
         </div>
@@ -721,7 +721,7 @@ export default function PlayersPage() {
                         <button
                           onClick={() => { setAliasInputFor(p.id); setAliasInputValue(""); }}
                           className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 text-slate-400 hover:text-blue-600 text-[11px] font-medium transition-colors"
-                          title="Add a nickname / alternate name the bot should recognise"
+                          title="Add a nickname or other name MatchTime should recognise"
                         >
                           <Plus className="w-2.5 h-2.5" /> add
                         </button>
@@ -732,7 +732,7 @@ export default function PlayersPage() {
                     <button
                       onClick={() => { setAliasInputFor(p.id); setAliasInputValue(""); }}
                       className="mt-1 inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-blue-600 transition-colors"
-                      title="Add a nickname / alternate name the bot should recognise"
+                      title="Add a nickname or other name MatchTime should recognise"
                     >
                       <Tag className="w-2.5 h-2.5" /> add alias
                     </button>

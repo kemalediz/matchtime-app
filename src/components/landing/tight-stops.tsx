@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
  * Display headings: pull each full stop back towards the word before it.
  *
  * Measured in the browser (2026-10-26): the headline is one text node with
- * no space ("Your players WhatsApp."), but Plus Jakarta Sans's "." glyph
+ * no space ("Your players chat."), but Plus Jakarta Sans's "." glyph
  * starts its ink about 0.13em past its origin (canvas measureText at 36px:
  * actualBoundingBoxLeft -4.64px), so at the headings' tight tracking it
  * reads as "WhatsApp ." A -0.1em margin on the stop closes that gap. The

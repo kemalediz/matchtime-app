@@ -58,7 +58,7 @@ describe("settings page copy", () => {
 
   it("no 'being added in stages', and the headings come from the string tables", () => {
     expect(PAGE).not.toMatch(/added in stages/);
-    for (const heading of ["General", "Team names", "Bot language", "Invite link", "Bot features", "WhatsApp bot"]) {
+    for (const heading of ["General", "Team names", "Language", "Invite link", "Features", "MatchTime in your group"]) {
       expect(PAGE, heading).not.toContain(`>${heading}</h2>`);
     }
     for (const lang of LANGS) {
@@ -69,6 +69,37 @@ describe("settings page copy", () => {
     }
     expect(t("tr").st_general_title).toBe("Genel");
     expect(t("en").st_language_lead).not.toMatch(/English/);
+  });
+
+  it("never calls MatchTime a bot: the section titles and their popups (2026-11-04)", () => {
+    const en = t("en");
+    const tr = t("tr");
+    expect(en.st_language_title).toBe("Language");
+    expect(tr.st_language_title).toBe("Dil");
+    expect(settingInfo("en", "language").title).toBe("Language");
+    expect(settingInfo("tr", "language").title).toBe("Dil");
+    expect(en.st_features_title).toBe("Features");
+    expect(tr.st_features_title).toBe("Özellikler");
+    expect(en.info_st_features_title).toBe("Features");
+    expect(tr.info_st_features_title).toBe("Özellikler");
+    for (const s of [en.st_wa_title, en.info_st_whatsapp_title, en.info_st_whatsapp_setup_title, en.info_st_whatsapp_removed_title]) {
+      expect(s).toBe("MatchTime in your group");
+    }
+    for (const s of [tr.st_wa_title, tr.info_st_whatsapp_title, tr.info_st_whatsapp_setup_title, tr.info_st_whatsapp_removed_title]) {
+      expect(s).toBe("MatchTime grubunuzda");
+    }
+    expect(en.st_features_lead).toMatch(/Changes take effect shortly\.$/);
+    expect(tr.st_features_lead).toMatch(/Değişiklikler kısa süre içinde geçerli olur\.$/);
+    expect(en.st_wa_managed).toMatch(/^MatchTime manages these settings\./);
+    expect(tr.st_wa_managed).toMatch(/^Bu ayarları MatchTime yönetir\./);
+    const all = JSON.stringify([
+      en.st_language_title, en.st_features_title, en.st_features_lead, en.st_wa_title, en.st_wa_managed,
+      en.info_st_features_title, en.info_st_whatsapp_title, en.info_st_whatsapp_setup_title, en.info_st_whatsapp_removed_title,
+      tr.st_language_title, tr.st_features_title, tr.st_features_lead, tr.st_wa_title, tr.st_wa_managed,
+      tr.info_st_features_title, tr.info_st_whatsapp_title, tr.info_st_whatsapp_setup_title, tr.info_st_whatsapp_removed_title,
+      settingInfo("en", "language").title, settingInfo("tr", "language").title,
+    ]);
+    expect(all).not.toMatch(/\bbot\b|\bbotu\b|\bbotun\b|server-side/i);
   });
 
   it("each Bot features popup is titled with the row's label, in both languages", () => {

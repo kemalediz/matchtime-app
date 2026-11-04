@@ -131,6 +131,21 @@ describe("landing content: house rules", () => {
     expect(ALL.filter((s) => named.test(s.text))).toEqual([]);
   });
 
+  it("never calls MatchTime a WhatsApp bot, nor says bulk (Kemal, 2026-11-04)", () => {
+    expect(ALL.filter((s) => /whatsapp bot|\bbulk\b/i.test(s.text))).toEqual([]);
+    expect(SITE_META.keywords).not.toContain("whatsapp football bot");
+    expect(SITE_META.keywords).not.toContain("whatsapp football organiser");
+    expect(SITE_META.keywords).toContain("football group organiser");
+    expect(SITE_META.keywords.filter((k) => /\bbot\b/i.test(k))).toEqual([]);
+    expect(FEATURES.find((f) => f.key === "season")?.body).toContain("cancel the holiday weeks at once");
+  });
+
+  it("the JSON-LD names the web as MatchTime's only platform (Kemal, 2026-11-04)", () => {
+    const page = readFileSync(path.resolve(__dirname, "../landing-page.tsx"), "utf8");
+    expect(page).toContain('operatingSystem: "Web",');
+    expect(page).not.toMatch(/operatingSystem: "[^"]*WhatsApp/);
+  });
+
   it("never says messages a week: the cap is on game offers (Kemal, 2026-10-25)", () => {
     expect(ALL.filter((s) => /messages a week/i.test(s.text))).toEqual([]);
   });
@@ -562,7 +577,7 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
   });
 
   it("the headline and the one line", () => {
-    expect(HERO.titleLead).toBe("Your players WhatsApp.");
+    expect(HERO.titleLead).toBe("Your players chat.");
     expect(HERO.titleTail).toBe("MatchTime runs the game.");
     expect(HERO.pill).toBe("For weekly football groups");
     expect(HERO).not.toHaveProperty("ticks");

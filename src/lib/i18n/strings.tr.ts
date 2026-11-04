@@ -2230,11 +2230,11 @@ export const tr: Strings = {
   sj_card_setting_up: (p) =>
     `MatchTime ${p.group ? `"${p.group}" grubunda` : "WhatsApp grubunuzda"} ve siz yayına alana kadar sessiz kalacak.`,
   sj_card_setting_up_link: `Ayarlarınızı kontrol edin ve yayına alın`,
-  info_st_whatsapp_setup_title: "WhatsApp botu",
+  info_st_whatsapp_setup_title: "MatchTime grubunuzda",
   info_st_whatsapp_setup_body:
     "MatchTime onaylandı ve WhatsApp grubunuza bağlı. Kulübün sahibi ya da bir yöneticisi bu sayfanın en üstündeki Yayına al düğmesine basana ya da WhatsApp'tan MatchTime'a BAŞLA yazana kadar grupta sessiz kalır.\n\n" +
     "Bir sorun yok: sizi bekliyor.",
-  info_st_whatsapp_removed_title: "WhatsApp botu",
+  info_st_whatsapp_removed_title: "MatchTime grubunuzda",
   info_st_whatsapp_removed_body:
     "MatchTime onaylandı, ama yayına geçmeden WhatsApp grubunuzdan çıkarıldı, bu yüzden orada başlayamıyor.\n\n" +
     "MatchTime'ı gruba tekrar ekleyin. Sonra kulübün sahibi ya da bir yöneticisi bu sayfanın en üstündeki Yayına al düğmesine basar ya da WhatsApp'tan MatchTime'a BAŞLA yazar.",
@@ -2972,7 +2972,7 @@ export const tr: Strings = {
   info_st_invite_title: "Davet bağlantısı",
   info_st_invite_body:
     "Birinin MatchTime web sitesinde kulübünüze katılabilmesi için bu bağlantıyı gönderin. WhatsApp grubunuzda yazanlar kendiliğinden eklenir, bu yüzden çoğu oyuncunun buna ihtiyacı yoktur.",
-  info_st_features_title: "Bot özellikleri",
+  info_st_features_title: "Özellikler",
   info_st_features_body:
     "Her düğme MatchTime'ın bir bölümünü kulübünüz için açar ya da kapatır, böylece yalnızca istediğinizi kullanırsınız. Değişikliklerin gruba ulaşması birkaç dakika sürebilir.",
   info_st_weekly_title: "Haftalık düzen",
@@ -2982,7 +2982,7 @@ export const tr: Strings = {
   info_st_billing_body:
     "MatchTime'ın kulübünüze maliyeti. Her ay yalnızca oynanan maçlar için ücret alınır, aylık üst sınırı asla geçmez, ödeme ay bittikten sonraki sabah alınır.\n\n" +
     "Kartla fatura sayfasında para toplayan kişi ilgilenir; para toplayan kişi yoksa kart kulüp sahibinden istenir. Diğer yöneticiler görebilir ama kartı değiştiremez.",
-  info_st_whatsapp_title: "WhatsApp botu",
+  info_st_whatsapp_title: "MatchTime grubunuzda",
   info_st_whatsapp_body:
     "MatchTime'ın WhatsApp grubunuz için açık olup olmadığı ve hangi gruba bağlı olduğu. Bunu MatchTime yönetir, buradan değiştirilemez.",
 
@@ -3008,13 +3008,13 @@ export const tr: Strings = {
   info_bb_page_body:
     "Toplu rezervasyon sahayı kiralama şeklinize uyar: peşin ödenmiş bir dizi haftalık maç, örneğin 10 salı. Bu maçların hepsini tek seferde ekler. MatchTime yine yalnızca bir sonraki maç hakkında paylaşım yapar.\n\n" +
     "\"Cancel remaining\" bu rezervasyonun gelecekteki maçlarını grupta paylaşım yapmadan iptal eder. \"Restore cancelled\" onları yine sessizce geri getirir. \"Delete block\" boş gelecek maçları kaldırır; oynanmış maçlar ve verisi olan her şey saklanır.",
-  info_bulk_page_title: "Toplu iptal ya da geri alma",
+  info_bulk_page_title: "Birkaç maçı iptal etme ya da geri alma",
   info_bulk_page_body:
     "Tatiller ve hatalar için. Tarihleri seçin, listeyi kontrol edin, sonra onaylayın. Duyuru kutusunu işaretlemezseniz iptal grupta hiçbir şey paylaşmaz. Geri alma her zaman sessizdir.",
 
   info_cancel_title: "Maçı iptal et",
   info_cancel_body:
-    "Bir maç oynanmayacaksa bunu kullanın. MatchTime grupta tek bir iptal mesajı paylaşır ve bu maç için başka hiçbir şey göndermez: hatırlatma, puanlama ya da Man of the Match olmaz. İptal edilen bir maç \"Bulk cancel / restore\" sayfasından geri getirilebilir.",
+    "Bir maç oynanmayacaksa bunu kullanın. MatchTime grupta tek bir iptal mesajı paylaşır ve bu maç için başka hiçbir şey göndermez: hatırlatma, puanlama ya da Man of the Match olmaz. İptal edilen bir maç \"Cancel or restore several matches\" sayfasından geri getirilebilir.",
   info_switch_title: "Formatı değiştir",
   info_switch_body:
     "Format bir haftalığına değiştiğinde bunu kullanın, örneğin 7'ye 7'den 5'e 5'e. Maç diğer etkinliğe geçer, yeni sayının üstündekiler yedek listesine girer ve MatchTime yeni kadroyu grupta paylaşır. Yalnızca aynı spordan, farklı büyüklükteki etkinlikler sunulur.",
@@ -3937,7 +3937,7 @@ export const tr: Strings = {
   st_team_names_saved: (p) => `Takımların adı ${p.first} ve ${p.second} olacak`,
   st_team_names_reset: "Varsayılan takım adlarına dönüldü",
   st_team_names_failed: "Takım adları kaydedilemedi",
-  st_language_title: "Bot dili",
+  st_language_title: "Dil",
   st_language_lead: "MatchTime'ın bu grupta konuştuğu dil: grup mesajları, oyunculara ve yöneticilere özel mesajlar ve afişler.",
   st_language_saved: (p) => `MatchTime bu grupta ${p.language} konuşacak`,
   st_language_failed: "Dil kaydedilemedi",
@@ -3945,9 +3945,9 @@ export const tr: Strings = {
   st_invite_lead: "Oyuncuların kulübünüze katılması için bu bağlantıyı paylaşın.",
   st_copy: "Kopyala",
   st_invite_copied: "Davet bağlantısı kopyalandı!",
-  st_features_title: "Bot özellikleri",
+  st_features_title: "Özellikler",
   st_features_lead:
-    "Özellikleri tek tek açın ya da kapatın. Bir grup yalnızca istediği kısımları kullanabilir, örneğin sadece maçın adamı ve oyuncu puanları. Değişiklikler botun bir sonraki turunda geçerli olur.",
+    "Özellikleri tek tek açın ya da kapatın. Bir grup yalnızca istediği kısımları kullanabilir, örneğin sadece maçın adamı ve oyuncu puanları. Değişiklikler kısa süre içinde geçerli olur.",
   st_switch_enable: "Açmak için tıklayın",
   st_switch_disable: "Kapatmak için tıklayın",
   st_feature_on: (p) => `${p.label} açık`,
@@ -3984,11 +3984,11 @@ export const tr: Strings = {
   st_bank_refresh_failed: "Yenilenemedi",
   st_bank_open_failed: "Banka paneli açılamadı",
   st_bank_reset_failed: "Sıfırlanamadı",
-  st_wa_title: "WhatsApp botu",
+  st_wa_title: "MatchTime grubunuzda",
   st_wa_enabled: "Açık",
   st_wa_disabled: "Kapalı",
   st_wa_group_id: "WhatsApp grup kimliği",
-  st_wa_managed: "Bot ayarlarını MatchTime yönetir. Açmak ya da yeniden ayarlamak için yöneticinizle iletişime geçin.",
+  st_wa_managed: "Bu ayarları MatchTime yönetir. Açmak ya da yeniden ayarlamak için yöneticinizle iletişime geçin.",
   // ─── Partner kulüpler (slice S1, 2026-10-16) ────────────────────────
   pc_paired_notice_asker: (p) =>
     `🤝 MatchTime, *${p.club}* ile *${p.other}* kulüplerini eşleştirdi: oyuncunuz eksik olduğunda MatchTime, onların organizatörlerinin onayıyla ${p.other} grubundan oyuncu isteyebilir. İki kulübün sahibi de kabul edene kadar hiçbir şey olmaz. Kulüp sahibi: kabul etmek için ${p.inGroup ? "bu mesajı yanıtlayıp *@Match Time 1*, reddetmek için *@Match Time 2*" : "*1*, reddetmek için *2*"} yazın ya da şunu açın: ${p.link}`,

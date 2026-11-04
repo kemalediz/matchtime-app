@@ -107,12 +107,11 @@ export const SITE_META = {
   keywords: [
     "football team management",
     ...FORMAT_KEYWORDS,
-    "whatsapp football bot",
     "football team balancer",
     "match attendance tracker",
     "pickup football",
     "man of the match voting",
-    "whatsapp football organiser",
+    "football group organiser",
   ],
 };
 
@@ -126,7 +125,7 @@ export const SITE_META = {
  */
 export const HERO = {
   pill: "For weekly football groups",
-  titleLead: "Your players WhatsApp.",
+  titleLead: "Your players chat.",
   titleTail: "MatchTime runs the game.",
   line: "Who's in, the bench, and partner clubs and nearby players when you're short. Then fair teams, player ratings, Man of the Match and match fees, all in your group chat.",
   primary: { label: "Start your group", href: "/signup" } satisfies NavLink,
@@ -370,7 +369,7 @@ export const FEATURES: Card[] = [
     color: "amber",
     icon: "building",
     title: "Book the whole season",
-    body: "Set up a season of weekly matches in one go, then cancel the holiday weeks in bulk. Game-day reminders tell the group to bring gloves, a ball and bibs.",
+    body: "Set up a season of weekly matches in one go, then cancel the holiday weeks at once. Game-day reminders tell the group to bring gloves, a ball and bibs.",
   },
   {
     key: "no-accounts",

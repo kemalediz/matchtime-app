@@ -155,12 +155,12 @@ test("/admin/activities: the page, active state, generate and the sign-up cut-of
   await expectInfos(page, ["act_page", "act_active", "act_generate", "act_deadline"], "act_deadline", "Sign-ups close");
 });
 
-test("/admin/block-bookings and bulk cancel / restore", async ({ page }) => {
+test("/admin/block-bookings and cancel or restore several matches", async ({ page }) => {
   await signInAs(page, U.admin, "/admin/block-bookings");
   await page.waitForURL("**/admin/block-bookings");
   await expectInfos(page, ["bb_page"], "bb_page", "Block bookings");
   await page.goto("/admin/matches/bulk");
-  await expectInfos(page, ["bulk_page"], "bulk_page", "Bulk cancel or restore");
+  await expectInfos(page, ["bulk_page"], "bulk_page", "Cancel or restore several matches");
 });
 
 test("/admin/matches: teams (with teams and score), switch format and cancel", async ({ page }) => {

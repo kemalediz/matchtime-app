@@ -57,13 +57,18 @@ const users = (phone: string) =>
 /** Fill the phone on /login and ask for a code. */
 async function askForCode(page: Page, phone: string) {
   await page.getByLabel("Phone number").fill(phone);
-  await page.getByRole("button", { name: "Sign in with WhatsApp" }).click();
+  await page.getByRole("button", { name: "Get a sign-in code on WhatsApp" }).click();
   await expect(page.getByLabel("6 digit code")).toBeVisible();
 }
 
 test("/login offers WhatsApp and nothing else", async ({ page }) => {
   await page.goto("/login");
-  await expect(page.getByRole("button", { name: "Sign in with WhatsApp" })).toBeVisible();
+  const send = page.getByRole("button", { name: "Get a sign-in code on WhatsApp" });
+  await expect(send).toBeVisible();
+  // MatchTime blue, the site's own primary button, not WhatsApp green (2026-11-04).
+  await expect(send).toHaveClass(/\bbg-blue-600\b/);
+  await expect(send).not.toHaveClass(/\bbg-green-/);
+  await expect(page.getByRole("button", { name: "Sign in with WhatsApp" })).toHaveCount(0);
   await expect(page.getByLabel("Phone number")).toBeVisible();
 
   await expect(page.locator('input[type="email"]')).toHaveCount(0);
@@ -81,7 +86,7 @@ test("/signup points an existing user at /login", async ({ page }) => {
   await page.goto("/signup");
   await page.getByRole("link", { name: "Sign in", exact: true }).click();
   await page.waitForURL("**/login");
-  await expect(page.getByRole("button", { name: "Sign in with WhatsApp" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Get a sign-in code on WhatsApp" })).toBeVisible();
 });
 
 test("the retired email pages redirect", async ({ page }) => {
@@ -92,14 +97,14 @@ test("the retired email pages redirect", async ({ page }) => {
   await page.goto("/verify-email?email=someone%40example.com");
   expect(new URL(page.url()).pathname).toBe("/login");
   expect(new URL(page.url()).search).toBe("");
-  await expect(page.getByRole("button", { name: "Sign in with WhatsApp" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Get a sign-in code on WhatsApp" })).toBeVisible();
 });
 
 test("Google is shown only at /login?via=google, and says why it refused", async ({ page }) => {
   await page.goto("/login?via=google");
   await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeVisible();
   // WhatsApp is still first.
-  await expect(page.getByRole("button", { name: "Sign in with WhatsApp" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Get a sign-in code on WhatsApp" })).toBeVisible();
   await expect(page.getByText("not linked")).toHaveCount(0);
 
   // Where the sign-in gate sends an unknown Google account.
@@ -246,7 +251,7 @@ test("a wrong code signs nobody in", async ({ page }) => {
   // which is the per-phone cap, shared between sign-up and sign-in.
   await page.goto("/login");
   await page.getByLabel("Phone number").fill(ORGANISER_PHONE);
-  await page.getByRole("button", { name: "Sign in with WhatsApp" }).click();
+  await page.getByRole("button", { name: "Get a sign-in code on WhatsApp" }).click();
   await expect(page.getByText("Too many requests. Please wait a bit and try again.")).toBeVisible();
   await testDb().run(`DELETE FROM "PhoneOtp" WHERE phone = $1`, [digits(ORGANISER_PHONE)]);
 

@@ -46,7 +46,7 @@ const LABELS: Array<[string, string]> = [
   ["New block booking", BLOCKS],
   ["Preview dates", NEW_BLOCK],
   ["Create block", NEW_BLOCK],
-  ["Bulk cancel / restore", BLOCKS],
+  ["Cancel or restore several matches", BLOCKS],
   ["Find matches", BULK_PAGE],
   ["Cancel matches", BULK_PAGE],
   ["Restore cancelled matches", BULK_PAGE],
@@ -91,6 +91,12 @@ describe("organiser guide: schedule section", () => {
     expect(SCHEDULE).toContain("Match switched");
     expect(SCHEDULE).toContain("Schedule update");
     expect(SCHEDULE).toMatch(/Nothing is posted/);
+  });
+
+  it("never says bulk to an organiser (Kemal, 2026-11-04)", () => {
+    expect(GUIDE).not.toMatch(/\bbulk\b/i);
+    expect(read(BLOCKS)).not.toMatch(/>\s*Bulk /);
+    expect(read(BULK_PAGE)).not.toMatch(/>\s*Bulk /);
   });
 
   it("does not claim the fee is set on the activity (it is asked after each match)", () => {

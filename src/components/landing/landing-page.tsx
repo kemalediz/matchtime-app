@@ -439,7 +439,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
             "@type": "SoftwareApplication",
             name: "MatchTime",
             applicationCategory: "SportsApplication",
-            operatingSystem: "Web, WhatsApp",
+            operatingSystem: "Web",
             description:
               "MatchTime lives in your WhatsApp group and runs your weekly football: attendance, the bench, chasing, partner clubs nearby and then the MatchTime player pool to fill a missing place, then balanced teams, ratings, Man of the Match, optional card or bank payments and an admin group for organisers.",
             url: "https://matchtime.ai",

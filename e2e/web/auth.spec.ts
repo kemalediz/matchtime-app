@@ -27,7 +27,7 @@ test("expired token goes to sign-in with a notice and does not sign in", async (
   await expect(page.getByTestId("login-link-expired")).toHaveText(
     "That link has expired. Sign in with your WhatsApp number to carry on.",
   );
-  await expect(page.getByRole("button", { name: "Sign in with WhatsApp" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Get a sign-in code on WhatsApp" })).toBeVisible();
   // No session: a protected page bounces to /login.
   await page.goto("/profile/stats");
   await page.waitForURL("**/login**", { timeout: 30_000 });

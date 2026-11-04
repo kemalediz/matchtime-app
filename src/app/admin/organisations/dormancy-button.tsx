@@ -122,8 +122,8 @@ export function DormancyButton({
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900 mb-4 space-y-2">
               <p>
                 This is <span className="font-medium">not</span> the way to quiet
-                the bot for a live club. To mute a club that is still playing,
-                turn the WhatsApp bot off in settings: their fixtures keep
+                MatchTime for a live club. To mute a club that is still playing,
+                switch MatchTime off in settings: their fixtures keep
                 being created, which is what you want.
               </p>
               <p>

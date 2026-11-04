@@ -37,12 +37,12 @@ const SPECS: Record<SettingsCardId, CardSearchSpec> = {
   "bot-language": {
     title: (l) => t(l).st_language_title,
     settings: ["language"],
-    keywords: { en: ["language", "english", "turkish"], tr: ["dil", "ingilizce", "türkçe"] },
+    keywords: { en: ["language", "bot language", "english", "turkish"], tr: ["dil", "bot dili", "ingilizce", "türkçe"] },
   },
   whatsapp: {
     title: (l) => t(l).st_wa_title,
     settings: [],
-    keywords: { en: ["whatsapp", "group", "bot", "go live"], tr: ["whatsapp", "grup", "bot", "yayına al"] },
+    keywords: { en: ["whatsapp", "whatsapp bot", "group", "bot", "go live"], tr: ["whatsapp", "whatsapp botu", "grup", "bot", "yayına al"] },
   },
   "weekly-routine": {
     title: (l) => t(l).wr_section_title,

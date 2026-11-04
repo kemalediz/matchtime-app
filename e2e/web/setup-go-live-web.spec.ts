@@ -203,18 +203,18 @@ test.beforeEach(async ({ db }) => {
 test.afterAll(() => resetDb());
 
 test.describe("a club that is not setting up", () => {
-  test("a live club's settings page is exactly as it was: no banner, the WhatsApp bot section unchanged", async ({ page }) => {
+  test("a live club's settings page is exactly as it was: no banner, the MatchTime in your group section unchanged", async ({ page }) => {
     await signInAs(page, U.admin, "/admin/settings");
     await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("go-live-banner")).toHaveCount(0);
-    // A live club's WhatsApp bot card starts collapsed: open it to read it.
+    // A live club's MatchTime in your group card starts collapsed: open it to read it.
     await expect(page.getByTestId("settings-card-toggle-whatsapp")).toHaveAttribute("aria-expanded", "false");
     await openSettingsCard(page, "whatsapp");
     await expect(page.getByTestId("go-live-done")).toHaveCount(0);
     await expect(page.getByText(TITLE)).toHaveCount(0);
     await expect(page.getByTestId("wa-setting-up")).toHaveCount(0);
     await expect(page.getByTestId("wa-bot-state")).toHaveText(/^(Enabled|Disabled)$/);
-    await expect(page.getByText("Bot configuration is managed server-side.")).toBeVisible();
+    await expect(page.getByText("MatchTime manages these settings.")).toBeVisible();
     const api = await (await page.request.get("/api/org/settings")).json();
     expect(api.setup).toEqual({ settingUp: false, removedFromGroup: false, group: null });
   });
@@ -294,7 +294,7 @@ test.describe("the organiser of a club that is setting up", () => {
     await expect(page.getByTestId("wa-setting-up-body")).toContainText(
       "MatchTime is approved and in your group. It stays quiet until you press Go live at the top of this page.",
     );
-    await expect(page.getByText("Bot configuration is managed server-side.")).toHaveCount(0);
+    await expect(page.getByText("MatchTime manages these settings.")).toHaveCount(0);
     await shot(page, "banner-desktop");
     await shot(page, "settings-page-desktop-full", true);
 

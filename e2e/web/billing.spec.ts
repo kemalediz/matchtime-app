@@ -296,7 +296,7 @@ test.describe("/admin/settings billing card and the banner", () => {
     await setState(`UPDATE "Organisation" SET "billingStatus"='paused' WHERE id=$1`, [ORG]);
     await billingFlag(context, false);
     await signInAs(page, USER.owner, "/admin/settings");
-    await expect(page.getByRole("heading", { name: "Bot language" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Language", exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("settings-billing-card")).toHaveCount(0);
     await expect(page.getByTestId("billing-banner")).toHaveCount(0);
 
@@ -311,7 +311,7 @@ test.describe("/admin/settings billing card and the banner", () => {
 test.describe("an exempt club (Sutton FC's shape) sees nothing new", () => {
   test("no settings card, no banner; the owner's billing page is one exempt line; the collector gets a 404", async ({ page, context }) => {
     await signInAs(page, U.admin, "/admin/settings");
-    await expect(page.getByRole("heading", { name: "Bot language" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Language", exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("settings-billing-card")).toHaveCount(0);
     await expect(page.getByTestId("billing-banner")).toHaveCount(0);
 
