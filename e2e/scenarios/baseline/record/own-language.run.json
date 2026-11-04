@@ -5,18 +5,18 @@
  "steps": 22,
  "sent": 24,
  "errors": 0,
- "seconds": 97,
+ "seconds": 100,
  "model": {
   "club": "own-language",
   "mode": "record",
   "calls": 25,
   "meter": {
    "calls": 25,
-   "costUsd": 0.0039201900000000005,
+   "costUsd": 0.0040971900000000006,
    "byModel": {
     "claude-haiku-5-5": {
      "calls": 25,
-     "costUsd": 0.0039201900000000005
+     "costUsd": 0.0040971900000000006
     }
    }
   }

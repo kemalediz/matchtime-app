@@ -6,7 +6,7 @@
 
 ### What MatchTime posted, per group
 
-- Monday Night Vets Sandbox (players): 19 messages, 0 graphics, 17 reactions
+- Monday Night Vets Sandbox (players): 29 messages, 0 graphics, 17 reactions
 
 ### Direct messages from MatchTime
 
@@ -144,7 +144,7 @@
     11. Shane (Paid)
     12. CJ (Paid)
     13. Oumesh (paid 4) _(fast-path / month_seed_list)_
-- 2026-11-10 12:10 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 5 model call(s) under the stubs.
+- 2026-11-10 12:10 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 4 model call(s) under the stubs.
 - 2026-11-10 12:10 database: botjob dm → @davide: 📋 I read the list you posted in the group for November: 8 players (Davide, steff, Dan, Ke: (new) pending
     sent-notification monthly-read:<club>:wa-vets-4: (new) monthly-read
     sent-notification monthly-read:<club>:wa-vets-5: (new) monthly-read
@@ -227,10 +227,28 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-10T16: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-10T15: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-10T16: (new) monthly-sweep
-- 2026-11-10 17:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-10T16: monthly-sweep → (gone)
+- 2026-11-10 17:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
+    
+    *November squad:*
+    1. Davide
+    3. Steff
+    5. Dan
+    7. Kerem
+    8. Steve
+    10. Jon
+    11. Shane
+    12. CJ
+    
+    You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+    
+    *Pay as you go:* 6 places open, £8. Say *IN* to take one.
+- 2026-11-10 17:00 database: sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-10: (new) group-message
+    sent-notification <match 2026-11-16 20:30>:month-list:<squad>:1: (new) group-message
+    sent-notification org-<club>:monthly-close-sweep:2026-11-10T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-10T17: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-10T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-10T17: (new) monthly-sweep
+    sent-notification txtlog:<club>:<text 1e87942f>:<match 2026-11-16 20:30>:evening-update:2026-11-10: (new) outbound-text-log
 - 2026-11-10 18:00 [Monday Night Vets Sandbox] **x**: in _(llm / in)_
 - 2026-11-10 18:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-10T17: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-10T18: (new) monthly-sweep
@@ -240,7 +258,7 @@
 - 2026-11-10 18:10 [Monday Night Vets Sandbox] MatchTime reacted ✅
 - 2026-11-10 18:10 database: <match 2026-11-16 20:30>: attendance @nabz: (new) CONFIRMED #2
     match 2026-11-16 20:30: Nabz: (new) CONFIRMED
-    sent-notification monthly-read:<club>:wa-vets-10: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-11: (new) monthly-read
 - 2026-11-10 18:11 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
     
     *November squad:*
@@ -258,8 +276,8 @@
     *Pay as you go:*
     2. Nabz
     5 places open, £8. Say *IN* to take one.
-- 2026-11-10 18:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:1: (new) group-message
-    sent-notification txtlog:<club>:<text 3ca1bb89>:<match 2026-11-16 20:30>:month-list:<squad>:1: (new) outbound-text-log
+- 2026-11-10 18:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:2: (new) group-message
+    sent-notification txtlog:<club>:<text 3ca1bb89>:<match 2026-11-16 20:30>:month-list:<squad>:2: (new) outbound-text-log
 - 2026-11-10 19:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-10T18: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-10T19: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-10T18: monthly-sweep → (gone)
@@ -333,7 +351,7 @@
 - 2026-11-11 10:10 database: <match 2026-11-16 20:30>: attendance @tom: (new) CONFIRMED #4
     <month 2026-11>: member @tom: (new) regular slot 2, 3 covered (admin)
     match 2026-11-16 20:30: Tom Hale: (new) CONFIRMED
-    sent-notification monthly-read:<club>:wa-vets-12: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-13: (new) monthly-read
 - 2026-11-11 10:11 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
     
     *November squad:*
@@ -352,16 +370,16 @@
     *Pay as you go:*
     4. Nabz
     4 places open, £8. Say *IN* to take one.
-- 2026-11-11 10:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:2: (new) group-message
-    sent-notification txtlog:<club>:<text 616f72a9>:<match 2026-11-16 20:30>:month-list:<squad>:2: (new) outbound-text-log
+- 2026-11-11 10:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:3: (new) group-message
+    sent-notification txtlog:<club>:<text 616f72a9>:<match 2026-11-16 20:30>:month-list:<squad>:3: (new) outbound-text-log
 - 2026-11-11 10:30 [Monday Night Vets Sandbox] **x**: IN _(llm / in)_
 - 2026-11-11 10:31 [Monday Night Vets Sandbox] **x**: can I play monday? happy to pay the £8 _(ignored / noise)_
 - 2026-11-11 10:40 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 4 model call(s) under the stubs.
 - 2026-11-11 10:40 [Monday Night Vets Sandbox] MatchTime reacted ✅
 - 2026-11-11 10:40 database: <match 2026-11-16 20:30>: attendance @mo: (new) CONFIRMED #6
     match 2026-11-16 20:30: Mo: (new) CONFIRMED
-    sent-notification monthly-read:<club>:wa-vets-14: (new) monthly-read
     sent-notification monthly-read:<club>:wa-vets-15: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-16: (new) monthly-read
 - 2026-11-11 11:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
     
     *November squad:*
@@ -381,12 +399,12 @@
     4. Nabz
     6. Mo
     3 places open, £8. Say *IN* to take one.
-- 2026-11-11 11:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:3: (new) group-message
+- 2026-11-11 11:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:4: (new) group-message
     sent-notification org-<club>:monthly-close-sweep:2026-11-11T10: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-11T11: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-11T10: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-11T11: (new) monthly-sweep
-    sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:month-list:<squad>:3: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:month-list:<squad>:4: (new) outbound-text-log
 - 2026-11-11 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
 - 2026-11-11 12:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-11T11: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-11T12: (new) monthly-sweep
@@ -408,10 +426,32 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-11T16: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-11T15: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-11T16: (new) monthly-sweep
-- 2026-11-11 17:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-11T16: monthly-sweep → (gone)
+- 2026-11-11 17:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
+    
+    *November squad:*
+    1. Davide
+    2. Tom
+    3. Steff
+    5. Dan
+    7. Kerem
+    8. Steve
+    10. Jon
+    11. Shane
+    12. CJ
+    
+    You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+    
+    *Pay as you go:*
+    4. Nabz
+    6. Mo
+    3 places open, £8. Say *IN* to take one.
+- 2026-11-11 17:00 database: sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-11: (new) group-message
+    sent-notification <match 2026-11-16 20:30>:month-list:<squad>:5: (new) group-message
+    sent-notification org-<club>:monthly-close-sweep:2026-11-11T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-11T17: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-11T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-11T17: (new) monthly-sweep
+    sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:evening-update:2026-11-11: (new) outbound-text-log
 - 2026-11-11 18:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-11T17: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-11T18: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-11T17: monthly-sweep → (gone)
@@ -505,10 +545,32 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-12T16: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-12T15: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-12T16: (new) monthly-sweep
-- 2026-11-12 17:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-12T16: monthly-sweep → (gone)
+- 2026-11-12 17:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
+    
+    *November squad:*
+    1. Davide
+    2. Tom
+    3. Steff
+    5. Dan
+    7. Kerem
+    8. Steve
+    10. Jon
+    11. Shane
+    12. CJ
+    
+    You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+    
+    *Pay as you go:*
+    4. Nabz
+    6. Mo
+    3 places open, £8. Say *IN* to take one.
+- 2026-11-12 17:00 database: sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-12: (new) group-message
+    sent-notification <match 2026-11-16 20:30>:month-list:<squad>:6: (new) group-message
+    sent-notification org-<club>:monthly-close-sweep:2026-11-12T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-12T17: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-12T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-12T17: (new) monthly-sweep
+    sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:evening-update:2026-11-12: (new) outbound-text-log
 
 ### Thursday: numbers fall below the minimum of 12, then back to it and above (2026-11-12 18:00)
 
@@ -523,8 +585,8 @@
 - 2026-11-12 18:10 [Monday Night Vets Sandbox] MatchTime reacted 👋
 - 2026-11-12 18:10 database: <match 2026-11-16 20:30>: attendance @steve: CONFIRMED #8 → DROPPED #8
     match 2026-11-16 20:30: Steve: CONFIRMED → DROPPED
-    sent-notification monthly-read:<club>:wa-vets-17: (new) monthly-read
-    sent-notification monthly-read:<club>:wa-vets-18: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-20: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-21: (new) monthly-read
 - 2026-11-12 18:11 [Monday Night Vets Sandbox] MatchTime reacted ✅ (changed)
 - 2026-11-12 18:11 [Monday Night Vets Sandbox] MatchTime reacted ✅ (changed)
 - 2026-11-12 18:11 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
@@ -548,15 +610,15 @@
     4. Nabz
     6. Mo
     4 places open, £8. Say *IN* to take one.
-- 2026-11-12 18:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:4: (new) group-message
-    sent-notification txtlog:<club>:<text e157607b>:<match 2026-11-16 20:30>:month-list:<squad>:4: (new) outbound-text-log
+- 2026-11-12 18:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:7: (new) group-message
+    sent-notification txtlog:<club>:<text e157607b>:<match 2026-11-16 20:30>:month-list:<squad>:7: (new) outbound-text-log
 - 2026-11-12 18:15 [Monday Night Vets Sandbox] **x**: out sorry _(llm / noise)_
 - 2026-11-12 18:20 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 5 model call(s) under the stubs.
 - 2026-11-12 18:20 [Monday Night Vets Sandbox] MatchTime reacted 👋
 - 2026-11-12 18:20 database: <match 2026-11-16 20:30>: attendance @jon: CONFIRMED #10 → DROPPED #10
     match 2026-11-16 20:30: Jon: CONFIRMED → DROPPED
-    sent-notification monthly-read:<club>:wa-vets-19: (new) monthly-read
-    sent-notification monthly-read:<club>:wa-vets-21: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-22: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-24: (new) monthly-read
 - 2026-11-12 18:21 [Monday Night Vets Sandbox] MatchTime reacted ✅ (changed)
 - 2026-11-12 18:21 [Monday Night Vets Sandbox] MatchTime reacted ✅ (changed)
 - 2026-11-12 19:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
@@ -580,12 +642,12 @@
     4. Nabz
     6. Mo
     5 places open, £8. Say *IN* to take one.
-- 2026-11-12 19:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:5: (new) group-message
+- 2026-11-12 19:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:8: (new) group-message
     sent-notification org-<club>:monthly-close-sweep:2026-11-12T18: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-12T19: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-12T18: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-12T19: (new) monthly-sweep
-    sent-notification txtlog:<club>:<text 17525076>:<match 2026-11-16 20:30>:month-list:<squad>:5: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text 17525076>:<match 2026-11-16 20:30>:month-list:<squad>:8: (new) outbound-text-log
 - 2026-11-12 20:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-12T19: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-12T20: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-12T19: monthly-sweep → (gone)
@@ -660,7 +722,7 @@
 - 2026-11-13 12:10 [Monday Night Vets Sandbox] MatchTime reacted ✅
 - 2026-11-13 12:10 database: <match 2026-11-16 20:30>: attendance @luca: (new) CONFIRMED #8
     match 2026-11-16 20:30: Luca: (new) CONFIRMED
-    sent-notification monthly-read:<club>:wa-vets-23: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-26: (new) monthly-read
 - 2026-11-13 12:11 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
     
     *November squad:*
@@ -683,14 +745,14 @@
     6. Mo
     8. Luca
     4 places open, £8. Say *IN* to take one.
-- 2026-11-13 12:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:6: (new) group-message
-    sent-notification txtlog:<club>:<text f735c9f3>:<match 2026-11-16 20:30>:month-list:<squad>:6: (new) outbound-text-log
+- 2026-11-13 12:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:9: (new) group-message
+    sent-notification txtlog:<club>:<text f735c9f3>:<match 2026-11-16 20:30>:month-list:<squad>:9: (new) outbound-text-log
 - 2026-11-13 12:30 [Monday Night Vets Sandbox] **x**: actually I can play now, in _(llm / in)_
 - 2026-11-13 12:40 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 1 message(s) to analyze in one batch; 3 model call(s) under the stubs.
 - 2026-11-13 12:40 [Monday Night Vets Sandbox] MatchTime reacted ✅
 - 2026-11-13 12:40 database: <match 2026-11-16 20:30>: attendance @steve: DROPPED #8 → CONFIRMED #9
     match 2026-11-16 20:30: Steve: DROPPED → CONFIRMED
-    sent-notification monthly-read:<club>:wa-vets-25: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-28: (new) monthly-read
 - 2026-11-13 13:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
     
     *November squad:*
@@ -713,12 +775,12 @@
     6. Mo
     9. Luca
     3 places open, £8. Say *IN* to take one.
-- 2026-11-13 13:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:7: (new) group-message
+- 2026-11-13 13:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:10: (new) group-message
     sent-notification org-<club>:monthly-close-sweep:2026-11-13T12: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-13T13: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-13T12: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-13T13: (new) monthly-sweep
-    sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:month-list:<squad>:7: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:month-list:<squad>:10: (new) outbound-text-log
 - 2026-11-13 14:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-13T13: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-13T14: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-13T13: monthly-sweep → (gone)
@@ -731,10 +793,35 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-13T16: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-13T15: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-13T16: (new) monthly-sweep
-- 2026-11-13 17:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-13T16: monthly-sweep → (gone)
+- 2026-11-13 17:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
+    
+    *November squad:*
+    1. Davide
+    2. Tom
+    3. Steff
+    5. Dan
+    7. Kerem
+    8. Steve
+    11. Shane
+    12. CJ
+    
+    You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+    
+    *Can't play:*
+    1. Jon
+    
+    *Pay as you go:*
+    4. Nabz
+    6. Mo
+    9. Luca
+    3 places open, £8. Say *IN* to take one.
+- 2026-11-13 17:00 database: sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-13: (new) group-message
+    sent-notification <match 2026-11-16 20:30>:month-list:<squad>:11: (new) group-message
+    sent-notification org-<club>:monthly-close-sweep:2026-11-13T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-13T17: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-13T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-13T17: (new) monthly-sweep
+    sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:evening-update:2026-11-13: (new) outbound-text-log
 - 2026-11-13 18:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-13T17: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-13T18: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-13T17: monthly-sweep → (gone)
@@ -812,7 +899,7 @@
 - 2026-11-14 11:10 [Monday Night Vets Sandbox] MatchTime reacted ✅
 - 2026-11-14 11:10 database: <match 2026-11-16 20:30>: attendance @gus: (new) CONFIRMED #10
     match 2026-11-16 20:30: Gus Moore: (new) CONFIRMED
-    sent-notification monthly-read:<club>:wa-vets-27: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-31: (new) monthly-read
 - 2026-11-14 11:11 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
     
     *November squad:*
@@ -836,8 +923,8 @@
     9. Luca
     10. Gus
     2 places open, £8. Say *IN* to take one.
-- 2026-11-14 11:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:8: (new) group-message
-    sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:month-list:<squad>:8: (new) outbound-text-log
+- 2026-11-14 11:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:12: (new) group-message
+    sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:month-list:<squad>:12: (new) outbound-text-log
 - 2026-11-14 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
 - 2026-11-14 12:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-14T11: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-14T12: (new) monthly-sweep
@@ -859,10 +946,36 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-14T16: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-14T15: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-14T16: (new) monthly-sweep
-- 2026-11-14 17:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-14T16: monthly-sweep → (gone)
+- 2026-11-14 17:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
+    
+    *November squad:*
+    1. Davide
+    2. Tom
+    3. Steff
+    5. Dan
+    7. Kerem
+    8. Steve
+    11. Shane
+    12. CJ
+    
+    You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+    
+    *Can't play:*
+    1. Jon
+    
+    *Pay as you go:*
+    4. Nabz
+    6. Mo
+    9. Luca
+    10. Gus
+    2 places open, £8. Say *IN* to take one.
+- 2026-11-14 17:00 database: sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-14: (new) group-message
+    sent-notification <match 2026-11-16 20:30>:month-list:<squad>:13: (new) group-message
+    sent-notification org-<club>:monthly-close-sweep:2026-11-14T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-14T17: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-14T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-14T17: (new) monthly-sweep
+    sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:evening-update:2026-11-14: (new) outbound-text-log
 - 2026-11-14 18:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-14T17: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-14T18: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-14T17: monthly-sweep → (gone)
@@ -944,8 +1057,8 @@
     <match 2026-11-16 20:30>: attendance @rob: (new) CONFIRMED #13
     match 2026-11-16 20:30: ?: (new) CONFIRMED
     match 2026-11-16 20:30: Rob Finch: (new) CONFIRMED
-    sent-notification monthly-read:<club>:wa-vets-29: (new) monthly-read
-    sent-notification monthly-read:<club>:wa-vets-30: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-34: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-35: (new) monthly-read
 - 2026-11-15 10:11 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
     
     *November squad:*
@@ -971,8 +1084,8 @@
     13. Rob
     14. (unnamed)
     The squad is full.
-- 2026-11-15 10:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:9: (new) group-message
-    sent-notification txtlog:<club>:<text 8e92796b>:<match 2026-11-16 20:30>:month-list:<squad>:9: (new) outbound-text-log
+- 2026-11-15 10:11 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:14: (new) group-message
+    sent-notification txtlog:<club>:<text 8e92796b>:<match 2026-11-16 20:30>:month-list:<squad>:14: (new) outbound-text-log
 - 2026-11-15 10:15 [Monday Night Vets Sandbox] **x**: in _(llm / in)_
 - 2026-11-15 10:20 [Monday Night Vets Sandbox] **Shane Walton**: @Match Time are we 8 a side then? _(llm / question)_
 - 2026-11-15 10:20 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 2 message(s) to analyze in one batch; 5 model call(s) under the stubs.
@@ -982,16 +1095,13 @@
     <match 2026-11-16 20:30>: attendance @jon: DROPPED #10 → BENCH #15
     match 2026-11-16 20:30: ?: CONFIRMED → BENCH
     match 2026-11-16 20:30: Jon: DROPPED → BENCH
-    sent-notification monthly-read:<club>:wa-vets-31: (new) monthly-read
-    sent-notification monthly-read:<club>:wa-vets-33: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-36: (new) monthly-read
+    sent-notification monthly-read:<club>:wa-vets-38: (new) monthly-read
 - 2026-11-15 10:21 [Monday Night Vets Sandbox] **MatchTime**: We've got 16 for Monday, 2 on the bench. Shall we go 8-a-side? Davide, reply *yes* to this message and I'll switch it.
 - 2026-11-15 10:21 database: sent-notification <match 2026-11-16 20:30>:format-up:16:e0: (new) group-message
     sent-notification txtlog:<club>:<text 696d1d31>:<match 2026-11-16 20:30>:format-up:16:e0: (new) outbound-text-log
 - 2026-11-15 10:30 [Monday Night Vets Sandbox] **rehearsal**: The Pi sent 1 message(s) to analyze in one batch; 3 model call(s) under the stubs.
-- 2026-11-15 10:30 [Monday Night Vets Sandbox] **MatchTime**: ⚽ Mon 20:30 at Sandbox Park School field.
-- 2026-11-15 10:30 database: sent-notification greply:<club>:wa-vets-34: (new) group-reply
-    sent-notification monthly-read:<club>:wa-vets-34: (new) monthly-read
-- 2026-11-15 11:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
+- 2026-11-15 10:30 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
     
     *November squad:*
     1. Davide
@@ -1017,12 +1127,13 @@
     13. Rob
     14. (unnamed)
     The squad is full.
-- 2026-11-15 11:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:10: (new) group-message
-    sent-notification org-<club>:monthly-close-sweep:2026-11-15T10: monthly-sweep → (gone)
+- 2026-11-15 10:30 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:15: (new) group-message
+    sent-notification greply:<club>:wa-vets-39: (new) group-reply
+    sent-notification monthly-read:<club>:wa-vets-39: (new) monthly-read
+- 2026-11-15 11:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-15T10: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-15T11: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-15T10: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-15T11: (new) monthly-sweep
-    sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:10: (new) outbound-text-log
 - 2026-11-15 12:00 [System] **rehearsal**: cron /api/cron/generate-teams: {"completed":0}
 - 2026-11-15 12:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-15T11: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-15T12: (new) monthly-sweep
@@ -1044,10 +1155,41 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-15T16: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-15T15: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-15T16: (new) monthly-sweep
-- 2026-11-15 17:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-15T16: monthly-sweep → (gone)
+- 2026-11-15 17:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*
+    
+    *November squad:*
+    1. Davide
+    2. Tom
+    3. Steff
+    5. Dan
+    7. Kerem
+    8. Steve
+    11. Shane
+    12. CJ
+    
+    You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+    
+    *Bench:*
+    1. Jon
+    2. (unnamed)
+    
+    *Pay as you go:*
+    4. Nabz
+    6. Mo
+    9. Luca
+    10. Gus
+    13. Rob
+    14. (unnamed)
+    The squad is full.
+    
+    🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.
+- 2026-11-15 17:00 database: sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-15: (new) group-message
+    sent-notification <match 2026-11-16 20:30>:month-list:<squad>:16: (new) group-message
+    sent-notification org-<club>:monthly-close-sweep:2026-11-15T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-15T17: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-15T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-15T17: (new) monthly-sweep
+    sent-notification txtlog:<club>:<text 620df1b6>:<match 2026-11-16 20:30>:evening-update:2026-11-15: (new) outbound-text-log
 - 2026-11-15 18:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-15T17: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-15T18: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-15T17: monthly-sweep → (gone)
@@ -1136,12 +1278,12 @@
     13. Rob
     14. (unnamed)
     The squad is full.
-- 2026-11-16 09:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:11: (new) group-message
+- 2026-11-16 09:00 database: sent-notification <match 2026-11-16 20:30>:month-list:<squad>:17: (new) group-message
     sent-notification org-<club>:monthly-close-sweep:2026-11-16T08: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-16T09: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-16T08: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-16T09: (new) monthly-sweep
-    sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:11: (new) outbound-text-log
+    sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:17: (new) outbound-text-log
 - 2026-11-16 10:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-16T09: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-16T10: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-16T09: monthly-sweep → (gone)
@@ -1201,8 +1343,8 @@
 - 2026-11-16 22:10 [Monday Night Vets Sandbox] MatchTime reacted 👍
 - 2026-11-16 22:10 [Monday Night Vets Sandbox] **MatchTime**: Got it 👍 *Whites* won 4 - 2 against Colours. Recorded.
 - 2026-11-16 22:10 database: match 2026-11-16 20:30: score: (new) 4-2
-    sent-notification greply:<club>:wa-vets-39: (new) group-reply
-    sent-notification monthly-read:<club>:wa-vets-39: (new) monthly-read
+    sent-notification greply:<club>:wa-vets-44: (new) group-reply
+    sent-notification monthly-read:<club>:wa-vets-44: (new) monthly-read
 - 2026-11-16 23:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-16T22: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-16T23: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-16T22: monthly-sweep → (gone)
@@ -1522,10 +1664,29 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-17T16: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-17T15: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-17T16: (new) monthly-sweep
-- 2026-11-17 17:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-17T16: monthly-sweep → (gone)
+- 2026-11-17 17:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 23 Nov at 20:30*
+    
+    *November squad:*
+    1. Davide
+    2. Tom
+    3. Steff
+    5. Dan
+    7. Kerem
+    8. Steve
+    10. Jon
+    11. Shane
+    12. CJ
+    
+    You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+    
+    *Pay as you go:* 5 places open, £8. Say *IN* to take one.
+- 2026-11-17 17:00 database: sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-17: (new) group-message
+    sent-notification <match 2026-11-23 20:30>:month-list:<squad>:1: (new) group-message
+    sent-notification org-<club>:monthly-close-sweep:2026-11-17T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-17T17: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-17T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-17T17: (new) monthly-sweep
+    sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-17: (new) outbound-text-log
 - 2026-11-17 18:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-17T17: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-17T18: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-17T17: monthly-sweep → (gone)
@@ -1619,10 +1780,29 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-18T16: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-18T15: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-18T16: (new) monthly-sweep
-- 2026-11-18 17:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-18T16: monthly-sweep → (gone)
+- 2026-11-18 17:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 23 Nov at 20:30*
+    
+    *November squad:*
+    1. Davide
+    2. Tom
+    3. Steff
+    5. Dan
+    7. Kerem
+    8. Steve
+    10. Jon
+    11. Shane
+    12. CJ
+    
+    You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+    
+    *Pay as you go:* 5 places open, £8. Say *IN* to take one.
+- 2026-11-18 17:00 database: sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-18: (new) group-message
+    sent-notification <match 2026-11-23 20:30>:month-list:<squad>:2: (new) group-message
+    sent-notification org-<club>:monthly-close-sweep:2026-11-18T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-18T17: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-18T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-18T17: (new) monthly-sweep
+    sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-18: (new) outbound-text-log
 - 2026-11-18 18:00 [DM x] **MatchTime**: Hey Nabz 👋 Friendly nudge, you haven't rated *Monday Night Vets Sandbox* yet.
     
     It takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌
@@ -1788,10 +1968,29 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-19T16: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-19T15: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-19T16: (new) monthly-sweep
-- 2026-11-19 17:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-19T16: monthly-sweep → (gone)
+- 2026-11-19 17:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 23 Nov at 20:30*
+    
+    *November squad:*
+    1. Davide
+    2. Tom
+    3. Steff
+    5. Dan
+    7. Kerem
+    8. Steve
+    10. Jon
+    11. Shane
+    12. CJ
+    
+    You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+    
+    *Pay as you go:* 5 places open, £8. Say *IN* to take one.
+- 2026-11-19 17:00 database: sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-19: (new) group-message
+    sent-notification <match 2026-11-23 20:30>:month-list:<squad>:3: (new) group-message
+    sent-notification org-<club>:monthly-close-sweep:2026-11-19T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-19T17: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-19T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-19T17: (new) monthly-sweep
+    sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-19: (new) outbound-text-log
 - 2026-11-19 18:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-19T17: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-19T18: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-19T17: monthly-sweep → (gone)
@@ -1885,10 +2084,29 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-20T16: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-20T15: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-20T16: (new) monthly-sweep
-- 2026-11-20 17:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-20T16: monthly-sweep → (gone)
+- 2026-11-20 17:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 23 Nov at 20:30*
+    
+    *November squad:*
+    1. Davide
+    2. Tom
+    3. Steff
+    5. Dan
+    7. Kerem
+    8. Steve
+    10. Jon
+    11. Shane
+    12. CJ
+    
+    You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+    
+    *Pay as you go:* 5 places open, £8. Say *IN* to take one.
+- 2026-11-20 17:00 database: sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-20: (new) group-message
+    sent-notification <match 2026-11-23 20:30>:month-list:<squad>:4: (new) group-message
+    sent-notification org-<club>:monthly-close-sweep:2026-11-20T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-20T17: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-20T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-20T17: (new) monthly-sweep
+    sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-20: (new) outbound-text-log
 - 2026-11-20 18:00 [DM x] **MatchTime**: Last reminder, Nabz 🔔 Ratings for *Monday Night Vets Sandbox* close soon.
     
     If you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:
@@ -2037,10 +2255,29 @@
     sent-notification org-<club>:monthly-close-sweep:2026-11-21T16: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-21T15: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-21T16: (new) monthly-sweep
-- 2026-11-21 17:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-21T16: monthly-sweep → (gone)
+- 2026-11-21 17:00 [Monday Night Vets Sandbox] **MatchTime**: 📋 *Monday Night Vets Sandbox, Mon 23 Nov at 20:30*
+    
+    *November squad:*
+    1. Davide
+    2. Tom
+    3. Steff
+    5. Dan
+    7. Kerem
+    8. Steve
+    10. Jon
+    11. Shane
+    12. CJ
+    
+    You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
+    
+    *Pay as you go:* 5 places open, £8. Say *IN* to take one.
+- 2026-11-21 17:00 database: sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-21: (new) group-message
+    sent-notification <match 2026-11-23 20:30>:month-list:<squad>:5: (new) group-message
+    sent-notification org-<club>:monthly-close-sweep:2026-11-21T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-21T17: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-21T16: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-played-sweep:2026-11-21T17: (new) monthly-sweep
+    sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-21: (new) outbound-text-log
 - 2026-11-21 18:00 database: sent-notification org-<club>:monthly-close-sweep:2026-11-21T17: monthly-sweep → (gone)
     sent-notification org-<club>:monthly-close-sweep:2026-11-21T18: (new) monthly-sweep
     sent-notification org-<club>:monthly-played-sweep:2026-11-21T17: monthly-sweep → (gone)

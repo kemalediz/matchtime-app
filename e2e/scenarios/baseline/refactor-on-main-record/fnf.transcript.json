@@ -1,0 +1,1333 @@
+{
+ "version": 1,
+ "club": "fnf",
+ "title": "FNF type: weekly, organisers announce, HQ acts only on a real tag, payments off, nameless and phone-less players, an Uncle Najib alias",
+ "mode": "record",
+ "steps": [
+  {
+   "seq": -1,
+   "step": "before the first step",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 0,
+   "step": "2026-11-16 08:00 note: Monday: an organiser-run weekly club with an admin group (HQ), payments off, game Friday 20:30",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 1,
+   "step": "2026-11-16 08:00 club-live (30 days)",
+   "out": [],
+   "handled": [],
+   "db": [
+    "club: admin group: (new) FNS HQ",
+    "club: approval: (new) approved",
+    "club: members: (new) 18",
+    "club: muted: (new) no",
+    "club: stage: (new) live, bot on",
+    "member (no name, …0216): (new) PLAYER",
+    "member (no name, …0217): (new) PLAYER",
+    "member Adam Hussain: (new) PLAYER",
+    "member Bilal: (new) PLAYER",
+    "member Faisal Mirza: (new) PLAYER",
+    "member Hadi Mansour: (new) PLAYER",
+    "member Hamzah Ali: (new) OWNER",
+    "member Idris Bello: (new) PLAYER",
+    "member Kareem Saleh: (new) PLAYER",
+    "member Nabil Haddad: (new) PLAYER",
+    "member Najib Rahman: (new) PLAYER",
+    "member Omar Farooq: (new) PLAYER",
+    "member Raihan Khan: (new) ADMIN",
+    "member Rami Nasser: (new) PLAYER",
+    "member Sami Iqbal: (new) PLAYER",
+    "member Tariq Aziz: (new) PLAYER",
+    "member Yusuf Malik: (new) PLAYER",
+    "member Zak Ahmed: (new) PLAYER",
+    "sent-notification org-<club>:bot-intro: (new) bot-intro",
+    "user @adam: (new) name \"Adam Hussain\"",
+    "user @anon1: (new) name (none)",
+    "user @anon2: (new) name (none)",
+    "user @bilal: (new) name \"Bilal\"",
+    "user @faisal: (new) name \"Faisal Mirza\"",
+    "user @hadi: (new) name \"Hadi Mansour\"",
+    "user @hamzah: (new) name \"Hamzah Ali\"",
+    "user @idris: (new) name \"Idris Bello\"",
+    "user @kareem: (new) name \"Kareem Saleh\"",
+    "user @nabil: (new) name \"Nabil Haddad\"",
+    "user @najib: (new) name \"Najib Rahman\"",
+    "user @omar: (new) name \"Omar Farooq\"",
+    "user @raihan: (new) name \"Raihan Khan\"",
+    "user @rami: (new) name \"Rami Nasser\"",
+    "user @sami: (new) name \"Sami Iqbal\"",
+    "user @tariq: (new) name \"Tariq Aziz\"",
+    "user @yusuf: (new) name \"Yusuf Malik\"",
+    "user @zak: (new) name \"Zak Ahmed\""
+   ],
+   "errors": []
+  },
+  {
+   "seq": 2,
+   "step": "2026-11-16 08:02 cron /api/cron/generate-matches",
+   "out": [
+    {
+     "at": "2026-11-16 08:03",
+     "to": "group hq",
+     "kind": "out",
+     "text": "⭐ *One thing before Friday's teams*\n\nI don't know anyone's level yet, so for now I'd treat every player the same and the teams could come out lopsided.\n\nHamzah or Raihan: give each player a rough rating from 1 to 10 here:\n<app>/admin/<tok>\n\nPlayers never see these, they only help me balance the sides. Rating the 18 players with no rating yet takes about 5 minutes.\n\nAfter that I learn from the ratings players give each other after every game, so this is only needed once.",
+     "instruction": "admin-group-message",
+     "key": "org-<club>:seed-nudge:admin-group"
+    },
+    {
+     "at": "2026-11-16 09:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📋 *Squad for Friday Night Sandbox, Fri 20 Nov at 20:30*: 0 of 18 in, 18 spaces.\nThe list for this match is open. Players' In and Out are being collected in the group.\n\n*Confirmed (0/18):*\n_nobody yet_\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
+     "instruction": "admin-group-message",
+     "key": "<match 2026-11-20 20:30>:announce-match"
+    }
+   ],
+   "handled": [],
+   "db": [
+    "<match 2026-11-20 20:30>: places: (new) 18",
+    "match 2026-11-20 20:30: status: (new) UPCOMING",
+    "sent-notification org-<club>:seed-nudge:admin-group: (new) admin-group-message",
+    "sent-notification txtlog:<club>:<text 25a3ce0f>:org-<club>:seed-nudge:admin-group: (new) outbound-text-log",
+    "sent-notification <match 2026-11-20 20:30>:announce-match: (new) admin-group-message",
+    "sent-notification txtlog:<club>:<text c22dfc18>:<match 2026-11-20 20:30>:announce-match: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 3,
+   "step": "2026-11-16 10:00 hq @hamzah: \"@Match Time this week's squad for Friday\\n1. Hamzah\\n2. Raihan\\n3. Uncle Najib\\n4. Imti\\n5. Zak\\n6. Omar\\n7. Yusuf\\n8. Adam\\n9. Sami\\n10. Tariq\"",
+   "out": [
+    {
+     "at": "2026-11-16 10:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "Adding: Hamzah Ali, Raihan Khan, Najib Rahman, Zak Ahmed, Omar Farooq, Yusuf Malik, Adam Hussain, Sami Iqbal, Tariq Aziz. Unknown names: Imti (not a member yet, I'll add them as a new player). Say *@Match Time YES* to apply.",
+     "via": "admin-group reply",
+     "replyTo": "@hamzah: @Match Time this week's squad for Friday 1. Hamzah 2. Raihan"
+    },
+    {
+     "at": "2026-11-16 10:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/admin/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "instruction": "admin-group-message",
+     "key": "botjob-<id>"
+    }
+   ],
+   "handled": [
+    "@hamzah in hq: \"@Match Time this week's squad for Friday\\n1. Hamzah\\n2. Raihan\\n3. Uncle Najib\\n4. Imti\\n5. Zak\\n6. Omar\\n7. Yusuf\\n8. Adam\\n9. Sami\\n10. Tariq\" → admin-group: paste-proposed, 2 model call(s)"
+   ],
+   "db": [
+    "botjob admin-group → group: 📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no v: (new) pending",
+    "sent-notification hqreply:<club>:wa-fnf-3: (new) admin-group-reply",
+    "botjob admin-group → group: 📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no v: pending → sent",
+    "sent-notification txtlog:<club>:<text b3a71db4>:botjob-<id>: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 4,
+   "step": "2026-11-16 10:02 hq @hamzah: \"@Match Time YES\"",
+   "out": [
+    {
+     "at": "2026-11-16 10:02",
+     "to": "group hq",
+     "kind": "out",
+     "text": "Done: Hamzah Ali in, Raihan Khan in, Najib Rahman in, Zak Ahmed in, Omar Farooq in, Yusuf Malik in, Adam Hussain in, Sami Iqbal in, Tariq Aziz in, Imti in. 10 of 18.",
+     "via": "admin-group reply",
+     "replyTo": "@hamzah: @Match Time YES"
+    },
+    {
+     "at": "2026-11-16 10:03",
+     "to": "group hq",
+     "kind": "out",
+     "text": "✨ *New players to review*: 1 person was added automatically.\n\nAdded by name, from a list or someone else's message: Imti\n\nReview them and set phone, position and rating, or remove them:\n<app>/admin/<tok>",
+     "instruction": "admin-group-message",
+     "key": "org-<club>:provisional-review:admin-group:p1794823320000"
+    },
+    {
+     "at": "2026-11-16 10:03",
+     "to": "group hq",
+     "kind": "out",
+     "text": "🟥🟦 *Teams for Friday*\n\nThe squad is set, 10 of 18. At 10:00 on Friday I'll build two balanced teams and post them here for you to check.\n\nSay *@Match Time YES* to make them final, or tag me and say *swap* or *move* if you want changes (for brand new teams: *@Match Time reshuffle*). For the team sheet, a graphic to share with the players, tag me and ask any time: *@Match Time team sheet*. To tag me, type *@* and pick *Match Time* from the list.",
+     "instruction": "admin-group-message",
+     "key": "org-<club>:first-teams:admin-group"
+    }
+   ],
+   "handled": [
+    "@hamzah in hq: \"@Match Time YES\" → admin-group: paste-applied, 1 model call(s)"
+   ],
+   "db": [
+    "<match 2026-11-20 20:30>: attendance <user Imti, no phone>: (new) CONFIRMED #10",
+    "<match 2026-11-20 20:30>: attendance @adam: (new) CONFIRMED #7",
+    "<match 2026-11-20 20:30>: attendance @hamzah: (new) CONFIRMED #1",
+    "<match 2026-11-20 20:30>: attendance @najib: (new) CONFIRMED #3",
+    "<match 2026-11-20 20:30>: attendance @omar: (new) CONFIRMED #5",
+    "<match 2026-11-20 20:30>: attendance @raihan: (new) CONFIRMED #2",
+    "<match 2026-11-20 20:30>: attendance @sami: (new) CONFIRMED #8",
+    "<match 2026-11-20 20:30>: attendance @tariq: (new) CONFIRMED #9",
+    "<match 2026-11-20 20:30>: attendance @yusuf: (new) CONFIRMED #6",
+    "<match 2026-11-20 20:30>: attendance @zak: (new) CONFIRMED #4",
+    "club: members: 18 → 19",
+    "match 2026-11-20 20:30: Adam Hussain: (new) CONFIRMED",
+    "match 2026-11-20 20:30: Hamzah Ali: (new) CONFIRMED",
+    "match 2026-11-20 20:30: Imti: (new) CONFIRMED",
+    "match 2026-11-20 20:30: Najib Rahman: (new) CONFIRMED",
+    "match 2026-11-20 20:30: Omar Farooq: (new) CONFIRMED",
+    "match 2026-11-20 20:30: Raihan Khan: (new) CONFIRMED",
+    "match 2026-11-20 20:30: Sami Iqbal: (new) CONFIRMED",
+    "match 2026-11-20 20:30: Tariq Aziz: (new) CONFIRMED",
+    "match 2026-11-20 20:30: Yusuf Malik: (new) CONFIRMED",
+    "match 2026-11-20 20:30: Zak Ahmed: (new) CONFIRMED",
+    "member Imti: (new) PLAYER (no phone: made by MatchTime from a name)",
+    "sent-notification hqreply:<club>:wa-fnf-6: (new) admin-group-reply",
+    "user <user Imti, no phone>: (new) name \"Imti\", no phone",
+    "sent-notification org-<club>:first-teams:admin-group: (new) admin-group-message",
+    "sent-notification org-<club>:provisional-review:admin-group:p1794823320000: (new) admin-group-message",
+    "sent-notification txtlog:<club>:<text 16b343c2>:org-<club>:first-teams:admin-group: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 7e68959e>:org-<club>:provisional-review:admin-group:p1794823320000: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 5,
+   "step": "2026-11-16 10:04 hq @raihan: \"looks good, I'll post it in the main chat later\"",
+   "out": [],
+   "handled": [
+    "@raihan in hq: \"looks good, I'll post it in the main chat later\" → admin-group: no-open-pick"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 6,
+   "step": "2026-11-16 12:01 main @idris: \"in\"",
+   "out": [],
+   "handled": [
+    "@idris in main: \"in\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 7,
+   "step": "2026-11-16 12:02 main @kareem: \"IN\"",
+   "out": [],
+   "handled": [
+    "@kareem in main: \"IN\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 8,
+   "step": "2026-11-16 12:03 main @anon1: \"in\"",
+   "out": [],
+   "handled": [
+    "@anon1 in main: \"in\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 9,
+   "step": "2026-11-16 12:04 main @bilal: \"in for friday\"",
+   "out": [],
+   "handled": [
+    "@bilal in main: \"in for friday\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 10,
+   "step": "2026-11-16 12:05 main @faisal: \"out this week lads\"",
+   "out": [],
+   "handled": [
+    "@faisal in main: \"out this week lads\" → llm / noise"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 11,
+   "step": "2026-11-16 12:06 main @najib: \"in\"",
+   "out": [
+    {
+     "at": "2026-11-16 12:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑",
+     "replyTo": "@idris: in"
+    },
+    {
+     "at": "2026-11-16 12:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑",
+     "replyTo": "@kareem: IN"
+    },
+    {
+     "at": "2026-11-16 12:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑",
+     "replyTo": "@anon1: in"
+    },
+    {
+     "at": "2026-11-16 12:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑",
+     "replyTo": "@bilal: in for friday"
+    },
+    {
+     "at": "2026-11-16 12:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "✅",
+     "replyTo": "@najib: in"
+    },
+    {
+     "at": "2026-11-16 12:11",
+     "to": "group hq",
+     "kind": "out",
+     "text": "There are 8 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 10/18.\n\nBench:\n1. Idris Bello (no position, new)\n2. Kareem Saleh (no position, new)\n3. +44 7700 900216 (no position, new)\n4. Bilal (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.\nIf nobody picks by Tuesday 12:11, the place stays open.",
+     "instruction": "admin-group-message",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-16 17:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📋 *Squad for Friday Night Sandbox, Fri 20 Nov at 20:30*: 10 of 18 in, 8 spaces.\n\n*Confirmed (10/18):*\n1. Hamzah Ali\n2. Raihan Khan\n3. Najib Rahman\n4. Zak Ahmed\n5. Omar Farooq\n6. Yusuf Malik\n7. Adam Hussain\n8. Sami Iqbal\n9. Tariq Aziz\n10. Imti\n\n*Bench (4):*\n1. Idris Bello\n2. Kareem Saleh\n3. (unnamed)\n4. Bilal\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
+     "instruction": "admin-group-message",
+     "key": "<match 2026-11-20 20:30>:evening-update:2026-11-16"
+    }
+   ],
+   "handled": [
+    "@najib in main: \"in\" → llm / noise"
+   ],
+   "db": [
+    "<match 2026-11-20 20:30>: attendance @anon1: (new) BENCH #13",
+    "<match 2026-11-20 20:30>: attendance @bilal: (new) BENCH #14",
+    "<match 2026-11-20 20:30>: attendance @idris: (new) BENCH #11",
+    "<match 2026-11-20 20:30>: attendance @kareem: (new) BENCH #12",
+    "match 2026-11-20 20:30: ?: (new) BENCH",
+    "match 2026-11-20 20:30: Bilal: (new) BENCH",
+    "match 2026-11-20 20:30: Idris Bello: (new) BENCH",
+    "match 2026-11-20 20:30: Kareem Saleh: (new) BENCH",
+    "botjob admin-group → group: There are 8 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 10/18. Benc: (new) sent",
+    "sent-notification pick-open:<match 2026-11-20 20:30>:first: (new) admin-notice",
+    "sent-notification txtlog:<club>:<text a1157dc2>:botjob-<id>: (new) outbound-text-log",
+    "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-16: (new) admin-group-message",
+    "sent-notification txtlog:<club>:<text 11c3273d>:<match 2026-11-20 20:30>:evening-update:2026-11-16: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 12,
+   "step": "2026-11-17 09:00 note: Tuesday: the list re-posted in HQ with a change (Tariq off, Nabil, Idris, Kareem on)",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 13,
+   "step": "2026-11-17 09:00 hq @hamzah: \"@Match Time updated list for Friday\\n1. Hamzah\\n2. Raihan\\n3. Uncle Najib\\n4. Imti\\n5. Zak\\n6. Omar\\n7. Yusuf\\n8. Adam\\n9. Sami\\n10. Nabil\\n11. Idris\\n12. Kareem\"",
+   "out": [
+    {
+     "at": "2026-11-17 09:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "Adding: Nabil Haddad, Idris Bello, Kareem Saleh. Removing: Tariq Aziz. Say *@Match Time YES* to apply.",
+     "via": "admin-group reply",
+     "replyTo": "@hamzah: @Match Time updated list for Friday 1. Hamzah 2. Raihan 3. U"
+    }
+   ],
+   "handled": [
+    "@hamzah in hq: \"@Match Time updated list for Friday\\n1. Hamzah\\n2. Raihan\\n3. Uncle Najib\\n4. Imti\\n5. Zak\\n6. Omar\\n7. Yusuf\\n8. Adam\\n9. Sami\\n10. Nabil\\n11. Idris\\n12. Kareem\" → admin-group: paste-proposed, 3 model call(s)"
+   ],
+   "db": [
+    "sent-notification hqreply:<club>:wa-fnf-19: (new) admin-group-reply"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 14,
+   "step": "2026-11-17 09:02 hq @hamzah: \"@Match Time YES\"",
+   "out": [
+    {
+     "at": "2026-11-17 09:02",
+     "to": "group hq",
+     "kind": "out",
+     "text": "Done: Tariq Aziz out, Nabil Haddad in, Idris Bello in, Kareem Saleh in. 12 of 18, 2 on the bench (+44 7700 900216 and Bilal). 6 places are free. Just tell me who should come in from the bench, in your own words (for example +44 7700 900216).",
+     "via": "admin-group reply",
+     "replyTo": "@hamzah: @Match Time YES"
+    },
+    {
+     "at": "2026-11-17 09:03",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑 (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@idris: in"
+    },
+    {
+     "at": "2026-11-17 09:03",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑 (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@kareem: IN"
+    },
+    {
+     "at": "2026-11-17 09:03",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑 (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@anon1: in"
+    },
+    {
+     "at": "2026-11-17 09:03",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑 (changed)",
+     "instruction": "update-reaction",
+     "key": "retro-react-<id>",
+     "replyTo": "@bilal: in for friday"
+    },
+    {
+     "at": "2026-11-17 13:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 2 on the bench (+44 7700 900216 and Bilal).",
+     "instruction": "admin-group-message",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-17 17:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📋 *Squad for Friday Night Sandbox, Fri 20 Nov at 20:30*: 12 of 18 in, 6 spaces.\n\n*Confirmed (12/18):*\n1. Hamzah Ali\n2. Raihan Khan\n3. Najib Rahman\n4. Zak Ahmed\n5. Omar Farooq\n6. Yusuf Malik\n7. Adam Hussain\n8. Sami Iqbal\n9. Imti\n10. Nabil Haddad\n11. Idris Bello\n12. Kareem Saleh\n\n*Bench (2):*\n1. (unnamed)\n2. Bilal\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
+     "instruction": "admin-group-message",
+     "key": "<match 2026-11-20 20:30>:evening-update:2026-11-17"
+    }
+   ],
+   "handled": [
+    "@hamzah in hq: \"@Match Time YES\" → admin-group: paste-applied, 2 model call(s)"
+   ],
+   "db": [
+    "<match 2026-11-20 20:30>: attendance @idris: BENCH #11 → CONFIRMED #16",
+    "<match 2026-11-20 20:30>: attendance @kareem: BENCH #12 → CONFIRMED #17",
+    "<match 2026-11-20 20:30>: attendance @nabil: (new) CONFIRMED #15",
+    "<match 2026-11-20 20:30>: attendance @tariq: CONFIRMED #9 → DROPPED #9",
+    "match 2026-11-20 20:30: Idris Bello: BENCH → CONFIRMED",
+    "match 2026-11-20 20:30: Kareem Saleh: BENCH → CONFIRMED",
+    "match 2026-11-20 20:30: Nabil Haddad: (new) CONFIRMED",
+    "match 2026-11-20 20:30: Tariq Aziz: CONFIRMED → DROPPED",
+    "sent-notification hqreply:<club>:wa-fnf-21: (new) admin-group-reply",
+    "botjob admin-group → group: Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 2 on the b: (new) sent",
+    "sent-notification txtlog:<club>:<text 8944551a>:botjob-<id>: (new) outbound-text-log",
+    "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-17: (new) admin-group-message",
+    "sent-notification txtlog:<club>:<text e864b1fc>:<match 2026-11-20 20:30>:evening-update:2026-11-17: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 15,
+   "step": "2026-11-17 18:00 main @rami: \"in\"",
+   "out": [],
+   "handled": [
+    "@rami in main: \"in\" → llm / in"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 16,
+   "step": "2026-11-17 18:01 main @sami [tag]: \"@Match Time who's playing friday?\"",
+   "out": [],
+   "handled": [
+    "@sami in main: \"@Match Time who's playing friday?\" → llm / question"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 17,
+   "step": "2026-11-17 18:02 main @zak: \"rami you're late again lol\"",
+   "out": [],
+   "handled": [
+    "@zak in main: \"rami you're late again lol\" → ignored / noise"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 18,
+   "step": "2026-11-17 18:03 main @raihan: \"Uncle Najib is in by the way\"",
+   "out": [
+    {
+     "at": "2026-11-17 18:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑",
+     "replyTo": "@rami: in"
+    },
+    {
+     "at": "2026-11-17 18:10",
+     "to": "group main",
+     "kind": "out",
+     "text": "The organisers will post the list.",
+     "via": "analyze reply",
+     "replyTo": "@sami: @Match Time who's playing friday?"
+    },
+    {
+     "at": "2026-11-17 18:11",
+     "to": "group hq",
+     "kind": "out",
+     "text": "There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18.\n\nBench:\n1. +44 7700 900216 (no position, new)\n2. Bilal (no position, new)\n3. Rami Nasser (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.\nIf nobody picks by Wednesday 18:11, the place stays open.",
+     "instruction": "admin-group-message",
+     "key": "botjob-<id>"
+    }
+   ],
+   "handled": [
+    "@raihan in main: \"Uncle Najib is in by the way\" → llm / noise"
+   ],
+   "db": [
+    "<match 2026-11-20 20:30>: attendance @rami: (new) BENCH #18",
+    "match 2026-11-20 20:30: Rami Nasser: (new) BENCH",
+    "sent-notification greply:<club>:wa-fnf-26: (new) group-reply",
+    "botjob admin-group → group: There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18. Benc: (new) sent",
+    "sent-notification pick-open:<match 2026-11-20 20:30>:<id>: (new) admin-notice",
+    "sent-notification txtlog:<club>:<text 9a103df0>:botjob-<id>: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 19,
+   "step": "2026-11-18 11:00 note: Wednesday: an admin request in HQ without a real tag, then with one",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 20,
+   "step": "2026-11-18 11:00 hq @raihan: \"matchtime can you make teams for friday\"",
+   "out": [],
+   "handled": [
+    "@raihan in hq: \"matchtime can you make teams for friday\" → admin-group: not-a-pick"
+   ],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 21,
+   "step": "2026-11-18 11:05 hq @raihan: \"@Match Time how many have we got for Friday?\"",
+   "out": [
+    {
+     "at": "2026-11-18 11:05",
+     "to": "group hq",
+     "kind": "out",
+     "text": "We're 12/18 for Fri 20:30, 3 on the bench ((unnamed), Bilal and Rami Nasser), need 6 more 🙏",
+     "via": "admin-group reply",
+     "replyTo": "@raihan: @Match Time how many have we got for Friday?"
+    },
+    {
+     "at": "2026-11-18 17:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📋 *Squad for Friday Night Sandbox, Fri 20 Nov at 20:30*: 12 of 18 in, 6 spaces.\n\n*Confirmed (12/18):*\n1. Hamzah Ali\n2. Raihan Khan\n3. Najib Rahman\n4. Zak Ahmed\n5. Omar Farooq\n6. Yusuf Malik\n7. Adam Hussain\n8. Sami Iqbal\n9. Imti\n10. Nabil Haddad\n11. Idris Bello\n12. Kareem Saleh\n\n*Bench (3):*\n1. (unnamed)\n2. Bilal\n3. Rami Nasser\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
+     "instruction": "admin-group-message",
+     "key": "<match 2026-11-20 20:30>:evening-update:2026-11-18"
+    },
+    {
+     "at": "2026-11-18 19:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 3 on the bench (+44 7700 900216, Bilal and Rami Nasser).",
+     "instruction": "admin-group-message",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-19 17:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📋 *Squad for Friday Night Sandbox, Fri 20 Nov at 20:30*: 12 of 18 in, 6 spaces.\n\n*Confirmed (12/18):*\n1. Hamzah Ali\n2. Raihan Khan\n3. Najib Rahman\n4. Zak Ahmed\n5. Omar Farooq\n6. Yusuf Malik\n7. Adam Hussain\n8. Sami Iqbal\n9. Imti\n10. Nabil Haddad\n11. Idris Bello\n12. Kareem Saleh\n\n*Bench (3):*\n1. (unnamed)\n2. Bilal\n3. Rami Nasser\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
+     "instruction": "admin-group-message",
+     "key": "<match 2026-11-20 20:30>:evening-update:2026-11-19"
+    }
+   ],
+   "handled": [
+    "@raihan in hq: \"@Match Time how many have we got for Friday?\" → admin-group: hq-answered, 3 model call(s)"
+   ],
+   "db": [
+    "sent-notification hqreply:<club>:wa-fnf-32: (new) admin-group-reply",
+    "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-18: (new) admin-group-message",
+    "sent-notification txtlog:<club>:<text 77d8e541>:<match 2026-11-20 20:30>:evening-update:2026-11-18: (new) outbound-text-log",
+    "botjob admin-group → group: Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 3 on the b: (new) sent",
+    "sent-notification txtlog:<club>:<text 08d8039d>:botjob-<id>: (new) outbound-text-log",
+    "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-19: (new) admin-group-message",
+    "sent-notification txtlog:<club>:<text 77d8e541>:<match 2026-11-20 20:30>:evening-update:2026-11-19: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 22,
+   "step": "2026-11-19 19:00 main @anon2: \"in\"",
+   "out": [
+    {
+     "at": "2026-11-19 19:10",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑",
+     "replyTo": "@anon2: in"
+    },
+    {
+     "at": "2026-11-19 19:11",
+     "to": "group hq",
+     "kind": "out",
+     "text": "There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18.\n\nBench:\n1. +44 7700 900216 (no position, new)\n2. Bilal (no position, new)\n3. Rami Nasser (no position, new)\n4. +44 7700 900217 (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.\nIf nobody picks by Friday 16:30, the place stays open.",
+     "instruction": "admin-group-message",
+     "key": "botjob-<id>"
+    }
+   ],
+   "handled": [
+    "@anon2 in main: \"in\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-20 20:30>: attendance @anon2: (new) BENCH #19",
+    "botjob admin-group → group: There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18. Benc (#2): (new) sent",
+    "sent-notification pick-open:<match 2026-11-20 20:30>:<id>: (new) admin-notice",
+    "sent-notification txtlog:<club>:<text 68ea5b3f>:botjob-<id>: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 23,
+   "step": "2026-11-19 19:30 main @hadi: \"can I get in?\"",
+   "out": [
+    {
+     "at": "2026-11-19 19:40",
+     "to": "group main",
+     "kind": "react",
+     "text": "🪑",
+     "replyTo": "@hadi: can I get in?"
+    },
+    {
+     "at": "2026-11-19 21:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "The bench for *Friday Night Sandbox* (Fri 20 Nov at 20:30) has changed. 6 places open, squad 12/18.\n\nBench:\n1. +44 7700 900216 (no position, new)\n2. Bilal (no position, new)\n3. Rami Nasser (no position, new)\n4. +44 7700 900217 (no position, new)\n5. Hadi Mansour (no position, new)\n\nTag me with a number, a name or an @tag, e.g. *@Match Time 2*, or *@Match Time 2 3* for two. *@Match Time NONE* leaves it open. To tag me, type *@* and pick *Match Time* from the list.",
+     "instruction": "admin-group-message",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-20 10:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📝 *Proposed teams*: 20:30 at Sandbox Harris Pitch\n\n*Bibs*:\n1. Hamzah Ali\n2. Najib Rahman\n3. Omar Farooq\n4. Adam Hussain\n5. Imti\n6. Kareem Saleh\n\n*Non bibs*:\n1. Raihan Khan\n2. Zak Ahmed\n3. Yusuf Malik\n4. Sami Iqbal\n5. Idris Bello\n6. Nabil Haddad\n\nTo change them, tag me and say it in your own words (for example *@Match Time swap Hamzah and Raihan* or *@Match Time move Hamzah to the other team*). For brand new teams: *@Match Time shuffle them again*.\nSay *@Match Time YES* when they are final. I won't post them in the players' group. To tag me, type *@* and pick *Match Time* from the list.",
+     "instruction": "admin-group-message",
+     "key": "botjob-<id>"
+    }
+   ],
+   "handled": [
+    "@hadi in main: \"can I get in?\" → llm / in"
+   ],
+   "db": [
+    "<match 2026-11-20 20:30>: attendance @hadi: (new) BENCH #20",
+    "match 2026-11-20 20:30: Hadi Mansour: (new) BENCH",
+    "botjob admin-group → group: The bench for *Friday Night Sandbox* (Fri 20 Nov at 20:30) has changed. 6 places open, squ: (new) sent",
+    "sent-notification pick-open:<match 2026-11-20 20:30>:<id>: (new) admin-notice",
+    "sent-notification txtlog:<club>:<text 333d62ff>:botjob-<id>: (new) outbound-text-log",
+    "<match 2026-11-27 20:30>: places: (new) 18",
+    "match 2026-11-27 20:30: status: (new) UPCOMING",
+    "<match 2026-11-20 20:30>: team of <user Imti, no phone>: (new) RED",
+    "<match 2026-11-20 20:30>: team of @adam: (new) RED",
+    "<match 2026-11-20 20:30>: team of @hamzah: (new) RED",
+    "<match 2026-11-20 20:30>: team of @idris: (new) YELLOW",
+    "<match 2026-11-20 20:30>: team of @kareem: (new) RED",
+    "<match 2026-11-20 20:30>: team of @nabil: (new) YELLOW",
+    "<match 2026-11-20 20:30>: team of @najib: (new) RED",
+    "<match 2026-11-20 20:30>: team of @omar: (new) RED",
+    "<match 2026-11-20 20:30>: team of @raihan: (new) YELLOW",
+    "<match 2026-11-20 20:30>: team of @sami: (new) YELLOW",
+    "<match 2026-11-20 20:30>: team of @yusuf: (new) YELLOW",
+    "<match 2026-11-20 20:30>: team of @zak: (new) YELLOW",
+    "botjob admin-group → group: 📝 *Proposed teams*: 20:30 at Sandbox Harris Pitch *Bibs*: 1. Hamzah Ali 2. Najib Rahman 3: (new) sent",
+    "match 2026-11-20 20:30: status: UPCOMING → TEAMS_GENERATED",
+    "match 2026-11-20 20:30: team Adam Hussain: (new) RED",
+    "match 2026-11-20 20:30: team Hamzah Ali: (new) RED",
+    "match 2026-11-20 20:30: team Idris Bello: (new) YELLOW",
+    "match 2026-11-20 20:30: team Imti: (new) RED",
+    "match 2026-11-20 20:30: team Kareem Saleh: (new) RED",
+    "match 2026-11-20 20:30: team Nabil Haddad: (new) YELLOW",
+    "match 2026-11-20 20:30: team Najib Rahman: (new) RED",
+    "match 2026-11-20 20:30: team Omar Farooq: (new) RED",
+    "match 2026-11-20 20:30: team Raihan Khan: (new) YELLOW",
+    "match 2026-11-20 20:30: team Sami Iqbal: (new) YELLOW",
+    "match 2026-11-20 20:30: team Yusuf Malik: (new) YELLOW",
+    "match 2026-11-20 20:30: team Zak Ahmed: (new) YELLOW",
+    "sent-notification team-proposal:auto:<match 2026-11-20 20:30>: (new) admin-notice",
+    "sent-notification txtlog:<club>:<text 8b556dae>:botjob-<id>: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 24,
+   "step": "2026-11-20 10:30 note: Friday: teams in HQ",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  },
+  {
+   "seq": 25,
+   "step": "2026-11-20 10:30 hq @hamzah: \"@Match Time make teams\"",
+   "out": [
+    {
+     "at": "2026-11-20 10:30",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📝 *Proposed teams*: 20:30 at Sandbox Harris Pitch\n\n*Bibs*:\n1. Hamzah Ali\n2. Najib Rahman\n3. Omar Farooq\n4. Adam Hussain\n5. Imti\n6. Kareem Saleh\n\n*Non bibs*:\n1. Raihan Khan\n2. Zak Ahmed\n3. Yusuf Malik\n4. Sami Iqbal\n5. Idris Bello\n6. Nabil Haddad\n\nTo change them, tag me and say it in your own words (for example *@Match Time swap Hamzah and Raihan* or *@Match Time move Hamzah to the other team*). For brand new teams: *@Match Time shuffle them again*.\nSay *@Match Time YES* when they are final. I won't post them in the players' group. To tag me, type *@* and pick *Match Time* from the list.",
+     "via": "admin-group reply",
+     "replyTo": "@hamzah: @Match Time make teams"
+    }
+   ],
+   "handled": [
+    "@hamzah in hq: \"@Match Time make teams\" → admin-group: teams-built, 4 model call(s)"
+   ],
+   "db": [
+    "sent-notification hqreply:<club>:wa-fnf-42: (new) admin-group-reply"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 26,
+   "step": "2026-11-20 10:40 hq @hamzah: \"@Match Time swap Zak with Omar\"",
+   "out": [
+    {
+     "at": "2026-11-20 10:40",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📝 *Proposed teams*: 20:30 at Sandbox Harris Pitch\n\n*Bibs*:\n1. Hamzah Ali\n2. Najib Rahman\n3. Adam Hussain\n4. Imti\n5. Kareem Saleh\n6. Zak Ahmed\n\n*Non bibs*:\n1. Omar Farooq\n2. Raihan Khan\n3. Yusuf Malik\n4. Sami Iqbal\n5. Idris Bello\n6. Nabil Haddad\n\nTo change them, tag me and say it in your own words (for example *@Match Time swap Hamzah and Omar* or *@Match Time move Hamzah to the other team*). For brand new teams: *@Match Time shuffle them again*.\nSay *@Match Time YES* when they are final. I won't post them in the players' group. To tag me, type *@* and pick *Match Time* from the list.",
+     "via": "admin-group reply",
+     "replyTo": "@hamzah: @Match Time swap Zak with Omar"
+    },
+    {
+     "at": "2026-11-20 17:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 5 on the bench.",
+     "instruction": "admin-group-message",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-20 19:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "⏰ The teams for 20:30 aren't final yet. Tag me and ask to see them, in your own words (for example *@Match Time show me the teams*), then say *@Match Time YES*.",
+     "instruction": "admin-group-message",
+     "key": "botjob-<id>"
+    }
+   ],
+   "handled": [
+    "@hamzah in hq: \"@Match Time swap Zak with Omar\" → admin-group: teams-swapped, 3 model call(s)"
+   ],
+   "db": [
+    "<match 2026-11-20 20:30>: team of @omar: RED → YELLOW",
+    "<match 2026-11-20 20:30>: team of @zak: YELLOW → RED",
+    "match 2026-11-20 20:30: team Omar Farooq: RED → YELLOW",
+    "match 2026-11-20 20:30: team Zak Ahmed: YELLOW → RED",
+    "sent-notification hqreply:<club>:wa-fnf-44: (new) admin-group-reply",
+    "botjob admin-group → group: Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 5 on the b: (new) sent",
+    "sent-notification txtlog:<club>:<text b8faab29>:botjob-<id>: (new) outbound-text-log",
+    "botjob admin-group → group: ⏰ The teams for 20:30 aren't final yet. Tag me and ask to see them, in your own words (for: (new) sent",
+    "sent-notification txtlog:<club>:<text f04c5ba0>:botjob-<id>: (new) outbound-text-log",
+    "match 2026-11-20 20:30: status: TEAMS_GENERATED → COMPLETED"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 27,
+   "step": "2026-11-20 22:20 main @hamzah: \"Full time: Bibs 6 - 4 Non bibs. Good game boys\"",
+   "out": [
+    {
+     "at": "2026-11-20 22:30",
+     "to": "group main",
+     "kind": "react",
+     "text": "👍",
+     "replyTo": "@hamzah: Full time: Bibs 6 - 4 Non bibs. Good game boys"
+    },
+    {
+     "at": "2026-11-20 22:30",
+     "to": "group main",
+     "kind": "out",
+     "text": "Got it 👍 *Bibs* won 6 - 4 against Non bibs. Recorded.",
+     "via": "analyze reply",
+     "replyTo": "@hamzah: Full time: Bibs 6 - 4 Non bibs. Good game boys"
+    },
+    {
+     "at": "2026-11-21 08:00",
+     "to": "dm @hamzah",
+     "kind": "out",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-dm:@hamzah"
+    },
+    {
+     "at": "2026-11-21 08:00",
+     "to": "dm @raihan",
+     "kind": "out",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-dm:@raihan"
+    },
+    {
+     "at": "2026-11-21 08:00",
+     "to": "dm @najib",
+     "kind": "out",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-dm:@najib"
+    },
+    {
+     "at": "2026-11-21 08:00",
+     "to": "dm @zak",
+     "kind": "out",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-dm:@zak"
+    },
+    {
+     "at": "2026-11-21 08:00",
+     "to": "dm @omar",
+     "kind": "out",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-dm:@omar"
+    },
+    {
+     "at": "2026-11-21 08:00",
+     "to": "dm @yusuf",
+     "kind": "out",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-dm:@yusuf"
+    },
+    {
+     "at": "2026-11-21 08:00",
+     "to": "dm @adam",
+     "kind": "out",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-dm:@adam"
+    },
+    {
+     "at": "2026-11-21 08:00",
+     "to": "dm @sami",
+     "kind": "out",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-dm:@sami"
+    },
+    {
+     "at": "2026-11-21 08:00",
+     "to": "dm @nabil",
+     "kind": "out",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-dm:@nabil"
+    },
+    {
+     "at": "2026-11-21 08:00",
+     "to": "dm @idris",
+     "kind": "out",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-dm:@idris"
+    },
+    {
+     "at": "2026-11-21 08:00",
+     "to": "dm @kareem",
+     "kind": "out",
+     "text": "🏆 *Friday Night Sandbox*, Fri 20 Nov\n\nRate your teammates and pick Man of the Match. Takes ~1 minute.\n\nYour personal link:\n<app>/r/<tok>\n\nLink expires in 5 days.\n\n📊 Your season stats (ratings, MoM, badges, share card), any time:\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-dm:@kareem"
+    },
+    {
+     "at": "2026-11-21 09:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📋 For the organisers, not posted in the players' group:\n\n🎯 I've just DM'd the players from the *Friday Night Sandbox* on Fri 20 Nov a private link to rate the others out of 10.\n\n*Why rate?* I use the ratings to pick two balanced teams, so the games stay close and nobody ends up on the losing side every week. Your scores are private: nobody sees who rated what, and you can't rate yourself. The same link is where you pick Man of the Match.\n\nIt takes about a minute, and the more of you rate, the fairer the teams. Check your DMs from me 👇",
+     "instruction": "admin-group-message",
+     "key": "<match 2026-11-20 20:30>:rate-promo"
+    },
+    {
+     "at": "2026-11-21 09:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📋 *Squad for Friday Night Sandbox, Fri 27 Nov at 20:30*: 12 of 18 in, 6 spaces.\nThe list for this match is open. Players' In and Out are being collected in the group.\n\n*Confirmed (12/18):*\n1. Hamzah Ali\n2. Raihan Khan\n3. Najib Rahman\n4. Zak Ahmed\n5. Omar Farooq\n6. Yusuf Malik\n7. Adam Hussain\n8. Sami Iqbal\n9. Imti\n10. Nabil Haddad\n11. Idris Bello\n12. Kareem Saleh\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
+     "instruction": "admin-group-message",
+     "key": "<match 2026-11-27 20:30>:rolling-announce"
+    }
+   ],
+   "handled": [
+    "@hamzah in main: \"Full time: Bibs 6 - 4 Non bibs. Good game boys\" → llm / score"
+   ],
+   "db": [
+    "match 2026-11-20 20:30: score: (new) 6-4",
+    "sent-notification greply:<club>:wa-fnf-48: (new) group-reply",
+    "<match 2026-11-27 20:30>: attendance <user Imti, no phone>: (new) CONFIRMED #9",
+    "<match 2026-11-27 20:30>: attendance @adam: (new) CONFIRMED #7",
+    "<match 2026-11-27 20:30>: attendance @hamzah: (new) CONFIRMED #1",
+    "<match 2026-11-27 20:30>: attendance @idris: (new) CONFIRMED #11",
+    "<match 2026-11-27 20:30>: attendance @kareem: (new) CONFIRMED #12",
+    "<match 2026-11-27 20:30>: attendance @nabil: (new) CONFIRMED #10",
+    "<match 2026-11-27 20:30>: attendance @najib: (new) CONFIRMED #3",
+    "<match 2026-11-27 20:30>: attendance @omar: (new) CONFIRMED #5",
+    "<match 2026-11-27 20:30>: attendance @raihan: (new) CONFIRMED #2",
+    "<match 2026-11-27 20:30>: attendance @sami: (new) CONFIRMED #8",
+    "<match 2026-11-27 20:30>: attendance @yusuf: (new) CONFIRMED #6",
+    "<match 2026-11-27 20:30>: attendance @zak: (new) CONFIRMED #4",
+    "match 2026-11-27 20:30: Adam Hussain: (new) CONFIRMED",
+    "match 2026-11-27 20:30: Hamzah Ali: (new) CONFIRMED",
+    "match 2026-11-27 20:30: Idris Bello: (new) CONFIRMED",
+    "match 2026-11-27 20:30: Imti: (new) CONFIRMED",
+    "match 2026-11-27 20:30: Kareem Saleh: (new) CONFIRMED",
+    "match 2026-11-27 20:30: Nabil Haddad: (new) CONFIRMED",
+    "match 2026-11-27 20:30: Najib Rahman: (new) CONFIRMED",
+    "match 2026-11-27 20:30: Omar Farooq: (new) CONFIRMED",
+    "match 2026-11-27 20:30: Raihan Khan: (new) CONFIRMED",
+    "match 2026-11-27 20:30: Sami Iqbal: (new) CONFIRMED",
+    "match 2026-11-27 20:30: Yusuf Malik: (new) CONFIRMED",
+    "match 2026-11-27 20:30: Zak Ahmed: (new) CONFIRMED",
+    "sent-notification <match 2026-11-20 20:30>:rate-dm:@adam: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-dm:@hamzah: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-dm:@idris: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-dm:@kareem: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-dm:@nabil: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-dm:@najib: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-dm:@omar: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-dm:@raihan: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-dm:@sami: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-dm:@yusuf: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-dm:@zak: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-promo: (new) admin-group-message",
+    "sent-notification <match 2026-11-27 20:30>:rolling-announce: (new) admin-group-message",
+    "sent-notification txtlog:<club>:<text 4dfaa66c>:<match 2026-11-27 20:30>:rolling-announce: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text d93b2bf5>:<match 2026-11-20 20:30>:rate-promo: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 28,
+   "step": "2026-11-21 10:00 rate @zak MoM /Omar/",
+   "out": [],
+   "handled": [
+    "@zak in dm @zak: \"(opens the rating link and submits, Man of the Match: /Omar/)\" → rating page: submitted (default scores; Man of the Match: O Omar Farooq)"
+   ],
+   "db": [
+    "<match 2026-11-20 20:30>: MoM votes for @omar: (new) 1",
+    "match 2026-11-20 20:30: MoM votes: (new) 1",
+    "match 2026-11-20 20:30: ratings: (new) 11"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 29,
+   "step": "2026-11-21 10:10 rate @idris MoM /Omar/",
+   "out": [
+    {
+     "at": "2026-11-21 17:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📋 *Squad for Friday Night Sandbox, Fri 27 Nov at 20:30*: 12 of 18 in, 6 spaces.\n\n*Confirmed (12/18):*\n1. Hamzah Ali\n2. Raihan Khan\n3. Najib Rahman\n4. Zak Ahmed\n5. Omar Farooq\n6. Yusuf Malik\n7. Adam Hussain\n8. Sami Iqbal\n9. Imti\n10. Nabil Haddad\n11. Idris Bello\n12. Kareem Saleh\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
+     "instruction": "admin-group-message",
+     "key": "<match 2026-11-27 20:30>:evening-update:2026-11-21"
+    },
+    {
+     "at": "2026-11-22 17:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📋 *Squad for Friday Night Sandbox, Fri 27 Nov at 20:30*: 12 of 18 in, 6 spaces.\n\n*Confirmed (12/18):*\n1. Hamzah Ali\n2. Raihan Khan\n3. Najib Rahman\n4. Zak Ahmed\n5. Omar Farooq\n6. Yusuf Malik\n7. Adam Hussain\n8. Sami Iqbal\n9. Imti\n10. Nabil Haddad\n11. Idris Bello\n12. Kareem Saleh\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
+     "instruction": "admin-group-message",
+     "key": "<match 2026-11-27 20:30>:evening-update:2026-11-22"
+    }
+   ],
+   "handled": [
+    "@idris in dm @idris: \"(opens the rating link and submits, Man of the Match: /Omar/)\" → rating page: submitted (default scores; Man of the Match: O Omar Farooq)"
+   ],
+   "db": [
+    "<match 2026-11-20 20:30>: MoM votes for @omar: 1 → 2",
+    "match 2026-11-20 20:30: MoM votes: 1 → 2",
+    "match 2026-11-20 20:30: ratings: 11 → 22",
+    "sent-notification <match 2026-11-27 20:30>:evening-update:2026-11-21: (new) admin-group-message",
+    "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-21: (new) outbound-text-log",
+    "sent-notification <match 2026-11-27 20:30>:evening-update:2026-11-22: (new) admin-group-message",
+    "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-22: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 30,
+   "step": "2026-11-22 18:00 rate @hamzah MoM /Kareem/",
+   "out": [
+    {
+     "at": "2026-11-22 18:00",
+     "to": "dm @raihan",
+     "kind": "out",
+     "text": "Hey Raihan 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-reminder:@raihan:2026-11-22"
+    },
+    {
+     "at": "2026-11-22 18:00",
+     "to": "dm @najib",
+     "kind": "out",
+     "text": "Hey Najib 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-reminder:@najib:2026-11-22"
+    },
+    {
+     "at": "2026-11-22 18:00",
+     "to": "dm @omar",
+     "kind": "out",
+     "text": "Hey Omar 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-reminder:@omar:2026-11-22"
+    },
+    {
+     "at": "2026-11-22 18:00",
+     "to": "dm @yusuf",
+     "kind": "out",
+     "text": "Hey Yusuf 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-reminder:@yusuf:2026-11-22"
+    },
+    {
+     "at": "2026-11-22 18:00",
+     "to": "dm @adam",
+     "kind": "out",
+     "text": "Hey Adam 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-reminder:@adam:2026-11-22"
+    },
+    {
+     "at": "2026-11-22 18:00",
+     "to": "dm @sami",
+     "kind": "out",
+     "text": "Hey Sami 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-reminder:@sami:2026-11-22"
+    },
+    {
+     "at": "2026-11-22 18:00",
+     "to": "dm @nabil",
+     "kind": "out",
+     "text": "Hey Nabil 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-reminder:@nabil:2026-11-22"
+    },
+    {
+     "at": "2026-11-22 18:00",
+     "to": "dm @kareem",
+     "kind": "out",
+     "text": "Hey Kareem 👋 Friendly nudge, you haven't rated *Friday Night Sandbox* yet.\n\nIt takes 30 seconds to rate your teammates and pick Man of the Match, and it helps balance next week's teams 🙌\n<app>/r/<tok>",
+     "instruction": "dm",
+     "key": "<match 2026-11-20 20:30>:rate-reminder:@kareem:2026-11-22"
+    },
+    {
+     "at": "2026-11-22 18:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "🏅 *New badges this week*\n\n👟 *On the board*: welcome *Adam Hussain*, *Hamzah Ali*, *Idris Bello*, *Imti*, *Kareem Saleh*, *Nabil Haddad*, *Najib Rahman*, *Omar Farooq*, *Raihan Khan*, *Sami Iqbal*, *Yusuf Malik* and *Zak Ahmed*, first games for the club! 🎉\n\nWell played all! 👏\n📊 See your own stats and badges any time: tap the stats link in my rating DM after each match.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-20 20:30>:badges"
+    },
+    {
+     "at": "2026-11-23 10:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/admin/<tok>\nMatchTime reminds you once a week until a venue is set.",
+     "instruction": "admin-group-message",
+     "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-23 17:00",
+     "to": "group hq",
+     "kind": "out",
+     "text": "📋 *Squad for Friday Night Sandbox, Fri 27 Nov at 20:30*: 12 of 18 in, 6 spaces.\n\n*Confirmed (12/18):*\n1. Hamzah Ali\n2. Raihan Khan\n3. Najib Rahman\n4. Zak Ahmed\n5. Omar Farooq\n6. Yusuf Malik\n7. Adam Hussain\n8. Sami Iqbal\n9. Imti\n10. Nabil Haddad\n11. Idris Bello\n12. Kareem Saleh\n\nMatchTime has not posted this in the players' group: you announce the list and the teams.",
+     "instruction": "admin-group-message",
+     "key": "<match 2026-11-27 20:30>:evening-update:2026-11-23"
+    }
+   ],
+   "handled": [
+    "@hamzah in dm @hamzah: \"(opens the rating link and submits, Man of the Match: /Kareem/)\" → rating page: submitted (default scores; Man of the Match: K Kareem Saleh)"
+   ],
+   "db": [
+    "<match 2026-11-20 20:30>: MoM votes for @kareem: (new) 1",
+    "match 2026-11-20 20:30: MoM votes: 2 → 3",
+    "match 2026-11-20 20:30: ratings: 22 → 33",
+    "sent-notification <match 2026-11-20 20:30>:badges: (new) group-message",
+    "sent-notification <match 2026-11-20 20:30>:rate-reminder:@adam:2026-11-22: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-reminder:@kareem:2026-11-22: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-reminder:@nabil:2026-11-22: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-reminder:@najib:2026-11-22: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-reminder:@omar:2026-11-22: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-reminder:@raihan:2026-11-22: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-reminder:@sami:2026-11-22: (new) dm",
+    "sent-notification <match 2026-11-20 20:30>:rate-reminder:@yusuf:2026-11-22: (new) dm",
+    "sent-notification txtlog:<club>:<text 9d3c982d>:<match 2026-11-20 20:30>:badges: (new) outbound-text-log",
+    "botjob admin-group → group: 📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no v (#2): (new) sent",
+    "sent-notification txtlog:<club>:<text b3a71db4>:botjob-<id>: (new) outbound-text-log",
+    "sent-notification <match 2026-11-27 20:30>:evening-update:2026-11-23: (new) admin-group-message",
+    "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-23: (new) outbound-text-log"
+   ],
+   "errors": []
+  },
+  {
+   "seq": 31,
+   "step": "2026-11-24 09:00 note: Tuesday: the rating window has closed",
+   "out": [],
+   "handled": [],
+   "db": [],
+   "errors": []
+  }
+ ],
+ "final": {
+  "<match 2026-11-20 20:30>: MoM votes for @kareem": "1",
+  "<match 2026-11-20 20:30>: MoM votes for @omar": "2",
+  "<match 2026-11-20 20:30>: attendance <user Imti, no phone>": "CONFIRMED #10",
+  "<match 2026-11-20 20:30>: attendance @adam": "CONFIRMED #7",
+  "<match 2026-11-20 20:30>: attendance @anon1": "BENCH #13",
+  "<match 2026-11-20 20:30>: attendance @anon2": "BENCH #19",
+  "<match 2026-11-20 20:30>: attendance @bilal": "BENCH #14",
+  "<match 2026-11-20 20:30>: attendance @hadi": "BENCH #20",
+  "<match 2026-11-20 20:30>: attendance @hamzah": "CONFIRMED #1",
+  "<match 2026-11-20 20:30>: attendance @idris": "CONFIRMED #16",
+  "<match 2026-11-20 20:30>: attendance @kareem": "CONFIRMED #17",
+  "<match 2026-11-20 20:30>: attendance @nabil": "CONFIRMED #15",
+  "<match 2026-11-20 20:30>: attendance @najib": "CONFIRMED #3",
+  "<match 2026-11-20 20:30>: attendance @omar": "CONFIRMED #5",
+  "<match 2026-11-20 20:30>: attendance @raihan": "CONFIRMED #2",
+  "<match 2026-11-20 20:30>: attendance @rami": "BENCH #18",
+  "<match 2026-11-20 20:30>: attendance @sami": "CONFIRMED #8",
+  "<match 2026-11-20 20:30>: attendance @tariq": "DROPPED #9",
+  "<match 2026-11-20 20:30>: attendance @yusuf": "CONFIRMED #6",
+  "<match 2026-11-20 20:30>: attendance @zak": "CONFIRMED #4",
+  "<match 2026-11-20 20:30>: places": "18",
+  "<match 2026-11-20 20:30>: team of <user Imti, no phone>": "RED",
+  "<match 2026-11-20 20:30>: team of @adam": "RED",
+  "<match 2026-11-20 20:30>: team of @hamzah": "RED",
+  "<match 2026-11-20 20:30>: team of @idris": "YELLOW",
+  "<match 2026-11-20 20:30>: team of @kareem": "RED",
+  "<match 2026-11-20 20:30>: team of @nabil": "YELLOW",
+  "<match 2026-11-20 20:30>: team of @najib": "RED",
+  "<match 2026-11-20 20:30>: team of @omar": "YELLOW",
+  "<match 2026-11-20 20:30>: team of @raihan": "YELLOW",
+  "<match 2026-11-20 20:30>: team of @sami": "YELLOW",
+  "<match 2026-11-20 20:30>: team of @yusuf": "YELLOW",
+  "<match 2026-11-20 20:30>: team of @zak": "RED",
+  "<match 2026-11-27 20:30>: attendance <user Imti, no phone>": "CONFIRMED #9",
+  "<match 2026-11-27 20:30>: attendance @adam": "CONFIRMED #7",
+  "<match 2026-11-27 20:30>: attendance @hamzah": "CONFIRMED #1",
+  "<match 2026-11-27 20:30>: attendance @idris": "CONFIRMED #11",
+  "<match 2026-11-27 20:30>: attendance @kareem": "CONFIRMED #12",
+  "<match 2026-11-27 20:30>: attendance @nabil": "CONFIRMED #10",
+  "<match 2026-11-27 20:30>: attendance @najib": "CONFIRMED #3",
+  "<match 2026-11-27 20:30>: attendance @omar": "CONFIRMED #5",
+  "<match 2026-11-27 20:30>: attendance @raihan": "CONFIRMED #2",
+  "<match 2026-11-27 20:30>: attendance @sami": "CONFIRMED #8",
+  "<match 2026-11-27 20:30>: attendance @yusuf": "CONFIRMED #6",
+  "<match 2026-11-27 20:30>: attendance @zak": "CONFIRMED #4",
+  "<match 2026-11-27 20:30>: places": "18",
+  "botjob admin-group → group: Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 2 on the b": "sent",
+  "botjob admin-group → group: Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 3 on the b": "sent",
+  "botjob admin-group → group: Nobody picked for *Friday Night Sandbox*, so the place stays open. Squad 12/18, 5 on the b": "sent",
+  "botjob admin-group → group: The bench for *Friday Night Sandbox* (Fri 20 Nov at 20:30) has changed. 6 places open, squ": "sent",
+  "botjob admin-group → group: There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18. Benc": "sent",
+  "botjob admin-group → group: There are 6 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 12/18. Benc (#2)": "sent",
+  "botjob admin-group → group: There are 8 places open in *Friday Night Sandbox* (Fri 20 Nov at 20:30), squad 10/18. Benc": "sent",
+  "botjob admin-group → group: ⏰ The teams for 20:30 aren't final yet. Tag me and ask to see them, in your own words (for": "sent",
+  "botjob admin-group → group: 📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no v": "sent",
+  "botjob admin-group → group: 📍 Confirm *Friday Night Sandbox*'s venue so nearby clubs can find you: MatchTime has no v (#2)": "sent",
+  "botjob admin-group → group: 📝 *Proposed teams*: 20:30 at Sandbox Harris Pitch *Bibs*: 1. Hamzah Ali 2. Najib Rahman 3": "sent",
+  "club: admin group": "FNS HQ",
+  "club: approval": "approved",
+  "club: members": "19",
+  "club: muted": "no",
+  "club: stage": "live, bot on",
+  "match 2026-11-20 20:30: ?": "BENCH",
+  "match 2026-11-20 20:30: Adam Hussain": "CONFIRMED",
+  "match 2026-11-20 20:30: Bilal": "BENCH",
+  "match 2026-11-20 20:30: Hadi Mansour": "BENCH",
+  "match 2026-11-20 20:30: Hamzah Ali": "CONFIRMED",
+  "match 2026-11-20 20:30: Idris Bello": "CONFIRMED",
+  "match 2026-11-20 20:30: Imti": "CONFIRMED",
+  "match 2026-11-20 20:30: Kareem Saleh": "CONFIRMED",
+  "match 2026-11-20 20:30: MoM votes": "3",
+  "match 2026-11-20 20:30: Nabil Haddad": "CONFIRMED",
+  "match 2026-11-20 20:30: Najib Rahman": "CONFIRMED",
+  "match 2026-11-20 20:30: Omar Farooq": "CONFIRMED",
+  "match 2026-11-20 20:30: Raihan Khan": "CONFIRMED",
+  "match 2026-11-20 20:30: Rami Nasser": "BENCH",
+  "match 2026-11-20 20:30: Sami Iqbal": "CONFIRMED",
+  "match 2026-11-20 20:30: Tariq Aziz": "DROPPED",
+  "match 2026-11-20 20:30: Yusuf Malik": "CONFIRMED",
+  "match 2026-11-20 20:30: Zak Ahmed": "CONFIRMED",
+  "match 2026-11-20 20:30: ratings": "33",
+  "match 2026-11-20 20:30: score": "6-4",
+  "match 2026-11-20 20:30: status": "COMPLETED",
+  "match 2026-11-20 20:30: team Adam Hussain": "RED",
+  "match 2026-11-20 20:30: team Hamzah Ali": "RED",
+  "match 2026-11-20 20:30: team Idris Bello": "YELLOW",
+  "match 2026-11-20 20:30: team Imti": "RED",
+  "match 2026-11-20 20:30: team Kareem Saleh": "RED",
+  "match 2026-11-20 20:30: team Nabil Haddad": "YELLOW",
+  "match 2026-11-20 20:30: team Najib Rahman": "RED",
+  "match 2026-11-20 20:30: team Omar Farooq": "YELLOW",
+  "match 2026-11-20 20:30: team Raihan Khan": "YELLOW",
+  "match 2026-11-20 20:30: team Sami Iqbal": "YELLOW",
+  "match 2026-11-20 20:30: team Yusuf Malik": "YELLOW",
+  "match 2026-11-20 20:30: team Zak Ahmed": "RED",
+  "match 2026-11-27 20:30: Adam Hussain": "CONFIRMED",
+  "match 2026-11-27 20:30: Hamzah Ali": "CONFIRMED",
+  "match 2026-11-27 20:30: Idris Bello": "CONFIRMED",
+  "match 2026-11-27 20:30: Imti": "CONFIRMED",
+  "match 2026-11-27 20:30: Kareem Saleh": "CONFIRMED",
+  "match 2026-11-27 20:30: Nabil Haddad": "CONFIRMED",
+  "match 2026-11-27 20:30: Najib Rahman": "CONFIRMED",
+  "match 2026-11-27 20:30: Omar Farooq": "CONFIRMED",
+  "match 2026-11-27 20:30: Raihan Khan": "CONFIRMED",
+  "match 2026-11-27 20:30: Sami Iqbal": "CONFIRMED",
+  "match 2026-11-27 20:30: Yusuf Malik": "CONFIRMED",
+  "match 2026-11-27 20:30: Zak Ahmed": "CONFIRMED",
+  "match 2026-11-27 20:30: status": "UPCOMING",
+  "member (no name, …0216)": "PLAYER",
+  "member (no name, …0217)": "PLAYER",
+  "member Adam Hussain": "PLAYER",
+  "member Bilal": "PLAYER",
+  "member Faisal Mirza": "PLAYER",
+  "member Hadi Mansour": "PLAYER",
+  "member Hamzah Ali": "OWNER",
+  "member Idris Bello": "PLAYER",
+  "member Imti": "PLAYER (no phone: made by MatchTime from a name)",
+  "member Kareem Saleh": "PLAYER",
+  "member Nabil Haddad": "PLAYER",
+  "member Najib Rahman": "PLAYER",
+  "member Omar Farooq": "PLAYER",
+  "member Raihan Khan": "ADMIN",
+  "member Rami Nasser": "PLAYER",
+  "member Sami Iqbal": "PLAYER",
+  "member Tariq Aziz": "PLAYER",
+  "member Yusuf Malik": "PLAYER",
+  "member Zak Ahmed": "PLAYER",
+  "sent-notification <match 2026-11-20 20:30>:announce-match": "admin-group-message",
+  "sent-notification <match 2026-11-20 20:30>:badges": "group-message",
+  "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-16": "admin-group-message",
+  "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-17": "admin-group-message",
+  "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-18": "admin-group-message",
+  "sent-notification <match 2026-11-20 20:30>:evening-update:2026-11-19": "admin-group-message",
+  "sent-notification <match 2026-11-20 20:30>:rate-dm:@adam": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-dm:@hamzah": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-dm:@idris": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-dm:@kareem": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-dm:@nabil": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-dm:@najib": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-dm:@omar": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-dm:@raihan": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-dm:@sami": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-dm:@yusuf": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-dm:@zak": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-promo": "admin-group-message",
+  "sent-notification <match 2026-11-20 20:30>:rate-reminder:@adam:2026-11-22": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-reminder:@kareem:2026-11-22": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-reminder:@nabil:2026-11-22": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-reminder:@najib:2026-11-22": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-reminder:@omar:2026-11-22": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-reminder:@raihan:2026-11-22": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-reminder:@sami:2026-11-22": "dm",
+  "sent-notification <match 2026-11-20 20:30>:rate-reminder:@yusuf:2026-11-22": "dm",
+  "sent-notification <match 2026-11-27 20:30>:evening-update:2026-11-21": "admin-group-message",
+  "sent-notification <match 2026-11-27 20:30>:evening-update:2026-11-22": "admin-group-message",
+  "sent-notification <match 2026-11-27 20:30>:evening-update:2026-11-23": "admin-group-message",
+  "sent-notification <match 2026-11-27 20:30>:rolling-announce": "admin-group-message",
+  "sent-notification greply:<club>:wa-fnf-26": "group-reply",
+  "sent-notification greply:<club>:wa-fnf-48": "group-reply",
+  "sent-notification hqreply:<club>:wa-fnf-19": "admin-group-reply",
+  "sent-notification hqreply:<club>:wa-fnf-21": "admin-group-reply",
+  "sent-notification hqreply:<club>:wa-fnf-3": "admin-group-reply",
+  "sent-notification hqreply:<club>:wa-fnf-32": "admin-group-reply",
+  "sent-notification hqreply:<club>:wa-fnf-42": "admin-group-reply",
+  "sent-notification hqreply:<club>:wa-fnf-44": "admin-group-reply",
+  "sent-notification hqreply:<club>:wa-fnf-6": "admin-group-reply",
+  "sent-notification org-<club>:bot-intro": "bot-intro",
+  "sent-notification org-<club>:first-teams:admin-group": "admin-group-message",
+  "sent-notification org-<club>:provisional-review:admin-group:p1794823320000": "admin-group-message",
+  "sent-notification org-<club>:seed-nudge:admin-group": "admin-group-message",
+  "sent-notification pick-open:<match 2026-11-20 20:30>:<id>": "admin-notice",
+  "sent-notification pick-open:<match 2026-11-20 20:30>:first": "admin-notice",
+  "sent-notification team-proposal:auto:<match 2026-11-20 20:30>": "admin-notice",
+  "sent-notification txtlog:<club>:<text 08d8039d>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 11c3273d>:<match 2026-11-20 20:30>:evening-update:2026-11-16": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 16b343c2>:org-<club>:first-teams:admin-group": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-21": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-22": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 16b9d2aa>:<match 2026-11-27 20:30>:evening-update:2026-11-23": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 25a3ce0f>:org-<club>:seed-nudge:admin-group": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 333d62ff>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 4dfaa66c>:<match 2026-11-27 20:30>:rolling-announce": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 68ea5b3f>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 77d8e541>:<match 2026-11-20 20:30>:evening-update:2026-11-18": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 77d8e541>:<match 2026-11-20 20:30>:evening-update:2026-11-19": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 7e68959e>:org-<club>:provisional-review:admin-group:p1794823320000": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 8944551a>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 8b556dae>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 9a103df0>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 9d3c982d>:<match 2026-11-20 20:30>:badges": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text a1157dc2>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text b3a71db4>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text b8faab29>:botjob-<id>": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text c22dfc18>:<match 2026-11-20 20:30>:announce-match": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text d93b2bf5>:<match 2026-11-20 20:30>:rate-promo": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text e864b1fc>:<match 2026-11-20 20:30>:evening-update:2026-11-17": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text f04c5ba0>:botjob-<id>": "outbound-text-log",
+  "user <user Imti, no phone>": "name \"Imti\", no phone",
+  "user @adam": "name \"Adam Hussain\"",
+  "user @anon1": "name (none)",
+  "user @anon2": "name (none)",
+  "user @bilal": "name \"Bilal\"",
+  "user @faisal": "name \"Faisal Mirza\"",
+  "user @hadi": "name \"Hadi Mansour\"",
+  "user @hamzah": "name \"Hamzah Ali\"",
+  "user @idris": "name \"Idris Bello\"",
+  "user @kareem": "name \"Kareem Saleh\"",
+  "user @nabil": "name \"Nabil Haddad\"",
+  "user @najib": "name \"Najib Rahman\"",
+  "user @omar": "name \"Omar Farooq\"",
+  "user @raihan": "name \"Raihan Khan\"",
+  "user @rami": "name \"Rami Nasser\"",
+  "user @sami": "name \"Sami Iqbal\"",
+  "user @tariq": "name \"Tariq Aziz\"",
+  "user @yusuf": "name \"Yusuf Malik\"",
+  "user @zak": "name \"Zak Ahmed\""
+ }
+}

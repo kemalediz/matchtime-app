@@ -188,6 +188,14 @@
      "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:* 6 places open, £8. Say *IN* to take one.",
      "instruction": "group-message",
      "key": "<match 2026-11-16 20:30>:month-list:<squad>:0"
+    },
+    {
+     "at": "2026-11-10 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:* 6 places open, £8. Say *IN* to take one.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-16 20:30>:evening-update:2026-11-10"
     }
    ],
    "handled": [
@@ -244,10 +252,13 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-10T16: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-10T15: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-10T16: (new) monthly-sweep",
+    "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-10: (new) group-message",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:1: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-10T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-10T17: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-10T16: monthly-sweep → (gone)",
-    "sent-notification org-<club>:monthly-played-sweep:2026-11-10T17: (new) monthly-sweep"
+    "sent-notification org-<club>:monthly-played-sweep:2026-11-10T17: (new) monthly-sweep",
+    "sent-notification txtlog:<club>:<text 1e87942f>:<match 2026-11-16 20:30>:evening-update:2026-11-10: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -268,7 +279,7 @@
      "kind": "out",
      "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:*\n2. Nabz\n5 places open, £8. Say *IN* to take one.",
      "instruction": "group-message",
-     "key": "<match 2026-11-16 20:30>:month-list:<squad>:1"
+     "key": "<match 2026-11-16 20:30>:month-list:<squad>:2"
     }
    ],
    "handled": [
@@ -281,9 +292,9 @@
     "sent-notification org-<club>:monthly-played-sweep:2026-11-10T18: (new) monthly-sweep",
     "<match 2026-11-16 20:30>: attendance @nabz: (new) CONFIRMED #2",
     "match 2026-11-16 20:30: Nabz: (new) CONFIRMED",
-    "sent-notification monthly-read:<club>:wa-vets-10: (new) monthly-read",
-    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:1: (new) group-message",
-    "sent-notification txtlog:<club>:<text 3ca1bb89>:<match 2026-11-16 20:30>:month-list:<squad>:1: (new) outbound-text-log",
+    "sent-notification monthly-read:<club>:wa-vets-11: (new) monthly-read",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:2: (new) group-message",
+    "sent-notification txtlog:<club>:<text 3ca1bb89>:<match 2026-11-16 20:30>:month-list:<squad>:2: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-10T18: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-10T19: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-10T18: monthly-sweep → (gone)",
@@ -372,7 +383,7 @@
      "kind": "out",
      "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:*\n4. Nabz\n4 places open, £8. Say *IN* to take one.",
      "instruction": "group-message",
-     "key": "<match 2026-11-16 20:30>:month-list:<squad>:2"
+     "key": "<match 2026-11-16 20:30>:month-list:<squad>:3"
     }
    ],
    "handled": [
@@ -386,9 +397,9 @@
     "<match 2026-11-16 20:30>: attendance @tom: (new) CONFIRMED #4",
     "<month 2026-11>: member @tom: (new) regular slot 2, 3 covered (admin)",
     "match 2026-11-16 20:30: Tom Hale: (new) CONFIRMED",
-    "sent-notification monthly-read:<club>:wa-vets-12: (new) monthly-read",
-    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:2: (new) group-message",
-    "sent-notification txtlog:<club>:<text 616f72a9>:<match 2026-11-16 20:30>:month-list:<squad>:2: (new) outbound-text-log"
+    "sent-notification monthly-read:<club>:wa-vets-13: (new) monthly-read",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:3: (new) group-message",
+    "sent-notification txtlog:<club>:<text 616f72a9>:<match 2026-11-16 20:30>:month-list:<squad>:3: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -419,7 +430,23 @@
      "kind": "out",
      "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n3 places open, £8. Say *IN* to take one.",
      "instruction": "group-message",
-     "key": "<match 2026-11-16 20:30>:month-list:<squad>:3"
+     "key": "<match 2026-11-16 20:30>:month-list:<squad>:4"
+    },
+    {
+     "at": "2026-11-11 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n3 places open, £8. Say *IN* to take one.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-16 20:30>:evening-update:2026-11-11"
+    },
+    {
+     "at": "2026-11-12 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n3 places open, £8. Say *IN* to take one.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-16 20:30>:evening-update:2026-11-12"
     }
    ],
    "handled": [
@@ -428,14 +455,14 @@
    "db": [
     "<match 2026-11-16 20:30>: attendance @mo: (new) CONFIRMED #6",
     "match 2026-11-16 20:30: Mo: (new) CONFIRMED",
-    "sent-notification monthly-read:<club>:wa-vets-14: (new) monthly-read",
     "sent-notification monthly-read:<club>:wa-vets-15: (new) monthly-read",
-    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:3: (new) group-message",
+    "sent-notification monthly-read:<club>:wa-vets-16: (new) monthly-read",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:4: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T10: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T11: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-11T10: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-11T11: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:month-list:<squad>:3: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:month-list:<squad>:4: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T11: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T12: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-11T11: monthly-sweep → (gone)",
@@ -456,10 +483,13 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T16: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-11T15: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-11T16: (new) monthly-sweep",
+    "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-11: (new) group-message",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:5: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T17: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-11T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-11T17: (new) monthly-sweep",
+    "sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:evening-update:2026-11-11: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T17: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-11T18: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-11T17: monthly-sweep → (gone)",
@@ -552,10 +582,13 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-12T16: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-12T15: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-12T16: (new) monthly-sweep",
+    "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-12: (new) group-message",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:6: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-12T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-12T17: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-12T16: monthly-sweep → (gone)",
-    "sent-notification org-<club>:monthly-played-sweep:2026-11-12T17: (new) monthly-sweep"
+    "sent-notification org-<club>:monthly-played-sweep:2026-11-12T17: (new) monthly-sweep",
+    "sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:evening-update:2026-11-12: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -627,7 +660,7 @@
      "kind": "out",
      "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Can't play:*\n1. Steve\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n4 places open, £8. Say *IN* to take one.",
      "instruction": "group-message",
-     "key": "<match 2026-11-16 20:30>:month-list:<squad>:4"
+     "key": "<match 2026-11-16 20:30>:month-list:<squad>:7"
     }
    ],
    "handled": [
@@ -636,10 +669,10 @@
    "db": [
     "<match 2026-11-16 20:30>: attendance @steve: CONFIRMED #8 → DROPPED #8",
     "match 2026-11-16 20:30: Steve: CONFIRMED → DROPPED",
-    "sent-notification monthly-read:<club>:wa-vets-17: (new) monthly-read",
-    "sent-notification monthly-read:<club>:wa-vets-18: (new) monthly-read",
-    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:4: (new) group-message",
-    "sent-notification txtlog:<club>:<text e157607b>:<match 2026-11-16 20:30>:month-list:<squad>:4: (new) outbound-text-log"
+    "sent-notification monthly-read:<club>:wa-vets-20: (new) monthly-read",
+    "sent-notification monthly-read:<club>:wa-vets-21: (new) monthly-read",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:7: (new) group-message",
+    "sent-notification txtlog:<club>:<text e157607b>:<match 2026-11-16 20:30>:month-list:<squad>:7: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -678,7 +711,7 @@
      "kind": "out",
      "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Can't play:*\n1. Steve\n2. Jon\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n5 places open, £8. Say *IN* to take one.",
      "instruction": "group-message",
-     "key": "<match 2026-11-16 20:30>:month-list:<squad>:5"
+     "key": "<match 2026-11-16 20:30>:month-list:<squad>:8"
     }
    ],
    "handled": [
@@ -687,14 +720,14 @@
    "db": [
     "<match 2026-11-16 20:30>: attendance @jon: CONFIRMED #10 → DROPPED #10",
     "match 2026-11-16 20:30: Jon: CONFIRMED → DROPPED",
-    "sent-notification monthly-read:<club>:wa-vets-19: (new) monthly-read",
-    "sent-notification monthly-read:<club>:wa-vets-21: (new) monthly-read",
-    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:5: (new) group-message",
+    "sent-notification monthly-read:<club>:wa-vets-22: (new) monthly-read",
+    "sent-notification monthly-read:<club>:wa-vets-24: (new) monthly-read",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:8: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-12T18: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-12T19: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-12T18: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-12T19: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:<text 17525076>:<match 2026-11-16 20:30>:month-list:<squad>:5: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text 17525076>:<match 2026-11-16 20:30>:month-list:<squad>:8: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-12T19: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-12T20: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-12T19: monthly-sweep → (gone)",
@@ -779,7 +812,7 @@
      "kind": "out",
      "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Can't play:*\n1. Steve\n2. Jon\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n8. Luca\n4 places open, £8. Say *IN* to take one.",
      "instruction": "group-message",
-     "key": "<match 2026-11-16 20:30>:month-list:<squad>:6"
+     "key": "<match 2026-11-16 20:30>:month-list:<squad>:9"
     }
    ],
    "handled": [
@@ -792,9 +825,9 @@
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T12: (new) monthly-sweep",
     "<match 2026-11-16 20:30>: attendance @luca: (new) CONFIRMED #8",
     "match 2026-11-16 20:30: Luca: (new) CONFIRMED",
-    "sent-notification monthly-read:<club>:wa-vets-23: (new) monthly-read",
-    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:6: (new) group-message",
-    "sent-notification txtlog:<club>:<text f735c9f3>:<match 2026-11-16 20:30>:month-list:<squad>:6: (new) outbound-text-log"
+    "sent-notification monthly-read:<club>:wa-vets-26: (new) monthly-read",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:9: (new) group-message",
+    "sent-notification txtlog:<club>:<text f735c9f3>:<match 2026-11-16 20:30>:month-list:<squad>:9: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -815,7 +848,15 @@
      "kind": "out",
      "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Can't play:*\n1. Jon\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n9. Luca\n3 places open, £8. Say *IN* to take one.",
      "instruction": "group-message",
-     "key": "<match 2026-11-16 20:30>:month-list:<squad>:7"
+     "key": "<match 2026-11-16 20:30>:month-list:<squad>:10"
+    },
+    {
+     "at": "2026-11-13 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Can't play:*\n1. Jon\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n9. Luca\n3 places open, £8. Say *IN* to take one.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-16 20:30>:evening-update:2026-11-13"
     }
    ],
    "handled": [
@@ -824,13 +865,13 @@
    "db": [
     "<match 2026-11-16 20:30>: attendance @steve: DROPPED #8 → CONFIRMED #9",
     "match 2026-11-16 20:30: Steve: DROPPED → CONFIRMED",
-    "sent-notification monthly-read:<club>:wa-vets-25: (new) monthly-read",
-    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:7: (new) group-message",
+    "sent-notification monthly-read:<club>:wa-vets-28: (new) monthly-read",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:10: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T12: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T13: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T12: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T13: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:month-list:<squad>:7: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:month-list:<squad>:10: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T13: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T14: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T13: monthly-sweep → (gone)",
@@ -843,10 +884,13 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T16: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T15: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T16: (new) monthly-sweep",
+    "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-13: (new) group-message",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:11: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T17: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T17: (new) monthly-sweep",
+    "sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:evening-update:2026-11-13: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T17: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-13T18: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-13T17: monthly-sweep → (gone)",
@@ -935,7 +979,15 @@
      "kind": "out",
      "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Can't play:*\n1. Jon\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n9. Luca\n10. Gus\n2 places open, £8. Say *IN* to take one.",
      "instruction": "group-message",
-     "key": "<match 2026-11-16 20:30>:month-list:<squad>:8"
+     "key": "<match 2026-11-16 20:30>:month-list:<squad>:12"
+    },
+    {
+     "at": "2026-11-14 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Can't play:*\n1. Jon\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n9. Luca\n10. Gus\n2 places open, £8. Say *IN* to take one.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-16 20:30>:evening-update:2026-11-14"
     }
    ],
    "handled": [
@@ -948,9 +1000,9 @@
     "sent-notification org-<club>:monthly-played-sweep:2026-11-14T11: (new) monthly-sweep",
     "<match 2026-11-16 20:30>: attendance @gus: (new) CONFIRMED #10",
     "match 2026-11-16 20:30: Gus Moore: (new) CONFIRMED",
-    "sent-notification monthly-read:<club>:wa-vets-27: (new) monthly-read",
-    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:8: (new) group-message",
-    "sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:month-list:<squad>:8: (new) outbound-text-log",
+    "sent-notification monthly-read:<club>:wa-vets-31: (new) monthly-read",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:12: (new) group-message",
+    "sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:month-list:<squad>:12: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-14T11: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-14T12: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-14T11: monthly-sweep → (gone)",
@@ -971,10 +1023,13 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-14T16: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-14T15: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-14T16: (new) monthly-sweep",
+    "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-14: (new) group-message",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:13: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-14T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-14T17: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-14T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-14T17: (new) monthly-sweep",
+    "sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:evening-update:2026-11-14: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-14T17: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-14T18: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-14T17: monthly-sweep → (gone)",
@@ -1099,7 +1154,7 @@
      "kind": "out",
      "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Can't play:*\n1. Jon\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n9. Luca\n10. Gus\n13. Rob\n14. (unnamed)\nThe squad is full.",
      "instruction": "group-message",
-     "key": "<match 2026-11-16 20:30>:month-list:<squad>:9"
+     "key": "<match 2026-11-16 20:30>:month-list:<squad>:14"
     }
    ],
    "handled": [
@@ -1110,10 +1165,10 @@
     "<match 2026-11-16 20:30>: attendance @rob: (new) CONFIRMED #13",
     "match 2026-11-16 20:30: ?: (new) CONFIRMED",
     "match 2026-11-16 20:30: Rob Finch: (new) CONFIRMED",
-    "sent-notification monthly-read:<club>:wa-vets-29: (new) monthly-read",
-    "sent-notification monthly-read:<club>:wa-vets-30: (new) monthly-read",
-    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:9: (new) group-message",
-    "sent-notification txtlog:<club>:<text 8e92796b>:<match 2026-11-16 20:30>:month-list:<squad>:9: (new) outbound-text-log"
+    "sent-notification monthly-read:<club>:wa-vets-34: (new) monthly-read",
+    "sent-notification monthly-read:<club>:wa-vets-35: (new) monthly-read",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:14: (new) group-message",
+    "sent-notification txtlog:<club>:<text 8e92796b>:<match 2026-11-16 20:30>:month-list:<squad>:14: (new) outbound-text-log"
    ],
    "errors": []
   },
@@ -1157,17 +1212,17 @@
      "at": "2026-11-15 10:30",
      "to": "group main",
      "kind": "out",
-     "text": "⚽ Mon 20:30 at Sandbox Park School field.",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Bench:*\n1. Jon\n2. (unnamed)\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n9. Luca\n10. Gus\n13. Rob\n14. (unnamed)\nThe squad is full.",
      "via": "analyze reply",
      "replyTo": "@shane: @Match Time are we 8 a side then?"
     },
     {
-     "at": "2026-11-15 11:00",
+     "at": "2026-11-15 17:00",
      "to": "group main",
      "kind": "out",
-     "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Bench:*\n1. Jon\n2. (unnamed)\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n9. Luca\n10. Gus\n13. Rob\n14. (unnamed)\nThe squad is full.",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Bench:*\n1. Jon\n2. (unnamed)\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n9. Luca\n10. Gus\n13. Rob\n14. (unnamed)\nThe squad is full.\n\n🪑 *Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.",
      "instruction": "group-message",
-     "key": "<match 2026-11-16 20:30>:month-list:<squad>:10"
+     "key": "<match 2026-11-16 20:30>:evening-update:2026-11-15"
     },
     {
      "at": "2026-11-16 09:00",
@@ -1175,7 +1230,7 @@
      "kind": "out",
      "text": "📋 *Monday Night Vets Sandbox, Mon 16 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Bench:*\n1. Jon\n2. (unnamed)\n\n*Pay as you go:*\n4. Nabz\n6. Mo\n9. Luca\n10. Gus\n13. Rob\n14. (unnamed)\nThe squad is full.",
      "instruction": "group-message",
-     "key": "<match 2026-11-16 20:30>:month-list:<squad>:11"
+     "key": "<match 2026-11-16 20:30>:month-list:<squad>:17"
     }
    ],
    "handled": [
@@ -1186,18 +1241,17 @@
     "<match 2026-11-16 20:30>: attendance @jon: DROPPED #10 → BENCH #15",
     "match 2026-11-16 20:30: ?: CONFIRMED → BENCH",
     "match 2026-11-16 20:30: Jon: DROPPED → BENCH",
-    "sent-notification monthly-read:<club>:wa-vets-31: (new) monthly-read",
-    "sent-notification monthly-read:<club>:wa-vets-33: (new) monthly-read",
+    "sent-notification monthly-read:<club>:wa-vets-36: (new) monthly-read",
+    "sent-notification monthly-read:<club>:wa-vets-38: (new) monthly-read",
     "sent-notification <match 2026-11-16 20:30>:format-up:16:e0: (new) group-message",
     "sent-notification txtlog:<club>:<text 696d1d31>:<match 2026-11-16 20:30>:format-up:16:e0: (new) outbound-text-log",
-    "sent-notification greply:<club>:wa-vets-34: (new) group-reply",
-    "sent-notification monthly-read:<club>:wa-vets-34: (new) monthly-read",
-    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:10: (new) group-message",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:15: (new) group-message",
+    "sent-notification greply:<club>:wa-vets-39: (new) group-reply",
+    "sent-notification monthly-read:<club>:wa-vets-39: (new) monthly-read",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T10: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T11: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-15T10: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-15T11: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:10: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T11: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T12: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-15T11: monthly-sweep → (gone)",
@@ -1218,10 +1272,13 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T16: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-15T15: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-15T16: (new) monthly-sweep",
+    "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-15: (new) group-message",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:16: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T17: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-15T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-15T17: (new) monthly-sweep",
+    "sent-notification txtlog:<club>:<text 620df1b6>:<match 2026-11-16 20:30>:evening-update:2026-11-15: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T17: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-15T18: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-15T17: monthly-sweep → (gone)",
@@ -1284,12 +1341,12 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-16T08: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-16T07: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-16T08: (new) monthly-sweep",
-    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:11: (new) group-message",
+    "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:17: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-16T08: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-16T09: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-16T08: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-16T09: (new) monthly-sweep",
-    "sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:11: (new) outbound-text-log",
+    "sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:17: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-16T09: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-16T10: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-16T09: monthly-sweep → (gone)",
@@ -1539,8 +1596,8 @@
     "sent-notification org-<club>:monthly-played-sweep:2026-11-16T21: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-16T22: (new) monthly-sweep",
     "match 2026-11-16 20:30: score: (new) 4-2",
-    "sent-notification greply:<club>:wa-vets-39: (new) group-reply",
-    "sent-notification monthly-read:<club>:wa-vets-39: (new) monthly-read",
+    "sent-notification greply:<club>:wa-vets-44: (new) group-reply",
+    "sent-notification monthly-read:<club>:wa-vets-44: (new) monthly-read",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-16T22: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-16T23: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-16T22: monthly-sweep → (gone)",
@@ -1664,6 +1721,22 @@
      "text": "📍 Confirm *Monday Night Vets Sandbox*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: <app>/r/<tok>\nMatchTime reminds you once a week until a venue is set.",
      "instruction": "dm",
      "key": "botjob-<id>"
+    },
+    {
+     "at": "2026-11-17 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 23 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:* 5 places open, £8. Say *IN* to take one.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-23 20:30>:evening-update:2026-11-17"
+    },
+    {
+     "at": "2026-11-18 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 23 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:* 5 places open, £8. Say *IN* to take one.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-23 20:30>:evening-update:2026-11-18"
     },
     {
      "at": "2026-11-18 18:00",
@@ -1806,10 +1879,13 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-17T16: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-17T15: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-17T16: (new) monthly-sweep",
+    "sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-17: (new) group-message",
+    "sent-notification <match 2026-11-23 20:30>:month-list:<squad>:1: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-17T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-17T17: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-17T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-17T17: (new) monthly-sweep",
+    "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-17: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-17T17: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-17T18: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-17T17: monthly-sweep → (gone)",
@@ -1902,10 +1978,13 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-18T16: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-18T15: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-18T16: (new) monthly-sweep",
+    "sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-18: (new) group-message",
+    "sent-notification <match 2026-11-23 20:30>:month-list:<squad>:2: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-18T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-18T17: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-18T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-18T17: (new) monthly-sweep",
+    "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-18: (new) outbound-text-log",
     "sent-notification <match 2026-11-16 20:30>:badges: (new) group-message",
     "sent-notification <match 2026-11-16 20:30>:rate-reminder:@andrew:2026-11-18: (new) dm",
     "sent-notification <match 2026-11-16 20:30>:rate-reminder:@cj:2026-11-18: (new) dm",
@@ -1935,6 +2014,22 @@
    "seq": 30,
    "step": "2026-11-18 20:00 rate @cj MoM /Kerem/",
    "out": [
+    {
+     "at": "2026-11-19 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 23 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:* 5 places open, £8. Say *IN* to take one.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-23 20:30>:evening-update:2026-11-19"
+    },
+    {
+     "at": "2026-11-20 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 23 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:* 5 places open, £8. Say *IN* to take one.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-23 20:30>:evening-update:2026-11-20"
+    },
     {
      "at": "2026-11-20 18:00",
      "to": "dm @nabz",
@@ -2022,6 +2117,14 @@
      "text": "Last reminder, mate 🔔 Ratings for *Monday Night Vets Sandbox* close soon.\n\nIf you'd like to rate your teammates and pick Man of the Match, here's your link. I won't remind you again:\n<app>/r/<tok>",
      "instruction": "dm",
      "key": "<match 2026-11-16 20:30>:rate-reminder:@andrew:2026-11-20"
+    },
+    {
+     "at": "2026-11-21 17:00",
+     "to": "group main",
+     "kind": "out",
+     "text": "📋 *Monday Night Vets Sandbox, Mon 23 Nov at 20:30*\n\n*November squad:*\n1. Davide\n2. Tom\n3. Steff\n5. Dan\n7. Kerem\n8. Steve\n10. Jon\n11. Shane\n12. CJ\n\nYou're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.\n\n*Pay as you go:* 5 places open, £8. Say *IN* to take one.",
+     "instruction": "group-message",
+     "key": "<match 2026-11-23 20:30>:evening-update:2026-11-21"
     }
    ],
    "handled": [
@@ -2115,10 +2218,13 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-19T16: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-19T15: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-19T16: (new) monthly-sweep",
+    "sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-19: (new) group-message",
+    "sent-notification <match 2026-11-23 20:30>:month-list:<squad>:3: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-19T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-19T17: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-19T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-19T17: (new) monthly-sweep",
+    "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-19: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-19T17: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-19T18: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-19T17: monthly-sweep → (gone)",
@@ -2211,10 +2317,13 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-20T16: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-20T15: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-20T16: (new) monthly-sweep",
+    "sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-20: (new) group-message",
+    "sent-notification <match 2026-11-23 20:30>:month-list:<squad>:4: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-20T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-20T17: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-20T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-20T17: (new) monthly-sweep",
+    "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-20: (new) outbound-text-log",
     "sent-notification <match 2026-11-16 20:30>:rate-reminder:@andrew:2026-11-20: (new) dm",
     "sent-notification <match 2026-11-16 20:30>:rate-reminder:@dan:2026-11-20: (new) dm",
     "sent-notification <match 2026-11-16 20:30>:rate-reminder:@gus:2026-11-20: (new) dm",
@@ -2318,10 +2427,13 @@
     "sent-notification org-<club>:monthly-close-sweep:2026-11-21T16: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-21T15: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-21T16: (new) monthly-sweep",
+    "sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-21: (new) group-message",
+    "sent-notification <match 2026-11-23 20:30>:month-list:<squad>:5: (new) group-message",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-21T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-21T17: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-21T16: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-21T17: (new) monthly-sweep",
+    "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-21: (new) outbound-text-log",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-21T17: monthly-sweep → (gone)",
     "sent-notification org-<club>:monthly-close-sweep:2026-11-21T18: (new) monthly-sweep",
     "sent-notification org-<club>:monthly-played-sweep:2026-11-21T17: monthly-sweep → (gone)",
@@ -2505,11 +2617,23 @@
   "member Tom Hale": "PLAYER",
   "sent-notification <match 2026-11-16 20:30>:announce-match": "group-message",
   "sent-notification <match 2026-11-16 20:30>:badges": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-10": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-11": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-12": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-13": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-14": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:evening-update:2026-11-15": "group-message",
   "sent-notification <match 2026-11-16 20:30>:format-up:16:e0": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:0": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:1": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:10": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:11": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:12": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:13": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:14": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:15": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:16": "group-message",
+  "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:17": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:2": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:3": "group-message",
   "sent-notification <match 2026-11-16 20:30>:month-list:<squad>:4": "group-message",
@@ -2556,34 +2680,44 @@
   "sent-notification <match 2026-11-16 20:30>:rate-reminder:@steve:2026-11-20": "dm",
   "sent-notification <match 2026-11-16 20:30>:rate-reminder:@tom:2026-11-18": "dm",
   "sent-notification <match 2026-11-16 20:30>:rate-reminder:@tom:2026-11-20": "dm",
+  "sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-17": "group-message",
+  "sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-18": "group-message",
+  "sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-19": "group-message",
+  "sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-20": "group-message",
+  "sent-notification <match 2026-11-23 20:30>:evening-update:2026-11-21": "group-message",
   "sent-notification <match 2026-11-23 20:30>:month-list:<squad>:0": "group-message",
+  "sent-notification <match 2026-11-23 20:30>:month-list:<squad>:1": "group-message",
+  "sent-notification <match 2026-11-23 20:30>:month-list:<squad>:2": "group-message",
+  "sent-notification <match 2026-11-23 20:30>:month-list:<squad>:3": "group-message",
+  "sent-notification <match 2026-11-23 20:30>:month-list:<squad>:4": "group-message",
+  "sent-notification <match 2026-11-23 20:30>:month-list:<squad>:5": "group-message",
   "sent-notification <match 2026-11-23 20:30>:payg-pool-dm:@andrew": "dm",
   "sent-notification <match 2026-11-23 20:30>:payg-pool-dm:@gus": "dm",
   "sent-notification <match 2026-11-23 20:30>:payg-pool-dm:@luca": "dm",
   "sent-notification <match 2026-11-23 20:30>:payg-pool-dm:@mo": "dm",
   "sent-notification <match 2026-11-23 20:30>:payg-pool-dm:@nabz": "dm",
   "sent-notification <match 2026-11-23 20:30>:payg-pool-dm:@rob": "dm",
-  "sent-notification greply:<club>:wa-vets-34": "group-reply",
   "sent-notification greply:<club>:wa-vets-39": "group-reply",
-  "sent-notification monthly-read:<club>:wa-vets-10": "monthly-read",
-  "sent-notification monthly-read:<club>:wa-vets-12": "monthly-read",
-  "sent-notification monthly-read:<club>:wa-vets-14": "monthly-read",
+  "sent-notification greply:<club>:wa-vets-44": "group-reply",
+  "sent-notification monthly-read:<club>:wa-vets-11": "monthly-read",
+  "sent-notification monthly-read:<club>:wa-vets-13": "monthly-read",
   "sent-notification monthly-read:<club>:wa-vets-15": "monthly-read",
-  "sent-notification monthly-read:<club>:wa-vets-17": "monthly-read",
-  "sent-notification monthly-read:<club>:wa-vets-18": "monthly-read",
-  "sent-notification monthly-read:<club>:wa-vets-19": "monthly-read",
+  "sent-notification monthly-read:<club>:wa-vets-16": "monthly-read",
   "sent-notification monthly-read:<club>:wa-vets-2": "monthly-read",
+  "sent-notification monthly-read:<club>:wa-vets-20": "monthly-read",
   "sent-notification monthly-read:<club>:wa-vets-21": "monthly-read",
-  "sent-notification monthly-read:<club>:wa-vets-23": "monthly-read",
-  "sent-notification monthly-read:<club>:wa-vets-25": "monthly-read",
-  "sent-notification monthly-read:<club>:wa-vets-27": "monthly-read",
-  "sent-notification monthly-read:<club>:wa-vets-29": "monthly-read",
-  "sent-notification monthly-read:<club>:wa-vets-30": "monthly-read",
+  "sent-notification monthly-read:<club>:wa-vets-22": "monthly-read",
+  "sent-notification monthly-read:<club>:wa-vets-24": "monthly-read",
+  "sent-notification monthly-read:<club>:wa-vets-26": "monthly-read",
+  "sent-notification monthly-read:<club>:wa-vets-28": "monthly-read",
   "sent-notification monthly-read:<club>:wa-vets-31": "monthly-read",
-  "sent-notification monthly-read:<club>:wa-vets-33": "monthly-read",
   "sent-notification monthly-read:<club>:wa-vets-34": "monthly-read",
+  "sent-notification monthly-read:<club>:wa-vets-35": "monthly-read",
+  "sent-notification monthly-read:<club>:wa-vets-36": "monthly-read",
+  "sent-notification monthly-read:<club>:wa-vets-38": "monthly-read",
   "sent-notification monthly-read:<club>:wa-vets-39": "monthly-read",
   "sent-notification monthly-read:<club>:wa-vets-4": "monthly-read",
+  "sent-notification monthly-read:<club>:wa-vets-44": "monthly-read",
   "sent-notification monthly-read:<club>:wa-vets-5": "monthly-read",
   "sent-notification org-<club>:bot-intro": "bot-intro",
   "sent-notification org-<club>:month-seed-dm-reply:dm-vets-7": "month-seed-dm-reply",
@@ -2591,22 +2725,32 @@
   "sent-notification org-<club>:monthly-close-sweep:2026-11-22T10": "monthly-sweep",
   "sent-notification org-<club>:monthly-played-sweep:2026-11-22T10": "monthly-sweep",
   "sent-notification txtlog:<club>:<text 11d81f94>:<match 2026-11-16 20:30>:badges": "outbound-text-log",
-  "sent-notification txtlog:<club>:<text 17525076>:<match 2026-11-16 20:30>:month-list:<squad>:5": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 17525076>:<match 2026-11-16 20:30>:month-list:<squad>:8": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 1e87942f>:<match 2026-11-16 20:30>:evening-update:2026-11-10": "outbound-text-log",
   "sent-notification txtlog:<club>:<text 1e87942f>:<match 2026-11-16 20:30>:month-list:<squad>:0": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-17": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-18": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-19": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-20": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:evening-update:2026-11-21": "outbound-text-log",
   "sent-notification txtlog:<club>:<text 2f34ccf7>:<match 2026-11-23 20:30>:month-list:<squad>:0": "outbound-text-log",
-  "sent-notification txtlog:<club>:<text 3ca1bb89>:<match 2026-11-16 20:30>:month-list:<squad>:1": "outbound-text-log",
-  "sent-notification txtlog:<club>:<text 616f72a9>:<match 2026-11-16 20:30>:month-list:<squad>:2": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 3ca1bb89>:<match 2026-11-16 20:30>:month-list:<squad>:2": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 616f72a9>:<match 2026-11-16 20:30>:month-list:<squad>:3": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 620df1b6>:<match 2026-11-16 20:30>:evening-update:2026-11-15": "outbound-text-log",
   "sent-notification txtlog:<club>:<text 696d1d31>:<match 2026-11-16 20:30>:format-up:16:e0": "outbound-text-log",
-  "sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:month-list:<squad>:8": "outbound-text-log",
-  "sent-notification txtlog:<club>:<text 8e92796b>:<match 2026-11-16 20:30>:month-list:<squad>:9": "outbound-text-log",
-  "sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:month-list:<squad>:7": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:evening-update:2026-11-14": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 80b946df>:<match 2026-11-16 20:30>:month-list:<squad>:12": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text 8e92796b>:<match 2026-11-16 20:30>:month-list:<squad>:14": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:evening-update:2026-11-13": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text a8dab7ee>:<match 2026-11-16 20:30>:month-list:<squad>:10": "outbound-text-log",
   "sent-notification txtlog:<club>:<text b0b801a9>:<match 2026-11-16 20:30>:rate-promo": "outbound-text-log",
-  "sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:month-list:<squad>:3": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:evening-update:2026-11-11": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:evening-update:2026-11-12": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text b249b01b>:<match 2026-11-16 20:30>:month-list:<squad>:4": "outbound-text-log",
   "sent-notification txtlog:<club>:<text c3b41338>:<match 2026-11-16 20:30>:announce-match": "outbound-text-log",
-  "sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:10": "outbound-text-log",
-  "sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:11": "outbound-text-log",
-  "sent-notification txtlog:<club>:<text e157607b>:<match 2026-11-16 20:30>:month-list:<squad>:4": "outbound-text-log",
-  "sent-notification txtlog:<club>:<text f735c9f3>:<match 2026-11-16 20:30>:month-list:<squad>:6": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text d73d6882>:<match 2026-11-16 20:30>:month-list:<squad>:17": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text e157607b>:<match 2026-11-16 20:30>:month-list:<squad>:7": "outbound-text-log",
+  "sent-notification txtlog:<club>:<text f735c9f3>:<match 2026-11-16 20:30>:month-list:<squad>:9": "outbound-text-log",
   "user @andrew": "name (none)",
   "user @ben": "name (none)",
   "user @cj": "name \"CJ Barlow\"",

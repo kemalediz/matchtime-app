@@ -1,0 +1,24 @@
+{
+ "club": "sutton",
+ "mode": "record",
+ "ticks": 1302,
+ "steps": 35,
+ "sent": 177,
+ "errors": 0,
+ "seconds": 169,
+ "model": {
+  "club": "sutton",
+  "mode": "record",
+  "calls": 54,
+  "meter": {
+   "calls": 54,
+   "costUsd": 0.0076648199999999975,
+   "byModel": {
+    "claude-haiku-5-5": {
+     "calls": 54,
+     "costUsd": 0.0076648199999999975
+    }
+   }
+  }
+ }
+}

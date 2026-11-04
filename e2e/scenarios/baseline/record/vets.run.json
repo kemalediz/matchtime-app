@@ -3,20 +3,20 @@
  "mode": "record",
  "ticks": 2160,
  "steps": 32,
- "sent": 83,
+ "sent": 93,
  "errors": 0,
- "seconds": 243,
+ "seconds": 265,
  "model": {
   "club": "vets",
   "mode": "record",
-  "calls": 53,
+  "calls": 52,
   "meter": {
-   "calls": 53,
-   "costUsd": 0.013423499999999998,
+   "calls": 52,
+   "costUsd": 0.013423000000000004,
    "byModel": {
     "claude-haiku-5-5": {
-     "calls": 53,
-     "costUsd": 0.013423499999999998
+     "calls": 52,
+     "costUsd": 0.013423000000000004
     }
    }
   }

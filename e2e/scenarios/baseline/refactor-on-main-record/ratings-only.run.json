@@ -1,0 +1,24 @@
+{
+ "club": "ratings-only",
+ "mode": "record",
+ "ticks": 1597,
+ "steps": 11,
+ "sent": 32,
+ "errors": 0,
+ "seconds": 153,
+ "model": {
+  "club": "ratings-only",
+  "mode": "record",
+  "calls": 30,
+  "meter": {
+   "calls": 30,
+   "costUsd": 0.0018309800000000007,
+   "byModel": {
+    "claude-haiku-5-5": {
+     "calls": 30,
+     "costUsd": 0.0018309800000000007
+    }
+   }
+  }
+ }
+}
