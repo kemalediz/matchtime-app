@@ -17,9 +17,15 @@
  *     non-completed match dated before today is still in flight (the
  *     cron hasn't completed last cycle yet).
  *
+ * "Today" is the LONDON day (club summary, slice B4, decision K5): it
+ * starts at 00:00 London (`londonDayStart`), as the posting rule's day
+ * does. Before B4 it was UTC midnight, an hour off all summer.
+ *
  * Pure function so it's unit-testable and so every read/write path can
- * share one source of truth for "which match".
+ * share one source of truth for "which match". The candidates every
+ * caller should feed it, and the reads that do, are in `next-match.ts`.
  */
+import { londonDayStart } from "./london-time";
 
 export type RegistrationMatchStatus =
   | "UPCOMING"
@@ -37,18 +43,10 @@ export interface SelectableMatch {
   attendanceDeadline?: Date;
 }
 
-const ACTIVE_STATUSES = new Set([
-  "UPCOMING",
-  "TEAMS_GENERATED",
-  "TEAMS_PUBLISHED",
-]);
+/** The statuses of a match still to be played or completed: "live". */
+export const LIVE_MATCH_STATUSES = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
-/** UTC midnight of the day `now` falls on. */
-function utcDayStart(now: Date): Date {
-  const d = new Date(now.getTime());
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
-}
+const ACTIVE_STATUSES = new Set<string>(LIVE_MATCH_STATUSES);
 
 /**
  * Decide the active registration match from a set of candidate matches.
@@ -64,7 +62,7 @@ export function selectRegistrationMatch<T extends SelectableMatch>(
   matches: T[],
   now: Date = new Date(),
 ): T | null {
-  const todayStart = utcDayStart(now);
+  const todayStart = londonDayStart(now);
 
   // Block while ANY non-completed match dated before today is still in
   // flight — the weekly cron hasn't completed the previous cycle yet, so
@@ -94,7 +92,7 @@ export function eligibleRegistrationMatch<T extends SelectableMatch>(
   matchId: string,
   now: Date = new Date(),
 ): T | null {
-  const todayStart = utcDayStart(now);
+  const todayStart = londonDayStart(now);
   if (matches.some((m) => ACTIVE_STATUSES.has(m.status) && m.date < todayStart)) return null;
   const m = matches.find((x) => x.id === matchId);
   return m && ACTIVE_STATUSES.has(m.status) && m.date >= todayStart ? m : null;

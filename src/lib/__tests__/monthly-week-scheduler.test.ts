@@ -452,6 +452,17 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
     );
   });
 
+  it("K5 (club summary B4): held on the day of an earlier game of the fixture that was cancelled; posted the next morning", async () => {
+    const m = match();
+    // An extra game of the same fixture on Thu 8 Oct 20:00 London, cancelled.
+    const cancelled = match({ id: "m-thu-8-oct", status: "CANCELLED", date: new Date("2026-10-08T19:00:00.000Z"), attendances: [] });
+    setWorld(m, { monthly: true });
+    overrides.match = { findMany: async () => [cancelled, m] };
+    expect((await instructions(THU_10AM)).some((i) => i.key.startsWith(`${m.id}:month-list:`))).toBe(false);
+    // Fri 9 Oct 10:00 London: the cancelled game's day is over.
+    expect((await instructions(new Date("2026-10-09T09:00:00.000Z"))).some((i) => i.key.startsWith(`${m.id}:month-list:`))).toBe(true);
+  });
+
   it("not before the regulars are on the match", async () => {
     const m = match({ rollingSeededAt: null });
     setWorld(m, { monthly: true });

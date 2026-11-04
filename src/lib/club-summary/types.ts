@@ -65,9 +65,15 @@ export interface ClubSummary {
    * Oldest first.
    */
   matches: MatchFacts[];
-  /** THE registration match, where an IN lands: `selectRegistrationMatch`
-   *  over `matches` at `asOf`. Null when none, or blocked by a match still
-   *  in flight. */
+  /** THE CLUB'S NEXT MATCH: the registration match, where an IN lands and
+   *  what every answer about "the next match" describes
+   *  (`selectRegistrationMatch` over `matches` at `asOf`; `findNextMatch`,
+   *  next-match.ts, is the same rule for a door with no summary). The
+   *  soonest live match dated on the London day of `asOf` or later (slice
+   *  B4, decision K5: the London day, not UTC midnight). Null when there is
+   *  none, or while a live match dated before that London day is still in
+   *  flight. Not the posting rule (`MatchFacts.nextForPosting`) and not the
+   *  last match played (`lastPlayedMatchId`): three questions, three facts. */
   nextMatchId: string | null;
   /** The last match actually played: `loadSquadState`'s rule (the ten most
    *  recent TEAMS_GENERATED, TEAMS_PUBLISHED or COMPLETED kicked off by
@@ -319,12 +325,15 @@ export interface MatchFacts {
      *  confirmed fee is charged (`chargeableFee`). */
     forPlayers: FeeFact;
   };
-  /** `isNextUpcomingForPosting` (next-upcoming-match.ts). `withHold` passes
-   *  the clock, so a cancelled match earlier in the fixture holds this one
-   *  until its London day is over (the announcement and the 17:00 post);
-   *  `withoutHold` does not (the deadline posts and the month's list). Both
-   *  are today's values (D7, K5). */
-  nextForPosting: { withHold: boolean; withoutHold: boolean };
+  /** THE POSTING RULE: this is its fixture's next match to post about
+   *  (`isNextUpcomingForPosting`, next-upcoming-match.ts): no live match
+   *  earlier in the fixture, no co-timed live match with a lower id, and no
+   *  earlier game of the fixture cancelled whose London day is not over.
+   *  One value since slice B4 (decision K5): every post about the next match
+   *  holds on a cancelled game's day, the deadline posts and the month's list
+   *  included (A0 carried a `withoutHold` value for those two). A different
+   *  question from `nextMatchId`: that is where an IN lands. */
+  nextForPosting: boolean;
   /** `weeklyDeadlinesFor` (weekly-deadlines.ts): this match's instants, ISO,
    *  null where the club has not set one. */
   weeklyDeadlines: { dropOut: string | null; listPublish: string | null };

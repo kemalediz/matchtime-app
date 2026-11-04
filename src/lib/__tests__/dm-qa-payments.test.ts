@@ -69,7 +69,8 @@ vi.mock("@/lib/db", () => ({
     organisation: { findFirst: async () => ORG, findUnique: async () => ORG },
     $queryRaw: async () => [{ ok: 1 }],
     $executeRaw: async () => 1,
-    match: { findFirst: async () => null, findUnique: async () => null },
+    // No upcoming match (the next match's candidates, `next-match.ts`).
+    match: { findFirst: async () => null, findMany: async () => [], findUnique: async () => null },
     attendance: { findMany: attendanceFindMany },
     user: { findMany: async () => [], findUnique: async () => ({ name: "Erdal Özkan" }) },
     sentNotification: { findMany: async () => [] },

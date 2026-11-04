@@ -420,13 +420,13 @@ export function monthPhaseFor(p: {
 // ── Which match ────────────────────────────────────────────────────────
 
 /**
- * The registration match (`selectRegistrationMatch`) and, per match, the
- * posting rule (`isNextUpcomingForPosting`) with and without the
- * cancelled-day hold.
+ * The registration match (`selectRegistrationMatch`, the London day) and,
+ * per match, the posting rule (`isNextUpcomingForPosting`, always with the
+ * cancelled-day hold: slice B4, decision K5).
  */
 export function pickNextMatch(p: { orgId: string; matches: MatchRow[]; activities: ActivityRow[]; now: Date }): {
   nextMatchId: string | null;
-  nextForPosting: Map<string, { withHold: boolean; withoutHold: boolean }>;
+  nextForPosting: Map<string, boolean>;
 } {
   const asScheduler: SchedulerMatch[] = p.matches.map((m) => {
     const a = p.activities.find((x) => x.id === m.activityId);
@@ -439,9 +439,7 @@ export function pickNextMatch(p: { orgId: string; matches: MatchRow[]; activitie
       ...(a ? { activity: { orgId: p.orgId, venue: a.venue, dayOfWeek: a.dayOfWeek } } : {}),
     };
   });
-  const nextForPosting = new Map(
-    asScheduler.map((m) => [m.id, { withHold: isNextUpcomingForPosting(asScheduler, m, p.now), withoutHold: isNextUpcomingForPosting(asScheduler, m) }] as const),
-  );
+  const nextForPosting = new Map(asScheduler.map((m) => [m.id, isNextUpcomingForPosting(asScheduler, m, p.now)] as const));
   const next = selectRegistrationMatch(p.matches.map((m) => ({ id: m.id, date: m.date, status: m.status })), p.now);
   return { nextMatchId: next?.id ?? null, nextForPosting };
 }
@@ -520,7 +518,7 @@ export function buildClubSummary(rows: ClubRows, now: Date): ClubSummary {
             collection: org.paymentCollectionEnabled === true,
           }),
         },
-        nextForPosting: picked.nextForPosting.get(m.id) ?? { withHold: false, withoutHold: false },
+        nextForPosting: picked.nextForPosting.get(m.id) ?? false,
         weeklyDeadlines: { dropOut: iso(deadlines.dropOut), listPublish: iso(deadlines.listPublish) },
         attendanceDeadline: m.attendanceDeadline.toISOString(),
         month,

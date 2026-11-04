@@ -23,6 +23,7 @@ import { getOrgFeatures } from "./org-features";
 import { recruitDmLinkKey, RECRUIT_DM_LINK_KIND } from "./recruit-reaction";
 import { resolveLookbackMatches } from "./recruit-lookback";
 import { placesOpen } from "./squad-short";
+import { findNextMatch } from "./next-match";
 
 /**
  * The lookback window, its ceiling and the clamp now live in
@@ -273,25 +274,23 @@ export async function inviteRecentPlayers(
   // two below. Read first because the no-match refusal needs the
   // language before there is a match to speak about.
   const features = await getOrgFeatures(orgId);
-  // 1. The next upcoming match.
-  const startToday = new Date();
-  startToday.setUTCHours(0, 0, 0, 0);
-  const next = await db.match.findFirst({
-    where: {
-      activity: { orgId },
-      isHistorical: false,
-      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-      date: { gte: startToday },
-    },
-    orderBy: { date: "asc" },
-    select: {
-      id: true,
-      date: true,
-      maxPlayers: true,
-      activity: { select: { name: true } },
-      attendances: { select: { userId: true, status: true } },
-    },
-  });
+  // 1. The club's next match (`next-match.ts`, club summary B4): the one an
+  //    IN lands on. Before B4, the soonest live match from UTC midnight on,
+  //    so with last week's match still live it invited to next week's.
+  const next = await findNextMatch(orgId, new Date(), (where) =>
+    db.match.findMany({
+      where,
+      orderBy: { date: "asc" },
+      select: {
+        id: true,
+        date: true,
+        status: true,
+        maxPlayers: true,
+        activity: { select: { name: true } },
+        attendances: { select: { userId: true, status: true } },
+      },
+    }),
+  );
   if (!next) return { ok: false, reason: recruitNoMatchRefusal(features.language) };
 
   // Anyone with ANY attendance row has already responded (in / bench /

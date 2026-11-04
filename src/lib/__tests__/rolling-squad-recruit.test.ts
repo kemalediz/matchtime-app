@@ -15,7 +15,13 @@ vi.mock("@/lib/db", () => ({
   db: {
     match: {
       findFirst: (...a: unknown[]) => matchFindFirst(...a),
-      findMany: (...a: unknown[]) => matchFindMany(...a),
+      // The club's next match (`next-match.ts`, club summary B4) reads the live
+      // candidates: the one match `matchFindFirst` gives. Every other read is
+      // the completed ones.
+      findMany: async (...a: unknown[]) =>
+        (a[0] as { where?: { status?: { in?: unknown } } })?.where?.status?.in
+          ? [await matchFindFirst(...a)].filter(Boolean).map((m) => ({ status: "UPCOMING", ...m }))
+          : matchFindMany(...a),
     },
     membership: { findMany: (...a: unknown[]) => membershipFindMany(...a) },
     sentNotification: { findUnique: async () => null, create: async () => ({}) },
@@ -24,7 +30,10 @@ vi.mock("@/lib/db", () => ({
 }));
 vi.mock("@/lib/magic-link", () => ({ signMagicLinkToken: () => "tok", MAGIC_LINK_TTL: { actionNudge: 1 } }));
 vi.mock("@/lib/short-link", () => ({ buildShortMagicLinkUrl: async () => "https://s/x" }));
-vi.mock("@/lib/london-time", () => ({ formatLondon: () => "Fri 9 Oct, 20:30" }));
+vi.mock("@/lib/london-time", async (orig) => ({
+  ...(await orig<typeof import("@/lib/london-time")>()),
+  formatLondon: () => "Fri 9 Oct, 20:30",
+}));
 vi.mock("@/lib/org-features", () => ({
   getOrgFeatures: async () => ({ attendance: true, bench: true, rollingSquad: true, language: "en" }),
 }));
@@ -32,6 +41,9 @@ vi.mock("@/lib/org-features", () => ({
 import { inviteRecentPlayers } from "@/lib/recruit";
 
 beforeEach(() => {
+  // The morning of the next match: the next-match rule reads the clock.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-09T09:00:00Z"));
   vi.clearAllMocks();
   // Two carried players (they have rows), 16 places still open.
   matchFindFirst.mockResolvedValue({

@@ -287,4 +287,15 @@ describe("the seed-rating nudge in computeDuePosts", () => {
     setWorld({ setupStage: "setting-up" });
     expect(await nudges(THU_0905)).toEqual([]);
   });
+
+  it("B4: about the club's next match (the summary's `nextMatchId`): with last week's game still live, there is none, so no nudge", async () => {
+    // Fri 9 Oct, never completed: the selector blocks, nothing can be
+    // registered for Fri 16 Oct, and the nudge does not ask to seed for it.
+    const stuck = match({ id: "m-fri-9", date: new Date("2026-10-09T19:00:00.000Z"), attendances: [] });
+    setWorld({ matches: [stuck, match()] });
+    expect(await nudges(THU_0905)).toEqual([]);
+    // CONTROL: once it is completed, Friday's game is the next match again.
+    setWorld({ matches: [{ ...stuck, status: "COMPLETED" }, match()] });
+    expect(await nudges(THU_0905)).toHaveLength(1);
+  });
 });

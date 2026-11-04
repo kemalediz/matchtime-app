@@ -185,8 +185,10 @@ describe("nextGraphicMatch", () => {
       { id: "m-later", date: new Date("2026-10-23T20:00:00Z"), status: "UPCOMING" },
     ]);
     expect(await nextGraphicMatch("org-fnf", new Date("2026-10-14T12:00:00Z"))).toBe("m-next");
+    // The club's next match's candidates (`next-match.ts`, club summary B4).
     expect(dbMock.match.findMany.mock.calls[0][0].where).toEqual({
       activity: { orgId: "org-fnf" },
+      isHistorical: false,
       status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
     });
   });

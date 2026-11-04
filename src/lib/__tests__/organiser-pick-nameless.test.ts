@@ -229,3 +229,47 @@ describe("the players' group post after a pick (A2)", () => {
     expect(post?.text).toBe("✅ *(unnamed)* is in, replacing *(unnamed)*. Squad *12/18*.");
   });
 });
+
+/**
+ * K5 (club summary, slice B4, Kemal 2026-11-04): the organiser pick is a post
+ * about the next match, so it holds on the day of an earlier game of the
+ * fixture that was cancelled, as the announcement does. Before B4 the sweep
+ * passed no clock to the posting rule and never loaded a cancelled match.
+ */
+describe("K5: the pick holds on a cancelled game's day", () => {
+  const bencher = { id: "u-idris", name: "Idris Bello", phoneNumber: "+447700900011", email: null };
+  /** An earlier game of the same fixture today (Wed 18 Nov 20:30), cancelled. */
+  const cancelledToday = {
+    id: "m0",
+    date: new Date("2026-11-18T20:30:00.000Z"),
+    createdAt: new Date("2026-11-01T10:00:00.000Z"),
+    status: "CANCELLED",
+    activityId: "act",
+    isHistorical: false,
+    activity: { orgId: "club", venue: "Goals", dayOfWeek: 5 },
+  };
+
+  it("asks for the live matches and the cancelled ones whose day may not be over", async () => {
+    given([bencher]);
+    await sweepOrganiserPicks("club", NOW);
+    const where = (dbMock.match.findMany.mock.calls[0] as unknown as [{ where: { OR: unknown[] } }])[0].where;
+    expect(where.OR).toContainEqual({ status: "CANCELLED", date: { gte: new Date(NOW.getTime() - 24 * 60 * 60 * 1000) } });
+  });
+
+  it("no pick message for the next game on the cancelled game's day; the cancelled game is never swept", async () => {
+    given([bencher]);
+    const live = (await dbMock.match.findMany()) as unknown[];
+    dbMock.match.findMany.mockResolvedValue([cancelledToday, ...live]);
+    await sweepOrganiserPicks("club", NOW);
+    expect(sendAdminNotice).not.toHaveBeenCalled();
+    expect(dbMock.organiserPickRound.findMany.mock.calls.map((c) => (c as unknown as [{ where: { matchId: string } }])[0].where.matchId)).toEqual(["m1"]);
+  });
+
+  it("CONTROL: the next morning the pick message goes out", async () => {
+    given([bencher]);
+    const live = (await dbMock.match.findMany()) as unknown[];
+    dbMock.match.findMany.mockResolvedValue([cancelledToday, ...live]);
+    await sweepOrganiserPicks("club", new Date("2026-11-19T12:00:00.000Z"));
+    expect(sendAdminNotice).toHaveBeenCalledTimes(1);
+  });
+});

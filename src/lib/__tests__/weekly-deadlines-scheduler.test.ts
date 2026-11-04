@@ -277,6 +277,38 @@ describe("D3: the list at publish time", () => {
   });
 });
 
+/**
+ * K5 (club summary, slice B4, Kemal 2026-11-04): every post about the next
+ * match holds on a cancelled match's day, as the announcement already did.
+ * Before B4 the deadline posts passed no clock to the posting rule, so a
+ * cancelled game earlier in the fixture held nothing.
+ */
+describe("K5: the deadline posts hold on a cancelled game's day", () => {
+  /** An earlier game of the same fixture, cancelled, on Tue 6 Oct 20:30 London. */
+  const cancelledTue = () =>
+    match(HAMZAH_CLUB, { id: "m-cancelled-6-oct", status: "CANCELLED", date: new Date("2026-10-06T19:30:00.000Z"), attendances: [] });
+
+  it("no drop-out reminder for the next game while the cancelled game's London day is not over", async () => {
+    setWorld([cancelledTue(), match(HAMZAH_CLUB)]);
+    expect((await instructions(MON_1805)).some((i) => i.key.endsWith(":dropout-reminder"))).toBe(false);
+  });
+
+  it("no final list on the cancelled game's day; it goes out the next morning", async () => {
+    const m = match(HAMZAH_CLUB);
+    setWorld([cancelledTue(), m]);
+    expect((await instructions(TUE_2005)).some((i) => i.key === `${m.id}:list-published`)).toBe(false);
+    // Wed 7 Oct 10:00 London: the cancelled day is over.
+    expect((await instructions(new Date("2026-10-07T09:00:00.000Z"))).some((i) => i.key === `${m.id}:list-published`)).toBe(true);
+  });
+
+  it("CONTROL: a cancelled game whose day is over holds nothing", async () => {
+    const m = match(HAMZAH_CLUB);
+    const longAgo = match(HAMZAH_CLUB, { id: "m-cancelled-2-oct", status: "CANCELLED", date: new Date("2026-10-02T19:30:00.000Z"), attendances: [] });
+    setWorld([longAgo, m]);
+    expect((await instructions(MON_1805)).some((i) => i.key === `${m.id}:dropout-reminder`)).toBe(true);
+  });
+});
+
 describe("D4: the 17:00 post for a club with weekly deadlines", () => {
   it("is off on a day that is not match day", async () => {
     const m = match(HAMZAH_CLUB);

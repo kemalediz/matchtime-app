@@ -705,7 +705,7 @@ when one is set, and for a monthly club the SquadMonth rows and the held keys.
    `isPaymentCollectionLive`) is computed in `load.ts` because its module imports the
    database client; the fee is `matchFee`, `pendingConfirm` and `linksReleased` on the
    match and `perPlayer`, `splitTotal` on the game, with no combined fee (D9 is B5's);
-   `nextForPosting` is `{ withHold, withoutHold }` (D7, K5); `month.regulars` counts the
+   `nextForPosting` is `{ withHold, withoutHold }` (D7, K5; one boolean since B4, 3.16); `month.regulars` counts the
    month's rows not marked left, and does not check the WhatsApp group (that needs the
    membership read `RunningMonth.left` makes); `lastPlayedMatchId` is its own read, because
    `loadSquadState`'s rule has no date floor and includes historical matches.
@@ -1314,6 +1314,115 @@ Match in HQ, as the hello already did not).
   (`poolOffersOpenForClub`, `canAsk`); nothing to align switch-wise.
 - **Order of names (D13)**: C2.
 
+### 3.16 As built in slice B4 (one "next match", one "today")
+
+Built on `refactor/club-summary-b4` (PR against `refactor/club-summary`), after Kemal's decision
+K5 (section 4.5). Phase B: it changes behaviour on purpose, in edges, and in one edge it changes
+which match the DM answerer is told about, so that part is an LLM change.
+
+**K5 (Kemal, 2026-11-04, the main session's recommendation).** "Today" is always the London day.
+Every post that holds on a cancelled match's day (the announcement already did) does the same:
+the deadline posts and the month's list included. Where consumers genuinely ask different
+questions, each question is its own named fact, defined once; they are not forced into one.
+
+**Three questions, three facts.**
+
+| fact | the question | the rule, defined once | read by a door with no summary through |
+|---|---|---|---|
+| `ClubSummary.nextMatchId` | the club's next match: where an IN lands, and what every answer, write and page about "the next match" means | `selectRegistrationMatch` over every live match, never a historical one: the soonest dated on the London day of the clock or later, none while a live match dated before that day is still in flight | `next-match.ts`: `nextMatchWhere` (the candidates), `findNextMatch`, `findNextMatchPerClub`, `inFlightWhere` (the block as a query), `upcomingMatchesWhere` (the match list) |
+| `MatchFacts.nextForPosting` | is this the fixture's next match to post about | `isNextUpcomingForPosting`, the cancelled-day hold always on: the clock is a required argument now, so no post can skip the hold | `postingMatchWhere` (scheduler-windows.ts): the matches the rule reads, the live ones and the cancelled ones whose day may still hold |
+| `ClubSummary.lastPlayedMatchId` | the last match played | unchanged (A0) | unchanged |
+
+`nextForPosting` was `{ withHold, withoutHold }` (A0 kept both of today's values); it is one
+boolean now, and in the scheduler it is computed once per match (`computeForMatch`) and read by
+all five posts there.
+
+**"Today" (K5).** `londonDayStart` (london-time.ts) is 00:00 London on the day an instant falls
+on. The selector and `eligibleRegistrationMatch` used UTC midnight; the in-flight block in
+`registerAttendance` and on the match page used UTC midnight too; the daily caps' `londonMidnight`
+(club-connect-rules.ts) is now the same function. In winter nothing changes (London midnight is UTC
+midnight). In summer two things move, both pinned by tests at 00:30 BST: from London midnight, last
+night's match that is still live is yesterday's, so it blocks registering for the next one (before
+B4 it was "today's match" until 01:00); and a match kicking off between 00:00 and 01:00 London is
+that London day's match all day (before B4 it counted as the day before, so it blocked itself).
+
+**The posts (K5), each with a failing test first.**
+
+| post | before | after |
+|---|---|---|
+| the drop-out reminder, the published list (`bot-scheduler.ts`) | `isNextUpcomingForPosting(siblingMatches, m)`: no clock, no cancelled matches, never held | `nextForPosting`: held on a cancelled game's day; a reminder whose window closes inside the hold is not sent, the list goes out the next morning |
+| the month's list (`bot-scheduler.ts`, 2-monthly) | the same, never held | held, posted the next morning |
+| the admin deadline summary (`deadline-summary.ts`) | read live matches only, no clock | `postingMatchWhere` plus the clock; only the live matches are summed up |
+| the organiser pick (`organiser-pick.ts`) | read live matches only, no clock | `postingMatchWhere` plus the clock; only the live matches are swept |
+| the partner-club ask (`partner-ask.ts`) | held already, but read every match of the last two days, so a live match left over from before then held nothing | `postingMatchWhere` |
+| the announcement, the 17:00 post | held already | unchanged, now reading the one `nextForPosting` |
+
+**The next match (D7), each with a failing test first.**
+
+| door | before | after |
+|---|---|---|
+| the DM answer (`dm-qa.ts`) | the earliest live match, no date floor: a match left live from last week was "UPCOMING MATCH" | the club's next match; in that edge "UPCOMING MATCH: none scheduled right now.", as an IN would be refused (model input, below) |
+| the recruit blast (`recruit.ts`, the HQ and DM "invite players") | the soonest live match from UTC midnight: with last week's game live it invited everyone to next week's, where their IN was then refused | the club's next match; in that edge the no-match refusal |
+| which of an admin's clubs a DM acts on (`dm-reply` `orgWithUpcomingMatch`) | the soonest live match from UTC midnight across his clubs | each club's next match, in one read, the soonest of those; a club whose last game is still live has none, so "invite players" falls through as `dm-intent.ts` already does for "no upcoming match" |
+| the dashboard (`app/page.tsx`) | the first live match after this instant: after kickoff it jumped to next week's, and with last week's game live it offered an IN the server refused | the club's next match |
+| the match list (`matches/page.tsx`) | every match from this instant, any status: a cancelled game was listed as upcoming, and today's game left both lists at kickoff until the cron completed it | `upcomingMatchesWhere`: live matches from today, London |
+| the in-flight block (`attendance.ts`, `matches/[matchId]/page.tsx`) | its own query, UTC midnight | `inFlightWhere` |
+| the seed nudge (`seed-nudge.ts`) | the soonest live match not yet kicked off | the summary's `nextMatchId` (a kicked-off one is "no match" in its precheck, as before) |
+| the chase composer with no match id (`message-analyzer.ts`, the production dry run only) and that dry run's header | the first live match with its sign-up deadline ahead, which the selector's own header says is not a gate | the club's next match |
+| the analyze fallback, the HQ paste, the poster, the first-teams notice, the DM IN target | the selector over a query of their own (no historical filter) | `findNextMatch` or `nextMatchWhere`: the same set, one `where` |
+
+The one-derive guard's `registration` ratchet: `next-match.ts` (2) replaces four files; three
+remain (below).
+
+**Left, and why.**
+- `loadSquadState`'s own 30-day read (the same selector, now on the London day): it differs only
+  for a live match more than 30 days old, which the 15-minute completion cron prevents (A2 named
+  it). Reading the request's summary there instead would decide on a summary read before the
+  request's writes (5.1, risk 1).
+- The HQ team commands (`team-proposal.ts` `commandMatch`): the same selector over the club's
+  games' live matches, the same set.
+- The legacy `api/whatsapp/attendance` and `status` routes: nothing calls them (the Pi's
+  `postAttendance` in `whatsapp-bot/src/api.ts` has no caller), so per 5.2 they are for deleting,
+  not aligning.
+- Which club a DM question is about (`dm-qa.ts` `mostRecentOrg`, the club with the most recent
+  match) and the admin's "rating progress" club (`orgWithCompletedMatch`): club choices, not the
+  next match.
+- An admin's "invite players" DM while the last game is still live now gets no reply (it falls
+  through, as for any club with no upcoming match). Answering "there is no match to invite for
+  yet" instead would be a product choice; `dm-intent.ts` falls through on purpose.
+- Mute, billing pause, dormancy and quiet hours (B6): not touched.
+
+**What the DM answerer is sent (LLM change).** No prompt and no CONTEXT template changes: the
+system prompt is byte for byte the same (its hash in the A3 entries is unchanged). Only which
+match the UPCOMING MATCH block describes moves, and only in the edge where a live match dated
+before today has not been completed: it now says "UPCOMING MATCH: none scheduled right now." (the
+line a club with no match already gets), and YOUR PAYMENTS has no upcoming fee line. For a normal
+week the block is the same match as before. Old and new, from the A3 characterisation (FNF on Sat
+7 Nov with Fri 6 Nov still live; the Vets on Fri 13 Nov with Mon 9 Nov still live), with the paid
+answers: the side by side page in the PR.
+
+**No sandbox scenario step.** The five scenario clubs play in November, in GMT, where London
+midnight is UTC midnight, so no step can show the BST edge; a summer copy of a club would need its
+own cassette (a paid recording). The 00:30 BST cases are pinned by unit tests instead
+(`registration-match-select`, `london-day-start`, `next-match`, `derive`, `attendance-in-flight-london-day`).
+
+**Proof.** Paid, all on `ANTHROPIC_API_KEY_DEV`, 88 calls, about $0.014:
+`scripts/dryrun-dm-qa.ts SET=nomatch` (new set: the edge's CONTEXT, EN and TR, once each, 6 calls,
+$0.0018): 6 of 6 answers right ("There's no match scheduled right now...", "Şu an planlanmış bir
+maç yok"), the asker's £6 still answered; the check flagged the Turkish "6 £" for not reading
+"£6", so it now accepts both (not re-run). `e2e/sim/dm-context-live.spec.ts` (the real dm-reply
+route) 3 of 3, 8 calls, $0.0010. `e2e/sim/dm-qa-payments-live.spec.ts` once in full (26 calls,
+$0.0041): "how do I pay?" failed in both languages with `handled: "dm-help"`, the failure B5 and B7
+recorded on this base branch (the fix, #534, is on main), and the serial run stopped there; the
+rest once (`--grep-invert "how to pay"`, 48 calls, $0.0073): 10 of 10, the next game's unconfirmed
+fee included. The club replay is free: all five clubs hit every cassette (0 misses; FNF's two
+"reordered" balancer requests are the row-order matches B3 named), so nothing was re-recorded;
+`baseline/b4` against `baseline/b5` is identical for all five, because the scenario clocks are in
+GMT, no scripted week cancels a game or sets weekly deadlines, and no match is left uncompleted.
+Unit tests: A1, A2 and A4 characterisations unchanged; A3 changed in three entries, all the edge
+(FNF `2026-11-07 question`, the Vets `2026-11-13 question`: UPCOMING MATCH none scheduled; the Vets
+`2026-11-13 invite`: no blast, falls through); the golden copy unchanged (no copy changed).
+
 ### 3.17 As built in slice B6 (one rule for "may MatchTime send this club anything now, and what")
 
 Built on `refactor/club-summary-b6` (PR against `refactor/club-summary`). Decision K7 (the main
@@ -1636,6 +1745,9 @@ choice, the slice waits for Kemal (the K decisions in section 4.5).
 - Model input: `dm-qa`'s "UPCOMING MATCH" block changes only in those edges. None of the
   five clubs reaches them, so the replay stays free, but the PR still shows the old and
   new block for the edge case and runs the DM QA live spec once.
+- As built (K5 decided): section 3.16. Three named facts (the next match, the posting rule,
+  the last match played); the posting rule's hold is on every post; the legacy
+  `attendance` and `status` routes were left (no caller, 5.2).
 
 **B5. One fee.** (D9)
 - Named facts: `matchFee` (what the collector confirmed for this match), `gameFee` (the
@@ -1721,7 +1833,7 @@ right.
 | K3 | Before the collector confirms a fee, does MatchTime tell a player the game's usual fee, or "not set yet"? | B5 | the DM answer says the game's fee, the pay page says not set. **Decided by Kemal, 2026-11-04 (the main session's recommendation): before the collector confirms a match's fee, a player who asks, on any door (DM answer, group or HQ answer, pay page, offers and asks), is told the game's usual fee marked as not confirmed yet ("usually £8, not confirmed yet"); once confirmed, the confirmed fee. Pay links and charging use only a confirmed fee. The summary exposes ONE fee fact (amount, confirmed or not, source) and every door reads it.** Built in B5 (section 3.14). |
 | K4 | On a club with attendance off, may a player still tap IN on the website? | B7 | yes on the web, no in WhatsApp. **Decided by Kemal, 2026-11-04 (the main session's recommendation): no. Players cannot tap IN or OUT on the website either; the match page explains the club doesn't take sign-ups through MatchTime. The same principle for every switch the plan found ignored on some door: if WhatsApp refuses it with the switch off, the web and DMs refuse it too, with a short plain explanation.** Built in B7 (section 3.15). |
 | K6 | With team generation off, should the website's Generate teams, the teams page and the HQ team commands refuse too? | after B7 | the settings card says on purpose that the web button still works and that Teams ready is separate; B7 left them (3.15) **Decided by the main session, 2026-11-04, on Kemal's delegation: with automatic teams off, the organiser's own Generate teams on the web and the HQ "make the teams" keep working, as the settings card promises.** |
-| K5 | Is "today" the London day for the next match, and do the deadline posts and the month's list honour a cancelled match's day like the announcement does? | B4 | UTC in the selector, London in the posting rule; two posts skip the hold |
+| K5 | Is "today" the London day for the next match, and do the deadline posts and the month's list honour a cancelled match's day like the announcement does? | B4 | UTC in the selector, London in the posting rule; two posts skip the hold. **Decided by Kemal, 2026-11-04 (the main session's recommendation): "today" is always the London day; and every post that holds on a cancelled match's day (the announcement already does) does the same, the deadline posts and the month's list included. Where consumers genuinely ask a different question ("the match being registered for", "the fixture's next match to post about", "the last match played"), each is its own named fact in the summary, defined once.** Built in B4 (section 3.16). |
 | K7 | Where today's senders disagree on "is this club served" (D10, D15), which wins? | B6 | the mute switch alone, it plus the billing pause, `servingClubWhere`, `isClubOperational`, that plus setting up, two DM club picks; dormancy read by none of the doors a message leaves by; the HQ score ask on the default window. **Decided by the main session, 2026-11-04, on Kemal's delegation: one rule, `club-voice.ts`: silent (not approved, setting up, dormant, paused) sends nothing on any door, reads no DM and drops its queue on the way back; muted holds everything MatchTime sends on its own (posts, notices, queued DMs) until the unmute, still reads and answers its members' DMs as on main (the reply waits too), and HQ answers only its open pick round; quiet hours are the club's own on every door and hold, never drop. The eight choices are listed in section 3.17 (b revised in the review of #536).** Built in B6 (section 3.17). |
 
 ### 4.6 Phase C: readers, only where the evidence asks for it

@@ -17,6 +17,7 @@ import { inServedClubWhere } from "./club-voice";
 import { getOrgFeatures } from "./org-features";
 import { CLUB_ROW_SELECT, clubRowFactsOf } from "./club-row-facts";
 import { eligibleRegistrationMatch, selectRegistrationMatch } from "./registration-match-select";
+import { nextMatchWhere } from "./next-match";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import type { Lang } from "./i18n/lang";
 
@@ -68,12 +69,10 @@ export async function findDmRegistrationTarget(
     const features = clubRowFactsOf(mem.org, "dm-registration-target")?.features ?? (await getOrgFeatures(mem.orgId));
     if (!features.attendance) continue;
 
+    // The candidates of the club's next match (`next-match.ts`, club summary
+    // B4): the selector below and the quoted pick read the same set.
     const candidates = await db.match.findMany({
-      where: {
-        activity: { orgId: mem.orgId },
-        isHistorical: false,
-        status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-      },
+      where: nextMatchWhere(mem.orgId),
       orderBy: { date: "asc" },
       select: {
         id: true,

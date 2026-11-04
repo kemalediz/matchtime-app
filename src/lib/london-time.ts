@@ -80,6 +80,19 @@ export function formatLondon(d: Date, pattern: string, locale?: Locale): string 
 }
 
 /**
+ * 00:00 London on the London day `d` falls on. THE "today" of every rule
+ * about the club's next match (club summary, slice B4, decision K5): the
+ * registration selector, the "previous match still in flight" block, the
+ * match lists, and the daily caps (`londonMidnight`, club-connect-rules.ts,
+ * is this). In winter it is UTC midnight; in summer 23:00 UTC the evening
+ * before. London midnight exists on both clock-change days (the clocks move
+ * at 01:00 GMT and 02:00 BST).
+ */
+export function londonDayStart(d: Date): Date {
+  return londonDateTimeToUtc(formatLondon(d, "yyyy-MM-dd"), "00:00");
+}
+
+/**
  * Convert an explicit "YYYY-MM-DD" + "HH:mm" pair, both interpreted as
  * Europe/London wall-clock, into the UTC Date instant. DST-safe.
  *
