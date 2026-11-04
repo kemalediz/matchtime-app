@@ -29,7 +29,7 @@ import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "../guest-name-ask";
 import { decidePaymentSnapshot, type PaymentSnapshot } from "./payment-answer";
 import type { RatingProgress } from "../rating-progress-answer";
 import type { ClubSnapshot, PartnerAskView, SquadState } from "./types";
-import type { ClubSummary } from "../club-summary/types";
+import type { ClubRowFacts, ClubSummary } from "../club-summary/types";
 import { gamesOverlap } from "../partner-ask-rules";
 import { loadPlayerNames } from "../player-display-name";
 
@@ -46,8 +46,12 @@ const LOOKBACK_DAYS = 30;
  * then taken from it, not read again: nothing an analyze request writes
  * changes either. A summary of another club is ignored.
  *
- * Without one (the admin group and the DM paths, until slice A3 gives them
- * a summary) both are read here, as before. Everything else this function
+ * The admin group (slice A3) passes the summary's facts of the club's row
+ * (`ClubRowFacts`, the row it found the club by): these loaders read only
+ * `orgId`, the switches, the team names and the payment switches and
+ * collector, which the row facts carry too, so either serves.
+ *
+ * Without either, both are read here, as before. Everything else this function
  * reads is the squad's content, and it reads it itself in either case: the
  * matches of the last 30 days (its own registration rule, D7, and the
  * cancelled match it mentions), the roster in the database's order (D13,
@@ -56,8 +60,14 @@ const LOOKBACK_DAYS = 30;
  * with its scores and teams.
  */
 export interface SquadStateOptions {
-  summary?: ClubSummary | null;
+  summary?: SquadStateClub | null;
 }
+
+/** What these loaders read of a club summary: a `ClubSummary` and a
+ *  `ClubRowFacts` both are one. */
+export type SquadStateClub = Pick<ClubSummary, "orgId" | "features" | "teamLabels"> & {
+  payments: Pick<ClubSummary["payments"], "tracking" | "collection"> & { collector: { userId: string } | null };
+};
 
 /** The 30-day match window the squad state reads. */
 async function loadSquadMatches(orgId: string, now: Date) {
@@ -634,22 +644,34 @@ async function loadGuestElsewhere(orgId: string, kickoff: Date, now: Date): Prom
  *
  * Since the club summary (slice A2) the players' group answers from the
  * request's summary (`clubSnapshotOf`, club-snapshot.ts); this read is for a
- * caller with no summary: the admin group (until slice A3), and an analyze
- * request whose summary could not be read (fail-soft). The two agree on
- * every club shape (the analyze characterisation test checks it).
+ * caller with no summary: the admin group, and an analyze request whose
+ * summary could not be read (fail-soft). The two agree on every club shape
+ * (the analyze characterisation test checks it).
+ *
+ * `club` (slice A3, the admin group): the summary's facts of the club's row,
+ * which say who collects and "Teams ready" (`routine.teamsReady`, the same
+ * `effectiveTeamsReadyTime`), so the row is not read again. The collector's
+ * name and the match's fee are still read here: the whole summary would
+ * cost more reads than they do.
  */
-export async function loadClubSnapshot(orgId: string, matchId: string | null): Promise<ClubSnapshot> {
+export async function loadClubSnapshot(
+  orgId: string,
+  matchId: string | null,
+  opts: { club?: Pick<ClubRowFacts, "orgId" | "payments" | "routine"> | null } = {},
+): Promise<ClubSnapshot> {
+  const known = opts.club && opts.club.orgId === orgId ? opts.club : null;
   const [{ effectiveTeamsReadyTime }, { organisersAnnounce }] = await Promise.all([
     import("../team-proposal-rules"),
     import("../list-announcer"),
   ]);
-  const org = await db.organisation.findUnique({
-    where: { id: orgId },
-    select: { paymentHolderId: true, teamsReadyTime: true, listAnnouncer: true },
-  });
-  const collector = org?.paymentHolderId
-    ? await db.user.findUnique({ where: { id: org.paymentHolderId }, select: { name: true } })
-    : null;
+  const org = known
+    ? null
+    : await db.organisation.findUnique({
+        where: { id: orgId },
+        select: { paymentHolderId: true, teamsReadyTime: true, listAnnouncer: true },
+      });
+  const collectorId = known ? (known.payments.collector?.userId ?? null) : org?.paymentHolderId;
+  const collector = collectorId ? await db.user.findUnique({ where: { id: collectorId }, select: { name: true } }) : null;
   const match = matchId
     ? await db.match.findUnique({
         where: { id: matchId },
@@ -660,6 +682,6 @@ export async function loadClubSnapshot(orgId: string, matchId: string | null): P
     collectorName: collector?.name ?? null,
     feePerPlayer: match?.feePerPlayer ?? match?.activity.feePerPlayer ?? null,
     feeSplitTotal: match?.activity.feeSplitTotal ?? false,
-    teamsReady: effectiveTeamsReadyTime(org?.teamsReadyTime, organisersAnnounce(org)),
+    teamsReady: known ? known.routine.teamsReady : effectiveTeamsReadyTime(org?.teamsReadyTime, organisersAnnounce(org)),
   };
 }

@@ -158,6 +158,7 @@ import { parseVenuePickRef, venueListAnswered } from "./venue-from-words-rules";
 import { recordHqVenueList } from "./venue-list-log";
 import type { HqLogRow } from "./admin-group-log";
 import { adminVenueCopy } from "./i18n/admin-venue";
+import type { ClubRowFacts } from "./club-summary/types";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -183,6 +184,12 @@ export interface UnderstandInput {
     /** The HQ help's pool line (2026-10-28), with `poolEnv`. */
     featurePlayerPool?: boolean | null;
   };
+  /** The club summary's facts of that same row (`clubRowFacts`, slice A3):
+   *  every owner below takes its switches, team names, payment switches,
+   *  collector and announcer from them instead of reading them again. Null
+   *  or absent (a test, or facts that could not be built): each owner
+   *  reads its own, as before. */
+  club?: ClubRowFacts | null;
   messageId: string;
   text: string;
   /** The Pi's real mention flag for the bot (a fact, 2026-10-30). */
@@ -645,6 +652,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         history,
         reply: replyShown,
         now,
+        club: input.club,
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
       if (r === "organisers-only") return onlyOrganisers();
@@ -666,6 +674,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         lastBotPost: lastHqPost,
         reply: replyShown,
         hqHelp,
+        club: input.club,
         ...(input.poolEnv ? { poolEnv: input.poolEnv } : {}),
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
@@ -695,7 +704,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // did; a multi-line message no longer pays for a reading before the
     // router. A failed read is "other": nothing is done.
     const readWhoPlays = async (actorId: string): Promise<HqSquadRead> => {
-      const read = await readHqSquad({ orgId: org.id, lang, messageId, text: body, senderUserId: actorId, now, quoted: input.quoted, addressed: true });
+      const read = await readHqSquad({ orgId: org.id, lang, messageId, text: body, senderUserId: actorId, now, quoted: input.quoted, addressed: true, club: input.club });
       seen.reading = readingTrace(read.reading);
       return read;
     };
@@ -722,6 +731,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       }
       const change = await handleAdminSquadChange({
         ...base(actorId),
+        club: input.club,
         text: input.text,
         namedBody: body,
         mentionNames: input.mentionNames,
@@ -774,6 +784,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       }
       const r = await handleTeamCommand({
         ...base(actor),
+        club: input.club,
         command,
         addressed: true,
         quotedSheet: command.kind === "restore" ? await quotedSheet() : null,
@@ -827,7 +838,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: organiser, via: "hq", clubRef, lang, now });
         return said(r.outcome, r.replyText);
       }
-      const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
+      const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now, club: input.club });
       return said(r.outcome, r.replyText);
     };
     const askFromSources = async (sources: RecruitSource[], organiser: string, clubRef: string | null): Promise<Understood> => {
@@ -947,11 +958,11 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
           const was = await compareQuotedSheet(org.id, sheet, now);
           console.log(`[admin-group] ${messageId}: a YES quoting a stored team sheet: ${was}`);
           if (was === "different") {
-            const r = await handleTeamCommand({ ...base(actor), command: { kind: "restore" }, addressed: true, quotedSheet: sheet });
+            const r = await handleTeamCommand({ ...base(actor), club: input.club, command: { kind: "restore" }, addressed: true, quotedSheet: sheet });
             return r.replyText === null ? null : said(r.outcome, r.replyText);
           }
           if (was === "same" && pending.some((i) => i.kind === "teams")) {
-            const r = await answerTeamsYes(base(actor));
+            const r = await answerTeamsYes({ ...base(actor), club: input.club });
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
         }
@@ -1008,7 +1019,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
           if (item.kind === "teams" && actor) {
-            const r = await answerTeamsYes(base(actor));
+            const r = await answerTeamsYes({ ...base(actor), club: input.club });
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
           if (item.kind === "list" && squadActor) {
@@ -1090,7 +1101,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // ask which (2026-10-28). Otherwise the players' group, as before.
         const which = await askWhichIfUnsaid(facts);
         if (which) return which;
-        const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
+        const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now, club: input.club });
         return said(r.outcome, r.replyText);
       }
       case "admin_ops": {

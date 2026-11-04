@@ -46,6 +46,7 @@ import { nextNightlyFixtureRun } from "./nightly-fixture-run";
 import { loadSquadCount } from "./squad-count";
 import { withOrgAiBudget } from "./ai-budget";
 import type { PipelineModel } from "./pipeline/llm";
+import type { ClubRowFacts } from "./club-summary/types";
 import type { ContextMessage } from "./reply-context";
 import { loadHqRecentMessages, loadHqSquadReaderContext, readHqSquadMessage, type HqSquadReaderContext, type HqSquadReading } from "./hq-squad-reader";
 import {
@@ -127,6 +128,9 @@ export interface HqSquadReadArgs {
   /** Said to MatchTime (an @tag, or a reply to its post): a fact the
    *  reader is told. */
   addressed?: boolean;
+  /** The club summary's facts of the club's row (slice A3): the reader's
+   *  team names come from them. */
+  club?: ClubRowFacts | null;
   /** Tests: the model (null: none). Omitted: the real one, or the e2e stub. */
   deps?: { model?: PipelineModel | null };
 }
@@ -146,7 +150,7 @@ export async function readHqSquad(args: HqSquadReadArgs): Promise<HqSquadRead> {
 async function readPaste(args: HqSquadReadArgs & { match: RegistrationMatch | null }): Promise<{ reading: HqSquadReading; ctx: HqSquadReaderContext }> {
   return withOrgAiBudget(args.orgId, async () => {
     const [ctx, history] = await Promise.all([
-      loadHqSquadReaderContext({ orgId: args.orgId, match: args.match, lang: args.lang }),
+      loadHqSquadReaderContext({ orgId: args.orgId, match: args.match, lang: args.lang, club: args.club }),
       loadHqRecentMessages(args.orgId, args.messageId, args.now),
     ]);
     const sender = ctx.members.find((m) => m.userId === args.senderUserId) ?? null;

@@ -94,6 +94,7 @@ import { selectRegistrationMatch } from "./registration-match-select";
 import { lockTeamSlots, type SlotFillTx } from "./team-slot-fill";
 import type { ClubSummary } from "./club-summary/types";
 import { loadOrganisersAnnounce } from "./list-announcer-store";
+import type { ClubRowFacts } from "./club-summary/types";
 import { t } from "./i18n/t";
 import { dayLabel } from "./i18n/dates";
 import { earlierSheetLike, recordTeamSheet, type StoredTeamSheet } from "./team-sheet-history";
@@ -169,8 +170,15 @@ const ACTIVE: Array<"UPCOMING" | "TEAMS_GENERATED" | "TEAMS_PUBLISHED"> = ["UPCO
 const gen = (deps: TeamProposalDeps | undefined) =>
   deps?.generate ?? ((id: string, opts: GenerateTeamsOptions) => generateTeamsForMatch(id, opts));
 const ratingsOf = (deps: TeamProposalDeps | undefined) => deps?.ratings ?? matchRatingsFor;
-const announces = async (deps: TeamProposalDeps | undefined, orgId: string): Promise<boolean> =>
-  deps?.announce ? deps.announce({ id: orgId }) : loadOrganisersAnnounce(orgId);
+/** Do the organisers announce? A test's answer, else the club summary's row
+ *  facts (slice A3: `routine.listAnnouncer`, the same `organisersAnnounce`
+ *  rule on the same row), else the club's row read for it, as before. */
+const announces = async (deps: TeamProposalDeps | undefined, orgId: string, club?: Pick<ClubRowFacts, "orgId" | "routine"> | null): Promise<boolean> =>
+  deps?.announce
+    ? deps.announce({ id: orgId })
+    : club && club.orgId === orgId
+      ? club.routine.listAnnouncer === "organisers"
+      : loadOrganisersAnnounce(orgId);
 
 // ── Reading the match and its teams ───────────────────────────────────
 
@@ -458,11 +466,13 @@ export async function handleTeamCommand(args: {
   addressed: boolean;
   /** For "restore": the stored sheet the message replies to, if any. */
   quotedSheet?: StoredTeamSheet | null;
+  /** The club summary's facts of the club's row (slice A3). */
+  club?: ClubRowFacts | null;
   deps?: TeamProposalDeps;
 }): Promise<TeamReply> {
   const { orgId, lang, now, deps, command } = args;
   const s = t(lang);
-  const announce = await announces(deps, orgId);
+  const announce = await announces(deps, orgId, args.club);
 
   const match = await commandMatch(orgId, now);
   if (!match) return { outcome: "teams-no-match", replyText: s.tp_no_match };
@@ -638,6 +648,8 @@ export async function answerTeamsYes(args: {
   senderUserId: string;
   messageId: string;
   now: Date;
+  /** The club summary's facts of the club's row (slice A3). */
+  club?: ClubRowFacts | null;
   deps?: TeamProposalDeps;
 }): Promise<TeamReply | null> {
   const { orgId, lang, now, deps } = args;
@@ -681,7 +693,7 @@ export async function answerTeamsYes(args: {
   // No team sheet picture here (Kemal, 2026-10-30): it is drawn only when
   // an organiser asks for it, tagged (`admin-group-graphics.ts`).
 
-  if (await announces(deps, orgId)) {
+  if (await announces(deps, orgId, args.club)) {
     console.log(`[team-proposal] ${args.messageId}: teams final on match ${match.id}, organisers announce`);
     return { outcome: "teams-final", replyText: s.tp_final_reply_quiet };
   }
