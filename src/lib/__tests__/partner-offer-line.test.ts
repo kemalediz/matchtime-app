@@ -43,8 +43,11 @@ describe("the scheduler adds it only on the organisers' short-squad notices", ()
       // since 2026-11-04 only while the squad is short (squad-short.ts):
       // inside the organisers' branch, never a players' group post.
       expect(line).toMatch(/^\s*if \(isShort\) await toOrganisers\(key, "chase", \{ partnerOffer: await partnerOffer\(\), poolBand: await poolBand\(\) \}\);$/);
-      expect(lines[i - 1]).toMatch(/^\s*if \(organisers\) \{$/);
-      expect(lines[i + 1]).toMatch(/^\s*\} else if \(noMonthYet\) \{$/);
+      // Club summary B2: a monthly club's game whose month is not under way
+      // gets nothing on either side, so that branch comes first.
+      expect(lines[i - 1]).toMatch(/^\s*\} else if \(organisers\) \{$/);
+      expect(lines[i - 3]).toMatch(/^\s*if \(monthPending\) \{$/);
+      expect(lines[i + 1]).toMatch(/^\s*\} else \{$/);
     });
   });
 });

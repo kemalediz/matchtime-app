@@ -1023,16 +1023,24 @@ describe("MONTHLY: review fixes", () => {
     expect(text).not.toContain("Bilal");
   });
 
-  it("a game played BEFORE the month was started here is not the month's: its poll, its fee question and its chase are the weekly ones", async () => {
-    // The month was started on Tue 13 Oct; this game was Mon 12 Oct.
+  it("a game played BEFORE the month was started here is not the month's, and a game of no month gets no weekly post either (club summary B2, K8 f)", async () => {
+    // The month was started on Tue 13 Oct; this game was Mon 12 Oct. Before
+    // B2 it got the weekly payment poll and the weekly fee question; it is
+    // a monthly club's game of no month now (`monthPhaseFor`: "none"), so
+    // nothing weekly reaches it, as for a monthly club with no month at all.
     monthStartedAt = new Date("2026-10-13T09:00:00.000Z");
     const m = match({ attendances: REGULARS.map((n, i) => att(n, i, { paymentMethod: null })), rollingSeededAt: null });
     setWorld(m, { monthly: true });
     const out = await instructions(AFTER_MATCH);
-    expect(out.some((i) => i.key === `${m.id}:payment-poll`)).toBe(true);
-    const ask = out.find((i) => i.key === `${m.id}:fee-ask`) as { text: string };
-    expect(ask.text).toBe(buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 7-a-side", headcount: 4, lang: "en" }));
+    expect(out.some((i) => i.key === `${m.id}:payment-poll`)).toBe(false);
+    expect(out.some((i) => i.key === `${m.id}:fee-ask`)).toBe(false);
     expect(out.some((i) => i.key.includes("month-list"))).toBe(false);
+    // REGRESSION GUARD: the same game of a weekly club still gets both.
+    setWorld(m, { monthly: false });
+    const weekly = await instructions(AFTER_MATCH);
+    expect(weekly.some((i) => i.key === `${m.id}:payment-poll`)).toBe(true);
+    const ask = weekly.find((i) => i.key === `${m.id}:fee-ask`) as { text: string };
+    expect(ask.text).toBe(buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 7-a-side", headcount: 4, lang: "en" }));
   });
 
   it("the month's rows cannot be read: the poll does not throw, posts nothing, and records a health event", async () => {

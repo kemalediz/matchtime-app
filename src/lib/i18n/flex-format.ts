@@ -60,6 +60,9 @@ export interface FlexFormatCopy {
   noSize: string;
   noMatch: string;
   tooLate: string;
+  /** A monthly club's game is never moved to another of its games (club
+   *  summary B2, K8 a): the month is matched to a game by its Activity. */
+  monthlyKeepsGame: (p: { activityName: string }) => string;
 
   // ── The suggestion in the players' group ──
   suggestUp: (p: { total: number; bench: number; day: string; perSide: number; admins: string }) => string;

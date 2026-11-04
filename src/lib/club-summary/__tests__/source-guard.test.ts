@@ -94,7 +94,7 @@ const TODAY = new Set<string>([
   "lib/month-close.ts",
   "lib/month-member-games.ts",
   "lib/month-newcomers.ts",
-  "lib/month-not-started.ts",
+  "lib/month-phase.ts",
   "lib/month-payment.ts",
   "lib/month-seed-hq.ts",
   "lib/month-seed-read.ts",

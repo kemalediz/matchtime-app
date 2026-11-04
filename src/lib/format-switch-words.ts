@@ -72,8 +72,15 @@ export async function applySwitchFormatWords(p: {
 
   const other = await otherFormatWith(picked.id, p.perSide);
   if (other) {
-    const { switchMatchToActivity } = await import("./activity-format-switch");
-    const r = await switchMatchToActivity({ matchId: picked.id, newActivityId: other.id, actorUserId: p.actorUserId });
+    const { MonthlyGameStaysError, switchMatchToActivity } = await import("./activity-format-switch");
+    let r: Awaited<ReturnType<typeof switchMatchToActivity>>;
+    try {
+      r = await switchMatchToActivity({ matchId: picked.id, newActivityId: other.id, actorUserId: p.actorUserId });
+    } catch (err) {
+      // A monthly club's game stays on its game (club summary B2, K8 a).
+      if (err instanceof MonthlyGameStaysError) return { outcome: "format-monthly-keeps-game", replyText: err.message };
+      throw err;
+    }
     console.log(`[format-switch-words] org=${p.orgId} match=${picked.id} to the club's ${other.name} (${r.maxPlayers} places) by ${p.via}`);
     return {
       outcome: "format-switched-activity",

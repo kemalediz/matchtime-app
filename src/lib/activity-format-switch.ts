@@ -22,18 +22,39 @@ import { planFormatSwitchSchedule, renderKickoffMoveLine } from "./format-switch
 import { organisersAnnounce } from "./list-announcer";
 import { buildOrganiserRelay } from "./organisers-list-copy";
 import { sendAdminNotice } from "./admin-channel";
+import { flexFormatCopy } from "./i18n/flex-format";
+import { normaliseSquadMode } from "./squad-month-rules";
+
+/**
+ * A MONTHLY CLUB'S GAME STAYS ON ITS GAME (club summary B2, K8 a). A game is
+ * matched to its month by its Activity (`monthPhaseFor`), so re-pointing a
+ * month's game to another Activity would take it out of its month. Refused
+ * for every match of a monthly club; its message is the organiser's reply,
+ * on the web (the switch page shows it) and in WhatsApp. The size switch
+ * inside the game (`format-resize.ts`) keeps the Activity and is the way a
+ * monthly club plays another size.
+ */
+export class MonthlyGameStaysError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MonthlyGameStaysError";
+  }
+}
 
 export async function switchMatchToActivity(p: { matchId: string; newActivityId: string; actorUserId: string }): Promise<{ maxPlayers: number; kickoff: Date }> {
   const { matchId, newActivityId } = p;
 
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { include: { sport: true, org: { select: { language: true, listAnnouncer: true } } } } },
+    include: { activity: { include: { sport: true, org: { select: { language: true, listAnnouncer: true, squadMode: true } } } } },
   });
   if (!match) throw new Error("Match not found");
 
   // Optional chaining: the unit test mocks the match without its org.
   const lang = normaliseLang(match.activity.org?.language);
+  if (normaliseSquadMode(match.activity.org?.squadMode) === "monthly") {
+    throw new MonthlyGameStaysError(flexFormatCopy(lang).monthlyKeepsGame({ activityName: match.activity.name }));
+  }
 
   const newActivity = await db.activity.findFirst({
     where: { id: newActivityId, orgId: match.activity.orgId },

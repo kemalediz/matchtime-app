@@ -4,7 +4,6 @@
  * and each one must equal what today's rule function says for the same
  * input, so the summary never becomes a second version of a rule.
  */
-import { schedulerMonthShape } from "../../scheduler-month-shape";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildClubSummary,
@@ -14,6 +13,7 @@ import {
   matchNumbers,
   monthFacts,
   monthPhaseFor,
+  monthPhaseOfGame,
   parseHeldKey,
   paymentFacts,
   pickNextMatch,
@@ -192,11 +192,10 @@ describe("matchNumbers: places open and short are two facts", () => {
 
 describe("month facts", () => {
   it("the Vets' November: running, 13 regulars, 13 paid, started on the 1st", () => {
-    expect(monthFacts([VETS_NOV], VETS.activities)).toEqual([
+    expect(monthFacts([VETS_NOV])).toEqual([
       {
         id: "sm-vets-nov",
         activityId: "a-vets",
-        fixture: { venue: "Vets Ground", dayOfWeek: 1 },
         monthStart: "2026-11-01",
         status: "running",
         listOpenedAt: "2026-10-25T10:00:00.000Z",
@@ -212,15 +211,15 @@ describe("month facts", () => {
   });
 
   it("claimed is a claim not yet confirmed; pay as you go rows are not regulars", () => {
-    const [m] = monthFacts([month({ id: "x", activityId: "a-vets", monthStart: new Date("2026-11-01T00:00:00Z") }, { regulars: 10, paid: 4, claimed: 3, payg: 2 })], VETS.activities);
+    const [m] = monthFacts([month({ id: "x", activityId: "a-vets", monthStart: new Date("2026-11-01T00:00:00Z") }, { regulars: 10, paid: 4, claimed: 3, payg: 2 })]);
     expect(m.regulars).toBe(10);
     expect(m.paid).toEqual({ confirmed: 4, claimed: 3 });
   });
 
   it("a month started part way starts at that instant (summer: London is UTC+1 on the 1st of July)", () => {
-    const [m] = monthFacts([month({ id: "x", activityId: "a-vets", monthStart: new Date("2026-11-01T00:00:00Z"), startedMidMonthAt: new Date("2026-11-12T09:00:00Z") })], VETS.activities);
+    const [m] = monthFacts([month({ id: "x", activityId: "a-vets", monthStart: new Date("2026-11-01T00:00:00Z"), startedMidMonthAt: new Date("2026-11-12T09:00:00Z") })]);
     expect(m).toMatchObject({ startedPartWay: true, startsAt: "2026-11-12T09:00:00.000Z" });
-    const [july] = monthFacts([month({ id: "j", activityId: "a-vets", monthStart: new Date("2026-07-01T00:00:00Z") })], VETS.activities);
+    const [july] = monthFacts([month({ id: "j", activityId: "a-vets", monthStart: new Date("2026-07-01T00:00:00Z") })]);
     expect(july.startsAt).toBe("2026-06-30T23:00:00.000Z");
   });
 });
@@ -234,41 +233,44 @@ describe("held keys", () => {
 });
 
 /**
- * THE MONTH PHASE TABLE: every SquadMonth status, a held key, no row, a
- * closed month with a game still to play, a month started part way, and a
- * format switch (another Activity of the same fixture).
+ * THE MONTH PHASE TABLE (slice B2): one phase per match, the game's month
+ * by its OWN Activity and the London month of its kickoff. Every stored
+ * status, a held key, no row, a closed month, a month started part way,
+ * and a format switch (another Activity at the same venue and weekday).
  */
 describe("monthPhaseFor", () => {
   const nov = (over: Partial<Parameters<typeof month>[0]> = {}, members = {}) =>
     month({ id: "sm", activityId: "a-vets", monthStart: new Date("2026-11-01T00:00:00Z"), createdAt: new Date("2026-10-28T10:00:00Z"), ...over }, members);
-  const FIVE = activity({ id: "a-vets-5", venue: "Vets Ground", dayOfWeek: 1, time: "20:00", sport: { name: "Football 5-a-side", playersPerTeam: 5 } });
-  const OTHER = activity({ id: "a-thu", venue: "Vets Ground", dayOfWeek: 4, sport: { name: "Football 7-a-side", playersPerTeam: 7 } });
-  const acts = [VETS_A, FIVE, OTHER];
   const game = (over: Partial<Parameters<typeof match>[0]> = {}) =>
     match({ id: "m", activityId: "a-vets", date: new Date("2026-11-09T20:00:00Z"), maxPlayers: 14, ...over });
   const phase = (m: ReturnType<typeof game>, rows: ReturnType<typeof nov>[], held: string[] = []) =>
-    monthPhaseFor({ orgId: "org-vets", match: m, months: monthFacts(rows, acts), activities: acts, heldKeys: held });
+    monthPhaseFor({ orgId: "org-vets", match: m, months: monthFacts(rows), heldKeys: held });
 
   const rows: Array<[string, ReturnType<typeof game>, ReturnType<typeof nov>[], string[], Record<string, unknown>]> = [
-    ["no row: none", game(), [], [], { phase: "none", monthId: null, held: false, rowForOwnActivity: false }],
-    ["open, list not opened yet: signup, listOpened false", game(), [nov({ status: "open" })], [], { phase: "signup", monthId: "sm", listOpened: false }],
-    ["open, list opened: signup", game(), [nov({ status: "open", listOpenedAt: new Date("2026-10-25T10:00:00Z") })], [], { phase: "signup", listOpened: true }],
-    ["priced", game(), [nov({ status: "priced" })], [], { phase: "priced" }],
-    ["running", game(), [nov({ status: "running" })], [], { phase: "running", rowForOwnActivity: true, beforeStart: false }],
-    ["closed, a game still to play: the fact is closed", game(), [nov({ status: "closed", closedAt: new Date("2026-11-03T10:00:00Z") })], [], { phase: "closed" }],
-    ["held key, no row: held", game(), [], ["org-org-vets:msu:held:2026-11-01:a-vets"], { phase: "held", monthId: null, held: true, rowForOwnActivity: false }],
-    ["held key AND a priced row: the row's phase, held still true", game(), [nov({ status: "priced" })], ["org-org-vets:msu:held:2026-11-01:a-vets"], { phase: "priced", held: true }],
-    ["held key of another fixture: none", game(), [], ["org-org-vets:msu:held:2026-11-01:a-thu"], { phase: "none", held: false }],
-    ["held key of another month: none", game(), [], ["org-org-vets:msu:held:2026-12-01:a-vets"], { phase: "none", held: false }],
-    ["started part way, a game before the start: beforeStart", game({ date: new Date("2026-11-02T20:00:00Z") }), [nov({ startedMidMonthAt: new Date("2026-11-04T09:00:00Z") })], [], { phase: "running", beforeStart: true }],
-    ["started part way, a game after the start", game(), [nov({ startedMidMonthAt: new Date("2026-11-04T09:00:00Z") })], [], { phase: "running", beforeStart: false }],
-    ["format switch: the 5-a-side match finds the fixture's month, but not its own activity's (D5)", game({ activityId: "a-vets-5" }), [nov()], [], { phase: "running", monthId: "sm", rowForOwnActivity: false }],
-    ["another fixture's month is not this one", game(), [nov({ activityId: "a-thu" })], [], { phase: "none", rowForOwnActivity: false }],
+    ["no row: none", game(), [], [], { phase: "none", monthId: null, beforeStart: false }],
+    ["open, list not opened yet: a month in sign-up (K8 b)", game(), [nov({ status: "open" })], [], { phase: "signup", monthId: "sm" }],
+    ["open, list opened: a month in sign-up", game(), [nov({ status: "open", listOpenedAt: new Date("2026-10-25T10:00:00Z") })], [], { phase: "signup", monthId: "sm" }],
+    ["priced (a stored status no writer sets): a month in sign-up (K8 b)", game(), [nov({ status: "priced" })], [], { phase: "signup", monthId: "sm" }],
+    ["running", game(), [nov({ status: "running" })], [], { phase: "running", monthId: "sm", beforeStart: false }],
+    ["closed", game(), [nov({ status: "closed", closedAt: new Date("2026-11-03T10:00:00Z") })], [], { phase: "closed", monthId: "sm" }],
+    ["held key, no row: held", game(), [], ["org-org-vets:msu:held:2026-11-01:a-vets"], { phase: "held", monthId: null }],
+    ["held key AND a row: the row's phase", game(), [nov({ status: "open" })], ["org-org-vets:msu:held:2026-11-01:a-vets"], { phase: "signup", monthId: "sm" }],
+    ["held key of another game: none", game(), [], ["org-org-vets:msu:held:2026-11-01:a-thu"], { phase: "none" }],
+    ["held key of another month: none", game(), [], ["org-org-vets:msu:held:2026-12-01:a-vets"], { phase: "none" }],
+    ["started part way, a game before the start: a game of no month", game({ date: new Date("2026-11-02T20:00:00Z") }), [nov({ startedMidMonthAt: new Date("2026-11-04T09:00:00Z") })], [], { phase: "none", monthId: null, beforeStart: true }],
+    ["started part way, a game after the start: running (the list posted mid-month starts the month)", game(), [nov({ startedMidMonthAt: new Date("2026-11-04T09:00:00Z") })], [], { phase: "running", monthId: "sm", beforeStart: false }],
+    ["another Activity at the same venue and weekday is not this game's month (D5, K8 a)", game({ activityId: "a-vets-5" }), [nov()], [], { phase: "none", monthId: null }],
+    ["another game's month is not this one", game(), [nov({ activityId: "a-thu" })], [], { phase: "none" }],
     ["a different London month", game({ date: new Date("2026-12-07T20:00:00Z") }), [nov()], [], { phase: "none", monthStart: "2026-12-01" }],
-    ["two rows for one fixture: the one furthest on", game(), [nov({ id: "sm-open", activityId: "a-vets-5", status: "open" }), nov({ id: "sm-run", status: "running" })], [], { phase: "running", monthId: "sm-run" }],
+    ["two games' months: each match finds its own", game(), [nov({ id: "sm-five", activityId: "a-vets-5", status: "open" }), nov({ id: "sm-run", status: "running" })], [], { phase: "running", monthId: "sm-run" }],
   ];
   it.each(rows)("%s", (_, m, monthRows, held, want) => {
     expect(phase(m, monthRows, held)).toMatchObject(want);
+  });
+
+  it("a size switch keeps the match on its game, so its month stays (the Vets' 8 a side, #517)", () => {
+    // format-resize.ts changes Match.maxPlayers only; the activity is the month's.
+    expect(phase(game({ maxPlayers: 16 }), [nov()]).phase).toBe("running");
   });
 
   it("seeded: the regulars were put on the match after the month was made", () => {
@@ -282,31 +284,13 @@ describe("monthPhaseFor", () => {
     expect(phase(m, []).monthStart).toBe("2026-08-01");
   });
 
-  /**
-   * The facts are enough to re-express TODAY's scheduler mapping with no
-   * second read: since slice A1 that mapping is `schedulerMonthShape`
-   * (scheduler-month-shape.ts), which `computeDuePosts` calls. Here its
-   * three shapes are read as A0 wrote them out ("held" is treated as in
-   * sign-up by the scheduler).
-   */
-  function schedulerShape(f: ReturnType<typeof phase>, m: ReturnType<typeof game>, rows: ReturnType<typeof nov>[], now: Date): "month" | "signup" | null {
-    const shape = schedulerMonthShape({ facts: f, months: monthFacts(rows, acts), match: m, now });
-    return shape.kind === "month" ? "month" : shape.kind === "none" ? null : "signup";
-  }
-  const shapeRows: Array<[string, ReturnType<typeof game>, ReturnType<typeof nov>[], string[], "month" | "signup" | null]> = [
-    ["running: the month", game(), [nov()], [], "month"],
-    ["closed, still to play: no month", game(), [nov({ status: "closed", closedAt: new Date("2026-11-03T10:00:00Z") })], [], null],
-    ["closed, played: the month", game({ date: new Date("2026-11-02T20:00:00Z"), status: "COMPLETED" }), [nov({ status: "closed", closedAt: new Date("2026-11-03T10:00:00Z") })], [], "month"],
-    ["open, list opened: sign-up", game(), [nov({ status: "open", listOpenedAt: new Date("2026-10-25T10:00:00Z") })], [], "signup"],
-    ["open, list not opened: noMonthYet", game(), [nov({ status: "open" })], [], null],
-    ["priced: noMonthYet (the plan said sign-up; the code says no)", game(), [nov({ status: "priced" })], [], null],
-    ["priced and held: sign-up", game(), [nov({ status: "priced" })], ["org-org-vets:msu:held:2026-11-01:a-vets"], "signup"],
-    ["held: sign-up", game(), [], ["org-org-vets:msu:held:2026-11-01:a-vets"], "signup"],
-    ["before a part-way start: noMonthYet", game({ date: new Date("2026-11-02T20:00:00Z") }), [nov({ startedMidMonthAt: new Date("2026-11-04T09:00:00Z") })], [], null],
-    ["no row: noMonthYet", game(), [], [], null],
-  ];
-  it.each(shapeRows)("today's scheduler mapping from the facts: %s", (_, m, monthRows, held, want) => {
-    expect(schedulerShape(phase(m, monthRows, held), m, monthRows, NOW)).toBe(want);
+  it("monthPhaseOfGame: the month-level half, for a door that asks about a month (the seed door)", () => {
+    const months = monthFacts([nov({ status: "running" })]);
+    const of = (activityId: string, monthStart: string, held: string[] = []) => monthPhaseOfGame({ orgId: "org-vets", activityId, monthStart, months, heldKeys: held }).phase;
+    expect(of("a-vets", "2026-11-01")).toBe("running");
+    expect(of("a-vets", "2026-12-01")).toBe("none");
+    expect(of("a-vets-5", "2026-11-01")).toBe("none");
+    expect(of("a-vets", "2026-12-01", ["org-org-vets:msu:held:2026-12-01:a-vets"])).toBe("held");
   });
 });
 

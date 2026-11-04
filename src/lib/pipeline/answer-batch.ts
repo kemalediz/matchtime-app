@@ -856,8 +856,8 @@ export async function runAnswerBatch(args: {
    *  so the route does not call them "not understood". Absent: unreported. */
   silence?: SilenceFacts;
   /**
-   * A MONTHLY CLUB WHOSE MONTH IS NOT STARTED (`month-not-started.ts`, the
-   * same fact the attendance engine is given). The squad starts from the
+   * A MONTHLY CLUB WHOSE MONTH IS NOT STARTED (`monthNotStartedOf`,
+   * monthly-gates.ts, the same fact the attendance engine is given). The squad starts from the
    * month's list, so a count of whoever said IN is not the squad: an
    * `options` question ("what if 14 don't confirm?") is answered with how
    * the monthly squad works instead (Vets sandbox, 2026-11-03). Absent: false.

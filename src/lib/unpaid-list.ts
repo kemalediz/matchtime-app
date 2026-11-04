@@ -33,6 +33,7 @@ import { dayTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { summariseUnpaid, unpaidFollowUpDue, UNPAID_FOLLOW_UP_RETRY_DAYS } from "./unpaid-rules";
 import type { ClubSummary } from "./club-summary/types";
+import { monthFlowOf } from "./monthly-gates";
 
 export function unpaidListKey(matchId: string): string {
   return `${matchId}:unpaid-list`;
@@ -78,6 +79,12 @@ export async function sendDueUnpaidLists(club: ClubSummary | null, now: Date = n
   let sent = 0;
   for (const m of matches) {
     if (!unpaidFollowUpDue(now, m.date)) continue;
+    // A monthly club's game whose month was not under way (club summary
+    // B2): its players are not a weekly squad that owes a per-game fee, so
+    // no weekly unpaid list. A running month's game keeps its own (its pay
+    // as you go players; the regulars' rows are filtered below).
+    const month = club.matches.find((f) => f.id === m.id)?.month ?? null;
+    if (monthFlowOf({ mode: club.squad.mode, month, stillToPlay: false }) === "month-pending") continue;
     const summary = summariseUnpaid({
       confirmed: [...m.attendances]
         // A regular's row is paid for by the month (monthly squad, slice

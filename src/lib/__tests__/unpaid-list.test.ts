@@ -184,6 +184,17 @@ describe("the admin unpaid list (U1)", () => {
     expect(h.state.claimed.size).toBe(0);
   });
 
+  it("club summary B2: a monthly club's game whose month was not under way gets no weekly unpaid list; a running month's game keeps its own (pay as you go players)", async () => {
+    h.state.org = { ...h.state.org, squadMode: "monthly" };
+    const monthly = club()!;
+    // No month for the game (the summary's phase "none"): nothing, no claim.
+    expect(await sendDueUnpaidLists(monthly, SUN_1005)).toEqual({ sent: 0 });
+    expect(h.state.claimed.size).toBe(0);
+    // A game of a running month: the organisers' list, as before B2.
+    const running = { ...monthly, matches: [{ id: "m-fri", month: { monthStart: "2027-01-01", phase: "running" as const, monthId: "sm", beforeStart: false, seeded: true } }] } as unknown as typeof monthly;
+    expect(await sendDueUnpaidLists(running, SUN_1005)).toEqual({ sent: 1 });
+  });
+
   it("payment tracking off: nothing", async () => {
     h.state.org = { ...h.state.org, paymentTrackingEnabled: false };
     expect(await sendDueUnpaidLists(club(), SUN_1005)).toEqual({ sent: 0 });

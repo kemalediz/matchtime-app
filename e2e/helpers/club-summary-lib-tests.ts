@@ -133,7 +133,7 @@ async function main() {
     const next = vets.matches.find((m) => m.id === vets.nextMatchId)!;
     assert.deepEqual([next.confirmed, next.placesOpen, next.short, next.month?.phase, next.month?.seeded], [13, 1, false, "running", true]);
     const dec = vets.matches.find((m) => m.id === `${VETS}-m-2dec`)!;
-    assert.deepEqual([dec.month?.phase, dec.month?.held, dec.month?.monthId], ["held", true, null]);
+    assert.deepEqual([dec.month?.phase, dec.month?.monthId], ["held", null]);
     const played = vets.matches.find((m) => m.id === `${VETS}-m-28oct`)!;
     assert.equal(played.teamsMade, true, "the team-assignment count");
     assert.equal(played.month?.phase, "none", "October has no row");
