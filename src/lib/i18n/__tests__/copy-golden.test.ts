@@ -68,6 +68,15 @@
  *     copy). All NEW copy, sent only to a club on "monthly"; the only
  *     non-additive line in either `.snap` diff is the case count.
  *
+ *   - Deliberate additions AND one deliberate CHANGE (2026-11-04, the one
+ *     17:00 rule, daily-update-rules.ts). The additions are the four MWK10
+ *     cases, `buildMonthlyDailyPost`, a monthly club's daily post (the
+ *     month's list, its compact form, and the existing bench ask). The
+ *     change is `intro_daily` in the R67 bot intro: it said the list is
+ *     reposted "while the squad isn't full", which has been untrue since
+ *     2026-09-17; it now says while there are places to fill or fewer
+ *     than 3 on the bench, which is the rule.
+ *
  *   - Deliberate additions (2026-10-06, monthly squad slice 3): rows
  *     MSU1 to MSU6, the month's sign-up (the list as it opens, the DM to
  *     somebody who has to wait, the organisers' note that the regular
@@ -431,6 +440,7 @@ import {
   buildPasteUndoDm,
   buildPaygPoolDm,
   buildPaygPoolGroupPost,
+  buildMonthlyDailyPost,
   buildWeekListPost,
 } from "../../monthly-week-copy";
 import {
@@ -2293,6 +2303,25 @@ function cases(lang: Lang): Case[] {
       lang,
     }),
   );
+  {
+    // MWK10 (2026-11-04): the daily 17:00 post of a running month, under
+    // the one rule (daily-update-rules.ts). The list as the group knows
+    // it, its compact form when the same list was seen in the last three
+    // hours, and the bench ask once the squad is full with a thin bench.
+    const fullList = { ...mwkList, slots: mwkList.slots.filter((x) => x.userId), paidCantPlay: [], cantPlay: [], reserves: [], open: 0 };
+    const listPost = (list: typeof mwkList, compact = false) =>
+      buildWeekListPost({ list, matchDate: mwkMatch, title: "Monday 7-a-side", paygPricePence: 800, compact, lang });
+    add("MWK10 buildMonthlyDailyPost / a place open", buildMonthlyDailyPost({ listPost: listPost(mwkList), benchInvite: null }));
+    add(
+      "MWK10 buildMonthlyDailyPost / full, empty bench, the bench ask",
+      buildMonthlyDailyPost({ listPost: listPost(fullList), benchInvite: buildSquadCompleteBenchInvite({ lang }) }),
+    );
+    add("MWK10 buildMonthlyDailyPost / same list seen lately, a place open", buildMonthlyDailyPost({ listPost: listPost(mwkList, true), benchInvite: null }));
+    add(
+      "MWK10 buildMonthlyDailyPost / same list seen lately, full, the bench ask",
+      buildMonthlyDailyPost({ listPost: listPost(fullList, true), benchInvite: buildSquadCompleteBenchInvite({ lang }) }),
+    );
+  }
   add("MWK2 buildPaygPoolGroupPost / with a price", buildPaygPoolGroupPost({ matchDate: mwkMatch, paygPricePence: 800, lang }));
   add("MWK2 buildPaygPoolGroupPost / no price", buildPaygPoolGroupPost({ matchDate: mwkMatch, paygPricePence: null, lang }));
   add("MWK2 buildPaygPoolGroupPost / two places", buildPaygPoolGroupPost({ open: 2, matchDate: mwkMatch, paygPricePence: 800, lang }));

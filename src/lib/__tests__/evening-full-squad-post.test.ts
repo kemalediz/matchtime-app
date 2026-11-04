@@ -214,17 +214,67 @@ describe("the full-squad 17:00 post", () => {
     expect(text).toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
   });
 
-  it(`stops asking at the floor: ${BENCH_THIN_BELOW} on the bench is enough cover`, async () => {
-    const text = await evening({ matches: [match({ attendances: squad(14, 3) })] });
-    expect(text).toContain("*Bench (3):*");
-    expect(text).toContain("3. Najib Ahmadi");
-    expect(text).not.toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
+  it(`STOPS at the floor (2026-11-04): ${BENCH_THIN_BELOW} on the bench, no daily post at all`, async () => {
+    // Kemal, 2026-11-04: a full squad with three or more on the bench is
+    // too much noise. Nothing at all goes out: no squad post, and no
+    // unpaid tail either (see the payment-tracking case below).
+    expect(await evening({ matches: [match({ attendances: squad(14, 3) })] })).toBeNull();
   });
 
-  it("a bench above the floor still gets its list, never the ask", async () => {
-    const text = await evening({ matches: [match({ attendances: squad(14, 4) })] });
+  it("a stop is NOTHING, even for a club that tracks payments: no unpaid tail on its own (review of #535)", async () => {
+    // Last week's game: one paid, two still owing, so the tail has
+    // something to say. Payment chasing happens by DM; the group hears
+    // nothing on a stopped evening.
+    const lastWeek = {
+      activity: { orgId: ORG.id, org: { paymentHolderId: null, paymentTrackingEnabled: true } },
+      attendances: [
+        { userId: "p1", status: "CONFIRMED", paidAt: new Date("2026-09-16T10:00:00.000Z"), directPendingAt: null, paymentMethod: null, user: { id: "p1", name: "Paid Pete", phoneNumber: "+447700900101" } },
+        { userId: "p2", status: "CONFIRMED", paidAt: null, directPendingAt: null, paymentMethod: null, user: { id: "p2", name: "Owing Olly", phoneNumber: "+447700900102" } },
+        { userId: "p3", status: "CONFIRMED", paidAt: null, directPendingAt: null, paymentMethod: null, user: { id: "p3", name: "Owing Omar", phoneNumber: "+447700900103" } },
+      ],
+      paymentCredits: [],
+    };
+    const tracked = async (opts: Parameters<typeof evening>[0]) => {
+      overrides.match = { findMany: async () => opts?.matches ?? [match()], findFirst: async () => lastWeek };
+      overrides.organisation = { findFirst: async () => ORG };
+      overrides.sentNotification = {
+        findMany: async () => [],
+        findFirst: async () => (opts?.squadLockedAt ? { createdAt: opts.squadLockedAt } : null),
+      };
+      const res = await computeDuePosts(GROUP, opts?.now ?? FIVE_PM);
+      const posts = (res?.instructions ?? []).filter((i) => (i as Instruction).key.includes(":evening-update:")) as Instruction[];
+      return posts[0]?.text ?? null;
+    };
+    // Control: the tail is real here (a thin bench carries it on the post).
+    expect(await tracked({ matches: [match({ attendances: squad(14, 2) })] })).toContain("still pending");
+    // Stopped: nothing at all.
+    expect(await tracked({ matches: [match({ attendances: squad(14, 3) })] })).toBeNull();
+    expect(await tracked({ matches: [match({ attendances: squad(14, 4) })] })).toBeNull();
+    // A stop wins over "Squad complete sent today" as well.
+    expect(await tracked({ matches: [match({ attendances: squad(14, 3) })], squadLockedAt: new Date("2026-09-17T15:50:00.000Z") })).toBeNull();
+    // Squad complete today with a thin bench: the tail alone, as before.
+    expect(await tracked({ matches: [match({ attendances: squad(14, 1) })], squadLockedAt: new Date("2026-09-17T15:50:00.000Z") })).toContain("still pending");
+  });
+
+  it("a bench above the floor: still nothing", async () => {
+    expect(await evening({ matches: [match({ attendances: squad(14, 4) })] })).toBeNull();
+  });
+
+  it("it comes back on its own: a drop after stopping opens a place, and the chase goes out", async () => {
+    const text = await evening({ matches: [match({ attendances: squad(13, 4) })] });
+    expect(text).toContain("need *1 more*");
     expect(text).toContain("*Bench (4):*");
-    expect(text).not.toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
+  });
+
+  it("and when the bench falls back below the floor, the squad post and the ask return", async () => {
+    const text = await evening({ matches: [match({ attendances: squad(14, 2) })] });
+    expect(text).toContain("*Confirmed (14/14):*");
+    expect(text).toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
+  });
+
+  it("the match-day 'make the teams' nudge is not stopped by a full bench", async () => {
+    const text = await evening({ now: new Date("2026-09-22T16:10:00.000Z"), matches: [match({ attendances: squad(14, 4) })] });
+    expect(text).toContain("Squad is locked.");
   });
 
   it("the ask is gated on the org's bench feature: off means squad and bench only", async () => {

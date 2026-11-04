@@ -1011,6 +1011,22 @@ branch is behind `squadMode = "monthly"` AND a running month for that match.
 3. **The 17:00 post and "Squad complete" (not in the plan).** Both would post a second,
    weekly-shaped roster beside the list, so neither fires for a match of a running month. The
    match-day line-ups still do. Scheduled chases use the fixed text (no composer call).
+
+   **Changed 2026-11-04 for the 17:00 post (Kemal: one rule for every club).** A running
+   month now gets the daily 17:00 post too, under the same rule as a weekly club
+   (`decideDailyUpdate`, `src/lib/daily-update-rules.ts`): every day before the match while
+   places are open; once full, while the bench has fewer than 3 (`BENCH_THIN_BELOW`), with the
+   bench ask; once full with 3 or more on the bench, nothing, until a drop or a shrinking
+   bench brings it back. The post IS the month's list (`buildMonthlyDailyPost`, the same
+   renderer and hash as the list post), so there is still never a second, differently shaped
+   list: it takes the place of that poll's list post, is recorded as the list the group last
+   saw, keeps the list's 30-minute floor, and drops the names (title and places line only)
+   when the group saw the same list in the last three hours. Open places carry the usual
+   "N places open, £8. Say IN to take it." line for pay as you go players. Fixed text, never
+   the composer. No unpaid tail (regulars pay for the month). Unchanged: "Squad complete" still
+   does not fire for a month; a month not started yet, in sign-up or held, or whose regulars
+   are not on the game yet, still gets no 17:00 post; the organisers' path sends nothing for a
+   monthly club (its squad is the list in the players' group).
 4. **A squad asked for in the group (not in the plan).** "Who's in?" is answered with the
    month's list instead of the weekly roster, and counts as the list having been shown.
 5. **The PAYG offer (5.3).** It reuses the `BenchSlotOffer` and its keys, but not the recruit DM
@@ -1460,8 +1476,8 @@ stand.
 - **The weekly deadline posts in a monthly month.** A club that kept its weekly drop-out
   deadline and list time when it went monthly got the drop-out reminder (with the weekly
   roster) and "List published" beside the month's list. Neither fires for a match of a month
-  now (running or in sign-up), for the reason the 17:00 post and "Squad complete" do not
-  (slice 5, point 3). The stand-alone "payments still pending, tick the payment poll" reminder
+  now (running or in sign-up), for the reason "Squad complete" does not (and the 17:00 post is
+  the month's list since 2026-11-04; slice 5, point 3). The stand-alone "payments still pending, tick the payment poll" reminder
   does not fire either: a month's game has no payment poll. Unchanged: the organisers' summary
   when the drop-out deadline passes (admin channel only, and its numbers are right for a
   month's game) and the organisers' unpaid list (per-game players only). A game from before
