@@ -47,6 +47,7 @@ const TODAY = new Set<string>([
   "app/admin/months/page.tsx",
   "app/admin/settings/page.tsx",
   "app/api/org/settings/route.ts",
+  "app/api/whatsapp/analyze/route.ts",
   "app/api/whatsapp/dm-reply/route.ts",
   "app/api/whatsapp/poll-vote/route.ts",
   "app/collect/[matchId]/page.tsx",
@@ -165,7 +166,7 @@ const readers = sourceFiles(SRC)
 
 describe("club facts are read from the summary, not from new queries (ratchet)", () => {
   it("the scan is alive", () => {
-    for (const known of ["lib/bot-scheduler.ts", "lib/org-features.ts", "app/api/whatsapp/dm-reply/route.ts"]) expect(readers).toContain(known);
+    for (const known of ["lib/bot-scheduler.ts", "lib/org-features.ts", "app/api/whatsapp/analyze/route.ts"]) expect(readers).toContain(known);
   });
 
   it("no new file names a club column the summary carries", () => {

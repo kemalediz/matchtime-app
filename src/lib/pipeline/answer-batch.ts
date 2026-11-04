@@ -1628,16 +1628,9 @@ export async function runAnswerBatch(args: {
     try {
       const load =
         deps.loadClub ??
-        // No summary handed in (the admin group, until slice A3): the
-        // club's summary, read now, for this one question.
         (async (o: string, matchId: string | null) => {
-          const [{ loadClubSummary }, { clubSnapshotOf }] = await Promise.all([
-            import("../club-summary/load"),
-            import("./club-snapshot"),
-          ]);
-          const summary = await loadClubSummary(o, now);
-          if (!summary) throw new Error(`club ${o} not found`);
-          return clubSnapshotOf(summary, matchId);
+          const mod = await import("./load-state");
+          return mod.loadClubSnapshot(o, matchId);
         });
       state = { ...state, club: { ...(await load(orgId, state.matchId)), forOrganisers: organisers } };
     } catch (err) {

@@ -61,6 +61,7 @@ const TODAY: Record<string, Record<string, number>> = {
     "lib/squad-month.ts": 1,
   },
   registration: {
+    "app/api/whatsapp/analyze/route.ts": 1,
     "lib/admin-group-paste.ts": 1,
     "lib/admin-onboarding.ts": 1,
     "lib/dm-registration-target.ts": 1,

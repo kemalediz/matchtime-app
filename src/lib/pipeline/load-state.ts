@@ -28,7 +28,7 @@ import { totalPlayersFor } from "../format-switch";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "../guest-name-ask";
 import { decidePaymentSnapshot, type PaymentSnapshot } from "./payment-answer";
 import type { RatingProgress } from "../rating-progress-answer";
-import type { PartnerAskView, SquadState } from "./types";
+import type { ClubSnapshot, PartnerAskView, SquadState } from "./types";
 import type { ClubSummary } from "../club-summary/types";
 import { gamesOverlap } from "../partner-ask-rules";
 import { loadPlayerNames } from "../player-display-name";
@@ -618,4 +618,48 @@ async function loadGuestElsewhere(orgId: string, kickoff: Date, now: Date): Prom
   } catch {
     return {};
   }
+}
+
+/**
+ * THE FIFTH TARGETED EXTRA READ — the club's setup, and only when asked
+ * (2026-10-16, FNF HQ: "MatchTime who are the admins?").
+ *
+ * Read for a `club` question in the admin group, the same shape as the
+ * payment read above: once, after extraction, passed down as data. The
+ * admins themselves are already on the roster (`isAdmin`, OWNER or
+ * ADMIN); this adds the money collector, the fee of the upcoming match
+ * (`matchId`, its own fee, else its game's) and "Teams ready" as the
+ * proposal scheduler reads it (`effectiveTeamsReadyTime`), so the answer
+ * and the scheduler cannot disagree.
+ *
+ * Since the club summary (slice A2) the players' group answers from the
+ * request's summary (`clubSnapshotOf`, club-snapshot.ts); this read is for a
+ * caller with no summary: the admin group (until slice A3), and an analyze
+ * request whose summary could not be read (fail-soft). The two agree on
+ * every club shape (the analyze characterisation test checks it).
+ */
+export async function loadClubSnapshot(orgId: string, matchId: string | null): Promise<ClubSnapshot> {
+  const [{ effectiveTeamsReadyTime }, { organisersAnnounce }] = await Promise.all([
+    import("../team-proposal-rules"),
+    import("../list-announcer"),
+  ]);
+  const org = await db.organisation.findUnique({
+    where: { id: orgId },
+    select: { paymentHolderId: true, teamsReadyTime: true, listAnnouncer: true },
+  });
+  const collector = org?.paymentHolderId
+    ? await db.user.findUnique({ where: { id: org.paymentHolderId }, select: { name: true } })
+    : null;
+  const match = matchId
+    ? await db.match.findUnique({
+        where: { id: matchId },
+        select: { feePerPlayer: true, activity: { select: { feePerPlayer: true, feeSplitTotal: true } } },
+      })
+    : null;
+  return {
+    collectorName: collector?.name ?? null,
+    feePerPlayer: match?.feePerPlayer ?? match?.activity.feePerPlayer ?? null,
+    feeSplitTotal: match?.activity.feeSplitTotal ?? false,
+    teamsReady: effectiveTeamsReadyTime(org?.teamsReadyTime, organisersAnnounce(org)),
+  };
 }

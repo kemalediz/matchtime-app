@@ -91,8 +91,21 @@ vi.mock("@/lib/pipeline/llm", async (orig) => {
   };
 });
 
+/** While on, every club summary read fails (its extra reads down): the
+ *  fail-soft test below. Off for every other test. */
+const summaryDown = { on: false };
+vi.mock("@/lib/club-summary/load", async (orig) => {
+  const actual = await orig<typeof import("@/lib/club-summary/load")>();
+  return {
+    ...actual,
+    loadClubSummary: (...args: Parameters<typeof actual.loadClubSummary>) =>
+      summaryDown.on ? Promise.reject(new Error("club summary down (test)")) : actual.loadClubSummary(...args),
+  };
+});
+
 import { POST } from "@/app/api/whatsapp/analyze/route";
-import { loadSquadMatchId, loadSquadState } from "@/lib/pipeline/load-state";
+import { loadClubSnapshot, loadSquadMatchId, loadSquadState } from "@/lib/pipeline/load-state";
+import { clubSnapshotOf } from "@/lib/pipeline/club-snapshot";
 import { loadClubSummary } from "@/lib/club-summary/load";
 
 const d = (iso: string) => new Date(iso);
@@ -228,9 +241,51 @@ describe("the analyze path, per club shape (must not change in A2)", () => {
         const withSummary = stable(await loadSquadState(orgId, now, { summary }));
         expect(stable(await loadSquadState(orgId, now))).toEqual(withSummary);
         expect(await loadSquadMatchId(orgId, now)).toBe(withSummary.matchId);
+        // The club answer's setup: from the summary, and from the read the
+        // admin group and a summary-less request still make. One answer.
+        for (const matchId of [withSummary.matchId, null]) {
+          expect(clubSnapshotOf(summary!, matchId)).toEqual(await loadClubSnapshot(orgId, matchId));
+        }
         out[now.toISOString()] = withSummary;
       }
       expect(out).toMatchSnapshot();
+    });
+  }
+});
+
+/**
+ * FAIL-SOFT: when the club summary cannot be read, the request carries on
+ * exactly as the code before A2 did, each consumer reading its fact itself.
+ * Every shape, instant and message: the same response, model requests and
+ * writes as with the summary, which the snapshot above pins as the old
+ * code's. The error is logged once per request.
+ */
+describe("the club summary cannot be read (the request still runs as before A2)", () => {
+  for (const name of Object.keys(SHAPES)) {
+    it(`POST /api/whatsapp/analyze, summary down: ${name}`, async () => {
+      const errors = vi.spyOn(console, "error");
+      try {
+        for (const now of SHAPES[name].instants) {
+          for (const r of REQUESTS) {
+            const { reads: _a, ...normal } = await send(name, now, r);
+            errors.mockClear();
+            summaryDown.on = true;
+            let down: Omit<Awaited<ReturnType<typeof send>>, "reads">;
+            try {
+              const { reads: _b, ...rest } = await send(name, now, r);
+              down = rest;
+            } finally {
+              summaryDown.on = false;
+            }
+            expect(down, `${now.toISOString()} ${r.name}`).toEqual(normal);
+            const logged = errors.mock.calls.filter((c) => String(c[0]).includes("club summary could not be read"));
+            // The muted club is never found, so no summary is ever asked for.
+            expect(logged.length, `${now.toISOString()} ${r.name}`).toBe(name === "muted" ? 0 : 1);
+          }
+        }
+      } finally {
+        errors.mockRestore();
+      }
     });
   }
 });

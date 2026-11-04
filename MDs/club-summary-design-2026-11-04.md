@@ -784,13 +784,21 @@ old code, and the five club replays come out identical. $0: no model, no key.
 - One summary per request (`summaryScope`), read where the registration match used to be picked,
   so after the venue words' writes. Built from that row and switches, so it reads only the games,
   the match window, the last played candidates, the collector's name and, monthly, the months.
-  `findRegistrationMatch` is deleted: the match is `nextMatchId` (the same selector over every
-  live match). The month check is `!month.rowForOwnActivity` (`monthNotStartedFor`'s fact). The
-  four monthly tests read `squad.mode`.
+  The match is `nextMatchId` (the same selector over every live match). The month check is
+  `!month.rowForOwnActivity` (`monthNotStartedFor`'s fact). The four monthly tests read
+  `squad.mode`.
+- **Fail-soft** (review of #524): if the summary cannot be read, the error is logged once and the
+  request runs as before A2: `findRegistrationMatch` (kept for this only), `monthNotStartedFor`
+  with its own catch, and every owner reading its own switches, state, payment flags and club
+  setup. A test makes the summary load throw and checks every shape and message gives the same
+  response, model requests and writes. So the route stays on the source and registration
+  ratchets: the fallback names `squadMode` and runs a selector of its own.
 - `loadSquadState(orgId, now, { summary })`: the switches and the new `teamLabels` fact come
   from the summary. Every players' group owner gets that loader; answer and team ops the
   switches; the payment answer the payment switches and collector (`loadPaymentSnapshot`).
-- `loadClubSnapshot` is deleted: `clubSnapshotOf(summary, matchId)` (pure, `pipeline/club-snapshot.ts`).
+- The club answer: `clubSnapshotOf(summary, matchId)` (pure, `pipeline/club-snapshot.ts`).
+  `loadClubSnapshot` stays for a caller with no summary (the admin group until A3, a fail-soft
+  request); the characterisation checks the two agree on every shape.
 - The pool and partner asks in words read only `loadSquadMatchId` (the squad state's own match
   read and rule, one query instead of the whole state).
 
@@ -804,10 +812,7 @@ roster reads), `organisersAnnounce(org)` on the row (needed before the summary i
 the squad post's match read (content and model input, not in A2's list).
 
 **Edges named.** The summary's match window has no historical match; the old route's query did
-(a historical match is a backfilled played one, never live). A failed read of the summary's games,
-window or months now fails the request, where `monthNotStartedFor` caught its own failure. An
-admin group `club` question, with no summary handed in until A3, reads a whole summary (5 to 8
-reads) where `loadClubSnapshot` read 1 to 3.
+(a historical match is a backfilled played one, never live).
 
 ---
 
