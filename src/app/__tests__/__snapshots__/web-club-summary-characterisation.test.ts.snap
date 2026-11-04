@@ -1062,6 +1062,11 @@ exports[`the web pages, per club shape (characterisation) > match > muted 1`] = 
 </div>
 </section>
 <div class="flex flex-wrap gap-3">
+<a data-testid="payments-link" class="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium" href="/collect/m-muted-7nov">Payments · who&#x27;s paid<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right w-4 h-4" aria-hidden="true">
+<path d="m9 18 6-6-6-6">
+</path>
+</svg>
+</a>
 <a class="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium" href="/admin/matches/m-muted-7nov/switch-format">Switch format</a>
 </div>
 </div>",
@@ -5914,6 +5919,11 @@ exports[`the web pages, per club shape (characterisation) > match > vets-instr 1
 </path>
 </svg>
 </button>
+<a data-testid="payments-link" class="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium" href="/collect/m-vets-2nov">Payments · who&#x27;s paid<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right w-4 h-4" aria-hidden="true">
+<path d="m9 18 6-6-6-6">
+</path>
+</svg>
+</a>
 </div>
 </section>
 <section data-testid="teams-section">
@@ -6701,6 +6711,11 @@ exports[`the web pages, per club shape (characterisation) > match > vets-instr 1
 </div>
 </section>
 <div class="flex flex-wrap gap-3">
+<a data-testid="payments-link" class="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium" href="/collect/m-vets-7dec">Payments · who&#x27;s paid<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right w-4 h-4" aria-hidden="true">
+<path d="m9 18 6-6-6-6">
+</path>
+</svg>
+</a>
 <a class="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium" href="/admin/matches/m-vets-7dec/switch-format">Switch format</a>
 </div>
 </div>",
@@ -9182,6 +9197,7 @@ exports[`the web pages, per club shape (characterisation) > pay > fnf 1`] = `
 </svg>Refresh</button>
 </div>
 </div>
+<div class="mb-4 rounded-lg bg-slate-100 border border-slate-200 px-4 py-3 text-sm text-slate-700" data-testid="collect-payments-off">Payments are off for this club, so MatchTime sends no pay links or reminders. An organiser can switch on Collect match fees in Settings.</div>
 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 divide-y divide-slate-100">
 <div class="flex items-center justify-between gap-3 px-4 py-3" data-testid="collect-row-u-m-fnf-6nov-0">
 <div class="min-w-0">
@@ -9403,222 +9419,42 @@ exports[`the web pages, per club shape (characterisation) > pay > fnf 1`] = `
   "collect first match as player": "redirect /",
   "pay first match, first attendee": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center mb-5">
-<p class="text-xs uppercase tracking-wider text-slate-400">FNF</p>
-<h1 class="text-xl font-bold text-slate-900 mt-1">Friday Night Football</h1>
-<p class="text-sm text-slate-500 mt-1">Match fee: <span class="font-semibold text-slate-800">£7</span>
-</p>
-</div>
-<div class="space-y-3">
-<div class="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5">
-<span class="text-sm text-slate-600">Paying for</span>
-<div class="flex items-center gap-3">
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" disabled="" aria-label="Fewer">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-</svg>
-</button>
-<span class="w-6 text-center font-semibold text-slate-900">1</span>
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" aria-label="More">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-<path d="M12 5v14">
-</path>
-</svg>
-</button>
-</div>
-</div>
-<button type="button" class="w-full flex items-center gap-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 px-4 py-3.5 text-left transition-colors disabled:opacity-50">
-<span class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hand-coins w-5 h-5" aria-hidden="true">
-<path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17">
-</path>
-<path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9">
-</path>
-<path d="m2 16 6 6">
-</path>
-<circle cx="16" cy="9" r="2.9">
-</circle>
-<circle cx="6" cy="5" r="3">
-</circle>
-</svg>
-</span>
-<span class="flex-1 min-w-0">
-<span class="block font-semibold text-slate-900">Pay the collector directly</span>
-<span class="block text-[11px] text-emerald-600">no fee · cash or transfer</span>
-</span>
-<span class="font-bold text-slate-900">£7</span>
-</button>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Player, FNF doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
   "pay first match, not in the squad": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center mb-5">
-<p class="text-xs uppercase tracking-wider text-slate-400">FNF</p>
-<h1 class="text-xl font-bold text-slate-900 mt-1">Friday Night Football</h1>
-<p class="text-sm text-slate-500 mt-1">Match fee: <span class="font-semibold text-slate-800">£7</span>
-</p>
-</div>
-<div class="space-y-3">
-<div class="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5">
-<span class="text-sm text-slate-600">Paying for</span>
-<div class="flex items-center gap-3">
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" disabled="" aria-label="Fewer">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-</svg>
-</button>
-<span class="w-6 text-center font-semibold text-slate-900">1</span>
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" aria-label="More">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-<path d="M12 5v14">
-</path>
-</svg>
-</button>
-</div>
-</div>
-<button type="button" class="w-full flex items-center gap-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 px-4 py-3.5 text-left transition-colors disabled:opacity-50">
-<span class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hand-coins w-5 h-5" aria-hidden="true">
-<path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17">
-</path>
-<path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9">
-</path>
-<path d="m2 16 6 6">
-</path>
-<circle cx="16" cy="9" r="2.9">
-</circle>
-<circle cx="6" cy="5" r="3">
-</circle>
-</svg>
-</span>
-<span class="flex-1 min-w-0">
-<span class="block font-semibold text-slate-900">Pay the collector directly</span>
-<span class="block text-[11px] text-emerald-600">no fee · cash or transfer</span>
-</span>
-<span class="font-bold text-slate-900">£7</span>
-</button>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Player, FNF doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
   "pay first match, paying directly": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center">
-<div class="text-5xl mb-3">🤝</div>
-<h1 class="text-xl font-bold text-slate-900">Paying the organiser directly</h1>
-<p class="text-sm text-slate-500 mt-2">Noted, Player. The organiser will confirm once they&#x27;ve received it.</p>
-</div>
-<div class="space-y-3">
-<div class="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5">
-<span class="text-sm text-slate-600">Paying for</span>
-<div class="flex items-center gap-3">
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" disabled="" aria-label="Fewer">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-</svg>
-</button>
-<span class="w-6 text-center font-semibold text-slate-900">1</span>
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" aria-label="More">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-<path d="M12 5v14">
-</path>
-</svg>
-</button>
-</div>
-</div>
-<button type="button" class="w-full flex items-center gap-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 px-4 py-3.5 text-left transition-colors disabled:opacity-50">
-<span class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hand-coins w-5 h-5" aria-hidden="true">
-<path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17">
-</path>
-<path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9">
-</path>
-<path d="m2 16 6 6">
-</path>
-<circle cx="16" cy="9" r="2.9">
-</circle>
-<circle cx="6" cy="5" r="3">
-</circle>
-</svg>
-</span>
-<span class="flex-1 min-w-0">
-<span class="block font-semibold text-slate-900">Pay the collector directly</span>
-<span class="block text-[11px] text-emerald-600">no fee · cash or transfer</span>
-</span>
-<span class="font-bold text-slate-900">£7</span>
-</button>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Player, FNF doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
   "pay last match, not in the squad": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center mb-5">
-<p class="text-xs uppercase tracking-wider text-slate-400">FNF</p>
-<h1 class="text-xl font-bold text-slate-900 mt-1">Friday Night Football</h1>
-<p class="text-sm text-slate-500 mt-1">Match fee: <span class="font-semibold text-slate-800">£7</span>
-</p>
-</div>
-<div class="space-y-3">
-<div class="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5">
-<span class="text-sm text-slate-600">Paying for</span>
-<div class="flex items-center gap-3">
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" disabled="" aria-label="Fewer">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-</svg>
-</button>
-<span class="w-6 text-center font-semibold text-slate-900">1</span>
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" aria-label="More">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-<path d="M12 5v14">
-</path>
-</svg>
-</button>
-</div>
-</div>
-<button type="button" class="w-full flex items-center gap-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 px-4 py-3.5 text-left transition-colors disabled:opacity-50">
-<span class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hand-coins w-5 h-5" aria-hidden="true">
-<path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17">
-</path>
-<path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9">
-</path>
-<path d="m2 16 6 6">
-</path>
-<circle cx="16" cy="9" r="2.9">
-</circle>
-<circle cx="6" cy="5" r="3">
-</circle>
-</svg>
-</span>
-<span class="flex-1 min-w-0">
-<span class="block font-semibold text-slate-900">Pay the collector directly</span>
-<span class="block text-[11px] text-emerald-600">no fee · cash or transfer</span>
-</span>
-<span class="font-bold text-slate-900">£7</span>
-</button>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Player, FNF doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
   "pay signed out": "redirect /login",
   "pay, back from checkout": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center">
-<div class="text-5xl mb-3">✅</div>
-<h1 class="text-xl font-bold text-slate-900">You&#x27;re all paid</h1>
-<p class="text-sm text-slate-500 mt-2">Thanks Player, your fee for Friday Night Football is settled.</p>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Player, FNF doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
@@ -10638,6 +10474,7 @@ exports[`the web pages, per club shape (characterisation) > pay > ratings 1`] = 
 </svg>Refresh</button>
 </div>
 </div>
+<div class="mb-4 rounded-lg bg-slate-100 border border-slate-200 px-4 py-3 text-sm text-slate-700" data-testid="collect-payments-off">Payments are off for this club, so MatchTime sends no pay links or reminders. An organiser can switch on Collect match fees in Settings.</div>
 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 divide-y divide-slate-100">
 <p class="px-4 py-6 text-center text-sm text-slate-400">No confirmed players.</p>
 </div>
@@ -10646,117 +10483,26 @@ exports[`the web pages, per club shape (characterisation) > pay > ratings 1`] = 
   "collect first match as player": "redirect /",
   "pay first match, not in the squad": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center mb-5">
-<p class="text-xs uppercase tracking-wider text-slate-400">Thursday Ratings</p>
-<h1 class="text-xl font-bold text-slate-900 mt-1">Thursday 6-a-side</h1>
-<p class="text-sm text-slate-500 mt-1">Match fee: <span class="font-semibold text-slate-800">£7</span>
-</p>
-</div>
-<div class="space-y-3">
-<div class="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5">
-<span class="text-sm text-slate-600">Paying for</span>
-<div class="flex items-center gap-3">
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" disabled="" aria-label="Fewer">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-</svg>
-</button>
-<span class="w-6 text-center font-semibold text-slate-900">1</span>
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" aria-label="More">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-<path d="M12 5v14">
-</path>
-</svg>
-</button>
-</div>
-</div>
-<button type="button" class="w-full flex items-center gap-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 px-4 py-3.5 text-left transition-colors disabled:opacity-50">
-<span class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hand-coins w-5 h-5" aria-hidden="true">
-<path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17">
-</path>
-<path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9">
-</path>
-<path d="m2 16 6 6">
-</path>
-<circle cx="16" cy="9" r="2.9">
-</circle>
-<circle cx="6" cy="5" r="3">
-</circle>
-</svg>
-</span>
-<span class="flex-1 min-w-0">
-<span class="block font-semibold text-slate-900">Pay the collector directly</span>
-<span class="block text-[11px] text-emerald-600">no fee · cash or transfer</span>
-</span>
-<span class="font-bold text-slate-900">£7</span>
-</button>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Player, Thursday Ratings doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
   "pay last match, not in the squad": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center mb-5">
-<p class="text-xs uppercase tracking-wider text-slate-400">Thursday Ratings</p>
-<h1 class="text-xl font-bold text-slate-900 mt-1">Thursday 6-a-side</h1>
-<p class="text-sm text-slate-500 mt-1">Match fee: <span class="font-semibold text-slate-800">£7</span>
-</p>
-</div>
-<div class="space-y-3">
-<div class="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5">
-<span class="text-sm text-slate-600">Paying for</span>
-<div class="flex items-center gap-3">
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" disabled="" aria-label="Fewer">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-</svg>
-</button>
-<span class="w-6 text-center font-semibold text-slate-900">1</span>
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" aria-label="More">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-<path d="M12 5v14">
-</path>
-</svg>
-</button>
-</div>
-</div>
-<button type="button" class="w-full flex items-center gap-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 px-4 py-3.5 text-left transition-colors disabled:opacity-50">
-<span class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hand-coins w-5 h-5" aria-hidden="true">
-<path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17">
-</path>
-<path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9">
-</path>
-<path d="m2 16 6 6">
-</path>
-<circle cx="16" cy="9" r="2.9">
-</circle>
-<circle cx="6" cy="5" r="3">
-</circle>
-</svg>
-</span>
-<span class="flex-1 min-w-0">
-<span class="block font-semibold text-slate-900">Pay the collector directly</span>
-<span class="block text-[11px] text-emerald-600">no fee · cash or transfer</span>
-</span>
-<span class="font-bold text-slate-900">£7</span>
-</button>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Player, Thursday Ratings doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
   "pay signed out": "redirect /login",
   "pay, back from checkout": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center">
-<div class="text-5xl mb-3">✅</div>
-<h1 class="text-xl font-bold text-slate-900">You&#x27;re all paid</h1>
-<p class="text-sm text-slate-500 mt-2">Thanks Player, your fee for Thursday 6-a-side is settled.</p>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Player, Thursday Ratings doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
@@ -12878,6 +12624,7 @@ exports[`the web pages, per club shape (characterisation) > pay > vets 1`] = `
 </svg>Refresh</button>
 </div>
 </div>
+<div class="mb-4 rounded-lg bg-slate-100 border border-slate-200 px-4 py-3 text-sm text-slate-700" data-testid="collect-payments-off">Payments are off for this club, so MatchTime sends no pay links or reminders. An organiser can switch on Collect match fees in Settings.</div>
 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 divide-y divide-slate-100">
 <div class="flex items-center justify-between gap-3 px-4 py-3" data-testid="collect-row-u-org-vets-r2">
 <div class="min-w-0">
@@ -12907,133 +12654,42 @@ exports[`the web pages, per club shape (characterisation) > pay > vets 1`] = `
   "collect first match as player": "redirect /",
   "pay first match, first attendee": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center" data-testid="pay-monthly">
-<div class="text-5xl mb-3">📋</div>
-<h1 class="text-xl font-bold text-slate-900">Nothing to pay for this match</h1>
-<p class="text-sm text-slate-500 mt-2">Regular, your place for Monday Night Football is paid for by the month. If that&#x27;s not right, speak to the organiser.</p>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Regular, Vets MNF doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
   "pay first match, not in the squad": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center mb-5">
-<p class="text-xs uppercase tracking-wider text-slate-400">Vets MNF</p>
-<h1 class="text-xl font-bold text-slate-900 mt-1">Monday Night Football</h1>
-<p class="text-sm text-slate-500 mt-1">Match fee: <span class="font-semibold text-slate-800">£7</span>
-</p>
-</div>
-<div class="space-y-3">
-<div class="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5">
-<span class="text-sm text-slate-600">Paying for</span>
-<div class="flex items-center gap-3">
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" disabled="" aria-label="Fewer">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-</svg>
-</button>
-<span class="w-6 text-center font-semibold text-slate-900">1</span>
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" aria-label="More">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-<path d="M12 5v14">
-</path>
-</svg>
-</button>
-</div>
-</div>
-<button type="button" class="w-full flex items-center gap-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 px-4 py-3.5 text-left transition-colors disabled:opacity-50">
-<span class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hand-coins w-5 h-5" aria-hidden="true">
-<path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17">
-</path>
-<path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9">
-</path>
-<path d="m2 16 6 6">
-</path>
-<circle cx="16" cy="9" r="2.9">
-</circle>
-<circle cx="6" cy="5" r="3">
-</circle>
-</svg>
-</span>
-<span class="flex-1 min-w-0">
-<span class="block font-semibold text-slate-900">Pay Davide directly</span>
-<span class="block text-[11px] text-emerald-600">no fee · cash or transfer</span>
-</span>
-<span class="font-bold text-slate-900">£7</span>
-</button>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Player, Vets MNF doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
   "pay first match, paying directly": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center">
-<div class="text-5xl mb-3">🤝</div>
-<h1 class="text-xl font-bold text-slate-900">Paying Davide directly</h1>
-<p class="text-sm text-slate-500 mt-2">Noted, Regular. Davide will confirm once they&#x27;ve received it.</p>
-</div>
-<div class="space-y-3">
-<div class="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5">
-<span class="text-sm text-slate-600">Paying for</span>
-<div class="flex items-center gap-3">
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" disabled="" aria-label="Fewer">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-</svg>
-</button>
-<span class="w-6 text-center font-semibold text-slate-900">1</span>
-<button type="button" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 disabled:opacity-40" aria-label="More">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus w-4 h-4" aria-hidden="true">
-<path d="M5 12h14">
-</path>
-<path d="M12 5v14">
-</path>
-</svg>
-</button>
-</div>
-</div>
-<button type="button" class="w-full flex items-center gap-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 px-4 py-3.5 text-left transition-colors disabled:opacity-50">
-<span class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hand-coins w-5 h-5" aria-hidden="true">
-<path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17">
-</path>
-<path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9">
-</path>
-<path d="m2 16 6 6">
-</path>
-<circle cx="16" cy="9" r="2.9">
-</circle>
-<circle cx="6" cy="5" r="3">
-</circle>
-</svg>
-</span>
-<span class="flex-1 min-w-0">
-<span class="block font-semibold text-slate-900">Pay Davide directly</span>
-<span class="block text-[11px] text-emerald-600">no fee · cash or transfer</span>
-</span>
-<span class="font-bold text-slate-900">£7</span>
-</button>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Regular, Vets MNF doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
   "pay last match, not in the squad": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center">
-<h1 class="text-xl font-bold text-slate-900">No fee set yet</h1>
-<p class="text-sm text-slate-500 mt-2">The organiser hasn&#x27;t set the fee for Monday Night Football yet. Check back shortly.</p>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Player, Vets MNF doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",
   "pay signed out": "redirect /login",
   "pay, back from checkout": "<div class="min-h-screen flex items-center justify-center px-5 bg-slate-50">
 <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
-<div class="text-center">
-<div class="text-5xl mb-3">✅</div>
-<h1 class="text-xl font-bold text-slate-900">You&#x27;re all paid</h1>
-<p class="text-sm text-slate-500 mt-2">Thanks Player, your fee for Monday Night Football is settled.</p>
+<div class="text-center" data-testid="pay-off">
+<h1 class="text-xl font-bold text-slate-900">Nothing to pay here</h1>
+<p class="text-sm text-slate-500 mt-2">Player, Vets MNF doesn&#x27;t take payments through MatchTime. Speak to the organiser about paying.</p>
 </div>
 </div>
 </div>",

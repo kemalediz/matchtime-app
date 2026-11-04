@@ -112,7 +112,7 @@
  *                                              designed part of this
  *                                              document", with the note
  *                                              as its only backstop.
- *   • payment tracking is off for the org    → SILENCE. The club said
+ *   • payments are off for the club          → SILENCE. The club said
  *                                              no; nothing failed.
  *   • no genuinely COMPLETED, non-historical
  *     match to credit against                → SILENCE + note. A payment
@@ -221,6 +221,7 @@ import { adminVenueCopy } from "./i18n/admin-venue";
 import { latestAskFromRecords, retryFactsOf, type LatestAskForRetry } from "./refused-ask-retry";
 import type { VenueFromWordsResult } from "./venue-from-words";
 import { perSideOf, playerRangeWordsOf } from "./flex-format-rules";
+import { paymentMessagesOnFor } from "./payment-messages";
 import type { PlayerRangeWords } from "./player-range-words";
 
 export { ADMIN_OPS_APPLY_DEGRADED_PREFIX, ADMIN_OPS_HANDLED_BY };
@@ -774,16 +775,18 @@ export async function runAdminOpsBatch(args: {
     }
 
     if (facts.action === "bulk_payment") {
-      if (!state.features.paymentTracking) {
-        // The org-level kill switch (`route.ts:3779-3786`). The bot is
-        // silent either way, which is the club's own choice.
+      if (!paymentMessagesOnFor(state.features)) {
+        // The org-level kill switch (`route.ts:3779-3786`): the one rule
+        // for "payments are on", tracking OR collection (decision K2, club
+        // summary B3). The bot is silent either way, which is the club's
+        // own choice.
         //
         // It used to add that "going through the analyzer keeps the
         // `AnalyzedMessage` trail identical to today's". Since §10 step
         // 8 the row is written by `route.ts`'s "NOBODY OWNED IT" branch instead, tagged
         // `ignored` with `no owner: route=admin_ops` and this reason
         // appended — a different row, same question answerable from it.
-        hand("payment tracking is off for this org");
+        hand("payments are off for this club");
         continue;
       }
       if (!paymentMatchId) {

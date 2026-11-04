@@ -135,6 +135,7 @@ const PAYMENTS_INPUT: MyPaymentsInput = {
     payMethodPayByBank: true,
     payMethodCard: true,
     payMethodDirect: true,
+    stripeConnectAccountId: "acct_erdal",
     stripeChargesEnabled: true,
   },
   collectorName: "Erdal Özkan",

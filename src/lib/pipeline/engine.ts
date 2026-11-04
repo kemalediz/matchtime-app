@@ -53,6 +53,7 @@ import {
 import { shouldAskForGuestName } from "../guest-name-ask";
 import { decideThirdPartyIn } from "../friend-link/rules";
 import { RECRUIT_BLAST_REQUIRES_TAG } from "../recruit-request";
+import { paymentMessagesOnFor } from "../payment-messages";
 import {
   STATS_BLAST_REQUIRES_TAG,
   STATS_BLAST_TAG_MUST_BE_EXPLICIT,
@@ -2634,8 +2635,10 @@ export function decide(input: EngineInput): EngineResult {
           out.reasons.push("payment credit requires an @Match Time tag");
           return;
         }
-        if (!state.features.paymentTracking) {
-          out.reasons.push("payment tracking is off for this org");
+        // The one rule (decision K2, club summary B3): payments are on when
+        // the club tracks OR collects. Sutton FC collects and does not track.
+        if (!paymentMessagesOnFor(state.features)) {
+          out.reasons.push("payments are off for this club");
           return;
         }
         if (!senderIsAdmin) {

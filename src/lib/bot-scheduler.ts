@@ -1263,10 +1263,10 @@ async function getMatchesForScheduler(orgId: string, now: Date) {
           // match-end "how much per player?" DM (gated below).
           org: {
             select: {
-              paymentCollectionEnabled: true,
               paymentHolderId: true,
               // The daily pay chase names only the ways the club can
               // take payment (`availablePayMethods`, FNF 2026-10-16).
+              // Carries `paymentCollectionEnabled` (club summary B3).
               ...PAY_METHOD_SELECT,
               // And the club's own words on paying the collector directly
               // (one line, only when direct is offered, 2026-10-16). Not for

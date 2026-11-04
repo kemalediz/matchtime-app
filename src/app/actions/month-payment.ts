@@ -17,6 +17,8 @@ import { auth } from "@/lib/auth";
 import { londonDateTimeToUtc } from "@/lib/london-time";
 import { claimMonthPaid, confirmMonthPaid, mayConfirmPayments, priceMonth, unconfirmMonthPaid, type ConfirmPaidError, type PriceMonthError } from "@/lib/month-payment";
 import { parsePounds } from "@/lib/squad-month-rules";
+import { db } from "@/lib/db";
+import { PAYMENT_FLAGS_SELECT, paymentMessagesOn } from "@/lib/payment-messages";
 
 async function requireAdmin(orgId: string): Promise<string> {
   const session = await auth();
@@ -104,6 +106,10 @@ export async function sayMonthPaid(monthId: string): Promise<{ ok: boolean }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
   if (typeof monthId !== "string") return { ok: false };
+  // Payments off for the club (decision K2, club summary B3): the page
+  // offers no "I've paid", and the action records nothing either.
+  const month = await db.squadMonth.findUnique({ where: { id: monthId }, select: { org: { select: PAYMENT_FLAGS_SELECT } } });
+  if (!month || !paymentMessagesOn(month.org)) return { ok: false };
   await claimMonthPaid({ monthId, userId: session.user.id, source: "page" });
   revalidatePath("/month");
   return { ok: true };

@@ -6,6 +6,7 @@ import { CLUB_ROW_SELECT, clubRowFactsOf } from "@/lib/club-row-facts";
 import { t } from "@/lib/i18n/t";
 import { payCollectorName } from "@/lib/direct-payment";
 import { PayOptions } from "@/components/pay/pay-options";
+import { paymentMessagesOn } from "@/lib/payment-messages";
 
 export const dynamic = "force-dynamic";
 
@@ -57,9 +58,12 @@ export default async function PayPage({
         payMethodPayByBank: club.payments.switches.payByBank,
         payMethodCard: club.payments.switches.card,
         payMethodDirect: club.payments.switches.direct,
+        paymentCollectionEnabled: club.payments.collection,
+        stripeConnectAccountId: row.stripeConnectAccountId,
         stripeChargesEnabled: club.payments.stripe.chargesEnabled,
         paymentInstructions: club.payments.instructions,
         squadMode: club.squad.mode,
+        paymentsOn: club.payments.messagesOn,
       }
     : {
         name: row.name,
@@ -68,14 +72,32 @@ export default async function PayPage({
         payMethodPayByBank: row.payMethodPayByBank,
         payMethodCard: row.payMethodCard,
         payMethodDirect: row.payMethodDirect,
+        paymentCollectionEnabled: row.paymentCollectionEnabled,
+        stripeConnectAccountId: row.stripeConnectAccountId,
         stripeChargesEnabled: row.stripeChargesEnabled,
         paymentInstructions: row.paymentInstructions,
         squadMode: row.squadMode,
+        paymentsOn: paymentMessagesOn(row),
       };
   // "Pay Raihan directly", as the pay link DM says. "the organiser" when
   // no collector name is on record.
   const collector = (await payCollectorName(org.collectorId))?.split(" ")[0] ?? null;
   const collectorLabel = collector ?? "the organiser";
+
+  // Payments off for the club (decision K2, club summary B3): nothing is
+  // paid through MatchTime, so no buttons (the actions refuse it too,
+  // `resolvePayContext`). An old pay link lands here.
+  if (!org.paymentsOn) {
+    const w = t(org.language);
+    return (
+      <Shell>
+        <div className="text-center" data-testid="pay-off">
+          <h1 className="text-xl font-bold text-slate-900">{w.pay_off_title}</h1>
+          <p className="text-sm text-slate-500 mt-2">{w.pay_off_body({ firstName: first, club: org.name })}</p>
+        </div>
+      </Shell>
+    );
+  }
 
   // Monthly squad (slice 5): a regular's place is paid for by the month.
   // No pay buttons, so the "monthly" mark on their row cannot be replaced
@@ -177,15 +199,17 @@ export default async function PayPage({
 }
 
 /** What this page reads of the club: the pay method switches with
- *  `stripeChargesEnabled` (the input of `availablePayMethods`), the club's
- *  payment instructions and squad mode (`directPayInstructions`), the
- *  collector, the name and the language. */
+ *  whether a card can be taken (the input of `availablePayMethods`), the
+ *  club's payment instructions and squad mode (`directPayInstructions`),
+ *  the collector, the name, the language, and whether payments are on
+ *  (`paymentMessagesOn`, decision K2). */
 type PayClub = PayMethodSwitches & {
   name: string;
   language: string | null;
   collectorId: string | null;
   paymentInstructions: string | null;
   squadMode: string | null;
+  paymentsOn: boolean;
 };
 
 function Methods({

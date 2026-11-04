@@ -78,10 +78,10 @@ describe("settings card summaries", () => {
   });
 
   it("payments: collecting or not, and the bank", () => {
-    expect(S.paymentsSummary("en", { collecting: false, bankConnected: false })).toBe("Not collecting match fees");
-    expect(S.paymentsSummary("en", { collecting: true, bankConnected: true })).toBe("Collecting match fees, bank connected");
-    expect(S.paymentsSummary("en", { collecting: true, bankConnected: false })).toBe("Collecting match fees, bank not connected yet");
-    expect(S.paymentsSummary("tr", { collecting: true, bankConnected: true })).toBe("Maç ücreti toplanıyor, banka bağlı");
+    expect(S.paymentsSummary("en", { tracking: false, collecting: false, bankConnected: false })).toBe("Not collecting match fees");
+    expect(S.paymentsSummary("en", { tracking: false, collecting: true, bankConnected: true })).toBe("Collecting match fees, bank connected");
+    expect(S.paymentsSummary("en", { tracking: false, collecting: true, bankConnected: false })).toBe("Collecting match fees, bank not connected yet");
+    expect(S.paymentsSummary("tr", { tracking: false, collecting: true, bankConnected: true })).toBe("Maç ücreti toplanıyor, banka bağlı");
   });
 
   it("billing: this month's line, else the first line", () => {
@@ -156,7 +156,7 @@ describe("settings card summaries", () => {
       S.weeklyRoutineSummary("tr", { rollingSquad: true, deadlines: 2 }),
       S.benchSummary("en", { on: true, pickMode: "first-come" }),
       S.benchSummary("tr", { on: true, pickMode: "first-come" }),
-      S.paymentsSummary("tr", { collecting: true, bankConnected: false }),
+      S.paymentsSummary("tr", { tracking: false, collecting: true, bankConnected: false }),
       S.partnerClubsSummary("tr", { partners: 0, requestsWaiting: 0 }),
       S.adminGroupSummary("tr", { mode: "each-admin", group: null }),
       S.adminGroupSummary("tr", { mode: "one-person", group: null }),

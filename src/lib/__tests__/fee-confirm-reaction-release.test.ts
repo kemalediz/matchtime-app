@@ -42,7 +42,7 @@ import { confirmCollectorFeeByReaction } from "../payment-flow";
 import { buildFeeReleasedAck } from "../dm-copy";
 import { dayLabel } from "../i18n/dates";
 
-const SWITCHES = { payMethodPayByBank: false, payMethodCard: true, payMethodDirect: true, stripeChargesEnabled: true };
+const SWITCHES = { payMethodPayByBank: false, payMethodCard: true, payMethodDirect: true, paymentCollectionEnabled: true, stripeConnectAccountId: "acct_1", stripeChargesEnabled: true };
 const DATE = new Date("2026-10-20T20:30:00Z");
 const PENDING = {
   id: "m1",

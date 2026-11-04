@@ -108,7 +108,7 @@ export function hqHelpGates(
     // payments (2026-11-03: with both off nothing about payments is said).
     paid: monthly && paymentMessagesOn(org),
     // Free places (2026-10-16): only where the club takes match fees.
-    free: org.paymentCollectionEnabled === true || org.paymentTrackingEnabled === true,
+    free: paymentMessagesOn(org),
     // The pool (2026-10-28): asked in words from HQ by a weekly club only
     // (admin-group-pool.ts), and only while it is open for the club.
     pool: !monthly && !!poolEnv && poolOffersOpenForClub({ featurePlayerPool: org.featurePlayerPool === true }, poolEnv),

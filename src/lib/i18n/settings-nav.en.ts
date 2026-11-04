@@ -47,6 +47,7 @@ export const SETTINGS_NAV_EN: SettingsNavCopy = {
     paymentsOff: "Not collecting match fees",
     paymentsBank: "Collecting match fees, bank connected",
     paymentsNoBank: "Collecting match fees, bank not connected yet",
+    paymentsTracking: "Keeping track of who has paid",
     partnersNone: "No partner clubs yet",
     partners: (n) => (n === 1 ? "1 partner club" : `${n} partner clubs`),
     partnerRequests: (n) => (n === 1 ? "1 request waiting" : `${n} requests waiting`),

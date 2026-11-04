@@ -23,6 +23,7 @@ const ORG: MyPaymentsOrg = {
   payMethodPayByBank: true,
   payMethodCard: true,
   payMethodDirect: true,
+  stripeConnectAccountId: "acct_collector",
   stripeChargesEnabled: true,
 };
 

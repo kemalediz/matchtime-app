@@ -7,6 +7,7 @@
  */
 import { db } from "./db";
 import { PAY_METHOD_SELECT } from "./payments";
+import { paymentMessagesOn } from "./payment-messages";
 import { payCollectorName } from "./direct-payment";
 import { buildPayLinkUrl } from "./pay-link";
 import {
@@ -48,15 +49,15 @@ export async function readMyPayments(args: MyPaymentsArgs): Promise<MyPayments |
     where: { id: args.orgId },
     select: {
       paymentTrackingEnabled: true,
-      paymentCollectionEnabled: true,
       paymentHolderId: true,
       paymentInstructions: true,
       squadMode: true,
+      // Carries `paymentCollectionEnabled` (club summary B3).
       ...PAY_METHOD_SELECT,
     },
   });
   if (!org) return null;
-  const tracked = org.paymentTrackingEnabled || org.paymentCollectionEnabled;
+  const tracked = paymentMessagesOn(org);
   const isCollector = org.paymentHolderId === args.userId;
   const rows =
     tracked && !isCollector

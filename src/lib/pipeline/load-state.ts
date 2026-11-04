@@ -404,6 +404,7 @@ export async function loadSquadState(
     features: {
       attendance: features.attendance,
       paymentTracking: features.paymentTracking ?? false,
+      paymentCollection: features.paymentCollection ?? false,
       statsQa: features.statsQa ?? false,
       reminders: features.reminders ?? false,
       // Already normalised to a shipped language by `getOrgFeatures`.

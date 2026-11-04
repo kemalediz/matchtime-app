@@ -13,9 +13,9 @@
  *
  * Fixture world:
  *   Org "E2E Test FC" — bot on, payments on (all 3 methods), collector =
- *   Colin Collector, stripeChargesEnabled true (renders card/bank
- *   buttons; actual Stripe calls fail loudly with "not connected"
- *   because there's no Connect account and STRIPE_SECRET_KEY is empty).
+ *   Colin Collector, a placeholder Connect account with charges enabled
+ *   (renders card/bank buttons; actual Stripe calls fail loudly because
+ *   STRIPE_SECRET_KEY is empty).
  *
  *   Matches:
  *     PAY      COMPLETED, ended ~2h ago, fee £8, links released.
@@ -67,7 +67,12 @@ export async function seedAll(db: PrismaClient): Promise<void> {
       payMethodPayByBank: true,
       payMethodCard: true,
       payMethodDirect: true,
-      stripeChargesEnabled: true, // renders card/bank buttons; no Connect acct
+      // A card can be taken (`isPaymentCollectionLive`: collection, an
+      // account and charges, club summary B3), so card/bank buttons render.
+      // The account is a placeholder: STRIPE_SECRET_KEY is unset in e2e, so
+      // nothing ever calls Stripe with it.
+      stripeConnectAccountId: "acct_e2e_placeholder",
+      stripeChargesEnabled: true,
       paymentHolderId: U.collector,
       // Every club that existed before the admin-channel migration was put
       // on "each-admin" by it (slice 2a); the fixture club is one of them.

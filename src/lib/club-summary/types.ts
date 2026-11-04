@@ -83,8 +83,9 @@ export interface ClubSummary {
  * `ClubSummary` that its read 1 (the Organisation row, `CLUB_ORG_SELECT`)
  * and the switches (`ORG_FEATURES_SELECT` on the same row) say, built by
  * the same derive functions (`clubRowFacts`, derive.ts), and nothing that
- * needs another read: no games, matches, months, roster, collector's name
- * or `collectionLive` (its module reads the database).
+ * needs another read: no games, matches, months, roster or collector's
+ * name. (`collectionLive` is here since slice B3: its rule moved into the
+ * pure payments.ts.)
  *
  * For a door that finds the club by its row anyway (the admin group, by
  * its group; a DM, through the sender's memberships; a web page, on its
@@ -103,7 +104,7 @@ export type ClubRowFacts = Pick<ClubSummary, "orgId" | "name" | "language" | "li
     teamsReadyChosen: boolean;
   };
   squad: Omit<SquadFacts, "months">;
-  payments: Omit<PaymentFacts, "collector" | "collectionLive"> & {
+  payments: Omit<PaymentFacts, "collector"> & {
     /** `paymentHolderId`; the name needs a read of its own. */
     collector: { userId: string } | null;
     /** The pay method switches as stored (`payMethodPayByBank`,
@@ -198,9 +199,10 @@ export interface PaymentFacts {
     /** `stripeChargesEnabled`. */
     chargesEnabled: boolean;
   };
-  /** `isPaymentCollectionLive` (payments-live-announce.ts): collection on, a
-   *  connected account, charges enabled. One of D4's four spellings of "can
-   *  this club take a card"; `methods.card` is another. */
+  /** `isPaymentCollectionLive` (payments.ts): collection on, a connected
+   *  account, charges enabled. THE one rule for "a card (or Pay by Bank)
+   *  can be taken" (slice B3, plan D4); `methods.card` and
+   *  `methods.payByBank` are it plus the method's switch. */
   collectionLive: boolean;
   /** `availablePayMethods` (payments.ts): the ways a player can actually pay. */
   methods: { payByBank: boolean; card: boolean; direct: boolean };

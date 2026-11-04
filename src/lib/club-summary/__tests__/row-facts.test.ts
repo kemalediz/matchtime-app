@@ -16,7 +16,7 @@ describe("clubRowFacts: the summary's facts of the club's row", () => {
       const whole = buildClubSummary(rows, NOW);
       const row = clubRowFacts(rows.org, rows.features);
       const { months: _months, ...squad } = whole.squad;
-      const { collector, collectionLive: _live, ...payments } = whole.payments;
+      const { collector, ...payments } = whole.payments;
       expect(row).toEqual({
         orgId: whole.orgId,
         name: whole.name,

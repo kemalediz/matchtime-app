@@ -47,6 +47,7 @@ export const SETTINGS_NAV_TR: SettingsNavCopy = {
     paymentsOff: "Maç ücreti toplanmıyor",
     paymentsBank: "Maç ücreti toplanıyor, banka bağlı",
     paymentsNoBank: "Maç ücreti toplanıyor, banka henüz bağlı değil",
+    paymentsTracking: "Kimin ödediği takip ediliyor",
     partnersNone: "Henüz partner kulüp yok",
     partners: (n) => `${n} partner kulüp`,
     partnerRequests: (n) => `bekleyen istek: ${n}`,

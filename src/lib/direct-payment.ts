@@ -24,7 +24,7 @@
 import { PAYMENT_FLAGS_SELECT, paymentMessagesOn } from "./payment-messages";
 import { db } from "./db";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
-import { ALREADY_PAID_REASON, payBlockedReason } from "./payment-outcome";
+import { ALREADY_PAID_REASON, PAYMENTS_OFF_REASON, payBlockedReason } from "./payment-outcome";
 import { buildDirectPayCollectorNotice } from "./dm-copy";
 import { gbp } from "./payments";
 import { t } from "./i18n/t";
@@ -65,6 +65,10 @@ async function loadPayRows(userId: string, matchId: string) {
     },
   });
   if (!match) return { ok: false as const, reason: "Match not found" };
+  // Payments off for the club (decision K2, club summary B3): no door
+  // starts a payment. The "Paid" DM never gets here with them off (it
+  // reads only matches of a club that collects, payment-claim.ts).
+  if (!paymentMessagesOn(match.activity.org)) return { ok: false as const, reason: PAYMENTS_OFF_REASON };
   if (match.feePerPlayer == null) return { ok: false as const, reason: "No fee set for this match yet" };
   const attendance = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },

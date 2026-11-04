@@ -1037,7 +1037,7 @@ export const tr: Strings = {
       settings: "ayarlar",
     })[p.topic],
 
-  onbHelpTopicLabel: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings" }): string =>
+  onbHelpTopicLabel: (p: { topic: "availability" | "friend" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" | "partners" | "pool" | "settings"; pollOnly?: boolean }): string =>
     ({
       availability: "kadro ve katılım",
       friend: "arkadaş getirmek",
@@ -1045,7 +1045,7 @@ export const tr: Strings = {
       mom: "maçın adamı",
       ratings: "oyuncu puanları",
       reminders: "hatırlatmalar",
-      payments: "maç ücretleri",
+      payments: p.pollOnly ? "ödemeler" : "maç ücretleri",
       schedule: "program ve rezervasyonlar",
       badges: "rozetler ve nasıl kazanılır",
       partners: "partner kulüpler",
@@ -1092,6 +1092,15 @@ export const tr: Strings = {
     `Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra oynayan herkese payını kartla veya bankadan ödemesi için özelden bir bağlantı gönderirim. Para doğrudan parayı toplayan kişinin banka hesabına gider.\n` +
     `Ödemeyenlere her gün bir hatırlatma gönderirim, kimse arkadaşının peşinden para için koşmak zorunda kalmaz.\n` +
     `Nakit ya da havaleyle mi ödendi? Oyuncu bana *"ödedim"* yazar, ben de parayı toplayan kişiden paranın geldiğini onaylamasını isterim.`,
+
+  onbHelpPaymentsTracking:
+    `💳 *Ödemeler nasıl çalışır*\n` +
+    `Her maçta kimin ödediğini takip ediyorum. Maçtan sonra gruba bir ödeme anketi atarım: ödediyseniz takımınızı işaretleyin.\n` +
+    `Henüz ödemeyenler, isimleri verilmeden, gruptaki sonraki bir mesajda sayılır.\n` +
+    `Son durumu istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time kim ödemedi?*).`,
+
+  onbHelpPaymentsCreditOrganiser:
+    `Biri başkaları için mi ödedi? Oyuncu grubunda beni etiketleyip kimin kimin için ödediğini kendi cümlelerinle söyle (örneğin *@Match Time Amir, Sam ve Alex için ödedi*), ben de kaydederim.`,
 
   // The settings page speaks the club's language: `label` is the card's
   // own Turkish title (settings-info.ts).
@@ -1656,6 +1665,10 @@ export const tr: Strings = {
   collect_marked_free: `Ücretsiz yer olarak işaretlendi`,
   collect_unmarked_free: `Ücretsiz yer kaldırıldı`,
   collect_free_count: (p) => `${p.count} ücretsiz`,
+
+  pay_off_title: `Burada ödenecek bir şey yok`,
+  pay_off_body: (p) => `${p.firstName}, ${p.club} ödemeleri MatchTime üzerinden almıyor. Ödeme için organizatörle konuş.`,
+  collect_payments_off: `Bu kulüpte ödemeler kapalı, MatchTime ödeme bağlantısı ya da hatırlatma göndermiyor. Bir organizatör Ayarlar'dan Maç ücreti toplama ayarını açabilir.`,
 
   // Rows 96, 95, 89 name only `availablePayMethods(org)` (FNF,
   // 2026-10-16). The collector's name takes "ile", never a case suffix,

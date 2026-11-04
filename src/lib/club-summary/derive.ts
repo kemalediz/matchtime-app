@@ -33,7 +33,7 @@ import { isClubApproved, isClubOperational } from "../club-approval-state";
 import { isBillingPaused } from "../club-billing-rules";
 import { isClubSettingUp, type SetupStageColumns } from "../club-setup-rules";
 import { paymentMessagesOn } from "../payment-messages";
-import { availablePayMethods } from "../payments";
+import { availablePayMethods, isPaymentCollectionLive } from "../payments";
 import { normaliseListAnnouncer, organisersAnnounce } from "../list-announcer";
 import { normaliseMomChooser } from "../mom-chooser";
 import { normaliseBenchPickFallback, normaliseBenchPickMode } from "../squad-capacity";
@@ -173,9 +173,6 @@ export interface ClubRows {
   features: OrgFeatures;
   /** `User.name` of `paymentHolderId`, as `loadClubSnapshot` reads it. */
   collectorName: string | null;
-  /** `isPaymentCollectionLive(org)`: computed by the loader because its
-   *  module (payments-live-announce.ts) imports the database client. */
-  collectionLive: boolean;
   activities: ActivityRow[];
   matches: MatchRow[];
   lastPlayed: LastPlayedRow[];
@@ -203,14 +200,14 @@ export function lifecycleFacts(org: OrgRow): LifecycleFacts {
   };
 }
 
-export function paymentFacts(org: OrgRow, extra: { collectorName: string | null; collectionLive: boolean }): PaymentFacts {
+export function paymentFacts(org: OrgRow, extra: { collectorName: string | null }): PaymentFacts {
   const methods = availablePayMethods(org);
   return {
     tracking: org.paymentTrackingEnabled,
     collection: org.paymentCollectionEnabled,
     messagesOn: paymentMessagesOn(org),
     stripe: { accountConnected: !!org.stripeConnectAccountId, chargesEnabled: org.stripeChargesEnabled },
-    collectionLive: extra.collectionLive,
+    collectionLive: isPaymentCollectionLive(org),
     methods: { payByBank: methods.includes("pay_by_bank"), card: methods.includes("card"), direct: methods.includes("direct") },
     collector: org.paymentHolderId ? { userId: org.paymentHolderId, name: extra.collectorName } : null,
     instructions: org.paymentInstructions,
@@ -256,7 +253,7 @@ export function squadFacts(org: OrgRow, months: MonthFacts[]): SquadFacts {
  */
 export function clubRowFacts(org: OrgRow, features: OrgFeatures): ClubRowFacts {
   const { months: _months, ...squad } = squadFacts(org, []);
-  const { collector, collectionLive: _live, ...payments } = paymentFacts(org, { collectorName: null, collectionLive: false });
+  const { collector, ...payments } = paymentFacts(org, { collectorName: null });
   return {
     orgId: org.id,
     name: org.name,
@@ -537,7 +534,7 @@ export function buildClubSummary(rows: ClubRows, now: Date): ClubSummary {
     // A row read by an older select (a test's partial world) has none: [].
     teamLabels: [...(org.teamLabels ?? [])],
     routine: routineFacts(org),
-    payments: paymentFacts(org, { collectorName: rows.collectorName, collectionLive: rows.collectionLive }),
+    payments: paymentFacts(org, { collectorName: rows.collectorName }),
     squad,
     games,
     matches,

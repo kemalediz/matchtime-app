@@ -43,6 +43,7 @@ import { notPlayedGameLabel } from "@/lib/match-cancel";
 import { notPlayedKey } from "@/lib/match-cancel-keys";
 import { NotPlayedButton } from "@/components/match/not-played-button";
 import { CLUB_ROW_SELECT, clubRowFactsOf } from "@/lib/club-row-facts";
+import { paymentMessagesOn } from "@/lib/payment-messages";
 
 export default async function MatchDetailPage({
   params,
@@ -93,7 +94,7 @@ export default async function MatchDetailPage({
     ? {
         teamLabels: club.teamLabels,
         momChosenBy: club.routine.momChosenBy,
-        paymentCollectionEnabled: club.payments.collection,
+        paymentsOn: club.payments.messagesOn,
         paymentHolderId: club.payments.collector?.userId ?? null,
         rollingSquadEnabled: club.squad.rolling,
         benchPickMode: club.routine.benchPickMode,
@@ -102,7 +103,7 @@ export default async function MatchDetailPage({
     : {
         teamLabels: org.teamLabels,
         momChosenBy: org.momChosenBy,
-        paymentCollectionEnabled: org.paymentCollectionEnabled,
+        paymentsOn: paymentMessagesOn(org),
         paymentHolderId: org.paymentHolderId,
         rollingSquadEnabled: org.rollingSquadEnabled,
         benchPickMode: org.benchPickMode,
@@ -166,10 +167,11 @@ export default async function MatchDetailPage({
   const carryOverSource =
     isAdmin && orgPay.rollingSquadEnabled ? await findCarryOverSource(matchId) : null;
   // Payments dashboard link — shown to an org admin OR the money collector
-  // when the org collects fees. Lets them open /collect/<match> on demand
-  // to see who's paid (instead of only via the post-match DM link).
+  // while payments are on (the one rule, decision K2, club summary B3).
+  // Lets them open /collect/<match> on demand to see who's paid (instead
+  // of only via the post-match DM link).
   const canSeePayments =
-    !!orgPay.paymentCollectionEnabled &&
+    orgPay.paymentsOn &&
     (isAdmin || orgPay.paymentHolderId === session.user.id);
 
   // Existing org members not already in this match — for the admin
