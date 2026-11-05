@@ -139,21 +139,6 @@ function inWakingHours(now: Date, quiet?: QuietHours | null): boolean {
   return inMessageHours(now, quiet ?? undefined);
 }
 
-/**
- * Was this match made AFTER its own drop-out deadline (2026-10-15)? Then
- * nobody can have dropped out of it before the deadline. FNF went live at
- * 22:12 on a Thursday, after its Thursday 20:30 deadline, and the game was
- * made at 22:17. `Match.createdAt` absent (an old fixture or a hand-built
- * test row): not after.
- *
- * It gated D2, the organisers' summary, and the pick round that stood in
- * for it; both were removed on 2026-11-05, and nothing in `src/` reads it
- * now. Kept on purpose (the removal brief listed it as staying).
- */
-export function madeAfterDropOutDeadline(createdAt: Date | null | undefined, deadline: Date): boolean {
-  return createdAt instanceof Date && createdAt.getTime() >= deadline.getTime();
-}
-
 /** D3: the first tick after publish time, inside waking hours, before kickoff. */
 export function listPublishDue(now: Date, publishAt: Date, kickoff: Date, quiet?: QuietHours | null): boolean {
   return now.getTime() >= publishAt.getTime() && now.getTime() < kickoff.getTime() && inWakingHours(now, quiet);
