@@ -22,6 +22,7 @@ import { sendAdminNotice } from "./admin-channel";
 import { recordMatchTimeQuestion } from "./admin-group-log";
 import { servingClubWhere } from "./club-approval-state";
 import { londonMidnight } from "./club-connect-rules";
+import { isOrgDormant } from "./org-lifecycle";
 import { t } from "./i18n/t";
 import {
   PARTNER_REQUEST_EXPIRES_MS,
@@ -524,6 +525,7 @@ const CARD_CLUB_SELECT = {
   discoverable: true,
   autoAcceptPartnerRequests: true,
   approvalStatus: true,
+  dormantAt: true,
   homeVenue: { select: POSITION },
   activities: {
     where: { isActive: true },
@@ -539,6 +541,7 @@ interface CardClub {
   discoverable: boolean;
   autoAcceptPartnerRequests: boolean;
   approvalStatus: string;
+  dormantAt: Date | null;
   homeVenue: { lat: number | null; lng: number | null } | null;
   activities: Array<{
     isActive: boolean;
@@ -652,7 +655,7 @@ export async function requestPartnerships(args: {
         partnerOrgId,
         role: args.role,
         askerDiscoverable: isDiscoverable(asker),
-        partner: partner ? { approved: partner.approvalStatus === "approved", discoverable: isDiscoverable(partner) } : null,
+        partner: partner ? { approved: partner.approvalStatus === "approved", discoverable: isDiscoverable(partner), dormant: isOrgDormant(partner) } : null,
         theyMayAskUs: theyMayAskUs.has(partnerOrgId),
         existing,
         blocked: blocked.has(partnerOrgId),
@@ -845,12 +848,16 @@ export async function loadBlockedClubs(orgId: string): Promise<Array<{ orgId: st
  * asking club is told ONCE. The claim is a compare-and-set on the row as
  * read (still proposed, same expiry), so two sweeps at once, or a sweep
  * racing an acceptance, end it at most once and tell A at most once.
+ *
+ * A request to a club that is now DORMANT ends quietly: the notice says
+ * "send it again from Find clubs", and a dormant club is no longer listed
+ * there nor askable (`planRequest`), so there is nothing true to tell A.
  */
 export async function runPartnerRequestExpirySweep(now: Date = new Date()): Promise<{ considered: number; expired: number }> {
   const due = await db.clubPartnership.findMany({
     where: { status: "proposed", origin: "request", expiresAt: { lte: now } },
     orderBy: { createdAt: "asc" },
-    include: { askerOrg: { select: { name: true, language: true } }, partnerOrg: { select: { name: true } } },
+    include: { askerOrg: { select: { name: true, language: true } }, partnerOrg: { select: { name: true, dormantAt: true } } },
   });
   let expired = 0;
   for (const r of due) {
@@ -861,6 +868,10 @@ export async function runPartnerRequestExpirySweep(now: Date = new Date()): Prom
       });
       if (claim.count !== 1) continue;
       expired++;
+      if (isOrgDormant(r.partnerOrg)) {
+        console.log(`[partner-clubs] pairing ${r.id}: request expired (partner dormant, no notice)`);
+        continue;
+      }
       console.log(`[partner-clubs] pairing ${r.id}: request expired`);
       const s = t(r.askerOrg.language);
       await sendAdminNotice({

@@ -3,15 +3,22 @@
  * 2026-10-22). Plan: MDs/partner-discovery-plan-2026-10-21.md, sections 2.1
  * to 2.4 and 9. No database import: the loader is club-discovery.ts.
  *
- * WHO IS LISTED (2.1). Approved, with a players' group, with "Let nearby
- * clubs find us and send requests" on (the default), and with a geocoded
- * venue: an active game's venue, or the club venue (`homeVenueId`). Dormant,
- * billing-paused and trial clubs are NOT excluded (Kemal, 2026-10-22: "the
+ * WHO IS LISTED (2.1). Approved, NOT DORMANT, with a players' group, with
+ * "Let nearby clubs find us and send requests" on (the default), and with a
+ * geocoded venue: an active game's venue, or the club venue (`homeVenueId`).
+ * Billing-paused and trial clubs are NOT excluded (Kemal, 2026-10-22: "the
  * more we show in the search results, the better"), so nothing here reads
- * dormancy or billing.
+ * billing.
  *
- * WHO MAY SEARCH (D-3). A club that is itself listed. Without a venue it
- * sees "Confirm your venue" instead.
+ * Dormant clubs ARE excluded (2026-11-05). A dormant club is one a human
+ * declared gone (org-lifecycle.ts): MatchTime is out of its groups, so a
+ * request to it can never be answered. FNF asked Sutton Lads (dormant since
+ * 2026-09-09) on 2026-10-22; the request sat 14 days and then told FNF to
+ * send it again. `planRequest` refuses a dormant club on every path too.
+ *
+ * WHO MAY SEARCH (D-3). A club that is itself listed, so a dormant club
+ * does not search ("not-live"). Without a venue it sees "Confirm your venue"
+ * instead.
  *
  * DISTANCE (2.2). From each of our active games' venues to each of theirs;
  * a club with no active game (or none with a position) is measured from its
@@ -25,6 +32,7 @@
  */
 import { distanceKm } from "./geo";
 import { APPROVED_CLUB_WHERE } from "./club-approval-state";
+import { LIVE_ORG_WHERE, isOrgDormant } from "./org-lifecycle";
 
 // ─── The radius ─────────────────────────────────────────────────────────
 
@@ -127,6 +135,8 @@ export function measuredFrom<V extends Position>(club: {
 export interface ListableClub {
   /** `isClubApproved` (club-approval.ts is the one reader of the state). */
   approved: boolean;
+  /** Required, so every caller selects it: set = a dormant club, never listed. */
+  dormantAt: Date | null;
   hasPlayersGroup: boolean;
   discoverable?: boolean | null;
   homeVenue: Position | null;
@@ -134,8 +144,8 @@ export interface ListableClub {
 }
 
 /** The database side of `isListable`, minus the venue (the box does that).
- *  Nothing about dormancy or billing, on purpose. */
-export const LISTABLE_CLUB_WHERE = { ...APPROVED_CLUB_WHERE, whatsappGroupId: { not: null }, discoverable: true } as const;
+ *  Live clubs only; nothing about billing, on purpose. */
+export const LISTABLE_CLUB_WHERE = { ...APPROVED_CLUB_WHERE, ...LIVE_ORG_WHERE, whatsappGroupId: { not: null }, discoverable: true } as const;
 
 export function isListable(club: ListableClub): boolean {
   return searcherState(club) === "ok";
@@ -145,7 +155,7 @@ export type SearcherState = "ok" | "not-live" | "not-discoverable" | "no-venue";
 
 /** May this club search? Only when it is itself listed (D-3). */
 export function searcherState(club: ListableClub): SearcherState {
-  if (!club.approved || !club.hasPlayersGroup) return "not-live";
+  if (!club.approved || isOrgDormant(club) || !club.hasPlayersGroup) return "not-live";
   if (club.discoverable === false) return "not-discoverable";
   if (measuredFrom(club).length === 0) return "no-venue";
   return "ok";

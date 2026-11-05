@@ -64,7 +64,13 @@ setting is on by default.** Its owner or admin can switch it off at any time:
   2026-10-22: "the more we show in the search results, the better"). MatchTime is switched off in
   such a club's groups (`club-approval-state.ts`), so the build must not post an ask into a paused
   club's players' group: a pairing request to it is allowed, but an ask waits until the club is
-  active again, and the requester sees "paused" on that partner. The venue is (a `Venue` with `lat`/`lng`). **It does not need a game set up**
+  active again, and the requester sees "paused" on that partner. **Changed 2026-11-05 for
+  dormant clubs:** a dormant club is no longer listed, does not search, and cannot be sent a
+  request by any path (`planRequest` refuses it as "not-listed"); a request still pending to a
+  club that became dormant expires quietly, without the "send it again" notice. Why: FNF asked
+  Sutton Lads (dormant since 2026-09-09, MatchTime out of its groups) on 2026-10-22, nobody could
+  answer, and the expiry on 2026-11-05 told FNF to send it again. Billing-paused clubs are still
+  listed. The venue is (a `Venue` with `lat`/`lng`). **It does not need a game set up**
   (Kemal, 2026-10-22): a group of players with no match scheduled yet can be found. The venue is
   either an active game's venue (`Activity.venueId`) or, for a club with no game, a new optional
   **club home venue** (`Organisation.homeVenueId`), set **only with the venue lookup**, so it is

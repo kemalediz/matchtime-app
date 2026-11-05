@@ -327,6 +327,17 @@ describe("sending", () => {
     expect(noticeMock.sendAdminNotice).not.toHaveBeenCalled();
   });
 
+  it("a dormant club is refused as not listed, even with auto-accept on: no row, no notice (FNF asked Sutton Lads, 2026-10-22)", async () => {
+    org("lads", "Sutton Lads", { dormantAt: new Date("2026-09-09T00:00:00Z"), autoAcceptPartnerRequests: true });
+    const r = await send(["lads", "sutton"]);
+    expect(Object.fromEntries(r.results.map((x) => [x.partnerOrgId, x.outcome === "refused" ? x.refusal : x.outcome]))).toEqual({ lads: "not-listed", sutton: "sent" });
+    expect(store.rows.filter((x) => x.partnerOrgId === "lads")).toEqual([]);
+    expect(told("lads")).toEqual([]);
+    // The writer reads dormancy from the database, not from a default.
+    const select = (dbMock.organisation as { findMany: { mock: { calls: Array<[{ select: Record<string, unknown> }]> } } }).findMany.mock.calls[0][0].select;
+    expect(select.dormantAt).toBe(true);
+  });
+
   it("a second request to the same club is refused as pending; after 30 days a declined one reopens", async () => {
     await send(["sutton"]);
     expect((await send(["sutton"])).results[0]).toMatchObject({ outcome: "refused", refusal: "already-pending" });
@@ -473,5 +484,19 @@ describe("expiry", () => {
     expect(told("sutton")).toEqual([]);
     // No wait after an expiry.
     expect((await send(["sutton"], { now: later })).results[0].outcome).toBe("sent");
+  });
+
+  it("a request to a club that is now dormant ends as expired QUIETLY: no 'send it again' notice, since it can't be sent again", async () => {
+    await send(["sutton"]);
+    store.orgs.get("sutton")!.dormantAt = new Date(NOW.getTime() + DAY);
+    vi.clearAllMocks();
+    noticeMock.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
+    const later = new Date(NOW.getTime() + 14 * DAY + 1000);
+    expect(await runPartnerRequestExpirySweep(later)).toEqual({ considered: 1, expired: 1 });
+    expect(store.rows[0]).toMatchObject({ status: "ended", endReason: "expired", endedByOrgId: null });
+    expect(noticeMock.sendAdminNotice).not.toHaveBeenCalled();
+    // The sweep reads the partner's dormancy from the database.
+    const include = partnershipApi.findMany.mock.calls[0][0] as unknown as { include: { partnerOrg: { select: Record<string, unknown> } } };
+    expect(include.include.partnerOrg.select.dormantAt).toBe(true);
   });
 });

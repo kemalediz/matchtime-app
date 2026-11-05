@@ -7,7 +7,7 @@
  *     disappear as the radius changes (1, 3, 5, 10 miles; 3 by default;
  *     a club 12 miles away never shows);
  *   - never listed: a club with "find us" off, one that blocked us, one
- *     that declined us 5 days ago; listed: a dormant club, a club with only
+ *     that declined us 5 days ago, a dormant club; listed: a club with only
  *     a club venue ("No regular game yet");
  *   - each card: distance, game day, kickoff and format, member and regular
  *     player counts, and NO member name or phone number anywhere on the page;
@@ -85,7 +85,7 @@ async function seedClub(db: TestDb, c: Seed): Promise<void> {
 
 const NEAR = "e2e-fc-near"; // 0.8 mi, Tuesdays
 const PARTNER = "e2e-fc-partner"; // 1.2 mi, we already ask them
-const DORMANT = "e2e-fc-dormant"; // 1.5 mi, dormant: still listed
+const DORMANT = "e2e-fc-dormant"; // 1.5 mi, dormant: never (nobody there can answer)
 const THREE = "e2e-fc-three"; // 2.5 mi, Thursdays
 const FIVE = "e2e-fc-five"; // 4.5 mi, club venue only
 const TEN = "e2e-fc-ten"; // 8 mi, Tuesdays
@@ -178,23 +178,23 @@ test("3 miles by default; the radius presets add and drop clubs by distance; hid
   await signInAs(page, U.admin, PAGE);
   await expect(page.getByRole("heading", { name: "Find clubs near you" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("radio", { name: "Up to 3 miles" })).toHaveAttribute("aria-checked", "true");
-  expect(await shown(page)).toEqual([NEAR, PARTNER, DORMANT, THREE]);
+  expect(await shown(page)).toEqual([NEAR, PARTNER, THREE]);
 
   await page.getByRole("radio", { name: "Up to 1 mile" }).click();
   await expect(page).toHaveURL(/radius=1/);
   await expect.poll(() => shown(page)).toEqual([NEAR]);
 
   await page.getByRole("radio", { name: "Up to 5 miles" }).click();
-  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, DORMANT, THREE, FIVE]);
+  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, THREE, FIVE]);
 
   await page.getByRole("radio", { name: "Up to 10 miles" }).click();
-  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, DORMANT, THREE, FIVE, TEN]);
-  await expect(page.getByTestId("find-clubs-count")).toHaveText("6 clubs found");
+  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, THREE, FIVE, TEN]);
+  await expect(page.getByTestId("find-clubs-count")).toHaveText("5 clubs found");
 
   // Never more than 10, whatever the URL says.
   await page.goto(`${PAGE}?radius=25`);
-  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, DORMANT, THREE]);
-  for (const never of [FAR, HIDDEN, BLOCKED, DECLINED]) await expect(card(page, never)).toHaveCount(0);
+  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, THREE]);
+  for (const never of [FAR, HIDDEN, BLOCKED, DECLINED, DORMANT]) await expect(card(page, never)).toHaveCount(0);
 });
 
 test("a card: distance, game, format, members, regular players; no names or numbers on the page", async ({ page }) => {
@@ -229,7 +229,7 @@ test("'Plays on the same day as us': off by default; on, it keeps Tuesday clubs 
   await expect(page).toHaveURL(/sameDay=1/);
   await expect.poll(() => shown(page)).toEqual([NEAR, FIVE, TEN]);
   await page.getByRole("switch", { name: "Plays on the same day as us" }).click();
-  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, DORMANT, THREE, FIVE, TEN]);
+  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, THREE, FIVE, TEN]);
 });
 
 test("tick, select all, the confirm says what they see and what accepting means, then Send", async ({ page }) => {
@@ -240,11 +240,11 @@ test("tick, select all, the confirm says what they see and what accepting means,
   await card(page, NEAR).getByRole("checkbox", { name: "Select Near One FC" }).check();
   await expect(page.getByTestId("find-clubs-selected")).toHaveText("1 selected");
   await page.getByRole("checkbox", { name: "Select all" }).check();
-  // The partner is not selectable: three of four.
-  await expect(page.getByTestId("find-clubs-selected")).toHaveText("3 selected");
+  // The partner is not selectable: two of three.
+  await expect(page.getByTestId("find-clubs-selected")).toHaveText("2 selected");
   await send.click();
   const confirm = page.getByTestId("find-clubs-confirm");
-  await expect(confirm).toContainText("Send a request to 3 clubs?");
+  await expect(confirm).toContainText("Send a request to 2 clubs?");
   await expect(confirm).toContainText("They will see your club's name, your venue's name and town");
   await expect(confirm).toContainText("Never names or phone numbers.");
   await expect(confirm).toContainText("If a club accepts, you can ask it for players when you're short.");
@@ -287,13 +287,13 @@ test("a club without a venue sees 'Confirm your venue', with a link to the venue
   // A club venue alone is enough to search.
   await db.run(`UPDATE "Organisation" SET "homeVenueId" = 'e2e-fc-home' WHERE id = $1`, [ORG_ID]);
   await page.reload();
-  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, DORMANT, THREE]);
+  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, THREE]);
   // Our Tuesday game still counts for the same-day switch.
   await expect(page.getByRole("switch", { name: "Plays on the same day as us" })).toBeVisible();
   // No active game of our own: the switch has nothing to compare, so it goes.
   await db.run(`UPDATE "Activity" SET "isActive" = false WHERE id = $1`, [ACTIVITY_ID]);
   await page.reload();
-  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, DORMANT, THREE]);
+  await expect.poll(() => shown(page)).toEqual([NEAR, PARTNER, THREE]);
   await expect(page.getByRole("switch", { name: "Plays on the same day as us" })).toHaveCount(0);
   await db.run(`UPDATE "Organisation" SET "homeVenueId" = NULL WHERE id = $1`, [ORG_ID]);
   await db.run(`UPDATE "Activity" SET "venueId" = 'e2e-fc-home', "isActive" = true WHERE id = $1`, [ACTIVITY_ID]);

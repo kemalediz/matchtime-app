@@ -38,6 +38,7 @@ const me = (over: Record<string, unknown> = {}) => ({
   approvalStatus: "approved",
   whatsappGroupId: "120363000000000001@g.us",
   discoverable: true,
+  dormantAt: null,
   homeVenue: null,
   activities: [{ isActive: true, dayOfWeek: 2, venueRef: { ...HOME } }],
   ...over,
@@ -146,16 +147,15 @@ describe("THE GUARD: what one club learns about another", () => {
 });
 
 describe("the query", () => {
-  it("one candidate query, bounded by a box on the venues' lat and lng, listable clubs only, never ourselves", async () => {
+  it("one candidate query, bounded by a box on the venues' lat and lng, listable (live) clubs only, never ourselves", async () => {
     await loadNearbyClubs("me", { radiusMiles: 3, now: NOW });
     expect(dbMock.organisation.findMany).toHaveBeenCalledTimes(1);
     const where = dbMock.organisation.findMany.mock.calls[0][0].where;
-    expect(where).toMatchObject({ id: { not: "me" }, approvalStatus: "approved", whatsappGroupId: { not: null }, discoverable: true });
+    expect(where).toMatchObject({ id: { not: "me" }, approvalStatus: "approved", dormantAt: null, whatsappGroupId: { not: null }, discoverable: true });
     const text = JSON.stringify(where);
     expect(text).toContain('"lat":{"gte"');
     expect(text).toContain('"lng":{"gte"');
-    // Nothing about dormancy or billing.
-    expect(text).not.toContain("dormantAt");
+    // A dormant club is never a candidate; billing is not read.
     expect(text).not.toContain("billing");
     expect(dbMock.organisation.findMany.mock.calls[0][0].select).toBe(NEARBY_CLUB_SELECT);
   });
@@ -279,10 +279,17 @@ describe("who may search", () => {
       expect(dbMock.organisation.findMany).not.toHaveBeenCalled();
     }
   });
-  it("a dormant or billing-paused club still searches", async () => {
-    dbMock.organisation.findUnique.mockResolvedValue(me({ dormantAt: NOW, billingStatus: "paused" }));
+  it("a billing-paused club still searches", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue(me({ billingStatus: "paused" }));
     const r = await loadNearbyClubs("me", { radiusMiles: 3, now: NOW });
     expect(r?.state).toBe("ok");
+  });
+  it("a dormant club is not listed, so it does not search: not live, and no candidate query", async () => {
+    dbMock.organisation.findMany.mockClear();
+    dbMock.organisation.findUnique.mockResolvedValue(me({ dormantAt: new Date("2026-09-09T00:00:00Z") }));
+    const r = await loadNearbyClubs("me", { radiusMiles: 3, now: NOW });
+    expect(r?.state).toBe("not-live");
+    expect(dbMock.organisation.findMany).not.toHaveBeenCalled();
   });
   it("no such club: null", async () => {
     dbMock.organisation.findUnique.mockResolvedValue(null);
