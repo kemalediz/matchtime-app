@@ -2347,14 +2347,6 @@ export const tr: Strings = {
   carry_over_nothing: "Aktarılacak kimse yok",
 
   // ── Haftalık saatler (2026-09-30) ──
-  deadline_summary_admin: (p) =>
-    [
-      `*${p.activityName}* için son çıkış saati (${p.deadlineLabel}) geçti, maç ${p.whenLabel}. Kadro ${p.confirmed}/${p.maxPlayers}.`,
-      `Bu hafta çıkanlar: ${p.out.length > 0 ? p.out.join(", ") : "kimse"}.`,
-      ...(p.maybe.length > 0 ? [`Belki diyenler: ${p.maybe.join(", ")}.`] : []),
-      `Yedek listesi: ${p.waiting.length > 0 ? p.waiting.join(", ") : "boş"}.`,
-      ...(p.open > 0 ? [`${p.open} yer boş.`] : []),
-    ].join("\n"),
   list_published_head: (p) => `📋 *${p.activityName}* listesi, *${p.dateLabel}*, ${p.venue}`,
   list_published_playing_header: (p) => `*Oynayanlar (${p.confirmed}/${p.maxPlayers}):*`,
   list_published_open: (p) => `${p.open} yer hâlâ boş.`,
@@ -2548,7 +2540,6 @@ export const tr: Strings = {
     `${p.kickoffLabel} maçında bir yer açıldı. *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.`,
   pick_lead_drop: (p) =>
     `${joinList("tr", p.names.map((n) => `*${n}*`))}, *${p.activityName}* (${p.whenLabel}) maçından ${p.late ? "son çıkış saatinden sonra " : ""}çıktı.`,
-  pick_lead_deadline: (p) => `*${p.activityName}* için son çıkış saati (${p.deadlineLabel}) geçti, maç ${p.whenLabel}.`,
   pick_lead_open_place: (p) =>
     `*${p.activityName}* (${p.whenLabel}) için ${p.open} yer boş, kadro ${p.confirmed}/${p.maxPlayers}.`,
   pick_lead_bench_update: (p) => `*${p.activityName}* (${p.whenLabel}) için yedek listesi değişti.`,
@@ -3077,7 +3068,7 @@ export const tr: Strings = {
       : p.key === "organiserPicks"
         ? `*Boşalan yeri organizatörler seçiyor:* MatchTime önce size sorar; zamanında kimse seçmezse yeri yedek listesine sunar.`
         : p.key === "dropOutDeadline"
-          ? `*Son çıkış saati:* ${p.day} ${p.time}. Saat geçince MatchTime yöneticilerinize kimin çıktığını ve kimin yedekte olduğunu gönderir.`
+          ? `*Son çıkış saati:* ${p.day} ${p.time}. Oynayamayacak olanlar o saatten önce YOKUM yazmalı.`
           : p.key === "listPublish"
             ? `*Son liste:* ${p.day} ${p.time} saatinde gruba gönderilir.`
             : `*Ödeme takibi açık:* MatchTime kimin ödediğini takip eder ve ödemeyenlere nazikçe hatırlatır.`,

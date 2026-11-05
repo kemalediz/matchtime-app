@@ -386,8 +386,8 @@ describe('"The organisers": the squad posts go to the admin group', () => {
   // too. FNF, Thu 5 Nov 2026 at 17:30, had the admin group told "The
   // drop-out deadline is today at 20:30." with the teams already out; now
   // nothing goes to them ahead of the deadline, in any state of the squad
-  // and in any admin channel. The summary after the deadline (D2,
-  // deadline-summary.ts) is unchanged.
+  // and in any admin channel. The summary after the deadline (D2) went
+  // the same way the same day (no-deadline-summary.test.ts).
   describe("no drop-out reminder to the organisers, ever (Kemal, 2026-11-05)", () => {
     /** Fri 6 Nov 2026, 20:30 London (GMT). */
     const FNF_KICKOFF = new Date("2026-11-06T20:30:00.000Z");

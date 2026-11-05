@@ -26,7 +26,6 @@ import {
   NO_WEEKLY_DEADLINES,
   SETTING_EARLIEST,
   SETTING_LATEST,
-  deadlineSummaryDue,
   listPublishDue,
   validateWeeklyDeadlines,
 } from "../weekly-deadlines";
@@ -74,10 +73,6 @@ const GATES: Array<[string, (now: Date) => boolean]> = [
   ["month-signup-rules: isDaytime (monthly squad posts and DMs)", isDaytime],
   ["organiser-pick-rules: isPickHour (pick messages)", isPickHour],
   ["recruit-chase: isSociableChaseHour (chase DMs)", isSociableChaseHour],
-  [
-    "weekly-deadlines: deadlineSummaryDue (the organisers' summary)",
-    (now) => deadlineSummaryDue(now, new Date(now.getTime() - HOUR), new Date(now.getTime() + 2 * DAY)),
-  ],
   [
     "weekly-deadlines: listPublishDue (the final list)",
     (now) => listPublishDue(now, new Date(now.getTime() - HOUR), new Date(now.getTime() + 2 * DAY)),
@@ -280,8 +275,6 @@ describe("weekly-deadlines: the times an organiser may choose are 09:00 to 22:30
       // Wed 2 Dec 2026 08:00 London deadline, Friday kickoff.
       const deadline = at("2026-12-02T08:00:00Z");
       const kickoff = at("2026-12-04T23:30:00Z");
-      expect(deadlineSummaryDue(at("2026-12-02T08:00:00Z"), deadline, kickoff)).toBe(false);
-      expect(deadlineSummaryDue(at("2026-12-02T09:00:00Z"), deadline, kickoff)).toBe(true);
       expect(listPublishDue(at("2026-12-02T08:30:00Z"), deadline, kickoff)).toBe(false);
       expect(listPublishDue(at("2026-12-02T09:00:00Z"), deadline, kickoff)).toBe(true);
     });

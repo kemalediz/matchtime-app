@@ -444,30 +444,6 @@ export function buildLateDropAdminNotice(
 }
 
 /**
- * Row WDL2 (2026-09-30, weekly deadlines, D2 of plan 3.2): the organisers'
- * summary once the club's drop-out deadline has passed. `out` is who
- * dropped this week, `maybe` the CONFIRMED players with an open "maybe",
- * `waiting` the waiting list in order, `open` the places still free.
- */
-export function buildDeadlineSummaryAdminNotice(
-  p: {
-    activityName: string;
-    /** The kick-off. */
-    whenLabel: string;
-    /** The drop-out deadline that has passed. */
-    deadlineLabel: string;
-    confirmed: number;
-    maxPlayers: number;
-    out: string[];
-    maybe: string[];
-    waiting: string[];
-    open: number;
-  } & WithLang,
-): string {
-  return t(p.lang).deadline_summary_admin(p);
-}
-
-/**
  * Row UNP1 (2026-10-01): U1 of the Friday-group plan (2.12), the
  * organisers' unpaid list, 10:00 London two days after a completed match.
  * `names` are the players not marked paid; `paid` of `n` follows the group

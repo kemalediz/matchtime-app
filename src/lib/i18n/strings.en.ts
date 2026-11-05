@@ -3219,32 +3219,10 @@ export const en = {
 
   // ── Weekly deadlines (2026-09-30), slice 3 of
   //    MDs/friday-group-features-plan-2026-09-30.md. New copy, house
-  //    style: no em or en dashes. Rows WDL2 to WDL4 in copy-golden (WDL1,
-  //    the drop-out reminder, was removed on 2026-11-05). ──
+  //    style: no em or en dashes. Rows WDL3 and WDL4 in copy-golden (WDL1,
+  //    the drop-out reminder, and WDL2, the organisers' summary after the
+  //    deadline, were removed on 2026-11-05). ──
 
-  /** WDL2 (D2): to the organisers once the deadline has passed. The
-   *  "Said maybe" and "places open" lines only when there is something
-   *  to say. `deadlineLabel` is the drop-out deadline, `whenLabel` the
-   *  kick-off: each is named for what it is (2026-10-15, FNF read the
-   *  kick-off in brackets as the deadline). */
-  deadline_summary_admin: (p: {
-    activityName: string;
-    whenLabel: string;
-    deadlineLabel: string;
-    confirmed: number;
-    maxPlayers: number;
-    out: string[];
-    maybe: string[];
-    waiting: string[];
-    open: number;
-  }): string =>
-    [
-      `Drop-out deadline (${p.deadlineLabel}) passed for *${p.activityName}*, kick-off ${p.whenLabel}. Squad ${p.confirmed}/${p.maxPlayers}.`,
-      `Out this week: ${p.out.length > 0 ? p.out.join(", ") : "nobody"}.`,
-      ...(p.maybe.length > 0 ? [`Said maybe: ${p.maybe.join(", ")}.`] : []),
-      `On the bench: ${p.waiting.length > 0 ? p.waiting.join(", ") : "nobody"}.`,
-      ...(p.open > 0 ? [p.open === 1 ? "1 place open." : `${p.open} places open.`] : []),
-    ].join("\n"),
   /** WDL3 (D3): the final list at publish time. */
   list_published_head: (p: { activityName: string; dateLabel: string; venue: string }): string =>
     `📋 *${p.activityName}* list, *${p.dateLabel}*, ${p.venue}`,
@@ -3537,9 +3515,6 @@ export const en = {
   /** P1 first line: one or more drops (`late`: after the drop-out deadline). */
   pick_lead_drop: (p: { names: string[]; activityName: string; whenLabel: string; late: boolean }): string =>
     `${joinList("en", p.names.map((n) => `*${n}*`))} dropped out of *${p.activityName}* (${p.whenLabel})${p.late ? " after the deadline" : ""}.`,
-  /** P1 first line: the deadline summary opens the first round (slice 3). */
-  pick_lead_deadline: (p: { activityName: string; whenLabel: string; deadlineLabel: string }): string =>
-    `Drop-out deadline (${p.deadlineLabel}) passed for *${p.activityName}*, kick-off ${p.whenLabel}.`,
   /** P1 first line: a place that was never filled. */
   pick_lead_open_place: (p: { open: number; activityName: string; whenLabel: string; confirmed: number; maxPlayers: number }): string =>
     p.open === 1
@@ -4311,7 +4286,7 @@ export const en = {
       : p.key === "organiserPicks"
         ? `*Organisers pick who fills an open place:* MatchTime asks you first, and only offers the place to the bench if nobody picks in time.`
         : p.key === "dropOutDeadline"
-          ? `*Drop-out deadline:* ${p.day} ${p.time}. Once it passes, MatchTime sends your admins who is out and who is on the bench.`
+          ? `*Drop-out deadline:* ${p.day} ${p.time}. Players who can't play should say OUT before then.`
           : p.key === "listPublish"
             ? `*Final list:* posted in the group on ${p.day} at ${p.time}.`
             : `*Payment tracking is on:* MatchTime keeps track of who has paid and sends a friendly reminder to anyone who hasn't.`,

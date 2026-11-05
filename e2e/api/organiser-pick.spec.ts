@@ -398,7 +398,7 @@ test("Sutton unchanged: a first-come club fills a free place on IN and offers a 
   expect(await db.all(`SELECT id FROM "OrganiserPickRound" WHERE "orgId" = $1`, [ORG_ID])).toEqual([]);
 });
 
-test("slice 3: no pick round before the drop-out deadline; the summary IS the first round", async ({ request, db }) => {
+test("slice 3: no pick round before the drop-out deadline; the first round after it names the drop (no summary, 2026-11-05)", async ({ request, db }) => {
   const O = "e2e-op-dl-org";
   const G = "e2e-op-dl-group@g.us";
   const H = "120363777000000032@g.us";
@@ -446,12 +446,13 @@ test("slice 3: no pick round before the drop-out deadline; the summary IS the fi
   expect(before.filter((i) => i.kind === "admin-group-message")).toEqual([]);
   expect(await db.all(`SELECT id FROM "OrganiserPickRound" WHERE "matchId" = $1`, [M])).toEqual([]);
 
-  // Monday 21:05: ONE message, the summary as the first pick round.
+  // Monday 21:05: ONE message, the first pick round, leading with the
+  // drop as any round does (the deadline summary was removed 2026-11-05).
   const after = (await poll(request, G, "2027-01-11T21:05:00.000Z")).filter((i) => i.kind === "admin-group-message");
   expect(after).toHaveLength(1);
   expect(after[0].text).toBe(
     [
-      "Drop-out deadline (Mon 11 Jan at 21:00) passed for *Friday 1-a-side*, kick-off Fri 15 Jan at 20:30. 1 place open, squad 1/2.",
+      "*Ann Able* dropped out of *Friday 1-a-side* (Fri 15 Jan at 20:30). 1 place open, squad 1/2.",
       "",
       "Bench:",
       "1. Ben Best (no position, new)",
@@ -461,7 +462,8 @@ test("slice 3: no pick round before the drop-out deadline; the summary IS the fi
     ].join("\n"),
   );
   const r = await db.one<{ reason: string }>(`SELECT reason FROM "OrganiserPickRound" WHERE "matchId" = $1`, [M]);
-  expect(r?.reason).toBe("deadline-summary");
+  expect(r?.reason).toBe("drop");
+  expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key = $1`, [`${M}:deadline-summary`])).toBe(0);
   // NONE: the round closes and the place stays open; nothing re-asks.
   expect((await post(request, "/api/whatsapp/admin-group", { groupId: H, botMentioned: true, messageId: "e2e-op-dl-none", text: "NONE", senderPhone: "447700941001", timestamp: new Date().toISOString() })).replyText).toBe(
     "OK, I'll leave the place open. You can still pick from the bench on the match page.",

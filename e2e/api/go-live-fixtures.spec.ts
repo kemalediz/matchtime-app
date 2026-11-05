@@ -1,6 +1,7 @@
 /**
  * GOING LIVE MAKES THE GAME AT ONCE; A LIST WITH NO GAME GETS AN ANSWER;
- * A GAME MADE AFTER ITS DEADLINE GETS NO DEADLINE SUMMARY (2026-10-15).
+ * A GAME MADE AFTER ITS DEADLINE GETS NO DEADLINE SUMMARY (2026-10-15;
+ * since 2026-11-05 no game gets one, the summary was removed).
  *
  * The incident, club FNF: GO at 22:12 London on a Thursday. Its games were
  * made only by the nightly cron (00:00 UTC), so the 18-name squad its
@@ -15,7 +16,7 @@
  * (since #471), and both are STUBBED to what the live models do with a
  * pasted squad list (`scripts/live-check-hq-paste-route.ts`, 2026-10-30:
  * the router sends every pasted list to other_att, the reader reads it as
- * the squad). GO and the summary are deterministic.
+ * the squad). GO and the due-posts poll are deterministic.
  */
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
@@ -270,13 +271,11 @@ test.describe("a game made after its own drop-out deadline gets no deadline summ
     expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = 'e2e-glf-dl-org' AND text LIKE 'Drop-out deadline%'`)).toBe(0);
   });
 
-  test("the same game made BEFORE the deadline does get it, naming the deadline and the kick-off", async ({ request, db }) => {
+  test("the same game made BEFORE the deadline gets none either (the summary was removed 2026-11-05)", async ({ request, db }) => {
     await db.run(`UPDATE "Match" SET "createdAt" = $2 WHERE id = $1`, ["e2e-glf-dl-match", "2027-01-09T00:00:00.000Z"]);
     const instructions = await poll(request);
-    const summary = instructions.filter((i) => (i.text ?? "").startsWith("Drop-out deadline"));
-    expect(summary).toHaveLength(1);
-    expect(summary[0].text!.split("\n")[0]).toBe(
-      "Drop-out deadline (Thu 14 Jan at 20:30) passed for *Football 9-a-side*, kick-off Fri 15 Jan at 20:30. Squad 0/18.",
-    );
+    expect(instructions.filter((i) => (i.text ?? "").startsWith("Drop-out deadline"))).toEqual([]);
+    expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key = 'e2e-glf-dl-match:deadline-summary'`)).toBe(0);
+    expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = 'e2e-glf-dl-org' AND text LIKE 'Drop-out deadline%'`)).toBe(0);
   });
 });

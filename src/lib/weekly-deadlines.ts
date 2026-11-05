@@ -18,8 +18,8 @@
  *
  * What the scheduler does with them (plan 3.2, 3.3):
  *   D1  (removed 2026-11-05) there is no reminder before the deadline;
- *   D2  the summary to the organisers when the deadline has passed,
- *       outside the club's quiet hours (by default 09:00 to 22:59 London);
+ *   D2  (removed 2026-11-05) there is no summary to the organisers after
+ *       it either;
  *   D3  the final list in the group at publish time;
  *   D4  with BOTH set, the daily 17:00 post stops except on match day.
  *
@@ -120,10 +120,10 @@ export function dropOutDeadlineFor(match: DeadlineMatch, club?: WeeklyDeadlineIn
 }
 
 /** D4: with both a drop-out deadline and a publish time, the week's
- *  rhythm is the announcement, the organisers' summary and the list, and
- *  the daily 17:00 post stops except on match day. (The drop-out
- *  reminder was part of that rhythm until it was removed on 2026-11-05;
- *  this rule was left as it was.) */
+ *  rhythm is the announcement and the list, and the daily 17:00 post
+ *  stops except on match day. (The drop-out reminder and the organisers'
+ *  summary were part of that rhythm until both were removed on
+ *  2026-11-05; this rule was left as it was.) */
 export function hasWeeklyRhythm(settings: WeeklyDeadlineInput): boolean {
   return (
     pair(settings?.dropOutDeadlineDay, settings?.dropOutDeadlineTime) !== null &&
@@ -133,29 +133,10 @@ export function hasWeeklyRhythm(settings: WeeklyDeadlineInput): boolean {
 
 // ── When each post is due ────────────────────────────────────────────
 
-/** Organiser notices and the list speak outside the club's quiet hours
- *  (by default London 09:00 to 22:59). */
+/** The list speaks outside the club's quiet hours (by default London
+ *  09:00 to 22:59). */
 function inWakingHours(now: Date, quiet?: QuietHours | null): boolean {
   return inMessageHours(now, quiet ?? undefined);
-}
-
-/** D2: the first tick after the deadline, inside waking hours, before kickoff. */
-export function deadlineSummaryDue(now: Date, deadline: Date, kickoff: Date, quiet?: QuietHours | null): boolean {
-  return now.getTime() >= deadline.getTime() && now.getTime() < kickoff.getTime() && inWakingHours(now, quiet);
-}
-
-/**
- * Was this match made AFTER its own drop-out deadline (2026-10-15)? Then
- * nobody can have dropped out of it before the deadline, and the posts
- * about that deadline (D2 the summary, and the pick round that stands in
- * for D2) would be noise. FNF went live at 22:12 on
- * a Thursday, after its Thursday 20:30 deadline; the game was made at
- * 22:17 and the organisers got "Drop-out deadline passed ... Squad 0/18".
- * `Match.createdAt` absent (an old fixture or a hand-built test row):
- * not after, so nothing changes for them.
- */
-export function madeAfterDropOutDeadline(createdAt: Date | null | undefined, deadline: Date): boolean {
-  return createdAt instanceof Date && createdAt.getTime() >= deadline.getTime();
 }
 
 /** D3: the first tick after publish time, inside waking hours, before kickoff. */

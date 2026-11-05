@@ -13,8 +13,8 @@
  * Sutton FC included) gets nothing new.
  *
  * Called from `/api/whatsapp/due-posts` on each poll of the club's group,
- * before the posts are computed, like the deadline summary
- * (`deadline-summary.ts`): it queues through `sendAdminNotice`, the admin
+ * before the posts are computed, like the organisers' pick sweep
+ * (`organiser-pick.ts`): it queues through `sendAdminNotice`, the admin
  * channel's one door, which posts in the admin group when the Pi can and
  * falls back to the owner by DM when it cannot. Not part of
  * `computeDuePosts`, which must stay free of side effects.

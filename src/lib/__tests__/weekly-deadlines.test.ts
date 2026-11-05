@@ -15,9 +15,7 @@ import {
   weeklyDeadlinesFor,
   lastWeekdayTimeBefore,
   hasWeeklyRhythm,
-  deadlineSummaryDue,
   listPublishDue,
-  madeAfterDropOutDeadline,
   validateWeeklyDeadlines,
   NO_WEEKLY_DEADLINES,
 } from "../weekly-deadlines";
@@ -102,26 +100,8 @@ describe("hasWeeklyRhythm (D4: the 17:00 post stops off match day)", () => {
   });
 });
 
-describe("D2: the deadline summary, first tick after the deadline, 09:00 to 22:59", () => {
-  const MON_21 = new Date("2026-10-05T20:00:00.000Z");
-  it("due at and after the deadline", () => {
-    expect(deadlineSummaryDue(new Date("2026-10-05T19:59:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false);
-    expect(deadlineSummaryDue(new Date("2026-10-05T20:05:00.000Z"), MON_21, FRI_KICKOFF)).toBe(true);
-  });
-
-  it("a tick that slips past 23:00 waits until 09:00", () => {
-    expect(deadlineSummaryDue(new Date("2026-10-05T21:10:00.000Z"), MON_21, FRI_KICKOFF)).toBe(true); // 22:10
-    expect(deadlineSummaryDue(new Date("2026-10-05T22:10:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 23:10
-    expect(deadlineSummaryDue(new Date("2026-10-06T06:30:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 07:30
-    expect(deadlineSummaryDue(new Date("2026-10-06T07:00:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 08:00
-    expect(deadlineSummaryDue(new Date("2026-10-06T07:59:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 08:59
-    expect(deadlineSummaryDue(new Date("2026-10-06T08:00:00.000Z"), MON_21, FRI_KICKOFF)).toBe(true); // 09:00
-  });
-
-  it("never at or after kickoff", () => {
-    expect(deadlineSummaryDue(FRI_KICKOFF, MON_21, FRI_KICKOFF)).toBe(false);
-  });
-});
+// D2, the deadline summary to the organisers, was removed on 2026-11-05
+// (src/lib/__tests__/no-deadline-summary.test.ts pins that it stays gone).
 
 describe("D3: the list, first tick after publish time, before kickoff", () => {
   const TUE_20 = new Date("2026-10-06T19:00:00.000Z");
@@ -228,22 +208,5 @@ describe("validateWeeklyDeadlines (settings)", () => {
     expect(
       validateWeeklyDeadlines({ ...HAMZAH, dropOutDeadlineDay: 4, dropOutDeadlineTime: "10:00" }, [FRIDAY_ACTIVITY]),
     ).toBe("order");
-  });
-});
-
-// 2026-10-15, FNF: the club went live at 22:12 on Thursday, after its
-// Thursday 20:30 drop-out deadline, and its Friday game was made at 22:17.
-describe("madeAfterDropOutDeadline: a game made after its own deadline", () => {
-  const THU_2030 = new Date("2026-10-15T19:30:00.000Z");
-  it("made after (or at) the deadline: true", () => {
-    expect(madeAfterDropOutDeadline(new Date("2026-10-15T21:17:00.000Z"), THU_2030)).toBe(true);
-    expect(madeAfterDropOutDeadline(THU_2030, THU_2030)).toBe(true);
-  });
-  it("made before it (the cron's normal week): false", () => {
-    expect(madeAfterDropOutDeadline(new Date("2026-10-10T00:00:00.000Z"), THU_2030)).toBe(false);
-  });
-  it("no createdAt (an old row or a hand-built fixture): false, so nothing changes for it", () => {
-    expect(madeAfterDropOutDeadline(undefined, THU_2030)).toBe(false);
-    expect(madeAfterDropOutDeadline(null, THU_2030)).toBe(false);
   });
 });

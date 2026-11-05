@@ -326,7 +326,7 @@ describe("FIX 8: a quote is shown as the words it is, whatever characters are in
         organiserPicksUrl: "https://mt.link/pick",
       });
     expect(dm("en")).toContain(
-      `✅ *Drop-out deadline:* Monday 21:00. Once it passes, MatchTime sends your admins who is out and who is on the bench.\n` +
+      `✅ *Drop-out deadline:* Monday 21:00. Players who can't play should say OUT before then.\n` +
         `From messages like: "∗Drop out∗ by Monday 9pm"\n` +
         `From your group description: "Out by ˍMonday 9pmˍ or 'pay"\n` +
         `Undo or change: https://mt.link/undo`,

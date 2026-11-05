@@ -261,7 +261,7 @@ test("MatchTime removed from the admin group: unlinked, back to the owner, and t
   expect(orgs.adminGroups).toEqual([]);
 });
 
-test("slice 3's deadline summary follows the channel: one post in the admin group, not a DM", async ({ request, db }) => {
+test("after the drop-out deadline nothing goes to the admin group or by DM (the summary was removed 2026-11-05)", async ({ request, db }) => {
   // A Friday club with a Monday 21:00 drop-out deadline, its HQ group linked.
   const G = "e2e-ag-weekly@g.us";
   const HQ2 = "120363777000000021@g.us";
@@ -294,9 +294,8 @@ test("slice 3's deadline summary follows the channel: one post in the admin grou
   });
   expect(res.status(), await res.text()).toBe(200);
   const instructions = (await res.json()).instructions as Array<{ kind: string; groupId?: string; text?: string }>;
-  const summary = instructions.filter((i) => (i.text ?? "").startsWith("Drop-out deadline (Mon 11 Jan at 21:00) passed"));
-  expect(summary).toHaveLength(1);
-  expect(summary[0]).toMatchObject({ kind: "admin-group-message", groupId: HQ2 });
+  expect(instructions.filter((i) => (i.text ?? "").startsWith("Drop-out deadline"))).toEqual([]);
+  expect(instructions.filter((i) => i.groupId === HQ2)).toEqual([]);
   const jobs = await db.all<{ kind: string }>(`SELECT kind FROM "BotJob" WHERE "orgId" = 'e2e-ag-org'`);
-  expect(jobs.map((j) => j.kind)).toEqual(["admin-group"]);
+  expect(jobs).toEqual([]);
 });

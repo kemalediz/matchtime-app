@@ -207,7 +207,7 @@ describe("the pick message (P1) and the list again (P5)", () => {
     { name: "Ali", position: null, rating: null },
   ];
   const base = {
-    reason: "drop" as "drop" | "open-place" | "deadline-summary" | "bench-update",
+    reason: "drop" as "drop" | "open-place" | "bench-update",
     droppedNames: ["Hamzah"],
     late: false,
     activityName: "Friday 9-a-side",
@@ -219,7 +219,6 @@ describe("the pick message (P1) and the list again (P5)", () => {
     audience: "dm" as const,
     fallback: "bench-offer" as const,
     fallbackWhen: "Saturday 20:30",
-    deadlineLabel: "Mon 5 Oct at 21:00",
   };
   it("EN, by DM", () => {
     expect(buildPickMessage({ ...base, lang: "en" })).toBe(
@@ -251,7 +250,7 @@ describe("the pick message (P1) and the list again (P5)", () => {
       ].join("\n"),
     );
   });
-  it("first-line variants: two drops, a late drop, no drop, the deadline summary", () => {
+  it("first-line variants: two drops, a late drop, no drop", () => {
     const first = (over: Partial<typeof base>) => buildPickMessage({ ...base, lang: "en", ...over }).split("\n")[0];
     expect(first({ droppedNames: ["Ali", "Sam"], open: 2, confirmed: 16 })).toBe(
       "*Ali* and *Sam* dropped out of *Friday 9-a-side* (Fri 9 Oct at 20:30). 2 places open, squad 16/18.",
@@ -261,14 +260,6 @@ describe("the pick message (P1) and the list again (P5)", () => {
     );
     expect(first({ reason: "open-place", droppedNames: [] })).toBe(
       "There is 1 place open in *Friday 9-a-side* (Fri 9 Oct at 20:30), squad 17/18.",
-    );
-    expect(first({ reason: "deadline-summary" })).toBe(
-      "Drop-out deadline (Mon 5 Oct at 21:00) passed for *Friday 9-a-side*, kick-off Fri 9 Oct at 20:30. 1 place open, squad 17/18.",
-    );
-  });
-  it("the deadline summary says which time is the deadline and which the kick-off (2026-10-15, FNF), EN and TR", () => {
-    expect(buildPickMessage({ ...base, lang: "tr", reason: "deadline-summary", deadlineLabel: "5 Ekim Pazartesi 21:00", whenLabel: "9 Ekim Cuma 20:30" }).split("\n")[0]).toBe(
-      "*Friday 9-a-side* için son çıkış saati (5 Ekim Pazartesi 21:00) geçti, maç 9 Ekim Cuma 20:30. 1 yer boş, kadro 17/18.",
     );
   });
   it("the bench update: no drop-out named again, no fallback line again, just the count, the list and how to answer", () => {

@@ -1977,7 +1977,9 @@ model OrganiserPickRound {
   /// Of those, which were after the drop-out deadline (wording only).
   lateDropUserIds             String[]  @default([])
   openPlaces                  Int
-  /// "drop" | "open-place" | "deadline-summary" | "bench-update"
+  /// "drop" | "open-place" | "bench-update". "deadline-summary" is a
+  /// historical value only: rounds opened before 2026-11-05, when the
+  /// drop-out deadline summary was removed, may still carry it.
   reason                      String
   fallbackAt                  DateTime
   /// E1: a "not on the waiting list, YES?" question waiting for an answer.
