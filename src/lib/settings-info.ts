@@ -1176,7 +1176,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Your partner clubs",
       what: [
         "Clubs MatchTime may ask for a player when your squad is short, and clubs that may ask yours. Each pairing works one way: your club asking another is a separate pairing from that club asking yours.",
-        "A pairing starts with a request: your owners or admins find clubs near you and send them one, and a club near you can send yours one. Sending a request is your club's yes. The pairing starts once an owner or admin of the other club accepts it, here or by replying 1 in WhatsApp. A request with no answer ends after 14 days.",
+        "A pairing starts with a request: your owners or admins find clubs near you and send them one, and a club near you can send yours one. Sending a request is your club's yes. The pairing starts once an owner or admin of the other club accepts it, here or by replying 1 in WhatsApp. A request stays open until the other club accepts or declines it, or your club withdraws it.",
         "An owner or admin of either club can pause a pairing at any time, and only the club that paused it can resume it. An owner or admin of either club can also end it for good. A club that declines your request, or ends a pairing that lets you ask it, cannot be asked again for 30 days, and a club can block yours so you can never ask it.",
       ],
       newClubs: "None. A club has no partner clubs until it sends a request that is accepted, or accepts one.",
@@ -1189,7 +1189,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Partner kulüpleriniz",
       what: [
         "Kadronuz eksik olduğunda MatchTime'ın oyuncu isteyebileceği kulüpler ve sizden oyuncu isteyebilecek kulüpler. Her eşleşme tek yönlüdür: sizin başka bir kulüpten istemeniz, o kulübün sizden istemesinden ayrı bir eşleşmedir.",
-        "Bir eşleşme bir istekle başlar: sahipleriniz ya da yöneticileriniz yakınınızdaki kulüpleri bulup onlara istek gönderir, yakındaki bir kulüp de size gönderebilir. İstek göndermek kulübünüzün onayıdır. Eşleşme, diğer kulübün bir sahibi ya da yöneticisi isteği burada ya da WhatsApp'ta 1 yazarak kabul edince başlar. Yanıtlanmayan bir istek 14 gün sonra sona erer.",
+        "Bir eşleşme bir istekle başlar: sahipleriniz ya da yöneticileriniz yakınınızdaki kulüpleri bulup onlara istek gönderir, yakındaki bir kulüp de size gönderebilir. İstek göndermek kulübünüzün onayıdır. Eşleşme, diğer kulübün bir sahibi ya da yöneticisi isteği burada ya da WhatsApp'ta 1 yazarak kabul edince başlar. Bir istek, diğer kulüp kabul edene ya da reddedene veya kulübünüz geri çekene kadar açık kalır.",
         "İki kulüpten birinin sahibi ya da bir yöneticisi eşleşmeyi istediği an durdurabilir; yalnızca durduran kulüp devam ettirebilir. İki kulübün sahipleri ya da yöneticileri eşleşmeyi tamamen de sonlandırabilir. İsteğinizi reddeden ya da sizin ondan oyuncu istemenizi sonlandıran bir kulübe 30 gün boyunca yeniden istek gönderilemez; bir kulüp sizi engelleyebilir, o zaman ona hiç istek gönderemezsiniz.",
       ],
       newClubs: "Yok. Bir kulübün, kabul edilen bir istek göndermeden ya da bir isteği kabul etmeden partner kulübü olmaz.",

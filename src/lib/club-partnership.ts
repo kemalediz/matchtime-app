@@ -25,7 +25,6 @@ import { londonMidnight } from "./club-connect-rules";
 import { isOrgDormant } from "./org-lifecycle";
 import { t } from "./i18n/t";
 import {
-  PARTNER_REQUEST_EXPIRES_MS,
   REQUEST_DEFAULT_APPROVAL,
   canBlock,
   clubPositions,
@@ -584,7 +583,9 @@ function memberCount(orgId: string): Promise<number> {
  * CLUB A ASKS ONE OR MORE CLUBS TO BECOME PARTNER CLUBS (plan 3.1). One
  * `ClubPartnership` row per club, A asking B, with A's acceptance on it
  * from the start: A's request is A's consent. The caller has proven the
- * user's role in A; the pure `planRequest` decides each club.
+ * user's role in A; the pure `planRequest` decides each club. A request
+ * never expires (Kemal, 2026-11-05): it waits until B accepts or declines
+ * it, or A withdraws it.
  *
  * `partnerOrgIds` come in the order the search page lists them, nearest
  * first, so a "select all" past the day's 20 sends the nearest 20 and the
@@ -635,7 +636,6 @@ export async function requestPartnerships(args: {
   const theyMayAskUs = new Set(theirRows.map((r) => r.askerOrgId));
   const blocked = new Set(blocks.map((b) => (b.blockerOrgId === asker.id ? b.blockedOrgId : b.blockerOrgId)));
   const since = londonMidnight(now);
-  const expiresAt = new Date(now.getTime() + PARTNER_REQUEST_EXPIRES_MS);
 
   const written = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`club-request:${asker.id}`}))`;
@@ -679,7 +679,6 @@ export async function requestPartnerships(args: {
         partnerAcceptedBy: null,
         pausedByOrgId: null,
         createdByUserId: args.userId,
-        expiresAt: auto ? null : expiresAt,
         endedAt: null,
         endedByOrgId: null,
         endReason: null,
@@ -840,49 +839,4 @@ export async function loadBlockedClubs(orgId: string): Promise<Array<{ orgId: st
     select: { blockedOrgId: true, blockedOrg: { select: { name: true } } },
   });
   return rows.map((r) => ({ orgId: r.blockedOrgId, name: r.blockedOrg.name }));
-}
-
-/**
- * THE DAILY EXPIRY SWEEP (`/api/cron/partner-requests`): every request
- * still pending 14 days after it was sent ends as "expired", and the
- * asking club is told ONCE. The claim is a compare-and-set on the row as
- * read (still proposed, same expiry), so two sweeps at once, or a sweep
- * racing an acceptance, end it at most once and tell A at most once.
- *
- * A request to a club that is now DORMANT ends quietly: the notice says
- * "send it again from Find clubs", and a dormant club is no longer listed
- * there nor askable (`planRequest`), so there is nothing true to tell A.
- */
-export async function runPartnerRequestExpirySweep(now: Date = new Date()): Promise<{ considered: number; expired: number }> {
-  const due = await db.clubPartnership.findMany({
-    where: { status: "proposed", origin: "request", expiresAt: { lte: now } },
-    orderBy: { createdAt: "asc" },
-    include: { askerOrg: { select: { name: true, language: true } }, partnerOrg: { select: { name: true, dormantAt: true } } },
-  });
-  let expired = 0;
-  for (const r of due) {
-    try {
-      const claim = await db.clubPartnership.updateMany({
-        where: { id: r.id, status: "proposed", expiresAt: r.expiresAt },
-        data: { status: "ended", pausedByOrgId: null, endedAt: now, endedByOrgId: null, endReason: "expired" },
-      });
-      if (claim.count !== 1) continue;
-      expired++;
-      if (isOrgDormant(r.partnerOrg)) {
-        console.log(`[partner-clubs] pairing ${r.id}: request expired (partner dormant, no notice)`);
-        continue;
-      }
-      console.log(`[partner-clubs] pairing ${r.id}: request expired`);
-      const s = t(r.askerOrg.language);
-      await sendAdminNotice({
-        orgId: r.askerOrgId,
-        now,
-        nextPath: FIND_CLUBS_PATH,
-        text: (link) => s.pr_expired_notice({ partner: r.partnerOrg.name, link }),
-      });
-    } catch (err) {
-      console.error(`[partner-clubs] pairing ${r.id}: expiry failed; the next run retries: ${(err as Error)?.name ?? "error"}`);
-    }
-  }
-  return { considered: due.length, expired };
 }

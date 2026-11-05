@@ -1440,10 +1440,11 @@ model ClubPartnership {
   /// every row before this) or "request" (one club asked another; the
   /// request is the asking club's consent). CHECK: partner-ask-check.sql.
   origin            String       @default("owner")
-  /// A pending request's expiry (14 days after it was sent).
-  expiresAt         DateTime?
+  /// A request never expires (Kemal, 2026-11-05): its expiry column was
+  /// dropped by migration 20261105090000_partner_requests_never_expire.
   /// When and by which club it ended, and why: "declined" | "withdrawn" |
-  /// "ended" | "expired" | "blocked". NULL by the platform owner's hand.
+  /// "ended" | "blocked", or "expired" on old rows only (nothing ends a
+  /// pairing that way any more). NULL by the platform owner's hand.
   endedAt           DateTime?
   endedByOrgId      String?
   endReason         String?

@@ -67,7 +67,7 @@ setting is on by default.** Its owner or admin can switch it off at any time:
   active again, and the requester sees "paused" on that partner. **Changed 2026-11-05 for
   dormant clubs:** a dormant club is no longer listed, does not search, and cannot be sent a
   request by any path (`planRequest` refuses it as "not-listed"); a request still pending to a
-  club that became dormant expires quietly, without the "send it again" notice. Why: FNF asked
+  club that became dormant expired quietly, without the "send it again" notice (requests no longer expire at all since the same day, see 3.4). Why: FNF asked
   Sutton Lads (dormant since 2026-09-09, MatchTime out of its groups) on 2026-10-22, nobody could
   answer, and the expiry on 2026-11-05 told FNF to send it again. Billing-paused clubs are still
   listed. The venue is (a `Venue` with `lat`/`lng`). **It does not need a game set up**
@@ -184,7 +184,7 @@ the pairing reply reader keeps its closed answer (accept, decline, neither) unch
 |---|---|
 | New requests a club may send per London day | 20 (D-4). "Select all" beyond that sends the nearest 20 and says so. |
 | Pending requests a club may have out at once | 50 (decided, Kemal 2026-10-22) |
-| An unanswered **pairing** request | Expires after 14 days; A is told once. This is only the request to become partners. **An ask for players never has a 14-day limit: it ends with its match** (filled, no open place, the D12 cut-off before kickoff, or cancelled), as Kemal asked on 2026-10-22. |
+| An unanswered **pairing** request | **Never expires (Kemal, 2026-11-05).** It stays open until B accepts or declines it, or A withdraws it. Until 2026-11-05: expired after 14 days; A was told once. This is only the request to become partners. **An ask for players never has a 14-day limit: it ends with its match** (filled, no open place, the D12 cut-off before kickoff, or cancelled), as Kemal asked on 2026-10-22. |
 | After B declines | A cannot re-request B for 30 days. B is not listed for A until then. |
 | Block | B can **block A** from the request or the settings page: A can never request B, and B disappears from A's list. Unblock from settings. |
 | Withdraw | A can withdraw a pending request at any time (row ends, no notice to B beyond the notice disappearing from its list). |
@@ -267,7 +267,7 @@ model Organisation {
 model ClubPartnership {
   // existing columns unchanged; a request = askerAcceptedAt set at creation
   origin        String    @default("owner")     // "owner" (platform owner) | "request"
-  expiresAt     DateTime?                       // a pending request's expiry (14 days)
+  // expiresAt was here; dropped 2026-11-05 (requests never expire)
   endedAt       DateTime?
   endedByOrgId  String?
   endReason     String?                         // "declined" | "withdrawn" | "ended" | "expired" | "blocked"
@@ -308,12 +308,12 @@ One migration, additive only, applied before the deploy. The daily request cap c
 | `src/lib/club-discovery-rules.ts` (new) | Pure: radius presets, bounding box, who is listable, who may search, the card fields, regular-player count. |
 | `src/lib/club-discovery.ts` (new) | Loads the nearby list for one club (one query plus `distanceKm`). |
 | `src/lib/club-partnership-rules.ts` | New `planRequest` (caps, cooldown, block, already paired), `withdraw` and `block` actions, accept and end by owner or admin. |
-| `src/lib/club-partnership.ts` | `requestPartnerships`, `withdrawRequest`, `blockClub`, discoverable and auto-accept settings, request expiry, weekly venue reminder; new notice copy. Remains the one writer. |
+| `src/lib/club-partnership.ts` | `requestPartnerships`, `withdrawRequest`, `blockClub`, discoverable and auto-accept settings, request expiry (removed 2026-11-05), weekly venue reminder; new notice copy. Remains the one writer. |
 | `src/lib/pairing-reply.ts` | No logic change; the notice it reads has new wording before the unchanged "reply 1 or 2" line. |
 | `src/lib/partner-ask-rules.ts` | `canAsk` takes the chosen number (1 to open places); `closeReason` closes a round at its number. |
 | `src/lib/partner-ask.ts` | `requestPartnerAsk` takes `places` and `roundId`; a new `requestPartnerRound` for several partners. |
 | `src/lib/partner-guest.ts` | A guest takes a place only while the round is below its number (lock per match); round close stands the rest down. |
-| `src/lib/bot-scheduler.ts` | Daily sweep: expire old requests. |
+| `src/lib/bot-scheduler.ts` | Daily sweep: expire old requests. (Built as its own cron instead, then removed 2026-11-05: requests never expire.) |
 | `src/app/actions/partners.ts` | Actions: search, request, withdraw, block, unblock, discoverable, auto-accept. |
 | `src/app/actions/partner-asks.ts` | Takes the number and the ticked partners. |
 | `src/app/admin/partners/find/page.tsx` + `src/components/partners/find-clubs.tsx` (new) | The search page: radius presets, same-day filter, cards, select and send. |
@@ -347,10 +347,21 @@ P1 to P5 touch no prompt; the only model-facing change is the notice wording in 
 | D-1 | Does accepting let only the requester ask, or both ways? | **Decided (Kemal, 2026-10-22): only the requester.** Offer a one-tap "ask them too" reverse request that the other club accepts. |
 | D-2 | Who may send and accept requests? | **Decided (Kemal, 2026-10-22): owners and admins**, both. Owners are told when an admin accepts. |
 | D-3 | Must a club be listed itself to search? | **Decided (Kemal, 2026-10-22): yes**, search needs the club's own toggle on. |
-| D-4 | Request limits? | **Decided (Kemal, 2026-10-22): 20 new requests a day, 50 pending, an unanswered pairing request expires after 14 days (an ask for players ends with its match), 30-day wait after a decline or an end by the other club, block available.** |
+| D-4 | Request limits? | **Decided (Kemal, 2026-10-22): 20 new requests a day, 50 pending, an unanswered pairing request expires after 14 days (an ask for players ends with its match) [superseded 2026-11-05: requests never expire, see the note below], 30-day wait after a decline or an end by the other club, block available.** |
 | D-5 | Default number on the ask picker? | **Decided (Kemal, 2026-10-22): 1**, up to the open places. Most asks are for one player and over-asking floods partner groups. |
 | D-6 | Keep the platform owner's create form? | **Decided (Kemal, 2026-10-22): no.** Keep the list with pause and end as an override. |
 | D-7 | Asking in words (#367): number now or later? | **Decided (Kemal, 2026-10-22):** **Later (P6)**, with its own prompt page and paid tests; until then words asks ask for every open place and say how many. |
 | D-8 | Member count: exact, or a band? | **Decided (Kemal, 2026-10-22):** **Exact total plus "regular players"**, as he asked. Names never. |
 | D-9 | Miles only? | **Decided (Kemal, 2026-10-22):** **Miles for now**, kilometres when a non-UK club joins. |
 | D-10 | Show a level? | **Decided (Kemal, 2026-10-22): no rating of any kind across clubs, and no self-set level.** |
+
+**Note, Kemal 2026-11-05: partner requests never expire.** His words: "stop expiring everything
+for unanswered too". A request between clubs (`ClubPartnership`, status "proposed", origin
+"request") stays open until the other club accepts or declines it, or the asking club withdraws
+it. Accepted pairings never expired and still do not. Removed: `PARTNER_REQUEST_EXPIRES_MS`,
+`requestExpired`, `runPartnerRequestExpirySweep`, the `/api/cron/partner-requests` route and its
+vercel.json schedule, the `pr_expired_notice` string (English and Turkish), the "14 days" line in
+the partner clubs guide, and the `ClubPartnership.expiresAt` column (migration
+`20261105090000_partner_requests_never_expire`, applied after the code is deployed). "expired"
+stays an allowed `endReason` for the old rows that carry it; nothing writes it any more. The 50
+pending cap stays, so a club with 50 unanswered requests withdraws some to send more.

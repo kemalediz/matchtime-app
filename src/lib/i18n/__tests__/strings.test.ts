@@ -1841,7 +1841,6 @@ const SAMPLES: SampleArgs = {
   pr_auto_joined_notice: { asker: "FNFCLUB", club: "SUTTONCLUB", link: "https://x/LINK" },
   pr_accepted_notice: { partner: "SUTTONCLUB", club: "FNFCLUB" },
   pr_declined_notice: { partner: "SUTTONCLUB" },
-  pr_expired_notice: { partner: "SUTTONCLUB", link: "https://x/LINK" },
   pr_admin_accepted_notice: { name: "ADMINNAME", asker: "FNFCLUB", club: "SUTTONCLUB", link: "https://x/LINK" },
   pr_an_admin: null,
   pr_reply_accepted: { club: "SUTTONCLUB", other: "FNFCLUB", link: "https://x/LINK" },

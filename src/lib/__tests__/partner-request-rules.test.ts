@@ -8,20 +8,19 @@
  *     clubs find us" switch, owners and admins only), and create or reopen;
  *   - the request's acceptance turns it active in ONE step, with the
  *     partner's per-ask choice (default "post without asking");
- *   - withdraw (the asking side, pending only), and expiry after 14 days.
+ *   - withdraw (the asking side, pending only). A request never expires
+ *     (Kemal, 2026-11-05): partner-requests-never-expire.test.ts.
  */
 import { describe, expect, it } from "vitest";
 import {
   PARTNER_REQUESTS_PENDING_MAX,
   PARTNER_REQUESTS_PER_DAY,
   PARTNER_REQUEST_COOLDOWN_MS,
-  PARTNER_REQUEST_EXPIRES_MS,
   REQUEST_DEFAULT_APPROVAL,
   canBlock,
   cooldownUntil,
   planPartnershipAction,
   planRequest,
-  requestExpired,
   type RequestFacts,
 } from "../club-partnership-rules";
 
@@ -44,10 +43,9 @@ const facts = (over: Partial<RequestFacts> = {}): RequestFacts => ({
 });
 
 describe("the limits (D-4, Kemal 2026-10-22)", () => {
-  it("20 new requests a London day, 50 pending, 14 days to answer, 30 days' wait", () => {
+  it("20 new requests a London day, 50 pending, 30 days' wait", () => {
     expect(PARTNER_REQUESTS_PER_DAY).toBe(20);
     expect(PARTNER_REQUESTS_PENDING_MAX).toBe(50);
-    expect(PARTNER_REQUEST_EXPIRES_MS).toBe(14 * DAY);
     expect(PARTNER_REQUEST_COOLDOWN_MS).toBe(30 * DAY);
   });
   it("a pairing made by a request posts the asks without asking by default", () => {
@@ -164,16 +162,7 @@ describe("answering a request", () => {
   });
 });
 
-describe("expiry and blocking", () => {
-  it("a pending request expires 14 days after it was sent, not a minute before", () => {
-    const expiresAt = new Date(NOW.getTime() + PARTNER_REQUEST_EXPIRES_MS);
-    const r = { status: "proposed", origin: "request", expiresAt };
-    expect(requestExpired(r, new Date(expiresAt.getTime() - 60_000))).toBe(false);
-    expect(requestExpired(r, expiresAt)).toBe(true);
-    expect(requestExpired({ ...r, status: "active" }, expiresAt)).toBe(false);
-    expect(requestExpired({ ...r, origin: "owner" }, expiresAt)).toBe(false);
-    expect(requestExpired({ ...r, expiresAt: null }, expiresAt)).toBe(false);
-  });
+describe("blocking", () => {
   it("owners and admins block another club, never their own", () => {
     expect(canBlock({ role: "ADMIN", blockerOrgId: "sutton", blockedOrgId: "fnf" })).toEqual({ ok: true });
     expect(canBlock({ role: "PLAYER", blockerOrgId: "sutton", blockedOrgId: "fnf" })).toEqual({ ok: false, refusal: "not-admin" });

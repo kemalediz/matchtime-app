@@ -4072,8 +4072,6 @@ export const tr: Strings = {
   pr_accepted_notice: (p) =>
     `✅ *${p.partner}*, *${p.club}* kulübünün isteğini kabul etti. Maç sayfasından ya da MatchTime'a sorarak onlardan oyuncu isteyebilirsiniz.`,
   pr_declined_notice: (p) => `*${p.partner}* şu an istek kabul etmiyor.`,
-  pr_expired_notice: (p) =>
-    `⌛ *${p.partner}* kulübüne gönderdiğiniz istek 14 gün içinde yanıtlanmadığı için sona erdi. Yakınınızdaki kulüpleri bulun sayfasından yeniden gönderebilirsiniz: ${p.link}`,
   pr_admin_accepted_notice: (p) =>
     `🤝 ${p.name}, *${p.asker}* kulübünün isteğini kabul etti: artık *${p.club}* kulübünden oyuncu isteyebilirler. Onları buradan durdurabilir, sonlandırabilir ya da engelleyebilirsiniz: ${p.link}`,
   pr_an_admin: "Bir yönetici",
