@@ -36,7 +36,6 @@ export function featureForDueKey(key: string): DueKeyFeature | null {
   if (
     seg.startsWith("announce-match") ||
     seg.startsWith("rolling-announce") ||
-    seg.startsWith("dropout-reminder") ||
     seg.startsWith("list-published") ||
     seg.startsWith("evening-update") ||
     seg.startsWith("chase-") ||

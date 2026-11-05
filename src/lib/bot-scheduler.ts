@@ -81,10 +81,8 @@ import { buildRatePromoPost, buildMatchDayChaseFallback, isFirstRatePromo, isRat
 import { dayCommaTimeLabel, dayLabel, dayTimeLabel, longDayTimeLabel, weekdayLabel, weekdayTimeLabel } from "./i18n/dates";
 import {
   dropOutDeadlineFor,
-  dropOutReminderDue,
   hasWeeklyRhythm,
   listPublishDue,
-  madeAfterDropOutDeadline,
   weeklyDeadlinesFor,
 } from "./weekly-deadlines";
 import { isSubstantialSquad } from "./rolling-squad-rules";
@@ -127,7 +125,7 @@ import {
   type WeekStatus,
 } from "./monthly-week-rules";
 import { buildMonthlyDailyPost, buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost } from "./monthly-week-copy";
-import { decideDailyUpdate, decideDropOutReminder, type DailySquad, type DailyUpdate } from "./daily-update-rules";
+import { decideDailyUpdate, type DailySquad, type DailyUpdate } from "./daily-update-rules";
 import { londonMonthStart } from "./squad-month-rules";
 import {
   buildAnnounceMatchPost,
@@ -138,7 +136,6 @@ import {
   buildBotIntro,
   buildChasePreKickoffFallback,
   buildDailyInListFallback,
-  buildDropOutReminderPost,
   buildGearReminder,
   buildListPublishedPost,
   buildMatchDayLockedPost,
@@ -1385,9 +1382,9 @@ async function computeForMatch(
    * you go player or a named guest taking an open place (Kemal,
    * 2026-11-03), so the confirmed count is only whoever happened to say
    * IN. Every weekly post that counts that squad and asks for more is
-   * held back: the 17:00 post, the match-day and pre-kickoff chases, the
-   * drop-out reminder and the published list. The announcement has its
-   * own monthly copy. Always false for a weekly club.
+   * held back: the 17:00 post, the match-day and pre-kickoff chases and
+   * the published list. The announcement has its own monthly copy.
+   * Always false for a weekly club.
    */
   const noMonthYet = !monthly && features.squadMode === "monthly";
   // THE GROUP'S LANGUAGE (`Organisation.language`), once per match. Read
@@ -1523,7 +1520,6 @@ async function computeForMatch(
     key: string,
     reason: OrganiserListReason,
     extra: {
-      dropOutTime?: string | null;
       unpaid?: number | null;
       partnerOffer?: string[] | null;
       poolBand?: "few" | "5+" | null;
@@ -1858,9 +1854,10 @@ async function computeForMatch(
 
     // WEEKLY DEADLINES, D4 (2026-09-30, plan 3.3): a club with both a
     // drop-out deadline and a list publish time has its week told by the
-    // announcement, the reminder, the summary and the list, so the daily
-    // 17:00 post is off on every day except match day (where the line-up
-    // and the full-squad nudge still matter). False for a club without
+    // announcement, the organisers' summary and the list (and, until
+    // 2026-11-05, the drop-out reminder), so the daily 17:00 post is off
+    // on every day except match day (where the line-up and the full-squad
+    // nudge still matter). False for a club without
     // both settings, so Sutton FC's 17:00 post is untouched.
     const weeklyRhythmQuietDay = hasWeeklyRhythm(activity.org) && dayKey !== londonDateKey(m.date);
 
@@ -2169,21 +2166,24 @@ async function computeForMatch(
 
   // ── 2-weekly. Weekly deadlines (2026-09-30, slice 3 of
   //    MDs/friday-group-features-plan-2026-09-30.md, section 3.2) ───────
-  //    Two group posts for a club that has set them, each its own block
-  //    with its own key and no `return`, so nothing below is skipped:
-  //      D1 `<matchId>:dropout-reminder`  3 hours before the club's
-  //         drop-out deadline (not before 09:00), with the squad;
+  //    One group post for a club that has set it, in its own block with
+  //    its own key and no `return`, so nothing below is skipped:
   //      D3 `<matchId>:list-published`    at the club's publish time,
   //         the final list.
+  //    D1, the drop-out reminder 3 hours before the deadline, is gone
+  //    (Kemal, 2026-11-05: "i think we can eliminate the drop out
+  //    reminder, i don't think there is a need for that."). Nothing is
+  //    posted ahead of the deadline, to the group or the organisers. Old
+  //    `<matchId>:dropout-reminder` rows stay as history.
   //    D2, the organisers' summary once the deadline has passed, is not
   //    here: it goes through `sendAdminNotice` from the due-posts route
   //    (`deadline-summary.ts`), because computing posts must stay free
   //    of side effects (preview mode relies on it).
-  //    Both use the next-upcoming gate, so next week's match never posts
-  //    while this week's is still live. A club without the settings
-  //    (Sutton FC) resolves both to null and gets neither.
+  //    The list uses the next-upcoming gate, so next week's match never
+  //    posts while this week's is still live. A club without the setting
+  //    (Sutton FC) resolves it to null and gets nothing.
   //    MONTHLY SQUAD (2026-10-06): not for a match of a month (running or
-  //    in sign-up). Both posts carry the weekly roster, and the squad of a
+  //    in sign-up). The list carries the weekly roster, and the squad of a
   //    month's game is the month's list (block 2-monthly, and on match
   //    morning), so a club that kept its weekly deadlines when it went
   //    monthly would get two differently shaped lists. The same reason
@@ -2194,21 +2194,7 @@ async function computeForMatch(
   if (!monthly && !noMonthYet) {
     const isLive = m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED";
     const weekly = weeklyDeadlinesFor(m.date, activity.org);
-    const reminderKey = `${matchId}:dropout-reminder`;
     const listKey = `${matchId}:list-published`;
-    // A game made after its own deadline gets no reminder about it
-    // (2026-10-15): already implied by `dropOutReminderDue` (never due
-    // after the deadline), stated so the summary's rule reads the same here.
-    // Nothing to remind once the week is settled (Kemal, 2026-11-05, the
-    // FNF case): the teams are made, or the squad is full with the bench
-    // covered (`decideDropOutReminder`). The key is left unsent, so a drop
-    // later in the window (which ends at the deadline) still brings it.
-    const reminderDue =
-      weekly.dropOut !== null &&
-      !sentKeys.has(reminderKey) &&
-      dropOutReminderDue(now, weekly.dropOut, features.quietHours) &&
-      !madeAfterDropOutDeadline(m.createdAt, weekly.dropOut) &&
-      decideDropOutReminder({ teamsOut: m.teamAssignments.length > 0, open: need, bench: bench.length }).send;
     // Once the teams are out the team sheet is the announcement; a
     // fourteen-name list after it would be the roster the group was
     // told not to get again (2026-09-15).
@@ -2217,40 +2203,14 @@ async function computeForMatch(
       !sentKeys.has(listKey) &&
       m.teamAssignments.length === 0 &&
       listPublishDue(now, weekly.listPublish, m.date, features.quietHours);
-    if (isLive && (reminderDue || listDue) && isNextUpcomingForPosting(siblingMatches, m)) {
-      if (reminderDue && organisers) {
-        // The organisers announce: the squad and the deadline go to them.
-        await toOrganisers(reminderKey, "dropout-reminder", { dropOutTime: format(weekly.dropOut!, "HH:mm") });
-      } else if (reminderDue) {
-        const showsRoster = !(await rosterJustShown());
-        out.push({
-          kind: "group-message",
-          key: reminderKey,
-          matchId,
-          text: buildDropOutReminderPost({
-            activityName: activity.name,
-            whenLabel: dayTimeLabel(lang, m.date),
-            time: format(weekly.dropOut!, "HH:mm"),
-            rosterBlock: showsRoster
-              ? buildSquadRosterBlock({
-                  confirmed: confirmed.map((a) => a.user),
-                  bench: bench.map((a) => a.user),
-                  maxPlayers,
-                  lang,
-                })
-              : null,
-            lang,
-          }),
-          ...(showsRoster ? { rosterShown: rosterMark } : {}),
-        });
-      }
-      if (listDue && organisers) {
+    if (isLive && listDue && isNextUpcomingForPosting(siblingMatches, m)) {
+      if (organisers) {
         // The organisers announce: the final list is theirs to post.
         await toOrganisers(listKey, "list-published");
         // No list poster on its own (Kemal, 2026-10-30: a poster "can only
         // be generated when they tag matchtime while asking to generate").
         // It is drawn when asked, tagged, in the admin group.
-      } else if (listDue) {
+      } else {
         out.push({
           kind: "group-message",
           key: listKey,

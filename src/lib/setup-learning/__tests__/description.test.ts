@@ -414,7 +414,7 @@ describe("the findings DM with description evidence", () => {
   it("a switched setting backed by a message and the description shows both, each under its own label, in English", () => {
     expect(dm("en", { applied: [APPLIED_BOTH] })).toBe(
       `I read the recent messages in "Tuesday 6s" to see how it runs, and set MatchTime up the same way.\n\n` +
-        `✅ *Drop-out deadline:* Monday 21:00. MatchTime reminds the group before it.\n` +
+        `✅ *Drop-out deadline:* Monday 21:00. Once it passes, MatchTime sends your admins who is out and who is on the bench.\n` +
         `From messages like: "Drop out by Monday 9pm please"\n` +
         `From your group description: "Drop out by Monday 9pm or you still pay"\n` +
         `Undo or change: https://mt.link/undo\n\n` +
@@ -424,7 +424,7 @@ describe("the findings DM with description evidence", () => {
   it("and in Turkish", () => {
     expect(dm("tr", { applied: [APPLIED_BOTH] })).toBe(
       `"Tuesday 6s" grubundaki son mesajları okuyup grubun nasıl işlediğine baktım ve MatchTime'ı aynı şekilde kurdum.\n\n` +
-        `✅ *Son çıkış saati:* Pazartesi 21:00. MatchTime bundan önce gruba hatırlatır.\n` +
+        `✅ *Son çıkış saati:* Pazartesi 21:00. Saat geçince MatchTime yöneticilerinize kimin çıktığını ve kimin yedekte olduğunu gönderir.\n` +
         `Şu tür mesajlardan: "Drop out by Monday 9pm please"\n` +
         `Grup açıklamanızdan: "Drop out by Monday 9pm or you still pay"\n` +
         `Geri almak ya da değiştirmek için: https://mt.link/undo\n\n` +

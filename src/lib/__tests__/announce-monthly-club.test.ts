@@ -281,7 +281,7 @@ describe("a monthly club's announcement (the Vets incident, 3 Nov 2026)", () => 
 // taking an open place. With no month in MatchTime yet the confirmed count
 // is only whoever happened to say IN, so every weekly post that counts the
 // squad and asks for more (the 17:00 chase and roster, the match-day and
-// pre-kickoff chases, the drop-out reminder and the published list) would
+// pre-kickoff chases and the published list) would
 // ask the paid-up regulars to say IN. None of them goes out.
 describe("a monthly club with no month yet: no other weekly post asks the regulars to say IN", () => {
   const two = () => [att("Payg One", 0), att("Payg Two", 1)];
@@ -293,8 +293,7 @@ describe("a monthly club with no month yet: no other weekly post asks the regula
   const PRE_3H = new Date("2026-11-09T17:00:00.000Z");
   const PRE_90M = new Date("2026-11-09T19:00:00.000Z");
   const deadlines = { dropOutDeadlineDay: 4, dropOutDeadlineTime: "18:00", listPublishDay: 5, listPublishTime: "10:00" };
-  /** Thu 5 Nov 15:30 (3h before the drop-out deadline) and Fri 6 Nov 10:05. */
-  const THU_REMINDER = new Date("2026-11-05T15:30:00.000Z");
+  /** Fri 6 Nov 10:05. */
   const FRI_PUBLISH = new Date("2026-11-06T10:05:00.000Z");
 
   const cases: Array<{ name: string; now: Date; key: (id: string) => string; org?: Record<string, unknown> }> = [
@@ -302,7 +301,6 @@ describe("a monthly club with no month yet: no other weekly post asks the regula
     { name: "the match-day morning chase", now: MATCH_DAY_0830, key: (id) => `${id}:chase-match-day-morning:2026-11-09` },
     { name: "the 3-4h pre-kickoff chase", now: PRE_3H, key: (id) => `${id}:chase-pre-kickoff` },
     { name: "the 2h last-chance plea", now: PRE_90M, key: (id) => `${id}:pre-kickoff` },
-    { name: "the drop-out reminder", now: THU_REMINDER, key: (id) => `${id}:dropout-reminder`, org: deadlines },
     { name: "the published list", now: FRI_PUBLISH, key: (id) => `${id}:list-published`, org: deadlines },
   ];
 

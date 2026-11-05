@@ -498,27 +498,6 @@ export function buildRollingDeadlineLine(args: { deadline: string; carried?: boo
 }
 
 /**
- * Row WDL1 (2026-09-30, weekly deadlines, D1 of plan 3.2): the group
- * reminder 3 hours before the club's drop-out deadline, with the squad.
- * `time` is the deadline's London "HH:mm"; the post goes out the same
- * day, hence "today".
- */
-export function buildDropOutReminderPost(
-  args: {
-    activityName: string;
-    whenLabel: string;
-    time: string;
-    /** Null when this same squad was shown in the last three hours: the
-     *  reminder goes out on its own. */
-    rosterBlock: string | null;
-  } & WithLang,
-): string {
-  return t(args.lang)
-    .dropout_reminder_post({ ...args, rosterBlock: args.rosterBlock ?? "" })
-    .trimEnd();
-}
-
-/**
  * Row WDL3 (2026-09-30, weekly deadlines, D3 of plan 3.2): the final list
  * at the club's publish time. Playing, then the waiting list when there
  * is one, then the places still open when there are any, then the ask to

@@ -15,8 +15,6 @@ import {
   weeklyDeadlinesFor,
   lastWeekdayTimeBefore,
   hasWeeklyRhythm,
-  dropOutReminderAt,
-  dropOutReminderDue,
   deadlineSummaryDue,
   listPublishDue,
   madeAfterDropOutDeadline,
@@ -101,34 +99,6 @@ describe("hasWeeklyRhythm (D4: the 17:00 post stops off match day)", () => {
     expect(hasWeeklyRhythm({ ...HAMZAH, dropOutDeadlineDay: null, dropOutDeadlineTime: null })).toBe(false);
     expect(hasWeeklyRhythm(null)).toBe(false);
     expect(hasWeeklyRhythm(undefined)).toBe(false);
-  });
-});
-
-describe("D1: the drop-out reminder, 3 hours before, not before 09:00", () => {
-  const MON_21 = new Date("2026-10-05T20:00:00.000Z");
-  it("Monday 21:00 deadline: reminder at 18:00", () => {
-    expect(dropOutReminderAt(MON_21)).toEqual(new Date("2026-10-05T17:00:00.000Z"));
-  });
-
-  it("an early deadline is clamped to 09:00", () => {
-    // Mon 10:30 BST: 07:30 is too early, 09:00 leaves 90 minutes.
-    expect(dropOutReminderAt(new Date("2026-10-05T09:30:00.000Z"))).toEqual(new Date("2026-10-05T08:00:00.000Z"));
-  });
-
-  it("skipped when the clamp leaves under an hour", () => {
-    expect(dropOutReminderAt(new Date("2026-10-05T08:45:00.000Z"))).toBeNull(); // 09:45
-    expect(dropOutReminderAt(new Date("2026-10-05T07:00:00.000Z"))).toBeNull(); // 08:00
-  });
-
-  it("exactly an hour is enough", () => {
-    expect(dropOutReminderAt(new Date("2026-10-05T09:00:00.000Z"))).toEqual(new Date("2026-10-05T08:00:00.000Z"));
-  });
-
-  it("due from the reminder until the deadline, not before, not after", () => {
-    expect(dropOutReminderDue(new Date("2026-10-05T16:59:00.000Z"), MON_21)).toBe(false);
-    expect(dropOutReminderDue(new Date("2026-10-05T17:00:00.000Z"), MON_21)).toBe(true);
-    expect(dropOutReminderDue(new Date("2026-10-05T19:59:00.000Z"), MON_21)).toBe(true);
-    expect(dropOutReminderDue(MON_21, MON_21)).toBe(false);
   });
 });
 
@@ -275,8 +245,5 @@ describe("madeAfterDropOutDeadline: a game made after its own deadline", () => {
   it("no createdAt (an old row or a hand-built fixture): false, so nothing changes for it", () => {
     expect(madeAfterDropOutDeadline(undefined, THU_2030)).toBe(false);
     expect(madeAfterDropOutDeadline(null, THU_2030)).toBe(false);
-  });
-  it("the drop-out reminder (D1) is never due once the deadline has passed, so such a game never gets one either", () => {
-    expect(dropOutReminderDue(new Date("2026-10-15T21:18:00.000Z"), THU_2030)).toBe(false);
   });
 });

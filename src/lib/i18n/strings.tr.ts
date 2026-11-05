@@ -2347,8 +2347,6 @@ export const tr: Strings = {
   carry_over_nothing: "Aktarılacak kimse yok",
 
   // ── Haftalık saatler (2026-09-30) ──
-  dropout_reminder_post: (p) =>
-    `⏰ *${p.activityName}*, ${p.whenLabel}: son çıkış saati *bugün ${p.time}*. Oynayamayacaksanız o saatten önce *YOKUM* yazın.\n\n${p.rosterBlock}`,
   deadline_summary_admin: (p) =>
     [
       `*${p.activityName}* için son çıkış saati (${p.deadlineLabel}) geçti, maç ${p.whenLabel}. Kadro ${p.confirmed}/${p.maxPlayers}.`,
@@ -3079,7 +3077,7 @@ export const tr: Strings = {
       : p.key === "organiserPicks"
         ? `*Boşalan yeri organizatörler seçiyor:* MatchTime önce size sorar; zamanında kimse seçmezse yeri yedek listesine sunar.`
         : p.key === "dropOutDeadline"
-          ? `*Son çıkış saati:* ${p.day} ${p.time}. MatchTime bundan önce gruba hatırlatır.`
+          ? `*Son çıkış saati:* ${p.day} ${p.time}. Saat geçince MatchTime yöneticilerinize kimin çıktığını ve kimin yedekte olduğunu gönderir.`
           : p.key === "listPublish"
             ? `*Son liste:* ${p.day} ${p.time} saatinde gruba gönderilir.`
             : `*Ödeme takibi açık:* MatchTime kimin ödediğini takip eder ve ödemeyenlere nazikçe hatırlatır.`,
@@ -3796,7 +3794,6 @@ export const tr: Strings = {
     return `📋 *${p.activityName} kadrosu, ${p.whenLabel}*: ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişi var, ${tail}.`;
   },
   oa_reason_announce: "Bu maçın listesi açıldı. Oyuncuların VARIM ve YOKUM mesajları grupta toplanıyor.",
-  oa_reason_dropout: (p) => `Son çıkış saati bugün ${p.time}.`,
   oa_reason_list_published: "Yayın saatinizdeki son liste bu.",
   oa_reason_chase: "Maç yaklaşıyor ve kadro hâlâ eksik.",
   oa_reason_squad_complete: "Kadro tamamlandı.",

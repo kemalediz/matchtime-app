@@ -102,14 +102,11 @@ describe("buildOrganiserListUpdate", () => {
     expect(text).toContain("3 of 4 in, 1 space.");
   });
 
-  it("each reason has its own line, the drop-out one names the time", () => {
+  it("each reason has its own line", () => {
     const base = { activityName: "FNF", whenLabel: "x", confirmed, bench: [], maxPlayers: 18, lang: "en" as const };
     expect(buildOrganiserListUpdate({ ...base, reason: "announce" })).toContain(t("en").oa_reason_announce);
     expect(buildOrganiserListUpdate({ ...base, reason: "list-published" })).toContain(t("en").oa_reason_list_published);
     expect(buildOrganiserListUpdate({ ...base, reason: "chase" })).toContain(t("en").oa_reason_chase);
-    expect(buildOrganiserListUpdate({ ...base, reason: "dropout-reminder", dropOutTime: "21:00" })).toContain(
-      "The drop-out deadline is today at 21:00.",
-    );
   });
 
   it("an unpaid count adds one line; none adds nothing", () => {
@@ -121,8 +118,7 @@ describe("buildOrganiserListUpdate", () => {
 
   it("Turkish", () => {
     const text = buildOrganiserListUpdate({
-      reason: "dropout-reminder",
-      dropOutTime: "21:00",
+      reason: "list-published",
       activityName: "FNF",
       whenLabel: "16 Ekim Cuma 20:30",
       confirmed,
@@ -132,7 +128,7 @@ describe("buildOrganiserListUpdate", () => {
       lang: "tr",
     });
     expect(text).toContain("📋 *FNF kadrosu, 16 Ekim Cuma 20:30*: 18 kişilik kadroda 3 kişi var, 15 yer boş.");
-    expect(text).toContain("Son çıkış saati bugün 21:00.");
+    expect(text).toContain(t("tr").oa_reason_list_published);
     expect(text).toContain("💷 Son maç için 2 kişi henüz ödemedi.");
     expect(text).toContain(t("tr").oa_footer);
   });
@@ -147,7 +143,6 @@ describe("buildOrganiserListUpdate", () => {
         s.oa_reason_chase,
         s.oa_reason_squad_complete,
         s.oa_relay_lead,
-        s.oa_reason_dropout({ time: "21:00" }),
         s.oa_header({ activityName: "A", whenLabel: "B", confirmed: 1, maxPlayers: 2 }),
         s.oa_unpaid({ count: 2 }),
         s.oa_list_by_organisers,

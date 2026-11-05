@@ -4,7 +4,7 @@
  * through the real `computeDuePosts` with Prisma mocked (the proxy
  * pattern of rolling-squad-scheduler.test.ts).
  *
- *   D1  the group reminder 3 hours before the drop-out deadline, once;
+ *   no drop-out reminder before the deadline (removed 2026-11-05);
  *   D3  the final list at publish time, once, only for the next live match;
  *   D4  with both set, the 17:00 post is off except on match day;
  *       a club without the settings (Sutton FC) gets none of it and keeps
@@ -61,12 +61,7 @@ vi.mock("@/lib/message-analyzer", () => ({
 }));
 
 import { computeDuePosts } from "@/lib/bot-scheduler";
-import {
-  buildDropOutReminderPost,
-  buildListPublishedPost,
-  buildRollingDeadlineLine,
-  buildSquadRosterBlock,
-} from "@/lib/scheduler-copy";
+import { buildListPublishedPost, buildRollingDeadlineLine } from "@/lib/scheduler-copy";
 
 const GROUP = "group-fnf@g.us";
 const ORG = { id: "org-fnf", whatsappGroupId: GROUP, whatsappBotEnabled: true };
@@ -75,7 +70,6 @@ const ORG = { id: "org-fnf", whatsappGroupId: GROUP, whatsappBotEnabled: true };
 const KICKOFF = new Date("2026-10-09T19:30:00.000Z");
 /** The match's own sign-up deadline (kickoff minus 5h). */
 const SIGNUP_DEADLINE = new Date("2026-10-09T14:30:00.000Z");
-const MON_1759 = new Date("2026-10-05T16:59:00.000Z");
 const MON_1805 = new Date("2026-10-05T17:05:00.000Z");
 const MON_1705 = new Date("2026-10-05T16:05:00.000Z");
 const TUE_1955 = new Date("2026-10-06T18:55:00.000Z");
@@ -169,88 +163,44 @@ beforeEach(() => {
   composeChaseText.mockClear();
 });
 
-describe("D1: the drop-out reminder in the group", () => {
-  it("fires from 18:00 on the deadline day, with the squad, once", async () => {
-    const m = match(HAMZAH_CLUB);
-    setWorld([m]);
-    const out = await instructions(MON_1805);
-    const key = `${m.id}:dropout-reminder`;
-    expect(out.filter((i) => i.key === key)).toHaveLength(1);
-    expect(out.find((i) => i.key === key)).toMatchObject({ kind: "group-message", matchId: m.id });
-    expect(text(out, key)).toBe(
-      buildDropOutReminderPost({
-        activityName: "Friday 9-a-side",
-        whenLabel: "Fri 9 Oct at 20:30",
-        time: "21:00",
-        rosterBlock: buildSquadRosterBlock({
-          confirmed: NAMES.map((name) => ({ name })),
-          bench: [],
-          maxPlayers: 18,
-          lang: "en",
-        }),
-        lang: "en",
-      }),
-    );
-  });
+// Kemal, 2026-11-05: "i think we can eliminate the drop out reminder, i
+// don't think there is a need for that." The deadline itself stays (late
+// drop-outs, D2 the organisers' summary, D3 the list, D4 the 17:00 rule);
+// nothing is ever posted ahead of it.
+describe("no drop-out reminder, ever (Kemal, 2026-11-05)", () => {
+  /** Every 10 minutes across the deadline day, 08:00 to 22:50 London. */
+  const DEADLINE_DAY = Array.from({ length: 90 }, (_, i) => new Date(Date.UTC(2026, 9, 5, 7, 0) + i * 10 * 60_000));
+  const PHRASES = [/drop-out deadline is/i, /son çıkış saati \*bugün/i];
+  const noReminder = (out: { key: string; text?: string }[]) => {
+    expect(out.some((i) => i.key.includes("dropout-reminder"))).toBe(false);
+    expect(out.some((i) => PHRASES.some((re) => re.test(i.text ?? "")))).toBe(false);
+  };
 
-  it("not before 18:00, not once sent, not after the deadline", async () => {
-    const m = match(HAMZAH_CLUB);
-    setWorld([m]);
-    expect((await instructions(MON_1759)).some((i) => i.key.endsWith(":dropout-reminder"))).toBe(false);
-    setWorld([m], { sent: [`${m.id}:dropout-reminder`] });
-    expect((await instructions(MON_1805)).some((i) => i.key.endsWith(":dropout-reminder"))).toBe(false);
-    setWorld([m]);
-    expect(
-      (await instructions(new Date("2026-10-05T20:01:00.000Z"))).some((i) => i.key.endsWith(":dropout-reminder")),
-    ).toBe(false);
-  });
-
-  it("Turkish club: the Turkish reminder", async () => {
-    const m = match({ ...HAMZAH_CLUB, language: "tr" });
-    setWorld([m]);
-    expect(text(await instructions(MON_1805), `${m.id}:dropout-reminder`)).toContain(
-      "son çıkış saati *bugün 21:00*",
-    );
-  });
-
-  it("never for next week's match while this week's is still live", async () => {
-    const thisWeek = match(HAMZAH_CLUB, { id: "m-a", date: new Date("2026-10-02T19:30:00.000Z") });
-    const nextWeek = match(HAMZAH_CLUB, { id: "m-b" });
-    setWorld([thisWeek, nextWeek]);
-    expect((await instructions(MON_1805)).some((i) => i.key === "m-b:dropout-reminder")).toBe(false);
-  });
-
-  // Kemal, 2026-11-05 (the FNF case): nothing to remind once the teams
-  // are made, or once the squad is full with a bench of 3 or more.
-  it("teams made: no reminder in the group", async () => {
-    const m = match(HAMZAH_CLUB, {
-      status: "TEAMS_PUBLISHED",
-      teamAssignments: NAMES.map((name, i) => ({ userId: `u${i}`, team: i % 2 ? "BLUE" : "RED", user: { id: `u${i}`, name } })),
+  for (const [name, club] of [
+    ["both weekly deadlines", HAMZAH_CLUB],
+    ["a drop-out deadline only", { ...HAMZAH_CLUB, listPublishDay: null, listPublishTime: null }],
+    ["a drop-out deadline only, in Turkish", { ...HAMZAH_CLUB, listPublishDay: null, listPublishTime: null, language: "tr" }],
+  ] as const) {
+    it(`${name}: nothing in the group at any time on the deadline day`, async () => {
+      for (const now of DEADLINE_DAY) {
+        setWorld([match(club)]);
+        noReminder(await instructions(now));
+      }
     });
-    setWorld([m]);
-    expect((await instructions(MON_1805)).some((i) => i.key.endsWith(":dropout-reminder"))).toBe(false);
-  });
+  }
 
-  it("full with a bench of 3: no reminder; with a bench of 2 it goes out as before", async () => {
-    const full = (benchers: number) =>
-      match(HAMZAH_CLUB, {
-        maxPlayers: 4,
-        attendances: [
-          ...NAMES.map((n, i) => player(n, i)),
-          ...Array.from({ length: benchers }, (_, i) => player(`Bench ${i + 1}`, 4 + i, "BENCH")),
-        ],
-      });
-    setWorld([full(3)]);
-    expect((await instructions(MON_1805)).some((i) => i.key.endsWith(":dropout-reminder"))).toBe(false);
-    setWorld([full(2)]);
-    expect((await instructions(MON_1805)).filter((i) => i.key.endsWith(":dropout-reminder"))).toHaveLength(1);
-  });
-
-  it("a club without the attendance feature gets nothing", async () => {
-    features.attendance = false;
-    const m = match(HAMZAH_CLUB);
-    setWorld([m]);
-    expect((await instructions(MON_1805)).some((i) => i.key.endsWith(":dropout-reminder"))).toBe(false);
+  it("a short squad or a thin bench brings no reminder either", async () => {
+    const short = match(HAMZAH_CLUB, { attendances: NAMES.slice(0, 2).map((n, i) => player(n, i)) });
+    const thin = match(HAMZAH_CLUB, {
+      maxPlayers: 4,
+      attendances: [...NAMES.map((n, i) => player(n, i)), player("Bench 1", 4, "BENCH")],
+    });
+    for (const m of [short, thin]) {
+      for (const now of DEADLINE_DAY) {
+        setWorld([m]);
+        noReminder(await instructions(now));
+      }
+    }
   });
 });
 

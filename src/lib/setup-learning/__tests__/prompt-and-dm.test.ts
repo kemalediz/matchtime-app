@@ -175,7 +175,7 @@ describe("the organiser's DM", () => {
   it("says what was set, why (one quote) and how to undo each, in English", () => {
     expect(dmFor("deadlines")).toBe(
       `I read the recent messages in "Thursday Ladies 5s" to see how it runs, and set MatchTime up the same way.\n\n` +
-        `✅ *Drop-out deadline:* Monday 21:00. MatchTime reminds the group before it.\n` +
+        `✅ *Drop-out deadline:* Monday 21:00. Once it passes, MatchTime sends your admins who is out and who is on the bench.\n` +
         `From messages like: "Drop out by Monday 9pm at the latest"\n` +
         `Undo or change: https://mt.link/undo-dropOutDeadline\n\n` +
         `✅ *Final list:* posted in the group on Tuesday at 20:00.\n` +

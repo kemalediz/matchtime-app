@@ -27,7 +27,6 @@ import {
   SETTING_EARLIEST,
   SETTING_LATEST,
   deadlineSummaryDue,
-  dropOutReminderAt,
   listPublishDue,
   validateWeeklyDeadlines,
 } from "../weekly-deadlines";
@@ -289,26 +288,3 @@ describe("weekly-deadlines: the times an organiser may choose are 09:00 to 22:30
   });
 });
 
-describe("weekly-deadlines: the drop-out reminder, 3 hours before and not before 09:00", () => {
-  it("a 22:30 deadline is reminded at 19:30", () => {
-    expect(dropOutReminderAt(at("2026-12-02T22:30:00Z"))?.toISOString()).toBe("2026-12-02T19:30:00.000Z");
-  });
-
-  it("an 11:00 deadline is reminded at 09:00, the window's start", () => {
-    expect(dropOutReminderAt(at("2026-12-02T11:00:00Z"))?.toISOString()).toBe("2026-12-02T09:00:00.000Z");
-  });
-
-  it("a 09:00 deadline (the earliest allowed) and a saved 08:00 one get no reminder: under an hour's notice", () => {
-    expect(dropOutReminderAt(at("2026-12-02T09:00:00Z"))).toBeNull();
-    expect(dropOutReminderAt(at("2026-12-02T08:00:00Z"))).toBeNull();
-  });
-
-  it("every reminder for an allowed deadline falls inside the window", () => {
-    for (let h = 9; h <= 22; h++) {
-      for (const m of ["00", "30"]) {
-        const r = dropOutReminderAt(at(`2026-12-02T${String(h).padStart(2, "0")}:${m}:00Z`));
-        if (r) expect(inMessageHours(r)).toBe(true);
-      }
-    }
-  });
-});
