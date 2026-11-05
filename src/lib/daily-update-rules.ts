@@ -18,6 +18,9 @@
  *     only on match day;
  *   - match day with the teams made: the line-ups (players' group only);
  *     a month's list is never posted beside a team sheet on any day;
+ *   - a weekly squad, full, with the teams made: nothing on any other day
+ *     either, to the group or the organisers (2026-11-05); a place open
+ *     still chases;
  *   - match day, a weekly squad full and no teams: the "make the teams"
  *     nudge. It is not the squad-and-bench reminder this rule stops, and it
  *     goes out once, on match day;
@@ -111,6 +114,11 @@ export function decideDailyUpdate(f: DailyUpdateFacts): DailyUpdate {
   // The month's list is never posted once the teams are out, whatever the
   // day: the team sheet is the announcement then (`decideListPost`).
   if (f.squad === "month" && f.teamsOut) return { post: null, why: "teams-out" };
+  // A weekly squad, full, with the teams out: nothing on any day, to anyone
+  // (Kemal, 2026-11-05: the teams and the poster are out, the squad again
+  // "just creates noise"). Match day's line-ups above still win; a place
+  // open still chases below.
+  if (f.squad === "weekly" && f.teamsOut && f.open === 0) return { post: null, why: "teams-out" };
   if (f.squad === "weekly" && f.isMatchDay && f.open === 0) return { post: "match-day-locked" };
   if (!f.beforeDeadline) return { post: null, why: "after-deadline" };
 
