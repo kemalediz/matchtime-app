@@ -174,8 +174,8 @@ test("a REQUEST (P3): an ADMIN of the club replies '1': active at once, the aski
   );
   await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role, "createdAt") VALUES ('e2e-pair-m', $1, $2, 'OWNER', now())`, [U.rater, TWO]);
   await db.run(
-    `INSERT INTO "ClubPartnership" (id, "askerOrgId", "partnerOrgId", status, origin, "partnerApproval", "askerAcceptedAt", "askerAcceptedBy", "expiresAt", "createdByUserId", "createdAt", "updatedAt")
-     VALUES ($1, $2, $3, 'proposed', 'request', 'standing', now(), $4, now() + interval '14 days', $4, now(), now())`,
+    `INSERT INTO "ClubPartnership" (id, "askerOrgId", "partnerOrgId", status, origin, "partnerApproval", "askerAcceptedAt", "askerAcceptedBy", "createdByUserId", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, 'proposed', 'request', 'standing', now(), $4, $4, now(), now())`,
     [PAIR, TWO, ORG_ID, U.rater],
   );
   await db.run(`UPDATE "Membership" SET role = 'ADMIN' WHERE "userId" = $1 AND "orgId" = $2`, [U.collector, ORG_ID]);

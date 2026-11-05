@@ -5619,8 +5619,6 @@ export const en = {
   pr_accepted_notice: (p: { partner: string; club: string }) =>
     `✅ *${p.partner}* accepted *${p.club}*'s request. You can ask them for players from the match page or by asking MatchTime.`,
   pr_declined_notice: (p: { partner: string }) => `*${p.partner}* is not taking requests right now.`,
-  pr_expired_notice: (p: { partner: string; link: string }) =>
-    `⌛ Your request to *${p.partner}* had no answer in 14 days, so it has ended. You can send it again from Find clubs near you: ${p.link}`,
   // To the partner club's owners when one of its admins accepted (D-2).
   pr_admin_accepted_notice: (p: { name: string; asker: string; club: string; link: string }) =>
     `🤝 ${p.name} accepted *${p.asker}*'s request: they can now ask *${p.club}* for players. You can pause, end or block them here: ${p.link}`,

@@ -15,6 +15,7 @@
  * request to it can never be answered. FNF asked Sutton Lads (dormant since
  * 2026-09-09) on 2026-10-22; the request sat 14 days and then told FNF to
  * send it again. `planRequest` refuses a dormant club on every path too.
+ * (Requests no longer expire at all since 2026-11-05, Kemal.)
  *
  * WHO MAY SEARCH (D-3). A club that is itself listed, so a dormant club
  * does not search ("not-live"). Without a venue it sees "Confirm your venue"

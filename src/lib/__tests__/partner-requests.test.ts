@@ -22,7 +22,6 @@ interface Row {
   partnerAcceptedBy: string | null;
   pausedByOrgId: string | null;
   createdByUserId: string;
-  expiresAt: Date | null;
   endedAt: Date | null;
   endedByOrgId: string | null;
   endReason: string | null;
@@ -107,7 +106,6 @@ const partnershipApi = {
       partnerAcceptedBy: null,
       pausedByOrgId: null,
       createdByUserId: "x",
-      expiresAt: null,
       endedAt: null,
       endedByOrgId: null,
       endReason: null,
@@ -156,7 +154,7 @@ vi.mock("../admin-channel", () => noticeMock);
 const hqLogMock = vi.hoisted(() => ({ recordMatchTimeQuestion: vi.fn() }));
 vi.mock("../admin-group-log", () => hqLogMock);
 
-import { actOnPartnership, blockClub, requestPartnerships, runPartnerRequestExpirySweep, unblockClub, withdrawRequest } from "../club-partnership";
+import { actOnPartnership, blockClub, requestPartnerships, unblockClub, withdrawRequest } from "../club-partnership";
 
 const NOW = new Date("2026-10-22T12:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
@@ -200,7 +198,6 @@ function sentEarlier(n: number) {
       partnerAcceptedBy: null,
       pausedByOrgId: null,
       createdByUserId: "u1",
-      expiresAt: null,
       endedAt: NOW,
       endedByOrgId: "fnf",
       endReason: "withdrawn",
@@ -258,7 +255,7 @@ const send = (ids: string[], over: Record<string, unknown> = {}) =>
   requestPartnerships({ askerOrgId: "fnf", userId: "u1", role: "ADMIN", partnerOrgIds: ids, now: NOW, ...over });
 
 describe("sending", () => {
-  it("one row per club, asking club's consent on it, 14 days to answer, asks posted without asking by default", async () => {
+  it("one row per club, asking club's consent on it, no expiry, asks posted without asking by default", async () => {
     const r = await send(["sutton", "cheam"]);
     expect(r.results.map((x) => [x.partnerOrgId, x.outcome])).toEqual([
       ["sutton", "sent"],
@@ -275,8 +272,8 @@ describe("sending", () => {
       askerAcceptedBy: "u1",
       partnerAcceptedAt: null,
       createdByUserId: "u1",
-      expiresAt: new Date(NOW.getTime() + 14 * DAY),
     });
+    expect("expiresAt" in row).toBe(false);
   });
 
   it("the other club's organisers get the request notice, tagged for a reply, with the card and the unchanged ending", async () => {
@@ -314,7 +311,7 @@ describe("sending", () => {
     store.blocks.push({ blockerOrgId: "blocker", blockedOrgId: "fnf", createdByUserId: "x" });
     org("hidden", "Hidden FC", { discoverable: false });
     org("decliner", "Decliner FC");
-    store.rows.push({ ...store.rows[0], ...({} as Row), id: "d1", askerOrgId: "fnf", partnerOrgId: "decliner", status: "ended", origin: "request", partnerApproval: "standing", askerAcceptedAt: new Date(NOW.getTime() - 3 * DAY), askerAcceptedBy: "u1", partnerAcceptedAt: null, partnerAcceptedBy: null, pausedByOrgId: null, createdByUserId: "u1", expiresAt: null, endedAt: new Date(NOW.getTime() - 2 * DAY), endedByOrgId: "decliner", endReason: "declined", createdAt: NOW, updatedAt: NOW });
+    store.rows.push({ ...store.rows[0], ...({} as Row), id: "d1", askerOrgId: "fnf", partnerOrgId: "decliner", status: "ended", origin: "request", partnerApproval: "standing", askerAcceptedAt: new Date(NOW.getTime() - 3 * DAY), askerAcceptedBy: "u1", partnerAcceptedAt: null, partnerAcceptedBy: null, pausedByOrgId: null, createdByUserId: "u1", endedAt: new Date(NOW.getTime() - 2 * DAY), endedByOrgId: "decliner", endReason: "declined", createdAt: NOW, updatedAt: NOW });
     const r = await send(["blocker", "hidden", "decliner", "nowhere", "fnf"]);
     expect(Object.fromEntries(r.results.map((x) => [x.partnerOrgId, x.outcome === "refused" ? x.refusal : x.outcome]))).toEqual({
       blocker: "blocked",
@@ -367,7 +364,7 @@ describe("sending", () => {
   it("50 waiting: refused as pending-cap", async () => {
     for (let i = 0; i < 50; i++) {
       org(`w${i}`, `W ${i}`);
-      store.rows.push({ ...({} as Row), id: `w-${i}`, askerOrgId: "fnf", partnerOrgId: `w${i}`, status: "proposed", origin: "request", partnerApproval: "standing", askerAcceptedAt: new Date(NOW.getTime() - 2 * DAY), askerAcceptedBy: "u1", partnerAcceptedAt: null, partnerAcceptedBy: null, pausedByOrgId: null, createdByUserId: "u1", expiresAt: NOW, endedAt: null, endedByOrgId: null, endReason: null, createdAt: NOW, updatedAt: NOW });
+      store.rows.push({ ...({} as Row), id: `w-${i}`, askerOrgId: "fnf", partnerOrgId: `w${i}`, status: "proposed", origin: "request", partnerApproval: "standing", askerAcceptedAt: new Date(NOW.getTime() - 2 * DAY), askerAcceptedBy: "u1", partnerAcceptedAt: null, partnerAcceptedBy: null, pausedByOrgId: null, createdByUserId: "u1", endedAt: null, endedByOrgId: null, endReason: null, createdAt: NOW, updatedAt: NOW });
     }
     expect((await send(["sutton"])).results[0]).toMatchObject({ outcome: "refused", refusal: "pending-cap" });
   });
@@ -389,7 +386,7 @@ describe("accepting automatically", () => {
     const r = await send(["sutton"]);
     expect(r.results[0].outcome).toBe("active");
     const row = store.rows[0];
-    expect(row).toMatchObject({ status: "active", partnerAcceptedAt: NOW, expiresAt: null, partnerApproval: "standing" });
+    expect(row).toMatchObject({ status: "active", partnerAcceptedAt: NOW, partnerApproval: "standing" });
     expect(told("sutton")).toEqual([expect.stringContaining("*FNF* is now a partner club of *Sutton FC*")]);
     // Not tagged as a question: nothing is waiting for an answer.
     expect(noticeMock.sendAdminNotice.mock.calls.find((c) => c[0].orgId === "sutton")![0].aboutKey).toBeUndefined();
@@ -468,35 +465,25 @@ describe("blocking", () => {
   });
 });
 
-describe("expiry", () => {
-  it("after 14 days the request ends as expired and the asking club is told ONCE, however many sweeps run", async () => {
+describe("a request never expires (Kemal, 2026-11-05)", () => {
+  it("a year on it is still waiting, nobody was told anything, and the other club can still accept it", async () => {
     await send(["sutton"]);
     vi.clearAllMocks();
     noticeMock.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
-    const later = new Date(NOW.getTime() + 14 * DAY + 1000);
-    expect(await runPartnerRequestExpirySweep(new Date(NOW.getTime() + 13 * DAY))).toEqual({ considered: 0, expired: 0 });
-    const [a, b] = await Promise.all([runPartnerRequestExpirySweep(later), runPartnerRequestExpirySweep(later)]);
-    expect(a.expired + b.expired).toBe(1);
-    expect(await runPartnerRequestExpirySweep(later)).toEqual({ considered: 0, expired: 0 });
-    expect(store.rows[0]).toMatchObject({ status: "ended", endReason: "expired", endedByOrgId: null });
-    expect(told("fnf")).toEqual([expect.stringContaining("Your request to *Sutton FC* had no answer in 14 days")]);
-    expect(noticeMock.sendAdminNotice.mock.calls[0][0].nextPath).toBe("/admin/partners/find");
-    expect(told("sutton")).toEqual([]);
-    // No wait after an expiry.
-    expect((await send(["sutton"], { now: later })).results[0].outcome).toBe("sent");
+    const yearOn = new Date(NOW.getTime() + 365 * DAY);
+    expect(store.rows[0]).toMatchObject({ status: "proposed", endReason: null, endedAt: null });
+    // Still counted as waiting: a new request to the same club is refused as already pending.
+    expect((await send(["sutton"], { now: yearOn })).results[0]).toMatchObject({ outcome: "refused", refusal: "already-pending" });
+    expect(noticeMock.sendAdminNotice).not.toHaveBeenCalled();
+    const r = await actOnPartnership({ partnershipId: store.rows[0].id, orgId: "sutton", userId: "u9", role: "ADMIN", action: "accept", now: yearOn });
+    expect(r).toMatchObject({ ok: true });
+    expect(store.rows[0]).toMatchObject({ status: "active", partnerAcceptedAt: yearOn });
   });
 
-  it("a request to a club that is now dormant ends as expired QUIETLY: no 'send it again' notice, since it can't be sent again", async () => {
+  it("a year on the asking club can still withdraw it", async () => {
     await send(["sutton"]);
-    store.orgs.get("sutton")!.dormantAt = new Date(NOW.getTime() + DAY);
-    vi.clearAllMocks();
-    noticeMock.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
-    const later = new Date(NOW.getTime() + 14 * DAY + 1000);
-    expect(await runPartnerRequestExpirySweep(later)).toEqual({ considered: 1, expired: 1 });
-    expect(store.rows[0]).toMatchObject({ status: "ended", endReason: "expired", endedByOrgId: null });
-    expect(noticeMock.sendAdminNotice).not.toHaveBeenCalled();
-    // The sweep reads the partner's dormancy from the database.
-    const include = partnershipApi.findMany.mock.calls[0][0] as unknown as { include: { partnerOrg: { select: Record<string, unknown> } } };
-    expect(include.include.partnerOrg.select.dormantAt).toBe(true);
+    const yearOn = new Date(NOW.getTime() + 365 * DAY);
+    expect(await withdrawRequest({ partnershipId: store.rows[0].id, orgId: "fnf", userId: "u1", role: "ADMIN", now: yearOn })).toMatchObject({ ok: true });
+    expect(store.rows[0]).toMatchObject({ status: "ended", endReason: "withdrawn" });
   });
 });

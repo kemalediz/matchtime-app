@@ -241,7 +241,9 @@ export function parsePlatformAction(value: unknown): PlatformAction | null {
 export const PARTNERSHIP_ORIGINS = ["owner", "request"] as const;
 export type PartnershipOrigin = (typeof PARTNERSHIP_ORIGINS)[number];
 
-/** `ClubPartnership.endReason`. Same CHECK file. */
+/** `ClubPartnership.endReason`. Same CHECK file. Nothing ends a pairing
+ *  as "expired" any more (requests never expire since 2026-11-05); it stays
+ *  allowed for the old rows that carry it. */
 export const PARTNERSHIP_END_REASONS = ["declined", "withdrawn", "ended", "expired", "blocked"] as const;
 export type PartnershipEndReason = (typeof PARTNERSHIP_END_REASONS)[number];
 
@@ -353,9 +355,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const PARTNER_REQUESTS_PER_DAY = 20;
 /** Requests one club may have waiting at once (D-4). */
 export const PARTNER_REQUESTS_PENDING_MAX = 50;
-/** An unanswered pairing request ends after this (D-4). An ask for
- *  players has no such limit: it ends with its match. */
-export const PARTNER_REQUEST_EXPIRES_MS = 14 * DAY_MS;
+// A pairing request never expires (Kemal, 2026-11-05, replacing D-4's 14
+// days): it waits until the other club accepts or declines it, or the asking
+// club withdraws it. Old rows ended as "expired" keep that end reason.
 /** After the other club declined or ended it, the wait before asking again. */
 export const PARTNER_REQUEST_COOLDOWN_MS = 30 * DAY_MS;
 /** A pairing made by a request: the partner's asks go straight into its
@@ -372,8 +374,9 @@ export interface ExistingPairing {
 
 /**
  * When A may ask B again, or null for no wait: only after B declined or
- * ended it (D-4). Withdrawn and expired requests, A's own end, a block
- * (lifted by B's own unblock) and the platform owner's end carry no wait.
+ * ended it (D-4). Withdrawn and (historical) expired requests, A's own
+ * end, a block (lifted by B's own unblock) and the platform owner's end
+ * carry no wait.
  */
 export function cooldownUntil(existing: ExistingPairing | null, partnerOrgId: string, now: Date): Date | null {
   if (!existing || existing.status !== "ended" || !existing.endedAt) return null;
@@ -431,7 +434,7 @@ export function planRequest(f: RequestFacts): RequestPlan {
   if (f.askerOrgId === f.partnerOrgId) return { ok: false, refusal: "same-club" };
   if (!f.partner || !f.partner.approved) return { ok: false, refusal: "no-club" };
   // Never listed (LISTABLE_CLUB_WHERE), and not askable even by "ask them
-  // too": the request could only expire (Sutton Lads, 2026-10-22).
+  // too": nobody there could ever answer it (Sutton Lads, 2026-10-22).
   if (f.partner.dormant) return { ok: false, refusal: "not-listed" };
   if (f.blocked) return { ok: false, refusal: "blocked" };
   if (!f.theyMayAskUs) {
@@ -446,12 +449,6 @@ export function planRequest(f: RequestFacts): RequestPlan {
   if (f.pending >= PARTNER_REQUESTS_PENDING_MAX) return { ok: false, refusal: "pending-cap" };
   if (f.sentToday >= PARTNER_REQUESTS_PER_DAY) return { ok: false, refusal: "daily-cap" };
   return { ok: true, mode: f.existing ? "reopen" : "create" };
-}
-
-/** A pending request past its 14 days. Only requests expire; a pairing the
- *  platform owner proposed (none left in prod) waits as it always did. */
-export function requestExpired(r: { status: string; origin: string; expiresAt: Date | null }, now: Date): boolean {
-  return r.status === "proposed" && r.origin === "request" && !!r.expiresAt && r.expiresAt.getTime() <= now.getTime();
 }
 
 /** Owners and admins block another club (plan 3.4), never their own. */
