@@ -258,7 +258,7 @@ export function buildPickListBlock(lang: string | null | undefined, rows: PickLi
 /** "bench-update" (2026-10-15): a round that replaces an open one only
  *  because somebody new is on the bench. It names no drop again and does
  *  not repeat the fallback line (the time carries over unchanged). */
-export type PickReason = "drop" | "open-place" | "deadline-summary" | "bench-update";
+export type PickReason = "drop" | "open-place" | "bench-update";
 
 /** P1: the pick message, for a DM or the admin group. */
 export function buildPickMessage(p: {
@@ -276,9 +276,6 @@ export function buildPickMessage(p: {
   audience: "dm" | "group";
   fallback: "bench-offer" | "leave-empty";
   fallbackWhen: string;
-  /** The drop-out deadline as a label, for the "deadline-summary" lead:
-   *  it names the deadline and the kick-off each for what it is. */
-  deadlineLabel: string;
 }): string {
   const s = t(p.lang);
   const places = s.pick_places_line({ open: p.open, confirmed: p.confirmed, maxPlayers: p.maxPlayers });
@@ -293,17 +290,15 @@ export function buildPickMessage(p: {
     ].join("\n");
   }
   const lead =
-    p.reason === "deadline-summary"
-      ? `${s.pick_lead_deadline({ activityName: p.activityName, whenLabel: p.whenLabel, deadlineLabel: p.deadlineLabel })} ${places}`
-      : p.reason === "drop" && p.droppedNames.length > 0
-        ? `${s.pick_lead_drop({ names: p.droppedNames, activityName: p.activityName, whenLabel: p.whenLabel, late: p.late })} ${places}`
-        : s.pick_lead_open_place({
-            open: p.open,
-            activityName: p.activityName,
-            whenLabel: p.whenLabel,
-            confirmed: p.confirmed,
-            maxPlayers: p.maxPlayers,
-          });
+    p.reason === "drop" && p.droppedNames.length > 0
+      ? `${s.pick_lead_drop({ names: p.droppedNames, activityName: p.activityName, whenLabel: p.whenLabel, late: p.late })} ${places}`
+      : s.pick_lead_open_place({
+          open: p.open,
+          activityName: p.activityName,
+          whenLabel: p.whenLabel,
+          confirmed: p.confirmed,
+          maxPlayers: p.maxPlayers,
+        });
   return [
     lead,
     "",

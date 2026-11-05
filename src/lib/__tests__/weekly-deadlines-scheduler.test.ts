@@ -165,8 +165,9 @@ beforeEach(() => {
 
 // Kemal, 2026-11-05: "i think we can eliminate the drop out reminder, i
 // don't think there is a need for that." The deadline itself stays (late
-// drop-outs, D2 the organisers' summary, D3 the list, D4 the 17:00 rule);
-// nothing is ever posted ahead of it.
+// drop-outs, D3 the list, D4 the 17:00 rule); nothing is ever posted
+// ahead of it. (D2, the organisers' summary after it, was removed the same
+// day: no-deadline-summary.test.ts.)
 describe("no drop-out reminder, ever (Kemal, 2026-11-05)", () => {
   /** Every 10 minutes across the deadline day, 08:00 to 22:50 London. */
   const DEADLINE_DAY = Array.from({ length: 90 }, (_, i) => new Date(Date.UTC(2026, 9, 5, 7, 0) + i * 10 * 60_000));

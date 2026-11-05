@@ -47,7 +47,7 @@ import { isClubOperational } from "./club-approval-state";
 import { billingQuietWhere, isBillingPaused } from "./club-billing-rules";
 import { getOrgFeatures } from "./org-features";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
-import { madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
+import { weeklyDeadlinesFor } from "./weekly-deadlines";
 import { QUIET_HOURS_SELECT, quietHoursOf } from "./message-hours";
 import { summariseClubDisplayRatings } from "./player-rating";
 import { loadGuestStandings } from "./partner-guest-standing";
@@ -88,9 +88,6 @@ const bare = (phone: string) => phone.replace(/^\+/, "");
 export function pickOpenClaimKey(matchId: string, previousRoundId: string | null): string {
   return `pick-open:${matchId}:${previousRoundId ?? "first"}`;
 }
-
-/** The slice 3 summary's key; the first round after the deadline claims it. */
-const deadlineSummaryKey = (matchId: string) => `${matchId}:deadline-summary`;
 
 // ── Loading ──────────────────────────────────────────────────────────────
 
@@ -415,21 +412,11 @@ async function sweepOneMatch(
   const announcedIds = [...new Set(news.map((d) => d.userId))];
   const announcedLate = announcedIds.filter((id) => late.has(id));
 
-  // The first round after the club's drop-out deadline IS the deadline
-  // summary (slice 3, plan 3.2): it claims the summary's key so D2 does
-  // not also go out. Not for a game made after its own deadline
-  // (2026-10-15, `madeAfterDropOutDeadline`): there is no deadline to sum
-  // up, so the round leads as it otherwise would and claims nothing.
-  let reason: PickReason =
+  // The first round after the drop-out deadline leads like any other
+  // (2026-11-05: it used to stand in for the deadline summary, which is
+  // gone): the drops it names, else the open place.
+  const reason: PickReason =
     announcedIds.length > 0 ? "drop" : decision.action === "supersede" && decision.news === "bench" ? "bench-update" : "open-place";
-  if (dropOut && now.getTime() >= dropOut.getTime() && !madeAfterDropOutDeadline(m.createdAt, dropOut)) {
-    try {
-      await db.sentNotification.create({ data: { key: deadlineSummaryKey(m.id), kind: "admin-notice", matchId: m.id } });
-      reason = "deadline-summary";
-    } catch {
-      /* the summary already went out (or an earlier round claimed it) */
-    }
-  }
 
   // Where the message goes, fixed now (plan 2.7): the admin group when the
   // club routes there and has one linked, otherwise DMs. For the group,
@@ -486,7 +473,6 @@ async function sweepOneMatch(
       audience,
       fallback,
       fallbackWhen: weekdayTimeLabel(org.language, fallbackAt),
-      deadlineLabel: dropOut ? dayTimeLabel(org.language, dropOut) : "",
     });
   await sendAdminNotice({ orgId: org.id, now, text: (_link, audience) => message(audience) });
 }

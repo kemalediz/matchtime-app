@@ -981,12 +981,11 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Drop-out deadline",
       what: [
         "The last day and time players can pull out of the week's match without it counting as late. Pick a weekday and a time; MatchTime uses the last one before each kickoff.",
-        "After the deadline MatchTime sends your admins a summary of who is out and who is waiting. It sends no reminder before the deadline.",
+        "MatchTime sends no reminder before the deadline and no summary after it.",
       ],
-      example: "Drop-out deadline (Mon 19 Oct at 21:00) passed for *Tuesday 7-a-side*, kick-off Tue 20 Oct at 20:00. Squad 13/14.\nOut this week: Sam.\nOn the bench: nobody.\n1 place open.",
       choices: [
-        { name: "Set", text: "Your admins get the summary each week." },
-        { name: "Not set", text: "No summary. Players can say OUT at any time." },
+        { name: "Set", text: "Players have until then to say OUT without it counting as late." },
+        { name: "Not set", text: "Players can say OUT at any time." },
       ],
       newClubs: "Not set.",
       suits: "Clubs that want players to commit early, so the organisers know the squad a day or two before.",
@@ -1001,12 +1000,11 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Son çıkış saati",
       what: [
         "Oyuncuların haftanın maçından geç sayılmadan çıkabileceği son gün ve saat. Bir gün ve saat seçin; MatchTime her maçtan önceki son denk gelen zamanı kullanır.",
-        "Saat geçince MatchTime yöneticilerinize kimin çıktığını ve kimin beklediğini özetler. Son çıkış saatinden önce hatırlatma göndermez.",
+        "MatchTime son çıkış saatinden önce hatırlatma, sonra da özet göndermez.",
       ],
-      example: "*Salı 7'li maç* için son çıkış saati (19 Ekim Pazartesi 21:00) geçti, maç 20 Ekim Salı 20:00. Kadro 13/14.\nBu hafta çıkanlar: Sam.\nYedek listesi: boş.\n1 yer boş.",
       choices: [
-        { name: "Ayarlı", text: "Yönetici özeti her hafta gönderilir." },
-        { name: "Ayarlı değil", text: "Özet yok. Oyuncular istedikleri zaman YOKUM diyebilir." },
+        { name: "Ayarlı", text: "Oyuncular bu saate kadar geç sayılmadan YOKUM diyebilir." },
+        { name: "Ayarlı değil", text: "Oyuncular istedikleri zaman YOKUM diyebilir." },
       ],
       newClubs: "Ayarlı değil.",
       suits: "Organizatörlerin kadroyu bir iki gün önceden bilmesi için oyuncuların erken karar vermesini isteyen kulüpler.",
@@ -1062,7 +1060,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     en: {
       title: "Admin messages go to",
       what: [
-        "Where MatchTime sends the messages only organisers should see: new players to check, the drop-out summary, late drop-outs, who hasn't paid and the bench to pick from. With the organisers announcing the list, the squad updates come here too.",
+        "Where MatchTime sends the messages only organisers should see: new players to check, late drop-outs, who hasn't paid and the bench to pick from. With the organisers announcing the list, the squad updates come here too.",
         "Most notices that come up between 23:00 and 09:00 wait until 09:00.",
       ],
       choices: [
@@ -1084,7 +1082,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     tr: {
       title: "Yönetici mesajları",
       what: [
-        "MatchTime'ın yalnızca organizatörlerin görmesi gereken mesajları gönderdiği yer: kontrol edilecek yeni oyuncular, son çıkış özeti, geç çıkanlar, ödemeyenler ve seçim için yedek listesi. Listeyi organizatörler duyuruyorsa kadro güncellemeleri de buraya gelir.",
+        "MatchTime'ın yalnızca organizatörlerin görmesi gereken mesajları gönderdiği yer: kontrol edilecek yeni oyuncular, geç çıkanlar, ödemeyenler ve seçim için yedek listesi. Listeyi organizatörler duyuruyorsa kadro güncellemeleri de buraya gelir.",
         "23:00 ile 09:00 arasında çıkan bildirimlerin çoğu 09:00'a kadar bekler.",
       ],
       choices: [

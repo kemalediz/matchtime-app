@@ -66,7 +66,6 @@ import { recordScheduledHqQuestion } from "@/lib/admin-group-log";
 import { ROSTER_SHOWN_KIND, rosterShownKey } from "@/lib/roster-shown";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
 import { billingQuietWhere } from "@/lib/club-billing-rules";
-import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
 import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
 import { piSendsQuotedIds } from "@/lib/quoted-message";
@@ -300,16 +299,15 @@ export async function GET(request: Request) {
   // claims a platform job through the bridge.
   const previewOnly = process.env.MT_TEST_MODE === "1" && request.headers.get("x-no-claim") === "1";
 
-  // WEEKLY DEADLINES, D2 (2026-09-30): the organisers' summary once the
-  // club's drop-out deadline has passed. Queued as a BotJob through
-  // `sendAdminNotice` BEFORE compute, so it goes out in this same poll.
-  // A side effect, so never in preview mode; its own try/catch, so a
-  // failure here can never cost the group its posts.
   // ORGANISER PICK (slice 2b, 2026-10-01): open, supersede, close and fall
   // back the club's pick rounds, and queue the pick message through the
-  // admin channel. BEFORE the deadline summary: the first round after the
-  // drop-out deadline IS that summary and claims its key. A first-come
-  // club (Sutton FC) returns at once. Its own try/catch, like the summary.
+  // admin channel, BEFORE compute, so it goes out in this same poll. A
+  // side effect, so never in preview mode. A first-come club (Sutton FC)
+  // returns at once. Its own try/catch, so a failure here can never cost
+  // the group its posts.
+  // (D2, the organisers' summary once the drop-out deadline had passed,
+  // was removed on 2026-11-05, after the drop-out reminder. Old
+  // SentNotification rows for it stay as history.)
   if (!previewOnly) {
     try {
       await sweepOrganiserPicks(org.id, nowOverride ?? new Date());
@@ -328,18 +326,10 @@ export async function GET(request: Request) {
   // Never throws.
   if (!previewOnly) await sweepAutoPartnerAsks(org.id, nowOverride ?? new Date(), { poolEnv: await poolEnvForApiRequest(request) });
 
-  if (!previewOnly) {
-    try {
-      await sendDueDeadlineSummaries(org.id, nowOverride ?? new Date());
-    } catch (err) {
-      console.error(`[due-posts] org ${org.id}: deadline summary failed:`, err);
-    }
-  }
-
   // U1 (2026-10-01): the organisers' unpaid list, 10:00 London two days
   // after a completed match, for clubs on "one-person" or "admin-group"
   // only (Sutton FC, on "each-admin", returns at once). Queued through
-  // `sendAdminNotice` like the summary above; never in preview mode; its
+  // `sendAdminNotice` like the pick message above; never in preview mode; its
   // own try/catch so it can never cost the group its posts.
   if (!previewOnly) {
     try {

@@ -495,7 +495,6 @@ import {
   buildBenchDmAck,
   buildBenchDmUnclear,
   buildLateDropAdminNotice,
-  buildDeadlineSummaryAdminNotice,
   buildUnpaidListAdminNotice,
   buildDirectPayCollectorNotice,
   buildDirectPayCollectorNudge,
@@ -1829,28 +1828,8 @@ function cases(lang: Lang): Case[] {
   // ── Weekly deadlines (2026-09-30, slice 3 of the Friday-group plan).
   //    NEW copy, added deliberately; no existing case changes. ──
   const wdWhen = lang === "tr" ? "9 Ekim Cuma 20:30" : "Fri 9 Oct at 20:30";
-  // WDL1, the drop-out reminder, was removed on 2026-11-05.
-  const wdDeadline = lang === "tr" ? "5 Ekim Pazartesi 21:00" : "Mon 5 Oct at 21:00";
-  const wdSummary = { activityName: "Friday 9-a-side", whenLabel: wdWhen, deadlineLabel: wdDeadline, maxPlayers: 18, lang };
-  add(
-    "WDL2 buildDeadlineSummaryAdminNotice / drops, maybes, waiting, places open",
-    buildDeadlineSummaryAdminNotice({
-      ...wdSummary,
-      confirmed: 16,
-      out: ["Wasim Ali", "Kemal Ediz"],
-      maybe: ["Raihan Ahmed"],
-      waiting: ["Ali Demir", "Sam Lee"],
-      open: 2,
-    }),
-  );
-  add(
-    "WDL2 buildDeadlineSummaryAdminNotice / nobody out, full, empty list",
-    buildDeadlineSummaryAdminNotice({ ...wdSummary, confirmed: 18, out: [], maybe: [], waiting: [], open: 0 }),
-  );
-  add(
-    "WDL2 buildDeadlineSummaryAdminNotice / one place open",
-    buildDeadlineSummaryAdminNotice({ ...wdSummary, confirmed: 17, out: ["Wasim Ali"], maybe: [], waiting: [], open: 1 }),
-  );
+  // WDL1, the drop-out reminder, and WDL2, the organisers' summary after
+  // the deadline, were removed on 2026-11-05.
   const wdList = {
     activityName: "Friday 9-a-side",
     dateLabel: rollingBase.dateLabel,
@@ -1896,7 +1875,7 @@ function cases(lang: Lang): Case[] {
   ];
   const op = {
     lang,
-    reason: "drop" as "drop" | "open-place" | "deadline-summary" | "bench-update",
+    reason: "drop" as "drop" | "open-place" | "bench-update",
     droppedNames: ["Hamzah"],
     late: false,
     activityName: "Friday 9-a-side",
@@ -1908,7 +1887,6 @@ function cases(lang: Lang): Case[] {
     audience: "dm" as "dm" | "group",
     fallback: "bench-offer" as "bench-offer" | "leave-empty",
     fallbackWhen: opFallbackWhen,
-    deadlineLabel: lang === "tr" ? "5 Ekim Pazartesi 21:00" : "Mon 5 Oct at 21:00",
   };
   add("OPK1 buildPickMessage / one drop, by DM", buildPickMessage(op));
   add("OPK1 buildPickMessage / in the admin group, leave it open", buildPickMessage({ ...op, audience: "group", fallback: "leave-empty" }));
@@ -1916,7 +1894,6 @@ function cases(lang: Lang): Case[] {
   add("OPK1 buildPickMessage / a late drop", buildPickMessage({ ...op, droppedNames: ["Ali"], late: true }));
   add("OPK1 buildPickMessage / a place never filled", buildPickMessage({ ...op, reason: "open-place", droppedNames: [] }));
   add("OPK1 buildPickMessage / two places never filled", buildPickMessage({ ...op, reason: "open-place", droppedNames: [], open: 2, confirmed: 16 }));
-  add("OPK1 buildPickMessage / the deadline summary", buildPickMessage({ ...op, reason: "deadline-summary" }));
   add("OPK1 buildPickMessage / the bench changed, in the admin group", buildPickMessage({ ...op, reason: "bench-update", audience: "group" }));
   add("OPK2 buildPickListChanged (P5)", buildPickListChanged({ lang, rows: opRows, audience: "group" }));
   add(

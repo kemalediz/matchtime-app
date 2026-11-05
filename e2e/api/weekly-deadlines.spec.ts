@@ -12,8 +12,8 @@
  *   1. Mon 17:05: the 17:00 post is off for the deadline club (D4), on
  *      for Sutton; no drop-out reminder at any time before the deadline
  *      (removed 2026-11-05).
- *   2. Mon 21:05: the organisers' summary, once, through the admin notice
- *      (a BotJob DM to the owner), never in preview mode.
+ *   2. Mon 21:05 and after: no summary to the organisers (removed
+ *      2026-11-05, like the reminder), in preview mode or not.
  *   3. Tue 20:05: the final list in the group.
  *   4. Sutton gets neither.
  *
@@ -133,7 +133,8 @@ test.beforeAll(async () => {
   await attend(db, "w", W_MATCH, "e2e-wd-wasim", "CONFIRMED", 3);
   await attend(db, "w", W_MATCH, "e2e-wd-dan", "DROPPED", 4);
   await attend(db, "w", W_MATCH, "e2e-wd-ali", "BENCH", 5);
-  // Raihan said "maybe" and never came back: listed for the organisers.
+  // Raihan said "maybe" and never came back (the summary that listed him
+  // for the organisers was removed on 2026-11-05).
   await db.run(
     `INSERT INTO "TentativeAvailability" (id, "matchId", "userId", "dueAt", "updatedAt")
      VALUES ('e2e-wd-tent-raihan', $1, 'e2e-wd-raihan', $2, now())`,
@@ -174,39 +175,20 @@ test("Mon 09:05 to 20:55: no drop-out reminder before the deadline (removed 2026
   }
 });
 
-test("Mon 21:05: the organisers get the summary once; preview never sends it; Sutton gets none", async ({
+test("Mon 21:05 and after: no summary to the organisers (removed 2026-11-05); Sutton gets none either", async ({
   request,
   db,
 }) => {
-  // Preview mode computes without side effects.
   await duePosts(request, W_GROUP, MON_2105, true);
+  for (const at of [MON_2105, new Date(MON_2105.getTime() + 10 * 60_000)]) {
+    const out = await duePosts(request, W_GROUP, at, false);
+    expect(out.filter((i) => (i.text ?? "").startsWith("Drop-out deadline"))).toEqual([]);
+  }
+  await duePosts(request, S_GROUP, MON_2105, false);
   expect(await summaryJobs(db)).toEqual([]);
-
-  const first = await duePosts(request, W_GROUP, MON_2105, false);
-  const jobs = await summaryJobs(db);
-  expect(jobs).toHaveLength(1);
-  expect(jobs[0]).toMatchObject({ orgId: "e2e-wd-org-w", phone: W_OWNER_PHONE.replace(/^\+/, "") });
-  expect(jobs[0].text).toBe(
-    [
-      "Drop-out deadline (Mon 11 Jan at 21:00) passed for *Friday 9-a-side*, kick-off Fri 15 Jan at 20:30. Squad 3/18.",
-      "Out this week: Dan Dropped.",
-      "Said maybe: Raihan Ahmed.",
-      "On the bench: Ali Demir.",
-      "15 places open.",
-    ].join("\n"),
-  );
-  // Queued before compute, so it goes out in the same poll.
-  expect(first.some((i) => i.kind === "dm" && i.text === jobs[0].text)).toBe(true);
   expect(
     await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key = $1`, [`${W_MATCH}:deadline-summary`]),
-  ).toBe(1);
-
-  // A later poll does not send it again.
-  await duePosts(request, W_GROUP, new Date(MON_2105.getTime() + 10 * 60_000), false);
-  expect(await summaryJobs(db)).toHaveLength(1);
-
-  await duePosts(request, S_GROUP, MON_2105, false);
-  expect((await summaryJobs(db)).filter((j) => j.orgId === "e2e-wd-org-s")).toEqual([]);
+  ).toBe(0);
 });
 
 test("Tue 20:05: the final list in the group; not before; Sutton gets none", async ({ request }) => {

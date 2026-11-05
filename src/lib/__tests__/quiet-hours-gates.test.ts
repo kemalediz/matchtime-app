@@ -20,7 +20,7 @@ import { decideSignupListPost, isDaytime, listOpenDue } from "../month-signup-ru
 import { claimsDigestDue, duePaymentReminder, groupReminderDue } from "../month-payment-rules";
 import { monthCloseDue } from "../month-close-rules";
 import { decideListPost } from "../monthly-week-rules";
-import { deadlineSummaryDue, listPublishDue } from "../weekly-deadlines";
+import { listPublishDue } from "../weekly-deadlines";
 import { seedNudgePrecheck } from "../seed-nudge-rules";
 
 const HOUR = 60 * 60 * 1000;
@@ -159,11 +159,8 @@ describe("the monthly match list post (decideListPost)", () => {
 
 describe("the weekly deadline posts", () => {
   const kickoff = new Date("2026-12-03T20:00:00Z");
-  it("the drop-out summary and the list publish", () => {
+  it("the list publish (the drop-out summary was removed on 2026-11-05)", () => {
     const deadline = new Date("2026-12-01T21:00:00Z");
-    expect(deadlineSummaryDue(AT_2330, deadline, kickoff)).toBe(false);
-    expect(deadlineSummaryDue(AT_2330, deadline, kickoff, OFF)).toBe(true);
-    expect(deadlineSummaryDue(AT_2130, deadline, kickoff, EARLY)).toBe(false);
     expect(listPublishDue(AT_2330, deadline, kickoff)).toBe(false);
     expect(listPublishDue(AT_2330, deadline, kickoff, OFF)).toBe(true);
   });

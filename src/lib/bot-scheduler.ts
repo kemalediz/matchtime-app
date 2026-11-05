@@ -1854,8 +1854,8 @@ async function computeForMatch(
 
     // WEEKLY DEADLINES, D4 (2026-09-30, plan 3.3): a club with both a
     // drop-out deadline and a list publish time has its week told by the
-    // announcement, the organisers' summary and the list (and, until
-    // 2026-11-05, the drop-out reminder), so the daily 17:00 post is off
+    // announcement and the list (and, until 2026-11-05, the drop-out
+    // reminder and the organisers' summary), so the daily 17:00 post is off
     // on every day except match day (where the line-up and the full-squad
     // nudge still matter). False for a club without
     // both settings, so Sutton FC's 17:00 post is untouched.
@@ -2175,10 +2175,11 @@ async function computeForMatch(
   //    reminder, i don't think there is a need for that."). Nothing is
   //    posted ahead of the deadline, to the group or the organisers. Old
   //    `<matchId>:dropout-reminder` rows stay as history.
-  //    D2, the organisers' summary once the deadline has passed, is not
-  //    here: it goes through `sendAdminNotice` from the due-posts route
-  //    (`deadline-summary.ts`), because computing posts must stay free
-  //    of side effects (preview mode relies on it).
+  //    D2, the organisers' summary once the deadline had passed, went the
+  //    same way on 2026-11-05 (Kemal: "if drop out is removed, shouldn't
+  //    we remove this also"). Nothing is sent to the organisers at or
+  //    after the deadline either. Old `<matchId>:deadline-summary` rows
+  //    stay as history.
   //    The list uses the next-upcoming gate, so next week's match never
   //    posts while this week's is still live. A club without the setting
   //    (Sutton FC) resolves it to null and gets nothing.

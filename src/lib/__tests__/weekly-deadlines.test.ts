@@ -15,7 +15,6 @@ import {
   weeklyDeadlinesFor,
   lastWeekdayTimeBefore,
   hasWeeklyRhythm,
-  deadlineSummaryDue,
   listPublishDue,
   madeAfterDropOutDeadline,
   validateWeeklyDeadlines,
@@ -102,26 +101,8 @@ describe("hasWeeklyRhythm (D4: the 17:00 post stops off match day)", () => {
   });
 });
 
-describe("D2: the deadline summary, first tick after the deadline, 09:00 to 22:59", () => {
-  const MON_21 = new Date("2026-10-05T20:00:00.000Z");
-  it("due at and after the deadline", () => {
-    expect(deadlineSummaryDue(new Date("2026-10-05T19:59:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false);
-    expect(deadlineSummaryDue(new Date("2026-10-05T20:05:00.000Z"), MON_21, FRI_KICKOFF)).toBe(true);
-  });
-
-  it("a tick that slips past 23:00 waits until 09:00", () => {
-    expect(deadlineSummaryDue(new Date("2026-10-05T21:10:00.000Z"), MON_21, FRI_KICKOFF)).toBe(true); // 22:10
-    expect(deadlineSummaryDue(new Date("2026-10-05T22:10:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 23:10
-    expect(deadlineSummaryDue(new Date("2026-10-06T06:30:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 07:30
-    expect(deadlineSummaryDue(new Date("2026-10-06T07:00:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 08:00
-    expect(deadlineSummaryDue(new Date("2026-10-06T07:59:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 08:59
-    expect(deadlineSummaryDue(new Date("2026-10-06T08:00:00.000Z"), MON_21, FRI_KICKOFF)).toBe(true); // 09:00
-  });
-
-  it("never at or after kickoff", () => {
-    expect(deadlineSummaryDue(FRI_KICKOFF, MON_21, FRI_KICKOFF)).toBe(false);
-  });
-});
+// D2, the deadline summary to the organisers, was removed on 2026-11-05
+// (src/lib/__tests__/no-deadline-summary.test.ts pins that it stays gone).
 
 describe("D3: the list, first tick after publish time, before kickoff", () => {
   const TUE_20 = new Date("2026-10-06T19:00:00.000Z");
