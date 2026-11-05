@@ -13,7 +13,7 @@
  * not started yet, and the organisers' copy (which follows the same stop).
  */
 import { describe, it, expect } from "vitest";
-import { decideDailyUpdate, type DailyUpdateFacts } from "@/lib/daily-update-rules";
+import { decideDailyUpdate, decideDropOutReminder, type DailyUpdateFacts } from "@/lib/daily-update-rules";
 import { BENCH_THIN_BELOW } from "@/lib/scheduler-copy";
 
 /** A weekday before the match, before the deadline, players' group, weekly. */
@@ -168,5 +168,78 @@ describe("ORGANISERS (FNF-style): the admin copy follows the same stop", () => {
   it("weekly-rhythm days and after the deadline, as the players' group", () => {
     expect(org({ weeklyRhythmDay: true, open: 2 })).toEqual({ post: null, why: "weekly-rhythm-day" });
     expect(org({ beforeDeadline: false, open: 2 })).toEqual({ post: null, why: "after-deadline" });
+  });
+});
+
+/**
+ * TEAMS OUT, A WEEKLY SQUAD FULL: NOTHING, ON ANY DAY (Kemal, 2026-11-05):
+ * "the team poster was generated and the teams were finalised which means
+ * there may be no point sharing the squad once more, it just creates
+ * noise". Before this, only match day looked at the teams; the day before,
+ * a full squad with a thin bench still got the roster again. Kept: match
+ * day's line-ups in the players' group (the team sheet, not the squad), a
+ * place open still chases, and a month's rules are their own.
+ */
+describe("WEEKLY, teams out and full: no squad again, whatever the day", () => {
+  it.each([
+    ["group, bench 0", { audience: "group", bench: 0 }],
+    ["group, bench 1", { audience: "group", bench: 1 }],
+    ["group, bench 2", { audience: "group", bench: 2 }],
+    ["group, bench 3", { audience: "group", bench: 3 }],
+    ["organisers, bench 0", { audience: "organisers", bench: 0 }],
+    ["organisers, bench 1", { audience: "organisers", bench: 1 }],
+    ["organisers, bench 2", { audience: "organisers", bench: 2 }],
+    ["group, squad complete today", { audience: "group", bench: 1, squadLockedToday: true }],
+  ] as const)("not match day, %s: teams-out", (_label, over) => {
+    expect(decide({ teamsOut: true, open: 0, ...over })).toEqual({ post: null, why: "teams-out" });
+  });
+
+  it("a place open after the teams: still the chase, both audiences", () => {
+    expect(decide({ teamsOut: true, open: 1 })).toEqual({ post: "chase" });
+    expect(decide({ audience: "organisers", teamsOut: true, open: 1, bench: 0 })).toEqual({ post: "chase" });
+  });
+
+  it("match day still gives the players' group the line-ups, and the organisers nothing", () => {
+    expect(decide({ isMatchDay: true, teamsOut: true, open: 0, bench: 1 })).toEqual({ post: "line-ups" });
+    expect(decide({ audience: "organisers", isMatchDay: true, teamsOut: true, open: 0 })).toEqual({ post: null, why: "teams-out" });
+  });
+});
+
+/**
+ * THE DROP-OUT REMINDER (Kemal, 2026-11-05). FNF's admin group got the
+ * squad and "The drop-out deadline is today at 20:30" at 17:30, with 18 of
+ * 18 in, a bench of 3 and the teams already made and posted. It stays
+ * quiet, to the players' group and the organisers alike, when:
+ *   - the teams are made (the team sheet is the announcement), or
+ *   - the squad is full with a bench of 3 or more (nothing to ask for: the
+ *     same stop as the 17:00 update, `benchCovered`).
+ * Otherwise it goes out as before.
+ */
+describe("the drop-out reminder: quiet once the week is settled", () => {
+  it.each([
+    ["places open, no teams", { teamsOut: false, open: 4, bench: 0 }, { send: true }],
+    ["places open with a bench, no teams", { teamsOut: false, open: 1, bench: 5 }, { send: true }],
+    ["full, bench 0, no teams", { teamsOut: false, open: 0, bench: 0 }, { send: true }],
+    ["full, bench 2, no teams", { teamsOut: false, open: 0, bench: BENCH_THIN_BELOW - 1 }, { send: true }],
+    ["full, bench 3, no teams", { teamsOut: false, open: 0, bench: BENCH_THIN_BELOW }, { send: false, why: "bench-covered" }],
+    ["full, bench 6, no teams", { teamsOut: false, open: 0, bench: 6 }, { send: false, why: "bench-covered" }],
+    // FNF, Thu 5 Nov 2026 17:30: 18 of 18, bench 3, teams out.
+    ["FNF: full, bench 3, teams out", { teamsOut: true, open: 0, bench: 3 }, { send: false, why: "teams-out" }],
+    ["teams out, bench thin", { teamsOut: true, open: 0, bench: 0 }, { send: false, why: "teams-out" }],
+    ["teams out, a place open", { teamsOut: true, open: 1, bench: 0 }, { send: false, why: "teams-out" }],
+  ] as const)("%s", (_label, facts, want) => {
+    expect(decideDropOutReminder(facts)).toEqual(want);
+  });
+
+  it("agrees with the 17:00 stop for a full squad, teams or no teams, either audience", () => {
+    for (const audience of ["group", "organisers"] as const) {
+      for (const teamsOut of [false, true]) {
+        for (let bench = 0; bench <= BENCH_THIN_BELOW + 2; bench++) {
+          const daily = decide({ audience, teamsOut, open: 0, bench });
+          const reminder = decideDropOutReminder({ teamsOut, open: 0, bench });
+          expect(reminder.send).toBe(daily.post !== null);
+        }
+      }
+    }
   });
 });

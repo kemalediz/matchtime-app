@@ -18,6 +18,9 @@
  *     only on match day;
  *   - match day with the teams made: the line-ups (players' group only);
  *     a month's list is never posted beside a team sheet on any day;
+ *   - a weekly squad, full, with the teams made: nothing on any other day
+ *     either, to the group or the organisers (2026-11-05); a place open
+ *     still chases;
  *   - match day, a weekly squad full and no teams: the "make the teams"
  *     nudge. It is not the squad-and-bench reminder this rule stops, and it
  *     goes out once, on match day;
@@ -111,6 +114,11 @@ export function decideDailyUpdate(f: DailyUpdateFacts): DailyUpdate {
   // The month's list is never posted once the teams are out, whatever the
   // day: the team sheet is the announcement then (`decideListPost`).
   if (f.squad === "month" && f.teamsOut) return { post: null, why: "teams-out" };
+  // A weekly squad, full, with the teams out: nothing on any day, to anyone
+  // (Kemal, 2026-11-05: the teams and the poster are out, the squad again
+  // "just creates noise"). Match day's line-ups above still win; a place
+  // open still chases below.
+  if (f.squad === "weekly" && f.teamsOut && f.open === 0) return { post: null, why: "teams-out" };
   if (f.squad === "weekly" && f.isMatchDay && f.open === 0) return { post: "match-day-locked" };
   if (!f.beforeDeadline) return { post: null, why: "after-deadline" };
 
@@ -126,4 +134,37 @@ export function decideDailyUpdate(f: DailyUpdateFacts): DailyUpdate {
     return organisers ? { post: null, why: "squad-locked-today" } : { post: "unpaid-only", why: "squad-locked-today" };
   }
   return { post: "squad-full" };
+}
+
+/**
+ * THE DROP-OUT REMINDER (D1, `<matchId>:dropout-reminder`): is there
+ * anything to remind? (Kemal, 2026-11-05.)
+ *
+ * FNF, Thu 5 Nov 2026 at 17:30: the admin group got the squad and "The
+ * drop-out deadline is today at 20:30" with 18 of 18 in, a bench of 3, and
+ * the teams and the poster already out. The 17:00 update had rightly
+ * stopped (`decideDailyUpdate`); this reminder read neither rule.
+ *
+ * Quiet, to the players' group and the organisers alike, when:
+ *   teams-out      the teams are made: the team sheet is the announcement
+ *                  (the 2026-09-15 rule the final list already follows);
+ *   bench-covered  the squad is full with a bench of `BENCH_THIN_BELOW` or
+ *                  more: nothing to ask for, the same stop as 17:00.
+ * Otherwise it goes out as before. The caller leaves the key unsent on a
+ * skip, so a drop that opens a place or thins the bench brings it back
+ * later in its window (which ends at the deadline, `dropOutReminderDue`).
+ */
+export type DropOutReminder = { send: true } | { send: false; why: "teams-out" | "bench-covered" };
+
+export function decideDropOutReminder(f: {
+  /** Teams have been made for this match. */
+  teamsOut: boolean;
+  /** Places still free (max players less the confirmed). */
+  open: number;
+  /** Players on the bench. */
+  bench: number;
+}): DropOutReminder {
+  if (f.teamsOut) return { send: false, why: "teams-out" };
+  if (f.open === 0 && benchCovered(f.bench)) return { send: false, why: "bench-covered" };
+  return { send: true };
 }

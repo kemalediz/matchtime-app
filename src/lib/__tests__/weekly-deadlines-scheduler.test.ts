@@ -220,6 +220,32 @@ describe("D1: the drop-out reminder in the group", () => {
     expect((await instructions(MON_1805)).some((i) => i.key === "m-b:dropout-reminder")).toBe(false);
   });
 
+  // Kemal, 2026-11-05 (the FNF case): nothing to remind once the teams
+  // are made, or once the squad is full with a bench of 3 or more.
+  it("teams made: no reminder in the group", async () => {
+    const m = match(HAMZAH_CLUB, {
+      status: "TEAMS_PUBLISHED",
+      teamAssignments: NAMES.map((name, i) => ({ userId: `u${i}`, team: i % 2 ? "BLUE" : "RED", user: { id: `u${i}`, name } })),
+    });
+    setWorld([m]);
+    expect((await instructions(MON_1805)).some((i) => i.key.endsWith(":dropout-reminder"))).toBe(false);
+  });
+
+  it("full with a bench of 3: no reminder; with a bench of 2 it goes out as before", async () => {
+    const full = (benchers: number) =>
+      match(HAMZAH_CLUB, {
+        maxPlayers: 4,
+        attendances: [
+          ...NAMES.map((n, i) => player(n, i)),
+          ...Array.from({ length: benchers }, (_, i) => player(`Bench ${i + 1}`, 4 + i, "BENCH")),
+        ],
+      });
+    setWorld([full(3)]);
+    expect((await instructions(MON_1805)).some((i) => i.key.endsWith(":dropout-reminder"))).toBe(false);
+    setWorld([full(2)]);
+    expect((await instructions(MON_1805)).filter((i) => i.key.endsWith(":dropout-reminder"))).toHaveLength(1);
+  });
+
   it("a club without the attendance feature gets nothing", async () => {
     features.attendance = false;
     const m = match(HAMZAH_CLUB);

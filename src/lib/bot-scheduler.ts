@@ -127,7 +127,7 @@ import {
   type WeekStatus,
 } from "./monthly-week-rules";
 import { buildMonthlyDailyPost, buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost } from "./monthly-week-copy";
-import { decideDailyUpdate, type DailySquad, type DailyUpdate } from "./daily-update-rules";
+import { decideDailyUpdate, decideDropOutReminder, type DailySquad, type DailyUpdate } from "./daily-update-rules";
 import { londonMonthStart } from "./squad-month-rules";
 import {
   buildAnnounceMatchPost,
@@ -2199,11 +2199,16 @@ async function computeForMatch(
     // A game made after its own deadline gets no reminder about it
     // (2026-10-15): already implied by `dropOutReminderDue` (never due
     // after the deadline), stated so the summary's rule reads the same here.
+    // Nothing to remind once the week is settled (Kemal, 2026-11-05, the
+    // FNF case): the teams are made, or the squad is full with the bench
+    // covered (`decideDropOutReminder`). The key is left unsent, so a drop
+    // later in the window (which ends at the deadline) still brings it.
     const reminderDue =
       weekly.dropOut !== null &&
       !sentKeys.has(reminderKey) &&
       dropOutReminderDue(now, weekly.dropOut, features.quietHours) &&
-      !madeAfterDropOutDeadline(m.createdAt, weekly.dropOut);
+      !madeAfterDropOutDeadline(m.createdAt, weekly.dropOut) &&
+      decideDropOutReminder({ teamsOut: m.teamAssignments.length > 0, open: need, bench: bench.length }).send;
     // Once the teams are out the team sheet is the announcement; a
     // fourteen-name list after it would be the roster the group was
     // told not to get again (2026-09-15).
