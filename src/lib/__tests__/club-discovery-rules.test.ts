@@ -6,8 +6,8 @@
  *   - radius presets 1, 3, 5 and 10 miles, default 3, nothing above 10;
  *   - the bounding box holds every point within the radius;
  *   - who is listed (approved, a players' group, "find us" on, a geocoded
- *     venue; dormant, billing-paused and trial clubs included) and who may
- *     search (a club that is itself listed);
+ *     venue, not dormant; billing-paused and trial clubs included) and who
+ *     may search (a club that is itself listed);
  *   - measured from every active game's venue, or the home venue for a
  *     club with no game; the nearest pair, rounded to 0.1 mile;
  *   - the same-day filter never drops a club with no game;
@@ -164,6 +164,7 @@ const club = (over: Partial<Parameters<typeof isListable>[0]> = {}): Parameters<
   approved: true,
   hasPlayersGroup: true,
   discoverable: true,
+  dormantAt: null,
   homeVenue: null,
   games: [{ isActive: true, venue: GEO }],
   ...over,
@@ -190,26 +191,28 @@ describe("who is listed", () => {
   it("a home venue alone is enough: no game needed", () => {
     expect(isListable(club({ games: [], homeVenue: GEO }))).toBe(true);
   });
-  it("dormant, billing-paused and trial clubs are NOT excluded (the rule does not read them)", () => {
-    // The shape has no dormancy or billing field to read: a dormant,
-    // paused or trial club with the four facts above is listed.
-    const dormantPaused = { ...club(), dormantAt: new Date(), billingStatus: "paused" } as Parameters<typeof isListable>[0];
-    expect(isListable(dormantPaused)).toBe(true);
+  it("a dormant club is never listed: nobody there can answer a request (FNF asked Sutton Lads, 2026-10-22)", () => {
+    expect(isListable(club({ dormantAt: new Date("2026-09-09T00:00:00Z") }))).toBe(false);
+  });
+  it("billing-paused and trial clubs are NOT excluded (Kemal 2026-10-22: the more we show, the better)", () => {
+    const paused = { ...club(), billingStatus: "paused" } as Parameters<typeof isListable>[0];
+    expect(isListable(paused)).toBe(true);
     const trial = { ...club(), billingStatus: "trial" } as Parameters<typeof isListable>[0];
     expect(isListable(trial)).toBe(true);
   });
-  it("the database filter says the same as the rule, and nothing about dormancy or billing", () => {
-    expect(LISTABLE_CLUB_WHERE).toEqual({ approvalStatus: "approved", whatsappGroupId: { not: null }, discoverable: true });
-    const keys = Object.keys(LISTABLE_CLUB_WHERE);
-    expect(keys).not.toContain("dormantAt");
-    expect(keys).not.toContain("billingStatus");
+  it("the database filter says the same as the rule: live clubs only, nothing about billing", () => {
+    expect(LISTABLE_CLUB_WHERE).toEqual({ approvalStatus: "approved", dormantAt: null, whatsappGroupId: { not: null }, discoverable: true });
+    expect(Object.keys(LISTABLE_CLUB_WHERE)).not.toContain("billingStatus");
   });
 });
 
 describe("who may search", () => {
   it("a club that is itself listed", () => {
     expect(searcherState(club())).toBe("ok");
-    expect(searcherState({ ...club(), dormantAt: new Date(), billingStatus: "paused" } as Parameters<typeof searcherState>[0])).toBe("ok");
+    expect(searcherState({ ...club(), billingStatus: "paused" } as Parameters<typeof searcherState>[0])).toBe("ok");
+  });
+  it("a dormant club is not listed, so it does not search either (D-3): not live", () => {
+    expect(searcherState(club({ dormantAt: new Date("2026-09-09T00:00:00Z") }))).toBe("not-live");
   });
   it("find-us off: no search (D-3)", () => {
     expect(searcherState(club({ discoverable: false }))).toBe("not-discoverable");

@@ -47,6 +47,7 @@ import {
 const SEARCHER_SELECT = {
   id: true,
   approvalStatus: true,
+  dormantAt: true,
   // Our own group, read only to know we have one.
   whatsappGroupId: true,
   discoverable: true,
@@ -108,6 +109,7 @@ export async function loadNearbyClubs(
   if (!me) return null;
   const mine = {
     approved: isClubApproved(me),
+    dormantAt: me.dormantAt,
     hasPlayersGroup: !!me.whatsappGroupId,
     discoverable: me.discoverable,
     homeVenue: me.homeVenue,

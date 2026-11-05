@@ -33,7 +33,7 @@ const facts = (over: Partial<RequestFacts> = {}): RequestFacts => ({
   partnerOrgId: "sutton",
   role: "ADMIN",
   askerDiscoverable: true,
-  partner: { approved: true, discoverable: true },
+  partner: { approved: true, discoverable: true, dormant: false },
   theyMayAskUs: false,
   existing: null,
   blocked: false,
@@ -68,24 +68,29 @@ describe("planRequest", () => {
   });
   it("the other club must exist and be approved", () => {
     expect(planRequest(facts({ partner: null }))).toEqual({ ok: false, refusal: "no-club" });
-    expect(planRequest(facts({ partner: { approved: false, discoverable: true } }))).toEqual({ ok: false, refusal: "no-club" });
+    expect(planRequest(facts({ partner: { approved: false, discoverable: true, dormant: false } }))).toEqual({ ok: false, refusal: "no-club" });
   });
   it("a block either way refuses it", () => {
     expect(planRequest(facts({ blocked: true }))).toEqual({ ok: false, refusal: "blocked" });
   });
   it("the other club switched 'Let nearby clubs find us' off: refused", () => {
-    expect(planRequest(facts({ partner: { approved: true, discoverable: false } }))).toEqual({ ok: false, refusal: "not-listed" });
+    expect(planRequest(facts({ partner: { approved: true, discoverable: false, dormant: false } }))).toEqual({ ok: false, refusal: "not-listed" });
   });
   it("our own switch is off: refused (D-3: no club browses others while showing nothing of itself)", () => {
     expect(planRequest(facts({ askerDiscoverable: false }))).toEqual({ ok: false, refusal: "hidden" });
   });
   it("the one-tap 'ask them too' (D-1): a club that may already ask us is asked whatever either switch says", () => {
-    expect(planRequest(facts({ theyMayAskUs: true, askerDiscoverable: false, partner: { approved: true, discoverable: false } }))).toEqual({
+    expect(planRequest(facts({ theyMayAskUs: true, askerDiscoverable: false, partner: { approved: true, discoverable: false, dormant: false } }))).toEqual({
       ok: true,
       mode: "create",
     });
     // A block still wins.
     expect(planRequest(facts({ theyMayAskUs: true, blocked: true }))).toEqual({ ok: false, refusal: "blocked" });
+  });
+  it("a dormant club is never sent a request, by search or by 'ask them too': nobody there can answer (Sutton Lads, 2026-10-22)", () => {
+    const dormant = { approved: true, discoverable: true, dormant: true };
+    expect(planRequest(facts({ partner: dormant }))).toEqual({ ok: false, refusal: "not-listed" });
+    expect(planRequest(facts({ partner: dormant, theyMayAskUs: true }))).toEqual({ ok: false, refusal: "not-listed" });
   });
   it("already pending, or already paired (active or paused)", () => {
     expect(planRequest(facts({ existing: { status: "proposed", endReason: null, endedAt: null, endedByOrgId: null } }))).toEqual({ ok: false, refusal: "already-pending" });

@@ -390,8 +390,9 @@ export interface RequestFacts {
   role: ClubRole;
   /** The asking club's "Let nearby clubs find us" (D-3). */
   askerDiscoverable: boolean;
-  /** The other club, or null when it does not exist. */
-  partner: { approved: boolean; discoverable: boolean } | null;
+  /** The other club, or null when it does not exist. `dormant`: a human
+   *  declared it gone (`isOrgDormant`), so nobody there can ever answer. */
+  partner: { approved: boolean; discoverable: boolean; dormant: boolean } | null;
   /** The other club may already ask us (active or paused): the one-tap
    *  "ask them too" (D-1), which needs neither switch. */
   theyMayAskUs: boolean;
@@ -429,6 +430,9 @@ export function planRequest(f: RequestFacts): RequestPlan {
   if (f.role !== "OWNER" && f.role !== "ADMIN") return { ok: false, refusal: "not-admin" };
   if (f.askerOrgId === f.partnerOrgId) return { ok: false, refusal: "same-club" };
   if (!f.partner || !f.partner.approved) return { ok: false, refusal: "no-club" };
+  // Never listed (LISTABLE_CLUB_WHERE), and not askable even by "ask them
+  // too": the request could only expire (Sutton Lads, 2026-10-22).
+  if (f.partner.dormant) return { ok: false, refusal: "not-listed" };
   if (f.blocked) return { ok: false, refusal: "blocked" };
   if (!f.theyMayAskUs) {
     if (!f.askerDiscoverable) return { ok: false, refusal: "hidden" };
