@@ -204,7 +204,7 @@ test("description + one message: the deadline is switched on, the fee is only su
   expect(sent).toHaveLength(1);
   const text = sent[0].text;
   expect(text).toContain(
-    `✅ *Drop-out deadline:* Tuesday 18:00. MatchTime reminds the group before it.\n` +
+    `✅ *Drop-out deadline:* Tuesday 18:00. Once it passes, MatchTime sends your admins who is out and who is on the bench.\n` +
       `From messages like: "drop out by Tuesday 6pm or you still pay, that hasn't changed"\n` +
       `From your group description: "Drop out by Tuesday 6pm or you still pay."\n` +
       `Undo or change: `,

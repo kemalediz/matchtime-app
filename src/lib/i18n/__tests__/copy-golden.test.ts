@@ -391,7 +391,6 @@ import {
   buildUnpaidTailText,
   buildRollingAnnouncePost,
   buildRollingDeadlineLine,
-  buildDropOutReminderPost,
   buildListPublishedPost,
   BENCH_THIN_BELOW,
 } from "../../scheduler-copy";
@@ -1830,11 +1829,7 @@ function cases(lang: Lang): Case[] {
   // ── Weekly deadlines (2026-09-30, slice 3 of the Friday-group plan).
   //    NEW copy, added deliberately; no existing case changes. ──
   const wdWhen = lang === "tr" ? "9 Ekim Cuma 20:30" : "Fri 9 Oct at 20:30";
-  const wdRoster = buildSquadRosterBlock({ confirmed: nine, bench: [{ name: "Ali Demir" }], maxPlayers: 18, lang });
-  add(
-    "WDL1 buildDropOutReminderPost",
-    buildDropOutReminderPost({ activityName: "Friday 9-a-side", whenLabel: wdWhen, time: "21:00", rosterBlock: wdRoster, lang }),
-  );
+  // WDL1, the drop-out reminder, was removed on 2026-11-05.
   const wdDeadline = lang === "tr" ? "5 Ekim Pazartesi 21:00" : "Mon 5 Oct at 21:00";
   const wdSummary = { activityName: "Friday 9-a-side", whenLabel: wdWhen, deadlineLabel: wdDeadline, maxPlayers: 18, lang };
   add(

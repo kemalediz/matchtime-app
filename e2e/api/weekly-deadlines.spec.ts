@@ -9,12 +9,13 @@
  * A Friday 20:30 club with a Monday 21:00 drop-out deadline and a Tuesday
  * 20:00 list, next to a club with neither (Sutton's shape):
  *
- *   1. Mon 18:05: the reminder in the group, 3 hours before the deadline;
- *      the 17:00 post is off for the deadline club (D4), on for Sutton.
+ *   1. Mon 17:05: the 17:00 post is off for the deadline club (D4), on
+ *      for Sutton; no drop-out reminder at any time before the deadline
+ *      (removed 2026-11-05).
  *   2. Mon 21:05: the organisers' summary, once, through the admin notice
  *      (a BotJob DM to the owner), never in preview mode.
  *   3. Tue 20:05: the final list in the group.
- *   4. Sutton gets none of the three.
+ *   4. Sutton gets neither.
  *
  * January, so London is GMT and London times equal UTC.
  */
@@ -28,7 +29,6 @@ test.describe.configure({ mode: "serial" });
 /** Friday 15 January 2027, 20:30 GMT. */
 const KICKOFF = new Date("2027-01-15T20:30:00.000Z");
 const MON_1705 = new Date("2027-01-11T17:05:00.000Z");
-const MON_1805 = new Date("2027-01-11T18:05:00.000Z");
 const MON_2105 = new Date("2027-01-11T21:05:00.000Z");
 const TUE_1955 = new Date("2027-01-12T19:55:00.000Z");
 const TUE_2005 = new Date("2027-01-12T20:05:00.000Z");
@@ -163,30 +163,15 @@ test("Mon 17:05: the 17:00 post is off for the deadline club (D4), and still on 
   expect(s.some((i) => i.key === `${S_MATCH}:evening-update:2027-01-11`)).toBe(true);
 });
 
-test("Mon 18:05: the drop-out reminder, 3 hours before the deadline, with the squad", async ({ request }) => {
-  const before = await duePosts(request, W_GROUP, new Date(MON_1805.getTime() - 10 * 60_000), true);
-  expect(before.some((i) => i.key === `${W_MATCH}:dropout-reminder`)).toBe(false);
-
-  const w = await duePosts(request, W_GROUP, MON_1805, true);
-  const reminder = w.filter((i) => i.key === `${W_MATCH}:dropout-reminder`);
-  expect(reminder).toHaveLength(1);
-  expect(reminder[0].kind).toBe("group-message");
-  expect(reminder[0].text).toBe(
-    [
-      "⏰ *Friday 9-a-side*, Fri 15 Jan at 20:30: the drop-out deadline is *today at 21:00*. If you can't play, say *OUT* before then.",
-      "",
-      "*Confirmed (3/18):*",
-      "1. Hamzah Khan",
-      "2. Raihan Ahmed",
-      "3. Wasim Ali",
-      "",
-      "*Bench (1):*",
-      "1. Ali Demir",
-    ].join("\n"),
-  );
-
-  const s = await duePosts(request, S_GROUP, MON_1805, true);
-  expect(s.some((i) => i.key.endsWith(":dropout-reminder"))).toBe(false);
+test("Mon 09:05 to 20:55: no drop-out reminder before the deadline (removed 2026-11-05), for either club", async ({ request }) => {
+  const day = ["09:05", "18:05", "19:30", "20:55"].map((hm) => new Date(`2027-01-11T${hm}:00.000Z`));
+  for (const now of day) {
+    for (const group of [W_GROUP, S_GROUP]) {
+      const out = await duePosts(request, group, now, true);
+      expect(out.some((i) => i.key.includes("dropout-reminder"))).toBe(false);
+      expect(out.some((i) => /drop-out deadline is/i.test(i.text ?? ""))).toBe(false);
+    }
+  }
 });
 
 test("Mon 21:05: the organisers get the summary once; preview never sends it; Sutton gets none", async ({

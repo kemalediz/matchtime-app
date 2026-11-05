@@ -20,7 +20,7 @@ import { decideSignupListPost, isDaytime, listOpenDue } from "../month-signup-ru
 import { claimsDigestDue, duePaymentReminder, groupReminderDue } from "../month-payment-rules";
 import { monthCloseDue } from "../month-close-rules";
 import { decideListPost } from "../monthly-week-rules";
-import { deadlineSummaryDue, dropOutReminderDue, listPublishDue } from "../weekly-deadlines";
+import { deadlineSummaryDue, listPublishDue } from "../weekly-deadlines";
 import { seedNudgePrecheck } from "../seed-nudge-rules";
 
 const HOUR = 60 * 60 * 1000;
@@ -166,13 +166,6 @@ describe("the weekly deadline posts", () => {
     expect(deadlineSummaryDue(AT_2130, deadline, kickoff, EARLY)).toBe(false);
     expect(listPublishDue(AT_2330, deadline, kickoff)).toBe(false);
     expect(listPublishDue(AT_2330, deadline, kickoff, OFF)).toBe(true);
-  });
-  it("the drop-out reminder is never sent inside the club's quiet hours", () => {
-    // Deadline 22:30: the reminder is due from 19:30.
-    const deadline = new Date("2026-12-01T22:30:00Z");
-    expect(dropOutReminderDue(AT_2130, deadline)).toBe(true);
-    expect(dropOutReminderDue(AT_2130, deadline, EARLY)).toBe(false);
-    expect(dropOutReminderDue(AT_2059, deadline, EARLY)).toBe(true);
   });
 });
 

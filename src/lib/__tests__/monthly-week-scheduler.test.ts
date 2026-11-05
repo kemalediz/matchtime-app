@@ -759,7 +759,7 @@ describe("WEEKLY DEADLINE POSTS: not beside the month's list (found by the manua
     Object.assign(m.activity.org, DEADLINES);
     return m;
   };
-  /** Sun 11 Oct 2026, 15:30 London: inside the three hours before the deadline. */
+  /** Sun 11 Oct 2026, 15:30 London: the afternoon of the deadline day. */
   const SUN_REMINDER = new Date("2026-10-11T14:30:00.000Z");
   /** Mon 12 Oct 2026, 10:05 London: the list's publish time has passed. */
   const MON_PUBLISH = new Date("2026-10-12T09:05:00.000Z");
@@ -772,20 +772,14 @@ describe("WEEKLY DEADLINE POSTS: not beside the month's list (found by the manua
     attendances: [...regulars, att("Omar", 4, { paymentMethod: null, paidAt: new Date("2026-10-13T09:00:00.000Z") }), att("Will", 5, { paymentMethod: null })],
   });
 
-  it("WEEKLY: all three still go out, exactly as before", async () => {
+  it("WEEKLY: the list and the unpaid reminder still go out (the drop-out reminder is gone for every club, 2026-11-05)", async () => {
     const m = withDeadlines(match({ attendances: weeklyRows(), rollingSeededAt: null }));
     setWorld(m, { monthly: false });
-    expect((await instructions(SUN_REMINDER)).filter((i) => i.key === `${m.id}:dropout-reminder`)).toHaveLength(1);
+    expect((await instructions(SUN_REMINDER)).some((i) => i.key.includes("dropout-reminder"))).toBe(false);
     expect((await instructions(MON_PUBLISH)).filter((i) => i.key === `${m.id}:list-published`)).toHaveLength(1);
     const done = withDeadlines(match({ ...played(weeklyRows()), rollingSeededAt: null }));
     setWorld(done, { monthly: false });
     expect((await instructions(WED_UNPAID)).filter((i) => i.key === `${done.id}:unpaid-group`)).toHaveLength(1);
-  });
-
-  it("MONTHLY: no drop-out reminder with the weekly roster", async () => {
-    const m = withDeadlines(match());
-    setWorld(m, { monthly: true });
-    expect((await instructions(SUN_REMINDER)).some((i) => i.key === `${m.id}:dropout-reminder`)).toBe(false);
   });
 
   it("MONTHLY: no 'List published' roster; the match-morning month list is the list", async () => {
@@ -803,14 +797,14 @@ describe("WEEKLY DEADLINE POSTS: not beside the month's list (found by the manua
   });
 
   it("MONTHLY, a game from before the month started here: no weekly roster posts (2026-11-03), unlike the poll and the fee", async () => {
-    // Until 2026-11-03 this game got the drop-out reminder and "List
-    // published" with the weekly roster. A monthly club's squad is the
-    // organiser's posted list, so a roster of whoever said IN is not it
+    // Until 2026-11-03 this game got "List published" with the weekly
+    // roster (and the drop-out reminder, removed for every club on
+    // 2026-11-05). A monthly club's squad is the organiser's posted
+    // list, so a roster of whoever said IN is not it
     // (announce-monthly-club.test.ts has the reasoning).
     monthStartedAt = new Date("2026-10-13T09:00:00.000Z");
     const m = withDeadlines(match({ attendances: weeklyRows(), rollingSeededAt: null }));
     setWorld(m, { monthly: true });
-    expect((await instructions(SUN_REMINDER)).some((i) => i.key === `${m.id}:dropout-reminder`)).toBe(false);
     expect((await instructions(MON_PUBLISH)).some((i) => i.key === `${m.id}:list-published`)).toBe(false);
   });
 });
@@ -1116,20 +1110,17 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
     expect(out.some((i) => i.key === `${m.id}:announce-match`)).toBe(false);
   });
 
-  it("MONTHLY, sign-up open: no weekly drop-out reminder or 'List published' for its match either", async () => {
+  it("MONTHLY, sign-up open: no weekly 'List published' for its match either", async () => {
     // Drop-out Thursday 18:00, the list Friday 10:00, for Monday's game.
     const deadlines = { dropOutDeadlineDay: 4, dropOutDeadlineTime: "18:00", listPublishDay: 5, listPublishTime: "10:00" };
-    /** Thu 29 Oct 2026, 15:30 London, and Fri 30 Oct, 10:05 (GMT). */
-    const THU_REMINDER = new Date("2026-10-29T15:30:00.000Z");
+    /** Fri 30 Oct, 10:05 London (GMT). */
     const FRI_PUBLISH = new Date("2026-10-30T10:05:00.000Z");
     const m = novMatch();
     Object.assign(m.activity.org, deadlines);
-    // The weekly shape of the same week: both go out.
+    // The weekly shape of the same week: the list goes out.
     setWorld(m, { monthly: false });
-    expect((await instructions(THU_REMINDER)).some((i) => i.key === `${m.id}:dropout-reminder`)).toBe(true);
     expect((await instructions(FRI_PUBLISH)).some((i) => i.key === `${m.id}:list-published`)).toBe(true);
     setWorld(m, { monthly: true, signupMonth: signupMonth() });
-    expect((await instructions(THU_REMINDER)).some((i) => i.key === `${m.id}:dropout-reminder`)).toBe(false);
     expect((await instructions(FRI_PUBLISH)).some((i) => i.key === `${m.id}:list-published`)).toBe(false);
   });
 

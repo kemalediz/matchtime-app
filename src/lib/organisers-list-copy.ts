@@ -26,7 +26,6 @@ import type { Lang } from "./i18n/lang";
 export type OrganiserListReason =
   | "announce"
   | "evening"
-  | "dropout-reminder"
   | "list-published"
   | "chase"
   | "squad-complete";
@@ -38,8 +37,6 @@ export function buildOrganiserListUpdate(args: {
   confirmed: Array<{ name: string | null }>;
   bench: Array<{ name: string | null }>;
   maxPlayers: number;
-  /** The drop-out deadline's time ("21:00"), for "dropout-reminder". */
-  dropOutTime?: string | null;
   /** Players still to pay for the last match, or null for no line. */
   unpaid?: number | null;
   /** The rolling announcement after a cancelled week (2026-10-24): the
@@ -52,8 +49,6 @@ export function buildOrganiserListUpdate(args: {
     switch (args.reason) {
       case "announce":
         return s.oa_reason_announce;
-      case "dropout-reminder":
-        return args.dropOutTime ? s.oa_reason_dropout({ time: args.dropOutTime }) : null;
       case "list-published":
         return s.oa_reason_list_published;
       case "chase":

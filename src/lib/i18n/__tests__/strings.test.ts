@@ -793,7 +793,6 @@ const SAMPLES: SampleArgs = {
   carry_over_done: { count: 16 },
   carry_over_nothing: null,
   // Weekly deadlines (2026-09-30, slice 3)
-  dropout_reminder_post: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", time: "21:00", rosterBlock: "*In (16/18):*\n1. Hamzah" },
   deadline_summary_admin: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", deadlineLabel: "Mon 5 Oct at 21:00", confirmed: 16, maxPlayers: 18, out: ["Wasim"], maybe: ["Raihan"], waiting: ["Ali"], open: 2 },
   list_published_head: { activityName: "Friday 9-a-side", dateLabel: "Friday 9 October at 20:30", venue: "Powerleague Shoreditch" },
   list_published_playing_header: { confirmed: 16, maxPlayers: 18 },
@@ -1616,7 +1615,6 @@ const SAMPLES: SampleArgs = {
   // Who announces the list and teams (2026-10-14).
   oa_header: { activityName: "FNF", whenLabel: "Fri 16 Oct at 20:30", confirmed: 16, maxPlayers: 18 },
   oa_reason_announce: null,
-  oa_reason_dropout: { time: "21:00" },
   oa_reason_list_published: null,
   oa_reason_chase: null,
   oa_reason_squad_complete: null,

@@ -17,8 +17,7 @@
  * shipped with.
  *
  * What the scheduler does with them (plan 3.2, 3.3):
- *   D1  the drop-out reminder in the group, 3 hours before the deadline,
- *       not before 09:00, skipped when that leaves under an hour;
+ *   D1  (removed 2026-11-05) there is no reminder before the deadline;
  *   D2  the summary to the organisers when the deadline has passed,
  *       outside the club's quiet hours (by default 09:00 to 22:59 London);
  *   D3  the final list in the group at publish time;
@@ -55,7 +54,6 @@ export const NO_WEEKLY_DEADLINES: WeeklyDeadlineSettings = {
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const HOUR_MS = 60 * 60 * 1000;
 
 function isDay(d: unknown): d is number {
   return typeof d === "number" && Number.isInteger(d) && d >= 0 && d <= 6;
@@ -122,8 +120,10 @@ export function dropOutDeadlineFor(match: DeadlineMatch, club?: WeeklyDeadlineIn
 }
 
 /** D4: with both a drop-out deadline and a publish time, the week's
- *  rhythm is announce, reminder, summary, list, and the daily 17:00 post
- *  stops except on match day. */
+ *  rhythm is the announcement, the organisers' summary and the list, and
+ *  the daily 17:00 post stops except on match day. (The drop-out
+ *  reminder was part of that rhythm until it was removed on 2026-11-05;
+ *  this rule was left as it was.) */
 export function hasWeeklyRhythm(settings: WeeklyDeadlineInput): boolean {
   return (
     pair(settings?.dropOutDeadlineDay, settings?.dropOutDeadlineTime) !== null &&
@@ -133,31 +133,10 @@ export function hasWeeklyRhythm(settings: WeeklyDeadlineInput): boolean {
 
 // ── When each post is due ────────────────────────────────────────────
 
-const REMINDER_LEAD_MS = 3 * HOUR_MS;
-/** The group reminder is never before the message hours open (09:00). */
-const REMINDER_EARLIEST = MESSAGE_HOURS_FROM_TIME;
-const REMINDER_MIN_NOTICE_MS = HOUR_MS;
-
 /** Organiser notices and the list speak outside the club's quiet hours
  *  (by default London 09:00 to 22:59). */
 function inWakingHours(now: Date, quiet?: QuietHours | null): boolean {
   return inMessageHours(now, quiet ?? undefined);
-}
-
-/** D1: 3 hours before the deadline, not before 09:00 London that day;
- *  null (no reminder) when that leaves under an hour. */
-export function dropOutReminderAt(deadline: Date): Date | null {
-  const earliest = londonDateTimeToUtc(formatLondon(deadline, "yyyy-MM-dd"), REMINDER_EARLIEST);
-  const at = new Date(Math.max(deadline.getTime() - REMINDER_LEAD_MS, earliest.getTime()));
-  return deadline.getTime() - at.getTime() >= REMINDER_MIN_NOTICE_MS ? at : null;
-}
-
-/** Due from `dropOutReminderAt` until the deadline, and never inside the
- *  club's quiet hours (with the default hours it is always due between
- *  09:00 and 22:30, so this only bites a club's own window). */
-export function dropOutReminderDue(now: Date, deadline: Date, quiet?: QuietHours | null): boolean {
-  const at = dropOutReminderAt(deadline);
-  return at !== null && now.getTime() >= at.getTime() && now.getTime() < deadline.getTime() && inWakingHours(now, quiet);
 }
 
 /** D2: the first tick after the deadline, inside waking hours, before kickoff. */
@@ -168,8 +147,8 @@ export function deadlineSummaryDue(now: Date, deadline: Date, kickoff: Date, qui
 /**
  * Was this match made AFTER its own drop-out deadline (2026-10-15)? Then
  * nobody can have dropped out of it before the deadline, and the posts
- * about that deadline (D1 the reminder, D2 the summary, and the pick
- * round that stands in for D2) would be noise. FNF went live at 22:12 on
+ * about that deadline (D2 the summary, and the pick round that stands in
+ * for D2) would be noise. FNF went live at 22:12 on
  * a Thursday, after its Thursday 20:30 deadline; the game was made at
  * 22:17 and the organisers got "Drop-out deadline passed ... Squad 0/18".
  * `Match.createdAt` absent (an old fixture or a hand-built test row):

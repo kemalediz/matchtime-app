@@ -256,7 +256,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Quiet hours",
       what: [
         "During quiet hours MatchTime holds the messages it sends on its own and sends them when quiet hours end. The times are London time.",
-        "These wait: admin messages, by DM or in your admin WhatsApp group (the Teams ready proposal, the organisers' pick list, the reminder to rate players before the first teams); bench offers; the one follow-up DM to a player invited to fill a place; the drop-out deadline reminder and summary; the published list; the pay links for a match (MatchTime still replies to the money collector at once, saying when they go out), the daily reminder to pay and the reminder to the money collector to confirm payments received, the question to the money collector about the match fee, and the DM telling a player they are on a free place; and for a monthly squad, the sign-up list, the list posts, the payment reminders, the month's close and the DMs about the month.",
+        "These wait: admin messages, by DM or in your admin WhatsApp group (the Teams ready proposal, the organisers' pick list, the reminder to rate players before the first teams); bench offers; the one follow-up DM to a player invited to fill a place; the drop-out deadline summary; the published list; the pay links for a match (MatchTime still replies to the money collector at once, saying when they go out), the daily reminder to pay and the reminder to the money collector to confirm payments received, the question to the money collector about the match fee, and the DM telling a player they are on a free place; and for a monthly squad, the sign-up list, the list posts, the payment reminders, the month's close and the DMs about the month.",
         "These never wait: MatchTime's replies to a message someone has just sent it, in the group or by DM; a poster or team sheet an admin asks for; and posts that go at their own time, such as the 17:00 update and the match-day kit reminder. By DM, the admin messages about someone joining or leaving the group, a new player's IN, and partner club asks go at once too.",
       ],
       choices: [
@@ -275,7 +275,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Sessiz saatler",
       what: [
         "Sessiz saatlerde MatchTime kendiliğinden gönderdiği mesajları bekletir ve sessiz saatler bitince gönderir. Saatler Londra saatidir.",
-        "Bunlar bekler: DM ile ya da yönetici WhatsApp grubunuzda giden yönetici mesajları (Takımlar hazır önerisi, organizatörlerin seçim listesi, ilk takımlardan önce oyuncuları puanlama hatırlatması); yedek oyunculara yer teklifleri; bir yeri doldurmaya çağrılan oyuncuya giden tek takip DM'i; bırakma son saati hatırlatması ve özeti; yayınlanan liste; bir maçın ödeme linkleri (MatchTime para toplayan kişiye yine hemen yanıt verir ve linklerin ne zaman gideceğini söyler), günlük ödeme hatırlatması ve para toplayan kişiye gelen ödemeleri onaylama hatırlatması, para toplayan kişiye maç ücretini soran mesaj ve bir oyuncuya ücretsiz yerde olduğunu söyleyen DM; aylık kadroda kayıt listesi, liste mesajları, ödeme hatırlatmaları, ayın kapanışı ve ayla ilgili DM'ler.",
+        "Bunlar bekler: DM ile ya da yönetici WhatsApp grubunuzda giden yönetici mesajları (Takımlar hazır önerisi, organizatörlerin seçim listesi, ilk takımlardan önce oyuncuları puanlama hatırlatması); yedek oyunculara yer teklifleri; bir yeri doldurmaya çağrılan oyuncuya giden tek takip DM'i; son çıkış saati özeti; yayınlanan liste; bir maçın ödeme linkleri (MatchTime para toplayan kişiye yine hemen yanıt verir ve linklerin ne zaman gideceğini söyler), günlük ödeme hatırlatması ve para toplayan kişiye gelen ödemeleri onaylama hatırlatması, para toplayan kişiye maç ücretini soran mesaj ve bir oyuncuya ücretsiz yerde olduğunu söyleyen DM; aylık kadroda kayıt listesi, liste mesajları, ödeme hatırlatmaları, ayın kapanışı ve ayla ilgili DM'ler.",
         "Bunlar hiç beklemez: MatchTime'ın birinin az önce gönderdiği mesaja, grupta ya da DM ile verdiği yanıtlar; bir yöneticinin istediği afiş ya da takım listesi; kendi saatinde giden mesajlar, örneğin 17:00 güncellemesi ve maç günü malzeme hatırlatması. DM ile giden yönetici mesajlarından gruba katılan ya da ayrılan biri, yeni bir oyuncunun VARIM yazması ve ortak kulüp istekleri de hemen gider.",
       ],
       choices: [
@@ -304,7 +304,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         { name: ON.en, text: "MatchTime keeps the squad from IN and OUT and posts the updates above." },
         {
           name: OFF.en,
-          text: "MatchTime records no IN or OUT and posts no squad updates, chases or reminders. The rolling squad post, the drop-out reminder, the published list and the monthly lists are squad posts, so they stop too.",
+          text: "MatchTime records no IN or OUT and posts no squad updates, chases or reminders. The rolling squad post, the published list and the monthly lists are squad posts, so they stop too.",
         },
       ],
       newClubs: "On.",
@@ -324,7 +324,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         { name: ON.tr, text: "MatchTime kadroyu VARIM ve YOKUM mesajlarından tutar ve yukarıdaki güncellemeleri paylaşır." },
         {
           name: OFF.tr,
-          text: "MatchTime VARIM ya da YOKUM kaydetmez; kadro güncellemesi, oyuncu arama ya da hatırlatma paylaşmaz. Kadro devam eder mesajı, son çıkış hatırlatması, yayınlanan liste ve aylık listeler de kadro mesajı olduğu için onlar da durur.",
+          text: "MatchTime VARIM ya da YOKUM kaydetmez; kadro güncellemesi, oyuncu arama ya da hatırlatma paylaşmaz. Kadro devam eder mesajı, yayınlanan liste ve aylık listeler de kadro mesajı olduğu için onlar da durur.",
         },
       ],
       newClubs: "Açık.",
@@ -981,19 +981,18 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Drop-out deadline",
       what: [
         "The last day and time players can pull out of the week's match without it counting as late. Pick a weekday and a time; MatchTime uses the last one before each kickoff.",
-        "About 3 hours before the deadline (not before 09:00), MatchTime reminds the group with the squad. After the deadline it sends your admins a summary of who is out and who is waiting.",
+        "After the deadline MatchTime sends your admins a summary of who is out and who is waiting. It sends no reminder before the deadline.",
       ],
-      example: "⏰ *Tuesday 7-a-side*, Mon: the drop-out deadline is *today at 21:00*. If you can't play, say *OUT* before then.",
+      example: "Drop-out deadline (Mon 19 Oct at 21:00) passed for *Tuesday 7-a-side*, kick-off Tue 20 Oct at 20:00. Squad 13/14.\nOut this week: Sam.\nOn the bench: nobody.\n1 place open.",
       choices: [
-        { name: "Set", text: "The reminder and the admin summary run each week." },
-        { name: "Not set", text: "No reminder and no summary. Players can say OUT at any time." },
+        { name: "Set", text: "Your admins get the summary each week." },
+        { name: "Not set", text: "No summary. Players can say OUT at any time." },
       ],
       newClubs: "Not set.",
       suits: "Clubs that want players to commit early, so the organisers know the squad a day or two before.",
       together: [
         "With Rolling squad on, an OUT after the deadline still counts and your admins are told it was late. Without Rolling squad nothing is marked late.",
         "With The organisers pick, MatchTime asks your admins to pick only after the deadline.",
-        "With the organisers announcing the list, the reminder goes to your admin messages instead of the group.",
         "Set this and List published, and MatchTime stops its daily 17:00 post, except on match day.",
         "The time must be between 09:00 and 22:30, before List published, and before kickoff when it falls on match day. Monthly squads don't use it.",
       ],
@@ -1002,19 +1001,18 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Son çıkış saati",
       what: [
         "Oyuncuların haftanın maçından geç sayılmadan çıkabileceği son gün ve saat. Bir gün ve saat seçin; MatchTime her maçtan önceki son denk gelen zamanı kullanır.",
-        "Son çıkış saatinden yaklaşık 3 saat önce (09:00'dan önce değil) MatchTime kadroyla birlikte gruba hatırlatır. Saat geçince yöneticilerinize kimin çıktığını ve kimin beklediğini özetler.",
+        "Saat geçince MatchTime yöneticilerinize kimin çıktığını ve kimin beklediğini özetler. Son çıkış saatinden önce hatırlatma göndermez.",
       ],
-      example: "⏰ *Salı 7'li maç*, Pzt: son çıkış saati *bugün 21:00*. Oynayamayacaksanız o saatten önce *YOKUM* yazın.",
+      example: "*Salı 7'li maç* için son çıkış saati (19 Ekim Pazartesi 21:00) geçti, maç 20 Ekim Salı 20:00. Kadro 13/14.\nBu hafta çıkanlar: Sam.\nYedek listesi: boş.\n1 yer boş.",
       choices: [
-        { name: "Ayarlı", text: "Hatırlatma ve yönetici özeti her hafta çalışır." },
-        { name: "Ayarlı değil", text: "Hatırlatma ve özet yok. Oyuncular istedikleri zaman YOKUM diyebilir." },
+        { name: "Ayarlı", text: "Yönetici özeti her hafta gönderilir." },
+        { name: "Ayarlı değil", text: "Özet yok. Oyuncular istedikleri zaman YOKUM diyebilir." },
       ],
       newClubs: "Ayarlı değil.",
       suits: "Organizatörlerin kadroyu bir iki gün önceden bilmesi için oyuncuların erken karar vermesini isteyen kulüpler.",
       together: [
         "Kadro devam eder açıkken son çıkış saatinden sonraki YOKUM yine geçerlidir ve yöneticilerinize geç olduğu bildirilir. Kadro devam eder kapalıyken hiçbir şey geç sayılmaz.",
         "Organizatörler seçer ayarlıysa MatchTime yöneticilerinizden ancak bu saatten sonra seçim ister.",
-        "Listeyi organizatörler duyuruyorsa hatırlatma grup yerine yönetici mesajlarınıza gider.",
         "Bunu ve Liste yayınını ayarlarsanız MatchTime her gün 17:00'de gönderdiği mesajı maç günü dışında durdurur.",
         "Saat 09:00 ile 22:30 arasında, Liste yayınından önce ve maç gününe denk geliyorsa başlama saatinden önce olmalıdır. Aylık kadrolar bunu kullanmaz.",
       ],

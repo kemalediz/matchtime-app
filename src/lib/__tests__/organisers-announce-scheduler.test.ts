@@ -247,7 +247,6 @@ beforeEach(() => {
 describe("the default (MatchTime announces) is exactly what it was", () => {
   const cases: Array<[string, Date, Record<string, unknown>, Record<string, unknown>]> = [
     ["17:00 short squad", MON_1705, NO_DEADLINES, {}],
-    ["the drop-out reminder", MON_1805, FNF_DEADLINES, {}],
     ["the final list", TUE_2005, FNF_DEADLINES, {}],
     ["the morning chase", FRI_0805, NO_DEADLINES, {}],
     ["the 3h chase", FRI_1700, NO_DEADLINES, {}],
@@ -383,32 +382,18 @@ describe('"The organisers": the squad posts go to the admin group', () => {
     expect(groupPosts(out).filter((i) => i.key.includes("evening-update"))).toHaveLength(0);
   });
 
-  it("the drop-out reminder goes to the admins with the deadline time", async () => {
-    const m = match(FNF_DEADLINES);
-    setWorld([m]);
-    const out = await instructions(MON_1805);
-    const key = `${m.id}:dropout-reminder`;
-    expect(byKey(out, key)).toEqual({
-      kind: "admin-group-message",
-      key,
-      matchId: m.id,
-      groupId: ADMIN_GROUP,
-      text: ADMIN_TEXT("dropout-reminder", { dropOutTime: "21:00" }),
-    });
-    expect(groupPosts(out)).toHaveLength(0);
-  });
-
-  // THE FNF CASE (Kemal, 2026-11-05). Thu 5 Nov 2026 at 17:30 London the
-  // admin group got "Squad for Football 9-a-side, Fri 6 Nov at 20:30: 18 of
-  // 18 in, full. The drop-out deadline is today at 20:30." with the full
-  // roster and a bench of 3, while the match was TEAMS_PUBLISHED with 18
-  // TeamAssignment rows. The teams and the poster were already out.
-  describe("the drop-out reminder stays quiet once the week is settled (FNF, 2026-11-05)", () => {
+  // Kemal, 2026-11-05: the drop-out reminder is gone, for the organisers
+  // too. FNF, Thu 5 Nov 2026 at 17:30, had the admin group told "The
+  // drop-out deadline is today at 20:30." with the teams already out; now
+  // nothing goes to them ahead of the deadline, in any state of the squad
+  // and in any admin channel. The summary after the deadline (D2,
+  // deadline-summary.ts) is unchanged.
+  describe("no drop-out reminder to the organisers, ever (Kemal, 2026-11-05)", () => {
     /** Fri 6 Nov 2026, 20:30 London (GMT). */
     const FNF_KICKOFF = new Date("2026-11-06T20:30:00.000Z");
-    /** Thu 5 Nov 2026, 17:30 London: 3 hours before the 20:30 deadline. */
-    const THU_1730 = new Date("2026-11-05T17:30:00.000Z");
     const THU_DEADLINE = { dropOutDeadlineDay: 4, dropOutDeadlineTime: "20:30", listPublishDay: null, listPublishTime: null };
+    /** Every 10 minutes on Thu 5 Nov, 08:00 to 22:50 London. */
+    const DEADLINE_DAY = Array.from({ length: 90 }, (_, i) => new Date(Date.UTC(2026, 10, 5, 8, 0) + i * 10 * 60_000));
     const squad = Array.from({ length: 18 }, (_, i) => player(`Player ${i + 1}`, i));
     const benchOf = (n: number) => Array.from({ length: n }, (_, i) => player(`Bench ${i + 1}`, 18 + i, "BENCH"));
     const teams = squad.map((p, i) => ({ userId: p.userId, team: i % 2 ? "BLUE" : "RED", user: { id: p.userId, name: p.user.name } }));
@@ -417,41 +402,41 @@ describe('"The organisers": the squad posts go to the admin group', () => {
         id: "m-fnf-6-nov",
         date: FNF_KICKOFF,
         attendanceDeadline: new Date(FNF_KICKOFF.getTime() - 5 * 3600_000),
+        maxPlayers: 18,
         ...over,
       });
-    const reminder = (out: DueInstruction[]) => out.filter((i) => i.key.startsWith("m-fnf-6-nov:dropout-reminder"));
+    const noReminder = (out: DueInstruction[]) => {
+      expect(out.some((i) => i.key.includes("dropout-reminder"))).toBe(false);
+      expect(out.some((i) => /drop-out deadline is/i.test((i as { text?: string }).text ?? ""))).toBe(false);
+    };
 
-    it("FNF reproduction: 18 of 18, a bench of 3, teams published: no drop-out reminder, to the admins or the group", async () => {
-      setWorld([fnf({ status: "TEAMS_PUBLISHED", maxPlayers: 18, attendances: [...squad, ...benchOf(3)], teamAssignments: teams })]);
-      const out = await instructions(THU_1730);
-      expect(reminder(out)).toHaveLength(0);
-      expect(groupPosts(out).some((i) => /drop-out deadline/i.test((i as { text?: string }).text ?? ""))).toBe(false);
-    });
+    const states: Array<[string, Record<string, unknown>]> = [
+      ["FNF reproduction: 18 of 18, a bench of 3, teams published", { status: "TEAMS_PUBLISHED", attendances: [...squad, ...benchOf(3)], teamAssignments: teams }],
+      ["full with a bench of 2, no teams", { attendances: [...squad, ...benchOf(2)] }],
+      ["places open, no teams", { attendances: squad.slice(0, 15) }],
+    ];
+    for (const [name, over] of states) {
+      it(`${name}: nothing to the admin group or the players' group`, async () => {
+        for (const now of DEADLINE_DAY) {
+          setWorld([fnf(over)]);
+          noReminder(await instructions(now));
+        }
+      });
+    }
 
-    it("teams made, even with the bench thin: no reminder", async () => {
-      setWorld([fnf({ status: "TEAMS_GENERATED", maxPlayers: 18, attendances: [...squad, ...benchOf(1)], teamAssignments: teams })]);
-      expect(reminder(await instructions(THU_1730))).toHaveLength(0);
-    });
-
-    it("no teams, full with a bench of 3: no reminder; the key stays unsent, so a drop that thins the bench brings it back before the deadline", async () => {
-      setWorld([fnf({ maxPlayers: 18, attendances: [...squad, ...benchOf(3)] })]);
-      expect(reminder(await instructions(THU_1730))).toHaveLength(0);
-      // 19:30, the bench is down to 2: the reminder is due again, once.
-      setWorld([fnf({ maxPlayers: 18, attendances: [...squad, ...benchOf(2)] })]);
-      const later = reminder(await instructions(new Date("2026-11-05T19:30:00.000Z")));
-      expect(later).toHaveLength(1);
-      expect(later[0].kind).toBe("admin-group-message");
-      // And never after the deadline, whatever the squad.
-      setWorld([fnf({ maxPlayers: 18, attendances: [...squad, ...benchOf(0)] })]);
-      expect(reminder(await instructions(new Date("2026-11-05T20:31:00.000Z")))).toHaveLength(0);
-    });
-
-    it("no teams, full with a bench of 2: the reminder goes to the admins as today", async () => {
-      setWorld([fnf({ maxPlayers: 18, attendances: [...squad, ...benchOf(2)] })]);
-      const out = reminder(await instructions(THU_1730));
-      expect(out).toHaveLength(1);
-      expect(out[0]).toMatchObject({ kind: "admin-group-message", groupId: ADMIN_GROUP });
-      expect((out[0] as { text: string }).text).toContain("18 of 18 in, full.");
+    it("each admin by DM, and an older Pi (owner by DM): no reminder DM either", async () => {
+      // The admins' DMs carry a signed link (the 17:00 notice still goes).
+      vi.stubEnv("AUTH_SECRET", "test-secret-for-admin-links");
+      try {
+        for (const now of DEADLINE_DAY) {
+          setWorld([fnf({ attendances: squad.slice(0, 15) })], { channelMode: "each-admin", adminGroupId: null });
+          noReminder(await instructions(now));
+          setWorld([fnf({ attendances: squad.slice(0, 15) })]);
+          noReminder(await instructions(now, { adminGroup: false }));
+        }
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
   });
 

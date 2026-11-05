@@ -3219,12 +3219,9 @@ export const en = {
 
   // ── Weekly deadlines (2026-09-30), slice 3 of
   //    MDs/friday-group-features-plan-2026-09-30.md. New copy, house
-  //    style: no em or en dashes. Rows WDL1 to WDL4 in copy-golden. ──
+  //    style: no em or en dashes. Rows WDL2 to WDL4 in copy-golden (WDL1,
+  //    the drop-out reminder, was removed on 2026-11-05). ──
 
-  /** WDL1 (D1): the group reminder 3 hours before the drop-out deadline.
-   *  `time` is the deadline's London time, `rosterBlock` the squad. */
-  dropout_reminder_post: (p: { activityName: string; whenLabel: string; time: string; rosterBlock: string }): string =>
-    `⏰ *${p.activityName}*, ${p.whenLabel}: the drop-out deadline is *today at ${p.time}*. If you can't play, say *OUT* before then.\n\n${p.rosterBlock}`,
   /** WDL2 (D2): to the organisers once the deadline has passed. The
    *  "Said maybe" and "places open" lines only when there is something
    *  to say. `deadlineLabel` is the drop-out deadline, `whenLabel` the
@@ -4314,7 +4311,7 @@ export const en = {
       : p.key === "organiserPicks"
         ? `*Organisers pick who fills an open place:* MatchTime asks you first, and only offers the place to the bench if nobody picks in time.`
         : p.key === "dropOutDeadline"
-          ? `*Drop-out deadline:* ${p.day} ${p.time}. MatchTime reminds the group before it.`
+          ? `*Drop-out deadline:* ${p.day} ${p.time}. Once it passes, MatchTime sends your admins who is out and who is on the bench.`
           : p.key === "listPublish"
             ? `*Final list:* posted in the group on ${p.day} at ${p.time}.`
             : `*Payment tracking is on:* MatchTime keeps track of who has paid and sends a friendly reminder to anyone who hasn't.`,
@@ -5264,7 +5261,6 @@ export const en = {
     return `📋 *Squad for ${p.activityName}, ${p.whenLabel}*: ${p.confirmed} of ${p.maxPlayers} in, ${tail}.`;
   },
   oa_reason_announce: "The list for this match is open. Players' In and Out are being collected in the group.",
-  oa_reason_dropout: (p: { time: string }): string => `The drop-out deadline is today at ${p.time}.`,
   oa_reason_list_published: "This is the final list at your publish time.",
   oa_reason_chase: "Kickoff is getting close and the squad is still short.",
   oa_reason_squad_complete: "The squad is complete.",
