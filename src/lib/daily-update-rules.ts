@@ -127,3 +127,36 @@ export function decideDailyUpdate(f: DailyUpdateFacts): DailyUpdate {
   }
   return { post: "squad-full" };
 }
+
+/**
+ * THE DROP-OUT REMINDER (D1, `<matchId>:dropout-reminder`): is there
+ * anything to remind? (Kemal, 2026-11-05.)
+ *
+ * FNF, Thu 5 Nov 2026 at 17:30: the admin group got the squad and "The
+ * drop-out deadline is today at 20:30" with 18 of 18 in, a bench of 3, and
+ * the teams and the poster already out. The 17:00 update had rightly
+ * stopped (`decideDailyUpdate`); this reminder read neither rule.
+ *
+ * Quiet, to the players' group and the organisers alike, when:
+ *   teams-out      the teams are made: the team sheet is the announcement
+ *                  (the 2026-09-15 rule the final list already follows);
+ *   bench-covered  the squad is full with a bench of `BENCH_THIN_BELOW` or
+ *                  more: nothing to ask for, the same stop as 17:00.
+ * Otherwise it goes out as before. The caller leaves the key unsent on a
+ * skip, so a drop that opens a place or thins the bench brings it back
+ * later in its window (which ends at the deadline, `dropOutReminderDue`).
+ */
+export type DropOutReminder = { send: true } | { send: false; why: "teams-out" | "bench-covered" };
+
+export function decideDropOutReminder(f: {
+  /** Teams have been made for this match. */
+  teamsOut: boolean;
+  /** Places still free (max players less the confirmed). */
+  open: number;
+  /** Players on the bench. */
+  bench: number;
+}): DropOutReminder {
+  if (f.teamsOut) return { send: false, why: "teams-out" };
+  if (f.open === 0 && benchCovered(f.bench)) return { send: false, why: "bench-covered" };
+  return { send: true };
+}

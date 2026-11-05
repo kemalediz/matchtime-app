@@ -398,6 +398,63 @@ describe('"The organisers": the squad posts go to the admin group', () => {
     expect(groupPosts(out)).toHaveLength(0);
   });
 
+  // THE FNF CASE (Kemal, 2026-11-05). Thu 5 Nov 2026 at 17:30 London the
+  // admin group got "Squad for Football 9-a-side, Fri 6 Nov at 20:30: 18 of
+  // 18 in, full. The drop-out deadline is today at 20:30." with the full
+  // roster and a bench of 3, while the match was TEAMS_PUBLISHED with 18
+  // TeamAssignment rows. The teams and the poster were already out.
+  describe("the drop-out reminder stays quiet once the week is settled (FNF, 2026-11-05)", () => {
+    /** Fri 6 Nov 2026, 20:30 London (GMT). */
+    const FNF_KICKOFF = new Date("2026-11-06T20:30:00.000Z");
+    /** Thu 5 Nov 2026, 17:30 London: 3 hours before the 20:30 deadline. */
+    const THU_1730 = new Date("2026-11-05T17:30:00.000Z");
+    const THU_DEADLINE = { dropOutDeadlineDay: 4, dropOutDeadlineTime: "20:30", listPublishDay: null, listPublishTime: null };
+    const squad = Array.from({ length: 18 }, (_, i) => player(`Player ${i + 1}`, i));
+    const benchOf = (n: number) => Array.from({ length: n }, (_, i) => player(`Bench ${i + 1}`, 18 + i, "BENCH"));
+    const teams = squad.map((p, i) => ({ userId: p.userId, team: i % 2 ? "BLUE" : "RED", user: { id: p.userId, name: p.user.name } }));
+    const fnf = (over: Record<string, unknown>) =>
+      match(THU_DEADLINE, {
+        id: "m-fnf-6-nov",
+        date: FNF_KICKOFF,
+        attendanceDeadline: new Date(FNF_KICKOFF.getTime() - 5 * 3600_000),
+        ...over,
+      });
+    const reminder = (out: DueInstruction[]) => out.filter((i) => i.key.startsWith("m-fnf-6-nov:dropout-reminder"));
+
+    it("FNF reproduction: 18 of 18, a bench of 3, teams published: no drop-out reminder, to the admins or the group", async () => {
+      setWorld([fnf({ status: "TEAMS_PUBLISHED", maxPlayers: 18, attendances: [...squad, ...benchOf(3)], teamAssignments: teams })]);
+      const out = await instructions(THU_1730);
+      expect(reminder(out)).toHaveLength(0);
+      expect(groupPosts(out).some((i) => /drop-out deadline/i.test((i as { text?: string }).text ?? ""))).toBe(false);
+    });
+
+    it("teams made, even with the bench thin: no reminder", async () => {
+      setWorld([fnf({ status: "TEAMS_GENERATED", maxPlayers: 18, attendances: [...squad, ...benchOf(1)], teamAssignments: teams })]);
+      expect(reminder(await instructions(THU_1730))).toHaveLength(0);
+    });
+
+    it("no teams, full with a bench of 3: no reminder; the key stays unsent, so a drop that thins the bench brings it back before the deadline", async () => {
+      setWorld([fnf({ maxPlayers: 18, attendances: [...squad, ...benchOf(3)] })]);
+      expect(reminder(await instructions(THU_1730))).toHaveLength(0);
+      // 19:30, the bench is down to 2: the reminder is due again, once.
+      setWorld([fnf({ maxPlayers: 18, attendances: [...squad, ...benchOf(2)] })]);
+      const later = reminder(await instructions(new Date("2026-11-05T19:30:00.000Z")));
+      expect(later).toHaveLength(1);
+      expect(later[0].kind).toBe("admin-group-message");
+      // And never after the deadline, whatever the squad.
+      setWorld([fnf({ maxPlayers: 18, attendances: [...squad, ...benchOf(0)] })]);
+      expect(reminder(await instructions(new Date("2026-11-05T20:31:00.000Z")))).toHaveLength(0);
+    });
+
+    it("no teams, full with a bench of 2: the reminder goes to the admins as today", async () => {
+      setWorld([fnf({ maxPlayers: 18, attendances: [...squad, ...benchOf(2)] })]);
+      const out = reminder(await instructions(THU_1730));
+      expect(out).toHaveLength(1);
+      expect(out[0]).toMatchObject({ kind: "admin-group-message", groupId: ADMIN_GROUP });
+      expect((out[0] as { text: string }).text).toContain("18 of 18 in, full.");
+    });
+  });
+
   it("the final list (listPublish) goes to the admins", async () => {
     const m = match(FNF_DEADLINES);
     setWorld([m]);
