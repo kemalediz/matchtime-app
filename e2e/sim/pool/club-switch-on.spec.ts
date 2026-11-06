@@ -4,8 +4,9 @@
  * model-free ($0).
  *
  *   - a club whose only WhatsApp group is its players' group: ONE post in
- *     that group, worded for everyone, with how to use it; no admin DM at
- *     all. Off and on again sends nothing more.
+ *     that group, explaining the pool to everyone (how a player joins, how
+ *     an organiser asks; no link); no admin DM at all. Off and on again
+ *     sends nothing more.
  *   - a club with an admin group (HQ): the post goes to HQ only, nothing
  *     in the players' group.
  */
@@ -53,11 +54,13 @@ scenarios("switching the player pool on tells the club once", () => {
 
     await flip(pool, page, fnf, true);
     const sent = await pool.collect();
-    const text = poolClubSwitchCopy("en").groupAnnouncement("FNF", linksIn(sent));
+    const text = poolClubSwitchCopy("en").groupAnnouncement("FNF");
     pool.expectSent(sent, [{ to: "fnf.group", channel: "group", text, sendAfter: null }]);
-    expect(text).toContain("*How to ask* (organisers only)");
-    expect(text).toContain("• @Match Time ask the player pool for 2 players for Thursday");
+    expect(text).toContain("*For players*");
+    expect(text).toContain("*Play elsewhere too*");
+    expect(text).toContain("• @Match Time ask the player pool for 2 players for the next game");
     expect(text).not.toContain("Tell your players about the player pool");
+    expect(text).not.toMatch(/https?:\/\//);
     pool.expectNoLeaks(fnf.secrets(), { in: sent });
     expect(await pool.db.one(`SELECT count(*)::int AS n FROM "SentNotification" WHERE key = $1`, [`org-${fnf.group.orgId}:pool-club-on-group`])).toEqual({ n: 1 });
     expect(await pool.db.one(`SELECT count(*)::int AS n FROM "SentNotification" WHERE key = $1`, [`org-${fnf.group.orgId}:pool-club-on`])).toEqual({ n: 0 });
@@ -74,7 +77,7 @@ scenarios("switching the player pool on tells the club once", () => {
     await openPoolCardAsOwner(pool, page, fnf);
     await flip(pool, page, fnf, true);
     const sent = await pool.collect();
-    pool.expectSent(sent, [{ to: "fnf.group", channel: "group", text: poolClubSwitchCopy("en").groupAnnouncement("FNF", linksIn(sent)) }]);
+    pool.expectSent(sent, [{ to: "fnf.group", channel: "group", text: poolClubSwitchCopy("en").groupAnnouncement("FNF") }]);
   });
 
   scenario("a Turkish club with only its players' group: the post in Turkish", async ({ pool, page }) => {
@@ -84,7 +87,7 @@ scenarios("switching the player pool on tells the club once", () => {
     await openPoolCardAsOwner(pool, page, ist);
     await flip(pool, page, ist, true);
     const sent = await pool.collect();
-    pool.expectSent(sent, [{ to: "ist.group", channel: "group", text: poolClubSwitchCopy("tr").groupAnnouncement("Kadıköy FC", linksIn(sent)) }]);
+    pool.expectSent(sent, [{ to: "ist.group", channel: "group", text: poolClubSwitchCopy("tr").groupAnnouncement("Kadıköy FC") }]);
   });
 
   scenario("a club with an admin group: the post goes to HQ only, nothing in the players' group", async ({ pool, page }) => {

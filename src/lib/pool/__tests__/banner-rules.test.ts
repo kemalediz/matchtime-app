@@ -1,15 +1,15 @@
 /**
  * The one-line player pool banner on every signed-in page (2026-10-28):
- * which banner, if any. Every gate: the page, the club pool (platform AND
- * club flag), his pool status, his two dismissals (and their columns not
- * being there yet), the share link, and the admin line.
+ * which banner, if any. Every gate: the page, his pool status, his two
+ * dismissals (and their columns not being there yet), the share link, and
+ * the admin line. Since 2026-11-06 his clubs are not a gate: any signed-in
+ * player gets it (the platform switch is the loader's, `banner.test.ts`).
  */
 import { describe, expect, it } from "vitest";
 import { poolBannerFor, poolBannerPathShown, type PoolBannerFacts } from "../banner-rules";
 
 const base: PoolBannerFacts = {
   dismissalsReadable: true,
-  memberOfOpenClub: true,
   poolStatus: null,
   joinDismissedAt: null,
   shareDismissedAt: null,
@@ -19,7 +19,7 @@ const base: PoolBannerFacts = {
 const at = new Date("2026-10-28T10:00:00Z");
 
 describe("which banner", () => {
-  it("a member of a club with the pool open, not in the pool: join", () => {
+  it("anyone signed in who is not in the pool: join (his clubs, and whether their pool is on, do not matter)", () => {
     expect(poolBannerFor(base)).toEqual({ kind: "join", adminLine: false });
   });
 
@@ -43,10 +43,13 @@ describe("which banner", () => {
 });
 
 describe("who never sees it", () => {
-  it("not a member of any club with the pool open (pool off for his club, the platform off, a guest, a pool-only profile)", () => {
-    expect(poolBannerFor({ ...base, memberOfOpenClub: false })).toBeNull();
-    expect(poolBannerFor({ ...base, memberOfOpenClub: false, poolStatus: "active", hasShareLink: true })).toBeNull();
-    expect(poolBannerFor({ ...base, memberOfOpenClub: false, adminOfOpenClubNotShared: true })).toBeNull();
+  it("the facts carry nothing about his clubs: the club gate is gone (2026-11-06)", () => {
+    expect(Object.keys(base).sort()).toEqual(["adminOfOpenClubNotShared", "dismissalsReadable", "hasShareLink", "joinDismissedAt", "poolStatus", "shareDismissedAt"]);
+  });
+
+  it("he left the pool (stopped): nothing, even with the admin line due", () => {
+    expect(poolBannerFor({ ...base, poolStatus: "stopped" })).toBeNull();
+    expect(poolBannerFor({ ...base, poolStatus: "stopped", adminOfOpenClubNotShared: true })).toBeNull();
   });
 
   it("the dismissal columns are not there yet (migration not applied): nothing", () => {

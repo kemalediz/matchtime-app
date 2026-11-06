@@ -1,25 +1,30 @@
 /**
  * THE PLAYER POOL BANNER, the pure rule (approved by Kemal 2026-10-28).
- * CLIENT-SAFE. One line at the top of every signed-in app page:
+ * CLIENT-SAFE. One line at the top of every signed-in app page, for ANY
+ * signed-in player, whatever his clubs and whether their pool is on
+ * (Kemal, 2026-11-06: "shown to all players regardless of whether they
+ * are already part of a club or whether that club is switched on"):
  *
- *   join    a member of a club with the pool open who is not in the pool
- *           yet (no profile, or a sign-up still waiting for its WhatsApp
- *           message): "Want more games? Join the MatchTime player pool."
+ *   join    not in the pool yet (no profile, or a sign-up still waiting
+ *           for its WhatsApp message): "Want more games? Join the
+ *           MatchTime player pool."
  *   share   in the pool (active or paused, the same rule as the "Bring a
  *           friend" card, `shareCardShown`): "Know someone who wants a
  *           game? Share your link."
  *
  * Nothing at all for:
- *   - somebody who is not an ordinary member of at least one club whose
- *     pool is open (the platform switch AND the club's flag,
- *     `poolOffersOpenForClub`): guests and pool-only profiles included;
+ *   - anyone while the pool as a whole is off (the platform switch,
+ *     `isPoolOffersEnabled`): the loader (`banner.ts`) stops before it
+ *     reads anything, so it is not a fact here;
  *   - somebody who left the pool ("stopped"): he withdrew his consent, so
  *     this page never asks him back;
  *   - the dismissal columns not readable (the migration not applied yet).
  *
  * "Not interested" is stored per banner on his user row, so dismissing
  * join and joining later still shows share once. The admin line ("Tell
- * your players about it") rides on whichever banner shows.
+ * your players about it") rides on whichever banner shows; unlike the
+ * banner it still needs his current club's pool open, because the share
+ * post it points at is that club's.
  */
 import type { PoolProfileStatus } from "./vocab";
 import { isPoolPage } from "./paths";
@@ -29,8 +34,6 @@ export type PoolBannerKind = "join" | "share";
 export interface PoolBannerFacts {
   /** Both dismissal columns could be read (false before the migration). */
   dismissalsReadable: boolean;
-  /** An ordinary, current member of at least one club with the pool open. */
-  memberOfOpenClub: boolean;
   /** His pool profile's status; null when he has none. */
   poolStatus: PoolProfileStatus | null;
   joinDismissedAt: Date | null;
@@ -48,7 +51,7 @@ export interface PoolBannerChoice {
 }
 
 export function poolBannerFor(f: PoolBannerFacts): PoolBannerChoice | null {
-  if (!f.dismissalsReadable || !f.memberOfOpenClub) return null;
+  if (!f.dismissalsReadable) return null;
   let kind: PoolBannerKind | null;
   if (f.poolStatus === "active" || f.poolStatus === "paused") kind = f.hasShareLink && !f.shareDismissedAt ? "share" : null;
   else if (f.poolStatus === "stopped") kind = null;

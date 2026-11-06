@@ -158,7 +158,7 @@ describe("a club with only its players' group: the announcement goes in that gro
   it("ONE players' group post with the how-to, in the club's language, claimed with its own key; NO admin DM at all", async () => {
     expect(await setClubPlayerPool("fnf", true, NOON)).toMatchObject({ ok: true, told: true });
     expect(channel.sendAdminNotice).not.toHaveBeenCalled();
-    expect(state.jobs).toEqual([{ orgId: "fnf", kind: "group", text: poolClubSwitchCopy("tr").groupAnnouncement("FNF", poolOnLinks()), sendAfter: null, aboutKey: "org-fnf:pool-club-on-group" }]);
+    expect(state.jobs).toEqual([{ orgId: "fnf", kind: "group", text: poolClubSwitchCopy("tr").groupAnnouncement("FNF"), sendAfter: null, aboutKey: "org-fnf:pool-club-on-group" }]);
     expect(state.jobs.filter((j) => j.kind === "dm")).toHaveLength(0);
     expect([...state.claims]).toEqual(["org-fnf:pool-club-on-group"]);
   });

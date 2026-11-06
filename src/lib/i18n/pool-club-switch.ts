@@ -29,8 +29,11 @@ export interface PoolClubSwitchCopy {
    *  group (HQ); "dm": sent to each owner and admin when it has none. */
   notice: (club: string, audience: "group" | "dm", links: PoolOnLinks) => string;
   /** The same news posted in the players' group of a club with no admin
-   *  group: everyone reads it, so it says only organisers can ask. */
-  groupAnnouncement: (club: string, links: PoolOnLinks) => string;
+   *  group: everyone reads it, so it explains the pool to everyone, how a
+   *  player joins it ("Play elsewhere too") and how an organiser asks it
+   *  (Kemal's text, 2026-11-06). No links: the settings cards are the
+   *  admins', and they are in the club's settings. */
+  groupAnnouncement: (club: string) => string;
   /** The settings card. */
   title: string;
   lead: string;

@@ -1,9 +1,10 @@
 /**
  * The player pool banner's loader (2026-10-28) with the database mocked:
- * the club gates (platform switch AND club flag, ordinary current
- * memberships only), the dismissal columns missing before the migration
- * (no banner, no crash), the share link, and the admin line for his
- * current club only.
+ * any signed-in player gets it whatever his clubs (2026-11-06), only the
+ * platform switch stops it, the dismissal columns missing before the
+ * migration (no banner, no crash), the share link, its language, and the
+ * admin line for his current club only, and only while that club's pool
+ * is open.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,7 +31,7 @@ import { dismissPoolBanner, loadPoolBanner } from "../banner";
 
 const OPEN = { MT_POOL_OPEN: "1" };
 const CLOSED = { MT_POOL_OPEN: "0" };
-const club = (orgId: string, role = "PLAYER", language = "en") => ({ orgId, role, org: { featurePlayerPool: true, language } });
+const club = (orgId: string, role = "PLAYER", language = "en", featurePlayerPool = true) => ({ orgId, role, org: { featurePlayerPool, language } });
 const SHARE = {
   url: "https://x/play?ref=AB",
   language: "en",
@@ -50,24 +51,50 @@ beforeEach(() => {
   h.executeRaw.mockResolvedValue(1);
 });
 
-describe("the club gates", () => {
-  it("reads only his ordinary, current memberships of clubs with the flag on", async () => {
+describe("who gets it: any signed-in player, only the platform switch stops it", () => {
+  it("reads his ordinary, current memberships, whatever their clubs' pool flag", async () => {
     await loadPoolBanner("me", { env: OPEN, currentOrgId: "org1" });
-    expect(h.membershipFindMany.mock.calls[0][0].where).toEqual({ userId: "me", leftAt: null, guestMatchId: null, org: { featurePlayerPool: true } });
+    expect(h.membershipFindMany.mock.calls[0][0].where).toEqual({ userId: "me", leftAt: null, guestMatchId: null });
   });
 
-  it("no club with the pool: nothing, and the dismissals are not even read", async () => {
+  it("no club at all: join, in English", async () => {
+    h.membershipFindMany.mockResolvedValue([]);
+    expect(await loadPoolBanner("me", { env: OPEN, currentOrgId: null })).toEqual({ kind: "join", language: "en", whatsApp: null, adminLine: false });
+  });
+
+  it("no club, a sign-up waiting for its WhatsApp message in Turkish: join, in his pool language", async () => {
+    h.membershipFindMany.mockResolvedValue([]);
+    h.poolProfileFindUnique.mockResolvedValue({ status: "pending-verify", language: "tr" });
+    expect(await loadPoolBanner("me", { env: OPEN, currentOrgId: null })).toEqual({ kind: "join", language: "tr", whatsApp: null, adminLine: false });
+  });
+
+  it("a member of a club whose pool is off: join, in the club's language", async () => {
+    h.membershipFindMany.mockResolvedValue([club("org1", "PLAYER", "tr", false)]);
+    expect(await loadPoolBanner("me", { env: OPEN, currentOrgId: "org1" })).toEqual({ kind: "join", language: "tr", whatsApp: null, adminLine: false });
+  });
+
+  it("in the pool, his club's pool off: share", async () => {
+    h.membershipFindMany.mockResolvedValue([club("org1", "PLAYER", "en", false)]);
+    h.poolProfileFindUnique.mockResolvedValue({ status: "active", language: "en" });
+    expect((await loadPoolBanner("me", { env: OPEN, currentOrgId: "org1" }))?.kind).toBe("share");
+  });
+
+  it("he left the pool (stopped): nothing, with or without a club", async () => {
+    h.poolProfileFindUnique.mockResolvedValue({ status: "stopped", language: "en" });
+    expect(await loadPoolBanner("me", { env: OPEN, currentOrgId: "org1" })).toBeNull();
     h.membershipFindMany.mockResolvedValue([]);
     expect(await loadPoolBanner("me", { env: OPEN, currentOrgId: null })).toBeNull();
-    expect(h.queryRaw).not.toHaveBeenCalled();
   });
 
-  it("the platform switch off: nothing", async () => {
+  it("the platform switch off: nothing, and nothing is even read", async () => {
     expect(await loadPoolBanner("me", { env: CLOSED, currentOrgId: "org1" })).toBeNull();
+    expect(h.membershipFindMany).not.toHaveBeenCalled();
+    expect(h.queryRaw).not.toHaveBeenCalled();
   });
 
   it("the platform switch unread (no key): nothing", async () => {
     expect(await loadPoolBanner("me", { env: {}, currentOrgId: "org1" })).toBeNull();
+    expect(h.queryRaw).not.toHaveBeenCalled();
   });
 });
 
@@ -90,13 +117,13 @@ describe("join and share", () => {
   });
 
   it("in the pool: share, with his own WhatsApp link in his pool language", async () => {
-    h.poolProfileFindUnique.mockResolvedValue({ status: "active" });
+    h.poolProfileFindUnique.mockResolvedValue({ status: "active", language: "en" });
     h.loadPoolShare.mockResolvedValue({ ...SHARE, language: "tr" });
     expect(await loadPoolBanner("me", { env: OPEN, currentOrgId: "org1" })).toEqual({ kind: "share", language: "tr", whatsApp: "https://wa.me/?text=tr", adminLine: false });
   });
 
   it("share dismissed: nothing, and no link is made", async () => {
-    h.poolProfileFindUnique.mockResolvedValue({ status: "active" });
+    h.poolProfileFindUnique.mockResolvedValue({ status: "active", language: "en" });
     h.queryRaw.mockResolvedValue([{ j: null, s: new Date() }]);
     expect(await loadPoolBanner("me", { env: OPEN, currentOrgId: "org1" })).toBeNull();
     expect(h.loadPoolShare).not.toHaveBeenCalled();
@@ -125,6 +152,12 @@ describe("the admin line", () => {
 
   it("a player: no line", async () => {
     expect((await loadPoolBanner("me", { env: OPEN, currentOrgId: "org1" }))?.adminLine).toBe(false);
+  });
+
+  it("owner of his current club whose pool is off: the banner, but no line (the share post needs the club's pool on)", async () => {
+    h.membershipFindMany.mockResolvedValue([club("org1", "OWNER", "en", false)]);
+    expect(await loadPoolBanner("me", { env: OPEN, currentOrgId: "org1" })).toEqual({ kind: "join", language: "en", whatsApp: null, adminLine: false });
+    expect(h.sentFindUnique).not.toHaveBeenCalled();
   });
 
   it("admin of an open club that is not his current club: no line (the link would open the wrong club)", async () => {
