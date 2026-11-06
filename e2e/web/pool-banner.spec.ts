@@ -4,8 +4,9 @@
  * pool" landing on the highlighted "Play elsewhere too" card), share once
  * he is in the pool (his own link in a wa.me message), "Not interested"
  * holding across a reload and on other pages (stored on his user row),
- * join dismissed then joining still shows share, hidden while the club's
- * pool or the platform is off and on public pages, the admin line, Turkish,
+ * join dismissed then joining still shows share, shown while the club's
+ * pool is off (any signed-in player gets it since 2026-11-06), hidden
+ * while the platform is off and on public pages, the admin line, Turkish,
  * and phone width. Solid blue and sticky under the top bar (2026-10-28):
  * it stays in view while a long page scrolls, at phone width and desktop.
  * Without a reload (2026-10-28): joining on the "Play elsewhere too" card
@@ -267,12 +268,17 @@ test("join dismissed, then he joins: the share banner still shows once; dismissi
   await expect(banner(page)).toHaveCount(0);
 });
 
-test("hidden while the club's pool is off, and while the platform is off", async ({ page, db }) => {
+test("shown while his club's pool is off (2026-11-06), with no admin line; hidden while the platform is off", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET "featurePlayerPool" = false WHERE id = $1`, [ORG_ID]);
   await signInAs(page, U.player, "/");
-  await page.waitForLoadState("networkidle");
-  await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({ timeout: 30_000 });
-  await expect(banner(page)).toHaveCount(0);
+  await expect(banner(page)).toHaveAttribute("data-kind", "join", { timeout: 30_000 });
+  await expect(banner(page).getByTestId("pool-banner-text")).toContainText(EN.join.text);
+
+  // The owner gets it too, but not "Tell your players about it": the
+  // share post needs his club's pool on.
+  await signInAs(page, U.admin, "/admin");
+  await expect(banner(page)).toHaveAttribute("data-kind", "join", { timeout: 30_000 });
+  await expect(banner(page).getByTestId("pool-banner-admin")).toHaveCount(0);
 
   await db.run(`UPDATE "Organisation" SET "featurePlayerPool" = true WHERE id = $1`, [ORG_ID]);
   await setPoolPlatform(db, false);

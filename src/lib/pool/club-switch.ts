@@ -66,8 +66,9 @@ export async function setClubPlayerPool(orgId: string, on: boolean, now: Date = 
 /** Rolls the claim back when the club's channel queued nothing. */
 class NobodyToTell extends Error {}
 
-/** The plain links to the settings cards the message names: a group post
- *  never carries a personal sign-in link, and the page asks for sign-in. */
+/** The plain links to the settings cards the admin team's message names:
+ *  an admin-group post never carries a personal sign-in link, and the page
+ *  asks for sign-in. The players' group announcement carries none. */
 export function poolOnLinks(): PoolOnLinks {
   return { autoAsk: appUrl(settingsAnchorPath("pool-auto-ask")), share: appUrl(settingsAnchorPath("pool-club-share")) };
 }
@@ -93,8 +94,9 @@ export async function tellClubPoolOn(orgId: string, now: Date): Promise<boolean>
 }
 
 /**
- * ONE post in the club's players' group, as the club's share post is
- * queued (`club-share.ts`): a `BotJob` of kind "group", held through the
+ * ONE post in the club's players' group, explaining the pool to everyone
+ * (`groupAnnouncement`, Kemal's text of 2026-11-06), queued as the club's
+ * share post is (`club-share.ts`): a `BotJob` of kind "group", held through the
  * club's quiet hours, carrying its claim's key. The claim and the post are
  * ONE transaction; a racing switch-on loses on the key and writes nothing.
  */
@@ -105,7 +107,7 @@ async function tellPlayersGroupPoolOn(
 ): Promise<boolean> {
   const key = poolOnGroupKey(orgId);
   if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) return false;
-  const text = poolClubSwitchCopy(org.language).groupAnnouncement(org.name, poolOnLinks());
+  const text = poolClubSwitchCopy(org.language).groupAnnouncement(org.name);
   const sendAfter = messageHoursSendAfter(now, quietHoursOf(org));
   try {
     const queued = await db.$transaction(async (tx) => {

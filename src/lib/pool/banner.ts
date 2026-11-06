@@ -3,11 +3,14 @@
  * (2026-10-28). Every call is for the SIGNED-IN person (the caller passes
  * the session's user id).
  *
- *   loadPoolBanner     the facts for his banner, then the rule: his clubs
- *                      with the pool open (as this request resolved the
- *                      platform switch), his pool profile, his two
- *                      dismissals, his share link, and whether his current
- *                      club still has to tell its players
+ *   loadPoolBanner     the facts for his banner, then the rule. Nothing
+ *                      while the platform switch is off (as this request
+ *                      resolved it); otherwise ANY signed-in player, with
+ *                      or without a club, whatever his clubs' pool flag
+ *                      (2026-11-06): his pool profile, his two dismissals,
+ *                      his share link, and whether his current club (pool
+ *                      open, he is its owner or admin) still has to tell
+ *                      its players. His clubs only pick the language
  *   dismissPoolBanner  "Not interested" on one banner, for good
  *
  * The dismissals are two columns on "User" that the Prisma client ignores
@@ -19,7 +22,7 @@
 import { db } from "../db";
 import { normaliseLang, type Lang } from "../i18n/lang";
 import { clubShareKey } from "./club-share-rules";
-import { poolOffersOpenForClub } from "./flags";
+import { isPoolOffersEnabled, poolOffersOpenForClub } from "./flags";
 import { loadPoolShare } from "./growth";
 import { poolBannerFor, type PoolBannerKind } from "./banner-rules";
 import type { PoolProfileStatus } from "./vocab";
@@ -55,34 +58,36 @@ export async function readPoolBannerDismissals(userId: string): Promise<Dismissa
 }
 
 export async function loadPoolBanner(userId: string, opts: { env: Env; currentOrgId: string | null }): Promise<PoolBannerView | null> {
-  const memberships = await db.membership.findMany({
-    where: { userId, leftAt: null, guestMatchId: null, org: { featurePlayerPool: true } },
-    orderBy: { createdAt: "asc" },
-    select: { orgId: true, role: true, org: { select: { featurePlayerPool: true, language: true } } },
-  });
-  const open = memberships.filter((m) => poolOffersOpenForClub(m.org, opts.env));
-  if (open.length === 0) return null;
+  // The pool as a whole off (or the switch unread): nobody, nothing read.
+  if (!isPoolOffersEnabled(opts.env)) return null;
 
   const dismissals = await readPoolBannerDismissals(userId);
   if (!dismissals) return null;
 
-  const profile = await db.poolProfile.findUnique({ where: { userId }, select: { status: true } });
+  // His ordinary, current clubs, whatever their pool flag: for the
+  // banner's language and the admin line only, never a gate.
+  const memberships = await db.membership.findMany({
+    where: { userId, leftAt: null, guestMatchId: null },
+    orderBy: { createdAt: "asc" },
+    select: { orgId: true, role: true, org: { select: { featurePlayerPool: true, language: true } } },
+  });
+  const profile = await db.poolProfile.findUnique({ where: { userId }, select: { status: true, language: true } });
   const poolStatus = (profile?.status as PoolProfileStatus | undefined) ?? null;
   const inPool = poolStatus === "active" || poolStatus === "paused";
   const share = inPool && !dismissals.share ? await loadPoolShare(userId) : null;
 
   // The admin line: only his CURRENT club, so the link to its settings
-  // opens the right club.
-  const current = open.find((m) => m.orgId === opts.currentOrgId) ?? null;
+  // opens the right club, and only while that club's pool is open (the
+  // share post it points at is the club's).
+  const current = memberships.find((m) => m.orgId === opts.currentOrgId) ?? null;
   let adminOfOpenClubNotShared = false;
-  if (current && (current.role === "OWNER" || current.role === "ADMIN")) {
+  if (current && (current.role === "OWNER" || current.role === "ADMIN") && poolOffersOpenForClub(current.org, opts.env)) {
     const sent = await db.sentNotification.findUnique({ where: { key: clubShareKey(current.orgId) }, select: { key: true } });
     adminOfOpenClubNotShared = !sent;
   }
 
   const choice = poolBannerFor({
     dismissalsReadable: true,
-    memberOfOpenClub: true,
     poolStatus,
     joinDismissedAt: dismissals.join,
     shareDismissedAt: dismissals.share,
@@ -90,7 +95,10 @@ export async function loadPoolBanner(userId: string, opts: { env: Env; currentOr
     adminOfOpenClubNotShared,
   });
   if (!choice) return null;
-  const language = choice.kind === "share" && share ? share.language : normaliseLang((current ?? open[0]).org.language);
+  // share: his pool language. join: his current club's, else his first
+  // club's, else (no club) his waiting sign-up's, else English.
+  const club = current ?? memberships[0] ?? null;
+  const language = choice.kind === "share" && share ? share.language : normaliseLang(club?.org.language ?? profile?.language);
   return {
     kind: choice.kind,
     language,
