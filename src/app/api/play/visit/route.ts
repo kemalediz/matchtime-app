@@ -9,8 +9,9 @@
  * "opened" (or missing) or "started", the two only the browser sees; "sent"
  * and "confirmed" are counted by the server where they happen, so a body
  * naming them counts nothing (`readPoolPageStep`). The user agent decides
- * only whether this is a link preview fetcher (`recordPoolVisit`), and is
- * never stored.
+ * whether this is a link preview fetcher (`recordPoolVisit`) and is written
+ * to the server log once per beacon to identify scanners (2026-11-06); it
+ * is never stored.
  */
 import { after } from "next/server";
 import { readSignupSource } from "@/lib/pool/profile-fields";

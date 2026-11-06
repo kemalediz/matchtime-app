@@ -10,8 +10,12 @@
  * about the person is kept:
  *   opened     the page loaded in a browser (the page's beacon, once per
  *              tab session);
- *   started    the first focus, change or tap in the form (the beacon too,
- *              once per tab session);
+ *   started    the first time a person enters something in the form: a
+ *              trusted input or change that really changed a field, such
+ *              as typing a character or ticking a box; focus alone or a
+ *              bare click does not count (since 2026-11-06, after a
+ *              scanner focused the form; `app/play/funnel-start.ts`). The
+ *              beacon too, once per tab session;
  *   sent       the form sent: a waiting sign-up made (`signup.ts`, on the
  *              server, never from the page);
  *   confirmed  his WhatsApp message made it active (`confirm.ts`, the
@@ -23,7 +27,10 @@
  * WHAT COUNTS AS A PERSON. A link preview fetcher (Facebook, Nextdoor,
  * WhatsApp, X) reads the HTML and runs no script, so it never sends the
  * beacon; the user-agent check below is the second guard, for fetchers and
- * scripted browsers that do run script.
+ * scripted browsers that do run script. A scanner that runs script under a
+ * browser's user agent still counts as opened, but it no longer counts as
+ * started unless it really enters something, and every beacon's user agent
+ * is logged on the server (`visits.ts`) so such a scanner can be named.
  */
 import { formatInTimeZone } from "date-fns-tz";
 import { isLinkPreviewFetcher } from "../link-preview-fetchers";

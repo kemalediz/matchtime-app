@@ -20,6 +20,8 @@ vi.mock("../../db", () => dbMock);
 import { recordPoolSignupConfirmed, recordPoolSignupSent, recordPoolVisit } from "../visits";
 import { POOL_VISIT_DIRECT, POOL_VISIT_REFERRAL } from "../visit-rules";
 
+const info = vi.spyOn(console, "info").mockImplementation(() => {});
+
 const PERSON = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
 const NOW = new Date("2026-11-03T12:00:00Z");
 
@@ -96,6 +98,48 @@ describe("recordPoolVisit: the page's steps, opened and started", () => {
     expect(warn).toHaveBeenCalledTimes(2);
     expect(String(warn.mock.calls[0][0])).toContain("[pool-funnel]");
     warn.mockRestore();
+  });
+});
+
+describe("recordPoolVisit: one server log line per beacon, to identify scanners (2026-11-06)", () => {
+  const lines = () => info.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("[pool-funnel] beacon "));
+
+  it("counted: the step, the code as sent, the bucket and the raw user agent, quoted", async () => {
+    await recordPoolVisit({ source: { campaignCode: "fb-sutton", referralCode: null }, userAgent: PERSON, now: NOW, step: "started" });
+    expect(lines()).toEqual([`[pool-funnel] beacon step=started code=fb-sutton ref=no result=counted bucket=fb-sutton ua=${JSON.stringify(PERSON)}`]);
+  });
+
+  it("a link preview fetcher: filtered, with its user agent, and nothing written", async () => {
+    await recordPoolVisit({ source: { campaignCode: "fb", referralCode: null }, userAgent: "facebookexternalhit/1.1", now: NOW });
+    expect(lines()).toEqual(['[pool-funnel] beacon step=opened code=fb ref=no result=fetcher bucket=- ua="facebookexternalhit/1.1"']);
+    expect(dbMock.db.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("no user agent at all, plain /play: filtered, ua=none", async () => {
+    await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: null, now: NOW });
+    expect(lines()).toEqual(["[pool-funnel] beacon step=opened code=- ref=no result=fetcher bucket=- ua=none"]);
+  });
+
+  it("a friend's link logs that there was a share code, never the code itself", async () => {
+    await recordPoolVisit({ source: { campaignCode: null, referralCode: "AB12cd" }, userAgent: PERSON, now: NOW });
+    expect(lines()).toHaveLength(1);
+    expect(lines()[0]).toContain("ref=yes result=counted bucket=_referral");
+    expect(lines()[0]).not.toContain("AB12cd");
+  });
+
+  it("a failure is logged as failed, still with its user agent", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    dbMock.db.$executeRaw.mockRejectedValue(new Error("pool down"));
+    await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: PERSON, now: NOW });
+    expect(lines()).toEqual([`[pool-funnel] beacon step=opened code=- ref=no result=failed bucket=- ua=${JSON.stringify(PERSON)}`]);
+    warn.mockRestore();
+  });
+
+  it("a user agent with quotes or a line break stays on one line", async () => {
+    await recordPoolVisit({ source: { campaignCode: null, referralCode: null }, userAgent: 'Evil "x"\nnext', now: NOW });
+    expect(lines()).toHaveLength(1);
+    expect(lines()[0]).not.toContain("\n");
+    expect(lines()[0]).toContain('ua="Evil \\"x\\"\\nnext"');
   });
 });
 

@@ -1,9 +1,10 @@
 /**
  * The /play sign-up funnel (2026-11-04), end to end on the real dev server:
  *   - opening /play counts "opened" once per tab session (as since
- *     2026-11-03), and the first focus inside the form counts "started"
- *     once per tab session, under the same code; a click outside the form
- *     counts nothing;
+ *     2026-11-03), and the first time a person enters something in the
+ *     form (types a character, ticks a box) counts "started" once per tab
+ *     session, under the same code; focus, clicks and a script's synthetic
+ *     events count nothing (2026-11-06, after a scanner);
  *   - a fetcher calling the beacon counts nothing, and a page claiming the
  *     server's steps (sent, confirmed) counts nothing;
  *   - the owner's source codes page shows opened, started, sent and
@@ -38,35 +39,50 @@ test.describe("the page's steps", () => {
     await db.run(`INSERT INTO "PoolCampaign" (code, source, label) VALUES ($1, 'facebook', 'Funnel web e2e') ON CONFLICT DO NOTHING`, [CODE]);
   });
 
-  test("opened on load; started on the first focus in the form, once; nothing for a click outside it", async ({ page, db }) => {
+  test("opened on load; started only once a person types, once; nothing for focus, clicks or a script's events", async ({ page, db }) => {
     await db.run(`DELETE FROM "PoolCampaignVisit" WHERE code = $1`, [CODE]);
     await page.goto(`/play?src=${CODE}`);
     await expect.poll(() => count(db, CODE, "opened"), { timeout: 15_000 }).toBe(1);
 
+    const form = page.locator("form");
+    const name = form.locator("input[name=name]");
+    // What the 6 November 2026 scanner did: a click outside the form, focus and clicks on its fields and its submit.
     await page.getByRole("heading", { level: 1 }).click();
+    await name.focus();
+    await name.click();
+    await form.locator("input[name=district]").click();
+    // A script's own events (untrusted), even ones that change a value: a typed-in name and a ticked day.
+    await page.evaluate(() => {
+      const field = document.querySelector<HTMLInputElement>("form input[name=district]")!;
+      field.value = "SM1";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+      document.querySelector<HTMLInputElement>("form input[type=checkbox]")!.click();
+    });
     await settle();
     expect(await count(db, CODE, "started")).toBe(0);
 
-    const form = page.locator("form");
-    await form.locator("input, select, textarea").first().focus();
+    // A person types one character: started.
+    await name.pressSequentially("S");
     await expect.poll(() => count(db, CODE, "started"), { timeout: 15_000 }).toBe(1);
 
-    // More typing, another field, a reload and a fresh focus: the same tab session, so still one.
-    await form.locator("input[type=text], input:not([type])").first().fill("Someone");
-    await form.locator("input, select, textarea").nth(1).focus();
+    // More typing, a tick, a reload and more typing: the same tab session, so still one.
+    await name.pressSequentially("omeone");
+    await form.locator("input[type=checkbox]").first().click();
     await page.reload();
-    await page.locator("form").locator("input, select, textarea").first().focus();
+    await page.locator("form input[name=district]").pressSequentially("SM");
     await page.waitForLoadState("networkidle");
     await settle();
     expect(await count(db, CODE, "started")).toBe(1);
     expect(await count(db, CODE, "opened")).toBe(1);
   });
 
-  test("a new tab session counts both steps again", async ({ browser, db }) => {
+  test("a new tab session counts both steps again; ticking a box is entering something", async ({ browser, db }) => {
     const context = await browser.newContext({ userAgent: PERSON, locale: "en-GB" });
     const page = await context.newPage();
     await page.goto(`/play?src=${CODE}`);
-    await page.locator("form").locator("input, select, textarea").first().focus();
+    await expect.poll(() => count(db, CODE, "opened"), { timeout: 15_000 }).toBe(2);
+    await page.locator("form input[type=checkbox]").first().click();
     await expect.poll(() => count(db, CODE, "started"), { timeout: 15_000 }).toBe(2);
     expect(await count(db, CODE, "opened")).toBe(2);
     await context.close();

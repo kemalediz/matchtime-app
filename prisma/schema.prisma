@@ -3678,8 +3678,10 @@ model PoolCampaign {
 
 /// The /play sign-up funnel, per bucket, London day and step (visits
 /// 2026-11-03, every step 2026-11-04, src/lib/pool/visits.ts). `step` is
-/// "opened", "started" (the page's beacon), "sent" (the waiting sign-up
-/// made) or "confirmed" (his WhatsApp message made it active); rows from
+/// "opened", "started" (the page's beacon; since 2026-11-06 only when a
+/// person really enters something, not on focus or a click), "sent" (the
+/// waiting sign-up made) or "confirmed" (his WhatsApp message made it
+/// active); rows from
 /// before the steps are "opened". `code` is a campaign code, or "_direct"
 /// (/play with no live code) or "_referral" (a friend's ?ref= link): the
 /// same buckets as the sign-ups, so the owner page compares like for like.

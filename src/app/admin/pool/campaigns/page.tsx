@@ -133,10 +133,10 @@ export default async function PoolCampaignsPage({ searchParams }: { searchParams
           A friend&apos;s personal link counts as a referral, not here.
         </p>
         <p className="mt-1 max-w-2xl text-sm text-slate-600">
-          Each sign-up has four steps: opened the page in a browser, started the form (the first tap in it), sent the form, and confirmed by sending the WhatsApp
-          message. Opened and started count once per visit, and link previews (Facebook, Nextdoor, WhatsApp, X) never count. Each step counts on the day it
-          happened, so someone who opened yesterday and sent today counts on both days. Opened was first counted on 3 November 2026, the other steps on 4
-          November 2026.
+          Each sign-up has four steps: opened the page in a browser, started the form (typed in it or ticked a box), sent the form, and confirmed by
+          sending the WhatsApp message. Opened and started count once per visit, and link previews (Facebook, Nextdoor, WhatsApp, X) never count. Each step
+          counts on the day it happened, so someone who opened yesterday and sent today counts on both days. Opened was first counted on 3 November 2026, the
+          other steps on 4 November 2026. Until 6 November 2026 started also counted a tap or click in the form, so a scanner could count there.
         </p>
       </div>
 
