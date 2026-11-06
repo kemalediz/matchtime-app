@@ -4,7 +4,12 @@
  * The /play page's two funnel steps (visits 2026-11-03, steps 2026-11-04),
  * to POST /api/play/visit, each once per tab session for the same link:
  *   opened   once the page has loaded;
- *   started  on the first focus, change or tap inside the form.
+ *   started  once a person first ENTERS something in the form (2026-11-06):
+ *            the first trusted input or change on a form control that
+ *            really changed its value, such as typing a character, picking
+ *            a day or ticking a box. Focus alone, a bare click and a
+ *            script's synthetic event count nothing (`funnel-start.ts`,
+ *            which says why: a scanner on 6 November 2026).
  * Sent and confirmed are counted by the server where they happen
  * (`src/lib/pool/visits.ts`), never from here.
  *
@@ -15,11 +20,9 @@
  * it does can break the page.
  */
 import { useEffect, useRef, type ReactNode, type SyntheticEvent } from "react";
+import { funnelControlValue, isPersonEntry } from "./funnel-start";
 
 const ENDPOINT = "/api/play/visit";
-
-/** What a tap on counts as touching the form (Safari focuses no button on a tap). */
-const CONTROL = "input, select, textarea, button, label, [role='button'], [role='checkbox'], [role='radio'], [role='switch']";
 
 function send(step: "opened" | "started", src: string | null, refCode: string | null) {
   try {
@@ -44,17 +47,28 @@ export function PoolFunnelBeacon({ src, refCode, children }: { src: string | nul
   useEffect(() => send("opened", src, refCode), [src, refCode]);
 
   const started = useRef(false);
-  const touched = (e: SyntheticEvent) => {
+  /** What each control held when first focused, to tell a real change. Only read, never written back. */
+  const before = useRef(new WeakMap<object, string>());
+  /** The latest click and whether a person made it: a tick box counts only when its click was a person's. */
+  const lastClick = useRef<{ target: EventTarget; trusted: boolean } | null>(null);
+  const focused = (e: SyntheticEvent) => {
+    if (started.current || before.current.has(e.target)) return;
+    const value = funnelControlValue(e.target);
+    if (value !== null) before.current.set(e.target, value);
+  };
+  const clicked = (e: SyntheticEvent) => {
+    if (!started.current) lastClick.current = { target: e.target, trusted: e.nativeEvent.isTrusted };
+  };
+  const entered = (e: SyntheticEvent) => {
     if (started.current) return;
-    const target = e.target instanceof Element ? e.target : null;
-    if (!target?.closest("form")) return;
-    if (e.type === "click" && !target.closest(CONTROL)) return;
+    const click = lastClick.current?.target === e.target ? lastClick.current.trusted : undefined;
+    if (!isPersonEntry({ type: e.type, isTrusted: e.nativeEvent.isTrusted, target: e.target }, { before: before.current.get(e.target), clickTrusted: click })) return;
     started.current = true;
     send("started", src, refCode);
   };
 
   return (
-    <div className="contents" onFocusCapture={touched} onChangeCapture={touched} onClickCapture={touched}>
+    <div className="contents" onFocusCapture={focused} onClickCapture={clicked} onInputCapture={entered} onChangeCapture={entered}>
       {children}
     </div>
   );

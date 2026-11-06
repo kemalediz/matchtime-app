@@ -15,7 +15,8 @@
  *
  * PRIVACY. Stored: the bucket (a campaign code, "_direct" or "_referral"),
  * the London day, the step and a count. No id, no address, no user agent:
- * the user agent is read only to skip link preview fetchers.
+ * the user agent is read to skip link preview fetchers, and written to the
+ * server log with each page step (`logBeacon`, 2026-11-06), never stored.
  */
 import { db } from "../db";
 import {
@@ -36,6 +37,29 @@ async function countStep(code: string, step: PoolFunnelStep, now: Date): Promise
 
 const warn = (step: string, err: unknown) => console.warn(`[pool-funnel] ${step} not counted:`, err instanceof Error ? err.message : err);
 
+/**
+ * One server log line per beacon, there to identify scanners (Kemal,
+ * 2026-11-06: a scanner made 17 opened and 17 started for "fb" in 34
+ * seconds and its user agent got past the fetcher check, unrecorded). The
+ * raw user agent goes to the log only, never the database; no address, and
+ * a friend's share code only as ref=yes. The user agent is JSON-quoted, so
+ * it stays one line whatever it holds.
+ *   [pool-funnel] beacon step=started code=fb ref=no result=counted bucket=fb ua="Mozilla/5.0 ..."
+ * `result` is counted, fetcher (filtered, nothing written) or failed.
+ */
+function logBeacon(
+  step: PoolPageStep,
+  source: { campaignCode: string | null; referralCode: string | null },
+  result: "counted" | "fetcher" | "failed",
+  bucket: string | null,
+  userAgent: string | null,
+): void {
+  const ua = userAgent === null ? "none" : JSON.stringify(userAgent);
+  console.info(
+    `[pool-funnel] beacon step=${step} code=${source.campaignCode ?? "-"} ref=${source.referralCode ? "yes" : "no"} result=${result} bucket=${bucket ?? "-"} ua=${ua}`,
+  );
+}
+
 /** A page step (opened, started). The bucket counted, or null when nothing
  *  was (a fetcher, or a failure). */
 export async function recordPoolVisit(a: {
@@ -45,7 +69,10 @@ export async function recordPoolVisit(a: {
   step?: PoolPageStep;
 }): Promise<string | null> {
   const step = a.step ?? "opened";
-  if (isLinkPreviewFetcher(a.userAgent)) return null;
+  if (isLinkPreviewFetcher(a.userAgent)) {
+    logBeacon(step, a.source, "fetcher", null, a.userAgent);
+    return null;
+  }
   try {
     const referralLive = a.source.referralCode
       ? !!(await db.poolProfile.findUnique({ where: { shareCode: a.source.referralCode }, select: { userId: true } }))?.userId
@@ -56,9 +83,11 @@ export async function recordPoolVisit(a: {
         : false;
     const code = poolVisitBucket(a.source, { campaignLive, referralLive });
     await countStep(code, step, a.now);
+    logBeacon(step, a.source, "counted", code, a.userAgent);
     return code;
   } catch (err) {
     warn(step, err);
+    logBeacon(step, a.source, "failed", null, a.userAgent);
     return null;
   }
 }
