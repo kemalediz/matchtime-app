@@ -68,6 +68,13 @@ export const metadata: Metadata = {
   alternates: {
     canonical: SITE_URL,
   },
+  // Meta Business domain verification for matchtime.ai (2026-11-07). The
+  // value is public by design: Meta reads it from <head> on the home page.
+  verification: {
+    other: {
+      "facebook-domain-verification": "oaxbhekv080zxhiaamw3mqz86tu6mm",
+    },
+  },
 };
 
 export default function RootLayout({
