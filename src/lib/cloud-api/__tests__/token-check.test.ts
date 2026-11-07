@@ -159,10 +159,9 @@ describe("checkAccessToken: can the token see the official number", () => {
     );
     const r = await checkAccessToken({ fetch: s.fetch, env: ENV });
     expect(r.phone).toEqual({ state: "ok", id: "555000111", displayPhoneNumber: "+44 7700 900000", verifiedName: "MatchTime" });
-    const call = s.calls.find((c) => !c.url.includes("/debug_token"))!;
+    const call = s.calls.find((c) => new URL(c.url).searchParams.get("fields") === "id,display_phone_number,verified_name")!;
     const u = new URL(call.url);
     expect(u.pathname).toBe("/v26.0/555000111");
-    expect(u.searchParams.get("fields")).toBe("id,display_phone_number,verified_name");
     expect(u.searchParams.has("access_token")).toBe(false);
     expect((call.init?.headers as Record<string, string>).Authorization).toBe(`Bearer ${TOKEN}`);
   });
@@ -200,7 +199,7 @@ describe("checkAccessToken: can the token see the official number", () => {
     );
     const r = await checkAccessToken({ fetch: s.fetch, env: { ...ENV, WA_CLOUD_PHONE_NUMBER_ID: "" } });
     expect(r.phone).toEqual({ state: "skipped", reason: expect.stringContaining("WA_CLOUD_PHONE_NUMBER_ID") });
-    expect(s.calls.length).toBe(1);
+    expect(s.calls.some((c) => new URL(c.url).pathname.endsWith("/555000111"))).toBe(false);
   });
 
   it("calls nobody at all when the access token is missing", async () => {
@@ -241,7 +240,7 @@ describe("checkAccessToken: the settings, never their values", () => {
     );
     const r = await checkAccessToken({ fetch: s.fetch, env: { ...ENV, WA_CLOUD_ACCESS_TOKEN: `${TOKEN}\n` } });
     expect(r.token).toEqual({ outerWhitespace: true, newline: true });
-    expect(new URL(s.calls[0].url).searchParams.get("input_token")).toBe(TOKEN);
+    expect(new URL(s.calls.find((c) => c.url.includes("/debug_token"))!.url).searchParams.get("input_token")).toBe(TOKEN);
 
     const lead = await checkAccessToken({ fetch: s.fetch, env: { ...ENV, WA_CLOUD_ACCESS_TOKEN: ` ${TOKEN}` } });
     expect(lead.token).toEqual({ outerWhitespace: true, newline: false });

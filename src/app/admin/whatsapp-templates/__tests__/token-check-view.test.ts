@@ -47,6 +47,46 @@ const OK: TokenCheck = {
     },
   },
   phone: { state: "error", message: "HTTP 400 100: Unsupported get request." },
+  probes: [
+    {
+      id: "waba-templates",
+      label: "The account's templates",
+      version: "v27.0",
+      path: "/1566680795216924/message_templates?limit=1&fields=name,status",
+      outcome: {
+        state: "error",
+        error: {
+          status: 400,
+          code: 100,
+          subcode: 33,
+          type: "GraphMethodException",
+          fbtraceId: "AbCdEf123",
+          message: "Unsupported get request. Object with ID '1566680795216924' does not exist",
+        },
+      },
+    },
+    {
+      id: "me",
+      label: "The token's user",
+      version: "v26.0",
+      path: "/me?fields=id,name",
+      outcome: { state: "ok", status: 200, result: '{"id":"122100000000000001","name":"MatchTime System User"}' },
+    },
+    {
+      id: "waba-subscribed-apps",
+      label: "Apps subscribed to the account",
+      version: "v26.0",
+      path: "/1566680795216924/subscribed_apps",
+      outcome: { state: "ok", status: 200, result: '{"data":[]}', note: "WA_CLOUD_APP_ID subscribed: no" },
+    },
+    {
+      id: "phone-waba",
+      label: "The number's account",
+      version: "v26.0",
+      path: "/555000111?fields=id,whatsapp_business_account",
+      outcome: { state: "skipped", reason: "WA_CLOUD_PHONE_NUMBER_ID is not set" },
+    },
+  ],
 };
 
 describe("TokenCheckView", () => {
@@ -93,5 +133,23 @@ describe("TokenCheckView", () => {
     const check: TokenCheck = { ...OK, debug: { state: "error", message: "HTTP 400 190: Invalid OAuth access token signature." } };
     const t = text(renderToStaticMarkup(createElement(TokenCheckView, { check })));
     expect(t).toContain("Invalid OAuth access token signature.");
+  });
+
+  it("shows each probe in one table: probe, version, ok or error, and Meta's error fields or the answer", () => {
+    const html = renderToStaticMarkup(createElement(TokenCheckView, { check: OK }));
+    const t = text(html);
+    expect(html).toContain('data-testid="wt-token-probes"');
+    expect(t).toMatch(/Probe\s+Version\s+Outcome\s+Result or Meta's error/);
+    expect(t).toMatch(/The account's templates \/1566680795216924\/message_templates\?limit=1&fields=name,status\s+v27\.0\s+error/);
+    expect(t).toContain("HTTP 400");
+    expect(t).toContain("code 100");
+    expect(t).toContain("subcode 33");
+    expect(t).toContain("type GraphMethodException");
+    expect(t).toContain("fbtrace_id AbCdEf123");
+    expect(t).toContain("Object with ID '1566680795216924' does not exist");
+    expect(t).toMatch(/The token's user \/me\?fields=id,name\s+v26\.0\s+ok/);
+    expect(t).toContain('{"id":"122100000000000001","name":"MatchTime System User"}');
+    expect(t).toContain("WA_CLOUD_APP_ID subscribed: no");
+    expect(t).toMatch(/v26\.0\s+skipped\s+WA_CLOUD_PHONE_NUMBER_ID is not set/);
   });
 });

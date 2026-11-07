@@ -29,6 +29,7 @@ const tokenCheck = vi.hoisted(() => ({
     env: [],
     debug: { state: "skipped", reason: "WA_CLOUD_ACCESS_TOKEN is not set" },
     phone: { state: "skipped", reason: "WA_CLOUD_ACCESS_TOKEN is not set" },
+    probes: [],
   })),
 }));
 vi.mock("@/lib/cloud-api/token-check", () => tokenCheck);

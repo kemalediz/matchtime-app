@@ -2,10 +2,12 @@
  * The owner page's "Access token check", shown from a `TokenCheck`
  * (`src/lib/cloud-api/token-check.ts`), which never carries a secret: what
  * Meta's debug_token says about the access token, whether the token can see
- * the official number, and which settings are present (length only). No
+ * the official number, the read-only probes (one row per probe and Graph
+ * version, Meta's error fields or the answer), and which settings are
+ * present (length only). No
  * hooks. English only, as the rest of the owner's pages.
  */
-import type { TokenCheck } from "@/lib/cloud-api/token-check";
+import type { Probe, ProbeError, TokenCheck } from "@/lib/cloud-api/token-check";
 
 const TH = "px-3 py-2 text-left font-medium text-slate-600";
 const TD = "px-3 py-2 align-top text-slate-800";
@@ -31,6 +33,60 @@ function Rows({ rows, testId }: { rows: [string, string][]; testId: string }) {
               <td className={`${TD} break-all font-mono`}>{v}</td>
             </tr>
           ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Meta's error fields on one line: status, code, subcode, type, fbtrace_id, then the message. */
+function probeErrorText(e: ProbeError): string {
+  const parts = [
+    e.status !== null ? `HTTP ${e.status}` : "no HTTP answer",
+    e.code !== null && `code ${e.code}`,
+    e.subcode !== null && `subcode ${e.subcode}`,
+    e.type && `type ${e.type}`,
+    e.fbtraceId && `fbtrace_id ${e.fbtraceId}`,
+  ].filter(Boolean);
+  return `${parts.join(", ")}: ${e.message}`;
+}
+
+function Probes({ probes }: { probes: Probe[] }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <table className="min-w-full text-sm" data-testid="wt-token-probes">
+        <thead className="bg-slate-50">
+          <tr>
+            <th className={TH}>Probe</th>
+            <th className={TH}>Version</th>
+            <th className={TH}>Outcome</th>
+            <th className={TH}>Result or Meta&apos;s error</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {probes.map((p) => {
+            const o = p.outcome;
+            return (
+              <tr key={`${p.id}@${p.version}`} data-testid="wt-probe" data-probe={p.id} data-version={p.version}>
+                <td className={TD}>
+                  <div>{p.label}</div>
+                  <div className="break-all font-mono text-xs text-slate-500">{p.path}</div>
+                </td>
+                <td className={`${TD} font-mono`}>{p.version}</td>
+                <td className={`${TD} ${o.state === "error" ? "text-red-700" : o.state === "ok" ? "text-emerald-700" : ""}`}>{o.state}</td>
+                <td className={`${TD} break-all font-mono text-xs`}>
+                  {o.state === "skipped" && o.reason}
+                  {o.state === "error" && <span className="text-red-700">{probeErrorText(o.error)}</span>}
+                  {o.state === "ok" && (
+                    <>
+                      {o.note && <div className="font-sans text-sm font-medium">{o.note}</div>}
+                      <div>{o.result}</div>
+                    </>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -100,6 +156,14 @@ export function TokenCheckView({ check }: { check: TokenCheck }) {
             ]}
           />
         )}
+      </div>
+
+      <div className="space-y-2">
+        <h4 className="font-medium text-slate-900">Probes, read with the token (GET only)</h4>
+        <p className="max-w-2xl text-sm text-slate-600">
+          Each asked on Graph {check.graphVersion} and, where it can differ, on v27.0. An error shows Meta&apos;s own fields as it gave them.
+        </p>
+        <Probes probes={check.probes ?? []} />
       </div>
 
       <div className="space-y-2">
