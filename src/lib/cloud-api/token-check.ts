@@ -12,9 +12,17 @@
  *   - `GET /<WA_CLOUD_PHONE_NUMBER_ID>?fields=id,display_phone_number,
  *     verified_name` with the access token: can it see the number at all;
  *   - which settings are present (yes or no, and length only), and whether
- *     the token has whitespace or a newline around it.
+ *     the token has whitespace or a newline around it;
+ *   - the PROBES: more GETs with the access token, each on the configured
+ *     version and, where it helps, on v27.0 (`PROBE_NEWER_GRAPH_VERSION`):
+ *     the account (`/<WABA>?fields=...`), its numbers, its templates (the
+ *     failing call, on v27.0), its subscribed apps, the number's own
+ *     account field, and the token's user (`/me`). Each shows Meta's
+ *     status, code, subcode, type, fbtrace_id and message, or the answer
+ *     (paging links dropped, capped in length).
  *
- * GET only, on the template sync's Graph version. Nothing secret comes
+ * GET only, on the template sync's Graph version (and v27.0 for the
+ * probes). Nothing secret comes
  * back: every string in the result is scrubbed of the token, the app secret
  * and the app token, and nothing is logged. `fetch` defaults to the real one
  * (server only), and the real one is refused inside a test run.
@@ -68,12 +76,43 @@ export interface TokenInfo {
 
 type Step<T> = { state: "skipped"; reason: string } | { state: "error"; message: string } | ({ state: "ok" } & T);
 
+/** The newer Graph version every probe that can differ by version is also asked on. */
+export const PROBE_NEWER_GRAPH_VERSION = "v27.0";
+/** The longest answer a probe shows, so the table stays readable. */
+const PROBE_RESULT_MAX = 1000;
+
+/** Meta's error, field by field. `status` null: no HTTP answer at all. */
+export interface ProbeError {
+  status: number | null;
+  code: number | null;
+  subcode: number | null;
+  type: string | null;
+  fbtraceId: string | null;
+  message: string;
+}
+
+export type ProbeOutcome =
+  | { state: "skipped"; reason: string }
+  | { state: "error"; error: ProbeError }
+  /** `result`: Meta's answer as compact JSON, paging links dropped. */
+  | { state: "ok"; status: number; result: string; note?: string };
+
+export interface Probe {
+  id: "waba" | "waba-phone-numbers" | "waba-templates" | "phone-waba" | "me" | "waba-subscribed-apps";
+  label: string;
+  version: string;
+  /** The path asked, after the version, with no token in it. */
+  path: string;
+  outcome: ProbeOutcome;
+}
+
 export interface TokenCheck {
   graphVersion: string;
   token: { outerWhitespace: boolean; newline: boolean };
   env: SettingPresence[];
   debug: Step<{ info: TokenInfo }>;
   phone: Step<{ id: string | null; displayPhoneNumber: string | null; verifiedName: string | null }>;
+  probes: Probe[];
 }
 
 const realDeps = (): TokenCheckDeps => ({ fetch: globalThis.fetch, env: process.env });
@@ -123,6 +162,45 @@ async function metaError(res: Response): Promise<string> {
   }
 }
 
+/** Meta's error body, field by field, for a probe. */
+async function probeError(res: Response): Promise<ProbeError> {
+  let e: Record<string, unknown> | null = null;
+  try {
+    const body = (await res.json()) as { error?: unknown };
+    if (body && typeof body.error === "object" && body.error) e = body.error as Record<string, unknown>;
+  } catch {
+    // Not JSON: the status is all there is.
+  }
+  return {
+    status: res.status,
+    code: num(e?.code),
+    subcode: num(e?.error_subcode),
+    type: str(e?.type),
+    fbtraceId: str(e?.fbtrace_id),
+    message: e ? (str(e.message) ?? "no message") : "no JSON error body",
+  };
+}
+
+const failure = (message: string): ProbeOutcome => ({
+  state: "error",
+  error: { status: null, code: null, subcode: null, type: null, fbtraceId: null, message },
+});
+
+/** Meta's answer as compact JSON, without paging (its `next` link can carry a token), capped. */
+function probeResult(body: unknown): string {
+  const rest = body && typeof body === "object" && !Array.isArray(body) ? Object.fromEntries(Object.entries(body).filter(([k]) => k !== "paging")) : body;
+  const out = JSON.stringify(rest) ?? "";
+  return out.length > PROBE_RESULT_MAX ? `${out.slice(0, PROBE_RESULT_MAX)}…` : out;
+}
+
+/** Whether `appId` is among `/<WABA>/subscribed_apps`'s `data[].whatsapp_business_api_data.id`. */
+function subscribedNote(body: unknown, appId: string | undefined): string | undefined {
+  if (!appId) return undefined;
+  const data = (body as { data?: unknown })?.data;
+  const ids = Array.isArray(data) ? data.map((d) => str((d as { whatsapp_business_api_data?: { id?: unknown } })?.whatsapp_business_api_data?.id)) : [];
+  return `WA_CLOUD_APP_ID subscribed: ${ids.includes(appId) ? "yes" : "no"}`;
+}
+
 function tokenInfo(data: Record<string, unknown>, waba: string | undefined): TokenInfo {
   const granular = Array.isArray(data.granular_scopes) ? (data.granular_scopes as Record<string, unknown>[]) : [];
   const granularScopes = granular.map((g) => ({
@@ -170,6 +248,7 @@ export async function checkAccessToken(deps: TokenCheckDeps = realDeps()): Promi
     }),
     debug: { state: "skipped", reason: "" },
     phone: { state: "skipped", reason: "" },
+    probes: [],
   };
 
   // The module's own check on the process, so a test that hands in a
@@ -209,6 +288,43 @@ export async function checkAccessToken(deps: TokenCheckDeps = realDeps()): Promi
     }
   };
 
-  [result.debug, result.phone] = await Promise.all([debugStep(), phoneStep()]);
+  // The probes: each on the configured version and, when it differs, on v27.0
+  // (the template listing only on v27.0: the configured one is the sync's own).
+  const both = [...new Set([graphVersion, PROBE_NEWER_GRAPH_VERSION])];
+  // A skipped probe still shows its path, with the missing setting's name in it.
+  const wabaSeg = waba ? encodeURIComponent(waba) : "<WA_CLOUD_WABA_ID>";
+  const phoneSeg = phoneId ? encodeURIComponent(phoneId) : "<WA_CLOUD_PHONE_NUMBER_ID>";
+  const specs: { id: Probe["id"]; label: string; versions: string[]; path: string; needs: "waba" | "phone" | null }[] = [
+    { id: "waba", label: "The account's fields", versions: both, path: `/${wabaSeg}?fields=id,name,currency,timezone_id,message_template_namespace`, needs: "waba" },
+    { id: "waba-phone-numbers", label: "The account's numbers", versions: both, path: `/${wabaSeg}/phone_numbers?fields=id,display_phone_number`, needs: "waba" },
+    { id: "waba-templates", label: "The account's templates", versions: [PROBE_NEWER_GRAPH_VERSION], path: `/${wabaSeg}/message_templates?limit=1&fields=name,status`, needs: "waba" },
+    { id: "phone-waba", label: "The number's account", versions: [graphVersion], path: `/${phoneSeg}?fields=id,whatsapp_business_account`, needs: "phone" },
+    { id: "me", label: "The token's user", versions: [graphVersion], path: "/me?fields=id,name", needs: null },
+    { id: "waba-subscribed-apps", label: "Apps subscribed to the account", versions: both, path: `/${wabaSeg}/subscribed_apps`, needs: "waba" },
+  ];
+
+  const probeStep = async (spec: (typeof specs)[number], version: string): Promise<ProbeOutcome> => {
+    if (!token) return { state: "skipped", reason: "WA_CLOUD_ACCESS_TOKEN is not set" };
+    if (spec.needs === "waba" && !waba) return { state: "skipped", reason: "WA_CLOUD_WABA_ID is not set" };
+    if (spec.needs === "phone" && !phoneId) return { state: "skipped", reason: "WA_CLOUD_PHONE_NUMBER_ID is not set" };
+    if (refused) return failure("refusing the real fetch in a test run: pass a stub");
+    try {
+      const res = await get(`${META_GRAPH_BASE}/${version}${spec.path}`, { Authorization: `Bearer ${token}` });
+      if (!res.ok) return { state: "error", error: await probeError(res) };
+      const body = (await res.json()) as unknown;
+      const note = spec.id === "waba-subscribed-apps" ? subscribedNote(body, appId) : undefined;
+      return { state: "ok", status: res.status, result: probeResult(body), ...(note ? { note } : {}) };
+    } catch (err) {
+      return failure(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const probeRuns = specs.flatMap((spec) =>
+    spec.versions.map(async (version): Promise<Probe> => ({ id: spec.id, label: spec.label, version, path: spec.path, outcome: await probeStep(spec, version) })),
+  );
+
+  let probes: Probe[];
+  [result.debug, result.phone, probes] = await Promise.all([debugStep(), phoneStep(), Promise.all(probeRuns)]);
+  result.probes = probes;
   return scrubDeep(result, scrub);
 }
