@@ -427,8 +427,8 @@ test("2. a regular drops: paid but can't play, a credit, and the place goes to t
     "",
     SQUAD,
     "1. Alex",
-    "3. Chris",
-    "4. Dave",
+    "2. Chris",
+    "3. Dave",
     "",
     ALL_IN,
     "",
@@ -472,8 +472,8 @@ test("3. a PAYG player takes it: the vacated slot number, the offer closed, the 
     "",
     SQUAD,
     "1. Alex",
-    "3. Chris",
-    "4. Dave",
+    "2. Chris",
+    "3. Dave",
     "",
     ALL_IN,
     "",
@@ -481,7 +481,7 @@ test("3. a PAYG player takes it: the vacated slot number, the offer closed, the 
     "1. Bilal",
     "",
     "*Pay as you go:*",
-    "2. Omar",
+    "4. Omar",
     "1 place open, £8. Say *IN* to take it.",
   ].join("\n");
   expect(res).toMatchObject({ intent: "in", react: "✅", reply: null });
@@ -507,8 +507,8 @@ test("asked for the squad, MatchTime answers with the month's list, not the week
       "",
       SQUAD,
       "1. Alex",
-      "3. Chris",
-      "4. Dave",
+      "2. Chris",
+      "3. Dave",
       "",
       ALL_IN,
       "",
@@ -516,7 +516,7 @@ test("asked for the squad, MatchTime answers with the month's list, not the week
       "1. Bilal",
       "",
       "*Pay as you go:*",
-      "2. Omar",
+      "4. Omar",
       "1 place open, £8. Say *IN* to take it.",
     ].join("\n"),
   );
@@ -680,7 +680,7 @@ test("7. D3: a (paid) mark on a pasted list is a claim, never a confirmation", a
   // 09:00 on match day: the once-a-morning post, whatever else.
   expect(morning).toHaveLength(1);
   // The claim is recorded (above); the post shows no paid marks.
-  expect(morning[0].text).toContain("\n3. Chris\n");
+  expect(morning[0].text).toContain("\n2. Chris\n");
   expect(morning[0].text).not.toContain("(paid)");
 
   // A later copy WITHOUT the mark removes nothing.

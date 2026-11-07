@@ -17,7 +17,7 @@ import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { inMessageHours, messageHoursDayStart, type QuietHours } from "./message-hours";
 import { type MonthlyList, type MonthlyListEntry } from "./monthly-list";
 import { nameKey, type MonthCreditRule } from "./squad-month-rules";
-import { entryResolver } from "./month-signup-rules";
+import { entryResolver, type Resolved } from "./month-signup-rules";
 import { isNamedMember, MAX_NEW_PLAYERS_PER_PASTE, newcomerLineOf, type NewcomerLine } from "./month-newcomer-rules";
 
 export type WeekPaid = "none" | "claimed" | "confirmed";
@@ -238,6 +238,21 @@ export interface WeekList {
   reserves: WeekName[];
   /** Places still free. */
   open: number;
+}
+
+export type PlacedWeekSlot = WeekSlot & { userId: string };
+
+/**
+ * Who has a place this week, in the order the week's post prints them:
+ * the squad (everybody without a PAYG mark), then pay as you go, each in
+ * slot order. The post numbers them 1, 2, 3 with no gaps (Kemal,
+ * 2026-11-07), so a printed number is a position on this list, never a
+ * slot number. A pasted copy is read back against this same order
+ * (`reconcileMonthPaste`, `pasteShowsSameList`).
+ */
+export function weekListPlaces(list: WeekList): { squad: PlacedWeekSlot[]; payg: PlacedWeekSlot[] } {
+  const placed = list.slots.filter((s): s is PlacedWeekSlot => s.userId !== null);
+  return { squad: placed.filter((s) => s.mark !== "payg"), payg: placed.filter((s) => s.mark === "payg") };
 }
 
 /** Slot number to who sits in it, for the CONFIRMED rows given. */
@@ -729,7 +744,9 @@ export const MIN_LIST_OVERLAP = 0.6;
  * WHO CAN BE TAKEN OUT, and the old copy.
  *  - a name moved under "Paid but can't play" is out, whoever pasted it
  *    (D4: the caller DMs the player an undo when it was somebody else);
- *  - a blanked line is an OUT only from the player themselves or an admin;
+ *  - a blanked line is an OUT only from the player themselves or an admin.
+ *    Which player a blank was is read from the names either side of it,
+ *    never from its number (`blankedPlayers`): the post counts 1, 2, 3;
  *  - a paste NEVER brings back a player who dropped, an admin's included:
  *    only the player's own paste does. A paste that tries is an OLD COPY,
  *    and an old copy changes nobody else's line at all, whoever sent it
@@ -931,10 +948,8 @@ export function reconcileMonthPaste(args: {
 
   // A numbered line left blank where we have somebody, who is nowhere else
   // on the paste.
-  for (const e of list.slots) {
-    if (e.name || e.slot == null) continue;
-    const held = week.slots.find((s) => s.slot === e.slot);
-    if (!held?.userId || onPaste.has(held.userId) || handled.has(held.userId)) continue;
+  for (const held of blankedPlayers(list, week, resolve, onPaste)) {
+    if (handled.has(held.userId)) continue;
     handled.add(held.userId);
     const self = held.userId === senderUserId;
     if (self || (senderIsAdmin && !oldCopy)) {
@@ -971,10 +986,99 @@ export function reconcileMonthPaste(args: {
 }
 
 /**
+ * Who a pasted list's BLANK numbered lines took off, read by where each
+ * blank sits among the names around it, never by its number (2026-11-07:
+ * the week's post numbers its lines 1, 2, 3, so a printed number is no
+ * longer a slot number, and a copy from before then still carries them).
+ *
+ * The group writes the list two ways: as MatchTime posts it (the squad,
+ * then pay as you go: `weekListPlaces`) and in its own format (everybody
+ * with a place in slot order, PAYG players among them). A paste is read
+ * in each way its names follow, in order. A run of blank lines sits
+ * between two named lines (or the top or the end of the list), and the
+ * players it can be are those placed between those two names, in a way
+ * the paste follows, who are nowhere on the paste. When the run has at
+ * least as many lines as there are such players, each of them is a
+ * blanked line. When it has fewer, the players EVERY reading puts there
+ * are, if the run has room for them; otherwise some may simply be missing
+ * (which changes nothing) and nobody can say which, so nobody is taken off.
+ */
+function blankedPlayers(
+  list: MonthlyList,
+  week: WeekList,
+  resolve: (e: MonthlyListEntry) => Resolved,
+  onPaste: ReadonlySet<string>,
+): PlacedWeekSlot[] {
+  const { squad, payg } = weekListPlaces(week);
+  const posted = [...squad, ...payg];
+  const bySlot = [...posted].sort((a, b) => a.slot - b.slot);
+  const lines = list.slots;
+  const idOf = lines.map((e) => {
+    if (!e.name) return null;
+    const r = resolve(e);
+    return r.kind === "one" ? r.userId : null;
+  });
+  // The ways of writing it that the paste's names follow, in order.
+  const readings = [posted, bySlot]
+    .map((order) => ({ order, at: new Map(order.map((s, i) => [s.userId, i])) }))
+    .filter(({ at }) => {
+      let last = -1;
+      for (const id of idOf) {
+        const i = id === null ? undefined : at.get(id);
+        if (i === undefined) continue;
+        if (i <= last) return false;
+        last = i;
+      }
+      return true;
+    });
+  const isBlank = (e: MonthlyListEntry): boolean => !e.name && e.slot != null;
+
+  const out: PlacedWeekSlot[] = [];
+  for (let i = 0; i < lines.length; ) {
+    if (!isBlank(lines[i])) {
+      i++;
+      continue;
+    }
+    let end = i;
+    while (end < lines.length && isBlank(lines[end])) end++;
+    const run = end - i;
+    const each: Array<Set<string>> = [];
+    const missing = new Map<string, PlacedWeekSlot>();
+    for (const { order, at } of readings) {
+      // The nearest named line either side that is somebody placed.
+      const near = (from: number, step: -1 | 1): number | null => {
+        for (let k = from; k >= 0 && k < lines.length; k += step) {
+          const id = idOf[k];
+          const pos = id === null ? undefined : at.get(id);
+          if (pos !== undefined) return pos;
+        }
+        return null;
+      };
+      const before = near(i - 1, -1);
+      const after = near(end, 1);
+      if (before === null && after === null) continue;
+      const here = order.slice(before === null ? 0 : before + 1, after === null ? order.length : after).filter((s) => !onPaste.has(s.userId));
+      for (const s of here) missing.set(s.userId, s);
+      each.push(new Set(here.map((s) => s.userId)));
+    }
+    i = end;
+    // Who any reading puts there; when that is more players than blank
+    // lines, who every reading puts there.
+    const any = [...missing.values()];
+    const all = any.filter((s) => each.every((set) => set.has(s.userId)));
+    const taken = any.length <= run ? any : all.length <= run ? all : [];
+    out.push(...taken);
+  }
+  return out;
+}
+
+/**
  * Does this paste show the list as MatchTime has it? Then the group has
  * just seen the current list and MatchTime does not post it again
- * (plan 5.4). Compared by who is in which slot and who can't play; paid
- * marks are not compared (a member's copy may lack one).
+ * (plan 5.4). Compared by who has a place and who can't play, never by
+ * the numbers written (2026-11-07: the post numbers its lines 1, 2, 3, not
+ * by slot, and a copy from before then has slot numbers); paid marks are
+ * not compared (a member's copy may lack one).
  */
 export function pasteShowsSameList(args: { list: MonthlyList; week: WeekList; roster: PasteRosterMember[] }): boolean {
   const { list, week } = args;
@@ -990,16 +1094,18 @@ export function pasteShowsSameList(args: { list: MonthlyList; week: WeekList; ro
     return r.kind === "one" ? r.userId : `?${nameKey(e.name)}`;
   };
 
-  const pasted = new Map<number, string>();
+  // Each person once, each on a numbered line.
+  const pasted = new Set<string>();
   for (const e of list.slots) {
     if (!e.name) continue;
-    if (e.slot == null || pasted.has(e.slot)) return false;
-    pasted.set(e.slot, who(e));
+    const id = who(e);
+    if (e.slot == null || pasted.has(id)) return false;
+    pasted.add(id);
   }
-  const ours = new Map<number, string>();
-  for (const s of week.slots) if (s.userId) ours.set(s.slot, s.userId);
-  if (pasted.size !== ours.size) return false;
-  for (const [slot, userId] of ours) if (pasted.get(slot) !== userId) return false;
+  const { squad, payg } = weekListPlaces(week);
+  const ours = [...squad, ...payg].map((s) => s.userId);
+  if (pasted.size !== ours.length) return false;
+  for (const userId of ours) if (!pasted.has(userId)) return false;
 
   const pastedOut = new Set(list.sections.cantPlay.filter((e) => e.name).map(who));
   const oursOut = new Set([...week.paidCantPlay, ...week.cantPlay].map((n) => n.userId));

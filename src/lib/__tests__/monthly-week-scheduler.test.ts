@@ -469,7 +469,7 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
     const posts = (await instructions(THU_10AM)).filter((i) => i.key.includes("month-list"));
     expect(posts).toHaveLength(1);
     expect(posts[0].key).toBe(`${m.id}:month-list:${weekListHash(listText(m))}:1`);
-    expect((posts[0] as { text: string }).text).toContain("1. Alex\n3. Chris");
+    expect((posts[0] as { text: string }).text).toContain("1. Alex\n2. Chris\n");
     expect((posts[0] as { text: string }).text).toContain("*Can't play:*\n1. Bilal");
   });
 
@@ -985,7 +985,7 @@ describe("MONTHLY: review fixes", () => {
     left.add("u-bilal");
     setWorld(m, { monthly: true });
     const text = ((await instructions(THU_10AM)).find((i) => i.key.includes("month-list")) as { text: string }).text;
-    expect(text).toContain("1. Alex\n3. Chris");
+    expect(text).toContain("1. Alex\n2. Chris\n");
     expect(text).not.toContain("Bilal");
   });
 

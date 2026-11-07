@@ -3300,8 +3300,9 @@ export const tr: Strings = {
   // ── Aylık kadro, 5. dilim (2026-10-06): haftalık akış ────────────
   // Haftanın listesi (2026-11-03): önce kadro, ilk adlarla; daimi
   // oyuncunun bir şey yazmasına gerek yok. "(ödedi)" işareti yok.
-  // Numaralar oyuncuların gerçek sıra numaraları; bölüm adları aylık
-  // okuyucunun tanıdığı sözcükler ("Gelemeyenler", "Yedekler").
+  // Numaralar boşluksuz 1, 2, 3 diye gider (2026-11-07), oyuncunun sıra
+  // numarası değildir; yapıştırılan liste adlarından okunur. Bölüm adları
+  // aylık okuyucunun tanıdığı sözcükler ("Gelemeyenler", "Yedekler").
   mwk_list_squad: (p) => `*${p.month} kadrosu:*`,
   mwk_list_all_in: "Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın, yeri açılır.",
   mwk_list_paid: "(ödedi)",

@@ -26,14 +26,14 @@ const LIST: WeekList = {
 const TITLE = "Monday 7-a-side";
 
 describe("buildWeekListPost (reworded 2026-11-03: the squad first, first names, no paid marks)", () => {
-  it("English: header, squad by first name under real slot numbers, can't play, bench, pay as you go", () => {
+  it("English: header, squad by first name numbered 1, 2, 3, can't play, bench, pay as you go", () => {
     expect(buildWeekListPost({ list: LIST, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang: "en" })).toBe(
       [
         "📋 *Monday 7-a-side, Mon 12 Oct at 20:00*",
         "",
         "*October squad:*",
         "1. Alex",
-        "4. Jake",
+        "2. Jake",
         "",
         "You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.",
         "",
@@ -45,7 +45,7 @@ describe("buildWeekListPost (reworded 2026-11-03: the squad first, first names, 
         "1. Zed",
         "",
         "*Pay as you go:*",
-        "2. Omar",
+        "3. Omar",
         "1 place open, £8. Say *IN* to take it.",
       ].join("\n"),
     );
@@ -58,7 +58,7 @@ describe("buildWeekListPost (reworded 2026-11-03: the squad first, first names, 
         "",
         "*Ekim kadrosu:*",
         "1. Alex",
-        "4. Jake",
+        "2. Jake",
         "",
         "Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın, yeri açılır.",
         "",
@@ -70,7 +70,7 @@ describe("buildWeekListPost (reworded 2026-11-03: the squad first, first names, 
         "1. Zed",
         "",
         "*Maç başı ödeyenler:*",
-        "2. Omar",
+        "3. Omar",
         "1 yer boş, £7.50. Almak için *VARIM* yazın.",
       ].join("\n"),
     );
@@ -116,6 +116,66 @@ describe("buildWeekListPost (reworded 2026-11-03: the squad first, first names, 
     );
   });
 
+  it("Vets MNF, 2026-11-06: a free slot and an out regular in the middle, numbered with no gap", () => {
+    // Slot 11 is Shane's, who can't play; slot 14 was never taken. The post
+    // read "10. Jon / 12. Cj / 13. Nabz" (Kemal: "it should be 10, 11, and 12").
+    const names = ["Davide", "Dan", "Steff", "Craig", "Ben", "Kerem", "Steve", "Andrew", "Oumesh", "Jon"];
+    const list: WeekList = {
+      slots: [
+        ...names.map((name, i) => ({ slot: i + 1, userId: `u${i + 1}`, name, mark: "paid" as const })),
+        { slot: 11, userId: null, name: "", mark: null },
+        { slot: 12, userId: "u12", name: "Cj - Barber Lab", mark: "paid" },
+        { slot: 13, userId: "u13", name: "Nabz", mark: null },
+        { slot: 14, userId: null, name: "", mark: null },
+      ],
+      paidCantPlay: [{ userId: "u-shane", name: "Shane Walton" }],
+      cantPlay: [],
+      reserves: [],
+      open: 2,
+    };
+    const nov9 = new Date("2026-11-09T20:30:00.000Z");
+    for (const lang of ["en", "tr"] as const) {
+      const lines = buildWeekListPost({ list, matchDate: nov9, title: "Football 7-a-side", paygPricePence: 800, lang }).split("\n");
+      const squad = lines.slice(3, 15);
+      expect(squad).toEqual([...names.map((n, i) => `${i + 1}. ${n}`), "11. Cj", "12. Nabz"]);
+      expect(lines[15]).toBe("");
+    }
+    expect(buildWeekListPost({ list, matchDate: nov9, title: "Football 7-a-side", paygPricePence: 800, lang: "en" }).split("\n").slice(-5)).toEqual([
+      "",
+      "*Can't play:*",
+      "1. Shane",
+      "",
+      "*Pay as you go:* 2 places open, £8. Say *IN* to take one.",
+    ]);
+  });
+
+  it("pay as you go carries on from the squad's last number: one count of who has a place", () => {
+    // Slot 2 is a fill-in's, in the gap a regular left; slot 5 is a PAYG
+    // player's. Squad 1 to 3, pay as you go 4 and 5, in either language.
+    const list: WeekList = {
+      slots: [
+        { slot: 1, userId: "a", name: "Alex", mark: "paid" },
+        { slot: 2, userId: "o", name: "Omar", mark: "payg" },
+        { slot: 3, userId: "c", name: "Chris", mark: null },
+        { slot: 4, userId: "d", name: "Dave", mark: "paid" },
+        { slot: 5, userId: "w", name: "Will", mark: "payg" },
+        { slot: 6, userId: null, name: "", mark: null },
+      ],
+      paidCantPlay: [{ userId: "b", name: "Bilal" }],
+      cantPlay: [],
+      reserves: [{ userId: "z", name: "Zed" }],
+      open: 1,
+    };
+    for (const lang of ["en", "tr"] as const) {
+      const text = buildWeekListPost({ list, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang });
+      expect(text).toContain("\n1. Alex\n2. Chris\n3. Dave\n");
+      expect(text).toMatch(/:\*\n4\. Omar\n5\. Will\n/);
+      // Can't play and the bench count from 1, as before.
+      expect(text).toMatch(/:\*\n1\. Bilal\n/);
+      expect(text).toMatch(/:\*\n1\. Zed\n/);
+    }
+  });
+
   it("no paid mark and no PAYG mark anywhere, in either language", () => {
     for (const lang of ["en", "tr"] as const) {
       const text = buildWeekListPost({ list: LIST, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang });
@@ -141,7 +201,7 @@ describe("buildWeekListPost (reworded 2026-11-03: the squad first, first names, 
     const two: WeekList = { ...LIST, paidCantPlay: [], cantPlay: [], reserves: [], open: 2 };
     expect(buildWeekListPost({ list: two, matchDate: MATCH, title: TITLE, paygPricePence: 800, organiserPicks: true, lang: "en" }).split("\n").slice(-3)).toEqual([
       "*Pay as you go:*",
-      "2. Omar",
+      "3. Omar",
       "2 places open, £8. Say *IN* to go on the bench, and the organisers will pick who plays.",
     ]);
     const noPayg: WeekList = { ...two, slots: two.slots.filter((x) => x.mark !== "payg"), open: 1 };
@@ -154,7 +214,7 @@ describe("buildWeekListPost (reworded 2026-11-03: the squad first, first names, 
     const full: WeekList = { ...LIST, paidCantPlay: [], cantPlay: [], reserves: [], open: 0 };
     expect(buildWeekListPost({ list: full, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang: "en" }).split("\n").slice(-3)).toEqual([
       "*Pay as you go:*",
-      "2. Omar",
+      "3. Omar",
       "The squad is full.",
     ]);
   });

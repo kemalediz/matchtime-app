@@ -7,15 +7,17 @@
  * of it is ever sent for a club on "weekly".
  *
  * A member can copy the week's list, change a line and paste it back:
- * the monthly reader (a model, `monthly-reader.ts`) reads it, and the
- * numbers on it are the players' real slot numbers.
+ * the monthly reader (a model, `monthly-reader.ts`) reads it. The numbers
+ * on it count 1, 2, 3 with no gaps (Kemal, 2026-11-07), not the players'
+ * slot numbers: a pasted copy is read by its names and where its lines
+ * sit, never by matching a number to a slot (`monthly-week-rules.ts`).
  */
 import { dayCommaTimeLabel, dayTimeLabel, monthNameLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { normaliseName } from "./name-normalise";
 import { usableName } from "./player-name-rules";
-import type { WeekList, WeekName, WeekSlot } from "./monthly-week-rules";
+import { weekListPlaces, type WeekList, type WeekName } from "./monthly-week-rules";
 
 type LangArg = Lang | string | null | undefined;
 
@@ -75,7 +77,7 @@ export function weekListFirstNames(people: Array<{ userId: string; name: string 
  *
  *     *October squad:*
  *     1. Alex
- *     4. Jake
+ *     2. Jake
  *
  *     You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
  *
@@ -83,15 +85,22 @@ export function weekListFirstNames(people: Array<{ userId: string; name: string 
  *     1. Sam
  *
  *     *Pay as you go:*
- *     2. Omar
+ *     3. Omar
  *     1 place open, £8. Say *IN* to take it.
  *
- * The squad is the regulars who are in, each under his own slot number
- * (a member who copies the post and blanks a line blanks that slot). A
- * free slot is not printed. Pay-as-you-go players who have a place are
- * listed under "Pay as you go", with the places still open. There are no
- * paid marks: MatchTime does not confirm a payment the organiser takes,
- * so "can't play" is one section whether they have paid or not.
+ * The squad is the regulars who are in, in slot order. A free slot, and
+ * the slot of a regular who can't play, is not printed, and the numbers
+ * count 1, 2, 3 with no gaps (Kemal, 2026-11-07: "10, 11 and 12", not
+ * "10, 12"). Pay-as-you-go players who have a place are listed under "Pay
+ * as you go", with the places still open, and their numbers carry on from
+ * the squad's: everybody with a place this week is one count, so the last
+ * number is how many are playing. "Can't play" and the bench are not
+ * playing, and each counts from 1. A member who copies the post and
+ * blanks a line takes off the player that line was, read by where the
+ * blank sits among the names (`reconcileMonthPaste`), not by its number.
+ * There are no paid marks: MatchTime does not confirm a payment the
+ * organiser takes, so "can't play" is one section whether they have paid
+ * or not.
  */
 export function buildWeekListPost(p: {
   list: WeekList;
@@ -113,10 +122,8 @@ export function buildWeekListPost(p: {
     return [weekListTitleLine(p.title, p.matchDate, p.lang), "", open ? `${s.mwk_list_payg} ${open}` : s.mwk_list_full].join("\n");
   }
   const cantPlay = [...p.list.paidCantPlay, ...p.list.cantPlay];
-  const placed = p.list.slots.filter((slot): slot is WeekSlot & { userId: string } => slot.userId !== null);
-  const squad = placed.filter((slot) => slot.mark !== "payg");
-  const payg = placed.filter((slot) => slot.mark === "payg");
-  const shown = weekListFirstNames([...placed, ...cantPlay, ...p.list.reserves], p.lang);
+  const { squad, payg } = weekListPlaces(p.list);
+  const shown = weekListFirstNames([...squad, ...payg, ...cantPlay, ...p.list.reserves], p.lang);
   const nameOf = (userId: string) => shown.get(userId) ?? s.unnamed;
   const price = paygPriceLabel(p.paygPricePence);
 
@@ -125,7 +132,7 @@ export function buildWeekListPost(p: {
   const lines: string[] = [weekListTitleLine(p.title, p.matchDate, p.lang)];
   if (squad.length > 0) {
     lines.push("", s.mwk_list_squad({ month: monthNameLabel(p.lang, p.matchDate) }));
-    for (const slot of squad) lines.push(`${slot.slot}. ${nameOf(slot.userId)}`);
+    squad.forEach((slot, i) => lines.push(`${i + 1}. ${nameOf(slot.userId)}`));
     lines.push("", s.mwk_list_all_in);
   }
   const section = (title: string, names: WeekName[]): void => {
@@ -139,7 +146,7 @@ export function buildWeekListPost(p: {
   const open = weekListOpenLine(p.list.open, price, p.organiserPicks === true, p.lang);
   if (payg.length > 0) {
     lines.push("", s.mwk_list_payg);
-    for (const slot of payg) lines.push(`${slot.slot}. ${nameOf(slot.userId)}`);
+    payg.forEach((slot, i) => lines.push(`${squad.length + i + 1}. ${nameOf(slot.userId)}`));
     lines.push(open ?? s.mwk_list_full);
   } else {
     lines.push("", open ? `${s.mwk_list_payg} ${open}` : s.mwk_list_full);

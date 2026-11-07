@@ -583,6 +583,71 @@ describe("reconcileMonthPaste (plan 6.2, a running month)", () => {
   });
 });
 
+describe("a pasted copy of the week's list, numbered 1, 2, 3 with no gaps (2026-11-07)", () => {
+  // Bilal (slot 2) can't play, so the post reads "1. Alex / 2. Chris / 3. Dave":
+  // the printed numbers are no longer the slot numbers. A pasted copy is read
+  // by who is on it and where, never by matching a printed number to a slot.
+  const members = [reg(1, "Alex"), reg(2, "Bilal"), reg(3, "Chris"), reg(4, "Dave"), payg("Omar")];
+  const rows = [row("Alex", "CONFIRMED", 1), row("Bilal", "DROPPED", 2), row("Chris", "CONFIRMED", 3), row("Dave", "CONFIRMED", 4)];
+  const roster = [
+    ...members.map((m) => ({ userId: m.userId, name: m.name, aliases: [] as string[] })),
+    { userId: "u-rob", name: "Rob Admin", aliases: [] },
+  ];
+  const base = { members, rows, maxPlayers: 6, roster, matchMonth: 10, seeded: true };
+  const paste = (lines: string[]) => parseMonthlyList(["List for October:", ...lines].join("\n"))!;
+  const run = (lines: string[], senderUserId: string, over: Partial<typeof base> & { senderIsAdmin?: boolean } = {}) =>
+    reconcileMonthPaste({ ...base, list: paste(lines), senderUserId, senderIsAdmin: false, ...over });
+  const CANT = ["", "Paid but can't play", "1. Bilal"];
+
+  it("a regular blanks his own line on the consecutive copy: he is out, nobody else", () => {
+    expect(run(["1. Alex", "2. Chris", "3.", ...CANT], "u-dave").actions).toEqual([{ kind: "out", userId: "u-dave", name: "Dave", self: true, via: "blank" }]);
+    expect(run(["1. Alex", "2.", "3. Dave", ...CANT], "u-chris").actions).toEqual([{ kind: "out", userId: "u-chris", name: "Chris", self: true, via: "blank" }]);
+  });
+
+  it("an organiser blanks somebody's line: that player is out, whatever slot number he holds", () => {
+    expect(run(["1. Alex", "2.", "3. Dave", ...CANT], "u-rob", { senderIsAdmin: true }).actions).toEqual([
+      { kind: "out", userId: "u-chris", name: "Chris", self: false, via: "blank" },
+    ]);
+    // Somebody else's blank is still not an OUT.
+    expect(run(["1. Alex", "2.", "3. Dave", ...CANT], "u-alex").ignored).toEqual([{ name: "Chris", reason: "blank-by-other" }]);
+  });
+
+  it("a copy with the real slot numbers (posted before the change) still reads the same", () => {
+    expect(run(["1. Alex", "3.", "4. Dave", ...CANT], "u-rob", { senderIsAdmin: true }).actions).toEqual([
+      { kind: "out", userId: "u-chris", name: "Chris", self: false, via: "blank" },
+    ]);
+  });
+
+  it("a blank that could be either of two missing players takes nobody out", () => {
+    expect(run(["1. Alex", "2.", ...CANT], "u-rob", { senderIsAdmin: true }).actions).toEqual([]);
+  });
+
+  it("Omar (PAYG) took Bilal's slot 2: read in the post's order and in the group's own slot order", () => {
+    const withOmar = [...rows, row("Omar", "CONFIRMED", 2)];
+    const admin = { rows: withOmar, senderIsAdmin: true };
+    // The post: "1. Alex / 2. Chris / 3. Dave", then pay as you go "4. Omar".
+    // Chris's line blanked is Chris, not whoever holds slot 2.
+    expect(run(["1. Alex", "2.", "3. Dave", "4. Omar (PAYG)", ...CANT], "u-rob", admin).actions).toEqual([
+      { kind: "out", userId: "u-chris", name: "Chris", self: false, via: "blank" },
+    ]);
+    // The group's own list, Omar at his slot among the regulars: his line
+    // blanked is Omar.
+    expect(run(["1. Alex", "2.", "3. Chris", "4. Dave", ...CANT], "u-rob", admin).actions).toEqual([
+      { kind: "out", userId: "u-omar", name: "Omar", self: false, via: "blank" },
+    ]);
+    // A paste whose names follow neither order blanks nobody.
+    expect(run(["1. Dave", "2.", "3. Alex", "4. Chris", ...CANT], "u-rob", admin).actions).toEqual([]);
+  });
+
+  it("pasteShowsSameList: our own consecutive post pasted back is the same list", () => {
+    const list = buildWeekList({ members, rows, maxPlayers: 6 });
+    expect(pasteShowsSameList({ list: paste(["1. Alex", "2. Chris", "3. Dave", ...CANT]), week: list, roster })).toBe(true);
+    expect(pasteShowsSameList({ list: paste(["1. Alex", "2. Chris", "3.", ...CANT]), week: list, roster })).toBe(false);
+    expect(pasteShowsSameList({ list: paste(["1. Alex", "2. Chris", "3. Dave", "4. Omar", ...CANT]), week: list, roster })).toBe(false);
+    expect(pasteShowsSameList({ list: paste(["1. Alex", "2. Chris", "3. Dave"]), week: list, roster })).toBe(false);
+  });
+});
+
 describe("a regular who has left the group, and open places", () => {
   it("planOpenPlaceOffers: one offer per open place, naming the vacated slots first, never more than are open", () => {
     const members = [reg(1, "Alex"), reg(2, "Bilal"), reg(3, "Chris")];
