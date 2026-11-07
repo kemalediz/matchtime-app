@@ -68,6 +68,10 @@ describe("localToUtc / formatLocal", () => {
 });
 
 describe("parseScenario", () => {
+  it("skips by default the crons that do nothing in a rehearsal (the Cloud dispatch sweep fires every minute)", () => {
+    expect(parseScenario(base()).skipCrons).toEqual(["/api/cron/none-bucket-shadow", "/api/cron/cloud-dispatch"]);
+  });
+
   it("parses a valid scenario, with defaults filled in", () => {
     const s = parseScenario(base());
     expect(s.title).toBe("Riverside Tuesday");

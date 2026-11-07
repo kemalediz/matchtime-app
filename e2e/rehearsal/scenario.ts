@@ -488,7 +488,10 @@ export function parseScenario(raw: unknown): Scenario {
       pictureReading: isObj(raw.flags) && raw.flags.pictureReading === true,
       setupLearning: isObj(raw.flags) && raw.flags.setupLearning === true,
     },
-    skipCrons: Array.isArray(raw.skipCrons) ? (raw.skipCrons as unknown[]).map(String) : ["/api/cron/none-bucket-shadow"],
+    // The Cloud dispatch sweep (WhatsApp Cloud API PR C4) fires every
+    // minute and does nothing while the Cloud API is off: 1,440 empty
+    // requests a simulated day. A scenario that wants it lists skipCrons.
+    skipCrons: Array.isArray(raw.skipCrons) ? (raw.skipCrons as unknown[]).map(String) : ["/api/cron/none-bucket-shadow", "/api/cron/cloud-dispatch"],
     club,
     groups,
     members,

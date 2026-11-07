@@ -46,6 +46,9 @@
  *         THE PARTNER POOL INVITE (2026-11-02): so does its sweep
  *         (`sweepPartnerPoolInvites`: the one DM to a partner club's player
  *         after he played for another club through a partner ask).
+ *         All three run through `runPlatformPoolSweeps`
+ *         (src/lib/pool/platform-sweeps.ts), which the Cloud dispatch
+ *         cron calls too (WhatsApp Cloud API plan, PR C4).
  *
  * Polled once per scheduler tick by a Pi built with slice 3, whatever the
  * clubs' bot switches say. A Pi built before it never calls this; due-posts
@@ -56,10 +59,9 @@ import { claimDuePlatformJobs, recordPlatformJobOutcome, type PlatformJobOutcome
 import { queueUnsolicitedAutoLeaves } from "@/lib/group-add";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { readClubSetVersion } from "@/lib/club-set-version-read";
-import { sweepPool } from "@/lib/pool/round";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
-import { onInviteCodeReported, sweepClubInvitations } from "@/lib/pool/club-invitation";
-import { sweepPartnerPoolInvites } from "@/lib/pool/partner-invite";
+import { onInviteCodeReported } from "@/lib/pool/club-invitation";
+import { runPlatformPoolSweeps } from "@/lib/pool/platform-sweeps";
 
 /** The test clock (e2e only), as due-posts reads it. */
 function nowOf(request: Request): Date {
@@ -98,21 +100,8 @@ export async function GET(request: Request) {
   }
   const now = nowOf(request);
   const poolEnv = await poolEnvForApiRequest(request);
-  try {
-    await sweepPool(now, poolEnv);
-  } catch (err) {
-    console.error("[platform-jobs] pool sweep failed; the next poll tries again:", err);
-  }
-  try {
-    await sweepClubInvitations(now, poolEnv);
-  } catch (err) {
-    console.error("[platform-jobs] club invitations sweep failed; the next poll tries again:", err);
-  }
-  try {
-    await sweepPartnerPoolInvites(now, poolEnv);
-  } catch (err) {
-    console.error("[platform-jobs] partner pool invites sweep failed; the next poll tries again:", err);
-  }
+  // The pool's three sweeps, shared with the Cloud dispatch cron (PR C4).
+  await runPlatformPoolSweeps(now, poolEnv, "platform-jobs");
   const jobs = await claimDuePlatformJobs({ now, env: poolEnv });
   if (jobs.length > 0) {
     console.log(`[platform-jobs] handed out ${jobs.length}: ${jobs.map((j) => `${j.kind}:${j.id}`).join(", ")}`);

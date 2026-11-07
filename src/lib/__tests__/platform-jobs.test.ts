@@ -35,6 +35,9 @@ const switchEnv = vi.hoisted(() => ({ poolEnvForApiRequest: vi.fn() }));
 vi.mock("@/lib/pool/switch-env", () => switchEnv);
 const poolDispatch = vi.hoisted(() => ({ admitPoolOfferJobs: vi.fn() }));
 vi.mock("../pool/dispatch", async (orig) => ({ ...(await orig<typeof import("../pool/dispatch")>()), ...poolDispatch }));
+// The Cloud dispatcher's after() kick (Cloud API C4): only a cloud job rings it.
+const kick = vi.hoisted(() => ({ scheduleCloudDispatch: vi.fn() }));
+vi.mock("../cloud-api/kick", () => kick);
 
 import {
   BRIDGE_DMS_PER_POLL,
@@ -614,5 +617,79 @@ describe("the Pi only ever claims club number jobs (Cloud API C2)", () => {
     await bridgePlatformDmsForLegacyPi(new Request("http://x/api/whatsapp/due-posts?groupId=g"), NOW);
     expect(dbMock.platformJob.findMany).toHaveBeenCalled();
     for (const call of dbMock.platformJob.findMany.mock.calls) expect(call[0].where.channel).toBe("baileys");
+  });
+});
+
+// ── WhatsApp Cloud API plan, PR C4 (section 5.5): the Cloud dispatcher
+//    records its outcomes through the same one function. Every addition
+//    is opt-in: without the new fields, each write is exactly the Pi's. ──
+
+describe("recordPlatformJobOutcome: the Cloud dispatcher's outcomes (Cloud API C4)", () => {
+  const notCancelled = { OR: [{ failReason: null }, { NOT: { failReason: { startsWith: "cancelled: " } } }] };
+  const later = new Date(NOW.getTime() + 30_000);
+
+  it("requeue: back to queued, not before sendAfter, with the note and Meta's code", async () => {
+    await recordPlatformJobOutcome("a", { outcome: "requeue", sendAfter: later, note: "cloud retry 1: Meta 130429", errorCode: 130429 }, NOW);
+    expect(dbMock.platformJob.updateMany).toHaveBeenCalledTimes(1);
+    expect(dbMock.platformJob.updateMany).toHaveBeenCalledWith({
+      where: { id: "a", status: "claimed", ...notCancelled },
+      data: { status: "queued", claimedAt: null, sendAfter: later, failReason: "cloud retry 1: Meta 130429", errorCode: 130429 },
+    });
+  });
+
+  it("requeue of a job cancelled while claimed: failed instead, never back in the queue", async () => {
+    dbMock.platformJob.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
+    expect(await recordPlatformJobOutcome("a", { outcome: "requeue", sendAfter: later, note: "cloud hold: cap" }, NOW)).toEqual({ updated: true });
+    expect(dbMock.platformJob.updateMany.mock.calls[1][0]).toEqual({
+      where: { id: "a", status: "claimed", failReason: { startsWith: "cancelled: " } },
+      data: { status: "failed", failedAt: NOW },
+    });
+  });
+
+  it("handover: a code the official number could not send goes to the channel given, queued again", async () => {
+    await recordPlatformJobOutcome("a", { outcome: "handover", channel: "baileys", note: "handed to the club number: Meta 131026", errorCode: 131026 }, NOW);
+    expect(dbMock.platformJob.updateMany).toHaveBeenCalledWith({
+      where: { id: "a", status: "claimed", ...notCancelled },
+      data: { status: "queued", claimedAt: null, channel: "baileys", failReason: "handed to the club number: Meta 131026", errorCode: 131026 },
+    });
+  });
+
+  it("failed and unconfirmed carry Meta's code only when given", async () => {
+    await recordPlatformJobOutcome("a", { outcome: "failed", reason: "Meta 131026", errorCode: 131026 }, NOW);
+    expect(dbMock.platformJob.updateMany.mock.calls[0][0].data).toEqual({ status: "failed", failedAt: NOW, failReason: "Meta 131026", errorCode: 131026 });
+    await recordPlatformJobOutcome("b", { outcome: "unconfirmed", reason: "timeout", sentAt: NOW, errorCode: null }, NOW);
+    expect(dbMock.platformJob.updateMany.mock.calls[1][0].data).toEqual({ status: "unconfirmed", failReason: "timeout", sentAt: NOW, errorCode: null });
+  });
+
+  it("the Pi's reports are unchanged: no errorCode, no sentAt on unconfirmed", async () => {
+    await recordPlatformJobOutcome("a", { outcome: "unconfirmed", reason: "no id" }, NOW);
+    await recordPlatformJobOutcome("b", { outcome: "failed", reason: "x" }, NOW);
+    expect(dbMock.platformJob.updateMany.mock.calls[0][0].data).toEqual({ status: "unconfirmed", failReason: "no id" });
+    expect(dbMock.platformJob.updateMany.mock.calls[1][0].data).toEqual({ status: "failed", failedAt: NOW, failReason: "x" });
+  });
+});
+
+describe("queuePlatformDm rings the Cloud dispatcher for a cloud job only (Cloud API C4)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("flags off: never rung", async () => {
+    for (const k of CLOUD_FLAGS) vi.stubEnv(k, undefined as unknown as string);
+    await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp" });
+    expect(kick.scheduleCloudDispatch).not.toHaveBeenCalled();
+  });
+
+  it("master on, a club number job: never rung", async () => {
+    vi.stubEnv("CLOUD_API_ENABLED", "1");
+    vi.stubEnv("CLOUD_API_PURPOSES", "pool-offer");
+    await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp" });
+    expect(kick.scheduleCloudDispatch).not.toHaveBeenCalled();
+  });
+
+  it("master on, a cloud job: rung once, after the row is written", async () => {
+    vi.stubEnv("CLOUD_API_ENABLED", "1");
+    vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+    await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp" });
+    expect(kick.scheduleCloudDispatch).toHaveBeenCalledTimes(1);
+    expect(dbMock.platformJob.create.mock.invocationCallOrder[0]).toBeLessThan(kick.scheduleCloudDispatch.mock.invocationCallOrder[0]);
   });
 });

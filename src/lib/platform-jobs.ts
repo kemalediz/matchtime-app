@@ -103,6 +103,7 @@ import { APPROVED_CLUB_WHERE } from "./club-approval-state";
 import { POOL_OFFER_PURPOSE, admitPoolOfferJobs, onPoolOfferJobFailed, onPoolOfferJobSent } from "./pool/dispatch";
 import { poolEnvForApiRequest } from "./pool/switch-env";
 import { channelFor, type SendChannel } from "./send-channel";
+import { scheduleCloudDispatch } from "./cloud-api/kick";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────
 
@@ -318,6 +319,10 @@ export type PlatformDmClient = {
  * dispatcher's (the official number). With CLOUD_API_ENABLED off, the
  * default, it is always "baileys", the column's own default, so the Pi
  * sees exactly the jobs it saw before.
+ *
+ * A job stored for the official number rings the Cloud dispatcher at
+ * once (`after()`, PR C4; the per-minute sweep is the retry). A club
+ * number job rings nothing, so with the flags off nothing here changed.
  */
 export async function queuePlatformDm(args: {
   phone: string;
@@ -363,6 +368,7 @@ export async function queuePlatformDm(args: {
       channel,
     },
   });
+  if (channel !== PI_CHANNEL) scheduleCloudDispatch();
   return { id: row.id };
 }
 
@@ -742,13 +748,31 @@ export async function claimDuePlatformJobs(
 
 // ── Outcomes ────────────────────────────────────────────────────────────
 
+/**
+ * The Cloud dispatcher (PR C4, src/lib/cloud-api/dispatch.ts) reports
+ * through this same function. What it adds is opt-in, so every report the
+ * Pi makes writes exactly what it wrote before:
+ *   `errorCode`  Meta's error code, on failed, unconfirmed, requeue and
+ *                handover;
+ *   `sentAt`     on unconfirmed: the moment the send was tried, so pool
+ *                caps and the daily unique cap count it;
+ *   requeue      back to queued, not before `sendAfter`, with `note` in
+ *                `failReason` (a retry, or a hold for the daily cap);
+ *   handover     back to queued for another channel: a sign-up code the
+ *                official number could not send goes to the club number
+ *                (`fallbackWhenCloudDown`, plan section 6 item 5).
+ * Like a release, neither requeue nor handover puts back a job cancelled
+ * while it was claimed: that job is failed instead.
+ */
 export type PlatformJobOutcome =
   /** `inviteCode`: what an "invite-code" job read (pool L8); the route
    *  hands it to src/lib/pool/club-invitation.ts and it is stored nowhere. */
   | { outcome: "sent"; waMessageId?: string; inviteCode?: string }
-  | { outcome: "failed"; reason: string }
+  | { outcome: "failed"; reason: string; errorCode?: number | null }
   | { outcome: "release" }
-  | { outcome: "unconfirmed"; reason: string };
+  | { outcome: "unconfirmed"; reason: string; sentAt?: Date; errorCode?: number | null }
+  | { outcome: "requeue"; sendAfter: Date; note: string; errorCode?: number | null }
+  | { outcome: "handover"; channel: SendChannel; note: string; errorCode?: number | null };
 
 /**
  * Record what happened to a claimed job. Only a CLAIMED job moves, so a
@@ -760,6 +784,7 @@ export async function recordPlatformJobOutcome(
   now: Date = new Date(),
 ): Promise<{ updated: boolean }> {
   let data: Record<string, unknown>;
+  const code = "errorCode" in result && result.errorCode !== undefined ? { errorCode: result.errorCode } : {};
   switch (result.outcome) {
     case "sent":
       data = { status: "sent", sentAt: now, waMessageId: result.waMessageId ?? null };
@@ -769,15 +794,28 @@ export async function recordPlatformJobOutcome(
         status: "failed",
         failedAt: now,
         failReason: (result.reason || "no reason given").slice(0, FAIL_REASON_MAX),
+        ...code,
       };
       break;
     case "release":
       data = { status: "queued", claimedAt: null };
       break;
     case "unconfirmed":
-      data = { status: "unconfirmed", failReason: (result.reason || "unconfirmed").slice(0, FAIL_REASON_MAX) };
+      data = {
+        status: "unconfirmed",
+        failReason: (result.reason || "unconfirmed").slice(0, FAIL_REASON_MAX),
+        ...(result.sentAt ? { sentAt: result.sentAt } : {}),
+        ...code,
+      };
+      break;
+    case "requeue":
+      data = { status: "queued", claimedAt: null, sendAfter: result.sendAfter, failReason: result.note.slice(0, FAIL_REASON_MAX), ...code };
+      break;
+    case "handover":
+      data = { status: "queued", claimedAt: null, channel: result.channel, failReason: result.note.slice(0, FAIL_REASON_MAX), ...code };
       break;
   }
+  const backToQueue = result.outcome === "release" || result.outcome === "requeue" || result.outcome === "handover";
   // A job CANCELLED while the Pi held it (`cancelQueuedPlatformDms`
   // marked it) is never put back in the queue. The release itself skips a
   // marked job (for every other job, which is every job there has ever
@@ -786,23 +824,23 @@ export async function recordPlatformJobOutcome(
   // between finds the job queued and fails it itself.
   const notCancelled = { OR: [{ failReason: null }, { NOT: { failReason: { startsWith: CANCELLED_REASON_PREFIX } } }] };
   const { count } = await db.platformJob.updateMany({
-    where: { id, status: "claimed", ...(result.outcome === "release" ? notCancelled : {}) },
+    where: { id, status: "claimed", ...(backToQueue ? notCancelled : {}) },
     data,
   });
-  if (count === 0 && result.outcome === "release") {
+  if (count === 0 && backToQueue) {
     const cancelled = await db.platformJob.updateMany({
       where: { id, status: "claimed", failReason: { startsWith: CANCELLED_REASON_PREFIX } },
       data: { status: "failed", failedAt: now },
     });
     if (cancelled.count > 0) {
-      console.log(`[platform-jobs] job ${id} was cancelled while claimed; released by the Pi, so failed instead of re-queued`);
+      console.log(`[platform-jobs] job ${id} was cancelled while claimed; ${result.outcome} reported, so failed instead of re-queued`);
       return { updated: true };
     }
   }
   // A pool offer reached him only when the Pi says so (review of #400, M3).
   if ((result.outcome === "sent" || result.outcome === "unconfirmed") && count > 0) await onPoolOfferJobSent(id, now);
   if (result.outcome === "failed" && count > 0) {
-    console.error(`[platform-jobs] job ${id} FAILED on the Pi: ${result.reason}`);
+    console.error(`[platform-jobs] job ${id} FAILED: ${result.reason}`);
     // A pool offer that never reached him ends cancelled (L5a).
     await onPoolOfferJobFailed(id, now);
   }
