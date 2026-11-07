@@ -4591,8 +4591,9 @@ export const en = {
   // need say nothing), then who can't play, the bench, and pay as you go
   // last. No "(paid)" marks: MatchTime does not confirm a payment the
   // organiser collects. Members still copy it, edit it and paste it back:
-  // the numbers are the players' real slot numbers, and the section
-  // titles are words the monthly reader knows ("Can't play", "Bench").
+  // the lines count 1, 2, 3 with no gaps (2026-11-07), not by slot, and a
+  // copy is read back by its names, and the section titles are words the
+  // monthly reader knows ("Can't play", "Bench").
   // The title line ("📋 *Monday 7-a-side, Mon 9 Nov at 20:30*") has no
   // words of its own and is put together in `monthly-week-copy.ts`.
   // No em or en dashes, in either language.

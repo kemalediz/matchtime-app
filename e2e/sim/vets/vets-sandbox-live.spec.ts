@@ -51,7 +51,7 @@ const COST_FILE = path.join(REPO_ROOT, ".e2e", "vets-sandbox-cost.jsonl");
 
 /**
  * The week's list in the format Kemal approved on 2026-11-03: the title,
- * the month's squad by first name under real slot numbers, the "you're all
+ * the month's squad by first name, numbered 1, 2, 3 with no gaps, the "you're all
  * in" line, then pay as you go. No paid marks, no phone, nobody unnamed.
  */
 function expectWeekListShape(text: string, kickoff: Date, squadSize: number, open: number): void {
