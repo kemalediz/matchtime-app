@@ -724,6 +724,7 @@ const SAMPLES: SampleArgs = {
   sj_live_button_label: { club: "Riverside FC" },
   sj_live_for_club: { club: "Riverside FC" },
   login_link_expired: null,
+  code_sent_from: { number: "+447700900999" },
   link_invalid: null,
   link_go_sign_in: null,
   info_st_whatsapp_removed_title: null,

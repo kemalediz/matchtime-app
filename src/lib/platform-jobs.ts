@@ -104,6 +104,8 @@ import { POOL_OFFER_PURPOSE, admitPoolOfferJobs, onPoolOfferJobFailed, onPoolOff
 import { poolEnvForApiRequest } from "./pool/switch-env";
 import { channelFor, type SendChannel } from "./send-channel";
 import { scheduleCloudDispatch } from "./cloud-api/kick";
+import { META_LANG, cloudTemplate, templateParams, type CloudTemplateFacts, type CloudTemplateName } from "./cloud-api/templates";
+import { normaliseLang, type Lang } from "./i18n/lang";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────
 
@@ -276,7 +278,18 @@ export type PlatformDmRefusalCode =
   | "unknown-purpose"
   | "not-a-phone-number"
   | "empty-text"
-  | "number-not-known";
+  | "number-not-known"
+  | "template-not-for-purpose"
+  | "template-does-not-fill";
+
+/**
+ * The Meta template a DM stands in for when it goes from the official
+ * number outside his window (Cloud API plan, PR C7a): a registry name, the
+ * person's language and the facts C6's `templateParams` fills it from.
+ */
+export type PlatformDmTemplate = {
+  [N in CloudTemplateName]: { name: N; lang: Lang; facts: CloudTemplateFacts[N] };
+}[CloudTemplateName];
 
 export class PlatformDmRefused extends Error {
   override readonly name = "PlatformDmRefused";
@@ -323,6 +336,18 @@ export type PlatformDmClient = {
  * A job stored for the official number rings the Cloud dispatcher at
  * once (`after()`, PR C4; the per-minute sweep is the retry). A club
  * number job rings nothing, so with the flags off nothing here changed.
+ *
+ * `template` (PR C7a): the Meta template the DM stands in for when the
+ * official number has to write outside his window. A template that does
+ * not serve this purpose is refused whatever the flags say (it is our own
+ * mistake). For a job stored for the official number it is filled HERE,
+ * once, by C6's `templateParams`, and stored as `templateName`, Meta's
+ * `templateLang` (`META_LANG`) and `templateParams`; one that does not fill
+ * is refused, never stored half filled. A club number job stores none of
+ * it, so with the flags off the row is exactly what it was.
+ *
+ * Returns the job's id and the channel stored on it, so a page can name
+ * the number the message comes from (`codeSenderNumber`, club-connect.ts).
  */
 export async function queuePlatformDm(args: {
   phone: string;
@@ -333,7 +358,8 @@ export async function queuePlatformDm(args: {
   client?: PlatformDmClient;
   createdAt?: Date;
   replyTo?: SendChannel | null;
-}): Promise<{ id: string }> {
+  template?: PlatformDmTemplate;
+}): Promise<{ id: string; channel: SendChannel }> {
   const client = args.client ?? (db as unknown as PlatformDmClient);
   const purpose = args.purpose as string;
   if ((OWNER_DM_PURPOSES as readonly string[]).includes(purpose)) {
@@ -346,6 +372,9 @@ export async function queuePlatformDm(args: {
   if (!digits) throw new PlatformDmRefused(`not a phone number: ${JSON.stringify(args.phone)}`, "not-a-phone-number");
   const text = typeof args.text === "string" ? args.text : "";
   if (!text.trim()) throw new PlatformDmRefused("empty text", "empty-text");
+  if (args.template && !(cloudTemplate(args.template.name).purposes as readonly string[]).includes(purpose)) {
+    throw new PlatformDmRefused(`template ${args.template.name} does not serve "${purpose}"`, "template-not-for-purpose");
+  }
 
   if (!(ANY_NUMBER_PURPOSES as readonly string[]).includes(purpose)) {
     // Rule 12: MatchTime never messages a number it does not already know.
@@ -355,6 +384,7 @@ export async function queuePlatformDm(args: {
 
   // The one decision of which number sends it (send-channel-source-guard).
   const channel = channelFor({ purpose, replyTo: args.replyTo ?? null });
+  const template = channel !== PI_CHANNEL && args.template ? cloudTemplateFields(args.template) : {};
   const row = await client.platformJob.create({
     data: {
       kind: "dm",
@@ -366,10 +396,20 @@ export async function queuePlatformDm(args: {
       sendAfter: args.sendAfter ?? null,
       ...(args.createdAt ? { createdAt: args.createdAt } : {}),
       channel,
+      ...template,
     },
   });
   if (channel !== PI_CHANNEL) scheduleCloudDispatch();
-  return { id: row.id };
+  return { id: row.id, channel };
+}
+
+/** A template's three columns, filled by C6's `templateParams`; refused
+ *  (never stored half filled) when the facts do not fill it. */
+function cloudTemplateFields(t: PlatformDmTemplate): { templateName: string; templateLang: string; templateParams: unknown } {
+  const lang = normaliseLang(t.lang);
+  const filled = templateParams(t.name, lang, t.facts as never);
+  if (!filled.ok) throw new PlatformDmRefused(`template ${t.name}: ${filled.reason}`, "template-does-not-fill");
+  return { templateName: t.name, templateLang: META_LANG[lang], templateParams: filled.params };
 }
 
 /** DM purposes `cancelQueuedPlatformDms` will touch. A sign-up code, a

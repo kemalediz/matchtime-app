@@ -55,6 +55,21 @@ export function waNumberFor(channel: SendChannel, env: Record<string, string | u
   return channel === "cloud" ? digitsOrNull(env.WA_CLOUD_NUMBER) : matchtimeWaNumber(env);
 }
 
+/**
+ * The number the code pages (/login, /signup, /claim) may name after a
+ * code was queued (Cloud API plan, PR C7a, section 3.1): the official
+ * number, "+<digits>", when the code goes from it, since it is new to the
+ * person and its message is the one to look for. The club number is NEVER
+ * named here: it stays off signed-out pages (the rule above). Null when
+ * nothing is to be named. Called only by src/lib/code-dm.ts
+ * (`send-channel-source-guard.test.ts`).
+ */
+export function codeSenderNumber(channel: SendChannel, env: Record<string, string | undefined> = process.env): string | null {
+  if (channel !== "cloud") return null;
+  const digits = waNumberFor(channel, env);
+  return digits ? `+${digits}` : null;
+}
+
 /** Statuses whose code still points at something: a new code must not
  *  collide with any of them. */
 const LIVE_CODE_STATUSES = ["issued", "dm_verified", "group_linked"];

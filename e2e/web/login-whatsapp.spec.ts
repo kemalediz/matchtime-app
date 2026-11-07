@@ -30,6 +30,8 @@ test.describe.configure({ mode: "serial" });
 
 const ORGANISER_PHONE = "+447700900981";
 const UNKNOWN_PHONE = "+447700900982";
+/** Its own number, so the code step test leaves the other tests' counts alone. */
+const FLAGS_OFF_PHONE = "+447700900987";
 const digits = (phone: string) => phone.slice(1);
 
 test.beforeAll(() => {
@@ -80,6 +82,21 @@ test("/login offers WhatsApp and nothing else", async ({ page }) => {
 
   await page.getByRole("link", { name: "Sign up", exact: true }).click();
   await page.waitForURL("**/signup");
+});
+
+test("flags off (Cloud API C7a): the code step reads as before and the code is the club number's job, with no template", async ({ page }) => {
+  await page.goto("/login");
+  await askForCode(page, FLAGS_OFF_PHONE);
+  await expect(page.getByText(`Enter the 6 digit code we sent to ${FLAGS_OFF_PHONE} on WhatsApp.`)).toBeVisible();
+  // No number is named: the club number never reaches a signed-out page,
+  // and the official number is named only for a code it sends.
+  await expect(page.getByTestId("code-sent-from")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(/official/i);
+  const job = await testDb().one<{ channel: string; templateName: string | null; templateParams: unknown }>(
+    `SELECT channel, "templateName", "templateParams" FROM "PlatformJob" WHERE phone = $1 AND purpose = 'otp' ORDER BY "createdAt" DESC LIMIT 1`,
+    [digits(FLAGS_OFF_PHONE)],
+  );
+  expect(job).toEqual({ channel: "baileys", templateName: null, templateParams: null });
 });
 
 test("/signup points an existing user at /login", async ({ page }) => {

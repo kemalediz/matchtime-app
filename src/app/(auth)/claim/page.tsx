@@ -27,6 +27,7 @@ import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { startClaimAccount, verifyClaimAccount } from "@/app/actions/claim";
 import { ArrowRight, Loader2, Phone, CheckCircle2 } from "lucide-react";
+import { CodeSentFrom } from "@/components/code-sent-from";
 
 type Step = "intro" | "phone" | "code";
 
@@ -38,6 +39,8 @@ export default function ClaimPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  // The official number, when the code went from it (Cloud API plan, C7a).
+  const [codeFrom, setCodeFrom] = useState<string | null>(null);
   const submitting = useRef(false);
 
   async function sendCode() {
@@ -52,6 +55,7 @@ export default function ClaimPage() {
         setError(r.error);
       } else {
         setInfo("Code sent. Check your WhatsApp.");
+        setCodeFrom(r.from ?? null);
         setStep("code");
       }
     } finally {
@@ -212,6 +216,7 @@ export default function ClaimPage() {
                 <span className="font-mono text-slate-700">{phone}</span> on
                 WhatsApp. It expires in 10 minutes.
               </p>
+              <CodeSentFrom number={codeFrom} className="text-sm text-slate-500 mt-2" />
             </div>
 
             <div className="space-y-4">

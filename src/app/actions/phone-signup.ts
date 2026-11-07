@@ -7,7 +7,7 @@ import { safeCallbackPath } from "@/lib/safe-callback";
 import { expiredLinkDestination, isLinkHandle, resolveExpiredLink } from "@/lib/expired-link";
 import { randomInt } from "node:crypto";
 import { headers } from "next/headers";
-import { queuePlatformDm } from "@/lib/platform-jobs";
+import { codeLangFromRequest, queueCodeDm } from "@/lib/code-dm";
 import { formatLondon, londonDateTimeToUtc } from "@/lib/london-time";
 import {
   SIGNUP_ATTEMPTS_PER_IP_PER_HOUR,
@@ -50,6 +50,12 @@ import {
  * any club's bot switch says (self-join slice 3). It used to be a BotJob
  * under "the first bot-enabled org", borrowed as a sender, so muting the
  * only live club stopped every sign-up.
+ *
+ * WhatsApp Cloud API plan, PR C7a: it is queued through the one code door,
+ * `queueCodeDm` (src/lib/code-dm.ts). With codes switched on for the
+ * official number it goes as Meta's `mt_code` template, and the answer
+ * carries `from`, the official number, so the page can say which chat to
+ * look in. With the flags off the answer is `{ ok: true }`, as before.
  */
 
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -76,6 +82,10 @@ function generateCode(): string {
 
 type Refusal = { ok: false; error: string };
 
+/** A code was sent. `from`: the number it comes from, only when the page
+ *  should name it (the official number, PR C7a); absent otherwise. */
+export type CodeSent = { ok: true; from?: string };
+
 /**
  * Issue a code for `digits` and DM it. Every cap lives here, so every
  * caller is held to the same ones. Looks at PhoneOtp only, never at User:
@@ -84,7 +94,7 @@ type Refusal = { ok: false; error: string };
 async function issueCode(
   digits: string,
   text: (code: string) => string,
-): Promise<{ ok: true } | Refusal> {
+): Promise<CodeSent | Refusal> {
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const recent = await db.phoneOtp.count({
     where: { phone: digits, createdAt: { gte: hourAgo } },
@@ -123,9 +133,9 @@ async function issueCode(
     },
   });
 
-  await queuePlatformDm({ phone: digits, purpose: "otp", text: text(code) });
+  const { from } = await queueCodeDm({ phone: digits, code, text: text(code), lang: await codeLangFromRequest() });
 
-  return { ok: true };
+  return from ? { ok: true, from } : { ok: true };
 }
 
 /**
@@ -159,7 +169,7 @@ async function spendCode(digits: string, code: string): Promise<{ ok: true } | R
 export async function startPhoneSignup(args: {
   phone: string;
   name: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<CodeSent | Refusal> {
   const phone = normalisePhone(args.phone);
   if (!phone) return { ok: false, error: "Phone number looks invalid. Use full international format (e.g. +44…)" };
   const digits = phone.replace(/^\+/, "");
@@ -264,7 +274,7 @@ export async function verifyPhoneSignup(args: {
  */
 export async function startPhoneSignIn(args: {
   phone: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<CodeSent | Refusal> {
   const phone = normalisePhone(args.phone);
   if (!phone) return { ok: false, error: "Phone number looks invalid. Use full international format (e.g. +44…)" };
   const digits = phone.replace(/^\+/, "");

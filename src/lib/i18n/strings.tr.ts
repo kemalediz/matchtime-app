@@ -2225,6 +2225,7 @@ export const tr: Strings = {
   sj_live_button_label: (p) => `Yayına al: ${p.club}`,
   sj_live_for_club: (p) => `Bu düğme ${p.club} kulübünü yayına alır.`,
   login_link_expired: `Bu bağlantının süresi doldu. Devam etmek için WhatsApp numaranızla giriş yapın.`,
+  code_sent_from: (p) => `Kod, MatchTime'ın resmi WhatsApp numarasından geliyor: ${p.number}.`,
   link_invalid: `Bu bağlantı geçerli değil.`,
   link_go_sign_in: `Giriş sayfasına git`,
   sj_card_setting_up: (p) =>

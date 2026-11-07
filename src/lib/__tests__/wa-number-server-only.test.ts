@@ -99,6 +99,19 @@ describe("the official number (WA_CLOUD_NUMBER) follows the same rule (Cloud API
     expect(readFileSync(path.join(ROOT, "next.config.ts"), "utf8")).not.toContain("WA_CLOUD_NUMBER");
   });
 
+  it("a code page learns the official number only from its own code's answer, after the code went from it (PR C7a)", () => {
+    // /login, /signup and /claim render no number. After a code is queued,
+    // the action's answer names the official number (codeSenderNumber),
+    // and only when the code goes from it: the person is about to get a
+    // message from that number anyway. The club number never: the reader
+    // answers null for it (code-dm.test.ts).
+    const callers = FILES.filter((f) => f !== READER && /\bcodeSenderNumber\s*\(/.test(readFileSync(f, "utf8"))).map((f) => path.relative(SRC, f));
+    expect(callers).toEqual(["lib/code-dm.ts"]);
+    const reader = readFileSync(READER, "utf8");
+    const body = reader.slice(reader.indexOf("export function codeSenderNumber("));
+    expect(body.slice(0, body.indexOf("\n}\n"))).toMatch(/if \(channel !== "cloud"\) return null;/);
+  });
+
   it("no pool page or component asks for a number by channel (the page renders no number)", () => {
     const callers = FILES.filter((f) => f !== READER && /\bwaNumberFor\s*\(/.test(readFileSync(f, "utf8"))).map((f) => path.relative(SRC, f));
     expect(callers.filter((r) => r.startsWith("app/play/") || r.startsWith("components/pool/"))).toEqual([]);
