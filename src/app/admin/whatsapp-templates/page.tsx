@@ -3,8 +3,10 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isSuperadmin } from "@/lib/org";
 import { checkCloudTemplates } from "@/lib/cloud-api/template-sync-admin";
+import { checkAccessToken } from "@/lib/cloud-api/token-check";
 import { NOT_CONFIGURED, TemplateDiffTable, TemplateStatusTable } from "./template-sync-view";
 import { SubmitTemplatesControls } from "./submit-controls";
+import { TokenCheckView } from "./token-check-view";
 
 /**
  * /admin/whatsapp-templates: the official number's message templates, the
@@ -17,7 +19,10 @@ import { SubmitTemplatesControls } from "./submit-controls";
  *     and category;
  *   - the status rows Meta's template webhooks wrote (`CloudTemplateStatus`);
  *   - "Submit to Meta", behind a confirmation on the page, submits the new
- *     and edits the changed, and shows what happened per template.
+ *     and edits the changed, and shows what happened per template;
+ *   - the access token check (`src/lib/cloud-api/token-check.ts`): Meta's
+ *     debug_token facts about the token and whether it can see the number,
+ *     GET only, nothing secret shown.
  * The token never leaves the server. Reading Meta's list and submitting a
  * template are free; only sends are charged.
  *
@@ -32,8 +37,9 @@ export default async function WhatsAppTemplatesPage() {
   if (!session?.user?.id) redirect("/login");
   if (!(await isSuperadmin(session.user.id))) notFound();
 
-  const [check, rows] = await Promise.all([
+  const [check, tokenCheck, rows] = await Promise.all([
     checkCloudTemplates(),
+    checkAccessToken(),
     db.cloudTemplateStatus.findMany({
       orderBy: [{ name: "asc" }, { language: "asc" }],
       select: { name: true, language: true, status: true, category: true, previousCategory: true, qualityScore: true, reason: true, updatedAt: true },
@@ -82,6 +88,13 @@ export default async function WhatsAppTemplatesPage() {
             )}
           </>
         )}
+      </section>
+
+      <section aria-labelledby="wt-token-title" className="space-y-3">
+        <h3 id="wt-token-title" className="text-lg font-semibold text-slate-900">
+          Access token check
+        </h3>
+        <TokenCheckView check={tokenCheck} />
       </section>
 
       <section aria-labelledby="wt-status-title" className="space-y-3">
