@@ -11,6 +11,10 @@
  *     claimed with the Pi's own claim and sent through the Cloud API. It
  *     is the retry for the dispatch that runs right after a job is queued
  *     (`after()`, src/lib/cloud-api/kick.ts).
+ *   - then (PR C5) the Cloud webhook's recorded messages that the work
+ *     after its 200 never started (`sweepCloudInbound`,
+ *     src/lib/cloud-api/webhook.ts), through the same DM pipeline. Off,
+ *     it reads nothing either. Its failure never changes this answer.
  *
  * The schedule (`* * * * *` in vercel.json) needs Vercel Pro: Hobby allows
  * one run a day. The project is on the Cressoft team's Pro plan (moved
@@ -23,6 +27,7 @@
  */
 import { NextResponse } from "next/server";
 import { runCloudDispatchSweep } from "@/lib/cloud-api/dispatch";
+import { sweepCloudInbound } from "@/lib/cloud-api/webhook";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 
 function nowOf(request: Request): Date {
@@ -37,12 +42,20 @@ export async function GET(request: Request) {
   if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const now = nowOf(request);
+  let answer: Response;
   try {
-    const report = await runCloudDispatchSweep({ now: nowOf(request), poolEnv: () => poolEnvForApiRequest(request) });
+    const report = await runCloudDispatchSweep({ now, poolEnv: () => poolEnvForApiRequest(request) });
     if (report.claimed > 0) console.log(`[cloud-dispatch] ${JSON.stringify(report)}`);
-    return NextResponse.json(report);
+    answer = NextResponse.json(report);
   } catch (err) {
     console.error(`[cloud-dispatch] sweep failed; the next minute tries again: ${(err as Error)?.message ?? "error"}`);
-    return NextResponse.json({ error: "sweep failed" }, { status: 500 });
+    answer = NextResponse.json({ error: "sweep failed" }, { status: 500 });
   }
+  try {
+    await sweepCloudInbound({ request, now });
+  } catch (err) {
+    console.error(`[cloud-dispatch] inbound sweep failed; the next minute tries again: ${(err as Error)?.name ?? "error"}`);
+  }
+  return answer;
 }

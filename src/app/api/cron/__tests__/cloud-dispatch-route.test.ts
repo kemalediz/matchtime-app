@@ -13,6 +13,8 @@ const sweep = vi.hoisted(() => ({ runCloudDispatchSweep: vi.fn() }));
 vi.mock("@/lib/cloud-api/dispatch", () => sweep);
 const switchEnv = vi.hoisted(() => ({ poolEnvForApiRequest: vi.fn() }));
 vi.mock("@/lib/pool/switch-env", () => switchEnv);
+const inbound = vi.hoisted(() => ({ sweepCloudInbound: vi.fn() }));
+vi.mock("@/lib/cloud-api/webhook", () => inbound);
 
 import { GET } from "../cloud-dispatch/route";
 
@@ -24,6 +26,7 @@ beforeEach(() => {
   vi.stubEnv("CRON_SECRET", SECRET);
   sweep.runCloudDispatchSweep.mockResolvedValue({ enabled: false, configured: false, claimed: 0 });
   switchEnv.poolEnvForApiRequest.mockResolvedValue({ POOL: "1" });
+  inbound.sweepCloudInbound.mockResolvedValue({ started: 0 });
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -57,6 +60,28 @@ describe("GET /api/cron/cloud-dispatch", () => {
     vi.stubEnv("MT_TEST_MODE", "");
     await get({ authorization: `Bearer ${SECRET}`, "x-test-now": at });
     expect(sweep.runCloudDispatchSweep.mock.calls[1][0].now.toISOString()).not.toBe(at);
+  });
+
+  it("then runs the Cloud webhook's messages the work never started (PR C5), with this request and clock", async () => {
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(inbound.sweepCloudInbound).toHaveBeenCalledTimes(1);
+    const arg = inbound.sweepCloudInbound.mock.calls[0][0];
+    expect(arg.request).toBeInstanceOf(Request);
+    expect(arg.now).toEqual(sweep.runCloudDispatchSweep.mock.calls[0][0].now);
+  });
+
+  it("an inbound sweep that throws does not fail the dispatch sweep's answer", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    inbound.sweepCloudInbound.mockRejectedValueOnce(new Error("db"));
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ enabled: false, configured: false, claimed: 0 });
+  });
+
+  it("without the cron secret the inbound sweep does not run either", async () => {
+    await get({});
+    expect(inbound.sweepCloudInbound).not.toHaveBeenCalled();
   });
 
   it("a failed sweep is a 500 with no detail, never a crash", async () => {

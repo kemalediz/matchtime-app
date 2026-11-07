@@ -52,6 +52,11 @@ export const E2E = {
   AUTH_SECRET: "mt-e2e-only-auth-secret-never-prod",
   WHATSAPP_API_KEY: "mt-e2e-whatsapp-key",
   CRON_SECRET: "mt-e2e-cron-secret",
+  /** The Cloud webhook's two locks (PR C5): Meta's app secret, which
+   *  signs every POST, and the verify token of the GET handshake. The
+   *  flag CLOUD_API_ENABLED stays unset, so a signed POST does nothing. */
+  WA_CLOUD_APP_SECRET: "mt-e2e-cloud-app-secret",
+  WA_CLOUD_VERIFY_TOKEN: "mt-e2e-cloud-verify-token",
 
   /**
    * `MT_TEST_DM_QA_STUB`'s value — a FLAG, not a path.
@@ -260,6 +265,8 @@ export function buildTestEnv(): Record<string, string> {
     NEXT_PUBLIC_APP_URL: E2E_BASE_URL,
     WHATSAPP_API_KEY: E2E.WHATSAPP_API_KEY,
     CRON_SECRET: E2E.CRON_SECRET,
+    WA_CLOUD_APP_SECRET: E2E.WA_CLOUD_APP_SECRET,
+    WA_CLOUD_VERIFY_TOKEN: E2E.WA_CLOUD_VERIFY_TOKEN,
     MT_TEST_MODE: "1",
     MATCHTIME_WA_NUMBER: E2E.MATCHTIME_WA_NUMBER,
     SELF_JOIN_APPROVER_PHONES: E2E.APPROVER_PHONE,

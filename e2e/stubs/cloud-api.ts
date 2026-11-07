@@ -16,7 +16,7 @@
  * WEBHOOKS BACK (for PR C5): `statusWebhookPayload` builds Meta's status
  * update for a wamid and `postSignedWebhook` posts it to our webhook route
  * with `X-Hub-Signature-256` signed by the app secret, as Meta does. C5's
- * route is not built yet; this is the hook its specs will use.
+ * route (/api/whatsapp/cloud/webhook) is what they post to.
  */
 import { createHmac } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
