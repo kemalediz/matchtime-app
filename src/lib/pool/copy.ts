@@ -39,13 +39,13 @@ export function poolWelcomeText(lang: Lang, p: { displayName: string; earlyList:
 // ── His times and formats, asked on WhatsApp (2026-11-04) ─────────────
 
 /** His days in words, Monday first: "Tuesday and Saturday". */
-function daysInWords(lang: Lang, days: readonly number[]): string {
+export function daysInWords(lang: Lang, days: readonly number[]): string {
   const names = poolPageCopy(lang).fields.dayNames;
   return joinList(lang, WEEK_ORDER.filter((d) => days.includes(d)).map((d) => names[d]));
 }
 
 /** Football's formats as the question offers them: "5, 7, 8, 9 or 11-a-side". */
-function formatsChoice(lang: Lang): string {
+export function formatsChoice(lang: Lang): string {
   return poolDetailsCopy(lang).formatsChoice(joinChoice(lang, formatsOf(DEFAULT_POOL_SPORT).map(String)));
 }
 
