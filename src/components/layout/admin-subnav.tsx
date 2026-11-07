@@ -25,6 +25,7 @@ const OWNER_TABS = [
   { label: "Pool codes", href: "/admin/pool/campaigns" },
   { label: "Pool funnel", href: "/admin/pool/funnel" },
   { label: "Pool safety", href: "/admin/pool/safety" },
+  { label: "WhatsApp templates", href: "/admin/whatsapp-templates" },
 ];
 
 /**
