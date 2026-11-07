@@ -61,8 +61,14 @@ const CHANNEL_CALLERS = new Set<string>([
   PLATFORM_JOBS,
 ]);
 
+/** PR C4: the Cloud dispatcher. It asks the master switch (`cloudApiEnabled`)
+ *  and, for a send that failed, `fallbackWhenCloudDown`; its pure rules read
+ *  `ANSWER_PURPOSES` to put answers first. Neither picks a job's channel. */
+const CLOUD_DISPATCH = "lib/cloud-api/dispatch.ts";
+const CLOUD_DISPATCH_RULES = "lib/cloud-api/dispatch-rules.ts";
+
 /** Files that may import send-channel (types included). Extend deliberately. */
-const CHANNEL_IMPORTERS = new Set<string>([NUMBER_READER, PLATFORM_JOBS]);
+const CHANNEL_IMPORTERS = new Set<string>([NUMBER_READER, PLATFORM_JOBS, CLOUD_DISPATCH, CLOUD_DISPATCH_RULES]);
 
 describe("the flags are read in one place", () => {
   it("only send-channel.ts reads CLOUD_API_ENABLED or CLOUD_API_PURPOSES", () => {
@@ -149,6 +155,25 @@ describe("a PlatformJob's channel is decided once, in queuePlatformDm (PR C2)", 
     const body = src.slice(start, end);
     expect(body).toMatch(/\bchannelFor\s*\(/);
     expect(body).toMatch(/\bchannel,/);
+  });
+
+  it("only a handover changes a job's channel, and only the Cloud dispatcher asks for one, with fallbackWhenCloudDown's answer (PR C4)", () => {
+    // platform-jobs.ts writes `channel: result.channel` for a handover and
+    // nowhere else after queuePlatformDm.
+    expect(src.match(/\bchannel:\s*result\.channel\b/g) ?? []).toHaveLength(1);
+    // Outside platform-jobs.ts itself, where the outcome is defined.
+    const askers = FILES.filter((f) => rel(f) !== PLATFORM_JOBS && /outcome:\s*["']handover["']/.test(code(f))).map(rel);
+    expect(askers).toEqual([CLOUD_DISPATCH]);
+    const dispatch = code(path.join(SRC, CLOUD_DISPATCH));
+    expect(dispatch).toMatch(/const fallback = fallbackWhenCloudDown\(/);
+    expect(dispatch).toMatch(/outcome:\s*"handover",\s*channel:\s*fallback\b/);
+  });
+
+  it("the Cloud dispatcher names the official number once, as the channel it claims for", () => {
+    const dispatch = code(path.join(SRC, CLOUD_DISPATCH));
+    expect(dispatch.match(/["']cloud["']/g) ?? []).toHaveLength(1);
+    expect(dispatch).toMatch(/const OFFICIAL_NUMBER: SendChannel = "cloud";/);
+    expect(dispatch).not.toMatch(/\b(channelFor|waLinkChannelFor|waNumberFor)\s*\(/);
   });
 
   it("every other PlatformJob writer leaves channel to the column default (baileys)", () => {
