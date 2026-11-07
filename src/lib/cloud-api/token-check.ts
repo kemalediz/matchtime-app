@@ -36,14 +36,16 @@ export interface TokenCheckDeps {
   env: Env;
 }
 
-/** The settings the page lists, present or not. Values never shown. */
+/** The settings the page lists, present or not. Values never shown. The
+ *  official number's own setting is not one of them: it is read only by
+ *  club-connect.ts (wa-number-server-only.test.ts), and the phone step
+ *  below checks the number through Meta's answer for the phone number id. */
 export const TOKEN_CHECK_SETTINGS = [
   "WA_CLOUD_ACCESS_TOKEN",
   "WA_CLOUD_APP_ID",
   "WA_CLOUD_APP_SECRET",
   "WA_CLOUD_WABA_ID",
   "WA_CLOUD_PHONE_NUMBER_ID",
-  "WA_CLOUD_NUMBER",
   "WA_CLOUD_GRAPH_VERSION",
   "WA_CLOUD_VERIFY_TOKEN",
   "WA_CLOUD_API_BASE",

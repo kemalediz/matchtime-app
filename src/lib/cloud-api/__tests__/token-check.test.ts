@@ -225,9 +225,14 @@ describe("checkAccessToken: the settings, never their values", () => {
     expect(r.env).toContainEqual({ name: "WA_CLOUD_APP_SECRET", present: true, length: SECRET.length, outerWhitespace: false });
     expect(r.env).toContainEqual({ name: "WA_CLOUD_APP_ID", present: true, length: APP_ID.length, outerWhitespace: false });
     expect(r.env).toContainEqual({ name: "WA_CLOUD_VERIFY_TOKEN", present: false, length: 0, outerWhitespace: false });
-    for (const name of ["WA_CLOUD_WABA_ID", "WA_CLOUD_PHONE_NUMBER_ID", "WA_CLOUD_GRAPH_VERSION", "WA_CLOUD_NUMBER", "WA_CLOUD_API_BASE"]) {
+    for (const name of ["WA_CLOUD_WABA_ID", "WA_CLOUD_PHONE_NUMBER_ID", "WA_CLOUD_GRAPH_VERSION", "WA_CLOUD_API_BASE"]) {
       expect(r.env.map((e) => e.name)).toContain(name);
     }
+    // The official number is not a Graph setting and is read only by
+    // club-connect.ts (wa-number-server-only, send-channel-source-guard):
+    // the page checks the number through Meta's own answer for the phone
+    // number id (the phone step), never through the env value.
+    expect(r.env.map((e) => e.name)).not.toContain("WA_CLOUD_NUMBER");
     // No value of any setting appears among the env rows.
     const rows = JSON.stringify(r.env);
     for (const v of Object.values(ENV)) expect(rows).not.toContain(v);

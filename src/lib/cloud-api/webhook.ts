@@ -330,7 +330,7 @@ async function applyStatus(st: CloudStatusUpdate, now: Date): Promise<boolean> {
   for (let i = 0; i < STATUS_TRIES; i++) {
     const job = (await db.platformJob.findFirst({
       where: { channel: OFFICIAL_NUMBER, OR: [{ waMessageId: st.wamid }, ...(st.jobId ? [{ id: st.jobId, waMessageId: null }] : [])] },
-      select: { id: true, status: true, waMessageId: true, sentAt: true, deliveredAt: true, readAt: true },
+      select: { id: true, status: true, channel: true, purpose: true, createdAt: true, waMessageId: true, sentAt: true, deliveredAt: true, readAt: true },
     })) as StatusJobView | null;
     if (!job) {
       console.log(`${TAG} status ${st.wamid} ${st.status}: no cloud job has it${price}`);
@@ -338,9 +338,11 @@ async function applyStatus(st: CloudStatusUpdate, now: Date): Promise<boolean> {
     }
     const write = cloudStatusUpdate(job, st, now);
     if (!write) return false;
-    const { count } = await db.platformJob.updateMany({ where: { id: job.id, status: job.status, ...write.guard }, data: write.data });
+    // The channel too: a job handed to the club number is no longer ours.
+    const { count } = await db.platformJob.updateMany({ where: { id: job.id, status: job.status, channel: OFFICIAL_NUMBER, ...write.guard }, data: write.data });
     if (count !== 1) continue;
-    console.log(`${TAG} status ${st.wamid} ${st.status}: job ${job.id} to ${st.recipient ?? st.recipientUserId ?? "-"}${st.errorCode ? ` code ${st.errorCode}` : ""}${price}`);
+    const handed = write.settles === "handover" ? `, handed to the club number (${write.data.channel})` : "";
+    console.log(`${TAG} status ${st.wamid} ${st.status}: job ${job.id} to ${st.recipient ?? st.recipientUserId ?? "-"}${st.errorCode ? ` code ${st.errorCode}` : ""}${price}${handed}`);
     if (write.settles === "sent") await onPoolOfferJobSent(job.id, now, job.sentAt ?? write.data.sentAt ?? now);
     if (write.settles === "failed") await onPoolOfferJobFailed(job.id, now);
     return true;

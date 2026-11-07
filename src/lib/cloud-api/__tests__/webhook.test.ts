@@ -293,7 +293,7 @@ describe("the work: every text into the ONE DM pipeline, once", () => {
 });
 
 describe("the work: statuses settle the cloud job, idempotently", () => {
-  const job = (over: Record<string, unknown> = {}) => ({ id: "job1", status: "sent", waMessageId: "wamid.A", sentAt: new Date(NOW.getTime() - 60_000), deliveredAt: null, readAt: null, ...over });
+  const job = (over: Record<string, unknown> = {}) => ({ id: "job1", status: "sent", channel: "cloud", purpose: "pool-offer", createdAt: new Date(NOW.getTime() - 120_000), waMessageId: "wamid.A", sentAt: new Date(NOW.getTime() - 60_000), deliveredAt: null, readAt: null, ...over });
   const statusPost = (status: "sent" | "delivered" | "read" | "failed", extra: Record<string, unknown> = {}) =>
     accept(statusWebhookPayload({ phoneNumberId: OUR_NUMBER_ID, wamid: "wamid.A", recipient: "447700900001", status, timestamp: new Date(NOW.getTime() - 5_000), bizOpaqueCallbackData: "job1", ...extra }));
 
@@ -307,7 +307,7 @@ describe("the work: statuses settle the cloud job, idempotently", () => {
     dbMock.platformJob.findFirst.mockResolvedValueOnce(job());
     const r = await statusPost("delivered");
     await r.work!();
-    expect(dbMock.platformJob.updateMany).toHaveBeenCalledWith({ where: { id: "job1", status: "sent", deliveredAt: null }, data: { deliveredAt: new Date(NOW.getTime() - 5_000) } });
+    expect(dbMock.platformJob.updateMany).toHaveBeenCalledWith({ where: { id: "job1", status: "sent", channel: "cloud", deliveredAt: null }, data: { deliveredAt: new Date(NOW.getTime() - 5_000) } });
     expect(pool.onPoolOfferJobSent).not.toHaveBeenCalled();
     expect(pool.onPoolOfferJobFailed).not.toHaveBeenCalled();
   });
@@ -324,7 +324,7 @@ describe("the work: statuses settle the cloud job, idempotently", () => {
     const r = await statusPost("delivered");
     await r.work!();
     expect(dbMock.platformJob.updateMany.mock.calls[0][0]).toEqual({
-      where: { id: "job1", status: "unconfirmed", waMessageId: null, deliveredAt: null },
+      where: { id: "job1", status: "unconfirmed", channel: "cloud", waMessageId: null, deliveredAt: null },
       data: { status: "sent", waMessageId: "wamid.A", deliveredAt: new Date(NOW.getTime() - 5_000) },
     });
     expect(pool.onPoolOfferJobSent).toHaveBeenCalledWith("job1", NOW, new Date(NOW.getTime() - 60_000));
@@ -352,7 +352,7 @@ describe("the work: statuses settle the cloud job, idempotently", () => {
     const r = await statusPost("failed", { errors: [{ code: 131026 }] });
     await r.work!();
     expect(dbMock.platformJob.updateMany).toHaveBeenCalledTimes(1);
-    expect(dbMock.platformJob.updateMany.mock.calls[0][0].where).toEqual({ id: "job1", status: "sent", deliveredAt: null, readAt: null });
+    expect(dbMock.platformJob.updateMany.mock.calls[0][0].where).toEqual({ id: "job1", status: "sent", channel: "cloud", deliveredAt: null, readAt: null });
     expect(pool.onPoolOfferJobFailed).not.toHaveBeenCalled();
   });
 
@@ -362,7 +362,37 @@ describe("the work: statuses settle the cloud job, idempotently", () => {
     dbMock.platformJob.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
     const r = await statusPost("read");
     await r.work!();
-    expect(dbMock.platformJob.updateMany.mock.calls[1][0]).toEqual({ where: { id: "job1", status: "sent", readAt: null }, data: { readAt: new Date(NOW.getTime() - 5_000) } });
+    expect(dbMock.platformJob.updateMany.mock.calls[1][0]).toEqual({ where: { id: "job1", status: "sent", channel: "cloud", readAt: null }, data: { readAt: new Date(NOW.getTime() - 5_000) } });
+  });
+
+  it("every compare-and-set names the official number's channel, so a job handed to the club number is never written again", async () => {
+    dbMock.platformJob.findFirst.mockResolvedValueOnce(job());
+    const r = await statusPost("delivered");
+    await r.work!();
+    expect(dbMock.platformJob.findFirst.mock.calls[0][0].select).toMatchObject({ channel: true, purpose: true, createdAt: true });
+    expect(dbMock.platformJob.updateMany.mock.calls[0][0].where).toMatchObject({ channel: "cloud" });
+  });
+
+  it("a live code that fails after Meta accepted it is handed to the club number, no pool hook (review of #556, S1)", async () => {
+    dbMock.platformJob.findFirst.mockResolvedValueOnce(job({ purpose: "otp" }));
+    const r = await statusPost("failed", { errors: [{ code: 131026, title: "Message undeliverable" }] });
+    await r.work!();
+    expect(dbMock.platformJob.updateMany).toHaveBeenCalledTimes(1);
+    expect(dbMock.platformJob.updateMany.mock.calls[0][0]).toEqual({
+      where: { id: "job1", status: "sent", channel: "cloud", waMessageId: "wamid.A", deliveredAt: null, readAt: null },
+      data: expect.objectContaining({ status: "queued", channel: "baileys", waMessageId: null, sentAt: null, errorCode: 131026 }),
+    });
+    expect(pool.onPoolOfferJobFailed).not.toHaveBeenCalled();
+    expect(pool.onPoolOfferJobSent).not.toHaveBeenCalled();
+    expect(logs.some((l) => l.includes("job1") && l.includes("handed to the club number"))).toBe(true);
+  });
+
+  it("an expired code that fails is only failed (review of #556, S1)", async () => {
+    dbMock.platformJob.findFirst.mockResolvedValueOnce(job({ purpose: "otp", createdAt: new Date(NOW.getTime() - 11 * 60_000) }));
+    const r = await statusPost("failed", { errors: [{ code: 131026 }] });
+    await r.work!();
+    expect(dbMock.platformJob.updateMany.mock.calls[0][0].data).toMatchObject({ status: "failed", errorCode: 131026 });
+    expect(dbMock.platformJob.updateMany.mock.calls[0][0].data).not.toHaveProperty("channel");
   });
 
   it("a status that keeps losing gives up after three tries", async () => {

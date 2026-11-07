@@ -28,7 +28,13 @@
  *   3. An answer purpose with `replyTo` known: the channel he last wrote
  *      on, so the answer lands in the chat he is looking at, inside its
  *      window, for free (listed or not: the reply cannot go anywhere else).
- *   4. A first contact purpose that is listed: cloud.
+ *   4. A first contact purpose that is listed: cloud. Except when the
+ *      caller says the official number is not configured (no token or
+ *      phone number id, `officialNumberReady: false`) and the purpose has
+ *      a fallback (codes only, `fallbackWhenCloudDown`): the fallback, and
+ *      `onFallback` is told why. The dispatcher claims nothing it cannot
+ *      send, so a code stored for it would wait until it died (review of
+ *      #556, S4). Everything else stays on cloud and waits, as before.
  *   5. Anything else: baileys.
  *
  * A BotJob (club DMs, HQ, group posts) never asks: it is always the club
@@ -140,13 +146,24 @@ export function channelFor(args: {
   /** The channel he last wrote on, when this message answers his DM. */
   replyTo?: SendChannel | null;
   env?: Env;
+  /** False when the official number cannot send (no token or phone
+   *  number id). Absent: taken as ready, as before. */
+  officialNumberReady?: boolean;
+  /** Told why, when a message the flags put on the official number goes
+   *  to its fallback instead (rule 4). The caller logs it. */
+  onFallback?: (why: string) => void;
 }): SendChannel {
   const env = args.env ?? process.env;
   const { purpose, replyTo } = args;
   if (!cloudApiEnabled(env)) return "baileys";
   if (has(CLUB_NUMBER_PURPOSES, purpose)) return "baileys";
   if (has(ANSWER_PURPOSES, purpose) && (replyTo === "baileys" || replyTo === "cloud")) return replyTo;
-  if (has(FIRST_CONTACT_PURPOSES, purpose) && cloudPurposesFrom(env).has(purpose)) return "cloud";
+  if (has(FIRST_CONTACT_PURPOSES, purpose) && cloudPurposesFrom(env).has(purpose)) {
+    const fallback = args.officialNumberReady === false ? fallbackWhenCloudDown(purpose) : null;
+    if (!fallback || fallback === "cloud") return "cloud";
+    args.onFallback?.(`"${purpose}" is listed for the official number, but the official number is not configured (no access token or phone number id); sent from the ${fallback} channel instead`);
+    return fallback;
+  }
   return "baileys";
 }
 

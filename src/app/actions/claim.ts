@@ -27,16 +27,9 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
-import { codeLangFromRequest, queueCodeDm } from "@/lib/code-dm";
-import { randomInt } from "node:crypto";
+import { issueCode } from "@/lib/code-dm";
 
-const CODE_TTL_MS = 10 * 60 * 1000;
-const MAX_OUTSTANDING_PER_HOUR = 3;
 const MAX_ATTEMPTS = 5;
-
-function generateCode(): string {
-  return randomInt(100_000, 1_000_000).toString();
-}
 
 export async function startClaimAccount(
   phoneInput: string,
@@ -53,44 +46,19 @@ export async function startClaimAccount(
   }
   const digits = phone.replace(/^\+/, "");
 
-  // Rate-limit per phone — ≤3 outstanding codes / hour. Same rules
-  // as the phone-signup OTP flow so a flood of taps can't spam DMs.
-  const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const recent = await db.phoneOtp.count({
-    where: { phone: digits, createdAt: { gte: hourAgo } },
-  });
-  if (recent >= MAX_OUTSTANDING_PER_HOUR) {
-    return {
-      ok: false,
-      error: "Too many requests. Please wait a few minutes and try again.",
-    };
-  }
-
-  const code = generateCode();
-  await db.phoneOtp.create({
-    data: {
-      phone: digits,
-      code,
-      expiresAt: new Date(Date.now() + CODE_TTL_MS),
-    },
-  });
-
-  // A PlatformJob, not a BotJob under a borrowed bot-enabled org: the code
-  // must go out even when every club's bot is switched off (self-join
-  // slice 3; src/lib/platform-jobs.ts). Through the one code door (Cloud
-  // API plan, PR C7a): Meta's `mt_code` when codes go from the official
-  // number, whose number then comes back for the page.
-  const { from } = await queueCodeDm({
-    phone: digits,
-    code,
-    lang: await codeLangFromRequest(),
-    text:
+  // The one code door (review of #556, S2): the same three caps as
+  // sign-up and sign-in (per phone, per IP, whole site), the IP stored,
+  // and no answer that depends on whether the number has an account. A
+  // PlatformJob, not a BotJob under a borrowed club, so the code goes out
+  // even when every club's bot is off; Meta's `mt_code` when codes go from
+  // the official number, whose number then comes back for the page.
+  return issueCode(
+    digits,
+    (code) =>
       `🔐 *MatchTime: claim your account*\n\n` +
       `Your verification code: *${code}*\n\n` +
       `It expires in 10 minutes. If you didn't request this, just ignore this message.`,
-  });
-
-  return from ? { ok: true, from } : { ok: true };
+  );
 }
 
 export async function verifyClaimAccount(args: {

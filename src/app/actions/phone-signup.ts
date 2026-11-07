@@ -5,15 +5,7 @@ import { normalisePhone } from "@/lib/phone";
 import { signMagicLinkToken } from "@/lib/magic-link";
 import { safeCallbackPath } from "@/lib/safe-callback";
 import { expiredLinkDestination, isLinkHandle, resolveExpiredLink } from "@/lib/expired-link";
-import { randomInt } from "node:crypto";
-import { headers } from "next/headers";
-import { codeLangFromRequest, queueCodeDm } from "@/lib/code-dm";
-import { formatLondon, londonDateTimeToUtc } from "@/lib/london-time";
-import {
-  SIGNUP_ATTEMPTS_PER_IP_PER_HOUR,
-  SITE_BUSY_MESSAGE,
-  SITE_SIGNUP_CODES_PER_DAY,
-} from "@/lib/signup-caps";
+import { issueCode, type CodeRefused, type CodeSent } from "@/lib/code-dm";
 
 /**
  * Phone-number signup via WhatsApp OTP.
@@ -42,9 +34,11 @@ import {
  *
  * SIGN IN (2026-10-11): /login uses the same codes through
  * startPhoneSignIn / verifyPhoneSignIn below. There is ONE code system:
- * `issueCode` and `spendCode` are the only places a code is made or
- * checked, so sign-in shares the table, the expiry, the attempt limit
- * and all three caps with sign-up. Sign-in never creates a User.
+ * `issueCode` (src/lib/code-dm.ts, which holds the caps above, shared with
+ * the claim code since review of #556, S2) and `spendCode` are the only
+ * places a code is made or checked, so sign-in shares the table, the
+ * expiry, the attempt limit and all three caps with sign-up. Sign-in
+ * never creates a User.
  *
  * The code DM is a PlatformJob (purpose "otp"), polled by the Pi whatever
  * any club's bot switch says (self-join slice 3). It used to be a BotJob
@@ -52,91 +46,15 @@ import {
  * only live club stopped every sign-up.
  *
  * WhatsApp Cloud API plan, PR C7a: it is queued through the one code door,
- * `queueCodeDm` (src/lib/code-dm.ts). With codes switched on for the
+ * src/lib/code-dm.ts. With codes switched on for the
  * official number it goes as Meta's `mt_code` template, and the answer
  * carries `from`, the official number, so the page can say which chat to
  * look in. With the flags off the answer is `{ ok: true }`, as before.
  */
 
-const CODE_TTL_MS = 10 * 60 * 1000;
-const MAX_OUTSTANDING_PER_HOUR = 3;
 const MAX_ATTEMPTS = 5;
-const SITE_BUSY = SITE_BUSY_MESSAGE;
 
-/** The requesting client's IP: the first x-forwarded-for hop, else x-real-ip. */
-async function requestIp(): Promise<string | null> {
-  try {
-    const h = await headers();
-    const first = (h.get("x-forwarded-for") ?? "").split(",")[0]?.trim();
-    const ip = first || (h.get("x-real-ip") ?? "").trim();
-    return ip ? ip.slice(0, 64) : null;
-  } catch {
-    // Outside a request (a script, a test harness): nothing to attribute.
-    return null;
-  }
-}
-
-function generateCode(): string {
-  return randomInt(100_000, 1_000_000).toString();
-}
-
-type Refusal = { ok: false; error: string };
-
-/** A code was sent. `from`: the number it comes from, only when the page
- *  should name it (the official number, PR C7a); absent otherwise. */
-export type CodeSent = { ok: true; from?: string };
-
-/**
- * Issue a code for `digits` and DM it. Every cap lives here, so every
- * caller is held to the same ones. Looks at PhoneOtp only, never at User:
- * what it answers cannot depend on whether the number has an account.
- */
-async function issueCode(
-  digits: string,
-  text: (code: string) => string,
-): Promise<CodeSent | Refusal> {
-  const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const recent = await db.phoneOtp.count({
-    where: { phone: digits, createdAt: { gte: hourAgo } },
-  });
-  if (recent >= MAX_OUTSTANDING_PER_HOUR) {
-    return { ok: false, error: "Too many requests. Please wait a bit and try again." };
-  }
-
-  // Cap 3: per requesting IP, per hour.
-  const ip = await requestIp();
-  if (ip) {
-    const fromIp = await db.phoneOtp.count({
-      where: { requestIp: ip, createdAt: { gte: hourAgo } },
-    });
-    if (fromIp >= SIGNUP_ATTEMPTS_PER_IP_PER_HOUR) return { ok: false, error: SITE_BUSY };
-  }
-
-  // Cap 2: whole site, per London day.
-  const now = new Date();
-  const londonMidnight = londonDateTimeToUtc(formatLondon(now, "yyyy-MM-dd"), "00:00");
-  const today = await db.phoneOtp.count({ where: { createdAt: { gte: londonMidnight } } });
-  if (today >= SITE_SIGNUP_CODES_PER_DAY) {
-    console.warn(
-      `[phone-signup] site cap reached: ${today} sign-up codes today (cap ${SITE_SIGNUP_CODES_PER_DAY}); refusing.`,
-    );
-    return { ok: false, error: SITE_BUSY };
-  }
-
-  const code = generateCode();
-  await db.phoneOtp.create({
-    data: {
-      phone: digits,
-      code,
-      expiresAt: new Date(Date.now() + CODE_TTL_MS),
-      requestIp: ip,
-    },
-  });
-
-  const { from } = await queueCodeDm({ phone: digits, code, text: text(code), lang: await codeLangFromRequest() });
-
-  return from ? { ok: true, from } : { ok: true };
-}
+type Refusal = CodeRefused;
 
 /**
  * Check `code` against the newest live code for `digits` and, when it is

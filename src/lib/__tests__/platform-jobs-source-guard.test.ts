@@ -118,8 +118,10 @@ describe("verification codes never borrow a club", () => {
       const src = code(path.join(SRC, file));
       expect(src).not.toMatch(/whatsappBotEnabled/);
       expect(src).not.toMatch(/botJob\s*\.\s*create/);
-      // Through the one code door (Cloud API C7a), which is a PlatformJob.
-      expect(src).toMatch(/queueCodeDm\(/);
+      // Through the one code door (Cloud API C7a; since review of #556, S2,
+      // `issueCode` there makes the code too), which is a PlatformJob.
+      expect(src).toMatch(/issueCode\(/);
+      expect(src).toMatch(/from "@\/lib\/code-dm"/);
     });
   }
 

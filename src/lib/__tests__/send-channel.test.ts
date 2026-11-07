@@ -235,3 +235,40 @@ describe("when the official number is down (decided: codes only fall back)", () 
     for (const p of ALL_PURPOSES.filter((x) => x !== "otp")) expect(fallbackWhenCloudDown(p)).toBeNull();
   });
 });
+
+// Review of #556, S4: codes switched on while the official number is not
+// configured (no token or phone number id) used to be stored for it, and
+// the dispatcher claims nothing it cannot send, so the code waited until it
+// died. A code goes to the club number instead (fail safe, decision 5);
+// nothing else does, so a stranger still never lands on the club number.
+describe("the official number not configured (review of #556, S4)", () => {
+  const ON = { CLOUD_API_ENABLED: "1", CLOUD_API_PURPOSES: "otp,pool-offer,pool-welcome" };
+
+  it("a listed code goes to the club number, and the caller is told why", () => {
+    const told: string[] = [];
+    expect(channelFor({ purpose: "otp", env: ON, officialNumberReady: false, onFallback: (why) => told.push(why) })).toBe("baileys");
+    expect(told).toHaveLength(1);
+    expect(told[0]).toMatch(/not configured/);
+  });
+
+  it("configured, or not said: the code goes to the official number, nobody is told", () => {
+    const told: string[] = [];
+    for (const ready of [true, undefined]) {
+      expect(channelFor({ purpose: "otp", env: ON, officialNumberReady: ready, onFallback: (why) => told.push(why) })).toBe("cloud");
+    }
+    expect(told).toEqual([]);
+  });
+
+  it("nothing else falls back: a listed first contact stays on the official number and waits", () => {
+    expect(channelFor({ purpose: "pool-offer", env: ON, officialNumberReady: false })).toBe("cloud");
+    expect(channelFor({ purpose: "pool-welcome", env: ON, officialNumberReady: false })).toBe("cloud");
+  });
+
+  it("flags off or the code not listed: the club number as before, and nobody is told", () => {
+    const told: string[] = [];
+    const tell = (why: string) => told.push(why);
+    expect(channelFor({ purpose: "otp", env: {}, officialNumberReady: false, onFallback: tell })).toBe("baileys");
+    expect(channelFor({ purpose: "otp", env: { CLOUD_API_ENABLED: "1", CLOUD_API_PURPOSES: "pool-offer" }, officialNumberReady: false, onFallback: tell })).toBe("baileys");
+    expect(told).toEqual([]);
+  });
+});
