@@ -28,6 +28,7 @@ import { startPhoneSignIn, verifyPhoneSignIn } from "@/app/actions/phone-signup"
 import { safeCallbackPath } from "@/lib/safe-callback";
 import { t } from "@/lib/i18n/t";
 import { useBrowserLang } from "@/lib/i18n/browser-lang";
+import { CodeSentFrom } from "@/components/code-sent-from";
 
 function LoginForm() {
   const router = useRouter();
@@ -47,6 +48,9 @@ function LoginForm() {
   const [stage, setStage] = useState<"phone" | "code">("phone");
   const [phone, setPhone] = useState("+44");
   const [code, setCode] = useState("");
+  // The number the code comes from, when the server named one: only the
+  // official number (WhatsApp Cloud API plan, PR C7a).
+  const [codeFrom, setCodeFrom] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [noAccount, setNoAccount] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -65,6 +69,7 @@ function LoginForm() {
         return;
       }
       setCode("");
+      setCodeFrom(res.from ?? null);
       setStage("code");
     } catch {
       setError("Something went wrong. Please try again.");
@@ -214,6 +219,7 @@ function LoginForm() {
             <p className="text-sm text-slate-600 text-center">
               Enter the 6 digit code we sent to {phone} on WhatsApp.
             </p>
+            <CodeSentFrom number={codeFrom} className="text-sm text-slate-600 text-center" />
             <input
               type="text"
               inputMode="numeric"
@@ -249,6 +255,7 @@ function LoginForm() {
               onClick={() => {
                 setStage("phone");
                 setCode("");
+                setCodeFrom(null);
                 setError("");
               }}
               className="w-full text-sm text-slate-500 hover:text-slate-700 disabled:opacity-60"

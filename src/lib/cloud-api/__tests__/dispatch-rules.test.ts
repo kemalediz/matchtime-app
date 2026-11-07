@@ -176,6 +176,37 @@ describe("planCloudSends: free form or template", () => {
   });
 });
 
+// PR C7a: a code is Meta's authentication template or nothing. Meta: "only
+// authentication templates may carry a one time code" (plan section 1), so
+// it never goes as free form text, window or not. And a code is never
+// held: a hold (15 minutes) outlives the code (10), so a code the official
+// number cannot send now fails, which hands it to the club number while it
+// is alive (decision 5, the I/O half).
+describe("planCloudSends: a code is always its mt_code template (C7a)", () => {
+  const CODE_TMPL = parseJobTemplate({ templateName: "mt_code", templateLang: "en_GB", templateParams: fill("mt_code") });
+  const code = (over: Partial<CloudJobView> = {}) => job({ purpose: "otp", template: CODE_TMPL, ...over });
+
+  it("inside his window: still the template, never free form", () => {
+    expect(planCloudSends([code()], ctx({ windowOpen: new Set(["447700900001"]) }))).toEqual([{ jobId: "j1", action: "send", mode: "template" }]);
+  });
+
+  it("inside his window with no template: failed (handed over by the I/O half), never free form", () => {
+    expect(planCloudSends([code({ template: null })], ctx({ windowOpen: new Set(["447700900001"]) }))[0]).toMatchObject({ jobId: "j1", action: "fail" });
+  });
+
+  it("mt_code paused, disabled or not approved: failed, never held past the code's life", () => {
+    for (const windowOpen of [new Set<string>(), new Set(["447700900001"])]) {
+      const plan = planCloudSends([code()], ctx({ windowOpen, unusableTemplates: new Set([templateKey("mt_code", "en_GB")]) }));
+      expect(plan[0]).toEqual({ jobId: "j1", action: "fail", reason: "template mt_code (en_GB) is not approved now" });
+    }
+  });
+
+  it("every other purpose keeps C4's rules: free form inside the window, a paused template held", () => {
+    expect(planCloudSends([job()], ctx({ windowOpen: new Set(["447700900001"]) }))[0]).toMatchObject({ mode: "text" });
+    expect(planCloudSends([job()], ctx({ unusableTemplates: new Set([templateKey("mt_pool_offer", "en_GB")]) }))[0]).toMatchObject({ action: "hold" });
+  });
+});
+
 describe("planCloudSends: the daily unique cap", () => {
   const full = (n: number) => new Set(Array.from({ length: n }, (_, i) => `r${i}`));
 

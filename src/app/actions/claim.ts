@@ -27,7 +27,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
-import { queuePlatformDm } from "@/lib/platform-jobs";
+import { codeLangFromRequest, queueCodeDm } from "@/lib/code-dm";
 import { randomInt } from "node:crypto";
 
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -40,7 +40,7 @@ function generateCode(): string {
 
 export async function startClaimAccount(
   phoneInput: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; from?: string } | { ok: false; error: string }> {
   const session = await auth();
   if (!session?.user?.id) return { ok: false, error: "Not signed in" };
 
@@ -77,17 +77,20 @@ export async function startClaimAccount(
 
   // A PlatformJob, not a BotJob under a borrowed bot-enabled org: the code
   // must go out even when every club's bot is switched off (self-join
-  // slice 3; src/lib/platform-jobs.ts).
-  await queuePlatformDm({
+  // slice 3; src/lib/platform-jobs.ts). Through the one code door (Cloud
+  // API plan, PR C7a): Meta's `mt_code` when codes go from the official
+  // number, whose number then comes back for the page.
+  const { from } = await queueCodeDm({
     phone: digits,
-    purpose: "otp",
+    code,
+    lang: await codeLangFromRequest(),
     text:
       `🔐 *MatchTime: claim your account*\n\n` +
       `Your verification code: *${code}*\n\n` +
       `It expires in 10 minutes. If you didn't request this, just ignore this message.`,
   });
 
-  return { ok: true };
+  return from ? { ok: true, from } : { ok: true };
 }
 
 export async function verifyClaimAccount(args: {

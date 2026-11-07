@@ -2986,6 +2986,10 @@ export const en = {
   sj_live_for_club: (p: { club: string }): string => `This takes ${p.club} live.`,
   /** On /login, after opening a signed link that has expired. */
   login_link_expired: `That link has expired. Sign in with your WhatsApp number to carry on.`,
+  /** On /login, /signup and /claim, under "we sent a code", only when the
+   *  code went from the official number (WhatsApp Cloud API plan, PR C7a):
+   *  it is new to the person, so the page says which chat to look in. */
+  code_sent_from: (p: { number: string }): string => `The code comes from MatchTime's official WhatsApp number, ${p.number}.`,
   /** The /r page, for a link that is not ours or cannot sign anyone in.
    *  It does not say "already used": no link is single-use. */
   link_invalid: `This link isn't valid.`,

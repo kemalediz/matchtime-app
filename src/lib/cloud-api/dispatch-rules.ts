@@ -15,6 +15,8 @@
  * that do not fit it) fails the job, window or not. A template Meta has
  * paused, disabled or not approved (`CloudTemplateStatus`, read by the
  * I/O half) is not used: the job is held until it is green again.
+ * A code (PR C7a) is the exception both ways: always its `mt_code`
+ * template, window or not, and failed rather than held (`CODE_PURPOSE`).
  *
  * ── THE DAILY UNIQUE CAP (plan 5.5) ────────────────────────────────────
  * Meta limits how many people we reach OUTSIDE a window per moving 24
@@ -143,6 +145,16 @@ export interface CloudJobView {
   template: JobTemplate | null;
 }
 
+/**
+ * A sign-up, sign-in or claim code (PR C7a): always its authentication
+ * template, never free form, since Meta lets only an authentication
+ * template carry a one time code (plan section 1). Never held either: a
+ * hold (`CLOUD_HOLD_MS`) outlives the code's ten minutes, so a code whose
+ * template cannot be used now fails, and the I/O half hands it to the club
+ * number while it is alive (`fallbackWhenCloudDown`, decision 5).
+ */
+const CODE_PURPOSE = "otp";
+
 export type CloudSendPlanItem =
   | { jobId: string; action: "send"; mode: "text" | "template" }
   | { jobId: string; action: "hold"; reason: string }
@@ -166,16 +178,18 @@ export function planCloudSends(
       out.push({ jobId: j.id, action: "fail", reason: j.template.reason });
       continue;
     }
-    if (ctx.windowOpen.has(j.phone)) {
+    const isCode = j.purpose === CODE_PURPOSE;
+    if (ctx.windowOpen.has(j.phone) && !isCode) {
       out.push({ jobId: j.id, action: "send", mode: "text" });
       continue;
     }
     if (!j.template) {
-      out.push({ jobId: j.id, action: "fail", reason: "the 24 hour window is closed and the job has no template" });
+      const reason = isCode ? "a code goes only as its authentication template, and the job has none" : "the 24 hour window is closed and the job has no template";
+      out.push({ jobId: j.id, action: "fail", reason });
       continue;
     }
     if (ctx.unusableTemplates.has(templateKey(j.template.name, j.template.metaLang))) {
-      out.push({ jobId: j.id, action: "hold", reason: `template ${j.template.name} (${j.template.metaLang}) is not approved now` });
+      out.push({ jobId: j.id, action: isCode ? "fail" : "hold", reason: `template ${j.template.name} (${j.template.metaLang}) is not approved now` });
       continue;
     }
     if (!reached.has(j.phone)) {

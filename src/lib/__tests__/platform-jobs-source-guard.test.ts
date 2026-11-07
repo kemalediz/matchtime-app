@@ -118,9 +118,17 @@ describe("verification codes never borrow a club", () => {
       const src = code(path.join(SRC, file));
       expect(src).not.toMatch(/whatsappBotEnabled/);
       expect(src).not.toMatch(/botJob\s*\.\s*create/);
-      expect(src).toMatch(/queuePlatformDm\(/);
+      // Through the one code door (Cloud API C7a), which is a PlatformJob.
+      expect(src).toMatch(/queueCodeDm\(/);
     });
   }
+
+  it("the code door queues a PlatformJob, never a BotJob or a borrowed club", () => {
+    const src = code(path.join(SRC, "lib/code-dm.ts"));
+    expect(src).toMatch(/queuePlatformDm\(/);
+    expect(src).not.toMatch(/whatsappBotEnabled/);
+    expect(src).not.toMatch(/botJob\s*\.\s*create/);
+  });
 });
 
 describe('"use server" modules export async functions only', () => {

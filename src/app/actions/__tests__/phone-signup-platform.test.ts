@@ -15,7 +15,7 @@
  *
  * db and next/headers are mocked. No network, no model.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
   phoneOtp: { count: vi.fn(), create: vi.fn() },
@@ -34,9 +34,10 @@ vi.mock("next/headers", () => ({
 const authMock = vi.hoisted(() => ({ session: { user: { id: "u-signed-in" } } as unknown }));
 vi.mock("@/lib/auth", () => ({ auth: async () => authMock.session }));
 
-import { startPhoneSignup } from "../phone-signup";
+import { startPhoneSignIn, startPhoneSignup } from "../phone-signup";
 import { SITE_SIGNUP_CODES_PER_DAY, SIGNUP_ATTEMPTS_PER_IP_PER_HOUR } from "@/lib/signup-caps";
 import { startClaimAccount } from "../claim";
+import { templateParams } from "@/lib/cloud-api/templates";
 
 type CountArgs = { where: Record<string, unknown> };
 
@@ -159,5 +160,80 @@ describe("startClaimAccount", () => {
     });
     expect(dbMock.organisation.findFirst).not.toHaveBeenCalled();
     expect(dbMock.botJob.create).not.toHaveBeenCalled();
+  });
+});
+
+// ── WhatsApp Cloud API plan, PR C7a (section 3.1): all three code actions
+//    queue through the one code door (src/lib/code-dm.ts). Flags off: the
+//    answer and the row are exactly what they were. Codes listed for the
+//    official number: Meta's `mt_code` in the browser's language, and the
+//    official number named for the page. ──
+
+const CLOUD_ENV = ["CLOUD_API_ENABLED", "CLOUD_API_PURPOSES", "WA_CLOUD_NUMBER", "MATCHTIME_WA_NUMBER"] as const;
+
+const ACTIONS = [
+  { name: "startPhoneSignup", run: () => startPhoneSignup({ phone: "+447700900123", name: "Ali" }) },
+  { name: "startPhoneSignIn", run: () => startPhoneSignIn({ phone: "+447700900123" }) },
+  { name: "startClaimAccount", run: () => startClaimAccount("+447700900123") },
+] as const;
+
+const issuedCode = () => dbMock.phoneOtp.create.mock.calls[0][0].data.code as string;
+
+describe("the three code actions with the Cloud API flags off (C7a): exactly as before", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  for (const a of ACTIONS) {
+    it(`${a.name}: answers { ok: true } and writes the pre-C7a row, the club number's, no template`, async () => {
+      for (const k of CLOUD_ENV) vi.stubEnv(k, undefined as unknown as string);
+      // Numbers configured and codes listed: the master switch alone decides.
+      vi.stubEnv("MATCHTIME_WA_NUMBER", "447700900555");
+      vi.stubEnv("WA_CLOUD_NUMBER", "447700900999");
+      vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+      headerMock.values = { "x-forwarded-for": "203.0.113.7", "accept-language": "tr-TR,tr;q=0.9" };
+      expect(await a.run()).toEqual({ ok: true });
+      const { data } = dbMock.platformJob.create.mock.calls[0][0];
+      expect(Object.keys(data).sort()).toEqual(["channel", "kind", "phone", "purpose", "refId", "sendAfter", "status", "text"]);
+      expect(data).toMatchObject({ kind: "dm", phone: "447700900123", purpose: "otp", status: "queued", refId: null, sendAfter: null, channel: "baileys" });
+      expect(data.text).toContain(issuedCode());
+    });
+  }
+});
+
+describe("the three code actions with codes on the official number (C7a)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  function codesOn() {
+    vi.stubEnv("CLOUD_API_ENABLED", "1");
+    vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+    vi.stubEnv("WA_CLOUD_NUMBER", "447700900999");
+    vi.stubEnv("MATCHTIME_WA_NUMBER", "447700900555");
+  }
+
+  for (const a of ACTIONS) {
+    it(`${a.name}: mt_code with the issued code in en_GB, and the official number for the page`, async () => {
+      codesOn();
+      headerMock.values = { "accept-language": "en-GB,en;q=0.9" };
+      expect(await a.run()).toEqual({ ok: true, from: "+447700900999" });
+      const { data } = dbMock.platformJob.create.mock.calls[0][0];
+      const filled = templateParams("mt_code", "en", { code: issuedCode() });
+      if (!filled.ok) throw new Error(filled.reason);
+      expect(data).toMatchObject({ purpose: "otp", channel: "cloud", templateName: "mt_code", templateLang: "en_GB", templateParams: filled.params });
+      // The club number's text stays on the job, for a handover.
+      expect(data.text).toContain(issuedCode());
+    });
+
+    it(`${a.name}: a Turkish browser gets Meta's tr`, async () => {
+      codesOn();
+      headerMock.values = { "accept-language": "tr-TR,tr;q=0.9,en;q=0.8" };
+      await a.run();
+      expect(dbMock.platformJob.create.mock.calls[0][0].data.templateLang).toBe("tr");
+    });
+  }
+
+  it("a refused request queues nothing, on either number", async () => {
+    codesOn();
+    counts({ phone: 3 });
+    for (const a of ACTIONS) expect((await a.run()).ok).toBe(false);
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
   });
 });

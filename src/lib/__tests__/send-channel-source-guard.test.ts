@@ -189,6 +189,29 @@ describe("a PlatformJob's channel is decided once, in queuePlatformDm (PR C2)", 
     expect(hook).not.toMatch(/data:\s*\{[^}]*\bchannel\b/);
   });
 
+  it("a code DM has one door, src/lib/code-dm.ts, which picks no channel (PR C7a)", () => {
+    // Every code (sign-up, sign-in, claim) is queued by queueCodeDm, so
+    // each one carries mt_code; nothing else writes purpose "otp".
+    // `purpose: "otp"` followed by a comma or brace is a value in an object
+    // literal (a queue call); `purpose: "otp" | ...` in platform-jobs.ts is
+    // a type in its claim reader.
+    const otpQueuers = FILES.filter((f) => /\bpurpose:\s*["']otp["']\s*[,}]/.test(code(f))).map(rel);
+    expect(otpQueuers).toEqual(["lib/code-dm.ts"]);
+    const door = code(path.join(SRC, "lib/code-dm.ts"));
+    expect(door).toMatch(/\bqueuePlatformDm\s*\(/);
+    expect(door).toMatch(/name:\s*"mt_code"/);
+    expect(door).not.toMatch(SEND_CHANNEL_IMPORT);
+    expect(door).not.toMatch(/\b(channelFor|waLinkChannelFor|waNumberFor)\s*\(/);
+    // Its callers are the three code actions, and nothing else.
+    const callers = FILES.filter((f) => rel(f) !== "lib/code-dm.ts" && /\bqueueCodeDm\s*\(/.test(code(f))).map(rel);
+    expect(callers.sort()).toEqual(["app/actions/claim.ts", "app/actions/phone-signup.ts"]);
+  });
+
+  it("the page's number for a code comes only through the code door (PR C7a)", () => {
+    const callers = FILES.filter((f) => rel(f) !== NUMBER_READER && /\bcodeSenderNumber\s*\(/.test(code(f))).map(rel);
+    expect(callers).toEqual(["lib/code-dm.ts"]);
+  });
+
   it("every other PlatformJob writer leaves channel to the column default (baileys)", () => {
     const writers = FILES.filter((f) => /platformJob\s*\.\s*(create|createMany|upsert)\s*\(/.test(code(f))).map(rel);
     expect(writers.sort()).toEqual(["lib/owner-dm.ts", PLATFORM_JOBS].sort());

@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { startPhoneSignup, verifyPhoneSignup } from "@/app/actions/phone-signup";
 import { signIn } from "next-auth/react";
 import { Phone, Loader2, ShieldCheck } from "lucide-react";
+import { CodeSentFrom } from "@/components/code-sent-from";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -23,6 +24,8 @@ export default function SignupPage() {
   const [phone, setPhone] = useState("+44");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
+  // The official number, when the code went from it (Cloud API plan, C7a).
+  const [codeFrom, setCodeFrom] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
 
@@ -37,6 +40,7 @@ export default function SignupPage() {
         return;
       }
       toast.success("Code sent via WhatsApp");
+      setCodeFrom(res.from ?? null);
       setStage("verify");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
@@ -103,6 +107,7 @@ export default function SignupPage() {
               ? "We'll send a verification code by WhatsApp."
               : `Enter the 6-digit code we just sent to ${phone}.`}
           </p>
+          {stage === "verify" && <CodeSentFrom number={codeFrom} className="text-sm text-slate-500 mt-1.5" />}
         </div>
 
         {stage === "enter" ? (

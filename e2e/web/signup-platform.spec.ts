@@ -42,11 +42,17 @@ test("a visitor gets a sign-up code with every club's bot switched off", async (
   );
   expect(otp?.code).toMatch(/^\d{6}$/);
 
-  const job = await testDb().one<{ id: string; status: string; purpose: string; text: string }>(
-    `SELECT id, status, purpose, text FROM "PlatformJob" WHERE phone = $1`,
+  // WhatsApp Cloud API plan, PR C7a, with the flags unset as in production
+  // today: the page names no number, and the job is the club number's,
+  // with no template.
+  await expect(page.getByTestId("code-sent-from")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(/official/i);
+
+  const job = await testDb().one<{ id: string; status: string; purpose: string; text: string; channel: string; templateName: string | null; templateLang: string | null; templateParams: unknown }>(
+    `SELECT id, status, purpose, text, channel, "templateName", "templateLang", "templateParams" FROM "PlatformJob" WHERE phone = $1`,
     [PHONE_DIGITS],
   );
-  expect(job).toMatchObject({ status: "queued", purpose: "otp" });
+  expect(job).toMatchObject({ status: "queued", purpose: "otp", channel: "baileys", templateName: null, templateLang: null, templateParams: null });
   expect(job?.text).toContain(otp!.code);
   // Nothing was borrowed from a club.
   expect(await testDb().count(`SELECT COUNT(*) FROM "BotJob" WHERE phone = $1`, [PHONE_DIGITS])).toBe(0);
