@@ -340,6 +340,9 @@ export function buildTestEnv(): Record<string, string> {
     MT_TEST_GEOCODE_STUB_FILE: E2E.GEOCODE_STUB_FILE,
     // Deliberately inert — never let real keys load from any .env file.
     ANTHROPIC_API_KEY: "",
+    // The owner's WhatsApp templates page reads Meta's list on every load;
+    // without a token it says "not set" and calls nobody.
+    WA_CLOUD_ACCESS_TOKEN: "",
     STRIPE_SECRET_KEY: "",
     STRIPE_WEBHOOK_SECRET: "",
     RESEND_API_KEY: "",
