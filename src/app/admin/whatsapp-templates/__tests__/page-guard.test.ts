@@ -22,6 +22,16 @@ const dbMock = vi.hoisted(() => ({ db: { cloudTemplateStatus: { findMany: vi.fn(
 vi.mock("@/lib/db", () => dbMock);
 const sync = vi.hoisted(() => ({ checkCloudTemplates: vi.fn(async () => ({ state: "not-configured" })) }));
 vi.mock("@/lib/cloud-api/template-sync-admin", () => sync);
+const tokenCheck = vi.hoisted(() => ({
+  checkAccessToken: vi.fn(async () => ({
+    graphVersion: "v26.0",
+    token: { outerWhitespace: false, newline: false },
+    env: [],
+    debug: { state: "skipped", reason: "WA_CLOUD_ACCESS_TOKEN is not set" },
+    phone: { state: "skipped", reason: "WA_CLOUD_ACCESS_TOKEN is not set" },
+  })),
+}));
+vi.mock("@/lib/cloud-api/token-check", () => tokenCheck);
 vi.mock("@/app/actions/cloud-templates", () => ({ submitCloudTemplatesAction: vi.fn() }));
 
 import WhatsAppTemplatesPage from "../page";
@@ -37,6 +47,7 @@ describe("/admin/whatsapp-templates guard", () => {
     orgMock.isSuperadmin.mockResolvedValue(false);
     await expect(WhatsAppTemplatesPage()).rejects.toThrow("NEXT_NOT_FOUND");
     expect(sync.checkCloudTemplates).not.toHaveBeenCalled();
+    expect(tokenCheck.checkAccessToken).not.toHaveBeenCalled();
     expect(dbMock.db.cloudTemplateStatus.findMany).not.toHaveBeenCalled();
   });
 
@@ -44,11 +55,13 @@ describe("/admin/whatsapp-templates guard", () => {
     authMock.auth.mockResolvedValue(null);
     await expect(WhatsAppTemplatesPage()).rejects.toThrow("NEXT_REDIRECT /login");
     expect(sync.checkCloudTemplates).not.toHaveBeenCalled();
+    expect(tokenCheck.checkAccessToken).not.toHaveBeenCalled();
   });
 
-  it("the owner gets the page, with the dry run and the status rows", async () => {
+  it("the owner gets the page, with the dry run, the access token check and the status rows", async () => {
     await expect(WhatsAppTemplatesPage()).resolves.toBeTruthy();
     expect(sync.checkCloudTemplates).toHaveBeenCalledTimes(1);
+    expect(tokenCheck.checkAccessToken).toHaveBeenCalledTimes(1);
     expect(dbMock.db.cloudTemplateStatus.findMany).toHaveBeenCalledTimes(1);
   });
 });
