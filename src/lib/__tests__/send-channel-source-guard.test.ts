@@ -67,8 +67,13 @@ const CHANNEL_CALLERS = new Set<string>([
 const CLOUD_DISPATCH = "lib/cloud-api/dispatch.ts";
 const CLOUD_DISPATCH_RULES = "lib/cloud-api/dispatch-rules.ts";
 
+/** PR C5: the Cloud webhook. It asks the master switch (`cloudApiEnabled`)
+ *  and labels what came in on the official number; it picks no channel
+ *  for anything sent. */
+const CLOUD_WEBHOOK = "lib/cloud-api/webhook.ts";
+
 /** Files that may import send-channel (types included). Extend deliberately. */
-const CHANNEL_IMPORTERS = new Set<string>([NUMBER_READER, PLATFORM_JOBS, CLOUD_DISPATCH, CLOUD_DISPATCH_RULES]);
+const CHANNEL_IMPORTERS = new Set<string>([NUMBER_READER, PLATFORM_JOBS, CLOUD_DISPATCH, CLOUD_DISPATCH_RULES, CLOUD_WEBHOOK]);
 
 describe("the flags are read in one place", () => {
   it("only send-channel.ts reads CLOUD_API_ENABLED or CLOUD_API_PURPOSES", () => {
@@ -174,6 +179,14 @@ describe("a PlatformJob's channel is decided once, in queuePlatformDm (PR C2)", 
     expect(dispatch.match(/["']cloud["']/g) ?? []).toHaveLength(1);
     expect(dispatch).toMatch(/const OFFICIAL_NUMBER: SendChannel = "cloud";/);
     expect(dispatch).not.toMatch(/\b(channelFor|waLinkChannelFor|waNumberFor)\s*\(/);
+  });
+
+  it("the Cloud webhook names the official number once, asks only the master switch, and never changes a job's channel (PR C5)", () => {
+    const hook = code(path.join(SRC, CLOUD_WEBHOOK));
+    expect(hook.match(/["']cloud["']/g) ?? []).toHaveLength(1);
+    expect(hook).toMatch(/const OFFICIAL_NUMBER: SendChannel = "cloud";/);
+    expect(hook).not.toMatch(/\b(channelFor|waLinkChannelFor|waNumberFor|fallbackWhenCloudDown)\s*\(/);
+    expect(hook).not.toMatch(/data:\s*\{[^}]*\bchannel\b/);
   });
 
   it("every other PlatformJob writer leaves channel to the column default (baileys)", () => {
