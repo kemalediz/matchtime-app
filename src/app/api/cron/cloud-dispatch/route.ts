@@ -30,6 +30,11 @@ import { runCloudDispatchSweep } from "@/lib/cloud-api/dispatch";
 import { sweepCloudInbound } from "@/lib/cloud-api/webhook";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 
+/** Seconds, a literal as Next.js reads it from the build. The inbound
+ *  sweep claims messages here, so `INBOUND_RETRY_AFTER_MS` (15 minutes)
+ *  must stay over twice this (pinned by cloud-dispatch-route.test.ts). */
+export const maxDuration = 300;
+
 function nowOf(request: Request): Date {
   if (process.env.MT_TEST_MODE === "1") {
     const pinned = new Date(request.headers.get("x-test-now") ?? "");

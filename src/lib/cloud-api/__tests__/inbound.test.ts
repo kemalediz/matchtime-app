@@ -5,7 +5,7 @@
  * user_preferences; business scoped user ids), read 7 Nov 2026.
  */
 import { describe, expect, it } from "vitest";
-import { inboundDmOf, parseCloudWebhook, type CloudInboundMessage } from "../inbound";
+import { inboundDmOf, ourEntriesOnly, parseCloudWebhook, type CloudInboundMessage } from "../inbound";
 
 const META = { display_phone_number: "447700900000", phone_number_id: "106540352242922" };
 
@@ -171,6 +171,24 @@ describe("parseCloudWebhook: messages", () => {
     expect(out.skipped).toBe(2);
   });
 
+  it("NUL characters, which Postgres refuses in a JSON column, are stripped from every string (review of #554, item 1)", () => {
+    const [m] = parseCloudWebhook(
+      payload(
+        messages({
+          contacts: [{ profile: { name: "Sa\u0000m" }, wa_id: "447700900001" }],
+          messages: [{ from: "447700900001", id: "wamid.N\u00001", timestamp: "1", type: "te\u0000xt", text: { body: "I\u0000N" }, context: { from: "447700900000", id: "wamid.Q\u0000" } }],
+        }),
+      ),
+    ).messages;
+    expect(m).toMatchObject({ wamid: "wamid.N1", type: "text", text: "IN", senderName: "Sam", quotedId: "wamid.Q" });
+    expect(JSON.stringify(m)).not.toContain("\\u0000");
+  });
+
+  it("a lone surrogate (half an emoji) becomes the replacement character, a whole emoji stays", () => {
+    const [m] = parseCloudWebhook(payload(messages({ messages: [{ from: "447700900001", id: "wamid.S1", timestamp: "1", type: "text", text: { body: "ok \uD83D then ⚽ \uDE00" } }] }))).messages;
+    expect(m.text).toBe("ok � then ⚽ �");
+  });
+
   it("a blank text is no text", () => {
     const [m] = parseCloudWebhook(payload(messages({ messages: [{ from: "447700900001", id: "wamid.B", timestamp: "1", type: "text", text: { body: "   " } }] }))).messages;
     expect(m.text).toBeNull();
@@ -308,6 +326,36 @@ describe("parseCloudWebhook: the other fields", () => {
       expect(() => parseCloudWebhook(p)).not.toThrow();
       expect(parseCloudWebhook(p).messages).toEqual([]);
     }
+  });
+});
+
+describe("ourEntriesOnly: Meta's other WhatsApp account on the same app is not ours (review of #554, item 3)", () => {
+  const two = {
+    object: "whatsapp_business_account",
+    entry: [
+      { id: "OUR_WABA", changes: [{ field: "message_template_status_update", value: { event: "APPROVED", message_template_name: "mt_code", message_template_language: "en_GB" } }] },
+      { id: "TEST_WABA", changes: [{ field: "message_template_status_update", value: { event: "REJECTED", message_template_name: "mt_code", message_template_language: "en_GB" } }] },
+    ],
+  };
+
+  it("keeps only the entries of WA_CLOUD_WABA_ID, and says how many it dropped", () => {
+    const out = ourEntriesOnly(two, "OUR_WABA");
+    expect(out.dropped).toBe(1);
+    expect((out.payload as { entry: Array<{ id: string }> }).entry.map((e) => e.id)).toEqual(["OUR_WABA"]);
+    expect(parseCloudWebhook(out.payload).templateUpdates).toBe(1);
+  });
+
+  it("an entry with no id is not ours either", () => {
+    expect(ourEntriesOnly({ entry: [{ changes: [] }] }, "OUR_WABA").dropped).toBe(1);
+  });
+
+  it("with no account configured, everything is kept as it is", () => {
+    expect(ourEntriesOnly(two, undefined)).toEqual({ payload: two, dropped: 0 });
+    expect(ourEntriesOnly(two, "  ")).toEqual({ payload: two, dropped: 0 });
+  });
+
+  it("anything that is not Meta's shape is passed through untouched", () => {
+    for (const p of [null, "x", {}, { entry: "x" }]) expect(ourEntriesOnly(p, "OUR_WABA")).toEqual({ payload: p, dropped: 0 });
   });
 });
 

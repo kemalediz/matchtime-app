@@ -44,8 +44,21 @@ export interface StatusWrite {
     errorCode?: number | null;
     failReason?: string;
   };
+  /** Columns that must still be empty when the write lands (review of
+   *  #554, item 5): every gap `data` fills, and for a failure delivered
+   *  and read too. Added to the compare-and-set beside the status. */
+  guard: { waMessageId?: null; sentAt?: null; deliveredAt?: null; readAt?: null };
   /** The job's outcome changed: the pool's hooks follow it. */
   settles: "sent" | "failed" | null;
+}
+
+const GAP_COLUMNS = ["waMessageId", "sentAt", "deliveredAt", "readAt"] as const;
+
+/** Every gap the write fills must still be a gap when it lands. */
+function guardOf(data: StatusWrite["data"], extra: StatusWrite["guard"] = {}): StatusWrite["guard"] {
+  const guard: StatusWrite["guard"] = { ...extra };
+  for (const col of GAP_COLUMNS) if (col in data) guard[col] = null;
+  return guard;
 }
 
 const FAIL_REASON_MAX = 500;
@@ -61,10 +74,9 @@ export function cloudStatusUpdate(job: StatusJobView, st: CloudStatusUpdate, now
   if (st.status === "failed") {
     if (job.deliveredAt || job.readAt) return null;
     const reason = `Meta status failed: ${st.errorCode ?? "no code"}${st.errorTitle ? ` ${st.errorTitle}` : ""}`;
-    return {
-      data: { status: "failed", failedAt: at, errorCode: st.errorCode, failReason: reason.slice(0, FAIL_REASON_MAX), ...wamid },
-      settles: "failed",
-    };
+    const data: StatusWrite["data"] = { status: "failed", failedAt: at, errorCode: st.errorCode, failReason: reason.slice(0, FAIL_REASON_MAX), ...wamid };
+    // Delivered or read landing first wins, even when it races this write.
+    return { data, guard: guardOf(data, { deliveredAt: null, readAt: null }), settles: "failed" };
   }
   if (st.status !== "sent" && st.status !== "delivered" && st.status !== "read") return null;
 
@@ -74,5 +86,5 @@ export function cloudStatusUpdate(job: StatusJobView, st: CloudStatusUpdate, now
   if ((st.status === "delivered" || st.status === "read") && !job.deliveredAt) data.deliveredAt = at;
   if (st.status === "read" && !job.readAt) data.readAt = at;
   if (Object.keys(data).length === 0) return null;
-  return { data, settles: settling ? "sent" : null };
+  return { data, guard: guardOf(data), settles: settling ? "sent" : null };
 }

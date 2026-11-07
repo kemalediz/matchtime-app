@@ -71,6 +71,12 @@ describe("validMetaSignature (POST)", () => {
     expect(validMetaSignature(raw, signWebhook(raw, ""), "")).toBe(false);
   });
 
+  it("a secret saved with a trailing newline or spaces still verifies (review of #554, item 4)", () => {
+    const sig = signWebhook(raw, SECRET);
+    expect(validMetaSignature(raw, sig, `${SECRET}\n`)).toBe(true);
+    expect(validMetaSignature(raw, sig, `  ${SECRET} \r\n`)).toBe(true);
+  });
+
   it("checks the bytes Meta signed: a non-ASCII body is signed as UTF-8", () => {
     const tr = JSON.stringify({ text: "Yerin hazır, teşekkürler" });
     expect(validMetaSignature(Buffer.from(tr, "utf8"), signWebhook(tr, SECRET), SECRET)).toBe(true);

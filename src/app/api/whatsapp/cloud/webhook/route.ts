@@ -21,6 +21,12 @@ import { after, NextResponse } from "next/server";
 import { acceptCloudWebhook } from "@/lib/cloud-api/webhook";
 import { handshakeChallenge } from "@/lib/cloud-api/webhook-auth";
 
+/** Seconds. `after()` runs within the route's max duration (Next.js
+ *  docs, `after`), so a message claimed here is never still running once
+ *  `INBOUND_RETRY_AFTER_MS` (15 minutes) has passed and the sweep may
+ *  retry it. Pinned by webhook.test.ts and route.test.ts. */
+export const maxDuration = 300;
+
 export async function GET(request: Request) {
   const challenge = handshakeChallenge(new URL(request.url).searchParams, process.env.WA_CLOUD_VERIFY_TOKEN);
   if (challenge === null) return new Response("Forbidden", { status: 403, headers: { "content-type": "text/plain" } });

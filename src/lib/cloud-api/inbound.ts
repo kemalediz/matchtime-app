@@ -95,7 +95,17 @@ const CAPTIONED = ["image", "video", "document"];
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
-const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+/** Every string read from Meta, made storable: Postgres refuses NUL in a
+ *  JSON or text column (one would sink the POST's whole insert), and a
+ *  lone surrogate is not valid Unicode. */
+const NUL_RE = /\u0000/g;
+const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+const clean = (s: string): string => s.replace(NUL_RE, "").replace(LONE_SURROGATE_RE, "�");
+const str = (v: unknown): string | null => {
+  if (typeof v !== "string") return null;
+  const s = clean(v).trim();
+  return s ? s : null;
+};
 const phoneOf = (v: unknown): string | null => {
   const s = str(v);
   return s && PHONE_RE.test(s) ? s : null;
@@ -141,7 +151,7 @@ function readMessage(m: Obj, value: Obj, contacts: Obj[]): CloudInboundMessage |
     type,
     text: textOf(m, type),
     senderName: contact && isObj(contact.profile) ? str(contact.profile.name) : null,
-    timestamp: typeof m.timestamp === "string" || typeof m.timestamp === "number" ? String(m.timestamp) : null,
+    timestamp: typeof m.timestamp === "number" ? String(m.timestamp) : str(m.timestamp),
     quotedId,
     quotedFromUs: quotedId ? !!ours && quotedFrom === ours : null,
   };
@@ -167,6 +177,19 @@ function readStatus(s: Obj, value: Obj): CloudStatusUpdate | null {
       ? { category: str(p.category), billable: typeof p.billable === "boolean" ? p.billable : null, model: str(p.pricing_model), type: str(p.type) }
       : null,
   };
+}
+
+/**
+ * Only our WhatsApp Business Account's entries (`entry[].id`, review of
+ * #554 item 3). Meta's test account lives on the same app, and its
+ * template of the same name must never overwrite ours. With no account
+ * configured, or a payload that is not Meta's shape, it is passed through.
+ */
+export function ourEntriesOnly(payload: unknown, wabaId: string | undefined): { payload: unknown; dropped: number } {
+  const ours = (wabaId ?? "").trim();
+  if (!ours || !isObj(payload) || !Array.isArray(payload.entry)) return { payload, dropped: 0 };
+  const entry = payload.entry.filter((e) => isObj(e) && (typeof e.id === "string" || typeof e.id === "number") && String(e.id).trim() === ours);
+  return { payload: { ...payload, entry }, dropped: payload.entry.length - entry.length };
 }
 
 export function parseCloudWebhook(payload: unknown): ParsedCloudWebhook {

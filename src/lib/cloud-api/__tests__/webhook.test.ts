@@ -28,13 +28,26 @@ vi.mock("@/lib/pool/dispatch", () => pool);
 const templates = vi.hoisted(() => ({ applyTemplateStatusPayload: vi.fn() }));
 vi.mock("@/lib/cloud-api/template-status", () => templates);
 
-import { INBOUND_SWEEP_AFTER_MS, acceptCloudWebhook, sweepCloudInbound } from "../webhook";
+import {
+  INBOUND_MAX_ATTEMPTS,
+  INBOUND_RETRY_AFTER_MS,
+  INBOUND_SWEEP_AFTER_MS,
+  acceptCloudWebhook,
+  databaseUnavailable,
+  sweepCloudInbound,
+} from "../webhook";
 
 const SECRET = "app-secret";
 const OUR_NUMBER_ID = "106540352242922";
 const ON = { CLOUD_API_ENABLED: "1", WA_CLOUD_APP_SECRET: SECRET, WA_CLOUD_PHONE_NUMBER_ID: OUR_NUMBER_ID };
 const OFF = { WA_CLOUD_APP_SECRET: SECRET, WA_CLOUD_PHONE_NUMBER_ID: OUR_NUMBER_ID };
 const NOW = new Date("2026-11-07T12:00:00Z");
+/** The claim's stamp: `result` while a run holds the row. */
+const CLAIMED_NOW = `processing since ${NOW.toISOString()}`;
+/** An error as Prisma throws it, with its code. */
+function prismaError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { name: "PrismaClientKnownRequestError", code });
+}
 const TEXT_BODY = "Can I still play on Thursday?";
 const request = new Request("https://matchtime.ai/api/whatsapp/cloud/webhook", { method: "POST" });
 
@@ -158,11 +171,38 @@ describe("acceptCloudWebhook: a message is recorded once, before the 200", () =>
     expect(pipeline.handleInboundDm).not.toHaveBeenCalled();
   });
 
-  it("the database refusing the write is a 500, so Meta sends it again (the wamid makes that safe)", async () => {
-    dbMock.waInbound.createMany.mockRejectedValueOnce(new Error("connection lost"));
+  it("the database unavailable is a 500, so Meta sends it again (the wamid makes that safe)", async () => {
+    dbMock.waInbound.createMany.mockRejectedValueOnce(prismaError("P1001", "Can't reach database server"));
     const r = await accept(TEXT_PAYLOAD);
     expect(r.status).toBe(500);
     expect(r.work).toBeNull();
+  });
+
+  it("one row the database will not take does not sink the others: written one by one, that one logged by wamid and skipped (review of #554, item 1)", async () => {
+    const three = messagesPayload({ messages: [textMsg(), textMsg({ id: "wamid.T2" }), textMsg({ id: "wamid.T3" })] });
+    dbMock.waInbound.createMany
+      .mockRejectedValueOnce(prismaError("P2010", "invalid input syntax"))
+      .mockResolvedValueOnce({ count: 1 })
+      .mockRejectedValueOnce(prismaError("P2010", "invalid input syntax"))
+      .mockResolvedValueOnce({ count: 1 });
+    const r = await accept(three);
+    expect(r.status).toBe(200);
+    const perRow = dbMock.waInbound.createMany.mock.calls.slice(1).map((c) => c[0]);
+    expect(perRow.map((a) => [a.data.map((d: { wamid: string }) => d.wamid), a.skipDuplicates])).toEqual([
+      [["wamid.T1"], true],
+      [["wamid.T2"], true],
+      [["wamid.T3"], true],
+    ]);
+    expect(logs.some((l) => l.includes("wamid.T2") && l.includes("not recorded"))).toBe(true);
+    // Only what was written is run.
+    await r.work!();
+    expect(pipeline.handleInboundDm.mock.calls.map((c) => c[0].waMessageId)).toEqual(["wamid.T1", "wamid.T3"]);
+  });
+
+  it("the database going away part way through the one-by-one writes is still a 500", async () => {
+    dbMock.waInbound.createMany.mockRejectedValueOnce(prismaError("P2010", "bad row")).mockRejectedValueOnce(prismaError("P1017", "Server has closed the connection."));
+    const r = await accept(TEXT_PAYLOAD);
+    expect(r.status).toBe(500);
   });
 
   it("a signed body that is not JSON is 200 and nothing (sending it again would not help)", async () => {
@@ -180,17 +220,26 @@ describe("the work: every text into the ONE DM pipeline, once", () => {
     await r.work!();
     expect(dbMock.waInbound.updateMany.mock.calls[0][0]).toEqual({
       where: { channel: "cloud", wamid: "wamid.T1", processedAt: null, attempts: 0 },
-      data: { attempts: 1, result: "processing" },
+      data: { attempts: 1, result: CLAIMED_NOW },
     });
     expect(pipeline.handleInboundDm).toHaveBeenCalledTimes(1);
     expect(pipeline.handleInboundDm).toHaveBeenCalledWith(
       { phone: "447700900001", body: TEXT_BODY, waMessageId: "wamid.T1", authorName: "Sam", timestamp: String(NOW.getTime() / 1000 - 30) },
       { channel: "cloud", request },
     );
+    // Only the run that holds the claim may close it.
     expect(dbMock.waInbound.updateMany.mock.calls[1][0]).toEqual({
-      where: { channel: "cloud", wamid: "wamid.T1", processedAt: null },
+      where: { channel: "cloud", wamid: "wamid.T1", processedAt: null, result: CLAIMED_NOW },
       data: { processedAt: NOW, result: "200 dm-qa" },
     });
+  });
+
+  it("a final write that fails is tried once more", async () => {
+    dbMock.waInbound.updateMany.mockResolvedValueOnce({ count: 1 }).mockRejectedValueOnce(new Error("blip")).mockResolvedValueOnce({ count: 1 });
+    const r = await accept(TEXT_PAYLOAD);
+    await r.work!();
+    const closes = dbMock.waInbound.updateMany.mock.calls.map((c) => c[0]).filter((a) => a.data.processedAt);
+    expect(closes).toHaveLength(2);
   });
 
   it("a duplicate (Meta's retry, or the sweep got there first) is never processed twice", async () => {
@@ -258,7 +307,7 @@ describe("the work: statuses settle the cloud job, idempotently", () => {
     dbMock.platformJob.findFirst.mockResolvedValueOnce(job());
     const r = await statusPost("delivered");
     await r.work!();
-    expect(dbMock.platformJob.updateMany).toHaveBeenCalledWith({ where: { id: "job1", status: "sent" }, data: { deliveredAt: new Date(NOW.getTime() - 5_000) } });
+    expect(dbMock.platformJob.updateMany).toHaveBeenCalledWith({ where: { id: "job1", status: "sent", deliveredAt: null }, data: { deliveredAt: new Date(NOW.getTime() - 5_000) } });
     expect(pool.onPoolOfferJobSent).not.toHaveBeenCalled();
     expect(pool.onPoolOfferJobFailed).not.toHaveBeenCalled();
   });
@@ -275,7 +324,7 @@ describe("the work: statuses settle the cloud job, idempotently", () => {
     const r = await statusPost("delivered");
     await r.work!();
     expect(dbMock.platformJob.updateMany.mock.calls[0][0]).toEqual({
-      where: { id: "job1", status: "unconfirmed" },
+      where: { id: "job1", status: "unconfirmed", waMessageId: null, deliveredAt: null },
       data: { status: "sent", waMessageId: "wamid.A", deliveredAt: new Date(NOW.getTime() - 5_000) },
     });
     expect(pool.onPoolOfferJobSent).toHaveBeenCalledWith("job1", NOW, new Date(NOW.getTime() - 60_000));
@@ -295,6 +344,33 @@ describe("the work: statuses settle the cloud job, idempotently", () => {
     const r = await statusPost("failed", { errors: [{ code: 131026 }] });
     await r.work!();
     expect(pool.onPoolOfferJobFailed).not.toHaveBeenCalled();
+  });
+
+  it("failed racing a delivered that landed first (review of #554, item 5): its compare-and-set needs delivered and read empty, so it loses, re-reads, and writes nothing", async () => {
+    dbMock.platformJob.findFirst.mockResolvedValueOnce(job()).mockResolvedValueOnce(job({ deliveredAt: new Date(NOW.getTime() - 4_000) }));
+    dbMock.platformJob.updateMany.mockResolvedValueOnce({ count: 0 });
+    const r = await statusPost("failed", { errors: [{ code: 131026 }] });
+    await r.work!();
+    expect(dbMock.platformJob.updateMany).toHaveBeenCalledTimes(1);
+    expect(dbMock.platformJob.updateMany.mock.calls[0][0].where).toEqual({ id: "job1", status: "sent", deliveredAt: null, readAt: null });
+    expect(pool.onPoolOfferJobFailed).not.toHaveBeenCalled();
+  });
+
+  it("read racing a delivered that landed first: it re-reads and writes only readAt, never over delivered's time", async () => {
+    const deliveredAt = new Date(NOW.getTime() - 4_000);
+    dbMock.platformJob.findFirst.mockResolvedValueOnce(job()).mockResolvedValueOnce(job({ deliveredAt }));
+    dbMock.platformJob.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
+    const r = await statusPost("read");
+    await r.work!();
+    expect(dbMock.platformJob.updateMany.mock.calls[1][0]).toEqual({ where: { id: "job1", status: "sent", readAt: null }, data: { readAt: new Date(NOW.getTime() - 5_000) } });
+  });
+
+  it("a status that keeps losing gives up after three tries", async () => {
+    dbMock.platformJob.findFirst.mockResolvedValue(job());
+    dbMock.platformJob.updateMany.mockResolvedValue({ count: 0 });
+    const r = await statusPost("delivered");
+    await r.work!();
+    expect(dbMock.platformJob.updateMany).toHaveBeenCalledTimes(3);
   });
 
   it("a status for no job of ours writes nothing", async () => {
@@ -332,6 +408,29 @@ describe("the work: template updates, Meta's marketing stop, the rest", () => {
     const r = await accept(payload);
     await r.work!();
     expect(templates.applyTemplateStatusPayload).toHaveBeenCalledWith(payload);
+  });
+
+  it("only our WhatsApp account's entries are used: Meta's test account's template, message and status are dropped (review of #554, item 3)", async () => {
+    const env = { ...ON, WA_CLOUD_WABA_ID: "OUR_WABA" };
+    const tpl = (id: string, event: string) => ({ id, changes: [{ field: "message_template_status_update", value: { event, message_template_name: "mt_code", message_template_language: "en_GB" } }] });
+    const msgs = (id: string, wamid: string) => ({
+      id,
+      changes: [{ field: "messages", value: { metadata: { phone_number_id: OUR_NUMBER_ID }, messages: [textMsg({ id: wamid })], statuses: [{ id: "wamid.A", status: "delivered", timestamp: "1762516770" }] } }],
+    });
+    const payload = { object: "whatsapp_business_account", entry: [tpl("OUR_WABA", "APPROVED"), tpl("TEST_WABA", "REJECTED"), msgs("TEST_WABA", "wamid.THEIRS"), msgs("OUR_WABA", "wamid.OURS")] };
+    const r = await accept(payload, env);
+    expect(dbMock.waInbound.createMany.mock.calls[0][0].data.map((d: { wamid: string }) => d.wamid)).toEqual(["wamid.OURS"]);
+    await r.work!();
+    expect(templates.applyTemplateStatusPayload).toHaveBeenCalledWith({ object: "whatsapp_business_account", entry: [tpl("OUR_WABA", "APPROVED"), msgs("OUR_WABA", "wamid.OURS")] });
+    expect(dbMock.platformJob.findFirst).toHaveBeenCalledTimes(1);
+    expect(pipeline.handleInboundDm.mock.calls.map((c) => c[0].waMessageId)).toEqual(["wamid.OURS"]);
+  });
+
+  it("a POST that is only another account's is 200 and touches nothing", async () => {
+    const r = await accept({ object: "whatsapp_business_account", entry: [{ id: "TEST_WABA", changes: [{ field: "messages", value: { messages: [textMsg()] } }] }] }, { ...ON, WA_CLOUD_WABA_ID: "OUR_WABA" });
+    expect(r.status).toBe(200);
+    await r.work?.();
+    nothingTouched();
   });
 
   it("no template field: C6's writer is not called", async () => {
@@ -373,7 +472,7 @@ describe("sweepCloudInbound: a recorded message the work never started", () => {
 
   it("does nothing at all with CLOUD_API_ENABLED off", async () => {
     const out = await sweepCloudInbound({ request, now: NOW, env: OFF });
-    expect(out).toEqual({ started: 0 });
+    expect(out).toEqual({ started: 0, retried: 0, abandoned: 0 });
     nothingTouched();
   });
 
@@ -387,13 +486,13 @@ describe("sweepCloudInbound: a recorded message the work never started", () => {
       receivedAt: { lt: new Date(NOW.getTime() - INBOUND_SWEEP_AFTER_MS) },
     });
     expect(pipeline.handleInboundDm).toHaveBeenCalledWith(row().payload, { channel: "cloud", request });
-    expect(out).toEqual({ started: 1 });
+    expect(out).toEqual({ started: 1, retried: 0, abandoned: 0 });
   });
 
   it("a row someone else claimed first is skipped", async () => {
     dbMock.waInbound.findMany.mockResolvedValueOnce([row()]);
     dbMock.waInbound.updateMany.mockResolvedValueOnce({ count: 0 });
-    expect(await sweepCloudInbound({ request, now: NOW, env: ON })).toEqual({ started: 0 });
+    expect(await sweepCloudInbound({ request, now: NOW, env: ON })).toEqual({ started: 0, retried: 0, abandoned: 0 });
     expect(pipeline.handleInboundDm).not.toHaveBeenCalled();
   });
 
@@ -402,5 +501,86 @@ describe("sweepCloudInbound: a recorded message the work never started", () => {
     await sweepCloudInbound({ request, now: NOW, env: ON });
     expect(pipeline.handleInboundDm).not.toHaveBeenCalled();
     expect(dbMock.waInbound.updateMany.mock.calls.at(-1)![0].data).toEqual({ processedAt: NOW, result: "unreadable payload" });
+  });
+});
+
+describe("sweepCloudInbound: a claimed message whose run died is retried once (review of #554, item 2)", () => {
+  const OLD_CLAIM = `processing since ${new Date(NOW.getTime() - INBOUND_RETRY_AFTER_MS - 1_000).toISOString()}`;
+  const YOUNG_CLAIM = `processing since ${new Date(NOW.getTime() - INBOUND_RETRY_AFTER_MS + 60_000).toISOString()}`;
+  const stuck = (over: Record<string, unknown> = {}) => ({ wamid: "wamid.T1", attempts: 1, result: OLD_CLAIM, payload: { phone: "447700900001", body: TEXT_BODY, waMessageId: "wamid.T1" }, ...over });
+  /** The first findMany is the unstarted rows, the second the stuck ones. */
+  const withStuck = (...rows: unknown[]) => dbMock.waInbound.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce(rows);
+
+  it("the retry wait is comfortably above the routes' maximum run time, so the first run is dead by then", async () => {
+    const webhook = await import("@/app/api/whatsapp/cloud/webhook/route");
+    const cron = await import("@/app/api/cron/cloud-dispatch/route");
+    for (const maxDuration of [webhook.maxDuration, cron.maxDuration]) {
+      expect(maxDuration).toBeGreaterThan(0);
+      expect(INBOUND_RETRY_AFTER_MS).toBeGreaterThanOrEqual(2 * maxDuration * 1000);
+    }
+    expect(INBOUND_MAX_ATTEMPTS).toBe(2);
+  });
+
+  it("looks for unprocessed rows still marked processing, with attempts left or used up", async () => {
+    withStuck();
+    await sweepCloudInbound({ request, now: NOW, env: ON });
+    expect(dbMock.waInbound.findMany.mock.calls[1][0].where).toEqual({ channel: "cloud", processedAt: null, attempts: { gte: 1 }, result: { startsWith: "processing since " } });
+  });
+
+  it("re-claims a row claimed over the retry wait ago with the same compare-and-set (attempts 1 to 2, on the exact claim it read) and runs it once more", async () => {
+    withStuck(stuck());
+    const out = await sweepCloudInbound({ request, now: NOW, env: ON });
+    expect(dbMock.waInbound.updateMany.mock.calls[0][0]).toEqual({
+      where: { channel: "cloud", wamid: "wamid.T1", processedAt: null, attempts: 1, result: OLD_CLAIM },
+      data: { attempts: 2, result: CLAIMED_NOW },
+    });
+    expect(pipeline.handleInboundDm).toHaveBeenCalledTimes(1);
+    expect(out).toEqual({ started: 0, retried: 1, abandoned: 0 });
+  });
+
+  it("a claim younger than the wait is left alone: its run may still be alive", async () => {
+    withStuck(stuck({ result: YOUNG_CLAIM }));
+    expect(await sweepCloudInbound({ request, now: NOW, env: ON })).toEqual({ started: 0, retried: 0, abandoned: 0 });
+    expect(dbMock.waInbound.updateMany).not.toHaveBeenCalled();
+    expect(pipeline.handleInboundDm).not.toHaveBeenCalled();
+  });
+
+  it("two sweeps at once: the one that loses the compare-and-set runs nothing", async () => {
+    withStuck(stuck());
+    dbMock.waInbound.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect(await sweepCloudInbound({ request, now: NOW, env: ON })).toEqual({ started: 0, retried: 0, abandoned: 0 });
+    expect(pipeline.handleInboundDm).not.toHaveBeenCalled();
+  });
+
+  it("a row whose retry died too (attempts 2) is closed as failed, logged and counted, never run a third time", async () => {
+    withStuck(stuck({ attempts: 2 }));
+    const out = await sweepCloudInbound({ request, now: NOW, env: ON });
+    expect(dbMock.waInbound.updateMany.mock.calls[0][0]).toEqual({
+      where: { channel: "cloud", wamid: "wamid.T1", processedAt: null, attempts: 2, result: OLD_CLAIM },
+      data: { processedAt: NOW, result: "failed: interrupted twice, not run again" },
+    });
+    expect(pipeline.handleInboundDm).not.toHaveBeenCalled();
+    expect(out).toEqual({ started: 0, retried: 0, abandoned: 1 });
+    expect(logs.some((l) => l.includes("wamid.T1") && l.includes("interrupted twice"))).toBe(true);
+  });
+
+  it("a claim stamp that does not parse is left alone", async () => {
+    withStuck(stuck({ result: "processing since soon" }));
+    expect(await sweepCloudInbound({ request, now: NOW, env: ON })).toEqual({ started: 0, retried: 0, abandoned: 0 });
+    expect(dbMock.waInbound.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("databaseUnavailable: only a database that cannot be reached is worth Meta's resend", () => {
+  it("connection, timeout and pool errors are", () => {
+    for (const c of ["P1001", "P1008", "P1017", "P2024", "P2037"]) expect(databaseUnavailable(prismaError(c, "x"))).toBe(true);
+    expect(databaseUnavailable(Object.assign(new Error("init"), { name: "PrismaClientInitializationError" }))).toBe(true);
+    expect(databaseUnavailable(Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:5432")))).toBe(true);
+  });
+
+  it("a row the database refuses is not", () => {
+    for (const c of ["P2000", "P2002", "P2007", "P2010", "P2011"]) expect(databaseUnavailable(prismaError(c, "x"))).toBe(false);
+    expect(databaseUnavailable(new Error("unsupported Unicode escape sequence"))).toBe(false);
+    expect(databaseUnavailable(null)).toBe(false);
   });
 });

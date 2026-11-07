@@ -36,8 +36,10 @@ export function handshakeChallenge(params: URLSearchParams, verifyToken: string 
 
 /** True only for Meta's signature of exactly these bytes. */
 export function validMetaSignature(rawBody: string | Buffer, header: string | null, appSecret: string | undefined): boolean {
-  const secret = appSecret ?? "";
-  if (!secret.trim()) return false;
+  // Trimmed like the verify token: a secret pasted with a trailing newline
+  // must not make every POST a 401.
+  const secret = (appSecret ?? "").trim();
+  if (!secret) return false;
   const m = SIGNATURE_RE.exec((header ?? "").trim());
   if (!m) return false;
   const expected = createHmac("sha256", secret).update(rawBody).digest();
