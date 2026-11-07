@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { createServer } from "node:net";
 import { startCloudApiStub, type CloudApiStub } from "../../../../e2e/stubs/cloud-api";
 import { CLOUD_GRAPH_VERSION, META_GRAPH_BASE, cloudApiConfigFrom, cloudMessageBody, sendCloudMessage } from "../client";
+import { templateMessage } from "../templates";
 
 const TOKEN = "EAAG-secret-token-never-logged";
 let stub: CloudApiStub;
@@ -60,15 +61,17 @@ describe("cloudMessageBody", () => {
     });
   });
 
-  it("template: name, language and components", () => {
-    const components = [{ type: "body", parameters: [{ type: "text", text: "Sutton FC" }] }];
-    expect(cloudMessageBody({ jobId: "pj1", to: "447700900001", kind: "template", name: "mt_pool_offer", lang: "en_GB", components })).toMatchObject({
+  it("template: exactly the message C6's templateMessage built", () => {
+    const message = templateMessage("mt_code", "tr", { body: ["482913"], buttons: [{ index: 0, text: "482913" }] });
+    expect(cloudMessageBody({ jobId: "pj1", to: "447700900001", kind: "template", message })).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "447700900001",
+      biz_opaque_callback_data: "pj1",
       type: "template",
-      template: { name: "mt_pool_offer", language: { code: "en_GB" }, components },
+      template: message,
     });
-    expect(cloudMessageBody({ jobId: "pj1", to: "1", kind: "template", name: "mt_code", lang: "tr", components: [] })).toMatchObject({
-      template: { name: "mt_code", language: { code: "tr" } },
-    });
+    expect(message.language).toEqual({ code: "tr" });
   });
 });
 

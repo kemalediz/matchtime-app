@@ -17,6 +17,7 @@
  * The Graph version is the one constant below (plan section 1: v26.0).
  */
 import type { CloudSendResult } from "./errors";
+import type { MetaTemplateMessage } from "./templates";
 
 type Env = Record<string, string | undefined>;
 
@@ -45,20 +46,18 @@ export function cloudApiConfigFrom(env: Env = process.env): CloudApiConfig | nul
   return { baseUrl, phoneNumberId, token };
 }
 
-/** One outgoing message. `jobId` is echoed back by Meta in status webhooks. */
+/** One outgoing message. `jobId` is echoed back by Meta in status webhooks.
+ *  A template is the `template` object C6's `templateMessage` built
+ *  (src/lib/cloud-api/templates.ts owns its wire shape), sent as it is. */
 export type CloudOutgoing =
   | { jobId: string; to: string; kind: "text"; text: string }
-  | { jobId: string; to: string; kind: "template"; name: string; lang: string; components: unknown[] };
+  | { jobId: string; to: string; kind: "template"; message: MetaTemplateMessage };
 
 /** Meta's request body. Pure. */
 export function cloudMessageBody(msg: CloudOutgoing): Record<string, unknown> {
   const base = { messaging_product: "whatsapp", recipient_type: "individual", to: msg.to, biz_opaque_callback_data: msg.jobId };
   if (msg.kind === "text") return { ...base, type: "text", text: { body: msg.text } };
-  return {
-    ...base,
-    type: "template",
-    template: { name: msg.name, language: { code: msg.lang }, ...(msg.components.length > 0 ? { components: msg.components } : {}) },
-  };
+  return { ...base, type: "template", template: msg.message };
 }
 
 /** Connection errors that mean the request never reached the server. */

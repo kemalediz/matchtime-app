@@ -29,6 +29,16 @@ vi.mock("../../pool/platform-sweeps", () => sweeps);
 import { CLOUD_BATCH, CLOUD_HOLD_MS, dispatchCloudJobs, runCloudDispatchSweep } from "../dispatch";
 import { cloudRetryNote } from "../dispatch-rules";
 import { CLOUD_RETRY_BASE_MS } from "../errors";
+import { cloudTemplate, templateMessage, templateParams, type CloudTemplateParams } from "../templates";
+
+/** Real fills from C6's registry (its own example facts). */
+function fill(name: "mt_pool_offer" | "mt_code"): CloudTemplateParams {
+  const f = templateParams(name, "en", cloudTemplate(name).example as never);
+  if (!f.ok) throw new Error(f.reason);
+  return f.params;
+}
+const OFFER = fill("mt_pool_offer");
+const CODE = fill("mt_code");
 
 const NOW = new Date("2026-11-07T12:00:00Z");
 const TOKEN = "stub-token";
@@ -68,7 +78,7 @@ function row(over: Partial<Row> = {}): Row {
     failReason: null,
     templateName: "mt_pool_offer",
     templateLang: "en_GB",
-    templateParams: [{ type: "body", parameters: [{ type: "text", text: "Sutton FC" }] }],
+    templateParams: OFFER,
     ...over,
   };
 }
@@ -159,13 +169,42 @@ describe("free form inside his window, template outside it", () => {
     expect(report.sent).toBe(1);
   });
 
-  it("he did not: the job's template with its components", async () => {
+  it("he did not: the job's template, built by C6's templateMessage", async () => {
     await run();
-    expect(stub.requests[0].body).toMatchObject({
-      type: "template",
-      template: { name: "mt_pool_offer", language: { code: "en_GB" }, components: rows[0].templateParams },
-    });
+    expect(stub.requests[0].body).toMatchObject({ type: "template", template: templateMessage("mt_pool_offer", "en", OFFER) });
     expect(outcomes()[0][1]).toMatchObject({ outcome: "sent" });
+  });
+
+  it("Turkish: Meta's tr code, the same params", async () => {
+    rows = [row({ templateLang: "tr" })];
+    await run();
+    expect((stub.requests[0].body as { template: unknown }).template).toEqual(templateMessage("mt_pool_offer", "tr", OFFER));
+  });
+
+  it("a template name not in the registry: failed with the reason, never sent, even inside his window", async () => {
+    inbounds = [{ phone: "447700900001", receivedAt: new Date(NOW.getTime() - 3600_000) }];
+    rows = [row({ templateName: "mt_made_up" })];
+    await run();
+    expect(stub.requests).toHaveLength(0);
+    expect(outcomes()).toEqual([["j1", { outcome: "failed", reason: 'template "mt_made_up" is not in the registry', errorCode: null }]]);
+  });
+
+  it("templateParams that do not parse as CloudTemplateParams (Meta's raw components included): failed, never sent", async () => {
+    for (const templateParams of [[{ type: "body", parameters: [{ type: "text", text: "x" }] }], { body: ["only one"], buttons: [] }, null]) {
+      vi.clearAllMocks();
+      stub.reset();
+      rows = [row({ templateParams })];
+      await run();
+      expect(stub.requests).toHaveLength(0);
+      expect(outcomes()[0][1]).toEqual({ outcome: "failed", reason: expect.stringMatching(/^templateParams do not parse as CloudTemplateParams: /), errorCode: null });
+    }
+  });
+
+  it("a code whose template does not parse is failed, not handed to the club number", async () => {
+    rows = [row({ id: "c", purpose: "otp", templateName: "mt_code", templateLang: "en_GB", templateParams: { body: [], buttons: [] } })];
+    await run();
+    expect(stub.requests).toHaveLength(0);
+    expect(outcomes()[0][1]).toMatchObject({ outcome: "failed" });
   });
 
   it("no window and no template: failed, nothing sent", async () => {
@@ -263,7 +302,7 @@ describe("codes fall back to the club number, and only codes (plan section 6, it
   const code = (over: Partial<Row> = {}) => row({ id: "c", purpose: "otp", text: "123456 is your code", templateName: null, templateLang: null, templateParams: null, ...over });
 
   it("a code the official number cannot send is handed to the club number", async () => {
-    rows = [code({ templateName: "mt_code", templateLang: "en_GB", templateParams: [] })];
+    rows = [code({ templateName: "mt_code", templateLang: "en_GB", templateParams: CODE })];
     stub.answerNext({ httpStatus: 400, error: { code: 131026, message: "undeliverable" } });
     const report = await run();
     expect(outcomes()[0]).toEqual(["c", { outcome: "handover", channel: "baileys", note: expect.stringContaining("Meta 131026"), errorCode: 131026 }]);
@@ -283,7 +322,7 @@ describe("codes fall back to the club number, and only codes (plan section 6, it
   });
 
   it("an unconfirmed code is never handed over: it may have landed", async () => {
-    rows = [code({ templateName: "mt_code", templateLang: "en_GB", templateParams: [] })];
+    rows = [code({ templateName: "mt_code", templateLang: "en_GB", templateParams: CODE })];
     stub.answerNext({ delayMs: 300 });
     await run({}, { timeoutMs: 30 });
     expect(outcomes()[0][1]).toMatchObject({ outcome: "unconfirmed" });
@@ -301,7 +340,7 @@ describe("the daily unique cap", () => {
     recentSends = [{ phone: "447700900999", sentAt: new Date(NOW.getTime() - 3600_000) }];
     rows = [
       row({ id: "offer", phone: "447700900001" }),
-      row({ id: "code", phone: "447700900002", purpose: "otp", templateName: "mt_code", templateLang: "en_GB", templateParams: [] }),
+      row({ id: "code", phone: "447700900002", purpose: "otp", templateName: "mt_code", templateLang: "en_GB", templateParams: CODE }),
     ];
     const report = await run({ CLOUD_DAILY_UNIQUE_CAP: "1" });
     expect(stub.requests.map((r) => (r.body as { to: string }).to)).toEqual(["447700900002"]);

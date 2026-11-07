@@ -14,20 +14,73 @@ import {
   cloudRetriesOf,
   cloudRetryNote,
   openWindowPhones,
+  parseJobTemplate,
   planCloudSends,
   reachedOutsideWindow,
   templateKey,
   type CloudJobView,
 } from "../dispatch-rules";
+import { cloudTemplate, templateParams, type CloudTemplateParams } from "../templates";
 
 const NOW = new Date("2026-11-07T12:00:00Z");
 const ago = (ms: number) => new Date(NOW.getTime() - ms);
 const H = 3600_000;
 
-const tmpl = { name: "mt_pool_offer", lang: "en_GB", params: [] };
+/** A real fill from C6's registry (its own example facts). */
+function fill(name: "mt_pool_offer" | "mt_code"): CloudTemplateParams {
+  const f = templateParams(name, "en", cloudTemplate(name).example as never);
+  if (!f.ok) throw new Error(f.reason);
+  return f.params;
+}
+const OFFER = fill("mt_pool_offer");
+const tmpl = parseJobTemplate({ templateName: "mt_pool_offer", templateLang: "en_GB", templateParams: OFFER });
 function job(over: Partial<CloudJobView> = {}): CloudJobView {
   return { id: "j1", phone: "447700900001", purpose: "pool-offer", template: tmpl, ...over };
 }
+
+describe("parseJobTemplate: the job's template, as C6 stores it", () => {
+  const parse = (over: Record<string, unknown> = {}) => parseJobTemplate({ templateName: "mt_pool_offer", templateLang: "en_GB", templateParams: OFFER, ...over });
+
+  it("no template: null", () => {
+    expect(parseJobTemplate({ templateName: null, templateLang: null, templateParams: null })).toBeNull();
+  });
+
+  it("a registry template with Meta's language and C6's params", () => {
+    expect(parse()).toEqual({ ok: true, name: "mt_pool_offer", lang: "en", metaLang: "en_GB", params: OFFER });
+    expect(parse({ templateLang: "tr" })).toMatchObject({ ok: true, lang: "tr", metaLang: "tr" });
+    expect(parseJobTemplate({ templateName: "mt_code", templateLang: "en_GB", templateParams: fill("mt_code") })).toMatchObject({ ok: true, name: "mt_code" });
+  });
+
+  it("a name not in the registry", () => {
+    expect(parse({ templateName: "mt_made_up" })).toEqual({ ok: false, reason: 'template "mt_made_up" is not in the registry' });
+  });
+
+  it("a language the template does not have (the app's code is not Meta's)", () => {
+    for (const lang of ["en", "de", "", null]) expect(parse({ templateLang: lang })).toMatchObject({ ok: false, reason: expect.stringContaining("language") });
+  });
+
+  it("params that do not parse as CloudTemplateParams", () => {
+    const bad: unknown[] = [
+      null,
+      [],
+      [{ type: "body", parameters: [] }],
+      "x",
+      { body: OFFER.body },
+      { buttons: OFFER.buttons },
+      { body: [...OFFER.body, "extra"], buttons: OFFER.buttons },
+      { body: OFFER.body.slice(1), buttons: OFFER.buttons },
+      { body: [1, ...OFFER.body.slice(1)], buttons: OFFER.buttons },
+      { body: OFFER.body, buttons: [] },
+      { body: OFFER.body, buttons: [OFFER.buttons[0], OFFER.buttons[0]] },
+      { body: OFFER.body, buttons: [OFFER.buttons[0], { index: 2, text: "x" }] },
+      { body: OFFER.body, buttons: [OFFER.buttons[0], { index: 1, text: "" }] },
+      { body: OFFER.body, buttons: [OFFER.buttons[0], { index: "1", text: "x" }] },
+    ];
+    for (const templateParams of bad) {
+      expect(parse({ templateParams }), JSON.stringify(templateParams)).toMatchObject({ ok: false, reason: expect.stringMatching(/^templateParams do not parse as CloudTemplateParams: /) });
+    }
+  });
+});
 const ctx = (over: Partial<Parameters<typeof planCloudSends>[1]> = {}) => ({
   cap: 200,
   reached: new Set<string>(),
@@ -105,9 +158,11 @@ describe("planCloudSends: free form or template", () => {
     expect(planCloudSends([job({ template: null })], ctx())[0]).toMatchObject({ action: "fail" });
   });
 
-  it("template parameters that are not a list: failed", () => {
-    expect(planCloudSends([job({ template: { ...tmpl, params: { a: 1 } } })], ctx())[0]).toMatchObject({ action: "fail" });
-    expect(planCloudSends([job({ template: { ...tmpl, params: null } })], ctx())[0]).toMatchObject({ action: "send", mode: "template" });
+  it("a template that does not parse: failed with its reason, even inside his window", () => {
+    const broken = parseJobTemplate({ templateName: "mt_made_up", templateLang: "en_GB", templateParams: OFFER });
+    for (const windowOpen of [new Set<string>(), new Set(["447700900001"])]) {
+      expect(planCloudSends([job({ template: broken })], ctx({ windowOpen }))[0]).toEqual({ jobId: "j1", action: "fail", reason: 'template "mt_made_up" is not in the registry' });
+    }
   });
 
   it("a template Meta paused, disabled or has not approved is held, not used", () => {

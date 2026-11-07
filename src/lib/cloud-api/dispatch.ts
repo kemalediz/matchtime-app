@@ -57,12 +57,14 @@ import {
   cloudRetriesOf,
   cloudRetryNote,
   openWindowPhones,
+  parseJobTemplate,
   planCloudSends,
   reachedOutsideWindow,
   templateKey,
   type CloudJobView,
 } from "./dispatch-rules";
 import { classifyCloudSend, type CloudSendResult, type CloudSendVerdict } from "./errors";
+import { templateMessage } from "./templates";
 
 type Env = Record<string, string | undefined>;
 
@@ -161,7 +163,7 @@ export async function dispatchCloudJobs(
   const jobs: CloudJobView[] = [];
   for (const r of rows) {
     if (!r.phone) continue;
-    jobs.push({ id: r.id, phone: r.phone, purpose: r.purpose, template: r.templateName && r.templateLang ? { name: r.templateName, lang: r.templateLang, params: r.templateParams } : null });
+    jobs.push({ id: r.id, phone: r.phone, purpose: r.purpose, template: parseJobTemplate(r) });
   }
 
   const recent = (await db.platformJob.findMany({
@@ -173,7 +175,7 @@ export async function dispatchCloudJobs(
     where: { channel: OFFICIAL_NUMBER, phone: { in: phones }, receivedAt: { gt: new Date(now.getTime() - 2 * CLOUD_WINDOW_MS) } },
     select: { phone: true, receivedAt: true },
   })) as Array<{ phone: string | null; receivedAt: Date }>;
-  const templates = jobs.flatMap((j) => (j.template ? [{ name: j.template.name, language: j.template.lang }] : []));
+  const templates = jobs.flatMap((j) => (j.template?.ok ? [{ name: j.template.name, language: j.template.metaLang }] : []));
   const statuses = templates.length
     ? ((await db.cloudTemplateStatus.findMany({ where: { OR: templates }, select: { name: true, language: true, status: true } })) as Array<{ name: string; language: string; status: string }>)
     : [];
@@ -200,7 +202,10 @@ export async function dispatchCloudJobs(
         continue;
       }
       if (item.action === "fail") {
-        await failOrHandOver(r, item.reason, null);
+        // A template that does not parse is our own broken job: failed and
+        // never sent on either number, a code included.
+        if (job.template && !job.template.ok) await fail(r, item.reason, null);
+        else await failOrHandOver(r, item.reason, null);
         continue;
       }
       const verdict = await sendJob(r, job, item.mode);
@@ -219,18 +224,17 @@ export async function dispatchCloudJobs(
 
   async function sendJob(r: JobRow, job: CloudJobView, mode: "text" | "template"): Promise<CloudSendVerdict> {
     const ctx = { retriesSoFar: cloudRetriesOf(r.failReason), now, expiresAt: r.purpose === "otp" ? new Date(r.createdAt.getTime() + OTP_DM_TTL_MS) : null };
-    const asTemplate = (): CloudOutgoing | null =>
-      job.template && (job.template.params == null || Array.isArray(job.template.params)) && !unusableTemplates.has(templateKey(job.template.name, job.template.lang))
-        ? { jobId: r.id, to: job.phone, kind: "template", name: job.template.name, lang: job.template.lang, components: (job.template.params as unknown[] | null) ?? [] }
-        : null;
+    // C6 owns the template's wire shape: `templateMessage` builds it.
+    const t = job.template?.ok && !unusableTemplates.has(templateKey(job.template.name, job.template.metaLang)) ? job.template : null;
+    const asTemplate = (): CloudOutgoing | null => (t ? { jobId: r.id, to: job.phone, kind: "template", message: templateMessage(t.name, t.lang, t.params) } : null);
     const first: CloudOutgoing | null = mode === "text" ? { jobId: r.id, to: job.phone, kind: "text", text: r.text ?? "" } : asTemplate();
     if (!first) return { verdict: "failed", errorCode: null, reason: "the job's template cannot be used" };
     const verdict = classifyCloudSend(await send(config!, first), ctx);
     if (verdict.verdict !== "window-closed" || first.kind !== "text") return verdict;
     // Meta says his window is closed after all: the template, once.
     const second = asTemplate();
-    if (!second) return verdict;
-    console.log(`[cloud-api] job ${r.id}: window closed (131047), resending as template ${second.kind === "template" ? second.name : ""}`);
+    if (!second || !t) return verdict;
+    console.log(`[cloud-api] job ${r.id}: window closed (131047), resending as template ${t.name}`);
     return classifyCloudSend(await send(config!, second), ctx);
   }
 
@@ -258,11 +262,12 @@ export async function dispatchCloudJobs(
         await failOrHandOver(r, v.reason, v.errorCode);
         return;
       case "failed":
-        if (v.flagTemplate && job.template) {
-          const key = templateKey(job.template.name, job.template.lang);
+        if (v.flagTemplate && job.template?.ok) {
+          const { name, metaLang } = job.template;
+          const key = templateKey(name, metaLang);
           await db.cloudTemplateStatus.upsert({
-            where: { name_language: { name: job.template.name, language: job.template.lang } },
-            create: { name: job.template.name, language: job.template.lang, status: v.flagTemplate, reason: v.reason },
+            where: { name_language: { name, language: metaLang } },
+            create: { name, language: metaLang, status: v.flagTemplate, reason: v.reason },
             update: { status: v.flagTemplate, reason: v.reason },
           });
           unusableTemplates.add(key);
@@ -288,8 +293,12 @@ export async function dispatchCloudJobs(
       console.warn(`${tag}: handed to the club number, ${reason}`);
       return;
     }
+    await fail(r, reason, errorCode);
+  }
+
+  async function fail(r: JobRow, reason: string, errorCode: number | null): Promise<void> {
     await record(r.id, { outcome: "failed", reason, errorCode });
     report.failed++;
-    console.error(`${tag}: failed, ${reason}`);
+    console.error(`[cloud-api] job ${r.id} (${r.purpose}) to ${r.phone}: failed, ${reason}`);
   }
 }
