@@ -14,7 +14,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { startCloudApiStub, type CloudApiStub } from "../../../../e2e/stubs/cloud-api";
 
 const dbMock = vi.hoisted(() => ({
-  platformJob: { findMany: vi.fn() },
+  platformJob: { findMany: vi.fn(), updateMany: vi.fn() },
   waInbound: { findMany: vi.fn() },
   cloudTemplateStatus: { findMany: vi.fn(), upsert: vi.fn() },
 }));
@@ -129,10 +129,12 @@ describe("flags off: nothing at all", () => {
     expect(stub.requests).toHaveLength(0);
   });
 
-  it("master on but the official number not configured: nothing is claimed, the jobs wait", async () => {
+  it("master on but the official number not configured: nothing is claimed for it, the jobs wait", async () => {
+    dbMock.platformJob.findMany.mockResolvedValue([]);
     const report = await run({ WA_CLOUD_ACCESS_TOKEN: undefined });
     expect(report).toMatchObject({ enabled: true, configured: false, claimed: 0 });
     expect(pj.claimDuePlatformJobs).not.toHaveBeenCalled();
+    expect(stub.requests).toHaveLength(0);
   });
 
   it("test mode with no stub address: nothing is claimed and Meta is never called", async () => {
@@ -378,5 +380,62 @@ describe("runCloudDispatchSweep: the per-minute sweep", () => {
     expect(sweeps.runPlatformPoolSweeps).toHaveBeenCalledWith(NOW, { FROM_REQUEST: "1" }, "cloud-dispatch");
     expect(pj.claimDuePlatformJobs.mock.calls[0][0].env).toEqual({ FROM_REQUEST: "1" });
     expect(switchEnv.resolvePoolEnv).not.toHaveBeenCalled();
+  });
+});
+
+// Review of #556, S4: a code already stored for the official number when it
+// turns out not to be configured (a token removed, a deploy without it)
+// must not wait for a dispatcher that will never claim it. While it is
+// alive it is handed to the club number, with the same compare-and-set
+// claim and the same outcome writer; an expired one is failed. Nothing
+// else is touched: strangers never fall back.
+describe("the official number not configured: codes already queued for it are handed over (review of #556, S4)", () => {
+  const unconfigured = { WA_CLOUD_ACCESS_TOKEN: undefined };
+  type Stranded = { id: string; phone: string; purpose: string; createdAt: Date; failReason: null; text: string };
+  let stranded: Stranded[];
+  const code = (id: string, ageMs: number): Stranded => ({ id, phone: "447700900001", purpose: "otp", createdAt: new Date(NOW.getTime() - ageMs), failReason: null, text: "code" });
+
+  beforeEach(() => {
+    stranded = [];
+    dbMock.platformJob.findMany.mockImplementation(async () => stranded);
+    dbMock.platformJob.updateMany.mockResolvedValue({ count: 1 });
+  });
+  const updateMany = () => dbMock.platformJob.updateMany;
+
+  it("reads only queued codes on the official number", async () => {
+    await run(unconfigured);
+    expect(dbMock.platformJob.findMany.mock.calls[0][0].where).toEqual({ channel: "cloud", status: "queued", kind: "dm", purpose: "otp" });
+  });
+
+  it("a live code: claimed with a compare-and-set, then handed to the club number by the outcome writer", async () => {
+    stranded = [code("c1", 60_000)];
+    const report = await run(unconfigured);
+    expect(updateMany()).toHaveBeenCalledWith({ where: { id: "c1", status: "queued", channel: "cloud" }, data: { status: "claimed", claimedAt: NOW } });
+    expect(outcomes()).toEqual([["c1", { outcome: "handover", channel: "baileys", note: expect.stringContaining("not configured"), errorCode: null }]]);
+    expect(pj.recordPlatformJobOutcome.mock.calls[0][3]).toEqual({ channel: "cloud" });
+    expect(report.handedOver).toBe(1);
+    expect(stub.requests).toHaveLength(0);
+  });
+
+  it("an expired code is failed, never handed over", async () => {
+    stranded = [code("old", 11 * 60_000)];
+    const report = await run(unconfigured);
+    expect(outcomes()[0][1]).toMatchObject({ outcome: "failed" });
+    expect(report.failed).toBe(1);
+  });
+
+  it("a code someone else claimed first is left alone", async () => {
+    stranded = [code("c1", 60_000)];
+    updateMany().mockResolvedValue({ count: 0 });
+    await run(unconfigured);
+    expect(pj.recordPlatformJobOutcome).not.toHaveBeenCalled();
+  });
+});
+
+describe("the dispatcher's outcomes name its channel (review of #556, S1)", () => {
+  it("every outcome is written only while the job is still the official number's", async () => {
+    await run();
+    expect(pj.recordPlatformJobOutcome).toHaveBeenCalled();
+    for (const c of pj.recordPlatformJobOutcome.mock.calls) expect(c[3]).toEqual({ channel: "cloud" });
   });
 });

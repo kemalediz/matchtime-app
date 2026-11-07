@@ -247,6 +247,18 @@ describe("planCloudSends: the daily unique cap", () => {
     ]);
   });
 
+  it("a code inside his open window goes as its template but uses no place (review of #556, N1)", () => {
+    const CODE_TMPL = parseJobTemplate({ templateName: "mt_code", templateLang: "en_GB", templateParams: fill("mt_code") });
+    const plan = planCloudSends(
+      [job({ id: "code", phone: "in-window", purpose: "otp", template: CODE_TMPL }), job({ id: "offer", phone: "new" })],
+      ctx({ cap: 1, windowOpen: new Set(["in-window"]) }),
+    );
+    expect(plan).toEqual([
+      { jobId: "code", action: "send", mode: "template" },
+      { jobId: "offer", action: "send", mode: "template" },
+    ]);
+  });
+
   it("two jobs to one new person use one place", () => {
     const plan = planCloudSends([job({ id: "a" }), job({ id: "b", purpose: "pool-paused" })], ctx({ cap: 1 }));
     expect(plan.map((p) => p.action)).toEqual(["send", "send"]);

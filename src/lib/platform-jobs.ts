@@ -104,7 +104,9 @@ import { POOL_OFFER_PURPOSE, admitPoolOfferJobs, onPoolOfferJobFailed, onPoolOff
 import { poolEnvForApiRequest } from "./pool/switch-env";
 import { channelFor, type SendChannel } from "./send-channel";
 import { scheduleCloudDispatch } from "./cloud-api/kick";
-import { META_LANG, cloudTemplate, templateParams, type CloudTemplateFacts, type CloudTemplateName } from "./cloud-api/templates";
+import { CLOUD_TEMPLATES, META_LANG, templateParams, type CloudTemplateFacts, type CloudTemplateName } from "./cloud-api/templates";
+import { cloudApiConfigFrom } from "./cloud-api/client";
+import { OTP_DM_TTL_MS, codeDmAlive } from "./code-life";
 import { normaliseLang, type Lang } from "./i18n/lang";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────
@@ -207,8 +209,9 @@ export const POOL_RESERVED_PER_POLL = 1;
 
 /** A sign-up code lives 10 minutes (phone-signup.ts, claim.ts). A code DM
  *  that waited longer than that would deliver a dead code, so it is failed
- *  instead of sent. */
-export const OTP_DM_TTL_MS = 10 * 60 * 1000;
+ *  instead of sent. The rule lives in code-life.ts, shared with the
+ *  official number's handover (review of #556, S1). */
+export { OTP_DM_TTL_MS };
 
 const FAIL_REASON_MAX = 500;
 
@@ -280,7 +283,9 @@ export type PlatformDmRefusalCode =
   | "empty-text"
   | "number-not-known"
   | "template-not-for-purpose"
-  | "template-does-not-fill";
+  | "template-does-not-fill"
+  | "unknown-template"
+  | "code-without-template";
 
 /**
  * The Meta template a DM stands in for when it goes from the official
@@ -372,8 +377,14 @@ export async function queuePlatformDm(args: {
   if (!digits) throw new PlatformDmRefused(`not a phone number: ${JSON.stringify(args.phone)}`, "not-a-phone-number");
   const text = typeof args.text === "string" ? args.text : "";
   if (!text.trim()) throw new PlatformDmRefused("empty text", "empty-text");
-  if (args.template && !(cloudTemplate(args.template.name).purposes as readonly string[]).includes(purpose)) {
-    throw new PlatformDmRefused(`template ${args.template.name} does not serve "${purpose}"`, "template-not-for-purpose");
+  if (args.template) {
+    // Looked up, not indexed: a name that is not in the registry is our
+    // own mistake, refused like any other (review of #556, N3).
+    const def = CLOUD_TEMPLATES.find((d) => d.name === args.template!.name);
+    if (!def) throw new PlatformDmRefused(`template ${JSON.stringify(args.template.name)} is not in the registry`, "unknown-template");
+    if (!(def.purposes as readonly string[]).includes(purpose)) {
+      throw new PlatformDmRefused(`template ${args.template.name} does not serve "${purpose}"`, "template-not-for-purpose");
+    }
   }
 
   if (!(ANY_NUMBER_PURPOSES as readonly string[]).includes(purpose)) {
@@ -383,7 +394,20 @@ export async function queuePlatformDm(args: {
   }
 
   // The one decision of which number sends it (send-channel-source-guard).
-  const channel = channelFor({ purpose, replyTo: args.replyTo ?? null });
+  // The official number not configured: a code goes to the club number
+  // rather than wait for a dispatcher that will never claim it (S4).
+  const channel = channelFor({
+    purpose,
+    replyTo: args.replyTo ?? null,
+    officialNumberReady: cloudApiConfigFrom() !== null,
+    onFallback: warnOnceOfficialNumberMissing,
+  });
+  // A code goes from the official number only as Meta's authentication
+  // template (decision 4): one without it would fail there, so it is
+  // refused here, before anything is stored (review of #556, N2).
+  if (channel !== PI_CHANNEL && purpose === CODE_PURPOSE && args.template?.name !== CODE_TEMPLATE) {
+    throw new PlatformDmRefused(`a code for the official number must carry ${CODE_TEMPLATE}`, "code-without-template");
+  }
   const template = channel !== PI_CHANNEL && args.template ? cloudTemplateFields(args.template) : {};
   const row = await client.platformJob.create({
     data: {
@@ -401,6 +425,19 @@ export async function queuePlatformDm(args: {
   });
   if (channel !== PI_CHANNEL) scheduleCloudDispatch();
   return { id: row.id, channel };
+}
+
+/** Codes, and the one template that may carry them (decision 4). */
+const CODE_PURPOSE = "otp";
+const CODE_TEMPLATE = "mt_code";
+
+let warnedOfficialNumberMissing = false;
+/** Once per process: codes are switched on for the official number but it
+ *  is not configured, so they go from the club number (S4). */
+function warnOnceOfficialNumberMissing(why: string): void {
+  if (warnedOfficialNumberMissing) return;
+  warnedOfficialNumberMissing = true;
+  console.warn(`[platform-jobs] ${why}`);
 }
 
 /** A template's three columns, filled by C6's `templateParams`; refused
@@ -614,7 +651,7 @@ export function planPlatformDispatch(
         refuse.push({ id: row.id, reason: "malformed: a DM with no phone or no text" });
         continue;
       }
-      if (row.purpose === "otp" && opts.now.getTime() - row.createdAt.getTime() > OTP_DM_TTL_MS) {
+      if (row.purpose === "otp" && !codeDmAlive(row.createdAt, opts.now)) {
         refuse.push({
           id: row.id,
           reason: "expired before it could be sent: the sign-up code it carries is no longer valid",
@@ -803,6 +840,12 @@ export async function claimDuePlatformJobs(
  *                (`fallbackWhenCloudDown`, plan section 6 item 5).
  * Like a release, neither requeue nor handover puts back a job cancelled
  * while it was claimed: that job is failed instead.
+ *
+ * `opts.channel` (review of #556, S1): the write lands only while the job
+ * is still on that channel. The Cloud dispatcher names the official
+ * number, so a job its webhook handed to the club number meanwhile (and
+ * the Pi may have claimed) is never written by the dispatcher's late
+ * report. Absent, as the Pi reports: exactly the write it always was.
  */
 export type PlatformJobOutcome =
   /** `inviteCode`: what an "invite-code" job read (pool L8); the route
@@ -822,7 +865,9 @@ export async function recordPlatformJobOutcome(
   id: string,
   result: PlatformJobOutcome,
   now: Date = new Date(),
+  opts: { channel?: SendChannel } = {},
 ): Promise<{ updated: boolean }> {
+  const onChannel = opts.channel ? { channel: opts.channel } : {};
   let data: Record<string, unknown>;
   const code = "errorCode" in result && result.errorCode !== undefined ? { errorCode: result.errorCode } : {};
   switch (result.outcome) {
@@ -864,12 +909,12 @@ export async function recordPlatformJobOutcome(
   // between finds the job queued and fails it itself.
   const notCancelled = { OR: [{ failReason: null }, { NOT: { failReason: { startsWith: CANCELLED_REASON_PREFIX } } }] };
   const { count } = await db.platformJob.updateMany({
-    where: { id, status: "claimed", ...(backToQueue ? notCancelled : {}) },
+    where: { id, status: "claimed", ...onChannel, ...(backToQueue ? notCancelled : {}) },
     data,
   });
   if (count === 0 && backToQueue) {
     const cancelled = await db.platformJob.updateMany({
-      where: { id, status: "claimed", failReason: { startsWith: CANCELLED_REASON_PREFIX } },
+      where: { id, status: "claimed", ...onChannel, failReason: { startsWith: CANCELLED_REASON_PREFIX } },
       data: { status: "failed", failedAt: now },
     });
     if (cancelled.count > 0) {

@@ -34,8 +34,9 @@
  * our own machine written note on the job (no column was added for it),
  * never anything a person typed.
  */
+import { codeDmAlive } from "../code-life";
 import type { Lang } from "../i18n/lang";
-import { ANSWER_PURPOSES } from "../send-channel";
+import { ANSWER_PURPOSES, fallbackWhenCloudDown, type SendChannel } from "../send-channel";
 import { CLOUD_TEMPLATES, META_LANG, type CloudTemplateName, type CloudTemplateParams, type MetaLang } from "./templates";
 
 type Env = Record<string, string | undefined>;
@@ -155,6 +156,21 @@ export interface CloudJobView {
  */
 const CODE_PURPOSE = "otp";
 
+/**
+ * A code the official number could not get to him (decision 5): the
+ * channel to hand it to, or null. Only a code (`fallbackWhenCloudDown`),
+ * only to ANOTHER channel than the one it is on (so never twice to one
+ * number), and only while it is alive (`codeDmAlive`, the Pi's own rule).
+ * The one rule for both doors: the dispatcher, when the send itself fails,
+ * and the webhook, when Meta's status says it failed after it was accepted
+ * (review of #556, S1). Both write it with a compare-and-set.
+ */
+export function codeHandoverChannel(job: { purpose: string; createdAt: Date }, from: SendChannel, now: Date): SendChannel | null {
+  const to = fallbackWhenCloudDown(job.purpose);
+  if (!to || to === from) return null;
+  return codeDmAlive(job.createdAt, now) ? to : null;
+}
+
 export type CloudSendPlanItem =
   | { jobId: string; action: "send"; mode: "text" | "template" }
   | { jobId: string; action: "hold"; reason: string }
@@ -192,7 +208,9 @@ export function planCloudSends(
       out.push({ jobId: j.id, action: isCode ? "fail" : "hold", reason: `template ${j.template.name} (${j.template.metaLang}) is not approved now` });
       continue;
     }
-    if (!reached.has(j.phone)) {
+    // A message inside his window does not count against the cap: a code
+    // goes as its template there too, but still uses no place.
+    if (!ctx.windowOpen.has(j.phone) && !reached.has(j.phone)) {
       if (cloudPriorityOf(j.purpose) !== "first" && reached.size >= ctx.cap) {
         out.push({ jobId: j.id, action: "hold", reason: `daily unique cap of ${ctx.cap} reached` });
         continue;

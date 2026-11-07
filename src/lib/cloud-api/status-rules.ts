@@ -13,7 +13,16 @@
  *   delivered  `deliveredAt`, once; settles too.
  *   read       `readAt`, once, and `deliveredAt` if delivered never came.
  *   failed     the job is failed with Meta's code, unless it was already
- *              delivered or read (it reached him; that wins).
+ *              delivered or read (it reached him; that wins). A CODE that
+ *              is still alive is handed to the club number instead
+ *              (review of #556, S1; `codeHandoverChannel`, decision 5):
+ *              back in the queue on that channel, a fresh job for the Pi
+ *              (no wamid, no sentAt), with Meta's code and why in its
+ *              note. Guarded on the wamid it had and on delivered and read
+ *              still empty. Once it is on the club number the webhook no
+ *              longer finds it, so Meta's repeats change nothing, and it
+ *              can never come back: at most one handover, never twice on
+ *              one number, never an expired code.
  *
  * WHICH JOBS. `sent` (the normal case), and the two the dispatcher did not
  * finish: `unconfirmed` (no answer from Meta, it may have landed; plan
@@ -22,11 +31,18 @@
  * (back in the queue for a retry or a hand over: no live message) and never
  * a `failed` one. A job already holding another wamid is another message.
  */
+import { codeHandoverChannel } from "./dispatch-rules";
 import type { CloudStatusUpdate } from "./inbound";
+
+type HandoverChannel = NonNullable<ReturnType<typeof codeHandoverChannel>>;
 
 export interface StatusJobView {
   id: string;
   status: string;
+  /** The number the job is on (the webhook reads the official number's). */
+  channel: HandoverChannel;
+  purpose: string;
+  createdAt: Date;
   waMessageId: string | null;
   sentAt: Date | null;
   deliveredAt: Date | null;
@@ -35,9 +51,13 @@ export interface StatusJobView {
 
 export interface StatusWrite {
   data: {
-    status?: "sent" | "failed";
-    waMessageId?: string;
-    sentAt?: Date;
+    status?: "sent" | "failed" | "queued";
+    waMessageId?: string | null;
+    sentAt?: Date | null;
+    /** A handover only: the code's new channel, back in its queue. */
+    channel?: HandoverChannel;
+    claimedAt?: null;
+    sendAfter?: null;
     deliveredAt?: Date;
     readAt?: Date;
     failedAt?: Date;
@@ -47,9 +67,10 @@ export interface StatusWrite {
   /** Columns that must still be empty when the write lands (review of
    *  #554, item 5): every gap `data` fills, and for a failure delivered
    *  and read too. Added to the compare-and-set beside the status. */
-  guard: { waMessageId?: null; sentAt?: null; deliveredAt?: null; readAt?: null };
-  /** The job's outcome changed: the pool's hooks follow it. */
-  settles: "sent" | "failed" | null;
+  guard: { waMessageId?: string | null; sentAt?: null; deliveredAt?: null; readAt?: null };
+  /** The job's outcome changed: the pool's hooks follow sent and failed.
+   *  A handover is no outcome yet: the club number sends it. */
+  settles: "sent" | "failed" | "handover" | null;
 }
 
 const GAP_COLUMNS = ["waMessageId", "sentAt", "deliveredAt", "readAt"] as const;
@@ -74,6 +95,20 @@ export function cloudStatusUpdate(job: StatusJobView, st: CloudStatusUpdate, now
   if (st.status === "failed") {
     if (job.deliveredAt || job.readAt) return null;
     const reason = `Meta status failed: ${st.errorCode ?? "no code"}${st.errorTitle ? ` ${st.errorTitle}` : ""}`;
+    const to = codeHandoverChannel(job, job.channel, now);
+    if (to) {
+      const data: StatusWrite["data"] = {
+        status: "queued",
+        channel: to,
+        claimedAt: null,
+        sendAfter: null,
+        waMessageId: null,
+        sentAt: null,
+        errorCode: st.errorCode,
+        failReason: `handed to the club number: ${reason}`.slice(0, FAIL_REASON_MAX),
+      };
+      return { data, guard: { waMessageId: job.waMessageId, deliveredAt: null, readAt: null }, settles: "handover" };
+    }
     const data: StatusWrite["data"] = { status: "failed", failedAt: at, errorCode: st.errorCode, failReason: reason.slice(0, FAIL_REASON_MAX), ...wamid };
     // Delivered or read landing first wins, even when it races this write.
     return { data, guard: guardOf(data, { deliveredAt: null, readAt: null }), settles: "failed" };

@@ -37,7 +37,16 @@ import { codeLangFromRequest, queueCodeDm } from "../code-dm";
 import { codeSenderNumber } from "../club-connect";
 import { templateParams } from "../cloud-api/templates";
 
-const CLOUD_ENV = ["CLOUD_API_ENABLED", "CLOUD_API_PURPOSES", "WA_CLOUD_NUMBER", "MATCHTIME_WA_NUMBER"] as const;
+const CLOUD_ENV = [
+  "CLOUD_API_ENABLED",
+  "CLOUD_API_PURPOSES",
+  "WA_CLOUD_NUMBER",
+  "MATCHTIME_WA_NUMBER",
+  "WA_CLOUD_ACCESS_TOKEN",
+  "WA_CLOUD_PHONE_NUMBER_ID",
+  "WA_CLOUD_API_BASE",
+  "MT_TEST_MODE",
+] as const;
 const clear = () => {
   for (const k of CLOUD_ENV) vi.stubEnv(k, undefined as unknown as string);
 };
@@ -46,6 +55,12 @@ const codeOn = () => {
   vi.stubEnv("CLOUD_API_PURPOSES", "otp");
   vi.stubEnv("WA_CLOUD_NUMBER", "+44 7700 900999");
   vi.stubEnv("MATCHTIME_WA_NUMBER", "447700900555");
+  // The official number configured (review of #556, S4), on a local
+  // address in test mode: nothing here can reach Meta.
+  vi.stubEnv("MT_TEST_MODE", "1");
+  vi.stubEnv("WA_CLOUD_API_BASE", "http://127.0.0.1:9");
+  vi.stubEnv("WA_CLOUD_ACCESS_TOKEN", "stub-token");
+  vi.stubEnv("WA_CLOUD_PHONE_NUMBER_ID", "1234567890");
 };
 
 beforeEach(() => {
@@ -126,12 +141,27 @@ describe("queueCodeDm, otp on the official number", () => {
     expect(dbMock.platformJob.create.mock.calls[0][0].data.templateLang).toBe("tr");
   });
 
-  it("the official number not configured: the job is still the official number's, nothing named", async () => {
+  it("the official number's display number not set: the job is still the official number's, nothing named", async () => {
     codeOn();
     vi.stubEnv("WA_CLOUD_NUMBER", undefined as unknown as string);
     const out = await queueCodeDm({ phone: "447700900123", code: "482913", text: "code", lang: "en" });
     expect(dbMock.platformJob.create.mock.calls[0][0].data.channel).toBe("cloud");
     expect(out).toEqual({ from: null });
+  });
+
+  it("no access token or no phone number id: the code goes from the club number, nothing named, never stranded (review of #556, S4)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const missing of ["WA_CLOUD_ACCESS_TOKEN", "WA_CLOUD_PHONE_NUMBER_ID"]) {
+      vi.clearAllMocks();
+      codeOn();
+      vi.stubEnv(missing, "");
+      const out = await queueCodeDm({ phone: "447700900123", code: "482913", text: "code", lang: "en" });
+      const data = dbMock.platformJob.create.mock.calls[0][0].data;
+      expect(data.channel).toBe("baileys");
+      expect(data).not.toHaveProperty("templateName");
+      expect(out).toEqual({ from: null });
+      expect(kick.scheduleCloudDispatch).not.toHaveBeenCalled();
+    }
   });
 });
 

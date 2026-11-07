@@ -169,7 +169,16 @@ describe("startClaimAccount", () => {
 //    official number: Meta's `mt_code` in the browser's language, and the
 //    official number named for the page. ──
 
-const CLOUD_ENV = ["CLOUD_API_ENABLED", "CLOUD_API_PURPOSES", "WA_CLOUD_NUMBER", "MATCHTIME_WA_NUMBER"] as const;
+const CLOUD_ENV = [
+  "CLOUD_API_ENABLED",
+  "CLOUD_API_PURPOSES",
+  "WA_CLOUD_NUMBER",
+  "MATCHTIME_WA_NUMBER",
+  "WA_CLOUD_ACCESS_TOKEN",
+  "WA_CLOUD_PHONE_NUMBER_ID",
+  "WA_CLOUD_API_BASE",
+  "MT_TEST_MODE",
+] as const;
 
 const ACTIONS = [
   { name: "startPhoneSignup", run: () => startPhoneSignup({ phone: "+447700900123", name: "Ali" }) },
@@ -207,6 +216,12 @@ describe("the three code actions with codes on the official number (C7a)", () =>
     vi.stubEnv("CLOUD_API_PURPOSES", "otp");
     vi.stubEnv("WA_CLOUD_NUMBER", "447700900999");
     vi.stubEnv("MATCHTIME_WA_NUMBER", "447700900555");
+    // The official number configured (review of #556, S4), on a local
+    // address in test mode: nothing here can reach Meta.
+    vi.stubEnv("MT_TEST_MODE", "1");
+    vi.stubEnv("WA_CLOUD_API_BASE", "http://127.0.0.1:9");
+    vi.stubEnv("WA_CLOUD_ACCESS_TOKEN", "stub-token");
+    vi.stubEnv("WA_CLOUD_PHONE_NUMBER_ID", "1234567890");
   }
 
   for (const a of ACTIONS) {
@@ -236,4 +251,44 @@ describe("the three code actions with codes on the official number (C7a)", () =>
     for (const a of ACTIONS) expect((await a.run()).ok).toBe(false);
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
   });
+});
+
+// ── Review of #556, S2: the claim code had only the per phone cap. Every
+//    code action now issues through the one `issueCode` (src/lib/code-dm.ts),
+//    so all three are held to the same three caps and record the IP, and
+//    no answer depends on whether the number has an account. ──
+describe("every code action is held to the same three caps (review of #556, S2)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const BUSY = "We're busy right now, please try again tomorrow.";
+
+  for (const a of ACTIONS) {
+    it(`${a.name}: records the request IP`, async () => {
+      await a.run();
+      expect(dbMock.phoneOtp.create.mock.calls[0][0].data.requestIp).toBe("203.0.113.7");
+    });
+
+    it(`${a.name}: the per IP cap refuses with the busy message, nothing written or queued`, async () => {
+      counts({ ip: SIGNUP_ATTEMPTS_PER_IP_PER_HOUR });
+      expect(await a.run()).toEqual({ ok: false, error: BUSY });
+      expect(dbMock.phoneOtp.create).not.toHaveBeenCalled();
+      expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+    });
+
+    it(`${a.name}: the site cap refuses with the busy message, nothing written or queued`, async () => {
+      counts({ site: SITE_SIGNUP_CODES_PER_DAY });
+      expect(await a.run()).toEqual({ ok: false, error: BUSY });
+      expect(dbMock.phoneOtp.create).not.toHaveBeenCalled();
+      expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+    });
+
+    it(`${a.name}: the per phone cap gives the same answer as every other action`, async () => {
+      counts({ phone: 3 });
+      expect(await a.run()).toEqual({ ok: false, error: "Too many requests. Please wait a bit and try again." });
+    });
+
+    it(`${a.name}: never asks whether the number has an account before answering`, async () => {
+      await a.run();
+      expect(dbMock.user.findFirst).not.toHaveBeenCalled();
+    });
+  }
 });

@@ -20,7 +20,7 @@ const AT = new Date("2026-11-07T11:59:00Z");
 const SENT_AT = new Date("2026-11-07T11:58:00Z");
 
 function job(over: Partial<StatusJobView> = {}): StatusJobView {
-  return { id: "j1", status: "sent", waMessageId: "wamid.A", sentAt: SENT_AT, deliveredAt: null, readAt: null, ...over };
+  return { id: "j1", status: "sent", channel: "cloud", purpose: "pool-offer", createdAt: SENT_AT, waMessageId: "wamid.A", sentAt: SENT_AT, deliveredAt: null, readAt: null, ...over };
 }
 function st(status: string, over: Partial<CloudStatusUpdate> = {}): CloudStatusUpdate {
   return { wamid: "wamid.A", phoneNumberId: "1", status, at: AT, recipient: "447700900001", recipientUserId: null, jobId: "j1", errorCode: null, errorTitle: null, pricing: null, ...over };
@@ -135,5 +135,62 @@ describe("cloudStatusUpdate: jobs a status never touches", () => {
 
   it("a job whose wamid is another message's is not touched", () => {
     expect(cloudStatusUpdate(job({ waMessageId: "wamid.OTHER" }), st("delivered"), NOW)).toBeNull();
+  });
+});
+
+// Review of #556, S1: a code Meta accepted and then failed (a `failed`
+// status after the send) was only marked failed, so the person never got
+// it. While the code is alive (ten minutes from createdAt, the Pi's own
+// rule) it is handed to the club number (`fallbackWhenCloudDown`, decision
+// 5): back in the queue on the club number's channel, as a fresh job for
+// the Pi. Only codes; never an expired one; never after it reached him.
+describe("cloudStatusUpdate: a code that fails after Meta accepted it (review of #556, S1)", () => {
+  const code = (over: Partial<StatusJobView> = {}) => job({ purpose: "otp", createdAt: new Date(NOW.getTime() - 3 * 60_000), ...over });
+  const failed = st("failed", { errorCode: 131026, errorTitle: "Message undeliverable" });
+
+  it("alive: handed to the club number, a fresh queued job for the Pi, guarded on the wamid it had", () => {
+    expect(cloudStatusUpdate(code(), failed, NOW)).toEqual({
+      data: {
+        status: "queued",
+        channel: "baileys",
+        claimedAt: null,
+        sendAfter: null,
+        waMessageId: null,
+        sentAt: null,
+        errorCode: 131026,
+        failReason: "handed to the club number: Meta status failed: 131026 Message undeliverable",
+      },
+      guard: { waMessageId: "wamid.A", deliveredAt: null, readAt: null },
+      settles: "handover",
+    });
+  });
+
+  it("from unconfirmed or claimed (no wamid yet) too, guarded on having none", () => {
+    for (const status of ["unconfirmed", "claimed"]) {
+      const w = cloudStatusUpdate(code({ status, waMessageId: null, sentAt: null }), failed, NOW);
+      expect(w).toMatchObject({ data: { status: "queued", channel: "baileys" }, guard: { waMessageId: null, deliveredAt: null, readAt: null }, settles: "handover" });
+    }
+  });
+
+  it("ten minutes is still alive (the Pi sends it); a moment later it is failed, never handed over", () => {
+    expect(cloudStatusUpdate(code({ createdAt: new Date(NOW.getTime() - 10 * 60_000) }), failed, NOW)?.settles).toBe("handover");
+    const late = cloudStatusUpdate(code({ createdAt: new Date(NOW.getTime() - 10 * 60_000 - 1) }), failed, NOW);
+    expect(late).toMatchObject({ data: { status: "failed", errorCode: 131026 }, settles: "failed" });
+    expect(late!.data).not.toHaveProperty("channel");
+  });
+
+  it("delivered or read first: it reached him, nothing is handed over", () => {
+    expect(cloudStatusUpdate(code({ deliveredAt: AT }), failed, NOW)).toBeNull();
+    expect(cloudStatusUpdate(code({ readAt: AT }), failed, NOW)).toBeNull();
+  });
+
+  it("a job already on the club number is never handed to it again", () => {
+    expect(cloudStatusUpdate(code({ channel: "baileys" }), failed, NOW)?.settles).not.toBe("handover");
+  });
+
+  it("every other purpose is unchanged: failed, never handed over", () => {
+    for (const purpose of ["pool-offer", "pool-welcome", "pool-placed", "club-invite-ask"]) {
+      expect(cloudStatusUpdate(job({ purpose }), failed, NOW)).toMatchObject({ data: { status: "failed" }, settles: "failed" });
+    }
   });
 });

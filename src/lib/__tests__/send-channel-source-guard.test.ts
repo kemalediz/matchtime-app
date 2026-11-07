@@ -72,6 +72,11 @@ const CLOUD_DISPATCH_RULES = "lib/cloud-api/dispatch-rules.ts";
  *  for anything sent. */
 const CLOUD_WEBHOOK = "lib/cloud-api/webhook.ts";
 
+/** Review of #556, S1: Meta's status rules. They hand a failed live code
+ *  to the club number with `codeHandoverChannel`'s answer, and import
+ *  nothing from send-channel. */
+const CLOUD_STATUS_RULES = "lib/cloud-api/status-rules.ts";
+
 /** Files that may import send-channel (types included). Extend deliberately. */
 const CHANNEL_IMPORTERS = new Set<string>([NUMBER_READER, PLATFORM_JOBS, CLOUD_DISPATCH, CLOUD_DISPATCH_RULES, CLOUD_WEBHOOK]);
 
@@ -162,7 +167,7 @@ describe("a PlatformJob's channel is decided once, in queuePlatformDm (PR C2)", 
     expect(body).toMatch(/\bchannel,/);
   });
 
-  it("only a handover changes a job's channel, and only the Cloud dispatcher asks for one, with fallbackWhenCloudDown's answer (PR C4)", () => {
+  it("only a handover changes a job's channel, and only the Cloud dispatcher asks for one, with codeHandoverChannel's answer (PR C4)", () => {
     // platform-jobs.ts writes `channel: result.channel` for a handover and
     // nowhere else after queuePlatformDm.
     expect(src.match(/\bchannel:\s*result\.channel\b/g) ?? []).toHaveLength(1);
@@ -170,8 +175,26 @@ describe("a PlatformJob's channel is decided once, in queuePlatformDm (PR C2)", 
     const askers = FILES.filter((f) => rel(f) !== PLATFORM_JOBS && /outcome:\s*["']handover["']/.test(code(f))).map(rel);
     expect(askers).toEqual([CLOUD_DISPATCH]);
     const dispatch = code(path.join(SRC, CLOUD_DISPATCH));
-    expect(dispatch).toMatch(/const fallback = fallbackWhenCloudDown\(/);
+    expect(dispatch).toMatch(/const fallback = codeHandoverChannel\(/);
     expect(dispatch).toMatch(/outcome:\s*"handover",\s*channel:\s*fallback\b/);
+  });
+
+  it("a handover's channel has one source: codeHandoverChannel, the only caller of fallbackWhenCloudDown (review of #556, S1)", () => {
+    // The rule (only codes, only while alive, never to the channel the job
+    // is on) lives once, in the dispatcher's pure rules.
+    const askers = FILES.filter((f) => rel(f) !== CHANNEL_MODULE && /\bfallbackWhenCloudDown\s*\(/.test(code(f))).map(rel);
+    expect(askers).toEqual([CLOUD_DISPATCH_RULES]);
+    const rules = code(path.join(SRC, CLOUD_DISPATCH_RULES));
+    expect(rules).toMatch(/export function codeHandoverChannel\(/);
+    // Its two users: the dispatcher (the send failed) and the status rules
+    // (Meta said failed after it accepted the send).
+    const users = FILES.filter((f) => rel(f) !== CLOUD_DISPATCH_RULES && /\bcodeHandoverChannel\s*\(/.test(code(f))).map(rel);
+    expect(users.sort()).toEqual([CLOUD_DISPATCH, CLOUD_STATUS_RULES].sort());
+    // The status rules write a channel only as that answer.
+    const status = code(path.join(SRC, CLOUD_STATUS_RULES));
+    expect(status).toMatch(/const to = codeHandoverChannel\(/);
+    // Its view's field, and the one value it ever writes.
+    expect(status.match(/\bchannel:\s*[\w"']+/g) ?? []).toEqual(["channel: HandoverChannel", "channel: to"]);
   });
 
   it("the Cloud dispatcher names the official number once, as the channel it claims for", () => {
@@ -181,7 +204,7 @@ describe("a PlatformJob's channel is decided once, in queuePlatformDm (PR C2)", 
     expect(dispatch).not.toMatch(/\b(channelFor|waLinkChannelFor|waNumberFor)\s*\(/);
   });
 
-  it("the Cloud webhook names the official number once, asks only the master switch, and never changes a job's channel (PR C5)", () => {
+  it("the Cloud webhook names the official number once, asks only the master switch, and decides no channel itself (PR C5; review of #556, S1: a code's handover is the status rules' answer)", () => {
     const hook = code(path.join(SRC, CLOUD_WEBHOOK));
     expect(hook.match(/["']cloud["']/g) ?? []).toHaveLength(1);
     expect(hook).toMatch(/const OFFICIAL_NUMBER: SendChannel = "cloud";/);
@@ -192,19 +215,47 @@ describe("a PlatformJob's channel is decided once, in queuePlatformDm (PR C2)", 
   it("a code DM has one door, src/lib/code-dm.ts, which picks no channel (PR C7a)", () => {
     // Every code (sign-up, sign-in, claim) is queued by queueCodeDm, so
     // each one carries mt_code; nothing else writes purpose "otp".
-    // `purpose: "otp"` followed by a comma or brace is a value in an object
-    // literal (a queue call); `purpose: "otp" | ...` in platform-jobs.ts is
-    // a type in its claim reader.
-    const otpQueuers = FILES.filter((f) => /\bpurpose:\s*["']otp["']\s*[,}]/.test(code(f))).map(rel);
+    // `purpose: "otp"` in any form outside platform-jobs.ts (where
+    // `purpose: "otp" | ...` is a type in its claim reader) is a queue call
+    // or a hand rolled code (review of #556, N2: tightened from "followed
+    // by a comma or brace", which missed `"otp" as const` and the like).
+    const otpQueuers = FILES.filter((f) => rel(f) !== PLATFORM_JOBS && /\bpurpose\s*:\s*["']otp["']/.test(code(f))).map(rel);
     expect(otpQueuers).toEqual(["lib/code-dm.ts"]);
     const door = code(path.join(SRC, "lib/code-dm.ts"));
     expect(door).toMatch(/\bqueuePlatformDm\s*\(/);
+    expect(door.match(/\bqueuePlatformDm\s*\(/g) ?? []).toHaveLength(1);
     expect(door).toMatch(/name:\s*"mt_code"/);
     expect(door).not.toMatch(SEND_CHANNEL_IMPORT);
     expect(door).not.toMatch(/\b(channelFor|waLinkChannelFor|waNumberFor)\s*\(/);
-    // Its callers are the three code actions, and nothing else.
-    const callers = FILES.filter((f) => rel(f) !== "lib/code-dm.ts" && /\bqueueCodeDm\s*\(/.test(code(f))).map(rel);
-    expect(callers.sort()).toEqual(["app/actions/claim.ts", "app/actions/phone-signup.ts"]);
+    // Review of #556, S2: codes are ISSUED there too (`issueCode`, every
+    // cap in one place), and the DM is queued only by it.
+    const queuers = FILES.filter((f) => rel(f) !== "lib/code-dm.ts" && /\bqueueCodeDm\s*\(/.test(code(f))).map(rel);
+    expect(queuers).toEqual([]);
+    // (auth.ts has an issueCode of its own, for email links: not this one.)
+    const CODE_DOOR_IMPORT = /\bissueCode\b[^;]*from\s+["'](?:@\/lib|\.{1,2}(?:\/[\w-]+)*)\/code-dm["']/;
+    const issuers = FILES.filter((f) => CODE_DOOR_IMPORT.test(code(f)) && /\bissueCode\s*\(/.test(code(f))).map(rel);
+    expect(issuers.sort()).toEqual(["app/actions/claim.ts", "app/actions/phone-signup.ts"]);
+    // A code is made (PhoneOtp written) only there.
+    const makers = FILES.filter((f) => /\bphoneOtp\s*\.\s*(create|createMany|upsert)\s*\(/.test(code(f))).map(rel);
+    expect(makers).toEqual(["lib/code-dm.ts"]);
+  });
+
+  it("the purpose \"otp\" is named only where codes are defined, queued, planned or sent (review of #556, N2)", () => {
+    // Anything else naming it is a new code path to review here first. At
+    // runtime `queuePlatformDm` refuses a code for the official number that
+    // lacks mt_code, whoever queues it.
+    const namers = FILES.filter((f) => /["']otp["']/.test(code(f))).map(rel);
+    expect(namers.sort()).toEqual(
+      [
+        PLATFORM_JOBS, // the purpose list, the planner, the claim reader, the N2 refusal
+        CHANNEL_MODULE, // the first contact list and fallbackWhenCloudDown
+        "lib/code-dm.ts", // the one door
+        CLOUD_DISPATCH, // stranded codes when not configured (S4), the expiry it gives Meta's errors
+        CLOUD_DISPATCH_RULES, // codes first, always as their template
+        "lib/cloud-api/templates.ts", // mt_code serves otp
+      ].sort(),
+    );
+    expect(code(path.join(SRC, PLATFORM_JOBS))).toMatch(/"code-without-template"/);
   });
 
   it("the page's number for a code comes only through the code door (PR C7a)", () => {

@@ -19,7 +19,10 @@
  *   1. CLOUD_API_ENABLED off: return at once. Nothing is read, claimed or
  *      sent, so behaviour is exactly what it was before the plan.
  *   2. The official number not configured (no token or phone number id;
- *      in test mode, no stub address): nothing is claimed, the jobs wait.
+ *      in test mode, no stub address): nothing is claimed for it, the jobs
+ *      wait. New codes go to the club number then (`channelFor`, review of
+ *      #556, S4); a code already queued for it is handed to the club number
+ *      while it is alive, failed once it is not, so none is stranded.
  *   3. Claim up to `CLOUD_BATCH` DMs for the official number.
  *   4. Read what the rules need: each job's template, who wrote to the
  *      official number lately (his window), who we reached outside a
@@ -33,9 +36,15 @@
  *      `CloudTemplateStatus`; 131050 is reported for the opt-out wiring
  *      (PR C8).
  *   7. A sign-up code the official number could not send is handed to
- *      the club number while it is still alive (`fallbackWhenCloudDown`,
+ *      the club number while it is still alive (`codeHandoverChannel`,
  *      plan section 6 item 5). Nothing else ever falls back, and an
- *      unconfirmed code is never handed over (it may have landed).
+ *      unconfirmed code is never handed over (it may have landed). A code
+ *      Meta accepted and then reported failed is handed over by the
+ *      webhook, with the same rule (review of #556, S1).
+ *
+ * Every outcome is written only while the job is still the official
+ * number's (`recordPlatformJobOutcome`'s channel), so a late report never
+ * lands on a job the webhook already handed to the club number.
  *
  * Runs right after a cloud job is queued (`after()`, kick.ts) and from
  * the per-minute sweep (/api/cron/cloud-dispatch). Two runs at once never
@@ -49,13 +58,14 @@ import { db } from "../db";
 import { OTP_DM_TTL_MS, claimDuePlatformJobs, recordPlatformJobOutcome, type PlatformJobOutcome } from "../platform-jobs";
 import { runPlatformPoolSweeps } from "../pool/platform-sweeps";
 import { resolvePoolEnv } from "../pool/switch-env";
-import { cloudApiEnabled, fallbackWhenCloudDown, type SendChannel } from "../send-channel";
+import { cloudApiEnabled, type SendChannel } from "../send-channel";
 import { cloudApiConfigFrom, sendCloudMessage, type CloudApiConfig, type CloudOutgoing } from "./client";
 import {
   CLOUD_WINDOW_MS,
   cloudDailyUniqueCap,
   cloudRetriesOf,
   cloudRetryNote,
+  codeHandoverChannel,
   openWindowPhones,
   parseJobTemplate,
   planCloudSends,
@@ -70,6 +80,8 @@ type Env = Record<string, string | undefined>;
 
 /** The official number's jobs, as `PlatformJob.channel` stores them. */
 const OFFICIAL_NUMBER: SendChannel = "cloud";
+/** Codes: the one purpose that may be handed to the club number. */
+const CODE_PURPOSE = "otp";
 
 /** Jobs claimed per run. The sweep runs every minute. */
 export const CLOUD_BATCH = 10;
@@ -141,13 +153,14 @@ export async function dispatchCloudJobs(
   const env = opts.env ?? process.env;
   if (!cloudApiEnabled(env)) return emptyReport(false, false);
   const config = cloudApiConfigFrom(env);
-  if (!config) {
-    if (!warnedUnconfigured) console.error("[cloud-api] the Cloud API is switched on but the official number is not configured; cloud jobs wait");
-    warnedUnconfigured = true;
-    return emptyReport(true, false);
-  }
   const now = opts.now ?? new Date();
-  const report = emptyReport(true, true);
+  const report = emptyReport(true, !!config);
+  if (!config) {
+    if (!warnedUnconfigured) console.error("[cloud-api] the Cloud API is switched on but the official number is not configured; cloud jobs wait, codes go to the club number");
+    warnedUnconfigured = true;
+    await handOverStrandedCodes();
+    return report;
+  }
   const send = opts.send ?? ((c: CloudApiConfig, m: CloudOutgoing) => sendCloudMessage(c, m, { timeoutMs: opts.timeoutMs }));
 
   const poolEnv = opts.poolEnv ?? (await resolvePoolEnv(undefined, env));
@@ -219,11 +232,31 @@ export async function dispatchCloudJobs(
   return report;
 
   async function record(id: string, outcome: PlatformJobOutcome): Promise<void> {
-    await recordPlatformJobOutcome(id, outcome, now);
+    await recordPlatformJobOutcome(id, outcome, now, { channel: OFFICIAL_NUMBER });
+  }
+
+  /** The official number not configured: codes already queued for it are
+   *  claimed (the same compare-and-set as every claim) and handed to the
+   *  club number while alive, failed once not (review of #556, S4). */
+  async function handOverStrandedCodes(): Promise<void> {
+    const codes = (await db.platformJob.findMany({
+      where: { channel: OFFICIAL_NUMBER, status: "queued", kind: "dm", purpose: CODE_PURPOSE },
+      orderBy: { createdAt: "asc" },
+      take: CLOUD_BATCH,
+      select: { id: true, phone: true, text: true, purpose: true, createdAt: true, failReason: true },
+    })) as JobRow[];
+    for (const r of codes) {
+      try {
+        const { count } = await db.platformJob.updateMany({ where: { id: r.id, status: "queued", channel: OFFICIAL_NUMBER }, data: { status: "claimed", claimedAt: now } });
+        if (count === 1) await failOrHandOver(r, "the official number is not configured", null);
+      } catch (err) {
+        console.error(`[cloud-api] job ${r.id} (${r.purpose}) to ${r.phone}: handing it over failed: ${(err as Error)?.message ?? "error"}`);
+      }
+    }
   }
 
   async function sendJob(r: JobRow, job: CloudJobView, mode: "text" | "template"): Promise<CloudSendVerdict> {
-    const ctx = { retriesSoFar: cloudRetriesOf(r.failReason), now, expiresAt: r.purpose === "otp" ? new Date(r.createdAt.getTime() + OTP_DM_TTL_MS) : null };
+    const ctx = { retriesSoFar: cloudRetriesOf(r.failReason), now, expiresAt: r.purpose === CODE_PURPOSE ? new Date(r.createdAt.getTime() + OTP_DM_TTL_MS) : null };
     // C6 owns the template's wire shape: `templateMessage` builds it.
     const t = job.template?.ok && !unusableTemplates.has(templateKey(job.template.name, job.template.metaLang)) ? job.template : null;
     const asTemplate = (): CloudOutgoing | null => (t ? { jobId: r.id, to: job.phone, kind: "template", message: templateMessage(t.name, t.lang, t.params) } : null);
@@ -285,9 +318,8 @@ export async function dispatchCloudJobs(
 
   async function failOrHandOver(r: JobRow, reason: string, errorCode: number | null): Promise<void> {
     const tag = `[cloud-api] job ${r.id} (${r.purpose}) to ${r.phone}`;
-    const fallback = fallbackWhenCloudDown(r.purpose);
-    const alive = r.purpose !== "otp" || now.getTime() - r.createdAt.getTime() < OTP_DM_TTL_MS;
-    if (fallback && fallback !== OFFICIAL_NUMBER && alive) {
+    const fallback = codeHandoverChannel(r, OFFICIAL_NUMBER, now);
+    if (fallback) {
       await record(r.id, { outcome: "handover", channel: fallback, note: `handed to the club number: ${reason}`, errorCode });
       report.handedOver++;
       console.warn(`${tag}: handed to the club number, ${reason}`);

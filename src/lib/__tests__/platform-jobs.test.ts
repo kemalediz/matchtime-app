@@ -514,6 +514,16 @@ describe("club invite DMs can be cancelled (pool L8 review, M2/M3)", () => {
 //    value the new column defaults to, so nothing the Pi sees changes. ──
 
 const CLOUD_FLAGS = ["CLOUD_API_ENABLED", "CLOUD_API_PURPOSES"] as const;
+/** The official number configured (review of #556, S4: a code for it
+ *  needs a token and a phone number id, or it goes to the club number).
+ *  Test mode with a local address: nothing here can reach Meta. */
+function officialNumberReady() {
+  vi.stubEnv("MT_TEST_MODE", "1");
+  vi.stubEnv("WA_CLOUD_API_BASE", "http://127.0.0.1:9");
+  vi.stubEnv("WA_CLOUD_ACCESS_TOKEN", "stub-token");
+  vi.stubEnv("WA_CLOUD_PHONE_NUMBER_ID", "1234567890");
+}
+const CODE_TEMPLATE = { name: "mt_code", lang: "en", facts: { code: "482913" } } as const;
 
 describe("queuePlatformDm stores the channel channelFor decided (Cloud API C2)", () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -552,7 +562,8 @@ describe("queuePlatformDm stores the channel channelFor decided (Cloud API C2)",
   it("master on and the purpose listed: the job is stored for the official number", async () => {
     vi.stubEnv("CLOUD_API_ENABLED", "1");
     vi.stubEnv("CLOUD_API_PURPOSES", "otp");
-    await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp" });
+    officialNumberReady();
+    await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp", template: CODE_TEMPLATE });
     expect(dbMock.platformJob.create.mock.calls[0][0].data.channel).toBe("cloud");
   });
 
@@ -656,6 +667,15 @@ describe("recordPlatformJobOutcome: the Cloud dispatcher's outcomes (Cloud API C
     });
   });
 
+  it("a channel given: the write lands only while the job is still on that channel (review of #556, S1)", async () => {
+    await recordPlatformJobOutcome("a", { outcome: "sent", waMessageId: "wamid.A" }, NOW, { channel: "cloud" });
+    expect(dbMock.platformJob.updateMany.mock.calls[0][0].where).toEqual({ id: "a", status: "claimed", channel: "cloud" });
+    dbMock.platformJob.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 0 });
+    await recordPlatformJobOutcome("b", { outcome: "handover", channel: "baileys", note: "x" }, NOW, { channel: "cloud" });
+    expect(dbMock.platformJob.updateMany.mock.calls[1][0].where).toEqual({ id: "b", status: "claimed", channel: "cloud", ...notCancelled });
+    expect(dbMock.platformJob.updateMany.mock.calls[2][0].where).toEqual({ id: "b", status: "claimed", channel: "cloud", failReason: { startsWith: "cancelled: " } });
+  });
+
   it("failed and unconfirmed carry Meta's code only when given", async () => {
     await recordPlatformJobOutcome("a", { outcome: "failed", reason: "Meta 131026", errorCode: 131026 }, NOW);
     expect(dbMock.platformJob.updateMany.mock.calls[0][0].data).toEqual({ status: "failed", failedAt: NOW, failReason: "Meta 131026", errorCode: 131026 });
@@ -690,7 +710,8 @@ describe("queuePlatformDm rings the Cloud dispatcher for a cloud job only (Cloud
   it("master on, a cloud job: rung once, after the row is written", async () => {
     vi.stubEnv("CLOUD_API_ENABLED", "1");
     vi.stubEnv("CLOUD_API_PURPOSES", "otp");
-    await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp" });
+    officialNumberReady();
+    await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp", template: CODE_TEMPLATE });
     expect(kick.scheduleCloudDispatch).toHaveBeenCalledTimes(1);
     expect(dbMock.platformJob.create.mock.invocationCallOrder[0]).toBeLessThan(kick.scheduleCloudDispatch.mock.invocationCallOrder[0]);
   });
@@ -727,6 +748,7 @@ describe("queuePlatformDm stores the template of a job for the official number (
   it("a cloud code: mt_code, Meta's en_GB, and the params C6's templateParams fills", async () => {
     vi.stubEnv("CLOUD_API_ENABLED", "1");
     vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+    officialNumberReady();
     const out = await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp", template: CODE });
     const filled = templateParams("mt_code", "en", { code: "482913" });
     if (!filled.ok) throw new Error(filled.reason);
@@ -743,6 +765,7 @@ describe("queuePlatformDm stores the template of a job for the official number (
   it("a cloud code in Turkish: Meta's tr code", async () => {
     vi.stubEnv("CLOUD_API_ENABLED", "1");
     vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+    officialNumberReady();
     await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp", template: { ...CODE, lang: "tr" } });
     expect(dbMock.platformJob.create.mock.calls[0][0].data.templateLang).toBe("tr");
   });
@@ -750,6 +773,7 @@ describe("queuePlatformDm stores the template of a job for the official number (
   it("the stored row reads back as a template the Cloud dispatcher can send", async () => {
     vi.stubEnv("CLOUD_API_ENABLED", "1");
     vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+    officialNumberReady();
     await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp", template: { ...CODE, lang: "tr" } });
     const data = dbMock.platformJob.create.mock.calls[0][0].data;
     expect(parseJobTemplate(data)).toMatchObject({ ok: true, name: "mt_code", lang: "tr", metaLang: "tr" });
@@ -767,9 +791,71 @@ describe("queuePlatformDm stores the template of a job for the official number (
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
   });
 
+  it("an unknown template name is refused as PlatformDmRefused, never a TypeError (review of #556, N3)", async () => {
+    for (const on of [false, true]) {
+      vi.stubEnv("CLOUD_API_ENABLED", on ? "1" : "0");
+      vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+      officialNumberReady();
+      const err = await queuePlatformDm({ phone: "447700900123", text: "x", purpose: "otp", template: { name: "mt_made_up", lang: "en", facts: {} } as never }).catch((e) => e);
+      expect(err).toBeInstanceOf(PlatformDmRefused);
+      expect((err as PlatformDmRefused).code).toBe("unknown-template");
+    }
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
+  it("a code for the official number with no mt_code is refused, never stored (review of #556, N2)", async () => {
+    vi.stubEnv("CLOUD_API_ENABLED", "1");
+    vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+    officialNumberReady();
+    const err = await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp" }).catch((e) => e);
+    expect(err).toBeInstanceOf(PlatformDmRefused);
+    expect((err as PlatformDmRefused).code).toBe("code-without-template");
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+    expect(kick.scheduleCloudDispatch).not.toHaveBeenCalled();
+  });
+
+  it("a code for the club number needs no template, as before (review of #556, N2)", async () => {
+    vi.stubEnv("CLOUD_API_ENABLED", "1");
+    vi.stubEnv("CLOUD_API_PURPOSES", "pool-offer");
+    await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp" });
+    expect(dbMock.platformJob.create.mock.calls[0][0].data.channel).toBe("baileys");
+  });
+
+  it("codes on but the official number not configured: the code goes to the club number, logged once (review of #556, S4)", async () => {
+    vi.stubEnv("CLOUD_API_ENABLED", "1");
+    vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+    for (const k of ["WA_CLOUD_ACCESS_TOKEN", "WA_CLOUD_PHONE_NUMBER_ID"]) vi.stubEnv(k, undefined as unknown as string);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const a = await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp", template: CODE });
+    const b = await queuePlatformDm({ phone: "447700900124", text: "code", purpose: "otp", template: CODE });
+    expect([a.channel, b.channel]).toEqual(["baileys", "baileys"]);
+    for (const c of dbMock.platformJob.create.mock.calls) {
+      expect(c[0].data.channel).toBe("baileys");
+      expect(c[0].data).not.toHaveProperty("templateName");
+    }
+    expect(kick.scheduleCloudDispatch).not.toHaveBeenCalled();
+    const told = warn.mock.calls.map((c) => String(c[0])).filter((m) => /not configured/.test(m));
+    expect(told).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  it("only the token missing, or only the phone number id: still the club number (review of #556, S4)", async () => {
+    vi.stubEnv("CLOUD_API_ENABLED", "1");
+    vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const missing of ["WA_CLOUD_ACCESS_TOKEN", "WA_CLOUD_PHONE_NUMBER_ID"]) {
+      officialNumberReady();
+      vi.stubEnv(missing, "");
+      const out = await queuePlatformDm({ phone: "447700900123", text: "code", purpose: "otp", template: CODE });
+      expect(out.channel).toBe("baileys");
+    }
+    warn.mockRestore();
+  });
+
   it("a cloud job whose template does not fill is refused, never stored half filled", async () => {
     vi.stubEnv("CLOUD_API_ENABLED", "1");
     vi.stubEnv("CLOUD_API_PURPOSES", "otp");
+    officialNumberReady();
     const err = await queuePlatformDm({ phone: "447700900123", text: "x", purpose: "otp", template: { ...CODE, facts: { code: "12ab" } } }).catch((e) => e);
     expect(err).toBeInstanceOf(PlatformDmRefused);
     expect((err as PlatformDmRefused).code).toBe("template-does-not-fill");

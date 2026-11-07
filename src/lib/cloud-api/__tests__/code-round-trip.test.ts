@@ -10,11 +10,11 @@
  * no Meta, $0.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { startCloudApiStub, type CloudApiStub } from "../../../../e2e/stubs/cloud-api";
+import { signWebhook, startCloudApiStub, statusWebhookPayload, type CloudApiStub } from "../../../../e2e/stubs/cloud-api";
 
 const dbMock = vi.hoisted(() => ({
   phoneOtp: { count: vi.fn(), create: vi.fn() },
-  platformJob: { create: vi.fn(), findMany: vi.fn() },
+  platformJob: { create: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
   user: { findFirst: vi.fn() },
   waInbound: { findMany: vi.fn() },
   cloudTemplateStatus: { findMany: vi.fn(), upsert: vi.fn() },
@@ -28,9 +28,17 @@ const kick = vi.hoisted(() => ({ scheduleCloudDispatch: vi.fn() }));
 vi.mock("@/lib/cloud-api/kick", () => kick);
 const switchEnv = vi.hoisted(() => ({ resolvePoolEnv: vi.fn() }));
 vi.mock("@/lib/pool/switch-env", () => switchEnv);
+// The webhook's other neighbours: no DM comes in here and no pool offer is
+// involved; they are mocked only so the webhook module loads alone.
+const pool = vi.hoisted(() => ({ onPoolOfferJobSent: vi.fn(), onPoolOfferJobFailed: vi.fn() }));
+vi.mock("@/lib/pool/dispatch", async (orig) => ({ ...(await orig<typeof import("@/lib/pool/dispatch")>()), ...pool }));
+vi.mock("@/lib/inbound-dm", () => ({ handleInboundDm: vi.fn() }));
+vi.mock("@/lib/cloud-api/template-status", () => ({ applyTemplateStatusPayload: vi.fn() }));
 
 import { startPhoneSignIn } from "@/app/actions/phone-signup";
+import { planPlatformDispatch } from "@/lib/platform-jobs";
 import { dispatchCloudJobs } from "../dispatch";
+import { acceptCloudWebhook } from "../webhook";
 import { templateMessage } from "../templates";
 
 const NOW = new Date();
@@ -62,6 +70,9 @@ function codesOn() {
   vi.stubEnv("CLOUD_API_ENABLED", "1");
   vi.stubEnv("CLOUD_API_PURPOSES", "otp");
   vi.stubEnv("WA_CLOUD_NUMBER", "447700900999");
+  // The official number configured, on the stub (review of #556, S4: not
+  // configured, a code goes to the club number).
+  for (const [k, v] of Object.entries(dispatchEnv())) if (k !== "CLOUD_API_ENABLED") vi.stubEnv(k, v as string);
 }
 
 beforeEach(() => {
@@ -155,5 +166,96 @@ describe("codes on the official number", () => {
     await dispatchCloudJobs({ now: NOW, env: dispatchEnv() });
     expect(stub.requests).toHaveLength(0);
     expect(outcomes()[0]).toMatchObject({ outcome: "handover", channel: "baileys" });
+  });
+});
+
+// ── Review of #556, S1: a code Meta accepted and then failed ───────────
+// The send went through (a wamid came back), then Meta's signed status
+// webhook says `failed`. While the code is alive the job goes back in the
+// queue on the club number, where the Pi's own planner sends it; a repeat
+// of the same status changes nothing; an expired code is only failed.
+// Rows live in memory here: the dispatcher's outcome and the webhook's
+// compare-and-set both write them, so the round trip is the real one.
+describe("a code that fails after Meta accepted it (review of #556, S1)", () => {
+  const SECRET = "app-secret";
+  const PHONE_ID = "1234567890";
+  const webhookEnv = () => ({ ...dispatchEnv(), CLOUD_API_ENABLED: "1", WA_CLOUD_APP_SECRET: SECRET, WA_CLOUD_PHONE_NUMBER_ID: PHONE_ID });
+  const request = new Request("https://matchtime.ai/api/whatsapp/cloud/webhook", { method: "POST" });
+
+  /** Every key of `where` that is a plain value must match the row. */
+  const matches = (row: Record<string, unknown>, where: Record<string, unknown>) =>
+    Object.entries(where).every(([k, v]) => (v !== null && typeof v === "object" ? true : (row[k] ?? null) === v));
+
+  beforeEach(() => {
+    pj.recordPlatformJobOutcome.mockImplementation(async (id: string, o: { outcome: string; waMessageId?: string }) => {
+      const row = rows.find((r) => r.id === id)!;
+      if (o.outcome === "sent") Object.assign(row, { status: "sent", waMessageId: o.waMessageId, sentAt: NOW });
+      return { updated: true };
+    });
+    dbMock.platformJob.findFirst.mockImplementation(async ({ where }: { where: { channel: string; OR: Array<Record<string, unknown>> } }) =>
+      rows.find((r) => r.channel === where.channel && where.OR.some((w) => matches(r, w))) ?? null,
+    );
+    dbMock.platformJob.updateMany.mockImplementation(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      const hit = rows.filter((r) => matches(r, where));
+      for (const r of hit) Object.assign(r, data);
+      return { count: hit.length };
+    });
+  });
+
+  async function metaSaysFailed(wamid: string, jobId: string) {
+    const payload = statusWebhookPayload({ phoneNumberId: PHONE_ID, wamid, recipient: PHONE, status: "failed", bizOpaqueCallbackData: jobId, errors: [{ code: 131026, title: "Message undeliverable" }] });
+    const raw = Buffer.from(JSON.stringify(payload), "utf8");
+    const accepted = await acceptCloudWebhook({ rawBody: raw, signature: signWebhook(raw.toString("utf8"), SECRET), request, env: webhookEnv(), now: () => NOW });
+    expect(accepted.status).toBe(200);
+    return accepted.work!();
+  }
+
+  it("alive: handed to the club number, and the Pi's own planner sends it; Meta's repeat changes nothing", async () => {
+    codesOn();
+    await startPhoneSignIn({ phone: "+447700900123" });
+    await dispatchCloudJobs({ now: NOW, env: dispatchEnv() });
+    const wamid = stub.requests[0].wamid!;
+    expect(rows[0]).toMatchObject({ channel: "cloud", status: "sent", waMessageId: wamid });
+
+    const report = await metaSaysFailed(wamid, "pj1");
+    expect(report.statusesApplied).toBe(1);
+    expect(rows[0]).toMatchObject({ channel: "baileys", status: "queued", waMessageId: null, sentAt: null, errorCode: 131026 });
+    expect(pool.onPoolOfferJobFailed).not.toHaveBeenCalled();
+
+    // The Pi's planner: the code is alive, so it is sent with its own text.
+    const plan = planPlatformDispatch([rows[0] as never], { now: NOW, approvedGroupIds: new Set(), limit: 5 });
+    expect(plan.refuse).toEqual([]);
+    expect(plan.dispatch.map((d) => d.instruction)).toEqual([{ id: "pj1", kind: "dm", phone: PHONE, text: expect.stringContaining(issuedCode()), purpose: "otp" }]);
+
+    // Meta repeats statuses for days: the job is no longer the official
+    // number's, so nothing is found and nothing is written twice.
+    const before = { ...rows[0] };
+    expect((await metaSaysFailed(wamid, "pj1")).statusesApplied).toBe(0);
+    expect(rows[0]).toEqual(before);
+    // Only one message ever went to the official number.
+    expect(stub.requests).toHaveLength(1);
+  });
+
+  it("expired by the time Meta says failed: failed, never handed over", async () => {
+    codesOn();
+    await startPhoneSignIn({ phone: "+447700900123" });
+    await dispatchCloudJobs({ now: NOW, env: dispatchEnv() });
+    rows[0].createdAt = new Date(NOW.getTime() - 11 * 60_000);
+    await metaSaysFailed(stub.requests[0].wamid!, "pj1");
+    expect(rows[0]).toMatchObject({ channel: "cloud", status: "failed", errorCode: 131026 });
+  });
+});
+
+// ── Review of #556, S4: codes on, the official number not configured ────
+describe("codes on but no token: the code is never stranded (review of #556, S4)", () => {
+  it("it is queued for the club number, and the official number's dispatcher has nothing of it", async () => {
+    codesOn();
+    vi.stubEnv("WA_CLOUD_ACCESS_TOKEN", "");
+    expect(await startPhoneSignIn({ phone: "+447700900123" })).toEqual({ ok: true });
+    expect(rows[0]).toMatchObject({ channel: "baileys", templateName: null });
+    const plan = planPlatformDispatch([rows[0] as never], { now: NOW, approvedGroupIds: new Set(), limit: 5 });
+    expect(plan.dispatch).toHaveLength(1);
+    await dispatchCloudJobs({ now: NOW, env: { ...dispatchEnv(), WA_CLOUD_ACCESS_TOKEN: "" } });
+    expect(stub.requests).toHaveLength(0);
   });
 });
