@@ -68,13 +68,14 @@ export function milesLabel(lang: Lang, miles: number): { miles: string; one: boo
   return { miles: lang === "tr" ? text.replace(".", ",") : text, one: rounded === 1 };
 }
 
-function gameOf(lang: Lang, f: Pick<PoolOfferFacts, "sport" | "format">): string {
+/** "7-a-side football game": the offer's game in words. */
+export function gameOf(lang: Lang, f: Pick<PoolOfferFacts, "sport" | "format">): string {
   const c = poolCopy(lang);
   const sport = sportLabel(f.sport, lang);
   return f.format ? c.game_with_format({ format: t(lang).sj_per_side_option({ perSide: f.format }), sport }) : c.game_plain({ sport });
 }
 
-function styleOf(lang: Lang, style: PlayStyle | null): string | null {
+export function styleOf(lang: Lang, style: PlayStyle | null): string | null {
   const c = poolCopy(lang);
   if (style === "casual") return c.style_casual;
   if (style === "competitive") return c.style_competitive;
@@ -91,22 +92,29 @@ export function clubLineOf(lang: Lang, members: number, games: number): string |
   return r.kind === "weekly" ? c.club_weekly({ members }) : c.club_games({ members, games: r.games });
 }
 
-function feeLineOf(lang: Lang, fee: PoolFee): string | null {
+export function feeLineOf(lang: Lang, fee: PoolFee): string | null {
   const c = poolCopy(lang);
   if (!fee) return null;
   return fee.kind === "free" ? c.free : c.fee({ amount: fee.amount });
 }
 
-/** The offer's fact lines, as the DM and the offer page both show them. */
-export function poolOfferLines(lang: Lang, f: PoolOfferFacts): string[] {
+/** Where the game is, on one line: "*Goals North Cheam*, its address. 1.8
+ *  miles from you. Map: ..." (the offer and its Cloud API template). */
+export function offerWhereOf(lang: Lang, f: Pick<PoolOfferFacts, "venueName" | "address" | "distanceMiles" | "mapUrl">): string {
   const c = poolCopy(lang);
-  const where = [
-    `📍 *${f.venueName}*${f.address ? `, ${f.address}` : ""}`,
+  return [
+    `*${f.venueName}*${f.address ? `, ${f.address}` : ""}`,
     f.distanceMiles != null ? c.distance(milesLabel(lang, f.distanceMiles)) : null,
     f.mapUrl ? c.map({ url: f.mapUrl }) : null,
   ]
     .filter(Boolean)
     .join(". ");
+}
+
+/** The offer's fact lines, as the DM and the offer page both show them. */
+export function poolOfferLines(lang: Lang, f: PoolOfferFacts): string[] {
+  const c = poolCopy(lang);
+  const where = `📍 ${offerWhereOf(lang, f)}`;
   const about = [styleOf(lang, f.playStyle), clubLineOf(lang, f.members, f.gamesLast8Weeks)].filter(Boolean).join(". ");
   const facts = [
     c.offer_head({ club: f.club, places: f.places, game: gameOf(lang, f) }),
