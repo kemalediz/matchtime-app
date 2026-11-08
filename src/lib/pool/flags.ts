@@ -18,8 +18,6 @@
  *                         charge. It can never force the pool on.
  *   Organisation.featurePlayerPool   the club's own switch, set by the
  *                         club's owners and admins on /admin/settings.
- *   Organisation.poolAutoAsk         the club's automatic ask includes the
- *                                    pool (L9).
  *
  * THE ONE RULE: the pool is open for a club when the platform switch AND
  * the club's flag are on (`poolOpenForClub`). Every reader uses it.

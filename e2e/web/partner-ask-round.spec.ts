@@ -50,7 +50,6 @@ test.beforeAll(async ({ db }) => {
       [id, ORG_ID, partner, approval, U.admin],
     );
   }
-  await db.run(`UPDATE "Organisation" SET "partnerAskWhen" = 'on-request' WHERE id = $1`, [ORG_ID]);
   // The seeded game has one place open; three more, so the picker has a range.
   await db.run(`UPDATE "Match" SET "maxPlayers" = "maxPlayers" + 3 WHERE id = $1`, [MATCH.upcoming]);
   const m = await db.one<{ max: number; confirmed: number }>(

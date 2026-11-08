@@ -183,7 +183,7 @@ export async function vetsClub(pool: PoolWorld, key: string, opts: VetsClubOpts 
     `UPDATE "Organisation" SET
        "squadMode" = 'monthly', "rollingSquadEnabled" = false, "paygPricePence" = 800,
        "paymentTrackingEnabled" = false, "paymentCollectionEnabled" = false,
-       "featurePlayerPool" = false, "poolAutoAsk" = false, "partnerAskWhen" = 'off',
+       "featurePlayerPool" = false,
        "momChosenBy" = 'players', "adminChannelMode" = 'one-person', "adminChannelUserId" = NULL,
        "monthCreditRule" = 'any-miss', "monthListOpensDaysBefore" = 7, "listAnnouncer" = 'matchtime',
        "benchPickMode" = 'first-come', "benchPickFallback" = 'bench-offer',

@@ -243,10 +243,10 @@ function poolOn(features: HelpFeatures): boolean {
   return features.pool?.open === true;
 }
 
-/** Is partner asking on: an active partnership and an ask setting other
- *  than off (`partner-ask-rules.ts` `canAsk`). */
+/** Is partner asking on: an active partnership, the one switch (Kemal,
+ *  2026-11-08; `partner-ask-rules.ts` `canAsk`). */
 function partnersOn(features: HelpFeatures): boolean {
-  return (features.partners?.active ?? 0) > 0 && (features.partners?.askWhen ?? "off") !== "off";
+  return (features.partners?.active ?? 0) > 0;
 }
 
 function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
@@ -329,9 +329,7 @@ export function buildHelpReply(
     return s.onbHelpPartners({
       audience: ctx.audience,
       active: features.partners?.active ?? 0,
-      askWhen: features.partners?.askWhen ?? "off",
       url: topicUrl,
-      askLabel: title("partnerAskWhen"),
     });
   }
   if (topic === "pool") {
@@ -342,7 +340,6 @@ export function buildHelpReply(
       open: poolOn(features),
       url: topicUrl,
       poolLabel: title("playerPool"),
-      autoLabel: title("poolAutoAsk"),
     });
   }
   if (topic === "friend") {

@@ -560,16 +560,17 @@ model Organisation {
 
   /// ─── Asking a partner club for a player (2026-10-16) ──────────────
   /// Plan: MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.2 and
-  /// 3.4. Nothing here does anything until the platform owner pairs this
-  /// club with another (`ClubPartnership`) and both owners accept.
-  /// When this club asks its partner clubs for players: "off" (default),
-  /// "on-request" (an organiser asks) or "auto" (also by itself at
-  /// `partnerAskTime` on match day, only with an empty waiting list).
-  /// CHECK constraint: prisma/sql/partner-ask-check.sql.
-  partnerAskWhen           String  @default("off")
-  /// The automatic ask's London time on match day ("HH:MM"). NULL = 08:00.
-  /// (PARTNER_ASK_TIME_DEFAULT in src/lib/club-partnership-rules.ts.)
-  partnerAskTime           String?
+  /// 3.4. Nothing here does anything until this club is paired with
+  /// another (`ClubPartnership`) and both accept.
+  /// An ACTIVE pairing is the one switch for asking (Kemal, 2026-11-08):
+  /// its organisers may ask, and nothing asks by itself. DEPRECATED AND
+  /// REMOVED FROM THIS MODEL: `partnerAskWhen` ("off" | "on-request" |
+  /// "auto") and `partnerAskTime` (the automatic ask's time). Their columns
+  /// stay in the database, unread, until the reviewed drop file
+  /// prisma/migrations/20261108120000_drop_partner_ask_settings is applied
+  /// AFTER the deploy (Prisma ignores columns it does not know; keeping
+  /// them here would make every default `select` of Organisation name them
+  /// and fail once they are dropped).
   /// The cut-off (Kemal, 2026-10-16): the last ask to a partner club goes
   /// out at least this many hours before kickoff. 1 to 24, default 2
   /// (4 until 2026-10-29; PARTNER_ASK_CUTOFF_DEFAULT_HOURS must match). An
@@ -617,8 +618,11 @@ model Organisation {
   ///
   /// The club may ask the MatchTime player pool for players.
   featurePlayerPool         Boolean   @default(false)
-  /// The club's automatic ask includes the pool, after its partners (L9).
-  poolAutoAsk               Boolean   @default(false)
+  /// DEPRECATED AND REMOVED FROM THIS MODEL (Kemal, 2026-11-08):
+  /// `poolAutoAsk`, the club's automatic pool ask (L9). Nothing asks by
+  /// itself; its column is dropped by
+  /// prisma/migrations/20261108120000_drop_partner_ask_settings after the
+  /// deploy.
   /// The club's own description of its games on a pool offer: "casual" |
   /// "competitive" | "mixed" (src/lib/pool/vocab.ts PLAY_STYLES). NULL:
   /// the offer has no style line.
@@ -1485,8 +1489,8 @@ model PartnerAsk {
   matchId           String
   match             Match           @relation(fields: [matchId], references: [id], onDelete: Cascade)
   /// The number of players asked for. Since P4 (2026-10-22) the number the
-  /// organiser chose (1 up to the open places), for the whole round; the
-  /// automatic ask and asking in words ask for every open place.
+  /// organiser chose (1 up to the open places), for the whole round;
+  /// asking in words asks for every open place.
   places            Int
   /// "awaiting-approval" | "posted" | "filled" | "declined" | "expired" |
   /// "cancelled" | "refused".
@@ -1494,7 +1498,8 @@ model PartnerAsk {
   /// Why it closed or was refused, in a word the code wrote.
   reason            String?
   requestedByUserId String?
-  /// "button" | "hq" | "dm" | "auto" | "link".
+  /// "button" | "hq" | "dm" | "group" | "link"; "auto" only on old rows
+  /// (the automatic ask was removed 2026-11-08).
   requestedVia      String
   approvedByUserId  String?
   approvedAt        DateTime?
@@ -1514,7 +1519,7 @@ model PartnerAsk {
   pickedUserIds     String[]        @default([])
   /// Partner discovery P4 (2026-10-22): asks sent together share it, and
   /// `places` (the organiser's number) covers the whole round, not each
-  /// partner. Null: a round of its own (the automatic ask, older rows).
+  /// partner. Null: a round of its own (older rows).
   roundId           String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -3486,9 +3491,10 @@ model PoolAsk {
   roundId          String?
   /// Players asked for (at least 1).
   places           Int
-  /// "page" | "notice" | "auto" | "words".
+  /// "page" | "notice" | "words"; "auto" only on old rows (the automatic
+  /// ask was removed 2026-11-08).
   via              String
-  /// Who approved it; NULL for the automatic ask.
+  /// Who approved it; NULL only on an old automatic ask.
   approvedByUserId String?
   /// "open" | "filled" | "closed" | "cancelled". `closedAt` set exactly
   /// when it is no longer open.

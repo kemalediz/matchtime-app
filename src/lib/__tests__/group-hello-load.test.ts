@@ -17,10 +17,10 @@ const dbMock = vi.hoisted(() => ({
   platformSetting: { findUnique: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
+// No ask setting is read any more: an active pairing is the switch
+// (Kemal, 2026-11-08). The mock proves it is never called.
 const askSettings = vi.hoisted(() => ({ loadPartnerAskSettings: vi.fn() }));
 vi.mock("../club-partnership", () => askSettings);
-const askWhen = (when: string | null) =>
-  askSettings.loadPartnerAskSettings.mockResolvedValue(when === null ? null : { when, time: null, cutoffHours: 2 });
 
 import { loadHelloInput, type HelloReadClient } from "../group-hello-load";
 import { DEFAULT_HELLO_SETTINGS, HELLO_ORG_SELECT, NO_HELLO_CLUB_FACTS, buildGroupHello, type HelloOrgRow } from "../group-hello";
@@ -101,7 +101,6 @@ beforeEach(() => {
   }
   dbMock.clubPartnership.count.mockResolvedValue(0);
   askSettings.loadPartnerAskSettings.mockReset();
-  askWhen("off");
   dbMock.platformSetting.findUnique.mockResolvedValue({ on: true });
   dbMock.attendanceEvent.findMany.mockResolvedValue([]);
   dbMock.activity.findMany.mockResolvedValue([]);
@@ -373,16 +372,10 @@ describe("loadHelloInput: the pool and partner clubs", () => {
     expect(dbMock.platformSetting.findUnique).toHaveBeenCalledWith({ where: { key: "pool-offers" }, select: { on: true } });
   });
 
-  it("asking partners needs an active partnership AND the ask setting on; being asked needs one the other way", async () => {
-    askWhen("on-request");
+  it("asking partners needs an active partnership, the one switch (no ask setting is read); being asked needs one the other way", async () => {
     partners(1, 0);
     expect((await loadHelloInput("org-1")).clubFacts).toMatchObject({ partnersAsk: true, partnersHelp: false });
-    expect(askSettings.loadPartnerAskSettings).toHaveBeenCalledWith("org-1");
-    askWhen("off");
-    expect((await loadHelloInput("org-1")).clubFacts).toMatchObject({ partnersAsk: false });
-    askWhen(null);
-    expect((await loadHelloInput("org-1")).clubFacts).toMatchObject({ partnersAsk: false });
-    askWhen("auto");
+    expect(askSettings.loadPartnerAskSettings).not.toHaveBeenCalled();
     partners(0, 2);
     expect((await loadHelloInput("org-1")).clubFacts).toMatchObject({ partnersAsk: false, partnersHelp: true });
     partners(1, 1);
@@ -393,7 +386,6 @@ describe("loadHelloInput: the pool and partner clubs", () => {
 
   it("a read that fails, or a client without the reads, is a club with neither: never a false promise", async () => {
     dbMock.organisation.findUnique.mockResolvedValue({ ...ROW, featurePlayerPool: true });
-    askWhen("auto");
     dbMock.clubPartnership.count.mockRejectedValue(new Error("db down"));
     expect((await loadHelloInput("org-1")).clubFacts).toEqual(NO_HELLO_CLUB_FACTS);
     const { clubPartnership: _c, platformSetting: _p, ...rest } = dbMock;

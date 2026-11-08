@@ -18,8 +18,6 @@ import { POOL_CLUB_SWITCH_TR } from "./pool-club-switch.tr";
 /** Absolute links to the settings cards the message names
  *  (`settingsAnchorPath`, built by the caller with `appUrl`). */
 export interface PoolOnLinks {
-  /** The "Ask the player pool automatically" card. */
-  autoAsk: string;
   /** The "Tell your players about the player pool" card. */
   share: string;
 }

@@ -91,7 +91,7 @@ export interface HelloClubFacts {
    *  club's `featurePlayerPool` (pool/flags.ts `poolOpenForClub`). */
   pool: boolean;
   /** The club asks partner clubs for players: an ACTIVE partnership with
-   *  it as the asker, and `partnerAskWhen` not "off" (`canAsk`). */
+   *  it as the asker (the pairing is the switch, `canAsk`). */
   partnersAsk: boolean;
   /** A partner club asks this one: an ACTIVE partnership with it as the
    *  partner, so its players hear the partner's asks. */

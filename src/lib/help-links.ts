@@ -17,7 +17,6 @@ import type { HelpFeature } from "./pipeline/types";
 export const SETTINGS_ANCHORS = [
   "player-pool",
   "partner-clubs",
-  "pool-auto-ask",
   "play-style",
   "pool-club-share",
   "group-invite-link",

@@ -8,19 +8,16 @@
  * whose key is then its own id), and the round's fill counts partner and
  * pool guests together (`partner-ask-round.ts`).
  *
- *   requestPoolAsk  an organiser's one-tap approval (the match page; L9
- *                   adds the automatic ask, L10 asking in words and a YES
- *                   in HQ, `pool-ask-words.ts`). Checks
- *                   every rule, writes the ask, and sends wave 1 at once
- *                   (an organiser's ask always; the automatic ask when no
- *                   partner ask of the round is open, `wave1DueAt`).
+ *   requestPoolAsk  an organiser's one-tap approval (the match page; L10
+ *                   asking in words and a YES in HQ, `pool-ask-words.ts`).
+ *                   Checks every rule, writes the ask, and sends wave 1 at
+ *                   once. Nothing asks by itself (Kemal, 2026-11-08).
  *   sweepPool       every platform-jobs poll (the Pi polls it whatever the
  *                   clubs' switches say): offers whose own time ran out
  *                   become "ignored" (3 in a row pause him, one DM says
  *                   so); asks close when they should (the switch, the game,
- *                   the round filled, the cut-off); the automatic ask's
- *                   wave 1 an hour after the partners, wave 2 thirty
- *                   minutes after wave 1.
+ *                   the round filled, the cut-off); a wave 1 not sent
+ *                   yet, wave 2 thirty minutes after wave 1.
  *   cancelPoolAsk   the organiser cancels the round (with its partner asks).
  *
  * THE MESSAGES (decision L5a.6, the minimal set): one offer DM per person;
@@ -39,7 +36,7 @@
 import { db } from "../db";
 import { appUrl } from "../app-url";
 import { loadPartnerAskSettings } from "../club-partnership";
-import { askWindows } from "../partner-ask-rules";
+import { OPEN_ASK_STATUSES, askWindows } from "../partner-ask-rules";
 import { loadRoundFill } from "../partner-ask-round";
 import { askPlacesOpen } from "../monthly-week-asks";
 import { queuePlatformDm } from "../platform-jobs";
@@ -60,7 +57,6 @@ import {
   ownTimeRanOut,
   poolAskCloseReason,
   poolAskRefusal,
-  wave1DueAt,
   type PoolAskCloseReason,
   type PoolAskRefusal,
 } from "./round-rules";
@@ -92,6 +88,18 @@ async function isOrganiser(userId: string | null, orgId: string): Promise<boolea
   return !!m && !m.leftAt && !m.guestMatchId && (m.role === "OWNER" || m.role === "ADMIN");
 }
 
+/** The newest partner round still open on the match, with its number: a
+ *  pool ask joins it (`poolRoundToJoin`), so the round's fill counts both.
+ *  The organisers' ask in words (L10, `pool-ask-words.ts`). */
+export async function openPartnerRoundOf(orgId: string, matchId: string): Promise<{ roundId: string; places: number } | null> {
+  const open = await db.partnerAsk.findFirst({
+    where: { matchId, askerOrgId: orgId, status: { in: [...OPEN_ASK_STATUSES] }, roundId: { not: null } },
+    orderBy: { createdAt: "desc" },
+    select: { roundId: true, places: true },
+  });
+  return open?.roundId ? { roundId: open.roundId, places: open.places } : null;
+}
+
 export type PoolAskResult =
   | { ok: true; askId: string; waveSent: boolean }
   /** `excluded`: on "none-near", how many pool players near the venue each
@@ -105,7 +113,9 @@ export async function requestPoolAsk(args: {
   /** The round's id when partner clubs were asked in the same press. */
   roundId: string | null;
   approvedByUserId: string | null;
-  via: PoolAskVia;
+  /** How an organiser asked. "auto" is only on old rows: nothing asks by
+   *  itself any more (Kemal, 2026-11-08). */
+  via: Exclude<PoolAskVia, "auto">;
   now?: Date;
   env?: Env;
 }): Promise<PoolAskResult> {
@@ -114,7 +124,7 @@ export async function requestPoolAsk(args: {
   if (!match || match.activity.orgId !== args.orgId) return { ok: false, refusal: "not-found" };
   const [found, organiser, cutoff, placesOpen, clubAsks] = await Promise.all([
     findPoolCandidates(args.matchId, { now, env: args.env }),
-    args.via === "auto" ? Promise.resolve(true) : isOrganiser(args.approvedByUserId, args.orgId),
+    isOrganiser(args.approvedByUserId, args.orgId),
     cutoffOf(args.orgId, match.date),
     placesOpenOf(args.matchId),
     db.poolAsk.findMany({ where: { orgId: args.orgId, OR: [{ status: "open" }, { createdAt: { gte: new Date(now.getTime() - 7 * DAY_MS) } }] }, select: { matchId: true, status: true, createdAt: true } }),
@@ -138,8 +148,8 @@ export async function requestPoolAsk(args: {
   let askId: string;
   try {
     const ask = await db.poolAsk.create({
-      // `createdAt` is the moment the rules judged (the partners-first hour
-      // and the club's weekly count run from it), not the database's clock.
+      // `createdAt` is the moment the rules judged (the club's weekly count
+      // runs from it), not the database's clock.
       data: { matchId: args.matchId, orgId: args.orgId, roundId: args.roundId, places: args.places, via: args.via, approvedByUserId: args.approvedByUserId, createdAt: now },
       select: { id: true },
     });
@@ -150,9 +160,7 @@ export async function requestPoolAsk(args: {
     throw err;
   }
   console.log(`[pool] ask ${askId}: ${args.orgId} asks the pool for ${args.places} on match ${args.matchId} (${args.via}${args.roundId ? `, round ${args.roundId}` : ""})`);
-  const partnersOpen = args.roundId ? await db.partnerAsk.count({ where: { roundId: args.roundId, status: { in: ["awaiting-approval", "posted"] } } }) : 0;
-  const due = wave1DueAt({ createdAt: now, partnerAsksOpen: partnersOpen, via: args.via });
-  const waveSent = due.getTime() <= now.getTime() ? (await sendWave(askId, 1, now, args.env)) > 0 : false;
+  const waveSent = (await sendWave(askId, 1, now, args.env)) > 0;
   return { ok: true, askId, waveSent };
 }
 
@@ -404,8 +412,7 @@ export async function sweepPool(now: Date = new Date(), env?: Env): Promise<{ cl
         const offers = await db.poolOffer.findMany({ where: { poolAskId: ask.id }, select: { wave: true, sentAt: true } });
         const wave1 = offers.filter((o) => o.wave === 1);
         if (wave1.length === 0) {
-          const partnersOpen = ask.roundId ? await db.partnerAsk.count({ where: { roundId: ask.roundId, status: { in: ["awaiting-approval", "posted"] } } }) : 0;
-          if (wave1DueAt({ createdAt: ask.createdAt, partnerAsksOpen: partnersOpen, via: ask.via }).getTime() <= now.getTime()) queued += await sendWave(ask.id, 1, now, env);
+          queued += await sendWave(ask.id, 1, now, env);
           continue;
         }
         if (offers.some((o) => o.wave === 2)) continue;

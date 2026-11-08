@@ -1129,13 +1129,11 @@ export const tr: Strings = {
   onbHelpPartners: (p) => {
     const head = `🤝 *Partner kulüpler nasıl çalışır*`;
     if (p.audience === "admin") {
-      const body = `Partner kulüpler birbirine oyuncu verir. Kadronuz hâlâ eksikken MatchTime partner kulüplerinizden oyuncu ister, yanıt veren oyuncular yedek listenize misafir olarak girer. Sizin oyuncularınız da onların isteklerine yanıt verebilir.`;
+      const body = `Partner kulüpler birbirine oyuncu verir. Eşleştikten sonra bir organizatör, partner kulüplerinizden ve oyuncu havuzundan birlikte ya da ayrı ayrı, WhatsApp'tan ya da maç sayfasından oyuncu isteyebilir. Yanıt veren oyuncular yedek listenize misafir olarak girer. Sizin oyuncularınız da onların isteklerine yanıt verebilir.`;
       const status =
         p.active === 0
           ? `❌ Kulübünün henüz partner kulübü yok. Yakınındaki kulüpleri bul ve ayarlar sayfasından istek gönder:\n${p.url}`
-          : p.askWhen === "off"
-            ? `⏸️ Kulübünün ${p.active} partner kulübü var, ama MatchTime onlardan oyuncu istemiyor. Açmak için *${p.askLabel}* ayarında ne zaman isteneceğini seç:\n${p.url}`
-            : `✅ Açık: kulübünün ${p.active} partner kulübü var ve MatchTime onlardan ${p.askWhen === "auto" ? "maç günü kendiliğinden ya da sen isteyince" : "sen isteyince"} oyuncu ister. Değiştirmek ya da kapatmak için:\n${p.url}`;
+          : `✅ Açık: kulübünün ${p.active} partner kulübü var. Kulübünün WhatsApp grubunda benden iste (örneğin *@Match Time perşembe için partner kulüplerden oyuncu bul*) ya da maç sayfasında onları işaretle. Partner kulüplerin burada:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
     const body = `Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir. Bir partner kulübün bir oyuncusu eksik olduğunda isteği buraya gelebilir: oynamak istersen bağlantıya dokun. Biz eksik kalınca da onların oyuncuları yedek listemize misafir olarak girebilir. Bir partner kulüpte oynadıktan sonra MatchTime sana bir kez, daha çok maç istersen oyuncu havuzuna katılman için bir bağlantı gönderir.`;
@@ -1150,12 +1148,12 @@ export const tr: Strings = {
     const head = `🌍 *MatchTime oyuncu havuzu nasıl çalışır*`;
     const on = p.open;
     if (p.audience === "admin") {
-      const body = `Yakınınızdaki oyuncular daha çok maç için havuza kaydolur. Kadronuz eksik kalınca MatchTime onlara sorabilir; her seferinde kendileri karar verir ve misafir olarak oynar.`;
+      const body = `Yakınınızdaki oyuncular daha çok maç için havuza kaydolur. Kadronuz eksik kalınca bir organizatör, oyuncu havuzuna ve partner kulüplerinize birlikte ya da ayrı ayrı, WhatsApp'tan ya da maç sayfasından sorabilir. Havuz oyuncuları her seferinde kendileri karar verir ve misafir olarak oynar.`;
       const status = !p.platformOpen
         ? `⏳ Havuz henüz açılmadı. Açılınca kulübün için ayarlardan açabilirsin.`
         : !p.clubFlag
           ? `❌ Kulübünde kapalı. Açmak için buradan *${p.poolLabel}* ayarını aç:\n${p.url}`
-          : `✅ Kulübünde açık. Kulübünün WhatsApp grubunda benden iste (örneğin *@Match Time havuzdan 2 oyuncu iste*) ya da *${p.autoLabel}* ayarını aç. Kapatmak için *${p.poolLabel}* ayarını kapat:\n${p.url}`;
+          : `✅ Kulübünde açık. Kulübünün WhatsApp grubunda benden iste (örneğin *@Match Time havuzdan 2 oyuncu iste*) ya da maç sayfasında işaretle. Kapatmak için *${p.poolLabel}* ayarını kapat:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
     const body = `Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.\nHavuzdaysan, oynayabileceğin saatleri ve oynadığın formatları bana özelden kendi cümlelerinle yaz (örneğin *salı akşam 7'den sonra, 5 ya da 7 kişilik*), ya da havuz sayfandan değiştir.`;
@@ -4011,11 +4009,6 @@ export const tr: Strings = {
   pc_remove_confirm: (p: { other: string }) =>
     `Bu kulüple ortaklık kaldırılsın mı: ${p.other}? Yeniden eşleşmek için kulüplerden biri diğerine yeni bir istek gönderir. Sizden oyuncu istemesini kaldırdığınız bir kulüp 30 gün boyunca size istek gönderemez.`,
   pc_owner_only: "Bir partner kulübü yalnızca kulübünüzün sahibi kabul edebilir, reddedebilir ya da kaldırabilir.",
-  pc_when_label: "Partner kulüplerden oyuncu iste",
-  pc_when_off: "Kapalı",
-  pc_when_on_request: "Biz isteyince",
-  pc_when_auto: "Belirli bir saatte kendiliğinden",
-  pc_time_label: "Otomatik istek saati",
   pc_cutoff_label: "Başlama saatinden önce son istek",
   pc_cutoff_hours: (p: { hours: number }) => `${p.hours} saat`,
   pc_approval_label: "Partner kulüplerden gelen istekler",
@@ -4191,7 +4184,6 @@ export const tr: Strings = {
   xask_refused_daily_cap: (p) => `${p.partner} bugün zaten iki istek aldı.`,
   xask_refused_already_open: (p) => `Bu maç için ${p.partner} kulübüne açık bir istek zaten var.`,
   xask_refused_no_places: "Bu maçta boş yer yok.",
-  xask_refused_off: "Ayarlarınızda partner kulüplerden oyuncu isteme kapalı.",
   xask_refused_unreachable: (p) => `${p.partner} grubuna şu an sorulamıyor.`,
   xask_refused_generic: "Bu şu an istenemiyor. Sayfayı yenileyip tekrar deneyin.",
   xask_panel_title: "Partner kulüpten iste",
@@ -4214,11 +4206,7 @@ export const tr: Strings = {
   xask_page_declined: "Teşekkürler. Onlara haber verildi.",
   xask_page_closed: "Bu istek artık kapandı.",
   xask_page_not_allowed: "Buna yalnızca kendisine sorulan kulübün sahibi ya da bir yöneticisi yanıt verebilir.",
-  // ─── Otomatik istek ve organizatör satırı (slice S5) ────────────────
-  xask_auto_notice_asker: (p) =>
-    p.posted
-      ? `🤝 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden *${p.partner}* grubunda bir istek paylaştım.`
-      : `🤝 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden *${p.partner}* organizatörlerine oyuncularından birinin oynayıp oynayamayacağını sordum.`,
+  // ─── Organizatör satırı (slice S5) ──────────────────────────────────
   xask_offer_line: (p) => `🤝 ${p.partners} kulübünden oyuncu isteyeyim mi? Maç sayfasını açın: ${p.link}`,
   // ─── Partner kulüp isteğine gönüllüler (slice S3) ───────────────────
   xask_vol_bench: (p) => `Teşekkürler ${p.name}, *${p.asker}* yedek listesindesin. Organizatörleri seçecek, ben de sana her durumda yazacağım.`,
@@ -4312,13 +4300,10 @@ export const tr: Strings = {
       ? `• *${p.partner}*: ${p.askedOn ? `${p.askedOn} tarihinde ` : ""}zaten soruldu ve organizatörleri henüz onay vermedi, bu yüzden yeniden sorulmadı.`
       : `• *${p.partner}*: ${p.askedOn ? `${p.askedOn} tarihinde ` : ""}zaten soruldu ve o istek hâlâ açık, bu yüzden yeniden sorulmadı.`,
   xaskw_line_no_places: (p) => `• *${p.partner}*: sorulmadı, bu maçta bütün yerler dolu.`,
-  xaskw_line_off: (p) => `• *${p.partner}*: sorulmadı, ayarlarınızda partner kulüplerden oyuncu isteme kapalı.`,
   xaskw_line_unreachable: (p) => `• *${p.partner}*: sorulmadı, şu an oyuncu gruplarında paylaşım yapamıyorum. Daha sonra yeniden deneyin.`,
   xaskw_line_generic: (p) => `• *${p.partner}*: şu an sorulamadı. Bir dakika sonra yeniden deneyin.`,
   xaskw_no_partner: (p) =>
     `*Partner kulüpler:* Henüz başka bir kulübe soramıyorum: partner kulübünüz yok. MatchTime sizi bir kulüple eşleştirip iki kulüp de kabul ettiğinde onlara sorabilirsiniz. Partner kulüpler burada: ${p.link}`,
-  xaskw_off: (p) =>
-    `*Partner kulüpler:* Kimseye sormadım: kulübünüz için partner kulüplerden oyuncu isteme kapalı. Bir sahip ya da yönetici buradan açabilir: ${p.link}`,
   xaskw_no_match: (p) => `"${p.ref}" adında bir partner kulübünüz yok. Partner kulüpleriniz: ${p.partners}.`,
   xaskw_not_sure: "Partner kulüplerinize sormamı isteyip istemediğinizden emin olamadım. Hangi kulüp olduğunu yazın ya da hepsine sor deyin.",
   xaskw_ambiguous: (p) => `"${p.ref}" ${p.choice} olabilir. Hangisi olduğunu yazın ya da tüm partner kulüplerinize sorun.`,
@@ -4409,10 +4394,6 @@ export const tr: Strings = {
     }
   },
   ps_saved: "Oyun tarzı kaydedildi.",
-  pauto_title: "Oyuncu havuzuna kendiliğinden sor",
-  pauto_blurb:
-    "Maç günü hâlâ boş yer varsa ve yedek listenizde kimse yoksa MatchTime, MatchTime oyuncu havuzundaki yakın oyunculara kendiliğinden sorar: partner kulüplerinizden bir saat sonra, partner kulübünüz yoksa hemen.",
-  pauto_saved: (p) => (p.on ? "MatchTime oyuncu havuzuna kendiliğinden soracak." : "MatchTime oyuncu havuzuna yalnızca siz isteyince soracak."),
   // ─── D5b, tek soru (slice S5b) ──────────────────────────────────────
   xask_which: (p) =>
     `Bu VARIM *${p.asker}* maçı için mi, bizim maç için mi? ${p.asker} için ${p.asker} mesajımı yanıtlayıp VARIM yaz. Bizim maç için tekrar VARIM yazman yeterli.`,

@@ -38,7 +38,7 @@ const base = { orgId: "fnf", requestedByUserId: "u-raihan", via: "hq" as const, 
 beforeEach(() => {
   vi.resetAllMocks();
   dbMock.clubPartnership.findMany.mockResolvedValue(ROWS);
-  settingsMock.loadPartnerAskSettings.mockResolvedValue({ when: "on-request", time: null, cutoffHours: 4 });
+  settingsMock.loadPartnerAskSettings.mockResolvedValue({ cutoffHours: 4 });
   stateMock.loadSquadState.mockResolvedValue({ matchId: "m1" });
   askMock.requestPartnerAsk.mockImplementation(async (a: { partnershipId: string }) =>
     a.partnershipId === "p-sutton"
@@ -97,12 +97,12 @@ describe("askPartnersFromWords", () => {
     expect(r.replyText).toMatch(/you have no partner clubs\. .+\/admin\/settings#partner-clubs$/);
   });
 
-  it("asking switched off: one plain reply, nothing asked", async () => {
-    settingsMock.loadPartnerAskSettings.mockResolvedValue({ when: "off", time: null, cutoffHours: 4 });
+  it("an active pairing is the switch (Kemal, 2026-11-08): words ask with no asking setting at all", async () => {
+    settingsMock.loadPartnerAskSettings.mockResolvedValue({ cutoffHours: 4 });
     const r = await askPartnersFromWords({ ...base, clubRef: null });
-    expect(askMock.requestPartnerAsk).not.toHaveBeenCalled();
-    expect(r.outcome).toBe("xask-words-asking-off");
-    expect(r.replyText).toMatch(/turn it on here: .+\/admin\/settings#partner-clubs$/);
+    expect(askMock.requestPartnerAsk).toHaveBeenCalled();
+    expect(r.outcome).not.toBe("xask-words-asking-off");
+    expect(r.replyText).not.toMatch(/is off for your club|turn it on here/);
   });
 
   it("a club that is not a partner: one plain reply naming the partners", async () => {

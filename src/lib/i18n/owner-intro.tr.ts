@@ -51,7 +51,7 @@ Organizatörler, MatchTime'ı etiketleyip nereden bulacağını yazmanız yeterl
 • *@Match Time perşembe için partner kulüplerden oyuncu bul*
 • *@Match Time perşembe için partner kulüplerden ve havuzdan oyuncu bul*
 
-🤝 *Partner kulüpler:* yakındaki diğer MatchTime kulüpleriyle bağlantı kurun ve boştaki oyuncuları paylaşın. Açarsanız MatchTime maç günü partnerlerinize kendiliğinden sorabilir.
+🤝 *Partner kulüpler:* yakındaki diğer MatchTime kulüpleriyle bağlantı kurun ve boştaki oyuncuları paylaşın. Eşleştikten sonra organizatörleriniz onlardan WhatsApp'tan ya da maç sayfasından oyuncu isteyebilir.
 
 🙋 *Kimin geldiğini görürsünüz:* havuzdan ya da partner kulüpten bir oyuncu yer alınca veya yedeğe geçince MatchTime bunu burada paylaşır, herkes kimin katıldığını bilir.`,
     `⚽ *Daha çok maç mı istiyorsunuz? Havuza katılın.*

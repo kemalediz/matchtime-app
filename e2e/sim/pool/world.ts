@@ -114,7 +114,7 @@ export interface PoolClubOpts extends CreateGroupOpts {
   /** Link an admin group (HQ) to the club. Default false. */
   hq?: boolean;
   /** The pool's club settings. Every one defaults OFF/NULL, as in production. */
-  pool?: Partial<{ featurePlayerPool: boolean; poolAutoAsk: boolean; playStyle: string | null; town: string | null }>;
+  pool?: Partial<{ featurePlayerPool: boolean; playStyle: string | null; town: string | null }>;
 }
 
 /** Someone with a WhatsApp number: a stranger, or a club member. */
@@ -302,8 +302,8 @@ export class PoolWorld {
     }
     if (pool) {
       await this.db.run(
-        `UPDATE "Organisation" SET "featurePlayerPool" = $2, "poolAutoAsk" = $3, "playStyle" = $4, town = $5 WHERE id = $1`,
-        [group.orgId, pool.featurePlayerPool ?? false, pool.poolAutoAsk ?? false, pool.playStyle ?? null, pool.town ?? null],
+        `UPDATE "Organisation" SET "featurePlayerPool" = $2, "playStyle" = $3, town = $4 WHERE id = $1`,
+        [group.orgId, pool.featurePlayerPool ?? false, pool.playStyle ?? null, pool.town ?? null],
       );
     }
     const name = (await this.db.one<{ name: string }>(`SELECT name FROM "Organisation" WHERE id = $1`, [group.orgId]))!.name;

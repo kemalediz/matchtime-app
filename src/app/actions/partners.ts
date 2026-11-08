@@ -127,13 +127,15 @@ export async function setPartnerApprovalAction(
   return { ok: r.ok };
 }
 
-export async function savePartnerAskSettingsAction(
+/** "Last ask before kickoff", the one asking setting: asking itself has no
+ *  switch beyond an active pairing (Kemal, 2026-11-08). */
+export async function savePartnerAskCutoffAction(
   orgId: string,
-  patch: { when?: string; time?: string; cutoffHours?: number },
+  cutoffHours: number,
 ): Promise<{ ok: true; settings: PartnerAskSettings } | { ok: false; refusal: string }> {
   const userId = await sessionUserId();
   await roleIn(userId, orgId);
-  const r = await savePartnerAskSettings(orgId, patch);
+  const r = await savePartnerAskSettings(orgId, { cutoffHours });
   revalidatePath("/admin/settings");
   return r;
 }

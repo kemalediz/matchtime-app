@@ -5,9 +5,9 @@
  * club's own switch for the MatchTime player pool (`featurePlayerPool`).
  * Owners and admins; shown only while the platform switch is on (the
  * action returns null otherwise). Switching off asks first: any pool ask
- * still open for the club's matches is closed. Style of play, "Ask the
- * player pool automatically" and "Tell your players about the player pool"
- * appear under it once it is on (`onChange` makes the page reload them).
+ * still open for the club's matches is closed. Style of play and "Tell your
+ * players about the player pool" appear under it once it is on (`onChange`
+ * makes the page reload them).
  */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -23,8 +23,6 @@ export function PlayerPoolSection(props: {
   orgId: string;
   language: string | null | undefined;
   onChange?: (on: boolean) => void;
-  /** "Ask the player pool automatically", for the summary; null until known. */
-  autoAsk?: boolean | null;
 }) {
   const s = t(props.language);
   const c = poolClubSwitchCopy(props.language);
@@ -65,7 +63,7 @@ export function PlayerPoolSection(props: {
       title={c.title}
       icon={Users}
       info={<SettingInfo k="playerPool" lang={props.language} />}
-      summary={playerPoolSummary(props.language, { on, autoAsk: props.autoAsk ?? null })}
+      summary={playerPoolSummary(props.language, { on })}
       testId="player-pool"
       rootProps={{ "data-setting": "playerPool" }}
     >

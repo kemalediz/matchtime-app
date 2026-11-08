@@ -5,8 +5,8 @@
  * pool (`requestPoolAsk`), sharing the round's id and its number. With no
  * partner asked (none ticked, or every one refused) the pool ask is a
  * round of its own. Either way its first offers go at once: MatchTime asks
- * exactly what the organiser ticked, now (Kemal, 2026-10-29; only the
- * automatic ask waits, `round-rules.ts` `poolWaitsForPartners`).
+ * exactly what the organiser ticked, now (Kemal, 2026-10-29). Nothing asks
+ * by itself (Kemal, 2026-11-08).
  */
 import { requestPartnerRound, type RoundResult } from "../partner-ask";
 import { requestPoolAsk, type PoolAskResult } from "./round";

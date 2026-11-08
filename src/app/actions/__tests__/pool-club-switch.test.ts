@@ -69,14 +69,14 @@ describe("with the platform switch on", () => {
   });
 
   it("on goes through setClubPlayerPool and revalidates settings", async () => {
-    h.setClubPlayerPool.mockResolvedValue({ ok: true, on: true, closedAsks: 0, autoAsk: false, told: true });
+    h.setClubPlayerPool.mockResolvedValue({ ok: true, on: true, closedAsks: 0, told: true });
     expect(await setClubPlayerPoolAction("org1", true)).toEqual({ ok: true, on: true, closedAsks: 0 });
     expect(h.setClubPlayerPool).toHaveBeenCalledWith("org1", true);
     expect(h.revalidatePath).toHaveBeenCalledWith("/admin/settings");
   });
 
   it("off reports how many open asks were closed", async () => {
-    h.setClubPlayerPool.mockResolvedValue({ ok: true, on: false, closedAsks: 2, autoAsk: true, told: false });
+    h.setClubPlayerPool.mockResolvedValue({ ok: true, on: false, closedAsks: 2, told: false });
     expect(await setClubPlayerPoolAction("org1", false)).toEqual({ ok: true, on: false, closedAsks: 2 });
   });
 

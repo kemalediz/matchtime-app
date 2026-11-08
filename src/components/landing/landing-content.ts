@@ -51,7 +51,6 @@ import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "@/lib/club-partnership-rules";
 import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
 import { PLAYERS_PAGE_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 import { POOL_CAPS, POOL_MIN_AGE } from "@/lib/pool/rules";
-import { POOL_AFTER_PARTNERS_MINS } from "@/lib/pool/round-rules";
 import { SPORT_LEVELS, levelLabel, liveSports } from "@/lib/pool/sports";
 import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
 
@@ -61,9 +60,6 @@ import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
 // (src/lib/pool/sports.ts). The lines below say "football" in plain words;
 // when another sport is switched on there, reword them here (and only here:
 // src/app/layout.tsx and the hero read them).
-
-/** The pool is asked this long after partner clubs (pool/round-rules.ts). */
-const POOL_AFTER = POOL_AFTER_PARTNERS_MINS === 60 ? "an hour" : `${POOL_AFTER_PARTNERS_MINS} minutes`;
 
 /** "A, B or C". */
 function joinWords(words: readonly string[], last: "and" | "or"): string {
@@ -388,10 +384,9 @@ export const FEATURES: Card[] = [
  * straight after the attendance cards: the pain, then who MatchTime asks,
  * in the order the code asks. The chase (daily update, match morning, last
  * hours) and the bench; then partner clubs (club-partnership-rules.ts,
- * partner-ask.ts, partner-guest.ts); then the pool (pool/round-rules.ts
- * POOL_AFTER_PARTNERS_MINS and wave1DueAt: at once when an organiser asks
- * (Kemal, 2026-10-29); the automatic ask an hour after a partner ask of the
- * same round, at once when none is open; pool/matching-rules.ts:
+ * partner-ask.ts, partner-guest.ts); then the pool (pool/round.ts
+ * requestPoolAsk: at once when an organiser asks, Kemal 2026-10-29; nothing
+ * asks by itself since 2026-11-08; pool/matching-rules.ts:
  * availability, travel distance, level only when the ask names levels);
  * then a yes (pool/accept.ts: the place while it is open, or the bench
  * where the organisers pick). It replaced the partner clubs section, whose
@@ -421,10 +416,10 @@ const SHORT_OF_PLAYERS: Spotlight = {
       body: "MatchTime posts your ask in a partner club's players' group, with the day, time, venue and format. Each club decides whether its organisers check every ask first, and their players answer privately.",
     },
     {
-      // pool/round-rules.ts wave1DueAt; pool/matching-rules.ts candidateExclusion.
+      // pool/round.ts requestPoolAsk; pool/matching-rules.ts candidateExclusion.
       key: "pool",
       title: "Then the local player pool",
-      body: `When you ask for players, nearby players from the MatchTime player pool get the offer by private message straight away, at the same time as your partner clubs. When MatchTime asks by itself, your partner clubs get ${POOL_AFTER} first. Pool players are matched on when they can play and how far they'll travel, and on level only when you ask for one.`,
+      body: "When you ask for players, nearby players from the MatchTime player pool get the offer by private message straight away, at the same time as your partner clubs, or on their own if you ask just the pool. Pool players are matched on when they can play and how far they'll travel, and on level only when you ask for one.",
     },
     {
       // partner-guest.ts; pool/accept.ts placed.kind "bench"; partner-ask.ts
@@ -445,14 +440,14 @@ const SHORT_OF_PLAYERS: Spotlight = {
       body: `Search for clubs that play up to ${MAX_RADIUS_MILES} miles from your venue and send them a request. Once one of their owners or admins accepts, you can ask them for players.`,
     },
     {
-      // settings-info.ts partnerAskWhen ("Automatically at a time") and
-      // poolAutoAsk; strings.en.ts xaskw_* (own words); partner-ask-round.ts
-      // (partner and pool guests count towards one number).
+      // partner-ask-rules.ts canAsk (an active pairing is the one switch,
+      // Kemal 2026-11-08); strings.en.ts xaskw_* (own words);
+      // partner-ask-round.ts (partner and pool guests count towards one number).
       key: "ask",
       icon: "zap",
       color: "rose",
-      title: "Ask with a tap, or let it ask",
-      body: "Ask from the match page, or just tell MatchTime in your own words. You can also let it ask by itself on match day when a place is still open and nobody is on your bench. You say how many players you need, for the whole round.",
+      title: "Ask with a tap, or in your own words",
+      body: "Ask from the match page, or just tell MatchTime on WhatsApp in your own words. Ask your partner clubs and the player pool together or separately. You say how many players you need, for the whole round, and MatchTime never asks without you.",
     },
     {
       // partner-guest.ts: a guest membership; organiser-pick.ts and
@@ -1112,9 +1107,9 @@ export const HERO_DECK = {
       },
     },
     {
-      // Spotlight short-of-players; pool/round-rules.ts POOL_AFTER_PARTNERS_MINS;
-      // pool/matching-rules.ts; pool/accept.ts; settings-info.ts partnerAskWhen
-      // and poolAutoAsk; PLAYER_POOL (opening town by town); the offer is
+      // Spotlight short-of-players; pool/round.ts requestPoolAsk;
+      // pool/matching-rules.ts; pool/accept.ts; partner-ask-rules.ts canAsk
+      // (an organiser asks); PLAYER_POOL (opening town by town); the offer is
       // POOL_OFFER_CHAT (pool-offer.en.ts). Third in the deck, after the bench (Kemal, 2026-10-28).
       key: "short",
       title: "Dropouts? It asks around",
@@ -1123,10 +1118,10 @@ export const HERO_DECK = {
       details: [
         "Someone drops out and nobody's on the bench? MatchTime asks your group first, and stops the moment you're full.",
         "Then partner clubs: their players answer privately and join as guests.",
-        `Then nearby players from the MatchTime player pool get a WhatsApp offer straight away when you ask, at the same time as your partner clubs; when MatchTime asks by itself, your partner clubs get ${POOL_AFTER} first.`,
+        "Then nearby players from the MatchTime player pool get a WhatsApp offer straight away when you ask, at the same time as your partner clubs.",
         "Pool players are matched on when they can play and how far they'll travel, and on level only when you ask for one.",
         "A yes takes the place if it's still open, or the bench where your organisers pick.",
-        "Ask with one tap, or let MatchTime ask by itself on match day. The player pool is opening town by town.",
+        "Ask with one tap on the match page, or tell MatchTime on WhatsApp. The player pool is opening town by town.",
       ],
       steps: [
         { title: "1. Your group", sub: "The group and the bench" },

@@ -7,8 +7,9 @@
  * The MatchTime pool and partner clubs work for such a club, in its order:
  *
  *   - the club's own bench and PAYG players have the place first: the
- *     automatic ask waits until the week is seeded, the place offered to
- *     the club's PAYG players, and their hour is up;
+ *     week is seeded and the place offered to the club's PAYG players;
+ *     nothing asks the pool by itself (Kemal, 2026-11-08), an organiser
+ *     does;
  *   - the pool offer states the club's PAYG price (what he pays there);
  *   - a pool guest who takes the place is a PAYG player of that one game:
  *     the away regular's slot number, under "Pay as you go" on the week's list, no
@@ -17,7 +18,7 @@
  *     places really open, not every place of the match.
  */
 import { scenario, scenarios, stubbedOnly, expect } from "./fixtures";
-import { londonOn, near, openClub, pollPlatform, poolPlayer, tapLinkIn, tapOffer, type OpenClubOpts } from "./offers-world";
+import { londonOn, near, openClub, organiserAsks, pollPlatform, poolPlayer, tapLinkIn, tapOffer, type OpenClubOpts } from "./offers-world";
 import type { PoolWorld } from "./world";
 import { E2E } from "../../helpers/env";
 import { clearPipelineStubs, facts } from "../../helpers/stub";
@@ -37,7 +38,7 @@ type Club = Awaited<ReturnType<typeof openClub>> & { monthId?: string };
 
 /** A monthly club: 4 places, regulars owner, pete, dan and felix in slots
  *  1 to 4 (felix away this week when `felixAway`), greg its PAYG player,
- *  £8 PAYG, the automatic pool ask on at 12:00. */
+ *  £8 PAYG, the player pool on. */
 async function monthlyClub(pool: PoolWorld, key: string, opts: OpenClubOpts & { felixAway?: boolean; maxPlayers?: number } = {}): Promise<Club & { monthId: string }> {
   const { felixAway, ...clubOpts } = opts;
   const club = await openClub(pool, key, {
@@ -46,11 +47,11 @@ async function monthlyClub(pool: PoolWorld, key: string, opts: OpenClubOpts & { 
     players: ROSTER,
     feePerPlayer: 6,
     ...clubOpts,
-    pool: { featurePlayerPool: true, poolAutoAsk: true, ...(clubOpts.pool ?? {}) },
+    pool: { featurePlayerPool: true, ...(clubOpts.pool ?? {}) },
   });
   const orgId = club.group.orgId;
   await pool.db.run(
-    `UPDATE "Organisation" SET "squadMode" = 'monthly', "paygPricePence" = 800, "partnerAskTime" = '12:00', "partnerAskWhen" = 'off', language = 'en' WHERE id = $1`,
+    `UPDATE "Organisation" SET "squadMode" = 'monthly', "paygPricePence" = 800, language = 'en' WHERE id = $1`,
     [orgId],
   );
   const monthId = `sim-month-${key}-${Date.now()}`;
@@ -86,7 +87,7 @@ interface Instruction {
   targetUser?: string;
 }
 
-/** The scheduler's poll at `now` (the automatic ask and the month's sweep run in it). */
+/** The scheduler's poll at `now` (the month's sweep runs in it; nothing asks the pool by itself). */
 async function schedulerPoll(pool: PoolWorld, club: Club, now: Date): Promise<{ instructions: Instruction[] }> {
   pool.note(`(the scheduler polls ${club.key} at ${now.toISOString()})`);
   const res = await pool.request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(club.group.groupId)}`, {
@@ -111,13 +112,13 @@ const poolAsksOf = (pool: PoolWorld, club: Club) =>
 scenarios("the MatchTime player pool for a monthly club's week", () => {
   scenario.afterEach(() => clearPipelineStubs());
 
-  scenario("a regular away: the club's PAYG players first, then the pool an hour later at the PAYG price; the guest is that week's PAYG player", async ({ pool, page }) => {
+  scenario("a regular away: the club's PAYG players first, nothing asked by itself, then the organiser asks the pool at the PAYG price; the guest is that week's PAYG player", async ({ pool, page }) => {
     const vets = await monthlyClub(pool, "vets", { felixAway: true });
     const ali = await poolPlayer(pool, "ali", { name: "Ali Kaya", at: near(vets) });
     const greg = vets.group.player("greg");
     const t0 = londonOn(vets.kickoff, 0, "12:05");
 
-    pool.note("match day, the club's time: the week is seeded and the place goes to the club's PAYG player; the pool is not asked");
+    pool.note("match day: the week is seeded and the place goes to the club's PAYG player; the pool is not asked");
     const first = await schedulerPoll(pool, vets, t0);
     expect(first.instructions.some((i) => i.kind === "dm" && i.targetUser === greg.userId && /£8/.test(i.text ?? ""))).toBe(true);
     expect(await poolAsksOf(pool, vets)).toEqual([]);
@@ -133,14 +134,15 @@ scenarios("the MatchTime player pool for a monthly club's week", () => {
     ]);
     await stampClubTold(pool, vets, t0);
 
-    pool.note("half an hour later: still the club's hour");
-    await schedulerPoll(pool, vets, londonOn(vets.kickoff, 0, "12:40"));
-    expect(await poolAsksOf(pool, vets)).toEqual([]);
-
-    pool.note("an hour after the club's players were told, nobody took it: the pool is asked for the one place");
+    pool.note("an hour later, nobody took it: still nothing asks the pool by itself (Kemal, 2026-11-08)");
     const t1 = londonOn(vets.kickoff, 0, "13:10");
     await schedulerPoll(pool, vets, t1);
-    expect(await poolAsksOf(pool, vets)).toEqual([{ via: "auto", places: 1 }]);
+    expect(await poolAsksOf(pool, vets)).toEqual([]);
+
+    pool.note("the organiser asks the pool on the match page: the one place really open");
+    const ask = await organiserAsks(pool, page, vets, { places: 1, now: t1 });
+    expect(ask.json.pool).toMatchObject({ ok: true });
+    expect(await poolAsksOf(pool, vets)).toEqual([{ via: "page", places: 1 }]);
     const { out } = await pollPlatform(pool, { now: t1 });
     const offer = out.find((m) => m.to === "ali" && m.purpose === "pool-offer");
     expect(offer?.text).toMatch(/needs 1 player/);

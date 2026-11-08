@@ -59,8 +59,8 @@ beforeEach(() => {
 });
 
 describe("a pool ask at 03:00 London sends its offers now", () => {
-  it.each(["page", "words", "notice", "auto"] as const)("via %s: queued with no hold, its window from now", async (via) => {
-    const r = await requestPoolAsk({ orgId: "fnf", matchId: "m1", places: 1, roundId: null, approvedByUserId: via === "auto" ? null : "u-admin", via, now: NIGHT });
+  it.each(["page", "words", "notice"] as const)("via %s: queued with no hold, its window from now", async (via) => {
+    const r = await requestPoolAsk({ orgId: "fnf", matchId: "m1", places: 1, roundId: null, approvedByUserId: "u-admin", via, now: NIGHT });
     expect(r).toEqual({ ok: true, askId: "ask1", waveSent: true });
     expect(jobs.queuePlatformDm).toHaveBeenCalledTimes(1);
     const queued = (jobs.queuePlatformDm.mock.calls[0] as unknown as [{ purpose: string; sendAfter: Date | null }])[0];

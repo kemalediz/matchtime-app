@@ -1,6 +1,6 @@
 /**
  * THE ONE-LINE SUMMARY OF EACH COLLAPSED CARD on /admin/settings
- * (2026-10-28), e.g. "Player pool: On, automatic asking off". Pure: data
+ * (2026-10-28), e.g. "Partner clubs: 2 partner clubs". Pure: data
  * the page (or the card itself) has already loaded in, one line of the
  * club's language out. Unit tested in `__tests__/settings-summaries.test.ts`.
  */
@@ -110,12 +110,9 @@ export function partnerClubsSummary(lang: L, a: { partners: number; requestsWait
   return a.requestsWaiting > 0 ? `${head}, ${c.partnerRequests(a.requestsWaiting)}` : head;
 }
 
-/** `autoAsk` null until its card has loaded. */
-export function playerPoolSummary(lang: L, a: { on: boolean; autoAsk: boolean | null }): string {
+export function playerPoolSummary(lang: L, a: { on: boolean }): string {
   const c = settingsNavCopy(lang);
-  if (!a.on) return c.off;
-  if (a.autoAsk === null) return c.on;
-  return `${c.on}, ${c.summary.poolAutoAsk} ${a.autoAsk ? c.onInList : c.offInList}`;
+  return a.on ? c.on : c.off;
 }
 
 /** `label`: the chosen style in the club's language; null when none is. */

@@ -88,7 +88,6 @@ const asks = (db: TestDb) =>
 
 test("no partner club yet: one plain reply, nothing asked, nobody DM'd", async ({ request, db }) => {
   const g = await world(request, db);
-  await db.run(`UPDATE "Organisation" SET "partnerAskWhen" = 'on-request' WHERE id = $1`, [g.orgId]);
   const r = await g.post("owner", ASK_SUTTON, { ...recruitFromPartners("Sutton"), tag: true });
   expect(r.reply).toMatch(
     /^\*Partner clubs:\* I can't ask another club yet: you have no partner clubs\. Once MatchTime pairs you with one and both clubs accept, you can ask them\. Partner clubs are here: \S+\/admin\/settings#partner-clubs$/,
@@ -148,14 +147,4 @@ test("no club named: EVERY active partner is asked, and one reply says what happ
     [sutton.orgId, "group"],
     [vets.orgId, "group"],
   ]);
-});
-
-test("asking switched off: one plain reply, nothing more asked", async ({ request, db }) => {
-  const g = await world(request, db);
-  await db.run(`UPDATE "Organisation" SET "partnerAskWhen" = 'off' WHERE id = $1`, [g.orgId]);
-  const r = await g.post("owner", ASK_ALL, { ...recruitFromPartners(""), tag: true });
-  expect(r.reply).toMatch(
-    /^\*Partner clubs:\* I didn't ask anyone: asking partner clubs for players is off for your club\. An owner or admin can turn it on here: \S+\/admin\/settings#partner-clubs$/,
-  );
-  expect(await asks(db)).toHaveLength(2);
 });

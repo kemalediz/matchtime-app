@@ -2,8 +2,9 @@
  * ASKING A PARTNER CLUB FOR A PLAYER (slice S2, 2026-10-16).
  * Plan: MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.3 to 3.5.
  *
- *   requestPartnerAsk   an organiser (the match page button, later HQ or
- *                       DM) or the automatic timer asks; the rules in
+ *   requestPartnerAsk   an organiser asks (the match page button, HQ, a
+ *                       DM or the players' group); nothing asks by itself
+ *                       (Kemal, 2026-11-08); the rules in
  *                       `partner-ask-rules.ts` decide; the partner's
  *                       organisers are asked to approve (D3, through
  *                       `sendAdminNotice`), or, with standing permission,
@@ -43,7 +44,7 @@ import { retirePastGuests, standDownVolunteers, tellGuestsMoved } from "./partne
 import { matchtimeWaNumber } from "./club-connect";
 import { askDmLink, askDmPrefill, askRefCode } from "./partner-ask-ref";
 import { loadRoundFill, type RoundFill } from "./partner-ask-round";
-import { askPlacesOpen, clubFillsFirstFor, guestPaygPence } from "./monthly-week-asks";
+import { askPlacesOpen, guestPaygPence } from "./monthly-week-asks";
 import { guestFeePounds } from "./monthly-week-asks-rules";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
@@ -52,13 +53,10 @@ import {
   OPEN_ASK_STATUSES,
   PARTNER_ASKS_PER_DAY,
   askWindows,
-  autoAskAt,
-  autoAskDue,
   canAsk,
   closeReason,
   closeTells,
   closedStatus,
-  gamesOverlap,
   isPartnerPaused,
   movedWindows,
   partnerReachable,
@@ -69,11 +67,9 @@ import {
   type PartnerAskVia,
 } from "./partner-ask-rules";
 import type { PartnerAskOutcome } from "./partner-ask-words-rules";
-import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS, effectiveAskTime, type ClubRole } from "./club-partnership-rules";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS, type ClubRole } from "./club-partnership-rules";
 import { loadPoolPanel, type PoolPanelData } from "./pool/panel";
 import { cancelPoolAsk } from "./pool/round";
-import { autoAskPool, poolAutoAskClub } from "./pool/auto-ask";
-import { poolAutoAskApplies } from "./pool/auto-ask-rules";
 
 /** The ask ref of the approval question in the partner's admin group. */
 export const partnerAskRef = (askId: string): string => `xask:${askId}`;
@@ -229,8 +225,8 @@ export type RequestResult =
  * caller to say in plain words (`askRefusalText`).
  *
  * `places` (P4, D-5): the number the organiser chose, 1 up to the open
- * places, for the whole round `roundId` (asks sent together). Absent: the
- * automatic ask and asking in words, which ask for every open place.
+ * places, for the whole round `roundId` (asks sent together). Absent:
+ * asking in words, which asks for every open place.
  */
 export async function requestPartnerAsk(args: {
   askerOrgId: string;
@@ -265,7 +261,6 @@ export async function requestPartnerAsk(args: {
   const wanted = args.places ?? places;
   const verdict0 = canAsk({
     partnershipStatus: partnership.status,
-    askWhen: settings.when,
     via: args.via,
     requesterRole: role,
     isNextMatch: next,
@@ -639,8 +634,7 @@ export async function loadPartnerAskPanel(
     console.error(`[partner-ask] match ${matchId}: the pool panel was not read:`, err instanceof Error ? err.message : "failed");
     return null;
   });
-  const [settings, partnerships, asks, match] = await Promise.all([
-    loadPartnerAskSettings(askerOrgId),
+  const [partnerships, asks, match] = await Promise.all([
     db.clubPartnership.findMany({
       where: { askerOrgId, status: "active" },
       orderBy: { createdAt: "asc" },
@@ -654,7 +648,8 @@ export async function loadPartnerAskPanel(
     db.match.findUnique({ where: { id: matchId }, select: { maxPlayers: true } }),
   ]);
   if (!match) return null;
-  const partnersOn = !!settings && settings.when !== "off" && partnerships.length > 0;
+  // An active pairing is the switch (Kemal, 2026-11-08): no club setting.
+  const partnersOn = partnerships.length > 0;
   if (!partnersOn && !pool) return null;
   const nameOf = new Map(partnerships.map((p) => [p.partnerOrgId, p.partnerOrg.name]));
   const rows = (partnersOn ? partnerships : []).map((p) => {
@@ -971,8 +966,6 @@ export function askRefusalText(
       return s.xask_refused_already_open({ partner });
     case "no-places":
       return s.xask_refused_no_places;
-    case "asking-off":
-      return s.xask_refused_off;
     case "partner-muted":
     case "partner-not-approved":
     case "partner-setting-up":
@@ -984,147 +977,15 @@ export function askRefusalText(
   }
 }
 
-// ── The automatic ask (slice S5) ────────────────────────────────────────
-
-/**
- * The automatic ask (D4), every due-posts poll of a club on "Automatically
- * at a time": from the club's time on match day until the cut-off, when a
- * place is open and its own waiting list is empty, ask each active partner
- * once for the match (`autoAskDue`), unless that partner's own game at an
- * overlapping time is short itself (plan 3.13). Through `requestPartnerAsk`,
- * so every rule and gate of a button press applies; the asking club's
- * organisers are told what was asked. The partners asked in one pass share
- * a round (`roundId`), as the ones an organiser ticks together do.
- *
- * THE POOL (local player pool L9, 2026-10-24): a club that switched on the
- * automatic pool ask (`poolAutoAsk`, with the pool open for it) has the
- * pool join the same round right after, through the organiser tap's own
- * function (`pool/auto-ask.ts`), so its first offers go an hour after the
- * partners, or at once when none was asked. A club with no partner club
- * gets that too. Every other club makes two reads. Never throws.
- */
-export async function sweepAutoPartnerAsks(
-  orgId: string,
-  now: Date = new Date(),
-  opts: { poolEnv?: Record<string, string | undefined> } = {},
-): Promise<{ asked: number }> {
-  let asked = 0;
-  try {
-    const settings = await loadPartnerAskSettings(orgId);
-    if (!settings) return { asked };
-    const pool = await poolAutoAskClub(orgId, opts.poolEnv);
-    const poolRule = { poolOpen: pool.poolOpen, poolAutoAsk: pool.poolAutoAsk, partnersWhen: settings.when };
-    // Before reading the partners: could the pool join at all (it can with none)?
-    if (settings.when !== "auto" && !poolAutoAskApplies({ ...poolRule, hasPartners: false })) return { asked };
-    const partnerships = await db.clubPartnership.findMany({
-      where: { askerOrgId: orgId, status: "active" },
-      orderBy: { createdAt: "asc" },
-      select: { id: true, partnerOrgId: true },
-    });
-    const askPartners = settings.when === "auto" ? partnerships : [];
-    const poolJoins = poolAutoAskApplies({ ...poolRule, hasPartners: partnerships.length > 0 });
-    if (askPartners.length === 0 && !poolJoins) return { asked };
-    const dayStart = londonMidnight(now);
-    const matches = (await db.match.findMany({
-      where: { activity: { orgId }, isHistorical: false, status: { in: LIVE_MATCH }, date: { gte: now, lt: new Date(dayStart.getTime() + 30 * 3600_000) } },
-      orderBy: { date: "asc" },
-      select: { ...MATCH_SELECT, activity: { select: { ...MATCH_SELECT.activity.select, matchDurationMins: true } } },
-    })) as Array<AskMatch & { activity: { matchDurationMins: number } }>;
-    for (const match of matches) {
-      // Match day only: the club's time is a time ON the day of the game.
-      if (londonMidnight(match.date).getTime() !== dayStart.getTime()) continue;
-      if (!(await isNextMatch(orgId, match, now))) continue;
-      const { postBy } = askWindows(match.date, settings.cutoffHours);
-      const askAt = autoAskAt(match.date, effectiveAskTime(settings.time));
-      const [places, waiting] = await Promise.all([
-        placesOpen(match.id),
-        db.attendance.count({ where: { matchId: match.id, status: "BENCH" } }),
-      ]);
-      // A MONTHLY WEEK (Vets MNF, 2026-10-29): the club's own bench, then
-      // its own PAYG players, have the place first; the pool and partner
-      // clubs are asked automatically only after their hour
-      // (`clubFillsFirst`). Every other match: no read beyond this one.
-      const inWindow = now.getTime() >= askAt.getTime() && now.getTime() < postBy.getTime();
-      if (inWindow && places > 0 && waiting === 0 && (await clubFillsFirstFor(match.id, now))) {
-        console.log(`[partner-ask] auto ask for match ${match.id} by ${orgId} waits: the club's own PAYG players are asked first`);
-        continue;
-      }
-      const roundId = randomUUID();
-      let askedHere = 0;
-      for (const p of askPartners) {
-        const askedBefore = (await db.partnerAsk.count({ where: { matchId: match.id, partnerOrgId: p.partnerOrgId } })) > 0;
-        const due = autoAskDue({
-          now,
-          askAt,
-          postBy,
-          placesOpen: places,
-          waitingCount: waiting,
-          askedBefore,
-          partnerOwnGameShort: await partnerOwnOverlappingGameShort(p.partnerOrgId, match.date, match.activity.matchDurationMins),
-        });
-        if (!due) continue;
-        const r = await requestPartnerAsk({ askerOrgId: orgId, matchId: match.id, partnershipId: p.id, requestedByUserId: null, via: "auto", roundId, now });
-        if (!r.ok) {
-          console.log(`[partner-ask] auto ask for match ${match.id} to ${p.partnerOrgId} not made: ${r.refusal}`);
-          continue;
-        }
-        asked++;
-        askedHere++;
-        const asker = await db.organisation.findUnique({ where: { id: orgId }, select: { language: true } });
-        const lang = asker?.language ?? null;
-        await sendAdminNotice({
-          orgId,
-          now,
-          holdOvernight: false,
-          text: t(lang).xask_auto_notice_asker({ partner: r.partnerName, day: dayCommaTimeLabel(lang, match.date), posted: r.status === "posted" }),
-        });
-      }
-      if (poolJoins) {
-        await autoAskPool({
-          orgId,
-          match: { id: match.id, date: match.date },
-          now,
-          askAt,
-          postBy,
-          placesOpen: places,
-          waitingCount: waiting,
-          hasPartners: partnerships.length > 0,
-          partnersWhen: settings.when,
-          askedNowRoundId: askedHere > 0 ? roundId : null,
-          club: pool,
-          env: opts.poolEnv,
-        });
-      }
-    }
-  } catch (err) {
-    console.error(`[partner-ask] org ${orgId}: auto sweep failed:`, err instanceof Error ? err.message : "failed");
-  }
-  return { asked };
-}
-
-/** The partner's own live game overlapping this one, when it is short. */
-async function partnerOwnOverlappingGameShort(partnerOrgId: string, kickoff: Date, durationMins: number): Promise<boolean> {
-  const dayStart = londonMidnight(kickoff);
-  const own = await db.match.findMany({
-    where: { activity: { orgId: partnerOrgId }, status: { in: LIVE_MATCH }, isHistorical: false, date: { gte: dayStart, lt: new Date(dayStart.getTime() + 30 * 3600_000) } },
-    select: { id: true, date: true, maxPlayers: true, activity: { select: { matchDurationMins: true } } },
-  });
-  for (const g of own) {
-    if (!gamesOverlap({ kickoff, durationMins }, { kickoff: g.date, durationMins: g.activity.matchDurationMins })) continue;
-    if ((await placesOpen(g.id)) > 0) return true;
-  }
-  return false;
-}
-
 /**
  * The line the organisers' short-squad notice ends with (slice S5): the
- * partner clubs they could ask now, or null (no partner, asking Off, past
- * the cut-off, or an ask already open to each). Null leaves the notice
+ * partner clubs they could ask now, or null (no active partner, past the
+ * cut-off, or an ask already open to each). Null leaves the notice
  * exactly as it was.
  */
 export async function partnerOfferFor(orgId: string, match: { id: string; date: Date }, now: Date): Promise<string[] | null> {
   const settings = await loadPartnerAskSettings(orgId);
-  if (!settings || settings.when === "off") return null;
+  if (!settings) return null;
   if (now.getTime() >= askWindows(match.date, settings.cutoffHours).postBy.getTime()) return null;
   const partnerships = await db.clubPartnership.findMany({
     where: { askerOrgId: orgId, status: "active" },

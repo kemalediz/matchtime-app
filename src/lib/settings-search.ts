@@ -103,8 +103,6 @@ const SPECS: Record<SettingsCardId, CardSearchSpec> = {
     title: (l) => t(l).pc_section_title,
     settings: [
       "partnerClubs",
-      "partnerAskWhen",
-      "partnerAskTime",
       "partnerAskCutoff",
       "partnerApproval",
       "partnerDiscoverable",
@@ -123,11 +121,6 @@ const SPECS: Record<SettingsCardId, CardSearchSpec> = {
     title: (l) => t(l).ps_title,
     settings: ["playStyle"],
     keywords: { en: ["style", "casual", "competitive", "pool"], tr: ["tarz", "oyun tarzı", "keyifli", "rekabetçi", "havuz"] },
-  },
-  "pool-auto-ask": {
-    title: (l) => t(l).pauto_title,
-    settings: ["poolAutoAsk"],
-    keywords: { en: ["automatic", "auto ask", "pool"], tr: ["otomatik", "kendiliğinden", "havuz"] },
   },
   "pool-club-share": {
     title: (l) => poolClubShareCopy(l).title,

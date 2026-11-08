@@ -2,7 +2,7 @@
  * A club's own player pool switch (2026-10-27; the club admins' since
  * 2026-10-28): writes `Organisation.featurePlayerPool`; OFF closes the
  * club's open pool asks at once through the pool's own close path
- * (`closePoolAsk(.., "switched-off")`); `poolAutoAsk` is never touched; the
+ * (`closePoolAsk(.., "switched-off")`); it writes nothing else; the
  * first time it goes from off to on the admin team is told ONCE, ever: one
  * HQ post, or a DM to each owner and admin, claimed in the same transaction.
  */
@@ -35,7 +35,7 @@ beforeEach(() => {
   state.postable = true;
   // FNF: an admin group (HQ) and a players' group.
   state.org = { name: "FNF", language: "tr", adminGroupId: "hq@g.us", whatsappGroupId: "fnf@g.us", whatsappBotEnabled: true, quietHoursEnabled: false, quietHoursFrom: null, quietHoursTo: null };
-  dbMock.organisation.findUnique.mockImplementation(async ({ select }) => (select?.language ? state.org : { id: "fnf", poolAutoAsk: false }));
+  dbMock.organisation.findUnique.mockImplementation(async ({ select }) => (select?.language ? state.org : { id: "fnf" }));
   dbMock.organisation.update.mockImplementation(async ({ data }) => {
     state.flag = data.featurePlayerPool;
     return {};
@@ -75,7 +75,7 @@ beforeEach(() => {
 
 describe("setClubPlayerPool", () => {
   it("on writes the flag (compare-and-set) and closes nothing", async () => {
-    expect(await setClubPlayerPool("fnf", true, NOON)).toEqual({ ok: true, on: true, closedAsks: 0, autoAsk: false, told: true });
+    expect(await setClubPlayerPool("fnf", true, NOON)).toEqual({ ok: true, on: true, closedAsks: 0, told: true });
     expect(dbMock.organisation.updateMany).toHaveBeenCalledWith({ where: { id: "fnf", featurePlayerPool: false }, data: { featurePlayerPool: true } });
     expect(roundMock.closePoolAsk).not.toHaveBeenCalled();
   });
@@ -83,7 +83,7 @@ describe("setClubPlayerPool", () => {
   it("off writes the flag, then closes every open pool ask of the club as switched-off", async () => {
     dbMock.poolAsk.findMany.mockResolvedValue([{ id: "a1" }, { id: "a2" }]);
     roundMock.closePoolAsk.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-    expect(await setClubPlayerPool("fnf", false, NOON)).toEqual({ ok: true, on: false, closedAsks: 1, autoAsk: false, told: false });
+    expect(await setClubPlayerPool("fnf", false, NOON)).toEqual({ ok: true, on: false, closedAsks: 1, told: false });
     expect(dbMock.organisation.update).toHaveBeenCalledWith({ where: { id: "fnf" }, data: { featurePlayerPool: false } });
     expect(dbMock.poolAsk.findMany).toHaveBeenCalledWith({ where: { orgId: "fnf", status: "open" }, select: { id: true } });
     expect(roundMock.closePoolAsk).toHaveBeenCalledWith("a1", "switched-off", NOON);
@@ -91,7 +91,7 @@ describe("setClubPlayerPool", () => {
     expect(dbMock.organisation.update.mock.invocationCallOrder[0]).toBeLessThan(dbMock.poolAsk.findMany.mock.invocationCallOrder[0]);
   });
 
-  it("never writes poolAutoAsk", async () => {
+  it("writes only featurePlayerPool", async () => {
     await setClubPlayerPool("fnf", true, NOON);
     await setClubPlayerPool("fnf", false, NOON);
     for (const [arg] of [...dbMock.organisation.update.mock.calls, ...dbMock.organisation.updateMany.mock.calls]) expect(Object.keys(arg.data)).toEqual(["featurePlayerPool"]);

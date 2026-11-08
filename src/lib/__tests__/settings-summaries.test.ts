@@ -98,12 +98,11 @@ describe("settings card summaries", () => {
     expect(S.partnerClubsSummary("tr", { partners: 2, requestsWaiting: 1 })).toBe("2 partner kulüp, bekleyen istek: 1");
   });
 
-  it("player pool: on or off, and automatic asking once known", () => {
-    expect(S.playerPoolSummary("en", { on: true, autoAsk: false })).toBe("On, automatic asking off");
-    expect(S.playerPoolSummary("en", { on: true, autoAsk: true })).toBe("On, automatic asking on");
-    expect(S.playerPoolSummary("en", { on: true, autoAsk: null })).toBe("On");
-    expect(S.playerPoolSummary("en", { on: false, autoAsk: true })).toBe("Off");
-    expect(S.playerPoolSummary("tr", { on: true, autoAsk: false })).toBe("Açık, otomatik sorma kapalı");
+  it("player pool: on or off, and nothing about automatic asking (removed 2026-11-08)", () => {
+    expect(S.playerPoolSummary("en", { on: true })).toBe("On");
+    expect(S.playerPoolSummary("en", { on: false })).toBe("Off");
+    expect(S.playerPoolSummary("tr", { on: true })).toBe("Açık");
+    expect(S.playerPoolSummary("tr", { on: false })).toBe("Kapalı");
   });
 
   it("style of play: the style, or not set", () => {

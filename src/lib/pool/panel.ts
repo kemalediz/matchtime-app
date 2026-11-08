@@ -18,7 +18,6 @@ import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "../club-partnership-rules";
 import { askWindows } from "../partner-ask-rules";
 import { findPoolCandidates } from "./candidates";
 import { poolAskFill } from "./round";
-import { poolWaitsForPartners } from "./round-rules";
 import { nearBand, type PoolNearBand } from "./near-band";
 import type { MatchGateRefusal } from "./matching-rules";
 
@@ -29,7 +28,7 @@ export interface PoolPanelData {
   /** Why the pool cannot be asked for this match, when it cannot. */
   gate: Exclude<MatchGateRefusal, "pool-closed"> | null;
   /** The pool's open (or last) ask for this match. */
-  ask: { roundKey: string; status: string; asked: number; declined: number; waitingForPartners: boolean; wanted: number; placed: number } | null;
+  ask: { roundKey: string; status: string; asked: number; declined: number; wanted: number; placed: number } | null;
 }
 
 export async function loadPoolPanel(matchId: string, orgId: string, opts: { now?: Date; env?: Env } = {}): Promise<PoolPanelData | null> {
@@ -39,10 +38,9 @@ export async function loadPoolPanel(matchId: string, orgId: string, opts: { now?
   const ask = await db.poolAsk.findFirst({
     where: { matchId, orgId },
     orderBy: { createdAt: "desc" },
-    select: { id: true, roundId: true, status: true, places: true, via: true, offers: { select: { sentAt: true, outcome: true } } },
+    select: { id: true, roundId: true, status: true, places: true, offers: { select: { sentAt: true, outcome: true } } },
   });
   const fill = ask ? await poolAskFill({ id: ask.id, roundId: ask.roundId, matchId, places: ask.places }) : null;
-  const partnersOpen = ask?.roundId ? await db.partnerAsk.count({ where: { roundId: ask.roundId, status: { in: ["awaiting-approval", "posted"] } } }) : 0;
   return {
     band: nearBand(found.selection.eligible.length),
     gate: found.selection.gate,
@@ -52,8 +50,6 @@ export async function loadPoolPanel(matchId: string, orgId: string, opts: { now?
           status: ask.status,
           asked: ask.offers.filter((o) => o.sentAt).length,
           declined: ask.offers.filter((o) => o.outcome === "declined").length,
-          // Only an ask that waits for the partners (the automatic one, 2026-10-29).
-          waitingForPartners: ask.status === "open" && ask.offers.length === 0 && poolWaitsForPartners({ via: ask.via, partnerAsksOpen: partnersOpen }),
           wanted: fill?.wanted ?? ask.places,
           placed: fill?.placed ?? 0,
         }

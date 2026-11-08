@@ -22,10 +22,10 @@
  * Everything else is about the moment (too-late, no-places, round-open,
  * club-week-cap, none-near, match-not-open), who asked (not-organiser), a
  * typo (bad-number) or the platform (pool-closed). The partner ask has no
- * refusal a venue fixes; its settings refusals (partnership-inactive,
- * asking-off) and the partner club's own state are another club's or a
+ * refusal a venue fixes; its pairing refusal (partnership-inactive)
+ * and the partner club's own state are another club's or a
  * deliberate choice, so the partner part is never stored. A pool ask asked
- * again joins a partner round still open on the match (`poolAutoRound`).
+ * again joins a partner round still open on the match (`poolRoundToJoin`).
  *
  * HOW LONG ONE IS KEPT: a day at most, and never past the club's cut-off
  * (nothing may be asked after it) or kickoff. A day, because an organiser

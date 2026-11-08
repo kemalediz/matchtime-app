@@ -105,7 +105,7 @@ beforeEach(() => {
   dbMock.partnerAsk.updateMany.mockResolvedValue({ count: 1 });
   dbMock.botJob.create.mockResolvedValue({ id: "job1" });
   noticeMock.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
-  settingsMock.loadPartnerAskSettings.mockResolvedValue({ when: "on-request", time: null, cutoffHours: 4 });
+  settingsMock.loadPartnerAskSettings.mockResolvedValue({ cutoffHours: 4 });
 });
 
 const createdData = () => dbMock.partnerAsk.create.mock.calls.map((c) => c[0].data);
@@ -126,9 +126,8 @@ describe("requestPartnerAsk: the chosen number and the round", () => {
     expect(dbMock.partnerAsk.create).not.toHaveBeenCalled();
   });
 
-  it("the automatic ask (no number) still asks for every open place", async () => {
-    settingsMock.loadPartnerAskSettings.mockResolvedValue({ when: "auto", time: null, cutoffHours: 4 });
-    const r = await requestPartnerAsk({ askerOrgId: "fnf", matchId: "m1", partnershipId: "p1", requestedByUserId: null, via: "auto", now: NOW });
+  it("an ask with no number (asking in words) still asks for every open place", async () => {
+    const r = await requestPartnerAsk({ askerOrgId: "fnf", matchId: "m1", partnershipId: "p1", requestedByUserId: "admin1", via: "hq", now: NOW });
     expect(r).toMatchObject({ ok: true, places: 4 });
     expect(createdData()[0]).toMatchObject({ places: 4, roundId: null });
   });

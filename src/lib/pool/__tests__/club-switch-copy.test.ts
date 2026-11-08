@@ -10,10 +10,9 @@ import { poolClubSwitchCopy, type PoolClubSwitchCopy } from "@/lib/i18n/pool-clu
 import { poolClubShareCopy } from "@/lib/i18n/pool-club-share";
 import { poolCopy } from "@/lib/i18n/pool-offer";
 import { poolPageCopy } from "@/lib/pool/page-copy";
-import { t } from "@/lib/i18n/t";
 import { settingInfo } from "@/lib/settings-info";
 
-const L = { autoAsk: "https://matchtime.ai/admin/settings#pool-auto-ask", share: "https://matchtime.ai/admin/settings#pool-club-share" };
+const L = { share: "https://matchtime.ai/admin/settings#pool-club-share" };
 const lines = (c: PoolClubSwitchCopy): string[] => [
   c.notice("FNF", "group", L),
   c.notice("FNF", "dm", L),
@@ -57,7 +56,6 @@ const EN_HQ = [
   "",
   "*Other ways*",
   "• Tick *MatchTime player pool* on a match: MatchTime asks nearby pool players for that match's open places.",
-  "• *Ask the player pool automatically*: on match day, if a place is still open and your bench is empty, MatchTime asks the pool by itself. Turn it on here: https://matchtime.ai/admin/settings#pool-auto-ask",
   "",
   "Want your players to know? Use *Tell your players about the player pool*: https://matchtime.ai/admin/settings#pool-club-share",
 ];
@@ -73,7 +71,6 @@ const TR_HQ = [
   "",
   "*Başka yollar*",
   "• Bir maçta *MatchTime oyuncu havuzu* kutusunu işaretleyin: MatchTime o maçtaki boş yerler için yakındaki havuz oyuncularına sorar.",
-  "• *Oyuncu havuzuna kendiliğinden sor*: maç günü hâlâ boş yer varsa ve yedekte kimse yoksa MatchTime havuza kendisi sorar. Buradan açın: https://matchtime.ai/admin/settings#pool-auto-ask",
   "",
   "Oyuncularınız da bilsin mi? *Oyuncularınıza oyuncu havuzunu anlatın* kartını kullanın: https://matchtime.ai/admin/settings#pool-club-share",
 ];
@@ -104,7 +101,9 @@ describe("the message to the admin team", () => {
     for (const lang of ["en", "tr"] as const) {
       const c = poolClubSwitchCopy(lang);
       for (const l of [c.notice("FNF", "group", L), c.notice("FNF", "dm", L), c.groupAnnouncement("FNF"), c.lead]) expect(l).not.toMatch(/always asked first|Önce her zaman/);
-      expect(c.lead).toContain(lang === "en" ? "When MatchTime asks by itself, your partner clubs are asked first." : "MatchTime kendiliğinden sorduğunda önce partner kulüplerinize sorulur.");
+      // Nothing asks by itself (Kemal, 2026-11-08): an admin asks, with partner clubs or on its own.
+      expect(c.lead).toContain(lang === "en" ? "together with your partner clubs or on its own. Nothing is sent until an admin asks." : "partner kulüplerinizle birlikte ya da tek başına sorabilir. Bir yönetici istemedikçe hiçbir şey gönderilmez.");
+      expect(c.lead).not.toMatch(/by itself|automatic|kendiliğinden|otomatik/i);
       expect(settingInfo(lang, "playerPool").what.join(" ")).not.toMatch(/always asked first|Önce her zaman/);
     }
   });
@@ -121,12 +120,12 @@ describe("the message to the admin team", () => {
     }
   });
 
-  it("quotes the real headings: the match page tick, the automatic ask card and the share card", () => {
+  it("quotes the real headings: the match page tick and the share card; no automatic ask", () => {
     for (const lang of ["en", "tr"] as const) {
       const msg = poolClubSwitchCopy(lang).notice("FNF", "group", L);
       expect(msg).toContain(`*${poolCopy(lang).pool_label}*`);
-      expect(msg).toContain(`*${t(lang).pauto_title}*`);
       expect(msg).toContain(`*${poolClubShareCopy(lang).title}*`);
+      expect(msg).not.toMatch(/automatically|by itself|kendiliğinden|kendisi sorar|pool-auto-ask/);
     }
   });
 });
@@ -180,7 +179,6 @@ describe("the announcement in the players' group (a club with no admin group)", 
       const msg = poolClubSwitchCopy(lang).groupAnnouncement("FNF");
       expect(msg).not.toMatch(/https?:\/\//);
       expect(msg).not.toContain(poolClubShareCopy(lang).title);
-      expect(msg).not.toContain(t(lang).pauto_title);
     }
   });
 
@@ -190,15 +188,15 @@ describe("the announcement in the players' group (a club with no admin group)", 
 });
 
 describe("the links", () => {
-  it("point at the fixed settings anchors, and both admin versions link the automatic ask card", async () => {
+  it("point at the fixed settings anchor of the share card, the only link left", async () => {
     const { poolOnLinks } = await import("../club-switch");
     const links = poolOnLinks();
-    expect(links.autoAsk).toMatch(/^https?:\/\/\S+\/admin\/settings#pool-auto-ask$/);
+    expect(Object.keys(links)).toEqual(["share"]);
     expect(links.share).toMatch(/^https?:\/\/\S+\/admin\/settings#pool-club-share$/);
     for (const lang of ["en", "tr"] as const) {
       const c = poolClubSwitchCopy(lang);
       for (const m of [c.notice("FNF", "group", L), c.notice("FNF", "dm", L)]) {
-        expect(m).toContain(L.autoAsk);
+        expect(m).toContain(L.share);
         expect(m).not.toMatch(/Admin, then Settings|Yönetim, sonra Ayarlar/);
       }
       expect(c.notice("FNF", "group", L)).toContain(L.share);
@@ -216,7 +214,8 @@ describe("the other ways (2026-10-28 readability fix)", () => {
         const tick = ls.findIndex((l) => l.startsWith("• ") && l.includes(`*${poolCopy(lang).pool_label}*`));
         expect(tick).toBeGreaterThan(0);
         expect(ls[tick - 1]).toMatch(/^\*.+\*$/);
-        expect(ls[tick + 1]).toMatch(new RegExp(`^• \\*${t(lang).pauto_title}\\*.*${L.autoAsk.replace(/[.#]/g, "\\$&")}$`));
+        // The automatic ask was removed (Kemal, 2026-11-08): the tick is the one other way.
+        expect(ls[tick + 1]).toBe("");
       }
     }
   });

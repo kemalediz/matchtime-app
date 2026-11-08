@@ -3,7 +3,8 @@
  * Plan: MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.3 to 3.5.
  *
  *   - the match page shows "Ask a partner club" only to an admin of a club
- *     with an ACTIVE partner and asking switched on;
+ *     with an ACTIVE partner: the pairing is the one switch, there is no
+ *     asking setting to turn on (Kemal, 2026-11-08);
  *   - the button asks the partner's organisers (nothing posted yet);
  *   - the approve page, signed in as the partner's owner, posts the ask
  *     once: a second answer finds it closed;
@@ -39,7 +40,7 @@ test("no active partner: no panel on the match page", async ({ page }) => {
   await expect(page.getByTestId("partner-ask-panel")).toHaveCount(0);
 });
 
-test("an active partner and asking on: the admin asks, the partner's organisers are asked", async ({ page, db }) => {
+test("an active partner, no setting to switch on: the admin asks, the partner's organisers are asked", async ({ page, db }) => {
   await db.run(
     `INSERT INTO "Organisation" (id,name,slug,"inviteCode","approvalStatus","whatsappGroupId","whatsappBotEnabled","createdAt","updatedAt")
      VALUES ($1,'Sutton Lenders',$1,$2,'approved','120363999000000071@g.us',true,now(),now())`,
@@ -61,13 +62,9 @@ test("an active partner and asking on: the admin asks, the partner's organisers 
      VALUES ($1,$2,$3,'active','each-ask',now(),now(),$4,now(),now())`,
     [PAIR, ORG_ID, PARTNER, U.admin],
   );
-  // Asking is Off by default: still no panel.
+  // The active pairing is enough: the panel shows at once, nothing to switch on.
   await signInAs(page, U.admin, `/matches/${MATCH.upcoming}`);
   await expect(page.getByText("Alex Admin").first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("partner-ask-panel")).toHaveCount(0);
-
-  await db.run(`UPDATE "Organisation" SET "partnerAskWhen" = 'on-request' WHERE id = $1`, [ORG_ID]);
-  await page.reload();
   const panel = page.getByTestId("partner-ask-panel");
   await expect(panel).toBeVisible({ timeout: 30_000 });
   await panel.getByTestId("partner-ask-button").click();

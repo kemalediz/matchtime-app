@@ -7,16 +7,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const dbMock = vi.hoisted(() => ({
   match: { findUnique: vi.fn() },
   attendance: { count: vi.fn() },
-  benchSlotOffer: { findFirst: vi.fn() },
-  sentNotification: { findFirst: vi.fn() },
 }));
 vi.mock("../db", () => ({ db: dbMock }));
-const weekMock = vi.hoisted(() => ({ loadMonthlyWeek: vi.fn(), loadPaygPool: vi.fn() }));
-vi.mock("../monthly-week", () => ({ ...weekMock, weekListKeyPrefix: (id: string) => `${id}:month-list:` }));
+const weekMock = vi.hoisted(() => ({ loadMonthlyWeek: vi.fn() }));
+vi.mock("../monthly-week", () => weekMock);
 
-import { askPlacesOpen, clubFillsFirstFor, guestPaygPence } from "../monthly-week-asks";
+import { askPlacesOpen, guestPaygPence } from "../monthly-week-asks";
 
-const NOW = new Date("2026-11-09T14:00:00Z");
 const reg = (userId: string, slot: number) => ({ userId, name: userId, kind: "regular", slot, paid: "confirmed", absent: false, paygDated: false });
 const WEEK = {
   matchId: "m1",
@@ -38,9 +35,6 @@ beforeEach(() => {
   dbMock.match.findUnique.mockResolvedValue({ maxPlayers: 14, activity: { org: { squadMode: "monthly" } } });
   dbMock.attendance.count.mockResolvedValue(10);
   weekMock.loadMonthlyWeek.mockResolvedValue(WEEK);
-  weekMock.loadPaygPool.mockResolvedValue([{ userId: "p" }]);
-  dbMock.benchSlotOffer.findFirst.mockResolvedValue({ createdAt: new Date(NOW.getTime() - 30 * 60_000) });
-  dbMock.sentNotification.findFirst.mockResolvedValue({ createdAt: new Date(NOW.getTime() - 20 * 60_000) });
 });
 
 describe("a weekly club", () => {
@@ -51,10 +45,8 @@ describe("a weekly club", () => {
     expect(weekMock.loadMonthlyWeek).not.toHaveBeenCalled();
   });
 
-  it("no PAYG price, and never held", async () => {
+  it("no PAYG price", async () => {
     expect(await guestPaygPence("m1")).toBeNull();
-    expect(await clubFillsFirstFor("m1", NOW)).toBe(false);
-    expect(dbMock.benchSlotOffer.findFirst).not.toHaveBeenCalled();
   });
 
   it("no such match: nothing open", async () => {
@@ -77,21 +69,5 @@ describe("a monthly week", () => {
 
   it("the PAYG price", async () => {
     expect(await guestPaygPence("m1")).toBe(800);
-  });
-
-  it("the club's PAYG players were told 20 minutes ago: held; told 70 minutes ago: not", async () => {
-    expect(await clubFillsFirstFor("m1", NOW)).toBe(true);
-    dbMock.benchSlotOffer.findFirst.mockResolvedValue({ createdAt: new Date(NOW.getTime() - 80 * 60_000) });
-    dbMock.sentNotification.findFirst.mockResolvedValue({ createdAt: new Date(NOW.getTime() - 70 * 60_000) });
-    expect(await clubFillsFirstFor("m1", NOW)).toBe(false);
-    expect(dbMock.sentNotification.findFirst.mock.calls[0][0].where).toEqual({
-      matchId: "m1",
-      OR: [{ key: { startsWith: "m1:payg-pool-" } }, { key: { startsWith: "m1:month-list:" } }],
-    });
-  });
-
-  it("an empty PAYG pool: nothing to wait for", async () => {
-    weekMock.loadPaygPool.mockResolvedValue([]);
-    expect(await clubFillsFirstFor("m1", NOW)).toBe(false);
   });
 });

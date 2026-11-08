@@ -183,7 +183,7 @@ export function PartnerAskPanel(props: {
               ) : pool.ask?.status === "open" ? (
                 <p className="text-sm text-slate-700" data-testid="pool-ask-status">
                   {ps.pool_label}:{" "}
-                  {pool.ask.waitingForPartners ? ps.panel_partners_first : pool.ask.asked > 0 ? ps.panel_asked({ asked: pool.ask.asked, declined: pool.ask.declined }) : ps.panel_waiting}
+                  {pool.ask.asked > 0 ? ps.panel_asked({ asked: pool.ask.asked, declined: pool.ask.declined }) : ps.panel_waiting}
                 </p>
               ) : pool.band === "none" || pool.gate ? (
                 <p className="text-sm text-slate-500" data-testid="pool-ask-none">

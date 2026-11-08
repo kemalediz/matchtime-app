@@ -27,11 +27,11 @@
  *                  then `askPoolFromWords` with `via: "notice"` for that match
  *
  * The organisers' request IS the approval the pool needs (an organiser
- * asked; `requestPoolAsk` re-checks the role). Like the automatic ask it
- * asks for every open place, or joins a partner round still open on the
- * match for its number (`poolAutoRound`), so the round's fill counts both.
- * It never waits for that round's partner clubs: an organiser's ask goes
- * now (Kemal, 2026-10-29; `round-rules.ts` `poolWaitsForPartners`).
+ * asked; `requestPoolAsk` re-checks the role). It asks for every open
+ * place, or joins a partner round still open on the match for its number
+ * (`poolRoundToJoin`), so the round's fill counts both. It never waits for
+ * that round's partner clubs: an organiser's ask goes now (Kemal,
+ * 2026-10-29).
  *
  * Outside `src/lib/pool/` on purpose: the HQ reader calls the model, and
  * no model-facing file may import a pool module (`pool/__tests__/
@@ -49,15 +49,14 @@ import type { PendingWithLabel } from "./admin-group-context";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { loadSquadState } from "./pipeline/load-state";
-import { openPartnerRoundOf } from "./pool/auto-ask";
-import { poolAutoRound } from "./pool/auto-ask-rules";
+import { poolRoundToJoin } from "./pool/round-rules";
 import { poolHqAskReply, type PoolRefusalContext } from "./pool/offer-copy";
 import { isPoolOffersEnabled } from "./pool/flags";
 import { settingsAnchorPath } from "./help-links";
 import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "./club-partnership-rules";
 import { loadPartnerAskSettings } from "./club-partnership";
 import { poolNoticeBand } from "./pool/panel";
-import { placesOpenOf, requestPoolAsk } from "./pool/round";
+import { openPartnerRoundOf, placesOpenOf, requestPoolAsk } from "./pool/round";
 
 type Env = Record<string, string | undefined>;
 const DAY_MS = 24 * 3600_000;
@@ -87,7 +86,7 @@ export async function askPoolFromWords(args: {
     : null;
   if (!match) return { outcome: "hq-pool-no-match", replyText: t(lang).recruit_no_match };
   const placesOpen = await placesOpenOf(match.id);
-  const round = poolAutoRound({ askedNowRoundId: null, openRound: await openPartnerRoundOf(orgId, match.id), placesOpen });
+  const round = poolRoundToJoin({ openRound: await openPartnerRoundOf(orgId, match.id), placesOpen });
   const r = await requestPoolAsk({
     orgId,
     matchId: match.id,

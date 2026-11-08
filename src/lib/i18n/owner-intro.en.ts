@@ -51,7 +51,7 @@ Organisers, just tag MatchTime and say where to look. It asks straight away:
 • *@Match Time find players from partner clubs for Thursday*
 • *@Match Time find players from partner clubs and the pool for Thursday*
 
-🤝 *Partner clubs:* link up with other MatchTime clubs nearby and share spare players. If you switch it on, MatchTime can ask your partners automatically on match day.
+🤝 *Partner clubs:* link up with other MatchTime clubs nearby and share spare players. Once you're paired, your organisers can ask them for players on WhatsApp or the match page.
 
 🙋 *You see who's coming:* when a pool player or a partner club's player takes a place or goes on the bench, MatchTime posts it here, so everyone knows who's joining.`,
     `⚽ *Want more games yourself? Join the pool.*

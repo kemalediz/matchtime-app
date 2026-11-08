@@ -73,7 +73,9 @@ export const POOL_ASK_STATUSES = ["open", "filled", "closed", "cancelled"] as co
 export type PoolAskStatus = (typeof POOL_ASK_STATUSES)[number];
 
 /** How the ask was approved: the match page, a YES to the short-squad
- *  notice, the club's automatic ask, or an organiser's words in HQ. */
+ *  notice, or an organiser's words. "auto" (the club's automatic ask) is
+ *  kept only for old rows and the CHECK (prisma/sql/pool-check.sql):
+ *  nothing asks by itself since 2026-11-08. */
 export const POOL_ASK_VIA = ["page", "notice", "auto", "words"] as const;
 export type PoolAskVia = (typeof POOL_ASK_VIA)[number];
 

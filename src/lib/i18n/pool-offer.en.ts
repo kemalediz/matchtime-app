@@ -78,11 +78,6 @@ export const poolOfferEn = {
   /** The same line in the admin group, where a YES asks the pool (L10). */
   notice_offer_line_hq: (p: { band: string; link: string }) =>
     `🔎 Or I can ask nearby players from the MatchTime pool (${p.band}): say *@Match Time YES* here, or open the match page: ${p.link}`,
-  /** The automatic ask asked the pool (slice L9): one line to the organisers. */
-  notice_auto: (p: { day: string; partnersFirst: boolean }) =>
-    p.partnersFirst
-      ? `🔎 Your automatic ask: a place is still open for ${p.day} and nobody is on your bench, so I'll ask nearby players from the MatchTime player pool if your partner clubs have not filled it within the hour. I'll tell you when one takes a place.`
-      : `🔎 Your automatic ask: a place is still open for ${p.day} and nobody is on your bench, so I'm asking nearby players from the MatchTime player pool. I'll tell you when one takes a place.`,
 
   // ── Asking the pool in the organisers' group (L10) ────────────────────
   /** An organiser asked in words, or said YES to the short-squad notice.
@@ -141,7 +136,6 @@ export const poolOfferEn = {
   band_few: "a few near you",
   band_many: "5+ near you",
   panel_no_venue: "Confirm your venue on the match page to ask nearby players from the MatchTime pool.",
-  panel_partners_first: "Pool players are asked an hour after your partner clubs, if places are still open.",
   panel_asked: (p: { asked: number; declined: number }) =>
     `Asked ${p.asked} nearby ${plural(p.asked, "player", "players")}${p.declined > 0 ? `, ${p.declined} said no` : ""}.`,
   panel_waiting: "Waiting to ask nearby players.",

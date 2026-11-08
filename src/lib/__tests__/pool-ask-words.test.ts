@@ -13,10 +13,8 @@ const log = vi.hoisted(() => ({ hqQuestionsSince: vi.fn() }));
 vi.mock("../admin-group-log", () => log);
 const squad = vi.hoisted(() => ({ loadSquadState: vi.fn() }));
 vi.mock("../pipeline/load-state", () => squad);
-const round = vi.hoisted(() => ({ requestPoolAsk: vi.fn(), placesOpenOf: vi.fn() }));
+const round = vi.hoisted(() => ({ requestPoolAsk: vi.fn(), placesOpenOf: vi.fn(), openPartnerRoundOf: vi.fn() }));
 vi.mock("../pool/round", () => round);
-const autoAsk = vi.hoisted(() => ({ openPartnerRoundOf: vi.fn() }));
-vi.mock("../pool/auto-ask", () => autoAsk);
 const panel = vi.hoisted(() => ({ poolNoticeBand: vi.fn() }));
 vi.mock("../pool/panel", () => panel);
 const invite = vi.hoisted(() => ({ invitationsAwaitingClub: vi.fn(), answerAsClub: vi.fn() }));
@@ -35,7 +33,7 @@ beforeEach(() => {
   dbMock.organisation.findUnique.mockResolvedValue({ name: "MT Test", featurePlayerPool: true, partnerAskCutoffHours: null });
   squad.loadSquadState.mockResolvedValue({ matchId: "m1" });
   round.placesOpenOf.mockResolvedValue(2);
-  autoAsk.openPartnerRoundOf.mockResolvedValue(null);
+  round.openPartnerRoundOf.mockResolvedValue(null);
   round.requestPoolAsk.mockResolvedValue({ ok: true, askId: "a1", waveSent: true });
   panel.poolNoticeBand.mockResolvedValue("few");
   log.hqQuestionsSince.mockResolvedValue([]);
@@ -55,7 +53,7 @@ describe("asking the pool from HQ", () => {
   });
 
   it("partner clubs already asked for this game: the pool joins their round for its number, and is asked NOW (Kemal, 2026-10-29)", async () => {
-    autoAsk.openPartnerRoundOf.mockResolvedValue({ roundId: "r1", places: 1 });
+    round.openPartnerRoundOf.mockResolvedValue({ roundId: "r1", places: 1 });
     const r = await askPoolFromWords({ orgId: "o1", userId: "u-owner", via: "words", lang: "en", now: NOW, env: ENV });
     expect(round.requestPoolAsk).toHaveBeenCalledWith(expect.objectContaining({ roundId: "r1", places: 1, via: "words" }));
     expect(r.replyText).toMatch(/^🔎 Asking nearby players from the MatchTime player pool for 1 place on Tue 27 Oct, 20:00, at the same time as your partner clubs\./);

@@ -32,7 +32,6 @@ import {
   PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
   PARTNER_ASK_CUTOFF_MAX_HOURS,
   PARTNER_ASK_CUTOFF_MIN_HOURS,
-  PARTNER_ASK_TIME_DEFAULT,
 } from "../club-partnership-rules";
 
 const ROOT = join(__dirname, "..", "..", "..");
@@ -183,8 +182,6 @@ describe("settings explanations: house rules", () => {
         badgeAnnouncements: s.badges_feature_label,
         gearReminder: s.gear_feature_label,
         partnerClubs: s.pc_list_label,
-        partnerAskWhen: s.pc_when_label,
-        partnerAskTime: s.pc_time_label,
         partnerAskCutoff: s.pc_cutoff_label,
         partnerApproval: s.pc_approval_label,
         // Partner discovery (slice P1, 2026-10-22).
@@ -194,8 +191,6 @@ describe("settings explanations: house rules", () => {
         clubHomeVenue: s.pd_venue_label,
         // Local player pool (slice L5b, 2026-10-24).
         playStyle: s.ps_title,
-        // Local player pool (slice L9, 2026-10-24).
-        poolAutoAsk: s.pauto_title,
       };
       for (const [k, label] of Object.entries(titles)) expect(settingInfo(lang, k as SettingInfoKey).title, `${k} ${lang}`).toBe(label);
     }
@@ -224,10 +219,9 @@ describe("settings explanations: house rules", () => {
       expect(s.msq_mode_weekly.startsWith(weekly)).toBe(true);
       expect(s.msq_mode_monthly.startsWith(monthly)).toBe(true);
       expect(names("teamsReady")[1]).toBe(s.tp_settings_off);
-      expect(names("partnerAskWhen")).toEqual([s.pc_when_off, s.pc_when_on_request, s.pc_when_auto]);
       expect(names("partnerApproval")).toEqual([s.pc_approval_each, s.pc_approval_standing]);
       // Partner discovery (slice P1): a switch's choices are On and Off.
-      for (const k of ["partnerDiscoverable", "partnerAutoAccept", "partnerShareRatings", "poolAutoAsk"] as const) expect(names(k)).toEqual(lang === "tr" ? ["Açık", "Kapalı"] : ["On", "Off"]);
+      for (const k of ["partnerDiscoverable", "partnerAutoAccept", "partnerShareRatings"] as const) expect(names(k)).toEqual(lang === "tr" ? ["Açık", "Kapalı"] : ["On", "Off"]);
     }
   });
 
@@ -281,7 +275,6 @@ describe("settings explanations: the facts match the code", () => {
       badgeAnnouncements: "featureBadgeAnnouncements",
       gearReminder: "featureGearReminder",
       rollingSquad: "rollingSquadEnabled",
-      poolAutoAsk: "poolAutoAsk",
     };
     for (const [k, col] of Object.entries(columns)) {
       expect(d[col], col).toMatch(/^(true|false)$/);
@@ -313,17 +306,17 @@ describe("settings explanations: the facts match the code", () => {
     expect(d.language).toBe("en");
   });
 
-  it("partner clubs: asking is off, the cut-off is 2 hours (1 to 24), the automatic time 08:00", () => {
-    expect(d.partnerAskWhen).toBe("off");
-    expect(newClubs("partnerAskWhen")).toBe(`${t("en").pc_when_off}.`);
-    expect(newClubs("partnerAskWhen", "tr")).toBe(`${t("tr").pc_when_off}.`);
+  it("partner clubs: an active pairing is the switch (no when-to-ask setting), the cut-off is 2 hours (1 to 24)", () => {
+    expect(d.partnerAskWhen).toBeUndefined();
+    for (const k of ["partnerAskWhen", "partnerAskTime", "poolAutoAsk"]) expect(SETTING_INFO_KEYS as readonly string[], k).not.toContain(k);
     expect(d.partnerAskCutoffHours).toBe(String(PARTNER_ASK_CUTOFF_DEFAULT_HOURS));
     expect(newClubs("partnerAskCutoff")).toBe(`${t("en").pc_cutoff_hours({ hours: PARTNER_ASK_CUTOFF_DEFAULT_HOURS })}.`);
     expect(newClubs("partnerAskCutoff", "tr")).toBe(`${t("tr").pc_cutoff_hours({ hours: PARTNER_ASK_CUTOFF_DEFAULT_HOURS })}.`);
     expect(joined(settingInfo("en", "partnerAskCutoff"))).toContain(`from ${PARTNER_ASK_CUTOFF_MIN_HOURS} to ${PARTNER_ASK_CUTOFF_MAX_HOURS} hours`);
     expect(joined(settingInfo("tr", "partnerAskCutoff"))).toContain(`${PARTNER_ASK_CUTOFF_MIN_HOURS} ile ${PARTNER_ASK_CUTOFF_MAX_HOURS} saat`);
-    expect(newClubs("partnerAskTime")).toBe(`${PARTNER_ASK_TIME_DEFAULT}.`);
-    expect(newClubs("partnerAskTime", "tr")).toBe(`${PARTNER_ASK_TIME_DEFAULT}.`);
+    // The partner clubs card says how asking works now, in both languages.
+    expect(joined(settingInfo("en", "partnerClubs"))).toMatch(/partner clubs and the player pool together or separately\. MatchTime never asks by itself\./);
+    expect(joined(settingInfo("tr", "partnerClubs"))).toMatch(/birlikte ya da ayrı ayrı sorabilirler\. MatchTime kendi başına hiç sormaz\./);
     // The partner's approval default is the table's column default.
     const schema = read("prisma/schema.prisma");
     const block = schema.slice(schema.indexOf("model ClubPartnership {"));
@@ -390,12 +383,5 @@ describe("settings explanations: the facts match the code", () => {
     expect(pickFallbackAt(opened, new Date(opened.getTime() + 10 * H)).getTime() - opened.getTime()).toBe(6 * H);
     expect(pickFallbackAt(opened, new Date(opened.getTime() + 3 * H)).getTime() - opened.getTime()).toBe(1 * H);
     expect(joined(settingInfo("en", "benchPickFallback"))).toMatch(/within a day[\s\S]*4 hours before kickoff[\s\S]*at least an hour/);
-  });
-
-  it("Ask the player pool automatically: the organisers are told when it asks, and no night-time promise (the pool's quiet hours were removed 2026-10-29)", () => {
-    expect(joined(settingInfo("en", "poolAutoAsk"))).toMatch(/When it asks, your organisers are told\./);
-    expect(joined(settingInfo("tr", "poolAutoAsk"))).toMatch(/Sorduğunda organizatörlerinize haber verilir\./);
-    expect(joined(settingInfo("en", "poolAutoAsk"))).not.toMatch(/late at night/);
-    expect(joined(settingInfo("tr", "poolAutoAsk"))).not.toMatch(/gece geç saatte/);
   });
 });

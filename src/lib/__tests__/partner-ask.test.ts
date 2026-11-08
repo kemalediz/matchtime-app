@@ -85,7 +85,7 @@ beforeEach(() => {
   dbMock.botJob.create.mockResolvedValue({ id: "job1" });
   noticeMock.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
   postableMock.isGroupPostable.mockResolvedValue(true);
-  settingsMock.loadPartnerAskSettings.mockResolvedValue({ when: "on-request", time: null, cutoffHours: 4 });
+  settingsMock.loadPartnerAskSettings.mockResolvedValue({ cutoffHours: 4 });
 });
 
 const request = (over: Partial<Parameters<typeof requestPartnerAsk>[0]> = {}) =>
@@ -189,8 +189,15 @@ describe("requestPartnerAsk", () => {
   });
 
   it("the club's own cut-off is used", async () => {
-    settingsMock.loadPartnerAskSettings.mockResolvedValue({ when: "on-request", time: null, cutoffHours: 2 });
+    settingsMock.loadPartnerAskSettings.mockResolvedValue({ cutoffHours: 2 });
     expect(await request({ now: new Date(KICKOFF.getTime() - 3 * H) })).toMatchObject({ ok: true });
+  });
+
+  it("an active pairing is the switch (Kemal, 2026-11-08): the button asks with no asking setting at all", async () => {
+    settingsMock.loadPartnerAskSettings.mockResolvedValue({ cutoffHours: 4 });
+    expect(await request()).toMatchObject({ ok: true, partnerName: "Sutton FC" });
+    expect(dbMock.partnerAsk.create).toHaveBeenCalledTimes(1);
+    expect(dbMock.organisation.findUnique.mock.calls.every(([a]) => !("partnerAskWhen" in (a?.select ?? {})))).toBe(true);
   });
 
   it("the partner club is muted: refused in plain words, nothing written", async () => {
@@ -201,13 +208,10 @@ describe("requestPartnerAsk", () => {
     expect(dbMock.partnerAsk.create).not.toHaveBeenCalled();
   });
 
-  it("a PLAYER cannot ask; asking Off refuses; the squad full refuses", async () => {
+  it("a PLAYER cannot ask; the squad full refuses", async () => {
     dbMock.membership.findUnique.mockResolvedValue({ role: "PLAYER", leftAt: null });
     expect(await request()).toMatchObject({ ok: false, refusal: "not-admin" });
     dbMock.membership.findUnique.mockResolvedValue({ role: "ADMIN", leftAt: null });
-    settingsMock.loadPartnerAskSettings.mockResolvedValue({ when: "off", time: null, cutoffHours: 4 });
-    expect(await request()).toMatchObject({ ok: false, refusal: "asking-off" });
-    settingsMock.loadPartnerAskSettings.mockResolvedValue({ when: "on-request", time: null, cutoffHours: 4 });
     dbMock.attendance.count.mockResolvedValue(18);
     expect(await request()).toMatchObject({ ok: false, refusal: "no-places" });
     expect(dbMock.partnerAsk.create).not.toHaveBeenCalled();
