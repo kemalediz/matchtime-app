@@ -11,7 +11,7 @@
  *   Matches           Weekly routine, Reminders, Teams, Monthly squad
  *   Players           Attendance, Bench, Ratings and stats, Man of the Match, Invite link
  *   Payments          Payments (fees, methods, collector, bank), MatchTime club fee
- *   Finding players   Partner clubs, Player pool, Style of play, automatic asking,
+ *   Finding players   Partner clubs, Player pool, Style of play,
  *                     Tell your players, Group invite link
  *   Messages          Quiet hours, Admin messages, Posters
  */
@@ -73,7 +73,6 @@ import { PostersCard } from "@/components/settings/posters-card";
 import { PartnerClubsSection } from "@/components/settings/partner-clubs-section";
 import { QuietHoursSection } from "@/components/settings/quiet-hours-section";
 import { PlayStyleSection } from "@/components/settings/play-style-section";
-import { PoolAutoAskSection } from "@/components/settings/pool-auto-ask-section";
 import { PoolClubShareSection } from "@/components/settings/pool-club-share-section";
 import { GroupInviteLinkSection } from "@/components/settings/group-invite-link-section";
 import { PlayerPoolSection } from "@/components/settings/player-pool-section";
@@ -417,9 +416,6 @@ export default function SettingsPage() {
   }
 
 
-  // "Ask the player pool automatically", for the Player pool card's summary
-  // (its own card loads it).
-  const [poolAutoAsk, setPoolAutoAsk] = useState<boolean | null>(null);
   // A row that saves through its own action: the page reads the settings
   // again, so the collapsed card's summary says what is set now.
   const rowSaved = () => {
@@ -1110,12 +1106,10 @@ export default function SettingsPage() {
           <PlayerPoolSection
             orgId={org.id}
             language={org.language}
-            autoAsk={poolAutoAsk}
             onChange={() => setPoolKey((k) => k + 1)}
           />
           {/* Style of play (pool L5b): only while the club may ask the player pool. */}
           <PlayStyleSection key={`ps-${poolKey}`} orgId={org.id} language={org.language} />
-          <PoolAutoAskSection key={`pa-${poolKey}`} orgId={org.id} language={org.language} onState={setPoolAutoAsk} />
           {/* The club's one share post (pool G3): only while the club has the player pool. */}
           <PoolClubShareSection key={`pcs-${poolKey}`} orgId={org.id} language={org.language} />
           {/* Group invite link (pool L8): only while the club has the player pool. */}

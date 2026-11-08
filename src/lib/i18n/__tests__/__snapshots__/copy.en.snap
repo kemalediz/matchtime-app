@@ -2339,13 +2339,13 @@ Your club can team up with nearby clubs to lend each other players. When a partn
 ❌ This club has no partner clubs yet. An admin can find clubs nearby on the settings page:
 https://matchtime.ai/admin/settings#partner-clubs
 
-### R153 buildHelpReply / partners not asked / group
+### R153 buildHelpReply / partners two / group
 🤝 *Partner clubs: how it works*
 Your club can team up with nearby clubs to lend each other players. When a partner club is a player short, its ask may be posted here: tap the link if you fancy a game. When we're short, their players may join our bench as guests. After you play for a partner club, MatchTime DMs you once with a link to join the player pool, if you'd like more games.
 
 ✅ This club has 2 partner clubs.
 
-### R153 buildHelpReply / partners auto / group
+### R153 buildHelpReply / partners one / group
 🤝 *Partner clubs: how it works*
 Your club can team up with nearby clubs to lend each other players. When a partner club is a player short, its ask may be posted here: tap the link if you fancy a game. When we're short, their players may join our bench as guests. After you play for a partner club, MatchTime DMs you once with a link to join the player pool, if you'd like more games.
 
@@ -2359,43 +2359,43 @@ Admins can change some by tagging me too, for example *@Match Time we play with 
 
 ### R153 buildHelpReply / pool closed / admin
 🌍 *The MatchTime player pool: how it works*
-Players near you sign up to the pool to get more games. When your squad is short, MatchTime can ask them; they decide each time and play as guests.
+Players near you sign up to the pool to get more games. When your squad is short, an organiser can ask the player pool and your partner clubs, together or separately, on WhatsApp or on the match page. Pool players decide each time and play as guests.
 
 ⏳ The pool isn't open yet. Once it opens, you can switch it on for your club in your settings.
 
 ### R153 buildHelpReply / pool off / admin
 🌍 *The MatchTime player pool: how it works*
-Players near you sign up to the pool to get more games. When your squad is short, MatchTime can ask them; they decide each time and play as guests.
+Players near you sign up to the pool to get more games. When your squad is short, an organiser can ask the player pool and your partner clubs, together or separately, on WhatsApp or on the match page. Pool players decide each time and play as guests.
 
 ❌ It's off for your club. To switch it on, turn on *Player pool* here:
 https://mt.example/r/topic
 
 ### R153 buildHelpReply / pool on / admin
 🌍 *The MatchTime player pool: how it works*
-Players near you sign up to the pool to get more games. When your squad is short, MatchTime can ask them; they decide each time and play as guests.
+Players near you sign up to the pool to get more games. When your squad is short, an organiser can ask the player pool and your partner clubs, together or separately, on WhatsApp or on the match page. Pool players decide each time and play as guests.
 
-✅ It's on for your club. Ask me in your club's WhatsApp group (for example *@Match Time ask the player pool for 2 players*), or turn on *Ask the player pool automatically*. To switch it off, turn off *Player pool*:
+✅ It's on for your club. Ask me in your club's WhatsApp group (for example *@Match Time ask the player pool for 2 players*), or tick it on the match page. To switch it off, turn off *Player pool*:
 https://mt.example/r/topic
 
 ### R153 buildHelpReply / partners none / admin
 🤝 *Partner clubs: how it works*
-Partner clubs lend each other players. When your squad is still short, MatchTime asks your partner clubs, and their players who answer go on your bench as guests. Your players can answer their asks too.
+Partner clubs lend each other players. Once you're paired, an organiser can ask your partner clubs and the player pool for players, together or separately, on WhatsApp or on the match page. Their players who answer go on your bench as guests. Your players can answer their asks too.
 
 ❌ Your club has no partner clubs yet. Find clubs near you and send a request on your settings page:
 https://mt.example/r/topic
 
-### R153 buildHelpReply / partners not asked / admin
+### R153 buildHelpReply / partners two / admin
 🤝 *Partner clubs: how it works*
-Partner clubs lend each other players. When your squad is still short, MatchTime asks your partner clubs, and their players who answer go on your bench as guests. Your players can answer their asks too.
+Partner clubs lend each other players. Once you're paired, an organiser can ask your partner clubs and the player pool for players, together or separately, on WhatsApp or on the match page. Their players who answer go on your bench as guests. Your players can answer their asks too.
 
-⏸️ Your club has 2 partner clubs, but MatchTime doesn't ask them for players. To switch it on, choose when under *Ask partner clubs for players*:
+✅ It's on: your club has 2 partner clubs. Ask me in your club's WhatsApp group (for example *@Match Time find players from partner clubs for Thursday*), or tick them on the match page. Your partner clubs are here:
 https://mt.example/r/topic
 
-### R153 buildHelpReply / partners auto / admin
+### R153 buildHelpReply / partners one / admin
 🤝 *Partner clubs: how it works*
-Partner clubs lend each other players. When your squad is still short, MatchTime asks your partner clubs, and their players who answer go on your bench as guests. Your players can answer their asks too.
+Partner clubs lend each other players. Once you're paired, an organiser can ask your partner clubs and the player pool for players, together or separately, on WhatsApp or on the match page. Their players who answer go on your bench as guests. Your players can answer their asks too.
 
-✅ It's on: your club has 1 partner club, and MatchTime asks them by itself on match day, or when you ask it to. To change it or switch it off:
+✅ It's on: your club has 1 partner club. Ask me in your club's WhatsApp group (for example *@Match Time find players from partner clubs for Thursday*), or tick them on the match page. Your partner clubs are here:
 https://mt.example/r/topic
 
 ### R153 buildHelpReply / settings / admin
@@ -2431,13 +2431,13 @@ Your club can team up with nearby clubs to lend each other players. When a partn
 
 ❌ This club has no partner clubs yet.
 
-### R153 buildHelpReply / partners not asked / player
+### R153 buildHelpReply / partners two / player
 🤝 *Partner clubs: how it works*
 Your club can team up with nearby clubs to lend each other players. When a partner club is a player short, its ask may be posted here: tap the link if you fancy a game. When we're short, their players may join our bench as guests. After you play for a partner club, MatchTime DMs you once with a link to join the player pool, if you'd like more games.
 
 ✅ This club has 2 partner clubs.
 
-### R153 buildHelpReply / partners auto / player
+### R153 buildHelpReply / partners one / player
 🤝 *Partner clubs: how it works*
 Your club can team up with nearby clubs to lend each other players. When a partner club is a player short, its ask may be posted here: tap the link if you fancy a game. When we're short, their players may join our bench as guests. After you play for a partner club, MatchTime DMs you once with a link to join the player pool, if you'd like more games.
 

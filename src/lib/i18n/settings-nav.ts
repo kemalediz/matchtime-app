@@ -60,7 +60,6 @@ export interface SettingsNavCopy {
     partnersNone: string;
     partners: (n: number) => string;
     partnerRequests: (n: number) => string;
-    poolAutoAsk: string;
     playStyleNotSet: string;
     clubShareReady: string;
     clubShareNoGroup: string;

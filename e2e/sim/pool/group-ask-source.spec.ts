@@ -42,7 +42,7 @@ type Club = Awaited<ReturnType<typeof openClub>>;
 async function noHqClub(pool: PoolWorld, key: string, opts: OpenClubOpts & { language?: "en" | "tr" } = {}): Promise<Club> {
   const { language, ...clubOpts } = opts;
   const club = await openClub(pool, key, { name: "Friday MT Community", maxPlayers: 1, kickoffInHours: 48, ...clubOpts });
-  await pool.db.run(`UPDATE "Organisation" SET "partnerAskCutoffHours" = 2, "partnerAskWhen" = 'on-request', language = $2 WHERE id = $1`, [club.group.orgId, language ?? "en"]);
+  await pool.db.run(`UPDATE "Organisation" SET "partnerAskCutoffHours" = 2, language = $2 WHERE id = $1`, [club.group.orgId, language ?? "en"]);
   return club;
 }
 

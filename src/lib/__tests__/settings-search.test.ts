@@ -27,7 +27,10 @@ describe("searchSettings", () => {
     expect(ids("pool", "tr")[0]).toBe("player-pool");
     expect(ids("havuz", "tr")[0]).toBe("player-pool");
     // The other pool cards come too.
-    expect(ids("pool")).toEqual(expect.arrayContaining(["pool-auto-ask", "pool-club-share"]));
+    expect(ids("pool")).toEqual(expect.arrayContaining(["play-style", "pool-club-share"]));
+    // Nothing asks by itself (Kemal, 2026-11-08): no automatic asking card to find, EN or TR.
+    for (const q of ["automatic", "auto ask", "otomatik", "kendiliğinden"]) expect(ids(q)).not.toContain("pool-auto-ask");
+    expect(ids("pool")).not.toContain("pool-auto-ask");
   });
 
   it("finds by keyword as well as title", () => {
@@ -76,6 +79,6 @@ describe("searchSettings", () => {
   });
 
   it("only cards that are on the page, when told which are", () => {
-    expect(searchSettings("pool", "en", new Set(["pool-auto-ask"])).map((r) => r.id)).toEqual(["pool-auto-ask"]);
+    expect(searchSettings("pool", "en", new Set(["pool-club-share"])).map((r) => r.id)).toEqual(["pool-club-share"]);
   });
 });

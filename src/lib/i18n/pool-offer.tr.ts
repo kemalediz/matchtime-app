@@ -52,10 +52,6 @@ export const poolOfferTr: PoolOfferStrings = {
   turnup_some: (p) => `MatchTime'daki ${p.n} maçın ${p.played} tanesine geldi.`,
   notice_offer_line: (p) => `🔎 Ya da MatchTime havuzundan yakındaki oyunculara sorayım (${p.band}). Maç sayfasını açın: ${p.link}`,
   notice_offer_line_hq: (p) => `🔎 Ya da MatchTime havuzundan yakındaki oyunculara sorayım (${p.band}): burada *@Match Time EVET* yazın ya da maç sayfasını açın: ${p.link}`,
-  notice_auto: (p) =>
-    p.partnersFirst
-      ? `🔎 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok; partner kulüpleriniz bir saat içinde doldurmazsa MatchTime oyuncu havuzundaki yakın oyunculara soracağım. Biri yer alınca size haber vereceğim.`
-      : `🔎 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden MatchTime oyuncu havuzundaki yakın oyunculara soruyorum. Biri yer alınca size haber vereceğim.`,
 
   hq_asked: (p) =>
     `${
@@ -99,7 +95,6 @@ export const poolOfferTr: PoolOfferStrings = {
   band_few: "yakınınızda birkaç kişi",
   band_many: "yakınınızda 5+ kişi",
   panel_no_venue: "MatchTime havuzundan yakındaki oyunculara sormak için maç sayfasında sahanızı onaylayın.",
-  panel_partners_first: "Havuz oyuncularına, yerler hâlâ boşsa, ortak kulüplerden bir saat sonra sorulur.",
   panel_asked: (p) => `Yakındaki ${p.asked} oyuncuya soruldu${p.declined > 0 ? `, ${p.declined} kişi hayır dedi` : ""}.`,
   panel_waiting: "Yakındaki oyunculara sormak için bekleniyor.",
   toast_asked: (p) => `MatchTime havuzundan yakındaki oyunculara ${p.places} kişi için soruluyor.`,

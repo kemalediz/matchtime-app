@@ -33,7 +33,6 @@ const { postBy, closesAt } = askWindows(KICKOFF, 4);
 
 const ask = (over: Partial<CanAskInput> = {}): CanAskInput => ({
   partnershipStatus: "active",
-  askWhen: "on-request",
   via: "button",
   requesterRole: "ADMIN",
   isNextMatch: true,

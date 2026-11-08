@@ -55,7 +55,6 @@ export interface PartnerAskFromWordsResult {
     | "xask-words-asked"
     | "xask-words-not-asked"
     | "xask-words-no-partner"
-    | "xask-words-asking-off"
     | "xask-words-no-match"
     | "xask-words-ambiguous"
     | "xask-words-no-game";
@@ -109,7 +108,7 @@ export async function askPartnersFromWords(args: {
 }): Promise<PartnerAskFromWordsResult> {
   const { orgId, lang, now } = args;
   const [partners, settings] = await Promise.all([activePartnerChoices(orgId), loadPartnerAskSettings(orgId)]);
-  const resolved = resolvePartnerRef({ clubRef: args.clubRef, partners, askWhen: settings?.when ?? null });
+  const resolved = resolvePartnerRef({ clubRef: args.clubRef, partners });
   const settingsLink = appUrl(settingsAnchorPath("partner-clubs"));
   if (resolved.kind !== "ask") {
     console.log(`[partner-ask-words] ${orgId}: nothing asked (${resolved.kind}, ${partners.length} partner(s))`);

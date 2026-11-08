@@ -25,7 +25,6 @@ const { postBy, closesAt } = askWindows(KICKOFF, 4);
 
 const base = (over: Partial<CanAskInput> = {}): CanAskInput => ({
   partnershipStatus: "active",
-  askWhen: "on-request",
   via: "button",
   requesterRole: "ADMIN",
   isNextMatch: true,
@@ -58,15 +57,17 @@ describe("the cut-off (Kemal, 2026-10-16)", () => {
 describe("canAsk", () => {
   it("an organiser of an active pairing, the next game, a place open: yes", () => {
     expect(canAsk(base())).toEqual({ ok: true });
-    expect(canAsk(base({ requesterRole: "OWNER", askWhen: "auto" }))).toEqual({ ok: true });
+    expect(canAsk(base({ requesterRole: "OWNER" }))).toEqual({ ok: true });
   });
   it("the pairing must be active", () => {
     for (const s of ["proposed", "paused", "ended"]) expect(canAsk(base({ partnershipStatus: s }))).toEqual({ ok: false, refusal: "partnership-inactive" });
   });
-  it("the asking setting Off refuses everything; the automatic ask needs Automatically", () => {
-    expect(canAsk(base({ askWhen: "off" }))).toEqual({ ok: false, refusal: "asking-off" });
-    expect(canAsk(base({ via: "auto", requesterRole: null, askWhen: "on-request" }))).toEqual({ ok: false, refusal: "asking-off" });
-    expect(canAsk(base({ via: "auto", requesterRole: null, askWhen: "auto" }))).toEqual({ ok: true });
+  it("an active pairing is the switch (Kemal, 2026-11-08): no club setting is read, and every way in may ask", () => {
+    expect(Object.keys(base())).not.toContain("askWhen");
+    for (const via of ["button", "hq", "dm", "group", "link"] as const) expect(canAsk(base({ via }))).toEqual({ ok: true });
+  });
+  it("nothing asks by itself any more: an ask with no organiser behind it is refused", () => {
+    expect(canAsk(base({ requesterRole: null }))).toEqual({ ok: false, refusal: "not-admin" });
   });
   it("a PLAYER cannot ask", () => {
     expect(canAsk(base({ requesterRole: "PLAYER" }))).toEqual({ ok: false, refusal: "not-admin" });

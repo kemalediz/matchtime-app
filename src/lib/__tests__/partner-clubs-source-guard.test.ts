@@ -29,7 +29,10 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const WRITER = "src/lib/club-partnership.ts";
 const MODEL_WRITE = /clubPartnership\s*\.\s*(create|createMany|update|updateMany|upsert|delete|deleteMany)\b/;
-const SETTING_WRITE = /\b(partnerAskWhen|partnerAskTime|partnerAskCutoffHours)\s*:/;
+// The asking club's one setting since 2026-11-08 (the "when to ask" and
+// automatic-time settings were removed; partner-ask-settings-removed.test.ts
+// keeps them gone).
+const SETTING_WRITE = /\b(partnerAskCutoffHours)\s*:/;
 
 describe("partner clubs: one writer", () => {
   const files = [...walk(SRC), ...walk(path.join(REPO, "scripts"))];
@@ -40,11 +43,9 @@ describe("partner clubs: one writer", () => {
     expect(MODEL_WRITE.test(readFileSync(path.join(REPO, WRITER), "utf8"))).toBe(true);
   });
 
-  it("nothing but club-partnership.ts names an asking-club setting as an object key", () => {
+  it("nothing but club-partnership.ts names the asking-club setting as an object key", () => {
     // Reads go through `loadPartnerAskSettings`; the only `select` naming
-    // them is in the writer too.
-    // settings-info.ts names two of them as its explanation KEYS (the ⓘ
-    // copy, no database), which is not a write.
+    // it is in the writer too.
     const COPY = "src/lib/settings-info.ts";
     const offenders = files.filter((f) => rel(f) !== WRITER && rel(f) !== COPY && SETTING_WRITE.test(readFileSync(f, "utf8")));
     expect(offenders.map(rel)).toEqual([]);

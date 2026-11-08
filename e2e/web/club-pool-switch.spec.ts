@@ -5,9 +5,9 @@
  *     (superadmin only), no per-club list; off asks first and closes every
  *     open pool ask at once;
  *   - /admin/settings has the club's own "Player pool" card, for owners and
- *     admins, shown only while the platform switch is on; Style of play and
- *     "Ask the player pool automatically" appear under it once it is on;
- *     off asks first, closes the club's open asks and keeps poolAutoAsk;
+ *     admins, shown only while the platform switch is on; Style of play
+ *     appears under it once it is on, and there is no automatic asking card
+ *     (removed 2026-11-08); off asks first and closes the club's open asks;
  *   - the first switch-on tells the club once: the seeded club has no admin
  *     group, so ONE post in its players' group, worded for everyone, and no
  *     admin DM (Kemal, 2026-10-28); off and on again never repeats;
@@ -28,7 +28,7 @@ test.describe.configure({ mode: "serial" });
 const SHOTS = process.env.MT_SHOTS_DIR ?? path.join(REPO_ROOT, ".e2e", "test-results", "pool-switch-shots");
 
 async function flags(db: TestDb) {
-  return db.one<{ pool: boolean; auto: boolean }>(`SELECT "featurePlayerPool" AS pool, "poolAutoAsk" AS auto FROM "Organisation" WHERE id = $1`, [ORG_ID]);
+  return db.one<{ pool: boolean }>(`SELECT "featurePlayerPool" AS pool FROM "Organisation" WHERE id = $1`, [ORG_ID]);
 }
 
 async function openSettings(page: import("@playwright/test").Page, userId: string) {
@@ -54,7 +54,7 @@ test.afterAll(() => {
 test.beforeEach(async ({ page, db }) => {
   // Switching OFF asks to confirm, on both pages.
   page.on("dialog", (d) => void d.accept());
-  await db.run(`UPDATE "Organisation" SET "featurePlayerPool" = false, "poolAutoAsk" = false, language = 'en' WHERE id = $1`, [ORG_ID]);
+  await db.run(`UPDATE "Organisation" SET "featurePlayerPool" = false, language = 'en' WHERE id = $1`, [ORG_ID]);
   await db.run(`UPDATE "User" SET "isSuperadmin" = false WHERE id = $1`, [U.admin]);
   await setPoolPlatform(db, true);
 });
@@ -114,17 +114,16 @@ test("the platform switch off closes every open pool ask at once and hides the c
   expect(ask?.status).not.toBe("open");
   expect(ask?.closeReason).toBe("switched-off");
   // The club's own choice is kept.
-  expect(await flags(db)).toEqual({ pool: true, auto: false });
+  expect(await flags(db)).toEqual({ pool: true });
 
   // With the platform off, the club's admins see no pool card at all, even with the club's flag on.
   await openSettings(page, U.admin);
   await expect(page.getByTestId("player-pool")).toHaveCount(0);
   await expect(page.getByTestId("play-style")).toHaveCount(0);
-  await expect(page.getByTestId("pool-auto-ask")).toHaveCount(0);
   await expect(page.getByTestId("pool-club-share")).toHaveCount(0);
 });
 
-test("the club's own card: on shows the pool cards and tells the admin team once; off asks, closes, keeps automatic asking", async ({ page, db }) => {
+test("the club's own card: on shows the pool cards (no automatic asking card) and tells the admin team once; off asks and closes", async ({ page, db }) => {
   await openSettings(page, U.admin);
   const card = page.getByTestId("player-pool");
   await expect(card.getByRole("heading", { name: "Player pool" })).toBeVisible({ timeout: 30_000 });
@@ -133,17 +132,17 @@ test("the club's own card: on shows the pool cards and tells the admin team once
   expect(cardText).not.toMatch(/[—–]/);
   expect(cardText).not.toMatch(/\bfree\b/i);
   await expect(page.getByTestId("play-style")).toHaveCount(0);
-  await expect(page.getByTestId("pool-auto-ask")).toHaveCount(0);
 
   const sw = page.getByRole("switch", { name: "Player pool", exact: true });
   await expect(sw).toHaveAttribute("aria-checked", "false");
   await sw.click();
   await expect(page.getByText("Player pool on.", { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(sw).toHaveAttribute("aria-checked", "true");
-  await expect.poll(() => flags(db), { timeout: 15_000 }).toEqual({ pool: true, auto: false });
-  // The cards under it appear without a reload.
+  await expect.poll(() => flags(db), { timeout: 15_000 }).toEqual({ pool: true });
+  // The cards under it appear without a reload; nothing offers to ask by itself.
   await expect(page.getByTestId("play-style").getByRole("heading", { name: "Style of play" })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("pool-auto-ask").getByRole("heading", { name: "Ask the player pool automatically" })).toBeVisible();
+  await expect(page.getByTestId("pool-auto-ask")).toHaveCount(0);
+  await expect(page.getByText("Ask the player pool automatically")).toHaveCount(0);
   mkdirSync(SHOTS, { recursive: true });
   await card.screenshot({ path: path.join(SHOTS, "settings-player-pool-on.png") });
 
@@ -155,20 +154,18 @@ test("the club's own card: on shows the pool cards and tells the admin team once
   expect(job.text).toContain("*How to ask* (organisers only)");
   expect(await db.count(`SELECT count(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND text LIKE '%player pool is now on%'`, [ORG_ID])).toBe(0);
 
-  // The club turns automatic asking on, then the pool off: asked to confirm, auto kept.
-  await db.run(`UPDATE "Organisation" SET "poolAutoAsk" = true WHERE id = $1`, [ORG_ID]);
+  // The pool off: asked to confirm.
   await page.waitForLoadState("networkidle");
   await sw.click();
   await expect(page.getByText("Player pool off.", { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(sw).toHaveAttribute("aria-checked", "false");
-  await expect.poll(() => flags(db), { timeout: 15_000 }).toEqual({ pool: false, auto: true });
+  await expect.poll(() => flags(db), { timeout: 15_000 }).toEqual({ pool: false });
   await expect(page.getByTestId("play-style")).toHaveCount(0, { timeout: 15_000 });
-  await expect(page.getByTestId("pool-auto-ask")).toHaveCount(0);
 
   // On again: never told twice.
   await sw.click();
   await expect(sw).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
-  await expect.poll(() => flags(db), { timeout: 15_000 }).toEqual({ pool: true, auto: true });
+  await expect.poll(() => flags(db), { timeout: 15_000 }).toEqual({ pool: true });
   expect((await noticeJobs(db)).length).toBe(1);
 });
 
@@ -179,7 +176,7 @@ test("an ADMIN who is not the owner can switch it; a player never sees it", asyn
     const sw = page.getByRole("switch", { name: "Player pool", exact: true });
     await expect(sw).toHaveAttribute("aria-checked", "false", { timeout: 30_000 });
     await sw.click();
-    await expect.poll(() => flags(db), { timeout: 15_000 }).toEqual({ pool: true, auto: false });
+    await expect.poll(() => flags(db), { timeout: 15_000 }).toEqual({ pool: true });
   } finally {
     await db.run(`UPDATE "Membership" SET role = 'PLAYER' WHERE "userId" = $1 AND "orgId" = $2`, [U.collector, ORG_ID]);
   }

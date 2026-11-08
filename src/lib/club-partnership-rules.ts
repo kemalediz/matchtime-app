@@ -17,8 +17,10 @@
  *     its own pending request, and either side pauses it; only the side
  *     that paused resumes it, so one club can never undo the other's pause.
  *   - The partner side alone chooses how its organisers approve an ask
- *     ("each-ask" or "standing", D3); the asking side alone chooses when it
- *     asks and its cut-off (D4, D12).
+ *     ("each-ask" or "standing", D3); the asking side alone chooses its
+ *     cut-off (D12). An ACTIVE pairing is the switch: its organisers may
+ *     ask whenever they like, and nothing asks by itself (Kemal,
+ *     2026-11-08, which retired D4's "when to ask" setting).
  *
  * Pure. No database, no model. The writer is `club-partnership.ts`.
  */
@@ -27,11 +29,9 @@ import { distanceKm } from "./geo";
 
 export type PartnershipStatus = "proposed" | "active" | "paused" | "ended";
 export type PartnerApproval = "each-ask" | "standing";
-export type PartnerAskWhen = "off" | "on-request" | "auto";
 export type PartnershipSide = "asker" | "partner";
 export type ClubRole = "OWNER" | "ADMIN" | "PLAYER";
 
-export const PARTNER_ASK_WHEN: readonly PartnerAskWhen[] = ["off", "on-request", "auto"];
 export const PARTNER_APPROVALS: readonly PartnerApproval[] = ["each-ask", "standing"];
 
 /** The cut-off: the last ask goes out at least this many hours before
@@ -42,21 +42,6 @@ export const PARTNER_ASK_CUTOFF_DEFAULT_HOURS = 2;
 export const PARTNER_ASK_CUTOFF_MIN_HOURS = 1;
 export const PARTNER_ASK_CUTOFF_MAX_HOURS = 24;
 
-/** The automatic ask's London match-day time when none is set (NULL in
- *  `partnerAskTime`). 16:00 until 2026-10-29, now 08:00 (Kemal). The ONE
- *  definition: read it through `effectiveAskTime`. */
-export const PARTNER_ASK_TIME_DEFAULT = "08:00";
-
-/** A stored value, read: anything unknown is "off", never a third meaning. */
-export function normalisePartnerAskWhen(value: unknown): PartnerAskWhen {
-  return parsePartnerAskWhen(value) ?? "off";
-}
-
-/** A value to save: exactly one of the three, or refused. */
-export function parsePartnerAskWhen(value: unknown): PartnerAskWhen | null {
-  return typeof value === "string" && (PARTNER_ASK_WHEN as readonly string[]).includes(value) ? (value as PartnerAskWhen) : null;
-}
-
 export function parsePartnerApproval(value: unknown): PartnerApproval | null {
   return typeof value === "string" && (PARTNER_APPROVALS as readonly string[]).includes(value) ? (value as PartnerApproval) : null;
 }
@@ -66,22 +51,6 @@ export function parseCutoffHours(value: unknown): number | null {
   const n = typeof value === "number" ? value : typeof value === "string" && value.trim() !== "" ? Number(value) : NaN;
   if (!Number.isInteger(n)) return null;
   return n >= PARTNER_ASK_CUTOFF_MIN_HOURS && n <= PARTNER_ASK_CUTOFF_MAX_HOURS ? n : null;
-}
-
-/** A London wall-clock "H:MM" or "HH:MM", zero padded; anything else refused. */
-export function parseAskTime(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (h > 23 || min > 59) return null;
-  return `${String(h).padStart(2, "0")}:${m[2]}`;
-}
-
-/** The automatic ask's time in force. */
-export function effectiveAskTime(stored: string | null | undefined): string {
-  return parseAskTime(stored) ?? PARTNER_ASK_TIME_DEFAULT;
 }
 
 export interface PartnershipRow {

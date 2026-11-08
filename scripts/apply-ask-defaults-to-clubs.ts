@@ -12,11 +12,9 @@
  *    WHERE "partnerAskCutoffHours" = 4
  *   A club that chose any other cut-off (1, 3, 6, ...) is left alone.
  *
- * WHAT IT DOES NOT DO: touch `partnerAskTime`. A club with NULL there
- * already follows the code's default (08:00 since 2026-10-29) the moment
- * the code deploys, and a club that set its own time keeps it. The dry run
- * still lists every club's time, so who moves from 16:00 to 08:00 on deploy
- * is visible.
+ * (It also listed each club's "when to ask" setting and automatic ask time
+ * until 2026-11-08, when those settings were removed: an active pairing is
+ * the one switch, and nothing asks by itself.)
  *
  * Prints every club's values before and after, so "what changed" is a
  * list, not a promise.
@@ -24,13 +22,13 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";
-import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS, PARTNER_ASK_TIME_DEFAULT } from "../src/lib/club-partnership-rules.ts";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "../src/lib/club-partnership-rules.ts";
 
 const APPLY = process.argv.includes("--apply");
 const OLD_CUTOFF = 4;
 const NEW_CUTOFF = PARTNER_ASK_CUTOFF_DEFAULT_HOURS;
 
-type Row = { id: string; name: string; when: string; time: string | null; cutoff: number };
+type Row = { id: string; name: string; cutoff: number };
 
 async function main() {
   if (NEW_CUTOFF === OLD_CUTOFF) throw new Error("The default is still 4: nothing to move.");
@@ -40,15 +38,12 @@ async function main() {
 
   const list = async (): Promise<Row[]> =>
     db.$queryRawUnsafe(
-      `SELECT id, name, "partnerAskWhen" AS when, "partnerAskTime" AS time, "partnerAskCutoffHours" AS cutoff
+      `SELECT id, name, "partnerAskCutoffHours" AS cutoff
          FROM "Organisation" ORDER BY name`,
     ) as Promise<Row[]>;
   const show = (label: string, rows: Row[]) => {
     console.log(`\n${label}`);
-    for (const r of rows) {
-      const time = r.time ?? `NULL (reads ${PARTNER_ASK_TIME_DEFAULT})`;
-      console.log(`  ${r.name.padEnd(32)} when=${r.when.padEnd(10)} time=${time.padEnd(20)} cutoff=${r.cutoff}h  ${r.id}`);
-    }
+    for (const r of rows) console.log(`  ${r.name.padEnd(32)} cutoff=${r.cutoff}h  ${r.id}`);
   };
 
   const before = await list();

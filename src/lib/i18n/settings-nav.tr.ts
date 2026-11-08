@@ -50,7 +50,6 @@ export const SETTINGS_NAV_TR: SettingsNavCopy = {
     partnersNone: "Henüz partner kulüp yok",
     partners: (n) => `${n} partner kulüp`,
     partnerRequests: (n) => `bekleyen istek: ${n}`,
-    poolAutoAsk: "otomatik sorma",
     playStyleNotSet: "Seçilmedi",
     clubShareReady: "Henüz gönderilmedi",
     clubShareNoGroup: "Önce oyuncu grubunuzu bağlayın",

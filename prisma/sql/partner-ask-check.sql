@@ -14,17 +14,14 @@
 
 BEGIN;
 
-ALTER TABLE "Organisation" DROP CONSTRAINT IF EXISTS "Organisation_partnerAskWhen_check";
-ALTER TABLE "Organisation" ADD CONSTRAINT "Organisation_partnerAskWhen_check"
-  CHECK ("partnerAskWhen" IN ('off', 'on-request', 'auto'));
+-- "partnerAskWhen" and "partnerAskTime" had a CHECK each here until
+-- 2026-11-08: the settings were removed (an active pairing is the one
+-- switch) and the columns are dropped, with their CHECKs, by
+-- prisma/migrations/20261108120000_drop_partner_ask_settings/migration.sql.
 
 ALTER TABLE "Organisation" DROP CONSTRAINT IF EXISTS "Organisation_partnerAskCutoffHours_check";
 ALTER TABLE "Organisation" ADD CONSTRAINT "Organisation_partnerAskCutoffHours_check"
   CHECK ("partnerAskCutoffHours" BETWEEN 1 AND 24);
-
-ALTER TABLE "Organisation" DROP CONSTRAINT IF EXISTS "Organisation_partnerAskTime_check";
-ALTER TABLE "Organisation" ADD CONSTRAINT "Organisation_partnerAskTime_check"
-  CHECK ("partnerAskTime" IS NULL OR "partnerAskTime" ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
 
 -- A guest membership has both its marks or neither; since the local player
 -- pool (2026-10-24, slice L1) "guestVia" says where he came from, and a POOL

@@ -2,21 +2,18 @@
  * A POOL ROUND'S RULES (slice L5a, 2026-10-24). PURE: no database, no
  * clock of its own. The runner is `round.ts`.
  *
- * Approved decision (brief): partners first, the pool after 1 hour, or at
- * once when no partner club is being asked; the organiser approves the
- * round with one tap; the club's automatic ask (`poolAutoAsk`) is L9.
- * Superseded for organiser asks (Kemal, 2026-10-29, decisions log L5a.11):
- * MatchTime asks exactly the places the organiser names, now; only the
- * automatic ask still gives the partners their hour (`POOL_WAITS_FOR_PARTNERS_VIA`).
+ * Approved decision (brief): the organiser approves the round with one
+ * tap. Kemal, 2026-10-29 (decisions log L5a.11): MatchTime asks exactly the
+ * places the organiser names, now, at the same time as any partner clubs
+ * of the round. Kemal, 2026-11-08: nothing asks by itself; the automatic
+ * ask (L9) and the hour it gave the partners first were removed.
  *
  *   poolAskRefusal     may this organiser ask the pool for this match now.
  *                      The match gate is L4's `matchGate`; the club caps
  *                      are L4's `clubRoundRefusal`; nobody near is refused
  *                      too (an ask that can reach nobody is noise).
- *   wave1DueAt         the first offers go at once for an organiser's ask;
- *                      for the automatic ask, an hour after it while a
- *                      partner ask of the SAME round is still open, at
- *                      once otherwise (none asked, or all closed unfilled).
+ *   poolRoundToJoin    the round a pool ask joins: a partner round still
+ *                      open on the match, for its number, or one of its own.
  *   poolAskCloseReason when an open ask closes: the switch went off, the
  *                      game is off, the ROUND has its number (partner and
  *                      pool guests counted together, `partner-ask-round.ts`)
@@ -31,26 +28,14 @@
  */
 import { clubRoundRefusal } from "./caps";
 import type { MatchGateRefusal } from "./matching-rules";
-import type { GuestResult, PoolAskStatus, PoolAskVia, PoolOfferOutcome } from "./vocab";
+import type { GuestResult, PoolAskStatus, PoolOfferOutcome } from "./vocab";
 
-const MIN_MS = 60_000;
-
-/** Partners first: the pool is asked this long after them (only for the
- *  asks in `POOL_WAITS_FOR_PARTNERS_VIA`). */
-export const POOL_AFTER_PARTNERS_MINS = 60;
-
-/**
- * THE ONE SWITCH: which asks give an open partner ask of their round its
- * hour first. Kemal, 2026-10-29: when an organiser asks for the pool and
- * partner clubs, both are asked at once; the pool never waits ("page",
- * "words", "notice"). The automatic ask keeps D-2's partners first, the
- * pool an hour later (Kemal, 2026-10-29, final).
- */
-export const POOL_WAITS_FOR_PARTNERS_VIA: ReadonlySet<PoolAskVia> = new Set<PoolAskVia>(["auto"]);
-
-/** Does this ask's first wave wait for the partner clubs right now? */
-export function poolWaitsForPartners(a: { via: PoolAskVia | string; partnerAsksOpen: number }): boolean {
-  return a.partnerAsksOpen > 0 && POOL_WAITS_FOR_PARTNERS_VIA.has(a.via as PoolAskVia);
+/** The round a pool ask joins: the newest partner round still open on the
+ *  match, for its number (never more than the places open now), or a round
+ *  of its own for every open place. Its offers go at once either way. */
+export function poolRoundToJoin(i: { openRound: { roundId: string; places: number } | null; placesOpen: number }): { roundId: string | null; places: number } {
+  if (i.openRound) return { roundId: i.openRound.roundId, places: Math.min(i.openRound.places, i.placesOpen) };
+  return { roundId: null, places: i.placesOpen };
 }
 
 export type PoolAskRefusal =
@@ -90,10 +75,6 @@ export function poolAskRefusal(i: {
   if (club) return club;
   if (i.eligible <= 0) return "none-near";
   return null;
-}
-
-export function wave1DueAt(a: { createdAt: Date; partnerAsksOpen: number; via: PoolAskVia | string }): Date {
-  return poolWaitsForPartners(a) ? new Date(a.createdAt.getTime() + POOL_AFTER_PARTNERS_MINS * MIN_MS) : a.createdAt;
 }
 
 export type PoolAskCloseReason = "switched-off" | "match-off" | "filled" | "cut-off" | "organiser-cancelled";

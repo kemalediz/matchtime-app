@@ -20,8 +20,8 @@ import type { SentMessage } from "./transcript";
 /** The links as the server built them (its own host), read off what it sent. */
 function linksIn(sent: readonly SentMessage[]): PoolOnLinks {
   const text = sent.map((m) => m.text).join("\n");
-  const base = /(https?:\/\/\S+?)\/admin\/settings#pool-auto-ask/.exec(text)?.[1] ?? "missing";
-  return { autoAsk: `${base}/admin/settings#pool-auto-ask`, share: `${base}/admin/settings#pool-club-share` };
+  const base = /(https?:\/\/\S+?)\/admin\/settings#pool-club-share/.exec(text)?.[1] ?? "missing";
+  return { share: `${base}/admin/settings#pool-club-share` };
 }
 
 /** The club's quiet hours set well away from now, so nothing is held. */

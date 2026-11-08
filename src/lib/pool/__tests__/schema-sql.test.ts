@@ -141,7 +141,9 @@ describe("every pool switch is OFF by default", () => {
   it("the schema", () => {
     const schema = read("prisma/schema.prisma");
     expect(schema).toMatch(/featurePlayerPool\s+Boolean\s+@default\(false\)/);
-    expect(schema).toMatch(/poolAutoAsk\s+Boolean\s+@default\(false\)/);
+    // `poolAutoAsk` left the model on 2026-11-08 (nothing asks by itself);
+    // its column is dropped by 20261108120000_drop_partner_ask_settings.
+    expect(schema).not.toMatch(/^\s*poolAutoAsk\s/m);
   });
   it("the migration", () => {
     const sql = code(read(MIGRATION));

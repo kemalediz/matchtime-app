@@ -50,7 +50,6 @@ export const SETTINGS_NAV_EN: SettingsNavCopy = {
     partnersNone: "No partner clubs yet",
     partners: (n) => (n === 1 ? "1 partner club" : `${n} partner clubs`),
     partnerRequests: (n) => (n === 1 ? "1 request waiting" : `${n} requests waiting`),
-    poolAutoAsk: "automatic asking",
     playStyleNotSet: "Not set",
     clubShareReady: "Not sent yet",
     clubShareNoGroup: "Connect your players' group first",

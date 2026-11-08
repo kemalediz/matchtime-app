@@ -5,8 +5,8 @@
  * club's /admin/settings (`app/actions/pool-club-switch.ts`, owners and
  * admins, only while the platform switch is on).
  *
- * ON: the club's admins see Style of play, "Ask the player pool
- * automatically" and "Tell your players about the player pool" in settings,
+ * ON: the club's admins see Style of play and "Tell your players about the
+ * player pool" in settings,
  * and the pool tick on the match page; organisers can ask the pool from HQ
  * (`flags.ts` `poolOpenForClub`: the platform switch AND this flag). Nothing
  * is offered by switching on. The FIRST time a club's pool goes from off
@@ -20,10 +20,6 @@
  * (`round.ts` `closePoolAsk`, reason "switched-off", the sweep's own): its
  * open offers end and the unsent ones' queued DMs are cancelled. Nobody is
  * messaged.
- *
- * `poolAutoAsk` is never touched: while the flag is off it is ignored
- * (`auto-ask-rules.ts` `poolAutoAskApplies` needs poolOpen), and the
- * club's own choice is still there if the pool is switched on again.
  */
 import { db } from "../db";
 import { sendAdminNotice, type AdminNoticeClient } from "../admin-channel";
@@ -35,12 +31,11 @@ import { CLUB_NOTICE_ROUTE_SELECT, clubNoticeRouteOf } from "../club-notice-rout
 import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf } from "../message-hours";
 import { POOL_ON_GROUP_KIND, POOL_ON_NOTICE_KIND, poolOnGroupKey, poolOnNoticeKey } from "./club-switch-rules";
 
-export type ClubPoolSwitchResult = { ok: true; on: boolean; closedAsks: number; autoAsk: boolean; told: boolean } | { ok: false; reason: "not-found" };
+export type ClubPoolSwitchResult = { ok: true; on: boolean; closedAsks: number; told: boolean } | { ok: false; reason: "not-found" };
 
 export async function setClubPlayerPool(orgId: string, on: boolean, now: Date = new Date()): Promise<ClubPoolSwitchResult> {
-  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { id: true, poolAutoAsk: true } });
+  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { id: true } });
   if (!org) return { ok: false, reason: "not-found" };
-  const autoAsk = org.poolAutoAsk === true;
   if (on) {
     // Compare-and-set: only the write that really turned it on tells anyone.
     const { count } = await db.organisation.updateMany({ where: { id: orgId, featurePlayerPool: false }, data: { featurePlayerPool: true } });
@@ -52,7 +47,7 @@ export async function setClubPlayerPool(orgId: string, on: boolean, now: Date = 
         console.error(`[pool] club ${orgId}: the pool-on message could not be queued: ${(err as Error)?.message ?? "error"}`);
       }
     }
-    return { ok: true, on, closedAsks: 0, autoAsk, told };
+    return { ok: true, on, closedAsks: 0, told };
   }
 
   await db.organisation.update({ where: { id: orgId }, data: { featurePlayerPool: false } });
@@ -60,17 +55,17 @@ export async function setClubPlayerPool(orgId: string, on: boolean, now: Date = 
   let closedAsks = 0;
   for (const a of open) if (await closePoolAsk(a.id, "switched-off", now)) closedAsks++;
   if (open.length > 0) console.log(`[pool] club ${orgId} switched the pool off: ${closedAsks} open ask(s) closed`);
-  return { ok: true, on, closedAsks, autoAsk, told: false };
+  return { ok: true, on, closedAsks, told: false };
 }
 
 /** Rolls the claim back when the club's channel queued nothing. */
 class NobodyToTell extends Error {}
 
-/** The plain links to the settings cards the admin team's message names:
+/** The plain link to the settings card the admin team's message names:
  *  an admin-group post never carries a personal sign-in link, and the page
  *  asks for sign-in. The players' group announcement carries none. */
 export function poolOnLinks(): PoolOnLinks {
-  return { autoAsk: appUrl(settingsAnchorPath("pool-auto-ask")), share: appUrl(settingsAnchorPath("pool-club-share")) };
+  return { share: appUrl(settingsAnchorPath("pool-club-share")) };
 }
 
 const isUniqueViolation = (err: unknown) => (err as { code?: string } | null)?.code === "P2002";

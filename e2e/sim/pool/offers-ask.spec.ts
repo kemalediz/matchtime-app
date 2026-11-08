@@ -9,7 +9,7 @@
  *   message at all; the switch and the club's flag are checked when the
  *   offer is queued AND when it is sent; the press asks exactly what was
  *   ticked, now: partners, the pool, or both at once (Kemal, 2026-10-29;
- *   only the automatic ask gives partners an hour, `auto-ask.spec.ts`);
+ *   nothing asks by itself since 2026-11-08);
  *   the second wave only while places are open.
  */
 import { scenario, scenarios, expect } from "./fixtures";
@@ -26,7 +26,6 @@ async function partnerClub(pool: Parameters<typeof openClub>[0], club: Awaited<R
      VALUES ($1, $2, $3, 'active', 'each-ask', now(), now(), $4, now(), now())`,
     [pid, club.group.orgId, cheam.group.orgId, (await pool.userOf(club.member("owner")))!.id],
   );
-  await pool.db.run(`UPDATE "Organisation" SET "partnerAskWhen" = 'on-request' WHERE id = $1`, [club.group.orgId]);
   return pid;
 }
 

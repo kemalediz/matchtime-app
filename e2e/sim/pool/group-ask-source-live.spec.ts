@@ -20,7 +20,7 @@ const QUESTION = "Who shall I ask for players: your recent players, your partner
 
 async function noHqClub(pool: PoolWorld, key: string, partnerKey: string): Promise<Club> {
   const club = await openClub(pool, key, { name: "Friday MT Community", maxPlayers: 1, kickoffInHours: 48 });
-  await pool.db.run(`UPDATE "Organisation" SET "partnerAskCutoffHours" = 2, "partnerAskWhen" = 'on-request' WHERE id = $1`, [club.group.orgId]);
+  await pool.db.run(`UPDATE "Organisation" SET "partnerAskCutoffHours" = 2 WHERE id = $1`, [club.group.orgId]);
   const partner = await pool.club(partnerKey, { name: "Cheam Lads", upcomingMatch: false });
   await pool.db.run(
     `INSERT INTO "ClubPartnership" (id, "askerOrgId", "partnerOrgId", status, "partnerApproval", "askerAcceptedAt", "partnerAcceptedAt", "createdByUserId", "createdAt", "updatedAt")

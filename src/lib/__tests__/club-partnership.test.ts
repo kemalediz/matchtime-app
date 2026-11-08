@@ -88,27 +88,26 @@ describe("setPartnerApproval", () => {
 
 describe("savePartnerAskSettings", () => {
   beforeEach(() => {
-    dbMock.organisation.findUnique.mockResolvedValue({ partnerAskWhen: "auto", partnerAskTime: "17:00", partnerAskCutoffHours: 6 });
+    dbMock.organisation.findUnique.mockResolvedValue({ partnerAskCutoffHours: 6 });
   });
 
-  it("saves the three settings and marks them as the organiser's", async () => {
-    const r = await savePartnerAskSettings("fnf", { when: "auto", time: "17:00", cutoffHours: 6 });
-    expect(r).toEqual({ ok: true, settings: { when: "auto", time: "17:00", cutoffHours: 6 } });
+  it("saves the one asking setting, the cut-off, and marks it as the organiser's", async () => {
+    const r = await savePartnerAskSettings("fnf", { cutoffHours: 6 });
+    expect(r).toEqual({ ok: true, settings: { cutoffHours: 6 } });
     expect(dbMock.organisation.update).toHaveBeenCalledWith({
       where: { id: "fnf" },
-      data: {
-        partnerAskWhen: "auto",
-        partnerAskTime: "17:00",
-        partnerAskCutoffHours: 6,
-        settingsSetByOrganiser: { push: ["partnerAskWhen", "partnerAskTime", "partnerAskCutoffHours"] },
-      },
+      data: { partnerAskCutoffHours: 6, settingsSetByOrganiser: { push: ["partnerAskCutoffHours"] } },
     });
   });
 
+  it("reads only the cut-off column (the retired settings are never selected)", async () => {
+    await savePartnerAskSettings("fnf", { cutoffHours: 6 });
+    for (const [arg] of dbMock.organisation.findUnique.mock.calls) expect(arg.select).toEqual({ partnerAskCutoffHours: true });
+  });
+
   it("refuses a bad value and writes nothing", async () => {
-    expect(await savePartnerAskSettings("fnf", { when: "auto", cutoffHours: 0 })).toEqual({ ok: false, refusal: "bad-cutoff" });
-    expect(await savePartnerAskSettings("fnf", { time: "25:00" })).toEqual({ ok: false, refusal: "bad-time" });
-    expect(await savePartnerAskSettings("fnf", { when: "always" })).toEqual({ ok: false, refusal: "bad-when" });
+    expect(await savePartnerAskSettings("fnf", { cutoffHours: 0 })).toEqual({ ok: false, refusal: "bad-cutoff" });
+    expect(await savePartnerAskSettings("fnf", { cutoffHours: 25 })).toEqual({ ok: false, refusal: "bad-cutoff" });
     expect(dbMock.organisation.update).not.toHaveBeenCalled();
   });
 });

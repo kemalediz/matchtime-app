@@ -95,7 +95,8 @@ test("Find a setting: 'pool' finds Player pool and opens it on its tab", async (
   const results = page.getByTestId("find-setting-results").getByRole("option");
   await expect(results.first()).toContainText("Player pool");
   await expect(results.first()).toContainText("Finding players");
-  await expect(page.getByTestId("find-setting-results")).toContainText("Ask the player pool automatically");
+  // Nothing asks by itself (Kemal, 2026-11-08): no automatic asking to find.
+  await expect(page.getByTestId("find-setting-results")).not.toContainText("Ask the player pool automatically");
 
   await page.getByTestId("find-setting-result-player-pool").click();
   await expect(page.getByRole("tab", { name: "Finding players", exact: true })).toHaveAttribute("aria-selected", "true");
@@ -139,7 +140,8 @@ test("a Turkish club: Ayar bul, Turkish tabs and summaries; English words still 
   await box.fill("havuz");
   await page.getByTestId("find-setting-result-player-pool").click();
   await expect(page.getByTestId("player-pool-switch")).toBeVisible();
-  await expect(page.getByTestId("settings-card-summary-pool-auto-ask")).toHaveText("Kapalı");
+  await expect(page.getByTestId("settings-card-summary-play-style")).toHaveText("Seçilmedi");
+  await expect(page.getByTestId("settings-card-summary-pool-auto-ask")).toHaveCount(0);
 });
 
 test("#player-pool opens its tab, expands it and scrolls to it", async ({ page }) => {
@@ -152,7 +154,8 @@ test("#player-pool opens its tab, expands it and scrolls to it", async ({ page }
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   // The other cards on the tab stay collapsed, with their summaries.
   await expect(page.getByTestId("settings-card-toggle-partner-clubs")).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByTestId("settings-card-summary-pool-auto-ask")).toHaveText("Off");
+  await expect(page.getByTestId("settings-card-summary-play-style")).toHaveText("Not set");
+  await expect(page.getByTestId("settings-card-summary-pool-auto-ask")).toHaveCount(0);
 });
 
 test("phone width: no sideways page scroll, the tab row scrolls instead, every tab works", async ({ page }) => {

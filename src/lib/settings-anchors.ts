@@ -50,7 +50,6 @@ export const SETTINGS_CARDS = [
   { id: "partner-clubs", tab: "finding" },
   { id: "player-pool", tab: "finding" },
   { id: "play-style", tab: "finding" },
-  { id: "pool-auto-ask", tab: "finding" },
   { id: "pool-club-share", tab: "finding" },
   { id: "group-invite-link", tab: "finding" },
   // Messages
@@ -68,7 +67,6 @@ export type SettingsCardId = (typeof SETTINGS_CARDS)[number]["id"];
 export const HELP_LINK_IDS = [
   "player-pool",
   "partner-clubs",
-  "pool-auto-ask",
   "play-style",
   "pool-club-share",
   "group-invite-link",

@@ -11,8 +11,10 @@
  *   - the platform owner's page lists pairings with pause and end, and no
  *     create form; a platform pause shows on the club's page and only the
  *     platform resumes it;
- *   - the club's OWNER accepts on /admin/settings, then the asking
- *     settings and their ⓘ appear and save;
+ *   - the club's OWNER accepts on /admin/settings, then the one asking
+ *     setting (the cut-off) and its ⓘ appear and save; there is no "when to
+ *     ask" choice and no automatic ask time (Kemal, 2026-11-08: an active
+ *     pairing is the switch);
  *   - all of it in Turkish;
  *   - a PLAYER of the club cannot reach the section's data at all.
  */
@@ -30,10 +32,7 @@ const row = async (db: TestDb) =>
     [ORG_ID, PARTNER],
   );
 const orgSettings = async (db: TestDb) =>
-  db.one<{ when: string; cutoff: number; time: string | null }>(
-    `SELECT "partnerAskWhen" AS when, "partnerAskCutoffHours" AS cutoff, "partnerAskTime" AS time FROM "Organisation" WHERE id = $1`,
-    [ORG_ID],
-  );
+  db.one<{ cutoff: number }>(`SELECT "partnerAskCutoffHours" AS cutoff FROM "Organisation" WHERE id = $1`, [ORG_ID]);
 const discovery = async (db: TestDb) =>
   db.one<{ discoverable: boolean; by: string | null; at: Date | null; auto: boolean }>(
     `SELECT discoverable, "discoverableById" AS by, "discoverableAt" AS at, "autoAcceptPartnerRequests" AS auto FROM "Organisation" WHERE id = $1`,
@@ -62,8 +61,8 @@ test("no partner clubs: the section still shows, with both switches, their ⓘ a
   await expect(autoAccept).toHaveAttribute("aria-checked", "false");
   // No venue: the prompt.
   await expect(section.getByTestId("club-venue-prompt")).toContainText("Confirm your venue to find clubs near you");
-  // No asking settings until there is a partner club.
-  await expect(section.getByTestId("partner-ask-when")).toHaveCount(0);
+  // No asking setting until there is a partner club.
+  await expect(section.getByTestId("partner-ask-cutoff")).toHaveCount(0);
 
   // Each ⓘ says exactly what other clubs see, or what auto-accept does.
   await section.getByRole("button", { name: "What is Let nearby clubs find us and send requests?" }).click();
@@ -155,16 +154,14 @@ test("the owner accepts; once the partner accepts too the asking settings save, 
   await expect(page.getByRole("dialog")).toContainText("Each pairing works one way");
   await page.getByRole("button", { name: "Close" }).click();
 
-  // When to ask: Automatically shows the time row; the cut-off defaults to 2 hours
-  // and the time to 08:00 (Kemal, 2026-10-29).
+  // The pairing is the switch (Kemal, 2026-11-08): no "when to ask" choice,
+  // no automatic ask time; the one asking setting is the cut-off, 2 hours
+  // by default (Kemal, 2026-10-29).
   await expect(section.getByTestId("partner-ask-cutoff")).toHaveValue("2");
+  await expect(section.getByTestId("partner-ask-when")).toHaveCount(0);
   await expect(section.getByTestId("partner-ask-time")).toHaveCount(0);
-  await section.getByTestId("partner-ask-when").selectOption("auto");
-  await expect.poll(async () => (await orgSettings(db))?.when).toBe("auto");
-  await expect(section.getByTestId("partner-ask-time")).toHaveValue("08:00");
-  await section.getByTestId("partner-ask-time").fill("17:30");
-  await section.getByTestId("partner-ask-time").blur();
-  await expect.poll(async () => (await orgSettings(db))?.time).toBe("17:30");
+  await expect(section.getByText("Ask partner clubs for players")).toHaveCount(0);
+  await expect(section.getByText("Automatically at a time")).toHaveCount(0);
   await section.getByTestId("partner-ask-cutoff").selectOption("6");
   await expect.poll(async () => (await orgSettings(db))?.cutoff).toBe(6);
 
@@ -225,8 +222,11 @@ test("in Turkish: the section, both switches, the venue prompt and their ⓘ", a
   await section.getByRole("button", { name: /Partner isteklerini otomatik kabul et/ }).click();
   await expect(page.getByRole("dialog")).toContainText("isteği hemen kabul eder");
   await page.getByRole("button", { name: "Kapat" }).click();
-  await section.getByRole("button", { name: /Partner kulüplerden oyuncu iste/ }).click();
-  await expect(page.getByRole("dialog")).toContainText("Belirli bir saatte kendiliğinden");
+  // No "when to ask" choice in Turkish either; the list's ⓘ says how asking works.
+  await expect(section.getByText("Partner kulüplerden oyuncu iste")).toHaveCount(0);
+  await expect(section.getByText("Belirli bir saatte kendiliğinden")).toHaveCount(0);
+  await section.getByRole("button", { name: /Partner kulüpleriniz/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("birlikte ya da ayrı ayrı sorabilirler");
   await page.getByRole("button", { name: "Kapat" }).click();
   await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
 });

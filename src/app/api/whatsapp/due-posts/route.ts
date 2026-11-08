@@ -69,7 +69,7 @@ import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
 import { piSendsQuotedIds } from "@/lib/quoted-message";
-import { sweepAutoPartnerAsks, sweepPartnerAsks } from "@/lib/partner-ask";
+import { sweepPartnerAsks } from "@/lib/partner-ask";
 import { recordWeekListShown, sweepMonthlyWeeks } from "@/lib/monthly-week";
 import { sweepMonthSignups } from "@/lib/month-signup";
 import { sweepMonthPayments } from "@/lib/month-payment";
@@ -318,13 +318,10 @@ export async function GET(request: Request) {
 
   // PARTNER CLUBS (cross-club ask, slice S2, 2026-10-16): close the asks
   // this club made or received that should close, with one line to each
-  // side. A club with no partner makes one query. Never throws.
+  // side. A club with no partner makes one query. Never throws. Nothing
+  // asks a partner club or the pool by itself (Kemal, 2026-11-08): the
+  // match-day automatic ask was removed; an organiser asks.
   if (!previewOnly) await sweepPartnerAsks(org.id, nowOverride ?? new Date());
-  // The automatic ask (slice S5): a club on "Automatically at a time", or
-  // one whose automatic ask includes the player pool (L9, the pool switch
-  // read as the platform poll reads it); every other club makes two reads.
-  // Never throws.
-  if (!previewOnly) await sweepAutoPartnerAsks(org.id, nowOverride ?? new Date(), { poolEnv: await poolEnvForApiRequest(request) });
 
   // U1 (2026-10-01): the organisers' unpaid list, 10:00 London two days
   // after a completed match, for clubs on "one-person" or "admin-group"

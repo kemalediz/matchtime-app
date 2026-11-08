@@ -1322,25 +1322,17 @@ export const en = {
     `🔧 Switched off for your club: ${p.labels.join(", ")}. Ask me about one and I'll show you how to switch it on.`,
 
   /** "help partners" (2026-10-28). `active`: the club's active
-   *  partnerships it asks; `askWhen`: `partnerAskWhen`; `askLabel`: that
-   *  card's title. The status line says which of the two is missing. */
-  onbHelpPartners: (p: {
-    audience: "group" | "admin" | "player";
-    active: number;
-    askWhen: "off" | "on-request" | "auto";
-    url: string;
-    askLabel: string;
-  }): string => {
+   *  partnerships it asks. An active pairing is the one switch (Kemal,
+   *  2026-11-08): once paired, an organiser asks; nothing asks by itself. */
+  onbHelpPartners: (p: { audience: "group" | "admin" | "player"; active: number; url: string }): string => {
     const head = `🤝 *Partner clubs: how it works*`;
     const n = p.active === 1 ? `1 partner club` : `${p.active} partner clubs`;
     if (p.audience === "admin") {
-      const body = `Partner clubs lend each other players. When your squad is still short, MatchTime asks your partner clubs, and their players who answer go on your bench as guests. Your players can answer their asks too.`;
+      const body = `Partner clubs lend each other players. Once you're paired, an organiser can ask your partner clubs and the player pool for players, together or separately, on WhatsApp or on the match page. Their players who answer go on your bench as guests. Your players can answer their asks too.`;
       const status =
         p.active === 0
           ? `❌ Your club has no partner clubs yet. Find clubs near you and send a request on your settings page:\n${p.url}`
-          : p.askWhen === "off"
-            ? `⏸️ Your club has ${n}, but MatchTime doesn't ask them for players. To switch it on, choose when under *${p.askLabel}*:\n${p.url}`
-            : `✅ It's on: your club has ${n}, and MatchTime asks them ${p.askWhen === "auto" ? "by itself on match day, or when you ask it to" : "when you ask it to"}. To change it or switch it off:\n${p.url}`;
+          : `✅ It's on: your club has ${n}. Ask me in your club's WhatsApp group (for example *@Match Time find players from partner clubs for Thursday*), or tick them on the match page. Your partner clubs are here:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
     const body = `Your club can team up with nearby clubs to lend each other players. When a partner club is a player short, its ask may be posted here: tap the link if you fancy a game. When we're short, their players may join our bench as guests. After you play for a partner club, MatchTime DMs you once with a link to join the player pool, if you'd like more games.`;
@@ -1363,17 +1355,16 @@ export const en = {
     open: boolean;
     url: string;
     poolLabel: string;
-    autoLabel: string;
   }): string => {
     const head = `🌍 *The MatchTime player pool: how it works*`;
     const on = p.open;
     if (p.audience === "admin") {
-      const body = `Players near you sign up to the pool to get more games. When your squad is short, MatchTime can ask them; they decide each time and play as guests.`;
+      const body = `Players near you sign up to the pool to get more games. When your squad is short, an organiser can ask the player pool and your partner clubs, together or separately, on WhatsApp or on the match page. Pool players decide each time and play as guests.`;
       const status = !p.platformOpen
         ? `⏳ The pool isn't open yet. Once it opens, you can switch it on for your club in your settings.`
         : !p.clubFlag
           ? `❌ It's off for your club. To switch it on, turn on *${p.poolLabel}* here:\n${p.url}`
-          : `✅ It's on for your club. Ask me in your club's WhatsApp group (for example *@Match Time ask the player pool for 2 players*), or turn on *${p.autoLabel}*. To switch it off, turn off *${p.poolLabel}*:\n${p.url}`;
+          : `✅ It's on for your club. Ask me in your club's WhatsApp group (for example *@Match Time ask the player pool for 2 players*), or tick it on the match page. To switch it off, turn off *${p.poolLabel}*:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
     const body = `Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.\nIn the pool? Tell me the times you can play and the formats you play by private message, in your own words (for example *Tuesdays after 7, 5 or 7-a-side*), or change them on your pool page.`;
@@ -5528,11 +5519,6 @@ export const en = {
   pc_remove_confirm: (p: { other: string }) =>
     `Remove the partnership with ${p.other}? To pair again, one club sends the other a new request. A club you remove from asking you can't send you a request for 30 days.`,
   pc_owner_only: "Only your club's owner can accept, decline or remove a partner club.",
-  pc_when_label: "Ask partner clubs for players",
-  pc_when_off: "Off",
-  pc_when_on_request: "When we ask",
-  pc_when_auto: "Automatically at a time",
-  pc_time_label: "Automatic ask time",
   pc_cutoff_label: "Last ask before kickoff",
   pc_cutoff_hours: (p: { hours: number }) => (p.hours === 1 ? "1 hour" : `${p.hours} hours`),
   pc_approval_label: "Asks from partner clubs",
@@ -5770,7 +5756,6 @@ export const en = {
   xask_refused_daily_cap: (p: { partner: string }) => `${p.partner} have had two asks today already.`,
   xask_refused_already_open: (p: { partner: string }) => `There's already an ask to ${p.partner} open for this game.`,
   xask_refused_no_places: "No place is open in this game.",
-  xask_refused_off: "Asking partner clubs is off in your settings.",
   xask_refused_unreachable: (p: { partner: string }) => `${p.partner}'s group can't be asked right now.`,
   xask_refused_generic: "That can't be asked now. Reload the page and try again.",
   xask_panel_title: "Ask a partner club",
@@ -5794,11 +5779,7 @@ export const en = {
   xask_page_declined: "Thanks. They've been told.",
   xask_page_closed: "This ask is closed now.",
   xask_page_not_allowed: "Only an owner or admin of the club that was asked can answer this.",
-  // ─── The automatic ask and the organisers' line (slice S5) ──────────
-  xask_auto_notice_asker: (p: { partner: string; day: string; posted: boolean }) =>
-    p.posted
-      ? `🤝 Your automatic ask: a place is still open for ${p.day} and nobody is on your bench, so I've posted an ask in *${p.partner}*'s group.`
-      : `🤝 Your automatic ask: a place is still open for ${p.day} and nobody is on your bench, so I've asked *${p.partner}*'s organisers if one of their players can play.`,
+  // ─── The organisers' line (slice S5) ────────────────────────────────
   xask_offer_line: (p: { partners: string; link: string }) => `🤝 Want me to ask ${p.partners} for a player? Open the match page: ${p.link}`,
   // ─── Volunteers for a partner club's ask (slice S3, 2026-10-16) ─────
   // The replies are in the VOLUNTEER's club's language (D9); the notices
@@ -5930,13 +5911,10 @@ export const en = {
       ? `• *${p.partner}*: already asked${p.askedOn ? ` on ${p.askedOn}` : ""} and their organisers haven't said yes yet, so not asked again.`
       : `• *${p.partner}*: already asked${p.askedOn ? ` on ${p.askedOn}` : ""} and that ask is still open, so not asked again.`,
   xaskw_line_no_places: (p: { partner: string }) => `• *${p.partner}*: not asked, every place in this game is taken.`,
-  xaskw_line_off: (p: { partner: string }) => `• *${p.partner}*: not asked, asking partner clubs is off in your settings.`,
   xaskw_line_unreachable: (p: { partner: string }) => `• *${p.partner}*: not asked, I can't post in their players' group right now. Try again later.`,
   xaskw_line_generic: (p: { partner: string }) => `• *${p.partner}*: couldn't be asked just now. Try again in a minute.`,
   xaskw_no_partner: (p: { link: string }) =>
     `*Partner clubs:* I can't ask another club yet: you have no partner clubs. Once MatchTime pairs you with one and both clubs accept, you can ask them. Partner clubs are here: ${p.link}`,
-  xaskw_off: (p: { link: string }) =>
-    `*Partner clubs:* I didn't ask anyone: asking partner clubs for players is off for your club. An owner or admin can turn it on here: ${p.link}`,
   xaskw_no_match: (p: { ref: string; partners: string }) => `I don't know a partner club called "${p.ref}". Your partner clubs: ${p.partners}.`,
   xaskw_not_sure: "I wasn't sure you wanted me to ask your partner clubs. Tell me which club, or say all of them.",
   xaskw_ambiguous: (p: { ref: string; choice: string }) =>
@@ -6031,13 +6009,6 @@ export const en = {
     }
   },
   ps_saved: "Style of play saved.",
-  // ─── Ask the pool automatically (pool slice L9, 2026-10-24) ──────────
-  // /admin/settings, beside Style of play, shown while the club may ask
-  // the player pool. The rule is src/lib/pool/auto-ask-rules.ts.
-  pauto_title: "Ask the player pool automatically",
-  pauto_blurb:
-    "On match day, when a place is still open and nobody is on your bench, MatchTime asks nearby players from the MatchTime player pool by itself, an hour after your partner clubs, or straight away if you have none.",
-  pauto_saved: (p: { on: boolean }): string => (p.on ? "MatchTime will ask the player pool automatically." : "MatchTime will ask the player pool only when you ask it to."),
   // ─── D5b, the one question (slice S5b, 2026-10-16) ──────────────────
   /** D5b in the group, used only when he cannot be messaged privately (no
    *  number on file). Otherwise `xask_which_dm` goes to him by DM. */

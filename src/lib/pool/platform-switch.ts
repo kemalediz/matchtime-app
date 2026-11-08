@@ -15,7 +15,7 @@
  * open offers end and unsent offer DMs are cancelled. The sweep and
  * dispatch would do the same on the next poll; closing here leaves nothing
  * half open between. Nobody is messaged. Every club's own flag
- * (`featurePlayerPool`, `poolAutoAsk`) is left as it is, so ON again
+ * (`featurePlayerPool`) is left as it is, so ON again
  * restores each club's own choice.
  */
 import { db } from "../db";

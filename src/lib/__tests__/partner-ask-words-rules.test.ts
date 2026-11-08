@@ -16,32 +16,32 @@ const VETS: PartnerChoice = { partnershipId: "p-vets", partnerOrgId: "vets", nam
 
 describe("resolvePartnerRef", () => {
   it("no partner clubs: one plain reply, whatever was asked", () => {
-    expect(resolvePartnerRef({ clubRef: "Sutton", partners: [], askWhen: "on-request" })).toEqual({ kind: "no-partner" });
-    expect(resolvePartnerRef({ clubRef: null, partners: [], askWhen: "auto" })).toEqual({ kind: "no-partner" });
+    expect(resolvePartnerRef({ clubRef: "Sutton", partners: [] })).toEqual({ kind: "no-partner" });
+    expect(resolvePartnerRef({ clubRef: null, partners: [] })).toEqual({ kind: "no-partner" });
   });
 
-  it("asking switched off: one plain reply", () => {
-    expect(resolvePartnerRef({ clubRef: "Sutton", partners: [SUTTON], askWhen: "off" })).toEqual({ kind: "asking-off" });
-    expect(resolvePartnerRef({ clubRef: null, partners: [SUTTON], askWhen: null })).toEqual({ kind: "asking-off" });
+  it("an active pairing is the switch (Kemal, 2026-11-08): with one, it is asked; there is no setting to say no", () => {
+    expect(resolvePartnerRef({ clubRef: "Sutton", partners: [SUTTON] })).toEqual({ kind: "ask", partners: [SUTTON] });
+    expect(resolvePartnerRef({ clubRef: null, partners: [SUTTON] })).toEqual({ kind: "ask", partners: [SUTTON] });
   });
 
   it("no club named: EVERY active partner is asked (Kemal, 2026-10-21)", () => {
-    expect(resolvePartnerRef({ clubRef: null, partners: [SUTTON, FRIDAY], askWhen: "on-request" })).toEqual({ kind: "ask", partners: [SUTTON, FRIDAY] });
-    expect(resolvePartnerRef({ clubRef: "  ", partners: [SUTTON, FRIDAY, VETS], askWhen: "auto" })).toEqual({ kind: "ask", partners: [SUTTON, FRIDAY, VETS] });
+    expect(resolvePartnerRef({ clubRef: null, partners: [SUTTON, FRIDAY] })).toEqual({ kind: "ask", partners: [SUTTON, FRIDAY] });
+    expect(resolvePartnerRef({ clubRef: "  ", partners: [SUTTON, FRIDAY, VETS] })).toEqual({ kind: "ask", partners: [SUTTON, FRIDAY, VETS] });
   });
 
   it("no club named, one partner: that partner", () => {
-    expect(resolvePartnerRef({ clubRef: "", partners: [SUTTON], askWhen: "on-request" })).toEqual({ kind: "ask", partners: [SUTTON] });
+    expect(resolvePartnerRef({ clubRef: "", partners: [SUTTON] })).toEqual({ kind: "ask", partners: [SUTTON] });
   });
 
   it("a named club resolves to that partner only", () => {
-    expect(resolvePartnerRef({ clubRef: "Sutton", partners: [SUTTON, FRIDAY], askWhen: "on-request" })).toEqual({ kind: "ask", partners: [SUTTON] });
-    expect(resolvePartnerRef({ clubRef: "Friday MT Community", partners: [SUTTON, FRIDAY], askWhen: "on-request" })).toEqual({ kind: "ask", partners: [FRIDAY] });
-    expect(resolvePartnerRef({ clubRef: "the Friday lot", partners: [SUTTON, FRIDAY], askWhen: "on-request" })).toEqual({ kind: "ask", partners: [FRIDAY] });
+    expect(resolvePartnerRef({ clubRef: "Sutton", partners: [SUTTON, FRIDAY] })).toEqual({ kind: "ask", partners: [SUTTON] });
+    expect(resolvePartnerRef({ clubRef: "Friday MT Community", partners: [SUTTON, FRIDAY] })).toEqual({ kind: "ask", partners: [FRIDAY] });
+    expect(resolvePartnerRef({ clubRef: "the Friday lot", partners: [SUTTON, FRIDAY] })).toEqual({ kind: "ask", partners: [FRIDAY] });
   });
 
   it("a named club no partner matches: no-match, with the partners to name", () => {
-    expect(resolvePartnerRef({ clubRef: "Croydon", partners: [SUTTON, FRIDAY], askWhen: "on-request" })).toEqual({
+    expect(resolvePartnerRef({ clubRef: "Croydon", partners: [SUTTON, FRIDAY] })).toEqual({
       kind: "no-match",
       ref: "Croydon",
       partners: [SUTTON, FRIDAY],
@@ -49,7 +49,7 @@ describe("resolvePartnerRef", () => {
   });
 
   it("a name two partners share equally: ambiguous, never both asked", () => {
-    expect(resolvePartnerRef({ clubRef: "MT", partners: [FRIDAY, VETS], askWhen: "on-request" })).toEqual({
+    expect(resolvePartnerRef({ clubRef: "MT", partners: [FRIDAY, VETS] })).toEqual({
       kind: "ambiguous",
       ref: "MT",
       candidates: [FRIDAY, VETS],
@@ -57,7 +57,7 @@ describe("resolvePartnerRef", () => {
   });
 
   it("the better match wins over a partial one", () => {
-    expect(resolvePartnerRef({ clubRef: "MT Vets", partners: [FRIDAY, VETS], askWhen: "on-request" })).toEqual({ kind: "ask", partners: [VETS] });
+    expect(resolvePartnerRef({ clubRef: "MT Vets", partners: [FRIDAY, VETS] })).toEqual({ kind: "ask", partners: [VETS] });
   });
 });
 
@@ -175,15 +175,12 @@ describe("every refusal says what happened, why, and what to do next (Kemal, 202
     expect(many.split("\n").at(-1)).toBe("Your partner club settings: https://mt.test/admin/settings#partner-clubs");
   });
 
-  it("switched off and no partner: the settings card's link", () => {
-    expect(resolutionReply("en", { kind: "asking-off" }, ctx.settingsLink)).toBe(
-      "*Partner clubs:* I didn't ask anyone: asking partner clubs for players is off for your club. An owner or admin can turn it on here: https://mt.test/admin/settings#partner-clubs",
-    );
+  it("no partner: the settings card's link", () => {
     expect(resolutionReply("tr", { kind: "no-partner" }, ctx.settingsLink)).toMatch(/^\*Partner kulüpler:\* .+https:\/\/mt\.test\/admin\/settings#partner-clubs$/);
   });
 
   it("every single-partner refusal starts with what it is about, in both languages", () => {
-    for (const r of ["too-late", "daily-cap", "already-open", "no-places", "asking-off", "partner-paused", "partner-muted", "not-found"] as const) {
+    for (const r of ["too-late", "daily-cap", "already-open", "no-places", "partner-paused", "partner-muted", "not-found"] as const) {
       expect(one("en", r)).toMatch(/^\*Partner clubs:\* /);
       expect(one("tr", r)).toMatch(/^\*Partner kulüpler:\* /);
       expect(one("en", r) + one("tr", r)).not.toMatch(/[\u2013\u2014]|waiting list|reload/i);

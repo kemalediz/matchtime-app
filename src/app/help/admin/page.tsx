@@ -425,23 +425,25 @@ export default async function AdminGuidePage() {
       <h3 id="partner-clubs">Short of players? Partner clubs</h3>
       <p>
         Partner clubs lend each other players. Find clubs near you and send
-        a request on your Settings page. Once they accept, choose when
-        MatchTime asks them under <strong>Ask partner clubs for players</strong>:
-        only when you ask, or also by itself on match day. Players who answer
-        go on your bench as guests. When a partner club is short, its ask can
-        be posted in your group, and your players can answer it.
+        a request on your Settings page. Once you&apos;re paired, an organiser
+        can ask partner clubs and the player pool for players, together or
+        separately, on WhatsApp (for example{" "}
+        <code>@Match Time find players from partner clubs for Thursday</code>)
+        or on the match page. MatchTime never asks by itself. Players who
+        answer go on your bench as guests. When a partner club is short, its
+        ask can be posted in your group, and your players can answer it.
       </p>
 
       <h3 id="player-pool">Short of players? The player pool</h3>
       <p>
         The MatchTime player pool is players near you who have signed up to
         get more games. Switch on <strong>Player pool</strong> in Settings,
-        then ask for players on the match page or by tagging MatchTime (for
-        example <code>@Match Time ask the player pool for 2 players</code>),
-        or turn on <strong>Ask the player pool automatically</strong>. When
-        MatchTime asks by itself, your partner clubs are asked first. Pool
-        players decide each time and play as guests. Your own players can
-        join the pool too, to get games elsewhere.
+        then an organiser can ask for players on the match page or by tagging
+        MatchTime (for example{" "}
+        <code>@Match Time ask the player pool for 2 players</code>), with
+        your partner clubs or on its own. Pool players decide each time and
+        play as guests. Your own players can join the pool too, to get games
+        elsewhere.
       </p>
 
       <h3 id="monthly-list">Monthly squad: starting the month from your list</h3>

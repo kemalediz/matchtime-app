@@ -19,8 +19,6 @@ vi.mock("@/lib/db", () => ({
     clubPartnership: { count: (...a: unknown[]) => partnershipCount(...a) },
   },
 }));
-const loadPartnerAskSettings = vi.fn();
-vi.mock("@/lib/club-partnership", () => ({ loadPartnerAskSettings: (...a: unknown[]) => loadPartnerAskSettings(...a) }));
 
 import { buildHelpReply, helpFeaturesFrom, helpPagesNeeded, type HelpFeatures, type HelpTopic } from "@/lib/onboarding-conversation";
 import { HELP_TOPIC_ANCHOR, SETTINGS_ANCHORS, helpTopicSettingsPath, settingsAnchorPath } from "@/lib/help-links";
@@ -44,10 +42,9 @@ const POOL = {
   on: { open: true, platformOpen: true, clubFlag: true },
 };
 const PARTNERS = {
-  none: { active: 0, askWhen: "off" as const },
-  notAsked: { active: 2, askWhen: "off" as const },
-  onRequest: { active: 1, askWhen: "on-request" as const },
-  auto: { active: 3, askWhen: "auto" as const },
+  none: { active: 0 },
+  one: { active: 1 },
+  three: { active: 3 },
 };
 const SIGNED = "https://mt.example/r/signed";
 const PUBLIC = "https://matchtime.ai";
@@ -55,7 +52,7 @@ const PUBLIC = "https://matchtime.ai";
 describe("the settings links (help-links.ts)", () => {
   it("are the fixed card ids the settings page gives its cards", () => {
     expect([...SETTINGS_ANCHORS]).toEqual([
-      "player-pool", "partner-clubs", "pool-auto-ask", "play-style", "pool-club-share", "group-invite-link", "quiet-hours",
+      "player-pool", "partner-clubs", "play-style", "pool-club-share", "group-invite-link", "quiet-hours",
       "payments", "monthly-squad", "posters", "billing", "reminders", "attendance", "ratings", "mom", "teams", "club-details", "admin-group",
     ]);
   });
@@ -103,7 +100,10 @@ describe("help pool", () => {
     const on = pool("on", "admin", "en", { topic: SIGNED });
     expect(on).toContain("✅ It's on for your club.");
     expect(on).toContain("*@Match Time ask the player pool for 2 players*");
-    expect(on).toContain("*Ask the player pool automatically*");
+    // Nothing asks by itself (Kemal, 2026-11-08): no automatic setting to turn on.
+    expect(on).not.toMatch(/automatically|by itself/);
+    expect(on).toContain("together or separately, on WhatsApp or on the match page");
+    expect(on).toContain("or tick it on the match page");
     expect(on).toContain(`To switch it off, turn off *Player pool*:\n${SIGNED}`);
     // In a group an organiser gets the public address, never a sign-in link.
     expect(pool("off", "admin")).toContain(`${PUBLIC}/admin/settings#player-pool`);
@@ -118,6 +118,9 @@ describe("help pool", () => {
   it("Turkish, every state and audience: the card's Turkish title", () => {
     expect(pool("off", "admin", "tr", { topic: SIGNED })).toContain("*Oyuncu havuzu* ayarını aç");
     expect(pool("on", "player", "tr")).toContain("*Başka yerlerde de oyna*");
+    const on = pool("on", "admin", "tr", { topic: SIGNED });
+    expect(on).toContain("birlikte ya da ayrı ayrı");
+    expect(on).not.toMatch(/kendiliğinden|otomatik/);
   });
 });
 
@@ -125,23 +128,31 @@ describe("help partners", () => {
   const partners = (state: keyof typeof PARTNERS, audience: "group" | "admin" | "player", lang = "en") =>
     buildHelpReply("partners", { ...BASE, partners: PARTNERS[state] }, lang, { audience, links: audience === "admin" ? { topic: SIGNED } : undefined });
 
-  it("an organiser is told which half is missing: no partner club, or not asked", () => {
+  it("an organiser: once paired it is on, asked on WhatsApp or the match page, never by itself (Kemal, 2026-11-08)", () => {
     expect(partners("none", "admin")).toContain(`❌ Your club has no partner clubs yet. Find clubs near you and send a request on your settings page:\n${SIGNED}`);
-    expect(partners("notAsked", "admin")).toContain("⏸️ Your club has 2 partner clubs, but MatchTime doesn't ask them for players. To switch it on, choose when under *Ask partner clubs for players*:");
-    expect(partners("onRequest", "admin")).toContain("✅ It's on: your club has 1 partner club, and MatchTime asks them when you ask it to.");
-    expect(partners("auto", "admin")).toContain("asks them by itself on match day, or when you ask it to");
+    expect(partners("one", "admin")).toContain("✅ It's on: your club has 1 partner club. Ask me in your club's WhatsApp group");
+    expect(partners("three", "admin")).toContain("✅ It's on: your club has 3 partner clubs.");
+    expect(partners("three", "admin")).toContain(
+      "Once you're paired, an organiser can ask your partner clubs and the player pool for players, together or separately, on WhatsApp or on the match page.",
+    );
+    expect(partners("three", "admin")).toContain(SIGNED);
+    for (const st of ["none", "one", "three"] as const) {
+      expect(partners(st, "admin")).not.toMatch(/by itself|automatically|⏸️|choose when/);
+      expect(partners(st, "admin", "tr")).not.toMatch(/kendiliğinden|ne zaman isteneceğini/);
+    }
   });
 
   it("a player: what affects him, how many partner clubs, no link", () => {
-    expect(partners("auto", "player")).toContain("✅ This club has 3 partner clubs.");
+    expect(partners("three", "player")).toContain("✅ This club has 3 partner clubs.");
     expect(partners("none", "player")).toContain("❌ This club has no partner clubs yet.");
-    for (const s of ["none", "auto"] as const) expect(partners(s, "player")).not.toMatch(/https?:\/\//);
+    for (const s of ["none", "three"] as const) expect(partners(s, "player")).not.toMatch(/https?:\/\//);
     expect(partners("none", "group")).toContain(`${PUBLIC}/admin/settings#partner-clubs`);
   });
 
   it("Turkish", () => {
-    expect(partners("notAsked", "admin", "tr")).toContain("*Partner kulüplerden oyuncu iste*");
-    expect(partners("auto", "player", "tr")).toContain("✅ Bu kulübün 3 partner kulübü var.");
+    expect(partners("three", "admin", "tr")).toContain("✅ Açık: kulübünün 3 partner kulübü var.");
+    expect(partners("three", "admin", "tr")).toContain("birlikte ya da ayrı ayrı, WhatsApp'tan ya da maç sayfasından");
+    expect(partners("three", "player", "tr")).toContain("✅ Bu kulübün 3 partner kulübü var.");
   });
 });
 
@@ -180,10 +191,11 @@ describe("every flag topic says whether it is on, and an organiser where to swit
 
 describe("bare help lists what applies to this club", () => {
   it("the pool and partner clubs only while they are on", () => {
-    const off = buildHelpReply(null, { ...BASE, pool: POOL.off, partners: PARTNERS.notAsked });
+    const off = buildHelpReply(null, { ...BASE, pool: POOL.off, partners: PARTNERS.none });
     expect(off).not.toContain("help pool*");
     expect(off).not.toContain("help partners*");
-    const on = buildHelpReply(null, { ...BASE, pool: POOL.on, partners: PARTNERS.auto });
+    // An active pairing is the switch: one partner club means partner help applies.
+    const on = buildHelpReply(null, { ...BASE, pool: POOL.on, partners: PARTNERS.one });
     expect(on).toContain("• *@Match Time help pool*: the player pool");
     expect(on).toContain("• *@Match Time help partners*: partner clubs");
     expect(on).toContain("• *@Match Time help settings*: where your settings are");
@@ -239,7 +251,6 @@ describe("loadHelpClubFacts", () => {
 
   it("the pool: THE ONE RULE, the platform switch as resolved AND the club's flag", async () => {
     partnershipCount.mockResolvedValue(0);
-    loadPartnerAskSettings.mockResolvedValue({ when: "off" });
     orgFindUnique.mockResolvedValue({ featurePlayerPool: true });
     expect((await loadHelpClubFacts("o1", OPEN)).pool).toEqual({ open: true, platformOpen: true, clubFlag: true });
     expect((await loadHelpClubFacts("o1", { MT_POOL_OPEN: "0" })).pool).toEqual({ open: false, platformOpen: false, clubFlag: true });
@@ -248,18 +259,16 @@ describe("loadHelpClubFacts", () => {
     expect((await loadHelpClubFacts("o1", OPEN)).pool).toEqual({ open: false, platformOpen: true, clubFlag: false });
   });
 
-  it("partner clubs: the active ones it asks, and the ask setting through its one reader", async () => {
+  it("partner clubs: the active ones it asks; no ask setting is read (the pairing is the switch)", async () => {
     orgFindUnique.mockResolvedValue({ featurePlayerPool: false });
     partnershipCount.mockResolvedValue(2);
-    loadPartnerAskSettings.mockResolvedValue({ when: "auto" });
-    expect((await loadHelpClubFacts("o1", OPEN)).partners).toEqual({ active: 2, askWhen: "auto" });
+    expect((await loadHelpClubFacts("o1", OPEN)).partners).toEqual({ active: 2 });
     expect(partnershipCount).toHaveBeenCalledWith({ where: { askerOrgId: "o1", status: "active" } });
   });
 
   it("a database error reads as off: the help then says how to switch it on", async () => {
     orgFindUnique.mockRejectedValue(new Error("connection terminated"));
     partnershipCount.mockResolvedValue(1);
-    loadPartnerAskSettings.mockResolvedValue({ when: "auto" });
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await loadHelpClubFacts("o1", OPEN)).toEqual(HELP_CLUB_FACTS_OFF);
     spy.mockRestore();

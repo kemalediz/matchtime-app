@@ -17,7 +17,6 @@
  * name as written, or nothing; the lookup compares it with the names the
  * database holds. Pure: no database, no model.
  */
-import type { PartnerAskWhen } from "./club-partnership-rules";
 import { PAUSED_REFUSALS, type AskRefusal } from "./partner-ask-rules";
 import { joinChoice, joinList } from "./i18n/text";
 import { t } from "./i18n/t";
@@ -32,7 +31,6 @@ export interface PartnerChoice {
 export type PartnerRefResolution =
   | { kind: "ask"; partners: PartnerChoice[] }
   | { kind: "no-partner" }
-  | { kind: "asking-off" }
   | { kind: "no-match"; ref: string; partners: PartnerChoice[] }
   | { kind: "ambiguous"; ref: string; candidates: PartnerChoice[] };
 
@@ -69,17 +67,13 @@ export function partnerNameScore(written: string, partnerName: string): number {
 }
 
 /**
- * Which partners a request means. In order: no partner at all; asking
- * switched Off; no club named (every active partner, one or many); a
- * named club (the single best fit, never two at once).
+ * Which partners a request means. In order: no active partner at all; no
+ * club named (every active partner, one or many); a named club (the single
+ * best fit, never two at once). An active pairing is the switch (Kemal,
+ * 2026-11-08): there is no club setting to read.
  */
-export function resolvePartnerRef(i: {
-  clubRef: string | null | undefined;
-  partners: PartnerChoice[];
-  askWhen: PartnerAskWhen | null;
-}): PartnerRefResolution {
+export function resolvePartnerRef(i: { clubRef: string | null | undefined; partners: PartnerChoice[] }): PartnerRefResolution {
   if (i.partners.length === 0) return { kind: "no-partner" };
-  if (!i.askWhen || i.askWhen === "off") return { kind: "asking-off" };
   const ref = (i.clubRef ?? "").trim();
   if (!ref) return { kind: "ask", partners: i.partners };
   const scored = i.partners.map((p) => ({ p, score: partnerNameScore(ref, p.name) }));
@@ -133,7 +127,6 @@ function refusalSentence(lang: string | null, partner: string, r: AskRefusal | "
   if (r === "already-open")
     return s.xaskw_refused_already_open({ partner, askedOn: open?.askedOn ?? null, day: ctx.day ?? null, awaiting: open?.awaiting === true });
   if (r === "no-places") return s.xaskw_refused_no_places({ partner });
-  if (r === "asking-off") return s.xaskw_off({ link });
   if (PAUSED_REFUSALS.has(r)) return s.xaskw_refused_paused({ partner });
   if (UNREACHABLE.has(r)) return s.xaskw_refused_unreachable({ partner });
   return s.xaskw_refused_generic({ partner });
@@ -146,7 +139,6 @@ function refusalLine(lang: string | null, partner: string, r: AskRefusal | "not-
   if (r === "daily-cap") return s.xaskw_line_daily_cap({ partner });
   if (r === "already-open") return s.xaskw_line_already_open({ partner, askedOn: open?.askedOn ?? null, awaiting: open?.awaiting === true });
   if (r === "no-places") return s.xaskw_line_no_places({ partner });
-  if (r === "asking-off") return s.xaskw_line_off({ partner });
   if (PAUSED_REFUSALS.has(r)) return s.xaskw_line_paused({ partner });
   if (UNREACHABLE.has(r)) return s.xaskw_line_unreachable({ partner });
   return s.xaskw_line_generic({ partner });
@@ -183,10 +175,9 @@ export function composePartnerAskReply(
         ? s.xaskw_line_awaiting({ partner })
         : refusalLine(lang, partner, result, opts.cutoffHours, open),
   );
-  // A refusal a setting can lift (the cut-off, asking switched off): the
-  // settings card's link, once, after the list.
-  const settingsLine =
-    opts.settingsLink && results.some((r) => r.result === "too-late" || r.result === "asking-off") ? [s.xaskw_settings_line({ link: opts.settingsLink })] : [];
+  // A refusal a setting can lift (the cut-off): the settings card's link,
+  // once, after the list.
+  const settingsLine = opts.settingsLink && results.some((r) => r.result === "too-late") ? [s.xaskw_settings_line({ link: opts.settingsLink })] : [];
   return [any ? s.xaskw_header_asked : s.xaskw_header_not_asked, ...lines, ...(any ? [s.xaskw_bench_line({ firstCome }), ...placesLine] : []), ...settingsLine].join("\n");
 }
 
@@ -196,8 +187,6 @@ export function resolutionReply(lang: string | null, r: Exclude<PartnerRefResolu
   switch (r.kind) {
     case "no-partner":
       return s.xaskw_no_partner({ link: settingsLink });
-    case "asking-off":
-      return s.xaskw_off({ link: settingsLink });
     case "no-match":
       return s.xaskw_no_match({ ref: r.ref, partners: joinList(lang, r.partners.map((p) => p.name)) });
     case "ambiguous":

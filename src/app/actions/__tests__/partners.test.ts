@@ -42,7 +42,7 @@ import {
   getPartnerClubs,
   platformPartnershipAction,
   saveDiscoverySettingsAction,
-  savePartnerAskSettingsAction,
+  savePartnerAskCutoffAction,
   setClubHomeVenueAction,
 } from "../partners";
 
@@ -56,9 +56,9 @@ beforeEach(() => {
   orgMock.isSuperadmin.mockResolvedValue(false);
   dbMock.membership.findUnique.mockResolvedValue({ role: "OWNER", leftAt: null });
   writer.loadPartnershipsForOrg.mockResolvedValue([{ id: "p1" }]);
-  writer.loadPartnerAskSettings.mockResolvedValue({ when: "off", time: null, cutoffHours: 4 });
+  writer.loadPartnerAskSettings.mockResolvedValue({ cutoffHours: 4 });
   writer.actOnPartnership.mockResolvedValue({ ok: true, status: "active" });
-  writer.savePartnerAskSettings.mockResolvedValue({ ok: true, settings: { when: "on-request", time: null, cutoffHours: 4 } });
+  writer.savePartnerAskSettings.mockResolvedValue({ ok: true, settings: { cutoffHours: 3 } });
   writer.loadDiscoverySettings.mockResolvedValue(DISCOVERY);
   writer.loadClubVenueStatus.mockResolvedValue(VENUE);
   writer.saveDiscoverySettings.mockResolvedValue({ ok: true, settings: { discoverable: false, autoAccept: false } });
@@ -75,7 +75,7 @@ describe("the settings page", () => {
     expect(await getPartnerClubs("fnf")).toEqual({
       isOwner: true,
       partnerships: [{ id: "p1" }],
-      settings: { when: "off", time: null, cutoffHours: 4 },
+      settings: { cutoffHours: 4 },
       discovery: DISCOVERY,
       venue: VENUE,
       blocked: [],
@@ -91,7 +91,7 @@ describe("the settings page", () => {
   it("a PLAYER is refused before anything is read or written", async () => {
     orgMock.requireOrgAdmin.mockRejectedValue(new Error("Admin access required"));
     await expect(getPartnerClubs("fnf")).rejects.toThrow("Admin access required");
-    await expect(savePartnerAskSettingsAction("fnf", { when: "auto" })).rejects.toThrow("Admin access required");
+    await expect(savePartnerAskCutoffAction("fnf", 3)).rejects.toThrow("Admin access required");
     await expect(actOnPartnershipAction("fnf", "p1", "pause")).rejects.toThrow("Admin access required");
     await expect(saveDiscoverySettingsAction("fnf", { discoverable: false })).rejects.toThrow("Admin access required");
     await expect(saveDiscoverySettingsAction("fnf", { shareRatings: true })).rejects.toThrow("Admin access required");
@@ -101,6 +101,12 @@ describe("the settings page", () => {
     expect(writer.loadPartnershipsForOrg).not.toHaveBeenCalled();
     expect(writer.savePartnerAskSettings).not.toHaveBeenCalled();
     expect(writer.actOnPartnership).not.toHaveBeenCalled();
+  });
+
+  it("the one asking setting is the cut-off: an admin saves only that (Kemal, 2026-11-08)", async () => {
+    dbMock.membership.findUnique.mockResolvedValue({ role: "ADMIN", leftAt: null });
+    expect(await savePartnerAskCutoffAction("fnf", 3)).toEqual({ ok: true, settings: { cutoffHours: 3 } });
+    expect(writer.savePartnerAskSettings).toHaveBeenCalledWith("fnf", { cutoffHours: 3 });
   });
 
   it("an admin acts as ADMIN; the writer decides (owners and admins accept since D-2)", async () => {

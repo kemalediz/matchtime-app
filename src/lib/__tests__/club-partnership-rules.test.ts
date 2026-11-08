@@ -7,17 +7,13 @@
  * resumes; the partner side alone sets how its organisers approve.
  */
 import { describe, expect, it } from "vitest";
+import * as RULES from "../club-partnership-rules";
 import {
   PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
   PARTNER_ASK_CUTOFF_MAX_HOURS,
   PARTNER_ASK_CUTOFF_MIN_HOURS,
-  PARTNER_ASK_TIME_DEFAULT,
-  effectiveAskTime,
-  normalisePartnerAskWhen,
-  parseAskTime,
   parseCutoffHours,
   parsePartnerApproval,
-  parsePartnerAskWhen,
   planPartnershipAction,
   sideOf,
   type PartnershipRow,
@@ -35,13 +31,10 @@ const row = (over: Partial<PartnershipRow> = {}): PartnershipRow => ({
 });
 
 describe("settings values", () => {
-  it("when to ask: off, on request, automatically; anything else reads off and is refused on save", () => {
-    expect(normalisePartnerAskWhen("auto")).toBe("auto");
-    expect(normalisePartnerAskWhen("on-request")).toBe("on-request");
-    expect(normalisePartnerAskWhen("nonsense")).toBe("off");
-    expect(normalisePartnerAskWhen(null)).toBe("off");
-    expect(parsePartnerAskWhen("off")).toBe("off");
-    expect(parsePartnerAskWhen("sometimes")).toBeNull();
+  it("there is no setting for when to ask, and no automatic ask time (Kemal, 2026-11-08: an active pairing is the switch)", () => {
+    for (const k of ["PARTNER_ASK_WHEN", "PARTNER_ASK_TIME_DEFAULT", "normalisePartnerAskWhen", "parsePartnerAskWhen", "parseAskTime", "effectiveAskTime"]) {
+      expect(k in RULES, k).toBe(false);
+    }
   });
 
   it("the cut-off is whole hours from 1 to 24, default 2 (Kemal, 2026-10-29)", () => {
@@ -54,17 +47,6 @@ describe("settings values", () => {
     expect(parseCutoffHours(25)).toBeNull();
     expect(parseCutoffHours(2.5)).toBeNull();
     expect(parseCutoffHours("x")).toBeNull();
-  });
-
-  it("the automatic time is a London HH:MM, zero padded; not set reads 08:00 (Kemal, 2026-10-29)", () => {
-    expect(parseAskTime("9:30")).toBe("09:30");
-    expect(parseAskTime("16:00")).toBe("16:00");
-    expect(parseAskTime("24:00")).toBeNull();
-    expect(parseAskTime("off")).toBeNull();
-    expect(PARTNER_ASK_TIME_DEFAULT).toBe("08:00");
-    expect(effectiveAskTime(null)).toBe("08:00");
-    expect(effectiveAskTime("bad")).toBe("08:00");
-    expect(effectiveAskTime("17:15")).toBe("17:15");
   });
 
   it("partner approval: each ask or standing", () => {

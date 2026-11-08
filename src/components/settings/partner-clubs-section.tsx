@@ -45,7 +45,7 @@ import {
   unblockClubAction,
   getPartnerClubs,
   saveDiscoverySettingsAction,
-  savePartnerAskSettingsAction,
+  savePartnerAskCutoffAction,
   setClubHomeVenueAction,
   setPartnerApprovalAction,
   type PartnerClubsData,
@@ -54,10 +54,8 @@ import type { PartnershipView } from "@/lib/club-partnership";
 import {
   PARTNER_ASK_CUTOFF_MAX_HOURS,
   PARTNER_ASK_CUTOFF_MIN_HOURS,
-  PARTNER_ASK_TIME_DEFAULT,
   REQUEST_DEFAULT_APPROVAL,
   type PartnerApproval,
-  type PartnerAskWhen,
   type PartnershipAction,
 } from "@/lib/club-partnership-rules";
 
@@ -78,7 +76,6 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
   const s = t(props.language);
   const [data, setData] = useState<PartnerClubsData | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [time, setTime] = useState(PARTNER_ASK_TIME_DEFAULT);
   const [venueText, setVenueText] = useState("");
   const [venuePick, setVenuePick] = useState<VenuePickState | null>(null);
   const [venueError, setVenueError] = useState<string | null>(null);
@@ -105,7 +102,6 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
     try {
       const d = await getPartnerClubs(props.orgId);
       setData(d);
-      if (d) setTime(d.settings.time ?? PARTNER_ASK_TIME_DEFAULT);
     } catch {
       setData(null);
     }
@@ -188,10 +184,10 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
     }
   }
 
-  async function saveSettings(patch: { when?: PartnerAskWhen; time?: string; cutoffHours?: number }) {
+  async function saveCutoff(cutoffHours: number) {
     setBusy("settings");
     try {
-      const r = await savePartnerAskSettingsAction(props.orgId, patch);
+      const r = await savePartnerAskCutoffAction(props.orgId, cutoffHours);
       if (r.ok) {
         setData((prev) => (prev ? { ...prev, settings: r.settings } : prev));
         toast.success(s.pc_saved);
@@ -628,65 +624,29 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
             </div>
           )}
 
+          {/* Asking needs no switch of its own: an active pairing is it
+              (Kemal, 2026-11-08). The cut-off is the one asking setting. */}
           {asks && (
-            <>
-              <div className="py-3" data-setting="partnerAskWhen">
-                <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
-                  {s.pc_when_label}
-                  <SettingInfo k="partnerAskWhen" lang={props.language} />
-                </div>
-                <select
-                  aria-label={s.pc_when_label}
-                  data-testid="partner-ask-when"
-                  value={data.settings.when}
-                  disabled={busy === "settings"}
-                  onChange={(e) => saveSettings({ when: e.target.value as PartnerAskWhen })}
-                  className={`mt-2 ${control}`}
-                >
-                  <option value="off">{s.pc_when_off}</option>
-                  <option value="on-request">{s.pc_when_on_request}</option>
-                  <option value="auto">{s.pc_when_auto}</option>
-                </select>
+            <div className="py-3" data-setting="partnerAskCutoff">
+              <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
+                {s.pc_cutoff_label}
+                <SettingInfo k="partnerAskCutoff" lang={props.language} />
               </div>
-              {data.settings.when === "auto" && (
-                <div className="py-3" data-setting="partnerAskTime">
-                  <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
-                    {s.pc_time_label}
-                    <SettingInfo k="partnerAskTime" lang={props.language} />
-                  </div>
-                  <input
-                    type="time"
-                    aria-label={s.pc_time_label}
-                    data-testid="partner-ask-time"
-                    value={time}
-                    disabled={busy === "settings"}
-                    onChange={(e) => setTime(e.target.value)}
-                    onBlur={() => time && time !== (data.settings.time ?? PARTNER_ASK_TIME_DEFAULT) && saveSettings({ time })}
-                    className={`mt-2 ${control}`}
-                  />
-                </div>
-              )}
-              <div className="py-3" data-setting="partnerAskCutoff">
-                <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
-                  {s.pc_cutoff_label}
-                  <SettingInfo k="partnerAskCutoff" lang={props.language} />
-                </div>
-                <select
-                  aria-label={s.pc_cutoff_label}
-                  data-testid="partner-ask-cutoff"
-                  value={data.settings.cutoffHours}
-                  disabled={busy === "settings"}
-                  onChange={(e) => saveSettings({ cutoffHours: Number(e.target.value) })}
-                  className={`mt-2 ${control}`}
-                >
-                  {CUTOFF_CHOICES.map((h) => (
-                    <option key={h} value={h}>
-                      {s.pc_cutoff_hours({ hours: h })}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
+              <select
+                aria-label={s.pc_cutoff_label}
+                data-testid="partner-ask-cutoff"
+                value={data.settings.cutoffHours}
+                disabled={busy === "settings"}
+                onChange={(e) => saveCutoff(Number(e.target.value))}
+                className={`mt-2 ${control}`}
+              >
+                {CUTOFF_CHOICES.map((h) => (
+                  <option key={h} value={h}>
+                    {s.pc_cutoff_hours({ hours: h })}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
 
           {lends.length > 0 && (

@@ -37,9 +37,8 @@
  * the player pool is open for the club (the platform switch, the
  * `PlatformSetting` row "pool-offers" with the env override, AND the
  * club's `featurePlayerPool`: `poolOpenForClub`), whether it asks partner
- * clubs (an ACTIVE `ClubPartnership` with it as the asker, and
- * its ask setting not "off", read through `loadPartnerAskSettings`, the
- * one reader of it), and whether a partner asks it (an ACTIVE
+ * clubs (an ACTIVE `ClubPartnership` with it as the asker: the pairing is
+ * the switch, Kemal 2026-11-08), and whether a partner asks it (an ACTIVE
  * one with it as the partner). Facts from rows, never words. Any read
  * that is missing or fails reads as off: the hello then marks the line
  * optional, which is never a false promise.
@@ -158,13 +157,9 @@ export async function loadHelloClubFacts(
       client.clubPartnership ? client.clubPartnership.count({ where: { askerOrgId: orgId, status: "active" } }) : 0,
       client.clubPartnership ? client.clubPartnership.count({ where: { partnerOrgId: orgId, status: "active" } }) : 0,
     ]);
-    // The ask setting has one reader (club-partnership.ts); it is read only
-    // when there is a partner to ask. Loaded here only, so the hello's
-    // callers do not pull the partner code in with it.
-    const askWhen = asks > 0 ? ((await (await import("./club-partnership")).loadPartnerAskSettings(orgId))?.when ?? "off") : "off";
     return {
       pool: poolOpenForClub({ featurePlayerPool: row.featurePlayerPool === true }, poolPlatformOpen(platform?.on === true, env)),
-      partnersAsk: asks > 0 && askWhen !== "off",
+      partnersAsk: asks > 0,
       partnersHelp: helps > 0,
     };
   } catch (err) {

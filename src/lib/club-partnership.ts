@@ -2,9 +2,8 @@
  * PARTNER CLUBS, THE ONE WRITER (cross-club ask, slice S1, 2026-10-16).
  * Plan: MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.1 and 3.2.
  *
- * Every write to `ClubPartnership`, and to the asking club's three
- * settings (`partnerAskWhen`, `partnerAskTime`, `partnerAskCutoffHours`),
- * happens here; a source guard test keeps it so. The decisions are the
+ * Every write to `ClubPartnership`, and to the asking club's one setting
+ * (`partnerAskCutoffHours`, the cut-off), happens here; a source guard test keeps it so. The decisions are the
  * pure rules in `club-partnership-rules.ts`; this file loads, applies them
  * with a compare-and-set, and tells the clubs.
  *
@@ -33,11 +32,8 @@ import {
   planRequest,
   type RequestRefusal,
   PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
-  normalisePartnerAskWhen,
-  parseAskTime,
   parseCutoffHours,
   parsePartnerApproval,
-  parsePartnerAskWhen,
   PLATFORM_PAUSE,
   VENUE_REMINDER_EVERY_MS,
   autoAcceptOf,
@@ -54,7 +50,6 @@ import {
   type ActionRefusal,
   type ClubRole,
   type PartnerApproval,
-  type PartnerAskWhen,
   type PartnershipAction,
   type PartnershipSide,
   type PartnershipStatus,
@@ -192,49 +187,32 @@ export async function setPartnerApproval(args: {
   return { ok: true, value };
 }
 
+/** The asking club's partner-ask setting: the cut-off (D12). Asking itself
+ *  has no setting: an active pairing is the switch (Kemal, 2026-11-08). */
 export interface PartnerAskSettings {
-  when: PartnerAskWhen;
-  /** "HH:MM", or null for the default. */
-  time: string | null;
   cutoffHours: number;
 }
 
 export async function loadPartnerAskSettings(orgId: string): Promise<PartnerAskSettings | null> {
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { partnerAskWhen: true, partnerAskTime: true, partnerAskCutoffHours: true },
+    select: { partnerAskCutoffHours: true },
   });
   if (!org) return null;
-  return {
-    when: normalisePartnerAskWhen(org.partnerAskWhen),
-    time: parseAskTime(org.partnerAskTime),
-    cutoffHours: parseCutoffHours(org.partnerAskCutoffHours) ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
-  };
+  return { cutoffHours: parseCutoffHours(org.partnerAskCutoffHours) ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS };
 }
 
 /**
- * The asking club's settings (D4, D12). Each field is checked; a bad one
- * refuses the whole save and nothing is written. The keys join
- * `settingsSetByOrganiser`, like every setting saved on the page.
+ * The asking club's cut-off (D12). Checked; a bad value refuses the save
+ * and nothing is written. The key joins `settingsSetByOrganiser`, like
+ * every setting saved on the page.
  */
 export async function savePartnerAskSettings(
   orgId: string,
-  patch: { when?: unknown; time?: unknown; cutoffHours?: unknown },
-): Promise<{ ok: true; settings: PartnerAskSettings } | { ok: false; refusal: "bad-when" | "bad-time" | "bad-cutoff" | "no-club" }> {
-  const data: { partnerAskWhen?: string; partnerAskTime?: string; partnerAskCutoffHours?: number } = {};
+  patch: { cutoffHours?: unknown },
+): Promise<{ ok: true; settings: PartnerAskSettings } | { ok: false; refusal: "bad-cutoff" | "no-club" }> {
+  const data: { partnerAskCutoffHours?: number } = {};
   const keys: string[] = [];
-  if (patch.when !== undefined) {
-    const when = parsePartnerAskWhen(patch.when);
-    if (!when) return { ok: false, refusal: "bad-when" };
-    data.partnerAskWhen = when;
-    keys.push("partnerAskWhen");
-  }
-  if (patch.time !== undefined) {
-    const time = parseAskTime(patch.time);
-    if (!time) return { ok: false, refusal: "bad-time" };
-    data.partnerAskTime = time;
-    keys.push("partnerAskTime");
-  }
   if (patch.cutoffHours !== undefined) {
     const hours = parseCutoffHours(patch.cutoffHours);
     if (hours === null) return { ok: false, refusal: "bad-cutoff" };

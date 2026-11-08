@@ -30,7 +30,7 @@
  * component.
  */
 import { normaliseLang, type Lang } from "./i18n/lang";
-import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS, PARTNER_ASK_TIME_DEFAULT } from "./club-partnership-rules";
+import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "./club-partnership-rules";
 
 /** Every setting with an explanation, in the page's order. */
 export const SETTING_INFO_KEYS = [
@@ -69,8 +69,6 @@ export const SETTING_INFO_KEYS = [
   "teamsReady",
   // Partner clubs
   "partnerClubs",
-  "partnerAskWhen",
-  "partnerAskTime",
   "partnerAskCutoff",
   "partnerApproval",
   // Partner discovery (slice P1, 2026-10-22)
@@ -82,8 +80,7 @@ export const SETTING_INFO_KEYS = [
   "playerPool",
   // Local player pool (slice L5b, 2026-10-24)
   "playStyle",
-  // Local player pool (slice L9, 2026-10-24)
-  "poolAutoAsk",
+  // Local player pool (slice L8, 2026-10-24)
   "groupInviteLink",
   // Posters
   "posters",
@@ -1177,6 +1174,8 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       newClubs: "None. A club has no partner clubs until it sends a request that is accepted, or accepts one.",
       together: [
+        "Once a pairing is active, your owners and admins can ask that club for players whenever a place is open: on WhatsApp by tagging MatchTime, or on the match page. They can ask your partner clubs and the player pool together or separately. MatchTime never asks by itself.",
+        "No ask goes out later than Last ask before kickoff, at most 2 asks a day go into any one partner club's group, and only one at a time for each of your matches.",
         "A player from a partner club who answers an ask plays for you as a guest for that one match. Your organisers see their name and their club, never their phone number or their rating at their own club.",
         "Your own players are never put on another club's list unless they reply to that club's ask themselves.",
       ],
@@ -1190,72 +1189,10 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       newClubs: "Yok. Bir kulübün, kabul edilen bir istek göndermeden ya da bir isteği kabul etmeden partner kulübü olmaz.",
       together: [
+        "Bir eşleşme etkin olunca sahipleriniz ve yöneticileriniz, boş yer olduğu her an o kulüpten oyuncu isteyebilir: WhatsApp'ta MatchTime'ı etiketleyerek ya da maç sayfasından. Partner kulüplerinize ve oyuncu havuzuna birlikte ya da ayrı ayrı sorabilirler. MatchTime kendi başına hiç sormaz.",
+        "Hiçbir istek Başlama saatinden önce son istek ayarından daha geç gönderilmez; bir partner kulübün grubuna günde en fazla 2 istek gider ve maçlarınızın her biri için aynı anda yalnızca bir istek açık olur.",
         "Bir isteğe yanıt veren partner kulüp oyuncusu yalnızca o maç için misafir olarak sizin için oynar. Organizatörleriniz onun adını ve kulübünü görür; telefon numarasını ya da kendi kulübündeki puanını asla görmez.",
         "Kendi oyuncularınız, o kulübün isteğine kendileri yanıt vermedikçe başka bir kulübün listesine asla yazılmaz.",
-      ],
-    },
-  },
-  partnerAskWhen: {
-    en: {
-      title: "Ask partner clubs for players",
-      what: ["Whether MatchTime asks your partner clubs for a player when a place in your squad is still open."],
-      example: "⚽ *FNF* need 1 player: Fri 16 Oct, 20:30 at Goals Sutton (9-a-side, £8).\nFancy a game? Tap here to tell MatchTime privately: <link>\nMatchTime will confirm with you by private message. Your number is not shared with FNF.",
-      choices: [
-        { name: "Off", text: "MatchTime never asks your partner clubs." },
-        { name: "When we ask", text: "MatchTime asks a partner club only when one of your owners or admins asks it to, from the match page." },
-        {
-          name: "Automatically at a time",
-          text: "As When we ask, and also by itself on match day at the Automatic ask time, if a place is still open and nobody is on your bench.",
-        },
-      ],
-      newClubs: "Off.",
-      suits: "Clubs that often end up a player short on the day.",
-      together: [
-        "The ask goes into the partner club's players' group once their organisers approve it, unless they chose to let asks through without asking.",
-        "No ask goes out later than Last ask before kickoff.",
-        "Players who answer go on your bench as guests, and Who fills an open place decides who plays, as it does for your own players.",
-        "At most 2 asks a day go into any one partner club's group, and only one at a time for each of your matches.",
-        "Nothing is asked while MatchTime is switched off or paused for your club.",
-      ],
-    },
-    tr: {
-      title: "Partner kulüplerden oyuncu iste",
-      what: ["Kadronuzda hâlâ boş yer varken MatchTime'ın partner kulüplerinizden oyuncu isteyip istemeyeceği."],
-      example: "⚽ *FNF* 1 oyuncu arıyor: Cuma 16 Eki, 20:30, Goals Sutton (9'a 9, £8).\nOynamak ister misin? MatchTime'a özelden haber vermek için dokun: <bağlantı>\nMatchTime sana özel mesajla dönecek. Numaran FNF ile paylaşılmaz.",
-      choices: [
-        { name: "Kapalı", text: "MatchTime partner kulüplerinizden hiç oyuncu istemez." },
-        { name: "Biz isteyince", text: "MatchTime bir partner kulüpten yalnızca kulübünüzün sahibi ya da bir yöneticisi maç sayfasından isteyince oyuncu ister." },
-        {
-          name: "Belirli bir saatte kendiliğinden",
-          text: "Biz isteyince gibi, ayrıca maç günü Otomatik istek saatinde, hâlâ boş yer varsa ve yedek listenizde kimse yoksa kendiliğinden de ister.",
-        },
-      ],
-      newClubs: "Kapalı.",
-      suits: "Maç günü sık sık bir oyuncu eksik kalan kulüpler.",
-      together: [
-        "İstek, partner kulübün organizatörleri onaylayınca onların oyuncu grubuna gider; sormadan geçmesini seçtilerse hemen gider.",
-        "Hiçbir istek Başlama saatinden önce son istek ayarından daha geç gönderilmez.",
-        "Yanıt veren oyuncular yedek listenize misafir olarak girer ve kimin oynayacağına, kendi oyuncularınızda olduğu gibi, Boşalan yeri kim doldurur ayarı karar verir.",
-        "Bir partner kulübün grubuna günde en fazla 2 istek gider ve maçlarınızın her biri için aynı anda yalnızca bir istek açık olur.",
-        "MatchTime kulübünüz için kapalıyken ya da durdurulmuşken hiçbir şey istenmez.",
-      ],
-    },
-  },
-  partnerAskTime: {
-    en: {
-      title: "Automatic ask time",
-      what: ["Only used with Automatically at a time: the London time on match day when MatchTime asks your partner clubs by itself."],
-      newClubs: `${PARTNER_ASK_TIME_DEFAULT}.`,
-      together: [
-        "MatchTime asks only if a place is still open, nobody is on your bench, and it is still before Last ask before kickoff. A time after that is never reached, so MatchTime then never asks by itself.",
-      ],
-    },
-    tr: {
-      title: "Otomatik istek saati",
-      what: ["Yalnızca Belirli bir saatte kendiliğinden seçiliyken kullanılır: MatchTime'ın partner kulüplerinizden maç günü kendiliğinden oyuncu istediği Londra saati."],
-      newClubs: `${PARTNER_ASK_TIME_DEFAULT}.`,
-      together: [
-        "MatchTime yalnızca hâlâ boş yer varsa, yedek listenizde kimse yoksa ve Başlama saatinden önce son istek henüz geçmemişse ister. Bundan sonraki bir saate hiç gelinmez, yani MatchTime o zaman kendiliğinden hiç istemez.",
       ],
     },
   },
@@ -1450,13 +1387,13 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     en: {
       title: "Player pool",
       what: [
-        "Whether your club can use the MatchTime player pool: nearby players who have joined it to find games. When you are short of players, MatchTime can ask them for you. When MatchTime asks by itself, your partner clubs are asked first.",
-        "Nothing is sent by switching it on. The pool is asked only when an admin asks for players, on the match page or by tagging MatchTime in WhatsApp, or when Ask the player pool automatically is on.",
+        "Whether your club can use the MatchTime player pool: nearby players who have joined it to find games. When you are short of players, MatchTime can ask them for you, together with your partner clubs or on its own.",
+        "Nothing is sent by switching it on. The pool is asked only when an admin asks for players, on the match page or by tagging MatchTime in WhatsApp. MatchTime never asks by itself.",
       ],
       choices: [
         {
           name: ON.en,
-          text: "Your admins see Style of play, Ask the player pool automatically and Tell your players about the player pool here, and the MatchTime player pool box on the match page. The first time it is switched on, your admin team gets one message about it.",
+          text: "Your admins see Style of play and Tell your players about the player pool here, and the MatchTime player pool box on the match page. The first time it is switched on, your admin team gets one message about it.",
         },
         { name: OFF.en, text: "None of those show, and any ask to the pool still open for your matches is closed. Your other pool settings are kept for when you switch it on again." },
       ],
@@ -1466,13 +1403,13 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     tr: {
       title: "Oyuncu havuzu",
       what: [
-        "Kulübünüzün MatchTime oyuncu havuzunu kullanıp kullanamayacağı: havuz, maç bulmak için katılmış yakındaki oyunculardan oluşur. Oyuncu eksik olduğunda MatchTime onlara sizin için sorabilir. MatchTime kendiliğinden sorduğunda önce partner kulüplerinize sorulur.",
-        "Açmakla hiçbir şey gönderilmez. Havuza yalnızca bir yönetici maç sayfasından ya da WhatsApp'ta MatchTime'ı etiketleyerek oyuncu istediğinde ya da Oyuncu havuzuna kendiliğinden sor açıkken sorulur.",
+        "Kulübünüzün MatchTime oyuncu havuzunu kullanıp kullanamayacağı: havuz, maç bulmak için katılmış yakındaki oyunculardan oluşur. Oyuncu eksik olduğunda MatchTime onlara sizin için, partner kulüplerinizle birlikte ya da tek başına sorabilir.",
+        "Açmakla hiçbir şey gönderilmez. Havuza yalnızca bir yönetici maç sayfasından ya da WhatsApp'ta MatchTime'ı etiketleyerek oyuncu istediğinde sorulur. MatchTime kendi başına hiç sormaz.",
       ],
       choices: [
         {
           name: ON.tr,
-          text: "Yöneticileriniz burada Oyun tarzı, Oyuncu havuzuna kendiliğinden sor ve Oyuncularınıza oyuncu havuzunu anlatın kartlarını, maç sayfasında da MatchTime oyuncu havuzu kutusunu görür. İlk açıldığında yönetici ekibinize bununla ilgili bir mesaj gider.",
+          text: "Yöneticileriniz burada Oyun tarzı ve Oyuncularınıza oyuncu havuzunu anlatın kartlarını, maç sayfasında da MatchTime oyuncu havuzu kutusunu görür. İlk açıldığında yönetici ekibinize bununla ilgili bir mesaj gider.",
         },
         { name: OFF.tr, text: "Bunların hiçbiri görünmez ve maçlarınız için havuza yapılmış, hâlâ açık olan istekler kapatılır. Diğer havuz ayarlarınız, yeniden açtığınızda kullanılmak üzere saklanır." },
       ],
@@ -1511,42 +1448,6 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       newClubs: "Belirtilmedi.",
       together: ["Bu kart yalnızca kulübünüz MatchTime oyuncu havuzundan oyuncu isteyebildiği sürece görünür."],
-    },
-  },
-  // Traced 2026-10-24 (pool slice L9): `Organisation.poolAutoAsk`, saved by
-  // app/actions/pool-auto-ask.ts; the rule is pool/auto-ask-rules.ts, run by
-  // the automatic partner ask (partner-ask.ts sweepAutoPartnerAsks) through
-  // the organiser tap's own requestPoolAsk (pool/round.ts, via "auto").
-  poolAutoAsk: {
-    en: {
-      title: "Ask the player pool automatically",
-      what: ["Whether MatchTime asks the player pool by itself on match day when the game is still short."],
-      choices: [
-        {
-          name: ON.en,
-          text: `On match day, if the game is still short, MatchTime asks the pool by itself. It does this only when it is the club's next match, a place is still open, your bench is empty, and nobody has asked the pool for this match yet. It asks from your ask time (${PARTNER_ASK_TIME_DEFAULT} unless you change it) until your cut-off, and at most once per match. When it asks, your organisers are told.`,
-        },
-        { name: OFF.en, text: "MatchTime asks the player pool only when an admin tells it to, by tagging MatchTime in WhatsApp or ticking the box on the match page." },
-      ],
-      newClubs: "Off.",
-      together: [
-        "With partner clubs: this works only when your partner clubs are also asked automatically. They are asked first, and the pool up to an hour later if places are still open. If you ask partners yourselves, the pool is never asked by itself.",
-      ],
-    },
-    tr: {
-      title: "Oyuncu havuzuna kendiliğinden sor",
-      what: ["Maç günü hâlâ oyuncu eksikse MatchTime'ın oyuncu havuzuna kendisi sorup sormayacağı."],
-      choices: [
-        {
-          name: ON.tr,
-          text: `Maç günü hâlâ oyuncu eksikse MatchTime havuza kendisi sorar. Bunu yalnızca kulübün sıradaki maçıysa, hâlâ boş yer varsa, yedek listeniz boşsa ve bu maç için havuza henüz kimse sormadıysa yapar. Sorma saatinizden (değiştirmezseniz ${PARTNER_ASK_TIME_DEFAULT}) son saate kadar sorar, her maç için en fazla bir kez. Sorduğunda organizatörlerinize haber verilir.`,
-        },
-        { name: OFF.tr, text: "MatchTime oyuncu havuzuna yalnızca bir yönetici isterse sorar, WhatsApp'ta MatchTime'ı etiketleyerek ya da maç sayfasındaki kutuyu işaretleyerek." },
-      ],
-      newClubs: "Kapalı.",
-      together: [
-        "Partner kulüpleriniz varsa: bu ayar yalnızca partner kulüplerinize de otomatik soruluyorsa çalışır. Önce onlara sorulur, en geç bir saat sonra hâlâ boş yer varsa havuza. Partnerlere kendiniz soruyorsanız havuza hiçbir zaman kendiliğinden sorulmaz.",
-      ],
     },
   },
   // Traced 2026-10-24 (pool slice L8): `Organisation.groupInviteLink`, saved

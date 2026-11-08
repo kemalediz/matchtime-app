@@ -335,8 +335,8 @@ const SAMPLES: SampleArgs = {
   onbHelpAdminSettings: { url: "https://mt.example/s/settings" },
   onbHelpOnStatus: { audience: "admin", url: "https://mt.example/s/on" },
   onbHelpOffTopics: { labels: ["LABEL_A", "LABEL_B"] },
-  onbHelpPartners: { audience: "admin", active: 2, askWhen: "off", url: "https://mt.example/s/partners", askLabel: "ASK_LABEL" },
-  onbHelpPool: { audience: "admin", platformOpen: true, clubFlag: true, open: true, url: "https://mt.example/s/pool", poolLabel: "POOL_LABEL", autoLabel: "AUTO_LABEL" },
+  onbHelpPartners: { audience: "admin", active: 2, url: "https://mt.example/s/partners" },
+  onbHelpPool: { audience: "admin", platformOpen: true, clubFlag: true, open: true, url: "https://mt.example/s/pool", poolLabel: "POOL_LABEL" },
   onbHelpSettings: { audience: "admin", url: "https://mt.example/s/settings" },
   onbHelpAdminPage: { url: "https://mt.example/s/page" },
   onbHelpForClub: { club: "Riverside FC" },
@@ -1794,11 +1794,6 @@ const SAMPLES: SampleArgs = {
   pc_remove: null,
   pc_remove_confirm: { other: "SUTTONCLUB" },
   pc_owner_only: null,
-  pc_when_label: null,
-  pc_when_off: null,
-  pc_when_on_request: null,
-  pc_when_auto: null,
-  pc_time_label: null,
   pc_cutoff_label: null,
   pc_cutoff_hours: { hours: 7 },
   pc_approval_label: null,
@@ -1933,7 +1928,6 @@ const SAMPLES: SampleArgs = {
   xask_refused_daily_cap: { partner: "SUTTONCLUB" },
   xask_refused_already_open: { partner: "SUTTONCLUB" },
   xask_refused_no_places: null,
-  xask_refused_off: null,
   xask_refused_unreachable: { partner: "SUTTONCLUB" },
   xask_refused_generic: null,
   xask_panel_title: null,
@@ -2001,11 +1995,9 @@ const SAMPLES: SampleArgs = {
   xaskw_line_daily_cap: { partner: "SUTTONCLUB" },
   xaskw_line_already_open: { partner: "SUTTONCLUB", askedOn: "ASKEDON", awaiting: false },
   xaskw_line_no_places: { partner: "SUTTONCLUB" },
-  xaskw_line_off: { partner: "SUTTONCLUB" },
   xaskw_line_unreachable: { partner: "SUTTONCLUB" },
   xaskw_line_generic: { partner: "SUTTONCLUB" },
   xaskw_no_partner: { link: "LINKX" },
-  xaskw_off: { link: "LINKX" },
   xaskw_no_match: { ref: "CROYDONREF", partners: "PARTNERLIST" },
   xaskw_not_sure: null,
   xaskw_ambiguous: { ref: "MTREF", choice: "CHOICELIST" },
@@ -2068,10 +2060,6 @@ const SAMPLES: SampleArgs = {
   ps_blurb: null,
   ps_style: { kind: "competitive" },
   ps_saved: null,
-  pauto_title: null,
-  pauto_blurb: null,
-  pauto_saved: { on: true },
-  xask_auto_notice_asker: { partner: "SUTTONCLUB", day: "DAYLABEL", posted: false },
   xask_offer_line: { partners: "SUTTONCLUB", link: "https://x/LINK" },
   xask_vol_bench: { name: "NAMEX", asker: "FNFCLUB" },
   xask_vol_in: { name: "NAMEX", asker: "FNFCLUB", day: "DAYLABEL" },
@@ -2312,7 +2300,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "reminder", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode", "outcome", "band", "askWhen"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "reminder", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode", "outcome", "band"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,

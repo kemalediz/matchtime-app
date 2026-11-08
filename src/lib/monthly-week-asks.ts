@@ -11,15 +11,13 @@
  *                      asks, the match page's picker, the round closing)
  *   guestPaygPence     the club's PAYG price in a monthly week, else null:
  *                      what a guest is told he pays
- *   clubFillsFirstFor  should the AUTOMATIC ask wait for the club's own
- *                      bench and PAYG players (`clubFillsFirst`)
  *
  * Outside `src/lib/pool/` on purpose: the partner ask and the pool both
  * read it, and it reads no pool table.
  */
 import { db } from "./db";
-import { loadMonthlyWeek, loadPaygPool, weekListKeyPrefix, type MonthlyWeek } from "./monthly-week";
-import { clubFillsFirst, monthlyPlacesOpen } from "./monthly-week-asks-rules";
+import { loadMonthlyWeek, type MonthlyWeek } from "./monthly-week";
+import { monthlyPlacesOpen } from "./monthly-week-asks-rules";
 import { normaliseSquadMode } from "./squad-month-rules";
 
 /** The monthly week of this match, or null without reading the match's
@@ -46,37 +44,4 @@ export async function askPlacesOpen(matchId: string): Promise<number> {
 export async function guestPaygPence(matchId: string): Promise<number | null> {
   const found = await monthlyWeekOf(matchId);
   return found?.week?.paygPricePence ?? null;
-}
-
-/** Should the automatic pool and partner ask wait for the club's own bench
- *  and PAYG players? False for every match that is not a monthly week. */
-export async function clubFillsFirstFor(matchId: string, now: Date): Promise<boolean> {
-  const found = await monthlyWeekOf(matchId);
-  const week = found?.week;
-  if (!week) return false;
-  const benchCount = week.rows.filter((r) => r.status === "BENCH").length;
-  const [pool, newest, told] = await Promise.all([
-    benchCount > 0 || !week.seeded || week.pickMode === "organiser" ? Promise.resolve([]) : loadPaygPool(week, now),
-    db.benchSlotOffer.findFirst({ where: { matchId, resolvedAt: null }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    // When the club's players were last told of a place: the PAYG DMs and
-    // group line (`bot-scheduler.ts` section 3) and the week's list post.
-    db.sentNotification.findFirst({
-      where: {
-        matchId,
-        OR: [{ key: { startsWith: `${matchId}:payg-pool-` } }, { key: { startsWith: weekListKeyPrefix(matchId) } }],
-      },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    }),
-  ]);
-  return clubFillsFirst({
-    monthly: true,
-    seeded: week.seeded,
-    pickMode: week.pickMode,
-    benchCount,
-    paygPoolSize: pool.length,
-    newestOpenOfferAt: newest?.createdAt ?? null,
-    clubToldAt: told?.createdAt ?? null,
-    now,
-  });
 }

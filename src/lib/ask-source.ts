@@ -14,7 +14,6 @@
  */
 import { db } from "./db";
 import { recordGroupQuestion, recordMatchTimeQuestion } from "./admin-group-log";
-import { loadPartnerAskSettings } from "./club-partnership";
 import { activePartnerChoices } from "./partner-ask-words";
 import { poolOffersOpenForClub } from "./pool/flags";
 import { t } from "./i18n/t";
@@ -24,18 +23,17 @@ type Env = Record<string, string | undefined>;
 
 /**
  * What this club may be asked to look in besides its own players' group:
- * an active partner club with asking switched on (`resolvePartnerRef`
- * refuses an ask with it off), and the pool open for the club (the
- * platform switch, as this request read it, and the club's own flag).
+ * an active partner club (the pairing is the switch, Kemal 2026-11-08),
+ * and the pool open for the club (the platform switch, as this request
+ * read it, and the club's own flag).
  */
 export async function sourcesAvailable(orgId: string, env?: Env): Promise<SourcesAvailable> {
-  const [partners, settings, org] = await Promise.all([
+  const [partners, org] = await Promise.all([
     activePartnerChoices(orgId).catch(() => []),
-    loadPartnerAskSettings(orgId).catch(() => null),
     db.organisation.findUnique({ where: { id: orgId }, select: { featurePlayerPool: true } }).catch(() => null),
   ]);
   return {
-    partners: partners.length > 0 && !!settings?.when && settings.when !== "off",
+    partners: partners.length > 0,
     pool: poolOffersOpenForClub(org, env),
   };
 }

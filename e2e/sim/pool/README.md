@@ -54,7 +54,7 @@ scenarios("a stranger signs up", () => {
 
 | Call | Gives |
 | --- | --- |
-| `pool.club(key, opts)` | A club (`createGroup` options, plus `hq: true` for an admin group, plus `pool: { featurePlayerPool, poolAutoAsk, playStyle, town }`, every one OFF/NULL by default as in production). Its roster's members are registered as `<club>.<member>` ("fnf.owner", "fnf.pete") |
+| `pool.club(key, opts)` | A club (`createGroup` options, plus `hq: true` for an admin group, plus `pool: { featurePlayerPool, playStyle, town }`, every one OFF/NULL by default as in production). Its roster's members are registered as `<club>.<member>` ("fnf.owner", "fnf.pete") |
 | `pool.stranger(key, { name?, phone? })` | A number MatchTime has never seen: no User, no club. Refuses a number that is already known |
 | `pool.person(key)`, `club.member(memberKey)` | Anyone registered |
 
@@ -157,7 +157,7 @@ write; "today" rows exist now. EN and TR wherever MatchTime speaks.
 
 ### Offers (L4, L5, L9)
 
-- organiser approves on the match page, by YES to the short-squad notice, by the automatic ask (partners first, D-2, the automatic ask only since K.7); nobody is contacted before the approval; an organiser's ask asks exactly what it names, now (K.7, 2026-10-29)
+- organiser approves on the match page, by YES to the short-squad notice, or in words; nothing asks by itself (the automatic ask was removed 2026-11-08); nobody is contacted before the approval; an organiser's ask asks exactly what it names, now (K.7, 2026-10-29)
 - the offer DM EN and TR: club, venue with address and map link, distance, day, date, kickoff, length, sport and format, play style (omitted when unset), club size and how often it plays, fee ("free" when none), places; NEVER the group name, members' names or numbers (`expectNoLeaks(fnf.secrets())`)
 - matching: sport, distance, format where it applies, day AND hours, not already in that club, not blocked either way, turn-up record ranks first
 - waves: about 4 first, the rest 30 minutes later only if places are still open, at most 8

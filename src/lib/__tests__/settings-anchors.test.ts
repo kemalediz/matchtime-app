@@ -20,7 +20,6 @@ describe("settings anchors", () => {
       [
         "player-pool",
         "partner-clubs",
-        "pool-auto-ask",
         "play-style",
         "pool-club-share",
         "group-invite-link",
@@ -57,7 +56,7 @@ describe("settings anchors", () => {
     expect(tabOfCard("mom")).toBe("players");
     expect(tabOfCard("payments")).toBe("payments");
     expect(tabOfCard("billing")).toBe("payments");
-    for (const id of ["partner-clubs", "player-pool", "play-style", "pool-auto-ask", "pool-club-share", "group-invite-link"] as const) {
+    for (const id of ["partner-clubs", "player-pool", "play-style", "pool-club-share", "group-invite-link"] as const) {
       expect(tabOfCard(id), id).toBe("finding");
     }
     for (const id of ["quiet-hours", "admin-group", "posters"] as const) expect(tabOfCard(id), id).toBe("messages");

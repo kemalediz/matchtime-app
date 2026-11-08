@@ -36,17 +36,13 @@ const QUESTION_ALL_TR = "Oyuncu için kime sorayım: oyuncu grubunuza mı, partn
 type Club = Awaited<ReturnType<typeof openClub>>;
 
 /** A club with HQ, the pool on, one place open, its game two days out. */
-async function hqClub(pool: PoolWorld, key: string, opts: OpenClubOpts & { language?: "en" | "tr"; partnerAskWhen?: "off" | "on-request" | "auto" } = {}): Promise<Club> {
-  const { language, partnerAskWhen, ...clubOpts } = opts;
+async function hqClub(pool: PoolWorld, key: string, opts: OpenClubOpts & { language?: "en" | "tr" } = {}): Promise<Club> {
+  const { language, ...clubOpts } = opts;
   const club = await openClub(pool, key, { name: "FNF", hq: true, maxPlayers: 1, ...clubOpts });
   const day = formatLondon(new Date(Date.now() + 48 * 3600_000), "yyyy-MM-dd");
   const kickoff = londonDateTimeToUtc(day, "20:00");
   await pool.db.run(`UPDATE "Match" SET date = $2, "attendanceDeadline" = $2 WHERE id = $1`, [club.group.matchId, kickoff]);
-  await pool.db.run(`UPDATE "Organisation" SET "partnerAskCutoffHours" = 2, "partnerAskWhen" = $3, language = $2 WHERE id = $1`, [
-    club.group.orgId,
-    language ?? "en",
-    partnerAskWhen ?? "on-request",
-  ]);
+  await pool.db.run(`UPDATE "Organisation" SET "partnerAskCutoffHours" = 2, language = $2 WHERE id = $1`, [club.group.orgId, language ?? "en"]);
   return Object.assign(club, { kickoff });
 }
 

@@ -55,7 +55,7 @@ scenarios("a friend pays like any guest", () => {
   scenario("a monthly club: the PAYG price, and he is a PAYG player of that game only", async ({ pool }) => {
     const vets = await friendClub(pool, "vets", { confirmed: [] });
     const orgId = vets.group.orgId;
-    await pool.db.run(`UPDATE "Organisation" SET "squadMode" = 'monthly', "paygPricePence" = 800, "partnerAskWhen" = 'off' WHERE id = $1`, [orgId]);
+    await pool.db.run(`UPDATE "Organisation" SET "squadMode" = 'monthly', "paygPricePence" = 800 WHERE id = $1`, [orgId]);
     const kickoff = (await pool.db.one<{ date: Date }>(`SELECT date FROM "Match" WHERE id = $1`, [vets.group.matchId]))!.date;
     const monthId = `sim-month-friend-${Date.now()}`;
     await pool.db.run(

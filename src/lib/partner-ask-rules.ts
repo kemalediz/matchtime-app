@@ -18,8 +18,7 @@
  *
  * Pure: no database, no model. Code decides; nothing here reads words.
  */
-import type { ClubRole, PartnerAskWhen } from "./club-partnership-rules";
-import { londonWallClockToUtc } from "./london-time";
+import type { ClubRole } from "./club-partnership-rules";
 import { t } from "./i18n/t";
 
 /** D12: at most this many asks a London day into one partner group. */
@@ -29,7 +28,10 @@ export const PARTNER_ASKS_PER_DAY = 2;
  *  a partial unique index holds it (prisma/sql/partner-ask-check.sql). */
 export const OPEN_ASK_STATUSES = ["awaiting-approval", "posted"] as const;
 export type PartnerAskStatus = "awaiting-approval" | "posted" | "filled" | "declined" | "expired" | "cancelled" | "refused";
-export type PartnerAskVia = "button" | "hq" | "dm" | "group" | "auto" | "link";
+/** How an organiser asked. Nothing asks by itself (Kemal, 2026-11-08): the
+ *  automatic match-day ask is gone; "auto" survives only on old rows and in
+ *  the database CHECK (prisma/sql/partner-ask-check.sql). */
+export type PartnerAskVia = "button" | "hq" | "dm" | "group" | "link";
 
 /** Plan 3.13: a post whose WhatsApp id never came back is reported to the
  *  asking club's organisers after this long, never silently. */
@@ -49,7 +51,6 @@ export function askWindows(kickoff: Date, cutoffHours: number): { postBy: Date; 
 
 export type AskRefusal =
   | "partnership-inactive"
-  | "asking-off"
   | "not-admin"
   | "not-next-match"
   | "match-not-open"
@@ -62,9 +63,8 @@ export type AskRefusal =
 
 export interface CanAskInput {
   partnershipStatus: string;
-  askWhen: PartnerAskWhen;
   via: PartnerAskVia;
-  /** The requester's role in the asking club; null for the automatic ask. */
+  /** The requester's role in the asking club; null when unknown. */
   requesterRole: ClubRole | null;
   /** `isNextUpcomingForPosting` for this match in the asking club. */
   isNextMatch: boolean;
@@ -72,8 +72,7 @@ export interface CanAskInput {
   matchHistorical: boolean;
   placesOpen: number;
   /** The number asked for (P4, D-5): the organiser's choice, 1 up to the
-   *  open places, for the whole round. The automatic ask and asking in
-   *  words pass `placesOpen`. */
+   *  open places, for the whole round. Asking in words passes `placesOpen`. */
   places: number;
   now: Date;
   postBy: Date;
@@ -86,16 +85,15 @@ export interface CanAskInput {
 export type CanAskResult = { ok: true } | { ok: false; refusal: AskRefusal };
 
 /** May the asking club ask now? The order is the order an organiser can
- *  act on: a setting first, then the game, then the limits. */
+ *  act on: the pairing first, then the game, then the limits.
+ *
+ *  THE ONE SWITCH (Kemal, 2026-11-08: "It is either on or off"): an ACTIVE
+ *  pairing. There is no club setting for when to ask, and nothing asks by
+ *  itself: an owner or admin of the asking club asks, every time. */
 export function canAsk(i: CanAskInput): CanAskResult {
   const no = (refusal: AskRefusal): CanAskResult => ({ ok: false, refusal });
   if (i.partnershipStatus !== "active") return no("partnership-inactive");
-  if (i.askWhen === "off") return no("asking-off");
-  if (i.via === "auto") {
-    if (i.askWhen !== "auto") return no("asking-off");
-  } else if (i.requesterRole !== "OWNER" && i.requesterRole !== "ADMIN") {
-    return no("not-admin");
-  }
+  if (i.requesterRole !== "OWNER" && i.requesterRole !== "ADMIN") return no("not-admin");
   if (i.matchHistorical || !LIVE_MATCH.has(i.matchStatus)) return no("match-not-open");
   if (!i.isNextMatch) return no("not-next-match");
   if (i.placesOpen <= 0) return no("no-places");
@@ -154,7 +152,7 @@ export function isPartnerPaused(p: { dormantAt: Date | null | undefined; billing
 export const PAUSED_REFUSALS: ReadonlySet<string> = new Set(["partner-dormant", "partner-paused"]);
 
 /** A round's key (P4): asks sent together share `roundId`; an ask with
- *  none (the automatic ask, an older row) is a round of its own. */
+ *  none (an older row) is a round of its own. */
 export function roundKey(ask: { id: string; roundId: string | null }): string {
   return ask.roundId ?? ask.id;
 }
@@ -246,39 +244,6 @@ export function closeTells(
             : "off",
     asker: reason === "approval-expired" ? "expired-approval" : reason === "kickoff" && posted && volunteers === 0 ? "nobody" : null,
   };
-}
-
-// ── The automatic ask (slice S5) ────────────────────────────────────────
-
-/** The automatic ask's moment: the club's London time ON MATCH DAY. Wall
- *  clock, so it is the same London time either side of a clock change. */
-export function autoAskAt(kickoff: Date, askTime: string): Date {
-  return londonWallClockToUtc(kickoff, askTime);
-}
-
-export interface AutoAskInput {
-  now: Date;
-  /** `autoAskAt(kickoff, the club's time)`. */
-  askAt: Date;
-  postBy: Date;
-  placesOpen: number;
-  /** BENCH rows of the asking club's match: its own waiting list. */
-  waitingCount: number;
-  /** Any ask, open or closed, already made to this partner for this match:
-   *  the automatic ask asks each partner once per match. */
-  askedBefore: boolean;
-  /** The partner's own game overlaps this one and is short itself
-   *  (plan 3.13): MatchTime never asks a club for a player it needs. */
-  partnerOwnGameShort: boolean;
-}
-
-/** Is the automatic ask due for this partner now (D4)? Only from the
- *  club's time on match day until the cut-off, with a place open and the
- *  club's own waiting list empty. */
-export function autoAskDue(i: AutoAskInput): boolean {
-  if (i.askedBefore || i.partnerOwnGameShort) return false;
-  if (i.placesOpen <= 0 || i.waitingCount > 0) return false;
-  return i.now.getTime() >= i.askAt.getTime() && i.now.getTime() < i.postBy.getTime();
 }
 
 /** Do two games' windows overlap? Each is kickoff minus an hour to kickoff

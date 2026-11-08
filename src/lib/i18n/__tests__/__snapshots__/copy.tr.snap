@@ -2340,13 +2340,13 @@ Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir.
 ❌ Bu kulübün henüz partner kulübü yok. Bir yönetici yakındaki kulüpleri ayarlar sayfasında bulabilir:
 https://matchtime.ai/admin/settings#partner-clubs
 
-### R153 buildHelpReply / partners not asked / group
+### R153 buildHelpReply / partners two / group
 🤝 *Partner kulüpler nasıl çalışır*
 Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir. Bir partner kulübün bir oyuncusu eksik olduğunda isteği buraya gelebilir: oynamak istersen bağlantıya dokun. Biz eksik kalınca da onların oyuncuları yedek listemize misafir olarak girebilir. Bir partner kulüpte oynadıktan sonra MatchTime sana bir kez, daha çok maç istersen oyuncu havuzuna katılman için bir bağlantı gönderir.
 
 ✅ Bu kulübün 2 partner kulübü var.
 
-### R153 buildHelpReply / partners auto / group
+### R153 buildHelpReply / partners one / group
 🤝 *Partner kulüpler nasıl çalışır*
 Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir. Bir partner kulübün bir oyuncusu eksik olduğunda isteği buraya gelebilir: oynamak istersen bağlantıya dokun. Biz eksik kalınca da onların oyuncuları yedek listemize misafir olarak girebilir. Bir partner kulüpte oynadıktan sonra MatchTime sana bir kez, daha çok maç istersen oyuncu havuzuna katılman için bir bağlantı gönderir.
 
@@ -2360,43 +2360,43 @@ Yöneticiler bazılarını beni etiketleyerek de değiştirebilir, örneğin *@M
 
 ### R153 buildHelpReply / pool closed / admin
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*
-Yakınınızdaki oyuncular daha çok maç için havuza kaydolur. Kadronuz eksik kalınca MatchTime onlara sorabilir; her seferinde kendileri karar verir ve misafir olarak oynar.
+Yakınınızdaki oyuncular daha çok maç için havuza kaydolur. Kadronuz eksik kalınca bir organizatör, oyuncu havuzuna ve partner kulüplerinize birlikte ya da ayrı ayrı, WhatsApp'tan ya da maç sayfasından sorabilir. Havuz oyuncuları her seferinde kendileri karar verir ve misafir olarak oynar.
 
 ⏳ Havuz henüz açılmadı. Açılınca kulübün için ayarlardan açabilirsin.
 
 ### R153 buildHelpReply / pool off / admin
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*
-Yakınınızdaki oyuncular daha çok maç için havuza kaydolur. Kadronuz eksik kalınca MatchTime onlara sorabilir; her seferinde kendileri karar verir ve misafir olarak oynar.
+Yakınınızdaki oyuncular daha çok maç için havuza kaydolur. Kadronuz eksik kalınca bir organizatör, oyuncu havuzuna ve partner kulüplerinize birlikte ya da ayrı ayrı, WhatsApp'tan ya da maç sayfasından sorabilir. Havuz oyuncuları her seferinde kendileri karar verir ve misafir olarak oynar.
 
 ❌ Kulübünde kapalı. Açmak için buradan *Oyuncu havuzu* ayarını aç:
 https://mt.example/r/topic
 
 ### R153 buildHelpReply / pool on / admin
 🌍 *MatchTime oyuncu havuzu nasıl çalışır*
-Yakınınızdaki oyuncular daha çok maç için havuza kaydolur. Kadronuz eksik kalınca MatchTime onlara sorabilir; her seferinde kendileri karar verir ve misafir olarak oynar.
+Yakınınızdaki oyuncular daha çok maç için havuza kaydolur. Kadronuz eksik kalınca bir organizatör, oyuncu havuzuna ve partner kulüplerinize birlikte ya da ayrı ayrı, WhatsApp'tan ya da maç sayfasından sorabilir. Havuz oyuncuları her seferinde kendileri karar verir ve misafir olarak oynar.
 
-✅ Kulübünde açık. Kulübünün WhatsApp grubunda benden iste (örneğin *@Match Time havuzdan 2 oyuncu iste*) ya da *Oyuncu havuzuna kendiliğinden sor* ayarını aç. Kapatmak için *Oyuncu havuzu* ayarını kapat:
+✅ Kulübünde açık. Kulübünün WhatsApp grubunda benden iste (örneğin *@Match Time havuzdan 2 oyuncu iste*) ya da maç sayfasında işaretle. Kapatmak için *Oyuncu havuzu* ayarını kapat:
 https://mt.example/r/topic
 
 ### R153 buildHelpReply / partners none / admin
 🤝 *Partner kulüpler nasıl çalışır*
-Partner kulüpler birbirine oyuncu verir. Kadronuz hâlâ eksikken MatchTime partner kulüplerinizden oyuncu ister, yanıt veren oyuncular yedek listenize misafir olarak girer. Sizin oyuncularınız da onların isteklerine yanıt verebilir.
+Partner kulüpler birbirine oyuncu verir. Eşleştikten sonra bir organizatör, partner kulüplerinizden ve oyuncu havuzundan birlikte ya da ayrı ayrı, WhatsApp'tan ya da maç sayfasından oyuncu isteyebilir. Yanıt veren oyuncular yedek listenize misafir olarak girer. Sizin oyuncularınız da onların isteklerine yanıt verebilir.
 
 ❌ Kulübünün henüz partner kulübü yok. Yakınındaki kulüpleri bul ve ayarlar sayfasından istek gönder:
 https://mt.example/r/topic
 
-### R153 buildHelpReply / partners not asked / admin
+### R153 buildHelpReply / partners two / admin
 🤝 *Partner kulüpler nasıl çalışır*
-Partner kulüpler birbirine oyuncu verir. Kadronuz hâlâ eksikken MatchTime partner kulüplerinizden oyuncu ister, yanıt veren oyuncular yedek listenize misafir olarak girer. Sizin oyuncularınız da onların isteklerine yanıt verebilir.
+Partner kulüpler birbirine oyuncu verir. Eşleştikten sonra bir organizatör, partner kulüplerinizden ve oyuncu havuzundan birlikte ya da ayrı ayrı, WhatsApp'tan ya da maç sayfasından oyuncu isteyebilir. Yanıt veren oyuncular yedek listenize misafir olarak girer. Sizin oyuncularınız da onların isteklerine yanıt verebilir.
 
-⏸️ Kulübünün 2 partner kulübü var, ama MatchTime onlardan oyuncu istemiyor. Açmak için *Partner kulüplerden oyuncu iste* ayarında ne zaman isteneceğini seç:
+✅ Açık: kulübünün 2 partner kulübü var. Kulübünün WhatsApp grubunda benden iste (örneğin *@Match Time perşembe için partner kulüplerden oyuncu bul*) ya da maç sayfasında onları işaretle. Partner kulüplerin burada:
 https://mt.example/r/topic
 
-### R153 buildHelpReply / partners auto / admin
+### R153 buildHelpReply / partners one / admin
 🤝 *Partner kulüpler nasıl çalışır*
-Partner kulüpler birbirine oyuncu verir. Kadronuz hâlâ eksikken MatchTime partner kulüplerinizden oyuncu ister, yanıt veren oyuncular yedek listenize misafir olarak girer. Sizin oyuncularınız da onların isteklerine yanıt verebilir.
+Partner kulüpler birbirine oyuncu verir. Eşleştikten sonra bir organizatör, partner kulüplerinizden ve oyuncu havuzundan birlikte ya da ayrı ayrı, WhatsApp'tan ya da maç sayfasından oyuncu isteyebilir. Yanıt veren oyuncular yedek listenize misafir olarak girer. Sizin oyuncularınız da onların isteklerine yanıt verebilir.
 
-✅ Açık: kulübünün 1 partner kulübü var ve MatchTime onlardan maç günü kendiliğinden ya da sen isteyince oyuncu ister. Değiştirmek ya da kapatmak için:
+✅ Açık: kulübünün 1 partner kulübü var. Kulübünün WhatsApp grubunda benden iste (örneğin *@Match Time perşembe için partner kulüplerden oyuncu bul*) ya da maç sayfasında onları işaretle. Partner kulüplerin burada:
 https://mt.example/r/topic
 
 ### R153 buildHelpReply / settings / admin
@@ -2432,13 +2432,13 @@ Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir.
 
 ❌ Bu kulübün henüz partner kulübü yok.
 
-### R153 buildHelpReply / partners not asked / player
+### R153 buildHelpReply / partners two / player
 🤝 *Partner kulüpler nasıl çalışır*
 Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir. Bir partner kulübün bir oyuncusu eksik olduğunda isteği buraya gelebilir: oynamak istersen bağlantıya dokun. Biz eksik kalınca da onların oyuncuları yedek listemize misafir olarak girebilir. Bir partner kulüpte oynadıktan sonra MatchTime sana bir kez, daha çok maç istersen oyuncu havuzuna katılman için bir bağlantı gönderir.
 
 ✅ Bu kulübün 2 partner kulübü var.
 
-### R153 buildHelpReply / partners auto / player
+### R153 buildHelpReply / partners one / player
 🤝 *Partner kulüpler nasıl çalışır*
 Kulübümüz yakındaki kulüplerle birbirine oyuncu vermek için eşleşebilir. Bir partner kulübün bir oyuncusu eksik olduğunda isteği buraya gelebilir: oynamak istersen bağlantıya dokun. Biz eksik kalınca da onların oyuncuları yedek listemize misafir olarak girebilir. Bir partner kulüpte oynadıktan sonra MatchTime sana bir kez, daha çok maç istersen oyuncu havuzuna katılman için bir bağlantı gönderir.
 
