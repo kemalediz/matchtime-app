@@ -309,14 +309,14 @@ describe("anyone in HQ: questions for all, changes for the organisers", () => {
     expect(understand.understandAdminMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-kemal", organiser: false, member: true }));
   });
 
-  it("the line saying only the organisers can change that: no tick", async () => {
+  it("the line saying only the organisers can make the teams: no tick", async () => {
     dbMock.membership.findMany.mockResolvedValue(PLAYER);
-    understand.understandAdminMessage.mockResolvedValue({ route: "balancer", outcome: "hq-only-organisers", replyText: "Only Hamzah or Raihan can change that." });
+    understand.understandAdminMessage.mockResolvedValue({ route: "balancer", outcome: "hq-only-organisers", replyText: "Only Hamzah or Raihan can make the teams." });
     expect(await handleAdminGroupMessage(msg("@Match Time swap Maj and Kieran"))).toEqual({
       handled: true,
       orgId: "org-fnf",
       outcome: "hq-only-organisers",
-      replyText: "Only Hamzah or Raihan can change that.",
+      replyText: "Only Hamzah or Raihan can make the teams.",
       react: null,
     });
   });

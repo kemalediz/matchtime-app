@@ -126,7 +126,7 @@ test("untagged, the same words do nothing: the tag rules are unchanged", async (
 test("a player who is not an admin: nothing asked, the one line naming who can (2026-10-28)", async ({ request, db }) => {
   const g = await world(request, db);
   const r = await g.post("pete", ASK_ALL, { ...recruitFromPartners(""), tag: true });
-  expect(r.reply ?? "").toMatch(/^Only .+ can change that\.$/);
+  expect(r.reply ?? "").toMatch(/^Only .+ can ask for players\.$/);
   expect(await asks(db)).toHaveLength(1);
 });
 

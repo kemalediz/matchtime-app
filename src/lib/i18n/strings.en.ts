@@ -48,6 +48,7 @@ import { firstWord, joinList } from "./text";
 import { firstMonthsFree } from "./free-period";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey, BadgeNumbers } from "../badge-rules";
+import type { OrganisersOnlyKind } from "../organisers-only-kind";
 
 /** The tables whose answer says it cannot be cut to a period. */
 type UncutTable = "elo" | "team_of_season" | "mr_reliable" | "chemistry" | "generic";
@@ -1661,12 +1662,25 @@ export const en = {
    *  no write, nothing queued). Decided from the outcome
    *  (`tagged-silence.ts`), never from the words. */
   group_not_understood: `I didn't catch what you'd like me to do. Type *@Match Time help* to see what I can do.`,
-  /** Someone in the admin group who is not an owner or admin of the club
-   *  asked MatchTime to change something (2026-10-16). `names` is the
-   *  club's owners and admins, joined ("Hamzah or Raihan"); empty when it
-   *  has none on record. */
-  hq_only_organisers: (p: { names: string }): string =>
-    p.names ? `Only ${p.names} can change that.` : `Only the club's organisers can change that.`,
+  /** Someone who is not an owner or admin of the club asked MatchTime for
+   *  something only they may do (2026-10-16). `names` is the club's owners
+   *  and admins, joined ("Hamzah or Raihan"); empty when it has none on
+   *  record. `kind` names what was asked, from what the code knows, never
+   *  the words (2026-11-08: a request for players got "change that");
+   *  unset is the generic "do that". */
+  hq_only_organisers: (p: { names: string; kind?: OrganisersOnlyKind }): string => {
+    const who = p.names || "the club's organisers";
+    const what: Record<OrganisersOnlyKind, string> = {
+      players: "ask for players",
+      cancel: "cancel the game",
+      restore: "bring the game back",
+      teams: "make the teams",
+      score: "change the score",
+      settings: "change that",
+      other: "do that",
+    };
+    return `Only ${who} can ${what[p.kind ?? "other"]}.`;
+  },
   // ── The match score, reported in HQ (2026-10-16, admin-group-score.ts).
   //    Winner first; a draw in the match's own order. ──
   /** A score recorded from HQ. */

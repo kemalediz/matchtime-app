@@ -50,7 +50,7 @@ const usage = (db: TestDb) =>
     const u = await usage(db);
     console.log(`[live] player fee ask: ${JSON.stringify(out)}`);
     console.log(`[live] model calls so far: ${u?.calls ?? 0}, cost: $${(u?.cost ?? 0).toFixed(5)}`);
-    expect(out).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
+    expect(out).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can do that.", react: null });
   });
 
   test("an organiser's untagged chat with the other organisers: silent", async ({ request, db }) => {

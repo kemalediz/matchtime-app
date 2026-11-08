@@ -147,7 +147,7 @@ scenarios("the organisers ask the MatchTime player pool from HQ", () => {
 
     const ex = await fnf.hq.say("pete", ASK_EN, { now: hoursBefore(fnf, 30), poolOpen: true });
 
-    pool.expectSent(ex.sent, [{ to: "np.hq", channel: "hq", text: /^Only .*Oscar.* can change that\.$/ }]);
+    pool.expectSent(ex.sent, [{ to: "np.hq", channel: "hq", text: /^Only .*Oscar.* can ask for players\.$/ }]);
     expect(await poolAsks(pool, fnf)).toEqual([]);
   });
 
@@ -213,7 +213,7 @@ scenarios("the organisers ask the MatchTime player pool from HQ", () => {
     const [notice] = (await noticePoll(pool, fnf, hoursBefore(fnf, 3.5))).filter((p) => /MatchTime pool/.test(p.text));
 
     const player = await fnf.hq.say("pete", "yes", { tagged: true, now: hoursBefore(fnf, 3.4), poolOpen: true, quote: { text: notice.text } });
-    pool.expectSent(player.sent, [{ to: "quote.hq", channel: "hq", text: /^Only .* can change that\.$/ }]);
+    pool.expectSent(player.sent, [{ to: "quote.hq", channel: "hq", text: /^Only .* can do that\.$/ }]);
     expect(await poolAsks(pool, fnf)).toEqual([]);
 
     const ex = await fnf.hq.say("alice", "go on then", { tagged: true, now: hoursBefore(fnf, 3.3), poolOpen: true, quote: { text: notice.text } });

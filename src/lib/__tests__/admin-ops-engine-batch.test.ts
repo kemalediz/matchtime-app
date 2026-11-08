@@ -25,6 +25,8 @@ import type { EngineResult, Route, SquadState } from "../pipeline/types";
 import { NOW, fullName, world, type WorldOpts } from "../pipeline/__tests__/helpers";
 import type { PaidState } from "../admin-ops-engine";
 import type { StoredAsk } from "../refused-ask-retry";
+import { t } from "../i18n/t";
+import type { OrganisersOnlyKind } from "../organisers-only-kind";
 import {
   runAdminOpsBatch,
   describeAdminOpsBatch,
@@ -32,6 +34,11 @@ import {
   type AdminOpsBatchDeps,
   type AdminOpsBatchMessage,
 } from "../admin-ops-engine-batch";
+
+/** The organisers-only line as the real one renders it, for "Kemal",
+ *  with the kind the caller passed (2026-11-08). */
+const onlyKemal = async (_orgId: string, lang: string | null, kind?: OrganisersOnlyKind): Promise<string> =>
+  t(lang).hq_only_organisers({ names: "Kemal", kind });
 
 // ── Fixtures ───────────────────────────────────────────────────────────
 
@@ -585,13 +592,13 @@ describe("several places in one ask, or none named", () => {
     const r = recorder(model, paidWorld());
     const res = await run({
       messages: [msg({ body: ASK, senderUserId: "u-zair", senderName: fullName("zair"), taggedExplicitly: true })],
-      deps: { ...r.deps, onlyOrganisersLine: async () => "Only Kemal can change that." },
+      deps: { ...r.deps, onlyOrganisersLine: onlyKemal },
     });
     const out = [...res.outcomes.values()][0];
     expect(out.partnerAskRequest).toBeNull();
     expect(out.poolAskRequest).toBeNull();
     expect(out.recruitRequest).toBe(false);
-    expect(out.reply).toBe("Only Kemal can change that.");
+    expect(out.reply).toBe("Only Kemal can ask for players.");
     expect(out.intent).toBe("organisers_only");
     expect(r.dms).toEqual([]);
   });
@@ -601,7 +608,7 @@ describe("several places in one ask, or none named", () => {
     const r = recorder(model, paidWorld());
     const res = await run({
       messages: [msg({ body: ASK, senderUserId: "u-zair", senderName: fullName("zair"), tagged: false, taggedExplicitly: false })],
-      deps: { ...r.deps, onlyOrganisersLine: async () => "Only Kemal can change that." },
+      deps: { ...r.deps, onlyOrganisersLine: onlyKemal },
     });
     const out = res.outcomes.get(`wa-${ASK.slice(0, 14)}`);
     expect(out?.reply ?? null).toBeNull();
@@ -1138,12 +1145,12 @@ describe("cancelling a match from the players' group (2026-10-23)", () => {
 
   it("a player who is not an owner or admin: the core is told so, and its line is the reply", async () => {
     const { model } = stubModel({ [CANCEL]: CANCEL_FACTS });
-    const c = cancelRecorder({ outcome: "match_cancel_organisers_only", replyText: "Only Kemal can change that.", react: null });
+    const c = cancelRecorder({ outcome: "match_cancel_organisers_only", replyText: "Only Kemal can cancel the game.", react: null });
     const r = recorder(model, paidWorld(), { cancelOrRestore: c.dep });
     const res = await run({ messages: [msg({ body: CANCEL, senderUserId: "u-sait", senderName: fullName("sait") })], deps: r.deps });
     expect(c.calls[0].organiser).toBe(false);
     const out = [...res.outcomes.values()][0];
-    expect(out.reply).toBe("Only Kemal can change that.");
+    expect(out.reply).toBe("Only Kemal can cancel the game.");
     expect(out.react).toBeNull();
   });
 
@@ -1202,7 +1209,7 @@ describe("try again after a refusal", () => {
     const seen: string[] = [];
     const res = await run({
       messages: [msg({ body: RETRY, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true, ...m })],
-      deps: { ...r.deps, onlyOrganisersLine: async () => "Only Kemal can change that.", ...over, latestAskForRetry: async (a) => (seen.push(a.where), over.latestAskForRetry ? over.latestAskForRetry(a) : null) },
+      deps: { ...r.deps, onlyOrganisersLine: onlyKemal, ...over, latestAskForRetry: async (a) => (seen.push(a.where), over.latestAskForRetry ? over.latestAskForRetry(a) : null) },
     });
     return { out: res.outcomes.get(`wa-${RETRY.slice(0, 14)}`), dms: r.dms, seen, res };
   };
@@ -1227,7 +1234,7 @@ describe("try again after a refusal", () => {
 
   it("a player who is not an organiser: the one line naming who can, nothing repeated", async () => {
     const { out, seen } = await outcomeOf({ latestAskForRetry: async () => ASKED }, { senderUserId: "u-zair", senderName: fullName("zair") });
-    expect(out?.reply).toBe("Only Kemal can change that.");
+    expect(out?.reply).toBe("Only Kemal can ask for players.");
     expect(out?.intent).toBe("organisers_only");
     expect(out?.poolAskRequest).toBeNull();
     expect(seen).toEqual([]);
@@ -1253,7 +1260,7 @@ describe("set the pitch by WhatsApp", () => {
       messages: [msg({ body: PITCH, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true, ...m })],
       deps: {
         ...r.deps,
-        onlyOrganisersLine: async () => "Only Kemal can change that.",
+        onlyOrganisersLine: onlyKemal,
         setVenueFromWords: async (a) => (calls.push({ words: a.words, choice: a.choice, userId: a.userId }), { outcome: "venue-set", replyText: "📍 Done, your pitch is *Goals Sutton*, Oxford Rd.", set: true }),
       },
     });
@@ -1301,7 +1308,7 @@ describe("quiet hours by WhatsApp", () => {
       messages: [msg({ body: OFF, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true, ...m })],
       deps: {
         ...r.deps,
-        onlyOrganisersLine: async () => "Only Kemal can change that.",
+        onlyOrganisersLine: onlyKemal,
         applyQuietHoursWords: async (a) => (
           calls.push({ orgId: a.orgId, off: a.off, from: a.from, to: a.to, lang: a.lang }),
           { outcome: "quiet-hours-off", replyText: "✅ Quiet hours are off. The 2 messages I was holding go out now." }
@@ -1373,7 +1380,7 @@ describe("a game's fewest and most players by WhatsApp", () => {
       messages: [msg({ body: SET, senderUserId: "u-kemal", senderName: fullName("kemal"), taggedExplicitly: true, ...m })],
       deps: {
         ...r.deps,
-        onlyOrganisersLine: async () => "Only Kemal can change that.",
+        onlyOrganisersLine: onlyKemal,
         applyPlayerRangeWords: async (a) => (
           calls.push({ orgId: a.orgId, minPlayers: a.minPlayers, maxPlayers: a.maxPlayers, fullTeams: a.fullTeams, matchDay: a.matchDay }),
           { outcome: "player-range-set", replyText: "✅ Done. *Vets 7s* is played with 12 to 16 players now." }
@@ -1422,7 +1429,7 @@ describe("one game switched to another size by WhatsApp", () => {
       messages: [msg({ body, senderUserId: "u-kemal", senderName: fullName("kemal"), ...m })],
       deps: {
         ...r.deps,
-        onlyOrganisersLine: async () => "Only Kemal can change that.",
+        onlyOrganisersLine: onlyKemal,
         applySwitchFormatWords: async (a) => (
           calls.push({ perSide: a.perSide, matchDay: a.matchDay, actorUserId: a.actorUserId, via: a.via, quotedId: a.quotedId, explicit: a.explicit }),
           { outcome: "format-switched", replyText: "✅ Done: Monday is 8-a-side now, 16 places." }

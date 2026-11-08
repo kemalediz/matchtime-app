@@ -163,7 +163,7 @@ scenarios("players asked for in the players' group: several places, or MatchTime
     await poolPlayer(pool, "cang4", { at: near(fmc) });
 
     const ex = await say(fmc, "pete", UNCLEAR, { facts: recruitFrom([]) });
-    expect(groupLine(ex.sent, fmc)).toMatch(/^Only .+ can change that\.$/);
+    expect(groupLine(ex.sent, fmc)).toMatch(/^Only .+ can ask for players\.$/);
     expect(ex.sent.filter((m) => m.channel === "dm")).toEqual([]);
     expect(await poolAsks(pool, fmc)).toEqual([]);
     expect(await partnerAsks(pool, fmc)).toEqual([]);

@@ -143,7 +143,7 @@ test("at 10:00 London: teams built and proposed in the admin group, once, nothin
 
 test("a non-admin's '@Match Time teams' in the admin group changes nothing: one line naming who can (2026-10-20)", async ({ request, db }) => {
   const before = await sheet(db);
-  expect(await say(request, "@Match Time teams", PLAYER)).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
+  expect(await say(request, "@Match Time teams", PLAYER)).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can make the teams.", react: null });
   expect(await sheet(db)).toEqual(before);
 });
 
