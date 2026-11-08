@@ -82,6 +82,19 @@ describe("asking partner clubs: an active pairing is the only switch", () => {
     expect(sql).not.toMatch(/partnerAskWhen|partnerAskTime/);
     expect(sql).toMatch(/partnerAskCutoffHours/);
   });
+
+  it("the drop file is separate, reviewed, and drops exactly the three columns", () => {
+    const dir = readdirSync(path.join(REPO, "prisma/migrations")).filter((d) => d.endsWith("_drop_partner_ask_settings"));
+    expect(dir).toHaveLength(1);
+    const sql = readFileSync(path.join(REPO, "prisma/migrations", dir[0], "migration.sql"), "utf8");
+    const code = sql
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("--"))
+      .join("\n");
+    for (const c of ["partnerAskWhen", "partnerAskTime", "poolAutoAsk"]) expect(code).toContain(`DROP COLUMN IF EXISTS "${c}"`);
+    expect(code).not.toMatch(/partnerAskCutoffHours/);
+    expect(sql).toMatch(/AFTER the deploy/i);
+  });
 });
 
 describe("no copy offers an automatic ask, EN and TR", () => {
