@@ -132,7 +132,7 @@ test("already paid by card: left as paid, no question, no tick", async ({ reques
 
 test("someone in HQ who is neither an organiser nor the collector: the #297 line, nothing asked", async ({ request, db }) => {
   const out = await say(request, FREE_ASK, PLAYER);
-  expect(out).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
+  expect(out).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can do that.", react: null });
   expect(await db.one(`SELECT count(*)::int AS n FROM "AdminFeeProposal"`)).toEqual({ n: 0 });
 });
 

@@ -490,7 +490,7 @@ export async function playersGroupCancelOrRestore(input: {
   if (!input.organiser) {
     // Imported here: admin-group-understand imports this module.
     const { onlyOrganisersLine } = await import("./admin-group-understand");
-    return { outcome: O.organisersOnly, replyText: await onlyOrganisersLine(input.orgId, input.lang), react: null };
+    return { outcome: O.organisersOnly, replyText: await onlyOrganisersLine(input.orgId, input.lang, input.mode === "cancel" ? "cancel" : "restore"), react: null };
   }
   const org = await db.organisation.findUnique({ where: { id: input.orgId }, select: { adminGroupId: true } });
   if (org?.adminGroupId) return { outcome: O.useAdminGroup, replyText: s.match_cancel_use_admin_group, react: null };

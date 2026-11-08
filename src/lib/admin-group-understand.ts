@@ -100,12 +100,13 @@
  * says YES to the list they pasted. approve (of anything else), balancer,
  * ask_group and admin_ops still change the club and are an organiser's
  * alone (a free place: also the money collector's). Asked of MatchTime by
- * anyone else, one line naming the club's owners and admins ("Only Hamzah
- * or Raihan can change that."). The next game's list is not changed before
- * the rolling squad is carried over (`rollingSeedPendingAt`). Logs carry ids
- * and counts only.
+ * anyone else, one line naming the club's owners and admins and what was
+ * asked ("Only Hamzah or Raihan can ask for players.", `organisers-only-kind.ts`).
+ * The next game's list is not changed before the rolling squad is carried
+ * over (`rollingSeedPendingAt`). Logs carry ids and counts only.
  */
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
+import { organisersOnlyKindOfAction, type OrganisersOnlyKind } from "./organisers-only-kind";
 import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "./reply-context";
 import { rosterMemberByPhone } from "./roster-name-by-phone";
 import { db } from "./db";
@@ -271,19 +272,20 @@ export async function loadPending(
 }
 
 /**
- * "Only Hamzah or Raihan can change that." The club's current owners and
- * admins by first name, in the club's language (`joinAdminNames`, the
- * seed nudge's join), for someone in HQ who asked MatchTime for a change
- * only they can make.
+ * "Only Hamzah or Raihan can ask for players." The club's current owners
+ * and admins by first name, in the club's language (`joinAdminNames`, the
+ * seed nudge's join), for someone who asked MatchTime for something only
+ * they can do. `kind` names what was asked, from what the caller knows
+ * (`organisers-only-kind.ts`); unset is the generic "do that".
  */
-export async function onlyOrganisersLine(orgId: string, lang: string | null): Promise<string> {
+export async function onlyOrganisersLine(orgId: string, lang: string | null, kind: OrganisersOnlyKind = "other"): Promise<string> {
   const rows =
     (await db.membership.findMany({
       where: { orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
       select: { user: { select: { name: true } } },
       orderBy: [{ role: "asc" }, { id: "asc" }],
     })) ?? [];
-  return t(lang).hq_only_organisers({ names: joinAdminNames(rows.map((r) => r.user?.name ?? null), lang) });
+  return t(lang).hq_only_organisers({ names: joinAdminNames(rows.map((r) => r.user?.name ?? null), lang), kind });
 }
 
 /**
@@ -618,7 +620,10 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // for and to say YES to, even when they are not an admin (review of
     // #301, item 8). Nothing else is.
     const feeActor = actor ?? (input.senderUserId && input.senderUserId === org.paymentHolderId ? input.senderUserId : null);
-    const onlyOrganisers = async (): Promise<Understood> => said("hq-only-organisers", await onlyOrganisersLine(org.id, lang));
+    // The line names what was asked (2026-11-08), from the path: each
+    // caller passes its kind; unknown is "do that".
+    const onlyOrganisers = async (kind: OrganisersOnlyKind = "other"): Promise<Understood> =>
+      said("hq-only-organisers", await onlyOrganisersLine(org.id, lang, kind));
     // Who may say YES to what is waiting: an organiser to anything; the
     // collector to a free place; the member who pasted a list to that list
     // (2026-10-20: anyone who may paste confirms their own paste).
@@ -647,7 +652,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         now,
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
-      if (r === "organisers-only") return onlyOrganisers();
+      if (r === "organisers-only") return onlyOrganisers("score");
       return r ? { route: "score", outcome: r.outcome, replyText: r.replyText } : null;
     };
     // The players' group's own question answering, for the organisers
@@ -748,7 +753,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // as about the teams): the teams extractor, then `team-proposal.ts`.
     // Tagged (the gate above), so a build or a change is asked of MatchTime.
     const teamsHere = async (): Promise<Understood | null> => {
-      if (!actor) return onlyOrganisers();
+      if (!actor) return onlyOrganisers("teams");
       if (!weekly) return notHere();
       const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
       const extracted = await extractForRouteTraced("balancer", model, "balancer", {
@@ -807,7 +812,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // through the match page tick's own function (`pool-ask-words.ts`).
     // An organiser's alone; a weekly club's (as asking the group is).
     const askPoolInWords = async (): Promise<Understood> => {
-      if (!actor) return onlyOrganisers();
+      if (!actor) return onlyOrganisers("players");
       if (!weekly) return notHere();
       const r = await askPoolFromWords({ orgId: org.id, userId: actor, via: "words", lang, now, env: input.poolEnv, remember: { askMessageId: messageId } });
       return said(r.outcome, r.replyText);
@@ -855,7 +860,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // doors as an ask in words; nothing stored, one short line. A number
     // picked from the list is that place of the list's OWN words (`list`).
     const venueOrRetry = async (facts: AdminFacts, list: HqLogRow | null): Promise<Understood | null> => {
-      if (!actor) return onlyOrganisers();
+      if (!actor) return onlyOrganisers(organisersOnlyKindOfAction(facts.action));
       if (facts.action === "set_venue") {
         const listWords = list ? parseVenuePickRef(list.askRef) : null;
         const choice = facts.venueChoice ?? null;
@@ -1065,7 +1070,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       }
       case "ask_group": {
         // One place-open ask in the players' group (`admin-group-ask-group.ts`).
-        if (!actor) return onlyOrganisers();
+        if (!actor) return onlyOrganisers("players");
         if (!weekly) return notHere();
         // A club with partner clubs (slice S6, 2026-10-21): "ask Sutton if
         // anyone can play", "diğer gruplara sor" route here, as finding a
@@ -1111,7 +1116,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // organiser's alone, like ask_group (the collector may not).
         const places = facts.kind === "admin" ? otherPlacesNamed(facts) : null;
         if (places) {
-          if (!actor) return onlyOrganisers();
+          if (!actor) return onlyOrganisers("players");
           return askFromSources(places, actor, facts.kind === "admin" ? (facts.clubRef ?? null) : null);
         }
         // Setting the pitch, or "try again" after a refusal (2026-10-28).
@@ -1120,7 +1125,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // question back when the club has partners or the pool; otherwise
         // the one line below, as before.
         if (facts.kind === "admin" && facts.action === "recruit" && facts.sourceUnsaid) {
-          if (!actor) return onlyOrganisers();
+          if (!actor) return onlyOrganisers("players");
           const which = await askWhichIfUnsaid(facts);
           if (which) return which;
         }
@@ -1133,7 +1138,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // Quiet hours (2026-10-31): off, on, or new times, through the
         // settings page's own save core. An organiser's alone.
         if (facts.kind === "admin" && facts.action === "quiet_hours") {
-          if (!actor) return onlyOrganisers();
+          if (!actor) return onlyOrganisers("settings");
           const r = await applyQuietHoursWords({ orgId: org.id, off: facts.quietOff === true, from: facts.quietFrom ?? null, to: facts.quietTo ?? null, lang, now });
           return said(`hq-${r.outcome}`, r.replyText);
         }
@@ -1142,25 +1147,25 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // one game switched to another size, through the switch page's own
         // core. An organiser's alone.
         if (facts.kind === "admin" && facts.action === "player_numbers") {
-          if (!actor) return onlyOrganisers();
+          if (!actor) return onlyOrganisers("settings");
           const r = await applyPlayerRangeWords({ orgId: org.id, ...playerRangeWordsOf(facts), lang });
           return said(`hq-${r.outcome}`, r.replyText);
         }
         if (facts.kind === "admin" && facts.action === "switch_format") {
-          if (!actor) return onlyOrganisers();
+          if (!actor) return onlyOrganisers("settings");
           // HQ acts on a real tag only; the suggestion is the players' group's.
           const r = await applySwitchFormatWords({ orgId: org.id, perSide: perSideOf(facts), matchDay: facts.matchDay?.trim() || null, actorUserId: actor, via: "hq", lang, now, explicit: true });
           return r.replyText ? said(`hq-${r.outcome}`, r.replyText) : null;
         }
         if (facts.kind === "admin" && facts.action === "season_break") {
-          if (!actor) return onlyOrganisers();
+          if (!actor) return onlyOrganisers("settings");
           const { applySeasonBreakWords } = await import("./season-break-words");
           const r = await applySeasonBreakWords({ orgId: org.id, breakMonths: facts.breakMonths ?? [], playMonths: facts.playMonths ?? [], lang, now });
           return { route, outcome: r.outcome, replyText: r.replyText };
         }
         if (facts.kind === "admin" && (facts.action === "cancel_match" || facts.action === "restore_match")) {
           // Kemal, 2026-10-22: "it only acts when an admin tags it" (the gate).
-          if (!actor) return onlyOrganisers();
+          if (!actor) return onlyOrganisers(facts.action === "cancel_match" ? "cancel" : "restore");
           const r = await hqCancelOrRestore({
             orgId: org.id,
             lang,

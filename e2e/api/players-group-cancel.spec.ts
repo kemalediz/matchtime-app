@@ -81,7 +81,7 @@ test("untagged: nothing cancelled, nothing posted, nothing said", async ({ reque
 
 test("a player: refused with the line naming who can, nothing cancelled", async ({ request, db }) => {
   const out = await say(request, CANCEL, "player");
-  expect(out.reply).toMatch(/^Only .+ can change that\.$/);
+  expect(out.reply).toMatch(/^Only .+ can cancel the game\.$/);
   expect(out.react).toBeNull();
   expect(await status(db)).toBe("UPCOMING");
   expect(await groupPosts(db)).toHaveLength(0);

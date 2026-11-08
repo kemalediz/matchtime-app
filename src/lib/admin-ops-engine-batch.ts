@@ -222,6 +222,7 @@ import { latestAskFromRecords, retryFactsOf, type LatestAskForRetry } from "./re
 import type { VenueFromWordsResult } from "./venue-from-words";
 import { perSideOf, playerRangeWordsOf } from "./flex-format-rules";
 import type { PlayerRangeWords } from "./player-range-words";
+import { organisersOnlyKindOfAction, type OrganisersOnlyKind } from "./organisers-only-kind";
 
 export { ADMIN_OPS_APPLY_DEGRADED_PREFIX, ADMIN_OPS_HANDLED_BY };
 
@@ -341,10 +342,12 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
     organiser: boolean;
     now: Date;
   }) => Promise<{ outcome: string; replyText: string | null; react: string | null }>;
-  /** "Only Kemal or Hamzah can change that." for a player who tagged
-   *  MatchTime asking for players (2026-10-28). Defaults to HQ's own
-   *  `onlyOrganisersLine`; injected so tests need no database. */
-  onlyOrganisersLine?: (orgId: string, lang: string | null) => Promise<string>;
+  /** "Only Kemal or Hamzah can ask for players." for a player who tagged
+   *  MatchTime asking for players (2026-10-28), or for anything else only
+   *  an organiser may do, named by `kind` from the extractor's action
+   *  (2026-11-08). Defaults to HQ's own `onlyOrganisersLine`; injected so
+   *  tests need no database. */
+  onlyOrganisersLine?: (orgId: string, lang: string | null, kind: OrganisersOnlyKind) => Promise<string>;
   /** "Try again" (2026-10-28): the organisers' last ask, as stored.
    *  Defaults to `refused-ask-retry.ts`'s interim reader; the stored
    *  refused asks of feat/retry-refused-ask replace it when merged. */
@@ -868,8 +871,12 @@ export async function runAdminOpsBatch(args: {
 
   for (const [id, what] of recruitNotOrganiser) {
     const m = messages.find((x) => x.waMessageId === id)!;
-    const line = deps.onlyOrganisersLine ?? (async (o: string, l: string | null) => (await import("./admin-group-understand")).onlyOrganisersLine(o, l));
-    const reply = await line(orgId, state.features.language).catch(() => null);
+    const line =
+      deps.onlyOrganisersLine ??
+      (async (o: string, l: string | null, k: OrganisersOnlyKind) => (await import("./admin-group-understand")).onlyOrganisersLine(o, l, k));
+    // `what` is the extractor's action, so the line names what was asked
+    // ("ask for players" for the 2026-11-08 Monday night vets request).
+    const reply = await line(orgId, state.features.language, organisersOnlyKindOfAction(what)).catch(() => null);
     cancelOutcomes.push({
       waMessageId: id,
       route: m.route as Route,

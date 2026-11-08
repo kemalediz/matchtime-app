@@ -77,7 +77,7 @@ scenarios("a guest wants to join: the organisers' YES in HQ", () => {
     await wantsToJoin(pool, browser, fnf, bea);
 
     const ex = await fnf.hq.say("pete", "yes", { tagged: true });
-    pool.expectSent(ex.sent, [{ to: "np.hq", channel: "hq", text: /^Only .* can change that\.$/ }]);
+    pool.expectSent(ex.sent, [{ to: "np.hq", channel: "hq", text: /^Only .* can do that\.$/ }]);
     expect(linkDms(pool.sent)).toEqual([]);
     expect(await invitationsOf(pool, fnf, bea)).toMatchObject([{ status: "open", clubYesAt: null }]);
   });

@@ -154,7 +154,7 @@ scenarios("set the pitch, and try again after a refusal, by WhatsApp", () => {
     expect((await venueOf(pool, mt))?.placeId).toBeNull();
 
     const retry = await pg(mt, "pete", RETRY, RETRY_FACTS);
-    expect(groupLine(retry.sent, mt)).toMatch(/^Only .+ can change that/);
+    expect(groupLine(retry.sent, mt)).toMatch(/^Only .+ can ask for players/);
     expect(await poolAsks(pool, mt)).toEqual([]);
   });
 

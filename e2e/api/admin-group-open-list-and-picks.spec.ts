@@ -158,7 +158,7 @@ test("a player pastes the squad: the exact changes and a YES question, nothing a
 });
 
 test("another player's YES to that list: not theirs, one line naming who can, nothing applied", async ({ request, db }) => {
-  expect(await say(request, "YES", TOM)).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
+  expect(await say(request, "YES", TOM)).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can do that.", react: null });
   expect(await statusOf(db, U.extra)).toBeNull();
 });
 
@@ -211,7 +211,7 @@ test("a player asks, tagged, to change the fee: one line naming who can, nothing
   expect(await say(request, "make the fee 6 pounds")).toMatchObject({
     handled: true,
     outcome: "hq-only-organisers",
-    replyText: "Only Alex can change that.",
+    replyText: "Only Alex can do that.",
     react: null,
   });
   expect(await fee(db)).toBe(before);
@@ -223,7 +223,7 @@ test("in Turkish: the same, the Turkish line", async ({ request, db }) => {
   await lang(db, "tr");
   const out = await say(request, "ücreti 6 pound yap");
   await lang(db, "en");
-  expect(out).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Bunu yalnızca Alex değiştirebilir.", react: null });
+  expect(out).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Bunu yalnızca Alex yapabilir.", react: null });
   expect(await fee(db)).toBe(before);
 });
 

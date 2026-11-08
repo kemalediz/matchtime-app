@@ -210,9 +210,16 @@ describe("playersGroupCancelOrRestore (2026-10-23)", () => {
 
   it("not an owner or admin: the organisers-only line, nothing read or written", async () => {
     dbMock.membership.findMany.mockResolvedValue([{ user: { name: "Kemal" } }]);
-    expect(await go({ organiser: false })).toEqual({ outcome: "match_cancel_organisers_only", replyText: "Only Kemal can change that.", react: null });
+    expect(await go({ organiser: false })).toEqual({ outcome: "match_cancel_organisers_only", replyText: "Only Kemal can cancel the game.", react: null });
     expect(dbMock.organisation.findUnique).not.toHaveBeenCalled();
     expect(dbMock.match.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("not an owner or admin, bringing a game back: the line says so (2026-11-08)", async () => {
+    dbMock.membership.findMany.mockResolvedValue([{ user: { name: "Kemal" } }]);
+    expect((await go({ organiser: false, mode: "restore" })).replyText).toBe("Only Kemal can bring the game back.");
+    expect((await go({ organiser: false, mode: "restore", lang: "tr" })).replyText).toBe("İptali yalnızca Kemal geri alabilir.");
+    expect((await go({ organiser: false, lang: "tr" })).replyText).toBe("Maçı yalnızca Kemal iptal edebilir.");
   });
 });
 

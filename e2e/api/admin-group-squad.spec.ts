@@ -207,7 +207,7 @@ test("a pasted list: the exact changes and a YES question, nothing applied yet",
 });
 
 test("a player's YES to a list an organiser pasted applies nothing: one line naming who can", async ({ request, db }) => {
-  expect(await say(request, "YES", PLAYER)).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
+  expect(await say(request, "YES", PLAYER)).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can do that.", react: null });
   expect(await statusOf(db, U.player)).toBe("CONFIRMED");
 });
 

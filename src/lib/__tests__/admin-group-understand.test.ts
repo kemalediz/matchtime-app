@@ -532,7 +532,7 @@ describe("approve: the safe-YES rule", () => {
   // 2026-10-20 (Kemal): anyone who may paste a list may say YES to their own.
   describe("a member who is not an organiser and the pasted list", () => {
     const member = { senderUserId: "u-kemal", organiser: false, member: true, senderName: "Kemal" };
-    const ONLY = "Only Hamzah or Raihan can change that.";
+    const ONLY = "Only Hamzah or Raihan can do that.";
     const listWaiting = (by: string) => {
       dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
       dbMock.adminSquadProposal.findFirst.mockResolvedValue({ waMessageId: "wa-paste", createdAt: ASKED, proposedByUserId: by });
@@ -1124,7 +1124,6 @@ describe("a question or help in HQ is answered only when asked of MatchTime (FNF
 // message) to change something is told, once, who can; their chat stays
 // silent, as an organiser's does.
 describe("a sender who is not an organiser", () => {
-  const ONLY = "Only Hamzah or Raihan can change that.";
   // Not a member of the club either (`member` unset): who plays is open to
   // the club's members only (2026-10-20, see the next describe).
   const player = (over: Partial<Parameters<typeof understandAdminMessage>[0]> = {}) => ({
@@ -1167,20 +1166,28 @@ describe("a sender who is not an organiser", () => {
     expect((await ask("@Match Time what's the weather like?", "question", player()))?.outcome).toBe("hq-not-here");
   });
 
+  // The line names what was asked, from the route (2026-11-08): never
+  // "change that" for a request for players.
   it.each([
-    ["@Match Time swap Maj and Kieran", "balancer"],
-    ["@Match Time Naim IN", "other_att"],
-    ["@Match Time I'm in", "self_att"],
-    ["@Match Time ask the group for a player", "ask_group"],
-    ["@Match Time yes", "approve"],
-  ])("%s (%s): not done, one line naming who can", async (text, route) => {
+    ["@Match Time swap Maj and Kieran", "balancer", "Only Hamzah or Raihan can make the teams."],
+    ["@Match Time Naim IN", "other_att", "Only Hamzah or Raihan can do that."],
+    ["@Match Time I'm in", "self_att", "Only Hamzah or Raihan can do that."],
+    ["@Match Time ask the group for a player", "ask_group", "Only Hamzah or Raihan can ask for players."],
+    ["@Match Time yes", "approve", "Only Hamzah or Raihan can do that."],
+  ])("%s (%s): not done, one line naming who can and what", async (text, route, line) => {
     const r = await ask(text, route, player());
-    expect(r).toEqual({ route, outcome: "hq-only-organisers", replyText: ONLY });
+    expect(r).toEqual({ route, outcome: "hq-only-organisers", replyText: line });
     expect(teams.handleTeamCommand).not.toHaveBeenCalled();
     expect(teams.answerTeamsYes).not.toHaveBeenCalled();
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
     expect(requests.length).toBe(1); // the router only: no extractor call for a change they cannot make
+  });
+
+  it("a Turkish club: the same line, in Turkish, naming what was asked", async () => {
+    const r = await ask("@Match Time gruba sor, bir oyuncu lazım", "ask_group", player({ org: { ...ORG, language: "tr" } }));
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(r?.replyText).toMatch(/^Yalnızca Hamzah .*Raihan oyuncu isteyebilir\.$/);
   });
 
   it("a tagged reply to MatchTime's own message asking for a change: the same line", async () => {
@@ -1190,7 +1197,7 @@ describe("a sender who is not an organiser", () => {
 
   it("in Turkish, the club's organisers named in Turkish", async () => {
     const r = await ask("@Match Time Maj ile Kieran'ı değiştir", "balancer", player({ org: { ...ORG, language: "tr" } }));
-    expect(r?.replyText).toBe("Bunu yalnızca Hamzah ya da Raihan değiştirebilir.");
+    expect(r?.replyText).toBe("Takımları yalnızca Hamzah ya da Raihan kurabilir.");
   });
 
   it("the organisers are the club's current owners and admins", async () => {
@@ -1248,7 +1255,6 @@ describe("a sender who is not an organiser", () => {
 // changes attendance there exactly as an organiser does, as themselves;
 // everything else that changes the club stays the organisers'.
 describe("a member of the club who is not an organiser", () => {
-  const ONLY = "Only Hamzah or Raihan can change that.";
   const member = (over: Partial<Parameters<typeof understandAdminMessage>[0]> = {}) => ({
     senderUserId: "u-ah",
     organiser: false,
@@ -1287,12 +1293,12 @@ describe("a member of the club who is not an organiser", () => {
   });
 
   it.each([
-    ["@Match Time swap Maj and Kieran", "balancer"],
-    ["@Match Time ask the group for a player", "ask_group"],
-    ["@Match Time yes", "approve"],
-  ])("%s (%s): still the organisers', one line naming who can", async (text, route) => {
+    ["@Match Time swap Maj and Kieran", "balancer", "Only Hamzah or Raihan can make the teams."],
+    ["@Match Time ask the group for a player", "ask_group", "Only Hamzah or Raihan can ask for players."],
+    ["@Match Time yes", "approve", "Only Hamzah or Raihan can do that."],
+  ])("%s (%s): still the organisers', one line naming who can and what", async (text, route, line) => {
     const r = await ask(text, route, member());
-    expect(r).toEqual({ route, outcome: "hq-only-organisers", replyText: ONLY });
+    expect(r).toEqual({ route, outcome: "hq-only-organisers", replyText: line });
     expect(teams.handleTeamCommand).not.toHaveBeenCalled();
     expect(teams.answerTeamsYes).not.toHaveBeenCalled();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
@@ -1369,7 +1375,7 @@ describe("a free place, asked for in HQ in the organisers' own words, given on Y
       organiser: false,
       senderName: "Kemal",
     });
-    expect(r).toEqual({ route: "admin_ops", outcome: "hq-only-organisers", replyText: "Only Hamzah or Raihan can change that." });
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-only-organisers", replyText: "Only Hamzah or Raihan can do that." });
     expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
   });
 
@@ -1471,7 +1477,7 @@ describe("score: the players' group's score handling, with HQ's context (2026-10
     hqScore.answerHqScore.mockResolvedValue("organisers-only");
     const r = await ask("@Match Time no it was 7-5", "score", { organiser: false, senderUserId: "u-p" });
     expect(hqScore.answerHqScore).toHaveBeenCalledWith(expect.objectContaining({ organiser: false, addressed: true }));
-    expect(r).toEqual({ route: "score", outcome: "hq-only-organisers", replyText: "Only Hamzah or Raihan can change that." });
+    expect(r).toEqual({ route: "score", outcome: "hq-only-organisers", replyText: "Only Hamzah or Raihan can change the score." });
   });
 
   it("nothing to say: silent", async () => {
@@ -1656,6 +1662,7 @@ describe("slice S6: an organiser asks MatchTime to ask the partner clubs", () =>
       org: { ...ORG, paymentHolderId: "u-collector" },
     });
     expect(r?.outcome).toBe("hq-only-organisers");
+    expect(r?.replyText).toBe("Only Hamzah or Raihan can ask for players.");
     expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
   });
 
@@ -1723,6 +1730,7 @@ describe("cancelling a match from HQ, and putting it back on (2026-10-22)", () =
       deps: deps({ action: "cancel_match" }),
     });
     expect(r?.outcome).toBe("hq-only-organisers");
+    expect(r?.replyText).toBe("Only Hamzah or Raihan can cancel the game.");
     expect(matchCancel.hqCancelOrRestore).not.toHaveBeenCalled();
   });
 
@@ -1869,6 +1877,7 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
     const deps = { routerModel: routeTo("ask_group"), extractorModel: fromPool() };
     const r = await ask("@Match Time ask the pool for a player", "ask_group", { deps, organiser: false, member: true, senderUserId: "u-pete" });
     expect(r?.outcome).toBe("hq-only-organisers");
+    expect(r?.replyText).toBe("Only Hamzah or Raihan can ask for players.");
     expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
     const viaOps = await ask("@Match Time ask the pool for a player", "admin_ops", { deps: { routerModel: routeTo("admin_ops"), extractorModel: fromPool() }, organiser: false, member: true, senderUserId: "u-pete" });
     expect(viaOps?.outcome).toBe("hq-only-organisers");

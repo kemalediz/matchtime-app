@@ -114,7 +114,7 @@ test("someone who is not in the club at all: answered too", async ({ request, db
 test("a player's tagged swap: not done, one line naming who can, no tick", async ({ request, db }) => {
   const before = await sheet(db);
   const out = await say(request, swapText, PLAYER);
-  expect(out).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
+  expect(out).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can make the teams.", react: null });
   expect(await sheet(db)).toEqual(before);
 });
 
@@ -123,7 +123,7 @@ test("in Turkish", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   const out = await say(request, swapText, STRANGER);
   await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
-  expect(out).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Bunu yalnızca Alex değiştirebilir.", react: null });
+  expect(out).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Takımları yalnızca Alex kurabilir.", react: null });
   expect(await sheet(db)).toEqual(before);
 });
 

@@ -1360,7 +1360,25 @@ export const tr: Strings = {
   match_cancel_use_admin_group: `Maçı iptal etmek ya da yeniden açmak yönetici grubunuzdan yapılıyor. Orada beni etiketleyin, ben yaparım.`,
   hq_not_understood: `Ne yapmamı istediğinizi anlayamadım.`,
   group_not_understood: `Ne yapmamı istediğinizi anlayamadım. Neler yapabildiğimi görmek için *@Match Time yardım* yazın.`,
-  hq_only_organisers: (p) => (p.names ? `Bunu yalnızca ${p.names} değiştirebilir.` : `Bunu yalnızca kulübün organizatörleri değiştirebilir.`),
+  hq_only_organisers: (p) => {
+    const who = p.names || "kulübün organizatörleri";
+    switch (p.kind ?? "other") {
+      case "players":
+        return `Yalnızca ${who} oyuncu isteyebilir.`;
+      case "cancel":
+        return `Maçı yalnızca ${who} iptal edebilir.`;
+      case "restore":
+        return `İptali yalnızca ${who} geri alabilir.`;
+      case "teams":
+        return `Takımları yalnızca ${who} kurabilir.`;
+      case "score":
+        return `Skoru yalnızca ${who} değiştirebilir.`;
+      case "settings":
+        return `Bunu yalnızca ${who} değiştirebilir.`;
+      default:
+        return `Bunu yalnızca ${who} yapabilir.`;
+    }
+  },
   hq_score_saved: (p) => `Skor kaydedildi: ${sidesTr(p)}.`,
   hq_score_changed: (p) =>
     `Skor değiştirildi: ${sidesTr(p)} (önceki: ${sidesTr({ ...p, red: p.oldRed, yellow: p.oldYellow })}).`,

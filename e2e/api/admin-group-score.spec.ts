@@ -118,7 +118,7 @@ test('"7-4" with no team: "which team won?"; the organiser\'s next message "Yell
 
 test("a recorded score: anyone else cannot change it; an owner can", async ({ request, db }) => {
   await played(db, new Date(), { red: 4, yellow: 7 });
-  expect(await say(request, CORRECT, PLAYER)).toMatchObject({ outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
+  expect(await say(request, CORRECT, PLAYER)).toMatchObject({ outcome: "hq-only-organisers", replyText: "Only Alex can change the score.", react: null });
   expect(await scoreOf(db)).toMatchObject({ redScore: 4, yellowScore: 7 });
   expect(await say(request, CORRECT)).toMatchObject({
     outcome: "hq-score-changed",

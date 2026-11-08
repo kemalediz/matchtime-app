@@ -119,7 +119,7 @@ test("someone who is not in the club: nothing changed; tagged, one line naming w
   expect(await say(request, "@Match Time Pat out", STRANGER)).toMatchObject({
     handled: true,
     outcome: "hq-only-organisers",
-    replyText: "Only Alex can change that.",
+    replyText: "Only Alex can do that.",
     react: null,
   });
   expect(await statusOf(db, U.player)).toBe("CONFIRMED");
@@ -135,7 +135,7 @@ test("a player asking to change the fee: not done; tagged, one line naming who c
     "make the fee 6 pounds": { route: "admin_ops", facts: { action: "other", ...ADMIN_FACTS } },
     "@Match Time make the fee 6 pounds": { route: "admin_ops", facts: { action: "other", ...ADMIN_FACTS } },
   });
-  const line = { handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null };
+  const line = { handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can do that.", react: null };
   expect(await say(request, "make the fee 6 pounds", PLAYER, undefined, false)).toMatchObject({ handled: false, replyText: null });
   expect(await say(request, "@Match Time make the fee 6 pounds")).toMatchObject(line);
   expect(await fee()).toBe(before);
@@ -148,7 +148,7 @@ test("a player asking for a free place: not theirs, one line naming who can", as
   expect(await say(request, "@Match Time Tom is free this week")).toMatchObject({
     handled: true,
     outcome: "hq-only-organisers",
-    replyText: "Only Alex can change that.",
+    replyText: "Only Alex can do that.",
     react: null,
   });
   const asked = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AdminGroupMessage" WHERE "orgId" = $1 AND "askRef" LIKE 'fee:%'`, [ORG_ID]);
