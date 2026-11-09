@@ -1,27 +1,29 @@
 /**
  * A PLAYER'S SEED CARRIED INTO A NEW CLUB (Kemal, 2026-11-03). The pure
  * rule (`carried-seed.ts`): his shown club rating at each other club,
- * weighted by the games that club rated him in, rounded to the seed
- * box's whole numbers and clamped to 1..10; only for a membership being
- * created with no seed. No DB, no model.
+ * weighted by the games that club rated him in, kept exactly as it
+ * comes out (never rounded, Kemal 2026-11-09) and clamped to 1..10; only
+ * for a membership being created with no seed. No DB, no model.
  */
 import { describe, expect, it, vi } from "vitest";
 import { carriedSeed, fillCarriedSeed, needsCarriedSeed, planCarriedSeeds, SEED_MAX, SEED_MIN } from "@/lib/carried-seed";
+import { classifyCarriedSeedRecompute } from "@/lib/carried-seed-recompute";
 
 describe("carriedSeed", () => {
-  it("one other club: its rating, rounded", () => {
-    expect(carriedSeed([{ orgId: "a", rating: 7.4, ratedGames: 12 }])).toEqual({ seed: 7, fromOrgIds: ["a"] });
-    expect(carriedSeed([{ orgId: "a", rating: 7.5, ratedGames: 12 }])?.seed).toBe(8);
+  it("one other club: its rating, exactly", () => {
+    expect(carriedSeed([{ orgId: "a", rating: 7.4, ratedGames: 12 }])).toEqual({ seed: 7.4, fromOrgIds: ["a"] });
+    expect(carriedSeed([{ orgId: "a", rating: 7.5, ratedGames: 12 }])?.seed).toBe(7.5);
+    expect(carriedSeed([{ orgId: "a", rating: 6.41666666666667, ratedGames: 12 }])?.seed).toBe(6.41666666666667);
   });
 
   it("several clubs: weighted by the games each rated him in, not a plain mean", () => {
-    // Plain mean (9 + 6) / 2 = 7.5 would round to 8; weighted
-    // (9 x 1 + 6 x 9) / 10 = 6.3 rounds to 6.
+    // Plain mean (9 + 6) / 2 = 7.5; weighted (9 x 1 + 6 x 9) / 10 = 6.3.
     const r = carriedSeed([
       { orgId: "guested-once", rating: 9, ratedGames: 1 },
       { orgId: "home", rating: 6, ratedGames: 9 },
     ]);
-    expect(r).toEqual({ seed: 6, fromOrgIds: ["guested-once", "home"] });
+    expect(r?.fromOrgIds).toEqual(["guested-once", "home"]);
+    expect(r?.seed).toBeCloseTo(6.3, 12);
   });
 
   it("a club that never rated him is left out of the average", () => {
@@ -30,7 +32,7 @@ describe("carriedSeed", () => {
         { orgId: "a", rating: null, ratedGames: 0 },
         { orgId: "b", rating: 8.2, ratedGames: 3 },
       ]),
-    ).toEqual({ seed: 8, fromOrgIds: ["b"] });
+    ).toEqual({ seed: 8.2, fromOrgIds: ["b"] });
   });
 
   it("no rating at any other club: no carried seed, so the default 6 stands", () => {
@@ -45,10 +47,12 @@ describe("carriedSeed", () => {
     expect(carriedSeed([{ orgId: "a", rating: 0.2, ratedGames: 2 }])?.seed).toBe(1);
   });
 
-  it("always a whole number, the seed box's precision", () => {
+  it("never rounded: what the balancer uses is the average itself (Kemal, 2026-11-09)", () => {
     for (const rating of [1, 3.49, 5.5, 6.01, 9.99]) {
-      expect(Number.isInteger(carriedSeed([{ orgId: "a", rating, ratedGames: 4 }])!.seed)).toBe(true);
+      expect(carriedSeed([{ orgId: "a", rating, ratedGames: 4 }])!.seed).toBe(rating);
     }
+    // (8 + 8 + 9) / 3 at one club, as the web spec seeds it.
+    expect(carriedSeed([{ orgId: "a", rating: 25 / 3, ratedGames: 3 }])!.seed).toBe(25 / 3);
   });
 });
 
@@ -120,7 +124,7 @@ describe("planCarriedSeeds (the backfill)", () => {
       ratings,
     );
     expect(plan).toEqual([
-      { membershipId: "m1", orgId: "vets", userId: "kemal", seed: 7, fromOrgIds: ["sutton"] },
+      { membershipId: "m1", orgId: "vets", userId: "kemal", seed: 7.2, fromOrgIds: ["sutton"] },
       { membershipId: "m2", orgId: "sutton", userId: "kemal", seed: 5, fromOrgIds: ["vets"] },
     ]);
   });
@@ -139,5 +143,40 @@ describe("planCarriedSeeds (the backfill)", () => {
         ratings,
       ),
     ).toEqual([]);
+  });
+});
+
+/**
+ * The re-computation of seeds carried before 2026-11-09, which were
+ * stored rounded (`scripts/_tmp-recompute-carried-seeds.ts`). A stored
+ * seed is only replaced when it is still exactly the rounded carried
+ * value: anything else is an admin's own number, or was never carried.
+ */
+describe("classifyCarriedSeedRecompute", () => {
+  it("a stored whole number that is the carried value rounded: replaced by the exact value", () => {
+    expect(classifyCarriedSeedRecompute(7, 6.533333333333333)).toEqual({ action: "recompute", from: 7, to: 6.533333333333333 });
+    expect(classifyCarriedSeedRecompute(8, 8.333333333333334)).toEqual({ action: "recompute", from: 8, to: 8.333333333333334 });
+  });
+
+  it("no seed: nothing to fix", () => {
+    expect(classifyCarriedSeedRecompute(null, 6.5)).toEqual({ action: "skip", reason: "no-seed" });
+  });
+
+  it("already a decimal (an admin's typed decimal, or set exactly by hand): left alone", () => {
+    expect(classifyCarriedSeedRecompute(6.41666666666667, 6.41666666666667)).toEqual({ action: "skip", reason: "already-exact" });
+    expect(classifyCarriedSeedRecompute(6.5, 6.3)).toEqual({ action: "skip", reason: "already-exact" });
+  });
+
+  it("the carried value was a whole number anyway: nothing changes", () => {
+    expect(classifyCarriedSeedRecompute(8, 8)).toEqual({ action: "skip", reason: "already-exact" });
+  });
+
+  it("no rating at another club at the time: the seed did not come from carrying", () => {
+    expect(classifyCarriedSeedRecompute(7, null)).toEqual({ action: "skip", reason: "no-carry" });
+  });
+
+  it("a stored number that is not the carried value rounded: an admin's own seed, never touched", () => {
+    expect(classifyCarriedSeedRecompute(9, 6.53)).toEqual({ action: "skip", reason: "differs" });
+    expect(classifyCarriedSeedRecompute(6, 6.53)).toEqual({ action: "skip", reason: "differs" });
   });
 });

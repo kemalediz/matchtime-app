@@ -396,11 +396,16 @@ export default async function AdminGuidePage() {
       </p>
       <p id="carried-seed">
         A player who joins with ratings at other MatchTime clubs starts at his
-        average there instead, rounded to a whole number, so a regular from
-        another group is placed sensibly from his first game. You only see
-        the number in his box, never where it came from, and you can change
-        it like any other. A starting rating you have already set is never
-        replaced.
+        average there instead, exactly as it is (a 6.42 stays 6.42, it is
+        not rounded), so a regular from another group is placed sensibly
+        from his first game. You only see the number in his box, never
+        where it came from, and you can change it like any other. A
+        starting rating you have already set is never replaced.
+      </p>
+      <p>
+        A starting rating can be a whole number or a decimal, such as 7 or
+        6.5. Teams are balanced on the exact number, and leaving a box as it
+        is never changes it.
       </p>
       <p>
         As team-mates rate each other after games, their ratings take over

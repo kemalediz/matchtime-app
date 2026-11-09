@@ -2498,6 +2498,9 @@ export const en = {
    *  (`default-seed.ts`, Kemal 2026-11-02: "so it gives the admins a
    *  measurement for medium kind of players"). */
   seed_default_hint: "A player nobody has rated starts at 6, a medium player. A player who joins with ratings at other MatchTime clubs starts at his average there. Move them up or down.",
+  /** Under a seed box when what was typed cannot be saved. Whole numbers
+   *  and decimals both work; nothing is rounded (Kemal, 2026-11-09). */
+  seed_box_error: "Type a number from 1 to 10, for example 7 or 6.5.",
 
   rating_seed_club_hint:
     "Seed ratings apply to this club only. A player who also turns out somewhere else keeps a separate rating there, and nothing you type here changes it.",

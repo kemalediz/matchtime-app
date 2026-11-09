@@ -38,15 +38,20 @@ export interface CarriedSeedClient {
 /**
  * Every listed player's club rating at every club that rated him, keyed
  * by player then club. A player no club has rated has no entry.
+ *
+ * `asOf` counts only ratings given up to that moment, so a seed carried
+ * on a past day can be recomputed as it was then
+ * (`scripts/_tmp-recompute-carried-seeds.ts`). Joins never pass it.
  */
 export async function loadClubRatingsByClub(
   client: CarriedSeedClient,
   userIds: readonly string[],
+  asOf?: Date,
 ): Promise<Map<string, OtherClubRating[]>> {
   const out = new Map<string, OtherClubRating[]>();
   if (userIds.length === 0) return out;
   const rows = await client.rating.findMany({
-    where: { playerId: { in: [...userIds] }, match: { ...NOT_CANCELLED } },
+    where: { playerId: { in: [...userIds] }, match: { ...NOT_CANCELLED }, ...(asOf ? { createdAt: { lte: asOf } } : {}) },
     orderBy: { createdAt: "desc" },
     select: { playerId: true, matchId: true, score: true, match: { select: { activity: { select: { orgId: true } } } } },
   });

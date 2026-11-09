@@ -1926,6 +1926,7 @@ export const tr: Strings = {
   rating_club_empty: "Bu kulüpte henüz puanın yok. İlk maçından sonra takım arkadaşların puan verecek.",
 
   seed_default_hint: "Kimsenin puan vermediği bir oyuncu 6'dan, yani orta seviyeden başlar. Başka MatchTime kulüplerinde puanı olan bir oyuncu katıldığında oradaki ortalamasından başlar. Artırın ya da düşürün.",
+  seed_box_error: "1 ile 10 arasında bir sayı yazın, örneğin 7 ya da 6,5.",
 
   rating_seed_club_hint:
     "Başlangıç puanları sadece bu kulüp için geçerli. Başka bir yerde de oynayan bir oyuncunun orada ayrı bir puanı olur, buraya yazdığınız hiçbir şey onu değiştirmez.",

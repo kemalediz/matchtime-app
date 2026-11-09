@@ -30,6 +30,13 @@ describe("loadClubRatingsByClub", () => {
     expect(args.orderBy).toEqual({ createdAt: "desc" });
   });
 
+  it("as of a moment: only ratings given up to then count (the re-computation of old carried seeds)", async () => {
+    const { client, findMany } = clientWith([]);
+    const asOf = new Date("2026-11-03T12:02:36Z");
+    await loadClubRatingsByClub(client, ["u1"], asOf);
+    expect(findMany.mock.calls[0][0].where).toEqual({ playerId: { in: ["u1"] }, match: { ...NOT_CANCELLED }, createdAt: { lte: asOf } });
+  });
+
   it("no players: no query", async () => {
     const { client, findMany } = clientWith([]);
     expect((await loadClubRatingsByClub(client, [])).size).toBe(0);
@@ -86,10 +93,12 @@ describe("otherClubs and loadCarriedSeed", () => {
       row("u", "sutton", "s3", 8),
       row("u", "vets", "v1", 4),
     ]);
-    // Joining a third club: (7.333 x 3 + 4 x 1) / 4 = 6.5 -> 7.
-    expect(await loadCarriedSeed(client, "u", "new")).toEqual({ seed: 7, fromOrgIds: ["sutton", "vets"] });
-    // Joining the Vets: only Sutton counts, 7.333 -> 7.
-    expect(await loadCarriedSeed(client, "u", "vets")).toEqual({ seed: 7, fromOrgIds: ["sutton"] });
+    // Joining a third club: (7.333 x 3 + 4 x 1) / 4 = 6.5, kept as 6.5.
+    expect(await loadCarriedSeed(client, "u", "new")).toEqual({ seed: 6.5, fromOrgIds: ["sutton", "vets"] });
+    // Joining the Vets: only Sutton counts, 22 / 3, not rounded.
+    const vets = await loadCarriedSeed(client, "u", "vets");
+    expect(vets?.fromOrgIds).toEqual(["sutton"]);
+    expect(vets?.seed).toBeCloseTo(22 / 3, 12);
     // Only rated at the club being joined: nothing to carry.
     expect(await loadCarriedSeed(clientWith([row("u", "vets", "v1", 4)]).client, "u", "vets")).toBeNull();
   });

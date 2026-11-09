@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type InputHTMLAttributes } from "react";
-import { seedBoxValue } from "@/lib/default-seed";
+import { seedBoxValue, seedFromBoxEdit } from "@/lib/default-seed";
 
 /**
  * A seed box for forms that hold the seed in state (onboarding, finish
@@ -12,6 +12,11 @@ import { seedBoxValue } from "@/lib/default-seed";
  * included, so clearing the 6 to type a 7 does not snap back to 6. On
  * blur it shows the parent's value again. `onSeedChange(null)` means the
  * box was emptied: the seed stays unset, and is shown as 6 again.
+ *
+ * Whole numbers and decimals both work, and nothing is rounded (Kemal,
+ * 2026-11-09). `step="any"` so a decimal seed is never flagged invalid;
+ * typing back what the box showed keeps the seed it showed
+ * (`seedFromBoxEdit`), so an unset 6 is never written as 6.
  */
 export function SeedInput({
   seed,
@@ -28,7 +33,7 @@ export function SeedInput({
       type="number"
       min={1}
       max={10}
-      step={1}
+      step="any"
       value={editing ?? seedBoxValue(seed)}
       onFocus={(e) => {
         setEditing(e.target.value);
@@ -37,8 +42,7 @@ export function SeedInput({
       onChange={(e) => {
         const raw = e.target.value;
         setEditing(raw);
-        const n = parseInt(raw, 10);
-        onSeedChange(isNaN(n) ? null : Math.min(10, Math.max(1, n)));
+        onSeedChange(seedFromBoxEdit(raw, seed));
       }}
       onBlur={(e) => {
         setEditing(null);

@@ -265,11 +265,13 @@ function normaliseAnalysis(rawText: string, args: AnalyzeArgs): OnboardingAnalys
         typeof po.position === "string" && validPositions.has(po.position)
           ? po.position
           : null;
+      // As the model gave it: a seed is never rounded (Kemal, 2026-11-09).
+      // The schema asks for an integer, so this is normally whole anyway.
       const seedRating =
         typeof po.seedRating === "number" &&
         po.seedRating >= 1 &&
         po.seedRating <= 10
-          ? Math.round(po.seedRating)
+          ? po.seedRating
           : null;
       const evidence =
         typeof po.evidence === "string" ? stripLongDashes(po.evidence.slice(0, 200)) : "";

@@ -6,9 +6,10 @@
  * A real join path, end to end: the Pi's `group_join` for a phone that
  * already plays at another club (rated 8, 8 and 9 over three games
  * at a club that shares its players' ratings) creates his membership
- * here with seed 8, and the admin's Seed box on /admin/players shows 8.
- * A joiner rated the same at a club with "Share our players' ratings
- * with partner clubs" OFF carries his 8 just the same: the seed always
+ * here with seed 8.333..., never rounded (Kemal, 2026-11-09), and the
+ * admin's Seed box on /admin/players shows 8.33. A joiner rated the same
+ * at a club with "Share our players' ratings with partner clubs" OFF
+ * carries his 8.333... just the same: the seed always
  * carries (Kemal, 2026-11-03). A joiner rated nowhere stays unseeded
  * (NULL) and shows the default 6. The page never names the other clubs.
  *
@@ -95,12 +96,12 @@ test("a player rated at another club joins the WhatsApp group: his seed here is 
   const res = await request.post("/api/whatsapp/group-join", { headers: KEY, data: { groupId: E2E.GROUP_ID, phones: [CARRIER.phone, NEWBIE.phone, KEEPER.phone] } });
   expect(res.status(), await res.text()).toBe(200);
 
-  // (8 + 8 + 9) / 3 = 8.33, rounded to the box's whole numbers.
-  await expect.poll(() => seedOf(db, CARRIER.id)).toBe(8);
+  // (8 + 8 + 9) / 3, stored exactly: never rounded.
+  await expect.poll(async () => Math.abs(((await seedOf(db, CARRIER.id)) ?? 0) - 25 / 3) < 1e-9).toBe(true);
   // Rated nowhere else: left unseeded, read as the default 6.
   expect(await seedOf(db, NEWBIE.id)).toBeNull();
   // Rated the same at a club with sharing OFF: still carries.
-  expect(await seedOf(db, KEEPER.id)).toBe(8);
+  expect(await seedOf(db, KEEPER.id)).toBeCloseTo(25 / 3, 9);
   // His row at the other club is untouched.
   expect((await db.one<{ s: number | null }>(`SELECT "seedRating" AS s FROM "Membership" WHERE id = 'e2e-cs-m1'`))?.s).toBeNull();
 
@@ -108,9 +109,16 @@ test("a player rated at another club joins the WhatsApp group: his seed here is 
   await signInAs(page, U.admin, "/admin/players");
   const carrier = page.getByTestId(`player-row-${CARRIER.id}`);
   await expect(carrier).toBeVisible({ timeout: 30_000 });
-  await expect(carrier.locator('input[type="number"]')).toHaveValue("8");
+  await expect(carrier.locator('input[type="number"]')).toHaveValue("8.33");
   await expect(page.getByTestId(`player-row-${NEWBIE.id}`).locator('input[type="number"]')).toHaveValue("6");
-  await expect(page.getByTestId(`player-row-${KEEPER.id}`).locator('input[type="number"]')).toHaveValue("8");
+  await expect(page.getByTestId(`player-row-${KEEPER.id}`).locator('input[type="number"]')).toHaveValue("8.33");
+
+  // Leaving the box as it shows writes nothing: the stored 8.333... is
+  // not cut to the 8.33 on screen.
+  await carrier.locator('input[type="number"]').focus();
+  await carrier.locator('input[type="number"]').blur();
+  await page.waitForTimeout(800);
+  expect(Math.abs(((await seedOf(db, CARRIER.id)) ?? 0) - 25 / 3)).toBeLessThan(1e-9);
 
   // A plain seed: nothing on the page says where it came from.
   await expect(page.getByText("Wednesday Wanderers")).toHaveCount(0);
