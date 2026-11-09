@@ -616,6 +616,49 @@ describe("several places in one ask, or none named", () => {
   });
 });
 
+// ── 4e. "@Match Time DM these people" (Vets MNF, 2026-11-09) ───────────
+
+describe("an invite to the people tagged is reported, never sent here", () => {
+  const ASK = "@Match Time DM these people";
+  const NAMED = { ...BLAST_FACTS, lookbackMatches: 0, clubRef: "", playersFrom: ["named"] };
+
+  it("an admin's tagged ask: owned and reported for the batch-final pass; no blast, no partner or pool ask, no DM", async () => {
+    const { model } = stubModel({ [ASK]: NAMED });
+    const r = recorder(model, paidWorld());
+    const res = await run({ messages: [msg({ body: ASK, senderUserId: "u-kemal" })], deps: r.deps });
+    const out = [...res.outcomes.values()][0];
+    expect(res.degradations.join(" ")).not.toMatch(/cannot apply/);
+    expect(out.namedInviteRequest).toBe(true);
+    expect(out.recruitRequest).toBe(false);
+    expect(out.partnerAskRequest).toBeNull();
+    expect(out.poolAskRequest).toBeNull();
+    expect(out.intent).toBe("recruit_named");
+    expect(r.dms).toEqual([]);
+    expect(out.reply).toBeNull();
+  });
+
+  it("a player who is not an admin: nothing reported, the one line naming who can", async () => {
+    const { model } = stubModel({ [ASK]: NAMED });
+    const r = recorder(model, paidWorld());
+    const res = await run({
+      messages: [msg({ body: ASK, senderUserId: "u-zair", senderName: fullName("zair"), taggedExplicitly: true })],
+      deps: { ...r.deps, onlyOrganisersLine: onlyKemal },
+    });
+    const out = [...res.outcomes.values()][0];
+    expect(out.namedInviteRequest).toBe(false);
+    expect(out.reply).toBe("Only Kemal can ask for players.");
+    expect(r.dms).toEqual([]);
+  });
+
+  it("an admin without the explicit tag (a swipe-reply only): nothing reported", async () => {
+    const body = "DM these people";
+    const { model } = stubModel({ [body]: NAMED });
+    const r = recorder(model, paidWorld());
+    const res = await run({ messages: [msg({ body, senderUserId: "u-kemal", tagged: true, taggedExplicitly: false })], deps: r.deps });
+    expect([...res.outcomes.values()][0]?.namedInviteRequest ?? false).toBe(false);
+  });
+});
+
 describe("the recruit blast is reported, never fired here", () => {
   it("an admin's ask is owned and carries the clamped lookback", async () => {
     const { model } = stubModel({ [BLAST]: BLAST_FACTS });

@@ -648,6 +648,7 @@ model Organisation {
   userAliases        UserAlias[]
   rosterSurveys      RosterSurvey[]
   groupMessages      GroupMessage[]
+  messageMentions    MessageMentions[]
   windowVerdicts     WindowVerdict[]
   badgeAnnouncements BadgeAnnouncement[]
   clubBilling        ClubBilling?
@@ -2666,6 +2667,46 @@ model GroupMessage {
   createdAt      DateTime     @default(now())
 
   @@index([orgId, timestamp])
+}
+
+/// THE PEOPLE A GROUP MESSAGE TAGGED (2026-11-09, Vets MNF: "@Match Time DM
+/// these people"). One row per message MatchTime was shown, in the players'
+/// group or HQ, that @-mentioned anyone but MatchTime, so a later "DM the
+/// people above", or a reply quoting it, can find WHO was tagged from
+/// WhatsApp's own mention data, never from the words
+/// (`src/lib/named-invite-rules.ts`, `src/lib/group-mentions.ts`).
+/// `mentions`: [{ jid, phone?, name? }] (`StoredMention`): the phone is the
+/// JID's own or the one WhatsApp gave the Pi for a LID; the name is the
+/// person's own WhatsApp name, UNVERIFIED, used only to say who MatchTime
+/// could not message. Written and read best-effort: a missing table loses
+/// the feature, never a message. Migration 20261109120000_message_mentions.
+/// RETENTION 7 days from `sentAt`: deleted by the daily 06:00 cron
+/// (`purgeOldMentions`, `MESSAGE_MENTIONS_RETENTION_DAYS`).
+model MessageMentions {
+  id           String       @id @default(cuid())
+  orgId        String
+  org          Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// The WhatsApp group the message was sent in (the players' group or HQ).
+  chatId       String
+  waMessageId  String       @unique
+  /// The bare stanza id inside `waMessageId` (`bareWhatsAppId`), the form a
+  /// WhatsApp reply quotes.
+  waStanzaId   String?
+  senderUserId String?
+  /// The sender's WhatsApp name, for "From Shane's message" when the sender
+  /// is not a known member. UNVERIFIED.
+  senderName   String?
+  mentions     Json
+  /// Tags the Pi could say nothing about (no name, no phone), counted so a
+  /// message that tagged only such people is still a message that tagged
+  /// people and stops "the people above" at it.
+  unidentified Int          @default(0)
+  /// WhatsApp's own time for the message.
+  sentAt       DateTime
+  createdAt    DateTime     @default(now())
+
+  @@index([orgId, chatId, sentAt])
+  @@index([orgId, waStanzaId])
 }
 
 /**

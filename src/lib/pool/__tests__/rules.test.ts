@@ -45,9 +45,9 @@ describe("the limits (approved spec, plain wording)", () => {
     expect(DEFAULT_POOL_TRAVEL_MILES).toBe(3);
   });
 
-  it("minimum age 18; the consent version starts at 1", () => {
+  it("minimum age 18; the consent version is the privacy policy's (2 since 2026-11-09)", () => {
     expect(POOL_MIN_AGE).toBe(18);
-    expect(POOL_CONSENT_VERSION).toBe(1);
+    expect(POOL_CONSENT_VERSION).toBe(2);
   });
 
   it("the 12-month rule, its 30-day grace, and pending sign-ups expire", () => {

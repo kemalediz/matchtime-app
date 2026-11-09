@@ -79,6 +79,8 @@ describe("everything that is not structured data goes through the shared pipelin
       senderName: "Raihan",
       sentAt: new Date(1760443200 * 1000),
       now: NOW,
+      // The HQ group, where "@Match Time DM the people above" looks (2026-11-09).
+      chatId: HQ,
     });
   });
 

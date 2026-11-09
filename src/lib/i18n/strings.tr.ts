@@ -1264,6 +1264,7 @@ export const tr: Strings = {
     `Arkadaşınız gelemezse bana WhatsApp'tan yazarak ya da sayfasındaki düğmeye basarak yerini geri verebilir.` +
     (p.fees ? `\n💷 Arkadaşınız maç ücretini her misafir gibi maçtan sonra öder (aylık kulüplerde maç başı ödeyen oyuncu olarak).` : ""),
   onbHelpFriendLinkOrganiser: `Bir organizatör birini eklediğinde doğrudan listeye girer.`,
+  onbHelpDmTaggedOrganiser: `📨 Biri oynayabilirler mi diye birkaç kişiyi mi etiketledi? O mesaja *@Match Time onlara özelden yaz* diye yanıt verin ya da *@Match Time yukarıdakilere özelden yaz* deyin, her birine sıradaki maçın davetini özelden gönderirim. Yalnızca tanıdığım numaralara, bir seferde en fazla 10 kişiye yazarım.`,
   onbHelpMonthListOrganiser:
     `📋 *Aylık kadro:* ayın listesini her zamanki gibi grupta paylaş, okuduğumu sana DM ile gönderirim. Listede tanımadığım bir isim varsa, adını bilmediğim üyeleri telefonlarıyla gösteririm; kim kimdir kendi sözlerinle söyle (örneğin _"Craig 3 numara"_) ya da aylar sayfasında seç. Evet yazınca ay başlar.\n\n` +
     `*Ay ortasında düzenli oyuncu eklemek:* listeyi yeni isimle yeniden paylaş ya da beni etiketle (örneğin _"@Match Time Tom'u Kasım listesine ekle, ödedi"_). Kalan maçlar için aya ve bir sonraki maçın kadrosuna girer. İsmi tanımıyorsam, hangisi olduğunu söylemen için adını bilmediğim üyeleri sana DM ile gönderirim.`,
@@ -1287,6 +1288,7 @@ export const tr: Strings = {
       lines.push(`🔁 *"@Match Time Sam ile Alex'i değiştir"*, *"@Match Time Sam'i diğer takıma al"*: takımlarda değişiklik.`);
       lines.push(`✅ *@Match Time EVET*: önerilen takımları kesinleştiririm.`);
       lines.push(`📣 *"@Match Time gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`);
+      lines.push(`📨 Kişileri etiketleyen bir mesaja *"@Match Time onlara özelden yaz"* diye yanıt verin ya da *"@Match Time yukarıdakilere özelden yaz"* deyin: her birine sıradaki maçın davetini özelden gönderirim. Yalnızca tanıdığım numaralara, bir seferde en fazla 10 kişiye.`);
       if (p.pool) lines.push(`🌍 *"@Match Time havuzdan 2 oyuncu iste"*: boş yer varsa MatchTime oyuncu havuzundaki yakın oyunculara sorarım.`);
       lines.push(`❌ *"@Match Time cuma maçını iptal et"*, *"@Match Time maç yapılıyor"*: sıradaki maçı iptal ederim ya da yeniden açarım, oyuncu grubuna da haber veririm.`);
     }

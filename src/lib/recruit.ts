@@ -22,6 +22,14 @@ import type { Lang } from "./i18n/lang";
 import { getOrgFeatures } from "./org-features";
 import { recruitDmLinkKey, RECRUIT_DM_LINK_KIND } from "./recruit-reaction";
 import { resolveLookbackMatches } from "./recruit-lookback";
+import { loadKnownLids } from "./known-lids";
+import {
+  planNamedInvites,
+  resolveNamedMentions,
+  type KnownPerson,
+  type NamedInviteOutcome,
+  type TaggedPeople,
+} from "./named-invite-rules";
 
 /**
  * The lookback window, its ceiling and the clamp now live in
@@ -273,24 +281,7 @@ export async function inviteRecentPlayers(
   // language before there is a match to speak about.
   const features = await getOrgFeatures(orgId);
   // 1. The next upcoming match.
-  const startToday = new Date();
-  startToday.setUTCHours(0, 0, 0, 0);
-  const next = await db.match.findFirst({
-    where: {
-      activity: { orgId },
-      isHistorical: false,
-      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-      date: { gte: startToday },
-    },
-    orderBy: { date: "asc" },
-    select: {
-      id: true,
-      date: true,
-      maxPlayers: true,
-      activity: { select: { name: true } },
-      attendances: { select: { userId: true, status: true } },
-    },
-  });
+  const next = await findNextRecruitMatch(orgId);
   if (!next) return { ok: false, reason: recruitNoMatchRefusal(features.language) };
 
   // Anyone with ANY attendance row has already responded (in / bench /
@@ -455,77 +446,18 @@ export async function inviteRecentPlayers(
   const invitedNames: string[] = [];
   let alreadyInvited = 0;
   for (const c of candidates.values()) {
-    const key = `${next.id}:recruit-dm:${c.id}`;
+    const key = recruitDmKey(next.id, c.id);
     const exists = await db.sentNotification.findUnique({ where: { key }, select: { id: true } });
     if (exists) {
       alreadyInvited++; // candidate existed but was pinged on an earlier call
       continue;
     }
-    const first = c.name?.split(" ")[0] ?? null;
-    let text: string;
-    if (attendanceOn) {
-      // Org tracks attendance in-app → the magic link is worth offering,
-      // as a trailing option and as this player's sign-in path.
-      const token = signMagicLinkToken({
-        userId: c.id,
-        purpose: "sign-in",
-        nextPath: `/matches/${next.id}`,
-        ttlSeconds: MAGIC_LINK_TTL.actionNudge,
-      });
-      text = buildRecruitInviteDm({
-        firstName: first,
-        matchName: next.activity.name,
-        matchWhen,
-        spotsLeft: need,
-        link: await buildShortMagicLinkUrl(token),
-        lang: features.language,
-        organiser: features.benchPickMode === "organiser",
-      });
-    } else {
-      // MoM/ratings-only org (no in-app squad) → an RSVP link does nothing.
-      // Players join by posting in the group, so nudge them there.
-      text = buildRecruitGroupInviteDm({
-        firstName: first,
-        matchName: next.activity.name,
-        matchWhen,
-        lang: features.language,
-      });
+    // The marker is claimed first (review #3): a concurrent request that
+    // got there between the check above and here skips this person.
+    if (!(await queueRecruitInviteDm({ orgId, match: next, features, need, matchWhen, person: c, style: features.attendance ? "app" : "group" }))) {
+      alreadyInvited++;
+      continue;
     }
-    const job = await db.botJob.create({
-      data: {
-        orgId,
-        kind: "dm",
-        phone: c.phone.replace(/^\+/, ""),
-        text,
-      },
-    });
-    await db.sentNotification.create({
-      data: { key, kind: "recruit-dm", matchId: next.id, targetUser: c.id },
-    });
-    // LINK ROW — how a 👍/👎 on this very DM finds its way back to this
-    // player and this match. The reaction event carries only the WhatsApp
-    // message id; /ack stamps that onto the `botjob-<id>` claim row, and
-    // this row turns that BotJob id into (matchId, userId). Without it we
-    // would be guessing from a phone number and a timestamp, and a 👍 on
-    // a payment chase would silently sign someone up. See
-    // src/lib/recruit-reaction.ts. Best-effort: a failure here loses the
-    // reaction shortcut, never the invite itself.
-    await db.sentNotification
-      .create({
-        data: {
-          key: recruitDmLinkKey(job.id),
-          kind: RECRUIT_DM_LINK_KIND,
-          matchId: next.id,
-          targetUser: c.id,
-        },
-      })
-      .catch((err) => {
-        console.error(
-          `[recruit] could not link BotJob ${job.id} to the invite for ${c.id} — ` +
-            `a 👍 on that DM will not be mappable. The reply path is unaffected.`,
-          err,
-        );
-      });
     invitedNames.push(c.name ?? "Player");
   }
 
@@ -539,4 +471,273 @@ export async function inviteRecentPlayers(
     invitedNames,
     alreadyInvited,
   };
+}
+
+
+// ── SHARED BY THE BLAST AND BY "DM THESE PEOPLE" (2026-11-09) ─────────
+
+/** The next upcoming match a recruit DM invites people to: the soonest one
+ *  still to be played. The blast counts from the start of today, as it
+ *  always has; "DM these people" passes `after: now`, so a game whose
+ *  kickoff has passed is never the one invited to (review #7). */
+async function findNextRecruitMatch(orgId: string, opts: { after?: Date } = {}) {
+  const startToday = new Date();
+  startToday.setUTCHours(0, 0, 0, 0);
+  return db.match.findFirst({
+    where: {
+      activity: { orgId },
+      isHistorical: false,
+      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+      date: opts.after ? { gt: opts.after } : { gte: startToday },
+    },
+    orderBy: { date: "asc" },
+    select: {
+      id: true,
+      date: true,
+      maxPlayers: true,
+      activity: { select: { name: true } },
+      attendances: { select: { userId: true, status: true } },
+    },
+  });
+}
+
+/** The per-match, per-person key a recruit invite is sent under. One
+ *  person never gets the same match's invite twice, from either path. */
+const recruitDmKey = (matchId: string, userId: string): string => `${matchId}:recruit-dm:${userId}`;
+
+const isUniqueViolation = (err: unknown): boolean =>
+  !!err && typeof err === "object" && (err as { code?: unknown }).code === "P2002";
+
+/**
+ * Queue ONE recruit invite DM, through the BotJob queue the Pi paces.
+ * Returns false, sending nothing, when this person already has this match's
+ * invite.
+ *
+ * THE MARKER IS CLAIMED FIRST (review #3, 2026-11-09). The per-match key is
+ * unique, so of two requests racing for one person (the players' group and
+ * HQ at once, or a blast beside "DM these people") exactly one creates it,
+ * and only that one queues the DM; the other gets P2002 and skips the person,
+ * instead of queueing a second DM and then throwing mid-loop. A DM that then
+ * fails to queue gives the marker back, so a later ask can try again. The
+ * marker and the job carry one `createdAt`, so the recruit chase's "DM'd
+ * since the invite" test (strictly later, bot-scheduler.ts) never counts the
+ * invite itself.
+ *
+ * `style`: "app" is the invite with the match page link (an in-app squad,
+ * and a member of the club, whom the page lets sign in); "group" asks them
+ * to say IN in the group (a ratings-only club, or someone with no
+ * membership of this club, whom the page's IN would refuse: `attendMatch`,
+ * `decideSelfMarkIn` "no-membership").
+ */
+async function queueRecruitInviteDm(args: {
+  orgId: string;
+  match: { id: string; activity: { name: string } };
+  features: Awaited<ReturnType<typeof getOrgFeatures>>;
+  need: number;
+  matchWhen: string;
+  person: { id: string; name: string | null; phone: string };
+  style: "app" | "group";
+}): Promise<boolean> {
+  const { orgId, match, features, need, matchWhen, person: c } = args;
+  const key = recruitDmKey(match.id, c.id);
+  const at = new Date();
+  // Claimed before anything else is made, so a lost race costs nothing
+  // (no short link, no DM).
+  try {
+    await db.sentNotification.create({
+      data: { key, kind: "recruit-dm", matchId: match.id, targetUser: c.id, createdAt: at },
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) return false;
+    throw err;
+  }
+  let job: { id: string };
+  try {
+    const first = c.name?.split(" ")[0] ?? null;
+    let text: string;
+    if (args.style === "app") {
+      // Org tracks attendance in-app → the magic link is worth offering,
+      // as a trailing option and as this player's sign-in path.
+      const token = signMagicLinkToken({
+        userId: c.id,
+        purpose: "sign-in",
+        nextPath: `/matches/${match.id}`,
+        ttlSeconds: MAGIC_LINK_TTL.actionNudge,
+      });
+      text = buildRecruitInviteDm({
+        firstName: first,
+        matchName: match.activity.name,
+        matchWhen,
+        spotsLeft: need,
+        link: await buildShortMagicLinkUrl(token),
+        lang: features.language,
+        organiser: features.benchPickMode === "organiser",
+      });
+    } else {
+      // No in-app squad, or no membership here: an RSVP link does nothing.
+      // Players join by posting in the group, so nudge them there.
+      text = buildRecruitGroupInviteDm({
+        firstName: first,
+        matchName: match.activity.name,
+        matchWhen,
+        lang: features.language,
+      });
+    }
+    job = await db.botJob.create({
+      data: {
+        orgId,
+        kind: "dm",
+        phone: c.phone.replace(/^\+/, ""),
+        text,
+        createdAt: at,
+      },
+    });
+  } catch (err) {
+    await db.sentNotification.delete({ where: { key } }).catch(() => undefined);
+    throw err;
+  }
+  // LINK ROW — how a 👍/👎 on this very DM finds its way back to this
+  // player and this match. The reaction event carries only the WhatsApp
+  // message id; /ack stamps that onto the `botjob-<id>` claim row, and
+  // this row turns that BotJob id into (matchId, userId). Without it we
+  // would be guessing from a phone number and a timestamp, and a 👍 on
+  // a payment chase would silently sign someone up. See
+  // src/lib/recruit-reaction.ts. Best-effort: a failure here loses the
+  // reaction shortcut, never the invite itself.
+  await db.sentNotification
+    .create({
+      data: {
+        key: recruitDmLinkKey(job.id),
+        kind: RECRUIT_DM_LINK_KIND,
+        matchId: match.id,
+        targetUser: c.id,
+      },
+    })
+    .catch((err) => {
+      console.error(
+        `[recruit] could not link BotJob ${job.id} to the invite for ${c.id} — ` +
+          `a 👍 on that DM will not be mappable. The reply path is unaffected.`,
+        err,
+      );
+    });
+  return true;
+}
+
+/**
+ * "@Match Time DM these people" (Kemal, Vets MNF, 2026-11-09): the club's
+ * invite for its next game, DM'd to the people tagged in a message: the
+ * same invite the recruit blast sends, under the same per-match key, so
+ * nobody gets one game's invite twice from either path.
+ *
+ * `people` are the people TAGGED, from WhatsApp's mention data
+ * (`group-mentions.ts`, `named-invite-rules.ts`), never names read from
+ * words. Only people MatchTime already knows are DM'd: a user whose number
+ * is the mention's phone, or whose LID this club's records tie to them.
+ * The rest are named in the reply. At most `NAMED_INVITE_CAP` DMs.
+ *
+ * Never DM'd (review #2): anyone who switched invite DMs off in ANY club
+ * (the preference is the person's: `notification-prefs.ts` writes it to
+ * every membership), a guest of this club, anyone who left this club or
+ * was removed by its organisers, anyone who already answered for the game
+ * or already had its invite, and the sender. Someone MatchTime knows with
+ * no membership here MAY be DM'd (Kemal's decision), with the group-style
+ * invite, because the match page refuses an IN from a non-member.
+ *
+ * The club's next game still to kick off; with no place open there, nobody
+ * is DM'd. Authorisation (an organiser, an explicit tag) is the CALLER's,
+ * exactly as for `inviteRecentPlayers`.
+ */
+export async function inviteNamedPeople(
+  orgId: string,
+  people: TaggedPeople,
+  opts: { requesterUserId: string | null; now?: Date },
+): Promise<NamedInviteOutcome & { matchId?: string }> {
+  const now = opts.now ?? new Date();
+  const features = await getOrgFeatures(orgId);
+  const next = await findNextRecruitMatch(orgId, { after: now });
+  if (!next) return { kind: "no-match" };
+  const confirmedCount = next.attendances.filter((a) => a.status === "CONFIRMED").length;
+  const openSlots = Math.max(0, next.maxPlayers - confirmedCount);
+  if (next.maxPlayers > 0 && openSlots <= 0) return { kind: "full", matchName: next.activity.name, matchId: next.id };
+  const need = features.attendance ? openSlots : 0;
+  const matchWhen = dayCommaTimeLabel(features.language, next.date);
+  const mentions = people.mentions;
+
+  // Who the mentions are: users by the phones behind them, and by the LIDs
+  // this club's own records tie to a phone or a user.
+  const lids = await loadKnownLids(orgId).catch((err) => {
+    console.error(`[recruit] ${orgId}: stored LID lookup failed (named invites matched by phone only):`, err instanceof Error ? err.message : err);
+    return [];
+  });
+  const phones = new Set<string>();
+  for (const m of mentions) if (m.phone) phones.add(m.phone);
+  for (const k of lids) {
+    const d = typeof k.phone === "string" ? k.phone.replace(/\D/g, "") : "";
+    if (d.length >= 7) phones.add(d);
+  }
+  const lidUserIds = lids.map((k) => k.userId).filter((x): x is string => typeof x === "string");
+  const users =
+    mentions.length > 0 && (phones.size > 0 || lidUserIds.length > 0)
+      ? await db.user.findMany({
+          where: {
+            phoneNumber: { not: null },
+            OR: [{ phoneNumber: { in: [...phones].flatMap((d) => [`+${d}`, d]) } }, { id: { in: lidUserIds } }],
+          },
+          select: { id: true, name: true, phoneNumber: true },
+        })
+      : [];
+  const known: KnownPerson[] = users
+    .filter((u) => !!u.phoneNumber)
+    .map((u) => ({ userId: u.id, name: u.name, phone: (u.phoneNumber as string).replace(/\D/g, "") }));
+  const resolved = resolveNamedMentions(mentions, { users: known, lids });
+  const personIds = [...new Set(resolved.map((r) => r.person?.userId).filter((x): x is string => !!x))];
+
+  const [memberships, sentRows] = personIds.length
+    ? await Promise.all([
+        // Every club's memberships of these people: the invite preference is
+        // the person's, written to all of them, so one "off" anywhere is off.
+        db.membership.findMany({
+          where: { userId: { in: personIds } },
+          select: { orgId: true, userId: true, subMatchInviteDm: true, leftAt: true, removedByOrganiserAt: true, guestMatchId: true },
+        }),
+        db.sentNotification.findMany({
+          where: { key: { in: personIds.map((id) => recruitDmKey(next.id, id)) } },
+          select: { targetUser: true },
+        }),
+      ])
+    : [[], []];
+  const optedOut = new Set<string>();
+  const notHere = new Set<string>();
+  const here = new Set<string>();
+  for (const m of memberships) {
+    if (m.subMatchInviteDm === false) optedOut.add(m.userId);
+    if (m.orgId !== orgId) continue;
+    if (m.guestMatchId) optedOut.add(m.userId); // a guest of this club, current or past
+    else if (m.leftAt || m.removedByOrganiserAt) notHere.add(m.userId);
+    else here.add(m.userId);
+  }
+  // This club's name for its current members (the roster name).
+  const nameOf = new Map(known.map((k) => [k.userId, k.name]));
+  const clubNames = new Map([...here].map((id) => [id, nameOf.get(id) ?? ""]));
+
+  const plan = planNamedInvites({
+    resolved,
+    requesterUserId: opts.requesterUserId,
+    optedOut,
+    notHere: new Set([...notHere].filter((id) => !here.has(id))),
+    answered: new Set(next.attendances.map((a) => a.userId)),
+    alreadyInvited: new Set(sentRows.map((r) => r.targetUser).filter((x): x is string => !!x)),
+    clubNames,
+    unidentified: people.unidentified,
+  });
+  // Queue each, claiming its marker first; a person a concurrent request
+  // claimed meanwhile moves to "already had the invite".
+  const queued: typeof plan.invite = [];
+  for (const p of plan.invite) {
+    const style = features.attendance && p.member ? "app" : "group";
+    if (await queueRecruitInviteDm({ orgId, match: next, features, need, matchWhen, person: { id: p.userId, name: p.name, phone: p.phone }, style })) queued.push(p);
+    else plan.alreadyInvited.push(p);
+  }
+  plan.invite = queued;
+  return { kind: "done", matchName: next.activity.name, when: matchWhen, plan, matchId: next.id };
 }

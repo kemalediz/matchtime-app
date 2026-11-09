@@ -162,6 +162,16 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * numbers count one side or everyone, and code doubles, so the model does
  * no arithmetic on them. Each defined once, the examples regrouped (every
  * week, and one game), EN and TR side by side.
+ *
+ * And on 2026-11-09 (Vets MNF, "@Match Time DM these people"): the recruit
+ * section rewritten so `playersFrom` says WHO or from where. One value,
+ * "named" (the people tagged in the message, the one it replies to, or the
+ * one above), defined once beside the three places and standing alone; the
+ * recruit action and the field's own line say "who or from where"; one
+ * example group, EN and TR side by side, before the places. The model
+ * never names the people: code reads them from WhatsApp's mention data
+ * (`named-invite-rules.ts`). 17,980 to 18,839 characters. Old and new side
+ * by side, and the paid check: MDs/prompt-change-dm-named-2026-11-09.md.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: HAIKU_CALL,
@@ -649,7 +659,7 @@ The latest game or an earlier one:
 THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the date and time at the club) and, for a WhatsApp reply, the message it quotes (THEY ARE REPLYING TO). The context tells you who "he" or "them" is, who is being spoken to, and what a short answer answers. The action and every field come from THE MESSAGE.
 
 THE ACTION, exactly one. A question, an opinion or a discussion about whether to do something ("should we cancel?", "should Bilal play free?", "shall we try the pool?") is "other".
-  "recruit" find players who are not in the squad yet; playersFrom says from where. Showing, listing or counting the squad is "other", and so is talking about another club or the player pool.
+  "recruit" find players who are not in the squad yet, or invite particular people to play; playersFrom says who or from where. Showing, listing or counting the squad is "other", and so is talking about another club or the player pool.
   "cancel_match" call off one of the club's games: cancel it, it is not happening, no game. Of a game whose time has gone: it never took place ("it didn't happen", "olmadı").
   "restore_match" put a called-off game back on: it is back on, uncancel it, it goes ahead after all. Of a game whose time has gone: it did take place after all.
   "season_break" no football for a whole MONTH or more ("no football in December", "aralıkta maç yok"), or the football is back in a month ("we're back in January", "ocakta başlıyoruz"). One game off ("no game Friday", "bu hafta maç yok") is "cancel_match".
@@ -666,11 +676,12 @@ THE ACTION, exactly one. A question, an opinion or a discussion about whether to
 
 THE FIELDS. Fill toMatchTime always and the others for the action; every other field is "", 0, false or [].
   toMatchTime (always): true when the message tells or asks MatchTime itself to do something: it tags the bot, replies to MatchTime's own post, answers the question MatchTime just asked, or is an instruction that names and tags nobody else ("ask the group if anyone can play"). False when it speaks to a person or to the others: it tags or names a person to ask them, or asks the others whether to do it or whether they can ("can we ask...?", "should we...?", "you able to find players?").
-  playersFrom (recruit): every place the message means the players are to come from, never guessed; [] when it names none (MatchTime then asks).
+  playersFrom (recruit): who is to be invited, never guessed: the people tagged, or every place the message means the players are to come from; [] when it says neither (MatchTime then asks).
+    "named" the particular people tagged with @ in THE MESSAGE, in the message it replies to, or in the message just above it ("DM these people", "message the people above", "invite them"). Code finds who they are; you only say they are meant. MatchTime invites exactly those people, so "named" stands alone, never beside a place.
     "club" the club's own players (its regulars, the lads, its past players, its players' group: "the group", "the main group").
     "partners" another club, a partner club or the other groups, named or not.
     "pool" the MatchTime player pool, players from outside the club and its partners ("the pool", "someone nearby", "a player from the app").
-    "everywhere" or "wherever you can" ("her yerden", "nereden olursa") is all three. An answer to MatchTime's own question about where to look (MATCHTIME'S LAST POST, or the message replied to) is recruit from the places it picks, however short: "both" is the two places the question offers (of three, the partner clubs and the pool), "all" is every place it offers, and a yes to a question offering one place is that place.
+    "everywhere" or "wherever you can" ("her yerden", "nereden olursa") is the three places. An answer to MatchTime's own question about where to look (MATCHTIME'S LAST POST, or the message replied to) is recruit from the places it picks, however short: "both" is the two places the question offers (of three, the partner clubs and the pool), "all" is every place it offers, and a yes to a question offering one place is that place.
   lookbackMatches (recruit from the club): how many recent matches to draw the club's own players from ("the last 5 matches" is 5, "the last couple of games" is 2); 0 when no number is named.
   clubRef (recruit from partners): the other club's name as written, without a Turkish case ending ("Sutton'a" is "Sutton"); "" when no club is named.
   matchDay (cancel_match, restore_match, fee_waiver, player_numbers, switch_format): the day named for the game, as written ("tonight", "next Friday", "cuma", "last Tuesday"); "" when none or only "this week".
@@ -702,6 +713,10 @@ Spoken to MatchTime, or to a person:
   "should we ask the group?" / "gruba soralım mı?" -> other, toMatchTime false
   "shall we try the pool?" / "havuza soralım mı?" -> other, toMatchTime false
   "you able to find players?" / "oyuncu bulabilir misin?" (to another organiser) -> other, toMatchTime false
+The people tagged, not a place:
+  "@Match Time DM these people", replying to a message that tags people / "@Match Time bu kişilere özelden yaz" -> recruit, playersFrom ["named"]
+  "@Match Time DM the people above" / "@Match Time yukarıda etiketlenenlere mesaj at" -> recruit, playersFrom ["named"]
+  "@Match Time invite @Ali and @Sam for tonight" / "@Match Time @Ali ve @Sam'i bu akşama davet et" -> recruit, playersFrom ["named"]
 Players from one place:
   "@Match Time ask the group" / "@Match Time gruba sor" -> recruit, playersFrom ["club"]
   "message the lads from the last 5 matches and invite them" / "son 5 maçta oynayanlara yaz, davet et" -> recruit, playersFrom ["club"], lookbackMatches 5
@@ -1017,7 +1032,9 @@ const ADMIN_SCHEMA = {
     // list, "partner clubs and the pool"; it was one choice since L10, and
     // S6's `partnerClubs` boolean before that); empty when the words name
     // none. The other club's name as written for "partners" (slice S6).
-    playersFrom: { type: "array", items: { type: "string", enum: ["club", "partners", "pool"] } },
+    // "named" (2026-11-09): the people tagged, not a place; code finds
+    // them from WhatsApp's mention data (`named-invite-rules.ts`).
+    playersFrom: { type: "array", items: { type: "string", enum: ["named", "club", "partners", "pool"] } },
     clubRef: { type: "string" },
     // set_venue (2026-10-28): the place as named, and the number picked from
     // MatchTime's list of places (0 is the stand-in for "none picked").
@@ -1363,8 +1380,12 @@ export function parseFacts(
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
-      const clubRef = typeof raw.clubRef === "string" ? raw.clubRef.trim() : "";
-      const from = playersFromOf(raw.playersFrom);
+      const named = action === "recruit" && playersNamed(raw.playersFrom);
+      // The people tagged stand alone (2026-11-09): with "named" in the
+      // list, no place and no club is carried, so nothing but those people
+      // can be asked or DM'd. The narrower reading wins.
+      const clubRef = named ? "" : typeof raw.clubRef === "string" ? raw.clubRef.trim() : "";
+      const from = named ? new Set<"club" | "partners" | "pool">() : playersFromOf(raw.playersFrom);
       const facts: AdminFacts = {
         kind: "admin",
         action: action as AdminFacts["action"],
@@ -1403,7 +1424,10 @@ export function parseFacts(
         ...(action === "recruit" && from.has("club") ? { ownClub: true } : {}),
         // 2026-10-28 (Kemal, "stricter"): the words asked for players and
         // named no place. Never with a club named (that is another club).
-        ...(action === "recruit" && from.size === 0 && !clubRef ? { sourceUnsaid: true } : {}),
+        ...(action === "recruit" && from.size === 0 && !clubRef && !named ? { sourceUnsaid: true } : {}),
+        // 2026-11-09: the people tagged in the message, the one it replies
+        // to, or the one above ("@Match Time DM these people").
+        ...(named ? { namedPeople: true as const } : {}),
         // 2026-10-28: the pitch named, and a pick from MatchTime's list
         // (a whole number from 1). Carried on set_venue only.
         ...(action === "set_venue" && typeof raw.venueName === "string" && raw.venueName.trim() ? { venueName: raw.venueName.trim() } : {}),
@@ -1447,6 +1471,11 @@ function monthKeysOf(v: unknown): string[] {
  * at all (on a recruit) was the club's own players. The schema requires the
  * list, so a real answer always has it. Anything else is ignored.
  */
+/** Does `playersFrom` name the people tagged ("named", 2026-11-09)? */
+function playersNamed(v: unknown): boolean {
+  return Array.isArray(v) && v.some((x) => typeof x === "string" && x.trim().toLowerCase() === "named");
+}
+
 function playersFromOf(v: unknown): Set<"club" | "partners" | "pool"> {
   const items = Array.isArray(v) ? v : v === undefined || v === null ? ["club"] : typeof v === "string" ? [v.trim() === "" ? "club" : v] : [];
   const out = new Set<"club" | "partners" | "pool">();

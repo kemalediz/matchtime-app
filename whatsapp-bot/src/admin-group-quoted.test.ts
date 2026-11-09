@@ -101,6 +101,15 @@ describe("readGroupMessageForServer forwards the quoted fields", () => {
     expect(await readGroupMessageForServer(d, viewOf(reply(BOT, { conversation: "x" })))).toMatchObject({ quotedFromMatchTime: false });
   });
 
+  it("forwards the raw mention JIDs too (2026-11-09), so the server can count a tag it has no name for", async () => {
+    const raw = wa({ extendedTextMessage: { text: "@999 DM @158055467598020", contextInfo: { mentionedJid: [BOT, "158055467598020@lid"] } } });
+    const out = await readGroupMessageForServer(driver([BOT]), viewOf(raw));
+    // In the view's whatsapp-web.js names, exactly as the analyze door sends them.
+    expect(out?.mentions).toEqual(["447700900999@c.us", "158055467598020@lid"]);
+    const none = await readGroupMessageForServer(driver([BOT]), viewOf(wa({ conversation: "YES" })));
+    expect(none).not.toHaveProperty("mentions");
+  });
+
   it("not a reply: no quoted fields", async () => {
     const out = await readGroupMessageForServer(driver([BOT]), viewOf(wa({ conversation: "YES" })));
     expect(out).not.toHaveProperty("quotedMessageId");

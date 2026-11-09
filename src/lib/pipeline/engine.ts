@@ -2896,6 +2896,21 @@ export function decide(input: EngineInput): EngineResult {
           );
           return;
         }
+        // ── THE PEOPLE TAGGED (Vets MNF, 2026-11-09) ──────────────────
+        //
+        // "@Match Time DM these people": the same two gates, then the
+        // invite goes to the people tagged and to nobody else. No blast,
+        // no partner or pool ask: the extractor never carries a place
+        // beside `namedPeople`. Who they are is read from WhatsApp's
+        // mention data by the route's batch-final pass, never here.
+        if (facts.namedPeople) {
+          emit({
+            kind: "named_invite",
+            sourceMessageId: msg.id,
+            reason: "admin asked MatchTime to DM the people tagged",
+          });
+          return;
+        }
         // ── WHERE FROM: EVERY PLACE THE WORDS NAMED (2026-10-28) ──────
         //
         // The same two gates (an admin, tagged), then each place the

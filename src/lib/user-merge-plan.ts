@@ -310,6 +310,9 @@ export const USER_REF_COLUMNS: RefColumn[] = [
   ...sc("Attendance", "paidViaUserId", "directConfirmedByUserId", "feeWaivedByUserId"),
   ...sc("PaymentCredit", "payerUserId", "recordedById"),
   ...sc("AnalyzedMessage", "authorUserId"),
+  // Who sent a message that tagged people (2026-11-09, "DM these people"):
+  // moves to the merged user, so "From <name>'s message" names the survivor.
+  ...sc("MessageMentions", "senderUserId"),
   ...sc("UserAlias", "userId"),
   ...js("GroupPostState", "heldAdd"),
   ...sc("SquadMonth", "startedByUserId"),
@@ -389,6 +392,8 @@ export const UNTOUCHED_COLUMNS: Record<string, string> = {
   // WhatsApp Cloud API, PR C2: keyed by phone, like the rest of PlatformJob.
   "PlatformJob.templateParams": "a Meta template's variables (text), no user ids",
   "WaInbound.payload": "the inbound message as parsed (text, sender name, quoted id), keyed by phone, no user ids",
+  "MessageMentions.mentions":
+    "who a group message tagged as WhatsApp gave it (JIDs, phones, WhatsApp names), no user ids: each is matched to a user afresh when read, so after a merge it finds the survivor by the same phone; deleted after 7 days",
   "WaInbound.waUserId": "Meta's business scoped user id, not a MatchTime User id",
 };
 

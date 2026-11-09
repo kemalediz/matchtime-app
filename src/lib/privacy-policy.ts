@@ -23,10 +23,10 @@
 export const PRIVACY_PATH = "/privacy";
 
 /** Stored with every consent record. A whole number so an Int column holds it. */
-export const PRIVACY_POLICY_VERSION = 1;
+export const PRIVACY_POLICY_VERSION = 2;
 
 /** ISO date the version above took effect. */
-export const PRIVACY_POLICY_EFFECTIVE_DATE = "2026-10-24";
+export const PRIVACY_POLICY_EFFECTIVE_DATE = "2026-11-09";
 
 export interface CompanyDetails {
   legalName: string | null;

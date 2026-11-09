@@ -561,6 +561,10 @@ export interface GroupMessageForServer {
   senderLid?: string;
   timestamp: string;
   mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  /** Every mentioned JID, raw, the bot's included (2026-11-09), as the
+   *  analyze door already sends them: the server counts a tag it has no
+   *  name or phone for ("@Match Time DM these people"). */
+  mentions?: string[];
   /** A WhatsApp reply (2026-10-16): the quoted message's id and text, and
    *  whether it was this bot's own. Absent when the message is not a reply. */
   quotedMessageId?: string;
@@ -582,6 +586,8 @@ export async function readGroupMessageForServer(
   const phone = phoneFromAuthor(authorId, groupId);
   const { waMessageId } = resolveWaMessageId(msg);
   const rawBody = readMessageBody(msg);
+  const rawMentions = safeRead(msg, "mentionedIds");
+  const mentions = Array.isArray(rawMentions) ? (rawMentions as unknown[]).filter((j): j is string => typeof j === "string") : [];
   const fallback: InboundEnrichment = {
     body: rawBody,
     authorName: readNotifyName(msg),
@@ -608,6 +614,7 @@ export async function readGroupMessageForServer(
     ...(lid ? { senderLid: lid } : {}),
     timestamp: new Date(safeTimestampSec(msg) * 1000).toISOString(),
     ...(enriched.mentionNames.length > 0 ? { mentionNames: enriched.mentionNames } : {}),
+    ...(mentions.length > 0 ? { mentions } : {}),
     ...readQuotedFields(driver, msg),
     ...(await quotedAuthorFields(driver, msg)),
   };

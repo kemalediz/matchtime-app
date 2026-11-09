@@ -557,7 +557,8 @@ describe("parseFacts (other routes)", () => {
     const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, unknown> };
     expect(schema.required).toEqual(expect.arrayContaining(["playersFrom", "clubRef"]));
     // Every place named, as a list (2026-10-28: "partner clubs and the pool").
-    expect(schema.properties.playersFrom).toEqual({ type: "array", items: { type: "string", enum: ["club", "partners", "pool"] } });
+    // 2026-11-09: or the particular people tagged ("named").
+    expect(schema.properties.playersFrom).toEqual({ type: "array", items: { type: "string", enum: ["named", "club", "partners", "pool"] } });
     expect(schema.properties.clubRef).toEqual({ type: "string" });
     // One source, one field: S6's boolean is gone from what the model fills.
     expect(schema.properties.partnerClubs).toBeUndefined();
@@ -698,6 +699,31 @@ describe("parseFacts (other routes)", () => {
   it("admin · an unknown place in the list is ignored", () => {
     expect(recruitFromList(["moon"])).toMatchObject({ sourceUnsaid: true });
     expect(recruitFromList(["moon", "pool"])).toMatchObject({ pool: true });
+  });
+
+  // ── 2026-11-09 (Vets MNF): "@Match Time DM these people". The model says
+  // only that the people TAGGED are meant; code finds who they are from
+  // WhatsApp's mention data (`named-invite-rules.ts`).
+
+  it("admin · recruit from the people tagged: namedPeople, and nothing else (never a blast, a pool or a partner ask)", () => {
+    const f = recruitFromList(["named"]);
+    expect(f).toMatchObject({ kind: "admin", action: "recruit", namedPeople: true });
+    for (const k of ["pool", "partnerClubs", "ownClub", "sourceUnsaid", "clubRef"]) expect(k in f, k).toBe(false);
+    // Listed with a place anyway: the tagged people alone, the narrower reading.
+    const mixed = recruitFromList(["named", "club", "pool"], "Sutton");
+    expect(mixed).toMatchObject({ namedPeople: true });
+    for (const k of ["pool", "partnerClubs", "ownClub", "sourceUnsaid", "clubRef"]) expect(k in mixed, k).toBe(false);
+    expect("namedPeople" in recruitFromList(["named"], "", "other")).toBe(false);
+    expect("namedPeople" in recruitFromList(["club"])).toBe(false);
+  });
+
+  it("admin · the 2026-11-09 rewrite: \"named\" defined once beside the places, examples EN and TR, the recent players unchanged", () => {
+    const p = EXTRACTOR_PROMPTS.admin;
+    for (const source of ["named", "club", "partners", "pool"]) expect(p.split(`\n    "${source}" `).length, source).toBe(2);
+    expect(p).toMatch(/"@Match Time DM these people", replying to a message that tags people \/ "@Match Time bu kişilere özelden yaz" -> recruit, playersFrom \["named"\]/);
+    expect(p).toMatch(/"@Match Time DM the people above" \/ "@Match Time yukarıda etiketlenenlere mesaj at" -> recruit, playersFrom \["named"\]/);
+    expect(p).toMatch(/"message the lads from the last 5 matches and invite them" \/ "son 5 maçta oynayanlara yaz, davet et" -> recruit, playersFrom \["club"\], lookbackMatches 5/);
+    expect(p).not.toMatch(/[–—]/);
   });
 
   it("admin · an unknown action still drops the whole shape rather than guessing", () => {

@@ -159,6 +159,8 @@ import { parseVenuePickRef, venueListAnswered } from "./venue-from-words-rules";
 import { recordHqVenueList } from "./venue-list-log";
 import type { HqLogRow } from "./admin-group-log";
 import { adminVenueCopy } from "./i18n/admin-venue";
+import { dmNamedPeople } from "./named-invite";
+import { namedInviteReply } from "./named-invite-rules";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -200,6 +202,12 @@ export interface UnderstandInput {
   senderName: string | null;
   sentAt: Date | null;
   now: Date;
+  /** The HQ group's WhatsApp id, where "the people above" are looked for
+   *  ("@Match Time DM these people", 2026-11-09). */
+  chatId?: string;
+  /** Every mentioned JID, raw, the bot's included (2026-11-09): a tag the
+   *  Pi could not name still counts. Absent from older Pi builds. */
+  mentions?: string[];
   /** The pool switch as the request read it (`pool/switch-env.ts`):
    *  the platform switch row, or the e2e seam under MT_TEST_MODE=1. */
   poolEnv?: Record<string, string | undefined>;
@@ -211,6 +219,8 @@ export interface UnderstandInput {
     latestAskForRetry?: LatestAskForRetry;
     /** "Our pitch is Goals Sutton" (2026-10-28). */
     setVenueFromWords?: typeof setVenueFromWords;
+    /** "DM these people" (2026-11-09). */
+    dmNamedPeople?: typeof dmNamedPeople;
   };
 }
 
@@ -817,6 +827,39 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       const r = await askPoolFromWords({ orgId: org.id, userId: actor, via: "words", lang, now, env: input.poolEnv, remember: { askMessageId: messageId } });
       return said(r.outcome, r.replyText);
     };
+    // "@Match Time DM these people" (2026-11-09): the club's invite to the
+    // people tagged in this message, the one it quotes (a forwarded message
+    // included), or the one above in HQ, through the players' group's own
+    // door (`named-invite.ts`). An organiser's alone. A tick only when
+    // somebody was DM'd.
+    const dmTagged = async (): Promise<Understood> => {
+      if (!actor) return onlyOrganisers("players");
+      // The door never throws; a test seam might. Either way a short line,
+      // never silence (review #10).
+      const door = input.deps?.dmNamedPeople ?? dmNamedPeople;
+      const r = await door({
+        orgId: org.id,
+        chatId: input.chatId ?? "",
+        lang,
+        message: {
+          waMessageId: messageId,
+          sentAt: input.sentAt ?? now,
+          mentionNames: input.mentionNames,
+          // Raw JIDs (Pi builds from 2026-11-09): with the bot's tag among
+          // them, so a tag the Pi could not name is counted, never a
+          // fall-back to an older message (review #1).
+          mentions: input.mentions,
+          // HQ acts on a real tag only, so MatchTime is tagged here.
+          botMentioned: true,
+          quotedMessageId: input.quoted?.messageId ?? null,
+        },
+        requesterUserId: actor,
+      }).catch((err: unknown) => {
+        console.error(`[admin-group] ${messageId}: DM to the people tagged failed:`, err instanceof Error ? err.message : "failed");
+        return { outcome: "named-failed", replyText: namedInviteReply({ kind: "failed" }, lang), invited: 0, from: null, matchId: null };
+      });
+      return said(r.invited > 0 ? "hq-named-done" : `hq-${r.outcome === "named-done" ? "named-none-sent" : r.outcome}`, r.replyText);
+    };
 
     // WHERE THE PLAYERS COME FROM (Kemal, 2026-10-28: "stricter"; ask when
     // in limbo). `ask-source-rules.ts`: the places the words named are
@@ -1071,7 +1114,12 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       case "ask_group": {
         // One place-open ask in the players' group (`admin-group-ask-group.ts`).
         if (!actor) return onlyOrganisers("players");
-        if (!weekly) return notHere();
+        // "DM these people" works for a monthly club too, as through
+        // admin_ops and in the players' group (review #8, 2026-11-09).
+        if (!weekly) {
+          const f = await readAdminFacts();
+          return f?.action === "recruit" && f.namedPeople ? dmTagged() : notHere();
+        }
         // A club with partner clubs (slice S6, 2026-10-21): "ask Sutton if
         // anyone can play", "diğer gruplara sor" route here, as finding a
         // player does. The shared admin extractor says whether ANOTHER club
@@ -1085,6 +1133,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // pool hears so instead of a post in its group.
         const partners = await activePartnerChoices(org.id).catch(() => []);
         const facts = await readAdminFacts();
+        // The people tagged (2026-11-09): DM'd the invite, nobody asked.
+        if (facts?.action === "recruit" && facts.namedPeople) return dmTagged();
         if (facts && (facts.action === "set_venue" || facts.action === "retry_ask")) return venueOrRetry(facts, null);
         // Another place named (the pool, the partners, or several): each is
         // asked. A partner club named by a club that has none stays the
@@ -1108,6 +1158,9 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // and the extractor is not asked.
         if (!feeActor) return onlyOrganisers();
         const facts = (await readAdminFacts()) ?? { kind: "none" as const };
+        // The people tagged (2026-11-09, "DM these people"): their invite,
+        // never a place asked. An organiser's alone (not the collector's).
+        if (facts.kind === "admin" && facts.action === "recruit" && facts.namedPeople) return dmTagged();
         // Another place named: the MatchTime player pool (L10, "get us a
         // player from the app"), another club's players (slice S6, "ask
         // Sutton if anyone can play"), or several ("partner clubs and the

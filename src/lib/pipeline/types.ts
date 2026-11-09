@@ -849,6 +849,14 @@ export interface AdminFacts {
    * was. Absent: the words named a place.
    */
   sourceUnsaid?: true;
+  /**
+   * recruit, 2026-11-09 (Vets MNF, "@Match Time DM these people"): the
+   * players are the particular people TAGGED, in the message, the one it
+   * replies to, or the one above. Never with `pool`, `partnerClubs`,
+   * `ownClub`, `clubRef` or `sourceUnsaid`. WHO they are is code's, from
+   * WhatsApp's mention data (`named-invite-rules.ts`), never the model's.
+   */
+  namedPeople?: true;
   /** set_venue: the pitch or venue as the message names it, trimmed
    *  ("Goals Sutton"). Looked up by code, never trusted as a place. */
   venueName?: string;
@@ -1587,6 +1595,19 @@ export type ProposedWrite =
        *  route asks the organiser which place, when the club has partner
        *  clubs or the pool, instead of sending it (`ask-source-rules.ts`). */
       sourceUnsaid?: true;
+      sourceMessageId: string;
+      reason: string;
+    }
+  | {
+      /**
+       * The club's invite DM'd to the people TAGGED (Vets MNF, 2026-11-09:
+       * "@Match Time DM these people"). Decided like `recruit_blast` (an
+       * admin, an explicit tag) and performed the same way, by the route's
+       * batch-final pass after every write in the batch
+       * (`named-invite.ts`). It carries nothing: who was tagged comes from
+       * WhatsApp's mention data, read by code (`named-invite-rules.ts`).
+       */
+      kind: "named_invite";
       sourceMessageId: string;
       reason: string;
     }

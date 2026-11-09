@@ -89,6 +89,10 @@ export function nextSimPhone(): string {
   return `+4477009${(10000 + phoneSeq++).toString()}`;
 }
 
+/** MatchTime's own LID as a raw mention, when a batch item is tagged and
+ *  also tags people (`BatchItem.mentions`). */
+export const SIM_BOT_JID = "999000111222333@lid";
+
 export function nextMsgId(): string {
   return `sim-${RUN}-${++msgSeq}`;
 }
@@ -473,6 +477,13 @@ export interface BatchItem {
   /** Reuse this WhatsApp message id: the same message delivered again (a
    *  Pi retry or restart replay). Default: a fresh id. */
   waMessageId?: string;
+  /**
+   * The people this message @-mentions, as the Pi forwards them (2026-11-09,
+   * "@Match Time DM these people"): the raw JIDs and, beside them, what the
+   * contact lookup said (`mentionNames`: a name and, for a LID, a phone).
+   * The bot's own mention is NOT listed: tag the bot with `tag`.
+   */
+  mentions?: Array<{ jid: string; name?: string; phone?: string }>;
 }
 
 /** One line of the "Recent chat history" block the Pi keeps in memory
@@ -632,6 +643,16 @@ export class SimGroup {
         // The structured signal as the real Pi sends it (`pi-mention.ts`):
         // the spec's value, else true for a body carrying "@Match Time".
         ...(typeof tagged === "boolean" ? { botMentioned: tagged } : {}),
+        // Other people tagged, as the Pi forwards them: every JID raw, and
+        // the ones its contact lookup could say something about named.
+        // The real Pi lists the bot's own JID among the raw mentions when it
+        // is tagged, and never names it in `mentionNames`.
+        ...(it.mentions?.length
+          ? {
+              mentions: [...(tagged === true ? [SIM_BOT_JID] : []), ...it.mentions.map((m) => m.jid)],
+              mentionNames: it.mentions.filter((m) => m.name || m.phone),
+            }
+          : {}),
       };
     });
     // Arm the two seams ONLY when this batch actually says something

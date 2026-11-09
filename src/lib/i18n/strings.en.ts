@@ -1524,6 +1524,9 @@ export const en = {
     (p.fees ? `\n💷 Your friend pays the match fee like any guest, after the game (in a monthly club, as a pay as you go player).` : ""),
   /** The same, for an organiser: his own add is direct (friend link D1). */
   onbHelpFriendLinkOrganiser: `When an organiser adds someone, they go straight on the list.`,
+  /** "help availability" for an organiser (2026-11-09): DM the people a
+   *  message tagged the invite (named-invite.ts). */
+  onbHelpDmTaggedOrganiser: `📨 Somebody tagged a few people to ask if they can play? Reply to that message with *@Match Time DM them*, or say *@Match Time DM the people above*, and I DM each of them the invite for the next game. I only message numbers I already know, up to 10 at a time.`,
   /** "help availability" for an organiser of a club on a monthly squad
    *  (2026-11-03): the month starts from the list he posts, and names on it
    *  MatchTime cannot match are matched by him, in his words or on the page. */
@@ -1555,6 +1558,7 @@ export const en = {
       lines.push(`🔁 *"@Match Time swap Sam and Alex"*, *"@Match Time move Sam to the other team"*: changes to the teams.`);
       lines.push(`✅ *@Match Time YES*: make the proposed teams final.`);
       lines.push(`📣 *"@Match Time ask the group if anyone can play"*: when a place is open, I ask in the main chat.`);
+      lines.push(`📨 Reply to a message that tags people with *"@Match Time DM them"*, or say *"@Match Time DM the people above"*: I DM each of them the invite for the next game. Only numbers I already know, up to 10 at a time.`);
       if (p.pool) lines.push(`🌍 *"@Match Time ask the player pool for 2 players"*: when a place is open, I ask nearby players from the MatchTime player pool.`);
       lines.push(`❌ *"@Match Time cancel Friday"*, *"@Match Time it's back on"*: call the next match off or back on, and I tell the players' group.`);
     }

@@ -379,7 +379,9 @@ export function buildHelpReply(
     // organiser's add stays direct (D1).
     const explainer =
       topic === "availability"
-        ? `${base}\n${s.onbHelpFriendLink}${admin ? ` ${s.onbHelpFriendLinkOrganiser}` : ""}${admin && features.monthly ? `\n\n${s.onbHelpMonthListOrganiser}` : ""}`
+        ? `${base}\n${s.onbHelpFriendLink}${admin ? ` ${s.onbHelpFriendLinkOrganiser}` : ""}${admin && features.monthly ? `\n\n${s.onbHelpMonthListOrganiser}` : ""}` +
+          // DM the people a message tagged (2026-11-09, named-invite.ts).
+          (admin ? `\n${s.onbHelpDmTaggedOrganiser}` : "")
         : base;
     if (topicIsOn(topic, features)) {
       return `${explainer}\n\n${s.onbHelpOnStatus({ audience: ctx.audience, url: topicUrl })}`;
