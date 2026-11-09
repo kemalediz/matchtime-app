@@ -120,6 +120,7 @@ import {
   buildWeekList,
   decideListPost,
   LIST_REPOST_FLOOR_MS,
+  matchMorningMessageSent,
   weekListHash,
   type WeekMember,
   type WeekStatus,
@@ -2242,8 +2243,13 @@ async function computeForMatch(
   //    morning after the last one (`seedDueMonthlySquads`), so its list
   //    first goes out that morning, at the club's day start. After that
   //    it is posted when the list differs from the one the group last
-  //    saw (the squad changed), and once on match morning (held while the
-  //    group has seen this same list in the last three hours). `decideListPost` holds the limits: never
+  //    saw (the squad changed), and on match morning only when the group
+  //    has had no morning message about the game yet: not after the
+  //    match-day morning chase, and not after a list that morning (ONE
+  //    MORNING MESSAGE, 2026-11-09, `matchMorningMessageSent`; also held
+  //    while the group has seen this same list in the last three hours).
+  //    The chase (block 4c) reads the same rule, so a list that went out
+  //    first keeps the chase quiet. `decideListPost` holds the limits: never
   //    within 30 minutes of the last list post, never 23:00 to 08:59
   //    London, never once the teams are out, only for the fixture's next
   //    match. "The one the group last saw" is the newest
@@ -2252,12 +2258,17 @@ async function computeForMatch(
   //    MatchTime does not echo a list straight back). The key carries a
   //    running number so a list that returns to an earlier state (a drop,
   //    then back in) is posted again. Nothing here runs for a weekly club.
+  /** The match-day morning chase's key for a London day (block 4c). */
+  const morningChaseKey = (dayKey: string) => `${matchId}:chase-match-day-morning:${dayKey}`;
   /** For the PAYG pool's group line (section 3): the list going out on
    *  this poll already says "N places open, say IN"; when MatchTime last
    *  posted a list for this match; and how many places are open now. */
   let listGoesOutWithOpenLine = false;
   let lastListPostAt: Date | null = null;
   let openPlaces = 0;
+  /** For the match-day morning chase (block 4c): when the group was last
+   *  shown this match's list, counting a list going out on this poll. */
+  let monthListShownAt: Date | null = null;
   const monthlyListLive =
     (m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED") &&
     now.getTime() < m.date.getTime();
@@ -2343,6 +2354,9 @@ async function computeForMatch(
         nextUpcoming: isNextUpcomingForPosting(siblingMatches, m),
         teamsOut: m.teamAssignments.length > 0,
         sameListShownRecently,
+        // On "organisers" the chase's key is the admin group's notice, not
+        // a post in the players' group.
+        morningChaseSent: !organisers && sentKeys.has(morningChaseKey(londonDateKey(now))),
         quiet: features.quietHours,
       });
       if (due) {
@@ -2353,6 +2367,7 @@ async function computeForMatch(
     openPlaces = weekList.open;
     listGoesOutWithOpenLine = weekList.open > 0 && posted;
     lastListPostAt = lastPostAt;
+    monthListShownAt = posted ? now : lastPostAt;
   }
 
   // ── 2-ter. Going up a size (2026-11-03, the Vets play 6, 7 or 8 a side) ──
@@ -2957,14 +2972,19 @@ async function computeForMatch(
     const need = maxPlayers - confirmed.length;
     const inLive = m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED";
 
-    // Chase A: morning of match day, 8-9am London.
+    // Chase A: morning of match day, 8-9am London. ONE MORNING MESSAGE
+    // (2026-11-09, `matchMorningMessageSent`): the players' group gets one
+    // message about the game on match morning. When the month's list was
+    // already shown that morning (or goes out on this poll), it says how
+    // many places are open, so "Still N short" is not posted after it; and
+    // the list's own morning post stays quiet once this chase has gone.
     {
       const dayKey = londonDateKey(now);
       const matchDayKey = londonDateKey(m.date);
       const isMatchDay = dayKey === matchDayKey;
       const hour = londonHour(now);
       const inMorningWindow = hour >= 8 && hour < 9;
-      const key = `${matchId}:chase-match-day-morning:${dayKey}`;
+      const key = morningChaseKey(dayKey);
       if (
         !sentKeys.has(key) &&
         placesOpen &&
@@ -2986,6 +3006,11 @@ async function computeForMatch(
         } else if (noMonthYet) {
           // A monthly club with no month yet: "N more needed" would ask
           // the paid-up regulars to say IN.
+        } else if (
+          matchMorningMessageSent({ now, matchDate: m.date, lastListShownAt: monthListShownAt, quiet: features.quietHours })
+        ) {
+          // The month's list was the morning message. The key is not
+          // claimed; a later poll in the window reads the same rule.
         } else {
           const chase = await chaseText(
             "match-day-morning",

@@ -13,6 +13,7 @@ import {
   decideMissedCredits,
   decideMonthlySeed,
   decideSlotFor,
+  matchMorningMessageSent,
   mayStagePaygFeeOnReply,
   pasteShowsSameList,
   paygPoolOfferAllowed,
@@ -396,7 +397,7 @@ describe("decideListPost", () => {
     expect(decideListPost({ ...base, now: at("2026-10-08T08:00:00.000Z") })).toBe("change"); // 09:00 BST
   });
 
-  it("always once on match morning, even with nothing changed", () => {
+  it("once on match morning, even with nothing changed (when no morning message went out yet)", () => {
     const same = { ...base, lastShownHash: "h2", lastPostAt: at("2026-10-09T10:00:00.000Z") };
     expect(decideListPost({ ...same, now: at("2026-10-12T07:30:00.000Z") })).toBeNull(); // 08:30 BST: not yet
     expect(decideListPost({ ...same, now: at("2026-10-12T08:00:00.000Z") })).toBe("morning"); // 09:00 BST
@@ -418,6 +419,18 @@ describe("decideListPost", () => {
     expect(decideListPost({ ...same, hash: "h3", now: at("2026-10-12T08:00:00.000Z"), sameListShownRecently: false })).toBe("change");
   });
 
+  it("match morning: not when the morning chase already went out today (Vets, 9 Nov 2026)", () => {
+    // 08:00 London "Still 3 short ... Any takers?", then at 09:00 the same
+    // unchanged list: the group already had its morning message.
+    const same = { ...base, lastShownHash: "h2", lastPostAt: at("2026-10-11T20:15:00.000Z") }; // 21:15 BST the night before
+    expect(decideListPost({ ...same, now: at("2026-10-12T08:00:00.000Z"), morningChaseSent: true })).toBeNull(); // 09:00 BST
+    expect(decideListPost({ ...same, now: at("2026-10-12T10:00:00.000Z"), morningChaseSent: true })).toBeNull(); // 11:00 BST
+    // Without the chase the morning post goes out as before.
+    expect(decideListPost({ ...same, now: at("2026-10-12T08:00:00.000Z"), morningChaseSent: false })).toBe("morning");
+    // A list that CHANGED is posted whatever the chase said.
+    expect(decideListPost({ ...same, hash: "h3", now: at("2026-10-12T08:00:00.000Z"), morningChaseSent: true })).toBe("change");
+  });
+
   it("not once the teams are out, not for a match that is over, not for next week's match", () => {
     const now = at("2026-10-08T10:00:00.000Z");
     expect(decideListPost({ ...base, now, teamsOut: true })).toBeNull();
@@ -430,6 +443,40 @@ describe("decideListPost", () => {
     expect(weekListHash("a\nb")).toBe(weekListHash("a\nb"));
     expect(weekListHash("a\nb")).not.toBe(weekListHash("a\nc"));
     expect(weekListHash("x")).toMatch(/^[0-9a-f]{8,}$/);
+  });
+});
+
+describe("matchMorningMessageSent: ONE morning message on match day (Vets, 9 Nov 2026)", () => {
+  const MATCH = new Date("2026-11-09T20:30:00.000Z"); // Mon 9 Nov, 20:30 London (GMT)
+  const at = (iso: string) => new Date(iso);
+  const EARLY = { enabled: true, from: "23:00", to: "07:00" };
+
+  it("the morning chase went out today: the group has had its morning message", () => {
+    expect(matchMorningMessageSent({ now: at("2026-11-09T09:00:00.000Z"), matchDate: MATCH, morningChaseSent: true })).toBe(true);
+  });
+
+  it("a list shown since the club's day start (09:00 by default) on match day", () => {
+    const now = at("2026-11-09T10:00:00.000Z");
+    expect(matchMorningMessageSent({ now, matchDate: MATCH, lastListShownAt: at("2026-11-09T09:00:00.000Z") })).toBe(true);
+    // 21:15 the night before is not this morning's message.
+    expect(matchMorningMessageSent({ now, matchDate: MATCH, lastListShownAt: at("2026-11-08T21:15:00.000Z") })).toBe(false);
+    // Nor 08:30, before the day starts.
+    expect(matchMorningMessageSent({ now, matchDate: MATCH, lastListShownAt: at("2026-11-09T08:30:00.000Z") })).toBe(false);
+  });
+
+  it("a club whose day starts at 07:00: the 07:00 list is the morning message, so the 08:00 chase is not another", () => {
+    const now = at("2026-11-09T08:00:00.000Z");
+    expect(matchMorningMessageSent({ now, matchDate: MATCH, lastListShownAt: at("2026-11-09T07:00:00.000Z"), quiet: EARLY })).toBe(true);
+    expect(matchMorningMessageSent({ now, matchDate: MATCH, lastListShownAt: at("2026-11-09T06:30:00.000Z"), quiet: EARLY })).toBe(false);
+  });
+
+  it("nothing sent, or not match day: false", () => {
+    expect(matchMorningMessageSent({ now: at("2026-11-09T09:00:00.000Z"), matchDate: MATCH })).toBe(false);
+    // The day before, a list at 09:00 and a chase flag are not match-day mornings.
+    expect(
+      matchMorningMessageSent({ now: at("2026-11-08T10:00:00.000Z"), matchDate: MATCH, lastListShownAt: at("2026-11-08T09:00:00.000Z") }),
+    ).toBe(false);
+    expect(matchMorningMessageSent({ now: at("2026-11-08T10:00:00.000Z"), matchDate: MATCH, morningChaseSent: true })).toBe(false);
   });
 });
 

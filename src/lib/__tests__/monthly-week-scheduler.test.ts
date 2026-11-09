@@ -509,7 +509,7 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
     expect((await instructions(THU_10AM)).some((i) => i.key.includes("month-list"))).toBe(false);
   });
 
-  it("always once on match morning, even with nothing changed", async () => {
+  it("once on match morning, even with nothing changed (when no morning message went out yet)", async () => {
     const m = match();
     const hash = weekListHash(listText(m));
     setWorld(m, {
@@ -561,6 +561,107 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
     setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:${before}:0`, kind: "group-message", createdAt: new Date("2026-10-12T07:30:00.000Z") }] });
     const posts = (await instructions(new Date("2026-10-12T08:00:00.000Z"))).filter((i) => i.key.includes("month-list"));
     expect(posts.map((p) => p.key)).toEqual([`${m.id}:month-list:${weekListHash(listText(m))}:1`]);
+  });
+
+  describe("ONE morning message on match day (Vets, Mon 9 Nov 2026)", () => {
+    // 08:00 "Still 3 short ... Any takers?", then 09:00 the same list as the
+    // night before. Owner: "no need to repeat yourself, you already said 3
+    // needed at 8am." Here: Mon 12 Oct, two places open.
+    const CHASE_KEY = (id: string) => `${id}:chase-match-day-morning:2026-10-12`;
+    const isChase = (k: string) => k.includes(":chase-match-day-morning:");
+    const nightBefore = (id: string, hash: string) => ({
+      key: `${id}:month-list:${hash}:0`,
+      kind: "group-message",
+      createdAt: new Date("2026-10-11T20:15:00.000Z"), // Sun 21:15 London
+    });
+    const withQuiet = async <T,>(to: string, fn: () => Promise<T>): Promise<T> => {
+      features.quietHours = { enabled: true, from: "23:00", to };
+      try {
+        return await fn();
+      } finally {
+        delete features.quietHours;
+      }
+    };
+
+    it("THE INCIDENT: the 08:00 chase went out, so the unchanged list is not posted at 09:00", async () => {
+      const m = match();
+      const hash = weekListHash(listText(m));
+      setWorld(m, { monthly: true, sent: [CHASE_KEY(m.id)], shown: [nightBefore(m.id, hash)] });
+      const lists = async (iso: string) => (await instructions(new Date(iso))).filter((i) => i.key.includes("month-list"));
+      expect(await lists("2026-10-12T08:00:00.000Z")).toEqual([]); // 09:00
+      expect(await lists("2026-10-12T10:30:00.000Z")).toEqual([]); // 11:30
+    });
+
+    it("REGRESSION GUARD: without the chase (squad full or none sent) the morning list still goes at 09:00", async () => {
+      const m = match();
+      const hash = weekListHash(listText(m));
+      setWorld(m, { monthly: true, shown: [nightBefore(m.id, hash)] });
+      const posts = (await instructions(new Date("2026-10-12T08:00:00.000Z"))).filter((i) => i.key.includes("month-list"));
+      expect(posts.map((p) => p.key)).toEqual([`${m.id}:month-list:${hash}:1`]);
+    });
+
+    it("organisers announce: the chase key is the admin group's notice, so the players' morning list still goes", async () => {
+      const m = match();
+      const hash = weekListHash(listText(m));
+      features.listAnnouncer = "organisers";
+      try {
+        setWorld(m, { monthly: true, sent: [CHASE_KEY(m.id)], shown: [nightBefore(m.id, hash)] });
+        const posts = (await instructions(new Date("2026-10-12T08:00:00.000Z"))).filter((i) => i.key.includes("month-list"));
+        expect(posts.map((p) => p.key)).toEqual([`${m.id}:month-list:${hash}:1`]);
+      } finally {
+        delete features.listAnnouncer;
+      }
+    });
+
+    it("a list that CHANGED after the chase is still posted", async () => {
+      const m = match();
+      const before = weekListHash(listText(m));
+      m.attendances[1] = att("Bilal", 1, { status: "DROPPED" });
+      setWorld(m, { monthly: true, sent: [CHASE_KEY(m.id)], shown: [nightBefore(m.id, before)] });
+      const posts = (await instructions(new Date("2026-10-12T08:00:00.000Z"))).filter((i) => i.key.includes("month-list"));
+      expect(posts.map((p) => p.key)).toEqual([`${m.id}:month-list:${weekListHash(listText(m))}:1`]);
+    });
+
+    it("REGRESSION GUARD: the 08:00 chase still goes when the group last saw the list the night before", async () => {
+      const m = match();
+      const hash = weekListHash(listText(m));
+      setWorld(m, { monthly: true, shown: [nightBefore(m.id, hash)] });
+      const out = await instructions(new Date("2026-10-12T07:05:00.000Z")); // 08:05
+      expect(out.filter((i) => isChase(i.key)).map((i) => i.key)).toEqual([CHASE_KEY(m.id)]);
+      expect(out.some((i) => i.key.includes("month-list"))).toBe(false);
+    });
+
+    it("the reverse: a club whose day starts at 07:00 got the list at 07:00, so no 'still short' chase at 08:00", async () => {
+      const m = match();
+      const hash = weekListHash(listText(m));
+      await withQuiet("07:00", async () => {
+        setWorld(m, { monthly: true, shown: [nightBefore(m.id, hash)] });
+        // 07:05 London: the morning list.
+        const first = await instructions(new Date("2026-10-12T06:05:00.000Z"));
+        expect(first.filter((i) => i.key.includes("month-list")).map((i) => i.key)).toEqual([`${m.id}:month-list:${hash}:1`]);
+        // 08:05 London, the list's row now written: no chase, and no second list.
+        setWorld(m, {
+          monthly: true,
+          shown: [
+            nightBefore(m.id, hash),
+            { key: `${m.id}:month-list:${hash}:1`, kind: "group-message", createdAt: new Date("2026-10-12T06:05:00.000Z") },
+          ],
+        });
+        const later = await instructions(new Date("2026-10-12T07:05:00.000Z"));
+        expect(later.filter((i) => isChase(i.key) || i.key.includes("month-list"))).toEqual([]);
+      });
+    });
+
+    it("both due on the same poll (a day that starts at 08:00): the list goes, the chase does not", async () => {
+      const m = match();
+      const hash = weekListHash(listText(m));
+      await withQuiet("08:00", async () => {
+        setWorld(m, { monthly: true, shown: [nightBefore(m.id, hash)] });
+        const out = await instructions(new Date("2026-10-12T07:05:00.000Z")); // 08:05
+        expect(out.filter((i) => i.key.includes("month-list")).map((i) => i.key)).toEqual([`${m.id}:month-list:${hash}:1`]);
+        expect(out.filter((i) => isChase(i.key))).toEqual([]);
+      });
+    });
   });
 
   it("with the attendance feature off, no list", async () => {
