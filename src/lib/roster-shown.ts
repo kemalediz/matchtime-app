@@ -108,6 +108,24 @@ export function rosterShownRecently(
   return rows.some((r) => markerValue(r, args.matchId, ROSTER_SHOWN_KIND, args.now) === args.fingerprint);
 }
 
+/** The squad the group last saw for this match, at any age: the newest
+ *  roster-shown marker (2026-11-09, ONE MORNING MESSAGE: "has the squad
+ *  changed since the group saw it?"). Null when none is known. */
+export function lastRosterShown(
+  rows: readonly QuietMarkerRow[],
+  matchId: string,
+): { fingerprint: string; at: Date } | null {
+  const prefix = `${matchId}:${ROSTER_SHOWN_KIND}:`;
+  let best: { fingerprint: string; at: Date } | null = null;
+  for (const r of rows) {
+    if (r.kind !== ROSTER_SHOWN_KIND || !r.createdAt || !r.key.startsWith(prefix)) continue;
+    const fingerprint = r.key.slice(prefix.length).split(":")[0];
+    if (!fingerprint) continue;
+    if (!best || r.createdAt.getTime() > best.at.getTime()) best = { fingerprint, at: r.createdAt };
+  }
+  return best;
+}
+
 /** Was the group told, in the last three hours, that recruit DMs went
  *  out for this same number of open places? */
 export function recruitAckRecently(

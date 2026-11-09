@@ -83,6 +83,7 @@ import {
   dropOutDeadlineFor,
   hasWeeklyRhythm,
   listPublishDue,
+  listPublishHeld,
   weeklyDeadlinesFor,
 } from "./weekly-deadlines";
 import { isSubstantialSquad } from "./rolling-squad-rules";
@@ -93,6 +94,7 @@ import {
   ROSTER_QUIET_MS,
   ROSTER_SHOWN_KIND,
   hasRosterBlock,
+  lastRosterShown,
   recruitAckRecently,
   rosterShownRecently,
   shownInQuietWindow,
@@ -1478,6 +1480,48 @@ async function computeForMatch(
     return { text: stripRosterBlock(text) };
   }
 
+  // ── ONE MORNING MESSAGE ON MATCH DAY (Kemal, 2026-11-09) ─────────────
+  //   The players' group gets one message about the game on match morning.
+  //   The one rule is `matchMorningMessageSent` (monthly-week-rules.ts);
+  //   the month's list (block 2-monthly), a weekly club's final list (block
+  //   2-weekly, `listPublishHeld`) and the morning chase (block 4c) read it.
+  //   For a weekly club "unchanged" is the squad the group last saw: the
+  //   newest roster-shown marker, at any age. Read lazily, at most once per
+  //   match per poll. FAILS OPEN: unknown or unreadable is "changed", and
+  //   the post goes out as before.
+  /** The match-day morning chase's key for a London day (block 4c). */
+  const morningChaseKey = (dayKey: string) => `${matchId}:chase-match-day-morning:${dayKey}`;
+  let lastShownRead: Promise<{ fingerprint: string } | null> | undefined;
+  const squadAsLastShown = async (): Promise<boolean> =>
+    (
+      await (lastShownRead ??= db.sentNotification
+        .findFirst({
+          where: { matchId: m.id, kind: ROSTER_SHOWN_KIND },
+          orderBy: { createdAt: "desc" },
+          select: { key: true, kind: true, createdAt: true },
+        })
+        .then((row) => lastRosterShown(row ? [row] : [], m.id))
+        .catch((err) => {
+          console.error(`[scheduler] could not read the last roster shown for match ${m.id}:`, err);
+          return null;
+        }))
+    )?.fingerprint === squadKey;
+  /** A weekly club's final list (block 2-weekly): its key, and whether it
+   *  goes out on this poll. */
+  const weeklyListKey = `${matchId}:list-published`;
+  let weeklyListPostedNow = false;
+  /** When the group saw a weekly club's final list, for the morning chase:
+   *  on this poll, or when its row was written while the squad is still
+   *  the one the group last saw. Null otherwise. */
+  const weeklyListShownAt = async (): Promise<Date | null> => {
+    if (weeklyListPostedNow) return now;
+    if (!sentKeys.has(weeklyListKey) || !(await squadAsLastShown())) return null;
+    const row = await db.sentNotification
+      .findUnique({ where: { key: weeklyListKey }, select: { createdAt: true } })
+      .catch(() => null);
+    return row?.createdAt ?? null;
+  };
+
   // ── WHO ANNOUNCES THE LIST AND TEAMS (2026-10-14) ────────────────────
   //   `Organisation.listAnnouncer` (list-announcer.ts). On "organisers"
   //   (FNF: the admins reveal the list and the teams as graphics in their
@@ -2170,7 +2214,10 @@ async function computeForMatch(
   //    One group post for a club that has set it, in its own block with
   //    its own key and no `return`, so nothing below is skipped:
   //      D3 `<matchId>:list-published`    at the club's publish time,
-  //         the final list.
+  //         the final list. ONE MORNING MESSAGE (2026-11-09): on match
+  //         day, after the 08:00 morning chase, it is held while the squad
+  //         is the one the group last saw (`listPublishHeld`), and goes
+  //         out once it changes.
   //    D1, the drop-out reminder 3 hours before the deadline, is gone
   //    (Kemal, 2026-11-05: "i think we can eliminate the drop out
   //    reminder, i don't think there is a need for that."). Nothing is
@@ -2196,7 +2243,8 @@ async function computeForMatch(
   if (!monthly && !noMonthYet) {
     const isLive = m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED";
     const weekly = weeklyDeadlinesFor(m.date, activity.org);
-    const listKey = `${matchId}:list-published`;
+    const listKey = weeklyListKey;
+    const morningChaseSent = sentKeys.has(morningChaseKey(londonDateKey(now)));
     // Once the teams are out the team sheet is the announcement; a
     // fourteen-name list after it would be the roster the group was
     // told not to get again (2026-09-15).
@@ -2212,7 +2260,17 @@ async function computeForMatch(
         // No list poster on its own (Kemal, 2026-10-30: a poster "can only
         // be generated when they tag matchtime while asking to generate").
         // It is drawn when asked, tagged, in the admin group.
+      } else if (
+        // ONE MORNING MESSAGE (2026-11-09): a match-day list after the
+        // morning chase, with the squad unchanged, says nothing new. The
+        // key is not claimed: a change before kickoff sends it. The
+        // marker is read only once a chase has gone.
+        morningChaseSent &&
+        listPublishHeld({ now, matchDate: m.date, morningChaseSent, squadUnchanged: await squadAsLastShown() })
+      ) {
+        // Held.
       } else {
+        weeklyListPostedNow = true;
         out.push({
           kind: "group-message",
           key: listKey,
@@ -2258,8 +2316,6 @@ async function computeForMatch(
   //    MatchTime does not echo a list straight back). The key carries a
   //    running number so a list that returns to an earlier state (a drop,
   //    then back in) is posted again. Nothing here runs for a weekly club.
-  /** The match-day morning chase's key for a London day (block 4c). */
-  const morningChaseKey = (dayKey: string) => `${matchId}:chase-match-day-morning:${dayKey}`;
   /** For the PAYG pool's group line (section 3): the list going out on
    *  this poll already says "N places open, say IN"; when MatchTime last
    *  posted a list for this match; and how many places are open now. */
@@ -2974,10 +3030,13 @@ async function computeForMatch(
 
     // Chase A: morning of match day, 8-9am London. ONE MORNING MESSAGE
     // (2026-11-09, `matchMorningMessageSent`): the players' group gets one
-    // message about the game on match morning. When the month's list was
-    // already shown that morning (or goes out on this poll), it says how
-    // many places are open, so "Still N short" is not posted after it; and
-    // the list's own morning post stays quiet once this chase has gone.
+    // message about the game on match morning. When the list was already
+    // shown that morning (or goes out on this poll), it says how many
+    // places are open, so "Still N short" is not posted after it: the
+    // month's list, or a weekly club's final list while the squad is
+    // unchanged since. The other way round, the month's morning list and
+    // a weekly club's match-day final list stay quiet once this chase has
+    // gone, unless the list changed.
     {
       const dayKey = londonDateKey(now);
       const matchDayKey = londonDateKey(m.date);
@@ -3007,9 +3066,15 @@ async function computeForMatch(
           // A monthly club with no month yet: "N more needed" would ask
           // the paid-up regulars to say IN.
         } else if (
-          matchMorningMessageSent({ now, matchDate: m.date, lastListShownAt: monthListShownAt, quiet: features.quietHours })
+          matchMorningMessageSent({
+            now,
+            matchDate: m.date,
+            lastListShownAt: monthly ? monthListShownAt : await weeklyListShownAt(),
+            quiet: features.quietHours,
+          })
         ) {
-          // The month's list was the morning message. The key is not
+          // The list (the month's, or a weekly club's final list with the
+          // squad unchanged) was the morning message. The key is not
           // claimed; a later poll in the window reads the same rule.
         } else {
           const chase = await chaseText(

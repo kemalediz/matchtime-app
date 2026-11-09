@@ -599,7 +599,9 @@ const MORNING_UNTIL_HOUR = 12;
  *     a changed list, or a reply that showed it.
  * The list's morning post and the chase both read this one definition, so
  * whichever goes first, the other stays quiet. A CHANGED list is not held
- * by it (`decideListPost` posts a change before it asks).
+ * by it (`decideListPost` posts a change before it asks). Every club: a
+ * weekly club's match-day final list reads it too (`listPublishHeld`,
+ * weekly-deadlines.ts), with "unchanged" as the squad the group last saw.
  */
 export function matchMorningMessageSent(p: {
   now: Date;

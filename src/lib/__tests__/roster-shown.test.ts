@@ -8,6 +8,7 @@ import {
   ROSTER_SHOWN_KIND,
   RECRUIT_ACK_KIND,
   hasRosterBlock,
+  lastRosterShown,
   recruitAckKey,
   recruitAckRecently,
   rosterShownKey,
@@ -116,5 +117,25 @@ describe("the two recent-post checks", () => {
   it("rows of any other kind are ignored", () => {
     const rows = [{ key: rosterShownKey("m1", fp, at(5)), kind: "group-message", createdAt: at(5) }];
     expect(rosterShownRecently(rows, { matchId: "m1", fingerprint: fp, now })).toBe(false);
+  });
+});
+
+describe("lastRosterShown: the squad the group last saw, at any age (2026-11-09)", () => {
+  const t = (iso: string) => new Date(iso);
+  const row = (matchId: string, fp: string, iso: string, kind = ROSTER_SHOWN_KIND) => ({
+    key: rosterShownKey(matchId, fp, t(iso)),
+    kind,
+    createdAt: t(iso),
+  });
+
+  it("the newest roster-shown marker of this match, however old", () => {
+    const rows = [row("m1", "aaaaaaaaaaaaaaaa", "2026-10-05T16:05:00.000Z"), row("m1", "bbbbbbbbbbbbbbbb", "2026-10-09T07:05:00.000Z")];
+    expect(lastRosterShown(rows, "m1")).toEqual({ fingerprint: "bbbbbbbbbbbbbbbb", at: t("2026-10-09T07:05:00.000Z") });
+  });
+
+  it("another match, another kind, or nothing: null", () => {
+    expect(lastRosterShown([row("m2", "aaaaaaaaaaaaaaaa", "2026-10-09T07:05:00.000Z")], "m1")).toBeNull();
+    expect(lastRosterShown([row("m1", "aaaaaaaaaaaaaaaa", "2026-10-09T07:05:00.000Z", RECRUIT_ACK_KIND)], "m1")).toBeNull();
+    expect(lastRosterShown([], "m1")).toBeNull();
   });
 });

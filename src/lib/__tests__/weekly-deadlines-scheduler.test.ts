@@ -62,6 +62,7 @@ vi.mock("@/lib/message-analyzer", () => ({
 
 import { computeDuePosts } from "@/lib/bot-scheduler";
 import { buildListPublishedPost, buildRollingDeadlineLine } from "@/lib/scheduler-copy";
+import { ROSTER_SHOWN_KIND, rosterShownKey, squadFingerprint } from "@/lib/roster-shown";
 
 const GROUP = "group-fnf@g.us";
 const ORG = { id: "org-fnf", whatsappGroupId: GROUP, whatsappBotEnabled: true };
@@ -138,13 +139,34 @@ function match(club: Record<string, unknown>, over: Record<string, unknown> = {}
   };
 }
 
-function setWorld(ms: ReturnType<typeof match>[], opts: { sent?: string[]; carried?: number } = {}) {
+function setWorld(
+  ms: ReturnType<typeof match>[],
+  opts: {
+    sent?: string[];
+    carried?: number;
+    /** The newest roster-shown marker: the squad the group last saw. */
+    lastShown?: { fingerprint: string; at: Date };
+    /** When each sent key's row was written. */
+    sentAt?: Record<string, Date>;
+  } = {},
+) {
   for (const k of Object.keys(overrides)) delete overrides[k];
   overrides.organisation = { findFirst: async () => ORG };
   overrides.match = { findMany: async () => ms };
   overrides.sentNotification = {
     findMany: async (args: unknown) =>
       (args as { where?: { kind?: string } }).where?.kind ? [] : (opts.sent ?? []).map((key) => ({ key })),
+    findFirst: async (args: unknown) => {
+      const where = (args as { where?: { matchId?: string; kind?: string } }).where ?? {};
+      if (where.kind !== ROSTER_SHOWN_KIND || !opts.lastShown || !where.matchId) return null;
+      const { fingerprint, at } = opts.lastShown;
+      return { key: rosterShownKey(where.matchId, fingerprint, at), kind: ROSTER_SHOWN_KIND, createdAt: at };
+    },
+    findUnique: async (args: unknown) => {
+      const key = (args as { where?: { key?: string } }).where?.key ?? "";
+      const at = opts.sentAt?.[key];
+      return at ? { key, createdAt: at } : null;
+    },
   };
   overrides.attendanceEvent = { count: async () => opts.carried ?? 0 };
   overrides.activity = { count: async () => 0 };
@@ -249,6 +271,80 @@ describe("D3: the list at publish time", () => {
     });
     setWorld([m]);
     expect((await instructions(TUE_2005)).some((i) => i.key.endsWith(":list-published"))).toBe(false);
+  });
+});
+
+describe("ONE morning message on match day: the 08:00 chase and a match-day list (Kemal, 2026-11-09)", () => {
+  // A club whose final list publishes on match day at 09:00. Four of
+  // eighteen in, so the 08:00 chase asks for players.
+  const MATCH_DAY_CLUB = { dropOutDeadlineDay: 4, dropOutDeadlineTime: "21:00", listPublishDay: 5, listPublishTime: "09:00" };
+  /** Saved before 2026-10-13, when 08:00 was still allowed. */
+  const LEGACY_0800_CLUB = { ...MATCH_DAY_CLUB, listPublishTime: "08:00" };
+  const FRI_0805 = new Date("2026-10-09T07:05:00.000Z");
+  const FRI_0835 = new Date("2026-10-09T07:35:00.000Z");
+  const FRI_0905 = new Date("2026-10-09T08:05:00.000Z");
+  const chaseKey = (id: string) => `${id}:chase-match-day-morning:2026-10-09`;
+  const listKey = (id: string) => `${id}:list-published`;
+  const fpOf = (m: ReturnType<typeof match>) =>
+    squadFingerprint({
+      confirmedUserIds: m.attendances.filter((a) => a.status === "CONFIRMED").map((a) => a.userId),
+      benchUserIds: m.attendances.filter((a) => a.status === "BENCH").map((a) => a.userId),
+      maxPlayers: m.maxPlayers,
+    });
+  const has = (out: { key: string }[], key: string) => out.some((i) => i.key === key);
+  const quiet = (q: unknown) => {
+    (features as Record<string, unknown>).quietHours = q;
+  };
+  beforeEach(() => quiet(undefined));
+
+  it("THE CASE: the chase went at 08:00 and the squad is unchanged, so no 09:00 list", async () => {
+    const m = match(MATCH_DAY_CLUB);
+    setWorld([m], { sent: [chaseKey(m.id)], lastShown: { fingerprint: fpOf(m), at: FRI_0805 } });
+    expect(has(await instructions(FRI_0905), listKey(m.id))).toBe(false);
+  });
+
+  it("the squad changed since the group last saw it: the list goes", async () => {
+    const m = match(MATCH_DAY_CLUB);
+    setWorld([m], { sent: [chaseKey(m.id)], lastShown: { fingerprint: "ffffffffffffffff", at: FRI_0805 } });
+    expect(has(await instructions(FRI_0905), listKey(m.id))).toBe(true);
+  });
+
+  it("REGRESSION GUARD: no chase this morning, the list goes at 09:00", async () => {
+    const m = match(MATCH_DAY_CLUB);
+    setWorld([m], { lastShown: { fingerprint: fpOf(m), at: FRI_0805 } });
+    expect(has(await instructions(FRI_0905), listKey(m.id))).toBe(true);
+  });
+
+  it("nothing known about what the group saw: the list goes (fails open)", async () => {
+    const m = match(MATCH_DAY_CLUB);
+    setWorld([m], { sent: [chaseKey(m.id)] });
+    expect(has(await instructions(FRI_0905), listKey(m.id))).toBe(true);
+  });
+
+  it("REGRESSION GUARD: a club that publishes on Tuesday still gets the 08:00 chase on match day", async () => {
+    const m = match(HAMZAH_CLUB);
+    setWorld([m], { sent: [listKey(m.id)], sentAt: { [listKey(m.id)]: TUE_2005 }, lastShown: { fingerprint: fpOf(m), at: TUE_2005 } });
+    expect(has(await instructions(FRI_0805), chaseKey(m.id))).toBe(true);
+  });
+
+  it("the reverse, same poll (an 08:00 publish time, day starting 07:00): the list goes, the chase does not", async () => {
+    quiet({ enabled: true, from: "23:00", to: "07:00" });
+    const m = match(LEGACY_0800_CLUB);
+    setWorld([m]);
+    const out = await instructions(FRI_0805);
+    expect(has(out, listKey(m.id))).toBe(true);
+    expect(has(out, chaseKey(m.id))).toBe(false);
+  });
+
+  it("the reverse, a later poll: the list went at 08:05, so no chase at 08:35 while the squad is unchanged", async () => {
+    quiet({ enabled: true, from: "23:00", to: "07:00" });
+    const m = match(LEGACY_0800_CLUB);
+    const sent = { sent: [listKey(m.id)], sentAt: { [listKey(m.id)]: FRI_0805 } };
+    setWorld([m], { ...sent, lastShown: { fingerprint: fpOf(m), at: FRI_0805 } });
+    expect(has(await instructions(FRI_0835), chaseKey(m.id))).toBe(false);
+    // Somebody dropped since the list: "still N short" says something new.
+    setWorld([m], { ...sent, lastShown: { fingerprint: "ffffffffffffffff", at: FRI_0805 } });
+    expect(has(await instructions(FRI_0835), chaseKey(m.id))).toBe(true);
   });
 });
 

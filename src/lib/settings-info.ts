@@ -1031,6 +1031,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "Set this and a Drop-out deadline, and MatchTime stops its daily 17:00 post, except on match day.",
         "With the organisers announcing the list, the final list goes to your admin messages. With an admin group linked, tag MatchTime there to get the list poster.",
         "It must be after the Drop-out deadline, between 09:00 and 22:30. Monthly squads don't use it.",
+        "On match day, if MatchTime has already asked the group for players that morning, the list is only posted when the squad has changed since the group last saw it.",
       ],
     },
     tr: {
@@ -1050,6 +1051,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "Bunu ve Son çıkış saatini ayarlarsanız MatchTime her gün 17:00'de gönderdiği mesajı maç günü dışında durdurur.",
         "Listeyi organizatörler duyuruyorsa son liste yönetici mesajlarınıza gider. Yönetici grubu bağlıysa kadro afişi için orada MatchTime'ı etiketleyin.",
         "Son çıkış saatinden sonra, 09:00 ile 22:30 arasında olmalıdır. Aylık kadrolar bunu kullanmaz.",
+        "Maç günü MatchTime o sabah gruptan zaten oyuncu istediyse, liste yalnızca kadro grubun son gördüğünden beri değiştiyse gönderilir.",
       ],
     },
   },
