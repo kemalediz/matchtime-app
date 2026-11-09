@@ -51,8 +51,9 @@ const COST_FILE = path.join(REPO_ROOT, ".e2e", "vets-sandbox-cost.jsonl");
 
 /**
  * The week's list in the format Kemal approved on 2026-11-03: the title,
- * the month's squad by first name, numbered 1, 2, 3 with no gaps, the "you're all
- * in" line, then pay as you go. No paid marks, no phone, nobody unnamed.
+ * the month's squad by first name, numbered 1, 2, 3 with no gaps, then pay
+ * as you go straight after it (Kemal, 2026-11-09), then the "you're all in"
+ * line. No paid marks, no phone, nobody unnamed.
  */
 function expectWeekListShape(text: string, kickoff: Date, squadSize: number, open: number): void {
   const lines = text.split("\n");
@@ -62,8 +63,9 @@ function expectWeekListShape(text: string, kickoff: Date, squadSize: number, ope
   expect(squad, "the squad, one first name a line").toHaveLength(squadSize);
   for (const l of squad) expect(l).toMatch(/^\d{1,2}\. \p{L}+$/u);
   expect(lines[3 + squadSize]).toBe("");
-  expect(lines[4 + squadSize]).toBe("You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.");
-  expect(lines.at(-1)).toBe(`*Pay as you go:* ${open} ${open === 1 ? "place" : "places"} open, £8. Say *IN* to take ${open === 1 ? "it" : "one"}.`);
+  expect(lines[4 + squadSize]).toBe(`*Pay as you go:* ${open} ${open === 1 ? "place" : "places"} open, £8. Say *IN* to take ${open === 1 ? "it" : "one"}.`);
+  expect(lines[5 + squadSize]).toBe("");
+  expect(lines[6 + squadSize]).toBe("You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.");
   expect(text).not.toMatch(/\((?:paid|PAYG)\)|unnamed|\+44|\d{10}/i);
   expect(text).not.toMatch(/[\u2013\u2014]/);
 }
@@ -734,7 +736,7 @@ scenario.describe("the Vets sandbox", () => {
     console.log(`[vets N] after Steve's out:\n${changed[0]?.text}`);
     expect(changed).toHaveLength(1);
     expectWeekListShape(changed[0].text ?? "", v.kickoff, 12, 2);
-    expect(changed[0].text).toContain("\n\n*Can't play:*\n1. Steve\n");
+    expect(changed[0].text).toMatch(/\n\n\*Can't play:\*\n1\. Steve(?:\n|$)/);
     expect(changed[0].text).not.toMatch(/^8\. /m);
     expect(listOf(await schedulerPoll(pool, v, new Date(t0.getTime() + 93 * 60_000)))).toEqual([]);
   });

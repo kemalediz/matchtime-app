@@ -434,9 +434,9 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
         "3. Chris",
         "4. Dave",
         "",
-        "You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.",
-        "",
         "*Pay as you go:* 2 places open, £8. Say *IN* to take one.",
+        "",
+        "You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.",
       ].join("\n"),
     );
   });
@@ -818,7 +818,7 @@ describe("MONTHLY: the daily 17:00 post is the month's list (2026-11-04)", () =>
       withRange(8);
       const [post] = evening(await instructions(THU_5PM));
       expect(post.text).toBe(`${listText(m, 4)}\n\n${invite}`);
-      expect(post.text).toContain(`The squad is full.\n${LINE}\n\n${invite}`);
+      expect(post.text).toContain(`*Bench:*\n1. Zed\n\n${LINE}\n\n${invite}`);
       expect(post.weekListShown).toEqual({ hash: weekListHash(listText(m, 4)) });
     });
 

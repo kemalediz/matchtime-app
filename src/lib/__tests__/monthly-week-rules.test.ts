@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
+import { buildWeekListPost } from "../monthly-week-copy";
 import type { MonthlyList, MonthlyListEntry } from "../monthly-list";
 import {
   FEE_REPLY_WINDOW_MS,
@@ -1039,3 +1040,102 @@ describe("round 3 of the review", () => {
     });
   });
 });
+
+describe("pay as you go straight after the squad (Kemal, 2026-11-09): a pasted copy reads the same in either layout", () => {
+  // Squad Alex, Chris, Dave (Bilal can't play); PAYG Omar and Will; Zed on
+  // the bench; one place open. The new post: squad 1 to 3, pay as you go
+  // 4 and 5 with the places line, the squad's line, can't play, bench. The
+  // old post had pay as you go last, after can't play and the bench.
+  const members = [reg(1, "Alex"), reg(2, "Bilal"), reg(3, "Chris"), reg(4, "Dave"), payg("Omar"), payg("Will"), payg("Zed")];
+  const rows = [
+    row("Alex", "CONFIRMED", 1),
+    row("Bilal", "DROPPED", 2),
+    row("Chris", "CONFIRMED", 3),
+    row("Dave", "CONFIRMED", 4),
+    row("Omar", "CONFIRMED", 5),
+    row("Will", "CONFIRMED", 6),
+    row("Zed", "BENCH", 8),
+  ];
+  const roster = [...members.map((m) => ({ userId: m.userId, name: m.name, aliases: [] as string[] })), { userId: "u-rob", name: "Rob Admin", aliases: [] }];
+  const week = buildWeekList({ members, rows, maxPlayers: 6 });
+  const MATCH = new Date("2026-10-12T19:00:00.000Z");
+  const post = (lang: "en" | "tr", list = week) => buildWeekListPost({ list, matchDate: MATCH, title: "Monday 7-a-side", paygPricePence: 800, lang });
+
+  // A pasted list as the monthly reader (the model) reads it: each line in
+  // the order written, in the section its header puts it in.
+  const entry = (slot: number, name: string): MonthlyListEntry => ({
+    slot,
+    raw: name,
+    name,
+    marks: { paid: false, paidAmountPence: null, tier: null, payg: false, paygDates: [] },
+  });
+  type Line = ["playing" | "cantPlay" | "reserves", number, string];
+  const read = (lines: Line[]): MonthlyList => ({
+    month: { month: 10, year: null },
+    slots: lines.filter((l) => l[0] === "playing").map((l) => entry(l[1], l[2])),
+    sections: {
+      cantPlay: lines.filter((l) => l[0] === "cantPlay").map((l) => entry(l[1], l[2])),
+      reserves: lines.filter((l) => l[0] === "reserves").map((l) => entry(l[1], l[2])),
+      other: [],
+    },
+  });
+  const SQUAD: Line[] = [["playing", 1, "Alex"], ["playing", 2, "Chris"], ["playing", 3, "Dave"]];
+  const PAYG: Line[] = [["playing", 4, "Omar"], ["playing", 5, "Will"]];
+  const REST: Line[] = [["cantPlay", 1, "Bilal"], ["reserves", 1, "Zed"]];
+  const NEW_LAYOUT = [...SQUAD, ...PAYG, ...REST];
+  const OLD_LAYOUT = [...SQUAD, ...REST, ...PAYG];
+  const blank = (lines: Line[], name: string): Line[] => lines.map((l) => (l[2] === name ? [l[0], l[1], ""] : l));
+
+  it("the post is in the new order, numbered on from the squad", () => {
+    expect(post("en", { ...week, open: 1 }).split("\n").slice(2)).toEqual([
+      "*October squad:*",
+      "1. Alex",
+      "2. Chris",
+      "3. Dave",
+      "",
+      "*Pay as you go:*",
+      "4. Omar",
+      "5. Will",
+      "1 place open, £8. Say *IN* to take it.",
+      "",
+      "You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.",
+      "",
+      "*Can't play:*",
+      "1. Bilal",
+      "",
+      "*Bench:*",
+      "1. Zed",
+    ]);
+  });
+
+  it("pasteShowsSameList: the new post and the old one, as the reader reads them, are both the list MatchTime has", () => {
+    expect(pasteShowsSameList({ list: read(NEW_LAYOUT), week, roster })).toBe(true);
+    expect(pasteShowsSameList({ list: read(OLD_LAYOUT), week, roster })).toBe(true);
+    // A changed copy is not the same list, in either layout.
+    for (const layout of [NEW_LAYOUT, OLD_LAYOUT]) {
+      expect(pasteShowsSameList({ list: read(blank(layout, "Will")), week, roster })).toBe(false);
+      expect(pasteShowsSameList({ list: read(layout.filter((l) => l[2] !== "Bilal")), week, roster })).toBe(false);
+    }
+  });
+
+  it("pasteShowsSameList: MatchTime's own new post pasted back whole is the same list (the sims' stub reader, English and Turkish)", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const pasted = parseMonthlyList(`List for October:\n${post(lang)}`)!;
+      expect(pasted.slots.map((e) => e.name)).toEqual(["Alex", "Chris", "Dave", "Omar", "Will"]);
+      expect(pasteShowsSameList({ list: pasted, week, roster })).toBe(true);
+    }
+  });
+
+  it("an organiser blanks a pay-as-you-go line: that player is out, in either layout", () => {
+    const run = (list: MonthlyList) =>
+      reconcileMonthPaste({ list, members, rows, maxPlayers: 6, roster, matchMonth: 10, seeded: true, senderUserId: "u-rob", senderIsAdmin: true }).actions;
+    const willOut = [{ kind: "out", userId: "u-will", name: "Will", self: false, via: "blank" }];
+    expect(run(read(blank(NEW_LAYOUT, "Will")))).toEqual(willOut);
+    expect(run(read(blank(OLD_LAYOUT, "Will")))).toEqual(willOut);
+    // The new post itself, copied with Will's line blanked.
+    expect(run(parseMonthlyList(`List for October:\n${post("en").replace("5. Will", "5.")}`)!)).toEqual(willOut);
+    // A squad line blanked in the new layout is that regular, not a PAYG player.
+    expect(run(read(blank(NEW_LAYOUT, "Chris")))).toEqual([{ kind: "out", userId: "u-chris", name: "Chris", self: false, via: "blank" }]);
+  });
+});
+
