@@ -203,6 +203,45 @@ export function decideBenchSuggestion(p: {
   return { kind: "suggest", toPlaces: up };
 }
 
+/**
+ * Does this game go up a size at all, with MatchTime telling the group?
+ * A maximum above the game's own places, and a club whose list is
+ * MatchTime's to tell (on "organisers" the list is theirs). The
+ * scheduler's suggestion and the list's "one more" line both read it.
+ */
+export function formatUpOffered(p: { range: PlayerRange; organisers: boolean }): boolean {
+  return p.range.max > p.range.normal && !p.organisers;
+}
+
+/**
+ * The month's list line (Kemal, 2026-11-09): "One more on the bench and the
+ * organisers can make it 8-a-side." The next size's places when exactly ONE
+ * more movable player on the bench would make MatchTime suggest it, else
+ * null. Not a rule of its own: it is `decideBenchSuggestion` asked with one
+ * more on the bench while it does not suggest now, plus the same gates the
+ * scheduler puts around it (`formatUpOffered`, and a size an organiser
+ * already switched through, `formatUpSettledKey`, is never offered). So
+ * with two on the bench there is no line: the suggestion post is out.
+ */
+export function oneMoreForNextSize(p: {
+  live: boolean;
+  teamsOut: boolean;
+  places: number;
+  confirmed: number;
+  /** Movable only, as the suggestion counts it (not who chose the bench). */
+  bench: number;
+  range: PlayerRange;
+  organisers: boolean;
+  matchId: string;
+  keys: ReadonlySet<string>;
+}): number | null {
+  if (!formatUpOffered(p)) return null;
+  if (decideBenchSuggestion(p).kind === "suggest") return null;
+  const next = decideBenchSuggestion({ ...p, bench: p.bench + 1 });
+  if (next.kind !== "suggest") return null;
+  return p.keys.has(formatUpSettledKey(p.matchId, next.toPlaces)) ? null : next.toPlaces;
+}
+
 // ── Who moves on a switch ─────────────────────────────────────────────
 
 export interface ResizeRow {

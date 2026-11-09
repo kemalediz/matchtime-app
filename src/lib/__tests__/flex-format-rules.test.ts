@@ -15,6 +15,8 @@ import {
   decideBenchSuggestion,
   formatUpKey,
   nextSizeUp,
+  oneMoreForNextSize,
+  formatUpOffered,
   perTeamFor,
   planResize,
   playerRange,
@@ -122,6 +124,65 @@ describe("decideBenchSuggestion", () => {
     for (const k of [formatUpSettledKey("m1", 16), formatUpKey("m1", 16, 2), formatUpRearmKey("m1", 1)]) expect(k.startsWith(`m1${FORMAT_UP_KEY_PREFIX}`)).toBe(true);
     expect(parseFormatUpKey("m1:format-up:16:e2")).toEqual({ matchId: "m1", places: 16, episode: 2 });
     expect(parseFormatUpKey("m1:format-up:16")).toBeNull();
+  });
+});
+
+describe("oneMoreForNextSize: the list's line when ONE more on the bench makes the suggestion (2026-11-09)", () => {
+  // Derived from `decideBenchSuggestion`: the next size's places when the
+  // bench is exactly one short of the suggestion, else null. Never a rule
+  // of its own.
+  const range = playerRange(VETS);
+  const base = { live: true, teamsOut: false, places: 14, confirmed: 14, bench: 1, range, organisers: false, matchId: "m1", keys: new Set<string>() };
+
+  it("THE VETS tonight: 14 in, one on the bench, up to 16 allowed: 16", () => {
+    expect(oneMoreForNextSize(base)).toBe(16);
+  });
+  it("nobody on the bench: nothing (two short is not one short)", () => {
+    expect(oneMoreForNextSize({ ...base, bench: 0 })).toBeNull();
+  });
+  it("two or more on the bench: nothing, the suggestion post covers it", () => {
+    expect(oneMoreForNextSize({ ...base, bench: 2 })).toBeNull();
+    expect(oneMoreForNextSize({ ...base, bench: 3 })).toBeNull();
+  });
+  it("the squad is not full: nothing", () => {
+    expect(oneMoreForNextSize({ ...base, confirmed: 13 })).toBeNull();
+  });
+  it("the teams are out, or the game is over or called off: nothing", () => {
+    expect(oneMoreForNextSize({ ...base, teamsOut: true })).toBeNull();
+    expect(oneMoreForNextSize({ ...base, live: false })).toBeNull();
+  });
+  it("the size cannot go up (already at the maximum, or no maximum): nothing", () => {
+    expect(oneMoreForNextSize({ ...base, places: 16, confirmed: 16 })).toBeNull();
+    expect(oneMoreForNextSize({ ...base, range: playerRange({ minPlayers: 12, maxPlayers: null, playersPerTeam: 7 }) })).toBeNull();
+  });
+  it("the organisers announce the list: nothing, as the suggestion", () => {
+    expect(oneMoreForNextSize({ ...base, organisers: true })).toBeNull();
+  });
+  it("a size an organiser already switched through (settled): nothing, as the suggestion", () => {
+    expect(oneMoreForNextSize({ ...base, keys: new Set([formatUpSettledKey("m1", 16)]) })).toBeNull();
+    // Another match's settled key does not count.
+    expect(oneMoreForNextSize({ ...base, keys: new Set([formatUpSettledKey("m2", 16)]) })).toBe(16);
+  });
+  it("one rule with the suggestion: wherever one more on the bench would suggest, the line shows, and nowhere else", () => {
+    for (const confirmed of [12, 13, 14, 15])
+      for (const places of [12, 14, 16])
+        for (const bench of [0, 1, 2, 3])
+          for (const teamsOut of [false, true]) {
+            const p = { ...base, confirmed, places, bench, teamsOut };
+            const now = decideBenchSuggestion(p).kind === "suggest";
+            const next = decideBenchSuggestion({ ...p, bench: bench + 1 });
+            expect(oneMoreForNextSize(p)).toBe(!now && next.kind === "suggest" ? next.toPlaces : null);
+          }
+  });
+});
+
+describe("formatUpOffered: a game that may go up a size, and whose list is MatchTime's to tell", () => {
+  it("a maximum above the places, MatchTime tells the list: yes", () => {
+    expect(formatUpOffered({ range: playerRange(VETS), organisers: false })).toBe(true);
+  });
+  it("no maximum above the places, or the organisers announce: no", () => {
+    expect(formatUpOffered({ range: playerRange({ minPlayers: 12, maxPlayers: null, playersPerTeam: 7 }), organisers: false })).toBe(false);
+    expect(formatUpOffered({ range: playerRange(VETS), organisers: true })).toBe(false);
   });
 });
 

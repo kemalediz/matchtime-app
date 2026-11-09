@@ -75,6 +75,8 @@ export const FLEX_FORMAT_EN: FlexFormatCopy = {
     `We've got ${p.total} for ${p.day}, ${p.bench} on the bench. Shall we go ${side(p.perSide)}? ` +
     `${p.admins}, reply *yes* to this message and I'll switch it.`,
 
+  oneMoreUp: (p) => `One more on the bench and the organisers can make it ${side(p.perSide)}.`,
+
   dmIn: (p) =>
     `We're going ${side(p.perSide)} on ${p.day}, you're in. Can't make it after all? Reply OUT.` +
     (p.price ? ` You pay as you go for this game, ${p.price}.` : ``),

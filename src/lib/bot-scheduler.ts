@@ -170,7 +170,7 @@ import { isBillingPaused } from "./club-billing-rules";
 import { isClubSettingUp } from "./club-setup-rules";
 import { minimumToPlay, type GameFormat } from "./min-players";
 import { isSquadShort } from "./squad-short";
-import { decideBenchSuggestion, planFormatUp, playerRange } from "./flex-format-rules";
+import { decideBenchSuggestion, formatUpOffered, planFormatUp, playerRange } from "./flex-format-rules";
 import { flexFormatCopy } from "./i18n/flex-format";
 import { joinAdminNames } from "./seed-nudge-rules";
 import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
@@ -2338,8 +2338,11 @@ async function computeForMatch(
     const weekList = buildWeekList({ members: monthly.members, rows, maxPlayers });
     // The same renderer as every other place the list is shown, so its
     // hash matches a reply's or a member's matching paste.
-    const { text, hash } = await weekListPostText({
+    const { text, hash, nextSizePerSide } = await weekListPostText({
       orgId: activity.orgId,
+      matchId,
+      seeded: true,
+      now,
       list: weekList,
       matchDate: m.date,
       title: activity.name,
@@ -2382,6 +2385,7 @@ async function computeForMatch(
               paygPricePence: monthly.paygPricePence,
               organiserPicks,
               compact: true,
+              nextSizePerSide,
               lang,
             })
           : text;
@@ -2448,7 +2452,7 @@ async function computeForMatch(
     });
     const live =
       m.status === "UPCOMING" && now.getTime() < m.date.getTime() && !noMonthYet && (!monthly || monthly.seeded === true);
-    if (live && range.max > range.normal && !organisers) {
+    if (live && formatUpOffered({ range, organisers })) {
       const choseBench = bench.length >= 2 ? await loadChoseBench(db, matchId) : new Set<string>();
       const movable = bench.filter((a) => !choseBench.has(a.userId)).length;
       const decision = decideBenchSuggestion({

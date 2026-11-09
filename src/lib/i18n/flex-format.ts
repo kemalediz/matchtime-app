@@ -63,6 +63,9 @@ export interface FlexFormatCopy {
 
   // ── The suggestion in the players' group ──
   suggestUp: (p: { total: number; bench: number; day: string; perSide: number; admins: string }) => string;
+  /** The month's list, squad full and ONE more on the bench would make the
+   *  suggestion (`oneMoreForNextSize`). No "<n> players" here either. */
+  oneMoreUp: (p: { perSide: number }) => string;
 
   // ── The DMs to the players a switch moves ──
   /** Moved in from the bench. `price`: "£8" when the club takes payments
