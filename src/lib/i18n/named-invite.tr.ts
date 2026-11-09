@@ -12,4 +12,9 @@ export const NAMED_INVITE_TR: NamedInviteCopy = {
   nobodyTagged: "O mesajda etiketlenen kimseyi göremedim, kimseye yazmadım.",
   noMatch: "Davet edebileceğim yaklaşan bir maç yok, kimseye yazmadım.",
   full: (p) => `*${p.matchName}* maçında boş yer yok, kimseye yazmadım.`,
+  notHere: (p) => `Artık kulüpte değiller, onlara yazmadım: ${p.names}.`,
+  unidentified: (p) => `Etiketlenenlerden ${p.count} kişinin kim olduğunu anlayamadım, onlara yazmadım.`,
+  from: (p) =>
+    p.senderName ? `📨 ${p.senderName} adlı kişinin mesajından:` : p.from === "quoted" ? "📨 Yanıtladığın mesajdan:" : "📨 Yukarıdaki mesajdan:",
+  failed: "Bir şeyler ters gitti, kimseye yazmadım. Lütfen bir dakika sonra tekrar dene.",
 };

@@ -113,6 +113,28 @@ test("\"DM the people above\" in the same flush as the tagged message", async ({
   expect(r.results[1].reply).toContain("to Ivan Ice.");
 });
 
+test("the request tags someone the Pi could not name: never the people above, and the group is told (review #1)", async ({ request, db }) => {
+  const g = await club(request, db);
+  await g.postBatch([{ player: "pete", body: "@Greg happy birthday mate", route: "none", mentions: [lidTag(g.player("greg"))] }]);
+  const r = await g.postBatch([{ player: "owner", ...ask("@Match Time DM @88877766655544"), mentions: [{ jid: "88877766655544@lid" }] }]);
+  expect(r.dms).toEqual([]);
+  expect(r.results[0].reply).toBe("I couldn't tell who 1 of the people tagged is, so I didn't message them.");
+});
+
+test("a member who turned invites off in another club is left out too; the reply says whose message it was (review #2, #5)", async ({ request, db }) => {
+  const g = await club(request, db);
+  const other = await createGroup(request, db, { name: "Another club", upcomingMatch: false, players: [{ key: "x", name: "X Owner", role: "OWNER" }] });
+  await db.run(
+    `INSERT INTO "Membership" (id, "userId", "orgId", role, "subMatchInviteDm") VALUES ($1, $2, $3, 'PLAYER', false)`,
+    [`sim-mem-${Date.now()}`, g.player("liam").userId, other.orgId],
+  );
+  await g.postBatch([{ player: "pete", body: "@Liam @Mike can you play?", route: "none", mentions: [lidTag(g.player("liam")), lidTag(g.player("mike"))] }]);
+  const r = await g.postBatch([{ player: "owner", ...ask("@Match Time DM the people above") }]);
+  expect(r.dms.map((d) => d.phone)).toEqual([phoneOf(g, "mike")]);
+  expect(r.results[0].reply?.split("\n")[0]).toBe("📨 From Pete Power's message:");
+  expect(r.results[0].reply).toContain("Liam Lake doesn't get invites by message");
+});
+
 test("a member who turned invites off is left out and named", async ({ request, db }) => {
   const g = await club(request, db);
   await db.run(`UPDATE "Membership" SET "subMatchInviteDm" = false WHERE "orgId" = $1 AND "userId" = $2`, [g.orgId, g.player("jake").userId]);

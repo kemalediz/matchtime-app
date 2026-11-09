@@ -13,4 +13,9 @@ export const NAMED_INVITE_EN: NamedInviteCopy = {
   nobodyTagged: "I couldn't see anyone tagged in that message, so I haven't messaged anyone.",
   noMatch: "There's no game coming up to invite them to, so I haven't messaged anyone.",
   full: (p) => `*${p.matchName}* has no places open, so I haven't messaged anyone.`,
+  notHere: (p) => `${p.names} ${p.count === 1 ? "isn't" : "aren't"} in the club any more, so I left them out.`,
+  unidentified: (p) => `I couldn't tell who ${p.count} of the people tagged ${p.count === 1 ? "is" : "are"}, so I didn't message them.`,
+  from: (p) =>
+    p.senderName ? `📨 From ${p.senderName}'s message:` : p.from === "quoted" ? "📨 From the message you replied to:" : "📨 From the message above:",
+  failed: "Something went wrong, so I haven't messaged anyone. Please try again in a minute.",
 };

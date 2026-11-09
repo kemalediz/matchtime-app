@@ -58,6 +58,9 @@ export async function POST(request: Request) {
             ...(typeof m.phone === "string" ? { phone: m.phone } : {}),
           }))
       : undefined,
+    // Every mentioned JID, raw (2026-11-09; Pi builds before it send none):
+    // a tag the Pi could not name still counts ("@Match Time DM these people").
+    ...(Array.isArray(body.mentions) ? { mentions: (body.mentions as unknown[]).filter((j): j is string => typeof j === "string").slice(0, 50) } : {}),
     // A WhatsApp reply (2026-10-16): what it quotes, and whether the Pi saw
     // that the quoted message was MatchTime's own. Older Pis send none.
     quoted:

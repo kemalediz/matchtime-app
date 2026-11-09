@@ -89,6 +89,10 @@ export function nextSimPhone(): string {
   return `+4477009${(10000 + phoneSeq++).toString()}`;
 }
 
+/** MatchTime's own LID as a raw mention, when a batch item is tagged and
+ *  also tags people (`BatchItem.mentions`). */
+export const SIM_BOT_JID = "999000111222333@lid";
+
 export function nextMsgId(): string {
   return `sim-${RUN}-${++msgSeq}`;
 }
@@ -641,9 +645,11 @@ export class SimGroup {
         ...(typeof tagged === "boolean" ? { botMentioned: tagged } : {}),
         // Other people tagged, as the Pi forwards them: every JID raw, and
         // the ones its contact lookup could say something about named.
+        // The real Pi lists the bot's own JID among the raw mentions when it
+        // is tagged, and never names it in `mentionNames`.
         ...(it.mentions?.length
           ? {
-              mentions: it.mentions.map((m) => m.jid),
+              mentions: [...(tagged === true ? [SIM_BOT_JID] : []), ...it.mentions.map((m) => m.jid)],
               mentionNames: it.mentions.filter((m) => m.name || m.phone),
             }
           : {}),

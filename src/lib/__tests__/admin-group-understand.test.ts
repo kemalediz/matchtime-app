@@ -2104,6 +2104,37 @@ describe("DM the people tagged, from HQ", () => {
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
   });
 
+  it.each(["admin_ops", "ask_group"])("a monthly club, routed %s: the same as a weekly one, as in the players' group (review #8)", async (route) => {
+    const dmNamedPeople = dm(1);
+    const r = await ask("@Match Time DM them", route, {
+      org: { ...ORG, squadMode: "monthly" },
+      deps: { routerModel: routeTo(route), extractorModel: adminFacts(named), dmNamedPeople },
+      quoted: { messageId: "3EB0QUOTED", text: "@Ali fancy it?", fromMatchTime: false },
+    });
+    expect(dmNamedPeople).toHaveBeenCalledTimes(1);
+    expect(r?.outcome).toBe("hq-named-done");
+  });
+
+  it("a monthly club's other ask_group requests are still not done from here", async () => {
+    const dmNamedPeople = dm(1);
+    const r = await ask("@Match Time ask the group", "ask_group", {
+      org: { ...ORG, squadMode: "monthly" },
+      deps: { routerModel: routeTo("ask_group"), extractorModel: adminFacts({ action: "recruit", playersFrom: ["club"], clubRef: "", toMatchTime: true }), dmNamedPeople },
+    });
+    expect(dmNamedPeople).not.toHaveBeenCalled();
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+    expect(r?.outcome).toBe("hq-not-here");
+  });
+
+  it("the invite door failing: a short reply, never silence (review #10)", async () => {
+    const r = await ask("@Match Time DM them", "admin_ops", {
+      deps: { routerModel: routeTo("admin_ops"), extractorModel: adminFacts(named), dmNamedPeople: vi.fn(async () => { throw new Error("boom"); }) },
+      quoted: { messageId: "3EB0QUOTED", text: "@Ali fancy it?", fromMatchTime: false },
+    });
+    expect(r?.outcome).toBe("hq-named-failed");
+    expect(r?.replyText).toBe("Something went wrong, so I haven't messaged anyone. Please try again in a minute.");
+  });
+
   it("nobody DM'd: an outcome that carries no tick", async () => {
     const r = await ask("@Match Time DM the people above", "admin_ops", {
       deps: { routerModel: routeTo("admin_ops"), extractorModel: adminFacts(named), dmNamedPeople: dm(0, "named-nobody-tagged") },

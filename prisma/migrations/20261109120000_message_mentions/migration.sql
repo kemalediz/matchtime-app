@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS "MessageMentions" (
     "waMessageId" TEXT NOT NULL,
     "waStanzaId" TEXT,
     "senderUserId" TEXT,
+    "senderName" TEXT,
     "mentions" JSONB NOT NULL,
+    "unidentified" INTEGER NOT NULL DEFAULT 0,
     "sentAt" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

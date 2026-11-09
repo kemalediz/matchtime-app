@@ -87,6 +87,12 @@ const CASES: Case[] = [
   { text: "@Match Time ask the regulars if they can play", shape: "alone", want: ["club"], why: "the regulars, unchanged" },
   { text: "@Match Time ask the group", shape: "above", tagged: SHANE, want: ["club"], why: "the group, with a tagged message above" },
   { text: "Any of you boys fancy it?", shape: "above", tagged: SHANE, want: ["not"], why: "a member asking the tagged people himself" },
+  // Review of #566: a tagged drop that asks for a replacement names a person
+  // too, and must stay the ordinary recruit, never "the people tagged".
+  { text: "@Match Time @Najib Ahmadi is out, find a replacement", shape: "alone", want: ["club"], why: "a drop and a recruit, a person tagged" },
+  { text: "Najib Ahmadi can't make it, @Match Time get someone", shape: "alone", want: ["club"], why: "a drop and a recruit, the bot tagged after" },
+  { text: "@Match Time @Najib Ahmadi gelemiyor, yerine birini bul", shape: "alone", want: ["club"], why: "TR, a drop and a recruit" },
+  { text: "Najib Ahmadi yok, @Match Time birini bul", shape: "alone", want: ["club"], why: "TR, a drop and a recruit, the bot tagged after" },
 ];
 
 function routerTurn(c: Case): RouterMessage[] {

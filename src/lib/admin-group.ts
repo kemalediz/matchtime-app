@@ -73,6 +73,8 @@ export interface AdminGroupMessage {
   senderAltPhone?: string | null;
   timestamp?: string | null;
   mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  /** Every mentioned JID, raw, the bot's included (2026-11-09). */
+  mentions?: string[];
   /** The message this one replies to (a WhatsApp reply), as the Pi saw it. */
   quoted?: {
     messageId?: string | null;
@@ -151,6 +153,7 @@ const NO_TICK: ReadonlySet<string> = new Set([
   "hq-named-no-match",
   "hq-named-full",
   "hq-named-none-sent",
+  "hq-named-failed",
 ]);
 export const HQ_TICK = "✅";
 
@@ -237,7 +240,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     await rememberMentions({
       orgId: org.id,
       chatId: msg.groupId,
-      messages: [{ waMessageId: msg.messageId, timestamp: parseTimestamp(msg.timestamp), mentionNames: msg.mentionNames, botMentioned: msg.botMentioned, senderUserId }],
+      messages: [{ waMessageId: msg.messageId, timestamp: parseTimestamp(msg.timestamp), mentions: msg.mentions, mentionNames: msg.mentionNames, botMentioned: msg.botMentioned, senderUserId }],
       now,
     });
   }
@@ -286,6 +289,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
       sentAt: parseTimestamp(msg.timestamp),
       now,
       chatId: msg.groupId,
+      ...(msg.mentions ? { mentions: msg.mentions } : {}),
       ...(msg.poolEnv ? { poolEnv: msg.poolEnv } : {}),
     });
   };

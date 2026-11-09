@@ -81,3 +81,16 @@ Before the change (same router, old extractor), the first four came back `other`
 **The admin extractor missed nothing in any suite.** Every miss was the ROUTER, whose prompt and code this change does not touch: "Sam and Ali both play free on Friday" in HQ routed other_att; a bare "yes" between organisers routed self_att; "@Match Time 2", "@Match Time ikincisi" and "@Match Time added the venue location" (HQ) routed away from admin_ops. These are single-pass router misses on an unchanged prompt; a single pass cannot tell an occasional miss from a steady one.
 
 **Total paid spend for this change: 617 model calls, about $0.135**, including 9 calls ($0.0056) measuring the router and the old extractor on the new cases before any change.
+
+## Review round (2026-11-09): no prompt change, one more paid check
+
+The review of #566 changed code only; the prompts are as above. Its test gap, a tagged drop that asks for a replacement, was checked on the dev key with every case of `scripts/live-check-dm-named.ts` run once: **15 of 15**, 34 calls, $0.0075.
+
+| Case | Routed | Read |
+|---|---|---|
+| "@Match Time @Najib Ahmadi is out, find a replacement" | other_att, side recruit | the ordinary recruit, not named |
+| "Najib Ahmadi can't make it, @Match Time get someone" | other_att, side recruit | the ordinary recruit, not named |
+| "@Match Time @Najib Ahmadi gelemiyor, yerine birini bul" | other_att, side recruit | the ordinary recruit, not named |
+| "Najib Ahmadi yok, @Match Time birini bul" | other_att, side recruit | the ordinary recruit, not named |
+
+The 11 named and unchanged cases above passed again, unchanged. Paid spend for the whole PR: 651 calls, about $0.143.

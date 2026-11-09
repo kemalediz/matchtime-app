@@ -11,17 +11,22 @@ import {
   NAMED_INVITE_CAP,
   mentionsPurgeBefore,
   namedInviteReply,
+  pickAbove,
   pickNamedMentions,
   planNamedInvites,
   resolveNamedMentions,
   storedMentionsOf,
+  taggedPeopleOf,
   type KnownPerson,
+  type NamedInvitePlan,
   type StoredMention,
+  type TaggedSource,
 } from "../named-invite-rules";
 
 const LID_BH = "158055467598020@lid";
 const LID_MATT = "201112223334445@lid";
 const LID_STRANGER = "309998887776665@lid";
+const BOT_LID = "999000111222333@lid";
 
 describe("storedMentionsOf: the people a message tagged, never the bot", () => {
   it("each mention the Pi named, with the phone behind a LID mention", () => {
@@ -50,17 +55,28 @@ describe("storedMentionsOf: the people a message tagged, never the bot", () => {
       { jid: LID_STRANGER },
       { jid: "447594772036@s.whatsapp.net", phone: "447594772036" },
     ]);
-    // Tagged: the unnamed JIDs are the bot's or unknowable, so only the
-    // named ones (the Pi never names the bot) are kept.
-    expect(
-      storedMentionsOf({ botMentioned: true, mentions: ["999000111222@lid", LID_BH], mentionNames: [{ jid: LID_BH, name: "BH" }] }),
-    ).toEqual([{ jid: LID_BH, name: "BH" }]);
+    expect(storedMentionsOf({ botMentioned: true, mentions: [BOT_LID, LID_BH], mentionNames: [{ jid: LID_BH, name: "BH" }] })).toEqual([{ jid: LID_BH, name: "BH" }]);
   });
 
   it("total on junk, deduplicated, nothing for a message with no mentions", () => {
     expect(storedMentionsOf({})).toEqual([]);
     expect(storedMentionsOf({ mentions: "x" as unknown as string[], mentionNames: [null as never, { jid: 5 } as never] })).toEqual([]);
     expect(storedMentionsOf({ mentions: [LID_BH, LID_BH], mentionNames: [{ jid: LID_BH, name: "BH" }, { jid: LID_BH, name: "BH" }] })).toHaveLength(1);
+  });
+});
+
+describe("taggedPeopleOf: a tag the Pi could not name still counts as a tag (review #1)", () => {
+  it("tagging the bot and one person the Pi knew nothing about: one unidentified, never 'nobody tagged'", () => {
+    expect(taggedPeopleOf({ botMentioned: true, mentions: [BOT_LID, LID_STRANGER] })).toEqual({ mentions: [], unidentified: 1 });
+    expect(taggedPeopleOf({ botMentioned: true, mentions: [BOT_LID, LID_STRANGER, LID_BH], mentionNames: [{ jid: LID_BH, name: "BH" }] })).toEqual({
+      mentions: [{ jid: LID_BH, name: "BH" }],
+      unidentified: 1,
+    });
+  });
+
+  it("tagging only the bot is no tag of anyone; untagged messages keep their unnamed JIDs as mentions", () => {
+    expect(taggedPeopleOf({ botMentioned: true, mentions: [BOT_LID] })).toEqual({ mentions: [], unidentified: 0 });
+    expect(taggedPeopleOf({ mentions: [LID_STRANGER] })).toEqual({ mentions: [{ jid: LID_STRANGER }], unidentified: 0 });
   });
 });
 
@@ -77,25 +93,55 @@ describe("mentionsPurgeBefore: who was tagged is kept 7 days, then deleted", () 
 });
 
 describe("pickNamedMentions: whose tags are meant", () => {
-  const A: StoredMention[] = [{ jid: LID_BH }];
-  const B: StoredMention[] = [{ jid: LID_MATT }];
-  const C: StoredMention[] = [{ jid: LID_STRANGER }];
+  const src = (jid: string, senderName: string | null = "Shane"): TaggedSource => ({ mentions: [{ jid }], unidentified: 0, senderName });
+  const own = (jid?: string) => ({ mentions: jid ? [{ jid }] : [], unidentified: 0 });
 
   it("the people tagged in the message itself come first", () => {
-    expect(pickNamedMentions({ own: A, isReply: true, quoted: B, above: C })).toEqual({ from: "message", mentions: A });
+    expect(pickNamedMentions({ own: own(LID_BH), isReply: true, quoted: src(LID_MATT), above: src(LID_STRANGER) })).toEqual({
+      from: "message",
+      people: own(LID_BH),
+      senderName: null,
+    });
+  });
+
+  it("a message that tagged someone the Pi could not name is still its own source: never the quoted or above (review #1)", () => {
+    const r = pickNamedMentions({ own: { mentions: [], unidentified: 2 }, isReply: false, quoted: null, above: src(LID_STRANGER) });
+    expect(r).toEqual({ from: "message", people: { mentions: [], unidentified: 2 }, senderName: null });
   });
 
   it("a reply: the message it quotes, and only that one", () => {
-    expect(pickNamedMentions({ own: [], isReply: true, quoted: B, above: C })).toEqual({ from: "quoted", mentions: B });
-    // A reply to a message that tagged nobody does NOT fall back to an
-    // earlier message: those could be quite different people.
-    expect(pickNamedMentions({ own: [], isReply: true, quoted: [], above: C })).toBeNull();
-    expect(pickNamedMentions({ own: [], isReply: true, quoted: null, above: C })).toBeNull();
+    expect(pickNamedMentions({ own: own(), isReply: true, quoted: src(LID_MATT), above: src(LID_STRANGER) })).toMatchObject({ from: "quoted", senderName: "Shane" });
+    expect(pickNamedMentions({ own: own(), isReply: true, quoted: { mentions: [], unidentified: 0, senderName: "x" }, above: src(LID_STRANGER) })).toBeNull();
+    expect(pickNamedMentions({ own: own(), isReply: true, quoted: null, above: src(LID_STRANGER) })).toBeNull();
   });
 
   it("not a reply: the latest earlier message that tagged people", () => {
-    expect(pickNamedMentions({ own: [], isReply: false, quoted: null, above: C })).toEqual({ from: "above", mentions: C });
-    expect(pickNamedMentions({ own: [], isReply: false, quoted: null, above: null })).toBeNull();
+    expect(pickNamedMentions({ own: own(), isReply: false, quoted: null, above: src(LID_STRANGER) })).toMatchObject({ from: "above" });
+    expect(pickNamedMentions({ own: own(), isReply: false, quoted: null, above: null })).toBeNull();
+  });
+});
+
+describe("pickAbove: never a message sent after the request (review #5)", () => {
+  const at = (iso: string) => new Date(iso);
+  const before = at("2026-11-09T17:30:00Z");
+  const row = (sentAt: string, name: string) => ({ mentions: [{ jid: LID_BH }], unidentified: 0, senderName: name, sentAt: at(sentAt) });
+
+  it("the stored row when the batch has nothing earlier", () => {
+    expect(pickAbove({ stored: row("2026-11-09T17:20:00Z", "Shane"), batchBefore: [], before })?.senderName).toBe("Shane");
+  });
+
+  it("an earlier message in the same flush wins a tie on the clock, by arrival order", () => {
+    const r = pickAbove({ stored: row("2026-11-09T17:30:00Z", "Old"), batchBefore: [row("2026-11-09T17:30:00Z", "A"), row("2026-11-09T17:30:00Z", "B")], before });
+    expect(r?.senderName).toBe("B");
+  });
+
+  it("a newer stored row wins over an older batch message; a batch message stamped after the request never counts", () => {
+    expect(pickAbove({ stored: row("2026-11-09T17:25:00Z", "Stored"), batchBefore: [row("2026-11-09T17:10:00Z", "Batch")], before })?.senderName).toBe("Stored");
+    expect(pickAbove({ stored: null, batchBefore: [row("2026-11-09T17:31:00Z", "Later")], before })).toBeNull();
+  });
+
+  it("messages that tagged nobody are skipped; null when nothing is left", () => {
+    expect(pickAbove({ stored: null, batchBefore: [{ mentions: [], unidentified: 0, senderName: "x", sentAt: before }], before })).toBeNull();
   });
 });
 
@@ -140,63 +186,72 @@ describe("resolveNamedMentions: only people MatchTime already knows", () => {
 });
 
 describe("planNamedInvites: who is DM'd", () => {
-  const person = (n: number, name: string | null = `P${n}`): KnownPerson => ({ userId: `u${n}`, name, phone: `4477009000${String(n).padStart(2, "0")}` });
-  const known = (n: number) => ({ mention: { jid: `${n}@lid` }, person: person(n) });
+  const person = (n: number): KnownPerson => ({ userId: `u${n}`, name: `User ${n}`, phone: `4477009000${String(n).padStart(2, "0")}` });
+  const known = (n: number, mention: Partial<StoredMention> = {}) => ({ mention: { jid: `${n}0000@lid`, ...mention }, person: person(n) });
   const none = new Set<string>();
+  const base = { requesterUserId: null, optedOut: none, notHere: none, answered: none, alreadyInvited: none, clubNames: new Map<string, string>(), unidentified: 0 };
 
-  it("the known people, once each, in the order tagged; unknowns named by phone, then by their WhatsApp name", () => {
-    const plan = planNamedInvites({
-      resolved: [
-        known(1),
-        { mention: { jid: "447747410069@c.us", phone: "447747410069" }, person: null },
-        known(2),
-        known(1),
-        { mention: { jid: "x@lid", name: "~BH" }, person: null },
-        { mention: { jid: "y@lid" }, person: null },
-      ],
-      requesterUserId: null,
-      optedOut: none,
-      answered: none,
-      alreadyInvited: none,
-    });
+  it("the known people, once each, in the order tagged", () => {
+    const plan = planNamedInvites({ ...base, resolved: [known(1), known(2), known(1)] });
     expect(plan.invite.map((p) => p.userId)).toEqual(["u1", "u2"]);
-    expect(plan.unknown).toEqual(["+447747410069", "~BH"]);
-    expect(plan.unknownUnlabelled).toBe(1);
   });
 
-  it("opted out of invites, already answered, already invited for this game, and the sender himself: never DM'd", () => {
+  it("named by their name in THIS club when they are a member, else by the WhatsApp name tagged, never User.name (review #2)", () => {
+    const plan = planNamedInvites({ ...base, clubNames: new Map([["u1", "Bilal Hussain"]]), resolved: [known(1, { name: "BH" }), known(2, { name: "Matt Afc" }), known(3)] });
+    expect(plan.invite.map((p) => [p.label, p.member])).toEqual([
+      ["Bilal Hussain", true],
+      ["Matt Afc", false],
+      [null, false],
+    ]);
+  });
+
+  it("a phone is printed only for a phone-number tag, never one learned behind a LID (review #6)", () => {
     const plan = planNamedInvites({
-      resolved: [known(1), known(2), known(3), known(4), known(5)],
-      requesterUserId: "u5",
+      ...base,
+      resolved: [
+        { mention: { jid: "447747410069@c.us", phone: "447747410069" }, person: null },
+        { mention: { jid: LID_STRANGER, phone: "447594772036" }, person: null },
+        { mention: { jid: LID_BH, phone: "447000000001", name: "~BH" }, person: null },
+        { mention: { jid: "x@lid".padStart(20, "7") }, person: null },
+        known(4, { jid: LID_MATT, phone: "447700900004" }),
+      ],
+    });
+    expect(plan.unknown).toEqual(["+447747410069", "~BH"]);
+    expect(plan.unknownUnlabelled).toBe(2);
+    expect(plan.invite[0].label).toBeNull();
+  });
+
+  it("opted out anywhere, left or removed here, already answered, already invited, the sender: never DM'd", () => {
+    const plan = planNamedInvites({
+      ...base,
+      resolved: [known(1), known(2), known(3), known(4), known(5), known(6)],
+      requesterUserId: "u6",
       optedOut: new Set(["u1"]),
+      notHere: new Set(["u5"]),
       answered: new Set(["u2"]),
       alreadyInvited: new Set(["u3"]),
     });
     expect(plan.invite.map((p) => p.userId)).toEqual(["u4"]);
     expect(plan.optedOut.map((p) => p.userId)).toEqual(["u1"]);
+    expect(plan.notHere.map((p) => p.userId)).toEqual(["u5"]);
     expect(plan.answered.map((p) => p.userId)).toEqual(["u2"]);
     expect(plan.alreadyInvited.map((p) => p.userId)).toEqual(["u3"]);
   });
 
-  it(`at most ${NAMED_INVITE_CAP} DMs per request; the rest are named as left out`, () => {
-    const plan = planNamedInvites({
-      resolved: Array.from({ length: 12 }, (_, i) => known(i + 1)),
-      requesterUserId: null,
-      optedOut: none,
-      answered: none,
-      alreadyInvited: none,
-    });
+  it(`at most ${NAMED_INVITE_CAP} DMs per request; the rest are named as left out; unidentified tags carried`, () => {
+    const plan = planNamedInvites({ ...base, unidentified: 2, resolved: Array.from({ length: 12 }, (_, i) => known(i + 1)) });
     expect(NAMED_INVITE_CAP).toBe(10);
     expect(plan.invite).toHaveLength(10);
     expect(plan.overCap.map((p) => p.userId)).toEqual(["u11", "u12"]);
+    expect(plan.unidentified).toBe(2);
   });
 });
 
 describe("namedInviteReply: one reply, saying what was done and what was not", () => {
-  const p = (name: string, n: number): KnownPerson => ({ userId: `u${n}`, name, phone: `44770090000${n}` });
-  const empty = { invite: [], alreadyInvited: [], answered: [], optedOut: [], unknown: [], unknownUnlabelled: 0, overCap: [] };
+  const p = (label: string | null, n: number) => ({ userId: `u${n}`, name: null, phone: `44770090000${n}`, label, member: true });
+  const empty: NamedInvitePlan = { invite: [], alreadyInvited: [], answered: [], optedOut: [], notHere: [], overCap: [], unknown: [], unknownUnlabelled: 0, unidentified: 0 };
 
-  it("the Vets case: three sent, two numbers it does not know", () => {
+  it("the Vets case: three sent, two numbers it does not know, and whose message it was", () => {
     const text = namedInviteReply(
       {
         kind: "done",
@@ -205,23 +260,41 @@ describe("namedInviteReply: one reply, saying what was done and what was not", (
         plan: { ...empty, invite: [p("Bilal Hussain", 1), p("Matt Walker", 2), p("Stuart Belcher", 3)], unknown: ["+447747410069", "+447594772036"] },
       },
       "en",
+      { from: "quoted", senderName: "Shane" },
     );
     expect(text).toBe(
-      "✅ Done. I've sent the invite for *Monday night vets* (Mon 9 Nov, 20:00) to Bilal Hussain, Matt Walker and Stuart Belcher.\n" +
+      "📨 From Shane's message:\n" +
+        "✅ Done. I've sent the invite for *Monday night vets* (Mon 9 Nov, 20:00) to Bilal Hussain, Matt Walker and Stuart Belcher.\n" +
         "I can't message numbers I don't know yet, so I didn't message +447747410069 and +447594772036.",
     );
+  });
+
+  it("the source line: the message above with no name, and nothing for the message itself", () => {
+    const done = { kind: "done" as const, matchName: "M", when: "W", plan: { ...empty, invite: [p("A", 1)] } };
+    expect(namedInviteReply(done, "en", { from: "above", senderName: null }).split("\n")[0]).toBe("📨 From the message above:");
+    expect(namedInviteReply(done, "en", { from: "quoted", senderName: null }).split("\n")[0]).toBe("📨 From the message you replied to:");
+    expect(namedInviteReply(done, "en", { from: "message", senderName: null }).startsWith("✅")).toBe(true);
   });
 
   it("nothing to send to: says why, never a tick of success", () => {
     expect(namedInviteReply({ kind: "nobody-tagged" }, "en")).toBe("I couldn't see anyone tagged in that message, so I haven't messaged anyone.");
     expect(namedInviteReply({ kind: "no-match" }, "en")).toBe("There's no game coming up to invite them to, so I haven't messaged anyone.");
     expect(namedInviteReply({ kind: "full", matchName: "Monday night vets" }, "en")).toBe("*Monday night vets* has no places open, so I haven't messaged anyone.");
+    expect(namedInviteReply({ kind: "failed" }, "en")).toBe("Something went wrong, so I haven't messaged anyone. Please try again in a minute.");
     const onlyUnknown = namedInviteReply({ kind: "done", matchName: "M", when: "W", plan: { ...empty, unknownUnlabelled: 2 } }, "en");
     expect(onlyUnknown).toBe("I can't message numbers I don't know yet, so I didn't message 2 people.");
-    expect(onlyUnknown.startsWith("✅")).toBe(false);
   });
 
-  it("every other reason, one line each", () => {
+  it("tags the Pi could not identify are said, never silently dropped (review #1)", () => {
+    expect(namedInviteReply({ kind: "done", matchName: "M", when: "W", plan: { ...empty, unidentified: 1 } }, "en")).toBe(
+      "I couldn't tell who 1 of the people tagged is, so I didn't message them.",
+    );
+    expect(namedInviteReply({ kind: "done", matchName: "M", when: "W", plan: { ...empty, unidentified: 3 } }, "en")).toBe(
+      "I couldn't tell who 3 of the people tagged are, so I didn't message them.",
+    );
+  });
+
+  it("every other reason, one line each; a person with no name is counted, never shown by phone", () => {
     const text = namedInviteReply(
       {
         kind: "done",
@@ -229,9 +302,11 @@ describe("namedInviteReply: one reply, saying what was done and what was not", (
         when: "W",
         plan: {
           ...empty,
+          invite: [p("Zed", 9), p(null, 8)],
           alreadyInvited: [p("Al", 1)],
           answered: [p("Bo", 2), p("Cy", 3)],
           optedOut: [p("Di", 4)],
+          notHere: [p("Ev", 6)],
           overCap: [p("Ed", 5)],
           unknown: ["~Troy"],
           unknownUnlabelled: 1,
@@ -240,12 +315,15 @@ describe("namedInviteReply: one reply, saying what was done and what was not", (
       "en",
     );
     expect(text.split("\n")).toEqual([
+      "✅ Done. I've sent the invite for *M* (W) to Zed and one more person.",
       "Al already had the invite.",
       "Bo and Cy already answered for this game.",
       "Di doesn't get invites by message, so I left them out.",
+      "Ev isn't in the club any more, so I left them out.",
       "I message at most 10 people at a time, so I left out Ed. Ask me again for them.",
       "I can't message numbers I don't know yet, so I didn't message ~Troy and one more person.",
     ]);
+    expect(text).not.toMatch(/4477009/);
   });
 
   it.each(["en", "tr"] as const)("%s: no dashes, no separator slashes, never waiting list", (lang) => {
@@ -253,14 +331,16 @@ describe("namedInviteReply: one reply, saying what was done and what was not", (
       namedInviteReply({ kind: "nobody-tagged" }, lang),
       namedInviteReply({ kind: "no-match" }, lang),
       namedInviteReply({ kind: "full", matchName: "M" }, lang),
+      namedInviteReply({ kind: "failed" }, lang),
       namedInviteReply(
         {
           kind: "done",
           matchName: "M",
           when: "W",
-          plan: { invite: [p("A", 1)], alreadyInvited: [p("B", 2)], answered: [p("C", 3)], optedOut: [p("D", 4)], overCap: [p("E", 5)], unknown: ["+4477"], unknownUnlabelled: 2 },
+          plan: { invite: [p("A", 1)], alreadyInvited: [p("B", 2)], answered: [p("C", 3)], optedOut: [p("D", 4)], notHere: [p("F", 6)], overCap: [p("E", 5)], unknown: ["+4477"], unknownUnlabelled: 2, unidentified: 1 },
         },
         lang,
+        { from: "quoted", senderName: "Shane" },
       ),
     ];
     for (const line of lines) {
@@ -272,8 +352,8 @@ describe("namedInviteReply: one reply, saying what was done and what was not", (
 
   it("Turkish is Turkish", () => {
     expect(namedInviteReply({ kind: "nobody-tagged" }, "tr")).toBe("O mesajda etiketlenen kimseyi göremedim, kimseye yazmadım.");
-    expect(namedInviteReply({ kind: "done", matchName: "M", when: "W", plan: { ...empty, invite: [p("Ali", 1), p("Can", 2)] } }, "tr")).toBe(
-      "✅ Tamam. *M* (W) davetini özelden gönderdim: Ali ve Can.",
+    expect(namedInviteReply({ kind: "done", matchName: "M", when: "W", plan: { ...empty, invite: [p("Ali", 1), p("Can", 2)] } }, "tr", { from: "above", senderName: "Shane" })).toBe(
+      "📨 Shane adlı kişinin mesajından:\n✅ Tamam. *M* (W) davetini özelden gönderdim: Ali ve Can.",
     );
   });
 });

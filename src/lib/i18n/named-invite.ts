@@ -28,6 +28,14 @@ export interface NamedInviteCopy {
   nobodyTagged: string;
   noMatch: string;
   full: (p: { matchName: string }) => string;
+  /** Left this club, or removed by its organisers. */
+  notHere: (p: { names: string; count: number }) => string;
+  /** Tags the Pi could name in no way. */
+  unidentified: (p: { count: number }) => string;
+  /** Whose message the tags came from (the quoted one, or the one above). */
+  from: (p: { from: "quoted" | "above"; senderName: string | null }) => string;
+  /** Something failed: nobody was messaged. */
+  failed: string;
 }
 
 const BY_LANG: Record<Lang, NamedInviteCopy> = { en: NAMED_INVITE_EN, tr: NAMED_INVITE_TR };

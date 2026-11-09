@@ -2693,7 +2693,14 @@ model MessageMentions {
   /// WhatsApp reply quotes.
   waStanzaId   String?
   senderUserId String?
+  /// The sender's WhatsApp name, for "From Shane's message" when the sender
+  /// is not a known member. UNVERIFIED.
+  senderName   String?
   mentions     Json
+  /// Tags the Pi could say nothing about (no name, no phone), counted so a
+  /// message that tagged only such people is still a message that tagged
+  /// people and stops "the people above" at it.
+  unidentified Int          @default(0)
   /// WhatsApp's own time for the message.
   sentAt       DateTime
   createdAt    DateTime     @default(now())

@@ -60,12 +60,25 @@ export function mentionsPurgeBefore(now: Date): Date {
   return new Date(now.getTime() - MESSAGE_MENTIONS_RETENTION_DAYS * 24 * 3600 * 1000);
 }
 
-/** A person a message tagged, as stored. `phone`: digits, when known. `name`:
- *  their own WhatsApp name (UNVERIFIED), used only to name an unknown. */
+/** A person a message tagged, as stored. `phone`: digits, when known (the
+ *  JID's own for a phone-number tag, else the one WhatsApp gave the Pi for
+ *  a LID: never printed). `name`: their own WhatsApp name (UNVERIFIED). */
 export interface StoredMention {
   jid: string;
   phone?: string;
   name?: string;
+}
+
+/** Who a message tagged: the mentions the Pi could say something about, and
+ *  how many more it tagged that the Pi could name in no way (review #1). */
+export interface TaggedPeople {
+  mentions: StoredMention[];
+  unidentified: number;
+}
+
+/** A stored message's tags, with who sent it (their name as shown). */
+export interface TaggedSource extends TaggedPeople {
+  senderName: string | null;
 }
 
 export type NamedSource = "message" | "quoted" | "above";
@@ -77,27 +90,40 @@ export interface KnownPerson {
   phone: string;
 }
 
+/** A known person in a plan: `label` is how the group is told about them
+ *  (their name in this club, else their WhatsApp name, else a phone from a
+ *  phone-number tag, else null and counted); `member`: in this club. */
+export interface PlannedPerson extends KnownPerson {
+  label: string | null;
+  member: boolean;
+}
+
 export interface ResolvedMention {
   mention: StoredMention;
   person: KnownPerson | null;
 }
 
 export interface NamedInvitePlan {
-  invite: KnownPerson[];
-  alreadyInvited: KnownPerson[];
-  answered: KnownPerson[];
-  optedOut: KnownPerson[];
-  overCap: KnownPerson[];
-  /** Labels of mentions MatchTime does not know: "+<phone>", else their
-   *  WhatsApp name. */
+  invite: PlannedPerson[];
+  alreadyInvited: PlannedPerson[];
+  answered: PlannedPerson[];
+  optedOut: PlannedPerson[];
+  /** Left this club, or removed by its organisers. */
+  notHere: PlannedPerson[];
+  overCap: PlannedPerson[];
+  /** Labels of mentions MatchTime does not know: their WhatsApp name, else
+   *  the phone of a phone-number tag. */
   unknown: string[];
-  /** Unknown mentions with neither. */
+  /** Unknown mentions with no label. */
   unknownUnlabelled: number;
+  /** Tags the Pi could name in no way. */
+  unidentified: number;
 }
 
 export type NamedInviteOutcome =
   | { kind: "nobody-tagged" }
   | { kind: "no-match" }
+  | { kind: "failed" }
   | { kind: "full"; matchName: string }
   | { kind: "done"; matchName: string; when: string; plan: NamedInvitePlan };
 
@@ -113,18 +139,19 @@ const cleanName = (v: unknown): string | undefined => {
   const s = typeof v === "string" ? v.trim().slice(0, 60) : "";
   return s ? s : undefined;
 };
+const isPhoneJid = (jid: string): boolean => PHONE_JID.test(jid);
 
 /**
  * The people a message tagged, from the Pi's structured mention data. The
  * Pi never puts the bot in `mentionNames`; a raw mention it could not name
  * is kept only when the message did not tag the bot, because then it might
- * BE the bot.
+ * BE the bot (see `taggedPeopleOf` for how those are still counted).
  */
 export function storedMentionsOf(m: { mentions?: unknown; mentionNames?: unknown; botMentioned?: unknown }): StoredMention[] {
   const out = new Map<string, StoredMention>();
   const add = (jid: string, extra: { phone?: string; name?: string }) => {
     if (out.has(jid) || out.size >= MAX_STORED || digits(jid).length < 5) return;
-    const phone = PHONE_JID.test(jid) ? phoneDigits(digits(jid)) : extra.phone;
+    const phone = isPhoneJid(jid) ? phoneDigits(digits(jid)) : extra.phone;
     out.set(jid, { jid, ...(extra.name ? { name: extra.name } : {}), ...(phone ? { phone } : {}) });
   };
   for (const mn of Array.isArray(m?.mentionNames) ? m.mentionNames : []) {
@@ -140,16 +167,55 @@ export function storedMentionsOf(m: { mentions?: unknown; mentionNames?: unknown
   return [...out.values()];
 }
 
+/**
+ * Who a message tagged, counting the tags the Pi could say nothing about
+ * (review #1, 2026-11-09). The Pi drops from `mentionNames` a mention it has
+ * no name or phone for, and the bot's own. In a message that tags the bot,
+ * every raw mention not in `mentionNames` is the bot's or such a person, so
+ * all but one (the bot) are people MatchTime cannot identify. Counting them
+ * keeps "@Match Time DM @<someone unnamed>" from reading as "nobody tagged"
+ * and falling back to an older message's people.
+ */
+export function taggedPeopleOf(m: { mentions?: unknown; mentionNames?: unknown; botMentioned?: unknown }): TaggedPeople {
+  const mentions = storedMentionsOf(m);
+  if (m?.botMentioned !== true) return { mentions, unidentified: 0 };
+  const named = new Set(mentions.map((x) => x.jid));
+  const unnamed = new Set((Array.isArray(m?.mentions) ? m.mentions : []).filter((j): j is string => typeof j === "string" && digits(j).length >= 5 && !named.has(j)));
+  return { mentions, unidentified: Math.max(0, unnamed.size - 1) };
+}
+
+/** Did a message tag anyone? */
+export function taggedAnyone(t: TaggedPeople | null | undefined): boolean {
+  return !!t && (t.mentions.length > 0 || t.unidentified > 0);
+}
+
 /** Whose tags are meant. See the header for the order. */
 export function pickNamedMentions(input: {
-  own: StoredMention[];
+  own: TaggedPeople;
   isReply: boolean;
-  quoted: StoredMention[] | null;
-  above: StoredMention[] | null;
-}): { from: NamedSource; mentions: StoredMention[] } | null {
-  if (input.own.length > 0) return { from: "message", mentions: input.own };
-  if (input.isReply) return input.quoted && input.quoted.length > 0 ? { from: "quoted", mentions: input.quoted } : null;
-  return input.above && input.above.length > 0 ? { from: "above", mentions: input.above } : null;
+  quoted: TaggedSource | null;
+  above: TaggedSource | null;
+}): { from: NamedSource; people: TaggedPeople; senderName: string | null } | null {
+  if (taggedAnyone(input.own)) return { from: "message", people: input.own, senderName: null };
+  const pick = (from: NamedSource, s: TaggedSource | null) =>
+    s && taggedAnyone(s) ? { from, people: { mentions: s.mentions, unidentified: s.unidentified }, senderName: s.senderName } : null;
+  return input.isReply ? pick("quoted", input.quoted) : pick("above", input.above);
+}
+
+/**
+ * "The people above" (review #5): the latest message that tagged people and
+ * was sent BEFORE the request, never after it. `stored` is the latest stored
+ * row sent strictly before `before`; `batchBefore` are the messages that
+ * arrived ahead of the request in its own flush, in arrival order. A tie on
+ * the clock goes to the flush, the later arrival winning.
+ */
+export function pickAbove<S extends TaggedSource & { sentAt: Date }>(input: { stored: S | null; batchBefore: S[]; before: Date }): S | null {
+  let best: S | null = input.stored && input.stored.sentAt < input.before && taggedAnyone(input.stored) ? input.stored : null;
+  for (const b of input.batchBefore) {
+    if (!taggedAnyone(b) || b.sentAt > input.before) continue;
+    if (!best || b.sentAt >= best.sentAt) best = b;
+  }
+  return best;
 }
 
 /** Each mention's person, when MatchTime knows exactly one. */
@@ -175,7 +241,7 @@ export function resolveNamedMentions(mentions: StoredMention[], known: { users: 
   }
   return mentions.map((mention) => {
     let person = onePhone(mention.phone);
-    if (!person && !PHONE_JID.test(mention.jid)) {
+    if (!person && !isPhoneJid(mention.jid)) {
       const ids = lidUsers.get(digits(mention.jid));
       if (ids && ids.size === 1) person = byId.get([...ids][0]) ?? null;
     }
@@ -183,21 +249,44 @@ export function resolveNamedMentions(mentions: StoredMention[], known: { users: 
   });
 }
 
+/** How a mention may be named in the group: the WhatsApp name tagged, else
+ *  the phone of a phone-number tag, else null (review #6: a phone learned
+ *  behind a LID is never printed). */
+function mentionLabel(m: StoredMention): string | null {
+  return m.name ?? (isPhoneJid(m.jid) && m.phone ? `+${m.phone}` : null);
+}
+
 /** Who is DM'd, and who is not and why. Order is the order tagged. */
 export function planNamedInvites(args: {
   resolved: ResolvedMention[];
   requesterUserId: string | null;
+  /** Opted out of invite DMs in ANY club, or a guest of this one. */
   optedOut: ReadonlySet<string>;
+  /** Left this club, or removed by its organisers. */
+  notHere: ReadonlySet<string>;
   answered: ReadonlySet<string>;
   alreadyInvited: ReadonlySet<string>;
+  /** This club's name for each of its current members. */
+  clubNames: ReadonlyMap<string, string>;
+  unidentified: number;
   cap?: number;
 }): NamedInvitePlan {
   const cap = args.cap ?? NAMED_INVITE_CAP;
-  const plan: NamedInvitePlan = { invite: [], alreadyInvited: [], answered: [], optedOut: [], overCap: [], unknown: [], unknownUnlabelled: 0 };
+  const plan: NamedInvitePlan = {
+    invite: [],
+    alreadyInvited: [],
+    answered: [],
+    optedOut: [],
+    notHere: [],
+    overCap: [],
+    unknown: [],
+    unknownUnlabelled: 0,
+    unidentified: Math.max(0, args.unidentified),
+  };
   const seen = new Set<string>();
   for (const { mention, person } of args.resolved) {
     if (!person) {
-      const label = mention.phone ? `+${mention.phone}` : (mention.name ?? null);
+      const label = mentionLabel(mention);
       if (label) {
         if (!plan.unknown.includes(label)) plan.unknown.push(label);
       } else plan.unknownUnlabelled++;
@@ -205,38 +294,50 @@ export function planNamedInvites(args: {
     }
     if (seen.has(person.userId) || person.userId === args.requesterUserId) continue;
     seen.add(person.userId);
-    if (args.optedOut.has(person.userId)) plan.optedOut.push(person);
-    else if (args.answered.has(person.userId)) plan.answered.push(person);
-    else if (args.alreadyInvited.has(person.userId)) plan.alreadyInvited.push(person);
-    else if (plan.invite.length >= cap) plan.overCap.push(person);
-    else plan.invite.push(person);
+    const clubName = args.clubNames.get(person.userId)?.trim() || null;
+    const p: PlannedPerson = { ...person, label: clubName ?? mentionLabel(mention), member: clubName !== null || args.clubNames.has(person.userId) };
+    if (args.optedOut.has(person.userId)) plan.optedOut.push(p);
+    else if (args.notHere.has(person.userId)) plan.notHere.push(p);
+    else if (args.answered.has(person.userId)) plan.answered.push(p);
+    else if (args.alreadyInvited.has(person.userId)) plan.alreadyInvited.push(p);
+    else if (plan.invite.length >= cap) plan.overCap.push(p);
+    else plan.invite.push(p);
   }
   return plan;
 }
 
-/** How a known person is named in the group. */
-export function personLabel(p: KnownPerson): string {
-  return p.name?.trim() || `+${p.phone}`;
-}
-
-/** The one reply to the organiser. */
-export function namedInviteReply(outcome: NamedInviteOutcome, lang: Lang | string | null | undefined): string {
+/** The one reply to the organiser. `source`: whose tags were used. */
+export function namedInviteReply(
+  outcome: NamedInviteOutcome,
+  lang: Lang | string | null | undefined,
+  source: { from: NamedSource; senderName: string | null } | null = null,
+): string {
   const c = namedInviteCopy(lang);
   if (outcome.kind === "nobody-tagged") return c.nobodyTagged;
   if (outcome.kind === "no-match") return c.noMatch;
+  if (outcome.kind === "failed") return c.failed;
   if (outcome.kind === "full") return c.full({ matchName: outcome.matchName });
   const { plan } = outcome;
-  const names = (ps: KnownPerson[]) => joinList(lang, ps.map(personLabel));
+  // Named people, then "one more person" for those with no name to show.
+  const names = (ps: PlannedPerson[]) => {
+    const labelled = ps.map((p) => p.label).filter((l): l is string => !!l);
+    const rest = ps.length - labelled.length;
+    return joinList(lang, rest > 0 ? [...labelled, c.more({ count: rest, alone: labelled.length === 0 })] : labelled);
+  };
   const lines: string[] = [];
+  if (source && source.from !== "message") lines.push(c.from({ from: source.from, senderName: source.senderName }));
   if (plan.invite.length > 0) lines.push(c.sent({ names: names(plan.invite), matchName: outcome.matchName, when: outcome.when }));
   if (plan.alreadyInvited.length > 0) lines.push(c.alreadyHad({ names: names(plan.alreadyInvited), count: plan.alreadyInvited.length }));
   if (plan.answered.length > 0) lines.push(c.answered({ names: names(plan.answered), count: plan.answered.length }));
   if (plan.optedOut.length > 0) lines.push(c.optedOut({ names: names(plan.optedOut), count: plan.optedOut.length }));
+  if (plan.notHere.length > 0) lines.push(c.notHere({ names: names(plan.notHere), count: plan.notHere.length }));
   if (plan.overCap.length > 0) lines.push(c.overCap({ names: names(plan.overCap), cap: NAMED_INVITE_CAP }));
   if (plan.unknown.length > 0 || plan.unknownUnlabelled > 0) {
     const items = [...plan.unknown];
     if (plan.unknownUnlabelled > 0) items.push(c.more({ count: plan.unknownUnlabelled, alone: plan.unknown.length === 0 }));
     lines.push(c.unknown({ names: joinList(lang, items) }));
   }
-  return lines.length > 0 ? lines.join("\n") : c.nobodyTagged;
+  if (plan.unidentified > 0) lines.push(c.unidentified({ count: plan.unidentified }));
+  const body = lines.filter((l) => !l.startsWith("📨"));
+  return body.length > 0 ? lines.join("\n") : c.nobodyTagged;
 }

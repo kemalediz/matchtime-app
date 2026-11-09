@@ -3745,14 +3745,16 @@ async function handleAnalyzeRequest(request: Request) {
     const last = recruitRequests[recruitRequests.length - 1];
     if (last.fromAttendance && last.sender.userId) {
       const places = await recruitPlacesFromWords({ id: last.msg.waMessageId, body: last.msg.body, authorName: last.sender.name ?? last.msg.authorName ?? null, now: new Date(), ...replyField(replyById, last.msg) });
-      if (places?.named && piMentionsBot(last.msg)) {
+      if (places?.named) {
         // "@Match Time DM these people" read on the attendance path
-        // (2026-11-09): the people tagged, never the blast. Only with the
-        // real tag, as `admin_ops` requires it; untagged, today's
-        // behaviour stands.
+        // (2026-11-09): named means named (review #4). The people tagged,
+        // never the recent-players blast nor the "who shall I ask?"
+        // question, whatever the tag; and they are DM'd only with the real
+        // tag, as `admin_ops` requires it.
         recruitRequests.length = 0;
-        namedInviteRequests.push({ msg: last.msg, sender: last.sender });
-        console.log(`[analyze] ${last.msg.waMessageId}: a recruit of the people tagged: DM'd below, no recruit blast`);
+        const tagged = piMentionsBot(last.msg);
+        if (tagged) namedInviteRequests.push({ msg: last.msg, sender: last.sender });
+        console.log(`[analyze] ${last.msg.waMessageId}: a recruit of the people tagged: ${tagged ? "DM'd below" : "untagged, nothing sent"}, no recruit blast`);
       } else if (places?.sources && places.sources.some((x) => x !== "club")) {
         console.log(`[analyze] ${last.msg.waMessageId}: a recruit from ${places.sources.join("+")}: asked there${places.sources.includes("club") ? ", and the recruit blast" : ", no recruit blast"}`);
         if (places.sources.includes("partners")) partnerAskRequests.push({ msg: last.msg, sender: last.sender, clubRef: places.clubRef, matchId: null });
@@ -3913,6 +3915,9 @@ async function handleAnalyzeRequest(request: Request) {
         chatId: body.groupId,
         lang: org.language,
         message: { ...namedMsg, sentAt: Number.isNaN(sentAt.getTime()) ? new Date() : sentAt, quotedMessageId: namedMsg.quotedMessageId ?? null },
+        // The messages that arrived ahead of it in this flush, in order: "the
+        // people above" may be one of them (review #5).
+        batchBefore: fresh.slice(0, Math.max(0, fresh.findIndex((m) => m.waMessageId === namedMsg.waMessageId))),
         requesterUserId: namedSender.userId ?? null,
       });
       const react = r.invited > 0 ? "✅" : null;
