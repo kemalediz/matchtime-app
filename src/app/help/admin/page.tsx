@@ -486,7 +486,9 @@ export default async function AdminGuidePage() {
       <p>
         Once the month is running, MatchTime posts the week&apos;s list in the
         group the morning after each game, for the next one, again whenever
-        the squad changes, and once on match morning. It lists the squad by first name, tells the
+        the squad changes, and on match morning unless the group has already
+        had its morning message about the game (for example the call for
+        players when places are open). It lists the squad by first name, tells the
         regulars they are in with no need to say anything, then shows who
         can&apos;t play, the bench, and the pay as you go places still open
         with your price.

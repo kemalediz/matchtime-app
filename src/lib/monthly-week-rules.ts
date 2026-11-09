@@ -580,21 +580,57 @@ export function paygPoolOfferAllowed(p: { pickMode: string | null | undefined; b
 
 /** "At most once every 30 minutes." */
 export const LIST_REPOST_FLOOR_MS = 30 * 60 * 1000;
-/** The match morning post: from the start of the message hours (09:00)
+/** The match morning post: from the club's day start (09:00 by default)
  *  until noon. */
 const MORNING_UNTIL_HOUR = 12;
+
+/**
+ * ONE MORNING MESSAGE ON MATCH DAY (Kemal, 2026-11-09). The Vets got
+ * "Still 3 short for tonight's ... Any takers?" at 08:00 (the match-day
+ * morning chase) and the same unchanged list at 09:00 (the list's morning
+ * post): "no need to repeat yourself, you already said 3 needed at 8am."
+ *
+ * Has the players' group already had this match's morning message today?
+ * Yes when, on match day, either
+ *   - the match-day morning chase went to the players' group today
+ *     (`morningChaseSent`), or
+ *   - the group was shown this match's list since the club's day start
+ *     (`messageHoursDayStart`, 09:00 by default): the list's morning post,
+ *     a changed list, or a reply that showed it.
+ * The list's morning post and the chase both read this one definition, so
+ * whichever goes first, the other stays quiet. A CHANGED list is not held
+ * by it (`decideListPost` posts a change before it asks).
+ */
+export function matchMorningMessageSent(p: {
+  now: Date;
+  matchDate: Date;
+  morningChaseSent?: boolean;
+  /** When the group was last shown this match's list (null: never). */
+  lastListShownAt?: Date | null;
+  quiet?: QuietHours | null;
+}): boolean {
+  const matchDay = formatLondon(p.matchDate, "yyyy-MM-dd");
+  if (formatLondon(p.now, "yyyy-MM-dd") !== matchDay) return false;
+  if (p.morningChaseSent) return true;
+  const morningStart = londonDateTimeToUtc(matchDay, messageHoursDayStart(p.quiet ?? undefined));
+  return !!p.lastListShownAt && p.lastListShownAt.getTime() >= morningStart.getTime();
+}
 
 /**
  * Is a list post due?
  *
  *   "change"   the list differs from the one the group last saw (a post of
  *              ours, or a member's paste that matched our state);
- *   "morning"  match morning, 09:00 to 11:59 London, once, whatever else,
- *              EXCEPT when the group saw this same list a moment ago
- *              (`sameListShownRecently`): somebody asked "who's in?" at
- *              08:30 and got it, so 09:00 would repeat it. It is held, not
- *              dropped: a later poll that morning posts it once the three
- *              hours are up;
+ *   "morning"  match morning, from the club's day start (09:00 by default)
+ *              to 11:59 London, at most once, for the unchanged list, and
+ *              only while the group has had no morning message about the
+ *              game today (`matchMorningMessageSent`): not after a list
+ *              post that morning, and not after the match-day morning
+ *              chase (2026-11-09). Also held while the group saw this same
+ *              list a moment ago (`sameListShownRecently`): somebody asked
+ *              "who's in?" at 08:30 and got it, so 09:00 would repeat it.
+ *              That one is held, not dropped: a later poll that morning
+ *              posts it once the three hours are up;
  *   null       nothing to post.
  *
  * Never in the club's quiet hours (by default 23:00 to 08:59 London), never within 30 minutes of the
@@ -618,6 +654,9 @@ export function decideListPost(p: {
    *  hours): a post or a reply of ours, or a member's paste of it. Only
    *  the morning post reads it; a CHANGED list is posted regardless. */
   sameListShownRecently?: boolean;
+  /** The match-day morning chase went to the players' group today. Only
+   *  the morning post reads it (`matchMorningMessageSent`). */
+  morningChaseSent?: boolean;
   /** The club's quiet hours (absent: the default). The morning post waits
    *  for the club's day start (`messageHoursDayStart`). */
   quiet?: QuietHours | null;
@@ -633,7 +672,17 @@ export function decideListPost(p: {
   const morningStart = londonDateTimeToUtc(matchDay, messageHoursDayStart(p.quiet ?? undefined));
   // Not before the club's day starts: with quiet hours off, 03:00 is not the morning.
   if (p.now.getTime() < morningStart.getTime()) return null;
-  if (p.lastPostAt && p.lastPostAt.getTime() >= morningStart.getTime()) return null;
+  if (
+    matchMorningMessageSent({
+      now: p.now,
+      matchDate: p.matchDate,
+      morningChaseSent: p.morningChaseSent,
+      lastListShownAt: p.lastPostAt,
+      quiet: p.quiet,
+    })
+  ) {
+    return null;
+  }
   if (p.sameListShownRecently) return null;
   return "morning";
 }
