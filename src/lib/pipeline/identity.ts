@@ -102,9 +102,10 @@ function firstToken(s: string): string {
  * this function over the model) amplifies it.
  *
  * So a near miss now needs BOTH: at least five characters on the shorter
- * side, and a length difference of at most two. That still covers
- * "habibi" → "Habib" (the real S12 message, difference 1) and "Aydin" →
- * "Aydın" once accents are stripped, and refuses everything above.
+ * side, and a length difference of at most two. Since 2026-11-09 it also
+ * needs an agreeing surname (`surnameAgrees`, below): "David" alone was
+ * read as Davide De Sousa in production. Accents never needed it ("Aydın"
+ * and "Aydin" are equal once `norm` has run).
  */
 const NEAR_MISS_MIN_LENGTH = 5;
 const NEAR_MISS_MAX_EXTRA = 2;
@@ -117,23 +118,35 @@ function nearMiss(a: string, b: string): boolean {
 }
 
 /**
- * Does the rest of the reference (its surname) contradict the member's?
+ * Does the rest of the reference (its surname) AGREE with the member's?
  *
- * Vets sandbox, 2026-11-03: "David Aksoy is IN", a guest, was read as
- * Davide Russo by the near miss on "David" and changed nothing. A near miss
- * is a guess that a FIRST name was misspelt; a surname that is plainly a
- * different one ("Aksoy" against "Russo") says it is somebody else. So it
- * contradicts when both sides have one and no word of the reference's
- * agrees with a word of the member's (the same word, or one starting the
- * other: "R" and "Rahim" agree with "Rahimi"). A member with no surname on
- * record, or a reference without one, cannot contradict. Used only by the
- * near miss: an exact first name still resolves as before.
+ * A near miss is a guess that a FIRST name was misspelt, and a first name a
+ * letter or two off a member's is very often simply a different name:
+ * David is not Davide, Daniel is not Daniela, Simon is not Simone.
+ *
+ *   - Vets sandbox, 2026-11-03: "David Aksoy is IN", a guest, was read as
+ *     Davide Russo and changed nothing (a surname that disagrees).
+ *   - Vets MNF, 2026-11-09 14:42, PRODUCTION: the owner's "David - Kemal's
+ *     son, is on the bench", about a non-member, was read as Davide De
+ *     Sousa (no surname at all) and moved him, CONFIRMED for that night,
+ *     to the BENCH; his place was then offered to the bench.
+ *
+ * So the guess is accepted only when something else in the reference
+ * corroborates it: a surname on both sides, and a word of the reference's
+ * agreeing with a word of the member's (the same word, or one starting the
+ * other: "R" and "Rahim" agree with "Rahimi"). "Davidee Russo" is still
+ * Davide Russo. A bare first name, or a member with no surname on record,
+ * has nothing to corroborate it and resolves nobody: the caller treats it
+ * as the unknown person it may well be, which can never move a member. A
+ * nickname the club uses for a member ("habibi" for Habib) is an alias
+ * (`UserAlias`), which resolves exactly. Used only by the near miss: an
+ * exact first name still resolves as before.
  */
-function surnameContradicts(ref: string, memberName: string): boolean {
+function surnameAgrees(ref: string, memberName: string): boolean {
   const refRest = norm(ref).split(" ").slice(1).filter((w) => /[a-z]/.test(w));
   const memberRest = norm(memberName).split(" ").slice(1).filter((w) => /[a-z]/.test(w));
   if (refRest.length === 0 || memberRest.length === 0) return false;
-  return !refRest.some((r) => memberRest.some((m) => m.startsWith(r) || r.startsWith(m)));
+  return refRest.some((r) => memberRest.some((m) => m.startsWith(r) || r.startsWith(m)));
 }
 
 
@@ -242,9 +255,10 @@ export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome 
   if (byToken.length === 1) return { kind: "resolved", member: byToken[0] };
   if (byToken.length > 1) return { kind: "ambiguous", candidates: byToken };
 
-  // 4. Near miss on the first name, unless the surname says it is
-  //    somebody else ("David Aksoy" is not Davide Russo).
-  const near = roster.filter((m) => nearMiss(firstToken(m.name), tFirst) && !surnameContradicts(target, m.name));
+  // 4. Near miss on the first name, only when the surname agrees
+  //    ("Davidee Russo" is Davide Russo; a bare "David" is not Davide
+  //    De Sousa, Vets 2026-11-09, and "David Aksoy" is not Davide Russo).
+  const near = roster.filter((m) => nearMiss(firstToken(m.name), tFirst) && surnameAgrees(target, m.name));
   if (near.length === 1) return { kind: "resolved", member: near[0] };
   if (near.length > 1) return { kind: "ambiguous", candidates: near };
 

@@ -42,8 +42,7 @@ export async function resolveOrProvisionByName(
   });
   const norm = (s: string) =>
     s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const pushTokens = norm(name).split(/\s+/).filter(Boolean);
-  const pushFirst = pushTokens[0] ?? "";
+  const pushFirst = norm(name).split(/\s+/).filter(Boolean)[0] ?? "";
 
   const equalsMatches = candidates.filter(
     (c) => c.user.name && norm(c.user.name) === norm(name),
@@ -54,21 +53,18 @@ export async function resolveOrProvisionByName(
     return { userId: m.user.id, name: m.user.name };
   }
 
+  // An EXACT first name, whatever follows it. No prefix guess (removed
+  // 2026-11-09, Vets MNF): every caller has already decided, with its own
+  // resolver, that this name is nobody in the club (the engine's
+  // `resolvePerson` said "unknown", a pasted list's reader said "new"), and
+  // a first-name prefix here overruled that: "David" became the member
+  // Davide De Sousa. One name starting another does not make them the same
+  // person ("David"/"Davide", "Luca"/"Lucas"); a nickname is an alias,
+  // looked up below.
   const firstNameMatches = candidates.filter((c) => {
     if (!c.user.name) return false;
-    const dbTokens = norm(c.user.name).split(/\s+/).filter(Boolean);
-    const dbFirst = dbTokens[0] ?? "";
-    // The PREFIX half only ever for a single-word ref (2026-10-30, review
-    // of PR #476): "the lads" is not Theo and "everyone" is never reached
-    // here at all (the engine resolves only what the model calls a named
-    // person). An exact first name still matches whatever follows it.
-    return (
-      dbFirst === pushFirst ||
-      (pushTokens.length === 1 &&
-        dbFirst.length >= 3 &&
-        pushFirst.length >= 3 &&
-        (dbFirst.startsWith(pushFirst) || pushFirst.startsWith(dbFirst)))
-    );
+    const dbFirst = norm(c.user.name).split(/\s+/).filter(Boolean)[0] ?? "";
+    return dbFirst === pushFirst;
   });
   if (firstNameMatches.length === 1) {
     const m = firstNameMatches[0];

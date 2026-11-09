@@ -1,8 +1,9 @@
 /**
- * THE FIRST-NAME PREFIX MATCH NEVER RESOLVES A MULTI-WORD REF (2026-10-30,
+ * NO FIRST-NAME PREFIX MATCH. First pinned for a multi-word ref (2026-10-30,
  * review of PR #476, HIGH 1c): "the lads" must not become Theo, nor
- * "everyone" Eve. The engine already refuses a ref the model did not call a
- * named person; this pins the roster lookup itself.
+ * "everyone" Eve. Since 2026-11-09 (Vets MNF, "David" read as Davide De
+ * Sousa) not for a single word either: only the whole name, an exact first
+ * name or an alias finds a member.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -32,8 +33,28 @@ describe("the prefix match", () => {
     expect(r?.userId).not.toBe("u-theo");
   });
 
-  it("a single word still matches a short form of a member's first name", async () => {
-    expect((await resolveOrProvisionByName("org-1", "Moham"))?.userId).toBe("u-mo");
+  // Vets MNF, 2026-11-09. The engine said "David" is nobody in the club; a
+  // first-name PREFIX here would have read him as the member Davide De Sousa
+  // on the way to provisioning him. One name being the start of another
+  // does not make them the same person ("David"/"Davide", "Luca"/"Lucas"),
+  // so a name nobody has exactly is a new person. A nickname is an alias.
+  it("'David' is not the member Davide De Sousa: he is provisioned as a new person", async () => {
+    dbMock.membership.findMany.mockResolvedValue([member("u-davide", "Davide De Sousa"), member("u-kemal", "Kemal")]);
+    const r = await resolveOrProvisionByName("org-1", "David");
+    expect(r?.userId).toBe("new:David");
+    expect(sender.createProvisionalByName).toHaveBeenCalledWith("org-1", "David", null, { deliberate: false });
+  });
+
+  it("a short form of a member's first name is not that member ('Moham' is a new person)", async () => {
+    expect((await resolveOrProvisionByName("org-1", "Moham"))?.userId).toBe("new:Moham");
+  });
+
+  it("an exact first name still resolves ('Mohammed' is Mohammed Ali)", async () => {
+    expect((await resolveOrProvisionByName("org-1", "Mohammed"))?.userId).toBe("u-mo");
+  });
+
+  it("an accent difference is the same name ('Théo' is Theo Walcott)", async () => {
+    expect((await resolveOrProvisionByName("org-1", "Théo"))?.userId).toBe("u-theo");
   });
 
   it("an exact first name still resolves, whatever follows it", async () => {
