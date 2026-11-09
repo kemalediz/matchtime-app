@@ -193,7 +193,8 @@ export default async function AdminGuidePage() {
           suggests going up a size in the players&apos; group and names the
           organisers. Only an organiser&apos;s <strong>yes</strong>, as a reply
           to that message, switches it. It asks once for each size, and again
-          only if the bench empties and fills up again.
+          only if the bench empties and fills up again. With one on the bench,
+          the list says one more would make the next size.
         </li>
       </ul>
 

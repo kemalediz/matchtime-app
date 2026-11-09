@@ -284,7 +284,7 @@ async function instructions(now: Date) {
   return res?.instructions ?? [];
 }
 
-function listText(m: ReturnType<typeof match>): string {
+function listText(m: ReturnType<typeof match>, nextSizePerSide: number | null = null): string {
   return buildWeekListPost({
     list: buildWeekList({
       members: MEMBERS,
@@ -299,6 +299,7 @@ function listText(m: ReturnType<typeof match>): string {
     matchDate: m.date,
     title: m.activity.name,
     paygPricePence: 800,
+    nextSizePerSide,
     lang: "en",
   });
 }
@@ -793,6 +794,77 @@ describe("MONTHLY: the daily 17:00 post is the month's list (2026-11-04)", () =>
     expect(evening(await instructions(THU_5PM))).toEqual([]);
   });
 
+  describe("ONE MORE FOR THE NEXT SIZE (Kemal, 2026-11-09): a game that can go up a size", () => {
+    // This world's game is 3 a side (6 places); its range lets it go to 4 a
+    // side (8). The list's line is read in `weekListPostText` from the match
+    // (`db.match.findUnique`), the one renderer every list goes through.
+    const LINE = "One more on the bench and the organisers can make it 4-a-side.";
+    const withRange = (max: number | null) => {
+      overrides.match = {
+        ...overrides.match,
+        findUnique: async () => ({
+          status: "UPCOMING",
+          date: KICKOFF,
+          maxPlayers: 6,
+          _count: { teamAssignments: 0 },
+          activity: { minPlayers: 6, maxPlayers: max, sport: { playersPerTeam: 3 }, org: { listAnnouncer: "matchtime" } },
+        }),
+      };
+    };
+
+    it("full, one on the bench: the 17:00 post's list ends with the line, then the bench ask", async () => {
+      const m = full(["Zed"]);
+      setWorld(m, { monthly: true });
+      withRange(8);
+      const [post] = evening(await instructions(THU_5PM));
+      expect(post.text).toBe(`${listText(m, 4)}\n\n${invite}`);
+      expect(post.text).toContain(`The squad is full.\n${LINE}\n\n${invite}`);
+      expect(post.weekListShown).toEqual({ hash: weekListHash(listText(m, 4)) });
+    });
+
+    it("the list post on change carries it too, keyed by the hash of the list WITH the line", async () => {
+      const m = full(["Zed"]);
+      setWorld(m, { monthly: true });
+      withRange(8);
+      const posts = (await instructions(THU_10AM)).filter((i) => i.key.startsWith(`${m.id}:month-list:`)) as Array<{ key: string; text: string }>;
+      expect(posts).toHaveLength(1);
+      expect(posts[0].text).toBe(listText(m, 4));
+      expect(posts[0].key).toBe(`${m.id}:month-list:${weekListHash(listText(m, 4))}:0`);
+    });
+
+    it("NO REPOST: the group last saw this same list with the line, so nothing posts on the next poll", async () => {
+      const m = full(["Zed"]);
+      const hash = weekListHash(listText(m, 4));
+      setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date(THU_10AM.getTime() - 60 * 60_000) }] });
+      withRange(8);
+      expect((await instructions(THU_10AM)).filter((i) => i.key.includes("month-list"))).toEqual([]);
+    });
+
+    it("the compact 17:00 post (same list seen in the last three hours) keeps the line", async () => {
+      const m = full(["Zed"]);
+      const hash = weekListHash(listText(m, 4));
+      setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date(THU_5PM.getTime() - 90 * 60_000) }] });
+      withRange(8);
+      const [post] = evening(await instructions(THU_5PM));
+      expect(post.text).toBe(["📋 *Monday 7-a-side, Mon 12 Oct at 20:00*", "", "The squad is full.", LINE, "", invite].join("\n"));
+    });
+
+    it("two on the bench: no line (the suggestion is the scheduler's own post)", async () => {
+      const m = full(["Zed", "Yusuf"]);
+      setWorld(m, { monthly: true });
+      withRange(8);
+      const [post] = evening(await instructions(THU_5PM));
+      expect(post.text).not.toContain("One more on the bench");
+    });
+
+    it("no maximum above the places: the list exactly as before", async () => {
+      const m = full(["Zed"]);
+      setWorld(m, { monthly: true });
+      withRange(null);
+      const [post] = evening(await instructions(THU_5PM));
+      expect(post.text).toBe(`${listText(m)}\n\n${invite}`);
+    });
+  });
 });
 
 describe("MONTHLY: what a running month switches off (plan 5.4, 5.6)", () => {

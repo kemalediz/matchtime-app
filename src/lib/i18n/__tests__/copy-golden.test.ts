@@ -68,6 +68,12 @@
  *     copy). All NEW copy, sent only to a club on "monthly"; the only
  *     non-additive line in either `.snap` diff is the case count.
  *
+ *   - One deliberate addition (2026-11-09, Kemal): the MWK1 case "full,
+ *     one on the bench, one more makes the next size", the month's list
+ *     with its new last line ("One more on the bench and the organisers
+ *     can make it 8-a-side."). The only non-additive line in either
+ *     `.snap` diff is the case count.
+ *
  *   - Deliberate additions AND one deliberate CHANGE (2026-11-04, the one
  *     17:00 rule, daily-update-rules.ts). The additions are the four MWK10
  *     cases, `buildMonthlyDailyPost`, a monthly club's daily post (the
@@ -2295,6 +2301,17 @@ function cases(lang: Lang): Case[] {
       title: "Monday 7-a-side",
       paygPricePence: 750,
       organiserPicks: true,
+      lang,
+    }),
+  );
+  add(
+    "MWK1 buildWeekListPost / full, one on the bench, one more makes the next size (2026-11-09)",
+    buildWeekListPost({
+      list: { ...mwkList, slots: mwkList.slots.filter((x) => x.userId), paidCantPlay: [], cantPlay: [], open: 0 },
+      matchDate: mwkMatch,
+      title: "Monday 7-a-side",
+      paygPricePence: 800,
+      nextSizePerSide: 8,
       lang,
     }),
   );

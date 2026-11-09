@@ -86,6 +86,8 @@ export const FLEX_FORMAT_TR: FlexFormatCopy = {
     `${p.day} için ${p.total} kişiyiz, ${p.bench} kişi yedekte. ${side(p.perSide)} oynayalım mı? ` +
     `${p.admins}, bu mesaja *evet* diye yanıt verin, ben değiştireyim.`,
 
+  oneMoreUp: (p) => `Yedeğe bir kişi daha gelirse organizatörler maçı ${side(p.perSide)} yapabilir.`,
+
   dmIn: (p) =>
     `${p.day} ${side(p.perSide)} oynuyoruz, kadrodasın. Gelemeyeceksen OUT yaz.` +
     (p.price ? ` Bu maçın ücretini maç başı ödersin, ${p.price}.` : ``),

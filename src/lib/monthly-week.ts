@@ -41,6 +41,8 @@ import { ROLLING_LOOKBACK_DAYS, adminNoticeSendAfter, pickSeedSource, rollingSee
 import { loadClubQuietHours } from "./club-quiet-hours";
 import { buildSeedBumpedDm, buildWeekListPost } from "./monthly-week-copy";
 import { loadPlayerNames } from "./player-display-name";
+import { FORMAT_UP_KEY_PREFIX, formatUpOffered, oneMoreForNextSize, playerRange } from "./flex-format-rules";
+import { organisersAnnounce } from "./list-announcer";
 import { londonMonthStart, normaliseCreditRule, normaliseSquadMode, type MonthCreditRule } from "./squad-month-rules";
 import {
   SEED_NOTE_PRIORITY,
@@ -1153,13 +1155,18 @@ export function weekListKeyPrefix(matchId: string): string {
  */
 export async function weekListPostText(p: {
   orgId: string;
+  matchId: string;
+  /** The month's regulars are on this match (`MonthlyWeek.seeded`). */
+  seeded: boolean;
+  /** The scheduler's clock; omitted, now. */
+  now?: Date;
   list: WeekList;
   matchDate: Date;
   title: string;
   paygPricePence: number | null;
   organiserPicks: boolean;
   lang: string | null;
-}): Promise<{ text: string; hash: string }> {
+}): Promise<{ text: string; hash: string; nextSizePerSide: number | null }> {
   const ids = [
     ...p.list.slots.map((x) => x.userId).filter((u): u is string => u !== null),
     ...p.list.paidCantPlay.map((n) => n.userId),
@@ -1176,21 +1183,91 @@ export async function weekListPostText(p: {
     cantPlay: p.list.cantPlay.map(named),
     reserves: p.list.reserves.map(named),
   };
+  const nextSizePerSide = await loadNextSizePerSide({ matchId: p.matchId, seeded: p.seeded, now: p.now ?? new Date(), list: p.list });
   const text = buildWeekListPost({
     list,
     matchDate: p.matchDate,
     title: p.title,
     paygPricePence: p.paygPricePence,
     organiserPicks: p.organiserPicks,
+    nextSizePerSide,
     lang: p.lang,
   });
-  return { text, hash: weekListHash(text) };
+  return { text, hash: weekListHash(text), nextSizePerSide };
+}
+
+/**
+ * The list's "one more on the bench and the organisers can make it
+ * 8-a-side" (Kemal, 2026-11-09): the next size's players a side, or null.
+ * The rule is `oneMoreForNextSize` (flex-format-rules.ts), the suggestion's
+ * own rule asked with one more on the bench; this only reads its facts the
+ * way the scheduler's suggestion does (block 2-ter): the game's range, the
+ * match's places, the teams, the list announcer, the format-up keys, and
+ * the bench without who ASKED to be on it (`loadChoseBench`). It reads
+ * nothing while the squad has room or nobody is on the bench, the only
+ * states it could not show in. Fails soft: no line.
+ *
+ * Every input is the match's state, never the clock except kickoff, so the
+ * list's hash moves only when that state does: the bench going 0 to 1 (the
+ * names change then anyway), 1 to 2, or an organiser changing the range.
+ */
+async function loadNextSizePerSide(p: { matchId: string; seeded: boolean; now: Date; list: WeekList }): Promise<number | null> {
+  const confirmed = p.list.slots.filter((x) => x.userId !== null).length;
+  if (!p.seeded || p.list.open > 0 || p.list.reserves.length === 0) return null;
+  try {
+    const match = await db.match.findUnique({
+      where: { id: p.matchId },
+      select: {
+        status: true,
+        date: true,
+        maxPlayers: true,
+        _count: { select: { teamAssignments: true } },
+        activity: {
+          select: {
+            minPlayers: true,
+            maxPlayers: true,
+            sport: { select: { playersPerTeam: true } },
+            org: { select: { listAnnouncer: true } },
+          },
+        },
+      },
+    });
+    if (!match) return null;
+    const range = playerRange({
+      minPlayers: match.activity.minPlayers ?? null,
+      maxPlayers: match.activity.maxPlayers ?? null,
+      playersPerTeam: match.activity.sport.playersPerTeam,
+    });
+    const organisers = organisersAnnounce(match.activity.org);
+    if (!formatUpOffered({ range, organisers })) return null;
+    const [chose, keys] = await Promise.all([
+      loadChoseBench(db, p.matchId),
+      db.sentNotification.findMany({ where: { key: { startsWith: `${p.matchId}${FORMAT_UP_KEY_PREFIX}` } }, select: { key: true } }),
+    ]);
+    const to = oneMoreForNextSize({
+      live: match.status === "UPCOMING" && p.now.getTime() < match.date.getTime(),
+      teamsOut: match._count.teamAssignments > 0,
+      places: match.maxPlayers,
+      confirmed,
+      bench: p.list.reserves.filter((r) => !chose.has(r.userId)).length,
+      range,
+      organisers,
+      matchId: p.matchId,
+      keys: new Set(keys.map((k) => k.key)),
+    });
+    return to === null ? null : to / 2;
+  } catch (err) {
+    console.error(`[monthly-week] could not read the next size for ${p.matchId}:`, err);
+    return null;
+  }
 }
 
 /** The week's list as MatchTime would post it now, and its hash. */
-export function renderWeekList(week: MonthlyWeek): Promise<{ text: string; hash: string }> {
+export function renderWeekList(week: MonthlyWeek): Promise<{ text: string; hash: string; nextSizePerSide: number | null }> {
   return weekListPostText({
     orgId: week.orgId,
+    matchId: week.matchId,
+    seeded: week.seeded,
     list: buildWeekList({ members: week.members, rows: week.rows, maxPlayers: week.maxPlayers }),
     matchDate: week.matchDate,
     title: week.activityName,

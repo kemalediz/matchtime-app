@@ -219,6 +219,36 @@ describe("buildWeekListPost (reworded 2026-11-03: the squad first, first names, 
     ]);
   });
 
+  it("one more on the bench for the next size (2026-11-09): one line under the squad-full line, English and Turkish", () => {
+    const full: WeekList = { ...LIST, paidCantPlay: [], cantPlay: [], reserves: [{ userId: "z", name: "Zed Wait" }], open: 0 };
+    expect(
+      buildWeekListPost({ list: full, matchDate: MATCH, title: TITLE, paygPricePence: 800, nextSizePerSide: 8, lang: "en" }).split("\n").slice(-4),
+    ).toEqual(["*Pay as you go:*", "3. Omar", "The squad is full.", "One more on the bench and the organisers can make it 8-a-side."]);
+    expect(
+      buildWeekListPost({ list: full, matchDate: MATCH, title: TITLE, paygPricePence: 800, nextSizePerSide: 8, lang: "tr" }).split("\n").pop(),
+    ).toBe("Yedeğe bir kişi daha gelirse organizatörler maçı 8'e 8 yapabilir.");
+    // No PAYG section: the line still sits under the squad-full line.
+    const noPayg: WeekList = { ...full, slots: full.slots.filter((x) => x.mark !== "payg") };
+    expect(
+      buildWeekListPost({ list: noPayg, matchDate: MATCH, title: TITLE, paygPricePence: 800, nextSizePerSide: 8, lang: "en" }).split("\n").slice(-2),
+    ).toEqual(["The squad is full.", "One more on the bench and the organisers can make it 8-a-side."]);
+    // The compact 17:00 form keeps it.
+    expect(
+      buildWeekListPost({ list: full, matchDate: MATCH, title: TITLE, paygPricePence: 800, nextSizePerSide: 8, compact: true, lang: "en" }).split("\n").slice(-2),
+    ).toEqual(["The squad is full.", "One more on the bench and the organisers can make it 8-a-side."]);
+  });
+
+  it("no next size given: the list is exactly as before", () => {
+    const full: WeekList = { ...LIST, open: 0 };
+    const before = buildWeekListPost({ list: full, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang: "en" });
+    expect(buildWeekListPost({ list: full, matchDate: MATCH, title: TITLE, paygPricePence: 800, nextSizePerSide: null, lang: "en" })).toBe(before);
+    expect(before).not.toContain("One more on the bench");
+  });
+
+  it("places still open: never the line, whatever the caller says (the squad must be full first)", () => {
+    expect(buildWeekListPost({ list: LIST, matchDate: MATCH, title: TITLE, paygPricePence: 800, nextSizePerSide: 8, lang: "en" })).not.toContain("One more on the bench");
+  });
+
   it("empty sections are left out", () => {
     const text = buildWeekListPost({ list: { ...LIST, paidCantPlay: [], cantPlay: [], reserves: [] }, matchDate: MATCH, title: TITLE, paygPricePence: 800, lang: "en" });
     expect(text).not.toContain("*Can't play:*");

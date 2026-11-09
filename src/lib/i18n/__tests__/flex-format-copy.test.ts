@@ -39,6 +39,7 @@ const render = (lang: "en" | "tr"): string[] => {
     c.noMatch,
     c.tooLate,
     c.suggestUp({ total: 16, bench: 2, day, perSide: 8, admins: "Davide" }),
+    c.oneMoreUp({ perSide: 8 }),
     c.dmIn({ day, perSide: 8, price: null }),
     c.dmIn({ day, perSide: 8, price: "£8" }),
     c.dmBench({ day, perSide: 6, places: 12 }),
@@ -78,6 +79,8 @@ describe("a game's sizes: copy", () => {
     );
     expect(en.dmIn({ day: "Monday", perSide: 8, price: null })).toBe("We're going 8-a-side on Monday, you're in. Can't make it after all? Reply OUT.");
     expect(en.allows({ min: 12, max: 16, sides: [6, 7, 8] })).toBe("With 12 to 16 players you can play 6, 7 or 8 a side.");
+    expect(en.oneMoreUp({ perSide: 8 })).toBe("One more on the bench and the organisers can make it 8-a-side.");
+    expect(flexFormatCopy("tr").oneMoreUp({ perSide: 8 })).toBe("Yedeğe bir kişi daha gelirse organizatörler maçı 8'e 8 yapabilir.");
   });
 
   it("Turkish reads the number aloud for its ending", () => {
@@ -99,6 +102,7 @@ describe("the players' group reply guard leaves the replies alone", () => {
       c.rangeUnchanged({ activityName: "Vets 7s", min: 12, max: 16, sides: [6, 7, 8] }),
       c.rangeCleared({ activityName: "Vets 7s", places: 14, perSide: 7 }),
       c.notAllowed({ activityName: "Vets 7s", perSide: 9, sides: [6, 7, 8], url: "https://x" }),
+      c.oneMoreUp({ perSide: 8 }),
     ]) {
       expect(composeSquadStateReply(reply, truth, lang), reply).toEqual({ text: reply, composed: false });
     }

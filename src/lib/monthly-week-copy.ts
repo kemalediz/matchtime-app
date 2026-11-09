@@ -18,6 +18,7 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { normaliseName } from "./name-normalise";
 import { usableName } from "./player-name-rules";
 import { weekListPlaces, type WeekList, type WeekName } from "./monthly-week-rules";
+import { flexFormatCopy } from "./i18n/flex-format";
 
 type LangArg = Lang | string | null | undefined;
 
@@ -114,12 +115,19 @@ export function buildWeekListPost(p: {
    *  three hours (2026-11-04): the title line and the places line only, so
    *  the names are not listed twice inside the hour. Never hashed. */
   compact?: boolean;
+  /** The next size's players a side when ONE more on the bench would make
+   *  MatchTime suggest it (`oneMoreForNextSize`, 2026-11-09): one line
+   *  under the squad-full line. Shown only while no place is open. */
+  nextSizePerSide?: number | null;
   lang?: LangArg;
 }): string {
   const s = t(p.lang);
+  const oneMore = p.nextSizePerSide && p.list.open <= 0 ? flexFormatCopy(p.lang).oneMoreUp({ perSide: p.nextSizePerSide }) : null;
   if (p.compact) {
     const open = weekListOpenLine(p.list.open, paygPriceLabel(p.paygPricePence), p.organiserPicks === true, p.lang);
-    return [weekListTitleLine(p.title, p.matchDate, p.lang), "", open ? `${s.mwk_list_payg} ${open}` : s.mwk_list_full].join("\n");
+    const out = [weekListTitleLine(p.title, p.matchDate, p.lang), "", open ? `${s.mwk_list_payg} ${open}` : s.mwk_list_full];
+    if (oneMore) out.push(oneMore);
+    return out.join("\n");
   }
   const cantPlay = [...p.list.paidCantPlay, ...p.list.cantPlay];
   const { squad, payg } = weekListPlaces(p.list);
@@ -151,6 +159,7 @@ export function buildWeekListPost(p: {
   } else {
     lines.push("", open ? `${s.mwk_list_payg} ${open}` : s.mwk_list_full);
   }
+  if (oneMore) lines.push(oneMore);
   return lines.join("\n");
 }
 
