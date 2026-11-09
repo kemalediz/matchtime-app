@@ -4,22 +4,25 @@
  * The owner Kemal posted it, untagged. David is not a member; nobody called
  * David is in the club. The attendance extractor read it right:
  * `{subject: other, polarity: bench, personRef: "David", personKind: named}`.
- * Our resolver then read "David" as the member Davide De Sousa (the club's
- * owner, CONFIRMED for that night) through the first-name NEAR MISS in
- * `identity.ts` ("davide" starts with "david", five letters, one apart), and
- * the engine moved Davide from CONFIRMED to BENCH. MatchTime posted a list
- * with "Bench: 1. Davide" and offered his place to the bench.
+ * Our resolver then read "David" as the member Davide De Sousa (CONFIRMED
+ * for that night) through the first-name NEAR MISS in `identity.ts`
+ * ("davide" starts with "david", five letters, one apart), and the engine
+ * moved Davide from CONFIRMED to BENCH.
  *
- * David and Davide are two different names. A near miss on a bare first
- * name is a guess, and a guess must never move an existing member. The
- * roster below is the club's real one (read-only lookup, 2026-11-09),
- * with its real aliases.
+ * PR #570 removed the near miss, and with it the useful guesses ("Davdie"
+ * for Davide, "habibi" for Habib). Since 2026-11-09 (option B, Kemal) who a
+ * name is, is the MODEL's pick from the club's members with the message in
+ * view (`who-is-who.ts`): it can tell "David, Kemal's son" from a typo of
+ * Davide, which no spelling rule can. The engine only acts on the pick. The
+ * roster below is the club's real one (read-only lookup, 2026-11-09), with
+ * its real aliases; the picks are what the model is asked to say (checked
+ * live in `scripts/live-check-who-is-who.ts`).
  */
 import { describe, it, expect } from "vitest";
 import { decide } from "../engine";
-import { resolvePerson } from "../identity";
 import { NOW, attendanceFacts, claim, member, msg, statusOf, world } from "./helpers";
 import type { Member } from "../types";
+import type { PersonPick } from "../who-is-who";
 
 const VETS: Member[] = [
   member("andrew", { name: "Andrew" }),
@@ -45,90 +48,61 @@ const VETS: Member[] = [
   member("zeeshan", { name: "Zeeshan" }),
 ];
 
-describe("resolvePerson: 'David' is not Davide De Sousa (Vets, 2026-11-09)", () => {
-  it.each(["David", "david", "DAVID"])("'%s' is an unknown person, not the member Davide", (ref) => {
-    expect(resolvePerson(ref, VETS)).toEqual({ kind: "unknown", name: ref });
+const state = () => {
+  const s = world({
+    players: VETS.map((m) => m.userId.slice(2)),
+    admins: ["kemal", "davide"],
+    maxPlayers: 14,
+    confirmed: ["davide", "kemal", "andrew", "ben", "craig", "dan", "jon", "luca", "nabz", "shane", "steff", "steve", "serg"],
   });
-
-  it("other names one letter off a member's are not that member either", () => {
-    const squad = [
-      member("daniela", { name: "Daniela Rossi" }),
-      member("simone", { name: "Simone Bianchi" }),
-      member("andrea", { name: "Andrea Conti" }),
-    ];
-    for (const ref of ["Daniel", "Simon", "Andre"]) {
-      expect(resolvePerson(ref, squad).kind, ref).toBe("unknown");
-    }
+  s.roster = VETS.map((m) => ({ ...m }));
+  return s;
+};
+const benchClaim = (personRef: string) =>
+  attendanceFacts([
+    claim({ subject: "other", polarity: "bench", personRef, personKind: "named", personNamed: true, benchAsked: true, confidence: 0.9 }),
+  ]);
+const run = (body: string, personRef: string, people?: ReadonlyMap<string, PersonPick>) =>
+  decide({
+    now: NOW,
+    state: state(),
+    messages: [{ ...msg({ from: "kemal", body, route: "other_att", facts: benchClaim(personRef) }), ...(people ? { people } : {}) }],
   });
+const davideWrites = (r: ReturnType<typeof decide>) =>
+  r.writes.filter((w) => w.kind === "attendance" && "userId" in w && w.userId === "u-davide");
 
-  // The legitimate matches stay.
-  it.each([
-    ["Davide", "Davide De Sousa"],
-    ["davide", "Davide De Sousa"],
-    ["Davide De Sousa", "Davide De Sousa"],
-    ["davide de sousa", "Davide De Sousa"],
-    ["Stuart", "Stuart Belcher"],
-    ["Belcher", "Stuart Belcher"],
-    ["smiler", "Nabz"],
-    ["CJ", "Cj - Barber Lab"],
-    ["Mustafa", "Mustafa Cayir"],
-    ["Mustafa Çayır", "Mustafa Cayir"],
-  ])("'%s' still resolves to %s", (ref, name) => {
-    const r = resolvePerson(ref, VETS);
-    expect(r.kind === "resolved" && r.member.name).toBe(name);
-  });
-
-  it("an accent difference is the same name: 'Jose' is José Silva, 'José' is Jose Silva", () => {
-    expect(resolvePerson("Jose", [member("jose", { name: "José Silva" })])).toMatchObject({ kind: "resolved" });
-    expect(resolvePerson("José", [member("jose", { name: "Jose Silva" })])).toMatchObject({ kind: "resolved" });
-  });
-});
-
-describe("the engine: an admin's 'David is on the bench' never moves Davide (Vets, 2026-11-09)", () => {
-  const BODY = "David - Kemal's son, is on the bench";
-  const state = () => {
-    const s = world({
-      players: VETS.map((m) => m.userId.slice(2)),
-      admins: ["kemal", "davide"],
-      maxPlayers: 14,
-      confirmed: ["davide", "kemal", "andrew", "ben", "craig", "dan", "jon", "luca", "nabz", "shane", "steff", "steve", "serg"],
-    });
-    s.roster = VETS.map((m) => ({ ...m }));
-    return s;
-  };
-  const facts = () =>
-    attendanceFacts([
-      claim({
-        subject: "other",
-        polarity: "bench",
-        personRef: "David",
-        personKind: "named",
-        personNamed: true,
-        benchAsked: true,
-        confidence: 0.9,
-      }),
-    ]);
-
-  it("THE INCIDENT: Davide stays CONFIRMED and nothing is written about him", () => {
-    const r = decide({
-      now: NOW,
-      state: state(),
-      messages: [msg({ from: "kemal", body: BODY, route: "other_att", facts: facts() })],
-    });
+describe("the engine acts on the model's pick, never on spelling (Vets, 2026-11-09)", () => {
+  it("THE INCIDENT: the model says 'David, Kemal's son' is nobody in the club: Davide stays CONFIRMED", () => {
+    const r = run("David - Kemal's son, is on the bench", "David", new Map([["David", { kind: "none" }]]));
     expect(statusOf(r.nextState, "davide")).toBe("CONFIRMED");
-    const writes = r.writes.filter((w) => w.kind === "attendance");
-    expect(writes.filter((w) => "userId" in w && w.userId === "u-davide")).toHaveLength(0);
+    expect(davideWrites(r)).toHaveLength(0);
     expect(r.outcomes[0].reasons.join(" | ")).toMatch(/"David" is not a member/);
   });
 
-  it("the same message about the member by his real name still benches him", () => {
-    const f = facts();
-    (f.claims[0] as { personRef: string }).personRef = "Davide";
-    const r = decide({
-      now: NOW,
-      state: state(),
-      messages: [msg({ from: "kemal", body: "Davide is on the bench", route: "other_att", facts: f })],
-    });
+  it("no pick at all (the call failed) moves nobody either", () => {
+    const r = run("David - Kemal's son, is on the bench", "David");
+    expect(statusOf(r.nextState, "davide")).toBe("CONFIRMED");
+    expect(davideWrites(r)).toHaveLength(0);
+  });
+
+  it("a typo the model is sure of is the member: 'Davdie is on the bench' benches Davide (the guess #570 lost, back by the model)", () => {
+    const r = run("Davdie is on the bench", "Davdie", new Map([["Davdie", { kind: "member", userId: "u-davide" }]]));
     expect(statusOf(r.nextState, "davide")).toBe("BENCH");
+  });
+
+  it("a pick the model was not sure of (one candidate) never moves a CONFIRMED member", () => {
+    const r = run("Dav is on the bench", "Dav", new Map([["Dav", { kind: "ambiguous", userIds: ["u-davide"] }]]));
+    expect(statusOf(r.nextState, "davide")).toBe("CONFIRMED");
+    expect(davideWrites(r)).toHaveLength(0);
+  });
+
+  it("the same message by his real name still benches him, when the model says it is him", () => {
+    const r = run("Davide is on the bench", "Davide", new Map([["Davide", { kind: "member", userId: "u-davide" }]]));
+    expect(statusOf(r.nextState, "davide")).toBe("BENCH");
+  });
+
+  it("RED on main: a member's exact name with no pick is NOT resolved by code any more", () => {
+    const r = run("Davide is on the bench", "Davide");
+    expect(statusOf(r.nextState, "davide")).toBe("CONFIRMED");
   });
 });

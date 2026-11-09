@@ -13,7 +13,7 @@
  *   about somebody else           nothing (no one is signed up for another club by someone else)
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { NOW, attendanceFacts, claim, msg, world } from "./helpers";
 import type { EngineMessage, SquadState } from "../types";
 

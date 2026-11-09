@@ -25,7 +25,7 @@ vi.mock("@/lib/ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Prom
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: vi.fn() }));
 vi.mock("@/lib/attendance", () => att);
-const prov = vi.hoisted(() => ({ resolveOrProvisionByName: vi.fn() }));
+const prov = vi.hoisted(() => ({ resolveOrProvisionByName: vi.fn(), resolveOrProvisionNames: vi.fn() }));
 vi.mock("@/lib/resolve-or-provision-name", () => prov);
 // The count line's facts (squad-count.ts), read off the same rows.
 vi.mock("@/lib/squad-count", () => ({
@@ -106,7 +106,7 @@ beforeEach(() => {
     else rows.push({ userId, status });
     return { status };
   });
-  prov.resolveOrProvisionByName.mockImplementation(async (_o: string, name: string) => ({ userId: `new-${name.toLowerCase()}`, name }));
+  prov.resolveOrProvisionNames.mockImplementation(async (_o: string, names: string[]) => new Map(names.map((name) => [name, { userId: `new-${name.toLowerCase()}`, name }])));
   dbMock.adminGroupMessage.findMany.mockResolvedValue([]);
   dbMock.teamAssignment.findMany.mockResolvedValue([]);
   dbMock.adminTeamProposal.findUnique.mockResolvedValue(null);
@@ -429,7 +429,8 @@ describe("answerSquadPasteYes", () => {
       sourceRef: "admin-group:wa-paste",
     });
     expect(att.registerAttendance.mock.calls[0][2]).toMatchObject({ promoteFromBench: true, actorIsAdmin: true });
-    expect(prov.resolveOrProvisionByName).toHaveBeenCalledWith("org", "Naim", { adminConfirmed: true });
+    // Every new name on the list in one who-is-who call (2026-11-09).
+    expect(prov.resolveOrProvisionNames).toHaveBeenCalledWith("org", ["Naim"], { adminConfirmed: true });
   });
 
   it("the diff is worked out again at the YES: a change made since is not undone twice", async () => {

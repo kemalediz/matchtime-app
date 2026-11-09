@@ -173,6 +173,8 @@ import {
 } from "./attendance-engine";
 import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
 import { membersNamedIn } from "./pipeline/identity";
+import { identifyFacts, personPickerFor } from "./pipeline/identify-batch";
+import type { PersonPicker, PersonPicks } from "./pipeline/who-is-who";
 
 export interface EngineBatchMessage {
   waMessageId: string;
@@ -411,6 +413,9 @@ export interface EngineBatchDeps extends EngineApplyDeps {
   claimGuestNameAsk: (args: { matchId: string; userId: string }) => Promise<boolean>;
   /** Injected so tests can drive the whole batch without a key. */
   model?: PipelineModel;
+  /** Who the names in the facts are (`who-is-who.ts`). Injected by tests;
+   *  otherwise `personPickerFor`. */
+  identify?: PersonPicker;
   /**
    * THE CLUB IS AT ITS DAILY AI CAP (`ai-budget.ts`), known before the
    * batch started. The attendance extractor still reads each owned
@@ -433,6 +438,13 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    * `admin-group-name-list.ts`). Absent, nothing changes.
    */
   presetFacts?: (message: EngineBatchMessage) => AttendanceFacts | null;
+  /**
+   * WHO THE PRESET FACTS' NAMES ARE, when the caller's own model call
+   * already picked them from the club's members (HQ's squad reader,
+   * 2026-11-09). Those names are not asked again; any other name in the
+   * message is (`pipeline/identify-batch.ts`). Absent: every name is asked.
+   */
+  presetPeople?: (message: EngineBatchMessage) => PersonPicks | null;
   /** Counts messages nothing read because the club is past twice its cap
    *  (the owner dashboard's counter). Injected by tests; defaults to
    *  `recordCapSkips` in `ai-budget.ts`. */
@@ -448,7 +460,13 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    * ("might have to pull out", "my ankle is wrecked") must not write, and
    * only an explicit instruction does. Absent, nothing changes.
    */
-  vetFacts?: (args: { message: EngineBatchMessage; facts: AttendanceFacts; state: SquadState }) => AttendanceFacts;
+  vetFacts?: (args: {
+    message: EngineBatchMessage;
+    facts: AttendanceFacts;
+    state: SquadState;
+    /** Who the facts' names are (`pipeline/who-is-who.ts`). */
+    people: PersonPicks | undefined;
+  }) => AttendanceFacts;
   /**
    * A REPLY TO A PARTNER CLUB'S ASK (cross-club ask, slice S3). The engine's
    * `partner_volunteer` writes go here, never to `applyEngineWrites`: they
@@ -965,6 +983,38 @@ export async function runAttendanceEngineBatch(args: {
     factsById.set(m.waMessageId, { facts: clamped.facts, degraded: before.degraded });
   }
 
+  // ── Stage 2b': WHO IS WHO (2026-11-09) ───────────────────────────────
+  // Every name the owned messages' facts quote, put to the model in one
+  // call with the club's members (`pipeline/who-is-who.ts`): which member
+  // it is, nobody, or several. No name is matched by spelling anywhere
+  // below; the engine and the caller's vetting read these picks. Names
+  // the caller already knows (HQ's squad reader) are not asked again.
+  // Same daily-cap rule as the extractor: at the cap it runs in the
+  // attendance overflow.
+  const identify = () =>
+    identifyFacts({
+      picker: personPickerFor({ identify: deps.identify, model }),
+      roster: state.roster,
+      where: deps.presetPeople ? "HQ, the organisers' admin group" : "the players' group",
+      lastBotPost: state.lastBotPost,
+      items: owned
+        .filter((m) => ownedIds.has(m.waMessageId) && factsById.has(m.waMessageId))
+        .map((m) => ({
+          id: m.waMessageId,
+          body: m.body,
+          author: m.senderName ?? m.authorName,
+          senderUserId: m.senderUserId,
+          facts: factsById.get(m.waMessageId)!.facts,
+          known: deps.presetPeople?.(m) ?? null,
+        })),
+    });
+  const identified = deps.aiCapped ? await withAttendanceOverflow(identify) : await identify();
+  if (identified.calls > 0) {
+    cost = { usd: cost.usd + identified.costUsd, calls: cost.calls + identified.calls, ms: cost.ms };
+  }
+  for (const d of identified.degradations) degradations.push(d);
+  const peopleById = identified.people;
+
   // ── Stage 2c: THE CALLER'S VETTING (admin group only) ──────────────
   // See `EngineBatchDeps.vetFacts`. Facts only; ownership is unchanged, so
   // a message left with no claims is decided as "no claims extracted".
@@ -973,7 +1023,10 @@ export async function runAttendanceEngineBatch(args: {
       if (!ownedIds.has(m.waMessageId)) continue;
       const f = factsById.get(m.waMessageId);
       if (!f || f.facts.kind !== "attendance") continue;
-      factsById.set(m.waMessageId, { facts: deps.vetFacts({ message: m, facts: f.facts, state }), degraded: f.degraded });
+      factsById.set(m.waMessageId, {
+        facts: deps.vetFacts({ message: m, facts: f.facts, state, people: peopleById.get(m.waMessageId) }),
+        degraded: f.degraded,
+      });
     }
   }
 
@@ -1050,6 +1103,7 @@ export async function runAttendanceEngineBatch(args: {
       degraded: f?.degraded ?? null,
       ...(m.quoted ? { quoted: m.quoted } : {}),
       ...(teamsReadingById.has(m.waMessageId) ? { teamsReading: teamsReadingById.get(m.waMessageId) } : {}),
+      ...(peopleById.has(m.waMessageId) ? { people: peopleById.get(m.waMessageId) } : {}),
     };
   });
 

@@ -11,8 +11,8 @@
  *
  *   - the extractor's facts for an admin-group team change, as a command
  *     (`teamCommandFromFacts`);
- *   - a typed name, placed on a player on the teams by the club's own
- *     rules (`resolveSheetName`, through `nameCandidates`);
+ *   - a typed name, placed on a player on the teams by the model's pick
+ *     from who-is-who (`resolveSheetName`);
  *   - when the "Teams ready" proposal and the reminder are due;
  *   - what changed in the teams since the admin group was last told;
  *   - every sentence, in the club's language.
@@ -21,7 +21,8 @@
  */
 import { t } from "./i18n/t";
 import { londonWallClockToUtc, formatLondon } from "./london-time";
-import { nameCandidates } from "./admin-group-squad-rules";
+import { refKey } from "./person-ref-key";
+import type { PersonPicks } from "./pipeline/who-is-who";
 
 // ── The commands ───────────────────────────────────────────────────────
 
@@ -229,16 +230,22 @@ export interface SheetPlayer {
 export type NameResolution = { kind: "one"; userId: string } | { kind: "ambiguous"; names: string[] } | { kind: "unknown" };
 
 /**
- * Which player on the teams a typed name means, by the same rules a pasted
- * list uses (`nameCandidates`: the whole name, an alias, a first name).
- * Only the players on the teams are candidates, so "Ali" can be unique
- * here when the club has three.
+ * Which player on the teams a typed name means: the model's pick for it
+ * (`people`, from who-is-who over the message and the players on the
+ * teams and in the squad, 2026-11-09), never a match by spelling. Only
+ * the `players` given are candidates: a pick of somebody else is unknown
+ * here. Several possible players, or a pick the model was not sure of,
+ * is ambiguous and named back.
  */
-export function resolveSheetName(raw: string, players: SheetPlayer[]): NameResolution {
-  const ids = nameCandidates(raw, players);
-  if (ids.length === 1) return { kind: "one", userId: ids[0] };
-  if (ids.length > 1) {
-    const nameOf = new Map(players.map((p) => [p.userId, p.name]));
+export function resolveSheetName(raw: string, players: SheetPlayer[], people: PersonPicks | undefined): NameResolution {
+  // No answer at all (a failed call) is "not found": a name it cannot
+  // place is never guessed, and the line asks for it again.
+  const pick = people?.get(refKey(raw));
+  const nameOf = new Map(players.map((p) => [p.userId, p.name]));
+  if (pick?.kind === "member") return nameOf.has(pick.userId) ? { kind: "one", userId: pick.userId } : { kind: "unknown" };
+  if (pick?.kind === "ambiguous") {
+    const ids = pick.userIds.filter((id) => nameOf.has(id));
+    if (ids.length === 0) return { kind: "unknown" };
     return { kind: "ambiguous", names: ids.map((id) => nameOf.get(id) ?? "?") };
   }
   return { kind: "unknown" };
@@ -253,11 +260,11 @@ export type SwapResolution =
  * each, and on two different players. When none does, the problems of
  * the reading that came closest (fewest problems, then the first).
  */
-export function resolveSwap(pairs: Array<[string, string]>, players: SheetPlayer[]): SwapResolution {
+export function resolveSwap(pairs: Array<[string, string]>, players: SheetPlayer[], people: PersonPicks | undefined): SwapResolution {
   let best: Array<{ raw: string; res: NameResolution }> | null = null;
   for (const [ra, rb] of pairs) {
-    const a = resolveSheetName(ra, players);
-    const b = resolveSheetName(rb, players);
+    const a = resolveSheetName(ra, players, people);
+    const b = resolveSheetName(rb, players, people);
     if (a.kind === "one" && b.kind === "one" && a.userId !== b.userId) return { kind: "ok", a: a.userId, b: b.userId };
     const problems = [
       ...(a.kind === "one" ? [] : [{ raw: ra, res: a }]),

@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { compose } from "../compose";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { NOW, msg, world } from "./helpers";
 import type { SquadState } from "../types";
 

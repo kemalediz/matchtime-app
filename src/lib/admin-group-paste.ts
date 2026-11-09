@@ -38,7 +38,7 @@ import { loadOrganiserNames } from "./organiser-names";
 import { cancelAttendance, registerAttendance } from "./attendance";
 import type { AttendanceEventContext } from "./attendance-events";
 import { selectRegistrationMatch } from "./registration-match-select";
-import { resolveOrProvisionByName } from "./resolve-or-provision-name";
+import { resolveOrProvisionNames } from "./resolve-or-provision-name";
 import { isDeliberateNameProvisionable } from "./resolve-sender";
 import { adminGroupSourceRef } from "./admin-added";
 import { formatLondon } from "./london-time";
@@ -57,11 +57,12 @@ import {
   diffPastedSquad,
   gateSquadPaste,
   matchPastedName,
-  type PasteMember,
   type SquadChangeKind,
   type SquadRef,
   type SquadStatus,
 } from "./admin-group-squad-rules";
+import { identifyRefs, personPickerFor } from "./pipeline/identify-batch";
+import type { PersonPicker } from "./pipeline/who-is-who";
 
 export interface PasteReply {
   outcome: "paste-proposed" | "paste-same" | "paste-held" | "paste-applied" | "paste-expired" | "paste-no-match" | "month-seed-applied" | "month-seed-failed";
@@ -129,6 +130,9 @@ export interface HqSquadReadArgs {
   addressed?: boolean;
   /** Tests: the model (null: none). Omitted: the real one, or the e2e stub. */
   deps?: { model?: PipelineModel | null };
+  /** Who the names the reader could not place are (`who-is-who.ts`).
+   *  Tests inject it; absent, `personPickerFor`. */
+  identify?: PersonPicker;
 }
 
 /**
@@ -196,9 +200,22 @@ export async function proposeSquadPaste(args: HqSquadReadArgs & { read?: HqSquad
   }
   if (!match) return answerPasteWithoutMatch(args);
 
-  const members: PasteMember[] = ctx.members.map((m) => ({ userId: m.userId, name: m.name, aliases: m.aliases }));
   const current = await currentSquad(match.id);
-  const onMatch = new Set(current.filter((c) => c.status !== "DROPPED").map((c) => c.userId));
+
+  // The reader found no member for these lines: either nobody, or more
+  // than one member could be meant (its "" says both). One who-is-who
+  // call for the whole list tells them apart, so a member is never added
+  // twice under a new name and nothing is guessed by spelling (2026-11-09).
+  const unnamed = [...new Set(reading.lines.filter((l) => !l.userId).map((l) => l.name))];
+  const { people } = await identifyRefs({
+    picker: args.identify ?? personPickerFor(),
+    refs: unnamed,
+    body: args.text,
+    author: null,
+    senderUserId: args.senderUserId,
+    roster: ctx.members.map((m) => ({ userId: m.userId, name: m.name, aliases: m.aliases, isAdmin: false, hasPhone: false })),
+    where: "HQ, the organisers' admin group: a pasted squad list",
+  });
 
   const unclear: string[] = [];
   // A person nobody in the club is, whose name cannot be a player's (a
@@ -212,9 +229,7 @@ export async function proposeSquadPaste(args: HqSquadReadArgs & { read?: HqSquad
         out.push({ userId: line.userId });
         continue;
       }
-      // The reader found no member: the club's own name rules still look,
-      // so a member is never added twice under a new name.
-      const m = matchPastedName(line.name, members, onMatch);
+      const m = matchPastedName(line.name, people);
       if (m.kind === "member") out.push({ userId: m.userId });
       else if (m.kind === "new" && isDeliberateNameProvisionable(line.name)) out.push({ newName: line.name });
       else if (m.kind === "new") {
@@ -390,9 +405,13 @@ export async function answerSquadPasteYes(args: {
   const changes: Array<{ kind: SquadChangeKind; userId: string | null; name: string | null }> = [];
   const failed: Array<{ userId: string | null; name: string | null }> = [];
 
+  // Every new name on the list in ONE who-is-who call (a former member is
+  // brought back, anyone else added), never one call per name.
+  const newNames = [...diff.add, ...diff.toBench].flatMap((r) => ("newName" in r ? [r.newName] : []));
+  const named = newNames.length ? await resolveOrProvisionNames(orgId, newNames, { adminConfirmed: true }) : new Map();
   const resolve = async (r: SquadRef): Promise<{ userId: string; name: string | null } | null> => {
     if ("userId" in r) return { userId: r.userId, name: null };
-    const res = await resolveOrProvisionByName(orgId, r.newName, { adminConfirmed: true });
+    const res = named.get(r.newName.trim()) ?? null;
     return res ? { userId: res.userId, name: res.name ?? r.newName } : null;
   };
 

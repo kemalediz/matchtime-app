@@ -122,6 +122,8 @@ import {
   type SheetTeam,
   type TeamCommand,
 } from "./team-proposal-rules";
+import { identifyRefs, personPickerFor } from "./pipeline/identify-batch";
+import type { PersonPicker, PersonPicks } from "./pipeline/who-is-who";
 import { recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 import { DEFAULT_SEED_RATING } from "./default-seed";
 import { perTeamFor, playerRange, teamsNeeded } from "./flex-format-rules";
@@ -133,6 +135,9 @@ export interface TeamProposalDeps {
   ratings?: (matchId: string, orgId: string, userIds: string[]) => Promise<Map<string, number>>;
   /** Do the organisers announce the teams themselves? */
   announce?: (org: { id: string }) => boolean | Promise<boolean>;
+  /** Who the command's names are (`pipeline/who-is-who.ts`). Injected in
+   *  tests; absent, `personPickerFor`. */
+  identify?: PersonPicker;
 }
 
 export type TeamReplyOutcome =
@@ -391,12 +396,27 @@ export async function setAsideTeamProposal(orgId: string): Promise<number> {
 
 // ── The commands ──────────────────────────────────────────────────────
 
-/** "me" is the sender; anything else by the club's own name rules. */
-function resolveName(raw: string, players: SheetPlayer[], senderUserId: string): NameResolution {
+/** "me" is the sender; anyone else is the model's pick for the name
+ *  (`people`, who-is-who over the message, 2026-11-09). */
+function resolveName(raw: string, players: SheetPlayer[], senderUserId: string, people: PersonPicks | undefined): NameResolution {
   if (raw.trim().toLowerCase() === "me") {
     return players.some((p) => p.userId === senderUserId) ? { kind: "one", userId: senderUserId } : { kind: "unknown" };
   }
-  return resolveSheetName(raw, players);
+  return resolveSheetName(raw, players, people);
+}
+
+/** Every name a command quotes, for one who-is-who call. */
+function commandNames(command: TeamCommand): string[] {
+  switch (command.kind) {
+    case "reshuffle":
+      return [...command.sides.map((x) => x.name), ...command.together.flat()];
+    case "change":
+      return [...command.moves, ...command.sides.map((x) => x.name), ...command.together.flat()];
+    case "set":
+      return [...command.red, ...command.yellow];
+    default:
+      return [];
+  }
 }
 
 /**
@@ -407,11 +427,12 @@ function resolveAll(
   raws: string[],
   players: SheetPlayer[],
   senderUserId: string,
+  people: PersonPicks | undefined,
 ): { ok: true; ids: string[] } | { ok: false; problems: Array<{ raw: string; res: NameResolution }> } {
   const ids: string[] = [];
   const problems: Array<{ raw: string; res: NameResolution }> = [];
   for (const raw of raws) {
-    const res = resolveName(raw, players, senderUserId);
+    const res = resolveName(raw, players, senderUserId, people);
     if (res.kind === "one") ids.push(res.userId);
     else if (!problems.some((p) => p.raw === raw)) problems.push({ raw, res });
   }
@@ -455,6 +476,9 @@ export async function handleTeamCommand(args: {
   addressed: boolean;
   /** For "restore": the stored sheet the message replies to, if any. */
   quotedSheet?: StoredTeamSheet | null;
+  /** The message, for who-is-who to read its names in (2026-11-09). */
+  body?: string;
+  senderName?: string | null;
   deps?: TeamProposalDeps;
 }): Promise<TeamReply> {
   const { orgId, lang, now, deps, command } = args;
@@ -490,6 +514,19 @@ export async function handleTeamCommand(args: {
   };
 
   const sheet = await loadSheet(match, lang);
+  // Who every name in the command is: the model's pick from the players on
+  // the teams and in the squad, with the message (`who-is-who.ts`), one
+  // call. No name is matched by spelling.
+  const candidates = new Map([...sheet.players, ...sheet.squad].map((p) => [p.userId, p]));
+  const { people } = await identifyRefs({
+    picker: deps?.identify ?? personPickerFor(),
+    refs: commandNames(command),
+    body: args.body ?? commandNames(command).join(", "),
+    author: args.senderName ?? null,
+    senderUserId: args.senderUserId,
+    roster: [...candidates.values()].map((p) => ({ userId: p.userId, name: p.name, aliases: p.aliases, isAdmin: false, hasPhone: false })),
+    where: "HQ, the organisers' admin group, about the teams",
+  });
   const final = match.status === "TEAMS_PUBLISHED";
   const label = (team: SheetTeam) => (team === "RED" ? sheet.labels[0] : sheet.labels[1]);
   const nameOf = (id: string) => sheet.nameOf.get(id) ?? "?";
@@ -500,9 +537,9 @@ export async function handleTeamCommand(args: {
 
   /** New teams, keeping who was put on a side or together. Named against the whole squad. */
   const buildWith = async (sides: Array<{ name: string; to: SheetTeam }>, together: string[][]): Promise<TeamReply> => {
-    const res = resolveAll([...sides.map((x) => x.name), ...together.flat()], sheet.squad, args.senderUserId);
+    const res = resolveAll([...sides.map((x) => x.name), ...together.flat()], sheet.squad, args.senderUserId, people);
     if (!res.ok) return unclear(res.problems);
-    const one = (raw: string) => (resolveName(raw, sheet.squad, args.senderUserId) as { userId: string }).userId;
+    const one = (raw: string) => (resolveName(raw, sheet.squad, args.senderUserId, people) as { userId: string }).userId;
     return build(pinsFor(sides.map((x) => ({ ids: [one(x.name)], to: x.to })), together.map((g) => g.map(one))));
   };
 
@@ -515,7 +552,7 @@ export async function handleTeamCommand(args: {
   }
 
   if (command.kind === "restore" || command.kind === "set") {
-    return setWholeSheet({ ...args, command, match, sheet, announce });
+    return setWholeSheet({ ...args, command, match, sheet, announce, people });
   }
 
   // No teams yet: a pair or a side is a build that keeps them; a move is not.
@@ -551,7 +588,7 @@ export async function handleTeamCommand(args: {
     const simple = !swapSides && sides.length === 0 && together.length === 0;
     // "swap A and B": the two must be two players, on different teams.
     if (simple && moves.length === 2) {
-      const res = resolveSwap([[moves[0], moves[1]]], sheet.players);
+      const res = resolveSwap([[moves[0], moves[1]]], sheet.players, people);
       if (res.kind === "problem") return unclear(res.problems);
       const [a, b] = [res.a, res.b].map((id) => sheet.slots.find((x) => x.userId === id)!);
       if (a.team === b.team) {
@@ -559,9 +596,9 @@ export async function handleTeamCommand(args: {
       }
       outcome = "teams-swapped";
     }
-    const res = resolveAll([...moves, ...sides.map((x) => x.name), ...together.flat()], sheet.players, args.senderUserId);
+    const res = resolveAll([...moves, ...sides.map((x) => x.name), ...together.flat()], sheet.players, args.senderUserId, people);
     if (!res.ok) return unclear(res.problems);
-    const one = (raw: string) => (resolveName(raw, sheet.players, args.senderUserId) as { userId: string }).userId;
+    const one = (raw: string) => (resolveName(raw, sheet.players, args.senderUserId, people) as { userId: string }).userId;
     const sideIds = sides.map((x) => ({ userId: one(x.name), to: x.to }));
     // "put Ali in Red" when he is: one line, as before.
     if (!swapSides && moves.length === 0 && together.length === 0 && sideIds.length === 1) {
@@ -847,7 +884,7 @@ export async function compareQuotedSheet(orgId: string, quoted: StoredTeamSheet,
 /**
  * RESTORE: the teams of the stored sheet the message replies to. SET: the
  * two sides the teams extractor read from a pasted sheet, each name placed
- * on a confirmed player by the club's own rules. Either way, only when
+ * on a confirmed player by the model's pick (`people`). Either way, only when
  * every fact holds (every player on it is in the squad, every confirmed
  * player has a side, the sides are even), and then as a proposal needing
  * YES, saying when it is an earlier sheet. The current proposal is never
@@ -862,6 +899,7 @@ async function setWholeSheet(a: {
   quotedSheet?: StoredTeamSheet | null;
   match: MatchRow;
   sheet: Sheet;
+  people: PersonPicks | undefined;
   announce: boolean;
 }): Promise<TeamReply> {
   const { lang, now, match, sheet } = a;
@@ -878,7 +916,7 @@ async function setWholeSheet(a: {
     const problems: Array<{ raw: string; res: NameResolution }> = [];
     target = [];
     for (const n of named) {
-      const res = resolveSheetName(n.name, sheet.squad);
+      const res = resolveSheetName(n.name, sheet.squad, a.people);
       if (res.kind === "one") target.push({ userId: res.userId, team: n.team });
       else if (!problems.some((p) => p.raw === n.name)) problems.push({ raw: n.name, res });
     }

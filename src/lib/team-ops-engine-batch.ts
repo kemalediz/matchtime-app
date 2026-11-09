@@ -225,6 +225,8 @@ import type { SilenceFacts } from "./tagged-silence";
 import type { OrgFeatures } from "./org-features";
 import { compose } from "./pipeline/compose";
 import { decide as decideDefault } from "./pipeline/engine";
+import { identifyPeople, personPickerFor } from "./pipeline/identify-batch";
+import type { PersonPicker } from "./pipeline/who-is-who";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
 import { extractForRouteTraced } from "./pipeline/trace";
@@ -355,6 +357,9 @@ export interface TeamOpsBatchResult {
 export interface TeamOpsBatchDeps extends TeamOpsApplyDeps {
   /** Injected so tests can drive the whole batch without a key. */
   model?: PipelineModel;
+  /** Who the names in the facts are (`who-is-who.ts`). Injected by tests;
+   *  otherwise `personPickerFor`. */
+  identify?: PersonPicker;
   /** Injected so tests can load a state without a database. */
   loadState?: (orgId: string, now: Date) => Promise<SquadState>;
   /** `SquadState.features` carries attendance / paymentTracking /
@@ -670,9 +675,20 @@ export async function runTeamOpsBatch(args: {
     degraded: null,
   }));
 
+  // Who the names in the facts are (includes, pins, pairings): the
+  // model's picks from the club's members, one call (`who-is-who.ts`).
+  const identified = await identifyPeople({
+    picker: personPickerFor({ identify: deps.identify, model }),
+    messages: engineMessages,
+    roster: state.roster,
+    where: "the players' group",
+  });
+  if (identified.calls > 0) cost = { usd: cost.usd + identified.costUsd, calls: cost.calls + identified.calls, ms: cost.ms };
+  degradations.push(...identified.degradations);
+
   let result: EngineResult;
   try {
-    result = (deps.decide ?? decideDefault)({ messages: engineMessages, state, now });
+    result = (deps.decide ?? decideDefault)({ messages: identified.messages, state, now });
   } catch (err) {
     // `decide` throws on a coverage violation, which is right — that is
     // a bug in the engine, not a bad model day. It must not 500 the

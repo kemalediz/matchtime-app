@@ -21,6 +21,7 @@ import {
   type PasteMember,
 } from "../admin-group-squad-rules";
 import type { AttendanceFacts, Claim } from "../pipeline/types";
+import type { PersonPick } from "../pipeline/who-is-who";
 
 const members: PasteMember[] = [
   { userId: "u-shehryar", name: "Shehryar Khan", aliases: [] },
@@ -32,25 +33,31 @@ const members: PasteMember[] = [
   { userId: "u-ilker", name: "İlker Yılmaz", aliases: [] },
 ];
 
-describe("matchPastedName", () => {
-  it("matches a full name exactly, case and accents folded", () => {
-    expect(matchPastedName("shehryar khan", members)).toEqual({ kind: "member", userId: "u-shehryar" });
-    expect(matchPastedName("ILKER YILMAZ", members)).toEqual({ kind: "member", userId: "u-ilker" });
+// Who a pasted name is, is who-is-who's pick (2026-11-09); `matchPastedName`
+// only reads it. No spelling decides anything here any more.
+describe("matchPastedName reads the model's pick", () => {
+  const people = new Map<string, PersonPick>([
+    ["shehryar khan", { kind: "member", userId: "u-shehryar" }],
+    ["Hafeez", { kind: "member", userId: "u-abdul" }],
+    ["Ali", { kind: "ambiguous", userIds: ["u-ali1", "u-ali2"] }],
+    ["Naim", { kind: "none" }],
+    ["Bila", { kind: "unidentified", why: "the call failed" }],
+  ]);
+  it("a sure pick is that member", () => {
+    expect(matchPastedName("shehryar khan", people)).toEqual({ kind: "member", userId: "u-shehryar" });
+    expect(matchPastedName("Hafeez", people)).toEqual({ kind: "member", userId: "u-abdul" });
   });
-  it("matches a unique first name, the way lists are usually written", () => {
-    expect(matchPastedName("Bilal", members)).toEqual({ kind: "member", userId: "u-bilal" });
-    expect(matchPastedName("Clarence", members)).toEqual({ kind: "member", userId: "u-clarence" });
+  it("several possible members, or no answer, is ambiguous: the line is left out, never guessed", () => {
+    expect(matchPastedName("Ali", people)).toEqual({ kind: "ambiguous" });
+    expect(matchPastedName("Bila", people)).toEqual({ kind: "ambiguous" });
+    expect(matchPastedName("Clarence", people)).toEqual({ kind: "ambiguous" });
   });
-  it("an alias settles it", () => {
-    expect(matchPastedName("Hafeez", members)).toEqual({ kind: "member", userId: "u-abdul" });
-    expect(matchPastedName("Ali H", members)).toEqual({ kind: "member", userId: "u-ali2" });
+  it("nobody in the club: new", () => {
+    expect(matchPastedName("Naim", people)).toEqual({ kind: "new" });
   });
-  it("two players with the same first name: ambiguous, unless only one is on this match", () => {
-    expect(matchPastedName("Ali", members)).toEqual({ kind: "ambiguous" });
-    expect(matchPastedName("Ali", members, new Set(["u-ali1"]))).toEqual({ kind: "member", userId: "u-ali1" });
-  });
-  it("nobody by that name: new", () => {
-    expect(matchPastedName("Naim", members)).toEqual({ kind: "new" });
+  it("RED on main: an exact member name with no pick is not matched by code", () => {
+    expect(matchPastedName("Bilal", undefined)).toEqual({ kind: "ambiguous" });
+    void members;
   });
 });
 

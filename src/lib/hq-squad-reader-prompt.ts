@@ -96,6 +96,8 @@ export interface HqSquadChange {
   /** The roster name of the member this arriving player takes the place
    *  of, when the message says so; "" otherwise. */
   replaces: string;
+  /** That member's id; absent with no `replaces`. */
+  replacesUserId?: string;
 }
 
 export type HqSquadReading =
@@ -340,6 +342,7 @@ function parseChange(o: Record<string, unknown>, input: HqSquadReaderInput, ctx:
       userId: member ? member.userId : null,
       to: to as HqSquadChange["to"],
       replaces: replaced ? replaced.name : "",
+      ...(replaced ? { replacesUserId: replaced.userId } : {}),
     };
     const key = member ? `u:${member.userId}` : `n:${fold(written)}`;
     byKey.delete(key);

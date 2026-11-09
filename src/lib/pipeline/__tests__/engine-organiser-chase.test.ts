@@ -8,7 +8,7 @@
  * "recruit" does. Anyone else's chase stays the silent nudge it was.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { NOW, attendanceFacts, msg, world } from "./helpers";
 
 const chase = (from: string, body: string, tagged = true) =>

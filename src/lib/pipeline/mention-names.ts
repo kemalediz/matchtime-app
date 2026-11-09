@@ -47,11 +47,14 @@
  *               server stored itself (`knownLids`: participant
  *               snapshots, the connect DM). Under Baileys every mention
  *               is a LID, so without this the rung never fired.
- *   2. ALIAS  — `UserAlias`, admin-curated (or merge-derived) and unique
- *               per (orgId, alias). This is what already knew about David.
- *   3. ROSTER — `resolvePerson()`, the same ambiguity-bailing matcher the
- *               engine uses on a quoted name. Two candidates = no write
- *               and no substitution, exactly as everywhere else.
+ *   2. THE MODEL'S PICK (2026-11-09; until then an alias lookup and the
+ *               roster matcher, by spelling). The pushnames the phone
+ *               rung could not name are put to who-is-who in one call
+ *               (`nameMentions`): the club's members with their aliases
+ *               (`UserAlias`, which is what already knew about David),
+ *               and it says which member each is, nobody, or several.
+ *               Read by `resolvePerson`: anything but one sure member is
+ *               no substitution, exactly as everywhere else.
  *
  * Nothing else may put a name in the body. An unresolved mention keeps
  * its raw "@<digits>" token, which `identity.ts` refuses as a person
@@ -60,14 +63,16 @@
  * fabricated text.
  */
 import { resolvePerson } from "./identity";
-import { normaliseName } from "../name-normalise";
 import type { Member } from "./types";
+import type { PersonPicker, PersonPicks } from "./who-is-who";
 
 /** A member as this module needs to see them. `phone` is E.164 or null. */
 export interface MentionRosterMember {
   userId: string;
   name: string;
   phone?: string | null;
+  /** The club's aliases for them, shown to who-is-who. */
+  aliases?: readonly string[];
 }
 
 /**
@@ -94,10 +99,14 @@ export interface MentionOutcome {
   digits: string;
   /** The member the mention was named from, or null — token left raw. */
   member: { userId: string; name: string } | null;
-  /** Which trust level answered. null when nothing did. */
-  via: "phone" | "stored-lid" | "alias" | "roster" | null;
+  /** Which trust level answered. null when nothing did. "roster": the
+   *  model's pick (who-is-who). */
+  via: "phone" | "stored-lid" | "roster" | null;
   /** Why nothing did, for the ops log. */
   why?: string;
+  /** The pushname the phone rung could not name: what who-is-who is
+   *  asked about. */
+  pushname?: string;
 }
 
 /** JID suffixes whose digits are a real phone number. */
@@ -135,10 +144,14 @@ export function resolveMentionNames(args: {
   /** Display names the Pi saw, per JID. Absent from older Pi builds. */
   mentionNames?: MentionNameInput[];
   roster: MentionRosterMember[];
-  /** `UserAlias` rows for this org (alias already folded on write). */
+  /** `UserAlias` rows for this org: shown to who-is-who with each member
+   *  (by `nameMentions`); never matched here. */
   aliases?: Array<{ alias: string; userId: string }>;
   /** LIDs the server has stored against a phone or a member. */
   knownLids?: KnownLid[];
+  /** who-is-who's picks for the pushnames (`nameMentions`). Absent: no
+   *  pushname names anybody. */
+  people?: PersonPicks;
 }): { body: string; outcomes: MentionOutcome[] } {
   let body = typeof args?.body === "string" ? args.body : "";
   const jids = Array.isArray(args?.mentions) ? args.mentions : [];
@@ -166,12 +179,6 @@ export function resolveMentionNames(args: {
     if (d.length < 7) continue;
     byPhone.set(d, [...(byPhone.get(d) ?? []), m]);
   }
-
-  const aliasToUser = new Map(
-    (args?.aliases ?? [])
-      .filter((a) => a && typeof a.alias === "string" && typeof a.userId === "string")
-      .map((a) => [normaliseName(a.alias), a.userId]),
-  );
 
   const nameByJid = new Map<string, string>();
   const phoneByJid = new Map<string, string>();
@@ -228,25 +235,21 @@ export function resolveMentionNames(args: {
       }
     }
 
-    // ── 2 & 3. Otherwise the pushname is a LOOKUP KEY, never text. ────
+    // ── 2. Otherwise the pushname is a LOOKUP KEY, never text: the
+    //    model's pick for it from the club's members, aliases included
+    //    (`who-is-who.ts`, 2026-11-09). No pushname is matched by spelling.
     if (!outcome.member && candidate) {
-      const key = normaliseName(candidate);
-      const aliasUser = key.length >= 2 ? aliasToUser.get(key) : undefined;
-      if (aliasUser && nameByUserId.has(aliasUser)) {
-        outcome.member = { userId: aliasUser, name: nameByUserId.get(aliasUser)! };
-        outcome.via = "alias";
+      outcome.pushname = candidate;
+      const resolved = resolvePerson(candidate, asMembers, args.people);
+      if (resolved.kind === "resolved") {
+        outcome.member = { userId: resolved.member.userId, name: resolved.member.name };
+        outcome.via = "roster";
+      } else if (resolved.kind === "ambiguous") {
+        outcome.why = resolved.why ?? `"${candidate}" could be ${resolved.candidates.length} members`;
+      } else if (resolved.kind === "not-a-person") {
+        outcome.why = resolved.why;
       } else {
-        const resolved = resolvePerson(candidate, asMembers);
-        if (resolved.kind === "resolved") {
-          outcome.member = { userId: resolved.member.userId, name: resolved.member.name };
-          outcome.via = "roster";
-        } else if (resolved.kind === "ambiguous") {
-          outcome.why = `"${candidate}" matches ${resolved.candidates.length} members`;
-        } else if (resolved.kind === "not-a-person") {
-          outcome.why = resolved.why;
-        } else {
-          outcome.why = `"${candidate}" matches no member`;
-        }
+        outcome.why = `"${candidate}" is no member`;
       }
     }
     if (!outcome.member && !outcome.why) {
@@ -260,6 +263,42 @@ export function resolveMentionNames(args: {
   }
 
   return { body, outcomes };
+}
+
+/**
+ * `resolveMentionNames` with rung 2: the phone and stored-LID rungs first,
+ * then ONE who-is-who call for every pushname they left, across all the
+ * messages given, then the substitution. No call when every mention was
+ * named by phone (the usual case under Baileys) or carries no pushname.
+ */
+export async function nameMentions(args: {
+  messages: Array<{ body: string; mentions?: string[]; mentionNames?: MentionNameInput[] }>;
+  roster: MentionRosterMember[];
+  aliases?: Array<{ alias: string; userId: string }>;
+  knownLids?: KnownLid[];
+  picker: PersonPicker;
+  where?: string;
+}): Promise<Array<{ body: string; outcomes: MentionOutcome[] }>> {
+  const base = { roster: args.roster, aliases: args.aliases, knownLids: args.knownLids };
+  const first = args.messages.map((m) => resolveMentionNames({ ...base, ...m }));
+  const asks = first
+    .map((r, i) => ({ i, refs: [...new Set(r.outcomes.flatMap((o) => (!o.member && o.pushname ? [o.pushname] : [])))] }))
+    .filter((x) => x.refs.length > 0);
+  if (asks.length === 0) return first;
+  const aliasesOf = new Map<string, string[]>();
+  for (const a of args.aliases ?? []) aliasesOf.set(a.userId, [...(aliasesOf.get(a.userId) ?? []), a.alias]);
+  const res = await args.picker({
+    roster: args.roster.map((m) => ({ userId: m.userId, name: m.name, aliases: m.aliases ?? aliasesOf.get(m.userId) ?? [] })),
+    where:
+      `${args.where ?? "the club's WhatsApp group"}. Each name to identify is the WhatsApp profile name of a person ` +
+      `@mentioned in the message: they chose it themselves, so it may differ from the name the club knows them by`,
+    messages: asks.map(({ i, refs }) => ({ id: String(i), body: args.messages[i].body, author: null, refs })),
+  });
+  for (const d of res.degradations) console.warn(`[mentions] ${d}`);
+  return args.messages.map((m, i) => {
+    const people = res.picks.get(String(i));
+    return people ? resolveMentionNames({ ...base, ...m, people }) : first[i];
+  });
 }
 
 /** One compact ops line per message, or null when there is nothing to say. */

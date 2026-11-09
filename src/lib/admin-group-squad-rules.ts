@@ -24,6 +24,8 @@ import { t } from "./i18n/t";
 import { buildBenchPickHint, buildSquadCountLine } from "./squad-count-line";
 import type { AttendanceFacts, Claim, Route } from "./pipeline/types";
 import type { HqSquadChange } from "./hq-squad-reader-prompt";
+import { refKey } from "./person-ref-key";
+import type { PersonPicks } from "./pipeline/who-is-who";
 
 /**
  * The router routes acted on in the admin group: attendance about the
@@ -68,54 +70,18 @@ function fold(s: string): string {
 }
 
 /**
- * Which member a pasted name means, by the same rules the group's
- * third-party resolver uses (`resolveOrProvisionByName`): the whole name,
- * then an alias, then a unique first name (or a first name one is a prefix
- * of, three letters or more). Two candidates and none of them on this
- * match: ambiguous, and the list leaves that line out rather than guess.
- * `onMatch` is everyone with a row on the match: when only one candidate
- * is already there, that is who the list means.
+ * Which member a pasted name means: the model's pick for it (`people`,
+ * from who-is-who over the list and the club's members, 2026-11-09),
+ * never a match by spelling. A member it is sure of is that member;
+ * nobody in the club is a new player; several possible members, one it
+ * was not sure of, or no answer at all is ambiguous, and the list leaves
+ * that line out rather than guess.
  */
-export function matchPastedName(raw: string, members: PasteMember[], onMatch: ReadonlySet<string> = new Set()): NameMatch {
-  const ids = nameCandidates(raw, members);
-  if (ids.length === 1) return { kind: "member", userId: ids[0] };
-  if (ids.length > 1) {
-    const here = ids.filter((id) => onMatch.has(id));
-    return here.length === 1 ? { kind: "member", userId: here[0] } : { kind: "ambiguous" };
-  }
-  return { kind: "new" };
-}
-
-/**
- * Who a typed name could be, by the rules above, in order: the whole name,
- * then an alias, then a first name (or a first name one is a prefix of,
- * three letters or more). The first rule that finds anyone decides; the
- * ids come back without repeats, in `members` order. Empty: nobody. Also
- * read by the team commands in the admin group (`team-proposal-rules.ts`),
- * with `members` the players on the teams, so a name there means what it
- * means in a pasted list.
- */
-export function nameCandidates(raw: string, members: PasteMember[]): string[] {
-  const name = fold(typeof raw === "string" ? raw : "");
-  if (!name) return [];
-  const uniq = (ids: string[]) => [...new Set(ids)];
-  const exact = uniq(members.filter((m) => m.name && fold(m.name) === name).map((m) => m.userId));
-  if (exact.length) return exact;
-  const alias = uniq(members.filter((m) => m.aliases.some((a) => fold(a) === name)).map((m) => m.userId));
-  if (alias.length) return alias;
-  const first = name.split(" ")[0];
-  return uniq(
-    members
-      .filter((m) => {
-        if (!m.name) return false;
-        const mFirst = fold(m.name).split(" ")[0] ?? "";
-        return (
-          mFirst === first ||
-          (mFirst.length >= 3 && first.length >= 3 && (mFirst.startsWith(first) || first.startsWith(mFirst)))
-        );
-      })
-      .map((m) => m.userId),
-  );
+export function matchPastedName(raw: string, people: PersonPicks | undefined): NameMatch {
+  const pick = people?.get(refKey(typeof raw === "string" ? raw : ""));
+  if (pick?.kind === "member") return { kind: "member", userId: pick.userId };
+  if (pick?.kind === "none") return { kind: "new" };
+  return { kind: "ambiguous" };
 }
 
 // ── The diff ──────────────────────────────────────────────────────────

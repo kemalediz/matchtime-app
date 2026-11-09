@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { compose } from "../compose";
 import { en } from "@/lib/i18n/strings.en";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import {
   composeSquadStatusPost,
   contradictsSquadState,

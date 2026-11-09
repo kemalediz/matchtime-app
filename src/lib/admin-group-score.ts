@@ -59,6 +59,7 @@ import { recordMatchTimeQuestion } from "./admin-group-log";
 import type { ScoreWaiting } from "./admin-group-context";
 import { organisersPickMom } from "./mom-chooser";
 import { momAskRef, momPickDeps, resolveMomRef, type MomPickDeps } from "./mom-pick";
+import { identifyRefs, personPickerFor } from "./pipeline/identify-batch";
 import { joinChoice } from "./i18n/text";
 
 /** What `recordMatchTimeQuestion` files a score question under. */
@@ -227,7 +228,18 @@ async function hqMom(
   }
   const mvpLabel = await a.mom.mvpLabel(matchId);
   if (!a.organiser || !a.senderUserId) return { outcome: "hq-mom-organisers-only", replyText: s.hq_mom_organisers_only({ mvpLabel }) };
-  const r = resolveMomRef(a.momRef, await a.mom.players(matchId));
+  const players = await a.mom.players(matchId);
+  // Who the name is: the model's pick from the match's players.
+  const { people } = await identifyRefs({
+    picker: a.mom.identify ?? personPickerFor({ ...(a.deps?.model ? { model: a.deps.model } : {}) }),
+    refs: [a.momRef],
+    body: a.body,
+    author: a.senderName,
+    senderUserId: a.senderUserId,
+    roster: players,
+    where: "HQ, the organisers' admin group",
+  });
+  const r = resolveMomRef(a.momRef, players, people);
   if (r.kind !== "resolved") {
     const text =
       r.kind === "ambiguous"

@@ -40,6 +40,8 @@ import { t } from "./i18n/t";
 import { dayLabel } from "./i18n/dates";
 import { joinChoice, joinList } from "./i18n/text";
 import { resolvePerson } from "./pipeline/identity";
+import { identifyRefs, personPickerFor } from "./pipeline/identify-batch";
+import { refKey, type PersonPicker } from "./pipeline/who-is-who";
 import { withAliases } from "./member-aliases";
 import type { Member } from "./pipeline/types";
 import { recordMatchTimeQuestion } from "./admin-group-log";
@@ -148,8 +150,14 @@ export interface HqFeeFreeInput {
   /** The day named for the game, verbatim ("next Friday"), or null. */
   dayPhrase: string | null;
   senderUserId: string;
+  /** The message, for who-is-who to read the names in (2026-11-09). */
+  body: string;
+  senderName?: string | null;
   messageId: string;
   now: Date;
+  /** Who the names are (`pipeline/who-is-who.ts`). Tests inject it;
+   *  absent, `personPickerFor`. */
+  identify?: PersonPicker;
 }
 
 interface HqReply {
@@ -224,18 +232,34 @@ export async function proposeFeeFreeInHq(input: HqFeeFreeInput): Promise<HqReply
   const already: string[] = [];
   const lines: string[] = [];
   const seen = new Set<string>();
+  // Who each name is: the model's pick from the squad and the collector
+  // (`pipeline/who-is-who.ts`), one call for the message. Never by spelling.
+  const collector: Member | null =
+    collectorId && collectorName ? { userId: collectorId, name: collectorName, isAdmin: false, hasPhone: false } : null;
+  const { people } = await identifyRefs({
+    picker: input.identify ?? personPickerFor(),
+    refs,
+    body: input.body,
+    author: input.senderName ?? null,
+    senderUserId: input.senderUserId,
+    roster: collector ? [...roster, collector] : roster,
+    where: "HQ, the organisers' admin group",
+  });
   for (const ref of refs) {
     const shown = ref.replace(/^@/, "");
-    const r = resolvePerson(ref, roster);
+    // The collector is out of the roster on purpose: say why, not "not found".
+    const pick = people.get(refKey(ref));
+    if (collector && pick?.kind === "member" && pick.userId === collector.userId) {
+      lines.push(s.hq_fee_free_collector({ name: collector.name }));
+      continue;
+    }
+    const r = resolvePerson(ref, roster, people);
     if (r.kind === "ambiguous") {
       lines.push(s.hq_fee_free_which({ ref: shown, choices: joinChoice(lang, r.candidates.map((c) => c.name)) }));
       continue;
     }
     if (r.kind !== "resolved") {
-      // The collector is out of the roster on purpose: say why, not "not found".
-      const isCollector =
-        collectorId && collectorName && resolvePerson(ref, [{ userId: collectorId, name: collectorName, isAdmin: false, hasPhone: false }]).kind === "resolved";
-      lines.push(isCollector ? s.hq_fee_free_collector({ name: collectorName as string }) : s.hq_fee_free_not_in_squad({ name: shown, day }));
+      lines.push(s.hq_fee_free_not_in_squad({ name: shown, day }));
       continue;
     }
     if (seen.has(r.member.userId)) continue;

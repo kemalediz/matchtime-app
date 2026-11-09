@@ -26,6 +26,7 @@
 // `SquadState.payments` and `payment-answer.ts`'s header.
 import type { QuotedRef } from "../quoted-message";
 import type { PaymentSnapshot } from "./payment-answer";
+import type { PersonPick } from "./who-is-who";
 // Same rule, same reason: `rating-progress-answer.ts` is the Prisma-free
 // half of `rating-progress.ts`, split out on 2026-09-11 so the composer
 // can render this answer. See `SquadState.ratingProgress`.
@@ -2054,6 +2055,14 @@ export interface EngineMessage {
    * knows who it moves.
    */
   teamsReading?: TeamFacts | "unreadable" | null;
+  /**
+   * WHO EACH NAME THE FACTS QUOTE IS, as the model picked from the club's
+   * members (`who-is-who.ts`, 2026-11-09): the quoted name (`refKey`) to a
+   * member, nobody, or several. The engine resolves a name only through
+   * this; a name with no pick is an ambiguity and moves nobody. Absent:
+   * no name in the message was looked up.
+   */
+  people?: ReadonlyMap<string, PersonPick>;
 }
 
 export interface EngineInput {

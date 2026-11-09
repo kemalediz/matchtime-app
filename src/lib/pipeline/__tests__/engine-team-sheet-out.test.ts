@@ -21,7 +21,7 @@
  * keep the 0.7 floor.
  */
 import { describe, it, expect } from "vitest";
-import { decide, TEAM_SHEET_OUT_CONFIDENCE } from "../engine";
+import { decide, TEAM_SHEET_OUT_CONFIDENCE } from "./support/stub-picks";
 import { NOW, SUTTON, attendanceFacts, claim, msg, statusOf, world } from "./helpers";
 import type { Claim, ProposedWrite } from "../types";
 

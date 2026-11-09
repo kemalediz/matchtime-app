@@ -790,6 +790,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       const r = await handleTeamCommand({
         ...base(actor),
         command,
+        body,
+        senderName: input.senderName ?? null,
         addressed: true,
         quotedSheet: command.kind === "restore" ? await quotedSheet() : null,
       });
@@ -1251,6 +1253,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
             undo: facts.undo === true,
             dayPhrase: facts.matchDay ?? null,
             senderUserId: feeActor,
+            body,
+            senderName: input.senderName ?? null,
             messageId,
             now,
           });

@@ -19,7 +19,7 @@
  * changed.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { compose } from "../compose";
 import { attendanceFacts, claim, msg, NOW, world } from "./helpers";
 

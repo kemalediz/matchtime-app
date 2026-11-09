@@ -12,7 +12,7 @@
  *   4. two scorelines in one batch asked two questions.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { compose } from "../compose";
 import type { ScoreFacts, SquadState } from "../types";
 import { NOW, msg, world, type MsgOpts } from "./helpers";

@@ -201,6 +201,8 @@ import {
 } from "./admin-ops-engine";
 import { compose } from "./pipeline/compose";
 import { decide as decideDefault } from "./pipeline/engine";
+import { identifyPeople, personPickerFor } from "./pipeline/identify-batch";
+import type { PersonPicker } from "./pipeline/who-is-who";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
 import { extractForRouteTraced } from "./pipeline/trace";
@@ -332,6 +334,9 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
   reminderMutedUserIds: () => Promise<string[]>;
   /** Injected so tests can drive the whole batch without a key. */
   model?: PipelineModel;
+  /** Who the names in the facts are (`who-is-who.ts`). Injected by tests;
+   *  otherwise `personPickerFor`. */
+  identify?: PersonPicker;
   /** Injected so tests can load a state without a database. */
   loadState?: (orgId: string, now: Date) => Promise<SquadState>;
   /** Injected so a test can prove the write assertion and the
@@ -1050,9 +1055,20 @@ export async function runAdminOpsBatch(args: {
     degraded: null,
   }));
 
+  // Who the names in the facts are (a payment's payer and who it covers):
+  // the model's picks from the club's members, one call (`who-is-who.ts`).
+  const identified = await identifyPeople({
+    picker: personPickerFor({ identify: deps.identify, model }),
+    messages: engineMessages,
+    roster: state.roster,
+    where: "the players' group",
+  });
+  if (identified.calls > 0) cost = { usd: cost.usd + identified.costUsd, calls: cost.calls + identified.calls, ms: cost.ms };
+  degradations.push(...identified.degradations);
+
   let result: EngineResult;
   try {
-    result = (deps.decide ?? decideDefault)({ messages: engineMessages, state, now });
+    result = (deps.decide ?? decideDefault)({ messages: identified.messages, state, now });
   } catch (err) {
     // No retry: `decide()` is pure over `{messages, state, now}`, so the
     // same input throws the same way. (It used to be safe to be terse

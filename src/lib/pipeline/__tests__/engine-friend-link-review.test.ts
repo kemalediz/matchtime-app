@@ -5,7 +5,7 @@
  * or not (R1b).
  */
 import { describe, expect, it } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { NOW, attendanceFacts, claim, msg, world } from "./helpers";
 import { existingProfileOutcome } from "../../friend-link/rules";
 

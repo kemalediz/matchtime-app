@@ -26,7 +26,7 @@
  * Not a `.test.ts`, so vitest does not collect it; it sits here because
  * it builds its world from the engine suite's `helpers.ts`.
  */
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import type { ScoreFacts, SquadState } from "../types";
 import { NOW, msg, world } from "./helpers";
 

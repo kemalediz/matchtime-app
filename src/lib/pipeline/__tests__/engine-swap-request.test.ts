@@ -19,7 +19,7 @@
  * the model's real reading, not to a reading we would have preferred.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import type { EngineMessage, TeamFacts } from "../types";
 import { NOW, SUTTON, attendanceFacts, claim, msg, statusOf, world } from "./helpers";
 

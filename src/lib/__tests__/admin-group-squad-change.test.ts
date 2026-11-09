@@ -46,6 +46,7 @@ vi.mock("@/lib/squad-count", () => squadCount);
 
 import { handleAdminSquadChange } from "../admin-group-squad-change";
 import type { AttendanceFacts, Claim, Route, SquadState } from "../pipeline/types";
+import { personRefsIn, stubPicks, whoRosterOf } from "../pipeline/who-is-who";
 
 const MATCH_ID = "m1";
 const input = {
@@ -127,7 +128,14 @@ function vetThrough(
     ],
   } as unknown as SquadState;
   const message = { ...a.messages[0], ...(body ? { body } : {}) };
-  return a.deps.vetFacts!({ message, facts: { kind: "attendance", claims, affirmation: null, sideRequests }, state });
+  const facts: AttendanceFacts = { kind: "attendance", claims, affirmation: null, sideRequests };
+  // Who the names are, as the runner hands them over (who-is-who; here
+  // its name-based stand-in, 2026-11-09).
+  const people = stubPicks({
+    roster: whoRosterOf(state.roster),
+    messages: [{ id: message.waMessageId, body: message.body, author: null, refs: personRefsIn(facts) }],
+  }).get(message.waMessageId);
+  return a.deps.vetFacts!({ message, facts, state, people });
 }
 
 const statuses = new Map<string, string>();

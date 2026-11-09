@@ -1,43 +1,45 @@
 /**
- * IDENTITY RESOLUTION — pure, no DB.
+ * IDENTITY RESOLUTION, pure, no DB.
  *
- * §9 classifies the identity guards as SURVIVORS: "Ambiguity bails are
- * load-bearing and orthogonal" to who decides. They are not scar tissue
- * and they are not going away; what changes is that they run on a
- * `personRef` the model quoted verbatim rather than on a name it may
- * have invented, and they run BEFORE anything can write.
+ * WHO A NAME IS, IS THE MODEL'S (2026-11-09, Kemal: "never use string
+ * matching"). Code used to decide it here by spelling: an exact name, an
+ * alias, a first name, a whole word, a first name a letter or two off.
+ * The last of those benched the member Davide De Sousa for "David -
+ * Kemal's son, is on the bench" (Vets MNF, 2026-11-09 14:42), and no
+ * spelling rule can tell David from Davide while still reading "habibi"
+ * as Habib. Now `who-is-who.ts` shows the model the club's members and
+ * the message, and it says which member a quoted name is, that it is
+ * nobody in the club, or that it could be several. `resolvePerson` only
+ * reads that answer (the `PersonPicks` for the message) and checks that
+ * the member it names is on the roster being resolved against. No name is
+ * compared with another here.
  *
- * Three rules, in order of how much damage they prevent:
+ * What stays code's, because it is about the REFERENCE and not about who
+ * it matches:
  *
  *   1. A raw digit string is never a person. The 2026-05-05 Izzet/Elnur
  *      incident (`a5a150a`) had the then-analyzer read the wire's `@lid`
  *      form; the failure mode on the other side of it is provisioning a
  *      member literally called "158055467598020".
- *   2. A relationship is never a person. Since 2026-10-30 that is the
- *      extractor's `personNamed: false` (relationships, quantities,
- *      indefinites, the whole group), applied by the engine; the word
- *      lists that read it here (`isPlaceholderGuestName`, `GROUP_ADDRESS`)
- *      are gone ("no string parsing"). §4.1 measured the then-incumbent
- *      analyzer provisioning "Amir's brother" six times out of six.
- *
- *   (Both are cited in the past tense on purpose. §10 step 8 deleted
- *   `analyzeBatch` and the 19,850-token `SYSTEM_PROMPT`, so neither
- *   decider exists to be corrected any more. These three rules are not a
- *   second opinion on somebody else's output — they are the only thing
- *   standing between a quoted `personRef` and a row in the database.)
- *   3. Ambiguity BAILS. Two members whose names both match gets no
- *      write and a loud degradation, never a coin flip.
+ *   2. A relationship is never a person: the extractor's `personKind`
+ *      (relations, quantities, indefinites, the whole group), applied by
+ *      the engine before anything is looked up.
+ *   3. Ambiguity BAILS. A name the model says could be several members,
+ *      or that it was not sure of, or that it gave no usable answer for,
+ *      is an ambiguity: no write and a loud degradation, never a coin flip.
  */
 import type { Member } from "./types";
+import { refKey, type PersonPicks } from "./who-is-who";
 
 export type ResolutionOutcome =
   | { kind: "resolved"; member: Member }
-  /** No member matches, and the ref is a usable name — a guest who could
-   *  legitimately be provisioned by the caller if policy allows it. */
+  /** The model says nobody in the club, and the ref is a usable name: a
+   *  guest who could be provisioned by the caller if policy allows it. */
   | { kind: "unknown"; name: string }
-  | { kind: "ambiguous"; candidates: Member[] }
-  /** The ref cannot be a person at all: digits, a relationship word, or
-   *  nothing usable. NEVER provisionable. */
+  /** Several members, not sure which, or no usable answer (`why`). */
+  | { kind: "ambiguous"; candidates: Member[]; why?: string }
+  /** The ref cannot be a person at all: digits, or nothing usable.
+   *  NEVER provisionable. */
   | { kind: "not-a-person"; why: string };
 
 /** A pushname that is really just digits ("447700900009", "1580554675…").
@@ -81,72 +83,8 @@ function norm(s: string): string {
     .trim();
 }
 
-/** `norm` without spaces, for a reference carrying a digit only: "Ali2"
- *  is "Ali 2". Digit-free names never use it, so they match as before. */
-function compact(s: string): string {
-  return norm(s).replace(/\s+/g, "");
-}
-
 function firstToken(s: string): string {
   return norm(s).split(" ")[0] ?? "";
-}
-
-/**
- * A near miss that is safe to accept.
- *
- * ⚠️ TIGHTENED after an adversarial review found the first version
- * resolving the WRONG PERSON on ordinary names from this squad's own
- * distribution: "Sami" resolved to Samir Khan and "Hasan" to Hasanali
- * Zaidi. A tagged "Sami is out" about a guest would then have dropped a
- * confirmed member, and the engine's personNamed override (which trusts
- * this function over the model) amplifies it.
- *
- * So a near miss now needs BOTH: at least five characters on the shorter
- * side, and a length difference of at most two. Since 2026-11-09 it also
- * needs an agreeing surname (`surnameAgrees`, below): "David" alone was
- * read as Davide De Sousa in production. Accents never needed it ("Aydın"
- * and "Aydin" are equal once `norm` has run).
- */
-const NEAR_MISS_MIN_LENGTH = 5;
-const NEAR_MISS_MAX_EXTRA = 2;
-
-function nearMiss(a: string, b: string): boolean {
-  const shorter = Math.min(a.length, b.length);
-  if (shorter < NEAR_MISS_MIN_LENGTH) return false;
-  if (Math.abs(a.length - b.length) > NEAR_MISS_MAX_EXTRA) return false;
-  return a.startsWith(b) || b.startsWith(a);
-}
-
-/**
- * Does the rest of the reference (its surname) AGREE with the member's?
- *
- * A near miss is a guess that a FIRST name was misspelt, and a first name a
- * letter or two off a member's is very often simply a different name:
- * David is not Davide, Daniel is not Daniela, Simon is not Simone.
- *
- *   - Vets sandbox, 2026-11-03: "David Aksoy is IN", a guest, was read as
- *     Davide Russo and changed nothing (a surname that disagrees).
- *   - Vets MNF, 2026-11-09 14:42, PRODUCTION: the owner's "David - Kemal's
- *     son, is on the bench", about a non-member, was read as Davide De
- *     Sousa (no surname at all) and moved him, CONFIRMED for that night,
- *     to the BENCH; his place was then offered to the bench.
- *
- * So the guess is accepted only when something else in the reference
- * corroborates it: a surname on both sides, and a word of the reference's
- * agreeing with a word of the member's (the same word, or one starting the
- * other: "R" and "Rahim" agree with "Rahimi"). "Davidee Russo" is still
- * Davide Russo. A bare first name, or a member with no surname on record,
- * has nothing to corroborate it and resolves nobody: the caller treats it
- * as the unknown person it may well be, which can never move a member. A
- * nickname the club uses for a member ("habibi" for Habib) is an alias
- * (`UserAlias`), which resolves exactly. Used only by the near miss: an
- * exact first name still resolves as before.
- */
-function surnameAgrees(ref: string, memberName: string): boolean {
-  const refRest = norm(ref).split(" ").slice(1).filter((w) => /[a-z]/.test(w));
-  const memberRest = norm(memberName).split(" ").slice(1).filter((w) => /[a-z]/.test(w));
-  if (refRest.length === 0 || memberRest.length === 0) return false;
-  return refRest.some((r) => memberRest.some((m) => m.startsWith(r) || r.startsWith(m)));
 }
 
 
@@ -167,6 +105,11 @@ function surnameAgrees(ref: string, memberName: string): boolean {
  * says about them is still the model's to read. A member is listed when
  * their full name appears as whole words, or their first name (three
  * letters or more) does. Full names, each once, at most `max`.
+ *
+ * A HINT, NEVER A DECISION (2026-11-09): this line only tells the
+ * extractor that a word is a person, so the claim is read at all. Who that
+ * person is, is still the model's pick (`who-is-who.ts`); nothing here
+ * resolves, moves or provisions anybody.
  */
 export function membersNamedIn(
   body: string,
@@ -211,73 +154,47 @@ function asWritten(body: string, key: string): string {
   return key;
 }
 
-/** Members one of whose aliases is the whole reference, or a whole word
- *  (or words) of it: "AH", "my mate AH". Never part of a word. */
-function byAlias(target: string, roster: Member[], wholeRef: boolean): Member[] {
-  const text = ` ${target} `;
-  return roster.filter((m) => aliasKeys(m).some((a) => (wholeRef ? a === target : text.includes(` ${a} `))));
-}
 
-export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome {
+/**
+ * WHO `ref` IS, by the model's pick for it (`picks`, from `who-is-who.ts`
+ * for the message that quoted it), against `roster` (the whole club, or a
+ * part of it: the players attending, the players on the teams).
+ *
+ *   member, on `roster`        -> resolved
+ *   member, not on `roster`    -> ambiguous (a member, but not one of these)
+ *   none                       -> unknown (a guest, when policy allows)
+ *   ambiguous                  -> ambiguous, with its candidates on `roster`
+ *   unidentified, or no pick   -> ambiguous (nobody could say who)
+ *
+ * A reference that cannot be a person (empty, raw digits, no letters) is
+ * refused before any pick is read.
+ */
+export function resolvePerson(ref: string, roster: ReadonlyArray<Member>, picks: PersonPicks | undefined): ResolutionOutcome {
   const raw = (ref ?? "").trim().replace(/^@/, "").trim();
   if (!raw) return { kind: "not-a-person", why: "empty reference" };
   if (isRawDigitName(raw)) {
     return { kind: "not-a-person", why: `raw digits are never a name: "${raw}"` };
   }
+  if (!/\p{L}/u.test(raw)) return { kind: "not-a-person", why: `no letters in "${raw}"` };
 
-  const target = norm(raw);
-  if (!/[a-z]/.test(target)) return { kind: "not-a-person", why: `no letters in "${raw}"` };
-
-  // 1. Exact full-name match ("Ali2" is "Ali 2" when there is a digit).
-  const hasDigit = /[0-9]/.test(target);
-  const exact = roster.filter((m) => norm(m.name) === target || (hasDigit && compact(m.name) === compact(target)));
-  if (exact.length === 1) return { kind: "resolved", member: exact[0] };
-  if (exact.length > 1) return { kind: "ambiguous", candidates: exact };
-
-  // 1b. An alias the club set for a member (admin portal, `UserAlias`):
-  //     "AH" is Abdul-Hafeez (FNF HQ, 2026-10-24). Curated by an
-  //     organiser, so it beats a first-name guess, as it does for a
-  //     sender (`resolve-sender.ts`) and for a stats question.
-  const aliased = byAlias(target, roster, true);
-  if (aliased.length === 1) return { kind: "resolved", member: aliased[0] };
-  if (aliased.length > 1) return { kind: "ambiguous", candidates: aliased };
-
-  // 2. First-name match. `target` may itself be several words
-  //    ("my dad Najib") so we compare on the first token of each.
-  const tFirst = firstToken(target);
-  const byFirst = roster.filter((m) => firstToken(m.name) === tFirst);
-  if (byFirst.length === 1) return { kind: "resolved", member: byFirst[0] };
-  if (byFirst.length > 1) return { kind: "ambiguous", candidates: byFirst };
-
-  // 3. The ref names someone whose full name CONTAINS the ref as a whole
-  //    token ("Ul Haq" → "Ehtisham Ul Haq").
-  const byToken = roster.filter((m) => norm(m.name).split(" ").includes(tFirst));
-  if (byToken.length === 1) return { kind: "resolved", member: byToken[0] };
-  if (byToken.length > 1) return { kind: "ambiguous", candidates: byToken };
-
-  // 4. Near miss on the first name, only when the surname agrees
-  //    ("Davidee Russo" is Davide Russo; a bare "David" is not Davide
-  //    De Sousa, Vets 2026-11-09, and "David Aksoy" is not Davide Russo).
-  const near = roster.filter((m) => nearMiss(firstToken(m.name), tFirst) && surnameAgrees(target, m.name));
-  if (near.length === 1) return { kind: "resolved", member: near[0] };
-  if (near.length > 1) return { kind: "ambiguous", candidates: near };
-
-  // 5. ANY token of the reference against the roster's first names.
-  //
-  // §6.2's own worked example is `{other, "my dad Najib", named=true}`,
-  // and "my dad Najib" has first token "my", so steps 1-4 all miss even
-  // when Najib is on the roster — and `isPlaceholderGuestName` correctly
-  // says it is NOT a placeholder, because a real name is attached. The
-  // result was a duplicate member called "my dad Najib" beside the real
-  // Najib. Two different members matching different tokens is an
-  // ambiguity and bails, as everywhere else here.
-  // An alias as whole words of the reference counts here too ("my mate
-  // AH"), whatever its length: it is the club's own word for the member.
-  const tokens = target.split(" ").filter((t) => t.length >= 3);
-  const aliasedIn = new Set(byAlias(target, roster, false).map((m) => m.userId));
-  const byAnyToken = roster.filter((m) => tokens.includes(firstToken(m.name)) || aliasedIn.has(m.userId));
-  if (byAnyToken.length === 1) return { kind: "resolved", member: byAnyToken[0] };
-  if (byAnyToken.length > 1) return { kind: "ambiguous", candidates: byAnyToken };
-
-  return { kind: "unknown", name: raw };
+  const pick = picks?.get(refKey(raw));
+  if (!pick) return { kind: "ambiguous", candidates: [], why: `nobody was asked who "${raw}" is` };
+  switch (pick.kind) {
+    case "member": {
+      const member = roster.find((m) => m.userId === pick.userId);
+      return member
+        ? { kind: "resolved", member }
+        : { kind: "ambiguous", candidates: [], why: `"${raw}" is a member who is not among these` };
+    }
+    case "none":
+      return { kind: "unknown", name: raw };
+    case "ambiguous":
+      return {
+        kind: "ambiguous",
+        candidates: roster.filter((m) => pick.userIds.includes(m.userId)),
+        why: pick.userIds.length === 1 ? `not sure "${raw}" is that member` : `"${raw}" could be several members`,
+      };
+    case "unidentified":
+      return { kind: "ambiguous", candidates: [], why: `who "${raw}" is could not be read (${pick.why})` };
+  }
 }

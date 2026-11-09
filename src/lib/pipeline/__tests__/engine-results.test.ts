@@ -5,7 +5,7 @@
  * last match) is unchanged.
  */
 import { describe, expect, it } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { compose } from "../compose";
 import { displaysSquadState } from "../../group-copy";
 import { NOW, msg, world } from "./helpers";

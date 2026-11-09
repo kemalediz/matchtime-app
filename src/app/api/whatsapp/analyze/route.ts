@@ -322,10 +322,8 @@ import {
   type ClausePeel,
   type ClauseReport,
 } from "@/lib/pipeline/clause-peel";
-import {
-  describeMentionOutcomes,
-  resolveMentionNames,
-} from "@/lib/pipeline/mention-names";
+import { describeMentionOutcomes, nameMentions } from "@/lib/pipeline/mention-names";
+import { personPickerFor } from "@/lib/pipeline/identify-batch";
 import { loadKnownLids } from "@/lib/known-lids";
 // Sender resolution moved OUT of this file on 2026-09-09. It could not be
 // tested here — a Next.js route module may export only its HTTP handlers,
@@ -335,7 +333,7 @@ import { loadKnownLids } from "@/lib/known-lids";
 import { resolveSender, type ResolvedSender } from "@/lib/resolve-sender";
 // Moved out of this file on 2026-10-14 so the admin group's squad changes
 // resolve and provision names with the very same code. Unchanged.
-import { resolveOrProvisionByName } from "@/lib/resolve-or-provision-name";
+import { resolveOrProvisionByName, resolveOrProvisionNames } from "@/lib/resolve-or-provision-name";
 import { planUnresolvedNudge } from "@/lib/unresolved-nudge";
 import { recordGroupSightings, sightedUserIds } from "@/lib/group-sighting";
 import { quotedRefOf } from "@/lib/quoted-message";
@@ -2005,13 +2003,24 @@ async function handleAnalyzeRequest(request: Request) {
         }
         const failures: string[] = [];
         const registered: string[] = [];
+        // The names the reader placed on nobody: who-is-who in ONE call for
+        // the list (a member it is sure of, a former member brought back,
+        // or a new player), never matched by spelling (2026-11-09).
+        const unplaced = await resolveOrProvisionNames(
+          org.id,
+          reading.lines.filter((l) => !l.userId).map((l) => l.name),
+          { context: m.body },
+        ).catch((err) => {
+          console.error(`[analyze] pasted list ${m.waMessageId}: naming the new lines failed:`, err);
+          return new Map<string, { userId: string; name: string | null } | null>();
+        });
         for (const line of reading.lines) {
           if (line.userId && statusOf.has(line.userId)) continue; // in, on the bench, or dropped
           const isSender = line.userId === sender.userId;
           try {
             const target = line.userId
               ? { userId: line.userId, name: line.name }
-              : await resolveOrProvisionByName(org.id, line.name);
+              : (unplaced.get(line.name.trim()) ?? null);
             if (!target) {
               failures.push(line.name);
               continue;
@@ -4553,21 +4562,27 @@ async function nameMentionsFromRoster(
     .filter((u) => !!u?.name)
     .map((u) => ({ userId: u.id, name: u.name as string, phone: u.phoneNumber }));
 
+  // Phone and stored LID first; the pushnames those leave are put to
+  // who-is-who in ONE call for the whole batch (2026-11-09), never
+  // matched by spelling.
+  const withMentions = messages.filter((m) => m?.mentions?.length && RAW_TOKEN.test(m.body ?? ""));
+  const named = await nameMentions({
+    messages: withMentions.map((m) => ({ body: m.body, mentions: m.mentions, mentionNames: m.mentionNames })),
+    roster,
+    aliases,
+    knownLids,
+    picker: personPickerFor(),
+    where: "the club's players' group",
+  });
+  const byMessage = new Map(withMentions.map((m, i) => [m, named[i]]));
   return messages.map((m) => {
-    if (!m?.mentions?.length || !RAW_TOKEN.test(m.body ?? "")) return m;
-    const { body, outcomes } = resolveMentionNames({
-      body: m.body,
-      mentions: m.mentions,
-      mentionNames: m.mentionNames,
-      roster,
-      aliases,
-      knownLids,
-    });
-    const described = describeMentionOutcomes(outcomes);
+    const r = byMessage.get(m);
+    if (!r) return m;
+    const described = describeMentionOutcomes(r.outcomes);
     // One line per message that carried a mention. A run of "LEFT RAW"
     // is the signal that a player's pushname needs a `UserAlias`.
     if (described) console.log(`[analyze] mentions ${m.waMessageId}: ${described}`);
-    return body === m.body ? m : { ...m, body };
+    return r.body === m.body ? m : { ...m, body: r.body };
   });
 }
 

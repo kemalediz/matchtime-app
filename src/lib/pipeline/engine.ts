@@ -241,8 +241,9 @@ const SELF_REFS = new Set([
   // "put Ben with Sait" into the sender would be worse than the gap.
   "beni", "bana", "kendimi", "kendim",
 ]);
-/** Case-folded both ways, so a typed "BENİ" and an English "I" both hit. */
-const isSelfRef = (ref: string): boolean => {
+/** Case-folded both ways, so a typed "BENİ" and an English "I" both hit.
+ *  Exported for the batches, which do not ask who-is-who about "me". */
+export const isSelfRef = (ref: string): boolean => {
   const t = ref.trim();
   return SELF_REFS.has(t.toLowerCase()) || SELF_REFS.has(t.toLocaleLowerCase("tr"));
 };
@@ -990,7 +991,7 @@ export function decide(input: EngineInput): EngineResult {
       // capacity and `applyClaim`. The one thing it adds is the slot:
       // the incoming player inherits the outgoing one's position.
       const memberSide = (ref: string) => {
-        const r = resolvePerson(ref, w.roster);
+        const r = resolvePerson(ref, w.roster, msg.people);
         return r.kind === "resolved"
           ? { userId: r.member.userId, name: r.member.name }
           : null;
@@ -1089,7 +1090,7 @@ export function decide(input: EngineInput): EngineResult {
         const kind = c.personKind ?? (c.personNamed ? "named" : "placeholder");
         const personNamed = kind === "named";
         const resolution: ReturnType<typeof resolvePerson> = personNamed
-          ? resolvePerson(c.personRef, w.roster)
+          ? resolvePerson(c.personRef, w.roster, msg.people)
           : { kind: "not-a-person", why: `the extractor read "${c.personRef}" as a ${kind}, not a named person` };
 
         // ── A MENTION NOBODY COULD NAME (2026-09-30, MT Test) ──────────
@@ -1834,7 +1835,7 @@ export function decide(input: EngineInput): EngineResult {
           break;
         case "person_status": {
           const ref = facts.personRef ?? "";
-          const r = resolvePerson(ref, w.roster);
+          const r = resolvePerson(ref, w.roster, msg.people);
           speech.push({
             kind: "answer_person_status",
             messageId: msg.id,
@@ -1859,7 +1860,7 @@ export function decide(input: EngineInput): EngineResult {
           // and made the generic call on the same plan. See
           // `stats-answer.ts` for every rule behind it. The engine only
           // turns the plan into speech; the composer renders it.
-          const plan = planStatsQuestion(facts, w.roster, state.stats?.aliases ?? [], msg.senderUserId);
+          const plan = planStatsQuestion(facts, w.roster, msg.people, msg.senderUserId);
           // A period rides the speech; the reason names it, so a wrong
           // period is visible in the log even when the reply reads well.
           const periodNote = (p: StatsPeriod | null) => (p ? `, period ${periodKey(p)}` : "");
@@ -2009,14 +2010,15 @@ export function decide(input: EngineInput): EngineResult {
       //     composes the team post from the balancer's own output and
       //     never from `nextState`, so nothing reads the stale half.
       if (facts.action === "generate") {
-        const senderFirstRef = msg.senderName?.trim().split(/\s+/)[0] ?? null;
-        /** "me" / "myself" / "I" → the sender, from a CLOSED list. The
-         *  shipped path rebinds these the same way
-         *  (`route.ts:3637-3641`); `identity.ts` correctly refuses to
-         *  match "me" against a roster, so the mapping happens here and
-         *  never by asking a model who "me" is. */
-        const deSelf = (ref: string): string =>
-          isSelfRef(ref) && senderFirstRef ? senderFirstRef : ref;
+        /** "me" / "myself" / "I" → the sender, from a CLOSED list, by the
+         *  sender's member id (never by looking their name up). Anyone
+         *  else is the model's pick for the name (`msg.people`), checked
+         *  against `among`. */
+        const resolveIn = (ref: string, among: Member[]): ReturnType<typeof resolvePerson> => {
+          if (!isSelfRef(ref)) return resolvePerson(ref, among, msg.people);
+          const me = msg.senderUserId ? among.find((m) => m.userId === msg.senderUserId) : undefined;
+          return me ? { kind: "resolved", member: me } : { kind: "ambiguous", candidates: [], why: "the sender is not among these" };
+        };
 
         /** Members with ANY attendance row on the match. The shipped
          *  force-include matches against exactly this set
@@ -2027,7 +2029,7 @@ export function decide(input: EngineInput): EngineResult {
         const forceInclude: Array<{ userId: string; name: string; ref: string }> = [];
         const unmatchedIncludes: string[] = [];
         for (const rawRef of facts.includeRefs) {
-          const r = resolvePerson(deSelf(rawRef), attending);
+          const r = resolveIn(rawRef, attending);
           if (r.kind !== "resolved") {
             // Reported to the group as "couldn't find … — ignored",
             // never dropped in silence. STRICTER than the shipped path,
@@ -2055,7 +2057,7 @@ export function decide(input: EngineInput): EngineResult {
         const pinned: Array<{ userId: string; name: string; team: "RED" | "YELLOW" }> = [];
         const unmatchedPins: string[] = [];
         const pin = (rawRef: string, team: "RED" | "YELLOW") => {
-          const r = resolvePerson(deSelf(rawRef), pinnable);
+          const r = resolveIn(rawRef, pinnable);
           if (r.kind !== "resolved") {
             unmatchedPins.push(rawRef);
             out.reasons.push(`pin "${rawRef}" did not resolve to one confirmed player (${r.kind})`);
@@ -2094,7 +2096,7 @@ export function decide(input: EngineInput): EngineResult {
         for (const group of facts.pairings) {
           const resolved: Array<{ userId: string; name: string }> = [];
           for (const rawRef of group) {
-            const r = resolvePerson(deSelf(rawRef), pinnable);
+            const r = resolveIn(rawRef, pinnable);
             if (r.kind !== "resolved") {
               unmatchedPins.push(rawRef);
               out.reasons.push(
@@ -2645,7 +2647,7 @@ export function decide(input: EngineInput): EngineResult {
           out.refused = "admin_only";
           return;
         }
-        const payer = resolvePerson(facts.payerRef ?? "", w.roster);
+        const payer = resolvePerson(facts.payerRef ?? "", w.roster, msg.people);
         if (payer.kind !== "resolved") {
           degrade(`payment credit names "${facts.payerRef}", who does not resolve to a member`);
           return;
@@ -2681,7 +2683,7 @@ export function decide(input: EngineInput): EngineResult {
             out.reasons.push(`covered name "${ref}" is the sender, who is unresolved`);
             continue;
           }
-          const r = resolvePerson(ref, w.roster);
+          const r = resolvePerson(ref, w.roster, msg.people);
           if (r.kind === "resolved") covered.push(r.member.userId);
           else out.reasons.push(`covered name "${ref}" did not resolve`);
         }

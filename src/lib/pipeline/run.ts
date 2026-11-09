@@ -47,6 +47,8 @@ import type {
   TeamFacts,
 } from "./types";
 import { extractorCacheKey, fanOutWarmFirst } from "./fan-out";
+import { identifyPeople, personPickerFor } from "./identify-batch";
+import type { PersonPicker } from "./who-is-who";
 
 export interface PipelineMessage {
   id: string;
@@ -68,7 +70,7 @@ export interface PipelineInput {
   history: Array<{ author: string | null; body: string }>;
   state: SquadState;
   now: Date;
-  models?: { router: PipelineModel; extractor: PipelineModel };
+  models?: { router: PipelineModel; extractor: PipelineModel; identify?: PersonPicker };
   /** IGNORED since 2026-10-30, when the regex floor was removed. */
   floor?: boolean;
 }
@@ -250,7 +252,20 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
     };
   });
 
-  const engine = decide({ messages: engineMessages, state: input.state, now: input.now });
+  // ── Stage 2c: who the quoted names are (`who-is-who.ts`), one call ──
+  const identified = await identifyPeople({
+    picker: input.models?.identify ?? personPickerFor({ model: extractorModel }),
+    messages: engineMessages,
+    roster: input.state.roster,
+    lastBotPost: input.state.lastBotPost,
+  });
+  degradations.push(...identified.degradations.map((d) => ({ stage: "extractor" as const, messageId: null, detail: d })));
+  if (identified.calls > 0) {
+    cost.extractorCalls += identified.calls;
+    cost.extractorUsd += identified.costUsd;
+  }
+
+  const engine = decide({ messages: identified.messages, state: input.state, now: input.now });
   degradations.push(...engine.degradations);
 
   // ── Stage 4 ────────────────────────────────────────────────────────

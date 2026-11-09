@@ -16,6 +16,10 @@ if (liveModelTestsEnabled()) {
   openForApprovedLiveRun();
 } else {
   shutModelAccess();
+  // Who-is-who (`src/lib/pipeline/who-is-who.ts`) answers by its name-based
+  // stand-in, as the extractor stub implies it in the stubbed e2e suite. A
+  // test of the real picker passes its own model.
+  process.env.MT_TEST_PERSON_PICKER_STUB = "1";
   beforeEach(() => {
     repinIfDeleted();
   });

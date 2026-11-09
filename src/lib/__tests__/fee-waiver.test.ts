@@ -239,7 +239,7 @@ describe("unwaiveMatchFee", () => {
 });
 
 describe("HQ: MatchTime proposes, an organiser's YES applies (item 2)", () => {
-  const base = { orgId: "org", lang: "en", senderUserId: "org1", messageId: "wa1", now: NOW, undo: false, dayPhrase: null };
+  const base = { orgId: "org", lang: "en", senderUserId: "org1", messageId: "wa1", now: NOW, undo: false, dayPhrase: null, body: "free this week" };
 
   it("'Bilal washed the bibs, he's free this week': a question naming the game, NOTHING written yet", async () => {
     rows = [att("tue", "u1", "Bilal Ahmed"), att("fri", "u1", "Bilal Ahmed")];

@@ -21,7 +21,7 @@
  * message the flag sits on, so no fact can point it at anyone else.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { NOW, msg, world } from "./helpers";
 
 const MY_STATS = { kind: "question", topic: "my_stats", personRef: null, statedCount: null } as const;
