@@ -42,8 +42,16 @@ describe("resolvePerson", () => {
     expect(r.kind === "resolved" && r.member.name).toBe("Najib Ahmadi");
   });
 
-  it("resolves a near miss: 'habibi' → Habib Rahman (S12's real wording)", () => {
-    const r = resolvePerson("habibi", roster);
+  it("a bare near miss resolves nobody: 'habibi' is not Habib Rahman without the club's alias (2026-11-09)", () => {
+    // S12's real wording. Since Vets 2026-11-09 ("David" read as Davide De
+    // Sousa, who was then benched) a first name a letter off a member's is
+    // a different name until something corroborates it.
+    expect(resolvePerson("habibi", roster)).toEqual({ kind: "unknown", name: "habibi" });
+  });
+
+  it("a nickname the club set as an alias resolves exactly: 'habibi' → Habib Rahman", () => {
+    const withAlias = roster.map((m) => (m.userId === "u-habib" ? { ...m, aliases: ["habibi"] } : m));
+    const r = resolvePerson("habibi", withAlias);
     expect(r.kind === "resolved" && r.member.name).toBe("Habib Rahman");
   });
 
@@ -105,9 +113,9 @@ describe("nearMiss must not resolve a DIFFERENT person", () => {
     expect(resolvePerson(ref, squad).kind).toBe("unknown");
   });
 
-  it("still resolves a one-or-two-character near miss", () => {
-    // "habibi" → "Habib Rahimi" is the real S12 message and must survive.
-    const r = resolvePerson("habibi", squad);
+  it("a one-or-two-character near miss resolves only with an agreeing surname (2026-11-09)", () => {
+    expect(resolvePerson("habibi", squad).kind).toBe("unknown");
+    const r = resolvePerson("habibi Rahimi", squad);
     expect(r.kind === "resolved" && r.member.name).toBe("Habib Rahimi");
   });
 });
@@ -169,9 +177,8 @@ describe("a near miss never swallows a reference whose surname is not the member
     expect(resolvePerson("Dave Stark", [member("david", { name: "David Stark" })]).kind).toBe("unknown");
   });
 
-  // Typos that SHOULD still match.
+  // Typos that SHOULD still match: a surname corroborates them.
   it.each([
-    ["habibi", "Habib Rahimi"],
     ["habibi Rahimi", "Habib Rahimi"],
     ["Habibi R", "Habib Rahimi"],
     ["habibi rahim", "Habib Rahimi"],
@@ -181,8 +188,13 @@ describe("a near miss never swallows a reference whose surname is not the member
     expect(r.kind === "resolved" && r.member.name).toBe(name);
   });
 
-  it("a member with no surname on record cannot be contradicted by one: 'habibi Rahimi' → Habib", () => {
-    const r = resolvePerson("habibi Rahimi", [member("habib", { name: "Habib" })]);
+  it("a member with no surname on record cannot corroborate a near miss: 'habibi Rahimi' is not Habib (2026-11-09)", () => {
+    expect(resolvePerson("habibi Rahimi", [member("habib", { name: "Habib" })]).kind).toBe("unknown");
+  });
+
+  it("a bare 'habibi' is not Habib either, and is once the club sets the alias", () => {
+    expect(resolvePerson("habibi", vets).kind).toBe("unknown");
+    const r = resolvePerson("habibi", [member("habib", { name: "Habib", aliases: ["habibi"] })]);
     expect(r.kind === "resolved" && r.member.name).toBe("Habib");
   });
 });

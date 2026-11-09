@@ -45,6 +45,13 @@ const FULL_14 = [
   "wasim",
 ];
 
+/** The club's alias for a member (`UserAlias`): how a nickname such as
+ *  "habibi" names Habib since a bare near miss stopped doing it
+ *  (Vets 2026-11-09, "David" read as Davide De Sousa). */
+function withAlias(state: ReturnType<typeof world>, key: string, alias: string) {
+  state.roster = state.roster.map((m) => (m.userId === `u-${key}` ? { ...m, aliases: [alias] } : m));
+}
+
 function attWrites(writes: ProposedWrite[]) {
   return writes.filter((w) => w.kind === "attendance");
 }
@@ -545,6 +552,9 @@ describe("S12 · a replacement request drops the SENDER too (2026-05-26, Mojib, 
         "zair",
       ],
     });
+    // "habibi" is Habib by the club's alias. Without one it is a different
+    // name and nobody is dropped (Vets 2026-11-09: "David" is not Davide).
+    withAlias(state, "habib", "habibi");
     const r = decide({
       now: NOW,
       state,
@@ -1720,8 +1730,9 @@ describe("SELF_IN_FROM_A_MEMBER_IS_NEVER_DROPPED_BY_THE_FLOOR", () => {
 // ── Identity ───────────────────────────────────────────────────────────
 
 describe("identity resolution (SURVIVES §9 — never about the model)", () => {
-  it("resolves a first name and a near-miss ('habibi' → Habib Rahman)", () => {
+  it("resolves a nickname by the club's alias ('habibi' → Habib Rahman)", () => {
     const state = world({ confirmed: [...FULL_14.slice(0, 13), "habib"] });
+    withAlias(state, "habib", "habibi");
     const r = decide({
       now: NOW,
       state,
@@ -1738,6 +1749,27 @@ describe("identity resolution (SURVIVES §9 — never about the model)", () => {
       ],
     });
     expect(statusOf(r.nextState, "habib")).toBe("DROPPED");
+  });
+
+  it("a near miss with no alias moves nobody: 'habibi is out' leaves Habib CONFIRMED (Vets 2026-11-09)", () => {
+    const state = world({ confirmed: [...FULL_14.slice(0, 13), "habib"] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "elvin",
+          body: "@Match Time habibi is out",
+          route: "other_att",
+          tagged: true,
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "habibi", personNamed: true, polarity: "out" }),
+          ]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "habib")).toBe("CONFIRMED");
+    expect(r.outcomes[0].reasons.join(" | ")).toMatch(/"habibi" is not a member/);
   });
 
   it("bails on an AMBIGUOUS first name rather than guessing", () => {
@@ -2102,6 +2134,7 @@ describe("S12 · the roster decides whether a reference names someone", () => {
     const state = world({
       confirmed: [...FULL_14.slice(0, 12), "mojib", "habib"],
     });
+    withAlias(state, "habib", "habibi");
     const r = decide({
       now: NOW,
       state,
