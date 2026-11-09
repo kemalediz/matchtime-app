@@ -20,13 +20,16 @@
  *   D1  (removed 2026-11-05) there is no reminder before the deadline;
  *   D2  (removed 2026-11-05) there is no summary to the organisers after
  *       it either;
- *   D3  the final list in the group at publish time;
+ *   D3  the final list in the group at publish time, except on match day
+ *       after the morning chase while the squad is unchanged
+ *       (`listPublishHeld`, ONE MORNING MESSAGE, 2026-11-09);
  *   D4  with BOTH set, the daily 17:00 post stops except on match day.
  *
  * Pure: no database, no clock.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { MESSAGE_HOURS_FROM_TIME, MESSAGE_HOURS_TO_HOUR, inMessageHours, type QuietHours } from "./message-hours";
+import { matchMorningMessageSent } from "./monthly-week-rules";
 
 export interface DeadlineMatch {
   date: Date;
@@ -142,6 +145,27 @@ function inWakingHours(now: Date, quiet?: QuietHours | null): boolean {
 /** D3: the first tick after publish time, inside waking hours, before kickoff. */
 export function listPublishDue(now: Date, publishAt: Date, kickoff: Date, quiet?: QuietHours | null): boolean {
   return now.getTime() >= publishAt.getTime() && now.getTime() < kickoff.getTime() && inWakingHours(now, quiet);
+}
+
+/**
+ * ONE MORNING MESSAGE ON MATCH DAY (Kemal, 2026-11-09), for a club whose
+ * final list publishes on match day: the 08:00 match-day morning chase
+ * and a 09:00 final list must not both go out unchanged.
+ *
+ * Held when the group has already had this match's morning message
+ * (`matchMorningMessageSent`, the one definition the month's list reads
+ * too: the morning chase went to the players' group today) AND the squad
+ * is the one the group last saw (`squadUnchanged`: the newest roster-shown
+ * marker, `lastRosterShown`). The key is not claimed: once the squad
+ * changes before kickoff the list goes out, with the change.
+ */
+export function listPublishHeld(p: {
+  now: Date;
+  matchDate: Date;
+  morningChaseSent: boolean;
+  squadUnchanged: boolean;
+}): boolean {
+  return p.squadUnchanged && matchMorningMessageSent({ now: p.now, matchDate: p.matchDate, morningChaseSent: p.morningChaseSent });
 }
 
 // ── Settings validation (plan 3.1) ───────────────────────────────────

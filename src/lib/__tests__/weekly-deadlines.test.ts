@@ -16,6 +16,7 @@ import {
   lastWeekdayTimeBefore,
   hasWeeklyRhythm,
   listPublishDue,
+  listPublishHeld,
   validateWeeklyDeadlines,
   NO_WEEKLY_DEADLINES,
 } from "../weekly-deadlines";
@@ -117,6 +118,26 @@ describe("D3: the list, first tick after publish time, before kickoff", () => {
   });
   it("never at or after kickoff", () => {
     expect(listPublishDue(new Date("2026-10-09T19:31:00.000Z"), TUE_20, FRI_KICKOFF)).toBe(false);
+  });
+});
+
+describe("listPublishHeld: ONE morning message on match day (Kemal, 2026-11-09)", () => {
+  // A club whose list publishes on match day: the 08:00 chase, then the
+  // 09:00 final list. Fri 9 Oct, 09:05 London.
+  const FRI_0905 = new Date("2026-10-09T08:05:00.000Z");
+  const base = { now: FRI_0905, matchDate: FRI_KICKOFF, morningChaseSent: true, squadUnchanged: true };
+
+  it("the morning chase went out and the squad is the one the group last saw: held", () => {
+    expect(listPublishHeld(base)).toBe(true);
+  });
+  it("the squad changed since the group last saw it: the list goes", () => {
+    expect(listPublishHeld({ ...base, squadUnchanged: false })).toBe(false);
+  });
+  it("no morning chase today: the list goes", () => {
+    expect(listPublishHeld({ ...base, morningChaseSent: false })).toBe(false);
+  });
+  it("not match day (a Tuesday publish time): the list goes", () => {
+    expect(listPublishHeld({ ...base, now: new Date("2026-10-06T19:05:00.000Z") })).toBe(false);
   });
 });
 
