@@ -266,7 +266,8 @@ export default function PlayerGuidePage() {
         <a href="https://matchtime.ai/play" className="text-blue-600 underline">matchtime.ai/play</a>,
         or turn on <strong>Play elsewhere too</strong> on your profile. When a
         game near you is a player short, MatchTime sends you a WhatsApp
-        message and you decide each time. It&apos;s optional: your own
+        message and you decide each time. The offer stays open until kickoff,
+        or until the places are filled. It&apos;s optional: your own
         club&apos;s games work the same whether you join or not.
       </p>
       <p>

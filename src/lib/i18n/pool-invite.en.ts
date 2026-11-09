@@ -93,7 +93,8 @@ export const poolInviteEn = {
   inv_declined: "Thanks for letting us know.",
   inv_member: "You are already in this club.",
   inv_open_offer: "Open the offer",
-  inv_offer_until: (p: { time: string }) => `Answer by ${p.time}`,
+  /** An open offer has no deadline before kickoff (Kemal, 2026-11-09). */
+  inv_offer_open: "Open until kickoff, or until the places are filled",
   inv_try_again: "Something went wrong. Please try again in a minute.",
   inv_settings: "Your player pool settings",
 };

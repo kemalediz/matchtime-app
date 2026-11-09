@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { longDayTimeLabel, timeLabel, dayLabel } from "@/lib/i18n/dates";
+import { longDayTimeLabel } from "@/lib/i18n/dates";
 import { inviteCopy } from "@/lib/i18n/pool-invite";
 import { loadMyInvitations } from "@/lib/pool/my-invitations";
 import { POOL_INVITATIONS_PATH, POOL_MANAGE_PATH } from "@/lib/pool/paths";
@@ -78,7 +78,7 @@ export default async function MyInvitationsPage() {
                     <a href={o.path} data-testid="my-offer-open" className="inline-flex h-10 items-center rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700">
                       {c.inv_open_offer}
                     </a>
-                    <span className="text-xs text-slate-500">{c.inv_offer_until({ time: `${dayLabel(view.lang, o.expiresAt)} ${timeLabel(o.expiresAt)}` })}</span>
+                    <span data-testid="my-offer-open-until" className="text-xs text-slate-500">{c.inv_offer_open}</span>
                   </div>
                 </li>
               ))}

@@ -117,6 +117,11 @@ describe("what is loaded, and when the reader is asked", () => {
     expect(reader.readPoolReply.mock.calls[0][1]).toMatchObject({ offers: [], quotedIndex: null });
     expect(queue.queuePlatformDm).not.toHaveBeenCalled();
   });
+  it("an offer still open (until kickoff, Kemal 2026-11-09) is loaded however long ago it went, not only within a day", async () => {
+    await answerPoolOfferReply({ ...fromHim, text: "yes" });
+    const where = dbMock.poolOffer.findMany.mock.calls[0][0].where as { OR: unknown[] };
+    expect(where.OR).toContainEqual({ outcome: null, ask: { status: "open", match: { date: { gt: NOW } } } });
+  });
   it("no pool profile: null, and no model", async () => {
     dbMock.poolProfile.findUnique.mockResolvedValue(null);
     expect(await answerPoolOfferReply({ ...fromHim, text: "yes" })).toBeNull();

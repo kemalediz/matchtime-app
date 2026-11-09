@@ -83,10 +83,13 @@ export type PoolAskVia = (typeof POOL_ASK_VIA)[number];
  * How one offer ended. NULL while it is open.
  *   accepted   he took the place (a GuestPlace row records the game).
  *   declined   he said no.
- *   ignored    no answer by the offer's own expiry. Counts toward the
- *              3-in-a-row pause (`POOL_CAPS.ignoredInARowPause`).
- *   expired    the ask closed first (filled by others, cut-off). Not his
- *              doing, so it never counts as ignored.
+ *   ignored    no answer by kickoff (an offer stays open until then,
+ *              Kemal 2026-11-09). Counts toward the 3-in-a-row pause
+ *              (`POOL_CAPS.ignoredInARowPause`).
+ *   expired    the ask closed first (filled by others, the game called
+ *              off, the pool switched off, the organiser cancelled; on old
+ *              rows also the club's cut-off). Not his doing, so it never
+ *              counts as ignored.
  *   filled     he said yes, but the place had just gone.
  *   stopped    he answered "stop": the profile stops too.
  *   cancelled  never reached him (a switch went off, the match was called

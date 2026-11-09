@@ -47,9 +47,8 @@ export const POOL_ROUND = Object.freeze({
   firstWave: 4,
   /** ... and the rest this long after, only if places are still open. */
   secondWaveAfterMins: 30,
-  /** An offer expires this long after it was sent, or at the club's
-   *  cut-off, whichever comes first. */
-  offerTtlHours: 6,
+  // An offer has no clock of its own: it stays open until kickoff unless
+  // the round ends first (Kemal, 2026-11-09; `waves.ts` `offerEndsAt`).
 });
 
 /** How far a player will travel, in miles. */

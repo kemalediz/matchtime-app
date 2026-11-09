@@ -15,8 +15,14 @@
  *                  chosen THEN, by the same filters and caps, not reserved
  *                  at the first wave: a person may have been offered
  *                  another game meanwhile.
- *   offerExpiresAt `offerTtlHours` after it was sent, or the cut-off,
- *                  whichever comes first (plan 4.3).
+ *   offerEndsAt    when a sent offer stops being open: KICKOFF (Kemal,
+ *                  2026-11-09: "it shouldn't expire until the match start
+ *                  time"). There is no clock of its own and the club's
+ *                  cut-off does not end it: the cut-off only stops anything
+ *                  NEW going out (a first or second wave, a new ask). The
+ *                  round ending first (filled, called off, cancelled, the
+ *                  pool switched off) ends it earlier, `round-rules.ts`
+ *                  `poolAskCloseReason`.
  *
  * The cut-off is the partner ask's (`askWindows(kickoff, cutoffHours).postBy`
  * in partner-ask-rules.ts); the caller passes it.
@@ -24,7 +30,6 @@
 import { POOL_ROUND } from "./rules";
 
 const MIN_MS = 60_000;
-const HOUR_MS = 60 * MIN_MS;
 
 /** How many to offer in the first wave, from `candidates` eligible players. */
 export function firstWaveSize(candidates: number, places: number): number {
@@ -48,8 +53,9 @@ export function secondWave(a: { wave1SentAt: Date; wave1Count: number; placesOpe
   return { kind: "send", size };
 }
 
-/** When an offer sent at `sentAt` stops being open. */
-export function offerExpiresAt(sentAt: Date, cutoff: Date): Date {
-  const ttl = sentAt.getTime() + POOL_ROUND.offerTtlHours * HOUR_MS;
-  return new Date(Math.min(ttl, cutoff.getTime()));
+/** When an offer for the game at `kickoff` stops being open, unless its
+ *  round ends first: the kickoff itself. The one definition: every rule
+ *  that asks "is his offer still open?" reads it from here. */
+export function offerEndsAt(kickoff: Date): Date {
+  return new Date(kickoff.getTime());
 }

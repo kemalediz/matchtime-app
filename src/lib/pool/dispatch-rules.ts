@@ -45,8 +45,9 @@ export interface PoolJobView {
   offerOpen: boolean;
   /** Its ask is still open. */
   askOpen: boolean;
-  /** The game is live, not kicked off, before the club's cut-off, and the
-   *  offer's planned window has not passed (review of #400, minor 3). */
+  /** The game is live, not kicked off, and before the club's cut-off: an
+   *  offer still queued at the cut-off never goes (nothing new after it,
+   *  review of #400, minor 3). One already sent stays open until kickoff. */
   gameOpen: boolean;
   /** His OTHER offers that reached him or are on their way (claimed). */
   ledger: OfferLedgerEntry[];

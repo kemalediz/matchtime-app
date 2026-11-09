@@ -15,7 +15,7 @@
  *   4. `replyAction`, then the SAME writers as the tap link's page
  *      (`accept.ts`: accept, decline with its 14-day cooldown, give back;
  *      `manage.ts`: stop), so every L5a check holds (the switch and the
- *      club's flag, the cut-off, kickoff, a live game, his profile active,
+ *      club's flag, kickoff, a live game, his profile active,
  *      the per-match lock, one guest place per club).
  *
  * PROOF: the DM itself, from the number the offer was sent to, is his
@@ -235,7 +235,6 @@ async function loadFriendPlaces(userId: string, his: string, quotedId: string | 
         outcome: "accepted",
         askStatus: "open",
         sentAt,
-        expiresAt: l.match.date,
         matchLive: LIVE_STATUSES.includes(l.match.status) && !l.match.isHistorical,
         kickoff: l.match.date,
         holdsPlace: held.has(l.matchId),
@@ -258,7 +257,13 @@ async function loadOfferRows(userId: string, his: string, quotedId: string | nul
     where: {
       userId,
       sentAt: { not: null, lte: now },
-      OR: [{ sentAt: { gte: new Date(now.getTime() - POOL_REPLY_WINDOW_MS) } }, { outcome: "accepted", ask: { match: { date: { gt: now } } } }],
+      OR: [
+        { sentAt: { gte: new Date(now.getTime() - POOL_REPLY_WINDOW_MS) } },
+        { outcome: "accepted", ask: { match: { date: { gt: now } } } },
+        // Still open: an offer stays open until kickoff (Kemal, 2026-11-09),
+        // so a reply in words reaches it however long ago it went.
+        { outcome: null, ask: { status: "open", match: { date: { gt: now } } } },
+      ],
     },
     orderBy: { sentAt: "desc" },
     select: {
@@ -267,7 +272,6 @@ async function loadOfferRows(userId: string, his: string, quotedId: string | nul
       matchId: true,
       outcome: true,
       sentAt: true,
-      expiresAt: true,
       platformJobId: true,
       ask: { select: { status: true, org: { select: { name: true } }, match: { select: { date: true, status: true, isHistorical: true } } } },
     },
@@ -293,7 +297,6 @@ async function loadOfferRows(userId: string, his: string, quotedId: string | nul
       outcome: r.outcome,
       askStatus: r.ask.status,
       sentAt: r.sentAt,
-      expiresAt: r.expiresAt,
       matchLive: LIVE_STATUSES.includes(m.status) && !m.isHistorical,
       kickoff: m.date,
       holdsPlace: held.has(r.matchId),

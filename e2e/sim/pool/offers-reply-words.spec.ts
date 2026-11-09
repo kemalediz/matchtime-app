@@ -289,11 +289,13 @@ scenarios("answering a pool offer in his own words", () => {
     expect(await offerRow(pool, ali)).toEqual({ outcome: null, repliedVia: null });
   });
 
-  scenario("a yes after the offer ended: the one 'gone' line, nothing written", async ({ pool, page }) => {
+  scenario("a yes after the offer ended at kickoff: the one 'gone' line, nothing written", async ({ pool, page }) => {
     stubbedOnly();
     pool.arm(() => setPoolReplyStub({ bodies: { "yes is it still going?": "accept", "hello??": "accept" } }));
     const { club, ali } = await offerTo(pool, page);
-    await pool.db.run(`UPDATE "PoolOffer" SET "expiresAt" = $2 WHERE "userId" = $1`, [ali.userId, new Date(Date.now() - 30_000)]);
+    pool.note("no answer; the game kicks off and his offer ends (Kemal, 2026-11-09: open until kickoff)");
+    await pollPlatform(pool, { now: club.kickoff });
+    expect((await offersOf(pool, ali))[0].outcome).toBe("ignored");
 
     const ex = await ali.dm("yes is it still going?", OPEN);
     expect(ex.json).toMatchObject({ handled: "pool-offer-gone" });

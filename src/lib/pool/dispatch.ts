@@ -29,7 +29,7 @@ import { DM_SUB_FIELDS, type DmSubField } from "../dm-subscriptions";
 import { optedOutOfDms, planPoolAdmission, poolOfferCancelFailReason, type PoolJobView } from "./dispatch-rules";
 import { poolOffersOpenForClub, poolSwitchUnread } from "./flags";
 import { OPEN_MATCH_STATUSES } from "./matching-rules";
-import { offerExpiresAt } from "./waves";
+import { offerEndsAt } from "./waves";
 
 type Env = Record<string, string | undefined>;
 
@@ -85,7 +85,6 @@ export async function admitPoolOfferJobs(
             userId: true,
             orgId: true,
             outcome: true,
-            expiresAt: true,
             platformJobId: true,
             ask: { select: { status: true, org: { select: { featurePlayerPool: true } }, match: { select: { date: true, status: true, isHistorical: true } } } },
           },
@@ -131,8 +130,7 @@ export async function admitPoolOfferJobs(
             (OPEN_MATCH_STATUSES as readonly string[]).includes(m.status) &&
             !m.isHistorical &&
             now.getTime() < m.date.getTime() &&
-            now.getTime() < (cutoffs.get(o.id) as Date).getTime() &&
-            now.getTime() < o.expiresAt.getTime();
+            now.getTime() < (cutoffs.get(o.id) as Date).getTime();
           return {
             jobId: o.platformJobId as string,
             offerId: o.id,
@@ -192,7 +190,7 @@ export async function admitPoolOfferJobs(
 
 /**
  * The Pi reported the offer's DM SENT: now it reached him. `sentAt` is
- * stamped and its six hours start (`offerExpiresAt`). One cancelled while
+ * stamped; it stays open until kickoff (`offerEndsAt`). One cancelled while
  * it was already on its way (its round closed) did reach him after all:
  * it ends `expired` (the round closed first, decision #8), so his caps and
  * a later reply know he saw it. Never throws.
@@ -201,11 +199,10 @@ export async function onPoolOfferJobSent(jobId: string, now: Date = new Date(), 
   try {
     const offer = await db.poolOffer.findFirst({
       where: { platformJobId: jobId, sentAt: null },
-      select: { id: true, orgId: true, outcome: true, ask: { select: { match: { select: { date: true } } } } },
+      select: { id: true, outcome: true, ask: { select: { match: { select: { date: true } } } } },
     });
     if (!offer) return;
-    const cutoff = await cutoffFor(offer.orgId, offer.ask.match.date);
-    await db.poolOffer.updateMany({ where: { id: offer.id, sentAt: null }, data: { sentAt: deliveredAt, expiresAt: offerExpiresAt(deliveredAt, cutoff) } });
+    await db.poolOffer.updateMany({ where: { id: offer.id, sentAt: null }, data: { sentAt: deliveredAt, expiresAt: offerEndsAt(offer.ask.match.date) } });
     if (offer.outcome === "cancelled") {
       await db.poolOffer.updateMany({ where: { id: offer.id, outcome: "cancelled" }, data: { outcome: "expired" } });
     }

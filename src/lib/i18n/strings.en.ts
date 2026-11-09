@@ -1368,7 +1368,7 @@ export const en = {
           : `✅ It's on for your club. Ask me in your club's WhatsApp group (for example *@Match Time ask the player pool for 2 players*), or tick it on the match page. To switch it off, turn off *${p.poolLabel}*:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
-    const body = `Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.\nIn the pool? Tell me the times you can play and the formats you play by private message, in your own words (for example *Tuesdays after 7, 5 or 7-a-side*), or change them on your pool page.`;
+    const body = `Players in the pool get a WhatsApp message when a team near them is a player short, and they decide each time. An offer stays open until kickoff, or until the places are filled. Want more games? Turn on *Play elsewhere too* on your MatchTime profile.\nIn the pool? Tell me the times you can play and the formats you play by private message, in your own words (for example *Tuesdays after 7, 5 or 7-a-side*), or change them on your pool page.`;
     const status = on
       ? `✅ This club also asks the pool when it's short.`
       : !p.platformOpen

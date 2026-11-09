@@ -4,8 +4,8 @@
  *
  *   2   the Pi's "sent" report is lost: the holder's tap still works (his
  *       link proves the DM reached him), and a sweep takes a job claimed 5
- *       minutes ago as delivered, so the offer's clock runs and it can end
- *       "ignored".
+ *       minutes ago as delivered, so the offer counts as his and, still
+ *       unanswered at kickoff, ends "ignored".
  *   4   a backlog of other platform DMs never starves pool offers (one
  *       reserved place per poll); a pool row with nothing to send is failed,
  *       never claimed.
@@ -29,7 +29,7 @@ scenarios("second review of #400: the fixes", () => {
     expect(await tapOffer(pool, page, tapLinkIn(ex.sent[0]), "yes")).toBe("in");
   });
 
-  scenario("2: the report is lost and he never taps: five minutes on, the sweep takes it as delivered, and his own time can run out", async ({ pool, page }) => {
+  scenario("2: the report is lost and he never taps: five minutes on, the sweep takes it as delivered, and at kickoff it ends ignored", async ({ pool, page }) => {
     const fnf = await openClub(pool, "fnf", { name: "FNF" });
     const ali = await poolPlayer(pool, "ali", { at: near(fnf) });
     const t0 = at(fnf.kickoff, -30);
@@ -41,7 +41,11 @@ scenarios("second review of #400: the fixes", () => {
     await pollPlatform(pool, { now: new Date(t0.getTime() + 6 * 60_000), report: "none" });
     expect((await offersOf(pool, ali))[0].sentAt).toEqual(t0);
 
+    pool.note("six hours on, and past the club's cut-off: still open (Kemal, 2026-11-09)");
     await pollPlatform(pool, { now: new Date(t0.getTime() + 6 * 3600_000 + 60_000), report: "none" });
+    await pollPlatform(pool, { now: at(fnf.kickoff, -1), report: "none" });
+    expect((await offersOf(pool, ali))[0].outcome).toBeNull();
+    await pollPlatform(pool, { now: fnf.kickoff, report: "none" });
     expect((await offersOf(pool, ali))[0].outcome).toBe("ignored");
   });
 

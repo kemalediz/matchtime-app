@@ -83,13 +83,17 @@ scenarios("the pool's limits", () => {
       const ex = await organiserAsks(pool, page, club, { places: 1, now: askAt });
       pool.expectSent(ex.sent, [{ to: "ali", purpose: "pool-offer" }]);
       await pollPlatform(pool, { now: askAt });
-      pool.note(`he does not answer; six hours pass (offer ${i + 1})`);
-      const { queued } = await pollPlatform(pool, { now: londonOn(club.kickoff, -1, "19:30") });
+      pool.note(`he does not answer; the evening and the club's cut-off pass, and his offer stays open (offer ${i + 1})`);
+      await pollPlatform(pool, { now: londonOn(club.kickoff, -1, "19:30") });
+      await pollPlatform(pool, { now: at(club.kickoff, -1) });
+      expect((await offersOf(pool, ali))[i].outcome).toBeNull();
+      pool.note(`kickoff, still no answer (offer ${i + 1})`);
+      const { queued } = await pollPlatform(pool, { now: club.kickoff });
       if (i < 2) pool.expectSent(queued, []);
       else pool.expectSent(queued, [{ to: "ali", purpose: "pool-paused", text: /the last 3 went unanswered\. Want them again\? Tap here: https?:\/\/\S+\/r\// }]);
     }
     expect((await offersOf(pool, ali)).map((o) => o.outcome)).toEqual(["ignored", "ignored", "ignored"]);
     expect(await pool.profileOf(ali)).toMatchObject({ status: "paused", pausedReason: "ignored" });
-    expect(await askOf(pool, c)).toMatchObject({ status: "open" });
+    expect(await askOf(pool, c)).toMatchObject({ status: "closed", closeReason: "kickoff" });
   });
 });
