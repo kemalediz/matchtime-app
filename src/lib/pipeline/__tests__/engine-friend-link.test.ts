@@ -7,7 +7,7 @@
  * behaviour (D1). Everything else in the same message still applies.
  */
 import { describe, expect, it } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { NOW, attendanceFacts, claim, msg, statusOf, world } from "./helpers";
 import type { ProposedWrite } from "../types";
 

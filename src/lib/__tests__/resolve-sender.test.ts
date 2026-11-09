@@ -28,6 +28,7 @@ const membershipFindMany = vi.fn();
 const membershipUpdate = vi.fn();
 const membershipUpsert = vi.fn();
 const userAliasFindUnique = vi.fn();
+const userAliasFindMany = vi.fn();
 const userUpdateMany = vi.fn();
 
 vi.mock("@/lib/db", () => ({
@@ -42,11 +43,19 @@ vi.mock("@/lib/db", () => ({
       update: (...a: unknown[]) => membershipUpdate(...a),
       upsert: (...a: unknown[]) => membershipUpsert(...a),
     },
-    userAlias: { findUnique: (...a: unknown[]) => userAliasFindUnique(...a) },
+    userAlias: {
+      findUnique: (...a: unknown[]) => userAliasFindUnique(...a),
+      findMany: (...a: unknown[]) => userAliasFindMany(...a),
+    },
   },
 }));
 
-import { isRawDigitName, resolveSender } from "@/lib/resolve-sender";
+const notifyPhoneAdopted = vi.fn(async () => true);
+vi.mock("@/lib/possible-duplicate-notice", () => ({ notifyPhoneAdopted: (...a: unknown[]) => notifyPhoneAdopted(...(a as [])) }));
+
+import { isRawDigitName, resolveSender, resolveSenders } from "@/lib/resolve-sender";
+import type { PersonPick, PersonPicker, WhoRequest } from "@/lib/pipeline/who-is-who";
+import { currentAiBudget, runWithAiBudget } from "@/lib/ai-budget-context";
 
 const ORG = "org-1";
 
@@ -62,6 +71,7 @@ beforeEach(() => {
   userFindUnique.mockResolvedValue(null);
   membershipFindMany.mockResolvedValue([]);
   userAliasFindUnique.mockResolvedValue(null);
+  userAliasFindMany.mockResolvedValue([]);
 });
 
 describe("THE HOLE: a sender with neither a phone nor a name", () => {
@@ -141,65 +151,201 @@ describe("phone first", () => {
     expect(out).toEqual({ userId: "u1", name: "Kemal", phone: "+447700900123" });
   });
 
-  it("falls through to the name when the phone matches nobody", async () => {
+  it("falls through to who-is-who on the name when the phone matches nobody", async () => {
     userFindUnique.mockResolvedValue(null);
     membershipFindMany.mockResolvedValue([member("u2", "Baki")]);
+    // The unit-test picker is the name-based stand-in: "Baki" is Baki.
     const out = await resolveSender(ORG, { authorPhone: "447700900999", authorName: "Baki" });
     expect(out.userId).toBe("u2");
   });
 });
 
-describe("name matching", () => {
-  it("matches an exact name, case- and accent-insensitively", async () => {
-    membershipFindMany.mockResolvedValue([member("u3", "Elnur Mammadov")]);
-    const out = await resolveSender(ORG, { authorPhone: "", authorName: "elnur mammadov" });
-    expect(out.userId).toBe("u3");
-  });
+// WITHOUT A PHONE, WHO-IS-WHO (review of #574, finding 4). The sender's
+// WhatsApp name is put to the model with the club's members and the
+// message; code never matches it by spelling. These pin what the resolver
+// does with each answer, with the picker faked.
+describe("a phoneless sender: who-is-who's pick, never a match by spelling", () => {
+  const answering = (answers: Record<string, PersonPick>) => {
+    const seen: WhoRequest[] = [];
+    const identify: PersonPicker = async (req) => {
+      seen.push(req);
+      return {
+        picks: new Map(req.messages.map((m) => [m.id, new Map(m.refs.map((r) => [r, answers[r] ?? { kind: "unidentified" as const, why: "no answer" }]))])),
+        usage: null,
+        degradations: [],
+      };
+    };
+    return { identify, seen };
+  };
 
-  it("matches a short pushname onto a longer first name", async () => {
-    // Kemal flagged this in 2026-05: "ba" is Baki.
+  it("a member the model is sure of is the sender, and it read the message", async () => {
     membershipFindMany.mockResolvedValue([member("u4", "Baki Sutton")]);
-    const out = await resolveSender(ORG, { authorPhone: "", authorName: "ba" });
+    const { identify, seen } = answering({ ba: { kind: "member", userId: "u4" } });
+    const out = await resolveSender(ORG, { authorPhone: "", authorName: "ba", body: "IN" }, { identify });
     expect(out.userId).toBe("u4");
+    expect(seen[0].messages[0]).toMatchObject({ body: "IN", refs: ["ba"] });
   });
 
-  it("refuses to guess between two players with the same first name", async () => {
-    membershipFindMany.mockResolvedValue([
-      member("u5", "Ibrahim A"),
-      member("u6", "Ibrahim B"),
-    ]);
-    const out = await resolveSender(ORG, { authorPhone: "", authorName: "Ibrahim" });
+  it("THE CASE: a non-member David saying 'I'm out' is not Davide: the model says nobody, a new provisional member", async () => {
+    membershipFindMany.mockResolvedValue([member("u-davide", "Davide De Sousa")]);
+    userCreate.mockResolvedValue({ id: "new-david", name: "David" });
+    const { identify } = answering({ David: { kind: "none" } });
+    const out = await resolveSender(ORG, { authorPhone: "", authorName: "David", body: "I'm out" }, { identify });
+    expect(out.userId).toBe("new-david");
+    expect(out.userId).not.toBe("u-davide");
+  });
+
+  it("RED on main: a first-name PREFIX no longer resolves anybody ('Dav' is not Davide without the model)", async () => {
+    membershipFindMany.mockResolvedValue([member("u-davide", "Davide De Sousa")]);
+    const { identify } = answering({});
+    const out = await resolveSender(ORG, { authorPhone: "", authorName: "Dav", body: "out" }, { identify });
     expect(out.userId).toBeNull();
-    // The pushname still travels back, so the group nudge can name them.
-    expect(out.name).toBe("Ibrahim");
+    expect(userCreate).not.toHaveBeenCalled();
   });
 
-  it("uses an admin-curated alias to break that tie", async () => {
-    membershipFindMany.mockResolvedValue([
-      member("u5", "Baki Sutton"),
-      member("u6", "Başar K"),
-    ]);
-    userAliasFindUnique.mockResolvedValue({ userId: "u5" });
-    const out = await resolveSender(ORG, { authorPhone: "", authorName: "ba" });
-    expect(out.userId).toBe("u5");
+  it("two members it could be, or not sure: an UNKNOWN sender, nobody provisioned (fails closed)", async () => {
+    membershipFindMany.mockResolvedValue([member("u5", "Ibrahim A"), member("u6", "Ibrahim B")]);
+    const { identify } = answering({ Ibrahim: { kind: "ambiguous", userIds: ["u5", "u6"] } });
+    const out = await resolveSender(ORG, { authorPhone: "", authorName: "Ibrahim" }, { identify });
+    expect(out).toEqual({ userId: null, name: "Ibrahim", phone: null });
+    expect(userCreate).not.toHaveBeenCalled();
   });
 
-  it("resolves a nickname nothing fuzzy could ever bridge, via an alias", async () => {
-    // "Nunu" → Elnur. No letter-overlap rule reaches that; admin curation
-    // is the right tool and the resolver must consult it.
-    membershipFindMany.mockResolvedValue([member("u7", "Elnur Mammadov")]);
-    userAliasFindUnique.mockResolvedValue({ userId: "u7" });
-    const out = await resolveSender(ORG, { authorPhone: "", authorName: "Nunu" });
+  it("the club's aliases are shown to the model with each member; former members are marked", async () => {
+    membershipFindMany.mockResolvedValue([member("u7", "Elnur Mammadov"), member("u8", "Baki", new Date("2026-01-01"))]);
+    userAliasFindMany.mockResolvedValue([{ userId: "u7", alias: "nunu" }]);
+    const { identify, seen } = answering({ Nunu: { kind: "member", userId: "u7" } });
+    const out = await resolveSender(ORG, { authorPhone: "", authorName: "Nunu" }, { identify });
     expect(out.userId).toBe("u7");
+    expect(seen[0].roster.find((m) => m.userId === "u7")?.aliases).toEqual(["nunu"]);
+    expect(seen[0].roster.find((m) => m.userId === "u8")?.former).toBe(true);
   });
 
-  it("restores a soft-removed member who has started posting again", async () => {
+  it("restores a soft-removed member the model recognises", async () => {
     membershipFindMany.mockResolvedValue([member("u8", "Baki", new Date("2026-01-01"))]);
-    const out = await resolveSender(ORG, { authorPhone: "", authorName: "Baki" });
+    const { identify } = answering({ Baki: { kind: "member", userId: "u8" } });
+    const out = await resolveSender(ORG, { authorPhone: "", authorName: "Baki" }, { identify });
     expect(out.userId).toBe("u8");
-    expect(membershipUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "mem-u8" } }),
+    expect(membershipUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "mem-u8" } }));
+  });
+
+  it("a batch asks once for every phoneless sender, and never for one found by phone", async () => {
+    userFindUnique.mockImplementation(async (a: { where: { phoneNumber: string } }) =>
+      a.where.phoneNumber === "+447700900123" ? { id: "u1", name: "Kemal" } : null,
     );
+    membershipFindMany.mockResolvedValue([member("u4", "Baki Sutton"), member("u3", "Elnur Mammadov")]);
+    const { identify, seen } = answering({ ba: { kind: "member", userId: "u4" }, Elnur: { kind: "member", userId: "u3" } });
+    const out = await resolveSenders(
+      ORG,
+      [
+        { waMessageId: "a", authorPhone: "447700900123", authorName: "Kemal Ediz" },
+        { waMessageId: "b", authorPhone: "", authorName: "ba", body: "IN" },
+        { waMessageId: "c", authorPhone: "", authorName: "Elnur", body: "out" },
+      ],
+      { identify },
+    );
+    expect(seen).toHaveLength(1);
+    // One entry per distinct WhatsApp name, marked as a WhatsApp name.
+    expect(seen[0].messages.map((m) => m.refs)).toEqual([["ba"], ["Elnur"]]);
+    expect(seen[0].messages.every((m) => m.waNames === true)).toBe(true);
+    expect([...out.values()].map((s) => s.userId)).toEqual(["u1", "u4", "u3"]);
+  });
+
+  // ── Round 3 of the review of #574 ──
+
+  it("B1: one new sender's 'IN' then '+1' is ONE provisional member, not two", async () => {
+    userCreate.mockResolvedValue({ id: "new-hamzah", name: "Hamzah" });
+    const { identify, seen } = answering({ Hamzah: { kind: "none" } });
+    const out = await resolveSenders(
+      ORG,
+      [
+        { waMessageId: "a", authorPhone: "", authorName: "Hamzah", body: "IN" },
+        { waMessageId: "b", authorPhone: "", authorName: "Hamzah ", body: "+1" },
+      ],
+      { identify },
+    );
+    expect(seen[0].messages).toHaveLength(1);
+    expect(userCreate).toHaveBeenCalledTimes(1);
+    expect(out.get("a")?.userId).toBe("new-hamzah");
+    expect(out.get("b")?.userId).toBe("new-hamzah");
+  });
+
+  it("final review: two DIFFERENT unknown phones both called 'Ali' are two people, never merged by name", async () => {
+    userCreate.mockResolvedValueOnce({ id: "new-ali-1", name: "Ali" }).mockResolvedValueOnce({ id: "new-ali-2", name: "Ali" });
+    const { identify, seen } = answering({ Ali: { kind: "none" } });
+    const out = await resolveSenders(
+      ORG,
+      [
+        { waMessageId: "a", authorPhone: "447700900001", authorName: "Ali", body: "IN" },
+        { waMessageId: "b", authorPhone: "447700900002", authorName: "Ali", body: "IN" },
+        { waMessageId: "c", authorPhone: "447700900001", authorName: "Ali", body: "+1" },
+      ],
+      { identify },
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0].messages).toHaveLength(2);
+    expect(userCreate).toHaveBeenCalledTimes(2);
+    expect(out.get("a")?.userId).toBe("new-ali-1");
+    expect(out.get("c")?.userId).toBe("new-ali-1");
+    expect(out.get("b")?.userId).toBe("new-ali-2");
+  });
+
+  it("B3: a call refused by the daily cap is asked once more INSIDE the attendance overflow", async () => {
+    membershipFindMany.mockResolvedValue([member("u4", "Baki Sutton")]);
+    const overflowSeen: boolean[] = [];
+    let n = 0;
+    const identify: PersonPicker = async (req) => {
+      overflowSeen.push(currentAiBudget()?.overflow ?? false);
+      n += 1;
+      if (n === 1) return { picks: new Map(), usage: null, failed: "budget", degradations: ["refused"] };
+      return { picks: new Map(req.messages.map((m) => [m.id, new Map([[m.refs[0], { kind: "member", userId: "u4" } as PersonPick]])])), usage: null, degradations: [] };
+    };
+    const ledger = { reserve: vi.fn(), settle: vi.fn(), release: vi.fn() };
+    const out = await runWithAiBudget("org-1", ledger as never, () =>
+      resolveSenders(ORG, [{ waMessageId: "a", authorPhone: "", authorName: "Baki Sutton", body: "IN" }], { identify }),
+    );
+    expect(overflowSeen).toEqual([false, true]);
+    expect(out.get("a")?.userId).toBe("u4");
+  });
+
+  it("B3: a call that FAILED (not refused) is not re-asked here: the picker already retried it; the sender is unknown", async () => {
+    membershipFindMany.mockResolvedValue([member("u4", "Baki Sutton")]);
+    const identify = vi.fn<PersonPicker>(async () => ({ picks: new Map(), usage: null, failed: "error", degradations: ["overloaded"] }));
+    const out = await resolveSenders(ORG, [{ waMessageId: "a", authorPhone: "", authorName: "Baki Sutton", body: "IN" }], { identify });
+    expect(identify).toHaveBeenCalledTimes(1);
+    expect(out.get("a")?.userId).toBeNull();
+    expect(userCreate).not.toHaveBeenCalled();
+  });
+
+  it("B4: a sender with an unknown phone surely placed on a phoneless PROVISIONAL member: the member takes the phone", async () => {
+    membershipFindMany.mockResolvedValue([
+      { ...member("u-hamzah", "Hamzah Ali"), provisionallyAddedAt: new Date("2026-11-01"), user: { id: "u-hamzah", name: "Hamzah Ali", phoneNumber: null } },
+    ]);
+    userUpdateMany.mockResolvedValue({ count: 1 });
+    const { identify } = answering({ "Hamzah Ali": { kind: "member", userId: "u-hamzah" } });
+    const out = await resolveSenders(ORG, [{ waMessageId: "a", authorPhone: "447700900555", authorName: "Hamzah Ali", body: "IN" }], { identify });
+    expect(userUpdateMany).toHaveBeenCalledWith({ where: { id: "u-hamzah", phoneNumber: null }, data: { phoneNumber: "+447700900555" } });
+    expect(out.get("a")).toEqual({ userId: "u-hamzah", name: "Hamzah Ali", phone: "+447700900555" });
+    // Permanent, so the admins are told (once: the notice claims it).
+    expect(notifyPhoneAdopted).toHaveBeenCalledWith(ORG, { userId: "u-hamzah", name: "Hamzah Ali", whatsAppName: "Hamzah Ali" });
+  });
+
+  it("B4: a member who is not provisional, or already has a phone, never takes one", async () => {
+    membershipFindMany.mockResolvedValue([
+      { ...member("u-a", "Ali Kaya"), provisionallyAddedAt: null, user: { id: "u-a", name: "Ali Kaya", phoneNumber: null } },
+      { ...member("u-b", "Bilal"), provisionallyAddedAt: new Date(), user: { id: "u-b", name: "Bilal", phoneNumber: "+447700900999" } },
+    ]);
+    const { identify } = answering({ "Ali Kaya": { kind: "member", userId: "u-a" }, Bilal: { kind: "member", userId: "u-b" } });
+    await resolveSenders(
+      ORG,
+      [
+        { waMessageId: "a", authorPhone: "447700900555", authorName: "Ali Kaya", body: "IN" },
+        { waMessageId: "b", authorPhone: "447700900556", authorName: "Bilal", body: "IN" },
+      ],
+      { identify },
+    );
+    expect(userUpdateMany).not.toHaveBeenCalled();
+    expect(notifyPhoneAdopted).not.toHaveBeenCalled();
   });
 });
 

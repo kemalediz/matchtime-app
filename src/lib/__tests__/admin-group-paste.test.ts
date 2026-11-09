@@ -25,7 +25,7 @@ vi.mock("@/lib/ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Prom
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: vi.fn() }));
 vi.mock("@/lib/attendance", () => att);
-const prov = vi.hoisted(() => ({ resolveOrProvisionByName: vi.fn() }));
+const prov = vi.hoisted(() => ({ provisionNewPerson: vi.fn() }));
 vi.mock("@/lib/resolve-or-provision-name", () => prov);
 // The count line's facts (squad-count.ts), read off the same rows.
 vi.mock("@/lib/squad-count", () => ({
@@ -106,7 +106,7 @@ beforeEach(() => {
     else rows.push({ userId, status });
     return { status };
   });
-  prov.resolveOrProvisionByName.mockImplementation(async (_o: string, name: string) => ({ userId: `new-${name.toLowerCase()}`, name }));
+  prov.provisionNewPerson.mockImplementation(async (_o: string, name: string) => ({ userId: `new-${name.toLowerCase()}`, name }));
   dbMock.adminGroupMessage.findMany.mockResolvedValue([]);
   dbMock.teamAssignment.findMany.mockResolvedValue([]);
   dbMock.adminTeamProposal.findUnique.mockResolvedValue(null);
@@ -116,6 +116,8 @@ beforeEach(() => {
 });
 
 const LIST = "Friday 8pm\n1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim";
+/** The squad's five as a list writes them, with the reader's refs. */
+const WRITTEN = [["p1", "Shehryar"], ["p3", "Clarence"], ["p4", "Ali"], ["p5", "Tom"], ["p6", "Sam"]] as const;
 /** The reader's reading of LIST: Shehryar and Clarence left off on purpose. */
 const LIST_READ = () =>
   reader("squad", [{ name: "Bilal", member: "p2" }, { name: "Ali", member: "p4" }, { name: "Tom", member: "p5" }, { name: "Sam", member: "p6" }, { name: "Naim" }], ["p1", "p3"]);
@@ -218,7 +220,8 @@ describe("proposeSquadPaste", () => {
   });
 
   it("identical to the squad: says so, nothing stored", async () => {
-    const m = reader("squad", ["p1", "p3", "p4", "p5", "p6"].map((member) => ({ name: member, member })));
+    // Each line as written: who it is, is who-is-who's (here its stand-in).
+    const m = reader("squad", WRITTEN.map(([member, name]) => ({ name, member })));
     const r = (await proposeSquadPaste({ ...base, text: "1. Shehryar\n2. Clarence\n3. Ali\n4. Tom\n5. Sam", deps: { model: m } })) as PasteReply | null;
     expect(r).toEqual({ outcome: "paste-same", replyText: "That matches the squad, nothing to change." });
     expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
@@ -237,7 +240,7 @@ describe("proposeSquadPaste", () => {
   it("a name the reader says is not a person is never added as a player", async () => {
     const m = reader("squad", [
       { name: "Swap", person: false },
-      ...["p1", "p3", "p4", "p5", "p6"].map((member) => ({ name: member, member })),
+      ...WRITTEN.map(([member, name]) => ({ name, member })),
       { name: "With", person: false },
     ]);
     const r = (await proposeSquadPaste({ ...base, text: "Swap\nShehryar\nClarence\nAli\nTom\nSam\nWith", deps: { model: m } })) as PasteReply | null;
@@ -429,7 +432,9 @@ describe("answerSquadPasteYes", () => {
       sourceRef: "admin-group:wa-paste",
     });
     expect(att.registerAttendance.mock.calls[0][2]).toMatchObject({ promoteFromBench: true, actorIsAdmin: true });
-    expect(prov.resolveOrProvisionByName).toHaveBeenCalledWith("org", "Naim", { adminConfirmed: true });
+    // Every new name on the list in one who-is-who call (2026-11-09).
+    // A new name who-is-who placed on nobody: provisioned, never asked again.
+    expect(prov.provisionNewPerson).toHaveBeenCalledWith("org", "Naim", { adminConfirmed: true });
   });
 
   it("the diff is worked out again at the YES: a change made since is not undone twice", async () => {

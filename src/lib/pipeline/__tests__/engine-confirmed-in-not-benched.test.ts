@@ -26,7 +26,7 @@
  * a free place.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import {
   NOW,
   SUTTON,

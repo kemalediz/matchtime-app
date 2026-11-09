@@ -173,6 +173,9 @@ import {
 } from "./attendance-engine";
 import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
 import { membersNamedIn } from "./pipeline/identity";
+import { identifyFacts, personPickerFor } from "./pipeline/identify-batch";
+import { restoreFormerMember } from "./resolve-sender";
+import type { PersonPicker, PersonPicks } from "./pipeline/who-is-who";
 
 export interface EngineBatchMessage {
   waMessageId: string;
@@ -411,6 +414,9 @@ export interface EngineBatchDeps extends EngineApplyDeps {
   claimGuestNameAsk: (args: { matchId: string; userId: string }) => Promise<boolean>;
   /** Injected so tests can drive the whole batch without a key. */
   model?: PipelineModel;
+  /** Who the names in the facts are (`who-is-who.ts`). Injected by tests;
+   *  otherwise `personPickerFor`. */
+  identify?: PersonPicker;
   /**
    * THE CLUB IS AT ITS DAILY AI CAP (`ai-budget.ts`), known before the
    * batch started. The attendance extractor still reads each owned
@@ -433,12 +439,23 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    * `admin-group-name-list.ts`). Absent, nothing changes.
    */
   presetFacts?: (message: EngineBatchMessage) => AttendanceFacts | null;
+  /**
+   * WHO THE PRESET FACTS' NAMES ARE, when the caller's own model call
+   * already picked them from the club's members (HQ's squad reader,
+   * 2026-11-09). Those names are not asked again; any other name in the
+   * message is (`pipeline/identify-batch.ts`). Absent: every name is asked.
+   */
+  presetPeople?: (message: EngineBatchMessage) => PersonPicks | null;
   /** Counts messages nothing read because the club is past twice its cap
    *  (the owner dashboard's counter). Injected by tests; defaults to
    *  `recordCapSkips` in `ai-budget.ts`. */
   recordCapSkips?: (orgId: string, count: number) => Promise<void>;
   /** Injected so tests can load a state without a database. */
   loadState?: (orgId: string, now: Date) => Promise<SquadState>;
+  /** Brings a former member back into the club (who-is-who was sure of
+   *  him in an IN or bench claim; review of #574, round 3). Injected by
+   *  tests; defaults to `restoreFormerMember` in `resolve-sender.ts`. */
+  restoreMember?: (orgId: string, userId: string) => Promise<void>;
   /**
    * THE CALLER NARROWS WHAT THE ENGINE MAY ACT ON (2026-10-15). Called
    * once per owned message with attendance facts, after extraction and
@@ -448,7 +465,13 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    * ("might have to pull out", "my ankle is wrecked") must not write, and
    * only an explicit instruction does. Absent, nothing changes.
    */
-  vetFacts?: (args: { message: EngineBatchMessage; facts: AttendanceFacts; state: SquadState }) => AttendanceFacts;
+  vetFacts?: (args: {
+    message: EngineBatchMessage;
+    facts: AttendanceFacts;
+    state: SquadState;
+    /** Who the facts' names are (`pipeline/who-is-who.ts`). */
+    people: PersonPicks | undefined;
+  }) => AttendanceFacts;
   /**
    * A REPLY TO A PARTNER CLUB'S ASK (cross-club ask, slice S3). The engine's
    * `partner_volunteer` writes go here, never to `applyEngineWrites`: they
@@ -965,6 +988,46 @@ export async function runAttendanceEngineBatch(args: {
     factsById.set(m.waMessageId, { facts: clamped.facts, degraded: before.degraded });
   }
 
+  // ── Stage 2b': WHO IS WHO (2026-11-09) ───────────────────────────────
+  // Every name the owned messages' facts quote, put to the model in one
+  // call with the club's members (`pipeline/who-is-who.ts`): which member
+  // it is, nobody, or several. No name is matched by spelling anywhere
+  // below; the engine and the caller's vetting read these picks. Names
+  // the caller already knows (HQ's squad reader) are not asked again.
+  // Same daily-cap rule as the extractor: at the cap it runs in the
+  // attendance overflow.
+  const identify = () =>
+    identifyFacts({
+      picker: personPickerFor({ identify: deps.identify, model }),
+      roster: state.roster,
+      former: state.formerMembers,
+      where: deps.presetPeople ? "HQ, the organisers' admin group" : "the players' group",
+      lastBotPost: state.lastBotPost,
+      items: owned
+        .filter((m) => ownedIds.has(m.waMessageId) && factsById.has(m.waMessageId))
+        .map((m) => ({
+          id: m.waMessageId,
+          body: m.body,
+          author: m.senderName ?? m.authorName,
+          senderUserId: m.senderUserId,
+          facts: factsById.get(m.waMessageId)!.facts,
+          known: deps.presetPeople?.(m) ?? null,
+          mayBringBack: m.senderIsAdmin === true,
+        })),
+    });
+  const identified = deps.aiCapped ? await withAttendanceOverflow(identify) : await identify();
+  if (identified.calls > 0) {
+    cost = { usd: cost.usd + identified.costUsd, calls: cost.calls + identified.calls, ms: cost.ms };
+  }
+  for (const d of identified.degradations) degradations.push(d);
+  const peopleById = identified.people;
+  // A former member the model was sure of, put in or on the bench by an
+  // organiser: on the roster the engine decides against, in memory only.
+  // His membership is restored only once an attendance row for him has
+  // actually landed (after the apply below; final review of round 3).
+  const returning = identified.returning;
+  if (returning.length > 0) state = { ...state, roster: [...state.roster, ...returning] };
+
   // ── Stage 2c: THE CALLER'S VETTING (admin group only) ──────────────
   // See `EngineBatchDeps.vetFacts`. Facts only; ownership is unchanged, so
   // a message left with no claims is decided as "no claims extracted".
@@ -973,7 +1036,10 @@ export async function runAttendanceEngineBatch(args: {
       if (!ownedIds.has(m.waMessageId)) continue;
       const f = factsById.get(m.waMessageId);
       if (!f || f.facts.kind !== "attendance") continue;
-      factsById.set(m.waMessageId, { facts: deps.vetFacts({ message: m, facts: f.facts, state }), degraded: f.degraded });
+      factsById.set(m.waMessageId, {
+        facts: deps.vetFacts({ message: m, facts: f.facts, state, people: peopleById.get(m.waMessageId) }),
+        degraded: f.degraded,
+      });
     }
   }
 
@@ -1032,6 +1098,36 @@ export async function runAttendanceEngineBatch(args: {
     }),
   );
 
+  // ── Stage 2d': who the team change's names are ──────────────────────
+  // The swap guard asks who a team change moves; that is who-is-who's,
+  // as every name is (2026-11-09, review of #574). Only a message with a
+  // teams reading has anything new to ask; names already picked are not
+  // asked again. One call, none in the usual batch.
+  if (teamsReadingById.size > 0) {
+    const more = await identifyFacts({
+      picker: personPickerFor({ identify: deps.identify, model }),
+      roster: state.roster,
+      where: "the players' group",
+      items: owned
+        .filter((m) => teamsReadingById.has(m.waMessageId))
+        .map((m) => {
+          const reading = teamsReadingById.get(m.waMessageId)!;
+          return {
+            id: m.waMessageId,
+            body: m.body,
+            author: m.senderName ?? m.authorName,
+            senderUserId: m.senderUserId,
+            facts: { kind: "none" } as Facts,
+            teamsReading: reading,
+            known: peopleById.get(m.waMessageId) ?? null,
+          };
+        }),
+    });
+    if (more.calls > 0) cost = { usd: cost.usd + more.costUsd, calls: cost.calls + more.calls, ms: cost.ms };
+    degradations.push(...more.degradations);
+    for (const [id, p] of more.people) peopleById.set(id, p);
+  }
+
   // ── Stage 3: the engine, over the WHOLE window ─────────────────────
   const engineMessages: EngineMessage[] = messages.map((m) => {
     const f = factsById.get(m.waMessageId);
@@ -1050,6 +1146,7 @@ export async function runAttendanceEngineBatch(args: {
       degraded: f?.degraded ?? null,
       ...(m.quoted ? { quoted: m.quoted } : {}),
       ...(teamsReadingById.has(m.waMessageId) ? { teamsReading: teamsReadingById.get(m.waMessageId) } : {}),
+      ...(peopleById.has(m.waMessageId) ? { people: peopleById.get(m.waMessageId) } : {}),
     };
   });
 
@@ -1237,6 +1334,19 @@ export async function runAttendanceEngineBatch(args: {
     actorByMessageId,
     deps,
   });
+  // A former member brought back by an organiser's claim: back in the
+  // club only now that a row for him landed. Nothing landed (vetted away,
+  // held, declined), nothing is restored.
+  for (const back of returning) {
+    const landed = applied.some((a) => a.ok && a.write.kind === "attendance" && a.write.userId === back.userId);
+    if (!landed) continue;
+    try {
+      await (deps.restoreMember ?? restoreFormerMember)(orgId, back.userId);
+    } catch (err) {
+      degradations.push(`who-is-who: former member ${back.userId} was registered but his membership could not be restored (${(err as Error).message ?? String(err)})`);
+    }
+  }
+
   // A TEAM-SLOT MOVE THAT DID NOT LAND IS AN OPERATOR PROBLEM, and it has
   // nowhere else to go: `failures` below speaks only IN / OUT / BENCH, and
   // the composed post is about to declare a sheet that the database did

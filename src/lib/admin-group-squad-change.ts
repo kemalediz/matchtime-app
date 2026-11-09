@@ -42,13 +42,15 @@ import { db } from "./db";
 import { cancelAttendance, registerAttendance } from "./attendance";
 import { runAttendanceEngineBatch } from "./attendance-engine-batch";
 import { withOrgAiBudget } from "./ai-budget";
-import { resolveMentionNames } from "./pipeline/mention-names";
+import { nameMentions as nameMentionsByModel } from "./pipeline/mention-names";
+import { personPickerFor } from "./pipeline/identify-batch";
 import { buildClaimGuestNameAsk } from "./owner-deps";
 import { moveNamedSlot } from "./team-slot-fill";
 import { recordTentative, resolveTentative } from "./tentative-store";
-import { resolveOrProvisionByName } from "./resolve-or-provision-name";
+import { provisionNewPerson } from "./resolve-or-provision-name";
 import { adminGroupSourceRef } from "./admin-added";
 import { resolvePerson } from "./pipeline/identity";
+import { refKey, type PersonPick, type PersonPicks } from "./pipeline/who-is-who";
 import { loadSquadState } from "./pipeline/load-state";
 import { rollingSeedPendingAt } from "./rolling-squad";
 import { timeLabel, weekdayLabel } from "./i18n/dates";
@@ -115,15 +117,49 @@ export type AdminSquadChangeResult =
 type Status = "CONFIRMED" | "BENCH" | "DROPPED";
 
 /** Who a claim names, on the squad state the engine is about to decide
- *  against: the engine's own resolver (`pipeline/identity.ts`). */
-function refOn(state: SquadState, personRef: string): AdminClaimRef {
-  const r = resolvePerson(personRef, state.roster);
+ *  against: the engine's own resolver (`pipeline/identity.ts`), reading
+ *  the model's picks for the message (`people`). */
+function refOn(state: SquadState, personRef: string, people: PersonPicks | undefined): AdminClaimRef {
+  const r = resolvePerson(personRef, state.roster, people);
   if (r.kind === "resolved") return { kind: "member", userId: r.member.userId, name: r.member.name };
   if (r.kind === "unknown") return { kind: "unknown", name: r.name };
   if (r.kind === "ambiguous") return { kind: "ambiguous", name: personRef.trim().replace(/^@/, "") };
   return { kind: "none" };
 }
 
+/**
+ * WHO-IS-WHO'S PICKS FOR THE READER'S CHANGE, as the engine reads names
+ * (2026-11-09, review of #574). Every name in the change was placed by
+ * who-is-who when the message was read (`placeReaderNames`), and
+ * `hqChangeFacts` quotes each as the message wrote it: a member is that
+ * member, nobody is nobody (a new person, for an IN), and a name it could
+ * not place, or an arriving player whose replaced player it could not
+ * place, is an ambiguity, so nothing about them is written and the sender
+ * is asked. Nobody is asked again.
+ */
+export function hqChangePeople(changes: readonly HqSquadChange[]): PersonPicks {
+  const out = new Map<string, PersonPick>();
+  // Two different people quoted the same way cannot be told apart by the
+  // quote: an ambiguity, never the last one read.
+  const put = (name: string, pick: PersonPick) => {
+    const key = refKey(name);
+    if (!key) return;
+    const had = out.get(key);
+    if (!had || JSON.stringify(had) === JSON.stringify(pick)) {
+      out.set(key, pick);
+      return;
+    }
+    const ids = [had, pick].flatMap((p) => (p.kind === "member" ? [p.userId] : p.kind === "ambiguous" ? p.userIds : []));
+    out.set(key, { kind: "ambiguous", userIds: [...new Set(ids)] });
+  };
+  for (const c of changes) {
+    const quoted = c.written || c.name;
+    if (c.unclear) put(quoted, { kind: "ambiguous", userIds: c.userId ? [c.userId] : [] });
+    else put(quoted, c.userId ? { kind: "member", userId: c.userId } : { kind: "none" });
+    if (c.replaces && c.replacesUserId) put(c.replaces, { kind: "member", userId: c.replacesUserId });
+  }
+  return out;
+}
 /** "@447700900123 out": name the tag from the club's roster, as the
  *  players' group does. Only read when the text carries a raw tag. */
 export async function nameMentions(orgId: string, text: string, mentionNames: AdminSquadChangeInput["mentionNames"]): Promise<string> {
@@ -136,7 +172,14 @@ export async function nameMentions(orgId: string, text: string, mentionNames: Ad
     .map((m) => m.user)
     .filter((u) => !!u?.name)
     .map((u) => ({ userId: u.id, name: u.name as string, phone: u.phoneNumber }));
-  return resolveMentionNames({ body: text, mentions: mentionNames.map((m) => m.jid), mentionNames, roster, aliases }).body;
+  const [named] = await nameMentionsByModel({
+    messages: [{ body: text, mentions: mentionNames.map((m) => m.jid), mentionNames }],
+    roster,
+    aliases,
+    picker: personPickerFor(),
+    where: "HQ, the organisers' admin group",
+  });
+  return named.body;
 }
 
 export async function handleAdminSquadChange(input: AdminSquadChangeInput): Promise<AdminSquadChangeResult> {
@@ -180,7 +223,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       notSetAt = state.matchId ? await rollingSeedPendingAt(state.matchId, n) : null;
       return state;
     };
-    const vetFacts: NonNullable<Parameters<typeof runAttendanceEngineBatch>[0]["deps"]["vetFacts"]> = ({ message, facts, state }) => {
+    const vetFacts: NonNullable<Parameters<typeof runAttendanceEngineBatch>[0]["deps"]["vetFacts"]> = ({ message, facts, state, people }) => {
       if (message.waMessageId !== messageId) return facts;
       kickoffLabel = state.kickoffLabel;
       const out = vetAdminGroupFacts({
@@ -188,7 +231,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
         senderUserId: input.senderUserId,
         senderName: input.senderName,
         listNotSet: notSetAt !== null,
-        resolve: (ref) => refOn(state, ref),
+        resolve: (ref) => refOn(state, ref, people),
         statusOf: (userId) => state.rows.find((r) => r.userId === userId)?.status ?? null,
       });
       vetted = out.vetted;
@@ -220,6 +263,8 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       deps: {
         // The reader already read the message: its change is the facts.
         presetFacts: (message) => (message.waMessageId === messageId ? facts : null),
+        // ...and who its names are, where the reader picked a member.
+        presetPeople: (message) => (message.waMessageId === messageId ? hqChangePeople(input.reading.changes) : null),
         loadState,
         vetFacts,
         // Every write is stamped as the admin group's (sourceRef
@@ -244,7 +289,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
         },
         // An admin typed this name in HQ on purpose ("put Mo in"): a
         // short real name is added, as in a pasted list.
-        resolveOrProvision: (name) => resolveOrProvisionByName(orgId, name, { adminConfirmed: true }),
+        resolveOrProvision: (name) => provisionNewPerson(orgId, name, { adminConfirmed: true }),
         moveTeamSlot: async (matchId, fromUserId, toUserId) => {
           const res = await db.$transaction((tx) => moveNamedSlot(tx, matchId, fromUserId, toUserId));
           if (res.kind === "refused") throw new Error(`slot move refused (${res.reason})`);

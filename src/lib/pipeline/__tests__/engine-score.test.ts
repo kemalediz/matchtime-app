@@ -16,7 +16,7 @@
  * never this file's: a stub only proves what the engine does with them.
  */
 import { describe, it, expect } from "vitest";
-import { decide, SCORE_CORRECTION_WINDOW_MS } from "../engine";
+import { decide, SCORE_CORRECTION_WINDOW_MS } from "./support/stub-picks";
 import { compose } from "../compose";
 import { parseFacts } from "../extractors";
 import { SCORE_ANSWER_UNTAGGED_MS, SCORE_ASK_TTL_MS } from "../score-ask";

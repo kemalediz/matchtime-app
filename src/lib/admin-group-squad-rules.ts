@@ -8,8 +8,8 @@
  * This module holds what needs no database and no model:
  *
  *   - which router routes the admin group acts on (`ADMIN_GROUP_SQUAD_ROUTES`);
- *   - placing a name the HQ squad reader read on a club member
- *     (`matchPastedName`), the fact gates on a pasted list
+ *   - the fact gates on a pasted list (who each name is, is who-is-who's,
+ *     placed when the list is read: `hq-squad-reader.ts` `placeReaderNames`)
  *     (`gateSquadPaste`) and diffing it against the squad
  *     (`diffPastedSquad`). The list itself is read by a model
  *     (`hq-squad-reader.ts`), never by code;
@@ -61,61 +61,8 @@ export interface PasteMember {
   aliases: string[];
 }
 
-export type NameMatch = { kind: "member"; userId: string } | { kind: "new" } | { kind: "ambiguous" };
-
 function fold(s: string): string {
   return normaliseName(s).replace(/ı/g, "i").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-}
-
-/**
- * Which member a pasted name means, by the same rules the group's
- * third-party resolver uses (`resolveOrProvisionByName`): the whole name,
- * then an alias, then a unique first name (or a first name one is a prefix
- * of, three letters or more). Two candidates and none of them on this
- * match: ambiguous, and the list leaves that line out rather than guess.
- * `onMatch` is everyone with a row on the match: when only one candidate
- * is already there, that is who the list means.
- */
-export function matchPastedName(raw: string, members: PasteMember[], onMatch: ReadonlySet<string> = new Set()): NameMatch {
-  const ids = nameCandidates(raw, members);
-  if (ids.length === 1) return { kind: "member", userId: ids[0] };
-  if (ids.length > 1) {
-    const here = ids.filter((id) => onMatch.has(id));
-    return here.length === 1 ? { kind: "member", userId: here[0] } : { kind: "ambiguous" };
-  }
-  return { kind: "new" };
-}
-
-/**
- * Who a typed name could be, by the rules above, in order: the whole name,
- * then an alias, then a first name (or a first name one is a prefix of,
- * three letters or more). The first rule that finds anyone decides; the
- * ids come back without repeats, in `members` order. Empty: nobody. Also
- * read by the team commands in the admin group (`team-proposal-rules.ts`),
- * with `members` the players on the teams, so a name there means what it
- * means in a pasted list.
- */
-export function nameCandidates(raw: string, members: PasteMember[]): string[] {
-  const name = fold(typeof raw === "string" ? raw : "");
-  if (!name) return [];
-  const uniq = (ids: string[]) => [...new Set(ids)];
-  const exact = uniq(members.filter((m) => m.name && fold(m.name) === name).map((m) => m.userId));
-  if (exact.length) return exact;
-  const alias = uniq(members.filter((m) => m.aliases.some((a) => fold(a) === name)).map((m) => m.userId));
-  if (alias.length) return alias;
-  const first = name.split(" ")[0];
-  return uniq(
-    members
-      .filter((m) => {
-        if (!m.name) return false;
-        const mFirst = fold(m.name).split(" ")[0] ?? "";
-        return (
-          mFirst === first ||
-          (mFirst.length >= 3 && first.length >= 3 && (mFirst.startsWith(first) || first.startsWith(mFirst)))
-        );
-      })
-      .map((m) => m.userId),
-  );
 }
 
 // ── The diff ──────────────────────────────────────────────────────────
@@ -349,14 +296,15 @@ export function buildPasteNoMatchReply(p: { lang: string | null | undefined; nex
  * The HQ squad reader's change as the facts the shared attendance engine
  * decides from (its `presetFacts`: no extractor is asked). Each person is
  * named, present, definite and the sender's own word: the reader lists
- * only instructions. A member is named by their roster name, so the
- * engine's resolver finds exactly them; a new person by the name written.
- * The sender's own place is theirs (`subject: "sender"`).
+ * only instructions. Each person is quoted as the message wrote them, and
+ * who they are is who-is-who's pick, handed to the engine with the facts
+ * (`admin-group-squad-change.ts` `hqChangePeople`). The sender's own place
+ * is theirs (`subject: "sender"`).
  */
 export function hqChangeFacts(changes: readonly HqSquadChange[], senderUserId: string): AttendanceFacts {
   const claims: Claim[] = changes.map((c) => ({
     subject: c.userId !== null && c.userId === senderUserId ? "sender" : "other",
-    personRef: c.name,
+    personRef: c.written || c.name,
     personNamed: true,
     polarity: c.to,
     contingent: false,

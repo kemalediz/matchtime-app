@@ -30,7 +30,7 @@ const budget = vi.hoisted(() => ({
 vi.mock("@/lib/ai-budget", () => budget);
 const tentative = vi.hoisted(() => ({ recordTentative: vi.fn(), resolveTentative: vi.fn() }));
 vi.mock("@/lib/tentative-store", () => tentative);
-const prov = vi.hoisted(() => ({ resolveOrProvisionByName: vi.fn() }));
+const prov = vi.hoisted(() => ({ provisionNewPerson: vi.fn() }));
 vi.mock("@/lib/resolve-or-provision-name", () => prov);
 // The engine's own squad loader, and whether the rolling squad of the match
 // it picks is still to be carried over (2026-10-17). Called only when a
@@ -46,6 +46,7 @@ vi.mock("@/lib/squad-count", () => squadCount);
 
 import { handleAdminSquadChange } from "../admin-group-squad-change";
 import type { AttendanceFacts, Claim, Route, SquadState } from "../pipeline/types";
+import { personRefsIn, stubPicks, whoRosterOf } from "../pipeline/who-is-who";
 
 const MATCH_ID = "m1";
 const input = {
@@ -127,7 +128,14 @@ function vetThrough(
     ],
   } as unknown as SquadState;
   const message = { ...a.messages[0], ...(body ? { body } : {}) };
-  return a.deps.vetFacts!({ message, facts: { kind: "attendance", claims, affirmation: null, sideRequests }, state });
+  const facts: AttendanceFacts = { kind: "attendance", claims, affirmation: null, sideRequests };
+  // Who the names are, as the runner hands them over (who-is-who; here
+  // its name-based stand-in, 2026-11-09).
+  const people = stubPicks({
+    roster: whoRosterOf(state.roster),
+    messages: [{ id: message.waMessageId, body: message.body, author: null, refs: personRefsIn(facts) }],
+  }).get(message.waMessageId);
+  return a.deps.vetFacts!({ message, facts, state, people });
 }
 
 const statuses = new Map<string, string>();
@@ -231,13 +239,13 @@ describe("handleAdminSquadChange", () => {
 
   it('"put Mo in": a new name an admin typed in HQ is resolved as deliberate, so a 2-letter name is added', async () => {
     routed("other_att");
-    prov.resolveOrProvisionByName.mockResolvedValue({ userId: "u-mo", name: "Mo" });
+    prov.provisionNewPerson.mockResolvedValue({ userId: "u-mo", name: "Mo" });
     engineDoes(async (a) => {
       const who = await a.deps.resolveOrProvision("Mo");
       expect(who).toEqual({ userId: "u-mo", name: "Mo" });
     });
     await handleAdminSquadChange({ ...input, route, text: "put Mo in" });
-    expect(prov.resolveOrProvisionByName).toHaveBeenCalledWith("org-fnf", "Mo", { adminConfirmed: true });
+    expect(prov.provisionNewPerson).toHaveBeenCalledWith("org-fnf", "Mo", { adminConfirmed: true });
   });
 
   it("Turkish club: Turkish reply", async () => {

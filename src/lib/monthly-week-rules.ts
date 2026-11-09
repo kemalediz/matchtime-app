@@ -886,6 +886,19 @@ export function reconcileMonthPaste(args: {
 
   const onPaste = new Set<string>();
   for (const { r } of [...slotLines, ...cantLines, ...elsewhere]) if (r.kind === "one") onPaste.add(r.userId);
+  // UNCLEAR LINES (review of #574, round 3): who-is-who could not place
+  // them. Whoever they could be may be on the paste, so nobody they could
+  // be is taken off for missing from it; a line that could be anybody (no
+  // answer) takes nobody but the sender off.
+  const maybeOnPaste = new Set<string>(onPaste);
+  let anybodyMaybeOnPaste = false;
+  for (const { e } of [...slotLines, ...cantLines, ...elsewhere]) {
+    const u = e.facts?.unclear;
+    if (!u) continue;
+    if (u.candidates.length === 0) anybodyMaybeOnPaste = true;
+    for (const id of u.candidates) maybeOnPaste.add(id);
+  }
+  const mayBeOnPaste = (userId: string): boolean => anybodyMaybeOnPaste || maybeOnPaste.has(userId);
   const week = buildWeekList(args);
   const isOutNow = (userId: string): boolean => {
     const row = rowOf.get(userId);
@@ -930,7 +943,14 @@ export function reconcileMonthPaste(args: {
   const senderRowNow = senderUserId ? rowOf.get(senderUserId) : undefined;
   const senderKeys = (args.senderNames ?? []).map((n) => nameKey(n)).filter(Boolean);
   const senderWords = new Set(senderKeys.map((k) => k.split(" ")[0]).filter((w) => w.length >= 2));
-  const unknownLines = slotLines.filter((x) => x.r.kind === "none");
+  // A line who-is-who was unsure of counts too when the sender is among
+  // the members it could be, or it could be anybody (final review of round
+  // 3: "Big Gary" with two Garys in the club is still Gary's own line).
+  const unknownLines = slotLines.filter((x) => {
+    if (x.r.kind === "none") return true;
+    const could = x.e.facts?.unclear?.candidates;
+    return x.r.kind === "ambiguous" && !!could && (could.length === 0 || (!!senderUserId && could.includes(senderUserId)));
+  });
   const selfLine =
     senderUserId &&
     args.roster.some((m) => m.userId === senderUserId) &&
@@ -950,6 +970,10 @@ export function reconcileMonthPaste(args: {
       if (e === selfLine && senderUserId) {
         handled.add(senderUserId);
         actions.push({ kind: "in", userId: senderUserId, name: e.name, self: true, slot: e.slot });
+      } else if (r.kind === "ambiguous") {
+        // Not placed on one member, nor nobody: never a new person, and no
+        // guest place used (review of #574, round 3).
+        notAdded.push({ name: e.name, reason: "ambiguous" });
       } else if (e.facts?.guest && senderIsAdmin && !e.facts.hostUserId) {
         // An organiser's new line for somebody who is nobody of the club
         // and whom nobody brings: a new player of the month (Kemal,
@@ -1029,7 +1053,7 @@ export function reconcileMonthPaste(args: {
   const benchGuestCap = senderIsAdmin ? MAX_NEW_PLAYERS_PER_PASTE : MAX_GUESTS_PER_PASTE;
   for (const { e, r } of benchLines) {
     if (r.kind !== "one") {
-      if (e.facts?.guest && (senderIsClubPlayer || senderIsAdmin)) {
+      if (r.kind === "none" && e.facts?.guest && (senderIsClubPlayer || senderIsAdmin)) {
         if (benchGuests < benchGuestCap) {
           benchGuests++;
           actions.push({ kind: "guest", name: e.name, hostUserId: e.facts.hostUserId ?? (senderIsAdmin ? null : senderUserId), slot: e.slot, bench: true });
@@ -1070,8 +1094,10 @@ export function reconcileMonthPaste(args: {
   if (benchShown) {
     for (const b of week.reserves) {
       if (onPaste.has(b.userId) || handled.has(b.userId)) continue;
-      handled.add(b.userId);
       const self = b.userId === senderUserId;
+      // An unclear line may be him (round 3): not "left off" by anybody else.
+      if (!self && mayBeOnPaste(b.userId)) continue;
+      handled.add(b.userId);
       if (self) actions.push({ kind: "out", userId: b.userId, name: b.name, self, via: "off-bench" });
       else if (!senderIsAdmin) ignored.push({ name: b.name, reason: "blank-by-other" });
       else if (oldCopy) ignored.push({ name: b.name, reason: "old-copy" });
@@ -1085,8 +1111,10 @@ export function reconcileMonthPaste(args: {
   // on the paste.
   for (const held of blankedPlayers(list, week, resolve, onPaste)) {
     if (handled.has(held.userId)) continue;
-    handled.add(held.userId);
     const self = held.userId === senderUserId;
+    // An unclear line may be him (round 3): his line is not blank.
+    if (!self && mayBeOnPaste(held.userId)) continue;
+    handled.add(held.userId);
     if (self || (senderIsAdmin && !oldCopy)) {
       actions.push({ kind: "out", userId: held.userId, name: held.name, self, via: "blank" });
     } else {

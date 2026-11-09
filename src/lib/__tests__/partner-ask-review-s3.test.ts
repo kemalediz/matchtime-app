@@ -17,7 +17,7 @@ import { runAttendanceEngineBatch, type EngineBatchDeps, type EngineBatchMessage
 import { decideVolunteer } from "../partner-volunteer-rules";
 import type { PipelineModel } from "../pipeline/llm";
 import type { SquadState } from "../pipeline/types";
-import { decide } from "../pipeline/engine";
+import { decide } from "../pipeline/__tests__/support/stub-picks";
 import { NOW, attendanceFacts, claim, msg as emsg, world } from "../pipeline/__tests__/helpers";
 
 const ASK = { askId: "ask-1", postWaMessageId: "true_g@g.us_3EB0ASK1", askerName: "FNF", open: true };

@@ -124,6 +124,9 @@
  * sees it immediately; one more message reverses it.
  */
 
+import { refKey } from "./person-ref-key";
+import type { PersonPicks } from "./pipeline/who-is-who";
+
 export type SwapAttendance = "CONFIRMED" | "BENCH" | "DROPPED" | "NONE";
 export type SwapTeam = "RED" | "YELLOW";
 
@@ -158,37 +161,23 @@ const opposite = (t: SwapTeam): SwapTeam => (t === "RED" ? "YELLOW" : "RED");
 const norm = (s: string) =>
   s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-function nameMatches(query: string, name: string): boolean {
-  const qq = norm(query);
-  const nm = norm(name);
-  const first = nm.split(/\s+/)[0] ?? "";
-  return nm === qq || first === qq || nm.startsWith(qq) || first.startsWith(qq);
-}
-
 /**
- * Resolve ONE name against the pool, or null if it is ambiguous or
- * unknown. Same matching as the shipped handler (exact, first name, or
- * prefix of either) — what changed is the POOL.
- *
- * TWO STAGES, AND THE ORDER IS THE POINT. The shipped handler searched
- * CONFIRMED attendees only, so a DROPPED Elvin was invisible and the
- * incident could not be read at all. Searching everybody instead would
- * have fixed that and broken something else: a name that resolved
- * UNIQUELY among the confirmed can be ambiguous across the whole
- * roster (two Omars, one playing, one who dropped out weeks ago), and
- * the shipped both-CONFIRMED swap would start returning null on
- * messages it handles today.
- *
- * So: a unique CONFIRMED match wins outright, exactly as before. Only
- * when there is NO confirmed match at all does the wider pool get a
- * turn, and it too must be unique. Strictly additive: every name that
- * resolved before resolves to the same person.
+ * Who ONE name is, from the pool: who-is-who's pick for it (`people`, the
+ * model reading the message with the club's members, 2026-11-09, review
+ * of #574), checked against the match's pool. It used to be a match by
+ * spelling (exact, first name, or a PREFIX of either: "Dav" was Davide);
+ * no name is compared with another here now. A member the model is sure
+ * of who is in the pool is that side; several possible members is an
+ * ambiguity, named back with the ones in the pool; anybody else (nobody,
+ * a member not on this match, no answer) is a name MatchTime does not
+ * know for this match.
  */
 export function resolveSwapSide(
   query: string,
   roster: SwapCandidate[],
+  people?: PersonPicks,
 ): SwapCandidate | null {
-  const r = resolveSwapSideDetailed(query, roster);
+  const r = resolveSwapSideDetailed(query, roster, people);
   return r.kind === "resolved" ? r.side : null;
 }
 
@@ -200,16 +189,18 @@ type SideResolution =
   | { kind: "ambiguous"; candidates: SwapCandidate[] }
   | { kind: "unknown" };
 
-function resolveSwapSideDetailed(query: string, roster: SwapCandidate[]): SideResolution {
-  const hits = roster.filter((c) => nameMatches(query, c.name));
-  const confirmed = hits.filter((c) => c.status === "CONFIRMED");
-  if (confirmed.length === 1) return { kind: "resolved", side: confirmed[0] };
-  // Ambiguous among the playing: the candidates are the playing ones.
-  if (confirmed.length > 1) return { kind: "ambiguous", candidates: confirmed };
-  if (hits.length === 1) return { kind: "resolved", side: hits[0] };
-  return hits.length > 1 ? { kind: "ambiguous", candidates: hits } : { kind: "unknown" };
+function resolveSwapSideDetailed(query: string, roster: SwapCandidate[], people: PersonPicks | undefined): SideResolution {
+  const pick = people?.get(refKey(query));
+  if (pick?.kind === "member") {
+    const side = roster.find((c) => c.userId === pick.userId);
+    return side ? { kind: "resolved", side } : { kind: "unknown" };
+  }
+  if (pick?.kind === "ambiguous") {
+    const candidates = roster.filter((c) => pick.userIds.includes(c.userId));
+    return candidates.length > 0 ? { kind: "ambiguous", candidates } : { kind: "unknown" };
+  }
+  return { kind: "unknown" };
 }
-
 // ═══════════════════════════════════════════════════════════════════════
 // A SWAP REQUEST IS NEVER ATTENDANCE (2026-09-17; read from facts since 2026-10-30)
 // ═══════════════════════════════════════════════════════════════════════
@@ -297,7 +288,7 @@ export function swapGuardFor(
   reading: SwapReading | null | undefined,
   claims: SwapGuardClaim[],
   roster: SwapCandidate[],
-  opts: { sender: { userId: string; name: string } | null; teamsExist: boolean },
+  opts: { sender: { userId: string; name: string } | null; teamsExist: boolean; people?: PersonPicks },
 ): { parties: string[]; refuses: (c: SwapGuardClaim) => boolean } | null {
   if (!reading || reading.action !== "swap") return null;
   const moves = (reading.moves ?? []).map((m) => m.trim()).filter(Boolean);
@@ -309,12 +300,14 @@ export function swapGuardFor(
   if (parties.length === 0) return null;
 
   const SENDER = opts.sender ? opts.sender.userId : "\u0000sender";
-  /** One person, as a key: a roster user id, the sender, or the name. */
+  /** One person, as a key: a roster user id (who-is-who's pick), the
+   *  sender, or the name as quoted, in any case: the same quote is the same
+   *  unknown, and nobody of the club is matched by it. */
   const who = (ref: string): string => {
     const token = swapToken(ref);
     if (SWAP_SELF_WORDS.has(token)) return SENDER;
-    const r = resolveSwapSideDetailed(token, roster);
-    return r.kind === "resolved" ? r.side.userId : `name:${token}`;
+    const r = resolveSwapSideDetailed(ref, roster, opts.people);
+    return r.kind === "resolved" ? r.side.userId : `name:${refKey(ref).toLocaleLowerCase("tr")}`;
   };
   const claimWho = (c: SwapGuardClaim): string => (c.subject === "sender" ? SENDER : who(c.personRef));
 
@@ -401,7 +394,7 @@ const typed = (w: string) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w);
 export function planSwap(
   names: { a: string; b: string },
   roster: SwapCandidate[],
-  opts: { sender: { userId: string; name: string } | null; teamsExist: boolean },
+  opts: { sender: { userId: string; name: string } | null; teamsExist: boolean; people?: PersonPicks },
 ): SwapPlan {
   const plan = planSwapInner(names, roster, opts);
   // ── THE SELF-PARTY RULE (review of PR #99) ─────────────────────────
@@ -426,7 +419,7 @@ export function planSwap(
 function planSwapInner(
   names: { a: string; b: string },
   roster: SwapCandidate[],
-  opts: { sender: { userId: string; name: string } | null; teamsExist: boolean },
+  opts: { sender: { userId: string; name: string } | null; teamsExist: boolean; people?: PersonPicks },
 ): SwapPlan {
   const side = (word: string): SideResolution => {
     if (SWAP_SELF_WORDS.has(swapToken(word))) {
@@ -437,24 +430,15 @@ function planSwapInner(
         side: own ?? { userId: opts.sender.userId, name: opts.sender.name, status: "NONE", team: null },
       };
     }
-    return resolveSwapSideDetailed(word, roster);
+    return resolveSwapSideDetailed(word, roster, opts.people);
   };
-  // IS THIS A PLAYER SWAP AT ALL? Asked with EXACT names, not with the
-  // prefix match below. `nameMatches` lets "to" find Tom Third, which is
-  // right for resolving a name once we know the message is a swap and
-  // wrong for deciding that it is one: "@Match Time switch it to 7 a
-  // side" was answered "I haven't swapped It and Tom Third" (the e2e
-  // suite caught it). A word counts only when it IS somebody's first or
-  // full name, or "me" from a known sender.
-  const isExactly = (word: string): boolean => {
-    const w = swapToken(word);
-    if (SWAP_SELF_WORDS.has(w)) return opts.sender !== null;
-    return roster.some((c) => {
-      const n = norm(c.name);
-      return n === w || n.split(/\s+/)[0] === w;
-    });
-  };
-  if (!isExactly(names.a) && !isExactly(names.b)) return { kind: "not-a-player-swap" };
+  // IS THIS A PLAYER SWAP AT ALL? Only when at least one side is a player
+  // of this match by who-is-who's sure pick, or "me" from a known sender
+  // (2026-11-09: it used to compare the words with the players' names;
+  // "@Match Time switch it to 7 a side" once read "to" as Tom Third).
+  const isPlayer = (word: string): boolean =>
+    SWAP_SELF_WORDS.has(swapToken(word)) ? opts.sender !== null : resolveSwapSideDetailed(word, roster, opts.people).kind === "resolved";
+  if (!isPlayer(names.a) && !isPlayer(names.b)) return { kind: "not-a-player-swap" };
 
   const A = side(names.a);
   const B = side(names.b);

@@ -101,7 +101,7 @@
  * stay loadable in the Playwright worker.
  */
 import { resolvePerson } from "./identity";
-import { normaliseName } from "../name-normalise";
+import type { PersonPicks } from "./who-is-who";
 import { MR_RELIABLE_MIN_AVG, MR_RELIABLE_MIN_GAMES } from "../mr-reliable";
 import { t } from "../i18n/t";
 import { joinChoice, oneDecimal } from "../i18n/text";
@@ -167,15 +167,16 @@ export type StatsPersonResolution =
   | { kind: "self-unresolved" };
 
 /**
- * PURE. Who `ref` means, for a stats answer. An admin-curated alias wins
- * (`UserAlias`, the same precedence `resolve-sender.ts` gives it), then
- * the pipeline's `resolvePerson`, whose tightened near-miss rule is what
- * keeps "Sami" from resolving to Samir.
+ * PURE. Who `ref` means, for a stats answer. The asker themselves by a
+ * closed list of first-person words ("me", "ben"); anyone else is the
+ * model's pick for the name as the extractor quoted it (`people`, from
+ * `who-is-who.ts`, which is shown every member's aliases too), read by
+ * the pipeline's `resolvePerson`. No name is matched by spelling here.
  */
 export function resolveStatsPerson(
   ref: string,
   roster: Member[],
-  aliases: StatsSnapshot["aliases"],
+  people: PersonPicks | undefined,
   senderUserId: string | null,
 ): StatsPersonResolution {
   const raw = (ref ?? "").trim().replace(/^@/, "").replace(APOSTROPHE_SUFFIX, "").trim();
@@ -183,11 +184,7 @@ export function resolveStatsPerson(
     const me = senderUserId ? roster.find((m) => m.userId === senderUserId) : undefined;
     return me ? { kind: "resolved", member: me, self: true } : { kind: "self-unresolved" };
   }
-  const key = normaliseName(raw);
-  const alias = aliases.find((a) => a.alias === key);
-  const aliased = alias ? roster.find((m) => m.userId === alias.userId) : undefined;
-  if (aliased) return { kind: "resolved", member: aliased, self: aliased.userId === senderUserId };
-  const r = resolvePerson(raw, roster);
+  const r = resolvePerson(ref, roster, people);
   if (r.kind === "resolved") return { kind: "resolved", member: r.member, self: r.member.userId === senderUserId };
   if (r.kind === "ambiguous") return { kind: "ambiguous", candidates: r.candidates };
   return { kind: "unknown", ref: raw || ref };
@@ -219,7 +216,7 @@ export type StatsPlan =
 export function planStatsQuestion(
   facts: QuestionFacts,
   roster: Member[],
-  aliases: StatsSnapshot["aliases"],
+  people: PersonPicks | undefined,
   senderUserId: string | null,
 ): StatsPlan {
   // No table named is the appearances table: what a stats question with
@@ -236,7 +233,7 @@ export function planStatsQuestion(
     if (!ref && !senderUserId) {
       return { kind: "none", why: "chemistry asked by an unresolved sender who named nobody" };
     }
-    const r = resolveStatsPerson(ref || "me", roster, aliases, senderUserId);
+    const r = resolveStatsPerson(ref || "me", roster, people, senderUserId);
     if (r.kind === "unknown") return { kind: "ask", ref: r.ref, candidates: [] };
     if (r.kind === "ambiguous") return { kind: "ask", ref, candidates: r.candidates.map((m) => m.name) };
     if (r.kind === "self-unresolved") return { kind: "none", why: "the asker means themselves and is not on the roster" };

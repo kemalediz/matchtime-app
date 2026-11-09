@@ -117,6 +117,8 @@ export const ORGANISER_PICK_READER_STUB_FILE_ENV = "MT_TEST_ORGANISER_PICK_READE
 export const MONTH_SEED_REPLY_STUB_FILE_ENV = "MT_TEST_MONTH_SEED_REPLY_STUB_FILE";
 /** Must equal `DIGEST_REPLY_STUB_FILE_ENV` in `src/lib/month-digest-reply.ts`. */
 export const DIGEST_REPLY_STUB_FILE_ENV = "MT_TEST_DIGEST_REPLY_STUB_FILE";
+/** Must equal `PERSON_PICKER_STUB_ENV` in `src/lib/pipeline/who-is-who.ts`. */
+export const PERSON_PICKER_STUB_ENV = "MT_TEST_PERSON_PICKER_STUB";
 export const KEY_ENV = "ANTHROPIC_API_KEY";
 
 /**
@@ -302,6 +304,7 @@ export function assertSeamMatchesMode(
       [ORGANISER_PICK_READER_STUB_FILE_ENV, "lib/organiser-pick-reader.ts, which reads an organiser's pick from the bench list and brings players in"],
       [MONTH_SEED_REPLY_STUB_FILE_ENV, "lib/month-seed-reply.ts, which starts a month from an organiser's DM answer"],
       [DIGEST_REPLY_STUB_FILE_ENV, "lib/month-digest-reply.ts, which confirms month payments from the collector's answer"],
+      [PERSON_PICKER_STUB_ENV, "lib/pipeline/who-is-who.ts, which says which member a name in a message is"],
     ] as const) {
       if (!blank(childEnv[env])) {
         throw new E2EPreflightError(

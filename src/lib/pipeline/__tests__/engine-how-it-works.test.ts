@@ -7,7 +7,7 @@
  * `answer-batch.ts` attaches them.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { NOW, msg, world } from "./helpers";
 
 const ask = (opts: { tagged?: boolean; feature?: "availability" | null } = {}) =>

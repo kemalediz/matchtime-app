@@ -497,7 +497,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       const reading = await readHqMonthly({ orgId: org.id, senderUserId: input.senderUserId, text: input.text, now });
       if (reading?.kind === "add") {
         const { applyMonthAdd } = await import("./month-newcomers");
-        const r = await applyMonthAdd({ orgId: org.id, reading, senderUserId: input.senderUserId, sourceRef: messageId, now });
+        const r = await applyMonthAdd({ orgId: org.id, reading, senderUserId: input.senderUserId, sourceRef: messageId, now, text: input.text });
         console.log(`[admin-group] ${messageId}: somebody put on the month: ${r.outcome}`);
         return { route: null, outcome: r.outcome, replyText: r.replyText };
       }
@@ -790,6 +790,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       const r = await handleTeamCommand({
         ...base(actor),
         command,
+        body,
+        senderName: input.senderName ?? null,
         addressed: true,
         quotedSheet: command.kind === "restore" ? await quotedSheet() : null,
       });
@@ -1251,6 +1253,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
             undo: facts.undo === true,
             dayPhrase: facts.matchDay ?? null,
             senderUserId: feeActor,
+            body,
+            senderName: input.senderName ?? null,
             messageId,
             now,
           });

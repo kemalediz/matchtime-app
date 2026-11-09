@@ -19,12 +19,15 @@
  * paths refuse (actions/ratings.ts, api/whatsapp/poll-vote).
  *
  * The players a pick can name are the match's own: CONFIRMED attendance
- * and the team sheet. The name is resolved with the pipeline's shared
+ * and the team sheet. Who the name is, is the model's pick from those
+ * players (`pipeline/who-is-who.ts`), read by the pipeline's shared
  * `resolvePerson` (an ambiguity is a question, never a coin flip).
  */
 import { db } from "./db";
 import { momWinners } from "./badge-rules";
 import { resolvePerson } from "./pipeline/identity";
+import type { PersonPicker, PersonPicks, WhoRosterMember } from "./pipeline/who-is-who";
+import { refKey } from "./person-ref-key";
 import { withAliases } from "./member-aliases";
 import type { Member } from "./pipeline/types";
 
@@ -32,6 +35,8 @@ import type { Member } from "./pipeline/types";
 export type MomRefResult =
   | { kind: "resolved"; userId: string; name: string }
   | { kind: "ambiguous"; ref: string; names: string[] }
+  /** Nobody could say who (no answer, or one member it was not sure of). */
+  | { kind: "unsure"; ref: string }
   | { kind: "not-in-match"; ref: string };
 
 /** The people who played the match: CONFIRMED attendance and the team sheet. */
@@ -58,12 +63,25 @@ export async function matchPlayers(matchId: string): Promise<Member[]> {
   return orgId ? withAliases(orgId, players) : players;
 }
 
-/** Resolve the organiser's words against the match's players. Pure. */
-export function resolveMomRef(ref: string, players: Member[]): MomRefResult {
+/** Resolve the organiser's words against the match's players, by the
+ *  model's pick for the name (`people`, `pipeline/who-is-who.ts`). Pure. */
+export function resolveMomRef(
+  ref: string,
+  players: Member[],
+  people: PersonPicks | undefined,
+  /** Every club member's name, for an ambiguity among namesakes who did
+   *  not all play (who-is-who is shown the whole club, players marked). */
+  clubNameOf: ReadonlyMap<string, string> = new Map(),
+): MomRefResult {
   const shown = ref.replace(/^@/, "").trim();
-  const r = resolvePerson(ref, players);
+  const pick = people?.get(refKey(ref));
+  if (pick?.kind === "ambiguous" && pick.userIds.length > 1) {
+    const nameOf = new Map([...clubNameOf, ...players.map((p) => [p.userId, p.name] as const)]);
+    return { kind: "ambiguous", ref: shown, names: pick.userIds.map((id) => nameOf.get(id) ?? "?") };
+  }
+  if (!pick || pick.kind === "unidentified" || pick.kind === "ambiguous") return { kind: "unsure", ref: shown };
+  const r = resolvePerson(ref, players, people);
   if (r.kind === "resolved") return { kind: "resolved", userId: r.member.userId, name: r.member.name };
-  if (r.kind === "ambiguous") return { kind: "ambiguous", ref: shown, names: r.candidates.map((c) => c.name) };
   return { kind: "not-in-match", ref: shown };
 }
 
@@ -108,6 +126,11 @@ export interface MomPickDeps {
   mvpLabel: (matchId: string) => Promise<string>;
   current: (matchId: string) => Promise<Array<{ userId: string; name: string }>>;
   set: (args: { matchId: string; playerId: string; byUserId: string }) => Promise<{ previous: string[] }>;
+  /** Who the organiser's name is (`pipeline/who-is-who.ts`). Tests inject
+   *  it; absent, `personPickerFor`. */
+  identify?: PersonPicker;
+  /** Tests: the club as who-is-who is shown it. Absent: loaded. */
+  club?: (matchId: string, players: Member[]) => Promise<WhoRosterMember[]>;
 }
 
 export const momPickDeps: MomPickDeps = {

@@ -46,6 +46,8 @@ import { normalisePhone } from "./phone";
 import { normaliseName } from "./name-normalise";
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "@/lib/pipeline/llm";
 import { withOrgAiBudget } from "./ai-budget";
+import { personPickerFor } from "./pipeline/identify-batch";
+import { refKey, type PersonPick, type PersonPicker } from "./pipeline/who-is-who";
 export { normaliseName };
 
 /**
@@ -580,87 +582,90 @@ export async function learnAliasesFromAttribution(
   return { aliasesLearned, usersProvisioned };
 }
 
-/** Resolve a free-text name from a squad list against the org roster.
- *  Walks the same chain `resolveOrProvisionByName` uses in the analyze
- *  route (alias-first this time since aliases are the ground truth
- *  here), but never declines on ambiguity for the resolution-day path:
- *  if there are two equally-good matches we still surface the name to
- *  the admin queue rather than silently dropping a squad slot.
+/** Who each name on a squad list is, in ONE who-is-who call for the list
+ *  (2026-11-09, Kemal: "never use string matching"): every membership of
+ *  the club, current and former, with its aliases, is shown to the model
+ *  with the list, and it says which member a name is, nobody, or several.
+ *  It used to be an alias lookup, an exact name and a first-name prefix
+ *  ("David" was Davide). A member it is sure of is reused (a former one
+ *  brought back); nobody is provisioned (no phone; the admin fills it in
+ *  at /admin/players); several possible members, a member it was not sure
+ *  of, or a failed call is left unresolved and surfaced, never written.
  *
- *  Returns:
+ *  Returns, per trimmed name:
  *    { userId, name, provisional: false } when matched
  *    { userId, name, provisional: true }  when newly provisioned
- *    null                                 when name is empty / blocked
+ *    null                                 when empty / blocked / unclear
  */
+export async function resolveOrProvisionSquadNames(
+  orgId: string,
+  rawNames: string[],
+  opts: { identify?: PersonPicker; context?: string } = {},
+): Promise<Map<string, { userId: string; name: string | null; provisional: boolean } | null>> {
+  const out = new Map<string, { userId: string; name: string | null; provisional: boolean } | null>();
+  const blocked = /^(match time|matchtime|whatsapp|system|reserves?|subs?|standby)$/i;
+  const names = [...new Set(rawNames.map((n) => (n ?? "").trim()))];
+  const usable = names.filter((n) => n.length >= 2 && !blocked.test(n));
+  for (const n of names) if (!usable.includes(n)) out.set(n, null);
+  if (usable.length === 0) return out;
+
+  const [memberships, aliases] = await Promise.all([
+    db.membership.findMany({ where: { orgId }, include: { user: { select: { id: true, name: true } } } }),
+    db.userAlias.findMany({ where: { orgId }, select: { userId: true, alias: true } }),
+  ]);
+  const byUser = new Map(memberships.filter((m) => !!m.user).map((m) => [m.user.id, m]));
+  const res = await (opts.identify ?? personPickerFor())({
+    roster: [...byUser.values()].map((m) => ({
+      userId: m.user.id,
+      name: m.user.name,
+      aliases: (aliases ?? []).filter((a) => a.userId === m.user.id).map((a) => a.alias),
+      former: !!m.leftAt,
+    })),
+    where: "a squad list posted in the club's players' group",
+    messages: [{ id: "list", body: opts.context ?? usable.join("\n"), author: null, refs: usable }],
+  });
+  for (const d of res.degradations) console.warn(`[squad-from-list] ${d}`);
+  const picks: ReadonlyMap<string, PersonPick> = res.picks.get("list") ?? new Map();
+
+  for (const name of usable) {
+    const pick = picks.get(refKey(name));
+    const m = pick?.kind === "member" ? byUser.get(pick.userId) : undefined;
+    if (m) {
+      if (m.leftAt) await db.membership.update({ where: { id: m.id }, data: { leftAt: null } });
+      out.set(name, { userId: m.user.id, name: m.user.name, provisional: false });
+      continue;
+    }
+    // Only "nobody in the club" is a new player (review of #574). Several
+    // possible members (two Omars), one it was not sure of ("Moham",
+    // probably Mohammed) or no answer at all is left unresolved and
+    // surfaced (`unresolved`): a new player there would be a duplicate.
+    if (pick?.kind !== "none") {
+      console.warn(`[squad-from-list] a squad-list name in org ${orgId} is unclear (${pick ? pick.kind : "not asked"}); left unresolved`);
+      out.set(name, null);
+      continue;
+    }
+    out.set(name, await provisionSquadName(orgId, name));
+  }
+  return out;
+}
+
+/** One name: `resolveOrProvisionSquadNames` for a list of one. */
 export async function resolveOrProvisionSquadName(
   orgId: string,
   rawName: string,
+  opts: { identify?: PersonPicker } = {},
 ): Promise<{ userId: string; name: string | null; provisional: boolean } | null> {
-  const name = rawName.trim();
-  if (!name || name.length < 2) return null;
-  const blocked = /^(match time|matchtime|whatsapp|system|reserves?|subs?|standby)$/i;
-  if (blocked.test(name)) return null;
+  const name = (rawName ?? "").trim();
+  return (await resolveOrProvisionSquadNames(orgId, [name], opts)).get(name) ?? null;
+}
 
-  // 1. Alias is the strongest signal — it's either admin-curated or
-  //    auto-detected from the diff pass (which is itself ground truth).
-  const aliasKey = normaliseName(name);
-  if (aliasKey.length >= 2) {
-    const alias = await db.userAlias.findUnique({
-      where: { orgId_alias: { orgId, alias: aliasKey } },
-      include: { user: { select: { id: true, name: true } } },
-    });
-    if (alias) {
-      // Make sure the membership exists / isn't soft-removed.
-      await db.membership.upsert({
-        where: { userId_orgId: { userId: alias.userId, orgId } },
-        create: { userId: alias.userId, orgId, role: "PLAYER" },
-        update: { leftAt: null },
-      });
-      return { userId: alias.userId, name: alias.user.name, provisional: false };
-    }
-  }
-
-  // 2. Existing membership by exact name (case-insensitive, NFD).
-  const candidates = await db.membership.findMany({
-    where: { orgId },
-    include: { user: { select: { id: true, name: true } } },
-  });
-  const equals = candidates.filter(
-    (c) => c.user.name && normaliseName(c.user.name) === aliasKey,
-  );
-  if (equals.length === 1) {
-    const m = equals[0];
-    if (m.leftAt) {
-      await db.membership.update({ where: { id: m.id }, data: { leftAt: null } });
-    }
-    return { userId: m.user.id, name: m.user.name, provisional: false };
-  }
-
-  // 3. First-token fuzzy. Same prefix logic as resolveOrProvisionByName.
-  const pushTokens = aliasKey.split(/\s+/).filter(Boolean);
-  const pushFirst = pushTokens[0] ?? "";
-  const fuzzy = candidates.filter((c) => {
-    if (!c.user.name) return false;
-    const dbTokens = normaliseName(c.user.name).split(/\s+/).filter(Boolean);
-    const dbFirst = dbTokens[0] ?? "";
-    return (
-      dbFirst === pushFirst ||
-      (dbFirst.length >= 3 &&
-        pushFirst.length >= 3 &&
-        (dbFirst.startsWith(pushFirst) || pushFirst.startsWith(dbFirst)))
-    );
-  });
-  if (fuzzy.length === 1) {
-    const m = fuzzy[0];
-    if (m.leftAt) {
-      await db.membership.update({ where: { id: m.id }, data: { leftAt: null } });
-    }
-    return { userId: m.user.id, name: m.user.name, provisional: false };
-  }
-
-  // 4. Provision: create a User + Membership with no phone. Admin
-  //    fills in the number at /admin/players (same flow Sutton uses
-  //    for any phone-less player).
+/** Create a User + Membership with no phone for a squad-list name the
+ *  model placed on nobody. Admin fills in the number at /admin/players
+ *  (same flow Sutton uses for any phone-less player). */
+async function provisionSquadName(
+  orgId: string,
+  name: string,
+): Promise<{ userId: string; name: string | null; provisional: true } | null> {
   const emailSlug =
     name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "player";
   const syntheticEmail = `provisional+${emailSlug}-${Date.now().toString(36)}@matchtime.local`;
@@ -712,13 +717,17 @@ export async function finaliseSquadForMatch(
     select: { userId: true },
   });
   const haveUserIds = new Set(existing.map((a) => a.userId));
+  // Every name on the list, players and reserves, in ONE who-is-who call.
+  const named = await resolveOrProvisionSquadNames(orgId, [...finalList.names, ...finalList.reserves], {
+    context: [...finalList.names, ...finalList.reserves].join("\n"),
+  });
 
   const resolved: Array<{ name: string; userId: string; provisional: boolean; position: number }> = [];
   const unresolved: string[] = [];
 
   for (let i = 0; i < finalList.names.length; i++) {
     const name = finalList.names[i];
-    const r = await resolveOrProvisionSquadName(orgId, name);
+    const r = named.get(name.trim()) ?? null;
     if (!r) {
       unresolved.push(name);
       continue;
@@ -783,7 +792,7 @@ export async function finaliseSquadForMatch(
   // flow filters on status:CONFIRMED).
   for (let i = 0; i < finalList.reserves.length; i++) {
     const name = finalList.reserves[i];
-    const r = await resolveOrProvisionSquadName(orgId, name);
+    const r = named.get(name.trim()) ?? null;
     if (!r) continue;
     try {
       const priorRow = await db.attendance.findUnique({

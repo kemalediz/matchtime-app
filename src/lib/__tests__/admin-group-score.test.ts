@@ -12,7 +12,7 @@ import type { SquadState } from "../pipeline/types";
 import type { ScoreApplyDeps } from "../score-engine";
 import { NOW, world } from "../pipeline/__tests__/helpers";
 
-vi.mock("@/lib/db", () => ({ db: {} }));
+vi.mock("@/lib/db", () => ({ db: { membership: { findMany: async () => [] }, userAlias: { findMany: async () => [] } } }));
 const hqLog = vi.hoisted(() => ({ recordMatchTimeQuestion: vi.fn() }));
 vi.mock("@/lib/admin-group-log", () => hqLog);
 

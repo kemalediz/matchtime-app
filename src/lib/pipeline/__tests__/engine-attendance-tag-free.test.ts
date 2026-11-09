@@ -15,7 +15,7 @@
  * corroboration, capacity) are unchanged.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { NOW, SUTTON, attendanceFacts, claim, msg, statusOf, world } from "./helpers";
 
 const CONFIRMED = ["kemal", "sait", "mustafa", "abid", "zair", "ismayil", "faris"];

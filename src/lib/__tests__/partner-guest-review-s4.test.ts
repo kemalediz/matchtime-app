@@ -26,7 +26,7 @@ vi.mock("../attendance", () => att);
 vi.mock("../admin-channel", () => ({ sendAdminNotice: vi.fn() }));
 
 import { standDownVolunteers, tellGuestsMoved } from "../partner-guest";
-import { decide } from "../pipeline/engine";
+import { decide } from "../pipeline/__tests__/support/stub-picks";
 import { compose } from "../pipeline/compose";
 import { NOW, attendanceFacts, claim, msg, world } from "../pipeline/__tests__/helpers";
 

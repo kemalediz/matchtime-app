@@ -17,10 +17,10 @@ import {
   buildPasteProposalReply,
   buildSquadChangeReply,
   diffPastedSquad,
-  matchPastedName,
   type PasteMember,
 } from "../admin-group-squad-rules";
 import type { AttendanceFacts, Claim } from "../pipeline/types";
+import type { PersonPick } from "../pipeline/who-is-who";
 
 const members: PasteMember[] = [
   { userId: "u-shehryar", name: "Shehryar Khan", aliases: [] },
@@ -32,27 +32,9 @@ const members: PasteMember[] = [
   { userId: "u-ilker", name: "İlker Yılmaz", aliases: [] },
 ];
 
-describe("matchPastedName", () => {
-  it("matches a full name exactly, case and accents folded", () => {
-    expect(matchPastedName("shehryar khan", members)).toEqual({ kind: "member", userId: "u-shehryar" });
-    expect(matchPastedName("ILKER YILMAZ", members)).toEqual({ kind: "member", userId: "u-ilker" });
-  });
-  it("matches a unique first name, the way lists are usually written", () => {
-    expect(matchPastedName("Bilal", members)).toEqual({ kind: "member", userId: "u-bilal" });
-    expect(matchPastedName("Clarence", members)).toEqual({ kind: "member", userId: "u-clarence" });
-  });
-  it("an alias settles it", () => {
-    expect(matchPastedName("Hafeez", members)).toEqual({ kind: "member", userId: "u-abdul" });
-    expect(matchPastedName("Ali H", members)).toEqual({ kind: "member", userId: "u-ali2" });
-  });
-  it("two players with the same first name: ambiguous, unless only one is on this match", () => {
-    expect(matchPastedName("Ali", members)).toEqual({ kind: "ambiguous" });
-    expect(matchPastedName("Ali", members, new Set(["u-ali1"]))).toEqual({ kind: "member", userId: "u-ali1" });
-  });
-  it("nobody by that name: new", () => {
-    expect(matchPastedName("Naim", members)).toEqual({ kind: "new" });
-  });
-});
+// Who a pasted name is, is who-is-who's, placed when the list is read
+// (`hq-squad-reader.ts` `placeReaderNames`, pinned in
+// hq-reader-names-who-is-who.test.ts); there is no name matching here.
 
 // readSquadPaste is gone (2026-10-29): a pasted HQ list is read by the HQ
 // squad reader, a model (hq-squad-reader.test.ts); its fact gates are in

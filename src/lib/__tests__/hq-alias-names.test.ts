@@ -15,13 +15,16 @@
  * "not a member; nothing to drop". And the CLUB MEMBERS NAMED line, which
  * lists members by roster name only, never told the extractor AH is one.
  *
- * Now a member carries their aliases, and the one resolver (and the line)
- * reads them. No database, no model call.
+ * Now a member carries their aliases. Since 2026-11-09 who a name is, is
+ * the model's (who-is-who): it is SHOWN each member's aliases and picks the
+ * member; the resolver only reads the pick. The batch tests below run on
+ * who-is-who's name-based stand-in. No database, no model call.
  */
 import { describe, expect, it } from "vitest";
 import { runAttendanceEngineBatch, type EngineBatchDeps } from "../attendance-engine-batch";
 import { hqChangeFacts } from "../admin-group-squad-rules";
 import { membersNamedIn, resolvePerson } from "../pipeline/identity";
+import { buildWhoIsWhoTurn, whoRosterOf, type PersonPick } from "../pipeline/who-is-who";
 import type { PipelineModel } from "../pipeline/llm";
 import type { Member, SquadState } from "../pipeline/types";
 
@@ -36,28 +39,21 @@ const ROSTER: Member[] = [
   { userId: "u-ahmed", name: "Ahmed Khan", isAdmin: false, hasPhone: true },
 ];
 
-describe("resolvePerson reads the club's aliases", () => {
-  it("an alias resolves to its member, any case", () => {
-    expect(resolvePerson("AH", ROSTER)).toMatchObject({ kind: "resolved", member: { userId: "u-ah" } });
-    expect(resolvePerson("ah", ROSTER)).toMatchObject({ kind: "resolved", member: { userId: "u-ah" } });
-    expect(resolvePerson("@AH", ROSTER)).toMatchObject({ kind: "resolved", member: { userId: "u-ah" } });
-    expect(resolvePerson("Imtiaz", ROSTER)).toMatchObject({ kind: "resolved", member: { userId: "u-imti" } });
+describe("who-is-who is shown the club's aliases, and the resolver reads its pick", () => {
+  it("every member's aliases are in the roster the model is shown", () => {
+    const turn = buildWhoIsWhoTurn({
+      roster: whoRosterOf(ROSTER),
+      messages: [{ id: "m", body: "AH out", author: "Raihan", senderUserId: "u-raihan", refs: ["AH"] }],
+    });
+    expect(turn.user).toContain('p1: "Abdul-Hafeez" (also: "ah")');
+    expect(turn.user).toContain('"Imti" (also: "imtiaz")');
   });
-  it("an alias beats a first-name match on someone else", () => {
-    const roster = [...ROSTER, { userId: "u-imtiaz-k", name: "Imtiaz Khan", isAdmin: false, hasPhone: true }];
-    expect(resolvePerson("Imtiaz", roster)).toMatchObject({ kind: "resolved", member: { userId: "u-imti" } });
+  it("the model's pick for an alias resolves to its member", () => {
+    const people = new Map<string, PersonPick>([["AH", { kind: "member", userId: "u-ah" }]]);
+    expect(resolvePerson("@AH", ROSTER, people)).toMatchObject({ kind: "resolved", member: { userId: "u-ah" } });
   });
-  it("a member whose full name is the reference still wins over an alias", () => {
-    const roster = [...ROSTER, { userId: "u-imtiaz", name: "Imtiaz", isAdmin: false, hasPhone: true }];
-    expect(resolvePerson("Imtiaz", roster)).toMatchObject({ kind: "resolved", member: { userId: "u-imtiaz" } });
-  });
-  it("a short alias matches the whole reference or a whole word of it, never part of a word", () => {
-    expect(resolvePerson("my mate AH", ROSTER)).toMatchObject({ kind: "resolved", member: { userId: "u-ah" } });
-    expect(resolvePerson("Ahmed", ROSTER)).toMatchObject({ kind: "resolved", member: { userId: "u-ahmed" } });
-    expect(resolvePerson("Aha", ROSTER)).toMatchObject({ kind: "unknown" });
-  });
-  it("with no aliases, as before", () => {
-    expect(resolvePerson("AH", ROSTER.map(({ aliases: _a, ...m }) => m))).toMatchObject({ kind: "unknown" });
+  it("RED on main: an alias with no pick resolves nobody (code no longer matches aliases)", () => {
+    expect(resolvePerson("AH", ROSTER, undefined).kind).toBe("ambiguous");
   });
 });
 

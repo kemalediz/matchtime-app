@@ -139,9 +139,9 @@ describe("a change, checked (2026-10-30: one-line changes and name lists are the
     expect(r).toEqual({
       kind: "change",
       changes: [
-        { name: "Imz", userId: "u-9", to: "out", replaces: "" },
-        { name: "Rafi", userId: "u-3", to: "in", replaces: "" },
-        { name: "Akram", userId: "u-10", to: "bench", replaces: "" },
+        { name: "Imz", written: "Imran", userId: "u-9", to: "out", replaces: "" },
+        { name: "Rafi", written: "Rafi", userId: "u-3", to: "in", replaces: "" },
+        { name: "Akram", written: "Akram", userId: "u-10", to: "bench", replaces: "" },
       ],
       alsoAsks: false,
     });
@@ -159,7 +159,7 @@ describe("a change, checked (2026-10-30: one-line changes and name lists are the
       input("put bilal and my brother in"),
       ctx,
     );
-    expect(r).toEqual({ kind: "change", changes: [{ name: "Bilal", userId: null, to: "in", replaces: "" }], alsoAsks: false });
+    expect(r).toEqual({ kind: "change", changes: [{ name: "Bilal", written: "Bilal", userId: null, to: "in", replaces: "" }], alsoAsks: false });
   });
 
   it("who an arriving player replaces, by ref; a ref it was not shown is nobody", () => {

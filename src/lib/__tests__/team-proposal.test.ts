@@ -162,6 +162,7 @@ function seed() {
     "attendance",
     "user",
     "userAlias",
+    "membership",
     "adminTeamProposal",
     "adminSquadProposal",
     "botJob",

@@ -3,57 +3,41 @@
  *
  * MT Test: the partner guests are called "C1" and "C2". `norm()` stripped
  * every digit, so both became "c": an admin's "C1, C2 OUT" resolved both
- * references to C1, dropped C1 twice and left C2 in. Real squads have the
- * same shape ("Ali 2", "Mohammed 1"). Digits now stay in the name; a
- * reference with no letters is still never a person; a digit-free name
- * resolves exactly as before.
+ * references to C1, dropped C1 twice and left C2 in. Since 2026-11-09 who
+ * a name is, is the model's pick (`who-is-who.ts`), filed under the name
+ * exactly as quoted: "C1" and "C2" are two keys and two answers, and a
+ * reference with no letters is still never a person.
  */
 import { describe, it, expect } from "vitest";
 import { resolvePerson } from "../identity";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { NOW, attendanceFacts, claim, member, msg, world } from "./helpers";
 import type { Member } from "../types";
+import type { PersonPick } from "../who-is-who";
 
 const named = (key: string, name: string): Member => member(key, { name });
 
-describe("resolvePerson keeps digits", () => {
+describe("each quoted name keeps its own pick, digits and all", () => {
   const roster = [named("c1", "C1"), named("c2", "C2"), named("kemal", "Kemal Ediz")];
+  const people = new Map<string, PersonPick>([
+    ["C1", { kind: "member", userId: "u-c1" }],
+    ["C2", { kind: "member", userId: "u-c2" }],
+    ["C3", { kind: "none" }],
+  ]);
 
   it("C1 and C2 are two people", () => {
-    expect(resolvePerson("C1", roster)).toMatchObject({ kind: "resolved", member: { userId: "u-c1" } });
-    expect(resolvePerson("C2", roster)).toMatchObject({ kind: "resolved", member: { userId: "u-c2" } });
-    expect(resolvePerson("c2", roster)).toMatchObject({ kind: "resolved", member: { userId: "u-c2" } });
+    expect(resolvePerson("C1", roster, people)).toMatchObject({ kind: "resolved", member: { userId: "u-c1" } });
+    expect(resolvePerson("C2", roster, people)).toMatchObject({ kind: "resolved", member: { userId: "u-c2" } });
   });
 
   it("C3 is nobody on the list, never C1 or C2", () => {
-    const r = resolvePerson("C3", roster);
+    const r = resolvePerson("C3", roster, people);
     expect(r.kind === "resolved" ? r.member.userId : null).toBeNull();
   });
 
-  it('"Ali 2" matches "ali 2", and "Ali2" typed without the space', () => {
-    const r2 = [named("ali2", "Ali 2"), named("ali", "Ali Khan")];
-    expect(resolvePerson("ali 2", r2)).toMatchObject({ kind: "resolved", member: { userId: "u-ali2" } });
-    expect(resolvePerson("Ali2", r2)).toMatchObject({ kind: "resolved", member: { userId: "u-ali2" } });
-    expect(resolvePerson("Mohammed 1", [named("m1", "Mohammed 1"), named("m2", "Mohammed 2")])).toMatchObject({
-      kind: "resolved",
-      member: { userId: "u-m1" },
-    });
-  });
-
-  it('a first name still finds "Ali 2" when he is the only Ali', () => {
-    expect(resolvePerson("Ali", [named("ali2", "Ali 2"), named("kemal", "Kemal Ediz")])).toMatchObject({
-      kind: "resolved",
-      member: { userId: "u-ali2" },
-    });
-  });
-
-  it("two Alis: a bare first name is still ambiguous", () => {
-    expect(resolvePerson("Ali", [named("ali2", "Ali 2"), named("ali", "Ali Khan")])).toMatchObject({ kind: "ambiguous" });
-  });
-
   it("a reference with no letters is still never a person", () => {
-    expect(resolvePerson("7", roster)).toMatchObject({ kind: "not-a-person" });
-    expect(resolvePerson("12", roster)).toMatchObject({ kind: "not-a-person" });
+    expect(resolvePerson("7", roster, people)).toMatchObject({ kind: "not-a-person" });
+    expect(resolvePerson("12", roster, people)).toMatchObject({ kind: "not-a-person" });
   });
 });
 

@@ -11,10 +11,11 @@
  *      its roster pre-filled instead of waiting for a Pi restart.
  *
  * Semantics (unchanged from the route):
- *   - Phone-keyed upsert of User; pushname-dedupe against phone-less
- *     provisional members BEFORE creating; NEVER overwrites existing
- *     User.name/phoneNumber (a name match holding a different number is
- *     treated as a different person, see adoptPhoneIfUnset).
+ *   - Phone-keyed upsert of User; NEVER overwrites existing
+ *     User.name/phoneNumber. No phone is attached to a phoneless member
+ *     by a match of names (2026-11-09): an unknown number is a new member,
+ *     and a phoneless placeholder who-is-who reads its WhatsApp name as
+ *     is told to the club's admins once (`possible-duplicate-notice`).
  *   - A member known by phone whose name is EMPTY takes the WhatsApp name
  *     the Pi sends (2026-11-03, Vets MNF: 20 of 27 imported nameless, so
  *     the month's list matched 4 of 13). Only while it is still empty, and
@@ -29,9 +30,9 @@
  *     pushname resolvers pick them up the moment they message.
  */
 import { db } from "./db";
-import { findExistingOrgMember } from "./resolve-player";
 import { linkJoinerToPlaceholder } from "./placeholder-link";
 import { usableWhatsAppName } from "./resolve-sender";
+import { notifyPossibleDuplicates } from "./possible-duplicate-notice";
 import {
   snapshotPhone,
   parseParticipantSnapshot,
@@ -51,32 +52,7 @@ export interface ImportResult {
   total: number;
 }
 
-/**
- * Give a name-matched member the participant's phone, ONLY if they have
- * none. A saved number is never replaced here (2026-10-20, follow-up to
- * #315): the name dedupe is alias, exact or first-token fuzzy, so its match
- * can be someone else entirely. The write is conditional on the number
- * still being NULL, so a sign-in or admin edit in between is never
- * overwritten. True when the member now holds `phone`.
- */
-async function adoptPhoneIfUnset(userId: string, phone: string): Promise<boolean> {
-  const current = await db.user.findUnique({
-    where: { id: userId },
-    select: { phoneNumber: true },
-  });
-  if (!current) return false;
-  if (current.phoneNumber) return current.phoneNumber === phone;
-  try {
-    const { count } = await db.user.updateMany({
-      where: { id: userId, phoneNumber: null },
-      data: { phoneNumber: phone },
-    });
-    return count === 1;
-  } catch {
-    // Unique clash: another row claimed this number in a race. Not ours.
-    return false;
-  }
-}
+
 
 /**
  * Give a nameless member the WhatsApp name the Pi knows, ONLY while his
@@ -103,6 +79,8 @@ export async function importParticipants(
   let skippedNoPhone = 0;
   let restoredMembership = 0;
   let linkedPlaceholders = 0;
+  /** The members this sweep made from numbers it had never seen. */
+  const newcomers: { userId: string; name: string | null }[] = [];
 
   for (const p of participants) {
     const phone = snapshotPhone(p);
@@ -123,22 +101,15 @@ export async function importParticipants(
     // a phoneless placeholder here from a third party's "X in". See the
     // link step after the membership write.
     const knownByPhone = user !== null;
-    if (!user && pushname) {
-      // No phone-keyed record — but a phone-less record (e.g. a provisional
-      // member the analyzer/squad-list created earlier by NAME) may already
-      // exist for this person. Dedup BEFORE creating, on a strong unambiguous
-      // signal only (alias / unique exact-or-fuzzy name). Ambiguous names fall
-      // through to a fresh create so two distinct people are never merged.
-      const match = await findExistingOrgMember(orgId, { name: pushname });
-      if (match && (await adoptPhoneIfUnset(match.userId, phone))) {
-        // Counted as alreadyKnown by the else-branch below (user is now set).
-        user = { id: match.userId, name: match.name };
-      }
-      // A match that already holds a DIFFERENT number is a different
-      // WhatsApp account (a namesake, or the same person on a new number):
-      // it is not this participant. Fall through and create them; the
-      // saved user keeps their number, and no write touches them.
-    }
+    // NO PHONE IS ATTACHED BY NAME (2026-11-09, review of #574). A
+    // newcomer's number used to be given to a phoneless member whose name
+    // matched the WhatsApp name by spelling (a first-name PREFIX
+    // included), so a new "Dav" could take over Davide's placeholder and
+    // every message and charge after it. Now an unknown number is a new
+    // member. When who-is-who reads the newcomer's WhatsApp name as a
+    // phoneless provisional member, the club's admins are told once
+    // (`notifyPossibleDuplicates`, after the loop) and merge the two on
+    // /admin/players. Nobody is merged by code.
     if (!user) {
       // New User — synthetic email keeps the unique index happy.
       const slug =
@@ -160,6 +131,7 @@ export async function importParticipants(
         select: { id: true, name: true },
       });
       added += 1;
+      newcomers.push({ userId: user.id, name: waName });
     } else {
       alreadyKnown += 1;
       if (!user.name && waName) await nameIfNameless(user.id, waName);
@@ -211,6 +183,11 @@ export async function importParticipants(
       if (link.kind === "linked") linkedPlaceholders += 1;
     }
   }
+
+  // A newcomer who may be a phoneless placeholder of the club: the
+  // admins are told once, by who-is-who, never merged by code (review of
+  // #574, round 3). Never throws.
+  if (newcomers.length > 0) await notifyPossibleDuplicates(orgId, newcomers);
 
   // ── THE SWEEP'S OWN CLOCK (2026-09-09) ───────────────────────────
   //

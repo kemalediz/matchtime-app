@@ -13,7 +13,7 @@
  * included) is untouched: the same inputs with no `benchPickMode`.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { compose } from "../compose";
 import { NOW, attendanceFacts, claim, confirmedCount, msg, statusOf, world } from "./helpers";
 

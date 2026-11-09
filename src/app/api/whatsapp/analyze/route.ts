@@ -322,20 +322,18 @@ import {
   type ClausePeel,
   type ClauseReport,
 } from "@/lib/pipeline/clause-peel";
-import {
-  describeMentionOutcomes,
-  resolveMentionNames,
-} from "@/lib/pipeline/mention-names";
+import { describeMentionOutcomes, nameMentions } from "@/lib/pipeline/mention-names";
+import { personPickerFor } from "@/lib/pipeline/identify-batch";
 import { loadKnownLids } from "@/lib/known-lids";
 // Sender resolution moved OUT of this file on 2026-09-09. It could not be
 // tested here — a Next.js route module may export only its HTTP handlers,
 // so nothing in it can be imported by a test — and the 2026-08-30 audit
 // named that as the reason its attribution hole survived review. Behaviour
 // is unchanged by the move; see `lib/resolve-sender.ts` and its tests.
-import { resolveSender, type ResolvedSender } from "@/lib/resolve-sender";
+import { resolveSenders, type ResolvedSender } from "@/lib/resolve-sender";
 // Moved out of this file on 2026-10-14 so the admin group's squad changes
 // resolve and provision names with the very same code. Unchanged.
-import { resolveOrProvisionByName } from "@/lib/resolve-or-provision-name";
+import { provisionNewPerson } from "@/lib/resolve-or-provision-name";
 import { planUnresolvedNudge } from "@/lib/unresolved-nudge";
 import { recordGroupSightings, sightedUserIds } from "@/lib/group-sighting";
 import { quotedRefOf } from "@/lib/quoted-message";
@@ -517,7 +515,9 @@ async function handleAnalyzeRequest(request: Request) {
   // stats fast path, the router, the extractor and the `AnalyzedMessage`
   // row then all see the SAME text. An unresolvable mention keeps its raw
   // "@<digits>" token — nothing here invents a name.
-  body.messages = await nameMentionsFromRoster(org.id, body.messages);
+  body.messages = await nameMentionsFromRoster(org.id, body.messages, { askModel: false });
+  /** Messages the squad-from-list archive already asked who-is-who about. */
+  const mentionsAsked = new Set<string>();
 
   // ── Skip the LLM entirely when no message-driven feature is on ───
   //   MoM + player-rating are post-match / poll / scheduler driven —
@@ -556,7 +556,24 @@ async function handleAnalyzeRequest(request: Request) {
     // never times out. Extraction runs via the daily generate-teams cron
     // backstop plus manual triggers via /api/cron/extract-squads.)
     if (f.squadFromList) {
-      await storeMessagesForSquadFromList(org.id, body.groupId, body.messages);
+      // The archive is the squad extraction's only text, so a mention no
+      // phone could name is put to who-is-who FIRST (review of #574, round
+      // 3: it used to be archived as raw "@<digits>"). Only for messages
+      // the archive does not have yet: its own dedupe (on waMessageId),
+      // the one a club that reads no messages ever reaches, so a repeat
+      // costs no call. Those messages are not asked again after the
+      // analyzer's dedupe below.
+      const ids = body.messages.map((m) => m.waMessageId);
+      const archived = new Set(
+        (await db.groupMessage.findMany({ where: { waMessageId: { in: ids } }, select: { waMessageId: true } })).map((r) => r.waMessageId),
+      );
+      const toArchive = body.messages.filter((m) => !archived.has(m.waMessageId));
+      if (toArchive.length > 0) {
+        const named = new Map((await nameMentionsFromRoster(org.id, toArchive, { askModel: true })).map((m) => [m.waMessageId, m]));
+        body.messages = body.messages.map((m) => named.get(m.waMessageId) ?? m);
+        for (const id of named.keys()) mentionsAsked.add(id);
+        await storeMessagesForSquadFromList(org.id, body.groupId, toArchive.map((m) => named.get(m.waMessageId) ?? m));
+      }
     }
     const needsAnalyzer =
       f.attendance || f.bench || f.teamBalancing || f.reminders || f.statsQa;
@@ -629,6 +646,17 @@ async function handleAnalyzeRequest(request: Request) {
   //   batch, or in a later one, finds the people "above" or in the message
   //   it quotes from WhatsApp's own mention data (`group-mentions.ts`).
   //   Best-effort: a failure here costs only that feature.
+  // The mentions no phone could name go to who-is-who only now: after the
+  // dedupe and the no-features return, so a repeat or a club that reads no
+  // messages costs no model call (review of #574). One call for the batch.
+  {
+    const toAsk = fresh.filter((m) => !mentionsAsked.has(m.waMessageId));
+    if (toAsk.length > 0) {
+      const named = new Map((await nameMentionsFromRoster(org.id, toAsk, { askModel: true })).map((m) => [m.waMessageId, m]));
+      fresh.splice(0, fresh.length, ...fresh.map((m) => named.get(m.waMessageId) ?? m));
+    }
+  }
+
   await rememberMentions({ orgId: org.id, chatId: body.groupId, messages: fresh });
 
   // ── A MESSAGE THAT ARRIVES LATE IS NOT A REQUEST MADE NOW (2026-09-29) ─
@@ -726,10 +754,15 @@ async function handleAnalyzeRequest(request: Request) {
   }
 
   // 2. Resolve senders + hand the whole fresh batch to Claude in one call.
-  const senderById = new Map<string, ResolvedSender>();
-  for (const m of fresh) {
-    senderById.set(m.waMessageId, await resolveSender(org.id, m));
-  }
+  // Phone first; a sender the phone does not find goes to who-is-who by
+  // WhatsApp name, one call for the batch, never matched by spelling
+  // (2026-11-09). It uses the attendance overflow only when the cap
+  // actually refuses that call (`resolveSenders`), so it never runs ahead
+  // of the attendance extractor's allowance on spec.
+  const senderById: Map<string, ResolvedSender> = await resolveSenders(
+    org.id,
+    fresh.map((m) => ({ waMessageId: m.waMessageId, authorPhone: m.authorPhone, authorName: m.authorName, body: m.body })),
+  );
 
   // ── WHAT EACH REPLY QUOTES (quoted-reply context, slice S4) ────────
   //
@@ -1574,6 +1607,7 @@ async function handleAnalyzeRequest(request: Request) {
           sentAt: Number.isNaN(sentAt.getTime()) ? undefined : sentAt,
           sender: { userId: sender.userId, name: sender.name ?? m.authorName ?? null },
           senderWhatsAppName: m.authorName ?? null,
+          text: m.body,
         });
       } catch (err) {
         // Left for the pipeline, as if this block were not here.
@@ -1627,7 +1661,7 @@ async function handleAnalyzeRequest(request: Request) {
         let res: Awaited<ReturnType<typeof import("@/lib/month-newcomers").applyMonthAdd>> | null = null;
         try {
           const { applyMonthAdd } = await import("@/lib/month-newcomers");
-          res = await applyMonthAdd({ orgId: org.id, reading, senderUserId: sender.userId, sourceRef: m.waMessageId, tellRefused: true, tellOrganiser: true });
+          res = await applyMonthAdd({ orgId: org.id, reading, senderUserId: sender.userId, sourceRef: m.waMessageId, tellRefused: true, tellOrganiser: true, text: m.body });
         } catch (err) {
           console.error(`[analyze] month add ${m.waMessageId} failed:`, err);
         }
@@ -2005,13 +2039,18 @@ async function handleAnalyzeRequest(request: Request) {
         }
         const failures: string[] = [];
         const registered: string[] = [];
+        // Who each line is, is who-is-who's (the reader's names are placed
+        // by it, `placeReaderNames`): a member, a new player it placed on
+        // nobody, or unclear, which is never registered (2026-11-09).
         for (const line of reading.lines) {
           if (line.userId && statusOf.has(line.userId)) continue; // in, on the bench, or dropped
           const isSender = line.userId === sender.userId;
           try {
             const target = line.userId
               ? { userId: line.userId, name: line.name }
-              : await resolveOrProvisionByName(org.id, line.name);
+              : line.unclear
+                ? null
+                : await provisionNewPerson(org.id, line.name);
             if (!target) {
               failures.push(line.name);
               continue;
@@ -2175,7 +2214,8 @@ async function handleAnalyzeRequest(request: Request) {
             // D5b, revised 2026-10-22: his plain IN counted for his own
             // game; then one DM asking whether he meant the partner's.
             askPartnerAfterOwnIn: (a) => askPartnerAfterOwnInByDm(a),
-            resolveOrProvision: (name) => resolveOrProvisionByName(org.id, name),
+            // who-is-who already placed this name on nobody: a new person.
+            resolveOrProvision: (name) => provisionNewPerson(org.id, name),
             // THE SLOT A REPLACEMENT INHERITS (2026-09-15). ONE row
             // updated IN PLACE — `load-state.ts` reads the sheet in
             // `id: asc` so the re-post renders the players in the order
@@ -4527,6 +4567,7 @@ async function unresolvedSenderNudge(args: {
 async function nameMentionsFromRoster(
   orgId: string,
   messages: InboundMessage[],
+  opts: { askModel: boolean },
 ): Promise<InboundMessage[]> {
   const RAW_TOKEN = /@\d{5,}/;
   const relevant = messages.some(
@@ -4553,21 +4594,27 @@ async function nameMentionsFromRoster(
     .filter((u) => !!u?.name)
     .map((u) => ({ userId: u.id, name: u.name as string, phone: u.phoneNumber }));
 
+  // Phone and stored LID first; the pushnames those leave are put to
+  // who-is-who in ONE call for the whole batch (2026-11-09), never
+  // matched by spelling.
+  const withMentions = messages.filter((m) => m?.mentions?.length && RAW_TOKEN.test(m.body ?? ""));
+  const named = await nameMentions({
+    messages: withMentions.map((m) => ({ body: m.body, mentions: m.mentions, mentionNames: m.mentionNames })),
+    roster,
+    aliases,
+    knownLids,
+    ...(opts.askModel ? { picker: personPickerFor() } : {}),
+    where: "the club's players' group",
+  });
+  const byMessage = new Map(withMentions.map((m, i) => [m, named[i]]));
   return messages.map((m) => {
-    if (!m?.mentions?.length || !RAW_TOKEN.test(m.body ?? "")) return m;
-    const { body, outcomes } = resolveMentionNames({
-      body: m.body,
-      mentions: m.mentions,
-      mentionNames: m.mentionNames,
-      roster,
-      aliases,
-      knownLids,
-    });
-    const described = describeMentionOutcomes(outcomes);
+    const r = byMessage.get(m);
+    if (!r) return m;
+    const described = describeMentionOutcomes(r.outcomes);
     // One line per message that carried a mention. A run of "LEFT RAW"
     // is the signal that a player's pushname needs a `UserAlias`.
     if (described) console.log(`[analyze] mentions ${m.waMessageId}: ${described}`);
-    return body === m.body ? m : { ...m, body };
+    return r.body === m.body ? m : { ...m, body: r.body };
   });
 }
 

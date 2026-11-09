@@ -23,7 +23,7 @@
  * someone else, contingent, and held.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { parseFacts } from "../extractors";
 import { NOW, SUTTON, attendanceFacts, benchCount, claim, confirmedCount, msg, statusOf, world } from "./helpers";
 import type { Facts } from "../types";

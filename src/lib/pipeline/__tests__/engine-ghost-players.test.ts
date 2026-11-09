@@ -15,7 +15,7 @@
  *       ref (`resolve-or-provision-name.ts`, pinned in its own test).
  */
 import { describe, expect, it } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { attendanceFacts, claim, msg, NOW, world } from "./helpers";
 
 const state = () => world({ confirmed: ["kemal", "elvin", "sait", "mustafa", "abid", "idris", "faris"] });

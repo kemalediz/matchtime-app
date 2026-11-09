@@ -11,6 +11,7 @@ import { buildAskScoreHqPost } from "../scheduler-copy";
 import { organisersContext } from "../admin-group-context";
 import { parseFacts, factsSchemaFor } from "../pipeline/extractors";
 import { resolveMomRef } from "../mom-pick";
+import type { PersonPick } from "../pipeline/who-is-who";
 import { formatRatingProgressReply } from "../rating-progress-answer";
 
 describe("the setting", () => {
@@ -105,11 +106,24 @@ describe("the name is resolved against the match's players", () => {
     { userId: "u-a1", name: "Ali Can", isAdmin: false, hasPhone: true },
     { userId: "u-a2", name: "Ali Veli", isAdmin: false, hasPhone: true },
   ];
+  // Who the name is, is who-is-who's pick (2026-11-09); the resolver only
+  // reads it against the match's players.
+  const people = new Map<string, PersonPick>([
+    ["Naim", { kind: "member", userId: "u-naim" }],
+    ["Naim Khan", { kind: "member", userId: "u-naim" }],
+    ["Ali", { kind: "ambiguous", userIds: ["u-a1", "u-a2"] }],
+    ["Zed", { kind: "none" }],
+    ["everyone", { kind: "none" }],
+  ]);
   it("one player, two players, nobody", () => {
-    expect(resolveMomRef("Naim", players)).toEqual({ kind: "resolved", userId: "u-naim", name: "Naim Khan" });
-    expect(resolveMomRef("@Naim Khan", players)).toEqual({ kind: "resolved", userId: "u-naim", name: "Naim Khan" });
-    expect(resolveMomRef("Ali", players)).toEqual({ kind: "ambiguous", ref: "Ali", names: ["Ali Can", "Ali Veli"] });
-    expect(resolveMomRef("Zed", players)).toEqual({ kind: "not-in-match", ref: "Zed" });
-    expect(resolveMomRef("everyone", players).kind).toBe("not-in-match");
+    expect(resolveMomRef("Naim", players, people)).toEqual({ kind: "resolved", userId: "u-naim", name: "Naim Khan" });
+    expect(resolveMomRef("@Naim Khan", players, people)).toEqual({ kind: "resolved", userId: "u-naim", name: "Naim Khan" });
+    expect(resolveMomRef("Ali", players, people)).toEqual({ kind: "ambiguous", ref: "Ali", names: ["Ali Can", "Ali Veli"] });
+    expect(resolveMomRef("Zed", players, people)).toEqual({ kind: "not-in-match", ref: "Zed" });
+    expect(resolveMomRef("everyone", players, people).kind).toBe("not-in-match");
+  });
+
+  it("a name the model gave no answer for is said plainly: it could not tell who, never a guess", () => {
+    expect(resolveMomRef("Naim", players, new Map()).kind).toBe("unsure");
   });
 });

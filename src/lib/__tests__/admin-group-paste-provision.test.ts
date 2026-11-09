@@ -147,30 +147,19 @@ describe("the 3-letter guard stays for pushnames and third-party mentions", () =
     expect(await createProvisionalByName("org", "447700900123", null, { deliberate: true })).toBeNull();
   });
 
-  it("resolveOrProvisionByName: a third party's 'Mo' is not provisioned; an admin-confirmed one is", async () => {
-    const { resolveOrProvisionByName } = await import("../resolve-or-provision-name");
-    expect(await resolveOrProvisionByName("org", "Mo")).toBeNull();
-    expect((await resolveOrProvisionByName("org", "Mo", { adminConfirmed: true }))?.name).toBe("Mo");
+  it("provisionNewPerson: a third party's 'Mo' is not provisioned; an admin-confirmed one is", async () => {
+    const { provisionNewPerson } = await import("../resolve-or-provision-name");
+    expect(await provisionNewPerson("org", "Mo")).toBeNull();
+    expect((await provisionNewPerson("org", "Mo", { adminConfirmed: true }))?.name).toBe("Mo");
   });
 
-  it("admin-confirmed: when only removed members make the name ambiguous, a new player is added as promised", async () => {
-    dbMock.membership.findMany.mockResolvedValue([
-      { id: "m-a", userId: "u-mo1", leftAt: new Date(), user: { id: "u-mo1", name: "Mo Ali" } },
-      { id: "m-b", userId: "u-mo2", leftAt: new Date(), user: { id: "u-mo2", name: "Mo Bashir" } },
-    ]);
-    const { resolveOrProvisionByName } = await import("../resolve-or-provision-name");
-    expect(await resolveOrProvisionByName("org", "Mo")).toBeNull();
-    expect(await resolveOrProvisionByName("org", "Mo", { adminConfirmed: true })).toEqual({ userId: "new-mo", name: "Mo" });
-  });
-
-  it("admin-confirmed: two CURRENT members sharing the name is still ambiguous, no duplicate is made", async () => {
-    dbMock.membership.findMany.mockResolvedValue([
-      { id: "m-a", userId: "u-mo1", leftAt: null, user: { id: "u-mo1", name: "Mo Ali" } },
-      { id: "m-b", userId: "u-mo2", leftAt: new Date(), user: { id: "u-mo2", name: "Mo Bashir" } },
-      { id: "m-c", userId: "u-mo3", leftAt: null, user: { id: "u-mo3", name: "Mo Celik" } },
-    ]);
-    const { resolveOrProvisionByName } = await import("../resolve-or-provision-name");
-    expect(await resolveOrProvisionByName("org", "Mo", { adminConfirmed: true })).toBeNull();
-    expect(dbMock.user.create).not.toHaveBeenCalled();
+  // Who "Mo" is was decided once, by who-is-who with the message (review
+  // of #574): provisioning never looks the name up again, by spelling or
+  // by a second model call.
+  it("provisionNewPerson reads no membership: the first answer stands", async () => {
+    dbMock.membership.findMany.mockClear();
+    const { provisionNewPerson } = await import("../resolve-or-provision-name");
+    expect((await provisionNewPerson("org", "Mo", { adminConfirmed: true }))?.name).toBe("Mo");
+    expect(dbMock.membership.findMany).not.toHaveBeenCalled();
   });
 });

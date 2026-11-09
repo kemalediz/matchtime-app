@@ -593,7 +593,7 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
   it("balancer: the shared teams extractor, then the team change", async () => {
     const r = await ask("swap Ali and Can", "balancer", { deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ moves: ["Ali", "Can"] }) } });
     expect(r?.outcome).toBe("teams-swapped");
-    expect(teams.handleTeamCommand).toHaveBeenCalledWith({
+    expect(teams.handleTeamCommand).toHaveBeenCalledWith(expect.objectContaining({
       orgId: "org-fnf",
       lang: "en",
       messageId: "wa-9",
@@ -602,7 +602,9 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
       command: { kind: "change", swapSides: false, moves: ["Ali", "Can"], sides: [], together: [] },
       addressed: true,
       quotedSheet: null,
-    });
+      // The message, for who-is-who to read its names in (2026-11-09).
+      body: expect.any(String),
+    }));
     expect(requests[1].system).toContain("moves");
   });
 
@@ -1337,7 +1339,7 @@ describe("a free place, asked for in HQ in the organisers' own words, given on Y
   it("an organiser, tagged: MatchTime ASKS (nothing written here), with the day and the undo flag read", async () => {
     const r = await ask("Bilal washed the bibs, he's free this week", "admin_ops", { deps: free() });
     expect(r).toEqual({ route: "admin_ops", outcome: "fee-free-asked", replyText: ASKED_TEXT });
-    expect(feeWaiver.proposeFeeFreeInHq).toHaveBeenCalledWith({
+    expect(feeWaiver.proposeFeeFreeInHq).toHaveBeenCalledWith(expect.objectContaining({
       orgId: "org-fnf",
       lang: "en",
       refs: ["Bilal"],
@@ -1346,7 +1348,8 @@ describe("a free place, asked for in HQ in the organisers' own words, given on Y
       senderUserId: "u-admin",
       messageId: "wa-9",
       now: NOW,
-    });
+      body: expect.any(String),
+    }));
     expect(feeWaiver.answerFeeProposalYes).not.toHaveBeenCalled();
     expect(requests).toHaveLength(2);
     expect(requests[1].system).toContain('"fee_waiver"');

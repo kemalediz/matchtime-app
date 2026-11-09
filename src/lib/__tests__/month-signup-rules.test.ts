@@ -8,6 +8,9 @@
 import { describe, expect, it } from "vitest";
 import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
 import { readSignupMessage } from "@/lib/__tests__/fixtures/monthly-legacy";
+// The reader's member refs, by a test stand-in (review of #574): the
+// reconcile no longer looks names up in code.
+import { reconcileSignupPaste, signupPasteShowsSameList } from "./support/monthly-reader-refs";
 import {
   WAITING_NOTE,
   buildSignupList,
@@ -21,9 +24,7 @@ import {
   monthStarted,
   nextMonthStart,
   planCarryOver,
-  reconcileSignupPaste,
   signupEndsAt,
-  signupPasteShowsSameList,
   type SignupMember,
 } from "@/lib/month-signup-rules";
 
@@ -321,6 +322,8 @@ describe("a pasted sign-up list", () => {
     expect(out.self).toBeNull();
     expect(out.notAdded).toEqual([
       { name: "Bibs", reason: "unknown" },
+      // A name two players have is UNCLEAR to who-is-who (here its
+      // stand-in): reported as not added, never guessed (review of #574).
       { name: "Omar", reason: "ambiguous" },
       { name: "Two balls", reason: "unknown" },
     ]);

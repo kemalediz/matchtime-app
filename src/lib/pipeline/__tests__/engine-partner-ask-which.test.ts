@@ -15,7 +15,7 @@
  * reading of words.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { NOW, attendanceFacts, claim, msg, world } from "./helpers";
 import type { EngineMessage, SquadState } from "../types";
 import { compose } from "../compose";

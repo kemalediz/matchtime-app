@@ -35,6 +35,7 @@ import {
   teamSheetNames,
 } from "./group-copy";
 import { planSwap, type SwapCandidate } from "./team-slot-swap";
+import type { PersonPicks } from "./pipeline/who-is-who";
 import { t } from "./i18n/t";
 import { loadPlayerNames } from "./player-display-name";
 
@@ -118,6 +119,8 @@ export async function applyPlayersGroupSwap(args: {
   orgId: string;
   facts: PlayersSwapFacts;
   sender: { userId: string; name: string } | null;
+  /** Who the names are (who-is-who, read with the message). */
+  people?: PersonPicks;
 }): Promise<PlayersSwapResult> {
   const shape = playersSwapShape(args.facts);
   if (shape.kind === "unsupported") {
@@ -158,7 +161,7 @@ export async function applyPlayersGroupSwap(args: {
     roster.push({ userId: t.userId, name: t.user.name, status: "NONE", team: t.team });
   }
 
-  const plan = planSwap({ a: shape.a, b: shape.b }, roster, { sender: args.sender, teamsExist: m.teamAssignments.length > 0 });
+  const plan = planSwap({ a: shape.a, b: shape.b }, roster, { sender: args.sender, teamsExist: m.teamAssignments.length > 0, people: args.people });
   if (plan.kind === "not-a-player-swap") {
     return { kind: "unsupported", logReason: `swap ${shape.a} and ${shape.b}: neither is a player of this match, or it is a substitution of the sender` };
   }

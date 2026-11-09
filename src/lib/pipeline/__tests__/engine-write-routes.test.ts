@@ -13,7 +13,7 @@
  * actually decide?" one file rather than a grep.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { parseFacts } from "../extractors";
 import type { TeamFacts } from "../types";
 import { NOW, msg, world } from "./helpers";

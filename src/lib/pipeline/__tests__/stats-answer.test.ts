@@ -23,8 +23,14 @@ import {
 import { displaysSquadState } from "../../group-copy";
 import { periodKey } from "../stats-period";
 import type { Member, QuestionFacts, StatsPeriod, StatsSnapshot } from "../types";
+import { stubPicks, whoRosterOf, type PersonPicks } from "../who-is-who";
 
 const m = (userId: string, name: string): Member => ({ userId, name, isAdmin: false, hasPhone: true });
+/** Who-is-who's picks for these names, from its name-based stand-in: who a
+ *  name is, is the model's (2026-11-09); these tests are about what the
+ *  stats plan does with the answer. */
+const picksFor = (roster: Member[], refs: Array<string | null | undefined>): PersonPicks | undefined =>
+  stubPicks({ roster: whoRosterOf(roster), messages: [{ id: "m", body: "", author: null, refs: refs.filter((r): r is string => !!r) }] }).get("m");
 const ROSTER: Member[] = [
   m("u-idris", "Idris Bello"),
   m("u-kemal", "Kemal Ediz"),
@@ -325,35 +331,37 @@ describe("no answer here is ever mistaken for the squad list", () => {
 
 describe("who a stats question is about", () => {
   it("one clear member resolves", () => {
-    expect(resolveStatsPerson("Idris", ROSTER, [], "u-kemal")).toMatchObject({ kind: "resolved", member: { userId: "u-idris" } });
+    expect(resolveStatsPerson("Idris", ROSTER, picksFor(ROSTER, ["Idris"]), "u-kemal")).toMatchObject({ kind: "resolved", member: { userId: "u-idris" } });
   });
-  it("a Turkish possessive suffix is not part of the name", () => {
-    expect(resolveStatsPerson("Idris'in", ROSTER, [], "u-kemal")).toMatchObject({ kind: "resolved", member: { userId: "u-idris" } });
-    expect(resolveStatsPerson("Idris’in", ROSTER, [], "u-kemal")).toMatchObject({ kind: "resolved", member: { userId: "u-idris" } });
+  it("a Turkish possessive suffix: the model's pick for the name as quoted is read", () => {
+    const p = new Map([["Idris'in", { kind: "member" as const, userId: "u-idris" }], ["Idris’in", { kind: "member" as const, userId: "u-idris" }]]);
+    expect(resolveStatsPerson("Idris'in", ROSTER, p, "u-kemal")).toMatchObject({ kind: "resolved", member: { userId: "u-idris" } });
+    expect(resolveStatsPerson("Idris’in", ROSTER, p, "u-kemal")).toMatchObject({ kind: "resolved", member: { userId: "u-idris" } });
   });
-  it("an admin-curated alias wins", () => {
-    expect(resolveStatsPerson("Mo", ROSTER, [{ alias: "mo", userId: "u-mohammed" }], "u-kemal")).toMatchObject({
+  it("an admin-curated alias rides the roster the model is shown, and its pick resolves", () => {
+    const withAlias = ROSTER.map((x) => (x.userId === "u-mohammed" ? { ...x, aliases: ["mo"] } : x));
+    expect(resolveStatsPerson("Mo", withAlias, picksFor(withAlias, ["Mo"]), "u-kemal")).toMatchObject({
       kind: "resolved",
       member: { userId: "u-mohammed" },
     });
   });
   it("a name nobody has is unknown, and is asked about", () => {
-    expect(resolveStatsPerson("Zork", ROSTER, [], "u-kemal")).toEqual({ kind: "unknown", ref: "Zork" });
+    expect(resolveStatsPerson("Zork", ROSTER, picksFor(ROSTER, ["Zork"]), "u-kemal")).toEqual({ kind: "unknown", ref: "Zork" });
   });
   it("two plausible members is ambiguous", () => {
     const two = [...ROSTER, m("u-idris2", "Idris Musa")];
-    const r = resolveStatsPerson("Idris", two, [], "u-kemal");
+    const r = resolveStatsPerson("Idris", two, picksFor(two, ["Idris"]), "u-kemal");
     expect(r.kind).toBe("ambiguous");
   });
   it("me / my / ben is the asker", () => {
     for (const ref of ["me", "my", "myself", "I", "ben", "benim"]) {
-      expect(resolveStatsPerson(ref, ROSTER, [], "u-kemal"), ref).toMatchObject({ kind: "resolved", self: true, member: { userId: "u-kemal" } });
+      expect(resolveStatsPerson(ref, ROSTER, undefined, "u-kemal"), ref).toMatchObject({ kind: "resolved", self: true, member: { userId: "u-kemal" } });
     }
   });
 });
 
 describe("planning a stats question", () => {
-  const plan = (f: Partial<QuestionFacts>, sender = "u-kemal") => planStatsQuestion(q(f), ROSTER, [], sender);
+  const plan = (f: Partial<QuestionFacts>, sender = "u-kemal") => planStatsQuestion(q(f), ROSTER, picksFor(ROSTER, [f.personRef]), sender);
 
   it("no table named is the appearances table, over the whole record, and says so", () => {
     expect(plan({ table: null })).toMatchObject({ kind: "table", table: "appearances", size: 10, period: null });
@@ -394,7 +402,7 @@ describe("planning a stats question", () => {
   });
   it("an ambiguous name asks with the candidates", () => {
     const two = [...ROSTER, m("u-idris2", "Idris Musa")];
-    expect(planStatsQuestion(q({ table: "chemistry", personRef: "Idris" }), two, [], "u-kemal")).toEqual({
+    expect(planStatsQuestion(q({ table: "chemistry", personRef: "Idris" }), two, picksFor(two, ["Idris"]), "u-kemal")).toEqual({
       kind: "ask",
       ref: "Idris",
       candidates: ["Idris Bello", "Idris Musa"],
@@ -408,7 +416,7 @@ describe("planning a stats question", () => {
     expect(plan({ table: "other" })).toMatchObject({ kind: "generic", personUserId: null });
   });
   it("chemistry from an unresolved sender who named nobody cannot be answered", () => {
-    expect(planStatsQuestion(q({ table: "chemistry" }), ROSTER, [], null)).toEqual({ kind: "none", why: expect.any(String) });
+    expect(planStatsQuestion(q({ table: "chemistry" }), ROSTER, undefined, null)).toEqual({ kind: "none", why: expect.any(String) });
   });
 });
 

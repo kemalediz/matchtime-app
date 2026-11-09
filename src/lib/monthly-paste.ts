@@ -35,6 +35,11 @@ import { loadClubQuietHours } from "./club-quiet-hours";
 import { formatLondon } from "./london-time";
 import type { MonthlyReading } from "./monthly-reader-prompt";
 import { createProvisionalByName } from "./resolve-sender";
+import { identifyRefs, personPickerFor } from "./pipeline/identify-batch";
+import { loadClubWhoRoster } from "./club-who-roster";
+import type { PersonPicker } from "./pipeline/who-is-who";
+import type { MonthlyList } from "./monthly-list";
+import { placeListLines, unplacedLineNames } from "./monthly-line-placement";
 import { askWhoTheyAre, createNewcomer, joinMonthAsOrganiser } from "./month-newcomers";
 import type { NewcomerLine } from "./month-newcomer-rules";
 import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek, weekListKeyPrefix } from "./monthly-week";
@@ -127,6 +132,39 @@ async function loadBenchSeen(matchId: string, benchIds: string[]): Promise<Set<s
 }
 
 /**
+ * Who-is-who on every line of a pasted list no member is on: ONE call for
+ * the paste, the whole club shown, the message read with it; its answers
+ * written on the lines (`monthly-line-placement.ts`). No call when the
+ * reader placed every line, nor for another month's list (the reconcile
+ * returns it as another month's whatever its lines are). A failed call
+ * leaves those lines unclear.
+ */
+export async function placeMonthlyLines(args: {
+  list: MonthlyList;
+  orgId: string;
+  rosterIds: ReadonlySet<string>;
+  /** 1 to 12: the month of the week's match. */
+  matchMonth?: number;
+  body?: string;
+  sender: { userId: string | null; name: string | null };
+  identify?: PersonPicker;
+}): Promise<MonthlyList> {
+  if (args.list.month && args.matchMonth !== undefined && args.list.month.month !== args.matchMonth) return args.list;
+  const names = unplacedLineNames(args.list, args.rosterIds);
+  if (names.length === 0) return args.list;
+  const { people } = await identifyRefs({
+    picker: args.identify ?? personPickerFor(),
+    refs: names,
+    body: args.body ?? [...args.list.slots, ...args.list.sections.reserves].map((e) => e.raw).join("\n"),
+    author: args.sender.name,
+    senderUserId: args.sender.userId,
+    roster: await loadClubWhoRoster(args.orgId, [], ""),
+    where: "the club's players' group: a pasted monthly list",
+  });
+  return placeListLines(args.list, people, args.rosterIds);
+}
+
+/**
  * Apply a member's pasted list to this week's match.
  *
  * Never guesses a player: names are matched by the reader's member refs
@@ -156,10 +194,13 @@ export async function handleMonthlyPaste(args: {
    *  for themselves may be written under either. */
   senderWhatsAppName?: string | null;
   now?: Date;
+  /** The message, for who-is-who to read a new line's name in. */
+  text?: string;
+  /** Tests: who-is-who. Absent: `personPickerFor`. */
+  identify?: PersonPicker;
 }): Promise<MonthlyPasteResult | NotThisMonthsList | null> {
   const { orgId, matchId, sender } = args;
   const now = args.now ?? new Date();
-  const { list } = args.reading;
   const week = await loadMonthlyWeek(matchId);
   if (!week || week.orgId !== orgId) return null;
 
@@ -177,6 +218,25 @@ export async function handleMonthlyPaste(args: {
   }));
   const senderRole = sender.userId ? memberships.find((m) => m.user.id === sender.userId)?.role : null;
   const senderIsAdmin = senderRole === "OWNER" || senderRole === "ADMIN";
+
+  // WHO EVERY UNPLACED LINE IS, BEFORE ANYTHING READS THE LIST (review of
+  // #574, round 3). The reader's "" means nobody, or somebody it was not
+  // sure of; the reconcile looks no names up. So every line no member is
+  // on goes to who-is-who, one call for the paste, the whole club shown,
+  // and its answer is written on the line (`monthly-line-placement.ts`): a
+  // member it is sure of is that member, under every rule a member's line
+  // is (never a guest, never a duplicate, never against the guest cap);
+  // nobody may become a guest or a new player; anything else is UNCLEAR,
+  // added nowhere and never read as leaving somebody off the bench.
+  const list = await placeMonthlyLines({
+    list: args.reading.list,
+    orgId,
+    rosterIds: new Set(roster.map((m) => m.userId)),
+    matchMonth: Number(formatLondon(week.matchDate, "M")),
+    body: args.text,
+    sender,
+    identify: args.identify,
+  });
 
   // BEFORE THE SEED the sender's own line counts for next week only when
   // the paste is ABOUT next week. Straight after a game people re-paste
@@ -291,6 +351,8 @@ export async function handleMonthlyPaste(args: {
    *  asked who they are, in one DM, after everything else (2026-11-03). */
   const toAsk: Array<{ name: string; userId: string | null; line: NewcomerLine }> = [];
   const weekDay = Number(formatLondon(week.matchDate, "d"));
+  // Who each line is was decided before the reconcile (`placeMonthlyLines`
+  // above): a "new" or "guest" action is a line who-is-who said is nobody.
   for (const a of outcome.actions) {
     try {
       if (a.kind === "join" || a.kind === "new") {
@@ -323,7 +385,9 @@ export async function handleMonthlyPaste(args: {
         // reader matched nobody of the club, so this is the same creation a
         // typed "David, my son, is IN" ends in (`resolveOrProvisionByName`'s
         // last step), without its prefix guess: "Luca" must not become the
-        // member "Lucas" when the reader has already said he is not one.
+        // member "Lucas" when who-is-who has already said he is not one
+        // (a member's line is never a guest's: it was placed before the
+        // reconcile and went through the member rules there).
         const created = await createProvisionalByName(orgId, a.name, null);
         if (!created?.userId) {
           failures.push(a.name);

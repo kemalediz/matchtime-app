@@ -179,6 +179,8 @@ import { decide as decideDefault } from "./engine";
 import { extractForRouteTraced } from "./trace";
 import { extractorStubFromEnv } from "./extractor-stub";
 import { resolvePerson } from "./identity";
+import { identifyFacts, personPickerFor } from "./identify-batch";
+import type { PersonPicker } from "./who-is-who";
 import { anthropicModel, type PipelineModel } from "./llm";
 import {
   STATS_CLARIFICATION_INTENT,
@@ -695,6 +697,9 @@ export interface AnswerBatchResult {
 export interface AnswerBatchDeps {
   /** Injected so tests can drive the whole batch without a key. */
   model?: PipelineModel;
+  /** Who the names in the facts are (`who-is-who.ts`). Injected by tests;
+   *  otherwise `personPickerFor`. */
+  identify?: PersonPicker;
   /** Injected so tests can load a state without a database. */
   loadState?: (orgId: string, now: Date) => Promise<SquadState>;
   /** `SquadState.features` carries attendance / paymentTracking /
@@ -1149,6 +1154,29 @@ export async function runAnswerBatch(args: {
   }
   clarificationFor = new Map([...clarificationFor].filter(([id]) => !notClarifications.has(id)));
 
+  // ── WHO IS WHO (2026-11-09) ─────────────────────────────────────────
+  // Every name the questions quote ("is Ali in?", "Sait's rating"), put
+  // to the model in one call with the club's members
+  // (`who-is-who.ts`). Ownership, the stats plans and the engine below all
+  // read these picks; no name is matched by spelling.
+  const identified = await identifyFacts({
+    picker: personPickerFor({ identify: deps.identify, model }),
+    roster: state.roster,
+    where: "the players' group",
+    items: eligible
+      .filter((m) => factsById.has(m.waMessageId))
+      .map((m) => ({
+        id: m.waMessageId,
+        body: m.body,
+        author: m.senderName ?? m.authorName,
+        senderUserId: m.senderUserId,
+        facts: factsById.get(m.waMessageId)!,
+      })),
+  });
+  if (identified.calls > 0) cost = { usd: cost.usd + identified.costUsd, calls: cost.calls + identified.calls, ms: cost.ms };
+  degradations.push(...identified.degradations);
+  const peopleById = identified.people;
+
   // ── `options` IN A MONTHLY CLUB WITH NO MONTH (2026-11-03) ──────────
   // "We're 0 of 14, need 14 more" counts whoever said IN, which before the
   // month exists is nobody by design (#501 holds every post that counts it).
@@ -1326,7 +1354,7 @@ export async function runAnswerBatch(args: {
         // first name — is a confident claim about squad state that
         // nothing checked. That is the §3.2 S16 failure class, and
         // `identity.ts` already bails on exactly these two shapes.
-        const r = resolvePerson(facts.personRef ?? "", state.roster);
+        const r = resolvePerson(facts.personRef ?? "", state.roster, peopleById.get(m.waMessageId));
         if (r.kind !== "resolved") {
           hand(`"${facts.personRef}" does not resolve to one member (${r.kind})`);
           continue;
@@ -1507,7 +1535,7 @@ export async function runAnswerBatch(args: {
       for (const id of statsIds) {
         const f = factsById.get(id);
         if (f?.kind !== "question") continue;
-        statsPlans.set(id, planStatsQuestion(f, state.roster, tables.aliases, byId.get(id)?.senderUserId ?? null));
+        statsPlans.set(id, planStatsQuestion(f, state.roster, peopleById.get(id), byId.get(id)?.senderUserId ?? null));
       }
       // THE PERIODS (2026-09-23). Only a table the data can cut, and only
       // a period that cuts the record, is read again; each distinct period
@@ -1571,7 +1599,7 @@ export async function runAnswerBatch(args: {
       for (const id of statsIds) {
         const f = factsById.get(id);
         if (f?.kind !== "question" || statsPlans.has(id)) continue;
-        statsPlans.set(id, planStatsQuestion(f, state.roster, [], byId.get(id)?.senderUserId ?? null));
+        statsPlans.set(id, planStatsQuestion(f, state.roster, peopleById.get(id), byId.get(id)?.senderUserId ?? null));
       }
     }
   }
@@ -1659,7 +1687,7 @@ export async function runAnswerBatch(args: {
     facts: ownedIds.has(m.waMessageId)
       ? (factsById.get(m.waMessageId) ?? { kind: "none" })
       : { kind: "none" },
-    degraded: null,
+    degraded: null, ...(peopleById.has(m.waMessageId) ? { people: peopleById.get(m.waMessageId) } : {}),
   }));
 
   let result: EngineResult;

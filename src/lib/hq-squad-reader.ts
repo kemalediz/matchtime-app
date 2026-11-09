@@ -25,6 +25,10 @@ import { rosterLabels } from "./group-chat-history";
 import { hqLogSince } from "./admin-group-log";
 import { resolveTeamLabels } from "./team-labels";
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "./pipeline/llm";
+import { personPickerFor } from "./pipeline/identify-batch";
+import { refKey } from "./person-ref-key";
+import { isSelfRef } from "./pipeline/engine";
+import type { PersonPick, PersonPicker } from "./pipeline/who-is-who";
 import {
   buildHqSquadReaderUserTurn,
   HQ_SQUAD_READER_RECENT_LINES,
@@ -35,6 +39,7 @@ import {
   type HqSquadReaderContext,
   type HqSquadReaderInput,
   type HqSquadReading,
+  type HqSquadChange,
 } from "./hq-squad-reader-prompt";
 
 export type { HqSquadReading, HqSquadReaderContext, HqSquadReaderInput } from "./hq-squad-reader-prompt";
@@ -206,7 +211,7 @@ function defaultModel(): PipelineModel | null {
 export async function readHqSquadMessage(
   input: HqSquadReaderInput,
   ctx: HqSquadReaderContext,
-  deps?: { model?: PipelineModel | null },
+  deps?: { model?: PipelineModel | null; identify?: PersonPicker },
 ): Promise<HqSquadReading> {
   if (!input.body?.trim()) return { kind: "other", why: "empty" };
   // COST GATE, on a fact: somebody who is nobody of the club cannot change
@@ -245,5 +250,79 @@ export async function readHqSquadMessage(
             ? ` why=${reading.why}`
             : ""),
   );
-  return reading;
+  return placeReaderNames(reading, input, ctx, deps?.identify ?? personPickerFor());
+}
+
+/**
+ * WHO THE READER'S NAMES ARE, BY ONE AUTHORITY (2026-11-09, review of
+ * #574): the reader says what the message IS (a squad, a change) and
+ * which names it lists; who each name is, is who-is-who's, with its
+ * safeguards (a lookalike is nobody, a described outsider is asked about,
+ * not sure is ambiguous). One call for the whole message. The reader's
+ * own member refs are not trusted for this; the one exception is the
+ * sender's own place, which the reader knows from who sent it, not from a
+ * name. A name who-is-who cannot place is `unclear` (never written, never
+ * a new player); so is an arriving player whose replaced player it cannot
+ * place, so "X for Y" never adds X and leaves Y.
+ */
+export async function placeReaderNames(
+  reading: HqSquadReading,
+  input: HqSquadReaderInput,
+  ctx: HqSquadReaderContext,
+  picker: PersonPicker,
+): Promise<HqSquadReading> {
+  if (reading.kind !== "squad" && reading.kind !== "change") return reading;
+  const sender = input.sender.userId;
+  // The sender's own place without asking only for a self word ("I",
+  // "me", "ben"): a NAME the reader put on the sender is asked like any
+  // other (review of #574, round 3), with the sender shown by his ref.
+  const isSelf = (c: HqSquadChange) => !!sender && c.userId === sender && isSelfRef(c.written || "");
+  const refs =
+    reading.kind === "squad"
+      ? reading.lines.map((l) => l.name)
+      : reading.changes.flatMap((c) => [...(isSelf(c) ? [] : [c.written || c.name]), ...(c.replaces ? [c.replaces] : [])]);
+  const res = await picker({
+    roster: ctx.members.map((m) => ({ userId: m.userId, name: m.name, aliases: m.aliases })),
+    where: input.place === "players" ? "the club's players' group" : "HQ, the club organisers' admin group",
+    messages: [{ id: "m", body: input.body, author: input.sender.name, senderUserId: sender, refs }],
+  });
+  for (const d of res.degradations) console.warn(`[${LABEL}] ${d}`);
+  const picks = res.picks.get("m") ?? new Map<string, PersonPick>();
+  const known = new Set(ctx.members.map((m) => m.userId));
+  const nameOf = new Map(ctx.members.map((m) => [m.userId, m.name]));
+  const place = (name: string): { userId: string | null; unclear?: true } => {
+    const p = picks.get(refKey(name));
+    if (p?.kind === "member" && known.has(p.userId)) return { userId: p.userId };
+    if (p?.kind === "none") return { userId: null };
+    return { userId: null, unclear: true };
+  };
+  if (reading.kind === "squad") {
+    return {
+      ...reading,
+      lines: reading.lines.map((l) => {
+        const at = place(l.name);
+        return { name: l.name, section: l.section, userId: at.userId, ...(at.unclear ? { unclear: true as const } : {}) };
+      }),
+    };
+  }
+  return {
+    ...reading,
+    changes: reading.changes.map((c) => {
+      const self = isSelf(c);
+      const written = c.written || c.name;
+      const at = self ? { userId: c.userId } : place(written);
+      const rep = c.replaces ? place(c.replaces) : null;
+      const unclear = ("unclear" in at && at.unclear) || (rep !== null && rep.userId === null);
+      const { replacesUserId: _r, unclear: _u, ...rest } = c;
+      return {
+        ...rest,
+        userId: at.userId,
+        written,
+        name: at.userId ? (nameOf.get(at.userId) ?? written) : written,
+        replaces: rep?.userId ? (nameOf.get(rep.userId) ?? c.replaces) : rep ? c.replaces : "",
+        ...(rep?.userId ? { replacesUserId: rep.userId } : {}),
+        ...(unclear ? { unclear: true as const } : {}),
+      };
+    }),
+  };
 }

@@ -45,6 +45,7 @@ import { nameKey } from "./squad-month-rules";
 import { numberNameless } from "./month-seed-match-rules";
 import type { MonthlyReading } from "./monthly-reader-prompt";
 import type { PipelineModel } from "./pipeline/llm";
+import { refKey } from "./person-ref-key";
 import {
   classifyNewcomer,
   NEWCOMER_ASK_KIND,
@@ -393,6 +394,10 @@ export async function applyMonthAdd(p: {
    *  `replyText` is null when it was sent. */
   viaDm?: boolean;
   now?: Date;
+  /** The message, for who-is-who to read an unplaced name in. */
+  text?: string;
+  /** Tests: who-is-who. Absent: `personPickerFor`. */
+  identify?: import("./pipeline/who-is-who").PersonPicker;
 }): Promise<MonthAddResult> {
   const res = await addToMonth(p);
   if (p.tellOrganiser && ["month-add-unclear", "month-add-no-month", "month-add-failed"].includes(res.outcome) && res.replyText) {
@@ -442,20 +447,27 @@ async function addToMonth(p: Parameters<typeof applyMonthAdd>[0]): Promise<Month
   if (!month) return { outcome: "month-add-no-month", replyText: s.mwk_month_add_no_month({ month: monthWord }), changed: false };
   const label = monthNameLabel(lang, month.firstKickoff);
   const roster = memberships.map((m) => ({ userId: m.user.id, name: m.user.name, aliases: aliases.filter((a) => a.userId === m.user.id).map((a) => a.alias) }));
-  // The name lookup the list's lines get when the reader matched nobody:
-  // whole name, alias, leading name; never fuzzy (`entryResolver`).
+  // The reader's "" means nobody, or a name two members could be. Before a
+  // NEW person is made, who-is-who tells the two apart, with the message
+  // (2026-11-09, review of #574; it used to be a name lookup in code that
+  // could overrule the reader): a member it is sure of is that member,
+  // nobody is a newcomer, anything else is asked about, never guessed.
   let memberId = reading.person.memberId;
   let ambiguous = false;
-  if (!memberId) {
-    const { entryResolver } = await import("./month-signup-rules");
-    const r = entryResolver(roster, new Set(month.members.filter((m) => !m.out).map((m) => m.userId)))({
-      slot: null,
-      raw: reading.person.name,
-      name: reading.person.name,
-      marks: { paid: false, paidAmountPence: null, tier: null, payg: false, paygDates: [] },
+  if (!memberId && reading.person.name) {
+    const { identifyRefs, personPickerFor } = await import("./pipeline/identify-batch");
+    const { people } = await identifyRefs({
+      picker: p.identify ?? personPickerFor(),
+      refs: [reading.person.name],
+      body: p.text ?? reading.person.name,
+      author: null,
+      senderUserId: p.senderUserId,
+      roster: roster.map((m) => ({ userId: m.userId, name: m.name ?? "", aliases: m.aliases, isAdmin: false, hasPhone: false })),
+      where: "the club's groups: an organiser adds somebody to the month's list",
     });
-    if (r.kind === "one") memberId = r.userId;
-    ambiguous = r.kind === "ambiguous";
+    const pick = people.get(refKey(reading.person.name));
+    if (pick?.kind === "member" && roster.some((m) => m.userId === pick.userId)) memberId = pick.userId;
+    else ambiguous = pick?.kind !== "none";
   }
   const onMonth = new Set(month.members.filter((m) => !m.out).map((m) => m.userId));
   const c = classifyNewcomer({ memberId, name: reading.person.name, ambiguous, roster, onMonth });
@@ -539,7 +551,7 @@ export async function handleMonthAddDm(input: {
       );
     });
     if (reading.kind !== "add") return null;
-    const r = await applyMonthAdd({ orgId, reading, senderUserId: input.userId, sourceRef: input.waMessageId, viaDm: true, now: input.now });
+    const r = await applyMonthAdd({ orgId, reading, senderUserId: input.userId, sourceRef: input.waMessageId, viaDm: true, now: input.now, text: input.text });
     // His answer (null when the "who is this?" DM already is it).
     if (input.replyPhone && r.replyText) await db.botJob.create({ data: { orgId, kind: "dm", phone: input.replyPhone.replace(/^\+/, ""), text: r.replyText } });
     return { handled: r.outcome };

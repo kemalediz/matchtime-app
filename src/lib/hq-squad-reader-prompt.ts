@@ -82,20 +82,32 @@ export interface HqSquadReaderInput {
 export interface HqSquadLine {
   /** The name as the reader read it. */
   name: string;
-  /** The member it is; null for a person nobody in the club is. */
+  /** The member it is; null for a person nobody in the club is. Since
+   *  2026-11-09 who-is-who's pick (`placeReaderNames`), not the reader's. */
   userId: string | null;
   section: "playing" | "bench";
+  /** who-is-who could not say who it is (several members, not sure, or no
+   *  answer): never written, never a new player. */
+  unclear?: true;
 }
 
 export interface HqSquadChange {
   /** A member's roster name, or a new person's name as written. */
   name: string;
-  /** The member; null for a person nobody in the club is. */
+  /** The name as the message wrote it (what who-is-who is asked about). */
+  written?: string;
+  /** The member; null for a person nobody in the club is. Since
+   *  2026-11-09 who-is-who's pick (`placeReaderNames`), not the reader's. */
   userId: string | null;
+  /** who-is-who could not say who it is, or who it replaces: nothing about
+   *  this person is written; the sender is asked. */
+  unclear?: true;
   to: "in" | "out" | "bench";
   /** The roster name of the member this arriving player takes the place
    *  of, when the message says so; "" otherwise. */
   replaces: string;
+  /** That member's id; absent with no `replaces`. */
+  replacesUserId?: string;
 }
 
 export type HqSquadReading =
@@ -337,9 +349,11 @@ function parseChange(o: Record<string, unknown>, input: HqSquadReaderInput, ctx:
     const replaced = byRef.get(str(x.replaces));
     const change: HqSquadChange = {
       name: member ? member.name : written,
+      written: written || (member ? member.name : ""),
       userId: member ? member.userId : null,
       to: to as HqSquadChange["to"],
       replaces: replaced ? replaced.name : "",
+      ...(replaced ? { replacesUserId: replaced.userId } : {}),
     };
     const key = member ? `u:${member.userId}` : `n:${fold(written)}`;
     byKey.delete(key);

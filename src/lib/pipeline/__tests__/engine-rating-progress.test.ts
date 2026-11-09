@@ -37,7 +37,7 @@
  * with a pure decision module beside it. See `payment-answer.ts`.
  */
 import { describe, it, expect } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { NOW, msg, world } from "./helpers";
 import type { RatingProgress } from "../../rating-progress-answer";
 

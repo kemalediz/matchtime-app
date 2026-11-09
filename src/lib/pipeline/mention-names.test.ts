@@ -29,9 +29,11 @@
  *
  *   1. PHONE   — a "<digits>@c.us" mention IS the person's phone number.
  *                Unique key, no guessing.
- *   2. ALIAS   — `UserAlias`, admin-curated, keyed on the folded pushname.
- *   3. ROSTER  — `resolvePerson()`, the same ambiguity-bailing matcher the
- *                engine uses to turn a quoted name into a member.
+ *   2. THE MODEL'S PICK (2026-11-09) — who-is-who is shown the club's
+ *                members with their `UserAlias` rows and the pushname, and
+ *                says which member it is (`nameMentions`); read by
+ *                `resolvePerson()`, which bails on anything but one sure
+ *                member. No pushname is matched by spelling.
  *
  * Anything else leaves the raw "@<digits>" token exactly as it arrived.
  * A raw token is refused downstream by `identity.ts`'s "raw digits are
@@ -39,7 +41,8 @@
  * of a fabricated one.
  */
 import { describe, it, expect } from "vitest";
-import { resolveMentionNames } from "./mention-names";
+import { nameMentions, resolveMentionNames } from "./mention-names";
+import type { PersonPick, PersonPicker, PersonPicks } from "./who-is-who";
 
 const DAVID_PUSHNAME = "割::::.̸̢̤̋̃̓̉͗̏̾̃̌̚͘̕.̵͆͂";
 
@@ -57,6 +60,59 @@ const ALIASES = [{ alias: "割::::..", userId: "u-david" }];
 
 const base = { roster: ROSTER, aliases: ALIASES };
 
+/** who-is-who's answers for the pushnames: a member id, or null for nobody. */
+const pick = (...entries: Array<[string, string | null]>): PersonPicks =>
+  new Map<string, PersonPick>(entries.map(([k, id]) => [k, id ? { kind: "member", userId: id } : { kind: "none" }]));
+
+describe("no pushname is matched by spelling (2026-11-09)", () => {
+  it("RED on main: an exact member name as pushname, with no pick, names nobody", () => {
+    const out = resolveMentionNames({
+      ...base,
+      body: "@233452997767399 in",
+      mentions: ["233452997767399@lid"],
+      mentionNames: [{ jid: "233452997767399@lid", name: "Mojib" }],
+    });
+    expect(out.body).toBe("@233452997767399 in");
+    expect(out.outcomes[0].pushname).toBe("Mojib");
+  });
+
+  it("nameMentions asks who-is-who ONCE for every pushname the phone rung left, across messages", async () => {
+    const calls: Array<{ refs: string[][]; aliases: string[] }> = [];
+    const picker: PersonPicker = async (req) => {
+      calls.push({ refs: req.messages.map((m) => m.refs), aliases: req.roster.flatMap((m) => [...(m.aliases ?? [])]) });
+      return {
+        picks: new Map(req.messages.map((m) => [m.id, new Map<string, PersonPick>(m.refs.map((r) => [r, r === "Mojib Jalali" ? { kind: "member", userId: "u-mojib" } : { kind: "none" }]))])),
+        usage: null,
+        degradations: [],
+      };
+    };
+    const out = await nameMentions({
+      roster: ROSTER,
+      aliases: ALIASES,
+      picker,
+      messages: [
+        { body: "@233452997767399 in", mentions: ["233452997767399@lid"], mentionNames: [{ jid: "233452997767399@lid", name: "Mojib Jalali" }] },
+        { body: "@447700900321 out", mentions: ["447700900321@c.us"] },
+        { body: "@158055467598020 out", mentions: ["158055467598020@lid"], mentionNames: [{ jid: "158055467598020@lid", name: "DÇ" }] },
+      ],
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].refs).toEqual([["Mojib Jalali"], ["DÇ"]]);
+    expect(calls[0].aliases).toContain("割::::..");
+    expect(out.map((o) => o.body)).toEqual(["@Mojib in", "@Najib out", "@158055467598020 out"]);
+  });
+
+  it("nameMentions makes no call when the phone rung named everyone", async () => {
+    let called = 0;
+    const picker: PersonPicker = async () => {
+      called++;
+      return { picks: new Map(), usage: null, degradations: [] };
+    };
+    await nameMentions({ roster: ROSTER, picker, messages: [{ body: "@447700900321 out", mentions: ["447700900321@c.us"] }] });
+    expect(called).toBe(0);
+  });
+});
+
 describe("resolveMentionNames", () => {
   it("REGRESSION: the David drop — an alias recovers the roster name", () => {
     const out = resolveMentionNames({
@@ -64,9 +120,11 @@ describe("resolveMentionNames", () => {
       body: "@233452997767322 and @447700900321 out",
       mentions: ["233452997767322@lid", "447700900321@c.us"],
       mentionNames: [{ jid: "233452997767322@lid", name: "割::::.." }],
+      // who-is-who, shown the club's alias "割::::.." for David, picks him.
+      people: pick(["割::::..", "u-david"]),
     });
     expect(out.body).toBe("@David and @Najib out");
-    expect(out.outcomes.map((o) => o.via)).toEqual(["alias", "phone"]);
+    expect(out.outcomes.map((o) => o.via)).toEqual(["roster", "phone"]);
   });
 
   it("REGRESSION: the Shahrokh drop — an unresolvable name leaves the raw token", () => {
@@ -96,18 +154,18 @@ describe("resolveMentionNames", () => {
     expect(out.body).not.toContain("割");
   });
 
-  it("folds a RAW, unsanitised pushname to the alias key itself", () => {
-    // Defence in depth: the Pi folds combining marks off before sending,
-    // but the server must not depend on that — `normaliseName` is the same
-    // function `UserAlias` rows were written with.
+  it("a RAW, unsanitised pushname is the model's to place: its pick names the mention", () => {
+    // Since 2026-11-09 no pushname is folded and compared in code; the
+    // model is shown the alias beside David and says the pushname is him.
     const out = resolveMentionNames({
       ...base,
       body: "@233452997767322 out",
       mentions: ["233452997767322@lid"],
       mentionNames: [{ jid: "233452997767322@lid", name: DAVID_PUSHNAME }],
+      people: pick([DAVID_PUSHNAME, "u-david"]),
     });
     expect(out.body).toBe("@David out");
-    expect(out.outcomes[0].via).toBe("alias");
+    expect(out.outcomes[0].via).toBe("roster");
   });
 
   it("names a @c.us mention from its phone number, with no candidate name at all", () => {
@@ -122,12 +180,13 @@ describe("resolveMentionNames", () => {
     expect(out.outcomes[0].via).toBe("phone");
   });
 
-  it("names a mention from the roster when the pushname is a near-enough match", () => {
+  it("names a mention from the roster when the model picks the member for the pushname", () => {
     const out = resolveMentionNames({
       ...base,
       body: "@233452997767399 in",
       mentions: ["233452997767399@lid"],
       mentionNames: [{ jid: "233452997767399@lid", name: "Mojib Jalali" }],
+      people: pick(["Mojib Jalali", "u-mojib"]),
     });
     expect(out.body).toBe("@Mojib in");
     expect(out.outcomes[0].via).toBe("roster");
@@ -139,6 +198,7 @@ describe("resolveMentionNames", () => {
       body: "@233452997767400 is out",
       mentions: ["233452997767400@lid"],
       mentionNames: [{ jid: "233452997767400@lid", name: "Shahrokh Sutton Football Club" }],
+      people: pick(["Shahrokh Sutton Football Club", "u-shahrokh"]),
     });
     expect(out.body).toBe("@Shahrokh is out");
   });
@@ -163,6 +223,7 @@ describe("resolveMentionNames", () => {
         { jid: "158055467598020@lid", name: "DÇ" },
         { jid: "233452997767322@lid", name: "割::::.." },
       ],
+      people: pick(["割::::..", "u-david"], ["DÇ", null]),
     });
     expect(out.body).toBe("@158055467598020 and @Najib out, @David in");
   });
@@ -260,6 +321,7 @@ describe("resolveMentionNames: a LID mention named by phone", () => {
       body: "@252012071493723 is IN",
       mentions: ["252012071493723@lid"],
       mentionNames: [{ jid: "252012071493723@lid", name: "Elvin", phone: "447000000000" }],
+      people: pick(["Elvin", "u-elvin"]),
     });
     expect(out.body).toBe("@Elvin is IN");
     expect(out.outcomes[0].via).toBe("roster");

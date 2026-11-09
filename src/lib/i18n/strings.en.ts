@@ -1776,6 +1776,20 @@ export const en = {
   hq_fee_free_not_in_squad: (p: { name: string; day: string }): string => `I can't find ${p.name} in the squad for ${p.day}.`,
   /** `choices` is joined with "or". */
   hq_fee_free_which: (p: { ref: string; choices: string }): string => `Which ${p.ref}: ${p.choices}?`,
+  /** A name in HQ (a free place, Man of the Match) nobody could place, so
+   *  there is nothing to choose from (review of #574). */
+  hq_who_unsure: (p: { ref: string }): string => `I couldn't work out who ${p.ref} is. Please use their full name.`,
+  /** Newcomers to the group (numbers MatchTime did not have) who may be
+   *  members added earlier by name only (review of #574): one notice per
+   *  sweep, each pair told once. `pairs` is lines of `possible_duplicate_pair`. */
+  possible_duplicate_notice: (p: { pairs: string; link: string }): string =>
+    `Some people in the WhatsApp group have a number MatchTime didn't have, and may be players added earlier by name only:\n${p.pairs}\nIf so, please merge them on the players page${p.link ? `: ${p.link}` : "."}`,
+  possible_duplicate_pair: (p: { newName: string; oldName: string }): string => `${p.newName} may be ${p.oldName}`,
+  /** A player added by name only took the number of a sender MatchTime was
+   *  sure was him (final review of #574 round 3): told once, so a wrong
+   *  one can be undone. */
+  phone_adopted_notice: (p: { name: string; whatsAppName: string; link: string }): string =>
+    `${p.name} was added by name only, and MatchTime has now given them the number of "${p.whatsAppName}", who wrote in the group and is surely them. If that's wrong, please fix it on the players page${p.link ? `: ${p.link}` : "."}`,
   hq_fee_free_no_match: `There's no match to give a free place on right now.`,
   hq_fee_free_no_payments: `This club doesn't take match fees through MatchTime, so there's nothing to make free.`,
   hq_fee_free_who: `Who should play free? For example: Bilal is free this week.`,

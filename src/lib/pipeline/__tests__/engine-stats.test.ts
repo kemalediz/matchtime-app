@@ -3,7 +3,7 @@
  * (2026-09-23). The model classifies; these decide and render.
  */
 import { describe, expect, it } from "vitest";
-import { decide } from "../engine";
+import { decide } from "./support/stub-picks";
 import { compose } from "../compose";
 import { NOW, member, msg, world } from "./helpers";
 import type { QuestionFacts, SquadState, StatsSnapshot } from "../types";
@@ -149,7 +149,10 @@ describe("asking instead of guessing", () => {
     expect(outcome.statsClarificationAsked ?? false).toBe(false);
   });
   it("an admin alias resolves without asking", () => {
-    const { r } = run(stats({ table: "ratings", personRef: "Abi" }), { id: "wa-gen" });
+    // The club's aliases ride on the roster (`load-state.ts` `withAliases`),
+    // which is what who-is-who is shown (2026-11-09).
+    const roster = world({ confirmed: ["kemal"] }).roster.map((m) => (m.userId === "u-abid" ? { ...m, aliases: ["abi"] } : m));
+    const { r } = run(stats({ table: "ratings", personRef: "Abi" }), { id: "wa-gen", state: { roster } });
     expect(r.speech).toContainEqual(expect.objectContaining({ kind: "answer_stats_generic" }));
   });
 });
