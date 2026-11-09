@@ -138,12 +138,9 @@ test("explicit shortage from an admin → invite DMs to recent non-responders wi
     // RECRUIT_DM_MENTION_REACTIONS in src/lib/recruit.ts.
     expect(d.text).not.toContain("👍");
     expect(d.text).not.toContain("👎");
-    // The magic link survives, demoted to the last option; only the stop
-    // line (2026-11-09) follows it.
+    // The magic link survives, demoted to the trailing optional line.
     expect(d.text).toMatch(/https?:\/\//);
-    const lines = d.text.trim().split("\n");
-    expect(lines.at(-3)).toContain("Prefer the app?");
-    expect(lines.at(-1)).toBe("Don't want messages like this? Reply *STOP*.");
+    expect(d.text.trim().split("\n").at(-1)).toContain("Prefer the app?");
   }
   // Idempotency breadcrumbs, one per invited player.
   for (const k of ["pete", "dan", "felix"]) {

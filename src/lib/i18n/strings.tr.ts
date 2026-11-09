@@ -171,10 +171,6 @@ function recruitInviteHeadTr(p: {
   return [...game, ...facts];
 }
 
-/** Her davetin son satırı: DM okuyucusu "STOP"u `stop_messages` olarak
- *  okur (`dm-intent.ts`), ödemeler dışındaki her DM kapanır. */
-const RECRUIT_STOP_TR = "Bu tür mesajlar istemiyorsan *STOP* yaz.";
-
 /** Gerçek etiketin nasıl yapıldığı (#482, #487, 2026-10-31); HQ
  *  bildirimlerinin bittiği tek cümle. */
 const tr_tagHow = "Etiketlemek için *@* yazıp listeden *Match Time*'ı seçin.";
@@ -1620,7 +1616,6 @@ export const tr: Strings = {
         : "Gelemiyor musun? *YOKUM* yaz, bir daha sormam 🙌",
     ];
     if (p.link) lines.push("", `Uygulamadan yapmak istersen: ${p.link}`);
-    lines.push("", RECRUIT_STOP_TR);
     return lines.join("\n");
   },
   dm_recruit_group_invite: (p) =>
@@ -1628,8 +1623,6 @@ export const tr: Strings = {
       ...recruitInviteHeadTr({ ...p, game: `*${p.matchName}* (${p.matchWhen}) için kadroyu kuruyoruz.` }),
       "",
       "Var mısın? Grupta *VARIM* yazman yeterli 🙌",
-      "",
-      RECRUIT_STOP_TR,
     ].join("\n"),
 
   dm_recruit_chase: (p) =>

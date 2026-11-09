@@ -360,11 +360,10 @@
  *
  *   - A deliberate CHANGE and additions (2026-11-09, Kemal, the invite
  *     "@Match Time DM these people" sends, which the recruit blast shares).
- *     CHANGED: every R93 and R94 invite and the organiser-pick invite end
- *     with a blank line and the stop line ("Don't want messages like this?
- *     Reply *STOP*." and "Bu tür mesajlar istemiyorsan *STOP* yaz."); R94
- *     is now three paragraphs (the game, the IN ask, the stop line) instead
- *     of one line. ADDED: R93d and R94d, the same invites with the club,
+ *     CHANGED: R94 is now two paragraphs (the game, then the IN ask)
+ *     instead of one line; R93 and the organiser-pick invite are unchanged
+ *     (no stop line for now, Kemal: "STOP" is understood only by the DM
+ *     model). ADDED: R93d and R94d, the same invites with the club,
  *     the players' group, the venue and the fee, and with no name ("👋 Hi,"
  *     and "👋 Merhaba,"). No other case changed.
  */

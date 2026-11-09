@@ -141,10 +141,6 @@ function recruitInviteHeadEn(p: RecruitInviteDetails & { firstName: string | nul
   return [...game, ...facts];
 }
 
-/** The stop line every invite ends with. "STOP" is what the one DM reader
- *  reads as `stop_messages` (`dm-intent.ts`): every DM but payments off. */
-const RECRUIT_STOP_EN = "Don't want messages like this? Reply *STOP*.";
-
 /** How to make a real tag (#482, #487, 2026-10-31), the one sentence the
  *  HQ notices end with. */
 const en_tagHow ="To tag me, type *@* and pick *Match Time* from the list.";
@@ -2019,7 +2015,6 @@ export const en = {
         : "Can't make it? Reply *OUT* and I'll stop asking 🙌",
     ];
     if (p.link) lines.push("", `Prefer the app? ${p.link}`);
-    lines.push("", RECRUIT_STOP_EN);
     return lines.join("\n");
   },
   dm_recruit_group_invite: (p: RecruitInviteDetails & { firstName: string | null; matchName: string; matchWhen: string }): string =>
@@ -2027,8 +2022,6 @@ export const en = {
       ...recruitInviteHeadEn({ ...p, game: `We're putting the squad together for *${p.matchName}* on ${p.matchWhen}.` }),
       "",
       "Fancy it? Just reply *IN* in the group and you're sorted 🙌",
-      "",
-      RECRUIT_STOP_EN,
     ].join("\n"),
 
   /** Row 84: the one recruit chase. `count` is already at least 1. */

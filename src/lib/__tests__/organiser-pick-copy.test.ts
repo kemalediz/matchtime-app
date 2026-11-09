@@ -46,8 +46,6 @@ describe("organiser-pick clubs never promise first come", () => {
         "",
         "Want to play? Reply *IN* to go on the bench, and the organisers will pick who plays.",
         "Can't make it? Reply *OUT* and I'll stop asking 🙌",
-        "",
-        "Don't want messages like this? Reply *STOP*.",
       ].join("\n"),
     );
     expect(buildRecruitInviteDm({ ...invite, lang: "tr" })).toContain("organizatörler seçer");

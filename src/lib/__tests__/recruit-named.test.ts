@@ -144,7 +144,7 @@ describe("inviteNamedPeople", () => {
       "📍 Oaks Park High School football field",
       "💷 £8 a game",
     ]);
-    expect(bh.endsWith("Don't want messages like this? Reply *STOP*.")).toBe(true);
+    expect(bh).not.toContain("STOP");
     // Matt's WhatsApp name wins over the name MatchTime stored for him.
     expect(matt.split("\n")[0]).toBe("👋 Matt, it's *Monday night vets* here, from the Vets MNF group.");
     // The players' group of THIS club, whatever group the request came from.
@@ -161,10 +161,11 @@ describe("inviteNamedPeople", () => {
     expect(dmTexts()[0].split("\n")[0]).toBe("👋 Bilal, we're putting the squad together for *Monday night vets* on Mon 9 Nov, 20:00. 3 spots left.");
   });
 
-  it("named in the reply by this club's name for a member, never User.name (review #2)", async () => {
-    const r = await inviteNamedPeople(ORG, tags([{ jid: LID_MATT, name: "Matt Afc" }]), { requesterUserId: null, now: NOW });
+  it("named in the reply as the DM greets them: the WhatsApp name tagged, then this club's name for a member (Kemal, 2026-11-09)", async () => {
+    const r = await inviteNamedPeople(ORG, tags([{ jid: LID_MATT, name: "Matt Afc" }, byPhone(users[3])]), { requesterUserId: null, now: NOW });
     if (r.kind !== "done") throw new Error(r.kind);
-    expect(r.plan.invite[0]).toMatchObject({ userId: "u-matt", label: "Matt W (global name)", member: true });
+    expect(r.plan.invite[0]).toMatchObject({ userId: "u-matt", label: "Matt Afc", member: true });
+    expect(r.plan.invite[1]).toMatchObject({ userId: "u-troy", label: "Troy Dyall", member: true });
   });
 
   it("someone MatchTime knows with no membership here: DM'd the group-style invite (the app link would refuse him), named by his WhatsApp name (review #2)", async () => {

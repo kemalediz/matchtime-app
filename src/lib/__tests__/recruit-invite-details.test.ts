@@ -13,11 +13,9 @@
  *   3. greet by the player's own WhatsApp name (the tag's), first word,
  *      even when the club stored another name; else the club's stored
  *      name; else "👋 Hi," and never "👋 there";
- *   4. keep IN, OUT and the app link, and add a stop line that names a
- *      reply MatchTime really handles: "STOP" in a DM is read as
- *      `stop_messages` by the one DM reader (`dm-intent.ts`, it is one of
- *      its own examples) and turns off every DM but payments
- *      (`dm-subscriptions.ts`, `inbound-dm.ts`).
+ *   4. keep IN, OUT and the app link. NO stop line for now (Kemal,
+ *      2026-11-09): "STOP" is understood only by the DM model, and a bare
+ *      "stop" answering an invite may read as "other" (`dm-intent.ts`).
  *
  * The recruit blast uses the same builders, so it says the same.
  */
@@ -51,8 +49,6 @@ describe("the app invite: club, group, venue, fee and a stop line", () => {
         "Can't make it? Reply *OUT* and I'll stop asking 🙌",
         "",
         "Prefer the app? https://matchtime.ai/r/abc",
-        "",
-        "Don't want messages like this? Reply *STOP*.",
       ].join("\n"),
     );
   });
@@ -70,8 +66,6 @@ describe("the app invite: club, group, venue, fee and a stop line", () => {
         "Gelemiyor musun? *YOKUM* yaz, bir daha sormam 🙌",
         "",
         "Uygulamadan yapmak istersen: https://matchtime.ai/r/abc",
-        "",
-        "Bu tür mesajlar istemiyorsan *STOP* yaz.",
       ].join("\n"),
     );
   });
@@ -85,8 +79,6 @@ describe("the app invite: club, group, venue, fee and a stop line", () => {
         "Can't make it? Reply *OUT* and I'll stop asking 🙌",
         "",
         "Prefer the app? https://matchtime.ai/r/abc",
-        "",
-        "Don't want messages like this? Reply *STOP*.",
       ].join("\n"),
     );
   });
@@ -100,8 +92,6 @@ describe("the app invite: club, group, venue, fee and a stop line", () => {
         "Gelemiyor musun? *YOKUM* yaz, bir daha sormam 🙌",
         "",
         "Uygulamadan yapmak istersen: https://matchtime.ai/r/abc",
-        "",
-        "Bu tür mesajlar istemiyorsan *STOP* yaz.",
       ].join("\n"),
     );
   });
@@ -147,7 +137,14 @@ describe("the app invite: club, group, venue, fee and a stop line", () => {
     const text = buildRecruitInviteDm({ ...GAME, ...DETAILS, firstName: "Ali", organiser: true });
     expect(text).toContain("💷 £8 a game\n\nWant to play? Reply *IN* to go on the bench, and the organisers will pick who plays.\nCan't make it?");
     expect(text).not.toContain("Playing? Just reply *IN*.");
-    expect(text.endsWith("Don't want messages like this? Reply *STOP*.")).toBe(true);
+    expect(text.endsWith("Can't make it? Reply *OUT* and I'll stop asking 🙌\n\nPrefer the app? https://matchtime.ai/r/abc")).toBe(true);
+  });
+
+  it("no stop line (STOP is not reliably understood as a reply to an invite)", () => {
+    for (const lang of ["en", "tr"]) {
+      expect(buildRecruitInviteDm({ ...GAME, ...DETAILS, firstName: "Matt", lang })).not.toContain("STOP");
+      expect(buildRecruitGroupInviteDm({ ...GAME, ...DETAILS, firstName: "Matt", lang })).not.toContain("STOP");
+    }
   });
 
   it("no em or en dashes, in either language", () => {
@@ -169,8 +166,6 @@ describe("the group invite (no app squad, or not a member): the same details", (
         "💷 £8 a game",
         "",
         "Fancy it? Just reply *IN* in the group and you're sorted 🙌",
-        "",
-        "Don't want messages like this? Reply *STOP*.",
       ].join("\n"),
     );
   });
@@ -185,8 +180,6 @@ describe("the group invite (no app squad, or not a member): the same details", (
         "💷 Maç başı £8",
         "",
         "Var mısın? Grupta *VARIM* yazman yeterli 🙌",
-        "",
-        "Bu tür mesajlar istemiyorsan *STOP* yaz.",
       ].join("\n"),
     );
   });
@@ -197,8 +190,6 @@ describe("the group invite (no app squad, or not a member): the same details", (
         "👋 Hi, we're putting the squad together for *Football 7-a-side* on Mon 9 Nov, 20:30.",
         "",
         "Fancy it? Just reply *IN* in the group and you're sorted 🙌",
-        "",
-        "Don't want messages like this? Reply *STOP*.",
       ].join("\n"),
     );
     expect(buildRecruitGroupInviteDm({ ...GAME, firstName: null, lang: "tr" })).toBe(
@@ -206,8 +197,6 @@ describe("the group invite (no app squad, or not a member): the same details", (
         "👋 Merhaba, *Football 7-a-side* (Mon 9 Nov, 20:30) için kadroyu kuruyoruz.",
         "",
         "Var mısın? Grupta *VARIM* yazman yeterli 🙌",
-        "",
-        "Bu tür mesajlar istemiyorsan *STOP* yaz.",
       ].join("\n"),
     );
   });

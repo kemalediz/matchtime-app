@@ -41,9 +41,9 @@
  * the `text` of the same 71 recruit invite BotJobs. Each now opens with the
  * club ("👋 Player, it's *Sutton FC* here." and "*Sutton FC* adına
  * yazıyorum."), adds the venue and fee lines the fake world has ("📍 Goals
- * Sutton", "💷 £6 a game"), and ends with the stop line ("Don't want
- * messages like this? Reply *STOP*."). No write, model request, status or
- * response changed; the fake world stores no group subject, so none is named.
+ * Sutton", "💷 £6 a game") under the game line, which becomes its own
+ * paragraph. No write, model request, status or response changed; the fake
+ * world stores no group subject, so none is named.
  */
 import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";

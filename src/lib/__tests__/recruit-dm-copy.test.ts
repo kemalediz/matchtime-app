@@ -87,13 +87,11 @@ describe("buildRecruitInviteDm — attendance-tracking org", () => {
     expect(text).not.toMatch(/spots? left/);
   });
 
-  // 2026-11-09: only the stop line (Reply *STOP*) follows it now.
-  it("demotes the link to the last option, flagged as the optional route, with only the stop line after it", () => {
+  it("demotes the link to the FINAL line, flagged as the optional route", () => {
     const lines = buildRecruitInviteDm(BASE).split("\n").filter((l) => l.trim());
-    const link = lines[lines.length - 2];
-    expect(link).toContain(BASE.link);
-    expect(link.toLowerCase()).toContain("app");
-    expect(lines[lines.length - 1]).toBe("Don't want messages like this? Reply *STOP*.");
+    const last = lines[lines.length - 1];
+    expect(last).toContain(BASE.link);
+    expect(last.toLowerCase()).toContain("app");
   });
 
   it("omits the link line entirely when there is no link", () => {
@@ -153,7 +151,7 @@ describe("the reaction instruction is gated on RECRUIT_DM_MENTION_REACTIONS", ()
     // Still house style, still the same shape.
     expect(text).not.toContain("—");
     expect(withoutUrls(text)).not.toContain("/");
-    expect(text.trim().split("\n").at(-3)).toContain(BASE.link);
+    expect(text.trim().split("\n").at(-1)).toContain(BASE.link);
   });
 
   it("decorative emoji are fine — only INSTRUCTIONS to react are gated", () => {
