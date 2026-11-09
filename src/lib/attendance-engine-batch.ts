@@ -1022,17 +1022,11 @@ export async function runAttendanceEngineBatch(args: {
   for (const d of identified.degradations) degradations.push(d);
   const peopleById = identified.people;
   // A former member the model was sure of, put in or on the bench by an
-  // organiser: back in the club, and on the roster the engine decides against. A failed
-  // restore leaves him off it, so his pick reads as unclear (asked), never
-  // as somebody else.
-  for (const back of identified.returning) {
-    try {
-      await (deps.restoreMember ?? restoreFormerMember)(orgId, back.userId);
-      state = { ...state, roster: [...state.roster, back] };
-    } catch (err) {
-      degradations.push(`who-is-who: former member ${back.userId} could not be brought back (${(err as Error).message ?? String(err)})`);
-    }
-  }
+  // organiser: on the roster the engine decides against, in memory only.
+  // His membership is restored only once an attendance row for him has
+  // actually landed (after the apply below; final review of round 3).
+  const returning = identified.returning;
+  if (returning.length > 0) state = { ...state, roster: [...state.roster, ...returning] };
 
   // ── Stage 2c: THE CALLER'S VETTING (admin group only) ──────────────
   // See `EngineBatchDeps.vetFacts`. Facts only; ownership is unchanged, so
@@ -1340,6 +1334,19 @@ export async function runAttendanceEngineBatch(args: {
     actorByMessageId,
     deps,
   });
+  // A former member brought back by an organiser's claim: back in the
+  // club only now that a row for him landed. Nothing landed (vetted away,
+  // held, declined), nothing is restored.
+  for (const back of returning) {
+    const landed = applied.some((a) => a.ok && a.write.kind === "attendance" && a.write.userId === back.userId);
+    if (!landed) continue;
+    try {
+      await (deps.restoreMember ?? restoreFormerMember)(orgId, back.userId);
+    } catch (err) {
+      degradations.push(`who-is-who: former member ${back.userId} was registered but his membership could not be restored (${(err as Error).message ?? String(err)})`);
+    }
+  }
+
   // A TEAM-SLOT MOVE THAT DID NOT LAND IS AN OPERATOR PROBLEM, and it has
   // nowhere else to go: `failures` below speaks only IN / OUT / BENCH, and
   // the composed post is about to declare a sheet that the database did

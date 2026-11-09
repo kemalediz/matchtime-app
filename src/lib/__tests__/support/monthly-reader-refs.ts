@@ -39,6 +39,11 @@ function fakePick(name: string, roster: Roster): PersonPick {
   const hits = whole.length > 0 ? whole : roster.filter((m) => key(m.name).startsWith(`${k} `));
   if (hits.length === 1) return { kind: "member", userId: hits[0].userId };
   if (hits.length > 1) return { kind: "ambiguous", userIds: hits.map((m) => m.userId) };
+  // A line with a first name two or more members share ("Big Gary", two
+  // Garys): the model is not sure which.
+  const words = new Set(k.split(" "));
+  const shared = roster.filter((m) => words.has(key(m.name).split(" ")[0]));
+  if (shared.length > 1) return { kind: "ambiguous", userIds: shared.map((m) => m.userId) };
   return { kind: "none" };
 }
 

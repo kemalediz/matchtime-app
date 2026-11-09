@@ -135,16 +135,21 @@ async function loadBenchSeen(matchId: string, benchIds: string[]): Promise<Set<s
  * Who-is-who on every line of a pasted list no member is on: ONE call for
  * the paste, the whole club shown, the message read with it; its answers
  * written on the lines (`monthly-line-placement.ts`). No call when the
- * reader placed every line. A failed call leaves those lines unclear.
+ * reader placed every line, nor for another month's list (the reconcile
+ * returns it as another month's whatever its lines are). A failed call
+ * leaves those lines unclear.
  */
 export async function placeMonthlyLines(args: {
   list: MonthlyList;
   orgId: string;
   rosterIds: ReadonlySet<string>;
+  /** 1 to 12: the month of the week's match. */
+  matchMonth?: number;
   body?: string;
   sender: { userId: string | null; name: string | null };
   identify?: PersonPicker;
 }): Promise<MonthlyList> {
+  if (args.list.month && args.matchMonth !== undefined && args.list.month.month !== args.matchMonth) return args.list;
   const names = unplacedLineNames(args.list, args.rosterIds);
   if (names.length === 0) return args.list;
   const { people } = await identifyRefs({
@@ -227,6 +232,7 @@ export async function handleMonthlyPaste(args: {
     list: args.reading.list,
     orgId,
     rosterIds: new Set(roster.map((m) => m.userId)),
+    matchMonth: Number(formatLondon(week.matchDate, "M")),
     body: args.text,
     sender,
     identify: args.identify,

@@ -1433,7 +1433,10 @@ export const tr: Strings = {
   hq_fee_free_which: (p) => `Hangi ${p.ref}: ${p.choices}?`,
   hq_who_unsure: (p) => `${p.ref} kim, anlayamadım. Lütfen tam adını yazın.`,
   possible_duplicate_notice: (p) =>
-    `${p.newName} WhatsApp grubunda, MatchTime'ın bilmediği bir numarayla. Daha önce yalnızca adıyla eklenen ${p.oldName} ile aynı kişi olabilir. Öyleyse lütfen oyuncular sayfasında ikisini birleştirin${p.link ? `: ${p.link}` : "."}`,
+    `WhatsApp grubunda MatchTime'ın bilmediği numaralarla bazı kişiler var; daha önce yalnızca adıyla eklenen oyuncular olabilirler:\n${p.pairs}\nÖyleyse lütfen oyuncular sayfasında birleştirin${p.link ? `: ${p.link}` : "."}`,
+  possible_duplicate_pair: (p) => `${p.newName}, ${p.oldName} olabilir`,
+  phone_adopted_notice: (p) =>
+    `${p.name} yalnızca adıyla eklenmişti; MatchTime, grupta yazan ve kesin olarak o olan "${p.whatsAppName}" kişisinin numarasını ona verdi. Yanlışsa lütfen oyuncular sayfasında düzeltin${p.link ? `: ${p.link}` : "."}`,
   hq_fee_free_no_match: `Şu anda ücretsiz yer verilecek bir maç yok.`,
   hq_fee_free_no_payments: `Bu kulüp maç ücretlerini MatchTime ile toplamıyor, ücretsiz yapılacak bir şey yok.`,
   hq_fee_free_who: `Kim ücretsiz oynasın? Örneğin: Bilal bu hafta ücretsiz.`,

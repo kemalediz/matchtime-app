@@ -80,7 +80,8 @@ const msgBy = (senderIsAdmin: boolean): EngineBatchMessage => ({
   gated: false,
 });
 
-async function run(polarity: "in" | "out", organiser = true) {
+async function run(polarity: "in" | "out", organiser = true, writeFails = false) {
+  const order: string[] = [];
   const registered: string[] = [];
   const provisioned: string[] = [];
   const restored: string[] = [];
@@ -99,9 +100,12 @@ async function run(polarity: "in" | "out", organiser = true) {
     claimGuestNameAsk: async () => true,
     restoreMember: async (_org: string, userId: string) => {
       restored.push(userId);
+      order.push("restore");
     },
     async registerAttendance(userId: string) {
+      if (writeFails) throw new Error("db down");
       registered.push(userId);
+      order.push("write");
       return { status: "CONFIRMED" as const, position: 1, slot: 1, confirmedCount: 1, maxPlayers: 4 };
     },
     async cancelAttendance() {
@@ -121,7 +125,7 @@ async function run(polarity: "in" | "out", organiser = true) {
     enabled: true,
     deps,
   });
-  return { registered, provisioned, restored, asked };
+  return { registered, provisioned, restored, asked, order };
 }
 
 describe("a former member named back in (by an organiser)", () => {
@@ -131,6 +135,13 @@ describe("a former member named back in (by an organiser)", () => {
     expect(r.restored).toEqual([OLDHAM.userId]);
     expect(r.registered).toEqual([OLDHAM.userId]);
     expect(r.provisioned).toEqual([]);
+    // Restored only AFTER his row landed (final review of round 3).
+    expect(r.order).toEqual(["write", "restore"]);
+  });
+
+  it("his row does not land: his membership is not restored", async () => {
+    const r = await run("in", true, true);
+    expect(r.restored).toEqual([]);
   });
 
   it("named in by a player who is no organiser: not brought back, nor registered as himself", async () => {

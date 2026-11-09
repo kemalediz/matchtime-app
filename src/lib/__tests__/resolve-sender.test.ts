@@ -50,6 +50,9 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+const notifyPhoneAdopted = vi.fn(async () => true);
+vi.mock("@/lib/possible-duplicate-notice", () => ({ notifyPhoneAdopted: (...a: unknown[]) => notifyPhoneAdopted(...(a as [])) }));
+
 import { isRawDigitName, resolveSender, resolveSenders } from "@/lib/resolve-sender";
 import type { PersonPick, PersonPicker, WhoRequest } from "@/lib/pipeline/who-is-who";
 import { currentAiBudget, runWithAiBudget } from "@/lib/ai-budget-context";
@@ -267,6 +270,26 @@ describe("a phoneless sender: who-is-who's pick, never a match by spelling", () 
     expect(out.get("b")?.userId).toBe("new-hamzah");
   });
 
+  it("final review: two DIFFERENT unknown phones both called 'Ali' are two people, never merged by name", async () => {
+    userCreate.mockResolvedValueOnce({ id: "new-ali-1", name: "Ali" }).mockResolvedValueOnce({ id: "new-ali-2", name: "Ali" });
+    const { identify, seen } = answering({ Ali: { kind: "none" } });
+    const out = await resolveSenders(
+      ORG,
+      [
+        { waMessageId: "a", authorPhone: "447700900001", authorName: "Ali", body: "IN" },
+        { waMessageId: "b", authorPhone: "447700900002", authorName: "Ali", body: "IN" },
+        { waMessageId: "c", authorPhone: "447700900001", authorName: "Ali", body: "+1" },
+      ],
+      { identify },
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0].messages).toHaveLength(2);
+    expect(userCreate).toHaveBeenCalledTimes(2);
+    expect(out.get("a")?.userId).toBe("new-ali-1");
+    expect(out.get("c")?.userId).toBe("new-ali-1");
+    expect(out.get("b")?.userId).toBe("new-ali-2");
+  });
+
   it("B3: a call refused by the daily cap is asked once more INSIDE the attendance overflow", async () => {
     membershipFindMany.mockResolvedValue([member("u4", "Baki Sutton")]);
     const overflowSeen: boolean[] = [];
@@ -303,6 +326,8 @@ describe("a phoneless sender: who-is-who's pick, never a match by spelling", () 
     const out = await resolveSenders(ORG, [{ waMessageId: "a", authorPhone: "447700900555", authorName: "Hamzah Ali", body: "IN" }], { identify });
     expect(userUpdateMany).toHaveBeenCalledWith({ where: { id: "u-hamzah", phoneNumber: null }, data: { phoneNumber: "+447700900555" } });
     expect(out.get("a")).toEqual({ userId: "u-hamzah", name: "Hamzah Ali", phone: "+447700900555" });
+    // Permanent, so the admins are told (once: the notice claims it).
+    expect(notifyPhoneAdopted).toHaveBeenCalledWith(ORG, { userId: "u-hamzah", name: "Hamzah Ali", whatsAppName: "Hamzah Ali" });
   });
 
   it("B4: a member who is not provisional, or already has a phone, never takes one", async () => {
@@ -320,6 +345,7 @@ describe("a phoneless sender: who-is-who's pick, never a match by spelling", () 
       { identify },
     );
     expect(userUpdateMany).not.toHaveBeenCalled();
+    expect(notifyPhoneAdopted).not.toHaveBeenCalled();
   });
 });
 

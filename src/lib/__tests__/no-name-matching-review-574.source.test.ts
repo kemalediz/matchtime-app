@@ -43,7 +43,7 @@ describe("the analyze route: mentions are named by the model only after the dedu
     const free = route.indexOf("nameMentionsFromRoster(org.id, body.messages, { askModel: false })");
     const noFeatures = route.indexOf('ignored: "no-message-driven-features"');
     const dedupe = route.indexOf("const fresh: InboundMessage[] = [];");
-    const model = route.indexOf("nameMentionsFromRoster(org.id, fresh, { askModel: true })");
+    const model = route.indexOf("nameMentionsFromRoster(org.id, toAsk, { askModel: true })");
     expect(free).toBeGreaterThan(0);
     expect(noFeatures).toBeGreaterThan(free);
     expect(dedupe).toBeGreaterThan(noFeatures);
@@ -52,14 +52,18 @@ describe("the analyze route: mentions are named by the model only after the dedu
   // Round 3: the squad-from-list archive is the squad extraction's only
   // text, so its mentions are named (model pass included) BEFORE it is
   // stored, and the later pass then asks nothing again.
-  it("the squad-from-list archive stores names, not raw @digits, and the batch asks once", () => {
+  // Final review: only messages the archive does not have yet are asked
+  // (its own dedupe), and those are not asked again after the analyzer's.
+  it("the squad-from-list archive stores names, not raw @digits; a repeat costs no call; nothing is asked twice", () => {
     const branch = route.indexOf("if (f.squadFromList) {");
-    const asked = route.indexOf("body.messages = await nameMentionsFromRoster(org.id, body.messages, { askModel: true });", branch);
-    const store = route.indexOf("await storeMessagesForSquadFromList(org.id, body.groupId, body.messages);", branch);
+    const dedupe = route.indexOf("db.groupMessage.findMany({ where: { waMessageId: { in: ids } }", branch);
+    const asked = route.indexOf("nameMentionsFromRoster(org.id, toArchive, { askModel: true })", branch);
+    const store = route.indexOf("await storeMessagesForSquadFromList(org.id, body.groupId, toArchive", branch);
     expect(branch).toBeGreaterThan(0);
-    expect(asked).toBeGreaterThan(branch);
+    expect(dedupe).toBeGreaterThan(branch);
+    expect(asked).toBeGreaterThan(dedupe);
     expect(store).toBeGreaterThan(asked);
-    expect(route).toContain("if (!mentionsAsked) fresh.splice(");
+    expect(route).toContain("const toAsk = fresh.filter((m) => !mentionsAsked.has(m.waMessageId));");
   });
 
   it("phoneless senders go to who-is-who in one batch call (finding 4)", () => {

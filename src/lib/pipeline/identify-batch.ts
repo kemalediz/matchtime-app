@@ -143,10 +143,13 @@ export async function identifyFacts(args: {
 }
 
 /** A claim in these facts puts the person this ref names in, or on the
- *  bench: what brings a former member back. */
+ *  bench, here and now: what brings a former member back. Never a
+ *  hypothetical, future-tense or contingent one (final review of round 3). */
 function bringsIn(facts: Facts, ref: string): boolean {
   if (facts.kind !== "attendance") return false;
-  return facts.claims.some((c) => c.polarity !== "out" && refKey(c.personRef) === ref);
+  return facts.claims.some(
+    (c) => c.polarity !== "out" && c.tense === "present" && !c.contingent && refKey(c.personRef) === ref,
+  );
 }
 
 /**

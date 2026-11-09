@@ -809,6 +809,29 @@ describe("round 2 of the review", () => {
       expect(b.actions).toEqual([{ kind: "in", userId: "u-gary", name: "Gaz H", self: true, slot: 3 }]);
     });
 
+    // Final review of round 3: who-is-who may answer "ambiguous" for the
+    // sender's own new line (two Garys in the club). It is still his line
+    // when he is among the members it could be (or it could be anybody),
+    // under the same narrow rule.
+    it("the sender's own line who-is-who is unsure of (two Garys) is still his", () => {
+      const twoGarys = [...roster, { userId: "u-gary2", name: "Gary Stone", aliases: [] as string[] }];
+      const a = reconcileMonthPaste({ ...base, roster: twoGarys, list: paste(LIST.replace("X", "Big Gary")), senderUserId: "u-gary", senderNames: ["Gary Holt"] });
+      expect(a.actions).toEqual([{ kind: "in", userId: "u-gary", name: "Big Gary", self: true, slot: 3 }]);
+      expect(a.notAdded).toEqual([]);
+    });
+
+    it("…but not when the members it could be do not include the sender", () => {
+      const l = paste(LIST.replace("X", "Big Gary"));
+      const slots = l.slots.map((e) =>
+        e.name === "Big Gary"
+          ? { ...e, facts: { memberId: null, guest: false, hostUserId: null, games: null, newbie: false, unclear: { candidates: ["u-gary2", "u-gary3"] } } }
+          : e,
+      );
+      const a = reconcileMonthPaste({ ...base, list: { ...l, slots }, senderUserId: "u-gary", senderNames: ["Gary Holt"] });
+      expect(a.actions).toEqual([]);
+      expect(a.notAdded).toEqual([{ name: "Big Gary", reason: "ambiguous" }]);
+    });
+
     it("round 3: the line must carry the sender's FIRST name (or whole name); a surname alone is not enough", () => {
       const surname = reconcileMonthPaste({ ...base, list: paste(LIST.replace("X", "Holt")), senderUserId: "u-gary", senderNames: ["Gary Holt"] });
       expect(surname.actions).toEqual([]);

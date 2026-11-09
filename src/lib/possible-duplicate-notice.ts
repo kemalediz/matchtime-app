@@ -1,25 +1,30 @@
 /**
- * A POSSIBLE DUPLICATE, TOLD TO THE CLUB'S ADMINS ONCE (review of #574,
- * round 3).
+ * WHO-IS-WHO'S PERMANENT CALLS ABOUT A PERSON, TOLD TO THE CLUB'S ADMINS
+ * (review of #574, round 3 and its final review).
  *
- * The participant sweep makes a new member for every WhatsApp number
- * MatchTime has never seen. It never gives that number to a phoneless
- * placeholder ("Hamzah's in", before Hamzah joined) by a match of names:
- * a new "Dav" must not take over Davide. So the same person can end up
- * twice, the placeholder and the newcomer.
+ * 1. A POSSIBLE DUPLICATE. The participant sweep makes a new member for
+ *    every WhatsApp number MatchTime has never seen. It never gives that
+ *    number to a phoneless placeholder ("Hamzah's in", before Hamzah
+ *    joined) by a match of names: a new "Dav" must not take over Davide.
+ *    So the same person can end up twice. Who-is-who reads each
+ *    newcomer's WhatsApp name against the club's PHONELESS PROVISIONAL
+ *    members only (the only ones a newcomer can duplicate), in one call
+ *    for the sweep, strict as with any WhatsApp name. Sure ("member") or
+ *    possible ("ambiguous", each candidate) is a possible duplicate. Every
+ *    pair of the sweep goes in ONE notice (a bulk import cannot post a
+ *    burst), with a link to the players page where they merge them.
+ *    Nothing is merged by code.
  *
- * Here who-is-who reads each newcomer's WhatsApp name against the club's
- * PHONELESS PROVISIONAL members only (they are the only ones a newcomer
- * can duplicate), in one call for the sweep, strict as it is with any
- * WhatsApp name. Sure ("member") or possible ("ambiguous", each
- * candidate) is a possible duplicate, and the club's admins are told
- * through the club's admin channel (`sendAdminNotice`), with a link to
- * the players page where they merge the two. Nothing is merged by code.
+ * 2. A PHONE ADOPTED. A sender with a number nobody has, whom who-is-who
+ *    placed surely on a phoneless provisional member, gives that member
+ *    his number (`resolve-sender.ts`). That is permanent, so the admins
+ *    are told once, and can undo a wrong one on the players page.
  *
- * ONCE PER PAIR: a `SentNotification` claim keyed by club, placeholder
- * and newcomer, released if queueing fails. A muted club is not told (a
- * queued notice would go out on unmute, stale). The call runs under the
- * club's daily AI cap; refused, nobody is told and nothing is claimed.
+ * ONCE: a `SentNotification` claim per pair, or per adopted member,
+ * released when nothing was queued (an error, or a channel that reaches
+ * nobody). A muted club is not told (a queued notice would go out on
+ * unmute, stale). The model call runs under the club's daily AI cap;
+ * refused, nobody is told and nothing is claimed. Never throws.
  */
 import { db } from "./db";
 import { sendAdminNotice } from "./admin-channel";
@@ -30,13 +35,52 @@ import { refKey } from "./person-ref-key";
 import type { PersonPicker, WhoRequest } from "./pipeline/who-is-who";
 
 export const POSSIBLE_DUPLICATE_KIND = "possible-duplicate";
+export const PHONE_ADOPTED_KIND = "phone-adopted";
 
 export function possibleDuplicateKey(orgId: string, placeholderId: string, newcomerId: string): string {
   return `${orgId}:${POSSIBLE_DUPLICATE_KIND}:${placeholderId}:${newcomerId}`;
 }
 
-/** Tell the admins about each newcomer who may be a phoneless placeholder.
- *  The number of notices queued. Never throws. */
+export function phoneAdoptedKey(orgId: string, userId: string): string {
+  return `${orgId}:${PHONE_ADOPTED_KIND}:${userId}`;
+}
+
+/** Claim a once-only key. False: already claimed (or claimed by a racer). */
+async function claim(key: string, kind: string): Promise<boolean> {
+  if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) return false;
+  try {
+    await db.sentNotification.create({ data: { key, kind } });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function release(keys: string[]): Promise<void> {
+  if (keys.length > 0) await db.sentNotification.deleteMany({ where: { key: { in: keys } } }).catch(() => {});
+}
+
+/** Queue the notice; true only when it reached somebody. Releases the
+ *  claims otherwise. */
+async function tellAdmins(orgId: string, keys: string[], text: (link: string) => string, now?: Date): Promise<boolean> {
+  try {
+    const res = await sendAdminNotice({ orgId, now, nextPath: "/admin/players", text: (link) => text(link) });
+    if (res.channel !== "none" && res.queued > 0) return true;
+    console.warn(`[identity-notice] org ${orgId}: the admin channel reaches nobody; claims released`);
+  } catch (err) {
+    console.error(`[identity-notice] org ${orgId}: notice not queued, claims released:`, err);
+  }
+  await release(keys);
+  return false;
+}
+
+async function clubLanguage(orgId: string): Promise<string | null | undefined> {
+  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { language: true, whatsappBotEnabled: true } });
+  return org?.whatsappBotEnabled ? org.language : undefined;
+}
+
+/** Tell the admins about each newcomer who may be a phoneless placeholder,
+ *  in one notice. The number of pairs told. Never throws. */
 export async function notifyPossibleDuplicates(
   orgId: string,
   newcomers: ReadonlyArray<{ userId: string; name: string | null }>,
@@ -45,8 +89,8 @@ export async function notifyPossibleDuplicates(
   try {
     const named = newcomers.filter((n): n is { userId: string; name: string } => !!n.name && n.name.trim().length >= 2);
     if (named.length === 0) return 0;
-    const org = await db.organisation.findUnique({ where: { id: orgId }, select: { language: true, whatsappBotEnabled: true } });
-    if (!org?.whatsappBotEnabled) return 0;
+    const lang = await clubLanguage(orgId);
+    if (lang === undefined) return 0; // unknown or muted club
 
     const newIds = new Set(named.map((n) => n.userId));
     const [rows, aliases] = await Promise.all([
@@ -73,39 +117,51 @@ export async function notifyPossibleDuplicates(
     const res = await withOrgAiBudget(orgId, () => picker(request));
     for (const d of res.degradations) console.warn(`[possible-duplicate] ${d}`);
 
-    const s = t(org.language);
-    let sent = 0;
+    const s = t(lang);
+    const pairs: string[] = [];
+    const keys: string[] = [];
     for (const n of named) {
       const pick = res.picks.get(n.userId)?.get(refKey(n.name));
       const ids = pick?.kind === "member" ? [pick.userId] : pick?.kind === "ambiguous" ? pick.userIds : [];
       for (const placeholderId of ids) {
         if (!nameOf.has(placeholderId)) continue; // never a ref we did not show
         const key = possibleDuplicateKey(orgId, placeholderId, n.userId);
-        if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) continue;
-        try {
-          await db.sentNotification.create({ data: { key, kind: POSSIBLE_DUPLICATE_KIND } });
-        } catch {
-          continue; // another sweep won the claim
-        }
-        try {
-          const oldName = nameOf.get(placeholderId) ?? "?";
-          await sendAdminNotice({
-            orgId,
-            now: opts.now,
-            nextPath: "/admin/players",
-            text: (link) => s.possible_duplicate_notice({ newName: n.name, oldName, link }),
-          });
-          sent += 1;
-          console.log(`[possible-duplicate] org ${orgId}: ${n.userId} may be placeholder ${placeholderId}; admins told`);
-        } catch (err) {
-          console.error(`[possible-duplicate] org ${orgId}: notice not queued, claim released:`, err);
-          await db.sentNotification.deleteMany({ where: { key } }).catch(() => {});
-        }
+        if (!(await claim(key, POSSIBLE_DUPLICATE_KIND))) continue;
+        keys.push(key);
+        pairs.push(s.possible_duplicate_pair({ newName: n.name, oldName: nameOf.get(placeholderId) ?? "?" }));
       }
     }
-    return sent;
+    if (pairs.length === 0) return 0;
+    const told = await tellAdmins(orgId, keys, (link) => s.possible_duplicate_notice({ pairs: pairs.map((p) => `• ${p}`).join("\n"), link }), opts.now);
+    if (told) console.log(`[possible-duplicate] org ${orgId}: ${pairs.length} possible duplicate(s) told to the admins`);
+    return told ? pairs.length : 0;
   } catch (err) {
     console.error(`[possible-duplicate] org ${orgId}: could not check for duplicates:`, err);
     return 0;
+  }
+}
+
+/** A phoneless placeholder took a sender's number (who-is-who was sure):
+ *  the admins are told once. True when told. Never throws. */
+export async function notifyPhoneAdopted(
+  orgId: string,
+  who: { userId: string; name: string | null; whatsAppName: string },
+  opts: { now?: Date } = {},
+): Promise<boolean> {
+  try {
+    const lang = await clubLanguage(orgId);
+    if (lang === undefined) return false;
+    const key = phoneAdoptedKey(orgId, who.userId);
+    if (!(await claim(key, PHONE_ADOPTED_KIND))) return false;
+    const s = t(lang);
+    return await tellAdmins(
+      orgId,
+      [key],
+      (link) => s.phone_adopted_notice({ name: who.name ?? who.whatsAppName, whatsAppName: who.whatsAppName, link }),
+      opts.now,
+    );
+  } catch (err) {
+    console.error(`[phone-adopted] org ${orgId}: could not tell the admins:`, err);
+    return false;
   }
 }

@@ -53,6 +53,14 @@ describe("placeMonthlyLines", () => {
     expect(out.sections.reserves[0].facts?.unclear).toEqual({ candidates: ["u-zed"] });
   });
 
+  it("another month's list ('List for December' on a November match): no call, it is not this week's business", async () => {
+    const list: MonthlyList = { month: { month: 12, year: null }, slots: [line(1, "Zedd", null)], sections: { cantPlay: [], reserves: [], other: [] } };
+    const p = picker({});
+    const out = await placeMonthlyLines({ list, orgId: "org-1", rosterIds: IDS, matchMonth: 11, sender: { userId: null, name: null }, identify: p.fn });
+    expect(p.seen).toHaveLength(0);
+    expect(out).toBe(list);
+  });
+
   it("no unplaced line, no call", async () => {
     const list: MonthlyList = { month: null, slots: [line(1, "Will Smith", "u-will")], sections: { cantPlay: [], reserves: [], other: [] } };
     const p = picker({});

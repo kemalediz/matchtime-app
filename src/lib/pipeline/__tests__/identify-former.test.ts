@@ -68,6 +68,20 @@ describe("identifyFacts with former members", () => {
     expect(res.people.get("m1")?.get("Oldham")).toEqual({ kind: "none" });
   });
 
+  it("a hypothetical, future-tense or contingent claim brings nobody back", async () => {
+    for (const over of [{ tense: "hypothetical" as const }, { tense: "future" as const }, { contingent: true, conditionOn: "squad" as const }]) {
+      const p = picker({ Oldham: { kind: "member", userId: OLDHAM.userId } });
+      const c = { ...named("Oldham", "in"), ...over };
+      const res = await identifyFacts({
+        picker: p.fn,
+        roster: [],
+        former: [OLDHAM],
+        items: [{ id: "m1", body: "Oldham might come", author: "Tom", senderUserId: null, facts: attendanceFacts([c]), mayBringBack: true }],
+      });
+      expect(res.returning).toEqual([]);
+    }
+  });
+
   it("a bench claim brings him back too", async () => {
     const p = picker({ Oldham: { kind: "member", userId: OLDHAM.userId } });
     const res = await identifyFacts({

@@ -516,8 +516,8 @@ async function handleAnalyzeRequest(request: Request) {
   // row then all see the SAME text. An unresolvable mention keeps its raw
   // "@<digits>" token — nothing here invents a name.
   body.messages = await nameMentionsFromRoster(org.id, body.messages, { askModel: false });
-  /** The squad-from-list archive already asked who-is-who for this batch. */
-  let mentionsAsked = false;
+  /** Messages the squad-from-list archive already asked who-is-who about. */
+  const mentionsAsked = new Set<string>();
 
   // ── Skip the LLM entirely when no message-driven feature is on ───
   //   MoM + player-rating are post-match / poll / scheduler driven —
@@ -558,11 +558,22 @@ async function handleAnalyzeRequest(request: Request) {
     if (f.squadFromList) {
       // The archive is the squad extraction's only text, so a mention no
       // phone could name is put to who-is-who FIRST (review of #574, round
-      // 3: it used to be archived as raw "@<digits>"). That one call
-      // stands for the batch: the pass after the dedupe asks nothing again.
-      body.messages = await nameMentionsFromRoster(org.id, body.messages, { askModel: true });
-      mentionsAsked = true;
-      await storeMessagesForSquadFromList(org.id, body.groupId, body.messages);
+      // 3: it used to be archived as raw "@<digits>"). Only for messages
+      // the archive does not have yet: its own dedupe (on waMessageId),
+      // the one a club that reads no messages ever reaches, so a repeat
+      // costs no call. Those messages are not asked again after the
+      // analyzer's dedupe below.
+      const ids = body.messages.map((m) => m.waMessageId);
+      const archived = new Set(
+        (await db.groupMessage.findMany({ where: { waMessageId: { in: ids } }, select: { waMessageId: true } })).map((r) => r.waMessageId),
+      );
+      const toArchive = body.messages.filter((m) => !archived.has(m.waMessageId));
+      if (toArchive.length > 0) {
+        const named = new Map((await nameMentionsFromRoster(org.id, toArchive, { askModel: true })).map((m) => [m.waMessageId, m]));
+        body.messages = body.messages.map((m) => named.get(m.waMessageId) ?? m);
+        for (const id of named.keys()) mentionsAsked.add(id);
+        await storeMessagesForSquadFromList(org.id, body.groupId, toArchive.map((m) => named.get(m.waMessageId) ?? m));
+      }
     }
     const needsAnalyzer =
       f.attendance || f.bench || f.teamBalancing || f.reminders || f.statsQa;
@@ -638,7 +649,13 @@ async function handleAnalyzeRequest(request: Request) {
   // The mentions no phone could name go to who-is-who only now: after the
   // dedupe and the no-features return, so a repeat or a club that reads no
   // messages costs no model call (review of #574). One call for the batch.
-  if (!mentionsAsked) fresh.splice(0, fresh.length, ...(await nameMentionsFromRoster(org.id, fresh, { askModel: true })));
+  {
+    const toAsk = fresh.filter((m) => !mentionsAsked.has(m.waMessageId));
+    if (toAsk.length > 0) {
+      const named = new Map((await nameMentionsFromRoster(org.id, toAsk, { askModel: true })).map((m) => [m.waMessageId, m]));
+      fresh.splice(0, fresh.length, ...fresh.map((m) => named.get(m.waMessageId) ?? m));
+    }
+  }
 
   await rememberMentions({ orgId: org.id, chatId: body.groupId, messages: fresh });
 

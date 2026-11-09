@@ -943,7 +943,14 @@ export function reconcileMonthPaste(args: {
   const senderRowNow = senderUserId ? rowOf.get(senderUserId) : undefined;
   const senderKeys = (args.senderNames ?? []).map((n) => nameKey(n)).filter(Boolean);
   const senderWords = new Set(senderKeys.map((k) => k.split(" ")[0]).filter((w) => w.length >= 2));
-  const unknownLines = slotLines.filter((x) => x.r.kind === "none");
+  // A line who-is-who was unsure of counts too when the sender is among
+  // the members it could be, or it could be anybody (final review of round
+  // 3: "Big Gary" with two Garys in the club is still Gary's own line).
+  const unknownLines = slotLines.filter((x) => {
+    if (x.r.kind === "none") return true;
+    const could = x.e.facts?.unclear?.candidates;
+    return x.r.kind === "ambiguous" && !!could && (could.length === 0 || (!!senderUserId && could.includes(senderUserId)));
+  });
   const selfLine =
     senderUserId &&
     args.roster.some((m) => m.userId === senderUserId) &&

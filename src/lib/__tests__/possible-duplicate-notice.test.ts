@@ -33,7 +33,7 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/admin-channel", () => ({ sendAdminNotice: (...a: unknown[]) => sendAdminNotice(...a) }));
 vi.mock("@/lib/ai-budget", () => ({ withOrgAiBudget: (_k: string, fn: () => Promise<unknown>) => fn() }));
 
-import { notifyPossibleDuplicates } from "@/lib/possible-duplicate-notice";
+import { notifyPhoneAdopted, notifyPossibleDuplicates } from "@/lib/possible-duplicate-notice";
 import type { PersonPicker, WhoRequest, PersonPick } from "@/lib/pipeline/who-is-who";
 
 const ORG = "org-vets";
@@ -86,15 +86,32 @@ describe("notifyPossibleDuplicates", () => {
     expect(text).toContain("https://x/l");
   });
 
-  it("an ambiguous pick is a possible duplicate too (each candidate)", async () => {
+  it("an ambiguous pick is a possible duplicate too (each candidate), and every pair of the sweep goes in ONE notice", async () => {
     membershipFindMany.mockResolvedValue([
       { user: { id: "u-mo1", name: "Mo" } },
       { user: { id: "u-mo2", name: "Moe" } },
+      { user: { id: "u-hamzah", name: "Hamzah" } },
     ]);
-    const p = picker(() => ({ kind: "ambiguous", userIds: ["u-mo1", "u-mo2"] }));
-    const n = await notifyPossibleDuplicates(ORG, [{ userId: "u-new", name: "Mo K" }], { identify: p.fn });
-    expect(n).toBe(2);
-    expect(sendAdminNotice).toHaveBeenCalledTimes(2);
+    const p = picker((name) => (name === "Mo K" ? { kind: "ambiguous", userIds: ["u-mo1", "u-mo2"] } : { kind: "member", userId: "u-hamzah" }));
+    const n = await notifyPossibleDuplicates(
+      ORG,
+      [
+        { userId: "u-new", name: "Mo K" },
+        { userId: "u-new2", name: "Hamzah Ali" },
+      ],
+      { identify: p.fn },
+    );
+    expect(n).toBe(3);
+    expect(sendAdminNotice).toHaveBeenCalledTimes(1);
+    const text = sendAdminNotice.mock.calls[0][0].text("https://x/l", "dm");
+    for (const w of ["Mo K", "Moe", "Hamzah Ali", "https://x/l"]) expect(text).toContain(w);
+  });
+
+  it("nobody to tell (the club's channel reaches nobody): the claims are released, nothing counted", async () => {
+    sendAdminNotice.mockResolvedValueOnce({ channel: "none", queued: 0 });
+    const p = picker(() => ({ kind: "member", userId: "u-hamzah" }));
+    expect(await notifyPossibleDuplicates(ORG, [{ userId: "u-new", name: "Hamzah" }], { identify: p.fn })).toBe(0);
+    expect(sentDeleteMany).toHaveBeenCalledTimes(1);
   });
 
   it("none: nobody is told", async () => {
@@ -139,5 +156,23 @@ describe("notifyPossibleDuplicates", () => {
     await notifyPossibleDuplicates(ORG, [{ userId: "u-new", name: "Hamzah Ali" }], { identify: p.fn });
     const text = sendAdminNotice.mock.calls[0][0].text("https://x/l", "dm");
     expect(text).toContain("birleştir");
+  });
+});
+
+describe("notifyPhoneAdopted (final review of round 3)", () => {
+  it("a placeholder that took a sender's phone is told to the admins once, with a link to the players page", async () => {
+    expect(await notifyPhoneAdopted(ORG, { userId: "u-hamzah", name: "Hamzah", whatsAppName: "Hamzah Ali" })).toBe(true);
+    expect(await notifyPhoneAdopted(ORG, { userId: "u-hamzah", name: "Hamzah", whatsAppName: "Hamzah Ali" })).toBe(false);
+    expect(sendAdminNotice).toHaveBeenCalledTimes(1);
+    const req = sendAdminNotice.mock.calls[0][0];
+    expect(req).toMatchObject({ orgId: ORG, nextPath: "/admin/players" });
+    const text = req.text("https://x/l", "dm");
+    for (const w of ["Hamzah", "Hamzah Ali", "https://x/l"]) expect(text).toContain(w);
+  });
+
+  it("nobody to tell: the claim is released", async () => {
+    sendAdminNotice.mockResolvedValueOnce({ channel: "none", queued: 0 });
+    expect(await notifyPhoneAdopted(ORG, { userId: "u-hamzah", name: "Hamzah", whatsAppName: "Hamzah Ali" })).toBe(false);
+    expect(sentDeleteMany).toHaveBeenCalledTimes(1);
   });
 });

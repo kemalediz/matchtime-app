@@ -41,6 +41,7 @@
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { personPickerFor } from "@/lib/pipeline/identify-batch";
+import { notifyPhoneAdopted } from "./possible-duplicate-notice";
 import { refKey } from "@/lib/person-ref-key";
 import type { PersonPicker, WhoRequest } from "@/lib/pipeline/who-is-who";
 import { withAttendanceOverflow } from "@/lib/ai-budget-context";
@@ -205,8 +206,10 @@ export async function resolveSenders(
   opts: { identify?: PersonPicker } = {},
 ): Promise<Map<string, ResolvedSender>> {
   const out = new Map<string, ResolvedSender>();
-  /** One entry per distinct WhatsApp name: its messages, the first one's
-   *  text shown to the model, and the phone it came with (if any). */
+  /** One entry per sender: the WhatsApp name PLUS the phone it came with
+   *  (final review of round 3: two unknown numbers both called "Ali" are
+   *  two people). Only phoneless messages share an entry by name alone.
+   *  Its messages, and the first one's text shown to the model. */
   const byName = new Map<string, { pushname: string; msgs: SenderToResolve[] }>();
   for (const msg of msgs) {
     const byPhone = await resolveSenderByPhone(msg);
@@ -216,7 +219,9 @@ export async function resolveSenders(
     }
     const pushname = msg.authorName?.trim() ?? "";
     if (pushname.length >= 2 && !isRawDigitName(pushname)) {
-      const key = refKey(pushname);
+      const raw = msg.authorPhone?.trim() ?? "";
+      const phone = raw ? (normalisePhone(raw.startsWith("+") ? raw : `+${raw}`) ?? raw) : "";
+      const key = `${refKey(pushname)}|${phone}`;
       const g = byName.get(key) ?? { pushname, msgs: [] };
       g.msgs.push(msg);
       byName.set(key, g);
@@ -256,7 +261,7 @@ export async function resolveSenders(
     let resolved: ResolvedSender;
     if (m) {
       if (m.leftAt) await restoreMembership(m.id, m.user.name);
-      const phone = await adoptPhoneIfPlaceholder(m, g.msgs);
+      const phone = await adoptPhoneIfPlaceholder(orgId, m, g.msgs, g.pushname);
       resolved = { userId: m.user.id, name: m.user.name, phone };
     } else if (pick?.kind === "none") {
       // Once per WhatsApp name in the batch: "IN" then "+1" is ONE person.
@@ -277,11 +282,14 @@ export async function resolveSenders(
  * on a phoneless PROVISIONAL member (a placeholder made from "Hamzah's
  * in" before Hamzah joined): the member takes that phone, only while
  * still phoneless (a sign-in or an admin's edit in between is never
- * overwritten). Never by a match of names. The phone, or null.
+ * overwritten). Never by a match of names. The admins are told once
+ * (`notifyPhoneAdopted`). The phone, or null.
  */
 async function adoptPhoneIfPlaceholder(
-  m: { user: { id: string; phoneNumber?: string | null }; provisionallyAddedAt?: Date | null },
+  orgId: string,
+  m: { user: { id: string; name: string | null; phoneNumber?: string | null }; provisionallyAddedAt?: Date | null },
   msgs: SenderToResolve[],
+  whatsAppName: string,
 ): Promise<string | null> {
   if (m.user.phoneNumber) return null;
   if (!m.provisionallyAddedAt) return null;
@@ -293,6 +301,8 @@ async function adoptPhoneIfPlaceholder(
     const { count } = await db.user.updateMany({ where: { id: m.user.id, phoneNumber: null }, data: { phoneNumber: phone } });
     if (count === 1) {
       console.log(`[resolve-sender] placeholder ${m.user.id} takes the phone of the sender it is (who-is-who, sure)`);
+      // Permanent: the admins are told once, so a wrong one can be undone.
+      await notifyPhoneAdopted(orgId, { userId: m.user.id, name: m.user.name, whatsAppName });
       return phone;
     }
   } catch (err) {
