@@ -23,6 +23,18 @@
  * The database is a fake world that answers every read from the same rows
  * and changes nothing on a write. `fetch` is replaced by one that records
  * and fails, so nothing leaves the process. No model is called: $0.
+ *
+ * RE-RECORDED 2026-11-09 (#566, "@Match Time DM these people"), for two
+ * intended changes and nothing else, checked line by line (the old and new
+ * snapshots are the same multiset of lines once both are normalised):
+ *   1. the admin extractor's system prompt and schema hashes (its recruit
+ *      section was rewritten: `playersFrom` gains "named");
+ *   2. the recruit invite's writes (`recruit.ts` `queueRecruitInviteDm`):
+ *      the unique recruit-dm marker is now created BEFORE the short link
+ *      and the BotJob, so two racing requests can never DM one person
+ *      twice, and the marker and the job carry one explicit `createdAt`
+ *      (142 lines: 71 markers, 71 jobs), so the recruit chase's "DM'd since
+ *      the invite" test never counts the invite itself.
  */
 import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";

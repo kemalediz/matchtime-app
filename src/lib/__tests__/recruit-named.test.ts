@@ -34,7 +34,8 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 vi.mock("@/lib/magic-link", () => ({ signMagicLinkToken: () => "tok", MAGIC_LINK_TTL: { actionNudge: 1 } }));
-vi.mock("@/lib/short-link", () => ({ buildShortMagicLinkUrl: async () => "https://s/x" }));
+const shortLink = vi.fn(async () => "https://s/x");
+vi.mock("@/lib/short-link", () => ({ buildShortMagicLinkUrl: () => shortLink() }));
 vi.mock("@/lib/org-features", () => ({ getOrgFeatures: async () => ({ attendance: true, language: "en" }) }));
 
 import { inviteNamedPeople } from "@/lib/recruit";
@@ -173,6 +174,8 @@ describe("inviteNamedPeople", () => {
     const r = await inviteNamedPeople(ORG, tags([byPhone(users[0]), byPhone(users[1])]), { requesterUserId: null, now: NOW });
     if (r.kind !== "done") throw new Error(r.kind);
     expect(order.slice(0, 2)).toEqual(["marker:recruit-dm", "job"]);
+    // The lost claim made nothing: no short link, no DM.
+    expect(shortLink).toHaveBeenCalledTimes(1);
     expect(dmPhones()).toEqual(["447700900111"]);
     expect(r.plan.invite.map((p) => p.userId)).toEqual(["u-bh"]);
     expect(r.plan.alreadyInvited.map((p) => p.userId)).toEqual(["u-matt"]);

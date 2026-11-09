@@ -707,6 +707,18 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-0",
+            "kind": "recruit-dm",
+            "matchId": "m-sutton-10nov",
+            "targetUser": "u-m-sutton-3nov-0",
+          },
+        },
+        "call": "sentNotification.create",
+      },
+      {
+        "args": {
+          "data": {
             "code": "<code>",
             "expiresAt": "2026-11-06T12:00:00.000Z",
             "token": "eyJ1c2VySWQiOiJ1LW0tc3V0dG9uLTNub3YtMCIsInB1cnBvc2UiOiJzaWduLWluIiwibmV4dFBhdGgiOiIvbWF0Y2hlcy9tLXN1dHRvbi0xMG5vdiIsImlhdCI6MTc5Mzc5MzYwMCwiZXhwIjoxNzkzOTY2NDAwfQ.hvIaQeENC40OLklIR_CtmHTcrK-7GaKjxv0TXoUx3fk",
@@ -717,6 +729,7 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100004",
@@ -733,8 +746,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-0",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-1",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-0",
           },
@@ -744,10 +757,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-1",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-1",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-0",
+            "targetUser": "u-m-sutton-3nov-1",
           },
         },
         "call": "sentNotification.create",
@@ -765,6 +779,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100005",
@@ -781,8 +796,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-1",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-2",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-1",
           },
@@ -792,10 +807,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-2",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-2",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-1",
+            "targetUser": "u-m-sutton-3nov-2",
           },
         },
         "call": "sentNotification.create",
@@ -813,6 +829,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100006",
@@ -829,8 +846,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-2",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-3",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-2",
           },
@@ -840,10 +857,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-3",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-3",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-2",
+            "targetUser": "u-m-sutton-3nov-3",
           },
         },
         "call": "sentNotification.create",
@@ -861,6 +879,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100007",
@@ -877,8 +896,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-3",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-4",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-3",
           },
@@ -888,10 +907,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-4",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-4",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-3",
+            "targetUser": "u-m-sutton-3nov-4",
           },
         },
         "call": "sentNotification.create",
@@ -909,6 +929,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100008",
@@ -925,8 +946,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-4",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-5",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-4",
           },
@@ -936,10 +957,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-5",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-5",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-4",
+            "targetUser": "u-m-sutton-3nov-5",
           },
         },
         "call": "sentNotification.create",
@@ -957,6 +979,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100009",
@@ -973,8 +996,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-5",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-6",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-5",
           },
@@ -984,10 +1007,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-6",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-6",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-5",
+            "targetUser": "u-m-sutton-3nov-6",
           },
         },
         "call": "sentNotification.create",
@@ -1005,6 +1029,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100010",
@@ -1021,8 +1046,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-6",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-7",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-6",
           },
@@ -1032,10 +1057,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-7",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-7",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-6",
+            "targetUser": "u-m-sutton-3nov-7",
           },
         },
         "call": "sentNotification.create",
@@ -1053,6 +1079,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100011",
@@ -1069,8 +1096,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-7",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-8",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-7",
           },
@@ -1080,10 +1107,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-8",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-8",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-7",
+            "targetUser": "u-m-sutton-3nov-8",
           },
         },
         "call": "sentNotification.create",
@@ -1101,6 +1129,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100012",
@@ -1117,8 +1146,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-8",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-9",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-8",
           },
@@ -1128,10 +1157,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-9",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-9",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-8",
+            "targetUser": "u-m-sutton-3nov-9",
           },
         },
         "call": "sentNotification.create",
@@ -1149,6 +1179,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100013",
@@ -1165,8 +1196,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-9",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-10",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-9",
           },
@@ -1176,10 +1207,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-10",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-10",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-9",
+            "targetUser": "u-m-sutton-3nov-10",
           },
         },
         "call": "sentNotification.create",
@@ -1197,6 +1229,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100014",
@@ -1213,8 +1246,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-10",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-11",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-10",
           },
@@ -1224,10 +1257,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-11",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-11",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-10",
+            "targetUser": "u-m-sutton-3nov-11",
           },
         },
         "call": "sentNotification.create",
@@ -1245,6 +1279,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100015",
@@ -1261,8 +1296,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-11",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-12",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-11",
           },
@@ -1272,10 +1307,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-12",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-12",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-11",
+            "targetUser": "u-m-sutton-3nov-12",
           },
         },
         "call": "sentNotification.create",
@@ -1293,6 +1329,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100016",
@@ -1309,8 +1346,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-12",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-13",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-12",
           },
@@ -1320,10 +1357,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-13",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-13",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-12",
+            "targetUser": "u-m-sutton-3nov-13",
           },
         },
         "call": "sentNotification.create",
@@ -1341,6 +1379,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100017",
@@ -1353,17 +1392,6 @@ Prefer the app? https://matchtime.ai/r/<code>",
           },
         },
         "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-13",
-            "kind": "recruit-dm",
-            "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-13",
-          },
-        },
-        "call": "sentNotification.create",
       },
       {
         "args": {
@@ -1650,8 +1678,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Someone, who tagged the bot):
@@ -3548,8 +3576,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Someone, who tagged the bot):
@@ -5064,8 +5092,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Saturday 7 November 2026, 10:00 (club time, London)
 
 THE MESSAGE (from Someone, who tagged the bot):
@@ -6852,8 +6880,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Someone, who tagged the bot):
@@ -8109,6 +8137,18 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-0",
+            "kind": "recruit-dm",
+            "matchId": "m-sutton-10nov",
+            "targetUser": "u-m-sutton-3nov-0",
+          },
+        },
+        "call": "sentNotification.create",
+      },
+      {
+        "args": {
+          "data": {
             "code": "<code>",
             "expiresAt": "2026-11-06T12:00:00.000Z",
             "token": "eyJ1c2VySWQiOiJ1LW0tc3V0dG9uLTNub3YtMCIsInB1cnBvc2UiOiJzaWduLWluIiwibmV4dFBhdGgiOiIvbWF0Y2hlcy9tLXN1dHRvbi0xMG5vdiIsImlhdCI6MTc5Mzc5MzYwMCwiZXhwIjoxNzkzOTY2NDAwfQ.hvIaQeENC40OLklIR_CtmHTcrK-7GaKjxv0TXoUx3fk",
@@ -8119,6 +8159,7 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100004",
@@ -8135,8 +8176,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-0",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-1",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-0",
           },
@@ -8146,10 +8187,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-1",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-1",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-0",
+            "targetUser": "u-m-sutton-3nov-1",
           },
         },
         "call": "sentNotification.create",
@@ -8167,6 +8209,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100005",
@@ -8183,8 +8226,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-1",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-2",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-1",
           },
@@ -8194,10 +8237,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-2",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-2",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-1",
+            "targetUser": "u-m-sutton-3nov-2",
           },
         },
         "call": "sentNotification.create",
@@ -8215,6 +8259,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100006",
@@ -8231,8 +8276,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-2",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-3",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-2",
           },
@@ -8242,10 +8287,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-3",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-3",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-2",
+            "targetUser": "u-m-sutton-3nov-3",
           },
         },
         "call": "sentNotification.create",
@@ -8263,6 +8309,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100007",
@@ -8279,8 +8326,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-3",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-4",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-3",
           },
@@ -8290,10 +8337,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-4",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-4",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-3",
+            "targetUser": "u-m-sutton-3nov-4",
           },
         },
         "call": "sentNotification.create",
@@ -8311,6 +8359,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100008",
@@ -8327,8 +8376,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-4",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-5",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-4",
           },
@@ -8338,10 +8387,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-5",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-5",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-4",
+            "targetUser": "u-m-sutton-3nov-5",
           },
         },
         "call": "sentNotification.create",
@@ -8359,6 +8409,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100009",
@@ -8375,8 +8426,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-5",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-6",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-5",
           },
@@ -8386,10 +8437,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-6",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-6",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-5",
+            "targetUser": "u-m-sutton-3nov-6",
           },
         },
         "call": "sentNotification.create",
@@ -8407,6 +8459,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100010",
@@ -8423,8 +8476,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-6",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-7",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-6",
           },
@@ -8434,10 +8487,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-7",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-7",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-6",
+            "targetUser": "u-m-sutton-3nov-7",
           },
         },
         "call": "sentNotification.create",
@@ -8455,6 +8509,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100011",
@@ -8471,8 +8526,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-7",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-8",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-7",
           },
@@ -8482,10 +8537,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-8",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-8",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-7",
+            "targetUser": "u-m-sutton-3nov-8",
           },
         },
         "call": "sentNotification.create",
@@ -8503,6 +8559,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100012",
@@ -8519,8 +8576,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-8",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-9",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-8",
           },
@@ -8530,10 +8587,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-9",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-9",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-8",
+            "targetUser": "u-m-sutton-3nov-9",
           },
         },
         "call": "sentNotification.create",
@@ -8551,6 +8609,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100013",
@@ -8567,8 +8626,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-9",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-10",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-9",
           },
@@ -8578,10 +8637,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-10",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-10",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-9",
+            "targetUser": "u-m-sutton-3nov-10",
           },
         },
         "call": "sentNotification.create",
@@ -8599,6 +8659,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100014",
@@ -8615,8 +8676,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-10",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-11",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-10",
           },
@@ -8626,10 +8687,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-11",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-11",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-10",
+            "targetUser": "u-m-sutton-3nov-11",
           },
         },
         "call": "sentNotification.create",
@@ -8647,6 +8709,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100015",
@@ -8663,8 +8726,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-11",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-12",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-11",
           },
@@ -8674,10 +8737,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-12",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-12",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-11",
+            "targetUser": "u-m-sutton-3nov-12",
           },
         },
         "call": "sentNotification.create",
@@ -8695,6 +8759,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100016",
@@ -8711,8 +8776,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-12",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-13",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-12",
           },
@@ -8722,10 +8787,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-13",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-13",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-12",
+            "targetUser": "u-m-sutton-3nov-13",
           },
         },
         "call": "sentNotification.create",
@@ -8743,6 +8809,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100017",
@@ -8755,17 +8822,6 @@ Prefer the app? https://matchtime.ai/r/<code>",
           },
         },
         "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-13",
-            "kind": "recruit-dm",
-            "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-13",
-          },
-        },
-        "call": "sentNotification.create",
       },
       {
         "args": {
@@ -9052,8 +9108,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Someone, who tagged the bot):
@@ -10649,6 +10705,18 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-0",
+            "kind": "recruit-dm",
+            "matchId": "m-sutton-10nov",
+            "targetUser": "u-m-sutton-3nov-0",
+          },
+        },
+        "call": "sentNotification.create",
+      },
+      {
+        "args": {
+          "data": {
             "code": "<code>",
             "expiresAt": "2026-11-12T18:00:00.000Z",
             "token": "eyJ1c2VySWQiOiJ1LW0tc3V0dG9uLTNub3YtMCIsInB1cnBvc2UiOiJzaWduLWluIiwibmV4dFBhdGgiOiIvbWF0Y2hlcy9tLXN1dHRvbi0xMG5vdiIsImlhdCI6MTc5NDMzMzYwMCwiZXhwIjoxNzk0NTA2NDAwfQ.Hd4LYCf8SnBJYCP0_WxRJMYxg0sNdS_knpooKtwfRpY",
@@ -10659,6 +10727,7 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100004",
@@ -10675,8 +10744,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-0",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-1",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-0",
           },
@@ -10686,10 +10755,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-1",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-1",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-0",
+            "targetUser": "u-m-sutton-3nov-1",
           },
         },
         "call": "sentNotification.create",
@@ -10707,6 +10777,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100005",
@@ -10723,8 +10794,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-1",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-2",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-1",
           },
@@ -10734,10 +10805,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-2",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-2",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-1",
+            "targetUser": "u-m-sutton-3nov-2",
           },
         },
         "call": "sentNotification.create",
@@ -10755,6 +10827,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100006",
@@ -10771,8 +10844,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-2",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-3",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-2",
           },
@@ -10782,10 +10855,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-3",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-3",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-2",
+            "targetUser": "u-m-sutton-3nov-3",
           },
         },
         "call": "sentNotification.create",
@@ -10803,6 +10877,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100007",
@@ -10819,8 +10894,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-3",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-4",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-3",
           },
@@ -10830,10 +10905,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-4",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-4",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-3",
+            "targetUser": "u-m-sutton-3nov-4",
           },
         },
         "call": "sentNotification.create",
@@ -10851,6 +10927,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100008",
@@ -10867,8 +10944,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-4",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-5",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-4",
           },
@@ -10878,10 +10955,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-5",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-5",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-4",
+            "targetUser": "u-m-sutton-3nov-5",
           },
         },
         "call": "sentNotification.create",
@@ -10899,6 +10977,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100009",
@@ -10915,8 +10994,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-5",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-6",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-5",
           },
@@ -10926,10 +11005,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-6",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-6",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-5",
+            "targetUser": "u-m-sutton-3nov-6",
           },
         },
         "call": "sentNotification.create",
@@ -10947,6 +11027,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100010",
@@ -10963,8 +11044,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-6",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-7",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-6",
           },
@@ -10974,10 +11055,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-7",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-7",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-6",
+            "targetUser": "u-m-sutton-3nov-7",
           },
         },
         "call": "sentNotification.create",
@@ -10995,6 +11077,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100011",
@@ -11011,8 +11094,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-7",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-8",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-7",
           },
@@ -11022,10 +11105,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-8",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-8",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-7",
+            "targetUser": "u-m-sutton-3nov-8",
           },
         },
         "call": "sentNotification.create",
@@ -11043,6 +11127,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100012",
@@ -11059,8 +11144,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-8",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-9",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-8",
           },
@@ -11070,10 +11155,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-9",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-9",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-8",
+            "targetUser": "u-m-sutton-3nov-9",
           },
         },
         "call": "sentNotification.create",
@@ -11091,6 +11177,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100013",
@@ -11107,8 +11194,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-9",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-10",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-9",
           },
@@ -11118,10 +11205,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-10",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-10",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-9",
+            "targetUser": "u-m-sutton-3nov-10",
           },
         },
         "call": "sentNotification.create",
@@ -11139,6 +11227,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100014",
@@ -11155,8 +11244,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-10",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-11",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-10",
           },
@@ -11166,10 +11255,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-11",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-11",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-10",
+            "targetUser": "u-m-sutton-3nov-11",
           },
         },
         "call": "sentNotification.create",
@@ -11187,6 +11277,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100015",
@@ -11203,8 +11294,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-11",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-12",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-11",
           },
@@ -11214,10 +11305,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-12",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-12",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-11",
+            "targetUser": "u-m-sutton-3nov-12",
           },
         },
         "call": "sentNotification.create",
@@ -11235,6 +11327,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100016",
@@ -11251,8 +11344,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-12",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-13",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-12",
           },
@@ -11262,10 +11355,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-13",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-10T18:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-13",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-12",
+            "targetUser": "u-m-sutton-3nov-13",
           },
         },
         "call": "sentNotification.create",
@@ -11283,6 +11377,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-10T18:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100017",
@@ -11295,17 +11390,6 @@ Prefer the app? https://matchtime.ai/r/<code>",
           },
         },
         "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-13",
-            "kind": "recruit-dm",
-            "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-13",
-          },
-        },
-        "call": "sentNotification.create",
       },
       {
         "args": {
@@ -11592,8 +11676,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Tuesday 10 November 2026, 18:00 (club time, London)
 
 THE MESSAGE (from Someone, who tagged the bot):
@@ -13194,6 +13278,18 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-0",
+            "kind": "recruit-dm",
+            "matchId": "m-sutton-10nov",
+            "targetUser": "u-m-sutton-3nov-0",
+          },
+        },
+        "call": "sentNotification.create",
+      },
+      {
+        "args": {
+          "data": {
             "code": "<code>",
             "expiresAt": "2026-11-06T12:00:00.000Z",
             "token": "eyJ1c2VySWQiOiJ1LW0tc3V0dG9uLTNub3YtMCIsInB1cnBvc2UiOiJzaWduLWluIiwibmV4dFBhdGgiOiIvbWF0Y2hlcy9tLXN1dHRvbi0xMG5vdiIsImlhdCI6MTc5Mzc5MzYwMCwiZXhwIjoxNzkzOTY2NDAwfQ.hvIaQeENC40OLklIR_CtmHTcrK-7GaKjxv0TXoUx3fk",
@@ -13204,6 +13300,7 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100004",
@@ -13220,8 +13317,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-0",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-1",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-0",
           },
@@ -13231,10 +13328,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-1",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-1",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-0",
+            "targetUser": "u-m-sutton-3nov-1",
           },
         },
         "call": "sentNotification.create",
@@ -13252,6 +13350,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100005",
@@ -13268,8 +13367,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-1",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-2",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-1",
           },
@@ -13279,10 +13378,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-2",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-2",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-1",
+            "targetUser": "u-m-sutton-3nov-2",
           },
         },
         "call": "sentNotification.create",
@@ -13300,6 +13400,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100006",
@@ -13316,8 +13417,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-2",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-3",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-2",
           },
@@ -13327,10 +13428,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-3",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-3",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-2",
+            "targetUser": "u-m-sutton-3nov-3",
           },
         },
         "call": "sentNotification.create",
@@ -13348,6 +13450,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100007",
@@ -13364,8 +13467,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-3",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-4",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-3",
           },
@@ -13375,10 +13478,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-4",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-4",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-3",
+            "targetUser": "u-m-sutton-3nov-4",
           },
         },
         "call": "sentNotification.create",
@@ -13396,6 +13500,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100008",
@@ -13412,8 +13517,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-4",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-5",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-4",
           },
@@ -13423,10 +13528,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-5",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-5",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-4",
+            "targetUser": "u-m-sutton-3nov-5",
           },
         },
         "call": "sentNotification.create",
@@ -13444,6 +13550,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100009",
@@ -13460,8 +13567,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-5",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-6",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-5",
           },
@@ -13471,10 +13578,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-6",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-6",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-5",
+            "targetUser": "u-m-sutton-3nov-6",
           },
         },
         "call": "sentNotification.create",
@@ -13492,6 +13600,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100010",
@@ -13508,8 +13617,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-6",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-7",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-6",
           },
@@ -13519,10 +13628,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-7",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-7",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-6",
+            "targetUser": "u-m-sutton-3nov-7",
           },
         },
         "call": "sentNotification.create",
@@ -13540,6 +13650,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100011",
@@ -13556,8 +13667,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-7",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-8",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-7",
           },
@@ -13567,10 +13678,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-8",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-8",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-7",
+            "targetUser": "u-m-sutton-3nov-8",
           },
         },
         "call": "sentNotification.create",
@@ -13588,6 +13700,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100012",
@@ -13604,8 +13717,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-8",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-9",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-8",
           },
@@ -13615,10 +13728,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-9",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-9",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-8",
+            "targetUser": "u-m-sutton-3nov-9",
           },
         },
         "call": "sentNotification.create",
@@ -13636,6 +13750,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100013",
@@ -13652,8 +13767,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-9",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-10",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-9",
           },
@@ -13663,10 +13778,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-10",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-10",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-9",
+            "targetUser": "u-m-sutton-3nov-10",
           },
         },
         "call": "sentNotification.create",
@@ -13684,6 +13800,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100014",
@@ -13700,8 +13817,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-10",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-11",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-10",
           },
@@ -13711,10 +13828,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-11",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-11",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-10",
+            "targetUser": "u-m-sutton-3nov-11",
           },
         },
         "call": "sentNotification.create",
@@ -13732,6 +13850,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100015",
@@ -13748,8 +13867,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-11",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-12",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-11",
           },
@@ -13759,10 +13878,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-12",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-12",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-11",
+            "targetUser": "u-m-sutton-3nov-12",
           },
         },
         "call": "sentNotification.create",
@@ -13780,6 +13900,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100016",
@@ -13796,8 +13917,8 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-12",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-13",
+            "kind": "recruit-dm-link",
             "matchId": "m-sutton-10nov",
             "targetUser": "u-m-sutton-3nov-12",
           },
@@ -13807,10 +13928,11 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-13",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-13",
+            "kind": "recruit-dm",
             "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-12",
+            "targetUser": "u-m-sutton-3nov-13",
           },
         },
         "call": "sentNotification.create",
@@ -13828,6 +13950,7 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-sutton",
             "phone": "44770100017",
@@ -13840,17 +13963,6 @@ Uygulamadan yapmak istersen: https://matchtime.ai/r/<code>",
           },
         },
         "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-sutton-10nov:recruit-dm:u-m-sutton-3nov-13",
-            "kind": "recruit-dm",
-            "matchId": "m-sutton-10nov",
-            "targetUser": "u-m-sutton-3nov-13",
-          },
-        },
-        "call": "sentNotification.create",
       },
       {
         "args": {
@@ -14137,8 +14249,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Someone, who tagged the bot):
@@ -15343,8 +15455,8 @@ how does the bench work?",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -15942,8 +16054,8 @@ invite players for the next game",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -15960,6 +16072,18 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
+            "key": "m-vets-9nov:recruit-dm:u-m-vets-2nov-13",
+            "kind": "recruit-dm",
+            "matchId": "m-vets-9nov",
+            "targetUser": "u-m-vets-2nov-13",
+          },
+        },
+        "call": "sentNotification.create",
+      },
+      {
+        "args": {
+          "data": {
             "code": "<code>",
             "expiresAt": "2026-11-06T12:00:00.000Z",
             "token": "eyJ1c2VySWQiOiJ1LW0tdmV0cy0ybm92LTEzIiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy05bm92IiwiaWF0IjoxNzkzNzkzNjAwLCJleHAiOjE3OTM5NjY0MDB9.E8brpRK2qW3aP6gxzqweJODLckVKf_n9aAuLc-6hVD8",
@@ -15970,6 +16094,7 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-04T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100016",
@@ -15982,17 +16107,6 @@ Prefer the app? https://matchtime.ai/r/<code>",
           },
         },
         "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-9nov:recruit-dm:u-m-vets-2nov-13",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-9nov",
-            "targetUser": "u-m-vets-2nov-13",
-          },
-        },
-        "call": "sentNotification.create",
       },
       {
         "args": {
@@ -16334,8 +16448,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -16344,8 +16458,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Someone, who tagged the bot):
@@ -16528,8 +16642,8 @@ THE MESSAGE:
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -16674,8 +16788,8 @@ how many have rated so far?",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -16926,8 +17040,8 @@ how many have we got?",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Wednesday 4 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -17739,8 +17853,8 @@ how does the bench work?",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -18085,8 +18199,8 @@ invite players for the next game",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -18103,6 +18217,18 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r1",
+            "kind": "recruit-dm",
+            "matchId": "m-vets-16nov",
+            "targetUser": "u-org-vets-r1",
+          },
+        },
+        "call": "sentNotification.create",
+      },
+      {
+        "args": {
+          "data": {
             "code": "<code>",
             "expiresAt": "2026-11-15T12:00:00.000Z",
             "token": "eyJ1c2VySWQiOiJ1LW9yZy12ZXRzLXIxIiwicHVycG9zZSI6InNpZ24taW4iLCJuZXh0UGF0aCI6Ii9tYXRjaGVzL20tdmV0cy0xNm5vdiIsImlhdCI6MTc5NDU3MTIwMCwiZXhwIjoxNzk0NzQ0MDAwfQ.pn-aqQrvcBYSSqRrOmBH8_lCbSunoC40kqiankEEGpA",
@@ -18113,6 +18239,7 @@ invite players for the next game",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18129,8 +18256,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r1",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-1",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r1",
           },
@@ -18140,10 +18267,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-1",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r2",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r1",
+            "targetUser": "u-org-vets-r2",
           },
         },
         "call": "sentNotification.create",
@@ -18161,6 +18289,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18177,8 +18306,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r2",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-2",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r2",
           },
@@ -18188,10 +18317,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-2",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r3",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r2",
+            "targetUser": "u-org-vets-r3",
           },
         },
         "call": "sentNotification.create",
@@ -18209,6 +18339,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18225,8 +18356,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r3",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-3",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r3",
           },
@@ -18236,10 +18367,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-3",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r4",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r3",
+            "targetUser": "u-org-vets-r4",
           },
         },
         "call": "sentNotification.create",
@@ -18257,6 +18389,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18273,8 +18406,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r4",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-4",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r4",
           },
@@ -18284,10 +18417,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-4",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r5",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r4",
+            "targetUser": "u-org-vets-r5",
           },
         },
         "call": "sentNotification.create",
@@ -18305,6 +18439,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18321,8 +18456,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r5",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-5",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r5",
           },
@@ -18332,10 +18467,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-5",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r6",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r5",
+            "targetUser": "u-org-vets-r6",
           },
         },
         "call": "sentNotification.create",
@@ -18353,6 +18489,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18369,8 +18506,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r6",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-6",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r6",
           },
@@ -18380,10 +18517,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-6",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r7",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r6",
+            "targetUser": "u-org-vets-r7",
           },
         },
         "call": "sentNotification.create",
@@ -18401,6 +18539,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18417,8 +18556,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r7",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-7",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r7",
           },
@@ -18428,10 +18567,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-7",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r8",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r7",
+            "targetUser": "u-org-vets-r8",
           },
         },
         "call": "sentNotification.create",
@@ -18449,6 +18589,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18465,8 +18606,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r8",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-8",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r8",
           },
@@ -18476,10 +18617,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-8",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r9",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r8",
+            "targetUser": "u-org-vets-r9",
           },
         },
         "call": "sentNotification.create",
@@ -18497,6 +18639,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18513,8 +18656,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r9",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-9",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r9",
           },
@@ -18524,10 +18667,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-9",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r10",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r9",
+            "targetUser": "u-org-vets-r10",
           },
         },
         "call": "sentNotification.create",
@@ -18545,6 +18689,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18561,8 +18706,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r10",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-10",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r10",
           },
@@ -18572,10 +18717,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-10",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r11",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r10",
+            "targetUser": "u-org-vets-r11",
           },
         },
         "call": "sentNotification.create",
@@ -18593,6 +18739,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18609,8 +18756,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r11",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-11",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r11",
           },
@@ -18620,10 +18767,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-11",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r12",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r11",
+            "targetUser": "u-org-vets-r12",
           },
         },
         "call": "sentNotification.create",
@@ -18641,6 +18789,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18657,8 +18806,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r12",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-12",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r12",
           },
@@ -18668,10 +18817,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-12",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-org-vets-r13",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r12",
+            "targetUser": "u-org-vets-r13",
           },
         },
         "call": "sentNotification.create",
@@ -18689,6 +18839,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100015",
@@ -18705,8 +18856,8 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "m-vets-16nov:recruit-dm:u-org-vets-r13",
-            "kind": "recruit-dm",
+            "key": "recruit-dm-job:new-botJob-13",
+            "kind": "recruit-dm-link",
             "matchId": "m-vets-16nov",
             "targetUser": "u-org-vets-r13",
           },
@@ -18716,10 +18867,11 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
-            "key": "recruit-dm-job:new-botJob-13",
-            "kind": "recruit-dm-link",
+            "createdAt": "2026-11-13T12:00:00.000Z",
+            "key": "m-vets-16nov:recruit-dm:u-m-vets-2nov-13",
+            "kind": "recruit-dm",
             "matchId": "m-vets-16nov",
-            "targetUser": "u-org-vets-r13",
+            "targetUser": "u-m-vets-2nov-13",
           },
         },
         "call": "sentNotification.create",
@@ -18737,6 +18889,7 @@ Prefer the app? https://matchtime.ai/r/<code>",
       {
         "args": {
           "data": {
+            "createdAt": "2026-11-13T12:00:00.000Z",
             "kind": "dm",
             "orgId": "org-vets",
             "phone": "44770100016",
@@ -18749,17 +18902,6 @@ Prefer the app? https://matchtime.ai/r/<code>",
           },
         },
         "call": "botJob.create",
-      },
-      {
-        "args": {
-          "data": {
-            "key": "m-vets-16nov:recruit-dm:u-m-vets-2nov-13",
-            "kind": "recruit-dm",
-            "matchId": "m-vets-16nov",
-            "targetUser": "u-m-vets-2nov-13",
-          },
-        },
-        "call": "sentNotification.create",
       },
       {
         "args": {
@@ -19016,8 +19158,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -19026,8 +19168,8 @@ ask our partner clubs for a player",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Someone, who tagged the bot):
@@ -19184,8 +19326,8 @@ THE MESSAGE:
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -19304,8 +19446,8 @@ how many have rated so far?",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):
@@ -19530,8 +19672,8 @@ how many have we got?",
       {
         "label": "extractor:admin",
         "model": "claude-haiku-5-5",
-        "schema": "2be26f0b85158c29",
-        "system": "a1d8bc13e12b5868",
+        "schema": "e27ce0dcc36ff4db",
+        "system": "7e6f230e690dbd42",
         "user": "NOW: Friday 13 November 2026, 12:00 (club time, London)
 
 THE MESSAGE (from Davide, who tagged the bot):

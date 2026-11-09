@@ -539,38 +539,10 @@ async function queueRecruitInviteDm(args: {
   style: "app" | "group";
 }): Promise<boolean> {
   const { orgId, match, features, need, matchWhen, person: c } = args;
-  const first = c.name?.split(" ")[0] ?? null;
-  let text: string;
-  if (args.style === "app") {
-    // Org tracks attendance in-app → the magic link is worth offering,
-    // as a trailing option and as this player's sign-in path.
-    const token = signMagicLinkToken({
-      userId: c.id,
-      purpose: "sign-in",
-      nextPath: `/matches/${match.id}`,
-      ttlSeconds: MAGIC_LINK_TTL.actionNudge,
-    });
-    text = buildRecruitInviteDm({
-      firstName: first,
-      matchName: match.activity.name,
-      matchWhen,
-      spotsLeft: need,
-      link: await buildShortMagicLinkUrl(token),
-      lang: features.language,
-      organiser: features.benchPickMode === "organiser",
-    });
-  } else {
-    // No in-app squad, or no membership here: an RSVP link does nothing.
-    // Players join by posting in the group, so nudge them there.
-    text = buildRecruitGroupInviteDm({
-      firstName: first,
-      matchName: match.activity.name,
-      matchWhen,
-      lang: features.language,
-    });
-  }
   const key = recruitDmKey(match.id, c.id);
   const at = new Date();
+  // Claimed before anything else is made, so a lost race costs nothing
+  // (no short link, no DM).
   try {
     await db.sentNotification.create({
       data: { key, kind: "recruit-dm", matchId: match.id, targetUser: c.id, createdAt: at },
@@ -581,6 +553,36 @@ async function queueRecruitInviteDm(args: {
   }
   let job: { id: string };
   try {
+    const first = c.name?.split(" ")[0] ?? null;
+    let text: string;
+    if (args.style === "app") {
+      // Org tracks attendance in-app → the magic link is worth offering,
+      // as a trailing option and as this player's sign-in path.
+      const token = signMagicLinkToken({
+        userId: c.id,
+        purpose: "sign-in",
+        nextPath: `/matches/${match.id}`,
+        ttlSeconds: MAGIC_LINK_TTL.actionNudge,
+      });
+      text = buildRecruitInviteDm({
+        firstName: first,
+        matchName: match.activity.name,
+        matchWhen,
+        spotsLeft: need,
+        link: await buildShortMagicLinkUrl(token),
+        lang: features.language,
+        organiser: features.benchPickMode === "organiser",
+      });
+    } else {
+      // No in-app squad, or no membership here: an RSVP link does nothing.
+      // Players join by posting in the group, so nudge them there.
+      text = buildRecruitGroupInviteDm({
+        firstName: first,
+        matchName: match.activity.name,
+        matchWhen,
+        lang: features.language,
+      });
+    }
     job = await db.botJob.create({
       data: {
         orgId,
