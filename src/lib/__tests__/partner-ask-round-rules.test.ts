@@ -99,9 +99,9 @@ describe("an organiser cancels a round by hand (Kemal, 2026-10-22)", () => {
     expect(closedStatus("organiser-cancelled", "posted")).toBe("cancelled");
     expect(closedStatus("organiser-cancelled", "awaiting-approval")).toBe("cancelled");
   });
-  it("a partner group that saw the ask hears 'no longer needed'; one still waiting for approval hears nothing", () => {
-    expect(closeTells("organiser-cancelled", "posted", 2)).toEqual({ partnerGroup: "not-needed", asker: null });
-    expect(closeTells("organiser-cancelled", "awaiting-approval", 0)).toEqual({ partnerGroup: null, asker: null });
+  it("a partner group that saw the ask hears 'no longer needed'; one still waiting for approval hears nothing, its admins hear it was cancelled (2026-11-09)", () => {
+    expect(closeTells("organiser-cancelled", "posted", 2)).toEqual({ partnerGroup: "not-needed", partnerAdmins: null, asker: null });
+    expect(closeTells("organiser-cancelled", "awaiting-approval", 0)).toEqual({ partnerGroup: null, partnerAdmins: "cancelled", asker: null });
   });
 });
 

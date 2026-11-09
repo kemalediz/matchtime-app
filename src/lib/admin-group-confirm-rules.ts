@@ -165,6 +165,26 @@ export function decideApproval(p: {
   return ask(p.pending, p.log, p.now, windowMs);
 }
 
+/**
+ * A YES to a question MatchTime asked that is NO LONGER WAITING (2026-11-09,
+ * FNF HQ: a partner club's ask closed while its approval question still sat
+ * there). The question's ask ref, so its owner can say what became of it:
+ * the one a reply quotes, when it is MatchTime's and not waiting; or, with
+ * nothing at all waiting and no reply, MatchTime's last question here.
+ * Null otherwise: the rules above decide, unchanged. Never MatchTime's
+ * "Which one is that YES for?".
+ */
+export function lateQuestionRef(p: { pending: PendingItem[]; quoted: QuotedMessage | null; log: HqLogRow[] }): string | null {
+  let row: HqLogRow | null = null;
+  if (p.quoted && (p.quoted.text || p.quoted.fromMatchTime || p.quoted.messageId)) {
+    row = quotedLogRow(p.quoted, p.log).row;
+  } else if (p.pending.length === 0) {
+    row = [...p.log].reverse().find((r) => r.fromMatchTime && !!r.askRef) ?? null;
+  }
+  if (!row?.fromMatchTime || !row.askRef || row.askRef === WHICH_ASK_REF) return null;
+  return p.pending.some((i) => i.ref === row.askRef) ? null : row.askRef;
+}
+
 /** The ask ref of "Which one is that YES for?". */
 export const WHICH_ASK_REF = "which";
 

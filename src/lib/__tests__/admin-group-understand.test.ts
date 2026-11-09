@@ -67,6 +67,7 @@ vi.mock("@/lib/admin-group-question", () => hqQuestion);
 const partnerAsk = vi.hoisted(() => ({
   partnerAsksAwaitingApproval: vi.fn().mockResolvedValue([]),
   answerPartnerAskYes: vi.fn(),
+  answerClosedPartnerAskYes: vi.fn().mockResolvedValue(null),
   partnerAskRef: (id: string) => `xask:${id}`,
   parsePartnerAskRef: (ref: string) => (ref.startsWith("xask:") ? ref.slice(5) : null),
 }));
@@ -1459,6 +1460,36 @@ describe("a partner club's ask waiting for this club's YES", () => {
     const r = await ask("yes", "approve");
     expect(partnerAsk.answerPartnerAskYes).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", askId: "ask1", userId: "u-admin" }));
     expect(r?.outcome).toBe("xask-approved");
+  });
+});
+
+// FNF HQ, 2026-11-09: Monday night vets' ask closed (their round filled)
+// while its approval question still sat in HQ. A late "@Match Time YES"
+// replying to it posts nothing in FNF's players' group, approves nothing
+// else, and says the ask is no longer needed.
+describe("a late YES to a partner club's ask that has closed", () => {
+  const ASK_TEXT = "🤝 *Monday night vets* ask if 2 of your players can play for them";
+  const NO_LONGER = { outcome: "xask-no-longer-needed", replyText: "No longer needed: *Monday night vets*'s ask for Mon 9 Nov has closed, so I haven't posted anything. Nothing to do." };
+  beforeEach(() => {
+    partnerAsk.partnerAsksAwaitingApproval.mockResolvedValue([]);
+    partnerAsk.answerClosedPartnerAskYes.mockResolvedValue(NO_LONGER);
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1"), mtRow(ASKED, "xask:ask1", ASK_TEXT)]);
+  });
+
+  it("a reply quoting the closed ask's question: 'no longer needed', the teams waiting are not approved", async () => {
+    const r = await ask("@Match Time YES", "approve", { quoted: { text: ASK_TEXT, fromMatchTime: true } });
+    expect(partnerAsk.answerClosedPartnerAskYes).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", askId: "ask1", lang: "en" }));
+    expect(r).toEqual({ route: "approve", ...NO_LONGER });
+    expect(partnerAsk.answerPartnerAskYes).not.toHaveBeenCalled();
+    expect(teams.answerTeamsYes).not.toHaveBeenCalled();
+  });
+
+  it("an ask that is not closed after all (posted, declined): the YES rules decide as before", async () => {
+    partnerAsk.answerClosedPartnerAskYes.mockResolvedValue(null);
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    const r = await ask("@Match Time YES", "approve", { quoted: { text: ASK_TEXT, fromMatchTime: true } });
+    expect(r?.outcome).toBe("hq-nothing-waiting");
+    expect(partnerAsk.answerPartnerAskYes).not.toHaveBeenCalled();
   });
 });
 

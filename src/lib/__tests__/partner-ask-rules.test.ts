@@ -159,12 +159,31 @@ describe("closing an ask", () => {
     expect(closedStatus("partnership-inactive", "posted")).toBe("cancelled");
   });
   it("who is told (D8): the partner group only about a post it saw, once", () => {
-    expect(closeTells("filled", "posted", 1)).toEqual({ partnerGroup: "filled", asker: null });
-    expect(closeTells("filled", "awaiting-approval", 0)).toEqual({ partnerGroup: null, asker: null });
-    expect(closeTells("match-cancelled", "posted", 0)).toEqual({ partnerGroup: "off", asker: null });
-    expect(closeTells("kickoff", "posted", 0)).toEqual({ partnerGroup: null, asker: "nobody" });
-    expect(closeTells("kickoff", "posted", 2)).toEqual({ partnerGroup: null, asker: null });
-    expect(closeTells("approval-expired", "awaiting-approval", 0)).toEqual({ partnerGroup: null, asker: "expired-approval" });
+    expect(closeTells("filled", "posted", 1)).toEqual({ partnerGroup: "filled", partnerAdmins: null, asker: null });
+    expect(closeTells("filled", "awaiting-approval", 0)).toEqual({ partnerGroup: null, partnerAdmins: "filled", asker: null });
+    expect(closeTells("match-cancelled", "posted", 0)).toEqual({ partnerGroup: "off", partnerAdmins: null, asker: null });
+    expect(closeTells("kickoff", "posted", 0)).toEqual({ partnerGroup: null, partnerAdmins: null, asker: "nobody" });
+    expect(closeTells("kickoff", "posted", 2)).toEqual({ partnerGroup: null, partnerAdmins: null, asker: null });
+    expect(closeTells("approval-expired", "awaiting-approval", 0)).toEqual({ partnerGroup: null, partnerAdmins: "expired", asker: "expired-approval" });
+  });
+
+  // Monday night vets, 2026-11-09: the round filled while FNF's organisers
+  // were still being asked to approve in HQ, and HQ was never told. The
+  // partner's ADMINS hear one line about an ask they were asked to approve;
+  // its players' group never hears about an ask it never saw.
+  it("an ask still waiting for the partner's approval: its admins hear why it closed, never its players' group", () => {
+    const waiting = (reason: Parameters<typeof closeTells>[0]) => closeTells(reason, "awaiting-approval", 0);
+    expect(waiting("filled").partnerAdmins).toBe("filled");
+    expect(waiting("organiser-cancelled").partnerAdmins).toBe("cancelled");
+    expect(waiting("match-cancelled").partnerAdmins).toBe("off");
+    expect(waiting("approval-expired").partnerAdmins).toBe("expired");
+    expect(waiting("partnership-inactive").partnerAdmins).toBe("closed");
+    // An approval always expires at the cut-off, before kickoff: never a kickoff close.
+    expect(waiting("kickoff").partnerAdmins).toBeNull();
+    for (const r of ["filled", "organiser-cancelled", "match-cancelled", "approval-expired", "partnership-inactive", "kickoff"] as const) {
+      expect(waiting(r).partnerGroup).toBeNull();
+      expect(closeTells(r, "posted", 0).partnerAdmins).toBeNull();
+    }
   });
 });
 
