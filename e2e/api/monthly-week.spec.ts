@@ -356,7 +356,7 @@ test("1. the regulars are put on the week's match, once, and the list is posted 
   expect(posts).toHaveLength(1);
   expect(posts[0].kind).toBe("group-message");
   expect(posts[0].text).toBe(
-    [HEADER, "", SQUAD, "1. Alex", "2. Bilal", "3. Chris", "4. Dave", "", ALL_IN, "", "*Pay as you go:* 1 place open, £8. Say *IN* to take it."].join("\n"),
+    [HEADER, "", SQUAD, "1. Alex", "2. Bilal", "3. Chris", "4. Dave", "", "*Pay as you go:* 1 place open, £8. Say *IN* to take it.", "", ALL_IN].join("\n"),
   );
   // The weekly-shaped posts are not sent alongside it.
   expect(first.some((i) => i.key.includes("announce-match") || i.key.includes("evening-update"))).toBe(false);
@@ -430,12 +430,12 @@ test("2. a regular drops: paid but can't play, a credit, and the place goes to t
     "2. Chris",
     "3. Dave",
     "",
+    "*Pay as you go:* 2 places open, £8. Say *IN* to take one.",
+    "",
     ALL_IN,
     "",
     "*Can't play:*",
     "1. Bilal",
-    "",
-    "*Pay as you go:* 2 places open, £8. Say *IN* to take one.",
   ].join("\n");
   const posted = listPosts(polled);
   expect(posted).toHaveLength(1);
@@ -475,14 +475,14 @@ test("3. a PAYG player takes it: the vacated slot number, the offer closed, the 
     "2. Chris",
     "3. Dave",
     "",
+    "*Pay as you go:*",
+    "4. Omar",
+    "1 place open, £8. Say *IN* to take it.",
+    "",
     ALL_IN,
     "",
     "*Can't play:*",
     "1. Bilal",
-    "",
-    "*Pay as you go:*",
-    "4. Omar",
-    "1 place open, £8. Say *IN* to take it.",
   ].join("\n");
   expect(res).toMatchObject({ intent: "in", react: "✅", reply: null });
   const polled = await poll(request, at(12, 30));
@@ -510,14 +510,14 @@ test("asked for the squad, MatchTime answers with the month's list, not the week
       "2. Chris",
       "3. Dave",
       "",
+      "*Pay as you go:*",
+      "4. Omar",
+      "1 place open, £8. Say *IN* to take it.",
+      "",
       ALL_IN,
       "",
       "*Can't play:*",
       "1. Bilal",
-      "",
-      "*Pay as you go:*",
-      "4. Omar",
-      "1 place open, £8. Say *IN* to take it.",
     ].join("\n"),
   );
   expect(res.reply).not.toContain("*Playing:*");
@@ -924,9 +924,9 @@ test.describe("10. guards, and Turkish", () => {
         "1. Ayşe",
         "2. Burak",
         "",
-        "Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın, yeri açılır.",
-        "",
         "*Maç başı ödeyenler:* 3 yer boş, £8. Almak için *VARIM* yazın.",
+        "",
+        "Hepiniz listedesiniz, bir şey yazmanıza gerek yok. Gelemeyecek olan *YOKUM* yazsın, yeri açılır.",
       ].join("\n"),
     );
   });
@@ -1020,7 +1020,7 @@ test.describe("regulars have priority at the seed", () => {
     ]);
     const list = listPosts(polled, MATCH3);
     expect(list).toHaveLength(1);
-    expect(list[0].text).toContain("1. Una\n2. Vic\n\n" + ALL_IN + "\n\n*Bench:*\n1. Ned\n2. Wes");
+    expect(list[0].text).toContain("1. Una\n2. Vic\n\nThe squad is full.\n\n" + ALL_IN + "\n\n*Bench:*\n1. Ned\n2. Wes");
 
     // A: Wes then LEAVES the group. The credit he earned is still owed to
     // him: leaving never voids one.
@@ -1513,7 +1513,7 @@ test.describe("the daily 17:00 post is the month's list (2026-11-04)", () => {
 
     // 17:05: the daily post, the month's list with the open place.
     const five = await poll(request, at(17, 5), GROUP5);
-    const LIST = [HEADER, "", SQUAD, "1. Amy", "2. Ben", "3. Cal", "4. Dan", "", ALL_IN, "", "*Pay as you go:* 1 place open, £8. Say *IN* to take it."].join("\n");
+    const LIST = [HEADER, "", SQUAD, "1. Amy", "2. Ben", "3. Cal", "4. Dan", "", "*Pay as you go:* 1 place open, £8. Say *IN* to take it.", "", ALL_IN].join("\n");
     expect(evening(five).map((i) => [i.kind, i.text])).toEqual([["group-message", LIST]]);
     // One list in the poll, and the marker never reaches the Pi.
     expect(listPosts(five, MATCH5)).toEqual([]);

@@ -109,7 +109,9 @@ describe("the month's list: one more on the bench for the next size", () => {
   it("THE VETS TONIGHT: 14 in, one on the bench: the line, as the last line", async () => {
     world();
     const r = await render(list({ confirmed: 14, bench: 1 }));
-    expect(r.text.split("\n").slice(-2)).toEqual(["The squad is full.", LINE_EN]);
+    // Last, after the bench it is about (Kemal, 2026-11-09).
+    expect(r.text.split("\n").slice(-2)).toEqual(["", LINE_EN]);
+    expect(r.text).toMatch(new RegExp(`\\*Bench:\\*\\n1\\. [^\\n]+\\n\\n${LINE_EN}$`));
     expect(r.nextSizePerSide).toBe(8);
   });
 

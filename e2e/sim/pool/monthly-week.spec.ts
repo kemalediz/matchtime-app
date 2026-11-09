@@ -161,10 +161,10 @@ scenarios("the MatchTime player pool for a monthly club's week", () => {
     pool.note("the week's list shows him in slot 4 under pay as you go, Felix under can't play");
     const after = await schedulerPoll(pool, vets, londonOn(vets.kickoff, 0, "13:45"));
     const list = after.instructions.find((i) => i.kind === "group-message" && i.key?.includes(":month-list:"));
-    expect(list?.text).toMatch(/\*Pay as you go:\*\n4\. Ali\n/);
-    expect(list?.text).toMatch(/\*Can't play:\*\n1\. Felix/);
+    // Pay as you go straight after the squad, its squad-full line closing it
+    // (Kemal, 2026-11-09); can't play after the squad's own line.
+    expect(list?.text).toMatch(/\n\n\*Pay as you go:\*\n4\. Ali\nThe squad is full\.\n\nYou're all in[^\n]*\n\n\*Can't play:\*\n1\. Felix/);
     expect(list?.text).not.toMatch(/\d+ places? open/);
-    expect(list?.text?.split("\n").at(-1)).toBe("The squad is full.");
     // The month's sweep ran on that poll: he is still not "paid by the month".
     expect((await pool.db.one<{ paymentMethod: string | null }>(`SELECT "paymentMethod" FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [vets.group.matchId, ali.userId]))?.paymentMethod).toBeNull();
     expect(await pool.db.count(`SELECT count(*) FROM "SquadCredit" WHERE "orgId" = $1 AND "userId" = $2`, [vets.group.orgId, ali.userId])).toBe(0);

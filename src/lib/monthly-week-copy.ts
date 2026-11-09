@@ -80,14 +80,25 @@ export function weekListFirstNames(people: Array<{ userId: string; name: string 
  *     1. Alex
  *     2. Jake
  *
+ *     *Pay as you go:*
+ *     3. Omar
+ *     1 place open, £8. Say *IN* to take it.
+ *
  *     You're all in, no need to say anything. Can't make it? Say *Out* and your place opens up.
  *
  *     *Can't play:*
  *     1. Sam
  *
- *     *Pay as you go:*
- *     3. Omar
- *     1 place open, £8. Say *IN* to take it.
+ *     *Bench:*
+ *     1. Zed
+ *
+ *     One more on the bench and the organisers can make it 8-a-side.
+ *
+ * In that order (Kemal, 2026-11-09: pay as you go "right after the
+ * squad, not after can't play or bench"): the squad, pay as you go with
+ * its places line (that line alone when nobody pays as he goes yet), the
+ * squad's own "you're all in" line, can't play, the bench, and the next
+ * size last, since it is about the bench. An empty block is left out.
  *
  * The squad is the regulars who are in, in slot order. A free slot, and
  * the slot of a regular who can't play, is not printed, and the numbers
@@ -117,7 +128,8 @@ export function buildWeekListPost(p: {
   compact?: boolean;
   /** The next size's players a side when ONE more on the bench would make
    *  MatchTime suggest it (`oneMoreForNextSize`, 2026-11-09): one line
-   *  under the squad-full line. Shown only while no place is open. */
+   *  at the end of the list (the compact form: under its squad-full line).
+   *  Shown only while no place is open. */
   nextSizePerSide?: number | null;
   lang?: LangArg;
 }): string {
@@ -141,16 +153,10 @@ export function buildWeekListPost(p: {
   if (squad.length > 0) {
     lines.push("", s.mwk_list_squad({ month: monthNameLabel(p.lang, p.matchDate) }));
     squad.forEach((slot, i) => lines.push(`${i + 1}. ${nameOf(slot.userId)}`));
-    lines.push("", s.mwk_list_all_in);
   }
-  const section = (title: string, names: WeekName[]): void => {
-    if (names.length === 0) return;
-    lines.push("", title);
-    names.forEach((n, i) => lines.push(`${i + 1}. ${nameOf(n.userId)}`));
-  };
-  section(s.mwk_list_cant_play, cantPlay);
-  section(s.mwk_list_bench, p.list.reserves);
 
+  // Pay as you go straight after the squad (Kemal, 2026-11-09), its
+  // places line closing it: with no PAYG names yet, that line alone.
   const open = weekListOpenLine(p.list.open, price, p.organiserPicks === true, p.lang);
   if (payg.length > 0) {
     lines.push("", s.mwk_list_payg);
@@ -159,7 +165,19 @@ export function buildWeekListPost(p: {
   } else {
     lines.push("", open ? `${s.mwk_list_payg} ${open}` : s.mwk_list_full);
   }
-  if (oneMore) lines.push(oneMore);
+
+  // The squad's own line ("you're all in"), then who is not playing.
+  if (squad.length > 0) lines.push("", s.mwk_list_all_in);
+  const section = (title: string, names: WeekName[]): void => {
+    if (names.length === 0) return;
+    lines.push("", title);
+    names.forEach((n, i) => lines.push(`${i + 1}. ${nameOf(n.userId)}`));
+  };
+  section(s.mwk_list_cant_play, cantPlay);
+  section(s.mwk_list_bench, p.list.reserves);
+
+  // The next size is about the bench, so it comes last.
+  if (oneMore) lines.push("", oneMore);
   return lines.join("\n");
 }
 
