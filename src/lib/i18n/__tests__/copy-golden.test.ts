@@ -349,6 +349,14 @@
  *     from a pick list, NONE, PAID ALL, help topics, opt-in words) and
  *     the one-word IN / OUT answers are unchanged.
  *     `own-words-hints.test.ts` is the guard.
+ *
+ *   - A deliberate CHANGE (2026-11-09, PR #563, Kemal: a pool offer stays
+ *     open until kickoff, not six hours). The R153 pool help topic gains
+ *     one sentence after "they decide each time": "An offer stays open
+ *     until kickoff, or until the places are filled." in English and
+ *     "Teklif maç başlayana ya da yerler dolana kadar açık kalır." in
+ *     Turkish. Six cases per document (pool closed, off, on; group and
+ *     player); no case was added or removed and no other line changed.
  */
 import { composeSetupDm } from "../../setup-learning/dm";
 import { composeSetupAskDm } from "../../club-setup-dm-rules";
