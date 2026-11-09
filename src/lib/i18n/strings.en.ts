@@ -5919,6 +5919,18 @@ export const en = {
     p.max === 1 ? "Only 1 place is open, so ask for 1 player." : `Choose between 1 and ${p.max} players.`,
   xask_not_needed_line: (p: { asker: string }) => `*${p.asker}* no longer need a player, thanks all.`,
   xask_not_needed_dm: (p: { asker: string }) => `*${p.asker}* no longer need a player, so you're not needed after all. Thanks for offering 🙏`,
+  // An ask the partner's admins were asked to approve has closed (2026-11-09):
+  // one line to them, on the channel they were asked on, never their players' group.
+  xask_closed_hq_filled: (p: { asker: string; day: string }) =>
+    `✅ No longer needed: *${p.asker}* have filled their places for ${p.day}. Thanks, nothing to do.`,
+  xask_closed_hq_cancelled: (p: { asker: string; day: string }) => `No longer needed: *${p.asker}* cancelled their ask for ${p.day}. Nothing to do.`,
+  xask_closed_hq_off: (p: { asker: string; day: string }) => `No longer needed: *${p.asker}*'s game on ${p.day} is off. Nothing to do.`,
+  xask_closed_hq_expired: (p: { asker: string; day: string }) =>
+    `No longer needed: the time to answer *${p.asker}*'s ask for ${p.day} has passed, so I didn't post it. Nothing to do.`,
+  xask_closed_hq_closed: (p: { asker: string; day: string }) => `No longer needed: *${p.asker}*'s ask for ${p.day} is closed. Nothing to do.`,
+  /** A late YES to an ask that has closed: nothing is posted. */
+  xask_hq_no_longer_needed: (p: { asker: string; day: string }) =>
+    `No longer needed: *${p.asker}*'s ask for ${p.day} has closed, so I haven't posted anything. Nothing to do.`,
   xaskw_line_paused: (p: { partner: string }) => `• *${p.partner}*: paused on MatchTime, so I didn't ask them.`,
   xaskw_places_line: (p: { places: number }) => `I asked for ${p.places === 1 ? "1 player" : `${p.places} players`}.`,
   // ─── End of partner discovery P4 ─────────────────────────────────────

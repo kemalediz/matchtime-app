@@ -4311,6 +4311,14 @@ export const tr: Strings = {
   xask_refused_bad_number: (p) => (p.max === 1 ? "Yalnızca 1 yer açık, 1 oyuncu isteyebilirsiniz." : `1 ile ${p.max} arasında bir oyuncu sayısı seçin.`),
   xask_not_needed_line: (p) => `*${p.asker}* için artık oyuncuya gerek yok, herkese teşekkürler.`,
   xask_not_needed_dm: (p) => `*${p.asker}* için artık oyuncuya gerek kalmadı. Teklifin için teşekkürler 🙏`,
+  xask_closed_hq_filled: (p) => `✅ Artık gerek yok: *${p.asker}* ${p.day} için yerlerini doldurdu. Teşekkürler, yapmanız gereken bir şey yok.`,
+  xask_closed_hq_cancelled: (p) => `Artık gerek yok: *${p.asker}* ${p.day} için isteğini iptal etti. Yapmanız gereken bir şey yok.`,
+  xask_closed_hq_off: (p) => `Artık gerek yok: *${p.asker}* kulübünün ${p.day} maçı iptal oldu. Yapmanız gereken bir şey yok.`,
+  xask_closed_hq_expired: (p) =>
+    `Artık gerek yok: *${p.asker}* kulübünün ${p.day} isteğine yanıt verme süresi doldu, bu yüzden paylaşmadım. Yapmanız gereken bir şey yok.`,
+  xask_closed_hq_closed: (p) => `Artık gerek yok: *${p.asker}* kulübünün ${p.day} isteği kapandı. Yapmanız gereken bir şey yok.`,
+  xask_hq_no_longer_needed: (p) =>
+    `Artık gerek yok: *${p.asker}* kulübünün ${p.day} isteği kapandı, bu yüzden hiçbir şey paylaşmadım. Yapmanız gereken bir şey yok.`,
   xaskw_line_paused: (p) => `• *${p.partner}*: MatchTime'da duraklatıldı, bu yüzden sormadım.`,
   xaskw_places_line: (p) => `${p.places} oyuncu istedim.`,
   // ─── Partner discovery P4 sonu ───────────────────────────────────────

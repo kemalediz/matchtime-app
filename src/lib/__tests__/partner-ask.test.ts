@@ -16,7 +16,7 @@ const dbMock = vi.hoisted(() => {
     membership: { findUnique: vi.fn() },
     partnerAsk: { count: vi.fn(), create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
     botJob: { create: vi.fn(), delete: vi.fn() },
-    sentNotification: { create: vi.fn() },
+    sentNotification: { create: vi.fn(), findUnique: vi.fn() },
     $transaction: vi.fn(),
     $executeRaw: vi.fn(),
   };
@@ -25,7 +25,7 @@ const dbMock = vi.hoisted(() => {
 vi.mock("../db", () => ({ db: dbMock }));
 const noticeMock = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));
 vi.mock("../admin-channel", () => noticeMock);
-const logMock = vi.hoisted(() => ({ recordMatchTimeQuestion: vi.fn() }));
+const logMock = vi.hoisted(() => ({ recordMatchTimeQuestion: vi.fn(), recordMatchTimeLine: vi.fn() }));
 vi.mock("../admin-group-log", () => logMock);
 const postableMock = vi.hoisted(() => ({ isGroupPostable: vi.fn() }));
 vi.mock("../group-postability-store", () => postableMock);
@@ -37,6 +37,8 @@ import {
   declinePartnerAsk,
   requestPartnerAsk,
   stampPartnerAskPost,
+  answerClosedPartnerAskYes,
+  cancelPartnerRound,
   sweepPartnerAsks,
 } from "../partner-ask";
 
@@ -83,6 +85,8 @@ beforeEach(() => {
   dbMock.partnerAsk.create.mockResolvedValue({ id: "ask1" });
   dbMock.partnerAsk.updateMany.mockResolvedValue({ count: 1 });
   dbMock.botJob.create.mockResolvedValue({ id: "job1" });
+  dbMock.sentNotification.create.mockResolvedValue({ id: "sn1" });
+  dbMock.sentNotification.findUnique.mockResolvedValue(null);
   noticeMock.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
   postableMock.isGroupPostable.mockResolvedValue(true);
   settingsMock.loadPartnerAskSettings.mockResolvedValue({ cutoffHours: 4 });
@@ -413,5 +417,175 @@ describe("sweepPartnerAsks", () => {
   it("never throws", async () => {
     dbMock.partnerAsk.findMany.mockRejectedValue(new Error("db down"));
     await expect(sweepPartnerAsks("fnf", NOW)).resolves.toEqual({ closed: 0 });
+  });
+});
+
+// Monday night vets, 2026-11-09 (match cmvzw1o9a000208l6pb9xe31n): two
+// partner clubs were asked for players. Sutton FC (standing approval) had
+// the ask posted and heard "filled" when the round filled. FNF (approval
+// each time) had only been asked in HQ; the ask closed "cancelled, filled"
+// and FNF HQ was told nothing, so the approval sat there unanswered for a
+// game that no longer needed anyone. Now the partner's ADMINS hear one line,
+// on the channel they were asked on, keyed once per ask; the players' group
+// never hears about an ask it never saw.
+describe("an ask waiting for the partner's approval closes: the partner's admins are told", () => {
+  const waiting = {
+    id: "ask1",
+    roundId: null,
+    places: 2,
+    status: "awaiting-approval",
+    askerOrgId: "fnf",
+    partnerOrgId: "sutton",
+    matchId: "m1",
+    postBy: new Date(KICKOFF.getTime() - 4 * H),
+    closesAt: KICKOFF,
+    postedAt: null,
+    postWaMessageId: null,
+    postJobId: null,
+    volunteerUserIds: [] as string[],
+    pickedUserIds: [] as string[],
+    partnership: { status: "active" },
+    match: MATCH,
+  };
+  const askedKey = { where: { key: "xask:ask1:approval-asked" }, select: { id: true } };
+  const toPartner = () => noticeMock.sendAdminNotice.mock.calls.map((c) => c[0]).filter((n) => n.orgId === "sutton");
+  const groupPosts = () => dbMock.botJob.create.mock.calls.map((c) => c[0].data).filter((d) => d.kind === "group");
+  beforeEach(() => {
+    dbMock.partnerAsk.findMany.mockResolvedValue([waiting]);
+    dbMock.partnerAsk.findUnique.mockResolvedValue(waiting);
+    // The partner's admins WERE asked to approve.
+    dbMock.sentNotification.findUnique.mockImplementation((q: { where: { key: string } }) =>
+      Promise.resolve(q.where.key === "xask:ask1:approval-asked" ? { id: "asked" } : null),
+    );
+  });
+
+  it("asking for approval is recorded, once per ask, only when the notice was queued", async () => {
+    await request();
+    expect(dbMock.sentNotification.create).toHaveBeenCalledWith({ data: { key: "xask:ask1:approval-asked", kind: "xask-approval-asked", matchId: "m1" } });
+    dbMock.sentNotification.create.mockClear();
+    noticeMock.sendAdminNotice.mockResolvedValue({ channel: "none", queued: 0 });
+    await request();
+    expect(dbMock.sentNotification.create).not.toHaveBeenCalled();
+  });
+
+  it("filled: one line to the partner's admins, keyed once, and nothing in its players' group", async () => {
+    dbMock.attendance.count.mockResolvedValue(18);
+    expect(await sweepPartnerAsks("fnf", NOW)).toEqual({ closed: 1 });
+    expect(dbMock.partnerAsk.updateMany).toHaveBeenCalledWith({ where: { id: "ask1", status: "awaiting-approval" }, data: { status: "cancelled", reason: "filled", closedAt: NOW } });
+    expect(dbMock.sentNotification.findUnique).toHaveBeenCalledWith(askedKey);
+    expect(dbMock.sentNotification.create).toHaveBeenCalledWith({ data: { key: "xask:ask1:approval-closed", kind: "xask-approval-closed", matchId: "m1" } });
+    expect(toPartner()).toHaveLength(1);
+    expect(toPartner()[0].text).toBe("✅ No longer needed: *FNF* have filled their places for Fri 16 Oct. Thanks, nothing to do.");
+    expect(groupPosts()).toEqual([]);
+  });
+
+  it("in the partner's HQ the line is logged as MatchTime's, so a YES quoting it is read in context", async () => {
+    dbMock.attendance.count.mockResolvedValue(18);
+    noticeMock.sendAdminNotice.mockResolvedValue({ channel: "admin-group", queued: 1, groupText: "x" });
+    await sweepPartnerAsks("fnf", NOW);
+    expect(logMock.recordMatchTimeLine).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: "sutton", text: "✅ No longer needed: *FNF* have filled their places for Fri 16 Oct. Thanks, nothing to do." }),
+    );
+  });
+
+  it("told once: a second close of the same ask (the claim is taken) tells nobody again", async () => {
+    dbMock.attendance.count.mockResolvedValue(18);
+    dbMock.sentNotification.create.mockRejectedValue(Object.assign(new Error("dup"), { code: "P2002" }));
+    await sweepPartnerAsks("fnf", NOW);
+    expect(toPartner()).toEqual([]);
+  });
+
+  it("never asked (the approval notice reached nobody): nothing to take back, nobody told", async () => {
+    dbMock.attendance.count.mockResolvedValue(18);
+    dbMock.sentNotification.findUnique.mockResolvedValue(null);
+    await sweepPartnerAsks("fnf", NOW);
+    expect(toPartner()).toEqual([]);
+    expect(dbMock.sentNotification.create).not.toHaveBeenCalled();
+  });
+
+  it("the approval ran out at the cut-off: the partner's admins hear it expired, the asking club is told as before", async () => {
+    await sweepPartnerAsks("fnf", waiting.postBy);
+    expect(toPartner().map((n) => n.text)).toEqual([
+      "No longer needed: the time to answer *FNF*'s ask for Fri 16 Oct has passed, so I didn't post it. Nothing to do.",
+    ]);
+    expect(noticeMock.sendAdminNotice).toHaveBeenCalledWith(expect.objectContaining({ orgId: "fnf", text: expect.stringContaining("didn't answer in time") }));
+    expect(groupPosts()).toEqual([]);
+  });
+
+  it("the game is off: the partner's admins hear the game is off", async () => {
+    dbMock.partnerAsk.findMany.mockResolvedValue([{ ...waiting, match: { ...MATCH, status: "CANCELLED" } }]);
+    dbMock.match.findUnique.mockResolvedValue({ ...MATCH, status: "CANCELLED" });
+    await sweepPartnerAsks("fnf", NOW);
+    expect(toPartner().map((n) => n.text)).toEqual(["No longer needed: *FNF*'s game on Fri 16 Oct is off. Nothing to do."]);
+    expect(groupPosts()).toEqual([]);
+  });
+
+  it("the pairing is no longer active: the partner's admins hear the ask is closed", async () => {
+    dbMock.partnerAsk.findMany.mockResolvedValue([{ ...waiting, partnership: { status: "paused" } }]);
+    await sweepPartnerAsks("sutton", NOW);
+    expect(toPartner().map((n) => n.text)).toEqual(["No longer needed: *FNF*'s ask for Fri 16 Oct is closed. Nothing to do."]);
+  });
+
+  it("the asking organiser cancels the round: the partner's admins hear it was cancelled", async () => {
+    await cancelPartnerRound({ askerOrgId: "fnf", matchId: "m1", roundKey: "ask1", userId: "admin1", now: NOW });
+    expect(toPartner().map((n) => n.text)).toEqual(["No longer needed: *FNF* cancelled their ask for Fri 16 Oct. Nothing to do."]);
+    expect(groupPosts()).toEqual([]);
+  });
+
+  it("a partner paused on MatchTime is told nothing (MatchTime is off in its groups)", async () => {
+    dbMock.attendance.count.mockResolvedValue(18);
+    dbMock.organisation.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve(where.id === "fnf" ? FNF : where.id === "sutton" ? { ...SUTTON, dormantAt: new Date("2026-10-01") } : null),
+    );
+    await sweepPartnerAsks("fnf", NOW);
+    expect(toPartner()).toEqual([]);
+  });
+
+  it("a POSTED ask's close is unchanged: the players' group's one line, and no second line to the admins", async () => {
+    const posted = { ...waiting, status: "posted", postedAt: NOW, postWaMessageId: "wamid-1", postJobId: "job1" };
+    dbMock.partnerAsk.findMany.mockResolvedValue([posted]);
+    dbMock.partnerAsk.findUnique.mockResolvedValue(posted);
+    dbMock.attendance.count.mockResolvedValue(18);
+    await sweepPartnerAsks("fnf", NOW);
+    expect(groupPosts()).toEqual([{ orgId: "sutton", kind: "group", text: "✅ *FNF*'s place is filled, thanks all 🙌" }]);
+    expect(toPartner()).toEqual([]);
+  });
+});
+
+// A late "@Match Time YES" to the old approval (2026-11-09): it posts
+// nothing anywhere, and says the ask is no longer needed.
+describe("answerClosedPartnerAskYes", () => {
+  const base = { id: "ask1", askerOrgId: "fnf", partnerOrgId: "sutton", matchId: "m1", postBy: new Date(KICKOFF.getTime() - 4 * H), postedAt: null };
+
+  it("an ask that closed before anyone approved it (cancelled or expired): one short line, nothing posted", async () => {
+    for (const status of ["cancelled", "expired"]) {
+      dbMock.partnerAsk.findUnique.mockResolvedValue({ ...base, status });
+      expect(await answerClosedPartnerAskYes({ orgId: "sutton", askId: "ask1", lang: "en", now: NOW })).toEqual({
+        outcome: "xask-no-longer-needed",
+        replyText: "No longer needed: *FNF*'s ask for Fri 16 Oct has closed, so I haven't posted anything. Nothing to do.",
+      });
+    }
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+    expect(dbMock.partnerAsk.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("still waiting but past its cut-off (the sweep has not run yet): the same line", async () => {
+    dbMock.partnerAsk.findUnique.mockResolvedValue({ ...base, status: "awaiting-approval" });
+    expect((await answerClosedPartnerAskYes({ orgId: "sutton", askId: "ask1", lang: "en", now: base.postBy }))?.outcome).toBe("xask-no-longer-needed");
+  });
+
+  it("an ask still open, approved and posted (even if closed since), declined, or another club's: not this answer's (null)", async () => {
+    for (const status of ["posted", "declined"]) {
+      dbMock.partnerAsk.findUnique.mockResolvedValue({ ...base, status });
+      expect(await answerClosedPartnerAskYes({ orgId: "sutton", askId: "ask1", lang: "en", now: NOW })).toBeNull();
+    }
+    for (const status of ["filled", "cancelled"]) {
+      dbMock.partnerAsk.findUnique.mockResolvedValue({ ...base, status, postedAt: NOW });
+      expect(await answerClosedPartnerAskYes({ orgId: "sutton", askId: "ask1", lang: "en", now: NOW })).toBeNull();
+    }
+    dbMock.partnerAsk.findUnique.mockResolvedValue({ ...base, status: "awaiting-approval" });
+    expect(await answerClosedPartnerAskYes({ orgId: "sutton", askId: "ask1", lang: "en", now: NOW })).toBeNull();
+    dbMock.partnerAsk.findUnique.mockResolvedValue({ ...base, status: "cancelled" });
+    expect(await answerClosedPartnerAskYes({ orgId: "other", askId: "ask1", lang: "en", now: NOW })).toBeNull();
   });
 });

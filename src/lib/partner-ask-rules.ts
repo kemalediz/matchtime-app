@@ -224,15 +224,39 @@ export function closedStatus(reason: CloseReason, status: string): PartnerAskSta
   return "cancelled";
 }
 
+/** Why an ask its admins were asked to approve closed, as they are told. */
+export type PartnerAdminsCloseLine = "filled" | "cancelled" | "off" | "expired" | "closed";
+
 /** Who hears about a close (D8): the partner group only about an ask it
- *  saw; the asking organisers when nobody came or it never got posted. */
+ *  saw; the asking organisers when nobody came or it never got posted.
+ *
+ *  THE PARTNER'S ADMINS (Monday night vets and FNF HQ, 2026-11-09): an ask
+ *  still waiting for their approval was put to them as a question, so when
+ *  it closes they hear one line saying it is no longer needed, and why.
+ *  Never its players' group, which never saw it. A waiting ask always
+ *  expires at its cut-off, before kickoff, so "kickoff" never closes one;
+ *  and a POSTED ask's close is the players' group's line, as before. */
 export function closeTells(
   reason: CloseReason,
   status: string,
   volunteers: number,
-): { partnerGroup: "filled" | "off" | "not-needed" | null; asker: "expired-approval" | "nobody" | null } {
+): {
+  partnerGroup: "filled" | "off" | "not-needed" | null;
+  partnerAdmins: PartnerAdminsCloseLine | null;
+  asker: "expired-approval" | "nobody" | null;
+} {
   const posted = status === "posted";
+  const waiting = status === "awaiting-approval";
+  const adminLine: Record<CloseReason, PartnerAdminsCloseLine | null> = {
+    filled: "filled",
+    "organiser-cancelled": "cancelled",
+    "match-cancelled": "off",
+    "approval-expired": "expired",
+    "partnership-inactive": "closed",
+    kickoff: null,
+  };
   return {
+    partnerAdmins: waiting ? adminLine[reason] : null,
     partnerGroup: !posted
       ? null
       : reason === "filled"

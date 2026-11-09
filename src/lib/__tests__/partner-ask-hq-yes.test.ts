@@ -6,7 +6,7 @@
  * ask, and a YES quoting the ask never approves the teams.
  */
 import { describe, expect, it } from "vitest";
-import { CONFIRM_WINDOW_MS, decideApproval, type PendingItem } from "../admin-group-confirm-rules";
+import { CONFIRM_WINDOW_MS, decideApproval, lateQuestionRef, type PendingItem } from "../admin-group-confirm-rules";
 import type { HqLogRow } from "../admin-group-log";
 import { organisersContext } from "../admin-group-context";
 import { parsePartnerAskRef, partnerAskRef } from "../partner-ask";
@@ -55,6 +55,28 @@ describe("the safe YES and a partner club's ask", () => {
     const busy = [...log, row({ fromMatchTime: false, text: "who's free friday?", createdAt: at(6) })];
     expect(decideApproval({ pending: [TEAMS, ASK], quoted: null, log: busy, now: at(7) })).toEqual({ kind: "ask-which", items: [TEAMS, ASK] });
     expect(decideApproval({ pending: [ASK], quoted: null, log, now: new Date(at(5).getTime() + CONFIRM_WINDOW_MS + 1) })).toEqual({ kind: "ask", item: ASK });
+  });
+
+  // 2026-11-09, Monday night vets and FNF HQ: the ask closed (the round
+  // filled) while its approval question still sat in HQ. A late YES to it
+  // names that question, so it can be answered "no longer needed" instead
+  // of "nothing waiting", or "Is that YES to <something else>?".
+  describe("a YES to a question that is no longer waiting (lateQuestionRef)", () => {
+    it("quoting the closed ask's question: its ref, whatever else waits", () => {
+      expect(lateQuestionRef({ pending: [TEAMS], quoted: { fromMatchTime: true, text: ASK_TEXT }, log })).toBe(ASK.ref);
+      expect(lateQuestionRef({ pending: [], quoted: { fromMatchTime: true, text: ASK_TEXT }, log })).toBe(ASK.ref);
+    });
+    it("quoting a question still waiting, an organiser, or nothing known: null", () => {
+      expect(lateQuestionRef({ pending: [TEAMS, ASK], quoted: { fromMatchTime: true, text: ASK_TEXT }, log })).toBeNull();
+      const chat = [...log, row({ waMessageId: "wa-1", fromMatchTime: false, text: "who's free friday?", createdAt: at(6) })];
+      expect(lateQuestionRef({ pending: [], quoted: { fromMatchTime: false, text: "who's free friday?" }, log: chat })).toBeNull();
+      expect(lateQuestionRef({ pending: [], quoted: { fromMatchTime: true, text: "something MatchTime never logged" }, log })).toBeNull();
+    });
+    it("not a reply: MatchTime's last question, only when nothing at all is waiting", () => {
+      expect(lateQuestionRef({ pending: [], quoted: null, log })).toBe(ASK.ref);
+      expect(lateQuestionRef({ pending: [TEAMS], quoted: null, log })).toBeNull();
+      expect(lateQuestionRef({ pending: [], quoted: null, log: [] })).toBeNull();
+    });
   });
 
   it("the router is told what is waiting, in a line of its own", () => {

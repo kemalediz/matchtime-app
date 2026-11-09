@@ -31,8 +31,8 @@
  */
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
-import { sendAdminNotice } from "./admin-channel";
-import { recordMatchTimeQuestion } from "./admin-group-log";
+import { sendAdminNotice, type AdminNoticeClient } from "./admin-channel";
+import { recordMatchTimeLine, recordMatchTimeQuestion } from "./admin-group-log";
 import { isBillingPaused } from "./club-billing-rules";
 import { isClubApproved } from "./club-approval-state";
 import { isClubSettingUp, SETUP_STAGE_SELECT } from "./club-setup-rules";
@@ -46,7 +46,7 @@ import { askDmLink, askDmPrefill, askRefCode } from "./partner-ask-ref";
 import { loadRoundFill, type RoundFill } from "./partner-ask-round";
 import { askPlacesOpen, guestPaygPence } from "./monthly-week-asks";
 import { guestFeePounds } from "./monthly-week-asks-rules";
-import { dayCommaTimeLabel } from "./i18n/dates";
+import { dayCommaTimeLabel, dayLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import {
   MISSING_POST_ID_AFTER_MS,
@@ -64,6 +64,7 @@ import {
   roundPartners,
   type AskRefusal,
   type CloseReason,
+  type PartnerAdminsCloseLine,
   type PartnerAskVia,
 } from "./partner-ask-rules";
 import type { PartnerAskOutcome } from "./partner-ask-words-rules";
@@ -77,6 +78,14 @@ export const parsePartnerAskRef = (ref: string): string | null => (ref.startsWit
 
 /** The approve page a partner organiser's link opens. */
 export const partnerAskPath = (askId: string): string => `/partner-asks/${askId}`;
+
+/** SentNotification keys (2026-11-09): the partner's admins WERE asked to
+ *  approve (written when the approval notice was queued), and were told the
+ *  ask closed (the once-per-ask claim for that line). */
+const approvalAskedKey = (askId: string): string => `xask:${askId}:approval-asked`;
+const approvalClosedKey = (askId: string): string => `xask:${askId}:approval-closed`;
+/** The HQ log's id prefix for that line: said, asks nothing. */
+const APPROVAL_CLOSED_LINE_PREFIX = "mt:said:xask-closed:";
 
 const LIVE_MATCH: Array<"UPCOMING" | "TEAMS_GENERATED" | "TEAMS_PUBLISHED"> = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"];
 
@@ -430,6 +439,16 @@ async function askPartnerToApprove(
     nextPath: partnerAskPath(askId),
     text: (link, audience) => s.xask_approval_notice({ ...facts, own, link, inGroup: audience === "group" }),
   });
+  // The partner's admins were asked (2026-11-09): when the ask closes before
+  // they answer, they are told it is no longer needed (`tellPartnerAdminsClosed`).
+  // Nobody queued (no admin to tell): nothing to take back later.
+  if (sent.queued > 0) {
+    try {
+      await db.sentNotification.create({ data: { key: approvalAskedKey(askId), kind: "xask-approval-asked", matchId: match.id } });
+    } catch (err) {
+      console.error(`[partner-ask] ${askId}: the approval notice was not recorded:`, err instanceof Error ? err.message : "failed");
+    }
+  }
   // In an admin group the notice is a question the safe-YES rule answers:
   // logged with its ask ref, so a YES that quotes it, or comes next, is
   // about this ask and nothing else.
@@ -835,7 +854,8 @@ export async function closeRoundIfDue(askId: string, now: Date = new Date()): Pr
  * An organiser CANCELS an open round by hand (Kemal, 2026-10-22): every
  * open ask in the round closes as cancelled. Each partner group that saw
  * the ask hears one "no longer needed" line, an ask still waiting for the
- * partner's approval simply closes, and the volunteers without a place are
+ * partner's approval closes with one line to the partner's admins who were
+ * asked (2026-11-09, `tellPartnerAdminsClosed`), and the volunteers without a place are
  * thanked and stood down. Owners and admins of the asking club only.
  */
 export async function cancelPartnerRound(args: {
@@ -890,12 +910,54 @@ async function tellClose(askId: string, reason: Parameters<typeof closeTells>[0]
           : ps.xask_off_line({ asker: a.asker.name, day: dayCommaTimeLabel(a.partner.language, a.match.date) });
     await db.botJob.create({ data: { orgId: a.partner.id, kind: "group", text } });
   }
+  if (tells.partnerAdmins && !partnerPaused) await tellPartnerAdminsClosed(a, tells.partnerAdmins, now);
   const as = t(a.asker.language);
   const day = dayCommaTimeLabel(a.asker.language, a.match.date);
   if (tells.asker === "expired-approval") {
     await sendAdminNotice({ orgId: a.asker.id, now, holdOvernight: false, text: as.xask_expired_notice_asker({ partner: a.partner.name, day }) });
   } else if (tells.asker === "nobody") {
     await sendAdminNotice({ orgId: a.asker.id, now, holdOvernight: false, text: as.xask_nobody_notice_asker({ partner: a.partner.name, day }) });
+  }
+}
+
+/**
+ * AN ASK THE PARTNER'S ADMINS WERE ASKED TO APPROVE HAS CLOSED (Monday night
+ * vets and FNF HQ, 2026-11-09: the round filled and FNF's HQ still had the
+ * approval question, unanswered, for a game that needed nobody). One line
+ * through the partner's admin channel, the one the approval went through
+ * (its HQ, or its admins by DM; a club that took the approval on the web
+ * only, with nobody queued, was never asked, so hears nothing). Never its
+ * players' group. Once per ask: a claim key, committed with the notice.
+ * Not quoting the approval message: the Pi sends a queued notice as a plain
+ * message, with no way to quote one. Never throws.
+ */
+async function tellPartnerAdminsClosed(
+  a: NonNullable<Awaited<ReturnType<typeof askAndMatch>>>,
+  line: PartnerAdminsCloseLine,
+  now: Date,
+): Promise<void> {
+  try {
+    const asked = await db.sentNotification.findUnique({ where: { key: approvalAskedKey(a.ask.id) }, select: { id: true } });
+    if (!asked) return;
+    const s = t(a.partner.language);
+    const p = { asker: a.asker.name, day: dayLabel(a.partner.language, a.match.date) };
+    const text = {
+      filled: s.xask_closed_hq_filled,
+      cancelled: s.xask_closed_hq_cancelled,
+      off: s.xask_closed_hq_off,
+      expired: s.xask_closed_hq_expired,
+      closed: s.xask_closed_hq_closed,
+    }[line](p);
+    const sent = await db.$transaction(async (tx) => {
+      await tx.sentNotification.create({ data: { key: approvalClosedKey(a.ask.id), kind: "xask-approval-closed", matchId: a.match.id } });
+      return sendAdminNotice({ orgId: a.partner.id, now, text, client: tx as unknown as AdminNoticeClient });
+    });
+    console.log(`[partner-ask] ${a.ask.id}: the partner's admins told it closed (${line}, ${sent.channel})`);
+    // In HQ, MatchTime's own line, so the router reads it in context.
+    if (sent.channel === "admin-group") await recordMatchTimeLine({ orgId: a.partner.id, idPrefix: APPROVAL_CLOSED_LINE_PREFIX, text, now });
+  } catch (err) {
+    if ((err as { code?: string })?.code === "P2002") return; // told already
+    console.error(`[partner-ask] ${a.ask.id}: the partner's admins were not told it closed:`, err instanceof Error ? err.message : "failed");
   }
 }
 
@@ -940,6 +1002,37 @@ export async function answerPartnerAskYes(args: { orgId: string; askId: string; 
   const r = await approvePartnerAsk({ askId: args.askId, userId: args.userId, now: args.now });
   if (r.ok) return { outcome: "xask-approved", replyText: s.xask_hq_approved({ asker: a.asker.name }) };
   return { outcome: `xask-${r.outcome}`, replyText: s.xask_hq_not_posted({ asker: a.asker.name }) };
+}
+
+/** The statuses an ask still waiting for approval closes into
+ *  (`closedStatus`): "filled" is only ever a POSTED ask's. */
+const CLOSED_UNANSWERED = new Set(["cancelled", "expired"]);
+
+/**
+ * A LATE YES in HQ to this club's approval question for an ask that closed
+ * before anyone approved it (2026-11-09): cancelled (the round filled, the
+ * asker cancelled, the game is off, the pairing ended) or expired, never
+ * posted, or still waiting but past its cut-off. Nothing is approved or
+ * posted anywhere (never in the players' group); the one line says it is no
+ * longer needed. Null for anything else (approved and posted, declined,
+ * still open, another club's): the safe-YES rules answer as before.
+ */
+export async function answerClosedPartnerAskYes(args: {
+  orgId: string;
+  askId: string;
+  lang: string | null;
+  now: Date;
+}): Promise<{ outcome: string; replyText: string } | null> {
+  const a = await askAndMatch(args.askId);
+  if (!a || a.ask.partnerOrgId !== args.orgId) return null;
+  const pastCutoff = a.ask.status === "awaiting-approval" && args.now.getTime() >= a.ask.postBy.getTime();
+  const closedUnposted = CLOSED_UNANSWERED.has(a.ask.status) && !a.ask.postedAt;
+  if (!closedUnposted && !pastCutoff) return null;
+  console.log(`[partner-ask] ${a.ask.id}: a late YES in HQ (${a.ask.status}); nothing posted`);
+  return {
+    outcome: "xask-no-longer-needed",
+    replyText: t(args.lang).xask_hq_no_longer_needed({ asker: a.asker.name, day: dayLabel(args.lang, a.match.date) }),
+  };
 }
 
 /** A refusal, in the asking club's words, for the button and the notices. */

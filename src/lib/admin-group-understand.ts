@@ -129,10 +129,10 @@ import { answerGraphicRequest } from "./admin-group-graphics";
 import { buildHqHelp, hqHelpGates } from "./admin-group-help";
 import { NOT_HERE_ID_PREFIX, hqLogSince, listAskRef, recordMatchTimeLine, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 import { hqCancelOrRestore } from "./match-cancel";
-import { WHICH_ASK_REF, decideApproval, quotedLogRow, type QuotedMessage } from "./admin-group-confirm-rules";
+import { WHICH_ASK_REF, decideApproval, lateQuestionRef, quotedLogRow, type QuotedMessage } from "./admin-group-confirm-rules";
 import { organisersContext, type PendingWithLabel } from "./admin-group-context";
 import { piMentionsBot } from "./interaction-contract";
-import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
+import { answerClosedPartnerAskYes, answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
 import { askPlayersGroup } from "./admin-group-ask-group";
 import { answerHqQuestion } from "./admin-group-question";
 import { joinAdminNames } from "./seed-nudge-rules";
@@ -971,6 +971,18 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     }
     switch (route) {
       case "approve": {
+        // A LATE YES to a partner club's ask that closed before anyone here
+        // approved it (FNF HQ, 2026-11-09: the asking club's round filled
+        // while the approval question still sat here). Decided by the
+        // question it answers (`lateQuestionRef`), never the words: nothing
+        // is approved or posted, and the one line says it is no longer
+        // needed. Not a reply while the score waits: the score reads it.
+        const late = lateQuestionRef({ pending, quoted, log });
+        const lateAskId = late && (quoted || !score.waiting) ? parsePartnerAskRef(late) : null;
+        if (lateAskId) {
+          const r = await answerClosedPartnerAskYes({ orgId: org.id, askId: lateAskId, lang, now });
+          if (r) return said(r.outcome, r.replyText);
+        }
         // Nothing is waiting for a YES, but the result is (2026-10-18 live
         // check: with "WAITING: ... who was Man of the Match" the router
         // called "MoM was Naim" and "Yellow won 7-4" approve). An approve
