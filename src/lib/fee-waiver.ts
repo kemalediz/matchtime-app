@@ -41,7 +41,8 @@ import { dayLabel } from "./i18n/dates";
 import { joinChoice, joinList } from "./i18n/text";
 import { resolvePerson } from "./pipeline/identity";
 import { identifyRefs, personPickerFor } from "./pipeline/identify-batch";
-import { refKey, type PersonPicker } from "./pipeline/who-is-who";
+import { refKey, type PersonPicker, type WhoRosterMember } from "./pipeline/who-is-who";
+import { loadClubWhoRoster } from "./club-who-roster";
 import { withAliases } from "./member-aliases";
 import type { Member } from "./pipeline/types";
 import { recordMatchTimeQuestion } from "./admin-group-log";
@@ -158,6 +159,8 @@ export interface HqFeeFreeInput {
   /** Who the names are (`pipeline/who-is-who.ts`). Tests inject it;
    *  absent, `personPickerFor`. */
   identify?: PersonPicker;
+  /** Tests: the club as who-is-who is shown it. Absent: loaded. */
+  clubRoster?: WhoRosterMember[];
 }
 
 interface HqReply {
@@ -232,32 +235,46 @@ export async function proposeFeeFreeInHq(input: HqFeeFreeInput): Promise<HqReply
   const already: string[] = [];
   const lines: string[] = [];
   const seen = new Set<string>();
-  // Who each name is: the model's pick from the squad and the collector
-  // (`pipeline/who-is-who.ts`), one call for the message. Never by spelling.
+  // Who each name is: who-is-who's pick from the WHOLE club, the squad
+  // marked (`club-who-roster.ts`), one call for the message, never by
+  // spelling: a namesake who is not on the game makes the name ambiguous
+  // and the organiser is asked (review of #574).
   const collector: Member | null =
     collectorId && collectorName ? { userId: collectorId, name: collectorName, isAdmin: false, hasPhone: false } : null;
+  const club = input.clubRoster ?? (await loadClubWhoRoster(input.orgId, roster, "on this game's list"));
+  const clubNameOf = new Map(club.map((m) => [m.userId, m.name || (m.aliases ?? [])[0] || "?"]));
+  if (collector && !clubNameOf.has(collector.userId)) {
+    club.push({ userId: collector.userId, name: collector.name });
+    clubNameOf.set(collector.userId, collector.name);
+  }
   const { people } = await identifyRefs({
     picker: input.identify ?? personPickerFor(),
     refs,
     body: input.body,
     author: input.senderName ?? null,
     senderUserId: input.senderUserId,
-    roster: collector ? [...roster, collector] : roster,
-    where: "HQ, the organisers' admin group",
+    roster: club,
+    where: "HQ, the club organisers' admin group",
   });
   for (const ref of refs) {
     const shown = ref.replace(/^@/, "");
-    // The collector is out of the roster on purpose: say why, not "not found".
     const pick = people.get(refKey(ref));
+    // The collector is out of the roster on purpose: say why, not "not found".
     if (collector && pick?.kind === "member" && pick.userId === collector.userId) {
       lines.push(s.hq_fee_free_collector({ name: collector.name }));
       continue;
     }
-    const r = resolvePerson(ref, roster, people);
-    if (r.kind === "ambiguous") {
-      lines.push(s.hq_fee_free_which({ ref: shown, choices: joinChoice(lang, r.candidates.map((c) => c.name)) }));
+    if (pick?.kind === "ambiguous" && pick.userIds.length > 1) {
+      lines.push(s.hq_fee_free_which({ ref: shown, choices: joinChoice(lang, pick.userIds.map((id) => clubNameOf.get(id) ?? "?")) }));
       continue;
     }
+    if (!pick || pick.kind === "unidentified" || pick.kind === "ambiguous") {
+      // No answer, or one member it was not sure of: say plainly that it
+      // could not tell who, never "Which X: ?".
+      lines.push(s.hq_who_unsure({ ref: shown }));
+      continue;
+    }
+    const r = resolvePerson(ref, roster, people);
     if (r.kind !== "resolved") {
       lines.push(s.hq_fee_free_not_in_squad({ name: shown, day }));
       continue;

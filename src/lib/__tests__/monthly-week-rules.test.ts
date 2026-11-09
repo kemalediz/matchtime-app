@@ -5,6 +5,9 @@
  */
 import { describe, it, expect } from "vitest";
 import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
+// The reader's member refs, by a test stand-in (review of #574): the
+// reconcile no longer looks names up in code.
+import { pasteShowsSameList, reconcileMonthPaste } from "./support/monthly-reader-refs";
 import { buildWeekListPost } from "../monthly-week-copy";
 import type { MonthlyList, MonthlyListEntry } from "../monthly-list";
 import {
@@ -17,10 +20,8 @@ import {
   decideSlotFor,
   matchMorningMessageSent,
   mayStagePaygFeeOnReply,
-  pasteShowsSameList,
   paygPoolOfferAllowed,
   planOpenPlaceOffers,
-  reconcileMonthPaste,
   selectPaygPool,
   weekListHash,
   type WeekMember,
@@ -532,7 +533,8 @@ describe("reconcileMonthPaste (plan 6.2, a running month)", () => {
   it("a name that fits two players is never guessed: reported", () => {
     const r = run(LIST.replace("5.", "5. Sam"), "u-alex");
     expect(r.actions).toEqual([]);
-    expect(r.notAdded).toEqual([{ name: "Sam", reason: "ambiguous" }]);
+    // The reader places a name two players have on nobody (review of #574).
+    expect(r.notAdded).toEqual([{ name: "Sam", reason: "unknown" }]);
   });
 
   it("with no month header, a list that is not mostly this month's players is not the month's list at all", () => {

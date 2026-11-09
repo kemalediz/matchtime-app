@@ -269,14 +269,19 @@ export function resolveMentionNames(args: {
  * `resolveMentionNames` with rung 2: the phone and stored-LID rungs first,
  * then ONE who-is-who call for every pushname they left, across all the
  * messages given, then the substitution. No call when every mention was
- * named by phone (the usual case under Baileys) or carries no pushname.
+ * named by phone (the usual case under Baileys), carries no pushname, or
+ * no picker is given (the free first pass, before the dedupe). Only a
+ * member the model is SURE of is written into the body as "@Name"; a
+ * name it could be several people for, or was not sure of, stays the raw
+ * "@<digits>" token (`resolvePerson` reads anything else as an
+ * ambiguity).
  */
 export async function nameMentions(args: {
   messages: Array<{ body: string; mentions?: string[]; mentionNames?: MentionNameInput[] }>;
   roster: MentionRosterMember[];
   aliases?: Array<{ alias: string; userId: string }>;
   knownLids?: KnownLid[];
-  picker: PersonPicker;
+  picker?: PersonPicker;
   where?: string;
 }): Promise<Array<{ body: string; outcomes: MentionOutcome[] }>> {
   const base = { roster: args.roster, aliases: args.aliases, knownLids: args.knownLids };
@@ -284,14 +289,12 @@ export async function nameMentions(args: {
   const asks = first
     .map((r, i) => ({ i, refs: [...new Set(r.outcomes.flatMap((o) => (!o.member && o.pushname ? [o.pushname] : [])))] }))
     .filter((x) => x.refs.length > 0);
-  if (asks.length === 0) return first;
+  if (asks.length === 0 || !args.picker) return first;
   const aliasesOf = new Map<string, string[]>();
   for (const a of args.aliases ?? []) aliasesOf.set(a.userId, [...(aliasesOf.get(a.userId) ?? []), a.alias]);
   const res = await args.picker({
     roster: args.roster.map((m) => ({ userId: m.userId, name: m.name, aliases: m.aliases ?? aliasesOf.get(m.userId) ?? [] })),
-    where:
-      `${args.where ?? "the club's WhatsApp group"}. Each name to identify is the WhatsApp profile name of a person ` +
-      `@mentioned in the message: they chose it themselves, so it may differ from the name the club knows them by`,
+    where: `${args.where ?? "the club's WhatsApp group"}. Each name to identify is the WhatsApp profile name of a person @mentioned in the message`,
     messages: asks.map(({ i, refs }) => ({ id: String(i), body: args.messages[i].body, author: null, refs })),
   });
   for (const d of res.degradations) console.warn(`[mentions] ${d}`);

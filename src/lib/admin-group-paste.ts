@@ -17,7 +17,7 @@
  * twice. They are applied with the same writers every other admin action
  * uses (`cancelAttendance`, `registerAttendance` with the admin's
  * authority) and new names with the same resolver as the players' group
- * (`resolveOrProvisionByName`): outs first, so the places are free, then
+ * (`provisionNewPerson`): outs first, so the places are free, then
  * the waiting list, then ins.
  *
  * WHAT the message is (the squad, a change, a copy of the teams, a swap,
@@ -38,7 +38,7 @@ import { loadOrganiserNames } from "./organiser-names";
 import { cancelAttendance, registerAttendance } from "./attendance";
 import type { AttendanceEventContext } from "./attendance-events";
 import { selectRegistrationMatch } from "./registration-match-select";
-import { resolveOrProvisionNames } from "./resolve-or-provision-name";
+import { provisionNewPerson } from "./resolve-or-provision-name";
 import { isDeliberateNameProvisionable } from "./resolve-sender";
 import { adminGroupSourceRef } from "./admin-added";
 import { formatLondon } from "./london-time";
@@ -56,12 +56,10 @@ import {
   buildSquadChangeReply,
   diffPastedSquad,
   gateSquadPaste,
-  matchPastedName,
   type SquadChangeKind,
   type SquadRef,
   type SquadStatus,
 } from "./admin-group-squad-rules";
-import { identifyRefs, personPickerFor } from "./pipeline/identify-batch";
 import type { PersonPicker } from "./pipeline/who-is-who";
 
 export interface PasteReply {
@@ -128,11 +126,8 @@ export interface HqSquadReadArgs {
   /** Said to MatchTime (an @tag, or a reply to its post): a fact the
    *  reader is told. */
   addressed?: boolean;
-  /** Tests: the model (null: none). Omitted: the real one, or the e2e stub. */
-  deps?: { model?: PipelineModel | null };
-  /** Who the names the reader could not place are (`who-is-who.ts`).
-   *  Tests inject it; absent, `personPickerFor`. */
-  identify?: PersonPicker;
+  /** Tests: the model (null: none) and who-is-who. Omitted: the real ones, or the e2e stubs. */
+  deps?: { model?: PipelineModel | null; identify?: PersonPicker };
 }
 
 /**
@@ -202,21 +197,10 @@ export async function proposeSquadPaste(args: HqSquadReadArgs & { read?: HqSquad
 
   const current = await currentSquad(match.id);
 
-  // The reader found no member for these lines: either nobody, or more
-  // than one member could be meant (its "" says both). One who-is-who
-  // call for the whole list tells them apart, so a member is never added
-  // twice under a new name and nothing is guessed by spelling (2026-11-09).
-  const unnamed = [...new Set(reading.lines.filter((l) => !l.userId).map((l) => l.name))];
-  const { people } = await identifyRefs({
-    picker: args.identify ?? personPickerFor(),
-    refs: unnamed,
-    body: args.text,
-    author: null,
-    senderUserId: args.senderUserId,
-    roster: ctx.members.map((m) => ({ userId: m.userId, name: m.name, aliases: m.aliases, isAdmin: false, hasPhone: false })),
-    where: "HQ, the organisers' admin group: a pasted squad list",
-  });
-
+  // Who each line is, is who-is-who's, placed when the list was read
+  // (`placeReaderNames`, one call for the list): a member, nobody (a new
+  // player), or unclear (several members, not sure, or no answer), which
+  // the preview names and leaves out. Nothing is matched by spelling.
   const unclear: string[] = [];
   // A person nobody in the club is, whose name cannot be a player's (a
   // phone number, say): said in the preview and left out, never promised
@@ -229,12 +213,10 @@ export async function proposeSquadPaste(args: HqSquadReadArgs & { read?: HqSquad
         out.push({ userId: line.userId });
         continue;
       }
-      const m = matchPastedName(line.name, people);
-      if (m.kind === "member") out.push({ userId: m.userId });
-      else if (m.kind === "new" && isDeliberateNameProvisionable(line.name)) out.push({ newName: line.name });
-      else if (m.kind === "new") {
-        if (!cannotAdd.includes(line.name)) cannotAdd.push(line.name);
-      } else if (!unclear.includes(line.name)) unclear.push(line.name);
+      if (line.unclear) {
+        if (!unclear.includes(line.name)) unclear.push(line.name);
+      } else if (isDeliberateNameProvisionable(line.name)) out.push({ newName: line.name });
+      else if (!cannotAdd.includes(line.name)) cannotAdd.push(line.name);
     }
     return out;
   };
@@ -405,13 +387,12 @@ export async function answerSquadPasteYes(args: {
   const changes: Array<{ kind: SquadChangeKind; userId: string | null; name: string | null }> = [];
   const failed: Array<{ userId: string | null; name: string | null }> = [];
 
-  // Every new name on the list in ONE who-is-who call (a former member is
-  // brought back, anyone else added), never one call per name.
-  const newNames = [...diff.add, ...diff.toBench].flatMap((r) => ("newName" in r ? [r.newName] : []));
-  const named = newNames.length ? await resolveOrProvisionNames(orgId, newNames, { adminConfirmed: true }) : new Map();
+  // A new name on the list is one who-is-who placed on nobody when the
+  // list was read, and the preview promised a new player: it is one, and
+  // nobody is asked again (review of #574).
   const resolve = async (r: SquadRef): Promise<{ userId: string; name: string | null } | null> => {
     if ("userId" in r) return { userId: r.userId, name: null };
-    const res = named.get(r.newName.trim()) ?? null;
+    const res = await provisionNewPerson(orgId, r.newName, { adminConfirmed: true });
     return res ? { userId: res.userId, name: res.name ?? r.newName } : null;
   };
 

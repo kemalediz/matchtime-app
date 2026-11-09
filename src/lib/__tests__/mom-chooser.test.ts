@@ -123,7 +123,7 @@ describe("the name is resolved against the match's players", () => {
     expect(resolveMomRef("everyone", players, people).kind).toBe("not-in-match");
   });
 
-  it("a name the model gave no answer for is asked about, never guessed", () => {
-    expect(resolveMomRef("Naim", players, new Map()).kind).toBe("ambiguous");
+  it("a name the model gave no answer for is said plainly: it could not tell who, never a guess", () => {
+    expect(resolveMomRef("Naim", players, new Map()).kind).toBe("unsure");
   });
 });

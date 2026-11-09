@@ -96,6 +96,8 @@ vi.mock("../db", () => ({
     organisation: { findUnique: async () => org },
     // The club's aliases (member-aliases.ts): none in these tests.
     userAlias: { findMany: async () => [] },
+    // The club as who-is-who is shown it: only the squad in these tests.
+    membership: { findMany: async () => [] },
     user: {
       findUnique: async ({ where }: { where: { id: string } }) => {
         const r = rows.find((x) => x.userId === where.id);
@@ -127,6 +129,7 @@ vi.mock("../admin-group-log", () => ({
 }));
 
 import { answerFeeProposalYes, feeProposalsAwaiting, proposeFeeFreeInHq, unwaiveMatchFee, waiveMatchFee } from "../fee-waiver";
+import type { PersonPick, PersonPicker, WhoRequest } from "../pipeline/who-is-who";
 
 // Saturday 17 Oct 2026, 10:00 London. Friday's game was last night; the
 // next is Tuesday (a club with two games a week).
@@ -249,6 +252,38 @@ describe("HQ: MatchTime proposes, an organiser's YES applies (item 2)", () => {
     expect(proposals).toHaveLength(1);
     expect(proposals[0]).toMatchObject({ matchId: "tue", userIds: ["u1"], undo: false, proposedByUserId: "org1", waMessageId: "wa1" });
     expect(questions).toEqual([{ askRef: `fee:${proposals[0].id}`, text: r.replyText }]);
+  });
+
+  // Review of #574: who a name is, is who-is-who's over the WHOLE club,
+  // the squad marked; a failed call is said plainly, never "Which Bilal: ?".
+  it("a failed who-is-who call: 'I couldn't work out who Bilal is', never 'Which Bilal: ?'", async () => {
+    rows = [att("tue", "u1", "Bilal Ahmed")];
+    const identify = async () => ({ picks: new Map(), usage: null, degradations: ["the call failed"] });
+    const r = await proposeFeeFreeInHq({ ...base, refs: ["Bilal"], identify });
+    expect(r.replyText).toBe("I couldn't work out who Bilal is. Please use their full name.");
+    expect(proposals).toHaveLength(0);
+  });
+
+  it("a namesake NOT on the game makes the name ambiguous: both named, nothing proposed", async () => {
+    rows = [att("tue", "u1", "Bilal Ahmed")];
+    const clubRoster = [
+      { userId: "u1", name: "Bilal Ahmed", note: "on this game's list" },
+      { userId: "u9", name: "Bilal Khan" },
+    ];
+    const seen: WhoRequest[] = [];
+    const identify: PersonPicker = async (req) => {
+      seen.push(req);
+      return {
+        picks: new Map([[req.messages[0].id, new Map<string, PersonPick>([["Bilal", { kind: "ambiguous", userIds: ["u1", "u9"] }]])]]),
+        usage: null,
+        degradations: [],
+      };
+    };
+    const r = await proposeFeeFreeInHq({ ...base, refs: ["Bilal"], identify, clubRoster });
+    // The whole club (and the money collector) is shown, the squad marked.
+    expect(seen[0].roster.map((m) => m.userId)).toEqual(["u1", "u9", "col"]);
+    expect(r.replyText).toContain("Which Bilal: Bilal Ahmed or Bilal Khan?");
+    expect(proposals).toHaveLength(0);
   });
 
   it("a named day picks that game (item 3): 'last night' is Friday's", async () => {

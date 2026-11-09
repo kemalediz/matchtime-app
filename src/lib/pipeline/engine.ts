@@ -449,6 +449,7 @@ export function decide(input: EngineInput): EngineResult {
         ? { userId: m.senderUserId, name: m.senderName ?? nameOf(w, m.senderUserId) }
         : null,
       teamsExist: state.teams.length > 0,
+      people: m.people,
     });
   };
   messages.forEach((m, i) => {
@@ -1041,6 +1042,19 @@ export function decide(input: EngineInput): EngineResult {
         if (c.tense === "past" || c.tense === "hypothetical") {
           out.reasons.push(`claim is ${c.tense}, never a registration`);
           continue;
+        }
+        // "X FOR Y" WITH Y UNCLEAR IS HELD WHOLE (review of #574). When the
+        // player X takes the place of cannot be placed on one member, X is
+        // not added either: adding him and leaving Y would grow the squad.
+        // The sender hears the usual ambiguity (a degradation), and can say
+        // it again with Y's full name.
+        const replaced = (c.replaces ?? "").trim();
+        if (replaced && !isSelfRef(replaced)) {
+          const ry = resolvePerson(replaced, w.roster, msg.people);
+          if (ry.kind === "ambiguous") {
+            degrade(`"${c.personRef || "the sender"}" for "${replaced}": who "${replaced}" is is not clear; the whole replacement is held`);
+            continue;
+          }
         }
         if (holdsAsUnsureTeamSheetOut(c, msg, state, replacement?.outClaim ?? null)) {
           out.reasons.push(

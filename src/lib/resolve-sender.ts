@@ -40,6 +40,9 @@
  */
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
+import { personPickerFor } from "@/lib/pipeline/identify-batch";
+import { refKey } from "@/lib/person-ref-key";
+import type { PersonPicker } from "@/lib/pipeline/who-is-who";
 
 /** The outcome of resolution. `userId: null` means nobody was found. */
 export type ResolvedSender = {
@@ -51,8 +54,9 @@ export type ResolvedSender = {
 /**
  * The only two fields resolution reads off an inbound message.
  *
- * Deliberately NOT the route's full `InboundMessage`: a resolver that can
- * see the body is a resolver somebody will eventually make read the body.
+ * Deliberately NOT the route's full `InboundMessage`: code here never
+ * reads the body. Only who-is-who is shown it, as context for the model
+ * (`SenderToResolve.body`).
  */
 export interface SenderIdentity {
   /** Bare digits, or "" for an @lid sender / an unreadable author JID. */
@@ -104,161 +108,150 @@ export function usableWhatsAppName(raw: string | null | undefined): string | nul
   return name;
 }
 
-export async function resolveSender(orgId: string, msg: SenderIdentity): Promise<ResolvedSender> {
-  // Phone first (most accurate). Accept raw digits — prepend '+' if the
-  // bot didn't. @lid senders arrive with empty phone: that's the signal
-  // to try a name-based fallback.
-  if (msg.authorPhone) {
-    const raw = msg.authorPhone.startsWith("+") ? msg.authorPhone : `+${msg.authorPhone}`;
-    const norm = normalisePhone(raw);
-    if (norm) {
-      const user = await db.user.findUnique({
-        where: { phoneNumber: norm },
-        select: { id: true, name: true },
-      });
-      if (user && !user.name) {
-        // A nameless placeholder (added to the group by phone, 2026-09-30):
-        // its first post carries the WhatsApp name, so use it. Only when
-        // the row has NO name (`name: null` in the where, so a name an
-        // admin typed in the meantime always wins), and never a number.
-        const pushname = usableWhatsAppName(msg.authorName);
-        if (pushname) {
-          try {
-            const res = await db.user.updateMany({ where: { id: user.id, name: null }, data: { name: pushname } });
-            if (res.count > 0) {
-              console.log(`[resolve-sender] named placeholder ${user.id} "${pushname}" from their first post`);
-              return { userId: user.id, name: pushname, phone: norm };
-            }
-          } catch (err) {
-            console.error(`[resolve-sender] could not name placeholder ${user.id}:`, err);
-          }
+/** The phone half of resolution: the member by phone (naming a nameless
+ *  placeholder from its first post), or null when the phone finds nobody
+ *  or there is none. */
+async function resolveSenderByPhone(msg: SenderIdentity): Promise<ResolvedSender | null> {
+  if (!msg.authorPhone) return null;
+  // Accept raw digits: prepend '+' if the bot didn't.
+  const raw = msg.authorPhone.startsWith("+") ? msg.authorPhone : `+${msg.authorPhone}`;
+  const norm = normalisePhone(raw);
+  if (!norm) return null;
+  const user = await db.user.findUnique({
+    where: { phoneNumber: norm },
+    select: { id: true, name: true },
+  });
+  if (user && !user.name) {
+    // A nameless placeholder (added to the group by phone, 2026-09-30):
+    // its first post carries the WhatsApp name, so use it. Only when
+    // the row has NO name (`name: null` in the where, so a name an
+    // admin typed in the meantime always wins), and never a number.
+    const pushname = usableWhatsAppName(msg.authorName);
+    if (pushname) {
+      try {
+        const res = await db.user.updateMany({ where: { id: user.id, name: null }, data: { name: pushname } });
+        if (res.count > 0) {
+          console.log(`[resolve-sender] named placeholder ${user.id} "${pushname}" from their first post`);
+          return { userId: user.id, name: pushname, phone: norm };
         }
+      } catch (err) {
+        console.error(`[resolve-sender] could not name placeholder ${user.id}:`, err);
       }
-      if (user) return { userId: user.id, name: user.name, phone: norm };
     }
   }
-  if (msg.authorName && msg.authorName.trim().length >= 2) {
-    // Fuzzy name match — the sender's WhatsApp display name ("Kemal
-    // Ediz") often doesn't exactly match the DB record ("Kemal"), so
-    // we:
-    //   1. First try exact case-insensitive equals (the historic rule)
-    //   2. Fall back to first-token match on either side — DB first
-    //      name vs pushname first name, either direction
-    // Both variants still require a UNIQUE match in the org to avoid
-    // guessing between two players with the same first name.
-    const pushname = msg.authorName.trim();
-    // Include soft-removed memberships in the candidate set: someone
-    // posting in the group is clearly back, so a unique match against a
-    // soft-removed member should restore them rather than provision a
-    // new ghost user. We track leftAt status per-candidate to apply the
-    // restore on the chosen match.
-    const candidates = await db.membership.findMany({
-      where: { orgId },
-      include: { user: { select: { id: true, name: true } } },
-    });
-    const norm = (s: string) =>
-      s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const pushTokens = norm(pushname).split(/\s+/).filter(Boolean);
-    const pushFirst = pushTokens[0] ?? "";
+  return user ? { userId: user.id, name: user.name, phone: norm } : null;
+}
 
-    const equalsMatches = candidates.filter(
-      (c) => c.user.name && norm(c.user.name) === norm(pushname),
-    );
-    if (equalsMatches.length === 1) {
-      const m = equalsMatches[0];
-      if (m.leftAt) await restoreMembership(m.id, m.user.name);
-      return { userId: m.user.id, name: m.user.name, phone: null };
-    }
+/** A message whose sender is to be resolved. `body` is shown to
+ *  who-is-who only, for context; code never reads it. */
+export interface SenderToResolve extends SenderIdentity {
+  waMessageId: string;
+  body?: string;
+}
 
-    const firstNameMatches = candidates.filter((c) => {
-      if (!c.user.name) return false;
-      const dbTokens = norm(c.user.name).split(/\s+/).filter(Boolean);
-      const dbFirst = dbTokens[0] ?? "";
-      return (
-        dbFirst === pushFirst ||
-        // Relaxed prefix match: as long as one side is ≥3 chars and the
-        // other is ≥2, accept a startsWith. Handles short pushnames like
-        // "ba" → "Baki" and nicknames like "Kara" → "Karahan". The
-        // uniqueness check above still blocks ambiguous cases ("Ed" when
-        // both "Ediz" and "Edward" are in the org).
-        ((dbFirst.length >= 3 && pushFirst.length >= 2 && dbFirst.startsWith(pushFirst)) ||
-          (pushFirst.length >= 3 && dbFirst.length >= 2 && pushFirst.startsWith(dbFirst)))
-      );
-    });
-    if (firstNameMatches.length === 1) {
-      const m = firstNameMatches[0];
-      if (m.leftAt) await restoreMembership(m.id, m.user.name);
-      return { userId: m.user.id, name: m.user.name, phone: null };
+/**
+ * WHO SENT EACH MESSAGE, for a batch.
+ *
+ * PHONE FIRST, unchanged: a phone (or a LID the Pi turned into one) is
+ * the person.
+ *
+ * WITHOUT A PHONE, THE MODEL (2026-11-09, review of #574). This used to
+ * match the WhatsApp name by spelling: equal, then a first name, then a
+ * first-name PREFIX ("David" would be the member Davide De Sousa, and a
+ * non-member David saying "I'm out" would drop Davide), then an alias.
+ * Now every such sender's WhatsApp name goes to who-is-who in ONE call for
+ * the batch, with the club's members (former members marked, aliases
+ * shown) and the message: a member it is sure of is the sender (a former
+ * one brought back); nobody is a new provisional member, as before; and a
+ * name it cannot place (several members, not sure, a failed call) is an
+ * UNKNOWN sender, provisioned as nobody: failing closed. Their message
+ * then writes nothing, which is the existing path for an unresolved
+ * sender (the "who are you?" nudge), rather than a guess that drops or
+ * registers the wrong member. A model call rather than failing closed for
+ * every phoneless sender, because under Baileys a sender whose number the
+ * Pi could not learn is routine, and refusing all of them would silence
+ * real members who say IN.
+ */
+export async function resolveSenders(
+  orgId: string,
+  msgs: SenderToResolve[],
+  opts: { identify?: PersonPicker } = {},
+): Promise<Map<string, ResolvedSender>> {
+  const out = new Map<string, ResolvedSender>();
+  const ask: Array<{ msg: SenderToResolve; pushname: string }> = [];
+  for (const msg of msgs) {
+    const byPhone = await resolveSenderByPhone(msg);
+    if (byPhone) {
+      out.set(msg.waMessageId, byPhone);
+      continue;
     }
-    // Multiple first-name matches (e.g. two Ibrahims) — try the alias
-    // table FIRST before giving up. UserAlias is admin-curated
-    // (populated by mergePlayers) and unique per (orgId, alias), so an
-    // alias hit disambiguates cleanly regardless of how many fuzzy
-    // candidates also match. Kemal flagged 2026-05-15: Baki's "ba"
-    // pushname matches both Baki and Başar by fuzzy, so the resolver
-    // returned null — but UserAlias["ba"] → Baki was already present
-    // from an earlier merge, and it should have taken precedence.
-    if (firstNameMatches.length > 1) {
-      const aliasKeyEarly = norm(pushname);
-      if (aliasKeyEarly.length >= 2) {
-        const alias = await db.userAlias.findUnique({
-          where: { orgId_alias: { orgId, alias: aliasKeyEarly } },
-        });
-        if (alias) {
-          const m = candidates.find((c) => c.userId === alias.userId);
-          if (m) {
-            if (m.leftAt) await restoreMembership(m.id, m.user.name);
-            console.log(
-              `[analyze] ambiguous fuzzy "${pushname}" resolved via UserAlias → ${m.user.name} (${alias.userId})`,
-            );
-            return { userId: m.user.id, name: m.user.name, phone: null };
-          }
-        }
-      }
+    const pushname = msg.authorName?.trim() ?? "";
+    if (pushname.length >= 2 && !isRawDigitName(pushname)) ask.push({ msg, pushname });
+    else out.set(msg.waMessageId, await provisionOrNobody(orgId, msg));
+  }
+  if (ask.length === 0) return out;
+
+  const [memberships, aliases] = await Promise.all([
+    db.membership.findMany({ where: { orgId }, include: { user: { select: { id: true, name: true } } } }),
+    db.userAlias.findMany({ where: { orgId }, select: { userId: true, alias: true } }),
+  ]);
+  const byUser = new Map((memberships ?? []).filter((m) => !!m.user).map((m) => [m.user.id, m]));
+  const picker = opts.identify ?? personPickerFor();
+  const res = await picker({
+    roster: [...byUser.values()].map((m) => ({
+      userId: m.user.id,
+      name: m.user.name,
+      aliases: (aliases ?? []).filter((a) => a.userId === m.user.id).map((a) => a.alias),
+      former: !!m.leftAt,
+    })),
+    where:
+      "the club's players' group. Each name to identify is the WhatsApp name of the person who SENT that message, " +
+      "a name they chose for themselves; it names the sender, not anybody in the text",
+    messages: ask.map(({ msg, pushname }) => ({ id: msg.waMessageId, body: msg.body ?? "", author: null, refs: [pushname] })),
+  });
+  for (const d of res.degradations) console.warn(`[resolve-sender] ${d}`);
+
+  for (const { msg, pushname } of ask) {
+    const pick = res.picks.get(msg.waMessageId)?.get(refKey(pushname));
+    const m = pick?.kind === "member" ? byUser.get(pick.userId) : undefined;
+    if (m) {
+      if (m.leftAt) await restoreMembership(m.id, m.user.name);
+      out.set(msg.waMessageId, { userId: m.user.id, name: m.user.name, phone: null });
+    } else if (pick?.kind === "none") {
+      out.set(msg.waMessageId, await provisionOrNobody(orgId, msg));
+    } else {
       console.warn(
-        `[analyze] ambiguous fuzzy match for "${pushname}" in org ${orgId} — ${firstNameMatches.length} candidates: ${firstNameMatches
-          .map((m) => m.user.name)
-          .join(", ")} (no alias to disambiguate)`,
+        `[resolve-sender] the WhatsApp name of a phoneless sender in org ${orgId} could not be placed (${pick ? pick.kind : "no answer"}): an unknown sender`,
       );
-      return { userId: null, name: pushname, phone: null };
-    }
-
-    // Alias lookup. Admin merges populate UserAlias rows (Nunu →
-    // Elnur Mammadov, etc.) so the next time the same pushname
-    // arrives we resolve to the real user instead of creating
-    // another ghost. Letter-overlap-based fuzzy could never bridge
-    // "Nunu" → "Elnur" — admin curation is the right tool for
-    // nicknames + privacy-mode pushnames.
-    const aliasKey = norm(pushname);
-    if (aliasKey.length >= 2) {
-      const alias = await db.userAlias.findUnique({
-        where: { orgId_alias: { orgId, alias: aliasKey } },
-      });
-      if (alias) {
-        const m = candidates.find((c) => c.userId === alias.userId);
-        if (m) {
-          if (m.leftAt) await restoreMembership(m.id, m.user.name);
-          return { userId: m.user.id, name: m.user.name, phone: null };
-        }
-      }
+      out.set(msg.waMessageId, { userId: null, name: pushname, phone: null });
     }
   }
-  // Auto-create a provisional member when we couldn't match.
-  //   Rationale: the message came from the org's monitored WhatsApp
-  //   group, so by construction the sender is in the roster. Silently
-  //   dropping their IN/OUT is a worse failure mode than occasionally
-  //   creating a duplicate that an admin has to merge. Admin dashboard
-  //   surfaces provisional members (via Membership.provisionallyAddedAt)
-  //   so they can set phone/position/rating or remove them.
+  return out;
+}
+
+/** One sender: `resolveSenders` for a batch of one. */
+export async function resolveSender(
+  orgId: string,
+  msg: SenderIdentity & { body?: string },
+  opts: { identify?: PersonPicker } = {},
+): Promise<ResolvedSender> {
+  return (await resolveSenders(orgId, [{ ...msg, waMessageId: "sender" }], opts)).get("sender")!;
+}
+
+/**
+ * Nobody in the club: a provisional member, as it always was. The message
+ * came from the club's monitored group, so by construction the sender is
+ * in the roster; silently dropping their IN or OUT is worse than a
+ * duplicate an admin merges (`Membership.provisionallyAddedAt` shows it).
+ */
+async function provisionOrNobody(orgId: string, msg: SenderIdentity): Promise<ResolvedSender> {
   const provisional = await createProvisionalMember(orgId, msg);
   if (provisional) return provisional;
   // Never surface a raw numeric id as a display name — downstream
   // replies address the sender by this field.
-  const fallbackName =
-    msg.authorName && !isRawDigitName(msg.authorName) ? msg.authorName : null;
+  const fallbackName = msg.authorName && !isRawDigitName(msg.authorName) ? msg.authorName : null;
   return { userId: null, name: fallbackName, phone: null };
 }
-
 export async function createProvisionalMember(
   orgId: string,
   msg: SenderIdentity,
@@ -298,11 +291,11 @@ export async function createProvisionalByName(
   const name = trimmed && isRawDigitName(trimmed) ? "New player" : trimmed;
   // Require ≥3 chars unless deliberate: 2-char pushnames like "ba" are
   // almost always truncations of a real name we already have (e.g. "Baki
-  // Sutton") and provisioning them creates duplicate ghost users. The
-  // relaxed fuzzy matcher (see firstNameMatches) now resolves short
-  // pushnames to existing members; provisioning is reserved for genuinely
-  // new names. An admin's pasted "Mo" is not a truncation: it is checked
-  // above instead.
+  // Sutton") and provisioning them creates duplicate ghost users. Who-is-who
+  // places a short WhatsApp name on a member when it is sure
+  // (`resolveSenders`); provisioning is reserved for genuinely new names.
+  // An admin's pasted "Mo" is not a truncation: it is checked above
+  // instead.
   if (!name || (!opts.deliberate && name.length < 3)) return null;
   // Skip obvious non-player authors (bot itself, group admin system messages).
   const blocked = /^(match time|matchtime|whatsapp|system)$/i;

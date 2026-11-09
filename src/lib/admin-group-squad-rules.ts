@@ -8,8 +8,8 @@
  * This module holds what needs no database and no model:
  *
  *   - which router routes the admin group acts on (`ADMIN_GROUP_SQUAD_ROUTES`);
- *   - placing a name the HQ squad reader read on a club member
- *     (`matchPastedName`), the fact gates on a pasted list
+ *   - the fact gates on a pasted list (who each name is, is who-is-who's,
+ *     placed when the list is read: `hq-squad-reader.ts` `placeReaderNames`)
  *     (`gateSquadPaste`) and diffing it against the squad
  *     (`diffPastedSquad`). The list itself is read by a model
  *     (`hq-squad-reader.ts`), never by code;
@@ -24,8 +24,6 @@ import { t } from "./i18n/t";
 import { buildBenchPickHint, buildSquadCountLine } from "./squad-count-line";
 import type { AttendanceFacts, Claim, Route } from "./pipeline/types";
 import type { HqSquadChange } from "./hq-squad-reader-prompt";
-import { refKey } from "./person-ref-key";
-import type { PersonPicks } from "./pipeline/who-is-who";
 
 /**
  * The router routes acted on in the admin group: attendance about the
@@ -63,25 +61,8 @@ export interface PasteMember {
   aliases: string[];
 }
 
-export type NameMatch = { kind: "member"; userId: string } | { kind: "new" } | { kind: "ambiguous" };
-
 function fold(s: string): string {
   return normaliseName(s).replace(/ı/g, "i").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-}
-
-/**
- * Which member a pasted name means: the model's pick for it (`people`,
- * from who-is-who over the list and the club's members, 2026-11-09),
- * never a match by spelling. A member it is sure of is that member;
- * nobody in the club is a new player; several possible members, one it
- * was not sure of, or no answer at all is ambiguous, and the list leaves
- * that line out rather than guess.
- */
-export function matchPastedName(raw: string, people: PersonPicks | undefined): NameMatch {
-  const pick = people?.get(refKey(typeof raw === "string" ? raw : ""));
-  if (pick?.kind === "member") return { kind: "member", userId: pick.userId };
-  if (pick?.kind === "none") return { kind: "new" };
-  return { kind: "ambiguous" };
 }
 
 // ── The diff ──────────────────────────────────────────────────────────
@@ -315,14 +296,15 @@ export function buildPasteNoMatchReply(p: { lang: string | null | undefined; nex
  * The HQ squad reader's change as the facts the shared attendance engine
  * decides from (its `presetFacts`: no extractor is asked). Each person is
  * named, present, definite and the sender's own word: the reader lists
- * only instructions. A member is named by their roster name, so the
- * engine's resolver finds exactly them; a new person by the name written.
- * The sender's own place is theirs (`subject: "sender"`).
+ * only instructions. Each person is quoted as the message wrote them, and
+ * who they are is who-is-who's pick, handed to the engine with the facts
+ * (`admin-group-squad-change.ts` `hqChangePeople`). The sender's own place
+ * is theirs (`subject: "sender"`).
  */
 export function hqChangeFacts(changes: readonly HqSquadChange[], senderUserId: string): AttendanceFacts {
   const claims: Claim[] = changes.map((c) => ({
     subject: c.userId !== null && c.userId === senderUserId ? "sender" : "other",
-    personRef: c.name,
+    personRef: c.written || c.name,
     personNamed: true,
     polarity: c.to,
     contingent: false,

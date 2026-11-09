@@ -227,7 +227,12 @@ export interface SheetPlayer {
   aliases: string[];
 }
 
-export type NameResolution = { kind: "one"; userId: string } | { kind: "ambiguous"; names: string[] } | { kind: "unknown" };
+export type NameResolution =
+  | { kind: "one"; userId: string }
+  | { kind: "ambiguous"; names: string[] }
+  /** Nobody could say who (no answer, or one member it was not sure of). */
+  | { kind: "unsure" }
+  | { kind: "unknown" };
 
 /**
  * Which player on the teams a typed name means: the model's pick for it
@@ -237,17 +242,24 @@ export type NameResolution = { kind: "one"; userId: string } | { kind: "ambiguou
  * here. Several possible players, or a pick the model was not sure of,
  * is ambiguous and named back.
  */
-export function resolveSheetName(raw: string, players: SheetPlayer[], people: PersonPicks | undefined): NameResolution {
-  // No answer at all (a failed call) is "not found": a name it cannot
-  // place is never guessed, and the line asks for it again.
+export function resolveSheetName(
+  raw: string,
+  players: SheetPlayer[],
+  people: PersonPicks | undefined,
+  /** Every club member's name: who-is-who is shown the whole club, the
+   *  players marked, so an ambiguity can name a namesake not playing. */
+  clubNameOf: ReadonlyMap<string, string> = new Map(),
+): NameResolution {
   const pick = people?.get(refKey(raw));
-  const nameOf = new Map(players.map((p) => [p.userId, p.name]));
-  if (pick?.kind === "member") return nameOf.has(pick.userId) ? { kind: "one", userId: pick.userId } : { kind: "unknown" };
-  if (pick?.kind === "ambiguous") {
-    const ids = pick.userIds.filter((id) => nameOf.has(id));
-    if (ids.length === 0) return { kind: "unknown" };
-    return { kind: "ambiguous", names: ids.map((id) => nameOf.get(id) ?? "?") };
+  const nameOf = new Map([...clubNameOf, ...players.map((p) => [p.userId, p.name] as const)]);
+  const onSheet = new Set(players.map((p) => p.userId));
+  if (pick?.kind === "member") return onSheet.has(pick.userId) ? { kind: "one", userId: pick.userId } : { kind: "unknown" };
+  if (pick?.kind === "ambiguous" && pick.userIds.length > 1) {
+    return { kind: "ambiguous", names: pick.userIds.map((id) => nameOf.get(id) ?? "?") };
   }
+  // No answer at all (a failed call), or one member it was not sure of:
+  // never guessed, and the line says plainly it could not tell who.
+  if (!pick || pick.kind === "unidentified" || pick.kind === "ambiguous") return { kind: "unsure" };
   return { kind: "unknown" };
 }
 
@@ -260,11 +272,16 @@ export type SwapResolution =
  * each, and on two different players. When none does, the problems of
  * the reading that came closest (fewest problems, then the first).
  */
-export function resolveSwap(pairs: Array<[string, string]>, players: SheetPlayer[], people: PersonPicks | undefined): SwapResolution {
+export function resolveSwap(
+  pairs: Array<[string, string]>,
+  players: SheetPlayer[],
+  people: PersonPicks | undefined,
+  clubNameOf: ReadonlyMap<string, string> = new Map(),
+): SwapResolution {
   let best: Array<{ raw: string; res: NameResolution }> | null = null;
   for (const [ra, rb] of pairs) {
-    const a = resolveSheetName(ra, players, people);
-    const b = resolveSheetName(rb, players, people);
+    const a = resolveSheetName(ra, players, people, clubNameOf);
+    const b = resolveSheetName(rb, players, people, clubNameOf);
     if (a.kind === "one" && b.kind === "one" && a.userId !== b.userId) return { kind: "ok", a: a.userId, b: b.userId };
     const problems = [
       ...(a.kind === "one" ? [] : [{ raw: ra, res: a }]),
@@ -481,7 +498,9 @@ export function buildNameProblems(
     .map((p) =>
       p.res.kind === "ambiguous"
         ? s.tp_name_ambiguous({ name: p.raw, names: p.res.names.join(", ") })
-        : where === "squad"
+        : p.res.kind === "unsure"
+          ? s.hq_who_unsure({ ref: p.raw })
+          : where === "squad"
           ? s.tp_name_unknown_squad({ name: p.raw })
           : s.tp_name_unknown({ name: p.raw }),
     )

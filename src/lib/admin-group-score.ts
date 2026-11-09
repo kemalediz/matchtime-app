@@ -60,6 +60,7 @@ import type { ScoreWaiting } from "./admin-group-context";
 import { organisersPickMom } from "./mom-chooser";
 import { momAskRef, momPickDeps, resolveMomRef, type MomPickDeps } from "./mom-pick";
 import { identifyRefs, personPickerFor } from "./pipeline/identify-batch";
+import { loadClubWhoRoster } from "./club-who-roster";
 import { joinChoice } from "./i18n/text";
 
 /** What `recordMatchTimeQuestion` files a score question under. */
@@ -229,22 +230,28 @@ async function hqMom(
   const mvpLabel = await a.mom.mvpLabel(matchId);
   if (!a.organiser || !a.senderUserId) return { outcome: "hq-mom-organisers-only", replyText: s.hq_mom_organisers_only({ mvpLabel }) };
   const players = await a.mom.players(matchId);
-  // Who the name is: the model's pick from the match's players.
+  // Who the name is: who-is-who's pick from the WHOLE club, the match's
+  // players marked, so a namesake who did not play makes it ambiguous
+  // (review of #574).
+  const club = a.mom.club ? await a.mom.club(matchId, players) : await loadClubWhoRoster(a.orgId, players, "played this game");
   const { people } = await identifyRefs({
     picker: a.mom.identify ?? personPickerFor({ ...(a.deps?.model ? { model: a.deps.model } : {}) }),
     refs: [a.momRef],
     body: a.body,
     author: a.senderName,
     senderUserId: a.senderUserId,
-    roster: players,
-    where: "HQ, the organisers' admin group",
+    roster: club,
+    where: "HQ, the club organisers' admin group",
   });
-  const r = resolveMomRef(a.momRef, players, people);
+  const clubNameOf = new Map(club.map((m) => [m.userId, m.name || (m.aliases ?? [])[0] || "?"]));
+  const r = resolveMomRef(a.momRef, players, people, clubNameOf);
   if (r.kind !== "resolved") {
     const text =
       r.kind === "ambiguous"
         ? s.hq_mom_which({ mvpLabel, ref: r.ref, choices: joinChoice(lang, r.names) })
-        : s.hq_mom_not_in_match({ mvpLabel, ref: r.ref });
+        : r.kind === "unsure"
+          ? s.hq_who_unsure({ ref: r.ref })
+          : s.hq_mom_not_in_match({ mvpLabel, ref: r.ref });
     console.log(`[admin-group] ${messageId}: man of the match ${r.kind}; asked`);
     return { outcome: "hq-mom-asked", replyText: text, asked: true };
   }

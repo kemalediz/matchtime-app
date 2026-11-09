@@ -96,41 +96,28 @@ describe("importParticipants: a saved phone number is never replaced", () => {
     expect(res.added).toBe(1);
   });
 
-  it("a phoneless name match gets the number filled in", async () => {
+  // Review of #574, finding 7: no phone is attached to a phoneless member
+  // by a match of names (a first-name PREFIX included, "Dav" could take
+  // Davide's placeholder). An unknown number is a new member; the admin
+  // page shows the pair as a possible duplicate to merge.
+  it("RED on main: a phoneless member of a matching name is NOT given the newcomer's number", async () => {
     users["u-ghost"] = { id: "u-ghost", name: "Raihan", phoneNumber: null };
     findExisting.mockResolvedValue({ userId: "u-ghost", name: "Raihan" });
 
     const res = await importParticipants(ORG, [{ phone: NEW.slice(1), pushname: "Raihan" }]);
 
-    expect(users["u-ghost"].phoneNumber).toBe(NEW);
-    expect(userCreate).not.toHaveBeenCalled();
-    expect(membershipCreate.mock.calls[0][0].data.userId).toBe("u-ghost");
-    expect(res.alreadyKnown).toBe(1);
-  });
-
-  it("the fill is conditional: a number saved in the meantime is not overwritten", async () => {
-    // Read as phoneless, but a sign-in saves a number before the write lands.
-    users["u-ghost"] = { id: "u-ghost", name: "Raihan", phoneNumber: null };
-    findExisting.mockImplementation(async () => {
-      const r = { userId: "u-ghost", name: "Raihan" };
-      return r;
-    });
-    userFindUnique.mockImplementation(async ({ where }: { where: { phoneNumber?: string; id?: string } }) => {
-      if (where.id) {
-        const snap = { ...users[where.id] };
-        users[where.id].phoneNumber = SAVED; // the concurrent sign-in
-        return snap;
-      }
-      return Object.values(users).find((u) => u.phoneNumber === where.phoneNumber) ?? null;
-    });
-
-    await importParticipants(ORG, [{ phone: NEW.slice(1), pushname: "Raihan" }]);
-
-    expect(users["u-ghost"].phoneNumber).toBe(SAVED);
-    expect(userUpdate).not.toHaveBeenCalled();
+    expect(users["u-ghost"].phoneNumber).toBeNull();
+    expect(findExisting).not.toHaveBeenCalled();
     expect(userCreate.mock.calls[0][0].data.phoneNumber).toBe(NEW);
+    expect(res.added).toBe(1);
   });
 
+  it("a prefix of a member's name ('Dav') never reaches the member either", async () => {
+    users["u-davide"] = { id: "u-davide", name: "Davide De Sousa", phoneNumber: null };
+    await importParticipants(ORG, [{ phone: NEW.slice(1), pushname: "Dav" }]);
+    expect(users["u-davide"].phoneNumber).toBeNull();
+    expect(userCreate).toHaveBeenCalledTimes(1);
+  });
   it("a participant already known by phone is used as is, with no phone write", async () => {
     users["u-ali"] = { id: "u-ali", name: "Ali", phoneNumber: SAVED };
 

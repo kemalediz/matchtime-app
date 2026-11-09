@@ -589,14 +589,13 @@ export async function learnAliasesFromAttribution(
  *  It used to be an alias lookup, an exact name and a first-name prefix
  *  ("David" was Davide). A member it is sure of is reused (a former one
  *  brought back); nobody is provisioned (no phone; the admin fills it in
- *  at /admin/players); several possible members is never a guess between
- *  them: a fresh provisional, as this path always did; a failed call is
- *  left unresolved and surfaced.
+ *  at /admin/players); several possible members, a member it was not sure
+ *  of, or a failed call is left unresolved and surfaced, never written.
  *
  *  Returns, per trimmed name:
  *    { userId, name, provisional: false } when matched
  *    { userId, name, provisional: true }  when newly provisioned
- *    null                                 when empty / blocked / unanswered
+ *    null                                 when empty / blocked / unclear
  */
 export async function resolveOrProvisionSquadNames(
   orgId: string,
@@ -614,11 +613,11 @@ export async function resolveOrProvisionSquadNames(
     db.membership.findMany({ where: { orgId }, include: { user: { select: { id: true, name: true } } } }),
     db.userAlias.findMany({ where: { orgId }, select: { userId: true, alias: true } }),
   ]);
-  const byUser = new Map(memberships.filter((m) => m.user?.name).map((m) => [m.user.id, m]));
+  const byUser = new Map(memberships.filter((m) => !!m.user).map((m) => [m.user.id, m]));
   const res = await (opts.identify ?? personPickerFor())({
     roster: [...byUser.values()].map((m) => ({
       userId: m.user.id,
-      name: m.user.name as string,
+      name: m.user.name,
       aliases: (aliases ?? []).filter((a) => a.userId === m.user.id).map((a) => a.alias),
       former: !!m.leftAt,
     })),
@@ -636,12 +635,12 @@ export async function resolveOrProvisionSquadNames(
       out.set(name, { userId: m.user.id, name: m.user.name, provisional: false });
       continue;
     }
-    // Several possible members (two Omars) is never a guess between them:
-    // a fresh provisional, as this path always did, so the list keeps its
-    // slot and an admin can merge. No answer at all (a failed call) is
-    // left unresolved: provisioning every name as new would mint ghosts.
-    if (pick?.kind !== "none" && pick?.kind !== "ambiguous") {
-      console.warn(`[squad-from-list] a squad-list name in org ${orgId} got no answer (${pick ? pick.kind : "not asked"}); left unresolved`);
+    // Only "nobody in the club" is a new player (review of #574). Several
+    // possible members (two Omars), one it was not sure of ("Moham",
+    // probably Mohammed) or no answer at all is left unresolved and
+    // surfaced (`unresolved`): a new player there would be a duplicate.
+    if (pick?.kind !== "none") {
+      console.warn(`[squad-from-list] a squad-list name in org ${orgId} is unclear (${pick ? pick.kind : "not asked"}); left unresolved`);
       out.set(name, null);
       continue;
     }

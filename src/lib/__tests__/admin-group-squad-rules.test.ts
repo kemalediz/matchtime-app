@@ -17,7 +17,6 @@ import {
   buildPasteProposalReply,
   buildSquadChangeReply,
   diffPastedSquad,
-  matchPastedName,
   type PasteMember,
 } from "../admin-group-squad-rules";
 import type { AttendanceFacts, Claim } from "../pipeline/types";
@@ -33,33 +32,9 @@ const members: PasteMember[] = [
   { userId: "u-ilker", name: "İlker Yılmaz", aliases: [] },
 ];
 
-// Who a pasted name is, is who-is-who's pick (2026-11-09); `matchPastedName`
-// only reads it. No spelling decides anything here any more.
-describe("matchPastedName reads the model's pick", () => {
-  const people = new Map<string, PersonPick>([
-    ["shehryar khan", { kind: "member", userId: "u-shehryar" }],
-    ["Hafeez", { kind: "member", userId: "u-abdul" }],
-    ["Ali", { kind: "ambiguous", userIds: ["u-ali1", "u-ali2"] }],
-    ["Naim", { kind: "none" }],
-    ["Bila", { kind: "unidentified", why: "the call failed" }],
-  ]);
-  it("a sure pick is that member", () => {
-    expect(matchPastedName("shehryar khan", people)).toEqual({ kind: "member", userId: "u-shehryar" });
-    expect(matchPastedName("Hafeez", people)).toEqual({ kind: "member", userId: "u-abdul" });
-  });
-  it("several possible members, or no answer, is ambiguous: the line is left out, never guessed", () => {
-    expect(matchPastedName("Ali", people)).toEqual({ kind: "ambiguous" });
-    expect(matchPastedName("Bila", people)).toEqual({ kind: "ambiguous" });
-    expect(matchPastedName("Clarence", people)).toEqual({ kind: "ambiguous" });
-  });
-  it("nobody in the club: new", () => {
-    expect(matchPastedName("Naim", people)).toEqual({ kind: "new" });
-  });
-  it("RED on main: an exact member name with no pick is not matched by code", () => {
-    expect(matchPastedName("Bilal", undefined)).toEqual({ kind: "ambiguous" });
-    void members;
-  });
-});
+// Who a pasted name is, is who-is-who's, placed when the list is read
+// (`hq-squad-reader.ts` `placeReaderNames`, pinned in
+// hq-reader-names-who-is-who.test.ts); there is no name matching here.
 
 // readSquadPaste is gone (2026-10-29): a pasted HQ list is read by the HQ
 // squad reader, a model (hq-squad-reader.test.ts); its fact gates are in

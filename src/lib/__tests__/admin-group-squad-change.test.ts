@@ -30,7 +30,7 @@ const budget = vi.hoisted(() => ({
 vi.mock("@/lib/ai-budget", () => budget);
 const tentative = vi.hoisted(() => ({ recordTentative: vi.fn(), resolveTentative: vi.fn() }));
 vi.mock("@/lib/tentative-store", () => tentative);
-const prov = vi.hoisted(() => ({ resolveOrProvisionByName: vi.fn() }));
+const prov = vi.hoisted(() => ({ provisionNewPerson: vi.fn() }));
 vi.mock("@/lib/resolve-or-provision-name", () => prov);
 // The engine's own squad loader, and whether the rolling squad of the match
 // it picks is still to be carried over (2026-10-17). Called only when a
@@ -239,13 +239,13 @@ describe("handleAdminSquadChange", () => {
 
   it('"put Mo in": a new name an admin typed in HQ is resolved as deliberate, so a 2-letter name is added', async () => {
     routed("other_att");
-    prov.resolveOrProvisionByName.mockResolvedValue({ userId: "u-mo", name: "Mo" });
+    prov.provisionNewPerson.mockResolvedValue({ userId: "u-mo", name: "Mo" });
     engineDoes(async (a) => {
       const who = await a.deps.resolveOrProvision("Mo");
       expect(who).toEqual({ userId: "u-mo", name: "Mo" });
     });
     await handleAdminSquadChange({ ...input, route, text: "put Mo in" });
-    expect(prov.resolveOrProvisionByName).toHaveBeenCalledWith("org-fnf", "Mo", { adminConfirmed: true });
+    expect(prov.provisionNewPerson).toHaveBeenCalledWith("org-fnf", "Mo", { adminConfirmed: true });
   });
 
   it("Turkish club: Turkish reply", async () => {

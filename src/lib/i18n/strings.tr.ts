@@ -1431,6 +1431,7 @@ export const tr: Strings = {
   hq_fee_free_monthly: (p) => `${p.name}, ${p.day} maçı için aylık ödemeyle oynuyor.`,
   hq_fee_free_not_in_squad: (p) => `${p.day} kadrosunda ${p.name} adında birini bulamadım.`,
   hq_fee_free_which: (p) => `Hangi ${p.ref}: ${p.choices}?`,
+  hq_who_unsure: (p) => `${p.ref} kim, anlayamadım. Lütfen tam adını yazın.`,
   hq_fee_free_no_match: `Şu anda ücretsiz yer verilecek bir maç yok.`,
   hq_fee_free_no_payments: `Bu kulüp maç ücretlerini MatchTime ile toplamıyor, ücretsiz yapılacak bir şey yok.`,
   hq_fee_free_who: `Kim ücretsiz oynasın? Örneğin: Bilal bu hafta ücretsiz.`,

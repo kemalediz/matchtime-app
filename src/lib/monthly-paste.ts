@@ -35,6 +35,10 @@ import { loadClubQuietHours } from "./club-quiet-hours";
 import { formatLondon } from "./london-time";
 import type { MonthlyReading } from "./monthly-reader-prompt";
 import { createProvisionalByName } from "./resolve-sender";
+import { identifyRefs, personPickerFor } from "./pipeline/identify-batch";
+import { loadClubWhoRoster } from "./club-who-roster";
+import { refKey } from "./person-ref-key";
+import type { PersonPick, PersonPicker } from "./pipeline/who-is-who";
 import { askWhoTheyAre, createNewcomer, joinMonthAsOrganiser } from "./month-newcomers";
 import type { NewcomerLine } from "./month-newcomer-rules";
 import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek, weekListKeyPrefix } from "./monthly-week";
@@ -156,6 +160,10 @@ export async function handleMonthlyPaste(args: {
    *  for themselves may be written under either. */
   senderWhatsAppName?: string | null;
   now?: Date;
+  /** The message, for who-is-who to read a new line's name in. */
+  text?: string;
+  /** Tests: who-is-who. Absent: `personPickerFor`. */
+  identify?: PersonPicker;
 }): Promise<MonthlyPasteResult | NotThisMonthsList | null> {
   const { orgId, matchId, sender } = args;
   const now = args.now ?? new Date();
@@ -291,6 +299,27 @@ export async function handleMonthlyPaste(args: {
    *  asked who they are, in one DM, after everything else (2026-11-03). */
   const toAsk: Array<{ name: string; userId: string | null; line: NewcomerLine }> = [];
   const weekDay = Number(formatLondon(week.matchDate, "d"));
+  // WHO A NEW OR GUEST LINE IS, BEFORE ANYBODY IS CREATED (review of
+  // #574). The reader's "" means nobody, or a name two members could be,
+  // and the reconcile no longer looks names up in code. So every line that
+  // would make a new person goes to who-is-who, one call for the paste,
+  // with the whole club: a member it is sure of is that member (never a
+  // duplicate), nobody is the new person, anything else is asked about.
+  const toPlace = outcome.actions.flatMap((a) => (a.kind === "new" || a.kind === "guest" ? [a.name] : []));
+  const placed = toPlace.length
+    ? (
+        await identifyRefs({
+          picker: args.identify ?? personPickerFor(),
+          refs: toPlace,
+          body: args.text ?? list.slots.map((e) => e.raw).join("\n"),
+          author: sender.name,
+          senderUserId: sender.userId,
+          roster: await loadClubWhoRoster(orgId, [], ""),
+          where: "the club's players' group: a pasted monthly list",
+        })
+      ).people
+    : new Map<string, PersonPick>();
+  const placedAs = (name: string): PersonPick | undefined => placed.get(refKey(name));
   for (const a of outcome.actions) {
     try {
       if (a.kind === "join" || a.kind === "new") {
@@ -298,7 +327,13 @@ export async function handleMonthlyPaste(args: {
         // the person joins the month for the games left, as the months
         // page's "Add a player, Regular" does, and is put on this match.
         // A name that is nobody is a new player with no phone first.
-        const userId = a.kind === "join" ? a.userId : await createNewcomer(orgId, a.name);
+        const pick = a.kind === "new" ? placedAs(a.name) : undefined;
+        if (a.kind === "new" && pick?.kind !== "member" && pick?.kind !== "none") {
+          // Not sure who it is: nobody is added; the organiser is asked.
+          toAsk.push({ name: a.name, userId: null, line: a.line });
+          continue;
+        }
+        const userId = a.kind === "join" ? a.userId : pick?.kind === "member" ? pick.userId : await createNewcomer(orgId, a.name);
         if (!userId || !sender.userId) {
           failures.push(a.name);
           continue;
@@ -309,7 +344,7 @@ export async function handleMonthlyPaste(args: {
           continue;
         }
         if (j.changed) applied.push(`${a.kind === "new" ? "new-" : ""}${j.outcome}:${a.name}`);
-        if (a.kind === "new") toAsk.push({ name: a.name, userId, line: a.line });
+        if (a.kind === "new" && pick?.kind === "none") toAsk.push({ name: a.name, userId, line: a.line });
         continue;
       }
       if (a.kind === "ask") {
@@ -324,7 +359,14 @@ export async function handleMonthlyPaste(args: {
         // typed "David, my son, is IN" ends in (`resolveOrProvisionByName`'s
         // last step), without its prefix guess: "Luca" must not become the
         // member "Lucas" when the reader has already said he is not one.
-        const created = await createProvisionalByName(orgId, a.name, null);
+        // who-is-who first: a member is that member, never a new guest; a
+        // name it cannot place is not added (reported).
+        const gp = placedAs(a.name);
+        if (gp?.kind !== "member" && gp?.kind !== "none") {
+          failures.push(a.name);
+          continue;
+        }
+        const created = gp.kind === "member" ? { userId: gp.userId } : await createProvisionalByName(orgId, a.name, null);
         if (!created?.userId) {
           failures.push(a.name);
           continue;

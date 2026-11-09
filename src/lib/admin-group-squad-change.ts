@@ -47,7 +47,7 @@ import { personPickerFor } from "./pipeline/identify-batch";
 import { buildClaimGuestNameAsk } from "./owner-deps";
 import { moveNamedSlot } from "./team-slot-fill";
 import { recordTentative, resolveTentative } from "./tentative-store";
-import { resolveOrProvisionByName } from "./resolve-or-provision-name";
+import { provisionNewPerson } from "./resolve-or-provision-name";
 import { adminGroupSourceRef } from "./admin-added";
 import { resolvePerson } from "./pipeline/identity";
 import { refKey, type PersonPick, type PersonPicks } from "./pipeline/who-is-who";
@@ -128,31 +128,38 @@ function refOn(state: SquadState, personRef: string, people: PersonPicks | undef
 }
 
 /**
- * THE SQUAD READER'S OWN PICKS, as the engine reads names (2026-11-09).
- * The reader was shown the club's members and named the member each
- * change is about (`hqChangeFacts` quotes that member's roster name, and
- * `replaces` too): those are picks already made by a model, so they are
- * not asked again. A change about nobody the reader could name is left
- * out, and who-is-who is asked about it with the message.
+ * WHO-IS-WHO'S PICKS FOR THE READER'S CHANGE, as the engine reads names
+ * (2026-11-09, review of #574). Every name in the change was placed by
+ * who-is-who when the message was read (`placeReaderNames`), and
+ * `hqChangeFacts` quotes each as the message wrote it: a member is that
+ * member, nobody is nobody (a new person, for an IN), and a name it could
+ * not place, or an arriving player whose replaced player it could not
+ * place, is an ambiguity, so nothing about them is written and the sender
+ * is asked. Nobody is asked again.
  */
 export function hqChangePeople(changes: readonly HqSquadChange[]): PersonPicks {
   const out = new Map<string, PersonPick>();
-  // Two members with the same roster name are quoted the same way, so the
-  // name cannot say which: an ambiguity, never the last one read.
-  const put = (name: string, userId: string) => {
+  // Two different people quoted the same way cannot be told apart by the
+  // quote: an ambiguity, never the last one read.
+  const put = (name: string, pick: PersonPick) => {
     const key = refKey(name);
+    if (!key) return;
     const had = out.get(key);
-    if (!had) out.set(key, { kind: "member", userId });
-    else if (had.kind === "member" && had.userId !== userId) out.set(key, { kind: "ambiguous", userIds: [had.userId, userId] });
-    else if (had.kind === "ambiguous" && !had.userIds.includes(userId)) out.set(key, { kind: "ambiguous", userIds: [...had.userIds, userId] });
+    if (!had || JSON.stringify(had) === JSON.stringify(pick)) {
+      out.set(key, pick);
+      return;
+    }
+    const ids = [had, pick].flatMap((p) => (p.kind === "member" ? [p.userId] : p.kind === "ambiguous" ? p.userIds : []));
+    out.set(key, { kind: "ambiguous", userIds: [...new Set(ids)] });
   };
   for (const c of changes) {
-    if (c.userId) put(c.name, c.userId);
-    if (c.replaces && c.replacesUserId) put(c.replaces, c.replacesUserId);
+    const quoted = c.written || c.name;
+    if (c.unclear) put(quoted, { kind: "ambiguous", userIds: c.userId ? [c.userId] : [] });
+    else put(quoted, c.userId ? { kind: "member", userId: c.userId } : { kind: "none" });
+    if (c.replaces && c.replacesUserId) put(c.replaces, { kind: "member", userId: c.replacesUserId });
   }
   return out;
 }
-
 /** "@447700900123 out": name the tag from the club's roster, as the
  *  players' group does. Only read when the text carries a raw tag. */
 export async function nameMentions(orgId: string, text: string, mentionNames: AdminSquadChangeInput["mentionNames"]): Promise<string> {
@@ -282,7 +289,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
         },
         // An admin typed this name in HQ on purpose ("put Mo in"): a
         // short real name is added, as in a pasted list.
-        resolveOrProvision: (name) => resolveOrProvisionByName(orgId, name, { adminConfirmed: true }),
+        resolveOrProvision: (name) => provisionNewPerson(orgId, name, { adminConfirmed: true }),
         moveTeamSlot: async (matchId, fromUserId, toUserId) => {
           const res = await db.$transaction((tx) => moveNamedSlot(tx, matchId, fromUserId, toUserId));
           if (res.kind === "refused") throw new Error(`slot move refused (${res.reason})`);

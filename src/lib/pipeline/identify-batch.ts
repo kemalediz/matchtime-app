@@ -13,6 +13,7 @@ import type { EngineMessage, Facts, Member, TeamFacts } from "./types";
 import {
   modelPersonPicker,
   PERSON_PICKER_STUB_ENV,
+  stubSeamAllowed,
   personRefsIn,
   refKey,
   stubPersonPicker,
@@ -20,6 +21,7 @@ import {
   type PersonPick,
   type PersonPicker,
   type PersonPicks,
+  type WhoRosterMember,
 } from "./who-is-who";
 
 /**
@@ -29,7 +31,7 @@ import {
  */
 export function personPickerFor(deps: { identify?: PersonPicker; model?: PipelineModel } = {}): PersonPicker {
   if (deps.identify) return deps.identify;
-  if (process.env[PERSON_PICKER_STUB_ENV] === "1" || extractorStubFromEnv()) return stubPersonPicker();
+  if (stubSeamAllowed() && (process.env[PERSON_PICKER_STUB_ENV] === "1" || extractorStubFromEnv())) return stubPersonPicker();
   return modelPersonPicker(deps.model ?? anthropicModel());
 }
 
@@ -93,7 +95,7 @@ export async function identifyFacts(args: {
   }
   if (asked.length === 0) return { people, costUsd: 0, calls: 0, degradations: [] };
   const res = await args.picker({
-    roster: whoRosterOf(args.roster),
+    roster: args.roster,
     where: args.where,
     messages: asked.map(({ item, refs }) => ({
       id: item.id,
@@ -106,7 +108,7 @@ export async function identifyFacts(args: {
   for (const [id, picks] of res.picks) {
     people.set(id, new Map([...(people.get(id) ?? new Map()), ...picks]));
   }
-  return { people, costUsd: res.usage?.costUsd ?? 0, calls: res.usage ? 1 : 0, degradations: res.degradations };
+  return { people, costUsd: res.usage?.costUsd ?? 0, calls: res.calls ?? (res.usage ? 1 : 0), degradations: res.degradations };
 }
 
 /**
@@ -121,14 +123,16 @@ export async function identifyRefs(args: {
   body: string;
   author: string | null;
   senderUserId: string | null;
-  roster: ReadonlyArray<Member>;
+  /** The club as who-is-who is shown it (`club-who-roster.ts`), or a
+   *  plain member list. */
+  roster: ReadonlyArray<WhoRosterMember>;
   where?: string;
 }): Promise<{ people: PersonPicks; costUsd: number; calls: number; degradations: string[] }> {
   const refs = [...new Set(args.refs.map((r) => r.trim()).filter((r) => r && !isSelfRef(r)))];
   if (refs.length === 0) return { people: new Map(), costUsd: 0, calls: 0, degradations: [] };
   const id = "m";
   const res = await args.picker({
-    roster: whoRosterOf(args.roster),
+    roster: args.roster,
     where: args.where,
     messages: [{ id, body: args.body, author: args.author, senderUserId: args.senderUserId, refs }],
   });
@@ -136,7 +140,7 @@ export async function identifyRefs(args: {
   return {
     people: res.picks.get(id) ?? new Map(),
     costUsd: res.usage?.costUsd ?? 0,
-    calls: res.usage ? 1 : 0,
+    calls: res.calls ?? (res.usage ? 1 : 0),
     degradations: res.degradations,
   };
 }

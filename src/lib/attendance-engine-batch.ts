@@ -1085,6 +1085,36 @@ export async function runAttendanceEngineBatch(args: {
     }),
   );
 
+  // ── Stage 2d': who the team change's names are ──────────────────────
+  // The swap guard asks who a team change moves; that is who-is-who's,
+  // as every name is (2026-11-09, review of #574). Only a message with a
+  // teams reading has anything new to ask; names already picked are not
+  // asked again. One call, none in the usual batch.
+  if (teamsReadingById.size > 0) {
+    const more = await identifyFacts({
+      picker: personPickerFor({ identify: deps.identify, model }),
+      roster: state.roster,
+      where: "the players' group",
+      items: owned
+        .filter((m) => teamsReadingById.has(m.waMessageId))
+        .map((m) => {
+          const reading = teamsReadingById.get(m.waMessageId)!;
+          return {
+            id: m.waMessageId,
+            body: m.body,
+            author: m.senderName ?? m.authorName,
+            senderUserId: m.senderUserId,
+            facts: { kind: "none" } as Facts,
+            teamsReading: reading,
+            known: peopleById.get(m.waMessageId) ?? null,
+          };
+        }),
+    });
+    if (more.calls > 0) cost = { usd: cost.usd + more.costUsd, calls: cost.calls + more.calls, ms: cost.ms };
+    degradations.push(...more.degradations);
+    for (const [id, p] of more.people) peopleById.set(id, p);
+  }
+
   // ── Stage 3: the engine, over the WHOLE window ─────────────────────
   const engineMessages: EngineMessage[] = messages.map((m) => {
     const f = factsById.get(m.waMessageId);

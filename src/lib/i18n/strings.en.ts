@@ -1776,6 +1776,9 @@ export const en = {
   hq_fee_free_not_in_squad: (p: { name: string; day: string }): string => `I can't find ${p.name} in the squad for ${p.day}.`,
   /** `choices` is joined with "or". */
   hq_fee_free_which: (p: { ref: string; choices: string }): string => `Which ${p.ref}: ${p.choices}?`,
+  /** A name in HQ (a free place, Man of the Match) nobody could place, so
+   *  there is nothing to choose from (review of #574). */
+  hq_who_unsure: (p: { ref: string }): string => `I couldn't work out who ${p.ref} is. Please use their full name.`,
   hq_fee_free_no_match: `There's no match to give a free place on right now.`,
   hq_fee_free_no_payments: `This club doesn't take match fees through MatchTime, so there's nothing to make free.`,
   hq_fee_free_who: `Who should play free? For example: Bilal is free this week.`,

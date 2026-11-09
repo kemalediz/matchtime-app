@@ -330,10 +330,11 @@ import { loadKnownLids } from "@/lib/known-lids";
 // so nothing in it can be imported by a test — and the 2026-08-30 audit
 // named that as the reason its attribution hole survived review. Behaviour
 // is unchanged by the move; see `lib/resolve-sender.ts` and its tests.
-import { resolveSender, type ResolvedSender } from "@/lib/resolve-sender";
+import { resolveSenders, type ResolvedSender } from "@/lib/resolve-sender";
+import { withAttendanceOverflow } from "@/lib/ai-budget-context";
 // Moved out of this file on 2026-10-14 so the admin group's squad changes
 // resolve and provision names with the very same code. Unchanged.
-import { resolveOrProvisionByName, resolveOrProvisionNames } from "@/lib/resolve-or-provision-name";
+import { provisionNewPerson } from "@/lib/resolve-or-provision-name";
 import { planUnresolvedNudge } from "@/lib/unresolved-nudge";
 import { recordGroupSightings, sightedUserIds } from "@/lib/group-sighting";
 import { quotedRefOf } from "@/lib/quoted-message";
@@ -515,7 +516,7 @@ async function handleAnalyzeRequest(request: Request) {
   // stats fast path, the router, the extractor and the `AnalyzedMessage`
   // row then all see the SAME text. An unresolvable mention keeps its raw
   // "@<digits>" token — nothing here invents a name.
-  body.messages = await nameMentionsFromRoster(org.id, body.messages);
+  body.messages = await nameMentionsFromRoster(org.id, body.messages, { askModel: false });
 
   // ── Skip the LLM entirely when no message-driven feature is on ───
   //   MoM + player-rating are post-match / poll / scheduler driven —
@@ -627,6 +628,11 @@ async function handleAnalyzeRequest(request: Request) {
   //   batch, or in a later one, finds the people "above" or in the message
   //   it quotes from WhatsApp's own mention data (`group-mentions.ts`).
   //   Best-effort: a failure here costs only that feature.
+  // The mentions no phone could name go to who-is-who only now: after the
+  // dedupe and the no-features return, so a repeat or a club that reads no
+  // messages costs no model call (review of #574). One call for the batch.
+  fresh.splice(0, fresh.length, ...(await nameMentionsFromRoster(org.id, fresh, { askModel: true })));
+
   await rememberMentions({ orgId: org.id, chatId: body.groupId, messages: fresh });
 
   // ── A MESSAGE THAT ARRIVES LATE IS NOT A REQUEST MADE NOW (2026-09-29) ─
@@ -724,10 +730,16 @@ async function handleAnalyzeRequest(request: Request) {
   }
 
   // 2. Resolve senders + hand the whole fresh batch to Claude in one call.
-  const senderById = new Map<string, ResolvedSender>();
-  for (const m of fresh) {
-    senderById.set(m.waMessageId, await resolveSender(org.id, m));
-  }
+  // Phone first; a phoneless sender's WhatsApp name goes to who-is-who in
+  // one call for the batch, never matched by spelling (2026-11-09). It is
+  // attendance's own question, so at the daily cap it runs in the
+  // attendance overflow, as the attendance extractor does.
+  const resolveAll = () =>
+    resolveSenders(
+      org.id,
+      fresh.map((m) => ({ waMessageId: m.waMessageId, authorPhone: m.authorPhone, authorName: m.authorName, body: m.body })),
+    );
+  const senderById: Map<string, ResolvedSender> = aiCapped ? await withAttendanceOverflow(resolveAll) : await resolveAll();
 
   // ── WHAT EACH REPLY QUOTES (quoted-reply context, slice S4) ────────
   //
@@ -1572,6 +1584,7 @@ async function handleAnalyzeRequest(request: Request) {
           sentAt: Number.isNaN(sentAt.getTime()) ? undefined : sentAt,
           sender: { userId: sender.userId, name: sender.name ?? m.authorName ?? null },
           senderWhatsAppName: m.authorName ?? null,
+          text: m.body,
         });
       } catch (err) {
         // Left for the pipeline, as if this block were not here.
@@ -1625,7 +1638,7 @@ async function handleAnalyzeRequest(request: Request) {
         let res: Awaited<ReturnType<typeof import("@/lib/month-newcomers").applyMonthAdd>> | null = null;
         try {
           const { applyMonthAdd } = await import("@/lib/month-newcomers");
-          res = await applyMonthAdd({ orgId: org.id, reading, senderUserId: sender.userId, sourceRef: m.waMessageId, tellRefused: true, tellOrganiser: true });
+          res = await applyMonthAdd({ orgId: org.id, reading, senderUserId: sender.userId, sourceRef: m.waMessageId, tellRefused: true, tellOrganiser: true, text: m.body });
         } catch (err) {
           console.error(`[analyze] month add ${m.waMessageId} failed:`, err);
         }
@@ -2003,24 +2016,18 @@ async function handleAnalyzeRequest(request: Request) {
         }
         const failures: string[] = [];
         const registered: string[] = [];
-        // The names the reader placed on nobody: who-is-who in ONE call for
-        // the list (a member it is sure of, a former member brought back,
-        // or a new player), never matched by spelling (2026-11-09).
-        const unplaced = await resolveOrProvisionNames(
-          org.id,
-          reading.lines.filter((l) => !l.userId).map((l) => l.name),
-          { context: m.body },
-        ).catch((err) => {
-          console.error(`[analyze] pasted list ${m.waMessageId}: naming the new lines failed:`, err);
-          return new Map<string, { userId: string; name: string | null } | null>();
-        });
+        // Who each line is, is who-is-who's (the reader's names are placed
+        // by it, `placeReaderNames`): a member, a new player it placed on
+        // nobody, or unclear, which is never registered (2026-11-09).
         for (const line of reading.lines) {
           if (line.userId && statusOf.has(line.userId)) continue; // in, on the bench, or dropped
           const isSender = line.userId === sender.userId;
           try {
             const target = line.userId
               ? { userId: line.userId, name: line.name }
-              : (unplaced.get(line.name.trim()) ?? null);
+              : line.unclear
+                ? null
+                : await provisionNewPerson(org.id, line.name);
             if (!target) {
               failures.push(line.name);
               continue;
@@ -2184,7 +2191,8 @@ async function handleAnalyzeRequest(request: Request) {
             // D5b, revised 2026-10-22: his plain IN counted for his own
             // game; then one DM asking whether he meant the partner's.
             askPartnerAfterOwnIn: (a) => askPartnerAfterOwnInByDm(a),
-            resolveOrProvision: (name) => resolveOrProvisionByName(org.id, name),
+            // who-is-who already placed this name on nobody: a new person.
+            resolveOrProvision: (name) => provisionNewPerson(org.id, name),
             // THE SLOT A REPLACEMENT INHERITS (2026-09-15). ONE row
             // updated IN PLACE — `load-state.ts` reads the sheet in
             // `id: asc` so the re-post renders the players in the order
@@ -4536,6 +4544,7 @@ async function unresolvedSenderNudge(args: {
 async function nameMentionsFromRoster(
   orgId: string,
   messages: InboundMessage[],
+  opts: { askModel: boolean },
 ): Promise<InboundMessage[]> {
   const RAW_TOKEN = /@\d{5,}/;
   const relevant = messages.some(
@@ -4571,7 +4580,7 @@ async function nameMentionsFromRoster(
     roster,
     aliases,
     knownLids,
-    picker: personPickerFor(),
+    ...(opts.askModel ? { picker: personPickerFor() } : {}),
     where: "the club's players' group",
   });
   const byMessage = new Map(withMentions.map((m, i) => [m, named[i]]));

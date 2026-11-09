@@ -29,9 +29,9 @@
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
-import { identifyFacts } from "../src/lib/pipeline/identify-batch.ts";
-import { membersNamedIn, resolvePerson } from "../src/lib/pipeline/identity.ts";
-import { modelPersonPicker } from "../src/lib/pipeline/who-is-who.ts";
+import { factRefs } from "../src/lib/pipeline/identify-batch.ts";
+import { membersNamedIn } from "../src/lib/pipeline/identity.ts";
+import { modelPersonPicker, type PersonPick } from "../src/lib/pipeline/who-is-who.ts";
 import type { Member, Route } from "../src/lib/pipeline/types.ts";
 
 const MAX_USD = Number(process.env.MAX_USD ?? 1.0);
@@ -90,6 +90,12 @@ const CLUB: Member[] = [
   m("aydin", "Aydin Celik"),
 ];
 const TWO_DAVIDS: Member[] = [...CLUB.filter((x) => x.userId !== "u-davide"), m("david-a", "David Aksoy"), m("david-r", "David Russo")];
+/** A member called David who is not Kemal's family, beside Kemal Ediz. */
+const DAVID_AKSOY: Member[] = [...CLUB.filter((x) => x.userId !== "u-davide" && x.userId !== "u-kemal"), m("kemal", "Kemal Ediz"), m("david-a", "David Aksoy")];
+/** Turkish names for the case endings. */
+const TURKISH: Member[] = [...CLUB, m("ali", "Ali Kaya"), m("mehmet", "Mehmet Yilmaz"), m("can", "Can Demir")];
+/** A former member, marked so. */
+const WITH_FORMER: Member[] = [...CLUB, m("oldham", "Oldham Jones")];
 
 /** What the name must come to: a member's key, "none" (nobody in the
  *  club, or not looked up at all because the extractor read a relation),
@@ -99,7 +105,10 @@ interface Case {
   group: "NEW" | "REGRESSION";
   text: string;
   from: string;
-  route: Route;
+  /** "sender": the WhatsApp name of a phoneless sender (`resolveSenders`). */
+  route: Route | "sender";
+  /** Keys of members marked (former). */
+  former?: string[];
   /** Each name the case is about, as the model may quote it (case-folded
    *  match on the quoted ref), and what it must come to. */
   want: Array<[string, Want]>;
@@ -122,6 +131,15 @@ const CASES: Case[] = [
   { group: "NEW", text: "my brother Ali is coming", from: "Shane", route: "other_att", want: [["ali", "none"]], why: "no Ali in the club: a guest" },
   { group: "NEW", text: "kardeşim Ali de geliyor", from: "Shane", route: "other_att", want: [["ali", "none"]], why: "no Ali, TR" },
   // ── REGRESSION ─────────────────────────────────────────────────────
+  // ── REVIEW OF #574: the new prompt rulings ─────────────────────────
+  { group: "NEW", text: "David - Kemal's son, is on the bench", from: "Kemal", route: "other_att", roster: DAVID_AKSOY, want: [["david", "ask"]], why: "OUTSIDER vs a same-name member: Kemal's son would be an Ediz, the member is an Aksoy" },
+  { group: "NEW", text: "David, Kemal'in oğlu, yedekte", from: "Kemal", route: "other_att", roster: DAVID_AKSOY, want: [["david", "ask"]], why: "the same, TR" },
+  { group: "NEW", text: "@Match Time Ali'yi kadroya ekle", from: "Kemal", route: "other_att", roster: TURKISH, want: [["ali", "ali"]], why: "Turkish accusative" },
+  { group: "NEW", text: "Mehmet'in yerine Can geliyor", from: "Kemal", route: "other_att", roster: TURKISH, want: [["mehmet", "mehmet"], ["can", "can"]], why: "Turkish genitive, a replacement" },
+  { group: "NEW", text: "@Match Time Aydın'ı çıkar", from: "Kemal", route: "other_att", roster: TURKISH, want: [["aydın", "aydin"]], why: "Turkish accusative with ı" },
+  { group: "NEW", text: "Oldham's back tonight, he's in", from: "Kemal", route: "other_att", roster: WITH_FORMER, former: ["oldham"], want: [["oldham", "oldham"]], why: "a FORMER member named again" },
+  { group: "NEW", text: "I'm out tonight", from: "Kemal Ediz", route: "sender", want: [["kemal ediz", "kemal"]], why: "a phoneless sender's WhatsApp name is the member" },
+  { group: "NEW", text: "I'm out", from: "David", route: "sender", want: [["david", "none"]], why: "a phoneless non-member David is not Davide" },
   { group: "REGRESSION", text: "@Match Time Tom OUT", from: "Kemal", route: "other_att", want: [["tom", "tom"]], why: "a first name" },
   { group: "REGRESSION", text: "Glazers OUT", from: "Kemal", route: "other_att", want: [["glazers", "glazers"]], why: "FNF HQ 2026-10-24: a name that is a word" },
   { group: "REGRESSION", text: "AH out", from: "Kemal", route: "other_att", want: [["ah", "ah"]], why: "the club's alias" },
@@ -140,42 +158,54 @@ const CASES: Case[] = [
 
 const fold = (s: string) => s.toLocaleLowerCase("tr").replace(/^@/, "").trim();
 
+/** The sender's WhatsApp name, as `resolveSenders` asks about it. */
+const SENDER_WHERE =
+  "the club's players' group. Each name to identify is the WhatsApp name of the person who SENT that message, " +
+  "a name they chose for themselves; it names the sender, not anybody in the text";
+
 async function runCase(c: Case): Promise<{ ok: boolean; line: string }> {
   const roster = c.roster ?? CLUB;
   const sender = roster.find((x) => x.name.split(" ")[0] === c.from) ?? null;
-  const ex = await extractForRoute(model, c.route, {
-    id: "wa-1",
-    body: c.text,
-    authorName: c.from,
-    tagged: /@Match Time/i.test(c.text),
-    history: [],
-    lastBotPost: null,
-    members: membersNamedIn(c.text, roster),
-    now: NOW,
+  const who = roster.map((x) => ({ userId: x.userId, name: x.name, aliases: x.aliases ?? [], ...(c.former?.includes(x.userId.slice(2)) ? { former: true } : {}) }));
+  let refs: string[];
+  if (c.route === "sender") {
+    refs = [c.from];
+  } else {
+    const ex = await extractForRoute(model, c.route, {
+      id: "wa-1",
+      body: c.text,
+      authorName: c.from,
+      tagged: /@Match Time/i.test(c.text),
+      history: [],
+      lastBotPost: null,
+      members: membersNamedIn(c.text, roster),
+      now: NOW,
+    });
+    refs = factRefs(ex.facts);
+  }
+  const res = await modelPersonPicker(model)({
+    roster: who,
+    where: c.route === "sender" ? SENDER_WHERE : "the players' group",
+    messages: [{ id: "wa-1", body: c.text, author: c.route === "sender" ? null : c.from, senderUserId: c.route === "sender" ? null : (sender?.userId ?? null), refs }],
   });
-  const ided = await identifyFacts({
-    picker: modelPersonPicker(model),
-    roster,
-    where: "the players' group",
-    items: [{ id: "wa-1", body: c.text, author: c.from, senderUserId: sender?.userId ?? null, facts: ex.facts }],
-  });
-  const people = ided.people.get("wa-1");
-  const asked = [...(people?.keys() ?? [])];
+  const people = res.picks.get("wa-1") ?? new Map<string, PersonPick>();
+  const asked = [...people.keys()];
   const parts: string[] = [];
   let ok = true;
   for (const [name, want] of c.want) {
-    const ref = asked.find((r) => fold(r) === fold(name) || fold(r).split(/\s+/).includes(fold(name)) || fold(r).endsWith(fold(name)));
+    const ref = asked.find((r) => fold(r) === fold(name) || fold(r).split(/\s+/).includes(fold(name)) || fold(r).endsWith(fold(name)) || fold(r).startsWith(fold(name)));
     let got: string;
     if (!ref) got = "none"; // not looked up: the extractor read no named person by it
     else {
-      const r = resolvePerson(ref, roster, people);
-      got = r.kind === "resolved" ? r.member.userId.slice(2) : r.kind === "ambiguous" ? "ask" : "none";
+      const p = people.get(ref);
+      got = p?.kind === "member" ? p.userId.slice(2) : p?.kind === "none" ? "none" : "ask";
     }
     const pass = got === want;
     ok &&= pass;
     parts.push(`${name}: ${got}${pass ? "" : ` (want ${want})`}`);
   }
-  return { ok, line: `${ok ? "PASS" : "FAIL"}  [${c.group}] ${c.text}  ->  ${parts.join(", ")}  (asked: ${JSON.stringify(asked)}; ${c.why})` };
+  const detail = ok ? "" : `  picks: ${JSON.stringify([...people])}`;
+  return { ok, line: `${ok ? "PASS" : "FAIL"}  [${c.group}] ${c.text}  ->  ${parts.join(", ")}  (asked: ${JSON.stringify(asked)}; ${c.why})${detail}` };
 }
 
 async function main() {

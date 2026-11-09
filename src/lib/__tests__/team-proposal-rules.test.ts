@@ -234,13 +234,21 @@ describe("resolveSheetName: the model's pick, against the teams only", () => {
   it("two players: ambiguous, with both names", () => {
     expect(resolveSheetName("Ali", PLAYERS, PEOPLE)).toEqual({ kind: "ambiguous", names: ["Ali Khan", "Ali Rahman"] });
   });
-  it("nobody, a member not on the teams, or no answer at all: unknown", () => {
+  it("nobody, or a member not on the teams: unknown", () => {
     expect(resolveSheetName("Zara", PLAYERS, PEOPLE)).toEqual({ kind: "unknown" });
     expect(resolveSheetName("Outside", PLAYERS, PEOPLE)).toEqual({ kind: "unknown" });
-    expect(resolveSheetName("", PLAYERS, PEOPLE)).toEqual({ kind: "unknown" });
+  });
+  it("no answer at all (a failed call): unsure, said plainly, never a guess (review of #574)", () => {
+    expect(resolveSheetName("", PLAYERS, PEOPLE)).toEqual({ kind: "unsure" });
+    expect(buildNameProblems("en", [{ raw: "Bilal", res: { kind: "unsure" } }])).toBe("I couldn't work out who Bilal is. Please use their full name.");
   });
   it("RED on main: an exact player name with no pick is not matched by code", () => {
-    expect(resolveSheetName("Tom Third", PLAYERS, undefined)).toEqual({ kind: "unknown" });
+    expect(resolveSheetName("Tom Third", PLAYERS, undefined)).toEqual({ kind: "unsure" });
+  });
+  it("a namesake who is not on the teams makes a name ambiguous, named from the whole club", () => {
+    const people = new Map<string, PersonPick>([["Tom", { kind: "ambiguous", userIds: ["u-tom", "u-tom2"] }]]);
+    const club = new Map([["u-tom2", "Tom Bench"]]);
+    expect(resolveSheetName("Tom", PLAYERS, people, club)).toEqual({ kind: "ambiguous", names: ["Tom Third", "Tom Bench"] });
   });
 });
 

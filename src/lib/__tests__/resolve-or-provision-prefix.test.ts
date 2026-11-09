@@ -1,111 +1,50 @@
 /**
- * NAMING OR PROVISIONING A THIRD PARTY (rewritten 2026-11-09).
+ * A NEW PERSON IS NEVER LOOKED UP AGAIN (review of #574, finding 1).
  *
- * No name is matched by spelling here any more (Kemal: "never use string
- * matching"). The names go to who-is-who in ONE call with every membership
- * of the club, current and former, and its aliases; the code only acts on
- * the pick: a member it is sure of is that member (a former one brought
- * back), nobody is a new provisional member, anything else is nobody at
- * all. First pinned for a multi-word ref (2026-10-30: "the lads" must not
- * become Theo) and for "David" read as Davide De Sousa (Vets MNF,
- * 2026-11-09).
+ * Every caller of `provisionNewPerson` is a name who-is-who already placed
+ * on nobody, reading it in its message. This used to look the name up a
+ * second time: by spelling ("David" became the member Davide De Sousa,
+ * Vets MNF 2026-11-09), then by a second model call with NO message, which
+ * could overrule the first ("Mo, Ali's cousin, is in" read as the member
+ * Mohammed). Now the first answer stands: no membership is read and no
+ * model is asked; "none" is a new person.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PersonPick, PersonPicker, WhoRequest } from "../pipeline/who-is-who";
 
 const dbMock = vi.hoisted(() => ({
-  membership: { findMany: vi.fn() },
-  userAlias: { findMany: vi.fn(async () => [{ userId: "u-mo", alias: "habibi" }]) },
+  membership: { findMany: vi.fn(async () => [{ id: "m-mo", userId: "u-mo", leftAt: null, user: { id: "u-mo", name: "Mohammed Ali" } }]) },
+  userAlias: { findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const sender = vi.hoisted(() => ({
-  createProvisionalByName: vi.fn(async (_o: string, name: string) => ({ userId: `new:${name}`, name })),
+  createProvisionalByName: vi.fn(async (_o: string, name: string) => ({ userId: `new:${name}`, name, phone: null })),
   restoreMembership: vi.fn(),
 }));
 vi.mock("../resolve-sender", () => sender);
+const picker = vi.hoisted(() => ({ personPickerFor: vi.fn() }));
+vi.mock("../pipeline/identify-batch", () => picker);
 
-import { resolveOrProvisionByName, resolveOrProvisionNames } from "../resolve-or-provision-name";
+import { provisionNewPerson } from "../resolve-or-provision-name";
 
-const member = (id: string, name: string, leftAt: Date | null = null) => ({ id: `m-${id}`, userId: id, leftAt, user: { id, name } });
+beforeEach(() => vi.clearAllMocks());
 
-/** A picker that answers from a table, and records what it was shown. */
-function picker(answers: Record<string, PersonPick>) {
-  const seen: WhoRequest[] = [];
-  const pick: PersonPicker = async (req) => {
-    seen.push(req);
-    return {
-      picks: new Map(req.messages.map((m) => [m.id, new Map(m.refs.map((r) => [r, answers[r] ?? { kind: "unidentified", why: "not in the table" }]))])),
-      usage: null,
-      degradations: [],
-    };
-  };
-  return { pick, seen };
-}
+describe("provisionNewPerson", () => {
+  it("'Mo, Ali's cousin' placed on nobody is a new person: never re-asked, never the member Mohammed", async () => {
+    const r = await provisionNewPerson("org-1", "Mo", { adminConfirmed: true });
+    expect(r?.userId).toBe("new:Mo");
+    expect(sender.createProvisionalByName).toHaveBeenCalledWith("org-1", "Mo", null, { deliberate: true });
+    expect(dbMock.membership.findMany).not.toHaveBeenCalled();
+    expect(picker.personPickerFor).not.toHaveBeenCalled();
+  });
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  dbMock.membership.findMany.mockResolvedValue([
-    member("u-theo", "Theo Walcott"),
-    member("u-davide", "Davide De Sousa"),
-    member("u-mo", "Mohammed Ali"),
-    member("u-old", "Oldham Jones", new Date("2026-01-01")),
-  ]);
-});
-
-describe("the model's pick decides, code only acts on it", () => {
-  it("'David' the model places on nobody is provisioned as a new person, never Davide", async () => {
-    const { pick } = picker({ David: { kind: "none" } });
-    const r = await resolveOrProvisionByName("org-1", "David", { identify: pick });
-    expect(r?.userId).toBe("new:David");
+  it("'David' (the Vets incident) is a new person, by the third party's rule", async () => {
+    expect((await provisionNewPerson("org-1", "David"))?.userId).toBe("new:David");
     expect(sender.createProvisionalByName).toHaveBeenCalledWith("org-1", "David", null, { deliberate: false });
   });
 
-  it("'Moham' the model is sure is Mohammed Ali is that member, not a new person", async () => {
-    const { pick } = picker({ Moham: { kind: "member", userId: "u-mo" } });
-    expect((await resolveOrProvisionByName("org-1", "Moham", { identify: pick }))?.userId).toBe("u-mo");
+  it("an empty or one-letter name is nobody", async () => {
+    expect(await provisionNewPerson("org-1", " ")).toBeNull();
+    expect(await provisionNewPerson("org-1", "A")).toBeNull();
     expect(sender.createProvisionalByName).not.toHaveBeenCalled();
-  });
-
-  it("a former member the model recognises is brought back, not added twice", async () => {
-    const { pick } = picker({ Oldham: { kind: "member", userId: "u-old" } });
-    expect((await resolveOrProvisionByName("org-1", "Oldham", { identify: pick }))?.userId).toBe("u-old");
-    expect(sender.restoreMembership).toHaveBeenCalledWith("m-u-old", "Oldham Jones");
-  });
-
-  it("several possible members: nobody registered and nobody provisioned", async () => {
-    const { pick } = picker({ Mo: { kind: "ambiguous", userIds: ["u-mo", "u-theo"] } });
-    expect(await resolveOrProvisionByName("org-1", "Mo", { identify: pick })).toBeNull();
-    expect(sender.createProvisionalByName).not.toHaveBeenCalled();
-  });
-
-  it("a failed call: nobody registered and nobody provisioned", async () => {
-    const { pick } = picker({});
-    expect(await resolveOrProvisionByName("org-1", "Theo", { identify: pick })).toBeNull();
-    expect(sender.createProvisionalByName).not.toHaveBeenCalled();
-  });
-
-  it("an admin's deliberate name only former members could be is a new player, as the preview promised", async () => {
-    const { pick } = picker({ Old: { kind: "ambiguous", userIds: ["u-old"] } });
-    expect((await resolveOrProvisionByName("org-1", "Old", { identify: pick, adminConfirmed: true }))?.userId).toBe("new:Old");
-  });
-});
-
-describe("one call for a list, with the whole club shown", () => {
-  it("every name in one call; former members marked; aliases shown", async () => {
-    const { pick, seen } = picker({ Naim: { kind: "none" }, habibi: { kind: "member", userId: "u-mo" } });
-    const out = await resolveOrProvisionNames("org-1", ["Naim", "habibi", "Naim"], { identify: pick, context: "1. Naim\n2. habibi" });
-    expect(seen).toHaveLength(1);
-    expect(seen[0].messages[0].refs).toEqual(["Naim", "habibi"]);
-    expect(seen[0].messages[0].body).toBe("1. Naim\n2. habibi");
-    expect(seen[0].roster.find((m) => m.userId === "u-old")?.former).toBe(true);
-    expect(seen[0].roster.find((m) => m.userId === "u-mo")?.aliases).toEqual(["habibi"]);
-    expect(out.get("Naim")?.userId).toBe("new:Naim");
-    expect(out.get("habibi")?.userId).toBe("u-mo");
-  });
-
-  it("a name under two letters is nobody, and is not asked", async () => {
-    const { pick, seen } = picker({});
-    expect(await resolveOrProvisionByName("org-1", "A", { identify: pick })).toBeNull();
-    expect(seen).toHaveLength(0);
   });
 });

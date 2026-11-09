@@ -133,7 +133,9 @@ async function main() {
     names: ["Amir", "Bilal", "Tharan", "Brandnew Bloke", "Omar"],
     reserves: ["Reggie Reserve"],
   });
-  assert.equal(result.unresolved.length, 0, "every name resolved or provisioned");
+  // "Omar" fits two players: unresolved and surfaced, never a new player
+  // (review of #574); every other name resolved or provisioned.
+  assert.deepEqual(result.unresolved, ["Omar"], "only the ambiguous name is unresolved");
 
   const att = await db.attendance.findMany({
     where: { matchId: match.id },
@@ -158,19 +160,18 @@ async function main() {
   assert.ok(bnMem?.provisionallyAddedAt, "unknown squad name provisioned as a provisional member");
   ok("finaliseSquadForMatch: unknown name → new provisional member");
 
-  // Ambiguous "Omar" (two Omars) → never guesses: a fresh provisional.
-  const omar = att.find((a) => a.user.name === "Omar");
-  assert.ok(omar, 'ambiguous "Omar" got its own fresh row');
-  assert.notEqual(omar!.user.id, "sfl-u-" + nonce + "-omar1");
-  assert.notEqual(omar!.user.id, "sfl-u-" + nonce + "-omar2");
-  ok('finaliseSquadForMatch: ambiguous name → NEW provisional, never a guess');
+  // Ambiguous "Omar" (two Omars) → never a guess and never a duplicate:
+  // no row at all.
+  const omar = att.find((a) => a.user.name === "Omar" || a.userId.endsWith("-omar1") || a.userId.endsWith("-omar2"));
+  assert.equal(omar, undefined, 'ambiguous "Omar" got no row');
+  ok("finaliseSquadForMatch: ambiguous name → unresolved, never a guess, never a new player");
 
   // Reserves land on the BENCH (visible, but no MoM/rating DMs).
   assert.ok(bench.includes("Reggie Reserve"), "reserves written as BENCH");
   ok("finaliseSquadForMatch: reserves → BENCH rows");
 
-  // 3 new users total: Brandnew, Omar(ambiguous), Reggie.
-  assert.equal(await db.user.count(), usersBefore + 3, "exactly the 3 unknowns were minted");
+  // 2 new users total: Brandnew and Reggie.
+  assert.equal(await db.user.count(), usersBefore + 2, "exactly the 2 unknowns were minted");
   ok("user-minting bounded to genuinely new names");
 
   // ── resolver semantics directly ─────────────────────────────────────

@@ -126,9 +126,26 @@ describe("a tagged request ('@Match Time add Tom to the November list, he's paid
     expect(m.botJobCreate).not.toHaveBeenCalled();
   });
 
-  it("the reader matched nobody: the name lookup finds a member by his whole name", async () => {
-    await applyMonthAdd({ orgId: "o", reading: add({ memberId: null, name: "Tom Hale" }), senderUserId: "u-davide", sourceRef: "wa1", now: NOW });
+  it("the reader matched nobody: who-is-who, with the message, finds the member (review of #574)", async () => {
+    const seen: Array<{ body: string; refs: string[] }> = [];
+    const identify = async (req: { messages: Array<{ id: string; body: string; refs: string[] }> }) => {
+      seen.push(req.messages[0]);
+      return { picks: new Map([[req.messages[0].id, new Map([["Tom Hale", { kind: "member" as const, userId: "u-tom" }]])]]), usage: null, degradations: [] };
+    };
+    await applyMonthAdd({ orgId: "o", reading: add({ memberId: null, name: "Tom Hale" }), senderUserId: "u-davide", sourceRef: "wa1", now: NOW, text: "add Tom Hale to November", identify });
+    expect(seen[0]).toMatchObject({ body: "add Tom Hale to November", refs: ["Tom Hale"] });
     expect(m.applySignup).toHaveBeenCalledWith(expect.objectContaining({ userId: "u-tom" }));
+  });
+
+  it("the reader matched nobody and who-is-who is not sure: nobody created, the organiser is asked", async () => {
+    const identify = async (req: { messages: Array<{ id: string }> }) => ({
+      picks: new Map([[req.messages[0].id, new Map([["Tom", { kind: "ambiguous" as const, userIds: ["u-tom"] }]])]]),
+      usage: null,
+      degradations: [],
+    });
+    const r = await applyMonthAdd({ orgId: "o", reading: add({ memberId: null, name: "Tom" }), senderUserId: "u-davide", sourceRef: "wa1", now: NOW, identify });
+    expect(m.applySignup).not.toHaveBeenCalled();
+    expect(r.changed).toBe(false);
   });
 
   it("a name that is nobody: a new player joins, and ONE DM numbers the members with no name, by phone", async () => {

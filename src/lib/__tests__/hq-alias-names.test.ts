@@ -45,8 +45,8 @@ describe("who-is-who is shown the club's aliases, and the resolver reads its pic
       roster: whoRosterOf(ROSTER),
       messages: [{ id: "m", body: "AH out", author: "Raihan", senderUserId: "u-raihan", refs: ["AH"] }],
     });
-    expect(turn.user).toContain("p1: Abdul-Hafeez (also: ah)");
-    expect(turn.user).toContain("Imti (also: imtiaz)");
+    expect(turn.user).toContain('p1: "Abdul-Hafeez" (also: "ah")');
+    expect(turn.user).toContain('"Imti" (also: "imtiaz")');
   });
   it("the model's pick for an alias resolves to its member", () => {
     const people = new Map<string, PersonPick>([["AH", { kind: "member", userId: "u-ah" }]]);

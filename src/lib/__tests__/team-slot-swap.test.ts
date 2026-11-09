@@ -25,17 +25,41 @@
  * (attendance status × holds a slot) on both sides, in both orderings,
  * so the answer is a table rather than a judgement call.
  */
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { buildSwapRefusedReply } from "../group-copy";
 import {
   decideSwap,
-  planSwap,
-  resolveSwapSide,
-  swapGuardFor,
+  planSwap as realPlanSwap,
+  resolveSwapSide as realResolveSwapSide,
+  swapGuardFor as realSwapGuardFor,
   type SwapCandidate,
   type SwapDecision,
   type SwapSide,
 } from "../team-slot-swap";
+import { refKey, stubPicks, type PersonPick } from "../pipeline/who-is-who";
+
+// ── WHO A NAME IS, IS WHO-IS-WHO'S (review of #574) ────────────────────
+// The swap no longer matches names by spelling (a prefix included). These
+// tests run its decisions with who-is-who's picks from the name-based
+// stand-in (`stubPicks`), plus, per test, what only the model can say
+// (`MODEL`: a Turkish case ending, a shortening).
+let MODEL: Record<string, string> = {};
+function picks(roster: SwapCandidate[], refs: string[]) {
+  const base = stubPicks({ roster: roster.map((c) => ({ userId: c.userId, name: c.name })), messages: [{ id: "m", body: "", author: null, refs }] }).get("m") ?? new Map<string, PersonPick>();
+  for (const [ref, userId] of Object.entries(MODEL)) base.set(refKey(ref), { kind: "member", userId });
+  return base;
+}
+const resolveSwapSide = (q: string, roster: SwapCandidate[]) => realResolveSwapSide(q, roster, picks(roster, [q]));
+const planSwap: typeof realPlanSwap = (names, roster, opts) => realPlanSwap(names, roster, { ...opts, people: picks(roster, [names.a, names.b]) });
+const swapGuardFor: typeof realSwapGuardFor = (reading, claims, roster, opts) => {
+  const refs = [
+    ...(reading?.moves ?? []),
+    ...(reading?.swaps ?? []).map((s) => s.personRef),
+    ...(reading?.pairings ?? []).flat(),
+    ...claims.flatMap((c) => [c.personRef, c.replaces ?? ""]),
+  ].filter(Boolean);
+  return realSwapGuardFor(reading, claims, roster, { ...opts, people: picks(roster, refs) });
+};
 
 // ── The eight states one side can be in ────────────────────────────────
 //
@@ -272,10 +296,13 @@ describe("resolveSwapSide", () => {
     expect(resolveSwapSide("raihan", roster)?.userId).toBe("u-raihan");
   });
 
-  it("prefers the unique CONFIRMED match, so the shipped behaviour is unchanged", () => {
-    // Two Omars. Before the widening only Omar One was in the pool and
-    // "omar" resolved to him; it still must.
-    expect(resolveSwapSide("omar", roster)?.userId).toBe("u-omar1");
+  it("two Omars: an ambiguity, never narrowed by code to the one playing (the model decides)", () => {
+    expect(resolveSwapSide("omar", roster)).toBeNull();
+  });
+
+  it("RED on main: with no pick, a first name resolves nobody (no spelling match)", () => {
+    expect(realResolveSwapSide("elvin", roster)).toBeNull();
+    expect(realResolveSwapSide("elv", roster, new Map())).toBeNull();
   });
 
   it("refuses an ambiguous name when neither candidate is CONFIRMED", () => {
@@ -316,6 +343,13 @@ describe("swapGuardFor", () => {
   const refuses = (reading: ReturnType<typeof swap> | null, c: { subject: "sender" | "other"; personRef: string; replaces?: string }, claims = [c]) =>
     swapGuardFor(reading, claims, roster, opts)?.refuses(c) ?? false;
 
+  beforeEach(() => {
+    // A Turkish case ending is the model's to read, never code's.
+    MODEL = { "Sait'i": "u-sait", "Sait’i": "u-sait" };
+  });
+  afterEach(() => {
+    MODEL = {};
+  });
   for (const [label, ref] of [
     ["the name as typed", "David"],
     ["an @mention", "@David"],
@@ -406,9 +440,11 @@ describe("planSwap", () => {
     expect(planSwap({ a: "it", b: "to" }, withTom, opts)).toEqual({ kind: "not-a-player-swap" });
   });
 
-  it("a prefix still resolves once the other word is exactly a player", () => {
-    const p = planSwap({ a: "dav", b: "sait" }, roster, opts);
-    expect(p.kind).toBe("decided");
+  it("a shortening the model is sure of resolves; with no pick it never does", () => {
+    MODEL = { dav: "u-david" };
+    expect(planSwap({ a: "dav", b: "sait" }, roster, opts).kind).toBe("decided");
+    MODEL = {};
+    expect(planSwap({ a: "dav", b: "sait" }, roster, opts).kind).toBe("refused");
   });
 
   it("refuses an unknown name, and names it as typed", () => {

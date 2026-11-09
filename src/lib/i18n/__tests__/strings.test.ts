@@ -421,6 +421,7 @@ const SAMPLES: SampleArgs = {
   hq_fee_free_monthly: { name: "Bilal Ahmed", day: "Fri 16 Oct" },
   hq_fee_free_not_in_squad: { name: "Zed", day: "Fri 16 Oct" },
   hq_fee_free_which: { ref: "Sam", choices: "Sam Stone or Sam Smith" },
+  hq_who_unsure: { ref: "Sam" },
   hq_fee_free_no_match: null,
   hq_fee_free_no_payments: null,
   hq_fee_free_who: null,

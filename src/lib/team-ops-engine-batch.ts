@@ -225,7 +225,7 @@ import type { SilenceFacts } from "./tagged-silence";
 import type { OrgFeatures } from "./org-features";
 import { compose } from "./pipeline/compose";
 import { decide as decideDefault } from "./pipeline/engine";
-import { identifyPeople, personPickerFor } from "./pipeline/identify-batch";
+import { identifyFacts, identifyPeople, personPickerFor } from "./pipeline/identify-batch";
 import type { PersonPicker } from "./pipeline/who-is-who";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
@@ -877,6 +877,25 @@ export async function runTeamOpsBatch(args: {
   // After the generate (one write path at a time against the match).
   // Writes TeamAssignment only. A throw says nothing and is reported.
   const swapResults = new Map<string, PlayersSwapResult>();
+  // Who the swaps' names are: who-is-who, one call for them all, with each
+  // message (2026-11-09, review of #574: the swap used to match names by
+  // spelling, a prefix included).
+  const swapPeople =
+    swapFacts.size > 0
+      ? await identifyFacts({
+          picker: personPickerFor({ identify: deps.identify, model }),
+          roster: state.roster,
+          where: "the club's players' group",
+          items: [...swapFacts].map(([id, facts]) => {
+            const m = messages.find((x) => x.waMessageId === id)!;
+            return { id, body: m.body, author: m.senderName ?? m.authorName, senderUserId: m.senderUserId, facts };
+          }),
+        })
+      : null;
+  if (swapPeople) {
+    if (swapPeople.calls > 0) cost = { usd: cost.usd + swapPeople.costUsd, calls: cost.calls + swapPeople.calls, ms: cost.ms };
+    degradations.push(...swapPeople.degradations);
+  }
   for (const [id, facts] of swapFacts) {
     const m = messages.find((x) => x.waMessageId === id)!;
     try {
@@ -886,6 +905,7 @@ export async function runTeamOpsBatch(args: {
           orgId,
           facts,
           sender: m.senderUserId ? { userId: m.senderUserId, name: m.senderName ?? m.authorName ?? "" } : null,
+          people: swapPeople?.people.get(id),
         }),
       );
     } catch (err) {

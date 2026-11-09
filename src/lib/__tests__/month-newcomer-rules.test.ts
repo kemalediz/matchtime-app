@@ -124,9 +124,14 @@ describe("the organiser re-posts the month's list in a running month with a new 
     expect(r.guestsRefused).toEqual([]);
   });
 
-  it("N6, the guest lookup: a name the reader called a guest that is a regular's alias is that regular, never a new player", () => {
+  // Review of #574: the reader's refs are the only authority. A line the
+  // reader called a guest is nobody of the club, even when the name is a
+  // regular's alias: code no longer looks it up and overrules the reader.
+  // It is still never a new player, and the paste changes nothing.
+  it("N6: a line the reader called a guest is nobody, even with a regular's alias, and never a new player", () => {
     const resolve = entryResolver(roster, new Set(members.map((m) => m.userId)));
-    expect(resolve(entry(2, "Nabz", { guest: true }))).toEqual({ kind: "one", userId: "u-nabz" });
+    expect(resolve(entry(2, "Nabz", { guest: true }))).toEqual({ kind: "none" });
+    expect(resolve(entry(2, "Nabz", { memberId: "u-nabz" }))).toEqual({ kind: "one", userId: "u-nabz" });
     const r = reconcileMonthPaste({
       list: listOf([entry(1, "Davide", { memberId: "u-davide" }), entry(2, "Nabz", { guest: true }), entry(3, "Shane", { memberId: "u-shane" })]),
       members,
@@ -138,7 +143,10 @@ describe("the organiser re-posts the month's list in a running month with a new 
       senderUserId: "u-davide",
       senderIsAdmin: true,
     });
-    expect(r.actions).toEqual([]);
+    // The rule proposes the line as new; the apply step asks who-is-who
+    // before anybody is created (`monthly-paste.ts`), which places Nabz on
+    // the regular, so no duplicate is made.
+    expect(r.actions.map((a) => [a.kind, "name" in a ? a.name : null])).toEqual([["new", "Nabz"]]);
   });
 
   it("N5: a new line and a name moved under can't play, in one paste", () => {

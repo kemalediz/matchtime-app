@@ -25,7 +25,7 @@
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { inMessageHours, type QuietHours } from "./message-hours";
 import { type MonthlyList, type MonthlyListEntry } from "./monthly-list";
-import { candidatesFor, gamesPlayedBy, isBreakMonth, londonMonthStart, monthFixtureDates, monthStartToDate, nameKey } from "./squad-month-rules";
+import { gamesPlayedBy, isBreakMonth, londonMonthStart, monthFixtureDates, monthStartToDate, nameKey } from "./squad-month-rules";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -347,49 +347,23 @@ export const MIN_SIGNUP_OVERLAP = 0.6;
 
 export type Resolved = { kind: "one"; userId: string } | { kind: "none" } | { kind: "ambiguous" };
 
-/** Whole name, a known alias, then the leading name. Never fuzzy. Two
- *  candidates are narrowed to the ones already on the month. */
-function makeResolver(roster: SignupRosterMember[], known: ReadonlySet<string>): (name: string) => Resolved {
-  const keyed = roster.map((m) => ({ userId: m.userId, key: nameKey(m.name), aliasKeys: (m.aliases ?? []).map(nameKey) }));
-  return (name) => {
-    const key = nameKey(name);
-    if (key === "") return { kind: "none" };
-    let found = [...new Set(candidatesFor(key, keyed))];
-    if (found.length > 1) {
-      const narrowed = found.filter((id) => known.has(id));
-      if (narrowed.length === 1) found = narrowed;
-    }
-    if (found.length === 0) return { kind: "none" };
-    return found.length === 1 ? { kind: "one", userId: found[0] } : { kind: "ambiguous" };
-  };
-}
-
 /**
- * A list line to a player. The monthly reader (the model) names the
- * member it matched from the club's list, and that is taken as it is; a
- * line it calls a guest is nobody of the club; a line it matched to nobody
- * is looked up by its clean name (whole name, alias, leading name), the
- * same lookup a list parsed in code always had. Shared with the week's
- * reconcile (`monthly-week-rules.ts`).
+ * A list line to a player: the member the monthly READER (the model)
+ * named from the club's list, and nothing else (2026-11-09, review of
+ * #574). A line it named nobody for, a guest included, is "none": no name
+ * lookup in code may overrule the reader. That lookup (whole name, alias,
+ * leading name, and a guest's name among the people already on the week)
+ * is gone, so an unplaced line stays unplaced: it is reported (`notAdded`)
+ * and nobody is written or created from it. Shared with the week's
+ * reconcile (`monthly-week-rules.ts`). `known` is kept for its callers.
  */
-export function entryResolver(roster: SignupRosterMember[], known: ReadonlySet<string>): (e: MonthlyListEntry) => Resolved {
-  const byName = makeResolver(roster, known);
-  // A guest is looked up only among the people already on this week or
-  // month: the same guest pasted again is the player he became, while a
-  // new guest is never taken for a club member the reader said he is not.
-  const byNameHere = makeResolver(roster.filter((m) => known.has(m.userId)), known);
+export function entryResolver(roster: SignupRosterMember[], _known: ReadonlySet<string>): (e: MonthlyListEntry) => Resolved {
   const ids = new Set(roster.map((m) => m.userId));
   return (e) => {
     const id = e.facts?.memberId;
-    if (id && ids.has(id)) return { kind: "one", userId: id };
-    if (e.facts?.guest) {
-      const here = byNameHere(e.name);
-      return here.kind === "one" ? here : { kind: "none" };
-    }
-    return byName(e.name);
+    return id && ids.has(id) ? { kind: "one", userId: id } : { kind: "none" };
   };
 }
-
 /** Games a line commits to ("4 only"), for a player on the month. */
 export interface SignupGames {
   userId: string;
@@ -582,9 +556,9 @@ export function signupPasteShowsSameList(args: { list: MonthlyList; ours: Signup
     ...ours.payg.map((p) => p.userId),
     ...ours.waiting.map((w) => w.userId),
   ]);
-  const resolve = makeResolver(args.roster, known);
+  const resolve = entryResolver(args.roster, known);
   const who = (e: MonthlyListEntry): string => {
-    const r = resolve(e.name);
+    const r = resolve(e);
     return r.kind === "one" ? r.userId : `?${nameKey(e.name)}`;
   };
   const pastedRegulars = new Map<number, string>();
