@@ -37,7 +37,7 @@ import type { MonthlyReading } from "./monthly-reader-prompt";
 import { createProvisionalByName } from "./resolve-sender";
 import { askWhoTheyAre, createNewcomer, joinMonthAsOrganiser } from "./month-newcomers";
 import type { NewcomerLine } from "./month-newcomer-rules";
-import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek } from "./monthly-week";
+import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek, weekListKeyPrefix } from "./monthly-week";
 import {
   buildPasteGuestsAddedDm,
   buildPasteGuestsRefusedDm,
@@ -97,6 +97,33 @@ async function claimOnce(key: string, kind: string, matchId: string | null): Pro
     if (isUniqueViolation(err)) return false;
     throw err;
   }
+}
+
+/**
+ * Who was on the bench when the group last saw the week's list (a list
+ * post, a reply, or a member's paste that matched it): their last move to
+ * the bench is older than that moment. An organiser's paste that leaves
+ * one of them off the bench takes him off it (`reconcileMonthPaste`);
+ * anybody newer may be missing only because the copy is older than him.
+ * A bencher with no logged move is taken as seen. Nobody when the group
+ * has not seen a list yet.
+ */
+async function loadBenchSeen(matchId: string, benchIds: string[]): Promise<Set<string>> {
+  if (benchIds.length === 0) return new Set();
+  const shown = await db.sentNotification.findFirst({
+    where: { matchId, key: { startsWith: weekListKeyPrefix(matchId) } },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  if (!shown) return new Set();
+  const moves = await db.attendanceEvent.findMany({
+    where: { matchId, userId: { in: benchIds }, toStatus: "BENCH" },
+    orderBy: { at: "desc" },
+    select: { userId: true, at: true },
+  });
+  const lastMove = new Map<string, Date>();
+  for (const m of moves) if (!lastMove.has(m.userId)) lastMove.set(m.userId, m.at);
+  return new Set(benchIds.filter((id) => (lastMove.get(id)?.getTime() ?? 0) < shown.createdAt.getTime()));
 }
 
 /**
@@ -204,6 +231,12 @@ export async function handleMonthlyPaste(args: {
     senderNames: [sender.name, args.senderWhatsAppName],
     senderIsAdmin,
     selfBeforeSeed,
+    benchSeen: senderIsAdmin
+      ? await loadBenchSeen(matchId, week.rows.filter((r) => r.status === "BENCH").map((r) => r.userId)).catch((err) => {
+          console.error("[monthly-paste] could not read who the group saw on the bench (nobody is taken off it):", err);
+          return new Set<string>();
+        })
+      : undefined,
   });
 
   const phoneOf = new Map(memberships.map((m) => [m.user.id, m.user.phoneNumber]));
@@ -297,12 +330,14 @@ export async function handleMonthlyPaste(args: {
           continue;
         }
         const res = await registerAttendance(created.userId, matchId, {
+          // Written under the bench: on the bench whatever the squad's room.
+          ...(a.bench ? { benchIntent: "explicit" as const } : {}),
           event: {
             cause: "pasted-roster",
             actorKind: senderIsAdmin ? "admin" : "member",
             actorUserId: sender.userId ?? null,
             sourceRef: args.waMessageId,
-            note: `a guest${a.hostUserId ? ` of ${a.hostUserId}` : ""} written on a pasted monthly list`,
+            note: `a guest${a.hostUserId ? ` of ${a.hostUserId}` : ""} written ${a.bench ? "under the bench " : ""}on a pasted monthly list`,
           },
         });
         applied.push(`guest:${a.name}${res.status === "BENCH" ? " (bench)" : ""}`);
@@ -325,6 +360,26 @@ export async function handleMonthlyPaste(args: {
         if (res.status === before) continue;
         applied.push(`in:${a.name}${res.status === "BENCH" ? " (waiting list)" : ""}`);
         if (!a.self) await undoDm(a.userId, "in");
+      } else if (a.kind === "bench") {
+        // Written under the bench (Kemal, 2026-11-09): the attendance path's
+        // own "put me on the bench", so the bench order, the offers and a
+        // place given up all behave as for a typed request.
+        const before = rowOf.get(a.userId)?.status ?? null;
+        const res = await registerAttendance(a.userId, matchId, {
+          benchIntent: "explicit",
+          actorIsAdmin: senderIsAdmin,
+          event: {
+            cause: "pasted-roster",
+            actorKind: a.self ? "player" : senderIsAdmin ? "admin" : "member",
+            actorUserId: sender.userId ?? null,
+            sourceRef: args.waMessageId,
+            note: "written under the bench on a pasted monthly list",
+          },
+        });
+        if (res.status === before) continue;
+        applied.push(`bench:${a.name}`);
+        // A squad player moved there was taken off the list; anybody else was added to it.
+        if (!a.self) await undoDm(a.userId, before === "CONFIRMED" ? "out" : "in");
       } else if (a.kind === "out") {
         const member = memberOf.get(a.userId);
         const row = rowOf.get(a.userId);
@@ -341,7 +396,9 @@ export async function handleMonthlyPaste(args: {
               note:
                 a.via === "blank"
                   ? "their line was blanked on a pasted monthly list"
-                  : "moved under can't play on a pasted monthly list",
+                  : a.via === "off-bench"
+                    ? "taken off the bench on a pasted monthly list"
+                    : "moved under can't play on a pasted monthly list",
             },
             { occurredAt: args.sentAt },
           );

@@ -1048,6 +1048,82 @@ test.describe("regulars have priority at the seed", () => {
   });
 });
 
+test.describe("the bench on a pasted list (Kemal, 2026-11-09)", () => {
+  const ORG7 = "e2e-mwb-org";
+  const GROUP7 = "e2e-monthly-bench@g.us";
+  const MATCH7 = "e2e-mwb-match";
+  const B = {
+    rob: { id: "e2e-mwb-rob", name: "Rob Lane", phone: "+447700929901" },
+    una: { id: "e2e-mwb-una", name: "Una Reid", phone: "+447700929902" },
+    vic: { id: "e2e-mwb-vic", name: "Vic Shaw", phone: "+447700929903" },
+    wes: { id: "e2e-mwb-wes", name: "Wes Tate", phone: "+447700929904" },
+    ned: { id: "e2e-mwb-ned", name: "Ned Early", phone: "+447700929905" },
+    yan: { id: "e2e-mwb-yan", name: "Yan Oduya", phone: "+447700929906" },
+    zed: { id: "e2e-mwb-zed", name: "Zed Pike", phone: "+447700929907" },
+  } as const;
+  const statusOf = async (db: TestDb, p: { id: string }) =>
+    (await db.one<{ status: string }>(`SELECT status::text AS status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH7, p.id]))?.status ?? null;
+  const pasteWith = (bench: string[]) => `${listText(["Una Reid", "Vic Shaw", "Wes Tate"])}\n\nReserves\n${bench.map((n, i) => `${i + 1}. ${n}`).join("\n")}`;
+
+  test("a name added under the bench goes on it; one taken off comes off it (his own paste, or an organiser's once the group has seen him there)", async ({
+    request,
+    db,
+  }) => {
+    await club(db, { org: ORG7, group: GROUP7, act: "e2e-mwb-act", sport: "e2e-mwb-sport", name: "Bench Club" });
+    await person(db, ORG7, B.rob, "OWNER");
+    for (const p of [B.una, B.vic, B.wes, B.ned, B.yan, B.zed]) await person(db, ORG7, p);
+    await fixture(db, MATCH7, "e2e-mwb-act", KICKOFF, "UPCOMING", true, 3);
+    await month(db, { id: "e2e-mwb-month", org: ORG7, act: "e2e-mwb-act" }, [
+      { p: B.una, slot: 1, paid: true },
+      { p: B.vic, slot: 2, paid: true },
+      { p: B.wes, slot: 3, paid: true },
+      { p: B.ned, kind: "payg", slot: null },
+      { p: B.yan, kind: "payg", slot: null },
+      { p: B.zed, kind: "payg", slot: null },
+    ]);
+    // The regulars are put on the match and the list goes out; then Ned
+    // goes on the bench.
+    await poll(request, at(10), GROUP7);
+    await attend(db, ORG7, MATCH7, B.ned.id, "BENCH", 10);
+
+    // 1. Yan writes himself under the bench: on it, by the attendance path,
+    //    and the group has just seen the list as it now stands.
+    const seen = () => db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE "matchId" = $1 AND kind = 'month-list-seen'`, [MATCH7]);
+    expect(await seen()).toBe(0);
+    const added = await say(request, B.yan as unknown as Person, pasteWith(["Ned Early", "Yan Oduya"]), { groupId: GROUP7 });
+    expect(added).toMatchObject({ intent: "monthly_list", react: "✅" });
+    expect(await statusOf(db, B.yan)).toBe("BENCH");
+    expect(
+      await db.one(`SELECT cause, note FROM "AttendanceEvent" WHERE "matchId" = $1 AND "userId" = $2 AND "toStatus" = 'BENCH'`, [MATCH7, B.yan.id]),
+    ).toEqual({ cause: "pasted-roster", note: "written under the bench on a pasted monthly list" });
+    expect(await seen()).toBe(1);
+
+    // 2. The organiser's paste leaves Ned off the bench. The group has seen
+    //    him there (Yan's paste), so he comes off, and is told how to undo it.
+    await say(request, B.rob as unknown as Person, pasteWith(["Yan Oduya"]), { groupId: GROUP7 });
+    expect(await statusOf(db, B.ned)).toBe("DROPPED");
+    expect(
+      await db.one(`SELECT cause, note FROM "AttendanceEvent" WHERE "matchId" = $1 AND "userId" = $2 AND "toStatus" = 'DROPPED'`, [MATCH7, B.ned.id]),
+    ).toEqual({ cause: "pasted-roster", note: "taken off the bench on a pasted monthly list" });
+    expect((await dms(db, B.ned as unknown as Person, ORG7)).map((d) => d.text)).toEqual([
+      buildPasteUndoDm({ change: "out", actorName: B.rob.name, activityName: "Monday 7-a-side", matchDate: KICKOFF, lang: "en" }),
+    ]);
+
+    // 3. Zed goes on the bench after that. The organiser pastes a copy
+    //    without him: it may simply be older than him, so he stays.
+    await attend(db, ORG7, MATCH7, B.zed.id, "BENCH", 12);
+    await say(request, B.rob as unknown as Person, pasteWith(["Yan Oduya"]), { groupId: GROUP7 });
+    expect(await statusOf(db, B.zed)).toBe("BENCH");
+
+    // 4. Yan takes himself off the bench.
+    await say(request, B.yan as unknown as Person, pasteWith(["Zed Pike"]), { groupId: GROUP7 });
+    expect(await statusOf(db, B.yan)).toBe("DROPPED");
+    expect(await statusOf(db, B.zed)).toBe("BENCH");
+    // The squad is untouched throughout.
+    for (const p of [B.una, B.vic, B.wes]) expect(await statusOf(db, p)).toBe("CONFIRMED");
+  });
+});
+
 test.describe("after a game: the collector's reply, and the hourly sweep", () => {
   const ORG4 = "e2e-mw4-org";
   const GROUP4 = "e2e-monthly-played@g.us";

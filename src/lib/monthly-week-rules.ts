@@ -715,15 +715,20 @@ export type PasteAction =
   /** A player coming in: the sender adding themselves, or a member of this
    *  month written into a numbered slot by somebody else. */
   | { kind: "in"; userId: string; name: string; self: boolean; slot: number | null }
-  /** Moved under "Paid but can't play", or their line blanked. */
-  | { kind: "out"; userId: string; name: string; self: boolean; via: "cant-play" | "blank" }
+  /** Moved under "Paid but can't play", their line blanked, or taken off
+   *  the pasted bench. */
+  | { kind: "out"; userId: string; name: string; self: boolean; via: "cant-play" | "blank" | "off-bench" }
+  /** Written under the bench (Kemal, 2026-11-09): on the bench for this
+   *  game, as a typed "put me on the bench". A squad player moved there
+   *  gives up his place. */
+  | { kind: "bench"; userId: string; name: string; self: boolean }
   /** A new "(paid)" mark on a regular's line: "says paid", never confirmed. */
   | { kind: "paid-claim"; userId: string; name: string; self: boolean; amountPence: number | null }
   /** Somebody who is not a member, written in by a member ("Jon extra",
    *  "David (my son)"), as the monthly reader read it: they play this week
    *  as a PAYG guest of `hostUserId`. The caller adds them the way a typed
    *  "David, my son, is IN" is added. */
-  | { kind: "guest"; name: string; hostUserId: string | null; slot: number | null }
+  | { kind: "guest"; name: string; hostUserId: string | null; slot: number | null; bench?: true }
   /** AN ORGANISER'S new line in a running month (Kemal, 2026-11-03): a
    *  club member known by name who is not on the month. He joins it as a
    *  regular for the games left (PAYG when the line says), as "Add a
@@ -805,6 +810,14 @@ export const MIN_LIST_OVERLAP = 0.6;
  *    applies;
  *  - a name that is simply missing, and reordered numbers, change nothing.
  *
+ * THE BENCH (Kemal, 2026-11-09). A name written under the bench goes on it
+ * for this game, by the rules a numbered line follows (who may write whom,
+ * guests, a dropped player only by his own paste, a squad player moved
+ * there as one moved under can't play). A bencher the paste's bench leaves
+ * off comes off it: by his own paste, or an organiser's when the group had
+ * already seen him on the bench (`benchSeen`), never on an old copy, and
+ * never from a list written with no bench part at all.
+ *
  * A paid mark is a claim, whoever wrote it (D3), and a missing mark
  * removes nothing.
  *
@@ -833,6 +846,11 @@ export function reconcileMonthPaste(args: {
    *  nothing changed but paid marks): the line was about that game, and
    *  only paid marks are read. Default true. */
   selfBeforeSeed?: boolean;
+  /** Who was already on the bench when the group last saw the list: an
+   *  organiser's paste that leaves one of them off the bench takes him
+   *  off. Anybody else could be missing only because the copy is older
+   *  than him. Default: nobody. */
+  benchSeen?: ReadonlySet<string>;
 }): {
   actions: PasteAction[];
   ignored: PasteIgnored[];
@@ -855,7 +873,10 @@ export function reconcileMonthPaste(args: {
   const named = (entries: MonthlyListEntry[]) => entries.filter((e) => e.name).map((e) => ({ e, r: resolve(e) }));
   const slotLines = named(list.slots);
   const cantLines = named(list.sections.cantPlay);
-  const elsewhere = [...named(list.sections.reserves), ...named(list.sections.other)];
+  const benchLines = named(list.sections.reserves);
+  const elsewhere = [...benchLines, ...named(list.sections.other)];
+  // The paste shows a bench (its part may be empty: the last name taken off).
+  const benchShown = list.benchShown ?? list.sections.reserves.length > 0;
 
   if (!list.month) {
     const lines = [...slotLines, ...cantLines];
@@ -997,6 +1018,69 @@ export function reconcileMonthPaste(args: {
     gamesOf(e, userId);
   }
 
+  // THE BENCH (Kemal, 2026-11-09). A name written under it is on the bench
+  // for this game, by the same rules as a numbered line: the sender
+  // himself, anybody for a player of this month, an organiser for any club
+  // player; a guest as on a numbered line; never a player who dropped
+  // unless it is his own paste; a squad player moved there as one moved
+  // under can't play. Guests on the bench take no place, so they are
+  // capped per paste only.
+  let benchGuests = 0;
+  const benchGuestCap = senderIsAdmin ? MAX_NEW_PLAYERS_PER_PASTE : MAX_GUESTS_PER_PASTE;
+  for (const { e, r } of benchLines) {
+    if (r.kind !== "one") {
+      if (e.facts?.guest && (senderIsClubPlayer || senderIsAdmin)) {
+        if (benchGuests < benchGuestCap) {
+          benchGuests++;
+          actions.push({ kind: "guest", name: e.name, hostUserId: e.facts.hostUserId ?? (senderIsAdmin ? null : senderUserId), slot: e.slot, bench: true });
+        } else {
+          guestsRefused.push(e.name);
+        }
+      } else {
+        notAdded.push({ name: e.name, reason: r.kind === "none" ? "unknown" : "ambiguous" });
+      }
+      continue;
+    }
+    const userId = r.userId;
+    if (handled.has(userId)) continue;
+    handled.add(userId);
+    const self = userId === senderUserId;
+    const row = rowOf.get(userId);
+    const m = memberOf.get(userId);
+    if (row?.status !== "BENCH") {
+      if (isOutNow(userId)) {
+        if (self) actions.push({ kind: "bench", userId, name: e.name, self });
+        else ignored.push({ name: e.name, reason: "stale-readd" });
+      } else if (row ? row.status === "CONFIRMED" : m?.kind === "regular") {
+        if (self || !oldCopy) actions.push({ kind: "bench", userId, name: e.name, self });
+        else ignored.push({ name: e.name, reason: "old-copy" });
+      } else if (self || memberOf.has(userId) || senderIsAdmin) {
+        actions.push({ kind: "bench", userId, name: e.name, self });
+      } else {
+        notAdded.push({ name: e.name, reason: "not-in-month" });
+      }
+    }
+    claimIfNew(e, userId);
+    gamesOf(e, userId);
+  }
+
+  // A bencher the paste's bench leaves off, who is nowhere else on it. Only
+  // when the paste shows a bench at all (an empty one too): a list written
+  // without one says nothing about the bench.
+  if (benchShown) {
+    for (const b of week.reserves) {
+      if (onPaste.has(b.userId) || handled.has(b.userId)) continue;
+      handled.add(b.userId);
+      const self = b.userId === senderUserId;
+      if (self) actions.push({ kind: "out", userId: b.userId, name: b.name, self, via: "off-bench" });
+      else if (!senderIsAdmin) ignored.push({ name: b.name, reason: "blank-by-other" });
+      else if (oldCopy) ignored.push({ name: b.name, reason: "old-copy" });
+      else if (args.benchSeen?.has(b.userId)) actions.push({ kind: "out", userId: b.userId, name: b.name, self, via: "off-bench" });
+      // Else he joined the bench after the list the group last saw: the
+      // copy may be older than him, and nothing is done.
+    }
+  }
+
   // A numbered line left blank where we have somebody, who is nowhere else
   // on the paste.
   for (const held of blankedPlayers(list, week, resolve, onPaste)) {
@@ -1020,6 +1104,8 @@ export function reconcileMonthPaste(args: {
         if (a.kind === "paid-claim") return true;
         // An organiser's new line waits for the seed, like a guest.
         if (a.kind === "guest" || a.kind === "join" || a.kind === "new" || a.kind === "ask") return false;
+        // The bench is this game's, and the game has no squad yet.
+        if (a.kind === "bench" || (a.kind === "out" && a.via === "off-bench")) return false;
         if (!a.self || args.selfBeforeSeed === false) return false;
         // A regular who is not away is put in by the seed anyway.
         const m = memberOf.get(a.userId);
@@ -1162,6 +1248,14 @@ export function pasteShowsSameList(args: { list: MonthlyList; week: WeekList; ro
   const oursOut = new Set([...week.paidCantPlay, ...week.cantPlay].map((n) => n.userId));
   if (pastedOut.size !== oursOut.size) return false;
   for (const u of oursOut) if (!pastedOut.has(u)) return false;
+
+  // The bench, when the paste shows one (2026-11-09: a name added or taken
+  // off there is a change). A list written without a bench is not compared.
+  if (list.benchShown ?? list.sections.reserves.length > 0) {
+    const pastedBench = new Set(list.sections.reserves.filter((e) => e.name).map(who));
+    if (pastedBench.size !== week.reserves.length) return false;
+    for (const n of week.reserves) if (!pastedBench.has(n.userId)) return false;
+  }
   return true;
 }
 

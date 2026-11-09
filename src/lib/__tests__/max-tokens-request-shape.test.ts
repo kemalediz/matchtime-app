@@ -151,7 +151,7 @@ describe("composeChaseText max_tokens", () => {
  *
  * The regression it protected against is not gone, and it is not on
  * trust: `pipeline/llm.ts` clamps EVERY pipeline call to
- * `PIPELINE_MAX_TOKENS_CEILING` (4,096) at the call site rather than
+ * `PIPELINE_MAX_TOKENS_CEILING` (8,192) at the call site rather than
  * trusting the caller, and `pipeline/__tests__/max-tokens-derivation.test.ts`
  * asserts that constant against `MAX_TOKENS_CEILING` here. A new stage
  * cannot reintroduce the 64,000 bug by passing its own number, which is
