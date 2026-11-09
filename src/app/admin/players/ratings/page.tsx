@@ -268,66 +268,48 @@ export default function BulkRatingsPage() {
         )}
       </div>
 
-      {infoOpen && <InfoModal onClose={() => setInfoOpen(false)} />}
+      {infoOpen && <InfoModal lang={lang} onClose={() => setInfoOpen(false)} />}
     </div>
   );
 }
 
-function InfoModal({ onClose }: { onClose: () => void }) {
+/** "How ratings work", in the club's language. The copy lives in the
+ *  string table (`ratings_info_*`) with where each line comes from in the
+ *  code; the Elo blend this popup used to print was deleted on 2026-09-15. */
+function InfoModal({ lang, onClose }: { lang: Lang; onClose: () => void }) {
+  const s = t(lang);
+  const sections: Array<[string, string]> = [
+    [s.ratings_info_seed_head, s.ratings_info_seed_body],
+    [s.ratings_info_joiner_head, s.ratings_info_joiner_body],
+    [s.ratings_info_peers_head, s.ratings_info_peers_body],
+    [s.ratings_info_match_day_head, s.ratings_info_match_day_body],
+    [s.ratings_info_shown_head, s.ratings_info_shown_body],
+  ];
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-xl max-w-lg w-full"
+        className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-full overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label={s.ratings_info_title}
+        data-testid="ratings-info"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h3 className="font-semibold text-slate-800">How ratings work</h3>
+          <h3 className="font-semibold text-slate-800">{s.ratings_info_title}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
           </button>
         </div>
         <div className="p-6 space-y-4 text-sm text-slate-600">
-          <p>
-            <span className="font-medium text-slate-800">Seed rating (1 to 10):</span>{" "}
-            your guess at a player&apos;s skill. Used by the team-balancing algorithm
-            until they&apos;ve collected at least 3 peer ratings from completed matches.
-            It is your club&apos;s number: the same player at another club has their
-            own, and neither club can see or move the other&apos;s.
-          </p>
-          <p>
-            <span className="font-medium text-slate-800">Everyone starts at 6.</span>{" "}
-            A player you have not rated shows 6, a medium player, and the
-            balancer treats them as a 6 until their first peer ratings arrive.
-            Move anyone stronger up and anyone still learning down.
-          </p>
-          <p>
-            <span className="font-medium text-slate-800">Peer rating:</span>{" "}
-            after every match, teammates score each other 1 to 10. The rolling average
-            of the last 60 ratings replaces the seed once enough data arrives.
-          </p>
-          <p>
-            <span className="font-medium text-slate-800">Match rating (Elo):</span>{" "}
-            a hidden 1000-scale rating that updates after every match with a recorded
-            score. Winners climb, losers drop, and bigger margins cause bigger swings.
-            Blended 50/50 with peer rating so both &quot;teammate perception&quot; and
-            &quot;team actually won&quot; shape the balancer input.
-          </p>
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 text-xs">
-            <p className="font-mono text-slate-700">
-              balancer_input = 0.5 × peer_avg + 0.5 × (match_rating ÷ 200)
+          {sections.map(([head, body]) => (
+            <p key={head}>
+              <span className="font-medium text-slate-800">{head}</span> {body}
             </p>
-            <p className="text-slate-500 mt-2">
-              With fewer than 3 peer ratings, seed rating is used (blended lightly
-              with match rating so outcomes still nudge it).
-            </p>
-          </div>
-          <p className="text-xs text-slate-500">
-            Narrow band (6 to 8) is normal for amateur peer ratings. The balancer
-            picks up 0.5-point gaps via snake draft + hill-climb optimisation.
-          </p>
+          ))}
+          <p className="text-xs text-slate-500">{s.ratings_info_elo}</p>
         </div>
       </div>
     </div>
