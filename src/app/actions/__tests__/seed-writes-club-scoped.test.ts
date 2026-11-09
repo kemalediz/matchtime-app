@@ -145,6 +145,16 @@ describe("seedPlayerRating writes the club's opinion, not the person's", () => {
     await expect(seedPlayerRating(PLAYER, CLUB_A, 11)).rejects.toThrow(/between 1 and 10/);
     expect(membershipWrites()).toEqual([]);
   });
+
+  it("writes a decimal seed exactly as given, never rounded (Kemal, 2026-11-09)", async () => {
+    await seedPlayerRating(PLAYER, CLUB_A, 6.41666666666667);
+    expect(membershipWrites()).toEqual([{ seedRating: 6.41666666666667 }]);
+  });
+
+  it("refuses something that is not a number, before any write", async () => {
+    await expect(seedPlayerRating(PLAYER, CLUB_A, Number.NaN)).rejects.toThrow(/between 1 and 10/);
+    expect(membershipWrites()).toEqual([]);
+  });
 });
 
 describe("a new player arrives with no seed anywhere", () => {

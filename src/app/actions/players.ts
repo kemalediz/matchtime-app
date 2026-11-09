@@ -238,7 +238,10 @@ export async function seedPlayerRating(userId: string, orgId: string, rating: nu
 
   await requireOrgAdmin(session.user.id, orgId);
 
-  if (rating < 1 || rating > 10) throw new Error("Rating must be between 1 and 10");
+  // Written exactly as given, whole number or decimal: a seed is never
+  // rounded (Kemal, 2026-11-09). NaN fails both comparisons, so it is
+  // refused by name.
+  if (!Number.isFinite(rating) || rating < 1 || rating > 10) throw new Error("Rating must be between 1 and 10");
 
   // The seed is THIS club's opinion, so it lives on THIS club's
   // membership. It used to be written to `User.seedRating`, one global

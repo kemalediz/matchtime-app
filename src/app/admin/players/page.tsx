@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { isUnchangedSeed, seedBoxValue } from "@/lib/default-seed";
+import { isUnchangedSeed, parseSeedBox, seedBoxValue } from "@/lib/default-seed";
 import {
   Phone,
   Star,
@@ -140,12 +140,13 @@ export default function PlayersPage() {
   }
 
   async function handleSeedRating(userId: string, value: string) {
-    // Integers only — the whole numbers are easier to reason about and
-    // the balancer picks up 1-point differences fine.
-    const num = parseInt(value, 10);
-    if (isNaN(num) || num < 1 || num > 10 || !orgId) return;
-    // The box shows 6 for a player nobody has seeded. Leaving it at 6
-    // (or tabbing through) is not a change: the seed stays unset.
+    // Exactly what was typed, whole number or decimal: never rounded
+    // (Kemal, 2026-11-09). Empty or outside 1 to 10 saves nothing.
+    const num = parseSeedBox(value);
+    if (num === null || !orgId) return;
+    // The box shows 6 for a player nobody has seeded, and a decimal seed
+    // to two places. Leaving it as shown (or tabbing through) is not a
+    // change: an unset seed stays unset, a 6.41666 is not cut to 6.42.
     const stored = players.find((p) => p.id === userId)?.seedRating;
     if (isUnchangedSeed(num, stored)) return;
     try {
@@ -782,7 +783,7 @@ export default function PlayersPage() {
                     defaultValue={seedBoxValue(p.seedRating)}
                     min={1}
                     max={10}
-                    step={1}
+                    step="any"
                     title="Seed rating (1 to 10) for this club. A player nobody has rated starts at 6, a medium player: move them up or down. Used by the team-balancer until peer ratings accumulate. A player at another club keeps a separate rating there."
                     onBlur={(e) => e.target.value && handleSeedRating(p.id, e.target.value)}
                     className="w-20 h-10 px-2 rounded-lg border border-slate-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"

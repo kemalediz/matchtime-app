@@ -34,17 +34,61 @@ export function effectiveSeed(seed: number | null | undefined): number {
   return seed ?? DEFAULT_SEED_RATING;
 }
 
-/** What an admin seed box shows: whole numbers, 6 when unset. */
+/**
+ * What an admin seed box shows: the seed as it is, 6 when unset.
+ *
+ * Seeds are never rounded (Kemal, 2026-11-09: "keep the ratings as they
+ * are, never round them"). A carried seed is stored at full precision
+ * (6.41666666666667), so the box shows it to two places ("6.42") to fit;
+ * that is display only. What is stored, and what the balancer uses, is
+ * the full value, and `isUnchangedSeed` makes sure leaving the box as it
+ * shows never writes the shorter number back.
+ */
 export function seedBoxValue(seed: number | null | undefined): string {
-  return String(Math.round(effectiveSeed(seed)));
+  return String(Math.round(effectiveSeed(seed) * 100) / 100);
+}
+
+/** The seed range every box and the server action accept. */
+const SEED_BOX_MIN = 1;
+const SEED_BOX_MAX = 10;
+
+/**
+ * What an admin typed in a seed box, exactly as typed: whole numbers and
+ * decimals both work ("7", "6.5", "6,5"), and nothing is rounded. Null for
+ * an empty box, not a number, or anything outside 1 to 10, so nothing is
+ * saved.
+ */
+export function parseSeedBox(raw: string): number | null {
+  const s = raw.trim().replace(",", ".");
+  if (s === "") return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < SEED_BOX_MIN || n > SEED_BOX_MAX) return null;
+  return n;
 }
 
 /**
- * True when what an admin left in a seed box is what was already
- * there, so nothing should be written. For an unseeded player that is
- * the prefilled 6: tabbing through the box must not turn "not set"
- * into a stored 6.
+ * True when what an admin left in a seed box is what the box showed for
+ * the stored seed, so nothing should be written. For an unseeded player
+ * that is the prefilled 6: tabbing through the box must not turn "not
+ * set" into a stored 6. For a decimal seed it is the box's two places:
+ * leaving "6.42" on a stored 6.41666 must not cut it to 6.42.
  */
 export function isUnchangedSeed(value: number, stored: number | null | undefined): boolean {
-  return stored == null ? value === DEFAULT_SEED_RATING : value === stored;
+  return value === Number(seedBoxValue(stored));
+}
+
+/**
+ * The seed a form holds once its box is edited (`SeedInput`: onboarding,
+ * finish setup), from what is in the box and the seed it held. Emptied:
+ * unset. Outside 1 to 10: held at the nearest end. Typed back to what the
+ * box showed: the seed it showed, so an unset 6 stays unset and a 6.41666
+ * is not cut to 6.42. Anything else: exactly what was typed.
+ */
+export function seedFromBoxEdit(raw: string, current: number | null | undefined): number | null {
+  const s = raw.trim().replace(",", ".");
+  if (s === "") return null;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+  const clamped = Math.min(SEED_BOX_MAX, Math.max(SEED_BOX_MIN, n));
+  return isUnchangedSeed(clamped, current) ? (current ?? null) : clamped;
 }

@@ -122,6 +122,16 @@ describe("what the code does with the answer", () => {
     expect(out!.players.find((p) => p.name === "Omar")).toMatchObject({ position: null, seedRating: null });
   });
 
+  it("keeps a proposed seed as the model gave it, never rounded (Kemal, 2026-11-09)", async () => {
+    const { model } = stub({
+      schedule: { dayOfWeek: null, time: null, venue: null, confidence: 0 },
+      paymentHolder: { name: "", evidence: "", confidence: 0 },
+      players: [{ name: "Talha", position: "FWD", seedRating: 7.5, evidence: "hat-trick", confidence: 0.9 }],
+    });
+    const out = await analyzeForOnboarding(ARGS, { model });
+    expect(out!.players.find((p) => p.name === "Talha")).toMatchObject({ seedRating: 7.5 });
+  });
+
   it("sends the sport's positions as the only ones allowed", async () => {
     const { model, reqs } = stub(ANSWER);
     await analyzeForOnboarding(ARGS, { model });

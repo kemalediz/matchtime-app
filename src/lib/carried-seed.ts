@@ -12,7 +12,7 @@
  *
  * ── THE RULE ─────────────────────────────────────────────────────────
  *
- *   seed = round( sum(rating_c x games_c) / sum(games_c) ), clamped to 1..10
+ *   seed = sum(rating_c x games_c) / sum(games_c), clamped to 1..10
  *
  * over every OTHER club c where the player has a shown club rating:
  *
@@ -25,9 +25,13 @@
  *             at a club he guested for once must not outweigh a 7 over a
  *             season at his own club.
  *
- * Rounded to a whole number because that is the seed box's precision
- * (`seedBoxValue`, `step={1}`): what the admin sees in the box is
- * exactly what the balancer then uses.
+ * Never rounded (Kemal, 2026-11-09: "keep the ratings as they are, never
+ * round them"). It is stored at full precision in `Membership.seedRating`
+ * (a Float) and the balancer uses it as it is. The admin's seed box shows
+ * it to two places (`seedBoxValue`), display only, and leaving the box as
+ * it shows writes nothing (`isUnchangedSeed`). Until 2026-11-09 it was
+ * rounded to a whole number; `scripts/_tmp-recompute-carried-seeds.ts`
+ * finds the seeds carried that way.
  *
  * ── WHEN IT APPLIES ──────────────────────────────────────────────────
  *
@@ -41,7 +45,7 @@
  *
  * ── PRIVACY ──────────────────────────────────────────────────────────
  *
- * The new club gets one whole number in its seed box and nothing else:
+ * The new club gets one number in its seed box and nothing else:
  * not which clubs it came from, not their ratings, not that it was
  * carried at all. It is a plain seed the admin can change like any
  * other. Players never see seeds (`clubDisplayRating` ignores them).
@@ -71,8 +75,11 @@ export function carriedSeed(others: readonly OtherClubRating[]): CarriedSeed | n
   const used = others.filter((c) => c.rating != null && c.ratedGames > 0);
   if (used.length === 0) return null;
   const games = used.reduce((s, c) => s + c.ratedGames, 0);
-  const mean = used.reduce((s, c) => s + (c.rating as number) * c.ratedGames, 0) / games;
-  const seed = Math.max(SEED_MIN, Math.min(SEED_MAX, Math.round(mean)));
+  // Each club's rating times its share of the games: the same weighted
+  // mean, and a player rated at one club carries exactly that club's
+  // rating (7.4 x 12 / 12 would come back as 7.400000000000001).
+  const mean = used.reduce((s, c) => s + (c.rating as number) * (c.ratedGames / games), 0);
+  const seed = Math.max(SEED_MIN, Math.min(SEED_MAX, mean));
   return { seed, fromOrgIds: used.map((c) => c.orgId) };
 }
 
@@ -174,3 +181,4 @@ export function planCarriedSeeds(
   }
   return out;
 }
+

@@ -11,7 +11,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SEED_RATING, effectiveSeed, isUnchangedSeed, seedBoxValue } from "@/lib/default-seed";
+import { DEFAULT_SEED_RATING, effectiveSeed, isUnchangedSeed, parseSeedBox, seedBoxValue, seedFromBoxEdit } from "@/lib/default-seed";
 import { computeClubRating } from "@/lib/player-rating";
 
 describe("DEFAULT_SEED_RATING", () => {
@@ -26,11 +26,17 @@ describe("DEFAULT_SEED_RATING", () => {
     expect(effectiveSeed(9)).toBe(9);
   });
 
-  it("the admin seed box shows 6 for an unset seed, and the whole number of a set one", () => {
+  it("the admin seed box shows 6 for an unset seed, and a set one as it is, never rounded to a whole number", () => {
     expect(seedBoxValue(null)).toBe("6");
     expect(seedBoxValue(undefined)).toBe("6");
     expect(seedBoxValue(8)).toBe("8");
-    expect(seedBoxValue(6.6)).toBe("7");
+    expect(seedBoxValue(6.6)).toBe("6.6");
+    expect(seedBoxValue(6.5)).toBe("6.5");
+    // A carried seed at full precision (Mustafa at the Vets, 2026-11-09):
+    // shown to two places, the stored value itself is never touched.
+    expect(seedBoxValue(6.41666666666667)).toBe("6.42");
+    expect(seedBoxValue(8.333333333333334)).toBe("8.33");
+    expect(seedBoxValue(7.0952380952380949)).toBe("7.1");
   });
 
   it("leaving the prefilled 6 on an unset player is not a change, so nothing is written", () => {
@@ -39,6 +45,54 @@ describe("DEFAULT_SEED_RATING", () => {
     expect(isUnchangedSeed(5, null)).toBe(false);
     expect(isUnchangedSeed(8, 8)).toBe(true);
     expect(isUnchangedSeed(6, 8)).toBe(false);
+  });
+
+  it("leaving a decimal seed as the box shows it is not a change, so it is never written back rounded", () => {
+    expect(isUnchangedSeed(Number(seedBoxValue(6.41666666666667)), 6.41666666666667)).toBe(true);
+    expect(isUnchangedSeed(6.42, 6.41666666666667)).toBe(true);
+    expect(isUnchangedSeed(6, 6.41666666666667)).toBe(false);
+    expect(isUnchangedSeed(6.4, 6.41666666666667)).toBe(false);
+    expect(isUnchangedSeed(6.6, 6.6)).toBe(true);
+    expect(isUnchangedSeed(7, 6.6)).toBe(false);
+  });
+});
+
+describe("parseSeedBox: what an admin typed, exactly as typed", () => {
+  it("whole numbers and decimals both work, nothing is rounded", () => {
+    expect(parseSeedBox("7")).toBe(7);
+    expect(parseSeedBox(" 6.5 ")).toBe(6.5);
+    expect(parseSeedBox("6.25")).toBe(6.25);
+    expect(parseSeedBox("6,5")).toBe(6.5);
+    expect(parseSeedBox("10")).toBe(10);
+    expect(parseSeedBox("1")).toBe(1);
+  });
+
+  it("empty, not a number, or outside 1 to 10: null, so nothing is saved", () => {
+    for (const raw of ["", "  ", "abc", "0", "0.5", "10.1", "11", "-3", "NaN", "Infinity"]) {
+      expect(parseSeedBox(raw), raw).toBeNull();
+    }
+  });
+});
+
+describe("seedFromBoxEdit: the seed a form holds after the box is edited (onboarding, finish setup)", () => {
+  it("a typed value is kept as typed, whole or decimal", () => {
+    expect(seedFromBoxEdit("7", null)).toBe(7);
+    expect(seedFromBoxEdit("6.5", 8)).toBe(6.5);
+  });
+
+  it("an emptied box is unset", () => {
+    expect(seedFromBoxEdit("", 7)).toBeNull();
+  });
+
+  it("outside 1 to 10 is held at the nearest end, as before", () => {
+    expect(seedFromBoxEdit("12", null)).toBe(10);
+    expect(seedFromBoxEdit("0", null)).toBe(1);
+  });
+
+  it("typing back what the box showed keeps the seed it showed: an unset 6 stays unset, a 6.4166 is not cut to 6.42", () => {
+    expect(seedFromBoxEdit("6", null)).toBeNull();
+    expect(seedFromBoxEdit("6.42", 6.41666666666667)).toBe(6.41666666666667);
+    expect(seedFromBoxEdit("6.4", 6.41666666666667)).toBe(6.4);
   });
 });
 
@@ -117,6 +171,29 @@ describe("no other module assumes a default seed", () => {
     const src = readFileSync(path.join(SRC, "lib/player-rating.ts"), "utf8");
     expect(src).toMatch(/from "\.\/default-seed"/);
     expect(src).not.toMatch(/NO_INFORMATION_PRIOR/);
+  });
+
+  // Kemal, 2026-11-09: "keep the ratings as they are, never round them".
+  // A seed box that parses with parseInt, or steps in whole numbers,
+  // would cut a 6.4166 to 6 on save (or flag it as invalid).
+  it("no seed box parses a whole number only or steps in whole numbers", () => {
+    for (const rel of [
+      "app/admin/players/page.tsx",
+      "app/admin/players/ratings/page.tsx",
+      "components/seed-input.tsx",
+    ]) {
+      const src = readFileSync(path.join(SRC, rel), "utf8");
+      const seedCode = src.split("\n").filter((l) => !/^\s*(\/\/|\*)/.test(l)).join("\n");
+      expect(seedCode, rel).not.toMatch(/step=\{1\}|step="1"/);
+      expect(seedCode, rel).toMatch(/step="any"/);
+      expect(seedCode, rel).toMatch(/parseSeedBox|seedFromBoxEdit/);
+    }
+  });
+
+  it("a carried seed is never rounded", () => {
+    const src = readFileSync(path.join(SRC, "lib/carried-seed.ts"), "utf8");
+    const code = src.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*\*)/.test(l)).join("\n");
+    expect(code).not.toMatch(/Math\.(round|floor|ceil|trunc)|toFixed/);
   });
 
   it("every admin seed box reads the default from the default-seed module", () => {

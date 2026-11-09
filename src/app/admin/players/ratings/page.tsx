@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { seedPlayerRating } from "@/app/actions/players";
-import { isUnchangedSeed, seedBoxValue } from "@/lib/default-seed";
+import { isUnchangedSeed, parseSeedBox, seedBoxValue } from "@/lib/default-seed";
 import { t } from "@/lib/i18n/t";
 import { DEFAULT_LANG, type Lang } from "@/lib/i18n/lang";
 import { adminPlayerLabel, adminPlayerMatches } from "@/lib/admin-player-label";
@@ -94,14 +94,17 @@ export default function BulkRatingsPage() {
       setStates((s) => ({ ...s, [userId]: "idle" }));
       return;
     }
-    const num = parseInt(raw, 10);
-    if (isNaN(num) || num < 1 || num > 10) {
+    // Exactly what was typed, whole number or decimal: never rounded
+    // (Kemal, 2026-11-09).
+    const num = parseSeedBox(raw);
+    if (num === null) {
       setStates((s) => ({ ...s, [userId]: "error" }));
-      setErrors((e) => ({ ...e, [userId]: "Must be an integer 1 to 10" }));
+      setErrors((e) => ({ ...e, [userId]: t(lang).seed_box_error }));
       return;
     }
     const existing = players.find((p) => p.id === userId)?.seedRating;
-    // Leaving an unseeded player's prefilled 6 is not a change.
+    // Leaving the box as it shows is not a change: an unseeded player's
+    // prefilled 6 stays unset, a 6.41666 shown as 6.42 is not cut.
     if (isUnchangedSeed(num, existing)) {
       setStates((s) => ({ ...s, [userId]: "idle" }));
       return;
@@ -225,7 +228,7 @@ export default function BulkRatingsPage() {
                       type="number"
                       min="1"
                       max="10"
-                      step="1"
+                      step="any"
                       value={values[p.id] ?? ""}
                       onChange={(e) => onChange(p.id, e.target.value)}
                       onBlur={() => save(p.id)}
