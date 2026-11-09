@@ -42,6 +42,7 @@ import { notPlayedDoor } from "@/lib/match-cancel-rules";
 import { notPlayedGameLabel } from "@/lib/match-cancel";
 import { notPlayedKey } from "@/lib/match-cancel-keys";
 import { NotPlayedButton } from "@/components/match/not-played-button";
+import { teamsLinkAction } from "@/lib/match-teams-link";
 
 export default async function MatchDetailPage({
   params,
@@ -242,6 +243,10 @@ export default async function MatchDetailPage({
   // result bar (Kemal, 2026-10-18); the teams page keeps its own box.
   const scoreAction = isAdmin ? scoreEntryAction(match) : null;
   const hasTeams = match.teamAssignments.length > 0;
+  // "Generate teams" / "Manage teams" for an admin; a COMPLETED match with
+  // teams keeps "Manage teams" so a line-up can be fixed after kickoff
+  // (Kemal, 2026-11-09).
+  const teamsLink = isAdmin ? teamsLinkAction({ status: match.status, isPastDeadline, hasTeams }) : null;
 
   // Block "I'm in" on a future match while a previous scheduled
   // match in the same org is still in flight (not yet COMPLETED).
@@ -625,20 +630,12 @@ export default async function MatchDetailPage({
       {/* Actions */}
       <div className="flex flex-wrap gap-3">
         {!showResultBar && paymentsLink}
-        {isAdmin && match.status === "UPCOMING" && isPastDeadline && (
+        {teamsLink && (
           <Link
             href={`/admin/matches/${matchId}/teams`}
             className="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
           >
-            Generate teams
-          </Link>
-        )}
-        {isAdmin && (match.status === "TEAMS_GENERATED" || match.status === "TEAMS_PUBLISHED") && (
-          <Link
-            href={`/admin/matches/${matchId}/teams`}
-            className="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
-          >
-            Manage teams
+            {teamsLink === "generate" ? "Generate teams" : "Manage teams"}
           </Link>
         )}
         {notPlayed && (
