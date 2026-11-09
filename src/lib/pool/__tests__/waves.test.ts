@@ -2,14 +2,15 @@
  * A round's waves and send times (slice L4): up to 8, about 4 first, the
  * rest POOL_ROUND.secondWaveAfterMins later only while places are open;
  * no night hold (Kemal, 2026-10-29: the pool's quiet hours are removed);
- * nothing sent or open past the club's cut-off.
+ * nothing new is sent past the club's cut-off, but an offer already sent
+ * stays open until kickoff (Kemal, 2026-11-09).
  */
 import { describe, expect, it } from "vitest";
 import { londonDateTimeToUtc } from "../../london-time";
 import * as rules from "../rules";
 import { POOL_ROUND } from "../rules";
 import * as waves from "../waves";
-import { firstWaveSize, offerExpiresAt, secondWave } from "../waves";
+import { firstWaveSize, offerEndsAt, secondWave } from "../waves";
 
 const at = (date: string, time: string) => londonDateTimeToUtc(date, time);
 const MIN = 60_000;
@@ -68,16 +69,21 @@ describe("the pool has no quiet hours of its own (Kemal, 2026-10-29)", () => {
   });
 });
 
-describe("offerExpiresAt: 6 hours after sending or the cut-off, whichever is first", () => {
-  const sent = at("2026-10-27", "10:00");
-  it("the TTL when the cut-off is later", () => {
-    expect(offerExpiresAt(sent, at("2026-10-27", "20:00"))).toEqual(new Date(sent.getTime() + POOL_ROUND.offerTtlHours * HOUR));
+describe("offerEndsAt: an offer stays open until kickoff (Kemal, 2026-11-09)", () => {
+  // The real case: Monday night vets asked at 20:38 on Sunday for a game
+  // at 20:30 on Monday. The offers must not end at 02:38 overnight.
+  const sent = at("2026-11-08", "20:38");
+  const kickoff = at("2026-11-09", "20:30");
+  it("ends at kickoff, however long ago it was sent", () => {
+    expect(offerEndsAt(kickoff)).toEqual(kickoff);
+    expect(offerEndsAt(kickoff).getTime()).toBeGreaterThan(sent.getTime() + 6 * HOUR);
   });
-  it("the cut-off when it is sooner", () => {
-    expect(offerExpiresAt(sent, at("2026-10-27", "12:00"))).toEqual(at("2026-10-27", "12:00"));
+  it("not at the club's cut-off: that only stops new offers going", () => {
+    const cutoff = new Date(kickoff.getTime() - 2 * HOUR);
+    expect(offerEndsAt(kickoff).getTime()).toBeGreaterThan(cutoff.getTime());
   });
-  it("equal: either", () => {
-    const c = new Date(sent.getTime() + POOL_ROUND.offerTtlHours * HOUR);
-    expect(offerExpiresAt(sent, c)).toEqual(c);
+  it("an offer has no clock of its own any more", () => {
+    expect("offerTtlHours" in POOL_ROUND).toBe(false);
+    expect("offerExpiresAt" in waves).toBe(false);
   });
 });

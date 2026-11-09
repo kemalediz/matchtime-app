@@ -17,16 +17,22 @@
  *   poolAskCloseReason when an open ask closes: the switch went off, the
  *                      game is off, the ROUND has its number (partner and
  *                      pool guests counted together, `partner-ask-round.ts`)
- *                      or no place is open, the club's cut-off.
- *   offerOutcomeOnClose / ownTimeRanOut   decision log #8: "ignored" only
- *                      when the offer's own time ran out with no answer;
- *                      closed first by others or the cut-off: "expired";
- *                      never sent: "cancelled".
+ *                      or no place is open, or KICKOFF. Not the club's
+ *                      cut-off (Kemal, 2026-11-09): offers already sent stay
+ *                      open until the game starts; the cut-off only stops
+ *                      new asks and waves (`poolAskRefusal`, `waves.ts`).
+ *   offerOutcomeOnClose decision log #8, how each open offer ends with its
+ *                      ask: sent and still unanswered at kickoff, "ignored"
+ *                      (it was his to answer, and it counts toward the
+ *                      pause); closed first by anything else (filled, called
+ *                      off, cancelled, switched off): "expired", never his
+ *                      doing; never sent: "cancelled".
  *   offerNeverReachedHim   unsent and cancelled: not "already offered".
  *   acceptRefusal      who may still say yes.
  *   pullOutResult      a guest giving the place back: in time, or late.
  */
 import { clubRoundRefusal } from "./caps";
+import { offerEndsAt } from "./waves";
 import type { MatchGateRefusal } from "./matching-rules";
 import type { GuestResult, PoolAskStatus, PoolOfferOutcome } from "./vocab";
 
@@ -77,11 +83,14 @@ export function poolAskRefusal(i: {
   return null;
 }
 
-export type PoolAskCloseReason = "switched-off" | "match-off" | "filled" | "cut-off" | "organiser-cancelled";
+/** "cut-off" is only on old rows: since 2026-11-09 an ask stays open past
+ *  the club's cut-off and closes at "kickoff". */
+export type PoolAskCloseReason = "switched-off" | "match-off" | "filled" | "kickoff" | "organiser-cancelled";
 
 export function poolAskCloseReason(i: {
   now: Date;
-  cutoff: Date;
+  kickoff: Date;
+  /** The match is on (an open status, not historical); kickoff is separate. */
   matchLive: boolean;
   poolOpen: boolean;
   roundPlaced: number;
@@ -91,7 +100,7 @@ export function poolAskCloseReason(i: {
   if (!i.poolOpen) return "switched-off";
   if (!i.matchLive) return "match-off";
   if (i.roundPlaced >= i.roundWanted || i.placesOpen <= 0) return "filled";
-  if (i.now.getTime() >= i.cutoff.getTime()) return "cut-off";
+  if (i.now.getTime() >= offerEndsAt(i.kickoff).getTime()) return "kickoff";
   return null;
 }
 
@@ -111,16 +120,15 @@ export function offerNeverReachedHim(o: { sentAt: Date | null; outcome: string |
   return !o.sentAt && o.outcome === "cancelled";
 }
 
-/** An open offer when its ask closes. */
-export function offerOutcomeOnClose(o: { sentAt: Date | null }): Extract<PoolOfferOutcome, "cancelled" | "expired"> {
-  return o.sentAt ? "expired" : "cancelled";
-}
-
-/** Did this open offer's OWN time run out (it counts as ignored)? Its
- *  expiry is its six hours or the cut-off, whichever came first: only the
- *  six hours make it his doing. */
-export function ownTimeRanOut(o: { sentAt: Date | null; expiresAt: Date; cutoff: Date; now: Date }): boolean {
-  return !!o.sentAt && o.expiresAt.getTime() < o.cutoff.getTime() && o.now.getTime() >= o.expiresAt.getTime();
+/** An open offer when its ask closes for `reason`. Only kickoff makes an
+ *  unanswered offer his doing ("ignored"); anything that ended the round
+ *  first is not ("expired"). One that never reached him: "cancelled". */
+export function offerOutcomeOnClose(
+  o: { sentAt: Date | null },
+  reason: PoolAskCloseReason,
+): Extract<PoolOfferOutcome, "cancelled" | "expired" | "ignored"> {
+  if (!o.sentAt) return "cancelled";
+  return reason === "kickoff" ? "ignored" : "expired";
 }
 
 export type AcceptRefusal = "answered" | "not-sent" | "pool-closed" | "match-off" | "gone" | "expired" | "profile-off";
@@ -128,7 +136,6 @@ export type AcceptRefusal = "answered" | "not-sent" | "pool-closed" | "match-off
 export function acceptRefusal(o: {
   outcome: string | null;
   sentAt: Date | null;
-  expiresAt: Date;
   askStatus: string;
   matchLive: boolean;
   kickoff: Date;
@@ -140,9 +147,10 @@ export function acceptRefusal(o: {
   if (o.outcome) return "answered";
   if (!o.sentAt) return "not-sent";
   if (!o.poolOpen) return "pool-closed";
-  if (!o.matchLive || o.now.getTime() >= o.kickoff.getTime()) return "match-off";
+  if (!o.matchLive) return "match-off";
   if (o.askStatus !== "open") return "gone";
-  if (o.now.getTime() >= o.expiresAt.getTime()) return "expired";
+  // Open until kickoff (Kemal, 2026-11-09), however long ago it was sent.
+  if (o.now.getTime() >= offerEndsAt(o.kickoff).getTime()) return "expired";
   if (!o.profileActive) return "profile-off";
   return null;
 }

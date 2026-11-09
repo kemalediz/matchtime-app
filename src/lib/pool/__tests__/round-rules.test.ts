@@ -11,7 +11,6 @@ import {
   askStatusFor,
   offerNeverReachedHim,
   offerOutcomeOnClose,
-  ownTimeRanOut,
   poolAskCloseReason,
   poolAskRefusal,
   poolRoundToJoin,
@@ -20,6 +19,7 @@ import {
 
 const NOW = new Date("2026-10-27T12:00:00Z");
 const CUTOFF = new Date("2026-10-27T16:30:00Z");
+const KICKOFF = new Date("2026-10-27T18:30:00Z");
 const MIN = 60_000;
 
 describe("poolAskRefusal: the organiser's ask, in order", () => {
@@ -75,49 +75,69 @@ describe("nothing asks by itself (Kemal, 2026-11-08)", () => {
   });
 });
 
-describe("poolAskCloseReason", () => {
-  const open = { now: NOW, cutoff: CUTOFF, matchLive: true, poolOpen: true, roundPlaced: 0, roundWanted: 1, placesOpen: 2 };
+describe("poolAskCloseReason: an open ask stays open until kickoff unless it ends first (Kemal, 2026-11-09)", () => {
+  const open = { now: NOW, kickoff: KICKOFF, matchLive: true, poolOpen: true, roundPlaced: 0, roundWanted: 1, placesOpen: 2 };
   it("stays open", () => expect(poolAskCloseReason(open)).toBeNull());
   it("switched off first", () => expect(poolAskCloseReason({ ...open, poolOpen: false, matchLive: false })).toBe("switched-off"));
   it("the game is off", () => expect(poolAskCloseReason({ ...open, matchLive: false })).toBe("match-off"));
   it("the round has its number (partners and pool together)", () => expect(poolAskCloseReason({ ...open, roundPlaced: 1 })).toBe("filled"));
   it("no open place left (own players came back)", () => expect(poolAskCloseReason({ ...open, placesOpen: 0 })).toBe("filled"));
-  it("the cut-off", () => expect(poolAskCloseReason({ ...open, now: CUTOFF })).toBe("cut-off"));
+  it("the club's cut-off does NOT close it: offers already sent stay open", () => {
+    expect(poolAskCloseReason({ ...open, now: CUTOFF })).toBeNull();
+    expect(poolAskCloseReason({ ...open, now: new Date(KICKOFF.getTime() - 1) })).toBeNull();
+  });
+  it("kickoff closes it", () => {
+    expect(poolAskCloseReason({ ...open, now: KICKOFF })).toBe("kickoff");
+    expect(poolAskCloseReason({ ...open, now: new Date(KICKOFF.getTime() + 60 * MIN) })).toBe("kickoff");
+  });
+  it("filled, called off or switched off at kickoff: that reason, never kickoff", () => {
+    expect(poolAskCloseReason({ ...open, now: KICKOFF, placesOpen: 0 })).toBe("filled");
+    expect(poolAskCloseReason({ ...open, now: KICKOFF, roundPlaced: 1 })).toBe("filled");
+    expect(poolAskCloseReason({ ...open, now: KICKOFF, matchLive: false })).toBe("match-off");
+    expect(poolAskCloseReason({ ...open, now: KICKOFF, poolOpen: false })).toBe("switched-off");
+  });
   it("status for each", () => {
     expect(askStatusFor("filled")).toBe("filled");
     expect(askStatusFor("organiser-cancelled")).toBe("cancelled");
-    expect(askStatusFor("cut-off")).toBe("closed");
+    expect(askStatusFor("kickoff")).toBe("closed");
     expect(askStatusFor("match-off")).toBe("closed");
     expect(askStatusFor("switched-off")).toBe("closed");
   });
 });
 
-describe("how an offer ends (decision #8)", () => {
-  it("an offer that never went is cancelled; one that went and is unanswered expired", () => {
-    expect(offerOutcomeOnClose({ sentAt: null })).toBe("cancelled");
-    expect(offerOutcomeOnClose({ sentAt: NOW })).toBe("expired");
+describe("how an offer ends (decision #8; Kemal, 2026-11-09)", () => {
+  it("an offer that never went is cancelled, whatever closed its ask", () => {
+    for (const reason of ["kickoff", "filled", "match-off", "switched-off", "organiser-cancelled"] as const) {
+      expect(offerOutcomeOnClose({ sentAt: null }, reason)).toBe("cancelled");
+    }
   });
-  it("ignored only when its OWN six hours ran out before the cut-off", () => {
-    const sent = NOW;
-    expect(ownTimeRanOut({ sentAt: sent, expiresAt: new Date(sent.getTime() + 6 * 60 * MIN), cutoff: CUTOFF, now: new Date(sent.getTime() + 6 * 60 * MIN) })).toBe(false);
-    const early = new Date("2026-10-27T08:30:00Z");
-    const exp = new Date(early.getTime() + 6 * 60 * MIN);
-    expect(ownTimeRanOut({ sentAt: early, expiresAt: exp, cutoff: CUTOFF, now: exp })).toBe(true);
-    expect(ownTimeRanOut({ sentAt: early, expiresAt: exp, cutoff: CUTOFF, now: new Date(exp.getTime() - 1) })).toBe(false);
-    expect(ownTimeRanOut({ sentAt: null, expiresAt: exp, cutoff: CUTOFF, now: exp })).toBe(false);
+  it("sent and still unanswered at kickoff: ignored (it was his to answer)", () => {
+    expect(offerOutcomeOnClose({ sentAt: NOW }, "kickoff")).toBe("ignored");
+  });
+  it("sent, but ended by others first (filled, called off, switched off, cancelled): expired, never ignored", () => {
+    for (const reason of ["filled", "match-off", "switched-off", "organiser-cancelled"] as const) {
+      expect(offerOutcomeOnClose({ sentAt: NOW }, reason)).toBe("expired");
+    }
+  });
+  it("no own clock before kickoff: ownTimeRanOut is gone", () => {
+    expect("ownTimeRanOut" in RULES).toBe(false);
   });
 });
 
 describe("acceptRefusal: who may say yes", () => {
-  const offer = { outcome: null, sentAt: NOW, expiresAt: new Date(NOW.getTime() + 60 * MIN), askStatus: "open", matchLive: true, kickoff: CUTOFF, profileActive: true, poolOpen: true, now: new Date(NOW.getTime() + 5 * MIN) };
+  const offer = { outcome: null, sentAt: NOW, askStatus: "open", matchLive: true, kickoff: KICKOFF, profileActive: true, poolOpen: true, now: new Date(NOW.getTime() + 5 * MIN) };
   it("yes while open", () => expect(acceptRefusal(offer)).toBeNull());
   it("answered already", () => expect(acceptRefusal({ ...offer, outcome: "declined" })).toBe("answered"));
   it("never reached him", () => expect(acceptRefusal({ ...offer, sentAt: null })).toBe("not-sent"));
   it("the switch or the club's flag is off at tap time (review minor 2)", () => expect(acceptRefusal({ ...offer, poolOpen: false })).toBe("pool-closed"));
   it("the game is off", () => expect(acceptRefusal({ ...offer, matchLive: false })).toBe("match-off"));
-  it("kicked off", () => expect(acceptRefusal({ ...offer, now: CUTOFF })).toBe("match-off"));
+  it("kicked off: his offer has ended", () => expect(acceptRefusal({ ...offer, now: KICKOFF })).toBe("expired"));
+  it("still open hours after it was sent, past the club's cut-off, right up to kickoff (Kemal, 2026-11-09)", () => {
+    expect(acceptRefusal({ ...offer, now: new Date(NOW.getTime() + 6 * 60 * MIN + 1) })).toBeNull();
+    expect(acceptRefusal({ ...offer, now: CUTOFF })).toBeNull();
+    expect(acceptRefusal({ ...offer, now: new Date(KICKOFF.getTime() - 1) })).toBeNull();
+  });
   it("the round closed (filled by others)", () => expect(acceptRefusal({ ...offer, askStatus: "filled" })).toBe("gone"));
-  it("after its expiry", () => expect(acceptRefusal({ ...offer, now: offer.expiresAt })).toBe("expired"));
   it("he stopped his profile meanwhile", () => expect(acceptRefusal({ ...offer, profileActive: false })).toBe("profile-off"));
 });
 

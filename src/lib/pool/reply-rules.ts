@@ -8,7 +8,8 @@
  * else is decided here, from facts:
  *
  *   offerReplyState  what one of his offers is now: open (he may still
- *                    answer it), taken (he took the place and still holds
+ *                    answer it: until kickoff, unless its round ended
+ *                    first), taken (he took the place and still holds
  *                    it, before kickoff), or ended.
  *   replyScope       which offers a DM may be about. A swipe-reply quoting
  *                    an offer is about that offer. Otherwise someone in no
@@ -32,6 +33,7 @@
  *                    "details" (2026-11-04, his times and formats) is
  *                    `detailsAction`'s: saved only from his own number.
  */
+import { offerEndsAt } from "./waves";
 
 /** "details" (2026-11-04): he tells MatchTime his times or formats
  *  (`details-rules.ts`), answering its question or at any time. */
@@ -41,7 +43,8 @@ export const POOL_REPLY_INTENTS: readonly PoolReplyIntent[] = ["accept", "declin
 /** Below this the reading changes nothing (the pairing reply's floor). */
 export const POOL_REPLY_MIN_CONFIDENCE = 0.8;
 
-/** How long after delivery a plain reply may still be about an offer (L5a's window). */
+/** How long after delivery a plain reply may still be about an ENDED offer
+ *  (its one "gone" line). An open one is answerable until kickoff. */
 export const POOL_REPLY_WINDOW_MS = 24 * 3600_000;
 
 /** A question about one offer is answered with its facts at most this many times. */
@@ -53,7 +56,6 @@ export function offerReplyState(o: {
   outcome: string | null;
   askStatus: string;
   sentAt: Date | null;
-  expiresAt: Date;
   matchLive: boolean;
   kickoff: Date;
   /** He has a CONFIRMED or BENCH row on the match (for an accepted offer). */
@@ -63,7 +65,8 @@ export function offerReplyState(o: {
   const now = o.now.getTime();
   const before = o.matchLive && now < o.kickoff.getTime();
   if (!before || !o.sentAt) return "ended";
-  if (o.outcome === null) return o.askStatus === "open" && now < o.expiresAt.getTime() ? "open" : "ended";
+  // Unanswered: open while its round is, until kickoff (Kemal, 2026-11-09).
+  if (o.outcome === null) return o.askStatus === "open" && now < offerEndsAt(o.kickoff).getTime() ? "open" : "ended";
   if (o.outcome === "accepted") return o.holdsPlace ? "taken" : "ended";
   return "ended";
 }

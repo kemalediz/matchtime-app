@@ -77,7 +77,7 @@ export const poolInviteTr: PoolInviteStrings = {
   inv_declined: "Bize bildirdiğin için teşekkürler.",
   inv_member: "Zaten bu kulüptesin.",
   inv_open_offer: "Teklifi aç",
-  inv_offer_until: (p) => `En geç ${p.time} yanıtla`,
+  inv_offer_open: "Maç başlayana ya da yerler dolana kadar açık",
   inv_try_again: "Bir şeyler ters gitti. Lütfen bir dakika sonra tekrar dene.",
   inv_settings: "Oyuncu havuzu ayarların",
 };

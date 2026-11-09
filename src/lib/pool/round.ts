@@ -13,11 +13,14 @@
  *                   Checks every rule, writes the ask, and sends wave 1 at
  *                   once. Nothing asks by itself (Kemal, 2026-11-08).
  *   sweepPool       every platform-jobs poll (the Pi polls it whatever the
- *                   clubs' switches say): offers whose own time ran out
- *                   become "ignored" (3 in a row pause him, one DM says
- *                   so); asks close when they should (the switch, the game,
- *                   the round filled, the cut-off); a wave 1 not sent
- *                   yet, wave 2 thirty minutes after wave 1.
+ *                   clubs' switches say): asks close when they should (the
+ *                   switch, the game, the round filled, KICKOFF); offers
+ *                   still unanswered at kickoff become "ignored" (3 in a
+ *                   row pause him, one DM says so); before the club's
+ *                   cut-off, a wave 1 not sent yet, wave 2 thirty minutes
+ *                   after wave 1. Nothing new goes after the cut-off, but
+ *                   an offer already sent stays open until kickoff (Kemal,
+ *                   2026-11-09).
  *   cancelPoolAsk   the organiser cancels the round (with its partner asks).
  *
  * THE MESSAGES (decision L5a.6, the minimal set): one offer DM per person;
@@ -54,7 +57,6 @@ import {
   askStatusFor,
   offerNeverReachedHim,
   offerOutcomeOnClose,
-  ownTimeRanOut,
   poolAskCloseReason,
   poolAskRefusal,
   type PoolAskCloseReason,
@@ -62,14 +64,15 @@ import {
 } from "./round-rules";
 import { POOL_CAPS, POOL_ROUND } from "./rules";
 import { eachUnderSavepoint } from "./savepoint";
-import { firstWaveSize, offerExpiresAt, secondWave } from "./waves";
+import { firstWaveSize, offerEndsAt, secondWave } from "./waves";
 import { normaliseLang } from "../i18n/lang";
 import type { PoolAskVia } from "./vocab";
 
 type Env = Record<string, string | undefined>;
 const DAY_MS = 24 * 3600_000;
 
-/** The club's cut-off for this match: nothing is asked or open past it. */
+/** The club's cut-off for this match: nothing new is asked or sent past
+ *  it. Offers already sent stay open until kickoff (`offerEndsAt`). */
 async function cutoffOf(orgId: string, kickoff: Date): Promise<Date> {
   const settings = await loadPartnerAskSettings(orgId);
   return askWindows(kickoff, settings?.cutoffHours ?? 4).postBy;
@@ -185,7 +188,7 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
     if (found.selection.gate || !found.ctx) return 0;
     const facts = await loadMatchOfferFacts(ask.matchId, now);
     if (!facts) return 0;
-    const cutoff = await cutoffOf(ask.orgId, found.ctx.kickoff);
+    const endsAt = offerEndsAt(found.ctx.kickoff);
     const want = Math.min(POOL_ROUND.maxOffers, size ?? firstWaveSize(found.selection.eligible.length, ask.places));
     const shortlist = found.selection.eligible.slice(0, want);
     if (shortlist.length === 0) return 0;
@@ -240,9 +243,9 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
               orgId: ask.orgId,
               distanceMiles: p.distanceMiles,
               wave,
-              // The planned window; the real six hours start when the Pi
-              // reports the DM sent (`dispatch.ts` `onPoolOfferJobSent`).
-              expiresAt: offerExpiresAt(now, cutoff),
+              // Open until kickoff, unless the round ends first (Kemal,
+              // 2026-11-09). No clock of its own.
+              expiresAt: endsAt,
               // The caps count a queued offer at its creation (L4.3).
               createdAt: now,
             };
@@ -288,13 +291,17 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
   }
 }
 
-/** Close one open ask for `reason`: compare-and-set, then its offers. */
-export async function closePoolAsk(askId: string, reason: PoolAskCloseReason, now: Date = new Date()): Promise<boolean> {
+/** Close one open ask for `reason`: compare-and-set, then its offers
+ *  (`offerOutcomeOnClose`). At kickoff an offer that reached him and was
+ *  never answered ends "ignored", and the pause rule looks at him. */
+export async function closePoolAsk(askId: string, reason: PoolAskCloseReason, now: Date = new Date(), env?: Env): Promise<boolean> {
   const done = await db.poolAsk.updateMany({ where: { id: askId, status: "open" }, data: { status: askStatusFor(reason), closeReason: reason, closedAt: now } });
   if (done.count === 0) return false;
-  const open = await db.poolOffer.findMany({ where: { poolAskId: askId, outcome: null }, select: { id: true, sentAt: true } });
+  const open = await db.poolOffer.findMany({ where: { poolAskId: askId, outcome: null }, select: { id: true, userId: true, sentAt: true } });
   for (const o of open) {
-    await db.poolOffer.updateMany({ where: { id: o.id, outcome: null }, data: { outcome: offerOutcomeOnClose(o), resolvedAt: now } });
+    const outcome = offerOutcomeOnClose(o, reason);
+    const ended = await db.poolOffer.updateMany({ where: { id: o.id, outcome: null }, data: { outcome, resolvedAt: now } });
+    if (outcome === "ignored" && ended.count > 0) await pauseIfIgnoring(o.userId, now, env);
   }
   const unsent = open.filter((o) => !o.sentAt).map((o) => o.id);
   if (unsent.length > 0) {
@@ -319,19 +326,6 @@ export async function cancelPoolAsk(args: { orgId: string; matchId: string; roun
 /** The round's fill for a pool ask (one definition: partner-ask-round.ts). */
 export function poolAskFill(ask: { id: string; roundId: string | null; matchId: string; places: number }) {
   return loadRoundFill({ id: ask.id, roundId: ask.roundId, matchId: ask.matchId, places: ask.places, volunteerUserIds: [], pickedUserIds: [] });
-}
-
-/** Offers whose own time ran out: "ignored", and the pause rule. */
-async function expireOwnTime(ask: { id: string; cutoff: Date }, now: Date, env?: Env): Promise<void> {
-  const open = await db.poolOffer.findMany({
-    where: { poolAskId: ask.id, outcome: null, sentAt: { not: null }, expiresAt: { lte: now } },
-    select: { id: true, userId: true, sentAt: true, expiresAt: true },
-  });
-  for (const o of open) {
-    if (!ownTimeRanOut({ sentAt: o.sentAt, expiresAt: o.expiresAt, cutoff: ask.cutoff, now })) continue;
-    const done = await db.poolOffer.updateMany({ where: { id: o.id, outcome: null }, data: { outcome: "ignored", resolvedAt: now } });
-    if (done.count > 0) await pauseIfIgnoring(o.userId, now, env);
-  }
 }
 
 /**
@@ -394,21 +388,27 @@ export async function sweepPool(now: Date = new Date(), env?: Env): Promise<{ cl
           continue;
         }
         const cutoff = await cutoffOf(ask.orgId, ask.match.date);
-        await expireOwnTime({ id: ask.id, cutoff }, now, env);
         const [fill, placesOpen] = await Promise.all([poolAskFill(ask), placesOpenOf(ask.matchId)]);
+        // Open until kickoff (Kemal, 2026-11-09): the cut-off ends nothing.
+        // A round that filled, a game called off or the switch going off
+        // win over kickoff, so nobody is counted as ignoring an offer the
+        // round took away from him.
         const reason = poolAskCloseReason({
           now,
-          cutoff,
-          matchLive: (OPEN_MATCH_STATUSES as readonly string[]).includes(ask.match.status) && !ask.match.isHistorical && ask.match.date.getTime() > now.getTime(),
+          kickoff: ask.match.date,
+          matchLive: (OPEN_MATCH_STATUSES as readonly string[]).includes(ask.match.status) && !ask.match.isHistorical,
           poolOpen: poolOffersOpenForClub(ask.org, env),
           roundPlaced: fill.placed,
           roundWanted: fill.wanted,
           placesOpen,
         });
         if (reason) {
-          if (await closePoolAsk(ask.id, reason, now)) closed++;
+          if (await closePoolAsk(ask.id, reason, now, env)) closed++;
           continue;
         }
+        // Past the club's cut-off nothing new goes (no first or second
+        // wave); the ask just stays open for the offers already sent.
+        if (now.getTime() >= cutoff.getTime()) continue;
         const offers = await db.poolOffer.findMany({ where: { poolAskId: ask.id }, select: { wave: true, sentAt: true } });
         const wave1 = offers.filter((o) => o.wave === 1);
         if (wave1.length === 0) {

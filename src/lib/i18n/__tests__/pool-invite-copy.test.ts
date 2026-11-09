@@ -62,6 +62,14 @@ describe("pool invite copy: hygiene", () => {
   });
 });
 
+describe("my invitations: an open offer has no deadline before kickoff (Kemal, 2026-11-09)", () => {
+  it("each open offer says it stays open until kickoff or until the places fill, never a time to answer by", () => {
+    expect(poolInviteEn.inv_offer_open).toBe("Open until kickoff, or until the places are filled");
+    expect(POOL_INVITE_TABLES.tr.inv_offer_open).toBe("Maç başlayana ya da yerler dolana kadar açık");
+    expect("inv_offer_until" in poolInviteEn).toBe(false);
+  });
+});
+
 describe("pool invite copy: review of #406 (L3)", () => {
   for (const [lang, table] of Object.entries(POOL_INVITE_TABLES)) {
     it(`${lang}: the organisers' notice names the card's real button`, () => {

@@ -40,7 +40,6 @@ export interface MyOffer {
   club: string;
   kickoff: Date;
   venue: string | null;
-  expiresAt: Date;
   path: string;
 }
 
@@ -62,10 +61,11 @@ export async function loadMyInvitations(userId: string, now: Date = new Date()):
   const [rows, memberOf, offers] = await Promise.all([
     db.clubInvitation.findMany({ where: { userId, status: "open" }, orderBy: { createdAt: "desc" }, select: { id: true, orgId: true, matchId: true, playerYesAt: true } }),
     db.membership.findMany({ where: { userId, leftAt: null, ...ORDINARY_MEMBER_WHERE }, select: { orgId: true } }),
+    // Open until kickoff unless its round ended first (Kemal, 2026-11-09).
     db.poolOffer.findMany({
-      where: { userId, outcome: null, sentAt: { not: null }, expiresAt: { gt: now } },
-      orderBy: { expiresAt: "asc" },
-      select: { id: true, matchId: true, expiresAt: true },
+      where: { userId, outcome: null, sentAt: { not: null }, ask: { status: "open", match: { date: { gt: now } } } },
+      orderBy: { ask: { match: { date: "asc" } } },
+      select: { id: true, matchId: true },
     }),
   ]);
   const members = new Set(memberOf.map((m) => m.orgId));
@@ -95,7 +95,7 @@ export async function loadMyInvitations(userId: string, now: Date = new Date()):
   for (const o of offers) {
     const f = await loadMatchOfferFacts(o.matchId, now);
     if (!f) continue;
-    myOffers.push({ id: o.id, club: f.club, kickoff: f.kickoff, venue: f.venueName, expiresAt: o.expiresAt, path: poolOfferPath(o.id) });
+    myOffers.push({ id: o.id, club: f.club, kickoff: f.kickoff, venue: f.venueName, path: poolOfferPath(o.id) });
   }
   return { lang, invitations, offers: myOffers };
 }

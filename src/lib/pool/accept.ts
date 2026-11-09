@@ -66,7 +66,6 @@ const OFFER_SELECT = {
   userId: true,
   distanceMiles: true,
   sentAt: true,
-  expiresAt: true,
   outcome: true,
   ask: {
     select: {
@@ -120,7 +119,6 @@ function refusalOf(o: LoadedOffer, profileActive: boolean, now: Date, env?: Env)
     poolOpen: poolOffersOpenForClub(o.ask.org, env),
     outcome: o.outcome,
     sentAt: o.sentAt,
-    expiresAt: o.expiresAt,
     askStatus: o.ask.status,
     matchLive: matchLiveOf(o.ask.match),
     kickoff: o.ask.match.date,

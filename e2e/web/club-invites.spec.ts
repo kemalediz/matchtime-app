@@ -146,8 +146,10 @@ for (const [label, size] of SIZES) {
     await setLink(db, LINK);
     await db.run(`INSERT INTO "ClubInvitation" (id,"orgId","userId","matchId",origin,"clubYesAt","updatedAt") VALUES ($1,$2,$3,$4,'organiser',now(),now())`, [`${P}-inv-${label}`, ORG_ID, ALI, MATCH.rate]);
     await db.run(`INSERT INTO "PoolAsk" (id,"matchId","orgId",places,via,status,"updatedAt") VALUES ($1,$2,$3,1,'page','open',now()) ON CONFLICT DO NOTHING`, [`${P}-ask`, MATCH.upcoming, ORG_ID]);
+    // Sent 7 hours ago, with an old six-hour expiry already past: still
+    // open, because an offer stays open until kickoff (Kemal, 2026-11-09).
     await db.run(
-      `INSERT INTO "PoolOffer" (id,"poolAskId","matchId","orgId","userId","distanceMiles","sentAt","expiresAt") VALUES ($1,$2,$3,$4,$5,1.2,now(),now() + interval '6 hours') ON CONFLICT DO NOTHING`,
+      `INSERT INTO "PoolOffer" (id,"poolAskId","matchId","orgId","userId","distanceMiles","sentAt","expiresAt") VALUES ($1,$2,$3,$4,$5,1.2,now() - interval '7 hours',now() - interval '1 hour') ON CONFLICT DO NOTHING`,
       [`${P}-offer`, `${P}-ask`, MATCH.upcoming, ORG_ID, ALI],
     );
     await page.setViewportSize(size);
@@ -162,6 +164,7 @@ for (const [label, size] of SIZES) {
     const offer = root.getByTestId("my-offer");
     await expect(offer).toHaveCount(1);
     await expect(offer.getByTestId("my-offer-open")).toHaveAttribute("href", new RegExp(`^/play/offer/${P}-offer\\.`));
+    await expect(offer.getByTestId("my-offer-open-until")).toHaveText("Open until kickoff, or until the places are filled");
     await expect(root).not.toContainText(LINK);
     await expectNoSideScroll(page);
 

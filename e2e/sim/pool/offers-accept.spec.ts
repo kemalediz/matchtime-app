@@ -152,12 +152,14 @@ scenarios("saying yes to a pool offer", () => {
     expect(sent.filter((m) => m.purpose === "pool-placed")).toHaveLength(1);
   });
 
-  scenario("yes after the offer ended: the page says so and nothing is written", async ({ pool, page }) => {
+  scenario("yes after the offer ended at kickoff: the page says so and nothing is written", async ({ pool, page }) => {
     const fnf = await openClub(pool, "fnf", { name: "FNF", hq: true });
     const ali = await poolPlayer(pool, "ali", { at: near(fnf) });
     const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
     await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
-    await pool.db.run(`UPDATE "PoolOffer" SET "expiresAt" = $2 WHERE "userId" = $1`, [ali.userId, new Date(Date.now() - 60_000)]);
+    pool.note("no answer; the game kicks off");
+    await pollPlatform(pool, { now: fnf.kickoff });
+    expect((await offersOf(pool, ali))[0].outcome).toBe("ignored");
 
     expect(await proveOffer(pool, page, tapLinkIn(ex.sent[0]))).toBe("expired");
     await expect(page.getByTestId("pool-offer-yes")).toHaveCount(0);

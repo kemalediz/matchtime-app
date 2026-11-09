@@ -20,9 +20,12 @@ const H = 3600_000;
 const later = (h: number) => new Date(NOW.getTime() + h * H);
 
 describe("offerReplyState", () => {
-  const base = { outcome: null, askStatus: "open", sentAt: later(-1), expiresAt: later(3), matchLive: true, kickoff: later(8), holdsPlace: false, now: NOW };
+  const base = { outcome: null, askStatus: "open", sentAt: later(-1), matchLive: true, kickoff: later(8), holdsPlace: false, now: NOW };
   it("an unanswered offer in its time is open", () => expect(offerReplyState(base)).toBe("open"));
-  it("its own time ran out: ended", () => expect(offerReplyState({ ...base, expiresAt: later(-0.1) })).toBe("ended"));
+  it("no clock of its own: open hours after it was sent, right up to kickoff (Kemal, 2026-11-09)", () => {
+    expect(offerReplyState({ ...base, sentAt: later(-20) })).toBe("open");
+    expect(offerReplyState({ ...base, kickoff: later(0.01) })).toBe("open");
+  });
   it("the round closed (filled by others): ended", () => expect(offerReplyState({ ...base, askStatus: "filled" })).toBe("ended"));
   it("never delivered: ended (a reply cannot be about it)", () => expect(offerReplyState({ ...base, sentAt: null })).toBe("ended"));
   it("the game is off, or kicked off: ended", () => {
@@ -30,7 +33,7 @@ describe("offerReplyState", () => {
     expect(offerReplyState({ ...base, kickoff: later(-0.5) })).toBe("ended");
   });
   it("he took the place and still holds it, before kickoff: taken", () =>
-    expect(offerReplyState({ ...base, outcome: "accepted", askStatus: "filled", expiresAt: later(-2), holdsPlace: true })).toBe("taken"));
+    expect(offerReplyState({ ...base, outcome: "accepted", askStatus: "filled", holdsPlace: true })).toBe("taken"));
   it("he took it and gave it back, or the game kicked off: ended", () => {
     expect(offerReplyState({ ...base, outcome: "accepted", holdsPlace: false })).toBe("ended");
     expect(offerReplyState({ ...base, outcome: "accepted", holdsPlace: true, kickoff: later(-1) })).toBe("ended");

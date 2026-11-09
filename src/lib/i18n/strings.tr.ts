@@ -1156,7 +1156,7 @@ export const tr: Strings = {
           : `✅ Kulübünde açık. Kulübünün WhatsApp grubunda benden iste (örneğin *@Match Time havuzdan 2 oyuncu iste*) ya da maç sayfasında işaretle. Kapatmak için *${p.poolLabel}* ayarını kapat:\n${p.url}`;
       return `${head}\n${body}\n\n${status}`;
     }
-    const body = `Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.\nHavuzdaysan, oynayabileceğin saatleri ve oynadığın formatları bana özelden kendi cümlelerinle yaz (örneğin *salı akşam 7'den sonra, 5 ya da 7 kişilik*), ya da havuz sayfandan değiştir.`;
+    const body = `Havuzdaki oyunculara, yakınlarındaki bir takımın bir oyuncusu eksik olduğunda WhatsApp'tan yazılır; her seferinde kendileri karar verir. Teklif maç başlayana ya da yerler dolana kadar açık kalır. Daha çok maç mı istiyorsun? MatchTime profilinde *Başka yerlerde de oyna* bölümünü aç.\nHavuzdaysan, oynayabileceğin saatleri ve oynadığın formatları bana özelden kendi cümlelerinle yaz (örneğin *salı akşam 7'den sonra, 5 ya da 7 kişilik*), ya da havuz sayfandan değiştir.`;
     const status = on
       ? `✅ Bu kulüp eksik kalınca havuza da sorar.`
       : !p.platformOpen
