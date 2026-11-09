@@ -325,9 +325,8 @@ import {
 import {
   describeMentionOutcomes,
   resolveMentionNames,
-  type KnownLid,
 } from "@/lib/pipeline/mention-names";
-import { parseParticipantSnapshot } from "@/lib/participant-snapshot";
+import { loadKnownLids } from "@/lib/known-lids";
 // Sender resolution moved OUT of this file on 2026-09-09. It could not be
 // tested here — a Next.js route module may export only its HTTP handlers,
 // so nothing in it can be imported by a test — and the 2026-08-30 audit
@@ -348,6 +347,8 @@ import { askPartnerAfterOwnInByDm, askPartnerWhichByDm } from "@/lib/partner-gue
 import { askPartnersFromWords, partnerClubsForRouter } from "@/lib/partner-ask-words";
 import { askPoolFromWords } from "@/lib/pool-ask-words";
 import { recruitPlacesFromWords } from "@/lib/recruit-source";
+import { dmNamedPeople } from "@/lib/named-invite";
+import { rememberMentions } from "@/lib/group-mentions";
 import { groupSourceAnswers } from "@/lib/ask-source-group";
 import { groupAdminFollowups } from "@/lib/group-admin-followups";
 import { setVenueFromWords } from "@/lib/venue-from-words";
@@ -622,6 +623,13 @@ async function handleAnalyzeRequest(request: Request) {
     }
     fresh.push(msg);
   }
+
+  // ── WHO EACH MESSAGE TAGGED (2026-11-09, "@Match Time DM these people")
+  //   Remembered before anything is read, so a request later in this very
+  //   batch, or in a later one, finds the people "above" or in the message
+  //   it quotes from WhatsApp's own mention data (`group-mentions.ts`).
+  //   Best-effort: a failure here costs only that feature.
+  await rememberMentions({ orgId: org.id, chatId: body.groupId, messages: fresh });
 
   // ── A MESSAGE THAT ARRIVES LATE IS NOT A REQUEST MADE NOW (2026-09-29) ─
   //
@@ -2623,6 +2631,10 @@ async function handleAnalyzeRequest(request: Request) {
   //   `requestPartnerAsk`, the match page button's own door.
   const partnerAskRequests: Array<{ msg: InboundMessage; sender: ResolvedSender; clubRef: string | null; matchId: string | null }> = [];
   const poolRequests: Array<{ msg: InboundMessage; userId: string; matchId: string | null }> = [];
+  // "@Match Time DM these people" (2026-11-09): the club's invite to the
+  // people tagged, decided by the engine (an admin, tagged) and performed
+  // in the same batch-final pass (`named-invite.ts`).
+  const namedInviteRequests: Array<{ msg: InboundMessage; sender: ResolvedSender }> = [];
   // The places an organiser's answer to "who shall I ask?" picked (the
   // early pass above): asked here with every other ask, partners before the
   // pool so the pool joins their round.
@@ -2952,6 +2964,9 @@ async function handleAnalyzeRequest(request: Request) {
       if (adminOutcome?.poolAskRequest && sender.userId) {
         poolRequests.push({ msg, userId: sender.userId, ...adminOutcome.poolAskRequest });
       }
+      // An admin's tagged "DM these people" (2026-11-09), deferred the same
+      // way; the engine applied both gates.
+      if (adminOutcome?.namedInviteRequest) namedInviteRequests.push({ msg, sender });
       // The asker's own stats link (2026-09-17, `QuestionTopic.my_stats`).
       // The engine has applied the tag and resolved-sender gates; this
       // performs it, for the SENDER of this message and nobody else.
@@ -3729,8 +3744,16 @@ async function handleAnalyzeRequest(request: Request) {
   if (recruitRequests.length > 0) {
     const last = recruitRequests[recruitRequests.length - 1];
     if (last.fromAttendance && last.sender.userId) {
-      const places = await recruitPlacesFromWords({ id: last.msg.waMessageId, body: last.msg.body, authorName: last.sender.name ?? last.msg.authorName ?? null, now: new Date() });
-      if (places?.sources && places.sources.some((x) => x !== "club")) {
+      const places = await recruitPlacesFromWords({ id: last.msg.waMessageId, body: last.msg.body, authorName: last.sender.name ?? last.msg.authorName ?? null, now: new Date(), ...replyField(replyById, last.msg) });
+      if (places?.named && piMentionsBot(last.msg)) {
+        // "@Match Time DM these people" read on the attendance path
+        // (2026-11-09): the people tagged, never the blast. Only with the
+        // real tag, as `admin_ops` requires it; untagged, today's
+        // behaviour stands.
+        recruitRequests.length = 0;
+        namedInviteRequests.push({ msg: last.msg, sender: last.sender });
+        console.log(`[analyze] ${last.msg.waMessageId}: a recruit of the people tagged: DM'd below, no recruit blast`);
+      } else if (places?.sources && places.sources.some((x) => x !== "club")) {
         console.log(`[analyze] ${last.msg.waMessageId}: a recruit from ${places.sources.join("+")}: asked there${places.sources.includes("club") ? ", and the recruit blast" : ", no recruit blast"}`);
         if (places.sources.includes("partners")) partnerAskRequests.push({ msg: last.msg, sender: last.sender, clubRef: places.clubRef, matchId: null });
         if (places.sources.includes("pool")) poolRequests.push({ msg: last.msg, userId: last.sender.userId, matchId: null });
@@ -3871,6 +3894,46 @@ async function handleAnalyzeRequest(request: Request) {
       });
     } catch (err) {
       console.error("[analyze] verdict-driven recruit failed:", err);
+    }
+  }
+
+  // ── DM THE PEOPLE TAGGED (Vets MNF, 2026-11-09) ─────────────────────
+  //   "@Match Time DM these people", "DM the people above", or a reply
+  //   quoting a message that tagged people, "DM them". After every write,
+  //   like the recruit blast, so a place this batch freed counts. The last
+  //   request in the batch only. Who was tagged comes from WhatsApp's
+  //   mention data (`named-invite.ts`); the reply is merged into the
+  //   message's one result, never a second send.
+  if (namedInviteRequests.length > 0) {
+    const { msg: namedMsg, sender: namedSender } = namedInviteRequests[namedInviteRequests.length - 1];
+    try {
+      const sentAt = new Date(namedMsg.timestamp);
+      const r = await dmNamedPeople({
+        orgId: org.id,
+        chatId: body.groupId,
+        lang: org.language,
+        message: { ...namedMsg, sentAt: Number.isNaN(sentAt.getTime()) ? new Date() : sentAt, quotedMessageId: namedMsg.quotedMessageId ?? null },
+        requesterUserId: namedSender.userId ?? null,
+      });
+      const react = r.invited > 0 ? "✅" : null;
+      const idx = results.findIndex((x) => x.waMessageId === namedMsg.waMessageId);
+      if (idx >= 0) {
+        results[idx].reply = mergeRecruitReply(results[idx].reply, r.replyText);
+        results[idx].react = results[idx].react ?? react;
+        if (results[idx].handledBy === "ignored" || results[idx].intent === "noise" || results[idx].intent === "unclear") {
+          results[idx].handledBy = "fast-path";
+          results[idx].intent = "recruit_named";
+        }
+      } else {
+        results.push({ waMessageId: namedMsg.waMessageId, handledBy: "fast-path", intent: "recruit_named", react, reply: r.replyText });
+      }
+      await augmentAnalysis({
+        waMessageId: namedMsg.waMessageId,
+        action: `${r.outcome}:${r.invited}`,
+        reasoningSuffix: `admin asked to DM the people tagged (${r.from ?? "none found"}): invited ${r.invited}`,
+      });
+    } catch (err) {
+      console.error("[analyze] DM to the people tagged failed:", err);
     }
   }
 
@@ -4503,32 +4566,8 @@ async function nameMentionsFromRoster(
   });
 }
 
-/**
- * Every LID this org's own records tie to a phone or a member
- * (2026-09-30): the participant snapshots taken when MatchTime joined the
- * group (`OnboardingSession`, `ClubConnect`) and the organiser's connect
- * DM (`ClubConnect.dmLid`). Read only for a batch that carries a raw
- * mention token, alongside the roster. The server stores no other LID.
- */
-async function loadKnownLids(orgId: string): Promise<KnownLid[]> {
-  const [sessions, connects] = await Promise.all([
-    db.onboardingSession.findMany({ where: { orgId }, select: { participants: true } }),
-    db.clubConnect.findMany({
-      where: { orgId },
-      select: { userId: true, dmLid: true, participants: true },
-    }),
-  ]);
-  const out: KnownLid[] = [];
-  for (const row of [...sessions, ...connects]) {
-    for (const p of parseParticipantSnapshot(row.participants)) {
-      if (p.lidId && p.phone) out.push({ lid: p.lidId, phone: p.phone });
-    }
-  }
-  for (const c of connects) {
-    if (c.dmLid) out.push({ lid: c.dmLid, userId: c.userId });
-  }
-  return out;
-}
+// `loadKnownLids` moved to `@/lib/known-lids` (2026-11-09), shared with
+// "@Match Time DM these people" (`recruit.ts` `inviteNamedPeople`).
 
 // `KEYCAP` is deleted with `executeVerdict` (§10 step 8). The
 // slot-number reactions it rendered are composed by

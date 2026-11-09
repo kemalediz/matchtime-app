@@ -533,6 +533,17 @@ export default async function AdminGuidePage() {
           It DMs people who played in your last few matches but haven&apos;t
           replied yet, and follows up once if they don&apos;t answer.
         </li>
+        <li id="dm-tagged">
+          Someone tagged a few people to ask if they can play? Reply to that
+          message with <code>@Match Time DM them</code>, or say{" "}
+          <code>@Match Time DM the people above</code>, in the group or in
+          your admin group. MatchTime DMs each of them the usual invite for
+          the next game, with the day, time and places left. You don&apos;t
+          have to say what to send. It only messages numbers it already
+          knows, up to 10 at a time, and skips anyone who has already
+          answered, already had the invite, or turned invites off. It tells
+          you in the group who it couldn&apos;t message.
+        </li>
       </ul>
 
       <h3>The day before</h3>

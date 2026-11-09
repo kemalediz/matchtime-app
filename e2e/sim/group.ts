@@ -473,6 +473,13 @@ export interface BatchItem {
   /** Reuse this WhatsApp message id: the same message delivered again (a
    *  Pi retry or restart replay). Default: a fresh id. */
   waMessageId?: string;
+  /**
+   * The people this message @-mentions, as the Pi forwards them (2026-11-09,
+   * "@Match Time DM these people"): the raw JIDs and, beside them, what the
+   * contact lookup said (`mentionNames`: a name and, for a LID, a phone).
+   * The bot's own mention is NOT listed: tag the bot with `tag`.
+   */
+  mentions?: Array<{ jid: string; name?: string; phone?: string }>;
 }
 
 /** One line of the "Recent chat history" block the Pi keeps in memory
@@ -632,6 +639,14 @@ export class SimGroup {
         // The structured signal as the real Pi sends it (`pi-mention.ts`):
         // the spec's value, else true for a body carrying "@Match Time".
         ...(typeof tagged === "boolean" ? { botMentioned: tagged } : {}),
+        // Other people tagged, as the Pi forwards them: every JID raw, and
+        // the ones its contact lookup could say something about named.
+        ...(it.mentions?.length
+          ? {
+              mentions: it.mentions.map((m) => m.jid),
+              mentionNames: it.mentions.filter((m) => m.name || m.phone),
+            }
+          : {}),
       };
     });
     // Arm the two seams ONLY when this batch actually says something

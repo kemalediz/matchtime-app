@@ -24,12 +24,17 @@ import { extractForRoute } from "./pipeline/extractors";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import { namedSources, type RecruitSource } from "./ask-source-rules";
+import type { ContextMessage } from "./reply-context";
 
 export interface RecruitPlaces {
   /** The places the words named, in order; null when they named none. */
   sources: RecruitSource[] | null;
   /** The other club's name as written, for the partners. */
   clubRef: string | null;
+  /** The words mean the people TAGGED (2026-11-09, "DM these people"):
+   *  no place is asked and no blast is sent; the route DMs those people
+   *  (`named-invite.ts`). Present only when true. */
+  named?: true;
 }
 
 export async function recruitPlacesFromWords(args: {
@@ -37,6 +42,8 @@ export async function recruitPlacesFromWords(args: {
   body: string;
   authorName: string | null;
   now: Date;
+  /** The message this one replies to, so "DM them" has a referent. */
+  reply?: ContextMessage | null;
   /** Injected in tests only. */
   model?: PipelineModel;
 }): Promise<RecruitPlaces | null> {
@@ -50,10 +57,12 @@ export async function recruitPlacesFromWords(args: {
       tagged: true,
       history: [],
       lastBotPost: null,
+      ...(args.reply ? { reply: args.reply } : {}),
       now: args.now,
     });
     const f = extracted.facts;
     if (f.kind !== "admin" || f.action !== "recruit") return null;
+    if (f.namedPeople) return { sources: null, clubRef: null, named: true };
     return { sources: namedSources(f), clubRef: f.clubRef?.trim() || null };
   } catch (err) {
     console.error(`[recruit-source] ${args.id}: the source could not be read (the recruit stands):`, err instanceof Error ? err.message : "failed");

@@ -165,6 +165,8 @@ export function sourceQuestionAnswered(p: {
  * and the message is handled as it would have been with no question asked.
  */
 export function sourcesFromAnswer(facts: AdminFacts | null): RecruitSource[] | null {
-  if (!facts || facts.action !== "recruit") return null;
+  // The people tagged (2026-11-09, "DM these people") name no place, so
+  // they answer nothing here; the caller handles them as asked.
+  if (!facts || facts.action !== "recruit" || facts.namedPeople) return null;
   return namedSources(facts);
 }

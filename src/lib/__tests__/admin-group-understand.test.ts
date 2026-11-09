@@ -2076,6 +2076,53 @@ describe("a game's sizes from HQ", () => {
   });
 });
 
+// 2026-11-09 (Vets MNF): "@Match Time DM these people" in HQ, quoting a
+// message (a forwarded one too) or the one above: the players' group's own
+// door (`named-invite.ts`), an organiser's alone, never a place asked.
+describe("DM the people tagged, from HQ", () => {
+  const named = { action: "recruit", playersFrom: ["named"], clubRef: "", toMatchTime: true };
+  const dm = (invited: number, outcome = "named-done") =>
+    vi.fn(async () => ({ outcome, replyText: invited ? "✅ Done. I've sent the invite to Ali." : "I couldn't see anyone tagged in that message, so I haven't messaged anyone.", invited, from: null, matchId: null }));
+  beforeEach(() => {
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    hqLog.hqLogSince.mockResolvedValue([]);
+    partnerWords.activePartnerChoices.mockResolvedValue([]);
+  });
+
+  it.each(["admin_ops", "ask_group"])("routed %s: the people tagged in the quoted message are DM'd, nobody else asked", async (route) => {
+    const dmNamedPeople = dm(1);
+    const r = await ask("@Match Time DM them", route, {
+      deps: { routerModel: routeTo(route), extractorModel: adminFacts(named), dmNamedPeople },
+      chatId: "hq@g.us",
+      mentionNames: [],
+      quoted: { messageId: "3EB0QUOTED", text: "@Ali @Sam fancy it?", fromMatchTime: false },
+    });
+    expect(dmNamedPeople).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: "org-fnf", chatId: "hq@g.us", requesterUserId: "u-admin", message: expect.objectContaining({ waMessageId: "wa-9", quotedMessageId: "3EB0QUOTED" }) }),
+    );
+    expect(r).toEqual({ route, outcome: "hq-named-done", replyText: "✅ Done. I've sent the invite to Ali." });
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+  });
+
+  it("nobody DM'd: an outcome that carries no tick", async () => {
+    const r = await ask("@Match Time DM the people above", "admin_ops", {
+      deps: { routerModel: routeTo("admin_ops"), extractorModel: adminFacts(named), dmNamedPeople: dm(0, "named-nobody-tagged") },
+    });
+    expect(r?.outcome).toBe("hq-named-nobody-tagged");
+  });
+
+  it("a member of HQ who is not an organiser: the one line naming who can, nobody DM'd", async () => {
+    const dmNamedPeople = dm(1);
+    const r = await ask("@Match Time DM these people", "ask_group", {
+      deps: { routerModel: routeTo("ask_group"), extractorModel: adminFacts(named), dmNamedPeople },
+      organiser: false,
+      senderUserId: "u-2",
+    });
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(dmNamedPeople).not.toHaveBeenCalled();
+  });
+});
+
 // 2026-10-28 (Kemal): "try again" after a refusal, and "set the pitch", in
 // HQ, by an organiser asking MatchTime. Through the same doors as the
 // players' group: the stored ask (refused-ask-retry.ts), the venue lookup

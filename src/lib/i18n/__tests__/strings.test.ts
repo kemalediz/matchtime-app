@@ -348,6 +348,7 @@ const SAMPLES: SampleArgs = {
   onbHelpFriendLink: null,
   onbHelpFriend: { fees: true },
   onbHelpFriendLinkOrganiser: null,
+  onbHelpDmTaggedOrganiser: null,
   onbHelpMonthListOrganiser: null,
   hq_help: { squad: true, graphics: true, picks: true, paid: true, pool: true },
   hq_confirm_teams: { day: "Fri 16 Oct" },

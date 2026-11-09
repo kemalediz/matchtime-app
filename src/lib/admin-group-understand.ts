@@ -159,6 +159,7 @@ import { parseVenuePickRef, venueListAnswered } from "./venue-from-words-rules";
 import { recordHqVenueList } from "./venue-list-log";
 import type { HqLogRow } from "./admin-group-log";
 import { adminVenueCopy } from "./i18n/admin-venue";
+import { dmNamedPeople } from "./named-invite";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -200,6 +201,9 @@ export interface UnderstandInput {
   senderName: string | null;
   sentAt: Date | null;
   now: Date;
+  /** The HQ group's WhatsApp id, where "the people above" are looked for
+   *  ("@Match Time DM these people", 2026-11-09). */
+  chatId?: string;
   /** The pool switch as the request read it (`pool/switch-env.ts`):
    *  the platform switch row, or the e2e seam under MT_TEST_MODE=1. */
   poolEnv?: Record<string, string | undefined>;
@@ -211,6 +215,8 @@ export interface UnderstandInput {
     latestAskForRetry?: LatestAskForRetry;
     /** "Our pitch is Goals Sutton" (2026-10-28). */
     setVenueFromWords?: typeof setVenueFromWords;
+    /** "DM these people" (2026-11-09). */
+    dmNamedPeople?: typeof dmNamedPeople;
   };
 }
 
@@ -817,6 +823,30 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
       const r = await askPoolFromWords({ orgId: org.id, userId: actor, via: "words", lang, now, env: input.poolEnv, remember: { askMessageId: messageId } });
       return said(r.outcome, r.replyText);
     };
+    // "@Match Time DM these people" (2026-11-09): the club's invite to the
+    // people tagged in this message, the one it quotes (a forwarded message
+    // included), or the one above in HQ, through the players' group's own
+    // door (`named-invite.ts`). An organiser's alone. A tick only when
+    // somebody was DM'd.
+    const dmTagged = async (): Promise<Understood> => {
+      if (!actor) return onlyOrganisers("players");
+      const r = await (input.deps?.dmNamedPeople ?? dmNamedPeople)({
+        orgId: org.id,
+        chatId: input.chatId ?? "",
+        lang,
+        message: {
+          waMessageId: messageId,
+          sentAt: input.sentAt ?? now,
+          mentionNames: input.mentionNames,
+          // HQ acts on a real tag only, so the Pi never puts MatchTime in
+          // `mentionNames`; raw mentions are not forwarded from HQ.
+          botMentioned: true,
+          quotedMessageId: input.quoted?.messageId ?? null,
+        },
+        requesterUserId: actor,
+      });
+      return said(r.invited > 0 ? "hq-named-done" : `hq-${r.outcome === "named-done" ? "named-none-sent" : r.outcome}`, r.replyText);
+    };
 
     // WHERE THE PLAYERS COME FROM (Kemal, 2026-10-28: "stricter"; ask when
     // in limbo). `ask-source-rules.ts`: the places the words named are
@@ -1085,6 +1115,8 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // pool hears so instead of a post in its group.
         const partners = await activePartnerChoices(org.id).catch(() => []);
         const facts = await readAdminFacts();
+        // The people tagged (2026-11-09): DM'd the invite, nobody asked.
+        if (facts?.action === "recruit" && facts.namedPeople) return dmTagged();
         if (facts && (facts.action === "set_venue" || facts.action === "retry_ask")) return venueOrRetry(facts, null);
         // Another place named (the pool, the partners, or several): each is
         // asked. A partner club named by a club that has none stays the
@@ -1108,6 +1140,9 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         // and the extractor is not asked.
         if (!feeActor) return onlyOrganisers();
         const facts = (await readAdminFacts()) ?? { kind: "none" as const };
+        // The people tagged (2026-11-09, "DM these people"): their invite,
+        // never a place asked. An organiser's alone (not the collector's).
+        if (facts.kind === "admin" && facts.action === "recruit" && facts.namedPeople) return dmTagged();
         // Another place named: the MatchTime player pool (L10, "get us a
         // player from the app"), another club's players (slice S6, "ask
         // Sutton if anyone can play"), or several ("partner clubs and the

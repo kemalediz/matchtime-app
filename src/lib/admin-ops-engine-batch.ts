@@ -308,6 +308,13 @@ export interface AdminOpsMessageOutcome {
    * the route calls `askPoolFromWords`.
    */
   poolAskRequest: { matchId: string | null } | null;
+  /**
+   * An admin asked, with a tag, for the people tagged to be DM'd the
+   * club's invite (2026-11-09, "@Match Time DM these people"). Same
+   * batch-final pass: the route calls `dmNamedPeople` (`named-invite.ts`),
+   * which reads who was tagged from WhatsApp's mention data.
+   */
+  namedInviteRequest: boolean;
   /** A write threw. The caller must not say anything cheerful. */
   writeFailed: boolean;
 }
@@ -839,6 +846,7 @@ export async function runAdminOpsBatch(args: {
       statsBlastRequest: false,
       partnerAskRequest: null,
       poolAskRequest: null,
+      namedInviteRequest: false,
     };
     const action = ask.mode === "cancel" ? "cancel_match" : "restore_match";
     try {
@@ -891,6 +899,7 @@ export async function runAdminOpsBatch(args: {
       statsBlastRequest: false,
       partnerAskRequest: null,
       poolAskRequest: null,
+      namedInviteRequest: false,
       writeFailed: false,
     });
   }
@@ -912,6 +921,7 @@ export async function runAdminOpsBatch(args: {
     statsBlastRequest: false,
     partnerAskRequest: null,
     poolAskRequest: null,
+    namedInviteRequest: false,
     writeFailed,
   });
   for (const [id, ask] of venueAsks) {
@@ -1016,6 +1026,7 @@ export async function runAdminOpsBatch(args: {
         statsBlastRequest: false,
         partnerAskRequest: null,
         poolAskRequest: null,
+        namedInviteRequest: false,
         writeFailed: false,
       });
     }
@@ -1071,6 +1082,7 @@ export async function runAdminOpsBatch(args: {
   const statsBlastIds = new Set<string>();
   const partnerAskByMessage = new Map<string, { clubRef: string | null; matchId: string | null }>();
   const poolRequestByMessage = new Map<string, { matchId: string | null }>();
+  const namedInviteIds = new Set<string>();
   const foreign: string[] = [];
   for (const w of result.writes) {
     if (!ownedIds.has(w.sourceMessageId)) {
@@ -1092,6 +1104,8 @@ export async function runAdminOpsBatch(args: {
     else if (w.kind === "partner_ask") partnerAskByMessage.set(w.sourceMessageId, { clubRef: w.clubRef, matchId: w.matchId });
     // And the MatchTime player pool (L10), the same way.
     else if (w.kind === "pool_ask") poolRequestByMessage.set(w.sourceMessageId, { matchId: w.matchId });
+    // And the invite to the people tagged (2026-11-09), the same way.
+    else if (w.kind === "named_invite") namedInviteIds.add(w.sourceMessageId);
     else foreign.push(w.kind);
   }
   if (foreign.length > 0) {
@@ -1250,7 +1264,9 @@ export async function runAdminOpsBatch(args: {
                   ? "partner_ask"
                   : poolRequest
                     ? "pool_ask"
-                    : "noise",
+                    : namedInviteIds.has(m.waMessageId)
+                      ? "recruit_named"
+                      : "noise",
       action: failed ? "none" : actedIds.has(m.waMessageId) ? action : react ? "react" : reply ? "reply" : "none",
       reasoning:
         `${ADMIN_OPS_HANDLED_BY} (${m.route}): ` +
@@ -1263,6 +1279,7 @@ export async function runAdminOpsBatch(args: {
       statsBlastRequest: isStatsBlast,
       partnerAskRequest: partnerAsk,
       poolAskRequest: poolRequest,
+      namedInviteRequest: namedInviteIds.has(m.waMessageId),
       writeFailed: failed,
     });
   }

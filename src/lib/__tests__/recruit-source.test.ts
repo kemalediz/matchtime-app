@@ -49,6 +49,13 @@ describe("recruitPlacesFromWords", () => {
     expect(await ask(extractor({ action: "recruit", playersFrom: [] }))).toEqual({ sources: null, clubRef: null });
   });
 
+  it("the people tagged (2026-11-09): named, no place, and the quoted message is shown to the extractor", async () => {
+    const quoted = { at: NOW, text: "@Ali @Sam any of you fancy it?", topic: null, match: null, author: { name: "Shane" } };
+    const r = await recruitPlacesFromWords({ id: "wa-2", body: "@Match Time DM them", authorName: "Kemal", now: NOW, reply: quoted, model: extractor({ action: "recruit", playersFrom: ["named"] }) });
+    expect(r).toEqual({ sources: null, clubRef: null, named: true });
+    expect(seen.at(-1)?.user).toContain("@Ali @Sam any of you fancy it?");
+  });
+
   it("not a recruit, or a failed call: null, never throws (the blast as today)", async () => {
     expect(await ask(extractor({ action: "other" }))).toBeNull();
     expect(await ask(extractor(new Error("529")))).toBeNull();

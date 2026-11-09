@@ -56,6 +56,7 @@ import { handlePickReply } from "./organiser-pick";
 import { PICK_RACE_WINDOW_MS } from "./organiser-pick-rules";
 import { isBillingPaused } from "./club-billing-rules";
 import { recordHqMessage } from "./admin-group-log";
+import { rememberMentions } from "./group-mentions";
 import { understandAdminMessage } from "./admin-group-understand";
 import { HQ_FEE_FREE_EXPIRED, HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rules";
 import { HQ_CANCEL_NOTHING_DONE } from "./match-cancel";
@@ -144,6 +145,12 @@ const NO_TICK: ReadonlySet<string> = new Set([
   "hq-pool-no-match",
   // A YES to a guest who wants to join that sent nothing (L10).
   "hq-join-not-done",
+  // "DM these people" that DM'd nobody (2026-11-09): nobody tagged, no
+  // game, no place open, or nobody MatchTime could message.
+  "hq-named-nobody-tagged",
+  "hq-named-no-match",
+  "hq-named-full",
+  "hq-named-none-sent",
 ]);
 export const HQ_TICK = "✅";
 
@@ -225,6 +232,14 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   // Everything said in a live club's HQ, by anyone, for the safe-YES rule.
   if (live && msg.messageId) {
     await recordHqMessage({ orgId: org.id, waMessageId: msg.messageId, senderUserId, text: msg.text, now });
+    // And who it tagged (2026-11-09), so "@Match Time DM these people"
+    // quoting it, or "the people above", finds them. Best-effort.
+    await rememberMentions({
+      orgId: org.id,
+      chatId: msg.groupId,
+      messages: [{ waMessageId: msg.messageId, timestamp: parseTimestamp(msg.timestamp), mentionNames: msg.mentionNames, botMentioned: msg.botMentioned, senderUserId }],
+      now,
+    });
   }
 
   // Who may change who plays here: an owner or admin, or any other member
@@ -270,6 +285,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
       senderName: sender?.name ?? null,
       sentAt: parseTimestamp(msg.timestamp),
       now,
+      chatId: msg.groupId,
       ...(msg.poolEnv ? { poolEnv: msg.poolEnv } : {}),
     });
   };
