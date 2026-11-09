@@ -111,9 +111,39 @@ function organiserAskTail(open: number): string {
   return `Say *IN* if you can make it and the organisers will confirm who gets ${open === 1 ? "the place" : "the places"}.`;
 }
 
+/** What an invite DM says about who is asking, where and for how much
+ *  (Kemal, Vets MNF, 2026-11-09). Each one is left out when unknown. */
+export interface RecruitInviteDetails {
+  /** The club's name (`Organisation.name`). */
+  club?: string | null;
+  /** The players' WhatsApp group's subject ("Vets MNF"). */
+  group?: string | null;
+  /** The venue's name, as the pool offer shows it. */
+  venue?: string | null;
+  /** The per-player fee, already a label ("£8"). */
+  fee?: string | null;
+}
+
+const filled = (v: string | null | undefined): string | null => (v && v.trim() ? v.trim() : null);
+
+/** The invite's opening: who is asking, then the game, its venue and fee.
+ *  `game` is the "putting the squad together" sentence, capitalised. */
+function recruitInviteHeadEn(p: RecruitInviteDetails & { firstName: string | null; game: string }): string[] {
+  const hello = `👋 ${filled(p.firstName) ?? "Hi"},`;
+  const club = filled(p.club);
+  const group = filled(p.group);
+  const fromGroup = group ? `from the ${group}${/\bgroup$/i.test(group) ? "" : " group"}` : null;
+  const intro = club ? `it's *${club}* here${fromGroup ? `, ${fromGroup}` : ""}.` : fromGroup ? `it's MatchTime here, ${fromGroup}.` : null;
+  const venue = filled(p.venue);
+  const fee = filled(p.fee);
+  const facts = [venue ? `📍 ${venue}` : null, fee ? `💷 ${fee} a game` : null].filter((l): l is string => l !== null);
+  const game = intro ? [`${hello} ${intro}`, "", p.game] : [`${hello} ${p.game.charAt(0).toLowerCase()}${p.game.slice(1)}`];
+  return [...game, ...facts];
+}
+
 /** How to make a real tag (#482, #487, 2026-10-31), the one sentence the
  *  HQ notices end with. */
-const en_tagHow = "To tag me, type *@* and pick *Match Time* from the list.";
+const en_tagHow ="To tag me, type *@* and pick *Match Time* from the list.";
 
 export const en = {
   // ── shared fragments ─────────────────────────────────────────────
@@ -1960,21 +1990,26 @@ export const en = {
 
   /** Rows 93, 94: the recruit invite. `spotsLeft` 0 omits the count;
    *  `link` null omits the app line; `reactions` is
-   *  RECRUIT_DM_MENTION_REACTIONS. */
-  dm_recruit_invite: (p: {
-    firstName: string | null;
-    matchName: string;
-    matchWhen: string;
-    spotsLeft: number;
-    link: string | null;
-    reactions: boolean;
-  }): string => {
+   *  RECRUIT_DM_MENTION_REACTIONS; `playLine` replaces the "Playing?" line
+   *  (an organiser-pick club). The club, group, venue and fee are each
+   *  left out when unknown (2026-11-09). */
+  dm_recruit_invite: (
+    p: RecruitInviteDetails & {
+      firstName: string | null;
+      matchName: string;
+      matchWhen: string;
+      spotsLeft: number;
+      link: string | null;
+      reactions: boolean;
+      playLine?: string | null;
+    },
+  ): string => {
     const spots =
       p.spotsLeft > 0 ? ` ${p.spotsLeft} ${p.spotsLeft === 1 ? "spot" : "spots"} left.` : "";
     const lines = [
-      `👋 ${p.firstName ?? "there"}, we're putting the squad together for *${p.matchName}* on ${p.matchWhen}.${spots}`,
+      ...recruitInviteHeadEn({ ...p, game: `We're putting the squad together for *${p.matchName}* on ${p.matchWhen}.${spots}` }),
       "",
-      p.reactions ? "Playing? Reply *IN* or tap 👍 on this message." : "Playing? Just reply *IN*.",
+      p.playLine ?? (p.reactions ? "Playing? Reply *IN* or tap 👍 on this message." : "Playing? Just reply *IN*."),
       p.reactions
         ? "Can't make it? Reply *OUT* or tap 👎 and I'll stop asking 🙌"
         : "Can't make it? Reply *OUT* and I'll stop asking 🙌",
@@ -1982,9 +2017,12 @@ export const en = {
     if (p.link) lines.push("", `Prefer the app? ${p.link}`);
     return lines.join("\n");
   },
-  dm_recruit_group_invite: (p: { firstName: string | null; matchName: string; matchWhen: string }): string =>
-    `👋 ${p.firstName ?? "there"}, we're putting the squad together for *${p.matchName}* on ${p.matchWhen}. ` +
-    `Fancy it? Just reply *IN* in the group and you're sorted 🙌`,
+  dm_recruit_group_invite: (p: RecruitInviteDetails & { firstName: string | null; matchName: string; matchWhen: string }): string =>
+    [
+      ...recruitInviteHeadEn({ ...p, game: `We're putting the squad together for *${p.matchName}* on ${p.matchWhen}.` }),
+      "",
+      "Fancy it? Just reply *IN* in the group and you're sorted 🙌",
+    ].join("\n"),
 
   /** Row 84: the one recruit chase. `count` is already at least 1. */
   dm_recruit_chase: (p: { firstName: string | null; count: number; activityName: string; matchWhen: string }): string =>

@@ -12,7 +12,7 @@ const dbMock = vi.hoisted(() => ({
 vi.mock("../../db", () => ({ db: dbMock }));
 vi.mock("../../partner-ask", () => ({ feeLabel: (p: number | null) => (p && p > 0 ? `£${p}` : null) }));
 
-import { loadMatchOfferFacts, poolFeeOf } from "../offer-facts";
+import { loadMatchOfferFacts, loadMatchVenueAndFee, poolFeeOf } from "../offer-facts";
 
 describe("poolFeeOf", () => {
   it("the match's fee, else the activity's", () => {
@@ -77,5 +77,19 @@ describe("loadMatchOfferFacts", () => {
     dbMock.match.findUnique.mockResolvedValue({ ...m, activity: { ...m.activity, venueRef: null, org: { ...m.activity.org, playStyle: "weird" } } });
     const f = await loadMatchOfferFacts("m1");
     expect(f).toMatchObject({ venueName: "Goals (typed)", address: null, mapUrl: null, playStyle: null });
+  });
+
+  // The recruit invite DM (2026-11-09): the same venue name and fee, for
+  // any sport, without the pool's counts.
+  it("loadMatchVenueAndFee: the offer's venue name and fee, and the club, whatever the sport", async () => {
+    const m = await dbMock.match.findUnique();
+    dbMock.match.findUnique.mockResolvedValue({ ...m, activity: { ...m.activity, sport: { preset: "padel-doubles-weird", name: "Bowls", playersPerTeam: 4 } } });
+    expect(await loadMatchVenueAndFee("m1")).toEqual({ club: "FNF", venueName: "Goals North Cheam", fee: { kind: "amount", amount: "£6" } });
+    expect(dbMock.membership.count).not.toHaveBeenCalled();
+  });
+
+  it("loadMatchVenueAndFee: no such match is null", async () => {
+    dbMock.match.findUnique.mockResolvedValue(null);
+    expect(await loadMatchVenueAndFee("gone")).toBeNull();
   });
 });

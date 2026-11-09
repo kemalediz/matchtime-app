@@ -35,6 +35,15 @@
  *      twice, and the marker and the job carry one explicit `createdAt`
  *      (142 lines: 71 markers, 71 jobs), so the recruit chase's "DM'd since
  *      the invite" test never counts the invite itself.
+ *
+ * RE-RECORDED 2026-11-09 (the invite says who is asking, where and for how
+ * much), for one intended change and nothing else, checked line by line:
+ * the `text` of the same 71 recruit invite BotJobs. Each now opens with the
+ * club ("👋 Player, it's *Sutton FC* here." and "*Sutton FC* adına
+ * yazıyorum."), adds the venue and fee lines the fake world has ("📍 Goals
+ * Sutton", "💷 £6 a game") under the game line, which becomes its own
+ * paragraph. No write, model request, status or response changed; the fake
+ * world stores no group subject, so none is named.
  */
 import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";

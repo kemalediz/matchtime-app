@@ -91,8 +91,9 @@ export interface KnownPerson {
 }
 
 /** A known person in a plan: `label` is how the group is told about them
- *  (their name in this club, else their WhatsApp name, else a phone from a
- *  phone-number tag, else null and counted); `member`: in this club. */
+ *  (the WhatsApp name tagged, as their invite DM greets them, Kemal
+ *  2026-11-09; else their name in this club; else a phone from a
+ *  phone-number tag; else null and counted); `member`: in this club. */
 export interface PlannedPerson extends KnownPerson {
   label: string | null;
   member: boolean;
@@ -295,7 +296,13 @@ export function planNamedInvites(args: {
     if (seen.has(person.userId) || person.userId === args.requesterUserId) continue;
     seen.add(person.userId);
     const clubName = args.clubNames.get(person.userId)?.trim() || null;
-    const p: PlannedPerson = { ...person, label: clubName ?? mentionLabel(mention), member: clubName !== null || args.clubNames.has(person.userId) };
+    // Named as the DM greets them: the WhatsApp name tagged, then this
+    // club's name, then a phone-number tag's phone (never a LID's).
+    const p: PlannedPerson = {
+      ...person,
+      label: mention.name ?? clubName ?? mentionLabel(mention),
+      member: clubName !== null || args.clubNames.has(person.userId),
+    };
     if (args.optedOut.has(person.userId)) plan.optedOut.push(p);
     else if (args.notHere.has(person.userId)) plan.notHere.push(p);
     else if (args.answered.has(person.userId)) plan.answered.push(p);

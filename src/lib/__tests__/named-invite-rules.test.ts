@@ -196,13 +196,33 @@ describe("planNamedInvites: who is DM'd", () => {
     expect(plan.invite.map((p) => p.userId)).toEqual(["u1", "u2"]);
   });
 
-  it("named by their name in THIS club when they are a member, else by the WhatsApp name tagged, never User.name (review #2)", () => {
-    const plan = planNamedInvites({ ...base, clubNames: new Map([["u1", "Bilal Hussain"]]), resolved: [known(1, { name: "BH" }), known(2, { name: "Matt Afc" }), known(3)] });
+  // Kemal, 2026-11-09: the reply names people the way their DM greets them,
+  // by the WhatsApp name tagged first (Matt, stored "UTV", is "Matt Afc
+  // Walcountians Vets"), then this club's name for a member; never User.name.
+  it("named by the WhatsApp name tagged, else their name in THIS club when they are a member, never User.name (review #2)", () => {
+    const plan = planNamedInvites({
+      ...base,
+      clubNames: new Map([
+        ["u1", "UTV"],
+        ["u4", "Bilal Hussain"],
+      ]),
+      resolved: [known(1, { name: "Matt Afc Walcountians Vets" }), known(2, { name: "Matt Afc" }), known(3), known(4)],
+    });
     expect(plan.invite.map((p) => [p.label, p.member])).toEqual([
-      ["Bilal Hussain", true],
+      ["Matt Afc Walcountians Vets", true],
       ["Matt Afc", false],
       [null, false],
+      ["Bilal Hussain", true],
     ]);
+  });
+
+  it("a member tagged by phone number with no WhatsApp name: their club name, not the phone", () => {
+    const plan = planNamedInvites({
+      ...base,
+      clubNames: new Map([["u1", "Bilal Hussain"]]),
+      resolved: [known(1, { jid: "447700900001@c.us", phone: "447700900001" }), known(2, { jid: "447700900002@c.us", phone: "447700900002" })],
+    });
+    expect(plan.invite.map((p) => p.label)).toEqual(["Bilal Hussain", "+447700900002"]);
   });
 
   it("a phone is printed only for a phone-number tag, never one learned behind a LID (review #6)", () => {

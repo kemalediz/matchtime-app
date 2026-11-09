@@ -357,6 +357,15 @@
  *     "Teklif maç başlayana ya da yerler dolana kadar açık kalır." in
  *     Turkish. Six cases per document (pool closed, off, on; group and
  *     player); no case was added or removed and no other line changed.
+ *
+ *   - A deliberate CHANGE and additions (2026-11-09, Kemal, the invite
+ *     "@Match Time DM these people" sends, which the recruit blast shares).
+ *     CHANGED: R94 is now two paragraphs (the game, then the IN ask)
+ *     instead of one line; R93 and the organiser-pick invite are unchanged
+ *     (no stop line for now, Kemal: "STOP" is understood only by the DM
+ *     model). ADDED: R93d and R94d, the same invites with the club,
+ *     the players' group, the venue and the fee, and with no name ("👋 Hi,"
+ *     and "👋 Merhaba,"). No other case changed.
  */
 import { composeSetupDm } from "../../setup-learning/dm";
 import { composeSetupAskDm } from "../../club-setup-dm-rules";
@@ -1220,6 +1229,11 @@ function cases(lang: Lang): Case[] {
   add("R93 buildRecruitInviteDm / one spot, no link", buildRecruitInviteDm({ firstName: "Sait", matchName: "Tuesday 7-a-side", matchWhen: W, spotsLeft: 1, link: null, lang }));
   add("R93 buildRecruitInviteDm / spots suppressed", buildRecruitInviteDm({ firstName: "Sait", matchName: "Tuesday 7-a-side", matchWhen: W, spotsLeft: 0, link: null, lang }));
   add("R94 buildRecruitGroupInviteDm", buildRecruitGroupInviteDm({ firstName: "Sait", matchName: "Thursday 5-a-side", matchWhen: W2, lang }));
+  // Deliberate addition (2026-11-09): who is asking, where, for how much.
+  const inviteDetails = { club: "Monday night vets", groupSubject: "Vets MNF", venue: "Oaks Park High School football field", fee: "£8" };
+  add("R93d buildRecruitInviteDm / club, group, venue, fee", buildRecruitInviteDm({ firstName: "Matt", matchName: "Football 7-a-side", matchWhen: W, spotsLeft: 3, link: "https://mt.example/m/abc", lang, ...inviteDetails }));
+  add("R93d buildRecruitInviteDm / no name, no group", buildRecruitInviteDm({ firstName: null, matchName: "Football 7-a-side", matchWhen: W, spotsLeft: 3, link: null, lang, ...inviteDetails, groupSubject: null }));
+  add("R94d buildRecruitGroupInviteDm / club, group, venue, fee", buildRecruitGroupInviteDm({ firstName: "Matt", matchName: "Football 7-a-side", matchWhen: W, lang, ...inviteDetails }));
   add("R84 buildRecruitChaseText / one", buildRecruitChaseText({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", matchWhen: W, need: 1, lang }));
   add("R84 buildRecruitChaseText / three", buildRecruitChaseText({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", matchWhen: W, need: 3, lang }));
   add("R84 buildRecruitChaseText / no name", buildRecruitChaseText({ playerName: null, activityName: "Tuesday 7-a-side", matchWhen: W, need: 2, lang }));

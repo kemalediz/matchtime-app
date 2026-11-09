@@ -73,7 +73,9 @@ test("a reply quoting the tagged message: the known people get the club's invite
   const r = await g.postBatch([{ player: "owner", ...ask("@Match Time DM these people"), quote: { id: "sim-shane-quoted", text: SHANE } }]);
   const reply = r.results[0].reply ?? "";
   expect(reply).toContain("✅ Done. I've sent the invite for");
-  expect(reply).toContain("Dan Drummer and Felix Fox");
+  // Named as the DMs greet them: the WhatsApp name each tag carried (Kemal,
+  // 2026-11-09), "Dan" from the LID tag, "Felix Fox" from the phone tag.
+  expect(reply).toContain("Dan and Felix Fox");
   expect(reply).toContain(`I can't message numbers I don't know yet, so I didn't message +${UNKNOWN_PHONE}.`);
   expect(r.results[0].react).toBe("✅");
 
@@ -85,12 +87,15 @@ test("a reply quoting the tagged message: the known people get the club's invite
     expect(d.text).toContain("putting the squad together");
     expect(d.text).toContain("6 spots left");
     expect(d.text).toContain("reply *IN*");
+    // 2026-11-09: who is asking (the club); no stop line for now.
+    expect(d.text).toMatch(/^👋 (Dan|Felix), it's \*[^*]+\* here/);
+    expect(d.text).not.toContain("STOP");
   }
 
   // Asked again: nobody gets the same game's invite twice.
   const again = await g.postBatch([{ player: "owner", ...ask("@Match Time DM them"), quote: { id: "sim-shane-quoted", text: SHANE } }]);
   expect(again.dms).toEqual([]);
-  expect(again.results[0].reply).toContain("Dan Drummer and Felix Fox already had the invite.");
+  expect(again.results[0].reply).toContain("Dan and Felix Fox already had the invite.");
 });
 
 test("\"DM the people above\", the tagged message in an earlier flush", async ({ request, db }) => {
@@ -100,7 +105,7 @@ test("\"DM the people above\", the tagged message in an earlier flush", async ({
   await g.postBatch([{ player: "ivan", body: "lovely weather for it", route: "none" }]);
   const r = await g.postBatch([{ player: "owner", ...ask("@Match Time DM the people above") }]);
   expect(r.dms.map((d) => d.phone).sort()).toEqual([phoneOf(g, "greg"), phoneOf(g, "henry")].sort());
-  expect(r.results[0].reply).toContain("Greg Gale and Henry Hill");
+  expect(r.results[0].reply).toContain("Greg and Henry");
 });
 
 test("\"DM the people above\" in the same flush as the tagged message", async ({ request, db }) => {
@@ -110,7 +115,7 @@ test("\"DM the people above\" in the same flush as the tagged message", async ({
     { player: "owner", ...ask("@Match Time DM the people above") },
   ]);
   expect(r.dms.map((d) => d.phone)).toEqual([phoneOf(g, "ivan")]);
-  expect(r.results[1].reply).toContain("to Ivan Ice.");
+  expect(r.results[1].reply).toContain("to Ivan.");
 });
 
 test("the request tags someone the Pi could not name: never the people above, and the group is told (review #1)", async ({ request, db }) => {
@@ -132,7 +137,7 @@ test("a member who turned invites off in another club is left out too; the reply
   const r = await g.postBatch([{ player: "owner", ...ask("@Match Time DM the people above") }]);
   expect(r.dms.map((d) => d.phone)).toEqual([phoneOf(g, "mike")]);
   expect(r.results[0].reply?.split("\n")[0]).toBe("📨 From Pete Power's message:");
-  expect(r.results[0].reply).toContain("Liam Lake doesn't get invites by message");
+  expect(r.results[0].reply).toContain("Liam doesn't get invites by message");
 });
 
 test("a member who turned invites off is left out and named", async ({ request, db }) => {
@@ -141,7 +146,7 @@ test("a member who turned invites off is left out and named", async ({ request, 
   await g.postBatch([{ player: "pete", body: "@Jake @Kyle can you play?", route: "none", mentions: [lidTag(g.player("jake")), lidTag(g.player("kyle"))] }]);
   const r = await g.postBatch([{ player: "owner", ...ask("@Match Time DM the people above") }]);
   expect(r.dms.map((d) => d.phone)).toEqual([phoneOf(g, "kyle")]);
-  expect(r.results[0].reply).toContain("Jake Jolly doesn't get invites by message, so I left them out.");
+  expect(r.results[0].reply).toContain("Jake doesn't get invites by message, so I left them out.");
 });
 
 test("at most ten DMs in one request; the rest are named", async ({ request, db }) => {
@@ -150,7 +155,7 @@ test("at most ten DMs in one request; the rest are named", async ({ request, db 
   await g.postBatch([{ player: "quinn", body: "everyone fancy it?", route: "none", mentions: keys.map((k) => lidTag(g.player(k))) }]);
   const r = await g.postBatch([{ player: "owner", ...ask("@Match Time DM the people above") }]);
   expect(r.dms).toHaveLength(10);
-  expect(r.results[0].reply).toContain("I message at most 10 people at a time, so I left out Mike Moon and Noah North.");
+  expect(r.results[0].reply).toContain("I message at most 10 people at a time, so I left out Mike and Noah.");
 });
 
 test("nobody tagged in the quoted message: says so, DMs nobody", async ({ request, db }) => {
