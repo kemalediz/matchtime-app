@@ -78,6 +78,38 @@ describe("the prompt", () => {
     expect(MONTHLY_READER_SYSTEM.length / 4).toBeGreaterThan(512);
   });
 
+  it("2026-11-09: a pay-as-you-go part is the playing list, numbered on; the bench part is the reserves, and whether the list has one at all is asked", () => {
+    // The live check of #571: "*Pay as you go:*" lines came back as "other",
+    // in the old layout and the new, and were dropped.
+    const part = (name: string) => MONTHLY_READER_SYSTEM.split("\n").find((l) => l.trimStart().startsWith(`"${name}":`));
+    const playing = part("playing");
+    expect(playing).toMatch(/Pay as you go/);
+    expect(playing).toMatch(/Maç başı ödeyenler/);
+    expect(playing).toMatch(/numbers? (?:carry|carries) on/);
+    const reserves = part("reserves");
+    expect(reserves).toMatch(/Bench/);
+    expect(reserves).toMatch(/Yedekler/);
+    expect(MONTHLY_READER_SCHEMA.required).toContain("benchPart");
+    // "other" is only for parts that are not about who plays.
+    const other = part("other");
+    expect(other).toMatch(/not about who plays/);
+  });
+
+  it("a bench part is shown when the model says so, or when it has names under it; else not", () => {
+    const body = "List for November\n1. Davide\n\nBench:\n1. Lucas";
+    const read = (benchPart: boolean, lines: unknown[]) => {
+      const r = parseMonthlyReading(answer({ benchPart, lines }), input(body), CTX);
+      if (r.kind !== "list") throw new Error(r.kind);
+      return r.list;
+    };
+    const davide = line({ slot: 1, name: "Davide", member: "p1" });
+    expect(read(true, [davide]).benchShown).toBe(true);
+    const withLucas = read(false, [davide, line({ section: "reserves", slot: 1, name: "Lucas", member: "p4" })]);
+    expect(withLucas.benchShown).toBe(true);
+    expect(withLucas.sections.reserves[0].facts?.memberId).toBe("u-lucas");
+    expect(read(false, [davide]).benchShown).toBe(false);
+  });
+
   it("the user turn gives the context first: members with refs, the months, the week's list, the chat, then the message and its sender", () => {
     const turn = buildMonthlyReaderUserTurn(
       input("List for November\n1. Davide\n7. smiler 4 only", {

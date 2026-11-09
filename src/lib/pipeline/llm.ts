@@ -39,13 +39,16 @@ import { HAIKU_EFFORT, HAIKU_MODEL, SONNET_MODEL } from "../models";
  * the call site below, because `Math.min(<const>, …)` resolves through
  * the same constant table.
  *
- * 4,096 rather than 16,384 on purpose: the router emits ~140 tokens for
- * a batch of eight and an extractor ~180 for one message. Nothing here
- * has any business generating more than a page of JSON, and a tight cap
- * turns a runaway into a caught `TruncatedResponseError` rather than a
- * bill.
+ * 8,192 rather than 16,384 on purpose: the router emits ~140 tokens for
+ * a batch of eight and an extractor ~180 for one message, and each asks
+ * for its own small budget, which this only caps. The one call that asks
+ * for more is the monthly reader (`MONTHLY_READER_MAX_TOKENS`): a 22-line
+ * pasted list with Haiku's thinking runs to about 4,000 tokens. While this
+ * was 4,096 its 8,192 never applied, and the live check of 2026-11-09 saw
+ * such a list cut off. A tight cap still turns a runaway into a caught
+ * `TruncatedResponseError` rather than a bill.
  */
-export const PIPELINE_MAX_TOKENS_CEILING = 4_096;
+export const PIPELINE_MAX_TOKENS_CEILING = 8_192;
 
 /**
  * §8.3 proposes Haiku 4.5 for the router and Sonnet 5 for the

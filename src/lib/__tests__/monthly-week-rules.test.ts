@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { parseMonthlyList } from "@/lib/__tests__/fixtures/monthly-legacy";
+import type { MonthlyList, MonthlyListEntry } from "../monthly-list";
 import {
   FEE_REPLY_WINDOW_MS,
   LIST_REPOST_FLOOR_MS,
@@ -855,6 +856,153 @@ describe("round 2 of the review", () => {
       const inn = reconcileMonthPaste({ ...pre, list: paste("List for October:\n1. Alex\n2. Bilal\n3. Omar (PAYG)"), senderUserId: "u-omar", senderNames: ["Omar Khan"] });
       expect(inn.actions).toEqual([{ kind: "in", userId: "u-omar", name: "Omar", self: true, slot: 3 }]);
     });
+  });
+});
+
+describe("the bench on a pasted list (Kemal, 2026-11-09): a name added under it goes on the bench, a name taken off it comes off", () => {
+  // Squad full (4): Alex, Bilal, Chris (regulars), Omar (PAYG). Zed and Will
+  // on the bench, Zed first. Pete dropped. Ned is a PAYG member of the
+  // month with no row. Tom is a club player who is not on the month; Rob
+  // is an organiser.
+  const members = [reg(1, "Alex"), reg(2, "Bilal"), reg(3, "Chris"), payg("Omar"), payg("Zed"), payg("Will"), payg("Pete"), payg("Ned")];
+  const rows = [
+    row("Alex", "CONFIRMED", 1),
+    row("Bilal", "CONFIRMED", 2),
+    row("Chris", "CONFIRMED", 3),
+    row("Omar", "CONFIRMED", 4),
+    row("Zed", "BENCH", 5),
+    row("Will", "BENCH", 6),
+    row("Pete", "DROPPED", 7),
+  ];
+  const roster = [
+    ...members.map((m) => ({ userId: m.userId, name: m.name, aliases: [] as string[] })),
+    { userId: "u-tom", name: "Tom", aliases: [] as string[] },
+    { userId: "u-rob", name: "Rob Admin", aliases: [] as string[] },
+  ];
+  const entry = (slot: number, name: string, facts?: MonthlyListEntry["facts"]): MonthlyListEntry => ({
+    slot,
+    raw: name,
+    name,
+    marks: { paid: false, paidAmountPence: null, tier: null, payg: false, paygDates: [] },
+    ...(facts ? { facts } : {}),
+  });
+  const SQUAD = ["Alex", "Bilal", "Chris", "Omar"];
+  const list = (p: { playing?: string[]; cant?: string[]; bench?: Array<string | MonthlyListEntry>; benchShown?: boolean } = {}): MonthlyList => ({
+    month: { month: 10, year: null },
+    slots: (p.playing ?? SQUAD).map((n, i) => entry(i + 1, n)),
+    sections: {
+      cantPlay: (p.cant ?? []).map((n, i) => entry(i + 1, n)),
+      reserves: (p.bench ?? ["Zed", "Will"]).map((n, i) => (typeof n === "string" ? entry(i + 1, n) : n)),
+      other: [],
+    },
+    ...(p.benchShown !== undefined ? { benchShown: p.benchShown } : {}),
+  });
+  const run = (l: MonthlyList, sender: string, over: { senderIsAdmin?: boolean; seeded?: boolean; benchSeen?: Set<string>; rows?: typeof rows } = {}) =>
+    reconcileMonthPaste({
+      list: l,
+      members,
+      rows: over.rows ?? rows,
+      maxPlayers: 4,
+      roster,
+      matchMonth: 10,
+      seeded: over.seeded ?? true,
+      senderUserId: `u-${sender.toLowerCase()}`,
+      senderIsAdmin: over.senderIsAdmin ?? false,
+      benchSeen: over.benchSeen,
+    });
+
+  it("a member adds himself under the bench: he goes on it", () => {
+    expect(run(list({ bench: ["Zed", "Will", "Ned"] }), "Ned").actions).toEqual([{ kind: "bench", userId: "u-ned", name: "Ned", self: true }]);
+  });
+
+  it("anybody may write a player of this month under the bench, as for a numbered line (the player is told, and can undo it)", () => {
+    expect(run(list({ bench: ["Zed", "Will", "Ned"] }), "Alex").actions).toEqual([{ kind: "bench", userId: "u-ned", name: "Ned", self: false }]);
+  });
+
+  it("a club player who is not on the month: only an organiser's line puts him on the bench", () => {
+    const l = list({ bench: ["Zed", "Will", "Tom"] });
+    const byMember = run(l, "Alex");
+    expect(byMember.actions).toEqual([]);
+    expect(byMember.notAdded).toEqual([{ name: "Tom", reason: "not-in-month" }]);
+    expect(run(l, "Rob", { senderIsAdmin: true }).actions).toEqual([{ kind: "bench", userId: "u-tom", name: "Tom", self: false }]);
+  });
+
+  it("a guest written under the bench is a guest on the bench; a name that is nobody and no guest is reported", () => {
+    const gary = entry(3, "Gary", { memberId: null, guest: true, hostUserId: "u-alex", games: null, newbie: false });
+    expect(run(list({ bench: ["Zed", "Will", gary] }), "Alex").actions).toEqual([{ kind: "guest", name: "Gary", hostUserId: "u-alex", slot: 3, bench: true }]);
+    const out = run(list({ bench: ["Zed", "Will", "Nobody Known"] }), "Alex");
+    expect(out.actions).toEqual([]);
+    expect(out.notAdded).toEqual([{ name: "Nobody Known", reason: "unknown" }]);
+  });
+
+  it("a player who dropped comes back on the bench only by his own paste", () => {
+    const l = list({ bench: ["Zed", "Will", "Pete"] });
+    expect(run(l, "Pete").actions).toEqual([{ kind: "bench", userId: "u-pete", name: "Pete", self: true }]);
+    const other = run(l, "Alex");
+    expect(other.actions).toEqual([]);
+    expect(other.ignored).toEqual([{ name: "Pete", reason: "stale-readd" }]);
+  });
+
+  it("a squad player moved under the bench goes to the bench, as one moved under can't play goes out; never on an old copy", () => {
+    const l = list({ playing: ["Alex", "Bilal", "Omar"], bench: ["Zed", "Will", "Chris"] });
+    expect(run(l, "Chris").actions).toEqual([{ kind: "bench", userId: "u-chris", name: "Chris", self: true }]);
+    expect(run(l, "Alex").actions).toEqual([{ kind: "bench", userId: "u-chris", name: "Chris", self: false }]);
+    // An old copy (Pete, who dropped, still in a numbered line) moves nobody else.
+    const old = run(list({ playing: ["Alex", "Bilal", "Omar", "Pete"], bench: ["Zed", "Will", "Chris"] }), "Rob", { senderIsAdmin: true });
+    expect(old.actions).toEqual([]);
+    expect(old.ignored).toEqual(expect.arrayContaining([{ name: "Chris", reason: "old-copy" }]));
+  });
+
+  it("the bench as it is changes nothing", () => {
+    const out = run(list(), "Alex");
+    expect(out.actions).toEqual([]);
+    expect(out.ignored).toEqual([]);
+  });
+
+  it("a bencher taken off the pasted bench: off it by his own paste, or an organiser's once the group has seen him there", () => {
+    const l = list({ bench: ["Will"] });
+    expect(run(l, "Zed").actions).toEqual([{ kind: "out", userId: "u-zed", name: "Zed", self: true, via: "off-bench" }]);
+    expect(run(l, "Rob", { senderIsAdmin: true, benchSeen: new Set(["u-zed", "u-will"]) }).actions).toEqual([
+      { kind: "out", userId: "u-zed", name: "Zed", self: false, via: "off-bench" },
+    ]);
+    // He went on the bench after the list the group last saw: the copy may
+    // simply be older than him. Nothing.
+    const unseen = run(l, "Rob", { senderIsAdmin: true, benchSeen: new Set(["u-will"]) });
+    expect(unseen.actions).toEqual([]);
+    // Somebody else's: left alone, as a blanked line is.
+    const other = run(l, "Alex", { benchSeen: new Set(["u-zed", "u-will"]) });
+    expect(other.actions).toEqual([]);
+    expect(other.ignored).toEqual([{ name: "Zed", reason: "blank-by-other" }]);
+  });
+
+  it("the last bencher taken off: the paste still shows a bench (empty), and he comes off", () => {
+    expect(run(list({ bench: [], benchShown: true }), "Zed").actions).toEqual([
+      { kind: "out", userId: "u-zed", name: "Zed", self: true, via: "off-bench" },
+    ]);
+  });
+
+  it("a paste with no bench part takes nobody off the bench", () => {
+    expect(run(list({ bench: [], benchShown: false }), "Zed").actions).toEqual([]);
+    expect(run(list({ bench: [] }), "Zed").actions).toEqual([]);
+  });
+
+  it("a bencher moved under can't play is out once, by that line, not 'taken off the bench' as well", () => {
+    expect(run(list({ bench: ["Will"], cant: ["Zed"] }), "Zed").actions).toEqual([{ kind: "out", userId: "u-zed", name: "Zed", self: true, via: "cant-play" }]);
+  });
+
+  it("before the week is seeded the bench is not touched", () => {
+    expect(run(list({ bench: ["Zed", "Will", "Ned"] }), "Ned", { seeded: false }).actions).toEqual([]);
+    expect(run(list({ bench: ["Will"] }), "Zed", { seeded: false }).actions).toEqual([]);
+  });
+
+  it("pasteShowsSameList: with a bench part, the bench must match too; with none, the bench is not compared", () => {
+    const week = buildWeekList({ members, rows, maxPlayers: 4 });
+    expect(pasteShowsSameList({ list: list(), week, roster })).toBe(true);
+    expect(pasteShowsSameList({ list: list({ bench: ["Will", "Zed"] }), week, roster })).toBe(true);
+    expect(pasteShowsSameList({ list: list({ bench: ["Zed"] }), week, roster })).toBe(false);
+    expect(pasteShowsSameList({ list: list({ bench: ["Zed", "Will", "Ned"] }), week, roster })).toBe(false);
+    expect(pasteShowsSameList({ list: list({ bench: [], benchShown: true }), week, roster })).toBe(false);
+    expect(pasteShowsSameList({ list: list({ bench: [], benchShown: false }), week, roster })).toBe(true);
   });
 });
 

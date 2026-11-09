@@ -91,8 +91,11 @@ export interface MonthlyList {
     cantPlay: MonthlyListEntry[];
     /** "Reserves", "Subs", "Standby". */
     reserves: MonthlyListEntry[];
-    /** Under a header this reader does not know, where the numbering
-     *  started again. Kept apart so it is never mistaken for slots. */
+    /** Under a part that is not about who plays (kit, teams, who owes
+     *  money). Kept apart so it is never mistaken for slots. */
     other: MonthlyListEntry[];
   };
+  /** The list has a bench part, even one with no names left under it (the
+   *  last bencher taken off). Absent: as `reserves` is non-empty. */
+  benchShown?: boolean;
 }

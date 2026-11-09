@@ -125,18 +125,24 @@ kind: what THE MESSAGE is.
 A SIGN-UP.
 - signupFor: "sender" when the sender speaks for themselves ("I'm in for November", "count me in", "Kasım varım"); "other" when it is about anybody else, named or not, whoever sends it, an organiser included ("add Tom to the November list", "Lucas is out for November", "my son is in for November").
 - signupWho and signupName, for "other": who it is. signupWho is his ref when the name is a member (WHO A NAME IS), else "". signupName is his name as written ("Tom"), or "" when the message names nobody ("my son").
-- choice: "in" (a regular for the month), "out" (not playing the month), "payg" (single games).
+- choice: "in" (a regular for the month, for all its games or for a number of them: "4 games" is in), "out" (not playing the month), "payg" (only when it says pay as you go: "PAYG", "pay as you go", "maç başı").
 - signupMonth: the month (1 to 12), from the message, the chat or the list it replies to.
 - days: the days named for PAYG. games: the games committed when fewer than all ("except the last week" of five is 4; "4 games" is 4), else 0.
 - signupPaid: true when the message says that person has paid ("he's paid", "ödedi"); signupPaidPence: the amount with it, in pence (3000 for £30), else 0.
 
 A LIST.
+A list is in parts, each under its heading, and a line belongs to the part it sits in. MatchTime's own post, and the copies people paste back, run: the month's squad; a "Pay as you go" part numbered on from it; a line saying everybody is in; "Can't play"; "Bench". People also write the parts in another order, leave some out, or write one list with no headings (all of it playing).
 - month: the month it is for (1 to 12); 0 when nothing says.
 - listOf: "month" for the month's list (who is on the month: the sign-up list, its paid marks, MatchTime's own month or priced list, or somebody adding themselves to join the month); "week" for who plays one game (it follows THE WEEK'S LIST, names a game's date, or has edits for one game such as a blanked line or a name moved under can't play). During sign-up a list for the coming month is the month's list. In a month under way the group re-pastes "List for <month>" for each game: that is the week's list unless it is plainly the month's sign-up list again.
 - gameDay: for a week's list, the day of the month of the game it is for; 0 otherwise. A group often re-pastes an old list under its old title for the next game ("List for 12 October" pasted on the 19th after "List for today?"): when the titled game is past, gameDay is the next game's day.
 - residual: what the sender typed around the list in their own words, copied exactly ("can't make it lads"); "" when nothing. The title, part headers and MatchTime's own lines (places open, price, footer) are not residual.
+- benchPart: true when the list has a bench part (as for "reserves" below), even one with no names left under it; false otherwise.
 - lines: every line of the list in order, blank numbered lines too. For each:
-  section: "playing" for the main list; "cant_play" under a part such as "Paid but can't play", "Can't play", "Out", "Injured", "Gelemeyenler", "Ödedi gelemiyor"; "reserves" under "Reserves", "Subs", "Yedekler"; "other" under any other part.
+  section: the part the line sits in.
+    "playing": who plays the game: the main list, and a part headed "Pay as you go", "PAYG" or "Maç başı ödeyenler", whose numbers carry on from the main list.
+    "cant_play": who is not playing: "Can't play", "Paid but can't play", "Out", "Injured", "Gelemeyenler", "Ödedi gelemiyor".
+    "reserves": who waits for a place: "Bench", "Reserves", "Subs", "Waiting list", "Yedekler".
+    "other": a part that is not about who plays (kit, teams, who owes money).
   slot: the number written; 0 when none. name: the person's name only, as written, without notes, brackets or emoji ("YorDan😁 (paid 22.50)" is "YorDan"); "" for a blank line.
   member: the ref of the member the line is (WHO A NAME IS); "" when it is nobody, or a name two members could be.
   guest: true when the line is somebody who is not a member: a name that is nobody on MEMBERS, or somebody brought along ("Jon extra" is an extra player Jon brings, not Jon; "David (my son)"; "Ali'nin arkadaşı"). Keep the name as written. A line that is a member is never a guest.
@@ -164,7 +170,9 @@ Sign-ups:
 Lists:
 - "List for November\\n1. Davide\\n7. smiler 4 only" | "Kasım listesi\\n1. Erdal\\n2. Mehmet sadece 3 hafta": list, month 11, listOf month; smiler is the member Smiler, games 4 | Mehmet games 3.
 - "8. Andrew (PAYG 5th only)\\n4. Steff (paid pensioners rate)" | "8. Burak (PAYG sadece 9'u)\\n4. Kemal (ödedi emekli)": Andrew payg, paygDays [5]; Steff paid, concession | Burak payg [9]; Kemal paid, concession.
+- "November squad:\\n1. Davide\\n2. Dan\\n\\nPay as you go:\\n3. Stuart\\n\\nCan't play:\\n1. Jon\\n\\nBench:\\n1. David" | "Kasım kadrosu:\\n1. Erdal\\n\\nMaç başı ödeyenler:\\n2. Burak\\n\\nGelemeyenler:\\n1. Volkan\\n\\nYedekler:\\n1. Emre": Davide, Dan and Stuart playing, Jon cant_play, David reserves, benchPart true | Erdal and Burak playing, Volkan cant_play, Emre reserves, benchPart true.
 - "Paid but can't play\\n1. Serg" | "Ödedi gelemiyor\\n1. Volkan": section cant_play.
+- "Bench:" with no name left under it | "Yedekler:" altında isim kalmamış: benchPart true, and no reserves line.
 - "List for 12 October" re-pasted on 19 October, the 12th played | "12 Ekim listesi" 19 Ekim'de: listOf week, gameDay 19.
 Neither:
 - "Are we off tonight?" | "bu akşam maç var mı?": none.
@@ -201,6 +209,7 @@ export const MONTHLY_READER_SCHEMA = {
     month: { type: "integer" },
     gameDay: { type: "integer" },
     listOf: { type: "string", enum: ["week", "month", ""] },
+    benchPart: { type: "boolean" },
     lines: { type: "array", items: LINE_SCHEMA },
     residual: { type: "string" },
     choice: { type: "string", enum: ["in", "out", "payg", ""] },
@@ -213,7 +222,7 @@ export const MONTHLY_READER_SCHEMA = {
     days: { type: "array", items: { type: "integer" } },
     games: { type: "integer" },
   },
-  required: ["kind", "month", "gameDay", "listOf", "lines", "residual", "choice", "signupMonth", "signupFor", "signupWho", "signupName", "signupPaid", "signupPaidPence", "days", "games"],
+  required: ["kind", "month", "gameDay", "listOf", "benchPart", "lines", "residual", "choice", "signupMonth", "signupFor", "signupWho", "signupName", "signupPaid", "signupPaidPence", "days", "games"],
   additionalProperties: false,
 } as const;
 
@@ -389,7 +398,12 @@ export function parseMonthlyReading(raw: unknown, input: MonthlyReaderInput, ctx
 
   return {
     kind: "list",
-    list: { month: listMonth ? { month: listMonth, year: null } : null, slots, sections: { cantPlay, reserves, other } },
+    list: {
+      month: listMonth ? { month: listMonth, year: null } : null,
+      slots,
+      sections: { cantPlay, reserves, other },
+      benchShown: bool(o.benchPart) || reserves.length > 0,
+    },
     gameDay: int(o.gameDay, 1, 31),
     listOf: o.listOf === "month" ? "month" : "week",
     residual,

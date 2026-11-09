@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { MONTHLY_READER_MAX_TOKENS, readMonthlyMessage } from "../monthly-reader";
-import type { PipelineModel } from "../pipeline/llm";
+import { PIPELINE_MAX_TOKENS_CEILING, type PipelineModel } from "../pipeline/llm";
 import {
   buildMonthlyReaderUserTurn,
   MONTHLY_READER_SCHEMA,
@@ -137,5 +137,10 @@ describe("the call", () => {
     await readMonthlyMessage(input("List"), CTX, { model });
     expect(asked).toBe(MONTHLY_READER_MAX_TOKENS);
     expect(MONTHLY_READER_MAX_TOKENS).toBeGreaterThanOrEqual(8_192);
+  });
+
+  it("2026-11-09: the request is not clamped below what the reader asks (the pipeline ceiling was 4,096, so its 8,192 never applied)", () => {
+    // The live check, 2026-11-09: a 22-line list was cut off at out=4096.
+    expect(PIPELINE_MAX_TOKENS_CEILING).toBeGreaterThanOrEqual(MONTHLY_READER_MAX_TOKENS);
   });
 });
