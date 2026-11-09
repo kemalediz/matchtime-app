@@ -21,6 +21,7 @@ import { seedFromAnalyzerRating } from "@/lib/seed-scale";
 import { normalisePhone } from "@/lib/phone";
 import { updatePlayerPhone } from "./players";
 import { activityVenueReset } from "@/lib/activity-update";
+import { moveGamesWithActivity } from "@/lib/activity-kickoff-move";
 import { dropOrphanPin } from "@/lib/venue-location";
 import { scheduleVenueResolve } from "@/lib/venue-location-schedule";
 
@@ -128,7 +129,19 @@ export async function applyEnrichment(
       // New venue words clear the place linked to the old ones in the same
       // write; the new words are looked up after the response.
       const reset = activityVenueReset(data, { venue: activity.venue });
-      await db.activity.update({ where: { id: activity.id }, data: reset ? { ...data, ...reset } : data });
+      // A new day or time moves the games already made with it, quietly, in
+      // the same transaction: the one function the edit form uses too
+      // (activity-kickoff-move.ts).
+      await db.$transaction(async (tx) => {
+        await tx.activity.update({ where: { id: activity.id }, data: reset ? { ...data, ...reset } : data });
+        await moveGamesWithActivity(tx, {
+          activityId: activity.id,
+          orgId: activity.orgId,
+          before: { dayOfWeek: activity.dayOfWeek, time: activity.time },
+          after: { dayOfWeek: data.dayOfWeek ?? activity.dayOfWeek, time: data.time ?? activity.time },
+          now: new Date(),
+        });
+      });
       if (reset) {
         await dropOrphanPin(activity.venueId);
         await scheduleVenueResolve(activity.id);
@@ -161,6 +174,7 @@ export async function applyEnrichment(
   });
 
   revalidatePath("/admin");
+  revalidatePath("/matches");
   revalidatePath("/admin/players");
   revalidatePath("/admin/players/positions");
   revalidatePath("/admin/players/phones");

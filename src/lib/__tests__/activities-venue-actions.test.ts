@@ -34,8 +34,12 @@ vi.mock("@/lib/auth", () => ({ auth: async () => ({ user: { id: "owner-a" } }) }
 vi.mock("@/lib/org", () => ({ requireOrgAdmin: async () => undefined }));
 vi.mock("@/lib/venue-location", () => ({ dropOrphanPin: m.dropPin }));
 vi.mock("@/lib/venue-location-schedule", () => ({ scheduleVenueResolve: m.schedule, scheduleVenuePickResolve: m.schedulePick }));
-vi.mock("@/lib/db", () => ({
-  db: {
+vi.mock("@/lib/db", () => {
+  const db = {
+    // A save runs in one transaction with the games' kickoff move
+    // (activity-kickoff-move.ts); there are no games here.
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+    match: { findMany: async () => [] },
     sport: { findFirst: async () => ({ id: "sport-a", preset: "football-7aside", name: "Football 7-a-side", playersPerTeam: 7 }) },
     activity: {
       findUnique: async () => m.current,
@@ -48,8 +52,9 @@ vi.mock("@/lib/db", () => ({
         return {};
       },
     },
-  },
-}));
+  };
+  return { db };
+});
 
 import { createActivity, updateActivity } from "@/app/actions/activities";
 

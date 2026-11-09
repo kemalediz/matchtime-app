@@ -1253,6 +1253,7 @@ const SAMPLES: SampleArgs = {
   act_deadline_label: null,
   act_deadline_invalid: null,
   act_timings_hint: null,
+  act_kickoff_hint: null,
   settings_learned_check_count: { count: 3 },
   settings_learned_check_sub: null,
   settings_learned_action: { key: "weeklyGameTime" },

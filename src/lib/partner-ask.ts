@@ -748,6 +748,35 @@ export async function sweepPartnerAsks(orgId: string, now: Date = new Date()): P
   return { closed };
 }
 
+type MoveTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * A GAME MOVED BY ITS WEEKLY GAME'S NEW KICKOFF (Kemal, 2026-11-09;
+ * activity-kickoff-move.ts, in its transaction). Its open asks follow the
+ * new kickoff with the asking club's cut-off: exactly what the sweep's
+ * moved-game path above writes. Written here, with the match, so that path
+ * finds nothing moved and its guests are not sent the new time: this
+ * change is silent. A compare-and-set on each ask's status and close, as
+ * the sweep's. Returns how many followed.
+ */
+export async function asksFollowMovedKickoff(tx: MoveTx, p: { matchId: string; askerOrgId: string; kickoff: Date }): Promise<number> {
+  const asks = await tx.partnerAsk.findMany({
+    where: { matchId: p.matchId, status: { in: [...OPEN_ASK_STATUSES] } },
+    select: { id: true, status: true, closesAt: true },
+  });
+  if (asks.length === 0) return 0;
+  const cutoff = (await loadPartnerAskSettings(p.askerOrgId))?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS;
+  let followed = 0;
+  for (const ask of asks) {
+    const done = await tx.partnerAsk.updateMany({
+      where: { id: ask.id, status: ask.status, closesAt: ask.closesAt },
+      data: askWindows(p.kickoff, cutoff),
+    });
+    followed += done.count;
+  }
+  return followed;
+}
+
 type OpenAskRow = {
   id: string;
   roundId: string | null;

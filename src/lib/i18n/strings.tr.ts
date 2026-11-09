@@ -3239,6 +3239,8 @@ export const tr: Strings = {
   act_deadline_invalid: "Son kayıt, maçtan 1 ile 48 saat önce olmalı.",
   act_timings_hint:
     "Yeni maç süresi bu etkinliğin önceden eklenmiş maçları dahil tüm maçlarına uygulanır. Yeni son kayıt saati, kaydettikten sonra eklenen maçlara uygulanır.",
+  act_kickoff_hint:
+    "Henüz oynanmamış maçlar yeni saate ve aynı haftadaki yeni güne taşınır. MatchTime bu konuda mesaj göndermez.",
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).
   msq_section_title: "Aylık kadro",
