@@ -174,6 +174,7 @@ import {
 import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
 import { membersNamedIn } from "./pipeline/identity";
 import { identifyFacts, personPickerFor } from "./pipeline/identify-batch";
+import { restoreFormerMember } from "./resolve-sender";
 import type { PersonPicker, PersonPicks } from "./pipeline/who-is-who";
 
 export interface EngineBatchMessage {
@@ -451,6 +452,10 @@ export interface EngineBatchDeps extends EngineApplyDeps {
   recordCapSkips?: (orgId: string, count: number) => Promise<void>;
   /** Injected so tests can load a state without a database. */
   loadState?: (orgId: string, now: Date) => Promise<SquadState>;
+  /** Brings a former member back into the club (who-is-who was sure of
+   *  him in an IN or bench claim; review of #574, round 3). Injected by
+   *  tests; defaults to `restoreFormerMember` in `resolve-sender.ts`. */
+  restoreMember?: (orgId: string, userId: string) => Promise<void>;
   /**
    * THE CALLER NARROWS WHAT THE ENGINE MAY ACT ON (2026-10-15). Called
    * once per owned message with attendance facts, after extraction and
@@ -995,6 +1000,7 @@ export async function runAttendanceEngineBatch(args: {
     identifyFacts({
       picker: personPickerFor({ identify: deps.identify, model }),
       roster: state.roster,
+      former: state.formerMembers,
       where: deps.presetPeople ? "HQ, the organisers' admin group" : "the players' group",
       lastBotPost: state.lastBotPost,
       items: owned
@@ -1006,6 +1012,7 @@ export async function runAttendanceEngineBatch(args: {
           senderUserId: m.senderUserId,
           facts: factsById.get(m.waMessageId)!.facts,
           known: deps.presetPeople?.(m) ?? null,
+          mayBringBack: m.senderIsAdmin === true,
         })),
     });
   const identified = deps.aiCapped ? await withAttendanceOverflow(identify) : await identify();
@@ -1014,6 +1021,18 @@ export async function runAttendanceEngineBatch(args: {
   }
   for (const d of identified.degradations) degradations.push(d);
   const peopleById = identified.people;
+  // A former member the model was sure of, put in or on the bench by an
+  // organiser: back in the club, and on the roster the engine decides against. A failed
+  // restore leaves him off it, so his pick reads as unclear (asked), never
+  // as somebody else.
+  for (const back of identified.returning) {
+    try {
+      await (deps.restoreMember ?? restoreFormerMember)(orgId, back.userId);
+      state = { ...state, roster: [...state.roster, back] };
+    } catch (err) {
+      degradations.push(`who-is-who: former member ${back.userId} could not be brought back (${(err as Error).message ?? String(err)})`);
+    }
+  }
 
   // ── Stage 2c: THE CALLER'S VETTING (admin group only) ──────────────
   // See `EngineBatchDeps.vetFacts`. Facts only; ownership is unchanged, so

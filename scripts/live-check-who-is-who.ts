@@ -96,6 +96,10 @@ const DAVID_AKSOY: Member[] = [...CLUB.filter((x) => x.userId !== "u-davide" && 
 const TURKISH: Member[] = [...CLUB, m("ali", "Ali Kaya"), m("mehmet", "Mehmet Yilmaz"), m("can", "Can Demir")];
 /** A former member, marked so. */
 const WITH_FORMER: Member[] = [...CLUB, m("oldham", "Oldham Jones")];
+/** Lookalike names (round 3): Emrah and Ali Kaya, no Emre, no Alim. */
+const LOOKALIKES: Member[] = [...TURKISH, m("emrah", "Emrah Kaya")];
+/** A member the club knows by first name only. */
+const TARIQ: Member[] = [...CLUB, m("tariq", "Tariq")];
 
 /** What the name must come to: a member's key, "none" (nobody in the
  *  club, or not looked up at all because the extractor read a relation),
@@ -138,8 +142,18 @@ const CASES: Case[] = [
   { group: "NEW", text: "Mehmet'in yerine Can geliyor", from: "Kemal", route: "other_att", roster: TURKISH, want: [["mehmet", "mehmet"], ["can", "can"]], why: "Turkish genitive, a replacement" },
   { group: "NEW", text: "@Match Time Aydın'ı çıkar", from: "Kemal", route: "other_att", roster: TURKISH, want: [["aydın", "aydin"]], why: "Turkish accusative with ı" },
   { group: "NEW", text: "Oldham's back tonight, he's in", from: "Kemal", route: "other_att", roster: WITH_FORMER, former: ["oldham"], want: [["oldham", "oldham"]], why: "a FORMER member named again" },
-  { group: "NEW", text: "I'm out tonight", from: "Kemal Ediz", route: "sender", want: [["kemal ediz", "kemal"]], why: "a phoneless sender's WhatsApp name is the member" },
-  { group: "NEW", text: "I'm out", from: "David", route: "sender", want: [["david", "none"]], why: "a phoneless non-member David is not Davide" },
+  // ── ROUND 3: a sender's own WhatsApp name (strict), and lookalikes ──
+  { group: "NEW", text: "I'm out tonight", from: "Kemal Ediz", route: "sender", roster: DAVID_AKSOY, want: [["kemal ediz", "kemal"]], why: "a WhatsApp name that is a member's FULL name is the member" },
+  { group: "NEW", text: "I'm out tonight", from: "Kemal Ediz", route: "sender", want: [["kemal ediz", "ask"]], why: "B3c: first name plus a surname the club does not have (member 'Kemal'): not sure" },
+  { group: "NEW", text: "IN", from: "Smiler", route: "sender", want: [["smiler", "nabz"]], why: "a WhatsApp name that is a listed nickname is the member" },
+  { group: "NEW", text: "IN", from: "Davdie", route: "sender", want: [["davdie", "ask"]], why: "B3c: a misspelt WhatsApp name is not sure (a typo in a message would be)" },
+  { group: "NEW", text: "bu hafta yokum", from: "Tariq Shah", route: "sender", roster: TARIQ, want: [["tariq shah", "ask"]], why: "B3c: WhatsApp 'Tariq Shah', member 'Tariq': not sure (TR)" },
+  { group: "NEW", text: "Tariq Shah's in", from: "Shane", route: "other_att", roster: TARIQ, want: [["tariq shah", "tariq"]], why: "the same words typed in a message ARE the member" },
+  { group: "NEW", text: "Emre is out", from: "Kemal", route: "other_att", roster: LOOKALIKES, want: [["emre", "none"]], why: "lookalike: Emre is not Emrah" },
+  { group: "NEW", text: "Emre bu hafta yok", from: "Kemal", route: "other_att", roster: LOOKALIKES, want: [["emre", "none"]], why: "lookalike, TR" },
+  { group: "NEW", text: "Alim's in", from: "Kemal", route: "other_att", roster: LOOKALIKES, want: [["alim", "none"]], why: "lookalike: Alim is not Ali" },
+  { group: "NEW", text: "Alim geliyor", from: "Kemal", route: "other_att", roster: LOOKALIKES, want: [["alim", "none"]], why: "lookalike, TR" },
+  { group: "NEW", text: "I'm out", from: "David", route: "sender", want: [["david", "ask"]], why: "a phoneless WhatsApp 'David' is never Davide; strict (B3c): not sure, an unknown sender, Davide untouched" },
   { group: "REGRESSION", text: "@Match Time Tom OUT", from: "Kemal", route: "other_att", want: [["tom", "tom"]], why: "a first name" },
   { group: "REGRESSION", text: "Glazers OUT", from: "Kemal", route: "other_att", want: [["glazers", "glazers"]], why: "FNF HQ 2026-10-24: a name that is a word" },
   { group: "REGRESSION", text: "AH out", from: "Kemal", route: "other_att", want: [["ah", "ah"]], why: "the club's alias" },
@@ -158,10 +172,6 @@ const CASES: Case[] = [
 
 const fold = (s: string) => s.toLocaleLowerCase("tr").replace(/^@/, "").trim();
 
-/** The sender's WhatsApp name, as `resolveSenders` asks about it. */
-const SENDER_WHERE =
-  "the club's players' group. Each name to identify is the WhatsApp name of the person who SENT that message, " +
-  "a name they chose for themselves; it names the sender, not anybody in the text";
 
 async function runCase(c: Case): Promise<{ ok: boolean; line: string }> {
   const roster = c.roster ?? CLUB;
@@ -185,8 +195,14 @@ async function runCase(c: Case): Promise<{ ok: boolean; line: string }> {
   }
   const res = await modelPersonPicker(model)({
     roster: who,
-    where: c.route === "sender" ? SENDER_WHERE : "the players' group",
-    messages: [{ id: "wa-1", body: c.text, author: c.route === "sender" ? null : c.from, senderUserId: c.route === "sender" ? null : (sender?.userId ?? null), refs }],
+    // A sender exactly as `resolveSenders` asks: the players' group, no
+    // author, the name marked as a WhatsApp name.
+    where: c.route === "sender" ? "the club's players' group" : "the players' group",
+    messages: [
+      c.route === "sender"
+        ? { id: "wa-1", body: c.text, author: null, refs, waNames: true as const }
+        : { id: "wa-1", body: c.text, author: c.from, senderUserId: sender?.userId ?? null, refs },
+    ],
   });
   const people = res.picks.get("wa-1") ?? new Map<string, PersonPick>();
   const asked = [...people.keys()];

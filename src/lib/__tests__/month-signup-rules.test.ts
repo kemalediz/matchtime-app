@@ -322,9 +322,9 @@ describe("a pasted sign-up list", () => {
     expect(out.self).toBeNull();
     expect(out.notAdded).toEqual([
       { name: "Bibs", reason: "unknown" },
-      // The reader (here its stand-in) places a name two players have on
-      // nobody: reported as not added, never guessed (review of #574).
-      { name: "Omar", reason: "unknown" },
+      // A name two players have is UNCLEAR to who-is-who (here its
+      // stand-in): reported as not added, never guessed (review of #574).
+      { name: "Omar", reason: "ambiguous" },
       { name: "Two balls", reason: "unknown" },
     ]);
   });

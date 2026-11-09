@@ -1002,6 +1002,12 @@ export interface SquadState {
   venue: string;
   rows: AttendanceRow[];
   roster: Member[];
+  /** The club's FORMER members (left or removed), with a name or an alias
+   *  (review of #574, round 3). Never resolved against: who-is-who is
+   *  shown them marked (former), and one it is sure of in an ORGANISER's IN
+   *  or bench claim is restored and added to `roster` before deciding
+   *  (`identifyFacts`, `attendance-engine-batch.ts`). Absent: none. */
+  formerMembers?: Member[];
   /** The PRINTED name of each row user who is not on `roster` (he is no
    *  longer a member: removed, or left the group, with a row still on the
    *  match). Print only, never matched on: the roster is who people can be

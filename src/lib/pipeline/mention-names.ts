@@ -294,8 +294,10 @@ export async function nameMentions(args: {
   for (const a of args.aliases ?? []) aliasesOf.set(a.userId, [...(aliasesOf.get(a.userId) ?? []), a.alias]);
   const res = await args.picker({
     roster: args.roster.map((m) => ({ userId: m.userId, name: m.name, aliases: m.aliases ?? aliasesOf.get(m.userId) ?? [] })),
-    where: `${args.where ?? "the club's WhatsApp group"}. Each name to identify is the WhatsApp profile name of a person @mentioned in the message`,
-    messages: asks.map(({ i, refs }) => ({ id: String(i), body: args.messages[i].body, author: null, refs })),
+    // Each name is the WhatsApp name of a person @mentioned in the message:
+    // the model is told so per name (`waNames`) and is stricter with it.
+    where: args.where ?? "the club's WhatsApp group",
+    messages: asks.map(({ i, refs }) => ({ id: String(i), body: args.messages[i].body, author: null, refs, waNames: true as const })),
   });
   for (const d of res.degradations) console.warn(`[mentions] ${d}`);
   return args.messages.map((m, i) => {

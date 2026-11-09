@@ -533,8 +533,9 @@ describe("reconcileMonthPaste (plan 6.2, a running month)", () => {
   it("a name that fits two players is never guessed: reported", () => {
     const r = run(LIST.replace("5.", "5. Sam"), "u-alex");
     expect(r.actions).toEqual([]);
-    // The reader places a name two players have on nobody (review of #574).
-    expect(r.notAdded).toEqual([{ name: "Sam", reason: "unknown" }]);
+    // A name two players have is UNCLEAR to who-is-who: reported, never
+    // a guest or a new player (review of #574, round 3).
+    expect(r.notAdded).toEqual([{ name: "Sam", reason: "ambiguous" }]);
   });
 
   it("with no month header, a list that is not mostly this month's players is not the month's list at all", () => {
@@ -991,6 +992,38 @@ describe("the bench on a pasted list (Kemal, 2026-11-09): a name added under it 
 
   it("a bencher moved under can't play is out once, by that line, not 'taken off the bench' as well", () => {
     expect(run(list({ bench: ["Will"], cant: ["Zed"] }), "Zed").actions).toEqual([{ kind: "out", userId: "u-zed", name: "Zed", self: true, via: "cant-play" }]);
+  });
+
+  // ── Round 3 of the review of #574 (B2): an UNCLEAR line (who-is-who
+  // could not place it, `monthly-line-placement.ts`) is nobody new, and
+  // never reads as leaving somebody off. ──
+  const unclear = (slot: number, name: string, candidates: string[], guest = false) =>
+    entry(slot, name, { memberId: null, guest, hostUserId: null, games: null, newbie: false, unclear: { candidates } });
+
+  it("an organiser's paste with the bencher written so it is unclear ('Zedd', could be Zed) does not take Zed off the bench", () => {
+    const out = run(list({ bench: [unclear(1, "Zedd", ["u-zed"]), "Will"] }), "Rob", { senderIsAdmin: true, benchSeen: new Set(["u-zed", "u-will"]) });
+    expect(out.actions).toEqual([]);
+    expect(out.notAdded).toEqual([{ name: "Zedd", reason: "ambiguous" }]);
+  });
+
+  it("an unclear line that could be anybody (no answer): an organiser's paste takes nobody else off the bench", () => {
+    const out = run(list({ bench: [unclear(1, "Zxq", [])] }), "Rob", { senderIsAdmin: true, benchSeen: new Set(["u-zed", "u-will"]) });
+    expect(out.actions).toEqual([]);
+  });
+
+  it("an unclear line marked as a guest is no guest, and uses none of the guest cap", () => {
+    const gary = (n: number) => entry(n, `Gary${n}`, { memberId: null, guest: true, hostUserId: "u-alex", games: null, newbie: false });
+    const out = run(list({ bench: ["Zed", "Will", unclear(3, "Moh", ["u-omar"], true), gary(4), gary(5), gary(6)] }), "Alex");
+    expect(out.actions.filter((a) => a.kind === "guest").map((a) => a.name)).toEqual(["Gary4", "Gary5", "Gary6"]);
+    expect(out.guestsRefused).toEqual([]);
+    expect(out.notAdded).toEqual([{ name: "Moh", reason: "ambiguous" }]);
+  });
+
+  it("an organiser's unclear numbered line is no new player of the month", () => {
+    const l = list();
+    const out = run({ ...l, slots: [...l.slots, unclear(5, "Neddy", ["u-ned"], true)] }, "Rob", { senderIsAdmin: true });
+    expect(out.actions.some((a) => a.kind === "new")).toBe(false);
+    expect(out.notAdded).toEqual([{ name: "Neddy", reason: "ambiguous" }]);
   });
 
   it("before the week is seeded the bench is not touched", () => {

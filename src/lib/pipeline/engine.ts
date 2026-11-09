@@ -1046,12 +1046,13 @@ export function decide(input: EngineInput): EngineResult {
         // "X FOR Y" WITH Y UNCLEAR IS HELD WHOLE (review of #574). When the
         // player X takes the place of cannot be placed on one member, X is
         // not added either: adding him and leaving Y would grow the squad.
-        // The sender hears the usual ambiguity (a degradation), and can say
-        // it again with Y's full name.
+        // So too when Y is nobody in the club (round 3): there is no place
+        // of his to take. The sender hears the usual ambiguity (a
+        // degradation), and can say it again with Y's full name.
         const replaced = (c.replaces ?? "").trim();
         if (replaced && !isSelfRef(replaced)) {
           const ry = resolvePerson(replaced, w.roster, msg.people);
-          if (ry.kind === "ambiguous") {
+          if (ry.kind === "ambiguous" || ry.kind === "unknown") {
             degrade(`"${c.personRef || "the sender"}" for "${replaced}": who "${replaced}" is is not clear; the whole replacement is held`);
             continue;
           }

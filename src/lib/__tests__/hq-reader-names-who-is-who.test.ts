@@ -82,6 +82,32 @@ describe("a change: who-is-who overrules the reader's member refs", () => {
     expect(seen[0].messages[0].refs).toEqual([]);
   });
 
+  // Round 3: the reader's pick of the SENDER is a pick like any other. Only
+  // a self word ("I", "me", "ben") is the sender without asking; a NAME the
+  // reader put on the sender goes to who-is-who, which may say otherwise.
+  it("a written name the reader put on the sender is asked; who-is-who's answer stands", async () => {
+    const reading: HqSquadReading = {
+      kind: "change",
+      changes: [{ name: "Kemal", written: "Kemal Jr", userId: "u-kemal", to: "in", replaces: "" }],
+      alsoAsks: false,
+    };
+    const { pick, seen } = picker({ "Kemal Jr": { kind: "none" } });
+    const out = (await placeReaderNames(reading, input("Kemal Jr is in"), ctx, pick)) as Extract<HqSquadReading, { kind: "change" }>;
+    expect(seen[0].messages[0].refs).toEqual(["Kemal Jr"]);
+    expect(out.changes[0]).toMatchObject({ userId: null, written: "Kemal Jr" });
+  });
+
+  it("the sender's own name, which who-is-who places on the sender, stays the sender's", async () => {
+    const reading: HqSquadReading = {
+      kind: "change",
+      changes: [{ name: "Kemal", written: "Kemal", userId: "u-kemal", to: "out", replaces: "" }],
+      alsoAsks: false,
+    };
+    const { pick } = picker({ Kemal: { kind: "member", userId: "u-kemal" } });
+    const out = (await placeReaderNames(reading, input("Kemal out"), ctx, pick)) as Extract<HqSquadReading, { kind: "change" }>;
+    expect(out.changes[0]).toMatchObject({ userId: "u-kemal" });
+  });
+
   it("'X for Y' with Y unplaced holds the whole replacement (X is not added and Y left)", async () => {
     const reading: HqSquadReading = {
       kind: "change",

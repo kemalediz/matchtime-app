@@ -225,8 +225,8 @@ import type { SilenceFacts } from "./tagged-silence";
 import type { OrgFeatures } from "./org-features";
 import { compose } from "./pipeline/compose";
 import { decide as decideDefault } from "./pipeline/engine";
-import { identifyFacts, identifyPeople, personPickerFor } from "./pipeline/identify-batch";
-import type { PersonPicker } from "./pipeline/who-is-who";
+import { identifyFacts, personPickerFor } from "./pipeline/identify-batch";
+import type { PersonPicker, WhoRosterMember } from "./pipeline/who-is-who";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
 import { extractForRouteTraced } from "./pipeline/trace";
@@ -675,16 +675,39 @@ export async function runTeamOpsBatch(args: {
     degraded: null,
   }));
 
-  // Who the names in the facts are (includes, pins, pairings): the
-  // model's picks from the club's members, one call (`who-is-who.ts`).
-  const identified = await identifyPeople({
-    picker: personPickerFor({ identify: deps.identify, model }),
-    messages: engineMessages,
-    roster: state.roster,
-    where: "the players' group",
-  });
-  if (identified.calls > 0) cost = { usd: cost.usd + identified.costUsd, calls: cost.calls + identified.calls, ms: cost.ms };
-  degradations.push(...identified.degradations);
+  // Who the names in the facts are: the generate's (includes, pins,
+  // pairings) and every swap's, in ONE call (`who-is-who.ts`; review of
+  // #574, round 3: the swaps used to make a second). Shown the club's
+  // members and, marked, the players on this match who are no members (a
+  // guest on the team sheet can be swapped like anyone).
+  const onRoster = new Set(state.roster.map((m) => m.userId));
+  const sheetGuests: WhoRosterMember[] = Object.entries(state.rowNames ?? {})
+    .filter(([id]) => !onRoster.has(id))
+    .map(([userId, name]) => ({ userId, name, note: "playing this match, not a club member" }));
+  const firing = engineMessages.find((m) => m.id === firingId && m.facts.kind !== "none");
+  const whoItems = [
+    ...(firing ? [{ id: firing.id, body: firing.body, author: firing.senderName ?? null, senderUserId: firing.senderUserId, facts: firing.facts }] : []),
+    ...[...swapFacts].map(([id, facts]) => {
+      const m = messages.find((x) => x.waMessageId === id)!;
+      return { id, body: m.body, author: m.senderName ?? m.authorName, senderUserId: m.senderUserId, facts: facts as Facts };
+    }),
+  ];
+  const who =
+    whoItems.length > 0
+      ? await identifyFacts({
+          picker: personPickerFor({ identify: deps.identify, model }),
+          roster: [...state.roster, ...sheetGuests],
+          where: "the players' group",
+          items: whoItems,
+        })
+      : null;
+  if (who) {
+    if (who.calls > 0) cost = { usd: cost.usd + who.costUsd, calls: cost.calls + who.calls, ms: cost.ms };
+    degradations.push(...who.degradations);
+  }
+  const identified = {
+    messages: engineMessages.map((m) => (who?.people.has(m.id) ? { ...m, people: who.people.get(m.id)! } : m)),
+  };
 
   let result: EngineResult;
   try {
@@ -877,25 +900,10 @@ export async function runTeamOpsBatch(args: {
   // After the generate (one write path at a time against the match).
   // Writes TeamAssignment only. A throw says nothing and is reported.
   const swapResults = new Map<string, PlayersSwapResult>();
-  // Who the swaps' names are: who-is-who, one call for them all, with each
-  // message (2026-11-09, review of #574: the swap used to match names by
+  // Who the swaps' names are: read in the batch's one who-is-who call
+  // above (2026-11-09, review of #574: the swap used to match names by
   // spelling, a prefix included).
-  const swapPeople =
-    swapFacts.size > 0
-      ? await identifyFacts({
-          picker: personPickerFor({ identify: deps.identify, model }),
-          roster: state.roster,
-          where: "the club's players' group",
-          items: [...swapFacts].map(([id, facts]) => {
-            const m = messages.find((x) => x.waMessageId === id)!;
-            return { id, body: m.body, author: m.senderName ?? m.authorName, senderUserId: m.senderUserId, facts };
-          }),
-        })
-      : null;
-  if (swapPeople) {
-    if (swapPeople.calls > 0) cost = { usd: cost.usd + swapPeople.costUsd, calls: cost.calls + swapPeople.calls, ms: cost.ms };
-    degradations.push(...swapPeople.degradations);
-  }
+  const swapPeople = who;
   for (const [id, facts] of swapFacts) {
     const m = messages.find((x) => x.waMessageId === id)!;
     try {

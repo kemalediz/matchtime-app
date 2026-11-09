@@ -27,6 +27,7 @@ import { resolveTeamLabels } from "./team-labels";
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "./pipeline/llm";
 import { personPickerFor } from "./pipeline/identify-batch";
 import { refKey } from "./person-ref-key";
+import { isSelfRef } from "./pipeline/engine";
 import type { PersonPick, PersonPicker } from "./pipeline/who-is-who";
 import {
   buildHqSquadReaderUserTurn,
@@ -38,6 +39,7 @@ import {
   type HqSquadReaderContext,
   type HqSquadReaderInput,
   type HqSquadReading,
+  type HqSquadChange,
 } from "./hq-squad-reader-prompt";
 
 export type { HqSquadReading, HqSquadReaderContext, HqSquadReaderInput } from "./hq-squad-reader-prompt";
@@ -271,10 +273,14 @@ export async function placeReaderNames(
 ): Promise<HqSquadReading> {
   if (reading.kind !== "squad" && reading.kind !== "change") return reading;
   const sender = input.sender.userId;
+  // The sender's own place without asking only for a self word ("I",
+  // "me", "ben"): a NAME the reader put on the sender is asked like any
+  // other (review of #574, round 3), with the sender shown by his ref.
+  const isSelf = (c: HqSquadChange) => !!sender && c.userId === sender && isSelfRef(c.written || "");
   const refs =
     reading.kind === "squad"
       ? reading.lines.map((l) => l.name)
-      : reading.changes.flatMap((c) => [...(c.userId && c.userId === sender ? [] : [c.written || c.name]), ...(c.replaces ? [c.replaces] : [])]);
+      : reading.changes.flatMap((c) => [...(isSelf(c) ? [] : [c.written || c.name]), ...(c.replaces ? [c.replaces] : [])]);
   const res = await picker({
     roster: ctx.members.map((m) => ({ userId: m.userId, name: m.name, aliases: m.aliases })),
     where: input.place === "players" ? "the club's players' group" : "HQ, the club organisers' admin group",
@@ -302,7 +308,7 @@ export async function placeReaderNames(
   return {
     ...reading,
     changes: reading.changes.map((c) => {
-      const self = c.userId !== null && c.userId === sender;
+      const self = isSelf(c);
       const written = c.written || c.name;
       const at = self ? { userId: c.userId } : place(written);
       const rep = c.replaces ? place(c.replaces) : null;

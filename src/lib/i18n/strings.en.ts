@@ -1779,6 +1779,10 @@ export const en = {
   /** A name in HQ (a free place, Man of the Match) nobody could place, so
    *  there is nothing to choose from (review of #574). */
   hq_who_unsure: (p: { ref: string }): string => `I couldn't work out who ${p.ref} is. Please use their full name.`,
+  /** A newcomer to the group (a number MatchTime did not have) who may be a
+   *  member added earlier by name only (review of #574): told once. */
+  possible_duplicate_notice: (p: { newName: string; oldName: string; link: string }): string =>
+    `${p.newName} is in the WhatsApp group with a number MatchTime didn't have. They may be the same person as ${p.oldName}, who was added by name only. If so, please merge them on the players page${p.link ? `: ${p.link}` : "."}`,
   hq_fee_free_no_match: `There's no match to give a free place on right now.`,
   hq_fee_free_no_payments: `This club doesn't take match fees through MatchTime, so there's nothing to make free.`,
   hq_fee_free_who: `Who should play free? For example: Bilal is free this week.`,

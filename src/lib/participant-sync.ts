@@ -14,7 +14,8 @@
  *   - Phone-keyed upsert of User; NEVER overwrites existing
  *     User.name/phoneNumber. No phone is attached to a phoneless member
  *     by a match of names (2026-11-09): an unknown number is a new member,
- *     and a similar phoneless placeholder is an admin's possible duplicate.
+ *     and a phoneless placeholder who-is-who reads its WhatsApp name as
+ *     is told to the club's admins once (`possible-duplicate-notice`).
  *   - A member known by phone whose name is EMPTY takes the WhatsApp name
  *     the Pi sends (2026-11-03, Vets MNF: 20 of 27 imported nameless, so
  *     the month's list matched 4 of 13). Only while it is still empty, and
@@ -31,6 +32,7 @@
 import { db } from "./db";
 import { linkJoinerToPlaceholder } from "./placeholder-link";
 import { usableWhatsAppName } from "./resolve-sender";
+import { notifyPossibleDuplicates } from "./possible-duplicate-notice";
 import {
   snapshotPhone,
   parseParticipantSnapshot,
@@ -77,6 +79,8 @@ export async function importParticipants(
   let skippedNoPhone = 0;
   let restoredMembership = 0;
   let linkedPlaceholders = 0;
+  /** The members this sweep made from numbers it had never seen. */
+  const newcomers: { userId: string; name: string | null }[] = [];
 
   for (const p of participants) {
     const phone = snapshotPhone(p);
@@ -102,9 +106,10 @@ export async function importParticipants(
     // matched the WhatsApp name by spelling (a first-name PREFIX
     // included), so a new "Dav" could take over Davide's placeholder and
     // every message and charge after it. Now an unknown number is a new
-    // member, and a phoneless placeholder of a similar name is shown to
-    // an admin as a possible duplicate on /admin/players, where one tap
-    // merges them (`findDuplicateSuggestions`). Nobody is merged by code.
+    // member. When who-is-who reads the newcomer's WhatsApp name as a
+    // phoneless provisional member, the club's admins are told once
+    // (`notifyPossibleDuplicates`, after the loop) and merge the two on
+    // /admin/players. Nobody is merged by code.
     if (!user) {
       // New User — synthetic email keeps the unique index happy.
       const slug =
@@ -126,6 +131,7 @@ export async function importParticipants(
         select: { id: true, name: true },
       });
       added += 1;
+      newcomers.push({ userId: user.id, name: waName });
     } else {
       alreadyKnown += 1;
       if (!user.name && waName) await nameIfNameless(user.id, waName);
@@ -177,6 +183,11 @@ export async function importParticipants(
       if (link.kind === "linked") linkedPlaceholders += 1;
     }
   }
+
+  // A newcomer who may be a phoneless placeholder of the club: the
+  // admins are told once, by who-is-who, never merged by code (review of
+  // #574, round 3). Never throws.
+  if (newcomers.length > 0) await notifyPossibleDuplicates(orgId, newcomers);
 
   // ── THE SWEEP'S OWN CLOCK (2026-09-09) ───────────────────────────
   //

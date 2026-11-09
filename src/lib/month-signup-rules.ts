@@ -361,7 +361,9 @@ export function entryResolver(roster: SignupRosterMember[], _known: ReadonlySet<
   const ids = new Set(roster.map((m) => m.userId));
   return (e) => {
     const id = e.facts?.memberId;
-    return id && ids.has(id) ? { kind: "one", userId: id } : { kind: "none" };
+    if (id && ids.has(id)) return { kind: "one", userId: id };
+    // Who-is-who could not place it (review of #574, round 3): not nobody.
+    return e.facts?.unclear ? { kind: "ambiguous" } : { kind: "none" };
   };
 }
 /** Games a line commits to ("4 only"), for a player on the month. */

@@ -42,7 +42,8 @@ import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { personPickerFor } from "@/lib/pipeline/identify-batch";
 import { refKey } from "@/lib/person-ref-key";
-import type { PersonPicker } from "@/lib/pipeline/who-is-who";
+import type { PersonPicker, WhoRequest } from "@/lib/pipeline/who-is-who";
+import { withAttendanceOverflow } from "@/lib/ai-budget-context";
 
 /** The outcome of resolution. `userId: null` means nobody was found. */
 export type ResolvedSender = {
@@ -77,6 +78,18 @@ export async function restoreMembership(membershipId: string, name: string | nul
     data: { leftAt: null, provisionallyAddedAt: null },
   });
   console.log(`[analyze] restored soft-removed membership ${membershipId} (${name ?? "unknown"})`);
+}
+
+/** `restoreMembership` by member and club: a former member who-is-who was
+ *  sure of, named back in (review of #574, round 3). Only a row that has
+ *  left is touched. */
+export async function restoreFormerMember(orgId: string, userId: string): Promise<void> {
+  const { count } = await db.membership.updateMany({
+    // Never one an organiser removed: only an organiser brings him back.
+    where: { orgId, userId, leftAt: { not: null }, removedByOrganiserAt: null },
+    data: { leftAt: null, provisionallyAddedAt: null },
+  });
+  if (count > 0) console.log(`[analyze] brought former member ${userId} back into org ${orgId} (who-is-who, sure)`);
 }
 
 /**
@@ -155,22 +168,36 @@ export interface SenderToResolve extends SenderIdentity {
  * PHONE FIRST, unchanged: a phone (or a LID the Pi turned into one) is
  * the person.
  *
- * WITHOUT A PHONE, THE MODEL (2026-11-09, review of #574). This used to
- * match the WhatsApp name by spelling: equal, then a first name, then a
- * first-name PREFIX ("David" would be the member Davide De Sousa, and a
- * non-member David saying "I'm out" would drop Davide), then an alias.
- * Now every such sender's WhatsApp name goes to who-is-who in ONE call for
- * the batch, with the club's members (former members marked, aliases
- * shown) and the message: a member it is sure of is the sender (a former
- * one brought back); nobody is a new provisional member, as before; and a
- * name it cannot place (several members, not sure, a failed call) is an
- * UNKNOWN sender, provisioned as nobody: failing closed. Their message
- * then writes nothing, which is the existing path for an unresolved
- * sender (the "who are you?" nudge), rather than a guess that drops or
- * registers the wrong member. A model call rather than failing closed for
- * every phoneless sender, because under Baileys a sender whose number the
- * Pi could not learn is routine, and refusing all of them would silence
- * real members who say IN.
+ * OTHERWISE THE MODEL (2026-11-09, reviews of #574). This used to match
+ * the WhatsApp name by spelling (equal, first name, a first-name PREFIX,
+ * alias), so a non-member David saying "I'm out" dropped the member
+ * Davide. Now the WhatsApp names of the senders the phone did not find go
+ * to who-is-who in ONE call for the batch, each with the first message it
+ * sent, marked as a WhatsApp name so the model is strict (a self-chosen
+ * name is a member only by their full name or a listed nickname, or when
+ * the message makes it plain). The answer, per distinct WhatsApp name
+ * (so one new sender's "IN" and "+1" make ONE person, never two):
+ *
+ *   - a member it is sure of: the sender (a former member brought back).
+ *     When the sender came with a phone nobody has and that member is a
+ *     phoneless PROVISIONAL member ("Hamzah's in" before Hamzah joined),
+ *     the phone is attached, only while the member still has none.
+ *   - nobody: a new provisional member, as before, once per name.
+ *   - anything else (several members, not sure, no answer): an UNKNOWN
+ *     sender, provisioned as nobody, which is the existing unresolved
+ *     sender path (no write, the "who are you?" nudge). Failing closed:
+ *     a guess would drop or register the wrong member.
+ *
+ * A model call rather than failing closed for every phoneless sender,
+ * because under Baileys a sender whose number the Pi could not learn is
+ * routine. A FAILED call is tried once more (`pickOnce`). A call REFUSED
+ * by the club's daily cap is asked once more inside the attendance
+ * overflow: who sent an IN is attendance's own question, it costs one
+ * Haiku call for the whole batch (well under a tenth of a cent, against an
+ * overflow allowance as large as the daily cap itself), and it is only
+ * ever used when the cap really refused it, so it cannot starve the
+ * attendance extractor, and a club crossing the cap mid-request does not
+ * fail every phoneless sender closed.
  */
 export async function resolveSenders(
   orgId: string,
@@ -178,7 +205,9 @@ export async function resolveSenders(
   opts: { identify?: PersonPicker } = {},
 ): Promise<Map<string, ResolvedSender>> {
   const out = new Map<string, ResolvedSender>();
-  const ask: Array<{ msg: SenderToResolve; pushname: string }> = [];
+  /** One entry per distinct WhatsApp name: its messages, the first one's
+   *  text shown to the model, and the phone it came with (if any). */
+  const byName = new Map<string, { pushname: string; msgs: SenderToResolve[] }>();
   for (const msg of msgs) {
     const byPhone = await resolveSenderByPhone(msg);
     if (byPhone) {
@@ -186,47 +215,91 @@ export async function resolveSenders(
       continue;
     }
     const pushname = msg.authorName?.trim() ?? "";
-    if (pushname.length >= 2 && !isRawDigitName(pushname)) ask.push({ msg, pushname });
-    else out.set(msg.waMessageId, await provisionOrNobody(orgId, msg));
+    if (pushname.length >= 2 && !isRawDigitName(pushname)) {
+      const key = refKey(pushname);
+      const g = byName.get(key) ?? { pushname, msgs: [] };
+      g.msgs.push(msg);
+      byName.set(key, g);
+    } else out.set(msg.waMessageId, await provisionOrNobody(orgId, msg));
   }
-  if (ask.length === 0) return out;
+  if (byName.size === 0) return out;
 
   const [memberships, aliases] = await Promise.all([
-    db.membership.findMany({ where: { orgId }, include: { user: { select: { id: true, name: true } } } }),
+    db.membership.findMany({ where: { orgId }, include: { user: { select: { id: true, name: true, phoneNumber: true } } } }),
     db.userAlias.findMany({ where: { orgId }, select: { userId: true, alias: true } }),
   ]);
   const byUser = new Map((memberships ?? []).filter((m) => !!m.user).map((m) => [m.user.id, m]));
   const picker = opts.identify ?? personPickerFor();
-  const res = await picker({
+  const request: WhoRequest = {
     roster: [...byUser.values()].map((m) => ({
       userId: m.user.id,
       name: m.user.name,
       aliases: (aliases ?? []).filter((a) => a.userId === m.user.id).map((a) => a.alias),
       former: !!m.leftAt,
     })),
-    where:
-      "the club's players' group. Each name to identify is the WhatsApp name of the person who SENT that message, " +
-      "a name they chose for themselves; it names the sender, not anybody in the text",
-    messages: ask.map(({ msg, pushname }) => ({ id: msg.waMessageId, body: msg.body ?? "", author: null, refs: [pushname] })),
-  });
+    where: "the club's players' group",
+    messages: [...byName.entries()].map(([key, g]) => ({
+      id: key,
+      body: g.msgs[0].body ?? "",
+      author: null,
+      refs: [g.pushname],
+      waNames: true as const,
+    })),
+  };
+  let res = await picker(request);
+  if (res.failed === "budget") res = await withAttendanceOverflow(() => picker(request));
   for (const d of res.degradations) console.warn(`[resolve-sender] ${d}`);
 
-  for (const { msg, pushname } of ask) {
-    const pick = res.picks.get(msg.waMessageId)?.get(refKey(pushname));
+  for (const [key, g] of byName) {
+    const pick = res.picks.get(key)?.get(refKey(g.pushname));
     const m = pick?.kind === "member" ? byUser.get(pick.userId) : undefined;
+    let resolved: ResolvedSender;
     if (m) {
       if (m.leftAt) await restoreMembership(m.id, m.user.name);
-      out.set(msg.waMessageId, { userId: m.user.id, name: m.user.name, phone: null });
+      const phone = await adoptPhoneIfPlaceholder(m, g.msgs);
+      resolved = { userId: m.user.id, name: m.user.name, phone };
     } else if (pick?.kind === "none") {
-      out.set(msg.waMessageId, await provisionOrNobody(orgId, msg));
+      // Once per WhatsApp name in the batch: "IN" then "+1" is ONE person.
+      resolved = await provisionOrNobody(orgId, g.msgs[0]);
     } else {
       console.warn(
-        `[resolve-sender] the WhatsApp name of a phoneless sender in org ${orgId} could not be placed (${pick ? pick.kind : "no answer"}): an unknown sender`,
+        `[resolve-sender] the WhatsApp name of a sender MatchTime could not place by phone, in org ${orgId}, could not be placed (${pick ? pick.kind : "no answer"}): an unknown sender`,
       );
-      out.set(msg.waMessageId, { userId: null, name: pushname, phone: null });
+      resolved = { userId: null, name: g.pushname, phone: null };
     }
+    for (const msg of g.msgs) out.set(msg.waMessageId, resolved);
   }
   return out;
+}
+
+/**
+ * A sender who came with a phone NOBODY has, surely placed by who-is-who
+ * on a phoneless PROVISIONAL member (a placeholder made from "Hamzah's
+ * in" before Hamzah joined): the member takes that phone, only while
+ * still phoneless (a sign-in or an admin's edit in between is never
+ * overwritten). Never by a match of names. The phone, or null.
+ */
+async function adoptPhoneIfPlaceholder(
+  m: { user: { id: string; phoneNumber?: string | null }; provisionallyAddedAt?: Date | null },
+  msgs: SenderToResolve[],
+): Promise<string | null> {
+  if (m.user.phoneNumber) return null;
+  if (!m.provisionallyAddedAt) return null;
+  const raw = msgs.find((x) => x.authorPhone)?.authorPhone;
+  if (!raw) return null;
+  const phone = normalisePhone(raw.startsWith("+") ? raw : `+${raw}`);
+  if (!phone) return null;
+  try {
+    const { count } = await db.user.updateMany({ where: { id: m.user.id, phoneNumber: null }, data: { phoneNumber: phone } });
+    if (count === 1) {
+      console.log(`[resolve-sender] placeholder ${m.user.id} takes the phone of the sender it is (who-is-who, sure)`);
+      return phone;
+    }
+  } catch (err) {
+    // A unique clash: another row claimed this number in a race. Not ours.
+    console.error(`[resolve-sender] could not attach a phone to placeholder ${m.user.id}:`, err);
+  }
+  return null;
 }
 
 /** One sender: `resolveSenders` for a batch of one. */

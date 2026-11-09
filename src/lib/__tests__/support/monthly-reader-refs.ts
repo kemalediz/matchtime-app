@@ -1,17 +1,26 @@
 /**
- * TEST SUPPORT: the monthly READER's member refs, for lists the legacy
- * parser built (`fixtures/monthly-legacy.ts`), which carry none.
+ * TEST SUPPORT: a stand-in for the MODELS that place a pasted list's lines,
+ * for lists the legacy parser built (`fixtures/monthly-legacy.ts`), which
+ * carry no member refs.
  *
- * Since 2026-11-09 (review of #574) the reconcile reads ONLY the reader's
- * `facts.memberId`; it no longer looks a line's name up in code. These
- * tests predate that and mean "Will" to be Will, so their lists go
- * through this stand-in for the reader: a line whose cleaned name is a
- * member's whole name or alias, or the leading name of exactly one member,
- * is that member; anything else is nobody (two members: nobody, as the
- * reader's "" is). Production never runs this: the reader is a model.
+ * Production: the monthly reader (a model) puts a member on the lines it
+ * is sure of, and who-is-who (a model) is asked about every line left
+ * unplaced, before the reconcile (`monthly-line-placement.ts`, review of
+ * #574, round 3). No code looks a name up.
+ *
+ * Here a fake answers for both, as the models would on these fixtures: a
+ * line whose cleaned name is exactly one member's whole name or alias, or
+ * the leading name of exactly one member, is that member; a name two
+ * members could be is UNCLEAR (who-is-who's "ambiguous", never "nobody");
+ * anything else is nobody. Its answers then go through the REAL placement
+ * (`placeListLines`), so the reconcile sees the same facts production
+ * gives it, unclear lines included. Production never runs this.
  */
 import { normaliseName } from "../../name-normalise";
 import type { MonthlyList, MonthlyListEntry } from "../../monthly-list";
+import { placeListLines, unplacedLineNames } from "../../monthly-line-placement";
+import { refKey } from "../../person-ref-key";
+import type { PersonPick } from "../../pipeline/who-is-who";
 import { pasteShowsSameList as realPasteShowsSameList, reconcileMonthPaste as realReconcileMonthPaste } from "../../monthly-week-rules";
 import {
   reconcileSignupPaste as realReconcileSignupPaste,
@@ -22,33 +31,34 @@ type Roster = ReadonlyArray<{ userId: string; name: string | null; aliases?: rea
 
 const key = (s: string | null | undefined) => normaliseName(s ?? "").replace(/[^\p{L}\p{N}\s'-]/gu, "").replace(/\s+/g, " ").trim();
 
-function standInId(name: string, roster: Roster): string | null {
+/** The fake models' answer for one line's name. */
+function fakePick(name: string, roster: Roster): PersonPick {
   const k = key(name);
-  if (!k) return null;
+  if (!k) return { kind: "none" };
   const whole = roster.filter((m) => key(m.name) === k || (m.aliases ?? []).some((a) => key(a) === k));
-  if (whole.length > 0) return whole.length === 1 ? whole[0].userId : null;
-  const leading = roster.filter((m) => key(m.name).startsWith(`${k} `));
-  return leading.length === 1 ? leading[0].userId : null;
+  const hits = whole.length > 0 ? whole : roster.filter((m) => key(m.name).startsWith(`${k} `));
+  if (hits.length === 1) return { kind: "member", userId: hits[0].userId };
+  if (hits.length > 1) return { kind: "ambiguous", userIds: hits.map((m) => m.userId) };
+  return { kind: "none" };
 }
 
-function entry(e: MonthlyListEntry, roster: Roster): MonthlyListEntry {
-  if (e.facts || !e.name) return e;
-  return { ...e, facts: { memberId: standInId(e.name, roster), guest: false, hostUserId: null, games: null, newbie: false } };
+/** A legacy line carries no facts: the reader's "nothing known" ones. */
+function bare(e: MonthlyListEntry): MonthlyListEntry {
+  return e.facts || !e.name ? e : { ...e, facts: { memberId: null, guest: false, hostUserId: null, games: null, newbie: false } };
 }
 
-/** The list with the stand-in reader's member refs on every line. */
+/** The list as production hands it to the reconcile: every unplaced line
+ *  answered by the fake who-is-who through the real placement. */
 export function withReaderRefs<L extends MonthlyList>(list: L, roster: Roster): L {
-  const map = (xs: MonthlyListEntry[]) => xs.map((e) => entry(e, roster));
-  return {
+  const map = (xs: MonthlyListEntry[]) => xs.map(bare);
+  const facted: L = {
     ...list,
     slots: map(list.slots),
-    sections: {
-      ...list.sections,
-      cantPlay: map(list.sections.cantPlay),
-      reserves: map(list.sections.reserves),
-      other: map(list.sections.other),
-    },
+    sections: { ...list.sections, cantPlay: map(list.sections.cantPlay), reserves: map(list.sections.reserves), other: map(list.sections.other) },
   };
+  const ids = new Set(roster.map((m) => m.userId));
+  const picks = new Map(unplacedLineNames(facted, ids).map((n) => [refKey(n), fakePick(n, roster)]));
+  return placeListLines(facted, picks, ids) as L;
 }
 
 export const reconcileMonthPaste: typeof realReconcileMonthPaste = (args) =>

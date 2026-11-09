@@ -70,6 +70,11 @@ export interface MonthlyLineFacts {
   games: number | null;
   /** A hint that this is somebody new to the club. Never applied alone. */
   newbie: boolean;
+  /** Who-is-who could not place the line on one member, nor say it is
+   *  nobody (review of #574, round 3; `monthly-line-placement.ts`): the
+   *  members it could be, none listed for anybody. Never a new person, and
+   *  never read as leaving them off. Absent: placed, or nobody. */
+  unclear?: { candidates: string[] };
 }
 
 export interface MonthlyListMonth {

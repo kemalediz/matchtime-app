@@ -17,7 +17,6 @@ import {
   personRefsIn,
   refKey,
   stubPersonPicker,
-  whoRosterOf,
   type PersonPick,
   type PersonPicker,
   type PersonPicks,
@@ -46,11 +45,20 @@ export interface IdentifyItem {
   /** Names the caller already knows (HQ's squad reader picked them):
    *  not asked again. */
   known?: PersonPicks | null;
+  /** The sender is one of the club's ORGANISERS: a former member he
+   *  surely names in an IN or bench claim is brought back (`returning`).
+   *  Anybody else naming one: he is nobody in the club now, and the
+   *  friend link (the person joins by his own phone) applies, as before. */
+  mayBringBack?: boolean;
 }
 
 export interface Identified {
   /** message id → its picks (known ones included). */
   people: Map<string, PersonPicks>;
+  /** Former members the model was SURE of in a claim by an ORGANISER that
+   *  brings someone in (IN or bench): the caller restores them and adds
+   *  them to the roster before deciding. Empty without `former`. */
+  returning: Member[];
   costUsd: number;
   calls: number;
   degradations: string[];
@@ -80,7 +88,13 @@ export function factRefs(
 export async function identifyFacts(args: {
   picker: PersonPicker;
   items: IdentifyItem[];
-  roster: ReadonlyArray<Member>;
+  roster: ReadonlyArray<WhoRosterMember>;
+  /** The club's FORMER members (review of #574, round 3): shown marked
+   *  (former), and brought back only on a sure pick in an organiser's IN
+   *  or bench claim (`returning`, `IdentifyItem.mayBringBack`); any other
+   *  sure pick of one reads as "none", the person being nobody in the club
+   *  now. Absent: current members only. */
+  former?: ReadonlyArray<Member>;
   where?: string;
   /** MatchTime's last post, for a bare "Confirmed" (`factRefs`). */
   lastBotPost?: string | null;
@@ -93,9 +107,11 @@ export async function identifyFacts(args: {
     const refs = factRefs(item.facts, item.teamsReading, args.lastBotPost).filter((r) => !known.has(r));
     if (refs.length > 0) asked.push({ item, refs });
   }
-  if (asked.length === 0) return { people, costUsd: 0, calls: 0, degradations: [] };
+  if (asked.length === 0) return { people, returning: [], costUsd: 0, calls: 0, degradations: [] };
+  const current = new Set(args.roster.map((m) => m.userId));
+  const former = (args.former ?? []).filter((m) => !current.has(m.userId));
   const res = await args.picker({
-    roster: args.roster,
+    roster: [...args.roster, ...former.map((m) => ({ ...m, former: true as const }))],
     where: args.where,
     messages: asked.map(({ item, refs }) => ({
       id: item.id,
@@ -105,10 +121,32 @@ export async function identifyFacts(args: {
       refs,
     })),
   });
+  const formerById = new Map(former.map((m) => [m.userId, m]));
+  const returning = new Map<string, Member>();
   for (const [id, picks] of res.picks) {
-    people.set(id, new Map([...(people.get(id) ?? new Map()), ...picks]));
+    const item = asked.find((a) => a.item.id === id)?.item;
+    const settled = new Map(picks);
+    for (const [ref, pick] of picks) {
+      if (pick.kind !== "member" || !formerById.has(pick.userId)) continue;
+      if (item?.mayBringBack && bringsIn(item.facts, ref)) returning.set(pick.userId, formerById.get(pick.userId)!);
+      else settled.set(ref, { kind: "none" });
+    }
+    people.set(id, new Map([...(people.get(id) ?? new Map()), ...settled]));
   }
-  return { people, costUsd: res.usage?.costUsd ?? 0, calls: res.calls ?? (res.usage ? 1 : 0), degradations: res.degradations };
+  return {
+    people,
+    returning: [...returning.values()],
+    costUsd: res.usage?.costUsd ?? 0,
+    calls: res.calls ?? (res.usage ? 1 : 0),
+    degradations: res.degradations,
+  };
+}
+
+/** A claim in these facts puts the person this ref names in, or on the
+ *  bench: what brings a former member back. */
+function bringsIn(facts: Facts, ref: string): boolean {
+  if (facts.kind !== "attendance") return false;
+  return facts.claims.some((c) => c.polarity !== "out" && refKey(c.personRef) === ref);
 }
 
 /**
@@ -151,12 +189,14 @@ export async function identifyPeople(args: {
   picker: PersonPicker;
   messages: EngineMessage[];
   roster: ReadonlyArray<Member>;
+  former?: ReadonlyArray<Member>;
   where?: string;
   lastBotPost?: string | null;
-}): Promise<{ messages: EngineMessage[]; costUsd: number; calls: number; degradations: string[] }> {
+}): Promise<{ messages: EngineMessage[]; returning: Member[]; costUsd: number; calls: number; degradations: string[] }> {
   const res = await identifyFacts({
     picker: args.picker,
     roster: args.roster,
+    former: args.former,
     where: args.where,
     lastBotPost: args.lastBotPost,
     items: args.messages.map((m) => ({
@@ -173,5 +213,5 @@ export async function identifyPeople(args: {
     const p = res.people.get(m.id);
     return p ? { ...m, people: p } : m;
   });
-  return { messages, costUsd: res.costUsd, calls: res.calls, degradations: res.degradations };
+  return { messages, returning: res.returning, costUsd: res.costUsd, calls: res.calls, degradations: res.degradations };
 }

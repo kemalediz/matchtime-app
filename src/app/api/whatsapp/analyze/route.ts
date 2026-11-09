@@ -331,7 +331,6 @@ import { loadKnownLids } from "@/lib/known-lids";
 // named that as the reason its attribution hole survived review. Behaviour
 // is unchanged by the move; see `lib/resolve-sender.ts` and its tests.
 import { resolveSenders, type ResolvedSender } from "@/lib/resolve-sender";
-import { withAttendanceOverflow } from "@/lib/ai-budget-context";
 // Moved out of this file on 2026-10-14 so the admin group's squad changes
 // resolve and provision names with the very same code. Unchanged.
 import { provisionNewPerson } from "@/lib/resolve-or-provision-name";
@@ -517,6 +516,8 @@ async function handleAnalyzeRequest(request: Request) {
   // row then all see the SAME text. An unresolvable mention keeps its raw
   // "@<digits>" token — nothing here invents a name.
   body.messages = await nameMentionsFromRoster(org.id, body.messages, { askModel: false });
+  /** The squad-from-list archive already asked who-is-who for this batch. */
+  let mentionsAsked = false;
 
   // ── Skip the LLM entirely when no message-driven feature is on ───
   //   MoM + player-rating are post-match / poll / scheduler driven —
@@ -555,6 +556,12 @@ async function handleAnalyzeRequest(request: Request) {
     // never times out. Extraction runs via the daily generate-teams cron
     // backstop plus manual triggers via /api/cron/extract-squads.)
     if (f.squadFromList) {
+      // The archive is the squad extraction's only text, so a mention no
+      // phone could name is put to who-is-who FIRST (review of #574, round
+      // 3: it used to be archived as raw "@<digits>"). That one call
+      // stands for the batch: the pass after the dedupe asks nothing again.
+      body.messages = await nameMentionsFromRoster(org.id, body.messages, { askModel: true });
+      mentionsAsked = true;
       await storeMessagesForSquadFromList(org.id, body.groupId, body.messages);
     }
     const needsAnalyzer =
@@ -631,7 +638,7 @@ async function handleAnalyzeRequest(request: Request) {
   // The mentions no phone could name go to who-is-who only now: after the
   // dedupe and the no-features return, so a repeat or a club that reads no
   // messages costs no model call (review of #574). One call for the batch.
-  fresh.splice(0, fresh.length, ...(await nameMentionsFromRoster(org.id, fresh, { askModel: true })));
+  if (!mentionsAsked) fresh.splice(0, fresh.length, ...(await nameMentionsFromRoster(org.id, fresh, { askModel: true })));
 
   await rememberMentions({ orgId: org.id, chatId: body.groupId, messages: fresh });
 
@@ -730,16 +737,15 @@ async function handleAnalyzeRequest(request: Request) {
   }
 
   // 2. Resolve senders + hand the whole fresh batch to Claude in one call.
-  // Phone first; a phoneless sender's WhatsApp name goes to who-is-who in
-  // one call for the batch, never matched by spelling (2026-11-09). It is
-  // attendance's own question, so at the daily cap it runs in the
-  // attendance overflow, as the attendance extractor does.
-  const resolveAll = () =>
-    resolveSenders(
-      org.id,
-      fresh.map((m) => ({ waMessageId: m.waMessageId, authorPhone: m.authorPhone, authorName: m.authorName, body: m.body })),
-    );
-  const senderById: Map<string, ResolvedSender> = aiCapped ? await withAttendanceOverflow(resolveAll) : await resolveAll();
+  // Phone first; a sender the phone does not find goes to who-is-who by
+  // WhatsApp name, one call for the batch, never matched by spelling
+  // (2026-11-09). It uses the attendance overflow only when the cap
+  // actually refuses that call (`resolveSenders`), so it never runs ahead
+  // of the attendance extractor's allowance on spec.
+  const senderById: Map<string, ResolvedSender> = await resolveSenders(
+    org.id,
+    fresh.map((m) => ({ waMessageId: m.waMessageId, authorPhone: m.authorPhone, authorName: m.authorName, body: m.body })),
+  );
 
   // ── WHAT EACH REPLY QUOTES (quoted-reply context, slice S4) ────────
   //

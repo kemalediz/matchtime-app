@@ -257,15 +257,20 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
     picker: input.models?.identify ?? personPickerFor({ model: extractorModel }),
     messages: engineMessages,
     roster: input.state.roster,
+    former: input.state.formerMembers,
     lastBotPost: input.state.lastBotPost,
   });
+  // A former member named back in is on the roster the engine decides
+  // against, as `attendance-engine-batch.ts` does after restoring him (the
+  // dry run writes nothing).
+  const state = identified.returning.length > 0 ? { ...input.state, roster: [...input.state.roster, ...identified.returning] } : input.state;
   degradations.push(...identified.degradations.map((d) => ({ stage: "extractor" as const, messageId: null, detail: d })));
   if (identified.calls > 0) {
     cost.extractorCalls += identified.calls;
     cost.extractorUsd += identified.costUsd;
   }
 
-  const engine = decide({ messages: identified.messages, state: input.state, now: input.now });
+  const engine = decide({ messages: identified.messages, state, now: input.now });
   degradations.push(...engine.degradations);
 
   // ── Stage 4 ────────────────────────────────────────────────────────

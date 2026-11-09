@@ -44,6 +44,10 @@ vi.mock("@/lib/resolve-player", () => ({
 vi.mock("@/lib/placeholder-link", () => ({
   linkJoinerToPlaceholder: vi.fn(async () => ({ kind: "none" })),
 }));
+const notifyDuplicates = vi.fn(async () => 0);
+vi.mock("@/lib/possible-duplicate-notice", () => ({
+  notifyPossibleDuplicates: (...a: unknown[]) => notifyDuplicates(...(a as [])),
+}));
 
 import { importParticipants } from "@/lib/participant-sync";
 
@@ -110,6 +114,18 @@ describe("importParticipants: a saved phone number is never replaced", () => {
     expect(findExisting).not.toHaveBeenCalled();
     expect(userCreate.mock.calls[0][0].data.phoneNumber).toBe(NEW);
     expect(res.added).toBe(1);
+  });
+
+  // Round 3 (B4): the pair is told to the admins, once, by who-is-who.
+  it("the newcomers made by the sweep are handed to the possible-duplicate notice, once for the sweep", async () => {
+    users["u-ghost"] = { id: "u-ghost", name: "Raihan", phoneNumber: null };
+    users["u-ali"] = { id: "u-ali", name: "Ali", phoneNumber: SAVED };
+    await importParticipants(ORG, [
+      { phone: NEW.slice(1), pushname: "Raihan" },
+      { phone: SAVED.slice(1), pushname: "Ali" },
+    ]);
+    expect(notifyDuplicates).toHaveBeenCalledTimes(1);
+    expect(notifyDuplicates.mock.calls[0]).toEqual([ORG, [{ userId: `u-new-${NEW}`, name: "Raihan" }]]);
   });
 
   it("a prefix of a member's name ('Dav') never reaches the member either", async () => {

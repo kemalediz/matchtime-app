@@ -12,10 +12,16 @@
  * Ali's cousin, is in" read as the member Mohammed). It does neither now:
  * the first answer is the answer, and "none" is a new person.
  *
- * THE KNOWN GAP, said plainly: a FORMER member named again is a new
- * person here, not brought back (who-is-who is shown the current members
- * on these paths). An admin merges the two on /admin/players, which lists
- * the pair as a possible duplicate.
+ * FORMER MEMBERS. On the engine's attendance path (the players' group, and
+ * any name in HQ the squad reader did not already place) who-is-who is shown the club's former members too,
+ * and one it is sure of in an ORGANISER's IN or bench claim is brought
+ * back, never reaching here (a player naming him gets the friend link, as
+ * before, and he joins by his own phone) (`identifyFacts`, `attendance-engine-batch.ts`). THE GAP
+ * LEFT, said plainly: where the roster shown is the current members only
+ * (HQ's squad reader and pasted lists, `club-who-roster.ts`), a former
+ * member named again is a new person here. Nothing flags that pair today:
+ * /admin/players pairs a placeholder only with a CURRENT member who has a
+ * phone (`findDuplicateSuggestions`). A follow-up on the PR.
  */
 import { createProvisionalByName } from "./resolve-sender";
 

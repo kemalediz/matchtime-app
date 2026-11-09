@@ -28,6 +28,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { ModelRequest, ModelResponse, PipelineModel } from "../pipeline/llm";
 import type { EngineResult, Route, SquadState } from "../pipeline/types";
 import type { OrgFeatures } from "../org-features";
+import type { PersonPick, PersonPicker, WhoRequest } from "../pipeline/who-is-who";
 import { NOW, fullName, world, type WorldOpts } from "../pipeline/__tests__/helpers";
 import {
   runTeamOpsBatch,
@@ -1136,5 +1137,49 @@ describe("the teams extractor's `clear` (2026-10-30)", () => {
     const res = await run({ messages: [msg({ body: GEN, taggedExplicitly: false })], deps: r.deps });
     expect(r.generated).toEqual([]);
     expect(res.ownedIds.size).toBe(0);
+  });
+});
+
+// ── Round 3 of the review of #574: one who-is-who call, team-sheet guests ──
+
+describe("who-is-who in a team batch", () => {
+  const GEN2 = "@Match Time generate the teams with Elvin";
+  const SWAP2 = "@Match Time swap Elvin with Gus";
+  function spyPicker() {
+    const calls: WhoRequest[] = [];
+    const fn: PersonPicker = async (req) => {
+      calls.push(req);
+      const picks = new Map<string, Map<string, PersonPick>>();
+      for (const m of req.messages)
+        picks.set(m.id, new Map(m.refs.map((r) => [r, r === "Gus" ? ({ kind: "member", userId: "u-gus" } as PersonPick) : ({ kind: "member", userId: "u-elvin" } as PersonPick)])));
+      return { picks, usage: null, degradations: [] };
+    };
+    return { fn, calls };
+  }
+  const withGuest = (): SquadState => {
+    const s = squadWorld();
+    return { ...s, rows: [...s.rows, { userId: "u-gus", status: "CONFIRMED", position: 99 }], rowNames: { "u-gus": "Gus Guest" }, teams: [...s.teams, { userId: "u-gus", team: "RED" }] };
+  };
+
+  it("a generate and a swap in one window ask who-is-who ONCE", async () => {
+    const { model } = stubModel({ [GEN2]: teamsFacts({ includeRefs: ["Elvin"] }), [SWAP2]: teamsFacts({ action: "swap", moves: ["Elvin", "Gus"] }) });
+    const p = spyPicker();
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", logReason: "x" }));
+    const r = recorder(model, withGuest(), { applySwap, identify: p.fn });
+    await run({ messages: [msg({ waMessageId: "wa-gen", body: GEN2 }), msg({ waMessageId: "wa-swap", body: SWAP2 })], deps: r.deps });
+    expect(p.calls).toHaveLength(1);
+    expect(p.calls[0].messages.map((m) => m.id).sort()).toEqual(["wa-gen", "wa-swap"]);
+    expect(applySwap).toHaveBeenCalledTimes(1);
+  });
+
+  it("a guest on the team sheet who is no club member is shown, and can be swapped", async () => {
+    const { model } = stubModel({ [SWAP2]: teamsFacts({ action: "swap", moves: ["Elvin", "Gus"] }) });
+    const p = spyPicker();
+    const applySwap = vi.fn(async () => ({ kind: "applied" as const, reply: "done", logReason: "x" }));
+    const r = recorder(model, withGuest(), { applySwap, identify: p.fn });
+    await run({ messages: [msg({ waMessageId: "wa-swap", body: SWAP2 })], deps: r.deps });
+    expect(p.calls[0].roster.find((m) => m.userId === "u-gus")).toMatchObject({ name: "Gus Guest" });
+    const people = (applySwap.mock.calls[0] as unknown as [{ people: Map<string, PersonPick> }])[0].people;
+    expect(people.get("Gus")).toEqual({ kind: "member", userId: "u-gus" });
   });
 });

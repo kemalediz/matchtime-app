@@ -57,11 +57,13 @@ OLD is the code before #574; NEW is the prompt `WHO_IS_WHO_SYSTEM` in `src/lib/p
 | HQ squad changes and HQ pasted lists | the HQ squad reader's member refs trusted, then code matched the rest | every name the reader lists is placed by who-is-who, one call for the message (`placeReaderNames`); the reader's refs are not trusted for identity (the sender's own place excepted); "X for Y" with Y unplaced is held whole |
 | HQ team commands, Man of the Match, fee waiver | `nameCandidates` prefix match; `resolvePerson` over the match's players or squad | one call each, with the WHOLE club shown and the few people marked, so a namesake makes it ambiguous; a failed call is said plainly |
 | @mentions whose phone is unknown | alias, then `resolvePerson`, before the dedupe | the phone pass first (free); the model pass only after the dedupe and the no-features return, one call per batch; only a sure member is written as "@Name" |
-| A phoneless sender (`resolve-sender.ts`) | equal, first name, first-name PREFIX, alias | who-is-who with the message, one call per batch: a sure member is the sender, nobody is a new provisional member, anything else an unknown sender (fails closed) |
+| A sender the phone does not find (`resolve-sender.ts`) | equal, first name, first-name PREFIX, alias | who-is-who with the message, one call per batch, ONE entry per distinct WhatsApp name (so "IN" then "+1" make one person), marked (WhatsApp name) so the prompt is strict: a sure member is the sender (a phoneless PROVISIONAL member also takes the sender's new phone), nobody is a new provisional member, anything else an unknown sender (fails closed). A call refused by the daily cap is asked once more inside the attendance overflow |
 | Provisioning a person the model placed on nobody | looked the name up again, first by spelling, then (first version of #574) by a second model call without the message | `provisionNewPerson`: no lookup, no second call; the first answer stands |
 | Players'-group squad lists (cron) | alias, exact, first-name prefix | one call per list; only "nobody" is a new player, anything unclear is unresolved and surfaced |
-| Monthly list lines | `entryResolver` looked up unplaced lines by name, overruling the reader | the reader's member ref only; a line that would make a new person (an organiser's new line, a guest) goes to who-is-who first, one call per paste; an "add X to November" with no ref goes to who-is-who with the message |
-| WhatsApp participant sync | a first-name prefix could attach a newcomer's phone to a phoneless member | no phone is attached by name; the pair shows on /admin/players as a possible duplicate |
+| Monthly list lines | `entryResolver` looked up unplaced lines by name, overruling the reader | EVERY line the reader left unplaced goes to who-is-who BEFORE the reconcile, one call per paste (`placeMonthlyLines`): a sure member is that member under the member rules (never a guest, never against the guest cap), nobody may become a guest or new player, anything else is UNCLEAR: added nowhere, and never read as leaving a bencher or a blanked player off. An "add X to November" with no ref goes to who-is-who with the message |
+| WhatsApp participant sync | a first-name prefix could attach a newcomer's phone to a phoneless member | no phone is attached by name; the sweep's newcomers go to who-is-who (one call) against the phoneless provisional members, and a sure or possible match is told to the club's admins ONCE (admin channel, EN and TR), to merge on /admin/players |
+| Former members on the engine's attendance path | not shown (current members only), so "Oldham's back" made a second Oldham | shown marked (former), except one an organiser removed and past guests; one the model is sure of in an ORGANISER's IN or bench claim is brought back (membership restored) and registered; named by a player, or any other way, he is nobody now and the friend link applies as before (he joins by his own phone) |
+| Teams batch | one call for the generate and a second for the swaps | ONE call for both; players on the team sheet who are no club members (guests) are shown, marked, so they can be swapped |
 | Dry run (`pipeline/run.ts`) | `resolvePerson` | the same step as production |
 
 ## Paid checks (dev key)
@@ -84,3 +86,38 @@ OLD is the code before #574; NEW is the prompt `WHO_IS_WHO_SYSTEM` in `src/lib/p
 Existing live suites after the review, one pass each (third-party offer, guest-name ask, auto-register adds, HQ paste, HQ attendance, the Vets sandbox; 210 calls, $0.0559): 47 passed, 10 failed, 1 skipped. Every one of the 10 also fails on origin/main (measured on main the same day): the friend-link era expectations of the guest-name and third-party specs, "Add Rashad please", and Vets A, N and H. No failure is new.
 
 Spend, all on the dev key: the first round $0.13 (657 calls); the review round $0.094 (412 calls: the who-is-who check three full passes and three single cases while finding the "not on MEMBERS" wording, $0.038; the live suites $0.056).
+
+## Round 3 (second review of #574)
+
+### The prompt, round 2 vs round 3
+
+| Part | Round 2 | Round 3 |
+|---|---|---|
+| A sender's own WhatsApp name | Treated like a name typed in a message: a misspelling or a first name with a surname was a member. | Marked `(WhatsApp name)` in the turn. Its own paragraph: a member only on the member's full name or a listed nickname, or when the message makes it plain; a shortening, a misspelling, a different first name or a first name with a surname the club does not have is ambiguous. "Plain misspelling is a member" now applies only to names typed in a message. No string comparison in code. |
+| Lookalikes | One sentence inside "none" (David/Davide, Sami/Samir, Daniel/Daniela). | Its own rule with more contrasts: Emre is not Emrah, Ali is not Alim; examples for both, EN and TR. |
+| Structure | Verdict definitions carried the rules. | Verdict definitions only; then "WHICH VERDICT, for a name someone wrote in a message"; then the WhatsApp-name rule. Each rule once. |
+| Examples | 9 member, 3 none, 3 ambiguous. | 10 member (adds a WhatsApp full name), 5 none (adds Emre, Alim), 5 ambiguous (adds WhatsApp "Tariq Shah" and "Davdie"). |
+| Size | 4,789 characters; cached prefix 2,300 tokens. | 6,009 characters; cached prefix measured at 2,826 tokens. Still about $0.0001 a call warm. |
+
+Round 3 also changed what the model is asked, not only the prompt: a failed call is tried once more (never a cap refusal, never an "ambiguous" answer), and the sender lookup uses the overflow only when the cap actually refused it.
+
+### Paid checks, round 3 (dev key)
+
+`scripts/live-check-who-is-who.ts`, 43 cases (9 new for this round), three full passes. Passes 1 and 2 (41/43, 42/43) both failed the WhatsApp "David" case against its round 2 expectation (nobody): the model said ambiguous, which is what the new strict rule asks for, so the expectation was changed (one failure in pass 1 was not captured). Pass 3: 42/43. Every new case passed in passes 2 and 3:
+
+| Case | Result |
+|---|---|
+| WhatsApp "Kemal Ediz", member "Kemal Ediz" | Kemal Ediz (full name) |
+| WhatsApp "Kemal Ediz", member "Kemal" only | ambiguous: asked, not written |
+| WhatsApp "Smiler" (Nabz's listed nickname) | Nabz |
+| WhatsApp "Davdie" (Davide on the roster) | ambiguous |
+| WhatsApp "Tariq Shah", member "Tariq" | ambiguous; the same words TYPED in a message: Tariq |
+| WhatsApp "David" (Davide on the roster) | ambiguous (an unknown sender, Davide untouched); was "nobody" in round 2, changed by the strict rule as intended |
+| "Emre is out" / "Emre bu hafta yok" (member Emrah) | nobody, both |
+| "Alim's in" / "Alim geliyor" (member Ali Kaya) | nobody, both |
+
+The one failure in pass 3 is "habibi bu hafta geliyor" at the EXTRACTOR (no named person read, so no who-is-who call), the same variance as before.
+
+Existing live suites, one pass (the Vets sandbox, which covers the monthly list and its pastes, and the third-party offer): 35 passed, 6 failed, 1 skipped, 165 calls, $0.0419. The 6 are the same 6 that fail on origin/main (measured in round 2): third-party PROD REPLAY x2 and "my brother can play", Vets A, H and N.
+
+Spend this round, all on the dev key: the who-is-who check three passes, 238 calls, about $0.037; the live suites $0.0419. Round 3 total about $0.08; all three rounds about $0.30.

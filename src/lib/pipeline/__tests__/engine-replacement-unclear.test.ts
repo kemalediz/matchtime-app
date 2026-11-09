@@ -45,6 +45,15 @@ describe("a stated replacement whose replaced player is unclear", () => {
     expect(statusOf(r.nextState, "mojib")).toBe("ABSENT");
   });
 
+  // Round 3: Y read as NOBODY in the club is held too. Adding Mojib for
+  // a Najib who is not a member would grow the squad by one.
+  it("Najib is nobody in the club (none): held the same way, nothing written", () => {
+    const r = run({ kind: "none" });
+    expect(statusOf(r.nextState, "mojib")).toBe("ABSENT");
+    expect(statusOf(r.nextState, "najib")).toBe("CONFIRMED");
+    expect(r.degradations.map((d) => d.detail).join(" | ")).toMatch(/the whole replacement is held/);
+  });
+
   it("control: a Najib the model is sure of, and the replacement goes through", () => {
     const r = run({ kind: "member", userId: "u-najib" });
     expect(statusOf(r.nextState, "mojib")).toBe("CONFIRMED");

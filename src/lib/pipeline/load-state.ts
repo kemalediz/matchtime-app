@@ -106,6 +106,31 @@ export async function loadSquadState(
     })),
   );
 
+  // The club's FORMER members, for who-is-who only (review of #574, round
+  // 3): an organiser's "Oldham's back tonight" is the Oldham who left,
+  // brought back, not a new Oldham beside him. Never resolved against here; see
+  // `SquadState.formerMembers`. Only those with a name or an alias, and
+  // never one an ORGANISER removed (only an organiser brings him back,
+  // `removedByOrganiserAt`) nor a past guest of another club.
+  const onRosterNow = new Set(roster.map((m) => m.userId));
+  const formerRows = (
+    (await db.membership.findMany({
+      where: { orgId, leftAt: { not: null }, removedByOrganiserAt: null, ...ORDINARY_MEMBER_WHERE },
+      select: { role: true, user: { select: { id: true, name: true, phoneNumber: true } } },
+    })) ?? []
+  ).filter((m) => m.user && !onRosterNow.has(m.user.id));
+  const formerMembers = (
+    await withAliases(
+      orgId,
+      formerRows.map((m) => ({
+        userId: m.user.id,
+        name: m.user.name ?? "",
+        isAdmin: false,
+        hasPhone: !!m.user.phoneNumber,
+      })),
+    )
+  ).filter((m) => m.name || (m.aliases?.length ?? 0) > 0);
+
   const rows = match
     ? (
         await db.attendance.findMany({
@@ -119,7 +144,8 @@ export async function loadSquadState(
   // A row whose player is no longer a member (removed, or left the group,
   // before his place was taken off): print him by name, never as "a
   // player" (FNF, 2026-10-24). One read, only when there is such a row.
-  // Not added to the roster: nobody is matched to a former member.
+  // Not added to the roster: a former member is brought back only through
+  // who-is-who (`formerMembers` above).
   const onRoster = new Set(roster.map((m) => m.userId));
   const offRosterIds = [...new Set(rows.map((r) => r.userId).filter((id) => !onRoster.has(id)))];
   const rowNames: Record<string, string> = {};
@@ -301,6 +327,7 @@ export async function loadSquadState(
     venue: match?.activity.venue ?? "",
     rows,
     roster,
+    ...(formerMembers.length > 0 ? { formerMembers } : {}),
     ...(offRosterIds.length > 0 ? { rowNames } : {}),
     openOffers: offers.map((o) => ({
       id: o.id,

@@ -49,6 +49,19 @@ describe("the analyze route: mentions are named by the model only after the dedu
     expect(dedupe).toBeGreaterThan(noFeatures);
     expect(model).toBeGreaterThan(dedupe);
   });
+  // Round 3: the squad-from-list archive is the squad extraction's only
+  // text, so its mentions are named (model pass included) BEFORE it is
+  // stored, and the later pass then asks nothing again.
+  it("the squad-from-list archive stores names, not raw @digits, and the batch asks once", () => {
+    const branch = route.indexOf("if (f.squadFromList) {");
+    const asked = route.indexOf("body.messages = await nameMentionsFromRoster(org.id, body.messages, { askModel: true });", branch);
+    const store = route.indexOf("await storeMessagesForSquadFromList(org.id, body.groupId, body.messages);", branch);
+    expect(branch).toBeGreaterThan(0);
+    expect(asked).toBeGreaterThan(branch);
+    expect(store).toBeGreaterThan(asked);
+    expect(route).toContain("if (!mentionsAsked) fresh.splice(");
+  });
+
   it("phoneless senders go to who-is-who in one batch call (finding 4)", () => {
     expect(route).toContain("resolveSenders(");
     expect(route).not.toMatch(/await resolveSender\(org\.id, m\)/);
