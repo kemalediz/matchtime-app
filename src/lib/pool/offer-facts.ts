@@ -47,28 +47,60 @@ export function poolFeeOf(m: {
 
 export type MatchOfferFacts = Omit<PoolOfferFacts, "distanceMiles" | "places">;
 
+const GAME_SELECT = {
+  date: true,
+  feePerPlayer: true,
+  activity: {
+    select: {
+      orgId: true,
+      venue: true,
+      matchDurationMins: true,
+      feePerPlayer: true,
+      feeSplitTotal: true,
+      sport: { select: { preset: true, name: true, playersPerTeam: true } },
+      venueRef: { select: { name: true, formattedAddress: true, lat: true, lng: true, placeId: true } },
+      org: { select: { name: true, language: true, playStyle: true, paymentCollectionEnabled: true, paymentTrackingEnabled: true } },
+    },
+  },
+} as const;
+
+type GameRow = NonNullable<Awaited<ReturnType<typeof loadGameRow>>>;
+
+function loadGameRow(matchId: string) {
+  return db.match.findUnique({ where: { id: matchId }, select: GAME_SELECT });
+}
+
+/** The venue's name as an offer shows it, and the fee. One rule for the
+ *  pool offer and the recruit invite DM. */
+function venueAndFeeOf(match: GameRow, monthlyPaygPence: number | null): { venueName: string; fee: PoolFee } {
+  const a = match.activity;
+  return {
+    venueName: a.venueRef?.name ?? a.venue,
+    fee: poolFeeOf({
+      matchFee: match.feePerPlayer,
+      activityFee: a.feePerPlayer,
+      feeSplitTotal: a.feeSplitTotal,
+      paymentsOn: a.org.paymentCollectionEnabled || a.org.paymentTrackingEnabled,
+      monthlyPaygPence,
+    }),
+  };
+}
+
+/**
+ * The club, venue and fee of any game, whatever its sport (the recruit
+ * invite DM, 2026-11-09): the same venue name and fee an offer states.
+ * Null when the match does not exist.
+ */
+export async function loadMatchVenueAndFee(matchId: string): Promise<{ club: string; venueName: string; fee: PoolFee } | null> {
+  const match = await loadGameRow(matchId);
+  if (!match) return null;
+  return { club: match.activity.org.name, ...venueAndFeeOf(match, await guestPaygPence(matchId)) };
+}
+
 /** The game's facts, or null when the match or its sport is not one the
  *  pool can offer. */
 export async function loadMatchOfferFacts(matchId: string, now: Date = new Date()): Promise<(MatchOfferFacts & { orgId: string; language: string }) | null> {
-  const match = await db.match.findUnique({
-    where: { id: matchId },
-    select: {
-      date: true,
-      feePerPlayer: true,
-      activity: {
-        select: {
-          orgId: true,
-          venue: true,
-          matchDurationMins: true,
-          feePerPlayer: true,
-          feeSplitTotal: true,
-          sport: { select: { preset: true, name: true, playersPerTeam: true } },
-          venueRef: { select: { name: true, formattedAddress: true, lat: true, lng: true, placeId: true } },
-          org: { select: { name: true, language: true, playStyle: true, paymentCollectionEnabled: true, paymentTrackingEnabled: true } },
-        },
-      },
-    },
-  });
+  const match = await loadGameRow(matchId);
   if (!match) return null;
   const a = match.activity;
   const sport = poolSportOfClubSport(a.sport);
@@ -80,6 +112,7 @@ export async function loadMatchOfferFacts(matchId: string, now: Date = new Date(
     }),
     guestPaygPence(matchId),
   ]);
+  const { venueName, fee } = venueAndFeeOf(match, monthlyPaygPence);
   return {
     orgId: a.orgId,
     language: a.org.language,
@@ -88,18 +121,12 @@ export async function loadMatchOfferFacts(matchId: string, now: Date = new Date(
     format: sport.format,
     kickoff: match.date,
     durationMins: a.matchDurationMins,
-    venueName: a.venueRef?.name ?? a.venue,
+    venueName,
     address: a.venueRef?.formattedAddress ?? null,
     mapUrl: a.venueRef ? venueMapUrl(a.venueRef) : null,
     playStyle: isOneOf(PLAY_STYLES, a.org.playStyle) ? (a.org.playStyle as PlayStyle) : null,
     members,
     gamesLast8Weeks: games,
-    fee: poolFeeOf({
-      matchFee: match.feePerPlayer,
-      activityFee: a.feePerPlayer,
-      feeSplitTotal: a.feeSplitTotal,
-      paymentsOn: a.org.paymentCollectionEnabled || a.org.paymentTrackingEnabled,
-      monthlyPaygPence,
-    }),
+    fee,
   };
 }

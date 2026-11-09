@@ -147,6 +147,34 @@ function boldNamesTr(names: string[]): string {
 /** The call-out's ask, shared by `group_ask_organiser` and `oa_space_answer`. */
 const ORGANISER_ASK_TAIL_TR = "Gelebiliyorsanız *VARIM* yazın, yeri kimin alacağını organizatörler onaylayacak.";
 
+const filledTr = (v: string | null | undefined): string | null => (v && v.trim() ? v.trim() : null);
+
+/** Davet DM'sinin başı: kim soruyor, sonra maç, sahası ve ücreti
+ *  (2026-11-09). Grup adı parantez içinde, ek almasın diye. */
+function recruitInviteHeadTr(p: {
+  firstName: string | null;
+  club?: string | null;
+  group?: string | null;
+  venue?: string | null;
+  fee?: string | null;
+  game: string;
+}): string[] {
+  const hello = `👋 ${filledTr(p.firstName) ?? "Merhaba"},`;
+  const club = filledTr(p.club);
+  const group = filledTr(p.group);
+  const inGroup = group ? ` (WhatsApp grubu: ${group})` : "";
+  const intro = club ? `*${club}* adına yazıyorum${inGroup}.` : group ? `MatchTime'dan yazıyorum${inGroup}.` : null;
+  const venue = filledTr(p.venue);
+  const fee = filledTr(p.fee);
+  const facts = [venue ? `📍 ${venue}` : null, fee ? `💷 Maç başı ${fee}` : null].filter((l): l is string => l !== null);
+  const game = intro ? [`${hello} ${intro}`, "", p.game] : [`${hello} ${p.game}`];
+  return [...game, ...facts];
+}
+
+/** Her davetin son satırı: DM okuyucusu "STOP"u `stop_messages` olarak
+ *  okur (`dm-intent.ts`), ödemeler dışındaki her DM kapanır. */
+const RECRUIT_STOP_TR = "Bu tür mesajlar istemiyorsan *STOP* yaz.";
+
 /** Gerçek etiketin nasıl yapıldığı (#482, #487, 2026-10-31); HQ
  *  bildirimlerinin bittiği tek cümle. */
 const tr_tagHow = "Etiketlemek için *@* yazıp listeden *Match Time*'ı seçin.";
@@ -1584,19 +1612,25 @@ export const tr: Strings = {
   dm_recruit_invite: (p) => {
     const spots = p.spotsLeft > 0 ? ` ${p.spotsLeft} yer kaldı.` : "";
     const lines = [
-      `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.matchName}* (${p.matchWhen}) için kadroyu kuruyoruz.${spots}`,
+      ...recruitInviteHeadTr({ ...p, game: `*${p.matchName}* (${p.matchWhen}) için kadroyu kuruyoruz.${spots}` }),
       "",
-      p.reactions ? "Oynuyor musun? *VARIM* yaz ya da bu mesaja 👍 ver." : "Oynuyor musun? *VARIM* yazman yeterli.",
+      p.playLine ?? (p.reactions ? "Oynuyor musun? *VARIM* yaz ya da bu mesaja 👍 ver." : "Oynuyor musun? *VARIM* yazman yeterli."),
       p.reactions
         ? "Gelemiyor musun? *YOKUM* yaz ya da 👎 ver, bir daha sormam 🙌"
         : "Gelemiyor musun? *YOKUM* yaz, bir daha sormam 🙌",
     ];
     if (p.link) lines.push("", `Uygulamadan yapmak istersen: ${p.link}`);
+    lines.push("", RECRUIT_STOP_TR);
     return lines.join("\n");
   },
   dm_recruit_group_invite: (p) =>
-    `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.matchName}* (${p.matchWhen}) için kadroyu kuruyoruz. ` +
-    `Var mısın? Grupta *VARIM* yazman yeterli 🙌`,
+    [
+      ...recruitInviteHeadTr({ ...p, game: `*${p.matchName}* (${p.matchWhen}) için kadroyu kuruyoruz.` }),
+      "",
+      "Var mısın? Grupta *VARIM* yazman yeterli 🙌",
+      "",
+      RECRUIT_STOP_TR,
+    ].join("\n"),
 
   dm_recruit_chase: (p) =>
     `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* (${p.matchWhen}) için hâlâ ${p.count} oyuncu arıyoruz. ` +

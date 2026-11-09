@@ -85,6 +85,9 @@ test("a reply quoting the tagged message: the known people get the club's invite
     expect(d.text).toContain("putting the squad together");
     expect(d.text).toContain("6 spots left");
     expect(d.text).toContain("reply *IN*");
+    // 2026-11-09: who is asking (the club), and a stop line that works.
+    expect(d.text).toMatch(/^👋 (Dan|Felix), it's \*[^*]+\* here/);
+    expect(d.text.endsWith("Don't want messages like this? Reply *STOP*.")).toBe(true);
   }
 
   // Asked again: nobody gets the same game's invite twice.

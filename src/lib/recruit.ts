@@ -184,8 +184,24 @@ export {
  */
 export const RECRUIT_DM_MENTION_REACTIONS = false;
 
-export interface RecruitInviteCopy {
-  /** First name, or null when there is none (English says "there"). */
+/**
+ * WHO IS ASKING, WHERE, FOR HOW MUCH (Kemal, Vets MNF, 2026-11-09). An
+ * invite DM may reach someone who has never heard from MatchTime, so it
+ * names the club, the players' WhatsApp group the game belongs to (its
+ * subject, "Vets MNF"; the players' group even when the request was made
+ * in HQ), the venue and the fee. Each is left out when unknown. Loaded
+ * once per request by `loadRecruitInviteDetails`.
+ */
+export interface RecruitInviteDetails {
+  club?: string | null;
+  groupSubject?: string | null;
+  venue?: string | null;
+  /** A fee label ("£8"); null when the game has none. */
+  fee?: string | null;
+}
+
+export interface RecruitInviteCopy extends RecruitInviteDetails {
+  /** First name, or null when there is none (the DM says "Hi"). */
   firstName: string | null;
   matchName: string;
   /** `dayCommaTimeLabel(lang, date)`: "Tue 8 Sep, 21:30", London. */
@@ -206,28 +222,18 @@ export interface RecruitInviteCopy {
 
 /** The invite for an org that tracks attendance in-app. */
 export function buildRecruitInviteDm(c: RecruitInviteCopy): string {
-  if (c.organiser) {
-    // The same invite with the "playing?" line saying what IN does here.
-    const s = t(c.lang);
-    const base = s.dm_recruit_invite({
-      firstName: c.firstName,
-      matchName: c.matchName,
-      matchWhen: c.matchWhen,
-      spotsLeft: c.spotsLeft,
-      link: c.link,
-      reactions: false,
-    });
-    const lines = base.split("\n");
-    lines[2] = s.dm_recruit_invite_play_organiser;
-    return lines.join("\n");
-  }
-  return t(c.lang).dm_recruit_invite({
+  const s = t(c.lang);
+  return s.dm_recruit_invite({
     firstName: c.firstName,
     matchName: c.matchName,
     matchWhen: c.matchWhen,
     spotsLeft: c.spotsLeft,
     link: c.link,
-    reactions: c.mentionReactions ?? RECRUIT_DM_MENTION_REACTIONS,
+    ...detailsOf(c),
+    // An organiser-pick club: the "playing?" line says what IN does here.
+    ...(c.organiser
+      ? { reactions: false, playLine: s.dm_recruit_invite_play_organiser }
+      : { reactions: c.mentionReactions ?? RECRUIT_DM_MENTION_REACTIONS }),
   });
 }
 
@@ -235,17 +241,80 @@ export function buildRecruitInviteDm(c: RecruitInviteCopy): string {
  * The invite for a MoM/ratings-only org. There is no in-app squad, so an
  * RSVP link would do nothing and the group is where they join.
  */
-export function buildRecruitGroupInviteDm(c: {
-  firstName: string | null;
-  matchName: string;
-  matchWhen: string;
-  lang?: Lang | string | null;
-}): string {
+export function buildRecruitGroupInviteDm(
+  c: RecruitInviteDetails & {
+    firstName: string | null;
+    matchName: string;
+    matchWhen: string;
+    lang?: Lang | string | null;
+  },
+): string {
   return t(c.lang).dm_recruit_group_invite({
     firstName: c.firstName,
     matchName: c.matchName,
     matchWhen: c.matchWhen,
+    ...detailsOf(c),
   });
+}
+
+function detailsOf(c: RecruitInviteDetails) {
+  return { club: c.club ?? null, group: c.groupSubject ?? null, venue: c.venue ?? null, fee: c.fee ?? null };
+}
+
+/**
+ * Whom the invite greets (Kemal, 2026-11-09): the first word of the
+ * person's own WhatsApp name (the tag's, when they were tagged), even when
+ * the club stored another name for them ("Matt Afc Walcountians Vets",
+ * stored as "UTV", is greeted "Matt"); else the first word of the club's
+ * stored name; else null and the DM says "Hi". A word with no letter in it
+ * (a phone number, emoji) is no name. WhatsApp's "~" marker is dropped.
+ */
+export function inviteGreetingName(whatsappName: string | null | undefined, storedName: string | null | undefined): string | null {
+  const first = (v: string | null | undefined): string | null => {
+    const w = (v ?? "").trim().replace(/^~+\s*/, "").split(/\s+/)[0] ?? "";
+    return /\p{L}/u.test(w) ? w : null;
+  };
+  return first(whatsappName) ?? first(storedName);
+}
+
+/**
+ * The players' group's WhatsApp subject: the latest one MatchTime was told
+ * when it was added to the club's own group (`ClubConnect.groupSubject`,
+ * matched on `Organisation.whatsappGroupId`, so an HQ request still names
+ * the players' group). Null when none is stored (a club set up before
+ * self-join, e.g. Sutton FC).
+ */
+async function playersGroupSubject(orgId: string): Promise<string | null> {
+  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { whatsappGroupId: true } });
+  if (!org?.whatsappGroupId) return null;
+  const row = await db.clubConnect.findFirst({
+    where: { orgId, groupId: org.whatsappGroupId, groupSubject: { not: null } },
+    orderBy: [{ linkedAt: { sort: "desc", nulls: "last" } }, { issuedAt: "desc" }],
+    select: { groupSubject: true },
+  });
+  return row?.groupSubject?.trim() || null;
+}
+
+/**
+ * The club, players' group, venue and fee for one game's invites, loaded
+ * once per request. The venue and fee are the pool offer's own
+ * (`pool/offer-facts.ts`). Best-effort: a failure loses the details, never
+ * the invite.
+ */
+export async function loadRecruitInviteDetails(orgId: string, matchId: string): Promise<RecruitInviteDetails> {
+  try {
+    const { loadMatchVenueAndFee } = await import("./pool/offer-facts");
+    const [game, groupSubject] = await Promise.all([loadMatchVenueAndFee(matchId), playersGroupSubject(orgId)]);
+    return {
+      club: game?.club?.trim() || null,
+      groupSubject,
+      venue: game?.venueName?.trim() || null,
+      fee: game?.fee?.kind === "amount" ? game.fee.amount : null,
+    };
+  } catch (err) {
+    console.error(`[recruit] ${orgId}: invite details unavailable (the invite goes without them):`, err instanceof Error ? err.message : err);
+    return {};
+  }
 }
 
 export interface RecruitResult {
@@ -445,6 +514,7 @@ export async function inviteRecentPlayers(
   // 3. Queue an invite DM per candidate, idempotent per match.
   const invitedNames: string[] = [];
   let alreadyInvited = 0;
+  const details = await loadRecruitInviteDetails(orgId, next.id);
   for (const c of candidates.values()) {
     const key = recruitDmKey(next.id, c.id);
     const exists = await db.sentNotification.findUnique({ where: { key }, select: { id: true } });
@@ -454,7 +524,7 @@ export async function inviteRecentPlayers(
     }
     // The marker is claimed first (review #3): a concurrent request that
     // got there between the check above and here skips this person.
-    if (!(await queueRecruitInviteDm({ orgId, match: next, features, need, matchWhen, person: c, style: features.attendance ? "app" : "group" }))) {
+    if (!(await queueRecruitInviteDm({ orgId, match: next, features, need, matchWhen, person: c, style: features.attendance ? "app" : "group", details }))) {
       alreadyInvited++;
       continue;
     }
@@ -535,10 +605,12 @@ async function queueRecruitInviteDm(args: {
   features: Awaited<ReturnType<typeof getOrgFeatures>>;
   need: number;
   matchWhen: string;
-  person: { id: string; name: string | null; phone: string };
+  /** The person; `whatsappName`: the name their tag carried, if tagged. */
+  person: { id: string; name: string | null; phone: string; whatsappName?: string | null };
   style: "app" | "group";
+  details: RecruitInviteDetails;
 }): Promise<boolean> {
-  const { orgId, match, features, need, matchWhen, person: c } = args;
+  const { orgId, match, features, need, matchWhen, person: c, details } = args;
   const key = recruitDmKey(match.id, c.id);
   const at = new Date();
   // Claimed before anything else is made, so a lost race costs nothing
@@ -553,7 +625,7 @@ async function queueRecruitInviteDm(args: {
   }
   let job: { id: string };
   try {
-    const first = c.name?.split(" ")[0] ?? null;
+    const first = inviteGreetingName(c.whatsappName, c.name);
     let text: string;
     if (args.style === "app") {
       // Org tracks attendance in-app → the magic link is worth offering,
@@ -572,6 +644,7 @@ async function queueRecruitInviteDm(args: {
         link: await buildShortMagicLinkUrl(token),
         lang: features.language,
         organiser: features.benchPickMode === "organiser",
+        ...details,
       });
     } else {
       // No in-app squad, or no membership here: an RSVP link does nothing.
@@ -581,6 +654,7 @@ async function queueRecruitInviteDm(args: {
         matchName: match.activity.name,
         matchWhen,
         lang: features.language,
+        ...details,
       });
     }
     job = await db.botJob.create({
@@ -733,9 +807,14 @@ export async function inviteNamedPeople(
   // Queue each, claiming its marker first; a person a concurrent request
   // claimed meanwhile moves to "already had the invite".
   const queued: typeof plan.invite = [];
+  const details = plan.invite.length > 0 ? await loadRecruitInviteDetails(orgId, next.id) : {};
+  // Each person's own WhatsApp name, from the tag (the greeting's first choice).
+  const whatsappNameOf = new Map<string, string>();
+  for (const r of resolved) if (r.person && r.mention.name && !whatsappNameOf.has(r.person.userId)) whatsappNameOf.set(r.person.userId, r.mention.name);
   for (const p of plan.invite) {
     const style = features.attendance && p.member ? "app" : "group";
-    if (await queueRecruitInviteDm({ orgId, match: next, features, need, matchWhen, person: { id: p.userId, name: p.name, phone: p.phone }, style })) queued.push(p);
+    const person = { id: p.userId, name: p.name, phone: p.phone, whatsappName: whatsappNameOf.get(p.userId) ?? null };
+    if (await queueRecruitInviteDm({ orgId, match: next, features, need, matchWhen, person, style, details })) queued.push(p);
     else plan.alreadyInvited.push(p);
   }
   plan.invite = queued;

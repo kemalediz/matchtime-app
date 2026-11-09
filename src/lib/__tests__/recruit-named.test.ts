@@ -16,6 +16,9 @@ const sentDelete = vi.fn();
 const botJobCreate = vi.fn();
 const sessions = vi.fn();
 const connects = vi.fn();
+const orgFindUnique = vi.fn();
+const connectFindFirst = vi.fn();
+const venueAndFee = vi.fn();
 const order: string[] = [];
 
 vi.mock("@/lib/db", () => ({
@@ -30,9 +33,11 @@ vi.mock("@/lib/db", () => ({
     },
     botJob: { create: (...a: unknown[]) => botJobCreate(...a) },
     onboardingSession: { findMany: (...a: unknown[]) => sessions(...a) },
-    clubConnect: { findMany: (...a: unknown[]) => connects(...a) },
+    clubConnect: { findMany: (...a: unknown[]) => connects(...a), findFirst: (...a: unknown[]) => connectFindFirst(...a) },
+    organisation: { findUnique: (...a: unknown[]) => orgFindUnique(...a) },
   },
 }));
+vi.mock("@/lib/pool/offer-facts", () => ({ loadMatchVenueAndFee: (...a: unknown[]) => venueAndFee(...a) }));
 vi.mock("@/lib/magic-link", () => ({ signMagicLinkToken: () => "tok", MAGIC_LINK_TTL: { actionNudge: 1 } }));
 const shortLink = vi.fn(async () => "https://s/x");
 vi.mock("@/lib/short-link", () => ({ buildShortMagicLinkUrl: () => shortLink() }));
@@ -87,6 +92,9 @@ beforeEach(() => {
   });
   sessions.mockResolvedValue([]);
   connects.mockResolvedValue([{ userId: "u-matt", dmLid: LID_MATT, participants: null }]);
+  orgFindUnique.mockResolvedValue({ whatsappGroupId: "vets@g.us" });
+  connectFindFirst.mockResolvedValue({ groupSubject: "Vets MNF" });
+  venueAndFee.mockResolvedValue({ club: "Monday night vets", venueName: "Oaks Park High School football field", fee: { kind: "amount", amount: "£8" } });
 });
 
 const dmPhones = () => botJobCreate.mock.calls.map((c) => (c[0] as { data: { phone: string } }).data.phone);
@@ -115,6 +123,42 @@ describe("inviteNamedPeople", () => {
     }
     const keys = sentCreate.mock.calls.map((c) => (c[0] as { data: { key: string } }).data.key);
     expect(keys).toEqual(expect.arrayContaining(["match-mnf:recruit-dm:u-bh", "match-mnf:recruit-dm:u-matt"]));
+  });
+
+  it("the DM greets by the tag's WhatsApp name and names the club, the players' group, the venue and the fee (Kemal, 2026-11-09)", async () => {
+    // The club stored Matt as "UTV"; his WhatsApp name is still the greeting.
+    userFindMany.mockResolvedValue(users.map((u) => (u.id === "u-matt" ? { ...u, name: "UTV" } : u)));
+    await inviteNamedPeople(
+      ORG,
+      tags([
+        { jid: "158055467598020@lid", phone: "447700900111", name: "BH" },
+        { jid: LID_MATT, name: "Matt Afc Walcountians Vets" },
+      ]),
+      { requesterUserId: null, now: NOW },
+    );
+    const [bh, matt] = dmTexts();
+    expect(bh.split("\n").slice(0, 5)).toEqual([
+      "👋 BH, it's *Monday night vets* here, from the Vets MNF group.",
+      "",
+      "We're putting the squad together for *Monday night vets* on Mon 9 Nov, 20:00. 3 spots left.",
+      "📍 Oaks Park High School football field",
+      "💷 £8 a game",
+    ]);
+    expect(bh.endsWith("Don't want messages like this? Reply *STOP*.")).toBe(true);
+    // Matt's WhatsApp name wins over the name MatchTime stored for him.
+    expect(matt.split("\n")[0]).toBe("👋 Matt, it's *Monday night vets* here, from the Vets MNF group.");
+    // The players' group of THIS club, whatever group the request came from.
+    expect(connectFindFirst.mock.calls[0][0]).toMatchObject({ where: { orgId: ORG, groupId: "vets@g.us" } });
+    // Loaded once per request, not once per person.
+    expect(venueAndFee).toHaveBeenCalledTimes(1);
+    expect(venueAndFee).toHaveBeenCalledWith("match-mnf");
+  });
+
+  it("a tag with no WhatsApp name: the club's stored name; details that fail to load: the invite still goes, without them", async () => {
+    venueAndFee.mockRejectedValue(new Error("db down"));
+    await inviteNamedPeople(ORG, tags([{ jid: "158055467598020@lid", phone: "447700900111" }]), { requesterUserId: null, now: NOW });
+    expect(dmTexts()).toHaveLength(1);
+    expect(dmTexts()[0].split("\n")[0]).toBe("👋 Bilal, we're putting the squad together for *Monday night vets* on Mon 9 Nov, 20:00. 3 spots left.");
   });
 
   it("named in the reply by this club's name for a member, never User.name (review #2)", async () => {
