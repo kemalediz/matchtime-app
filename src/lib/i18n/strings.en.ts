@@ -4541,6 +4541,10 @@ export const en = {
   /** Under the two fields on the edit form. */
   act_timings_hint:
     "A new match length applies to every game of this activity, including ones already created. A new deadline applies to matches created after you save.",
+  /** Under Day and Time on the edit form (2026-11-09): what a new kickoff
+   *  does to the games already made (src/lib/activity-kickoff-move.ts). */
+  act_kickoff_hint:
+    "Games not yet played move to the new time, and to the new day in the same week. MatchTime sends no message about it.",
   // ── Monthly squad (2026-10-05, slice 2) ──────────────────────────
   // MDs/monthly-squad-plan-2026-10-05.md, sections 9.1, 9.2 and 4.5.
   // The "Monthly squad" section of /admin/settings (msq_) and the

@@ -546,10 +546,15 @@ export default function ActivitiesPage() {
                     type="time"
                     value={eTime}
                     onChange={(e) => setETime(e.target.value)}
+                    data-testid="activity-edit-time"
+                    aria-describedby="activity-kickoff-hint"
                     className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </Field>
               </div>
+              <p id="activity-kickoff-hint" data-testid="activity-kickoff-hint" className="-mt-2 text-xs text-slate-400">
+                {s.act_kickoff_hint}
+              </p>
               <Field label="Venue">
                 <VenueSuggestInput
                   value={eVenue}

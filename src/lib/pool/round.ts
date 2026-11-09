@@ -71,6 +71,23 @@ import type { PoolAskVia } from "./vocab";
 type Env = Record<string, string | undefined>;
 const DAY_MS = 24 * 3600_000;
 
+type MoveTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * A game moved by its weekly game's new kickoff (Kemal, 2026-11-09;
+ * activity-kickoff-move.ts, in its transaction): its offers still open end
+ * at the new kickoff. Every rule already reads the match's kickoff live
+ * (`offerEndsAt(kickoff)`); this keeps the stored column true. Nothing is
+ * sent. Returns how many offers followed.
+ */
+export async function offersFollowMovedKickoff(tx: MoveTx, p: { matchId: string; kickoff: Date }): Promise<number> {
+  const done = await tx.poolOffer.updateMany({
+    where: { matchId: p.matchId, resolvedAt: null, outcome: null },
+    data: { expiresAt: offerEndsAt(p.kickoff) },
+  });
+  return done.count;
+}
+
 /** The club's cut-off for this match: nothing new is asked or sent past
  *  it. Offers already sent stay open until kickoff (`offerEndsAt`). */
 async function cutoffOf(orgId: string, kickoff: Date): Promise<Date> {

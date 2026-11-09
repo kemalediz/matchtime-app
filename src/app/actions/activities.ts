@@ -7,6 +7,7 @@ import { requireOrgAdmin } from "@/lib/org";
 import { revalidatePath } from "next/cache";
 import { londonWallClockToUtc, nextLondonKickoff } from "@/lib/london-time";
 import { activityUpdateData, activityVenueReset } from "@/lib/activity-update";
+import { moveGamesWithActivity } from "@/lib/activity-kickoff-move";
 import { dropOrphanPin } from "@/lib/venue-location";
 import { scheduleVenuePickResolve, scheduleVenueResolve } from "@/lib/venue-location-schedule";
 import { CLEARED_VENUE_LINK } from "@/lib/venue-location-rules";
@@ -109,7 +110,20 @@ export async function updateActivity(
   const pick = typeof data.venue === "string" ? parseVenuePick(formData?.venuePick) : null;
   const reset = pick ? CLEARED_VENUE_LINK : activityVenueReset(data, { venue: activity.venue });
 
-  await db.activity.update({ where: { id: activityId }, data: reset ? { ...data, ...reset } : data });
+  // A new day or time moves the games still to be played with it, quietly
+  // and in the same transaction, so a game never says the old kickoff
+  // while the activity says the new one (Kemal, 2026-11-09:
+  // activity-kickoff-move.ts). A save that changes neither moves nothing.
+  await db.$transaction(async (tx) => {
+    await tx.activity.update({ where: { id: activityId }, data: reset ? { ...data, ...reset } : data });
+    await moveGamesWithActivity(tx, {
+      activityId,
+      orgId: activity.orgId,
+      before: { dayOfWeek: activity.dayOfWeek, time: activity.time },
+      after: { dayOfWeek: data.dayOfWeek ?? activity.dayOfWeek, time: data.time ?? activity.time },
+      now: new Date(),
+    });
+  });
   if (reset) {
     await dropOrphanPin(activity.venueId);
     if (pick) await scheduleVenuePickResolve(activityId, session.user.id, pick);
@@ -117,6 +131,9 @@ export async function updateActivity(
   }
 
   revalidatePath("/admin/activities");
+  // The matches pages read each game's kickoff.
+  revalidatePath("/matches");
+  revalidatePath("/");
 }
 
 /**
