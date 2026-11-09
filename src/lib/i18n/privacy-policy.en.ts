@@ -196,6 +196,7 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
               "Player pool: if your profile has no activity for 12 months (no reply, no game and no visit to your manage page), we send you one message to ask whether you still want offers. If you do not answer within 30 days, we end your profile and erase its personal details.",
               "Player pool: records of offers keep only what is needed to keep things fair and stop misuse, and are made anonymous after 24 months.",
               "When a pool profile is deleted, we keep a short record of any block or report for 24 months, so a person who was blocked cannot simply sign up again, and the record of your consent for 6 years, to show what you agreed to.",
+              "When a group message tags people, we note who was tagged (their WhatsApp number and name), so an organiser can ask MatchTime to invite them. That note is deleted after 7 days.",
               "Billing and payment records are kept for 6 years, as tax law requires.",
               "If you ask us to delete your details, we remove your name and phone number. A game you played as a guest stays in that club's history, as it does for any past guest.",
             ],

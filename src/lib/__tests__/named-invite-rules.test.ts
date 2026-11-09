@@ -6,7 +6,10 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  MESSAGE_MENTIONS_RETENTION_DAYS,
+  NAMED_ABOVE_LOOKBACK_MS,
   NAMED_INVITE_CAP,
+  mentionsPurgeBefore,
   namedInviteReply,
   pickNamedMentions,
   planNamedInvites,
@@ -58,6 +61,18 @@ describe("storedMentionsOf: the people a message tagged, never the bot", () => {
     expect(storedMentionsOf({})).toEqual([]);
     expect(storedMentionsOf({ mentions: "x" as unknown as string[], mentionNames: [null as never, { jid: 5 } as never] })).toEqual([]);
     expect(storedMentionsOf({ mentions: [LID_BH, LID_BH], mentionNames: [{ jid: LID_BH, name: "BH" }, { jid: LID_BH, name: "BH" }] })).toHaveLength(1);
+  });
+});
+
+describe("mentionsPurgeBefore: who was tagged is kept 7 days, then deleted", () => {
+  it("the cutoff is exactly 7 days before now", () => {
+    expect(MESSAGE_MENTIONS_RETENTION_DAYS).toBe(7);
+    expect(mentionsPurgeBefore(new Date("2026-11-09T06:00:00Z")).toISOString()).toBe("2026-11-02T06:00:00.000Z");
+  });
+
+  it("outlives the look-back for \"the people above\", with room for a quoted reply a few days later", () => {
+    const now = new Date("2026-11-09T06:00:00Z");
+    expect(now.getTime() - mentionsPurgeBefore(now).getTime()).toBeGreaterThan(NAMED_ABOVE_LOOKBACK_MS);
   });
 });
 

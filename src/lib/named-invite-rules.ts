@@ -46,6 +46,20 @@ export const NAMED_INVITE_CAP = 10;
  *  tagged people, within this long. */
 export const NAMED_ABOVE_LOOKBACK_MS = 12 * 3600 * 1000;
 
+/**
+ * RETENTION: who a message tagged (`MessageMentions`: WhatsApp ids, phones,
+ * WhatsApp names) is deleted this many days after the message was sent, by
+ * the daily 06:00 cron (`purgeOldMentions`, `group-mentions.ts`). "The
+ * people above" looks back 12 hours; a week leaves room for a reply quoting
+ * an older message, and nothing else reads these rows.
+ */
+export const MESSAGE_MENTIONS_RETENTION_DAYS = 7;
+
+/** Rows sent before this instant are deleted. */
+export function mentionsPurgeBefore(now: Date): Date {
+  return new Date(now.getTime() - MESSAGE_MENTIONS_RETENTION_DAYS * 24 * 3600 * 1000);
+}
+
 /** A person a message tagged, as stored. `phone`: digits, when known. `name`:
  *  their own WhatsApp name (UNVERIFIED), used only to name an unknown. */
 export interface StoredMention {

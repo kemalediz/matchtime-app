@@ -196,6 +196,7 @@ export function buildPrivacyPolicyTr(f: PolicyFacts): PrivacyPolicyCopy {
               "Oyuncu havuzu: profilinizde 12 ay boyunca hiçbir hareket olmazsa (yanıt, maç ya da yönetim sayfanıza ziyaret yoksa), hâlâ teklif almak isteyip istemediğinizi sormak için size bir mesaj göndeririz. 30 gün içinde yanıt vermezseniz profilinizi kapatır ve kişisel bilgilerini sileriz.",
               "Oyuncu havuzu: teklif kayıtlarında yalnızca işleri adil tutmak ve kötüye kullanımı önlemek için gerekenler kalır ve bu kayıtlar 24 ay sonra anonim hale getirilir.",
               "Bir havuz profili silindiğinde, engellenen biri kolayca yeniden kaydolamasın diye engelleme ve şikayetlerin kısa bir kaydını 24 ay, neyi kabul ettiğinizi gösterebilmek için de onay kaydınızı 6 yıl saklarız.",
+              "Bir grup mesajında kişiler etiketlendiğinde, bir organizatör MatchTime'dan onları davet etmesini isteyebilsin diye kimlerin etiketlendiğini (WhatsApp numaraları ve adları) not ederiz. Bu not 7 gün sonra silinir.",
               "Fatura ve ödeme kayıtları, vergi mevzuatının gerektirdiği gibi 6 yıl saklanır.",
               "Bilgilerinizin silinmesini isterseniz adınızı ve telefon numaranızı sileriz. Misafir olarak oynadığınız bir maç, her eski misafirde olduğu gibi o kulübün geçmişinde kalır.",
             ],

@@ -2680,6 +2680,8 @@ model GroupMessage {
 /// person's own WhatsApp name, UNVERIFIED, used only to say who MatchTime
 /// could not message. Written and read best-effort: a missing table loses
 /// the feature, never a message. Migration 20261109120000_message_mentions.
+/// RETENTION 7 days from `sentAt`: deleted by the daily 06:00 cron
+/// (`purgeOldMentions`, `MESSAGE_MENTIONS_RETENTION_DAYS`).
 model MessageMentions {
   id           String       @id @default(cuid())
   orgId        String

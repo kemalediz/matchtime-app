@@ -12,10 +12,14 @@
  * blip) loses only this feature for that message, never the message: every
  * function here catches and logs, and a failed read is "nobody found".
  * Logs carry ids and counts only.
+ *
+ * KEPT 7 DAYS, then deleted by the daily cron (`purgeOldMentions` below,
+ * `MESSAGE_MENTIONS_RETENTION_DAYS`): the rows hold WhatsApp ids, phones and
+ * names, and nothing reads them after the request they were kept for.
  */
 import { db } from "./db";
 import { bareWhatsAppId } from "./quoted-message";
-import { NAMED_ABOVE_LOOKBACK_MS, storedMentionsOf, type StoredMention } from "./named-invite-rules";
+import { NAMED_ABOVE_LOOKBACK_MS, mentionsPurgeBefore, storedMentionsOf, type StoredMention } from "./named-invite-rules";
 
 export interface MentionSource {
   waMessageId: string;
@@ -56,6 +60,23 @@ export async function rememberMentions(args: { orgId: string; chatId: string; me
 }
 
 const parse = (raw: unknown): StoredMention[] => storedMentionsOf({ mentionNames: raw });
+
+/**
+ * RETENTION (2026-11-09): delete who was tagged once the message is
+ * MESSAGE_MENTIONS_RETENTION_DAYS (7) old. Run by the daily 06:00 cron
+ * (`api/cron/close-ratings`). Total: a failure is logged and counted as 0,
+ * so the cron's other housekeeping still runs.
+ */
+export async function purgeOldMentions(now: Date = new Date()): Promise<number> {
+  try {
+    const r = await db.messageMentions.deleteMany({ where: { sentAt: { lt: mentionsPurgeBefore(now) } } });
+    if (r.count) console.log(`[group-mentions] deleted ${r.count} row(s) older than the retention`);
+    return r.count;
+  } catch (err) {
+    console.error("[group-mentions] the retention sweep failed:", err instanceof Error ? err.message : err);
+    return 0;
+  }
+}
 
 /** The people tagged in the message a reply quotes, or null when MatchTime
  *  holds no record of it. */

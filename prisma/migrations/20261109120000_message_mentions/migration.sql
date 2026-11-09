@@ -7,6 +7,14 @@
 --
 --   psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261109120000_message_mentions/migration.sql
 --
+-- RETENTION: 7 DAYS. Each row holds WhatsApp ids, phones and the tagged
+-- people's own WhatsApp names, so it is deleted once the message ("sentAt")
+-- is 7 days old, by the daily 06:00 cron (/api/cron/close-ratings,
+-- purgeOldMentions in src/lib/group-mentions.ts; the rule is
+-- MESSAGE_MENTIONS_RETENTION_DAYS in src/lib/named-invite-rules.ts). The
+-- feature itself looks back 12 hours; the week covers a reply quoting an
+-- older message.
+--
 -- ORDER DOES NOT MATTER. The code writes and reads this table best-effort
 -- (src/lib/group-mentions.ts catches every failure): deployed before this
 -- is applied, "DM these people" finds nobody tagged in an earlier message
