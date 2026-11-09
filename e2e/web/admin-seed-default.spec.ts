@@ -83,3 +83,21 @@ test("the Starting ratings page shows 6 for every unseeded player; a change save
   await expect.poll(() => seedOf(db, U.rater)).toBe(8);
   expect(await seedOf(db, U.player)).toBeNull();
 });
+
+// Kemal, 2026-11-09: the popup printed the Elo blend deleted on 2026-09-15
+// ("0.5 × peer_avg + 0.5 × (match_rating ÷ 200)"). It now says what the code does.
+test("the Starting ratings page explains ratings as the code computes them, with no Elo formula", async ({ page }) => {
+  await signInAs(page, U.admin, "/admin/players/ratings");
+  await page.waitForURL("**/admin/players/ratings");
+  await page.getByRole("button", { name: "What is this?" }).click();
+
+  const info = page.getByTestId("ratings-info");
+  await expect(info).toBeVisible({ timeout: 30_000 });
+  await expect(info).toContainText("How ratings work");
+  await expect(info).toContainText("A player you have not rated is a 6, a medium player.");
+  await expect(info).toContainText("your seed counting as 3 ratings");
+  await expect(info).toContainText("up to 2 for that match only");
+  await expect(info).toContainText("It is not used to make the teams.");
+  await expect(info).not.toContainText("match_rating");
+  await expect(info).not.toContainText("÷");
+});

@@ -1931,6 +1931,25 @@ export const tr: Strings = {
   rating_seed_club_hint:
     "Başlangıç puanları sadece bu kulüp için geçerli. Başka bir yerde de oynayan bir oyuncunun orada ayrı bir puanı olur, buraya yazdığınız hiçbir şey onu değiştirmez.",
 
+  ratings_info_title: "Puanlar nasıl çalışır",
+  ratings_info_seed_head: "Başlangıç puanı:",
+  ratings_info_seed_body:
+    "bir oyuncuya bu kulüpte verdiğiniz 1 ile 10 arası puan. Puan vermediğiniz bir oyuncu 6, yani orta seviyededir. Oyuncular bunu hiç görmez, aynı kişinin başka bir kulüpteki başlangıç puanı da ayrıdır.",
+  ratings_info_joiner_head: "Başka kulüpten gelenler:",
+  ratings_info_joiner_body:
+    "başka MatchTime kulüplerinde puanı olan bir oyuncu oradaki ortalamasından başlar; her kulüp onu kaç maçta puanladıysa o kadar sayılır. Takımlar bu sayıyı aynen kullanır, sayı yuvarlanmaz. Sadece boş bir kutuyu doldurur: değiştirebilirsiniz, sizin girdiğiniz bir puan asla değişmez.",
+  ratings_info_peers_head: "Maçlardan sonra:",
+  ratings_info_peers_body:
+    "takım arkadaşları birbirine 1 ile 10 arası puan verir. Takımları kurarken MatchTime başlangıç puanınızı bu kulübün oyuncuya verdiği son 60 puanla birleştirir; başlangıç puanınız 3 puan yerine sayılır. Yani ilk puan oyuncuyu yolun dörtte biri kadar oynatır, 3 puandan sonra ikisi yarı yarıyadır, çok maçtan sonra da neredeyse sadece takım arkadaşlarının puanları belirler.",
+  ratings_info_match_day_head: "Maç günü:",
+  ratings_info_match_day_body:
+    "takımlar kurulurken MatchTime grubun bir önceki haftaki sohbetini okur ve bir oyuncunun puanını sadece o maç için en fazla 2 artırıp azaltabilir: sakat ya da hastaysa düşürür, çok iyi bir maçın ardından yükseltir. Puan her zaman 1 ile 10 arasında kalır.",
+  ratings_info_shown_head: "Oyuncuların gördüğü:",
+  ratings_info_shown_body:
+    "sadece bu kulüpteki takım arkadaşlarının verdiği puanların ortalaması (son 60 puan), ilk puan gelene kadar da hiçbir şey. Başlangıç puanınızı ya da maç günü değişikliğini asla görmezler.",
+  ratings_info_elo:
+    "Maç skorlarından gelen Elo ayrı bir istatistiktir. Takımları kurarken kullanılmaz.",
+
   // 2026-09-19: eski satır "kulüp ortalamasına yakın durur" diyordu.
   // Artık oyuncu kendi ham ortalamasını görüyor, yani o cümle yanlıştı.
   // Yeni cümle sayının oynatılmasından değil, elde az veri olmasından

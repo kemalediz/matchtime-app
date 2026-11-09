@@ -2505,6 +2505,38 @@ export const en = {
   rating_seed_club_hint:
     "Seed ratings apply to this club only. A player who also turns out somewhere else keeps a separate rating there, and nothing you type here changes it.",
 
+  /** The "How ratings work" popup on /admin/players/ratings (Kemal,
+   *  2026-11-09). It used to print the Elo blend deleted on 2026-09-15
+   *  (`0.5 × peer_avg + 0.5 × (match_rating ÷ 200)`, see the tombstone in
+   *  `actions/teams.ts`). Each line below is traced from the code:
+   *  seed: `effectiveSeed` / `DEFAULT_SEED_RATING` (default-seed.ts);
+   *  joiner: `carriedSeed` (carried-seed.ts), games-weighted, exact;
+   *  peers: `computeClubRating` (player-rating.ts), the seed counted as
+   *  PRIOR_WEIGHT = 3 ratings beside this club's newest 60;
+   *  match day: the adjuster's per-match delta, MAX_DELTA 2
+   *  (rating-adjuster.ts), clamped 1 to 10 (team-generation.ts);
+   *  shown: `clubDisplayRating`, the raw mean, nothing before the first;
+   *  Elo: never read by the balancer. Pinned by
+   *  `__tests__/ratings-info-copy.test.ts`. */
+  ratings_info_title: "How ratings work",
+  ratings_info_seed_head: "Seed rating:",
+  ratings_info_seed_body:
+    "your rating of a player at this club, from 1 to 10. A player you have not rated is a 6, a medium player. Players never see it, and another club's seed for the same person is separate.",
+  ratings_info_joiner_head: "Joining from another club:",
+  ratings_info_joiner_body:
+    "a player who already has ratings at other MatchTime clubs starts at his average there, each club counting by how many games it rated him in. The teams use that number exactly, not rounded. It only fills an empty box: you can change it, and a seed you have set is never replaced.",
+  ratings_info_peers_head: "After games:",
+  ratings_info_peers_body:
+    "team-mates rate each other from 1 to 10. To make the teams, MatchTime mixes your seed with this club's 60 most recent ratings of the player, your seed counting as 3 ratings. So the first rating moves him a quarter of the way, after 3 it is half and half, and after many games team-mates' ratings decide almost on their own.",
+  ratings_info_match_day_head: "On match day:",
+  ratings_info_match_day_body:
+    "when the teams are made, MatchTime reads the group's chat from the week before and can move a player up or down by up to 2 for that match only: down if he is injured or ill, up after a standout game. The number always stays between 1 and 10.",
+  ratings_info_shown_head: "What players see:",
+  ratings_info_shown_body:
+    "only the average of the ratings team-mates at this club gave them (the 60 most recent), and nothing until the first one arrives. Never your seed or the match-day change.",
+  ratings_info_elo:
+    "The Elo from match scores is a separate stat. It is not used to make the teams.",
+
   /** One or two ratings in, the number above is a real average of a
    *  very small number of scores, so the next one moves it a long way.
    *
