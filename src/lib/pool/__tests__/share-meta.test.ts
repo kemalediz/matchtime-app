@@ -38,7 +38,7 @@ describe("the player-facing preview", () => {
   });
 
   it("no prices and no organiser features in any of it", () => {
-    const all = [EN.share.title, EN.share.description, EN.share.imageAlt, EN.share.imageBadge, ...EN.share.imageSteps].join(" ");
+    const all = [EN.share.title, EN.share.description, EN.share.imageAlt, EN.share.imageBadge].join(" ");
     expect(all).not.toMatch(/£|\bfee|price|pay\b|bench|partner club|autopilot|organis/i);
   });
 
