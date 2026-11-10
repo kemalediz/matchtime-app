@@ -105,6 +105,8 @@ function recorder(
       model,
       loadState: async () => state,
       reminderMutedUserIds: async () => [],
+      // The games the admin extractor is shown (2026-11-10): none here.
+      gamesToCome: async () => [],
       loadPaidState: async () => paidState,
       markPaid: async (a) => {
         marked.push(a);
@@ -1528,6 +1530,63 @@ describe("one game switched to another size by WhatsApp", () => {
 
   it("an organiser's untagged yes that is not a reply to MatchTime: nothing", async () => {
     const { out, calls } = await outcomeOf(YES, { tagged: false, taggedExplicitly: false, repliesToMatchTime: false });
+    expect(calls).toEqual([]);
+    expect(out?.reply ?? null).toBeNull();
+  });
+});
+
+// 2026-11-10 (Kemal): "@Match Time move Monday's game to 8:15" works in the
+// players' group too, for an organiser with a real tag, through the same
+// door HQ uses (`game-move-words.ts`), with the same games shown to the
+// model and checked against.
+describe("a game's kickoff moved by WhatsApp in the players' group", () => {
+  const SAY = "@Match Time move Monday's game to 8:15";
+  const GAME = { id: "m-mon", date: new Date("2026-11-16T20:30:00Z"), activityId: "vets", activityName: "Monday Vets" };
+  const MOVE_FACTS = { ...BLAST_FACTS, action: "move_game", lookbackMatches: 0, playersFrom: [], clubRef: "", game: 1, newDay: "", newTime: "20:15", everyWeek: false, toMatchTime: true };
+
+  const outcomeOf = async (m: Partial<AdminOpsBatchMessage> = {}, facts: Record<string, unknown> = MOVE_FACTS) => {
+    const { model } = stubModel({ [SAY]: facts });
+    const r = recorder(model, paidWorld());
+    const calls: Array<{ orgId: string; words: unknown; games: unknown; lang: string | null }> = [];
+    const users: string[] = [];
+    const res = await run({
+      messages: [msg({ body: SAY, senderUserId: "u-kemal", senderName: fullName("kemal"), ...m })],
+      deps: {
+        ...r.deps,
+        model: {
+          ...model,
+          async complete(req) {
+            users.push(req.user);
+            return model.complete(req);
+          },
+        },
+        onlyOrganisersLine: onlyKemal,
+        gamesToCome: async () => [GAME],
+        applyMoveGameWords: async (a) => (
+          calls.push({ orgId: a.orgId, words: a.words, games: a.games, lang: a.lang }),
+          { outcome: "game-move-moved", replyText: "✅ Done: the game on Mon 16 Nov is now at 20:15 (it was 20:30)." }
+        ),
+      },
+    });
+    return { out: res.outcomes.get(`wa-${SAY.slice(0, 14)}`), calls, users };
+  };
+
+  it("an organiser, tagged: the games are shown to the model and the checked reading goes through the one door", async () => {
+    const { out, calls, users } = await outcomeOf();
+    expect(users[0]).toContain("GAMES TO COME (the club's games still to be played, numbered):\n  1. Monday 16 November 2026 at 20:30 (Monday Vets)");
+    expect(calls).toEqual([{ orgId: "org-1", words: { game: 1, newDay: null, newTime: "20:15", everyWeek: false }, games: [GAME], lang: "en" }]);
+    expect(out?.reply).toBe("✅ Done: the game on Mon 16 Nov is now at 20:15 (it was 20:30).");
+    expect(out?.intent).toBe("game-move-moved");
+  });
+
+  it("a player who tags MatchTime: the one line naming who can, nothing moved", async () => {
+    const { out, calls } = await outcomeOf({ senderUserId: "u-zair", senderName: fullName("zair") });
+    expect(calls).toEqual([]);
+    expect(out?.reply).toBe("Only Kemal can change that.");
+  });
+
+  it("untagged (no Pi mention flag): nothing moved, nothing said", async () => {
+    const { out, calls } = await outcomeOf({ tagged: false, taggedExplicitly: false });
     expect(calls).toEqual([]);
     expect(out?.reply ?? null).toBeNull();
   });

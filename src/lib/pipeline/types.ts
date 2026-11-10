@@ -781,6 +781,7 @@ export interface AdminFacts {
     | "quiet_hours"
     | "player_numbers"
     | "switch_format"
+    | "move_game"
     | "other";
   /** bulk_payment */
   payerRef?: string;
@@ -896,6 +897,24 @@ export interface AdminFacts {
   /** player_numbers, switch_format: the numbers count ONE side, so code
    *  doubles them. Set only when true. */
   aSide?: true;
+  /**
+   * move_game (2026-11-10, Kemal: "@Match Time move Monday's game to
+   * 8:15"): the game meant, as its number in the GAMES TO COME list the
+   * extractor was shown (1 is the first). Absent when the message does not
+   * say which. Checked against that list by code (`game-move-rules.ts`),
+   * never trusted as a game.
+   */
+  game?: number;
+  /** move_game: the weekday it moves to, 0 = Sunday .. 6 = Saturday (as on
+   *  `Activity.dayOfWeek`), from the schema's weekday names. Absent when
+   *  the day stays. */
+  newDay?: number;
+  /** move_game: the new kickoff, a London "HH:MM" as the model wrote it,
+   *  checked by code. Absent when the time stays. */
+  newTime?: string;
+  /** move_game: the weekly game from now on, not one game. Set only when
+   *  true. */
+  everyWeek?: true;
   /** season_break (2026-10-29): months with no football, "YYYY-MM". */
   breakMonths?: string[];
   /** season_break: months the football is on or back in, "YYYY-MM". */

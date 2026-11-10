@@ -40,6 +40,10 @@
  *                                quiet_hours, then quiet-hours-words.ts and
  *                                quiet-hours-save.ts (#483; every club, a
  *                                new one starts with them off, #486)
+ *   a game's day or time         router admin_ops, the admin extractor's
+ *                                move_game (shown the games to come), then
+ *                                game-move-words.ts and the one kickoff
+ *                                mover, activity-kickoff-move.ts (2026-11-10)
  *   how any part works           router help or question, the question
  *                                extractor's how_it_works with its topic,
  *                                then buildHelpReply for the organisers

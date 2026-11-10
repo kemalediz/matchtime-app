@@ -1415,14 +1415,14 @@ export const en = {
       return (
         `⚙️ *Your settings*\n` +
         `Every switch for your club is on one settings page, grouped in tabs. Not sure where something is? Type its name in *Find a setting* at the top and it takes you straight there:\n${p.url}\n` +
-        `Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*, or *@Match Time we play with 12 to 16* for the fewest and most you play with (I only warn you about low numbers below the fewest, and any one game can then be made bigger or smaller inside them, for example *@Match Time make it 8 a side*).`
+        `Or ask me about any part (for example *@Match Time how do I turn on reminders?*) and I'll link you straight to its switch. Some you can change by tagging me too, for example *@Match Time turn on quiet hours from 23:00 to 09:00*, or *@Match Time we play with 12 to 16* for the fewest and most you play with (I only warn you about low numbers below the fewest, and any one game can then be made bigger or smaller inside them, for example *@Match Time make it 8 a side*). A game's kickoff too: *@Match Time move Monday's game to 20:15*, or *@Match Time from now on we kick off at 20:15* for every week.`
       );
     }
     if (p.audience === "group") {
       return (
         `⚙️ *Settings*\n` +
         `The club's settings are on the admin page, grouped in tabs, and only admins can change them. Admins: type a setting's name in *Find a setting* at the top to jump to it:\n${p.url}\n` +
-        `Admins can change some by tagging me too, for example *@Match Time we play with 12 to 16* (the fewest and most the club plays with), *@Match Time make it 8 a side* (one game a different size) or *@Match Time turn off quiet hours*.`
+        `Admins can change some by tagging me too, for example *@Match Time we play with 12 to 16* (the fewest and most the club plays with), *@Match Time make it 8 a side* (one game a different size), *@Match Time move Monday's game to 20:15* (a game's kickoff) or *@Match Time turn off quiet hours*.`
       );
     }
     return `⚙️ *Settings*\nThe club's settings are changed by its organisers. Ask them if you'd like something changed. Your own details are on your MatchTime profile.`;
@@ -1599,6 +1599,7 @@ export const en = {
     lines.push(`🌙 *"@Match Time turn on quiet hours from 23:00 to 09:00"*, *"@Match Time turn off quiet hours"*: I hold my own messages overnight, or send at any time. A new club starts with quiet hours off.`);
     lines.push(`👥 *"@Match Time we play with 12 to 16"*, *"@Match Time we can play with 12"*: the fewest and most you play with. I only warn you about low numbers, or offer to cancel, below the fewest, and when two are waiting on the bench I suggest going up a size (with one waiting, the list says one more would do it). *"@Match Time back to full teams"* undoes the fewest.`);
     lines.push(`🔁 *"@Match Time make it 8 a side"*, *"@Match Time 6 a side on Monday"*: one game a different size, inside those numbers. Going up, the bench moves in; going down, the last to join go to the bench. Each is told by DM, and I post the new list.`);
+    lines.push(`🕗 *"@Match Time move Monday's game to 20:15"*, *"@Match Time from now on we kick off at 20:15"*: one game to another time or day of its week, or your weekly game from now on, with its games still to be played. Quietly: I don't post it in the players' group.`);
     lines.push(``, `ℹ️ Ask me how any part works, and how to switch it on or off, in your own words: for example *@Match Time how do partner clubs work?* or *@Match Time where are the settings?*`);
     lines.push(`Ask *@Match Time what can you do?* here any time to see this again.`);
     return lines.join("\n");

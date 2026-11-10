@@ -1195,14 +1195,14 @@ export const tr: Strings = {
       return (
         `⚙️ *Ayarların*\n` +
         `Kulübünün tüm ayarları tek bir ayarlar sayfasında, sekmelere ayrılmış olarak durur. Bir şeyin nerede olduğundan emin değil misin? Üstteki *Ayar bul* kutusuna adını yaz, seni doğrudan oraya götürür:\n${p.url}\n` +
-        `Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim. Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*, ya da en az ve en fazla kaç kişiyle oynadığınız için *@Match Time 12 ile 16 kişi arası oynuyoruz* (az oyuncu uyarısını ancak en azın altında yaparım, ve herhangi bir maç bu sayılar içinde büyütülüp küçültülebilir, örneğin *@Match Time 8'e 8 yapalım*).`
+        `Ya da bana herhangi bir bölümü sor (örneğin *@Match Time hatırlatmaları nasıl açarım?*), seni doğrudan ayarına göndereyim. Bazılarını beni etiketleyerek de değiştirebilirsin, örneğin *@Match Time sessiz saatleri 23:00 ile 09:00 arası aç*, ya da en az ve en fazla kaç kişiyle oynadığınız için *@Match Time 12 ile 16 kişi arası oynuyoruz* (az oyuncu uyarısını ancak en azın altında yaparım, ve herhangi bir maç bu sayılar içinde büyütülüp küçültülebilir, örneğin *@Match Time 8'e 8 yapalım*). Bir maçın saatini de: *@Match Time pazartesi maçını 20:15'e al*, ya da her hafta için *@Match Time artık 20:15'te başlıyoruz*.`
       );
     }
     if (p.audience === "group") {
       return (
         `⚙️ *Ayarlar*\n` +
         `Kulübün ayarları yönetici sayfasında, sekmelere ayrılmış olarak durur ve yalnızca yöneticiler değiştirebilir. Yöneticiler: üstteki *Ayar bul* kutusuna bir ayarın adını yazınca doğrudan oraya gidersiniz:\n${p.url}\n` +
-        `Yöneticiler bazılarını beni etiketleyerek de değiştirebilir, örneğin *@Match Time 12 ile 16 kişi arası oynuyoruz* (kulübün oynadığı en az ve en fazla kişi), *@Match Time 8'e 8 yapalım* (tek bir maçın formatı) ya da *@Match Time sessiz saatleri kapat*.`
+        `Yöneticiler bazılarını beni etiketleyerek de değiştirebilir, örneğin *@Match Time 12 ile 16 kişi arası oynuyoruz* (kulübün oynadığı en az ve en fazla kişi), *@Match Time 8'e 8 yapalım* (tek bir maçın formatı), *@Match Time pazartesi maçını 20:15'e al* (bir maçın saati) ya da *@Match Time sessiz saatleri kapat*.`
       );
     }
     return `⚙️ *Ayarlar*\nKulübün ayarlarını organizatörler değiştirir. Bir şeyin değişmesini istersen onlara söyle. Kendi bilgilerin MatchTime profilinde.`;
@@ -1323,6 +1323,7 @@ export const tr: Strings = {
     lines.push(`🌙 *"@Match Time sessiz saatleri 23:00 ile 09:00 arası aç"*, *"@Match Time sessiz saatleri kapat"*: kendi mesajlarımı gece bekletirim ya da her saatte gönderirim. Yeni bir kulüpte sessiz saatler kapalı başlar.`);
     lines.push(`👥 *"@Match Time 12 ile 16 kişi arası oynuyoruz"*, *"@Match Time 12 kişiyle de oynarız"*: oynadığınız en az ve en fazla kişi sayısı. Az oyuncu uyarısını ya da iptal önerisini ancak en azın altında yaparım, yedekte iki kişi beklerse de bir büyük formata geçmeyi öneririm (bir kişi beklerken listede bir kişi daha yeteceğini yazarım). *"@Match Time yine tam takım"* en azı geri alır.`);
     lines.push(`🔁 *"@Match Time 8'e 8 yapalım"*, *"@Match Time pazartesi 6'ya 6 oynayalım"*: bu sayılar içinde tek bir maçın formatı. Büyürken yedekler kadroya girer, küçülürken en son katılanlar yedeğe geçer. Herkese mesajla haber verir, yeni listeyi atarım.`);
+    lines.push(`🕗 *"@Match Time pazartesi maçını 20:15'e al"*, *"@Match Time artık 20:15'te başlıyoruz"*: tek bir maçın saati ya da haftası içindeki günü, ya da bundan sonra haftalık maçınız, oynanmamış maçlarıyla birlikte. Sessizce: oyuncu grubuna yazmam.`);
     lines.push(``, `ℹ️ Herhangi bir bölümün nasıl çalıştığını, nasıl açılıp kapatıldığını kendi cümlelerinizle sorun: örneğin *@Match Time partner kulüpler nasıl çalışır?* ya da *@Match Time ayarlar nerede?*`);
     lines.push(`Bunu tekrar görmek için burada istediğiniz zaman *@Match Time neler yapabilirsin?* diye sorun.`);
     return lines.join("\n");

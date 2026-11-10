@@ -1265,3 +1265,81 @@ describe("teams: restore, set, sides and toMatchTime (2026-10-30)", () => {
     expect(p).toMatch(/"Ali and Habib on one team"[^\n]*-> swap, pairings \[\["Ali","Habib"\]\]/);
   });
 });
+
+describe("admin · move_game (2026-11-10, Kemal: \"@Match Time move Monday's game to 8:15\")", () => {
+  const BASE = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", pastGame: false, phrase: "", remindAt: "", note: "", lookbackMatches: 0, playersFrom: [], clubRef: "", venueName: "", venueChoice: 0, breakMonths: [], playMonths: [], quietOff: false, quietFrom: "", quietTo: "", minPlayers: 0, maxPlayers: 0, fullTeams: false, size: 0, aSide: false, game: 0, newDay: "", newTime: "", everyWeek: false, toMatchTime: true };
+  const of = (fields: Record<string, unknown>) => parseFacts("admin", JSON.stringify({ ...BASE, ...fields }), "wa-1").facts;
+
+  it("carries the game's number, the weekday as 0 (Sunday) to 6, the time as written and every week", () => {
+    expect(of({ action: "move_game", game: 2, newDay: "wednesday", newTime: " 20:15 ", everyWeek: true })).toMatchObject({
+      kind: "admin",
+      action: "move_game",
+      game: 2,
+      newDay: 3,
+      newTime: "20:15",
+      everyWeek: true,
+    });
+    expect(of({ action: "move_game", newDay: "sunday" })).toMatchObject({ newDay: 0 });
+  });
+
+  it("0, a fraction, an empty day and an empty time are absent; everyWeek only when true", () => {
+    const f = of({ action: "move_game", game: 1.5 });
+    for (const k of ["game", "newDay", "newTime", "everyWeek"]) expect(k in f, k).toBe(false);
+    expect("game" in of({ action: "move_game", game: 0 })).toBe(false);
+  });
+
+  it("a day that is not one of the schema's weekdays is absent (never guessed)", () => {
+    expect("newDay" in of({ action: "move_game", newDay: "pazartesi" })).toBe(false);
+  });
+
+  it("the move fields are dropped on every other action", () => {
+    for (const action of ["other", "switch_format", "cancel_match"]) {
+      const f = of({ action, game: 1, newDay: "monday", newTime: "20:15", everyWeek: true });
+      for (const k of ["game", "newDay", "newTime", "everyWeek"]) expect(k in f, `${action} ${k}`).toBe(false);
+    }
+  });
+
+  it("the schema offers move_game and requires its four fields, the day a closed list of weekdays", () => {
+    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, { enum?: string[] }> };
+    expect(schema.properties.action.enum).toContain("move_game");
+    expect(schema.required).toEqual(expect.arrayContaining(["game", "newDay", "newTime", "everyWeek"]));
+    expect(schema.properties.newDay.enum).toEqual(["", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);
+  });
+
+  it("the prompt defines move_game and its fields once each, with EN and TR examples side by side and non-requests", () => {
+    const p = EXTRACTOR_PROMPTS.admin;
+    expect(p.split(`\n  "move_game" `).length).toBe(2);
+    for (const field of ["game", "newDay", "newTime", "everyWeek"]) expect(p.split(`\n  ${field} `).length, field).toBe(2);
+    expect(p).toMatch(/GAMES TO COME/);
+    expect(p).toMatch(/"@Match Time move Monday's game to 8:15" \/ "@Match Time pazartesi maçını 20:15'e al" -> move_game/);
+    expect(p).toMatch(/"@Match Time from now on we kick off at 8:15" \/ "@Match Time artık 20:15'te başlıyoruz" -> move_game[^\n]*everyWeek true/);
+    expect(p).toMatch(/kick off[^\n]*\?[^\n]*-> other/);
+    expect(p).not.toMatch(/[–—]/);
+  });
+
+  it("the games to come are shown to the model, numbered, when the caller gives them", async () => {
+    const model = fakeModel(JSON.stringify({ ...BASE, action: "move_game", game: 1, newTime: "20:15" }));
+    const r = await extractForRoute(model, "admin_ops", {
+      ...MSG,
+      body: "@Match Time move Monday's game to 8:15",
+      tagged: true,
+      games: ["1. Monday 16 November 2026 at 20:30 (Monday Vets)", "2. Monday 23 November 2026 at 20:30 (Monday Vets)"],
+    });
+    expect(model.reqs[0].user).toContain(
+      "GAMES TO COME (the club's games still to be played, numbered):\n  1. Monday 16 November 2026 at 20:30 (Monday Vets)\n  2. Monday 23 November 2026 at 20:30 (Monday Vets)",
+    );
+    expect(r.facts).toMatchObject({ action: "move_game", game: 1, newTime: "20:15" });
+  });
+
+  it("no games given: the block says there are none, so a game number is never invented", async () => {
+    const model = fakeModel(JSON.stringify({ ...BASE, action: "other" }));
+    await extractForRoute(model, "admin_ops", { ...MSG, games: [] });
+    expect(model.reqs[0].user).toContain("GAMES TO COME: none");
+  });
+
+  it("the other extractors are never shown the games", async () => {
+    const model = fakeModel(JSON.stringify({ claims: [], affirmation: "none" }));
+    await extractForRoute(model, "self_att", { ...MSG, games: ["1. Monday 16 November 2026 at 20:30 (Monday Vets)"] }).catch(() => null);
+    expect(model.reqs[0].user).not.toContain("GAMES TO COME");
+  });
+});

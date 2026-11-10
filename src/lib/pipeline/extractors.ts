@@ -172,6 +172,18 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * never names the people: code reads them from WhatsApp's mention data
  * (`named-invite-rules.ts`). 17,980 to 18,839 characters. Old and new side
  * by side, and the paid check: MDs/prompt-change-dm-named-2026-11-09.md.
+ *
+ * And on 2026-11-10 (Kemal: "@Match Time move Monday's game to 8:15", every
+ * admin feature by WhatsApp): one action, `move_game`, beside the other
+ * game actions (one game to another time or day of its own week, or the
+ * weekly game from now on), its four fields (`game`, `newDay`, `newTime`,
+ * `everyWeek`) once beside the other game fields, the context paragraph
+ * naming the new GAMES TO COME block (the club's games, numbered, so the
+ * model picks a game by its number and code checks it against the same
+ * list; never a day read from words), and one example group, EN and TR side
+ * by side, with a question and talk about a time as "other". 18,839 to
+ * 21,510 characters. Old and new: MDs/prompt-move-game-old.md and
+ * MDs/prompt-move-game-new.md; the paid check: scripts/live-check-move-game.ts.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: HAIKU_CALL,
@@ -656,7 +668,7 @@ The latest game or an earlier one:
 
   admin: `You read ONE message from a football club's chat (the organisers' group, the players' group, or a private message to the bot) and report what it asks MatchTime, the club's bot, to do, and whether it is spoken to MatchTime at all. You report the words; code decides what happens. Messages are English or Turkish, often mixed.
 
-THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the date and time at the club) and, for a WhatsApp reply, the message it quotes (THEY ARE REPLYING TO). The context tells you who "he" or "them" is, who is being spoken to, and what a short answer answers. The action and every field come from THE MESSAGE.
+THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the date and time at the club), GAMES TO COME (the club's games still to be played, numbered, soonest first) and, for a WhatsApp reply, the message it quotes (THEY ARE REPLYING TO). The context tells you who "he" or "them" is, who is being spoken to, which game is meant, and what a short answer answers. The action and every field come from THE MESSAGE.
 
 THE ACTION, exactly one. A question, an opinion or a discussion about whether to do something ("should we cancel?", "should Bilal play free?", "shall we try the pool?") is "other".
   "recruit" find players who are not in the squad yet, or invite particular people to play; playersFrom says who or from where. Showing, listing or counting the squad is "other", and so is talking about another club or the player pool.
@@ -668,6 +680,7 @@ THE ACTION, exactly one. A question, an opinion or a discussion about whether to
   "quiet_hours" switch the club's quiet hours (the night hours MatchTime holds its own messages in) off or on, or set when they start or end. Asking about them, or talking about them, is "other".
   "player_numbers" set how many players a game is played with, for every week: the fewest (MatchTime warns about low numbers only below it), the most (a game may then be made bigger, up to it), or both ("we can play with 12", "we play 12 to 16", "up to 8 a side"), or go back to needing two full sides. Saying how many are coming, or asking how many are needed, is "other".
   "switch_format" play ONE game with a different number a side, bigger or smaller ("make it 8 aside", "6 a side on Monday"), or a yes to MatchTime's own offer to switch a game ("Shall we go 8-a-side?"). Asking whether to switch, or talking about it, is "other".
+  "move_game" change when a game kicks off: ONE game to another time, or to another day of its own week ("move Monday's game to 8:15", "tonight we start at 8"), or the club's weekly game from now on ("from now on we kick off at 8:15", "we play Tuesdays from now on"). A different number a side is "switch_format". Asking what time a game is, or talking about a time, is "other".
   "fee_waiver" give named players a free place, so they owe nothing for a game, or take one back. "Free" as in able to play ("I'm free Tuesday") is not this.
   "bulk_payment" someone paid for several players.
   "reminder" MatchTime is to remind the sender, at a time.
@@ -698,6 +711,10 @@ THE FIELDS. Fill toMatchTime always and the others for the action; every other f
   fullTeams (player_numbers): true when it goes back to needing two full sides ("back to full teams", "yine tam takım").
   size (switch_format): the number of players said for that game, as written ("8 aside" is 8, "16 players" is 16); for a yes to MatchTime's offer, the number a side the offer names; 0 when none is said.
   aSide (player_numbers, switch_format): true when the numbers count the players on ONE side ("8 aside", "6 to 8 a side", "8'e 8", "6 kişilik oynayalım", MatchTime's "8-a-side"); false when they count everyone ("12 players", "16 kişiyle").
+  game (move_game): the number of the game meant in GAMES TO COME: the one the message names by its day or date ("Monday's", "the 23rd", "pazartesi"), the first that fits for "tonight", "this week" or "next week", and the first when it names none and every game listed is the same weekly game. For the weekly game from now on, any game of that weekly game. 0 when none is listed, or the games listed are different weekly games and the message names none (MatchTime then asks which). An answer to MatchTime's question which game to move is move_game, with the game the answer picks and the day and time that question names.
+  newDay (move_game): the day of the week it moves to, "monday" to "sunday"; "" when the day stays.
+  newTime (move_game): the new kickoff as a 24-hour London time "HH:MM". A time with no am or pm is the one nearest the game's own kickoff ("8:15" for a 20:30 game is "20:15", "8" is "20:00", "10am" is "10:00"); "" when the time stays.
+  everyWeek (move_game): true when it changes the weekly game from now on ("from now on", "every week", "artık", "her hafta", "bundan sonra"); false for one game.
   coveredRefs (fee_waiver, bulk_payment): the people the action is about, one entry each, as written: those given or losing the free place, or those paid for. "he" or "him" is the person named, else the author of the quoted message.
   undo (fee_waiver): true when it takes a free place back.
   payerRef (bulk_payment): who paid, as written.
@@ -792,6 +809,14 @@ One game a different size:
   "@Match Time make Monday 16 players" / "@Match Time pazartesi 16 kişi oynayalım" -> switch_format, size 16, matchDay "Monday" / "pazartesi"
   "yes" / "evet", replying to MatchTime's "We've got 16 for Monday, 2 on the bench. Shall we go 8-a-side?" -> switch_format, size 8, aSide true
   "shall we go 8 aside?" / "8'e 8 mi oynasak?" (to the others) -> other, toMatchTime false
+When a game kicks off (GAMES TO COME here: 1. Monday 16 November 2026 at 20:30 (Monday Vets), 2. Monday 23 November 2026 at 20:30 (Monday Vets)):
+  "@Match Time move Monday's game to 8:15" / "@Match Time pazartesi maçını 20:15'e al" -> move_game, game 1, newTime "20:15"
+  "@Match Time next week's game is on Wednesday" / "@Match Time haftaya maç çarşamba" -> move_game, game 2, newDay "wednesday"
+  "@Match Time from now on we kick off at 8:15" / "@Match Time artık 20:15'te başlıyoruz" -> move_game, game 1, newTime "20:15", everyWeek true
+  "@Match Time we play Tuesdays at 9 from now on" / "@Match Time bundan sonra salı 21:00'de oynuyoruz" -> move_game, game 1, newDay "tuesday", newTime "21:00", everyWeek true
+  "the 23rd" / "23'ündeki", answering MatchTime's "Which game shall I move to 20:15: Mon 16 Nov 20:30 or Mon 23 Nov 20:30?" -> move_game, game 2, newTime "20:15"
+  "@Match Time what time is kick off?" / "@Match Time maç saat kaçta?" -> other
+  "shall we kick off at 8 next week?" / "haftaya 8'de mi başlasak?" (to the others) -> other, toMatchTime false
 Free places and payments:
   "Bilal washed the bibs, he's free this week" -> fee_waiver, coveredRefs ["Bilal"]
   "put Bilal down as free on Friday" / "Ali ve Can cuma günü ödemesin" -> fee_waiver, coveredRefs ["Bilal"] / ["Ali","Can"], matchDay "on Friday" / "cuma günü"
@@ -1003,12 +1028,16 @@ const SCORE_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+/** move_game's weekdays, Monday first; index + 1 mod 7 is `Activity.dayOfWeek`
+ *  (0 = Sunday). A closed list in the schema: never a day read from words. */
+const WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+
 const ADMIN_SCHEMA = {
   type: "object",
   properties: {
     action: {
       type: "string",
-      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "switch_format", "other"],
+      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "switch_format", "move_game", "other"],
     },
     // season_break (2026-10-29): the months with no football, and the
     // months it is back in, each "YYYY-MM".
@@ -1053,11 +1082,18 @@ const ADMIN_SCHEMA = {
     fullTeams: { type: "boolean" },
     size: { type: "number" },
     aSide: { type: "boolean" },
+    // move_game (2026-11-10): the game's number in GAMES TO COME (0: none
+    // said), the weekday it moves to ("": it stays), the new London time
+    // ("": it stays), and the weekly game from now on.
+    game: { type: "number" },
+    newDay: { type: "string", enum: ["", ...WEEKDAY_NAMES] },
+    newTime: { type: "string" },
+    everyWeek: { type: "boolean" },
     // Who the message is spoken to (2026-10-22): MatchTime, or a person or
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "minPlayers", "maxPlayers", "fullTeams", "size", "aSide", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "remindAt", "note", "lookbackMatches", "playersFrom", "clubRef", "venueName", "venueChoice", "breakMonths", "playMonths", "quietOff", "quietFrom", "quietTo", "minPlayers", "maxPlayers", "fullTeams", "size", "aSide", "game", "newDay", "newTime", "everyWeek", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1376,7 +1412,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "switch_format", "other"].includes(action)) {
+      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "set_venue", "retry_ask", "season_break", "quiet_hours", "player_numbers", "switch_format", "move_game", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1447,6 +1483,16 @@ export function parseFacts(
         // switch_format: the number said for the one game.
         ...(action === "switch_format" && wholeFrom1(raw.size) ? { size: raw.size as number } : {}),
         ...((action === "player_numbers" || action === "switch_format") && raw.aSide === true ? { aSide: true as const } : {}),
+        // move_game (2026-11-10): the game's number (a whole number from 1,
+        // checked against the list shown by `game-move-rules.ts`), the
+        // weekday from the schema's closed list, the time as written
+        // (checked by code), and every week only when true.
+        ...(action === "move_game" && wholeFrom1(raw.game) ? { game: raw.game as number } : {}),
+        ...(action === "move_game" && typeof raw.newDay === "string" && (WEEKDAY_NAMES as readonly string[]).includes(raw.newDay)
+          ? { newDay: ((WEEKDAY_NAMES as readonly string[]).indexOf(raw.newDay) + 1) % 7 }
+          : {}),
+        ...(action === "move_game" && typeof raw.newTime === "string" && raw.newTime.trim() ? { newTime: raw.newTime.trim() } : {}),
+        ...(action === "move_game" && raw.everyWeek === true ? { everyWeek: true as const } : {}),
         // season_break (2026-10-29): only well-formed "YYYY-MM" months.
         ...(action === "season_break" ? { breakMonths: monthKeysOf(raw.breakMonths), playMonths: monthKeysOf(raw.playMonths) } : {}),
         // Only a clear true: a missing or false value keeps HQ's outward
@@ -1520,6 +1566,14 @@ export interface ExtractorMessage {
    * question's fields with the person named. Absent otherwise.
    */
   clarifying?: string;
+  /**
+   * The admin extractor only (2026-11-10, `move_game`): the club's games
+   * still to be played, one numbered line each (`gamesToComeLines`,
+   * game-move-rules.ts), shown as the GAMES TO COME block. The model names
+   * a game by its number; code checks it against the same list. Absent:
+   * no block; empty: "none".
+   */
+  games?: readonly string[];
   /** The time the NOW line states (club time). Defaults to now. */
   now?: Date;
 }
@@ -1594,6 +1648,14 @@ export async function extractForRoute(
   }
   if (msg.clarifying) {
     context.push(`MATCHTIME ASKED them whom they meant in their earlier question: "${msg.clarifying}"`);
+  }
+  // The admin extractor only (2026-11-10, move_game): the club's games to
+  // come, numbered, so the model names a game by its number and code checks
+  // it against this same list. Given and empty: said so, so no number is
+  // invented.
+  if (kind === "admin" && msg.games) {
+    if (msg.games.length === 0) context.push("GAMES TO COME: none");
+    else context.push(`GAMES TO COME (the club's games still to be played, numbered):\n${msg.games.map((g) => `  ${g}`).join("\n")}`);
   }
   context.push("");
   context.push(

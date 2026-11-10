@@ -39,6 +39,12 @@
  *   unreadable-time  a stored time that is not "HH:mm": change nothing,
  *                  never throw on a live admin save.
  *   unchanged      neither the day nor the time changed.
+ *
+ * Once a game is known to follow the activity, where it goes is
+ * `planGameKickoff` below, the rule for ONE game. An organiser moving one
+ * game by WhatsApp ("@Match Time move Monday's game to 8:15", 2026-11-10,
+ * `game-move-words.ts`) uses the same rule, without the set-by-hand checks:
+ * naming the game is the organiser's choice.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 
@@ -90,18 +96,49 @@ export function planActivityKickoffMove(input: {
   // A new day counts from the old one, so the game must be on it. A new
   // time alone does not ask: the game keeps its own date either way.
   const dayChanged = before.dayOfWeek !== after.dayOfWeek;
-  const weekday = Number(formatLondon(match.date, "i")) % 7; // ISO Mon=1..Sun=7 -> Sun=0..Sat=6
-  if (dayChanged && weekday !== before.dayOfWeek) return { move: false, reason: "set-by-hand" };
+  if (dayChanged && londonWeekday(match.date) !== before.dayOfWeek) return { move: false, reason: "set-by-hand" };
 
-  const newDay = addDays(day, weekPosition(after.dayOfWeek) - weekPosition(before.dayOfWeek));
+  return planGameKickoff({ match, toDayOfWeek: dayChanged ? after.dayOfWeek : null, toTime: after.time, now });
+}
+
+/**
+ * ONE GAME TO A NEW KICKOFF (2026-11-10): the rule above for one game,
+ * shared by the weekly change and an organiser moving one game by
+ * WhatsApp ("@Match Time move Monday's game to 8:15",
+ * `game-move-words.ts`). `toDayOfWeek` is the weekday it moves to in the
+ * SAME Monday-to-Sunday week, or null to keep its day; `toTime` is the
+ * London "HH:mm" it kicks off at. The deadline moves by as much as the
+ * kickoff. It stays put when it has started, the new kickoff has gone,
+ * the new day is in another month, the input is unreadable, or nothing
+ * changes. Whether the game sits on its activity's own time is the weekly
+ * change's question only: an organiser naming one game means that game.
+ */
+export function planGameKickoff(input: {
+  match: { date: Date; attendanceDeadline: Date };
+  toDayOfWeek: number | null;
+  toTime: string;
+  now: Date;
+}): ActivityKickoffMovePlan {
+  const { match, toDayOfWeek, toTime, now } = input;
+  if (match.date.getTime() <= now.getTime()) return { move: false, reason: "started" };
+  if (toDayOfWeek !== null && !(Number.isInteger(toDayOfWeek) && toDayOfWeek >= 0 && toDayOfWeek <= 6)) {
+    return { move: false, reason: "unreadable-time" };
+  }
+  const day = formatLondon(match.date, "yyyy-MM-dd");
+  const newDay = toDayOfWeek === null ? day : addDays(day, weekPosition(toDayOfWeek) - weekPosition(londonWeekday(match.date)));
   if (newDay.slice(0, 7) !== day.slice(0, 7)) return { move: false, reason: "other-month" };
-  const kickoff = at(newDay, after.time);
+  const kickoff = at(newDay, toTime);
   if (!kickoff) return { move: false, reason: "unreadable-time" };
   if (kickoff.getTime() === match.date.getTime()) return { move: false, reason: "unchanged" };
   if (kickoff.getTime() <= now.getTime()) return { move: false, reason: "into-the-past" };
 
   const shift = kickoff.getTime() - match.date.getTime();
   return { move: true, kickoff, attendanceDeadline: new Date(match.attendanceDeadline.getTime() + shift) };
+}
+
+/** The game's London weekday, 0 = Sunday .. 6 = Saturday, as on `Activity.dayOfWeek`. */
+export function londonWeekday(d: Date): number {
+  return Number(formatLondon(d, "i")) % 7; // ISO Mon=1..Sun=7 -> Sun=0..Sat=6
 }
 
 /** Did a save change what decides a game's kickoff? */

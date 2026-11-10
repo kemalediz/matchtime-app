@@ -61,7 +61,12 @@
  *                         action fee_waiver, or one taken back) is ASKED
  *                         about by `fee-waiver.ts` and given on the YES
  *                         (approve, like a pasted list). The money
- *                         collector may do this one, admin or not. Any
+ *                         collector may do this one, admin or not. A
+ *                         game's day or time ("move Monday's game to
+ *                         8:15", "from now on we kick off at 8:15",
+ *                         move_game, 2026-11-10) goes through
+ *                         `game-move-words.ts`, quietly; an organiser's
+ *                         alone. Any
  *                         other instruction: one line, not from this group
  *                         (an organiser clearly asked MatchTime; never
  *                         silent on that)
@@ -161,6 +166,11 @@ import type { HqLogRow } from "./admin-group-log";
 import { adminVenueCopy } from "./i18n/admin-venue";
 import { dmNamedPeople } from "./named-invite";
 import { namedInviteReply } from "./named-invite-rules";
+import { applyMoveGameWords, loadGamesToCome } from "./game-move-words";
+import { gamesToComeLines, moveGameWordsOf, type GameToCome } from "./game-move-rules";
+
+/** MatchTime's "which game?" in HQ, recorded so the answer is read with it. */
+const GAME_MOVE_LINE_PREFIX = "mt:said:game-move:";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -805,8 +815,12 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
     // through to its route, which reuses the same reading.
     let adminFactsRead: Promise<AdminFacts | null> | null = null;
     const readAdminFacts = (): Promise<AdminFacts | null> => (adminFactsRead ??= readAdminFactsOnce());
+    // The club's games to come, as the admin extractor is shown them
+    // (2026-11-10, move_game): its game number is checked against this list.
+    let gamesShown: GameToCome[] = [];
     const readAdminFactsOnce = async (): Promise<AdminFacts | null> => {
       const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
+      gamesShown = (await loadGamesToCome(org.id, now).catch(() => null)) ?? [];
       const extracted = await extractForRouteTraced("admin_ops", model, "admin_ops", {
         id: messageId,
         body,
@@ -815,6 +829,7 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
         history,
         lastBotPost: lastHqPost,
         reply: replyShown,
+        games: gamesToComeLines(gamesShown),
         now,
       }).catch(() => null);
       return extracted?.facts.kind === "admin" ? extracted.facts : null;
@@ -1223,6 +1238,21 @@ async function understandInTrace(input: UnderstandInput, seen: { reading: HqRead
           // HQ acts on a real tag only; the suggestion is the players' group's.
           const r = await applySwitchFormatWords({ orgId: org.id, perSide: perSideOf(facts), matchDay: facts.matchDay?.trim() || null, actorUserId: actor, via: "hq", lang, now, explicit: true });
           return r.replyText ? said(`hq-${r.outcome}`, r.replyText) : null;
+        }
+        // A game's day or time (2026-11-10, Kemal: "@Match Time move
+        // Monday's game to 8:15", "from now on we kick off at 8:15"): one
+        // game, or the weekly game from now on, through the one place a
+        // kickoff moves (`game-move-words.ts`, `activity-kickoff-move.ts`,
+        // the activities page's own code). Quiet: nothing is posted in the
+        // players' group. An organiser's alone. "Which game?" is recorded
+        // as MatchTime's line, so the answer is read with it.
+        if (facts.kind === "admin" && facts.action === "move_game") {
+          if (!actor) return onlyOrganisers("settings");
+          const r = await applyMoveGameWords({ orgId: org.id, words: moveGameWordsOf(facts), games: gamesShown, lang, now });
+          if (r.outcome.startsWith("game-move-which") || r.outcome === "game-move-say-what") {
+            await recordMatchTimeLine({ orgId: org.id, idPrefix: GAME_MOVE_LINE_PREFIX, text: r.replyText, now });
+          }
+          return said(`hq-${r.outcome}`, r.replyText);
         }
         if (facts.kind === "admin" && facts.action === "season_break") {
           if (!actor) return onlyOrganisers("settings");

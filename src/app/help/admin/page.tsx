@@ -202,9 +202,10 @@ export default async function AdminGuidePage() {
       <h2 id="schedule">3. Changing the schedule</h2>
 
       <p>
-        Schedule changes are made on the dashboard, not by messaging
-        MatchTime. Open <strong>Admin</strong> in the menu; the tabs along the
-        top take you to each screen.
+        Schedule changes are made on the dashboard. Open{" "}
+        <strong>Admin</strong> in the menu; the tabs along the top take you to
+        each screen. A game&apos;s day or time can also be changed by tagging
+        MatchTime (see <a href="#move-game">Move a game</a> below).
       </p>
 
       <h3>Add or change your weekly game</h3>
@@ -228,9 +229,36 @@ export default async function AdminGuidePage() {
       </p>
       <p>
         <em>What the group is told:</em> Nothing is posted. A new day or time
-        applies to matches created from then on; matches already created keep
-        their date and time.
+        also moves the matches already made that are still to be played, with
+        their sign-up deadline. A new day stays in the same week. A match that
+        has started, was set to its own time by hand, or would move into
+        another month keeps its date and time.
       </p>
+
+      <h3 id="move-game">Move a game by tagging MatchTime</h3>
+      <ul>
+        <li>
+          One game: tag MatchTime in your admin group or the players&apos;
+          group, for example <code>@Match Time move Monday&apos;s game to 20:15</code>{" "}
+          or <code>@Match Time next week&apos;s game is on Wednesday</code>. A
+          new day stays in the same week. Its sign-up deadline moves with it.
+        </li>
+        <li>
+          Every week: <code>@Match Time from now on we kick off at 20:15</code>{" "}
+          or <code>@Match Time we play Tuesdays from now on</code>. This is
+          the same change as editing the activity, so the matches already made
+          move too, and MatchTime tells you any it left where they were, and
+          why.
+        </li>
+        <li>
+          If MatchTime can&apos;t tell which game you mean, it asks. Only an
+          organiser or admin can move a game.
+        </li>
+        <li>
+          It&apos;s quiet: MatchTime doesn&apos;t post the change in the
+          players&apos; group, so let your players know.
+        </li>
+      </ul>
 
       <h3>Book a run of weeks</h3>
       <ol>

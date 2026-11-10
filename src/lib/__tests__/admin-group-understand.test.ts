@@ -15,7 +15,12 @@ import { asShortIds } from "../pipeline/__tests__/router-ids";
 const dbMock = vi.hoisted(() => ({
   adminTeamProposal: { findFirst: vi.fn() },
   adminSquadProposal: { findFirst: vi.fn() },
-  match: { findUnique: vi.fn(), findMany: vi.fn() },
+  match: { findUnique: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
+  // A game's kickoff moved from HQ (2026-11-10): the real door and mover.
+  activity: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+  tentativeAvailability: { updateMany: vi.fn() },
+  poolOffer: { updateMany: vi.fn() },
+  $transaction: vi.fn(),
   membership: { findMany: vi.fn(), findFirst: vi.fn() },
   // What an HQ reply quotes, by its WhatsApp id (slice S4).
   sentNotification: { findMany: vi.fn() },
@@ -70,6 +75,8 @@ const partnerAsk = vi.hoisted(() => ({
   answerClosedPartnerAskYes: vi.fn().mockResolvedValue(null),
   partnerAskRef: (id: string) => `xask:${id}`,
   parsePartnerAskRef: (ref: string) => (ref.startsWith("xask:") ? ref.slice(5) : null),
+  // Open asks follow a moved kickoff (activity-kickoff-move.ts, 2026-11-10).
+  asksFollowMovedKickoff: vi.fn(async () => 0),
 }));
 vi.mock("@/lib/partner-ask", () => partnerAsk);
 // Free places (2026-10-16): the owner behind admin_ops' fee_waiver.
@@ -2440,5 +2447,108 @@ describe("HQ teams by fact (2026-10-30, FNF HQ)", () => {
       deps: { routerModel: routeTo("balancer"), extractorModel: teamsFacts({ action: "set", sides: { red: ["Ali", "Can"], yellow: ["Tom", "Elvin"] } }) },
     });
     expect(teams.handleTeamCommand).toHaveBeenCalledWith(expect.objectContaining({ command: { kind: "set", red: ["Ali", "Can"], yellow: ["Tom", "Elvin"] } }));
+  });
+});
+
+// 2026-11-10 (Kemal): "@Match Time move Monday's game to 8:15" and "@Match
+// Time from now on we kick off at 8:15" in HQ. A SCENARIO through the real
+// door (`game-move-words.ts`) and the real mover (`activity-kickoff-move.ts`,
+// the code the activities page uses), with the router and the admin
+// extractor stubbed (what the real model reads is the paid check,
+// scripts/live-check-move-game.ts) and the database faked here. Quiet: no
+// bot job, nothing for the players' group.
+describe("a game's kickoff moved from HQ", () => {
+  // Monday 19 October 2026, British Summer Time.
+  const MON = new Date("2026-10-19T19:30:00Z"); // 20:30 London
+  const MON2 = new Date("2026-10-26T20:30:00Z"); // 20:30 London, GMT
+  const THU = new Date("2026-10-22T18:00:00Z"); // 19:00 London
+  const deps = (facts: Record<string, unknown>) => ({ routerModel: routeTo("admin_ops"), extractorModel: adminFacts(facts) });
+  const botJob = { create: vi.fn(), createMany: vi.fn() };
+  const games = (rows: Array<{ id: string; date: Date; act?: [string, string] }>) =>
+    // One fake for both reads: the games listed for the model, and the
+    // activity's games the weekly change moves.
+    dbMock.match.findMany.mockResolvedValue(
+      rows.map((r) => ({ id: r.id, date: r.date, attendanceDeadline: new Date(r.date.getTime() - 5 * 3600_000), activity: { id: r.act?.[0] ?? "vets", name: r.act?.[1] ?? "Monday Vets" } })),
+    );
+  beforeEach(() => {
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    hqLog.hqLogSince.mockResolvedValue([]);
+    (dbMock as unknown as { botJob: typeof botJob }).botJob = { ...dbMock.botJob, ...botJob } as never;
+    dbMock.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(dbMock));
+    games([{ id: "m-mon", date: MON }, { id: "m-mon2", date: MON2 }]);
+    dbMock.match.findFirst.mockResolvedValue({ id: "m-mon", date: MON, attendanceDeadline: new Date(MON.getTime() - 5 * 3600_000), status: "UPCOMING" });
+    dbMock.match.updateMany.mockResolvedValue({ count: 1 });
+    dbMock.activity.findMany.mockResolvedValue([{ id: "vets", name: "Monday Vets" }]);
+    dbMock.activity.findFirst.mockResolvedValue({ id: "vets", name: "Monday Vets", dayOfWeek: 1, time: "20:30", feeSplitTotal: false, venue: "Goals" });
+    dbMock.activity.update.mockResolvedValue({});
+    dbMock.tentativeAvailability.updateMany.mockResolvedValue({ count: 0 });
+    dbMock.poolOffer.updateMany.mockResolvedValue({ count: 0 });
+  });
+
+  it("an organiser's \"move Monday's game to 8:15\": the model is shown the games, the game moves, and the reply says the players' group was not told", async () => {
+    const r = await ask("@Match Time move Monday's game to 8:15", "admin_ops", { deps: deps({ action: "move_game", game: 1, newDay: "", newTime: "20:15", everyWeek: false, toMatchTime: true }) });
+    const extraction = requests.find((q) => q.label === "extractor:admin");
+    expect(extraction?.user).toContain(
+      "GAMES TO COME (the club's games still to be played, numbered):\n  1. Monday 19 October 2026 at 20:30 (Monday Vets)\n  2. Monday 26 October 2026 at 20:30 (Monday Vets)",
+    );
+    expect(dbMock.match.updateMany).toHaveBeenCalledWith({
+      where: { id: "m-mon", date: MON, status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] } },
+      data: { date: new Date("2026-10-19T19:15:00Z"), attendanceDeadline: new Date("2026-10-19T14:15:00Z") },
+    });
+    expect(partnerAsk.asksFollowMovedKickoff).toHaveBeenCalledWith(dbMock, { matchId: "m-mon", askerOrgId: "org-fnf", kickoff: new Date("2026-10-19T19:15:00Z") });
+    expect(r).toEqual({
+      route: "admin_ops",
+      outcome: "hq-game-move-moved",
+      replyText: "✅ Done: the game on Mon 19 Oct is now at 20:15 (it was 20:30).\nI haven't posted anything in the players' group.",
+    });
+    expect(botJob.create).not.toHaveBeenCalled();
+    expect(botJob.createMany).not.toHaveBeenCalled();
+  });
+
+  it("\"from now on we kick off at 8:15\": the weekly game's time, through the edit form's checks, and its games with it", async () => {
+    const r = await ask("@Match Time from now on we kick off at 8:15", "admin_ops", { deps: deps({ action: "move_game", game: 1, newDay: "", newTime: "20:15", everyWeek: true, toMatchTime: true }) });
+    expect(dbMock.activity.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "vets", orgId: "org-fnf" } }));
+    expect(dbMock.activity.update).toHaveBeenCalledWith({ where: { id: "vets" }, data: { time: "20:15" } });
+    expect(r?.outcome).toBe("hq-game-move-weekly-moved");
+    expect(r?.replyText).toMatch(/^✅ Done: \*Monday Vets\* kicks off at 20:15 every Monday from now on\.\nMoved: /);
+    expect(botJob.create).not.toHaveBeenCalled();
+  });
+
+  it("in Turkish, for a Turkish club", async () => {
+    const r = await ask("@Match Time pazartesi maçını 20:15'e al", "admin_ops", {
+      org: { ...ORG, language: "tr" },
+      deps: deps({ action: "move_game", game: 1, newDay: "", newTime: "20:15", everyWeek: false, toMatchTime: true }),
+    });
+    expect(r?.replyText).toBe("✅ Tamam: 19 Ekim Pazartesi maçının saati artık 20:15 (önceden 20:30).\nOyuncu grubuna bir şey yazmadım.");
+  });
+
+  it("two weekly games and none named: one question, recorded in HQ so the answer has its context; nothing moved", async () => {
+    games([{ id: "m-mon", date: MON }, { id: "m-thu", date: THU, act: ["sevens", "Thursday 7s"] }]);
+    dbMock.activity.findMany.mockResolvedValue([{ id: "vets", name: "Monday Vets" }, { id: "sevens", name: "Thursday 7s" }]);
+    const r = await ask("@Match Time move the game to 8:15", "admin_ops", { deps: deps({ action: "move_game", game: 0, newDay: "", newTime: "20:15", everyWeek: false, toMatchTime: true }) });
+    expect(r?.outcome).toBe("hq-game-move-which");
+    expect(r?.replyText).toBe(
+      "Which game shall I move to 20:15: Mon 19 Oct 20:30 (Monday Vets) or Thu 22 Oct 19:00 (Thursday 7s)? Tag me again and name the day, for example *@Match Time move Monday's game to 20:15*.",
+    );
+    expect(hqLog.recordMatchTimeLine).toHaveBeenCalledWith({ orgId: "org-fnf", idPrefix: "mt:said:game-move:", text: r?.replyText, now: NOW });
+    expect(dbMock.match.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("a member of HQ who is not an organiser: the one line naming who can, nothing read or moved", async () => {
+    const r = await ask("@Match Time move Monday's game to 8:15", "admin_ops", {
+      deps: deps({ action: "move_game", game: 1, newTime: "20:15", toMatchTime: true }),
+      organiser: false,
+      senderUserId: "u-2",
+    });
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(dbMock.match.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.activity.update).not.toHaveBeenCalled();
+  });
+
+  it("untagged: the organisers' own talk, nothing read, moved or said", async () => {
+    const r = await ask("move Monday's game to 8:15?", "admin_ops", { botMentioned: false, deps: deps({ action: "move_game", game: 1, newTime: "20:15", toMatchTime: true }) });
+    expect(r).toBeNull();
+    expect(requests).toHaveLength(0);
+    expect(dbMock.match.updateMany).not.toHaveBeenCalled();
   });
 });
